@@ -37,6 +37,80 @@ public sealed class SpellEngine
     /// poison resisted, etc.) reach only the caster, matching upstream.</summary>
     public Action<Character, string>? OnSysMessage { get; set; }
 
+    /// <summary>Free one hand for a cast — the port of Source-X Spell_Unequip
+    /// (CCharSpell.cpp:2827). An item that may stay on (a spellbook, a wand, or one
+    /// flagged CAN_I_EQUIPONCAST) is left alone; anything else is bounced into the
+    /// pack. False means the cast cannot start: frozen hands under
+    /// MAGICF_NOCASTFROZENHANDS or MAGICF_CASTPARALYZED, an item that cannot be
+    /// moved at all, or a bounce with nowhere to go.</summary>
+    private bool TrySpellUnequip(Character caster, Layer layer)
+    {
+        var held = caster.GetEquippedItem(layer);
+        if (held == null)
+            return true;
+
+        var magicFlags = (MagicConfigFlags)Character.MagicFlags;
+        bool frozen = caster.IsStatFlag(StatFlag.Freeze);
+
+        if (magicFlags.HasFlag(MagicConfigFlags.NoCastFrozenHands) && frozen)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryFrozenhands));
+            return false;
+        }
+
+        // Kept in hand: the book you cast from, a wand, or an item the pack
+        // flagged CAN_I_EQUIPONCAST. A shield is not a hand the cast needs.
+        bool staysEquipped =
+            held.ItemType is ItemType.Spellbook or ItemType.SpellbookNecro or
+                ItemType.SpellbookPala or ItemType.SpellbookExtra or
+                ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
+                ItemType.SpellbookArcanist or ItemType.SpellbookMystic or
+                ItemType.SpellbookMastery or ItemType.Wand or ItemType.Shield ||
+            HasEquipOnCast(held);
+
+        if (magicFlags.HasFlag(MagicConfigFlags.CastParalyzed))
+        {
+            if (staysEquipped)
+                return true;
+            if (frozen)
+            {
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryFrozenhands));
+                return false;
+            }
+        }
+
+        if (!ItemMoveRules.CanMove(caster, held, out _))
+            return false;
+        if (staysEquipped)
+            return true;
+
+        var pack = caster.Backpack;
+        if (pack == null || pack.IsDeleted)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryBusyhands));
+            return false;
+        }
+
+        caster.Unequip(layer);
+        if (!pack.TryAddItem(held))
+        {
+            // Nowhere to put it: upstream drops it at the feet rather than
+            // destroying it, and only then gives up on the cast.
+            held.ContainedIn = Serial.Invalid;
+            _world.PlaceItemWithDecay(held, caster.Position);
+        }
+        return true;
+    }
+
+    /// <summary>CAN_I_EQUIPONCAST on the item's definition (Source-X CBase.h:61)
+    /// - the pack's way of saying a held item survives a cast with EQUIPPEDCAST
+    /// off.</summary>
+    private static bool HasEquipOnCast(Item item)
+    {
+        var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+        return def != null && (def.Can & CanFlags.I_EquipOnCast) != 0;
+    }
+
     /// <summary>Callback fired when a spell is interrupted. Args: (Character caster, string reason).</summary>
     public Action<Character, string>? OnSpellInterrupt { get; set; }
 
@@ -576,24 +650,32 @@ public sealed class SpellEngine
         return false;
     }
 
-    /// <summary>
-    /// Check and apply spell interruption from movement.
-    /// Call this when a casting character moves.
-    /// Returns true if the spell was interrupted.
-    /// </summary>
-    public bool TryInterruptFromMovement(Character caster)
+    /// <summary>Whether an in-progress cast forbids this character from moving at
+    /// all — the port of Source-X OnFreezeCheck (CCharAct.cpp:4539).
+    ///
+    /// The reference NEVER interrupts a spell because the caster walked. It picks
+    /// one of two answers instead: either the cast roots you (MAGICF_FREEZEONCAST,
+    /// or a spell carrying SPELLFLAG_FREEZEONCAST while the global flag is off), or
+    /// you walk and keep casting. SPELLFLAG_NOFREEZEONCAST exempts a spell from the
+    /// global flag.
+    ///
+    /// This engine interrupted on ANY step, which is neither answer: on a shard
+    /// with MAGICFLAGS=0 — the live one — a caster lost the spell to a single
+    /// footfall where the reference would have let them walk.</summary>
+    public bool IsMovementFrozenByCast(Character caster)
     {
-        if (!caster.IsCasting)
+        if (!caster.IsCasting || caster.PrivLevel >= PrivLevel.GM)
+            return false;
+        if (!caster.TryGetCastingSpell(out SpellType castingSpell))
             return false;
 
-        if (caster.PrivLevel >= PrivLevel.GM)
+        var def = GetSpellDef(castingSpell);
+        if (def == null)
             return false;
 
-        if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
-            return false;
-
-        InterruptCast(caster, "moved");
-        return true;
+        return IsMagicFlag(MagicConfigFlags.FreezeOnCast)
+            ? !def.IsFlag(SpellFlag.NoFreezeOnCast)
+            : def.IsFlag(SpellFlag.FreezeOnCast);
     }
 
     /// <summary>
@@ -647,7 +729,12 @@ public sealed class SpellEngine
             return -1;
         if (caster.IsCasting)
             return -1;
-        if (caster.IsStatFlag(StatFlag.Freeze))
+        // MAGICF_CASTPARALYZED: a frozen caster may still cast. The reference has no
+        // blanket refusal here at all - freezing is only consulted while freeing the
+        // hands (Spell_Unequip, CCharSpell.cpp:2833/2841), which is where the two
+        // magic flags decide. A flat refusal made CASTPARALYZED inert.
+        if (caster.IsStatFlag(StatFlag.Freeze) &&
+            !IsMagicFlag(MagicConfigFlags.CastParalyzed))
             return -1;
 
         // [SPELL n] ON=@Select (Source-X SPTRIG_SELECT, fired from
@@ -704,17 +791,19 @@ public sealed class SpellEngine
 
         var primarySkill = def.GetPrimarySkill();
         int skillVal = caster.GetSkill(primarySkill);
-        // A wielded spellbook never blocks casting (reference: casting from
-        // the book in hand is the normal flow); wands likewise.
-        bool hasBlockingWeapon =
-            (weapon != null && weapon.ItemType is not ItemType.Wand and not ItemType.Spellbook) ||
-            (offhand != null && offhand.ItemType is not ItemType.Shield and not ItemType.Spellbook);
 
-        if (!Character.EquippedCastEnabled && caster.IsPlayer && hasBlockingWeapon &&
+        // Source-X Spell_CastStart (CCharSpell.cpp:3544): with EQUIPPEDCAST off the
+        // caster's HANDS ARE EMPTIED, not the cast refused — Spell_Unequip bounces
+        // each held item into the pack and only fails when the item will not go
+        // (:2849). Fizzling instead meant a player with a weapon in hand simply
+        // could not cast, which is what the live shard does today: its
+        // EQUIPPEDCAST is 0.
+        if (!Character.EquippedCastEnabled && caster.IsPlayer &&
             caster.PrivLevel < PrivLevel.GM)
         {
-            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
-            return -1;
+            if (!TrySpellUnequip(caster, Layer.OneHanded) ||
+                !TrySpellUnequip(caster, Layer.TwoHanded))
+                return -1;
         }
 
         // Reagent availability check (before starting cast). Wand/scroll/GM skip.
@@ -1227,9 +1316,20 @@ public sealed class SpellEngine
     /// SphereNet's own gold and crafting counts already do. Looking only at the top
     /// level meant a player who tidied their reagents into a pouch was told they
     /// lacked them.</summary>
+    /// <summary>LOWERREAGENTCOST is a percent CHANCE that this cast spends no
+    /// reagents at all, not a discount on how many (Source-X
+    /// Calc_SpellReagentsConsume, CResourceCalc.cpp:570). The roll wraps the
+    /// availability check as well as the spend, so a free cast also cannot be
+    /// refused for lacking them — and it is rolled afresh at each of the two
+    /// points the reference calls that function from (fTest, then for real).</summary>
+    private bool RollsFreeReagents(Character caster) =>
+        _rand.Next(100) < GetCastingPropertyValue(
+            caster, SpellCastingProperties.LowerReagentCost);
+
     private bool HasRequiredReagents(Character caster, SpellDef def)
     {
         if (def.Reagents.Count == 0) return true;
+        if (RollsFreeReagents(caster)) return true;
         if (caster.Backpack == null) return false;
         foreach (var (regBaseId, needed) in def.Reagents)
         {
@@ -1266,6 +1366,7 @@ public sealed class SpellEngine
     private bool ConsumeReagents(Character caster, SpellDef def)
     {
         if (def.Reagents.Count == 0) return true;
+        if (RollsFreeReagents(caster)) return true;
         if (caster.Backpack == null) return false;
 
         // All-or-nothing: verify the full bill first so a partial spend cannot be
@@ -3024,12 +3125,21 @@ public sealed class SpellEngine
 
     /// <summary>Spell mana cost after per-caster modifiers. Necromancy Mind Rot
     /// raises the victim's spell mana cost by 10% (reference LOWERMANACOST -10).</summary>
+    /// <summary>What this caster actually pays for a spell (Source-X
+    /// Calc_SpellManaCost, CResourceCalc.cpp:522). LOWERMANACOST is a PERCENT off
+    /// and may be negative, in which case it raises the bill — which is exactly
+    /// how the reference expresses Mind Rot. It is summed off the character and
+    /// everything worn, the way the other spell properties are.</summary>
     private static int EffectiveManaCost(Character caster, SpellDef def)
     {
         int cost = def.ManaCost;
         if (caster.MindRotActive)
             cost += cost / 10;
-        return cost;
+
+        int lower = GetCastingPropertyValue(caster, SpellCastingProperties.LowerManaCost);
+        if (lower != 0)
+            cost -= cost * lower / 100;
+        return Math.Max(0, cost);
     }
 
     /// <summary>Necromancy Corpse Skin resist shift (reference PolyStr/PolyDex):

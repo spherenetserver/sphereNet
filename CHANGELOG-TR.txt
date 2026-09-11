@@ -3,6 +3,55 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-11] - Bir buyu neye mal olur, ve yururken buyu yapmak
+----------------------------------------
+
+FIX - Yurumek artik buyuyu iptal etmiyor. Referans iki cevaptan birini verir
+        (OnFreezeCheck, CCharAct.cpp:4539): ya buyu buyucuyu YERINE CIVILER
+        (MAGICF_FREEZEONCAST ya da global bayrak kapaliyken SPELLFLAG_FREEZEONCAST
+        tasiyan bir buyu), ya da buyucu yurur ve buyusu devam eder. Bir adim
+        yuzunden ASLA iptal etmez. Bu motor her harekette iptal ediyor ve iki
+        bayragi da uygulamiyordu; yani MAGICFLAGS=0 olan bir shard'da - canli olan
+        - buyucu, referansin yurumesine izin verecegi yerde tek bir adimda buyusunu
+        kaybediyordu. Civileyen durum artik ADIMI reddediyor, buyuyu degil.
+
+FIX - LOWERMANACOST okunuyor. Mana faturasindan dusulen yuzdedir ve NEGATIF olarak
+        faturayi yukseltebilir; referans cezayi boyle ifade eder
+        (Calc_SpellManaCost, CResourceCalc.cpp:545). Diger buyu ozellikleri gibi
+        karakterden ve uzerindeki her seyden toplanir.
+
+FIX - LOWERREAGENTCOST okunuyor. Kac tane harcanacagina dair bir indirim degil, o
+        castin HIC reagent harcamama YUZDE SANSIDIR (:570); ve zar, varlik
+        kontrolunu de kapsar, yani bedava bir cast harcamayacagi seye sahip degil
+        diye reddedilemez. Referans script paketi iki ozelligi de kendi
+        artifact'larinda kullaniyor; bizde ikisi de hicbir sey yapmiyordu.
+
+
+[2026-09-11] - Elleri doluyken buyu yapmak
+----------------------------------------
+
+FIX - EQUIPPEDCAST kapaliyken eldeki silah cantaya gidiyor ve buyu basliyor.
+        Referans buyuyu reddetmek yerine ELLERI BOSALTIR (Spell_Unequip,
+        CCharSpell.cpp:2827/3544); bu motor ise buyuyu sonduruyordu ve bu, canli
+        shard'in kendi ayari: EQUIPPEDCAST=0, yani elinde silah olan bir oyuncu
+        hic buyu yapamiyordu. Buyu kitabi, asa (wand) ve kalkan yerinde kalir;
+        tasinamayan ya da konacak yeri olmayan bir esya yine buyuyu durdurur.
+
+FIX - CAN_I_EQUIPONCAST okunuyor. Paketin "bu esya EQUIPPEDCAST kapaliyken de
+        elde kalir" deme yolu bu (CBase.h:61) ve hicbir sey ona bakmiyordu.
+
+FIX - MAGICF_CASTPARALYZED bir ise yariyor. Donmus bir buyucu, bayrak hic
+        okunmadan dogrudan reddediliyordu; yani bayrak olu bir ayardi. Referansta
+        orada boyle toptan bir red yok: donmusluk, ellerin bosaltildigi yerde
+        tartilir ve karari NOCASTFROZENHANDS ile CASTPARALYZED verir.
+
+FIX - Test paketi, arkasinda biraktigi dovus ve buyu ayarlarini artik sifirliyor
+        (silah hasar tablosu, dayaniklilik bandi, combat bayraklari ve donemler,
+        reagent ve equipped-cast anahtarlari). Bir testin biraktigi deger sonraki
+        testin vurusunu ya da buyusunu yonlendirebiliyordu; her on-onbes kosuda bir
+        hata olarak ortaya cikiyordu.
+
+
 [2026-09-10] - Bir savusturma neye karar verebilir
 ----------------------------------------
 

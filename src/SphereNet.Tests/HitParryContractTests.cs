@@ -37,13 +37,11 @@ public sealed class HitParryContractTests : IDisposable
     private readonly int _savedLossMin = CombatEngine.DurabilityLossMin;
     private readonly int _savedLossMax = CombatEngine.DurabilityLossMax;
 
-    public HitParryContractTests()
+    /// <summary>Pin EVERY shared static this class reads. Called from the TEST
+    /// BODY, not the constructor: the assembly-wide ResetEngineStatics hook runs
+    /// between the two and would wipe anything set earlier.</summary>
+    private static void PinCombatStatics()
     {
-        // Pin EVERY shared static this class reads, not just the obvious ones.
-        // The parry answer depends on the parrying era and the SE feature mask, and
-        // the wear check depends on the durability loss band; leaving any of them to
-        // whatever the rest of the suite last set makes this class fail once in a
-        // while for a reason that has nothing to do with what it is testing.
         CombatEngine.WeaponDefLookup = _ => (20, 20);
         CombatEngine.DurabilityLossMin = 1;
         CombatEngine.DurabilityLossMax = 1;
@@ -75,6 +73,7 @@ public sealed class HitParryContractTests : IDisposable
 
     private static Character Fighter(int parrying = 0)
     {
+        PinCombatStatics();
         var ch = new Character();
         ch.Str = ch.Dex = ch.Int = 100;
         ch.MaxHits = ch.Hits = 100;

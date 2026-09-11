@@ -4,6 +4,55 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-11] - What a spell costs, and walking while you cast it
+----------------------------------------
+
+FIX - Walking no longer cancels a spell. The reference gives one of two answers
+        (OnFreezeCheck, CCharAct.cpp:4539): the cast ROOTS the caster
+        (MAGICF_FREEZEONCAST, or a spell carrying SPELLFLAG_FREEZEONCAST while the
+        global flag is off), or the caster walks and keeps casting. It never
+        interrupts on a step. This engine cancelled on any movement and enforced
+        neither flag, so on a shard with MAGICFLAGS=0 - the live one - a caster
+        lost the spell to a single footfall where upstream would have let them walk.
+        The rooting case now refuses the STEP, not the spell.
+
+FIX - LOWERMANACOST is read. It is a percent off the mana bill and may be NEGATIVE
+        to raise it, which is how the reference expresses a penalty
+        (Calc_SpellManaCost, CResourceCalc.cpp:545). Summed off the character and
+        everything worn, like the other spell properties.
+
+FIX - LOWERREAGENTCOST is read. It is a percent CHANCE that a cast spends no
+        reagents at all rather than a discount on how many (:570), and the roll
+        covers the availability check too, so a free cast cannot be refused for
+        lacking what it was not going to spend. The reference script pack sets both
+        properties on its artifacts; neither did anything here.
+
+
+[2026-09-11] - Casting with your hands full
+----------------------------------------
+
+FIX - With EQUIPPEDCAST off a held weapon goes to the pack and the cast proceeds.
+        The reference empties the hands rather than refusing the spell
+        (Spell_Unequip, CCharSpell.cpp:2827/3544); this engine fizzled instead, and
+        that is the live shard's own setting - its EQUIPPEDCAST is 0, so a player
+        holding a weapon simply could not cast. A spellbook, a wand and a shield
+        stay where they are; an item that cannot be moved, or has nowhere to go,
+        still stops the cast.
+
+FIX - CAN_I_EQUIPONCAST is read. It is how a pack says a held item survives a cast
+        with EQUIPPEDCAST off (CBase.h:61), and nothing consulted it.
+
+FIX - MAGICF_CASTPARALYZED does something. A frozen caster was refused outright
+        before the flag was ever consulted, which made it inert. The reference has
+        no blanket refusal there at all: freezing is weighed while the hands are
+        freed, where NOCASTFROZENHANDS and CASTPARALYZED decide.
+
+FIX - The test suite resets the combat and magic knobs it had been leaving behind
+        (weapon damage lookup, durability band, combat flags and eras, the reagent
+        and equipped-cast switches). A value left by one test could steer a later
+        one's swing or cast; it showed up as a failure about once every dozen runs.
+
+
 [2026-09-10] - What a parry is allowed to decide
 ----------------------------------------
 

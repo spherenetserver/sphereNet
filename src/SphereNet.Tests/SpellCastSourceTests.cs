@@ -88,7 +88,8 @@ public class SpellCastSourceTests
     {
         var world = CreateWorld();
         var (engine, caster) = Setup(world);
-        caster.PrivLevel = PrivLevel.Player; // GM is never interrupted by movement
+        caster.PrivLevel = PrivLevel.Player;
+        caster.IsPlayer = true;             // only a player is disturbed by default
 
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
@@ -99,7 +100,9 @@ public class SpellCastSourceTests
         caster.SetTag("WAND_UID", wand.Uid.Value.ToString());
         caster.BeginCast(SpellType.Strength, caster.Uid, caster.Position);
 
-        Assert.True(engine.TryInterruptFromMovement(caster));
+        // Interrupted by a blow, which is the reference's own disturb path
+        // (walking does not interrupt a cast - see IsMovementFrozenByCast).
+        Assert.True(engine.TryInterruptFromDamage(caster, 10));
 
         Assert.True(wand.TryGetTag("CHARGES", out string? ch));
         Assert.Equal("3", ch);                              // untouched — bug fix

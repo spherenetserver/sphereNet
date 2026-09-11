@@ -3951,3 +3951,111 @@ Savuşturma cevabı `CombatParryingEra` + `FeatureSE`'ye, yıpranma ise
 
 **PLAN-402 KAPANDI.** Sıradaki: PLAN-403 (magic uçtan uca).
 
+---
+
+## İŞ-22 — Büyü: ellerin boşaltılması (PLAN-403 birinci dilim, 11 Eylül 2026)
+
+PLAN-403'ün cast-başlangıcı ayağı. Üç boşluk da canlı shard'da **aktif**:
+`C:\sphereNetServer\sphere.ini` `EQUIPPEDCAST=0` ve `MAGICFLAGS=0`.
+
+### Kapanan boşluklar
+
+- [x] **İŞ-22-01 (P1) — Eller boşaltılmıyor, büyü söndürülüyordu.**
+  Referans `Spell_CastStart` (CCharSpell.cpp:3544) EQUIPPEDCAST kapalıyken
+  `Spell_Unequip(LAYER_HAND1/2)` çağırır; bu da eşyayı çantaya **ItemBounce**
+  eder ve yalnız eşya gitmiyorsa başarısız olur (`:2849`). Bizde doğrudan
+  "fizzles" dönüyordu: canlı shard'da elinde silah olan bir oyuncu hiç büyü
+  yapamıyor. Port edildi; kitap/wand/kalkan elde kalır, taşınamayan eşya
+  (`CanMoveItem`) ya da konacak yeri olmayan eşya yine cast'i durdurur.
+
+- [x] **İŞ-22-02 (P2) — `CAN_I_EQUIPONCAST` okunmuyordu.**
+  Bayrak `CanFlags.I_EquipOnCast = 0x8000000` olarak enum'da zaten vardı ve
+  referansla birebir (CBase.h:61), ama hiçbir yer ona bakmıyordu. Paketin
+  "bu eşya cast'te elde kalır" deme yolu bu.
+
+- [x] **İŞ-22-03 (P2) — `MAGICF_CASTPARALYZED` ölü ayardı.**
+  `CastStart` donmuş karakteri bayrak hiç okunmadan reddediyordu. Referansta
+  orada toptan bir red YOK: donmuşluk yalnız ellerin boşaltıldığı yerde tartılır
+  ve kararı `NOCASTFROZENHANDS` (`:2833`) ile `CASTPARALYZED` (`:2839/:2841`)
+  verir.
+
+### Test altyapısı — kayda değer
+
+İŞ-21'in fikstür kırılganlığının gerçek kökü burada bulundu: **`ResetEngineStatics`
+her testten ÖNCE çalışıyor**, yani test sınıfının KURUCUSUNDA yapılan sabitleme
+siliniyor. Ayrıca Reset() dövüş/büyü anahtarlarının bir kısmını hiç
+sıfırlamıyordu: `WeaponDefLookup`, `DurabilityEnabled/LossChance/LossMin/LossMax`,
+`CombatFlags`, `CombatDamageEra`, `CombatHitChanceEra`, `ReagentsRequiredEnabled`,
+`EquippedCastEnabled`. Hepsi Reset'e eklendi; iki yeni sınıf da sabitlemeyi
+kurucudan test gövdesine taşıdı. (CLAUDE.md kuralı: yeni statik hook → Reset'e.)
+
+### Kayıtlı sapma
+
+- `SPELLCHANNELING` eşya property'si hâlâ yok. Referans onu `Spell_Unequip`'te
+  `CAN_I_EQUIPONCAST`'in yanında okur, ama ne canlı pakette ne `oldSphere/`
+  paketlerinde tek bir kullanımı var — tüketicisi olmayan ayar eklenmedi.
+
+**Testler:** `SpellUnequipParityTests` (11). Üç düzeltme tek tek geri alındı ve
+sırasıyla 2 / 1 / 1 test kırmızıya döndü. Tam suite 3.428 / 0, üç arka arkaya koşu.
+
+**PLAN-403'ün kalanı:** reagent/scroll/wand mana maliyeti, hareket ve hasarla
+iptal, alan etkisi, summon, seyahat.
+
+---
+
+## İŞ-23 — Büyü: maliyet ve yürürken cast (PLAN-403 ikinci dilim, 11 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+| Ayak | Kanıt |
+|---|---|
+| Wand mana bedava, scroll yarım | Referansta gerçek ve formülün İÇİNDE (`Calc_SpellManaCost`, CResourceCalc.cpp:536/550) — `Spell_CanCast`'teki satırlar yoruma alınmış, bizimki doğru yerde |
+| Reagent yalnız kendi gücünden cast | `pObj == pCharCaster` + `!m_pNPC` kapıları bizde de var |
+| Hasarla iptal | `[SPELL] INTERRUPT` eğrisi + `NPCCANFIZZLEONHIT` |
+| Wand şarjı / scroll tüketimi | Var; `Spell_CanCast`'teki `m_spellcharges--` / `ConsumeAmount` karşılığı |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-23-01 (P1) — Yürümek büyüyü iptal ediyordu.**
+  Referansta "hareket büyüyü böler" diye bir kural **yok**. `OnFreezeCheck`
+  (CCharAct.cpp:4539) iki cevaptan birini verir: `MAGICF_FREEZEONCAST` (ya da
+  global bayrak kapalıyken `SPELLFLAG_FREEZEONCAST`) ADIMI engeller; aksi halde
+  karakter yürür ve büyü sürer. `SPELLFLAG_NOFREEZEONCAST` bir büyüyü global
+  bayraktan muaf tutar. Bizde `MovementEngine` her adımda
+  `TryInterruptFromMovement` çağırıyordu ve iki bayrak da yüklenip hiç
+  uygulanmıyordu. Canlı shard'da (MAGICFLAGS=0) bu, tek adımda büyü kaybı
+  demekti. `IsMovementFrozenByCast` portlandı; hareket iptali kaldırıldı.
+
+- [x] **İŞ-23-02 (P2) — `LOWERMANACOST` okunmuyordu.**
+  Mana faturasından düşülen YÜZDE; negatif değer faturayı YÜKSELTİR
+  (CResourceCalc.cpp:545-548, referansın kendi yorumu böyle diyor). Karakter +
+  giyili eşya toplamı olarak okunuyor (`GetCastingPropertyValue` deseni).
+
+- [x] **İŞ-23-03 (P2) — `LOWERREAGENTCOST` okunmuyordu.**
+  Kaç tane harcanacağına dair indirim DEĞİL: o castın hiç reagent harcamama
+  yüzde şansı (`:570`). Zar, varlık kontrolünü de kapsıyor — referans ikisini de
+  tek fonksiyondan (`Calc_SpellReagentsConsume`, `fTest` parametreli) yapar, yani
+  bedava bir cast harcamayacağı şeye sahip değil diye reddedilemez.
+
+  **Paket tarafı ölçüm:** `Scripts-X-main/items/i_artifacts.scp` her ikisini de
+  kullanıyor (`LowerManaCost=8/10`, `LowerReagentCost=40`) ve
+  `core/defs_component_props.scp` ikisini AOS karakter property'si olarak
+  kaydediyor.
+
+### Kayıtlı sapmalar
+
+- `[SPELL] @Select` / `@SpellSelect` argüman sözleşmesi eksik: referans ARGN2'de
+  mana maliyetini verip GERİ OKUR, ARGN3'te bayrak (0x1 test / 0x2 failmsg),
+  ARGO'da kaynak eşya, `LOCAL.TithingUse`; ayrıca `RETURN 0`/`RETURN 2` "kabul et
+  ve kalan kontrolleri ATLA" anlamına gelir (CCharSpell.cpp:2367-2406). Bizde
+  yalnız ARGN1/ARGN2 tohumlanıyor, geri okuma yok. **Ölçüm:** canlı paketin
+  `[SPELL] ON=@Select` blokları yalnız `RETURN 1` kullanıyor
+  (`sphere_spells.scp:1326`), yani sözleşmenin kalanının canlı tüketicisi yok.
+- Tithing (paladin) sistemi yok; `Calc_SpellTithingCost` karşılığı eklenmedi.
+
+**Testler:** `SpellCostAndFreezeParityTests` (10). Üç düzeltme tek tek geri alındı
+ve sırasıyla 3 / 2 / 2 test kırmızıya döndü. Tam suite 3.438 / 0, üç arka arkaya
+koşu.
+
+**PLAN-403'ün kalanı:** alan etkisi, summon, seyahat.
+

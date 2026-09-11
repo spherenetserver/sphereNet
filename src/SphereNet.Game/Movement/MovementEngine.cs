@@ -79,6 +79,12 @@ public sealed class MovementEngine
         if (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone))
             return false;
 
+        // A cast that roots the caster (MAGICF_FREEZEONCAST / SPELLFLAG_FREEZEONCAST)
+        // refuses the STEP; it does not cancel the spell. Source-X weighs this in
+        // OnFreezeCheck alongside paralyze (CCharAct.cpp:4539).
+        if (SpellEngine?.IsMovementFrozenByCast(ch) == true)
+            return false;
+
         // Overweight running prevention — can't run when carrying more than max weight
         if (running && ch.IsPlayer && ch.GetTotalWeight() > ch.MaxWeight)
             running = false;
@@ -150,8 +156,9 @@ public sealed class MovementEngine
 
         ch.Direction = dir;
 
-        // Spell interruption on movement
-        SpellEngine?.TryInterruptFromMovement(ch);
+        // No spell interruption here: the reference lets a caster walk (the
+        // rooting case was refused above). Meditation is a different skill and
+        // does break on movement.
         ch.InterruptMeditation();
 
         if (ch.HasActiveSkillPending() &&

@@ -13,10 +13,10 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 
 | Alan | Değer |
 |---|---|
-| Son güncelleme | 2026-09-10 |
-| Son commit | `60a28a3` + İŞ-21 (@HitParry sözleşmesi) |
-| Tam test | 3.417 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-403 (magic uçtan uca)** — PLAN-402 kapandı |
+| Son güncelleme | 2026-09-11 |
+| Son commit | `399edec` + İŞ-22/İŞ-23 (büyü) |
+| Tam test | 3.438 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-403 devam — alan etkisi, summon, seyahat** |
 
 ## Çalışma sırası
 
@@ -257,11 +257,43 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   parry (İŞ-21), yansıma (İŞ-9/10), ölüm ve trigger veto sırası (D1-D3 + İŞ-19'un
   hasar kapısı).
 
+- [x] **İŞ-22 — Büyü: ellerin boşaltılması** (PLAN-403 birinci dilim) — **KAPANDI**
+  PLAN-403'ün "cast başlangıcı" ayağı. Üç boşluk, üçü de **canlı shard'da aktif**
+  (`EQUIPPEDCAST=0`): (1) referans elleri boşaltır, biz büyüyü söndürüyorduk —
+  elinde silah olan oyuncu hiç büyü yapamıyordu; (2) `CAN_I_EQUIPONCAST` hiç
+  okunmuyordu; (3) donmuş büyücü bayrak okunmadan reddediliyordu, yani
+  `MAGICF_CASTPARALYZED` ölü bir ayardı.
+  Yanında **test altyapısı düzeltmesi**: `ResetEngineStatics` dövüş/büyü
+  anahtarlarının bir kısmını sıfırlamıyordu ve sınıf kurucusundaki sabitleme
+  Reset'ten önce çalıştığı için siliniyordu.
+
+- [x] **İŞ-23 — Büyü: maliyet ve yürürken cast** (PLAN-403 ikinci dilim) — **KAPANDI**
+  PLAN-403'ün "mana maliyeti" ve "hareketle iptal" ayakları. **Ölçülüp zaten doğru
+  bulunanlar:** wand mana bedavası ve scroll yarım mana (referansta gerçek, formül
+  `Calc_SpellManaCost` içinde), reagent yalnız oyuncunun kendi gücünden castında
+  (wand/scroll muaf), hasarla iptalin `[SPELL] INTERRUPT` eğrisi ve
+  `NPCCANFIZZLEONHIT`. **Üç boşluk:**
+  1. **Yürümek büyüyü iptal ediyordu.** Referansta böyle bir kural YOK: ya
+     `FREEZEONCAST` adımı engeller ya da karakter yürür ve büyü sürer. Canlı
+     shard'da (MAGICFLAGS=0) tek adımda büyü kaybı demekti; iki bayrak da
+     yüklenip hiç uygulanmıyordu.
+  2. **`LOWERMANACOST` okunmuyordu** (negatif değer faturayı yükseltir).
+  3. **`LOWERREAGENTCOST` okunmuyordu** (kaç tane değil, HİÇ harcamama şansı).
+     İkisini de referans script paketi artifact'larında kullanıyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-23 KAPANDI** — 2026-09-11. FREEZEONCAST (global + spell bayrağı), yürürken
+  cast, LOWERMANACOST, LOWERREAGENTCOST. Test: `SpellCostAndFreezeParityTests` (10);
+  üç düzeltme tek tek geri alınıp yakalandığı doğrulandı (3/2/2 kırmızı).
+  Tam suite 3.438, üç arka arkaya koşu.
+- **İŞ-22 KAPANDI** — 2026-09-11. Spell_Unequip portu, CAN_I_EQUIPONCAST,
+  MAGICF_CASTPARALYZED; ResetEngineStatics'e eksik combat/magic anahtarları.
+  Test: `SpellUnequipParityTests` (11); üç düzeltme tek tek geri alınıp
+  yakalandığı doğrulandı (2/1/1 kırmızı). Tam suite 3.428, üç arka arkaya koşu.
 - **İŞ-21 KAPANDI** — 2026-09-10. @HitParry zardan önce ateşleniyor; ARGN1 yüzde,
   ARGN2/ARGO + dört LOCAL, RETURN 1 vetosu, eşya yıpranması, EFFECT eğrisi.
   Test: `HitParryContractTests` (8); üç düzeltme tek tek geri alınıp yakalandığı

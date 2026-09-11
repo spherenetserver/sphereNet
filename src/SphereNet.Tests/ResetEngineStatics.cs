@@ -59,6 +59,19 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
             (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |
                   SphereNet.Core.Enums.ParryEraFlags.ShieldBlock);
         SphereNet.Game.Objects.Characters.Character.FeatureSE = 0;
+        // The rest of the combat/magic knobs a test may set. They were missing,
+        // so a value left behind could steer a later test's swing or cast and
+        // surface as a failure once every dozen runs.
+        SphereNet.Game.Objects.Characters.Character.CombatFlags = 0;
+        SphereNet.Game.Objects.Characters.Character.CombatDamageEra = 0;
+        SphereNet.Game.Objects.Characters.Character.CombatHitChanceEra = 0;
+        SphereNet.Game.Objects.Characters.Character.EquippedCastEnabled = false;
+        SphereNet.Game.Objects.Characters.Character.ReagentsRequiredEnabled = true;
+        SphereNet.Game.Combat.CombatEngine.WeaponDefLookup = null;
+        SphereNet.Game.Combat.CombatEngine.DurabilityEnabled = false;
+        SphereNet.Game.Combat.CombatEngine.DurabilityLossChance = 25;
+        SphereNet.Game.Combat.CombatEngine.DurabilityLossMin = 1;
+        SphereNet.Game.Combat.CombatEngine.DurabilityLossMax = 1;
         SphereNet.Game.Objects.Characters.Character.FeatureAOS = 0;
         SphereNet.Game.Objects.Characters.Character.RacialFlags = 0;
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;

@@ -265,10 +265,12 @@ public sealed class CraftingEngine
             item.Quality = (ushort)quality;
 
             // Source-X CCharSkill.cpp:799: only a grandmaster (skill > 99.9)
-            // producing quality > 175 gets the maker's mark on the name. The
-            // old invented "exceptional" rename + 20% durability boost had no
-            // reference basis (durability comes solely from the def).
-            if (skillVal > 999 && quality > 175)
+            // producing quality > 175 gets the maker's mark on the name, and only
+            // while OF_NOITEMNAMING is off — a shard can switch the marks away, and
+            // that bit was in the enum with nothing reading it. The old invented
+            // "exceptional" rename + 20% durability boost had no reference basis
+            // (durability comes solely from the def).
+            if (EarnsMakersMark(skillVal, quality))
                 item.Name = $"{item.Name} crafted by {crafter.Name}";
 
             // Caller (GameClient.OpenCraftingGump) handles placement + notification
@@ -345,6 +347,35 @@ public sealed class CraftingEngine
             _ => Random.Shared.Next(25) + 176,
         };
     }
+
+    /// <summary>Whether a finished piece carries its maker's name. The reference
+    /// asks for a grandmaster (skill above 99.9), a quality above 175 AND
+    /// OF_NOITEMNAMING to be off (CCharSkill.cpp:799) - the last of the three was
+    /// declared here and never read, so a shard could switch the marks away and keep
+    /// getting them.</summary>
+    public static bool EarnsMakersMark(int skillValue, int quality) =>
+        skillValue > 999 && quality > 175 &&
+        (Clients.GameClient.ServerOptionFlags & OptionFlags.NoItemNaming) == 0;
+
+    /// <summary>The message a finished piece's QUALITY earns, or null for an
+    /// ordinary one.
+    ///
+    /// The reference names the band as it rolls it and says so to the crafter
+    /// (DEFMSG_MAKESUCCESS_1..6, CCharSkill.cpp:758-788; the average band alone
+    /// stays quiet, :771). Those six messages were in the table here and nothing
+    /// ever sent one, so every piece came out sounding the same. Derived from the
+    /// final value rather than carried out of the roll — it is the same band
+    /// boundary either way.</summary>
+    public static string? QualityMessageKey(int quality) => quality switch
+    {
+        <= 25 => Messages.Msg.Makesuccess1,       // shoddy
+        <= 50 => Messages.Msg.Makesuccess2,       // poor
+        <= 75 => Messages.Msg.Makesuccess3,       // below average
+        <= 125 => null,                           // average: the reference is silent
+        <= 150 => Messages.Msg.Makesuccess4,      // above average
+        <= 175 => Messages.Msg.Makesuccess5,      // excellent
+        _ => Messages.Msg.Makesuccess6,           // superior
+    };
 
     /// <summary>Take (or just test for) a PART of what a recipe needs, the way
     /// Source-X ResourceConsumePart does (CContainer.cpp:534): each entry is scaled

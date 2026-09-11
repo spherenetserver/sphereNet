@@ -447,6 +447,9 @@ public sealed class ClientWorldFeaturesHandler
             _triggerDispatcher?.FireItemTrigger(result, ItemTrigger.Create,
                 new TriggerArgs { CharSrc = _character, ItemSrc = result });
             string craftedName = result.GetName();
+            // Read the quality off the NEW piece: it may merge into a pile below,
+            // and the pile's quality is not the one that was just rolled.
+            int actualQuality = result.Quality;
             var pack = _character.Backpack;
             if (pack != null)
             {
@@ -472,6 +475,10 @@ public sealed class ClientWorldFeaturesHandler
                 _world.PlaceItemWithDecay(result, _character.Position);
             }
             SysMessage(ServerMessages.GetFormatted("craft_success", craftedName));
+            // ...and what the piece turned out like, when it is worth remarking on
+            // (Source-X Skill_MakeItem_Success, CCharSkill.cpp:844).
+            if (CraftingEngine.QualityMessageKey(actualQuality) is { } qualityMsg)
+                SysMessage(ServerMessages.Get(qualityMsg));
         }
         else
             SysMessage(ServerMessages.Get("craft_fail"));

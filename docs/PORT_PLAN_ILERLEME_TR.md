@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-11 |
-| Son commit | `3a3ea2a` + İŞ-25 (üretim: başarısızlık bedeli) |
-| Tam test | 3.454 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-404 devam — kaynak tükenmesi, retry, kalite** |
+| Son commit | `c04ea58` + İŞ-26/İŞ-27 (üretim + kaynak) |
+| Tam test | 3.475 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-405 (pet/mount/stable)** — PLAN-404 kapandı |
 
 ## Çalışma sırası
 
@@ -303,11 +303,41 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
      `ACTIONEFFECT`, sonra üretim yeteneğinin `EFFECT` eğrisi, en son düz zar.
      Canlı paket Inscription'a `EFFECT=50` veriyor.
 
+- [x] **İŞ-26 — Üretim: kalite duyurusu ve usta imzası** (PLAN-404 ikinci dilim) — **KAPANDI**
+  PLAN-404'ün "kalite" ayağı. **Ölçülüp zaten doğru bulunan:** kalite formülünün
+  tamamı (logaritmik ±0..2 sapma, yedi bant, bant içi zar) referansla birebir.
+  **İki boşluk + bir test kırılganlığı:**
+  1. **`MAKESUCCESS_1..6` hiç gönderilmiyordu** — altı mesaj tablodaydı, berbat
+     hançerle üstün hançer aynı okunuyordu.
+  2. **`OF_NOITEMNAMING` ölü bayraktı** — shard imzaları kapatamıyordu.
+  3. **İŞ-25'te kayda geçen smelt kırılganlığı çözüldü:** testin kendisi Mining
+     zarını sabitlemiyordu (100.0'da bile çan eğrisi).
+
+- [x] **İŞ-27 — Kaynak: boş çıkan nokta boş kalır** (PLAN-404 üçüncü dilim) — **KAPANDI**
+  PLAN-404'ün "kaynak tükenmesi/yenilenmesi" ve "retry" ayakları. **Ölçülüp zaten
+  doğru bulunanlar:** damar ömrü (REGEN tenths, tek pencere, yeniden kurulmaz),
+  havuz miktarı (AMOUNT rastgele + Workhorse ırk bonusu), reap miktarı,
+  `@ResourceFound`/`@ResourceGather`, tükenmiş damar. **Bir boşluk:** `mr_nothing`
+  çekilişi düğüme YAZILMIYORDU — referans boş çekilişte de düğümü kurar ve o
+  tanımın REGEN'iyle ömürlendirir. Canlı pakette `mr_nothing` bir saatlik REGEN
+  taşıyor ve suda %60 ağırlıkta; bizde balıkçı tek karede durup yeniden
+  çekebiliyordu.
+
+  **PLAN-404 bununla kapandı:** kısmi maliyet (İŞ-25), kalite (İŞ-26), kaynak
+  tükenmesi/retry (İŞ-27); stroke, tool kırılması ve toplama miktarı ölçülüp
+  doğru bulundu.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-27 KAPANDI** — 2026-09-11. Boş çekiliş düğüme yazılıyor (kendi REGEN'iyle).
+  Test: `BarrenResourceNodeParityTests` (3); geri alınıp üçünün de yakaladığı
+  doğrulandı. Tam suite 3.475, üç koşu.
+- **İŞ-26 KAPANDI** — 2026-09-11. Kalite bandı mesajları, OF_NOITEMNAMING kapısı,
+  smelt testi kırılganlığı. Test: `CraftQualityMessageParityTests` (18);
+  OF kapısı geri alınıp yakalandığı doğrulandı. Tam suite 3.472, dört koşu.
 - **İŞ-25 KAPANDI** — 2026-09-11. ACTIONEFFECT (oku/yaz/yaşam döngüsü) + başarısız
   üretimin üç kaynaklı bedeli. Test: `CraftFailureCostParityTests` (6); iki
   düzeltme tek tek geri alınıp yakalandığı doğrulandı (3/1 kırmızı).

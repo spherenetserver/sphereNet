@@ -4159,3 +4159,80 @@ sırasıyla 3 / 1 test kırmızıya döndü. Tam suite 3.454 / 0.
 
 **PLAN-404'ün kalanı:** kaynak tükenmesi/yenilenmesi, retry, kalite.
 
+---
+
+## İŞ-26 — Üretim: kalite duyurusu ve usta imzası (PLAN-404 ikinci dilim, 11 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN
+
+Kalite formülünün **tamamı** referansla birebir çıktı (CCharSkill.cpp:724-794):
+`2 - log10(1 + rand(250))` sapması, %50 işaret çevirme, `skill*2/10` ile yedi
+bant seçimi, bant sınırlarının kırpılması ve bant içi zar. Dokunulmadı.
+
+### Kapanan boşluklar
+
+- [x] **İŞ-26-01 (P2) — `MAKESUCCESS_1..6` hiç gönderilmiyordu.**
+  Referans bandı zar atarken adlandırır ve ustaya söyler (`:758-788`); yalnız
+  ORTALAMA bandı sessizdir (`:771`). Altı mesaj anahtarı bu motorun tablosunda
+  duruyordu ve hiçbiri gönderilmiyordu. Bant, nihai kalite DEĞERİNDEN türetiliyor
+  (sınırlar aynı), böylece zarın içinden bir değer taşımaya gerek kalmadı.
+
+- [x] **İŞ-26-02 (P2) — `OF_NOITEMNAMING` ölü bayraktı.**
+  Referans usta imzası için üç şey ister: büyük usta (skill > 999), kalite > 175
+  VE bayrağın kapalı olması (`:799`). İlk ikisi bizde vardı, üçüncüsü yoktu.
+  Kural `CraftingEngine.EarnsMakersMark` olarak ayrıldı ki sınanabilsin.
+  Canlı ini `OPTIONFLAGS=0x2080`, yani bu bit orada kapalı — canlı etkisi yok,
+  ama "shard yazabiliyor, motor okumuyor" sınıfının bir üyesiydi.
+
+### İŞ-25'in açık maddesi KAPANDI
+
+`SmeltRepairParity08ATests.AScriptMayChooseTheProduceAndTheYield` kırılganlığının
+sebebi bulundu: test, sınıfın kendi `SkillRolls` yardımcısını **çağırmıyordu**.
+Mining 100.0'da da çan eğrisi çizilir, yani eritme arada bir başarısız olur ve
+hiç külçe çıkmaz. Testin konusu ürünün ne olduğu, zarın nasıl düştüğü değil;
+artık dosyadaki diğer testler gibi zarı sabitliyor.
+
+**Testler:** `CraftQualityMessageParityTests` (18). `OF_NOITEMNAMING` kapısı geri
+alınıp yakalandığı doğrulandı. Tam suite 3.472 / 0, dört arka arkaya koşu.
+
+**PLAN-404'ün kalanı:** kaynak tükenmesi/yenilenmesi, retry.
+
+---
+
+## İŞ-27 — Kaynak: boş çıkan nokta boş kalır (PLAN-404 üçüncü dilim, 11 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+| Ayak | Kanıt |
+|---|---|
+| Damar ömrü | `REGEN` tenths; tek pencere, dokunulunca yeniden kurulmaz (05C dalgasında kapandı) |
+| Havuz miktarı | `AMOUNT` eğrisinin RASTGELE değeri + `RACIALF_HUMAN_WORKHORSE` bonusu |
+| Reap miktarı | `REAPAMOUNT`, yoksa `AMOUNT`/2, stokla kırpılı |
+| Tükenmiş damar | Havuz 0 → harcanmış sayılır (CCharSkill.cpp:1456) |
+| `@ResourceFound` / `@ResourceGather` | İŞ-9'da kapandı |
+
+### Kapanan boşluk
+
+- [x] **İŞ-27-01 (P1) — `mr_nothing` çekilişi düğüme yazılmıyordu.**
+  Referans `CheckNaturalResource`'ta grubun cevabı `mr_nothing` olsa BILE bit'i
+  oluşturur (`:119` → `:131`) ve çözülme süresini o tanımın `REGEN`'inden kurar
+  (`:148`); toplama ancak sonra, `Skill_NaturalResource_Create` içinde reddeder
+  çünkü tanım hiçbir şey vermez (CCharSkill.cpp:1012). Yani boş sonuç o kareye
+  düğümün ömrü boyunca BAĞLANIR.
+
+  Bizde boş çekiliş atılıyordu (kodun kendi yorumu: "never persisted on a node" —
+  referans alıntısı olmayan bir varsayım). Sonuç: her vuruşta grup yeniden
+  çekiliyordu.
+
+  **Paket tarafı ölçüm:** canlı paketin `sphere_region.scp:35-37`'si
+  `[REGIONRESOURCE mr_nothing] REAP=i_unused REGEN=60*60*10` diyor ve yanına
+  **"Nothing can be found at this location for this many seconds"** yazıyor;
+  `:88` ve `:95`'te su için çekiliş ağırlığı **%60**. Yani paketin yazarı tam
+  olarak bu kalıcılığa güveniyor: bizim davranışımızda bir balıkçı tek karede
+  durup o %60'ı her atışta yeniden çekebiliyordu.
+
+**Testler:** `BarrenResourceNodeParityTests` (3). Düzeltme geri alındığında üçü de
+kırmızıya döndü. Tam suite 3.475 / 0, üç arka arkaya koşu.
+
+**PLAN-404 KAPANDI.** Sıradaki: PLAN-405 (pet/mount/stable).
+

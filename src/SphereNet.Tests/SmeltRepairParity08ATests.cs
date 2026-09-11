@@ -202,6 +202,10 @@ public sealed class SmeltRepairParity08ATests
             return TriggerResult.Default;
         });
         var bench = Setup(triggers);
+        // Mining at 100.0 still draws a bell curve, so the smelt fails now and then:
+        // this test was seen red once in thirteen suite runs. Decide the roll the way
+        // every other test in this class does - the produce is what is under test.
+        SkillRolls((SkillType.Mining, true));
         var (ore, forge) = Smeltable(bench, amount: 4);
 
         Smelt(bench, ore, forge);

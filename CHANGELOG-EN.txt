@@ -4,6 +4,42 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-11] - A spot that answered nothing stays that way
+----------------------------------------
+
+FIX - A barren draw is written down instead of thrown away. The reference creates
+        the resource node even when the group answered mr_nothing and arms its
+        decay from THAT definition's REGEN (CWorldMap.cpp:119/131/148); only then
+        does the gather refuse, because the definition reaps nothing
+        (CCharSkill.cpp:1012). This engine discarded the barren draw and rolled the
+        group again on the next swing, so a fisherman could stand on one tile and
+        re-roll until it paid out. The live pack counts on the other behaviour: its
+        mr_nothing carries REGEN=60*60*10 - an hour - with the comment "Nothing can
+        be found at this location for this many seconds", and weights that draw at
+        60% for water.
+
+
+[2026-09-11] - How a finished piece is announced
+----------------------------------------
+
+FIX - A crafted piece says what it turned out like. The reference names the
+        quality band as it rolls it and tells the crafter - shoddy, poor, below
+        average, above average, excellent, superior, with the average band alone
+        staying quiet (DEFMSG_MAKESUCCESS_1..6, CCharSkill.cpp:758-788). All six
+        messages were in this engine's table and nothing ever sent one, so a
+        shoddy dagger and a superior one read the same.
+
+FIX - OF_NOITEMNAMING switches the maker's mark off. The reference asks for a
+        grandmaster, a quality above 175 AND that flag to be clear (:799); the
+        flag was in the OptionFlags enum with nothing reading it, so a shard could
+        turn the marks away and keep getting them.
+
+FIX - A smelting test no longer decides itself on a dice roll. It was seen red
+        once in thirteen suite runs: Mining at 100.0 still draws a bell curve, and
+        the produce - not the roll - is what the test is about. It now decides the
+        roll the way every other test in that file does.
+
+
 [2026-09-11] - What a failed craft still costs
 ----------------------------------------
 

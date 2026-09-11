@@ -3,6 +3,41 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-11] - Bos cikan bir nokta bos kalir
+----------------------------------------
+
+FIX - Bos cikan cekilis artik atilmiyor, yaziliyor. Referans, grup mr_nothing
+        cevabini verse bile kaynak dugumunu olusturur ve cozulme suresini O
+        tanimin REGEN'inden kurar (CWorldMap.cpp:119/131/148); toplama ancak
+        ondan sonra reddeder, cunku tanim hicbir sey vermez (CCharSkill.cpp:1012).
+        Bu motor bos cekilisi atiyor ve bir sonraki vurusta grubu yeniden
+        cekiyordu, yani bir balikci tek bir karede durup odeme yapana kadar
+        yeniden cekebiliyordu. Canli paket obur davranisa guveniyor: mr_nothing'i
+        REGEN=60*60*10 - bir saat - tasiyor ve yaninda "Bu konumda bu kadar saniye
+        boyunca hicbir sey bulunamaz" yaziyor; su icin cekilis agirligi da %60.
+
+
+[2026-09-11] - Biten parca nasil duyurulur
+----------------------------------------
+
+FIX - Uretilen parca nasil ciktigini soyluyor. Referans kalite bandini zar atarken
+        adlandirir ve ustaya bildirir - berbat, zayif, ortalama alti, ortalama
+        ustu, mukemmel, ustun; yalnizca ortalama bandi sessiz kalir
+        (DEFMSG_MAKESUCCESS_1..6, CCharSkill.cpp:758-788). Alti mesajin hepsi bu
+        motorun tablosunda duruyordu ve hicbiri hic gonderilmiyordu, yani berbat
+        bir hancerle ustun bir hancer ayni okunuyordu.
+
+FIX - OF_NOITEMNAMING, usta imzasini kapatiyor. Referans uc sey ister: buyuk usta
+        olmak, 175 ustu kalite VE o bayragin kapali olmasi (:799); bayrak
+        OptionFlags enum'unda duruyordu ve hicbir sey okumuyordu, yani bir shard
+        imzalari kapatip yine de almaya devam edebiliyordu.
+
+FIX - Bir eritme testi artik kendini zara birakmiyor. On uc suite kosusunda bir kez
+        kirmizi goruldu: Mining 100.0'da bile can egrisi cizer, oysa testin konusu
+        zar degil urun. Artik ayni dosyadaki diger testler gibi zari kendisi
+        belirliyor.
+
+
 [2026-09-11] - Basarisiz bir uretim yine de neye mal olur
 ----------------------------------------
 

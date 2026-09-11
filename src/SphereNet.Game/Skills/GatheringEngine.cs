@@ -133,13 +133,20 @@ public sealed class GatheringEngine
         if (resDef == null)
             return new GatherResult { Handled = false };
 
-        // mr_nothing: weighted "found nothing" result (never persisted on a node)
-        if (resDef.Reap == 0)
-            return new GatherResult { Handled = true, Success = false };
-
         // Bind the resource on the first strike, not the first success. A low
         // skill character cannot reroll a difficult vein until an easy resource
         // is selected simply by retrying the same tile.
+        //
+        // This binds a BARREN draw too. Source-X creates the resource bit even
+        // when the group answered mr_nothing and arms its decay from THAT
+        // definition's REGEN (CWorldMap.cpp:119/131/148); only afterwards does
+        // Skill_NaturalResource_Create refuse, because the def reaps nothing
+        // (CCharSkill.cpp:1012). The live pack counts on it: its mr_nothing says
+        // REGEN=60*60*10 with the comment "Nothing can be found at this location
+        // for this many seconds", and weights the draw at 60% for water. Throwing
+        // the barren draw away instead — as this did — let a fisherman stand on
+        // one tile and re-roll that 60% on every cast until it paid out, which is
+        // the opposite of what the pack asked for.
         if (marker == null)
         {
             int poolAmount = Math.Clamp(resDef.GetRandomAmount(Rng), 1, ushort.MaxValue);
@@ -147,6 +154,10 @@ public sealed class GatheringEngine
             marker = CreateMarker(target, skillTag, poolAmount, resDef);
             FireResourceFound(ch, resDef, marker);
         }
+
+        // ...and now the barren spot answers, for as long as that node lives.
+        if (resDef.Reap == 0)
+            return new GatherResult { Handled = true, Success = false };
 
         // A node that already exists is handed back exactly as it stands: Source-X
         // returns the resource bit it found without topping it up or re-arming its

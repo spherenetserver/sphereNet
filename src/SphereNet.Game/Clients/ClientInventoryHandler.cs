@@ -657,7 +657,7 @@ public sealed class ClientInventoryHandler
         {
             var lootCorpse = FindEnclosingCorpse(item);
             if (lootCorpse != null && deathEng.IsLootingCriminal(_character, lootCorpse))
-                _character.MakeCriminal();
+                deathEng.ReportCorpseCrime(_character, lootCorpse);
         }
 
         // Stack splitting: the client keeps dragging the serial it clicked.

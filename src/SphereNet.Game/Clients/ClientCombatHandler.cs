@@ -781,7 +781,7 @@ public sealed class ClientCombatHandler
         // COMBAT_NOPETDESERT (Source-X OnHarmedBy, CCharFight.cpp:312):
         // attacking your own pet makes it desert you — unless the flag allows
         // friendly fire. @PetDesert may still RETURN 1 to keep it serving.
-        if (!target.IsPlayer && target.OwnerSerial == _character.Uid &&
+        if (target.CanDesertOwner && target.OwnerSerial == _character.Uid &&
             !CombatHelper.IsCombatFlagSet(CombatFlags.NoPetDesert))
         {
             if (Character.OnPetDesert == null || !Character.OnPetDesert(target, _character))

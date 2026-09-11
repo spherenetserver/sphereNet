@@ -53,6 +53,19 @@ public sealed class DeathEngine
     /// (Source-X MakeCorpse ITEMID_FX_SPELL_FAIL).</summary>
     public Action<Character>? ConjuredVanishEffectHook { get; set; }
 
+    /// <summary>Host hook: strip every active spell effect from the victim.
+    ///
+    /// Source-X CChar::Death runs Spell_Dispel(100) before the corpse is made
+    /// (CCharAct.cpp:4397) — "get rid of all spell effects". Nothing did that
+    /// here, so a player who died buffed rose from the dead still buffed and kept
+    /// it until the timers ran out, and a curse outlived the death that ended it.
+    ///
+    /// The reference spares ATTR_MOVE_NEVER items on the spell layers; this engine
+    /// puts nothing but its own effect memories there, so there is nothing to
+    /// spare. Wired to SpellEngine.StripDispellableEffects; null in bare test
+    /// setups.</summary>
+    public Action<Character>? DispelEffectsHook { get; set; }
+
     public DeathEngine(GameWorld world)
     {
         _world = world;
@@ -157,6 +170,11 @@ public sealed class DeathEngine
 
         // Kill the character
         victim.Kill();
+
+        // Source-X CChar::Death: Spell_Dispel(100) right after the skill cleanup
+        // and before the corpse forms (CCharAct.cpp:4397). Death ends every spell
+        // on you, good and bad alike.
+        DispelEffectsHook?.Invoke(victim);
 
         // Source-X CChar::Death deletes any open trade window before the
         // corpse forms; the trade items return to the pack and so reach the
@@ -510,6 +528,14 @@ public sealed class DeathEngine
         corpse.Hue = victim.Hue;
         corpse.Direction = (byte)((byte)victim.Direction & 0x07); // facing snapshot for carve/forensics
         corpse.SetAttr(ObjAttributes.Move_Never); // a corpse can't be dragged, only looted (Source-X)
+
+        // A corpse holds no more than its owner could carry. The reference sets
+        // this and says why: "set corpse maxweight to prevent weird exploits like
+        // when someone place many items on an player corpse just to make this
+        // player get stuck on resurrect" (CItemCorpse.cpp:194). Without it a
+        // corpse was an unbounded public container — the drop path already
+        // enforces a container's MODMAXWEIGHT, it just had none to enforce.
+        corpse.ModMaxWeight = victim.MaxWeight;
 
         // Forensics reads DEATH_TIME / CORPSE_CARVED / CORPSE_SLEEPING. Stamp the
         // death time so the skill can report how long ago the death occurred; the
@@ -953,6 +979,36 @@ public sealed class DeathEngine
         return true;
     }
 
+    /// <summary>The corpse's owner, when one is still around to be wronged.
+    /// Source-X CheckCorpseCrime keys the whole rule off this link
+    /// (pCorpse->m_uidLink.CharFind(), CItemCorpse.cpp:123).</summary>
+    public Character? ResolveCorpseOwner(Item corpse)
+    {
+        if (!corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) ||
+            !uint.TryParse(ownerUidStr, out uint ownerUid))
+            return null;
+        var owner = _world.FindChar(new Serial(ownerUid));
+        return owner is { IsDeleted: false } ? owner : null;
+    }
+
+    /// <summary>Answer for looting or carving someone else's corpse.
+    ///
+    /// Source-X CheckCorpseCrime does TWO things when the act is criminal
+    /// (CItemCorpse.cpp:132-133): it runs the WITNESS pipeline with the corpse's
+    /// owner as the mark — an overt crime, so everyone in line of sight notices
+    /// it — and only then flags the criminal. Only the flag was raised here: the
+    /// people watching recorded no SAWCRIME (so the looter did not even show grey
+    /// to them), a guarded town's NPCs never called the guards, and @SeeCrime
+    /// never fired for a script to react to.</summary>
+    public void ReportCorpseCrime(Character criminal, Item corpse)
+    {
+        // SKILL_NONE in the reference: looting is not a covert act, so there is
+        // no perception contest — line of sight is the whole test.
+        CrimeWitnessService.CheckCrimeSeen(_world, criminal, ResolveCorpseOwner(corpse),
+            skillToSee: null, Random.Shared);
+        criminal.MakeCriminal();
+    }
+
     /// <summary>
     /// Carve a corpse (for hides, meat, etc.).
     /// Maps to @CarveCorpse trigger in Source-X.
@@ -967,9 +1023,9 @@ public sealed class DeathEngine
             return results;
 
         // Source-X CheckCorpseCrime(fLooting=false): carving an innocent
-        // player's corpse is as criminal as looting it.
+        // player's corpse is as criminal as looting it, witnesses and all.
         if (IsLootingCriminal(carver, corpse))
-            carver.MakeCriminal();
+            ReportCorpseCrime(carver, corpse);
 
         if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, new TriggerArgs
         {

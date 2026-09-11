@@ -226,6 +226,20 @@ public sealed partial class GameClient : ITextConsole
     /// sends the new member list, the leader change and the map pins. SphereNet mutated
     /// the membership in memory and sent nothing, so the rest of the party went on
     /// showing a member - or a leader - who had gone.</summary>
+    /// <summary>A ship under sail stops when the char aboard it logs off.
+    ///
+    /// Source-X CChar::ClientDetach: "If this char is on a IT_SHIP then we need to
+    /// stop the ship!" (CChar.cpp:497-502). Nothing did that here, so logging off
+    /// mid-voyage left the boat sailing on its own until it hit something.</summary>
+    private void StopShipOnDisconnect()
+    {
+        if (_character == null)
+            return;
+        var engine = Objects.Items.Item.ResolveShipEngine?.Invoke();
+        if (engine?.FindShipAt(_character.Position) is { } ship)
+            engine.Stop(ship);
+    }
+
     private void LeavePartyOnDisconnect()
     {
         if (_character == null || _partyManager == null)
@@ -288,6 +302,7 @@ public sealed partial class GameClient : ITextConsole
             AbortActiveTradeOnDisconnect();
             ChatOnDisconnect();
             LeavePartyOnDisconnect();
+            StopShipOnDisconnect();
             EngineTags.StripEphemeral(_character);
             if (linger)
                 _character.SetTag("CLIENT_LINGER_UNTIL",

@@ -379,7 +379,7 @@ public sealed class WalkCheck
     /// surface inventory both the walk path and the standing-surface
     /// resolver select from; the trace counters feed the reject log.</summary>
     private List<PathEntry> BuildPathEntries(MapDataManager md, int mapId, int x, int y,
-        List<Item> items, ref CheckTrace trace)
+        List<Item> items, bool ghost, ref CheckTrace trace)
     {
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
@@ -422,8 +422,12 @@ public sealed class WalkCheck
                 continue;
             var data = md.GetItemTileData(tile.TileId);
 
+            // A ghost is not stopped by a door. Source-X gives every DEAD char
+            // CAN_C_GHOST (CCharStatus.cpp:739) and that clears CAN_I_BLOCK off a
+            // door tile (CChar.cpp:760) — only a door, walls still need
+            // CAN_C_PASSWALLS. Treating it as an open door is the same geometry.
             bool isDoorOpen = (data.Flags & TileFlag.Door) != 0 &&
-                _world.IsMapStaticDoorOpen((byte)mapId, (short)x, (short)y, tile.Z);
+                (ghost || _world.IsMapStaticDoorOpen((byte)mapId, (short)x, (short)y, tile.Z));
             bool effectiveImpassable = data.IsImpassable && !isDoorOpen;
 
             PathFlags pf = PathFlags.None;
@@ -452,10 +456,13 @@ public sealed class WalkCheck
             var data = md.GetItemTileData(item.BaseId);
             if (!ShouldTreatAsMovementGeometry(item, data)) continue;
 
+            // Same ghost rule as the static tiles above, for door ITEMS.
+            bool impassable = data.IsImpassable && !(ghost && IsDoorGeometry(item, data));
+
             PathFlags pf = PathFlags.None;
-            if (data.IsImpassable || data.IsSurface)
+            if (impassable || data.IsSurface)
                 pf |= PathFlags.ImpSurf;
-            if (!data.IsImpassable)
+            if (!impassable)
             {
                 if (data.IsSurface) pf |= PathFlags.Surface;
                 if (data.IsBridge) pf |= PathFlags.Bridge;
@@ -482,7 +489,7 @@ public sealed class WalkCheck
     {
         newZ = 0;
 
-        var list = BuildPathEntries(md, mapId, x, y, items, ref trace);
+        var list = BuildPathEntries(md, mapId, x, y, items, mover.IsDead, ref trace);
         list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
 
         int resultZ = -128;
@@ -607,7 +614,7 @@ public sealed class WalkCheck
 
         var items = CollectItems(mapId, x, y);
         var trace = new CheckTrace();
-        var list = BuildPathEntries(md, mapId, x, y, items, ref trace);
+        var list = BuildPathEntries(md, mapId, x, y, items, mover.IsDead, ref trace);
         // Sentinel so the topmost surface always gets a headroom verdict.
         list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
 
@@ -736,6 +743,12 @@ public sealed class WalkCheck
             zTop = locZ;
         }
     }
+
+    /// <summary>A door, by item type or by tiledata flag — what CAN_I_DOOR marks
+    /// in Source-X. Only these let a ghost through; a wall does not.</summary>
+    private static bool IsDoorGeometry(Item item, ItemTileData data) =>
+        item.ItemType is ItemType.Door or ItemType.DoorLocked
+        || (data.Flags & TileFlag.Door) != 0;
 
     private static bool ShouldTreatAsMovementGeometry(Item item, ItemTileData data)
     {

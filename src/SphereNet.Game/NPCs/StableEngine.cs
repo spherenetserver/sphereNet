@@ -24,26 +24,50 @@ public sealed class StableEngine
     public const int StableCost = 30; // gold per real-time day
     public const int StableTargetRange = 12; // max owner→pet distance to stable
 
-    /// <summary>Per-owner stable capacity (Source-X CCharNPCAct_Vendor): an explicit
-    /// MAXPLAYERPETS tag overrides; otherwise the base count plus one slot per ~60.0
-    /// of combined handling skill (Taming + Animal Lore + Veterinary). Never below the
-    /// base, so an unskilled owner keeps the default 5.</summary>
-    public static int GetMaxStabledPets(Character owner)
+    /// <summary>How many pets a stablemaster will hold for an owner
+    /// (Source-X NPC_StablePetSelect, CCharNPCAct_Vendor.cpp:118-163).
+    ///
+    /// MAXPLAYERPETS overrides the formula, and it is a tag on the STABLEMASTER,
+    /// not on the player — the reference reads its own m_TagDefs (:124) and the
+    /// reference pack says so too ("Stablers ... the value can be overriden with a
+    /// TAG.MAXPLAYERPETS", Scripts-X npcs/README.txt:144). Reading it off the owner
+    /// meant a shard that configured its stablemaster got nothing.
+    ///
+    /// Without the tag the count is a tier on the combined handling skills, not a
+    /// flat base: an untrained owner gets 2, not 5. Each of the three skills at
+    /// 100.0 or above then adds (skill - 90.0) / 1.0 slots of its own.</summary>
+    public static int GetMaxStabledPets(Character owner, Character? stableMaster = null)
     {
-        if (owner.TryGetTag("MAXPLAYERPETS", out string? tag) &&
+        if (stableMaster != null &&
+            stableMaster.TryGetTag("MAXPLAYERPETS", out string? tag) &&
             int.TryParse(tag, out int max) && max > 0)
             return max;
 
-        int handling = owner.GetSkill(SkillType.Taming)
-                     + owner.GetSkill(SkillType.AnimalLore)
-                     + owner.GetSkill(SkillType.Veterinary); // tenths, 0..3600
-        return MaxStabledPets + handling / 600;
+        // Tenths of a percent, as Skill_GetAdjusted returns them.
+        int taming = owner.GetSkill(SkillType.Taming);
+        int lore = owner.GetSkill(SkillType.AnimalLore);
+        int vet = owner.GetSkill(SkillType.Veterinary);
+        int sum = taming + lore + vet;
+
+        int count = sum >= 2400 ? 5
+                  : sum >= 2000 ? 4
+                  : sum >= 1600 ? 3
+                  : 2;
+
+        foreach (int skill in stackalloc[] { taming, lore, vet })
+        {
+            if (skill >= 1000)
+                count += (skill - 900) / 10;
+        }
+
+        return count;
     }
 
     /// <summary>
     /// Stable a pet for the given owner. Removes pet from world.
     /// </summary>
-    public bool StablePet(Character owner, Character pet, GameWorld world)
+    public bool StablePet(Character owner, Character pet, GameWorld world,
+        Character? stableMaster = null)
     {
         if (pet.IsPlayer || !pet.HasOwner(owner.Uid))
             return false;
@@ -63,7 +87,12 @@ public sealed class StableEngine
 
         var list = GetOwnerStableList(owner);
 
-        if (list.Count >= GetMaxStabledPets(owner))
+        // The stable is a container, so it answers to the container item limit
+        // first (Source-X NPC_StablePetSelect, CCharNPCAct_Vendor.cpp:112).
+        if (list.Count >= world.MaxContainerItems)
+            return false;
+
+        if (list.Count >= GetMaxStabledPets(owner, stableMaster))
             return false;
 
         // Source-X CClientTarg stables by Make_Figurine: the creature is parked,

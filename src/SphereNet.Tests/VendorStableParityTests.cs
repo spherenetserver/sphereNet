@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -192,15 +192,45 @@ public class VendorStableParityTests
         var world = CreateWorld();
         var owner = world.CreateCharacter();
 
-        Assert.Equal(5, StableEngine.GetMaxStabledPets(owner)); // unskilled = base
+        // Untrained is 2, not a flat base (CCharNPCAct_Vendor.cpp:146).
+        Assert.Equal(2, StableEngine.GetMaxStabledPets(owner));
 
         owner.SetSkill(SkillType.Taming, 1200);
         owner.SetSkill(SkillType.AnimalLore, 1200);
-        owner.SetSkill(SkillType.Veterinary, 1200); // sum 3600 -> +6 slots
-        Assert.Equal(11, StableEngine.GetMaxStabledPets(owner));
+        owner.SetSkill(SkillType.Veterinary, 1200);
+        // sum 3600 -> tier 5, then (120.0 - 90.0) / 1.0 = 30 per skill (:149-162).
+        Assert.Equal(95, StableEngine.GetMaxStabledPets(owner));
 
-        owner.SetTag("MAXPLAYERPETS", "3"); // explicit override wins
-        Assert.Equal(3, StableEngine.GetMaxStabledPets(owner));
+        // The override is a tag on the STABLEMASTER, not on the player.
+        owner.SetTag("MAXPLAYERPETS", "3");
+        Assert.Equal(95, StableEngine.GetMaxStabledPets(owner));
+
+        var stableMaster = world.CreateCharacter();
+        stableMaster.NpcBrain = NpcBrainType.Stable;
+        stableMaster.SetTag("MAXPLAYERPETS", "3");
+        Assert.Equal(3, StableEngine.GetMaxStabledPets(owner, stableMaster));
+    }
+
+    [Theory]
+    // Source-X NPC_StablePetSelect tiers on the combined handling skills
+    // (CCharNPCAct_Vendor.cpp:132-147), in tenths of a percent.
+    [InlineData(0, 0, 0, 2)]
+    [InlineData(530, 530, 530, 2)]        // sum 1590 -> still the bottom tier
+    [InlineData(540, 530, 530, 3)]        // sum 1600 -> 3
+    [InlineData(700, 700, 600, 4)]        // sum 2000 -> 4
+    [InlineData(800, 800, 800, 5)]        // sum 2400 -> 5
+    [InlineData(1000, 0, 0, 12)]          // one skill at 100.0: 2 + (1000-900)/10
+    [InlineData(999, 0, 0, 2)]            // 99.9 earns nothing
+    public void GetMaxStabledPets_FollowsTheReferenceTiers(
+        int taming, int lore, int vet, int expected)
+    {
+        var world = CreateWorld();
+        var owner = world.CreateCharacter();
+        owner.SetSkill(SkillType.Taming, (ushort)taming);
+        owner.SetSkill(SkillType.AnimalLore, (ushort)lore);
+        owner.SetSkill(SkillType.Veterinary, (ushort)vet);
+
+        Assert.Equal(expected, StableEngine.GetMaxStabledPets(owner));
     }
 
     // ---- #5: bought item is a FULL clone (per-instance state travels with it) ----

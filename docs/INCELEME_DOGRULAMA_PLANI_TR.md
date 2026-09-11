@@ -4323,3 +4323,164 @@ dördü kırmızıya döndü. Tam suite 3.484 / 0, üç arka arkaya koşu.
 
 **PLAN-405'in kalanı:** park/geri alma, ölüm, logout/relogin.
 
+---
+
+## İŞ-30 — Pet/ölüm/logout: PLAN-405'in kalanı (11 Eylül 2026)
+
+PLAN-405'in son üç ayağı: **park/geri alma, ölüm, logout/relogin.**
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+| Ayak | Kanıt |
+|---|---|
+| Ölümde binekten inme sırası | Ceset oluşmadan önce (CCharAct.cpp:4399) — zaten böyle |
+| Bonded pet ölümü | Hayalet olarak kalır, silinmez, sahipliği düşmez (:4427) |
+| Bonded olmayan NPC ölümü | Sahiplik temizlenir + silinir (:4437) |
+| Ölümde saldıran listesi | `m_lastAttackers.clear()` (:4420) — zaten temizleniyor |
+| Çıkışta takas penceresi | `ClientDetach` siler (CChar.cpp:487-492) — `AbortActiveTradeOnDisconnect` |
+| Çıkışta grup | `SetDisconnected` üyeliği düşürür (:542) — `LeavePartyOnDisconnect` |
+| Park mekanizması | `Make_Figurine` pet'i silmez, park eder — `PetStorage.Park` aynısını yapar |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-30-01 (P1) — Hayalet kapıdan geçemiyordu.**
+  Referans her ÖLÜ karaktere `CAN_C_GHOST` verir (`GetCanMoveFlags`,
+  CCharStatus.cpp:739) ve bu bayrak kapı karosundan `CAN_I_BLOCK`'u düşürür
+  (CChar.cpp:760). Bizde ölü bayrağı hareket geometrisinde hiç okunmuyordu.
+  **Canlıda etkin:** kapısı kapanmış bir odada ölen oyuncu içeride kilitli
+  kalıyordu ve bu sunucu kapıları 20 saniye sonra kendisi kapatıyor.
+  Kapsam kasten dar: yalnız KAPI — duvar `CAN_C_PASSWALLS` ister, onu ölüm
+  vermez. Kapı eşyaları hem `ItemType.Door/DoorLocked` hem `TileFlag.Door`
+  ile tanınıyor (referansın `CAN_I_DOOR` işaretlediği küme).
+
+- [x] **İŞ-30-02 (P1) — Berserk yaratık sahibini terk ediyordu.**
+  Referans `NPC_PetDesert`'in kendisini korur (CCharNPCPet.cpp:906) ve sebebi
+  yorumda yazılı: berserk bir çağırma `CURFOLLOWER`'a sayılır, dolayısıyla ona
+  vurmak terk ettirseydi oyuncu kendi çağırdığına vurup slotu boşaltır ve
+  bedelsiz bir yenisini çağırırdı. Bizdeki iki terk yolu da korumasızdı:
+  sahibin kendi vuruşu (`ClientCombatHandler`, referansta CCharFight.cpp:313)
+  ve açlık tiki (referansta CCharAct.cpp:5791).
+  **Paket tarafı ölçüm:** canlı paketin `c_vortex` (Energy Vortex) ve
+  `c_blade_spirit` (Blade Spirit) kayıtlarının ikisi de `brain_berserk` —
+  referansın adını koyduğu çiftin ta kendisi. Bizde `CurFollower` canlı
+  taramayla sahipli her yaratığı sayıyor, yani sömürü kurulabilirdi.
+
+- [x] **İŞ-30-03 (P2) — Çıkış yapan denizcinin gemisi yola devam ediyordu.**
+  `CChar::ClientDetach`: "If this char is on a IT_SHIP then we need to stop the
+  ship!" (CChar.cpp:497-502). Bizde `OnDisconnect` gemiye hiç bakmıyordu.
+
+- [x] **İŞ-30-04 (P2) — Ahır kapasitesi: yanlış eğri, yanlış karakter.**
+  İki ayrı hata (`NPC_StablePetSelect`, CCharNPCAct_Vendor.cpp:118-169):
+  1. `MAXPLAYERPETS` **ahırcının** etiketidir (referans kendi `m_TagDefs`'ini
+     okur, :124); biz sahipten okuyorduk. Referans paketin kendi belgesi de
+     böyle diyor: "Stablers ... can be overriden with a TAG.MAXPLAYERPETS"
+     (`oldSphere/Scripts-X-main/npcs/README.txt:144`). Ahırcısını ayarlamış bir
+     shard hiçbir şey elde edemiyordu.
+  2. Etiket yokken sayı, Taming+Animal Lore+Veterinary toplamına bağlı bir
+     **kademedir** (<160.0 → 2, ≥160.0 → 3, ≥200.0 → 4, ≥240.0 → 5), sonra
+     üç beceriden 100.0 ve üzerindeki her biri `(beceri - 90.0)` slot ekler.
+     Bizdeki "sabit 5 taban + toplam/60.0" uydurmaydı: eğitimsiz sahip 5
+     alıyordu (referansta 2), GM-üçlü 10 alıyordu (referansta 95).
+  Ayrıca ahır bir kaptır: kap eşya sınırı önce sınırlar (:112).
+
+### Kayıtlı sapmalar
+
+- **Ölen NPC binici.** Referansta binekten inme yalnızca OYUNCUYA uygulanır
+  ("if I'm NPC then my mount goes with me", CCharAct.cpp:4399); bizde koşulsuz.
+  Fark ancak binekli bir NPC varsa görünür ve ne canlı pakette ne
+  `oldSphere/` paketlerinde binekli NPC tanımı var — İŞ-8'in paket-tarafı
+  ölçüm kuralı gereği dokunulmadı, kayda geçti.
+- **`MAXPLAYERPETS` sahipte.** Artık okunmuyor. Referans hiç desteklemedi ve
+  iki pakette de tek bir kullanımı yok; yine de davranış değişikliği.
+
+### Test altyapısı
+
+`Item.ResolveShipEngine` `ResetEngineStatics`'e eklendi — testler onu elle
+kaydedip geri yüklüyordu, ki proje bu sıra-bağımlı kırılganlığı bir kez çözdü.
+
+**Testler:** `GhostDoorPassageParityTests` (4), `PetDesertAndLogoutParityTests` (6),
+`VendorStableParityTests` genişletildi (+7). Dört düzeltme tek tek geri alındı;
+sırasıyla 2, 2, 1 ve 4 test kırmızıya döndü. Tam suite 3.501 / 0, üç arka arkaya
+koşu.
+
+**PLAN-405 kapandı.** Sıradaki: PLAN-406 (death/corpse/loot).
+
+---
+
+## İŞ-31 — Death/corpse/loot (PLAN-406, 11 Eylül 2026)
+
+PLAN-406'nın ayakları: imleçteki eşya, newbie/blessed, ceset-birleşme (rejoin),
+çürüme, suç/tanık/muhafiz ve kayıt.
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+| Ayak | Kanıt |
+|---|---|
+| İmleçteki eşya | `LAYER_DRAGGING` cesede gider (CCharAct.cpp:636) — `TakeDraggedItem` |
+| Saç/sakal | Cesede **kopya** çıkar, aslı hayalette kalır (:625-634) — `CORPSE_HAIR` |
+| newbie/blessed | Cesede değil **çantaya** gider (:651/:664) — `KeepWithOwner` |
+| Çanta ile giyim farklı küme | `ContentsTransfer` dar, `UnEquipAllItems` geniş — iki ayrı yüklem |
+| Ceset-birleşme | Önce giydir, sonra çantaya, saç/sakal atla (CItemCorpse.cpp:245-262) |
+| Çürüme | `CORPSENPCDECAY` / `CORPSEPLAYERDECAY`, ini'den (CServerConfig.cpp:826) |
+| Katil damgası | `m_uidKiller` (:205) — `KILLER_UID`, adli tıp okuyor |
+| Oyulamaz ceset | bonded/summon/uyuyan (:215) — `CORPSE_CARVED` |
+| Suç kapısı | `LOOTINGISACRIME` + sahip yaşıyor + masum (:120-127) |
+| Kayıt | `MODMAXWEIGHT` save/load turunu tamamlıyor (`WorldSaver` — `TrySetProperty`) |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-31-01 (P1) — Ölüm büyü etkilerini bitirmiyordu.**
+  Referans `CChar::Death`, ceset oluşmadan önce `Spell_Dispel(100)` çalıştırır
+  (CCharAct.cpp:4397, yorumu: "get rid of all spell effects"). Bizde
+  `StripDispellableEffects` vardı ama yalnızca Dispel büyüsü çağırıyordu:
+  büyülenmiş ölen oyuncu büyülü diriliyor, lanetli ölen lanetli diriliyordu.
+  Referans `ATTR_MOVE_NEVER`'lı büyü-katmanı eşyalarını bağışlar; bu motor o
+  katmanlara kendi etki hafızasından başka bir şey koymuyor, yani bağışlanacak
+  bir şey yok — uydurma bir özellik kontrolü eklenmedi.
+
+- [x] **İŞ-31-02 (P2) — Cesedin ağırlık sınırı yoktu.**
+  Referans `MakeCorpse`, `m_ModMaxWeight = Calc_MaxCarryWeight(this)` atar ve
+  sebebini açıkça yazar (CItemCorpse.cpp:194): birinin bir oyuncu cesedine, o
+  oyuncu dirilirken sıkışıp kalsın diye bir sürü eşya doldurmasını önlemek.
+  Bu proje bunu bir kez **ertelemişti** (death/corpse denetimi D1-D3).
+  Düzeltme tek satır: bırakma yolu bir kabın `MODMAXWEIGHT`'ini zaten uyguluyor
+  (`ClientInventoryHandler`), cesedin öylesi yoktu.
+
+- [x] **İŞ-31-03 (P2) — Ceset suçu tanık hattını hiç çalıştırmıyordu.**
+  `CheckCorpseCrime`, eylem suçsa **iki** şey yapar (CItemCorpse.cpp:132-133):
+  cesedin sahibini `pCharMark` yaparak `CheckCrimeSeen(SKILL_NONE, ...)`
+  çalıştırır, **sonra** `Noto_Criminal()`. Bizde yalnızca ikincisi vardı:
+  `CrimeWitnessService.CheckCrimeSeen` yazılmış ve Çalışıyordu ama sadece
+  Hırsızlık/Gizlice-bakma çağırıyordu. Sonuç: izleyenler `MEMORY_SAWCRIME`
+  kaydetmiyordu (yağmacı onlara gri görünmüyordu), korumalı bölgedeki NPC
+  muhafiz çağırmıyordu ve `@SeeCrime` hiç ateşlenmiyordu. İki çağırım noktası
+  (yağma ve parçalama) tek kapıya bağlandı: `DeathEngine.ReportCorpseCrime`.
+  `SKILL_NONE` bilinçli: yağma örtülü bir eylem değil, algı yarışı yok.
+
+### Kayıtlı sapma — yüksek ATTR bitleri
+
+Referansın modern `attr_flags` tablosu (Scripts-X `core/defs.scp:172-200`) ile
+`ObjAttributes` üç bitte ayrışıyor:
+
+| Bit | Referans | Bizde |
+|---|---|---|
+| 0x40000 | `attr_imbued` | `Secure` |
+| 0x80000 | `attr_questitem` | `DamageD` |
+| 0x100000 | `attr_insured` | `LockedDown` |
+| 0x1000000 | `attr_lockeddown` | (yok) |
+| 0x2000000 | `attr_secure` | (yok) |
+
+Bu yüzden `UnEquipAllItems`'ın koruma kümesindeki `ATTR_INSURED` ve
+`ATTR_QUESTITEM` temsil edilemiyor. **Bilerek değiştirilmedi:** ATTR sayısal
+olarak kaydediliyor, yani `LockedDown`'ı 0x100000'den 0x1000000'e taşımak canlı
+shard'ın kayıtlı her kilitli eşyasını yanlış yorumlardı — CLAUDE.md'nin
+"save/load biçimini bozma" kuralı. Paket tarafı ölçüm de aciliyeti düşürüyor:
+canlı pakette tek kullanım yorum satırında, `Scripts-X-main`'de hiç yok, ve
+canlı paketin kendi `attr_flags` tablosu zaten 0x8000'de bitiyor.
+
+**Testler:** `DeathDispelAndCorpseWeightParityTests` (5),
+`CorpseCrimeWitnessParityTests` (5). Üç düzeltme tek tek geri alındı; sırasıyla
+2, 2 ve 2 test kırmızıya döndü. Tam suite 3.511 / 0, üç arka arkaya koşu.
+
+**PLAN-406 kapandı.** Sıradaki: Dalga 5 (PLAN-501 — housing/ship/social).
+

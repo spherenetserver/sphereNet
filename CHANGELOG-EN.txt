@@ -4,6 +4,69 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-11] - What death ends, and who sees you loot
+----------------------------------------
+
+FIX - Death ends every spell on you. Source-X CChar::Death runs
+        Spell_Dispel(100) before the corpse is made (CCharAct.cpp:4397) -
+        "get rid of all spell effects". Nothing did that here, so a player who
+        died buffed rose from the dead still buffed and kept it until the timers
+        ran out, and a curse outlived the death that ended it. The dispel is
+        indiscriminate in the reference and is here too: what helped you and what
+        hurt you both end.
+
+FIX - A corpse holds no more than its owner could carry. The reference sets the
+        bound and says why: "set corpse maxweight to prevent weird exploits like
+        when someone place many items on an player corpse just to make this player
+        get stuck on resurrect" (CItemCorpse.cpp:194). The drop path already
+        enforces a container's MODMAXWEIGHT - a corpse simply had none, so it was
+        an unbounded public container anyone could fill.
+
+FIX - Looting or carving an innocent's corpse is reported to the people watching.
+        CheckCorpseCrime does two things when the act is criminal
+        (CItemCorpse.cpp:132-133): it runs the witness pass with the corpse's
+        owner as the mark - an overt crime, so line of sight is the whole test -
+        and only then flags the criminal. Only the flag was raised here: the
+        witnesses recorded no SAWCRIME, so the looter did not even show grey to
+        them, a guarded town's NPCs never called the guards, and @SeeCrime never
+        fired for a script to react to.
+
+
+[2026-09-11] - A ghost, a berserk summon, and a boat left sailing
+----------------------------------------
+
+FIX - A ghost is not stopped by a door. Source-X gives every DEAD char
+        CAN_C_GHOST (GetCanMoveFlags, CCharStatus.cpp:739) and that clears
+        CAN_I_BLOCK off a door tile (CChar.cpp:760). Nothing here read the dead
+        flag as movement geometry, so a player who died in a room whose door had
+        swung shut stayed shut in - and this server closes doors on its own after
+        20 seconds. Only a DOOR: a wall still needs CAN_C_PASSWALLS, which the
+        dead flag does not grant. Door items answer to it by TYPE as well as by
+        tile flag.
+
+FIX - A berserk creature never deserts its owner. The reference guards
+        NPC_PetDesert itself (CCharNPCPet.cpp:906) and says why: a berserk summon
+        counts against CURFOLLOWER, so if attacking one made it desert, a player
+        could attack his own to free the slot and summon another at no cost. Both
+        desert paths here - the owner's own blow and the starvation tick - went
+        through unguarded. The live pack's Energy Vortex (c_vortex) and Blade
+        Spirit (c_blade_spirit) are both brain_berserk, the exact pair named.
+
+FIX - A ship stops when the char aboard it logs off (CChar::ClientDetach,
+        CChar.cpp:497-502). Nothing did that, so logging off mid-voyage left the
+        boat sailing on its own until it hit something.
+
+FIX - How many pets a stablemaster holds. MAXPLAYERPETS is a tag on the
+        STABLEMASTER, not on the player: the reference reads its own tags
+        (CCharNPCAct_Vendor.cpp:124) and the reference script pack documents it
+        that way. Reading it off the owner meant a shard that configured its
+        stablemaster got nothing. Without the tag the count is a tier on the
+        combined Taming + Animal Lore + Veterinary skills (2 / 3 / 4 / 5), plus
+        (skill - 90.0) slots for each of the three at 100.0 or above - not a flat
+        base of 5 plus one slot per 60.0. An untrained owner now gets 2. The
+        container item limit caps the stable first, as it does in the reference.
+
+
 [2026-09-11] - What a dismissed vendor gives back
 ----------------------------------------
 

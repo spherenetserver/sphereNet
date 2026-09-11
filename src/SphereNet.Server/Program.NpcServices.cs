@@ -1133,7 +1133,8 @@ public static partial class Program
                         gc.SetPendingTarget((serial, x, y, z, gfx) =>
                         {
                             var pet = _world.FindChar(new Serial(serial));
-                            string reply = pet != null && _stableEngine.StablePet(speaker, pet, _world)
+                            string reply = pet != null &&
+                                    _stableEngine.StablePet(speaker, pet, _world, stableNpc)
                                 ? $"Your pet {pet.Name} has been stabled."
                                 : "You cannot stable that.";
                             var pkt = new PacketSpeechUnicodeOut(
@@ -1156,7 +1157,7 @@ public static partial class Program
                                 break;
                             }
                         }
-                        response = pet != null && _stableEngine.StablePet(speaker, pet, _world)
+                        response = pet != null && _stableEngine.StablePet(speaker, pet, _world, npc)
                             ? $"Your pet {pet.Name} has been stabled."
                             : "I don't see any of your pets nearby.";
                     }

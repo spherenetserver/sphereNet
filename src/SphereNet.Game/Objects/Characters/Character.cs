@@ -1974,6 +1974,16 @@ public partial class Character : ObjBase
 
     public bool HasOwner(Serial ownerUid) => ownerUid.IsValid && OwnerSerial == ownerUid;
 
+    /// <summary>Whether this creature can desert its owner at all.
+    ///
+    /// Source-X guards NPC_PetDesert itself: a berserk brain returns before any
+    /// of it runs (CCharNPCPet.cpp:906), and the reference spells out why. A
+    /// berserk summon counts against CURFOLLOWER, so if attacking one made it
+    /// desert, a player could attack his own to free the slot and summon another
+    /// at no cost. The live pack's Energy Vortex (c_vortex) and Blade Spirit
+    /// (c_blade_spirit) are both brain_berserk — the exact pair named.</summary>
+    public bool CanDesertOwner => !IsPlayer && NpcBrain != NpcBrainType.Berserk;
+
     public bool IsBonded
     {
         get => TryGetTag("BONDED", out string? v) && v == "1";
@@ -2359,7 +2369,8 @@ public partial class Character : ObjBase
 
         var petOwner = OwnerSerial.IsValid ? ResolveCharByUid?.Invoke(OwnerSerial) : null;
 
-        if (_food == 0)
+        // A berserk creature starves without deserting (CanDesertOwner).
+        if (_food == 0 && CanDesertOwner)
         {
             // @PetDesert (Source-X) — fires before the pet goes wild; a script may
             // RETURN 1 to cancel the desertion and keep the pet serving.

@@ -3,6 +3,70 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-11] - Olum neyi bitirir, sizi yagmalarken kim gorur
+----------------------------------------
+
+FIX - Olum uzerinizdeki her buyuyu bitirir. Source-X CChar::Death, ceset
+        olusmadan once Spell_Dispel(100) calistirir (CCharAct.cpp:4397) -
+        "tum buyu etkilerinden kurtul". Bizde bunu yapan hicbir sey yoktu, yani
+        buyulenmis olarak olen bir oyuncu buyulenmis olarak diriliyor ve
+        sayaclari bitene dek oyle kaliyordu; bir lanet de onu bitiren olumden
+        sag cikiyordu. Dagitma referansta ayrim gozetmez, burada da gozetmiyor:
+        size yarayan da zarar veren de biter.
+
+FIX - Bir ceset, sahibinin tasiyabileceginden fazlasini tutmaz. Referans bu
+        siniri koyar ve sebebini yazar: "birinin bir oyuncu cesedine, o oyuncu
+        dirilirken sikisip kalsin diye bir suru esya koymasi gibi tuhaf
+        somuruleri onlemek icin ceset maxweight'i ayarla" (CItemCorpse.cpp:194).
+        Birakma yolu bir kabin MODMAXWEIGHT'ini zaten uyguluyor - cesedin oylesi
+        yoktu, yani ceset herkesin doldurabilecegi sinirsiz bir kaptik.
+
+FIX - Masum birinin cesedini yagmalamak ya da parcalamak, izleyenlere bildirilir.
+        CheckCorpseCrime, eylem sucsa IKI sey yapar (CItemCorpse.cpp:132-133):
+        cesedin sahibini isaret alarak tanik gecisini calistirir - acik bir suc,
+        yani tek olcut gorus hatti - ve ancak ondan sonra suclu bayragini kaldirir.
+        Bizde yalnizca bayrak kalkiyordu: izleyenler SAWCRIME kaydetmiyordu, yani
+        yagmaci onlara gri bile gorunmuyordu; korumali bir sehrin NPC'leri muhafiz
+        cagirmiyordu; ve bir script'in tepki verebilmesi icin @SeeCrime hic
+        ateslenmiyordu.
+
+
+[2026-09-11] - Bir hayalet, bir berserk cagirma ve yelken acik kalan bir tekne
+----------------------------------------
+
+FIX - Bir hayaleti kapi durduramaz. Source-X her OLU karaktere CAN_C_GHOST verir
+        (GetCanMoveFlags, CCharStatus.cpp:739) ve bu bayrak kapi karosundan
+        CAN_I_BLOCK'u dusurur (CChar.cpp:760). Bizde olu bayragi hareket
+        geometrisi olarak hic okunmuyordu, yani kapisi kapanmis bir odada olen
+        oyuncu iceride kilitli kaliyordu - ustelik bu sunucu kapilari 20 saniye
+        sonra kendi kapatiyor. Yalnizca KAPI: duvar hala CAN_C_PASSWALLS ister,
+        onu olu bayragi vermez. Kapi esyalari hem TYPE hem karo bayragiyla
+        taniniyor.
+
+FIX - Berserk bir yaratik sahibini asla terk etmez. Referans NPC_PetDesert'in
+        kendisini korur (CCharNPCPet.cpp:906) ve sebebini de yazar: berserk bir
+        cagirma CURFOLLOWER'a sayilir, yani ona vurmak terk ettirseydi oyuncu
+        kendi cagirdigina vurup slotu bosaltir ve bedelsiz bir yenisini cagirirdi.
+        Bizde her iki terk yolu da - sahibin kendi vurusu ve aclik tiki -
+        korumasiz geciyordu. Canli paketin Energy Vortex (c_vortex) ve Blade
+        Spirit (c_blade_spirit) kayitlarinin ikisi de brain_berserk; tam olarak
+        adi gecen cift.
+
+FIX - Guvertesindeki karakter cikis yapinca gemi duruyor (CChar::ClientDetach,
+        CChar.cpp:497-502). Bunu yapan hicbir sey yoktu, yani sefer ortasinda
+        cikis yapmak tekneyi bir yere carpana dek kendi basina yol alir
+        birakiyordu.
+
+FIX - Bir ahirci kac evcil hayvan tutar. MAXPLAYERPETS oyuncunun degil AHIRCININ
+        etiketidir: referans kendi etiketlerini okur (CCharNPCAct_Vendor.cpp:124)
+        ve referans script paketi de boyle belgeler. Onu sahipten okumak,
+        ahircisini ayarlamis bir shard'a hicbir sey vermiyordu. Etiket yoksa sayi,
+        Taming + Animal Lore + Veterinary toplamina bagli bir kademedir (2 / 3 /
+        4 / 5) ve uc beceriden 100.0 ve uzerindeki her biri (beceri - 90.0) slot
+        ekler; sabit 5 taban arti her 60.0'a bir slot degil. Egitimsiz bir sahip
+        artik 2 aliyor. Kap esya siniri, referanstaki gibi, ahiri once siniriyor.
+
+
 [2026-09-11] - Gorevden alinan bir satici neyi geri verir
 ----------------------------------------
 

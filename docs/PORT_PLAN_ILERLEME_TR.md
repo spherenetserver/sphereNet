@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-11 |
-| Son commit | `b3b1c1f` + İŞ-28/İŞ-29 (pet) |
-| Tam test | 3.484 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-405 devam — park/geri alma, ölüm, logout/relogin** |
+| Son commit | `1a1fcdd` + İŞ-30/İŞ-31 (pet/ölüm) |
+| Tam test | 3.511 başarılı / 0 başarısız |
+| Sıradaki iş | **Dalga 5 — PLAN-501** (PLAN-405/406 kapandı) |
 
 ## Çalışma sırası
 
@@ -344,11 +344,35 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   kalıyordu; referans ikisini de sahibin BANKASINA taşır ve dokunulmazlığı
   düşürür. Sanal SELL stoku bilinçli olarak geri verilmiyor (eşya basmak olurdu).
 
+- [x] **İŞ-30 — Pet/ölüm/logout: PLAN-405'in kalanı** — **KAPANDI**
+  PLAN-405'in son üç ayağı (park/geri alma, ölüm, logout/relogin). **Dört boşluk:**
+  (1) hayalet kapıdan geçemiyordu; (2) berserk yaratık terk ediyordu (referansın
+  adını koyduğu çağırma sömürüsü); (3) gemideki oyuncu çıkış yapınca tekne yola
+  devam ediyordu; (4) ahır kapasitesi hem yanlış eğriyi kullanıyor hem de
+  MAXPLAYERPETS'i yanlış karakterden okuyordu. **PLAN-405 kapandı.**
+
+- [x] **İŞ-31 — Death/corpse/loot** (PLAN-406) — **KAPANDI**
+  Çoğu ayak zaten doğruydu (imleçteki eşya, newbie/blessed, ceset-birleşme,
+  çürüme, suç kapısı, kayıt). **Üç boşluk:** (1) ölüm büyü etkilerini
+  bitirmiyordu; (2) cesedin ağırlık sınırı yoktu (referansın adını koyduğu
+  sömürü); (3) ceset yağması tanık hattını hiç çalıştırmıyordu — muhafiz
+  çağrılmıyor, kişisel gri oluşmuyor, `@SeeCrime` ateşlenmiyordu.
+  **PLAN-406 kapandı.**
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-31 KAPANDI** — 2026-09-11. Ölümde büyü dağıtma, ceset ağırlık sınırı,
+  ceset suçunda tanık hattı. Test: `DeathDispelAndCorpseWeightParityTests` (5),
+  `CorpseCrimeWitnessParityTests` (5); üç düzeltme tek tek geri alınıp
+  doğrulandı. Tam suite 3.511, üç koşu. **PLAN-406 tamamlandı.**
+- **İŞ-30 KAPANDI** — 2026-09-11. Hayalet-kapı, berserk terk koruması, çıkışta
+  gemi durdurma, ahır kapasitesi. Test: `GhostDoorPassageParityTests` (4),
+  `PetDesertAndLogoutParityTests` (6), `VendorStableParityTests` genişletildi (+7);
+  dört düzeltme tek tek geri alınıp doğrulandı. Tam suite 3.501, üç koşu.
+  **PLAN-405 tamamlandı.**
 - **İŞ-29 KAPANDI** — 2026-09-11. Görevden alınan satıcının kasası + ek kabı
   sahibin bankasına, dokunulmazlık düşer. Test: `VendorDismissalParityTests` (5);
   geri alınıp dördünün yakaladığı doğrulandı. Tam suite 3.484, üç koşu.

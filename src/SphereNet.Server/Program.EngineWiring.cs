@@ -1799,6 +1799,10 @@ public static partial class Program
                     3, victim.Uid.Value, victim.Uid.Value, 0x3735,
                     victim.X, victim.Y, victim.Z, victim.X, victim.Y, victim.Z,
                     1, 30, false, false), 0);
+            // Source-X CChar::Death: Spell_Dispel(100) before the corpse forms
+            // (CCharAct.cpp:4397) — death ends every spell on you, good and bad.
+            _deathEngine.DispelEffectsHook = victim =>
+                _spellEngine?.StripDispellableEffects(victim);
             // Source-X CChar::Death Trade_Delete: an open secure trade is
             // cancelled before the corpse forms so the returned items reach
             // the loot drop. Client route closes both windows; the clientless

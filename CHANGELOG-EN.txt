@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-11] - What a dismissed vendor gives back
+----------------------------------------
+
+FIX - Releasing a player vendor hands its holdings back. The reference empties it
+        the moment it loses its owner: the purse and every vendor-layer container's
+        contents go into the OWNER'S BANK and the vendor stops being invulnerable
+        (NPC_PetClearOwners, CCharNPCPet.cpp:562-584). Releasing one here only
+        cleared the ownership flags, so a shopkeeper's takings and everything it
+        had bought from players went ownerless with it. With no bank to put them
+        in they land at the owner's feet rather than nowhere.
+
+        Only what really exists comes back: this engine's SELL stock is a template
+        rebuilt on demand and never persisted, so returning that would mint items
+        rather than return them. The extra container - what the vendor bought from
+        players - is the real one.
+
+
+[2026-09-11] - Who the follower cap binds
+----------------------------------------
+
+FIX - OF_PETSLOTS switches the follower cap on. The reference keeps the whole
+        slot system behind that flag - the summon path, the taming path and the
+        pet-memory bookkeeping all ask first (CCharSpell.cpp:2660,
+        CChar.cpp:1257). It was in the OptionFlags enum with nothing reading it,
+        so the cap bound a shard that had switched the system off, and the live
+        one has: its OPTIONFLAGS does not carry the 0x10 bit.
+
+FIX - A GM is not stopped by the maximum (fIgnoreMax, CCharUse.cpp:1238). Both
+        the ownership path and the stable claim answer to the same gate now,
+        instead of each carrying their own copy of the check.
+
+
 [2026-09-11] - A spot that answered nothing stays that way
 ----------------------------------------
 

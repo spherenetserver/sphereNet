@@ -108,6 +108,8 @@ public sealed class SummonParity04CTests : IDisposable
         var caster = world.CreateCharacter();
         caster.IsPlayer = true;
         caster.MaxMana = 100; caster.Mana = 100;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         caster.MaxFollower = maxFollower;
         caster.SetSkill(SkillType.Magery, 1200);
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));

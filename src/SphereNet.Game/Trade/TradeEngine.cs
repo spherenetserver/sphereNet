@@ -320,6 +320,80 @@ public static class VendorEngine
     private static Item? GetVendorExtraContainer(Character vendor) =>
         vendor.GetEquippedItem(Core.Enums.Layer.VendorExtra);
 
+    /// <summary>Hand a dismissed player vendor's holdings back to its owner.
+    ///
+    /// Source-X does this the moment a vendor loses its owner: NPC_PetClearOwners
+    /// moves the purse and every vendor-layer container's contents into the
+    /// OWNER'S BANK and drops the vendor's invulnerability
+    /// (CCharNPCPet.cpp:562-584). Releasing one here only cleared the ownership
+    /// flags, so a shopkeeper's takings and everything it had bought from players
+    /// went ownerless with it.
+    ///
+    /// Only the goods that REALLY exist come back. This engine's SELL stock is a
+    /// template rebuilt on demand and is never persisted (see WorldSaver), so
+    /// returning it would mint items rather than return them; the extra container
+    /// — what the vendor bought from players — is the real one.</summary>
+    public static void ReturnHoldingsToOwner(Character vendor, Character owner)
+    {
+        if (World == null || vendor == owner)
+            return;
+
+        var bank = owner.GetEquippedItem(Core.Enums.Layer.BankBox);
+
+        if (GetVendorExtraContainer(vendor) is { } extra)
+        {
+            foreach (var item in extra.Contents.ToList())
+            {
+                extra.RemoveItem(item);
+                if (bank != null && !bank.IsDeleted && bank.TryAddItem(item))
+                    continue;
+                // No bank to put it in: at the owner's feet rather than nowhere.
+                item.ContainedIn = Serial.Invalid;
+                World.PlaceItemWithDecay(item, owner.Position);
+            }
+        }
+
+        long purse = GetVendorGold(vendor);
+        if (purse > 0)
+        {
+            SetVendorGold(vendor, 0);
+            GiveGold(owner, (int)Math.Min(purse, int.MaxValue), bank);
+        }
+
+        vendor.ClearStatFlag(Core.Enums.StatFlag.Invul);
+    }
+
+    /// <summary>Deliver gold into a chosen container (the reference hands the
+    /// owner's BANK to AddGoldToPack when a vendor is dismissed), falling back to
+    /// the pack when there is none.</summary>
+    private static void GiveGold(Character ch, int amount, Item? container)
+    {
+        if (World == null || amount <= 0)
+            return;
+        if (container == null || container.IsDeleted)
+        {
+            GiveGoldToPack(ch, amount);
+            return;
+        }
+
+        int remaining = amount;
+        while (remaining > 0)
+        {
+            int pile = Math.Min(remaining, 60000);
+            var gold = World.CreateItem();
+            gold.BaseId = 0x0EED;
+            gold.ItemType = Core.Enums.ItemType.Gold;
+            gold.Amount = (ushort)pile;
+            gold.Name = "Gold";
+            var delivered = container.TryAddItemWithStack(gold);
+            if (delivered == null)
+                World.PlaceItemWithDecay(gold, ch.Position);
+            else if (delivered != gold)
+                World.RemoveItem(gold);
+            remaining -= pile;
+        }
+    }
+
     /// <summary>Move <paramref name="item"/> out of wherever it is and into the
     /// vendor's extra container. False when the container will not take it, in which
     /// case the caller falls back to Source-X's ownerless behaviour.</summary>

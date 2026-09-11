@@ -37,6 +37,8 @@ public sealed class PetStorageRoundTripTests
     {
         var owner = world.CreateCharacter();
         owner.IsPlayer = true;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 5;
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
         return owner;
@@ -168,6 +170,8 @@ public sealed class PetStorageRoundTripTests
         other.NpcBrain = NpcBrainType.Animal;
         other.TryAssignOwnership(owner, owner);
         world.PlaceCharacter(other, new Point3D(102, 100, 0, 0));
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 3;
         owner.InvalidateFollowerCount();
 
@@ -249,6 +253,8 @@ public sealed class PetStorageRoundTripTests
         other.NpcBrain = NpcBrainType.Animal;
         other.TryAssignOwnership(owner, owner);
         world.PlaceCharacter(other, new Point3D(102, 100, 0, 0));
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 3;
         owner.InvalidateFollowerCount();
 

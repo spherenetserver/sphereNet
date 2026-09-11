@@ -1366,6 +1366,18 @@ public partial class Character : ObjBase
     // Followers
     public byte MaxFollower { get => _maxFollower; set => _maxFollower = value; }
 
+    /// <summary>Whether the follower cap binds <paramref name="owner"/> right now.
+    ///
+    /// The reference keeps the whole slot system behind OF_PETSLOTS — the summon
+    /// path, the taming path and the memory bookkeeping all ask first
+    /// (CCharSpell.cpp:2660, CChar.cpp:1257) — and lets a GM past the maximum
+    /// (fIgnoreMax, CCharUse.cpp:1238). Neither was checked here: the flag sat in
+    /// the OptionFlags enum with nothing reading it, so the cap bound a shard that
+    /// had switched the system off, which the live one has.</summary>
+    public static bool FollowerCapApplies(Character owner) =>
+        (Clients.GameClient.ServerOptionFlags & Core.Enums.OptionFlags.PetSlots) != 0 &&
+        owner.PrivLevel < PrivLevel.GM;
+
     /// <summary>How many follower/control slots this creature occupies when
     /// owned (from CHARDEF FOLLOWERSLOTS; large creatures cost several). Minimum 1.
     /// A script-set FOLLOWERSLOTS override (Source-X SetDefNum) wins when present.</summary>
@@ -2024,7 +2036,8 @@ public partial class Character : ObjBase
         Serial ownerUid = owner?.Uid ?? Serial.Invalid;
         Serial controllerUid = controller?.Uid ?? ownerUid;
 
-        if (enforceFollowerCap && owner != null && !HasOwner(owner.Uid) &&
+        if (enforceFollowerCap && owner != null && FollowerCapApplies(owner) &&
+            !HasOwner(owner.Uid) &&
             owner.CurFollower + ControlSlots > owner.MaxFollower)
         {
             return false;
@@ -2098,6 +2111,16 @@ public partial class Character : ObjBase
 
     public void ClearOwnership(bool clearFriends = false)
     {
+        // A dismissed player vendor hands its takings and its bought stock back
+        // first — while the owner is still known (Source-X NPC_PetClearOwners,
+        // CCharNPCPet.cpp:562). Clearing the flags first would strand the goods.
+        if (!IsPlayer && OwnerSerial.IsValid &&
+            ResolveWorld?.Invoke()?.FindChar(OwnerSerial) is { } vendorOwner &&
+            Trade.VendorEngine.IsVendorLike(this))
+        {
+            Trade.VendorEngine.ReturnHoldingsToOwner(this, vendorOwner);
+        }
+
         SetOwnerControllerRaw(Serial.Invalid, Serial.Invalid, mirrorLegacySummon: false);
         if (clearFriends)
             ClearFriends();

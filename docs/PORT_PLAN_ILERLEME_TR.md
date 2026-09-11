@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-11 |
-| Son commit | `c04ea58` + İŞ-26/İŞ-27 (üretim + kaynak) |
-| Tam test | 3.475 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-405 (pet/mount/stable)** — PLAN-404 kapandı |
+| Son commit | `b3b1c1f` + İŞ-28/İŞ-29 (pet) |
+| Tam test | 3.484 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-405 devam — park/geri alma, ölüm, logout/relogin** |
 
 ## Çalışma sırası
 
@@ -327,11 +327,34 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   tükenmesi/retry (İŞ-27); stroke, tool kırılması ve toplama miktarı ölçülüp
   doğru bulundu.
 
+- [x] **İŞ-28 — Pet: takipçi sınırını kim bağlar** (PLAN-405 birinci dilim) — **KAPANDI**
+  PLAN-405'in "takip slotları" ayağı. **Ölçülüp zaten doğru bulunanlar:** slot
+  maliyeti (`FOLLOWERSLOTS`, chardef'ten, varsayılan 1), `CURFOLLOWER` canlı
+  taramayla, `MAXFOLLOWER`, ahır/figürin geri alma noktalarında kontrol.
+  **İki boşluk:** (1) `OF_PETSLOTS` hiç okunmuyordu — sistemi kapatmış bir
+  shard'ı bile sınırlıyorduk, canlı shard da kapatmış; (2) GM azami sayıyı
+  aşamıyordu. İki kontrol noktası tek kapıya (`Character.FollowerCapApplies`)
+  bağlandı.
+
+- [x] **İŞ-29 — Pet: görevden alınan satıcı neyi geri verir** (PLAN-405 ikinci dilim) — **KAPANDI**
+  PLAN-405'in "sahiplik değişimi" ayağı. **Ölçülüp zaten doğru bulunanlar:**
+  sahiplik devrinde eski sahibin ilişkilerinin (IPET/FRIEND/bond) temizlenmesi,
+  bond'un sahipsiz pette düşürülmesi. **Bir boşluk:** oyuncu satıcısı serbest
+  bırakıldığında kasası ve oyunculardan aldığı mallar onunla birlikte sahipsiz
+  kalıyordu; referans ikisini de sahibin BANKASINA taşır ve dokunulmazlığı
+  düşürür. Sanal SELL stoku bilinçli olarak geri verilmiyor (eşya basmak olurdu).
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-29 KAPANDI** — 2026-09-11. Görevden alınan satıcının kasası + ek kabı
+  sahibin bankasına, dokunulmazlık düşer. Test: `VendorDismissalParityTests` (5);
+  geri alınıp dördünün yakaladığı doğrulandı. Tam suite 3.484, üç koşu.
+- **İŞ-28 KAPANDI** — 2026-09-11. OF_PETSLOTS kapısı + GM muafiyeti; sınırı sınayan
+  8 test dosyası bayrağı kendi bildiriyor. Test: `FollowerCapGateParityTests` (4);
+  kapı geri alınıp üçünün yakaladığı doğrulandı. Tam suite 3.479, üç koşu.
 - **İŞ-27 KAPANDI** — 2026-09-11. Boş çekiliş düğüme yazılıyor (kendi REGEN'iyle).
   Test: `BarrenResourceNodeParityTests` (3); geri alınıp üçünün de yakaladığı
   doğrulandı. Tam suite 3.475, üç koşu.

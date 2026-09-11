@@ -4236,3 +4236,90 @@ kırmızıya döndü. Tam suite 3.475 / 0, üç arka arkaya koşu.
 
 **PLAN-404 KAPANDI.** Sıradaki: PLAN-405 (pet/mount/stable).
 
+---
+
+## İŞ-28 — Pet: takipçi sınırını kim bağlar (PLAN-405 birinci dilim, 11 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+| Ayak | Kanıt |
+|---|---|
+| Slot maliyeti | `FOLLOWERSLOTS` chardef'ten, varsayılan 1 (CCharUse.cpp:1210) |
+| Mevcut toplam | `CURFOLLOWER` slot toplamı olarak, canlı taramayla |
+| Azami | `MAXFOLLOWER` sahipte |
+| Kontrol noktaları | Sahiplik atama, ahırdan geri alma, figürinden çıkarma |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-28-01 (P1) — `OF_PETSLOTS` hiç okunmuyordu.**
+  Referans slot sisteminin tamamını o bayrağın arkasında tutar: çağırma yolu
+  (`CCharSpell.cpp:2660`), evcil hafıza defteri (`CChar.cpp:1257`) ve
+  `FollowersUpdate`'in kendisi ("This is supossed to be called only when
+  OF_PetSlots is enabled", CCharUse.cpp:1236). Bizde bayrak `OptionFlags`
+  enum'unda duruyor ve hiçbir yer okumuyordu, yani sınır KOŞULSUZ uygulanıyordu.
+  **Canlı shard bunu kapatmış:** `OPTIONFLAGS=0x2080`, 0x10 biti yok.
+
+- [x] **İŞ-28-02 (P2) — GM azami sayıyı aşamıyordu.**
+  Referans `fIgnoreMax = IsPriv(PRIV_GM)` (CCharUse.cpp:1238). İki kontrol
+  noktası da (sahiplik, ahır) artık tek kapıdan geçiyor:
+  `Character.FollowerCapApplies` — kopyaların ayrışması böylece imkânsız.
+
+### Test tarafı
+
+Sınırı sınayan 8 dosyadaki 22 kurulum noktası artık bayrağı **kendisi bildiriyor**
+(`ServerOptionFlags |= PetSlots`). Bu bilinçli: `MaxFollower` atayan bir test
+zaten sınır hakkında bir testtir, ve sınır ancak bayrak açıkken bağlar.
+
+### Kayıtlı sapma
+
+- `@FollowersUpdate` tetikleyicisi yok (referansta ARGN1 ekle/çıkar, ARGN2 slot
+  sayısı, ARGO evcil; RETURN 1 reddeder). Ne canlı pakette ne `oldSphere/`
+  paketlerinde tek bir kancası var — İŞ-8'in paket-tarafı ölçüm kuralı gereği
+  eklenmedi, kayda geçti.
+
+**Testler:** `FollowerCapGateParityTests` (4). Kapı geri alındığında üçü kırmızıya
+döndü. Tam suite 3.479 / 0, üç arka arkaya koşu.
+
+**PLAN-405'in kalanı:** sahiplik değişimi, park/geri alma, ölüm, logout/relogin.
+
+---
+
+## İŞ-29 — Pet: görevden alınan satıcı neyi geri verir (PLAN-405 ikinci dilim, 11 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN
+
+Sahiplik devri zaten doğruydu: gerçek bir sahip değişimi eski sahibin
+`MEMORY_IPET`/`MEMORY_FRIEND` ilişkilerini ve bond'u temizliyor
+(`NPC_PetSetOwner` → `NPC_PetClearOwners`, CCharNPCPet.cpp:600/558) ve
+"sahipsiz pet bonded olamaz" kuralı uygulanıyor.
+
+### Kapanan boşluk
+
+- [x] **İŞ-29-01 (P1) — Serbest bırakılan oyuncu satıcısı elindekini götürüyordu.**
+  Referans `NPC_PetClearOwners`, satıcı sahibini kaybettiği anda
+  (CCharNPCPet.cpp:562-584): `STATF_INVUL`'ü düşürür, banka kasasındaki parayı
+  sahibin bankasına aktarır (`AddGoldToPack(..., pBankOwner)`) ve **her satıcı
+  katmanı kabının** içindekileri sahibin bankasına boşaltır.
+
+  Bizde `ClearOwnership` yalnızca sahiplik bayraklarını temizliyordu: dükkâncının
+  `VENDOR_GOLD` kasası ve oyunculardan satın aldığı mallar (VendorExtra) NPC'nin
+  üzerinde sahipsiz kalıyordu — oyuncu için kayıp.
+
+  Geri verme `Trade.VendorEngine.ReturnHoldingsToOwner` içinde ve `ClearOwnership`
+  sahiplik alanlarını sıfırlamadan ÖNCE çağrılıyor; sonra çağrılsa sahip artık
+  bilinmiyor olurdu.
+
+### Bilinçli sapma (kayıtlı)
+
+Referans **bütün** satıcı katmanlarını boşaltır; biz yalnız **VendorExtra**'yı
+veriyoruz. Sebebi yapısal: bu motorda SELL stoku (LAYER 26) sanaldır — SELL
+şablonundan talep üzerine kurulur ve `WorldSaver` onu hiç kaydetmez. Onu "geri
+vermek" eşya iadesi değil eşya BASMAK olurdu. VendorExtra ise gerçek: satıcının
+oyunculardan aldıkları orada durur.
+
+**Testler:** `VendorDismissalParityTests` (5) — banka yoksa malın sahibin ayağına
+düşmesi ve sıradan bir pet'in bu yolu hiç görmemesi dahil. Kapı geri alındığında
+dördü kırmızıya döndü. Tam suite 3.484 / 0, üç arka arkaya koşu.
+
+**PLAN-405'in kalanı:** park/geri alma, ölüm, logout/relogin.
+

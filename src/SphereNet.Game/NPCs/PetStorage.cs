@@ -60,8 +60,10 @@ public static class PetStorage
 
         // TryAssignOwnership skips its cap check when the pet already belongs to this
         // owner, and a parked pet never lost its ownership - so the cap is checked
-        // here instead (Source-X NPC_StablePetRetrieve checks slots on retrieve).
-        if (owner.CurFollower + pet.ControlSlots > owner.MaxFollower)
+        // here instead (Source-X NPC_StablePetRetrieve checks slots on retrieve),
+        // behind the same OF_PETSLOTS / GM gate as every other slot check.
+        if (Character.FollowerCapApplies(owner) &&
+            owner.CurFollower + pet.ControlSlots > owner.MaxFollower)
             return false;
 
         pet.ClearStatFlag(StatFlag.Ridden);

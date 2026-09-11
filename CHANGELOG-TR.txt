@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-11] - Gorevden alinan bir satici neyi geri verir
+----------------------------------------
+
+FIX - Bir oyuncu saticisini serbest birakmak, elindekini geri veriyor. Referans
+        onu sahibini kaybettigi anda bosaltir: kasa ve her satici-katmani kabinin
+        icindekiler SAHIBIN BANKASINA gider ve satici dokunulmaz olmaktan cikar
+        (NPC_PetClearOwners, CCharNPCPet.cpp:562-584). Bizde serbest birakma
+        yalnizca sahiplik bayraklarini temizliyordu, yani bir dukkancinin kazanci
+        ve oyunculardan satin aldigi her sey onunla birlikte sahipsiz kaliyordu.
+        Konacak banka yoksa mallar sahibin ayagina dusuyor, hiclige degil.
+
+        Yalnizca GERCEKTEN var olan geri geliyor: bu motorun SELL stogu talep
+        uzerine yeniden kurulan bir sablondur ve hic kaydedilmez, yani onu geri
+        vermek esya iade etmek degil esya BASMAK olurdu. Gercek olan, saticinin
+        oyunculardan aldiklarini tuttugu ek kap.
+
+
+[2026-09-11] - Takipci siniri kimi baglar
+----------------------------------------
+
+FIX - Takipci sinirini OF_PETSLOTS aciyor. Referans slot sisteminin TAMAMINI o
+        bayragin arkasinda tutar - cagirma yolu, evcillestirme yolu ve evcil
+        hafiza defteri once ona sorar (CCharSpell.cpp:2660, CChar.cpp:1257).
+        Bayrak OptionFlags enum'unda duruyordu ve hicbir sey okumuyordu, yani
+        sistemi kapatmis bir shard'i bile siniriyorduk; canli shard da kapatmis:
+        OPTIONFLAGS'inda 0x10 biti yok.
+
+FIX - Bir GM'i azami sayi durduramaz (fIgnoreMax, CCharUse.cpp:1238). Sahiplik
+        yolu da ahirdan geri alma da artik ayni kapiya soruyor; her biri kendi
+        kontrol kopyasini tasimiyor.
+
+
 [2026-09-11] - Bos cikan bir nokta bos kalir
 ----------------------------------------
 

@@ -54,6 +54,8 @@ public sealed class HealParity06IMTests
         var client = TestHarness.CreateClient(lf, world, new AccountManager(lf), 6901);
         var owner = world.CreateCharacter();
         owner.IsPlayer = true;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 10;
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
         var pack = world.CreateItem();

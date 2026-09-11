@@ -200,6 +200,8 @@ public sealed class PetParity06Tests
         var stable = new StableEngine();
 
         var (_, owner) = NewClient(world, 6112, 100);
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 5;
         var pet = Pet(world, owner, "oldpet");
         Assert.True(stable.StablePet(owner, pet, world));
@@ -211,6 +213,8 @@ public sealed class PetParity06Tests
 
         var heir = world.CreateCharacter();
         heir.IsPlayer = true;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         heir.MaxFollower = 5;
         world.PlaceCharacter(heir, new Point3D(100, 100, 0, 0));
         Assert.NotEqual(owner.Uuid, heir.Uuid);
@@ -229,6 +233,8 @@ public sealed class PetParity06Tests
         var world = CreateWorld();
         var stable = new StableEngine();
         var (_, owner) = NewClient(world, 6113, 100);
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 5;
         var pet = Pet(world, owner, "goodboy");
 
@@ -246,6 +252,8 @@ public sealed class PetParity06Tests
         var world = CreateWorld();
         var stable = new StableEngine();
         var (_, owner) = NewClient(world, 6114, 100);
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 5;
         var pet = Pet(world, owner, "bruiser");
 
@@ -273,6 +281,8 @@ public sealed class PetParity06Tests
 
         var rider = world.CreateCharacter();
         rider.IsPlayer = true;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         rider.MaxFollower = 5;
         world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
 
@@ -367,6 +377,8 @@ public sealed class PetParity06Tests
 
         var owner = world.CreateCharacter();
         owner.IsPlayer = true;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 10;
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
 

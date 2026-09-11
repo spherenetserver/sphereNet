@@ -28,6 +28,8 @@ public class PetFigurineTests
     {
         var owner = world.CreateCharacter();
         owner.IsPlayer = true;
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 5;
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
         return owner;
@@ -108,6 +110,8 @@ public class PetFigurineTests
         var figurine = world.CreateItem();
         Assert.True(PetFigurine.Shrink(owner, pet, figurine, world));
 
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         owner.MaxFollower = 0; // cap full -> restore must fail without losing the figurine
         var restored = PetFigurine.Restore(owner, figurine, world, new Point3D(100, 100, 0, 0));
         Assert.Null(restored);

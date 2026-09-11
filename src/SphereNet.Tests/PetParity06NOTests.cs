@@ -204,6 +204,8 @@ public sealed class PetParity06NOTests
         {
             var p = world.CreateCharacter();
             p.IsPlayer = true;
+            // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+            SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
             p.MaxFollower = 5;
             world.PlaceCharacter(p, new Point3D((short)x, 100, 0, 0));
             return p;
@@ -261,6 +263,8 @@ public sealed class PetParity06NOTests
     public void ARefusedTransferLeavesThePetExactlyAsItWas()
     {
         var (_, a, b, friend, pet) = TransferBench();
+        // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
         b.MaxFollower = 0;
 
         Assert.False(pet.TryAssignOwnership(b, b, enforceFollowerCap: true));

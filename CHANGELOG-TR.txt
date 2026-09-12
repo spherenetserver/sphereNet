@@ -3,6 +3,33 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Bir script'in fiyatlayip reddedebilecegi ev tasarimi commit'i
+----------------------------------------
+
+FIX - @HouseDesignCommit commit'ten ONCE ateslenir ve onu reddedebilir. Source-X
+        ona ARGN1 = kayitli tasarimin karo sayisi, ARGN2 = calisma tasariminin,
+        ARGN3 = yeni revizyon, ARGO = multi ve LOCAL.FIXTURES.OLD / FIXTURES.NEW /
+        MAXZ verir; RETURN 1 commit'i birakir (CItemMultiCustom.cpp:314-327).
+
+        Bizde commit'ten SONRA, ARGN1 = revizyon ve baska hicbir sey olmadan
+        atesleniyordu. Referans paket insaati bu iki sayidan fiyatlar -
+        (yeni - eski) * 500 altin - ve sahip odeyemiyorsa RETURN 1 der
+        (Scripts-X house_typedefs.scp:603-615). O pakete karsi her commit bir
+        revizyonu "eski karo sayisi" diye okuyor, cop uzerinden ucretlendiriyor
+        (hesaplanan maliyet negatif ciktigi icin genelde sahibe PARA ODUYOR) ve
+        reddi hicbir ise yaramiyordu: tasarim yine de commit ediliyordu. Reddedilen
+        bir commit artik calisma tasarimina dokunmuyor ve oturumu acik birakiyor,
+        boylece sahip degistirip yeniden deneyebiliyor.
+
+FIX - Degismemis bir tasarimi commit etmek commit sayilmaz. Referans bos yere bir
+        revizyon artirmak yerine erken doner (:277), yani ayni tasarimda dugmeye
+        iki kez basmak kimseyi ikinci kez ucretlendirmez.
+
+        @HouseDesignCommitItem - karo basina veto - yazilmadi: referans paket onu
+        yalnizca yorum satiri halinde bir prob olarak tasiyor, yani canli bir
+        tuketicisi yok.
+
+
 [2026-09-12] - Bir ev var olmaktan cikarken dunyaya ne borcludur
 ----------------------------------------
 

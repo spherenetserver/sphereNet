@@ -1,3 +1,4 @@
+﻿using System.Linq;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -206,6 +207,51 @@ public sealed class CustomHousingEngine
 
     /// <summary>Persist the working design as the new committed design and end
     /// the session. Returns the new revision, or null without a session.</summary>
+    /// <summary>What @HouseDesignCommit is told, read off the two designs BEFORE
+    /// either is touched (Source-X CItemMultiCustom::CommitChanges:314-324).</summary>
+    public readonly record struct CommitPreview(
+        Item Multi, int OldTiles, int NewTiles, uint Revision,
+        int OldFixtures, int NewFixtures, int MaxZ);
+
+    /// <summary>The numbers a script needs to price or refuse a commit. Null when
+    /// the character has no authorized session, or when the working design is
+    /// unchanged — the reference returns early rather than commit a no-op (:277),
+    /// so nobody is charged for pressing the button twice on the same design.
+    ///
+    /// The reference tests that with the revision because ITS working design
+    /// carries its own revision that every edit moves. Here the revision is bumped
+    /// by Commit itself, so an untouched session still reads equal to the committed
+    /// one; the tiles are what actually says whether anything changed.</summary>
+    public CommitPreview? PreviewCommit(Character ch)
+    {
+        if (!TryGetAuthorizedSession(ch, out var session, out var multi))
+            return null;
+
+        var committed = GetCommittedDesign(multi);
+        if (session.Working.Tiles.Count == committed.Tiles.Count &&
+            session.Working.Tiles.SequenceEqual(committed.Tiles))
+            return null;
+
+        int maxZ = 0;
+        foreach (var tile in session.Working.Tiles)
+            if (tile.Z > maxZ) maxZ = tile.Z;
+
+        return new CommitPreview(multi, committed.Tiles.Count, session.Working.Tiles.Count,
+            session.Working.Revision + 1, CountFixtures(committed), CountFixtures(session.Working),
+            maxZ);
+    }
+
+    /// <summary>Source-X GetFixtureCount — how many of a design's tiles become real
+    /// items on commit.</summary>
+    public int CountFixtures(HouseDesign design)
+    {
+        int count = 0;
+        foreach (var tile in design.Tiles)
+            if (IsFixtureTile(tile.TileId, out _))
+                count++;
+        return count;
+    }
+
     public uint? Commit(Character ch)
     {
         if (!TryGetAuthorizedSession(ch, out var session, out var multi))

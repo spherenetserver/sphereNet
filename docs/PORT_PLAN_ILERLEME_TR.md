@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `6f1d113` + İŞ-34 (ev yıkımı) |
-| Tam test | 3.548 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-503 — custom housing commit + harita geometrisi + save/reload** |
+| Son commit | `8502857` + İŞ-35 (tasarım commit'i) |
+| Tam test | 3.557 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-504 — gemi yolcu/yük aktarımı, dönüş, plank, redeed** |
 
 ## Çalışma sırası
 
@@ -382,11 +382,24 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   sıkışıyordu; (2) taşıma sandığı evin altında gömülü kalıyordu; (3) boş sandık
   bankaya postalanıyordu.
 
+- [x] **İŞ-35 — Tasarım commit'i: fiyatlanabilir ve reddedilebilir** (PLAN-503) — **KAPANDI**
+  **İki boşluk:** (1) `@HouseDesignCommit` commit'ten **sonra** ve yanlış
+  argümanlarla ateşleniyordu — referans paket ARGN1/ARGN2'den inşaatı
+  fiyatlıyor, bizde bir revizyonu "eski karo sayısı" diye okuyup çöp üzerinden
+  ücretlendiriyor ve `RETURN 1` reddi hiçbir işe yaramıyordu; (2) değişmemiş
+  tasarım yine commit sayılıyordu. Harita yürüme geometrisi ve save/reload
+  bağları ölçülüp zaten doğru bulundu.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-35 KAPANDI** — 2026-09-12. `PreviewCommit` + `@HouseDesignCommit`
+  sözleşmesi (ARGN1/2/3 + LOCAL.* + `RETURN 1` vetosu) + değişmemiş-tasarım kapısı.
+  Test: `HouseDesignCommitTriggerParityTests` (9), ikisi uçtan uca script'li.
+  İki düzeltme tek tek geri alınıp doğrulandı (2 + 2). Tam suite 3.557, üç koşu.
+  **PLAN-503 tamamlandı.**
 - **İŞ-34 KAPANDI** — 2026-09-12. `ReleaseAllHoldings` +
   `TransferMovingCrateToOwner` silme yolunda; boş sandık her iki yolda siliniyor.
   Test: `HouseTeardownHoldingsParityTests` (8); iki düzeltme tek tek geri alınıp

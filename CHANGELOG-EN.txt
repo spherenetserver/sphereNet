@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - A house design commit a script can price and refuse
+----------------------------------------
+
+FIX - @HouseDesignCommit fires BEFORE the commit and can refuse it. Source-X
+        hands it ARGN1 = the committed design's tile count, ARGN2 = the working
+        design's, ARGN3 = the new revision, ARGO = the multi, and
+        LOCAL.FIXTURES.OLD / FIXTURES.NEW / MAXZ; RETURN 1 abandons the commit
+        (CItemMultiCustom.cpp:314-327).
+
+        This fired AFTER the commit with ARGN1 = the revision and nothing else.
+        The reference pack prices a build from those two counts -
+        (new - old) * 500 gold - and RETURNs 1 when the owner cannot afford it
+        (Scripts-X house_typedefs.scp:603-615). Against that pack every commit
+        read a revision as an "old tile count", charged from garbage (usually
+        PAYING the owner, since the computed cost came out negative), and its
+        refusal did nothing at all: the design committed anyway. A refused commit
+        now leaves the working design untouched and the session open, so the
+        owner can change it and try again.
+
+FIX - Committing an unchanged design is not a commit. The reference returns
+        early rather than bump a revision for nothing (:277), so pressing the
+        button twice on the same design does not charge anybody a second time.
+
+        @HouseDesignCommitItem - the per-tile veto - was left unwritten: the
+        reference pack carries it only as a commented-out probe line, so it has
+        no live consumer.
+
+
 [2026-09-12] - What a house owes the world when it stops existing
 ----------------------------------------
 

@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Objects.Items;
@@ -225,6 +225,41 @@ public sealed partial class GameClient
                 break;
             case EncodedCommandRegistry.Commit:
             {
+                // @HouseDesignCommit fires BEFORE the commit and can refuse it
+                // (Source-X CommitChanges:314-327). The reference pack prices the
+                // build from ARGN1/ARGN2 — (new tiles - old tiles) * 500 gold — and
+                // RETURNs 1 when the owner cannot afford it
+                // (Scripts-X house_typedefs.scp:603-615).
+                //
+                // This used to fire AFTER the commit with ARGN1 = the revision and
+                // nothing else, so that pack read a revision as an "old tile count",
+                // charged from garbage, and its refusal was ignored: the design
+                // committed anyway and the owner was usually PAID for it.
+                var preview = _customHousing.PreviewCommit(_character);
+                if (preview is { } pv)
+                {
+                    var locals = new SphereNet.Scripting.Variables.VarMap();
+                    locals.SetInt("FIXTURES.OLD", pv.OldFixtures);
+                    locals.SetInt("FIXTURES.NEW", pv.NewFixtures);
+                    locals.SetInt("MAXZ", pv.MaxZ);
+                    var commitArgs = new TriggerArgs
+                    {
+                        CharSrc = _character,
+                        O1 = multi,
+                        N1 = pv.OldTiles,
+                        N2 = pv.NewTiles,
+                        N3 = pv.Revision,
+                        Locals = locals,
+                    };
+                    if (_triggerDispatcher?.FireCharTrigger(_character,
+                            CharTrigger.HouseDesignCommit, commitArgs) == TriggerResult.True)
+                    {
+                        // Refused: the working design is untouched and the session
+                        // stays open, so the owner can change it and try again.
+                        break;
+                    }
+                }
+
                 uint? revision = _customHousing.Commit(_character);
                 if (revision == null)
                     break;
@@ -234,8 +269,6 @@ public sealed partial class GameClient
                 // the committed design through HandleQueryDesignDetails.
                 BroadcastNearby?.Invoke(multi.Position, 24,
                     new PacketHouseDesignVersion(multi.Uid.Value, revision.Value), _character.Uid.Value);
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HouseDesignCommit,
-                    new TriggerArgs { CharSrc = _character, O1 = multi, N1 = (int)revision.Value });
                 break;
             }
             case EncodedCommandRegistry.Close:

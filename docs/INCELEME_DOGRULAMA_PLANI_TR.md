@@ -4688,3 +4688,71 @@ arkaya koşu.
 **PLAN-502 kapandı.** Sıradaki: PLAN-503 (custom housing commit + harita
 yürüme geometrisi + save/reload).
 
+---
+
+## İŞ-35 — Tasarım commit'i: fiyatlanabilir ve reddedilebilir (PLAN-503, 12 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN bağlar
+
+PLAN-503 commit doğrulamasını **harita yürüme geometrisi** ve **save/reload** ile
+bağlamayı istiyor. İkisi de zaten bağlıydı:
+
+| Bağ | Kanıt |
+|---|---|
+| Yürüme geometrisi | `WalkCheck.ResolveCustomDesign` → `GetCommittedTiles` (`Program.EngineWiring.cs:2750`); `GameWorld` de aynı kancayı kullanıyor |
+| Revizyon önbelleği | `GetCommittedDesign`, `DESIGN_REVISION` değişince yeniden ayrıştırıyor — commit sonrası yürüme geometrisi bayat kalmıyor |
+| Save/reload | Tasarım `DESIGN_n` etiketlerinde, `COMMIT_FIXTURES` de öyle — multi'nin etiketleriyle kaydedilip geri yükleniyor |
+| Fixture maddileştirme | Kapı/kap karoları gerçek eşya oluyor, öncekiler sökülüyor (CItemMultiCustom.cpp:344-358) |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-35-01 (P1) — `@HouseDesignCommit` yanlış zamanda, yanlış argümanlarla.**
+  Referans onu commit'ten **önce** ateşler ve şunları verir
+  (CItemMultiCustom.cpp:314-327):
+
+  | Argüman | Anlamı |
+  |---|---|
+  | `ARGN1` | kayıtlı (eski) tasarımın karo sayısı |
+  | `ARGN2` | çalışma (yeni) tasarımın karo sayısı |
+  | `ARGN3` | yeni revizyon |
+  | `ARGO` | multi |
+  | `LOCAL.FIXTURES.OLD/NEW` | her iki tasarımdaki fixture sayısı |
+  | `LOCAL.MAXZ` | çalışma tasarımının en yüksek karo Z'si |
+  | `RETURN 1` | commit'i **bırakır** |
+
+  Bizde commit'ten **sonra**, `ARGN1 = revizyon` ve başka hiçbir şey olmadan
+  ateşleniyordu. **Sonucu ölçülebilir:** referans paket inşaatı
+  `(<ARGN2> - <ARGN1>) * 500` altın olarak fiyatlıyor
+  (`house_typedefs.scp:608-610`). Bizim gönderdiğimizle `ARGN2 = 0` ve
+  `ARGN1 = revizyon` olduğundan maliyet **negatif** çıkıyor — yani paket her
+  commit'te sahibe **para ödüyordu**. Ve "bunu karşılayamazsın" reddi
+  (`RETURN 1`, :611-614) hiç okunmuyordu: tasarım yine de commit ediliyordu.
+
+  Reddedilen commit çalışma tasarımına dokunmuyor ve **oturumu açık bırakıyor**;
+  referans da `CopyDesign`'dan önce dönüyor, yani oyuncu tasarım kipinde kalıp
+  düzeltip yeniden deneyebiliyor.
+
+- [x] **İŞ-35-02 (P2) — Değişmemiş tasarım yine commit sayılıyordu.**
+  Referans eşit revizyonda erken döner (:277). **Uyarlama notu:** referans bunu
+  revizyonla sınar çünkü **onun** çalışma tasarımının revizyonunu her düzenleme
+  ilerletir; bizde revizyonu `Commit`'in kendisi artırıyor, yani dokunulmamış bir
+  oturum yine de kayıtlı olanla eşit okunur. Bir şeyin değişip değişmediğini
+  söyleyen şey karoların kendisi — karşılaştırma oraya taşındı.
+
+### Kayıtlı sapma
+
+`@HouseDesignCommitItem` (karo başına veto, `RETURN 0` o bileşeni tasarımdan
+siler) yazılmadı. Referans paket onu yalnızca **yorum satırı** halinde bir prob
+olarak taşıyor (`house_typedefs.scp:600-601`), canlı pakette hiç yok — İŞ-8'in
+paket-tarafı kuralı gereği kayda geçti.
+
+**Testler:** `HouseDesignCommitTriggerParityTests` (9). Yedisi `PreviewCommit`
+sözleşmesini, ikisi **uçtan uca** gerçek bir `[EVENTS]` script'iyle vetoyu
+sınıyor (biri `RETURN 1` ile durduruyor ve script'in gördüğü ARGN/LOCAL
+değerlerini doğrulıyor, diğeri ses çıkarmayıp geçiriyor). İki düzeltme tek tek
+geri alındı; her biri 2 testi kırmızıya döndürdü. Tam suite 3.557 / 0, üç arka
+arkaya koşu.
+
+**PLAN-503 kapandı.** Sıradaki: PLAN-504 (gemi yolcu/yük aktarımı, dönüş, harita
+kenarı, plank, redeed).
+

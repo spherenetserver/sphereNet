@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Bir lonca tasi kimi kabul eder
+----------------------------------------
+
+FIX - Tas bir NPC'yi reddediyor ve ayni turden baska bir tasa bagli olan kisiyi de
+        reddediyor. Source-X ikisini de CItemStone::AddRecruit'te kapatir
+        (CItemStone.cpp:1074-1087): yalnizca bir oyuncu uye olabilir ve baska yere
+        bagli olan once oradan ayrilmalidir. Bizde hicbir kapi yoktu, yani bir
+        script bir NPC'yi kaydedebiliyor ya da tek oyuncuyu ayni anda iki loncaya
+        koyabiliyordu - ve APPLYTOJOIN yolu ona ikinci bir tas hafizasi
+        damgaliyordu; aidiyet ve tekrar-kontrolleri tam da onu okur.
+
+        Bir kasaba ile bir lonca, referanstaki gibi bagimsiz kaliyor (MEMORY_TOWN
+        ve MEMORY_GUILD): bir lonca uyesi ayni zamanda vatandas olabilir. Yalnizca
+        AYNI turden bir tas engeller. Baska yerdeki bekleyen bir adaylik da kimseyi
+        disarida birakmiyor - catisma uyelikle ilgilidir.
+
+        Red bizde sessiz. Referans onu tastan konusturur, ama bu motorda esya
+        konusma kanali yok ve tek satir icin yeni bir kanca eklemek bunu hak
+        etmiyor; onemli olan reddin kendisi.
+
+
 [2026-09-12] - Neden durdugunu soyleyen bir gemi
 ----------------------------------------
 

@@ -3378,11 +3378,18 @@ public class Item : ObjBase
                     uint uid = ParseHexOrDecUInt(args.Trim());
                     if (uid != 0)
                     {
+                        var recruit = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
+                        // Source-X refuses an NPC and anyone already belonging to
+                        // another stone of the same kind, and the stone says why
+                        // (CItemStone.cpp:1074-1087). Enrolling anyway put one
+                        // player in two guilds and stamped two stone memories.
+                        var manager = ResolveGuildManager?.Invoke();
+                        if (manager != null && manager.GetRecruitRefusal(guild, recruit) != null)
+                            return true;   // refused; the stone takes nobody on
                         guild.AddRecruit(new Serial(uid));
                         // Source-X marks the candidate with the stone memory
                         // too, so <argo.memoryfindtype.memory_town> dedup and
                         // affiliation checks see town candidates.
-                        var recruit = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
                         recruit?.Memory_AddObjTypes(Uid,
                             ItemType == ItemType.StoneTown ? MemoryType.Town : MemoryType.Guild);
                     }
@@ -3397,8 +3404,12 @@ public class Item : ObjBase
                     uint uid = ParseHexOrDecUInt(args.Trim());
                     if (uid != 0)
                     {
+                        var joining = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
+                        var joinManager = ResolveGuildManager?.Invoke();
+                        if (joinManager != null && joinManager.GetRecruitRefusal(guild, joining) != null)
+                            return true;   // refused; the stone takes nobody on
                         guild.JoinAsMember(new Serial(uid));
-                        var member = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
+                        var member = joining;
                         if (member != null)
                         {
                             var memType = ItemType == ItemType.StoneTown

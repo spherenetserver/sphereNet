@@ -1,4 +1,5 @@
-using SphereNet.Core.Types;
+﻿using SphereNet.Core.Types;
+using SphereNet.Game.Objects.Characters;
 
 namespace SphereNet.Game.Guild;
 
@@ -398,6 +399,40 @@ public sealed class GuildManager
     /// <summary>Find a guild record including pending candidates.</summary>
     public GuildDef? FindGuildRecordFor(Serial charUid) =>
         _guilds.Values.FirstOrDefault(g => g.FindMember(charUid) != null);
+
+    /// <summary>Why a stone refused to take somebody on, or null when it will.
+    ///
+    /// Source-X gates this in CItemStone::AddRecruit (CItemStone.cpp:1074-1087)
+    /// and speaks the refusal from the stone: only a PLAYER can be a member, and
+    /// nobody already belonging to another stone of the same kind may be taken on
+    /// — they must resign the old one first. GuildDef.AddRecruit had no gate at
+    /// all, so a script could enrol an NPC, or put one player in two guilds at
+    /// once and stamp them with two stone memories.</summary>
+    public string? GetRecruitRefusal(GuildDef stone, Character? recruit)
+    {
+        if (recruit == null || recruit.IsDeleted)
+            return "Only players can be members!";
+        if (!recruit.IsPlayer)
+            return "Only players can be members!";
+
+        // A town and a guild are independent affiliations (MEMORY_TOWN vs
+        // MEMORY_GUILD), so only a stone of the SAME kind blocks.
+        var held = stone.IsTownStone ? FindTownFor(recruit.Uid) : FindGuildFor(recruit.Uid);
+        if (held != null && held != stone)
+            return $"{recruit.Name} appears to belong to {held.Name}. " +
+                   $"Must resign previous {(stone.IsTownStone ? "town" : "guild")}";
+
+        return null;
+    }
+
+    /// <summary>Take somebody on as a candidate if the stone will have them
+    /// (see <see cref="GetRecruitRefusal"/>). Null when it refused.</summary>
+    public GuildMember? TryAddRecruit(GuildDef stone, Character? recruit) =>
+        GetRecruitRefusal(stone, recruit) == null ? stone.AddRecruit(recruit!.Uid) : null;
+
+    /// <summary>Take somebody on as a FULL member, same gates.</summary>
+    public GuildMember? TryJoinAsMember(GuildDef stone, Character? recruit) =>
+        GetRecruitRefusal(stone, recruit) == null ? stone.JoinAsMember(recruit!.Uid) : null;
 
     /// <summary>Membership lookup within ONE pool: town stones or guild
     /// stones. A guild member may still become a town citizen and vice versa

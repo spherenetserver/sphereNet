@@ -4816,3 +4816,84 @@ geri alındığında 2'si kırmızıya döndü. Tam suite 3.561 / 0, üç arka a
 **PLAN-504 kapandı.** Sıradaki: PLAN-505 (guild üyelik/fealty/yetki modeli, stone
 gump menüleri).
 
+---
+
+## İŞ-37 — Lonca: kimi kabul eder (PLAN-505, 12 Eylül 2026)
+
+PLAN-505: "Üyelik/fealty/yetki modelini **önce doğrula**; stone gump menülerini bu
+modelin üstüne kur. **Eksik menü ile eksik guild çekirdeğini ayır.**"
+
+### 1. Çekirdek doğrulandı
+
+Referansın üyelik modeli (`CStoneMember.h`) bizimkiyle karşılaştırıldı:
+
+| Ayak | Referans | Bizde |
+|---|---|---|
+| Priv basamağı | CANDIDATE 0 / MEMBER 1 / MASTER 2 / ACCEPTED 4 / ENEMY 100 / ALLY 101 | aynı değerlerle `GuildPriv` |
+| Fealty | `m_UIDLoyalTo` | `GuildMember.LoyalTo` |
+| Unvan / kısaltma | `m_sTitle`, `m_fAbbrev` | `Title`, `ShowAbbrev` |
+| Hesap altını | `m_iAccountGold` | `AccountGold` |
+| Oy sayma | `m_iVoteTally` — `ElectMaster` | `ElectMaster`, fealty oyu sayar |
+| Savaş/ittifak | karşılıklı `m_fWeDeclared`/`m_fTheyDeclared` | `GuildRelation`, aynı karşılıklılık |
+| Ev/gemi | `MultiStorage` | `Houses`/`Ships`, `MaxHouses`/`MaxShips` |
+
+Anahtar tabloları da diff'lendi (`CItemStone_props.tbl` 18, `_functions.tbl` 30,
+`CStoneMember_props.tbl` 15): **özellik tarafında yalnızca `ISMEMBER` eksik**
+(iki pakette de sıfır kullanım).
+
+### 2. Kapanan boşluk — çekirdek
+
+- [x] **İŞ-37-01 (P1) — Kabul kapısı hiç yoktu.**
+  Referans `CItemStone::AddRecruit` iki şeyi reddeder (CItemStone.cpp:1074-1087):
+  (a) oyuncu olmayanı ("Only players can be members!"), (b) **aynı türden** başka
+  bir taşa bağlı olanı ("Must resign previous guild").
+
+  Bizim `GuildDef.AddRecruit` herhangi bir Serial'ı kabul ediyordu. Sonuç:
+  bir script bir NPC'yi kaydedebiliyor, ya da tek oyuncuyu aynı anda iki loncaya
+  koyabiliyordu — ve `APPLYTOJOIN` yolu ona **ikinci bir taş hafızası**
+  damgalıyordu, ki aidiyet/tekrar kontrolleri tam da onu okur.
+
+  Kural tek yere kondu (`GuildManager.GetRecruitRefusal`) ve iki fiil de
+  (`APPLYTOJOIN`, `JOINASMEMBER`) oradan geçiyor. Kasaba/lonca bağımsızlığı
+  korundu: yalnızca aynı türden taş engelliyor. Bekleyen bir adaylık da
+  engellemiyor — referans çatışmayı **üyelikten** okur.
+
+### 3. Menüler — neden yazılmadı
+
+Fiil tablosunda bizde karşılığı olmayan 17 giriş var: `VIEWROSTER`,
+`VIEWCANDIDATES`, `VIEWCHARTER`, `VIEWENEMYS`, `VIEWTHREATS`, `MASTERMENU`,
+`RETURNMAINMENU`, `ACCEPTCANDIDATE`, `REFUSECANDIDATE`, `DISMISSMEMBER`,
+`GRANTTITLE`, `RECRUIT`, `DECLAREFEALTY`, `SETNAME`, `SETABBREVIATION`,
+`SETCHARTER`, `SETGMTITLE`.
+
+İlk bakışta "17 eksik fiil, yazılmalı" görünüyordu. **Referansın kendisine
+bakınca öyle olmadığı çıktı:** `CItemStone::r_Verb` tablodaki 30 girişten yalnızca
+13'ünü ele alıyor, gerisi `default: return false`'a düşüyor
+(CItemStone.cpp:791-999). Yani bu fiiller **referansta da uygulanmıyor**;
+tabloda duran ölü girişler. Onları yazmak port etmek değil **uydurmak** olurdu.
+
+Paket ölçümü bunu destekliyor: tek çağıran
+`oldSphere/Scripts-X-main/stones/guilds/legacy_guild_menu.scp` — adında
+**legacy** yazan, eski motorun menü ekranlarını çağıran bir `[MENU]` script'i.
+Canlı pakette kullanım **sıfır**.
+
+**Ve canlı paketin menüye ihtiyacı yok:** `systems/stones/guilds/` altında kendi
+tam lonca sistemini taşıyor — 15 diyalog (`sphere_guild_dlg_*.scp`) artı kendi
+types/functions/events/speech dosyaları. Yani PLAN-505'in dediği ayırımda
+**menü eksik değil** (paket kendi menüsünü getiriyor), **çekirdek eksikti**
+(yukarıdaki kabul kapısı).
+
+### Kayıtlı sapmalar
+
+- **Red sessiz.** Referans reddi taştan konuşturur; bu motorda eşya-konuşma
+  kanalı yok ve tek satır için yeni bir statik kanca eklemek orantısız.
+- **`ATTR_OWNED` kasaba taşı anında üye yapar** (CItemStone.cpp:1089-1093).
+  Hiçbir pakette bir taşa `attr_owned` konmuyor — kayda geçti.
+- **`ISMEMBER`** üye özelliği yok; iki pakette de sıfır kullanım.
+
+**Testler:** `GuildRecruitGateParityTests` (8) — kasaba/lonca bağımsızlığı,
+bekleyen adaylığın engellememesi ve fiilin aynı kapıya sorması dahil. Kapı geri
+alındığında 4'ü kırmızıya döndü. Tam suite 3.569 / 0, üç arka arkaya koşu.
+
+**PLAN-505 kapandı.** Sıradaki: PLAN-506 (party/chat).
+

@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - Who a guild stone will take on
+----------------------------------------
+
+FIX - A stone refuses an NPC, and refuses anyone already sworn to another stone
+        of the same kind. Source-X gates both in CItemStone::AddRecruit
+        (CItemStone.cpp:1074-1087): only a player can be a member, and someone who
+        already belongs elsewhere must resign that first. There was no gate at all
+        here, so a script could enrol an NPC, or put one player in two guilds at
+        once - and the APPLYTOJOIN path then stamped them with a second stone
+        memory, which is what affiliation and dedup checks read.
+
+        A town and a guild stay independent, as they are in the reference
+        (MEMORY_TOWN vs MEMORY_GUILD): a guild member may still be a citizen. Only
+        a stone of the SAME kind blocks. A pending candidacy elsewhere does not
+        lock anybody out either - the clash is about membership.
+
+        The refusal is silent here. The reference speaks it from the stone, but
+        this engine has no item-speech channel and adding one for a single line
+        is not worth a new hook; the refusal itself is what matters.
+
+
 [2026-09-12] - A ship that says why it stopped
 ----------------------------------------
 

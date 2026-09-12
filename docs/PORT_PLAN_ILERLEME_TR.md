@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `cdd239d` + İŞ-36 (gemi duruş sebebi) |
-| Tam test | 3.561 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-505 — guild üyelik/fealty/yetki modeli, stone menüleri** |
+| Son commit | `97732ad` + İŞ-37 (lonca kabul kapısı) |
+| Tam test | 3.569 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-506 — party/chat davet-kick-ayrılma, offline üye, client matrisi** |
 
 ## Çalışma sırası
 
@@ -396,11 +396,22 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   söylemiyordu — iki dümen mesajı da kullanılmayan anahtarlar olarak duruyordu.
   `OF_MapBoundarySailing` tüketicisiz kaldı (gerekçe kayıtta).
 
+- [x] **İŞ-37 — Lonca: kimi kabul eder** (PLAN-505) — **KAPANDI**
+  PLAN-505'in istediği ayırım yapıldı: **çekirdek önce doğrulandı** (priv/fealty/
+  title/abbrev/oy/savaş-ittifak: tamam), sonra menüler bakıldı. **Bir boşluk:**
+  kabul kapısı hiç yoktu — NPC üye olabiliyor, bir oyuncu iki loncaya birden
+  girebiliyordu. **Menüler yazılmadı** ve sebebi kayda geçti: referansın kendisi
+  de o fiilleri artık uygulamıyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-37 KAPANDI** — 2026-09-12. `GetRecruitRefusal` + `TryAddRecruit`/
+  `TryJoinAsMember`; `APPLYTOJOIN` ve `JOINASMEMBER` aynı kapıdan geçiyor.
+  Test: `GuildRecruitGateParityTests` (8); kapı geri alınıp 4'ünün yakaladığı
+  doğrulandı. Tam suite 3.569, üç koşu. **PLAN-505 tamamlandı.**
 - **İŞ-36 KAPANDI** — 2026-09-12. Dümen duruş sebebini söylüyor
   (çalkantılı su / engel), harita-kenarı sınaması engel sınamasından ayrıldı.
   Test: `ShipStopReasonParityTests` (4); geri alınıp 2'sinin yakaladığı

@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `97732ad` + İŞ-37 (lonca kabul kapısı) |
-| Tam test | 3.569 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-506 — party/chat davet-kick-ayrılma, offline üye, client matrisi** |
+| Son commit | `e08d249` + İŞ-38 (sohbet gizliliği) |
+| Tam test | 3.579 başarılı / 0 başarısız |
+| Sıradaki iş | **Dalga 6 — PLAN-601** (Dalga 5 kapandı) |
 
 ## Çalışma sırası
 
@@ -403,11 +403,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   girebiliyordu. **Menüler yazılmadı** ve sebebi kayda geçti: referansın kendisi
   de o fiilleri artık uygulamıyor.
 
+- [x] **İŞ-38 — Sohbet: gizlilik düğmeleri** (PLAN-506) — **KAPANDI**
+  Party tarafı baştan sona ölçüldü ve **zaten doğru** bulundu (yetki kapısı,
+  `@PartyRemove`/`@PartyLeave` vetoları, lider ayrılınca dağılma, tek kişiye
+  düşünce dağılma, çevrimdışı üye). **Bir boşluk sohbette:** istemcinin yedi
+  gizlilik eylemi (özel mesaj aç/kapa, ad göster/gizle, `/whois`) hiç
+  işlenmiyordu. **Dalga 5 kapandı.**
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-38 KAPANDI** — 2026-09-12. İki gizlilik anahtarı + özel mesaj kapısı +
+  `/whois`. Test: `ChatPrivacyParityTests` (10); iki düzeltme tek tek geri alınıp
+  doğrulandı (2 + 7). Tam suite 3.579, üç koşu. **PLAN-506 ve Dalga 5 tamamlandı.**
 - **İŞ-37 KAPANDI** — 2026-09-12. `GetRecruitRefusal` + `TryAddRecruit`/
   `TryJoinAsMember`; `APPLYTOJOIN` ve `JOINASMEMBER` aynı kapıdan geçiyor.
   Test: `GuildRecruitGateParityTests` (8); kapı geri alınıp 4'ünün yakaladığı

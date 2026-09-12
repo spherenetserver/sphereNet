@@ -170,6 +170,57 @@ public sealed class ChatEngine
         return now;
     }
 
+    // ---- Chat privacy (per character, channel-independent) ----
+    //
+    // Two switches the chat window has buttons for and the client sends as their
+    // own actions. Source-X keeps them on the member and both default ON
+    // (CChatChanMember.cpp:8): m_fReceiving gates incoming private messages
+    // (CChatChannel.cpp:110) and m_fAllowWhoIs decides whether /whois gives your
+    // character name away (CChatChannel.cpp:53). Neither existed here, so the
+    // buttons did nothing: everyone was permanently reachable and permanently
+    // identifiable.
+
+    private readonly HashSet<Serial> _refusingPrivate = [];
+    private readonly HashSet<Serial> _anonymous = [];
+
+    /// <summary>Whether this character still accepts private messages (default
+    /// true, as in the reference).</summary>
+    public bool IsReceivingPrivate(Serial uid) => !_refusingPrivate.Contains(uid);
+
+    /// <summary>Returns the new state.</summary>
+    public bool SetReceivingPrivate(Serial uid, bool on)
+    {
+        if (on) _refusingPrivate.Remove(uid);
+        else if (uid.IsValid) _refusingPrivate.Add(uid);
+        return IsReceivingPrivate(uid);
+    }
+
+    public bool ToggleReceivingPrivate(Serial uid) =>
+        SetReceivingPrivate(uid, !IsReceivingPrivate(uid));
+
+    /// <summary>Whether /whois may reveal this character's real name (default
+    /// true, as in the reference).</summary>
+    public bool ShowsCharacterName(Serial uid) => !_anonymous.Contains(uid);
+
+    /// <summary>Returns the new state.</summary>
+    public bool SetShowCharacterName(Serial uid, bool on)
+    {
+        if (on) _anonymous.Remove(uid);
+        else if (uid.IsValid) _anonymous.Add(uid);
+        return ShowsCharacterName(uid);
+    }
+
+    public bool ToggleShowCharacterName(Serial uid) =>
+        SetShowCharacterName(uid, !ShowsCharacterName(uid));
+
+    /// <summary>Forget a character's privacy switches — they are session state,
+    /// like the ignore list, and must not outlive the character.</summary>
+    public void ForgetPrivacy(Serial uid)
+    {
+        _refusingPrivate.Remove(uid);
+        _anonymous.Remove(uid);
+    }
+
     /// <summary>Enter a channel. A member can be in one channel at a time - a
     /// successful switch leaves the previous one, a refused one changes nothing.
     /// <paramref name="create"/> tells the two client commands apart: creating needs

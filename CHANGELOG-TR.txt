@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Sohbet penceresinin gizlilik dugmeleri artik bir sey yapiyor
+----------------------------------------
+
+NEW - Ozel mesajlar kapatilabiliyor ve /whois reddedilebiliyor. Source-X iki
+        anahtari da sohbet uyesinde tutar ve ikisi de ACIK baslar
+        (CChatChanMember.cpp:8): biri gelen ozel mesajlari kapatir
+        (CChatChannel.cpp:110), digeri /whois'in karakter adinizi ele verip
+        vermeyecegini belirler (CChatChannel.cpp:53). Istemci bunlar icin yedi
+        eylem gonderiyor - +receive, -receive, /receive, +showname, -showname,
+        /showname ve /whois - ve yedisi de yere dusuruluyordu, yani dugmeler
+        hicbir sey yapmiyordu: her oyuncu temelli ulasilabilir ve temelli
+        tanimlanabilirdi.
+
+        Ozel mesaji reddetmek, yok saymakla (ignore) ayni sey degil. Yok saymak,
+        alicinin tek bir gondericiyi teslimde dusurmesidir; bu ise mesajin
+        tamamini kaynaginda geri cevirir ve gondericiye soyler - referanstaki gibi.
+
+        Iki anahtar da, yok sayma listesi gibi, oturum durumudur ve karakterin
+        sohbet oturumu bitince unutulur.
+
+
 [2026-09-12] - Bir lonca tasi kimi kabul eder
 ----------------------------------------
 

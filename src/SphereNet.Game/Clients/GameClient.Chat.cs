@@ -102,7 +102,68 @@ public sealed partial class GameClient
             case 0x79: // toggle default voice
                 ChatToggleDefaultVoice();
                 break;
+
+            // The chat window's own privacy buttons. Source-X keeps both switches
+            // on the member and both default ON (CChatChanMember.cpp:8); the
+            // client sends these as their own actions and we were dropping all
+            // seven on the floor, so the buttons did nothing at all.
+            case 0x6F: // +receive — accept private messages
+                _chatEngine?.SetReceivingPrivate(_character!.Uid, true);
+                break;
+            case 0x70: // -receive — refuse private messages
+                _chatEngine?.SetReceivingPrivate(_character!.Uid, false);
+                break;
+            case 0x71: // /receive — flip it
+                _chatEngine?.ToggleReceivingPrivate(_character!.Uid);
+                break;
+            case 0x72: // +showname — let /whois give my name
+                _chatEngine?.SetShowCharacterName(_character!.Uid, true);
+                break;
+            case 0x73: // -showname — stay anonymous
+                _chatEngine?.SetShowCharacterName(_character!.Uid, false);
+                break;
+            case 0x74: // /showname — flip it
+                _chatEngine?.ToggleShowCharacterName(_character!.Uid);
+                break;
+            case 0x75: // /whois <name>
+                ChatWhoIs(text);
+                break;
         }
+    }
+
+    /// <summary>0x75 — who is behind a chat handle. Source-X answers with the
+    /// character name only when that member allows it, and says they are anonymous
+    /// otherwise (CChatChannel::WhoIs, CChatChannel.cpp:43-61). Asking from outside
+    /// a channel is not answered at all, as with every other channel command.</summary>
+    private void ChatWhoIs(string targetName)
+    {
+        if (_character == null || _chatEngine == null)
+            return;
+        if (_chatEngine.GetMemberChannel(_character.Uid) == null)
+            return;
+
+        targetName = targetName.Trim();
+        if (targetName.Length == 0)
+            return;
+
+        var target = _chatEngine.FindByChatName(targetName);
+        if (!target.IsValid)
+        {
+            Send(PacketChatSystem.MakeChannelMessage("SYSTEM",
+                $"There is no player named '{targetName}'."));
+            return;
+        }
+
+        if (!_chatEngine.ShowsCharacterName(target))
+        {
+            Send(PacketChatSystem.MakeChannelMessage("SYSTEM",
+                $"{targetName} is remaining anonymous."));
+            return;
+        }
+
+        var targetChar = _world.FindChar(target);
+        Send(PacketChatSystem.MakeChannelMessage("SYSTEM",
+            $"{targetName} is known in the world as {targetChar?.Name ?? targetName}."));
     }
 
     /// <summary>Drop chat membership on disconnect so channels don't hold
@@ -110,7 +171,10 @@ public sealed partial class GameClient
     public void ChatOnDisconnect()
     {
         if (_character != null)
+        {
             ChatLeaveChannel();
+            _chatEngine?.ForgetPrivacy(_character.Uid);
+        }
     }
 
     private void ChatJoinChannel(string channelName, string? password, bool create)
@@ -294,6 +358,16 @@ public sealed partial class GameClient
         var target = _chatEngine.FindByChatName(targetName);
         if (!target.IsValid || target == _character.Uid)
             return;
+
+        // Source-X refuses the whole message when the recipient has switched
+        // private messages off, and tells the sender so (CChatChannel.cpp:110) —
+        // it is not merely suppressed at delivery like an ignore.
+        if (!_chatEngine.IsReceivingPrivate(target))
+        {
+            Send(PacketChatSystem.MakeChannelMessage("SYSTEM",
+                $"{targetName} is not receiving private messages."));
+            return;
+        }
 
         string myName = _chatEngine.GetChatName(_character.Uid);
         // The sender always sees what they sent.

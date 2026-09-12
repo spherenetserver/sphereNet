@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - The chat window's privacy buttons do something now
+----------------------------------------
+
+NEW - Private messages can be switched off, and /whois can be refused. Source-X
+        keeps both switches on a chat member and both default ON
+        (CChatChanMember.cpp:8): one gates incoming private messages
+        (CChatChannel.cpp:110), the other decides whether /whois gives your
+        character name away (CChatChannel.cpp:53). The client sends seven actions
+        for them - +receive, -receive, /receive, +showname, -showname, /showname
+        and /whois - and all seven were dropped on the floor, so the buttons did
+        nothing at all: every player was permanently reachable and permanently
+        identifiable.
+
+        Refusing private messages is not the same as an ignore. An ignore is the
+        recipient dropping one sender at delivery; this turns the whole message
+        away at the source and tells the sender so, as the reference does.
+
+        Both switches are session state, like the ignore list, and are forgotten
+        when the character's chat session ends.
+
+
 [2026-09-12] - Who a guild stone will take on
 ----------------------------------------
 

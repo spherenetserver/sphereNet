@@ -4897,3 +4897,66 @@ alındığında 4'ü kırmızıya döndü. Tam suite 3.569 / 0, üç arka arkaya
 
 **PLAN-505 kapandı.** Sıradaki: PLAN-506 (party/chat).
 
+---
+
+## İŞ-38 — Sohbet: gizlilik düğmeleri (PLAN-506, 12 Eylül 2026)
+
+### Party — ölçüldü, değiştirilmedi
+
+Anahtar tablosu (`CParty_props.tbl` 7, `CParty_functions.tbl` 10) diff'lendi:
+yalnızca `SETMASTER` ve `SPEECHFILTER` karşılıksız, **ikisi de iki pakette de
+sıfır kullanım** (`SPEECHFILTER`'ın tek eşleşmesi bir sözdizimi-renklendirme
+tanım dosyası). Davranış tarafı da doğru çıktı:
+
+| Ayak | Kanıt |
+|---|---|
+| Çıkarma yetkisi | Kendini ya da usta ise başkasını (CParty.cpp:304) — aynı kapı var |
+| İki veto | `@PartyRemove` sonra `@PartyLeave`, ikisi de `RETURN 1` ile durdurur (:316-325) — ikisi de koşuyor |
+| Lider ayrılınca | İstemci komutu **dağıtır** (fDisband) — `Disband` yoluna gidiyor |
+| Tek kişiye düşünce | Dağılır (:359) — `PartyManager.Leave` aynısını yapar |
+| `@PartyDisband` zamanı | Dağılmadan ÖNCE, kalacak üye üzerinde (:375) — aynı |
+| Çevrimdışı üye | `SendMemberMsg` istemci yoksa paketi atlar (:168), `SetDisconnected` gruptan çıkarır — ikisi de böyle |
+| Grup sohbeti | Alıcı grupta değilse düşer (:242) — aynı |
+
+### Kapanan boşluk — sohbet
+
+- [x] **İŞ-38-01 (P2) — İstemcinin yedi gizlilik eylemi hiç işlenmiyordu.**
+  Referans sohbet üyesinde iki anahtar tutar, **ikisi de açık başlar**
+  (`CChatChanMember.cpp:8`):
+
+  | Anahtar | Ne yapar |
+  |---|---|
+  | `m_fReceiving` | Gelen özel mesajları kapatır (CChatChannel.cpp:110) |
+  | `m_fAllowWhoIs` | `/whois`'in karakter adını verip vermeyeceği (CChatChannel.cpp:53) |
+
+  İstemci bunlar için yedi ayrı eylem gönderiyor (`0x6F` +receive, `0x70`
+  -receive, `0x71` /receive, `0x72` +showname, `0x73` -showname, `0x74`
+  /showname, `0x75` /whois) ve `HandleChatAction`'daki switch **hiçbirini**
+  tanımıyordu — yedisi de sessizce düşüyordu. Sonuç: düğmeler hiçbir işe
+  yaramıyor, her oyuncu temelli ulaşılabilir ve temelli tanımlanabilir.
+
+  **Önemli ayrım:** özel mesajı reddetmek, **yok saymak (ignore) değildir.**
+  Yok sayma alıcının tek bir göndericiyi teslimde düşürmesidir; reddetme ise
+  referansta mesajı **kaynağında** geri çevirir ve göndericiye söyler. Test bu
+  ikisinin karışmadığını ayrıca doğrulıyor.
+
+  İki anahtar da — yok sayma listesi gibi — oturum durumu; sohbet oturumu
+  bitince unutuluyor.
+
+### Kayıtlı sapmalar
+
+- **`SPEECHFILTER`** yok. Referansta grup sohbetinde her mesaj için çağırılan bir
+  script FUNCTION adı (ARGN1 konuşan, ARGN2 hedef, ARGS metin, `RETURN 1`
+  bastırır; CParty.cpp:252-266). Hiçbir pakette kullanılmıyor.
+- **`SETMASTER`** party fiili yok (içeride `PartyDef.SetMaster` var). Paketlerde
+  sıfır kullanım.
+- **`/whois` yanıtları düz metin.** `defmessages` anahtarı eklemek yerine, aynı
+  katmandaki mevcut uygulamaya uyuldu.
+
+**Testler:** `ChatPrivacyParityTests` (10). Özel mesaj kapısı geri alındığında 2,
+yedi eylem geri alındığında 7 test kırmızıya döndü. Tam suite 3.579 / 0, üç arka
+arkaya koşu.
+
+**PLAN-506 kapandı — Dalga 5 (housing, gemi ve sosyal sistemler) tamamlandı.**
+Sıradaki: Dalga 6.
+

@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Skills;
@@ -34,6 +34,12 @@ public sealed partial class GameClient
 
     public void SendAosTooltip(Objects.ObjBase obj, bool requested, bool invalidate = false) =>
         SkillUse.SendAosTooltip(obj, requested, invalidate);
+
+    /// <summary>0xBF 0x19 type 0 - tell this client a creature is bonded. Source-X
+    /// sends it for a bonded NPC ghost when the char is drawn (CClientMsg.cpp:1201)
+    /// and again with isGhost=false when it is resurrected (CCharSpell.cpp:484).</summary>
+    public void SendBondedStatus(Objects.Characters.Character ch, bool isGhost) =>
+        Send(new SphereNet.Network.Packets.Outgoing.PacketBondedStatus(ch.Uid.Value, isGhost));
 
     public void HandleTradeRequest(uint targetUid) => SkillUse.HandleTradeRequest(targetUid);
 

@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - A bonded pet's ghost says it is bonded
+----------------------------------------
+
+NEW - 0xBF 0x19 type 0x00, bonded status. That sub-command carries FOUR different
+        messages in the reference, told apart by the byte after it
+        (sphereproto.h:243-246); only the stat-lock half (type 0x02) existed here.
+        A bonded pet's ghost was therefore never announced as bonded to anyone
+        watching - and bonded pets really do stay in the world as ghosts here
+        rather than being deleted. Sent when the char is drawn for an NPC that is
+        bonded and dead (CClientMsg.cpp:1201), and again with the ghost flag down
+        to everyone who can see it when it is resurrected (CCharSpell.cpp:484).
+
+DOC - docs/PAKET_MATRISI_TR.md replaces "109 outgoing classes vs 124" with an
+        opcode/sub-command measurement. Counting classes misses this gap in both
+        directions: it shows 0x19 as present because a class for it exists, and
+        it shows a deficit where one of our classes already covers several of the
+        reference's. The reference defines 35 distinct EXTDATA values; we receive
+        16 of them and send 14, and sub-command 0x06 alone is four of our classes.
+
+
 [2026-09-12] - Which AOS properties the running content actually uses
 ----------------------------------------
 

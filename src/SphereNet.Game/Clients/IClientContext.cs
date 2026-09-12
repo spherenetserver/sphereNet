@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -132,6 +132,9 @@ internal interface IClientContext : ITextConsole
     /// item leave a container.</summary>
     OpenedContainerRegistry OpenedContainers { get; }
     void SendAosTooltip(ObjBase obj, bool requested, bool invalidate = false);
+
+    /// <summary>0xBF 0x19 type 0 - a creature is bonded (Source-X addBondedStatus).</summary>
+    void SendBondedStatus(Objects.Characters.Character ch, bool isGhost);
     void SendSkillList();
     void SendPickupFailed(byte reason);
     bool CanSendStatusFor(Character ch);

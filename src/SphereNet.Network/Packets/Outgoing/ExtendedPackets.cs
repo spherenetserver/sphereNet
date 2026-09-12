@@ -1691,7 +1691,40 @@ public sealed class PacketMapPlot : PacketWriter
     }
 }
 
-/// <summary>0xBF sub 0x19 — Stat lock info. Tells client current lock
+/// <summary>0xBF sub 0x19, type 0x00 — bonded status.
+///
+/// Sub-command 0x19 carries TWO unrelated messages, told apart by the byte after
+/// it: type 0x00 is this one and type 0x02 is the stat locks below
+/// (EXTDATA_BondedStatus / EXTDATA_Stats_Enable, sphereproto.h:243-244). Only the
+/// stat-lock half existed here, so a bonded pet's ghost was never marked as
+/// bonded for anyone watching — a gap an inventory of packet CLASSES cannot see,
+/// because the class for 0x19 was present all along.
+///
+/// Layout mirrors PacketBondedStatus (send.cpp:4307): total length 11.</summary>
+public sealed class PacketBondedStatus : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly bool _isGhost;
+
+    public PacketBondedStatus(uint serial, bool isGhost) : base(0xBF)
+    {
+        _serial = serial;
+        _isGhost = isGhost;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(16);
+        buf.WriteUInt16(0x0019); // sub-command
+        buf.WriteByte(0x00);     // type 0 = bonded status (2 would be stat locks)
+        buf.WriteUInt32(_serial);
+        buf.WriteByte((byte)(_isGhost ? 1 : 0));
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0xBF sub 0x19, type 0x02 — Stat lock info. Tells client current lock
 /// state for STR/DEX/INT (0=up, 1=down, 2=locked).</summary>
 public sealed class PacketStatLockInfo : PacketWriter
 {

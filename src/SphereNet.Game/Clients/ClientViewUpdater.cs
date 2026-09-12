@@ -166,6 +166,12 @@ public sealed class ClientViewUpdater
             uint uid = ch.Uid.Value;
             View.KnownChars.Add(uid);
             View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            // A bonded pet's ghost is announced as bonded to whoever can see it
+            // (Source-X addChar, CClientMsg.cpp:1196-1202). Without this the
+            // client has no way to tell that ghost from any other corpse-less
+            // body — and bonded pets DO stay in the world as ghosts here.
+            if (!ch.IsPlayer && ch.IsBonded && ch.IsDead)
+                _client.SendBondedStatus(ch, isGhost: true);
             _client.SendAosTooltip(ch, requested: false);
         }
 

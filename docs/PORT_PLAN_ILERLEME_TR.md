@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `ef9789d` + İŞ-40 (AOS property matrisi) |
-| Tam test | 3.585 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-603 — paket opcode/subcommand/version/length matrisi** |
+| Son commit | `0889304` + İŞ-41 (paket matrisi + bonded) |
+| Tam test | 3.588 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-604 — no-crypt/şifreleme akışları, TCP parçalanma, relay** |
 
 ## Çalışma sırası
 
@@ -423,11 +423,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   tüketicisi yok. Planın uyardığı "tooltip'te var, etkisi tamam" yanılgısı bizde
   **ters yönde**: tooltip hiçbir component property'si yayınlamıyor.
 
+- [x] **İŞ-41 — Paket matrisi ve bonded durumu** (PLAN-603) — **KAPANDI**
+  Paket katmanı artık sınıf sayısıyla değil [opcode/alt-komut
+  matrisiyle](PAKET_MATRISI_TR.md) ölçülüyor. Ölçümün bulduğu gerçek boşluk:
+  `0xBF 0x19` referansta **dört** mesaj taşıyor, bizde yalnızca stat-kilidi yarısı
+  vardı — bonded bir evcil hayvanın hayaleti kimseye bonded olarak
+  bildirilmiyordu.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-41 KAPANDI** — 2026-09-12. `PacketBondedStatus` + iki gönderim noktası +
+  `docs/PAKET_MATRISI_TR.md`. Test: `BondedStatusPacketParityTests` (3).
+  Tam suite 3.588, üç koşu. **PLAN-603 tamamlandı.**
 - **İŞ-40 KAPANDI** — 2026-09-12. `docs/AOS_PROPERTY_MATRISI_TR.md` +
   `AosPropertyCoverageGuardrailTests` (3). Tam suite 3.585, üç koşu.
   **PLAN-602 tamamlandı.**

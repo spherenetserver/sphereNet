@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Bonded bir evcil hayvanin hayaleti bonded oldugunu soyluyor
+----------------------------------------
+
+NEW - 0xBF 0x19 tip 0x00, bonded durumu. Bu alt-komut referansta DORT ayri mesaj
+        tasiyor ve onlari kendisinden sonraki bayt ayiriyor
+        (sphereproto.h:243-246); bizde yalnizca stat-kilidi yarisi (tip 0x02)
+        vardi. Dolayisiyla bonded bir evcil hayvanin hayaleti izleyen hic kimseye
+        bonded olarak bildirilmiyordu - ustelik bu motorda bonded pet'ler olunce
+        silinmeyip gercekten hayalet olarak dunyada kaliyor. Karakter cizilirken
+        NPC + bonded + olu ise (CClientMsg.cpp:1201) ve diriltmede goren her
+        istemciye hayalet bayragi indirilmis olarak (CCharSpell.cpp:484)
+        gonderiliyor.
+
+DOC - docs/PAKET_MATRISI_TR.md, "109 giden sinif / 124" olcusunu opcode ve
+        alt-komut olcumuyle degistiriyor. Sinif saymak bu boslugu iki yonde birden
+        kaciriyor: 0x19 icin bir sinif var diye onu tamam gosteriyor, ve bizim tek
+        sinifimizin referansta birkac sinifa karsilik geldigi yerde eksik
+        gosteriyor. Referans 35 ayri EXTDATA degeri tanimliyor; biz 16'sini aliyor
+        14'unu gonderiyoruz, ve yalniz 0x06 alt-komutu bizde dort sinif.
+
+
 [2026-09-12] - Calisan icerik AOS property'lerinin hangisini kullaniyor
 ----------------------------------------
 

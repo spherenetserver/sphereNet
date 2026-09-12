@@ -1666,6 +1666,20 @@ public static partial class Program
                     victimClient.OnResurrect();
                 else
                     victim.Resurrect();
+
+                // A resurrected creature is announced as no longer a ghost to
+                // everyone who can see it (Source-X Spell_Resurrection,
+                // CCharSpell.cpp:482-484) — otherwise a bonded pet that was raised
+                // keeps the ghost marker its death put there.
+                if (!victim.IsPlayer && !victim.IsDead && _world != null)
+                {
+                    foreach (var viewer in _world.GetCharsInRange(victim.Position, 18))
+                    {
+                        if (!viewer.IsPlayer) continue;
+                        if (_clientsByCharUid.TryGetValue(viewer.Uid, out var viewerClient))
+                            viewerClient.SendBondedStatus(victim, isGhost: false);
+                    }
+                }
             };
             Character.OnJailReleaseRequested = inmate =>
             {

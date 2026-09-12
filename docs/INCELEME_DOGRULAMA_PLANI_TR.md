@@ -5091,3 +5091,66 @@ tablosu ve iki paketin kullanımı.
 **PLAN-602 kapandı.** Sıradaki: PLAN-603 (paket matrisini sınıf sayısı yerine
 opcode/subcommand/version/length ile ölç).
 
+---
+
+## İŞ-41 — Paket matrisi ve bonded durumu (PLAN-603, 12 Eylül 2026)
+
+PLAN-603: *"Paketleri sınıf sayısı yerine opcode/subcommand/version/length/read/
+write matrisiyle ölç. **BondedStatus vb. isim eksiklerini başka paketle eşdeğer
+karşılanıp karşılanmadığı açısından incele.**"*
+
+### Planın adlandırdığı örnek gerçek çıktı
+
+Plan örnek olarak `BondedStatus`'u veriyor ve "başka bir paketle eşdeğer
+karşılanıyor mu?" diye sormamızı istiyor. Cevap: **hayır, karşılanmıyor** — ve
+nedeni tam olarak sınıf saymayı yanıltan şey.
+
+Referansta `0xBF 0x19` **tek bir alt-komut değer** ama **dört ayrı mesaj**
+taşıyor (`sphereproto.h:243-246`), onları kendisinden sonraki tip baytı ayırıyor:
+
+| Ayrım | Anlamı | Bizde |
+|---|---|---|
+| `0x19` + `0x00` | **BondedStatus** | **yoktu** |
+| `0x19` + `0x02` | Stats_Enable (stat kilitleri) | vardı |
+| `0x19` + `0x05.0xff` | NewBondedStatus | referans bile "var mı?" diye yorumlamış |
+| `0x19` | StatueAnimation | yok |
+
+Bizde `0x19` için bir sınıf (`PacketStatLockInfo`) zaten vardı, yani bir sınıf
+envanteri bu alt-komutu "tamam" sayar ve boşluğu **hiç göremezdi.**
+
+### Boşluğun canlı sonucu
+
+Bu motorda bonded pet'ler ölünce silinmiyor, **hayalet olarak dünyada kalıyor**
+(İŞ-31'de ölçülmüştü). Paket olmadığı için istemci o hayaleti bonded olarak
+işaretleyemiyordu. Referansın iki gönderim noktası portlandı:
+
+- karakter çizilirken, NPC + bonded + ölü ise `isGhost=1` (CClientMsg.cpp:1201)
+- diriltmede, gören her istemciye `isGhost=0` (CCharSpell.cpp:484)
+
+Paket biçimi referanstan birebir: `0xBF`, uzunluk 11, alt-komut `0x0019`, tip
+`0x00`, uid, hayalet bayrağı (send.cpp:4307).
+
+### Ölçüm: opcode/alt-komut
+
+Referans **35 ayrı** `EXTDATA_*` değeri tanımlıyor (38 isim; `0x19` dördü birden).
+
+| Yön | Bizde | Değerler |
+|---|---:|---|
+| Gelen | 16 | 05 06 07 09 0A 0B 13 15 1A 1C 1E 24 2C 2E 32 33 |
+| Giden | 14 | 01 02 04 06 08 16 17 18 19 1B 1D 20 22 26 |
+
+Sınıf saymayı ters yönde de yanıltan şey aynı tabloda görünüyor: `0x06`
+alt-komutunu bizde **dört** sınıf yazıyor (`PartyInvitation`, `PartyMemberList`,
+`PartyMessage`, `PartyRemoveMember`). "109 sınıf / 124" bu yüzden anlamsız bir
+oran.
+
+### Test
+
+`BondedStatusPacketParityTests` (3) — biri `0x19`'un **iki yarısını birlikte**
+sınıyor: ikisi de aynı alt-komutu yazıyor ve yalnızca tip baytıyla ayrılıyor,
+yani birini tek başına sabitleyen bir test çakışmayı yakalayamaz.
+
+**PLAN-603 kapandı.** Sıradaki: PLAN-604 (no-crypt ve şifreleme akışlarını
+gerçek TCP oturumu, paket parçalanması/birleşmesi, relay ve reconnect ile
+doğrula).
+

@@ -57,7 +57,12 @@ public sealed class MovementEngine
     /// </summary>
     public bool TryMove(Objects.Characters.Character ch, Direction dir, bool running, byte sequence)
     {
-        return TryMoveDetailed(ch, dir, running, sequence, out _);
+        bool moved = TryMoveDetailed(ch, dir, running, sequence, out _);
+        // Load-profile counter (PLAN-701): one interlocked add at the single
+        // public entry, so a soak run can say how much walking it actually did
+        // and how much of it the walk check turned away.
+        Diagnostics.LoadProfile.CountMove(moved);
+        return moved;
     }
 
     /// <summary>Same as <see cref="TryMove"/> but returns a

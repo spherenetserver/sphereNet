@@ -13,10 +13,10 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 
 | Alan | Değer |
 |---|---|
-| Son güncelleme | 2026-09-12 |
-| Son commit | `30c6d0b` + İŞ-43 (SAVESTATICS kapsamı) |
-| Tam test | 3.602 başarılı / 0 başarısız |
-| Sıradaki iş | **Dalga 7 — PLAN-701** (Dalga 6 kapandı) |
+| Son güncelleme | 2026-09-13 |
+| Son commit | `d15a499` + İŞ-44 (yük profili) |
+| Tam test | 3.612 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-704 — kayıt hatası/kurtarma tatbikatı** |
 
 ## Çalışma sırası
 
@@ -443,11 +443,22 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   yazıyordu. `USEMAPDIFFS` yazılmadı — bu shard'da ne ini anahtarı ne diff
   dosyası var. **Dalga 6 kapandı.**
 
+- [x] **İŞ-44 — Tekrarlanabilir yük profili** (PLAN-701 + PLAN-703) — **KAPANDI**
+  `LoadProfile.Capture` planın adını verdiği bütün sayacları tek kayıtta alıyor
+  (oyuncu/NPC/spawner, hareket, savaş, script geri çağrımı, kayıt sıklığı +
+  tick p50/p95/p99, kayıt süresi, bellek, GC, kuyruk, açıklanamayan nesne).
+  **PLAN-702 (soak koşuları) bu turda çalıştırılmadı** — planın kendisi de
+  öyle diyor; bu iş onların tüketeceği ölçüm zeminini kuruyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-44 KAPANDI** — 2026-09-13. `LoadProfile` + üç sayac (hareket, trigger,
+  kayıt) + `ResetEngineStatics` kaydı. Test: `LoadProfileTests` (10).
+  Tam suite 3.612, dört koşu — İŞ-43'ün açık kalemi bu dört koşuda da
+  tekrar etmedi. **PLAN-701 ve PLAN-703 tamamlandı.**
 - **İŞ-43 KAPANDI** — 2026-09-12. `ExportStatics` sektör-kapsamı (kap içi +
   multi dışlanıyor). Test: `SaveStaticsScopeParityTests` (6); geri alınıp
   4'ünün yakaladığı doğrulandı. Tam suite 3.602. **PLAN-605 ve Dalga 6

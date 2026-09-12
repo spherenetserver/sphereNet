@@ -5264,3 +5264,68 @@ kırmızıya döndü.
 **PLAN-605 kapandı — Dalga 6 (modern özellikler ve sürüm uyumluluğu)
 tamamlandı.** Sıradaki: Dalga 7 (operasyon ve sürüm kabulü).
 
+---
+
+## İŞ-44 — Tekrarlanabilir yük profili (PLAN-701 + PLAN-703, 13 Eylül 2026)
+
+PLAN-701: *"Tekrarlanabilir yük profili: oyuncu/NPC/spawner sayısı, hareket,
+savaş, script callback ve save sıklığı kaydedilsin."*
+PLAN-703: *"Tick p50/p95/p99, save süresi, process memory, GC pause, bağlantı
+kuyruğu ve açıklanamayan nesne sayısı değişimini ölç."*
+
+### Zaten var olanlar
+
+| Parça | Nerede |
+|---|---|
+| Tick p50/p95/p99 | `TickHistogram` (`Program.Tick.cs:464` besliyor) |
+| Bellek / GC | `StressTestEngine.LogReport` deseni |
+| Açıklanamayan nesne | `WorldInvariantAuditor.Audit` |
+| Yük üretimi | `StressTestEngine.QueueGenerate` |
+
+Eksik olan **bunları bir arada, aynı anda, aynı biçimde alan tek bir kayıttı.**
+İki soak koşusu ancak aynı sayılar aynı şekilde toplandıysa karşılaştırılabilir;
+her çağıranın kendi derlemesini yapması bunu imkansız kılar.
+
+### Eklenen
+
+`LoadProfileSnapshot` — 23 alanlık tek kayıt, sabit sırada `ToString()` ile
+log'da ya da tabloda diff'lenebilir.
+
+Üç sayac, her biri **var olan bir boğazda tek bir interlocked ekleme**:
+
+| Sayac | Nokta | Neden orası |
+|---|---|---|
+| Hareket (kabul/red) | `MovementEngine.TryMove` | Tek genel giriş; algoritmanın içine dokunmuyor |
+| Script geri çağrımı | `TriggerDispatcher.FireCharTrigger` | Char trigger'ların huni noktası |
+| Kayıt (süre + sayı) | `FinishSaveSuccess` | Senkron ve arka plan kipleri **ikisi de** burada biter |
+
+### İki bilinçli karar
+
+- **Hiçbir eşik konmadı.** Planın kabul ölçütü "ölçülmeyen latans için rastgele
+  milisaniye hedefi konmaz" diyor. Kayıt yalnızca ölçüyor; eşikler hedef
+  donanımdaki ilk baseline'dan çıkacak.
+- **"Ölçülmedi" ile "sıfır" ayrı.** Nesne denetimi pahalı olduğu için bir
+  anlık görüntü onu atlayabilir; atlayan `-1` bildiriyor. İkisini birleştirmek,
+  soak raporunun hiç bakmadığı bir dünyayı temiz ilan etmesine yol açardı —
+  ayrı bir test bunu sabitliyor.
+
+### Kapsam dışı — açıkça
+
+**PLAN-702 (2/8/24 saatlik soak koşuları) bu turda çalıştırılmadı.** Planın
+kendisi de "süreler kabul planı önerisidir; bu tur çalıştırılmadı" diyor. İŞ-44
+o koşuların tüketeceği ölçüm zeminini kuruyor, koşunun kendisini değil.
+
+### Test altyapısı
+
+Sayaclar süreç çapında statik ve karakter hareket ettiren / char trigger
+ateşleyen her test onları artırıyor. CLAUDE.md kuralı gereği
+`ResetEngineStatics.Reset()`'e eklendi, yani bir profil iddiası kendi testini
+ölçüyor, öncekileri değil.
+
+**Testler:** `LoadProfileTests` (10). Tam suite 3.612 / 0, dört koşu.
+İŞ-43'te kaydedilen açık kalem (tekrar üretilemeyen tek başarısızlık) bu dört
+koşuda da tekrar etmedi; açık kalmaya devam ediyor.
+
+**PLAN-701 ve PLAN-703 kapandı.** Sıradaki: PLAN-704 (kayıt sırasında kapanma,
+bozuk shard dosyası, son iyi kayda dönüş tatbikatı).
+

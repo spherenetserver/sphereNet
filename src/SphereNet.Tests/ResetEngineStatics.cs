@@ -157,6 +157,10 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.World.Regions.Region.OnAllClients = null;
         SphereNet.Game.World.Regions.Room.OnAllClients = null;
         SphereNet.Game.Movement.WalkCheck.ResolveCustomDesign = null;
+        // Load-profile counters are process-wide and are bumped by any test that
+        // moves a character or fires a char trigger; zero them per test so a
+        // profile assertion measures its own test and not the ones before it.
+        SphereNet.Game.Diagnostics.LoadProfile.Reset();
         SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = null;
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;

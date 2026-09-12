@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -369,6 +369,10 @@ public static partial class Program
         _systemHooks.DispatchServer("save_ok", _serverHookContext);
         sw.Stop();
         double secs = sw.Elapsed.TotalSeconds;
+        // Load-profile counter (PLAN-703): save duration and frequency are two of
+        // the numbers a soak run compares between snapshots. Both save modes end
+        // here, so one call covers synchronous and background alike.
+        SphereNet.Game.Diagnostics.LoadProfile.CountSave(sw.ElapsedMilliseconds);
         _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
         BroadcastToAllPlayers(
             ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),

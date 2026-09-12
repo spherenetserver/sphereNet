@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A load profile a soak run can actually compare
+----------------------------------------
+
+NEW - LoadProfile.Capture takes one record of what the server is carrying and
+        how it is coping: players, NPCs, items, spawners, characters in combat,
+        accepted and rejected moves, script callbacks fired, tick p50/p95/p99/max,
+        last save duration and count, working set, managed heap, GC generations
+        and last pause, outbound queue depth, and the object-audit count.
+
+        Two runs are only worth comparing if the same numbers were gathered the
+        same way, so this collects the whole set in one pass rather than leaving
+        each caller to assemble its own. Nothing here judges the numbers - the
+        plan is explicit that thresholds come from a first baseline on the target
+        hardware.
+
+        Three counters back it, each a single interlocked add at an existing
+        choke point: the movement entry, the char-trigger dispatch, and the one
+        place both save modes finish. Reset() zeroes them so a run describes
+        itself rather than the whole process lifetime.
+
+        "Not measured" is kept distinct from "zero": the object audit is
+        expensive enough to skip, and a snapshot that skipped it reports -1 rather
+        than claiming a clean world it never checked.
+
+
 [2026-09-12] - What SAVESTATICS writes, and what it leaves alone
 ----------------------------------------
 

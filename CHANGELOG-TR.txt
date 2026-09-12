@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Soak kosusunun gercekten karsilastirabilecegi bir yuk profili
+----------------------------------------
+
+NEW - LoadProfile.Capture, sunucunun neyi tasidigini ve nasil bas ettigini tek bir
+        kayitta aliyor: oyuncu, NPC, esya, spawner, savasan karakter sayisi, kabul
+        ve reddedilen hareketler, atesleren script geri cagrimlari, tick
+        p50/p95/p99/max, son kayit suresi ve sayisi, working set, yonetilen yigin,
+        GC kusaklari ve son duraklama, giden kuyruk derinligi ve nesne denetimi
+        sayisi.
+
+        Iki kosu ancak ayni sayilar ayni sekilde toplanmissa karsilastirilabilir,
+        bu yuzden kumenin tamami tek geciste toplaniyor. Burada hicbir sey sayilari
+        yargilamiyor - plan esiklerin hedef donanimda ilk baseline'dan cikacagini
+        acikca soyluyor.
+
+        Arkasinda uc sayac var, her biri var olan bir bogazda tek bir interlocked
+        ekleme: hareket girisi, char-trigger dagitimi ve iki kayit kipinin de
+        bittigi tek nokta. Reset() onlari sifirliyor, boylece bir kosu butun
+        surecin degil kendisinin hikayesini anlatiyor.
+
+        "Olculmedi" ile "sifir" ayri tutuldu: nesne denetimi atlanacak kadar
+        pahali ve onu atlayan bir kayit, hic bakmadigi bir dunyayi temiz ilan
+        etmek yerine -1 bildiriyor.
+
+
 [2026-09-12] - SAVESTATICS neyi yazar, neye dokunmaz
 ----------------------------------------
 

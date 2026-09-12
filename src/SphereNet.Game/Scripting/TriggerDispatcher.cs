@@ -222,6 +222,10 @@ public sealed class TriggerDispatcher
     /// </summary>
     public TriggerResult FireCharTrigger(Character ch, CharTrigger trigger, TriggerArgs args)
     {
+        // Load-profile counter (PLAN-701): script callback volume is one of the
+        // numbers a soak run is supposed to record, and this is where char
+        // triggers funnel through.
+        Diagnostics.LoadProfile.CountTrigger();
         var result = FireCharTriggerByName(ch, GetCharTriggerName(trigger), args);
         if (result == TriggerResult.True)
             return result;

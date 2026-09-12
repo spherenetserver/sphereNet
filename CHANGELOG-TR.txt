@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - SAVESTATICS neyi yazar, neye dokunmaz
+----------------------------------------
+
+FIX - SAVESTATICS artik bir kabin icindeki static isaretli esyayi da, bir multi'yi
+        de disari yazmiyor. Source-X SEKTORLERI gezer ve orada buldugu ATTR_STATIC
+        esyalari yazar, multi'leri atlar (CWorld.cpp:1256-1277). Kabin icindeki bir
+        esya bir sektorde durmaz ve yazilacak bir dunya konumu yoktur; bir multi
+        ise yapidir ve statics dosyasina yazmak onu ice aktarmada bina yerine bos
+        bir esya olarak geri getirir. Bizdeki suzgec "bayragi tasiyan her nesne"
+        idi ve iki kurali da gozetmiyordu.
+
+        Kapsam, plan acikca istedigi icin: referansin SAVESTATICS'i de bir metin
+        script yedegi yazar, .mul degil. Iki motorda da hicbir zaman harita ciktisi
+        olmadi; terrain/statics .mul dosyalari bunun dokunmadigi ayri bir konu.
+        USEMAPDIFFS yazilmadi ve bu shard'da tuketicisi yok - ini onu ayarlamiyor
+        ve mul klasorunde tek bir mapdif/stadif dosyasi bile yok.
+
+
 [2026-09-12] - Login boru hattina, TCP'nin verdigi gibi vermek
 ----------------------------------------
 

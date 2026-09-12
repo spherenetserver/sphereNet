@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `99dd563` + İŞ-42 (TCP parçalanma) |
-| Tam test | 3.596 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-605 — USEMAPDIFFS/map/statics ve native SAVESTATICS** |
+| Son commit | `30c6d0b` + İŞ-43 (SAVESTATICS kapsamı) |
+| Tam test | 3.602 başarılı / 0 başarısız |
+| Sıradaki iş | **Dalga 7 — PLAN-701** (Dalga 6 kapandı) |
 
 ## Çalışma sırası
 
@@ -436,11 +436,25 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   değil **başa** ekliyordu, yani parcali besleme ifade edilemiyordu. Yardımcı
   düzeltildi; **çerçeveleyicinin kendisi zaten doğruymuş.**
 
+- [x] **İŞ-43 — SAVESTATICS kapsamı ve iş paketi ayrımı** (PLAN-605) — **KAPANDI**
+  Planın "metin statics export'unu tam harita çıktısı sayma" uyarısı ölçüldü:
+  **referansın SAVESTATICS'i de metin script yedeği yazıyor**, yani ikisi de harita
+  çıktısı değil. **Bir boşluk:** süzgecimiz kap içindeki eşyayı ve multi'yi de
+  yazıyordu. `USEMAPDIFFS` yazılmadı — bu shard'da ne ini anahtarı ne diff
+  dosyası var. **Dalga 6 kapandı.**
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-43 KAPANDI** — 2026-09-12. `ExportStatics` sektör-kapsamı (kap içi +
+  multi dışlanıyor). Test: `SaveStaticsScopeParityTests` (6); geri alınıp
+  4'ünün yakaladığı doğrulandı. Tam suite 3.602. **PLAN-605 ve Dalga 6
+  tamamlandı.**
+  — **Açık kalem:** 12 tam suite koşusunun **birinde** adı yakalanamayan tek bir
+  başarısızlık görüldü; sonraki 11 koşu ve yeni testlerin 5 ayrı stres koşusu
+  temiz. Tekrar üretilemedi, kayda geçti.
 - **İŞ-42 KAPANDI** — 2026-09-12. `InjectReceived` sona ekliyor +
   `TcpFramingIntegrationTests` (8). Geri alınıp 4'ünün yakaladığı doğrulandı.
   Tam suite 3.596, üç koşu. **PLAN-604 tamamlandı.**

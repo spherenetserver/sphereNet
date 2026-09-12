@@ -5211,3 +5211,56 @@ kırmızıya döndü. Tam suite 3.596 / 0, üç arka arkaya koşu.
 **PLAN-604 kapandı.** Sıradaki: PLAN-605 (USEMAPDIFFS/map/statics ve native
 SAVESTATICS kapsamı).
 
+---
+
+## İŞ-43 — SAVESTATICS kapsamı ve iş paketi ayrımı (PLAN-605, 12 Eylül 2026)
+
+PLAN-605: *"USEMAPDIFFS/map/statics ve native SAVESTATICS kapsamını ayrı iş
+paketi yap; **metin statics export'unu tam harita çıktısı sayma.**"*
+
+### İş paketi ayrımı — üç ayrı konu
+
+| Konu | Durum | Kanıt |
+|---|---|---|
+| **map/statics okuma** (.mul) | Çalışıyor | `MapDataManager` `staidx{n}.mul` + `statics{n}.mul` okuyor; canlı shard'da map0/1 statikleri var |
+| **USEMAPDIFFS** | Yazılmadı, tüketicisi yok | Canlı ini'de anahtar yok; `mul/` klasöründe tek bir `mapdif`/`stadif` dosyası yok |
+| **SAVESTATICS** | Çalışıyor, kapsamı düzeltildi | Aşağıda |
+
+### Planın uyarısı ölçüldü
+
+"Metin statics export'unu tam harita çıktısı sayma" uyarısı, bizim metin çıktımızın
+bir eksiklik olduğunu ima ediyor gibi okunabilir. **Ölçüm tersini söylüyor:**
+referansın `CWorld::SaveStatics`'i (CWorld.cpp:1233) da bir **metin script yedeği**
+açıyor (`OpenScriptBackup(..., "statics", ...)`) ve her eşyayı `r_WriteSafe` ile
+yazıyor. Yani ikisi de aynı tür çıktı üretiyor ve **hiçbiri harita çıktısı
+değil.** Uyarı doğru ama hedefi puanlama: SAVESTATICS'i "harita desteği" hanesine
+yazmak yanlış olur.
+
+### Kapanan boşluk
+
+- [x] **İŞ-43-01 (P2) — Süzgeç sektör kapsamını gözetmiyordu.**
+  Referans **sektörleri** gezer (`pSector->m_Items`, :1267) ve multi'leri atlar
+  (:1270). Bundan iki kural çıkıyor:
+
+  1. **Kap içindeki static işaretli eşya bir dünya statiği değildir** — bir
+     sektörde durmadığı için referans ona hiç ulaşmaz. Bizde `GetAllObjects()`
+     bütün kayıt defterini gezdiği için bir sırt çantasındaki static eşya da
+     yazılıyordu; yazılacak bir dünya konumu yok.
+  2. **Multi bir yapıdır, static değil** — statics dosyasına yazılan bir ev, içe
+     aktarmada bina olarak değil boş bir eşya olarak geri gelir.
+
+### Açık kalem — tekrar üretilemeyen tek başarısızlık
+
+Bu dalgadan sonraki 12 tam suite koşusunun **birinde** tek bir başarısızlık
+görüldü (3.601/3.602). Adı çıktı filtresinden kaçtı ve **tekrar üretilemedi**:
+sonraki 11 tam koşu ve yeni test sınıfının 5 ayrı stres koşusu temiz. Şüphe
+yeni testlerin geçici klasör kullanımında (Windows'ta dosya kilidi) ama
+doğrulanmadı. Proje kuralı gereği örtbas edilmeyip buraya yazıldı; tekrar
+görülürse adı yakalanacak.
+
+**Testler:** `SaveStaticsScopeParityTests` (6). İki kural geri alındığında 4 test
+kırmızıya döndü.
+
+**PLAN-605 kapandı — Dalga 6 (modern özellikler ve sürüm uyumluluğu)
+tamamlandı.** Sıradaki: Dalga 7 (operasyon ve sürüm kabulü).
+

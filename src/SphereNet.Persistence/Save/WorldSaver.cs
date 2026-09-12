@@ -248,10 +248,19 @@ public sealed class WorldSaver
         });
     }
 
-    /// <summary>Export static world items into one text <c>.scp</c> file.
-    /// This is the bounded first slice of Source-X <c>SAVESTATICS</c>: dynamic
-    /// items/chars stay in the normal world export while ATTR_STATIC items are
-    /// written here for inspection or later import.</summary>
+    /// <summary>Export static world items into one text <c>.scp</c> file — Source-X
+    /// <c>SAVESTATICS</c> (CWorld::SaveStatics, CWorld.cpp:1233).
+    ///
+    /// The reference writes a text script backup too, not a .mul: it opens a
+    /// "statics" script file and r_WriteSafe's every ATTR_STATIC item. So this is
+    /// the same KIND of output, and neither is a map export — the .mul terrain and
+    /// statics files are a separate thing this never touches.
+    ///
+    /// Two rules come from the reference's sector walk (:1256-1277): it visits
+    /// items held by SECTORS, so an ATTR_STATIC item sitting inside a container is
+    /// not a world static and is not written; and it skips multis outright, which
+    /// would otherwise come back on import as a loose item instead of a
+    /// structure.</summary>
     public int ExportStatics(GameWorld world, string path, WorldExportScope? scope = null)
     {
         long now = Environment.TickCount64;
@@ -262,6 +271,13 @@ public sealed class WorldSaver
             foreach (var obj in world.GetAllObjects())
             {
                 if (obj is not Item item || item.IsDeleted || !item.IsAttr(Core.Enums.ObjAttributes.Static))
+                    continue;
+                // Sector-held only: a static-flagged item in someone's pack has no
+                // world position to write (CWorld.cpp:1267).
+                if (!item.IsOnGround)
+                    continue;
+                // Multis are structures, not statics (:1270).
+                if (item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom)
                     continue;
                 if (scope is { } s && (!s.IncludeItems || !s.Contains(item.Position)))
                     continue;

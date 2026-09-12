@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - Which AOS properties the running content actually uses
+----------------------------------------
+
+DOC - docs/AOS_PROPERTY_MATRISI_TR.md matches the reference's 139 component
+        properties against the content that exists. The reference tags each one
+        with the expansion that introduced it (RDS_PRET2A / AOS / ML / SA / HS /
+        TOL), and that tag is the era gate the plan asks for.
+
+        The live shard sets TWO of the 139 - NIGHTSIGHT and RANGE, both pre-T2A,
+        neither part of the AOS property system. It runs a classic-era pack
+        against a 7.0.20 client. The modern reference pack sets 59 (RESFIRE alone
+        appears 716 times there). AOS property work therefore has no consumer on
+        this shard, which is the ordering answer PLAN-602 wanted.
+
+        The plan warns against treating a tooltip line as proof of a combat
+        effect. Measured, the opposite holds here: the tooltip emits no component
+        property at all, so the risk runs the other way - an effect the engine
+        does implement is invisible to the player.
+
+        Of the 59 the modern pack sets, 10 are not mentioned anywhere in the
+        engine: BALANCED, ENHANCEPOTIONS, HITLOWERATK, HITLOWERDEF,
+        INCREASESPELLDAM, LOWERREQ, MAGEARMOR, MAGEWEAPON, SPELLCHANNELING,
+        USEBESTWEAPONSKILL. That column is recorded but deliberately NOT pinned by
+        the guardrail: "the engine mentions the name" is not "the combat effect is
+        verified", and it misses properties consumed through constants rather than
+        string keys. Only the era table and the two packs' usage are asserted.
+
+
 [2026-09-12] - A per-spell coverage matrix instead of a blanket label
 ----------------------------------------
 

@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `7f6a84e` + İŞ-39 (büyü matrisi) |
-| Tam test | 3.582 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-602 — AOS/SE/ML/SA/TOL property'leri ve client era** |
+| Son commit | `ef9789d` + İŞ-40 (AOS property matrisi) |
+| Tam test | 3.585 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-603 — paket opcode/subcommand/version/length matrisi** |
 
 ## Çalışma sırası
 
@@ -416,11 +416,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   tanımlıyor: 138 çalışıyor, 30 reddediliyor. Matris `SpellCoverageGuardrailTests`
   ile sabitlendi, yani belge paketten sessizce ayrışamaz.
 
+- [x] **İŞ-40 — AOS+ property matrisi ve era kapısı** (PLAN-602) — **KAPANDI**
+  Referansın 139 component property'si, era etiketleriyle birlikte iki pakete
+  karşı ölçüldü: **canlı shard 2 tanesini** (`NIGHTSIGHT`, `RANGE` — ikisi de
+  PRET2A) atıyor, modern referans paket 59. Yani AOS property işinin bu shard'da
+  tüketicisi yok. Planın uyardığı "tooltip'te var, etkisi tamam" yanılgısı bizde
+  **ters yönde**: tooltip hiçbir component property'si yayınlamıyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-40 KAPANDI** — 2026-09-12. `docs/AOS_PROPERTY_MATRISI_TR.md` +
+  `AosPropertyCoverageGuardrailTests` (3). Tam suite 3.585, üç koşu.
+  **PLAN-602 tamamlandı.**
 - **İŞ-39 KAPANDI** — 2026-09-12. `docs/BUYU_MATRISI_TR.md` + durum raporundaki
   yanlış etiketin değiştirilmesi + `SpellCoverageGuardrailTests` (3). Tam suite
   3.582, üç koşu. **PLAN-601 tamamlandı.**

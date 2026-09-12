@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Calisan icerik AOS property'lerinin hangisini kullaniyor
+----------------------------------------
+
+DOC - docs/AOS_PROPERTY_MATRISI_TR.md, referansin 139 component property'sini var
+        olan icerikle eslestiriyor. Referans her birini onu getiren genislemeyle
+        etiketler (RDS_PRET2A / AOS / ML / SA / HS / TOL) ve planin istedigi era
+        kapisi tam olarak bu etikettir.
+
+        Canli shard 139'un IKISINI atiyor - NIGHTSIGHT ve RANGE, ikisi de pre-T2A
+        ve hicbiri AOS property sisteminin parcasi degil. 7.0.20 klasik istemciyle
+        klasik-era bir paket calisiyor. Modern referans paket 59 tane atiyor
+        (yalniz RESFIRE orada 716 yerde geciyor). Yani AOS property isinin bu
+        shard'da tuketicisi yok; PLAN-602'nin istedigi siralama cevabi budur.
+
+        Plan, bir tooltip satirini combat etkisinin kaniti saymaya karsi uyariyor.
+        Olcunce bizde tersi cikti: tooltip hicbir component property'si
+        yayinlamiyor, yani risk ters yonde - motorun uyguladigi bir etkiyi oyuncu
+        goremiyor.
+
+        Modern paketin attigi 59'un 10'u motorda hic gecmiyor: BALANCED,
+        ENHANCEPOTIONS, HITLOWERATK, HITLOWERDEF, INCREASESPELLDAM, LOWERREQ,
+        MAGEARMOR, MAGEWEAPON, SPELLCHANNELING, USEBESTWEAPONSKILL. Bu sutun
+        kaydedildi ama guardrail'e BILEREK baglanmadi: "motor adi aniyor" ile
+        "combat etkisi dogrulandi" ayni sey degil, ve metin anahtari yerine sabit
+        uzerinden tuketilen property'leri kacirir. Yalnizca era tablosu ve iki
+        paketin kullanimi sabitlendi.
+
+
 [2026-09-12] - Toplu etiket yerine buyu bazinda kapsama matrisi
 ----------------------------------------
 

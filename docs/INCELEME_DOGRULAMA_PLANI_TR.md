@@ -5031,3 +5031,63 @@ başlamıyor, oyuncuya söyleniyor.
 **PLAN-601 kapandı.** Sıradaki: PLAN-602 (AOS/SE/ML/SA/TOL property'leri ve
 client era eşleştirmesi).
 
+---
+
+## İŞ-40 — AOS+ property matrisi ve era kapısı (PLAN-602, 12 Eylül 2026)
+
+PLAN-602: *"AOS/SE/ML/SA/TOL property'lerini kullanılan içerik ve client era ile
+eşleştir. Bir property tooltip'te görünüyor diye combat etkisi tamam
+sayılmasın."*
+
+### Planın uyardığı yanılgı bizde mümkün değil — tersi geçerli
+
+İlk iş tooltip'e bakıldı. `SendAosTooltip`'in yayınladığı satırların tamamı:
+ad, silah `DAM`/`SPEED`, zırh `ARMOR`/`DURABILITY`, kap içerik sayısı, comm
+crystal satırları ve `@ClientTooltip`'in ekledikleri. **Tek bir AOS component
+property'si yok** — `RESFIRE` de, `HITLEECHLIFE` de, hiçbiri.
+
+Yani "tooltip'te görünüyor diye tamam sayma" riski burada oluşamaz; risk ters
+yönde: **motorun uyguladığı bir etkiyi oyuncu göremiyor.**
+
+### Era kapısı — asıl bulgu
+
+Referans 139 component property'sini getiren genişlemeye göre etiketliyor
+(`src/tables/CCProps*_props.tbl`): AOS 66, PRET2A 38, SA 26, TOL 5, ML 2, HS 2.
+
+| Paket | 139'un kaçını atıyor |
+|---|---:|
+| **Canlı shard paketi** | **2** |
+| `Scripts-X-main` (modern) | **59** |
+
+Canlı paketin attığı iki ad: **`NIGHTSIGHT`** ve **`RANGE`**, ikisi de
+**PRET2A** — AOS property sisteminin parçası bile değil. Karşılaştırma için
+modern pakette `RESFIRE` 716, `HITLEECHLIFE` 13, `FASTERCASTING` 8 yerde.
+
+**Sonuç:** AOS+ property işi, çalışan shard'da tüketicisi olmayan bir iştir.
+İŞ-8'in paket-tarafı ölçüm kuralı gereği bu dalgada hiçbiri yazılmadı; belge
+sıralamanın gerekçesi.
+
+### Ölçümdeki bir ince nokta
+
+Bir property adı birden çok component sınıfında **farklı era etiketiyle**
+geçebiliyor: `NIGHTSIGHT` birinde PRET2A, ötekinde AOS. İlk geçişi almak
+canlı paketin klasik property'sini "AOS" diye etiketliyordu. Matris **en erken**
+erayı tutuyor — klasik içeriğin onu kullanıp kullanamayacağını belirleyen o.
+
+### Motor sütunu ve neden teste bağlanmadığı
+
+Motor (Core+Game+Scripting) 139 adın 67'sini bir yerde anıyor; modern paketin
+attığı 59'un **10'u** motorda hiç geçmiyor (`BALANCED`, `ENHANCEPOTIONS`,
+`HITLOWERATK`, `HITLOWERDEF`, `INCREASESPELLDAM`, `LOWERREQ`, `MAGEARMOR`,
+`MAGEWEAPON`, `SPELLCHANNELING`, `USEBESTWEAPONSKILL`).
+
+Bu sütun **bilerek guardrail'e bağlanmadı**, çünkü iki yönde de yanılıyor:
+"motor adı anıyor" combat etkisinin doğrulandığı anlamına gelmiyor; ve ters
+yönde, `LOWERMANACOST`/`FASTERCASTING` gibi property'ler metin sabiti yerine
+`SpellCastingProperties` sabitleri üzerinden tüketildiği için ad araması onları
+kaçırıyor. Guardrail yalnızca **savunulabilir** olanı sabitliyor: referans era
+tablosu ve iki paketin kullanımı.
+
+**PLAN-602 kapandı.** Sıradaki: PLAN-603 (paket matrisini sınıf sayısı yerine
+opcode/subcommand/version/length ile ölç).
+

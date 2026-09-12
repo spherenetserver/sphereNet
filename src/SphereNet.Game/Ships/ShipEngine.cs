@@ -535,16 +535,41 @@ public sealed class ShipEngine
         // CanMoveShipTo/MoveDelta handle any dx/dy) so diagonal sailing works.
         GetDirDelta(dir, out short dx, out short dy);
 
+        // Source-X tracks WHY a ship stopped and has the tiller say so
+        // (CCMultiMovable.cpp:852-860): the edge of the world is turbulent water,
+        // anything else is something in the way. Both lines existed here as unused
+        // message keys — a ship simply went quiet and the crew was left guessing.
+        bool stopped = false, turbulent = false;
         for (int i = 0; i < distance; i++)
         {
             short newX = (short)(ship.MultiItem.X + dx);
             short newY = (short)(ship.MultiItem.Y + dy);
 
+            if (IsOffMap(ship, newX, newY))
+            {
+                stopped = true;
+                turbulent = true;
+                break;
+            }
+
             // Leading-edge water check in the move direction (Source-X)
             if (!CanMoveShipTo(ship, newX, newY, dx, dy))
-                return false;
+            {
+                stopped = true;
+                break;
+            }
 
             MoveDelta(ship, dx, dy, 0);
+        }
+
+        if (stopped)
+        {
+            // The tiles it DID cover before the obstacle stay covered — the
+            // reference advances its delta per tile and applies what it got (:841).
+            TillerSpeak(ship, turbulent
+                ? SphereNet.Game.Messages.Msg.TillerTurbWater
+                : SphereNet.Game.Messages.Msg.TillerStopped);
+            return false;
         }
 
         // One event for the whole command, with the direction it was given
@@ -728,6 +753,7 @@ public sealed class ShipEngine
 
         if (!Move(ship, ship.DirMove, ship.SpeedTiles))
         {
+            // Move has already told the crew why; Stop only halts the engine.
             Stop(ship);
             return;
         }
@@ -1265,6 +1291,19 @@ public sealed class ShipEngine
         return true;
     }
 
+    /// <summary>Whether the hull would hang off the edge of the world at this
+    /// anchor (Source-X ptFore.IsValidPoint()) — a negative coordinate would reach
+    /// the map readers as a bad index. Kept apart from the obstacle test because
+    /// the two stop a ship for different reasons, and the tiller says which.</summary>
+    private bool IsOffMap(Ship ship, short newX, short newY)
+    {
+        var def = _multiDefs.Get(ship.MultiItem.BaseId);
+        if (def == null) return true;
+        var (mw, mh) = _mapData?.GetMapSize(ship.MultiItem.MapIndex) ?? (7168, 4096);
+        return newX + def.MinX < 0 || newY + def.MinY < 0 ||
+               newX + def.MaxX >= mw || newY + def.MaxY >= mh;
+    }
+
     private bool CanMoveShipTo(Ship ship, short newX, short newY, short dx, short dy)
     {
         // ATTR_MAGIC ships can fly over land (Source-X CanMoveTo)
@@ -1278,11 +1317,7 @@ public sealed class ShipEngine
         int sx = Math.Sign(dx);
         int sy = Math.Sign(dy);
 
-        // Source-X ptFore.IsValidPoint(): the hull may not sail off the map —
-        // a negative coordinate would reach the map readers as a bad index.
-        var (mw, mh) = _mapData?.GetMapSize(map) ?? (7168, 4096);
-        if (newX + def.MinX < 0 || newY + def.MinY < 0 ||
-            newX + def.MaxX >= mw || newY + def.MaxY >= mh)
+        if (IsOffMap(ship, newX, newY))
             return false;
 
         // Source-X CCMultiMovable::Move tests only the LEADING EDGE in the move

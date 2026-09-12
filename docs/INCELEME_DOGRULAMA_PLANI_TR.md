@@ -4756,3 +4756,63 @@ arkaya koşu.
 **PLAN-503 kapandı.** Sıradaki: PLAN-504 (gemi yolcu/yük aktarımı, dönüş, harita
 kenarı, plank, redeed).
 
+---
+
+## İŞ-36 — Gemi: neden durduğunu söylemek (PLAN-504, 12 Eylül 2026)
+
+### Yöntem ve ölçüm
+
+Referansın gemi fiil ve anahtar tabloları (`CCMultiMovable::sm_szVerbKeys`,
+20 fiil; `sm_szLoadKeys`, 6 anahtar) bizimkiyle diff'lendi: **hiçbiri eksik
+değil** — önceki gemi dalgaları (10AB/10CD, W243) script yüzeyini kapatmış.
+Bu yüzden bu dilim davranışa baktı.
+
+### Kapanan boşluk
+
+- [x] **İŞ-36-01 (P2) — Duran gemi hiçbir şey söylemiyordu.**
+  Referans duruş sebebini izler ve dümenden konuşturur
+  (CCMultiMovable.cpp:852-860): dünyanın kenarı `DEFMSG_TILLER_TURB_WATER`,
+  başka her şey `DEFMSG_TILLER_STOPPED`. **İki mesaj da bizde zaten vardı**
+  (`Msg.TillerTurbWater`, `Msg.TillerStopped`) ve `TillerTurbWater` hiçbir yerde
+  konuşulmuyordu — gemi sessizce duruyordu.
+
+  Yapısal engel: harita-kenarı sınaması `CanMoveShipTo`'nun içine katlanmıştı,
+  yani çağıran taraf iki sebebi ayırt edemiyordu. `IsOffMap` ayrı bir yükleme
+  çıkarıldı ve `Move` artık hangi sebeple durduğunu biliyor.
+
+### Ölçülüp DEĞİŞTİRİLMEYEN
+
+| Ayak | Kanıt |
+|---|---|
+| Kısmi hareket | Engele çarpan emir geçtiği karoları korur (:841) — bizde de öyle, teste bağlandı |
+| `@Ship_Move` | Yalnızca tamamlanan koşu için (:863) — aynı |
+| Z tavan/taban payı | `MoveDelta` (:284-288) — zaten port edilmiş |
+| Yolcu/yük seçimi | Güverte düzlemi `shipZ + max(3,height)`, -2..+16 penceresi (`ListObjs`, :142/175/203) — aynı |
+| `ATTR_STATIC` | Gemiyle taşınmaz (:200) — aynı |
+| Fiil/anahtar yüzeyi | 26 anahtarın tamamı karşılanıyor |
+
+### Kayıtlı sapmalar
+
+- **`OF_MapBoundarySailing` (0x800) tüketicisiz.** Referans bayrak açıkken gemiyi
+  harita kenarında durdurmaz, **karşı kenara sardırır** (:690-732). Bayrak bizim
+  `OptionFlags` enum'unda duruyor ve hiçbir şey okumuyor — İŞ-28'deki
+  `OF_PETSLOTS` ile aynı sınıf. **Yine de yazılmadı** ve sebebi şu: referansın
+  kaydırma aritmetiği bölge köşelerinden (`GetRegionCorner` → `GetRectCorner`)
+  türetiliyor ve bizim çapa-tabanlı modelimize bire bir oturmuyor: türettiklerim
+  doğu yönünde teknenin arka kenarını haritanın bir karo dışına koyuyor, yani
+  sabiti doğrulayamadan portlamak gemileri geçersiz koordinata ışınlama riski.
+  **Canlı shard'da bayrak kapalı** (`OPTIONFLAGS=0x2080`, 0x800 yok) ve
+  kapalıyken bizim davranışımız referansla aynı. Ayrı bir iş olarak duruyor.
+
+- **Sınır dışına düşecek nesne.** Referans `MoveDelta`'da geçersiz noktaya
+  düşecek TEK nesneyi atlar ve geride bırakır (:313-317). Bizde tüm hareket
+  reddediliyor. Bilinçli ve daha sıkı: referansın yolu bir yolcuyu ya da yükü
+  açık denizde geminin arkasında bırakır.
+
+**Testler:** `ShipStopReasonParityTests` (4) — iki sebebin ayrı satirlar olması,
+kısmi hareketin korunması ve temiz bir koşunun sessiz kalması dahil. Düzeltme
+geri alındığında 2'si kırmızıya döndü. Tam suite 3.561 / 0, üç arka arkaya koşu.
+
+**PLAN-504 kapandı.** Sıradaki: PLAN-505 (guild üyelik/fealty/yetki modeli, stone
+gump menüleri).
+

@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Neden durdugunu soyleyen bir gemi
+----------------------------------------
+
+FIX - Dumen, murettebata geminin neden durdugunu soyluyor. Source-X sebebi izler
+        ve soyler (CCMultiMovable.cpp:852-860): dunyanin kenari "calkantili su",
+        baska her sey "bir sey yolu kesiyor". Iki satir da bizde hicbir seyin
+        soylemedigi mesaj anahtarlari olarak zaten duruyordu - gemi oylece
+        susuyordu ve murettebat karaya mi oturdugunu, baska bir tekneye mi
+        carptigini yoksa haritanin sonuna mi geldigini bilemiyordu. Harita-kenari
+        sinamasi engel sinamasinin icine katlanmisti, yani iki sebep birbirinden
+        ayirt edilemiyordu; artik ayrilar.
+
+        Degismeyen ve dogrulanan: engele carpan bir emir, gectigi karolari
+        korur (referans deltasini karo karo ilerletip elde ettigini uygular,
+        :841) ve @Ship_Move yalnizca tamamlanan bir kosu icin atesleniyor.
+
+
 [2026-09-12] - Bir script'in fiyatlayip reddedebilecegi ev tasarimi commit'i
 ----------------------------------------
 

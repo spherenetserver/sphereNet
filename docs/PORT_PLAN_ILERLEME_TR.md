@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `8502857` + İŞ-35 (tasarım commit'i) |
-| Tam test | 3.557 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-504 — gemi yolcu/yük aktarımı, dönüş, plank, redeed** |
+| Son commit | `cdd239d` + İŞ-36 (gemi duruş sebebi) |
+| Tam test | 3.561 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-505 — guild üyelik/fealty/yetki modeli, stone menüleri** |
 
 ## Çalışma sırası
 
@@ -390,11 +390,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   tasarım yine commit sayılıyordu. Harita yürüme geometrisi ve save/reload
   bağları ölçülüp zaten doğru bulundu.
 
+- [x] **İŞ-36 — Gemi: neden durduğunu söylemek** (PLAN-504) — **KAPANDI**
+  Gemi fiil/anahtar yüzeyi referansla diff'lendi: **eksik yok** (önceki dalgalar
+  kapatmış). Davranış tarafında **bir boşluk:** duran gemi hiçbir şey
+  söylemiyordu — iki dümen mesajı da kullanılmayan anahtarlar olarak duruyordu.
+  `OF_MapBoundarySailing` tüketicisiz kaldı (gerekçe kayıtta).
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-36 KAPANDI** — 2026-09-12. Dümen duruş sebebini söylüyor
+  (çalkantılı su / engel), harita-kenarı sınaması engel sınamasından ayrıldı.
+  Test: `ShipStopReasonParityTests` (4); geri alınıp 2'sinin yakaladığı
+  doğrulandı. Tam suite 3.561, üç koşu. **PLAN-504 tamamlandı.**
 - **İŞ-35 KAPANDI** — 2026-09-12. `PreviewCommit` + `@HouseDesignCommit`
   sözleşmesi (ARGN1/2/3 + LOCAL.* + `RETURN 1` vetosu) + değişmemiş-tasarım kapısı.
   Test: `HouseDesignCommitTriggerParityTests` (9), ikisi uçtan uca script'li.

@@ -399,6 +399,15 @@ public sealed class NetState : IDisposable
         }
     }
 
+    /// <summary>Add bytes to the end of what has been received but not yet
+    /// consumed — the same thing a socket read does.
+    ///
+    /// This used to PREPEND: it shifted the unconsumed bytes up and wrote the new
+    /// data at offset 0, so two injections came out in reverse order. The one
+    /// production caller (NetworkManager.ReplaceReceivedData) empties the buffer
+    /// first, so it never saw the difference, but it meant no test could hand the
+    /// pipeline a packet in pieces — the fragmentation TCP actually produces was
+    /// unreachable and therefore untested.</summary>
     public void InjectReceived(byte[] data)
     {
         if (data.Length + _recvLength > _recvBuffer.Length)
@@ -406,11 +415,7 @@ public sealed class NetState : IDisposable
             MarkClosing();
             return;
         }
-        if (_recvLength > 0)
-        {
-            Buffer.BlockCopy(_recvBuffer, 0, _recvBuffer, data.Length, _recvLength);
-        }
-        Buffer.BlockCopy(data, 0, _recvBuffer, 0, data.Length);
+        Buffer.BlockCopy(data, 0, _recvBuffer, _recvLength, data.Length);
         _recvLength += data.Length;
     }
 

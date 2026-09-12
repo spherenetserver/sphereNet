@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - The login pipeline, fed the way TCP feeds it
+----------------------------------------
+
+FIX - NetState.InjectReceived appends instead of prepending. It shifted the
+        unconsumed bytes up and wrote the new data at offset 0, so two injections
+        came out in reverse order. Its one production caller empties the buffer
+        first and never saw the difference — but it meant no test could hand the
+        receive pipeline a packet in pieces, so the fragmentation a real socket
+        produces was unreachable and had never been exercised.
+
+        The framer itself turned out to be right. With the helper fixed, a seed
+        cut in half, a login packet split across three reads, a whole packet
+        followed by half of the next, two packets in one read, and the whole
+        handshake delivered one byte at a time all behave correctly. That is worth
+        saying plainly: the bug was in the test scaffolding, and it was hiding an
+        entire dimension of the login path rather than a defect in it.
+
+        New integration coverage drives the production pipeline
+        (NetworkManager.ProcessInput) for split seeds, split and coalesced
+        packets, byte-at-a-time delivery, and reconnect on a fresh connection.
+
+
 [2026-09-12] - A bonded pet's ghost says it is bonded
 ----------------------------------------
 

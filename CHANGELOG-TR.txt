@@ -3,6 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Login boru hattina, TCP'nin verdigi gibi vermek
+----------------------------------------
+
+FIX - NetState.InjectReceived artik basa degil sona ekliyor. Tuketilmemis baytlari
+        yukari kaydirip yeni veriyi 0 ofsetine yaziyordu, yani iki enjeksiyon ters
+        sirada cikiyordu. Tek uretim cagirani tamponu once bosalttigi icin farki
+        hic gormedi - ama bu, hicbir testin alim boru hattina bir paketi parcali
+        veremeyecegi anlamina geliyordu: gercek bir soketin urettigi parcalanma
+        erisilemezdi ve hic denenmemisti.
+
+        Cerceveleyicinin kendisi dogru cikti. Yardimci duzeltilince ikiye bolunmus
+        bir seed, uc okumaya bolunmus bir login paketi, tam bir paketin ardindan
+        gelen yarim paket, tek okumada iki paket ve bayt bayt teslim edilen tum
+        el sikisma dogru calisiyor. Bunu acikca yazmak gerekiyor: hata test
+        iskelesindeydi ve login yolunda bir kusuru degil, o yolun butun bir
+        boyutunu gizliyordu.
+
+        Yeni entegrasyon kapsamasi uretim boru hattini (NetworkManager.ProcessInput)
+        bolunmus seed, bolunmus ve birlestirilmis paketler, bayt bayt teslim ve
+        yeni baglantidan yeniden baglanma icin surtuyor.
+
+
 [2026-09-12] - Bonded bir evcil hayvanin hayaleti bonded oldugunu soyluyor
 ----------------------------------------
 

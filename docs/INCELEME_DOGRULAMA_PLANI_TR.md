@@ -5154,3 +5154,60 @@ yani birini tek başına sabitleyen bir test çakışmayı yakalayamaz.
 gerçek TCP oturumu, paket parçalanması/birleşmesi, relay ve reconnect ile
 doğrula).
 
+---
+
+## İŞ-42 — TCP parçalanma/birleşme ve yeniden bağlanma (PLAN-604, 12 Eylül 2026)
+
+PLAN-604: *"...no-crypt ve gereken şifreleme akışlarını **gerçek TCP oturumu,
+paket parçalanması/birleşmesi, relay ve reconnect** ile doğrula."*
+
+### Ölçülüp zaten karşılanmış olanlar
+
+| Ayak | Kanıt |
+|---|---|
+| no-crypt akışı | `ClientLoginIntegrationTests` seed → login → server list → game login → char list → dünya |
+| **relay** | Aynı dosyada `ServerSelect_SendsRelayWithAuthId` — 0xA0 → authId/relay → 0x91 devri |
+| Şifreleme ilkel/algılama | `EncryptionTests` (19): Blowfish, Twofish, Huffman, no-crypt algılama, relay anahtarı TTL |
+
+### Kapanan boşluk
+
+- [x] **İŞ-42-01 (P2) — Parçalanma/birleşme hiç denenmemişti, çünkü ifade
+  edilemiyordu.**
+  Var olan entegrasyon testi her istemci paketini **tek bir okumada** veriyor.
+  Gerçek bir soket tam olarak bunu söz vermez: bir paket birden çok okumaya
+  bölünebilir, birkaç paket tek okumada gelebilir, seed ikiye bölünebilir.
+
+  Parçalı besleyen testler yazıldığında dördü kırmızı oldu. **İlk okuma "çerçeveleyici
+  bozuk" diyordu; değilmiş.** `NetState.InjectReceived` sona değil **başa**
+  ekliyordu: tüketilmemiş baytları yukarı kaydırıp yeni veriyi 0 ofsetine
+  yazıyordu, yani iki enjeksiyon **ters sırada** çıkıyordu.
+
+  Tek üretim çağıranı (`NetworkManager.ReplaceReceivedData`) tamponu önce
+  boşaltıyor, yani farkı hiç görmedi. Bu yüzden hata yıllarca görünmez kaldı ve
+  yan etkisi şuydu: **hiçbir test alim boru hattına bir paketi parçalı
+  veremiyordu.**
+
+  Yardımcı düzeltildikten sonra sekiz senaryonun hepsi geçti — yani
+  **çerçeveleyicinin kendisi baştan beri doğruymuş.** Bunu açıkça yazmak gerekiyor:
+  bu bir üretim kusuru değil, test iskelesindeki bir kusurdu ve login yolunun
+  **bütün bir boyutunu** ölçülemez kılıyordu.
+
+### Yeni kapsanan senaryolar
+
+| Senaryo | Ne sınanıyor |
+|---|---|
+| Seed 1+2+1 bayt | Klasik 4-bayt seed parçalı gelirse toplanıyor |
+| Seed + login tek okumada | Birleşme (coalescing) |
+| Login 1 + 39 + 22 bayt | Sabit uzunluklu paket bölündüğünde kaybolmuyor |
+| Bayt bayt teslim | Tam el sıkışma, **tam olarak bir** yanıt (ne düşüyor ne tekrarlanıyor) |
+| Tek okumada iki paket | İkisi de işleniyor |
+| Tam paket + yarım paket | Yarım olan bekliyor, kalan gelince işleniyor |
+| Yeniden bağlanma | Aynı hesap yeni soketten girebiliyor |
+| Yeni soketin durumu | Öncekinin seed/crypto durumunu taşımıyor |
+
+**Testler:** `TcpFramingIntegrationTests` (8). Yardımcı geri alındığında 4'ü
+kırmızıya döndü. Tam suite 3.596 / 0, üç arka arkaya koşu.
+
+**PLAN-604 kapandı.** Sıradaki: PLAN-605 (USEMAPDIFFS/map/statics ve native
+SAVESTATICS kapsamı).
+

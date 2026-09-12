@@ -5329,3 +5329,65 @@ koşuda da tekrar etmedi; açık kalmaya devam ediyor.
 **PLAN-701 ve PLAN-703 kapandı.** Sıradaki: PLAN-704 (kayıt sırasında kapanma,
 bozuk shard dosyası, son iyi kayda dönüş tatbikatı).
 
+---
+
+## İŞ-45 — Çökme/yeniden başlatma tatbikatı (PLAN-704, 13 Eylül 2026)
+
+PLAN-704: *"Save sırasında kapanma, bozuk/eksik shard dosyası, disk yazma
+hatası, son iyi kayda dönüş ve yeniden başlatma tatbikatı."*
+
+### Beş tatbikatın üçü zaten kapsanmıştı
+
+| Tatbikat | Kanıt |
+|---|---|
+| Bozuk güncel kayıt | `BootFallbackTests.CorruptCurrentSave_FallsBackToPreviousGeneration` |
+| Eksik shard | `MissingCurrentShard_FallsBackToPreviousGeneration_NoSilentLoss` + yedeği yoksa **atar**, kısmi yüklemez |
+| Disk yazma hatası | `SaveTransactionalCommitTests.WriteFailure_LeavesPreviousGenerationIntact` |
+| Son iyi kayda dönüş | `.bakN` hizalı kuşak geri dönüşü; yarım işlenmiş (torn) commit de yakalanıyor |
+| Hepsi bozuksa | Açık hata; sessizce boş dünya başlatmıyor |
+
+### Kapsanmayan ayrım: başarısızlık ≠ öldürülme
+
+- [x] **İŞ-45-01 (P2) — Öldürülmüş bir kaydın enkazı hiç denenmemişti.**
+  Bir kaydın **başarısız** olması istisna atar ve kaydedici `.tmp` kardeşlerini
+  temizler — bu kapsanmıştı. Bir kaydın **öldürülmesi** (elektrik, OOM,
+  operatör) ise farklı: hiçbir şey yeniden adlandırılmaz, hiçbir istisna atılmaz
+  ve `.tmp` dosyaları **diskte kalır**.
+
+  `WorldSaver`'ın kendi yorumu garantiyi yazıyor (:122): "Buradaki bir çökme
+  önceki kuşağı tamamen sağlam bırakır — yalnızca başıboş `.tmp` dosyaları
+  kalır." **Cümlenin ikinci yarısını hiçbir şey doğrulamıyordu.**
+
+### Sonuç: garanti zaten sağlammış, ama yapısal olarak
+
+Yedi tatbikatın hepsi ilk koşuda geçti — **üretim kodunda değişiklik
+gerekmedi.** İlginç olan **neden** sağlam olduğu: ortada bir "`.tmp` atla" guard
+satırı yok. `ResolveSaveFiles` dosya adlarını manifest'ten ya da sabit bir uzantı
+listesinden **birebir** çözüyor, yani bir `.tmp` hiçbir zaman aday olmuyor.
+Koruma yapısal.
+
+Testlerin boş olmadığı bunun üzerinden doğrulandı: çözümü geçici olarak glob'a
+(`baseName + ext + "*"`) çevirince tatbikatlardan biri kırmızıya döndü. Yani bu
+testler, birinin çözümü gevşetince çıkacak regresyonu yakalamak için duruyor.
+
+### Kapsanan senaryolar
+
+| Senaryo | Ne sınanıyor |
+|---|---|
+| Öldürülmüş kayıt (ikili / parçalı ikili / metin) | Önceki kuşak yükleniyor, temp'ler yok sayılıyor |
+| Enkaz + güncel kuşak da yok | Yukleyici `.bak1`'e ulaşıyor, temp'i veri sanmıyor |
+| Enkazın üzerine yeni kayıt | İşleniyor ve güncel oluyor |
+| Temiz kayıt | Kendi temp'ini bırakmıyor (başıboş temp'in işaret olabilmesinin şartı) |
+| Yeniden başlatma | kaydet — başlat — kaydet — başlat — en yeni kuşağı kaybet — başlat |
+
+### Kapsam dışı
+
+Kapanma yolunun kendisi (`Program.Tick.cs:311-325`) arka plandaki kaydı bekleyip
+son kaydı alıyor ve tekrar bekliyor; bu ana döngü kodu doğrudan test edilemediği
+için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
+
+**Testler:** `CrashDuringSaveDrillTests` (7). Tam suite 3.619 / 0, üç koşu.
+
+**PLAN-704 kapandı.** Sıradaki: PLAN-705 (release kabul paketi). **PLAN-702**
+(soak koşuları) planın kendi notu gereği bu turda koşulmadı.
+

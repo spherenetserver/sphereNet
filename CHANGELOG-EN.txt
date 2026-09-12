@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The drill for a save that never finished
+----------------------------------------
+
+DOC - A save FAILING and a save being KILLED are different accidents, and only
+        the first was covered. A failure throws and the saver cleans its .tmp
+        siblings up; a kill - power cut, OOM, an operator stopping the process
+        mid-write - leaves those .tmp files exactly where they were, with nothing
+        renamed and no exception raised.
+
+        WorldSaver's own comment states the guarantee: "A crash here leaves the
+        previous generation fully intact - only stray .tmp files." Nothing
+        verified the second half of that sentence. The new drills leave the debris
+        a kill would leave and then boot: across binary, sharded binary and text
+        saves the previous generation loads and the temps are ignored; with the
+        current generation ALSO gone the loader still reaches .bak1 rather than
+        mistaking a temp for data; a later save commits over the stale debris; and
+        a clean save leaves no temps of its own, which is what makes stray ones a
+        signal at all.
+
+        The protection turns out to be structural rather than a guard clause: the
+        loader resolves exact file names from the manifest or a fixed extension
+        list, so a .tmp is never a candidate. Changing that resolution to a glob
+        makes the drills fail, which is what they are there to catch.
+
+        The restart drill runs end to end too: save, restart, save, restart, lose
+        the newest generation, restart again.
+
+
 [2026-09-13] - A load profile a soak run can actually compare
 ----------------------------------------
 

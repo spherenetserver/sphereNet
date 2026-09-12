@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Hic bitmemis bir kayit icin tatbikat
+----------------------------------------
+
+DOC - Bir kaydin BASARISIZ olmasi ile OLDURULMESI farkli kazalardir ve yalnizca
+        birincisi kapsanmisti. Basarisizlik istisna atar ve kaydedici .tmp
+        kardeslerini temizler; oldurulme - elektrik kesintisi, bellek yetmezligi,
+        yazma ortasinda sureci durduran bir operator - o .tmp dosyalarini tam
+        olduklari yerde birakir: hicbir sey yeniden adlandirilmaz, hicbir istisna
+        atilmaz.
+
+        WorldSaver'in kendi yorumu garantiyi soyluyor: "Buradaki bir cokme onceki
+        kusagi tamamen saglam birakir - yalnizca basibos .tmp dosyalari kalir." Bu
+        cumlenin ikinci yarisini hicbir sey dogrulamiyordu. Yeni tatbikatlar bir
+        oldurulmenin birakacagi enkazi birakip aciliyor: ikili, parcali ikili ve
+        metin kayitlarinin ucunde de onceki kusak yukleniyor ve temp'ler yok
+        sayiliyor; guncel kusak DA kaybolduysa yukleyici bir temp'i veri sanmak
+        yerine .bak1'e ulasiyor; sonraki bir kayit bayat enkazin uzerine islenebiliyor;
+        ve temiz bir kayit kendi temp'ini birakmiyor - basibos olanlari bir isaret
+        yapan sey de bu.
+
+        Korumanin bir guard satiri degil yapisal oldugu ortaya cikti: yukleyici
+        dosya adlarini manifest'ten ya da sabit bir uzanti listesinden birebir
+        cozuyor, yani bir .tmp hicbir zaman aday olmuyor. O cozumu glob'a cevirmek
+        tatbikatlari kirmiziya donduruyor; zaten yakalamak icin orada duruyorlar.
+
+        Yeniden baslatma tatbikati da uctan uca kosuyor: kaydet, yeniden baslat,
+        kaydet, yeniden baslat, en yeni kusagi kaybet, bir daha baslat.
+
+
 [2026-09-13] - Soak kosusunun gercekten karsilastirabilecegi bir yuk profili
 ----------------------------------------
 

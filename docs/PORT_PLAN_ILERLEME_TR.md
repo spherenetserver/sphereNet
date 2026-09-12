@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `d15a499` + İŞ-44 (yük profili) |
-| Tam test | 3.612 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-704 — kayıt hatası/kurtarma tatbikatı** |
+| Son commit | `ee562db` + İŞ-45 (çökme tatbikatı) |
+| Tam test | 3.619 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-705 — release kabul paketi** (PLAN-702 koşulmadı) |
 
 ## Çalışma sırası
 
@@ -450,11 +450,23 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   **PLAN-702 (soak koşuları) bu turda çalıştırılmadı** — planın kendisi de
   öyle diyor; bu iş onların tüketeceği ölçüm zeminini kuruyor.
 
+- [x] **İŞ-45 — Çökme/yeniden başlatma tatbikatı** (PLAN-704) — **KAPANDI**
+  Beş tatbikatın üçü (**bozuk/eksik shard, disk yazma hatası, son iyi kayda
+  dönüş**) `BootFallbackTests` + `SaveTransactionalCommitTests` +
+  `BinarySaveAtomicityTests` ile zaten kapsanmıştı. **Kapsanmayan:** kaydın
+  **öldürülmesi** (başarısız olması değil) — `.tmp` enkazı diskte kalır ve
+  sonraki açılışın onu yok sayması gerekir. Ayrıca uçtan uca yeniden başlatma
+  tatbikatı eklendi.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-45 KAPANDI** — 2026-09-13. `CrashDuringSaveDrillTests` (7). Üretim
+  değişikliği yok — garanti zaten sağlammış; testler onu sabitliyor. Anlamlı
+  oldukları yukleyici çözümü glob'a çevrilerek doğrulandı (1 kırmızı).
+  Tam suite 3.619, üç koşu. **PLAN-704 tamamlandı.**
 - **İŞ-44 KAPANDI** — 2026-09-13. `LoadProfile` + üç sayac (hareket, trigger,
   kayıt) + `ResetEngineStatics` kaydı. Test: `LoadProfileTests` (10).
   Tam suite 3.612, dört koşu — İŞ-43'ün açık kalemi bu dört koşuda da

@@ -4960,3 +4960,74 @@ arkaya koşu.
 **PLAN-506 kapandı — Dalga 5 (housing, gemi ve sosyal sistemler) tamamlandı.**
 Sıradaki: Dalga 6.
 
+---
+
+## İŞ-39 — Büyü bazlı kapsama matrisi (PLAN-601, 12 Eylül 2026)
+
+PLAN-601: "Her büyü için ... durumunu çıkar. **'Okul enum-only' gibi toplu
+etiketleri kaldır.**"
+
+### Önce beklenmedik bir bulgu: kapı zaten vardı
+
+Dalganın kabul ölçütü "desteklenmeyen özellik başarı dönüp sessizce hiçbir şey
+yapmasın" diyor. Ana etki `switch`'inde `default:` dalı **yok** — yani teorik
+olarak desteklenmeyen bir büyü mana ve reagent yiyip sessizce düşecekti.
+İzi sürünce bunun **önceki bir dalgada zaten kapatıldığı** görüldü:
+`SpellEngine.IsInertSchoolSpell`, `CastStart`'ta (SpellEngine.cs:722) daha
+hiçbir bedel alınmadan reddediyor ve "That spell is not supported yet." diyor.
+Yani bu dilimde yazılacak bir kapı yoktu; yazılacak olan **ölçümdü**.
+
+### Yöntem
+
+Sınıflandırma elle değil, **motorun kendi yüklemiyle** yapıldı: bir büyü
+Magery/Necromancy kimlik alanındaysa, yerli el yazması listesindeyse, paket def'i
+eylemli bir `SPELLFLAG_*` taşıyorsa ya da `ON=@` aşaması yazılmışsa çalışır;
+hiçbiri yoksa reddedilir. Canlı paketin bütün `[SPELL n]` blokları bu yükleme
+göre tarandı.
+
+| Okul | Tanımlı | Çalışan | Reddedilen |
+|---|---:|---:|---:|
+| Magery | 64 | 64 | 0 |
+| Necromancy | 17 | 17 | 0 |
+| Chivalry | 10 | 8 | 2 |
+| Bushido | 6 | **0** | 6 |
+| Ninjitsu | 8 | **0** | 8 |
+| Spellweaving | 16 | 14 | 2 |
+| Mysticism | 16 | 11 | 5 |
+| Bard Masteries | 6 | **0** | 6 |
+| Skill Masteries | **0** | 0 | 0 |
+| Sphere custom | 24 | 23 | 1 |
+| **Toplam** | **168** | **138** | **30** |
+
+### Toplu etiket dört noktada yanlıştı
+
+`PORT_DURUM_RAPORU_TR.md` şunu diyordu: *"Bushido/Ninjitsu/Mysticism/
+Spellweaving enum-only"*.
+
+1. **Spellweaving enum-only değil** — 16'nın 14'ü çalışıyor.
+2. **Mysticism enum-only değil** — 16'nın 11'i çalışıyor.
+3. **Bard Masteries hiç anılmıyor** ama gerçekten ölü: 0/6.
+4. **Chivalry "etkili" sayılıyordu** ama ConsecrateWeapon (203) ve
+   EnemyOfOne (206) reddediliyor.
+
+Doğru olan iki yarısı: **Bushido (0/6) ve Ninjitsu (0/8) gerçekten ölü.**
+
+### Skill Masteries — eksiklik değil, erişilemez alan
+
+`SpellType` 39 Skill Mastery üyesi (707+) taşıyor ve **canlı paket hiçbirini
+tanımlamıyor.** Enum paketin önünde: paket bir tanım yazmadıkça hiçbir oyuncu
+bunları seçemez. Matriste "tanımlı 0" satırı bunu açıkça gösteriyor — bir
+"39 eksik büyü" başlığı yanıltıcı olurdu.
+
+### Belge neden test'e bağlandı
+
+Bir matris belgesi, yazıldığı gün doğru olup ertesi ay sessizce yanılır.
+`SpellCoverageGuardrailTests` okul bazlı sayıları canlı pakete karşı sabitliyor
+ve reddedilen id listesini yazdırıyor; paket değişirse test kırmızıya dönüp
+yeni sayıları veriyor. Paket yoksa proje kuralına uygun şekilde temiz atlıyor.
+Üçüncü test reddin **bedelsiz** olduğunu sabitliyor: mana düşmüyor, cast
+başlamıyor, oyuncuya söyleniyor.
+
+**PLAN-601 kapandı.** Sıradaki: PLAN-602 (AOS/SE/ML/SA/TOL property'leri ve
+client era eşleştirmesi).
+

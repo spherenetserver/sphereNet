@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `e08d249` + İŞ-38 (sohbet gizliliği) |
-| Tam test | 3.579 başarılı / 0 başarısız |
-| Sıradaki iş | **Dalga 6 — PLAN-601** (Dalga 5 kapandı) |
+| Son commit | `7f6a84e` + İŞ-39 (büyü matrisi) |
+| Tam test | 3.582 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-602 — AOS/SE/ML/SA/TOL property'leri ve client era** |
 
 ## Çalışma sırası
 
@@ -410,11 +410,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   gizlilik eylemi (özel mesaj aç/kapa, ad göster/gizle, `/whois`) hiç
   işlenmiyordu. **Dalga 5 kapandı.**
 
+- [x] **İŞ-39 — Büyü bazlı kapsama matrisi** (PLAN-601) — **KAPANDI**
+  "Okul enum-only" toplu etiketi ölçümle **dört noktada** çürütülüp
+  [büyü matrisiyle](BUYU_MATRISI_TR.md) değiştirildi. Canlı paket 168 büyü
+  tanımlıyor: 138 çalışıyor, 30 reddediliyor. Matris `SpellCoverageGuardrailTests`
+  ile sabitlendi, yani belge paketten sessizce ayrışamaz.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-39 KAPANDI** — 2026-09-12. `docs/BUYU_MATRISI_TR.md` + durum raporundaki
+  yanlış etiketin değiştirilmesi + `SpellCoverageGuardrailTests` (3). Tam suite
+  3.582, üç koşu. **PLAN-601 tamamlandı.**
 - **İŞ-38 KAPANDI** — 2026-09-12. İki gizlilik anahtarı + özel mesaj kapısı +
   `/whois`. Test: `ChatPrivacyParityTests` (10); iki düzeltme tek tek geri alınıp
   doğrulandı (2 + 7). Tam suite 3.579, üç koşu. **PLAN-506 ve Dalga 5 tamamlandı.**

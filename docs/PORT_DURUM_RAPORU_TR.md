@@ -1,4 +1,4 @@
-# SphereNet ↔ Source-X Port Durum Raporu
+﻿# SphereNet ↔ Source-X Port Durum Raporu
 
 **Tarih:** 2026-09-06
 **Ölçüm dayanağı:** `oldSphere/Source-X-full/src` (referans C++ motor, 201.846 satır)
@@ -41,7 +41,7 @@ hariç) hem tam eşleşme hem önek eşleşmesi (`"TAG0."`, `"VAR."` gibi) ile a
 | 6 | Şifreleme / login zinciri | **95** | **92** | Blowfish + Twofish + Huffman + no-crypt, loopback login entegrasyon testi |
 | 7 | Karakter / Item çekirdek modeli | **95** | **88** | `IT_*` 207/212, `SKILL_*` 60/60, `SPELL_*` 211/211 (gerçek büyü) |
 | 8 | Savaş (combat) | **88** | **86** | Swing state machine, `@Hit*` ailesi, archery/parry/noto; C1–C7 parite dalgaları |
-| 9 | Büyü (magic) | **82** | **88** | Magery 64/64 + Necromancy + Chivalry etkili; Bushido/Ninjitsu/Mysticism/Spellweaving enum-only |
+| 9 | Büyü (magic) | **82** | **88** | Canlı pakette 168 büyü tanımlı, 138'i çalışıyor, 30'u reddediliyor — okul bazında döküm: [BÜYÜ MATRİSİ](BUYU_MATRISI_TR.md) |
 | 10 | Skill sistemi | **85** | **90** | 60 skill tanımlı, 56'sı motorda referanslı; `Skill_Experience` birebir portlanmış |
 | 11 | NPC AI / pet / vendor beyni | **85** | **82** | 4.913 satır (SX ~4.500); beyin tik temposu bilinçli sapma |
 | 12 | Ölüm / ceset / yağma | **90** | **88** | `@Death`/`@Kill`/`@DeathCorpse`, NOCORPSE, 2 aşamalı decay |

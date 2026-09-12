@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Toplu etiket yerine buyu bazinda kapsama matrisi
+----------------------------------------
+
+DOC - Hangi buyunun gercekten calistigi artik olculuyor, iddia edilmiyor. Durum
+        raporunda tek bir satir vardi - "Bushido/Ninjitsu/Mysticism/Spellweaving
+        enum-only" - ve olcum bunu dort ayri noktada curutuyor: Spellweaving 16'da
+        14, Mysticism 16'da 11 calisiyor; Bard Masteries hic anilmiyor ama
+        tamamen olu (0/6); Chivalry calisir sayiliyordu ama iki buyusu
+        reddediliyor. Dogru olan iki yarisi: Bushido (0/6) ve Ninjitsu (0/8)
+        gercekten olu.
+
+        docs/BUYU_MATRISI_TR.md okul bazinda sayilari tutuyor ve reddedilen 30
+        buyunun hepsini adiyla sayiyor. Canli paket 168 buyu tanimliyor; 138'i
+        calisiyor.
+
+        Skill Masteries ayri gosteriliyor: enum 39 tane tasiyor ve paket hicbirini
+        tanimlamiyor, yani bunlar bir eksiklik degil erisilemez bir kimlik alani.
+
+        Siniflandirma motorun kendi yuklemi (IsInertSchoolSpell), yani belge kod
+        hakkinda bir kani degil kodun kendisini anlatiyor; bir guardrail testi de
+        sayilari canli pakete karsi sabitliyor, boylece ikisi birbirinden
+        ayrisamiyor. Paket yoksa test temiz atliyor.
+
+
 [2026-09-12] - Sohbet penceresinin gizlilik dugmeleri artik bir sey yapiyor
 ----------------------------------------
 

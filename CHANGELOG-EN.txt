@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - A per-spell coverage matrix instead of a blanket label
+----------------------------------------
+
+DOC - Which spells actually work is now measured, not asserted. The status report
+        carried one line - "Bushido/Ninjitsu/Mysticism/Spellweaving enum-only" -
+        that the measurement contradicts four ways: Spellweaving is 14 of 16
+        castable and Mysticism 11 of 16, Bard Masteries are not named at all but
+        are entirely dead (0 of 6), and Chivalry was counted as working while two
+        of its spells are refused. The two halves that were right: Bushido (0 of
+        6) and Ninjitsu (0 of 8) really are dead.
+
+        docs/BUYU_MATRISI_TR.md holds the per-school counts and names all 30
+        refused spells. The live pack defines 168 spells; 138 are castable.
+
+        Skill Masteries are listed separately: the enum carries 39 of them and
+        the pack defines none, so they are not a gap but an unreachable id space.
+
+        The classification is the engine's own (IsInertSchoolSpell), so the
+        document describes the code rather than an opinion about it, and a
+        guardrail test pins the counts against the live pack so the two cannot
+        drift apart. It skips cleanly where that pack is absent.
+
+
 [2026-09-12] - The chat window's privacy buttons do something now
 ----------------------------------------
 

@@ -5393,6 +5393,67 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-55 — Spawner kopya üyeliği (PLAN-104, 13 Eylül 2026)
+
+PLAN-104: *"Spawner kopyasında ADDOBJ kayıtlarının eski çocukları yeniden bağlayıp
+bağlamadığını araştır; STOP/silme eski çocukları etkiliyor mu sınaması yap.
+**Bu aday önceki turdan araştırma olarak devredildi; henüz doğrulanmış hata
+değildir.**"*
+
+### Doğrulandı — ve zararı veri kaybı
+
+Ölçüm sonucu:
+
+```
+source members 1, copy members 1, copy ADDOBJ tag '01'
+after STOP on the copy:      child deleted=True
+after deleting the copy:     child deleted=True
+```
+
+Yani bir spawner'ı kopyalamak kopyaya **orijinalin üye listesini** veriyor; ve
+yıkım bir spawner'ın *sahibi olduğunu sandığı* şeyi öldürdüğü için, kopyadaki
+`STOP` **kaynağın NPC'lerini siliyor.** Kopyayı silmek de aynı sonucu veriyor.
+İki spawner türü de etkileniyor.
+
+### Kök neden — yan kapı
+
+`CCSpawn::Copy` altı yapılandırma alanını alır ve son satırı açıktır:
+
+```cpp
+    _idSpawn = pTarget->GetSpawnID();
+    // Not copying created objects.
+```
+(CCSpawn.cpp:1272-1288)
+
+Üyeler yine de geçiyordu, üç adımın birleşmesiyle:
+
+1. `ADDOBJ` fiili **hiçbir şeyin temizlemediği** bir tag'e birikiyor.
+2. Yükleme yolu (`RelinkSpawnedChildrenFromTag` / `...ItemsFromTag`) üyeliği o
+   tag'den yeniden kuruyor.
+3. `CopyStackInstanceStateFrom` kaynağın **tüm** tag'lerini kopyalıyor.
+
+Sonuç: bir kez kayıttan geçmiş her spawner, kopyasına bir üye listesi taşıyor ve
+kopyanın bileşeni ilklendirmede onu yeniden bağlıyor. Üç parçanın her biri tek
+başına makul; hata birleşimlerinde.
+
+### Düzeltme
+
+`Item.CreateDupe`, spawn bileşenini kurmadan **önce** kopyadaki `ADDOBJ` tag'ini
+düşürüyor — referansın çizgiyi çizdiği yer orası. Tag'in yükleme sonrası genel
+olarak temizlenmesi de düşünüldü ama her yüklemeyi etkileyen daha geniş bir
+değişiklik; kök nedeni kapatan en küçük değişiklik tercih edildi. Kaydedici
+zaten üyeleri **canlı bileşenden** yazıyor, tag'den değil.
+
+### Koruma
+
+`SpawnerCopyMembershipTests` (5): iki spawner türü, `STOP` ve silme, ve bir
+**kontrol** — yıkımın kaynağın *kendi* yaratıklarına hâlâ ulaştığı. O kontrol
+olmasa, `STOP`'u hiçbir şeye ulaşmayan bir spawner diğer dört testi yanlış
+gerekçeyle geçirirdi.
+
+Düzeltmeden önce beş testin **dördü kırmızıydı**; kontrol doğru şekilde
+yeşildi.
+
 ## İŞ-54 — Kopya referans sözleşmesi (PLAN-103, 13 Eylül 2026)
 
 PLAN-103: *"Kopyada öz referanslar, dış referanslar, container konumları,

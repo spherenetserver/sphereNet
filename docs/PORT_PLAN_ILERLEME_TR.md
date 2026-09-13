@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `bbf39fb` + İŞ-54 (kopya referans sözleşmesi) |
-| Tam test | 3.667 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-104** (PLAN-101/102/103 kapandı) |
+| Son commit | `c0950d5` + İŞ-55 (spawner kopya üyeliği) |
+| Tam test | 3.672 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 1 — PLAN-105** (PLAN-101..104 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,18 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-55 KAPANDI** — 2026-09-13. **Gerçek veri kaybı hatası bulundu ve
+  düzeltildi.** Bir spawner'ı kopyalamak kopyaya **orijinalin üye listesini**
+  veriyordu; kopyada `STOP` ya da silme, kimsenin dokunmadığı bir spawner'ın
+  yaratıklarını yok ediyordu. `CCSpawn::Copy` altı yapılandırma alanını alıp
+  *"Not copying created objects"* diye biter (CCSpawn.cpp:1272-1288); üyeler yan
+  kapıdan geçiyordu — `ADDOBJ` hiçbir şeyin temizlemediği bir **tag**'e birikiyor,
+  yükleme yolu üyeliği o tag'den kuruyor ve kopya kaynağın tüm tag'lerini
+  taşıyor. Bir kez kayıttan geçmiş her spawner etkileniyordu, iki türü de.
+  Düzeltme: `Item.CreateDupe` bileşeni kurmadan önce kopyadaki tag'i düşürüyor.
+  Test: `SpawnerCopyMembershipTests` (5); düzeltmeden önce **beşte dördü
+  kırmızıydı**. Plan bunu *"henüz doğrulanmış hata değildir"* diye taşıyordu —
+  doğrulandı. Tam suite 3.672, üç koşu. **PLAN-104 tamamlandı.**
 - **İŞ-54 KAPANDI** — 2026-09-13. PLAN-103'ün beş ekseni sabitlendi. Kayda
   değer bulgu, **hata gibi görünen ama olmayan bir asimetri:** `CChar::DupeFrom`
   kopyalanan karakteri adlandıran her `MORE1/MORE2/LINK`'i yenisine çevirir

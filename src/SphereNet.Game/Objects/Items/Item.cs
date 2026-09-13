@@ -1276,6 +1276,18 @@ public class Item : ObjBase
         // CCSpawn.cpp:1272, carries configuration only).
         if (copy.ItemType is ItemType.SpawnChar or ItemType.SpawnItem or ItemType.SpawnChampion)
         {
+            // The member list must NOT come across. CCSpawn::Copy takes the six
+            // configuration fields and says so in its last line - "Not copying created
+            // objects" (CCSpawn.cpp:1272-1288).
+            //
+            // It travelled anyway, through a side door: ADDOBJ accumulates into a TAG
+            // that nothing ever clears, the load path rebuilds membership from that tag,
+            // and a copy carries every tag its source had. So duplicating a spawner that
+            // had been through one save handed the copy the ORIGINAL's creatures - and
+            // STOP or deletion on the copy then destroyed them, because a teardown kills
+            // what the spawner believes it owns.
+            copy.RemoveTag("ADDOBJ");
+
             // A def table is only needed to resolve a named spawn group; without one
             // the component is still built and still ticks.
             copy.InitializeSpawnComponent(world, Definitions.DefinitionLoader.StaticResources);

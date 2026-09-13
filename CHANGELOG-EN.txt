@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A duplicated spawner could destroy the original's creatures
+----------------------------------------
+
+FIX - Duplicating a spawner handed the copy the ORIGINAL's member list, and STOP
+        or deletion on the copy then destroyed creatures belonging to a spawner
+        nobody had touched.
+
+        CCSpawn::Copy takes six configuration fields and ends with the line "Not
+        copying created objects" (CCSpawn.cpp:1272-1288). The members travelled
+        anyway, through a side door: the ADDOBJ verb accumulates into a TAG that
+        nothing ever clears, the load path rebuilds membership from that tag, and
+        a copy carries every tag its source had. So any spawner that had been
+        through one save carried a member list into its copy, whose component
+        re-linked it on initialisation.
+
+        The harm is not subtle - a teardown kills what the spawner believes it
+        owns, so STOP on the copy deleted the source's NPCs, and so did deleting
+        the copy. Both spawner kinds were affected, since both rebuild membership
+        from the same tag. Item.CreateDupe now drops the tag on the copy before
+        building its component, which is where the reference draws the line.
+
+TEST - SpawnerCopyMembershipTests covers both kinds of spawner, STOP and
+        deletion, and a control confirming a teardown still reaches the source's
+        OWN creatures - without which a spawner whose STOP reached nothing at all
+        would have passed the other four for the wrong reason. Four of the five
+        were red before the fix.
+
+        The master plan carried this as an investigation rather than a confirmed
+        defect ("henuz dogrulanmis hata degildir"). It is confirmed.
+
 [2026-09-13] - The two sides of a copy treat references differently on purpose
 ----------------------------------------
 

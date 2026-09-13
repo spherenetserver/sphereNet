@@ -3,6 +3,36 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Kopyalanan spawner, orijinalin yaratiklarini yok edebiliyordu
+----------------------------------------
+
+FIX - Bir spawner'i kopyalamak, kopyaya ORIJINALIN uye listesini veriyordu;
+        kopyada STOP ya da silme, kimsenin dokunmadigi bir spawner'a ait
+        yaratiklari yok ediyordu.
+
+        CCSpawn::Copy alti yapilandirma alanini alir ve son satiri "Not copying
+        created objects" der (CCSpawn.cpp:1272-1288). Uyeler yine de yan kapidan
+        geciyordu: ADDOBJ fiili hicbir seyin temizlemedigi bir TAG'e birikiyor,
+        yukleme yolu uyeligi o tag'den yeniden kuruyor ve bir kopya kaynaginin
+        tum tag'lerini tasiyor. Yani bir kez kayittan gecmis her spawner,
+        kopyasina bir uye listesi tasiyordu; kopyanin bileseni de ilklendirmede
+        onu yeniden bagliyordu.
+
+        Zarar ince degil: yikim, spawner'in sahibi oldugunu sandigi seyi oldurur.
+        Kopyadaki STOP kaynagin NPC'lerini sildi, kopyayi silmek de. Iki spawner
+        turu de etkilendi, cunku ikisi de uyeligi ayni tag'den kuruyor.
+        Item.CreateDupe artik bileseni kurmadan once kopyadaki tag'i dusuruyor -
+        referansin cizgiyi cizdigi yer orasi.
+
+TEST - SpawnerCopyMembershipTests iki spawner turunu, STOP'u ve silmeyi kapsiyor;
+        ayrica yikimin kaynagin KENDI yaratiklarina hala ulastigini dogrulayan
+        bir kontrol var - o olmasa, STOP'u hicbir seye ulasmayan bir spawner
+        diger dort testi yanlis gerekceyle gecirirdi. Duzeltmeden once besten
+        dordu kirmiziydi.
+
+        Buyuk plan bunu dogrulanmis hata degil arastirma olarak tasiyordu
+        ("henuz dogrulanmis hata degildir"). Dogrulandi.
+
 [2026-09-13] - Kopyanin iki tarafi referanslari bilerek farkli ele aliyor
 ----------------------------------------
 

@@ -5393,6 +5393,97 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-48 — Source-X tablo paydaları (PLAN-001, 13 Eylül 2026)
+
+PLAN-001: *"Source-X tablo kapsamını ve alias eşlemelerini JSON/CSV'ye çıkar;
+hangi tabloların hangi paydada yer aldığını açıkla."*
+
+Dalganın kabul ölçütü net: *"başka bir makinede aynı commit/veri manifestiyle
+aynı paydalar elde edilir."* Bu ancak payda türetilirse doğru olur.
+
+### Çıkarım
+
+`oldSphere/Source-X-full/src` altında 98 tablo, 3570 giriş. İki biçim var:
+`src/tables/*.tbl` makro dosyaları (`ADD(AC,"AC")`) ve `.cpp` içindeki satır içi
+`lpctstr` dizileri. `.tbl` dosyaları C++ tarafında `#define ADD(a,b) b,` ile
+açıldığı için sahibi onu `#include` eden tablo; CSV her satırda ikisini de
+taşıyor çünkü bir script `CChar_props.tbl`'e değil `CChar::sm_szLoadKeys`'e
+çarpar.
+
+`ADDPROP` üçüncü alanı property'yi açan genişlemedir — referansın era kapısını
+koda değil veriye yazdığı tek yer (219 kapılı property).
+
+### Bulgu 1 — tablolar toplanamaz: 412 anahtar birden fazla tabloda
+
+`NAME` on ayrı tabloda, `DEFNAME` dokuz, `ACCOUNT` sekiz. 328 anahtar iki
+tabloda, 55'i üç, 18'i dört.
+
+Referansta bu bir hata değil — arama zinciri `CChar → CObjBase → CBaseBaseDef`
+diye iniyor ve her katman aynı adı taşıyabiliyor. Ama payda hesabı için sonucu
+şu: **tabloları toplayan bir payda aynı anahtarı birden çok kez sayar.**
+
+### Bulgu 2 — trigger paydası tek sayı değil
+
+| Payda | Değer |
+|---|---:|
+| `triggers.tbl` (`kOrderedTrigsNames`) | 248 |
+| Sınıf tablolarının birleşimi | 252 |
+| İkisinin birleşimi | 253 |
+
+Listeler birbirini kapsamıyor. `ITEMFIRE` yalnızca global listede;
+`CHARCONTEXTMENUREQUEST`, `CHARCONTEXTMENUSELECT`, `ITEMREDEED`,
+`ITEMREGIONENTER`, `ITEMREGIONLEAVE` yalnızca sınıf tablolarında.
+
+Rapor 248 kullanıyor — iki gerçek sayının küçüğü. Sapma küçük ama payda
+seçilmiş olmalı, varsayılmış değil.
+
+### Bulgu 3 — verb paydası iki farklı şeyi aynı sayıyla anlatıyor
+
+`CObjBase_functions` 57 + `CChar_functions` 74 + `CItem_functions` 14 +
+`CClient_functions` 61 = 206 **giriş**. Benzersiz anahtar 186 — yirmi anahtar
+bu dört tablonun birden fazlasında. Raporun "206/206" ifadesi ikisini birbirinin
+yerine kullanıyor.
+
+### Bulgu 4 — property paydası 645 yeniden üretilemiyor
+
+`*_props.tbl` dosyaları 777 giriş / 571 benzersiz anahtar. **645 ikisi de
+değil**, ve türetilebilir bir kuralla da çıkmıyor: bileşen tablolarını çıkarmak,
+yerelleştirmeyi çıkarmak, benzersizleştirmek — hiçbiri 645 vermiyor.
+
+Sayının kaynağı bulunamadı. Paydası bilinmeyen bir orana pay yazmak ölçüm
+değil; düzeltmesi PLAN-004'e bırakıldı çünkü yeni payda belli olsa da **pay
+yeniden ölçülmeli** ve onu tahmin etmek aynı hatayı tekrarlamak olurdu.
+
+### Çıkarıcının iki kez yanıltması
+
+İlk sürüm `CChar::sm_szTrigName`'i (191 trigger) hiç görmedi, çünkü bildirim
+satırının sonunda `// static` yorumu var ve desen satır sonu bekliyordu. Payda
+191 eksik çıktı ve hiçbir şey şikayet etmedi — elle yazılan paydanın neden
+tehlikeli olduğunun iyi bir örneği.
+
+İkinci olarak Python ve C# çıkarıcıları iki noktada ayrıştı (`(special)` önekli
+`Prefix:` satırı ve çıplak `ADD(E)` girdilerinin `Set:` başlığını kullanması).
+İkisi birbirine karşı koşulduğu için fark yakalandı; C# davranışı doğruydu ve
+CSV ona göre yeniden üretildi.
+
+### Koruma
+
+`SourceXTableInventoryGuardrailTests` (6): CSV her koşuda referanstan yeniden
+çıkarılıp satır satır karşılaştırılıyor; trigger üçlüsü (248/252/253) ve iki
+listenin birbirini kapsamadığı, verb 206/186 ayrımı, property 777/571 ve
+**645 olmadığı**, `ADDPROP` era kapıları ve belgenin toplamı sabitleniyor.
+`oldSphere/` yoksa temiz atlıyor.
+
+Geri-alma sondajı: CSV'den tek satır silinince karşılaştırma kırmızıya dönüyor
+ve ilk farklı satırı numarasıyla bildiriyor.
+
+### Kapsam dışında kalan
+
+Bu iş **paydaları** ölçtü, payları değil. Her tablonun kaç anahtarını
+karşıladığımız kısmen zaten ölçülüyor (`SourceXVerbInventoryGuardrailTests`,
+`TriggerCoverageGuardrailTests`, `AosPropertyCoverageGuardrailTests`).
+Rapordaki oranların yeniden hesaplanması PLAN-004.
+
 ## İŞ-47 — Ini anahtar sınıflandırması (PLAN-002, 13 Eylül 2026)
 
 PLAN-002: *"Her ini anahtarını `okunuyor / saklanıyor / davranışta tüketiliyor /

@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - Coverage denominators that can be re-derived
+----------------------------------------
+
+DOC - docs/data/sourcex_tables.csv exports every key table in the reference: 98
+        tables, 3570 entries, each row naming the source file, the C++ table a
+        script actually reaches, the enum prefix, the position in the table and,
+        for component properties, the expansion gate ADDPROP declares.
+
+DOC - docs/SOURCEX_TABLO_PAYDALARI_TR.md explains which table backs which
+        coverage denominator, and records that 412 keys are declared in more
+        than one table (NAME in ten of them), so a denominator built by summing
+        tables counts the same key repeatedly.
+
+        Three numbers quoted in the port report were measured against this:
+        the trigger surface is 248 in triggers.tbl but 252 across the per-class
+        tables and 253 combined - the lists do not nest, ITEMFIRE is only in the
+        first and five context-menu/region triggers only in the second; the verb
+        surface is 206 table entries but 186 distinct keys; the property surface
+        is 777 entries or 571 distinct keys, and the quoted 645 is neither and
+        does not follow from any rule. Correcting the report is PLAN-004.
+
+TEST - SourceXTableInventoryGuardrailTests re-extracts the tables from the
+        reference tree on every run and compares them line by line with the
+        committed CSV, so the export is derived rather than maintained. It also
+        pins the three denominators above. Skips cleanly when oldSphere/ is
+        absent.
+
 [2026-09-13] - Config keys that said they did nothing, and did
 ----------------------------------------
 

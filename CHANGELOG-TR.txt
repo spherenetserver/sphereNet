@@ -3,6 +3,33 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Yeniden uretilebilir kapsama paydalari
+----------------------------------------
+
+DOC - docs/data/sourcex_tables.csv referanstaki her anahtar tablosunu disari
+        veriyor: 98 tablo, 3570 giris. Her satir kaynak dosyayi, script'in
+        gercekte carptigi C++ tablosunu, enum onekini, tablodaki sirayi ve
+        bilesen property'lerinde ADDPROP'un bildirdigi genisleme kapisini
+        tasiyor.
+
+DOC - docs/SOURCEX_TABLO_PAYDALARI_TR.md hangi tablonun hangi kapsama paydasini
+        beslediigini anlatiyor ve 412 anahtarin birden fazla tabloda tanimli
+        oldugunu kaydediyor (NAME onunda). Tablolari toplayan bir payda ayni
+        anahtari birden cok kez sayiyor.
+
+        Port raporundaki uc sayi buna karsi olculdu: trigger yuzeyi
+        triggers.tbl'de 248, sinif tablolarinin birlesiminde 252, ikisinin
+        birlesiminde 253 - listeler birbirini kapsamiyor, ITEMFIRE yalnizca
+        ilkinde, bes baglam-menusu/bolge trigger'i yalnizca ikincisinde. Verb
+        yuzeyi 206 tablo girisi ama 186 ayri anahtar. Property yuzeyi 777 giris
+        ya da 571 ayri anahtar; rapordaki 645 bunlarin hicbiri degil ve
+        turetilebilir bir kuraldan da cikmiyor. Raporun duzeltilmesi PLAN-004.
+
+TEST - SourceXTableInventoryGuardrailTests her kosuda tablolari referans
+        agacindan yeniden cikarip commit'li CSV ile satir satir karsilastiriyor;
+        boylece disa aktarim elde tutulmuyor, turetiliyor. Yukaridaki uc paydayi
+        da sabitliyor. oldSphere/ yoksa temiz atliyor.
+
 [2026-09-13] - Hicbir sey yapmadigini soyleyen ama yapan config anahtarlari
 ----------------------------------------
 

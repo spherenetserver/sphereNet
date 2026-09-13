@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `d9ce749` + İŞ-47 (ini anahtar sınıflandırması) |
-| Tam test | 3.630 başarılı / 0 başarısız |
-| Sıradaki iş | **Dalga 0 — PLAN-001** (PLAN-002 kapandı; Dalga 4-7 kapalı) |
+| Son commit | `b35ec84` + İŞ-48 (Source-X tablo paydaları) |
+| Tam test | 3.636 başarılı / 0 başarısız |
+| Sıradaki iş | **Dalga 0 — PLAN-003/004** (PLAN-001 ve 002 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-48 KAPANDI** — 2026-09-13. Referansın anahtar tabloları
+  `docs/data/sourcex_tables.csv`'ye çıkarıldı (98 tablo, 3570 giriş; sahip tablo,
+  enum öneki, sıra ve `ADDPROP` era kapısı dahil). 412 anahtar birden fazla
+  tabloda tanımlı (`NAME` onunda), o yüzden tablo toplayan payda aynı anahtarı
+  tekrar sayar. Rapordaki üç payda ölçüldü: trigger 248 / 252 / 253 (listeler
+  birbirini kapsamıyor), verb 206 giriş ama 186 ayrı anahtar, property 777 / 571
+  — rapordaki **645 hiçbiri değil** ve türetilebilir kuralı yok. Belge:
+  `docs/SOURCEX_TABLO_PAYDALARI_TR.md`. Test:
+  `SourceXTableInventoryGuardrailTests` (6); CSV bozulunca karşılaştırma
+  kırmızıya dönüyor. Tam suite 3.636, üç koşu. **PLAN-001 tamamlandı**;
+  rapor sayılarının düzeltilmesi PLAN-004'e devredildi.
 - **İŞ-47 KAPANDI** — 2026-09-13. `config/sphere.ini`'nin durum işaretleri
   kodla karşılaştırıldı: 18 anahtarın işareti çelişiyordu. 15'i "uygulanmadı"
   diye işaretliyken bir motor yolundan tüketiliyordu (yedisi bu turun kendi

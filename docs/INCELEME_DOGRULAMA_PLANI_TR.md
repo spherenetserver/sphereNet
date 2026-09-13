@@ -5393,6 +5393,69 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-59 — Dupe giriş noktaları (PLAN-201, 13 Eylül 2026)
+
+PLAN-201: *"13A–13I düzeltmelerini **giriş bazında** yeniden doğrula: doğrudan
+native çağrı, interpreter, SERV yolu, karakter yolu, gerçek host wiring."*
+
+### Bulgu — giyimli karakterin kopyası `NEW`'i gömleğine bırakıyordu
+
+`Character.CreateDupe` giyili her katmanı kopyalıyor. Her eşya kopyası dünyanın
+`NEW` referansını kendine taşıyor ve az önce yapılan karakter onu **geri
+almıyordu**.
+
+```
+dressed: new points at Item        (önce)
+dressed: new points at the character (sonra)
+```
+
+Yani `DUPE` yapıp ardından `NEW.NAME=...` yazan bir script, kopyayı değil
+**kopyalanmış bir gömleği** yeniden adlandırıyordu.
+
+Referans tam bunu onarıyor ve gerekçesini kendi yorumunda yazıyor:
+
+```cpp
+//g_World.m_uidNew stored the last duped item, so we need to set back
+//again the newly duped character.
+g_World.m_uidNew.SetObjUID(GetUID());   // CChar.cpp:1274-1275
+```
+
+Düzeltme: `Character.CreateDupe` aynı şekilde bitiyor.
+
+### İki ölçüm hatası benimdi
+
+Test dört kapıyı yan yana koydu ve üç sapma bildirdi. İkisi motorun değildi.
+
+**1. Karakter `DUPE` fiili `ACT` kurmuyor.** İlk varsayımım "eşya fiili kuruyorsa
+karakter fiili de kurmalı" idi. Referansta öyle değil: eşya fiili kuruyor çünkü
+`CreateDupeItem` kaynak karakteri alıp `pSrc->m_Act_UID` atıyor (CItem.cpp:395);
+`CHV_DUPE` ise `CreateNPC` + `DupeFrom` çağırıyor, ikisi de `ACT`'e dokunmuyor
+(CChar.cpp:4541-4547). `ACT`'i yalnızca `NEWDUPE` kuruyor, her iki tür için.
+Artık **olumsuz** olarak sabitlendi — "iki fiili tutarlı hale getirmek" kazara
+yapılamasın diye.
+
+**2. Native çağrının `NEW`'i oynatması.** Referansta `fSetNew` bir **parametre** ve
+varsayılanı `false` (CItem.h:620): dahili kopya script'in `NEW`'ini oynatmaz,
+yalnızca fiil `true` geçer. Bizde her nesne oluşturma `NEW`'i oynatıyor ve her
+genel kopyalama girişi onu geri koyuyor. Gözlenebilir sözleşme aynı; değerin yol
+ortasında nerede durduğu değil. **Kayıtlı sapma** olarak yazıldı — değiştirmek
+motordaki her oluşturma yoluna dokunurdu.
+
+### Dört kapının son durumu
+
+| Kapı | NEW | ACT |
+|---|---|---|
+| Eşya `DUPE` fiili | kopya | kopya |
+| Karakter `DUPE` fiili | kopya | **kurulmaz** (referans böyle) |
+| `NEWDUPE` | kopya | kopya |
+| Native çağrı | kopya (girişte onarılır) | dokunulmaz |
+
+### Koruma
+
+`DupeEntryPointParityTests` (4). Sondaj: `Character.CreateDupe`'un sonundaki
+onarım kaldırılınca "dressed" testi kırmızıya dönüyor ve `NEW` yine eşyayı
+gösteriyor.
+
 ## İŞ-58 — Kayıt turu alan karşılaştırması (PLAN-107, 13 Eylül 2026)
 
 PLAN-107: *"Save→Load→Save döngüsünde temel stat, miktar, owner/parent, spawn

@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Giyimli bir karakteri kopyalamak NEW'i gomlegine birakiyordu
+----------------------------------------
+
+FIX - Character.CreateDupe giyili her katmani kopyaliyor ve bu kopyalarin her
+        biri dunyanin NEW referansini bir esyaya tasiyordu. Az once yapilan
+        karakter onu geri almiyordu; yani DUPE yapip ardindan NEW.NAME yazan bir
+        script, kopyayi degil kopyalanmis bir gomlegi yeniden adlandiriyordu.
+
+        Referans tam bunu onariyor ve kendi yorumunda soyluyor: "g_World.m_uidNew
+        stored the last duped item, so we need to set back again the newly duped
+        character" (DupeFrom, CChar.cpp:1274-1275). Kopyalama artik ayni sekilde
+        bitiyor.
+
+TEST - DupeEntryPointParityTests ayni sozlesmeyi PLAN-201'in saydigi her kapidan
+        geciriyor; bir kapida uyulup digerinde unutulan kural, yesil bir paketten
+        sag cikan sey tam olarak budur.
+
+        Bildirdigi sapmalarin ikisi motorun degil benimdi. Karakter DUPE fiili
+        cagiranin ACT'ini kurmuyor ve bu asimetri referansin kendisinin: esya
+        fiili kuruyor cunku CreateDupeItem kaynak karakteri alip pSrc->m_Act_UID
+        atiyor (CItem.cpp:395); CHV_DUPE ise CreateNPC ve DupeFrom cagiriyor,
+        ikisi de ACT'e dokunmuyor (CChar.cpp:4541-4547). ACT'i yalnizca NEWDUPE
+        kuruyor, her iki tur icin. Bu artik olumsuz olarak iddia ediliyor; boylece
+        "iki fiili tutarli hale getirmek" kazara yapilamaz.
+
+DOC - Kayitli sapma: referans NEW'i bir parametre yapiyor - CreateDupeItem fSetNew
+        aliyor ve varsayilani false (CItem.h:620) - yani dahili bir kopya script'in
+        NEW'ini oynatmiyor, yalnizca fiil true geciyor. Bu motor NEW'i her nesne
+        olusturmada oynatiyor ve her genel kopyalama girisi onu script'in istedigi
+        nesneye geri koyuyor. Gozlenebilir sozlesme ayni; degerin yol ortasinda
+        nerede durdugu degil.
+
 [2026-09-13] - Kararli bir kayit turu, her seyi koruyan tur demek degil
 ----------------------------------------
 

@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - Duplicating a dressed character left NEW on its shirt
+----------------------------------------
+
+FIX - Character.CreateDupe copies every equipped layer, and each of those copies
+        moved the world's NEW reference to an item. The character it had just made
+        never claimed it back, so a script doing DUPE and then writing NEW.NAME
+        renamed a duplicated shirt instead of the duplicate.
+
+        Upstream repairs exactly this and says so in a comment of its own:
+        "g_World.m_uidNew stored the last duped item, so we need to set back again
+        the newly duped character" (DupeFrom, CChar.cpp:1274-1275). The dupe now
+        ends the same way.
+
+TEST - DupeEntryPointParityTests runs the same contract through each door
+        PLAN-201 names, because a rule honoured at one entry point and forgotten
+        at the next is what survives a green suite.
+
+        Two of the divergences it reported were mine, not the engine's. The
+        character DUPE verb does NOT set the caller's ACT, and that asymmetry is
+        upstream's: the item verb sets it because CreateDupeItem takes the source
+        character and assigns pSrc->m_Act_UID (CItem.cpp:395), while CHV_DUPE calls
+        CreateNPC and DupeFrom, neither of which touches ACT
+        (CChar.cpp:4541-4547); only NEWDUPE copies NEW into ACT, for both kinds.
+        That is now asserted in the negative, so "making the two verbs consistent"
+        cannot happen by accident.
+
+DOC - Recorded deviation: upstream makes NEW a parameter - CreateDupeItem takes
+        fSetNew, defaulting to false (CItem.h:620) - so an internal copy leaves a
+        script's NEW alone and only the verb passes true. This engine moves NEW on
+        every object creation and each public duplication entry point puts it back
+        on the object the script asked for. The observable contract matches; where
+        the value sits mid-flight does not.
+
 [2026-09-13] - A save cycle that is stable is not the same as one that keeps everything
 ----------------------------------------
 

@@ -2680,6 +2680,18 @@ public partial class Character : ObjBase
         copy.Stam = Stam;
         copy.Mana = Mana;
 
+        // NEW has to end on the CHARACTER, and upstream says why in a comment of its
+        // own: "g_World.m_uidNew stored the last duped item, so we need to set back
+        // again the newly duped character" (DupeFrom, CChar.cpp:1274-1275). Every
+        // equipped layer was copied above and each copy moved NEW to an item, so a
+        // script doing DUPE and then writing NEW.NAME renamed a duplicated shirt.
+        var dupeWorld = ResolveWorld?.Invoke();
+        if (dupeWorld != null)
+        {
+            dupeWorld.LastNewChar = copy.Uid;
+            dupeWorld.LastNewObject = copy.Uid;
+        }
+
         return copy;
     }
 

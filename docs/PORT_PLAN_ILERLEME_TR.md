@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `bd95ea1` + İŞ-58 (kayıt turu alan karşılaştırması) |
-| Tam test | 3.678 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 2 — PLAN-201** (Dalga 1 bitti) |
+| Son commit | `7c86b99` + İŞ-59 (dupe giriş noktaları) |
+| Tam test | 3.682 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 2 — PLAN-202** (PLAN-201 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,19 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-59 KAPANDI** — 2026-09-13. **Gerçek hata:** giyimli bir karakteri
+  kopyalamak `NEW`'i **gömleğine** bırakıyordu. `Character.CreateDupe` giyili her
+  katmanı kopyalıyor, her kopya `NEW`'i bir eşyaya taşıyor ve karakter onu geri
+  almıyordu; `DUPE` sonrası `NEW.NAME` yazan script kopyalanmış gömleği yeniden
+  adlandırıyordu. Referans tam bunu onarıyor ve kendi yorumunda söylüyor
+  (CChar.cpp:1274-1275). **İki ölçüm hatası benimdi:** karakter `DUPE` fiili
+  çağıranın `ACT`'ini kurmuyor — asimetri referansın kendisinin (eşya fiili
+  `CreateDupeItem` üzerinden kurar, CHV_DUPE kurmaz; `ACT`'i yalnızca NEWDUPE
+  kurar); artık **olumsuz** olarak sabit. Test: `DupeEntryPointParityTests` (4);
+  onarım kaldırılınca `NEW` yine eşyayı gösteriyor. Kayıtlı sapma: referans
+  `fSetNew`'i parametre yapar (varsayılan false), biz `NEW`'i her oluşturmada
+  oynatıp her genel girişte geri koyarız. Tam suite 3.682, üç koşu.
+  **PLAN-201 tamamlandı.**
 - **İŞ-58 KAPANDI** — 2026-09-13. Tur testi iki kaydı karşılaştırıp aynı olmalarını
   istiyordu; bu **sapmayı** yakalar, **eksikliği** yakalamaz — hiç yazılmayan bir
   alan iki özdeş dosya ve yeşil test üretir. Kaydediciden spawn üye yazımını

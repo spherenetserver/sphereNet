@@ -36,7 +36,7 @@ public sealed class LegacyItemSyntheticTypeTests
     public void LegacyItem_WithNonNumericItemDef_ResolvesRealType()
     {
         const string scripts = @"C:\sphereNetServer\scripts";
-        if (!Directory.Exists(scripts)) { _out.WriteLine("no scripts"); return; }
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(scripts))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var res = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };

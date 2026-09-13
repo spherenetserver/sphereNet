@@ -4,18 +4,22 @@ using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Scripting.Execution;
 
+using Xunit.Abstractions;
+
 namespace SphereNet.Tests;
 
 [Collection("DefinitionLoaderSerial")]
 public class ScriptPackCorpusRunnerTests
 {
+    private readonly ITestOutputHelper _out;
+    public ScriptPackCorpusRunnerTests(ITestOutputHelper output) => _out = output;
+
     [Fact]
     public void GoldenScriptFixtures_RunTriggerCorpus()
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string fixtureDir = Path.Combine(root, "tests", "fixtures", "scripts");
-        if (!Directory.Exists(fixtureDir))
-            return; // fixture scripts not deployed — skip silently
+        if (Gate.Missing(_out, "script pack fixtures", !Directory.Exists(fixtureDir))) return;
         var files = Directory.GetFiles(fixtureDir, "*.scp", SearchOption.TopDirectoryOnly);
 
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
@@ -80,8 +84,7 @@ public class ScriptPackCorpusRunnerTests
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string fixtureDir = Path.Combine(root, "tests", "fixtures", "scripts");
-        if (!Directory.Exists(fixtureDir))
-            return; // fixture scripts not deployed — skip silently
+        if (Gate.Missing(_out, "script pack fixtures", !Directory.Exists(fixtureDir))) return;
         var files = Directory.GetFiles(fixtureDir, "*.scp", SearchOption.TopDirectoryOnly);
 
         var stack = ScriptTestBootstrap.CreateRuntimeStack();

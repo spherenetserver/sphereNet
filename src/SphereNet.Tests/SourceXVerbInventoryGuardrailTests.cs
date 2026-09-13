@@ -1,10 +1,15 @@
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
+using Xunit.Abstractions;
+
 namespace SphereNet.Tests;
 
 public class SourceXVerbInventoryGuardrailTests
 {
+    private readonly ITestOutputHelper _out;
+    public SourceXVerbInventoryGuardrailTests(ITestOutputHelper output) => _out = output;
+
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
@@ -124,8 +129,7 @@ public class SourceXVerbInventoryGuardrailTests
         // The Source-X reference tree lives only on dev machines (oldSphere/
         // is gitignored) — on CI this guardrail has nothing to diff against
         // and was the single red step in every GitHub Actions run.
-        if (!Directory.Exists(Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables")))
-            return;
+        if (Gate.Missing(_out, "Source-X reference tree", !Directory.Exists(Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables")))) return;
 
         foreach (var (surface, expected) in ExpectedSourceXVerbs)
         {

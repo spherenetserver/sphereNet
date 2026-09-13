@@ -89,11 +89,7 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
     public void EveryHookARealPackWritesIsOneTheEngineFires()
     {
         var files = PackFiles().ToList();
-        if (files.Count == 0)
-        {
-            outp.WriteLine("no script pack present - nothing to measure");
-            return;
-        }
+        if (Gate.Missing(outp, "live script pack", files.Count == 0)) return;
 
         var names = TriggerDispatcher.DispatchableTriggerNames;
         var dead = new Dictionary<string, (int Uses, string FirstFile)>(StringComparer.OrdinalIgnoreCase);

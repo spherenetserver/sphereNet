@@ -99,11 +99,7 @@ public sealed class AosPropertyCoverageGuardrailTests
     public void TheReferenceGroupsItsComponentPropertiesByExpansion()
     {
         var props = ReadReferenceProperties();
-        if (props.Count == 0)
-        {
-            _out.WriteLine("SKIP: reference tables not found");
-            return;
-        }
+        if (Gate.Missing(_out, "reference tables", props.Count == 0)) return;
 
         foreach (var g in props.GroupBy(p => p.Value).OrderByDescending(g => g.Count()))
             _out.WriteLine($"{g.Key}: {g.Count()}");
@@ -120,11 +116,7 @@ public sealed class AosPropertyCoverageGuardrailTests
     public void TheLiveShardsContentUsesAlmostNoneOfThem()
     {
         var props = ReadReferenceProperties();
-        if (props.Count == 0 || !Directory.Exists(LivePack))
-        {
-            _out.WriteLine("SKIP: reference tables or live pack not found");
-            return;
-        }
+        if (Gate.Missing(_out, "reference tables + live pack", props.Count == 0 || !Directory.Exists(LivePack))) return;
 
         var used = ReadAssignedKeys(LivePack).Where(props.ContainsKey).OrderBy(k => k).ToList();
         _out.WriteLine($"live pack sets {used.Count} of {props.Count}: {string.Join(", ", used)}");
@@ -140,11 +132,7 @@ public sealed class AosPropertyCoverageGuardrailTests
     {
         var props = ReadReferenceProperties();
         string modern = RepoPath(ModernPack);
-        if (props.Count == 0 || !Directory.Exists(modern))
-        {
-            _out.WriteLine("SKIP: reference tables or modern pack not found");
-            return;
-        }
+        if (Gate.Missing(_out, "reference tables + modern pack", props.Count == 0 || !Directory.Exists(modern))) return;
 
         var used = ReadAssignedKeys(modern).Where(props.ContainsKey).OrderBy(k => k).ToList();
         _out.WriteLine($"modern pack sets {used.Count} of {props.Count}");

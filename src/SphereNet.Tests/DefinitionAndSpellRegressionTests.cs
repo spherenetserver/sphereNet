@@ -7,11 +7,16 @@ using SphereNet.Game.World;
 using SphereNet.Scripting.Parsing;
 using SphereNet.Scripting.Resources;
 
+using Xunit.Abstractions;
+
 namespace SphereNet.Tests;
 
 [Collection("DefinitionLoaderSerial")]
 public class DefinitionAndSpellRegressionTests
 {
+    private readonly ITestOutputHelper _out;
+    public DefinitionAndSpellRegressionTests(ITestOutputHelper output) => _out = output;
+
     private static ResourceHolder LoadScript(string contents)
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
@@ -217,8 +222,7 @@ public class DefinitionAndSpellRegressionTests
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string fixtureDir = Path.Combine(root, "tests", "fixtures", "scripts");
-        if (!Directory.Exists(fixtureDir))
-            return; // fixture scripts not deployed — skip silently
+        if (Gate.Missing(_out, "script pack fixtures", !Directory.Exists(fixtureDir))) return;
         var files = Directory.GetFiles(fixtureDir, "*.scp", SearchOption.AllDirectories)
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
             .ToArray();

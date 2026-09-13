@@ -256,11 +256,7 @@ public sealed class WorldInvariantAuditorTests
         };
         var picked = candidates.FirstOrDefault(c =>
             Directory.Exists(c.scripts) && File.Exists(Path.Combine(c.save, "sphereworld.scp")));
-        if (picked.scripts == null)
-        {
-            _out.WriteLine("SKIP: no live pack/save present");
-            return;
-        }
+        if (Gate.MissingValue(_out, "live shard (scripts + mul + save)", picked.scripts)) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>());

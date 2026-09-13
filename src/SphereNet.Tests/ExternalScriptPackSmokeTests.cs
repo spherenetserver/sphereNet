@@ -3,18 +3,21 @@ using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Scripting.Execution;
 using SphereNet.Scripting.Parsing;
+using Xunit.Abstractions;
 
 namespace SphereNet.Tests;
 
 [Collection("DefinitionLoaderSerial")]
 public class ExternalScriptPackSmokeTests
 {
+    private readonly ITestOutputHelper _out;
+    public ExternalScriptPackSmokeTests(ITestOutputHelper output) => _out = output;
+
     [Fact]
     public void ExternalScriptPackInventory_BuildsReadOnlyRiskReport()
     {
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (packPath == null)
-            return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         var inventory = ScriptPackInventory.Build(packPath);
 
@@ -34,8 +37,7 @@ public class ExternalScriptPackSmokeTests
     public void ExternalScriptPackParseLoadSmoke_LoadsCoreProfileAndIndexesResources()
     {
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (packPath == null)
-            return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
         var files = ScriptTestBootstrap.GetScriptFiles(packPath, ScriptPackProfile.CoreOnly);
@@ -67,8 +69,7 @@ public class ExternalScriptPackSmokeTests
     public void ExternalScriptPackRuntimeCorpus_RunsSelectedTriggersWithoutThrowing()
     {
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (packPath == null)
-            return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         var collector = new ScriptDiagnosticCollector();
         var stack = ScriptTestBootstrap.CreateRuntimeStack(collector);
@@ -106,8 +107,7 @@ public class ExternalScriptPackSmokeTests
     public void ExternalScriptPackDiagnostics_CollectsStructuredGapCategories()
     {
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (packPath == null)
-            return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         var inventory = ScriptPackInventory.Build(packPath);
         var collector = new ScriptDiagnosticCollector();
@@ -149,8 +149,7 @@ public class ExternalScriptPackSmokeTests
     public void ScriptPackCompatibilityProfiles_ReturnStableFileSetsAndSummary()
     {
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (packPath == null)
-            return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         var inventory = ScriptPackInventory.Build(packPath);
         var audit = ScriptTestBootstrap.GetScriptFiles(packPath, ScriptPackProfile.Audit);
@@ -179,8 +178,7 @@ public class ExternalScriptPackSmokeTests
     public void ExternalWorldgenProfile_IsAuditOnlyAndNotCoreLoaded()
     {
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (packPath == null)
-            return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         var core = ScriptTestBootstrap.GetScriptFiles(packPath, ScriptPackProfile.CoreOnly);
         var worldgen = ScriptTestBootstrap.GetScriptFiles(packPath, ScriptPackProfile.WorldGenAudit);

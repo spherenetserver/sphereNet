@@ -6,11 +6,16 @@ using SphereNet.Game.Magic;
 using SphereNet.Scripting.Parsing;
 using SphereNet.Scripting.Resources;
 
+using Xunit.Abstractions;
+
 namespace SphereNet.Tests;
 
 [Collection("DefinitionLoaderSerial")]
 public sealed class SourceXCompatibilityTests
 {
+    private readonly ITestOutputHelper _out;
+    public SourceXCompatibilityTests(ITestOutputHelper output) => _out = output;
+
     [Fact]
     public void ResourceManifest_UsesTablesOrderAndDoesNotRecursivelyLoadDisabledScripts()
     {
@@ -42,8 +47,7 @@ public sealed class SourceXCompatibilityTests
     {
         string pack = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
             "..", "..", "..", "..", "oldSphere", "Scripts-X-main"));
-        if (!Directory.Exists(pack))
-            return;
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(pack))) return;
 
         var files = ScriptResourceManifest.Resolve(pack);
 
@@ -58,8 +62,7 @@ public sealed class SourceXCompatibilityTests
     {
         string pack = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
             "..", "..", "..", "..", "oldSphere", "Scripts-X-main"));
-        if (!Directory.Exists(pack))
-            return;
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(pack))) return;
 
         var resources = CreateResources(pack);
         var files = ScriptResourceManifest.Resolve(pack);

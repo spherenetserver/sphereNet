@@ -28,7 +28,8 @@ public sealed class TileLayerProbe
     {
         const string tilePath = @"C:\UOSoft\Spherenet\tiledata.mul";
         string? packPath = ScriptTestBootstrap.GetExternalScriptPackPath();
-        if (!File.Exists(tilePath) || packPath == null) { _out.WriteLine("missing pack or tiledata"); return; }
+        if (Gate.Missing(_out, "mul tables", !File.Exists(tilePath))) return;
+        if (Gate.MissingValue(_out, "external script pack", packPath)) return;
 
         // Real definitions
         var stack = ScriptTestBootstrap.CreateRuntimeStack();

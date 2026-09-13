@@ -109,7 +109,7 @@ public sealed class IniKeyClassificationGuardrailTests
     public void TheIniDefinesNoKeyTwice()
     {
         string? ini = ReadRepo(@"config\sphere.ini");
-        if (ini == null) { _out.WriteLine("SKIP: config/sphere.ini not found"); return; }
+        if (Gate.MissingValue(_out, "config/sphere.ini", ini)) return;
 
         // The parser matches key names case-insensitively, so a second spelling of
         // the same key silently overrides the first and the file no longer says
@@ -128,10 +128,10 @@ public sealed class IniKeyClassificationGuardrailTests
     public void NoKeyMarkedUnimplementedIsActuallyRead()
     {
         string? ini = ReadRepo(@"config\sphere.ini");
-        if (ini == null) { _out.WriteLine("SKIP: config/sphere.ini not found"); return; }
+        if (Gate.MissingValue(_out, "config/sphere.ini", ini)) return;
 
         var literals = SourceLiterals();
-        if (literals.Count == 0) { _out.WriteLine("SKIP: no source scanned"); return; }
+        if (Gate.Missing(_out, "engine source", literals.Count == 0)) return;
 
         // This is the drift that actually happened: a wave implements the setting,
         // the ini keeps saying it does nothing. Whoever implements one of the
@@ -156,10 +156,10 @@ public sealed class IniKeyClassificationGuardrailTests
     public void EveryKeyMarkedWorkingIsReachableFromSource()
     {
         string? ini = ReadRepo(@"config\sphere.ini");
-        if (ini == null) { _out.WriteLine("SKIP: config/sphere.ini not found"); return; }
+        if (Gate.MissingValue(_out, "config/sphere.ini", ini)) return;
 
         var literals = SourceLiterals();
-        if (literals.Count == 0) { _out.WriteLine("SKIP: no source scanned"); return; }
+        if (Gate.Missing(_out, "engine source", literals.Count == 0)) return;
 
         // The opposite drift: a marker promising behaviour for a key the engine
         // does not read at all. That one is worse - the operator sets it and
@@ -179,7 +179,8 @@ public sealed class IniKeyClassificationGuardrailTests
     {
         string? ini = ReadRepo(@"config\sphere.ini");
         string? doc = ReadRepo(@"docs\INI_ANAHTAR_SINIFLANDIRMASI_TR.md");
-        if (ini == null || doc == null) { _out.WriteLine("SKIP: docs not found"); return; }
+        if (Gate.MissingValue(_out, "config/sphere.ini", ini)) return;
+        if (Gate.MissingValue(_out, "denominator document", doc)) return;
 
         var rows = ParseIni(ini);
         int keys = rows.Select(r => r.Key).Distinct().Count();
@@ -197,7 +198,7 @@ public sealed class IniKeyClassificationGuardrailTests
     public void TheDocumentRecordsTheKeysThatAreStoredButNeverConsumed()
     {
         string? doc = ReadRepo(@"docs\INI_ANAHTAR_SINIFLANDIRMASI_TR.md");
-        if (doc == null) { _out.WriteLine("SKIP: doc not found"); return; }
+        if (Gate.MissingValue(_out, "denominator document", doc)) return;
 
         // Project rule: no setting without a consumer. These predate the rule and
         // are recorded rather than silently tolerated, so the list has to stay

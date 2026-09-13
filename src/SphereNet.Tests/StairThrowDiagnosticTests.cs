@@ -49,11 +49,7 @@ public class StairThrowDiagnosticTests
     public void TraceClimbAt_1460_1651_North()
     {
         string? MulDir = FindMulDir();
-        if (MulDir == null)
-        {
-            _out.WriteLine($"SKIP: no MUL data found in {string.Join(", ", MulCandidates)}");
-            return;
-        }
+        if (Gate.MissingValue(_out, "mul tables", MulDir)) return;
 
         var lf = LoggerFactory.Create(b => { });
         var map = new MapDataManager(MulDir);
@@ -132,18 +128,10 @@ public class StairThrowDiagnosticTests
     public void CompareMap0_vs_Map0x_Terrain_AroundBuilding()
     {
         string? MulDir = FindMulDir();
-        if (MulDir == null)
-        {
-            _out.WriteLine("SKIP: no MUL data found");
-            return;
-        }
+        if (Gate.MissingValue(_out, "mul tables", MulDir)) return;
         string nonX = Path.Combine(MulDir, "map0LegacyMUL.uop");
         string xVar = Path.Combine(MulDir, "map0xLegacyMUL.uop");
-        if (!File.Exists(nonX) || !File.Exists(xVar))
-        {
-            _out.WriteLine("SKIP: UOP map files not found");
-            return;
-        }
+        if (Gate.Missing(_out, "UOP map files", !File.Exists(nonX) || !File.Exists(xVar))) return;
 
         // Server FindUopMap prefers the 'x' variant; ClassicUO (default) reads the
         // non-'x'. If their terrain Z differs at the climb tiles, that IS the
@@ -336,11 +324,7 @@ public class StairThrowDiagnosticTests
     public void Compare_ServerWalkCheck_vs_ClassicUOPort_AtBuilding()
     {
         string? MulDir = FindMulDir();
-        if (MulDir == null)
-        {
-            _out.WriteLine($"SKIP: no MUL data found in {string.Join(", ", MulCandidates)}");
-            return;
-        }
+        if (Gate.MissingValue(_out, "mul tables", MulDir)) return;
         var lf = LoggerFactory.Create(b => { });
         var map = new MapDataManager(MulDir);
         map.Load();

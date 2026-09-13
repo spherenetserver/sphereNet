@@ -23,7 +23,7 @@ public sealed class SpawnIdxProbe
     public void SpawnOfNonNumericChardef_ResolvesRealBody_NotFFFF()
     {
         const string scripts = @"C:\sphereNetServer\scripts";
-        if (!Directory.Exists(scripts)) { _o.WriteLine("no scripts"); return; }
+        if (Gate.Missing(_o, "live script pack", !Directory.Exists(scripts))) return;
         var lf = LoggerFactory.Create(_ => { });
         var res = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };
         foreach (var f in ScriptResourceManifest.Resolve(scripts)) res.LoadResourceFile(f);

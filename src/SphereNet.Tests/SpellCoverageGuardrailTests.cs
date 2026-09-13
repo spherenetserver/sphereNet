@@ -61,11 +61,7 @@ public sealed class SpellCoverageGuardrailTests
     [Fact]
     public void TheLivePacksSpellCoverageIsWhatTheMatrixSays()
     {
-        if (!Directory.Exists(LivePack))
-        {
-            _out.WriteLine("SKIP: live script pack not found");
-            return;
-        }
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(LivePack))) return;
 
         var defs = ReadSpellBlocks(LivePack);
         Assert.NotEmpty(defs);
@@ -90,11 +86,7 @@ public sealed class SpellCoverageGuardrailTests
         // The point of the matrix: these are not missing definitions, they are
         // definitions the engine has nothing to do with. A player can pick them off
         // a spellbook, so the refusal has to be visible rather than a silent no-op.
-        if (!Directory.Exists(LivePack))
-        {
-            _out.WriteLine("SKIP: live script pack not found");
-            return;
-        }
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(LivePack))) return;
 
         var defs = ReadSpellBlocks(LivePack);
         var refused = defs.Keys.Where(i => IsRefused(i, defs[i])).OrderBy(i => i).ToList();

@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `b35ec84` + İŞ-48 (Source-X tablo paydaları) |
-| Tam test | 3.636 başarılı / 0 başarısız |
-| Sıradaki iş | **Dalga 0 — PLAN-003/004** (PLAN-001 ve 002 kapandı) |
+| Son commit | `08d252c` + İŞ-49 (veri kapıları) |
+| Tam test | 3.640 başarılı / 0 başarısız (66 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 0 — PLAN-004** (PLAN-001, 002, 003 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-49 KAPANDI** — 2026-09-13. Gerçek veriye bağlı testler veri yokken
+  erkenden dönüp **BAŞARILI** raporluyordu (xUnit 2'de çalışma anında skip yok),
+  yani verisiz bir makinedeki koşu her şeyi ölçen bir koşudan ayrılmıyordu.
+  25 dosyadaki 67 kapı `Gate.Missing`/`Gate.MissingValue`'ya taşındı; hangi
+  kaynağın istendiği ve bulunup bulunmadığı kaydedilip TRX'in yanına
+  `TestResults/data-gates.md`/`.csv` yazılıyor. Bu makinede 66 kapıdan biri
+  verisiz: `StairThrowDiagnosticTests` UOP harita karşılaştırması. Kapılar teste
+  başarısızlık yazmıyor — veri yokluğu hata değil, görünmezliği hataydı.
+  Belge: `docs/VERI_KAPILARI_TR.md`. Test: `DataGateGuardrailTests` (4);
+  bir kapı eski sessiz biçimine döndürülünce tarayıcı dosya+satırla yakalıyor.
+  Tam suite 3.640, üç koşu. **PLAN-003 tamamlandı.**
 - **İŞ-48 KAPANDI** — 2026-09-13. Referansın anahtar tabloları
   `docs/data/sourcex_tables.csv`'ye çıkarıldı (98 tablo, 3570 giriş; sahip tablo,
   enum öneki, sıra ve `ADDPROP` era kapısı dahil). 412 anahtar birden fazla

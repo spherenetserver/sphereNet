@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Kosunun ne kadarinin olcum yapmadigi artik yaziyor
+----------------------------------------
+
+FIX - Gercek veriye bagli testler - canli script paketi, 56T kaydi, .mul
+        tablolari, Source-X referans agaci - veri yokken erkenden donuyor ve
+        BASARILI raporlaniyordu; xUnit 2'de calisma aninda skip yok. Veri
+        olmayan bir makinedeki kosu, her seyi olcen bir kosudan ayirt
+        edilemiyordu. 25 test dosyasindaki 67 kapi artik Gate.Missing /
+        Gate.MissingValue uzerinden geciyor; hangi kaynagin istendigini ve orada
+        olup olmadigini kaydedip TRX'in yanina TestResults/data-gates.md ve .csv
+        yaziyor. Bu makinede 66 kapi degerlendiriliyor ve biri veri bulamiyor:
+        StairThrowDiagnosticTests'teki UOP harita karsilastirmasi.
+
+        Kapilar hala teste basarisizlik yazmiyor. Veri yoklugu bir hata degil
+        kosu ozelligi; CI'da ne referans agaci ne canli paket var. Yanlis olan
+        bunun gorunmez olmasiydi.
+
+TEST - DataGateGuardrailTests test kaynaklarini tarayip Gate'ten gecmeden ciplak
+        return'e giden veri kontrollerini yakaliyor; boylece sessiz bicim geri
+        gelemiyor. Iki gercek akis kontrolu dosya adiyla listede. 19 kaynak adi
+        da sabitlendi - yazim hatasi ayni kaynagi raporda iki satir gosterirdi.
+
+DOC - docs/VERI_KAPILARI_TR.md kaynak envanterini, xUnit skip durumunun neden
+        kullanilmadigini ve raporun skip sayisinin cevaplamadigi soruyu
+        kaydediyor: hangi veri yoktu ve bu yuzden ne olculmedi.
+
 [2026-09-13] - Yeniden uretilebilir kapsama paydalari
 ----------------------------------------
 

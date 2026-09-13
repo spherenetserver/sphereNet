@@ -5393,6 +5393,87 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-49 — Veri kapıları (PLAN-003, 13 Eylül 2026)
+
+PLAN-003: *"Early-return testlerini görünür veri-yok durumuna dönüştür;
+donanım/veri gereken testlerin çalışıp çalışmadığını TRX yanında raporla."*
+
+### Sorun
+
+Paketin bir bölümü gerçek veri ölçüyor: canlı script paketi, 56T kaydı, `.mul`
+tabloları, Source-X referans ağacı. Hiçbiri depoya konamadığı için o testler
+veri yokken erkenden dönüyordu — ve xUnit 2'de çalışma anında skip olmadığı için
+**BAŞARILI** olarak raporlanıyorlardı.
+
+Verisi olmayan bir makinedeki koşu, her şeyi ölçen bir koşudan ayrılmıyordu.
+"3636 yeşil" göründüğünden azını söylüyordu.
+
+Ölçüm: 25 test dosyasında **67 veri kapısı**, **19 ayrı kaynak**.
+
+### Yapılan
+
+Yeni bir skip durumu uydurulmadı; kararlar kaydedildi. Her kapı artık
+`Gate.Missing` / `Gate.MissingValue`'dan geçiyor, hangi kaynağın istendiğini ve
+bulunup bulunmadığını yazıyor, ve TRX'in yanına
+`TestResults/data-gates.md` + `.csv` düşüyor. Başlık tek satırda cevap veriyor:
+*"66 gate(s) evaluated, 1 found no data."*
+
+Bu makinedeki tek verisiz kapı:
+`StairThrowDiagnosticTests.CompareMap0_vs_Map0x_Terrain_AroundBuilding`
+(`UOP map files`). Yani her koşuda bir test ölçüm yapmadan yeşil dönüyordu ve
+bunu kimse bilmiyordu.
+
+Rapor koşu sonunda değil her çağrıda yazılıyor: xUnit 2'de assembly teardown yok
+ve yalnızca temiz çıkışta oluşan bir rapor tam da koşu yarıda öldüğünde eksik
+olurdu.
+
+### Kaydı tutulan karar — kapılar başarısızlık yazmıyor
+
+Veri yokluğu bir hata değil, bir koşu özelliği: CI'da ne referans ağacı ne canlı
+paket var ve orada yeşil kalmak doğru davranış. Yanlış olan bunun **görünmez**
+olmasıydı, geçiyor olması değil.
+
+### Kaydı tutulan karar — xUnit'in skip'i kullanılmadı
+
+`Assert.Skip()` xUnit v3'te; bu paket 2.9.2'de. `SkippableFact` eklenebilirdi
+ama yeni bir bağımlılık, her gated testin **özniteliğini** değiştirmek ve TRX'te
+"Skipped" görünüp **hangi verinin** eksik olduğunu söylemeyen bir durum
+getirirdi. Sorulan soru "kaç test atlandı" değil, *"hangi veri yoktu ve bu
+yüzden ne ölçülmedi"*.
+
+### Dönüşüm sırasında çıkan iki yan bulgu
+
+`MissingValue` ayrı bir aşırı yükleme olarak duruyor çünkü `[NotNullWhen(false)]`
+taşıyor: bool biçimiyle null kontrolünü `Gate`'e taşıyan her test derleyicinin
+null analizini kaybediyor ve arkasına `!` istiyordu. Derleyici bunu 13 çağrıda
+hata olarak söyledi.
+
+Altı test sınıfının (`ExternalScriptPackSmokeTests`, `SourceXCompatibilityTests`,
+`SourceXVerbInventoryGuardrailTests`, `ConfigRegressionTests`,
+`DefinitionAndSpellRegressionTests`, `ScriptPackCorpusRunnerTests`) hiç
+`ITestOutputHelper`'ı yoktu — yani veri yokken ekrana **hiçbir şey**
+yazmıyorlardı, "SKIP" bile. Eklendi.
+
+### Koruma
+
+`DataGateGuardrailTests` (4): test kaynaklarını tarayarak `Directory.Exists`,
+`File.Exists`, `== null`, `.Count == 0` gibi bir kontrolden çıplak `return;`'e
+giden ve `Gate`'ten geçmeyen satırları yakalıyor; 19 kaynak adını sabitliyor
+(yazım hatası aynı kaynağı raporda iki satır gösterirdi); raporun gerçekten
+yazıldığını kendi kapısıyla doğruluyor. İki gerçek akış kontrolü
+(`SaveRoundTripParityTests`, `SpellRuneItemGraphicTests`) dosya adıyla istisna
+listesinde — liste blanket muafiyete dönüşemesin diye.
+
+Geri-alma sondajı: `SpellCoverageGuardrailTests`'teki bir kapı eski sessiz
+biçimine döndürüldüğünde tarayıcı onu `SpellCoverageGuardrailTests.cs:64` diye
+yakaladı.
+
+### Kalan borç
+
+Ini'de olduğu gibi burada da kozmetik bir kalan var: rapor kapının **hangi
+testte** olduğunu söylüyor ama o testin kaç assert'ünün atlandığını
+söylemiyor. Bir sonraki adım olur; bu turda gerekmedi.
+
 ## İŞ-48 — Source-X tablo paydaları (PLAN-001, 13 Eylül 2026)
 
 PLAN-001: *"Source-X tablo kapsamını ve alias eşlemelerini JSON/CSV'ye çıkar;

@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A run now says how much of it measured nothing
+----------------------------------------
+
+FIX - Tests that depend on real data - the live script pack, the 56T save, the
+        .mul tables, the Source-X reference tree - returned early when it was
+        absent and reported as passing, because xUnit 2 has no runtime skip. A
+        run on a machine with no data looked exactly like a run that measured
+        everything. 67 gates across 25 test files now go through Gate.Missing /
+        Gate.MissingValue, which records which resource was wanted and whether
+        it was there, and writes the tally to TestResults/data-gates.md and
+        .csv beside the TRX. On this machine 66 gates evaluate and one finds no
+        data: the UOP map comparison in StairThrowDiagnosticTests.
+
+        Gates still do not fail a test. Missing data is a property of the run,
+        not a defect, and CI has neither the reference tree nor the live pack.
+        What was wrong was that it could not be seen.
+
+TEST - DataGateGuardrailTests scans the test sources for a data check that
+        leads to a bare return without passing through Gate, so the silent form
+        cannot come back; two genuine control-flow sites are listed by name
+        with their file. It also pins the 19 resource names, since a typo would
+        split one resource into two rows of the report.
+
+DOC - docs/VERI_KAPILARI_TR.md records the resource inventory, why xUnit's skip
+        status was not used, and what the report answers that a skip count does
+        not: which data was absent and therefore what went unmeasured.
+
 [2026-09-13] - Coverage denominators that can be re-derived
 ----------------------------------------
 

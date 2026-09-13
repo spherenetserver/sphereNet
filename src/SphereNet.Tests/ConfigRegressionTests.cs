@@ -1,9 +1,14 @@
 using SphereNet.Core.Configuration;
 
+using Xunit.Abstractions;
+
 namespace SphereNet.Tests;
 
 public class ConfigRegressionTests
 {
+    private readonly ITestOutputHelper _out;
+    public ConfigRegressionTests(ITestOutputHelper output) => _out = output;
+
     [Fact]
     public void SphereConfig_LoadFromIni_AppliesOperationalDefaultsAndClamps()
     {
@@ -453,7 +458,8 @@ public class ConfigRegressionTests
         // TELEPORTEFFECTSTAFF=0 turns the effect off, a MAXHOUSESGUILD=0 lets a guild
         // own nothing. This holds the shipped file to what it says it does.
         string? repoIni = FindRepoFile("config/sphere.ini");
-        if (repoIni == null) return;   // not running from the repo tree
+        // Not running from the repo tree.
+        if (Gate.MissingValue(_out, "config/sphere.ini", repoIni)) return;
 
         var ini = new SphereNet.Core.Configuration.IniParser();
         ini.Load(repoIni);

@@ -33,11 +33,7 @@ public class Sphere56TSaveCompatTests
     [Fact]
     public void WithTheScriptPackLoaded_ThePacksOwnSkillNamesAreRead()
     {
-        if (!Directory.Exists(ScriptsDir) || !File.Exists(Path.Combine(SaveDir, "spherechars.scp")))
-        {
-            _out.WriteLine("SKIP: 56T scripts/save not found");
-            return;
-        }
+        if (Gate.Missing(_out, "56T scripts and save", !Directory.Exists(ScriptsDir) || !File.Exists(Path.Combine(SaveDir, "spherechars.scp")))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new SphereNet.Scripting.Resources.ResourceHolder(
@@ -274,11 +270,7 @@ public class Sphere56TSaveCompatTests
     [Fact]
     public void SpawnersAndNpcNames_SurviveImport_WithThe56TScriptPack()
     {
-        if (!Directory.Exists(ScriptsDir) || !File.Exists(Path.Combine(SaveDir, "sphereworld.scp")))
-        {
-            _out.WriteLine("SKIP: 56T scripts/save not found");
-            return;
-        }
+        if (Gate.Missing(_out, "56T scripts and save", !Directory.Exists(ScriptsDir) || !File.Exists(Path.Combine(SaveDir, "sphereworld.scp")))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new SphereNet.Scripting.Resources.ResourceHolder(
@@ -405,11 +397,7 @@ public class Sphere56TSaveCompatTests
     [Fact]
     public void Loads56TSaves_AndReportsUnhandledKeys()
     {
-        if (!File.Exists(Path.Combine(SaveDir, "sphereworld.scp")))
-        {
-            _out.WriteLine($"SKIP: 56T save data not found at {SaveDir}");
-            return;
-        }
+        if (Gate.Missing(_out, "56T save", !File.Exists(Path.Combine(SaveDir, "sphereworld.scp")))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var world = new SphereNet.Game.World.GameWorld(lf);

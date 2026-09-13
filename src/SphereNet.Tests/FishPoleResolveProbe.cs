@@ -25,7 +25,7 @@ public sealed class FishPoleResolveProbe
         };
         string? scripts = null;
         foreach (var r in roots) if (Directory.Exists(r)) { scripts = r; break; }
-        if (scripts == null) { _out.WriteLine("script pack not present"); return; }
+        if (Gate.MissingValue(_out, "live script pack", scripts)) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var res = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };

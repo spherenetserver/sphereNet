@@ -30,12 +30,9 @@ public sealed class ContainerIndexDivergenceProbe
         string scripts = Path.Combine(rootDir, "scripts");
         string mul = Path.Combine(rootDir, "mul");
         string save = Path.Combine(rootDir, "save");
-        if (!Directory.Exists(scripts) || !File.Exists(Path.Combine(mul, "tiledata.mul")) ||
-            !File.Exists(Path.Combine(save, "sphereworld.scp")))
-        {
-            _out.WriteLine("real server dir not available");
-            return;
-        }
+        if (Gate.Missing(_out, "live shard (scripts + mul + save)",
+                !Directory.Exists(scripts) || !File.Exists(Path.Combine(mul, "tiledata.mul")) ||
+                !File.Exists(Path.Combine(save, "sphereworld.scp")))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };

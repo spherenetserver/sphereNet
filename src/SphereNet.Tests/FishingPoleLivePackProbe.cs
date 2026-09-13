@@ -34,11 +34,7 @@ public sealed class FishingPoleLivePackProbe
     {
         string scripts = Path.Combine(Root, "scripts");
         string mul = Path.Combine(Root, "mul");
-        if (!Directory.Exists(scripts) || !File.Exists(Path.Combine(mul, "tiledata.mul")))
-        {
-            _out.WriteLine("live pack not available");
-            return;
-        }
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(scripts) || !File.Exists(Path.Combine(mul, "tiledata.mul")))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };
@@ -107,11 +103,7 @@ public sealed class FishingPoleLivePackProbe
     public void LivePack_SpawnedOrc_HasStatsAndName()
     {
         string scripts = Path.Combine(Root, "scripts");
-        if (!Directory.Exists(scripts))
-        {
-            _out.WriteLine("live pack not available");
-            return;
-        }
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(scripts))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };
@@ -189,11 +181,7 @@ public sealed class FishingPoleLivePackProbe
     public void LivePack_WorldgemBit_GmDClick_TogglesSpawn()
     {
         string scripts = Path.Combine(Root, "scripts");
-        if (!Directory.Exists(scripts))
-        {
-            _out.WriteLine("live pack not available");
-            return;
-        }
+        if (Gate.Missing(_out, "live script pack", !Directory.Exists(scripts))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };
@@ -273,12 +261,9 @@ public sealed class FishingPoleLivePackProbe
         string scripts = Path.Combine(Root, "scripts");
         string mul = Path.Combine(Root, "mul");
         string save = Path.Combine(Root, "save");
-        if (!Directory.Exists(scripts) || !File.Exists(Path.Combine(mul, "tiledata.mul")) ||
-            !File.Exists(Path.Combine(save, "sphereworld.scp")))
-        {
-            _out.WriteLine("live save not available");
-            return;
-        }
+        if (Gate.Missing(_out, "live shard (scripts + mul + save)",
+                !Directory.Exists(scripts) || !File.Exists(Path.Combine(mul, "tiledata.mul")) ||
+                !File.Exists(Path.Combine(save, "sphereworld.scp")))) return;
 
         var lf = LoggerFactory.Create(_ => { });
         var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };

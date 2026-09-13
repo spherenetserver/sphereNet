@@ -207,11 +207,9 @@ public sealed class SourceXTableInventoryGuardrailTests
     {
         string? refRoot = ReferenceRoot();
         string? export = ExportPath();
-        if (refRoot == null || export == null || !File.Exists(export))
-        {
-            _out.WriteLine("SKIP: reference tree or export not present");
-            return;
-        }
+        if (Gate.MissingValue(_out, "Source-X reference tree", refRoot)) return;
+        if (Gate.MissingValue(_out, "table export", export)) return;
+        if (Gate.Missing(_out, "table export", !File.Exists(export))) return;
 
         string produced = ToCsv(Extract(refRoot));
         string committed = File.ReadAllText(export).Replace("\r\n", "\n");
@@ -240,7 +238,7 @@ public sealed class SourceXTableInventoryGuardrailTests
     public void TheTriggerDenominatorIsNotJustTriggersTbl()
     {
         string? refRoot = ReferenceRoot();
-        if (refRoot == null) { _out.WriteLine("SKIP: reference tree not present"); return; }
+        if (Gate.MissingValue(_out, "Source-X reference tree", refRoot)) return;
 
         var rows = Extract(refRoot);
         var global = rows.Where(r => r.Table == "triggers")
@@ -274,7 +272,7 @@ public sealed class SourceXTableInventoryGuardrailTests
     public void SummingTablesDoubleCountsSharedKeys()
     {
         string? refRoot = ReferenceRoot();
-        if (refRoot == null) { _out.WriteLine("SKIP: reference tree not present"); return; }
+        if (Gate.MissingValue(_out, "Source-X reference tree", refRoot)) return;
 
         var rows = Extract(refRoot);
         string[] verbTables = ["CObjBase_functions", "CChar_functions", "CItem_functions", "CClient_functions"];
@@ -296,7 +294,7 @@ public sealed class SourceXTableInventoryGuardrailTests
     public void ThePropertySurfaceIsNeitherOfTheNumbersEverQuoted()
     {
         string? refRoot = ReferenceRoot();
-        if (refRoot == null) { _out.WriteLine("SKIP: reference tree not present"); return; }
+        if (Gate.MissingValue(_out, "Source-X reference tree", refRoot)) return;
 
         var props = Extract(refRoot).Where(r => r.Table.EndsWith("_props", StringComparison.Ordinal)).ToArray();
         int entries = props.Length;
@@ -314,7 +312,7 @@ public sealed class SourceXTableInventoryGuardrailTests
     public void ComponentPropertiesCarryTheirExpansionGate()
     {
         string? refRoot = ReferenceRoot();
-        if (refRoot == null) { _out.WriteLine("SKIP: reference tree not present"); return; }
+        if (Gate.MissingValue(_out, "Source-X reference tree", refRoot)) return;
 
         var gated = Extract(refRoot).Where(r => r.Era.Length > 0).ToArray();
         var byEra = gated.GroupBy(r => r.Era).ToDictionary(g => g.Key, g => g.Count());
@@ -335,11 +333,13 @@ public sealed class SourceXTableInventoryGuardrailTests
         var root = RepoRoot();
         string? doc = root == null ? null
             : Path.Combine(root.FullName, "docs", "SOURCEX_TABLO_PAYDALARI_TR.md");
-        if (doc == null || !File.Exists(doc)) { _out.WriteLine("SKIP: doc not found"); return; }
+        if (Gate.MissingValue(_out, "denominator document", doc)) return;
+        if (Gate.Missing(_out, "denominator document", !File.Exists(doc))) return;
 
         string text = File.ReadAllText(doc);
         string? export = ExportPath();
-        if (export == null || !File.Exists(export)) { _out.WriteLine("SKIP: export not found"); return; }
+        if (Gate.MissingValue(_out, "table export", export)) return;
+        if (Gate.Missing(_out, "table export", !File.Exists(export))) return;
 
         int lines = File.ReadAllLines(export).Length - 1;   // minus the header
         _out.WriteLine($"export rows: {lines}");

@@ -68,11 +68,8 @@ public sealed class ReleaseAcceptanceGuardrailTests
     {
         string? findings = Read(@"docs\INCELEME_DOGRULAMA_PLANI_TR.md");
         string? package = Read(@"docs\RELEASE_KABUL_PAKETI_TR.md");
-        if (findings == null || package == null)
-        {
-            _out.WriteLine("SKIP: docs not found");
-            return;
-        }
+        if (Gate.MissingValue(_out, "findings document", findings)) return;
+        if (Gate.MissingValue(_out, "release package", package)) return;
 
         var deviations = RecordedDeviations(findings);
         _out.WriteLine($"recorded deviation sections: {deviations.Length}");
@@ -89,11 +86,7 @@ public sealed class ReleaseAcceptanceGuardrailTests
     public void EveryRecordedDeviationBelongsToANumberedWorkItem()
     {
         string? findings = Read(@"docs\INCELEME_DOGRULAMA_PLANI_TR.md");
-        if (findings == null)
-        {
-            _out.WriteLine("SKIP: findings not found");
-            return;
-        }
+        if (Gate.MissingValue(_out, "findings document", findings)) return;
 
         // A deviation with no owning İŞ heading cannot be traced back to the
         // measurement that justified it, which is the whole point of recording it.
@@ -104,11 +97,7 @@ public sealed class ReleaseAcceptanceGuardrailTests
     public void ThePackageSaysPlainlyWhatWasNotRun()
     {
         string? package = Read(@"docs\RELEASE_KABUL_PAKETI_TR.md");
-        if (package == null)
-        {
-            _out.WriteLine("SKIP: package not found");
-            return;
-        }
+        if (Gate.MissingValue(_out, "release package", package)) return;
 
         // The two steps that really were not performed. An acceptance document
         // that goes quiet about them is worse than no document, so the words have
@@ -123,11 +112,8 @@ public sealed class ReleaseAcceptanceGuardrailTests
     {
         string? package = Read(@"docs\RELEASE_KABUL_PAKETI_TR.md");
         string? plan = Read(@"docs\PORT_PLAN_ILERLEME_TR.md");
-        if (package == null || plan == null)
-        {
-            _out.WriteLine("SKIP: docs not found");
-            return;
-        }
+        if (Gate.MissingValue(_out, "release package", package)) return;
+        if (Gate.MissingValue(_out, "progress plan", plan)) return;
 
         // The unreproduced failure recorded in İŞ-43 is still open; both the plan
         // and the package must still be carrying it.
@@ -140,11 +126,7 @@ public sealed class ReleaseAcceptanceGuardrailTests
     public void TheRestoreDrillsAreClaimedAsRunBecauseTheyAre()
     {
         string? package = Read(@"docs\RELEASE_KABUL_PAKETI_TR.md");
-        if (package == null)
-        {
-            _out.WriteLine("SKIP: package not found");
-            return;
-        }
+        if (Gate.MissingValue(_out, "release package", package)) return;
 
         // Restore is the one operational drill that WAS performed, and the test
         // class backing that claim has to exist for the claim to stand.

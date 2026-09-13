@@ -5393,6 +5393,54 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-63 — Callback içinde kayıt (PLAN-205, 13 Eylül 2026)
+
+PLAN-205: *"TIMERF çoklu nesne sırası, aynı tick'e yeniden iş ekleme, iptal,
+**callback içinde save** ve offline kaynak bağlamlarını önceki testlerle kapat."*
+
+### Durum ölçümü — beşten dördü zaten vardı
+
+| Durum | Kapsayan |
+|---|---|
+| Çoklu nesne sırası | `JobsOnDifferentObjectsRunInDueOrder` |
+| Aynı vadede sıra | `JobsSharingADueTimeKeepTheOrderTheyWereQueuedIn` |
+| Aynı tick'e yeniden iş | `WorkAddedFromInsideACallbackWaitsForTheNextPass` |
+| İptal | `ACallbackCanStillCancelAJobThatHasNotRunYet` |
+| Offline kaynak | `ADelayedUnequipWorksForACharacterWithNoClient` |
+| **Callback içinde save** | **yoktu** |
+
+### Neden eksik olan tam da tehlikeli olanıydı
+
+Bir gönderici, vadesi gelen **tüm** işleri çalıştırmadan önce nesnelerinden almayı
+seçebilir — makul görünür ve neredeyse her testte fark etmez. Fark **yalnızca**
+bir script callback içinden kayıt aldığında ortaya çıkar: henüz koşmamış işler
+çoktan kopmuş olur, dosyaya girmez ve yeniden başlatma shard'ın planladığı işi
+**sessizce kaybeder**.
+
+Kod bunu zaten doğru yapıyor (bir işi çalıştırmadan **hemen önce** alıyor) ve
+`GameWorld.TickTimerF`'teki yorum gerekçesini yazıyor — ama hiçbir şey bunu
+ölçmüyordu. Yorum bir testin yerini tutmaz: yeniden yazılan bir döngü yorumu
+
+sessizce geçersizleştirir.
+
+### Üç vaka
+
+```
+callbacks run: 3, TIMERF lines in the save: 2
+   TIMERF=0|f_second|
+   TIMERF=0|f_third|
+```
+
+1. Üç callback'in ilkinde alınan kayıt, **koşmamış ikisini** yazıyor.
+2. O anda **koşan** iş yazılmıyor — aynı kuralın öbür yarısı: yeniden başlatma
+   olmuş bir işi tekrarlamamalı.
+3. Callback'in kayıttan önce planladığı yeni iş aynı dosyaya giriyor.
+
+### Sonuç
+
+**Üretim değişikliği gerekmedi.** Sondaj: döngü "önce hepsini çek, sonra
+çalıştır" biçimine çevrilince ilk vaka kırmızıya dönüyor.
+
 ## İŞ-62 — Uid yaşam süresi ve bayat referanslar (PLAN-204, 13 Eylül 2026)
 
 PLAN-204: *"NEW/ACT/SRC/ARGO/LOCAL/REF sözleşmesini başarılı, başarısız, iç içe

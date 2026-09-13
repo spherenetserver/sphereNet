@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - TIMERF callback'i icinden alinan kayit
+----------------------------------------
+
+TEST - PLAN-205 bes TIMERF durumu sayiyor ve dordu zaten kapsanmisti: nesneler
+        arasi sira, ayni vade icinde sira, callback icinden yeniden kurma,
+        callback icinden iptal ve istemcisi olmayan kaynak. Besincisi - is listesi
+        hala gezilirken dunyayi kaydeden bir callback - sessiz bozulma bicimini
+        tasiyordu ve testi yoktu.
+
+        Bir gonderici, vadesi gelen her isi calistirmadan once nesnesinden almayi
+        secebilirdi ve bu, bir script callback icinden kayit alana kadar fark
+        edilmezdi: henuz kosmamis isler coktan kopmus olur, dosyaya girmez ve
+        yeniden baslatma shard'in planladigi isi kaybederdi. Gonderici bir isi
+        calistirmadan hemen once aliyor ve GameWorld.TickTimerF'teki yorum bunu
+        soyluyor, ama hicbir sey olcmuyordu.
+
+        Artik uc vaka olcuyor: uc callback'in ilkinde alinan kayit, kosmamis
+        ikisini yaziyor; o anda kosan is YAZILMIYOR, yani yeniden baslatma olmus
+        isi tekrarlamiyor; ve callback'in kayit oncesi planladigi is ayni dosyaya
+        giriyor.
+
+        Uretim degisikligi yok. Is listesini onden bosaltmak ilk vakayi kirmiziya
+        donduruyor.
+
 [2026-09-13] - Silinen nesnenin uid'i artik dogrudan geri verilmiyor
 ----------------------------------------
 

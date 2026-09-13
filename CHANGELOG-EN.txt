@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A save taken from inside a TIMERF callback
+----------------------------------------
+
+TEST - PLAN-205 lists five TIMERF situations and four were already covered:
+        ordering across objects, ordering within one due time, re-arming from a
+        callback, cancellation from a callback, and a source with no client. The
+        fifth - a callback that saves the world while the due list is still being
+        walked - had the silent failure mode and no test.
+
+        A dispatcher could reasonably take every due job off its object before
+        running any of them, and nothing would notice until a script saved from
+        inside a callback: the jobs not yet run would already be detached, would
+        not reach the file, and a restart would lose work the shard had scheduled.
+        The dispatcher removes one job immediately before running it and the
+        comment at GameWorld.TickTimerF says so, but nothing measured it.
+
+        Three cases now do: a save taken in the first of three callbacks still
+        writes the two that have not run; the job currently running is NOT written,
+        so a restart does not repeat work that already happened; and a job the
+        callback schedules before saving does reach the same file.
+
+        No production change. Draining the due list up front turns the first case
+        red.
+
 [2026-09-13] - A deleted object's uid stops being handed straight back
 ----------------------------------------
 

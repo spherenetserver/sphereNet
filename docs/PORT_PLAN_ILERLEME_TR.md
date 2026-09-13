@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `daabcd1` + İŞ-62 (uid yaşam süresi) |
-| Tam test | 3.698 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 2 — PLAN-205** (PLAN-201..204 kapandı) |
+| Son commit | `f377c4e` + İŞ-63 (callback içinde kayıt) |
+| Tam test | 3.701 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 2 — PLAN-206** (Dalga 2'nin son maddesi) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,16 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-63 KAPANDI** — 2026-09-13. PLAN-205'in beş TIMERF durumundan dördü zaten
+  kapsanmıştı; beşinci — **iş listesi gezilirken dünyayı kaydeden callback** —
+  sessiz bozulma biçimini taşıyordu ve testi yoktu. Vadesi gelen tüm işleri önden
+  çekmek makul görünür ama script callback içinden kayıt alınca koşmamış işler
+  dosyaya girmez ve yeniden başlatma planlanmış işi kaybeder. Üç vaka: ilk
+  callback'te alınan kayıt koşmamış ikisini yazıyor; o anda koşan iş
+  **yazılmıyor** (yeniden başlatma işi tekrarlamasın); callback'in planladığı yeni
+  iş aynı dosyaya giriyor. **Üretim değişikliği yok** — önden boşaltmaya çevirince
+  ilk vaka kırmızı. Test: `DelayedCallSaveDuringCallbackTests` (3).
+  Tam suite 3.701, üç koşu. **PLAN-205 tamamlandı.**
 - **İŞ-62 KAPANDI** — 2026-09-13. **Gerçek hata:** silinen nesnenin uid'i tahsis
   ediciye **anında** geri veriliyordu, bir sonraki oluşturma onu alıyordu — silmeden
   önce yakalanmış `NEW`/`ACT` **başka bir nesneye** çözülüyor, `NEW.NAME` bir

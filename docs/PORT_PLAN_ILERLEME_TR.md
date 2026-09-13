@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `7c86b99` + İŞ-59 (dupe giriş noktaları) |
-| Tam test | 3.682 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 2 — PLAN-202** (PLAN-201 kapandı) |
+| Son commit | `b87d4c5` + İŞ-60 (template tek okuyucu) |
+| Tam test | 3.685 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 2 — PLAN-203** (PLAN-201/202 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-60 KAPANDI** — 2026-09-13. **Gerçek hata:** TEMPLATE tarifi **iki ayrı
+  okuyucuyla** yürütülüyordu. `TemplateEngine` `Rows`'u (her satır, sırasıyla),
+  NPC loot açılımı ise `ItemEntries`'i (yalnızca ITEM/CONTAINER) geziyordu —
+  yani tarifin taşıdığı **her property satırını sessizce düşürüyordu.** Aynı
+  tarif NEWITEM/spawner'dan `'Gilded Reward' hue=0x0489`, loot'tan
+  `'Reward' hue=0x0000` üretiyordu. Referansın tek okuyucusu var
+  (ReadTemplate, CItem.cpp:586/686). Loot yolu artık `BuildTemplate` çağırıyor
+  (zaten hedef kap alıyordu); yerine kullandığı 42 satırlık kurucu **ölü kod
+  bırakılmadı, silindi.** Test: `TemplateEntryPointParityTests` (3); ortak
+  okuyucu devre dışı bırakılınca üçün ikisi kırmızı. Tam suite 3.685, üç koşu.
+  **PLAN-202 tamamlandı.**
 - **İŞ-59 KAPANDI** — 2026-09-13. **Gerçek hata:** giyimli bir karakteri
   kopyalamak `NEW`'i **gömleğine** bırakıyordu. `Character.CreateDupe` giyili her
   katmanı kopyalıyor, her kopya `NEW`'i bir eşyaya taşıyor ve karakter onu geri

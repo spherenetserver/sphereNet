@@ -5393,6 +5393,62 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-60 — Template tek okuyucu (PLAN-202, 13 Eylül 2026)
+
+PLAN-202: *"TEMPLATE tek yürütme yolunu NEWITEM, spawn ve ilgili loot/vendor
+üretimlerinde karşılaştır; ilk satır, alt tarif, miktar, FUNC, ret, özel kapsayıcı
+ve taşınamaz nesne sınırlarını kapat."*
+
+### Bulgu — bir tarif, iki okuyucu
+
+TEMPLATE tarifi bir satır dizisidir ve dilbilgisi onların **sırasıdır**: `ITEM` ve
+`CONTAINER` yaratır, `FUNC` çağırır, **diğer her satır** tarifin en son yaptığı
+nesneye bir property atamasıdır (ReadTemplate, CItem.cpp:586/686).
+
+Referansın **tek** okuyucusu var. Bu motorun **ikisi** vardı:
+
+| Yol | Gezdiği | Kapsadığı |
+|---|---|---|
+| `TemplateEngine.BuildTemplate` | `TemplateDef.Rows` | Her satır, sırasıyla |
+| `Character.SpawnLootTemplateInto` | `TemplateDef.ItemEntries` | Yalnızca ITEM/CONTAINER |
+
+İkincisi tarifin taşıdığı **her property satırını sessizce düşürüyordu.**
+
+Ölçüm — aynı tarif, iki kapı:
+
+```
+engine: 1000 'Gilded Reward' x3 hue=0x0489
+loot:   1000 'Reward'        x3 hue=0x0000
+```
+
+Yani bir script yazarı tek bir tarif yazıyor ama NPC'nin loot'undan geçince
+ödülün adı ve rengi kayboluyordu. Bu, tarifin küçük bir sürümü değil **başka bir
+tarif**.
+
+### Düzeltme
+
+Loot yolu artık `TemplateEngine.BuildTemplate`'i çağırıyor. Zaten bir **hedef kap**
+parametresi alıyordu (`into`), yani ikinci okuyucuya hiç gerek yoktu. Yerine
+kullandığı 42 satırlık `CreateLootTemplateItem` kurucusu, artık çağrılmadığı için
+**ölü kod bırakılmadı, silindi.**
+
+### Harness hatası — tanımları kurucuda yüklemek
+
+İlk koşuda **üç test de** kırmızıydı, motor kapısı dahil: `BuildTemplate` null
+dönüyordu. Neden, 13F testinin kendi yorumunda yazılı: `ResetEngineStatics`
+tanım tablolarını **Before** kancasında temizliyor ve xUnit onu sınıf kurucusundan
+**sonra** çalıştırıyor. Kurucuda yapılan yükleme ilk iddiadan önce siliniyor.
+Yükleme test gövdesine taşındı.
+
+### Koruma
+
+`TemplateEntryPointParityTests` (3): motor kapısı, loot kapısı ve **ikisinin alan
+alan karşılaştırılması** — PLAN-202'nin sorduğu soru "her kapı çalışıyor mu"
+değil, "kapılar aynı şeyi mi söylüyor".
+
+Sondaj: ortak okuyucuya delegasyon devre dışı bırakılınca üç testin ikisi
+kırmızıya dönüyor.
+
 ## İŞ-59 — Dupe giriş noktaları (PLAN-201, 13 Eylül 2026)
 
 PLAN-201: *"13A–13I düzeltmelerini **giriş bazında** yeniden doğrula: doğrudan

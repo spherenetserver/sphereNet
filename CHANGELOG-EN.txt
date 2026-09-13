@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - One recipe, two readers, two different rewards
+----------------------------------------
+
+FIX - A TEMPLATE recipe is a sequence of lines and the grammar is their ORDER:
+        ITEM and CONTAINER create, FUNC calls, and any other line is a property
+        assignment applied to whatever the recipe made last (ReadTemplate,
+        CItem.cpp:586/686). The reference has one reader. This engine had two.
+
+        TemplateEngine walks TemplateDef.Rows, which is every line in order. The
+        NPC loot expansion walked TemplateDef.ItemEntries instead, which is the
+        ITEM and CONTAINER lines only - so it silently dropped every property line
+        the recipe carried. The same recipe produced a named, coloured reward
+        through NEWITEM or a spawner and a bare one through an NPC's loot:
+
+            engine: 'Gilded Reward' x3 hue=0x0489
+            loot:   'Reward'        x3 hue=0x0000
+
+        The loot path now calls BuildTemplate, which already accepted a
+        destination container, so there is one reader again. The 42-line item
+        builder it used instead is gone with it rather than left dead.
+
+TEST - TemplateEntryPointParityTests builds the same recipe through the engine
+        door and the loot door and compares them field by field, which is what
+        PLAN-202 asks for: not "does each door work" but "do the doors agree",
+        because a script author writes one recipe and expects one result whichever
+        production runs it. Bypassing the shared reader turns two of the three
+        red.
+
 [2026-09-13] - Duplicating a dressed character left NEW on its shirt
 ----------------------------------------
 

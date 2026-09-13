@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Tek tarif, iki okuyucu, iki farkli odul
+----------------------------------------
+
+FIX - TEMPLATE tarifi bir satir dizisidir ve dilbilgisi onlarin SIRASIDIR: ITEM ve
+        CONTAINER yaratir, FUNC cagirir, diger her satir tarifin en son yaptigi
+        nesneye bir property atamasidir (ReadTemplate, CItem.cpp:586/686).
+        Referansin tek okuyucusu var. Bu motorun ikisi vardi.
+
+        TemplateEngine, TemplateDef.Rows'u yani her satiri sirasiyla geziyor. NPC
+        loot acilimi ise TemplateDef.ItemEntries'i geziyordu - yalnizca ITEM ve
+        CONTAINER satirlari - ve tarifin tasidigi her property satirini sessizce
+        dusuruyordu. Ayni tarif NEWITEM ya da spawner'dan gecince adli ve renkli,
+        bir NPC'nin loot'undan gecince ciplak bir odul uretiyordu:
+
+            engine: 'Gilded Reward' x3 hue=0x0489
+            loot:   'Reward'        x3 hue=0x0000
+
+        Loot yolu artik BuildTemplate cagiriyor - zaten bir hedef kap aliyordu -
+        boylece tek okuyucu kaldi. Yerine kullandigi 42 satirlik esya kurucusu da
+        olu kod olarak birakilmadi, silindi.
+
+TEST - TemplateEntryPointParityTests ayni tarifi motor kapisindan ve loot
+        kapisindan kurup alan alan karsilastiriyor; PLAN-202'nin istedigi de bu:
+        "her kapi calisiyor mu" degil, "kapilar ayni seyi mi soyluyor" - cunku
+        script yazari tek bir tarif yazar ve hangi uretim kosarsa kossun tek bir
+        sonuc bekler. Ortak okuyucu devre disi birakilinca ucun ikisi kirmiziya
+        donuyor.
+
 [2026-09-13] - Giyimli bir karakteri kopyalamak NEW'i gomlegine birakiyordu
 ----------------------------------------
 

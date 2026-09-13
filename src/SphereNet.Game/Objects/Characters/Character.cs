@@ -2585,7 +2585,10 @@ public partial class Character : ObjBase
     /// and world position belong to the new object and its own session.</summary>
     /// <param name="newbieItems">Source-X fNewbieItems: the copy's equipment - and
     /// the contents of a copied container - are marked ATTR_NEWBIE (CChar.cpp:1201).
-    /// The DUPE verb chooses it from its argument; NEWDUPE does not.</param>
+    /// The DUPE verb chooses it from its argument. NEWDUPE asks for it too: upstream
+    /// implements NEWDUPE as the DUPE verb (CScriptObj.cpp:1311) and the script it
+    /// builds carries no argument (CopyParseState, CScript.cpp:458), so CHV_DUPE
+    /// reads zero and passes true.</param>
     public Character CreateDupe(World.GameWorld world, bool newbieItems = false)
     {
         var copy = world.CreateCharacter();

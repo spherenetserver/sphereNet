@@ -3,6 +3,46 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - NEWDUPE, olmasi gereken fiilin etrafindan dolasiyordu
+----------------------------------------
+
+FIX - Referansta NEWDUPE kendi basina kopyalamaz: CScript("DUPE") kurup nesnenin
+        kendi fiilini cagirir (CScriptObj.cpp:1311). CopyParseState yalnizca
+        ayristirma bayraklarini, dosya indeksini ve satir numarasini tasir
+        (CScript.cpp:458) - argumani tasimaz. Kurulan script'in argumani
+        olmadigi icin CHV_DUPE GetArgVal() == 0 okur ve
+        "GetArgVal() < 1 ? true : false" DupeFrom'a fNewbieItems = true verir
+        (CChar.cpp:4545). Yani referansta NEWDUPE bir karakteri kopyalarken
+        ekipmanini ATTR_NEWBIE isaretler.
+
+        HandleNewDupe dogrudan CreateDupe cagirip varsayilani (false) aliyordu ve
+        metodun kendi dokuman yorumu yanlis gerekceyi kaydediyordu: "DUPE fiili
+        argumanindan secer; NEWDUPE secmez". ATTR_NEWBIE esya olumde cesede
+        dusmez, karakterle kalir; dolayisiyla NEWDUPE ile NPC kopyalayan bir
+        script referanstakinden farkli donanimli bir kopya aliyordu. Cagri artik
+        newbieItems: true geciyor; metodun varsayilani degismedi, cunku DUPE
+        fiili zaten acikca seciyor.
+
+DOC - docs/NESNE_URETIM_SOZLESMESI_TR.md "yeni bir nesne belirir" cumlesinin
+        dokuz kapisini iki aileye ayirip tabloya dokuyor: kaynaktan kopyalayan
+        dort kapi ve tanimdan ureten bes kapi; her birinin ne tasidigi ve hangi
+        farkin bilincli oldugu.
+
+TEST - ObjectCreationContractTests tamamen doldurulmus bir kaynagi her kopyayla
+        elle tutulan bir liste yerine YANSIMA ile karsilastiriyor; sonradan
+        eklenen ve bir kapinin kopyalayip digerinin unuttugu bir alan, kimse
+        listeyi guncellemeden ortaya cikiyor. Kimlik, yerlesim ve turetilmis
+        degerler dislandiginda Item 63 karsilastirilabilir property sunuyor ve
+        kapilar hepsinde ayni. Kapilari BIRBIRIYLE de karsilastiriyor; asil risk
+        bu, cunku ayrisan iki kapi ayni script'e hangi kapidan gectigine gore
+        farkli nesne urettirir.
+
+DOC - Kaydedildi, uygulanmadi: referans NEWDUPE'tan sonra cagiranin ACT'ini
+        kuruyor; NEWITEM bunu zaten karsiliyor, NEWDUPE karsilamiyor. Referans
+        m_uidNew'u DUPE fiilinden ONCE kaynagin uid'sine kurdugu icin ACT'in
+        kaynagi mi kopyayi mi gosterdigi ayrica dogrulanmali. Tahminle uygulamak,
+        bu dalgada duzeltilen hatanin aynisi olurdu.
+
 [2026-09-13] - Iki listede de olmayan review bulgulari
 ----------------------------------------
 

@@ -5393,6 +5393,88 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-52 — Nesne üretim sözleşmesi (PLAN-101, 13 Eylül 2026)
+
+PLAN-101: *"Tek nesne oluşturma/kopyalama sözleşmesi: NEWITEM, NEWNPC, NEWDUPE,
+karakter DUPE, spawn, template, vendor ve stack bölme girişlerinin ortak ve
+farklı davranışlarını tabloya dök."*
+
+### Yöntem — liste değil yansıma
+
+Dokuz kapı farklı dosyalarda, farklı dalgalarda yazıldı ve paylaştıkları hata
+sessiz: bir kapı bir alanı kopyalar, yanındaki unutur, hiçbir şey söylemez.
+Karşılaştırmayı elle tutulan bir listeye bağlamak aynı hataya açık olurdu, o
+yüzden `Item`'ın okunabilir **her** property'si yansımayla karşılaştırılıyor.
+Sonradan eklenen bir alanı bir kapı kopyalayıp diğeri unutursa, kimse listeyi
+güncellemeden ortaya çıkar.
+
+63 karşılaştırılabilir property; 21 ad üç gerekçeyle dışarıda: kimlik (kopya ikinci
+bir nesne olmalı), yerleşim (referans çağırana bırakır) ve türetilmiş değerler
+(taşınan alanlardan yeniden hesaplanır).
+
+**Sonuç: 63 property'nin tamamında eşya `DUPE` ve stack bölme hem kaynakla hem
+birbiriyle aynı.** Kap içeriği ve spawner bileşeni bilinçli farklar olarak ayrı
+testlere yazıldı.
+
+### Bulgu — `NEWDUPE` fiilin etrafından dolaşıyordu
+
+Kapıları yan yana koymanın karşılığı bu oldu.
+
+Referansta `SSV_NEWDUPE` kendi başına kopyalamaz; `CScript("DUPE")` kurup
+nesnenin **kendi fiilini** çağırır (CScriptObj.cpp:1311). Kritik ayrıntı
+`CopyParseState`'te: yalnızca ayrıştırma bayraklarını, dosya indeksini ve satır
+numarasını kopyalar (CScript.cpp:458) — **argümanı değil.** Kurulan script'in
+argümanı olmadığı için `CHV_DUPE` içindeki `s.GetArgVal()` sıfır döner ve
+
+```cpp
+pChar->DupeFrom(this, s.GetArgVal() < 1 ? true : false);   // CChar.cpp:4545
+```
+
+`fNewbieItems = true` verir. Yani **referansta `NEWDUPE <uid>` bir karakteri
+kopyalarken ekipmanını ATTR_NEWBIE işaretler.**
+
+`HandleNewDupe` doğrudan `CreateDupe(_world)` çağırıp varsayılanı (`false`)
+alıyordu. Üstelik metodun kendi doküman yorumu yanlış gerekçeyi kaydediyordu:
+*"DUPE fiili argümanından seçer; NEWDUPE seçmez."*
+
+**Oyun içi etki:** ATTR_NEWBIE eşya ölümde cesede düşmez, karakterle kalır. Bir
+script'in NEWDUPE ile ürettiği NPC öldüğünde referansta ekipmanı korunurken
+burada yere düşüyordu.
+
+Düzeltme çağrı yerinde: `CreateDupe(_world, newbieItems: true)`. Metodun
+varsayılanı değiştirilmedi — `DUPE` fiili zaten argümanından açıkça seçiyor ve
+varsayılanı çevirmek üretimde karşılığı olmayan test çağrılarını da sessizce
+değiştirirdi.
+
+### Önce yanlış okudum
+
+İlk okuyuşumda `CopyParseState`'in argümanı da taşıdığını varsaydım; o durumda
+`GetArgVal()` uid'i dönerdü, `< 1` yanlış çıkardı ve bizim `false`'umuz **doğru**
+olurdu. Fonksiyonun gövdesine bakmadan kapatsaydım bulguyu kaçıracaktım.
+`CScript.cpp:458` üç alan kopyalıyor ve argüman aralarında yok.
+
+### Kaydı tutulan açık kalem — çıplak `NEWDUPE` ve `ACT`
+
+Referans NEWDUPE'tan sonra `this != &g_Serv` ise çağıranın `m_Act_UID`'sini
+kuruyor. `NEWITEM` bu sözleşmeyi zaten karşılıyor (kodda yorumla anılmış),
+`NEWDUPE` karşılamıyor.
+
+**Uygulamadım.** Referans `m_uidNew`'ü DUPE fiilinden önce **kaynağın** uid'sine
+kuruyor; ACT'in kaynağı mı kopyayı mı gösterdiği ayrıca doğrulanmalı. Tahmine
+dayalı bir uygulama, bu dalgada düzeltilen hatanın aynısı olurdu.
+
+### Koruma
+
+`ObjectCreationContractTests` (8): 63 property'de kaynak–kopya karşılaştırması,
+**kapıların birbiriyle** karşılaştırılması (asıl risk bu — ayrışan iki kapı aynı
+script'e hangi kapıdan geçtiğine göre farklı nesne ürettirir), kap içeriği ve
+spawner bileşeni bilinçli farkları, yansımanın gerçekten 30'dan fazla alana
+baktığı (yüzey çökerse testler ölçüm yapmadan yeşil kalırdı) ve newbie
+sözleşmesi.
+
+Geri-alma sondajı: `newbieItems: true` geri alınınca 8 testin biri kırmızıya
+dönüyor.
+
 ## İŞ-51 — Review kayıt eşlemesi (PLAN-005, 13 Eylül 2026)
 
 PLAN-005: *"Review 01–13J kayıtlarını mevcut düzeltme commit'leriyle eşleştir.

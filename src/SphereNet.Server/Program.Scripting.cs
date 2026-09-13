@@ -1104,7 +1104,17 @@ public static partial class Program
         }
         else if (original is SphereNet.Game.Objects.Characters.Character origChar)
         {
-            var clone = origChar.CreateDupe(_world);
+            // NEWDUPE does not duplicate on its own upstream: it builds
+            // CScript("DUPE") and calls the object's own verb
+            // (CScriptObj.cpp:1311). CopyParseState carries the parse flags and
+            // line number and nothing else (CScript.cpp:458), so that script has
+            // NO argument, CHV_DUPE reads GetArgVal() == 0, and
+            // "GetArgVal() < 1 ? true : false" hands DupeFrom fNewbieItems =
+            // true (CChar.cpp:4545). Going straight to the copy with the default
+            // lost that: ATTR_NEWBIE equipment stays with a character through
+            // death instead of dropping to the corpse, so the same script
+            // produced a differently-equipped copy than upstream.
+            var clone = origChar.CreateDupe(_world, newbieItems: true);
             if (!_world.PlaceCharacter(clone, origChar.GetTopLevelPosition()))
             {
                 _world.DeleteObject(clone);

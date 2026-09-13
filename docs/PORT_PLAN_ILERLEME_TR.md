@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `3174a8d` + İŞ-51 (review kayıt eşlemesi) |
-| Tam test | 3.649 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-101** (Dalga 0 bitti) |
+| Son commit | `521e28c` + İŞ-52 (nesne üretim sözleşmesi) |
+| Tam test | 3.657 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 1 — PLAN-102** (PLAN-101 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-52 KAPANDI** — 2026-09-13. Nesne üreten dokuz kapı yan yana kondu.
+  Karşılaştırma elle tutulan listeye değil **yansımaya** dayanıyor: `Item`'ın 63
+  karşılaştırılabilir property'sinde eşya `DUPE` ve stack bölme hem kaynakla hem
+  birbiriyle aynı çıktı. **Bulgu:** referansta `NEWDUPE` kendi başına
+  kopyalamaz, `CScript("DUPE")` kurup nesnenin fiilini çağırır
+  (CScriptObj.cpp:1311); `CopyParseState` **argümanı taşımadığı** için
+  (CScript.cpp:458) CHV_DUPE sıfır okur ve `fNewbieItems = true` verir
+  (CChar.cpp:4545) — yani karakterin ekipmanı ATTR_NEWBIE işaretlenir.
+  `HandleNewDupe` varsayılanı (false) alıyordu; ATTR_NEWBIE eşya ölümde cesede
+  düşmediği için fark gerçek. Belge: `docs/NESNE_URETIM_SOZLESMESI_TR.md`.
+  Test: `ObjectCreationContractTests` (8); düzeltme geri alınınca biri kırmızı.
+  Açık kalem: çıplak `NEWDUPE`'un çağıranın `ACT`'ini kurması — referansın
+  `m_uidNew`'ü kaynağa kurması okumayı belirsizleştirdiği için tahminle
+  uygulanmadı. Tam suite 3.657, üç koşu. **PLAN-101 tamamlandı.**
 - **İŞ-51 KAPANDI** — 2026-09-13. `docs/reviews/` 106 bölüm / 347 bulgu
   taşıyor ve klasör depoya girmiyor; bir bulgu ancak takip planındaki satırı
   kadar kalıcı. **41 bulgunun** hiç onay kutusu satırı yoktu — takip planının

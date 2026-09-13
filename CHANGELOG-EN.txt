@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - NEWDUPE went around the verb it is supposed to be
+----------------------------------------
+
+FIX - Upstream NEWDUPE does not duplicate on its own: it builds CScript("DUPE")
+        and calls the object's own verb (CScriptObj.cpp:1311). CopyParseState
+        carries the parse flags, file index and line number and nothing else
+        (CScript.cpp:458), so the script it builds has NO argument; CHV_DUPE then
+        reads GetArgVal() == 0 and "GetArgVal() < 1 ? true : false" hands DupeFrom
+        fNewbieItems = true (CChar.cpp:4545). Upstream NEWDUPE on a character
+        therefore marks the copy's equipment ATTR_NEWBIE.
+
+        HandleNewDupe called CreateDupe directly and took the default, false, and
+        the method's own doc comment recorded the wrong reason for it - "the DUPE
+        verb chooses it from its argument; NEWDUPE does not". ATTR_NEWBIE
+        equipment stays with a character through death instead of dropping to the
+        corpse, so a script duplicating an NPC got a differently equipped copy
+        than upstream would have produced. The call now passes newbieItems: true;
+        the method default is unchanged, because the DUPE verb already chooses
+        explicitly.
+
+DOC - docs/NESNE_URETIM_SOZLESMESI_TR.md tables the nine doors into "a new object
+        appears" in two families - the four that copy from a source and the five
+        that build from a definition - with what each carries and which
+        differences are deliberate.
+
+TEST - ObjectCreationContractTests compares a fully configured source against
+        each copy by reflection rather than against a hand-kept list, so a field
+        added later that one door copies and another forgets shows up without
+        anyone remembering to add it. Item exposes 63 comparable properties once
+        identity, placement and derived values are excluded, and the doors agree
+        on all of them. It also compares the doors WITH EACH OTHER, which is the
+        real risk: two doors that differ make the same script produce different
+        objects depending on which one it went through.
+
+DOC - Recorded and not implemented: upstream sets the caller's ACT after NEWDUPE,
+        which NEWITEM already honours and NEWDUPE does not. The reference sets
+        m_uidNew to the SOURCE uid before running DUPE, so whether ACT ends up on
+        the source or the copy needs verifying first. Implementing it on a guess
+        would repeat the defect this wave fixed.
+
 [2026-09-13] - Review findings that were in neither list
 ----------------------------------------
 

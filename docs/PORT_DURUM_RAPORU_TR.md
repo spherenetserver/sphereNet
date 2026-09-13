@@ -428,10 +428,13 @@ Etki ÷ maliyet oranına göre:
    ve `GET*POS` indeksleme geldi; kalan 10 ad ev sistemini script'ten yöneten
    bir paket için gerekli.
 6. **Guild stone menü ağacı** (11 fonksiyon). Klasik shard'larda görünür.
-7. **Kalan ~27 trigger.** Bu sayı yeniden ölçülmedi: bir trigger adının
-   kaynakta geçmesi enum üyesi olduğunu gösterir, ateşlendiğini değil.
-   Otorite `TriggerCoverageGuardrailTests`'in her koşuda yeniden hesapladığı
-   "tanımlı ama ateşlenmiyor" kümesi. Her biri küçük; `@PayGold`, `@SeeHidden`,
+7. **Kalan 21 trigger adı.** Artık ölçüldü: referansın trigger adları sahip
+   tablosuyla birlikte çıkarılıp bağlam (`SKILL`/`SPELL`/`REGION` öneki), alt
+   çizgi yazımı ve `ITEM` aynası eşlendi. Ham ad karşılaştırması 71 diyor, eşleme
+   sonrası **21** kalıyor (`TriggerNameMappingTests`). Bu bir **ad** sayımıdır:
+   bir adın enumda bulunması ateşlendiğini göstermez, o yüzden neyin gerçekten
+   ateşlendiğinin otoritesi `TriggerCoverageGuardrailTests` olmaya devam ediyor.
+   Her biri küçük; `@PayGold`, `@SeeHidden`,
    `@RegionResource*` ve `@PetRelease` en çok script'lenenler.
 8. **AOS bileşen prop'ları / SA-ML skill okulları.** Sadece hedef sürüm
    Sphere 56x'ten ileri taşınırsa.

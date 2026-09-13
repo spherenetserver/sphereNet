@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Eksik trigger sayisi, ad uzerinden degil baglam uzerinden olculdu
+----------------------------------------
+
+TEST - PLAN-206 yontemi acikca soyluyor: eksik trigger'lari referansin ad, alias ve
+        BAGLAM eslemesiyle cikar, bir enum uyesinin ayni yazilip yazilmadigina
+        bakarak degil. Ham ad karsilastirmasi 71 eksik diyor. Her adi sahip
+        tablosuyla birlikte tasiyinca bu 21'e iniyor.
+
+        Farklarin neredeyse hepsi yazim ya da baglamdi, yokluk degil. Bir ad
+        sinif tablosunda yasar: SELECT hem CSkillDef'in hem CSpellDef'in
+        trigger'idir ve bu motor onlari SkillSelect/SpellSelect diye yazar.
+        Referans bilesik adlari alt cizgiyle ayirir (@DropOn_Char, @Ship_Move), bir
+        C# uyesi ayiramaz. Char tablosu item tablosunun bir kismini ITEM onekiyle
+        aynalar; @ItemDropOn_Char ile @DropOn_Char tek olayin iki tarafidir. Bir
+        bolgenin EXIT'i onun ayrilma trigger'idir. AAAUNUSED dolgudur.
+
+        Sag kalan 21, port raporunun elle vardigi listeyi BAGIMSIZ olarak yeniden
+        uretiyor: @AfkMode, @Jailed, @SendPaperdoll, @CharShove, @Falling,
+        @ToggleFlying, @SeeHidden, @PayGold, @PetRelease, @FollowersUpdate,
+        @RegenStat, ArrowQuest cifti, @HouseDesignCommitItem, @DelMulti ve kalani.
+
+DOC - Port raporundaki "~27 eksik" artik 21 ve ne tur bir sayi oldugunu soyluyor:
+        bu bir AD sayimidir. Bir adin enumda bulunmasi ateslendigi anlamina
+        gelmez; neyin gercekten ateslendiginin otoritesi her kosuda kumesini
+        kaynaktan yeniden hesaplayan TriggerCoverageGuardrailTests olmaya devam
+        ediyor. IS-50 bu sayiya tam da o sekilde olculmedigi icin dokunmamisti;
+        artik olculdu.
+
+        Backlog tam sayiya pinlenmiyor, yaziliyor - birini uygulamak bir testi
+        kirmamali - ama esleme tablosu pinli: bir referans tablosu kuralini
+        kaybedip karsilastirmayi sessizce ham diff'e cevirirse test hemen kiriliyor.
+
 [2026-09-13] - TIMERF callback'i icinden alinan kayit
 ----------------------------------------
 

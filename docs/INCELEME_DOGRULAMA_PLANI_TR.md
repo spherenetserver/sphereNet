@@ -5393,6 +5393,61 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-64 — Trigger ad eşlemesi (PLAN-206, 13 Eylül 2026)
+
+PLAN-206: *"Eksik trigger adlarını **enum adı üzerinden değil** Source-X
+isim/alias/bağlam eşlemesiyle çıkar. @UserVirtue backlog'u ile hiç tanımlanmamış
+trigger'ları ayrı tut."*
+
+### Neden ham fark yanıltıyor
+
+| Ölçüm | Sonuç |
+|---|---:|
+| Ham ad karşılaştırması | **71** eksik |
+| Bağlam + alias eşlemesi | **21** eksik |
+
+Farkların neredeyse hepsi **yazım ya da bağlam**, yokluk değil:
+
+| Desen | Örnek | Açıklama |
+|---|---|---|
+| Sınıf tablosu | `SELECT` | Hem `CSkillDef`'in hem `CSpellDef`'in; biz `SkillSelect`/`SpellSelect` |
+| Alt çizgi | `@DropOn_Char`, `@Ship_Move` | C# üyesi referansın noktalamasını taşıyamaz |
+| `ITEM` aynası | `@ItemDropOn_Char` ↔ `@DropOn_Char` | Tek olay, iki taraftan görülüyor |
+| Bölge çifti | `EXIT` | Bizde `RegionLeave` |
+| Dolgu | `AAAUNUSED` | Trigger değil; enum başını doldurur |
+
+Yani ham diff `SkillSelect`'i iki kez sayar ve **iki yarısını da eksik** ilan
+eder. PLAN-206'nın uyardığı şey tam olarak bu.
+
+### Çapraz doğrulama
+
+Eşleme sonrası kalan 21 ad, port raporunun **elle** vardığı listeyi bağımsız
+olarak yeniden üretiyor: `@AfkMode`, `@Jailed`, `@SendPaperdoll`, `@CharShove`,
+`@Falling`, `@ToggleFlying`, `@SeeHidden`, `@PayGold`, `@PetRelease`,
+`@FollowersUpdate`, `@RegenStat`, ArrowQuest çifti, `@HouseDesignCommitItem`,
+`@DelMulti`, `@itemSpell`, `@ClientTooltip_AfterDefault` varyantları,
+`@RegionResourceFound`, `@CliPeriodic`/`@RegPeriodic`, web `LOAD`.
+
+İki bağımsız yöntemin aynı listeye varması, ikisinin de doğru olduğuna dair en
+iyi kanıt.
+
+### Rapor düzeltmesi
+
+İŞ-50'de rapordaki *"~27 trigger"* sayısına **bilerek dokunmamıştım**: bir trigger
+adının kaynakta geçmesi enum üyesi olduğunu gösterir, **ateşlendiğini değil**, ve
+tahmini tahminle değiştirmek düzeltmeye çalıştığım hatanın aynısı olurdu.
+
+Şimdi ölçüldü: **21**, ve rapor artık bunun bir **ad** sayımı olduğunu, neyin
+gerçekten ateşlendiğinin otoritesinin `TriggerCoverageGuardrailTests` olduğunu
+yazıyor.
+
+### Koruma
+
+`TriggerNameMappingTests` (3): ham vs eşlenmiş farkı, backlog listesi (tam sayıya
+**pinlenmedi** — birini uygulamak testi kırmamalı), ve **eşleme tablosunun
+tamamlığı**. Sondaj: bir referans tablosunun önek kuralı kaldırılınca test
+kırılıyor — karşılaştırma sessizce ham diff'e dönemiyor.
+
 ## İŞ-63 — Callback içinde kayıt (PLAN-205, 13 Eylül 2026)
 
 PLAN-205: *"TIMERF çoklu nesne sırası, aynı tick'e yeniden iş ekleme, iptal,

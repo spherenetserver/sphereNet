@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `f377c4e` + İŞ-63 (callback içinde kayıt) |
-| Tam test | 3.701 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 2 — PLAN-206** (Dalga 2'nin son maddesi) |
+| Son commit | `477d609` + İŞ-64 (trigger ad eşlemesi) |
+| Tam test | 3.704 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 3 — PLAN-301** (Dalga 2 bitti) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,18 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-64 KAPANDI** — 2026-09-13. PLAN-206'nın yöntemi: eksik trigger'ları **enum
+  adı üzerinden değil** referansın ad/alias/**bağlam** eslemesiyle çıkar. Ham ad
+  karşılaştırması **71**; her adı sahip tablosuyla taşıyınca **21**. Farkların
+  neredeyse hepsi yazım/bağlamdı: `SELECT` hem `CSkillDef`'in hem `CSpellDef`'in
+  (biz `SkillSelect`/`SpellSelect`), referans bileşik adları alt çizgiyle ayırıyor
+  (`@DropOn_Char`), char tablosu item tablosunu `ITEM` önekiyle aynalıyor,
+  bölgenin `EXIT`'i `RegionLeave`, `AAAUNUSED` dolgu. Kalan 21, port raporunun
+  **elle vardığı listeyi bağımsız olarak yeniden üretiyor.** Rapordaki "~27" → 21
+  ve artık bunun bir **ad** sayımı olduğunu söylüyor; neyin ateşlendiğinin
+  otoritesi `TriggerCoverageGuardrailTests`. Test: `TriggerNameMappingTests` (3);
+  bir tablo kuralını kaybedince test kırılıyor. Tam suite 3.704, üç koşu.
+  **PLAN-206 tamamlandı — Dalga 2 bitti.**
 - **İŞ-63 KAPANDI** — 2026-09-13. PLAN-205'in beş TIMERF durumundan dördü zaten
   kapsanmıştı; beşinci — **iş listesi gezilirken dünyayı kaydeden callback** —
   sessiz bozulma biçimini taşıyordu ve testi yoktu. Vadesi gelen tüm işleri önden

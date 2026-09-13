@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The missing-trigger count, measured by context instead of by name
+----------------------------------------
+
+TEST - PLAN-206 is explicit about the method: derive the missing triggers from the
+        reference's name, alias and CONTEXT mapping, not from whether an enum
+        member happens to be spelled the same. Comparing raw name sets reports 71
+        missing. Carrying the owning table with each name brings that to 21.
+
+        Almost every difference was spelling or context, not absence. A name lives
+        in a per-class table, so SELECT is CSkillDef's trigger and CSpellDef's and
+        this engine spells those SkillSelect and SpellSelect. Upstream separates
+        compound words with an underscore (@DropOn_Char, @Ship_Move) where a C#
+        member cannot. The char table mirrors part of the item table with an ITEM
+        prefix, so @ItemDropOn_Char and @DropOn_Char are one event seen from two
+        sides. A region's EXIT is its leave trigger. AAAUNUSED is padding.
+
+        The 21 that survive reproduce, independently, the list the port report
+        arrived at by hand - @AfkMode, @Jailed, @SendPaperdoll, @CharShove,
+        @Falling, @ToggleFlying, @SeeHidden, @PayGold, @PetRelease,
+        @FollowersUpdate, @RegenStat, the ArrowQuest pair, @HouseDesignCommitItem,
+        @DelMulti and the rest.
+
+DOC - The port report's "~27 missing" is now 21 and says what kind of number it
+        is: a count of NAMES. A name being in an enum does not mean it fires, so
+        the authority on what actually fires stays TriggerCoverageGuardrailTests,
+        which recomputes its set from source on every run. İŞ-50 left this figure
+        alone precisely because it had not been measured that way; now it has.
+
+        The backlog is printed rather than pinned to an exact number - implementing
+        one of them should not fail a test - but the mapping table is pinned, so a
+        reference table losing its rule and quietly reverting the comparison to a
+        raw diff fails immediately.
+
 [2026-09-13] - A save taken from inside a TIMERF callback
 ----------------------------------------
 

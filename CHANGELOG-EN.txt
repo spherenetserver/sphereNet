@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A deleted object's uid stops being handed straight back
+----------------------------------------
+
+FIX - Deleting an object returned its uid to the allocator immediately, so the
+        very next creation took it. A script holding a reference from before the
+        deletion - NEW or ACT captured earlier - then resolved onto a completely
+        different object, and NEW.NAME edited a stranger.
+
+        Upstream never recycles at the moment of deletion. Its free list is REBUILT
+        from the empty slots during garbage collection, and the comment there says
+        the array must be "enough even for huge shards to survive till next garbage
+        collection" (CWorld.cpp:655). Reading NEW or OBJ then validates through
+        ObjFind and clears a reference whose object is gone (CScriptObj.cpp:617-626),
+        which only works because the slot is still empty.
+
+        Freed uids now wait in a pending queue and are released when a maintenance
+        sweep completes - this engine's garbage collection, and the same point
+        upstream rebuilds at. Recycling still happens, so the index space does not
+        climb forever; it just does not happen between a delete and the next line of
+        script. The uid index is 28 bits, so the interval costs nothing.
+
+TEST - ScriptReferenceContractTests covers what PLAN-204 asks about the reference
+        family: NEW names what was just made, is empty before anything is, and stops
+        naming a deleted object; ACT the same; and the case the others exist for - a
+        stale reference must not follow its uid onto a later object. One more test
+        asserts the other half, that a freed uid IS reused once the sweep releases
+        it, so deferring cannot quietly become never.
+
+        Four existing tests set up a recycled uid by deleting and re-creating, and
+        that no longer reaches the state they were written for. They assert real
+        guarantees - a stale delete must not kill the object that inherited the
+        number, a stale mount link must not seize a bystander - so their setups now
+        drive the sweep through a shared helper rather than being weakened.
+
+        Probe: recycling immediately again turns the stale-reference test and the
+        UidTable unit test red.
+
 [2026-09-13] - A matrix over the spawn sequence, not one happy path
 ----------------------------------------
 

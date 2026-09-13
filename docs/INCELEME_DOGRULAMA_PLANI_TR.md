@@ -5393,6 +5393,67 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-62 — Uid yaşam süresi ve bayat referanslar (PLAN-204, 13 Eylül 2026)
+
+PLAN-204: *"NEW/ACT/SRC/ARGO/LOCAL/REF sözleşmesini başarılı, başarısız, iç içe
+çağrı ve **silinen hedef** senaryolarıyla doğrula."*
+
+### Bulgu — bayat referans başkasını gösteriyordu
+
+```
+stale=040000001 second=040000001 stale resolves to 'somebody else'
+```
+
+Silinen nesnenin uid'i tahsis ediciye **anında** geri veriliyordu; bir sonraki
+oluşturma aynı numarayı alıyordu. Silmeden önce yakalanmış bir `NEW` ya da `ACT`
+tutan script, tamamen başka bir nesneye çözülüyordu — `NEW.NAME` bir yabancıyı
+düzenliyordu.
+
+### Referansın modeli
+
+Referans silme anında **asla** geri dönüştürmez. Serbest listesi çöp toplama
+sırasında boş yuvalardan **yeniden kurulur** ve oradaki yorum dizinin *"büyük
+shard'ların bir sonraki çöp toplamaya kadar dayanmasına yetecek"* kadar olması
+gerektiğini söylüyor (CWorld.cpp:655).
+
+İkinci yarı okuma tarafında: `NEW` ve `OBJ` okunurken `ObjFind` ile doğrulanır ve
+nesnesi gitmiş referans **temizlenir** (CScriptObj.cpp:617-626). Bu koruma ancak
+yuva hâlâ boşsa işe yarar — iki parça birlikte çalışıyor.
+
+### Düzeltme
+
+Serbest bırakılan uid'ler bekleyen bir kuyrukta duruyor; **bakım sweep'i
+tamamlanınca** tahsis ediciye veriliyor — bu motorun çöp toplaması ve referansın
+yeniden kurduğu nokta.
+
+Geri dönüşüm **sürüyor**; yalnızca bir silme ile bir sonraki script satırı
+arasında olmuyor. Uid dizini 28 bit (~268M), dolayısıyla aradaki gecikmenin
+maliyeti yok. Bunu ayrı bir testle sabitledim: **erteleme sessizce "hiç" olamaz.**
+
+### Dört mevcut testin kurulumu değişti — zayıflatılmadı
+
+`DeleteObject_StaleReferenceCannotDeleteRecycledSerialObject`,
+`AStaleMountLinkNeverResolvesOntoAnotherCharacter`,
+`ANewCharacterInheritingASerialSeesNoStable` ve `UidTable_Free_Reuses...` geri
+dönüşmüş uid durumunu **silip yeniden oluşturarak** kuruyordu; erteleme o duruma
+artık ulaşmıyor.
+
+Bu testler gerçek garantileri koruyor (bayat bir silme numarayı devralanı
+öldürmemeli; bayat bir mount bağlantısı bir yoldanı ele geçirmemeli) ve uid'ler
+hâlâ geri dönüşüyor — sadece sonra. Bu yüzden iddiaları gevşetilmedi;
+kurulumları ortak bir yardımcıyla **sweep'i sürer** hale getirildi. `UidTable`
+birim testi ise artık **iki yarıyı da** iddia ediyor: serbest bırakmak tek başına
+dizini geri vermez, bırakma adımı verir.
+
+### Koruma
+
+`ScriptReferenceContractTests` (6). Sondaj: anında geri dönüşüme dönülünce bayat
+referans testi ve `UidTable` birim testi kırmızıya dönüyor.
+
+**Kapsam notu:** `REF1..REFn` nesnede değil script yerel havuzunda tutuluyor, o
+yüzden sözleşmesi interpreter'ın; dünyanın işi olan kısım — havuzdan çıkan bir
+uid'in canlı bir yabancıya çözülememesi — bayat referans testiyle ölçülüyor.
+
 ## İŞ-61 — Spawn callback matrisi (PLAN-203, 13 Eylül 2026)
 
 PLAN-203: *"PreSpawn→Create/template→Spawn→yerleşim→AddObj sırasını Source-X ve

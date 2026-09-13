@@ -14,6 +14,24 @@ internal static class TestHarness
 {
     public static ILoggerFactory CreateLoggerFactory() => LoggerFactory.Create(_ => { });
 
+    /// <summary>Make the uids of deleted objects available again.
+    ///
+    /// A delete no longer hands its uid straight back: the allocator holds it until a
+    /// maintenance sweep completes, which is this engine's garbage collection and the
+    /// point upstream rebuilds its own free list at (CWorld.cpp:655). That is what
+    /// stops a stale script reference from resolving to whatever was created next.
+    ///
+    /// A test that needs the RECYCLED state - to prove a stale reference cannot seize
+    /// the object that inherited its number - has to reach it the way a running server
+    /// does, by letting the sweep run.</summary>
+    public static void RecycleDeletedUids(GameWorld world)
+    {
+        const long farFuture = 10_000_000;   // past the sweep interval, so it arms at once
+        world.TickSleepingMaintenance(farFuture);
+        while (world.MaintenanceSweepActive)
+            world.TickSleepingMaintenance(farFuture);
+    }
+
     public static GameWorld CreateWorld()
     {
         var world = new GameWorld(CreateLoggerFactory());

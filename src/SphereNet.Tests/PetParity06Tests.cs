@@ -210,6 +210,7 @@ public sealed class PetParity06Tests
         // The service outlives the character, and the serial is handed on.
         world.DeleteObject(owner);
         owner.Delete();
+        TestHarness.RecycleDeletedUids(world);
 
         var heir = world.CreateCharacter();
         heir.IsPlayer = true;
@@ -333,6 +334,7 @@ public sealed class PetParity06Tests
         Serial horseUid = horse.Uid;
         world.DeleteObject(horse);
         horse.Delete();
+        TestHarness.RecycleDeletedUids(world);
 
         var bystander = world.CreateCharacter();
         bystander.IsPlayer = true;

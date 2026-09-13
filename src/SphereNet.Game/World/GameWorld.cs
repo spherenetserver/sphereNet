@@ -1615,7 +1615,17 @@ public sealed class GameWorld
         MaintenanceCallsThisSweep += calls;
 
         if (_maintenanceMapIdx >= _maintenanceMapKeys.Length)
+        {
             _maintenanceSweepActive = false; // full pass done — idle until the next interval
+
+            // A completed pass is this engine's garbage collection, and it is where
+            // the uids of deleted objects become available again. Upstream rebuilds
+            // its free list at exactly this point rather than at each delete
+            // (CWorld.cpp:655), which is what keeps a stale script reference - a NEW
+            // or ACT captured before a deletion - from resolving to whatever was
+            // created afterwards.
+            _uidTable.ReleaseFreedUids();
+        }
     }
 
     /// <summary>O(1) gate used by NPC AI to skip expensive brain work when

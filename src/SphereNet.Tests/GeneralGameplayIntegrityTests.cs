@@ -501,6 +501,7 @@ public sealed class GeneralGameplayIntegrityTests
         var oldItem = world.CreateItem();
         var recycledSerial = oldItem.Uid;
         world.DeleteObject(oldItem);
+        TestHarness.RecycleDeletedUids(world);
         var current = world.CreateItem();
         Assert.Equal(recycledSerial, current.Uid);
 

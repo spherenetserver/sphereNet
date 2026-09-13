@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `c9cfe25` + İŞ-61 (spawn callback matrisi) |
-| Tam test | 3.692 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 2 — PLAN-204** (PLAN-201..203 kapandı) |
+| Son commit | `daabcd1` + İŞ-62 (uid yaşam süresi) |
+| Tam test | 3.698 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 2 — PLAN-205** (PLAN-201..204 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-62 KAPANDI** — 2026-09-13. **Gerçek hata:** silinen nesnenin uid'i tahsis
+  ediciye **anında** geri veriliyordu, bir sonraki oluşturma onu alıyordu — silmeden
+  önce yakalanmış `NEW`/`ACT` **başka bir nesneye** çözülüyor, `NEW.NAME` bir
+  yabancıyı düzenliyordu. Ölçüm: `stale=040000001 second=040000001 resolves to
+  'somebody else'`. Referans silme anında asla geri dönüştürmez; serbest listesini
+  **çöp toplamada** yeniden kurar (CWorld.cpp:655) ve `NEW`/`OBJ` okuması `ObjFind`
+  ile doğrulayıp temizler (CScriptObj.cpp:617-626) — bu ancak yuva boşsa işe yarar.
+  Düzeltme: serbest uid'ler bekleyen kuyrukta durup **bakım sweep'i tamamlanınca**
+  veriliyor; geri dönüşüm sürüyor (dizin 28 bit, gecikmenin maliyeti yok).
+  Test: `ScriptReferenceContractTests` (6). **Dört mevcut test** geri dönüşmüş uid
+  durumunu kurmak için anında geri dönüşüme dayanıyordu; gerçek garantileri
+  koruduğu için **zayıflatılmadı**, ortak yardımcıyla sweep'i sürer hale getirildi.
+  Sondaj: anında geri dönüşüme dönülmesi iki testi kırmızıya çeviriyor.
+  Tam suite 3.698, üç koşu. **PLAN-204 tamamlandı.**
 - **İŞ-61 KAPANDI** — 2026-09-13. PLAN-203'ün istediği **matris**: @PreSpawn →
   oluşturma → @Spawn → yerleştirme → üyelik → @AddObj dizisi, zincirin tamamı için
   tek vaka yerine her sözleşme için bir vaka. **İki veto aynı veto değil:**

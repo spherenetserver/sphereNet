@@ -12,6 +12,17 @@ public sealed class UidTable
 {
     private readonly ConcurrentQueue<int> _freeItemSlots = new();
     private readonly ConcurrentQueue<int> _freeCharSlots = new();
+
+    // Freed uids wait here until a sweep releases them. Upstream never recycles a
+    // uid at the moment of deletion: the free list is REBUILT from the empty slots
+    // during garbage collection, and its own comment says the array has to be "enough
+    // even for huge shards to survive till next garbage collection" (CWorld.cpp:655).
+    //
+    // Handing a uid straight back is what breaks a script holding a stale reference:
+    // NEW or ACT captured before a delete would resolve to whatever took the uid next,
+    // so NEW.NAME edited a stranger instead of reading as nothing.
+    private readonly ConcurrentQueue<int> _pendingItemSlots = new();
+    private readonly ConcurrentQueue<int> _pendingCharSlots = new();
     private int _nextItemIndex;
     private int _nextCharIndex;
 
@@ -48,9 +59,21 @@ public sealed class UidTable
         if (uid.Index <= 0)
             return;
         if (uid.IsItem)
-            _freeItemSlots.Enqueue(uid.Index);
+            _pendingItemSlots.Enqueue(uid.Index);
         else if (uid.IsChar)
-            _freeCharSlots.Enqueue(uid.Index);
+            _pendingCharSlots.Enqueue(uid.Index);
+    }
+
+    /// <summary>Release the uids freed since the last call back into the allocator.
+    /// This is the sweep half of the reference contract (CWorld.cpp:655): between
+    /// sweeps a deleted object's uid stays unused, so a stale script reference reads
+    /// as nothing rather than resolving to whatever was created after it.</summary>
+    public void ReleaseFreedUids()
+    {
+        while (_pendingItemSlots.TryDequeue(out int item))
+            _freeItemSlots.Enqueue(item);
+        while (_pendingCharSlots.TryDequeue(out int ch))
+            _freeCharSlots.Enqueue(ch);
     }
 
     /// <summary>
@@ -80,6 +103,8 @@ public sealed class UidTable
     {
         while (_freeItemSlots.TryDequeue(out _)) { }
         while (_freeCharSlots.TryDequeue(out _)) { }
+        while (_pendingItemSlots.TryDequeue(out _)) { }
+        while (_pendingCharSlots.TryDequeue(out _)) { }
         Volatile.Write(ref _nextItemIndex, 0);
         Volatile.Write(ref _nextCharIndex, 0);
     }

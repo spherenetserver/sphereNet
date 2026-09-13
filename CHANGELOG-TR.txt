@@ -3,6 +3,43 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Silinen nesnenin uid'i artik dogrudan geri verilmiyor
+----------------------------------------
+
+FIX - Bir nesneyi silmek uid'ini tahsis ediciye aninda geri veriyordu; bir sonraki
+        olusturma onu aliyordu. Silmeden once yakalanmis bir referansi - NEW ya da
+        ACT - tutan bir script, tamamen baska bir nesneye cozuluyor ve NEW.NAME bir
+        yabanciyi duzenliyordu.
+
+        Referans silme aninda asla geri donusturmez. Serbest listesi cop toplama
+        sirasinda bos yuvalardan YENIDEN KURULUR ve oradaki yorum dizinin "buyuk
+        shard'larin bir sonraki cop toplamaya kadar dayanmasina yetecek" kadar
+        olmasi gerektigini soyler (CWorld.cpp:655). NEW ya da OBJ okumasi da ObjFind
+        ile dogrulayip nesnesi gitmis referansi temizler (CScriptObj.cpp:617-626) -
+        ki bu ancak yuva hala bossa ise yarar.
+
+        Serbest birakilan uid'ler artik bekleyen bir kuyrukta duruyor ve bakim
+        sweep'i tamamlaninca veriliyor - bu motorun cop toplamasi ve referansin
+        yeniden kurdugu nokta. Geri donusum hala oluyor, yani dizin uzayi sonsuza
+        tirmanmiyor; sadece bir silme ile bir sonraki script satiri arasinda olmuyor.
+        Uid dizini 28 bit, dolayisiyla aradaki gecikmenin maliyeti yok.
+
+TEST - ScriptReferenceContractTests PLAN-204'un referans ailesi icin sordugunu
+        kapsiyor: NEW az once yapilani adlandirir, oncesinde bostur ve silinen bir
+        nesneyi adlandirmayi birakir; ACT aynisi; ve digerlerinin var olma sebebi -
+        bayat bir referans uid'ini izleyip sonraki bir nesneye gecmemeli. Bir test de
+        obur yariyi iddia ediyor: sweep birakinca uid YENIDEN kullanilir, yani
+        erteleme sessizce "hic" olamaz.
+
+        Dort mevcut test, geri donusmus uid durumunu silip yeniden olusturarak
+        kuruyordu ve bu artik o duruma ulasmiyor. Gercek garantileri koruyorlar -
+        bayat bir silme, numarayi devralani oldurmemeli; bayat bir mount baglantisi
+        bir yoldani ele gecirmemeli - bu yuzden kurulumlari zayiflatilmadi, ortak bir
+        yardimciyla sweep'i surecek sekilde guncellendi.
+
+        Sondaj: aninda geri donusume donulunce bayat referans testi ve UidTable birim
+        testi kirmiziya donuyor.
+
 [2026-09-13] - Spawn dizisi uzerinde matris, tek mutlu yol degil
 ----------------------------------------
 

@@ -72,6 +72,18 @@ public class RuntimePerformancePressureTests
         table.Free(item);
         table.Free(ch);
 
+        // Freeing alone does not hand the index back. Upstream rebuilds its free
+        // list during garbage collection rather than at each delete (CWorld.cpp:655),
+        // which is what keeps a stale script reference from resolving onto whatever
+        // was created next.
+        Assert.NotEqual(item, table.AllocateItem());
+        Assert.NotEqual(ch, table.AllocateChar());
+
+        // ...and the release step is what makes recycling happen, so the index space
+        // does not climb forever.
+        table.Free(item);
+        table.Free(ch);
+        table.ReleaseFreedUids();
         Assert.Equal(item, table.AllocateItem());
         Assert.Equal(ch, table.AllocateChar());
     }

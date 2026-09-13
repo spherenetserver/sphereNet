@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Spawn dizisi uzerinde matris, tek mutlu yol degil
+----------------------------------------
+
+TEST - SpawnCallbackMatrixTests PLAN-203'un saydigi diziyi kapsiyor - @PreSpawn,
+        olusturma, @Spawn, yerlestirme, uyelik, @AddObj - zincirin tamami icin tek
+        vaka yerine her sozlesme icin bir vaka; cunku her adim farkli sekilde
+        bozulur.
+
+        Iki veto ayni veto degil ve onlari ayirmanin anlami bu. @PreSpawn nesne
+        olusturulmadan once donuyor (CCSpawn.cpp:391), yani ortada hicbir sey yok
+        ve sonraki callback'ler hic kosmuyor. @Spawn'a ise zaten var olan bir nesne
+        veriliyor, dolayisiyla vetosu onu SILMEK zorunda (:422) - yalnizca donen
+        bir veto, dunyaya hicbir spawner'in sahiplenmedigi bir yaratik sizdirir.
+
+        Ayrica sabit: script'in @Spawn'da sectigi nokta yerlestirmeden sag cikiyor
+        (:428) - script hicbir sey secmediginde yerlestirmenin hala kostugunu
+        gosteren bir kontrolle birlikte; @Spawn ve @AddObj ayni nesneyi aliyor; ve
+        ust duzeyde olmayan bir spawner hic callback kosmuyor (:383), boylece bir
+        script asla tamamlanamayacak bir uretim gormuyor.
+
+        Uretim degisikligi yok - dizi zaten uyuyordu. @Spawn vetosundan silme
+        adimi kaldirilinca yedinin biri kirmiziya donuyor.
+
+        Uc fikstur hatasi kayda deger, cunku her biri iyi gorunup hicbir sey
+        olcmeyen bir test uretti: hedef tanimi olmayan spawner, ResetEngineStatics'in
+        ilk iddiadan once sildigi sinif kurucusunda yuklenen tanimlar, ve tek
+        basina cagrilan ForceSpawn - o yalnizca geri sayimi sifirliyor, uretim bir
+        sonraki tick'te oluyor.
+
 [2026-09-13] - Tek tarif, iki okuyucu, iki farkli odul
 ----------------------------------------
 

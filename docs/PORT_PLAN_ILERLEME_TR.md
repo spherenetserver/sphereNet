@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `b87d4c5` + İŞ-60 (template tek okuyucu) |
-| Tam test | 3.685 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 2 — PLAN-203** (PLAN-201/202 kapandı) |
+| Son commit | `c9cfe25` + İŞ-61 (spawn callback matrisi) |
+| Tam test | 3.692 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 2 — PLAN-204** (PLAN-201..203 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,19 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-61 KAPANDI** — 2026-09-13. PLAN-203'ün istediği **matris**: @PreSpawn →
+  oluşturma → @Spawn → yerleştirme → üyelik → @AddObj dizisi, zincirin tamamı için
+  tek vaka yerine her sözleşme için bir vaka. **İki veto aynı veto değil:**
+  @PreSpawn nesne oluşturulmadan döner (hiçbir şey yaratılmaz), @Spawn'a ise var
+  olan nesne verilir — vetosu onu **silmek zorunda** (CCSpawn.cpp:422), yoksa
+  dünyaya sahipsiz yaratık sızar. Ayrıca: script'in @Spawn'da seçtiği nokta
+  yerleştirmeden sağ çıkıyor (:428, kontrol testiyle), @Spawn/@AddObj aynı
+  nesneyi alıyor, üst düzeyde olmayan spawner hiç callback koşmuyor (:383).
+  **Üretim değişikliği yok** — dizi zaten uyuyordu; @Spawn vetosundan silme
+  kaldırılınca yedinin biri kırmızı. Test: `SpawnCallbackMatrixTests` (7).
+  **Üç fikstür hatası kayda geçti** (hedefsiz spawner, kurucuda yüklenen tanımlar,
+  tek başına `ForceSpawn`) — her biri iyi görünüp hiçbir şey ölçmeyen test
+  üretti. Tam suite 3.692, üç koşu. **PLAN-203 tamamlandı.**
 - **İŞ-60 KAPANDI** — 2026-09-13. **Gerçek hata:** TEMPLATE tarifi **iki ayrı
   okuyucuyla** yürütülüyordu. `TemplateEngine` `Rows`'u (her satır, sırasıyla),
   NPC loot açılımı ise `ItemEntries`'i (yalnızca ITEM/CONTAINER) geziyordu —

@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A matrix over the spawn sequence, not one happy path
+----------------------------------------
+
+TEST - SpawnCallbackMatrixTests covers the sequence PLAN-203 names -
+        @PreSpawn, creation, @Spawn, placement, membership, @AddObj - one case
+        per contract rather than one case for the whole chain, because each step
+        fails differently.
+
+        The two vetoes are not the same veto and that is the point of separating
+        them. @PreSpawn returns before the object is created (CCSpawn.cpp:391), so
+        nothing exists and the later callbacks never run. @Spawn is handed an
+        object that already exists, so its veto has to DELETE it (:422) - one that
+        merely returns leaks a creature into the world that no spawner owns.
+
+        Also pinned: a point the script chooses in @Spawn survives placement
+        ("Try to place it only if the @Spawn trigger didn't set it a valid P",
+        :428), with a control proving placement still runs when the script chooses
+        nothing; @Spawn and @AddObj are handed the same object; and a spawner that
+        is not top level runs no callbacks at all (:383), so a script never sees a
+        production that cannot complete.
+
+        No production change - the sequence already matched. Removing the delete
+        from the @Spawn veto turns one of the seven red.
+
+        Three fixture mistakes are worth recording because each produced a test
+        that measured nothing while looking fine: a spawner with no target
+        definition, definitions loaded in the class constructor where
+        ResetEngineStatics wipes them before the first assertion, and ForceSpawn
+        called on its own - it only clears the countdown, and the production
+        happens on the next tick.
+
 [2026-09-13] - One recipe, two readers, two different rewards
 ----------------------------------------
 

@@ -5393,6 +5393,62 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-61 — Spawn callback matrisi (PLAN-203, 13 Eylül 2026)
+
+PLAN-203: *"PreSpawn→Create/template→Spawn→yerleşim→AddObj sırasını Source-X ve
+kabul edilmiş sapmalarla eşleştir. Her callback'in argüman geri yazımını ve nesne
+silmesini sınayacak **matris** oluştur."*
+
+### Referansın sırası
+
+`CCSpawn::GenerateChar` (CCSpawn.cpp:380-440):
+
+1. spawner **üst düzey** olmalı, değilse hiçbir şey olmaz (:383);
+2. **@PreSpawn**, N1'de kaynak indeksi — `RETURN 1` hiçbir şey yaratmaz, dönüşte
+   kaynak kimliği N1'den **yeniden kurulur** (script hedefi değiştirebilir);
+3. nesne oluşturulur, `NPC_LoadScript` koşar;
+4. **@Spawn**, O1'de yeni nesne — `RETURN 1` onu **siler** (:422);
+5. **yerleştirme**, ama yalnızca @Spawn geçerli bir P kurmadıysa (:428);
+6. üyelik, sonra **@AddObj**.
+
+### Neden matris
+
+Her adımın vetosu ve geri yazımı **farklı şekilde** bozulur. Zincirin tamamını tek
+vakayla sınamak, ayrı ayrı kırılan yedi sözleşmeyi tek bir yeşile indirger.
+
+**İki veto aynı veto değil** — asıl ayrım bu:
+
+| Veto | Nesne durumu | Doğru sonuç |
+|---|---|---|
+| @PreSpawn | henüz yok | hiçbir şey yaratılmaz, sonraki callback'ler koşmaz |
+| @Spawn | **zaten var** | **silinmek zorunda**, yoksa sahipsiz yaratık sızar |
+
+### Ölçüm
+
+```
+PreSpawn -> Spawn -> AddObj
+pre-spawn veto: callbacks=PreSpawn                chars 0->0
+spawn veto:     callbacks=PreSpawn,Spawn deleted=True chars 0->0
+script chose 140,160; creature stands at 140,160
+contained spawner: callbacks=none
+```
+
+### Sonuç
+
+**Üretim değişikliği gerekmedi** — dizi referansla uyuyordu. Sondaj: @Spawn
+vetosundan silme adımı kaldırılınca yedi testin biri kırmızıya dönüyor.
+
+### Üç fikstür hatası — hepsi "iyi görünüp hiçbir şey ölçmeyen test" üretti
+
+1. **Hedefsiz spawner.** `MORE1_DEFNAME` verilmeyince hiç üretim olmuyor; yedi test
+   de "callback yok" diyordu.
+2. **Kurucuda yüklenen tanımlar.** `ResetEngineStatics` tabloları **Before**
+   kancaşında temizliyor, xUnit onu sınıf kurucusundan **sonra** çalıştırıyor —
+   İŞ-60'ta da aynı tuzağa düşmüştüm.
+3. **Tek başına `ForceSpawn`.** O yalnızca geri sayımı sıfırlıyor; üretim bir
+   sonraki `OnTick`'te oluyor. Test yardımcısı artık ikisini birlikte yapıyor ve
+   yorumu bunu söylüyor.
+
 ## İŞ-60 — Template tek okuyucu (PLAN-202, 13 Eylül 2026)
 
 PLAN-202: *"TEMPLATE tek yürütme yolunu NEWITEM, spawn ve ilgili loot/vendor

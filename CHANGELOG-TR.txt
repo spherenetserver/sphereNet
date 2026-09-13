@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - 56T kaydinda eslenmeyen anahtar kalmadi, artik bunu soyluyor
+----------------------------------------
+
+TEST - PLAN-106 gercek bir 56T kaydindaki 17 eslenmeyen anahtar turunun
+        siniflandirilmasini istiyordu. Sunucunun gercekten calistigi
+        yapilandirmada - script paketi yuklu VE cozuculer kurulu - sayi sifir.
+        Skill adi dilimi 17'yi 15'e indirmisti; ardindan gelen tip cozumleme isi
+        kalanini kapatti.
+
+        O sifiri sabitleyen hicbir sey yoktu. Test yalnizca iki skill adinin
+        parklanmadigini iddia ediyordu; yirmi baska anahtar birikse yine gecerdi -
+        bir olcumun sessizce olcmeyi birakma bicimi tam olarak budur. Artik
+        envanterin bos oldugunu iddia ediyor.
+
+        Sondaj: ResolveItemDefFullIndex devre disi birakilinca lonca tasinin
+        ALIGN, MEMBER, ABBREV ve CHARTER0 anahtarlari parklaniyor ve sabitleme
+        kirmiziya donuyor.
+
+DOC - docs/56T_ESLENMEYEN_ANAHTARLAR_TR.md aileleri ve paylastiklari tek kok
+        nedeni kaydediyor: lonca tasinda, haritada ya da kitapta parklanan bir
+        anahtar hicbir zaman bilinmeyen degildi - nesne tipine cozulmemisti, cunku
+        kaydin baslik defname'i bir ITEMDEF'e ulasmamisti. Ayrica bir SAVE.*
+        kaydinin neden otomatik motor hatasi olmadigini yaziyor - planin uyardigi
+        sey: deger tur boyunca duruyor ve script'ten okunabiliyor. Kaybolan
+        davranis, veri degil.
+
+        Belge iki yanlis olcumu de sakliyor, cunku ikisi de tekrarlanmasi kolay:
+        yukleyicinin kaynagindaki literal'leri taramak paketteki her skill'i eksik
+        gosteriyor, ve kaydi sunucunun cozuculeri olmadan yuklemek 76359 esyanin
+        hepsini BaseId 0 birakip calisan bir sunucunun sorunsuz okudugu dokuz
+        anahtari bildiriyor.
+
 [2026-09-13] - Kapatilmis bir spawner'in kopyasi calisir halde geliyordu
 ----------------------------------------
 
@@ -11146,7 +11178,7 @@ DÜZELTME - Kaynak toplama:
   - Alan tanımları doğal kaynak tablolarını bölge EVENTS listesiyle
     bağlar ("EVENTS=r_default,r_default_rock,…") ve referans bu
     listeyi res-type'a göre tarar (FindNaturalResource). Bölge
-    yükleyici bu adları yalnız düz event bağı olarak saklıyordu;
+    yükleyici bu adları yalnız düz event bağı olarak sakliyordu;
     her bölgenin kaynak tablosu listesi boş kalıyor ve toplama
     (mining / fishing / lumberjacking) yüklenmiş rastgele bir
     tabloya — çoğu zaman tamamı "nothing" olan zindan tablosuna —

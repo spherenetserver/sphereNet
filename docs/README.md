@@ -28,6 +28,7 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[VERI_KAPILARI_TR.md](VERI_KAPILARI_TR.md)** — Gerçek veri gerektiren testlerin hangi kaynağı beklediği ve bir koşunun ne kadarını gerçekten ölçtüğü; rapor TRX'in yanına düşüyor.
 - **[REVIEW_KAYIT_ESLEME_TR.md](REVIEW_KAYIT_ESLEME_TR.md)** — `docs/reviews/` bulgularının takip planı ve testlerle eşlemesi; hangi bulgunun hangi testle kapandığı. Testle sabitlenmiş.
 - **[NESNE_URETIM_SOZLESMESI_TR.md](NESNE_URETIM_SOZLESMESI_TR.md)** — Nesne üreten/kopyalayan dokuz kapının ne taşıdığı; yansımayla ölçülüp testle sabitlenmiş.
+- **[56T_ESLENMEYEN_ANAHTARLAR_TR.md](56T_ESLENMEYEN_ANAHTARLAR_TR.md)** — Gerçek 56T kaydında eslenmeyen anahtar envanteri (bugün sıfır) ve bu ölçümün nasıl yanlış yapıldığı. Testle sabitlenmiş.
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.

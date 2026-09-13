@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `e416b53` + İŞ-56 (spawner kopya saati) |
+| Son commit | `e2e61bf` + İŞ-57 (56T anahtar envanteri) |
 | Tam test | 3.677 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-106** (PLAN-101..105 kapandı) |
+| Sıradaki iş | **Dalga 1 — PLAN-107** (PLAN-101..106 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-57 KAPANDI** — 2026-09-13. Gerçek 56T kaydında (76.359 eşya / 4.187
+  karakter) eşlenmeyen anahtar sayısı **sıfır** — ama bunu sabitleyen bir şey
+  yoktu: test yalnızca iki skill adının parklanmadığını iddia ediyordu, yirmi
+  başka anahtar birikse yine geçerdi. `Assert.Empty(unhandled)` eklendi.
+  **Ölçümü iki kez yanlış yaptım ve ikisi de belgeye geçti:** (1) kaynak literal
+  taraması paketteki her skill'i eksik gösteriyor, (2) sunucunun çözücüleri
+  kurulmadan yükleme 76.359 eşyayı `BaseId=0` bırakıp 9 anahtar bildiriyor —
+  bunları motor hatası diye raporlamak üzereydim. Belge:
+  `docs/56T_ESLENMEYEN_ANAHTARLAR_TR.md`. Sondaj: `ResolveItemDefFullIndex`
+  kapatılınca lonca taşının 4 anahtarı parklanıyor, sabitleme kırmızı.
+  Tam suite 3.677, üç koşu. **PLAN-106 tamamlandı.**
 - **İŞ-56 KAPANDI** — 2026-09-13. **İki sapma daha bulundu ve düzeltildi.**
   Referans "durduruldu"yu bayrak olarak tutmaz: STOP = `KillChildren` +
   `SetTimeout(-1)` (CCSpawn.cpp:1260-1264), kota dolunca da aynı şekilde parklar

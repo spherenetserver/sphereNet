@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The 56T save leaves nothing unmapped, and now says so
+----------------------------------------
+
+TEST - PLAN-106 asked for the 17 unmapped key types of a real 56T save to be
+        classified. Measured in the configuration a server actually runs - the
+        script pack loaded AND the resolvers installed - the count is zero. The
+        skill-name slice took 17 to 15; the type-resolution work that followed
+        took the rest.
+
+        Nothing was pinning that zero. The test asserted only that two named
+        skills were not parked, so twenty other keys could have accumulated and
+        it would still have passed - which is how a measurement quietly stops
+        measuring. It now asserts the inventory is empty.
+
+        Probe: disabling ResolveItemDefFullIndex parks the guild stone's ALIGN,
+        MEMBER, ABBREV and CHARTER0, and the assertion goes red.
+
+DOC - docs/56T_ESLENMEYEN_ANAHTARLAR_TR.md records the families and the single
+        root they share: a key parked on a guild stone, a map or a book was never
+        unknown - the object had not resolved to its type, because its header
+        defname had not reached an ITEMDEF. It also records why a SAVE.* record is
+        not automatically an engine defect, which is what the plan warns about:
+        the value survives the round trip and stays readable from script. What is
+        lost is behaviour, not data.
+
+        The document keeps both wrong measurements, because both are easy to
+        repeat: scanning the loader's source for string literals reports every
+        skill in the pack as missing, and loading the save without the server's
+        resolvers leaves all 76359 items at BaseId 0 and reports nine keys that a
+        running server reads fine.
+
 [2026-09-13] - A copy of a switched-off spawner came up running
 ----------------------------------------
 

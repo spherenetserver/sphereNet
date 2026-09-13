@@ -226,6 +226,21 @@ public class Sphere56TSaveCompatTests
             "the pack's own name for skill 58 was parked in a SAVE.* tag");
         Assert.True(withSkill > 0, "no character came back with the renamed skill");
 
+        // PLAN-106 closed: with the pack loaded and the server's resolvers installed,
+        // this save leaves NOTHING parked. The count started at 17 key kinds, the
+        // skill-name slice took it to 15, and the type-resolution work that followed
+        // took the rest - the guild stone's ALIGN/MEMBER/ABBREV/CHARTER0, the map's
+        // PIN, the book's BODY.n - because those keys were never unknown. They belong
+        // to types that only resolve once the record's header defname reaches an
+        // ITEMDEF, which is what the resolvers above are for. Measured without them,
+        // the same save parks nine.
+        //
+        // Pinning the zero is the point. Asserting only that two named skills are
+        // absent would still pass with twenty other keys parked, which is how a
+        // measurement quietly stops measuring. If a shard's own content introduces a
+        // new key, this fails and the key gets classified rather than accumulating.
+        Assert.Empty(unhandled);
+
         // A map's pins and a book's pages are typed by their ITEMDEF, not by a TYPE
         // line in the record: the engine has to read them through the definition.
         Assert.False(unhandled.ContainsKey("PIN"), "map pins were parked in SAVE.* tags");

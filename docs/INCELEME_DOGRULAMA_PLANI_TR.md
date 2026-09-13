@@ -5393,6 +5393,78 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-57 — 56T eşlenmeyen anahtar envanteri (PLAN-106, 13 Eylül 2026)
+
+PLAN-106: *"56T'nin 17 eşlenmeyen anahtar türünü sınıflandır … **her SAVE.\*
+kaydını otomatik motor hatası sayma.**"*
+
+### Sonuç
+
+Gerçek 56T kaydı (76.359 eşya / 4.187 karakter), sunucunun çalıştığı
+yapılandırmada — paket yüklü **ve çözücüler kurulu** — **sıfır** eşlenmeyen
+anahtar bırakıyor. 17 → 15 (skill adı dilimi) → 0 (tip çözümleme işi).
+
+Eksik olan şey **sıfırın sabitlenmesiydi**: test yalnızca iki skill adının
+parklanmadığını iddia ediyordu, yirmi başka anahtar birikse yine geçerdi.
+`Assert.Empty(unhandled)` eklendi.
+
+### Ölçümü iki kez yanlış yaptım
+
+Ikisi de aynı hatanın biçimleri ve ikisi de belgeye geçti, çünkü tekrarlanması
+kolay:
+
+1. **Kaynak taraması.** Yükleyicinin kaynağındaki string literal'leri toplayıp
+   kalanı "eşlenmedi" saymak, paketteki **her skill'i** eksik gösteriyor — bir
+   skill'in adı literal'den değil script paketinden geliyor. İŞ-50'de port
+   raporunun sayılarını bozan hatanın aynısı.
+2. **Çözücüsüz yükleme.** Paketi yükleyip kaydı okumak yetmiyor: sunucunun
+   kurduğu `ResolveItemDef` / `ResolveItemDefFullIndex` / `ApplyCharDefFromName`
+   kurulmazsa **76.359 eşyanın hepsi `BaseId=0`** geliyor ve ölçüm 9 anahtar
+   bildiriyor.
+
+İkincisinde şunu raporlamak üzereydim: *"56T lonca taşları tipsiz yükleniyor,
+ciddi motor hatası."* Son kontrol — yüklenen **tüm** eşyaların `BaseId=0` olması
+— kurtardı: böyle bir şey gerçek olsaydı shard hiç açılmazdı. Daha kötüsü,
+mevcut test harness'ının **kendi yorumu bu tuzağı zaten uyarıyordu.** Geçersiz
+ölçüm yapan dosyayı commit etmeden sildim.
+
+### Aileler ve tek kök neden
+
+Çözücüsüz ölçümde parklanan 9 anahtarın hiçbiri "bilinmeyen anahtar" değildi;
+hepsi **tipi çözülmemiş nesnede** duruyordu:
+
+| Aile | Anahtarlar | Tip |
+|---|---|---|
+| Lonca taşı | `ALIGN`, `MEMBER`, `ABBREV`, `CHARTER0` | `t_stone_guild` |
+| Harita | `PIN` | `t_map` |
+| Kitap | `BODY.0`–`BODY.3` | `t_book` |
+
+Kök neden tek: kaydın başlık defname'i bir ITEMDEF'e çözülmeli. Çözülünce tip
+gelir, tip gelince anahtarın sahibi alt sistem onu okur.
+
+Planın ayrı sorduğu kümelerin hepsi okunuyor: `KILLSPLAYER`/`KILLSNPC`, lonca
+alanları, bölge tag'leri (kale bölgesi adı + `OWNER` + EVENTS), custom skill
+(`Sailormanship`, `Farming`) ve gemi alanları (gövde `t_ship`, ambarı ve iki
+plankasıyla).
+
+### Planın uyarısı doğru
+
+Parklanan bir anahtar **kaybolmuyor**: değer tag'de duruyor, script'ten
+okunabiliyor, bir sonraki kayıtta geri yazılıyor. Kaybolan şey **motor
+davranışı**, veri değil. Bu yüzden sınıflandırmanın sorusu "bu anahtar tanınıyor
+mu" değil, *"motorun ne yapmasını gerektiriyor ve o yapılıyor mu"*.
+
+### Hibrit kural
+
+56T desteği Source-X yapısının **yerine değil yanına** eklenir; klasik yazımlar
+Source-X yazımlarıyla birlikte okunur. Bir 56T biçimini desteklemek için Source-X
+biçimini değiştirmek ya da kaldırmak yok.
+
+### Koruma
+
+Sondaj: `ResolveItemDefFullIndex` devre dışı bırakılınca lonca taşının dört
+anahtarı parklanıyor ve `Assert.Empty` kırmızıya dönüyor.
+
 ## İŞ-56 — Spawner kopya saati (PLAN-105, 13 Eylül 2026)
 
 PLAN-105: *"Spawner kopyasında kalan timeout korunuyor mu araştır; normal item

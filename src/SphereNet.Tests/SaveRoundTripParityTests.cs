@@ -7,6 +7,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects;
+using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
 using SphereNet.Scripting.Resources;
@@ -219,6 +220,24 @@ public sealed class SaveRoundTripParityTests : IDisposable
 
     /// <summary>What the second save says that the first did not, and the other way
     /// round. Empty means the save reached a fixed point.</summary>
+    /// <summary>What the server does after the loader returns
+    /// (Program.WorldBootstrap.cs:177): a spawn item gets its component, which is what
+    /// rebuilds the member list from the ADDOBJ records the save carries. Without this
+    /// step the reloaded world holds a spawner that has forgotten its creature, and
+    /// the second save writes one ADDOBJ line fewer - a difference in the harness, not
+    /// in the engine. A round trip measured in a configuration nobody runs answers a
+    /// question nobody asked.</summary>
+    private static void FinishLoadLikeTheServer(GameWorld world)
+    {
+        foreach (var item in world.GetAllObjects().OfType<Item>().ToArray())
+        {
+            if (item.IsDeleted) continue;
+            if (item.ItemType is not (ItemType.SpawnChar or ItemType.SpawnChampion or ItemType.SpawnItem))
+                continue;
+            item.InitializeSpawnComponent(world, null, item.Timeout);
+        }
+    }
+
     private List<string> Differences(string firstDir, string secondDir)
     {
         var first = ReadRecords(firstDir);
@@ -303,6 +322,58 @@ public sealed class SaveRoundTripParityTests : IDisposable
         ground.More2 = 0x5678;
         ground.Link = ch.Uid;
         world.PlaceItem(ground, new Point3D(62, 60, 0, 0));
+
+        // PLAN-107 names six things this cycle has to hold, and a whole-file
+        // comparison proves nothing about a shape the world does not contain. Base
+        // stats, amount, owner/parent and timers are above; these two were missing.
+
+        // Spawn membership. The member list is written as ADDOBJ records and rebuilt
+        // from them on load, so a spawner holding a live creature is the only way to
+        // exercise that translation - and İŞ-55 showed how much rides on it.
+        var spawner = world.CreateItem();
+        spawner.BaseId = 0x1F13;
+        spawner.ItemType = ItemType.SpawnChar;
+        spawner.Amount = 3;
+        world.PlaceItem(spawner, new Point3D(64, 60, 0, 0));
+        spawner.InitializeSpawnComponent(world, null);
+
+        var spawned = world.CreateCharacter();
+        spawned.BaseId = 0x0190;
+        spawned.BodyId = 0x0190;
+        spawned.Name = "Spawned";
+        // A brain, because the spawn path gives one: a creature it produces with none
+        // is defaulted to Monster (SpawnComponents.cs:314) and the load-time relink
+        // repairs the same state the same way (Item.cs, RelinkSpawnedChildrenFromTag).
+        // Handing the spawner a brainless creature builds a state the engine never
+        // produces, and the round trip then reports the REPAIR as drift - NPC=0 on the
+        // first save, NPC=8 on the second. The engine is right there; the fixture was
+        // not.
+        spawned.NpcBrain = NpcBrainType.Monster;
+        world.PlaceCharacter(spawned, new Point3D(65, 60, 0, 0));
+        spawner.SpawnChar?.AddObj(spawned.Uid);
+
+        // Dynamic vendor stock. A vendor's sale layers hold items the shard restocked
+        // rather than items a script placed, and they are written from the live
+        // container - the shape most likely to come back in a different order or with
+        // a different count.
+        var vendor = world.CreateCharacter();
+        vendor.BaseId = 0x0190;
+        vendor.BodyId = 0x0190;
+        vendor.Name = "Vendor";
+        world.PlaceCharacter(vendor, new Point3D(66, 60, 0, 0));
+
+        var stockBox = world.CreateItem();
+        stockBox.BaseId = 0x0E75;
+        stockBox.ItemType = ItemType.Container;
+        vendor.Equip(stockBox, Layer.VendorExtra);
+
+        var forSale = world.CreateItem();
+        forSale.BaseId = 0x1000;
+        forSale.Amount = 42;
+        forSale.Price = 137;
+        forSale.Name = "Stocked goods";
+        stockBox.AddItem(forSale);
+        forSale.Position = new Point3D(11, 12, 0, 0);
     }
 
     // ================================================================ İŞ-3
@@ -318,12 +389,83 @@ public sealed class SaveRoundTripParityTests : IDisposable
 
         var reloaded = NewWorld();
         NewLoader().Load(reloaded, first);
+        FinishLoadLikeTheServer(reloaded);
 
         string second = NewDir();
         Save(reloaded, second);
 
         var diffs = Differences(first, second);
         Assert.True(diffs.Count == 0, $"the second save differs in {diffs.Count} places");
+    }
+
+    /// <summary>The field-level half of PLAN-107, and it is not the same check.
+    ///
+    /// Comparing two saves catches DRIFT - a field written in one shape and read back
+    /// in another. It cannot catch OMISSION: a field never written at all produces two
+    /// identical files and a green test. Deleting the spawn-member write from the
+    /// saver leaves the fixed-point comparison perfectly happy.
+    ///
+    /// So the values are asserted on the far side of the cycle, for each of the six
+    /// things the plan names.</summary>
+    [Fact]
+    public void EveryFieldThePlanNamesComesBackWithItsValue()
+    {
+        var world = NewWorld();
+        BuildEngineWorld(world);
+
+        string dir = NewDir();
+        Save(world, dir);
+
+        var reloaded = NewWorld();
+        NewLoader().Load(reloaded, dir);
+        FinishLoadLikeTheServer(reloaded);
+
+        // 1. base stats - the BASE pool, not the effective one the suit inflates
+        var player = reloaded.GetAllObjects().OfType<Character>()
+            .Single(c => !c.IsDeleted && c.Name == "Rounder");
+        _out.WriteLine($"player: str={player.Str} hits={player.Hits}/{player.BaseMaxHits} " +
+                       $"fame={player.Fame} karma={player.Karma} kills={player.Kills}");
+        Assert.Equal(90, player.Str);
+        Assert.Equal(100, player.BaseMaxHits);
+        Assert.Equal(87, player.Hits);
+        Assert.Equal(1200, player.Fame);
+        Assert.Equal(-400, player.Karma);
+        Assert.Equal(755, player.GetSkill(SkillType.Anatomy));
+
+        // 2. amount, and 3. owner/parent - the stack is still inside the pack
+        var pack = player.GetEquippedItem(Layer.Pack);
+        Assert.NotNull(pack);
+        var stack = pack!.Contents.Single(i => i.Name == "Renamed token");
+        Assert.Equal(17, stack.Amount);
+        Assert.Equal(pack.Uid, stack.ContainedIn);
+        Assert.Equal(player.Uid, pack.ContainedIn);
+
+        // 4. spawn membership - the record the fixed-point test cannot vouch for
+        var spawner = reloaded.GetAllObjects().OfType<Item>()
+            .Single(i => !i.IsDeleted && i.ItemType == ItemType.SpawnChar);
+        _out.WriteLine($"spawner holds {spawner.SpawnChar?.SpawnedUids.Count ?? -1} member(s)");
+        Assert.Equal(1, spawner.SpawnChar?.SpawnedUids.Count);
+        var member = reloaded.FindChar(spawner.SpawnChar!.SpawnedUids[0]);
+        Assert.NotNull(member);
+        Assert.Equal("Spawned", member!.Name);
+
+        // 5. timers - a countdown keeps running, so what has to survive is that one is
+        //    still armed, not the exact number
+        var deep = reloaded.GetAllObjects().OfType<Item>()
+            .Single(i => !i.IsDeleted && i.IsAttr(ObjAttributes.Newbie));
+        _out.WriteLine($"timed item timeout={deep.Timeout}");
+        Assert.True(deep.Timeout > 0, "the scheduled timer was lost across the cycle");
+
+        // 6. dynamic vendor contents
+        var vendor = reloaded.GetAllObjects().OfType<Character>()
+            .Single(c => !c.IsDeleted && c.Name == "Vendor");
+        var stockBox = vendor.GetEquippedItem(Layer.VendorExtra);
+        Assert.NotNull(stockBox);
+        var goods = stockBox!.Contents.Single();
+        _out.WriteLine($"vendor stock: {goods.Name} x{goods.Amount} @ {goods.Price}");
+        Assert.Equal("Stocked goods", goods.Name);
+        Assert.Equal(42, goods.Amount);
+        Assert.Equal(137, goods.Price);
     }
 
     [Fact]
@@ -376,6 +518,7 @@ public sealed class SaveRoundTripParityTests : IDisposable
 
         var reloaded = NewWorld();
         NewLoader().Load(reloaded, first);
+        FinishLoadLikeTheServer(reloaded);
 
         string second = NewDir();
         Save(reloaded, second);

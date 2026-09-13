@@ -5393,6 +5393,53 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-58 — Kayıt turu alan karşılaştırması (PLAN-107, 13 Eylül 2026)
+
+PLAN-107: *"Save→Load→Save döngüsünde temel stat, miktar, owner/parent, spawn
+üyeliği, timer ve dinamik vendor içeriği için **alan bazlı** karşılaştırma kur."*
+
+### Bulgu — sabit nokta ≠ korunma
+
+Var olan test iki kaydı karşılaştırıp aynı olmalarını istiyordu. Bu **sapmayı**
+yakalar: bir alanın bir biçimde yazılıp başka biçimde geri okunmasını.
+**Eksikliği yakalayamaz:** hiç yazılmayan bir alan iki özdeş dosya üretir.
+
+Sondajla gösterildi: kaydediciden spawn üye yazımı silinince dosya
+karşılaştırması **yeşil kalıyor**. Alan bazlı test aynı değişiklikte kırmızı.
+
+Bir de kapsam sorunu vardı: bütün-dosya karşılaştırması **içermediği şekli**
+kanıtlamaz. Fikstürde altı alandan ikisi — spawn üyeliği ve dinamik vendor
+içeriği — hiç yoktu.
+
+### İki fikstür hatası, ikisi de önce motor hatası gibi göründü
+
+**1. `NPC=0 → NPC=8`.** Elle, beyinsiz kurduğum spawn üyesi turdan beyinle
+döndü. Spawn yolunun kendisi de beyinsiz yaratığa `Monster` veriyor
+(`SpawnComponents.cs:314`) ve yükleme relink'i onu aynalıyor. Yani fikstür
+motorun **hiç üretmediği** bir durum kurmuş, tur da **onarımı** sapma diye
+bildirmişti. Fikstüre beyin verildi.
+
+**2. LAYER 26'daki vendor malı kayboldu.** Doğru davranış: o kap **sanal**, SELL
+şablonundan istendiğinde yeniden kuruluyor ve bilinçli olarak persist
+edilmiyor (yoksa her kayıt vendor başına ~20 geçici eşyayla şişerdi).
+PLAN-107'nin kastettiği **dinamik** içerik **layer 27**: oyuncu vendor'ının
+oyunculardan satın aldığı mal, ki o persist edilmek **zorunda**.
+
+### Harness düzeltmesi
+
+İlk fark `ADDOBJ=02` kaybıydı ve yine harness boşluğuydu: sunucu yükleyici
+döndükten sonra spawn eşyasına bileşenini kuruyor
+(`Program.WorldBootstrap.cs:177`), üye listesi de ADDOBJ kayıtlarından orada
+yeniden kuruluyor. Test artık o sırayı aynalıyor — aksi halde kimsenin
+çalıştırmadığı bir yapılandırmayı ölçerdi.
+
+### Sonuç
+
+Üretim değişikliği yok. Altı alanın hepsi değerini koruyor:
+str 90, base MaxHits 100, hits 87, fame 1200, karma -400, skill 755; stack
+miktarı 17 ve kabının içinde; spawner tek üyesini taşıyor; timer kurulu
+kalıyor; vendor malı 42 adet, fiyat 137.
+
 ## İŞ-57 — 56T eşlenmeyen anahtar envanteri (PLAN-106, 13 Eylül 2026)
 
 PLAN-106: *"56T'nin 17 eşlenmeyen anahtar türünü sınıflandır … **her SAVE.\*

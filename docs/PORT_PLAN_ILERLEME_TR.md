@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `e2e61bf` + İŞ-57 (56T anahtar envanteri) |
-| Tam test | 3.677 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-107** (PLAN-101..106 kapandı) |
+| Son commit | `bd95ea1` + İŞ-58 (kayıt turu alan karşılaştırması) |
+| Tam test | 3.678 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 2 — PLAN-201** (Dalga 1 bitti) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-58 KAPANDI** — 2026-09-13. Tur testi iki kaydı karşılaştırıp aynı olmalarını
+  istiyordu; bu **sapmayı** yakalar, **eksikliği** yakalamaz — hiç yazılmayan bir
+  alan iki özdeş dosya ve yeşil test üretir. Kaydediciden spawn üye yazımını
+  silmek o karşılaştırmayı hiç rahatsız etmiyor. PLAN-107'nin istediği **alan
+  bazlı** karşılaştırma eklendi: altı alan (temel stat, miktar, owner/parent,
+  spawn üyeliği, timer, dinamik vendor içeriği) turun öbür ucunda **değer**
+  olarak iddia ediliyor; aynı sondaj yeni testi kırmızıya döndürüyor. Fikstürde
+  spawn üyeliği ve vendor içeriği hiç yoktu. **İki fikstür hatası önce motor
+  hatası gibi göründü:** elle beyinsiz kurulan spawn üyesi `NPC=0→8` sapması
+  bildirdi — oysa spawn yolu da beyinsize `Monster` veriyor, tur onarımı sapma
+  sanmıştı; LAYER 26'ya konan vendor malı kayboldu — doğru olarak, o kap sanal,
+  dinamik içerik layer 27'de. Yeniden yükleme artık sunucunun sırasını aynalıyor
+  (`Program.WorldBootstrap.cs:177`). Tam suite 3.678, üç koşu.
+  **PLAN-107 tamamlandı — Dalga 1 bitti.**
 - **İŞ-57 KAPANDI** — 2026-09-13. Gerçek 56T kaydında (76.359 eşya / 4.187
   karakter) eşlenmeyen anahtar sayısı **sıfır** — ama bunu sabitleyen bir şey
   yoktu: test yalnızca iki skill adının parklanmadığını iddia ediyordu, yirmi

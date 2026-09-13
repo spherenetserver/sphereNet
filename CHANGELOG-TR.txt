@@ -3,6 +3,40 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Kararli bir kayit turu, her seyi koruyan tur demek degil
+----------------------------------------
+
+TEST - Tur testi iki kaydi karsilastirip ayni olmalarini istiyordu; bu SAPMAYI
+        yakalar - bir alanin bir bicimde yazilip baska bicimde geri okunmasini.
+        EKSIKLIGI yakalayamaz: hic yazilmayan bir alan iki ozdes dosya ve yesil
+        bir test uretir. Kaydediciden spawn uye yazimini silmek o karsilastirmayi
+        hic rahatsiz etmiyor.
+
+        PLAN-107 alan bazinda karsilastirma istiyor ve eksik olan yari buydu.
+        Adini verdigi alti sey - temel statlar, miktar, owner/parent, spawn
+        uyeligi, timer'lar ve dinamik vendor icerigi - artik turun obur ucunda
+        DEGER olarak iddia ediliyor. Dosya karsilastirmasinin omuz silktigi sondaj
+        yeni testi kirmiziya donduruyor.
+
+        Fikstur de bu sekillerden ikisini hic icermiyordu; bir butun-dosya
+        karsilastirmasi icermedigi sekli kanitlamaz: canli bir yaratik tutan
+        spawner ve satin aldigi mali tutan vendor. Ikisi de eklendi.
+
+        Kaydedilmeye deger iki fikstur duzeltmesi, cunku ikisi de once motor
+        hatasi gibi gorundu. Elle beyinsiz kurulan bir spawn uyesi beyinle geri
+        geldi ve NPC=0 -> NPC=8 sapmasi diye raporlandi - oysa spawn yolunun
+        kendisi beyinsiz yaratiga Monster veriyor (SpawnComponents.cs:314) ve
+        yukleme relink'i onu aynaliyor; fikstur motorun hic uretmedigi bir durumu
+        kurmus, tur da onarimi sapma diye bildirmisti. Ve LAYER 26'ya konan vendor
+        mallari kayboldu - dogru olarak: o kap sanal, SELL sablonundan yeniden
+        kuruluyor ve bilincli olarak persist edilmiyor. Dinamik icerigi tasiyan
+        layer 27; oyuncu vendor'inin satin aldigini tuttugu yer.
+
+        Yeniden yukleme adimi artik sunucunun yukleyici dondukten sonra yaptigini
+        aynaliyor (Program.WorldBootstrap.cs:177): spawn esyasi bilesenini aliyor
+        ve uye listesini ADDOBJ kayitlarindan yeniden kuruyor. O olmadan harness
+        kimsenin calistirmadigi bir yapilandirmayi olcuyordu.
+
 [2026-09-13] - 56T kaydinda eslenmeyen anahtar kalmadi, artik bunu soyluyor
 ----------------------------------------
 

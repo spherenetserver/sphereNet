@@ -4,6 +4,42 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A save cycle that is stable is not the same as one that keeps everything
+----------------------------------------
+
+TEST - The round-trip check compared two saves and required them to be identical,
+        which catches DRIFT - a field written in one shape and read back in
+        another. It cannot catch OMISSION: a field never written at all produces
+        two identical files and a green test. Deleting the spawn-member write from
+        the saver leaves that comparison perfectly happy.
+
+        PLAN-107 asks for a field-level comparison, and that is the half that was
+        missing. The six things it names - base stats, amount, owner/parent, spawn
+        membership, timers and dynamic vendor contents - are now asserted by VALUE
+        on the far side of the cycle. The same probe that the file comparison
+        shrugs at turns the new test red.
+
+        The fixture was also missing two of those shapes entirely, and a
+        whole-file comparison proves nothing about a shape the world does not
+        contain: a spawner holding a live creature, and a vendor holding goods it
+        bought. Both are now in it.
+
+        Two fixture corrections worth recording, because both looked like engine
+        defects first. A spawn member built by hand with no brain came back with
+        one, reported as NPC=0 drifting to NPC=8 - but the spawn path itself
+        defaults a brainless creature to Monster (SpawnComponents.cs:314) and the
+        load-time relink mirrors that, so the fixture had built a state the engine
+        never produces and the round trip was reporting the repair. And vendor
+        goods placed on LAYER 26 vanished - correctly: that container is virtual,
+        rebuilt from the SELL template on demand, and deliberately not persisted.
+        The layer that carries dynamic contents is 27, where a player vendor keeps
+        what it bought.
+
+        The reload step now mirrors what the server does after the loader returns
+        (Program.WorldBootstrap.cs:177), where a spawn item gets its component and
+        rebuilds its member list from the ADDOBJ records. Without it the harness
+        measured a configuration nobody runs.
+
 [2026-09-13] - The 56T save leaves nothing unmapped, and now says so
 ----------------------------------------
 

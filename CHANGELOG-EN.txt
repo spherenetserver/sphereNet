@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The server now says which ini lines nobody read
+----------------------------------------
+
+FIX - An ini key this engine does not support and a key the operator mistyped
+        looked identical from outside: the line is in the file, the server starts,
+        and nothing happens. The parser said nothing either way, so the second kind
+        - the expensive one, where the setting looks present - was invisible.
+
+        IniParser marks every key something asks for, and since every read goes
+        through GetValue that is enough to answer which lines nobody listened to.
+        Startup prints the list. A second list of "supported keys" was rejected on
+        purpose: it would drift from the reader, and a drifted report is wrong in
+        the direction that reassures.
+
+        The Host and the Panel read the same file through their own parsers, so
+        their nine keys look unread from the game engine's side. Program credits
+        them by name rather than reporting them - telling an operator that a
+        working setting does nothing is the same defect in reverse, and İŞ-47 had
+        just finished fixing that direction.
+
+        On the shipped config this leaves 16 keys, and every one of them is marked
+        [UYGULANMADI] in the file itself. A name appearing there that is NOT marked
+        is either a typo or a setting added to the ini and never wired up.
+
+TEST - IniUnreadKeyReportTests covers the distinctions that make the list worth
+        reading: a key that was read is not reported even when its value is blank,
+        asking for a key the file does not have does not invent one, the match is
+        case-insensitive the way key lookup is, and the real config leaves only
+        keys it documents as unsupported. Disabling the marking turns all five red.
+
 [2026-09-13] - The missing-trigger count, measured by context instead of by name
 ----------------------------------------
 

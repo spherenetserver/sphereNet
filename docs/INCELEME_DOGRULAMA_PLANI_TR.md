@@ -5393,6 +5393,59 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-65 — Okunmayan ini anahtarı raporu (PLAN-301, 13 Eylül 2026)
+
+PLAN-301: *"Gerçek kullanılan sphere.ini ile destek manifestini karşılaştır; etkisiz
+kalan oyun anahtarlarının başlangıç raporunu çıkar. **Bilinmeyen anahtarın
+davranışı görünür olsun.**"*
+
+### Sorun
+
+Desteklenmeyen bir anahtar ile **yanlış yazılmış** bir anahtar dışarıdan aynı
+görünüyordu: satır dosyada, sunucu açılıyor, hiçbir şey olmuyor. Ayrıştırıcı iki
+durumda da susuyordu.
+
+İkisi aynı şey değil ve pahalı olan ikincisi: operatör ayarı yazdığını görüyor,
+ayarın **var olduğunu** sanıyor. İŞ-47 dosyanın **belgelediği** anahtarları
+sınıflandırmıştı; bu iş **belgelemedikleri** hakkında.
+
+### Çözüm ve reddedilen alternatif
+
+`IniParser` sorulan her anahtarı işaretliyor. Her okuma `GetValue`'dan geçtiği
+için tek bir noktada işaretlemek yetiyor.
+
+Ayrı bir *"desteklenen anahtarlar"* manifesti **bilerek reddedildi**: okuyucudan
+sapar ve sapmış bir rapor **güven veren yönde** yanlış olur — tam olarak bu işin
+önlemeye çalıştığı şey.
+
+### Ölçüm sırasında çıkan tuzak
+
+İlk koşu **23** okunmayan anahtar bildirdi; 7'si `APPUPDATE*` ve
+`ADMINPANELAUTOFILL` idi. Bunları "desteklenmiyor" diye raporlamak yanlış olurdu:
+**Host ve Panel aynı dosyayı kendi ayrıştırıcılarıyla okuyor** (İŞ-47'de
+saptanmıştı), yani çalışıyorlar — sadece oyun motoru tarafından görünmüyorlar.
+
+Çalışan bir ayarı *"hiçbir şey yapmıyor"* diye bildirmek, İŞ-47'de düzelttiğim
+kusurun **tersi** olurdu. `Program` o dokuz anahtarı sahibinin adıyla
+kredilendiriyor.
+
+### Sonuç
+
+Depo config'inde geriye **16** anahtar kalıyor ve **hepsi** dosyada
+`[UYGULANMADI]` işaretli — yani rapor yalnızca gerçekten desteklenmeyeni
+listeliyor. Orada **işaretsiz** bir ad görünmesi ya yazım hatasıdır ya da ini'ye
+eklenip hiç bağlanmamış bir ayardır.
+
+### Koruma
+
+`IniUnreadKeyReportTests` (5): okunmuş anahtar değeri **boş olsa bile**
+raporlanmaz (aksi halde operatör listeyi görmezden gelmeyi öğrenir); dosyada
+olmayan anahtarı sormak yenisini uydurmaz; eşleşme anahtar araması gibi
+büyük/küçük harf ayırmaz (aksi halde liste gürültüye döner); ve gerçek config
+yalnızca belgelediğini bırakır.
+
+Sondaj: işaretleme kapatılınca beş testin beşi de kırmızıya dönüyor.
+
 ## İŞ-64 — Trigger ad eşlemesi (PLAN-206, 13 Eylül 2026)
 
 PLAN-206: *"Eksik trigger adlarını **enum adı üzerinden değil** Source-X

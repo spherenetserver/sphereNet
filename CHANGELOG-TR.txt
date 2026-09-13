@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Sunucu artik ini'nin hangi satirlarini kimsenin okumadigini soyluyor
+----------------------------------------
+
+FIX - Bu motorun desteklemedigi bir ini anahtari ile operatorun yanlis yazdigi bir
+        anahtar disaridan ayni gorunuyordu: satir dosyada, sunucu aciliyor, hicbir
+        sey olmuyor. Ayristirici iki durumda da susuyordu; yani ikinci tur - ayarin
+        var gorundugu pahali tur - tamamen gorunmezdi.
+
+        IniParser artik bir seyin sordugu her anahtari isaretliyor ve her okuma
+        GetValue'dan gectigi icin bu, "hangi satirlari kimse dinlemedi" sorusunu
+        cevaplamaya yetiyor. Baslangicta liste yazdiriliyor. Ayri bir "desteklenen
+        anahtarlar" listesi bilerek reddedildi: okuyucudan sapardi ve sapmis bir
+        rapor, guven veren yonde yanlis olur.
+
+        Host ve Panel ayni dosyayi kendi ayristiricilariyla okuyor, dolayisiyla
+        dokuz anahtari oyun motoru tarafindan okunmamis gorunuyor. Program onlari
+        raporlamak yerine adiyla kredilendiriyor - calisan bir ayarin hicbir sey
+        yapmadigini operatore soylemek ayni kusurun tersi ve IS-47 tam da o yonu
+        duzeltmisti.
+
+        Depodaki config'de geriye 16 anahtar kaliyor ve hepsi dosyanin kendisinde
+        [UYGULANMADI] isaretli. Orada isaretsiz bir ad gorunmesi ya yazim hatasidir
+        ya da ini'ye eklenip hic baglanmamis bir ayar.
+
+TEST - IniUnreadKeyReportTests listeyi okunmaya deger kilan ayrimlari kapsiyor:
+        okunmus bir anahtar degeri bos olsa bile raporlanmiyor, dosyada olmayan bir
+        anahtari sormak yenisini uydurmuyor, eslesme anahtar aramasi gibi
+        buyuk/kucuk harf ayirmiyor ve gercek config yalnizca desteklenmedigini
+        belgeledigi anahtarlari birakiyor. Isaretlemeyi kapatmak besini de
+        kirmiziya donduruyor.
+
 [2026-09-13] - Eksik trigger sayisi, ad uzerinden degil baglam uzerinden olculdu
 ----------------------------------------
 

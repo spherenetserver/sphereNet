@@ -8,6 +8,13 @@ public sealed class IniParser
 {
     private readonly Dictionary<string, Dictionary<string, string>> _sections = new(StringComparer.OrdinalIgnoreCase);
 
+    // Which keys something actually asked for. An ini key the engine never reads is
+    // silent today: an operator who mistypes a setting, or carries one over from a
+    // Source-X build that supports it, gets no word either way and concludes the
+    // value took effect. Every read goes through GetValue, so marking there is enough
+    // to answer "what did this file say that nobody listened to".
+    private readonly HashSet<string> _consulted = new(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyDictionary<string, Dictionary<string, string>> Sections => _sections;
 
     public void Load(string filePath)
@@ -54,9 +61,25 @@ public sealed class IniParser
 
     public string? GetValue(string section, string key)
     {
+        _consulted.Add(section + "|" + key);
         if (_sections.TryGetValue(section, out var dict) && dict.TryGetValue(key, out var value))
             return value;
         return null;
+    }
+
+    /// <summary>Keys the file sets that nothing ever asked for, as "SECTION|KEY".
+    ///
+    /// Two kinds end up here and the operator needs to tell them apart: a key this
+    /// engine deliberately does not support (documented in config/sphere.ini with its
+    /// own marker), and a key that is simply misspelled. Neither is visible while the
+    /// parser stays quiet, and the second one is the expensive kind - the setting
+    /// looks present and does nothing.</summary>
+    public IEnumerable<string> UnreadKeys()
+    {
+        foreach (var (section, keys) in _sections)
+            foreach (string key in keys.Keys)
+                if (!_consulted.Contains(section + "|" + key))
+                    yield return section + "|" + key;
     }
 
     public int GetInt(string section, string key, int defaultValue = 0)

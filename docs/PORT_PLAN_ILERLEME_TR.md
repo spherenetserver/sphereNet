@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `477d609` + İŞ-64 (trigger ad eşlemesi) |
-| Tam test | 3.704 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 3 — PLAN-301** (Dalga 2 bitti) |
+| Son commit | `280b0bd` + İŞ-65 (okunmayan ini anahtarı raporu) |
+| Tam test | 3.709 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 3 — PLAN-302** (PLAN-301 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,19 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-65 KAPANDI** — 2026-09-13. **Gerçek düzeltme:** desteklenmeyen bir ini
+  anahtarı ile **yanlış yazılmış** bir anahtar dışarıdan aynı görünüyordu — satır
+  dosyada, sunucu açılıyor, hiçbir şey olmuyor; ayrıştırıcı iki durumda da
+  susuyordu. `IniParser` artık sorulan her anahtarı işaretliyor (her okuma
+  `GetValue`'dan geçtiği için tek nokta yetiyor) ve başlangıçta okunmayanlar
+  yazdırılıyor. Ayrı bir "desteklenen anahtarlar" listesi **bilerek reddedildi**:
+  okuyucudan sapar ve sapmış rapor güven veren yönde yanlış olur. Host/Panel aynı
+  dosyayı kendi ayrıştırıcılarıyla okuduğu için 9 anahtarı **adıyla
+  kredilendirildi** — çalışan ayarı "hiçbir şey yapmıyor" diye bildirmek İŞ-47'de
+  düzeltilen kusurun tersi olurdu. Depo config'inde geriye **16** anahtar kalıyor
+  ve hepsi dosyada `[UYGULANMADI]` işaretli. Test: `IniUnreadKeyReportTests` (5);
+  işaretleme kapatılınca beşi de kırmızı. Tam suite 3.709, üç koşu.
+  **PLAN-301 tamamlandı.**
 - **İŞ-64 KAPANDI** — 2026-09-13. PLAN-206'nın yöntemi: eksik trigger'ları **enum
   adı üzerinden değil** referansın ad/alias/**bağlam** eslemesiyle çıkar. Ham ad
   karşılaştırması **71**; her adı sahip tablosuyla taşıyınca **21**. Farkların

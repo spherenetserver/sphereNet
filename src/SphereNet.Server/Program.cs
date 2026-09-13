@@ -453,6 +453,35 @@ public static partial class Program
         var configWarnings = _config.Validate();
         foreach (var w in configWarnings)
             ConsoleAppend($"CONFIG WARNING: {w}");
+
+        // Say which lines of the file nothing read. A key this engine does not
+        // support and a key the operator misspelled look identical from the outside -
+        // the setting is there, the server starts, and nothing happens - and the
+        // second one is the expensive kind. config/sphere.ini marks the deliberate
+        // ones ([UYGULANMADI]); anything else in this list is worth a second look.
+        // The Host and the Panel read the SAME file through their own parsers, so
+        // their keys look unread from here. Naming them keeps the report about the
+        // game engine rather than telling an operator that a working setting does
+        // nothing - which is the mistake this report exists to prevent, in reverse.
+        foreach (string owned in new[]
+                 {
+                     "AppUpdateRepo", "AppUpdateRepoDir", "AppUpdateChannel",
+                     "AppUpdateRuntime", "AppUpdateToken", "AppUpdateCheckMinutes",
+                     "HostShutdownQuietMs", "HostShutdownTimeoutMs",   // SphereNet.Host
+                     "AdminPanelAutoFill",                              // SphereNet.Panel
+                 })
+            iniParser.GetValue("SPHERE", owned);
+
+        var unread = iniParser.UnreadKeys()
+            .Select(k => k.Split('|')[^1])
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (unread.Count > 0)
+        {
+            ConsoleAppend($"CONFIG: {unread.Count} key(s) in {Path.GetFileName(iniPath)} " +
+                          "are not read by this engine (deliberate or misspelled):");
+            ConsoleAppend("CONFIG:   " + string.Join(", ", unread));
+        }
         // Multicore is always on. The runtime flag still exists because
         // a phase timeout or unhandled exception in RunMulticoreTick
         // flips it to false as a hot fallback to single-thread.

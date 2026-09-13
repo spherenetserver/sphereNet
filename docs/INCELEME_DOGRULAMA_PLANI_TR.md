@@ -5393,6 +5393,101 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-50 — Port raporu düzeltmesi (PLAN-004, 13 Eylül 2026)
+
+PLAN-004: *"Port raporundaki güncel olmayan sayı ve eksik etiketlerini düzelt;
+sadakat puanlarını ölçülmüş gibi sunmayı bırak."*
+
+### Asıl sorun tek bir sayı değildi
+
+Rapor tek bir "100 üzerinden" tablosunda iki sütun taşıyordu: **kapsam**
+(sayılıyor) ve **sadakat** (hiç sayılmadı). İkisi aynı biçimde, aynı kalınlıkta,
+yan yana duruyordu ve farkı yalnızca §0'daki bir dipnot söylüyordu. Tabloyu
+okuyan biri iki ölçüm görüyordu; ortada bir ölçüm ve bir kanaat vardı.
+
+Sadakat sütunu artık **tablonun kendisinde** "kanaat" diye etiketli, ağırlıklı
+özet hangi sayısının sayımdan geldiğini yazıyor.
+
+### Bulgu — yöntemin hata bandı ölçüldü
+
+Rapor "her isim kaynak ağacında tam eşleşme ve önek eşleşmesiyle arandı"
+diyordu. Bu tarama bir script anahtarının **üç** gönderim biçiminden yalnızca
+birini görüyor:
+
+| Biçim | Örnek | Çıplak literal taraması |
+|---|---|---|
+| Düz literal | `case "DCLICK":` | görür |
+| Son ekli literal | `StartsWith("FEVAL (")`, `"CANMAKE."` | görmez |
+| Tanımlayıcı / enum | `ScriptKey.Asc => …` | görmez |
+
+`CScriptObj_functions`'ın 54 adı: **11** düz literal, **4** son ekli, **30**
+tanımlayıcı, **9** yok. Yalnız düz literale bakan tarama bu tabloda %20 kapsam
+bulur; üçüne birden bakan %83. **Aradaki fark yöntem farkı, kod farkı değil.**
+
+Bu, bu oturumda aynı hatayı üçüncü kez görmek oldu: İŞ-47'de `$"Map{i}"`,
+İŞ-48'de satır sonu yorumu, burada gönderim biçimi. Payda sayılabiliyor, pay
+tahmin ediliyor — ve rapor ikisini aynı hassasiyetle sunuyordu. Artık
+**±%5** yazıyor.
+
+Kendi ilk ölçümüm de bu yüzden yanılttı: çıplak literal taramasıyla
+`CScriptObj_functions` için 11 buldum ve raporın 44'sünü "33 puan eskimiş"
+sanarak işaretledim. Elle baktığımda raporun sayısı doğruydu, benim taramam
+bozuktu; düzeltince 43 çıktı.
+
+### Bulgu — eskimiş sayılar
+
+| Ne | Önce | Şimdi |
+|---|---|---|
+| Test | 3064 | 3646 |
+| Satır / dosya | 148.146 / 331 | 153.261 / 337 |
+| Property yüzeyi | 470/645 | 390/534 |
+| ini yüzeyi | 164/279 | 162/279 |
+| AOS bileşen | 65/139 | 77/139 |
+| Housing `CItemMulti` | 44/71 | 58/70 |
+| Lonca taşı | 13/30 | 19/30 |
+
+**645 hiçbir tabloyla eşleşmiyordu** (İŞ-48'de kaydedilmişti). Raporun kendi
+§2.2 satırları toplanınca payda 534 çıkıyor; ilginç olan, 470/645 ile 390/534
+oranlarının neredeyse aynı olması (%72,9 ve %73,0) — yani yazar doğru oranı
+yanlış mutlak çiftle yazmış.
+
+### Bulgu — biten işler hâlâ eksik listeleniyordu
+
+Rapor 2026-09-06 tarihliydi ve o tarihten sonra gelen işler listelerde
+duruyordu:
+
+- "Sphere 56x için gerçekten canını yakacak" denen **43 script adından 16'sı**
+  cevaplandı: `CANMAKE`, `CANMAKESKILL`, `CANCAST`, `SKILLUSEQUICK`,
+  `SKILLBEST`, `SWING`, `BREATH`, `MEMORY`, `DROPSOUND`, `EQUIPSOUND`, `RESDEF`,
+  `TAGAT`, `ISEVENT`, `ISTEVENT`, `ISDIALOGOPEN`, `TOPCONT`.
+- Housing'in "yok" listesindeki **19 fiilden 9'u** geldi: `ADDCOMPONENT`,
+  `ADDONS`, `ADDVENDOR`, `MOVINGCRATE`, `SECURED` ve tüm `GET*POS` indeksleme
+  ailesi — çoğu bu port turunun İŞ-33/34 dalgalarında. Housing artık
+  "en büyük yapısal boşluk" değil; kalan 10 ad **silme ve addon yolları**.
+
+### Kaydı tutulan karar — trigger backlog'u yeniden ölçülmedi
+
+Rapor "~27 trigger eksik" diyor. Bunu tarama ile doğrulamaya çalıştım ve
+24 addan 11'i kaynakta göründü — ama bir trigger adının kaynakta geçmesi
+**enum üyesi** olduğunu gösterir, **ateşlendiğini** değil. Bu ikisi farklı ve
+taramanın ayırt etme yolu yok.
+
+Sayıyı değiştirmedim; raporda "yeniden ölçülmedi, otorite
+`TriggerCoverageGuardrailTests`" notu bıraktım. Başka bir tahmini gerçek gibi
+yazmak, düzeltmeye çalıştığım hatanın ta kendisi olurdu.
+
+### Koruma
+
+`PortReportGuardrailTests` (6): 18 tablo paydası `sourcex_tables.csv`'ye karşı
+denetleniyor; payı paydasından büyük kesir reddediliyor; baştaki test sayısı
+paketin aralığında tutuluyor (tam sayıya pinlenmiyor — her yeni test
+kırmızıya döndürürdü); sadakat sütununu sayım gibi okutmayan ifadeler ve
+üç gönderim biçiminin anlatımı sabitleniyor; rapor ölçüm belgelerine
+bağlantı veriyor.
+
+Geri-alma sondajı: bir paydayı 124→645 yapıp "Sadakat (kanaat)" etiketi
+kaldırılınca iki test kırmızıya dönüyor ve bozulan paydayı adıyla bildiriyor.
+
 ## İŞ-49 — Veri kapıları (PLAN-003, 13 Eylül 2026)
 
 PLAN-003: *"Early-return testlerini görünür veri-yok durumuna dönüştür;

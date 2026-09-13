@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The port report stops presenting a judgement as a measurement
+----------------------------------------
+
+DOC - docs/PORT_DURUM_RAPORU_TR.md carried two columns in one "out of 100"
+        table: coverage, which is counted, and fidelity, which never was. Only a
+        footnote said so. The fidelity column is now labelled a judgement in the
+        table itself, the coverage column carries its error bar, and the
+        weighted summary says which of its three numbers came from counting.
+
+DOC - The method section now states the three shapes a script key is dispatched
+        in - bare literal, literal with a suffix such as "FEVAL (" or "CANMAKE.",
+        and identifier or enum - and that a bare-literal scan sees only the
+        first. CScriptObj_functions splits 11 / 4 / 30 across them with 9
+        absent, so the same table reads as 20% or 83% coverage depending on the
+        scan. That is the error bar, stated as +-5%.
+
+FIX - Stale figures, re-measured: 3064 tests -> 3646; 148146 lines / 331 files
+        -> 153261 / 337; the property surface 470/645, whose denominator matched
+        no table in the reference, -> 390/534 across the eleven named object
+        property tables; the ini surface 164/279 -> 162/279; the AOS component
+        surface 65/139 -> 77/139; housing CItemMulti 44/71 -> 58/70; guild stone
+        13/30 -> 19/30.
+
+FIX - Work that landed after the report was written and was still listed as
+        missing: 16 of the 43 script names called painfully absent (CANMAKE,
+        CANMAKESKILL, CANCAST, SKILLUSEQUICK, SKILLBEST, SWING, BREATH, MEMORY,
+        DROPSOUND, EQUIPSOUND, RESDEF, TAGAT, ISEVENT, ISTEVENT, ISDIALOGOPEN,
+        TOPCONT), and 9 of the 19 housing verbs including MOVINGCRATE, SECURED
+        and the whole GET*POS indexing family. Housing no longer reads as the
+        largest structural gap; its remaining ten names are the delete and addon
+        paths.
+
+FIX - The trigger denominator is three numbers, not one: 248 in triggers.tbl,
+        252 across the per-class tables, 253 combined. The remaining trigger
+        backlog is left at ~27 and marked as not re-measured, because a trigger
+        name appearing in source means it is an enum member, not that it fires;
+        TriggerCoverageGuardrailTests remains the authority.
+
+TEST - PortReportGuardrailTests checks the 18 per-table denominators against
+        docs/data/sourcex_tables.csv, refuses a fraction whose numerator exceeds
+        its denominator, holds the headline test count to the suite's range, and
+        pins the words that keep the fidelity column from reading as a count.
+
 [2026-09-13] - A run now says how much of it measured nothing
 ----------------------------------------
 

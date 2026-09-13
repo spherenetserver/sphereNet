@@ -3,6 +3,47 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Port raporu kanaati olcum gibi sunmayi birakiyor
+----------------------------------------
+
+DOC - docs/PORT_DURUM_RAPORU_TR.md tek bir "100 uzerinden" tablosunda iki sutun
+        tasiyordu: sayilan kapsam ve hic sayilmamis sadakat. Bunu yalnizca bir
+        dipnot soyluyordu. Sadakat sutunu artik tablonun kendisinde kanaat diye
+        etiketli, kapsam sutunu hata bandini tasiyor ve agirlikli ozet hangi
+        sayisinin sayimdan geldigini yaziyor.
+
+DOC - Yontem bolumu artik bir script anahtarinin uc gonderim bicimini yaziyor -
+        duz literal, "FEVAL (" ya da "CANMAKE." gibi son ekli literal, ve
+        tanimlayici/enum - ve ciplak literal taramasinin yalnizca ilkini
+        gordugunu. CScriptObj_functions bu uce 11 / 4 / 30 dagiliyor, 9'u yok;
+        yani ayni tablo taramaya gore %20 ya da %83 kapsam veriyor. Hata bandi
+        bu, +-%5 olarak yazildi.
+
+FIX - Eskimis sayilar yeniden olculdu: 3064 test -> 3646; 148146 satir / 331
+        dosya -> 153261 / 337; paydasi referansta hicbir tabloyla eslesmeyen
+        property yuzeyi 470/645 -> adi konmus on bir nesne-ozellik tablosunda
+        390/534; ini yuzeyi 164/279 -> 162/279; AOS bilesen yuzeyi 65/139 ->
+        77/139; housing CItemMulti 44/71 -> 58/70; lonca tasi 13/30 -> 19/30.
+
+FIX - Rapor yazildiktan sonra gelen ama hala eksik listelenen isler: "canini
+        yakacak" denen 43 script adindan 16'si (CANMAKE, CANMAKESKILL, CANCAST,
+        SKILLUSEQUICK, SKILLBEST, SWING, BREATH, MEMORY, DROPSOUND, EQUIPSOUND,
+        RESDEF, TAGAT, ISEVENT, ISTEVENT, ISDIALOGOPEN, TOPCONT) ve 19 housing
+        fiilinden 9'u - MOVINGCRATE, SECURED ve tum GET*POS indeksleme ailesi
+        dahil. Housing artik en buyuk yapisal bosluk degil; kalan on adi silme
+        ve addon yollari.
+
+FIX - Trigger paydasi tek sayi degil uc sayi: triggers.tbl'de 248, sinif
+        tablolarinda 252, birlesimde 253. Kalan trigger backlog'u ~27'de
+        birakildi ve yeniden olculmedigi yazildi: bir trigger adinin kaynakta
+        gecmesi enum uyesi oldugunu gosterir, atesledigini degil. Otorite
+        TriggerCoverageGuardrailTests.
+
+TEST - PortReportGuardrailTests 18 tablo paydasini
+        docs/data/sourcex_tables.csv'ye karsi denetliyor, payi paydasindan buyuk
+        kesri reddediyor, bastaki test sayisini paketin araliginda tutuyor ve
+        sadakat sutununu sayim gibi okutmayan ifadeleri sabitliyor.
+
 [2026-09-13] - Kosunun ne kadarinin olcum yapmadigi artik yaziyor
 ----------------------------------------
 

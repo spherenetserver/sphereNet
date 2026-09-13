@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `08d252c` + İŞ-49 (veri kapıları) |
-| Tam test | 3.640 başarılı / 0 başarısız (66 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 0 — PLAN-004** (PLAN-001, 002, 003 kapandı) |
+| Son commit | `8885a55` + İŞ-50 (port raporu düzeltmesi) |
+| Tam test | 3.646 başarılı / 0 başarısız (66 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 0 — PLAN-005** (Dalga 0'ın son maddesi) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,19 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-50 KAPANDI** — 2026-09-13. Port raporu tek bir "100 üzerinden"
+  tablosunda sayılan **kapsam**ı ve hiç sayılmamış **sadakat**i yan yana
+  koyuyordu; sadakat artık tablonun kendisinde kanaat diye etiketli, kapsam
+  hata bandını (±%5) taşıyor. Yöntem bölümü üç gönderim biçimini yazıyor
+  (düz literal / son ekli literal / tanımlayıcı-enum): `CScriptObj_functions`
+  11-4-30 dağılıyor, yani aynı tablo taramaya göre %20 ya da %83 veriyor.
+  Eskimiş sayılar: 3064→3646 test, 148.146/331→153.261/337, property yüzeyi
+  470/645 (paydası hiçbir tabloyla eşleşmiyordu) → 390/534, ini 164→162/279,
+  AOS 65→77/139, housing 44/71→58/70, lonca taşı 13→19/30. Rapordan sonra
+  gelen işler hâlâ eksik listeleniyordu: 43 script adından 16'sı, 19 housing
+  fiilinden 9'u (`MOVINGCRATE`, `SECURED`, `GET*POS` ailesi). Test:
+  `PortReportGuardrailTests` (6); payda bozulunca kırmızıya dönüyor.
+  Tam suite 3.646, üç koşu. **PLAN-004 tamamlandı.**
 - **İŞ-49 KAPANDI** — 2026-09-13. Gerçek veriye bağlı testler veri yokken
   erkenden dönüp **BAŞARILI** raporluyordu (xUnit 2'de çalışma anında skip yok),
   yani verisiz bir makinedeki koşu her şeyi ölçen bir koşudan ayrılmıyordu.

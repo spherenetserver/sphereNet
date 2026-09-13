@@ -1,42 +1,67 @@
 ﻿# SphereNet ↔ Source-X Port Durum Raporu
 
-**Tarih:** 2026-09-06
+**Tarih:** 2026-09-13 (ilk sürüm 2026-09-06; sayılar PLAN-004'te yeniden ölçüldü)
 **Ölçüm dayanağı:** `oldSphere/Source-X-full/src` (referans C++ motor, 201.846 satır)
-karşısında `src/` (SphereNet, test hariç 148.146 satır / 331 dosya).
+karşısında `src/` (SphereNet, test hariç 153.261 satır / 337 dosya).
 **Doğrulama:** `dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj` →
-**3064 test, 0 başarısız, 0 atlanan** (1 dk 23 sn).
+**3646 test, 0 başarısız, 0 atlanan**; koşunun 66 veri kapısından biri veri
+bulamıyor ([veri kapıları](VERI_KAPILARI_TR.md)).
+**Paydalar:** [Source-X tablo paydaları](SOURCEX_TABLO_PAYDALARI_TR.md) ve
+`docs/data/sourcex_tables.csv` (98 tablo, 3570 giriş) — her payda oradan türetilir.
 
 ---
 
 ## 0. Ölçüm yöntemi ve güven sınırları
 
-Bu rapordaki yüzdeler **tahmin değil**, Source-X'in kendi tablo dosyalarından
-üretilmiş sayımlardır. Source-X, script'e açtığı her yüzeyi `src/tables/*.tbl`
-içinde listeler (`triggers.tbl`, `CChar_props.tbl`, `CObjBase_functions.tbl`, …).
-Bu listeler çıkarıldı ve her isim SphereNet kaynak ağacında (test dosyaları
-hariç) hem tam eşleşme hem önek eşleşmesi (`"TAG0."`, `"VAR."` gibi) ile arandı.
+Bu bölümü atlamayın: **rapordaki iki sütun aynı cinsten değil.**
 
-**Yöntemin iki bilinen sapması var, ikisi de raporda düzeltildi:**
+**Payda sayılır.** Source-X script'e açtığı her yüzeyi `src/tables/*.tbl` ve
+`.cpp` içi tablolarda listeler. Bu tabloların tamamı
+`docs/data/sourcex_tables.csv`'ye çıkarıldı (98 tablo, 3570 giriş) ve
+`SourceXTableInventoryGuardrailTests` her koşuda referanstan yeniden üretip
+karşılaştırıyor. Buradaki her payda o dosyadan gelir, elle yazılmaz.
 
-- **Yukarı sapma (kapsam):** bir ismin kaynakta bulunması "davranış birebir
-  portlandı" demek değildir. Bu yüzden her kategoriye ayrı bir **Sadakat**
-  puanı verildi; sadakat sayımla değil, kod okuma + guardrail testleri +
-  `docs/reviews/` (100 dosya) + uyduruk-değer denetim geçmişiyle belirlendi.
-- **Aşağı sapma (kapsam):** Source-X `SKILL_START`/`@Start` gibi bağlam-bağımlı
-  isimleri SphereNet `SkillStart` diye adlandırır. Ham diff bunları "eksik"
-  sayar. Trigger ve spell listelerinde alias eşlemesi elle yapıldı; ham sayı ile
-  düzeltilmiş sayı ayrı ayrı verildi.
+**Pay tahmin edilir.** "Bu ismi karşılıyor muyuz" sorusu kaynak taramasıyla
+cevaplanıyor ve tarama üç ayrı gönderim biçimini görmek zorunda:
+
+| Biçim | Örnek | Çıplak literal taraması |
+|---|---|---|
+| Düz literal | `case "DCLICK":` | görür |
+| Son ekli literal | `StartsWith("FEVAL (")`, `"CANMAKE."` | **görmez** |
+| Tanımlayıcı / enum | `ScriptKey.Asc => …` | **görmez** |
+
+`CScriptObj_functions`'ın 54 adı bu üç kovaya şöyle dağılıyor: 11 düz literal,
+4 son ekli, 30 tanımlayıcı, 9 yok. Yalnız düz literale bakan bir tarama bu
+tabloda **%20 kapsam** bulur; üçüne birden bakan **%83**. Aradaki fark yöntem
+farkıdır, kod farkı değil.
+
+Bu yüzden paylar **±%5 bandıyla** okunmalı ve iki anlamlı basamakla sunulmamalı.
+Tek başına bir ismin kaynakta bulunması, davranışın birebir portlandığını da
+kanıtlamaz.
+
+**Sadakat sütunu hiç ölçülmedi.** O bir **değerlendirme**: kod okuma, guardrail
+testleri, `docs/reviews/` ve uyduruk-değer denetim geçmişiyle verilmiş bir
+kanaat. 100 üzerinden yazılması onu ölçüm yapmaz; karşılaştırma kolaylığı için
+sayıya çevrilmiş bir yargıdır. Aynı şey ağırlıklı özetteki tek sayılar için de
+geçerli.
+
+**Alias sapması:** Source-X `SKILL_START`/`@Start` gibi bağlam-bağımlı isimleri
+SphereNet `SkillStart` diye adlandırır; ham diff bunları "eksik" sayar. Trigger
+ve spell listelerinde alias eşlemesi elle yapıldı.
 
 ---
 
-## 1. Genel tablo — 100 üzerinden
+## 1. Genel tablo
 
-| # | Kategori | Kapsam | Sadakat | Kanıt |
+**Kapsam** sayımdan türetilir (±%5, bkz. §0). **Sadakat** sayılmadı; bir
+değerlendirmedir. İkisini toplamayın.
+
+| # | Kategori | Kapsam ~ | Sadakat (kanaat) | Kanıt |
 |---|---|---:|---:|---|
-| 1 | Trigger sistemi (`@Trigger`, EVENTS/TEVENTS zinciri) | **89** | **90** | 248 SX trigger, ~221 karşılığı var; ateşlenmeyen backlog = 1 (`@UserVirtue`) |
+| 1 | Trigger sistemi (`@Trigger`, EVENTS/TEVENTS zinciri) | **89** | **90** | `triggers.tbl` 248 / sınıf tabloları 252 / birleşim 253; ~221 karşılığı var; ateşlenmeyen backlog = 1 (`@UserVirtue`) |
 | 2 | Script motoru / ifade motoru | **85** | **88** | `CScriptObj_functions` 44/54; FEVAL/FLOATVAL/STRSUB/LOCAL/REF ailesi test kilitli |
-| 3 | Nesne fiilleri (verbs) | **100** | **88** | `CObjBase/CChar/CItem/CClient_functions` 206/206 dispatch yolu var |
-| 4 | Nesne özellikleri (props) | **73** | **85** | `*_props.tbl` toplamı 470/645 |
+| 3 | Nesne fiilleri (verbs) | **100** | **88** | `CObjBase/CChar/CItem/CClient_functions` 206 tablo girişi = 186 ayrı anahtar, tamamı yollu |
+| 4 | Nesne özellikleri (props) | **73** | **85** | §2.2'deki on bir nesne-özellik tablosu 390/534 (bileşen props ayrı, bkz. 26) |
 | 5 | Ağ / paket katmanı | **85** | **88** | 65 kayıtlı gelen handler + alt-dispatch; 109 giden paket sınıfı (SX 124) |
 | 6 | Şifreleme / login zinciri | **95** | **92** | Blowfish + Twofish + Huffman + no-crypt, loopback login entegrasyon testi |
 | 7 | Karakter / Item çekirdek modeli | **95** | **88** | `IT_*` 207/212, `SKILL_*` 60/60, `SPELL_*` 211/211 (gerçek büyü) |
@@ -55,20 +80,20 @@ hariç) hem tam eşleşme hem önek eşleşmesi (`"TAG0."`, `"VAR."` gibi) ile a
 | 20 | Gump / dialog / hedefleme | **88** | **88** | `CClient_functions` 61/61; dialog layout verb kapsaması script setine göre tam |
 | 21 | Konuşma / speech / keyword | **85** | **85** | Command prefix güvenlik kapısı, HasWord kelime eşleşmesi |
 | 22 | Harita verisi (`.mul`) | **80** | **85** | map/statics/multi/tiledata okuyucular var; map diff (`USEMAPDIFFS`) yok |
-| 23 | Housing / multi script API | **62** | **72** | `CItemMulti` anahtarları 44/71; addon/component/vendor/moving-crate ailesi yok |
+| 23 | Housing / multi script API | **~80** | **80** | `CItemMulti` anahtarları 58/70; addon/key/component-silme ailesi kaldı |
 | 24 | Chat (conference / global) | **70** | **75** | 304 satır (SX ~1.300); `0xB3`/`0xB5` çalışıyor, `0xB2` legacy + `0xF9` ertelendi |
-| 25 | Guild stone menü sistemi | **55** | **70** | `CItemStone_functions` 13/30; gump tabanlı stone menüleri yok |
-| 26 | AOS bileşen-prop sistemi (`CCProps*`) | **47** | **80** | 65/139; direnç/regen/slayer/hit-* çekirdeği var, SA/ML/TOL uzun kuyruğu yok |
-| 27 | `sphere.ini` konfigürasyon yüzeyi | **58** | **85** | 164/279 anahtar; **en zayıf ölçülen alan** |
+| 25 | Guild stone menü sistemi | **~63** | **70** | `CItemStone_functions` 19/30; gump tabanlı stone menüleri yok |
+| 26 | AOS bileşen-prop sistemi (`CCProps*`) | **55** | **80** | 77/139; direnç/regen/slayer/hit-* çekirdeği var, SA/ML/TOL uzun kuyruğu yok |
+| 27 | `sphere.ini` konfigürasyon yüzeyi | **58** | **85** | 162/279 anahtar; **en zayıf ölçülen alan** |
 | 28 | Sunucu / admin verb'leri (`SERV.*`) | **90** | **85** | 33 `sm_szVerbKeys` girişinin tamamı yollu; `SAVESTATICS` + güvenlik-hassas işler açık |
 
 ### Ağırlıklı özet
 
-| Eksen | Puan |
-|---|---:|
-| **Kapsam** — Source-X yüzeyinin ne kadarı port edildi | **82 / 100** |
-| **Sadakat** — port edilen kısım ne kadar doğru | **86 / 100** |
-| **Sphere 56x hedefine göre kapsam** (AOS/SA/ML uzun kuyruğu hariç) | **90 / 100** |
+| Eksen | Değer | Cinsi |
+|---|---:|---|
+| **Kapsam** — Source-X yüzeyinin ne kadarı port edildi | **~82** | sayımdan, ±%5 |
+| **Sadakat** — port edilen kısım ne kadar doğru | **86** | kanaat, ölçülmedi |
+| **Sphere 56x hedefine göre kapsam** (AOS/SA/ML uzun kuyruğu hariç) | **~90** | sayımdan, ±%5 |
 
 Ağırlıklandırma, kategorinin bir shard'ın ayakta durması için gerekliliğine
 göre yapıldı: trigger/script/paket/persistence ×3, combat/magic/skill/AI ×2,
@@ -80,9 +105,14 @@ housing/chat/guild/AOS-props ×1.
 
 ### 2.1 Trigger sistemi — 89 / 90
 
-Source-X `triggers.tbl` 248 giriş içeriyor. SphereNet `CharTrigger` + `ItemTrigger`
-enum'ları 218 üye tanımlıyor; alias eşlemesinden sonra **~221 Source-X trigger'ının
-karşılığı var**.
+Trigger paydası tek sayı değil: `triggers.tbl` (sıralı global liste) **248**,
+sınıf tablolarının birleşimi **252**, ikisinin birleşimi **253**. Listeler
+birbirini kapsamıyor — `ITEMFIRE` yalnızca global listede, beş bağlam-menüsü ve
+bölge trigger'ı yalnızca sınıf tablolarında
+([paydalar](SOURCEX_TABLO_PAYDALARI_TR.md)).
+
+SphereNet `CharTrigger` + `ItemTrigger` enum'ları 218 üye tanımlıyor; alias
+eşlemesinden sonra **~221 Source-X trigger'ının karşılığı var**.
 
 `TriggerCoverageGuardrailTests` her koşuda "tanımlı ama hiç ateşlenmiyor"
 kümesini kaynaktan yeniden hesaplayıp dokümante backlog'a karşı doğruluyor.
@@ -109,8 +139,10 @@ EVENTSPET/PLAYER), `ARGN1/2/3` geri-yazımı, `ARGS`/`ARGO`/`LOCAL` paylaşımı
 
 ### 2.2 Script yüzeyi — fiiller 100, özellikler 73
 
-Source-X'in script'e açtığı toplam prop + fonksiyon yüzeyi **872 isim**.
-SphereNet'te **676'sı** çözülüyor (%77).
+Aşağıdaki on sekiz tablo Source-X'in script'e açtığı ana prop + fonksiyon
+yüzeyini taşıyor: **837 giriş**, SphereNet'te **~670'i** çözülüyor (~%80).
+Paylar §0'daki üç gönderim biçimine birden bakan taramayla, **±%5 bandıyla**
+okunmalı.
 
 Ayrıştırıldığında tablo net bir şekil alıyor:
 
@@ -123,17 +155,17 @@ Ayrıştırıldığında tablo net bir şekil alıyor:
 | `CCharBase_props` | 40/40 — **%100** |
 | `CItemStone_props` | 18/18 — **%100** |
 | `CSector_functions` | 12/13 — %92 |
-| `CStoneMember_props` | 14/15 — %93 |
-| `CChar_props` | 105/124 — %84 |
-| `CScriptObj_functions` | 44/54 — %81 |
+| `CStoneMember_props` | 15/15 — **%100** |
+| `CChar_props` | 109/124 — %88 |
+| `CScriptObj_functions` | 43/54 — %80 |
 | `CCharPlayer_props` | 25/31 — %80 |
-| `CBaseBaseDef_props` | 19/25 — %76 |
+| `CBaseBaseDef_props` | 20/25 — %80 |
 | `CCharNpc_props` | 10/14 — %71 |
-| `CClient_props` | 13/20 — %65 |
-| `CObjBase_props` | 43/73 — %58 |
-| `CItem_props` | 45/91 — %49 |
-| `CItemBase_props` | 36/83 — %43 |
-| `CItemStone_functions` | 13/30 — %43 |
+| `CClient_props` | 14/20 — %70 |
+| `CObjBase_props` | 46/73 — %63 |
+| `CItem_props` | 51/91 — %56 |
+| `CItemBase_props` | 42/83 — %51 |
+| `CItemStone_functions` | 19/30 — %63 |
 
 **Okuma:** *fiil* tarafı tamamlanmış, *özellik* tarafında delik var — ve deliğin
 büyük kısmı tek bir yerden geliyor: **AOS/SE/ML çağı item özellik sistemi.**
@@ -142,22 +174,23 @@ büyük kısmı tek bir yerden geliyor: **AOS/SE/ML çağı item özellik sistem
 `SUMMONING`, `RARITY`, `IMBUE`, `REFORGE`, `ENCHANT`, `RECIPE*` ailesi.
 Bir Sphere 56x shard'ı bunları kullanmaz.
 
-**Sphere 56x için gerçekten canını yakacak eksikler:**
+**Sphere 56x için gerçekten canını yakacak eksikler.** İlk sürümde 43 isim
+sayılmıştı; 16'sı o tarihten sonra cevaplandı (`CANCAST`, `CANMAKE`,
+`CANMAKESKILL`, `SKILLUSEQUICK`, `SKILLBEST`, `SWING`, `BREATH`, `MEMORY`,
+`DROPSOUND`, `EQUIPSOUND`, `RESDEF`, `TAGAT`, `ISEVENT`, `ISTEVENT`,
+`ISDIALOGOPEN`, `TOPCONT`). Kalan **27**:
 
 | İsim | Neden önemli |
 |---|---|
 | `MODMAXHITS` / `MODMAXMANA` / `MODMAXSTAM` | script'te sık kullanılan stat tavanı değiştiricileri |
-| `CANCAST`, `SPELLTIMEOUT` | büyü kapıları |
-| `CANMAKE`, `CANMAKESKILL` | craft kontrolü |
-| `SKILLCHECK`, `SKILLTEST`, `SKILLUSEQUICK`, `SKILLBEST`, `SKILLADJUSTED` | skill sorgulama ailesi |
-| `FIGHTRANGE`, `SWING`, `DAMADJUSTED` | savaş sorguları |
-| `BREATH` | NPC nefes saldırısı |
-| `MEMORY` (obje tarafı) | hafıza item sorgusu |
-| `DROPSOUND` / `EQUIPSOUND` / `PICKUPSOUND` / `DOOROPENSOUND` / `DOORCLOSESOUND` | item ses tablosu — tamamı yok |
-| `RESDEF`, `RESDEF0`, `STRTOKEN`, `LISTCOL`, `STRFIRSTCAP`, `STRRANDRANGE` | script yardımcı fonksiyonları |
-| `TAGAT`, `PROPSAT`, `PROPSCOUNT`, `CTAGCOUNT`, `DIALOGLIST` | koleksiyon indeksleme |
-| `ISCONT`, `ISEVENT`, `ISTEVENT`, `ISDIALOGOPEN`, `ISNEARTYPETOP` | predicate ailesi |
-| `OWNEDBY`, `TOPCONT`, `NODROP`, `NOTRADE`, `QUESTITEM` | item sahiplik/kısıt bayrakları |
+| `SPELLTIMEOUT` | büyü kapısı |
+| `SKILLCHECK`, `SKILLTEST`, `SKILLADJUSTED` | skill sorgulama ailesi |
+| `FIGHTRANGE`, `DAMADJUSTED` | savaş sorguları |
+| `PICKUPSOUND` / `DOOROPENSOUND` / `DOORCLOSESOUND` | item ses tablosunun kalanı |
+| `RESDEF0`, `STRTOKEN`, `LISTCOL`, `STRFIRSTCAP`, `STRRANDRANGE` | script yardımcı fonksiyonları |
+| `PROPSAT`, `PROPSCOUNT`, `CTAGCOUNT`, `DIALOGLIST` | koleksiyon indeksleme |
+| `ISCONT`, `ISNEARTYPETOP` | predicate ailesi |
+| `OWNEDBY`, `NODROP`, `NOTRADE`, `QUESTITEM` | item sahiplik/kısıt bayrakları |
 
 `SYSCMD` ve `SYSSPAWN` (script'ten OS komutu çalıştırma) **bilinçli olarak
 portlanmadı** — güvenlik kararı, eksik değil.
@@ -180,7 +213,7 @@ portlanmadı** — güvenlik kararı, eksik değil.
 - Client-çağı kapıları (`ClientEra=Sphere56x` varsayılan, `0xDF` buff ve AOS
   tooltip sadece destekleyen client'ta) test kilitli.
 
-### 2.4 Housing / multi — 62 / 72 (en büyük yapısal boşluk)
+### 2.4 Housing / multi — ~80 / 80
 
 Source-X `CItemMulti.cpp` (3.942) + `CItemMultiCustom.cpp` (2.073) = 6.015 satır.
 SphereNet Housing = 1.971 satır.
@@ -191,19 +224,22 @@ lockdown/secure sayaçları (`GetMaxLockdowns` birebir), decay aşamaları,
 revision'lı commit, `DESIGN_n` tag kalıcılığı, `WalkCheck.ResolveCustomDesign`
 üzerinden sanal yürüme geometrisi), ship redeed crate.
 
-**Yok:** `ADDCOMPONENT`/`DELCOMPONENT`, `ADDADDON`/`DELADDON`/`ADDONS`,
-`ADDVENDOR`/`DELVENDOR`, `ADDKEY`/`REMOVEKEYS`, `GENERATEBASECOMPONENTS`,
-`MOVINGCRATE`/`MOVEALLTOCRATE`/`MOVELOCKSTOCRATE`, `GET*POS` indeksleme ailesi
-(`GETCOMPPOS`, `GETFRIENDPOS`, `GETSECUREDCONTAINERS`, `GETLOCKEDITEMPOS`, …),
-`SECURED`, `REMOVEALLCOMPS`.
+İlk sürümde bu bölüm "ev çalışır, ev script'lenemez" diyordu ve 19 eksik ad
+sayıyordu. Dokuzu o tarihten sonra geldi: `ADDCOMPONENT`, `ADDONS`,
+`ADDVENDOR`, `MOVINGCRATE`, `SECURED` ve `GET*POS` indeksleme ailesi
+(`GETCOMPPOS`, `GETFRIENDPOS`, `GETSECUREDCONTAINERS`, `GETLOCKEDITEMPOS`).
 
-Yani **ev çalışır, ev script'lenemez.** Bir shard'ın ev sistemini script'ten
-yönetmesi gerekiyorsa bu kategori kırılma noktası.
+**Kalan 10:** `DELCOMPONENT`, `ADDADDON`/`DELADDON`, `DELVENDOR`,
+`ADDKEY`/`REMOVEKEYS`, `GENERATEBASECOMPONENTS`, `MOVEALLTOCRATE`,
+`MOVELOCKSTOCRATE`, `REMOVEALLCOMPS` — yani **ekleme yolları açıldı, silme ve
+addon yolları kapalı.**
 
 ### 2.5 `sphere.ini` — 58 / 85 (en zayıf ölçülen alan)
 
-Source-X `CServerConfig::sm_szLoadKeys` 279 anahtar tanımlıyor; SphereNet 164'ünü
-tanıyor. Eksiklerin ~35'i .NET yeniden yazımında **anlamsız** (`NTSERVICE`,
+Source-X `CServerConfig::sm_szLoadKeys` 279 anahtar tanımlıyor; SphereNet
+162'sini tanıyor. Tanınan anahtarların hangisinin gerçekten davranışa
+bağlandığı ayrı bir ölçüm:
+[ini anahtar sınıflandırması](INI_ANAHTAR_SINIFLANDIRMASI_TR.md). Eksiklerin ~35'i .NET yeniden yazımında **anlamsız** (`NTSERVICE`,
 `MYSQLTICKS`, `NETWORKTHREADPRIORITY`, `USEASYNCNETWORK`, `USEEXTRABUFFER`,
 `FORCEGARBAGECOLLECT`, `MAXSIZECLIENTIN/OUT`, `BUILDNUM`, `STRIPPATH`, …).
 Onlar düşülünce oyun-anlamlı kapsam ~%67.
@@ -229,31 +265,36 @@ Onlar düşülünce oyun-anlamlı kapsam ~%67.
 Bu, tek kategoride en yüksek getirili iş: mevcut bir shard'ın `sphere.ini`'si
 sessizce yok sayılan satırlar içeriyor ve davranış farkı buradan doğuyor.
 
-### 2.6 AOS bileşen-prop sistemi — 47 / 80
+### 2.6 AOS bileşen-prop sistemi — ~55 / 80
 
-Source-X `CCProps*` tabloları 139 özellik. SphereNet 65'ini tanıyor — ve tanıdığı
-65, **doğru 65:** `RES*`/`RES*MAX` (5 element + tavan), `DAM*` dağılımı,
+Source-X `CCProps*` tabloları 219 giriş / **139 ayrı özellik** taşıyor (giriş
+sayısının yüksek olması, aynı özelliğin birden çok bileşen tablosunda
+tanımlanmasından). SphereNet 77'sini tanıyor — ve tanıdıkları **doğru olanlar:**
+`RES*`/`RES*MAX` (5 element + tavan), `DAM*` dağılımı,
 `HIT*` on-hit efekt ailesi (14 adet), `HITAREA*`, `REGEN*`/`REGENVAL*`,
 `BONUS*` stat/hits/mana/stam, `FASTERCASTING`/`FASTERCASTRECOVERY`,
 `INCREASEDAM`/`INCREASEHITCHANCE`/`INCREASEDEFCHANCE`/`INCREASESWINGSPEED`,
 `SLAYER_*`, `FACTION_*`, `LUCK`, `NIGHTSIGHT`, `REFLECTPHYSICALDAM`,
 `WEIGHTREDUCTION`, `AMMO*` ailesi, `RANGE`/`RANGEH`/`RANGEL`.
 
-Eksik 74'ün tamamı SE/ML/SA/TOL çağı: `ASSASSINHONED`, `BONEBREAKER`,
+Eksik 62'nin tamamı SE/ML/SA/TOL çağı: `ASSASSINHONED`, `BONEBREAKER`,
 `SPLINTERING`, `SEARING`, `BATTLELUST`, `MYSTICWEAPON`, `MAGEWEAPON`,
 `BALANCED`, `USEBESTWEAPONSKILL`, imbuing/reforging alanları vb.
 
 Bu bir eksik değil, **hedef sürüm kararı**. Sphere 56x uyumluluğu hedefiyse
-kategori fiilen tamamlanmıştır; tam Source-X paritesi hedefse %47'de.
+kategori fiilen tamamlanmıştır; tam Source-X paritesi hedefse ~%55'te.
 
-### 2.7 Guild stone menüleri — 55 / 70
+### 2.7 Guild stone menüleri — ~63 / 70
 
 Guild'in kendisi çalışıyor (üyelik, ittifak, savaş, kanal konuşması `0xAE`
 tip `0xD`/`0xE` ile). Eksik olan **stone gump menü ağacı**: `MASTERMENU`,
 `VIEWROSTER`, `VIEWCANDIDATES`, `ACCEPTCANDIDATE`, `REFUSECANDIDATE`,
 `RECRUIT`, `DISMISSMEMBER`, `DECLAREFEALTY`, `GRANTTITLE`, `SETCHARTER`,
 `SETABBREVIATION`, `SETGMTITLE`, `SETNAME`, `VIEWENEMYS`, `VIEWTHREATS`,
-`RETURNMAINMENU` — 30 stone fonksiyonundan 17'si yok.
+`RETURNMAINMENU` — 30 stone fonksiyonundan **11'i** yok: `ACCEPTCANDIDATE`,
+`GRANTTITLE`, `REFUSECANDIDATE`, `RETURNMAINMENU`, `SETCHARTER`, `SETGMTITLE`,
+`VIEWCANDIDATES`, `VIEWCHARTER`, `VIEWENEMYS`, `VIEWROSTER`, `VIEWTHREATS`.
+Hepsi gump menü ağacına ait; lonca motorunun kendisi çalışıyor.
 
 ### 2.8 Chat — 70 / 75
 
@@ -304,7 +345,7 @@ skill kazanımı, `CChar::Skill_Experience` portu:
   `ref` ile geri okunuyor
 - decay zarı gain zarından önce ve toplam cap'ten bağımsız
 
-**Regresyon zırhı gerçek.** 3064 test / 390 test dosyası. Bunların bir kısmı
+**Regresyon zırhı gerçek.** 3646 test / 454 test dosyası. Bunların bir kısmı
 "test" değil **guardrail**: `TriggerCoverageGuardrailTests` ateşlenmeyen trigger
 kümesini her koşuda kaynaktan yeniden türetip dokümante backlog'a karşı
 doğruluyor — yeni bir enum üyesi eklenip bağlanmazsa test kırılıyor.
@@ -347,8 +388,8 @@ Bir projeyi prototipten emülatöre taşıyan eşikler ve SphereNet'in durumu:
 |---|---|
 | Gerçek client bağlanıp oynanabiliyor mu? | ✅ Login → char select → dünya → hareket → savaş → büyü → craft → save tam zinciri |
 | **Kendi** verisi değil, **mevcut** shard verisi çalışıyor mu? | ✅ Klasik mortechUO/56T save (2.660 NPC, 53 spawner) + harici `.scp` paketi |
-| Script motoru gerçek içerik koşuyor mu, demo mu? | ✅ 872 isimlik yüzeyin 676'sı, trigger zinciri arg/return semantiğiyle |
-| Regresyon zırhı var mı? | ✅ 3064 test yeşil + kaynaktan türeyen guardrail'ler |
+| Script motoru gerçek içerik koşuyor mu, demo mu? | ✅ 837 girişlik yüzeyin ~670'i, trigger zinciri arg/return semantiğiyle |
+| Regresyon zırhı var mı? | ✅ 3646 test yeşil + kaynaktan türeyen guardrail'ler |
 | Uzun süreli çalışma / operasyon | ✅ Canlı paket, RAM/GC, host konsol dayanıklılığı, runbook |
 | Davranış farkları rastgele mi, dokümante mi? | ✅ Sapmaların çoğu adlandırılmış ve gerekçeli |
 
@@ -359,8 +400,9 @@ sayılmış.**
 **Ama nitelemek gerek:** SphereNet bugün **Sphere 56x sınıfı bir emülatör**,
 tam Source-X paritesinde bir emülatör değil. Fark tek bir yerde toplanıyor:
 AOS/SE/ML/SA çağı uzun kuyruğu (item özellik sistemi, o çağın skill okulları,
-bileşen prop'ları). Hedef Sphere 56x uyumluluğuysa proje **~90/100**; hedef
-"Source-X'in yaptığı her şey"se **~82/100**.
+bileşen prop'ları). Hedef Sphere 56x uyumluluğuysa proje **~90**; hedef "Source-X'in yaptığı her
+şey"se **~82** — ikisi de §0'daki ±%5 bandıyla okunmalı ve bir ölçüm değil,
+ölçülmüş paydalar üzerine kurulmuş bir tahmindir.
 
 ---
 
@@ -368,24 +410,28 @@ bileşen prop'ları). Hedef Sphere 56x uyumluluğuysa proje **~90/100**; hedef
 
 Etki ÷ maliyet oranına göre:
 
-1. **`sphere.ini` anahtar boşluğu (58 → 85).** ~80 oyun-anlamlı anahtar
-   sessizce yok sayılıyor. Çoğu tek bir okuma + tek bir kullanım noktası.
+1. **`sphere.ini` anahtar boşluğu.** ~80 oyun-anlamlı anahtar sessizce yok
+   sayılıyor. Çoğu tek bir okuma + tek bir kullanım noktası.
    Mevcut bir shard'ın ini'sini olduğu gibi çalıştırmanın önündeki tek engel.
 2. **Item ses tablosu** (`DROPSOUND`/`EQUIPSOUND`/`PICKUPSOUND`/
    `DOOROPENSOUND`/`DOORCLOSESOUND`). Tamamı yok, hepsi ucuz, oyuncuya
    doğrudan hissedilir.
-3. **Skill/craft sorgu ailesi** (`SKILLCHECK`, `SKILLTEST`, `SKILLUSEQUICK`,
-   `SKILLBEST`, `CANMAKE`, `CANMAKESKILL`, `CANCAST`). Script yazarının
-   sürekli kullandığı predicate'ler; motorda karşılıkları zaten var,
-   sadece script yüzeyine bağlanmamış.
+3. **Skill sorgu ailesinin kalanı** (`SKILLCHECK`, `SKILLTEST`,
+   `SKILLADJUSTED`). `CANMAKE`, `CANMAKESKILL`, `CANCAST`, `SKILLUSEQUICK` ve
+   `SKILLBEST` bu raporun ilk sürümünden sonra cevaplandı. Kalanların motorda
+   karşılıkları var, sadece script yüzeyine bağlanmamış.
 4. **`MODMAXHITS`/`MODMAXMANA`/`MODMAXSTAM`.** Sık kullanılan stat tavanı
    değiştiricileri; kalıcılık kuralına dikkat (türetilmişi değil base'i
    persist et).
-5. **Housing script API'si** (component/addon/vendor/moving-crate/`GET*POS`).
-   En büyük yapısal boşluk ama en pahalısı; ev sistemini script'ten yöneten
-   bir pakete geçilecekse zorunlu.
-6. **Guild stone menü ağacı** (17 fonksiyon). Klasik shard'larda görünür.
-7. **Kalan 27 trigger.** Her biri küçük; `@PayGold`, `@SeeHidden`,
+5. **Housing script API'sinin silme yolları** (`DELCOMPONENT`, `DELADDON`,
+   `DELVENDOR`, `REMOVEKEYS`, `REMOVEALLCOMPS`) ve addon ailesi. Ekleme yolları
+   ve `GET*POS` indeksleme geldi; kalan 10 ad ev sistemini script'ten yöneten
+   bir paket için gerekli.
+6. **Guild stone menü ağacı** (11 fonksiyon). Klasik shard'larda görünür.
+7. **Kalan ~27 trigger.** Bu sayı yeniden ölçülmedi: bir trigger adının
+   kaynakta geçmesi enum üyesi olduğunu gösterir, ateşlendiğini değil.
+   Otorite `TriggerCoverageGuardrailTests`'in her koşuda yeniden hesapladığı
+   "tanımlı ama ateşlenmiyor" kümesi. Her biri küçük; `@PayGold`, `@SeeHidden`,
    `@RegionResource*` ve `@PetRelease` en çok script'lenenler.
 8. **AOS bileşen prop'ları / SA-ML skill okulları.** Sadece hedef sürüm
    Sphere 56x'ten ileri taşınırsa.

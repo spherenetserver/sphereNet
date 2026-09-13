@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `1d634cc` + İŞ-53 (kopya havuzu kalıcılığı) |
-| Tam test | 3.661 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-103** (PLAN-101/102 kapandı) |
+| Son commit | `bbf39fb` + İŞ-54 (kopya referans sözleşmesi) |
+| Tam test | 3.667 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 1 — PLAN-104** (PLAN-101/102/103 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-54 KAPANDI** — 2026-09-13. PLAN-103'ün beş ekseni sabitlendi. Kayda
+  değer bulgu, **hata gibi görünen ama olmayan bir asimetri:** `CChar::DupeFrom`
+  kopyalanan karakteri adlandıran her `MORE1/MORE2/LINK`'i yenisine çevirir
+  (CChar.cpp:1222-1229); `CItem::DupeCopy` ise `m_uidLink`'i ham atayıp durur
+  (CItem.cpp:4117), yani kendine bağlı bir eşyanın kopyası hâlâ **kaynağa**
+  bağlı kalır. Yan yana tutarsızlık gibi okunuyor ve tek satırla
+  "düzeltilebilir" — o satır sessiz bir sapma olurdu; iki yön de referans
+  satırıyla sabit. Test: `CopyReferenceContractTests` (6). **Üretim değişikliği
+  yok** — karakter tarafındaki yeniden işaretleme kapatılınca altıdan tam biri
+  kırmızı, eşya tarafındaki doğru şekilde yeşil kalıyor. Tam suite 3.667, üç
+  koşu. **PLAN-103 tamamlandı.**
 - **İŞ-53 KAPANDI** — 2026-09-13. 13J'nin havuz şişmesi zaten düzeltilmişti ve
   `DuplicationParity13JTests` PLAN-102'nin dört ölçütünden üçünü kapsıyordu;
   dördüncüsünü incelemenin kendisi yapmadığını yazıyordu (*"gerçek kayıt

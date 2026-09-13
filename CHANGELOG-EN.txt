@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The two sides of a copy treat references differently on purpose
+----------------------------------------
+
+TEST - CopyReferenceContractTests pins the five things PLAN-103 asks about: self
+        references, external references, in-container positions, independent uids
+        and the native DUPE path.
+
+        The finding worth writing down is an asymmetry that looks like a bug and
+        is not. CChar::DupeFrom walks the copied character's equipment and
+        rewrites every MORE1/MORE2/LINK that named the OLD character to name the
+        new one (CChar.cpp:1222-1229), so a worn memory or pet link does not keep
+        working on the original. CItem::DupeCopy assigns m_uidLink raw and stops
+        (CItem.cpp:4117), so an item linked to itself produces a copy still linked
+        to the SOURCE - and upstream does not correct it.
+
+        Side by side those read as an inconsistency someone would harmonise in one
+        line, in whichever direction they preferred, and that line would be a
+        silent divergence. Both directions are now asserted, with the reference
+        line beside each.
+
+        Containment is the one item-side reference that must be re-pointed,
+        because it is what makes the copy a tree of its own; that is asserted
+        separately, along with every object in a three-deep copied tree getting
+        its own uid.
+
+        No production change: the behaviour already matched. Disabling the
+        character-side re-pointing turns exactly one of the six red and correctly
+        leaves the item-side test green.
+
 [2026-09-13] - The save experiment review 13J did not run
 ----------------------------------------
 

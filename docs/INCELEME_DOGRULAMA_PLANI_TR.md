@@ -5393,6 +5393,58 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-54 — Kopya referans sözleşmesi (PLAN-103, 13 Eylül 2026)
+
+PLAN-103: *"Kopyada öz referanslar, dış referanslar, container konumları,
+bağımsız UID ve native DUPE kapsamını doğrula."*
+
+### Bulgu — hata gibi görünen ama olmayan asimetri
+
+Kopyalamanın iki tarafı referansları **farklı** ele alıyor ve fark referansın
+kendisinin:
+
+| Taraf | Davranış | Kaynak |
+|---|---|---|
+| Karakter | Kopyalanan karakteri adlandıran her `MORE1`/`MORE2`/`LINK` yenisine çevrilir | CChar.cpp:1222-1229 |
+| Eşya | `m_uidLink` ham atanır, hiç düzeltilmez | CItem.cpp:4117 |
+
+Yani kendine bağlı bir eşyayı kopyalarsanız, kopyanın LINK'i hâlâ **kaynağı**
+gösterir. Giyili bir hafıza item'ını kopyalarsanız, kopyanınki **kopyayı**
+gösterir.
+
+Yan yana yazıldığında bu bir tutarsızlık gibi okunuyor. Tehlike de burada: biri
+tek satırla, tercih ettiği yöne doğru "düzeltirdi" ve o satır referanstan sessiz
+bir sapma olurdu. Bu yüzden **iki yön de** referans satırıyla birlikte
+sabitlendi — eşya tarafında `Assert.NotEqual(copy.Uid, copy.Link)` gibi
+"yanlış görünen" bir iddia bilerek duruyor.
+
+### Kapsama ölçümü
+
+| Eksen | Durum |
+|---|---|
+| Öz referanslar (karakter) | `AWornMemoryPointingAtItsOwnWearerFollowsTheCopy` |
+| Dış referanslar | `AReferenceToSomebodyElseIsLeftExactlyWhereItPointed` |
+| Öz referanslar (eşya) | `AnItemLinkedToItselfCopiesTheLinkRawAsUpstreamDoes` |
+| Bağımsız UID | `EveryObjectInACopiedTreeGetsItsOwnUid` (üç seviye derin ağaç) |
+| Kapsama bağlantısı | `ACopiedChildIsHeldByTheCopyAndNotByTheSource` |
+| Kap içi konumlar + adlar | `ACopiedTreeKeepsEveryNameAndPositionItHad` |
+
+Kapsama bağlantısı eşya tarafında yeniden işaretlenmesi **zorunlu** tek referans:
+kopyayı kaynağın ağacının ikinci bir görünümü olmaktan çıkarıp kendi ağacı
+yapan şey o.
+
+Native DUPE fiili ayrıca test edilmedi çünkü
+`DuplicationParity13JTests.TheDupeVerbMakesTheSameCopyTheOtherPathDoes` zaten
+aynı yolu sabitliyor; yeni testin adı fiili ölçtüğünü iddia etmeyecek şekilde
+düzeltildi.
+
+### Sonuç
+
+**Üretim değişikliği yok** — davranış zaten uyuyordu. Sondaj: karakter
+tarafındaki `RepointSelfReferences` kapatılınca altı testten **tam biri**
+kırmızıya dönüyor ve eşya tarafındaki test doğru şekilde yeşil kalıyor — yani
+testler iki sözleşmeyi gerçekten ayrı ölçüyor.
+
 ## İŞ-53 — Kopya havuzu kalıcılığı (PLAN-102, 13 Eylül 2026)
 
 PLAN-102: *"13J temel/etkin MaxHits/MaxMana/MaxStam kopyalama artışını güncel kodda

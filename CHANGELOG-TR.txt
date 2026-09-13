@@ -3,6 +3,33 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Kopyanin iki tarafi referanslari bilerek farkli ele aliyor
+----------------------------------------
+
+TEST - CopyReferenceContractTests, PLAN-103'un sordugu bes seyi sabitliyor: oz
+        referanslar, dis referanslar, kap ici konumlar, bagimsiz uid'ler ve native
+        DUPE yolu.
+
+        Kaydedilmeye deger bulgu, hata gibi gorunen ama olmayan bir asimetri.
+        CChar::DupeFrom kopyalanan karakterin ekipmanini gezip ESKI karakteri
+        adlandiran her MORE1/MORE2/LINK'i yenisine cevirir
+        (CChar.cpp:1222-1229); boylece giyili bir hafiza ya da pet baglantisi
+        orijinal uzerinde calismaya devam etmez. CItem::DupeCopy ise m_uidLink'i
+        ham atayip durur (CItem.cpp:4117); kendine bagli bir esyanin kopyasi hala
+        KAYNAGA bagli kalir ve referans bunu duzeltmez.
+
+        Yan yana konunca bu bir tutarsizlik gibi okunur ve biri tek satirla,
+        tercih ettigi yone dogru "duzeltirdi" - o satir sessiz bir sapma olurdu.
+        Iki yon de artik referans satiriyla birlikte sabit.
+
+        Kapsama baglantisi, esya tarafinda yeniden isaretlenmesi ZORUNLU tek
+        referans; kopyayi kendi agaci yapan sey o. Ayrica sabitlendi, uc seviye
+        derinlikteki bir kopya agacinda her nesnenin kendi uid'sini aldigi da.
+
+        Uretim degisikligi yok: davranis zaten uyuyordu. Karakter tarafindaki
+        yeniden isaretlemeyi kapatmak altidan tam birini kirmiziya donduruyor ve
+        esya tarafindaki testi dogru sekilde yesil birakiyor.
+
 [2026-09-13] - 13J incelemesinin yapmadigi kayit deneyi
 ----------------------------------------
 

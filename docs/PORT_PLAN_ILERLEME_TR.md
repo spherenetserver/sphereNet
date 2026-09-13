@@ -1,4 +1,4 @@
-# Port planı — çalışma sırası ve kaldığımız yer
+﻿# Port planı — çalışma sırası ve kaldığımız yer
 
 Bu dosya, birden çok oturuma yayılan port/parite çalışmasının **devam noktasıdır**.
 Yeni bir oturum buradan başlar: "Sıradaki iş" bölümünü oku, o maddeyi yap, bitince
@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `ee562db` + İŞ-45 (çökme tatbikatı) |
-| Tam test | 3.619 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-705 — release kabul paketi** (PLAN-702 koşulmadı) |
+| Son commit | `d7bfaf2` + İŞ-46 (kabul paketi) |
+| Tam test | 3.625 başarılı / 0 başarısız |
+| Sıradaki iş | **Dalga 0 — PLAN-001** (Dalga 4-7 kapandı; 0-3 hiç açılmadı) |
 
 ## Çalışma sırası
 
@@ -458,11 +458,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   sonraki açılışın onu yok sayması gerekir. Ayrıca uçtan uca yeniden başlatma
   tatbikatı eklendi.
 
+- [x] **İŞ-46 — Release kabul paketi** (PLAN-705) — **KAPANDI**
+  [Kabul paketi](RELEASE_KABUL_PAKETI_TR.md) altı başlığı topluyor ve **ikisinin
+  koşulmadığını açıkça yazıyor** (gerçek istemci smoke, soak). 13 kayıtlı sapma
+  ve açık kalem listeleniyor; `ReleaseAcceptanceGuardrailTests` sayıları
+  kaynaklarına bağlıyor. **Dalga 4-7 kapandı.**
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-46 KAPANDI** — 2026-09-13. `docs/RELEASE_KABUL_PAKETI_TR.md` +
+  `ReleaseAcceptanceGuardrailTests` (6) + docs/README indeksi. Tam suite 3.625,
+  üç koşu. **PLAN-705 tamamlandı — Dalga 7 bitti.**
 - **İŞ-45 KAPANDI** — 2026-09-13. `CrashDuringSaveDrillTests` (7). Üretim
   değişikliği yok — garanti zaten sağlammış; testler onu sabitliyor. Anlamlı
   oldukları yukleyici çözümü glob'a çevrilerek doğrulandı (1 kırmızı).

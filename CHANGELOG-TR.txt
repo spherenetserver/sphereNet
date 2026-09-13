@@ -1,7 +1,37 @@
-================================================================================
+﻿================================================================================
  SphereNet Changelog (Turkce)
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
+
+[2026-09-13] - Neyin kosulmadigini soyleyen bir surum kabul paketi
+----------------------------------------
+
+DOC - docs/RELEASE_KABUL_PAKETI_TR.md bir surum kararinin ihtiyac duydugu alti
+        seyi topluyor: tam test sonucu, calisan shard'in bagli oldugu veri
+        manifesti, referanstan kayitli sapmalar, bilinen sorunlar, istemci smoke
+        ve soak/restore ciktilari.
+
+        Bu bir onay degil durum bildirimi. Altidan ikisi KOSULMADI ve belge bunu
+        aynen o kelimeyle yaziyor: gercek bir 7.0.20 istemcisiyle oturum yok ve
+        PLAN-702'nin soak kosularindan hicbiri yok. Yerlerine ne oldugu listeleniyor
+        - uctan uca login entegrasyonu, TCP parcalanma ve yeniden baglanma
+        kapsamasi, paket opcode matrisi - ve bunlarin ikisinin de yerine gecmedigi
+        acikca soyleniyor.
+
+        Restore tatbikatlari KOSULDU ve tek tek listeleniyor; dalganin kabul
+        olcutu de kurtarma adimlarinin varsayilmayip gercekten denenmis olmasini
+        istiyor.
+
+        Bir kabul belgesi en cok rahat oldugu yerde tehlikelidir: bir kez yazilir,
+        yetkili diye okunur, sessizce kayar. Bir guardrail testi ilk kayacak iki
+        sayiyi - kayitli sapma adedi ve kosulmadi isaretleri - kaynaklarina
+        bagliyor, boylece paket yapilani bir test kirmadan abartamiyor.
+
+        Kapsam, paketin kendisinde de yazili: port planinin 4-7. dalgalarini
+        kapsiyor. 0-3. dalgalar - dogru baslangic noktasi ve olcum, nesne ve kayit
+        butunlugu, script yurutme ve trigger/fabrika sirasi, config ve temel
+        script sorgulari - henuz acilmadi ve 23 maddesi acik duruyor.
+
 
 [2026-09-13] - Hic bitmemis bir kayit icin tatbikat
 ----------------------------------------

@@ -1,4 +1,4 @@
-# SphereNet Documentation
+﻿# SphereNet Documentation
 
 This folder holds the technical and operational documentation for SphereNet — a .NET 10 Ultima Online private server emulator with Source-X script compatibility.
 
@@ -20,11 +20,15 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[PARITY.md](PARITY.md)** — The single Source-X / Sphere 56x parity document: domain summary, itemised behaviour-surface detail (SERV verbs, triggers, persistence, object verbs), and the deferred tail / sound-visual gaps at the end.
 - **[STUB_INVENTORY_TR.md](STUB_INVENTORY_TR.md)** — Kodda kalan stub, no-op ve bilinçli ertelenmiş uyumluluk açıkları.
 - **[INCELEME_DOGRULAMA_PLANI_TR.md](INCELEME_DOGRULAMA_PLANI_TR.md)** — Doğrulanmış inceleme bulgularının tek yaşayan iş takipçisi (açık A/B/C/D/E maddeleri burada).
+- **[BUYU_MATRISI_TR.md](BUYU_MATRISI_TR.md)** — Büyü bazında kapsama: canlı pakette hangi büyü çalışıyor, hangisi reddediliyor. Testle sabitlenmiş.
+- **[AOS_PROPERTY_MATRISI_TR.md](AOS_PROPERTY_MATRISI_TR.md)** — AOS+ component property'lerinin era kapısı ve hangi paketin hangisini kullandığı.
+- **[PAKET_MATRISI_TR.md](PAKET_MATRISI_TR.md)** — Paket katmanının opcode/alt-komut ölçümü (sınıf sayısı neden yanıltır).
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.
 - **[RUNBOOK.md](RUNBOOK.md)** — First-response actions for a live shard (tick lag, save failures, health checks).
 - **[PERFORMANCE.md](PERFORMANCE.md)** — Telemetry signals and a repeatable benchmark recipe.
+- **[RELEASE_KABUL_PAKETI_TR.md](RELEASE_KABUL_PAKETI_TR.md)** — Sürüm kabul paketi: tam test, veri manifesti, açık sapmalar, bilinen sorunlar ve hangi adımın koşulup hangisinin koşulmadığı.
 
 ### Changelog
 - **[CHANGELOG-EN.txt](../CHANGELOG-EN.txt)** / **[CHANGELOG-TR.txt](../CHANGELOG-TR.txt)** — Per-language changelog.

@@ -1,8 +1,40 @@
-================================================================================
+﻿================================================================================
  SphereNet Changelog (English)
  All notable changes are documented in this file.
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
+
+[2026-09-13] - A release acceptance package that states what was not run
+----------------------------------------
+
+DOC - docs/RELEASE_KABUL_PAKETI_TR.md collects the six things a release decision
+        needs: the full test result, the data manifest the running shard depends
+        on, the recorded deviations from the reference, the known issues, the
+        client smoke, and the soak and restore results.
+
+        It is a status report, not an approval. Two of the six were NOT performed
+        and the document says so in those words: no session with a real 7.0.20
+        client, and none of PLAN-702's soak runs. What stands in their place is
+        listed - the end-to-end login integration path, TCP fragmentation and
+        reconnect coverage, the packet opcode matrix - along with the plain
+        statement that those do not substitute for either.
+
+        The restore drills WERE performed and are listed individually, which is
+        the wave's acceptance criterion that recovery steps be genuinely
+        exercised rather than assumed.
+
+        An acceptance document is most dangerous where it is convenient: written
+        once, read as authoritative, quietly drifting. A guardrail test ties the
+        two numbers that would drift first - the count of recorded deviations and
+        the not-run markers - back to their sources, so the package cannot
+        overstate what was done without a test failing.
+
+        Scope, stated in the package itself: it covers waves 4 to 7 of the port
+        plan. Waves 0 to 3 - starting point and measurement, object and save
+        integrity, script execution and trigger/factory ordering, config and the
+        basic script queries - have not been opened, and their 23 items are still
+        outstanding.
+
 
 [2026-09-13] - The drill for a save that never finished
 ----------------------------------------

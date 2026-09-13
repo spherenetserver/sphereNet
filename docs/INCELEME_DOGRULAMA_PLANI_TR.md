@@ -1,4 +1,4 @@
-# SphereNet İnceleme Doğrulama ve Uygulama Planı
+﻿# SphereNet İnceleme Doğrulama ve Uygulama Planı
 
 Bu dosya, üç inceleme raporunun (`PROJE_GENEL_INCELEME_PLANI_TR.md`,
 `HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR.md`, `PERFORMANS_LOG_INCELEMESI_TR.md` —
@@ -5390,4 +5390,81 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 **PLAN-704 kapandı.** Sıradaki: PLAN-705 (release kabul paketi). **PLAN-702**
 (soak koşuları) planın kendi notu gereği bu turda koşulmadı.
+
+---
+
+## İŞ-46 — Release kabul paketi (PLAN-705, 13 Eylül 2026)
+
+PLAN-705: *"Release kabul paketi: tam test, veri manifesti, açık sapmalar,
+bilinen sorunlar, gerçek istemci smoke, soak ve restore çıktıları."*
+
+### Altı başlığın durumu
+
+| Başlık | Durum |
+|---|---|
+| Tam test | 3.625 / 0, 450 test dosyası, her dalga sonunda üç koşu |
+| Veri manifesti | 29 mul, 550 `.scp`, 5 save dosyası, 7.0.20 klasik istemci |
+| Açık sapmalar | **13 kayıtlı nokta**, her biri gerekçesiyle |
+| Bilinen sorunlar | 1 açık kalem (tekrar üretilemeyen test başarısızlığı) |
+| Gerçek istemci smoke | **KOŞULMADI** |
+| Soak / restore | Soak **KOŞULMADI**; restore **KOŞULDU** |
+
+### Belgenin duruşu
+
+Paket bir **onay** değil, bir **durum bildirimi**. İki adım gerçekten
+koşulmadı ve belge bunu "KOŞULMADI" kelimesiyle yazıyor. Yerlerine ne olduğu
+listeleniyor (uçtan uca login entegrasyonu, TCP parçalanma/yeniden bağlanma,
+paket opcode matrisi) ama **bunların yerine geçmediği** de açıkça yazılıyor.
+
+Dalganin kabul ölçütlerine karşılık:
+
+| Ölçüt | Durum |
+|---|---|
+| Açıklanmayan bellek/nesne büyümesi yok | **Ölçülmedi** — soak koşulmadı |
+| Kurtarma adımları gerçekten denenmiş | **Evet** (İŞ-45) |
+| Kritik açık bug yok | **Evet** (bir açık kalem) |
+| Ölçülmeyen latans için hedef konmamış | **Evet** (İŞ-44'te hiç eşik yazılmadı) |
+
+### Neden teste bağlandı
+
+Bir kabul belgesi en çok **rahat olduğu yerde** tehlikelidir: bir kez yazılır,
+yetkili diye okunur ve anlattığı işten sessizce ayrışır. İlk kayacak iki sayı
+kaynaklarına bağlandı:
+
+- **Kayıtlı sapma adedi** — `INCELEME_DOGRULAMA_PLANI_TR.md`'deki
+  "Kayıtlı sapma" başlıkları sayılıyor; yeni bir dalga sapma kaydederse paket
+  güncellenene kadar test kırmızı.
+- **"KOŞULMADI" işaretleri** — tam iki tane olmalı. Biri sessizce kaldırılırsa
+  test yakalıyor.
+
+Ayrıca her sapmanın numaralı bir işe ait olması sabitlendi: sahipsiz bir sapma,
+onu haklı çıkaran ölçüme geri izlenemez — ki kaydetmenin bütün amacı odur.
+
+**PLAN-705 kapandı.**
+
+---
+
+# Dalga 4-7 tamamlandı
+
+**Dikkat — büyük plan bitmedi.** Bu oturum ilerleme planının devam noktasından
+(PLAN-401) başladı ve **Dalga 4, 5, 6, 7**'yi kapattı (21 madde). **Dalga 0-3
+hiç açılmadı** ve 23 maddesi açık duruyor:
+
+| Dalga | Konu | Durum |
+|---|---|---|
+| 0 | Doğru başlangıç noktası ve ölçüm (PLAN-001..005) | **Açık** |
+| 1 | Nesne ve kayıt bütünlüğü (PLAN-101..107) | **Açık** |
+| 2 | Script yürütme, trigger ve fabrika sırası (PLAN-201..206) | **Açık** |
+| 3 | Config ve temel script sorguları (PLAN-301..305) | **Açık** |
+| 4-7 | Pet/ölüm, housing/gemi/sosyal, modern özellikler, operasyon | Kapandı |
+
+Dalga 4-7 içinde açık kalan **iki iş** var ve ikisi de bu oturumda
+çalıştırılamayacak türden:
+
+1. **PLAN-702 — soak koşuları** (2/8/24 saat). Planın kendi notu "bu tur
+   çalıştırılmadı" diyor. Ölçüm zemini (`LoadProfile`) hazır.
+2. **Gerçek istemci smoke** — 7.0.20 istemcisiyle elle bir oturum.
+
+Bunların dışında açık kalan: 13 bilinçli sapma (her biri gerekçeli) ve bir
+tekrar üretilemeyen test başarısızlığı.
 

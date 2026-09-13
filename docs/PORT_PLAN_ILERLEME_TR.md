@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `c0950d5` + İŞ-55 (spawner kopya üyeliği) |
-| Tam test | 3.672 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-105** (PLAN-101..104 kapandı) |
+| Son commit | `e416b53` + İŞ-56 (spawner kopya saati) |
+| Tam test | 3.677 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 1 — PLAN-106** (PLAN-101..105 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-56 KAPANDI** — 2026-09-13. **İki sapma daha bulundu ve düzeltildi.**
+  Referans "durduruldu"yu bayrak olarak tutmaz: STOP = `KillChildren` +
+  `SetTimeout(-1)` (CCSpawn.cpp:1260-1264), kota dolunca da aynı şekilde parklar
+  (:643); `DupeCopy` saatte ne varsa taşır (CItem.cpp:4109) ve `CCSpawn::Copy`
+  timer'a hiç dokunmaz — yani geri sayım da durdurulmuş durum da kopyaya **o tek
+  satırdan** geçer. Bizde (1) bileşen ilklendirmesi timer'ı yeniden kuruyordu,
+  (2) ayrı tutulan "durduruldu" bayrağı kopyaya yalnızca kaydın yazdığı
+  `SPAWNSTOPPED` tag'inden ulaşıyordu — **aynı oturumda durdurulup kopyalanan
+  spawner'ın kopyası çalışır geliyordu.** Düzeltme: `CreateDupe` taşınan
+  timeout'u ilklendirmeye besliyor ve durumu açıkça taşıyor; `ResetTimer` (her
+  iki bileşende) negatif korunmuş değeri **parklanmış durum** sayarak aynı
+  deliği yükleme yolunda da kapatıyor. Test: `SpawnerCopyTimerTests` (5) — düz
+  eşya kontrolü + aktif/dolu/durdurulmuş üç şekil; taşınan timeout
+  etkisizleştirilince beşte üçü kırmızı. Plan bunu da *"henüz doğrulanmış hata
+  değildir"* diye taşıyordu. Tam suite 3.677, üç koşu. **PLAN-105 tamamlandı.**
 - **İŞ-55 KAPANDI** — 2026-09-13. **Gerçek veri kaybı hatası bulundu ve
   düzeltildi.** Bir spawner'ı kopyalamak kopyaya **orijinalin üye listesini**
   veriyordu; kopyada `STOP` ya da silme, kimsenin dokunmadığı bir spawner'ın

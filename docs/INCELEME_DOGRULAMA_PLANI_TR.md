@@ -5393,6 +5393,71 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-56 — Spawner kopya saati (PLAN-105, 13 Eylül 2026)
+
+PLAN-105: *"Spawner kopyasında kalan timeout korunuyor mu araştır; normal item
+kontrolü, aktif/dolu/durdurulmuş spawner varyantlarıyla ölç. **Henüz
+doğrulanmış hata değildir.**"*
+
+### Referansın modeli — "durduruldu" bir bayrak değil
+
+İşin dönüm noktası buydu. Referansta STOP bir durum alanı kurmaz:
+
+```cpp
+case ISPV_STOP:
+    KillChildren();
+    pItem->SetTimeout(-1);     // CCSpawn.cpp:1260-1264
+```
+
+Kota dolunca da aynı kodlama kullanılır: `pSpawnItem->_SetTimeoutS(-1)`
+(CCSpawn.cpp:643). Yani öğe üzerinde **"dolu" ile "durduruldu" aynı görünür**:
+timeout -1.
+
+`CItem::DupeCopy` saatte ne varsa taşır (`_SetTimeout(_GetTimerAdjusted())`,
+CItem.cpp:4109) ve `CCSpawn::Copy` timer'a **hiç dokunmaz** — kopyalanacak bir
+bayrak olmadığı için. Sonuç: referansta geri sayım da parklanmış durum da
+kopyaya o tek satırdan geçer.
+
+### İki sapma
+
+| Şekil | Kaynak | Kopya (önce) | Olması gereken |
+|---|---|---|---|
+| Aktif | 311187390 | 311631390 (yeni aralık) | aynısı |
+| Dolu | -1 | kurulmuş saat | -1 |
+| Durdurulmuş | -1, `stopped=True` | kurulmuş saat, `stopped=False` | -1, `stopped=True` |
+
+1. **Bileşen ilklendirmesi timer'ı yeniden kuruyordu.** `CreateDupe`,
+   `InitializeSpawnComponent`'i korunan timeout'suz çağırıyordu; mekanizma
+   (`preservedTimeoutMs`) zaten vardı, dupe yolu onu beslemiyordu.
+2. **"Durduruldu" bayrağı kopyaya ulaşmıyordu.** Canlı `Stop()` yalnızca
+   bileşendeki `_stopped`'ı kuruyor; kopyaya ulaşan tek kanal kaydın yazdığı
+   `SPAWNSTOPPED` tag'iydi. Yani **aynı oturumda durdurulup kopyalanan** bir
+   spawner'ın kopyası çalışır halde geliyordu — İŞ-55'teki `ADDOBJ` deseninin
+   tersi: orada tag fazla taşıyordu, burada hiç taşımıyor.
+
+### Düzeltme
+
+`Item.CreateDupe` taşınan timeout'u ilklendirmeye besliyor ve durdurulmuş
+durumu açıkça taşıyor. `ResetTimer` — hem karakter hem eşya bileşeninde —
+negatif korunmuş değeri "hiçbir şey korunmadı" değil **parklanmış durum**
+sayıyor; bu aynı deliği yükleme yolunda da kapatıyor.
+
+### Düzeltme sırasında iki kez yanıldım
+
+İlk yamam iki `ResetTimer`'ı birlikte değiştirmeye çalıştı ve `assert n==2`
+düştüğü için **hiçbir şey yazılmadı**; sonra yalnız eşya bileşenini yamaladım
+ve dolu-spawner testi kırmızı kaldı. İki bileşenin `ResetTimer`'larının
+gövdeleri aynı değil; karakter olanı ayrıca yamandı.
+
+İlk sondaj denemem de hiçbir şey değiştirmedi (CRLF yüzünden desen tutmadı) ve
+"sondaj temiz geçti" gibi göründü. Tek satırlık bir sondajla tekrarladım:
+taşınan timeout sıfırlanınca beşte üçü kırmızıya dönüyor.
+
+### Koruma
+
+`SpawnerCopyTimerTests` (5): kontrol olarak düz eşya (saat hiç gelmiyorsa
+diğerlerinin anlamı kalmaz), aktif/dolu/durdurulmuş üç şekil ve eşya spawner'ı.
+
 ## İŞ-55 — Spawner kopya üyeliği (PLAN-104, 13 Eylül 2026)
 
 PLAN-104: *"Spawner kopyasında ADDOBJ kayıtlarının eski çocukları yeniden bağlayıp

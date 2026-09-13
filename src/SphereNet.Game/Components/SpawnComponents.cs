@@ -823,6 +823,16 @@ public sealed class SpawnComponent
     {
         if (_spawnedUids.Count >= _maxCount)
             PauseTimer();
+        else if (preservedTimeoutMs < 0)
+        {
+            // A PARKED clock is a state, not a missing value. Upstream writes -1 both
+            // when the quota fills (CCSpawn.cpp:643) and when a script stops the
+            // spawner (ISPV_STOP, :1262), and DupeCopy carries whatever was there
+            // (CItem.cpp:4109). Treating that -1 as "nothing preserved" re-armed a
+            // spawner that had deliberately been parked, so the copy of a full or
+            // stopped one came up producing creatures.
+            PauseTimer();
+        }
         else if (preservedTimeoutMs > Environment.TickCount64)
         {
             _nextSpawnTick = preservedTimeoutMs;
@@ -1309,6 +1319,15 @@ public sealed class ItemSpawnComponent
 
     public void ResetTimer(long preservedTimeoutMs = 0)
     {
+        if (preservedTimeoutMs < 0)
+        {
+            // A parked clock is a state, not a missing value - see the char
+            // component's ResetTimer for the reference chain.
+            _nextSpawnTick = -1;
+            _spawnItem.SetTimeout(-1);
+            return;
+        }
+
         if (preservedTimeoutMs > Environment.TickCount64)
         {
             _nextSpawnTick = preservedTimeoutMs;

@@ -1288,9 +1288,34 @@ public class Item : ObjBase
             // what the spawner believes it owns.
             copy.RemoveTag("ADDOBJ");
 
+            // The clock, on the other hand, MUST come across. DupeCopy hands the copy
+            // whatever the source had left (_SetTimeout(_GetTimerAdjusted()),
+            // CItem.cpp:4109) and CCSpawn::Copy touches no timer at all, so upstream's
+            // copy carries the source's countdown. Ours re-armed it during
+            // initialisation and the copy produced its first creature at a moment of
+            // its own choosing.
+            //
+            // The same line carries the stopped state upstream, because STOP is not a
+            // flag there: it is KillChildren plus SetTimeout(-1) (ISPV_STOP,
+            // CCSpawn.cpp:1260-1264). This engine keeps a separate flag, so a copy of a
+            // spawner somebody had deliberately switched off came up RUNNING - the flag
+            // only ever reached a copy through the SPAWNSTOPPED tag a save writes, so a
+            // spawner stopped and duplicated in one session lost it entirely.
+            long carriedTimeout = copy.Timeout;
+            bool sourceStopped = SpawnChar?.IsStopped ?? SpawnItem?.IsStopped ?? false;
+
             // A def table is only needed to resolve a named spawn group; without one
             // the component is still built and still ticks.
-            copy.InitializeSpawnComponent(world, Definitions.DefinitionLoader.StaticResources);
+            copy.InitializeSpawnComponent(world, Definitions.DefinitionLoader.StaticResources,
+                                          carriedTimeout);
+
+            if (sourceStopped)
+            {
+                // Safe on a copy: its member list is empty by the rule above, so the
+                // KillAll inside Stop has nothing to reach.
+                copy.SpawnChar?.Stop();
+                copy.SpawnItem?.Stop();
+            }
         }
 
         if (depth < MaxDupeDepth)

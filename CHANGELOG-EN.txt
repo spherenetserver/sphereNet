@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - A copy of a switched-off spawner came up running
+----------------------------------------
+
+FIX - Upstream does not model "stopped" as a flag. STOP is KillChildren plus
+        SetTimeout(-1) (ISPV_STOP, CCSpawn.cpp:1260-1264), and filling the quota
+        parks the same way (:643). CItem::DupeCopy then carries whatever was on
+        the clock (_SetTimeout(_GetTimerAdjusted()), CItem.cpp:4109) while
+        CCSpawn::Copy touches no timer at all, so in the reference the countdown
+        AND the stopped state travel to the copy on that one line.
+
+        This engine re-armed the timer while building the copy's component, so a
+        copy started its countdown from scratch; and it keeps a separate stopped
+        flag that only ever reached a copy through the SPAWNSTOPPED tag a save
+        writes - so a spawner stopped and duplicated in the same session produced
+        a RUNNING copy. A full spawner's copy came up armed for the same reason.
+
+        Item.CreateDupe now feeds the carried timeout into the component
+        initialisation and propagates the stopped state explicitly. ResetTimer, in
+        both the char and item components, treats a negative preserved value as
+        the parked STATE it is rather than as "nothing preserved" - which also
+        closes the same hole on the load path.
+
+TEST - SpawnerCopyTimerTests measures the four shapes PLAN-105 names: a plain
+        item as the control, an active spawner, a full one and a stopped one, for
+        both spawner kinds. Neutralising the carried timeout turns three of the
+        five red.
+
+        The master plan carried this as an investigation, not a confirmed defect.
+        Two divergences were confirmed.
+
 [2026-09-13] - A duplicated spawner could destroy the original's creatures
 ----------------------------------------
 

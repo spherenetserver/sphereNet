@@ -3,6 +3,36 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Kapatilmis bir spawner'in kopyasi calisir halde geliyordu
+----------------------------------------
+
+FIX - Referans "durduruldu"yu bir bayrak olarak tutmaz. STOP, KillChildren arti
+        SetTimeout(-1)'dir (ISPV_STOP, CCSpawn.cpp:1260-1264); kotanin dolmasi da
+        ayni sekilde parklar (:643). CItem::DupeCopy saatte ne varsa onu tasir
+        (_SetTimeout(_GetTimerAdjusted()), CItem.cpp:4109), CCSpawn::Copy ise hic
+        timer'a dokunmaz - yani referansta hem geri sayim hem durdurulmus durum
+        kopyaya o tek satirdan geciyor.
+
+        Bu motor kopyanin bilesenini kurarken timer'i yeniden kuruyordu, yani
+        kopya geri sayimi bastan basliyordu; ayrica ayri bir "durduruldu" bayragi
+        tutuyor ve bu bayrak kopyaya yalnizca kaydin yazdigi SPAWNSTOPPED tag'i
+        uzerinden ulasiyordu. Sonuc: ayni oturumda durdurulup kopyalanan bir
+        spawner'in kopyasi CALISIYOR olarak geliyordu. Dolu bir spawner'in kopyasi
+        da ayni nedenle kurulmus saatle geliyordu.
+
+        Item.CreateDupe artik tasinan timeout'u bilesen ilklendirmesine besliyor ve
+        durdurulmus durumu acikca tasiyor. ResetTimer - hem karakter hem esya
+        bileseninde - negatif korunmus degeri "hicbir sey korunmadi" degil, oldugu
+        gibi PARKLANMIS DURUM sayiyor; bu ayni deligi yukleme yolunda da kapatiyor.
+
+TEST - SpawnerCopyTimerTests PLAN-105'in adini verdigi dort sekli olcuyor: kontrol
+        olarak duz esya, aktif spawner, dolu spawner ve durdurulmus spawner - iki
+        spawner turu icin. Tasinan timeout etkisizlestirilince besten ucu kirmiziya
+        donuyor.
+
+        Buyuk plan bunu dogrulanmis hata degil arastirma olarak tasiyordu. Iki
+        sapma dogrulandi.
+
 [2026-09-13] - Kopyalanan spawner, orijinalin yaratiklarini yok edebiliyordu
 ----------------------------------------
 

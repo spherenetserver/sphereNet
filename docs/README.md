@@ -26,6 +26,7 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[INI_ANAHTAR_SINIFLANDIRMASI_TR.md](INI_ANAHTAR_SINIFLANDIRMASI_TR.md)** — Her ini anahtarının sınıfı (tüketiliyor / saklanıyor / desteklenmiyor) ve ini işaretlerinin koddan sapması. Testle sabitlenmiş.
 - **[SOURCEX_TABLO_PAYDALARI_TR.md](SOURCEX_TABLO_PAYDALARI_TR.md)** — Kapsama paydalarının hangi Source-X tablosundan geldiği; [`data/sourcex_tables.csv`](data/sourcex_tables.csv) tam döküm. Testle sabitlenmiş.
 - **[VERI_KAPILARI_TR.md](VERI_KAPILARI_TR.md)** — Gerçek veri gerektiren testlerin hangi kaynağı beklediği ve bir koşunun ne kadarını gerçekten ölçtüğü; rapor TRX'in yanına düşüyor.
+- **[REVIEW_KAYIT_ESLEME_TR.md](REVIEW_KAYIT_ESLEME_TR.md)** — `docs/reviews/` bulgularının takip planı ve testlerle eşlemesi; hangi bulgunun hangi testle kapandığı. Testle sabitlenmiş.
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.

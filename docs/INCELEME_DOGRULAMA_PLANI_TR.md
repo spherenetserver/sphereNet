@@ -5393,6 +5393,83 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-51 — Review kayıt eşlemesi (PLAN-005, 13 Eylül 2026)
+
+PLAN-005: *"Review 01–13J kayıtlarını mevcut düzeltme commit'leriyle eşleştir.
+Son kullanıcı güncellemeleri uygulanmışsa önce yeniden üret; kapanmış sorunu
+tekrar uygulama."*
+
+### Ölçüm
+
+`docs/reviews/`: **106 bölüm, 347 bulgu**. Klasör `.gitignore`'da, o yüzden bir
+bulgu ancak takip planındaki satırı kadar kalıcı.
+
+Bulgular dört farklı başlık biçimiyle yazılmış: kimlikli (`## SX-03A-01 —`),
+bölüm-kimlikli (`## 06G-01 — P2:`), numaralı (`## 4. P2 —`) ve yalnız
+öncelikli (`## P2 —`). İlk çıkarıcım yalnızca ilk üçünü tanıyordu ve bir bölüm
+(12Z) hiç bulgu vermedi; dördüncüyü ekleyince 106'nın hepsi çıktı.
+
+### Bulgu — 41 madde iki listede de yoktu
+
+Takip planı her kimliği `SX-<bölüm>-<nn>` biçimine normalleştiriyor. Üçüncü ve
+dördüncü biçimde yazılan bölümlerde **41 bulgunun hiç onay kutusu satırı
+yoktu** — ne açık ne kapalı, sadece görünmez.
+
+Bu, PLAN-005'in "kapanmış sorunu tekrar uygulama" cümlesinin işaret ettiği
+riskin ta kendisi: takip planından çalışan onları hiç görmez, review'lardan
+çalışan çoktan gelmiş bir düzeltmeyi yeniden yazabilir.
+
+**Hepsi kapalı çıktı.** Açık iş yok; eksik olan defter kaydıydı.
+
+### Eşleme nasıl yapıldı
+
+39'u, adı bölüm aralığını taşıyan parite test sınıflarından birine düşüyor:
+`SpawnChampionParity12EITests` (12E–12I, 19 bulgu), `SpawnParity12JMTests`
+(12J–12M, 13), `SpawnParity12NPTests` (12N–12P, 7).
+
+Eşleme **test adıyla** yapıldı, tahminle değil — adlar bulgunun cümlesini
+neredeyse birebir taşıyor: 12H-4 → `AnItemSpawnerCanBeStopped`, 12I-2 →
+`ASpawnerInsideABagProducesNothing`, 12J-4 →
+`ANumericSpawnIdKeepsItsFullResourceIndex`, 12L-2 →
+`HandingACreatureToASecondSpawnerReleasesItFromTheFirst`, 12O-5 →
+`EnrollingAnExistingCreatureFiresTheMembershipEvent`.
+
+Kalan ikisi:
+
+- **12J-2** — `Program.EngineWiring`'deki PreSpawn köprüsü artık `ARGN1`
+  sonucunu özgün args'a geri taşıyor ve yorumu referansı adıyla anıyor
+  (`CCSpawn.cpp:310/387`). Adanmış test adı yok; dolaylı kapsanıyor.
+- **12Y-5** — **bulgu değil.** Bölümün kendisi *"bu bölüm yeni hata
+  sayılmadı"* diyor; 12X-3'ün yükleme yolu doğrulaması. Çıkarıcı onu başlık
+  biçiminden ötürü bulgu sandı.
+
+### İki yanlış ölçüm, ikisi de düzeltildi
+
+İlk taramam "26 bulgu eksik" dedi; düz metin araması `12E-3`'ü `SX-12E-03`
+içinde bulamadığı için 15 madde daha gizli kalmıştı. Kimlik
+normalleştirmesini ekleyince gerçek sayı 41 çıktı.
+
+Bir de "bu bulgu düzeltildi mi" sorusunu anahtar kelime aramasıyla cevaplamayı
+denedim; `spawn`, `Champion`, `TEMPLATE` gibi kelimeler her yerde geçtiği için
+26 maddenin 26'sı "kanıt bulundu" dedi — yani hiçbir şey söylemedi. Kullanılan
+yöntem test adlarını elle okumak oldu.
+
+### Kaydı tutulan karar — üretim kodu yazılmadı
+
+PLAN-005 bir muhasebe işiydi ve öyle kapandı. Kapanmış 41 sorunun hiçbiri
+yeniden uygulanmadı; bu, dalganın açıkça istediği şeydi.
+
+### Koruma
+
+`ReviewRecordGuardrailTests` (3): korpusu dört başlık biçiminde de okuyor, her
+kimliği `SX-<bölüm>-<nn>`'ye normalleştiriyor, bir bulgunun takip planında
+satırı yoksa kırılıyor, açık bırakılmış bulguyu adıyla bildiriyor ve eşleme
+belgesinin sayılarını korpusla karşılaştırıyor. `docs/reviews/` yoksa temiz
+atlıyor — her klonda öyle.
+
+Geri-alma sondajı: `SX-12J-04` satırı silinince test bulguyu
+*"12J-4 (P2) Sayısal spawn kimliği 16 bite kesiliyor"* diye adıyla bildirdi.
+
 ## İŞ-50 — Port raporu düzeltmesi (PLAN-004, 13 Eylül 2026)
 
 PLAN-004: *"Port raporundaki güncel olmayan sayı ve eksik etiketlerini düzelt;
@@ -5838,3 +5915,51 @@ Dalga 4-7 içinde açık kalan **iki iş** var ve ikisi de bu oturumda
 Bunların dışında açık kalan: 13 bilinçli sapma (her biri gerekçeli) ve bir
 tekrar üretilemeyen test başarısızlığı.
 
+## Review kayit eslemesi — deftere gec giren 41 madde (PLAN-005, 13 Eylul 2026)
+
+Bu maddeler `docs/reviews/` bolumlerinde kayitli ve duzeltilmis, ama bu takip
+planinda hicbir onay kutusu satiri yoktu. Hicbiri acik is degil; eksik olan
+defter kaydiydi. Her satir kapanisi gosteren testi adiyla veriyor, boylece
+kapanmis bir sorun ikinci kez uygulanmaz.
+
+- [x] **SX-12E-02 (P2)** — Boss doğrudan silinince etkinlik eski boss kimliğinde kalıyor (KAPSAM: SpawnChampionParity12EITests.ABossThatIsDeletedNoLongerBlocksTheEvent)
+- [x] **SX-12E-03 (P2)** — Başka Champion tanımına geçiş eski boss türünü koruyor (KAPSAM: SpawnChampionParity12EITests.SwitchingToADefinitionWithNoBossLeavesNoBoss)
+- [x] **SX-12E-04 (P3)** — Bulunamayan mum UID'sini bağlama isteği yeni nesne oluşturuyor (KAPSAM: SpawnChampionParity12EITests.AskingToLinkAMissingCandleDoesNotInventOne)
+- [x] **SX-12E-05 (P3)** — CHAMPIONSUMMONED script setter'ı bileşen kimliğini değiştirmiyor (KAPSAM: SpawnChampionParity12EITests.AScriptCanNameTheEventsBoss)
+- [x] **SX-12F-01 (P2)** — STOP veto'su otomatik tamamlanmayı da durduruyor (KAPSAM: SpawnChampionParity12EITests.AStopScriptCannotHoldTheEventOpenAfterTheBossDies + AStopScriptStillVetoesAStaffStop)
+- [x] **SX-12F-02 (P2)** — LEVEL property ataması seviye geçişi yan etkilerini çalıştırıyor (KAPSAM: SpawnChampionParity12EITests.AssigningTheLevelDoesNotReRunTheTransition + AssigningTheFinalLevelDoesNotSummonTheBoss)
+- [x] **SX-12F-03 (P2)** — Klasik Champion durum alanları yüklemede bileşene aktarılmıyor (KAPSAM: SpawnChampionParity12EITests.ClassicChampionStateFieldsSurviveALoad)
+- [x] **SX-12F-04 (P3)** — Silinmiş mum için veto trigger'ı çalışıp ölü UID'yi listede tutabiliyor (KAPSAM: SpawnChampionParity12EITests.ACandleThatIsAlreadyGoneLeavesTheListWhateverTheScriptSays + AVetoStillKeepsACandleThatIsReallyThere)
+- [x] **SX-12F-05 (P3)** — LASTACTIVATIONTIME Source-X'ten farklı zaman tabanı ve birim kullanıyor (KAPSAM: SpawnChampionParity12EITests.TheActivationStampIsGameTime)
+- [x] **SX-12G-03 (P2)** — Canlı ADDOBJ yalnız tag'a ekleniyor, mevcut NPC spawn kotasına bağlanmıyor (KAPSAM: SpawnChampionParity12EITests.HandingASpawnerAnExistingCreatureCountsItAtOnce)
+- [x] **SX-12G-05 (P3)** — Eşya @Create ile verilen isim tekrar ITEMDEF adına dönüyor (KAPSAM: SpawnChampionParity12EITests.ANameChosenByCreateSurvives + AnItemWithNoNameOfItsOwnGetsTheDefinitionsName)
+- [x] **SX-12H-02 (P2)** — Eşya spawn'ında MOREP zaman ve mesafe ayarları uygulanmıyor (KAPSAM: SpawnChampionParity12EITests.AnItemSpawnerTakesItsIntervalAndRangeFromMoreP)
+- [x] **SX-12H-03 (P2)** — Eşya spawn'ının manuel TIMER'ı bileşenin üretim zamanını tetiklemiyor (KAPSAM: SpawnChampionParity12EITests.BringingAnItemSpawnersTimerForwardMakesItSpawn)
+- [x] **SX-12H-04 (P2)** — Eşya spawn'ında STOP komutu uygulanmıyor (KAPSAM: SpawnChampionParity12EITests.AnItemSpawnerCanBeStopped)
+- [x] **SX-12H-05 (P2)** — Başlangıçta SPAWNID taşıyan eşya spawn'ı NPC spawn'ına çevriliyor (KAPSAM: SpawnChampionParity12EITests.RetargetingAnItemSpawnerChangesWhatItProduces)
+- [x] **SX-12I-02 (P2)** — Kap içindeki spawn, tick verildiğinde dünyada üretim yapabiliyor (KAPSAM: SpawnChampionParity12EITests.ASpawnerInsideABagProducesNothing + AnItemSpawnerInsideABagProducesNothingEither)
+- [x] **SX-12I-03 (P2)** — NPC MOREP okunurken yazılan eski mesafe yeniden ilklendirmede etkinleşiyor (KAPSAM: SpawnChampionParity12EITests.ACharSpawnersRangeSurvivesBeingInitialisedTwice)
+- [x] **SX-12I-04 (P2)** — Spawn grubundan tek CHARDEF'e geçiş eski grubu temizlemiyor (KAPSAM: SpawnChampionParity12EITests.NamingASingleCreatureDropsTheGroupThatWasSetBefore)
+- [x] **SX-12I-05 (P2)** — @AddObj zaman değeri bileşene geri uygulanmıyor (KAPSAM: SpawnChampionParity12EITests.AddObjIsHandedTheTimerAndCanChangeIt)
+- [x] **SX-12J-02 (P2)** — Host köprüsünde PreSpawn tür değişikliği geri kopyalanmıyor (KAPSAM: Program.EngineWiring PreSpawn koprusu ARGN1 sonucunu geri tasiyor (CCSpawn.cpp:310/387); adanmis test adi yok)
+- [x] **SX-12J-03 (P2)** — PILE istiflenemeyen eşyalara da miktar veriyor (KAPSAM: SpawnParity12JMTests.PileLeavesASingleObjectAlone)
+- [x] **SX-12J-04 (P2)** — Sayısal spawn kimliği 16 bite kesiliyor (KAPSAM: SpawnParity12JMTests.ANumericSpawnIdKeepsItsFullResourceIndex)
+- [x] **SX-12J-05 (P2)** — Canlı PILE ayarı kayıt/yükleme sonrasında 1'e dönüyor (KAPSAM: SpawnParity12JMTests.APileSizeAndAStoppedStateSurviveASaveAndLoad)
+- [x] **SX-12K-02 (P2)** — Canlı AMOUNT ataması etkin üretim kotasını değiştirmiyor (KAPSAM: SpawnParity12JMTests.RaisingASpawnersAmountRaisesItsCapacity)
+- [x] **SX-12K-03 (P2)** — RESET komutu spawn dalına ulaşmadan ev tasarımı dalında bitiyor (KAPSAM: SpawnParity12JMTests.ResetOnASpawnerActuallyClearsIt + ResetOnACustomHouseStillClearsItsDesign)
+- [x] **SX-12L-02 (P2)** — ADDOBJ başka spawn'daki NPC'yi aktarmıyor, iki üyelik bırakıyor (KAPSAM: SpawnParity12JMTests.HandingACreatureToASecondSpawnerReleasesItFromTheFirst)
+- [x] **SX-12L-03 (P2)** — Kabul edilen TEMPLATE hedefi eşya üretimine çevrilmiyor (KAPSAM: SpawnParity12JMTests.ATemplateTargetProducesTheItemItNames)
+- [x] **SX-12L-04 (P2)** — KillAll sırasında DelObj yeniden çağrılırsa liste değişimi temizliği yarıda bırakıyor (KAPSAM: SpawnParity12JMTests.ATeardownSurvivesAScriptThatRemovesMembersWhileItRuns)
+- [x] **SX-12L-05 (P3)** — Harita dışı eşya dağılımında spawn konumuna dönüş denenmiyor (KAPSAM: SpawnParity12JMTests.ASpawnerAtTheMapEdgeStillProduces)
+- [x] **SX-12M-02 (P2)** — SPAWNID bulunan kayıtta geçersiz/tekrarlanan ADDOBJ sayısı kotayı büyütüyor (KAPSAM: SpawnParity12JMTests.RelinkingMembershipNeverWidensASpawner + AFullSpawnerTakesNoMoreMembers)
+- [x] **SX-12M-03 (P2)** — NPC MORE2 eski canlı sayacı kapasite olarak uygulanıyor (KAPSAM: SpawnParity12JMTests.AnOldMemberCountDoesNotWidenACharSpawner)
+- [x] **SX-12M-04 (P2)** — Ayrı TIMELO/TIMEHI/MAXDIST yükleme alanları etkin bileşene aktarılmıyor (KAPSAM: SpawnParity12JMTests.TheSeparateTimingFieldsAreAppliedOnLoad)
+- [x] **SX-12O-02 (P2)** — Sayısal CHARDEF üyesi ters sözdizimi sanılıyor (KAPSAM: SpawnParity12NPTests.ANumericGroupMemberIsAResourceNotAWeight)
+- [x] **SX-12O-03 (P2)** — TEMPLATE kabı oluşturuluyor ama içeriği kayboluyor (KAPSAM: SpawnParity12NPTests.ATemplateContainerCarriesItsContents)
+- [x] **SX-12O-04 (P2)** — TEMPLATE hedefinin tür bilgisi kayıt sonrası geri kurulmuyor (KAPSAM: SpawnParity12NPTests.ATemplateTargetIsStillATemplateAfterALoad)
+- [x] **SX-12O-05 (P2)** — Canlı ADDOBJ üyeyi kaydediyor ama AddObj tetikleyicisini çağırmıyor (KAPSAM: SpawnParity12NPTests.EnrollingAnExistingCreatureFiresTheMembershipEvent)
+- [x] **SX-12P-02 (P2)** — DELOBJ sonrası SPAWNITEM hâlâ eski spawn noktasını gösteriyor (KAPSAM: SpawnParity12NPTests.AReleasedCreatureNoLongerNamesItsOldSpawner)
+- [x] **SX-12P-03 (P2)** — DelObj tetikleyicisinin nesne/süre girdisi ve süre geri uygulaması Source-X ile uyuşmuyor (KAPSAM: SpawnParity12NPTests.ReleasingAMemberTellsTheScriptWhichSpawnerAndLetsItSetTheInterval)
+- [x] **SX-12P-04 (P2)** — Genel EVENTSPET @Create, yerleştirme ve spawn bağlantısından önce çağrılıyor (KAPSAM: SpawnParity12NPTests.TheGeneralCreateChainSeesAPlacedAndAttachedCreature)
+- [x] **SX-12P-05 (P3)** — Dolu kotada timer'ı durdurma, üretim ve canlı kayıt yollarında tutarlı değil (KAPSAM: SpawnParity12NPTests.FillingTheLastSlotParksTheTimer + FillingTheLastSlotByHandParksTheTimerToo)
+- [x] **SX-12Y-05 (P2)** — Önceki bulgunun yol doğrulaması — Klasik TimerFCall eşittir ayrımı (KAPSAM: Bulgu degil: raporun kendisi "yeni hata sayilmadi" diyor; 12X-3un yukleme yolu dogrulamasi)

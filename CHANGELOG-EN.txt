@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - Review findings that were in neither list
+----------------------------------------
+
+FIX - docs/reviews/ holds 106 chapters and 347 findings, and the folder is
+        gitignored, so a finding survives only as a line in the tracker. Forty-one
+        had none. They were headed in a style the tracker's numbering never
+        covered - a bare section number, or only a priority - so they sat in
+        neither the open list nor the closed one: invisible to anyone working
+        from the tracker, and an invitation to re-implement a fix that had
+        already shipped.
+
+        All forty-one are closed. Thirty-nine map onto a named test in the
+        parity classes whose names carry the chapter range, matched by test name
+        rather than guessed: 12H-4 to AnItemSpawnerCanBeStopped, 12J-4 to
+        ANumericSpawnIdKeepsItsFullResourceIndex, 12L-2 to
+        HandingACreatureToASecondSpawnerReleasesItFromTheFirst, and so on. 12J-2
+        is covered by the PreSpawn bridge in Program.EngineWiring, which carries
+        the argument back and cites CCSpawn.cpp:310/387. 12Y-5 is not a finding
+        at all - its own chapter says so - and was picked up only by its heading
+        shape.
+
+        No production code was written: the gap was bookkeeping, and closing it
+        did not re-implement anything.
+
+DOC - docs/REVIEW_KAYIT_ESLEME_TR.md records the four heading styles the corpus
+        uses, the finding-to-test mapping, and the resulting tally: 106 chapters,
+        347 findings, 347 with a tracker line, 0 open.
+
+TEST - ReviewRecordGuardrailTests reads the corpus in all four heading styles,
+        normalises each id to the tracker's SX-<chapter>-<nn> spelling, and fails
+        when a finding has no tracker line or is left open without being named.
+        Skips cleanly when docs/reviews/ is absent, which it is in any clone.
+
 [2026-09-13] - The port report stops presenting a judgement as a measurement
 ----------------------------------------
 

@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `8885a55` + İŞ-50 (port raporu düzeltmesi) |
-| Tam test | 3.646 başarılı / 0 başarısız (66 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 0 — PLAN-005** (Dalga 0'ın son maddesi) |
+| Son commit | `3174a8d` + İŞ-51 (review kayıt eşlemesi) |
+| Tam test | 3.649 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 1 — PLAN-101** (Dalga 0 bitti) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-51 KAPANDI** — 2026-09-13. `docs/reviews/` 106 bölüm / 347 bulgu
+  taşıyor ve klasör depoya girmiyor; bir bulgu ancak takip planındaki satırı
+  kadar kalıcı. **41 bulgunun** hiç onay kutusu satırı yoktu — takip planının
+  numaralandırmasının kapsamadığı başlık biçimleriyle yazılmış, ne açık ne
+  kapalı listede duruyorlardı. **Hepsi kapalı çıktı**; 39'u bölüm aralığını
+  taşıyan parite test sınıflarında **test adıyla** eşleşti, 12J-2 PreSpawn
+  köprüsünde, 12Y-5 ise bulgu bile değil (bölümün kendisi söylüyor).
+  **Üretim kodu yazılmadı** — eksik olan defter kaydıydı. Belge:
+  `docs/REVIEW_KAYIT_ESLEME_TR.md`. Test: `ReviewRecordGuardrailTests` (3);
+  bir satır silinince bulguyu adıyla bildiriyor. Tam suite 3.649, üç koşu.
+  **PLAN-005 tamamlandı — Dalga 0 bitti.**
 - **İŞ-50 KAPANDI** — 2026-09-13. Port raporu tek bir "100 üzerinden"
   tablosunda sayılan **kapsam**ı ve hiç sayılmamış **sadakat**i yan yana
   koyuyordu; sadakat artık tablonun kendisinde kanaat diye etiketli, kapsam

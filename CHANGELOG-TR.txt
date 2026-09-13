@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Iki listede de olmayan review bulgulari
+----------------------------------------
+
+FIX - docs/reviews/ 106 bolum ve 347 bulgu tasiyor; klasor depoya girmedigi icin
+        bir bulgu ancak takip planindaki satiri kadar kalici. Kirk birinin boyle
+        bir satiri yoktu. Takip planinin numaralandirmasinin hic kapsamadigi bir
+        baslik bicimiyle yazilmislardi - ciplak bolum numarasi ya da yalnizca
+        oncelik - ve ne acik listede ne kapali listede duruyorlardi: takip
+        planindan calisan onlari hic gormezdi, review'lardan calisan kapanmis bir
+        sorunu yeniden uygulayabilirdi.
+
+        Kirk birinin hepsi kapali. Otuz dokuzu, adi bolum araligini tasiyan
+        parite test siniflarindaki bir teste dusuyor ve eslesme tahminle degil
+        test ADIYLA yapildi: 12H-4 AnItemSpawnerCanBeStopped, 12J-4
+        ANumericSpawnIdKeepsItsFullResourceIndex, 12L-2
+        HandingACreatureToASecondSpawnerReleasesItFromTheFirst gibi. 12J-2'yi
+        Program.EngineWiring'deki PreSpawn koprusu kapsiyor; argumani geri
+        tasiyor ve CCSpawn.cpp:310/387'yi aniyor. 12Y-5 bulgu bile degil -
+        bolumun kendisi boyle diyor - yalnizca baslik bicimi yuzunden sayildi.
+
+        Uretim kodu yazilmadi: eksik olan defter kaydiydi ve kapatilmasi hicbir
+        seyi yeniden uygulamadi.
+
+DOC - docs/REVIEW_KAYIT_ESLEME_TR.md korpusun kullandigi dort baslik bicimini,
+        bulgu-test eslemesini ve sonucu kaydediyor: 106 bolum, 347 bulgu, 347'si
+        takip planinda satirli, 0 acik.
+
+TEST - ReviewRecordGuardrailTests korpusu dort baslik biciminde de okuyor, her
+        kimligi takip planinin SX-<bolum>-<nn> yazimina normallestiriyor ve bir
+        bulgunun satiri yoksa ya da adi verilmeden acik birakilmissa kiriliyor.
+        docs/reviews/ yoksa temiz atliyor - her klonda oyle.
+
 [2026-09-13] - Port raporu kanaati olcum gibi sunmayi birakiyor
 ----------------------------------------
 

@@ -120,6 +120,7 @@ public sealed class DataGateGuardrailTests
             "reference tables + live pack",
             "reference tables + modern pack",
             "release package",
+            "review corpus",
             "script pack fixtures",
             "table export",
         ], used.ToArray());

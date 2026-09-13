@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `521e28c` + İŞ-52 (nesne üretim sözleşmesi) |
-| Tam test | 3.657 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 1 — PLAN-102** (PLAN-101 kapandı) |
+| Son commit | `1d634cc` + İŞ-53 (kopya havuzu kalıcılığı) |
+| Tam test | 3.661 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 1 — PLAN-103** (PLAN-101/102 kapandı) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,16 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-53 KAPANDI** — 2026-09-13. 13J'nin havuz şişmesi zaten düzeltilmişti ve
+  `DuplicationParity13JTests` PLAN-102'nin dört ölçütünden üçünü kapsıyordu;
+  dördüncüsünü incelemenin kendisi yapmadığını yazıyordu (*"gerçek kayıt
+  deneyi yapılmadı"*). `DuplicatedPoolPersistenceTests` (4) o deney: bonuslu
+  takım giymiş bir karakterin kopyası tam kaydet-yükle turundan geçip temel
+  100/100/100 ve etkin 120/130/140 dönüyor; ikinci tur değiştirmiyor; yeniden
+  başlatmadan sonra takımı çıkarmak 100 bırakıyor; bonussuz kontrol etkilenmiyor.
+  **Üretim değişikliği gerekmedi** — garanti zaten sağlamdı. Kaydediciye
+  `BaseMaxHits` yerine `MaxHits` yazdırınca dördün üçü kırmızıya dönüyor.
+  Tam suite 3.661, üç koşu. **PLAN-102 tamamlandı.**
 - **İŞ-52 KAPANDI** — 2026-09-13. Nesne üreten dokuz kapı yan yana kondu.
   Karşılaştırma elle tutulan listeye değil **yansımaya** dayanıyor: `Item`'ın 63
   karşılaştırılabilir property'sinde eşya `DUPE` ve stack bölme hem kaynakla hem

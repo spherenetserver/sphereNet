@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - 13J incelemesinin yapmadigi kayit deneyi
+----------------------------------------
+
+TEST - 13J incelemesi, giyimli bir karakteri kopyalamanin takim katkisini
+        kopyanin TEMEL havuzlarina yazdigini bulmustu; kopyanin kopyasi
+        guclenmeye devam ediyor, takimi cikarmak eski sayiyi geri vermiyordu. Bu
+        duzeltildi ve DuplicationParity13JTests PLAN-102'nin istedigi dort seyden
+        ucunu kapsiyor. Dorduncusunu incelemenin kendisi yapmadigini yaziyor:
+        "sismis temel degerin kayda tasinmasi koddan gorulen risktir, gercek
+        kayit deneyi yapilmadi."
+
+        DuplicatedPoolPersistenceTests o deney. BONUSHITSMAX 20 / BONUSMANAMAX 30
+        / BONUSSTAMMAX 40 giymis bir karakterin kopyasi tam bir kaydet-yukle
+        turundan geciyor ve temel 100/100/100, etkin 120/130/140 olarak geri
+        geliyor; ikinci tur hicbir seyi degistirmiyor; yeniden baslatmadan sonra
+        takimi cikarmak 100 birakiyor; bonussuz karakter etkilenmiyor - bu
+        sonuncusu, her havuzu sifirlayan bir turun testleri yanlis gerekceyle
+        gecmesini engelliyor.
+
+        Uretim degisikligi gerekmedi - garanti zaten saglamdi. Kaydediciye
+        BaseMaxHits yerine MaxHits yazdirmak dordun ucunu kirmiziya donduruyor;
+        testlerin olcum yaptigini, onaylamadigini soyleyen sey bu.
+
 [2026-09-13] - NEWDUPE, olmasi gereken fiilin etrafindan dolasiyordu
 ----------------------------------------
 

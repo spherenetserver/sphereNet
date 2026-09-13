@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - The save experiment review 13J did not run
+----------------------------------------
+
+TEST - Review 13J found that duplicating an equipped character wrote the suit's
+        contribution into the copy's BASE pools, so a copy of a copy kept getting
+        stronger and stripping it never gave the original number back. That is
+        fixed, and DuplicationParity13JTests covers three of the four things
+        PLAN-102 asks for. The fourth the review states it did not do: "the
+        inflated base value reaching the save is a risk visible from the code, the
+        real save experiment was not performed."
+
+        DuplicatedPoolPersistenceTests is that experiment. A copy of a character
+        wearing BONUSHITSMAX 20 / BONUSMANAMAX 30 / BONUSSTAMMAX 40 goes through a
+        full save and reload and comes back at base 100/100/100 and effective
+        120/130/140; a second cycle changes nothing; stripping the suit after the
+        restart leaves 100; and a character with no bonus is unaffected, which
+        stops a round trip that reset every pool from passing for the wrong
+        reason.
+
+        No production change was needed - the guarantee already held. Making the
+        saver write MaxHits instead of BaseMaxHits turns three of the four red,
+        which is what says the tests are measuring it rather than agreeing with
+        it.
+
 [2026-09-13] - NEWDUPE went around the verb it is supposed to be
 ----------------------------------------
 

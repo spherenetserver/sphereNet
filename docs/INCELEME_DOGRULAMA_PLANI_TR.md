@@ -5393,6 +5393,51 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-53 — Kopya havuzu kalıcılığı (PLAN-102, 13 Eylül 2026)
+
+PLAN-102: *"13J temel/etkin MaxHits/MaxMana/MaxStam kopyalama artışını güncel kodda
+tekrar üret; iki nesil kopya, ekipman çıkarma ve save/reload ile kapat."*
+
+### Durum ölçümü — dörtte üçü zaten vardı
+
+13J'nin havuz şişmesi (`copy.MaxHits = MaxHits` etkin değeri temele yazıyordu)
+düzeltilmiş ve `DuplicationParity13JTests` üç ölçütü kapsıyordu: iki nesil
+kopya, ekipman çıkarma, kaynak–kopya karşılaştırması.
+
+Dördüncüsünü **incelemenin kendisi yapmadığını söylüyordu:** *"şişmiş temel
+değerin kayda taşınması koddan görülen risktir, gerçek kayıt deneyi yapılmadı."*
+Bu iş o deney.
+
+### Neden sadece bir formalite değil
+
+Kaydedici `BaseMaxHits` yazıyor, yükleyici ise getter'ı **etkin** değeri dönen bir
+property'ye geri okuyor. Yanlış tarafı okuyan — ya da takımı havuzlardan önce
+giydiren — bir tur, aynı katlanmayı kopyalama üzerinden değil **kalıcılık
+üzerinden** geri getirirdi ve bu ancak yeniden başlatmadan sonra görülürdü.
+
+### Ölçüm
+
+| Aşama | Temel | Etkin |
+|---|---|---|
+| Kopya, kayıttan önce | 100/100/100 | 120/130/140 |
+| Bir tur sonra | 100/100/100 | 120/130/140 |
+| İki tur sonra | 100/100/100 | 120/130/140 |
+| Yeniden başlat + takımı çıkar | 100 | 100 |
+| Bonussuz kontrol | 100/100/100 | 100/100/100 |
+
+Bonussuz kontrol bilerek var: her havuzu varsayılana sıfırlayan bir tur, diğer
+testleri **yanlış gerekçeyle** geçirirdi.
+
+İki tur da bilerek: bir tur okumayı kanıtlar, iki tur yazmayı — çünkü etkin
+değeri kaydeden bir tur, ancak onu geri okuyan turdan sonrakinde kendini
+gösterir.
+
+### Sonuç — üretim değişikliği gerekmedi
+
+Garanti zaten sağlamdı. Bunu **sondajla** doğruluyorum, iddiayla değil:
+kaydediciye `BaseMaxHits` yerine `MaxHits` yazdırınca dört testin üçü kırmızıya
+dönüyor, kontrol testi doğru şekilde yeşil kalıyor.
+
 ## İŞ-52 — Nesne üretim sözleşmesi (PLAN-101, 13 Eylül 2026)
 
 PLAN-101: *"Tek nesne oluşturma/kopyalama sözleşmesi: NEWITEM, NEWNPC, NEWDUPE,

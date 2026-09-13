@@ -3,6 +3,45 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - Hicbir sey yapmadigini soyleyen ama yapan config anahtarlari
+----------------------------------------
+
+FIX - config/sphere.ini operatore 18 ayarin uygulanmadigini soyluyordu ya da
+        yanlis belgeliyordu. Bunlardan 15'i okunuyor, saklaniyor ve bir motor
+        yolundan tuketiliyor; yedisi bu port turunda uygulandi ve ini geride
+        kaldi. Calisan bir ayarin yaninda "bu calismaz" yazarsa operator onu hic
+        denemez. Her isaret artik degerin nerede tuketildigini yaziyor:
+        MAPVIEWRADAR, COMBATPARRYINGERA, COMBATARCHERYMOVEMENTDELAY,
+        ARCHERYMINDIST, ARCHERYMAXDIST, SPEEDSCALEFACTOR, EQUIPPEDCAST,
+        REAGENTLOSSABORT, REAGENTLOSSFAIL, MANALOSSABORT, MANALOSSFAIL,
+        MANALOSSPERCENT, NPCAI, MONSTERFEAR, HELPINGCRIMINALSISACRIME.
+
+        CHATFLAGS ve GENERICSOUNDS SERV.<anahtar> cevapliyor ama motor
+        davranisina baglanmis degil; artik "uygulanmadi" degil "okunuyor".
+
+FIX - ADVANCEDLOS config/sphere.ini'de iki kez atanmisti (AdvancedLos=0 ve
+        ADVANCEDLOS=0). Anahtar aramasi buyuk/kucuk harf ayirmadigi icin ikisinden
+        biri sessizce kayboluyordu ve dosya sunucunun hangi degeri kullandigini
+        soylemiyordu. Ikisi de 0 oldugu icin davranis degismedi; yinelenen atama
+        kaldirildi.
+
+FIX - ADVANCEDLOS bir kalite kademesi gibi belgelenmisti (0 klasik, 1 standart
+        LOS, 2 gelismis LOS). Referansta bit maskesi: ADVANCEDLOS_PLAYER 0x01,
+        ADVANCEDLOS_NPC 0x02, & ile sorgulaniyor (CServerConfig.h:474-476,
+        CCharLOS.cpp:17). Kademeli okumayla 2 "en iyi LOS" sanilirdi, oysa sadece
+        NPC demek; oyuncular eski yontemde kalirdi.
+
+DOC - docs/INI_ANAHTAR_SINIFLANDIRMASI_TR.md 195 ini anahtarinin hepsini
+        tuketiliyor (165), sadece script'ten okunabiliyor (2), tuketicisiz
+        saklaniyor (11) ya da bilincli desteklenmiyor (17) diye siniflandiriyor
+        ve SphereConfig'e okunup hic sorulmayan on bir anahtari kaydediyor.
+
+TEST - IniKeyClassificationGuardrailTests ini'yi kaynaga karsi sabitliyor: ayni
+        anahtar iki kez tanimlanmaz, "uygulanmadi" isaretli anahtar kaynakta
+        okunmaz, "calisiyor" isaretli anahtar kaynakta yok olamaz ve belgenin
+        sayilari dosyayla uyusur. Ini duzeltmesi geri alininca ucu kirmiziya
+        doner.
+
 [2026-09-13] - Neyin kosulmadigini soyleyen bir surum kabul paketi
 ----------------------------------------
 

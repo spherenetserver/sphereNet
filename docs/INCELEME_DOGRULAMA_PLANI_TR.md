@@ -5393,6 +5393,109 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-47 — Ini anahtar sınıflandırması (PLAN-002, 13 Eylül 2026)
+
+PLAN-002: *"Her ini anahtarını `okunuyor / saklanıyor / davranışta tüketiliyor /
+bilinçli desteklenmiyor` olarak sınıflandır."*
+
+### İşin çerçevesi baştan yanlıştı
+
+Sınıflandırma zaten vardı. `config/sphere.ini` her anahtarın üstünde bir durum
+işareti taşıyor: `[ÇALIŞIYOR]` (103), `[OKUNUYOR]` (44), `[UYGULANMADI]` (16),
+`[UYUMLULUK NO-OP]` (1). Yazılacak yeni bir sınıflandırma değil, var olanın
+**doğrulanması** gerekiyordu.
+
+Ölçüm: `SphereConfig.cs`'in okuma çağrılarından anahtar → property eşleşmesi
+çıkarılır, her property `SphereNet.Tests` dışındaki tüm kaynakta aranır. Host ve
+Panel bazı anahtarları `SphereConfig`'e uğramadan okuduğu için arama tek dosyayla
+sınırlı tutulmadı.
+
+### Bulgu 1 — 18 işaret kodla çelişiyordu
+
+15 anahtar `[UYGULANMADI]` diye işaretliyken okunuyor, saklanıyor ve bir motor
+yolundan tüketiliyordu. İşaretlerin hepsinde *"SphereConfig'de tanımlı değil"*
+yazıyordu; hepsi tanımlı.
+
+Bunlardan yedisi (`EQUIPPEDCAST`, `COMBATPARRYINGERA`, `REAGENTLOSSABORT/FAIL`,
+`MANALOSSABORT/FAIL/PERCENT`) **bu port turunun kendi dalgalarında** uygulandı ve
+ini güncellenmedi. Sapmanın nasıl oluştuğu, neden bir koruma testi gerektiğinin
+de cevabı: işaret tek yönde çürür, kimse geri dönüp bakmaz.
+
+Operatör açısından bu sessiz bir kayıp. Çalışan bir ayarın yanında "bu çalışmaz"
+yazıyorsa, o ayar hiç denenmez.
+
+`CHATFLAGS` ve `GENERICSOUNDS` aynı listede göründü ama tek başvuruları
+`SERV.CHATFLAGS` / `SERV.GENERICSOUNDS` yankısı; motor davranışı yok. Onlar
+`[UYGULANMADI]` değil `[OKUNUYOR]` oldu — script okuyabiliyor, motor umursamıyor.
+
+### Bulgu 2 — `ADVANCEDLOS` iki kez tanımlıydı
+
+Çevrilmemiş kütük blokta `AdvancedLos=0` (satır 269), Türkçe blokta
+`ADVANCEDLOS=0` (satır 1296). Anahtar araması büyük/küçük harf ayırmadığı için
+ikisinden biri sessizce kayboluyordu. İkisi de `0` olduğu için bugün davranış
+farkı yoktu; farklılaşsalardı hangisinin kazandığı dosyadan okunamıyordu.
+
+### Bulgu 3 — `ADVANCEDLOS` yanlış belgelenmişti
+
+Ini değeri kalite kademesi gibi anlatıyordu: *"0 = klasik, 1 = standart LOS,
+2 = gelişmiş LOS"*. Referansta bit maskesi:
+
+```
+// Source-X CServerConfig.h:474-476
+#define ADVANCEDLOS_DISABLED  0x00
+#define ADVANCEDLOS_PLAYER    0x01
+#define ADVANCEDLOS_NPC       0x02
+```
+
+`CCharLOS.cpp:17` maskeyi `&` ile sorgular:
+
+```cpp
+if ( (m_pPlayer && (g_Cfg.m_iAdvancedLos & ADVANCEDLOS_PLAYER)) ||
+     (m_pNPC && (g_Cfg.m_iAdvancedLos & ADVANCEDLOS_NPC)) )
+```
+
+Kademeli okumayla `2` "en iyi LOS" sanılırdı; gerçekte **sadece NPC** demek,
+oyuncular eski yönteme düşerdi. `3` ise ikisi birden.
+
+### Bulgu 4 — tüketicisi olmayan 10 anahtar
+
+Okunur, doğrulanır, saklanır, kimse sormaz: `ADVANCEDLOS`, `CONNECTINGMAX`,
+`COLORINVISITEM`, `COLORINVIS`, `COLORINVISSPELL`, `COLORHIDDEN`,
+`PETSINHERITNOTORIETY`, `SECTORSLEEP`, `NOTOTIMEOUT`, `NETWORKTHREADS`.
+
+Proje kuralı bunun tersi — *tüketicisi olmayan ayar eklenmez*. Bunlar kural
+konmadan önce biriktiği için kaldırılmadı, kayda alındı; kapatılmaları
+sonraki dalgalara ait. Her biri ini'de artık `[OKUNUYOR]` diyor, yani operatöre
+"okuyorum ama bir şey yapmıyorum" bilgisini veriyor.
+
+`SAVESECTORSPERTICK` de tüketilmiyor ama bilinçli: `[UYUMLULUK NO-OP]`, çünkü
+arka plan kaydı snapshot+worker modeliyle yapılıyor.
+
+### Ölçüm aracının göremedikleri
+
+Düz metin taraması üç okuma biçimini kaçırır; üçü de elle doğrulandı:
+`MAP0`/`MAP1` döngüde `$"Map{i}"` ile okunur; `CLIENTERA`, `SEASONMODE`,
+`SAVEFORMAT` yerel değişkene okunup enum'a çevrilir; `NPCTRAINPERCENT`
+`TrainSkillPercent` takma adına iner. Hiçbiri gerçek bulgu değildi — ilk
+taramada bulgu gibi göründüler ve elde doğrulanınca elendiler.
+
+### Koruma
+
+`IniKeyClassificationGuardrailTests` (5): aynı anahtar iki kez tanımlanmaz;
+`[UYGULANMADI]` işaretli anahtar kaynakta okunmaz; `[ÇALIŞIYOR]` işaretli
+anahtar kaynakta yok olamaz (interpolasyonla okunan `MAP0-5` için gerekçeli
+istisna listesi); belgenin sayıları dosyayla uyuşur.
+
+Geri-alma sondajı: ini düzeltmesi geri alınınca 5 testin 3'ü kırmızıya dönüyor
+ve tam 18 sapan işareti adıyla listeliyor.
+
+### Kalan borç
+
+Ini'de 31 anahtar hiç işaret taşımıyor. Çoğu tüketiliyor; işaretlenmeleri
+kozmetik bir borç, davranış değil. Test bunu talep etmiyor çünkü talep etseydi
+her yeni anahtar için bir işaret zorunluluğu doğardı ve işaretin doğru olmasını
+değil var olmasını ölçerdi.
+
 ## İŞ-46 — Release kabul paketi (PLAN-705, 13 Eylül 2026)
 
 PLAN-705: *"Release kabul paketi: tam test, veri manifesti, açık sapmalar,

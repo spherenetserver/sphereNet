@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - Config keys that said they did nothing, and did
+----------------------------------------
+
+FIX - config/sphere.ini told the operator that 18 settings were not implemented
+        or documented them wrongly. Fifteen of them are read, stored and consumed
+        by an engine path; seven were implemented during this port round and the
+        ini was never brought along. A working setting labelled dead is a setting
+        nobody tries, so each marker now names where the value is consumed:
+        MAPVIEWRADAR, COMBATPARRYINGERA, COMBATARCHERYMOVEMENTDELAY,
+        ARCHERYMINDIST, ARCHERYMAXDIST, SPEEDSCALEFACTOR, EQUIPPEDCAST,
+        REAGENTLOSSABORT, REAGENTLOSSFAIL, MANALOSSABORT, MANALOSSFAIL,
+        MANALOSSPERCENT, NPCAI, MONSTERFEAR, HELPINGCRIMINALSISACRIME.
+
+        CHATFLAGS and GENERICSOUNDS answer SERV.<key> but drive no behaviour;
+        they are now marked as read rather than unimplemented.
+
+FIX - ADVANCEDLOS was assigned twice in config/sphere.ini (AdvancedLos=0 and
+        ADVANCEDLOS=0). Key lookup ignores case, so one of the two silently lost
+        and the file no longer said which value the server used. Both were 0, so
+        no behaviour changed; the duplicate is removed.
+
+FIX - ADVANCEDLOS was documented as a quality ladder (0 classic, 1 standard LOS,
+        2 advanced LOS). It is a bitmask in the reference: ADVANCEDLOS_PLAYER
+        0x01, ADVANCEDLOS_NPC 0x02, queried with & (CServerConfig.h:474-476,
+        CCharLOS.cpp:17). Under the ladder reading, 2 looked like "best LOS"
+        while it actually means NPCs only, leaving players on the old method.
+
+DOC - docs/INI_ANAHTAR_SINIFLANDIRMASI_TR.md classifies all 195 ini keys as
+        consumed (165), script-readable only (2), stored without a consumer (11)
+        or deliberately unsupported (17), and records the eleven keys that are
+        read into SphereConfig and then never asked for.
+
+TEST - IniKeyClassificationGuardrailTests pins the ini against the source: no key
+        defined twice, no key marked unimplemented that the source actually
+        reads, no key marked working that appears nowhere, and the document's
+        counts matching the file. Reverting the ini fix turns three of them red.
+
 [2026-09-13] - A release acceptance package that states what was not run
 ----------------------------------------
 

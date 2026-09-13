@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-13] - MODMAXHITS / MODMAXMANA / MODMAXSTAM
+----------------------------------------
+
+FIX - Bir stat tavani referansta uc terimli, bu motor ikisini modelliyordu.
+        Ucuncusu script'in sahip oldugu degistirici: Stat_GetMaxAdjusted(i) =
+        Stat_GetMax(i) + Stat_GetMaxMod(i) (CCharStat.cpp:301) ve MODMAXHITS o
+        alani dogrudan okuyup yaziyor (CChar.cpp:3204 / 3662). Giyili takim ise bu
+        motorun zaten okuma aninda turettigi dorduncu, ayri bir katki.
+
+        Aile artik temel + degistirici + takim ve ucu bilerek ayri tutuluyor.
+        Temele katilan bir degistirici temel olarak persist edilir, sonra her kayit
+        turu ve her kopyalama onu tekrar ekler - 13J incelemesinin takim teriminde
+        buldugu katlanma bicimi. Testler tam bu yuzden tavanin yani sira TEMELI de
+        iddia ediyor ve iki kayit turu ile bir kopyayi kapsiyor.
+
+        Deger ISARETLI, cunku referansta argumani GetArgSVal okuyor: tavani
+        dusuren bir lanet, yukselten bir kutsama ile ayni anahtari kullanir.
+        Yazmak, her max degisikliginin yaptigi kirpmayi yapiyor
+        (CCharStat.cpp:66/115/142) ve yalnizca asagi yonde - yukselen tavan bir
+        iyilestirme degildir.
+
+        Temelin yaninda kendi anahtariyla persist ediliyor (CChar.cpp:4262) ve
+        yalnizca kuruluysa; kullanilmayan bir anahtar kayittaki her karaktere
+        yazilmasin diye.
+
+DOC - Port raporunun "canini yakacak eksikler" listesinden bu uc ad dustu: saydigi
+        43 addan 19'u artik cevaplanmis durumda, geriye 24 kaliyor.
+
 [2026-09-13] - Sunucu artik ini'nin hangi satirlarini kimsenin okumadigini soyluyor
 ----------------------------------------
 

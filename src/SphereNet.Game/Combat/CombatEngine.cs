@@ -1865,12 +1865,17 @@ public static class CombatEngine
     /// on read so the base field persists clean. Floored at 0 to preserve the
     /// old-save "MaxHits &lt;= 0 -> backfill from stat" login path. Reads the raw base
     /// field (BaseMaxHits), never the effective property, so there is no recursion.</summary>
+    // Three terms, kept apart on purpose: the base the definition and the save
+    // carry, the script-owned MODMAX* modifier, and the suit. Upstream adds the
+    // first two in Stat_GetMaxAdjusted (CCharStat.cpp:301) and accumulates the third
+    // separately; folding any pair together would let it persist as base and
+    // compound, which is the bug review 13J found in the suit term.
     public static int EffectiveMaxHits(Character ch) =>
-        Math.Max(0, ch.BaseMaxHits + SumEquippedItemProperty(ch, "BONUSHITSMAX"));
+        Math.Max(0, ch.BaseMaxHits + ch.ModMaxHits + SumEquippedItemProperty(ch, "BONUSHITSMAX"));
     public static int EffectiveMaxMana(Character ch) =>
-        Math.Max(0, ch.BaseMaxMana + SumEquippedItemProperty(ch, "BONUSMANAMAX"));
+        Math.Max(0, ch.BaseMaxMana + ch.ModMaxMana + SumEquippedItemProperty(ch, "BONUSMANAMAX"));
     public static int EffectiveMaxStam(Character ch) =>
-        Math.Max(0, ch.BaseMaxStam + SumEquippedItemProperty(ch, "BONUSSTAMMAX"));
+        Math.Max(0, ch.BaseMaxStam + ch.ModMaxStam + SumEquippedItemProperty(ch, "BONUSSTAMMAX"));
 
     /// <summary>Effective luck: the base Luck plus the suit contribution (Source-X
     /// PROPCH_LUCK equip-time accumulation). Derived on read like the stat slice.

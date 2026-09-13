@@ -5393,6 +5393,63 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-66 — MODMAX* ailesi (PLAN-303, 13 Eylül 2026)
+
+PLAN-303: *"MODMAX* ailesini temel stat + değiştirici + ekipman katkısı olarak
+modelle; getter/setter/save/kopyalama/regeneration etkileşimini test et."*
+
+### Referansın modeli
+
+```cpp
+ushort CChar::Stat_GetMaxAdjusted( STAT_TYPE i ) const
+{
+    return ushort(Stat_GetMax(i) + Stat_GetMaxMod(i));   // CCharStat.cpp:301
+}
+```
+
+`MODMAXHITS` bu **MaxMod** alanını doğrudan okuyup yazıyor (CChar.cpp:3204 /
+3662). Giyili takım ise ayrı bir katkı — yani tavan aslında:
+
+**temel + değiştirici + takım**
+
+Bizde ikisi vardı (temel + takım); değiştirici hiç yoktu.
+
+### Neden üçü ayrı durmalı
+
+Temele katılan bir değiştirici **temel olarak persist edilir**; sonra her kayıt
+turu ve her kopyalama onu tekrar ekler. Bu, 13J incelemesinin **takım teriminde**
+bulduğu katlanmanın aynısı — sadece bir terim ötede.
+
+Testler bu yüzden tavanın yanı sıra **temeli de** iddia ediyor: 125 doğru cevap
+ama `base=125, mod=0` ile `base=100, mod=25` bugün aynı görünüp yarın
+ayrışırdı. İki kayıt turu ve bir kopya da aynı nedenle kapsandı.
+
+### Sözleşmenin ince noktaları
+
+| Nokta | Kaynak | Davranış |
+|---|---|---|
+| İşaretli | `GetArgSVal` | Tavanı düşüren lanet, yükselten kutsama ile aynı anahtar |
+| Kırpma | CCharStat.cpp:66/115/142 | Mevcut değer yeni tavanın üstünde kalamaz |
+| Yön | — | **Yalnızca aşağı**: yükselen tavan bir iyileştirme değil |
+| Kayıt | CChar.cpp:4262 | Kendi anahtarıyla, temelin yanında |
+
+Kayıtta **yalnızca kuruluysa** yazılıyor — kullanılmayan bir anahtarın kayittaki
+her karaktere yazılması boşuna şişme olurdu.
+
+### Koruma
+
+`ModMaxStatParityTests` (8): üç terim, negatif değer, takımla yığılma, kayıt
+sonrası temel/değiştirici ayrımı, iki tur, kopya, aşağı kırpma ve **yükseltmenin
+iyileştirmediği** kontrolü.
+
+Sondaj: `EffectiveMax*`'tan üçüncü terim kaldırılınca **8 testin 6'sı** kırmızıya
+dönüyor.
+
+### Rapor
+
+"Canını yakacak eksikler" listesinden üç ad düştü: 43 addan **19'u** cevaplı,
+kalan **24**.
+
 ## İŞ-65 — Okunmayan ini anahtarı raporu (PLAN-301, 13 Eylül 2026)
 
 PLAN-301: *"Gerçek kullanılan sphere.ini ile destek manifestini karşılaştır; etkisiz

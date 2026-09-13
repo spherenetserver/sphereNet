@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-13 |
-| Son commit | `280b0bd` + İŞ-65 (okunmayan ini anahtarı raporu) |
-| Tam test | 3.709 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 3 — PLAN-302** (PLAN-301 kapandı) |
+| Son commit | `84b142b` + İŞ-66 (MODMAX* ailesi) |
+| Tam test | 3.717 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 3 — PLAN-304** (PLAN-301/303 kapandı; 302 açık) |
 
 ## Çalışma sırası
 
@@ -469,6 +469,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-66 KAPANDI** — 2026-09-13. **Yeni özellik:** `MODMAXHITS`/`MODMAXMANA`/
+  `MODMAXSTAM`. Bir stat tavanı referansta **üç** terimli, bizde ikisi vardı:
+  `Stat_GetMaxAdjusted = Stat_GetMax + Stat_GetMaxMod` (CCharStat.cpp:301).
+  Aile artık **temel + değiştirici + takım** ve üçü bilerek ayrı: temele katılan
+  bir değiştirici temel olarak persist edilir ve her kayıt turu/kopyalama onu
+  tekrar ekler — 13J'nin takım teriminde bulduğu katlanma. Değer **işaretli**
+  (`GetArgSVal`), yazınca mevcut değeri **yalnızca aşağı yönde** kırpıyor
+  (yükselen tavan iyileştirme değil), kendi anahtarıyla persist ediliyor
+  (CChar.cpp:4262) ve kopyaya **değiştirici olarak** geçiyor. Test:
+  `ModMaxStatParityTests` (8); üçüncü terim kaldırılınca **8'de 6 kırmızı**.
+  Rapordaki "canını yakacak eksikler" listesinden üç ad düştü (43'ün 19'u
+  cevaplı, kalan 24). Tam suite 3.717, üç koşu. **PLAN-303 tamamlandı.**
+  *Not: PLAN-302 (seksen anahtarlık paket tanımı) açık bırakıldı; PLAN-303
+  somut bir uygulama olduğu için öne alındı.*
 - **İŞ-65 KAPANDI** — 2026-09-13. **Gerçek düzeltme:** desteklenmeyen bir ini
   anahtarı ile **yanlış yazılmış** bir anahtar dışarıdan aynı görünüyordu — satır
   dosyada, sunucu açılıyor, hiçbir şey olmuyor; ayrıştırıcı iki durumda da

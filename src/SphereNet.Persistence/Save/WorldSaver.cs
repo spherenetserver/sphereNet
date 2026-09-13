@@ -930,6 +930,12 @@ public sealed class WorldSaver
         // character with no maximum of its own takes its definition's.
         if (ch.BaseMaxHits > 0)
             w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
+        // The MODMAX* modifiers persist beside the base, as upstream writes them
+        // (CChar.cpp:4262). Only when set: an unused key on every character would
+        // bloat the save for nothing.
+        if (ch.ModMaxHits != 0) w.WriteProperty("MODMAXHITS", ch.ModMaxHits.ToString());
+        if (ch.ModMaxMana != 0) w.WriteProperty("MODMAXMANA", ch.ModMaxMana.ToString());
+        if (ch.ModMaxStam != 0) w.WriteProperty("MODMAXSTAM", ch.ModMaxStam.ToString());
         w.WriteProperty("MAXMANA", ch.BaseMaxMana.ToString());
         w.WriteProperty("MAXSTAM", ch.BaseMaxStam.ToString());
         w.WriteProperty("HITS", ch.Hits.ToString());

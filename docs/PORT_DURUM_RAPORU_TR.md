@@ -175,14 +175,13 @@ büyük kısmı tek bir yerden geliyor: **AOS/SE/ML çağı item özellik sistem
 Bir Sphere 56x shard'ı bunları kullanmaz.
 
 **Sphere 56x için gerçekten canını yakacak eksikler.** İlk sürümde 43 isim
-sayılmıştı; 16'sı o tarihten sonra cevaplandı (`CANCAST`, `CANMAKE`,
+sayılmıştı; 19'u o tarihten sonra cevaplandı (`CANCAST`, `CANMAKE`,
 `CANMAKESKILL`, `SKILLUSEQUICK`, `SKILLBEST`, `SWING`, `BREATH`, `MEMORY`,
 `DROPSOUND`, `EQUIPSOUND`, `RESDEF`, `TAGAT`, `ISEVENT`, `ISTEVENT`,
-`ISDIALOGOPEN`, `TOPCONT`). Kalan **27**:
+`ISDIALOGOPEN`, `TOPCONT`, `MODMAXHITS`, `MODMAXMANA`, `MODMAXSTAM`). Kalan **24**:
 
 | İsim | Neden önemli |
 |---|---|
-| `MODMAXHITS` / `MODMAXMANA` / `MODMAXSTAM` | script'te sık kullanılan stat tavanı değiştiricileri |
 | `SPELLTIMEOUT` | büyü kapısı |
 | `SKILLCHECK`, `SKILLTEST`, `SKILLADJUSTED` | skill sorgulama ailesi |
 | `FIGHTRANGE`, `DAMADJUSTED` | savaş sorguları |
@@ -420,9 +419,6 @@ Etki ÷ maliyet oranına göre:
    `SKILLADJUSTED`). `CANMAKE`, `CANMAKESKILL`, `CANCAST`, `SKILLUSEQUICK` ve
    `SKILLBEST` bu raporun ilk sürümünden sonra cevaplandı. Kalanların motorda
    karşılıkları var, sadece script yüzeyine bağlanmamış.
-4. **`MODMAXHITS`/`MODMAXMANA`/`MODMAXSTAM`.** Sık kullanılan stat tavanı
-   değiştiricileri; kalıcılık kuralına dikkat (türetilmişi değil base'i
-   persist et).
 5. **Housing script API'sinin silme yolları** (`DELCOMPONENT`, `DELADDON`,
    `DELVENDOR`, `REMOVEKEYS`, `REMOVEALLCOMPS`) ve addon ailesi. Ekleme yolları
    ve `GET*POS` indeksleme geldi; kalan 10 ad ev sistemini script'ten yöneten

@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-13] - MODMAXHITS / MODMAXMANA / MODMAXSTAM
+----------------------------------------
+
+FIX - A stat ceiling has three terms upstream and this engine modelled two. The
+        third is the script-owned modifier: Stat_GetMaxAdjusted(i) is
+        Stat_GetMax(i) + Stat_GetMaxMod(i) (CCharStat.cpp:301), and MODMAXHITS
+        reads and writes that field directly (CChar.cpp:3204 / 3662). The equipped
+        suit is a fourth, separate contribution this engine already derived on read.
+
+        The family is now base + modifier + suit, kept apart deliberately. A
+        modifier folded into the base persists as base, and then every save cycle
+        and every duplication adds it again - the compounding shape review 13J
+        found in the suit term. The tests assert the base as well as the ceiling
+        for exactly that reason, and cover two save cycles and a copy.
+
+        The value is SIGNED, because GetArgSVal is what reads the argument
+        upstream: a curse lowering a ceiling uses the same key as a blessing
+        raising one. Writing it clamps the current value the way any max change
+        does (CCharStat.cpp:66/115/142) and only downward - a raised ceiling is not
+        a heal.
+
+        It persists as its own key beside the base (CChar.cpp:4262), and only when
+        set, so an unused key does not appear on every character in the save.
+
+DOC - The port report's list of painful missing names drops these three: 19 of the
+        43 it counted are now answered, leaving 24.
+
 [2026-09-13] - The server now says which ini lines nobody read
 ----------------------------------------
 

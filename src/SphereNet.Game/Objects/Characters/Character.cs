@@ -342,6 +342,7 @@ public partial class Character : ObjBase
     private short _str, _dex, _int;
     private short _hits, _mana, _stam;
     private short _maxHits, _maxMana, _maxStam;
+    private short _modMaxHits, _modMaxMana, _modMaxStam;
 
     // Skills (Source-X: SKILL_QTY = 99)
     private readonly ushort[] _skillValues = new ushort[(int)SkillType.Qty];
@@ -1108,6 +1109,46 @@ public partial class Character : ObjBase
     public short BaseMaxHits => _maxHits;
     public short BaseMaxMana => _maxMana;
     public short BaseMaxStam => _maxStam;
+
+    /// <summary>MODMAXHITS / MODMAXMANA / MODMAXSTAM: the script-owned modifier on a
+    /// stat ceiling. Upstream keeps it beside the base and adds the two on read -
+    /// Stat_GetMaxAdjusted(i) = Stat_GetMax(i) + Stat_GetMaxMod(i)
+    /// (CCharStat.cpp:301) - and the script property reads and writes that field
+    /// directly (CChar.cpp:3204 / 3662).
+    ///
+    /// It is SIGNED, because GetArgSVal is what reads the argument: a curse lowering
+    /// a ceiling is the same mechanism as a blessing raising one.
+    ///
+    /// It is a term of its own, not part of the base, for the reason review 13J
+    /// recorded about the suit: a modifier folded into the base persists as base,
+    /// and then every save cycle and every duplication adds it again. The setter
+    /// clamps the current value the way any max change does (CCharStat.cpp:66/115/142
+    /// re-read the adjusted max "to make sure the current value is not higher"), and
+    /// only downward - a raised ceiling is not a heal.</summary>
+    public short ModMaxHits
+    {
+        get => _modMaxHits;
+        set { if (value != _modMaxHits) { _modMaxHits = value; ClampToCeilings(); MarkDirty(DirtyFlag.Stats); } }
+    }
+
+    public short ModMaxMana
+    {
+        get => _modMaxMana;
+        set { if (value != _modMaxMana) { _modMaxMana = value; ClampToCeilings(); MarkDirty(DirtyFlag.Stats); } }
+    }
+
+    public short ModMaxStam
+    {
+        get => _modMaxStam;
+        set { if (value != _modMaxStam) { _modMaxStam = value; ClampToCeilings(); MarkDirty(DirtyFlag.Stats); } }
+    }
+
+    private void ClampToCeilings()
+    {
+        if (_hits > MaxHits) _hits = MaxHits;
+        if (_mana > MaxMana) _mana = MaxMana;
+        if (_stam > MaxStam) _stam = MaxStam;
+    }
 
     public ushort BodyId { get => _bodyId; set { _bodyId = value; MarkDirty(DirtyFlag.Body); } }
 
@@ -2613,6 +2654,12 @@ public partial class Character : ObjBase
         // is the same rule the world save follows.
         copy.Str = Str; copy.Dex = Dex; copy.Int = Int;
         copy.MaxHits = BaseMaxHits;
+        // The MODMAX* modifiers come across as MODIFIERS. Copying the adjusted
+        // ceiling into the base instead is the compounding shape review 13J found
+        // in the suit term, one copy generation later.
+        copy.ModMaxHits = ModMaxHits;
+        copy.ModMaxMana = ModMaxMana;
+        copy.ModMaxStam = ModMaxStam;
         copy.MaxStam = BaseMaxStam;
         copy.MaxMana = BaseMaxMana;
 
@@ -3297,6 +3344,11 @@ public partial class Character : ObjBase
             case "STAM":
             case "STAMINA": value = _stam.ToString(); return true; // Source-X CHC_STAMINA == CHC_STAM
             case "MAXHITS": value = _maxHits.ToString(); return true;
+            // The modifier is its own key upstream (CChar.cpp:3204); MAXHITS keeps
+            // reporting the base, as it already did.
+            case "MODMAXHITS": value = _modMaxHits.ToString(); return true;
+            case "MODMAXMANA": value = _modMaxMana.ToString(); return true;
+            case "MODMAXSTAM": value = _modMaxStam.ToString(); return true;
             case "MAXMANA": value = _maxMana.ToString(); return true;
             case "MAXSTAM": value = _maxStam.ToString(); return true;
             case "BLOODCOLOR": value = $"0{_bloodHue:X}"; return true; // Source-X FormatHex(_wBloodHue)
@@ -4474,6 +4526,11 @@ public partial class Character : ObjBase
             case "STAM":
             case "STAMINA": if (int.TryParse(normalized, out int stv)) SetStamRaw(stv); return true;
             case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = mhv; return true;
+            // Signed: GetArgSVal is what reads it upstream (CChar.cpp:3662), so a
+            // curse lowering a ceiling uses the same key as a blessing raising one.
+            case "MODMAXHITS": if (short.TryParse(normalized, out short mmh)) ModMaxHits = mmh; return true;
+            case "MODMAXMANA": if (short.TryParse(normalized, out short mmm)) ModMaxMana = mmm; return true;
+            case "MODMAXSTAM": if (short.TryParse(normalized, out short mms)) ModMaxStam = mms; return true;
             case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = mmv; return true;
             case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = msv; return true;
             case "BLOODCOLOR":

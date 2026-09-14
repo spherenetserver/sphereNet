@@ -469,6 +469,24 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **ORTAM BULGUSU — ara sıra ölen test koşusu (motor değil)** — 2026-09-14.
+  Tam suite koşularının bir kısmı **özet vermeden** bitiyor: ne kırmızı test, ne hata,
+  ne döküm. Olay günlüğü ve vstest tanılama günlüğüyle izlendi.
+  **Ölen süreç test host'u değil, `vstest.console` runner'ı.** Host log'u, ölümden
+  saniyeler önce 613 testi geçmiş ve sonuç bildirir hâlde; sonra soket 10054
+  ("bağlantı uzaktaki ana bilgisayar tarafından zorla kapatıldı") ve
+  `ParentProcess Exited`. Runner'ın kendi log'u normal bir satırdan sonra hiçbir hata
+  vermeden kesiliyor. Windows Application günlüğünde 8 saatte **testhost/SphereNet
+  için sıfır kayıt** — yani yönetilmeyen istisna değil, **dışarıdan sonlandırma**.
+  Ürün kodu ölen süreçte bile değil; tamamlanan koşuların sonuçları geçerli.
+  **Ölçülen korelasyon:** test DLL'i yeni yazıldığında oluyor — ikili dosyalar
+  değişmeden **9 koşuda 0**, her koşudan önce yeniden derlemeyle **10 koşuda 4**.
+  **Çözüm sanılıp çürütülen:** `dotnet build` + `dotnet test --no-build` ayrımı ilk
+  4 koşuda temiz geldi, sonraki 3'te 2 ölüm verdi — yani işe yaramıyor.
+  **Makine:** 32 GB RAM, ~25 GB commit dolu, 2 GB page file, Defender etkin.
+  **Sıradaki adım (kullanıcı kararı):** depo + `bin`/`obj` için Defender istisnası ve
+  daha büyük page file ile 10 koşuluk yeniden-derleme matrisini tekrar ölçmek.
+  *Kayda geçiriliyor ki sonraki oturum bunu motor hatası sanıp kovalamasın.*
 - **İŞ-87 KAPANDI (B dalgası 3. aşama: eşya timer'ları vade kuyruğunda)** —
   2026-09-14. Uyanık sektör, tuttuğu **her eşya** için saniyede on kez `OnTick`
   çağırıyordu — son tarihi olsun olmasın. Kurulu her eşya timer'ı artık dünya

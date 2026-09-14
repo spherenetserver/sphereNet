@@ -29,6 +29,44 @@ public sealed class StateRecorder : IDisposable
     private readonly ConcurrentQueue<MoveRecord> _moveQueue = new();
     private readonly ConcurrentQueue<SnapshotRecord> _snapshotQueue = new();
     private readonly Dictionary<uint, (short X, short Y, sbyte Z, byte Map, byte Dir)> _lastPositions = [];
+    // Reused across scans: the uids present in this scan's roster. Positions for
+    // uids that are gone (deleted, or a shard that stopped carrying them) are
+    // dropped, so _lastPositions tracks the world rather than every uid the
+    // process has ever seen.
+    private readonly HashSet<uint> _scanSeenUids = [];
+
+    // Queue depth is tracked here rather than read from ConcurrentQueue.Count so
+    // the cap can be enforced at the ENQUEUE, which is what makes it a bound: the
+    // old check ran only in the flush catch block, looked at the queue count at
+    // that instant and then re-added the whole batch regardless.
+    private int _pendingMoves;
+    private int _pendingSnapshots;
+    private int _inFlight;          // drained, not yet committed or re-queued
+    private long _written;
+    private long _dropped;
+    private long _retried;
+    private long _flushFailures;
+    private long _lastBacklogWarnTick;
+
+    /// <summary>Hard cap per queue. A record refused here is counted as dropped —
+    /// an explicit loss policy beats an unbounded queue that ends the process.
+    /// Test seam; production uses the default.</summary>
+    internal int MaxPendingRecords { get; set; } = 500_000;
+
+    /// <summary>How long <see cref="Dispose"/> waits for the writer's final flush.
+    /// Test seam; production uses the default.</summary>
+    internal int ShutdownJoinMs { get; set; } = 5_000;
+
+    /// <summary>What the last shutdown actually managed to do. Null until Dispose.</summary>
+    internal ShutdownReport? LastShutdownReport { get; private set; }
+
+    /// <summary>Positions currently tracked — the map B6 flagged as growing per uid.</summary>
+    internal int TrackedPositionCount => _lastPositions.Count;
+
+    /// <summary>Wait for the writer thread to leave. Test seam: a test that made the
+    /// database unavailable has to let the writer out of it before the process ends,
+    /// or it leaves a thread inside the SQLite native library at shutdown.</summary>
+    internal bool WaitForWriterExit(int ms) => _flushThread == null || _flushThread.Join(ms);
 
     private SqliteCommand? _insertMoveCmd;
     private SqliteCommand? _insertSnapshotCmd;
@@ -36,6 +74,9 @@ public sealed class StateRecorder : IDisposable
     private Thread? _flushThread;
     private volatile bool _disposed;
     private readonly AutoResetEvent _flushSignal = new(false);
+    // Producers signal through this gate so the handle cannot be disposed between
+    // a producer's _disposed check and its Set().
+    private readonly object _signalGate = new();
 
     public StateRecorder(string dbPath, ILogger logger, bool playersOnly = true,
         int moveScanMs = 2000, int snapshotMs = 15_000)
@@ -197,7 +238,10 @@ public sealed class StateRecorder : IDisposable
 
     public void Tick(long nowMs, Func<IEnumerable<Character>> charactersProvider)
     {
-        if (_db == null) return;
+        // The producer stops FIRST. Dispose used to leave this open, so a tick
+        // arriving after shutdown enqueued records nobody would ever drain and
+        // signalled a disposed handle (ObjectDisposedException, on the game tick).
+        if (_disposed || _db == null) return;
 
         bool moveDue = nowMs - _lastMoveScanTick >= _moveScanIntervalMs;
         bool snapshotDue = nowMs - _lastSnapshotTick >= _snapshotIntervalMs;
@@ -232,11 +276,13 @@ public sealed class StateRecorder : IDisposable
     private void ScanMovements(IEnumerable<Character> chars)
     {
         long ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _scanSeenUids.Clear();
         foreach (var ch in chars)
         {
             if (ch.IsDeleted) continue;
             if (_playersOnly && !ch.IsPlayer) continue;
             uint uid = ch.Uid.Value;
+            _scanSeenUids.Add(uid);
             var cur = (ch.X, ch.Y, ch.Z, ch.Position.Map, (byte)ch.Direction);
 
             if (_lastPositions.TryGetValue(uid, out var prev))
@@ -247,11 +293,20 @@ public sealed class StateRecorder : IDisposable
             }
 
             _lastPositions[uid] = cur;
-            _moveQueue.Enqueue(new MoveRecord(uid, ts, cur.X, cur.Y, cur.Z, cur.Map, (byte)cur.Item5));
+            Enqueue(_moveQueue, ref _pendingMoves,
+                new MoveRecord(uid, ts, cur.X, cur.Y, cur.Z, cur.Map, (byte)cur.Item5));
+        }
+
+        // The roster is a full snapshot, so anything missing from it is gone:
+        // deleted characters used to leave their last position behind forever.
+        if (_lastPositions.Count != _scanSeenUids.Count)
+        {
+            foreach (uint uid in _lastPositions.Keys.Where(u => !_scanSeenUids.Contains(u)).ToList())
+                _lastPositions.Remove(uid);
         }
 
         if (!_moveQueue.IsEmpty)
-            _flushSignal.Set();
+            SignalFlush();
     }
 
     private void TakeSnapshots(IEnumerable<Character> chars)
@@ -266,13 +321,54 @@ public sealed class StateRecorder : IDisposable
             if (ch.IsInWarMode) flags |= 0x40;
             if (ch.IsInvisible) flags |= 0x80;
 
-            _snapshotQueue.Enqueue(new SnapshotRecord(
+            Enqueue(_snapshotQueue, ref _pendingSnapshots, new SnapshotRecord(
                 ch.Uid.Value, ts, hourKey,
                 ch.X, ch.Y, ch.Z, ch.Position.Map, (byte)ch.Direction,
                 ch.BodyId, ch.Hue, ch.Name ?? "?", ch.IsPlayer,
                 flags, ch.Hits, ch.MaxHits, ch.Mana, ch.MaxMana,
                 ch.Stam, ch.MaxStam, EncodeEquipment(ch)));
         }
+    }
+
+    /// <summary>Enqueue under the cap. Over it the record is dropped and counted:
+    /// a recorder is diagnostics, and losing the newest position beats growing a
+    /// queue until the shard it is recording dies of it.</summary>
+    private void Enqueue<T>(ConcurrentQueue<T> queue, ref int pending, T record)
+    {
+        if (Volatile.Read(ref pending) >= MaxPendingRecords)
+        {
+            Interlocked.Increment(ref _dropped);
+            return;
+        }
+        queue.Enqueue(record);
+        Interlocked.Increment(ref pending);
+    }
+
+    /// <summary>Wake the writer. Taking the gate means the handle cannot be
+    /// disposed between the _disposed check and the Set().</summary>
+    private void SignalFlush()
+    {
+        lock (_signalGate)
+        {
+            if (!_disposed)
+                _flushSignal.Set();
+        }
+    }
+
+    /// <summary>Backlog, oldest pending record, and the running totals — so
+    /// "how many records did this shard actually write, and what happened to the
+    /// rest" has an answer.</summary>
+    internal RecorderStats GetStats()
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long oldest = 0;
+        if (_moveQueue.TryPeek(out var m)) oldest = m.Ts;
+        if (_snapshotQueue.TryPeek(out var sn) && (oldest == 0 || sn.Ts < oldest)) oldest = sn.Ts;
+        return new RecorderStats(
+            Volatile.Read(ref _pendingMoves), Volatile.Read(ref _pendingSnapshots),
+            Volatile.Read(ref _inFlight), oldest == 0 ? 0 : now - oldest,
+            Interlocked.Read(ref _written), Interlocked.Read(ref _dropped),
+            Interlocked.Read(ref _retried), Interlocked.Read(ref _flushFailures));
     }
 
     // ----------------------------------------------------------------
@@ -294,8 +390,9 @@ public sealed class StateRecorder : IDisposable
     {
         if (_moveQueue.IsEmpty && _snapshotQueue.IsEmpty) return;
 
-        var moves = DrainQueue(_moveQueue);
-        var snaps = DrainQueue(_snapshotQueue);
+        var moves = DrainQueue(_moveQueue, ref _pendingMoves);
+        var snaps = DrainQueue(_snapshotQueue, ref _pendingSnapshots);
+        Interlocked.Add(ref _inFlight, moves.Count + snaps.Count);
 
         try
         {
@@ -347,27 +444,59 @@ public sealed class StateRecorder : IDisposable
             }
 
             tx.Commit();
+            Interlocked.Add(ref _written, moves.Count + snaps.Count);
         }
         catch (Exception ex)
         {
+            Interlocked.Increment(ref _flushFailures);
             _logger.LogError(ex, "StateRecorder flush failed ({Moves} moves, {Snaps} snapshots); re-queuing for retry",
                 moves.Count, snaps.Count);
             // Don't lose the drained records on a transient failure — put them back
-            // so the next flush retries. Cap the backlog so a persistent failure
-            // (e.g. disk full) can't grow the queues without bound (dead-letter).
-            const int MaxPendingRecords = 500_000;
-            if (_moveQueue.Count < MaxPendingRecords)
-                foreach (var m in moves) _moveQueue.Enqueue(m);
-            if (_snapshotQueue.Count < MaxPendingRecords)
-                foreach (var s in snaps) _snapshotQueue.Enqueue(s);
+            // so the next flush retries. The re-queue goes through the SAME cap as
+            // the ingress path: the old code compared the queue count once and then
+            // re-added the entire batch, so the "limit" could be passed by a batch
+            // and was no bound at all.
+            foreach (var m in moves) { Enqueue(_moveQueue, ref _pendingMoves, m); Interlocked.Increment(ref _retried); }
+            foreach (var s in snaps) { Enqueue(_snapshotQueue, ref _pendingSnapshots, s); Interlocked.Increment(ref _retried); }
         }
+        finally
+        {
+            Interlocked.Add(ref _inFlight, -(moves.Count + snaps.Count));
+        }
+
+        WarnOnBacklog();
     }
 
-    private static List<T> DrainQueue<T>(ConcurrentQueue<T> queue)
+    /// <summary>A recorder that is falling behind says so — once a minute, with the
+    /// age of the oldest record it still holds. Silence here is how a shard
+    /// discovers at shutdown that it has been dropping records for hours.</summary>
+    private void WarnOnBacklog()
+    {
+        var stats = GetStats();
+        int pending = stats.PendingMoves + stats.PendingSnapshots;
+        if (pending < MaxPendingRecords / 10)
+            return;
+
+        long now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref _lastBacklogWarnTick) < 60_000)
+            return;
+        Interlocked.Exchange(ref _lastBacklogWarnTick, now);
+
+        _logger.LogWarning(
+            "StateRecorder backlog {Pending} record(s) (cap {Cap}), oldest {AgeMs}ms; " +
+            "{Written} written, {Dropped} dropped, {Failures} failed flush(es)",
+            pending, MaxPendingRecords, stats.OldestPendingAgeMs,
+            stats.Written, stats.Dropped, stats.FlushFailures);
+    }
+
+    private static List<T> DrainQueue<T>(ConcurrentQueue<T> queue, ref int pending)
     {
         var list = new List<T>(queue.Count);
         while (queue.TryDequeue(out var item))
+        {
             list.Add(item);
+            Interlocked.Decrement(ref pending);
+        }
         return list;
     }
 
@@ -753,20 +882,65 @@ public sealed class StateRecorder : IDisposable
     //  Dispose
     // ----------------------------------------------------------------
 
+    /// <summary>Stop the producer, then let the writer finish, and only then close
+    /// what the writer owns.
+    ///
+    /// The old order disposed the commands and the connection after a Join whose
+    /// result it ignored, so a final flush that ran long — a slow disk, a write
+    /// lock, a large backlog — met its own connection being closed underneath it
+    /// mid-transaction, and the records it was carrying were lost with the shard
+    /// reporting a clean shutdown (review finding B6).</summary>
     public void Dispose()
     {
-        _disposed = true;
-        _flushSignal.Set();
-        _flushThread?.Join(5_000);
+        lock (_signalGate)
+        {
+            if (_disposed) return;
+            _disposed = true;          // producers stop enqueuing and signalling
+        }
+        _flushSignal.Set();            // wake the writer for its final flush
+        bool stopped = _flushThread == null || _flushThread.Join(ShutdownJoinMs);
+
+        var stats = GetStats();
+        int remaining = stats.PendingMoves + stats.PendingSnapshots + stats.InFlight;
+        LastShutdownReport = new ShutdownReport(stopped, remaining, stats.Written, stats.Dropped);
+
+        if (!stopped)
+        {
+            // The writer still owns _db and the prepared commands. Disposing them
+            // here is the race itself; leaving them to process exit is not tidy,
+            // but it is not a use-after-dispose inside a transaction either.
+            _logger.LogError(
+                "StateRecorder shutdown: writer still running after {Ms}ms, {Remaining} record(s) unwritten " +
+                "({Written} written, {Dropped} dropped this run). Leaving the writer's connection open.",
+                ShutdownJoinMs, remaining, stats.Written, stats.Dropped);
+            return;
+        }
+
         _flushSignal.Dispose();
         _insertMoveCmd?.Dispose();
         _insertSnapshotCmd?.Dispose();
         _db?.Dispose();
+
+        if (remaining > 0 || stats.Dropped > 0)
+            _logger.LogWarning(
+                "StateRecorder shutdown: {Written} written, {Remaining} unwritten, {Dropped} dropped, " +
+                "{Retried} re-queued, {Failures} failed flush(es)",
+                stats.Written, remaining, stats.Dropped, stats.Retried, stats.FlushFailures);
+        else
+            _logger.LogInformation("StateRecorder shutdown: {Written} record(s) written", stats.Written);
     }
 
     // ----------------------------------------------------------------
     //  Internal record types
     // ----------------------------------------------------------------
+
+    /// <summary>What a shutdown managed to do: did the writer stop inside its
+    /// budget, and how many records went unwritten.</summary>
+    internal readonly record struct ShutdownReport(bool WriterStopped, int Remaining, long Written, long Dropped);
+
+    internal readonly record struct RecorderStats(
+        int PendingMoves, int PendingSnapshots, int InFlight, long OldestPendingAgeMs,
+        long Written, long Dropped, long Retried, long FlushFailures);
 
     private readonly record struct MoveRecord(uint CharUid, long Ts, short X, short Y, sbyte Z, byte Map, byte Dir);
 

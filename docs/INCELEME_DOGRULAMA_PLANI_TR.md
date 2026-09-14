@@ -5393,6 +5393,213 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-81 — Kaydedicinin sessizce kayıt tutmayı bırakması (B6, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B6 bulgusu (kod bulgusu).
+
+Kaydedici **teşhis** aracı; bu yüzden hızından çok **arıza biçimi** önemli. İki şeyi
+yapmamalı: kaydettiği shard'ı sınırsız büyüyen bir kuyrukla devirmemeli, ve hâlâ
+işlem içinde olan bir writer'ın altından kendi bağlantısını çekmemeli. Kayıt
+kaybettiğinde de bunu **söylemeli** — sessizce kayıt tutmayı bırakan bir kaydedici,
+kapalı olandan kötüdür: kimse bakmayı akıl etmez.
+
+### 1. Kapanış, sonucuna bakmadığı bir Join'e güveniyordu
+
+`Dispose`, `Join(5_000)` sonucunu okumadan komutları ve bağlantıyı dispose ediyordu.
+Uzun süren bir son flush — yavaş disk, kilitli veritabanı, büyümüş kuyruk — işlem
+ortasında **kendi bağlantısının** dispose edildiğini görüyor, taşıdığı kayıtlar
+kayboluyor, shard ise temiz bir kapanış bildiriyordu.
+
+Yeni sıra: **önce üretici durur**, sonra writer beklenir, ancak ondan sonra writer'ın
+sahip olduğu kaynaklar kapatılır. Bütçe dolduğunda writer hâlâ çalışıyorsa bağlantı
+**açık bırakılır** ve aşım, yazılamayan kayıt sayısıyla loglanır. Bir bağlantıyı
+süreç çıkışına bırakmak derli toplu değil; ama işlem ortasında dispose-sonrası
+kullanım da değil — ikisi arasında seçim yapılıyorsa ikincisi daha kötüdür.
+
+### 2. Kapanıştan sonra gelen tick
+
+`Tick`'in tek koruması `_db == null` idi ve `Dispose` o alanı hiç temizlemiyordu.
+Yani kapanış sırasında gelen bir tick kimsenin boşaltmayacağı kayıtlar ekliyor ve
+**dispose edilmiş** flush handle'ında `Set()` çağırıyordu:
+`ObjectDisposedException`, sunucunun kendi tick'inden.
+
+Üretici artık kapanış bayrağına bakıyor; sinyal de bir kapıdan geçiyor, böylece
+handle kontrol ile `Set()` arasında dispose edilemiyor.
+
+### 3. "500.000 sınırı" bir sınır değildi
+
+Kontrol yalnızca flush'ın `catch` bloğundaydı: o andaki kuyruk uzunluğuna bakıyor,
+sonra boşaltılmış batch'in **tamamını** geri ekliyordu — yani sınır bir batch
+boyunda aşılabiliyordu. Üretici tarafı ise hiç kontrol edilmiyordu. Sınır artık
+kayıtların **girdiği** yerde, hem üretici hem geri-ekleme yolunda uygulanıyor.
+
+Aşan kayıt **düşürülmüş** olarak sayılıyor. Teşhis verisi için açık bir kayıp
+politikası, kaydettiği shard'ı devirene kadar büyüyen bir kuyruktan iyidir.
+
+Sayaçlar: birikim, elde kalan en eski kaydın yaşı, yazılan, düşürülen, geri eklenen,
+başarısız flush. Geride kalan kaydedici dakikada bir uyarıyor; kapanış toplamları
+bildiriyor. İncelemenin *"tamamlanan/kalan/düşen kayıt sayısı açıklanabilmeli"*
+kabulü bu.
+
+### 4. `_lastPositions`
+
+Süreç boyunca uid başına bir kayıt birikiyordu. Tarama silinmiş karakterleri
+`continue` ile atlıyordu — yani onları temizleyecek satıra **hiç ulaşmıyordu**.
+Tarama tam bir kadro anlık görüntüsü üzerinde yürüdüğü için, orada olmayan gitmiş
+demektir ve pozisyonu düşürülüyor.
+
+### Test
+
+`StateRecorderShutdownTests` (5): temiz kapanış ne yazdığını söylüyor, kapanıştan
+sonraki tick yok sayılıyor, **gerçek bir SQLite yazma kilidi** kapanış boyunca
+tutulduğunda aşım rapor ediliyor (writer'ın altından kaynak çekilmiyor), kapasite
+girişte uygulanıyor (200 kayıt teklif, 40 tavan), gitmiş karakterlerin pozisyonları
+düşürülüyor.
+
+Sondaj: Join sonucunu yok saymak, üretici kapısını kaldırmak, sınırı girişten geri
+almak ve pozisyon temizliğini kaldırmak — her biri **bir** kırmızı.
+
+**Test hijyeni (kendi hatam):** kilit testlerinin bıraktığı writer thread'leri,
+SQLite'ın native kütüphanesi içinde park hâlde kalıyordu; süreç çıkışında bu, ara
+sıra **özet bile üretmeden** çöken bir test host'u demekti (sekiz tam koşuda bir
+iptal, bir de tek kırmızı). Tanı: yeni testler hariç tutulunca üç koşu da temiz.
+Temizlik artık önce yazma kilidini bırakıyor, sonra her writer'ın çıkışını
+bekliyor (`WaitForWriterExit`). Sonrasında dört tam koşu temiz.
+
+**Sondaj notu:** kapasite sondajının ilk hâli `_dropped` alanını hiç yazılmaz hâle
+getirdiği için derlenmedi (uyarılar hata). Sondaj, sayacı koruyup yalnızca
+*reddetmeyi* kaldıracak biçimde yeniden yazıldı — eski davranışa sadık olan da bu.
+
+### Durum
+
+İncelemenin kabul listesindeki **disk doluluğu** ve **yavaş disk** senaryoları ayrı
+ayrı koşulmadı; yazma kilidi ikisinin de temsilcisi olarak kullanıldı. Zorunlu süre
+sınırında kalan kayıtlar için **spool** yazılmadı — seçilen politika açık kayıp artı
+rapor.
+
+## İŞ-80 — "Deterministik" neyi kapsıyordu (B5, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B5 bulgusu (kod bulgusu).
+
+### Sorun
+
+Tick başına A* bütçesi, paralel işçilerin `Interlocked.Decrement` ile azalttığı bir
+sayaçtı. Aramayı kazananlar **oraya ilk ulaşanlar**dı.
+
+Bu zararsız bir eşitlik bozma değil: kaybeden yaratık **150 ms'lik yol ertelemesi**
+alıyor (`_nextPathfindMs`), ki bu bir sonraki tick'in okuduğu **durumdur**. Tick
+kararlarını uygulamadan önce sıralıyor — ama uygulama **sırasını** sabitlemek, farklı
+bir **kümenin** seçilmiş olmasını geri alamaz.
+
+Yani "deterministik" sözcüğü uygulama sırasını anlatıyordu, **ortaya çıkan dünyayı
+değil**.
+
+### Onarım — planın kendi tarifi
+
+Kimin arama yapacağı artık **seri aşamada**, fan-out'tan önce kararlaştırılıyor;
+paralel aşama yalnız okuyor.
+
+Sıra iki özelliği birden taşımalı:
+
+- **Kararlı** — seçim kaç işçinin çalıştığına bağlanmamalı (incelemenin kabul koşulu).
+- **Dönen** — başlangıç noktası tick ile kayıyor. Sabit bir sıra kusursuz
+  deterministik olurdu ve listenin kuyruğunu **sessizce aç bırakırdı**; kapışan sayaç
+  bundan yalnızca *öngörülemez* olduğu için kaçıyordu, ki bu korunmaya değer bir
+  özellik değil. Determinizmi adaleti feda ederek almak, bir kusuru başkasıyla
+  değiştirmek olurdu.
+
+**Kabul bir tavan, kota değil:** doğrudan adımı açık çıkan bir kazanan aramaya ihtiyaç
+duymaz ve hakkını harcamaz. Bunu seçim anında karara bağlamak, paralel aşamanın seri
+thread'den uzak tutmak için var olduğu harita işini yapmak olurdu.
+
+### Sessiz arızaya düşmemek
+
+İlk uygulamada "kurulmamış bütçe = kimse arama yapamaz" oldu ve mevcut bir test
+kırmızıya döndü. Eski sayacın varsayılanı `int.MaxValue`, yani **sınırsız**dı.
+Bütçe kurmadan karar üreten bir çağıran istediği aramaları almalı; "kimse arama
+yapamaz"a düşmek tam da bu incelemenin peşinde olduğu **sessiz** arıza türü olurdu —
+yaratıklar yol bulmayı bırakır ve nedenini kimse söylemez. Kurulmamış bütçe yine
+sınırsız.
+
+### Test
+
+`PathBudgetDeterminismTests` (5): aynı tick yirmi kez aynı kazananları seçiyor,
+paralel aşama seçimi 1/2/4/8 işçide değiştirmiyor, bütçe sıfır dahil uygulanıyor,
+kırk tick içinde **her** kovalayan sırasını alıyor, kovalayacak şeyi olmayan kabul
+edilmiyor.
+
+Sondaj: dönmeyi kaldırmak **adalet** testini, kimseyi kabul etmemek **dördünü**
+kırmızıya döndürüyor.
+
+**Test notu:** ilk yazdığım "1/2/4/8 işçi" testi seçiciyi N thread'den **aynı anda**
+çağırıyordu — motorun hiç yapmadığı bir şey, ve paylaşılan kümeyi kendisi
+yarıştırıyordu. Testi, seçimin bir kez seri koştuğu ve paralel aşamanın onu yalnız
+**okuduğu** özelliğini doğrulayacak şekilde yeniden yazdım.
+
+### Durum
+
+Planın *"aynı tick'in zamanını tüm Build koduna geçir; testte saati ve rastgeleliği
+kontrol et"* maddesi **yapılmadı** — `BuildDecision` hâlâ yer yer
+`Environment.TickCount64` okuyor, yani tam yeniden-üretilebilirlik (aynı girdi → aynı
+kararlar) sağlanmış değil; sağlanan, **iş seçiminin** işçi sayısından bağımsız
+olması.
+
+## İŞ-79 — Apply başarısız olunca kaybolan tazeleme isteği (B12, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B12 bulgusu. İnceleme bunu **kod bulgusu**
+olarak işaretleyip *"hata enjeksiyonu bekliyor"* demişti.
+
+### Sorun
+
+Multicore tick, `ViewNeedsRefresh`'i `ApplyViewDelta`'dan **önce** temizliyordu:
+
+```csharp
+client.ViewNeedsRefresh = false;   // önce
+client.ApplyViewDelta(delta);      // sonra
+client.SyncOpenMapStaticDoors();
+```
+
+Apply veya statik-kapı senkronu exception fırlatırsa tick'in kendi işleyicisi
+tükettiği NPC'leri kurtarıp tek-thread moduna düşüyor — ama **o istemcinin**
+tazeleme isteğini kimse yeniden kurmuyor. Delta gitmiş oluyor; ve oyuncu hareket
+edene ya da yakınında bir şey değişene kadar ekranından eksik olan şey **eksik
+kalıyor**: hiç belirmeyen bir eşya, hiç gitmeyen bir yaratık.
+
+Sessiz türden bir arıza: sunucu bir tick hatası logluyor, toparlanıyor ve tam hızda
+devam ediyor. Geriye tek bir oyuncu kalıyor — ince biçimde yanlış bir dünya ve onu
+düzeltecek hiçbir olay.
+
+### Onarım
+
+İstek yalnızca görünüm **gerçekten gönderildikten sonra** tüketiliyor. Exception
+yutulmuyor, yeniden fırlatılıyor: tick'i bırakıp tek-thread'e düşme kararı tick'in
+kendi işleyicisinde ve o kararı burada gizlemek, başarısız bir Apply'ı yalnızca
+*yavaş görünen* bir görünüme çevirirdi.
+
+Mantık tek bir yerde (`SendViewAndConsumeRefresh`) toplandı ki sözleşme doğrudan
+sınanabilsin.
+
+### Komşu yollar kontrol edildi
+
+`Program.Tick.cs:177` ve `:681` — tek-thread'li iki tazeleme yolu — bayrağı zaten
+gönderimden **sonra** temizliyor, yani exception hâlinde istek zaten korunuyordu.
+Dokunulmadı.
+
+### Test
+
+`ViewRefreshRecoveryTests` (4): bayrak başarısız apply'ı atlatıyor, hata yutulmuyor,
+başarılı apply isteği yine tüketiyor (kontrol — yoksa her istemci her tick tüm
+görünümünü yeniden kurardı), boş delta gönderilmiş sayılıyor.
+
+Sondaj: göndermeden önce tüketmeye dönmek **1** test kırmızı.
+
+### Durum
+
+B12 kapandı. D03'ün istediği geniş multicore hata-enjeksiyon matrisi (snapshot
+sonrası, NPC Build ortası, n'inci Apply sonrası, dirty drain sonrası, view Build
+sırasında kontrollü exception/cancellation) **açık** — bu onarım o matrisin tek bir
+noktasını kapatıyor.
+
 ## İŞ-78 — Replay: serial olmayan alanların üzerine yazma (B10 + B11, 14 Eylül 2026)
 
 ### B10 — tablo yanlıştı, ve yanlış olması "atlamak" değil "bozmak" demek

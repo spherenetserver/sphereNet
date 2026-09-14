@@ -4,6 +4,116 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - The state recorder stops recording out loud, not quietly
+----------------------------------------
+
+FIX - The recorder's shutdown closed the writer's connection and its prepared
+        commands after a Join whose result it never looked at. A final flush that
+        ran long - a slow disk, a locked database, a large backlog - met its own
+        connection being disposed underneath it mid-transaction, and the records it
+        was carrying were lost while the shard reported a clean shutdown (review
+        finding B6).
+
+        Shutdown now stops the PRODUCER first, waits for the writer, and only then
+        closes what the writer owns. If the writer is still running when the budget
+        expires, the connection is left open and the overrun is logged with the
+        number of records that went unwritten: leaving a connection to process exit
+        is untidy, but it is not a use-after-dispose inside a transaction.
+
+        A tick arriving after shutdown used to pass the recorder's only guard - a
+        null check on a connection field that Dispose never cleared - so it enqueued
+        records nobody would drain and called Set() on the disposed flush handle,
+        throwing ObjectDisposedException out of the server's own tick. The producer
+        is now gated on the shutdown flag, and it signals through a gate so the
+        handle cannot be disposed between the check and the Set.
+
+FIX - The 500,000-record backlog limit was checked only inside the flush catch
+        block: it compared the queue length at that instant and then re-added the
+        entire drained batch regardless, and the producer side was not checked at
+        all. It was a hint, not a bound. The cap is now enforced where records
+        enter, by the producer AND by the re-queue, and a record refused over the
+        cap is counted as dropped - an explicit loss policy for diagnostics data
+        beats a queue that grows until it takes down the shard it is recording.
+
+        Counters were added for what a recorder has to be able to answer: backlog,
+        the age of the oldest record still held, written, dropped, re-queued, and
+        failed flushes. A recorder that is falling behind now says so once a minute,
+        and shutdown reports the totals.
+
+FIX - Last-known positions accumulated one entry per uid for the life of the
+        process. The movement scan skipped deleted characters with a continue, which
+        meant it never reached the line that would have cleaned them up. The scan
+        walks a full roster snapshot, so anything absent from it is gone and its
+        position is dropped.
+
+TEST - StateRecorderShutdownTests (5), including a real SQLite write lock held
+        across shutdown. Probes: ignoring the Join result, removing the producer
+        gate, moving the cap back off the ingress, and dropping the position prune
+        each turn one red.
+
+[2026-09-14] - The pathfinding budget is handed out before the workers start, not raced for
+----------------------------------------
+
+FIX - The per-tick A* budget was a counter the parallel workers decremented with
+        Interlocked, so the creatures that got a search were whoever reached it first.
+        That is not a harmless tie-break: a creature that loses takes a 150ms path
+        defer, which is state the next tick reads. The tick sorts its decisions before
+        applying them, and sorting the order of application cannot undo a different SET
+        having been chosen - so "deterministic" described the order things were applied
+        in, not the world that came out (review finding B5).
+
+        Who may search is now decided in the serial phase, before the fan-out, and the
+        parallel phase only reads it.
+
+        The order is stable AND rotating. Stable so the choice does not depend on how
+        many workers happen to be running; rotating with the tick so the creatures at
+        the front of the list do not take every search forever while the ones behind
+        them are deferred indefinitely. A fixed order would have been perfectly
+        deterministic and quietly starved the tail - the racing counter avoided that
+        only by being unpredictable, which is not a property worth keeping.
+
+        Admission is a cap rather than a quota: a winner whose direct step turns out to
+        be open needs no search and simply does not spend it. Deciding that during
+        selection would mean doing the map work the parallel phase exists to keep off
+        the serial thread.
+
+        An un-armed budget still means unlimited, as the counter's int.MaxValue default
+        did. A caller that builds decisions without arming one should get the searches
+        it asks for; degrading to "nobody may search" would be the quiet kind of
+        failure - creatures stop pathing and nothing says why.
+
+TEST - PathBudgetDeterminismTests (5): the same tick picks the same winners twenty
+        times over, the parallel phase leaves the choice untouched at 1/2/4/8 workers,
+        the budget is respected including zero, every chaser gets a turn within forty
+        ticks, and a creature with nothing to chase is not admitted. Removing the
+        rotation turns the fairness test red; admitting nobody turns four red.
+
+[2026-09-14] - A client keeps its refresh request until the view has been sent
+----------------------------------------
+
+FIX - The multicore tick cleared ViewNeedsRefresh BEFORE calling ApplyViewDelta. If
+        Apply or the static-door sync threw, the tick's own handler recovered the NPCs
+        it had consumed and dropped to single-thread mode - but nothing re-armed THAT
+        client's refresh. The delta was gone, and until the player moved or something
+        near them changed, whatever was missing from their screen stayed missing: an
+        item that never appeared, a creature that never went away (review finding B12).
+
+        It is the quiet kind of failure. The server logs a tick error, recovers, and
+        keeps running at full speed; one player is left with a world that is subtly
+        wrong and nothing on their side to make it right again.
+
+        The request is consumed only once the view has actually been sent. The
+        exception is rethrown rather than swallowed: the tick's own handler decides
+        whether to abandon the tick and fall back, and hiding that decision here would
+        turn a failing Apply into a view that merely looks slow.
+
+TEST - ViewRefreshRecoveryTests (4): the flag survives a failed apply, the failure is
+        not swallowed, a successful apply still consumes the request, and an empty delta
+        counts as sent. Consuming before sending again turns one red.
+
+        The two single-threaded paths already cleared the flag after the send and were
+        left as they were.
+
 [2026-09-14] - Replay stops writing serials over fields that are not serials
 ----------------------------------------
 

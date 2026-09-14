@@ -732,6 +732,36 @@ public static partial class Program
         due.RemoveRange(MaxNpcsPerTick, due.Count - MaxNpcsPerTick);
     }
 
+    /// <summary>
+    /// Send a client its view delta and only THEN consume its refresh request.
+    ///
+    /// The order is the whole point. Clearing the flag first meant an exception in
+    /// Apply or in the door sync left the client holding a half-updated view with
+    /// nothing left to say so: the tick's fallback recovers the NPCs it consumed, but
+    /// nothing re-armed THIS client's refresh, and until the player moved or something
+    /// near them changed, the missing objects simply stayed missing (review finding
+    /// B12).
+    ///
+    /// The exception is rethrown rather than swallowed: the tick's own handler decides
+    /// whether to abandon the tick and fall back to single-thread mode, and hiding that
+    /// decision here would turn a failing Apply into a view that merely looks slow.
+    /// </summary>
+    public static void SendViewAndConsumeRefresh(GameClient client, SphereNet.Game.Clients.ClientViewDelta delta)
+    {
+        try
+        {
+            client.ApplyViewDelta(delta);
+            client.SyncOpenMapStaticDoors();
+            client.ViewNeedsRefresh = false;
+        }
+        catch (Exception ex)
+        {
+            _log?.LogError(ex, "View apply failed for client {Id}; keeping its refresh request armed",
+                client.NetState.Id);
+            throw;
+        }
+    }
+
     private static void RunMulticoreTick()
     {
         // Auto worker count leaves one core for the main thread: saturating every
@@ -780,7 +810,11 @@ public static partial class Program
         // showed up as npc_build=130ms when several 500-node searches landed in
         // one build phase. Over-budget chasers defer ~150ms. Field-tuned 4 → 2:
         // npc_build still hit 90ms with 4 on the live box.
-        _npcAI.BeginTickPathfindBudget(2);
+        // Who gets a prestage search is decided HERE, serially and in a stable
+        // order, rather than by whichever worker reaches the counter first — the losers
+        // take a 150ms path defer, which is state, so racing for it made the same tick
+        // produce different worlds (review finding B5).
+        _npcAI.BeginTickPathfindBudget(2, npcSnapshot, _tickCounter);
         if (npcSnapshot.Count >= ParallelComputeMinBatch)
         {
             var po = new ParallelOptions
@@ -896,10 +930,8 @@ public static partial class Program
             // on a stale view until something else happened to set it again.
             if (!clientDeltas.TryGetValue(client.NetState.Id, out var delta))
                 continue;
-            client.ViewNeedsRefresh = false;
 
-            client.ApplyViewDelta(delta);
-            client.SyncOpenMapStaticDoors();
+            SendViewAndConsumeRefresh(client, delta);
 
             if (hasRecordings && delta.NewChars.Count > 0)
             {

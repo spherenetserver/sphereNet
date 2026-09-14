@@ -831,13 +831,105 @@ public sealed partial class NpcAI
     // showed up live as npc_build=130ms); over-budget NPCs take a short defer
     // instead — the serial side sees the closed throttle window and just faces
     // the target until their turn comes.
-    private int _tickPathfindBudget = int.MaxValue;
-
     private const long PathDeferMs = 150;
 
-    /// <summary>Arm the per-tick prestage A* budget (called once per multicore
-    /// tick before the parallel BuildDecision fan-out).</summary>
-    public void BeginTickPathfindBudget(int budget) => _tickPathfindBudget = budget;
+    /// <summary>
+    /// Who may run a prestage A* this tick, decided in the SERIAL phase.
+    ///
+    /// The budget used to be a counter the parallel workers raced to decrement, so the
+    /// winners were whoever reached it first: the same world and the same tick could
+    /// hand the searches to different creatures on two runs, and the losers are not
+    /// merely skipped - they take a 150ms path defer, which is state. Sorting the
+    /// decisions before Apply cannot undo that, so "deterministic" described the ORDER
+    /// of application and not the WORLD it produced (review finding B5).
+    ///
+    /// Read-only during the parallel phase, which is what makes it safe to share.
+    /// </summary>
+    private readonly HashSet<uint> _pathfindAdmitted = [];
+
+    /// <summary>Whether a budget was armed for this tick at all. Un-armed means
+    /// UNLIMITED, which is what the old counter's int.MaxValue default meant: a caller
+    /// that builds decisions without arming a budget should get the searches it asks
+    /// for, not silence. Degrading to "nobody may search" would be the quiet kind of
+    /// failure - creatures stop pathing and nothing says why.</summary>
+    private bool _pathfindBudgetArmed;
+
+    /// <summary>Pick this tick's prestage A* winners, in a stable and fair order.
+    ///
+    /// Stable: the snapshot's own order, so the choice does not depend on how many
+    /// workers happen to be running. Fair: the starting point rotates with the tick, so
+    /// the creatures at the front of the list do not take every search forever while
+    /// the ones behind them are deferred indefinitely - which a fixed order would do,
+    /// and which the racing counter avoided only by being unpredictable.
+    ///
+    /// Admission is a CAP, not a quota: a winner whose direct step turns out to be open
+    /// needs no search and simply does not spend it. Deciding that here would mean
+    /// doing the map work this phase exists to keep off the serial thread.</summary>
+    public void BeginTickPathfindBudget(int budget, IReadOnlyList<Character> npcs, long tickNumber)
+    {
+        _pathfindAdmitted.Clear();
+        _pathfindBudgetArmed = true;
+        if (budget <= 0 || npcs.Count == 0)
+            return;
+
+        int start = npcs.Count > 0 ? (int)(uint)(tickNumber % npcs.Count) : 0;
+        for (int i = 0; i < npcs.Count && _pathfindAdmitted.Count < budget; i++)
+        {
+            var npc = npcs[(start + i) % npcs.Count];
+            if (WantsPrestagePathfind(npc))
+                _pathfindAdmitted.Add(npc.Uid.Value);
+        }
+    }
+
+    /// <summary>The cheap half of the prestage test: does this creature even want a
+    /// search? Dictionary and field reads only - the map probe and the search itself
+    /// stay in the parallel phase.</summary>
+    private bool WantsPrestagePathfind(Character npc)
+    {
+        var target = ResolveChaseTarget(npc);
+        if (target == null)
+            return false;
+
+        int dist = npc.Position.GetDistanceTo(target.Position);
+        if (dist < NpcPathMinDist || dist >= NpcPathMaxDist)
+            return false;
+
+        var npcFlags = GetNpcFlags(npc);
+        if (!npcFlags.HasFlag(NpcAIFlags.Path))
+            return false;
+        if ((npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int) < 30)
+            return false;
+
+        uint uid = npc.Uid.Value;
+        Point3D goal = target.Position;
+        if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0 &&
+            _pathGoal.TryGetValue(uid, out var cachedGoal) &&
+            cachedGoal.Map == goal.Map && cachedGoal.GetDistanceTo(goal) <= 2)
+            return false;
+        if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && Environment.TickCount64 < nextPf)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>The goal the serial brain will walk toward this tick: the fight target,
+    /// else the master for a following pet. Other MoveToward callers (wander-home
+    /// leash, corpse looting, investigate) stay serial-computed.</summary>
+    private Character? ResolveChaseTarget(Character npc)
+    {
+        Character? target = null;
+        if (npc.FightTarget.IsValid)
+            target = _world.FindChar(npc.FightTarget);
+        else if (npc.NpcMaster.IsValid &&
+                 npc.PetAIMode is PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard)
+            target = _world.FindChar(npc.NpcMaster);
+        if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != npc.MapIndex)
+            return null;
+        return target;
+    }
+
+    /// <summary>Test seam: the uids admitted for this tick's prestage searches.</summary>
+    internal IReadOnlyCollection<uint> AdmittedPathfinders => _pathfindAdmitted;
 
     /// <summary>Read-only mirror of the conditions under which the serial
     /// <see cref="MoveToward"/> would run a full A* this tick for a combat/pet
@@ -847,16 +939,8 @@ public sealed partial class NpcAI
     /// carried on the <see cref="NpcDecision"/>. Mutates nothing.</summary>
     private (List<Point3D>? Path, Point3D Goal, bool Ran, bool Deferred) TryPrestagePathfind(Character npc)
     {
-        // The chase goal the serial brain will walk toward this tick: the fight
-        // target, else the master for a following pet. Other MoveToward callers
-        // (wander-home leash, corpse looting, investigate) stay serial-computed.
-        Character? target = null;
-        if (npc.FightTarget.IsValid)
-            target = _world.FindChar(npc.FightTarget);
-        else if (npc.NpcMaster.IsValid &&
-                 npc.PetAIMode is PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard)
-            target = _world.FindChar(npc.NpcMaster);
-        if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != npc.MapIndex)
+        var target = ResolveChaseTarget(npc);
+        if (target == null)
             return (null, default, false, false);
 
         Point3D goal = target.Position;
@@ -895,8 +979,10 @@ public sealed partial class NpcAI
             return (null, default, false, false);
 
         // Per-tick A* budget: over-budget chasers take a short defer instead of
-        // stacking 500-node searches into one build phase.
-        if (System.Threading.Interlocked.Decrement(ref _tickPathfindBudget) < 0)
+        // stacking 500-node searches into one build phase. Who is admitted was decided
+        // serially before the fan-out, so it does not depend on which worker got here
+        // first (review finding B5).
+        if (_pathfindBudgetArmed && !_pathfindAdmitted.Contains(uid))
             return (null, goal, false, true);
 
         var npcCanFlags = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;

@@ -3,6 +3,115 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Durum kaydedici, kayit tutmayi birakirken sessiz kalmiyor
+----------------------------------------
+
+FIX - Kaydedicinin kapanisi, sonucuna hic bakmadigi bir Join'den sonra writer'in
+        baglantisini ve hazirlanmis komutlarini kapatiyordu. Uzun suren bir son
+        flush - yavas disk, kilitli veritabani, buyumus kuyruk - islem ortasinda
+        kendi baglantisinin altindan cekilmesiyle karsilasiyor, tasidigi kayitlar
+        kayboluyor ve shard temiz bir kapanis bildiriyordu (inceleme bulgusu B6).
+
+        Kapanis artik once URETICIYI durduruyor, writer'i bekliyor ve ancak ondan
+        sonra writer'in sahip oldugu kaynaklari kapatiyor. Butce dolduginda writer
+        hala calisiyorsa baglanti acik birakiliyor ve asim, yazilamayan kayit
+        sayisiyla birlikte loglaniyor: bir baglantiyi surec cikisina birakmak
+        derli toplu degil, ama islem ortasinda dispose-sonrasi kullanim da degil.
+
+        Kapanistan sonra gelen bir tick, kaydedicinin tek korumasini - Dispose'un
+        hicbir zaman temizlemedigi bir baglanti alaninin null kontrolu - gecip
+        kimsenin bosaltmayacagi kayitlar ekliyor ve dispose edilmis flush
+        handle'inda Set() cagiriyordu; sunucunun kendi tick'inden
+        ObjectDisposedException firliyordu. Uretici artik kapanis bayragina bakiyor
+        ve sinyali bir kapidan geciriyor, boylece handle kontrol ile Set arasinda
+        dispose edilemiyor.
+
+FIX - 500.000 kayitlik birikim siniri yalnizca flush'in catch blogunda
+        kontrol ediliyordu: o andaki kuyruk uzunluguna bakip ardindan bosaltilmis
+        batch'in tamamini geri ekliyordu, uretici tarafi ise hic kontrol
+        edilmiyordu. Bir sinir degil, bir ipucuydu. Sinir artik kayitlarin GIRDIGI
+        yerde - hem uretici hem geri-ekleme yolunda - uygulaniyor ve siniri asan
+        kayit dusurulmus olarak sayiliyor: teshis verisi icin acik bir kayip
+        politikasi, kaydettigi shard'i devirene kadar buyuyen bir kuyruktan iyidir.
+
+        Bir kaydedicinin cevaplayabilmesi gereken sayaclar eklendi: birikim, elde
+        kalan en eski kaydin yasi, yazilan, dusurulen, geri eklenen ve basarisiz
+        flush sayisi. Geride kalan kaydedici artik dakikada bir bunu soyluyor,
+        kapanis da toplamlari bildiriyor.
+
+FIX - Son bilinen pozisyonlar, surec boyunca uid basina bir kayit olarak
+        birikiyordu. Hareket taramasi silinmis karakterleri continue ile atliyordu;
+        yani onlari temizleyecek satira hic ulasmiyordu. Tarama tam bir kadro
+        anlik goruntusu uzerinde yurudugu icin, orada olmayan gitmis demektir ve
+        pozisyonu dusuruluyor.
+
+TEST - StateRecorderShutdownTests (5); kapanis boyunca tutulan gercek bir SQLite
+        yazma kilidi dahil. Sondajlar: Join sonucunu yok saymak, uretici kapisini
+        kaldirmak, siniri girisden geri almak ve pozisyon temizligini kaldirmak -
+        her biri bir kirmizi.
+
+[2026-09-14] - Yol bulma butcesi, isciler basladiktan sonra kapisilmiyor; once dagitiliyor
+----------------------------------------
+
+FIX - Tick basina A* butcesi, paralel iscilerin Interlocked ile azalttigi bir sayacti;
+        yani aramayi kazananlar oraya ilk ulasanlardi. Bu zararsiz bir esitlik bozma
+        degil: kaybeden yaratik 150 ms'lik bir yol ertelemesi aliyor, ki bu bir sonraki
+        tick'in okudugu DURUMDUR. Tick, kararlarini uygulamadan once siraliyor; ama
+        uygulama SIRASINI sabitlemek, farkli bir KUMENIN secilmis olmasini geri alamaz -
+        yani "deterministik", uygulama sirasini anlatiyordu, ortaya cikan dunyayi degil
+        (inceleme bulgusu B5).
+
+        Kimin arama yapacagi artik seri asamada, fan-out'tan once kararlastiriliyor;
+        paralel asama yalnizca okuyor.
+
+        Sira hem KARARLI hem DONUYOR. Kararli, cunku secim kac iscinin calistigina
+        baglanmamali; donuyor, cunku listenin basindakiler her aramayi sonsuza dek alip
+        arkadakileri suresiz erteleyemez. Sabit bir sira kusursuz deterministik olur ve
+        kuyrugu sessizce ac birakirdi - kapisan sayac bunu yalnizca ONGORULEMEZ oldugu
+        icin yapmiyordu, ki bu korunmaya deger bir ozellik degil.
+
+        Kabul bir KOTA degil TAVAN: dogrudan adimi acik cikan bir kazanan aramaya
+        ihtiyac duymaz ve hakkini harcamaz. Bunu secim sirasinda karara baglamak,
+        paralel asamanin seri thread'den uzak tutmak icin var oldugu harita isini
+        yapmak olurdu.
+
+        Kurulmamis butce hala SINIRSIZ demek - sayacin int.MaxValue varsayilaninin
+        dedigi gibi. Butce kurmadan karar ureten bir cagiran, istedigi aramalari
+        almalidir; "kimse arama yapamaz"a dusmek sessiz turden bir ariza olurdu -
+        yaratiklar yol bulmayi birakir ve nedenini kimse soylemez.
+
+TEST - PathBudgetDeterminismTests (5): ayni tick yirmi kez ayni kazananlari seciyor,
+        paralel asama secimi 1/2/4/8 iscide degistirmiyor, butce sifir dahil
+        uygulaniyor, kirk tick icinde her kovalayan sirasini aliyor ve kovalayacak seyi
+        olmayan yaratik kabul edilmiyor. Donmeyi kaldirmak adalet testini, kimseyi kabul
+        etmemek dordunu kirmiziya donduruyor.
+
+[2026-09-14] - Istemci, gorunum gercekten gonderilene kadar tazeleme istegini koruyor
+----------------------------------------
+
+FIX - Multicore tick, ViewNeedsRefresh'i ApplyViewDelta'dan ONCE temizliyordu. Apply
+        veya statik-kapi senkronu exception firlatirsa tick'in kendi isleyicisi tukettigi
+        NPC'leri kurtarip tek-thread moduna dusuyor - ama O istemcinin tazeleme istegini
+        kimse yeniden kurmuyordu. Delta gitmisti; ve oyuncu hareket edene ya da
+        yakininda bir sey degisene kadar ekranindan eksik olan sey eksik kaliyordu: hic
+        belirmeyen bir esya, hic gitmeyen bir yaratik (inceleme bulgusu B12).
+
+        Sessiz turden bir ariza. Sunucu bir tick hatasi logluyor, toparlaniyor ve tam
+        hizda devam ediyor; geriye tek bir oyuncu kaliyor: ince bir bicimde yanlis bir
+        dunya ve onu duzeltecek hicbir sey.
+
+        Istek artik yalnizca gorunum gercekten gonderildikten sonra tuketiliyor.
+        Exception yutulmuyor, yeniden firlatiliyor: tick'i birakip geri duseceginin
+        karari tick'in kendi isleyicisinde ve o karari burada gizlemek, basarisiz bir
+        Apply'i yalnizca yavas gorunen bir gorunume cevirirdi.
+
+TEST - ViewRefreshRecoveryTests (4): bayrak basarisiz apply'i atlatiyor, hata
+        yutulmuyor, basarili apply istegi yine tuketiyor ve bos delta gonderilmis
+        sayiliyor. Gondermeden once tuketmeye donmek birini kirmiziya donduruyor.
+
+        Tek-thread'li iki yol bayragi zaten gonderimden SONRA temizliyordu; onlara
+        dokunulmadi.
+
 [2026-09-14] - Replay artik serial olmayan alanlarin uzerine serial yazmiyor
 ----------------------------------------
 

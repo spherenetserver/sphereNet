@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `8ffa282` + İŞ-77/78 (DB oturumu; replay paket bütünlüğü) |
-| Tam test | 3.837 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **B1-B4, B8 kapandı; B9/B10/B11 yarım.** Sıradaki: B5/B6/B7/B12 |
+| Son commit | `c84007d` + İŞ-79/80/81 (kaybolan tazeleme; path bütçesi; kaydedici kapanışı) |
+| Tam test | 3.851 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B6, B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B7 |
 
 ## Çalışma sırası
 
@@ -469,6 +469,46 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-81 KAPANDI (Beyond-Source-X B6)** — 2026-09-14. Kaydedici teşhis aracı;
+  arıza biçimi hızından önemli. Üç arıza: (1) `Dispose`, sonucuna bakmadığı bir
+  `Join`'den sonra writer'ın bağlantısını kapatıyordu — uzun süren son flush işlem
+  ortasında **kendi bağlantısının** altından çekildiğini görüyor, kayıtlar
+  kayboluyor, shard temiz kapanış bildiriyordu; (2) kapanıştan sonra gelen tick,
+  `Dispose`'un hiç temizlemediği `_db` null kontrolünü geçip dispose edilmiş
+  handle'da `Set()` çağırıyordu — sunucunun tick'inden `ObjectDisposedException`;
+  (3) "500.000 sınırı" yalnız flush `catch`'indeydi ve batch'in tamamını geri
+  ekliyordu, üretici tarafı hiç bakmıyordu — bir sınır değil, ipucuydu. **Onarım:**
+  önce üretici durur, writer beklenir, sonra kaynaklar kapatılır; writer hâlâ
+  çalışıyorsa bağlantı açık bırakılır ve aşım yazılamayan kayıt sayısıyla loglanır.
+  Kapasite **girişte** (üretici + geri-ekleme), aşan kayıt `dropped` sayılır;
+  backlog/en eski yaş/written/dropped/retried/flush-hatası sayaçları + dakikada bir
+  uyarı. `_lastPositions` artık kadro anlık görüntüsüne göre temizleniyor. Test:
+  `StateRecorderShutdownTests` (5), **gerçek SQLite yazma kilidi** dahil; dört
+  sondajın her biri bir kırmızı. Tam suite 3.851, üç koşu. *Disk doluluğu/yavaş disk
+  senaryoları ayrı koşulmadı; spool yazılmadı — politika açık kayıp + rapor.*
+- **İŞ-80 KAPANDI (Beyond-Source-X B5)** — 2026-09-14. Tick başına A* bütçesi,
+  paralel işçilerin kapıştığı bir sayaçtı: aramayı **ilk ulaşan** kazanıyordu ve
+  kaybeden 150 ms yol ertelemesi alıyordu — ki bu **durum**. Kararları uygulamadan
+  önce sıralamak, farklı bir **kümenin** seçilmiş olmasını geri alamaz; yani
+  "deterministik" uygulama sırasını anlatıyordu, ortaya çıkan dünyayı değil.
+  **Onarım (planın kendi tarifi):** adaylar artık **seri aşamada**, kararlı ve
+  **dönen** sırayla seçiliyor — sabit sıra deterministik olur ama kuyruğu sessizce aç
+  bırakırdı. Kabul kota değil **tavan**. Kurulmamış bütçe yine **sınırsız**: ilk
+  denememde "kimse arama yapamaz" oldu ve mevcut bir test yakaladı — tam da bu
+  incelemenin peşindeki sessiz arıza türü olurdu. Test:
+  `PathBudgetDeterminismTests` (5); sondajda adalet 1, kabul 4 kırmızı. Tam suite
+  3.846, üç koşu. *Planın "tick zamanını tüm Build koduna geçir" maddesi açık.*
+- **İŞ-79 KAPANDI (Beyond-Source-X B12)** — 2026-09-14. Multicore tick,
+  `ViewNeedsRefresh`'i `ApplyViewDelta`'dan **önce** temizliyordu; Apply veya
+  statik-kapı senkronu patlarsa tick tükettiği NPC'leri kurtarıyor ama **o
+  istemcinin** tazeleme isteğini kimse yeniden kurmuyordu — oyuncu hareket edene
+  kadar ekranındaki eksik eşya/yaratık eksik kalıyordu. Sessiz arıza: sunucu
+  toparlanıp tam hızda devam ediyor, yanlış dünyayla kalan tek kişi oyuncu. İstek
+  artık yalnız görünüm **gönderildikten sonra** tüketiliyor; exception yutulmadan
+  yeniden fırlatılıyor ki tick'i bırakma kararı tick'in kendi işleyicisinde kalsın.
+  Tek-thread'li iki yol kontrol edildi — zaten doğruydu. Test:
+  `ViewRefreshRecoveryTests` (4); sondajda 1 kırmızı. Tam suite 3.841, üç koşu.
+  *D03'ün geniş multicore hata-enjeksiyon matrisi açık.*
 - **İŞ-78 KAPANDI (Beyond-Source-X B10 + B11'in kısa-okuma yarısı)** — 2026-09-14.
   **B10:** replay'in *"serial'lar nerede"* tablosu yanlıştı, ve orada yanılmak
   atlamak değil **bozmak**: ses paketinde serial yokken mode/ses/seviye eziliyordu

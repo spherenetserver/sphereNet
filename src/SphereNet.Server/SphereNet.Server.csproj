@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SphereNet.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SphereNet.Core\SphereNet.Core.csproj" />
     <ProjectReference Include="..\SphereNet.Scripting\SphereNet.Scripting.csproj" />
     <ProjectReference Include="..\SphereNet.MapData\SphereNet.MapData.csproj" />

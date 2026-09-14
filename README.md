@@ -29,7 +29,7 @@ Capabilities the classic engine does not have:
 | **4 save formats + live switching** | `Text` (100%) / `TextGz` (~15%) / `Binary` (~50%) / `BinaryGz` (~8–10%); `.SAVEFORMAT BinaryGz 4` migrates format + shard count at runtime; `SAVESHARDS=2–16` writes parallel hash shards; `SAVEBACKGROUND=1` moves the write off the main loop |
 | **Multi-database MySQL** | Several named `[MYSQL <name>]` connections at once; scripts switch with `db.select <name>` |
 | **Multicore tick pipeline** | Snapshot/Build phases run parallel, Apply stays serial & deterministic; auto-fallback to single-thread on error |
-| **Sector sleeping** | Only sectors near online players tick — a 30k-NPC idle world costs 0.1 ms; deadlines are absolute, and each timer class has a stated worst-case delay ([contract](docs/ARCHITECTURE.md#sectors-and-sector-sleeping)) |
+| **Sector sleeping** | Only sectors near online players tick — a 30k-NPC idle world costs 0.1 ms. What sleeps is character work (AI, regen, poison); item deadlines are exact wherever the item lies, from world-level due queues ([contract](docs/ARCHITECTURE.md#sectors-and-sector-sleeping)) |
 | **Delta views** | Field-level change tracking (`DirtyFlag`) sends only what changed, not full object resends |
 | **Memory-mapped maps** | The OS pages MUL files on demand (~200 MB saved vs full RAM load) |
 | **NPC timer wheel** | 256-slot wheel schedules NPC actions O(1) instead of scanning every NPC per tick |
@@ -55,8 +55,11 @@ Measured **2026-07-20 on the current build** with the in-tree harness (real TCP 
 - GC: blocking Gen2 ≈ 0–1 per 30 s window in every scenario; RSS ~450–700 MB.
 
 The dominant cost is simultaneously-active AI, not population or client count. A sleeping
-sector costs nothing to tick; what it still costs is the maintenance sweep and the decay
-catch-up that keep its timers moving — see the timer contract in
+sector costs nothing to tick, and an awake one costs what is *due* rather than what it
+holds: item deadlines live in due-ordered queues instead of being found by walking every
+item every tick. On a separate rig, 500 players with 50,000 NPCs and 300,000 ground items
+measure 1.5 ms p50 clustered in towns and 11.9 ms p50 scattered across the whole map —
+conditions, method and the timer contract are in
 [ARCHITECTURE](docs/ARCHITECTURE.md#sectors-and-sector-sleeping).
 
 ## Quick start

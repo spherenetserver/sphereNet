@@ -29,7 +29,7 @@ Klasik motorda olmayan yetenekler:
 | **4 kayıt formatı + canlı geçiş** | `Text` (%100) / `TextGz` (~%15) / `Binary` (~%50) / `BinaryGz` (~%8–10); `.SAVEFORMAT BinaryGz 4` format + shard sayısını çalışırken taşır; `SAVESHARDS=2–16` paralel hash shard yazar; `SAVEBACKGROUND=1` yazımı ana döngüden çıkarır |
 | **Çoklu MySQL veritabanı** | Aynı anda birden çok isimli `[MYSQL <isim>]` bağlantısı; scriptler `db.select <isim>` ile geçer |
 | **Çok çekirdekli tick hattı** | Snapshot/Build fazları paralel, Apply seri & deterministik; hata durumunda otomatik tek-thread'e düşer |
-| **Sektör uykusu** | Yalnızca çevrimiçi oyunculara yakın sektörler tick alır — 30 bin NPC'li boş dünya 0.1 ms; timer'lar gerçek-saat doğruluğunu korur |
+| **Sektör uykusu** | Yalnızca çevrimiçi oyunculara yakın sektörler tick alır — 30 bin NPC'li boş dünya 0.1 ms. Uyuyan şey **karakter işi** (AI, regen, zehir); eşya son tarihleri, eşya nerede olursa olsun dünya düzeyindeki vade kuyruklarından **tam zamanında** çalışır ([sözleşme](docs/ARCHITECTURE.md#sectors-and-sector-sleeping)) |
 | **Delta view** | Alan-bazlı değişiklik takibi (`DirtyFlag`) yalnızca değişeni gönderir, tam nesne tekrarı yok |
 | **Bellek-eşlemeli haritalar** | MUL dosyalarını OS sayfalar (tam RAM yüklemeye göre ~200 MB tasarruf) |
 | **NPC timer çarkı** | 256 slotlu çark NPC aksiyonlarını O(1) planlar; her tick tüm NPC'leri taramaz |
@@ -54,7 +54,13 @@ Klasik motorda olmayan yetenekler:
 - Kayıt: 102.400 item + 50.440 karakter → **1.08 sn**, dünya çalışmaya devam ederken (BinaryGz, 3 shard, paralel yakalama).
 - GC: bloklayan Gen2 her senaryoda 30 sn'lik pencere başına ≈ 0–1; RSS ~450–700 MB.
 
-Baskın maliyet, popülasyon veya istemci sayısı değil **aynı anda aktif olan AI'dır** — uyuyan sektörler bedavadır.
+Baskın maliyet, popülasyon veya istemci sayısı değil **aynı anda aktif olan AI'dır**. Uyuyan
+sektör tick maliyeti taşımaz; uyanık sektör ise tuttuğu kadar değil **vadesi gelen kadar**
+maliyet çıkarır — eşya son tarihleri, her tick her eşyayı gezerek değil, vade sıralı
+kuyruklardan bulunur. Ayrı bir makinede ölçüldüğünde 500 oyuncu, 50.000 NPC ve 300.000 yer
+eşyasıyla dünya tick'i şehirlerde kümeli oyuncularda 1,5 ms p50, haritaya dağınık
+oyuncularda 11,9 ms p50; koşullar, yöntem ve timer sözleşmesi
+[ARCHITECTURE](docs/ARCHITECTURE.md#sectors-and-sector-sleeping) içinde.
 
 ## Hızlı başlangıç
 

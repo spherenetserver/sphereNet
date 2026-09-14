@@ -14,7 +14,11 @@ public sealed class MultiReader : IDisposable
 {
     private readonly BinaryReader _idxReader;
     private readonly BinaryReader _dataReader;
-    private readonly Dictionary<int, MultiDef> _cache = [];
+    /// <summary>Concurrent because GetMulti is reached from the parallel NPC prestage
+    /// through WalkCheck: a plain dictionary written from two threads at once can
+    /// corrupt its own buckets, which is a worse failure than the stale read it looks
+    /// like.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, MultiDef> _cache = new();
 
     private const int OriginalComponentSize = 12; // tileId:2 + dx:2 + dy:2 + dz:2 + visible:4
     private const int HighSeasComponentSize = 16; // ... + shipAccess:4
@@ -129,32 +133,64 @@ public sealed class MultiReader : IDisposable
         return multi;
     }
 
+    /// <summary>Read a run of bytes from a file by POSITION, holding no cursor.
+    ///
+    /// The reads below used to be a seek on a shared BinaryReader followed by a
+    /// sequence of small reads from it - the same shape the classic map reader had, and
+    /// the same failure: two threads interleave and each parses the other's bytes.
+    /// GetMulti caches, so it mostly happens on a multi's FIRST sighting, which is
+    /// exactly when a creature walks onto a ship or into a house nobody has touched
+    /// yet (review finding B4, same class).</summary>
+    private static bool ReadAt(BinaryReader reader, long offset, Span<byte> into)
+    {
+        var handle = (reader.BaseStream as FileStream)?.SafeFileHandle;
+        if (handle == null) return false;
+        int read = 0;
+        while (read < into.Length)
+        {
+            int n = RandomAccess.Read(handle, into[read..], offset + read);
+            if (n <= 0) return false;
+            read += n;
+        }
+        return true;
+    }
+
     private MultiDef? ReadMulti(int multiId)
     {
         long idxOffset = (long)multiId * IdxEntrySize;
         if (idxOffset + IdxEntrySize > _idxReader.BaseStream.Length)
             return null;
 
-        _idxReader.BaseStream.Seek(idxOffset, SeekOrigin.Begin);
-        int dataOffset = _idxReader.ReadInt32();
-        int dataLength = _idxReader.ReadInt32();
-        _idxReader.ReadInt32(); // extra
+        Span<byte> idx = stackalloc byte[IdxEntrySize];
+        if (!ReadAt(_idxReader, idxOffset, idx))
+            return null;
+        int dataOffset = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(idx);
+        int dataLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(idx[4..]);
+        // idx[8..] is "extra" — skipped.
 
         if (dataOffset < 0 || dataLength <= 0)
+            return null;
+        if ((long)dataOffset + dataLength > _dataReader.BaseStream.Length)
             return null;
 
         int count = dataLength / _componentSize;
         var components = new MultiComponent[count];
 
-        _dataReader.BaseStream.Seek(dataOffset, SeekOrigin.Begin);
+        byte[] raw = new byte[dataLength];
+        if (!ReadAt(_dataReader, dataOffset, raw))
+            return null;
+
         for (int i = 0; i < count; i++)
         {
-            ushort tileId = _dataReader.ReadUInt16();
-            short dx = _dataReader.ReadInt16();
-            short dy = _dataReader.ReadInt16();
-            short dz = _dataReader.ReadInt16();
-            uint flags = _dataReader.ReadUInt32();
-            uint shipAccess = _componentSize == HighSeasComponentSize ? _dataReader.ReadUInt32() : 0u;
+            var span = raw.AsSpan(i * _componentSize);
+            ushort tileId = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(span);
+            short dx = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(span[2..]);
+            short dy = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(span[4..]);
+            short dz = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(span[6..]);
+            uint flags = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(span[8..]);
+            uint shipAccess = _componentSize == HighSeasComponentSize
+                ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(span[12..])
+                : 0u;
 
             components[i] = new MultiComponent
             {

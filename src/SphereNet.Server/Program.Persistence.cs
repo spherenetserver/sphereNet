@@ -439,8 +439,24 @@ public static partial class Program
             _saver.ShardCount = shards;
             _config.SaveShards = shards;
         }
-        _log.LogInformation("SAVEFORMAT: switching to {Format} (shards={Shards}) and saving now",
-            fmt, _saver.ShardCount);
+        // The setting is already changed; whether a save happens NOW is a separate
+        // question. A background write still running makes PerformSave skip - and the
+        // write in flight keeps the format it was prepared with, so the switch reaches
+        // disk at the next save rather than this one. Saying "and saving now"
+        // regardless told the operator the new format had landed when it had not.
+        bool writing = _backgroundSaveTask is { IsCompleted: false };
+        if (writing)
+        {
+            _log.LogInformation(
+                "SAVEFORMAT: switching to {Format} (shards={Shards}); a background save is still writing in the " +
+                "previous format, so the change takes effect at the next save",
+                fmt, _saver.ShardCount);
+        }
+        else
+        {
+            _log.LogInformation("SAVEFORMAT: switching to {Format} (shards={Shards}) and saving now",
+                fmt, _saver.ShardCount);
+        }
         PerformSave();
     }
 }

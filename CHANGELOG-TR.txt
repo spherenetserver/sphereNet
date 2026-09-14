@@ -3,6 +3,148 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Harita okuyucusu artik dosya imlecini paylasmiyor
+----------------------------------------
+
+FIX - Klasik bir .mul zemin blogunu okumak, tek ve paylasilan bir BinaryReader uzerinde
+        bir seek ve ardindan 193 kucuk okuma demek. Bunu ayni anda yapan iki thread'in
+        her biri kendi blogunu almaz: ic ice gecerler ve her biri digerinin imleci
+        biraktigi yerden bayt okur. Sentetik bir harita uzerinde sekiz isci ve 20.000
+        okumayla burada 10.104 yanlis blok ve 3.403 exception cikti - incelemenin kendi
+        kosusu 12.197 ve 3.506 bildirmisti; aradaki fark scheduler, ciddiyet degil
+        (inceleme bulgusu B4).
+
+        Oyuna ulasiyor, cunku haritayi isci thread'lerden uzak tutan bir sey yok:
+        paralel NPC prestage zemini cozuyor, yani bir yaratik yuksekligi ve turu
+        dunyanin baska bir yerinden gelmis bir karonun uzerinden yol bulabiliyor. Burada
+        YANLIS olmak, BASARISIZ olmaktan kotudur - cagiran ayirt edemez ve deger dogruca
+        bir hareket kararina girer.
+
+        Okumalar artik konum tabanli ve imlec tutmuyor, yani istenen sayida thread ayni
+        anda okuyabilir. Kilit de dogrulugu duzeltirdi ve her harita okumasini arkasinda
+        siraya dizerdi.
+
+FIX - Multi okuyucusunda ayni sekil vardi - komsulara bakarken bulundu - ve daha iyi
+        saklaniyor: GetMulti onbellekliyor, yani paylasilan imlecli okuma yalnizca bir
+        multi'nin ILK gorulmesinde oluyor; ki bu tam da bir yaratigin kimsenin
+        dokunmadigi bir gemiye veya eve adim attigi an, ayni paralel yolda. Onbellegi de
+        o thread'lerden yazilan duz bir sozluktu - bu, bayat deger dondurmekten oteye
+        gecip kova bozulmasina yol acar.
+
+        Statics ve UOP okuyuculari kontrol edildi, guvenliler: ilki konum tabanli
+        bellek-eslemeli view'lardan okuyor, ikincisi yalnizca kurulusta indeksini
+        olustururken seek yapiyor.
+
+TEST - MapReaderConcurrencyTests (6). Fixture her blogu kendini tanimlar hale getiriyor,
+        yani yirtilmis bir okuma yalnizca karsilastirmayi gecemiyor degil, gercekte
+        hangi bloktan geldigini soyluyor. Iki okuyucudan birini paylasilan imlece geri
+        koymak es zamanli durumlari kirmiziya donduruyor - haritada dort, multi'de bir.
+
+[2026-09-14] - Bir kayit, basladigi formatta biter
+----------------------------------------
+
+FIX - Arka plan modunda dunya gezintisi ana dongude kalir, kodlama/yazma asamasi
+        isci thread'e gecer - ve ikisi de Format ile ShardCount'u AYNI degistirilebilir
+        saver'dan okur. SAVEFORMAT bu alanlari komut gelir gelmez ana dongude
+        degistiriyor; komutu ana donguye kuyruklamak bir sey cozmuyor, cunku yazici
+        zaten baska thread'de.
+
+        Pencere teorik degildi ve kaydi yalnizca "digerine cevirmiyordu". Yazici
+        uzantiyi dosya adlarini secerken, encoder'i her shard'i acarken, shard sayisini
+        bolumlerken okuyor - yani ortada gelen bir degisiklik kaydi BOLUYORDU. Tek bir
+        Text dosyasi olarak hazirlanan nesil, Text bir spheredata'nin yaninda dort
+        Binary shard olarak iniyordu: uzanti bir sey soyluyor, baytlar baskasini, ve
+        ortaya hicbir yukleyicinin anlamlandiramayacagi bir nesil cikiyor.
+
+        Yazma asamasi artik kaydin HAZIRLANDIGI andaki ayarlari kullaniyor. Devam eden
+        yazma, basladigi sey olarak bitiyor; yeni format bir sonraki kayitta gecerli
+        oluyor. Ayari degistirmek yine calisiyor - yalnizca coktan baslamis bir yazma
+        erisim disinda.
+
+FIX - SAVEFORMAT, ardindan kayit olsun olmasin "ve simdi kaydediyorum" diye
+        logluyordu. Arka planda suren bir yazma kaydi atlattigi icin operatore yeni
+        formatin indigi soyleniyor, oysa o formatta hicbir sey yazilmamis oluyordu.
+        Mesaj artik ikisinden hangisinin oldugunu soyluyor.
+
+TEST - BackgroundSaveFormatRaceTests (3) pencereyi denk getirmeye calismak yerine
+        bariyerle suruyor: yazici, operator komutu yazdiginda gercek bir arka plan
+        yazicisinin durdugu noktada bekliyor, format ve shard sayisi degistiriliyor,
+        sonra yazma birakiliyor. Canli ayarlari yeniden okumak ucunun ikisini kirmiziya
+        donduruyor.
+
+[2026-09-14] - Format gecisi artik eski dunyayi atmiyor
+----------------------------------------
+
+FIX - SAVEFORMAT'i degistirmek dunyanin adini degistirir: sphereworld.scp,
+        sphereworld.sbin olur; spherechars da oyle. Yedekler DOSYA ADINA GORE doner,
+        yani eski dosyalari yeni adin zincirine kimse dondurmedi - ve bayat-kardes
+        temizligi onlari sildi. Shard'da tek bir dunya nesli kaldi ve geri donus yolu
+        kalmadi. spheredata adini korudugu icin onun yedegi hayatta kaldi; sonucun
+        atlatilabilir gorunmesini saglayan da buydu.
+
+        Yerine gecilen dosya artik silinmek yerine KENDI uzantisinin yedek zincirine
+        emekli ediliyor. Yedek istemeyen bir shard yine yedek almiyor - emekli etmek,
+        kapattigi yedegi tutmak olurdu - ve bayat dosya yine gidiyor ki eski format
+        yenisini golgelemesin.
+
+FIX - Yukleyici geriye kalani dunya sayiyordu. Dunya ve karakter dosyasi olmayan
+        sunucu verisi bos bir dunya degildir; bitmemis bir yayinin artigidir. Onu
+        somutlastirmak yalnizca bilgi amacli bir logla (0, 0) donuyor, sonraki kayit da
+        o boslugu kalan yedeklerin uzerine yaziyordu - kurtarilabilir bir olayin kalici
+        hale gelme yolu tam olarak budur. Artik onceki nesle dusuyor, yoksa bunu
+        soyluyor. Gercekten yeni bir shard'in hic kayit dosyasi yoktur ve etkilenmez.
+
+        Ikisi birlikte: yeni dunya dosyasi kaybolan bir gecis artik bos baslamak yerine
+        onceki dunyasiyla geri geliyor (inceleme bulgusu B1).
+
+TEST - SaveGenerationIntegrityTests 11'e cikti: uctan uca gecis kurtarmasi, yerine
+        gecilen neslin saklanmasi, yedek kapaliyken de arkasini toplamasi, yalniz-veri
+        neslinin reddi ve bos dizinin hala taze baslangic olmasi. Yerine gecilen dosyayi
+        yeniden silmek ikisini, yalniz-veri neslini yeniden kabul etmek ikisini
+        kirmiziya donduruyor.
+
+[2026-09-14] - Kayit nesli, her turun ilk dosyasi degil BUTUN dosyalaridir
+----------------------------------------
+
+FIX - Bir dunya kaydi birkac dosyaya bolunur, shard'li kayit bunlarin her birini
+        tekrar boler. Yukleyici ayni kayittan geldiklerini ucunu karsilastirarak
+        dogruluyordu - sphereworld'un ilk shard'i, spherechars'in ilk shard'i ve
+        spheredata - yani shard'li her duzende birinciden sonrakiler hicbir seyle
+        karsilastirilmiyordu. Ikinci shard'in eski bir kopyasini koyun: yukleyici
+        karisimi kabul ediyor ve dunyayi IKI FARKLI ANDAN kuruyordu; kabi, sahibi ve
+        kusanma baglari neslin geri kalaninin hic sahip olmadigi nesneleri adlandiran
+        esyalar.
+
+        Daha sessiz yarisi: dongu ilk DAMGASIZ dosyada pes edip "tutarli" diyordu,
+        yani tek bir klasik veya kesik shard neslin diger butun dosyalari icin -
+        damgali ve gercekten celisenler dahil - dogrulamayi kapatiyordu.
+
+FIX - Her dosyayi karsilastirmak tek basina YETMEDI; bunu soylemeye deger, cunku ilk
+        onarim tamam gorunuyordu ve testler hala kaliyordu. Karsilastirilan deger
+        SAVECOUNT'tu ve o sayac yeni surecte sifirdan basliyor: iki ilgisiz kayit ayni
+        numarayi tasiyor, yani yeniden baslatmadan onceki ve sonraki kayittan
+        karistirilmis bir nesil kusursuzca tutarli okunuyordu.
+
+        Her kayit artik ayrica sirali degil BENZERSIZ bir nesil jetonu yaziyor - her
+        dunya/karakter shard'inda [SAVEID] GEN=, sunucu verisinde [SPHERE]
+        SAVEGENERATION=. Saat siralamayi, rastgele yarisi ayni tick'te farkli
+        sureclerin aldigi iki kaydi ayiriyor. Yukleyici jetonu karsilastiriyor, ondan
+        once yazilmis dosyalar icin eski sayaca dusuyor.
+
+        Damgasi hic olmayan klasik Sphere kaydi kabul edilmeye devam ediyor: kontrol
+        yalnizca AKTIF OLARAK CELISEN dosyalari reddedebilir. Yedek varsa cevap hata
+        degil, onceki neslin tamami.
+
+TEST - SaveGenerationIntegrityTests (6): dunya tarafinda bayat shard, karakter
+        tarafinda bayat shard, damgasizin yaninda bayat, temiz shard'li kayit, hic
+        damgasiz kayit ve tutarli yedege dusus. Taban basina tek dosyaya donmek altinin
+        dordunu, jetonu yeniden sirali yapmak yine dordunu kirmiziya donduruyor - iki
+        parca da tasiyici.
+
+        SaveRoundTripParityTests iki ardisik kaydi metin olarak karsilastiriyor ve
+        jeton her seferinde BILEREK farkli. Saat alanlariyla ayni normalizasyona
+        alindi, ayni nedenle: tekrar eden bir jeton hicbir kanit olmazdi.
+
 [2026-09-14] - Gizlenme, aclik ve stat onarimi: ini anahtarlarinin son paketi
 ----------------------------------------
 

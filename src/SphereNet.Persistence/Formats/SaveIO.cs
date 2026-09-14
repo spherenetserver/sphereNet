@@ -18,6 +18,20 @@ public static class SaveIO
     public const string ServerDataSection = "SPHERE";
     public const string SaveCountProperty = "SAVECOUNT";
 
+    /// <summary>Generation token: the value that says two files came from the SAME
+    /// save, written beside the save index in every stamped file.
+    ///
+    /// The index alone cannot do it. SAVECOUNT is a counter that starts again at zero
+    /// in a fresh process, so two unrelated saves - one before a restart, one after -
+    /// carry the same number, and a mixed generation built from them is
+    /// indistinguishable from a consistent one. The token is unique per save instead
+    /// of sequential (review finding B2).</summary>
+    public const string GenerationProperty = "GEN";
+
+    /// <summary>The same token in the server-data file, which has its own section and
+    /// its own name for the counter.</summary>
+    public const string SaveGenerationProperty = "SAVEGENERATION";
+
     /// <summary>Canonical on-disk extension for each format.</summary>
     public static string ExtensionFor(SaveFormat fmt) => fmt switch
     {

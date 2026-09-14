@@ -22,6 +22,10 @@ public sealed class WorldSaver
     private readonly ILogger<WorldSaver> _logger;
     private int _saveIndex;
 
+    /// <summary>Identifies the save currently being written. See
+    /// <see cref="SaveIO.GenerationProperty"/> for why the index cannot do this.</summary>
+    private long _generation;
+
     /// <summary>Format new saves will be written in. Runtime-changeable via
     /// the migration command; loader auto-detects so mixing formats in a
     /// snapshot dir is safe.</summary>
@@ -85,12 +89,27 @@ public sealed class WorldSaver
     /// main loop keeps mutating the world (E2 / SAVEBACKGROUND).</summary>
     public sealed class PreparedWorldSave
     {
-        internal PreparedWorldSave(WorldSaveSnapshot snapshot, string serverData, int saveIndex)
+        internal PreparedWorldSave(WorldSaveSnapshot snapshot, string serverData, int saveIndex,
+            SaveFormat format, int shardCount, long generation)
         {
             Snapshot = snapshot;
             ServerData = serverData;
             SaveIndex = saveIndex;
+            Format = format;
+            ShardCount = shardCount;
+            Generation = generation;
         }
+
+        /// <summary>The settings this save was prepared with. The write phase uses
+        /// these rather than the saver's live fields, because the two run on different
+        /// threads and SAVEFORMAT changes the live ones from the main loop at any
+        /// moment (review finding B3). A change landing mid-write did not switch the
+        /// save over - the writer reads the extension, the encoder and the shard count
+        /// at different points, so it SPLIT it: a generation prepared as one Text file
+        /// landing as four Binary shards beside a Text spheredata.</summary>
+        internal SaveFormat Format { get; }
+        internal int ShardCount { get; }
+        internal long Generation { get; }
 
         internal WorldSaveSnapshot Snapshot { get; }
         internal string ServerData { get; }
@@ -102,9 +121,16 @@ public sealed class WorldSaver
     public PreparedWorldSave Prepare(GameWorld world)
     {
         _saveIndex++;
+        // A token for THIS save, unique rather than sequential. SAVECOUNT restarts at
+        // zero in a fresh process, so it cannot tell one save from another across a
+        // restart - and a generation mixed from two such saves then looks internally
+        // consistent (review finding B2). The clock supplies ordering, the random half
+        // separates two saves taken in the same tick by different processes.
+        _generation = DateTime.UtcNow.Ticks ^ ((long)Random.Shared.Next() << 20);
         var snapshot = CaptureSnapshot(world);
         string serverData = BuildServerData(world);
-        return new PreparedWorldSave(snapshot, serverData, _saveIndex);
+        return new PreparedWorldSave(snapshot, serverData, _saveIndex,
+            Format, ShardCount, _generation);
     }
 
     /// <summary>WRITE phase: shard, encode and commit the captured records.
@@ -122,8 +148,8 @@ public sealed class WorldSaver
             // spheredata) to its .tmp sibling; touch no live file yet. A crash here
             // leaves the previous generation fully intact — only stray .tmp files,
             // which the catch below and the next save clean up.
-            var itemPending = WriteShardsToTmp(prepared.Snapshot.Items, savePath, "sphereworld", isItems: true, prepared.SaveIndex, out int itemCount);
-            var charPending = WriteShardsToTmp(prepared.Snapshot.Characters, savePath, "spherechars", isItems: false, prepared.SaveIndex, out int charCount);
+            var itemPending = WriteShardsToTmp(prepared, prepared.Snapshot.Items, savePath, "sphereworld", isItems: true, out int itemCount);
+            var charPending = WriteShardsToTmp(prepared, prepared.Snapshot.Characters, savePath, "spherechars", isItems: false, out int charCount);
             WriteServerDataToTmp(savePath, prepared.ServerData);
 
             // Phase 2 — commit all three back-to-back. Previously each logical file
@@ -456,10 +482,13 @@ public sealed class WorldSaver
     /// from commit lets <see cref="WritePrepared"/> stage sphereworld, spherechars
     /// and spheredata to .tmp before committing any of them, so a crash between
     /// writes can never leave a new-generation file beside an old-generation one.</summary>
-    private PendingShardCommit WriteShardsToTmp(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems, int saveIndex, out int totalCount)
+    private PendingShardCommit WriteShardsToTmp(PreparedWorldSave prepared, IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems, out int totalCount)
     {
-        int shards = Math.Clamp(ShardCount, 0, 16);
-        string ext = SaveIO.ExtensionFor(Format);
+        // The PREPARED settings, not the live ones: this runs on the background writer
+        // while the main loop may be changing the saver's fields (review finding B3).
+        int saveIndex = prepared.SaveIndex;
+        int shards = Math.Clamp(prepared.ShardCount, 0, 16);
+        string ext = SaveIO.ExtensionFor(prepared.Format);
         long sizeLimit = Math.Max(0, ShardSizeBytes);
 
         List<string> outputFiles;
@@ -468,13 +497,13 @@ public sealed class WorldSaver
         {
             string fileName = baseName + ext;
             string tmp = Path.Combine(savePath, fileName + ".tmp");
-            totalCount = WriteOneShard(records, tmp, isItems, shardIndex: 0, shardCount: 1, saveIndex);
+            totalCount = WriteOneShard(records, tmp, isItems, shardIndex: 0, shardCount: 1, saveIndex, prepared.Format, prepared.Generation);
             outputFiles = new List<string> { fileName };
         }
         else if (shards == 1)
         {
             outputFiles = new List<string>();
-            totalCount = WriteRollingShards(records, savePath, baseName, ext, sizeLimit, isItems, outputFiles, saveIndex);
+            totalCount = WriteRollingShards(records, savePath, baseName, ext, sizeLimit, isItems, outputFiles, saveIndex, prepared.Format, prepared.Generation);
 
             // Small worlds that never hit the rolling threshold get promoted
             // to the classic {base}{ext} name so there's no lone .0 suffix
@@ -511,7 +540,7 @@ public sealed class WorldSaver
                 for (int i = 0; i < shards; i++)
                 {
                     string tmp = Path.Combine(savePath, outputFiles[i] + ".tmp");
-                    counts[i] = WriteOneShard(shardBuckets[i], tmp, isItems, i, shards, saveIndex);
+                    counts[i] = WriteOneShard(shardBuckets[i], tmp, isItems, i, shards, saveIndex, prepared.Format, prepared.Generation);
                 }
             }
             else
@@ -522,7 +551,7 @@ public sealed class WorldSaver
                     int shardIdx = i;
                     string tmp = Path.Combine(savePath, outputFiles[shardIdx] + ".tmp");
                     tasks[i] = Task.Run(() =>
-                        counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards, saveIndex));
+                        counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards, saveIndex, prepared.Format, prepared.Generation));
                 }
                 Task.WaitAll(tasks);
             }
@@ -540,7 +569,7 @@ public sealed class WorldSaver
         {
             var manifest = new ShardManifest
             {
-                Format = Format,
+                Format = prepared.Format,
                 ShardCount = outputFiles.Count,
                 Files = outputFiles,
             };
@@ -587,7 +616,8 @@ public sealed class WorldSaver
     /// Size is polled on the raw FileStream (compressed bytes for gzip) which
     /// may lag by up to one gzip block — close enough for rolling.</summary>
     private int WriteRollingShards(IEnumerable<SaveRecord> records, string savePath, string baseName,
-        string ext, long sizeLimit, bool isItems, List<string> outputFiles, int saveIndex)
+        string ext, long sizeLimit, bool isItems, List<string> outputFiles, int saveIndex,
+        SaveFormat format, long generation)
     {
         int count = 0;
         int fileIdx = 0;
@@ -599,11 +629,11 @@ public sealed class WorldSaver
             string name = $"{baseName}.{fileIdx}{ext}";
             outputFiles.Add(name);
             string tmp = Path.Combine(savePath, name + ".tmp");
-            writer = SaveIO.OpenWriter(tmp, Format, out raw);
+            writer = SaveIO.OpenWriter(tmp, format, out raw);
             writer.WriteHeaderComment($"SphereNet {(isItems ? "World Items" : "World Characters")} Save");
             writer.WriteHeaderComment($"Save #{saveIndex} at {DateTime.UtcNow:u}");
             writer.WriteHeaderComment($"Rolling segment {fileIdx}");
-            WriteSaveIdRecord(writer!, saveIndex);
+            WriteSaveIdRecord(writer!, saveIndex, generation);
         }
 
         OpenNext();
@@ -638,14 +668,14 @@ public sealed class WorldSaver
     }
 
     private int WriteOneShard(IEnumerable<SaveRecord> records, string tmpPath, bool isItems,
-        int shardIndex, int shardCount, int saveIndex)
+        int shardIndex, int shardCount, int saveIndex, SaveFormat format, long generation)
     {
-        using var writer = SaveIO.OpenWriter(tmpPath, Format);
+        using var writer = SaveIO.OpenWriter(tmpPath, format);
         writer.WriteHeaderComment($"SphereNet {(isItems ? "World Items" : "World Characters")} Save");
         writer.WriteHeaderComment($"Save #{saveIndex} at {DateTime.UtcNow:u}");
         if (shardCount > 1)
             writer.WriteHeaderComment($"Shard {shardIndex}/{shardCount}");
-        WriteSaveIdRecord(writer, saveIndex);
+        WriteSaveIdRecord(writer, saveIndex, generation);
 
         int count = 0;
 
@@ -696,10 +726,11 @@ public sealed class WorldSaver
     // spherechars — is detected (their SAVEIDs disagree) and the mixed generation is
     // rejected in favour of the last consistent one. Legacy saves have no stamp; the
     // loader skips the check when any file lacks one.
-    private static void WriteSaveIdRecord(ISaveWriter writer, int saveIndex)
+    private static void WriteSaveIdRecord(ISaveWriter writer, int saveIndex, long generation)
     {
         writer.BeginRecord(SaveIO.SaveIdSection);
         writer.WriteProperty(SaveIO.SaveIdProperty, saveIndex.ToString());
+        writer.WriteProperty(SaveIO.GenerationProperty, generation.ToString());
         writer.EndRecord();
     }
 
@@ -1215,6 +1246,7 @@ public sealed class WorldSaver
             w.BeginRecord("SPHERE");
             w.WriteProperty("VERSION", "1");
             w.WriteProperty("SAVECOUNT", _saveIndex.ToString());
+            w.WriteProperty(SaveIO.SaveGenerationProperty, _generation.ToString());
             w.WriteProperty("TIME", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
             // The GAME clock, in game minutes. TIME above is the real-world date the
             // save was taken and always has been; reading it back as game time would
@@ -1358,6 +1390,37 @@ public sealed class WorldSaver
         }
     }
 
+    /// <summary>
+    /// Move a superseded live save file into its own <c>.bakN</c> chain rather than
+    /// deleting it. Returns false when it could not be preserved, so the caller falls
+    /// back to removing it.
+    ///
+    /// The chain is keyed by the file's OWN name, which is the point: after a format
+    /// change the new generation's backups live under the new extension and the old
+    /// generation's under the old one, and the loader probes both.
+    /// </summary>
+    private bool RetireSupersededFile(string livePath)
+    {
+        try
+        {
+            RotateBackups(livePath);              // shift this name's own .bakN chain
+            string bak1 = livePath + ".bak1";
+            // RotateBackups already copied the live file to .bak1; the copy is the
+            // preserved generation, so the live file itself can go.
+            if (!File.Exists(bak1))
+                return false;
+            File.Delete(livePath);
+            _logger.LogInformation(
+                "Save format changed: kept the previous generation as {Backup}", Path.GetFileName(bak1));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not retire superseded save {File}", livePath);
+            return false;
+        }
+    }
+
     private void CleanupTmpFiles(string savePath)
     {
         try
@@ -1387,6 +1450,16 @@ public sealed class WorldSaver
             string full = Path.Combine(savePath, p);
             if (File.Exists(full) && !keep.Contains(p))
             {
+                // A live save file of this base under ANOTHER extension is the
+                // previous generation, not litter: this save changed SAVEFORMAT and
+                // wrote its world under a new name. Backups rotate by file name, so
+                // nothing rotated it - deleting it here left the shard with no
+                // recoverable previous generation at all, which is what turned a
+                // corrupt migrated save into a permanently empty world (review
+                // finding B1). Retire it into its own backup chain instead.
+                if (BackupLevels > 0 && RetireSupersededFile(full))
+                    continue;
+
                 try { File.Delete(full); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Could not remove stale save {File}", full); }
             }

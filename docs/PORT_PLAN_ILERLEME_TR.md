@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `7583b9d` + İŞ-67..72 (item sesleri; kaynak listesi dilbilgisi; ini paket 1-4) |
-| Tam test | 3.803 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 3 kapandı** (PLAN-301..305). Sıradaki dalga seçilecek |
+| Son commit | `3f53bbb` + İŞ-73..76 (kayıt nesli bütünlüğü; harita okuyucu yarışı) |
+| Tam test | 3.823 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B4 kapandı.** Sıradaki: B8 (MySQL provider) / B9-B11 |
 
 ## Çalışma sırası
 
@@ -469,6 +469,54 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-76 KAPANDI (Beyond-Source-X B4)** — 2026-09-14. Klasik `.mul` zemin bloğu
+  okuması **tek ve paylaşılan** bir `BinaryReader` üzerinde seek + 193 küçük okuma
+  demekti; sekiz işçi, 20.000 okuma → **10.104 yanlış blok, 3.403 exception**
+  (incelemenin koşusu 12.197/3.506). Paralel NPC prestage zemini çözdüğü için bir
+  yaratık, yüksekliği dünyanın başka yerinden gelmiş bir karonun üzerinden yol
+  bulabiliyordu. **Onarım:** kilit değil, **konum tabanlı okuma** (`RandomAccess`) —
+  kilit her harita okumasını sıraya dizerdi. **Komşular kontrol edildi:** statics ve
+  UOP güvenli; **`MultiReader` aynı kusurdaydı** (önbelleklediği için yalnız ilk
+  görülmede, ki o da gemiye/eve ilk adım anı) ve önbelleği düz `Dictionary`'ydi —
+  ikisi de düzeltildi. Test: `MapReaderConcurrencyTests` (6); sondajda 4 ve 1
+  kırmızı. Tam suite 3.823, üç koşu. *Gerçek MUL üzerinde prestage entegrasyon
+  testi ve MUL/UOP karşılaştırması yapılmadı.*
+- **İŞ-75 KAPANDI (Beyond-Source-X B3)** — 2026-09-14. İnceleme bunu kod bulgusu
+  olarak işaretleyip bariyerli yarış testi istemişti; test yazıldı ve yarışı
+  **deterministik** gösterdi: tek bir Text dosyası olarak hazırlanan nesil, Text bir
+  `spheredata`'nın yanında **dört Binary shard** olarak indi — yani değişiklik kaydı
+  çevirmiyor, **bölüyor**. Arka plan modunda gezinti ana döngüde, yazma işçi
+  thread'de ve ikisi de aynı değiştirilebilir saver'dan okuyordu. **Onarım:** yazma
+  aşaması artık kaydın **hazırlandığı andaki** ayarları kullanıyor; devam eden yazma
+  başladığı şey olarak bitiyor, yeni format sonraki kayıtta geçerli. Ayrıca
+  `SAVEFORMAT` artık koşulsuz "ve şimdi kaydediyorum" demiyor. Test:
+  `BackgroundSaveFormatRaceTests` (3); sondajda 2 kırmızı. Tam suite 3.817, üç koşu.
+  **İncelemenin üç P1 kayıt bulgusu (B1/B2/B3) da kapandı**; nesil bazlı yayınlama
+  tasarımı ve D01 matrisi açık.
+- **İŞ-74 KAPANDI (Beyond-Source-X B1)** — 2026-09-14. Yeniden üretim incelemenin
+  dosya listesini aynen verdi. **İki ayrı kusur:** (1) `SAVEFORMAT` değişince dünya
+  ad değiştiriyor, yedekler **dosya adına göre** döndüğü için eski dosyaları kimse
+  döndürmedi ve bayat-kardeş temizliği onları sildi — geri dönüş yolu kalmadı;
+  (2) yükleyici geriye kalan **yalnız sunucu verisini** dünya sayıyor, (0, 0)
+  dönüyor ve sonraki kayıt o boşluğu kalan yedeklerin üzerine yazıyordu. **Onarım:**
+  yerine geçilen dosya kendi uzantısının yedek zincirine **emekli ediliyor**
+  (`BackupLevels=0` iken değil); yükleyici dünya/karakter dosyası olmayan nesli
+  reddedip önceki nesle düşüyor. Artık yeni dünya dosyası kaybolan bir geçiş önceki
+  dünyasıyla geri geliyor. Test: `SaveGenerationIntegrityTests` (11); sondajda 2/2
+  kırmızı. Tam suite 3.814, üç koşu. *Nesil bazlı yayınlama tasarımı ve B1'in tam
+  kabul matrisi hâlâ yapılmadı.* Sıradaki: B3.
+- **İŞ-73 KAPANDI (Beyond-Source-X B2)** — 2026-09-14. Ana planda Dalga 3 kapandığı
+  ve PLAN-702 (soak) bu turda koşulmayacağı için inceleme planının P1 kuyruğuna
+  geçildi. **Sorun:** kayıt nesli tutarlılığı her tabanın yalnız **ilk** dosyasına
+  bakıyordu; shard'lı kayıtta ikinci shard hiçbir şeyle karşılaştırılmıyor, eski bir
+  kopyası konduğunda dünya **iki farklı andan** kuruluyordu. Ayrıca ilk **damgasız**
+  dosya doğrulamayı tümden kapatıyordu. **Onarım iki parçalı:** (1) her dosya
+  karşılaştırılıyor, damgasız olan yalnız kendisi atlanıyor; (2) bu yetmedi — sayaç
+  yeni süreçte sıfırlandığı için iki ilgisiz kayıt aynı numarayı taşıyordu, bu yüzden
+  her kayıt artık **benzersiz bir nesil jetonu** yazıyor (`GEN=` / `SAVEGENERATION=`),
+  jeton yoksa eski sayaca düşülüyor. Klasik damgasız kayıt kabul edilmeye devam
+  ediyor. Test: `SaveGenerationIntegrityTests` (6); sondajda her iki parça için de
+  4'er kırmızı. Tam suite 3.809, üç koşu. Sıradaki: B1 / B3.
 - **İŞ-72 KAPANDI (PLAN-302 dördüncü paketi — PLAN-302 TAMAMLANDI)** — 2026-09-14.
   **Sessiz ve tam bir kayıp:** paketteki her `[SKILLCLASS n]` yükleniyor ve bir daha
   **bulunamıyordu** — bölüm sayı yerine defname gibi hash'leniyordu. Canlı paketin

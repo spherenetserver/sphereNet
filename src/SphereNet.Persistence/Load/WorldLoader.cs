@@ -263,6 +263,23 @@ public sealed class WorldLoader
                 continue;
             }
 
+            // Server data on its own is not a world. A generation that has lost every
+            // world AND character file is the residue of a publish that did not
+            // finish - the shape a format migration leaves behind when the new file
+            // never lands, since spheredata keeps its name across the change while
+            // sphereworld and spherechars do not (review finding B1). Materialising it
+            // returns (0, 0) and the next save writes that emptiness over the backups,
+            // which is how a recoverable incident becomes a permanent one. A genuinely
+            // fresh shard has no files at all, and that case is IsEmpty above.
+            if (gen.ItemPaths.Count == 0 && gen.CharPaths.Count == 0)
+            {
+                _logger.LogError(
+                    "Save generation {Which} has server data but no world or character file — refusing to " +
+                    "treat it as an empty world; falling back to the previous generation",
+                    level == 0 ? "current" : $".bak{level}");
+                continue;
+            }
+
             var (ok, badFile) = ValidateGeneration(gen);
             if (!ok)
             {
@@ -371,27 +388,67 @@ public sealed class WorldLoader
     /// renames) leaves files from different saves whose stamps disagree. Enforced
     /// only when every present base is stamped — a legacy or partially-stamped
     /// generation can't be verified and is accepted rather than wrongly rejected.</summary>
+    /// <summary>
+    /// Does every file in this generation come from the SAME save?
+    ///
+    /// EVERY file, not one per base. The check used to read ItemPaths[0], CharPaths[0]
+    /// and DataPaths[0], which is all there is in a single-file layout - but a sharded
+    /// save has several of each, and the shards past the first were compared with
+    /// nothing at all. An older copy of a second shard could be dropped in and the
+    /// loader would build a world out of two different points in time: items whose
+    /// container, owner and equip links name objects the rest of the generation never
+    /// had (review finding B2).
+    ///
+    /// An UNSTAMPED file is skipped rather than trusted. Classic Sphere saves carry no
+    /// stamp, so their absence cannot be an error - but the old loop returned "accept"
+    /// at the first one it met, which switched verification off for every other file in
+    /// the generation, including stamped ones that did disagree.
+    /// </summary>
     private bool IsGenerationConsistent(GenerationPaths gen, out string detail)
     {
-        long? worldId = gen.ItemPaths.Count > 0
-            ? ReadStamp(gen.ItemPaths[0], SaveIO.SaveIdSection, SaveIO.SaveIdProperty) : null;
-        long? charId = gen.CharPaths.Count > 0
-            ? ReadStamp(gen.CharPaths[0], SaveIO.SaveIdSection, SaveIO.SaveIdProperty) : null;
-        long? dataId = gen.DataPaths.Count > 0
-            ? ReadStamp(gen.DataPaths[0], SaveIO.ServerDataSection, SaveIO.SaveCountProperty) : null;
-
-        detail = $"world={worldId?.ToString() ?? "-"} chars={charId?.ToString() ?? "-"} data={dataId?.ToString() ?? "-"}";
-
         long? reference = null;
-        foreach (var (count, id) in new[]
-                 { (gen.ItemPaths.Count, worldId), (gen.CharPaths.Count, charId), (gen.DataPaths.Count, dataId) })
+        string? referenceFile = null;
+        string? conflictFile = null;
+        long? conflictId = null;
+        int stamped = 0, unstamped = 0;
+
+        // The GENERATION token first, the save index only as a fallback for files
+        // written before the token existed. The index is a counter that restarts at
+        // zero in a fresh process, so two unrelated saves carry the same number and a
+        // generation mixed from them reads as consistent - which is what let the
+        // sharded case through even once every file was being compared.
+        foreach (var (paths, section, property, fallback) in new[]
+                 {
+                     (gen.ItemPaths, SaveIO.SaveIdSection, SaveIO.GenerationProperty, SaveIO.SaveIdProperty),
+                     (gen.CharPaths, SaveIO.SaveIdSection, SaveIO.GenerationProperty, SaveIO.SaveIdProperty),
+                     (gen.DataPaths, SaveIO.ServerDataSection, SaveIO.SaveGenerationProperty, SaveIO.SaveCountProperty),
+                 })
         {
-            if (count == 0) continue;      // this base has no file — nothing to compare
-            if (id == null) return true;   // present but unstamped — can't verify, accept
-            if (reference == null) reference = id;
-            else if (id != reference) return false; // stamps disagree — torn/mixed generation
+            foreach (string path in paths)
+            {
+                long? id = ReadStamp(path, section, property)
+                           ?? ReadStamp(path, section, fallback);
+                if (id == null) { unstamped++; continue; }
+                stamped++;
+                if (reference == null)
+                {
+                    reference = id;
+                    referenceFile = Path.GetFileName(path);
+                }
+                else if (id != reference && conflictFile == null)
+                {
+                    conflictFile = Path.GetFileName(path);
+                    conflictId = id;
+                }
+            }
         }
-        return true;
+
+        detail = conflictFile != null
+            ? $"{referenceFile}={reference} but {conflictFile}={conflictId} " +
+              $"({stamped} stamped, {unstamped} unstamped)"
+            : $"id={reference?.ToString() ?? "-"} ({stamped} stamped, {unstamped} unstamped)";
+
+        return conflictFile == null;
     }
 
     private (int Items, int Chars) Materialize(GameWorld world, GenerationPaths gen, AccountManager? accounts)

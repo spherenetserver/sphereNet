@@ -207,13 +207,19 @@ public sealed class SaveRoundTripParityTests : IDisposable
 
     /// <summary>A clock keeps running between two saves, so what such a line SAYS is
     /// its key, not its value: the world time, a countdown timer and a character's age
-    /// are all expected to have moved on.</summary>
+    /// are all expected to have moved on.
+    ///
+    /// The generation token belongs here for a different reason - it is DELIBERATELY
+    /// different in every save. That is the whole point of it: two files carrying the
+    /// same token came from the same save, and a token that repeated would be no
+    /// evidence at all.</summary>
     private static string NormalizeClock(string line)
     {
         int eq = line.IndexOf('=');
         if (eq <= 0) return line;
         string key = line[..eq].ToUpperInvariant();
         return key is "TIME" or "TIMER" or "TIMERMS" or "CREATE" or "TIMERD"
+                   or "GEN" or "SAVEGENERATION"
             ? $"{key}=<clock>"
             : line;
     }

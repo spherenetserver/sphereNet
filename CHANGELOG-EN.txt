@@ -4,6 +4,149 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - The map reader stops sharing a file cursor
+----------------------------------------
+
+FIX - Reading one classic .mul terrain block is a seek followed by 193 small reads on a
+        single shared BinaryReader. Two threads doing that at once do not each get their
+        own block: they interleave, and each comes back with bytes from wherever the
+        other left the cursor. On a synthetic map with eight workers and 20,000 reads
+        that produced 10,104 wrong blocks and 3,403 exceptions here - the review's own
+        run reported 12,197 and 3,506, and the difference is the scheduler, not the
+        severity (review finding B4).
+
+        It reaches gameplay because nothing keeps the map off worker threads: the
+        parallel NPC prestage resolves terrain, so a creature could path across a tile
+        whose height and type came from a different part of the world. Wrong is worse
+        than failed here - the caller cannot tell, and the value goes straight into a
+        movement decision.
+
+        Reads are now positional and hold no cursor, so any number of threads may read
+        at once. A lock would have fixed the correctness too, and would have serialised
+        every map read behind it.
+
+FIX - The multi reader had the same shape, found while checking the neighbours, and it
+        hides better: GetMulti caches, so the shared-cursor read only happens on a
+        multi's FIRST sighting - which is exactly when a creature walks onto a ship or
+        into a house nobody has touched yet, on that same parallel path. Its cache was
+        a plain dictionary written from those threads as well, which corrupts buckets
+        rather than merely returning something stale.
+
+        The statics reader and the UOP reader were checked and are safe: the first
+        reads through positional memory-mapped views, and the second only seeks while
+        building its index at construction.
+
+TEST - MapReaderConcurrencyTests (6). The fixture makes every block self-describing, so
+        a torn read names the block it actually came from rather than merely failing a
+        comparison. Putting either reader back on a shared cursor turns the concurrent
+        cases red - four for the map, one for the multis.
+
+[2026-09-14] - A save keeps the format it started with
+----------------------------------------
+
+FIX - In background mode the world walk stays on the main loop and the encode/write
+        phase moves to a worker thread, and both read Format and ShardCount from the
+        same mutable saver. SAVEFORMAT changes those fields from the main loop the
+        moment the command arrives; queuing the command onto the main loop does not
+        help, because the writer is on another thread either way.
+
+        The window was not theoretical and it did not merely switch the save over. The
+        writer reads the extension when it picks file names, the encoder when it opens
+        each shard, and the shard count when it partitions - so a change landing
+        mid-write SPLIT the save. A generation prepared as a single Text file landed as
+        four Binary shards beside a Text spheredata: an extension saying one thing, the
+        bytes saying another, and a generation no loader can make sense of.
+
+        The write phase now uses the settings captured when the save was PREPARED. The
+        in-flight write finishes as what it started as; the new format takes effect at
+        the next save. Changing the setting still works - only a write already under
+        way is out of reach.
+
+FIX - SAVEFORMAT logged "and saving now" whether or not a save followed. A background
+        write still running makes the save skip, so the operator was told the new
+        format had landed when nothing had been written in it. The message now says
+        which of the two happened.
+
+TEST - BackgroundSaveFormatRaceTests (3) drives the window with a barrier instead of
+        hoping to hit it: the writer stops at the point a real background writer stands
+        when an operator types the command, the format and shard count are changed, and
+        the write is released. Reading the live settings again turns two of the three
+        red.
+
+[2026-09-14] - A format migration no longer throws the old world away
+----------------------------------------
+
+FIX - Changing SAVEFORMAT renames the world: sphereworld.scp becomes
+        sphereworld.sbin, and so does spherechars. Backups rotate BY FILE NAME, so
+        nothing rotated the old files into the new name's chain - and the stale-sibling
+        sweep then deleted them. The shard was left with exactly one generation of
+        world data and no way back. spheredata keeps its name across the change, so its
+        backup survived, which is what made the result look survivable.
+
+        The superseded file is now retired into its own backup chain instead of being
+        deleted, under the extension it had. A shard that asked for no backups still
+        gets none - retiring one would be keeping a backup it turned off - and the
+        stale file still goes so the old format cannot shadow the new one.
+
+FIX - The loader accepted what was left as a world. Server data with no world and no
+        character file is not an empty world; it is the residue of a publish that did
+        not finish. Materialising it returned (0, 0) with nothing but an informational
+        log, and the next save wrote that emptiness over the remaining backups - which
+        is how a recoverable incident becomes a permanent one. It now falls back to the
+        previous generation, and says so if there is none. A genuinely fresh shard has
+        no save files at all and is unaffected.
+
+        Together the two mean a migration whose new world file is lost now comes back
+        with the world it had before, rather than starting empty (review finding B1).
+
+TEST - SaveGenerationIntegrityTests grows to 11: the migration recovery end to end, the
+        superseded generation being kept, backups-off still cleaning up after itself,
+        a data-only generation being refused, and an empty directory still being a
+        fresh start. Deleting the superseded file again turns two red; accepting a
+        data-only generation again turns two red.
+
+[2026-09-14] - A save generation is every file, not the first of each kind
+----------------------------------------
+
+FIX - A world save is split across several files, and a sharded save splits each of
+        those again. The loader checked that they came from the same save by comparing
+        three of them - sphereworld's first shard, spherechars' first shard and
+        spheredata - so on any sharded layout the shards past the first were compared
+        with nothing at all. Drop an older copy of a second shard in and the loader
+        accepted the mixture and built a world out of two different points in time:
+        items whose container, owner and equip links name objects the rest of the
+        generation never had.
+
+        The quieter half: the loop gave up at the first UNSTAMPED file and returned
+        "consistent", so one classic or truncated shard switched verification off for
+        every other file in the generation - including stamped ones that did disagree.
+
+FIX - Comparing every file was not enough on its own, which is worth saying because
+        the first fix looked complete and the tests still failed. The value being
+        compared was SAVECOUNT, and that counter starts again at zero in a fresh
+        process: two unrelated saves carry the same number, so a generation mixed from
+        one before a restart and one after reads as perfectly consistent.
+
+        Every save now also writes a generation token that is unique rather than
+        sequential - [SAVEID] GEN= in each world/char shard, [SPHERE] SAVEGENERATION=
+        in the server data. The clock supplies ordering and the random half separates
+        two saves taken in the same tick by different processes. The loader compares
+        the token and falls back to the old counter for files written before it.
+
+        A classic Sphere save carries no stamp at all and is still accepted: the check
+        can only reject files that actively DISAGREE. With a backup present the answer
+        is not an error but the previous generation, whole.
+
+TEST - SaveGenerationIntegrityTests (6): a stale shard on the world side, a stale shard
+        on the character side, an unstamped file beside a stale one, a clean sharded
+        save, a save with no stamps at all, and the fall back to a consistent backup.
+        Going back to one file per base turns four of the six red; making the token
+        sequential again turns four red as well - both halves are load-bearing.
+
+        SaveRoundTripParityTests compares two consecutive saves as text, and the token
+        is deliberately different every time. It normalises alongside the clock fields
+        for the same reason: a token that repeated would be no evidence at all.
+
 [2026-09-14] - Concealment, starvation and stat repair: the last packet of ini keys
 ----------------------------------------
 

@@ -5393,6 +5393,240 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-76 — Paylaşılan dosya imleci: harita ve multi okuyucusu (B4, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B4 bulgusu (P1, yeniden üretilmişti).
+
+### Ölçüm
+
+Klasik bir `.mul` zemin bloğunu okumak, **tek ve paylaşılan** bir `BinaryReader`
+üzerinde bir `Seek` ve ardından 193 küçük okuma demek. Kendini tanımlayan sentetik
+bir harita (her hücrenin tile id'si kendi bloğunu söylüyor), sekiz işçi, 20.000
+okuma:
+
+```
+wrong=10104  exceptions=3403
+```
+
+İncelemenin koşusu 12.197 / 3.506 demişti; aradaki fark scheduler, ciddiyet değil.
+
+Oyuna ulaşıyor çünkü haritayı işçi thread'lerden uzak tutan bir şey yok: paralel NPC
+prestage zemini çözüyor. Burada **yanlış** olmak **başarısız** olmaktan kötü —
+çağıran ayırt edemez ve değer doğruca bir hareket kararına girer.
+
+### Onarım
+
+Planın önerdiği iki seçenekten ikincisi: kilit değil, **konum tabanlı okuma**
+(`RandomAccess`, imleç yok). Kilit de doğruluğu düzeltirdi ve her harita okumasını
+arkasında sıraya dizerdi.
+
+### Komşular — biri aynı kusurdaydı
+
+| Okuyucu | Durum |
+|---|---|
+| `StaticReader` | Konum tabanlı memory-mapped view — güvenli |
+| `UopMapReader` | Yalnız kuruluşta indeks kurarken seek — güvenli |
+| `TileDataReader` | Yalnız `Load()` içinde seek — güvenli |
+| **`MultiReader`** | **Aynı kusur** — düzeltildi |
+
+`MultiReader` daha iyi saklanıyordu: `GetMulti` önbelleklediği için paylaşılan
+imleçli okuma yalnız bir multi'nin **ilk görülmesinde** oluyor — ki bu tam da bir
+yaratığın kimsenin dokunmadığı bir gemiye veya eve adım attığı an, aynı paralel
+yolda (`WalkCheck`). Önbelleği de o thread'lerden yazılan düz bir `Dictionary`'ydi;
+bu, bayat değer döndürmekten öteye geçip kova bozulmasına yol açar.
+
+### Test
+
+`MapReaderConcurrencyTests` (6). Fixture her bloğu kendini tanımlar hâle getiriyor,
+yani yırtılmış bir okuma yalnızca karşılaştırmayı geçemiyor değil, **gerçekte hangi
+bloktan geldiğini** söylüyor.
+
+Sondaj: harita okuyucusunu paylaşılan imlece geri koymak **4**, multi okuyucusunu
+geri koymak **1** test kırmızı.
+
+**Sondaj notu:** ilk multi sondajım tek büyük okuma kullandığı için yeşil kaldı ve
+bir an "test hatayı yakalamıyor" sandım. Gerçek eski hâli (`git checkout HEAD`) geri
+koyunca test kırmızıya döndü — sondajın kendisi yeterince sadık değilmiş.
+
+### Durum
+
+B4'ün **davranışı** onarıldı. Kabul koşulunun ikinci yarısı yapılmadı: *gerçek* MUL
+üzerinde 16+ NPC ile prestage entegrasyon testi, MUL/UOP eşdeğer koordinat
+karşılaştırması, cold-cache süre ölçümü. Statics block cache'in tahliyesizliği de
+duruyor.
+
+## İŞ-75 — Arka plan kaydında SAVEFORMAT yarışı (B3, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B3 bulgusu. İnceleme bunu **kod bulgusu**
+olarak işaretlemişti ve "kontrollü eşzamanlılık testi gerekli" diyordu.
+
+### Yarış
+
+Arka plan modunda dünya gezintisi ana döngüde kalır, kodlama/yazma aşaması işçi
+thread'e geçer — ve ikisi de `Format` ile `ShardCount`'u **aynı değiştirilebilir
+saver'dan** okur. `SAVEFORMAT` bu alanları komut gelir gelmez ana döngüde
+değiştiriyor. Komutu ana döngüye kuyruklamak bir şey çözmüyor: yazıcı zaten başka
+thread'de.
+
+### Ölçüm — yarış kaydı "çevirmiyor", **bölüyor**
+
+Bariyerli test yarışı deterministik olarak gösterdi. Yazıcı, operatörün komutu
+yazdığı anda gerçek bir arka plan yazıcısının durduğu noktada bekletildi; format
+Binary, shard sayısı 4 yapıldı; yazma bırakıldı. Sonuç:
+
+```
+spherechars.0..3.sbin, spherechars.manifest,
+spheredata.scp,
+sphereworld.0..3.sbin, sphereworld.manifest
+```
+
+Tek bir **Text** dosyası olarak hazırlanan nesil, **Text** bir `spheredata`'nın
+yanında **dört Binary shard** olarak indi. Yazıcı uzantıyı dosya adlarını seçerken,
+encoder'ı her shard'ı açarken, shard sayısını bölümlerken okuduğu için değişiklik
+kaydı ikiye bölüyor: uzantı bir şey söylüyor, baytlar başkasını.
+
+### Onarım
+
+Yazma aşaması artık kaydın **hazırlandığı andaki** ayarları kullanıyor —
+`PreparedWorldSave` `Format`, `ShardCount` ve nesil jetonunu taşıyor; shard
+yazıcıları bunları parametre olarak alıyor. Devam eden yazma başladığı şey olarak
+bitiyor, yeni format sonraki kayıtta geçerli oluyor. Ayarı değiştirmek yine
+çalışıyor; yalnızca çoktan başlamış bir yazma erişim dışında.
+
+Ayrıca `HandleSaveFormatChange` artık koşulsuz *"ve şimdi kaydediyorum"* demiyor:
+arka planda yazma sürüyorsa kayıt atlanacağı için değişikliğin **sonraki** kayıtta
+geçerli olacağını söylüyor. Eskiden operatöre yeni formatın indiği söyleniyordu,
+oysa o formatta hiçbir şey yazılmamış oluyordu.
+
+### Test
+
+`BackgroundSaveFormatRaceTests` (3): raced format değişimi (+ yeniden yükleme),
+raced shard-sayısı değişimi, ve kontrol olarak bir sonraki kaydın yeni formatı
+gerçekten kullanması.
+
+Sondaj: canlı ayarları yeniden okumak **üçün ikisini** kırmızıya döndürüyor.
+
+### Durum
+
+B3 onarıldı. `SequentialShardWrites` hâlâ canlı alan — yalnız performans seçimi,
+biçim değil, o yüzden bölünmeye yol açmıyor. Art arda gelen geçiş isteklerinden
+hangisinin tamamlandığı ve restart'ta hangi ayarın kullanılacağı (D01'in üçüncü
+maddesi) doğrulanmadı.
+
+**B1, B2, B3 — incelemenin üç P1 kayıt bulgusu da kapandı.** Nesil bazlı yayınlama
+tasarımı ve D01'in tam hata-enjeksiyon matrisi hâlâ açık.
+
+## İŞ-74 — Format geçişi eski dünyayı atıyordu (B1, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B1 bulgusu (P1, yeniden üretilmişti).
+
+### Yeniden üretim
+
+Text kaydı, ardından Binary kaydı, `BackupLevels=2`. Dizinde kalan:
+`spherechars.sbin, spheredata.scp, spheredata.scp.bak1, sphereworld.sbin` —
+incelemenin `MIGRATION_FILES` çıktısının aynısı. Yeni `.sbin` dosyaları silindiğinde
+yükleme **hata vermeden (0, 0)** dönüyordu.
+
+### İki ayrı kusur
+
+**1 — Kayıt tarafı eski nesli siliyordu.** `SAVEFORMAT` değişince dünya ad
+değiştiriyor (`sphereworld.scp` → `sphereworld.sbin`). Yedekler **dosya adına göre**
+döndüğü için eski dosyaları yeni adın zincirine kimse döndürmedi; sonra
+`RemoveStaleSiblings` onları sildi. Geriye tek bir dünya nesli ve geri dönüş yolu
+kalmadı. `spheredata` adını koruduğu için **onun** yedeği hayatta kaldı — sonucun
+atlatılabilir görünmesini sağlayan da buydu.
+
+**2 — Yükleyici kalanı dünya sayıyordu.** Dünya ve karakter dosyası olmayan sunucu
+verisi boş bir dünya değil, bitmemiş bir yayının artığıdır. Somutlaştırmak (0, 0)
+dönüyor, sonraki kayıt o boşluğu kalan yedeklerin üzerine yazıyordu — kurtarılabilir
+bir olayın kalıcı hâle gelme yolu tam olarak bu.
+
+### Onarım
+
+Yerine geçilen dosya **kendi uzantısının** yedek zincirine emekli ediliyor
+(`RetireSupersededFile`), silinmiyor. `BackupLevels=0` iken emekli edilmiyor —
+kapatılan bir yedeği tutmak olurdu — ama bayat dosya yine gidiyor ki eski format
+yenisini gölgelemesin. Yükleyici de dünya/karakter dosyası olmayan nesli reddedip
+önceki nesle düşüyor; yoksa bunu söylüyor. Gerçekten yeni shard'ın hiç dosyası yok,
+o durum `IsEmpty` ile zaten ayrı.
+
+**Sonuç:** yeni dünya dosyası kaybolan bir geçiş artık önceki dünyasıyla geri
+geliyor.
+
+### Test
+
+`SaveGenerationIntegrityTests` 11'e çıktı: uçtan uca geçiş kurtarması, yerine
+geçilen neslin saklanması, yedek kapalıyken de arkasını toplaması, yalnız-veri
+neslinin reddi, boş dizinin hâlâ taze başlangıç olması.
+
+Sondaj: yerine geçilen dosyayı yeniden silmek **2**, yalnız-veri neslini yeniden
+kabul etmek **2** test kırmızı.
+
+### Durum
+
+B1'in **davranışı** onarıldı; **tasarımı** değil. İncelemenin istediği nesil bazlı
+yayınlama (tek aktif-nesil işaretçisi, nesil manifesti, checksum) yapılmadı — bu
+onarım mevcut dosya-adı düzenini güvenli hâle getiriyor. B1'in tam kabul matrisi
+(4 format × shard düzenleri × yedek politikaları) de koşulmuş değil. **B3** (arka
+plan kaydında SAVEFORMAT yarışı) açık.
+
+## İŞ-73 — Karışık kayıt nesli kabul ediliyordu (B2, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B2 bulgusu (P1, yeniden üretilmişti). Ana
+plandaki Dalga 3 kapandığı ve PLAN-702 bu turda koşulmayacağı için sıra bu
+incelemenin P1 kuyruğuna geldi.
+
+### Sorun
+
+Bir kayıt nesli, **bütün** dosyaları aynı kayıttan geliyorsa tutarlıdır.
+`WorldLoader.IsGenerationConsistent` üç dosyaya bakıyordu: `ItemPaths[0]`,
+`CharPaths[0]`, `DataPaths[0]`. Tek dosyalı düzende bu hepsi demek — ama
+**shard'lı** kayıtta her tabanda birden fazla dosya var ve birinciden sonrakiler
+hiçbir şeyle karşılaştırılmıyordu. İkinci shard'ın eski bir kopyası yerine
+konduğunda yükleyici karışımı kabul ediyor ve dünyayı **iki farklı andan**
+kuruyordu: kabı, sahibi ve kuşanma bağları neslin geri kalanının hiç sahip olmadığı
+nesneleri adlandıran eşyalar. İncelemenin deneyi `(8, 0)` döndürmüştü.
+
+İkinci yarısı daha sessizdi: döngü ilk **damgasız** dosyada doğrulamayı tamamen
+bırakıyordu (`id == null → return true`). Yani tek bir klasik veya kesik shard,
+neslin damgalı ve gerçekten çelişen diğer dosyaları dahil her şey için kontrolü
+kapatıyordu.
+
+### Onarım iki parçalı — ilki yetmedi
+
+1. **Her dosya karşılaştırılıyor**, her tabanın yalnız `[0]`'ı değil; damgasız
+   dosya yalnız kendisi atlanıyor.
+2. Bu tek başına yetmedi, çünkü karşılaştırılan değer **SAVECOUNT**'tu ve o yeni
+   süreçte sıfırdan başlıyor — iki ilgisiz kayıt aynı numarayı taşıyor, karışımları
+   tutarlı görünüyordu. (İncelemenin kendi notu da bunu söylüyordu.) Her kayıt artık
+   ayrıca **benzersiz bir nesil jetonu** yazıyor: `[SAVEID] GEN=` ve `[SPHERE]
+   SAVEGENERATION=`. Saat sıralamayı, rastgele yarısı aynı tick'teki iki süreci
+   ayırıyor. Yükleyici jetonu karşılaştırıyor, yoksa eski sayaca düşüyor.
+
+### Korunanlar
+
+Damgası hiç olmayan klasik Sphere kaydı kabul edilmeye devam ediyor — kontrol
+yalnızca **aktif olarak çelişen** dosyaları reddedebilir. Yedek varsa cevap hata
+değil, önceki neslin tamamı.
+
+### Test
+
+`SaveGenerationIntegrityTests` (6): dünya tarafında bayat shard, karakter tarafında
+bayat shard, damgasız + bayat karışımı, temiz shard'lı kayıt, hiç damgasız kayıt,
+ve yedeğe düşüş.
+
+Sondaj: taban başına tek dosyaya dönmek **6'nın 4'ü**, jetonu yeniden sıralı yapmak
+yine **4'ü** kırmızı — iki parça da gerekli.
+
+**Yan etki:** `SaveRoundTripParityTests` iki kaydı metin olarak karşılaştırıyor ve
+jeton **bilerek** her kayıtta farklı; saat alanlarıyla aynı normalizasyona alındı.
+
+### Durum
+
+B2 onarıldı. **B1** (format geçişinden sonra boş dünya) ve **B3** (arka plan
+kaydında SAVEFORMAT yarışı) açık; ikisi de nesil bazlı yayınlama tasarımını
+bekliyor.
+
 ## İŞ-72 — Gizlenme, suç ve stat onarımı: ini son paketi (PLAN-302, 14 Eylül 2026)
 
 PLAN-302'nin dördüncü ve son paketi: *"dördüncü suç/stat ve çevre"*. Beş anahtar,

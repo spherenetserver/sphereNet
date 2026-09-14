@@ -1,12 +1,30 @@
+using System.Buffers.Binary;
+using Microsoft.Win32.SafeHandles;
+
 namespace SphereNet.MapData.Map;
 
 /// <summary>
 /// Reads map0.mul — terrain data organized in 8x8 blocks.
 /// Each block = 4 byte header + 64 cells * 3 bytes (tileId:2 + z:1) = 196 bytes.
+///
+/// Reads are OFFSET-BASED and hold no cursor, so any number of threads may read at
+/// once. The previous implementation seeked a shared BinaryReader and then took 193
+/// sequential reads from it: two threads doing that at the same time did not each get
+/// their own block, they interleaved, and each came back with bytes from wherever the
+/// other had left the file pointer. On a synthetic map with eight workers and 20,000
+/// reads that produced roughly ten thousand wrong blocks and three thousand exceptions
+/// (review finding B4).
+///
+/// It reached real gameplay because nothing keeps the map off worker threads - the
+/// parallel NPC prestage resolves terrain - so a creature could path across a tile
+/// whose height and type came from a different part of the world. A lock would also
+/// have fixed the correctness and would have serialised every map read behind it;
+/// positional reads let the file system do what it is already good at.
 /// </summary>
 public sealed class MapReader : IDisposable
 {
-    private readonly BinaryReader _reader;
+    private readonly SafeFileHandle _handle;
+    private readonly long _length;
     private readonly int _width;
     private readonly int _height;
     private readonly int _blockWidth;
@@ -24,8 +42,8 @@ public sealed class MapReader : IDisposable
         _blockWidth = width / MapBlock.BlockSize;
         _blockHeight = height / MapBlock.BlockSize;
 
-        var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        _reader = new BinaryReader(stream);
+        _handle = File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        _length = RandomAccess.GetLength(_handle);
     }
 
     public MapBlock ReadBlock(int blockX, int blockY)
@@ -34,19 +52,28 @@ public sealed class MapReader : IDisposable
             return new MapBlock();
 
         long offset = ((long)blockX * _blockHeight + blockY) * BlockDataSize;
-        if (offset + BlockDataSize > _reader.BaseStream.Length)
+        if (offset < 0 || offset + BlockDataSize > _length)
             return new MapBlock();
 
-        _reader.BaseStream.Seek(offset, SeekOrigin.Begin);
+        Span<byte> raw = stackalloc byte[BlockDataSize];
+        // A positional read may still come back short at a truncated file or across a
+        // boundary the OS chooses to split; a partial block is not a block.
+        int read = 0;
+        while (read < BlockDataSize)
+        {
+            int n = RandomAccess.Read(_handle, raw[read..], offset + read);
+            if (n <= 0) return new MapBlock();
+            read += n;
+        }
 
-        var block = new MapBlock { Header = _reader.ReadUInt32() };
-
+        var block = new MapBlock { Header = BinaryPrimitives.ReadUInt32LittleEndian(raw) };
         for (int i = 0; i < MapBlock.CellCount; i++)
         {
+            int at = 4 + i * 3;
             block.Cells[i] = new MapCell
             {
-                TileId = _reader.ReadUInt16(),
-                Z = _reader.ReadSByte()
+                TileId = BinaryPrimitives.ReadUInt16LittleEndian(raw[at..]),
+                Z = (sbyte)raw[at + 2],
             };
         }
 
@@ -66,5 +93,5 @@ public sealed class MapReader : IDisposable
         return block.GetCell(x % MapBlock.BlockSize, y % MapBlock.BlockSize);
     }
 
-    public void Dispose() => _reader.Dispose();
+    public void Dispose() => _handle.Dispose();
 }

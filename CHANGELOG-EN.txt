@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - Both READMEs say what sector sleeping now costs
+----------------------------------------
+
+DOC  - README-TR still carried the claim the timer review was about - that timers
+        keep wall-clock accuracy. The English file was corrected when the sector
+        sleep contract changed and its translation was not, so the sentence the
+        review had found to be false went on standing in one of the two files.
+
+        README.md in turn described a maintenance sweep and a decay catch-up that
+        keep remote timers moving, and neither does that any more: item deadlines
+        are reached from world-level due queues, so an awake sector costs what is
+        due rather than what it holds.
+
+        Both now say the same thing - what sleeps is character work, item deadlines
+        are exact wherever the item lies - and quote the measured world tick (1.5 ms
+        p50 with players clustered in towns, 11.9 ms p50 with 500 scattered across
+        the map, at 50,000 NPCs and 300,000 ground items) with a pointer to the
+        conditions rather than mixing it into the existing performance table, which
+        was taken on different hardware with a different method.
+
 [2026-09-14] - Item timers come from a due queue; an awake sector stops polling its items
 ----------------------------------------
 

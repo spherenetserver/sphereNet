@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Iki README de sektor uykusunun artik neye mal oldugunu soyluyor
+----------------------------------------
+
+DOC  - README-TR, timer incelemesinin konusu olan iddiayi hala tasiyordu: timer'lar
+        gercek-saat dogrulugunu korur. Sektor uyku sozlesmesi degistiginde Ingilizce
+        dosya duzeltilmis, cevirisi duzeltilmemisti; yani incelemenin yanlis buldugu
+        cumle iki dosyadan birinde ayakta kalmisti.
+
+        README.md ise uzaktaki timer'lari yuruten bir bakim taramasi ve bir curume
+        yakalamasi anlatiyordu; ikisi de artik bunu yapmiyor: esya son tarihleri
+        dunya duzeyindeki vade kuyruklarindan bulunuyor, yani uyanik sektor tuttugu
+        kadar degil vadesi gelen kadar maliyet cikariyor.
+
+        Ikisi de artik ayni seyi soyluyor - uyuyan sey karakter isi, esya son
+        tarihleri esya nerede olursa olsun tam zamaninda - ve olculen dunya tick'ini
+        (sehirlerde kumeli oyuncularda 1,5 ms p50; haritaya dagilmis 500 oyuncuda
+        11,9 ms p50; 50.000 NPC ve 300.000 yer esyasiyla) kosullarina isaret ederek
+        veriyor. Mevcut performans tablosuna karistirilmadi: o tablo baska donanimda,
+        baska yontemle alinmisti.
+
 [2026-09-14] - Esya timer'lari vade kuyrugundan geliyor; uyanik sektor artik esya yoklamiyor
 ----------------------------------------
 

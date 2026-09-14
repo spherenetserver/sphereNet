@@ -3,6 +3,48 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Replay, anladigini yeniden yaziyor; anlamadigini reddediyor
+----------------------------------------
+
+FIX - 0x1A, serial'inin en ust bitinde BAYRAK tasiyor: writer, arkasindan bir amount
+        geliyorsa 0x80000000 koyuyor. Replay tum kelimeyi serial saniyordu; yani
+        bayrakli degeri esliyordu - ki bu, ayni esyanin baska yerdeki cippak
+        serial'inden farkli bir anahtar, dolayisiyla tek esya iki phantom oluyordu -
+        ve geri yazdigi phantom'da bayrak kayboluyordu; bundan sonra istemci amount
+        alanini beklemeyi birakip sonraki iki bayti koordinat olarak okuyor. Girdi
+        tabloda zaten vardi ve dogru gorunuyordu.
+
+FIX - 0x3C (kap icerigi) ve 0x89 (ceset ekipmani) tekrarlayan yapilar; sabit bir
+        offset listesi bunlari anlatamaz ve zaten hicbir listede degillerdi: replay'e
+        giden kap listesi ve ceset CANLI serial'larla cikiyordu - phantom eslemesinin
+        var olma sebebi tam olarak bunu onlemek. Ikisi de artik girdi girdi
+        yuruniyor; 0x3C ise 19 mu 20 bayt adim oldugunu paketin kendi boyutundan
+        anliyor, cunku grid-index bayti istemci surumune bagli ve paket bunu soyleyen
+        bir alan tasimiyor.
+
+FIX - Tablonun hakkinda hicbir sey soylemedigi bir opcode, dokunulmadan iletiliyordu.
+        Bu, seyirci adina yapilmis bir tahmin: paket, kimsenin bakmadigi bir serial
+        tasiyor olabilir. Siniflandirilmamis opcode'lar artik reddediliyor -
+        dusuruluyor, sayiliyor ve farkli opcode'lar is listesi olarak tutuluyor.
+        Reddetmek replay'e bir pakete mal oluyor ve bunu soyluyor; iletmek dogruluga
+        mal oluyor ve hicbir sey soylemiyor.
+
+        Yani asil urun siniflandirmanin kendisi ve her girdi, kolaylik degil, o
+        writer hakkinda bir iddia: 0x2F (vurus), 0xC7 (parcacik efekti - kaynak ve
+        hedefin yaninda kendi uid'ini de sondan yedi bayt icerde tasiyor), 0xF3 (SA
+        yer esyasi), 0xAF (olum: yaratik + ceset), 0xE2 (yeni animasyon), 0xA1/0xA2/
+        0xA3 (can, mana, dayaniklilik), 0x17/0x16 (can cubugu) ve 0x23 (surukleme,
+        iki ucu) eklendi; 0x54, 0x4F, 0x65, 0x6D, 0x53, 0x72 ve 0xBC okunup
+        serial'siz ilan edildi, boylece her replay'den suzulup atilmak yerine
+        geciyorlar.
+
+TEST - ReplaySerialInventoryTests (13). Her durum, gercek writer ile gercek paketi
+        kuruyor ve baytlarina karsi dogruluyor - adi gecen serial alanlari disinda
+        hicbir seyin oynamadigi dahil, cunku bu bulgunun konusu, serial olmayan bir
+        alanin uzerine yazilan dort bayt. Sondajlar: 0x1A bayrak islemesini, 0x3C
+        yurutmesini, reddetmeyi ve yeni tablo girdilerinin her birini geri almak -
+        her biri bir ya da iki kirmizi.
+
 [2026-09-15] - Zaman asimina ugrayan sorgu bunu soyluyor; basarisiz olan geride satir birakmiyor
 ----------------------------------------
 

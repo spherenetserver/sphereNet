@@ -36,6 +36,16 @@ public sealed class ReplayState
     public int PausedAtOffsetMs { get; set; }
     public float PlaybackSpeed { get; set; } = 1.0f;
     public long LastOverlayTick { get; set; }
+
+    /// <summary>Packets this replay refused to forward because nobody has checked
+    /// where that opcode keeps its serials. Counted rather than silent: a replay
+    /// missing a packet is a question someone can answer, and a replay carrying a
+    /// live serial is not.</summary>
+    public int RefusedPackets { get; set; }
+
+    /// <summary>The distinct opcodes refused - the work list for extending the
+    /// table, kept by the engine instead of by guesswork.</summary>
+    public HashSet<byte> RefusedOpcodes { get; } = [];
 }
 
 public sealed class RecordingEngine
@@ -356,17 +366,34 @@ public sealed class RecordingEngine
 
         if (opcode == 0x78)
             return RemapDrawObject(data, state);
+        if (opcode == 0x3C)
+            return RemapContainerContents(data, state);
+        if (opcode == 0x1A)
+            return RemapWorldItem(data, state);
+        if (opcode == 0x89)
+            return RemapCorpseEquipment(data, state);
 
         int[] serialOffsets = GetSerialOffsets(opcode, data.Length);
-        if (serialOffsets.Length == 0)
-            return data;
-
-        byte[] copy = (byte[])data.Clone();
-        foreach (int offset in serialOffsets)
+        if (serialOffsets.Length > 0)
         {
-            RemapSerialAt(copy, offset, state);
+            byte[] copy = (byte[])data.Clone();
+            foreach (int offset in serialOffsets)
+                RemapSerialAt(copy, offset, state);
+            return copy;
         }
-        return copy;
+
+        // Nothing is passed through on a guess any more. A packet whose layout nobody
+        // has checked may carry a live serial, and forwarding it hands the spectator's
+        // client a real object to bind to - the failure this whole finding is about.
+        // Refusing costs the replay one packet and says so; passing it costs
+        // correctness and says nothing (review finding B10).
+        if (!CarriesNoSerial.Contains(opcode))
+        {
+            state.RefusedPackets++;
+            state.RefusedOpcodes.Add(opcode);
+            return null;
+        }
+        return data;
     }
 
     private static byte[]? RemapDrawObject(byte[] data, ReplayState state)
@@ -399,6 +426,97 @@ public sealed class RecordingEngine
 
         return copy;
     }
+
+    /// <summary>0x1A keeps a FLAG in the top bit of its serial: the writer sets
+    /// 0x80000000 when an amount follows (PacketWorldItem.Build). Treating the whole
+    /// word as a serial mapped the flagged value - a different key from the same
+    /// item's plain serial elsewhere, so one item became two phantoms - and wrote
+    /// back a phantom with the flag gone, after which the client stops expecting the
+    /// amount field and reads the next two bytes as a coordinate. The entry was in
+    /// the table and looked right.</summary>
+    private static byte[] RemapWorldItem(byte[] data, ReplayState state)
+    {
+        byte[] copy = (byte[])data.Clone();
+        if (copy.Length < 7) return copy;
+
+        const uint AmountFlag = 0x80000000;
+        uint raw = ReadUInt32(copy, 3);
+        uint flag = raw & AmountFlag;
+        uint serial = raw & ~AmountFlag;
+        if (serial == 0) return copy;
+
+        WriteUInt32(copy, 3, serial);
+        RemapSerialAt(copy, 3, state);
+        WriteUInt32(copy, 3, ReadUInt32(copy, 3) | flag);
+        return copy;
+    }
+
+    /// <summary>0x3C is a repeating structure, so no fixed offset list can describe
+    /// it: opcode, length, count, then one entry per item carrying BOTH the item and
+    /// its container (PacketContainerContents.Build). It was not in the table at all,
+    /// which meant a replayed container listing went out with live serials in it.</summary>
+    private static byte[]? RemapContainerContents(byte[] data, ReplayState state)
+    {
+        if (data.Length < 5) return null;
+        byte[] copy = (byte[])data.Clone();
+
+        int count = copy[3] << 8 | copy[4];
+        int body = copy.Length - 5;
+        if (count <= 0) return copy;
+
+        // The grid-index byte per entry is client-version dependent, and the packet
+        // says which it is by its own size rather than by a field.
+        int perItem = body / count;
+        if (perItem != 19 && perItem != 20)
+            return null;                       // not a shape we can read: refuse it
+        int containerOffset = perItem == 20 ? 15 : 14;
+
+        for (int i = 0; i < count; i++)
+        {
+            int entry = 5 + i * perItem;
+            if (entry + perItem > copy.Length) break;
+            RemapItemSerialAt(copy, entry, state);
+            RemapSerialAt(copy, entry + containerOffset, state);
+        }
+        return copy;
+    }
+
+    /// <summary>0x89 is the corpse's equipment list: the corpse serial, then a
+    /// terminated run of (layer, item serial) pairs (PacketCorpseEquipment.Build).
+    /// Another repeating shape no offset list can describe, and another packet that
+    /// was going out with live serials in it.</summary>
+    private static byte[]? RemapCorpseEquipment(byte[] data, ReplayState state)
+    {
+        if (data.Length < 8) return null;
+        byte[] copy = (byte[])data.Clone();
+
+        RemapSerialAt(copy, 3, state);          // opcode, length:2, corpse serial
+
+        int pos = 7;
+        while (pos < copy.Length)
+        {
+            byte layer = copy[pos];
+            if (layer == 0) break;              // terminator
+            if (pos + 5 > copy.Length) break;
+            RemapItemSerialAt(copy, pos + 1, state);
+            pos += 5;
+        }
+        return copy;
+    }
+
+    /// <summary>Opcodes checked against their writer and found to carry no serial at
+    /// all. Anything not here and not in the offset table is refused rather than
+    /// forwarded, so the list is a claim about a packet's layout, not a convenience.</summary>
+    private static readonly HashSet<byte> CarriesNoSerial =
+    [
+        0x54,   // PacketSound: mode, sound id, volume, x, y, z
+        0x4F,   // PacketGlobalLight: one light level
+        0x65,   // PacketWeather: type, count, temperature
+        0x6D,   // PacketPlayMusic: music id
+        0x53,   // PacketPopupMessage: message index
+        0x72,   // PacketWarModeResponse: flag + three unused bytes
+        0xBC,   // PacketSeason: season + play sound flag
+    ];
 
     private static void RemapSerialAt(byte[] data, int offset, ReplayState state)
     {
@@ -488,6 +606,35 @@ public sealed class RecordingEngine
             // was the stack offset, so neither serial moved and the amount did.
             0x25 => length >= 21 ? [1, 15] : length >= 20 ? [1, 14] : [],
             0x2E => [1, 9],       // PacketWornItem: item serial + wearer serial
+
+            // Combat swing: a leading zero byte, then attacker and defender
+            // (PacketSwing.Build). Recorded through the combat broadcast.
+            0x2F => length >= 10 ? [2, 6] : [],
+
+            // Particle effect: the same base-effect header as 0x70/0xC0 - type at 1,
+            // source at 2, target at 6 - plus the effect's own uid near the end
+            // (PacketEffectParticle.Build writes it 7 bytes before the packet ends).
+            0xC7 => length >= 49 ? [2, 6, 42] : [],
+
+            // SA world item: 0x0001, a data-type byte, then the serial
+            // (PacketWorldItemSA.Build).
+            0xF3 => length >= 8 ? [4] : [],
+
+            // The rest of what a nearby broadcast can carry. Each is the first field
+            // after the opcode, or after the variable-length prefix, and each was
+            // being REFUSED until it was checked - which is safe but strips the
+            // replay of death, dragging, animation and health changes.
+            0xAF => length >= 13 ? [1, 5] : [],   // PacketDeathAnimation: mobile + corpse
+            0xE2 => length >= 10 ? [1] : [],      // PacketNewAnimation
+            0xA1 => length >= 9 ? [1] : [],       // PacketUpdateHealth
+            0xA2 => length >= 9 ? [1] : [],       // PacketUpdateMana
+            0xA3 => length >= 9 ? [1] : [],       // PacketUpdateStamina
+            0x17 => length >= 12 ? [3] : [],      // PacketHealthBarStatus (variable)
+            0x16 => length >= 9 ? [3] : [],       // PacketHealthBarStatusNew (variable)
+
+            // Drag animation: item id, an unused byte, hue and amount come first, then
+            // the two ends of the drag (PacketDragAnimation.Build).
+            0x23 => length >= 26 ? [8, 15] : [],
 
             _ => []
         };

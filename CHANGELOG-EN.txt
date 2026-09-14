@@ -4,6 +4,47 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A replay rewrites what it understands and refuses what it does not
+----------------------------------------
+
+FIX - 0x1A keeps a FLAG in the top bit of its serial: the writer sets 0x80000000
+        when an amount follows. The replay treated the whole word as a serial, so it
+        mapped the flagged value - a different key from the same item's plain serial
+        elsewhere, which turned one item into two phantoms - and wrote back a phantom
+        with the flag gone, after which the client stops expecting the amount field
+        and reads the next two bytes as a coordinate. The entry was already in the
+        table and looked right.
+
+FIX - 0x3C (container contents) and 0x89 (corpse equipment) are repeating
+        structures, so no fixed offset list can describe them, and they were in no
+        list at all: a replayed container listing and a replayed corpse went out
+        with LIVE serials in them, which is what the phantom mapping exists to
+        prevent. Both are walked entry by entry now - and 0x3C decides its 19- or
+        20-byte stride from the packet's own size, because the grid-index byte is
+        client-version dependent and the packet carries no field that says so.
+
+FIX - An opcode the table said nothing about was forwarded untouched. That is a
+        guess made on the spectator's behalf: the packet may carry a serial nobody
+        has checked. Unclassified opcodes are refused now - dropped, counted, and
+        the distinct opcodes kept as the work list. Refusing costs a replay one
+        packet and says so; forwarding costs correctness and says nothing.
+
+        So the classification is the deliverable, and it is a claim about each
+        writer rather than a convenience: 0x2F (swing), 0xC7 (particle effect, which
+        carries its own uid seven bytes from the end as well as source and target),
+        0xF3 (SA world item), 0xAF (death: mobile and corpse), 0xE2 (new animation),
+        0xA1/0xA2/0xA3 (health, mana, stamina), 0x17/0x16 (health bar) and 0x23
+        (drag, both ends) were added; 0x54, 0x4F, 0x65, 0x6D, 0x53, 0x72 and 0xBC
+        were read and declared serial-free, so they pass through rather than being
+        stripped out of every replay.
+
+TEST - ReplaySerialInventoryTests (13). Every case builds the real packet with the
+        real writer and asserts against its bytes, including that nothing outside
+        the named serial fields moved - the failure this finding is about is four
+        bytes written over a field that was never a serial. Probes: dropping the
+        0x1A flag handling, the 0x3C walk, the refusal, and each new table entry
+        each turn one or two red.
+
 [2026-09-15] - A query that times out says so, and a failed one leaves no rows behind
 ----------------------------------------
 

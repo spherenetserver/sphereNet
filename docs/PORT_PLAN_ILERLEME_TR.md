@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `ae86146` + İŞ-88 (DB zaman aşımı ve bayat satırlar) |
-| Tam test | 3.892 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **B1-B9, B12 kapandı; B10/B11 yarım.** Sıradaki: B10/B11 kalanları |
+| Son commit | `b389bc2` + İŞ-89 (replay opcode envanteri + reddetme) |
+| Tam test | 3.905 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B10, B12 kapandı; B11 yarım.** Sıradaki: B11 kalanları |
 
 ## Çalışma sırası
 
@@ -487,6 +487,22 @@ planındadır.
   **Sıradaki adım (kullanıcı kararı):** depo + `bin`/`obj` için Defender istisnası ve
   daha büyük page file ile 10 koşuluk yeniden-derleme matrisini tekrar ölçmek.
   *Kayda geçiriliyor ki sonraki oturum bunu motor hatası sanıp kovalamasın.*
+- **İŞ-89 KAPANDI (B10'un envanter yarısı)** — 2026-09-15. Envanteri writer'lardan
+  **ölçtüm** (110 giden paket sınıfı; opcode `: base(0xNN)`). Üç sonuç: (1) **tabloda
+  olan ve yanlış olan** — `0x1A` serial'ının üst bitinde bayrak var (`amount > 1`),
+  eşleyici tüm kelimeyi serial sanıyordu: tek eşya **iki phantom** oluyor ve geri
+  yazılan phantom'da bayrak kaybolduğu için istemci sonraki iki baytı koordinat
+  okuyordu — girdi zaten "doğrulanmış" görünüyordu; (2) **listede hiç olmayanlar** —
+  `0x3C` ve `0x89` tekrarlayan yapılar, replay'e **canlı serial'larla** gidiyorlardı
+  (`0x3C` adımını 19/20 paketin kendi boyutundan anlıyor); (3) **sessiz geçiş** —
+  tanınmayan opcode dokunulmadan iletiliyordu, artık **reddediliyor + sayılıyor**.
+  Reddetme replay'i budamasın diye yayınlanan aileler desteklendi (`0x2F`, `0xC7`,
+  `0xF3`, `0xAF`, `0xE2`, `0xA1/2/3`, `0x17/0x16`, `0x23`); serial'sız olduğu writer
+  okunarak doğrulananlar geçiyor (`0x54`, `0x4F`, `0x65`, `0x6D`, `0x53`, `0x72`,
+  `0xBC`). Test: `ReplaySerialInventoryTests` (13), hepsi gerçek writer çıktısında ve
+  "başka bayt oynamadı" kontrolüyle; altı sondaj 1-2 kırmızı. Tam suite 3.905, üç
+  koşu. *Açık: `0xBF` alt-komutları sınıflandırılmadı (şu an reddediliyor) ve D10'un
+  gerçek oynatma ucu koşulmadı.*
 - **İŞ-88 KAPANDI (B9'un ikinci yarısı: zaman aşımı + bayat satırlar)** —
   2026-09-15. (1) **Başarısız sorgu, bir önceki sorgunun satırlarını okunabilir
   bırakıyordu** — dönüşü kontrol etmeyen script başkasının verisini alıyordu. Plan

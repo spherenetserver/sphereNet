@@ -5393,6 +5393,71 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-89 — Replay'in anladığı ve anlamadığı paketler (B10'un envanter yarısı, 15 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B10 bulgusu. Üç opcode İŞ-78'de onarılmıştı;
+plan **tam envanter** ve **görünür reddetme** istiyordu.
+
+### Envanteri ölçtüm, saymadım
+
+Giden paket sınıfları opcode'larını `: base(0xNN)` ile ilan ediyor, yani envanter
+makineyle çıkarılabilir: **110 writer**. Kayıt yüzeyi ise dar — `BroadcastNearby`,
+hasar yayını, `0x77` ve `0x78`. Karşılaştırma üç şey gösterdi.
+
+### 1. Tabloda olan ve yanlış olan: 0x1A
+
+`PacketWorldItem`, `amount > 1` olduğunda serial'ın üst bitine `0x80000000` koyuyor.
+Eşleyici tüm 32 biti serial sanıyordu. İki ayrı sonuç:
+
+- bayraklı değer **ayrı bir anahtar**, yani aynı eşya başka bir pakette çıplak
+  serial'ıyla geldiğinde **ikinci bir phantom** alıyor — seyirci için aynı eşya iki
+  farklı nesne;
+- geri yazılan phantom'da bayrak **yok**, yani istemci "amount geliyor" bilgisini
+  kaybediyor ve sonraki iki baytı koordinat olarak okuyor.
+
+Bu girdi tabloda zaten vardı ve doğru görünüyordu. İŞ-78'de "her girdiyi writer'a
+karşı doğrula" demiştim; doğrulamanın kapsamadığı şey, serial'ın **kendisinin** temiz
+olmayabileceğiydi.
+
+### 2. Listede hiç olmayanlar: 0x3C ve 0x89
+
+İkisi de tekrarlayan yapı — sabit offset listesi anlatamaz — ve ikisi de hiçbir
+listede değildi, yani replay'e **canlı serial'larla** gidiyorlardı. Phantom
+eşlemesinin var olma sebebi tam olarak bu.
+
+`0x3C`'de bir incelik var: girdi adımı 19 mu 20 mi olduğunu **paket kendi boyutundan**
+söylüyor; grid-index baytı istemci sürümüne bağlı ve bunu bildiren bir alan yok.
+Yanlış adım, kap serial'ını bir bayt kaydırıp hue'nun üzerine yazar ve asıl kabı
+canlı bırakırdı.
+
+### 3. Sessiz geçiş
+
+Tablonun tanımadığı opcode dokunulmadan iletiliyordu — seyirci adına yapılmış bir
+tahmin. Artık reddediliyor: düşürülüyor, sayılıyor, farklı opcode'lar iş listesi
+olarak tutuluyor. Reddetmek replay'e bir pakete mal olur ve bunu **söyler**; iletmek
+doğruluğa mal olur ve hiçbir şey söylemez.
+
+Reddetme tek başına replay'i budayacağı için yayınlanan aileler **desteklendi**:
+`0x2F`, `0xC7` (kendi uid'i dahil), `0xF3`, `0xAF`, `0xE2`, `0xA1`/`0xA2`/`0xA3`,
+`0x17`/`0x16`, `0x23`. Serial'sız oldukları writer okunarak doğrulananlar geçmeye
+devam ediyor: `0x54`, `0x4F`, `0x65`, `0x6D`, `0x53`, `0x72`, `0xBC`.
+
+### Test
+
+`ReplaySerialInventoryTests` (13): her durum **gerçek writer** ile paketi kuruyor ve
+baytlarına karşı doğruluyor — "adı geçen serial alanları dışında hiçbir bayt oynamadı"
+kontrolü dahil, çünkü bu bulgunun konusu serial olmayan bir alanın üzerine yazılan
+dört bayt.
+
+Sondaj: 0x1A bayrak işlemesi, 0x3C yürütmesi, reddetme ve yeni tablo girdilerinin her
+biri ayrı ayrı geri alındığında 1-2 kırmızı.
+
+### Durum
+
+**AÇIK:** `0xBF` alt-komut ailesi sınıflandırılmadı — şu an reddediliyor, yani eski
+istemcilere giden `0xBF.0x22` hasar paketi replay'de görünmüyor. D10'un gerçek
+oynatma ucu (kaydet → oynat → seyircinin gördüğü) koşulmadı.
+
 ## İŞ-88 — Zaman aşımının ve başarısızlığın script'e söylediği (B9'un ikinci yarısı, 15 Eylül 2026)
 
 Kaynak: Beyond-Source-X incelemesinin B9 bulgusu. Kapat/aç yarısı İŞ-77'de onarılmıştı;

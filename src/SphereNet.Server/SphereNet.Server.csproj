@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.6" />
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
     <!-- Pin the native SQLite binary above the version pulled in transitively by
          Microsoft.Data.Sqlite (2.1.11), which carries advisory GHSA-2m69-gcr7-jv3q
          (NU1903). This is a zero-dependency native-only package, so it swaps the

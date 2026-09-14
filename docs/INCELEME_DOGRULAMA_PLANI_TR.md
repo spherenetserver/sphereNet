@@ -5393,6 +5393,115 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-78 — Replay: serial olmayan alanların üzerine yazma (B10 + B11, 14 Eylül 2026)
+
+### B10 — tablo yanlıştı, ve yanlış olması "atlamak" değil "bozmak" demek
+
+Bir kaydı oynatmak, içindeki nesne serial'larını yeniden yazıyor ki seyirci canlı
+dünyanın nesnelerini değil hayaletleri görsün. Bu yeniden yazma *"serial'lar
+nerede"* tablosundan çalışıyordu. Orada yanılmak, atlanmış bir eşleme değil:
+paketin o offset'te **gerçekte ne tuttuysa** onun üzerine yazılan dört bayt.
+
+| Opcode | Gerçek yerleşim | Tablonun dediği | Sonuç |
+|---|---|---|---|
+| `0x54` ses | **serial yok** | `[1]` | mode + ses kimliği + seviye ezildi |
+| `0x70`/`0xC0` efekt | tür 1'de, serial'lar **2 ve 6** | `[1]` | tür karalandı, kaynak bozuldu, **hedef canlı kaldı** |
+| `0x25` container item | esya 1'de, container **14/15**'te | `[7]` | yığın offset'i/miktar/koordinat ezildi, iki serial de yerinde |
+| `0x4F` global ışık | **serial yok** (2 bayt) | `[1]` | ışık seviyesi ezildi |
+
+İncelemenin deneyi `540101230000…` → `543FFF000100…` diyordu: başka bir ses, başka
+bir seviyede.
+
+**Onarım:** her girdi artık paketi üreten writer'a karşı doğrulandı ve yanındaki
+yorumda o writer'ın **adı** yazıyor — hafızadan bakılan bir tablo, tarif ettiği
+paketlerden ayrışır ve kimse şikâyet etmez. Serial taşımayan paket **boş girdi**,
+tahmin değil. `0x25` uzunluğunun söylediği düzeni alıyor: tek sabit offset iki
+istemci çağı için birden doğru olamaz.
+
+### B11 — kesik dosya geçerli kayıt sayılıyordu
+
+`ReadBytes`, hata fırlatmak yerine **elindekini** dönüyor. Kısa kesilmiş bir dosya,
+son paketi ilan ettiği uzunluktan birkaç bayt eksik olan bir oturum üretiyordu — ve
+oynatma o bozuk paketi **gerçek bir istemciye** gönderiyor. Kısa okuma, daha kısa
+bir kayıt değil bozuk bir dosyadır.
+
+### Test
+
+`ReplayPacketIntegrityTests` (8) — paket saymak yerine **gerçek writer çıktısını
+çözüyor**: serial olmayan alanlar bayt bayt hayatta kalıyor, serial olanların hepsi
+değişiyor, container item'ın iki çağı da kapsanıyor, ve gerçekten serial taşıyan bir
+paket hâlâ eşleniyor (kontrol).
+
+Sondaj: eski offset'leri geri koymak **2**, kısa okumayı kabul etmek **1** test
+kırmızı.
+
+### Durum — ikisi de yarım
+
+**B10:** yalnız incelemenin adlandırdığı üç opcode ve komşuları. Planın istediği
+**tam envanter** çıkarılmadı: `0xC7`, `0xF3`, `0x3C`, equip/draw/speech/damage
+ailesi bekliyor. "Desteklenmeyen serial taşıyan paketi görünür biçimde reddet"
+maddesi de yapılmadı — listede olmayan opcode hâlâ sessizce dokunulmadan geçiyor.
+
+**B11:** yalnız kısa okuma. Toplam boyut sınırı, opcode uzunluğu doğrulaması, zaman
+sıralaması ve `.rec` yazımının temp + doğrulama + yayınlama akışı yapılmadı.
+
+## İŞ-77 — DB oturum yaşam döngüsü ve eksik provider (B9 + B8, 14 Eylül 2026)
+
+### B9 — kapatılan oturum bir daha açılmıyordu
+
+`UseThread` kuruluyken oturum, `BlockingCollection`'ı boşaltan bir işçi thread'e
+sahip. `Close` onun üzerinde `CompleteAdding` çağırıyordu — tasarım gereği kalıcı —
+ve alan `readonly`'ydi, yani sonraki `Connect` **bir daha asla iş kabul etmeyecek**
+bir kuyruğun üzerinde taze bir işçi başlatıyordu.
+
+Sıra hatayı iyi gizliyordu:
+
+| Adım | Sonuç |
+|---|---|
+| Connect | başarılı |
+| Query | başarılı |
+| Close | başarılı |
+| **Connect** | **başarılı bildiriyor** |
+| Query | `InvalidOperationException: the collection has been marked as complete…` |
+
+Bir script bunu veritabanı sorunundan ayırt edemez. Yani bir shard'ın kopan bağlantı
+için yazdığı işlem — kapat, bağlan, tekrar dene — kurtarılabilir bir kesintiyi
+sürecin geri kalanı boyunca **ölü kalan** bir oturuma çeviriyordu.
+
+**Onarım:** yeniden açılış yeni bir kuyruk üretiyor; işçi, thread çalışmaya
+başladığında alanda ne varsa ona değil **kendisine verilen** kuyruğa bağlı (arada
+bir kapat/aç olursa işçi kimsenin yazmadığı kuyruğu boşaltmasın diye).
+
+### B8 — gönderilen varsayılan provider hiçbir yerde kayıtlı değildi
+
+`DbConnectionConfig.Provider` varsayılanı `MySqlConnector`. Hiçbir proje paketi
+referanslamıyordu, başlangıç da yalnız SQLite'i kaydediyordu. Varsayılanları
+kullanan bir shard **ağda veya parolada** kalmıyordu — hiçbir şey açılmadan önce
+provider çözümlemesinde kalıyordu, ki bu bir shard tarafından okunması en zor hata
+türü.
+
+**Onarım:** `MySqlConnector` paketi `SphereNet.Server`'a referanslandı, factory
+SQLite'inkinin yanında kaydedildi. Test, varsayılanın **sunucunun kendi kayıt
+yolundan** çözüldüğünü doğruluyor — kopyasından değil, yoksa test ile gerçek
+başlangıç ayrışabilirdi.
+
+**Bunun ne olmadığı:** "çoklu-veritabanı MySQL çalışıyor" kanıtı değil. Planın kendi
+uyarısı: yalnız SQLite testi böyle sayılmamalı. İki gerçek MySQL veritabanıyla D02
+açık.
+
+### Test
+
+`DbSessionLifecycleTests` (6). Sondaj: tamamlanmış kuyruğu yeniden kullanmak **3**,
+MySQL factory'sini başka adla kaydetmek **1** test kırmızı.
+
+### Durum — B9'un ikinci yarısına dokunulmadı
+
+Bulgunun timeout kısmı **açık**: `Query`/`Execute` hâlâ `ManualResetEventSlim.Wait`
+sonucunu kontrol etmiyor; süre dolunca bekleme nesnesi dispose ediliyor ve iş
+sonradan kapatılmış nesneye dokunabiliyor. Kuyruk sınırsız. Başarısız sorgudan sonra
+eski ROW sonucu duruyor. Planın istediği open/closing/closed yaşam döngüsü modeli
+kurulmadı — yalnız **yeniden açılış** çalışır hâle geldi.
+
 ## İŞ-76 — Paylaşılan dosya imleci: harita ve multi okuyucusu (B4, 14 Eylül 2026)
 
 Kaynak: Beyond-Source-X incelemesinin B4 bulgusu (P1, yeniden üretilmişti).

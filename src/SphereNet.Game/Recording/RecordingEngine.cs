@@ -440,26 +440,55 @@ public sealed class RecordingEngine
         data[offset + 3] = (byte)value;
     }
 
+    /// <summary>
+    /// Where a packet keeps its object serials, by opcode.
+    ///
+    /// Being wrong here is not a missed remap: it is four bytes written over whatever
+    /// the packet actually keeps at that offset, and the spectator then sees a
+    /// different sound, a different effect type or an item at a different position
+    /// (review finding B10). Each entry below is checked against the writer that
+    /// produces the packet, named in the comment - a table maintained by memory drifts
+    /// from the packets it describes and nothing complains.
+    ///
+    /// A packet that carries NO serial belongs here as an empty entry rather than as a
+    /// guess, and an opcode that is not listed is passed through untouched.
+    /// </summary>
     private static int[] GetSerialOffsets(byte opcode, int length)
     {
         return opcode switch
         {
-            0x77 => [1],          // MobileMoving: serial at byte 1
-            0x1D => [1],          // DeleteObject: serial at byte 1
-            0x6E => [1],          // CharacterAnimation: serial at byte 1
-            0x0B => [1],          // Damage: serial at byte 1
-            0x0C => length >= 12 ? [1, 7] : [1],
-            0x70 => [1],          // GraphicalEffect
-            0xC0 => [1],          // Effect
-            0x4F => [1],          // LightSource
-            0x54 => [1],          // PlaySound
-            0x1A => [3],          // ObjectInfo
-            0x25 => length >= 9 ? [7] : [],
-            0x2E => [1, 9],       // EquipItem: item serial + container serial
-            0x1C => [3],          // AsciiMessage
-            0xAE => [3],          // UnicodeMessage
-            0xCC => [3],          // LocMessage
-            0xC1 => [3],          // LocMessageAffix
+            // Fixed packets whose serial follows the opcode directly.
+            0x77 => [1],          // PacketMobileMoving
+            0x1D => [1],          // PacketDeleteObject
+            0x6E => [1],          // PacketCharacterAnimation
+            0x0B => [1],          // PacketDamage
+
+            // Effects keep TWO serials, after a one-byte type: source at 2, target at
+            // 6 (WriteBaseEffect). Remapping byte 1 scribbled on the effect type,
+            // mangled the source and left the target pointing at a live object.
+            0x70 => length >= 10 ? [2, 6] : [],   // PacketEffect
+            0xC0 => length >= 10 ? [2, 6] : [],   // PacketEffectHued
+
+            // No serial at all. 0x54 is mode + sound id + volume + position
+            // (PacketSound) and 0x4F is a single light level (PacketGlobalLight);
+            // both used to have their first real field overwritten.
+            0x54 => [],
+            0x4F => [],
+
+            // Variable-length packets: opcode, length:2, then the serial.
+            0x1A => [3],          // PacketObjectInfo
+            0x1C => [3],          // PacketAsciiMessage
+            0xAE => [3],          // PacketUnicodeMessage
+            0xCC => [3],          // PacketLocMessage
+            0xC1 => [3],          // PacketLocMessageAffix
+
+            // Item serial at 1; the container serial sits after the grid index byte on
+            // 6.0.1.7+ clients and in its place on older ones (PacketContainerItem).
+            // One fixed offset cannot be right for both eras - and the offset in use
+            // was the stack offset, so neither serial moved and the amount did.
+            0x25 => length >= 21 ? [1, 15] : length >= 20 ? [1, 14] : [],
+            0x2E => [1, 9],       // PacketWornItem: item serial + wearer serial
+
             _ => []
         };
     }
@@ -571,11 +600,21 @@ public sealed class RecordingEngine
             byte cmap = br.ReadByte();
             session.Center = new Point3D(cx, cy, cz, cmap);
 
+            // A recording is all of its packets or none of them. ReadBytes returns
+            // what it HAS rather than throwing, so a file cut short produced a session
+            // whose last packet was a few bytes shy of the length it declared - and
+            // playback sends that malformed packet to a real client (review finding
+            // B11). A short read is a corrupt file, not a shorter recording.
+            if (packetCount < 0)
+                return null;
+
             for (int i = 0; i < packetCount; i++)
             {
                 int tickOffset = br.ReadInt32();
                 ushort len = br.ReadUInt16();
                 byte[] data = br.ReadBytes(len);
+                if (data.Length != len)
+                    return null;
                 session.Packets.Add(new RecordedPacket { TickOffset = tickOffset, Data = data });
             }
 

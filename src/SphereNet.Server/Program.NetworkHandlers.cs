@@ -166,13 +166,30 @@ public static partial class Program
         return _resources.TryGetDefMessage(key, out var message) ? message : null;
     }
 
+    /// <summary>Run the server's own provider registration from a test, so "the
+    /// shipped default resolves" is asserted against the real startup path rather than
+    /// against a copy of it that could drift.</summary>
+    public static void RegisterDbProvidersForTests() => RegisterDbProviders();
+
     private static void RegisterDbProviders()
     {
         // Register SQLite provider for ADO.NET DbProviderFactories
         if (!DbProviderFactories.TryGetFactory("Microsoft.Data.Sqlite", out _))
         {
             DbProviderFactories.RegisterFactory("Microsoft.Data.Sqlite", SqliteFactory.Instance);
-            _log.LogDebug("Registered SQLite database provider");
+            _log?.LogDebug("Registered SQLite database provider");
+        }
+
+        // ...and MySQL, which is the DEFAULT a connection is configured with
+        // (DbConnectionConfig.Provider). Nothing registered it and no project
+        // referenced the package, so a shard that took the defaults did not fail at
+        // the network or the password - it failed before opening anything, with
+        // "the specified invariant name 'MySqlConnector' wasn't found in the list of
+        // registered .NET Data Providers" (review finding B8).
+        if (!DbProviderFactories.TryGetFactory("MySqlConnector", out _))
+        {
+            DbProviderFactories.RegisterFactory("MySqlConnector", MySqlConnector.MySqlConnectorFactory.Instance);
+            _log?.LogDebug("Registered MySQL database provider");
         }
 
         // Classic Sphere packs write SQL string literals in DOUBLE quotes

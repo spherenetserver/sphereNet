@@ -4,6 +4,80 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - Replay stops writing serials over fields that are not serials
+----------------------------------------
+
+FIX - Playing a recording back rewrites the object serials in it so the spectator sees
+        phantoms rather than the live world's objects. The rewrite worked from a table
+        of "where the serials are", and being wrong there is not a missed remap: it is
+        four bytes written over whatever the packet actually keeps at that offset
+        (review finding B10).
+
+        A sound packet has no serial at all, and had its mode, sound id and volume
+        overwritten - the review's run turned 540101230000... into 543FFF000100..., a
+        different sound at a different volume. An effect keeps two serials, after a
+        one-byte type: remapping byte 1 scribbled on the type, mangled the source and
+        left the TARGET pointing at a live object. A container item keeps its item
+        serial at 1 and its container serial after the grid byte, and the offset in use
+        was the stack offset - so neither serial moved and the amount did. The global
+        light level, two bytes long, was on the list as well.
+
+        Every entry is now checked against the writer that produces the packet, named
+        in the comment beside it, and a packet with no serial is an empty entry rather
+        than a guess. The container item gets the layout its length says it has, since
+        one fixed offset cannot be right for both client eras.
+
+FIX - A truncated .rec file loaded as a valid recording. ReadBytes returns what it HAS
+        rather than throwing, so a file cut short produced a session whose last packet
+        was a few bytes shy of the length it declared - and playback sends that
+        malformed packet to a real client. A short read is a corrupt file, not a shorter
+        recording (review finding B11).
+
+TEST - ReplayPacketIntegrityTests (8) decode the real writer output instead of counting
+        packets: the fields that are NOT serials survive byte for byte, the fields that
+        ARE serials all move, both container-item eras are covered, and a packet that
+        genuinely carries a serial still gets remapped. Putting the old offsets back
+        turns two red; accepting a short read turns one.
+
+        This is the three opcodes the review named and their neighbours, not the whole
+        inventory it asks for: 0xC7, 0xF3, 0x3C and the draw/speech/damage family still
+        need the same treatment.
+
+[2026-09-14] - A closed database session can be opened again, and the default provider exists
+----------------------------------------
+
+FIX - With UseThread set, a script DB session owns a worker thread draining a
+        BlockingCollection. Close called CompleteAdding on it - permanent by design -
+        and the field was readonly, so a later Connect started a fresh worker on a queue
+        that would never accept work again. The sequence hid it well: connect succeeds,
+        query succeeds, close succeeds, RECONNECT REPORTS SUCCESS, and only the next
+        query fails with "the collection has been marked as complete with regards to
+        additions" (review finding B9).
+
+        A script cannot tell that from a database problem, so the handling a shard
+        writes around a dropped connection - close, connect, retry - turned a
+        recoverable outage into a session that stayed dead for the rest of the process.
+        Reopening now mints a new queue, and the worker is bound to the queue it was
+        handed rather than to whatever the field holds when the thread gets going.
+
+FIX - The provider a connection uses by default is MySqlConnector, and nothing
+        registered it: no project referenced the package and startup registered only
+        SQLite. A shard that took the defaults did not fail at the network or the
+        password - it failed before opening anything, with "the specified invariant
+        name 'MySqlConnector' wasn't found in the list of registered .NET Data
+        Providers", which is the hardest kind of problem to read from a shard's side
+        (review finding B8).
+
+        The package is referenced and the factory registered beside SQLite's. This makes
+        the shipped default resolvable; it is NOT evidence that multi-database MySQL
+        works, which needs two real databases and is D02's job.
+
+TEST - DbSessionLifecycleTests (6): reconnect after close, work actually running after
+        the reconnect, four close/connect cycles, the synchronous path as a control, the
+        shipped default resolving through the server's own registration, and an unknown
+        provider naming itself in the error. Reusing the completed queue turns three
+        red; registering the MySQL factory under a different name turns one.
+
 [2026-09-14] - The map reader stops sharing a file cursor
 ----------------------------------------
 

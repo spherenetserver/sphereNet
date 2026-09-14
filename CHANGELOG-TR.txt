@@ -3,6 +3,79 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Replay artik serial olmayan alanlarin uzerine serial yazmiyor
+----------------------------------------
+
+FIX - Bir kaydi oynatmak, icindeki nesne serial'larini yeniden yaziyor ki seyirci canli
+        dunyanin nesnelerini degil hayaletleri gorsun. Bu yeniden yazma "serial'lar
+        nerede" tablosundan calisiyordu ve orada yanilmak, atlanmis bir esleme degildir:
+        paketin o offset'te gercekte ne tuttuysa onun uzerine yazilan dort bayttir
+        (inceleme bulgusu B10).
+
+        Ses paketinde serial hic yok ve mode'u, ses kimligi ile ses seviyesi
+        uzerine yaziliyordu - incelemenin kosusu 540101230000... paketini
+        543FFF000100... yapmisti: baska bir ses, baska bir seviyede. Efekt, tek baytlik
+        bir turden sonra IKI serial tutuyor: 1. bayti eslemek turu karaliyor, kaynagi
+        bozuyor ve HEDEFI canli bir nesneyi gosterir halde birakiyordu. Container item,
+        esya serial'ini 1'de ve container serial'ini grid baytindan sonra tutuyor;
+        kullanilan offset ise yigin offset'iydi - yani iki serial de yerinde kaldi,
+        miktar degisti. Iki baytlik global isik seviyesi de listedeydi.
+
+        Her girdi artik paketi ureten writer'a karsi dogrulandi ve yanindaki yorumda o
+        writer'in adi yaziyor; serial tasimayan paket, tahmin degil BOS girdi. Container
+        item, uzunlugunun soyledigi duzeni aliyor - tek sabit offset iki istemci cagi
+        icin birden dogru olamaz.
+
+FIX - Kesilmis bir .rec dosyasi gecerli kayit olarak yukleniyordu. ReadBytes, hata
+        firlatmak yerine ELINDEKINI donuyor; yani kisa kesilmis bir dosya, son paketi
+        ilan ettigi uzunluktan birkac bayt eksik olan bir oturum uretiyor - ve oynatma o
+        bozuk paketi gercek bir istemciye gonderiyor. Kisa okuma, daha kisa bir kayit
+        degil BOZUK bir dosyadir (inceleme bulgusu B11).
+
+TEST - ReplayPacketIntegrityTests (8) paket saymak yerine gercek writer ciktisini
+        cozuyor: serial OLMAYAN alanlar bayt bayt hayatta kaliyor, serial OLANLARIN
+        hepsi degisiyor, container item'in iki cagi da kapsaniyor ve gercekten serial
+        tasiyan paket hala esleniyor. Eski offset'leri geri koymak ikisini, kisa okumayi
+        kabul etmek birini kirmiziya donduruyor.
+
+        Bu, incelemenin adlandirdigi uc opcode ve komsulari; istedigi TAM envanter
+        degil: 0xC7, 0xF3, 0x3C ve draw/speech/damage ailesi ayni islemi bekliyor.
+
+[2026-09-14] - Kapatilan veritabani oturumu yeniden acilabiliyor, ve varsayilan provider var
+----------------------------------------
+
+FIX - UseThread kuruluyken bir script DB oturumu, BlockingCollection'i bosaltan bir
+        isci thread'e sahip olur. Close onun uzerinde CompleteAdding cagiriyordu -
+        tasarim geregi kalici - ve alan readonly'ydi, yani sonraki Connect bir daha asla
+        is kabul etmeyecek bir kuyrugun uzerinde taze bir isci baslatiyordu. Sira onu iyi
+        gizliyordu: baglan basarili, sorgu basarili, kapat basarili, YENIDEN BAGLANMA DA
+        BASARILI BILDIRIYOR, ve yalnizca sonraki sorgu "the collection has been marked as
+        complete with regards to additions" ile kaliyor (inceleme bulgusu B9).
+
+        Bir script bunu veritabani sorunundan ayirt edemez; yani bir shard'in kopan
+        baglanti icin yazdigi islem - kapat, baglan, tekrar dene - kurtarilabilir bir
+        kesintiyi surecin geri kalani boyunca olu kalan bir oturuma ceviriyordu. Yeniden
+        acilis artik yeni bir kuyruk uretiyor ve isci, thread calismaya basladiginda
+        alanda ne varsa ona degil, KENDISINE VERILEN kuyruga bagli.
+
+FIX - Bir baglantinin varsayilan provider'i MySqlConnector ve onu kimse kaydetmiyordu:
+        hicbir proje paketi referanslamiyor, baslangic da yalnizca SQLite'i kaydediyordu.
+        Varsayilanlari kullanan bir shard agda veya paroladan kalmiyordu - hicbir sey
+        acilmadan once, "the specified invariant name 'MySqlConnector' wasn't found in
+        the list of registered .NET Data Providers" ile kaliyordu; ki bu bir shard
+        tarafindan okunmasi en zor hata turudur (inceleme bulgusu B8).
+
+        Paket referanslandi ve factory SQLite'inkinin yanina kaydedildi. Bu, gonderilen
+        varsayilani cozulebilir yapiyor; coklu-veritabani MySQL'in CALISTIGI kaniti
+        DEGIL - o, iki gercek veritabani gerektiriyor ve D02'nin isi.
+
+TEST - DbSessionLifecycleTests (6): kapanistan sonra yeniden baglanma, yeniden
+        baglandiktan sonra isin gercekten calismasi, dort kapat/baglan dongusu, kontrol
+        olarak senkron yol, gonderilen varsayilanin sunucunun kendi kayit yolundan
+        cozulmesi, ve bilinmeyen provider'in hatada kendi adini soylemesi. Tamamlanmis
+        kuyrugu yeniden kullanmak ucunu, MySQL factory'sini baska adla kaydetmek birini
+        kirmiziya donduruyor.
+
 [2026-09-14] - Harita okuyucusu artik dosya imlecini paylasmiyor
 ----------------------------------------
 

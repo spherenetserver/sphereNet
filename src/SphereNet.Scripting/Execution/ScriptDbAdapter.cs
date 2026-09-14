@@ -325,7 +325,14 @@ public sealed class ScriptDbAdapter : IDisposable
         private DbConnection? _connection;
         private DataTable? _rowTable;
         private Thread? _workerThread;
-        private readonly BlockingCollection<Action>? _workQueue;
+        /// <summary>The worker's inbox while UseThread is set. NOT readonly: closing a
+        /// session calls CompleteAdding, which is permanent by design, so reopening one
+        /// has to hand the new worker a NEW queue. It used to start a fresh worker on
+        /// the completed queue instead - connect reported success and the next query
+        /// died with "the collection has been marked as complete with regards to
+        /// additions", which a script cannot tell apart from a database problem
+        /// (review finding B9).</summary>
+        private BlockingCollection<Action>? _workQueue;
 
         public DbConnectionConfig? Config { get; private set; }
         public string? LegacyConnectionString { get; set; }
@@ -430,7 +437,13 @@ public sealed class ScriptDbAdapter : IDisposable
                         Config?.Name ?? "?", providerInvariantName);
 
                     if (Config?.UseThread == true && _workerThread == null)
-                        StartWorkerThread();
+                    {
+                        // A reopened session needs a fresh inbox: the previous Close
+                        // completed the old one for good.
+                        if (_workQueue == null || _workQueue.IsAddingCompleted)
+                            _workQueue = new BlockingCollection<Action>();
+                        StartWorkerThread(_workQueue);
+                    }
 
                     return true;
                 }
@@ -646,12 +659,15 @@ public sealed class ScriptDbAdapter : IDisposable
             _connection = null;
         }
 
-        private void StartWorkerThread()
+        /// <summary>Start a worker bound to the queue it was given, rather than to
+        /// whatever the field holds when the thread gets around to running: a close and
+        /// reopen between those two moments would otherwise leave the worker draining a
+        /// queue nobody posts to.</summary>
+        private void StartWorkerThread(BlockingCollection<Action> queue)
         {
-            if (_workQueue == null) return;
             _workerThread = new Thread(() =>
             {
-                foreach (var action in _workQueue.GetConsumingEnumerable())
+                foreach (var action in queue.GetConsumingEnumerable())
                 {
                     try { action(); }
                     catch (Exception ex)
@@ -669,9 +685,14 @@ public sealed class ScriptDbAdapter : IDisposable
 
         private void StopWorkerThread()
         {
-            _workQueue?.CompleteAdding();
+            var queue = _workQueue;
+            queue?.CompleteAdding();
             _workerThread?.Join(TimeSpan.FromSeconds(5));
             _workerThread = null;
+            // Drop the completed queue so a later Connect mints a usable one. Keeping
+            // it would only preserve the state that made the reopen useless.
+            if (queue != null && ReferenceEquals(queue, _workQueue))
+                _workQueue = null;
         }
     }
 }

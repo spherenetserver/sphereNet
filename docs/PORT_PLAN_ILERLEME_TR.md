@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `3f53bbb` + İŞ-73..76 (kayıt nesli bütünlüğü; harita okuyucu yarışı) |
-| Tam test | 3.823 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **B1-B4 kapandı.** Sıradaki: B8 (MySQL provider) / B9-B11 |
+| Son commit | `8ffa282` + İŞ-77/78 (DB oturumu; replay paket bütünlüğü) |
+| Tam test | 3.837 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B4, B8 kapandı; B9/B10/B11 yarım.** Sıradaki: B5/B6/B7/B12 |
 
 ## Çalışma sırası
 
@@ -469,6 +469,32 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-78 KAPANDI (Beyond-Source-X B10 + B11'in kısa-okuma yarısı)** — 2026-09-14.
+  **B10:** replay'in *"serial'lar nerede"* tablosu yanlıştı, ve orada yanılmak
+  atlamak değil **bozmak**: ses paketinde serial yokken mode/ses/seviye eziliyordu
+  (`540101230000…` → `543FFF000100…`), efektte tür karalanıp **hedef canlı
+  kalıyordu**, container item'da yığın offset'i/miktar/koordinat eziliyor ve iki
+  serial de yerinde duruyordu. Her girdi artık paketi üreten **writer'a karşı**
+  doğrulandı, serial taşımayan paket boş girdi, `0x25` uzunluğunun söylediği düzeni
+  alıyor. **B11:** `ReadBytes` elindekini döndüğü için kesik `.rec` dosyası, son
+  paketi eksik bir oturum üretip **bozuk paketi gerçek istemciye** gönderiyordu.
+  Test: `ReplayPacketIntegrityTests` (8) — paket saymak yerine gerçek writer
+  çıktısını çözüyor; sondajda 2 ve 1 kırmızı. Tam suite 3.837, üç koşu. *İkisi de
+  yarım: B10'un tam opcode envanteri ve B11'in boyut/sıralama/atomik-yazım
+  doğrulamaları açık.*
+- **İŞ-77 KAPANDI (Beyond-Source-X B8 + B9'un kapat/aç yarısı)** — 2026-09-14.
+  **B9:** `UseThread` oturumunda `Close`, kuyruk üzerinde kalıcı `CompleteAdding`
+  çağırıyor ve alan readonly olduğu için sonraki `Connect` **bir daha iş kabul
+  etmeyecek** kuyrukta taze işçi başlatıyordu — bağlan/sorgu/kapat/**yeniden bağlan
+  hepsi başarılı bildiriyor**, yalnız sonraki sorgu patlıyordu; bir script'in bunu
+  veritabanı sorunundan ayırt etmesi imkânsız. Yeniden açılış artık yeni kuyruk
+  üretiyor. **B8:** varsayılan provider `MySqlConnector` hiçbir yerde kayıtlı
+  değildi (paket referansı da yoktu) — varsayılanları kullanan shard ağda değil
+  **provider çözümlemesinde** kalıyordu. Paket eklendi, factory kaydedildi; test
+  sunucunun **kendi** kayıt yolundan doğruluyor. Test: `DbSessionLifecycleTests` (6);
+  sondajda 3 ve 1 kırmızı. Tam suite 3.829, üç koşu. *B9'un timeout yarısı (bekleme
+  nesnesi ömrü, sınırsız kuyruk, başarısız sorgudan sonra duran ROW) ve D02'nin
+  gerçek MySQL matrisi açık.*
 - **İŞ-76 KAPANDI (Beyond-Source-X B4)** — 2026-09-14. Klasik `.mul` zemin bloğu
   okuması **tek ve paylaşılan** bir `BinaryReader` üzerinde seek + 193 küçük okuma
   demekti; sekiz işçi, 20.000 okuma → **10.104 yanlış blok, 3.403 exception**

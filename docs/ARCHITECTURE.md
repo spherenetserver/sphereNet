@@ -103,7 +103,7 @@ how much:
 | `TIMER` on an item off the ground (worn, contained) | next tick, wherever it is |
 | `TIMER` on a ground item whose def says `CAN=O_NOSLEEP` | next tick, wherever it is |
 | `TIMER` / spawn interval on a ground item in a sleeping sector | the maintenance sweep: armed every **180 s**, drained **64** sectors per tick |
-| Ground-item decay, corpses included, anywhere | catch-up pass every **5 s**, **256** items per pass — a backlog drains at ~51 items/s |
+| Ground-item decay, corpses included, anywhere | next tick: armed deadlines sit in a due-ordered queue, drained **256** per tick, with an audit every **60 s** that re-queues anything armed the queue does not hold |
 | Everything a character does — AI, regen, poison — in a sleeping sector | not at all until a player comes within two sectors |
 | A sector flagged `SECF_NoSleep` | like an active sector |
 

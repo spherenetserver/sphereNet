@@ -110,6 +110,42 @@ public sealed class SectorSleepLoadProbe
         Spread(playerList, world);
         Report("spread/no-trail", Measure(world, ticks, walk: null), world);
 
+        // The decay catch-up does not run inside world.OnTick - it is a separate pass
+        // on the server thread every 5 seconds - so it never showed up in the numbers
+        // above. It walks EVERY ground item in the world to find the expired ones,
+        // which is the other half of "the tick costs what the world holds rather than
+        // what is due".
+        // The decay check runs on the server thread, outside world.OnTick. Both
+        // shapes are timed here: the due queue that runs every tick now, and the full
+        // scan it replaced - which is still in the tree as the once-a-minute auditor,
+        // so the comparison is against live code rather than against a memory.
+        var buffer = new List<Item>();
+        var queue = new double[100];
+        var scan = new double[100];
+        var sw = new Stopwatch();
+        for (int i = 0; i < queue.Length; i++)
+        {
+            buffer.Clear();
+            sw.Restart();
+            world.CollectDueDecay(Environment.TickCount64, 256, buffer);
+            sw.Stop();
+            queue[i] = sw.Elapsed.TotalMilliseconds;
+        }
+        for (int i = 0; i < scan.Length; i++)
+        {
+            buffer.Clear();
+            sw.Restart();
+            world.CollectExpiredGroundItems(Environment.TickCount64, 256, buffer);
+            sw.Stop();
+            scan[i] = sw.Elapsed.TotalMilliseconds;
+        }
+        var q = queue.OrderBy(x => x).ToArray();
+        var f = scan.OrderBy(x => x).ToArray();
+        _out.WriteLine($"decay over {items} ground items, none due: " +
+                       $"due queue p50={q[q.Length / 2]:F3} ms p95={q[(int)(q.Length * 0.95)]:F3} ms " +
+                       $"(every tick)  vs  full scan p50={f[f.Length / 2]:F2} ms " +
+                       $"p95={f[(int)(f.Length * 0.95)]:F2} ms (was every 5 s, now the 60 s audit)");
+
         _out.WriteLine($"sleep grace: {Sector.SleepDelayMs} ms, " +
                        $"policy consulted by the tick: {GameWorld.SleepPolicyActive}");
     }

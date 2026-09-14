@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `aeb717c` + İŞ-84 (son-tarih tek kapı; multi okuyucu handle'a geçti) |
-| Tam test | 3.873 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Son commit | `46ac74e` + İŞ-85 (çürüme vade kuyruğuna taşındı) |
+| Tam test | 3.882 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
 | Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
 
 ## Çalışma sırası
@@ -469,6 +469,28 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-85 KAPANDI (B dalgası 2. aşama: çürüme vade kuyruğunda)** — 2026-09-14.
+  Çürüme kontrolü, süresi dolanları bulmak için **5 saniyede bir dünyadaki her yer
+  eşyasını** yürüyordu: 300.000 eşyalık dünyada **11,4 ms p50 / 13,7 p95**, üstelik
+  o koşuda **hiçbir şey bulmadan**. 5 sn'lik ritim bu yürümenin bedeliydi, bir
+  gereklilik değil. Kurulu son tarihler artık vade sıralı kuyrukta; kontrol her tick
+  koşuyor ve **0,000 ms** (aynı dünyada, vadesi gelen yokken). Kayıt İŞ-84'te
+  kurduğum tek kapıda yapılıyor — ön koşul buydu. Girdiler yapıldıkları andaki son
+  tarihi taşıyor: yeniden kurmak yeni girdi ekler, iptal hiçbir şey eklemez, bayat
+  girdi yüzeye çıkınca düşürülür — kuyruğun hiçbir şeyi bulup çıkarması gerekmiyor.
+  256 sınırı duruyor ama artık bir tick'in işini sınırlıyor; kalanlar 5 sn sonraki
+  bir tam taramanın sonuna değil, bir sonraki tick'in başına gidiyor (birikim **50
+  kat** hızlı eriyor). Uyuyan sektörde çürüme artık **kesin**.
+  **Denetçi:** eski tam tarama mekanizma olarak değil, **dakikada bir** çalışan
+  denetçi olarak duruyor — kuyruğun tutmadığı kurulu son tarihi yeniden kuyruğa alıp
+  **logluyor**; kuyruk, onu besleyen kayıtlar kadar eksiksiz ve ulaşmamış bir son
+  tarih hiç çürümezdi. 11 ms dakikada bir karşılanabilir, 5 sn'de bir karşılanamazdı.
+  Test: `DecayDueQueueTests` (9); sondajlar 4/1/1 kırmızı. Tam suite 3.882, üç koşu.
+  **Not:** İŞ-82'nin belge guardrail'i bu değişikliği ilk tam koşuda yakaladı (timer
+  sözleşmesi hâlâ 5 sn'lik geçişi vaat ediyordu) — yazılma amacı buydu; ARCHITECTURE
+  tablosu güncellendi.
+  *Açık: @Timer ve spawn hâlâ sektör tick'inden yürüyor — spawner'ın ölüm olayıyla
+  yeniden kurulması (Source-X `CCSpawn::DelObj`) gerektiği için ayrı dalga.*
 - **İŞ-84 KAPANDI (B dalgasının ön koşulu: son-tarih tek kapı)** — 2026-09-14.
   `DecayTime` dışarıya açık bir alandı; motor + sunucu + testlerde ~34 doğrudan
   atama vardı. Artık dışarıdan salt okunur: `SetDecayTime` (süre, kaynağın

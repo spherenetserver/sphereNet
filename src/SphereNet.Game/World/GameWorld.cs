@@ -2156,6 +2156,81 @@ public sealed class GameWorld
     /// lazily here. Serial-phase only: the caller must not add/remove world objects until the
     /// collection pass returns.
     /// </summary>
+    /// <summary>Armed decay deadlines, in due order. Entries carry the deadline they
+    /// were made with, so a re-armed or cleared item simply leaves a stale entry
+    /// behind and the stale entry is dropped when it surfaces — the queue never needs
+    /// to find and remove anything.</summary>
+    private readonly PriorityQueue<Item, long> _decayDue = new();
+
+    /// <summary>How many decay deadlines are waiting (stale entries included).</summary>
+    internal int DecayQueueCount => _decayDue.Count;
+
+    private long _lastDecayAuditTick;
+
+    /// <summary>Register an armed decay deadline. Called from Item's decay door.</summary>
+    internal void TrackDecay(Item item, long deadlineMs) => _decayDue.Enqueue(item, deadlineMs);
+
+    /// <summary>Take the items whose decay is due, in deadline order.
+    ///
+    /// <paramref name="max"/> bounds the work of one call; with the queue the rest are
+    /// simply the front of the next call rather than another full scan of the world.
+    /// An entry is skipped when the item is gone, no longer on the ground, or carries
+    /// a different deadline than the entry was made with (it was re-armed or
+    /// cleared).</summary>
+    public void CollectDueDecay(long now, int max, List<Item> buffer)
+    {
+        while (buffer.Count < max &&
+               _decayDue.TryPeek(out _, out long due) && due <= now)
+        {
+            if (!_decayDue.TryDequeue(out var item, out long deadline) || item == null)
+                break;
+            if (item.IsDeleted || !item.IsOnGround)
+                continue;
+            if (item.DecayTime != deadline)
+                continue;               // re-armed or cleared: a later entry owns it
+            buffer.Add(item);
+        }
+    }
+
+    /// <summary>Walk the ground items and re-queue any armed decay the queue does not
+    /// hold, loudly.
+    ///
+    /// The queue is only as complete as the registrations that feed it, and an item
+    /// whose deadline never reached it would simply never decay — the quiet kind of
+    /// failure this engine has been paying for elsewhere. Rather than trust the
+    /// invariant, this checks it once a minute and says what it found. It is the old
+    /// full scan, kept as an auditor rather than as the mechanism: at 300,000 ground
+    /// items it costs ~11 ms, which is affordable once a minute and was not
+    /// affordable every five seconds.</summary>
+    public int AuditDecayRegistrations(long now)
+    {
+        if (now - _lastDecayAuditTick < DecayAuditIntervalMs)
+            return 0;
+        _lastDecayAuditTick = now;
+
+        var queued = new HashSet<Item>();
+        foreach (var (item, _) in _decayDue.UnorderedItems)
+            queued.Add(item);
+
+        int missing = 0;
+        foreach (var it in _groundItems)
+        {
+            if (it.IsDeleted || it.DecayTime <= 0 || queued.Contains(it))
+                continue;
+            _decayDue.Enqueue(it, it.DecayTime);
+            missing++;
+        }
+
+        if (missing > 0)
+            _logger.LogWarning(
+                "Decay audit re-queued {Missing} armed item(s) the due queue did not hold. " +
+                "Their deadlines were set without reaching the registration door.", missing);
+        return missing;
+    }
+
+    /// <summary>How often the decay registration audit runs.</summary>
+    internal const long DecayAuditIntervalMs = 60_000;
+
     public void CollectExpiredGroundItems(long now, int max, List<Item> buffer)
     {
         _groundPrune.Clear();

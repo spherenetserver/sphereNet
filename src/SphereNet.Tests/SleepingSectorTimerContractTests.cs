@@ -403,8 +403,8 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
         {
             ("armed every **180 s**", "SleepingMaintenanceIntervalMs = 180_000", "GameWorld"),
             ("drained **64** sectors per tick", "MaintenanceCallsPerTick { get; set; } = 64", "GameWorld"),
-            ("catch-up pass every **5 s**", "_nextDecayCatchupTick = now + 5000", "Program.Tick"),
-            ("**256** items per pass", "CollectExpiredGroundItems(now, 256", "Program.Tick"),
+            ("drained **256** per tick", "CollectDueDecay(now, 256", "Program.Tick"),
+            ("audit every **60 s**", "DecayAuditIntervalMs = 60_000", "GameWorld"),
         };
 
         foreach (var (docText, source, where) in claims)
@@ -421,7 +421,7 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
     }
 
     [Fact]
-    public void DecayIsCollectedInBoundedBatchesWhereverTheItemIs()
+    public void DecayIsDueOrderedAndBoundedPerTickWhereverTheItemIs()
     {
         Setup();
         var due = new List<Item>();
@@ -435,15 +435,20 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
         }
 
         var buffer = new List<Item>();
-        _world.CollectExpiredGroundItems(Environment.TickCount64, 256, buffer);
+        _world.CollectDueDecay(Environment.TickCount64, 256, buffer);
 
-        // Decay does not wait for the sweep: a separate catch-up pass collects
-        // expired ground items wherever they are. It is budgeted, so a backlog
-        // drains at a bounded RATE rather than all at once - 256 items per pass,
-        // one pass every 5 seconds. That rate is the number the documentation owes
-        // a reader, and it is why a huge backlog is late by minutes even though no
-        // single item's deadline ever moved.
-        _out.WriteLine($"{due.Count} expired items, one pass collected {buffer.Count}");
+        // Decay never waited for the sleeping-sector sweep; it used to have its own
+        // pass every five seconds, which walked EVERY ground item in the world to
+        // find the expired ones (11 ms at 300,000 items, to find nothing). It is a
+        // due-ordered queue now, so the check runs every tick and costs what is due.
+        // The cap still bounds one tick's work - the rest are simply the front of the
+        // next tick rather than the back of another full scan.
+        _out.WriteLine($"{due.Count} expired items, one tick collected {buffer.Count}, " +
+                       $"{_world.DecayQueueCount} still queued");
         Assert.Equal(256, buffer.Count);
+
+        var rest = new List<Item>();
+        _world.CollectDueDecay(Environment.TickCount64, 256, rest);
+        Assert.Equal(44, rest.Count);
     }
 }

@@ -4,6 +4,50 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - Decay is found by a due queue, not by walking the whole world
+----------------------------------------
+
+FIX - The decay check walked EVERY ground item in the world every five seconds to
+        find the expired ones. Measured on a 300,000-item world it cost 11.4 ms p50
+        (13.7 p95) to find nothing at all - on the server thread, twelve times a
+        minute, against a 100 ms tick. The five-second cadence was the price of that
+        walk rather than a requirement: nothing about decay wanted to be five seconds
+        late.
+
+        Armed decay deadlines now sit in a due-ordered queue, so the check runs every
+        tick and costs what is DUE rather than what exists (0.000 ms p50 with
+        300,000 items and none due). The registration happens in the one door every
+        decay write already went through, which is what the previous change was for.
+
+        Entries carry the deadline they were made with. Re-arming pushes a new entry
+        and cancelling pushes nothing: the stale entry is recognised and dropped when
+        it surfaces, so the queue never has to find and remove anything. An item that
+        left the ground, was deleted, or was re-armed is skipped the same way.
+
+        The 256-per-pass cap stays, but it means something different now. It bounds
+        one tick's work; the remainder is the front of the next tick rather than the
+        back of another full scan five seconds later, so a backlog drains fifty times
+        faster.
+
+FIX - The old full scan is still in the tree, as an AUDITOR rather than as the
+        mechanism: once a minute it walks the ground items and re-queues anything
+        armed that the queue does not hold, and says so in the log. A queue is only
+        as complete as the registrations that feed it, and an item whose deadline
+        never reached it would simply never decay - the quiet failure this engine has
+        been paying for elsewhere. Eleven milliseconds is affordable once a minute
+        and was not affordable every five seconds.
+
+TEST - DecayDueQueueTests (9): nothing due costs nothing, items come back in
+        deadline order, a re-armed item is not collected on its old deadline, a
+        cancelled or deleted or picked-up item is not collected, the cap bounds one
+        call without losing the rest, and the audit finds, re-queues and reports an
+        armed item the queue never saw. Probes: dropping the registration turns 4
+        red, accepting stale entries 1, an audit that reports without re-queuing 1.
+
+        The documentation guardrail from the previous wave caught this change on its
+        first full run - the timer contract still promised a five-second pass - which
+        is what it was written to do. ARCHITECTURE now states the new one.
+
 [2026-09-14] - One door for every deadline, and the multi reader stops touching its stream
 ----------------------------------------
 

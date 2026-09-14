@@ -1053,16 +1053,21 @@ public static partial class Program
 
     private static void RunDecayCatchup(long now)
     {
-        if (now < _nextDecayCatchupTick)
-            return;
-        _nextDecayCatchupTick = now + 5000;
-
-        // Sector sleep skips far-away sectors. This catch-up sweep ensures
-        // decaying ground items/corpses still expire on time even when
-        // nobody is nearby. Collection completes before any deletion below,
-        // so the direct (snapshot-free) world enumeration is safe here.
+        // Every tick, not every five seconds: the world keeps armed decay deadlines
+        // in a due-ordered queue, so this costs what is DUE rather than what exists.
+        // The pass it replaced walked every ground item in the world - measured at
+        // 300,000 items it took 11 ms to find nothing, twelve times a minute - and
+        // its five-second cadence was the price of that walk, not a requirement.
+        // The cap stays as a bound on one tick's work; with the queue the remainder
+        // is simply the front of the next tick instead of another full scan.
         _decayCatchupBuffer.Clear();
-        _world.CollectExpiredGroundItems(now, 256, _decayCatchupBuffer);
+        _world.CollectDueDecay(now, 256, _decayCatchupBuffer);
+
+        // The queue is only as complete as the registrations that feed it, so once a
+        // minute the old scan runs as an AUDITOR: anything armed but unqueued is
+        // re-queued and logged. An item whose deadline never reached the queue would
+        // otherwise simply never decay, and nothing would say so.
+        _world.AuditDecayRegistrations(now);
 
         foreach (var item in _decayCatchupBuffer)
         {

@@ -3,6 +3,47 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Curume, dunyanin tamamini yurumeden, bir vade kuyrugundan bulunuyor
+----------------------------------------
+
+FIX - Curume kontrolu, suresi dolanlari bulmak icin bes saniyede bir dunyadaki HER
+        yer esyasini yuruyordu. 300.000 esyalik bir dunyada olculdu: hicbir sey
+        bulmadan 11,4 ms p50 (13,7 p95) - sunucu thread'inde, dakikada on iki kez,
+        100 ms'lik tick'e karsi. Bes saniyelik ritim bu yurumenin bedeliydi, bir
+        gereklilik degil: curumenin bes saniye gec kalmayi isteyen bir yani yok.
+
+        Kurulu curume son tarihleri artik vade sirali bir kuyrukta; kontrol her tick
+        calisiyor ve VADESI GELEN kadar maliyet cikariyor (300.000 esya, hicbiri
+        vadesi gelmemisken 0,000 ms p50). Kayit, her curume yaziminin zaten gectigi
+        tek kapida yapiliyor - onceki degisiklik bunun icindi.
+
+        Girdiler, yapildiklari andaki son tarihi tasiyor. Yeniden kurmak yeni bir
+        girdi ekliyor, iptal etmek hicbir sey eklemiyor: bayat girdi yuzeye ciktiginda
+        taniniyor ve dusuruluyor, yani kuyrugun hicbir seyi bulup cikarmasi gerekmiyor.
+        Yerden kalkan, silinen ya da yeniden kurulan esya da ayni sekilde atlaniyor.
+
+        Gecis basina 256 siniri duruyor ama artik baska bir sey demek: bir tick'in
+        isini sinirliyor, kalanlar bes saniye sonraki bir tam taramanin sonuna degil,
+        bir sonraki tick'in basina gidiyor - yani birikim elli kat hizli eriyor.
+
+FIX - Eski tam tarama agacta duruyor, ama mekanizma olarak degil DENETCI olarak:
+        dakikada bir yer esyalarini yuruyup kuyrugun tutmadigi kurulu son tarihleri
+        yeniden kuyruga aliyor ve bunu logluyor. Bir kuyruk, onu besleyen kayitlar
+        kadar eksiksizdir; son tarihi kuyruga hic ulasmamis bir esya ise hic
+        curumezdi - bu motorun baska yerlerde bedelini odedigi sessiz ariza. On bir
+        milisaniye dakikada bir karsilanabilir, bes saniyede bir karsilanamazdi.
+
+TEST - DecayDueQueueTests (9): vadesi gelen yoksa maliyet yok, esyalar son tarih
+        sirasinda geliyor, yeniden kurulan esya eski son tarihinde toplanmiyor, iptal
+        edilen/silinen/yerden alinan toplanmiyor, sinir bir cagriyi sinirlarken
+        kalanlari kaybetmiyor ve denetci, kuyrugun hic gormedigi kurulu bir esyayi
+        buluyor, yeniden kuyruga aliyor ve bildiriyor. Sondajlar: kaydi kaldirmak 4,
+        bayat girdiyi kabul etmek 1, yeniden kuyruga almayan denetci 1 kirmizi.
+
+        Onceki dalganin belge guardrail'i bu degisikligi ilk tam kosuda yakaladi -
+        timer sozlesmesi hala bes saniyelik gecisi vaat ediyordu - ki yazilma amaci
+        buydu. ARCHITECTURE artik yenisini soyluyor.
+
 [2026-09-14] - Her son tarih icin tek kapi; multi okuyucu artik stream'ine dokunmuyor
 ----------------------------------------
 

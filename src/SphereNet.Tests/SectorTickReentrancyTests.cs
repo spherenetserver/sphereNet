@@ -56,7 +56,11 @@ public sealed class SectorTickReentrancyTests
 
         try
         {
-            var ex = Record.Exception(() => sector.OnTick(System.Environment.TickCount64));
+            // Driven through the world tick: item timers come from the world's due
+            // queue now, so the interleaving this test is about - a callback deleting
+            // siblings that are in the same pass - happens there rather than in the
+            // sector's item list.
+            var ex = Record.Exception(() => world.OnTick());
             Assert.Null(ex);
 
             // Two items survive; the three the callback removed are gone.
@@ -104,12 +108,16 @@ public sealed class SectorTickReentrancyTests
 
         try
         {
-            sector.OnTick(System.Environment.TickCount64);
+            world.OnTick();
 
             // The item added mid-tick is in the sector now...
             Assert.Equal(2, sector.ItemCount);
-            // ...but it was NOT in the snapshot, so it did not tick this pass —
-            // only the original item did.
+            // ...but it was not part of the selection this pass, so it did not tick —
+            // only the original item did. The hazard moved with the mechanism: item
+            // timers come from the world's due queue rather than the sector's list,
+            // and a callback that arms a new one during the drain must not be picked
+            // up by the same drain (which, for a timer armed at "now", would not
+            // terminate).
             Assert.Equal(new[] { first.Uid.Value }, ticked);
             Assert.DoesNotContain(newItemUid, ticked);
         }

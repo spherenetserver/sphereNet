@@ -76,16 +76,21 @@ world tick only, against the 100 ms server tick:
 
 | Shape | Awake sectors | tick p50 | tick p95 |
 |---|---|---|---|
-| Players in ~10 towns, no trail (the old instant-sleep policy) | 365 | 3.2 ms | 4.7 ms |
-| Same, with a 1-minute trail (`SECTORSLEEP=1`, as shipped) | 485 | 3.5 ms | 5.1 ms |
-| Same, with a 10-minute trail (`SECTORSLEEP=10`, upstream default) | 817 | 5.5 ms | 7.9 ms |
-| 500 players scattered evenly across the whole map | 5726 | 66.8 ms | 171.3 ms |
+| Players in ~10 towns, no trail | 365 | 1.5 ms | 2.1 ms |
+| Same, with a 1-minute trail (`SECTORSLEEP=1`, as shipped) | 485 | 1.5 ms | 2.3 ms |
+| Same, with a 10-minute trail (`SECTORSLEEP=10`, upstream default) | 817 | 1.9 ms | 2.4 ms |
+| 500 players scattered evenly across the whole map | 5726 | 11.9 ms | 19.6 ms |
 
-The grace is cheap; **what is expensive is awake area**. 500 players spread evenly
-claim more 5×5 window than the map has sectors, so ~93% of the world ticks and the
-tick runs past its budget — and that is true with or without the grace, because an
-awake sector here ticks every object it holds rather than only the objects whose
-timer is due. Reproduce with `SectorSleepLoadProbe` (`SPHERENET_LOADPROBE=1`).
+The sleep grace is cheap, and awake **area** stopped being the cost it was. Those
+same four rows measured 3.2/4.7, 3.5/5.1, 5.5/7.9 and 66.8/171.3 ms while an awake
+sector still called `OnTick` on every item it held; item deadlines moved to a due
+queue and the sector stopped polling, which is what took the scattered case from
+171% of the tick budget to 20%. What remains in an awake sector is character work.
+
+The first tick after a load is the exception: a save arrives with every deadline it
+was stored with, most of them already past, so the queue drains that backlog at up
+to 2000 timers a tick until it is caught up. Reproduce all of it with
+`SectorSleepLoadProbe` (`SPHERENET_LOADPROBE=1`).
 
 Because gameplay can pause for empty regions but timers cannot, every deadline is
 an **absolute timestamp** (`Environment.TickCount64`), never a tick counter. A
@@ -100,18 +105,21 @@ how much:
 |---|---|
 | Anything in an active sector (5×5 sectors around a player) | next tick |
 | `TIMERF` on any object | next tick, wherever it is |
-| `TIMER` on an item off the ground (worn, contained) | next tick, wherever it is |
-| `TIMER` on a ground item whose def says `CAN=O_NOSLEEP` | next tick, wherever it is |
-| `TIMER` / spawn interval on a ground item in a sleeping sector | the maintenance sweep: armed every **180 s**, drained **64** sectors per tick |
+| `TIMER` on any item — worn, contained, or lying in a sleeping sector | next tick, wherever it is |
+| Spawn interval | next tick when it comes due; a spawner at its cap is restarted by the death of one of its creatures, not by being polled |
 | Ground-item decay, corpses included, anywhere | next tick: armed deadlines sit in a due-ordered queue, drained **256** per tick, with an audit every **60 s** that re-queues anything armed the queue does not hold |
 | Everything a character does — AI, regen, poison — in a sleeping sector | not at all until a player comes within two sectors |
 | A sector flagged `SECF_NoSleep` | like an active sector |
 
-A sleeping sector is at least ~128 tiles from the nearest player, so nothing in it
-is visible while it is late; it becomes visible when a player arrives, which is the
-moment it wakes. `CAN=O_NOSLEEP` (Source-X `CAN_O_NOSLEEP`) is the per-item escape
-hatch for the cases where that reasoning does not hold — a timer whose effect is
-felt somewhere else.
+What sleeps is **character work** — AI, regen, poison. Item deadlines are held in
+world-level due queues (one for `TIMER`, one for decay), drained every tick, so an
+item is reached when its deadline arrives and not before: sector sleep stopped
+being part of the answer for them. That also leaves `CAN=O_NOSLEEP` with nothing to
+buy for a timer; it is honest about that rather than appearing to do something.
+
+The queues are fed by the single write door each deadline goes through, and each
+has an auditor that re-queues and **reports** anything armed it does not hold — a
+deadline that never reached a queue would otherwise be a timer that never fires.
 
 The delays above are pinned to the engine's own constants by
 `SleepingSectorTimerContractTests`.

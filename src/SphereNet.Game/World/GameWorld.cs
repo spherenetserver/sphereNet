@@ -1390,54 +1390,104 @@ public sealed class GameWorld
         // iterating sectors no client can see — pings spike to 300-500ms.
         TickActiveSectors(currentTime);
 
-        // Periodically run item timers in sleeping sectors so spawn points,
-        // decay and TIMER triggers stay alive even when no player is nearby.
+        // Recycle the uids of deleted objects on the old maintenance cadence.
         TickSleepingMaintenance(currentTime);
 
         TickTimerF(currentTime);
-        TickOffGroundTimers(currentTime);
+        TickItemTimers(currentTime);
     }
 
-    // Armed item timers that no sector tick list covers: items OFF the ground
-    // (worn gear, contained items — sector ticks cover ground items only, so a
-    // WORN flash robe's 1 s color TIMER never fired), plus ground items whose def
-    // says CAN=O_NOSLEEP, which Source-X keeps ticking when their sector sleeps.
-    // Registered from SetTimeout, pumped here in the serial phase (@Timer bodies
-    // mutate the world). Only armed timers are in the set, so this is a due list
-    // rather than a sweep of the world.
-    private readonly HashSet<Item> _offGroundTimers = [];
-    private readonly List<Item> _offGroundTimerBuffer = [];
+    // Every ARMED item timer, in due order. Worn, contained and lying on the floor
+    // alike: the sector tick used to be the mechanism for ground items, calling
+    // OnTick on every item of every awake sector ten times a second whether or not
+    // the item had anything to do. Entries carry the deadline they were made with,
+    // so a re-armed or cleared timer leaves a stale entry that is recognised and
+    // dropped when it surfaces - the queue never has to find and remove anything.
+    // Drained in the serial phase, because @Timer bodies mutate the world.
+    private readonly PriorityQueue<Item, long> _timerDue = new();
+    private long _lastTimerAuditTick;
 
-    internal void TrackOffGroundTimer(Item item) => _offGroundTimers.Add(item);
+    /// <summary>How many armed item timers are waiting (stale entries included).</summary>
+    internal int TimerQueueCount => _timerDue.Count;
 
-    private void TickOffGroundTimers(long nowMs)
+    internal void TrackItemTimer(Item item, long deadlineMs) => _timerDue.Enqueue(item, deadlineMs);
+
+    private readonly List<Item> _timerDueBuffer = [];
+
+    /// <summary>How many item timers one tick may run.
+    ///
+    /// A world loaded from a save arrives with every deadline it was saved with, and
+    /// most of them are already in the past - the shard was off. Without a bound the
+    /// first tick after load drains all of them at once: every spawner produces,
+    /// every decay resolves, in a single tick that can be long enough to take the
+    /// process out. (It did, in the live-pack probe.) The leftovers are still due, so
+    /// they come out on the next tick and the backlog drains over a few of them
+    /// instead of one. The decay queue is bounded for the same reason.</summary>
+    internal int MaxItemTimersPerTick { get; set; } = 2000;
+
+    private void TickItemTimers(long nowMs)
     {
-        if (_offGroundTimers.Count == 0)
-            return;
-
-        _offGroundTimerBuffer.Clear();
-        foreach (var item in _offGroundTimers)
+        // SELECT first, then run - the shape upstream uses (CWorldTicker::
+        // ProcessTimedObjects walks the due prefix into a buffer before executing
+        // any of it). Running straight out of the queue would let a @Timer body that
+        // re-arms itself to now be picked up again by the same drain, forever, inside
+        // one tick. Selecting first means a timer re-armed during the callback is
+        // next tick's work, which is also what a tick-start timestamp implies.
+        _timerDueBuffer.Clear();
+        while (_timerDueBuffer.Count < MaxItemTimersPerTick &&
+               _timerDue.TryPeek(out _, out long due) && due <= nowMs)
         {
-            // Ground items tick through their sector - unless they never sleep, in
-            // which case the sector may not be ticking at all. Deleted or disarmed
-            // ones just leave the registry.
-            if (item.IsDeleted || item.Timeout <= 0 ||
-                (item.IsOnGround && !item.NeverSleeps) ||
-                nowMs >= item.Timeout)
-                _offGroundTimerBuffer.Add(item);
+            if (!_timerDue.TryDequeue(out var item, out long deadline) || item == null)
+                break;
+            if (item.IsDeleted || item.Timeout <= 0)
+                continue;
+            if (item.Timeout != deadline)
+                continue;               // re-armed or cleared: a later entry owns it
+            _timerDueBuffer.Add(item);
         }
 
-        foreach (var item in _offGroundTimerBuffer)
+        for (int i = 0; i < _timerDueBuffer.Count; i++)
         {
-            _offGroundTimers.Remove(item);
-            if (!item.IsDeleted && (!item.IsOnGround || item.NeverSleeps) &&
-                item.Timeout > 0 && nowMs >= item.Timeout)
-            {
-                // A re-armed timer (@Timer body runs TIMER n again)
-                // re-registers through SetTimeout.
-                item.OnTick();
-            }
+            var item = _timerDueBuffer[i];
+            // A callback may have deleted a sibling that is also in this buffer.
+            if (item.IsDeleted)
+                continue;
+            // A re-armed timer (@Timer body runs TIMER n again) re-registers through
+            // SetTimeout, so nothing needs to be put back here.
+            if (!item.OnTick())
+                GetSector(item.Position)?.RemoveItem(item);
         }
+        _timerDueBuffer.Clear();
+    }
+
+    /// <summary>Walk the items and re-queue any armed timer the queue does not hold,
+    /// loudly — the same auditor the decay queue has, for the same reason: a deadline
+    /// that never reached the queue is a timer that never fires, and nothing else
+    /// would say so.</summary>
+    public int AuditTimerRegistrations(long now)
+    {
+        if (now - _lastTimerAuditTick < DecayAuditIntervalMs)
+            return 0;
+        _lastTimerAuditTick = now;
+
+        var queued = new HashSet<Item>();
+        foreach (var (item, _) in _timerDue.UnorderedItems)
+            queued.Add(item);
+
+        int missing = 0;
+        foreach (var obj in _objects.Values)
+        {
+            if (obj is not Item it || it.IsDeleted || it.Timeout <= 0 || queued.Contains(it))
+                continue;
+            _timerDue.Enqueue(it, it.Timeout);
+            missing++;
+        }
+
+        if (missing > 0)
+            _logger.LogWarning(
+                "Timer audit re-queued {Missing} armed item timer(s) the due queue did not hold. " +
+                "Their deadlines were set without reaching the registration door.", missing);
+        return missing;
     }
 
     /// <summary>Register an object as holding a pending TIMERF entry so
@@ -1781,13 +1831,12 @@ public sealed class GameWorld
 
         ExpireClientLingers();
 
-        // Sleeping sector maintenance — item timers, spawn points, decay in sectors
-        // with no nearby players. Without this, remote spawns freeze in multicore mode.
+        // Recycle the uids of deleted objects on the old maintenance cadence.
         TickSleepingMaintenance(currentTime);
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
         TickTimerF(currentTime);
-        TickOffGroundTimers(currentTime);
+        TickItemTimers(currentTime);
     }
 
     private void ExpireClientLingers()

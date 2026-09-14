@@ -495,17 +495,41 @@ public sealed class Sector : IScriptObj
             scratch.Clear(); // don't pin ticked references until the next tick
         }
 
-        TickItems();
+        // Items are NOT ticked here any more. An awake sector used to call OnTick on
+        // every item it held, ten times a second, whether or not the item had a
+        // deadline: on a world of 300,000 items that was most of a 66 ms world tick,
+        // spent asking objects with nothing to do whether they had anything to do.
+        // Armed item timers live in the world's due queue now (and decay in its own),
+        // so an item is reached when its deadline arrives and not before - the shape
+        // upstream has always had (CWorldTicker's time-sorted list).
     }
 
     /// <summary>
-    /// Lightweight maintenance tick for sleeping sectors.
-    /// Only processes item timers (decay, spawn, TIMER) — no character AI.
-    /// Called periodically by GameWorld to keep timers alive in empty areas.
+    /// Periodic housekeeping for a sleeping sector. It does NOT tick items.
+    ///
+    /// This used to be how remote item timers ran at all - the sweep called it every
+    /// three minutes and it ticked every item in the sector. Armed timers and decay
+    /// are reached by the world's due queues now, so polling here would only put the
+    /// old cost back and blur the contract: an item would fire from its deadline, or
+    /// from a sweep, whichever came first.
+    ///
+    /// What is left is pruning. An item can be marked deleted without going through
+    /// the world's delete path, and the sector list it sat in is also the list that
+    /// answers "what is here" for views and speech, so a dead entry is worth clearing
+    /// even though nothing ticks it.
     /// </summary>
     public void OnMaintenanceTick()
     {
-        TickItems();
+        if (_items.Count == 0) return;
+        var scratch = t_itemTickScratch ??= new List<Item>(16);
+        scratch.Clear();
+        scratch.AddRange(_items);
+        for (int i = 0; i < scratch.Count; i++)
+        {
+            if (scratch[i].IsDeleted)
+                RemoveItem(scratch[i]);
+        }
+        scratch.Clear();
     }
 
     private void TickItems()

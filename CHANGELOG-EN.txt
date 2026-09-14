@@ -4,6 +4,50 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - Item timers come from a due queue; an awake sector stops polling its items
+----------------------------------------
+
+FIX - An awake sector called OnTick on every item it held, ten times a second,
+        whether or not the item had a deadline. On a world of 500 players, 50,000
+        NPCs and 300,000 ground items that was most of a 66.8 ms p50 / 171.3 ms p95
+        world tick, against a 100 ms budget - spent asking objects with nothing to do
+        whether they had anything to do. The same shape is now 11.9 ms p50 /
+        19.6 ms p95.
+
+        Every ARMED item timer is registered with a world-level due queue - worn,
+        contained and lying on the floor alike - and the sector no longer ticks items
+        at all. This is the shape upstream has always had: one time-sorted list, and
+        a tick that walks only its due prefix (CWorldTicker::ProcessTimedObjects).
+
+        Selection happens before execution, as it does upstream. Running straight out
+        of the queue would let a @Timer body that re-arms itself to "now" be picked up
+        again by the same drain, which for a zero delay does not terminate; selecting
+        first makes that next tick's work.
+
+        One tick runs at most 2000 item timers. A world loaded from a save arrives
+        with every deadline it was saved with and most of them are in the past,
+        because the shard was off - without a bound the first tick after load drains
+        all of them at once, and that tick was long enough to take the process out.
+        The leftovers are still due, so the backlog drains over the next few ticks.
+
+CHANGE - The timer contract changed, so the documentation did. An armed TIMER now
+        runs on the next tick wherever the item lies: the three-minute wait for items
+        in a sleeping sector is gone, and with it the reason CAN=O_NOSLEEP existed
+        for timers - it is honest about buying nothing rather than appearing to do
+        something. What still sleeps is character work: AI, regen, poison.
+
+        The maintenance sweep no longer runs timers either. It prunes sector lists
+        and carries the uid-recycling cadence; leaving it able to fire timers would
+        have put the polling back and blurred the contract, because an item would run
+        from its deadline or from a sweep, whichever came first.
+
+TEST - The existing contract tests were rewritten against the new contract rather
+        than deleted, including the two that used an item timer as a tripwire for
+        "did this sector tick" - they use a creature's regen now, because that is
+        what still depends on the sector. Reentrancy is covered where the hazard
+        moved to: a callback that adds an item during the drain does not get it
+        ticked in the same pass, and one that deletes its siblings does not throw.
+
 [2026-09-14] - A spawn point hears about a death when it happens
 ----------------------------------------
 

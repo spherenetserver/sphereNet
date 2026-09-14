@@ -36,11 +36,7 @@ public sealed class SectorSleepGraceTests : IDisposable
 
     public SectorSleepGraceTests(ITestOutputHelper output) => _out = output;
 
-    public void Dispose()
-    {
-        Item.OnTimerExpired = null;
-        Sector.SleepDelayMs = 10L * 60 * 1000;
-    }
+    public void Dispose() => Sector.SleepDelayMs = 10L * 60 * 1000;
 
     /// <summary>Built in the test body, not the constructor: ResetEngineStatics runs
     /// after the constructor and clears the ambient world resolvers.</summary>
@@ -61,18 +57,23 @@ public sealed class SectorSleepGraceTests : IDisposable
         _world.OnTick();
     }
 
-    /// <summary>An armed, already-overdue item timer is the cheapest probe for "did
-    /// this sector tick": it fires exactly once, the first time its sector runs.</summary>
-    private (Item Item, List<uint> Fires) Tripwire(Point3D at)
+    /// <summary>A creature whose hit regen is due is the probe for "did this sector
+    /// tick": one point of health per tick of its sector, and nothing at all while
+    /// the sector sleeps.
+    ///
+    /// An item timer used to serve here, and no longer can: armed item deadlines are
+    /// held in a world-level due queue now, so they fire wherever the item lies and
+    /// say nothing about whether its sector ran. Characters are the part that still
+    /// sleeps, which is exactly what this class is about.</summary>
+    private Character Tripwire(Point3D at)
     {
-        var fires = new List<uint>();
-        Item.OnTimerExpired = it => { fires.Add(it.Uid.Value); return TriggerResult.Default; };
-
-        var item = _world.CreateItem();
-        item.BaseId = 0x0EED;
-        _world.PlaceItem(item, at);
-        item.SetTimeout(Environment.TickCount64 - 1000);
-        return (item, fires);
+        var npc = _world.CreateCharacter();
+        npc.BaseId = 0x000C;
+        npc.MaxHits = 50; npc.Hits = 1;
+        npc.TrySetProperty("REGENHITS", "0");   // regen every tick, so one tick shows
+        npc.Food = 10;
+        _world.PlaceCharacter(npc, at);
+        return npc;
     }
 
     private Sector SectorAt(Point3D p) =>
@@ -84,16 +85,15 @@ public sealed class SectorSleepGraceTests : IDisposable
     public void ASectorThePlayerJustLeftKeepsTicking()
     {
         Setup(graceMs: 10L * 60 * 1000);
-        var (item, fires) = Tripwire(Home);
+        var npc = Tripwire(Home);
 
         // Leave. Home is now far outside the 5x5 window - the only thing that used
         // to keep it alive.
         _world.MoveCharacter(_player, Away, fireRegionEvents: false);
         _world.OnTick();
 
-        _out.WriteLine($"item timer at the abandoned sector fired {fires.Count}x on the tick after leaving");
-        Assert.Single(fires);
-        Assert.Equal(item.Uid.Value, fires[0]);
+        _out.WriteLine($"creature in the abandoned sector: {npc.Hits} hp (started at 1)");
+        Assert.True(npc.Hits > 1, "the sector the player just left should still be ticking");
         Assert.False(SectorAt(Home).IsSleeping);
     }
 
@@ -104,9 +104,9 @@ public sealed class SectorSleepGraceTests : IDisposable
         _world.MoveCharacter(_player, Away, fireRegionEvents: false);
         _world.OnTick();
 
-        // Arm the tripwire AFTER the move, so the only thing that can fire it is a
+        // Place the tripwire AFTER the move, so the only thing that can move it is a
         // later tick of the abandoned sector.
-        var (_, fires) = Tripwire(Home);
+        var npc = Tripwire(Home);
 
         while (Environment.TickCount64 - _world.GetSector(0, Home.X / Sector.SectorSize,
                    Home.Y / Sector.SectorSize)!.LastClientTimeMs <= 120)
@@ -114,9 +114,9 @@ public sealed class SectorSleepGraceTests : IDisposable
 
         _world.OnTick();
 
-        _out.WriteLine($"after the grace expired the abandoned sector fired {fires.Count} timer(s); " +
+        _out.WriteLine($"after the grace expired: {npc.Hits} hp; " +
                        $"IsSleeping={SectorAt(Home).IsSleeping}");
-        Assert.Empty(fires);
+        Assert.Equal(1, npc.Hits);
         Assert.True(SectorAt(Home).IsSleeping);
     }
 
@@ -128,7 +128,7 @@ public sealed class SectorSleepGraceTests : IDisposable
         // A sector two away from the player: inside the 5x5 window, but the player
         // was never IN it, so nothing ever stamped its last-client time.
         var neighbour = new Point3D((short)(Home.X + 2 * Sector.SectorSize), Home.Y, 0, 0);
-        var (_, fires) = Tripwire(neighbour);
+        var npc = Tripwire(neighbour);
 
         _world.MoveCharacter(_player, Away, fireRegionEvents: false);
         _world.OnTick();
@@ -136,8 +136,8 @@ public sealed class SectorSleepGraceTests : IDisposable
         // The grace keeps the trail a traveller actually walked, one sector wide. If
         // it kept the whole window instead, a player crossing the map would drag a
         // five-sector-wide band of awake world behind them for ten minutes.
-        _out.WriteLine($"window-only sector fired {fires.Count} timer(s) after the player left");
-        Assert.Empty(fires);
+        _out.WriteLine($"creature in a window-only sector: {npc.Hits} hp after the player left");
+        Assert.Equal(1, npc.Hits);
         Assert.True(SectorAt(neighbour).IsSleeping);
     }
 
@@ -145,7 +145,7 @@ public sealed class SectorSleepGraceTests : IDisposable
     public void SectorSleepZeroMeansNothingEverSleeps()
     {
         Setup(graceMs: 0);
-        var (_, fires) = Tripwire(Home);
+        var npc = Tripwire(Home);
 
         _world.MoveCharacter(_player, Away, fireRegionEvents: false);
         _world.OnTick();
@@ -156,9 +156,9 @@ public sealed class SectorSleepGraceTests : IDisposable
         // life of the process. Pinned because it is a loaded gun on this engine: an
         // awake sector here ticks every object it holds, so a shard that sets 0 and
         // lets players travel ends up ticking the whole map.
-        _out.WriteLine($"SECTORSLEEP=0: abandoned sector fired {fires.Count} timer(s); " +
+        _out.WriteLine($"SECTORSLEEP=0: creature in the abandoned sector at {npc.Hits} hp; " +
                        $"IsSleeping={SectorAt(Home).IsSleeping}");
-        Assert.Single(fires);
+        Assert.True(npc.Hits > 1);
         Assert.False(SectorAt(Home).IsSleeping);
     }
 

@@ -1379,18 +1379,15 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     public void SetTimeout(long timeoutMs)
     {
         _timeout = timeoutMs;
-        // Two classes of armed item timer belong to no sector tick list and are
-        // pumped by the world instead:
-        //   - items OFF the ground (worn gear, contained items) — sector lists hold
-        //     ground items only, so a worn robe's 1 s colour TIMER never fired;
-        //   - ground items whose def says CAN=O_NOSLEEP — Source-X keeps exactly
-        //     these in the ticking list when their sector sleeps
-        //     (CObjBase::_TickableStateOverride).
-        // The registry holds only ARMED timers, so this is a due list and not a
-        // per-tick walk of the world.
-        if (timeoutMs > 0 && this is Items.Item timedItem &&
-            (!timedItem.IsOnGround || timedItem.NeverSleeps))
-            ResolveWorld?.Invoke()?.TrackOffGroundTimer(timedItem);
+        // EVERY armed item timer is registered with the world's due queue - worn,
+        // contained and lying on the floor alike. The sector tick used to be the
+        // mechanism for ground items: it called OnTick on every item in every awake
+        // sector, ten times a second, whether or not the item had anything to do.
+        // Measured on a world of 300,000 items that was most of a 66 ms world tick.
+        // A due queue costs what is due instead, which is what upstream's single
+        // time-sorted ticking list does (CWorldTicker).
+        if (timeoutMs > 0 && this is Items.Item timedItem)
+            ResolveWorld?.Invoke()?.TrackItemTimer(timedItem, timeoutMs);
     }
 
     /// <summary>Re-register an armed timer after the object has MOVED off the ground.
@@ -1402,9 +1399,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// (CTimedObject.cpp:57).</summary>
     internal void RefreshTimerTracking()
     {
-        if (_timeout > 0 && this is Items.Item timedItem &&
-            (!timedItem.IsOnGround || timedItem.NeverSleeps))
-            ResolveWorld?.Invoke()?.TrackOffGroundTimer(timedItem);
+        if (_timeout > 0 && this is Items.Item timedItem)
+            ResolveWorld?.Invoke()?.TrackItemTimer(timedItem, _timeout);
     }
     public void GoSleep() => _isSleeping = true;
     public void GoAwake() => _isSleeping = false;

@@ -354,7 +354,7 @@ public sealed class ItemTimerParity12QRTests
 
         int fired = 0;
         using var _ = Handler(_ => { fired++; return TriggerResult.Default; });
-        typeof(GameWorld).GetMethod("TickOffGroundTimers",
+        typeof(GameWorld).GetMethod("TickItemTimers",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(world, [Environment.TickCount64]);
 
@@ -372,7 +372,7 @@ public sealed class ItemTimerParity12QRTests
 
         int fired = 0;
         using var _ = Handler(_ => { fired++; return TriggerResult.Default; });
-        typeof(GameWorld).GetMethod("TickOffGroundTimers",
+        typeof(GameWorld).GetMethod("TickItemTimers",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(world, [Environment.TickCount64]);
 

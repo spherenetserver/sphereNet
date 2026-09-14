@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `d96ee36` + İŞ-86 (spawner ölümü olayla duyuyor) |
+| Son commit | `f42e68c` + İŞ-87 (eşya timer'ları vade kuyruğunda) |
 | Tam test | 3.887 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
 | Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
 
@@ -469,6 +469,25 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-87 KAPANDI (B dalgası 3. aşama: eşya timer'ları vade kuyruğunda)** —
+  2026-09-14. Uyanık sektör, tuttuğu **her eşya** için saniyede on kez `OnTick`
+  çağırıyordu — son tarihi olsun olmasın. Kurulu her eşya timer'ı artık dünya
+  düzeyindeki vade kuyruğunda; sektör eşya tiklemiyor.
+  **Ölçüm (aynı 500 oyuncu / 50.000 NPC / 300.000 eşya):** şehirlerde kümeli
+  3,2/4,7 → **1,5/2,1 ms**; 10 dk iz 5,5/7,9 → **1,9/2,4**; haritaya dağınık
+  **66,8/171,3 → 11,9/19,6 ms** — yani bütçenin %171'inden **%20'sine**. Dünkü
+  "500 dağınık oyuncu kalkmaz" cevabı değişti.
+  **Üç tuzak çıktı ve üçü de testle yakalandı:** (1) doğrudan kuyruktan çalıştırmak,
+  kendini "şimdi"ye kuran bir `@Timer`'ı aynı boşaltmada tekrar alır ve sonlanmaz →
+  kaynak gibi **önce seç, sonra çalıştır**; (2) kayıttan yüklenen dünyada gecikmiş
+  binlerce timer tek tick'te boşalıyor ve **süreci öldürüyordu** → tick başına 2000
+  sınırı; (3) bakım taraması timer çalıştırmaya devam ederse yoklama geri geliyor →
+  tarama artık yalnız budama + UID geri dönüşümü.
+  **Sözleşme değişti:** kurulu TIMER her yerde bir sonraki tick. Uyuyan sektördeki
+  üç dakikalık bekleme ve onunla birlikte `CAN=O_NOSLEEP`'in timer için anlamı
+  kalktı; uyumaya devam eden şey karakter işi. Sözleşme testleri silinmedi, yeniden
+  yazıldı (tel tuzağı eşya timer'ından **karakter regen'ine** taşındı).
+  Tam suite 3.887.
 - **İŞ-86 KAPANDI (B dalgası 3. aşama ön koşulu: spawner ölüm olayı)** —
   2026-09-14. Kapasitesine dayanan spawner timer'ını park ediyor; onu yeniden
   başlatabilecek tek şey, **kendi tick'inin** temizlik geçişinde listenin küçüldüğünü

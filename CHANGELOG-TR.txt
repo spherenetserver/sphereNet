@@ -3,6 +3,52 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Esya timer'lari vade kuyrugundan geliyor; uyanik sektor artik esya yoklamiyor
+----------------------------------------
+
+FIX - Uyanik bir sektor, tuttugu HER esya icin saniyede on kez OnTick cagiriyordu -
+        esyanin bir son tarihi olsun olmasin. 500 oyuncu, 50.000 NPC ve 300.000 yer
+        esyasindan olusan bir dunyada bu, 100 ms'lik butceye karsi 66,8 ms p50 /
+        171,3 ms p95'lik dunya tick'inin buyuk kismiydi - yapacak isi olmayan
+        nesnelere "isin var mi" diye sormaya harcaniyordu. Ayni sekil artik 11,9 ms
+        p50 / 19,6 ms p95.
+
+        KURULU her esya timer'i dunya duzeyindeki bir vade kuyruguna kaydediliyor -
+        giyili, kap icinde ve yerde duran fark etmeksizin - ve sektor artik esya
+        tiklemiyor. Kaynagin en basindan beri sahip oldugu sekil bu: tek bir
+        zaman-sirali liste ve yalnizca vadesi gelen on ekini yuruyen bir tick
+        (CWorldTicker::ProcessTimedObjects).
+
+        Secim, calistirmadan once yapiliyor - kaynakta da oyle. Dogrudan kuyruktan
+        calistirmak, kendini "simdi"ye yeniden kuran bir @Timer govdesinin ayni
+        bosaltma tarafindan tekrar alinmasina izin verirdi ki sifir gecikmede bu
+        sonlanmaz; once secmek, onu bir sonraki tick'in isi yapiyor.
+
+        Bir tick en fazla 2000 esya timer'i calistirir. Kayittan yuklenen bir dunya,
+        kaydedildigi tum son tarihlerle gelir ve cogu gecmistedir - shard kapaliydi.
+        Sinir olmadan yuklemeden sonraki ilk tick hepsini birden bosaltiyor ve o tick
+        sureci oldurmeye yetecek kadar uzun oluyordu. Kalanlar hala vadesi gelmis
+        oldugundan birikim sonraki birkac tick'e yayiliyor.
+
+CHANGE - Timer sozlesmesi degisti, belgeler de. Kurulu bir TIMER artik esya nerede
+        olursa olsun bir sonraki tick'te calisiyor: uyuyan sektordeki esyalar icin uc
+        dakikalik bekleme kalkti ve onunla birlikte CAN=O_NOSLEEP'in timer'lar icin
+        var olma sebebi de - bayrak, bir sey yapiyormus gibi gorunmek yerine hicbir
+        sey satin almadigini durustce soyluyor. Uyumaya devam eden sey karakter isi:
+        AI, regen, zehir.
+
+        Bakim taramasi da artik timer calistirmiyor. Sektor listelerini budayip uid
+        geri donusum ritmini tasiyor; timer atesleyebilir birakmak yoklamayi geri
+        getirir ve sozlesmeyi bulanik hale getirirdi - esya, son tarihinden ya da bir
+        taramadan, hangisi once gelirse ondan calisirdi.
+
+TEST - Mevcut sozlesme testleri silinmedi, yeni sozlesmeye gore yeniden yazildi;
+        "bu sektor tikledi mi" icin esya timer'ini tel tuzagi olarak kullanan ikisi
+        dahil - onlar artik bir yaratigin regen'ini kullaniyor, cunku sektore bagli
+        kalan sey o. Yeniden girisim, tehlikenin tasindigi yerde kapsaniyor:
+        bosaltma sirasinda esya ekleyen bir callback'in ekledigi esya ayni geciste
+        tiklenmiyor, kardeslerini silen bir callback ise hata firlatmiyor.
+
 [2026-09-14] - Spawn noktasi bir olumu, oldugu anda duyuyor
 ----------------------------------------
 
@@ -12416,7 +12462,7 @@ PERFORMANS - Tick yolu:
     halde fallback adımı tamamen atlanıyor. Önbellek hiç kurulmazsa
     kapı açık kalır, gömülü/test davranışı korunur.
   - Script resync artık used-trigger önbelleğini yeniden kuruyor; yeniden
-    yüklenen dosyaların eklediği/kaldırdığı [ON=@X] hook'ları ve fonksiyon
+    yüklenen dosyaların ekledigi/kaldırdığı [ON=@X] hook'ları ve fonksiyon
     fallback'leri restart gerektirmeden etkinleşiyor. Tam paket yeşil (783).
 
 [2026-06-10] - Üretim çalışma alanı yakınlığı harita statiklerini de eşliyor (Wave 111)

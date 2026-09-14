@@ -458,7 +458,16 @@ public sealed class ItemDecayTimerFParity12SUTests
 
         crystal.SetDecayAt(Environment.TickCount64 - 1);
         crystal.SetAttr(ObjAttributes.Decay);
-        sector.OnMaintenanceTick();
+
+        // Decay comes from the world's due queue now; the maintenance sweep neither
+        // ticks items nor resolves deadlines. The claim is unchanged: whichever path
+        // removes the crystal has to go through RemoveItem, or the sector goes on
+        // reporting a listener it no longer holds.
+        var due = new List<Item>();
+        world.CollectDueDecay(Environment.TickCount64, 16, due);
+        var expired = Assert.Single(due);
+        Assert.False(expired.OnTick());
+        world.DeleteObject(expired);
 
         Assert.False(sector.HasListenItems);
     }

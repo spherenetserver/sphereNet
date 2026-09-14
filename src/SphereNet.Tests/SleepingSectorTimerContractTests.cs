@@ -125,46 +125,39 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
     }
 
     [Fact]
-    public void AnArmedTimerInASleepingSectorWaitsForTheMaintenanceSweep()
+    public void AnArmedTimerInASleepingSectorRunsOnTheNextTick()
     {
         Setup();
         var fires = CountTimerFires();
         var item = GroundItem(Far);
 
-        for (int i = 0; i < 20; i++)
-            _world.OnTick();
+        _world.OnTick();
 
-        // Twenty ticks is two seconds of a live server, and the deadline was already
-        // in the past when the timer was armed. The ordinary tick never reaches this
-        // item: its sector is asleep.
-        _out.WriteLine($"sleeping sector: fired {Fired(fires, item)}x after 20 ticks");
-        Assert.Equal(0, Fired(fires, item));
-
-        // The maintenance sweep is what eventually runs it. Driving it directly with
-        // a synthetic clock is the only way to measure a three-minute interval in a
-        // test; the sweep's own cadence is asserted separately below.
-        _world.TickSleepingMaintenance(Environment.TickCount64 + 180_000);
-
-        _out.WriteLine($"sleeping sector: fired {Fired(fires, item)}x after the sweep");
+        // This used to wait for the three-minute maintenance sweep, because the
+        // sector's item list WAS the mechanism and a sleeping sector has no tick.
+        // Armed item timers are in the world's due queue now, so where the item lies
+        // stopped mattering: the deadline is what is waited on.
+        _out.WriteLine($"sleeping sector: fired {Fired(fires, item)}x after one tick");
         Assert.Equal(1, Fired(fires, item));
     }
 
     [Fact]
-    public void TheMaintenanceSweepArmsEveryThreeMinutes()
+    public void TheMaintenanceSweepNoLongerRunsTimersAtAll()
     {
         Setup();
         var fires = CountTimerFires();
         var item = GroundItem(Far);
-        long t0 = Environment.TickCount64;
 
-        // A sweep armed at t0 by the constructor's tick has already been drained, so
-        // the next one is due 180s later and not a millisecond sooner. This is the
-        // number the documentation has to quote as the worst-case delay for a
-        // sleeping sector's item timers.
-        _world.TickSleepingMaintenance(t0 + 179_999);
+        // The sweep used to be how a remote item timer ran; it now prunes deleted
+        // entries and carries the uid-recycling cadence, and nothing else. Leaving it
+        // able to fire timers would put the polling back and blur the contract - an
+        // item would run from its deadline, or from a sweep, whichever came first.
+        _world.TickSleepingMaintenance(Environment.TickCount64 + 180_000);
+
+        _out.WriteLine($"after a full sweep, with no world tick: fired {Fired(fires, item)}x");
         Assert.Equal(0, Fired(fires, item));
 
-        _world.TickSleepingMaintenance(t0 + 180_000);
+        _world.OnTick();
         Assert.Equal(1, Fired(fires, item));
     }
 
@@ -247,22 +240,23 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
     }
 
     [Fact]
-    public void AnOverdueTimerRunsImmediatelyWhenTheSectorWakes()
+    public void AnOverdueTimerDoesNotWaitForAnybodyToArrive()
     {
         Setup();
         var fires = CountTimerFires();
         var item = GroundItem(Far, overdueByMs: 600_000);   // ten minutes past due
 
         _world.OnTick();
-        Assert.Equal(0, Fired(fires, item));
+
+        // The deadline is absolute and the queue is world-level, so a timer that is
+        // overdue runs at once and exactly once - no player has to walk into the
+        // sector to collect it, and walking in later collects nothing extra.
+        Assert.Equal(1, Fired(fires, item));
 
         _world.PlaceCharacter(_player, new Point3D(Far.X, Far.Y, 0, 0));
         _world.OnTick();
 
-        // The deadline is absolute, so waking does not reschedule anything: the
-        // overdue callback runs on the first tick the sector is awake. This is what
-        // keeps "no drift" true even where "on schedule" is not.
-        _out.WriteLine($"ten-minute-overdue timer on wake: fired {Fired(fires, item)}x");
+        _out.WriteLine($"ten-minute-overdue timer: fired {Fired(fires, item)}x in total");
         Assert.Equal(1, Fired(fires, item));
     }
 
@@ -311,10 +305,14 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
         _out.WriteLine($"NOSLEEP item: fired {Fired(fires, item)}x; " +
                        $"ordinary item beside it: fired {Fired(fires, ordinary)}x");
 
-        // The flagged item runs on the next tick; its neighbour still waits for the
-        // sweep, which is what keeps an idle world idle.
+        // Both fire now. CAN=O_NOSLEEP bought a ground item an exact timer when the
+        // sector tick was the mechanism; with every armed timer in the world's due
+        // queue there is nothing left for it to buy, and the honest thing is to say
+        // so rather than keep a flag that appears to do something. It still means
+        // what upstream means for the rest of an object's ticking, and SECF_NoSleep
+        // still governs whether the SECTOR runs its characters.
         Assert.Equal(1, Fired(fires, item));
-        Assert.Equal(0, Fired(fires, ordinary));
+        Assert.Equal(1, Fired(fires, ordinary));
     }
 
     [Fact]
@@ -401,8 +399,7 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
 
         var claims = new (string Doc, string Source, string Where)[]
         {
-            ("armed every **180 s**", "SleepingMaintenanceIntervalMs = 180_000", "GameWorld"),
-            ("drained **64** sectors per tick", "MaintenanceCallsPerTick { get; set; } = 64", "GameWorld"),
+            ("next tick, wherever it is", "TickItemTimers(currentTime)", "GameWorld"),
             ("drained **256** per tick", "CollectDueDecay(now, 256", "Program.Tick"),
             ("audit every **60 s**", "DecayAuditIntervalMs = 60_000", "GameWorld"),
         };

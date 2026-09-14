@@ -5393,6 +5393,90 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-82 — "Zamanında" hangi timer için doğruydu (B7, 14 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B7 bulgusu — *"kod ile README arasındaki
+kapsam farkı"*.
+
+### Sorun
+
+README **"timer'lar duvar saati hassasiyetinde"**, ARCHITECTURE ise **"kaymadan
+zamanında çalışır"** diyordu.
+
+Son tarihin mutlak zaman damgası olarak saklanması ile geri çağırmanın o son
+tarihte **çalışması** aynı şey değil. Birincisi doğru: hiçbir son tarih kaymıyor
+ve gecikmiş iş atlanmıyor. İkincisi her timer için doğru değil — uyuyan bir
+sektördeki yer eşyasının `TIMER`'ı, üç dakikada bir kurulan bakım taramasını
+bekliyor.
+
+### Önce ölçtüm
+
+Genel iddiayı doğrulamak yerine her yolu ayrı ölçtüm, çünkü genel iddia her yol
+için doğru değil ve belgenin **hangisi** olduğunu söylemesi gerekiyor:
+
+| Timer | Yakında kimse yokken |
+|---|---|
+| Aktif sektördeki her şey (oyuncu çevresinde 5×5 sektör) | sonraki tick |
+| `TIMERF` (her nesne) | sonraki tick, her yerde |
+| Yerde olmayan eşyanın `TIMER`'ı (giyili, kap içi) | sonraki tick, her yerde |
+| Uyuyan sektördeki yer eşyası `TIMER`/spawn aralığı | 180 s'de kurulan tarama, tick başına 64 sektör |
+| Yer eşyası çürümesi, ceset dahil, her yerde | 5 s'de bir geçiş, geçiş başına 256 eşya (~51 eşya/sn) |
+| Uyuyan sektördeki karakterin yaptığı her şey | oyuncu iki sektör yaklaşana kadar **hiç** |
+| `SECF_NoSleep` sektörü | aktif sektör gibi |
+
+Uyuyan bir sektör en yakın oyuncudan en az ~128 fayans uzakta (5×5 pencere, 64
+fayanslık sektörler), yani görüş menzilinin çok ötesinde: gecikme **görünür
+değilken** oluyor, görünür olduğu an sektörün uyandığı an.
+
+### Koddaki tek gerçek boşluk
+
+`CanFlags.O_NoSleep` motorda **tanımlıydı ve hiçbir yerde okunmuyordu**. Source-X
+aynı bayrağı `CObjBase::_TickableStateOverride`'da okur ve sektör uykuya geçerken
+nesnenin tick listesinde kalıp kalmayacağına karar verir; canlı script paketinde
+de (`sphere_functions_memory.scp`) yorum satırı hâlinde duruyor.
+
+Yani bir shard'ın **isteyemediği** tek şey, uzaktaki tek bir eşyada kesin zamanlı
+timer'dı. Sektör bazında `SECF_NoSleep` vardı, eşya bazında karşılığı yoktu.
+
+Onarım: bayraklı yer eşyası artık dünya düzeyindeki **kurulu-timer kaydından**
+pompalanıyor — giyili ve kap içindeki eşyaları zaten taşıyan kayıt. Kayıtta
+yalnız **kurulu** timer'lar var, yani incelemenin *"hepsini her tick tarayan bir
+çözüm seçilmemeli"* şartı sağlanıyor.
+
+### Test boşluğunu sondaj buldu
+
+İlk üç NOSLEEP testi yeşildi ve sondajlardan biri de yeşil kaldı: kaydın
+**emeklilik** koşulunu eski hâline döndürmek hiçbir testi kırmıyordu. Sebep,
+testlerimin hepsinin timer'ı **zaten geçmiş** bir zamana kurmasıydı. Geleceğe
+kurulan bir timer'da eski koşul eşyayı bir sonraki tick'te kayıttan **düşürüyor**
+ve timer hiç çalışmıyordu: kaydedilmiş, emekliye ayrılmış, sessiz — hem de tam da
+shard'ın "bu geç kalmasın" dediği eşyalarda.
+
+Geleceğe kurulan timer testi eklendi; o test kendi uygulamamda **kırmızı** çıktı
+ve düzeltildi. Üç sondaj artık 3 / 1 / 3 kırmızı veriyor.
+
+**Sondaj notu:** sondaj betiğinin bir geri-yüklemesi kayboldu ve motor dosyası
+yarım onarılmış hâlde kaldı; üç test kırmızıya döndüğünde bunu fark ettim. Sondaj
+sonrası dosya durumunu doğrulamak artık akışın parçası.
+
+### Belge
+
+ARCHITECTURE tabloyu taşıyor; README'nin "duvar saati hassasiyetinde" cümlesi
+"son tarihler mutlak ve her timer sınıfının ilan edilmiş bir en kötü gecikmesi
+var" ile değişti. Dört sayı (180 s, 64, 5 s, 256) guardrail testiyle
+`GameWorld.cs` ve `Program.Tick.cs`'deki sabitlere iğnelendi — belgedeki bir
+sayıyı değiştirmek testi kırmızıya döndürüyor.
+
+### Durum
+
+**AÇIK:** pet ve summon süreleri ayrı ölçülmedi — ikisi de memory item üzerinden
+yürüdüğü için yerde-olmayan sınıfa düşüyor olmalı, ama ölçülmedikçe bu bir
+çıkarım, veri değil. Teleport ve sektör sınırı geçişleri, uzun boş dünya sonrası
+uyanış p99'u da ölçülmedi. Karakter tarafı için `CAN=O_NOSLEEP` **uygulanmadı**:
+NPC beyin kapısı ayrı bir altsistemde (`IsInActiveArea`, dört çağrı yeri) ve
+yaratığı yalnızca regen edecek kadar uyandıran bir bayrak, hiç olmamasından kötü
+olurdu.
+
 ## İŞ-81 — Kaydedicinin sessizce kayıt tutmayı bırakması (B6, 14 Eylül 2026)
 
 Kaynak: Beyond-Source-X incelemesinin B6 bulgusu (kod bulgusu).

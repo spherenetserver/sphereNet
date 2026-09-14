@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `c84007d` + İŞ-79/80/81 (kaybolan tazeleme; path bütçesi; kaydedici kapanışı) |
-| Tam test | 3.851 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **B1-B6, B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B7 |
+| Son commit | `a237b81` + İŞ-82 (uyuyan sektör timer sözleşmesi) |
+| Tam test | 3.864 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
 
 ## Çalışma sırası
 
@@ -469,6 +469,23 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-82 KAPANDI (Beyond-Source-X B7)** — 2026-09-14. README "timer'lar duvar
+  saati hassasiyetinde", ARCHITECTURE "kaymadan zamanında çalışır" diyordu. Son
+  tarihin mutlak olması ile geri çağırmanın o an **çalışması** aynı şey değil:
+  uyuyan sektördeki yer eşyasının `TIMER`'ı üç dakikalık bakım taramasını bekliyor.
+  Önce **ölçtüm**, sonra yazdım: aktif sektör → sonraki tick; `TIMERF`, yerde
+  olmayan eşya → her yerde sonraki tick; uyuyan sektör yer eşyası → 180 s tarama
+  (tick başına 64 sektör); çürüme → 5 s'de 256 eşya (~51/sn); uyuyan sektördeki
+  karakter → oyuncu gelene kadar **hiç**; `SECF_NoSleep` → aktif gibi.
+  **Kod:** `CanFlags.O_NoSleep` tanımlıydı ve **hiçbir yerde okunmuyordu**
+  (Source-X `_TickableStateOverride`); artık bayraklı yer eşyası dünya düzeyindeki
+  kurulu-timer kaydından pompalanıyor — due listesi, tarama değil. **Belge:** tablo
+  ARCHITECTURE'da, dört sayı guardrail ile motor sabitlerine iğnelendi.
+  Test: `SleepingSectorTimerContractTests` (13); sondajlar 3/1/3/1 kırmızı, belge
+  sayısını bozmak guardrail'i kırıyor. Geleceğe kurulan timer testi kendi
+  uygulamamı kırmızıya düşürdü ve düzeltildi. Tam suite 3.864, üç koşu.
+  *Pet/summon, teleport, sektör sınırı ve uyanış p99 ölçülmedi; karakter tarafı
+  NOSLEEP uygulanmadı.*
 - **İŞ-81 KAPANDI (Beyond-Source-X B6)** — 2026-09-14. Kaydedici teşhis aracı;
   arıza biçimi hızından önemli. Üç arıza: (1) `Dispose`, sonucuna bakmadığı bir
   `Join`'den sonra writer'ın bağlantısını kapatıyordu — uzun süren son flush işlem

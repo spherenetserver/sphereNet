@@ -1369,10 +1369,13 @@ public sealed class GameWorld
         TickOffGroundTimers(currentTime);
     }
 
-    // Timed items OFF the ground (worn gear, contained items) belong to no
-    // sector tick list — sector ticks cover ground items only, so a WORN
-    // flash robe's 1 s color TIMER never fired. Registered from SetTimeout,
-    // pumped here in the serial phase (@Timer bodies mutate the world).
+    // Armed item timers that no sector tick list covers: items OFF the ground
+    // (worn gear, contained items — sector ticks cover ground items only, so a
+    // WORN flash robe's 1 s color TIMER never fired), plus ground items whose def
+    // says CAN=O_NOSLEEP, which Source-X keeps ticking when their sector sleeps.
+    // Registered from SetTimeout, pumped here in the serial phase (@Timer bodies
+    // mutate the world). Only armed timers are in the set, so this is a due list
+    // rather than a sweep of the world.
     private readonly HashSet<Item> _offGroundTimers = [];
     private readonly List<Item> _offGroundTimerBuffer = [];
 
@@ -1386,9 +1389,11 @@ public sealed class GameWorld
         _offGroundTimerBuffer.Clear();
         foreach (var item in _offGroundTimers)
         {
-            // Ground items tick through their sector; deleted or disarmed
+            // Ground items tick through their sector - unless they never sleep, in
+            // which case the sector may not be ticking at all. Deleted or disarmed
             // ones just leave the registry.
-            if (item.IsDeleted || item.Timeout <= 0 || item.IsOnGround ||
+            if (item.IsDeleted || item.Timeout <= 0 ||
+                (item.IsOnGround && !item.NeverSleeps) ||
                 nowMs >= item.Timeout)
                 _offGroundTimerBuffer.Add(item);
         }
@@ -1396,7 +1401,7 @@ public sealed class GameWorld
         foreach (var item in _offGroundTimerBuffer)
         {
             _offGroundTimers.Remove(item);
-            if (!item.IsDeleted && !item.IsOnGround &&
+            if (!item.IsDeleted && (!item.IsOnGround || item.NeverSleeps) &&
                 item.Timeout > 0 && nowMs >= item.Timeout)
             {
                 // A re-armed timer (@Timer body runs TIMER n again)

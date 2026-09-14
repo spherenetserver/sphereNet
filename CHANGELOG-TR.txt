@@ -3,6 +3,46 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - "Timer zamaninda calisir" ne demek: yakinda kimse yokken, timer turu basina
+----------------------------------------
+
+FIX - ITEMDEF'teki CAN=O_NOSLEEP artik bir ise yariyor. Bayrak motorun kendi
+        CanFlags'inda tanimliydi ve hicbir yerde okunmuyordu; yani bir shard'in
+        isteyemedigi tek sey, uzaktaki bir esyada kesin zamanli timer'di: uyuyan bir
+        sektordeki yer esyasinin TIMER'i, 180 saniyede bir kurulan bakim taramasini
+        bekliyor. Source-X ayni bayragi CObjBase::_TickableStateOverride'da okur ve
+        sektor uykuya gecerken nesnenin tick listesinde kalip kalmayacagina karar
+        verir.
+
+        Bayrakli esya artik dunya duzeyindeki kurulu-timer kaydindan pompalaniyor -
+        giyili ve kap icindeki esyalari zaten tasiyan kayit - ve nerede olursa olsun
+        bir sonraki tick'te calisiyor. Kayitta yalnizca KURULU timer'lar var, yani bu
+        bir due listesi; dunyanin tick basina taranmasi degil. Yanindaki bayraksiz
+        esya hala taramayi bekliyor: bos dunya bos kalmaya devam ediyor.
+
+DOC  - Belgeler, motorun her timer icin yapmadigi bir sey vaat ediyordu. README
+        "timer'lar duvar saati hassasiyetinde" diyordu, ARCHITECTURE ise "kaymadan
+        zamaninda calisir". Son tarih mutlak bir zaman damgasi ve hic kaymiyor - o
+        kismi dogruydu - ama geri cagirmanin son tarihte CALISMASI ayri bir vaat ve
+        uyuyan sektordeki bir yer esyasinin timer'i uc dakikaya kadar gec kaliyor.
+
+        ARCHITECTURE artik timer sinifi basina gecikmeyi tasiyor: aktif sektorde bir
+        sonraki tick; TIMERF, yerde olmayan esyalar ve CAN=O_NOSLEEP esyalari icin
+        nerede olursa olsun bir sonraki tick; uyuyan sektordeki yer esyalari icin
+        180 saniyelik tarama (tick basina 64 sektor); cozunme icin 5 saniyede bir
+        256 esyalik yakalama gecisi, yani birikim saniyede ~51 esya hizinda
+        eriyor; ve uyuyan sektordeki bir karakter icin oyuncu iki sektor yakinina
+        gelene kadar hicbir sey. Gecikmis is hicbir zaman atlanmiyor - son tarihini
+        on dakika gecmis bir esya, sektoru uyandiktan sonraki ilk tick'te calisiyor.
+
+TEST - SleepingSectorTimerContractTests (13). Her sinif metinden cikarilmak yerine
+        olculuyor; bir guardrail de belgelenen dort sayiyi GameWorld.cs ve
+        Program.Tick.cs'den geri okuyor, boylece sozlesme sabitlerden bir daha
+        ayrisamiyor. Sondajlar: yalnizca yerde-olmayanlari kaydetmek 3, kayit
+        girisini emekliye ayirirken bayragi yok saymak 1, tick ederken yok saymak 3,
+        tarama araligini kisaltmak 1 kirmizi; belgedeki bir sayiyi degistirmek de
+        guardrail'i kirmiziya donduruyor.
+
 [2026-09-14] - Durum kaydedici, kayit tutmayi birakirken sessiz kalmiyor
 ----------------------------------------
 

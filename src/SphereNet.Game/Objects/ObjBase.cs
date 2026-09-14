@@ -1379,10 +1379,17 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     public void SetTimeout(long timeoutMs)
     {
         _timeout = timeoutMs;
-        // A timed ITEM off the ground (worn gear, contained items) is in no
-        // sector tick list — register it with the world's off-ground timer
-        // pump so its @Timer still fires (the flash-robe class of scripts).
-        if (timeoutMs > 0 && this is Items.Item timedItem && !timedItem.IsOnGround)
+        // Two classes of armed item timer belong to no sector tick list and are
+        // pumped by the world instead:
+        //   - items OFF the ground (worn gear, contained items) — sector lists hold
+        //     ground items only, so a worn robe's 1 s colour TIMER never fired;
+        //   - ground items whose def says CAN=O_NOSLEEP — Source-X keeps exactly
+        //     these in the ticking list when their sector sleeps
+        //     (CObjBase::_TickableStateOverride).
+        // The registry holds only ARMED timers, so this is a due list and not a
+        // per-tick walk of the world.
+        if (timeoutMs > 0 && this is Items.Item timedItem &&
+            (!timedItem.IsOnGround || timedItem.NeverSleeps))
             ResolveWorld?.Invoke()?.TrackOffGroundTimer(timedItem);
     }
 
@@ -1395,7 +1402,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// (CTimedObject.cpp:57).</summary>
     internal void RefreshTimerTracking()
     {
-        if (_timeout > 0 && this is Items.Item timedItem && !timedItem.IsOnGround)
+        if (_timeout > 0 && this is Items.Item timedItem &&
+            (!timedItem.IsOnGround || timedItem.NeverSleeps))
             ResolveWorld?.Invoke()?.TrackOffGroundTimer(timedItem);
     }
     public void GoSleep() => _isSleeping = true;

@@ -63,12 +63,34 @@ The map is partitioned into sectors. **Only sectors within a 5×5 window around 
 online player tick.** NPCs and items in empty regions cost zero CPU until a player
 approaches.
 
-Because gameplay can pause for empty regions but timers cannot, all timers
-(item decay, spawn intervals, `TIMER` triggers) use **absolute timestamps**
-(`Environment.TickCount64`), never tick counters. Sleeping sectors still receive a
-lightweight maintenance pass every ~3 minutes that processes item timers only
-(decay, spawn, `TIMER`) — so spawners keep producing, expired items are removed,
-and timers fire on schedule with no drift.
+Because gameplay can pause for empty regions but timers cannot, every deadline is
+an **absolute timestamp** (`Environment.TickCount64`), never a tick counter. A
+deadline therefore never drifts, and nothing overdue is skipped: an item ten
+minutes past its deadline runs on the first tick after its sector wakes.
+
+Running the callback **at** the deadline is a separate promise, and it is not the
+same for every kind of timer. What a sleeping sector costs is delay, and this is
+how much:
+
+| Timer | With nobody nearby |
+|---|---|
+| Anything in an active sector (5×5 sectors around a player) | next tick |
+| `TIMERF` on any object | next tick, wherever it is |
+| `TIMER` on an item off the ground (worn, contained) | next tick, wherever it is |
+| `TIMER` on a ground item whose def says `CAN=O_NOSLEEP` | next tick, wherever it is |
+| `TIMER` / spawn interval on a ground item in a sleeping sector | the maintenance sweep: armed every **180 s**, drained **64** sectors per tick |
+| Ground-item decay, corpses included, anywhere | catch-up pass every **5 s**, **256** items per pass — a backlog drains at ~51 items/s |
+| Everything a character does — AI, regen, poison — in a sleeping sector | not at all until a player comes within two sectors |
+| A sector flagged `SECF_NoSleep` | like an active sector |
+
+A sleeping sector is at least ~128 tiles from the nearest player, so nothing in it
+is visible while it is late; it becomes visible when a player arrives, which is the
+moment it wakes. `CAN=O_NOSLEEP` (Source-X `CAN_O_NOSLEEP`) is the per-item escape
+hatch for the cases where that reasoning does not hold — a timer whose effect is
+felt somewhere else.
+
+The delays above are pinned to the engine's own constants by
+`SleepingSectorTimerContractTests`.
 
 `FindRegion`, called thousands of times per tick (guard zones, PvP, music,
 weather), is backed by an 8×8-tile grid `ConcurrentDictionary` cache that avoids

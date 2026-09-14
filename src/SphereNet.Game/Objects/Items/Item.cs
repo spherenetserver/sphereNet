@@ -369,6 +369,16 @@ public class Item : ObjBase
     }
 
     public bool IsOnGround => !_containedIn.IsValid;
+
+    /// <summary>CAN=O_NOSLEEP (Source-X CAN_O_NOSLEEP): this item keeps ticking
+    /// wherever it lies, including in a sleeping sector.
+    ///
+    /// Upstream checks the same flag in CObjBase::_TickableStateOverride, which is
+    /// what decides whether an object stays in the world ticking list when its
+    /// sector goes to sleep. SphereNet defined the flag and read it nowhere, so a
+    /// shard that asked for an exact timer on a remote item got the three-minute
+    /// maintenance sweep like everything else, with nothing to say why.</summary>
+    public bool NeverSleeps => ResolveDefinition()?.Can.HasFlag(CanFlags.O_NoSleep) == true;
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
     public byte Direction { get; set; }

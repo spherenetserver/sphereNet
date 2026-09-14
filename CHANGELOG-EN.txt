@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - What "the timer fires on schedule" means, per timer, with nobody nearby
+----------------------------------------
+
+FIX - CAN=O_NOSLEEP on an ITEMDEF now does something. The flag was defined in the
+        engine's own CanFlags and read nowhere, so the one thing a shard could not
+        ask for was an exact timer on a remote item: a ground item's TIMER in a
+        sleeping sector waits for the maintenance sweep, which arms every 180
+        seconds. Source-X reads the same flag in CObjBase::_TickableStateOverride to
+        decide whether an object stays in the ticking list when its sector sleeps.
+
+        A flagged item is now pumped from the world-level armed-timer registry - the
+        one that already carries worn and contained items - so it runs on the next
+        tick wherever it lies. The registry holds only ARMED timers, so this is a due
+        list and not a per-tick walk of the world, and an unflagged item beside it
+        still waits for the sweep: an idle world stays idle.
+
+DOC  - The documentation promised something the engine does not do for every timer.
+        README said "timers stay wall-clock accurate" and ARCHITECTURE said they
+        "fire on schedule with no drift". A deadline is an absolute timestamp and
+        never drifts - that part was true - but running the callback AT the deadline
+        is a separate promise, and a ground item's timer in a sleeping sector is up
+        to three minutes late.
+
+        ARCHITECTURE now carries the delay per timer class: next tick in an active
+        sector, next tick anywhere for TIMERF, for items off the ground and for
+        CAN=O_NOSLEEP items; the 180-second sweep (drained 64 sectors per tick) for
+        ground items in a sleeping sector; a 5-second catch-up pass of 256 items for
+        decay, so a backlog drains at about 51 items a second; and nothing at all for
+        a character in a sleeping sector until a player comes within two sectors.
+        Overdue work is never skipped - an item ten minutes past its deadline runs on
+        the first tick after its sector wakes.
+
+TEST - SleepingSectorTimerContractTests (13). Each class is measured rather than
+        asserted from the text, and a guardrail reads the four documented numbers
+        back out of GameWorld.cs and Program.Tick.cs so the contract cannot drift
+        from the constants again. Probes: registering only off-ground items turns 3
+        red, ignoring the flag when retiring a registry entry turns 1, ignoring it
+        when ticking turns 3, shortening the sweep interval turns 1, and editing a
+        number in the document turns the guardrail red.
+
 [2026-09-14] - The state recorder stops recording out loud, not quietly
 ----------------------------------------
 

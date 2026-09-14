@@ -234,6 +234,25 @@ public sealed class ScriptDbAdapter : IDisposable
     /// DBO NUMCOLS).</summary>
     public int NumCols => GetActiveSession()?.NumCols ?? 0;
 
+    /// <summary>Threaded work waiting on the active session.</summary>
+    public int PendingWorkCount => GetActiveSession()?.PendingWorkCount ?? 0;
+
+    /// <summary>Work refused because the queue was at its cap.</summary>
+    public long RejectedWorkCount => GetActiveSession()?.RejectedWorkCount ?? 0;
+
+    /// <summary>Calls that gave up waiting; the statement may still have run.</summary>
+    public long TimedOutWorkCount => GetActiveSession()?.TimedOutWorkCount ?? 0;
+
+    /// <summary>Exceptions that escaped a job on the worker thread.</summary>
+    public long WorkerFaultCount => GetActiveSession()?.WorkerFaultCount ?? 0;
+
+    /// <summary>How much threaded work the active session may hold.</summary>
+    public int MaxPendingWork
+    {
+        get => GetActiveSession()?.MaxPendingWork ?? 0;
+        set { var s = GetActiveSession(); if (s != null) s.MaxPendingWork = value; }
+    }
+
     /// <summary>Execute a query on a named session.</summary>
     public bool Query(string name, string sql, out int rowCount, out string error)
     {
@@ -334,6 +353,80 @@ public sealed class ScriptDbAdapter : IDisposable
         /// (review finding B9).</summary>
         private BlockingCollection<Action>? _workQueue;
 
+        /// <summary>One piece of threaded work and the result the caller is waiting
+        /// for.
+        ///
+        /// The results live HERE rather than in locals captured from the caller's
+        /// stack: a job that finishes after its caller gave up would otherwise write
+        /// into variables whose owner has moved on. The wait handle is reference
+        /// counted for the same reason - the caller used to dispose it on the way
+        /// out, so a late job called Set on a disposed object and took the worker
+        /// thread down with it, after which the session looked alive and answered
+        /// nothing ever again.</summary>
+        private sealed class DbJob
+        {
+            public readonly ManualResetEventSlim Done = new(false);
+            public bool Ok;
+            public int Count;
+            public string Error = "";
+            private int _refs = 2;          // the caller and the worker
+
+            /// <summary>Whoever lets go last closes the door.</summary>
+            public void Release()
+            {
+                if (Interlocked.Decrement(ref _refs) == 0)
+                    Done.Dispose();
+            }
+        }
+
+        private int _pendingWork;
+        private long _rejectedWork;
+        private long _timedOutWork;
+        private long _workerFaults;
+
+        /// <summary>Queued work not yet taken by the worker.</summary>
+        public int PendingWorkCount => Volatile.Read(ref _pendingWork);
+
+        /// <summary>Work refused because the queue was at its cap.</summary>
+        public long RejectedWorkCount => Interlocked.Read(ref _rejectedWork);
+
+        /// <summary>Calls that gave up waiting. The work may still run.</summary>
+        public long TimedOutWorkCount => Interlocked.Read(ref _timedOutWork);
+
+        /// <summary>Exceptions that escaped a job on the worker thread.</summary>
+        public long WorkerFaultCount => Interlocked.Read(ref _workerFaults);
+
+        /// <summary>How much work may wait. A stalled database used to grow this
+        /// queue without end, which turns a database problem into an out-of-memory
+        /// shard; refusing is a worse answer for one script line and a better one for
+        /// the process. Not a BlockingCollection capacity on purpose: that BLOCKS the
+        /// caller when full, and the caller here is the game loop.</summary>
+        public int MaxPendingWork { get; set; } = 1000;
+
+        /// <summary>Queue work, or refuse it and say so.</summary>
+        private bool TryEnqueue(Action work)
+        {
+            var queue = _workQueue;
+            if (queue == null || queue.IsAddingCompleted)
+                return false;
+            if (Volatile.Read(ref _pendingWork) >= MaxPendingWork)
+            {
+                Interlocked.Increment(ref _rejectedWork);
+                return false;
+            }
+            Interlocked.Increment(ref _pendingWork);
+            try
+            {
+                queue.Add(work);
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                Interlocked.Decrement(ref _pendingWork);   // closed under us
+                return false;
+            }
+        }
+
         public DbConnectionConfig? Config { get; private set; }
         public string? LegacyConnectionString { get; set; }
 
@@ -361,10 +454,7 @@ public sealed class ScriptDbAdapter : IDisposable
         public bool EnqueueQuery(string sql)
         {
             if (_workQueue != null && _workerThread != null)
-            {
-                _workQueue.Add(() => QueryInternal(sql, out _, out _));
-                return true;
-            }
+                return TryEnqueue(() => QueryInternal(sql, out _, out _));
             return QueryInternal(sql, out _, out _);
         }
 
@@ -373,10 +463,7 @@ public sealed class ScriptDbAdapter : IDisposable
         public bool EnqueueExecute(string sql)
         {
             if (_workQueue != null && _workerThread != null)
-            {
-                _workQueue.Add(() => ExecuteInternal(sql, out _, out _));
-                return true;
-            }
+                return TryEnqueue(() => ExecuteInternal(sql, out _, out _));
             return ExecuteInternal(sql, out _, out _);
         }
 
@@ -472,19 +559,24 @@ public sealed class ScriptDbAdapter : IDisposable
 
             if (Config?.UseThread == true && _workQueue != null)
             {
-                int result = 0;
-                string? err = null;
-                bool ok = false;
-                using var done = new ManualResetEventSlim(false);
-                _workQueue.Add(() =>
+                var job = new DbJob();
+                if (!TryEnqueue(() =>
+                    {
+                        job.Ok = ExecuteInternal(sql, out int n, out string e);
+                        job.Count = n;
+                        job.Error = e;
+                        job.Done.Set();
+                        job.Release();
+                    }))
                 {
-                    ok = ExecuteInternal(sql, out result, out err);
-                    done.Set();
-                });
-                done.Wait(TimeSpan.FromSeconds(Config.ReadTimeout > 0 ? Config.ReadTimeout : 30));
-                affectedRows = result;
-                error = err ?? "";
-                return ok;
+                    job.Release(); job.Release();
+                    error = "DB work queue is full; the statement was not run.";
+                    return false;
+                }
+
+                if (!WaitForJob(job, out affectedRows, out error))
+                    return false;
+                return job.Ok;
             }
 
             return ExecuteInternal(sql, out affectedRows, out error);
@@ -497,22 +589,57 @@ public sealed class ScriptDbAdapter : IDisposable
 
             if (Config?.UseThread == true && _workQueue != null)
             {
-                int result = 0;
-                string? err = null;
-                bool ok = false;
-                using var done = new ManualResetEventSlim(false);
-                _workQueue.Add(() =>
+                var job = new DbJob();
+                if (!TryEnqueue(() =>
+                    {
+                        job.Ok = QueryInternal(sql, out int n, out string e);
+                        job.Count = n;
+                        job.Error = e;
+                        job.Done.Set();
+                        job.Release();
+                    }))
                 {
-                    ok = QueryInternal(sql, out result, out err);
-                    done.Set();
-                });
-                done.Wait(TimeSpan.FromSeconds(Config.ReadTimeout > 0 ? Config.ReadTimeout : 30));
-                rowCount = result;
-                error = err ?? "";
-                return ok;
+                    job.Release(); job.Release();
+                    error = "DB work queue is full; the query was not run.";
+                    return false;
+                }
+
+                if (!WaitForJob(job, out rowCount, out error))
+                    return false;
+                return job.Ok;
             }
 
             return QueryInternal(sql, out rowCount, out error);
+        }
+
+        /// <summary>Wait for a job and answer honestly.
+        ///
+        /// The wait result used to be thrown away, so a call that timed out returned
+        /// the job's default - false with an empty message - which a script cannot
+        /// tell from "the database said no". It is a different outcome: the work may
+        /// still be queued, still running, or already committed, and the one thing
+        /// the engine must not do is retry a write on its own behalf.</summary>
+        private bool WaitForJob(DbJob job, out int count, out string error)
+        {
+            count = 0;
+            error = "";
+            int seconds = Config?.ReadTimeout > 0 ? Config.ReadTimeout : 30;
+
+            if (!job.Done.Wait(TimeSpan.FromSeconds(seconds)))
+            {
+                // The worker still owns the job; it releases the handle when it is
+                // done with it.
+                Interlocked.Increment(ref _timedOutWork);
+                job.Release();
+                error = $"DB timeout after {seconds}s; the statement may still be running.";
+                _logger.LogWarning("DB session '{Name}' timed out after {Seconds}s", Config?.Name ?? "?", seconds);
+                return false;
+            }
+
+            count = job.Count;
+            error = job.Error;
+            job.Release();
+            return true;
         }
 
         public bool TryResolveRowValue(string key, out string value)
@@ -602,6 +729,20 @@ public sealed class ScriptDbAdapter : IDisposable
             error = "";
             lock (_sync)
             {
+                // Empty the result set FIRST, before the connection check and before
+                // the query runs - upstream does exactly this (CDataBase::query,
+                // CDataBase.cpp:99, Clear() then NUMROWS=0). Keeping the old rows
+                // through a failure means a script that queries and reads db.row.*
+                // without checking the return gets the PREVIOUS query's data, which
+                // is the worst answer available: not an error, not empty, but
+                // somebody else's row.
+                //
+                // An EMPTY table rather than none: upstream clears the map and then
+                // sets NUMROWS to 0 in the same breath, so db.row.numrows answers "0"
+                // after a failed query instead of refusing to resolve. The difference
+                // matters to a script that branches on the count.
+                _rowTable = new DataTable();
+
                 if (!EnsureConnection(out error))
                     return false;
 
@@ -669,9 +810,15 @@ public sealed class ScriptDbAdapter : IDisposable
             {
                 foreach (var action in queue.GetConsumingEnumerable())
                 {
+                    // Taken off the queue: it is no longer pending, however it ends.
+                    Interlocked.Decrement(ref _pendingWork);
                     try { action(); }
                     catch (Exception ex)
                     {
+                        // Counted, not just logged. A worker that keeps faulting is a
+                        // session that looks alive and answers nothing, and the only
+                        // way anyone finds out today is by noticing the silence.
+                        Interlocked.Increment(ref _workerFaults);
                         _logger.LogWarning(ex, "DB worker thread error for '{Name}'", Config?.Name ?? "?");
                     }
                 }

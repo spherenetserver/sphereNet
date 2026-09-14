@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `f42e68c` + İŞ-87 (eşya timer'ları vade kuyruğunda) |
-| Tam test | 3.887 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
+| Son commit | `ae86146` + İŞ-88 (DB zaman aşımı ve bayat satırlar) |
+| Tam test | 3.892 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B9, B12 kapandı; B10/B11 yarım.** Sıradaki: B10/B11 kalanları |
 
 ## Çalışma sırası
 
@@ -487,6 +487,21 @@ planındadır.
   **Sıradaki adım (kullanıcı kararı):** depo + `bin`/`obj` için Defender istisnası ve
   daha büyük page file ile 10 koşuluk yeniden-derleme matrisini tekrar ölçmek.
   *Kayda geçiriliyor ki sonraki oturum bunu motor hatası sanıp kovalamasın.*
+- **İŞ-88 KAPANDI (B9'un ikinci yarısı: zaman aşımı + bayat satırlar)** —
+  2026-09-15. (1) **Başarısız sorgu, bir önceki sorgunun satırlarını okunabilir
+  bırakıyordu** — dönüşü kontrol etmeyen script başkasının verisini alıyordu. Plan
+  "hata mı, sözleşme mi?" diye bırakmıştı; **kaynak karar verdi**
+  (`CDataBase::query`, CDataBase.cpp:99 sonuç haritasını her şeyden önce temizler ve
+  `NUMROWS=0` yapar) → sapmaymış. Artık `numrows` 0, satırlar çözülmüyor; `null`
+  değil **boş tablo** (testim bu farkı yakaladı). (2) **Zaman aşımı kendi cevabı**:
+  `Wait` sonucu artık okunuyor, mesajda süre var, sayılıyor; motor belirsiz sonuçlu
+  yazmayı tekrar etmiyor. (3) **Geç biten iş** dispose edilmiş nesnede `Set` çağırıp
+  işçiyi öldürüyordu → iş nesnesi referans sayaçlı, sonuçlar yakalanan yerellerde
+  değil işin içinde. (4) **Kuyruk sınırsızdı** → tavan + **bloklamak yerine
+  reddetme** (çağıran oyun döngüsü) + reddedilen/zaman aşımı/bekleyen/işçi hatası
+  sayaçları. Test: `DbQueryTimeoutTests` (5); sondajlar 1/1/1 kırmızı. Tam suite
+  3.892 (6 denemenin 4'ü temiz; 2'si bilinen ortam arızası).
+  *Açık: open/closing/closed durum makinesi ve D02'nin gerçek iki-MySQL matrisi.*
 - **İŞ-87 KAPANDI (B dalgası 3. aşama: eşya timer'ları vade kuyruğunda)** —
   2026-09-14. Uyanık sektör, tuttuğu **her eşya** için saniyede on kez `OnTick`
   çağırıyordu — son tarihi olsun olmasın. Kurulu her eşya timer'ı artık dünya

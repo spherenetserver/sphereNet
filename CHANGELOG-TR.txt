@@ -3,6 +3,47 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Zaman asimina ugrayan sorgu bunu soyluyor; basarisiz olan geride satir birakmiyor
+----------------------------------------
+
+FIX - Basarisiz bir sorgu, BIR ONCEKI sorgunun satirlarini okunabilir birakiyordu.
+        db.query calistirip donus degerini kontrol etmeden db.row.* okuyan bir script
+        baskasinin verisini aliyordu - hata degil, bos kume degil, son basarili
+        sorgunun satiri. Kaynak, sonuc haritasini her seyden once temizler - bagli
+        olup olmadigini kontrol etmeden bile - ve ayni anda NUMROWS'u 0 yapar
+        (CDataBase::query, CDataBase.cpp:99). Artik burada da oyle: basarisizliktan
+        sonra db.row.numrows 0 okuyor, db.row.0.* hicbir seye cozulmuyor.
+
+FIX - Thread'li yol kendi beklemesinin sonucunu yok sayiyordu. Zaman asimina ugrayan
+        bir cagri, bos mesajla false donuyordu; script bunu "veritabani hayir dedi"
+        durumundan ayirt edemez - oysa ikisi farkli ele alinmali, cunku zaman asimina
+        ugrayan bir ifade hala kuyrukta, hala calisiyor ya da coktan islenmis
+        olabilir. Zaman asimi artik kendi cevabi, mesajinda gecen sure ile birlikte,
+        ve sayiliyor. Motor kendi inisiyatifiyle yazma islemini tekrar etmiyor.
+
+FIX - Tamamlanma nesnesi, cagri donerken dispose ediliyordu; gec biten bir is,
+        isci thread'inden dispose edilmis nesnede Set cagiriyordu. Bu isciyi
+        oldururdu ve sonrasinda oturum canli gorunup bir daha hicbir seye cevap
+        vermezdi. Is artik kendi sonuclarini ve bir referans sayacini tasiyor:
+        cagiran ile isciden hangisi en son birakirsa handle'i o kapatiyor. Sonuclar,
+        cagiranin coktan terk etmis olabilecegi yigindan yakalanan yerel degiskenler
+        yerine isin icinde tasiniyor.
+
+FIX - Is kuyrugu sinirsizdi; bu, tikanan bir veritabanini bellek tasan bir shard'a
+        cevirir. Artik tavani var ve bloklamak yerine reddediyor - bloklamak
+        BlockingCollection kapasitesinin yapacagi sey ve buradaki cagiran oyun
+        dongusu. Reddedilen is, zaman asimina ugrayan cagri, bekleyen derinlik ve
+        isci hatalari sayiliyor; surekli hata veren bir isci daha once ancak
+        sessizligi fark edilerek bulunabiliyordu.
+
+TEST - DbQueryTimeoutTests (5): basarisiz sorgu satir birakmiyor ve numrows 0;
+        zaman asimi siradan bir basarisizlik gibi bildirilmiyor; gec biten is,
+        cagiran gittikten sonra ona dokunmuyor (ve isci bir sonraki sorguya cevap
+        verecek kadar hayatta kaliyor); kuyruk buyumek yerine reddediyor; ve
+        rekabetsiz thread'li sorgu normal cevap veriyor. Sondajlar: bekleme sonucunu
+        yok saymak, bayat satirlari korumak ve tavani kaldirmak - her biri bir
+        kirmizi.
+
 [2026-09-14] - Iki README de sektor uykusunun artik neye mal oldugunu soyluyor
 ----------------------------------------
 

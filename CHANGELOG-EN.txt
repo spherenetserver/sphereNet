@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A query that times out says so, and a failed one leaves no rows behind
+----------------------------------------
+
+FIX - A failed query left the PREVIOUS query's rows readable. A script that runs
+        db.query and then reads db.row.* without checking the return got somebody
+        else's data - not an error, not an empty set, but the last successful
+        query's row. Upstream empties the result map before it does anything else,
+        before it even checks that it is connected, and sets NUMROWS to 0 in the same
+        breath (CDataBase::query, CDataBase.cpp:99). It does that here now: after a
+        failure db.row.numrows reads 0 and db.row.0.* resolves to nothing.
+
+FIX - The threaded path ignored the result of its own wait. A call that timed out
+        returned false with an empty message, which a script cannot tell from "the
+        database said no" - and the two need different handling, because a timed-out
+        statement may still be queued, still running, or already committed. The
+        timeout is now its own answer, with the elapsed budget in the message, and it
+        is counted. The engine does not retry a write on its own behalf.
+
+FIX - The completion object was disposed when the call returned, so a job that
+        finished late called Set on a disposed object from the worker thread. That
+        took the worker down, after which the session looked alive and answered
+        nothing ever again. The job now carries its own results and a reference
+        count: whichever of the caller and the worker lets go last closes the handle.
+        Results travel in the job rather than in locals captured from a stack the
+        caller may already have left.
+
+FIX - The work queue was unbounded, which turns a stalled database into an
+        out-of-memory shard. It has a cap now, and refuses rather than blocks -
+        blocking is what a BlockingCollection capacity would do, and the caller here
+        is the game loop. Refused work, timed-out calls, pending depth and worker
+        faults are all counted; a worker that keeps faulting used to be discoverable
+        only by noticing the silence.
+
+TEST - DbQueryTimeoutTests (5): a failed query leaves no rows and numrows 0, a
+        timeout is not reported as an ordinary failure, a late job does not touch the
+        caller after it has gone (and the worker survives to answer the next query),
+        the queue refuses work rather than growing, and an uncontended threaded query
+        still answers normally. Probes: ignoring the wait result, keeping the stale
+        rows, and removing the cap each turn one red.
+
 [2026-09-14] - Both READMEs say what sector sleeping now costs
 ----------------------------------------
 

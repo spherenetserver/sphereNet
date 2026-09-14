@@ -5393,6 +5393,59 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-88 — Zaman aşımının ve başarısızlığın script'e söylediği (B9'un ikinci yarısı, 15 Eylül 2026)
+
+Kaynak: Beyond-Source-X incelemesinin B9 bulgusu. Kapat/aç yarısı İŞ-77'de onarılmıştı;
+bu, aynı bulgunun geri kalanı.
+
+### Başarısız sorgudan sonra okunan satırlar
+
+Başarısız bir sorgu, **bir önceki sorgunun satırlarını** okunabilir bırakıyordu.
+`db.query` çalıştırıp dönüşü kontrol etmeden `db.row.*` okuyan bir script **başkasının
+verisini** alıyordu: hata değil, boş küme değil — son başarılı sorgunun satırı.
+
+Plan bunu "hata mı, geriye uyum sözleşmesi mi, açıkça kararlaştırılsın" diye bırakmıştı.
+**Kaynak karar veriyor:** `CDataBase::query` (CDataBase.cpp:99) sonuç haritasını her
+şeyden önce temizliyor — bağlantı kontrolünden bile önce — ve aynı anda `NUMROWS=0`
+yapıyor. Yani bu bir uyum sözleşmesi değil, sapma.
+
+Onarım aynı sırayı izliyor. Dikkat edilen ayrıntı: `null` değil **boş tablo**. Kaynak
+temizleyip `NUMROWS`'u *var ediyor*, yani sayıya bakarak dallanan bir script
+başarısızlıktan sonra "0" görmeli, "çözülemedi" değil. Testim tam bu farkı yakaladı:
+ilk uygulamamda `numrows` boş dönüyordu.
+
+### Zaman aşımı
+
+Thread'li yol kendi `Wait` sonucunu yok sayıyordu: zaman aşımına uğrayan çağrı **boş
+mesajla false** dönüyordu. Script bunu "veritabanı hayır dedi"den ayıramaz — oysa ikisi
+farklı: zaman aşımına uğramış bir ifade hâlâ kuyrukta, hâlâ çalışıyor ya da çoktan
+işlenmiş olabilir. Artık kendi cevabı, mesajında geçen süreyle. **Motor kendi
+inisiyatifiyle yazmayı tekrar etmiyor** — belirsiz sonuçlu bir yazmayı tekrarlamak,
+iki kez uygulanmış bir ifadeden daha kötüsünü üretebilir.
+
+### Geç biten iş
+
+Tamamlanma nesnesi `using` ile tutuluyordu, yani çağrı dönerken dispose ediliyordu.
+Zaman aşımından sonra biten iş **dispose edilmiş** nesnede `Set` çağırıyor ve işçi
+thread'ini öldürüyordu; sonrasında oturum canlı görünüp bir daha hiçbir şeye cevap
+vermiyordu. Şimdi iş nesnesi referans sayaçlı: çağıran ile işçiden hangisi en son
+bırakırsa handle'ı o kapatıyor. Sonuçlar da yakalanan yerel değişkenlerde değil işin
+içinde taşınıyor — çağıranın yığını artık ona ait değil.
+
+### Kuyruk
+
+Sınırsızdı. Tavan kondu ve **bloklamak yerine reddediyor**: `BlockingCollection`
+kapasitesi dolduğunda `Add` bloklar, buradaki çağıran ise oyun döngüsü. Bir script
+satırı için kötü, süreç için iyi bir cevap. Reddedilen iş, zaman aşımı, bekleyen
+derinlik ve işçi hataları sayılıyor; sürekli hata veren bir işçi daha önce ancak
+sessizliği fark edilerek bulunabiliyordu.
+
+### Durum
+
+**AÇIK:** planın istediği açık **open/closing/closed** yaşam döngüsü modeli kurulmadı —
+yeniden açılış ve zaman aşımı ayrı ayrı doğru çalışıyor ama ortada bir durum makinesi
+yok. D02'nin gerçek iki-MySQL matrisi de koşulmadı; bu onarım SQLite üzerinde ölçüldü.
+
 ## İŞ-82 — "Zamanında" hangi timer için doğruydu (B7, 14 Eylül 2026)
 
 Kaynak: Beyond-Source-X incelemesinin B7 bulgusu — *"kod ile README arasındaki

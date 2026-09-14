@@ -13,10 +13,10 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 
 | Alan | Değer |
 |---|---|
-| Son güncelleme | 2026-09-13 |
-| Son commit | `84b142b` + İŞ-66 (MODMAX* ailesi) |
-| Tam test | 3.717 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **Dalga 3 — PLAN-304** (PLAN-301/303 kapandı; 302 açık) |
+| Son güncelleme | 2026-09-14 |
+| Son commit | `7583b9d` + İŞ-67..72 (item sesleri; kaynak listesi dilbilgisi; ini paket 1-4) |
+| Tam test | 3.803 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **Dalga 3 kapandı** (PLAN-301..305). Sıradaki dalga seçilecek |
 
 ## Çalışma sırası
 
@@ -469,6 +469,82 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-72 KAPANDI (PLAN-302 dördüncü paketi — PLAN-302 TAMAMLANDI)** — 2026-09-14.
+  **Sessiz ve tam bir kayıp:** paketteki her `[SKILLCLASS n]` yükleniyor ve bir daha
+  **bulunamıyordu** — bölüm sayı yerine defname gibi hash'leniyordu. Canlı paketin
+  kendi 0 sınıfı (`STATSUM 300`, `SKILLSUM 10000`, `STR/INT/DEX 100`, tam yetenek
+  tavanı tablosu) ayrıştırılıp yok sayılıyor, her oyuncu motorun yedek tavanlarını
+  alıyordu. **Yeni:** `REVEALFLAGS` (on bir bayrak, **üçü ters** anlamda; konuşma ve
+  hırsızlık sonuçları daha önce hiç açığa çıkarmıyordu), `IniParser.GetFlags`
+  (`01|02|010` biçimi — `GetInt` bunu sessizce yanlış okurdu), `OVERSKILLMULTIPLY`
+  (SKILLCLASS'ın STR/DEX/INT tavanlarına ilk tüketici), `HITSHUNGERLOSS`
+  (ters yöne taşmış bir yorum da düzeltildi), `SKILLPRACTICEMAX`, `WOOLGROWTHTIME`.
+  **Ayrıca** `DelayedCallSaveDuringCallbackTests`'in saat yarışı düzeltildi (yarı
+  yarıya, hiçbir şey ölçmeyerek kalıyordu). Test:
+  `RevealAndStatRepairConfigTests` (13); sondajda 3/5/1/1/2 kırmızı. Tanınan ini
+  anahtarı 178 → **183**. Tam suite 3.803, üç koşu. **Dalga 3 (PLAN-301..305) kapandı.**
+- **İŞ-71 KAPANDI (PLAN-302 üçüncü paketi)** — 2026-09-14. **İki gerçek hata:**
+  (1) başkasının üzerinden eşya alma kapısı "başka bir OYUNCU değilse" diye
+  yazıldığı için **dünyadaki her NPC herkese açıktı** — yabancının ejderhası,
+  kiralık asker, dükkâncı. Referansın kuralı sahiplik üzerine
+  (`CCharAct.cpp:2946`); ayrıca kuralın **çelişen iki kapısı** vardı, tek
+  `CanTakeFrom` oldu. (2) `CanShove` yalnız staminaya bakıyordu ve boştaki NPC'nin
+  staminası hep dolu → **yaratıklar birbirinin içinden geçiyordu**. **Altı anahtar:**
+  `CANUNDRESSPETS`, `CANPETSDRINKPOTION` (iksir okuyucusu içme yoluyla paylaşıldı),
+  `VENDORMARKUP` (tüketicisi vardı, **besleyicisi yoktu**), `VENDORMAXSELL` (liste
+  kurulurken), `LOSTNPCTELEPORT`, `NPCSHOVENPC`. Test: `PetVendorConfigTests` (13);
+  sondajda 2/1/1/1/1 kırmızı. Tanınan ini anahtarı 172 → **178**. Tam suite 3.790,
+  üç koşu. **PLAN-302 hâlâ açık** — dördün üçü bitti; sıradaki suç/stat ve çevre.
+- **İŞ-70 KAPANDI (PLAN-302 ikinci paketi)** — 2026-09-14. **İki davranış
+  düzeltmesi:** (1) meditasyon yapan karakter adım atamıyordu; referans buna
+  **izin veriyor**, yalnız `MEDITATIONMOVEMENTABORT` kuruluyken kesiyor ve
+  varsayılanı kapalı — motor koşulsuz iptal ediyordu. (2) Dirilme cüppesi kefen
+  bayrağına bağlıydı; görünmez hayalet isteyen shard insanları çıplak diriltiyordu.
+  **Uydurma değer:** kilit açma zorluğu sabit `Random.Next(60)` idi (asma kilit =
+  kasa kapısı); artık kilidin kendi karmaşıklığı, ve **anahtar çantadaysa önemsiz**.
+  **Yeni:** `MAGICUNLOCKDOOR` (yetenekten önce atılan N'de-bir şans; referans ini
+  onu yanlış anlatıyor), `SPELLTIMEOUT` (hedef imlecine son tarih; karakterin kendi
+  tag'i ezer), `NORESROBE`. **Tekilleştirme:** anahtar-kilit eşleşmesinin iki
+  kopyası tek `Item.KeyFits` + `Character.FindKeyFor` oldu. Test:
+  `MagicInterruptConfigTests` (10) + `SpellTargetTimeoutTests` (5); sondajda 1/2/1
+  kırmızı. Tanınan ini anahtarı 168 → **172**. Tam suite 3.777, altı koşu.
+  **PLAN-302 hâlâ açık** — dört paketin ikisi bitti; sıradaki pet/vendor.
+- **İŞ-69 KAPANDI (PLAN-302 ilk paketi)** — 2026-09-13. **Gerçek düzeltme:**
+  sunucu `BACKPACKOVERLOAD=40` gönderiyordu ama **bedelini hiç ödetmiyordu**;
+  koddaki yorum yürümenin stamina yakmadığını *iddia ediyordu*, oysa ücret
+  `Event_Walk`'ta değil bir kat aşağıda (`CCharAct.cpp:4787-4829`). **Altı yeni
+  anahtar** davranışa bağlandı: `STAMINALOSSATWEIGHT` (eşik değil S-eğrisi orta
+  noktası), `STAMINALOSSOVERWEIGHT` (limit üstü her adım, +1/5 taş, atlıda ÷3),
+  `RUNNINGPENALTY`, `RUNNINGPENALTYOVERWEIGHT` (bilinçli sapma: referansın tablosu
+  bu anahtarı komşusunun alanına bağlamış), `DRAGWEIGHTMAX` (kendi çantandakiler
+  ayağına düşer), `MOVERATE`. **İni belgesi:** uydurma `MONSTERTIGHT` kaldırıldı,
+  `DISTANCEFORMULA`'nın değerleri ve varsayılanı düzeltildi, `BACKPACKOVERLOAD`
+  başlığındaki çelişki temizlendi. Test: `WeightMovementConfigTests` (10) +
+  `DragWeightAndMoveRateTests` (8); sondajda 8/2/1 kırmızı. Tanınan ini anahtarı
+  162 → **168**. Tam suite 3.762, üç koşu. **PLAN-302 açık kalıyor** — dört
+  paketin biri bitti; sıradaki büyü/interrupt paketi.
+- **İŞ-68 KAPANDI** — 2026-09-13. **İki gerçek düzeltme:** kaynak listesi
+  dilbilgisinin (`CResourceQty.cpp:57` — *"either order"*, yalın ad = 1) bizde
+  **dört yarım okuyucusu** vardı. Canlı pakette bedeli: yazıcılık **kalem ve
+  mürekkepsiz** yapılabiliyordu (`1 i_pen_and_ink` "skill 1" sanılıyordu) ve yalın
+  adla yazılmış **257 `RESOURCES` satırı** düşürülüp malzeme bedava veriliyordu.
+  Ayrıca yalın tamsayı skill değeri on katına çıkarılıyordu (76 → 76.0, referans
+  7.6). Tek okuyucu: `ResourceQtyList`. **Yeni:** `SKILLCHECK` (zar atar, deneyim
+  vermez), `SKILLADJUSTED` (metin döner: "52.0"), `SKILLTEST` (skill + eşya tek
+  soruda, sahiplik üretim motorunun stok aramasından). Test:
+  `ResourceListGrammarTests` (8) + `SkillQueryParityTests` (11); sondajda sırasıyla
+  6/2/5 kırmızı. Rapor listesi 43 addan 25 cevaplı (kalan 18). Tam suite 3.744, üç
+  koşu. **PLAN-304 tamamlandı.** Sıradaki: PLAN-302 (seksen ini anahtarının
+  paket paket tanımı) tek açık madde olarak kaldı.
+- **İŞ-67 KAPANDI** — 2026-09-13. **Gerçek düzeltme:** kapı doğru sesleri
+  çalıyordu ama iki sayıyı koda gömerek; `DOOROPENSOUND`/`DOORCLOSESOUND` sessizce
+  ölüydü — PLAN-305'in istediği "property var / ses çalınıyor" ayrımının tam örneği.
+  Her yön artık kendi anahtarından ayrı çözülüyor (`CItem.cpp:4655-4665`).
+  **Yeni özellik:** `PICKUPSOUND` (yedek `SOUND_USE_CLOTH` 0x057), yalnızca
+  kaldırana gönderiliyor — referans `addSound` ile o istemciye veriyor. Test:
+  `ItemSoundPropertyTests` (7); sondajda kapı araması sabitlenince 2'si kırmızı.
+  Rapor listesi 43 addan 22 cevaplı (kalan 21). Tam suite 3.725, üç koşu.
+  **PLAN-305 tamamlandı.** Sıradaki: PLAN-304 (CANMAKE/SKILL* sorgu sözleşmesi).
 - **İŞ-66 KAPANDI** — 2026-09-13. **Yeni özellik:** `MODMAXHITS`/`MODMAXMANA`/
   `MODMAXSTAM`. Bir stat tavanı referansta **üç** terimli, bizde ikisi vardı:
   `Stat_GetMaxAdjusted = Stat_GetMax + Stat_GetMaxMod` (CCharStat.cpp:301).

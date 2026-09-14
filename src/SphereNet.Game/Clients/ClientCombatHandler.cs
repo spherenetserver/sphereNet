@@ -2347,6 +2347,9 @@ public sealed class ClientCombatHandler
                     _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
                     HandleCastSpell(spell, serial != 0 ? serial : _character.Uid.Value);
                 });
+                // A spell's cursor is the one upstream puts a clock on
+                // (CClientUse.cpp:1061); the GM and script cursors around it have none.
+                _client.Targeting.ArmSpellTimeout();
                 return;
             }
 
@@ -2537,6 +2540,7 @@ public sealed class ClientCombatHandler
         TickPendingSkill();
         TickPendingCraft();
         TickStatUpdate();
+        _client.Targeting.TickTargetTimeout();
     }
 
     /// <summary>

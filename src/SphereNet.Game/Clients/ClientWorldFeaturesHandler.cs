@@ -2084,7 +2084,9 @@ public sealed class ClientWorldFeaturesHandler
         door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + 20_000);
 
         // Play door sound and broadcast updated item to nearby clients
-        ushort soundId = (ushort)(isOpen ? 0x00F1 : 0x00EA); // close/open sounds
+        // The pair was hard-coded here, so DOOROPENSOUND/DOORCLOSESOUND were read by
+        // nobody: the door sounded right and the keys were silently inert.
+        ushort soundId = door.GetDoorSound(opening: !isOpen);
         var soundPacket = new PacketSound(soundId, door.X, door.Y, door.Z);
         BroadcastNearby?.Invoke(door.Position, UpdateRange, soundPacket, 0);
 
@@ -2185,13 +2187,9 @@ public sealed class ClientWorldFeaturesHandler
         // did a permanent Str/Dex += 10), and a bottle with no resolvable
         // effect is just a drink — the old "default to heal" made any tagless
         // liquid (including a full water pitcher) a free heal potion.
-        var drinkSpell = ResolveDrinkSpell(potion);
-        if (drinkSpell != 0 && _client.Spells != null)
+        if (ApplyPotionEffect(_character, potion))
         {
-            int strength = (int)Math.Min(potion.More2, 2000);
-            if (strength <= 0)
-                strength = 500; // legacy bottle with no stored alchemy quality
-            _client.Spells.ApplyDirectEffect(_character, _character, drinkSpell, strength);
+            // handled: the bottle named a spell and it has been delivered
         }
         else if (potion.ItemType == ItemType.Potion &&
                  potion.TryGetTag("POTION_TYPE", out string? oldType) && oldType != null)
@@ -2272,6 +2270,29 @@ public sealed class ClientWorldFeaturesHandler
     /// <summary>Resolve the spell a drink conveys (Source-X m_itPotion.m_Type):
     /// numeric MORE1, the MORE1_DEFNAME routing tag (s_heal, ...), or — for
     /// old-system bottles — the legacy POTION_TYPE tag mapped to its spell.</summary>
+    /// <summary>
+    /// Convey a potion's stored effect to somebody — the part of Use_Drink that is not
+    /// about the drinker being the client's own character.
+    ///
+    /// A potion carries a SPELL in MORE1 at the strength in MORE2; drinking it is
+    /// delivering that spell. Pulling the resolution out here keeps CANPETSDRINKPOTION
+    /// from needing a second potion reader, which is how the two would drift into
+    /// disagreeing about what a bottle contains.
+    /// </summary>
+    /// <returns>False when the bottle holds no resolvable effect.</returns>
+    internal bool ApplyPotionEffect(Character target, Item potion)
+    {
+        var spell = ResolveDrinkSpell(potion);
+        if (spell == 0 || _client.Spells == null)
+            return false;
+
+        int strength = (int)Math.Min(potion.More2, 2000);
+        if (strength <= 0)
+            strength = 500;     // a legacy bottle with no stored alchemy quality
+        _client.Spells.ApplyDirectEffect(target, target, spell, strength);
+        return true;
+    }
+
     private SpellType ResolveDrinkSpell(Item potion)
     {
         if (potion.More1 is > 0 and < 1000)

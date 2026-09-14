@@ -96,6 +96,34 @@ public sealed class IniParser
         return int.TryParse(val, out int result) ? result : defaultValue;
     }
 
+    /// <summary>
+    /// A FLAG key, in the form the reference ini writes them:
+    /// <c>RevealFlags=01|02|04|08|010|040|080|0200</c>.
+    ///
+    /// Two things <see cref="GetInt"/> cannot do. The '|' is an OR of several flags,
+    /// and each term follows Sphere's numeric rule where a LEADING ZERO means
+    /// hexadecimal - so <c>010</c> is sixteen, not ten. Reading such a line as a
+    /// decimal gives a number that is wrong in a way nothing complains about: the
+    /// server starts, some flags are set, and they are not the ones the operator asked
+    /// for.
+    /// </summary>
+    public int GetFlags(string section, string key, int defaultValue = 0)
+    {
+        string? val = GetValue(section, key);
+        if (string.IsNullOrWhiteSpace(val)) return defaultValue;
+
+        long acc = 0;
+        bool any = false;
+        foreach (string term in val.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(term, out long bits))
+                return defaultValue;
+            acc |= bits;
+            any = true;
+        }
+        return any ? (int)acc : defaultValue;
+    }
+
     public bool GetBool(string section, string key, bool defaultValue = false)
     {
         string? val = GetValue(section, key);

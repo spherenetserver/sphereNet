@@ -771,6 +771,35 @@ public static partial class Program
         SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = _config.NpcCanFizzleOnHit;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = _config.FlipDroppedItems;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = _config.BackpackOverload;
+        // What a load costs: BACKPACKOVERLOAD lets a player go over their carry
+        // weight, and these are what they pay for it on every committed step.
+        SphereNet.Game.Objects.Items.Item.DragWeightMax = _config.DragWeightMax;
+        SphereNet.Game.Movement.MovementEngine.StaminaLossAtWeight = _config.StaminaLossAtWeight;
+        SphereNet.Game.Movement.MovementEngine.StaminaLossOverweight = _config.StaminaLossOverweight;
+        SphereNet.Game.Movement.MovementEngine.RunningPenalty = _config.RunningPenalty;
+        SphereNet.Game.Movement.MovementEngine.RunningPenaltyOverweight = _config.RunningPenaltyOverweight;
+        // Seeded BEFORE the definitions load: a CHARDEF without its own MOVERATE takes
+        // this one, the way CCharBase's constructor does (CCharBase.cpp:37).
+        SphereNet.Scripting.Definitions.CharDef.DefaultMoveRate = _config.MoveRate;
+        // Magic, and what interrupts it.
+        SphereNet.Game.Clients.ClientTargetingHandler.SpellTimeoutSeconds = _config.SpellTimeout;
+        SphereNet.Game.Objects.Items.Item.MagicUnlockDoor = _config.MagicUnlockDoor;
+        SphereNet.Game.Movement.MovementEngine.MeditationMovementAbort = _config.MeditationMovementAbort;
+        SphereNet.Game.Death.DeathEngine.NoResRobe = _config.NoResRobe;
+        // Pets and vendors.
+        SphereNet.Game.Objects.Characters.Character.CanUndressPets = _config.CanUndressPets;
+        SphereNet.Game.Objects.Characters.Character.CanPetsDrinkPotion = _config.CanPetsDrinkPotion;
+        SphereNet.Game.Trade.VendorEngine.DefaultVendorMarkup = _config.VendorMarkup;
+        SphereNet.Game.Trade.VendorEngine.VendorMaxSell = _config.VendorMaxSell;
+        SphereNet.Game.AI.NpcAI.LostNpcTeleport = _config.LostNpcTeleport;
+        SphereNet.Game.Movement.MovementEngine.NpcShoveNpc = _config.NpcShoveNpc;
+        // Crime, stats and the world around them.
+        SphereNet.Game.Objects.Characters.Character.ActiveRevealFlags =
+            (SphereNet.Core.Enums.RevealFlags)_config.RevealFlags;
+        SphereNet.Game.Objects.Characters.Character.HitsHungerLoss = _config.HitsHungerLoss;
+        SphereNet.Game.Objects.Characters.Character.OverSkillMultiply = _config.OverSkillMultiply;
+        SphereNet.Game.Clients.ClientItemUseHandler.SkillPracticeMax = _config.SkillPracticeMax;
+        SphereNet.Game.Objects.Items.Item.WoolGrowthMs = (long)_config.WoolGrowthTime * 60_000L;
         SphereNet.Game.World.WeatherEngine.NoWeather = _config.NoWeather;
         SphereNet.Game.Magic.SpellEngine.MaxPolyStats = _config.MaxPolyStats;
         SphereNet.Persistence.Load.WorldLoader.NpcSkillSave = _config.NpcSkillSave;

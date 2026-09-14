@@ -2305,40 +2305,14 @@ public sealed class ClientItemUseHandler
     /// the multi's code, which every door of the house shares through its link. The
     /// active key path asked only for TAG.LINK == the target's own uid, so the game's
     /// own house key opened nothing - while the pack search below already knew the
-    /// rule. One resolution now serves both.</summary>
-    private static bool KeyFits(Item key, Item locked)
-    {
-        uint code = key.Link.IsValid ? key.Link.Value : 0;
-        if (code == 0 && key.TryGetTag("LINK", out string? lk))
-            uint.TryParse(lk, out code);
-        if (code == 0) return false;
+    /// rule. One resolution now serves both - and it lives on the item, so the
+    /// lockpicking path asks the same question.</summary>
+    private static bool KeyFits(Item key, Item locked) => Item.KeyFits(key, locked);
 
-        if (code == locked.Uid.Value) return true;
-        return locked.Link.IsValid && code == locked.Link.Value;
-    }
-
-    private Item? FindBackpackKeyFor(Item locked)
-    {
-        if (_character?.Backpack == null) return null;
-        foreach (var it in EnumerateContents(_character.Backpack, 0))
-        {
-            if (it.ItemType is not (ItemType.Key or ItemType.Keyring)) continue;
-            if (KeyFits(it, locked))
-                return it;
-        }
-        return null;
-
-        static IEnumerable<Item> EnumerateContents(Item container, int depth)
-        {
-            if (depth >= 16) yield break;
-            foreach (var child in container.Contents)
-            {
-                yield return child;
-                foreach (var nested in EnumerateContents(child, depth + 1))
-                    yield return nested;
-            }
-        }
-    }
+    /// <summary>The key in the pack that opens this lock. One implementation, on the
+    /// character, so the use-a-key path and the lockpicking path cannot disagree about
+    /// which key fits (Source-X CChar::ContentFindKeyFor).</summary>
+    private Item? FindBackpackKeyFor(Item locked) => _character?.FindKeyFor(locked);
 
     /// <summary>Re-enter the active-skill pipeline with a pre-resolved Serial target.</summary>
     private void RouteSkillTarget(SkillType skill, Serial target, Point3D? point = null)
@@ -2884,7 +2858,10 @@ public sealed class ClientItemUseHandler
 
     /// <summary>Source-X SKILLPRACTICEMAX default: a training aid is only useful up
     /// to 30.0 skill (CServerConfig).</summary>
-    private const int SkillPracticeMax = 300;
+    /// <summary>SKILLPRACTICEMAX — the highest skill a training dummy or archery butte
+    /// will raise (Source-X m_iSkillPracticeMax, default 300 = 30.0). A constant until
+    /// the ini was wired to it; the consumer was here all along.</summary>
+    public static int SkillPracticeMax { get; set; } = 300;
 
     // Source-X game pieces (uofiles_enums_itemid.h:937). GAME1 is the white set,
     // GAME2 the brown one.
@@ -4650,12 +4627,19 @@ public sealed class ClientItemUseHandler
                 if (item.IsDeleted) continue;
 
                 int price = GetVendorItemPrice(vendor, item);
+                // VENDORMAXSELL caps a line when the LIST is built, not when the click
+                // arrives (Source-X send.cpp:1249), so the client never offers more
+                // than the shard allows. Capping after the fact would show a number the
+                // shop then refuses.
+                ushort offered = Math.Max((ushort)1, (ushort)item.Amount);
+                if (Trade.VendorEngine.VendorMaxSell > 0)
+                    offered = (ushort)Math.Min(offered, Trade.VendorEngine.VendorMaxSell);
                 items.Add(new VendorItem
                 {
                     Serial = item.Uid.Value,
                     ItemId = item.DispIdFull,
                     Hue = item.Hue.Value,
-                    Amount = Math.Max((ushort)1, (ushort)item.Amount),
+                    Amount = offered,
                     Price = price,
                     Name = item.GetName()
                 });

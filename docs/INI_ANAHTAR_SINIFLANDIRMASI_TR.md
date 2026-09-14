@@ -1,4 +1,4 @@
-# Ini anahtar sınıflandırması
+﻿# Ini anahtar sınıflandırması
 
 PLAN-002'nin istediği şey: *"her ini anahtarını `okunuyor / saklanıyor /
 davranışta tüketiliyor / bilinçli desteklenmiyor` olarak sınıflandır."*
@@ -15,7 +15,7 @@ Bu belge ölçümün kendisini ve düzeltilen sapmaları kaydeder.
 
 ## Ölçüm
 
-`config/sphere.ini`: **195 anahtar** (bir yinelenen anahtar kaldırıldıktan
+`config/sphere.ini`: **213 anahtar** (bir yinelenen anahtar kaldırıldıktan
 sonra; aşağıya bakın).
 
 | Sınıf | Sayı | Anlamı |
@@ -138,7 +138,7 @@ sapma, unutulmuş bir ayar değil.
 
 ---
 
-## Bilinçli desteklenmeyen 16 anahtar
+## Bilinçli desteklenmeyen 13 anahtar
 
 Hiçbir yerde okunmuyorlar ve `[UYGULANMADI]` diye işaretliler — yani ini
 operatöre doğruyu söylüyor.
@@ -147,12 +147,71 @@ operatöre doğruyu söylüyor.
 |---|---|---|
 | Ağ ayarı | `USEASYNCNETWORK`, `NETWORKTHREADPRIORITY`, `MAXSIZECLIENTIN`, `MAXSIZECLIENTOUT`, `MAXSIZEPERTICK`, `MAXQUEUESIZE`, `USEEXTRABUFFER`, `USEPACKETPRIORITY` | Source-X'in kendi soket yığınının ayarları; SphereNet'in ağ katmanı farklı |
 | Bağlantı | `CONNECTINGMAXIP` | IP başına bağlanma tavanı |
-| Dünya | `MAPCACHETIME`, `MONSTERTIGHT`, `DISTANCEFORMULA` | Referansın önbellek/yerleşim/mesafe iç detayları |
-| Karakter | `STATSFLAGS`, `HITSUPDATERATE`, `CANUNDRESSPETS` | — |
-| Büyü | `SPELLTIMEOUT` | — |
+| Dünya | `MAPCACHETIME`, `DISTANCEFORMULA` | Referansın önbellek/mesafe iç detayları |
+| Karakter | `STATSFLAGS`, `HITSUPDATERATE` | — |
 
 `APPUPDATEREPODIR` işaretsiz ve okunmuyor; diğer `APPUPDATE*` anahtarları
 `SphereNet.Host` tarafından okunuyor.
+
+---
+
+## Düzeltilen sapma 3 — uydurma bir anahtar ve iki yanlış belge (İŞ-69)
+
+**`MONSTERTIGHT` kaldırıldı.** Ne Source-X'te ne 0.55'te var; ini'deki açıklaması
+("sıkı canavar AI'ı") uydurmaydı. Hiçbir zaman tüketilemeyecek bir anahtar ayar
+değildir — "tüketicisi olmayan ayar eklenmez" kuralının aynısı, ters yönden.
+
+**`DISTANCEFORMULA`** iki yönden de yanlış belgelenmişti: değerleri
+`0=Chebyshev / 1=Manhattan` diyordu, referansta `0=köşegensiz-Zsiz (kare)`,
+`1=köşegenli-Zsiz (dairesel)`, `2=köşegenli+Z`; varsayılanı `1` diyordu, referansta
+`0`. Hâlâ uygulanmıyor ama artık doğru anlatıyor ve referansın varsayılanını
+gönderiyor.
+
+**`BACKPACKOVERLOAD`** başlığı düzeltme öncesinden kalma iki satır taşıyordu
+(*"Tür: boolean (0/1)"*, *"Varsayılan: 0"*) — hemen altındaki doğru metinle
+çelişiyordu.
+
+---
+
+## Eklenen 6 anahtar — yükün bedeli (İŞ-69)
+
+`STAMINALOSSATWEIGHT`, `STAMINALOSSOVERWEIGHT`, `RUNNINGPENALTY`,
+`RUNNINGPENALTYOVERWEIGHT`, `DRAGWEIGHTMAX`, `MOVERATE`. Altısı da davranışta
+tüketiliyor; ayrıntı ve Source-X satır numaraları için takip planında İŞ-69.
+
+---
+
+## Eklenen 4 anahtar — büyü ve onu kesen şeyler (İŞ-70)
+
+`SPELLTIMEOUT` (işaretsizken uygulandı), `MAGICUNLOCKDOOR`,
+`MEDITATIONMOVEMENTABORT`, `NORESROBE`. Ayrıntı için takip planında İŞ-70.
+
+`MEDITATIONMOVEMENTABORT` **davranış değiştiriyor**: varsayılanı 0 ve referans
+yürüyen meditasyona izin veriyor; motor bu tarihe kadar koşulsuz iptal ediyordu.
+
+---
+
+## Eklenen 6 anahtar — pet ve satıcı (İŞ-71)
+
+`CANUNDRESSPETS` (işaretsizken uygulandı), `CANPETSDRINKPOTION`, `VENDORMARKUP`,
+`VENDORMAXSELL`, `LOSTNPCTELEPORT`, `NPCSHOVENPC`. Ayrıntı için takip planında
+İŞ-71.
+
+`CANUNDRESSPETS` **davranış değiştiriyor** ve gönderilen değeri 0 → 1 oldu:
+referansın varsayılanı 1, ve öncesinde kapı "başka bir OYUNCU değilse" diye
+yazıldığı için dünyadaki her NPC zaten herkese açıktı — yani korunacak bir
+süreklilik yoktu.
+
+---
+
+## Eklenen 5 anahtar — gizlenme, suç ve stat onarımı (İŞ-72)
+
+`REVEALFLAGS`, `HITSHUNGERLOSS`, `SKILLPRACTICEMAX`, `WOOLGROWTHTIME`,
+`OVERSKILLMULTIPLY`. Ayrıntı için takip planında İŞ-72.
+
+`REVEALFLAGS` ini'nin ilk **bayrak listesi** anahtarı: `|` ile birleşen ve baştaki
+sıfırı ONALTILIK sayan biçimi `IniParser.GetFlags` okuyor — `GetInt` bunu
+okuyamıyordu ve sessizce yanlış bir sayı verirdi.
 
 ---
 

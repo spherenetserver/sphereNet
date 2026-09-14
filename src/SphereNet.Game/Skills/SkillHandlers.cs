@@ -412,7 +412,7 @@ public sealed class SkillHandlers
                 if (nearby == ch || !nearby.IsStatFlag(StatFlag.Hidden)) continue;
                 int detectDiff = ch.GetSkill(SkillType.DetectingHidden) - nearby.GetSkill(SkillType.Hiding);
                 if (detectDiff > 0 || Random.Shared.Next(1000) < 300)
-                    nearby.ClearHiddenState();
+                    nearby.ClearHiddenState(RevealFlags.DetectingHidden);
             }
         }
         return success;

@@ -5393,6 +5393,416 @@ için okunarak doğrulandı, teste bağlanmadı — kayda geçti.
 
 ---
 
+## İŞ-72 — Gizlenme, suç ve stat onarımı: ini son paketi (PLAN-302, 14 Eylül 2026)
+
+PLAN-302'nin dördüncü ve son paketi: *"dördüncü suç/stat ve çevre"*. Beş anahtar,
+ve stat yarısı **sessiz ve tam** bir kayıp ortaya çıkardı.
+
+### Sorun — paketteki her SKILLCLASS yükleniyor ve bir daha bulunamıyordu
+
+Bir paket sınıfı **sayı** olarak yazıyor (`[SKILLCLASS 0]`) ve karakter o sayıyı
+taşıyor. Bizde bölüm bir **defname gibi hash'lenerek** indeksleniyordu
+(`ResourceHolder.IsNumericIdType` listesinde `SKILLCLASS` yoktu), yani hiçbir arama
+ona ulaşamıyordu.
+
+Canlı pakette bedeli: `[SKILLCLASS 0]` `STATSUM=300`, `SKILLSUM=10000.0`,
+`STR/INT/DEX=100` ve tam bir yetenek-tavanı tablosu tanımlıyor. Hepsi
+ayrıştırılıyor, hash altına yazılıyor, sonra **hiç bulunmuyordu** — her oyuncu
+shard'ın değil motorun yedek tavanlarını (7000 / 225 / 125 / 1000) alıyordu.
+
+Tek satırlık düzeltme: `SKILLCLASS` de `SKILL` gibi sayısal indeks tipi.
+
+### REVEALFLAGS — on bir bayrak, **üçü ters**
+
+`SNOOPING`, `STEALING` ve `OSILIKEPERSONALSPACE` **kurulduğunda açığa ÇIKARMAZ**;
+diğer her bayrak çıkarır. Referans ini tersliği tam bu üçü için açıkça yazıyor.
+Hepsini aynı yönde okuyan bir kod bir shard'ın gizlilik kurallarının yarısını ters
+çevirir ve bunu yaparken makul görünür.
+
+Bağlandığı yerler: detecting hidden (3 çağrı yeri), büyü başlangıcı, **konuşma**,
+birinin üstüne basma, **hırsızlık** (başarı/başarısızlık ayrı bayraklar) ve at
+üstündeki sinsi adım. Konuşma ve hırsızlık sonuçları daha önce **hiç** açığa
+çıkarmıyordu; atlıyı da at hiç ele vermiyordu.
+
+### Yeni okuyucu — `IniParser.GetFlags`
+
+`REVEALFLAGS`, referansın bayrak listelerini yazdığı biçimdeki ilk anahtarımız:
+`01|02|04|08|010`. `GetInt` ne `|` birleşimini ne de Sphere'in "baştaki sıfır
+onaltılıktır" kuralını okuyabiliyor — hakkında hiçbir şey söylemeden yanlış bir
+sayı dönerdi.
+
+### Anahtar tablosu
+
+| Anahtar | Varsayılan | Kullanım noktası |
+|---|---|---|
+| `REVEALFLAGS` | ref ini'nin gönderdiği | `ClearHiddenState(cause)` |
+| `OVERSKILLMULTIPLY` | 2 | Girişte sınıf sınırına çekme (onarım) |
+| `HITSHUNGERLOSS` | 0 = kapalı | Yemek tick'inde düz hasar |
+| `SKILLPRACTICEMAX` | 300 | Manken/hedef eğitimi tavanı |
+| `WOOLGROWTHTIME` | 30 dk | Kırkılan koyunun yünü |
+
+**Reload politikası:** beşi de statik alandan, canlı değişim anında geçerli.
+`OVERSKILLMULTIPLY` yalnız **girişte** çalışır.
+
+### Ters yöne taşmış bir yorumun düzeltilmesi
+
+Kodda *"Source-X starvation ... never drains stamina or health"* yazıyordu.
+Referans **isırıyor** (`CCharAct.cpp:5788`), ama yalnız `HITSHUNGERLOSS` kuruluysa —
+ve referans ini o satırı yorumda gönderiyor. Uydurma olan kısım ısırmak değil,
+**ayar olmadan** ısırmaktı.
+
+### Test
+
+`RevealAndStatRepairConfigTests` (13).
+
+Sondaj: ters üçü komşuları gibi ele almak **3**, `SKILLCLASS`'ı yeniden hash'lemek
+**5**, bayrak satırını `GetInt` ile okumak **1**, at kontrolünü kaldırmak **1**,
+onarım geçişini kaldırmak **2** test kırmızı.
+
+**Test notu:** sınıf testleri ilk yazımda **yanlış nedenle geçiyordu** — yetenek
+tavanı 1000'e çekiliyordu ama bu sınıfın değeri değil motorun yedeğiydi; ikisi
+tesadüfen aynıydı. Fixture'ın sınıfı gerçekten yüklendiğini doğrulayan bir kontrol
+eklenince SKILLCLASS indeksleme hatası ortaya çıktı.
+
+### Ayrıca — kırılgan test düzeltildi
+
+`DelayedCallSaveDuringCallbackTests` saati işlerini **kurmadan önce** okuyordu;
+`AddTimerF` vadeyi `TickCount64 + gecikme` olarak damgaladığı için arada bir
+milisaniye geçtiğinde sıfır gecikmeli iş henüz vadesi gelmemiş sayılıyor ve pompa
+hiçbir şey çalıştırmıyordu. Testler yaklaşık yarı yarıya, **yanlış şeyi ölçerek
+değil hiçbir şeyi ölçmeyerek** kalıyordu. Bu dalgadan önce de kırılgandı; kod
+değişikliğinin zamanlamayı kaydırması görünür hâle getirdi.
+
+### Durum
+
+**PLAN-302 TAMAMLANDI** — dört paketin dördü de indi. Tanınan ini anahtarı **183**
+(178'di). Dalga 3'ün tüm maddeleri (PLAN-301..305) kapandı.
+
+## İŞ-71 — Pet ve satıcı: ini üçüncü paketi (PLAN-302, 14 Eylül 2026)
+
+PLAN-302'nin üçüncü paketi: *"üçüncü pet/vendor"*. Altı anahtar, ve pet yarısı
+**ayarla ilgisi olmayan bir açık** ortaya çıkardı.
+
+### Sorun 1 — dünyadaki her NPC herkese açıktı
+
+Başkasının üzerinden bir şey alma kapısı **"başka bir OYUNCU değilse"** diye
+yazılmıştı:
+
+```csharp
+if (wearer != null && wearer != _character && wearer.IsPlayer)  // eski
+```
+
+Yani yabancının evcil ejderhası, bir kiralık asker, bir dükkâncı — hepsi yanından
+geçen herkese açıktı. Referansın kuralı **SAHİPLİK** üzerine (`CCharAct.cpp:2946`):
+görevliler üstünlük kurar; sahip petinin **çantasına** her hâlükârda uzanır; ve
+`CANUNDRESSPETS` petin **giydiğini** de çıkarabilir mi onu söyler.
+
+Dahası kuralın **birbiriyle çelişen iki kapısı** vardı: kuşanılmış eşya kolu her
+kendisi-olmayan taşıyıcıyı koşulsuz reddediyordu, yani sahip ayar ne olursa olsun
+kendi petini soyamıyordu. Tek `CanTakeFrom` oldu.
+
+### Sorun 2 — yaratıklar birbirinin içinden geçiyordu
+
+`CanShove` yalnızca staminaya bakıyordu ve boşta duran bir NPC'nin staminası hep
+dolu. Referans NPC-NPC geçişini durduruyor (`CCharAct.cpp:4624`): `NPCSHOVENPC`
+kurulu değilse veya birey `TAG.OVERRIDE.SHOVE` taşımıyorsa geçemez. Kural olmadan
+muhafız, arkasında sıkışması gereken kalabalığın içinden geçip gidiyor.
+
+### Anahtar tablosu
+
+| Anahtar | Varsayılan | Kullanım noktası |
+|---|---|---|
+| `CANUNDRESSPETS` | 1 | Sahibin petin ÜZERİNDEKİNİ çıkarması |
+| `CANPETSDRINKPOTION` | 1 | Petin üstüne bırakılan iksiri içmesi |
+| `VENDORMARKUP` | 15 | Satıcı TAG → bölge TAG → **bu** |
+| `VENDORMAXSELL` | 255 | Liste **kurulurken** satır tavanı |
+| `LOSTNPCTELEPORT` | 50 | Evden çok uzaktaki yaratığı geri koyar |
+| `NPCSHOVENPC` | 0 | Yaratık-yaratık itme |
+
+`VENDORMARKUP`'ın **tüketicisi zaten vardı**, besleyicisi yoktu: ini değeri hiçbir
+zaman `TradeEngine.DefaultVendorMarkup`'a ulaşmıyordu.
+
+**Reload politikası:** altısı da statik alandan okunuyor, canlı değişim anında
+geçerli. `VENDORMAXSELL` yalnız **bundan sonra açılan** listelerde görünür.
+
+### Tekilleştirme
+
+İksir okuyucusu ikinci kez yazılmadı: `ApplyPotionEffect` içme yolundan çıkarıldı,
+pet yolu onu çağırıyor. İkisi bir şişenin ne içerdiği konusunda ayrışamaz.
+
+### Test
+
+`PetVendorConfigTests` (13). Hatayı yakalayacak olan test *"yabancının yaratığı"*
+durumu.
+
+Sondaj: yalnızca-oyuncu kapısı geri konunca **2**, yaratık itme kuralı kaldırılınca
+**1**, iksir dalı **1**, satış tavanı **1**, ışınlanma emniyeti **1** test kırmızı.
+
+**Test notları:** (a) satış tavanı testi ilk yazımda *hiçbir şey ölçmüyordu* —
+stokun değişmediğini doğruluyordu, ki kural olmadan da doğru. İstemciye giden
+`0x3C` paketinden **reklam edilen adet** okunacak şekilde yeniden yazıldı; paket
+girdi boyunu (19/20 bayt) kendi uzunluğundan türetiyor. (b) Bir NPC'nin yanında
+oyuncu yoksa davranmadan **park ediliyor**; testler bunu hesaba katmak zorunda,
+yoksa ölçtükleri şey boşta-kalma kapısı olur.
+
+### Durum
+
+**PLAN-302 açık kalıyor** — dört paketin üçü bitti. Sıradaki: suç/stat ve çevre.
+Tanınan ini anahtarı **178** (172'ydi).
+
+## İŞ-70 — Büyü ve onu kesen şeyler: ini ikinci paketi (PLAN-302, 14 Eylül 2026)
+
+PLAN-302'nin ikinci paketi: *"ikinci büyü/interrupt"*. Dört anahtar; ikisi zaten
+bir şey yapıyordu ve **referanstan farklı** yapıyordu.
+
+### Anahtar tablosu
+
+| Anahtar | Varsayılan | Sınır | Kullanım noktası |
+|---|---|---|---|
+| `SPELLTIMEOUT` | 0 = yok | saniye | Büyü hedef imlecine son tarih; dolunca iptal |
+| `MAGICUNLOCKDOOR` | 900 | 0 = anahtar şart, -1 = kural yok | Büyülü kapıda yetenekten **önce** N'de-bir şans |
+| `MEDITATIONMOVEMENTABORT` | **0 (kapalı)** | — | Adım atmak meditasyonu keser mi |
+| `NORESROBE` | 0 (cüppe verilir) | — | Dirilende cüppe |
+
+**Reload politikası:** dördü de statik alandan okunuyor, canlı değişim anında
+geçerli. `SPELLTIMEOUT` yalnız **yeni açılan** imleçlere uygulanır; hâlihazırda
+açık bir imleç eski son tarihini taşır.
+
+### İki davranış düzeltmesi
+
+1. **Meditasyon.** Referans yürüyen meditasyona **izin veriyor**; yalnız anahtar
+   kuruluyken yetenek başarısız oluyor (`CCharAct.cpp:2495`) ve varsayılanı
+   kapalı. Motor her adımda **koşulsuz** iptal ediyordu. Bu bir davranış
+   değişikliği: anahtar kurulmadıkça meditasyon artık yürümeye dayanıyor.
+
+2. **Dirilme cüppesi** kefen bayrağına bağlıydı. Görünmez hayalet isteyen bir
+   shard insanları çıplak diriltiyordu. Referans orada yalnız `m_fNoResRobe`'u
+   soruyor (`CCharSpell.cpp:503`); ikisi ayrıldı.
+
+### Kilit açma — uydurma zorluk
+
+`ActiveSkillEngine.Lockpicking` zorluk olarak sabit `Random.Next(60)` kullanıyordu;
+asma kilitle kasa kapısı eşit zorluktaydı. Referans zorluğu **kilide soruyor**
+(`m_dwLockComplexity / 10`, `CItem.cpp:5450`) ve **anahtar cantadaysa 0 = önemsiz**
+dönüyor (`:5408`) — reddetmiyor. Üçü birden uygulandı; uyduruk-değer denetim
+backlog'undan bir madde daha.
+
+`MAGICUNLOCKDOOR`'un kendi tuhaflığı: referans ini ona *"gereken lockpicking
+yeteneği"* diyor, kod onu **şans** olarak kullanıyor ve yeteneği hiç sormadan önce
+atıyor. Usta da acemi kadar sık kalıyor. Belgeye kodun davranışı yazıldı.
+
+### Tekilleştirme
+
+"Bu anahtar bu kilide uyar mı" sorusunun **iki** uygulaması vardı (anahtar kullanma
+yolu + çanta araması) ve kilit açma yolu üçüncüsünü isteyecekti. Tek kaldı:
+`Item.KeyFits` + `Character.FindKeyFor` (`CChar::ContentFindKeyFor`).
+
+### Test
+
+`MagicInterruptConfigTests` (10) + `SpellTargetTimeoutTests` (5).
+
+Sondaj: meditasyon yeniden koşulsuz kırılınca **1**, büyülü-kapı kapısı kaldırılınca
+**2**, imleç hiç sonlanmayınca **1** test kırmızı.
+
+**Test notu:** kilit-anahtar testi önce kırılgandı — her deneme `UseQuick` üzerinden
+karakteri **eğitiyordu**, ve `GetAdjustedSkill` yüklü skill tanımlarının stat
+bonusunu okuduğu için sayı tüm suite'in fixture'larına bağlıydı. İddia kesin sayı
+değil **uçurum** olarak yazıldı; ayrıca yetenek her denemede geri kuruluyor.
+
+### Durum
+
+**PLAN-302 açık kalıyor** — dört paketin ikisi bitti. Sıradaki: pet/vendor, sonra
+suç/stat ve çevre. Tanınan ini anahtarı **172** (168'di).
+
+## İŞ-69 — Yükün bedeli: ini ilk paketi (PLAN-302, 13 Eylül 2026)
+
+PLAN-302: *"İlk paket hareket/ağırlık/stamina... Her anahtar için varsayılan,
+sınır, kullanım noktası ve reload politikası tanımla."* Kabul ölçütü de plandan:
+*"config değerini değiştirmek ilgili davranışı ölçülebilir biçimde değiştirir."*
+
+### Sorun
+
+Sunucu `BACKPACKOVERLOAD=40` gönderiyordu — taşıyabildiğinden 40 taş fazlasını
+taşıma izni — ve bunun için **hiçbir şey ödetmiyordu**. Referans ini'nin o
+anahtarın yanındaki kendi notu ne olması gerektiğini söylüyor:
+*"StaminaLossOverweight will be use"*.
+
+Kodda bunu açıkça **yanlış** ilan eden bir yorum vardı: *"walking/running on foot
+does NOT drain stamina (Source-X CClient::Event_Walk has no per-step stamina
+cost)"*. `Event_Walk`'ta gerçekten yok — ücret bir kat aşağıda, `CanMoveWalkTo`'nun
+`!fCheckOnly` dalında (`CCharAct.cpp:4787-4829`). Yalnız paket işleyicisini okumak
+bu sonuca böyle götürmüş.
+
+### Anahtar tablosu
+
+| Anahtar | Varsayılan | Sınır | Kullanım noktası |
+|---|---|---|---|
+| `STAMINALOSSATWEIGHT` | 150 | 200 = kapalı | S-eğrisi **orta noktası**, gerçekleşen adım |
+| `STAMINALOSSOVERWEIGHT` | 5 | — | Limit üstü her adım; +1/5 taş, atlıda ÷3 |
+| `RUNNINGPENALTY` | 50 | 0 = yok | Uçma/süzülmede yük yüzdesine eklenir |
+| `RUNNINGPENALTYOVERWEIGHT` | 100 (ref ini 10) | 0 = yok | Uçma/süzülmede aşırı-yük bedelini %'yle büyütür |
+| `DRAGWEIGHTMAX` | 300 | ≤0 = sınırsız | Kaldırma sonrası yük yüzdesi; eşya alma kapısı |
+| `MOVERATE` | 100 | — | CHARDEF'lerin başladığı NPC hızı (yüksek = yavaş) |
+
+**Reload politikası:** altısı da başlangıçta bir kez uygulanır. Beşi statik
+alandan okunduğu için canlı değişim anında geçerli olur; `MOVERATE` **tanım
+yükleme zamanında** CHARDEF'lere kopyalanır, yani onu değiştirmek mevcut
+tanımları etkilemez — `resync` gerektirir. Bu, referansın davranışıyla aynı
+(`CCharBase` kurucusu tohumu bir kez alır).
+
+### İki dal, birbirinin varyasyonu değil
+
+- **Limit ALTINDA** bedel bir **şans**: yük yüzdesi `STAMINALOSSATWEIGHT`'e karşı
+  S-eğrisinden geçirilir, kaybeden adım **tek puan** öder.
+- **Limit ÜSTÜNDE** bedel **kesin** ve büyür; zar hiç atılmaz.
+
+### Bilinçli sapma
+
+Referansın anahtar tablosu `RUNNINGPENALTYOVERWEIGHT`'i **komşusunun alanına**
+bağlamış (`CServerConfig.cpp:981-982`): orada bu anahtarı kurmak
+`RUNNINGPENALTY`'yi oynatır ve aşırı-yük artışı varsayılanından hiç çıkmaz.
+Tüketim yeri alanı **adıyla** okuyor (`CCharAct.cpp:4823`), yani bu bir tablo
+kopyala-yapıştır hatası, sözleşme değil. Anahtar adını taşıdığı alana bağlandı.
+
+### İni belgesi düzeltmeleri
+
+- **`MONSTERTIGHT` kaldırıldı** — hiçbir Source-X sürümünde yok, açıklaması
+  uydurmaydı. Tüketilemeyecek bir anahtar ayar değildir.
+- **`DISTANCEFORMULA`** iki yönden yanlıştı: değerleri `0=Chebyshev/1=Manhattan`
+  diyordu (referans: `0`=kare/köşegensiz, `1`=dairesel/köşegenli, `2`=köşegenli+Z),
+  varsayılanı `1` diyordu (referans `0`). Hâlâ uygulanmıyor, artık doğru anlatıyor.
+- **`BACKPACKOVERLOAD`** başlığı düzeltme öncesinden kalma iki satır taşıyordu.
+
+### Test
+
+`WeightMovementConfigTests` (10) + `DragWeightAndMoveRateTests` (8). Her anahtar
+**değiştirilerek** ve adım izlenerek sabitlendi — planın kabul ölçütü bu.
+
+Sondaj: adım başına ücret kaldırılınca **10'un 8'i**, kaldırma kapısı kaldırılınca
+**iki red durumu**, `MOVERATE` yeniden sabitten beslenince **1'i** kırmızı.
+
+### Durum
+
+**PLAN-302 açık kalıyor** — dört paketin biri bitti. Sıradaki paketler: büyü/
+interrupt, pet/vendor, suç/stat ve çevre. Ölçüm: Source-X'in 279 ini anahtarından
+SphereNet artık **168**'ini tanıyor (162'ydi).
+
+## İŞ-68 — Kaynak listesi dilbilgisi ve SKILL* sorguları (PLAN-304, 13 Eylül 2026)
+
+PLAN-304: *"CANMAKE/CANMAKESKILL/SKILL* sorgularını Source-X argüman ve yan etki
+sözleşmesiyle ekle."* CANMAKE/CANMAKESKILL/SKILLUSEQUICK İŞ-13/14'te kapanmıştı;
+kalan üç ad `SKILLCHECK`, `SKILLADJUSTED`, `SKILLTEST`. `SKILLTEST` bir **kaynak
+listesi** aldığı için önce o dilbilgisi ölçüldü — ve orada iki gerçek hata çıktı.
+
+### Sorun — dört yarım okuyucu
+
+Referans dilbilgisini tek satırda söylüyor: *"Can be either order.: Name Qty or Qty
+Name"* (`CResourceQty.cpp:57`), ve yalın ad bir tane demek (`:88`). Bizde bu
+dilbilgisinin **dört ayrı okuyucusu** vardı ve her biri yarısını kabul ediyordu:
+
+| Okuyucu | Kabul ettiği | Düşürdüğü |
+|---|---|---|
+| `CraftingEngine` SKILLMAKE | `Ad Miktar` | `Miktar Ad` |
+| `CraftingEngine` RESOURCES | `Miktar Ad` | yalın ad |
+| `Item.TryResolveResourceList` | `Miktar Ad` | yalın ad |
+| `ActiveSkillEngine.ResolveRepairSkill` | `Ad Miktar` | `Miktar Ad` |
+
+Bir dilbilgisi hakkında yanılmanın sessiz yolu bu: tarif yine yükleniyor, eşya yine
+üretilebiliyor, bir gereklilik yok oluyor.
+
+**Canlı pakette ölçülen bedel:**
+
+- `SKILLMAKE=Inscription 10.0,1 i_pen_and_ink,Magery 10.0` → "1 numaralı skill,
+  sıfır seviye" diye okunuyordu (hiçbir şeyin kalamayacağı bir koşul). **Yazıcılık
+  için kalem ve mürekkep gerekmiyordu.**
+- Yalın adla yazılmış **257 `RESOURCES` satırı** (`RESOURCES=i_spellbook` gibi)
+  miktarı yok diye düşürülüyordu. **Malzeme bedavaydı.**
+- Yalın tamsayı skill değeri: `BLACKSMITHING 76` bizde 76.0, referansta **7.6**
+  (`CExpression.cpp:745` ondalık yolu noktayı yok sayar, onla çarpmaz). 5 satır.
+
+### Düzeltme
+
+`SphereNet.Scripting.Resources.ResourceQtyList` — tek okuyucu, `CResourceQty::Load`
+sırasıyla: başta veya sonda miktar, yalın ad = 1, Sphere sayı kuralı (baştaki `0`
+onaltılık işaretçisi, ama ardından nokta gelmiyorsa — yoksa `0.15` `0x15` olurdu).
+Dört çağrı yeri buna bağlandı. Ayrıca `i_*` girdisinin **adedi** uygulanıyor
+(`IsResourceMatch(rid, qty)`, `CCharStatus.cpp:74`) ve SKILLMAKE skill adları
+`SkillNames` üzerinden çözülüyor (`FindSkillKey`, `CServerConfig.cpp:2347`) — enum
+yazımı yerine shard'ın kendi adı.
+
+### Yeni — üç sorgu
+
+- **`SKILLCHECK.<skill>,<zorluk>`** (`CChar.cpp:2652`) — **zar atar**, ama
+  komşusundan farkı: deneyim vermez, trigger ateşlemez. Script onu döngüde
+  sorabilir. GM Parrying dışında her şeyi başarır (`CCharSkill.cpp:524`).
+- **`SKILLADJUSTED.<skill>`** (`CChar.cpp:2665`) — stat bonusundan sonraki değer,
+  motorun gerçekten zar attığı sayı. **Metin** döner: `"%hu.%hu"` → 520 = `"52.0"`.
+- **`SKILLTEST <liste>`** (`CChar.cpp:2822`) — skill ve eşyayı tek soruda. Sahiplik
+  yarısı `CraftingEngine.CountStock`'a gidiyor: sorgu ile ardından gelen üretim
+  kilitli sandık/iç içe çanta konusunda anlaşmazlığa düşemesin. Boş liste **yanlış**.
+
+Üçü de bilinmeyen skill adında **cevapsız** bırakıyor (`return false`), sıfır değil —
+"başaramadın" ile "öyle bir skill yok" ayrımı, script'teki yazım hatasının tek
+görünür olma yolu.
+
+### Test
+
+`ResourceListGrammarTests` (8) + `SkillQueryParityTests` (11).
+
+Sondaj: `Qty Name` sırası unutulunca **19'un 6'sı**, yalın ad hiçleşince **2'si**,
+üç sorgu dalı kaldırılınca **5'i** kırmızıya dönüyor.
+
+### Rapor
+
+"Canını yakacak eksikler" listesinden üç ad daha düştü: 43 addan **25'i** cevaplı,
+kalan **18**. **PLAN-304 tamamlandı.**
+
+## İŞ-67 — PICKUPSOUND ve yok sayılan kapı anahtarları (PLAN-305, 13 Eylül 2026)
+
+PLAN-305: *"Item ses property'lerinin varlığı ile ses çalmanın varlığını ayır."*
+İŞ-12 bu maddenin `DROPSOUND`/`EQUIPSOUND` yarısını kapatmıştı; kalan yarısı
+maddenin kendi ifadesinin **tam örneğiydi**.
+
+### Sorun
+
+Kapı **doğru sesleri çalıyordu** — 0x0EA açılış, 0x0F1 kapanış — ama o iki sayıyı
+koda gömerek (`ClientWorldFeaturesHandler`: `(ushort)(isOpen ? 0x00F1 : 0x00EA)`).
+Yani `DOOROPENSOUND` ve `DOORCLOSESOUND` hiçbir şey yapmıyordu. Bir shard bunlardan
+birini kurar, varsayılanı duyar ve anahtarın **yok sayıldığını mı yoksa yanlış
+yazıldığını mı** anlayamaz. "Property var" ile "ses çalınıyor" arasındaki farkın
+aynen kendisi: ses doğru, property ölü.
+
+`PICKUPSOUND` ise hiç yoktu — ne okunuyordu ne çalınıyordu.
+
+### Düzeltme
+
+- `Item.GetDoorSound(bool opening)` — her yön **ayrı** anahtarından çözülüyor,
+  varsayılanlar 0x0EA/0x0F1 (`CItem.cpp:4655-4665`). Gıcırdayan bir kapı hâlâ
+  çarparak kapanabilir.
+- `Item.GetPickupSound()` — yedek `SOUND_USE_CLOTH` = 0x057
+  (`CClientEvent.cpp:239`, `uofiles_enums.h:96`).
+- Kaldırma sesi **yalnızca kaldırana** gidiyor, çevreye değil: referans onu eşyayı
+  alan istemcide `addSound` ile gönderiyor — herkesin duyduğu bırakma sesinden
+  farklı olarak.
+
+Üçü de ailenin ortak kuralını kullanıyor (`ReadSoundKey`): önce örnek anahtarı,
+sonra ITEMDEF; **sıfır "kurulmadı" demek, "sessiz" değil**.
+
+### Test
+
+`ItemSoundPropertyTests` (7): yedek, örnek anahtarı, sıfırın override olmaması,
+kapı varsayılan çifti, iki yönün **ayrı ayrı** override edilmesi, ailenin ortak
+okuma sırası ve **override'ın tür varsayılanını yenmesi** (altın yığını:
+`CItem.cpp:1541`). Tersi sıra, anahtarı destekleniyor gösterip desteklenmiyormuş
+gibi davrandırırdı — bu dalganın konusu olan hatanın ta kendisi.
+
+Sondaj: kapı araması `0`'a sabitlenince 8 testin 2'si kırmızıya dönüyor.
+
+### Rapor
+
+"Canını yakacak eksikler" listesinden üç ad daha düştü: 43 addan **22'si**
+cevaplı, kalan **21**. **PLAN-305 tamamlandı.**
+
 ## İŞ-66 — MODMAX* ailesi (PLAN-303, 13 Eylül 2026)
 
 PLAN-303: *"MODMAX* ailesini temel stat + değiştirici + ekipman katkısı olarak

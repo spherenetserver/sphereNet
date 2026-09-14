@@ -396,6 +396,29 @@ public sealed class ClientInventoryHandler
                 _netState.Send(new PacketDropAck());
                 return;
             }
+
+            // CANPETSDRINKPOTION — a potion dropped on a pet is drunk on the spot
+            // rather than pocketed (Source-X CCharNPCAct.cpp:2145), which is how a
+            // player heals a wounded animal mid-fight. Off, or a bottle with no
+            // resolvable effect, and it falls through to the pack like any other gift.
+            if (item.ItemType == ItemType.Potion && Character.CanPetsDrinkPotion &&
+                _client.ApplyPotionEffectTo(npc, item))
+            {
+                SysMessage("Your pet drinks the potion.");
+                if (item.Amount > 1)
+                {
+                    item.Amount--;
+                    PlaceItemInPack(_character, item);
+                }
+                else
+                {
+                    _world.RemoveItem(item);
+                    item.Delete();
+                }
+                _netState.Send(new PacketDropAck());
+                return;
+            }
+
             PlaceItemInPack(npc, item);
             _netState.Send(new PacketDropAck());
             return;
@@ -534,6 +557,29 @@ public sealed class ClientInventoryHandler
         return ItemTrigger.PickupGround;
     }
 
+    /// <summary>
+    /// May this client take <paramref name="item"/> off <paramref name="wearer"/>
+    /// (Source-X ItemPickup, CCharAct.cpp:2946)?
+    ///
+    /// The rule is about OWNERSHIP, not about being a player: staff outrank; an owner
+    /// may always reach into their pet's PACK; and CANUNDRESSPETS decides whether the
+    /// owner may also strip what the pet is WEARING. Nobody else may do either - the
+    /// gate used to read "not another PLAYER", which left every NPC in the world open
+    /// to anyone who walked past a stranger's tamed creature.
+    /// </summary>
+    private bool CanTakeFrom(Character wearer, Item item)
+    {
+        if (_character == null) return false;
+        if (wearer == _character) return true;
+        if (_character.PrivLevel >= PrivLevel.GM)
+            return _character.PrivLevel > wearer.PrivLevel;
+        if (!wearer.HasOwner(_character.Uid))
+            return false;
+        // Equipped directly on the creature is the half the setting governs; anything
+        // in its pack is the owner's to take either way.
+        return item.ContainedIn != wearer.Uid || Character.CanUndressPets;
+    }
+
     public void HandleItemPickup(uint serial, ushort amount)
     {
         if (_character == null) return;
@@ -629,9 +675,20 @@ public sealed class ClientInventoryHandler
                     else
                     {
                         var wearer = _world.FindChar(topCont.ContainedIn);
-                        if (wearer != null && wearer != _character && wearer.IsPlayer)
+                        // Taking something off somebody else (Source-X ItemPickup,
+                        // CCharAct.cpp:2946). The gate was written as "not another
+                        // PLAYER", which left every NPC in the world open: anyone could
+                        // walk up to a stranger's tamed dragon and lift its armour.
+                        //
+                        // The rule is about ownership, not about being a player. A GM
+                        // outranks; the owner may always reach into their pet's PACK;
+                        // and CANUNDRESSPETS decides whether the owner may also strip
+                        // what the pet is WEARING. Nobody else may do either.
+                        if (wearer != null && wearer != _character && !CanTakeFrom(wearer, item))
                         {
-                            SendPickupFailed(1); return;
+                            SysMessage(ServerMessages.Get(Msg.MsgSteal));
+                            SendPickupFailed(1);
+                            return;
                         }
                         // Self bank box: only reachable while near a banker.
                         if (wearer == _character && topCont.EquipLayer == Layer.BankBox &&
@@ -658,6 +715,39 @@ public sealed class ClientInventoryHandler
             var lootCorpse = FindEnclosingCorpse(item);
             if (lootCorpse != null && deathEng.IsLootingCriminal(_character, lootCorpse))
                 deathEng.ReportCorpseCrime(_character, lootCorpse);
+        }
+
+        // Too heavy to even drag (Source-X CCharAct.cpp:2932). DRAGWEIGHTMAX is a
+        // percent of carry weight measured on the load the lift WOULD produce, so the
+        // item that would cross the line is the one refused rather than the one after
+        // it. Below zero means no limit.
+        //
+        // The escape hatch matters as much as the rule: if the item is in the lifter's
+        // OWN pack it falls to their feet instead of being refused, or an overloaded
+        // player could never put anything down again.
+        if (_character.PrivLevel < PrivLevel.GM && Item.DragWeightMax > 0)
+        {
+            ushort liftAmount = amount > 0 && amount < item.Amount ? amount : item.Amount;
+            long liftTenths = item.Amount > 0
+                ? (long)item.TotalWeightTenths * liftAmount / item.Amount
+                : item.TotalWeightTenths;
+
+            if (_character.GetWeightLoadPercent(liftTenths) > Item.DragWeightMax)
+            {
+                var ownPack = _character.Backpack;
+                bool fromOwnPack = ownPack != null && item.ContainedIn == ownPack.Uid;
+                if (fromOwnPack)
+                {
+                    SendPickupFailed(0);
+                    _world.PlaceItem(item, _character.Position);
+                }
+                else
+                {
+                    SendPickupFailed(1);
+                }
+                SysMessage(ServerMessages.Get(Msg.MsgHeavy));
+                return;
+            }
         }
 
         // Stack splitting: the client keeps dragging the serial it clicked.
@@ -712,8 +802,13 @@ public sealed class ClientInventoryHandler
         if (item.IsEquipped)
         {
             var owner = _world.FindChar(item.ContainedIn);
-            if (owner != null && owner != _character && _character.PrivLevel < PrivLevel.GM)
+            // The same ownership question as the container branch above, asked once.
+            // This arm used to refuse every non-self wearer outright, so an owner could
+            // not undress their own pet however CANUNDRESSPETS was set - two gates on
+            // one rule, disagreeing with each other.
+            if (owner != null && owner != _character && !CanTakeFrom(owner, item))
             {
+                SysMessage(ServerMessages.Get(Msg.MsgSteal));
                 SendPickupFailed(1); // cannot pick up
                 return;
             }
@@ -751,6 +846,12 @@ public sealed class ClientInventoryHandler
         item.SetDecayTime(-1);
         _character.SetTag("DRAGGING", serial.ToString());
         BroadcastDragAnimation(item, dragSourceSerial, dragSourcePos, 0, _character.Position, dragSourcePos);
+
+        // Lifting something makes a sound (CClientEvent.cpp:239-240). It goes to the
+        // lifter alone: upstream sends it with addSound on the client that picked the
+        // item up, not to the neighbourhood the way a drop does.
+        _netState.Send(new PacketSound(item.GetPickupSound(),
+            _character.X, _character.Y, _character.Z));
 
         if (item.BaseId == 0x0EED)
             SendCharacterStatus(_character);

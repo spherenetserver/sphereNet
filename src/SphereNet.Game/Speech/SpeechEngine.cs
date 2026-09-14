@@ -159,6 +159,15 @@ public sealed class SpeechEngine
             }
         }
 
+        // Talking gives a hidden speaker away when the shard says so
+        // (REVEALF_SPEAK, CCharAct.cpp:3558). A spell's incantation is not speech for
+        // this purpose - the casting path does its own reveal - and a character may be
+        // excused individually with OVERRIDE.NOREVEALSPEAK.
+        if (mode != TalkMode.Spell &&
+            !(speaker.TryGetTag("OVERRIDE.NOREVEALSPEAK", out string? noReveal) &&
+              SphereNet.Core.Types.ScriptNumber.TryParseToken(noReveal, out long nr) && nr == 1))
+            speaker.ClearHiddenState(RevealFlags.Speak);
+
         // Guild/Alliance chat: not spatial, routed separately
         if (mode == TalkMode.Guild || mode == TalkMode.Alliance)
         {

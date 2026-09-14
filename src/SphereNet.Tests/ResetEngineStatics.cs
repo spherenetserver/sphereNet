@@ -37,6 +37,32 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = false;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = 40;
+        SphereNet.Game.Objects.Items.Item.DragWeightMax = 300;
+        SphereNet.Game.Movement.MovementEngine.StaminaLossAtWeight = 150;
+        SphereNet.Game.Movement.MovementEngine.StaminaLossOverweight = 5;
+        SphereNet.Game.Movement.MovementEngine.RunningPenalty = 50;
+        SphereNet.Game.Movement.MovementEngine.RunningPenaltyOverweight = 100;
+        SphereNet.Game.Movement.MovementEngine.ResetWeightLossRoll();
+        SphereNet.Scripting.Definitions.CharDef.DefaultMoveRate = 100;
+        SphereNet.Game.Clients.ClientTargetingHandler.SpellTimeoutSeconds = 0;
+        SphereNet.Game.Objects.Items.Item.MagicUnlockDoor = 900;
+        SphereNet.Game.Movement.MovementEngine.MeditationMovementAbort = false;
+        SphereNet.Game.Death.DeathEngine.NoResRobe = false;
+        SphereNet.Game.Objects.Characters.Character.CanUndressPets = true;
+        SphereNet.Game.Objects.Characters.Character.CanPetsDrinkPotion = true;
+        SphereNet.Game.Trade.VendorEngine.DefaultVendorMarkup = 15;
+        SphereNet.Game.Trade.VendorEngine.VendorMaxSell = 255;
+        SphereNet.Game.AI.NpcAI.LostNpcTeleport = 50;
+        SphereNet.Game.Movement.MovementEngine.NpcShoveNpc = false;
+        SphereNet.Game.Objects.Characters.Character.ActiveRevealFlags =
+            SphereNet.Core.Enums.RevealFlags.DetectingHidden | SphereNet.Core.Enums.RevealFlags.LootingSelf |
+            SphereNet.Core.Enums.RevealFlags.LootingOthers | SphereNet.Core.Enums.RevealFlags.Speak |
+            SphereNet.Core.Enums.RevealFlags.SpellCast | SphereNet.Core.Enums.RevealFlags.Snooping |
+            SphereNet.Core.Enums.RevealFlags.Stealing | SphereNet.Core.Enums.RevealFlags.StealingFail;
+        SphereNet.Game.Objects.Characters.Character.HitsHungerLoss = 0;
+        SphereNet.Game.Objects.Characters.Character.OverSkillMultiply = 2;
+        SphereNet.Game.Clients.ClientItemUseHandler.SkillPracticeMax = 300;
+        SphereNet.Game.Objects.Items.Item.WoolGrowthMs = 30 * 60 * 1000;
         SphereNet.Game.Objects.Items.Item.MaxItemComplexity = 25;
         // The reference's own default: a bare server has no weather.
         SphereNet.Game.World.WeatherEngine.NoWeather = true;
@@ -147,6 +173,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = null;
         SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = null;
         SphereNet.Game.Objects.Characters.Character.OnCanMakeCheck = null;
+        SphereNet.Game.Objects.Characters.Character.OnResourcePossessionCheck = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickProperty = null;
         SphereNet.Game.Objects.Items.Item.OnSpawnStartStop = null;
         SphereNet.Game.Objects.Items.Item.OnScriptOpen = null;

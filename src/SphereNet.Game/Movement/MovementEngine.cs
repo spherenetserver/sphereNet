@@ -43,6 +43,41 @@ public sealed class MovementEngine
     public static int RunDelayFoot { get; set; } = 200;
     public static int RunDelayMount { get; set; } = 100;
 
+    /// <summary>STAMINALOSSATWEIGHT — the load percent at which a step costs stamina
+    /// half the time. See <see cref="SphereNet.Core.Configuration.SphereConfig"/> for
+    /// the contract; 200 switches the effect off.</summary>
+    public static int StaminaLossAtWeight { get; set; } = 150;
+
+    /// <summary>STAMINALOSSOVERWEIGHT — stamina charged on EVERY step taken over the
+    /// carry weight, before the per-5-stones growth and the mounted third.</summary>
+    public static int StaminaLossOverweight { get; set; } = 5;
+
+    /// <summary>RUNNINGPENALTY — points added to the load percent while flying or
+    /// hovering (the reference checks the flags, not running).</summary>
+    public static int RunningPenalty { get; set; } = 50;
+
+    /// <summary>RUNNINGPENALTYOVERWEIGHT — percent uplift on the overweight step cost
+    /// while flying or hovering.</summary>
+    public static int RunningPenaltyOverweight { get; set; } = 100;
+
+    /// <summary>MEDITATIONMOVEMENTABORT — whether a step cancels meditation. Upstream's
+    /// default is OFF: a meditating character may walk.</summary>
+    public static bool MeditationMovementAbort { get; set; }
+
+    /// <summary>NPCSHOVENPC — whether one creature may push past another. Default OFF;
+    /// an individual may still be excused with TAG.OVERRIDE.SHOVE.</summary>
+    public static bool NpcShoveNpc { get; set; }
+
+    /// <summary>The die a weight-loss chance is rolled against, and the source of it.
+    /// Tests replace it to make the S-curve's verdict observable rather than
+    /// occasional.</summary>
+    internal static Func<int, int> WeightLossRoll { get; set; } = DefaultWeightLossRoll;
+
+    private static int DefaultWeightLossRoll(int max) => Random.Shared.Next(max);
+
+    /// <summary>Put the die back (test teardown).</summary>
+    public static void ResetWeightLossRoll() => WeightLossRoll = DefaultWeightLossRoll;
+
     public MovementEngine(World.GameWorld world, TriggerDispatcher? triggerDispatcher = null)
     {
         _world = world;
@@ -162,9 +197,12 @@ public sealed class MovementEngine
         ch.Direction = dir;
 
         // No spell interruption here: the reference lets a caster walk (the
-        // rooting case was refused above). Meditation is a different skill and
-        // does break on movement.
-        ch.InterruptMeditation();
+        // rooting case was refused above). Meditation is a separate question, and
+        // upstream makes it a setting whose DEFAULT is the permissive one: only
+        // MEDITATIONMOVEMENTABORT fails the skill on a step (CCharAct.cpp:2495).
+        // Cancelling it unconditionally was the stricter rule, not the reference one.
+        if (MeditationMovementAbort)
+            ch.InterruptMeditation();
 
         if (ch.HasActiveSkillPending() &&
             SkillEngine.HasFlag((SkillType)ch.SkillPendingId, SkillFlag.Immobile))
@@ -183,14 +221,19 @@ public sealed class MovementEngine
         if (shoved && ch.PrivLevel < PrivLevel.Counsel && ch.MaxStam > 0)
         {
             ch.Stam = (short)Math.Max(0, ch.Stam - 10);
-            if (ch.IsStatFlag(StatFlag.Hidden)) ch.ClearStatFlag(StatFlag.Hidden);
-            if (ch.IsStatFlag(StatFlag.Invisible)) ch.ClearStatFlag(StatFlag.Invisible);
+            // Walking into somebody gives YOU away, and REVEALF_OSILIKEPERSONALSPACE
+            // is the flag that says not to - it is one of the three whose name means
+            // the opposite of its neighbours (CCharAct.cpp:4679).
+            ch.ClearHiddenState(RevealFlags.OsiLikePersonalSpace);
         }
 
-        // Note: walking/running on foot does NOT drain stamina (Source-X
-        // CClient::Event_Walk has no per-step stamina cost — only shoving past a
-        // mobile, handled above, costs stamina). Mounted travel drains the
-        // mount, not the rider, and is handled separately.
+        // What the load costs. Walking on foot has no per-step cost of its own -
+        // Event_Walk really does charge nothing - but CARRYING does, and the charge
+        // lives one level down, in CanMoveWalkTo's committed branch
+        // (CCharAct.cpp:4787-4829). Reading only Event_Walk is how this engine
+        // concluded there was no cost at all and shipped BACKPACKOVERLOAD=40 with
+        // nothing to pay for it.
+        ApplyWeightStaminaCost(ch);
 
         TickStealthStep(ch);
 
@@ -198,6 +241,59 @@ public sealed class MovementEngine
         CheckLocationEffects(ch, target);
 
         return true;
+    }
+
+    /// <summary>
+    /// Charge a committed step for what the character is carrying (Source-X
+    /// CCharAct.cpp:4787-4829).
+    ///
+    /// Two branches, and they are not variations of one another. UNDER the carry
+    /// weight it is a CHANCE: the load percent is measured against
+    /// STAMINALOSSATWEIGHT through the same S-curve a skill roll uses, and a step that
+    /// loses the roll costs a single point. OVER it the cost is CERTAIN and it grows -
+    /// STAMINALOSSOVERWEIGHT plus one for every five stones past the limit, a third of
+    /// that when mounted. Flying or hovering makes the first branch likelier and the
+    /// second dearer.
+    ///
+    /// Upstream charges this inside the !fCheckOnly arm, after the step is decided, so
+    /// a probe or a pathfinding look-ahead is free; a GM returns before reaching it.
+    /// </summary>
+    private static void ApplyWeightStaminaCost(Objects.Characters.Character ch)
+    {
+        if (ch.PrivLevel >= PrivLevel.GM || ch.MaxStam <= 0)
+            return;
+
+        int maxWeight = ch.MaxWeight;
+        if (maxWeight <= 0)
+            return;
+
+        int weight = ch.GetTotalWeight();
+        bool airborne = ch.IsStatFlag(StatFlag.Fly) || ch.IsStatFlag(StatFlag.Hovering);
+        int penalty;
+
+        if (weight < maxWeight)
+        {
+            int loadPercent = weight * 100 / maxWeight;
+            if (airborne)
+                loadPercent += RunningPenalty;
+
+            // The midpoint is the setting, the variance is upstream's fixed 10 - a
+            // narrow curve, so the chance climbs steeply either side of it. At the
+            // default 150 an ordinary load never gets near paying.
+            int chance = Skills.SkillEngine.CalcSCurve(loadPercent - StaminaLossAtWeight, 10);
+            penalty = chance > WeightLossRoll(1000) ? 1 : 0;
+        }
+        else
+        {
+            penalty = StaminaLossOverweight + (weight - maxWeight) / 5;
+            if (ch.IsStatFlag(StatFlag.OnHorse))
+                penalty /= 3;
+            if (airborne)
+                penalty += penalty * RunningPenaltyOverweight / 100;
+        }
+
+        if (penalty > 0)
+            ch.Stam = (short)Math.Max(0, ch.Stam - penalty);
     }
 
     /// <summary>
@@ -274,6 +370,16 @@ public sealed class MovementEngine
 
         if (blocker.IsDead || mover.IsDead)
             return true;
+
+        // One creature does not push past another (Source-X CCharAct.cpp:4624), unless
+        // the shard says they may or this one carries TAG.OVERRIDE.SHOVE. Players shove
+        // creatures; creatures hold each other up, which is what keeps a guard behind
+        // the crowd it is meant to be stuck behind. The check sits after the dead and
+        // staff cases so a corpse-walk still works.
+        if (!mover.IsPlayer && !blocker.IsPlayer && !NpcShoveNpc &&
+            !(mover.TryGetTag("OVERRIDE.SHOVE", out string? ovr) &&
+              SphereNet.Core.Types.ScriptNumber.TryParseToken(ovr, out long o) && o != 0))
+            return false;
 
         if ((blocker.IsStatFlag(StatFlag.Hidden) || blocker.IsStatFlag(StatFlag.Invisible))
             && blocker.PrivLevel >= PrivLevel.Counsel)
@@ -558,6 +664,12 @@ public sealed class MovementEngine
     private static void TickStealthStep(Objects.Characters.Character ch)
     {
         if (ch.StepStealth <= 0)
+            return;
+
+        // A mounted sneak is given away by the horse when the shard says so
+        // (REVEALF_ONHORSE, CCharAct.cpp:4850) - checked BEFORE the step is counted,
+        // so being mounted ends the sneak at once rather than at the last step.
+        if (ch.IsStatFlag(StatFlag.OnHorse) && ch.ClearHiddenState(RevealFlags.OnHorse))
             return;
 
         ch.StepStealth--;

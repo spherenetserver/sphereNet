@@ -851,6 +851,11 @@ public sealed class DeathEngine
     /// </summary>
     public static bool EnableDeathShroud { get; set; } = true;
 
+    /// <summary>NORESROBE — suppress the robe a resurrected player is handed (Source-X
+    /// m_fNoResRobe, default off: the robe IS given). Its own setting, separate from the
+    /// ghost's death shroud above.</summary>
+    public static bool NoResRobe { get; set; }
+
     /// <summary>
     /// Equip a death shroud on the dying player's Robe layer. The real robe (if
     /// any) has already dropped to the corpse by the time the ghost transition
@@ -898,7 +903,10 @@ public sealed class DeathEngine
     /// </summary>
     public Item? EnsureResurrectionRobe(Character ch)
     {
-        if (!EnableDeathShroud) return null;
+        // NORESROBE, not the death-shroud flag. Upstream keeps them apart
+        // (CCharSpell.cpp:503 asks only m_fNoResRobe), and tying them together meant a
+        // shard that wanted invisible ghosts also resurrected everyone naked.
+        if (NoResRobe) return null;
         if (!ch.IsPlayer) return null;
         if (ch.GetEquippedItem(Layer.Robe) != null) return null;
 

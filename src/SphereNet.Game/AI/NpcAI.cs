@@ -257,7 +257,7 @@ public sealed partial class NpcAI
         bool isService = npc.NpcBrain is NpcBrainType.Vendor or NpcBrainType.Banker
             or NpcBrainType.Stable or NpcBrainType.Healer;
 
-        int moveRate = 100;
+        int moveRate = SphereNet.Scripting.Definitions.CharDef.DefaultMoveRate;
         var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
         if (charDef != null && charDef.MoveRate > 0)
             moveRate = charDef.MoveRate;

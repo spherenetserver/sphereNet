@@ -140,10 +140,17 @@ public sealed class ResourceHolder
     /// <summary>
     /// Resource types that use numeric hex IDs (body ID / item ID / spell number).
     /// All other types use string names that get auto-hashed.
+    ///
+    /// SKILLCLASS belongs here for the same reason SKILL does: a pack writes
+    /// <c>[SKILLCLASS 0]</c> and a character carries the NUMBER. Hashing it like a
+    /// defname left every class unreachable - the shipped pack's own class 0
+    /// (STATSUM 300, SKILLSUM 10000, STR/INT/DEX 100 and a full per-skill table) was
+    /// loaded, indexed under a hash, and then never found, so every player quietly got
+    /// the engine's fallback caps instead of the shard's.
     /// </summary>
     private static bool IsNumericIdType(ResType t) => t is
         ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillDef or ResType.MultiDef
-        or ResType.PlevelCfg;
+        or ResType.PlevelCfg or ResType.SkillClass;
 
     /// <summary>
     /// Definition types whose keys should be retained on the ResourceLink

@@ -229,6 +229,8 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.FollowItemLinks(Item start) => FollowItemLinks(start);
     bool IClientContext.TryToggleNearestMapStaticDoor(uint clientSerial) => TryToggleNearestMapStaticDoor(clientSerial);
     void IClientContext.UsePotion(Item potion) => UsePotion(potion);
+    bool IClientContext.ApplyPotionEffectTo(SphereNet.Game.Objects.Characters.Character target, Item potion) =>
+        WorldFeatures.ApplyPotionEffect(target, potion);
     bool IClientContext.HasAmmoInBackpack(ItemType ammo) => HasAmmoInBackpack(ammo);
     void IClientContext.ConsumeAmmoFromBackpack(ItemType ammo) => ConsumeAmmoFromBackpack(ammo);
     bool IClientContext.TryHandlePetCommand(string text) => TryHandlePetCommand(text);

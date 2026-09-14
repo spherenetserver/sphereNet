@@ -84,7 +84,7 @@ değerlendirmedir. İkisini toplamayın.
 | 24 | Chat (conference / global) | **70** | **75** | 304 satır (SX ~1.300); `0xB3`/`0xB5` çalışıyor, `0xB2` legacy + `0xF9` ertelendi |
 | 25 | Guild stone menü sistemi | **~63** | **70** | `CItemStone_functions` 19/30; gump tabanlı stone menüleri yok |
 | 26 | AOS bileşen-prop sistemi (`CCProps*`) | **55** | **80** | 77/139; direnç/regen/slayer/hit-* çekirdeği var, SA/ML/TOL uzun kuyruğu yok |
-| 27 | `sphere.ini` konfigürasyon yüzeyi | **58** | **85** | 162/279 anahtar; **en zayıf ölçülen alan** |
+| 27 | `sphere.ini` konfigürasyon yüzeyi | **65** | **85** | 183/279 anahtar |
 | 28 | Sunucu / admin verb'leri (`SERV.*`) | **90** | **85** | 33 `sm_szVerbKeys` girişinin tamamı yollu; `SAVESTATICS` + güvenlik-hassas işler açık |
 
 ### Ağırlıklı özet
@@ -175,17 +175,16 @@ büyük kısmı tek bir yerden geliyor: **AOS/SE/ML çağı item özellik sistem
 Bir Sphere 56x shard'ı bunları kullanmaz.
 
 **Sphere 56x için gerçekten canını yakacak eksikler.** İlk sürümde 43 isim
-sayılmıştı; 19'u o tarihten sonra cevaplandı (`CANCAST`, `CANMAKE`,
+sayılmıştı; 26'sı o tarihten sonra cevaplandı (`CANCAST`, `CANMAKE`,
 `CANMAKESKILL`, `SKILLUSEQUICK`, `SKILLBEST`, `SWING`, `BREATH`, `MEMORY`,
 `DROPSOUND`, `EQUIPSOUND`, `RESDEF`, `TAGAT`, `ISEVENT`, `ISTEVENT`,
-`ISDIALOGOPEN`, `TOPCONT`, `MODMAXHITS`, `MODMAXMANA`, `MODMAXSTAM`). Kalan **24**:
+`ISDIALOGOPEN`, `TOPCONT`, `MODMAXHITS`, `MODMAXMANA`, `MODMAXSTAM`, `PICKUPSOUND`, `DOOROPENSOUND`,
+`DOORCLOSESOUND`, `SKILLCHECK`, `SKILLTEST`, `SKILLADJUSTED`, `SPELLTIMEOUT`).
+Kalan **17**:
 
 | İsim | Neden önemli |
 |---|---|
-| `SPELLTIMEOUT` | büyü kapısı |
-| `SKILLCHECK`, `SKILLTEST`, `SKILLADJUSTED` | skill sorgulama ailesi |
 | `FIGHTRANGE`, `DAMADJUSTED` | savaş sorguları |
-| `PICKUPSOUND` / `DOOROPENSOUND` / `DOORCLOSESOUND` | item ses tablosunun kalanı |
 | `RESDEF0`, `STRTOKEN`, `LISTCOL`, `STRFIRSTCAP`, `STRRANDRANGE` | script yardımcı fonksiyonları |
 | `PROPSAT`, `PROPSCOUNT`, `CTAGCOUNT`, `DIALOGLIST` | koleksiyon indeksleme |
 | `ISCONT`, `ISNEARTYPETOP` | predicate ailesi |
@@ -233,31 +232,34 @@ sayıyordu. Dokuzu o tarihten sonra geldi: `ADDCOMPONENT`, `ADDONS`,
 `MOVELOCKSTOCRATE`, `REMOVEALLCOMPS` — yani **ekleme yolları açıldı, silme ve
 addon yolları kapalı.**
 
-### 2.5 `sphere.ini` — 58 / 85 (en zayıf ölçülen alan)
+### 2.5 `sphere.ini` — 65 / 85
 
 Source-X `CServerConfig::sm_szLoadKeys` 279 anahtar tanımlıyor; SphereNet
-162'sini tanıyor. Tanınan anahtarların hangisinin gerçekten davranışa
+183'ünü tanıyor. Tanınan anahtarların hangisinin gerçekten davranışa
 bağlandığı ayrı bir ölçüm:
 [ini anahtar sınıflandırması](INI_ANAHTAR_SINIFLANDIRMASI_TR.md). Eksiklerin ~35'i .NET yeniden yazımında **anlamsız** (`NTSERVICE`,
 `MYSQLTICKS`, `NETWORKTHREADPRIORITY`, `USEASYNCNETWORK`, `USEEXTRABUFFER`,
 `FORCEGARBAGECOLLECT`, `MAXSIZECLIENTIN/OUT`, `BUILDNUM`, `STRIPPATH`, …).
 Onlar düşülünce oyun-anlamlı kapsam ~%67.
 
-**Oyun davranışını doğrudan değiştiren, tanınmayan anahtarlar:**
+**Oyun davranışını doğrudan değiştiren, tanınmayan anahtarlar.** PLAN-302'nin
+dört paketi de İŞ-69..72'de kapandı — `REVEALFLAGS`, `OVERSKILLMULTIPLY`,
+`HITSHUNGERLOSS`, `SKILLPRACTICEMAX`, `WOOLGROWTHTIME`, `CANUNDRESSPETS`, `CANPETSDRINKPOTION`, `VENDORMARKUP`, `VENDORMAXSELL`,
+`LOSTNPCTELEPORT`, `NPCSHOVENPC`, `MEDITATIONMOVEMENTABORT`, `MAGICUNLOCKDOOR`,
+`SPELLTIMEOUT`, `NORESROBE`, `RUNNINGPENALTY`,
+`RUNNINGPENALTYOVERWEIGHT`, `STAMINALOSSATWEIGHT`, `STAMINALOSSOVERWEIGHT`,
+`DRAGWEIGHTMAX`, `MOVERATE` artık davranışta tüketiliyor (`BACKPACKOVERLOAD` ve
+`NPCCANFIZZLEONHIT`, `MAXHOUSESGUILD`, `NOWEATHER`, `TELEPORTEFFECT*`,
+`FLIPDROPPEDITEMS`, `MAXPOLYSTATS` daha önce kapanmıştı). Kalanlar:
 
-`RUNNINGPENALTY`, `RUNNINGPENALTYOVERWEIGHT`, `STAMINALOSSATWEIGHT`,
-`STAMINALOSSOVERWEIGHT`, `BACKPACKOVERLOAD`, `DRAGWEIGHTMAX`, `MOUNTHEIGHT`,
-`MEDITATIONMOVEMENTABORT`, `MAGICUNLOCKDOOR`, `SPELLTIMEOUT`,
-`NPCCANFIZZLEONHIT`, `NPCSHOVENPC`, `LOSTNPCTELEPORT`, `NPCTRAINPERCENT`,
-`OVERSKILLMULTIPLY`, `SKILLPRACTICEMAX`, `HITSHUNGERLOSS`, `WOOLGROWTHTIME`,
+`MOUNTHEIGHT`,
+`NPCTRAINPERCENT`,
 `EXPERIENCESYSTEM`/`EXPERIENCEMODE`/`EXPERIENCEKOEFPVM`/`EXPERIENCEKOEFPVP`,
-`LEVELSYSTEM`/`LEVELMODE`, `REVEALFLAGS`, `EMOTEFLAGS`, `STATSFLAGS`,
-`AREAFLAGS`, `AUTOPRIVFLAGS`, `DISTANCEFORMULA`, `MAXHOUSESGUILD`,
+`LEVELSYSTEM`/`LEVELMODE`, `EMOTEFLAGS`, `STATSFLAGS`,
+`AREAFLAGS`, `AUTOPRIVFLAGS`, `DISTANCEFORMULA`,
 `MAXSHIPSGUILD`, `AUTOHOUSEKEYS`/`AUTOSHIPKEYS`/`AUTONEWBIEKEYS`,
-`VENDORMAXSELL`, `PAYFROMPACKONLY`, `TRADEWINDOWSNOOPING`,
-`CANUNDRESSPETS`/`CANPETSDRINKPOTION`, `NORESROBE`, `NOWEATHER`,
-`TELEPORTEFFECT*`/`TELEPORTSOUND*` (6 anahtar), `FLIPDROPPEDITEMS`,
-`ITEMTIMERS`, `MAXPOLYSTATS`, `ZEROPOINT`, `DECIMALVARIABLES`,
+`PAYFROMPACKONLY`, `TRADEWINDOWSNOOPING`,
+`ITEMTIMERS`, `ZEROPOINT`, `DECIMALVARIABLES`,
 `CHATSTATICCHANNELS`, `MEDIUMCANHEARGHOSTS`, `SUPPRESSCAPITALS`,
 `SPEECHOTHER`, `WOP*` ailesi.
 
@@ -409,22 +411,16 @@ bileşen prop'ları). Hedef Sphere 56x uyumluluğuysa proje **~90**; hedef "Sour
 
 Etki ÷ maliyet oranına göre:
 
-1. **`sphere.ini` anahtar boşluğu.** ~80 oyun-anlamlı anahtar sessizce yok
-   sayılıyor. Çoğu tek bir okuma + tek bir kullanım noktası.
+1. **`sphere.ini` anahtar boşluğu.** Paket paket kapandı: PLAN-302'nin
+   dört paketi de indi (İŞ-69..72, 21 anahtar); geriye ~55 oyun-anlamlı anahtar
+   kaldı ve PLAN-302 kapandı. Çoğu tek bir okuma + tek bir kullanım noktası.
    Mevcut bir shard'ın ini'sini olduğu gibi çalıştırmanın önündeki tek engel.
-2. **Item ses tablosu** (`DROPSOUND`/`EQUIPSOUND`/`PICKUPSOUND`/
-   `DOOROPENSOUND`/`DOORCLOSESOUND`). Tamamı yok, hepsi ucuz, oyuncuya
-   doğrudan hissedilir.
-3. **Skill sorgu ailesinin kalanı** (`SKILLCHECK`, `SKILLTEST`,
-   `SKILLADJUSTED`). `CANMAKE`, `CANMAKESKILL`, `CANCAST`, `SKILLUSEQUICK` ve
-   `SKILLBEST` bu raporun ilk sürümünden sonra cevaplandı. Kalanların motorda
-   karşılıkları var, sadece script yüzeyine bağlanmamış.
-5. **Housing script API'sinin silme yolları** (`DELCOMPONENT`, `DELADDON`,
+2. **Housing script API'sinin silme yolları** (`DELCOMPONENT`, `DELADDON`,
    `DELVENDOR`, `REMOVEKEYS`, `REMOVEALLCOMPS`) ve addon ailesi. Ekleme yolları
    ve `GET*POS` indeksleme geldi; kalan 10 ad ev sistemini script'ten yöneten
    bir paket için gerekli.
-6. **Guild stone menü ağacı** (11 fonksiyon). Klasik shard'larda görünür.
-7. **Kalan 21 trigger adı.** Artık ölçüldü: referansın trigger adları sahip
+3. **Guild stone menü ağacı** (11 fonksiyon). Klasik shard'larda görünür.
+4. **Kalan 21 trigger adı.** Artık ölçüldü: referansın trigger adları sahip
    tablosuyla birlikte çıkarılıp bağlam (`SKILL`/`SPELL`/`REGION` öneki), alt
    çizgi yazımı ve `ITEM` aynası eşlendi. Ham ad karşılaştırması 71 diyor, eşleme
    sonrası **21** kalıyor (`TriggerNameMappingTests`). Bu bir **ad** sayımıdır:
@@ -432,7 +428,7 @@ Etki ÷ maliyet oranına göre:
    ateşlendiğinin otoritesi `TriggerCoverageGuardrailTests` olmaya devam ediyor.
    Her biri küçük; `@PayGold`, `@SeeHidden`,
    `@RegionResource*` ve `@PetRelease` en çok script'lenenler.
-8. **AOS bileşen prop'ları / SA-ML skill okulları.** Sadece hedef sürüm
+5. **AOS bileşen prop'ları / SA-ML skill okulları.** Sadece hedef sürüm
    Sphere 56x'ten ileri taşınırsa.
 
 ---

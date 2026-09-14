@@ -29,6 +29,12 @@ namespace SphereNet.Tests;
 /// </summary>
 public sealed class DelayedCallSaveDuringCallbackTests : IDisposable
 {
+    // NOTE: every pump reads the clock AFTER the jobs are armed. AddTimerF stamps
+    // due = TickCount64 + delay, so a clock captured beforehand can be a millisecond
+    // short of a zero-delay job and the pump then runs nothing at all - the tests
+    // failed roughly half the time, and failed by measuring nothing rather than by
+    // measuring the wrong thing.
+
     private readonly ITestOutputHelper _out;
     private readonly string _dir;
 
@@ -77,8 +83,6 @@ public sealed class DelayedCallSaveDuringCallbackTests : IDisposable
     public void ASaveTakenInsideACallbackStillHoldsTheJobsThatHaveNotRun()
     {
         var world = NewWorld();
-        long now = Environment.TickCount64;
-
         var first = Timed(world, 100, "first");
         var second = Timed(world, 101, "second");
         var third = Timed(world, 102, "third");
@@ -97,7 +101,7 @@ public sealed class DelayedCallSaveDuringCallbackTests : IDisposable
             if (ran == 1) Save(world);
         };
 
-        TestHarness.PumpTimerF(world, now);
+        TestHarness.PumpTimerF(world, Environment.TickCount64);
 
         var lines = SavedTimerFLines();
         foreach (string l in lines) _out.WriteLine(l);
@@ -117,13 +121,11 @@ public sealed class DelayedCallSaveDuringCallbackTests : IDisposable
     public void TheJobThatIsRunningIsNotWrittenTwice()
     {
         var world = NewWorld();
-        long now = Environment.TickCount64;
-
         var only = Timed(world, 100, "only");
         only.AddTimerF(0, "f_only", "");
 
         world.TimerFExpired = (obj, entry) => Save(world);
-        TestHarness.PumpTimerF(world, now);
+        TestHarness.PumpTimerF(world, Environment.TickCount64);
 
         var lines = SavedTimerFLines();
         _out.WriteLine($"TIMERF lines in the save: {lines.Length}");
@@ -138,8 +140,6 @@ public sealed class DelayedCallSaveDuringCallbackTests : IDisposable
     public void AJobAddedByTheCallbackReachesTheSameSave()
     {
         var world = NewWorld();
-        long now = Environment.TickCount64;
-
         var obj = Timed(world, 100, "obj");
         obj.AddTimerF(0, "f_start", "");
 
@@ -151,7 +151,7 @@ public sealed class DelayedCallSaveDuringCallbackTests : IDisposable
             o.AddTimerF(60_000, "f_again", "");
             Save(world);
         };
-        TestHarness.PumpTimerF(world, now);
+        TestHarness.PumpTimerF(world, Environment.TickCount64);
 
         var lines = SavedTimerFLines();
         foreach (string l in lines) _out.WriteLine(l);

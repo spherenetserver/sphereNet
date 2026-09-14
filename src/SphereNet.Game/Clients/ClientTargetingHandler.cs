@@ -113,6 +113,7 @@ public sealed class ClientTargetingHandler
 
         Targets.CursorActive = false;
         Targets.CursorId = 0; // session consumed — the next cursor arms a fresh id
+        Targets.TimeoutAtMs = 0;
         if (_character.IsDead)
         {
             int cancelledSkill = Targets.SkillCancelId;
@@ -881,6 +882,47 @@ public sealed class ClientTargetingHandler
         uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
         Targets.CursorId = cursorId;
         _netState.Send(new PacketTarget(cursorType, cursorId));
+    }
+
+    /// <summary>SPELLTIMEOUT — seconds a spell's target cursor waits before giving up.
+    /// 0 means never, which is upstream's default (CServerConfig.cpp:86).</summary>
+    public static int SpellTimeoutSeconds { get; set; }
+
+    /// <summary>Put a deadline on the cursor that is already armed. The character's own
+    /// SPELLTIMEOUT tag wins over the server setting (CClientUse.cpp:1061) - that is how
+    /// a script gives one spell, or one player, a different patience.</summary>
+    internal void ArmSpellTimeout()
+    {
+        if (!Targets.CursorActive)
+            return;
+
+        int seconds = SpellTimeoutSeconds;
+        if (_character != null && _character.TryGetTag("SPELLTIMEOUT", out string? own) &&
+            int.TryParse(own, out int ownSeconds))
+            seconds = ownSeconds;
+
+        Targets.TimeoutAtMs = seconds > 0
+            ? Environment.TickCount64 + (long)seconds * 1000L
+            : 0;
+    }
+
+    /// <summary>Give up on a cursor whose deadline has passed (Source-X
+    /// CCharAct.cpp:6061 → addTargetCancel). Called once per client tick.</summary>
+    internal void TickTargetTimeout()
+    {
+        if (!Targets.CursorActive || Targets.TimeoutAtMs == 0)
+            return;
+        if (Environment.TickCount64 < Targets.TimeoutAtMs)
+            return;
+
+        int cancelledSkill = Targets.SkillCancelId;
+        // The client is told to drop the cursor as well; leaving it drawn would let the
+        // player answer a target the server has already forgotten.
+        _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+        ClearPendingTargetState();
+        if (cancelledSkill >= 0 && _character != null)
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                new TriggerArgs { CharSrc = _character, N1 = cancelledSkill });
     }
 
     /// <summary>Ground cursor with the multi footprint ghost-rendered at the

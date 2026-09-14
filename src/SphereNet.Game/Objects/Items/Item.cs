@@ -548,6 +548,32 @@ public class Item : ObjBase
     /// box, a memory, the drag layer - makes no sound.</summary>
     public static bool IsVisibleLayer(Layer layer) => layer > Layer.None && layer <= Layer.Horse;
 
+    /// <summary>Sound made when this item is lifted (upstream PICKUPSOUND). The
+    /// fallback is SOUND_USE_CLOTH = 0x57 (CClientEvent.cpp:239,
+    /// uofiles_enums.h:96).</summary>
+    public ushort GetPickupSound()
+    {
+        ushort scripted = ReadSoundKey("PICKUPSOUND");
+        return scripted != 0 ? scripted : (ushort)0x057;
+    }
+
+    /// <summary>Sound a door makes in one direction (upstream DOOROPENSOUND /
+    /// DOORCLOSESOUND). The classic pair is 0x0EA opening and 0x0F1 closing, and a
+    /// non-zero key replaces it - each direction separately, so a creaking gate may
+    /// still slam shut (CItem.cpp:4655-4665).
+    ///
+    /// The door already played the right defaults by hard-coding those two numbers,
+    /// which is why the keys did nothing: the sound existed, the property did not.
+    /// Having a property and playing a sound are separate things and this is where
+    /// they meet.</summary>
+    public ushort GetDoorSound(bool opening)
+    {
+        ushort scripted = ReadSoundKey(opening ? "DOOROPENSOUND" : "DOORCLOSESOUND");
+        if (scripted != 0)
+            return scripted;
+        return opening ? (ushort)0x0EA : (ushort)0x0F1;
+    }
+
     /// <summary>Sound made when this item is worn (upstream EQUIPSOUND, default
     /// 0x057).</summary>
     public ushort GetEquipSound()
@@ -911,7 +937,10 @@ public class Item : ObjBase
 
     /// <summary>Source-X WOOLGROWTHTIME default: half an hour before a shorn sheep
     /// is worth shearing again (CServerConfig.cpp:229).</summary>
-    public const long WoolGrowthMs = 30 * 60 * 1000;
+    /// <summary>WOOLGROWTHTIME — how long a shorn sheep takes to grow its fleece back
+    /// (Source-X m_iWoolGrowthTime, default 30 minutes). The ini names it in MINUTES;
+    /// this is the same number in milliseconds, which is what the timer wants.</summary>
+    public static long WoolGrowthMs { get; set; } = 30 * 60 * 1000;
 
     private const ushort SheepBody = 0x00CF;
     private const ushort ShornSheepBody = 0x00DF;
@@ -1058,6 +1087,32 @@ public class Item : ObjBase
     /// backpack, in stones (ini BACKPACKOVERLOAD, default 40). Below zero = no
     /// limit.</summary>
     public static int BackpackOverload { get; set; } = 40;
+
+    /// <summary>DRAGWEIGHTMAX — the percent of carry weight past which a player may not
+    /// pick an item up at all (Source-X m_iDragWeightMax, default 300). Below zero, or
+    /// zero, means no limit. Its sibling <see cref="BackpackOverload"/> says how far
+    /// past the carry weight a pack may be STUFFED; this says how far past it a hand may
+    /// REACH.</summary>
+    public static int DragWeightMax { get; set; } = 300;
+
+    /// <summary>MAGICUNLOCKDOOR — how hard a magically locked DOOR is to pick: a
+    /// one-in-N chance rolled before the skill is consulted at all
+    /// (CItem.cpp:5428). 0 = such a door needs its key; -1 = no special rule.
+    /// Ordinary locks are unaffected.</summary>
+    public static int MagicUnlockDoor { get; set; } = 900;
+
+    /// <summary>Whether <paramref name="key"/> opens <paramref name="locked"/>: the key
+    /// links either to the lock itself or to whatever the lock links to.</summary>
+    public static bool KeyFits(Item key, Item locked)
+    {
+        uint code = key.Link.IsValid ? key.Link.Value : 0;
+        if (code == 0 && key.TryGetTag("LINK", out string? lk))
+            uint.TryParse(lk, out code);
+        if (code == 0) return false;
+
+        if (code == locked.Uid.Value) return true;
+        return locked.Link.IsValid && code == locked.Link.Value;
+    }
 
     // Per-item MAXAMOUNT override (Source-X CItem MaxAmount defnum). Null = global.
     private int? _maxAmountOverride;
@@ -4545,15 +4600,16 @@ public class Item : ObjBase
         }
 
         string entry = entries[idx - 1]; // Source-X WriteKeys index is 1-based
-        int sp = entry.IndexOfAny([' ', '\t']);
-        bool hasQty = sp > 0 && ulong.TryParse(entry.AsSpan(0, sp), out _);
-        string qty = hasQty ? entry[..sp].Trim() : "1";
-        string resKey = hasQty ? entry[(sp + 1)..].Trim() : entry.Trim();
+
+        // One reader for the grammar (CResourceQty.cpp:55): the quantity may lead or
+        // trail the name, and a bare name is one. Answering only the leading form made
+        // <ITEM.RESOURCES.1.KEY> of "i_spellbook" the whole entry, quantity and all.
+        var parsed = SphereNet.Scripting.Resources.ResourceQtyList.ParseEntry(entry);
 
         value = field switch
         {
-            "KEY" => resKey,
-            "VAL" => qty,
+            "KEY" => parsed.Name,
+            "VAL" => parsed.Quantity.ToString(),
             _ => entry
         };
         return true;

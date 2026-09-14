@@ -16,6 +16,14 @@ public sealed class ClientTargetState
     /// <summary>True while a target cursor is open on the client.</summary>
     public bool CursorActive;
 
+    /// <summary>When this cursor gives up, in <c>Environment.TickCount64</c> ms; 0 means
+    /// never (Source-X m_Targ_Timeout, CClientMsg.cpp:1751).
+    ///
+    /// An armed cursor with no deadline is not harmless: it survives the rest of the
+    /// session, so the next thing the player clicks answers a spell they cast minutes
+    /// ago.</summary>
+    public long TimeoutAtMs;
+
     /// <summary>Cursor session id sent in the 0x6C request. A response whose
     /// echoed id doesn't match belongs to a REPLACED cursor (the client's
     /// cancel-echo for the old one races the newly armed target) and must be
@@ -116,5 +124,6 @@ public sealed class ClientTargetState
         Callback = null;
         SkillCancelId = -1;
         CursorActive = false;
+        TimeoutAtMs = 0;
     }
 }

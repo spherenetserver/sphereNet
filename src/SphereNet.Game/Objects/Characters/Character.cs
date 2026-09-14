@@ -88,6 +88,13 @@ public partial class Character : ObjBase
     /// side is being asked about. Wired to the crafting engine.</summary>
     public static Func<Character, int, bool, bool>? OnCanMakeCheck;
 
+    /// <summary>The possession half of a resource match (Source-X CChar::IsResourceMatch
+    /// RES_ITEMDEF / RES_TYPEDEF, CCharStatus.cpp:73-77): does this character hold at
+    /// least this many of that resource? Args: the character, the resolved resource, the
+    /// amount. Wired to the crafting engine's stock search, so SKILLTEST and a craft
+    /// agree on what "in the pack" means rather than each searching its own way.</summary>
+    public static Func<Character, SphereNet.Core.Types.ResourceId, long, bool>? OnResourcePossessionCheck;
+
     // Static delegate for guild resolution (set in Program.cs)
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
     // Static delegate for party resolution (set in Program.cs)
@@ -1161,6 +1168,61 @@ public partial class Character : ObjBase
     /// <summary>An ITEMDEF named by defname or by number, as a script writes it in a
     /// key like CANMAKE.i_dagger or CANMAKE.03f6 (upstream ResourceGetIndexType with
     /// RES_ITEMDEF). Zero when it names nothing.</summary>
+    /// <summary>
+    /// One entry of a resource list, asked of this character: Source-X
+    /// CChar::IsResourceMatch (CCharStatus.cpp:26).
+    ///
+    /// The entry's kind decides the question, and they are genuinely different
+    /// questions - a skill entry asks about a LEVEL, an item entry about a COUNT in
+    /// the pack, a chardef entry about what this character IS. Upstream switches on
+    /// the resource type for exactly that reason; a list that treated them alike
+    /// would read "Blacksmithing 50.0" as fifty hammers.
+    /// </summary>
+    public bool MatchesResourceEntry(string? name, long amount)
+    {
+        string n = (name ?? "").Trim();
+        if (n.Length == 0)
+            return false;
+
+        // RES_SKILL: do I have this skill level? The amount is in tenths, the same
+        // scale GetSkill returns.
+        if (Definitions.SkillNames.TryResolve(n, out SkillType skill))
+            return GetSkill(skill) >= amount;
+
+        var resources = DefinitionLoader.StaticResources;
+        var rid = resources?.ResolveDefName(n) ?? SphereNet.Core.Types.ResourceId.Invalid;
+        if (!rid.IsValid)
+            return false;
+
+        switch (rid.Type)
+        {
+            // RES_CHARDEF: am I this kind of character?
+            case SphereNet.Core.Enums.ResType.CharDef:
+                return BaseId == rid.Index;
+
+            // RES_EVENTS: do I carry this event? Upstream also accepts one the
+            // CHARDEF's TEVENTS declared, which is why the def is consulted too.
+            case SphereNet.Core.Enums.ResType.Events:
+            {
+                foreach (var ev in _events)
+                    if (ev == rid) return true;
+                var cdef = DefinitionLoader.GetCharDef(BaseId);
+                if (cdef != null)
+                    foreach (var ev in cdef.Events)
+                        if (ev == rid) return true;
+                return false;
+            }
+
+            // RES_ITEMDEF / RES_TYPEDEF: do I have these in my possession?
+            case SphereNet.Core.Enums.ResType.ItemDef:
+            case SphereNet.Core.Enums.ResType.TypeDef:
+                return OnResourcePossessionCheck?.Invoke(this, rid, amount) ?? false;
+
+            default:
+                return false;
+        }
+    }
+
     private static int ResolveItemDefId(string token)
     {
         if (string.IsNullOrWhiteSpace(token))
@@ -1599,8 +1661,23 @@ public partial class Character : ObjBase
     /// expiry). Runs the @Reveal trigger first (Source-X CChar::Reveal); a
     /// script returning 1 keeps the character concealed. Returns true when
     /// the state was actually dropped.</summary>
-    public bool ClearHiddenState()
+    public bool ClearHiddenState() => ClearHiddenState(RevealFlags.None);
+
+    /// <summary>
+    /// The same reveal, asked on behalf of a particular action (Source-X REVEALFLAGS).
+    /// </summary>
+    /// <param name="cause">The flag that governs this action, or
+    /// <see cref="RevealFlags.None"/> for the reveals no setting controls (death, a
+    /// script's REVEAL, combat). A governed cause reveals only when the shard has that
+    /// flag set - except <see cref="RevealFlags.Snooping"/>,
+    /// <see cref="RevealFlags.Stealing"/> and
+    /// <see cref="RevealFlags.OsiLikePersonalSpace"/>, which are INVERTED: setting them
+    /// SUPPRESSES the reveal. Reading the three as if they pointed the same way as the
+    /// rest would invert half a shard's stealth rules while looking correct.</param>
+    public bool ClearHiddenState(RevealFlags cause)
     {
+        if (cause != RevealFlags.None && !RevealCauseApplies(cause))
+            return false;
         if (!IsStatFlag(StatFlag.Hidden) && !IsStatFlag(StatFlag.Invisible) && StepStealth == 0)
             return false;
         if (OnRevealing != null && !OnRevealing(this))
@@ -1612,6 +1689,36 @@ public partial class Character : ObjBase
         if (wasInvisible)
             OnHiddenStateCleared?.Invoke(this);
         return true;
+    }
+
+    /// <summary>REVEALFLAGS — which actions drop concealment. The default is what the
+    /// reference ini ships.</summary>
+    /// <summary>HITSHUNGERLOSS — flat damage a starving character takes each food tick
+    /// once its food reaches zero. 0 (the default, and what the reference ini ships)
+    /// disables it.</summary>
+    public static int HitsHungerLoss { get; set; }
+
+    /// <summary>OVERSKILLMULTIPLY — how far past their class limit a player's skills
+    /// and stats may drift before being dropped back to it at login. 0 or below
+    /// disables the repair pass.</summary>
+    public static int OverSkillMultiply { get; set; } = 2;
+
+    public static RevealFlags ActiveRevealFlags { get; set; } =
+        RevealFlags.DetectingHidden | RevealFlags.LootingSelf | RevealFlags.LootingOthers |
+        RevealFlags.Speak | RevealFlags.SpellCast | RevealFlags.Snooping |
+        RevealFlags.Stealing | RevealFlags.StealingFail;
+
+    /// <summary>Whether a governed action reveals, with the three inverted flags read
+    /// the way their names mean rather than the way the others do.</summary>
+    private static bool RevealCauseApplies(RevealFlags cause)
+    {
+        bool set = (ActiveRevealFlags & cause) != 0;
+        return cause switch
+        {
+            RevealFlags.Snooping or RevealFlags.Stealing or RevealFlags.OsiLikePersonalSpace
+                => !set,
+            _ => set,
+        };
     }
 
     /// <summary>Mark this character criminal (gray) and arm the decay timer. Called
@@ -2015,6 +2122,16 @@ public partial class Character : ObjBase
 
     public bool HasOwner(Serial ownerUid) => ownerUid.IsValid && OwnerSerial == ownerUid;
 
+    /// <summary>CANUNDRESSPETS — whether an owner may take equipment off their own
+    /// pet's paperdoll. Reaching into the pet's PACK is an ownership question and is
+    /// allowed either way; this is only about what the pet is WEARING
+    /// (Source-X m_fCanUndressPets, CCharAct.cpp:2957).</summary>
+    public static bool CanUndressPets { get; set; } = true;
+
+    /// <summary>CANPETSDRINKPOTION — whether a potion dropped on a pet is drunk on the
+    /// spot rather than pocketed (Source-X m_fCanPetsDrinkPotion, default on).</summary>
+    public static bool CanPetsDrinkPotion { get; set; } = true;
+
     /// <summary>Whether this creature can desert its owner at all.
     ///
     /// Source-X guards NPC_PetDesert itself: a berserk brain returns before any
@@ -2199,6 +2316,47 @@ public partial class Character : ObjBase
 
         if (_skillClass != 0 && DefinitionLoader.GetSkillClassDef(_skillClass) == null)
             _skillClass = 0;
+
+        DropRidiculousSkillsAndStats();
+    }
+
+    /// <summary>
+    /// OVERSKILLMULTIPLY — put a player whose skills or stats sit absurdly far past
+    /// their class limit back on the limit (Source-X CChar.cpp:997, upstream's own
+    /// comment: "Make sure players don't get ridiculous stats").
+    ///
+    /// This is a REPAIR PASS, not a cap. The limit is enforced where skills are gained;
+    /// this catches a character who is already well beyond it - a save edited by hand,
+    /// a script that overshot, a class whose limits were lowered under a running shard.
+    /// The multiplier is the slack: at the default 2 a value has to be more than double
+    /// the limit before anything happens, so an ordinary buffed character is left
+    /// alone. Staff are exempt, and 0 turns the pass off.
+    /// </summary>
+    private void DropRidiculousSkillsAndStats()
+    {
+        if (OverSkillMultiply <= 0 || PrivLevel > PrivLevel.Player)
+            return;
+
+        for (int i = 0; i < (int)SkillType.Qty; i++)
+        {
+            var skill = (SkillType)i;
+            int cap = Skills.SkillEngine.GetSkillMax(this, skill);
+            if (cap > 0 && GetSkill(skill) > (long)cap * OverSkillMultiply)
+                SetSkill(skill, (ushort)cap);
+        }
+
+        // The stat half asks the same STR/DEX/INT ceilings the rest of the stat
+        // system does, rather than reading the class def a second time. A polymorphed
+        // character is skipped: the form's stats are not the player's to be judged on.
+        if (IsStatFlag(StatFlag.Polymorph))
+            return;
+
+        int strCap = Skills.SkillEngine.StatCapStr(this);
+        int dexCap = Skills.SkillEngine.StatCapDex(this);
+        int intCap = Skills.SkillEngine.StatCapInt(this);
+        if (strCap > 0 && _str > (long)strCap * OverSkillMultiply) _str = (short)strCap;
+        if (dexCap > 0 && _dex > (long)dexCap * OverSkillMultiply) _dex = (short)dexCap;
+        if (intCap > 0 && _int > (long)intCap * OverSkillMultiply) _int = (short)intCap;
     }
 
     public bool AddFriend(Character friend)
@@ -2958,6 +3116,53 @@ public partial class Character : ObjBase
         long incomingTenths = item.TotalWeightTenths;
         return (long)GetTotalWeightTenths() + incomingTenths <=
                (long)Math.Max(0, MaxWeight) * Item.WeightUnits;
+    }
+
+    /// <summary>A key (or keyring) in this character's pack that opens
+    /// <paramref name="locked"/>, or null (Source-X CChar::ContentFindKeyFor).
+    ///
+    /// Having the key is what makes a lock trivial rather than a skill check, so both
+    /// the lockpicking path and the use-a-key path have to agree about which key fits -
+    /// the same question asked twice, answered once.</summary>
+    public Item? FindKeyFor(Item locked)
+    {
+        var pack = Backpack;
+        return pack == null ? null : Search(pack, 0);
+
+        Item? Search(Item container, int depth)
+        {
+            if (depth >= 16) return null;
+            foreach (var child in container.Contents)
+            {
+                if (child.ItemType is ItemType.Key or ItemType.Keyring && Item.KeyFits(child, locked))
+                    return child;
+                var nested = Search(child, depth + 1);
+                if (nested != null) return nested;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>What fraction of this character's carry weight a load would be, as a
+    /// percent (Source-X CChar::GetWeightLoadPercent, CCharStatus.cpp:250).
+    ///
+    /// A GM answers 1 whatever they are holding - staff are not meant to be stopped by
+    /// a weight rule - and a character who can carry nothing at all answers 1000 rather
+    /// than dividing by zero, which upstream's comment glosses as "suppose self
+    /// extra-overloaded".</summary>
+    /// <param name="extraWeightTenths">Weight that is not held yet, in tenths of a
+    /// stone. Asking about the load a lift WOULD make is the whole point of the
+    /// question.</param>
+    public int GetWeightLoadPercent(long extraWeightTenths = 0)
+    {
+        if (PrivLevel >= PrivLevel.GM)
+            return 1;
+        long maxCarryTenths = (long)Math.Max(0, MaxWeight) * Item.WeightUnits;
+        if (maxCarryTenths <= 0)
+            return 1000;
+        return (int)Math.Clamp(
+            ((long)GetTotalWeightTenths() + extraWeightTenths) * 100 / maxCarryTenths,
+            int.MinValue, int.MaxValue);
     }
 
     // --- Movement ---
@@ -4229,6 +4434,68 @@ public partial class Character : ObjBase
             }
             value = "";
             return false;
+        }
+
+        // Source-X CHC_SKILLCHECK.<skill>,<difficulty> (CChar.cpp:2652), whose own
+        // comment calls it "an odd way to get skills checking into the triggers". Like
+        // SKILLUSEQUICK it ROLLS - but it is the quieter one: Skill_CheckSuccess awards
+        // no experience and fires no trigger, so a script may ask it as often as it
+        // likes. A GM succeeds at everything except Parrying, which is upstream's way
+        // of not making staff invulnerable in melee.
+        //
+        // An unknown skill name is not an answer of zero: upstream returns false and
+        // leaves the key to whoever asked.
+        if (upper.StartsWith("SKILLCHECK.", StringComparison.Ordinal) ||
+            upper.StartsWith("SKILLCHECK ", StringComparison.Ordinal))
+        {
+            string[] checkArgs = upper[11..].Split(',');
+            if (checkArgs.Length >= 2 &&
+                SkillNames.TryResolve(checkArgs[0].Trim(), out SkillType checkSkill) &&
+                SphereNet.Core.Types.ScriptNumber.TryParseToken(checkArgs[1].Trim(), out long checkDiff))
+            {
+                value = Skills.SkillEngine.CheckSuccess(
+                    this, checkSkill, (int)Math.Clamp(checkDiff, int.MinValue, int.MaxValue))
+                    ? "1" : "0";
+                return true;
+            }
+            value = "";
+            return false;
+        }
+
+        // Source-X CHC_SKILLADJUSTED.<skill> (CChar.cpp:2665): the skill AFTER the
+        // stat bonus its definition grants, which is the number the engine rolls
+        // against - a bare <MAGERY> is the raw base and can differ by tens of points.
+        // It is the one skill read that comes back as text: upstream formats it
+        // "%hu.%hu", so 50.5 is "50.5" and not 505.
+        if (upper.StartsWith("SKILLADJUSTED.", StringComparison.Ordinal) ||
+            upper.StartsWith("SKILLADJUSTED ", StringComparison.Ordinal))
+        {
+            if (SkillNames.TryResolve(upper[14..].Trim(), out SkillType adjSkill))
+            {
+                int adjusted = Skills.SkillEngine.GetAdjustedSkill(this, adjSkill);
+                value = $"{adjusted / 10}.{adjusted % 10}";
+                return true;
+            }
+            value = "";
+            return false;
+        }
+
+        // Source-X CHC_SKILLTEST <resource list> (CChar.cpp:2822): does this character
+        // satisfy a whole requirement list at once - the skills AND the items it names,
+        // in one question. It is the same test a craft runs on SKILLMAKE
+        // (SkillResourceTest, CCharSkill.cpp:863), exposed so a script can ask before
+        // committing. An empty or unreadable list is false, not unhandled.
+        if (upper.StartsWith("SKILLTEST.", StringComparison.Ordinal) ||
+            upper.StartsWith("SKILLTEST ", StringComparison.Ordinal))
+        {
+            var wanted = SphereNet.Scripting.Resources.ResourceQtyList.Parse(key[10..]);
+            bool all = wanted.Count > 0;
+            foreach (var entry in wanted)
+            {
+                if (!MatchesResourceEntry(entry.Name, entry.Quantity)) { all = false; break; }
+            }
+            value = all ? "1" : "0";
+            return true;
         }
 
         if (TryResolveSkillName(upper, out var readSkill))
@@ -6925,10 +7192,21 @@ public partial class Character : ObjBase
             // Let scripts react to hunger (@Hunger trigger).
             OnHungerDecay?.Invoke(this);
 
-            // Source-X starvation only halts regeneration (Stats_Regen checks
-            // IsHungry); it never drains stamina or health. An invented
-            // "starvation bite" used to chip stam/hp here — a hungry AFK
-            // character slowly damaged itself, which the reference never does.
+            // HITSHUNGERLOSS. Starvation does bite upstream - OnTakeDamage with a
+            // FLAT amount once food reaches zero (CCharAct.cpp:5788) - but only when
+            // the shard asks for it, and the reference ini ships the line commented
+            // out. This engine once chipped health UNCONDITIONALLY, which was the
+            // invented part; removing the bite entirely and writing "the reference
+            // never does this" overshot in the other direction.
+            //
+            // Staff and the dead starve for free, as upstream's guards say.
+            if (HitsHungerLoss > 0 && _food <= 0 && !IsDead &&
+                PrivLevel < PrivLevel.GM && !IsStatFlag(StatFlag.Sleeping))
+            {
+                Hits = (short)Math.Max(0, Hits - HitsHungerLoss);
+                if (Hits <= 0)
+                    Kill();
+            }
         }
 
         // Poison tick

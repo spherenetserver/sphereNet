@@ -69,7 +69,15 @@ public sealed class CharDef : BaseDef
 
     public uint Anim { get; set; }
     public short BloodColor { get; set; }
-    public int MoveRate { get; set; } = 100;
+    /// <summary>The MOVERATE a definition starts from when it does not write one
+    /// (Source-X CCharBase.cpp:37 seeds every CCharBase from g_Cfg.m_iMoveRate). The
+    /// server sets this from the ini key before the definitions load; a shard that
+    /// wants every creature slower says so once instead of editing every CHARDEF.</summary>
+    public static int DefaultMoveRate { get; set; } = 100;
+
+    /// <summary>Percent of normal NPC movement speed. HIGHER IS SLOWER - the tick
+    /// interval is multiplied by it (CCharNPCAct.cpp:639).</summary>
+    public int MoveRate { get; set; } = DefaultMoveRate;
     public uint HireDayWage { get; set; }
     public ushort MaxFood { get; set; }
 

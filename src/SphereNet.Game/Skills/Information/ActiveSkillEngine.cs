@@ -114,7 +114,7 @@ public static class ActiveSkillEngine
             int sourceRoll = detectSkill + sink.Random.Next(210) - 100;
             int targetRoll = SkillEngine.GetAdjustedSkill(nearby, SkillType.Hiding) +
                 sink.Random.Next(210) - 100;
-            if (sourceRoll >= targetRoll && nearby.ClearHiddenState())
+            if (sourceRoll >= targetRoll && nearby.ClearHiddenState(RevealFlags.DetectingHidden))
             {
                 // Source-X SysMessagef(DEFMSG_DETECTHIDDEN_SUCC, name) — CCharSkill.cpp:1746
                 sink.SysMessage(ServerMessages.GetFormatted(Msg.DetecthiddenSucc, nearby.Name));
@@ -273,6 +273,12 @@ public static class ActiveSkillEngine
             }
         }
 
+        // A theft gives the thief away, and which outcome does it is the shard's
+        // choice: REVEALF_STEALING_SUCCESS and REVEALF_STEALING_FAIL are separate
+        // flags (CCharSkill.cpp:4333), and the reference ini sets only the failure one
+        // - getting away with it keeps you hidden.
+        ch.ClearHiddenState(success ? RevealFlags.StealingSuccess : RevealFlags.StealingFail);
+
         // Source-X CChar::Skill_Stealing: every nearby witness who wins the
         // perception contest notices the theft — whether or not it succeeded —
         // and remembers it (personal grey via MEMORY_SAWCRIME); a guarded-area
@@ -351,7 +357,39 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        bool success = SkillEngine.UseQuick(ch, SkillType.Lockpicking, sink.Random.Next(60));
+        // Source-X asks the LOCK how hard it is (Use_LockPick, CItem.cpp:5378) instead
+        // of inventing a number, and the answer has three parts.
+
+        // 1. The key makes it trivial. Upstream returns 0 - "trivial" - rather than
+        //    refusing, so a player carrying the key picks the lock every time.
+        bool haveKey = ch.FindKeyFor(lockedTarget) != null;
+
+        // 2. A MAGICALLY locked door is gated before the skill is consulted at all.
+        //    MAGICUNLOCKDOOR is documented as a skill requirement and used as a
+        //    one-in-N chance (CItem.cpp:5428); 0 means the door needs its key.
+        if (!haveKey && lockedTarget.ItemType == ItemType.DoorLocked && Item.MagicUnlockDoor != -1)
+        {
+            if (Item.MagicUnlockDoor == 0)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.UnlockDoorNeedsKey));
+                return false;
+            }
+            if (sink.Random.Next(Item.MagicUnlockDoor) != 0)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.UnlockFailDoor));
+                return false;
+            }
+        }
+
+        // 3. Otherwise the lock's own complexity is the difficulty, on the 0-100 scale
+        //    the skill check wants (m_dwLockComplexity / 10). A lock that names no
+        //    complexity is trivial, which is what the old fixed Random.Next(60) was
+        //    standing in for on every lock in the world.
+        int difficulty = haveKey
+            ? 0
+            : (int)Math.Clamp(lockedTarget.More1 / 10u, 0u, 100u);
+
+        bool success = SkillEngine.UseQuick(ch, SkillType.Lockpicking, difficulty);
         if (success)
         {
             // Convert locked variant -> open variant.
@@ -1578,14 +1616,10 @@ public static class ActiveSkillEngine
     {
         if (def != null && !string.IsNullOrWhiteSpace(def.SkillMakeRaw))
         {
-            foreach (var part in def.SkillMakeRaw.Split(','))
+            foreach (var part in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.SkillMakeRaw))
             {
-                var bits = part.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (bits.Length >= 2 &&
-                    Enum.TryParse<SkillType>(bits[0], ignoreCase: true, out var sk) &&
-                    double.TryParse(bits[1], System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double lvl))
-                    return (sk, (int)lvl);
+                if (SphereNet.Game.Definitions.SkillNames.TryResolve(part.Name, out var sk))
+                    return (sk, SphereNet.Scripting.Resources.ResourceQtyList.SkillValue(part) / 10);
             }
         }
         return (SkillType.Tinkering, 50);

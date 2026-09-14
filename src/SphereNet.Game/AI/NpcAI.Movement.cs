@@ -446,6 +446,19 @@ public sealed partial class NpcAI
                     _world.MoveCharacter(npc, home);
                 return;
             }
+
+            // LOSTNPCTELEPORT — a creature that has wandered absurdly far is put back
+            // rather than asked to walk (CCharNPCAct.cpp:1547). It is a backstop, not a
+            // leash: the distance has to beat BOTH the global and the creature's own
+            // wander range, so a spawn with a wide roam is not dragged home by a narrow
+            // global setting. @NPCLostTeleport may veto it.
+            if (LostNpcTeleport > 0 && curDist > LostNpcTeleport)
+            {
+                if (Character.OnNpcLostTeleport?.Invoke(npc) != true)
+                    _world.MoveCharacter(npc, home);
+                return;
+            }
+
             MoveToward(npc, home);
             return;
         }

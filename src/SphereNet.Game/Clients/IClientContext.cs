@@ -65,6 +65,7 @@ internal interface IClientContext : ITextConsole
     ClientViewCache View { get; }
     ClientGumpRegistry Gumps { get; }
     ClientTargetState Targets { get; }
+    ClientTargetingHandler Targeting { get; }
     ClientDialogHandler Dialogs { get; }
     ClientItemUseHandler ItemUse { get; }
 
@@ -198,6 +199,11 @@ internal interface IClientContext : ITextConsole
     void FollowItemLinks(Item start);
     bool TryToggleNearestMapStaticDoor(uint clientSerial);
     void UsePotion(Item potion);
+
+    /// <summary>Convey a potion's stored effect to a character other than the client's
+    /// own — the pet that was just handed a bottle (CANPETSDRINKPOTION). False when the
+    /// bottle names no resolvable effect.</summary>
+    bool ApplyPotionEffectTo(Objects.Characters.Character target, Item potion);
     bool HasAmmoInBackpack(ItemType ammo);
     void ConsumeAmmoFromBackpack(ItemType ammo);
     bool TryHandlePetCommand(string text);

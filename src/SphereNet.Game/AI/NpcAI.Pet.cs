@@ -71,6 +71,12 @@ public sealed partial class NpcAI
     /// comes back in range. 0 disables the leash.</summary>
     public static int PetFollowMaxDistance { get; set; } = 36;
 
+    /// <summary>LOSTNPCTELEPORT — how far an NPC may stray from home before it is put
+    /// back rather than asked to walk (Source-X m_iLostNPCTeleport, default 50 tiles;
+    /// 0 disables). A backstop, not a leash: the creature's own wander range has to be
+    /// exceeded as well.</summary>
+    public static int LostNpcTeleport { get; set; } = 50;
+
     /// <summary>Default hireling pay interval (ms) when HIRE_PERIOD isn't set.</summary>
     private const long DefaultHirePeriodMs = 30 * 60 * 1000; // 30 minutes
 

@@ -584,6 +584,17 @@ public static class SkillEngine
         return cls?.StatSumMax > 0 ? cls.StatSumMax : 225;
     }
 
+    /// <summary>The STR ceiling this character's class allows (SKILLCLASS STR/MAXSTR,
+    /// default 125). Exposed so the OVERSKILLMULTIPLY repair pass asks the same
+    /// question the rest of the stat system does.</summary>
+    internal static int StatCapStr(Character ch) => ResolveStrCap(ch);
+
+    /// <summary>The DEX ceiling this character's class allows.</summary>
+    internal static int StatCapDex(Character ch) => ResolveDexCap(ch);
+
+    /// <summary>The INT ceiling this character's class allows.</summary>
+    internal static int StatCapInt(Character ch) => ResolveIntCap(ch);
+
     private static int ResolveStrCap(Character ch)
     {
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);

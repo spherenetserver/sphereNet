@@ -44,8 +44,10 @@ public sealed class CraftRecipe
     /// carry (or wield) an item of this type; it is not consumed.</summary>
     public List<ItemType> RequiredToolTypes { get; } = [];
     /// <summary>Specific items from SKILLMAKE i_* entries — must be present,
-    /// not consumed.</summary>
-    public List<ushort> RequiredItemIds { get; } = [];
+    /// not consumed. The count is the entry's own quantity: upstream matches with
+    /// IsResourceMatch(rid, qty), which is a ContentConsumeTest for that many
+    /// (CCharStatus.cpp:74).</summary>
+    public List<(ushort ItemId, int Amount)> RequiredItemIds { get; } = [];
 }
 
 /// <summary>
@@ -137,9 +139,9 @@ public sealed class CraftingEngine
             if (!HasItemOfType(crafter, toolType))
                 return false;
         }
-        foreach (var reqId in recipe.RequiredItemIds)
+        foreach (var (reqId, reqAmount) in recipe.RequiredItemIds)
         {
-            if (CountResource(crafter, reqId) < 1)
+            if (CountResource(crafter, reqId) < reqAmount)
                 return false;
         }
 
@@ -403,6 +405,27 @@ public sealed class CraftingEngine
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// How much of a resource the character's reachable stock holds — the same search
+    /// a craft runs, so a SKILLTEST that says yes is followed by a craft that agrees.
+    /// A resource named by TYPE counts every item of that type; one named by ITEMDEF
+    /// counts that graphic.
+    /// </summary>
+    public static int CountStock(Character ch, SphereNet.Core.Types.ResourceId rid)
+    {
+        var pack = ch.Backpack;
+        if (pack == null || !rid.IsValid) return 0;
+
+        if (rid.Type == Core.Enums.ResType.TypeDef)
+            return CountInContainerByType(pack, (ItemType)rid.Index);
+
+        var def = DefinitionLoader.GetItemDef(rid.Index);
+        ushort itemId = def is { DispIndex: > 0 }
+            ? def.DispIndex
+            : rid.Index <= ushort.MaxValue ? (ushort)rid.Index : (ushort)0;
+        return itemId == 0 ? 0 : CountInContainer(pack, itemId);
     }
 
     /// <summary>Count a recipe resource in the character's backpack — by item TYPE
@@ -793,32 +816,34 @@ public sealed class CraftingEngine
 
     private static CraftRecipe? ParseRecipe(ItemDef def, int resultDefId, ResourceHolder resources)
     {
-        var skillParts = def.SkillMakeRaw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (skillParts.Length == 0) return null;
+        // SKILLMAKE is a resource list, so it is read with the resource-list grammar:
+        // either order, a bare name meaning one (CResourceQty.cpp:55). Reading it as
+        // "name then value" only made "1 i_pen_and_ink" look like skill number 1 and
+        // dropped the pen the recipe actually required.
+        var skillParts = SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.SkillMakeRaw);
+        if (skillParts.Count == 0) return null;
 
         SkillType primarySkill = SkillType.None;
         int difficulty = 0;
         var skillReqs = new List<(SkillType Skill, int MinValue)>();
         var pendingToolTypes = new List<ItemType>();
-        var pendingItemIds = new List<ushort>();
+        var pendingItemIds = new List<(ushort ItemId, int Amount)>();
 
         foreach (var part in skillParts)
         {
             // t_* = a tool TYPE that must be carried; i_* = a specific item
             // that must be present. Neither is consumed (reference
             // SkillResourceTest semantics).
-            if (part.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
+            if (part.Name.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
             {
-                string toolName = part.Split(' ', 2)[0].Trim();
-                var trid = resources.ResolveDefName(toolName);
+                var trid = resources.ResolveDefName(part.Name);
                 if (trid.IsValid && trid.Type == Core.Enums.ResType.TypeDef)
                     pendingToolTypes.Add((ItemType)trid.Index);
                 continue;
             }
-            if (part.StartsWith("i_", StringComparison.OrdinalIgnoreCase))
+            if (part.Name.StartsWith("i_", StringComparison.OrdinalIgnoreCase))
             {
-                string itemName = part.Split(' ', 2)[0].Trim();
-                var irid = resources.ResolveDefName(itemName);
+                var irid = resources.ResolveDefName(part.Name);
                 if (irid.IsValid)
                 {
                     var reqDef = DefinitionLoader.GetItemDef(irid.Index);
@@ -826,30 +851,19 @@ public sealed class CraftingEngine
                         ? reqDef.DispIndex
                         : irid.Index <= ushort.MaxValue ? (ushort)irid.Index : (ushort)0;
                     if (requiredId != 0)
-                        pendingItemIds.Add(requiredId);
+                        pendingItemIds.Add((requiredId, (int)Math.Max(1, part.Quantity)));
                 }
                 continue;
             }
 
-            int spaceIdx = part.LastIndexOf(' ');
-            if (spaceIdx < 0) continue;
-
-            string skillName = part[..spaceIdx].Trim();
-            string valStr = part[(spaceIdx + 1)..].Trim();
-
-            if (!Enum.TryParse<SkillType>(skillName, true, out var skill))
+            // The shard's own name for the slot, not just the engine's spelling -
+            // upstream resolves these with FindSkillKey (CServerConfig.cpp:2347).
+            if (!SphereNet.Game.Definitions.SkillNames.TryResolve(part.Name, out var skill))
                 continue;
 
-            int val = 0;
-            if (valStr.Contains('.'))
-            {
-                if (double.TryParse(valStr, System.Globalization.CultureInfo.InvariantCulture, out double dv))
-                    val = (int)(dv * 10);
-            }
-            else if (int.TryParse(valStr, out int iv))
-            {
-                val = iv * 10;
-            }
+            // A skill requirement's quantity is already in tenths: the pack writes
+            // 50.0 and the reference's decimal path ignores the dot, giving 500.
+            int val = SphereNet.Scripting.Resources.ResourceQtyList.SkillValue(part);
 
             if (primarySkill == SkillType.None)
             {
@@ -882,17 +896,16 @@ public sealed class CraftingEngine
 
         if (!string.IsNullOrWhiteSpace(def.ResourcesRaw))
         {
-            var resParts = def.ResourcesRaw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            foreach (var rp in resParts)
+            // The same grammar again, and here the missing half was the bare name:
+            // RESOURCES=i_spellbook means one spellbook, and 257 entries in the
+            // shipped pack are written that way. Demanding a written quantity made
+            // every one of them free.
+            foreach (var rp in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.ResourcesRaw))
             {
-                int spIdx = rp.IndexOf(' ');
-                if (spIdx < 0) continue;
+                int amount = (int)Math.Clamp(rp.Quantity, 0, int.MaxValue);
+                if (amount <= 0) continue;
 
-                string amtStr = rp[..spIdx].Trim();
-                string resName = rp[(spIdx + 1)..].Trim();
-                if (!int.TryParse(amtStr, out int amount) || amount <= 0) continue;
-
-                var rid = resources.ResolveDefName(resName);
+                var rid = resources.ResolveDefName(rp.Name);
                 if (!rid.IsValid) continue;
 
                 // A RESOURCES entry can name an item TYPE (t_ingot) or a specific

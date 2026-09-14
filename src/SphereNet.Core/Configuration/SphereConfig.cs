@@ -304,6 +304,200 @@ public sealed class SphereConfig
     /// limit at all.</summary>
     public int BackpackOverload { get; set; } = 40;
 
+    // ---- What carrying things costs while walking -----------------------
+    //
+    // BACKPACKOVERLOAD above lets a player exceed their own carry weight, and the
+    // reference ini says what is supposed to happen when they do: "StaminaLossOverweight
+    // will be use". These are the four keys that make a load cost something. Every one
+    // of them is spent on a COMMITTED step (Source-X CCharAct.cpp:4787-4829, inside
+    // CanMoveWalkTo's !fCheckOnly branch) - a probe, a pathfinding look-ahead or a GM
+    // costs nothing.
+
+    /// <summary>The percent of a character's carry weight at which walking starts to
+    /// cost stamina (Source-X m_iStaminaLossAtWeight, ini STAMINALOSSATWEIGHT, default
+    /// 150).
+    ///
+    /// It is the MIDPOINT of an S-curve, not a threshold: at this load the step costs
+    /// stamina half the time, and the chance falls away smoothly below it and climbs
+    /// above it (Calc_GetSCurve with a variance of 10, CCharAct.cpp:4805). 200 switches
+    /// the whole effect off, because a load can only reach 100% before the overweight
+    /// branch takes over instead.</summary>
+    public int StaminaLossAtWeight { get; set; } = 150;
+
+    /// <summary>Stamina spent on each step taken while OVER the carry weight (Source-X
+    /// m_iStaminaLossOverweight, ini STAMINALOSSOVERWEIGHT, default 5).
+    ///
+    /// This branch is not a chance - it is charged every step, and it grows: one more
+    /// point for every 5 stones past the limit, and a third of the total when mounted
+    /// (CCharAct.cpp:4819-4821). A shard that raises BACKPACKOVERLOAD is buying the
+    /// player this cost.</summary>
+    public int StaminaLossOverweight { get; set; } = 5;
+
+    /// <summary>Points added to the load percent while flying or hovering, before the
+    /// S-curve is consulted (Source-X m_iStamRunningPenalty, ini RUNNINGPENALTY, default
+    /// 50; 0 disables).
+    ///
+    /// The name says running and the code checks STATF_FLY | STATF_HOVERING
+    /// (CCharAct.cpp:4799) - upstream's own comment there calls the flat addition a
+    /// FIXME. The behaviour is matched, not the name: a character on foot pays nothing
+    /// extra for running, which is why the war-mode walk penalty this engine used to
+    /// carry was removed as invented.</summary>
+    public int RunningPenalty { get; set; } = 50;
+
+    /// <summary>Percent uplift on the overweight step cost while flying or hovering
+    /// (Source-X m_iStamRunningPenaltyOverweight, ini RUNNINGPENALTYOVERWEIGHT, engine
+    /// default 100, though the reference ini ships 10; 0 disables).
+    ///
+    /// DELIBERATE DIVERGENCE: upstream's key table points this key at
+    /// m_iStamRunningPenalty - the field its neighbour already owns
+    /// (CServerConfig.cpp:981-982) - so setting RUNNINGPENALTYOVERWEIGHT there silently
+    /// moves RUNNINGPENALTY instead and the overweight uplift never leaves its default.
+    /// That is a copy-paste slip in a table, not a contract: the consuming site reads
+    /// the overweight field by name (CCharAct.cpp:4823). The key is wired to the field
+    /// it names.</summary>
+    public int RunningPenaltyOverweight { get; set; } = 100;
+
+    /// <summary>The percent of carry weight past which a player may not pick an item up
+    /// at all (Source-X m_iDragWeightMax, ini DRAGWEIGHTMAX, default 300; below zero
+    /// means no limit).
+    ///
+    /// The check is on the load the lift WOULD produce, not the current one
+    /// (CCharAct.cpp:2932-2935), so the last item that would cross the line is the one
+    /// refused. This is the ceiling BACKPACKOVERLOAD stops at: overload decides how far
+    /// past the limit a pack may be stuffed, this decides how far past it a hand may
+    /// reach.</summary>
+    public int DragWeightMax { get; set; } = 300;
+
+    /// <summary>Default NPC move rate as a percent of normal speed (Source-X
+    /// m_iMoveRate, ini MOVERATE, default 100). Higher is SLOWER: the tick interval is
+    /// multiplied by it (CCharNPCAct.cpp:639). A CHARDEF's own MOVERATE overrides it;
+    /// this is the value a definition starts from (CCharBase.cpp:37).</summary>
+    public int MoveRate { get; set; } = 100;
+
+    // ---- Magic, and what interrupts it ----------------------------------
+
+    /// <summary>Seconds a player has to pick a target for a spell before the cursor
+    /// gives up (Source-X m_iSpellTimeout, ini SPELLTIMEOUT, default 0 = never).
+    ///
+    /// A cursor with no timeout is not harmless: it stays armed across the rest of the
+    /// session, so the next thing the player clicks - a door, a friend - answers a
+    /// spell they cast minutes ago. A character's own SPELLTIMEOUT tag overrides this
+    /// (CClientUse.cpp:1061).</summary>
+    public int SpellTimeout { get; set; }
+
+    /// <summary>How hard a MAGICALLY locked door is to pick (Source-X
+    /// m_iMagicUnlockDoor, ini MAGICUNLOCKDOOR, default 900).
+    ///
+    /// The reference ini calls it "amount of skill of lock picking needed", and the code
+    /// does not use it that way: it is a one-in-N chance, rolled before the skill is
+    /// consulted at all (CItem.cpp:5428). 0 means such a door needs its key and cannot
+    /// be picked; -1 removes the special rule so a magic door picks like any other.
+    /// Ordinary locks are not affected either way.</summary>
+    public int MagicUnlockDoor { get; set; } = 900;
+
+    /// <summary>Whether taking a step cancels meditation (Source-X
+    /// _fMeditationMovementAbort, ini MEDITATIONMOVEMENTABORT, default OFF).
+    ///
+    /// The default is the surprising half: upstream lets a meditating character walk
+    /// (CCharAct.cpp:2495 only fails the skill when this is set). This engine cancelled
+    /// it unconditionally, which is the stricter rule and not the reference one.</summary>
+    public bool MeditationMovementAbort { get; set; }
+
+    /// <summary>Suppress the robe a resurrected player is handed (Source-X m_fNoResRobe,
+    /// ini NORESROBE, default off - the robe IS given).
+    ///
+    /// It is its own setting upstream, separate from the ghost's death shroud
+    /// (CCharSpell.cpp:503). Tying the two together means a shard that wants visible
+    /// ghosts cannot also resurrect people clothed, or the other way round.</summary>
+    public bool NoResRobe { get; set; }
+
+    // ---- Pets and vendors ------------------------------------------------
+
+    /// <summary>Whether an owner may take equipment off their own pet's paperdoll
+    /// (Source-X m_fCanUndressPets, ini CANUNDRESSPETS, default ON).
+    ///
+    /// It is the narrower half of a rule that is mostly about ownership: an owner may
+    /// always take things out of their pet's PACK, and this decides whether they may
+    /// also strip what the pet is WEARING (CCharAct.cpp:2957). Neither is open to
+    /// anyone else.</summary>
+    public bool CanUndressPets { get; set; } = true;
+
+    /// <summary>Whether dropping a potion on a pet makes it drink (Source-X
+    /// m_fCanPetsDrinkPotion, ini CANPETSDRINKPOTION, default ON). Off, the bottle
+    /// goes into the pet's pack like any other gift (CCharNPCAct.cpp:2145).</summary>
+    public bool CanPetsDrinkPotion { get; set; } = true;
+
+    /// <summary>A vendor's profit margin as a percent, when nothing more specific says
+    /// otherwise (Source-X m_iVendorMarkup, ini VENDORMARKUP, default 15).
+    ///
+    /// The vendor's own tag wins, then the region's, then this
+    /// (NPC_GetVendorMarkup, CCharNPCStatus.cpp:366). 1 disables the markup; 0 makes
+    /// shopping free, which is the reference ini's own warning.</summary>
+    public int VendorMarkup { get; set; } = 15;
+
+    /// <summary>Most units of one line a vendor will sell in a single transaction
+    /// (Source-X m_iVendorMaxSell, ini VENDORMAXSELL, default 255). The cap is applied
+    /// when the shop list is built (send.cpp:1249), so the client never offers more
+    /// than the shard allows rather than refusing after the click.</summary>
+    public int VendorMaxSell { get; set; } = 255;
+
+    /// <summary>How far an NPC may stray from home before it is put back (Source-X
+    /// m_iLostNPCTeleport, ini LOSTNPCTELEPORT, default 50 tiles; 0 disables).
+    ///
+    /// It is a backstop, not a leash: the distance must beat BOTH this and the
+    /// creature's own wander range before anything happens (CCharNPCAct.cpp:1550), so
+    /// a spawn with a wide MOREZ is not dragged home by a narrow global.</summary>
+    public int LostNpcTeleport { get; set; } = 50;
+
+    /// <summary>Whether an NPC may push past another NPC (Source-X m_NPCShoveNPC, ini
+    /// NPCSHOVENPC, default OFF).
+    ///
+    /// Players shove creatures; creatures do not shove each other unless this is set
+    /// or the individual carries TAG.OVERRIDE.SHOVE (CCharAct.cpp:4624). Without the
+    /// rule a guard walks through the crowd it is meant to be stuck behind.</summary>
+    public bool NpcShoveNpc { get; set; }
+
+    // ---- Crime, stats and the world around them --------------------------
+
+    /// <summary>Which actions drop a character's concealment (Source-X m_iRevealFlags,
+    /// ini REVEALFLAGS). See <see cref="Core.Enums.RevealFlags"/> - three of the flags
+    /// are INVERTED, and the reference ini ships
+    /// <c>01|02|04|08|010|040|080|0200</c>.</summary>
+    public int RevealFlags { get; set; } =
+        (int)(Core.Enums.RevealFlags.DetectingHidden | Core.Enums.RevealFlags.LootingSelf |
+              Core.Enums.RevealFlags.LootingOthers | Core.Enums.RevealFlags.Speak |
+              Core.Enums.RevealFlags.SpellCast | Core.Enums.RevealFlags.Snooping |
+              Core.Enums.RevealFlags.Stealing | Core.Enums.RevealFlags.StealingFail);
+
+    /// <summary>Damage a starving character takes each food tick once its food reaches
+    /// zero (Source-X m_iHitsHungerLoss, ini HITSHUNGERLOSS, default 0 = disabled; the
+    /// reference ini ships the line commented out).
+    ///
+    /// It is a FLAT amount despite the reference ini calling it a percent - the code
+    /// hands it straight to OnTakeDamage as DAMAGE_FIXED (CCharAct.cpp:5788). This
+    /// engine used to chip health while hungry with no setting at all, then removed it
+    /// as invented; the invented part was doing it UNCONDITIONALLY.</summary>
+    public int HitsHungerLoss { get; set; }
+
+    /// <summary>Highest skill a training dummy or archery butte will raise (Source-X
+    /// m_iSkillPracticeMax, ini SKILLPRACTICEMAX, default 300 = 30.0). Past it the
+    /// trainee is told to find a real opponent.</summary>
+    public int SkillPracticeMax { get; set; } = 300;
+
+    /// <summary>Minutes a shorn sheep takes to grow its fleece back (Source-X
+    /// m_iWoolGrowthTime, ini WOOLGROWTHTIME, default 30).</summary>
+    public int WoolGrowthTime { get; set; } = 30;
+
+    /// <summary>How far past their class limit a player's skills and stats may drift
+    /// before being dropped back to it at login (Source-X m_iOverSkillMultiply, ini
+    /// OVERSKILLMULTIPLY, default 2; 0 or below disables the check entirely).
+    ///
+    /// It is a repair pass, not a cap: the limit is enforced elsewhere, and this
+    /// catches a character who is already far beyond it - a save edited by hand, a
+    /// script that overshot, a class whose limits were lowered under a live shard
+    /// (CChar.cpp:997). Staff are exempt.</summary>
+    public int OverSkillMultiply { get; set; } = 2;
+
     /// <summary>How far a polymorph may move a stat, in points (Source-X
     /// m_iMaxPolyStats, ini MAXPOLYSTATS, default 150). The form's own STR and DEX
     /// replace the caster's, but never by more than this in either direction
@@ -755,6 +949,27 @@ public sealed class SphereConfig
         MaxHousesGuild = Math.Max(0, ini.GetInt(section, "MaxHousesGuild", MaxHousesGuild));
         NpcCanFizzleOnHit = ini.GetBool(section, "NpcCanFizzleOnHit", NpcCanFizzleOnHit);
         BackpackOverload = ini.GetInt(section, "BackpackOverload", BackpackOverload);
+        StaminaLossAtWeight = ini.GetInt(section, "StaminaLossAtWeight", StaminaLossAtWeight);
+        StaminaLossOverweight = ini.GetInt(section, "StaminaLossOverweight", StaminaLossOverweight);
+        RunningPenalty = ini.GetInt(section, "RunningPenalty", RunningPenalty);
+        RunningPenaltyOverweight = ini.GetInt(section, "RunningPenaltyOverweight", RunningPenaltyOverweight);
+        DragWeightMax = ini.GetInt(section, "DragWeightMax", DragWeightMax);
+        MoveRate = ini.GetInt(section, "MoveRate", MoveRate);
+        SpellTimeout = ini.GetInt(section, "SpellTimeout", SpellTimeout);
+        MagicUnlockDoor = ini.GetInt(section, "MagicUnlockDoor", MagicUnlockDoor);
+        MeditationMovementAbort = ini.GetBool(section, "MeditationMovementAbort", MeditationMovementAbort);
+        NoResRobe = ini.GetBool(section, "NoResRobe", NoResRobe);
+        CanUndressPets = ini.GetBool(section, "CanUndressPets", CanUndressPets);
+        CanPetsDrinkPotion = ini.GetBool(section, "CanPetsDrinkPotion", CanPetsDrinkPotion);
+        VendorMarkup = ini.GetInt(section, "VendorMarkup", VendorMarkup);
+        VendorMaxSell = ini.GetInt(section, "VendorMaxSell", VendorMaxSell);
+        LostNpcTeleport = ini.GetInt(section, "LostNPCTeleport", LostNpcTeleport);
+        NpcShoveNpc = ini.GetBool(section, "NPCShoveNPC", NpcShoveNpc);
+        RevealFlags = ini.GetFlags(section, "RevealFlags", RevealFlags);
+        HitsHungerLoss = ini.GetInt(section, "HitsHungerLoss", HitsHungerLoss);
+        SkillPracticeMax = ini.GetInt(section, "SkillPracticeMax", SkillPracticeMax);
+        WoolGrowthTime = ini.GetInt(section, "WoolGrowthTime", WoolGrowthTime);
+        OverSkillMultiply = ini.GetInt(section, "OverSkillMultiply", OverSkillMultiply);
         FlipDroppedItems = ini.GetBool(section, "FlipDroppedItems", FlipDroppedItems);
         NoWeather = ini.GetBool(section, "NoWeather", NoWeather);
         MaxPolyStats = Math.Max(0, ini.GetInt(section, "MaxPolyStats", MaxPolyStats));

@@ -4,6 +4,310 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - Concealment, starvation and stat repair: the last packet of ini keys
+----------------------------------------
+
+FIX - Every [SKILLCLASS n] in the shipped pack was loaded and then never found again.
+        A pack writes the class as a NUMBER and a character carries that number, but
+        the section was indexed like a defname - hashed - so no lookup could reach it.
+        The consequence was silent and total: the pack's own class 0 (STATSUM 300,
+        SKILLSUM 10000, STR/INT/DEX 100 and a full per-skill cap table) was parsed and
+        ignored, and every player got the engine's fallback caps instead of the
+        shard's. SKILLCLASS now uses its number, as SKILL already did.
+
+NEW - REVEALFLAGS: which actions drop a character's concealment. Eleven flags, and
+        THREE OF THEM MEAN THE OPPOSITE of the rest - SNOOPING, STEALING and
+        OSILIKEPERSONALSPACE SUPPRESS a reveal when set, while every other flag enables
+        one. The reference ini spells the inversion out for exactly those three; a flag
+        set read as if it pointed one way throughout would invert half a shard's
+        stealth rules and look reasonable doing it.
+
+        Wired to detecting hidden, spell casting, speaking, walking into somebody,
+        stealing (separate flags for success and failure) and the mounted stealth step.
+        Speaking and the theft outcomes had no reveal at all before; a mounted sneak was
+        never given away by the horse.
+
+NEW - IniParser.GetFlags, because REVEALFLAGS is the first key written the way the
+        reference writes flag lists: 01|02|04|08|010. GetInt can read neither the '|'
+        nor Sphere's rule that a LEADING ZERO is hexadecimal, so it would have returned
+        a number that is wrong with nothing to say about it.
+
+NEW - OVERSKILLMULTIPLY (default 2): a player whose skills or stats sit more than N
+        times their class limit is dropped back to the limit at login. A repair pass,
+        not a cap - it catches a hand-edited save, a script that overshot, a class whose
+        limits were lowered under a running shard. It also gives SKILLCLASS's STR/DEX/
+        INT ceilings their first consumer.
+
+NEW - HITSHUNGERLOSS (default 0 = off): flat damage a starving character takes each
+        food tick. Starvation does bite upstream (CCharAct.cpp:5788) - this engine
+        removed an unconditional "starvation bite" as invented and wrote that the
+        reference never does it, which overshot in the other direction. The invented
+        part was doing it without a setting.
+
+NEW - SKILLPRACTICEMAX (300) and WOOLGROWTHTIME (30 minutes). Both had a consumer and
+        a hardcoded constant; the ini now feeds them.
+
+FIX - DelayedCallSaveDuringCallbackTests read the clock BEFORE arming its jobs, so a
+        millisecond between the two left a zero-delay job not yet due and the pump ran
+        nothing. The tests failed about half the time, by measuring nothing rather than
+        by measuring the wrong thing.
+
+TEST - RevealAndStatRepairConfigTests (13). Treating the three inverted flags like
+        their neighbours turns three red, hashing SKILLCLASS again turns five, reading
+        the flag line with GetInt turns one, dropping the mounted check one, and
+        removing the repair pass two.
+
+DOC - PLAN-302 is complete: all four packets landed, and 183 of Source-X's 279 ini
+        keys are now recognised.
+
+[2026-09-14] - Pets and vendors: the third packet of ini keys
+----------------------------------------
+
+FIX - Anyone could strip any NPC in the world. The gate on taking something off
+        somebody else was written as "not another PLAYER", so a stranger's tamed
+        dragon, a hireling, a shopkeeper - all of them were open to whoever walked
+        past. Upstream's rule is about OWNERSHIP (CCharAct.cpp:2946): staff outrank;
+        an owner may always reach into their pet's PACK; and CANUNDRESSPETS decides
+        whether the owner may also strip what the pet is WEARING. Nobody else may do
+        either.
+
+        The rule also had TWO gates disagreeing with each other - the equipped-item
+        arm refused every non-self wearer outright, so an owner could not undress
+        their own pet however the setting was set. One gate now.
+
+FIX - One creature walked straight through another. Upstream stops it
+        (CCharAct.cpp:4624) unless NPCSHOVENPC is set or the individual carries
+        TAG.OVERRIDE.SHOVE; the shove rule here only asked about stamina, and an idle
+        NPC always has full stamina. Without it a guard walks through the crowd it is
+        meant to be stuck behind.
+
+NEW - CANUNDRESSPETS (default 1) and CANPETSDRINKPOTION (default 1). The second makes
+        a potion dropped on a pet drunk on the spot rather than pocketed
+        (CCharNPCAct.cpp:2145) - how a player heals a wounded animal mid-fight. The
+        potion reader is shared with the drinking path rather than written twice, so
+        the two cannot drift apart about what a bottle contains.
+
+NEW - VENDORMARKUP (default 15) now has a feeder. The setting had a consumer all
+        along - vendor tag, then region tag, then the default - and nothing ever put
+        the ini value into it.
+
+NEW - VENDORMAXSELL (default 255): most units of one line a vendor offers at once.
+        Applied when the shop list is BUILT (send.cpp:1249), so the client never
+        advertises a number the shop would then refuse, and the vendor's stock is not
+        trimmed to fit.
+
+NEW - LOSTNPCTELEPORT (default 50 tiles): a creature that has wandered absurdly far
+        is put back rather than asked to walk home. A backstop, not a leash - the
+        distance has to beat both this and the creature's own wander range
+        (CCharNPCAct.cpp:1550), so a wide-roaming spawn is not dragged home by a
+        narrow global. @NPCLostTeleport may veto it.
+
+NEW - NPCSHOVENPC (default 0), above.
+
+TEST - PetVendorConfigTests (13). The stranger's-creature case is the one that would
+        have caught the defect. Restoring the player-only gate turns two red, removing
+        the creature shove rule one, the potion branch one, the sell cap one, and the
+        teleport backstop one.
+
+DOC - The port report's ini coverage is now 178 of Source-X's 279 keys.
+
+[2026-09-14] - Magic, and what interrupts it: the second packet of ini keys
+----------------------------------------
+
+FIX - A meditating character could not take a step. Upstream lets them: only
+        MEDITATIONMOVEMENTABORT fails the skill on movement, and its default is OFF
+        (CCharAct.cpp:2495). This engine cancelled meditation on every step
+        unconditionally - the stricter rule, and not the reference one. BEHAVIOUR
+        CHANGE: meditation now survives walking unless the key is set.
+
+FIX - The resurrection robe was tied to the death-shroud flag, so a shard that wanted
+        invisible ghosts also resurrected everyone naked. Upstream asks only
+        m_fNoResRobe there (CCharSpell.cpp:503); NORESROBE is now its own setting and
+        the shroud keeps its own.
+
+FIX - Picking a lock used a fixed Random.Next(60) as the difficulty, which made a
+        padlock and a vault door equally hard. The lock says how hard it is
+        (m_dwLockComplexity / 10, CItem.cpp:5450), and carrying the key makes it
+        trivial rather than merely likely (:5408) - upstream returns "trivial", not
+        "refused", when the key is in the pack.
+
+NEW - MAGICUNLOCKDOOR (default 900): how hard a MAGICALLY locked door is to pick. The
+        reference ini calls it "amount of skill needed" and the code does not use it
+        that way - it is a one-in-N chance rolled BEFORE the skill is consulted at all
+        (CItem.cpp:5428), so a grandmaster fails it as often as a novice. 0 means such
+        a door wants its key and cannot be picked; -1 removes the rule. Ordinary locks
+        are untouched either way.
+
+NEW - SPELLTIMEOUT (default 0 = never): seconds a player has to pick a target for a
+        spell. A cursor with no deadline is not harmless - it survives the rest of the
+        session, so the next thing the player clicks answers a spell they cast minutes
+        ago. An expired cursor is cancelled on the server AND dropped on the client.
+        The character's own SPELLTIMEOUT tag overrides the server value
+        (CClientUse.cpp:1061).
+
+FIX - A consumed or torn-down target cursor now clears its deadline with its session
+        id. Left behind, the next cursor armed without a timeout of its own would
+        inherit the old one and cancel itself.
+
+FIX - Key-fits-lock had two implementations, one on the use-a-key path and one on the
+        pack search; the lockpicking path needed a third. There is one now, on the
+        item, and the character asks it (CChar::ContentFindKeyFor).
+
+TEST - MagicInterruptConfigTests (10) and SpellTargetTimeoutTests (5). Forcing
+        meditation to break again turns one red, removing the magic-door gate turns
+        two, and stopping the cursor from ever expiring turns one.
+
+[2026-09-13] - What carrying things costs: the first packet of ini keys
+----------------------------------------
+
+FIX - This server shipped BACKPACKOVERLOAD=40 - permission to carry forty stones more
+        than you can carry - and charged nothing for it. The reference ini's own note
+        beside that key says what is supposed to happen ("StaminaLossOverweight will be
+        use"), and none of it did.
+
+        The cost is real and it was missing outright. A comment here stated that
+        walking has no per-step stamina cost "Source-X CClient::Event_Walk has no per-step
+        stamina cost", and Event_Walk indeed has none - the charge lives one level down,
+        in CanMoveWalkTo's committed branch (CCharAct.cpp:4787-4829). Reading only the
+        packet handler is how the conclusion was reached.
+
+NEW - STAMINALOSSATWEIGHT (default 150). The load percent at which a step starts
+        costing stamina, and it is a MIDPOINT, not a threshold: at this load the step
+        costs a point half the time, and the chance falls away below it and climbs above
+        it through the same S-curve a skill roll uses (variance 10). 200 switches the
+        effect off.
+
+NEW - STAMINALOSSOVERWEIGHT (default 5). Past the carry weight the cost stops being a
+        chance: every step pays, and the price grows - one more point per five stones
+        over, a third of the total when mounted.
+
+NEW - RUNNINGPENALTY (default 50) and RUNNINGPENALTYOVERWEIGHT (default 100, the
+        reference ini ships 10). The first adds to the load percent, the second uplifts
+        the overweight cost. Both are named for running and both check the fly/hover
+        flags, which upstream's own FIXME beside them acknowledges; the behaviour is
+        matched, not the name.
+
+        DELIBERATE DIVERGENCE: upstream's key table points RUNNINGPENALTYOVERWEIGHT at
+        the field RUNNINGPENALTY already owns (CServerConfig.cpp:981-982), so setting it
+        there moves the wrong number and the uplift never leaves its default. That is a
+        copy-paste slip in a table, not a contract - the consuming site reads the
+        overweight field by name - so the key is wired to the field it names.
+
+NEW - DRAGWEIGHTMAX (default 300): the load percent past which an item cannot be picked
+        up. Measured on the load the lift WOULD produce, so the item that crosses the
+        line is the one refused. The escape hatch matters as much as the rule - something
+        too heavy in your OWN pack falls at your feet instead of being refused, or an
+        overloaded player could never put anything down again.
+
+NEW - MOVERATE (default 100): the NPC move rate every CHARDEF starts from when it writes
+        none of its own (CCharBase.cpp:37). Higher is slower. One line now does what
+        editing every creature definition used to.
+
+FIX - MONSTERTIGHT removed from the shipped ini. It exists in no Source-X version and
+        its description here was invented. A key that can never be consumed is not a
+        setting.
+
+FIX - DISTANCEFORMULA was documented wrongly in both directions - its values were listed
+        as "0 = Chebyshev, 1 = Manhattan" where the reference has 0 = square/no-diagonal,
+        1 = circular/diagonal, 2 = diagonal with Z, and its default was given as 1 where
+        the reference uses 0. Still unimplemented, but it now says so accurately and
+        ships the reference default. BACKPACKOVERLOAD's own header still carried two
+        pre-correction lines ("boolean", "default 0") contradicting the correct text
+        below them.
+
+TEST - WeightMovementConfigTests (10) and DragWeightAndMoveRateTests (8) assert each key
+        by MOVING it and watching the step, which is what PLAN-302 asks for: changing a
+        config value has to change the behaviour measurably. Removing the per-step charge
+        turns eight of the ten red; removing the drag gate turns the two refusal cases
+        red; seeding MOVERATE from a constant again turns one.
+
+[2026-09-13] - One grammar for resource lists, and the SKILL* queries that read them
+----------------------------------------
+
+FIX - Every resource list in a script pack - RESOURCES, SKILLMAKE, a SKILLTEST
+        argument - is written in a grammar whose first rule upstream states in one
+        line: "Can be either order.: Name Qty or Qty Name" (CResourceQty.cpp:57),
+        and a bare name means one (:88). This engine had four readers of it and each
+        accepted one half. That is the quiet way to be wrong about a grammar: the
+        recipe still loads, the item is still craftable, and one requirement has
+        disappeared.
+
+        In the shipped pack it cost two things. SKILLMAKE=Inscription 10.0,1
+        i_pen_and_ink,Magery 10.0 was read as "skill number 1 at level zero" - a
+        requirement nothing can fail - so scribing needed no pen and ink. And 257
+        RESOURCES lines written as a bare name, such as RESOURCES=i_spellbook, were
+        dropped for having no quantity, handing out the material free.
+
+        The four readers are now one (ResourceQtyList), and the count an i_* entry
+        names is honoured rather than assumed to be one.
+
+FIX - A skill value in such a list is already in tenths, because the reference's
+        decimal path IGNORES the dot: 50.0 is five hundred, on the same scale a skill
+        is stored. The corollary is the one that bit - a bare 76 is 7.6, not 76.0.
+        Multiplying it by ten raised a colored-armor recipe's requirement tenfold.
+
+FIX - SKILLMAKE skill names now resolve through the same table as everything else
+        (FindSkillKey, CServerConfig.cpp:2347) rather than through the C# enum, so a
+        shard that renamed a slot keeps its recipes.
+
+NEW - SKILLCHECK.<skill>,<difficulty> (CChar.cpp:2652). It ROLLS - its own comment
+        calls it "an odd way to get skills checking into the triggers" - but unlike
+        SKILLUSEQUICK next door it awards no experience and fires no trigger, so a
+        script may poll it without quietly training the character. A GM succeeds at
+        everything except Parrying, which is upstream's way of not making staff
+        immune in melee.
+
+NEW - SKILLADJUSTED.<skill> (CChar.cpp:2665): the skill AFTER the stat bonus its
+        definition grants - the number the engine actually rolls against, which can
+        differ from a bare <MAGERY> by tens of points. It is the one skill read that
+        comes back as text: "%hu.%hu", so 520 is "52.0".
+
+NEW - SKILLTEST <list> (CChar.cpp:2822): a whole requirement list asked at once,
+        skills and items together, through the same test a craft runs on SKILLMAKE.
+        The possession half goes to the crafting engine's own stock search, so the
+        query and the craft that follows it cannot disagree about a locked chest or a
+        nested bag. An empty list is false, not vacuously true.
+
+TEST - ResourceListGrammarTests (8) pins the grammar and both costs measured in the
+        pack; SkillQueryParityTests (11) pins the three queries including what each
+        does NOT do. Forgetting the "Qty Name" order turns six of the nineteen red,
+        making a bare name mean nothing turns two, and removing the three query
+        branches turns five.
+
+DOC - The port report's list of painful missing names drops these three: 25 of the
+        43 it counted are now answered, leaving 18.
+
+[2026-09-13] - PICKUPSOUND, and the door keys that were being ignored
+----------------------------------------
+
+FIX - A door already played the right sounds - 0x0EA opening, 0x0F1 closing - by
+        hard-coding those two numbers, so DOOROPENSOUND and DOORCLOSESOUND did
+        nothing at all. A shard could set one, hear the default, and have no way to
+        tell that the key was ignored rather than misconfigured. That is the
+        distinction PLAN-305 asks for: having a property and playing a sound are
+        separate things, and a sound that plays correctly can still mean the
+        property is dead.
+
+        The door now resolves each direction through its key, separately, so a
+        creaking gate may still slam shut (CItem.cpp:4655-4665).
+
+FIX - PICKUPSOUND did not exist. Lifting an item now plays it, falling back to
+        SOUND_USE_CLOTH = 0x57 (CClientEvent.cpp:239, uofiles_enums.h:96). It goes
+        to the lifter alone rather than the neighbourhood, because upstream sends
+        it with addSound on the client that picked the item up - unlike a drop,
+        which everyone nearby hears.
+
+TEST - ItemSoundPropertyTests pins the resolution rule the whole family shares:
+        instance key first, then the ITEMDEF, with zero meaning "not set" rather
+        than "silent". A gold pile picks its drop sound from its amount and a
+        script key still wins, because upstream applies the type rule first and
+        lets the key replace the result (CItem.cpp:1541) - a default that beat the
+        override would make the key look supported and behave as though it were
+        not. Neutralising the door lookup turns two of the eight red.
+
+DOC - The port report's list of painful missing names drops these three: 22 of the
+        43 it counted are now answered, leaving 21.
+
 [2026-09-13] - MODMAXHITS / MODMAXMANA / MODMAXSTAM
 ----------------------------------------
 

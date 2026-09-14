@@ -449,7 +449,9 @@ public sealed class SpellEngine
     {
         if (IsMagicFlag(MagicConfigFlags.NoRevealOnCast))
             return;
-        caster.ClearHiddenState();
+        // REVEALFLAGS decides as well: MAGICF_NOREVEALONCAST is the magic-side veto,
+        // REVEALF_SPELLCAST the stealth-side one, and upstream honours both.
+        caster.ClearHiddenState(RevealFlags.SpellCast);
     }
 
     /// <summary>Precast mode from sphere.ini MAGICFLAGS bit 0x0002.</summary>

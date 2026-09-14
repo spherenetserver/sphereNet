@@ -3,6 +3,306 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Gizlenme, aclik ve stat onarimi: ini anahtarlarinin son paketi
+----------------------------------------
+
+FIX - Gonderilen paketteki her [SKILLCLASS n] yukleniyor ve bir daha asla
+        bulunamiyordu. Paket sinifi SAYI olarak yaziyor, karakter de o sayiyi
+        tasiyor; ama bolum bir defname gibi - hash'lenerek - indeksleniyordu, yani
+        hicbir arama ona ulasamiyordu. Sonuc sessiz ve tamdi: paketin kendi 0 sinifi
+        (STATSUM 300, SKILLSUM 10000, STR/INT/DEX 100 ve tam bir yetenek tavani
+        tablosu) ayristirilip yok sayiliyor, her oyuncu shard'in degil MOTORUN
+        varsayilan tavanlarini aliyordu. SKILLCLASS artik sayisini kullaniyor,
+        SKILL'in zaten yaptigi gibi.
+
+NEW - REVEALFLAGS: hangi eylemler gizliligi bozar. On bir bayrak, ve UCU digerlerinin
+        TERSI anlama gelir - SNOOPING, STEALING ve OSILIKEPERSONALSPACE kuruldugunda
+        acigi CIKARMAZ, diger her bayrak ise cikarir. Referans ini tersligi tam bu uc
+        bayrak icin aciklikla yaziyor; hepsini ayni yonde okuyan bir kod bir shard'in
+        gizlilik kurallarinin yarisini ters cevirir ve bunu yaparken makul gorunur.
+
+        Baglandigi yerler: detecting hidden, buyu baslangici, konusma, birinin ustune
+        basma, hirsizlik (basari ve basarisizlik icin AYRI bayraklar) ve at ustundeki
+        sinsi adim. Konusma ve hirsizlik sonuclari daha once hic aciga cikarmiyordu;
+        at ustundeki sinsiyi de at hic ele vermiyordu.
+
+NEW - IniParser.GetFlags; cunku REVEALFLAGS, referansin bayrak listelerini yazdigi
+        bicimdeki ilk anahtar: 01|02|04|08|010. GetInt ne '|' birlesimini ne de
+        Sphere'in "BASTAKI SIFIR ONALTILIKTIR" kuralini okuyabiliyor, yani hakkinda
+        hicbir sey soylemeden yanlis bir sayi dondururdu.
+
+NEW - OVERSKILLMULTIPLY (varsayilan 2): yetenek veya statlari sinif sinirinin N
+        katindan fazla olan oyuncu GIRISTE sinira cekilir. Tavan degil ONARIM gecisi -
+        elle duzenlenmis kaydi, asan bir script'i, canli shard'da dusurulmus bir sinif
+        sinirini yakalar. Ayrica SKILLCLASS'in STR/DEX/INT tavanlarina ilk
+        tuketicilerini kazandiriyor.
+
+NEW - HITSHUNGERLOSS (varsayilan 0 = kapali): ac kalan karakterin her yemek tick'inde
+        aldigi duz hasar. Referansta aclik gercekten isiriyor (CCharAct.cpp:5788) - bu
+        motor kosulsuz bir "aclik isirigi"ni uydurma diye kaldirmis ve "referans bunu
+        hic yapmaz" diye yazmisti, ki bu da ters yone tasma. Uydurma olan kisim, bunu
+        AYAR OLMADAN yapmakti.
+
+NEW - SKILLPRACTICEMAX (300) ve WOOLGROWTHTIME (30 dakika). Ikisinin de tuketicisi ve
+        koda gomulu sabiti vardi; artik ini besliyor.
+
+FIX - DelayedCallSaveDuringCallbackTests saati islerini KURMADAN ONCE okuyordu, yani
+        arada bir milisaniye gecerse sifir gecikmeli is henuz vadesi gelmemis sayiliyor
+        ve pompa hicbir sey calistirmiyordu. Testler yaklasik yari yariya, yanlis seyi
+        olcerek degil HICBIR SEYI olcmeyerek kaliyordu.
+
+TEST - RevealAndStatRepairConfigTests (13). Ters ucu komsulari gibi ele almak ucunu,
+        SKILLCLASS'i yeniden hash'lemek besini, bayrak satirini GetInt ile okumak
+        birini, at kontrolunu kaldirmak birini, onarim gecisini kaldirmak ikisini
+        kirmiziya donduruyor.
+
+DOC - PLAN-302 TAMAMLANDI: dort paketin dordu de indi, Source-X'in 279 ini anahtarindan
+        183'u artik taniniyor.
+
+[2026-09-14] - Pet ve satici: ini anahtarlarinin ucuncu paketi
+----------------------------------------
+
+FIX - Dunyadaki HER NPC'yi herkes soyabiliyordu. Baskasinin uzerinden bir sey alma
+        kapisi "baska bir OYUNCU degilse" diye yazilmisti; yani yabancinin evcil
+        ejderhasi, bir kiralik asker, bir dukkanci - hepsi yanindan gecen herkese
+        acikti. Referansin kurali SAHIPLIK uzerine (CCharAct.cpp:2946): gorevliler
+        ustunluk kurar; sahip petinin CANTASINA her halukarda uzanir; ve
+        CANUNDRESSPETS petin GIYDIGINI de cikarabilir mi onu soyler. Baskasi hicbirini
+        yapamaz.
+
+        Kuralin ayrica birbiriyle CELISEN IKI kapisi vardi - kusanilmis esya kolu her
+        kendisi-olmayan tasiyiciyi kosulsuz reddediyordu, yani sahip ayar ne olursa
+        olsun kendi petini soyamiyordu. Artik tek kapi.
+
+FIX - Bir yaratik digerinin icinden gecip gidiyordu. Referans bunu durduruyor
+        (CCharAct.cpp:4624): NPCSHOVENPC kurulu degilse veya birey TAG.OVERRIDE.SHOVE
+        tasimiyorsa gecemez. Buradaki itme kurali yalnizca staminaya bakiyordu ve bosta
+        duran bir NPC'nin staminasi hep dolu. Kural olmadan muhafiz, arkasinda
+        sikismasi gereken kalabaligin icinden geciyor.
+
+NEW - CANUNDRESSPETS (varsayilan 1) ve CANPETSDRINKPOTION (varsayilan 1). Ikincisi,
+        petin ustune birakilan iksiri cebe atmak yerine yerinde ictiriyor
+        (CCharNPCAct.cpp:2145) - yarali bir hayvani dovus ortasinda iyilestirmenin
+        yolu. Iksir okuyucusu ikinci kez yazilmadi, icme yoluyla paylasiliyor: ikisi
+        bir sisenin ne icerdigi konusunda ayrisamaz.
+
+NEW - VENDORMARKUP (varsayilan 15) artik BESLENIYOR. Ayarin tuketicisi zaten vardi -
+        satici TAG'i, sonra bolge TAG'i, sonra varsayilan - ama ini degerini oraya
+        kimse koymuyordu.
+
+NEW - VENDORMAXSELL (varsayilan 255): saticinin tek seferde bir satirdan verecegi en
+        fazla adet. Liste KURULURKEN uygulaniyor (send.cpp:1249): istemci dukkanin
+        sonra reddedecegi bir sayiyi hic gostermiyor ve saticinin stoku kirpilmiyor.
+
+NEW - LOSTNPCTELEPORT (varsayilan 50 kare): sacma derecede uzaklasmis bir yaratik eve
+        YURUTULMEK yerine geri konuyor. Tasma degil emniyet kemeri - mesafenin hem
+        bunu hem yaratigin kendi dolasma menzilini asmasi gerekiyor
+        (CCharNPCAct.cpp:1550), yoksa genis dolasan bir spawn dar bir global ayarla eve
+        surukleniyordu. @NPCLostTeleport veto edebilir.
+
+NEW - NPCSHOVENPC (varsayilan 0), yukarida.
+
+TEST - PetVendorConfigTests (13). Hatayi yakalayacak olan test "yabancinin yaratigi"
+        durumu. Yalnizca-oyuncu kapisini geri koymak ikisini, yaratik itme kuralini
+        kaldirmak birini, iksir dalini birini, satis tavanini birini ve isinlanma
+        emniyetini birini kirmiziya donduruyor.
+
+DOC - Port raporunun ini kapsami artik Source-X'in 279 anahtarindan 178'i.
+
+[2026-09-14] - Buyu ve onu kesen seyler: ini anahtarlarinin ikinci paketi
+----------------------------------------
+
+FIX - Meditasyon yapan karakter adim atamiyordu. Referans izin veriyor: yalniz
+        MEDITATIONMOVEMENTABORT kuruluyken yetenek basarisiz oluyor ve varsayilani
+        KAPALI (CCharAct.cpp:2495). Bu motor her adimda kosulsuz iptal ediyordu - daha
+        kati kural, referansinki degil. DAVRANIS DEGISIKLIGI: anahtar kurulmadikca
+        meditasyon artik yurumeye dayaniyor.
+
+FIX - Dirilis cuppesi kefen bayragina baglanmisti; yani gorunmez hayalet isteyen bir
+        shard insanlari ciplak diriltiyordu. Referans orada yalniz m_fNoResRobe'u
+        soruyor (CCharSpell.cpp:503); NORESROBE artik kendi ayari, kefen de kendi
+        ayarini koruyor.
+
+FIX - Kilit acma zorluk olarak sabit bir Random.Next(60) kullaniyordu; asma kilitle
+        kasa kapisi esit zorlukta oluyordu. Zorlugu kilidin kendisi soyluyor
+        (m_dwLockComplexity / 10, CItem.cpp:5450) ve anahtari tasimak kilidi "muhtemel"
+        degil ONEMSIZ yapiyor (:5408) - referans anahtar cantadayken "reddedildi"
+        degil "onemsiz" donuyor.
+
+NEW - MAGICUNLOCKDOOR (varsayilan 900): BUYUYLE kilitli bir kapinin macayla acilma
+        zorlugu. Referans ini "gereken yetenek miktari" diyor, kod oyle kullanmiyor -
+        bu bir N'de-bir SANS ve yetenek hic sorulmadan ONCE atiliyor (CItem.cpp:5428),
+        yani usta da acemi kadar sik basarisiz oluyor. 0 = boyle bir kapi anahtarini
+        ister, macayla acilmaz; -1 = kural yok. Siradan kilitler her iki durumda da
+        etkilenmiyor.
+
+NEW - SPELLTIMEOUT (varsayilan 0 = yok): oyuncunun bir buyuye hedef secmesi icin
+        taninan saniye. Zaman asimsiz bir imlec zararsiz degil - oturumun kalani
+        boyunca acik kalir ve oyuncunun tikladigi bir sonraki sey dakikalar once
+        yapilan buyuye cevap verir. Suresi dolan imlec sunucuda iptal ediliyor VE
+        istemciye de kapattiriliyor. Karakterin kendi SPELLTIMEOUT tag'i sunucu
+        degerini eziyor (CClientUse.cpp:1061).
+
+FIX - Tuketilen veya yikilan bir hedef imleci artik son tarihini oturum kimligiyle
+        birlikte temizliyor. Geride kalsaydi, ardindan kendi zaman asimi olmadan
+        kurulan imlec eskisini devralip kendini iptal ederdi.
+
+FIX - "Bu anahtar bu kilide uyar mi" sorusunun iki uygulamasi vardi - biri anahtar
+        kullanma yolunda, biri canta aramasinda - ve kilit acma yolu ucuncusunu
+        isteyecekti. Artik tek: esyada duruyor, karakter ona soruyor
+        (CChar::ContentFindKeyFor).
+
+TEST - MagicInterruptConfigTests (10) ve SpellTargetTimeoutTests (5). Meditasyonu
+        yeniden kosulsuz kirmak birini, buyulu-kapi kapisini kaldirmak ikisini,
+        imlecin hic sonlanmamasini saglamak birini kirmiziya donduruyor.
+
+[2026-09-13] - Yuk tasimanin bedeli: ini anahtarlarinin ilk paketi
+----------------------------------------
+
+FIX - Bu sunucu BACKPACKOVERLOAD=40 gonderiyordu - tasiyabildiginden kirk tas fazlasini
+        tasima izni - ve bunun icin hicbir sey odetmiyordu. Referans ini'nin o anahtarin
+        yanindaki kendi notu ne olmasi gerektigini soyluyor ("StaminaLossOverweight will
+        be use"); hicbiri olmuyordu.
+
+        Bedel gercek ve tamamen eksikti. Buradaki bir yorum yurumenin adim basina stamina
+        yakmadigini soyluyordu - Event_Walk'ta gercekten yok; ucret bir kat asagida,
+        CanMoveWalkTo'nun gerceklesen-adim dalinda (CCharAct.cpp:4787-4829). Yalniz paket
+        isleyicisini okumak bu yanlis sonuca boyle goturdu.
+
+NEW - STAMINALOSSATWEIGHT (varsayilan 150). Adimin stamina yakmaya basladigi yuk yuzdesi;
+        ve bu bir ESIK degil ORTA NOKTA: bu yukte adimin yarisi bir puan yakar, altinda
+        hizla duser, ustunde hizla tirmanir - skill zarinin kullandigi S-egrisiyle
+        (varyans 10). 200 etkiyi kapatir.
+
+NEW - STAMINALOSSOVERWEIGHT (varsayilan 5). Tasima limitinin otesinde bedel sans olmaktan
+        cikar: her adim oder ve fiyat buyur - limitin ustundeki her bes tas icin bir puan
+        daha, ata binildiginde toplamin ucte biri.
+
+NEW - RUNNINGPENALTY (varsayilan 50) ve RUNNINGPENALTYOVERWEIGHT (varsayilan 100,
+        referans ini 10 gonderir). Ilki yuk yuzdesine eklenir, ikincisi asiri-yuk bedelini
+        yuzdeyle buyutur. Ikisi de "kosma" adini tasir ve ikisi de ucma/suzulme
+        bayraklarina bakar; referansin yanlarindaki kendi FIXME'i bunu kabul ediyor.
+        Davranis eslendi, ad degil.
+
+        BILINCLI SAPMA: referansin anahtar tablosu RUNNINGPENALTYOVERWEIGHT'i
+        RUNNINGPENALTY'nin zaten sahip oldugu alana bagliyor (CServerConfig.cpp:981-982),
+        yani orada kurmak yanlis sayiyi oynatiyor ve artis varsayilanindan hic cikmiyor.
+        Bu bir tablo kopyala-yapistir hatasi, sozlesme degil - tuketim yeri alani adiyla
+        okuyor - bu yuzden anahtar adini tasidigi alana baglandi.
+
+NEW - DRAGWEIGHTMAX (varsayilan 300): bir esyanin ele alinamayacagi ust yuk yuzdesi.
+        Olcum kaldirma SONRASI olusacak yuk uzerinde, yani cizgiyi asacak olan esya
+        reddediliyor. Kacis kapisi kural kadar onemli - KENDI cantandaki fazla agir bir
+        sey reddedilmek yerine ayaklarinin dibine dusuyor; yoksa asiri yuklu oyuncu
+        hicbir seyi yere birakamazdi.
+
+NEW - MOVERATE (varsayilan 100): kendi MOVERATE'ini yazmayan her CHARDEF'in basladigi NPC
+        hiz degeri (CCharBase.cpp:37). Yuksek olan yavastir. Eskiden her yaratik tanimini
+        duzenlemek gereken is artik tek satir.
+
+FIX - MONSTERTIGHT gonderilen ini'den kaldirildi. Hicbir Source-X surumunde yok ve
+        buradaki aciklamasi uydurmaydi. Hicbir zaman tuketilemeyecek bir anahtar ayar
+        degildir.
+
+FIX - DISTANCEFORMULA iki yonden de yanlis belgelenmisti - degerleri "0 = Chebyshev,
+        1 = Manhattan" diyordu; referansta 0 = kare/kosegensiz, 1 = dairesel/kosegenli,
+        2 = kosegenli + Z. Varsayilanini 1 diyordu; referansta 0. Hala uygulanmiyor ama
+        artik dogru anlatiyor ve referansin varsayilanini gonderiyor. BACKPACKOVERLOAD'in
+        kendi basligi da duzeltme oncesinden kalma iki satir tasiyordu ("boolean",
+        "varsayilan 0") - hemen altindaki dogru metinle celisiyordu.
+
+TEST - WeightMovementConfigTests (10) ve DragWeightAndMoveRateTests (8) her anahtari
+        DEGISTIREREK ve adimi izleyerek sabitliyor; PLAN-302'nin istedigi tam bu: bir
+        config degerini degistirmek davranisi olculebilir bicimde degistirmeli. Adim
+        basina ucreti kaldirmak onun sekizini, kaldirma kapisini kaldirmak iki red
+        durumunu, MOVERATE'i yeniden sabitten beslemek birini kirmiziya donduruyor.
+
+[2026-09-13] - Kaynak listeleri icin tek dilbilgisi, ve onu okuyan SKILL* sorgulari
+----------------------------------------
+
+FIX - Bir script paketindeki her kaynak listesi - RESOURCES, SKILLMAKE, bir SKILLTEST
+        argumani - ilk kurali referansin tek satirda soyledigi bir dilbilgisiyle
+        yazilir: "Can be either order.: Name Qty or Qty Name" (CResourceQty.cpp:57);
+        ve yalin bir ad "bir tane" demektir (:88). Bu motorda onun DORT okuyucusu
+        vardi ve her biri yarisini kabul ediyordu. Bir dilbilgisi hakkinda yanilmanin
+        sessiz yolu budur: tarif yine yuklenir, esya yine uretilebilir, bir gereklilik
+        ortadan kaybolmustur.
+
+        Paketteki bedeli iki seydi. SKILLMAKE=Inscription 10.0,1 i_pen_and_ink,Magery
+        10.0 satiri "1 numarali skill, sifir seviye" diye okunuyordu - hicbir seyin
+        kalamayacagi bir kosul - yani yazicilik icin kalem ve murekkep GEREKMIYORDU.
+        Ve yalin adla yazilmis 257 RESOURCES satiri, ornegin RESOURCES=i_spellbook,
+        miktari yok diye dusuruluyor, malzemeyi bedava veriyordu.
+
+        Dort okuyucu artik bir tane (ResourceQtyList) ve bir i_* girdisinin adlandirdigi
+        adet, "herhalde birdir" diye varsayilmak yerine uygulaniyor.
+
+FIX - Boyle bir listedeki skill degeri zaten ONDA BIRLIK, cunku referansin ondalik yolu
+        NOKTAYI YOK SAYAR: 50.0 bes yuzdur, skill'in saklandigi olcegin aynisi. Isiran
+        sonuc bunun devami: yalin bir 76, 76.0 degil 7.6'dir. Onla carpmak renkli zirh
+        tarifinin kosulunu on katina cikariyordu.
+
+FIX - SKILLMAKE skill adlari artik her seyin kullandigi tablodan cozuluyor
+        (FindSkillKey, CServerConfig.cpp:2347), C# enum'undan degil; boylece bir slotu
+        yeniden adlandiran shard tariflerini kaybetmiyor.
+
+NEW - SKILLCHECK.<skill>,<zorluk> (CChar.cpp:2652). ZAR ATAR - kendi yorumu ona
+        "trigger'lara skill kontrolu sokmanin tuhaf bir yolu" diyor - ama yanindaki
+        SKILLUSEQUICK'in aksine deneyim vermez ve trigger ateslemez: bir script onu
+        karakteri sessizce egitmeden istedigi kadar sorabilir. GM, Parrying disinda her
+        seyi basarir; bu referansin gorevlileri yakin dovuste dokunulmaz yapmama yolu.
+
+NEW - SKILLADJUSTED.<skill> (CChar.cpp:2665): tanimin verdigi stat bonusundan SONRAKI
+        skill - motorun gercekte zar attigi sayi, ki yalin bir <MAGERY>'den onlarca puan
+        farkli olabilir. Metin olarak donen tek skill okumasi: "%hu.%hu", yani 520
+        "52.0" gelir.
+
+NEW - SKILLTEST <liste> (CChar.cpp:2822): bir gereklilik listesinin tamami tek soruda,
+        skill'ler ve esyalar birlikte; bir uretimin SKILLMAKE uzerinde kosturdugu testin
+        aynisiyla. Sahiplik yarisi uretim motorunun kendi stok aramasina gidiyor, boylece
+        sorgu ile ardindan gelen uretim kilitli sandik veya ic ice canta konusunda
+        anlasmazliga dusemiyor. Bos liste dogru degil, yanlistir.
+
+TEST - ResourceListGrammarTests (8) dilbilgisini ve pakette olculen iki bedeli
+        sabitliyor; SkillQueryParityTests (11) uc sorguyu, her birinin YAPMADIGI sey
+        dahil, sabitliyor. "Qty Name" sirasini unutmak on dokuzun altisini, yalin adi
+        hiclestirmek ikisini, uc sorgu dalini kaldirmak besini kirmiziya donduruyor.
+
+DOC - Port raporunun "canini yakacak eksikler" listesinden bu uc ad dustu: saydigi 43
+        addan 25'i artik cevaplanmis, geriye 18 kaliyor.
+
+[2026-09-13] - PICKUPSOUND ve yok sayilan kapi anahtarlari
+----------------------------------------
+
+FIX - Bir kapi zaten dogru sesleri caliyordu - 0x0EA acilis, 0x0F1 kapanis - ama o
+        iki sayiyi koda gomerek; dolayisiyla DOOROPENSOUND ve DOORCLOSESOUND
+        hicbir sey yapmiyordu. Bir shard bunlardan birini kurup varsayilani
+        duyabilir ve anahtarin yanlis yazildigini mi yoksa yok sayildigini mi
+        anlayamazdi. PLAN-305'in istedigi ayrim tam bu: bir property'ye sahip olmak
+        ile sesi calmak ayri seylerdir ve dogru calan bir ses, property'nin olu
+        oldugu anlamina gelebilir.
+
+        Kapi artik her yonu kendi anahtarindan, AYRI AYRI cozuyor; boylece gicirdayan
+        bir kapi hala carparak kapanabilir (CItem.cpp:4655-4665).
+
+FIX - PICKUPSOUND hic yoktu. Bir esyayi kaldirmak artik onu caliyor, yoksa
+        SOUND_USE_CLOTH = 0x57'ye dusuyor (CClientEvent.cpp:239,
+        uofiles_enums.h:96). Ses yalnizca KALDIRANA gidiyor, cevreye degil: referans
+        onu esyayi alan istemcide addSound ile gonderiyor - herkesin duydugu
+        birakma sesinden farkli olarak.
+
+TEST - ItemSoundPropertyTests ailenin paylastigi cozumleme kuralini sabitliyor:
+        once ornek anahtari, sonra ITEMDEF; sifir "kurulmadi" demek, "sessiz"
+        degil. Bir altin yigini birakma sesini miktarindan seciyor ve script
+        anahtari yine de kazaniyor, cunku referans once tur kuralini uygulayip
+        anahtarin sonucu degistirmesine izin veriyor (CItem.cpp:1541) - varsayilanin
+        override'i yendigi bir sira, anahtari destekleniyor gosterip
+        desteklenmiyormus gibi davranmasini saglardi. Kapi aramasini etkisizlestirmek
+        sekizin ikisini kirmiziya donduruyor.
+
+DOC - Port raporunun "canini yakacak eksikler" listesinden bu uc ad dustu: saydigi
+        43 addan 22'si artik cevaplanmis, geriye 21 kaliyor.
+
 [2026-09-13] - MODMAXHITS / MODMAXMANA / MODMAXSTAM
 ----------------------------------------
 

@@ -468,8 +468,10 @@ public sealed partial class GameClient
         Targets.CursorActive = false;
         // Retire the cursor session too: a lingering non-zero CursorId from a
         // torn-down cursor must not influence the guards on the next 0x6C
-        // exchange.
+        // exchange. Its deadline goes with it — a cursor armed afterwards with no
+        // timeout of its own would otherwise inherit the old one and cancel itself.
         Targets.CursorId = 0;
+        Targets.TimeoutAtMs = 0;
     }
 
     /// <summary>Source-X Cmd_EditItem parity (CClientUse.cpp:577).

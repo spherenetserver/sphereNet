@@ -663,6 +663,12 @@ public static class VendorEngine
     /// <summary>Default VENDORMARKUP percent (Source-X g_Cfg.m_iVendorMarkup).</summary>
     public static int DefaultVendorMarkup { get; set; } = 15;
 
+    /// <summary>VENDORMAXSELL — most units of one line a vendor offers in a single
+    /// transaction (Source-X m_iVendorMaxSell, default 255). Applied when the shop list
+    /// is built, so the client never shows a number the shop would then refuse.
+    /// Zero or below means no cap.</summary>
+    public static int VendorMaxSell { get; set; } = 255;
+
     /// <summary>Source-X NPC_GetVendorMarkup: vendor tag → region tag → config
     /// default. The markup is the vendor's profit margin percent.</summary>
     public static int GetVendorMarkup(Character vendor)

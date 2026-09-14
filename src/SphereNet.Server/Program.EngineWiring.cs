@@ -1402,6 +1402,13 @@ public static partial class Program
                     skillOnly: skillOnly, checkWorkSite: false);
             };
 
+            // SKILLTEST <list>: the possession half of a resource match. It goes to the
+            // crafting engine's own stock search so the query and the craft it precedes
+            // cannot disagree about a locked chest or a nested bag.
+            SphereNet.Game.Objects.Characters.Character.OnResourcePossessionCheck =
+                (ch, rid, amount) =>
+                    SphereNet.Game.Crafting.CraftingEngine.CountStock(ch, rid) >= amount;
+
             SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = (ch, spellId) =>
             {
                 var canCastDef = _spellEngine?.GetSpellDef((SpellType)spellId);

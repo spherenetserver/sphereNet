@@ -7,7 +7,7 @@ public sealed partial class GameClient
     /// <summary>Targeting handler (decomposition phase 3) — the members below
     /// delegate so every call site stays unchanged. The logic lives in
     /// <see cref="ClientTargetingHandler"/>.</summary>
-    internal ClientTargetingHandler Targeting => _targeting ??= new ClientTargetingHandler(this);
+    public ClientTargetingHandler Targeting => _targeting ??= new ClientTargetingHandler(this);
     private ClientTargetingHandler? _targeting;
 
     public void HandleTargetResponse(byte type, uint targetId, uint serial, short x, short y, sbyte z, ushort graphic) =>

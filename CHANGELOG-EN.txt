@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - A spawn point hears about a death when it happens
+----------------------------------------
+
+FIX - A spawner at its amount cap parks its timer and waits. The only thing that
+        could restart it was its own tick noticing, during the cleanup pass, that
+        the member list had shrunk - polling. In a sector nobody is standing in the
+        next tick is the three-minute maintenance sweep, so killing the last creature
+        of a remote spawn point left the spot empty for minutes with nothing anywhere
+        saying why.
+
+        The loss is an event now: a deleted object tells its spawn point, which
+        removes the member and re-arms its own timeout. Upstream does exactly this
+        (CCSpawn::DelObj, CCSpawn.cpp:509), and the component's DelObj here already
+        had the right behaviour - the teardown guard, the re-arm before the @DelObj
+        trigger so the seconds the script is shown are real - it simply had no
+        caller for a death.
+
+        A spawner below its cap is left alone: it already holds a live countdown, and
+        restarting that clock on every death would make a spawn point produce more
+        slowly the more it was farmed.
+
+        This is also what the rest of the timer work was waiting for. A parked
+        spawner has no deadline, so it sits in no due queue; reaching timers by
+        deadline alone would have left it unreachable and the world would have
+        quietly stopped spawning.
+
+TEST - SpawnerDeathNotificationTests (5): killing the last creature re-arms the
+        spawner with no tick in between, the re-armed value is an ordinary deadline,
+        a spawner below its cap keeps its countdown, an unrelated death touches
+        nothing, and tearing a spawner down does not re-arm it once per child.
+        Probes: removing the notification turns 3 red, notifying the wrong component
+        kind turns 3 red.
+
 [2026-09-14] - Decay is found by a due queue, not by walking the whole world
 ----------------------------------------
 

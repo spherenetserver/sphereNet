@@ -615,6 +615,7 @@ public sealed class GameWorld
             return;
         }
 
+        NotifySpawnerOfLoss(obj);
         ObjectDeleting?.Invoke(obj);
         _dirtyObjects.TryRemove(obj.Uid.Value, out _);
         obj.ConsumeDirty();
@@ -736,6 +737,34 @@ public sealed class GameWorld
 
     public ObjBase? FindByUuid(Guid uuid) =>
         _uuidIndex.GetValueOrDefault(uuid);
+
+    /// <summary>Tell a spawn point that one of its creatures is gone, at the moment
+    /// it goes.
+    ///
+    /// A spawner at its amount cap parks its timer, and until this existed the only
+    /// thing that could restart it was the spawner's own tick noticing, during its
+    /// cleanup pass, that the list had shrunk. That is polling, and in a sector
+    /// nobody is standing in the next tick is the three-minute maintenance sweep: kill
+    /// the last creature of a remote spawn point and the spot stayed empty for
+    /// minutes, with nothing anywhere saying why.
+    ///
+    /// It also blocks reaching timers by deadline alone: a parked spawner has no
+    /// deadline, so it sits in no queue, so a due-ordered tick would never reach it
+    /// and the world would quietly stop spawning. Upstream makes the loss an event
+    /// for exactly this reason (CCSpawn::DelObj, CCSpawn.cpp:509) - the component's
+    /// own DelObj already does the right thing here, it simply had no caller.</summary>
+    private void NotifySpawnerOfLoss(ObjBase obj)
+    {
+        if (!obj.TryGetTag("SPAWN_POINT_UUID", out string? raw) ||
+            !Guid.TryParse(raw, out Guid spawnUuid) ||
+            FindByUuid(spawnUuid) is not Item spawnItem || spawnItem.IsDeleted)
+            return;
+
+        if (obj is Character)
+            spawnItem.SpawnChar?.DelObj(obj.Uid);
+        else
+            spawnItem.SpawnItem?.DelObj(obj.Uid);
+    }
 
     /// <summary>Update the UUID index when an object's UUID changes (e.g. on load).</summary>
     public bool TryReIndexUuid(ObjBase obj, Guid oldUuid, out ObjBase? existing)

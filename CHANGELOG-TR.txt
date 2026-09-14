@@ -3,6 +3,39 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Spawn noktasi bir olumu, oldugu anda duyuyor
+----------------------------------------
+
+FIX - Kapasitesine dayanan bir spawner timer'ini park edip bekler. Onu yeniden
+        baslatabilecek tek sey, kendi tick'inin temizlik gecisinde uye listesinin
+        kuculdugunu fark etmesiydi - yani yoklama. Kimsenin durmadigi bir sektorde
+        siradaki tick uc dakikalik bakim taramasidir; yani uzaktaki bir spawn
+        noktasinin son yaratigini oldurmek, orayi dakikalarca bos birakiyordu ve
+        bunun sebebini hicbir yer soylemiyordu.
+
+        Kayip artik bir olay: silinen nesne spawn noktasina haber veriyor, o da uyeyi
+        cikarip kendi zaman asimini yeniden kuruyor. Kaynak tam olarak bunu yapiyor
+        (CCSpawn::DelObj, CCSpawn.cpp:509) ve buradaki bilesenin DelObj'u zaten dogru
+        davraniyordu - yikim koruyucusu, @DelObj'dan ONCE yeniden kurma (boylece
+        script'e gosterilen saniye gercek olur) - yalnizca olum icin bir cagirani
+        yoktu.
+
+        Kapasitesinin altindaki spawner'a dokunulmuyor: onun zaten canli bir geri
+        sayimi var ve her olumde saati sifirlamak, bir spawn noktasini ne kadar cok
+        avlanirsa o kadar yavas uretir hale getirirdi.
+
+        Timer isinin geri kalani da bunu bekliyordu. Park edilmis bir spawner'in son
+        tarihi yoktur, yani hicbir vade kuyrugunda durmaz; timer'lara yalnizca son
+        tarihten ulasmak onu erisilemez birakir ve dunya sessizce spawn etmeyi
+        birakirdi.
+
+TEST - SpawnerDeathNotificationTests (5): son yaratigi oldurmek, araya hicbir tick
+        girmeden spawner'i yeniden kuruyor; kurulan deger siradan bir son tarih;
+        kapasitesinin altindaki spawner geri sayimini koruyor; ilgisiz bir olum
+        hicbir seye dokunmuyor; ve bir spawner'i yikmak onu cocuk basina yeniden
+        kurmuyor. Sondajlar: bildirimi kaldirmak 3, yanlis bilesen turune bildirmek
+        3 kirmizi.
+
 [2026-09-14] - Curume, dunyanin tamamini yurumeden, bir vade kuyrugundan bulunuyor
 ----------------------------------------
 

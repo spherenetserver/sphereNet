@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `46ac74e` + İŞ-85 (çürüme vade kuyruğuna taşındı) |
-| Tam test | 3.882 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Son commit | `d96ee36` + İŞ-86 (spawner ölümü olayla duyuyor) |
+| Tam test | 3.887 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
 | Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
 
 ## Çalışma sırası
@@ -469,6 +469,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-86 KAPANDI (B dalgası 3. aşama ön koşulu: spawner ölüm olayı)** —
+  2026-09-14. Kapasitesine dayanan spawner timer'ını park ediyor; onu yeniden
+  başlatabilecek tek şey, **kendi tick'inin** temizlik geçişinde listenin küçüldüğünü
+  fark etmesiydi — yoklama. Kimsenin durmadığı sektörde sıradaki tick 3 dakikalık
+  bakım taraması, yani uzaktaki spawn noktasının son yaratığını öldürmek orayı
+  **dakikalarca boş** bırakıyordu. Üretilen davranış: ölümden sonra üye=1, timer=-1.
+  Kayıp artık **olay**: silinen nesne `SPAWN_POINT_UUID` üzerinden spawn noktasına
+  bildiriliyor, o da üyeyi çıkarıp zaman aşımını yeniden kuruyor (kaynak
+  `CCSpawn::DelObj`). **Bileşenin `DelObj`'u zaten doğruydu — yalnızca ölüm için
+  çağıranı yoktu.** Kapasitenin altındaki spawner'a dokunulmuyor (her ölümde saati
+  sıfırlamak, çok avlanan noktayı yavaşlatırdı). Test:
+  `SpawnerDeathNotificationTests` (5); sondajlar 3/3 kırmızı. Tam suite 3.887, üç
+  koşu. *Bu, @Timer'ı sektör tick'inden çıkarmanın ön koşuluydu: park edilmiş
+  spawner'ın son tarihi yok, yani hiçbir vade kuyruğunda durmaz.*
 - **İŞ-85 KAPANDI (B dalgası 2. aşama: çürüme vade kuyruğunda)** — 2026-09-14.
   Çürüme kontrolü, süresi dolanları bulmak için **5 saniyede bir dünyadaki her yer
   eşyasını** yürüyordu: 300.000 eşyalık dünyada **11,4 ms p50 / 13,7 p95**, üstelik

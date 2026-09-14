@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 
@@ -53,10 +54,16 @@ public sealed class RecordingEngine
     private readonly Dictionary<uint, RecordingSession> _activeRecordings = [];
     private readonly Dictionary<uint, ReplayState> _activeReplays = [];
     private readonly string _recordingsDir;
+    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
 
-    public RecordingEngine(string recordingsDir)
+    /// <summary>The logger is optional so existing callers keep working, but a
+    /// recording that could not be written or did not read back has to be able to say
+    /// so somewhere: silence is how a GM finds out weeks later that the evidence they
+    /// captured was never on disk.</summary>
+    public RecordingEngine(string recordingsDir, Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         _recordingsDir = recordingsDir;
+        _logger = logger;
         Directory.CreateDirectory(_recordingsDir);
     }
 
@@ -73,7 +80,7 @@ public sealed class RecordingEngine
 
         var session = new RecordingSession
         {
-            Id = $"rec_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{uid:X8}",
+            Id = NewRecordingId(DateTime.UtcNow, uid),
             RecorderName = recorder.Name ?? "Unknown",
             RecorderUid = uid,
             Center = recorder.Position,
@@ -504,6 +511,18 @@ public sealed class RecordingEngine
         return copy;
     }
 
+    /// <summary>Opcodes whose packet declares its own length in bytes 1-2, checked
+    /// against the writers that build them (CreateVariable). Used to cross-check a
+    /// stored packet against itself; an opcode that is not here is simply not
+    /// cross-checked, so being incomplete costs a check rather than causing a
+    /// false refusal.</summary>
+    private static bool IsVariableLength(byte opcode) => opcode switch
+    {
+        0x1A or 0x1C or 0xAE or 0xCC or 0xC1 or 0x3C or 0x89 or 0x17 or 0x16
+            or 0x78 or 0x24 or 0x3A or 0x6F or 0x74 or 0x9E or 0xB0 or 0xDD => true,
+        _ => false,
+    };
+
     /// <summary>Opcodes checked against their writer and found to carry no serial at
     /// all. Anything not here and not in the offset table is refused rather than
     /// forwarded, so the list is a claim about a packet's layout, not a convenience.</summary>
@@ -698,9 +717,54 @@ public sealed class RecordingEngine
         return [.. files];
     }
 
+    /// <summary>A recording's file name, and why it carries milliseconds.
+    ///
+    /// The id used to be the clock at one-second resolution plus the recorder's uid,
+    /// which is also the file name: a GM who started, stopped and started again
+    /// inside the same second produced the same name twice, and the second save
+    /// replaced the first recording with no error anywhere. Two recordings by the
+    /// same person in one second is not a normal thing to do - which is exactly why
+    /// nobody would look for the missing file.</summary>
+    private static string NewRecordingId(DateTime utc, uint uid) =>
+        $"rec_{utc:yyyyMMdd_HHmmssfff}_{uid:X8}";
+
+    /// <summary>Write to a temporary name, read it back, and only then publish it.
+    ///
+    /// Writing straight to the final name means a crash - or a full disk - leaves a
+    /// .rec that the browser lists and playback opens. The loader's own checks are
+    /// what the file is verified against, so publishing and loading cannot disagree
+    /// about what a valid recording is (review finding B11).</summary>
     private void SaveRecording(RecordingSession session)
     {
         string path = Path.Combine(_recordingsDir, session.Id + ".rec");
+        string tmp = path + ".tmp";
+        try
+        {
+            WriteRecording(tmp, session);
+
+            if (LoadRecordingFromFile(tmp) == null)
+            {
+                _logger?.LogError("Recording '{Id}' did not read back as a valid file; not published", session.Id);
+                TryDelete(tmp);
+                return;
+            }
+
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogError(ex, "Recording '{Id}' could not be written", session.Id);
+            TryDelete(tmp);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    private static void WriteRecording(string path, RecordingSession session)
+    {
         using var fs = File.Create(path);
         using var bw = new BinaryWriter(fs);
 
@@ -724,10 +788,19 @@ public sealed class RecordingEngine
         }
     }
 
+    /// <summary>The largest file that will be read as a recording. A .rec is packets
+    /// captured around one player for minutes, not a data set; past this the counts
+    /// and lengths inside it are not worth trusting one at a time.</summary>
+    public const long MaxRecordingFileBytes = 64L * 1024 * 1024;
+
     private static RecordingSession? LoadRecordingFromFile(string path)
     {
         try
         {
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length > MaxRecordingFileBytes)
+                return null;
+
             using var fs = File.OpenRead(path);
             using var br = new BinaryReader(fs);
 
@@ -755,6 +828,7 @@ public sealed class RecordingEngine
             if (packetCount < 0)
                 return null;
 
+            int previousOffset = 0;
             for (int i = 0; i < packetCount; i++)
             {
                 int tickOffset = br.ReadInt32();
@@ -762,6 +836,32 @@ public sealed class RecordingEngine
                 byte[] data = br.ReadBytes(len);
                 if (data.Length != len)
                     return null;
+
+                // A packet with no opcode is not a packet, and playback would read
+                // past its end looking for one.
+                if (len == 0)
+                    return null;
+
+                // Time only moves forwards in a recording: the recorder appends as it
+                // captures. Playback SCHEDULES by these offsets, so an offset that
+                // goes backwards is a packet waiting for a moment that has passed.
+                if (tickOffset < 0 || tickOffset < previousOffset)
+                    return null;
+                previousOffset = tickOffset;
+
+                // A variable-length packet carries its own length in bytes 1-2. If it
+                // disagrees with the length the recorder wrote around it, one of the
+                // two is corrupt and playback would hand the client whichever it
+                // believes.
+                if (IsVariableLength(data[0]))
+                {
+                    if (len < 3)
+                        return null;
+                    int declared = data[1] << 8 | data[2];
+                    if (declared != len)
+                        return null;
+                }
+
                 session.Packets.Add(new RecordedPacket { TickOffset = tickOffset, Data = data });
             }
 

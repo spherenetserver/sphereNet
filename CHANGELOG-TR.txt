@@ -3,6 +3,42 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Kayit, yayinlanmadan ve oynatilmadan once kendini kanitliyor
+----------------------------------------
+
+FIX - Bir kaydin id'si, saniye cozunurluklu saat arti kaydedenin uid'iydi; id ayni
+        zamanda dosya adi. Ayni saniye icinde durdurup yeniden baslatan bir GM ayni
+        adi iki kez uretiyor ve ikinci kayit birincisinin uzerine hicbir hata
+        vermeden yaziliyordu - kimsenin aramaya gitmeyecegi turden bir kayip, cunku
+        bir saniyede iki kez kayit almak normal bir sey degil. Id artik milisaniye
+        tasiyor.
+
+FIX - Dosya dogrudan nihai adina yaziliyordu; yani cokme ya da dolu disk, tarayicinin
+        listeledigi ve oynatmanin actigi bir .rec birakiyordu. Yazim artik gecici bir
+        addan geciyor ve dosya, yayinlanmadan once YUKLEYICININ kendi kontrolleriyle
+        geri okunuyor: yazan ile okuyan, gecerli kaydin ne oldugu konusunda
+        anlasmazliga dusemiyor ve basarisizlik, hicbir seyin listelemeyecegi bir sey
+        birakiyor.
+
+FIX - Yukleme artik kefil olamadigi seyi reddediyor. 64 MB'tan buyuk dosya, icindeki
+        sayilara guvenmek yerine yalnizca boyutuyla reddediliyor. Sifir uzunluklu
+        paketin opcode'u yok. Zaman ileri akmak zorunda, cunku oynatma bu ofsetlere
+        gore SIRALIYOR ve geriye giden bir ofset, coktan gecmis bir ani bekleyen
+        pakettir. Degisken uzunluklu paket ise kendi uzunlugunu 1-2. baytlarda
+        tasiyor: bu, kaydedicinin etrafina yazdigi uzunlukla celisiyorsa ikisinden
+        biri bozuktur ve oynatma, istemciye hangisine inaniyorsa onu verir.
+
+TEST - RecordingFileIntegrityTests (9); iyi bir kaydin ofsetleriyle birlikte hala
+        yuklendigi kontrol dahil - yukaridaki her reddetme, yukleme tamamen bozulmus
+        olsaydi da gecerdi. Sondajlar: saniye cozunurluklu id, uzunluk capraz
+        kontrolunun yoklugu, sira kontrolunun yoklugu, boyut tavaninin yoklugu ve
+        geri okumadan yayinlamak - her biri bir ya da iki kirmizi.
+
+        Yayinlama kontrolu ikinci denemeyi gerektirdi: ilk test yalnizca iyi bir
+        kaydin geride gecici dosya birakmadigini olcuyordu, ki bu dogrulama olsa da
+        olmasa da dogru. Artik yukleyicinin reddedecegi bir oturum kaydediliyor ve
+        hicbir seyin yayinlanmadigi dogrulaniyor.
+
 [2026-09-15] - Replay, anladigini yeniden yaziyor; anlamadigini reddediyor
 ----------------------------------------
 

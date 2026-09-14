@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `b389bc2` + İŞ-89 (replay opcode envanteri + reddetme) |
-| Tam test | 3.905 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
-| Sıradaki iş | **B1-B10, B12 kapandı; B11 yarım.** Sıradaki: B11 kalanları |
+| Son commit | `60980ba` + İŞ-90 (.rec bütünlüğü: id, temp-yayınla, doğrulama) |
+| Tam test | 3.914 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Sıradaki iş | **B1-B12 kapandı.** Sıradaki: D01/D02/D03 matrisleri, PLAN-702 soak |
 
 ## Çalışma sırası
 
@@ -487,6 +487,22 @@ planındadır.
   **Sıradaki adım (kullanıcı kararı):** depo + `bin`/`obj` için Defender istisnası ve
   daha büyük page file ile 10 koşuluk yeniden-derleme matrisini tekrar ölçmek.
   *Kayda geçiriliyor ki sonraki oturum bunu motor hatası sanıp kovalamasın.*
+- **İŞ-90 KAPANDI (B11'in kalanı: .rec bütünlüğü)** — 2026-09-15. (1) **ID
+  çakışması gerçekti:** `rec_yyyyMMdd_HHmmss_UID` aynı zamanda dosya adı; aynı
+  saniyede durdurup yeniden başlatan GM'in ikinci kaydı birincinin **üzerine
+  yazıyordu**, hiçbir hata vermeden — kimsenin aramaya gitmeyeceği türden bir kayıp.
+  Id artık milisaniye taşıyor. (2) **Yazım** doğrudan nihai ada gidiyordu → artık
+  geçici ad + **yükleyicinin kendi kontrolleriyle** geri okuma + yayınlama; yazan ile
+  okuyan "geçerli kayıt" tanımında ayrışamıyor. (3) **Yükleme** artık kefil olamadığı
+  şeyi reddediyor: 64 MB üstü boyutla, sıfır uzunluklu paket, negatif/geriye giden
+  `TickOffset` (oynatma bu ofsetlere göre sıralıyor) ve değişken uzunluklu pakette
+  kendi başlığıyla çelişen uzunluk. Test: `RecordingFileIntegrityTests` (9); beş
+  sondaj 1-2 kırmızı.
+  **Not:** yayınlama kontrolünün ilk testi hiçbir şey ölçmüyordu — doğrulama olsa da
+  olmasa da geçiyordu; sondaj yakaladı ve test yeniden yazıldı.
+  Tam suite 3.914 (11 denemenin 2'si temiz; gerisi belgelenmiş ortam arızası —
+  bu turda oran belirgin biçimde arttı, biri derlemenin ortasında öldü).
+  *Açık: sabit boyutlu paketler için opcode uzunluk tablosu kurulmadı.*
 - **İŞ-89 KAPANDI (B10'un envanter yarısı)** — 2026-09-15. Envanteri writer'lardan
   **ölçtüm** (110 giden paket sınıfı; opcode `: base(0xNN)`). Üç sonuç: (1) **tabloda
   olan ve yanlış olan** — `0x1A` serial'ının üst bitinde bayrak var (`amount > 1`),

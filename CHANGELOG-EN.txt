@@ -4,6 +4,42 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A recording proves itself before it is published, and before it is played
+----------------------------------------
+
+FIX - A recording's id was the clock at one-second resolution plus the recorder's
+        uid, and the id is also the file name. A GM who stopped and started again
+        inside the same second produced the same name twice, and the second save
+        replaced the first recording with no error anywhere - the kind of loss nobody
+        goes looking for, because recording twice in one second is not a normal thing
+        to do. The id carries milliseconds now.
+
+FIX - The file was written straight to its final name, so a crash or a full disk
+        left a .rec that the browser lists and playback opens. Writing goes through a
+        temporary name and the file is read back with the LOADER's own checks before
+        it is published: the writer and the reader cannot disagree about what a valid
+        recording is, and a failure leaves something nothing will list.
+
+FIX - Loading now refuses what it cannot vouch for. A file larger than 64 MB is
+        refused on its size alone rather than trusting the counts inside it. A packet
+        of zero length has no opcode. Time has to move forwards, because playback
+        SCHEDULES by these offsets and an offset that goes backwards is a packet
+        waiting for a moment that has already passed. And a variable-length packet
+        carries its own length in bytes 1-2: if that disagrees with the length the
+        recorder wrote around it, one of the two is corrupt and playback would hand
+        the client whichever it believes.
+
+TEST - RecordingFileIntegrityTests (9), including the control that a good recording
+        still loads with its offsets intact - every refusal above would pass just as
+        well if loading had stopped working altogether. Probes: second-resolution
+        ids, no length cross-check, no ordering check, no size cap, and publishing
+        without reading back each turn one or two red.
+
+        The publish check needed a second attempt: the first test asserted only that
+        a good recording left no temporary behind, which is true whether or not the
+        verification exists. It now saves a session the loader rejects and asserts
+        that nothing is published.
+
 [2026-09-15] - A replay rewrites what it understands and refuses what it does not
 ----------------------------------------
 

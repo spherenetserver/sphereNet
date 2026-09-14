@@ -388,7 +388,7 @@ public sealed partial class GameClient
             blood.BaseId = s_bloodGraphics[Random.Shared.Next(s_bloodGraphics.Length)];
             blood.Hue = new Core.Types.Color(hue);
             blood.SetAttr(Core.Enums.ObjAttributes.Move_Never);
-            blood.DecayTime = Environment.TickCount64 + 5000;
+            blood.SetDecayAt(Environment.TickCount64 + 5000);
             var pos = new Point3D(
                 (short)(target.X + Random.Shared.Next(-1, 2)),
                 (short)(target.Y + Random.Shared.Next(-1, 2)),

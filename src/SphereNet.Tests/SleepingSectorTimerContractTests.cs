@@ -430,7 +430,7 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
             var item = _world.CreateItem();
             item.BaseId = 0x0EED;
             _world.PlaceItem(item, new Point3D((short)(1200 + i % 40), (short)(1200 + i / 40), 0, 0));
-            item.DecayTime = Environment.TickCount64 - 1000;
+            item.SetDecayAt(Environment.TickCount64 - 1000);
             due.Add(item);
         }
 

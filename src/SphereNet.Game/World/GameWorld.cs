@@ -2058,7 +2058,7 @@ public sealed class GameWorld
             else if (item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Decay) && item.DecayTime == 0)
             {
                 // 0x2236: decay-flagged ground item with no timer never rots.
-                item.DecayTime = Environment.TickCount64 + DefaultDecayTimeMs;
+                item.SetDecayAt(Environment.TickCount64 + DefaultDecayTimeMs);
                 log?.Invoke($"GC: armed missing decay timer on 0x{item.Uid.Value:X} (0x2236)");
                 fixedCount++;
             }

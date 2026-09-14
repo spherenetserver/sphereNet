@@ -411,7 +411,7 @@ public sealed class ShipEngine
                 var it = cargo[^1];
                 cargo.RemoveAt(cargo.Count - 1);
                 crate.TryAddItem(it);
-                it.DecayTime = 0; // protected inside the crate
+                it.ClearDecay(); // protected inside the crate
             }
             var ownerCh = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
             var bank = ownerCh?.GetEquippedItem(Layer.BankBox);

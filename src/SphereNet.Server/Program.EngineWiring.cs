@@ -3012,7 +3012,7 @@ public static partial class Program
                     corpse.SetTag("NOREJOIN", "1");
                     corpse.RemoveTag("OWNER_UID"); // cut the owner link (no rejoin)
                     corpse.RemoveTag("OWNER_UUID");
-                    corpse.DecayTime = Environment.TickCount64 + GameWorld.DefaultDecayTimeMs;
+                    corpse.SetDecayAt(Environment.TickCount64 + GameWorld.DefaultDecayTimeMs);
                     return false; // keep — staged to bones
                 }
 
@@ -3025,7 +3025,7 @@ public static partial class Program
                     {
                         _world.PlaceItem(child, corpse.Position);
                         if (child.DecayTime <= 0)
-                            child.DecayTime = Environment.TickCount64 + GameWorld.DefaultDecayTimeMs;
+                            child.SetDecayAt(Environment.TickCount64 + GameWorld.DefaultDecayTimeMs);
                     }
                     else
                     {

@@ -526,7 +526,7 @@ public sealed class SkillHandlers
             marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
             marker.SetTag("RESOURCE_MARKER", "1");
             marker.SetTag("RES_SKILL", skillTag);
-            marker.DecayTime = Environment.TickCount64 + FallbackRegenMs;
+            marker.SetDecayAt(Environment.TickCount64 + FallbackRegenMs);
             _world.PlaceItem(marker, tile);
         }
 
@@ -534,7 +534,7 @@ public sealed class SkillHandlers
         if (remaining <= 0)
         {
             marker.Amount = 0;
-            marker.DecayTime = Environment.TickCount64 + FallbackRegenMs;
+            marker.SetDecayAt(Environment.TickCount64 + FallbackRegenMs);
         }
         else
         {
@@ -858,7 +858,7 @@ public sealed class SkillHandlers
             _world.DeleteObject(campfire);
             return false;
         }
-        campfire.DecayTime = Environment.TickCount64 + 30_000;
+        campfire.SetDecayAt(Environment.TickCount64 + 30_000);
         return success;
     }
 

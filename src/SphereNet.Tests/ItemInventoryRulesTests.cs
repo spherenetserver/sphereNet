@@ -155,7 +155,7 @@ public class ItemInventoryRulesTests
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
         world.PlaceItem(item, new Point3D(100, 100, 0, 0));
-        item.DecayTime = Environment.TickCount64 - 1000; // already elapsed
+        item.SetDecayAt(Environment.TickCount64 - 1000); // already elapsed
 
         Item.OnTimerExpired = _ => TriggerResult.True; // @Timer keeps it (reset by ResetEngineStatics)
         bool keepTicking = item.OnTick();
@@ -172,7 +172,7 @@ public class ItemInventoryRulesTests
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
         world.PlaceItem(item, new Point3D(100, 100, 0, 0));
-        item.DecayTime = Environment.TickCount64 - 1000;
+        item.SetDecayAt(Environment.TickCount64 - 1000);
 
         Item.OnTimerExpired = null;
         bool keepTicking = item.OnTick();
@@ -188,7 +188,7 @@ public class ItemInventoryRulesTests
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
         world.PlaceItem(item, new Point3D(100, 100, 0, 0));
-        item.DecayTime = Environment.TickCount64 - 1000;
+        item.SetDecayAt(Environment.TickCount64 - 1000);
 
         Item.OnTimerExpired = _ => TriggerResult.Default; // no script handler
         bool keepTicking = item.OnTick();

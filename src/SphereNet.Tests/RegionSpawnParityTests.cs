@@ -72,7 +72,7 @@ public class RegionSpawnParityTests
         var inside = world.CreateItem();
         inside.BaseId = 0x1F03;
         world.PlaceItem(inside, new Point3D(100, 100, 0, 0));
-        inside.DecayTime = Environment.TickCount64 - 1; // already due
+        inside.SetDecayAt(Environment.TickCount64 - 1); // already due
 
         inside.OnTick();
         Assert.False(inside.IsDeleted); // re-armed, not decayed
@@ -80,7 +80,7 @@ public class RegionSpawnParityTests
         var outside = world.CreateItem();
         outside.BaseId = 0x1F03;
         world.PlaceItem(outside, new Point3D(500, 500, 0, 0)); // no region here
-        outside.DecayTime = Environment.TickCount64 - 1;
+        outside.SetDecayAt(Environment.TickCount64 - 1);
 
         outside.OnTick();
         Assert.True(outside.IsDeleted); // decays normally

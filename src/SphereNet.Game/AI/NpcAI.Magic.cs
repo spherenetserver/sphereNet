@@ -620,12 +620,12 @@ public sealed partial class NpcAI
             item.Name = "fire";
             int dmg = Math.Clamp(npc.Str / 25, 2, 15);
             item.SetTag("FIELD_DAMAGE", dmg.ToString());
-            item.DecayTime = now + 10_000;
+            item.SetDecayAt(now + 10_000);
         }
         else
         {
             item.Name = "web";
-            item.DecayTime = now + 20_000;
+            item.SetDecayAt(now + 20_000);
         }
         if (!_world.PlaceItem(item, npc.Position))
             _world.RemoveItem(item);

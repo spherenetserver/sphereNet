@@ -280,7 +280,7 @@ public static partial class Program
             if (obj is not SphereNet.Game.Objects.Items.Item it || it.IsDeleted) continue;
             if (it.DecayTime > 0) continue;
             if (!it.TryGetTag("RESOURCE_MARKER", out string? mk) || mk != "1") continue;
-            it.DecayTime = decayAt;
+            it.SetDecayAt(decayAt);
             armed++;
         }
         if (armed > 0)

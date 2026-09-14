@@ -169,7 +169,7 @@ public sealed class GatherParity05CTests
         // millisecond, so re-arming to "now + lifetime" twice would read as
         // unchanged and hide the defect.
         const long Sentinel = 12_345;
-        Marker(rig).DecayTime = Sentinel;
+        Marker(rig).SetDecayAt(Sentinel);
 
         Assert.True(Gather(rig).Success);
 
@@ -197,7 +197,7 @@ public sealed class GatherParity05CTests
             Assert.True(Gather(rig).Success);
 
         const long Sentinel = 23_456;
-        Marker(rig).DecayTime = Sentinel;
+        Marker(rig).SetDecayAt(Sentinel);
 
         var spent = Gather(rig);
         Assert.False(spent.Success);

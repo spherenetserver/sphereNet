@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - One door for every deadline, and the multi reader stops touching its stream
+----------------------------------------
+
+FIX - DecayTime was a public settable field that thirty-odd call sites across the
+        engine, the server and the tests assigned directly. It is now read-only from
+        outside: SetDecayTime takes a duration (upstream's CItem::SetDecayTime rules,
+        -1 clears), SetDecayAt takes an absolute deadline, ClearDecay disarms, and
+        every write inside Item goes through one private AssignDecay. Timeout was
+        already funnelled through ObjBase.SetTimeout - which is what registers an
+        armed timer with the world-level pump for items no sector list covers - and
+        that is now pinned rather than merely true.
+
+        This is the cheap half of moving timers onto a single time-sorted due list,
+        the way upstream runs them (CWorldTicker): there a deadline has to be
+        REGISTERED when it changes. A field a dozen sites assign directly cannot make
+        that move safely - the one assignment that forgets to register produces a
+        timer that never fires and nothing reports it. Funnelling first means the
+        move can be made in one place later, and it stands on its own now.
+
+FIX - MultiReader read SafeFileHandle off a shared FileStream on EVERY read from the
+        parallel prestage path. That property is not a plain accessor: it flushes the
+        stream and re-seeks the handle to the stream's position, so a per-read call
+        mutated shared state from several threads at once. It surfaced as an
+        intermittent IOException ("invalid parameter") on the handle rather than as
+        wrong data, which is why the earlier fix to the positional reads (review
+        finding B4) did not settle it, and neither did caching the two Length reads.
+        The reader now opens and keeps the file handles, and touches no stream at
+        all - which is how MapReader has always worked. The component-size detection
+        in the constructor reads positionally too.
+
+TEST - DeadlineWriteGateGuardrailTests (3): no write to DecayTime outside Item.cs,
+        no write to the timer field outside ObjBase.cs, and the doors themselves are
+        still there - a guardrail that only forbade writes would pass just as happily
+        if someone deleted the property. Tests are scanned too: one that pokes the
+        field directly would keep passing while the engine path it stands for had
+        stopped registering anything.
+
+        Probes: smuggling a direct write in no longer even compiles (the private
+        setter), re-opening the setter turns 1 red, and doing both turns 2 red.
+
 [2026-09-14] - A sector stops ticking a minute after you leave it, not the instant you do
 ----------------------------------------
 

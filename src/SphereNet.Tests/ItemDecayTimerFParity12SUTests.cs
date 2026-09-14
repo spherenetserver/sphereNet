@@ -456,7 +456,7 @@ public sealed class ItemDecayTimerFParity12SUTests
         var sector = world.GetSector(crystal.Position)!;
         Assert.True(sector.HasListenItems);
 
-        crystal.DecayTime = Environment.TickCount64 - 1;
+        crystal.SetDecayAt(Environment.TickCount64 - 1);
         crystal.SetAttr(ObjAttributes.Decay);
         sector.OnMaintenanceTick();
 

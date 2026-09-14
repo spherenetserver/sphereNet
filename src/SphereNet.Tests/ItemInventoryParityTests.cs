@@ -52,7 +52,7 @@ public class ItemInventoryParityTests
         src.More1 = 0x11223344;
         src.More2 = 0x55667788;
         src.Direction = 3;
-        src.DecayTime = 123456;
+        src.SetDecayAt(123456);
         src.TData3 = 99;
         src.SetTag("QUEST_ID", "42");
         src.SetTag("CUSTOM", "hello");

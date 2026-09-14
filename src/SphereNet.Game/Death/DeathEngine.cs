@@ -316,7 +316,7 @@ public sealed class DeathEngine
         // Source-X does the same via CItem::_SetTimeout on the corpse,
         // driven from its sector, with no central scanner.
         int decaySeconds = victim.IsPlayer ? CorpseDecayPlayer : CorpseDecayNPC;
-        corpse.DecayTime = Environment.TickCount64 + decaySeconds * 1000;
+        corpse.SetDecayAt(Environment.TickCount64 + decaySeconds * 1000);
 
         // For NPCs, remove the mobile from world state immediately so it no
         // longer blocks movement or lingers in sector/object queries after the

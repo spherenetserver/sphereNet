@@ -385,7 +385,7 @@ public sealed class GatheringEngine
         // that one window and is then deleted, and the next search rolls a fresh
         // node with a fresh pool. No marker is ever immortal (TIMER=-1), which used
         // to leave one invisible worldgem per fished tile in the world forever.
-        marker.DecayTime = Environment.TickCount64 + RollNodeLifetimeMs(resDef);
+        marker.SetDecayAt(Environment.TickCount64 + RollNodeLifetimeMs(resDef));
 
         _world.PlaceItem(marker, tile);
         return marker;

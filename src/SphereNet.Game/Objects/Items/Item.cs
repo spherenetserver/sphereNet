@@ -65,11 +65,11 @@ public class Item : ObjBase
 
         if (msecs < 0)
         {
-            DecayTime = 0;
+            AssignDecay(0);
             ClearAttr(ObjAttributes.Decay);
             return;
         }
-        DecayTime = Environment.TickCount64 + msecs;
+        AssignDecay(Environment.TickCount64 + msecs);
         SetAttr(ObjAttributes.Decay);
     }
 
@@ -653,8 +653,29 @@ public class Item : ObjBase
         return SphereNet.Scripting.Definitions.ItemDef.Pluralize(raw, plural);
     }
 
-    /// <summary>Decay time in milliseconds. 0 = no decay.</summary>
-    public long DecayTime { get; set; }
+    /// <summary>When this item decays, as an absolute <c>Environment.TickCount64</c>.
+    /// 0 = no decay.
+    ///
+    /// Read-only from outside, and every change inside goes through
+    /// <see cref="AssignDecay"/>. The engine reaches this deadline from a periodic
+    /// sweep today (an awake sector ticks all of its items; a far one is caught by
+    /// the 5-second decay pass), but the direction of travel is upstream's single
+    /// time-sorted ticking list, where a deadline has to be REGISTERED when it
+    /// changes. A field a dozen call sites assign directly cannot be moved onto such
+    /// a list safely: the one assignment that forgets to register produces a timer
+    /// that simply never fires, and nothing says so. Funnelling the writes first is
+    /// the cheap half of that change and stands on its own.</summary>
+    public long DecayTime { get; private set; }
+
+    /// <summary>Arm decay at an ABSOLUTE deadline (an
+    /// <c>Environment.TickCount64</c> value). Negative or zero disarms it.</summary>
+    public void SetDecayAt(long deadlineMs) => AssignDecay(deadlineMs > 0 ? deadlineMs : 0);
+
+    /// <summary>Disarm decay. The item stays until something else removes it.</summary>
+    public void ClearDecay() => AssignDecay(0);
+
+    /// <summary>The single place the decay deadline changes.</summary>
+    private void AssignDecay(long deadlineMs) => DecayTime = deadlineMs;
 
     public override bool IsDeleted => _isDeleted;
 
@@ -1269,7 +1290,7 @@ public class Item : ObjBase
         Name = src.Name;
         _type = src._type; // direct field — avoid the ItemType setter's spawn/def side effects
         Direction = src.Direction;
-        DecayTime = src.DecayTime;
+        AssignDecay(src.DecayTime);
         // The script timer goes with the split too, not just the decay clock:
         // upstream's DupeCopy carries the remaining timeout onto the new object
         // (CItem.cpp:4099). The piece left in the bag used to lose whatever the script
@@ -2310,11 +2331,11 @@ public class Item : ObjBase
                 // carries both, and the millisecond field is the accurate one.
                 if (long.TryParse(value, out long decaySec) && decaySec > 0 &&
                     DecayTime <= Environment.TickCount64)
-                    DecayTime = Environment.TickCount64 + decaySec * 1000;
+                    AssignDecay(Environment.TickCount64 + decaySec * 1000);
                 return true;
             case "DECAYMS":
                 if (long.TryParse(value, out long decayMs) && decayMs >= 0)
-                    DecayTime = Environment.TickCount64 + decayMs;
+                    AssignDecay(Environment.TickCount64 + decayMs);
                 return true;
             case "TIMER":
                 // Sphere has ONE item timer: TIMER drives the @Timer script
@@ -2334,7 +2355,7 @@ public class Item : ObjBase
                         // (CObjBase.cpp:1978), so clearing only the script side left
                         // the item rotting on schedule anyway.
                         SetTimeout(0);
-                        DecayTime = 0;
+                        AssignDecay(0);
                     }
                     else
                     {
@@ -2345,7 +2366,7 @@ public class Item : ObjBase
                         // it vanished when the timer ran out; upstream's TIMER sets a
                         // timeout and grants no decay right (:1978, CItem.cpp:6412).
                         if (timerSec > 0 && IsAttr(ObjAttributes.Decay))
-                            DecayTime = Environment.TickCount64 + timerSec * 1000;
+                            AssignDecay(Environment.TickCount64 + timerSec * 1000);
                     }
                 }
                 return true;
@@ -3012,7 +3033,7 @@ public class Item : ObjBase
                 long decayMs = World.GameWorld.DefaultDecayTimeMs;
                 if (!string.IsNullOrWhiteSpace(args) && long.TryParse(args.Trim(), out long decSec) && decSec > 0)
                     decayMs = decSec * 1000L;
-                DecayTime = Environment.TickCount64 + decayMs;
+                AssignDecay(Environment.TickCount64 + decayMs);
                 return true;
             }
             case "FIXWEIGHT":
@@ -3767,7 +3788,7 @@ public class Item : ObjBase
         bool decayDue = DecayTime > 0 && Environment.TickCount64 >= DecayTime;
         if (decayDue && IsInNoDecayRegion())
         {
-            DecayTime = Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs;
+            AssignDecay(Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs);
             decayDue = false;
         }
 
@@ -3798,9 +3819,9 @@ public class Item : ObjBase
                 // decay that would otherwise have deleted it right now is pushed out,
                 // and only when the script did not set one itself.
                 if (decayDue && DecayTime > 0 && Environment.TickCount64 >= DecayTime)
-                    DecayTime = Timeout > 0
+                    AssignDecay(Timeout > 0
                         ? Timeout
-                        : Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs;
+                        : Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs);
                 return true;
             }
 

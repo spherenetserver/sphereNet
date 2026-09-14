@@ -1,3 +1,6 @@
+using System.Buffers.Binary;
+using Microsoft.Win32.SafeHandles;
+
 namespace SphereNet.MapData.Multi;
 
 /// <summary>
@@ -12,8 +15,16 @@ namespace SphereNet.MapData.Multi;
 /// </summary>
 public sealed class MultiReader : IDisposable
 {
-    private readonly BinaryReader _idxReader;
-    private readonly BinaryReader _dataReader;
+    // The file HANDLES, not the streams. FileStream is not thread-safe, and
+    // .SafeFileHandle is not a plain accessor: reading it flushes the stream and
+    // re-seeks the handle to the stream's position, so calling it per read from the
+    // parallel prestage path mutated shared state on every read. That is what the
+    // intermittent IOException ("invalid parameter") on the handle was - the
+    // positional reads themselves were already correct (review finding B4).
+    // RandomAccess on a handle carries no cursor and is safe from many threads,
+    // which is how MapReader has always done it.
+    private readonly SafeFileHandle _idxHandle;
+    private readonly SafeFileHandle _dataHandle;
     /// <summary>Concurrent because GetMulti is reached from the parallel NPC prestage
     /// through WalkCheck: a plain dictionary written from two threads at once can
     /// corrupt its own buckets, which is a worse failure than the stale read it looks
@@ -33,34 +44,25 @@ public sealed class MultiReader : IDisposable
     /// <summary>The detected on-disk component-record size (12 = original, 16 = High Seas).</summary>
     public int ComponentSize => _componentSize;
 
-    // File lengths, read ONCE. FileStream instance members are not thread-safe, and
-    // the bounds checks in ReadMulti run on the parallel prestage path: asking a
-    // shared FileStream for its Length from several threads is a contract violation
-    // that shows up as an intermittent IOException ("invalid parameter") on the
-    // handle, not as wrong data. The positional reads were already fixed for the
-    // same path (review finding B4); these two length reads were the half left
-    // behind. MapReader caches its length the same way.
+    // Read once, for the same reason.
     private readonly long _idxLength;
     private readonly long _dataLength;
 
     public MultiReader(string idxPath, string dataPath)
     {
-        var idxStream = new FileStream(idxPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        _idxReader = new BinaryReader(idxStream);
-
+        _idxHandle = File.OpenHandle(idxPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         try
         {
-            var dataStream = new FileStream(dataPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            _dataReader = new BinaryReader(dataStream);
+            _dataHandle = File.OpenHandle(dataPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         }
         catch
         {
-            _idxReader.Dispose();
+            _idxHandle.Dispose();
             throw;
         }
 
-        _idxLength = idxStream.Length;
-        _dataLength = _dataReader.BaseStream.Length;
+        _idxLength = RandomAccess.GetLength(_idxHandle);
+        _dataLength = RandomAccess.GetLength(_dataHandle);
         _componentSize = DetectComponentSize();
     }
 
@@ -73,12 +75,13 @@ public sealed class MultiReader : IDisposable
         int entryCount = (int)(_idxLength / IdxEntrySize);
         int votes16 = 0, votes12 = 0, firstNonEmpty = -1;
 
+        Span<byte> entry = stackalloc byte[IdxEntrySize];
         for (int id = 0; id < entryCount; id++)
         {
-            _idxReader.BaseStream.Seek((long)id * IdxEntrySize, SeekOrigin.Begin);
-            int off = _idxReader.ReadInt32();
-            int len = _idxReader.ReadInt32();
-            _idxReader.ReadInt32(); // extra
+            if (!ReadAt(_idxHandle, (long)id * IdxEntrySize, entry))
+                continue;
+            int off = BinaryPrimitives.ReadInt32LittleEndian(entry);
+            int len = BinaryPrimitives.ReadInt32LittleEndian(entry[4..]);
             if (off < 0 || len <= 0)
                 continue;
             if (firstNonEmpty < 0)
@@ -107,24 +110,25 @@ public sealed class MultiReader : IDisposable
     // land inside a sane multi footprint. The correct size scores higher.
     private int CountPlausibleOffsets(int multiId, int componentSize)
     {
-        _idxReader.BaseStream.Seek((long)multiId * IdxEntrySize, SeekOrigin.Begin);
-        int off = _idxReader.ReadInt32();
-        int len = _idxReader.ReadInt32();
+        Span<byte> entry = stackalloc byte[IdxEntrySize];
+        if (!ReadAt(_idxHandle, (long)multiId * IdxEntrySize, entry))
+            return 0;
+        int off = BinaryPrimitives.ReadInt32LittleEndian(entry);
+        int len = BinaryPrimitives.ReadInt32LittleEndian(entry[4..]);
         if (off < 0 || len <= 0)
             return 0;
 
         int count = len / componentSize;
         int plausible = 0;
-        _dataReader.BaseStream.Seek(off, SeekOrigin.Begin);
+        Span<byte> rec = stackalloc byte[HighSeasComponentSize];
         for (int i = 0; i < count; i++)
         {
-            _dataReader.ReadUInt16();          // tileId
-            short dx = _dataReader.ReadInt16();
-            short dy = _dataReader.ReadInt16();
-            short dz = _dataReader.ReadInt16();
-            _dataReader.ReadUInt32();          // visible
-            if (componentSize == HighSeasComponentSize)
-                _dataReader.ReadUInt32();      // shipAccess
+            var record = rec[..componentSize];
+            if (!ReadAt(_dataHandle, (long)off + (long)i * componentSize, record))
+                break;
+            short dx = BinaryPrimitives.ReadInt16LittleEndian(record[2..]);
+            short dy = BinaryPrimitives.ReadInt16LittleEndian(record[4..]);
+            short dz = BinaryPrimitives.ReadInt16LittleEndian(record[6..]);
             if (Math.Abs((int)dx) <= PlausibleOffsetLimit &&
                 Math.Abs((int)dy) <= PlausibleOffsetLimit &&
                 Math.Abs((int)dz) <= PlausibleOffsetLimit)
@@ -152,11 +156,16 @@ public sealed class MultiReader : IDisposable
     /// the same failure: two threads interleave and each parses the other's bytes.
     /// GetMulti caches, so it mostly happens on a multi's FIRST sighting, which is
     /// exactly when a creature walks onto a ship or into a house nobody has touched
-    /// yet (review finding B4, same class).</summary>
-    private static bool ReadAt(BinaryReader reader, long offset, Span<byte> into)
+    /// yet (review finding B4, same class).
+    ///
+    /// The handle is passed in rather than fetched from the stream. Reading
+    /// FileStream.SafeFileHandle flushes the stream and re-seeks the handle to the
+    /// stream's position, so fetching it per read - which this method used to do -
+    /// put the shared mutation straight back on the concurrent path. It surfaced as
+    /// an intermittent IOException on the handle instead of as wrong data, which is
+    /// the harder thing to spot.</summary>
+    private static bool ReadAt(SafeFileHandle handle, long offset, Span<byte> into)
     {
-        var handle = (reader.BaseStream as FileStream)?.SafeFileHandle;
-        if (handle == null) return false;
         int read = 0;
         while (read < into.Length)
         {
@@ -174,7 +183,7 @@ public sealed class MultiReader : IDisposable
             return null;
 
         Span<byte> idx = stackalloc byte[IdxEntrySize];
-        if (!ReadAt(_idxReader, idxOffset, idx))
+        if (!ReadAt(_idxHandle, idxOffset, idx))
             return null;
         int dataOffset = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(idx);
         int dataLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(idx[4..]);
@@ -189,7 +198,7 @@ public sealed class MultiReader : IDisposable
         var components = new MultiComponent[count];
 
         byte[] raw = new byte[dataLength];
-        if (!ReadAt(_dataReader, dataOffset, raw))
+        if (!ReadAt(_dataHandle, dataOffset, raw))
             return null;
 
         for (int i = 0; i < count; i++)
@@ -220,7 +229,7 @@ public sealed class MultiReader : IDisposable
 
     public void Dispose()
     {
-        _idxReader.Dispose();
-        _dataReader.Dispose();
+        _idxHandle.Dispose();
+        _dataHandle.Dispose();
     }
 }

@@ -1790,7 +1790,7 @@ public sealed class SpellEngine
             // typed effects (poison/paralyze) and barriers carry none.
             if (def.IsFlag(SpellFlag.Damage) && dmg > 0)
                 fieldItem.SetTag("FIELD_DAMAGE", dmg.ToString());
-            fieldItem.DecayTime = Environment.TickCount64 + durMs;
+            fieldItem.SetDecayAt(Environment.TickCount64 + durMs);
             if (!_world.PlaceItem(fieldItem, tilePos))
                 _world.RemoveItem(fieldItem);
         }
@@ -2323,7 +2323,7 @@ public sealed class SpellEngine
         gate.ItemType = ItemType.Moongate;
         gate.Name = "moongate";
         gate.MoreP = dest;
-        gate.DecayTime = Environment.TickCount64 + 30_000;
+        gate.SetDecayAt(Environment.TickCount64 + 30_000);
         _world.PlaceItem(gate, caster.Position);
 
         if (IsMagicFlag(MagicConfigFlags.GateBothSides))
@@ -2333,7 +2333,7 @@ public sealed class SpellEngine
             returnGate.ItemType = ItemType.Moongate;
             returnGate.Name = "moongate";
             returnGate.MoreP = caster.Position;
-            returnGate.DecayTime = Environment.TickCount64 + 30_000;
+            returnGate.SetDecayAt(Environment.TickCount64 + 30_000);
             _world.PlaceItem(returnGate, dest);
         }
 

@@ -69,15 +69,15 @@ public sealed class PerfIndexTests
 
         var expired = world.CreateItem();
         Assert.True(world.PlaceItem(expired, Spot));
-        expired.DecayTime = 100;
+        expired.SetDecayAt(100);
 
         var future = world.CreateItem();
         Assert.True(world.PlaceItem(future, new Point3D(121, 120, 0, 0)));
-        future.DecayTime = 10_000;
+        future.SetDecayAt(10_000);
 
         var noDecay = world.CreateItem();
         Assert.True(world.PlaceItem(noDecay, new Point3D(122, 120, 0, 0)));
-        noDecay.DecayTime = 0;
+        noDecay.ClearDecay();
 
         var buffer = new List<Item>();
         world.CollectExpiredGroundItems(now: 1_000, max: 256, buffer);
@@ -97,7 +97,7 @@ public sealed class PerfIndexTests
 
         var item = world.CreateItem();
         Assert.True(world.PlaceItem(item, new Point3D(121, 120, 0, 0))); // indexed as ground
-        item.DecayTime = 100;
+        item.SetDecayAt(100);
 
         // Pick it up: now contained, no longer on the ground. The index still holds a
         // stale reference; the IsOnGround re-check must skip and prune it.

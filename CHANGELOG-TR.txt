@@ -3,6 +3,46 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Her son tarih icin tek kapi; multi okuyucu artik stream'ine dokunmuyor
+----------------------------------------
+
+FIX - DecayTime, motor, sunucu ve testler boyunca otuz kadar cagri yerinin dogrudan
+        atadigi, disariya acik bir alandi. Artik disaridan salt okunur: SetDecayTime
+        bir SURE aliyor (kaynagin CItem::SetDecayTime kurallari, -1 temizler),
+        SetDecayAt mutlak bir son tarih aliyor, ClearDecay kapatiyor ve Item icindeki
+        her yazim tek bir private AssignDecay'den geciyor. Timeout zaten
+        ObjBase.SetTimeout'tan geciyordu - hicbir sektor listesinin kapsamadigi
+        esyalar icin kurulu timer'i dunya duzeyindeki pompaya kaydeden yer orasi - ve
+        bu artik yalnizca dogru degil, sabitlenmis durumda.
+
+        Bu, timer'lari kaynagin yaptigi gibi tek bir zaman-sirali due listesine
+        tasimanin ucuz yarisi (CWorldTicker): orada bir son tarih degistiginde
+        KAYDEDILMEK zorunda. Bir dusine cagri yerinin dogrudan atadigi bir alan bu
+        tasimayi guvenle yapamaz - kaydetmeyi unutan tek atama, hic calismayan bir
+        timer uretir ve bunu kimse bildirmez. Once kapiyi kurmak, tasimanin sonra tek
+        yerde yapilabilmesi demek; kendi basina da bir kazanc.
+
+FIX - MultiReader, paralel on-hazirlik yolundaki HER okumada paylasilan bir
+        FileStream'den SafeFileHandle okuyordu. O ozellik duz bir erisimci degil:
+        stream'i flush ediyor ve handle'i stream'in konumuna yeniden konumluyor -
+        yani okuma basina cagri, ayni anda birkac thread'den paylasilan durumu
+        degistiriyordu. Bu, yanlis veri olarak degil, handle uzerinde ara sira gelen
+        bir IOException ("gecersiz parametre") olarak cikiyordu; konumsal okumalara
+        yapilan onceki duzeltmenin (inceleme bulgusu B4) ve iki Length okumasini
+        onbellege almanin bunu cozmemesinin sebebi buydu. Okuyucu artik dosya
+        handle'larini kendisi acip tutuyor ve hicbir stream'e dokunmuyor - MapReader'in
+        en basindan beri yaptigi gibi. Kurucudaki bilesen-boyu tespiti de konumsal
+        okuyor.
+
+TEST - DeadlineWriteGateGuardrailTests (3): Item.cs disinda DecayTime'a yazim yok,
+        ObjBase.cs disinda timer alanina yazim yok ve kapilarin kendisi yerinde -
+        yalnizca yazimi yasaklayan bir guardrail, biri ozelligi silse de ayni sekilde
+        gecerdi. Testler de taraniyor: alani dogrudan durten bir test, temsil ettigi
+        motor yolu kayit tutmayi birakmisken de gecmeye devam ederdi.
+
+        Sondajlar: dogrudan yazim kacirmak artik derlenmiyor bile (private setter),
+        setter'i geri acmak 1 kirmizi, ikisini birden yapmak 2 kirmizi.
+
 [2026-09-14] - Sektor, siz ciktiginiz anda degil, bir dakika sonra durur
 ----------------------------------------
 

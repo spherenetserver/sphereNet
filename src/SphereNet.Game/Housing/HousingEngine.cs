@@ -644,7 +644,7 @@ public sealed class House
                 world.FindItem(item.ContainedIn)?.RemoveItem(item);
             else
                 world.HideFromSector(item);
-            item.DecayTime = 0; // protected inside the crate
+            item.ClearDecay(); // protected inside the crate
             protectedItems.Add(item);
         }
 

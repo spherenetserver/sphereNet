@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `b5eade3` + İŞ-83 (SECTORSLEEP müsamahası + 500 oyuncu ölçümü) |
-| Tam test | 3.870 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Son commit | `aeb717c` + İŞ-84 (son-tarih tek kapı; multi okuyucu handle'a geçti) |
+| Tam test | 3.873 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
 | Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
 
 ## Çalışma sırası
@@ -469,6 +469,28 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-84 KAPANDI (B dalgasının ön koşulu: son-tarih tek kapı)** — 2026-09-14.
+  `DecayTime` dışarıya açık bir alandı; motor + sunucu + testlerde ~34 doğrudan
+  atama vardı. Artık dışarıdan salt okunur: `SetDecayTime` (süre, kaynağın
+  `CItem::SetDecayTime` kuralları), `SetDecayAt` (mutlak son tarih), `ClearDecay`;
+  Item içindeki her yazım tek bir `AssignDecay`'den geçiyor. `Timeout` zaten
+  `ObjBase.SetTimeout`'tan geçiyordu — artık sabitlenmiş. **Neden:** timer'ları
+  kaynağın tek zaman-sıralı due listesine (`CWorldTicker`) taşımanın ucuz yarısı;
+  orada son tarih değiştiğinde **kaydedilmek** zorunda ve kaydetmeyi unutan tek
+  atama, hiç çalışmayan bir timer üretir. Guardrail:
+  `DeadlineWriteGateGuardrailTests` (3) — Item.cs dışında yazım yok, ObjBase.cs
+  dışında yazım yok, kapılar yerinde. Sondaj: kaçak yazım **derlenmiyor bile**,
+  setter'ı geri açmak 1, ikisi birden 2 kırmızı.
+  **Asıl bulgu:** `MultiReader`, paralel yoldaki **her okumada** paylaşılan
+  `FileStream`'den `SafeFileHandle` okuyordu — o özellik düz erişimci değil,
+  stream'i flush edip handle'ı yeniden konumluyor. B4'teki konumsal okuma onarımı ve
+  `Length` önbelleği bunu çözmemişti; flake iki kez daha tekrarladı. Okuyucu artık
+  dosya handle'larını kendisi açıp tutuyor, hiçbir stream'e dokunmuyor (MapReader'ın
+  baştan beri yaptığı gibi); kurucudaki bileşen-boyu tespiti de konumsal.
+  **Kanıt:** onarımdan önce ~9 tam koşuda 2 kırmızı + 2 özetsiz test-host çöküşü;
+  sonrasında **6 koşu, 6 temiz** (3.873). Tekrar üretilemeyen bir arıza olduğu için
+  "kesin çözüldü" demiyorum — kaldırılan şey belgelenmiş bir thread-safety ihlali ve
+  kanıt bu yönde.
 - **İŞ-83 KAPANDI (B7'nin devamı: uyku politikası + yük ölçümü)** — 2026-09-14.
   `SECTORSLEEP`'in config anahtarı, varsayılanı, yordamı (`Sector.CanSleep`),
   bağlama satırı ve testleri vardı — **dünya tick'i hiç sormuyordu**; sektör yalnız

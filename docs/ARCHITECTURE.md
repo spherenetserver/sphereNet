@@ -116,6 +116,16 @@ felt somewhere else.
 The delays above are pinned to the engine's own constants by
 `SleepingSectorTimerContractTests`.
 
+**Deadlines are written through one door.** `Timeout` changes only through
+`ObjBase.SetTimeout` (which is what registers an armed timer with the world-level
+pump for items no sector list covers), and `DecayTime` only through `Item`'s
+`SetDecayTime` / `SetDecayAt` / `ClearDecay`. Upstream runs every timer from a
+single time-sorted list (`CWorldTicker`), where a deadline has to be registered when
+it changes; SphereNet still reaches deadlines by sweeping, but a field that a dozen
+call sites assign directly could never make that move safely — the one assignment
+that forgot to register would produce a timer that never fires, with nothing to say
+so. `DeadlineWriteGateGuardrailTests` holds the invariant.
+
 `FindRegion`, called thousands of times per tick (guard zones, PvP, music,
 weather), is backed by an 8×8-tile grid `ConcurrentDictionary` cache that avoids
 O(n) region scans and auto-invalidates when regions change.

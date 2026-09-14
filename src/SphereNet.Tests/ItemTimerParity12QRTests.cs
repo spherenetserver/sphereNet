@@ -148,7 +148,7 @@ public sealed class ItemTimerParity12QRTests
         var world = NewWorld();
         var item = Ground(world);
         item.SetAttr(ObjAttributes.Decay);
-        item.DecayTime = Environment.TickCount64 - 1;
+        item.SetDecayAt(Environment.TickCount64 - 1);
 
         Assert.True(item.TrySetProperty("TIMER", "-1"));
 
@@ -162,7 +162,7 @@ public sealed class ItemTimerParity12QRTests
         var world = NewWorld();
         var item = Ground(world);
         item.SetAttr(ObjAttributes.Decay);
-        item.DecayTime = Environment.TickCount64 - 1;
+        item.SetDecayAt(Environment.TickCount64 - 1);
 
         Assert.False(item.OnTick());
         Assert.True(item.IsDeleted);
@@ -176,7 +176,7 @@ public sealed class ItemTimerParity12QRTests
         var world = NewWorld();
         var item = Ground(world);
         item.SetAttr(ObjAttributes.Decay);
-        item.DecayTime = Environment.TickCount64 - 1;
+        item.SetDecayAt(Environment.TickCount64 - 1);
 
         using var _ = Handler(i =>
         {
@@ -199,7 +199,7 @@ public sealed class ItemTimerParity12QRTests
     {
         var world = NewWorld();
         var corpse = Ground(world, ItemType.Corpse);
-        corpse.DecayTime = Environment.TickCount64 - 1;
+        corpse.SetDecayAt(Environment.TickCount64 - 1);
         int scattered = 0;
         Item.OnCorpseDecay = _ => { scattered++; return true; };
 
@@ -215,7 +215,7 @@ public sealed class ItemTimerParity12QRTests
     {
         var world = NewWorld();
         var corpse = Ground(world, ItemType.Corpse);
-        corpse.DecayTime = Environment.TickCount64 - 1;
+        corpse.SetDecayAt(Environment.TickCount64 - 1);
         int scattered = 0;
         Item.OnCorpseDecay = _ => { scattered++; return true; };
 

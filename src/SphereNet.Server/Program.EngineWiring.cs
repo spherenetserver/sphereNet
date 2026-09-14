@@ -132,9 +132,24 @@ public static partial class Program
 
             NetState.RttPingIntervalMs = _config.RttPingIntervalMs;
 
-            // SECTORSLEEP (minutes; 0 disables) was read into config but never
-            // applied, so sectors always used the hardcoded 10-minute default.
+            // SECTORSLEEP (minutes; 0 = never sleep). The value reached
+            // Sector.SleepDelayMs even before, but the only reader was CanSleep and
+            // the world tick never called it, so the delay did nothing at all.
             SphereNet.Game.World.Sectors.Sector.SleepDelayMs = _config.SectorSleepMs;
+            if (_config.SectorSleepMs == 0)
+            {
+                // Upstream reads 0 as "no sector ever sleeps" and can afford it: there,
+                // an awake sector only runs the timers that are due. Here an awake
+                // sector ticks every object it holds, so with travelling players the
+                // awake set grows until the whole map ticks - measured at 500 players /
+                // 50k NPCs / 300k items as ~70 ms per world tick against a 100 ms
+                // budget. Worth saying out loud rather than leaving to be discovered.
+                _log.LogWarning(
+                    "SECTORSLEEP=0: no sector will ever sleep. Every sector a player " +
+                    "visits keeps ticking for the life of the process, and each awake " +
+                    "sector ticks every object in it. Expect the tick cost to grow as " +
+                    "players travel.");
+            }
 
             _triggerDispatcher = new TriggerDispatcher();
             _triggerDispatcher.Resources = _resources;

@@ -173,7 +173,7 @@ public sealed class MapReaderConcurrencyTests : IDisposable
         // yet, on the parallel prestage path through WalkCheck.
         string idx = Path.Combine(Path.GetTempPath(), $"sphnet_mi_{Guid.NewGuid():N}.mul");
         string data = Path.Combine(Path.GetTempPath(), $"sphnet_md_{Guid.NewGuid():N}.mul");
-        const int Multis = 24, Parts = 8, ComponentSize = 12;
+        const int Multis = 2000, Parts = 8, ComponentSize = 12;
         try
         {
             using (var iw = new BinaryWriter(File.Create(idx)))
@@ -197,12 +197,15 @@ public sealed class MapReaderConcurrencyTests : IDisposable
 
             using var reader = new SphereNet.MapData.Multi.MultiReader(idx, data);
             int wrong = 0;
-            Parallel.For(0, 8, w =>
+            Parallel.For(0, 16, w =>
             {
-                var rng = new Random(3000 + w);
-                for (int i = 0; i < 600; i++)
+                // Every worker sweeps the whole table from a different starting
+                // point, so the COLD reads - the only ones that touch the file -
+                // overlap. GetMulti caches, so a small table would race for a few
+                // microseconds and then never again.
+                for (int i = 0; i < Multis; i++)
                 {
-                    int id = rng.Next(Multis);
+                    int id = (i + w * (Multis / 16)) % Multis;
                     var def = reader.GetMulti(id);
                     if (def == null || def.Components.Length != Parts ||
                         def.Components.Any(c => c.TileId != (ushort)(id + 1)))

@@ -3,6 +3,61 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-14] - Sektor, siz ciktiginiz anda degil, bir dakika sonra durur
+----------------------------------------
+
+FIX - SECTORSLEEP'in config anahtari, belgelenmis varsayilani, yordami
+        (Sector.CanSleep), baglama satiri ve kendi testleri vardi - ve dunya tick'i
+        hicbir zaman sormuyordu. Bir sektor, ancak bir oyuncunun 5x5 penceresi
+        icindeyse uyanikti; yani uc sektor uzaklastiginizda arkanizdaki bolge
+        tamamen duruyordu: yaratiklar dusunmeyi birakiyor, item TIMER'lari uc
+        dakikalik bakim taramasina dusuyordu - oyuncunun az once durdugu ve bir
+        saniye sonra geri donebilecegi yerde. config/sphere.ini bunu yorumunda zaten
+        yaziyordu ("Config'e yukleniyor ama sektor uyku mantigina bagli degil").
+
+        Tick artik musamahayi uyguluyor: sektor, icindeki son oyuncu ayrildiktan
+        sonra SECTORSLEEP dakika boyunca tikmeye devam ediyor (Source-X
+        CSector::_CanSleep, g_Cfg._iSectorSleepDelay). Damga oyuncunun ICINDE
+        bulundugu sektora vuruluyor, uzerinden gecen pencerenin tamamina degil; yani
+        gezgin bes sektor genisliginde bir serit surumek yerine bir sektor
+        genisliginde iz birakiyor.
+
+        Kaynak ayrica sekiz komsusu uyuyamayan bir sektoru uyutmuyor. Bu kontrol
+        burada atlandi: bu motorun penceresi +/-2 sektor, kaynagin komsulugu ise
+        +/-1 - yani oyuncu tasiyan bir sektorun yanindaki her sey zaten uyanik, ki
+        komsuluk kuralinin garanti ettigi sey de budur.
+
+        SECTORSLEEP=0 kaynaktaki anlamini koruyor - hicbir sektor uyumaz - ve artik
+        acilista uyari logluyor: bu motorda uyanik sektor icindeki HER nesneyi
+        tikler, yani 0 yazan ve oyunculari gezdiren bir shard sonunda butun haritayi
+        tikler.
+
+FIX - Sector.IsSleeping motorda hicbir yerde atanmiyordu; admin sektor listesi,
+        haritanin cogu uykudayken her sektoru uyanik gosteriyordu. Artik dogruyu
+        soyluyor.
+
+FIX - MultiReader, paralel on-hazirlik yolunda kosan sinir kontrollerinin icinde
+        paylasilan bir FileStream'e iki kez Length soruyordu. FileStream ornek
+        uyeleri thread-safe degil; bu, yanlis veri olarak degil, handle uzerinde ara
+        sira gelen bir IOException ("gecersiz parametre") olarak ortaya cikiyordu. O
+        yoldaki konumsal okumalar zaten duzeltilmisti (inceleme bulgusu B4); bu iki
+        uzunluk okumasi geride kalan yariydi. Iki uzunluk da artik kurucuda bir kez
+        okunuyor - MapReader'in zaten yaptigi gibi.
+
+OLCUM - 500 cevrimici oyuncu, 50.000 NPC ve 300.000 yer esyasi, 6144x4096 harita,
+        355 MB yonetilen heap, yalnizca dunya tick'i, 100 ms tick butcesine karsi:
+        oyuncular ~10 sehirde kumelenmisken iz yokken 3,2 ms p50 / 4,7 ms p95;
+        sevk edilen bir dakikalik musamahayla 3,5 / 5,1; kaynagin on dakikasiyla
+        5,5 / 7,9. Ayni 500 oyuncu haritaya esit dagildiginda 66,8 ms p50 / 171,3 ms
+        p95 - butce disi, musamahayla da musamahasiz da, cunku o zaman haritanin
+        %93'u birinin penceresi icinde kaliyor. Maliyet oyuncu sayisi degil, UYANIK
+        ALAN. SectorSleepLoadProbe (SPHERENET_LOADPROBE=1) bunu yeniden uretiyor.
+
+TEST - SectorSleepGraceTests (5): az once ciktiginiz sektor hala tikiyor, musamaha
+        gecince uyuyor, iz pencerenin tamami degil icinde bulundugunuz sektorler,
+        SECTORSLEEP=0 hic uyutmuyor ve hic ugranmamis sektor kendini uykuda
+        bildiriyor.
+
 [2026-09-14] - "Timer zamaninda calisir" ne demek: yakinda kimse yokken, timer turu basina
 ----------------------------------------
 

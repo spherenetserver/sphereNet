@@ -4,6 +4,60 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-14] - A sector stops ticking a minute after you leave it, not the instant you do
+----------------------------------------
+
+FIX - SECTORSLEEP had a config key, a documented default, a predicate
+        (Sector.CanSleep), a wiring line and its own tests - and the world tick never
+        asked. A sector was awake if and only if it sat inside some player's 5x5
+        window, so stepping three sectors away stopped the area behind you dead: its
+        creatures stopped thinking and its item timers dropped to the three-minute
+        maintenance sweep, in a place the player had just been standing and might
+        walk back into a second later. config/sphere.ini said as much in a comment
+        ("loaded into config but not wired to sector sleep logic").
+
+        The tick now applies the grace: a sector keeps ticking for SECTORSLEEP
+        minutes after the last player leaves it (Source-X CSector::_CanSleep,
+        g_Cfg._iSectorSleepDelay). The stamp is on the sector a player is IN, not on
+        the whole window sweeping over it, so a traveller leaves a trail one sector
+        wide rather than dragging a five-wide band behind them.
+
+        Upstream also refuses to sleep a sector whose eight neighbours cannot sleep.
+        That check is skipped here because this engine's window is +/-2 sectors where
+        upstream's adjacency is +/-1: anything next to a sector holding a player is
+        already awake, which is what the adjacency rule exists to guarantee.
+
+        SECTORSLEEP=0 keeps its upstream meaning - no sector ever sleeps - and now
+        logs a warning at startup, because an awake sector here ticks every object it
+        holds and a shard that sets 0 and lets players travel ends up ticking the
+        whole map.
+
+FIX - Sector.IsSleeping was never assigned anywhere in the engine, so the admin
+        sector list reported every sector on the map as awake while most of it was
+        asleep. It now says which.
+
+FIX - MultiReader asked a shared FileStream for its Length twice inside the bounds
+        checks that run on the parallel prestage path. FileStream instance members
+        are not thread-safe; this showed up as an intermittent IOException ("invalid
+        parameter") on the handle rather than as wrong data. The positional reads on
+        that path were already fixed (review finding B4); these two length reads were
+        the half left behind. Both lengths are now read once at construction, as
+        MapReader already did.
+
+MEASURED - 500 online players, 50,000 NPCs and 300,000 ground items on a 6144x4096
+        map, 355 MB of managed heap, world tick only, against the 100 ms tick:
+        players clustered in ~10 towns cost 3.2 ms p50 / 4.7 ms p95 with no trail,
+        3.5 / 5.1 with the shipped one-minute grace and 5.5 / 7.9 with upstream's ten
+        minutes. The same 500 players scattered evenly over the whole map cost 66.8
+        ms p50 / 171.3 ms p95 - over budget, with or without the grace, because 93%
+        of the map is then inside somebody's window. Awake AREA is the cost, not
+        player count. SectorSleepLoadProbe (SPHERENET_LOADPROBE=1) reproduces it.
+
+TEST - SectorSleepGraceTests (5): the sector you just left still ticks, it sleeps
+        once the grace passes, the trail is the sectors you were in and not the whole
+        window, SECTORSLEEP=0 never sleeps, and an unvisited sector reports itself
+        asleep.
+
 [2026-09-14] - What "the timer fires on schedule" means, per timer, with nobody nearby
 ----------------------------------------
 

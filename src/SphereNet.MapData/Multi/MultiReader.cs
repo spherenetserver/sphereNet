@@ -33,6 +33,16 @@ public sealed class MultiReader : IDisposable
     /// <summary>The detected on-disk component-record size (12 = original, 16 = High Seas).</summary>
     public int ComponentSize => _componentSize;
 
+    // File lengths, read ONCE. FileStream instance members are not thread-safe, and
+    // the bounds checks in ReadMulti run on the parallel prestage path: asking a
+    // shared FileStream for its Length from several threads is a contract violation
+    // that shows up as an intermittent IOException ("invalid parameter") on the
+    // handle, not as wrong data. The positional reads were already fixed for the
+    // same path (review finding B4); these two length reads were the half left
+    // behind. MapReader caches its length the same way.
+    private readonly long _idxLength;
+    private readonly long _dataLength;
+
     public MultiReader(string idxPath, string dataPath)
     {
         var idxStream = new FileStream(idxPath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -49,6 +59,8 @@ public sealed class MultiReader : IDisposable
             throw;
         }
 
+        _idxLength = idxStream.Length;
+        _dataLength = _dataReader.BaseStream.Length;
         _componentSize = DetectComponentSize();
     }
 
@@ -58,7 +70,7 @@ public sealed class MultiReader : IDisposable
     /// which interpretation yields plausible (small) component offsets.</summary>
     private int DetectComponentSize()
     {
-        int entryCount = (int)(_idxReader.BaseStream.Length / IdxEntrySize);
+        int entryCount = (int)(_idxLength / IdxEntrySize);
         int votes16 = 0, votes12 = 0, firstNonEmpty = -1;
 
         for (int id = 0; id < entryCount; id++)
@@ -158,7 +170,7 @@ public sealed class MultiReader : IDisposable
     private MultiDef? ReadMulti(int multiId)
     {
         long idxOffset = (long)multiId * IdxEntrySize;
-        if (idxOffset + IdxEntrySize > _idxReader.BaseStream.Length)
+        if (idxOffset + IdxEntrySize > _idxLength)
             return null;
 
         Span<byte> idx = stackalloc byte[IdxEntrySize];
@@ -170,7 +182,7 @@ public sealed class MultiReader : IDisposable
 
         if (dataOffset < 0 || dataLength <= 0)
             return null;
-        if ((long)dataOffset + dataLength > _dataReader.BaseStream.Length)
+        if ((long)dataOffset + dataLength > _dataLength)
             return null;
 
         int count = dataLength / _componentSize;

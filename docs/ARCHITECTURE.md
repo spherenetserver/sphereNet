@@ -59,9 +59,33 @@ Entry points: `Program.Tick.cs` (`RunSingleThreadTick`, `RunMulticoreTick`,
 
 ## Sectors and sector sleeping
 
-The map is partitioned into sectors. **Only sectors within a 5×5 window around an
-online player tick.** NPCs and items in empty regions cost zero CPU until a player
-approaches.
+The map is partitioned into sectors. **Sectors within a 5×5 window around an online
+player tick**, and a sector keeps ticking for **SECTORSLEEP** after the last player
+leaves it (`config/sphere.ini`, 1 minute as shipped; Source-X
+`CSector::_CanSleep`/`g_Cfg._iSectorSleepDelay` defaults to 10). NPCs and items
+elsewhere cost zero CPU until a player approaches.
+
+The grace is stamped on the sector a player is **in**, not on the whole window that
+sweeps over it, so a traveller leaves a trail one sector wide. `SECTORSLEEP=0` means
+no sector ever sleeps — upstream's meaning, and a loaded gun here (see the measured
+cost below).
+
+**Measured** — 500 online players, 50,000 NPCs, 300,000 ground items on a
+6144×4096 map (96×64 = 6144 sectors), 355 MB of managed heap (~1 KB per object),
+world tick only, against the 100 ms server tick:
+
+| Shape | Awake sectors | tick p50 | tick p95 |
+|---|---|---|---|
+| Players in ~10 towns, no trail (the old instant-sleep policy) | 365 | 3.2 ms | 4.7 ms |
+| Same, with a 1-minute trail (`SECTORSLEEP=1`, as shipped) | 485 | 3.5 ms | 5.1 ms |
+| Same, with a 10-minute trail (`SECTORSLEEP=10`, upstream default) | 817 | 5.5 ms | 7.9 ms |
+| 500 players scattered evenly across the whole map | 5726 | 66.8 ms | 171.3 ms |
+
+The grace is cheap; **what is expensive is awake area**. 500 players spread evenly
+claim more 5×5 window than the map has sectors, so ~93% of the world ticks and the
+tick runs past its budget — and that is true with or without the grace, because an
+awake sector here ticks every object it holds rather than only the objects whose
+timer is due. Reproduce with `SectorSleepLoadProbe` (`SPHERENET_LOADPROBE=1`).
 
 Because gameplay can pause for empty regions but timers cannot, every deadline is
 an **absolute timestamp** (`Environment.TickCount64`), never a tick counter. A

@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-14 |
-| Son commit | `a237b81` + İŞ-82 (uyuyan sektör timer sözleşmesi) |
-| Tam test | 3.864 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
+| Son commit | `b5eade3` + İŞ-83 (SECTORSLEEP müsamahası + 500 oyuncu ölçümü) |
+| Tam test | 3.870 başarılı / 0 başarısız (79 veri kapısı, 1'i verisiz) |
 | Sıradaki iş | **B1-B8, B12 kapandı; B9/B10/B11 yarım.** Sıradaki: B9/B10/B11 kalanları |
 
 ## Çalışma sırası
@@ -469,6 +469,27 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-83 KAPANDI (B7'nin devamı: uyku politikası + yük ölçümü)** — 2026-09-14.
+  `SECTORSLEEP`'in config anahtarı, varsayılanı, yordamı (`Sector.CanSleep`),
+  bağlama satırı ve testleri vardı — **dünya tick'i hiç sormuyordu**; sektör yalnız
+  5×5 pencere içindeyse uyanıktı. `config/sphere.ini` bunu yorumunda zaten yazıyordu
+  ("Config'e yükleniyor ama sektör uyku mantığına bağlı değil"). Tick artık
+  müsamahayı uyguluyor; damga oyuncunun **içinde** olduğu sektöre vuruluyor, yani iz
+  bir sektör genişliğinde. Komşuluk kontrolü atlandı (bizim pencere ±2, kaynağınki
+  ±1 — kapsanıyor). `SECTORSLEEP=0` kaynak anlamını koruyor + açılışta uyarı.
+  `Sector.IsSleeping` hiç atanmıyordu; admin listesi her sektörü uyanık gösteriyordu.
+  **Ölçüm (500 oyuncu / 50.000 NPC / 300.000 eşya, 6144×4096, 355 MB heap, yalnız
+  dünya tick'i):** şehirlerde kümeli iz yokken 3,2/4,7 ms (p50/p95), sevk edilen 1 dk
+  müsamahayla 3,5/5,1, kaynağın 10 dk'sıyla 5,5/7,9 — 100 ms bütçenin %8'i. Aynı 500
+  oyuncu haritaya **eşit dağıldığında** 66,8/171,3 ms — bütçe dışı, **müsamahadan
+  bağımsız** olarak: maliyet oyuncu sayısı değil **uyanık alan**. Probe:
+  `SectorSleepLoadProbe` (`SPHERENET_LOADPROBE=1`, varsayılan kapalı).
+  **Yan bulgu:** `MultiReader`, paralel yolda paylaşılan `FileStream`'e `Length`
+  soruyordu (thread-safe değil) — tam suite'te bir kez ara sıra `IOException` olarak
+  çıktı; B4 onarımının geride kalan yarısı, uzunluklar artık kurucuda bir kez
+  okunuyor. Test: `SectorSleepGraceTests` (5). Tam suite 3.870, üç koşu.
+  *Ölçüm yalnız dünya tick'ini kapsıyor: ağ döngüsü ve NPC AI (kendi tick bütçesi
+  var) dahil değil.*
 - **İŞ-82 KAPANDI (Beyond-Source-X B7)** — 2026-09-14. README "timer'lar duvar
   saati hassasiyetinde", ARCHITECTURE "kaymadan zamanında çalışır" diyordu. Son
   tarihin mutlak olması ile geri çağırmanın o an **çalışması** aynı şey değil:

@@ -1482,6 +1482,14 @@ public sealed class GameWorld
     /// caller can bulk-wake their NPCs in the timer wheel.</summary>
     public IReadOnlyList<Sector> NewlyActiveSectors => _newlyActiveSectors;
 
+    /// <summary>The sectors ticking right now. Measurement seam: the sleep policy's
+    /// whole effect is the size of this set.</summary>
+    internal IReadOnlyCollection<Sector> ActiveSectorsForProbe => _activeSectors;
+
+    /// <summary>Whether the tick consults <see cref="Sector.CanSleep"/>, i.e. whether
+    /// the SECTORSLEEP grace period is applied on top of the 5x5 window.</summary>
+    internal static bool SleepPolicyActive => true;
+
     private void RefreshActiveSectors()
     {
         _prevActiveSectors.Clear();
@@ -1496,8 +1504,10 @@ public sealed class GameWorld
             if (player.IsDeleted || (!player.IsOnline && !player.IsClientLingering)) continue;
             int sx = player.X / Sector.SectorSize;
             int sy = player.Y / Sector.SectorSize;
-            // Refresh the last-client timestamp on the player's own sector so the
-            // Source-X sleep timeout (CanSleep) is measured from here.
+            // Refresh the last-client timestamp on the player's own sector: the
+            // SECTORSLEEP grace is measured from here, so the trail a traveller
+            // leaves behind is one sector wide (the sectors they were actually in)
+            // and not the whole 5x5 window that moved over them.
             GetSector(player.MapIndex, sx, sy)?.SetLastClientTime(nowMs);
             for (int dx = -ActiveSectorRadius; dx <= ActiveSectorRadius; dx++)
             {
@@ -1523,6 +1533,59 @@ public sealed class GameWorld
                 if (!_prevActiveSectors.Contains(s))
                     _newlyActiveSectors.Add(s);
             }
+        }
+
+        ApplySleepGrace(nowMs);
+        MarkSleepState();
+    }
+
+    /// <summary>A sector a player has left does not fall asleep the instant the
+    /// window moves off it — it keeps ticking for SECTORSLEEP (Source-X
+    /// <c>CSector::_CanSleep</c>, <c>g_Cfg._iSectorSleepDelay</c>, 10 minutes by
+    /// default).
+    ///
+    /// Without this the window WAS the whole policy: step three sectors away and the
+    /// area behind you stopped, so its item timers dropped to the three-minute
+    /// maintenance sweep and its creatures stopped thinking entirely - in the part of
+    /// the world a player had just been standing in, and might walk back into a
+    /// second later. The grace, the config key and this very predicate were all
+    /// already here; the tick just never asked.
+    ///
+    /// Upstream also refuses to sleep a sector whose eight neighbours cannot sleep.
+    /// That check is asked for with <c>checkAdjacents: false</c> here because our
+    /// window is +/-2 sectors where upstream's adjacency is +/-1: any sector next to
+    /// one holding a player is already awake, which is what the adjacency rule is
+    /// there to guarantee.</summary>
+    private void ApplySleepGrace(long nowMs)
+    {
+        if (_prevActiveSectors.Count == 0)
+            return;
+
+        foreach (var s in _prevActiveSectors)
+        {
+            if (_activeSectors.Contains(s))
+                continue;
+            if (s.CanSleep(nowMs, checkAdjacents: false))
+                continue;       // quiet for longer than SECTORSLEEP — let it sleep
+            _activeSectors.Add(s);
+            _tickSectors.Add(s);
+        }
+    }
+
+    /// <summary>Publish the sleep state each sector is actually in. The flag existed
+    /// and was never assigned, so the admin sector list reported every sector on the
+    /// map as awake while most of it was not.</summary>
+    private void MarkSleepState()
+    {
+        foreach (var s in _activeSectors)
+        {
+            if (s.IsSleeping)
+                s.IsSleeping = false;
+        }
+        foreach (var s in _prevActiveSectors)
+        {
+            if (!_activeSectors.Contains(s))
+                s.IsSleeping = true;
         }
     }
 

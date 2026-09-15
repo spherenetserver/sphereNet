@@ -298,9 +298,19 @@ public sealed class WorldSaver
     /// not a world static and is not written; and it skips multis outright, which
     /// would otherwise come back on import as a loose item instead of a
     /// structure.</summary>
+    /// <summary>Write every ATTR_STATIC ground item as a script file, the way upstream
+    /// does (CWorld::SaveStatics, CWorld.cpp:1233): multis are structures rather than
+    /// statics and are skipped, and so is anything not lying in the world.
+    ///
+    /// The previous file is RETIRED rather than overwritten. Upstream writes this
+    /// through OpenScriptBackup, which rotates like every other save file, and for the
+    /// same reason: a statics export is the kind of thing an operator runs twice in a
+    /// row while getting a region right, and the second run must not be able to
+    /// destroy the first.</summary>
     public int ExportStatics(GameWorld world, string path, WorldExportScope? scope = null)
     {
         long now = Environment.TickCount64;
+        RotateBackups(path);
         return WriteTextExportAtomic(path, writer =>
         {
             writer.WriteHeaderComment($"SphereNet statics export at {DateTime.UtcNow:u}");

@@ -432,6 +432,11 @@ public static partial class ServerMessages
         // ===== World Save (Source-X: DEFMSG_WORLDSAVE_*) =====
         Def("worldsave_started", "Saving world...");
         Def("worldsave_complete", "World save complete. (#%s, took %s ms)");
+        // Source-X announces a statics save to everyone the same way it announces a
+        // world save (DEFMSG_SERVER_WORLDSTATICSAVE, defmessages.tbl:791). The text is
+        // upstream's, so a pack that overrides server_worldstaticsave gets what it
+        // expects.
+        Def("worldstaticsave_started", "World statics save has been initiated.");
         Def("worldsave_failed", "World save FAILED: %s");
         // The world landed and the account file did not. Neither of the two above
         // describes that: "complete" hides a real loss, "FAILED" sends an operator

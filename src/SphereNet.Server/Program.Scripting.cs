@@ -2318,6 +2318,11 @@ public static partial class Program
             if (path == null)
                 return "0";
 
+            // Announced before the walk, as upstream does (CWorld.cpp:1250): the point
+            // of the message is that a save is STARTING, so it is worth nothing after
+            // the pause it is warning about.
+            BroadcastToAllPlayers(ServerMessages.Get("worldstaticsave_started"), 0x0040);
+
             int count = _saver.ExportStatics(_world, path);
             _log?.LogInformation("SERV.SAVESTATICS wrote {Count} static item(s) to {Path}", count, path);
             return count.ToString();

@@ -7067,6 +7067,38 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            case "SETMASTER":
+            {
+                // Source-X PDV_SETMASTER (CParty.cpp:821): a uid, or @<index> into the
+                // member list. Index 0 is refused there because member 0 IS the master,
+                // so promoting them is a no-op the caller probably did not mean. The
+                // party's own SetMaster refuses a uid that is not a member, which is
+                // what keeps a stranger from being made leader by a typo.
+                if (pm == null) return true;
+                var setMasterParty = pm.FindParty(Uid);
+                if (setMasterParty == null) return true;
+                string masterArg = args.Trim();
+                if (masterArg.StartsWith('@') && int.TryParse(masterArg[1..], out int masterIdx))
+                {
+                    if (masterIdx > 0 && masterIdx < setMasterParty.MemberCount)
+                        setMasterParty.SetMaster(setMasterParty.Members[masterIdx]);
+                }
+                else if (uint.TryParse(masterArg.TrimStart('0').TrimStart('x', 'X'),
+                    System.Globalization.NumberStyles.HexNumber, null, out uint newMasterUid))
+                {
+                    setMasterParty.SetMaster(new Serial(newMasterUid));
+                }
+                return true;
+            }
+            case "MESSAGE":
+            {
+                // In the verb table and does nothing upstream: PDV_MESSAGE is a bare
+                // `break` (CParty.cpp:796), so a script calling it there is answered
+                // without anything happening. Accepted here for the same reason -
+                // refusing it would make a pack that runs on Source-X fail on this
+                // engine, over a verb that is inert on both.
+                return true;
+            }
             case "DISBAND":
             {
                 if (pm == null) return true;

@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Yalnizca dinleyen panel oturumu da suresi dolunca kapaniyor
+----------------------------------------
+
+FIX - Panel jetonlarinin suresini dolduran temizlik, stats yayiniyla ayni try blogunu
+        paylasiyor ve ondan sonra geliyordu. Komut gonderen oturum her komutta jetonunu
+        yeniden dogrular; yalnizca log ve stats akisini IZLEYEN oturum ise hicbir sey
+        gondermez, dolayisiyla jetonunun suresinin doldugunu fark eden tek sey -
+        baglantiyi kapatan olayi tetikleyen - periyodik temizliktir. Yayini hata
+        verdiren her sey bu yuzden sure dolumunu da beraberinde goturuyordu: oyun
+        sunucusu kapaliyken stats geri cagrisi hata firlatir ve kesilmesi gereken
+        dinleyici, bu surdugu surece her seyi almaya devam ederdi. Stats gondermek ile
+        jeton suresi dolurmak ayri islerdir ve artik ayri adimlardir; hicbiri otekini
+        ac birakamiyor.
+
+FIX - Panel log sink'i sinirsiz kuyruk tutuyor, kuyrugun tamamini tek bir SignalR
+        karesine bosaltiyor ve sonucu izlemeden gonderiyordu. Panelin alabileceginden
+        hizli log yazan bir shard - dongude hata veren bir script, acik DebugPackets -
+        o kuyrugu sonsuza kadar buyutuyordu; ustelik SetHubContext calisana kadar
+        kuyrugu bosaltan hicbir sey yok ve sunucu tam da panel acilirken bu pencereden
+        log yazar. Kuyruk artik 5.000 satir tutuyor ve yer acmak icin EN ESKI'leri
+        atiyor, cunku sorunu izleyen operatorun ihtiyaci en yenilerdir; bir flush en
+        fazla 500 satir gonderiyor ve kalani 150 ms sonraki flush'a birakiyor; ve ayni
+        anda tek bir flush ucuyor, boylece yavas istemci her biri kendi partisini tutan
+        birden cok izlenmeyen gonderim biriktirmiyor. Dusen satir, bekleyen satir ve
+        basarisiz yayin sayiliyor; dosya logunda her satir duruyor.
+
+TEST - PanelPassiveExpiryTests (6): hata veren stats geri cagrisi ve hata veren yayin
+        yine sure dolduruyor, saglikli tur yine gonderiyor, suresi dolmamis jetona
+        dokunulmuyor ve sel sinirlanip en yeni satirlar korunuyor. Sondaj: sure
+        dolumunu stats yoluna geri koymak 2, sinirsiz kuyruk baska 2 testi kirmiziya
+        donduruyor.
+
 [2026-09-15] - Timer wheel'in sozlesmesi, son tarih listesine karsi olculdu
 ----------------------------------------
 

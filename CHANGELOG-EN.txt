@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A panel session that only listens still expires
+----------------------------------------
+
+FIX - The purge that expires panel tokens shared a try block with the stats broadcast,
+        and came after it. A session that sends commands revalidates its token on every
+        one of them; a session that only WATCHES the log and stats stream sends
+        nothing, so the periodic purge - whose event closes the connection - is the
+        only thing that ever notices its token has expired. Anything that made the
+        broadcast throw therefore took the expiry with it: with the game server down
+        the stats callback throws, and a listener that should have been cut off kept
+        receiving everything for as long as that lasted. Pushing the stats and expiring
+        tokens are separate concerns and are now separate steps, in that order, neither
+        able to starve the other.
+
+FIX - The panel log sink queued without a bound, drained the whole queue into one
+        SignalR frame, and sent it without watching the result. A shard logging faster
+        than the panel can take it - a script erroring in a loop, DebugPackets on -
+        grew that queue with no end, and nothing drains it at all until SetHubContext
+        runs, which is the window a server logs through while the panel is starting.
+        The queue now holds 5,000 lines and drops its OLDEST to make room, because an
+        operator watching a problem needs the newest; a flush sends at most 500 and
+        leaves the rest for the next one 150 ms later; and only one flush is in flight
+        at a time, so a slow client no longer collects several unobserved sends each
+        holding its own batch. Dropped lines, pending lines and failed broadcasts are
+        counted rather than silent - the file log still has every line.
+
+TEST - PanelPassiveExpiryTests (6): a failing stats callback and a faulting broadcast
+        both still expire, a healthy round still pushes, a token inside its lifetime is
+        left alone, and the flood is bounded with the newest lines kept. Probes: the
+        expiry back inside the stats path turns 2 red, an unbounded queue another 2.
+
 [2026-09-15] - The timer wheel's contract, measured against a list of deadlines
 ----------------------------------------
 

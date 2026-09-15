@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Oyun akisi kripto vektorleri, sifreleme turu basina
+----------------------------------------
+
+TEST - Sifreleme testleri blok sifrelerini ve login kriptosunu kapsiyordu; onlarin
+        uzerine kurulu oyun akisinin - 256 baytlik bir anahtar akisi tablosu, tukendikce
+        yeniden sifrelenen - tur bazinda hicbir vektoru yoktu. GameStreamEncryptionTests
+        (15): ENC_BFISH ve ENC_TFISH 16, 255, 256, 257 ve 1000 baytta tam donuyor, ki bu
+        tablo yenilenmesini sinirinin iki yanina da koyuyor; ENC_BTFISH iki katmandan da
+        gecip geri donuyor; bes esit olmayan parca halinde gelen yuk, tek cagriyla ayni
+        baytlara cozuluyor - Blowfish, Twofish ve giden MD5 akisi icin - ki bu, soket
+        okumalari arasinda anahtar akisi konumunun sifirlanmasini yakalayan durumdur;
+        farkli tohum farkli anahtar akisidir; ve giden ozet yalnizca tohumu izliyor.
+
+        Kayda deger olmasinin nedeni bir varsayimi duzeltmesi: BTFISH'in iki katmani
+        YER DEGISTIREBILIR. Her biri, yalnizca tohuma ve gecen bayt sayisina bagli bir
+        anahtar akisina karsi XOR'dur; dolayisiyla hangi sirayla geri alinirsa alinsin
+        ayni baytlar geri gelir. Motor, Source-X'in Twofish-sonra-Blowfish sirasini
+        onun sirasi oldugu icin koruyor, aksi halde sonuc yanlis olacagi icin degil -
+        ve test, olmayan bir sozlesme iddia etmek yerine bunu soyluyor.
+
 [2026-09-15] - Calisma aninda yapilan DEFMSG degisikligi kaydedilmez; parite budur
 ----------------------------------------
 

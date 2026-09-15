@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - Game-stream crypto vectors, per encryption type
+----------------------------------------
+
+TEST - The encryption tests covered the block ciphers and the login crypt; the game
+        stream built on top of them - a 256-byte keystream table, re-encrypted whenever
+        it runs out - had no per-type vectors at all. GameStreamEncryptionTests (15):
+        ENC_BFISH and ENC_TFISH round-trip at 16, 255, 256, 257 and 1000 bytes, which
+        puts the table refresh on both sides of its boundary; ENC_BTFISH round-trips
+        through both layers; a payload arriving in five uneven pieces decrypts to the
+        same bytes as one call, for Blowfish, Twofish and the outgoing MD5 stream, which
+        is the case that catches a keystream position reset between socket reads; a
+        different seed is a different keystream; and the outgoing digest follows the
+        seed and nothing else.
+
+        Worth recording because it corrects an assumption: the two BTFISH layers
+        COMMUTE. Each is a XOR against a keystream that depends only on the seed and how
+        many bytes have gone through, so undoing them in either order gives the same
+        bytes back. The engine keeps upstream's Twofish-then-Blowfish order because it
+        is upstream's order, not because the result would otherwise be wrong - and the
+        test says so, rather than claiming a contract that is not there.
+
 [2026-09-15] - A runtime DEFMSG change is not saved, and that is the parity
 ----------------------------------------
 

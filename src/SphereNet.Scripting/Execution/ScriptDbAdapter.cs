@@ -243,6 +243,13 @@ public sealed class ScriptDbAdapter : IDisposable
     /// <summary>Calls that gave up waiting; the statement may still have run.</summary>
     public long TimedOutWorkCount => GetActiveSession()?.TimedOutWorkCount ?? 0;
 
+    /// <summary>Of those, the ones still waiting behind other work (a starved
+    /// worker) rather than running against the database (a slow one).</summary>
+    public long TimedOutQueuedCount => GetActiveSession()?.TimedOutQueuedCount ?? 0;
+
+    /// <summary>Of those, the ones whose statement had already started.</summary>
+    public long TimedOutRunningCount => GetActiveSession()?.TimedOutRunningCount ?? 0;
+
     /// <summary>Exceptions that escaped a job on the worker thread.</summary>
     public long WorkerFaultCount => GetActiveSession()?.WorkerFaultCount ?? 0;
 
@@ -366,6 +373,14 @@ public sealed class ScriptDbAdapter : IDisposable
         private sealed class DbJob
         {
             public readonly ManualResetEventSlim Done = new(false);
+
+            /// <summary>Set by the worker the moment it takes this job. A caller that
+            /// gives up waiting needs to know which of the two happened: the statement
+            /// was still behind other work, or it had already reached the database.
+            /// Neither may be retried by the engine, but they are different problems -
+            /// the first is a starved worker, the second a slow database - and a shard
+            /// that cannot tell them apart cannot fix either.</summary>
+            public volatile bool Started;
             public bool Ok;
             public int Count;
             public string Error = "";
@@ -382,6 +397,8 @@ public sealed class ScriptDbAdapter : IDisposable
         private int _pendingWork;
         private long _rejectedWork;
         private long _timedOutWork;
+        private long _timedOutQueued;
+        private long _timedOutRunning;
         private long _workerFaults;
 
         /// <summary>Queued work not yet taken by the worker.</summary>
@@ -392,6 +409,14 @@ public sealed class ScriptDbAdapter : IDisposable
 
         /// <summary>Calls that gave up waiting. The work may still run.</summary>
         public long TimedOutWorkCount => Interlocked.Read(ref _timedOutWork);
+
+        /// <summary>Of those, the ones whose statement had not started: the worker was
+        /// still busy with earlier work.</summary>
+        public long TimedOutQueuedCount => Interlocked.Read(ref _timedOutQueued);
+
+        /// <summary>Of those, the ones whose statement was already running against the
+        /// database.</summary>
+        public long TimedOutRunningCount => Interlocked.Read(ref _timedOutRunning);
 
         /// <summary>Exceptions that escaped a job on the worker thread.</summary>
         public long WorkerFaultCount => Interlocked.Read(ref _workerFaults);
@@ -449,11 +474,24 @@ public sealed class ScriptDbAdapter : IDisposable
             get { lock (_sync) { return _rowTable?.Columns.Count ?? 0; } }
         }
 
+        /// <summary>Is there a thread actually taking work off the queue?
+        ///
+        /// The queue exists from the moment a UseThread session is registered; the
+        /// worker only starts when the session connects. Work posted in between is
+        /// posted to nobody: the caller - the game loop - waits out the whole read
+        /// timeout, is told the statement "may still be running", and then the
+        /// statement really does run, minutes later, the moment somebody connects.
+        /// With UseThread off the same script line answers "DB is not connected"
+        /// immediately, which is the answer both should give (review work item
+        /// D02).</summary>
+        private bool HasRunningWorker =>
+            Config?.UseThread == true && _workQueue != null && _workerThread != null;
+
         /// <summary>Queue a query on the worker thread without blocking; runs inline
         /// when no worker is available.</summary>
         public bool EnqueueQuery(string sql)
         {
-            if (_workQueue != null && _workerThread != null)
+            if (HasRunningWorker)
                 return TryEnqueue(() => QueryInternal(sql, out _, out _));
             return QueryInternal(sql, out _, out _);
         }
@@ -462,7 +500,7 @@ public sealed class ScriptDbAdapter : IDisposable
         /// inline when no worker is available.</summary>
         public bool EnqueueExecute(string sql)
         {
-            if (_workQueue != null && _workerThread != null)
+            if (HasRunningWorker)
                 return TryEnqueue(() => ExecuteInternal(sql, out _, out _));
             return ExecuteInternal(sql, out _, out _);
         }
@@ -474,6 +512,19 @@ public sealed class ScriptDbAdapter : IDisposable
             if (config.UseThread)
                 _workQueue = new BlockingCollection<Action>();
         }
+
+        /// <summary>The provider and connection string a script opened this session
+        /// with explicitly, when it did. Null when the live connection came from the
+        /// registered config.
+        ///
+        /// A session can be pointed somewhere other than its ini section:
+        /// <c>DB.CONNECT &lt;provider&gt;|&lt;connection string&gt;</c>. When the link
+        /// then dropped, KeepAlive reopened it from the CONFIG - a different database -
+        /// and every statement after that landed there with nothing said. A reconnect
+        /// has to come back to the database the script is holding (review work item
+        /// D02).</summary>
+        private string? _explicitProvider;
+        private string? _explicitConnectionString;
 
         public bool Connect(out string error)
         {
@@ -493,10 +544,14 @@ public sealed class ScriptDbAdapter : IDisposable
                 return false;
             }
 
-            return Connect(provider, connStr, out error);
+            return ConnectCore(provider, connStr, fromConfig: true, out error);
         }
 
         public bool Connect(string providerInvariantName, string connectionString, out string error)
+            => ConnectCore(providerInvariantName, connectionString, fromConfig: false, out error);
+
+        private bool ConnectCore(string providerInvariantName, string connectionString,
+            bool fromConfig, out string error)
         {
             error = "";
             lock (_sync)
@@ -520,6 +575,12 @@ public sealed class ScriptDbAdapter : IDisposable
                     // string literals in pack scripts).
                     ScriptDbAdapter.OnConnectionOpened?.Invoke(connection);
                     _connection = connection;
+                    // Remember an explicit target so a reconnect returns to it; forget
+                    // one when the session is (re)opened from its config, so a config
+                    // the operator has since edited is honoured rather than a stale
+                    // string kept from an earlier connect.
+                    _explicitProvider = fromConfig ? null : providerInvariantName;
+                    _explicitConnectionString = fromConfig ? null : connectionString;
                     _logger.LogInformation("DB session '{Name}' connected with provider {Provider}",
                         Config?.Name ?? "?", providerInvariantName);
 
@@ -557,11 +618,12 @@ public sealed class ScriptDbAdapter : IDisposable
             affectedRows = 0;
             error = "";
 
-            if (Config?.UseThread == true && _workQueue != null)
+            if (HasRunningWorker)
             {
                 var job = new DbJob();
                 if (!TryEnqueue(() =>
                     {
+                        job.Started = true;
                         job.Ok = ExecuteInternal(sql, out int n, out string e);
                         job.Count = n;
                         job.Error = e;
@@ -587,11 +649,12 @@ public sealed class ScriptDbAdapter : IDisposable
             rowCount = 0;
             error = "";
 
-            if (Config?.UseThread == true && _workQueue != null)
+            if (HasRunningWorker)
             {
                 var job = new DbJob();
                 if (!TryEnqueue(() =>
                     {
+                        job.Started = true;
                         job.Ok = QueryInternal(sql, out int n, out string e);
                         job.Count = n;
                         job.Error = e;
@@ -630,9 +693,14 @@ public sealed class ScriptDbAdapter : IDisposable
                 // The worker still owns the job; it releases the handle when it is
                 // done with it.
                 Interlocked.Increment(ref _timedOutWork);
+                bool started = job.Started;
+                Interlocked.Increment(ref started ? ref _timedOutRunning : ref _timedOutQueued);
                 job.Release();
-                error = $"DB timeout after {seconds}s; the statement may still be running.";
-                _logger.LogWarning("DB session '{Name}' timed out after {Seconds}s", Config?.Name ?? "?", seconds);
+                error = started
+                    ? $"DB timeout after {seconds}s; the statement had started and may still be running."
+                    : $"DB timeout after {seconds}s; the statement was still queued behind other work.";
+                _logger.LogWarning("DB session '{Name}' timed out after {Seconds}s ({Where})",
+                    Config?.Name ?? "?", seconds, started ? "running" : "queued");
                 return false;
             }
 
@@ -773,9 +841,15 @@ public sealed class ScriptDbAdapter : IDisposable
             error = "";
             if (_connection == null || _connection.State != ConnectionState.Open)
             {
-                if (Config?.KeepAlive == true && Config.Host.Length > 0)
+                if (Config?.KeepAlive == true)
                 {
-                    return Connect(out error);
+                    // Back to whatever this session was last opened against - the
+                    // explicit target if a script named one, the config otherwise.
+                    if (_explicitConnectionString != null && _explicitProvider != null)
+                        return ConnectCore(_explicitProvider, _explicitConnectionString,
+                            fromConfig: false, out error);
+                    if (Config.Host.Length > 0)
+                        return Connect(out error);
                 }
                 error = "DB is not connected.";
                 return false;

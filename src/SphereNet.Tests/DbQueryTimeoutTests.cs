@@ -199,4 +199,45 @@ public sealed class DbQueryTimeoutTests : IDisposable
         Assert.Equal("42", v);
         Assert.Equal(0, db.TimedOutWorkCount);
     }
+    [Fact]
+    public void ATimeoutWhileTheStatementWasStillQueuedSaysSo()
+    {
+        var db = Adapter(useThread: true);
+        Seed(db);
+
+        // The worker is busy with earlier work, so this query never reaches the
+        // database at all.
+        Assert.True(db.QueryAsync(
+            "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 40000000) " +
+            "SELECT COUNT(*) FROM c"));
+
+        Assert.False(db.Query("SELECT marker FROM t", out _, out string err));
+        _out.WriteLine($"queued timeout: '{err}' queued={db.TimedOutQueuedCount} running={db.TimedOutRunningCount}");
+
+        // "May still be running" was true of both outcomes and told an operator
+        // nothing. A starved worker and a slow database are different problems, and
+        // the counters have to separate them (review work item D02).
+        Assert.Contains("queued", err, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, db.TimedOutQueuedCount);
+        Assert.Equal(0, db.TimedOutRunningCount);
+        Assert.Equal(db.TimedOutWorkCount, db.TimedOutQueuedCount + db.TimedOutRunningCount);
+    }
+
+    [Fact]
+    public void ATimeoutWhileTheStatementWasRunningSaysSo()
+    {
+        var db = Adapter(useThread: true);
+        Seed(db);
+
+        // Nothing ahead of it: the worker takes this one straight away and is still
+        // inside the database when the wait budget runs out.
+        Assert.False(db.Query(
+            "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 40000000) " +
+            "SELECT COUNT(*) FROM c", out _, out string err));
+        _out.WriteLine($"running timeout: '{err}' queued={db.TimedOutQueuedCount} running={db.TimedOutRunningCount}");
+
+        Assert.Contains("still be running", err, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, db.TimedOutRunningCount);
+        Assert.Equal(0, db.TimedOutQueuedCount);
+    }
 }

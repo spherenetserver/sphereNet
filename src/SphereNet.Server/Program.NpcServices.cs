@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -826,7 +826,8 @@ public static partial class Program
 
         EquipGuardNewbieItems(guard, charDef);
 
-        long lingerMs = Math.Max(1, _config.GuardLinger) * 1000L;
+        // GUARDLINGER is minutes, as upstream reads it (CServerConfig.cpp:1292).
+        long lingerMs = Math.Max(1, _config.GuardLinger) * 60_000L;
         long expireAt = Environment.TickCount64 + lingerMs;
         guard.SetTag("GUARD_EXPIRE_AT", expireAt.ToString());
         _summonedGuardExpiry[guard.Uid] = expireAt;

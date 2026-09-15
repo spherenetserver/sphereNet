@@ -1,4 +1,4 @@
-namespace SphereNet.Core.Configuration;
+﻿namespace SphereNet.Core.Configuration;
 
 public enum SeasonMode
 {
@@ -74,7 +74,10 @@ public sealed class SphereConfig
     /// staging sectors across ticks, so these two are currently no-ops.</summary>
     public int SaveSectorsPerTick { get; set; } = 1;
     public int SaveStepMaxComplexity { get; set; } = 500;
-    public SaveFormat SaveFormat { get; set; } = SaveFormat.BinaryGz;
+    /// <summary>Save file format. Text is the default because it is the classic
+    /// Sphere .scp form: readable, diffable, and loadable by legacy tooling. The
+    /// loader detects the format from the extension, so switching costs nothing.</summary>
+    public SaveFormat SaveFormat { get; set; } = SaveFormat.Text;
     /// <summary>Sharding mode.
     /// <list type="bullet">
     /// <item><c>0</c> = always a single file, rolling off.</item>
@@ -205,7 +208,12 @@ public sealed class SphereConfig
     public bool LootingIsACrime { get; set; } = true;
     public bool AttackingIsACrime { get; set; } = true;
     public bool HelpingCriminalsIsACrime { get; set; }
-    public int GuardLinger { get; set; } = 300;
+    /// <summary>How long a summoned guard stays, in MINUTES. Upstream reads the ini
+    /// value as minutes (CServerConfig.cpp:1292 multiplies it by 60 * MSECS_PER_SEC)
+    /// and writes it back the same way (:2128); the default is 3 (:173). This engine
+    /// read the same key as seconds, so a legacy ini saying GUARDLINGER=3 gave a guard
+    /// that vanished after three seconds instead of three minutes.</summary>
+    public int GuardLinger { get; set; } = 3;
     public bool GuardsInstantKill { get; set; } = true;
     public bool GuardsOnMurderers { get; set; } = true;
     public bool SnoopCriminal { get; set; } = true;

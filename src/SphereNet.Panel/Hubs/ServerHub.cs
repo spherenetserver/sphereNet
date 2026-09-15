@@ -29,15 +29,43 @@ public sealed class ServerHub : Hub
     public override async Task OnConnectedAsync()
     {
         var token = Context.GetHttpContext()?.Request.Query["access_token"].ToString() ?? "";
-        if (!_tokens.Validate(token))
-        {
-            Context.Abort();
+        if (!TryAcceptConnection(_tokens, _connections, token, Context))
             return;
-        }
 
         Context.Items[TokenItemKey] = token;
-        _connections.Register(token, Context);
         await base.OnConnectedAsync();
+    }
+
+    /// <summary>Admit a connection, or abort it. Extracted because the ORDER is the
+    /// whole point and it has to be testable.
+    ///
+    /// Checking the token and then registering the connection leaves a window: a logout
+    /// landing between the two sweeps a registry this connection is not in yet, so it
+    /// aborts nothing - and the connection is registered a moment later, holding a
+    /// token that no longer exists. Nothing would ever close it either, because the
+    /// only later check runs on a COMMAND and a client that just watches the log and
+    /// stats stream sends none. So the check is made again AFTER registering: whichever
+    /// side wins the race, either the sweep finds this connection or this connection
+    /// finds the revocation (review work item D08).</summary>
+    internal static bool TryAcceptConnection(TokenStore tokens, HubConnectionRegistry connections,
+        string token, HubCallerContext context)
+    {
+        if (!tokens.Validate(token))
+        {
+            context.Abort();
+            return false;
+        }
+
+        connections.Register(token, context);
+
+        if (!tokens.Validate(token))
+        {
+            connections.Unregister(token, context.ConnectionId);
+            context.Abort();
+            return false;
+        }
+
+        return true;
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

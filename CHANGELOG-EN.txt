@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - An item dropped into a bag is not deleted a tick later
+----------------------------------------
+
+FIX - Pick an item off the floor, drop it into your own backpack, and the server told
+        the client to delete it. The two views are separate on the client: a uid is
+        either a world item at a position or an entry in a container, and 0x25 moves it
+        from the first to the second. The view delta only knows about the ground, so a
+        tick later it found the uid gone from the ground and sent 0x1D - after the 0x25
+        - which deletes the item the client has just put in the bag. The item stayed in
+        the pack on the server, which is why the report is "it vanished from my bag
+        until I reopened it" rather than "I lost it". Both packets are Normal priority,
+        so the order was never in doubt.
+
+        Every container-add now goes through one door that hands the uid over from the
+        ground view to the container view as it sends. Equipping was already safe
+        because the stale sweep recognises a worn item; this is the same rule for the
+        other home, applied where the client is told rather than guessed at a tick
+        afterwards. The blanket rule - never delete an item that left the ground -
+        would have been wrong: when nothing re-homed it on the client (a script moving
+        an item into a container nobody has open) the ground copy is a ghost the player
+        can see and cannot touch, so that delete still happens.
+
+TEST - ViewDeltaTransitionMatrixTests (11). Three observers watch one world - an
+        ordinary player, a GM with AllShow, and a 7.0.20 client that receives 0xF3
+        where the others receive 0x1A - and each test asserts where the CLIENT thinks
+        the item is, rebuilt from the packets it was actually sent, rather than
+        counting packets. The journey is ground to picked-up to worn to container and
+        back to the ground; the rest cover recolour and restack, an idle world sending
+        nothing at all, an invisible item reaching staff and nobody else, leaving and
+        re-entering view range, and the 80-per-tile cap choosing the same items every
+        tick rather than flickering. The real pickup-and-drop path is driven through
+        the handlers, and reverting the repair turns 3 of the 11 red.
+
 [2026-09-15] - SECTORSLEEP=0 says what it does, and the wake transitions are measured
 ----------------------------------------
 

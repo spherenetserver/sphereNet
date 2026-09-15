@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Cantaya birakilan esya bir tick sonra silinmiyor
+----------------------------------------
+
+FIX - Yerden bir esya alip kendi sirt cantaniza birakin: sunucu istemciye onu silmesini
+        soyluyordu. Istemcide iki gorunum ayridir: bir uid ya bir konumdaki dunya
+        esyasidir ya da bir kabin icindeki girdidir ve 0x25 onu birinciden ikinciye
+        tasir. View delta yalnizca yeri bilir; bu yuzden bir tick sonra uid'i yerde
+        bulamayip 0x1D gonderiyordu - 0x25'ten SONRA - ve bu, istemcinin cantaya yeni
+        koydugu esyayi siliyordu. Esya sunucuda cantada kaldigi icin sikayet "kaybettim"
+        degil "cantamdan kayboldu, kapatip acinca geldi" seklinde. Iki paket de Normal
+        onceliklidir, yani sira konusunda bir belirsizlik yoktu.
+
+        Her container-add artik tek bir kapidan geciyor ve gonderirken uid'i yer
+        gorunumunden kap gorunumune devrediyor. Kusanma zaten guvenliydi, cunku bayat
+        tarama giyili esyayi taniyor; bu da diger ev icin ayni kural, bir tick sonra
+        tahmin edilen yerde degil istemciye soylendigi yerde uygulaniyor. "Yerden ayrilan
+        esyayi hicbir zaman silme" seklindeki toptan kural yanlis olurdu: istemcide onu
+        yeniden yerlestiren hicbir sey yoksa (bir script'in esyayi kimsenin acik
+        olmadigi bir kaba tasimasi) yerdeki kopya oyuncunun gordugu ama dokunamadigi bir
+        hayalet olur; orada silme yine yapiliyor.
+
+TEST - ViewDeltaTransitionMatrixTests (11). Uc gozlemci ayni dunyayi izliyor - siradan
+        oyuncu, AllShow'lu GM ve digerleri 0x1A alirken 0xF3 alan 7.0.20 istemcisi - ve
+        her test, paket saymak yerine, gercekten gonderilen paketlerden yeniden kurulan
+        "ISTEMCI esyayi nerede saniyor" sorusunu dogruluyor. Yolculuk: yer, alinma,
+        giyilme, kap ve yine yer. Digerleri: yeniden renklendirme ve miktar degisimi,
+        bos dunyanin hicbir sey gondermemesi, gorunmez esyanin yalnizca gorevliye
+        ulasmasi, gorus menzilinden cikip donme ve 80/tile sinirinin her tick ayni
+        esyalari secmesi (titremeden). Gercek alma-birakma yolu isleyiciler uzerinden
+        surulyor; onarimi geri almak 11 testin 3'unu kirmiziya donduruyor.
+
 [2026-09-15] - SECTORSLEEP=0 ne yaptigini soyluyor ve uyanis gecisleri olculdu
 ----------------------------------------
 

@@ -735,6 +735,30 @@ public sealed partial class GameClient
         return item.Hue;
     }
 
+    /// <summary>Tell this client an item is inside a container, and let the GROUND
+    /// view go of it in the same breath.
+    ///
+    /// The two views are separate on the client: a uid is a world item at a position,
+    /// or an entry in a container, and 0x25 moves it from the first to the second. The
+    /// view delta only knows about the ground, so it found the uid missing from the
+    /// ground a tick later and sent 0x1D - after the 0x25 - which deletes the item the
+    /// client has just put in the bag. Picking something off the floor and dropping it
+    /// into your own backpack did exactly that: the item is in the pack on the server
+    /// and gone from the gump until it is reopened (review work item D05).
+    ///
+    /// Equipping was already safe because the stale sweep recognises a worn item; this
+    /// is the same rule for the other home, applied where the client is told rather
+    /// than guessed at afterwards.</summary>
+    private void SendContainerItemPacket(PacketContainerItem packet) => SendContainerItem(packet);
+
+    internal void SendContainerItem(PacketContainerItem packet)
+    {
+        uint uid = packet.ItemSerial;
+        View.KnownItems.Remove(uid);
+        View.LastKnownItemState.Remove(uid);
+        _netState.Send(packet);
+    }
+
     internal void SendWorldItem(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
@@ -830,7 +854,7 @@ public sealed partial class GameClient
         if (owner != _character)
             return;
 
-        _netState.Send(new PacketContainerItem(
+        SendContainerItemPacket(new PacketContainerItem(
             item.Uid.Value, item.DispIdFull, 0,
             item.Amount, item.X, item.Y,
             parentItem.Uid.Value, item.Hue,
@@ -878,7 +902,7 @@ public sealed partial class GameClient
         // need the 0x25 update; but Sphere/ServUO both send it unconditionally
         // because it's cheap and keeps drag preview consistent. Send to the
         // owner who initiated the drop.
-        _netState.Send(new PacketContainerItem(
+        SendContainerItemPacket(new PacketContainerItem(
             item.Uid.Value, item.DispIdFull, 0,
             item.Amount, item.X, item.Y,
             pack.Uid.Value, item.Hue,
@@ -1575,7 +1599,7 @@ public sealed partial class GameClient
                     _world.PlaceItemWithDecay(item, groundPos);
                     return;
                 }
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0,
                     item.Amount, item.X, item.Y,
                     targetContainer.Uid.Value, item.Hue,

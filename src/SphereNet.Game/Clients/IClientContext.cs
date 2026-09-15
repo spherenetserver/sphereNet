@@ -122,6 +122,10 @@ internal interface IClientContext : ITextConsole
     void SendUpdateMobile(Character ch);
     void SendUpdateMobileWithHue(Character ch, ushort hue);
     void SendUpdateMobileHidden(Character ch);
+    /// <summary>Send a container-add and hand the uid over from the ground view to
+    /// the container view. Never send a 0x25 any other way: the ground view would
+    /// keep the uid and delete it on the next tick.</summary>
+    void SendContainerItem(SphereNet.Network.Packets.Outgoing.PacketContainerItem packet);
     void SendWorldItem(Item item);
     void SendWorldItemAllShow(Item item);
     void SendSelfRedraw();

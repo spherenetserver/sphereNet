@@ -52,6 +52,10 @@ public sealed class ClientInventoryHandler
     private Character? _character => _client.Character;
     private GameWorld _world => _client.World;
     private NetState _netState => _client.NetState;
+    /// <summary>Container-add for this client: see IClientContext.SendContainerItem.</summary>
+    private void SendContainerItemPacket(SphereNet.Network.Packets.Outgoing.PacketContainerItem packet)
+        => _client.SendContainerItem(packet);
+
     private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
     private HousingEngine? _housingEngine => _client.Housing;
     private const int UpdateRange = GameClient.UpdateRange;
@@ -774,7 +778,7 @@ public sealed class ClientInventoryHandler
                 sourceContainer.RemoveItem(item);
                 sourceContainer.AddItem(remainder);
                 remainder.Position = sourcePos;
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     remainder.Uid.Value, remainder.DispIdFull, 0,
                     remainder.Amount, remainder.X, remainder.Y,
                     sourceContainer.Uid.Value, remainder.Hue,
@@ -1021,7 +1025,7 @@ public sealed class ClientInventoryHandler
             {
                 originCont.AddItem(item);
                 item.Position = new Point3D(co.X, co.Y, 0, _character.MapIndex);
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0, item.Amount,
                     co.X, co.Y, originCont.Uid.Value, item.Hue, _netState.IsClientPost6017));
                 return;
@@ -1153,7 +1157,7 @@ public sealed class ClientInventoryHandler
                 item.Position = new Point3D(30, 30, 0, _character.MapIndex);
                 dropTrade.ResetAcceptance();
                 SendTradeUpdateToBoth(dropTrade);
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0,
                     item.Amount, 30, 30,
                     myCont.Uid.Value, item.Hue, _netState.IsClientPost6017));
@@ -1371,7 +1375,7 @@ public sealed class ClientInventoryHandler
                         if (targetOnGround)
                             BroadcastWorldItem(container);
                         else
-                            _netState.Send(new PacketContainerItem(
+                            SendContainerItemPacket(new PacketContainerItem(
                                 container.Uid.Value, container.DispIdFull, 0,
                                 container.Amount, container.X, container.Y,
                                 stackParent, container.Hue, _netState.IsClientPost6017));
@@ -1393,7 +1397,7 @@ public sealed class ClientInventoryHandler
                             return;
                         }
                         item.Position = new Point3D(container.X, container.Y, 0, _character.MapIndex);
-                        _netState.Send(new PacketContainerItem(
+                        SendContainerItemPacket(new PacketContainerItem(
                             item.Uid.Value, item.DispIdFull, 0,
                             item.Amount, item.X, item.Y,
                             realParent.Uid.Value, item.Hue, _netState.IsClientPost6017));
@@ -1431,7 +1435,7 @@ public sealed class ClientInventoryHandler
                 // Critical: tell the client the item actually landed in the
                 // container. Without 0x25 the client only remembers the
                 // earlier pickup → the item silently vanishes from its view.
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0,
                     item.Amount, item.X, item.Y,
                     container.Uid.Value, item.Hue,
@@ -1801,7 +1805,7 @@ public sealed class ClientInventoryHandler
                 return true;
             }
             item.Position = new Point3D(50, 50, 0, _character.MapIndex);
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 item.Uid.Value, item.DispIdFull, 0, item.Amount,
                 item.X, item.Y, pack.Uid.Value, item.Hue,
                 _netState.IsClientPost6017));

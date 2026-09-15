@@ -1130,6 +1130,10 @@ public sealed class PacketContainerItem : PacketWriter
     private readonly ushort _hue;
     private readonly bool _useGridIndex;
 
+    /// <summary>The item this add is about. Read by the sender so the client's
+    /// ground view can let go of the uid it has just re-homed.</summary>
+    public uint ItemSerial => _serial;
+
     public PacketContainerItem(uint serial, ushort itemId, byte offset, ushort amount,
         short x, short y, uint containerSerial, ushort hue, bool useGridIndex = true)
         : base(0x25)

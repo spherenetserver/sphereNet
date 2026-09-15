@@ -55,6 +55,10 @@ public sealed class ClientCombatHandler
     private Character? _character => _client.Character;
     private GameWorld _world => _client.World;
     private NetState _netState => _client.NetState;
+    /// <summary>Container-add for this client: see IClientContext.SendContainerItem.</summary>
+    private void SendContainerItemPacket(SphereNet.Network.Packets.Outgoing.PacketContainerItem packet)
+        => _client.SendContainerItem(packet);
+
     private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
     private MovementEngine? _movement => _client.MoveEng;
     private SpeechEngine? _speech => _client.SpeechEng;
@@ -1407,7 +1411,7 @@ public sealed class ClientCombatHandler
                             bool grid = observerClient.NetState.IsClientPost6017;
                             foreach (var corpseItem in corpse.Contents)
                             {
-                                observerClient.Send(new PacketContainerItem(
+                                observerClient.SendContainerItem(new PacketContainerItem(
                                     corpseItem.Uid.Value, corpseItem.DispIdFull, 0,
                                     corpseItem.Amount, corpseItem.X, corpseItem.Y,
                                     corpse.Uid.Value, corpseItem.Hue, useGridIndex: grid));
@@ -2184,7 +2188,7 @@ public sealed class ClientCombatHandler
             {
                 foreach (var child in _world.GetContainerContents(pack.Uid))
                 {
-                    _netState.Send(new PacketContainerItem(
+                    SendContainerItemPacket(new PacketContainerItem(
                         child.Uid.Value, child.DispIdFull, 0,
                         child.Amount, child.X, child.Y,
                         pack.Uid.Value, child.Hue,

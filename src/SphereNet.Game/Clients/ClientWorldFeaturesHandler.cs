@@ -53,6 +53,10 @@ public sealed class ClientWorldFeaturesHandler
     private Character? _character => _client.Character;
     private GameWorld _world => _client.World;
     private NetState _netState => _client.NetState;
+    /// <summary>Container-add for this client: see IClientContext.SendContainerItem.</summary>
+    private void SendContainerItemPacket(SphereNet.Network.Packets.Outgoing.PacketContainerItem packet)
+        => _client.SendContainerItem(packet);
+
     private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
     private HousingEngine? _housingEngine => _client.Housing;
     private TradeManager? _tradeManager => _client.TradeM;
@@ -463,7 +467,7 @@ public sealed class ClientWorldFeaturesHandler
                     _world.RemoveItem(result);
 
                 if (actual.ContainedIn == pack.Uid)
-                    _netState.Send(new PacketContainerItem(
+                    SendContainerItemPacket(new PacketContainerItem(
                         actual.Uid.Value, actual.DispIdFull, 0,
                         actual.Amount, actual.X, actual.Y,
                         pack.Uid.Value, actual.Hue,
@@ -888,7 +892,7 @@ public sealed class ClientWorldFeaturesHandler
                 CancelTrade(trade);
                 return false;
             }
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 firstItem.Uid.Value, firstItem.DispIdFull, 0,
                 firstItem.Amount, 30, 30,
                 cont1.Uid.Value, firstItem.Hue, _netState.IsClientPost6017));
@@ -2236,7 +2240,7 @@ public sealed class ClientWorldFeaturesHandler
         {
             potion.Amount--;
             if (potion.ContainedIn.IsValid)
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     potion.Uid.Value, potion.DispIdFull, 0, potion.Amount, potion.X, potion.Y,
                     potion.ContainedIn.Value, potion.Hue, _netState.IsClientPost6017));
         }
@@ -2256,7 +2260,7 @@ public sealed class ClientWorldFeaturesHandler
             empty.BaseId = emptyId;
             if (drinkContainer != null && drinkContainer.TryAddItem(empty))
             {
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     empty.Uid.Value, empty.DispIdFull, 0, empty.Amount, empty.X, empty.Y,
                     drinkContainer.Uid.Value, empty.Hue, _netState.IsClientPost6017));
             }

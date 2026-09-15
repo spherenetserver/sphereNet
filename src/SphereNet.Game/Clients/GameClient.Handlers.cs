@@ -560,7 +560,7 @@ public sealed partial class GameClient
 
         // The client learns about the new message through a container-item
         // update, then requests its header.
-        _netState.Send(new PacketContainerItem(
+        SendContainerItemPacket(new PacketContainerItem(
             msg.Uid.Value, msg.DispIdFull, 0, 1, 0, 0,
             board.Uid.Value, msg.Hue, _netState.IsClientPost6017));
         SysMessage(ServerMessages.Get("msg_message_posted"));

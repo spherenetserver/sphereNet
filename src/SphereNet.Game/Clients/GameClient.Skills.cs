@@ -122,7 +122,7 @@ public sealed partial class GameClient
                 {
                     if (stacked)
                         _client.World.RemoveItem(item);
-                    _client.NetState.Send(new PacketContainerItem(
+                    _client.SendContainerItem(new PacketContainerItem(
                         actual.Uid.Value, actual.DispIdFull, 0,
                         actual.Amount, actual.X, actual.Y,
                         pack.Uid.Value, actual.Hue,

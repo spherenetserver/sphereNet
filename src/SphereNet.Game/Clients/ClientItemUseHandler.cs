@@ -52,6 +52,10 @@ public sealed class ClientItemUseHandler
     private Character? _character => _client.Character;
     private GameWorld _world => _client.World;
     private NetState _netState => _client.NetState;
+    /// <summary>Container-add for this client: see IClientContext.SendContainerItem.</summary>
+    private void SendContainerItemPacket(SphereNet.Network.Packets.Outgoing.PacketContainerItem packet)
+        => _client.SendContainerItem(packet);
+
     private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
     private HousingEngine? _housingEngine => _client.Housing;
     private SkillHandlers? _skillHandlers => _client.SkillH;
@@ -122,7 +126,7 @@ public sealed class ClientItemUseHandler
         {
             item.Amount--;
             if (item.ContainedIn.IsValid)
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0, item.Amount, item.X, item.Y,
                     item.ContainedIn.Value, item.Hue, _netState.IsClientPost6017));
             else
@@ -557,7 +561,7 @@ public sealed class ClientItemUseHandler
             gold.Name = "Gold";
             var actual = container.AddItemWithStack(gold);
             if (actual != gold) _world.RemoveItem(gold);
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 actual.Uid.Value, actual.DispIdFull, 0, actual.Amount,
                 actual.X, actual.Y, container.Uid.Value, actual.Hue,
                 _netState.IsClientPost6017));
@@ -848,7 +852,7 @@ public sealed class ClientItemUseHandler
                 if (item.ContainedIn.IsValid && item.Amount > 1)
                 {
                     item.Amount--;
-                    _netState.Send(new PacketContainerItem(
+                    SendContainerItemPacket(new PacketContainerItem(
                         item.Uid.Value, item.DispIdFull, 0, item.Amount, item.X, item.Y,
                         item.ContainedIn.Value, item.Hue, _netState.IsClientPost6017));
                 }
@@ -1233,7 +1237,7 @@ public sealed class ClientItemUseHandler
                     string.IsNullOrEmpty(item.Name) ? "bulletin board" : item.Name));
                 foreach (var msg in item.Contents)
                 {
-                    _netState.Send(new PacketContainerItem(
+                    SendContainerItemPacket(new PacketContainerItem(
                         msg.Uid.Value, msg.DispIdFull, 0, 1, 0, 0,
                         item.Uid.Value, msg.Hue, _netState.IsClientPost6017));
                 }
@@ -2097,7 +2101,7 @@ public sealed class ClientItemUseHandler
         pitcher.BaseId = fullId;
         pitcher.ItemType = ItemType.Pitcher;
         if (pitcher.ContainedIn.IsValid)
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 pitcher.Uid.Value, pitcher.DispIdFull, 0, pitcher.Amount, pitcher.X, pitcher.Y,
                 pitcher.ContainedIn.Value, pitcher.Hue, _netState.IsClientPost6017));
         else
@@ -2482,7 +2486,7 @@ public sealed class ClientItemUseHandler
 
             if (actual != null)
             {
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     actual.Uid.Value, actual.DispIdFull, 0,
                     actual.Amount, actual.X, actual.Y,
                     pack.Uid.Value, actual.Hue,
@@ -2537,7 +2541,7 @@ public sealed class ClientItemUseHandler
 
         ore.Amount -= (ushort)lost;
         if (ore.ContainedIn.IsValid)
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 ore.Uid.Value, ore.DispIdFull, 0, ore.Amount, ore.X, ore.Y,
                 ore.ContainedIn.Value, ore.Hue, _netState.IsClientPost6017));
         else
@@ -2655,7 +2659,7 @@ public sealed class ClientItemUseHandler
         bandages.ItemType = ItemType.Bandage;
         Item.OnVisualUpdate?.Invoke(bandages);
         if (bandages.ContainedIn.IsValid)
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 bandages.Uid.Value, bandages.DispIdFull, 0, bandages.Amount,
                 bandages.X, bandages.Y, bandages.ContainedIn.Value, bandages.Hue,
                 _netState.IsClientPost6017));
@@ -2843,7 +2847,7 @@ public sealed class ClientItemUseHandler
         {
             food.Amount -= (ushort)eaten;
             if (food.ContainedIn.IsValid)
-                _netState.Send(new PacketContainerItem(
+                SendContainerItemPacket(new PacketContainerItem(
                     food.Uid.Value, food.DispIdFull, 0, food.Amount, food.X, food.Y,
                     food.ContainedIn.Value, food.Hue, _netState.IsClientPost6017));
             else
@@ -3117,7 +3121,7 @@ public sealed class ClientItemUseHandler
         fruit.Name = $"{was} seed";
         Item.OnVisualUpdate?.Invoke(fruit);
         if (fruit.ContainedIn.IsValid)
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 fruit.Uid.Value, fruit.DispIdFull, 0, fruit.Amount, fruit.X, fruit.Y,
                 fruit.ContainedIn.Value, fruit.Hue, _netState.IsClientPost6017));
     }
@@ -3203,7 +3207,7 @@ public sealed class ClientItemUseHandler
         fish.Amount = (ushort)Math.Min(ushort.MaxValue, Math.Max(1, (int)fish.Amount) * 4);
         Item.OnVisualUpdate?.Invoke(fish);
         if (fish.ContainedIn.IsValid)
-            _netState.Send(new PacketContainerItem(
+            SendContainerItemPacket(new PacketContainerItem(
                 fish.Uid.Value, fish.DispIdFull, 0, fish.Amount, fish.X, fish.Y,
                 fish.ContainedIn.Value, fish.Hue, _netState.IsClientPost6017));
         SysMessage("You cut the fish into raw fish steaks.");
@@ -3802,7 +3806,7 @@ public sealed class ClientItemUseHandler
                 }
                 if (SphereNet.Game.NPCs.PetFigurine.Shrink(_character, pet, figurine, _world))
                 {
-                    _netState.Send(new PacketContainerItem(
+                    SendContainerItemPacket(new PacketContainerItem(
                         figurine.Uid.Value, figurine.DispIdFull, 0, figurine.Amount,
                         figurine.X, figurine.Y, pack.Uid.Value, figurine.Hue,
                         _netState.IsClientPost6017));

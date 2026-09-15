@@ -21,6 +21,15 @@ public sealed class RecordingSession
     public List<RecordedPacket> Packets { get; } = [];
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int DurationMs => Packets.Count > 0 ? Packets[^1].TickOffset : 0;
+
+    /// <summary>What the packets captured so far will occupy on disk: six bytes of
+    /// framing each (the tick offset and the length) plus the payload.</summary>
+    public long CapturedBytes { get; set; }
+
+    /// <summary>Set when capture stopped because the budget ran out. The recording is
+    /// still usable - it just ends earlier than the GM expected, and that has to be
+    /// said rather than left to look like a quiet world.</summary>
+    public bool Truncated { get; set; }
 }
 
 public sealed class ReplayState
@@ -132,6 +141,20 @@ public sealed class RecordingEngine
         return session;
     }
 
+    /// <summary>Per-packet framing in the file: the tick offset and the length.</summary>
+    private const int PacketFrameBytes = 6;
+
+    /// <summary>How much a single recording may capture.
+    ///
+    /// Capture had no bound at all, and the 64 MB limit was only ever applied when
+    /// READING a file back. So a recording left running in a busy place grew in memory
+    /// for as long as the GM forgot about it, and if it got past that limit the file it
+    /// finally wrote could never be loaded again - an hour of recording refused at the
+    /// moment somebody tried to watch it. The budget sits below the read limit with
+    /// room for the header, so anything this engine records, it can also play back
+    /// (review work item D10).</summary>
+    public const long MaxCapturedBytes = 48L * 1024 * 1024;
+
     public void CapturePacket(uint recorderUid, Point3D packetOrigin, byte[] rawPacket)
     {
         if (!_activeRecordings.TryGetValue(recorderUid, out var session))
@@ -140,12 +163,30 @@ public sealed class RecordingEngine
         if (session.Center.GetDistanceTo(packetOrigin) > session.CaptureRange)
             return;
 
+        long wouldBe = session.CapturedBytes + PacketFrameBytes + rawPacket.Length;
+        if (wouldBe > MaxCapturedBytes)
+        {
+            // Keep what has been captured rather than dropping the lot: a recording
+            // that stops early is worth something, and one that cannot be loaded is
+            // worth nothing.
+            if (!session.Truncated)
+            {
+                session.Truncated = true;
+                _logger?.LogWarning(
+                    "Recording '{Name}' reached its {Mb} MB capture budget after {Count} packets; " +
+                    "capture stopped, the recording so far is intact",
+                    session.RecorderName, MaxCapturedBytes / (1024 * 1024), session.Packets.Count);
+            }
+            return;
+        }
+
         int offset = (int)(Environment.TickCount64 - session.StartTick);
         session.Packets.Add(new RecordedPacket
         {
             TickOffset = offset,
             Data = rawPacket
         });
+        session.CapturedBytes = wouldBe;
     }
 
     public void CaptureFromBroadcast(Point3D broadcastCenter, int broadcastRange, byte[] rawPacket,

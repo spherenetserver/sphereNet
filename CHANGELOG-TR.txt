@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Baglanti kurulurken gelen cikis, o baglantiyi da kapatiyor
+----------------------------------------
+
+FIX - Panel baglantisini kabul etmek bir kontrol ve ardindan bir eylemdi: jetonu
+        dogrula, sonra baglantiyi kaydet ki ileride bir iptal onu bulabilsin. Ikisinin
+        arasina dusen bir cikis, baglantinin henuz ulasmadigi bir kaydi supuruyordu -
+        hicbir seyi kapatmiyordu - ve baglanti bir an sonra, artik var olmayan bir
+        jetonu tutarak yerini aliyordu. Onu kapatacak baska bir sey de yoktu: jetonun
+        yeniden denetlendigi tek yer bir hub METODU ve yalnizca log ile stats akisini
+        izleyen istemci hicbirini cagirmaz; yani pencere tam olarak cikisin engellemek
+        icin var oldugu seyi uretiyordu. Jeton artik kayittan SONRA yeniden
+        denetleniyor: yarisi hangi taraf kazanirsa kazansin, ya suporme baglantiyi
+        bulur ya baglanti iptali bulur.
+
+TEST - PanelConnectionRaceTests (5). Yarisa disaridan girilmiyor, icinden giriliyor:
+        baglantiyi kaydetmek id'sini okur, dolayisiyla id getter'i oturumu kapatan bir
+        test baglantisi iptali tam da acittigi yere koyuyor - ve test, sonrasinda bir
+        suporme isleminin hicbir seyi kapatmayacagini raporluyor; kabul aninda
+        yakalanmasi gerekmesinin nedeni bu. Kontroller: siradan baglanti yine kabul
+        edilip kaydediliyor, kayittan sonraki cikis onu yine kapatiyor, hic gecerli
+        olmamis jeton kapida reddediliyor ve bir oturumun cikisi digerine dokunmuyor.
+        Sondaj: pencereyi yeniden acmak 1 testi kirmiziya donduruyor.
+
 [2026-09-15] - Gorunum matrisinin karakter yarisi: olculdu ve temiz
 ----------------------------------------
 

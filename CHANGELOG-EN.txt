@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A logout that lands mid-connect closes that connection too
+----------------------------------------
+
+FIX - Admitting a panel connection was a check and then an act: validate the token,
+        then register the connection so a later revocation can find it. A logout
+        falling between the two swept a registry the connection had not reached yet -
+        it aborted nothing - and the connection took its place a moment later holding a
+        token that no longer existed. Nothing would have closed it either: the only
+        other place a token is re-checked is a hub METHOD, and a client that just
+        watches the log and stats stream never calls one, so the window produced
+        exactly what the logout was meant to prevent. The token is checked again AFTER
+        the registration now, so whichever side wins the race, either the sweep finds
+        the connection or the connection finds the revocation.
+
+TEST - PanelConnectionRaceTests (5). The race is entered from inside rather than raced
+        for: registering a connection reads its id, so a test connection whose id
+        getter logs the session out puts the revocation exactly where it hurts - and
+        the test reports that a sweep afterwards would abort nothing, which is why it
+        has to be caught at admission. Controls: an ordinary connection is still
+        admitted and registered, a logout after registration still closes it, a token
+        that was never valid is refused at the door, and one session's logout leaves
+        another alone. Probe: reopening the window turns 1 red.
+
 [2026-09-15] - The character half of the view matrix, measured and clean
 ----------------------------------------
 

@@ -4,6 +4,173 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - SECTORSLEEP=0 says what it does, and the wake transitions are measured
+----------------------------------------
+
+DOC - "SECTORSLEEP=0 disables sector sleeping" was upstream's meaning, not this
+        engine's. Upstream ticks every sector and lets the predicate decide, so zero
+        really does keep the whole map awake. Here the tick set is the 5x5 window
+        around each player plus whatever was awake last tick, and the predicate is only
+        ever asked about the latter - so zero means a sector that has woken never
+        sleeps again, while a sector no player has been near still never ticks. The
+        awake set therefore only grows: 32 to 137 sectors as one player crossed eight
+        areas, and it keeps growing for the life of the process. Corrected in
+        sphere.ini, SphereConfig and ARCHITECTURE, with the advice to use a small
+        non-zero value rather than 0 for "barely sleeps". The shipped configs use 1.
+
+DOC - The delay contract gained the two rows it was missing. A pet or a summon is
+        reached on the next tick wherever it is - a creature with a master stays in the
+        AI wheel whatever its sector does, which is what makes a summon's expiry and a
+        pet's loyalty and food exact, and what stops all three the moment it is
+        released in a sleeping sector. That was previously an inference from where the
+        timers live; it is a measurement now, and the reason is the schedule rule, not
+        the timer.
+
+DOC - The wake transitions are documented from measurements: a teleport wakes the
+        destination on the next tick, the sector left behind keeps ticking through its
+        grace while a sector nobody has been near does not, pacing a sector boundary
+        causes no sleep/wake churn, a map change wakes the same coordinates on the new
+        map, and a lingering client still holds its sector awake. Waking a sector of
+        240 creatures spreads them over about three ticks, worst tick 100: the spread
+        is uid modulo 800 ms, so creatures with consecutive uids - a sector filled by
+        one spawner, or by a world load - are one millisecond apart.
+
+FIX - SourceXSectorSleepWave239Tests joined the serialized collection. It writes
+        Sector.SleepDelayMs, which is process-wide, while xUnit ran it in parallel with
+        the other sector tests: one unexplained failure in a full run, green on the
+        retry.
+
+TEST - SectorWakeTransitionTests (9), covering each transition above, the pet and
+        summon schedule rule, the wake spread, and the SECTORSLEEP=0 growth.
+
+[2026-09-15] - A tick phase that throws does not take its batch with it
+----------------------------------------
+
+FIX - The single-threaded NPC loop lost the rest of its batch whenever one NPC's
+        action threw. The timer wheel's Advance REMOVES what it returns, and the loop
+        rescheduled each NPC only after acting on it, so a script @Timer that threw
+        took that NPC and every NPC behind it out of the schedule for good: they stop
+        acting entirely until a player walks into their sector and the bulk wake puts
+        them back. The multicore path already recovered its batch, which is the wrong
+        way round - single-thread is the path the server FALLS BACK to after a
+        multicore failure, so the first failure moved the shard onto the loop with no
+        recovery in it. The batch is now put back whatever happens, and the exception
+        still reaches the tick handler that decides whether to fall back.
+
+FIX - The dirty drain had the same shape and no recovery on either path. Draining
+        CONSUMES the objects it returns, and marking the clients near them sends
+        tooltips; a send that threw part of the way through lost every object behind
+        it - nobody near them flagged for a refresh, and nothing left to dirty them
+        again, so that change never reached those screens at all. What the marking
+        walk does not reach goes back into the dirty set for the next tick.
+
+CHANGE - Both are one named invariant now (WalkRecoverableBatch): walk a batch that has
+        already been removed from its queue, and put back whatever the walk did not
+        reach. The element that threw counts as unreached. A recovery step that throws
+        in its turn does not cost the others theirs, and does not replace the original
+        exception - which is what an operator has to see. The dead/deleted/sleeping
+        test that decides whether an NPC stays in the wheel was three copies of itself
+        and is now one.
+
+TEST - MulticoreFaultRecoveryTests (6): a throwing NPC action leaves every NPC in the
+        batch scheduled including itself, a normal batch schedules each exactly once
+        (the control - recovery must not start double-scheduling), an NPC that asked to
+        leave the wheel is not resurrected by the recovery, and the three invariant
+        cases. Probe: removing the recovery pass turns 4 of the 6 red. Not asserted,
+        because it is not true: a phase timeout does not interrupt a worker already
+        inside a long operation - a cancellation token stops new iterations, not a
+        running one - and proving that needs the separate long-worker process test.
+
+[2026-09-15] - A statement reaches the database the script selected, and no other
+----------------------------------------
+
+FIX - A threaded session queued work before it had anyone to run it. The queue is
+        created when a UseThread connection is registered; the worker only starts when
+        the session connects. A script line that ran before DB.CONNECT therefore went
+        into a queue nobody was draining: the caller - the game loop - waited out the
+        whole read timeout (30s by default) and was told the statement "may still be
+        running", and then it really did run, whenever somebody connected, against a
+        connection it had never seen. With UseThread off the same line answers "DB is
+        not connected" at once, which is the answer both should give. Work is only
+        queued now when a worker is actually draining the queue.
+
+FIX - A reconnect went back to the wrong database. A session can be pointed somewhere
+        other than its ini section with DB.CONNECT <provider>|<connection string>.
+        When the link then dropped, KeepAlive reopened it from the CONFIG - a
+        different database - and every statement after that landed there, silently,
+        because two shards' databases have the same schema and an INSERT into the
+        wrong one does not fail. The session now remembers the target it was actually
+        opened against and returns to it; a session opened from its config still
+        reconnects from its config, so an ini the operator has edited since is still
+        honoured.
+
+FIX - A timeout now says which kind it was. "The statement may still be running" was
+        true whether the work had reached the database or was still behind other work
+        in the queue, and those are different problems: a starved worker and a slow
+        database. Neither may be retried by the engine, but a shard that cannot tell
+        them apart cannot fix either. Counted separately as well as worded
+        separately (TimedOutQueuedCount, TimedOutRunningCount).
+
+TEST - NamedDbSessionTests (10) over two SQLite databases standing in for two MySQL
+        ones: a write lands in the selected database and no other, a named write
+        ignores the selection, a failed select moves nothing, each session keeps its
+        own rows, and queued work runs on the session it was queued for. Three
+        contracts are pinned there because a script author has no other way to learn
+        them: the active session is adapter-global (a nested call that selects does
+        not put it back), an async call runs inline when the session has no worker,
+        and a synchronous call still waits for the worker when it has one.
+        DbQueryTimeoutTests grew the two timeout-kind cases. Probes: the two defects
+        above were red before the repair (1003ms wait and a ghost write; a reconnect
+        that wrote into the registered database), and un-marking a started job turns
+        the running-timeout case red.
+
+[2026-09-15] - The accounts and the world are published as one save
+----------------------------------------
+
+FIX - In background mode the account file was written the moment the world snapshot
+        was captured, while the shards were still being encoded on the writer thread.
+        A world write that then failed published the NEW accounts beside the PREVIOUS
+        world: a character created in the save that was lost keeps its slot in an
+        account, and the world on disk has never heard of it. The accounts are still
+        RENDERED at snapshot time - they have to describe the same instant - but they
+        are now staged to their .tmp and published only when the world write commits.
+        A failed write discards the staged file and says so. The opposite order is the
+        recoverable one: an account file a save behind the world re-links itself,
+        because the loader already puts a character back into a slot of the account it
+        names.
+
+FIX - A save whose account file failed announced "Save complete" to every player.
+        AccountPersistence throws when the manifest cannot be written AND the files it
+        supersedes cannot be removed - the case where the next load picks the stale
+        snapshot and rolls back every password, ban and new account - and the server
+        logged it and carried on. The world landing and the accounts landing are now
+        reported separately: the world really did commit, so the save counts, but it
+        is reported as a failure with the account error in it, and @SAVE_FAIL fires.
+
+FIX - The account file now carries the generation stamp every world shard carries.
+        Nothing tied the two files together, so the one mismatch that recovery
+        produces by design was invisible: a world that comes back from a .bakN is
+        older than the account file, which is a single file nobody rotates. Boot
+        compares the two and names both generations when they disagree. An unstamped
+        file - a classic account file, or one written by an older build - reads as
+        "unknown" rather than "mismatch", or the check would fire on every shard the
+        first time it ran this build. SAVEID joins the reserved section names, so the
+        stamp can never be read back as a passwordless account.
+
+NEW - The boot audit reports an account slot that names a character the world does
+        not hold (AccountCharSlotMissing). That slot is what the mismatch above costs
+        a player: a "?" in the character list, a slot that still counts against the
+        seven, and nothing anywhere saying why. It is reported, not cleared - a shard
+        file that failed to load has the same shape, and clearing there would turn a
+        recoverable incident into the permanent loss of the account-to-character link.
+
+TEST - WorldAccountGenerationTests (12): staging and discarding, the stamp in all
+        four formats, the stamp not read back as an account, an unstamped file still
+        loading, a world restored from .bak1 disagreeing with the account file, a
+        matching pair agreeing, and both directions of the slot audit. Probes:
+        publishing the staged file on a failed world write turns 1 red, dropping the
+        stamp 8, and a loader that does not name the generation it loaded 2.
+
 [2026-09-15] - A recording proves itself before it is published, and before it is played
 ----------------------------------------
 

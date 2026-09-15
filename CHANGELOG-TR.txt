@@ -3,6 +3,176 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - SECTORSLEEP=0 ne yaptigini soyluyor ve uyanis gecisleri olculdu
+----------------------------------------
+
+DOC - "SECTORSLEEP=0 sektor uykusunu kapatir" ifadesi Source-X'in anlamiydi, bu
+        motorun degil. Source-X her sektoru tikler ve karari yordama birakir; orada
+        sifir gercekten butun haritayi uyanik tutar. Burada tik kumesi her oyuncunun
+        5x5 penceresi arti gecen tick uyanik olanlardir ve yordam yalnizca ikincilere
+        sorulur - yani sifir sunu demektir: bir kez uyanan sektor bir daha uyumaz,
+        hicbir oyuncunun yaklasmadigi sektor ise yine hic tiklemez. Uyanik kume
+        boylece yalnizca buyur: bir oyuncu sekiz alan gezerken 32'den 137 sektore, ve
+        surec boyunca buyumeye devam eder. sphere.ini, SphereConfig ve ARCHITECTURE
+        duzeltildi; "neredeyse hic uyumasin" icin 0 yerine kucuk bir deger onerildi.
+        Dagitilan yapilandirmalar 1 kullaniyor.
+
+DOC - Gecikme sozlesmesine eksik iki satir eklendi. Pet ya da summon nerede olursa
+        olsun bir sonraki tick'te ele alinir - efendisi olan yaratik, sektoru ne
+        yaparsa yapsin AI tekerleginde kalir; summon'un suresinin ve pet'in sadakat ve
+        yemek sayaclarinin tam zamaninda islemesinin nedeni bu, ve uyuyan bir sektorde
+        serbest birakildigi anda ucunun birden durmasinin nedeni de bu. Bu daha once
+        timer'larin nerede durduguna dayanan bir cikarimdi; artik olcum, ve nedeni
+        timer degil zamanlama kurali.
+
+DOC - Uyanis gecisleri olcumlerden belgelendi: teleport hedefi bir sonraki tick'te
+        uyandiriyor, arkada birakilan sektor lutuf suresince tiklemeye devam ediyor
+        ama kimsenin yaklasmadigi sektor etmiyor, sektor sinirinda gidip gelmek
+        uyku/uyanis calkantisi yaratmiyor, harita degisimi yeni haritadaki ayni
+        koordinati uyandiriyor ve baglantisi kopup bekleyen istemci sektorunu hala
+        uyanik tutuyor. 240 yaratikli bir sektorun uyanisi yaklasik uc tick'e
+        yayiliyor, en kotu tick 100: yayilim uid modulo 800 ms oldugu icin ardisik
+        uid'li yaratiklar - tek bir spawner'in doldurdugu ya da dunya yuklemesinin
+        getirdigi sektor - birbirinden bir milisaniye uzakta.
+
+FIX - SourceXSectorSleepWave239Tests serilestirilmis koleksiyona alindi. Surec
+        genelinde olan Sector.SleepDelayMs'i yaziyor ve xUnit onu diger sektor
+        testleriyle paralel calistiriyordu: tam kosuda aciklanamayan bir hata, tekrarda
+        yesil.
+
+TEST - SectorWakeTransitionTests (9): yukaridaki her gecis, pet ve summon zamanlama
+        kurali, uyanis yayilimi ve SECTORSLEEP=0 buyumesi.
+
+[2026-09-15] - Hata veren bir tick asamasi, partisini de beraberinde goturmuyor
+----------------------------------------
+
+FIX - Tek-thread'li NPC dongusu, bir NPC'nin eylemi hata verdiginde partinin geri
+        kalanini kaybediyordu. Zamanlayici tekerleginin Advance'i dondurdugunu
+        KALDIRIR ve dongu her NPC'yi ancak uzerinde islem yaptiktan sonra yeniden
+        planliyordu; boylece hata veren bir script @Timer'i, o NPC'yi ve arkasindaki
+        her NPC'yi programdan tamamen cikariyordu: bir oyuncu sektorlerine girip toplu
+        uyandirma onlari geri koyana kadar hic hareket etmiyorlar. Multicore yolu
+        partisini zaten kurtariyordu; bu ters bir durumdu - tek-thread, multicore
+        basarisiz olunca sunucunun DUSTUGU yol, yani ilk hata shard'i kurtarmasi
+        olmayan donguye tasiyordu. Parti artik ne olursa olsun geri konuyor ve istisna
+        yine geri dusup dusmeyecegine karar veren tick isleyicisine ulasiyor.
+
+FIX - Dirty drenaji ayni sekle sahipti ve hicbir yolda kurtarmasi yoktu. Drenaj
+        dondurdugu nesneleri TUKETIR ve yakinlarindaki istemcileri isaretlerken
+        tooltip gonderir; yol ortasinda hata veren bir gonderim, arkasindaki her
+        nesneyi kaybediyordu - yakinlarindaki kimse yenileme icin isaretlenmiyor ve
+        onlari yeniden kirletecek bir sey kalmiyordu, yani o degisiklik o ekranlara
+        hic ulasmiyordu. Isaretleme yurumesinin ulasamadigi ne varsa bir sonraki
+        tick'in alabilmesi icin dirty kumesine geri konuyor.
+
+CHANGE - Ikisi artik tek bir adlandirilmis degismez (WalkRecoverableBatch): kuyrugundan
+        coktan cikarilmis bir partiyi yuru ve yurumenin ulasamadigi ne varsa geri koy.
+        Hata veren oge "ulasilamamis" sayilir. Kurtarma adiminin kendisi hata verirse
+        bu digerlerine mal olmaz ve operatorun gormesi gereken asil istisnanin yerini
+        almaz. Bir NPC'nin tekerlekte kalip kalmayacagina karar veren
+        olu/silinmis/uyuyan testi kendisinin uc kopyasiydi, artik tek.
+
+TEST - MulticoreFaultRecoveryTests (6): hata veren bir NPC eylemi, partideki her
+        NPC'yi kendisi dahil planli birakiyor; normal parti her birini tam bir kez
+        planliyor (kontrol - kurtarma cift planlamaya baslamamali); tekerlekten
+        ayrilmak isteyen NPC kurtarma tarafindan diriltilmiyor; ve uc degismez vakasi.
+        Sondaj: kurtarma gecisini kaldirmak 6 testin 4'unu kirmiziya donduruyor. Dogru
+        olmadigi icin iddia EDILMEYEN sey: asama zaman asimi, uzun bir islemin icinde
+        olan bir isciyi kesmez - iptal jetonu yeni yinelemeleri durdurur, calisani
+        degil - ve bunu kanitlamak icin ayri uzun-isci surec testi gerekiyor.
+
+[2026-09-15] - Bir ifade, script'in sectigi veritabanina gider, baskasina degil
+----------------------------------------
+
+FIX - Thread'li oturum, isi calistiracak kimse yokken kuyruga aliyordu. Kuyruk,
+        UseThread'li baglanti kaydedildiginde olusuyor; isci ise ancak oturum
+        baglandiginda basliyor. DB.CONNECT oncesinde calisan bir script satiri
+        boylece kimsenin bosaltmadigi bir kuyruga giriyordu: cagiran - oyun dongusu -
+        okuma zaman asiminin tamamini bekliyor (varsayilan 30s), "ifade hala
+        calisiyor olabilir" cevabini aliyor ve ifade gercekten de birisi
+        baglandiginda, hic gormedigi bir baglanti uzerinde calisiyordu. UseThread
+        kapaliyken ayni satir aninda "DB is not connected" diyor; ikisinin de vermesi
+        gereken cevap bu. Is artik yalnizca kuyrugu gercekten bosaltan bir isci
+        varken kuyruga aliniyor.
+
+FIX - Yeniden baglanma yanlis veritabanina gidiyordu. Bir oturum, ini bolumunden
+        baska bir yere yonlendirilebiliyor: DB.CONNECT <saglayici>|<baglanti dizesi>.
+        Baglanti koptugunda KeepAlive onu CONFIG'ten - yani baska bir veritabanindan -
+        yeniden aciyordu ve sonraki her ifade oraya iniyordu; sessizce, cunku iki
+        shard'in veritabani ayni semaya sahiptir ve yanlis olana yapilan INSERT hata
+        vermez. Oturum artik gercekten acildigi hedefi hatirliyor ve ona donuyor;
+        config'inden acilmis bir oturum yine config'inden baglaniyor, boylece
+        operatorun o sirada duzenledigi ini gecerli kaliyor.
+
+FIX - Zaman asimi artik hangi turden oldugunu soyluyor. "Ifade hala calisiyor
+        olabilir" cumlesi, is veritabanina ulasmis olsa da kuyrukta baska islerin
+        arkasinda beklemekte olsa da dogruydu; oysa bunlar farkli sorunlar: ac kalmis
+        isci ve yavas veritabani. Ikisi de motor tarafindan yeniden denenemez, ama
+        ikisini ayirt edemeyen bir shard hicbirini duzeltemez. Sozel olarak da sayac
+        olarak da ayrildi (TimedOutQueuedCount, TimedOutRunningCount).
+
+TEST - NamedDbSessionTests (10), iki MySQL veritabaninin yerine gecen iki SQLite
+        dosyasi uzerinde: yazim secilen veritabanina iniyor ve baskasina inmiyor,
+        isimli yazim secimi yok sayiyor, basarisiz select hicbir seyi kaydirmiyor,
+        her oturum kendi satirlarini koruyor ve kuyruga alinan is, alindigi oturumda
+        calisiyor. Uc sozlesme orada sabitlendi, cunku script yazarinin bunlari
+        ogrenmesinin baska yolu yok: aktif oturum adapter-genelidir (select yapan ic
+        cagri geri almaz), isci olmayan oturumda async cagri satir ici calisir ve
+        isci varken senkron cagri yine cagirani bekletir. DbQueryTimeoutTests'e iki
+        zaman-asimi turu vakasi eklendi. Sondaj: yukaridaki iki kusur onarim
+        oncesinde kirmiziydi (1003ms bekleme ve hayalet yazim; kayitli veritabanina
+        yazan yeniden baglanma) ve baslamis isi isaretlememek calisan-zaman-asimi
+        vakasini kirmiziya donduruyor.
+
+[2026-09-15] - Hesaplar ve dunya tek kayit olarak yayinlaniyor
+----------------------------------------
+
+FIX - Arka plan modunda hesap dosyasi, dunya anlik goruntusu alinir alinmaz
+        yaziliyordu; shard'lar hala yazici is parcaciginda kodlanirken. Sonra
+        basarisiz olan bir dunya yazimi, YENI hesaplari ONCEKI dunyanin yanina
+        yayinliyordu: kaybolan kayitta yaratilan karakter hesapta yuvasini koruyor,
+        diskteki dunya ise onu hic duymamis oluyor. Hesaplar hala anlik goruntu
+        aninda URETILIYOR - ayni ani anlatmalari gerekiyor - ama artik .tmp'ye
+        hazirlaniyor ve yalnizca dunya yazimi commit ettiginde yayinlaniyor.
+        Basarisiz yazim hazirlanan dosyayi atiyor ve bunu soyluyor. Ters sira zaten
+        kurtarilabilir olan: dunyanin bir kayit gerisindeki hesap dosyasi kendini
+        yeniden bagliyor, cunku yukleyici karakteri, adini tasidigi hesabin bir
+        yuvasina zaten geri koyuyor.
+
+FIX - Hesap dosyasi basarisiz olan bir kayit, tum oyunculara "Save complete"
+        duyuruyordu. AccountPersistence, manifest yazilamadigi VE yerine gectigi
+        dosyalar silinemedigi durumda hata firlatiyor - sonraki yuklemenin bayat
+        anlik goruntuyu secip her parola, ban ve yeni hesabi geri aldigi durum - ve
+        sunucu bunu loglayip devam ediyordu. Dunyanin inmesi ile hesaplarin inmesi
+        artik ayri raporlaniyor: dunya gercekten commit etti, dolayisiyla kayit
+        sayiliyor, ama sonuc hesap hatasiyla birlikte basarisizlik olarak
+        bildiriliyor ve @SAVE_FAIL tetikleniyor.
+
+FIX - Hesap dosyasi artik her dunya shard'inin tasidigi nesil damgasini tasiyor. Iki
+        dosyayi birbirine baglayan hicbir sey yoktu; bu yuzden kurtarmanin tasarim
+        geregi urettigi tek uyusmazlik gorunmezdi: .bakN'den donen dunya, kimsenin
+        dondurmedigi tek dosya olan hesap dosyasindan eskidir. Acilis ikisini
+        karsilastiriyor ve uyusmadiklarinda iki nesli de adiyla soyluyor. Damgasiz
+        dosya - klasik hesap dosyasi ya da eski bir surumun yazdigi - "uyusmazlik"
+        degil "bilinmiyor" olarak okunuyor; aksi halde kontrol bu surumu ilk
+        calistiran her shard'da tetiklenirdi. SAVEID rezerve bolum adlarina katildi,
+        boylece damga parolasiz bir hesap olarak geri okunamiyor.
+
+NEW - Acilis denetimi, dunyanin sahip olmadigi bir karakteri adlandiran hesap
+        yuvasini raporluyor (AccountCharSlotMissing). Yukaridaki uyusmazligin
+        oyuncuya maliyeti tam olarak bu yuva: karakter listesinde "?", yediliye hala
+        sayilan bir yuva ve hicbir yerde nedenini soyleyen bir satir yok.
+        Temizlenmiyor, raporlaniyor - yuklenemeyen bir shard dosyasi ayni sekli
+        uretir ve orada temizlemek, kurtarilabilir bir olayi hesap-karakter baginin
+        kalici kaybina cevirirdi.
+
+TEST - WorldAccountGenerationTests (12): hazirlama ve atma, dort formatin hepsinde
+        damga, damganin hesap olarak geri okunmamasi, damgasiz dosyanin yine
+        yuklenmesi, .bak1'den geri alinan dunyanin hesap dosyasiyla uyusmamasi,
+        eslesen ciftin uyusmasi ve yuva denetiminin iki yonu. Sondaj: hazirlanan
+        dosyayi basarisiz dunya yaziminda yayinlamak 1, damgayi dusurmek 8, yukledigi
+        nesli adlandirmayan bir yukleyici 2 test kirmizi yapiyor.
+
 [2026-09-15] - Kayit, yayinlanmadan ve oynatilmadan once kendini kanitliyor
 ----------------------------------------
 

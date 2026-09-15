@@ -3,6 +3,41 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Acilamayan harita okuyucusu aldigini geri veriyor
+----------------------------------------
+
+FIX - Cikarilamayan bir UOP haritasi cikarimini geride birakiyordu. Kapsayici once bir
+        gecici dosyaya acilir, ancak ondan sonra bellege eslenir; basarisizlik
+        yollarinin yarisi o dosya yazmaya acildiktan SONRA olur: bozuk bir girdi ya da
+        girdileri baska haritaya ait olup hicbir sey cikarmayan (ve bu yuzden hic
+        eslenemeyen) bir kapsayici. Kurucu hata firlatiyordu, yani kimsenin dispose
+        edecegi bir nesne yoktu ve harita boyutunda bir dosya gecici dizinde kaliyordu -
+        baslayamayan bir shard'in her yeniden baslatma denemesinde bir tane. Kurucu
+        artik yeniden firlatmadan once eslemeyi, tanitici ve cikarimi birakiyor.
+
+FIX - VERI dosyasi acilamayan bir statics okuyucusu INDEKS dosyasini esli tutuyordu.
+        Indeks once eslenir; statics0.mul eksik, bos ya da kirpilmis oldugunda kurucu,
+        indeks eslemesi hala acikken hata firlatiyor ve bu surec boyunca boyle kaliyor.
+        Windows'ta eslenmis dosya silinemez ya da degistirilemez; yani bozuk harita
+        dosyasini degistirmek isteyen operator bunu yapamiyor ve nedenini hicbir sey
+        soylemiyor.
+
+DOC - Statics blok onbelleginde tahliye yok; bu artik acik bir soru degil, belgelenmis
+        bir karar. Harita ile sinirli: 8x8 blok basina bir girdi; blok basina 124 bayt
+        olculdu (blok basina dort statik ile), ki bu tam 6144x4096 haritanin tamami
+        gezildiginde ~46 MB eder. Ayni yerden ikinci gecis hicbir sey ayirmiyor ve bos
+        blok da bir girdiye mal oluyor - sinir statikler degil bloklar. Tahliye
+        politikasi, paralel NPC prestage'inin ulastigi bir okuma yoluna kilit koyar ve
+        karsiliginda yalnizca haritanin tam turuyla birikebilecek onlarca megabayti geri
+        alir. ARCHITECTURE ayrica README'deki "~200 MB tasarruf"un MUL dosyalarini
+        dogrudan RAM'e yuklemeye gore tasarruf oldugunu, harita altsisteminin tuttugu
+        seye bir tavan olmadigini soyluyor.
+
+TEST - MapReaderLifetimeTests (5) ve StaticCacheGrowthTests (2). Omur testleri
+        tanitici saymak yerine operatorun karsilastigi sonucu dogruluyor: silinemeyen
+        dosya ve buyuyen gecici dizin. Iki onarimdan birini geri almak 5 testin 4'unu
+        kirmiziya donduruyor.
+
 [2026-09-15] - Cantaya birakilan esya bir tick sonra silinmiyor
 ----------------------------------------
 

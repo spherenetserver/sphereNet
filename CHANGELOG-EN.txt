@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A map reader that fails to open gives back what it took
+----------------------------------------
+
+FIX - A UOP map that could not be extracted left the extraction behind. The container
+        is decompressed into a temp file and only then memory-mapped, and half the ways
+        it can fail happen after that file is open for writing: a corrupt entry, or a
+        container whose entries belong to another map and extracts to nothing, which
+        cannot be mapped at all. The constructor threw, so there was no object for
+        anyone to dispose, and a map-sized file stayed in the temp directory - once per
+        restart attempt of a shard that cannot start. The constructor now releases the
+        mapping, the handle and the extraction before it rethrows.
+
+FIX - A statics reader whose DATA file could not be opened kept its INDEX file mapped.
+        The index is mapped first; when statics0.mul is missing, empty or truncated the
+        constructor throws with the index mapping still open, for the life of the
+        process. On Windows a mapped file cannot be deleted or replaced, so the operator
+        who tries to swap the bad map file out cannot - and nothing explains why.
+
+DOC - The statics block cache has no eviction, which is now a documented decision
+        rather than an open question. It is bounded by the map: one entry per 8x8
+        block, measured at 124 bytes per block with four statics each, which
+        extrapolates to ~46 MB for a full 6144x4096 map after walking all of it. A
+        second pass over the same ground allocates nothing, and an empty block costs an
+        entry too - the bound is blocks, not statics. An eviction policy would put
+        locking on a read path the parallel NPC prestage reaches, to reclaim tens of
+        megabytes that only a complete tour of the map can accumulate. ARCHITECTURE
+        also now says that the README's "~200 MB saved" is the saving against loading
+        the MUL files outright, not a cap on what the map subsystem holds.
+
+TEST - MapReaderLifetimeTests (5) and StaticCacheGrowthTests (2). The lifetime tests
+        assert the consequence an operator meets rather than a handle count: a file
+        nobody can delete, and a temp directory that grew. Reverting either repair
+        turns 4 of the 5 red.
+
 [2026-09-15] - An item dropped into a bag is not deleted a tick later
 ----------------------------------------
 

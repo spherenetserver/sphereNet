@@ -840,8 +840,12 @@ public static partial class Program
         }
         string accountsDir = ResolvePath(basePath, _config.AccountDir);
         Directory.CreateDirectory(accountsDir);
-        SphereNet.Persistence.Accounts.AccountPersistence.Load(
-            _accounts, accountsDir, _loggerFactory.CreateLogger("AccountPersistence"));
+        // Accounts load before the world (the world load links characters into their
+        // slots), so the generation the file names is kept until the world is up and
+        // the two can be compared.
+        _loadedAccountGeneration = SphereNet.Persistence.Accounts.AccountPersistence
+            .LoadSnapshot(_accounts, accountsDir, _loggerFactory.CreateLogger("AccountPersistence"))
+            .Generation;
 
         // --- 7. Persistence ---
         _saver = new WorldSaver(_loggerFactory)
@@ -985,6 +989,7 @@ public static partial class Program
         {
             var (items, chars) = _loader.Load(_world, savePath, _accounts);
             _log.LogInformation("World loaded: {Items} items, {Chars} chars", items, chars);
+            VerifyAccountGenerationAgainstWorld();
 
             // A trade window cannot survive a restart: its session lived only in
             // memory. Give the goods back before anything else looks at the world.

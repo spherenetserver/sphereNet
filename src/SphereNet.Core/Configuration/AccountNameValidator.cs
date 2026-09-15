@@ -120,6 +120,10 @@ public static class AccountNameValidator
     /// </summary>
     public static bool IsReservedSection(string section) =>
         section.Equals("EOF", StringComparison.OrdinalIgnoreCase) ||
+        // The account file opens with the [SAVEID] generation stamp, the same record
+        // every world shard carries. Exact match, not a family prefix: the stamp is
+        // one fixed name, and an account called "Saveidas" is nobody's keyword.
+        section.Equals("SAVEID", StringComparison.OrdinalIgnoreCase) ||
         section.StartsWith("WORLD", StringComparison.OrdinalIgnoreCase) ||
         section.StartsWith("SPHERE", StringComparison.OrdinalIgnoreCase) ||
         section.StartsWith("GLOBALS", StringComparison.OrdinalIgnoreCase) ||

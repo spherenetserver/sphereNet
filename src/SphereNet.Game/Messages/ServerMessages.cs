@@ -433,6 +433,10 @@ public static partial class ServerMessages
         Def("worldsave_started", "Saving world...");
         Def("worldsave_complete", "World save complete. (#%s, took %s ms)");
         Def("worldsave_failed", "World save FAILED: %s");
+        // The world landed and the account file did not. Neither of the two above
+        // describes that: "complete" hides a real loss, "FAILED" sends an operator
+        // looking for a world that is in fact on disk.
+        Def("worldsave_partial", "World saved, but the ACCOUNT file did not: %s");
 
         // ===== DB Commands =====
         Def("db_connect_fail", "DB.CONNECT failed: %s");

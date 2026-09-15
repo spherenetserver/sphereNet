@@ -40,6 +40,11 @@ public static class WorldInvariantAuditor
         /// limbo: nobody can see or reach it, yet it is still saved and still
         /// counts against weight — the "it just vanished" report.</summary>
         CharacterLimboItem,
+        /// <summary>An account holds a character slot whose uid is in no world. The
+        /// slot still counts against the seven, so the player sees a "?" in the
+        /// character list and cannot create a character in its place - the shape an
+        /// account file left from a newer save than the world takes (D01).</summary>
+        AccountCharSlotMissing,
     }
 
     public readonly record struct Anomaly(Kind Kind, uint Uid, string Detail)
@@ -50,6 +55,11 @@ public static class WorldInvariantAuditor
     /// <summary>Run every invariant check over the world and return all anomalies.
     /// An empty list means the load is internally consistent.</summary>
     public static IReadOnlyList<Anomaly> Audit(GameWorld world)
+        => Audit(world, null);
+
+    /// <summary>The same sweep, plus the checks that need the account file: a
+    /// character slot pointing into a world that does not hold that character.</summary>
+    public static IReadOnlyList<Anomaly> Audit(GameWorld world, Accounts.AccountManager? accounts)
     {
         var anomalies = new List<Anomaly>();
         foreach (var obj in world.GetAllObjects())
@@ -65,7 +75,31 @@ public static class WorldInvariantAuditor
             AuditType(item, anomalies);
             AuditSpawner(item, anomalies);
         }
+        if (accounts != null)
+            AuditAccountCharSlots(world, accounts, anomalies);
         return anomalies;
+    }
+
+    /// <summary>Every occupied character slot must name a character the world holds.
+    /// A slot that does not is reported rather than cleared: the same shape appears
+    /// when a shard file failed to load, and clearing it there would turn a
+    /// recoverable incident into the permanent loss of the account-to-character
+    /// link.</summary>
+    private static void AuditAccountCharSlots(
+        GameWorld world, Accounts.AccountManager accounts, List<Anomaly> outList)
+    {
+        foreach (var acc in accounts.GetAllAccounts())
+        {
+            for (int slot = 0; slot < 7; slot++)
+            {
+                var uid = acc.GetCharSlot(slot);
+                if (!uid.IsValid) continue;
+                var ch = world.FindChar(uid);
+                if (ch != null && !ch.IsDeleted) continue;
+                outList.Add(new Anomaly(Kind.AccountCharSlotMissing, uid.Value,
+                    $"account '{acc.Name}' slot {slot} names a character the world does not hold"));
+            }
+        }
     }
 
     /// <summary>An item may name a CHARACTER as its container: worn gear, the

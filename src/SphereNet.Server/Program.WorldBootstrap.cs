@@ -355,7 +355,7 @@ public static partial class Program
 
     private static void AuditLoadedWorld()
     {
-        var anomalies = SphereNet.Game.Diagnostics.WorldInvariantAuditor.Audit(_world);
+        var anomalies = SphereNet.Game.Diagnostics.WorldInvariantAuditor.Audit(_world, _accounts);
         if (anomalies.Count == 0)
         {
             _log.LogInformation("World audit: clean (no consistency anomalies)");

@@ -17,10 +17,55 @@ public static class AccountPersistence
 {
     private const string BaseName = "sphereaccu";
 
-    /// <summary>Write every account into <c>sphereaccu.{ext}</c>. Stale files
-    /// in the other formats are removed so changing SaveFormat doesn't leave
-    /// two snapshots next to each other.</summary>
-    public static int Save(AccountManager accounts, string dir, SaveFormat fmt, ILogger? log = null)
+    /// <summary>An account file that has been written but not published: it sits in
+    /// its <c>.tmp</c> sibling and becomes the live snapshot only when
+    /// <see cref="Commit"/> runs.
+    ///
+    /// Rendering and publishing are separate steps because the accounts and the world
+    /// are one save. A background save wrote the account file while the world was
+    /// still being encoded on the writer thread, so a world write that then failed
+    /// published the NEW accounts beside the PREVIOUS world: a character created in
+    /// the save that was lost keeps its slot in an account whose character the world
+    /// has never heard of (review work item D01).</summary>
+    public sealed class StagedAccountSnapshot
+    {
+        internal StagedAccountSnapshot(string dir, string tmpPath, string finalPath,
+            SaveFormat fmt, int count, int skipped)
+        {
+            Dir = dir; TmpPath = tmpPath; FinalPath = finalPath;
+            Format = fmt; Count = count; Skipped = skipped;
+        }
+
+        internal string Dir { get; }
+        internal string TmpPath { get; }
+        internal SaveFormat Format { get; }
+
+        /// <summary>Where the snapshot lands when it is published.</summary>
+        public string FinalPath { get; }
+        /// <summary>Accounts written into the staged file.</summary>
+        public int Count { get; }
+        /// <summary>Accounts left out because their name cannot be written back.</summary>
+        public int Skipped { get; }
+    }
+
+    /// <summary>What a load found: the accounts, and the world generation the file
+    /// says it belongs to (null for a file written without a stamp).</summary>
+    public readonly record struct AccountLoadResult(int Count, long? Generation, string? Path);
+
+    /// <summary>Write every account into <c>sphereaccu.{ext}</c> and publish it.
+    /// Stale files in the other formats are removed so changing SaveFormat doesn't
+    /// leave two snapshots next to each other.</summary>
+    /// <param name="generation">The world generation these accounts belong to, stamped
+    /// into the file so a later boot can tell whether the world beside it is the same
+    /// save. 0 leaves the file unstamped.</param>
+    public static int Save(AccountManager accounts, string dir, SaveFormat fmt, ILogger? log = null,
+        long generation = 0)
+        => Commit(Stage(accounts, dir, fmt, log, generation), log);
+
+    /// <summary>Phase 1: render the account file to its <c>.tmp</c> sibling. Reads live
+    /// account state, so main-thread only; touches no live file.</summary>
+    public static StagedAccountSnapshot Stage(AccountManager accounts, string dir, SaveFormat fmt,
+        ILogger? log = null, long generation = 0)
     {
         Directory.CreateDirectory(dir);
 
@@ -33,6 +78,18 @@ public static class AccountPersistence
         {
             w.WriteHeaderComment("SphereNet Account File");
             w.WriteHeaderComment($"Saved at {DateTime.UtcNow:u}");
+
+            // The same stamp every world shard carries. Without it the only way to
+            // notice that the world had been rolled back to an older generation while
+            // the accounts stayed ahead was a player reporting a character that no
+            // longer exists.
+            if (generation != 0)
+            {
+                w.BeginRecord(SaveIO.SaveIdSection);
+                w.WriteProperty(SaveIO.GenerationProperty, generation.ToString());
+                w.EndRecord();
+            }
+
             foreach (var acc in accounts.GetAllAccounts())
             {
                 // Last line of defence. CreateAccount rejects names that cannot
@@ -53,8 +110,19 @@ public static class AccountPersistence
             }
         }
 
+        return new StagedAccountSnapshot(dir, tmpPath, finalPath, fmt, count, skipped);
+    }
+
+    /// <summary>Phase 2: publish a staged snapshot - promote the <c>.tmp</c>, name it
+    /// in the manifest and drop the files it supersedes. Safe on any thread.</summary>
+    public static int Commit(StagedAccountSnapshot staged, ILogger? log = null)
+    {
+        string dir = staged.Dir, finalPath = staged.FinalPath;
+        int count = staged.Count, skipped = staged.Skipped;
+        SaveFormat fmt = staged.Format;
+
         // Atomic promote: .tmp → final (overwrite).
-        File.Move(tmpPath, finalPath, overwrite: true);
+        File.Move(staged.TmpPath, finalPath, overwrite: true);
 
         // Name the active snapshot before removing anything. If the process dies
         // between these two steps the manifest still points at a file that exists,
@@ -106,10 +174,32 @@ public static class AccountPersistence
         return count;
     }
 
+    /// <summary>Throw away a staged snapshot that will never be published - the world
+    /// write it belonged to failed. Leaves the live account file untouched.</summary>
+    public static void Discard(StagedAccountSnapshot staged, ILogger? log = null)
+    {
+        try
+        {
+            if (File.Exists(staged.TmpPath)) File.Delete(staged.TmpPath);
+        }
+        catch (Exception ex)
+        {
+            // A staged file nobody promotes is inert - the loader only ever reads the
+            // manifest target or a known extension - so this is worth a line, not a
+            // failure.
+            log?.LogWarning(ex, "Could not remove the unpublished account file {Path}", staged.TmpPath);
+        }
+    }
+
     /// <summary>Load accounts from <paramref name="dir"/>. The manifest names the
     /// active snapshot; without one (first run, or a directory written by an older
     /// build) the known extensions are probed as before.</summary>
     public static int Load(AccountManager accounts, string dir, ILogger? log = null)
+        => LoadSnapshot(accounts, dir, log).Count;
+
+    /// <summary>Load accounts and report which world generation the file names, so
+    /// the caller can check it against the world that actually loaded (D01).</summary>
+    public static AccountLoadResult LoadSnapshot(AccountManager accounts, string dir, ILogger? log = null)
     {
         string? active = ReadManifestTarget(dir);
         if (active != null)
@@ -134,7 +224,7 @@ public static class AccountPersistence
                 return LoadFile(accounts, path, log);
         }
         log?.LogWarning("No account file found in {Dir}", dir);
-        return 0;
+        return new AccountLoadResult(0, null, null);
     }
 
     /// <summary>Record which file is the live account snapshot. Written through a
@@ -182,13 +272,27 @@ public static class AccountPersistence
         return name;
     }
 
-    private static int LoadFile(AccountManager accounts, string path, ILogger? log)
+    private static AccountLoadResult LoadFile(AccountManager accounts, string path, ILogger? log)
     {
         int count = 0;
+        long? generation = null;
         using var reader = SaveIO.OpenReader(path);
 
         while (reader.NextRecord(out string section))
         {
+            // The generation stamp, read before the account-name rules get a look at
+            // the section: SAVEID is reserved, so it can never be mistaken for one.
+            if (section.Equals(SaveIO.SaveIdSection, StringComparison.OrdinalIgnoreCase))
+            {
+                while (reader.NextProperty(out string stampKey, out string stampVal))
+                {
+                    if (stampKey.Equals(SaveIO.GenerationProperty, StringComparison.OrdinalIgnoreCase) &&
+                        long.TryParse(stampVal, out long gen))
+                        generation = gen;
+                }
+                continue;
+            }
+
             string? name = ExtractAccountName(section);
             if (name == null)
             {
@@ -209,7 +313,7 @@ public static class AccountPersistence
         }
 
         log?.LogInformation("Loaded {Count} accounts from {Path}", count, path);
-        return count;
+        return new AccountLoadResult(count, generation, path);
     }
 
     private static string? ExtractAccountName(string section)

@@ -26,6 +26,12 @@ public sealed class WorldSaver
     /// <see cref="SaveIO.GenerationProperty"/> for why the index cannot do this.</summary>
     private long _generation;
 
+    /// <summary>The token stamped into the most recently prepared save. Read by
+    /// whoever writes a file that has to name the generation it belongs to - the
+    /// account snapshot does, so a rolled-back world can be told apart from accounts
+    /// that match it (D01).</summary>
+    public long LastGeneration => _generation;
+
     /// <summary>Format new saves will be written in. Runtime-changeable via
     /// the migration command; loader auto-detects so mixing formats in a
     /// snapshot dir is safe.</summary>
@@ -109,7 +115,12 @@ public sealed class WorldSaver
         /// landing as four Binary shards beside a Text spheredata.</summary>
         internal SaveFormat Format { get; }
         internal int ShardCount { get; }
-        internal long Generation { get; }
+
+        /// <summary>The generation token this save will stamp into every file it
+        /// writes. Public because the account snapshot is staged against it before
+        /// the write phase starts, on the main thread, where the saver's live field
+        /// has already moved on if another save was prepared since.</summary>
+        public long Generation { get; }
 
         internal WorldSaveSnapshot Snapshot { get; }
         internal string ServerData { get; }

@@ -24,6 +24,12 @@ public sealed class WorldLoader
     private readonly ILogger<WorldLoader> _logger;
     private int _migratedUuids;
 
+    /// <summary>The generation token of the world that was loaded, or null when the
+    /// save carried no stamp (a classic Sphere save, or one written before the token
+    /// existed). Every file of that save carries this value, so a file written beside
+    /// the world - the account snapshot - can be checked against it.</summary>
+    public long? LoadedGeneration { get; private set; }
+
     /// <summary>Resolves a Sphere defname to a base graphic/body ID.
     /// Returns 0 when the defname is unknown.</summary>
     public Func<string, ushort>? ResolveItemDef { get; set; }
@@ -293,7 +299,7 @@ public sealed class WorldLoader
             // multi-file commit can leave them from different saves (new sphereworld
             // beside old spherechars). Their SAVEID stamps disagree, so reject the
             // mixed generation and fall back to the last internally-consistent one.
-            if (!IsGenerationConsistent(gen, out string stampDetail))
+            if (!IsGenerationConsistent(gen, out string stampDetail, out long? stampToken))
             {
                 _logger.LogError(
                     "Save generation {Which} is internally inconsistent — its files come from different saves ({Detail}), " +
@@ -307,6 +313,11 @@ public sealed class WorldLoader
                     "Loading from BACKUP generation .bak{Level} — the current save (and any newer backups) were missing or unreadable. " +
                     "Investigate the current save files; the next save will overwrite this backup.", level);
 
+            // Name the generation that actually loaded. Every file written beside
+            // this world - the account snapshot above all - carries the same token,
+            // so the boot check can tell a world that was rolled back to an older
+            // generation from one that matches the accounts on disk (D01).
+            LoadedGeneration = stampToken;
             return Materialize(world, gen, accounts);
         }
 
@@ -404,7 +415,7 @@ public sealed class WorldLoader
     /// at the first one it met, which switched verification off for every other file in
     /// the generation, including stamped ones that did disagree.
     /// </summary>
-    private bool IsGenerationConsistent(GenerationPaths gen, out string detail)
+    private bool IsGenerationConsistent(GenerationPaths gen, out string detail, out long? token)
     {
         long? reference = null;
         string? referenceFile = null;
@@ -448,6 +459,7 @@ public sealed class WorldLoader
               $"({stamped} stamped, {unstamped} unstamped)"
             : $"id={reference?.ToString() ?? "-"} ({stamped} stamped, {unstamped} unstamped)";
 
+        token = conflictFile == null ? reference : null;
         return conflictFile == null;
     }
 

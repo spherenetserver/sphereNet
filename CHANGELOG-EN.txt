@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - What the retention sweep keeps while recording carries on
+----------------------------------------
+
+TEST - StateRecorderRetentionTests (5). The recorder holds three days of movement and
+        snapshots and deletes the rest on a timer, with pinned periods as the
+        exception. That the sweep runs concurrently with the flush thread had been
+        tested for SQLite errors; what it does to the DATA had not been tested at all,
+        and a sweep that quietly took a pinned incident away would be found out long
+        after the evidence was gone.
+
+        Covered: rows past the window go and recent ones stay; a pinned period survives
+        while an unpinned row of the same age does not; unpinning releases what the pin
+        was holding; the first and last moment of a pinned period are inside it, so an
+        incident is not clipped at both ends; and 510 movements recorded while the
+        sweep worked through 200 old rows all landed, with none of the old ones left.
+        No defect was found.
+
 [2026-09-15] - What a decay backlog costs, measured
 ----------------------------------------
 

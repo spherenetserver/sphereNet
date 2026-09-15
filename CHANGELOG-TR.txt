@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Saklama supurmesi, kayit surerken neyi koruyor
+----------------------------------------
+
+TEST - StateRecorderRetentionTests (5). Kaydedici uc gunluk hareket ve anlik goruntu
+        tutuyor, gerisini zamanlayiciyla siliyor; sabitlenmis donemler istisna. Supurmenin
+        flush is parcacigiyla ayni anda calismasi SQLite hatalari acisindan test
+        edilmisti; VERIYE ne yaptigi ise hic test edilmemisti ve sabitlenmis bir olayi
+        sessizce goturen bir supurme, ancak kanit yok olduktan cok sonra fark edilirdi.
+
+        Kapsanan: pencereyi asan satirlar gidiyor, yeniler kaliyor; sabitlenmis donem
+        hayatta kaliyor ama ayni yastaki sabitlenmemis satir kalmiyor; sabitlemeyi
+        kaldirmak tuttugu seyi birakiyor; sabitlenmis donemin ilk ve son ani onun
+        icindedir, yani olay iki ucundan kirpilmiyor; ve supurme 200 eski satiri
+        islerken kaydedilen 510 hareketin hepsi yerine ulasti, eski satirlardan hicbiri
+        kalmadan. Kusur bulunmadi.
+
 [2026-09-15] - Decay birikiminin maliyeti olculdu
 ----------------------------------------
 

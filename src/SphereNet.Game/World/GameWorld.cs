@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Collections;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects;
@@ -2262,8 +2262,22 @@ public sealed class GameWorld
         {
             if (!_decayDue.TryDequeue(out var item, out long deadline) || item == null)
                 break;
-            if (item.IsDeleted || !item.IsOnGround)
+            if (item.IsDeleted)
                 continue;
+            if (!item.IsOnGround)
+            {
+                // It left the ground between arming and coming due - picked up, put in
+                // a bag, equipped. Decay belongs to top-level items: upstream turns a
+                // decay request on anything else into "no timer at all"
+                // (CItem::SetDecayTime, CItem.cpp:1493). Dropping the queue entry and
+                // leaving the deadline standing made the item permanently armed and
+                // permanently unqueued, which the registration audit then "repaired"
+                // every minute - re-queueing it, finding it off the ground again, and
+                // dropping it again, for as long as the item existed.
+                if (item.DecayTime == deadline)
+                    item.ClearDecay();
+                continue;
+            }
             if (item.DecayTime != deadline)
                 continue;               // re-armed or cleared: a later entry owns it
             buffer.Add(item);

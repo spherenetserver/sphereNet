@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A recording that cannot be played back is not a recording
+----------------------------------------
+
+FIX - Capture had no bound at all. The 64 MB limit was only ever applied when READING
+        a recording back, so one left running in a busy place grew in memory for as
+        long as it was forgotten - and past that limit the file it finally wrote could
+        never be loaded, which is an hour of recording refused at the moment somebody
+        tries to watch it. Capture now stops at a 48 MB budget, chosen below the read
+        limit with room for the header so that anything this engine records it can also
+        play back. What was captured is kept rather than dropped - a recording that
+        ends early is worth something - and the session says it was truncated instead
+        of letting the ending look like a quiet world.
+
+TEST - ReplayLifecycleTests (8). Seeking backwards takes back what the client was
+        shown; seeking forwards from cold still replays everything before the target,
+        so nothing refers to an object that was never drawn; across five seeks in both
+        directions the phantoms the engine thinks the client holds are exactly the ones
+        it holds. A paused replay sends nothing and resumes from where it stopped
+        rather than from wherever the wall clock reached; a stopped one sends nothing
+        more. The capture budget is bounded and below the read limit, with the controls
+        that an ordinary recording is not truncated and that a packet from outside the
+        capture range costs nothing. Probe: unbounding capture turns 1 red.
+
 [2026-09-15] - A logout that lands mid-connect closes that connection too
 ----------------------------------------
 

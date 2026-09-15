@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Oynatilamayan kayit, kayit degildir
+----------------------------------------
+
+FIX - Yakalamanin hicbir siniri yoktu. 64 MB limiti yalnizca kaydi GERI OKURKEN
+        uygulaniyordu; yani yogun bir yerde acik unutulan kayit, unutuldugu sure boyunca
+        bellekte buyuyordu ve o limiti astiginda sonunda yazdigi dosya bir daha
+        yuklenemiyordu - yani bir saatlik kayit, tam da birileri izlemeye kalktigi anda
+        reddediliyordu. Yakalama artik 48 MB butcesinde duruyor; bu deger okuma
+        limitinin altinda ve baslik icin pay birakacak sekilde secildi, boylece bu
+        motorun kaydettigi her sey oynatilabiliyor. Yakalanan atilmiyor korunuyor -
+        erken biten kayit da bir seydir - ve oturum, sonun sessiz bir dunya gibi
+        gorunmesine izin vermek yerine kirpildigini soyluyor.
+
+TEST - ReplayLifecycleTests (8). Geri sarma, istemciye gosterileni geri aliyor; sogukken
+        ileri sarma hedefe kadar olan her seyi yine oynatiyor, boylece hicbir paket hic
+        cizilmemis bir nesneye atifta bulunmuyor; iki yonde bes sarma boyunca motorun
+        "istemcide var" saydigi hayaletler tam olarak istemcide olanlar. Duraklatilmis
+        replay hicbir sey gondermiyor ve duvar saatinin geldigi yerden degil, biraktigi
+        yerden devam ediyor; durdurulmus olan bir sey daha gondermiyor. Yakalama butcesi
+        sinirli ve okuma limitinin altinda; kontroller: siradan kayit kirpilmiyor ve
+        menzil disindan gelen paket hicbir seye mal olmuyor. Sondaj: yakalamanin
+        sinirini kaldirmak 1 testi kirmiziya donduruyor.
+
 [2026-09-15] - Baglanti kurulurken gelen cikis, o baglantiyi da kapatiyor
 ----------------------------------------
 

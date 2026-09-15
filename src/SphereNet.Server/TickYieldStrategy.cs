@@ -41,25 +41,34 @@ public static class TickYieldStrategy
         return (int)slack;
     }
 
-    public static void Yield(int mode, long msUntilNextDeadline = 0)
+    /// <summary>Yield the rest of this loop iteration, and report how long the yield
+    /// ASKED for.
+    ///
+    /// The number matters when a stall is reported. Nothing here can legitimately take
+    /// more than <see cref="AdaptiveMaxSleepMs"/>, so a yield measured in hundreds of
+    /// milliseconds is not this engine being slow - it is the thread not being given
+    /// the CPU back. Logging the requested figure beside the measured one is the
+    /// difference between "the loop stalled" and "the machine did not schedule us",
+    /// which are fixed in completely different places.</summary>
+    public static int Yield(int mode, long msUntilNextDeadline = 0)
     {
         switch (Resolve(mode))
         {
             case TickYieldAction.Spin:
                 Thread.SpinWait(100);
-                break;
+                return 0;
             case TickYieldAction.SleepOne:
                 Thread.Sleep(1);
-                break;
+                return 1;
             case TickYieldAction.Adaptive:
                 int ms = ComputeAdaptiveSleepMs(msUntilNextDeadline, AdaptiveMaxSleepMs);
                 if (ms > 0) Thread.Sleep(ms);
                 else Thread.SpinWait(100);
-                break;
+                return ms;
             default:
                 Thread.SpinWait(100);
                 Thread.Sleep(0);
-                break;
+                return 0;
         }
     }
 }

@@ -248,7 +248,8 @@ public static partial class Program
                 // Pass the slack until the next tick is due so the adaptive yield
                 // (TickSleepMode=3) can sleep out an idle window without ever
                 // overrunning the tick cadence. Other modes ignore the argument.
-                TickYieldStrategy.Yield(_config.TickSleepMode, nextTickMs - sw.ElapsedMilliseconds);
+                int yieldAskedMs = TickYieldStrategy.Yield(
+                    _config.TickSleepMode, nextTickMs - sw.ElapsedMilliseconds);
 
                 long iterTs6 = Stopwatch.GetTimestamp();
                 long iterTotalUs = ToMicroseconds(iterTs6 - iterTs0);
@@ -260,7 +261,7 @@ public static partial class Program
                     {
                         _lastLoopStallLogMs = stallNowMs;
                         _log.LogWarning(
-                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms gc0=+{G0} gc1=+{G1} gc2=+{G2} pkts={Pkts} slowest_pkt=0x{SlowOp:X2}@{SlowMs}ms",
+                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms(asked {YieldAskedMs}ms) gc0=+{G0} gc1=+{G1} gc2=+{G2} pkts={Pkts} slowest_pkt=0x{SlowOp:X2}@{SlowMs}ms",
                             (iterTotalUs / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs1 - iterTs0) / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs2 - iterTs1) / 1000.0).ToString("F1"),
@@ -268,6 +269,7 @@ public static partial class Program
                             (ToMicroseconds(iterTs4 - iterTs3) / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs5 - iterTs4) / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs6 - iterTs5) / 1000.0).ToString("F1"),
+                            yieldAskedMs,
                             GC.CollectionCount(0) - iterG0,
                             GC.CollectionCount(1) - iterG1,
                             GC.CollectionCount(2) - iterG2,

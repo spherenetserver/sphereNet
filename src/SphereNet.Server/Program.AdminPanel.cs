@@ -222,10 +222,18 @@ public static partial class Program
 
                 GetStats = () => InvokePanelOnMainLoop(() =>
                 {
-                    var (chars, items, sectors) = _world.GetStats();
+                    // One sector walk, not two: the world totals are the sum of the
+                    // per-map figures, and this runs on the main loop every two seconds
+                    // for as long as a dashboard is open.
+                    var mapStats = _world.GetMapStats();
+                    int chars = 0, items = 0, sectors = 0;
+                    foreach (var m in mapStats)
+                    {
+                        chars += m.Chars; items += m.Items; sectors += m.Sectors;
+                    }
                     var uptime = DateTime.UtcNow - _serverStartTime;
                     var runtime = GetTickTelemetrySnapshot();
-                    var maps = _world.GetMapStats()
+                    var maps = mapStats
                         .Select(m => new MapStats(m.MapId, m.Chars, m.Items, m.Sectors, m.ActiveSectors, m.OnlinePlayers))
                         .ToList();
                     return new ServerStats(

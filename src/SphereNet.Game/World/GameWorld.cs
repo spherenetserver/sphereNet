@@ -2631,23 +2631,22 @@ public sealed class GameWorld
         }
     }
 
+    /// <summary>World totals, summed from the per-map figures rather than from a walk
+    /// of its own.
+    ///
+    /// The panel asks for these and for <see cref="GetMapStats"/> in the same breath,
+    /// every two seconds, on the main loop - and each used to walk every sector of
+    /// every map. On a six-map shard that is ~74,000 sector visits per refresh to
+    /// produce a handful of numbers, and it showed up as a 100 ms main-loop stall
+    /// while a dashboard was open. One walk answers both.</summary>
     public (int Chars, int Items, int Sectors) GetStats()
     {
         int chars = 0, items = 0, sectorCount = 0;
-        foreach (var (_, grid) in _sectors)
+        foreach (var map in GetMapStats())
         {
-            int cols = grid.GetLength(0);
-            int rows = grid.GetLength(1);
-            for (int x = 0; x < cols; x++)
-            {
-                for (int y = 0; y < rows; y++)
-                {
-                    var sector = grid[x, y];
-                    sectorCount++;
-                    chars += sector.CharacterCount;
-                    items += sector.ItemCount;
-                }
-            }
+            chars += map.Chars;
+            items += map.Items;
+            sectorCount += map.Sectors;
         }
         return (chars, items, sectorCount);
     }

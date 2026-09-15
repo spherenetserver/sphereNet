@@ -178,6 +178,30 @@ Instead of scanning every NPC each tick, NPCs are bucketed into a 256-slot hashe
 timer wheel by their `nextActionTime`, giving O(1) scheduling. This keeps the
 parallel Build phase proportional to *active* NPCs, not total NPC count.
 
+**The contract**, measured against a plain list of deadlines over fixed-seed
+schedule/remove/advance sequences (`TimerWheelModelTests`):
+
+- A slot is 100 ms and there are 256 of them, so the wheel turns every 25.6 s. A
+  deadline is parked in the slot that covers it, **rounded up**: it is delivered at
+  that slot's start and never a millisecond earlier. Asking for +101 ms gets +200 ms;
+  asking for exactly one revolution (+25,600 ms) is exact. Rounding may only ever
+  delay — nothing fires early.
+- `Schedule` with a deadline that has already passed does **not** fire immediately: it
+  is clamped to the next slot.
+- `Schedule` for a uid the wheel already holds is refused, not replaced. Cancel with
+  `Remove` first if the deadline is to change.
+- `Remove` retires the schedule but leaves its slot entry to be discarded when that
+  slot is next walked, so **`Count` is live schedules and not retained memory**:
+  50 NPCs rescheduled 20 times report `Count` 50 while 1,000 entries are still parked.
+  One full revolution reclaims all of them.
+- A uid that comes back as a different creature does not inherit the old schedule; the
+  generation stamped on each entry retires it.
+- A forward clock jump is walked slot by slot, so it costs the elapsed time divided by
+  100 ms: one hour on an empty wheel measured at **1.5 ms** (36,000 steps), and
+  everything that came due inside the jump fires in that one advance.
+- One advance returns at most 500,000 due entries; the rest are picked up by the next
+  one.
+
 ---
 
 ## Scripting engine

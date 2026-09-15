@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - Two more verb surfaces measured, and the dead entries kept honest
+----------------------------------------
+
+TEST - The verb guardrail pinned four Source-X tables and left two unmeasured: the
+        guild/town stone and the party. Both are pinned now. SphereNet routes all ten
+        party verbs and all thirteen stone verbs that upstream's own dispatch handles.
+
+        The stone's other seventeen entries - ACCEPTCANDIDATE, GRANTTITLE, SETNAME,
+        VIEWROSTER, MASTERMENU and the rest - are in the table and fall to
+        `default: return false` in CItemStone::r_Verb, leftovers of the old stone menu.
+        They stay unrouted deliberately, because routing them means inventing behaviour
+        upstream does not have. That list is not taken on trust: a new check recomputes
+        it from the reference source on every run, so the day upstream grows a case for
+        one of them it stops being a deliberate gap and the guardrail asks for it here
+        too. Probe: dropping one name from the list turns 2 red.
+
 [2026-09-15] - PARTY.SETMASTER is a verb again, and the stone's dead table entries are named
 ----------------------------------------
 

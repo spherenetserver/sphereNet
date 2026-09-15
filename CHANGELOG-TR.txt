@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Iki verb yuzeyi daha olculdu, olu girdiler durust tutuldu
+----------------------------------------
+
+TEST - Verb guardrail'i dort Source-X tablosunu sabitliyor ve ikisini olcmuyordu:
+        guild/kasaba stone'u ve parti. Ikisi de artik sabitlendi. SphereNet, on parti
+        verb'unun hepsini ve Source-X'in kendi dagiticisinin isledigi on uc stone
+        verb'unun hepsini yonlendiriyor.
+
+        Stone'un diger on yedi girdisi - ACCEPTCANDIDATE, GRANTTITLE, SETNAME,
+        VIEWROSTER, MASTERMENU ve digerleri - tabloda var ama CItemStone::r_Verb icinde
+        `default: return false`'a dusuyor; eski stone menusunden kalma girdiler.
+        Bilincli olarak yonlendirilmiyorlar, cunku yonlendirmek Source-X'te olmayan bir
+        davranis uydurmak demek. Bu liste guvene dayanmiyor: yeni bir denetim onu her
+        kosuda referans kaynaktan yeniden hesapliyor; yani Source-X bunlardan biri icin
+        bir case eklediginde, o bilincli bosluk olmaktan cikar ve guardrail onu burada
+        da ister. Sondaj: listeden bir ad dusurmek 2 testi kirmiziya donduruyor.
+
 [2026-09-15] - PARTY.SETMASTER yeniden bir verb ve stone'un olu tablo girdileri adlandirildi
 ----------------------------------------
 

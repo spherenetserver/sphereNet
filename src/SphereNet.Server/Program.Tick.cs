@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -113,6 +113,12 @@ public static partial class Program
                 int iterG0 = GC.CollectionCount(0);
                 int iterG1 = GC.CollectionCount(1);
                 int iterG2 = GC.CollectionCount(2);
+                // Collection COUNTS say a GC happened, not how long the loop was
+                // stopped for it. Background GC collects gen2 mostly off-thread, so a
+                // gen2 in the window is not by itself an explanation - the pause total
+                // is. Reading it here and again at the end turns "gc2=+1 and 100ms
+                // unaccounted" into an answer.
+                TimeSpan iterGcPause = GC.GetTotalPauseDuration();
 
                 long now = sw.ElapsedMilliseconds;
 
@@ -261,7 +267,7 @@ public static partial class Program
                     {
                         _lastLoopStallLogMs = stallNowMs;
                         _log.LogWarning(
-                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms(asked {YieldAskedMs}ms) gc0=+{G0} gc1=+{G1} gc2=+{G2} pkts={Pkts} slowest_pkt=0x{SlowOp:X2}@{SlowMs}ms",
+                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms(asked {YieldAskedMs}ms) gc0=+{G0} gc1=+{G1} gc2=+{G2} gc_pause=+{GcPauseMs}ms pkts={Pkts} slowest_pkt=0x{SlowOp:X2}@{SlowMs}ms",
                             (iterTotalUs / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs1 - iterTs0) / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs2 - iterTs1) / 1000.0).ToString("F1"),
@@ -273,6 +279,7 @@ public static partial class Program
                             GC.CollectionCount(0) - iterG0,
                             GC.CollectionCount(1) - iterG1,
                             GC.CollectionCount(2) - iterG2,
+                            ((GC.GetTotalPauseDuration() - iterGcPause).TotalMilliseconds).ToString("F1"),
                             _network.LastInputPassPacketCount,
                             _network.LastInputPassSlowestOpcode,
                             _network.LastInputPassSlowestMs.ToString("F1"));
@@ -512,7 +519,7 @@ public static partial class Program
                 _slowTickCount++;
                 _lastSlowTickDominantPhase = GetDominantTickPhase();
                 _log.LogWarning(
-                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms",
+                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms(worst {FlushStep} {FlushStepMs}ms)",
                     _multicoreRuntimeEnabled ? "multicore" : "single",
                     _tickCounter,
                     (totalUs / 1000.0).ToString("F1"),
@@ -531,7 +538,9 @@ public static partial class Program
                     (_telemetryViewBuildUs / 1000.0).ToString("F1"),
                     (_telemetryApplyUs / 1000.0).ToString("F1"),
                     (_telemetryPostApplyUs / 1000.0).ToString("F1"),
-                    (_telemetryFlushUs / 1000.0).ToString("F1"));
+                    (_telemetryFlushUs / 1000.0).ToString("F1"),
+                    _flushDominantStep.Length > 0 ? _flushDominantStep : "-",
+                    (_flushDominantUs / 1000.0).ToString("F1"));
             }
 
             // Periodic tick stats: log average and max tick time every 30 seconds
@@ -1202,13 +1211,34 @@ public static partial class Program
         }
     }
 
+    /// <summary>The slowest step of the last post-tick maintenance pass, and what it
+    /// cost. The phase is a dozen unrelated jobs behind one number, so a live report of
+    /// `dominant=flush flush=103.3ms` named the bucket and nothing inside it.</summary>
+    private static string _flushDominantStep = "";
+    private static long _flushDominantUs;
+
+    /// <summary>Time one maintenance step and keep it if it is the pass's worst.</summary>
+    private static void FlushStep(string name, Action step)
+    {
+        long t0 = Stopwatch.GetTimestamp();
+        step();
+        long us = ToMicroseconds(Stopwatch.GetTimestamp() - t0);
+        if (us > _flushDominantUs)
+        {
+            _flushDominantUs = us;
+            _flushDominantStep = name;
+        }
+    }
+
     private static void RunPostTickMaintenance()
     {
         long now = Environment.TickCount64;
-        CleanupSummonedGuards(now);
-        RunDecayCatchup(now);
-        CloseExpiredStaticDoors(now);
-        ProcessRespawnResetChunk();
+        _flushDominantStep = "";
+        _flushDominantUs = 0;
+        FlushStep("guards", () => CleanupSummonedGuards(now));
+        FlushStep("decay", () => RunDecayCatchup(now));
+        FlushStep("doors", () => CloseExpiredStaticDoors(now));
+        FlushStep("respawn", ProcessRespawnResetChunk);
 
         long lightMinute = _world.WorldClockMinutes;
         if (lightMinute != _lastLightWorldMinute)
@@ -1231,9 +1261,11 @@ public static partial class Program
         }
 
         // Weather & season update
-        bool seasonChanged = _weatherEngine.OnTick();
-        if (seasonChanged)
-            BroadcastSeasonChange(playSound: true);
+        FlushStep("weather", () =>
+        {
+            if (_weatherEngine.OnTick())
+                BroadcastSeasonChange(playSound: true);
+        });
 
         // Region periodic triggers (Source-X CSector environ tick): fire
         // @CliPeriodic for every online player on their current region, and
@@ -1266,10 +1298,10 @@ public static partial class Program
         // member's health to every OTHER online member so the party gump bars
         // track them beyond visual range. ~2s cadence (40 ticks at 50ms).
         if (_world.TickCount % 40 == 0 && _partyManager != null)
-            PushPartyStats();
+            FlushStep("party", PushPartyStats);
 
         // Ship movement ticks
-        _shipEngine?.OnTickAll();
+        FlushStep("ships", () => _shipEngine?.OnTickAll());
 
         // House decay (check every ~120 ticks = ~6s at 50ms tick)
         if (_world.TickCount % 120 == 0 && _housingEngine != null)
@@ -1279,9 +1311,9 @@ public static partial class Program
                 _log.LogInformation("House 0x{Uid:X} collapsed from decay", house.MultiItem.Uid.Value);
         }
 
-        ProcessIdleTimeout();
-        _telnet?.Tick();
-        _webStatus?.Tick();
+        FlushStep("idle", ProcessIdleTimeout);
+        FlushStep("telnet", () => _telnet?.Tick());
+        FlushStep("web", () => _webStatus?.Tick());
     }
 
     /// <summary>Send each party member's health bar to every other online

@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Microsoft.Extensions.Logging;
@@ -74,6 +75,35 @@ public sealed class LoopStallAttributionTests
 
         _out.WriteLine($"asked {asked}ms, took {sw.Elapsed.TotalMilliseconds:F1}ms");
         Assert.InRange(asked, 0, TickYieldStrategy.AdaptiveMaxSleepMs);
+    }
+
+    [Fact]
+    public void AGarbageCollectionShowsUpAsPauseTimeNotJustACount()
+    {
+        // The second shape the live log showed: the time is inside the tick phase and a
+        // gen2 collection landed in the same window. A COUNT does not settle that -
+        // background GC does most of gen2 off-thread, so a gen2 in the window can cost
+        // the loop almost nothing. The pause total is what separates "a GC stopped us"
+        // from "a GC happened while something else was slow", which is why the stall
+        // report now carries it.
+        var before = GC.GetTotalPauseDuration();
+        int gen2Before = GC.CollectionCount(2);
+
+        // Something worth collecting, then a blocking collection over it.
+        var garbage = new List<byte[]>();
+        for (int i = 0; i < 400; i++)
+            garbage.Add(new byte[64 * 1024]);
+        garbage.Clear();
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+
+        var delta = GC.GetTotalPauseDuration() - before;
+        _out.WriteLine($"gen2 +{GC.CollectionCount(2) - gen2Before}, pause +{delta.TotalMilliseconds:F1}ms");
+
+        Assert.True(GC.CollectionCount(2) > gen2Before);
+        // Monotonic and attributable: the number only ever grows, and a blocking
+        // collection of a heap this size is never free.
+        Assert.True(delta > TimeSpan.Zero, $"a blocking gen2 reported {delta.TotalMilliseconds:F3}ms of pause");
     }
 
     // ---- what the dashboard costs the loop ---------------------------------

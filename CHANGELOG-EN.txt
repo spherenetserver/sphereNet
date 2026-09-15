@@ -4,6 +4,195 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - Defaults an operator can read, and things that changed only on the server
+----------------------------------------
+
+FIX - Death and resurrection left the walk sequence out of step. The 0x20 player
+        redraw resets the CLIENT's sequence to zero, and upstream resets its own at the
+        one place it sends that packet, saying why in as many words: "This will reset
+        client-side walk sequence to 0, so reset it on server side too, to prevent
+        client request an unnecessary 'resync'" (CClient::addPlayerUpdate,
+        CClientMsg.cpp:2162). Every 0x20 here did that except the two that matter most,
+        the moments a player is most likely to be mid-stride. The mismatch costs a
+        rejected step and a resync round trip - the hitch on the screen - and leaves the
+        ghost standing wherever the client had predicted rather than on the corpse.
+
+FIX - The season packet was re-sent on every death and every region crossing, whatever
+        season the client was already in. The client answers it by walking every loaded
+        map chunk and re-deriving each object's seasonal graphic (ClassicUO
+        World.ChangeSeason), so a repeat is a visible stall for no change at all.
+        Upstream returns early when the season has not changed (CClientMsg.cpp:509);
+        every season send now goes through that guard, and a full resync can still
+        force one.
+
+FIX - `.edit` could list the things on a character but not open any of them. A memory
+        - an ordinary one or a spell-effect mirror - is built directly rather than
+        through the world, so it has no uid and FindObject cannot reach it; picking one
+        printed two lines of text instead of a property dialog. Upstream has no such
+        split: both are real IT_EQ_MEMORY_OBJ / IT_SPELL items equipped on
+        LAYER_SPECIAL, and .edit opens the ordinary dialog on them. The dialog takes an
+        object, so it is now handed the memory itself.
+
+FIX - TIMER on a spell-effect memory read and wrote the wrong clock. The memory mirrors
+        an active-effect record and the RECORD owns the expiry, so reading TIMER
+        answered with the mirror's own permanent timeout and writing it set a field
+        nothing consults - the edit looked accepted and the buff ran exactly as long as
+        before. Upstream has no split (the effect IS the item, CChar::
+        Spell_Effect_Create); both directions now go through to the effect, and a
+        negative TIMER makes the buff permanent as it does everywhere else.
+
+FIX - `<NPC>` could not be read. Upstream answers it with the brain as a number
+        (CCharNPC::r_WriteVal, CCharNPC.cpp:168, numbering per CChar.h:32) and only the
+        WRITE existed here, so `IF (<NPC> == brain_monster)` got nothing, PROPLIST
+        advertised a key it could not answer, and .info on a creature showed no brain -
+        the one field worth seeing when a monster will not attack.
+
+FIX - An item that came due for decay while it was no longer on the ground - picked
+        up, bagged or worn between arming and the deadline - was dropped from the due
+        queue with its deadline left standing. Decay belongs to top-level items:
+        upstream turns a decay request on anything else into no timer at all
+        (CItem::SetDecayTime, CItem.cpp:1493). Leaving it armed made the item
+        permanently armed AND permanently unqueued, so the registration audit "repaired"
+        it every minute for the rest of its life - which is what the repeated
+        `Decay audit re-queued N armed item(s)` warnings in a live log were reporting.
+
+FIX - A bare `<ARGV>` returned argument ZERO instead of the argument COUNT
+        (CScriptTriggerArgs.cpp:511 formats the quantity when nothing follows the
+        keyword), and `<ARGV[n]>` parsed n as a literal integer rather than running it
+        through an expression (:518). A pack's list helpers are built on exactly those
+        two - `[FUNCTION ARRAYCOUNT] RETURN <EVAL <ARGV>>`, and `[FUNCTION ARRAY]`
+        reading its last field with `<ARGV[<EVAL <ARGV> - 1>]>` before indexing with an
+        expression of its own - so every list count came back as its first element,
+        which evaluates to nothing. A dialog looping
+        `FOR 1 <ARRAYCOUNT <LOCAL.list>>` therefore ran `FOR 1 0`, which counts DOWN,
+        and drew two blank rows instead of one row per entry.
+
+FIX - A gatherer did not turn to face the tile they were working. Upstream calls
+        UpdateDir(m_Act_p) on every stroke (CChar::Skill_Stroke, CCharSkill.cpp:3608) -
+        the same turn the forge, the campfire and the fishing spot get - so a miner
+        swung the pick along whatever axis they happened to be facing. Mining, fishing
+        and lumberjacking now face their target before the animation, and the turn is
+        flagged so every watcher is told in the same tick.
+
+FIX - The gather sounds did not match. Mining alternates between 0x125 and 0x126 at
+        random upstream (Skill_GetSound, CCharSkill.cpp:3562) and played only 0x125
+        here; fishing is sound 0x364 with the two-handed bash animation (:3530/:3548)
+        and was playing 0x240 with the plain weapon swing.
+
+FIX - Mining produced iron ore from every vein. A pack writes its ore table with iron
+        as a numeric def and every other colour as a NAMED one that borrows iron's art:
+        `[ITEMDEF i_ore_copper] ID=i_ore_iron` plus an @Create that colours it, its own
+        NAME and its own TDATA1 ingot. All fifteen therefore share one graphic and
+        differ only in their definition. Upstream builds the reaped item from the REAP
+        RESOURCE ID - a definition - through CItem::CreateScript (CCharSkill.cpp:1050),
+        which runs THAT definition's @Create (CItem.cpp:404/415). REAP was resolved down
+        to a graphic at load, which threw the definition away and rebuilt the item from
+        whatever def owns the art: iron's name, iron's ingot, iron's @Create, from every
+        vein. The resource now carries the definition index alongside the graphic and
+        the reaped item is built from it.
+
+FIX - A dropped item flipped to the wrong graphic. Upstream walks the DUPELIST as a
+        cycle (CItemBase::GetNextFlipID, CItemBase.cpp:885): start at the def's display
+        id, and each entry in turn hands back the next one, falling off the end back to
+        the display id. This toggled the low BIT of the graphic instead - right only for
+        a two-entry pair that begins on an even id. A pair beginning on an odd id
+        flipped DOWNWARD into whatever art the pack has below it, which belongs to a
+        different item, and a list longer than two never reached its later entries. The
+        flip also now refuses a stackable pile, as upstream does (!IsStackableType() =
+        CAN_I_PILE, CCharAct.cpp:3266): a pile's DUPELIST is an amount ramp, not a flip
+        pair.
+
+FIX - A DUPEITEM alias carried no flip data of its own, so an item already showing the
+        SECOND art of its pair had nothing to flip back to and stayed that way.
+        Upstream has no separate definition for an alias at all - CItemBase::
+        FindItemBase redirects it to its master - so the flip now resolves through the
+        DUPEITEM chain before reading FLIP and DUPELIST.
+
+FIX - The status window went stale. Upstream refreshes it from the client's own
+        cycle - every stat change calls CChar::UpdateStatsFlag and CClient::UpdateStats
+        flushes one addStatusWindow per tick (CClientMsg.cpp:2174) - while the 0x11
+        packet here went out only from the dozen call sites that remembered to ask for
+        it. A script setting STR, a piece of armour, a weight change: the open window
+        kept the old numbers until the player closed and reopened it. A character whose
+        stats went dirty this tick now has its window refreshed, and only when something
+        in it actually changed: hits, mana and stamina are excluded from the comparison
+        because they have their own small packets and would otherwise put a full status
+        packet on the wire on every swing.
+
+FIX - The `@hue,font,unicode ` prefix was printed instead of applied. Upstream parses
+        it in one place, CClient::addBarkParse (CClientMsg.cpp:798-830), and every text
+        path reaches it: a system message (CClientLog.cpp:200), an object message
+        (CClientMsg.cpp:967), speech. So `MESSAGE @,,1,1 [<SERV.NAME> Staff]` showed the
+        prefix as part of the line. All three paths now share one parser with upstream's
+        rules: empty fields keep the caller's value, `@@` is a literal `@`, a font past
+        FONT_QTY falls back to FONT_NORMAL, a prefix with no text after it says nothing
+        at all, and the numbers read as Sphere numbers (leading zero = hex). The speech
+        path had a partial version of this that read the hue only, and only as hex.
+
+FIX - GUARDLINGER was read as seconds; upstream reads it as MINUTES
+        (CServerConfig.cpp:1292 stores value * 60 * MSECS_PER_SEC, :2128 writes it back
+        in minutes) and defaults to 3, not 300. A legacy sphere.ini carrying upstream's
+        own default gave a guard that dissolved three seconds after arriving.
+
+FIX - A passenger on a moving ship was drawn walking on the spot for the whole voyage.
+        The smooth-move packet already carries every deck object to the hull's new tile,
+        and upstream does not also send a per-character move for them - addCharMove is
+        the branch for clients that do NOT get that packet (CCMultiMovable.cpp:375). The
+        view delta here compared each known mobile against its last known position, saw
+        a tile of movement per ship step and sent a 0x77, which the client draws as a
+        step. Viewers are now told where the packet put them.
+
+CHANGE - The slow-tick report names the worst step inside the post-tick phase:
+        `flush=103.3ms(worst decay 99.8ms)`. The phase is a dozen unrelated jobs -
+        guard cleanup, decay catch-up, doors, respawn, weather, party bars, ship ticks,
+        telnet, web status - behind one number, so a live `dominant=flush` named the
+        bucket and nothing in it.
+
+FIX - DIALOGCLOSE closed the window and ran nothing. Upstream does not stop at the
+        packet: CClient::Dialog_Close feeds a gump response carrying the given button
+        back through the receive path (CClientDialog.cpp:200-222), because a client from
+        4.0.4a on does not send one of its own - and that synthetic answer is what runs
+        the dialog's ON=<button> block. The stock admin panel depends on it: d_admin's
+        ON=0 is `CLEARCTAGS Dialog.Admin`, and `[FUNCTION admin]` opens with
+        `DIALOGCLOSE d_admin` to get that clear before rebuilding its client list.
+        Without it the tags survived, so every `.admin` appended its list to the last
+        one: the same player appeared on page after page and the page count climbed
+        until the panel stopped coming up. DIALOGCLOSE also takes the optional button
+        argument upstream passes (CObjBase.cpp:2866).
+
+CHANGE - The stall report carries how long the loop was STOPPED for garbage collection:
+        `gc_pause=+98.3ms` beside the gc0/gc1/gc2 counts. A count says a collection
+        happened, not what it cost - background GC does most of gen2 off-thread, so a
+        gen2 in the window can cost the loop almost nothing. A live report of
+        `ticks=101.1ms ... gc2=+1` could not be settled without it.
+
+CHANGE - The shipped defaults are Text saves, `scripts/` as the script directory and
+        tooltips off. A text save is the classic .scp form: readable, diffable and
+        loadable by legacy tooling, which is what a new shard wants before it wants the
+        smallest file. The loader still detects the format from the extension, so an
+        existing BinaryGz save keeps loading and SAVEFORMAT can be set back at any time.
+
+FIX - A redeed put the deed in the owner's backpack and told nobody. Upstream announces
+        new container content to every client holding that container open
+        (CItemContainer::ContentAdd -> CClient::addContents); both the ship and the house
+        redeed added the deed server-side and sent nothing, so a player watching their
+        own pack saw it appear only after closing and reopening the bag.
+
+FIX - Deleting a worn or contained item changed nothing on any screen. The view delta
+        only sends deletes for things in the GROUND view, so removing a hairstyle, a
+        robe or a memory left every client still drawing it until a resync. Upstream
+        takes an item out of view from the object itself (CObjBase::RemoveFromView);
+        that delete now goes out around the item's TOP-LEVEL position - a worn item's
+        own coordinates are wherever it last lay on the ground.
+
+FIX - Resurrection put every ghost back in a plain human body. Upstream picks the ghost
+        body FROM the pre-death body and restores that same body afterwards
+        (CChar::Death reads _iPrev_id, CCharAct.cpp:4448; Spell_Resurrection calls
+        SetID(_iPrev_id), CCharSpell.cpp:465) - _iPrev_id is the OBODY property. Nothing
+        recorded it, so the resurrect path had only 0x192/0x193 to work back from and
+        mapped both to c_man/c_woman: a staff body, an elf or a gargoyle came back human
+        while the character's own BODY property still said otherwise.
+
 [2026-09-15] - A stall report that says whether the loop was slow or was not scheduled
 ----------------------------------------
 

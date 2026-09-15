@@ -3,6 +3,198 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Okunabilir varsayilanlar ve yalnizca sunucuda degisen seyler
+----------------------------------------
+
+FIX - Olum ve dirilme yuruyus sirasini uyumsuz birakiyordu. 0x20 oyuncu yeniden cizimi
+        ISTEMCININ sirasini sifirlar ve ust kaynak o paketi gonderdigi tek yerde kendi
+        sirasini da sifirlar, sebebini de aciklar: "Bu, istemci tarafi yuruyus sirasini
+        0'a sifirlar; istemcinin gereksiz bir 'resync' istemesini onlemek icin sunucu
+        tarafinda da sifirlayin" (CClient::addPlayerUpdate, CClientMsg.cpp:2162).
+        Buradaki her 0x20 bunu yapiyordu, en onemli ikisi haric - oyuncunun adim
+        ortasinda olma ihtimalinin en yuksek oldugu anlar. Uyumsuzluk bir reddedilmis
+        adima ve bir resync gidis-donusune mal olur - ekrandaki takilma budur - ve
+        hayaleti cesedin uzerinde degil, istemcinin tahmin ettigi yerde birakir.
+
+FIX - Mevsim paketi her olumde ve her bolge gecisinde, istemci zaten hangi mevsimdeyse
+        olsun yeniden gonderiliyordu. Istemci bu pakete yuklu her harita parcasini
+        yuruyup her nesnenin mevsimlik grafigini yeniden turetereki yanit verir (ClassicUO
+        World.ChangeSeason); bu yuzden bir tekrar, hicbir degisiklik olmadan gozle
+        gorulur bir duraklamadir. Ust kaynak mevsim degismediyse erken doner
+        (CClientMsg.cpp:509); artik her mevsim gonderimi bu kapidan geciyor ve tam bir
+        resync yine de zorlayabiliyor.
+
+FIX - `.edit` bir karakterin uzerindekileri listeleyebiliyor ama hicbirini acamiyordu.
+        Bir memory - siradan olani da spell efekt aynasi da - dunya uzerinden degil
+        dogrudan kuruldugu icin uid'i yoktur ve FindObject ona ulasamaz; birini secmek
+        ozellik penceresi yerine iki satir metin basiyordu. Ust kaynakta boyle bir ayrim
+        yok: ikisi de LAYER_SPECIAL'a giyilmis gercek IT_EQ_MEMORY_OBJ / IT_SPELL
+        esyalaridir ve .edit onlarda siradan pencereyi acar. Pencere bir nesne aldigi
+        icin artik dogrudan memory'nin kendisi veriliyor.
+
+FIX - Spell efekt memory'sindeki TIMER yanlis saati okuyup yaziyordu. Memory bir aktif
+        efekt kaydini yansitir ve sureyi KAYIT sahiplenir; bu yuzden TIMER okumasi
+        aynanin kendi kalici zamanlayicisini veriyor, yazma ise hicbir yerin bakmadigi
+        bir alani ayarliyordu - duzenleme kabul edilmis gibi gorunuyor, buff ise oncekiyle
+        ayni sure calisiyordu. Ust kaynakta ayrim yok (efekt esyanin kendisidir,
+        CChar::Spell_Effect_Create); her iki yon de artik efekte gecer ve negatif bir
+        TIMER buff'i her yerdeki gibi kalici yapar.
+
+FIX - `<NPC>` okunamiyordu. Ust kaynak onu beyin numarasi olarak yanitlar
+        (CCharNPC::r_WriteVal, CCharNPC.cpp:168, numaralandirma CChar.h:32) ve burada
+        yalnizca YAZMA vardi; bu yuzden `IF (<NPC> == brain_monster)` bos donuyor,
+        PROPLIST yanitlayamadigi bir anahtari ilan ediyor ve bir yaratigin .info'su hic
+        beyin gostermiyordu - bir canavar saldirmadiginda gorulmeye deger tek alan.
+
+FIX - Zamani geldiginde artik yerde olmayan bir esya - kurulma ile son tarih arasinda
+        alinmis, cantaya konmus veya giyilmis - siraya alinmis son tarihi ustunde
+        kalarak kuyruktan dusuruluyordu. Curume ust seviye esyalara aittir: ust kaynak
+        baska bir seye yapilan curume istegini hic zamanlayici olmayacak sekilde cevirir
+        (CItem::SetDecayTime, CItem.cpp:1493). Kurulu birakmak esyayi kalici olarak hem
+        kurulu HEM kuyruksuz yapiyordu; bu yuzden kayit denetimi onu omru boyunca her
+        dakika "onariyordu" - canli logdaki tekrarlayan
+        `Decay audit re-queued N armed item(s)` uyarilari bunu bildiriyordu.
+
+FIX - Ciplak `<ARGV>`, arguman SAYISI yerine SIFIRINCI argumani donduruyordu
+        (CScriptTriggerArgs.cpp:511 anahtar kelimeden sonra bir sey yoksa adedi
+        bicimler) ve `<ARGV[n]>` n'i ifade olarak degil duz tamsayi olarak
+        cozumluyordu (:518). Bir script paketinin liste yardimcilari tam da bu ikisi
+        uzerine kuruludur - `[FUNCTION ARRAYCOUNT] RETURN <EVAL <ARGV>>` ve
+        `[FUNCTION ARRAY]`, son alanini `<ARGV[<EVAL <ARGV> - 1>]>` ile okuyup ardindan
+        kendi ifadesiyle indeksler - bu yuzden her liste sayimi listenin ilk elemani
+        olarak geri geliyordu ve o da sayi olarak hicbir sey etmiyordu.
+        `FOR 1 <ARRAYCOUNT <LOCAL.liste>>` dongusu boylece `FOR 1 0` oluyordu; bu GERI
+        sayar ve her giris icin bir satir yerine iki bos satir ciziyordu.
+
+FIX - Toplayici, uzerinde calistigi kareye donmuyordu. Ust kaynak her vurusta
+        UpdateDir(m_Act_p) cagirir (CChar::Skill_Stroke, CCharSkill.cpp:3608) - ocagin,
+        kamp atesinin ve balik noktasinin aldigi ayni donus - bu yuzden madenci kazmayi
+        o an baktigi eksende savuruyordu. Madencilik, balikcilik ve oduncululuk artik
+        animasyondan once hedefe doner ve donus isaretlendigi icin ayni tick'te tum
+        izleyicilere bildirilir.
+
+FIX - Toplama sesleri uymuyordu. Madencilik ust kaynakta 0x125 ve 0x126 arasinda
+        rastgele degisir (Skill_GetSound, CCharSkill.cpp:3562), burada yalnizca 0x125
+        caliyordu; balikcilik ise 0x364 sesi ve iki elli bash animasyonudur (:3530/:3548)
+        ama 0x240 ile duz silah savurmasi caliyordu.
+
+FIX - Madencilik her damardan demir cevheri veriyordu. Paket cevher tablosunu demiri
+        sayisal, diger her rengi ise demirin sanatini odunc alan ADLI bir tanim olarak
+        yazar: `[ITEMDEF i_ore_copper] ID=i_ore_iron` arti onu renklendiren bir @Create,
+        kendi NAME'i ve kendi TDATA1 kulcesi. Dolayisiyla on besi de tek bir grafigi
+        paylasir ve yalnizca tanimlariyla ayrilir. Ust kaynak toplanan esyayi REAP
+        KAYNAK ID'sinden - bir tanimdan - CItem::CreateScript ile kurar
+        (CCharSkill.cpp:1050) ve O tanimin @Create'ini calistirir (CItem.cpp:404/415).
+        Burada REAP yuklemede grafige indirgeniyordu; bu, tanimi atip esyayi sanatin
+        sahibi olan tanimdan yeniden kuruyordu: her damardan demirin adi, demirin
+        kulcesi, demirin @Create'i. Kaynak artik grafigin yaninda tanim indeksini de
+        tasiyor ve toplanan esya ondan kuruluyor.
+
+FIX - Yere birakilan esya yanlis grafige donuyordu. Ust kaynak DUPELIST'i bir DONGU
+        olarak yurur (CItemBase::GetNextFlipID, CItemBase.cpp:885): def'in gosterim
+        id'sinden baslar, her giris sirasiyla bir sonrakini verir, listenin sonundan
+        dusulunce gosterim id'sine doner. Buradaki kod bunun yerine grafigin dusuk
+        BIT'ini ceviriyordu - yalnizca cift id ile baslayan iki girisli bir cift icin
+        dogru. Tek id ile baslayan bir cift ASAGI, paketin altinda ne varsa ona
+        ceviriliyordu ki o baska bir esyaya ait; ikiden uzun bir liste de sonraki
+        girislerine hic ulasmiyordu. Flip artik ust kaynaktaki gibi istiflenebilir bir
+        yigini da reddediyor (!IsStackableType() = CAN_I_PILE, CCharAct.cpp:3266):
+        bir yiginin DUPELIST'i miktar rampasidir, flip cifti degil.
+
+FIX - DUPEITEM takma adi kendi flip verisini tasimiyordu; bu yuzden cifti'nin IKINCI
+        sanatini gosteren bir esyanin geri donecegi bir sey yoktu ve oyle kaliyordu. Ust
+        kaynakta takma adin ayri bir tanimi hic yoktur - CItemBase::FindItemBase onu
+        efendisine yonlendirir - bu yuzden flip artik FLIP ve DUPELIST'i okumadan once
+        DUPEITEM zincirini cozuyor.
+
+FIX - Durum penceresi bayatliyordu. Ust kaynak onu istemcinin kendi dongusunden
+        tazeler - her stat degisimi CChar::UpdateStatsFlag cagirir ve
+        CClient::UpdateStats tick basina bir addStatusWindow akitir (CClientMsg.cpp:2174)
+        - buradaki 0x11 paketi ise yalnizca istemeyi hatirlayan bir duzine cagri
+        yerinden cikiyordu. STR ayarlayan bir script, bir zirh parcasi, bir agirlik
+        degisimi: acik pencere, oyuncu kapatip acana kadar eski sayilari gosteriyordu.
+        Stat'leri bu tick kirlenen bir karakterin penceresi artik tazeleniyor ve yalnizca
+        icindeki bir sey gercekten degistiyse: can, mana ve dayaniklilik karsilastirmanin
+        disinda tutuldu, cunku kendi kucuk paketleri var ve aksi halde her vurusta tam
+        bir durum paketi telde olurdu.
+
+FIX - `@renk,font,unicode ` on eki uygulanmak yerine basiliyordu. Ust kaynak bunu tek
+        bir yerde ayristirir, CClient::addBarkParse (CClientMsg.cpp:798-830), ve her
+        metin yolu oraya ugrar: sistem mesaji (CClientLog.cpp:200), nesne mesaji
+        (CClientMsg.cpp:967), konusma. Bu yuzden `MESSAGE @,,1,1 [<SERV.NAME> Staff]`
+        on eki satirin parcasi olarak gosteriyordu. Ucu de artik ust kaynagin
+        kurallariyla tek bir ayristiriciyi paylasiyor: bos alanlar cagiranin degerini
+        korur, `@@` duz bir `@`, FONT_QTY ustundeki bir font FONT_NORMAL'a duser, metni
+        olmayan bir on ek hicbir sey soylemez ve sayilar Sphere sayisi gibi okunur (bas
+        sifir = hex). Konusma yolunda bunun yalnizca rengi, yalnizca hex olarak okuyan
+        eksik bir surumu vardi.
+
+FIX - GUARDLINGER saniye olarak okunuyordu; ust kaynak DAKIKA olarak okur
+        (CServerConfig.cpp:1292 degeri 60 * MSECS_PER_SEC ile carpar, :2128 dakika
+        olarak geri yazar) ve varsayilani 300 degil 3'tur. Ust kaynagin kendi
+        varsayilanini tasiyan eski bir sphere.ini, geldikten uc saniye sonra dagilan bir
+        muhafiz veriyordu.
+
+FIX - Hareket eden gemideki bir yolcu, tum yolculuk boyunca yerinde yuruyor gibi
+        ciziliyordu. Yumusak-hareket paketi guverte uzerindeki her nesneyi zaten govdenin
+        yeni karesine tasir ve ust kaynak bunlar icin ayrica karakter hareketi gondermez -
+        addCharMove, o paketi ALMAYAN istemciler icindir (CCMultiMovable.cpp:375). Buradaki
+        delta gorunum her bilinen karakteri son bilinen konumuyla karsilastirdigi icin her
+        gemi adiminda bir karelik hareket gorup 0x77 gonderiyordu; istemci bunu adim olarak
+        cizer. Izleyicilere artik paketin onlari nereye koydugu soyleniyor.
+
+CHANGE - Yavas-tick raporu, tick sonrasi fazin icindeki en kotu adimi adlandiriyor:
+        `flush=103.3ms(worst decay 99.8ms)`. O faz tek bir sayinin arkasinda bir duzine
+        ilgisiz is barindiriyor - muhafiz temizligi, decay yetismesi, kapilar, respawn,
+        hava, grup canlari, gemi tickleri, telnet, web durumu - bu yuzden canli bir
+        `dominant=flush` kovayi adlandiriyor, icindekini degil.
+
+FIX - DIALOGCLOSE pencereyi kapatiyor ama hicbir sey calistirmiyordu. Ust kaynak
+        pakette durmaz: CClient::Dialog_Close, verilen dugmeyi tasiyan bir gump yanitini
+        alma yoluna geri besler (CClientDialog.cpp:200-222), cunku 4.0.4a ve sonrasi bir
+        istemci kendiliginden yanit gondermez - ve dialogun ON=<dugme> blogunu calistiran
+        sey bu sentetik yanittir. Standart admin paneli buna dayanir: d_admin'in ON=0'i
+        `CLEARCTAGS Dialog.Admin`, ve `[FUNCTION admin]` istemci listesini yeniden kurmadan
+        once o temizligi almak icin `DIALOGCLOSE d_admin` ile baslar. Bu olmadan taglar
+        kaliyordu: her `.admin` listesini oncekinin uzerine ekliyor, ayni oyuncu sayfa
+        sayfa tekrar ediyor ve sayfa sayisi panel hic acilmaz olana kadar buyuyordu.
+        DIALOGCLOSE artik ust kaynagin gecirdigi istege bagli dugme argumanini da alir
+        (CObjBase.cpp:2866).
+
+CHANGE - Takilma raporu, dongunun cop toplama icin ne kadar DURDURULDUGUNU tasiyor:
+        gc0/gc1/gc2 sayilarinin yaninda `gc_pause=+98.3ms`. Sayi bir toplamanin
+        oldugunu soyler, neye mal oldugunu degil - arka plan GC gen2'nin cogunu ayri
+        is parcaciginda toplar, bu yuzden penceredeki bir gen2 donguye neredeyse hic
+        sey kaybettirmiyor olabilir. Canli bir `ticks=101,1ms ... gc2=+1` raporu bu
+        olmadan sonuca baglanamiyordu.
+
+CHANGE - Dagitimla gelen varsayilanlar artik Text kayit, script dizini olarak `scripts/`
+        ve kapali tooltip. Text kayit klasik .scp bicimidir: okunabilir, diff alinabilir
+        ve eski araclarla yuklenebilir - yeni bir shard'in once istedigi sey en kucuk
+        dosya degil budur. Yukleyici bicimi hala uzantidan algilar; mevcut BinaryGz
+        kayitlar yuklenmeye devam eder ve SAVEFORMAT istenildigi zaman geri alinabilir.
+
+FIX - Redeed, deed'i sahibinin cantasina koyup kimseye haber vermiyordu. Ust kaynak yeni
+        kap icerigini o kabi acik tutan her istemciye bildirir (CItemContainer::ContentAdd
+        - CClient::addContents); gemi ve ev redeed'i deed'i yalnizca sunucu tarafinda
+        ekliyordu, bu yuzden kendi cantasina bakan oyuncu deed'i ancak cantayi kapatip
+        actiktan sonra goruyordu.
+
+FIX - Giyili ya da kap icindeki bir esyanin silinmesi hicbir ekranda degismiyordu. Delta
+        gorunum yalnizca YER gorunumundeki nesneler icin silme gonderir; bu yuzden bir sac
+        modelinin, cubbenin veya memory'nin kaldirilmasi tum istemcilerde resync'e kadar
+        cizilmeye devam ediyordu. Ust kaynak esyayi nesnenin kendisinden gorunumden cikarir
+        (CObjBase::RemoveFromView); bu silme artik esyanin UST SEVIYE konumu etrafinda
+        gonderiliyor - giyili bir esyanin kendi koordinati en son yerde yattigi yerdir.
+
+FIX - Dirilme her hayaleti duz insan bedenine donduruyordu. Ust kaynak hayalet bedenini
+        olum oncesi bedenden secer ve sonrasinda ayni bedeni geri koyar (CChar::Death
+        _iPrev_id okur, CCharAct.cpp:4448; Spell_Resurrection SetID(_iPrev_id) cagirir,
+        CCharSpell.cpp:465) - _iPrev_id, OBODY ozelligidir. Bu deger hicbir yerde
+        saklanmiyordu, bu yuzden dirilme yolunda yalnizca 0x192/0x193 vardi ve ikisi de
+        c_man/c_woman'a esleniyordu: gorevli bedeni, elf veya gargoyle insan olarak geri
+        geliyor, karakterin kendi BODY ozelligi ise baska seyi soyluyordu.
+
 [2026-09-15] - Dongunun mu yavas oldugunu yoksa zamanlanmadigini mi soyleyen takilma raporu
 ----------------------------------------
 

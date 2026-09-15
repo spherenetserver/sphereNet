@@ -690,7 +690,11 @@ public static partial class Program
             _world.MoveCharacter(gm, state.OriginalPosition);
             if (!state.WasInvisible)
                 gm.ClearStatFlag(StatFlag.Invisible);
-            gm.ClearStatFlag(StatFlag.Freeze);
+            // Watching a replay freezes the spectator, so finishing has to put back
+            // what they had rather than assume it was nothing: a GM who was already
+            // frozen came back able to walk, with nothing to say why.
+            if (!state.WasFrozen)
+                gm.ClearStatFlag(StatFlag.Freeze);
             gm.IsReplaySpectator = false;
         }
         _recordingEngine.StopReplay(gm.Uid.Value);

@@ -30,9 +30,34 @@ public sealed class ReplayState
     public long StartTick { get; set; }
     public Point3D OriginalPosition { get; set; }
     public bool WasInvisible { get; set; }
+
+    /// <summary>Whether the spectator was ALREADY frozen when the replay began.
+    /// Spectating freezes them, and finishing used to clear that flag whatever it had
+    /// been - so a GM who was frozen before they watched came back able to walk, and
+    /// nothing said so. Its neighbour WasInvisible was remembered; this one was not
+    /// (review work item D10).</summary>
+    public bool WasFrozen { get; set; }
+
     public Dictionary<uint, uint> SerialMap { get; } = [];
-    public uint NextPhantomSerial { get; set; } = 0x3FFF0001;
-    public uint NextPhantomItemSerial { get; set; } = 0x7FFE0001;
+
+    /// <summary>Phantom serials are handed out from the top of each real range, so
+    /// they cannot collide with anything the world actually holds - as long as the
+    /// counter stays inside its range. Past the end it would start naming live
+    /// objects: a mobile phantom running past 0x3FFFFFFF lands in the item range, and
+    /// FinishReplay deletes every phantom it handed out, which would take a real
+    /// object off that client's screen.</summary>
+    public const uint PhantomMobileBase = 0x3FFF0001;
+    public const uint PhantomMobileEnd = 0x3FFFFFFF;
+    public const uint PhantomItemBase = 0x7FFE0001;
+    public const uint PhantomItemEnd = 0x7FFFFFFF;
+
+    public uint NextPhantomSerial { get; set; } = PhantomMobileBase;
+    public uint NextPhantomItemSerial { get; set; } = PhantomItemBase;
+
+    /// <summary>Distinct serials the replay could not name because the phantom range
+    /// ran out. Their packets are refused rather than forwarded under a serial that
+    /// belongs to something real.</summary>
+    public int ExhaustedPhantoms { get; set; }
     public bool IsPaused { get; set; }
     public int PausedAtOffsetMs { get; set; }
     public float PlaybackSpeed { get; set; } = 1.0f;
@@ -157,7 +182,8 @@ public sealed class RecordingEngine
             PacketIndex = 0,
             StartTick = Environment.TickCount64,
             OriginalPosition = viewer.Position,
-            WasInvisible = viewer.IsInvisible
+            WasInvisible = viewer.IsInvisible,
+            WasFrozen = viewer.IsStatFlag(Core.Enums.StatFlag.Freeze)
         };
         _activeReplays[uid] = state;
         return state;
@@ -247,8 +273,8 @@ public sealed class RecordingEngine
         }
 
         state.SerialMap.Clear();
-        state.NextPhantomSerial = 0x3FFF0001;
-        state.NextPhantomItemSerial = 0x7FFE0001;
+        state.NextPhantomSerial = ReplayState.PhantomMobileBase;
+        state.NextPhantomItemSerial = ReplayState.PhantomItemBase;
 
         var packets = state.Session.Packets;
         short lastX = 0, lastY = 0;
@@ -363,6 +389,11 @@ public sealed class RecordingEngine
         return [.. state.SerialMap.Values];
     }
 
+    /// <summary>The serial rewrite, reachable by a test: it is the one place that
+    /// decides whether a spectator's client is handed a phantom or nothing at all.</summary>
+    internal static byte[]? RemapForTests(byte[] data, ReplayState state)
+        => RemapSerials(data, 0, state);
+
     private static byte[]? RemapSerials(byte[] data, uint viewerUid, ReplayState state)
     {
         if (data.Length < 2) return null;
@@ -385,7 +416,10 @@ public sealed class RecordingEngine
         {
             byte[] copy = (byte[])data.Clone();
             foreach (int offset in serialOffsets)
-                RemapSerialAt(copy, offset, state);
+            {
+                if (!RemapSerialAt(copy, offset, state))
+                    return null;
+            }
             return copy;
         }
 
@@ -408,7 +442,7 @@ public sealed class RecordingEngine
         if (data.Length < 19) return null;
         byte[] copy = (byte[])data.Clone();
 
-        RemapSerialAt(copy, 3, state);
+        if (!RemapSerialAt(copy, 3, state)) return null;
 
         int pos = 19;
         while (pos + 4 <= copy.Length)
@@ -416,7 +450,7 @@ public sealed class RecordingEngine
             uint itemSerial = ReadUInt32(copy, pos);
             if (itemSerial == 0) break;
 
-            RemapItemSerialAt(copy, pos, state);
+            if (!RemapItemSerialAt(copy, pos, state)) return null;
             pos += 4;
 
             if (pos + 2 > copy.Length) break;
@@ -441,7 +475,7 @@ public sealed class RecordingEngine
     /// back a phantom with the flag gone, after which the client stops expecting the
     /// amount field and reads the next two bytes as a coordinate. The entry was in
     /// the table and looked right.</summary>
-    private static byte[] RemapWorldItem(byte[] data, ReplayState state)
+    private static byte[]? RemapWorldItem(byte[] data, ReplayState state)
     {
         byte[] copy = (byte[])data.Clone();
         if (copy.Length < 7) return copy;
@@ -453,7 +487,7 @@ public sealed class RecordingEngine
         if (serial == 0) return copy;
 
         WriteUInt32(copy, 3, serial);
-        RemapSerialAt(copy, 3, state);
+        if (!RemapSerialAt(copy, 3, state)) return null;
         WriteUInt32(copy, 3, ReadUInt32(copy, 3) | flag);
         return copy;
     }
@@ -482,8 +516,8 @@ public sealed class RecordingEngine
         {
             int entry = 5 + i * perItem;
             if (entry + perItem > copy.Length) break;
-            RemapItemSerialAt(copy, entry, state);
-            RemapSerialAt(copy, entry + containerOffset, state);
+            if (!RemapItemSerialAt(copy, entry, state)) return null;
+            if (!RemapSerialAt(copy, entry + containerOffset, state)) return null;
         }
         return copy;
     }
@@ -497,7 +531,7 @@ public sealed class RecordingEngine
         if (data.Length < 8) return null;
         byte[] copy = (byte[])data.Clone();
 
-        RemapSerialAt(copy, 3, state);          // opcode, length:2, corpse serial
+        if (!RemapSerialAt(copy, 3, state)) return null;          // opcode, length:2, corpse serial
 
         int pos = 7;
         while (pos < copy.Length)
@@ -505,7 +539,7 @@ public sealed class RecordingEngine
             byte layer = copy[pos];
             if (layer == 0) break;              // terminator
             if (pos + 5 > copy.Length) break;
-            RemapItemSerialAt(copy, pos + 1, state);
+            if (!RemapItemSerialAt(copy, pos + 1, state)) return null;
             pos += 5;
         }
         return copy;
@@ -537,33 +571,58 @@ public sealed class RecordingEngine
         0xBC,   // PacketSeason: season + play sound flag
     ];
 
-    private static void RemapSerialAt(byte[] data, int offset, ReplayState state)
+    /// <summary>Replace one serial with its phantom. Returns false when there is no
+    /// phantom left to give: the ranges are finite, and a counter that ran past its end
+    /// would start naming objects the world really holds - which the spectator's client
+    /// would bind to, and which FinishReplay would then delete off their screen. The
+    /// packet is refused instead.</summary>
+    private static bool RemapSerialAt(byte[] data, int offset, ReplayState state)
     {
-        if (offset + 4 > data.Length) return;
+        if (offset + 4 > data.Length) return true;
         uint serial = ReadUInt32(data, offset);
-        if (serial == 0) return;
+        if (serial == 0) return true;
 
         if (!state.SerialMap.TryGetValue(serial, out uint phantom))
         {
             bool isItem = (serial & 0x40000000) != 0;
-            phantom = isItem ? state.NextPhantomItemSerial++ : state.NextPhantomSerial++;
+            if (!TryAllocatePhantom(state, isItem, out phantom))
+                return false;
             state.SerialMap[serial] = phantom;
         }
         WriteUInt32(data, offset, phantom);
+        return true;
     }
 
-    private static void RemapItemSerialAt(byte[] data, int offset, ReplayState state)
+    private static bool RemapItemSerialAt(byte[] data, int offset, ReplayState state)
     {
-        if (offset + 4 > data.Length) return;
+        if (offset + 4 > data.Length) return true;
         uint serial = ReadUInt32(data, offset);
-        if (serial == 0) return;
+        if (serial == 0) return true;
 
         if (!state.SerialMap.TryGetValue(serial, out uint phantom))
         {
-            phantom = state.NextPhantomItemSerial++;
+            if (!TryAllocatePhantom(state, isItem: true, out phantom))
+                return false;
             state.SerialMap[serial] = phantom;
         }
         WriteUInt32(data, offset, phantom);
+        return true;
+    }
+
+    private static bool TryAllocatePhantom(ReplayState state, bool isItem, out uint phantom)
+    {
+        if (isItem)
+        {
+            phantom = state.NextPhantomItemSerial;
+            if (phantom > ReplayState.PhantomItemEnd) { state.ExhaustedPhantoms++; return false; }
+            state.NextPhantomItemSerial = phantom + 1;
+            return true;
+        }
+
+        phantom = state.NextPhantomSerial;
+        if (phantom > ReplayState.PhantomMobileEnd) { state.ExhaustedPhantoms++; return false; }
+        state.NextPhantomSerial = phantom + 1;
+        return true;
     }
 
     private static uint ReadUInt32(byte[] data, int offset) =>

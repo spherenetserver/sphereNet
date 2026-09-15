@@ -317,6 +317,12 @@ public sealed class BootFallbackTests
 
     // Backward compatibility — a legacy generation with no [SAVEID] stamp can't be
     // verified and must load rather than be wrongly rejected as inconsistent.
+    //
+    // Both shards, not one: a classic save stamps NEITHER sphereworld nor spherechars,
+    // and one-of-each is a different thing entirely - a generation whose files cannot
+    // all have come from the same save, which the loader refuses now. Stripping only
+    // the world file made this read as the legacy case while actually building the
+    // mixed one (review work item D01).
     [Fact]
     public void GenerationWithoutStamp_LoadsWithoutFalseRejection()
     {
@@ -333,7 +339,9 @@ public sealed class BootFallbackTests
             var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
 
             SaveGeneration(saver, dir, "A");
-            StripSaveIdStamp(Path.Combine(dir, "sphereworld.scp")); // make it look legacy
+            // Make it look legacy: a classic save has no [SAVEID] in either shard.
+            StripSaveIdStamp(Path.Combine(dir, "sphereworld.scp"));
+            StripSaveIdStamp(Path.Combine(dir, "spherechars.scp"));
 
             var loaded = MakeWorld();
             var (items, _) = loader.Load(loaded, dir);

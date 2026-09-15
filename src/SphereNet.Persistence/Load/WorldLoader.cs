@@ -422,6 +422,11 @@ public sealed class WorldLoader
         string? conflictFile = null;
         long? conflictId = null;
         int stamped = 0, unstamped = 0;
+        // Counted separately for the world/char shards: those either all carry a
+        // [SAVEID] (this engine wrote them) or none do (a classic save). spheredata is
+        // NOT in that count - its stamp is SAVECOUNT, which classic saves write too,
+        // so a legacy generation is legitimately "data stamped, shards not".
+        int shardsStamped = 0, shardsUnstamped = 0;
 
         // The GENERATION token first, the save index only as a fallback for files
         // written before the token existed. The index is a counter that restarts at
@@ -435,12 +440,19 @@ public sealed class WorldLoader
                      (gen.DataPaths, SaveIO.ServerDataSection, SaveIO.SaveGenerationProperty, SaveIO.SaveCountProperty),
                  })
         {
+            bool isShardFamily = section == SaveIO.SaveIdSection;
             foreach (string path in paths)
             {
                 long? id = ReadStamp(path, section, property)
                            ?? ReadStamp(path, section, fallback);
-                if (id == null) { unstamped++; continue; }
+                if (id == null)
+                {
+                    unstamped++;
+                    if (isShardFamily) shardsUnstamped++;
+                    continue;
+                }
                 stamped++;
+                if (isShardFamily) shardsStamped++;
                 if (reference == null)
                 {
                     reference = id;
@@ -454,13 +466,31 @@ public sealed class WorldLoader
             }
         }
 
+        // A MIXTURE among the world/char shards is a torn generation too, and a
+        // quieter one than a stamp that disagrees. Either this engine wrote them, in
+        // which case every one carries a [SAVEID], or a classic save did and none of
+        // them does; "some stamped, some not" is not a shape a save has. The one that
+        // matters in practice is a shard replaced by something unreadable - it parses
+        // as zero records and carries no stamp, and its stamped siblings made the
+        // generation look consistent, so the world loaded EMPTY while a good backup sat
+        // beside it.
+        //
+        // Deliberately NOT applied to spheredata: its stamp is SAVECOUNT, which classic
+        // saves write as well, so a legacy generation is legitimately data-stamped with
+        // unstamped shards and must keep loading (review work item D01).
+        bool mixed = shardsStamped > 0 && shardsUnstamped > 0;
+
         detail = conflictFile != null
             ? $"{referenceFile}={reference} but {conflictFile}={conflictId} " +
               $"({stamped} stamped, {unstamped} unstamped)"
-            : $"id={reference?.ToString() ?? "-"} ({stamped} stamped, {unstamped} unstamped)";
+            : mixed
+                ? $"{shardsStamped} world/char shard(s) carry a save stamp and " +
+                  $"{shardsUnstamped} do not, so they cannot all be from the same save"
+                : $"id={reference?.ToString() ?? "-"} ({stamped} stamped, {unstamped} unstamped)";
 
-        token = conflictFile == null ? reference : null;
-        return conflictFile == null;
+        bool consistent = conflictFile == null && !mixed;
+        token = consistent ? reference : null;
+        return consistent;
     }
 
     private (int Items, int Chars) Materialize(GameWorld world, GenerationPaths gen, AccountManager? accounts)

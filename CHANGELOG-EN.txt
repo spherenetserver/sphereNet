@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - The timer wheel's contract, measured against a list of deadlines
+----------------------------------------
+
+DOC - The wheel was compared with the dumbest correct scheduler there is - a list of
+        deadlines, scanned - over fixed-seed sequences of schedules, removals and
+        advances at irregular intervals. It agrees with it set for set, and the
+        comparison named the one thing nothing had written down: a deadline is parked
+        in the slot that covers it, ROUNDED UP, so it is delivered at that slot's start
+        and never earlier. Asking for +101 ms gets +200 ms; asking for exactly one
+        revolution (+25,600 ms) is exact. Rounding may only ever delay. The engine
+        ticks every 100 ms so the visible cost is under one tick, but a caller that
+        advances at irregular intervals has to know the deadline is rounded, not
+        honoured to the millisecond.
+
+DOC - Count is live schedules and not retained memory. Remove retires a schedule and
+        leaves its slot entry to be discarded when that slot is next walked, so 50 NPCs
+        rescheduled 20 times report Count 50 while 1,000 entries are still parked; one
+        full revolution reclaims all of them. Also documented: Schedule for a uid the
+        wheel already holds is refused rather than replaced, an overdue deadline is
+        clamped to the next slot, a uid that comes back as a different creature does
+        not inherit the old schedule, and one advance returns at most 500,000 due
+        entries.
+
+DOC - A forward clock jump is walked slot by slot, so it costs the elapsed time
+        divided by 100 ms: one hour on an empty wheel measured at 1.5 ms (36,000
+        steps), with everything that came due inside the jump firing in that one
+        advance. All of it is in ARCHITECTURE.
+
+TEST - TimerWheelModelTests (17): the model comparison at three seeds, the deadline
+        boundaries at 99/100/101 ms and 25,599/25,600/25,601 ms and 30/60 s, a uid
+        returning as another creature, a removed NPC whose entry is still in its slot,
+        fire-and-reschedule, Count against slot memory, and the two clock-jump cases.
+        No engine defect was found here; the wheel is right and now says so.
+
 [2026-09-15] - A map reader that fails to open gives back what it took
 ----------------------------------------
 

@@ -3,6 +3,40 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Timer wheel'in sozlesmesi, son tarih listesine karsi olculdu
+----------------------------------------
+
+DOC - Tekerlek, var olan en aptal dogru zamanlayiciyla - taranan bir son tarih
+        listesiyle - sabit tohumlu schedule/remove/advance dizileri ve duzensiz
+        araliklarla karsilastirildi. Kume kume uyusuyor ve karsilastirma, hicbir yerde
+        yazili olmayan tek seyi adlandirdi: son tarih, onu kapsayan yuvaya YUKARI
+        YUVARLANARAK konur; yani o yuvanin basinda teslim edilir, bir milisaniye once
+        degil. +101 ms isteyen +200 ms alir; tam bir tur (+25.600 ms) isteyen tam
+        zamaninda alir. Yuvarlama yalnizca geciktirebilir. Motor 100 ms'de bir
+        tikladigi icin gorunen maliyet bir tick'in altinda, ama duzensiz araliklarla
+        ilerleten bir cagiranin, son tarihin milisaniye hassasiyetiyle degil
+        yuvarlanarak karsilandigini bilmesi gerekir.
+
+DOC - Count, canli planlamalardir; tutulan bellek degil. Remove planlamayi emekliye
+        ayirir ve yuva girdisini, o yuva bir sonraki gezilisinde atilmak uzere yerinde
+        birakir; yani 20 kez yeniden planlanan 50 NPC Count olarak 50 gosterirken 1000
+        girdi hala park halindedir; tam bir tur hepsini geri alir. Ayrica belgelendi:
+        tekerlegin zaten tuttugu bir uid icin Schedule degistirmez, reddeder; gecmis
+        bir son tarih bir sonraki yuvaya sikistirilir; baska bir yaratik olarak geri
+        donen uid eski planlamayi devralmaz ve bir advance en fazla 500.000 girdi
+        dondurur.
+
+DOC - Ileri saat sicramasi yuva yuva yurunur; yani maliyeti gecen surenin 100 ms'e
+        bolumudur: bos tekerlekte bir saat 1,5 ms olculdu (36.000 adim) ve sicramanin
+        icinde suresi dolan her sey o tek advance'te atesleniyor. Hepsi
+        ARCHITECTURE'da.
+
+TEST - TimerWheelModelTests (17): uc tohumda model karsilastirmasi, 99/100/101 ms ve
+        25.599/25.600/25.601 ms ile 30/60 s sinirlari, baska yaratik olarak donen uid,
+        girdisi hala yuvasinda olan kaldirilmis NPC, atesle-ve-yeniden-planla, Count'a
+        karsi yuva bellegi ve iki saat-sicramasi vakasi. Burada motor kusuru
+        bulunmadi; tekerlek dogru calisiyor ve artik bunu soyluyor.
+
 [2026-09-15] - Acilamayan harita okuyucusu aldigini geri veriyor
 ----------------------------------------
 

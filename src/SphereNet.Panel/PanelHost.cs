@@ -257,23 +257,57 @@ public sealed class PanelHost : IDisposable
         {
             try
             {
-                if (_ctx.GetStats != null)
-                {
-                    // CpuPercent and ThreadCount arrive already filled in by the game
-                    // server. Overwriting them here measured whichever process the
-                    // panel happens to live in, which under the Host is the Host.
-                    await hub.Clients.All.SendAsync("StatsUpdate", _ctx.GetStats(), ct);
-                }
-                tokens.PurgeExpired();
+                await StatsRound(_ctx.GetStats,
+                    (stats, token) => hub.Clients.All.SendAsync("StatsUpdate", stats, token),
+                    tokens, _logger, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Panel stats push failed");
-            }
 
             try { await Task.Delay(2000, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+        }
+    }
+
+    /// <summary>One round of the stats loop: push the stats to whoever is listening,
+    /// and then expire whatever needs expiring.
+    ///
+    /// The two are separate concerns and they used to share a try block, in that order.
+    /// A token's expiry is what closes the connection of a client that is only
+    /// LISTENING - it never sends a command, so nothing else ever revalidates its
+    /// token - and with the game server down, or a client slow enough to make the
+    /// broadcast throw, the purge was skipped on every round. The listener kept
+    /// receiving the live log and stats stream for as long as that lasted (review work
+    /// item D08).
+    ///
+    /// Extracted so the ORDER can be tested: a failing stats callback must still expire
+    /// tokens, and a failing purge must not stop the stats.</summary>
+    internal static async Task StatsRound(Func<ServerStats>? getStats,
+        Func<ServerStats, CancellationToken, Task> broadcast, TokenStore tokens,
+        ILogger logger, CancellationToken ct)
+    {
+        try
+        {
+            if (getStats != null)
+            {
+                // CpuPercent and ThreadCount arrive already filled in by the game
+                // server. Overwriting them here measured whichever process the
+                // panel happens to live in, which under the Host is the Host.
+                await broadcast(getStats(), ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Panel stats push failed");
+        }
+
+        try
+        {
+            tokens.PurgeExpired();
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Panel token purge failed");
         }
     }
 

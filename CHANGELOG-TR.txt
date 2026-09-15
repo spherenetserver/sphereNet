@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Bot, olcum yapmadan once kendi sonuclarini ayirt ediyor
+----------------------------------------
+
+FIX - Bot, sunucunun geri yansittigi sekans baytini yok sayiyordu. Hareket bir sekansla
+        gider; kabul (0x22) ve ret (0x21) onu geri tasir; bot ise o anda ucusta olan
+        hangi hareketse onu tamamliyordu. Boylece coktan zaman asimina ugramis bir
+        hareketin gec gelen cevabi, BIR SONRAKI hareketin basarisi olarak sayiliyordu -
+        yuk raporunun dayandigi olcu aletinde, zorlanan sunucuyu saglikli gosteren
+        yonde bir yanlis pozitif. Artik bekleyen sekans karsilastiriliyor ve onceki bir
+        harekete ait cevap, uygulanmak yerine gec-ack olarak sayiliyor.
+
+FIX - Bot, ret sonrasinda hareket sekansini saymaya devam ediyordu. Sunucu reddederken
+        kendi yuruyus sekansini 0'a sabitler ve ucustaki adimlari cevaplamadan duser -
+        gercek istemcinin "kuyrugu temizle ve 0'dan yeniden gonder" davranisi da buna
+        gore yazilmistir. Saymaya devam eden bir bot, ilk retten itibaren sunucuyla
+        adimdan cikiyor ve sonraki her cevap gec gorunuyordu. Artik ayni sekilde
+        sifirlaniyor.
+
+CHANGE - Kimsenin cevabini beklemedigi istek, basarili oldugunu degil GONDERILDIGINI
+        bildiriyor. Attack, savas modu, gump cevabi ve iki hedefleme cagrisi yeni
+        BotActionResult.Sent donuyor: sunucu bunlari reddedebilir, yok sayabilir ya da
+        uygulayabilir ve bunlarin hicbiri cagri yerinde gozlenmiyor. "Gonderdigim
+        paketler" ile "oyunda olan seyler" farkli sayilardir ve artik ayri sayiliyor -
+        TotalRequestsSent, TotalMoveRequests, TotalMoveAcks ve LateMoveAcks.
+
+TEST - BotAckCorrelationTests (7): gec ack bir sonraki hareketi gecirmiyor, ucustaki
+        hareketin ack'i yine geciriyor, gec ret konumu yine duzeltiyor ama ucustaki
+        hareketi cevaplamiyor, reddedilen hareket sekansi sifirdan baslatiyor, bayt
+        sarmasi boyunca 300 hareket ve saldiri icin Sent. Sondaj: sekansi yeniden yok
+        saymak 2 testi kirmiziya donduruyor.
+
 [2026-09-15] - Yalnizca dinleyen panel oturumu da suresi dolunca kapaniyor
 ----------------------------------------
 

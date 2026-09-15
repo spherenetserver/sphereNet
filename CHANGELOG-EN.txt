@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - The bot tells its own results apart before it measures anything
+----------------------------------------
+
+FIX - The bot ignored the sequence byte the server echoes back. A move goes out with a
+        sequence; the accept (0x22) and the reject (0x21) both carry it back; the bot
+        completed whatever move happened to be in flight. So a late answer to a move
+        that had already timed out was counted as the NEXT move's success - a false
+        positive in the instrument a load report is built from, in the direction that
+        makes a struggling server look healthy. The pending sequence is compared now,
+        and an answer that belongs to an earlier move is counted as a late ack instead
+        of being applied.
+
+FIX - The bot kept counting its move sequence up through a reject. The server pins its
+        walk sequence to 0 when it rejects, and drops the steps already in flight
+        without answering them - which is what the real client's "clear the queue and
+        resend from 0" is written against. A bot that carried on counting was out of
+        step with the server from the first reject onwards, so every later answer
+        looked late. It resets the same way now.
+
+CHANGE - A request nobody waits for reports that it was Sent, not that it succeeded.
+        Attack, war mode, gump responses and both targeting calls return the new
+        BotActionResult.Sent: the server may refuse, ignore, or act on them, and none
+        of that is observed at the call. "Packets I sent" and "things that happened in
+        the game" are different numbers and are now counted separately -
+        TotalRequestsSent beside TotalMoveRequests, TotalMoveAcks and LateMoveAcks.
+
+TEST - BotAckCorrelationTests (7): a late ack does not pass the next move, the ack for
+        the move in flight still does, a late reject still corrects the position
+        without answering the move in flight, a rejected move restarts the sequence at
+        zero, 300 moves across the byte wrap, and Sent for an attack. Probe: ignoring
+        the sequence again turns 2 red.
+
 [2026-09-15] - A panel session that only listens still expires
 ----------------------------------------
 

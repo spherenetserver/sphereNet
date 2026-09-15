@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - The character half of the view matrix, measured and clean
+----------------------------------------
+
+TEST - ViewDeltaCharacterTransitionTests (12) applies to creatures the method that
+        found the container defect: model what the CLIENT was told from the packets it
+        actually received, then assert where each mobile is, through the transitions
+        that change the answer. Three observers watch one subject - an ordinary player,
+        a GM with AllShow, and a 7.0.20 client - because every one of these gates reads
+        differently for staff.
+
+        Covered: hiding takes a player off the ordinary screen and leaves them on
+        staff's, and unhiding puts them back without anybody moving; an unmanifested
+        ghost is hidden from the living and visible to staff, manifesting shows it to
+        everybody, and resurrection brings the body back to every screen; a logged-out
+        player leaves the ordinary screen while a LINGERING one stays, because a
+        dropped connection leaves an attackable body behind; the same coordinates on
+        another map are not the same place; a uid that comes back as a different
+        creature is drawn fresh rather than assumed present; a shortened view range
+        takes away what no longer fits; a resync rebuilds the screen from nothing; and
+        five idle ticks send nothing about anybody.
+
+        No defect was found in any of them - the outcome worth recording, because the
+        item half of the same matrix did find one and these rules had never been
+        checked from the client's side at all. Both failure directions are asserted:
+        something left on screen that should have gone is a leak, and something gone
+        that never comes back is a screen the player cannot repair without walking away.
+
 [2026-09-15] - A shard replaced by rubbish is a torn generation, not an empty world
 ----------------------------------------
 

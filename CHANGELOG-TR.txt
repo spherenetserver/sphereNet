@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Gorunum matrisinin karakter yarisi: olculdu ve temiz
+----------------------------------------
+
+TEST - ViewDeltaCharacterTransitionTests (12), kap kusurunu bulan yontemi yaratiklara
+        uyguluyor: ISTEMCIYE gercekten giden paketlerden ona ne soylendigini modelle,
+        sonra her mobilin nerede oldugunu, cevabi degistiren gecisler boyunca dogrula.
+        Uc gozlemci tek bir ozneyi izliyor - siradan oyuncu, AllShow'lu GM ve 7.0.20
+        istemcisi - cunku bu kapilarin her biri gorevli icin farkli okunuyor.
+
+        Kapsanan: gizlenme oyuncuyu siradan ekrandan aliyor ama gorevlininkinde
+        birakiyor ve gizlenmeden cikmak kimse kimildamadan onu geri koyuyor; tecessum
+        etmemis hayalet yasayanlardan gizli, gorevliye gorunur; tecessum edince herkese
+        gorunuyor ve dirilme bedeni her ekrana geri getiriyor; cikis yapmis oyuncu
+        siradan ekrandan ayriliyor ama BAGLANTISI KOPUP BEKLEYEN kaliyor, cunku kopan
+        baglanti saldirilabilir bir beden birakir; baska haritadaki ayni koordinat ayni
+        yer degil; baska yaratik olarak geri donen uid, zaten oradaymis gibi degil
+        yeniden cizilerek duyuruluyor; kisaltilmis gorus menzili artik sigmayani
+        kaldiriyor; resync ekrani sifirdan kuruyor; ve bes bos tick kimse hakkinda
+        hicbir sey gondermiyor.
+
+        Hicbirinde kusur bulunmadi - kayda degmesinin nedeni, ayni matrisin esya
+        yarisinin bir kusur bulmus olmasi ve bu kurallarin istemci tarafindan hic
+        denetlenmemis olmasi. Iki basarisizlik yonu de dogrulaniyor: ekranda kalmamasi
+        gerekirken kalan sey bir sizinti, gidip bir daha donmeyen sey ise oyuncunun
+        uzaklasmadan onaramayacagi bir ekran.
+
 [2026-09-15] - Yerine cop konmus bir shard, bos dunya degil yirtik nesildir
 ----------------------------------------
 

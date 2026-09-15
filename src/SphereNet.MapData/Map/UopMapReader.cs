@@ -35,23 +35,61 @@ public sealed class UopMapReader : IDisposable
 
         // Decompress UOP into a temp file, then memory-map it
         _tempFilePath = Path.Combine(Path.GetTempPath(), $"spherenet_map_{Guid.NewGuid():N}.tmp");
-        ExtractMulFromUop(uopPath, _tempFilePath);
 
-        var fileInfo = new FileInfo(_tempFilePath);
-        _dataLength = fileInfo.Length;
+        // A constructor that throws leaves no object for anyone to dispose, so
+        // everything it has taken so far has to be given back here. Half the failures
+        // happen AFTER the extraction has started writing - a corrupt entry, a
+        // container that extracts to nothing and cannot be mapped - and each one used
+        // to leave a map-sized file in the temp directory, on every restart attempt of
+        // a shard that cannot start (review work item D06).
+        FileStream? stream = null;
+        MemoryMappedFile? mmf = null;
+        MemoryMappedViewAccessor? view = null;
+        try
+        {
+            ExtractMulFromUop(uopPath, _tempFilePath);
 
-        // The extracted map is ~84 MB and lives only as long as this reader, so the
-        // file is handed to the OS to delete when the last handle closes rather than
-        // relying on Dispose being reached. It was not: a caller that skipped disposal,
-        // or a process that ended without it, left the whole map behind every time, and
-        // a machine running the suite regularly ended up with a temp directory measured
-        // in tens of gigabytes. FileShare.Delete lets the pending deletion stand while
-        // the mapping is open.
-        var stream = new FileStream(_tempFilePath, FileMode.Open, FileAccess.Read,
-            FileShare.Read | FileShare.Delete, 4096, FileOptions.DeleteOnClose);
-        _mmf = MemoryMappedFile.CreateFromFile(stream, null, 0, MemoryMappedFileAccess.Read,
-            HandleInheritability.None, leaveOpen: false);
-        _view = _mmf.CreateViewAccessor(0, _dataLength, MemoryMappedFileAccess.Read);
+            var fileInfo = new FileInfo(_tempFilePath);
+            _dataLength = fileInfo.Length;
+
+            // The extracted map is ~84 MB and lives only as long as this reader, so the
+            // file is handed to the OS to delete when the last handle closes rather than
+            // relying on Dispose being reached. It was not: a caller that skipped disposal,
+            // or a process that ended without it, left the whole map behind every time, and
+            // a machine running the suite regularly ended up with a temp directory measured
+            // in tens of gigabytes. FileShare.Delete lets the pending deletion stand while
+            // the mapping is open.
+            stream = new FileStream(_tempFilePath, FileMode.Open, FileAccess.Read,
+                FileShare.Read | FileShare.Delete, 4096, FileOptions.DeleteOnClose);
+            mmf = MemoryMappedFile.CreateFromFile(stream, null, 0, MemoryMappedFileAccess.Read,
+                HandleInheritability.None, leaveOpen: false);
+            view = mmf.CreateViewAccessor(0, _dataLength, MemoryMappedFileAccess.Read);
+            _mmf = mmf;
+            _view = view;
+        }
+        catch
+        {
+            // In reverse order, and tolerantly: the mapping owns the stream once it
+            // exists, so disposing both is safe either way.
+            view?.Dispose();
+            mmf?.Dispose();
+            stream?.Dispose();
+            TryDeleteTempFile();
+            throw;
+        }
+    }
+
+    /// <summary>Remove the extraction if the OS is not already doing it for us (the
+    /// DeleteOnClose handle is only in place once the stream has been opened).</summary>
+    private void TryDeleteTempFile()
+    {
+        try
+        {
+            if (_tempFilePath != null && File.Exists(_tempFilePath))
+                File.Delete(_tempFilePath);
+        }
+        catch (IOException) { /* nothing left to do about it here */ }
+        catch (UnauthorizedAccessException) { }
     }
 
     public MapBlock ReadBlock(int blockX, int blockY)

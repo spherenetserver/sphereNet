@@ -255,6 +255,30 @@ section of [DEPLOY.md](DEPLOY.md#security).
 
 ---
 
+## Map data: what is mapped and what is held
+
+MUL and UOP map files are memory-mapped, so the OS pages in the regions being read and
+pages out the rest. A UOP container is extracted to a temp file first and that file is
+opened `DeleteOnClose`, so it goes when the last handle closes even if nothing disposes
+the reader. A constructor that fails part way through gives back what it has taken: the
+extraction is removed, and the statics index mapping is released when the data file
+beside it cannot be opened — on Windows a mapped file cannot be deleted or replaced, so
+a leak there means an operator cannot swap a bad map file out without restarting.
+
+In front of the statics mapping sits a per-block cache with **no eviction**, and that is
+a deliberate choice rather than an oversight. It is bounded by the map: one entry per
+8×8 block, so the worst case is every block a player has ever walked past.
+**Measured** (`StaticCacheGrowthTests`) at 124 bytes per block with four statics each,
+which extrapolates to **~46 MB** for a full 6144×4096 map (393,216 blocks) — after
+walking all of it. A second pass over the same ground allocates nothing. An eviction
+policy would cost locking on a read path that the parallel NPC prestage reaches, to
+reclaim tens of megabytes that only a complete tour of the map can accumulate, so the
+number is documented instead. Note that an empty block costs an entry too: the bound is
+blocks, not statics.
+
+The README's "~200 MB saved" is the saving against loading the MUL files into RAM
+outright; it is not a cap on what the map subsystem holds.
+
 ## Performance-sensitive hot paths
 
 When changing these, capture before/after telemetry (see [PERFORMANCE](PERFORMANCE.md));
@@ -265,3 +289,5 @@ do not restructure data-locality without a baseline:
 - NPC decision build/apply (the dominant `npc_apply` phase under load).
 - View delta build/apply and packet flush.
 - Region lookup cache and the sleeping-sector maintenance scan.
+- Statics block reads (`StaticReader.ReadBlock`), reached by the parallel NPC
+  prestage — see the cache note above before putting a lock on it.

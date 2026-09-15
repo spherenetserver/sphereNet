@@ -31,13 +31,35 @@ public sealed class StaticReader : IDisposable
         _blockWidth = mapWidth / MapBlock.BlockSize;
         _blockHeight = mapHeight / MapBlock.BlockSize;
 
-        _idxLength = new FileInfo(idxPath).Length;
-        _idxMmf = MemoryMappedFile.CreateFromFile(idxPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
-        _idxView = _idxMmf.CreateViewAccessor(0, _idxLength, MemoryMappedFileAccess.Read);
+        // Four acquisitions in a row, and the second file is the one that fails: a
+        // statics data file that is missing, empty or truncated. The index mapping was
+        // already open by then and the constructor throws with no object to dispose, so
+        // it stayed open for the life of the process - and on Windows a mapped file
+        // cannot be deleted or replaced, which is what an operator meets when they try
+        // to swap a bad map file out (review work item D06).
+        MemoryMappedFile? idxMmf = null;
+        MemoryMappedViewAccessor? idxView = null;
+        MemoryMappedFile? dataMmf = null;
+        MemoryMappedViewAccessor? dataView = null;
+        try
+        {
+            _idxLength = new FileInfo(idxPath).Length;
+            idxMmf = MemoryMappedFile.CreateFromFile(idxPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+            idxView = idxMmf.CreateViewAccessor(0, _idxLength, MemoryMappedFileAccess.Read);
 
-        _dataLength = new FileInfo(dataPath).Length;
-        _dataMmf = MemoryMappedFile.CreateFromFile(dataPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
-        _dataView = _dataMmf.CreateViewAccessor(0, _dataLength, MemoryMappedFileAccess.Read);
+            _dataLength = new FileInfo(dataPath).Length;
+            dataMmf = MemoryMappedFile.CreateFromFile(dataPath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+            dataView = dataMmf.CreateViewAccessor(0, _dataLength, MemoryMappedFileAccess.Read);
+
+            _idxMmf = idxMmf; _idxView = idxView;
+            _dataMmf = dataMmf; _dataView = dataView;
+        }
+        catch
+        {
+            dataView?.Dispose(); dataMmf?.Dispose();
+            idxView?.Dispose(); idxMmf?.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

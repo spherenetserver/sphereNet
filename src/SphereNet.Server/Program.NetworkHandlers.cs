@@ -718,29 +718,38 @@ public static partial class Program
         if (_clientsByCharUid.Count == 0 || dirtyObjects.Count == 0)
             return;
 
+        // The drain CONSUMED these: they are no longer in the world's dirty set. A
+        // tooltip send that throws part of the way through therefore used to lose
+        // every object behind it - nobody near them is flagged for a refresh and
+        // nothing will dirty them again, so the change simply never reaches those
+        // screens. Whatever this walk does not reach goes back into the dirty set for
+        // the next tick to pick up (review work item D03).
+        WalkRecoverableBatch(dirtyObjects, MarkClientsNearDirtyObject, _world.NotifyDirty);
+    }
+
+    private static void MarkClientsNearDirtyObject(ObjBase obj)
+    {
         const int Range = 18;
         int secRadius = (Range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
-        foreach (var obj in dirtyObjects)
+
+        var pos = obj.Position;
+        bool tooltipChanged = (obj.LastConsumedDirtyFlags &
+            ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
+        int cx = pos.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        int cy = pos.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+        for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
         {
-            var pos = obj.Position;
-            bool tooltipChanged = (obj.LastConsumedDirtyFlags &
-                ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
-            int cx = pos.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
-            int cy = pos.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
-            for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
-            for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+            var sector = _world.GetSector(pos.Map, sx, sy);
+            if (sector == null) continue;
+            foreach (var ch in sector.OnlinePlayers)
             {
-                var sector = _world.GetSector(pos.Map, sx, sy);
-                if (sector == null) continue;
-                foreach (var ch in sector.OnlinePlayers)
+                if (pos.GetDistanceTo(ch.Position) > Range) continue;
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
                 {
-                    if (pos.GetDistanceTo(ch.Position) > Range) continue;
-                    if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
-                    {
-                        c.ViewNeedsRefresh = true;
-                        if (tooltipChanged)
-                            c.SendAosTooltip(obj, requested: false, invalidate: true);
-                    }
+                    c.ViewNeedsRefresh = true;
+                    if (tooltipChanged)
+                        c.SendAosTooltip(obj, requested: false, invalidate: true);
                 }
             }
         }

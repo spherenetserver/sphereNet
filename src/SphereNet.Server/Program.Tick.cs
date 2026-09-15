@@ -384,6 +384,45 @@ public static partial class Program
     // apply phase already rescheduled is a no-op.
     private static List<Character>? _multicoreConsumedNpcs;
 
+    /// <summary>Walk a batch that has already been REMOVED from the queue it came
+    /// from, and put back whatever the walk did not reach.
+    ///
+    /// Both of this tick's batches are taken before they are used: the timer wheel's
+    /// Advance REMOVES the NPCs it returns, and the dirty drain CONSUMES the objects it
+    /// returns. Anything that throws part of the way through therefore destroys the
+    /// rest of the batch - the NPCs behind the failure stop acting until a player walks
+    /// into their sector, the objects behind it never reach a client's screen - and
+    /// neither leaves a trace, because the tick's own error is the only thing logged
+    /// (review work item D03).
+    ///
+    /// The exception is not swallowed: the tick handler still decides whether to
+    /// abandon the tick and fall back. On the success path the recovery loop starts
+    /// past the end of the batch and costs nothing.</summary>
+    internal static void WalkRecoverableBatch<T>(IReadOnlyList<T> batch, Action<T> step, Action<T> putBack)
+    {
+        int i = 0;
+        try
+        {
+            for (; i < batch.Count; i++)
+                step(batch[i]);
+        }
+        finally
+        {
+            // Starts at the element that threw: it was taken from the queue and its
+            // step did not finish, so it belongs to the remainder.
+            for (; i < batch.Count; i++)
+            {
+                try { putBack(batch[i]); }
+                catch (Exception ex)
+                {
+                    // One element that cannot be put back must not cost the others
+                    // theirs - and must not replace the original exception either.
+                    _log?.LogError(ex, "Could not recover a batch entry after a failed tick phase");
+                }
+            }
+        }
+    }
+
     /// <summary>Reschedule the active-sector NPCs (and pets) in <paramref name="npcs"/>
     /// into the wheel. Shared by the normal multicore reschedule and the
     /// failed-tick recovery. Dead/deleted/sleeping NPCs are left out, matching the
@@ -392,8 +431,7 @@ public static partial class Program
     {
         if (_npcTimerWheel == null) return;
         foreach (var npc in npcs)
-            if (!npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
-                (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
+            if (ShouldStayScheduled(npc))
                 _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
     }
 
@@ -641,18 +679,8 @@ public static partial class Program
         // NPC AI via timer wheel — only reschedule NPCs that remain in
         // active sectors. Sleeping NPCs exit the wheel entirely and get
         // bulk-woken by WakeNewlyActiveSectorNpcs when a player enters.
-        {
-            long now = Environment.TickCount64;
-            var dueNpcs = _npcTimerWheel.Advance(now);
-            ApplyNpcTickBudget(dueNpcs);
-            foreach (var npc in dueNpcs)
-            {
-                _npcAI.OnTickAction(npc);
-                if (!npc.IsDead && !npc.IsDeleted && (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
-                    _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
-            }
-            _npcAI.PurgeStalePaths();
-        }
+        RunDueNpcs(_npcTimerWheel, Environment.TickCount64, _npcAI.OnTickAction, ShouldStayScheduled);
+        _npcAI.PurgeStalePaths();
 
         _telemetrySnapshotUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
         _telemetryWorldTickUs = 0;
@@ -722,12 +750,57 @@ public static partial class Program
     // next tick. No effect on normal loads where the due count is below it.
     private const int MaxNpcsPerTick = 500;
 
-    private static void ApplyNpcTickBudget(List<Character> due)
+    /// <summary>Does this NPC belong in the wheel after it has acted? Dead, deleted and
+    /// sleeping-sector creatures leave it; a pet follows its master wherever that is.
+    /// One predicate for the single-thread loop, the multicore reschedule and the
+    /// failed-tick recovery, which used to carry three copies of it.</summary>
+    private static bool ShouldStayScheduled(Character npc)
+        => ShouldStayScheduled(_world, npc);
+
+    /// <inheritdoc cref="ShouldStayScheduled(Character)"/>
+    internal static bool ShouldStayScheduled(GameWorld world, Character npc)
+        => !npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
+           (npc.NpcMaster.IsValid || world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y));
+
+    /// <summary>Take the NPCs whose timers have fired, act on each, and leave none of
+    /// them out of the wheel.
+    ///
+    /// The loop used to reschedule each NPC immediately after acting on it, with no
+    /// recovery: one action that threw - a script @Timer, an AI state nobody expected -
+    /// took that NPC and every NPC behind it in the batch out of the schedule for good.
+    /// They stop acting entirely until a player walks into their sector and the bulk
+    /// wake puts them back. The multicore path already recovered its batch; this is the
+    /// path the server FALLS BACK to when the multicore one fails, and it did not
+    /// (review work item D03).</summary>
+    internal static void RunDueNpcs(SphereNet.Game.Scheduling.TimerWheel wheel, long now,
+        Action<Character> act, Func<Character, bool> keepScheduled)
     {
-        if (_npcTimerWheel == null || due.Count <= MaxNpcsPerTick) return;
+        if (wheel == null) return;
+        var due = wheel.Advance(now);
+        ApplyNpcTickBudget(wheel, due);
+        WalkRecoverableBatch(due,
+            npc =>
+            {
+                act(npc);
+                if (keepScheduled(npc))
+                    wheel.Schedule(npc, npc.NextNpcActionTime);
+            },
+            npc =>
+            {
+                if (keepScheduled(npc))
+                    wheel.Schedule(npc, npc.NextNpcActionTime);
+            });
+    }
+
+    private static void ApplyNpcTickBudget(List<Character> due)
+        => ApplyNpcTickBudget(_npcTimerWheel, due);
+
+    private static void ApplyNpcTickBudget(SphereNet.Game.Scheduling.TimerWheel? wheel, List<Character> due)
+    {
+        if (wheel == null || due.Count <= MaxNpcsPerTick) return;
         long deferAt = Environment.TickCount64;
         for (int i = MaxNpcsPerTick; i < due.Count; i++)
-            _npcTimerWheel.Schedule(due[i], deferAt);
+            wheel.Schedule(due[i], deferAt);
         // Removing the tail truncates the count without shifting elements.
         due.RemoveRange(MaxNpcsPerTick, due.Count - MaxNpcsPerTick);
     }
@@ -1015,13 +1088,26 @@ public static partial class Program
         if (_npcTimerWheel == null) return;
         var sectors = _world.NewlyActiveSectors;
         if (sectors.Count == 0) return;
+        WakeSectorNpcs(_npcTimerWheel, sectors, Environment.TickCount64);
+    }
+
+    /// <summary>Put every creature of a just-woken sector back in the wheel, spread
+    /// across <see cref="NpcWakeSpreadMs"/> so a sector full of them does not land in
+    /// one 100 ms slot. Takes its clock and its wheel so the spread can be measured
+    /// rather than asserted (review work item D04).</summary>
+    internal static void WakeSectorNpcs(SphereNet.Game.Scheduling.TimerWheel wheel,
+        IReadOnlyList<SphereNet.Game.World.Sectors.Sector> sectors, long nowMs)
+    {
         foreach (var sector in sectors)
         {
             foreach (var ch in sector.Characters)
             {
-                if (!ch.IsPlayer && !ch.IsDeleted && !ch.IsDead)
-                    // uid-derived offset (stable, no RNG — RNG would break tick determinism).
-                    WakeNpc(ch, NpcWakeSpreadMs > 0 ? ch.Uid.Value % NpcWakeSpreadMs : 0);
+                if (ch.IsPlayer || ch.IsDeleted || ch.IsDead) continue;
+                // uid-derived offset (stable, no RNG — RNG would break tick determinism).
+                ch.NextNpcActionTime = 0;
+                wheel.Remove(ch);
+                wheel.Schedule(ch, nowMs + 100 +
+                    (NpcWakeSpreadMs > 0 ? ch.Uid.Value % NpcWakeSpreadMs : 0));
             }
         }
     }

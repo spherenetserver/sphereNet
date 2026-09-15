@@ -34,6 +34,17 @@ public class SourceXVerbInventoryGuardrailTests
             "src/SphereNet.Scripting/Execution/ScriptInterpreter.cs",
             "src/SphereNet.Game/Clients/ClientScriptConsoleHandler.cs"
         ],
+        // The guild/town stone and party verbs live on the objects they belong to:
+        // the stone is an item, and a party verb is reached through the character
+        // who is in it (PARTY.<verb>).
+        ["CItemStone_functions.tbl"] =
+        [
+            "src/SphereNet.Game/Objects/Items/Item.cs"
+        ],
+        ["CParty_functions.tbl"] =
+        [
+            "src/SphereNet.Game/Objects/Characters/Character.cs"
+        ],
         ["CChar_functions.tbl"] =
         [
             "src/SphereNet.Game/Objects/ObjBase.cs",
@@ -64,6 +75,20 @@ public class SourceXVerbInventoryGuardrailTests
 
     private static readonly Dictionary<string, string[]> ExpectedSourceXVerbs = new()
     {
+        ["CItemStone_functions.tbl"] =
+        [
+            "ACCEPTCANDIDATE", "ALLGUILDS", "ALLMEMBERS", "APPLYTOJOIN", "CHANGEALIGN",
+            "DECLAREFEALTY", "DECLAREPEACE", "DECLAREWAR", "DELHOUSE", "DELSHIP",
+            "DISMISSMEMBER", "ELECTMASTER", "GRANTTITLE", "INVITEWAR", "JOINASMEMBER",
+            "MASTERMENU", "RECRUIT", "REFUSECANDIDATE", "RESIGN", "RETURNMAINMENU",
+            "SETABBREVIATION", "SETCHARTER", "SETGMTITLE", "SETNAME", "TOGGLEABBREVIATION",
+            "VIEWCANDIDATES", "VIEWCHARTER", "VIEWENEMYS", "VIEWROSTER", "VIEWTHREATS"
+        ],
+        ["CParty_functions.tbl"] =
+        [
+            "ADDMEMBER", "ADDMEMBERFORCED", "CLEARTAGS", "CREATE", "DISBAND", "MESSAGE",
+            "REMOVEMEMBER", "SETMASTER", "SYSMESSAGE", "TAGLIST"
+        ],
         ["CObjBase_functions.tbl"] =
         [
             "ADDCLILOC", "BASEPROPLIST", "BASETAGLIST", "CLICK", "CLILOCLIST", "DAMAGE",
@@ -121,7 +146,70 @@ public class SourceXVerbInventoryGuardrailTests
     /// below fails when an unlisted verb loses its dispatch route, and also
     /// fails when one of these entries gains a route without being removed
     /// from this explicit debt list.</summary>
+    /// <summary>Verbs a table NAMES but upstream's own dispatch does not handle.
+    ///
+    /// The guild/town stone is the case: its table has thirty entries and
+    /// CItemStone::r_Verb has cases for thirteen, the rest falling through to
+    /// `default: return false` - leftovers of the stone menu system. Routing them here
+    /// would mean inventing behaviour upstream does not have, so they are deliberately
+    /// unrouted, and this list says so out loud instead of leaving the gap to look like
+    /// an oversight.
+    ///
+    /// The list is not taken on trust: <see cref="DeadTableEntries_AreStillDeadUpstream"/>
+    /// recomputes it from the reference source, so the day upstream implements one of
+    /// these, the guardrail asks for it here too.</summary>
+    private static readonly Dictionary<string, string[]> NotDispatchedUpstreamEither = new()
+    {
+        ["CItemStone_functions.tbl"] =
+        [
+            "ACCEPTCANDIDATE", "DECLAREFEALTY", "DISMISSMEMBER", "GRANTTITLE", "MASTERMENU",
+            "RECRUIT", "REFUSECANDIDATE", "RETURNMAINMENU", "SETABBREVIATION", "SETCHARTER",
+            "SETGMTITLE", "SETNAME", "VIEWCANDIDATES", "VIEWCHARTER", "VIEWENEMYS",
+            "VIEWROSTER", "VIEWTHREATS"
+        ],
+    };
+
+    /// <summary>Where upstream dispatches each surface, and the enum prefix its cases
+    /// use.</summary>
+    private static readonly Dictionary<string, (string Path, string Prefix)> UpstreamDispatchSources = new()
+    {
+        ["CItemStone_functions.tbl"] = ("game/items/CItemStone.cpp", "ISV_"),
+        ["CParty_functions.tbl"] = ("game/clients/CParty.cpp", "PDV_"),
+    };
+
     private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new();
+
+    [Fact]
+    public void DeadTableEntries_AreStillDeadUpstream()
+    {
+        if (Gate.Missing(_out, "Source-X reference tree",
+            !Directory.Exists(Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables")))) return;
+
+        foreach (var (surface, (relativePath, prefix)) in UpstreamDispatchSources)
+        {
+            string path = Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src",
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var handled = new HashSet<string>(
+                Regex.Matches(File.ReadAllText(path), @"case\s+" + prefix + @"([A-Z0-9_]+)\s*:")
+                    .Select(m => m.Groups[1].Value),
+                StringComparer.OrdinalIgnoreCase);
+
+            string[] deadUpstream = ExpectedSourceXVerbs[surface]
+                .Where(v => !handled.Contains(v))
+                .OrderBy(v => v, StringComparer.Ordinal)
+                .ToArray();
+            string[] claimed = NotDispatchedUpstreamEither.GetValueOrDefault(surface, [])
+                .OrderBy(v => v, StringComparer.Ordinal)
+                .ToArray();
+
+            _out.WriteLine($"{surface}: upstream handles {handled.Count(h => ExpectedSourceXVerbs[surface].Contains(h, StringComparer.OrdinalIgnoreCase))} " +
+                           $"of {ExpectedSourceXVerbs[surface].Length} table entries");
+
+            // If upstream grows a case for one of these, it stops being a deliberate
+            // gap and becomes a parity debt - which is the moment to hear about it.
+            Assert.Equal(deadUpstream, claimed);
+        }
+    }
 
     [Fact]
     public void SourceXVerbSurfaces_MatchPinnedInventory()
@@ -163,9 +251,11 @@ public class SourceXVerbInventoryGuardrailTests
                 SphereNetImplementationSources[surface],
                 normalizeServerPrefix: surface == "CServer.cpp");
             var deferred = KnownPartialOrDeferred.GetValueOrDefault(surface, []);
+            var deadUpstream = NotDispatchedUpstreamEither.GetValueOrDefault(surface, []);
             string[] missing = expected
                 .Except(implemented, StringComparer.OrdinalIgnoreCase)
                 .Except(deferred, StringComparer.OrdinalIgnoreCase)
+                .Except(deadUpstream, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(x => x, StringComparer.Ordinal)
                 .ToArray();
 

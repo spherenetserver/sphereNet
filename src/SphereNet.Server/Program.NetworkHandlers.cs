@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -103,7 +103,18 @@ public static partial class Program
             // deleting the altar left ownerless, immovable candles standing.
             if (obj is Item deletedItem)
                 deletedItem.Champion?.OnAltarDeleted();
-            MarkNearbyClientsRefresh(obj.Position);
+            // An item that is worn or sitting in a container is in nobody's GROUND
+            // view, so the view delta never sends a delete for it: removing a
+            // hairstyle, a robe or a memory changed the server and nothing changed
+            // on any screen until a resync. Upstream takes an item out of view from
+            // the object itself (CObjBase::RemoveFromView), which reaches the
+            // wearer's viewers and everyone holding the container open.
+            // The position to broadcast around is the TOP-LEVEL one - a worn item's
+            // own coordinates are wherever it last lay on the ground.
+            var deleteAt = obj.GetTopLevelObj().Position;
+            if (obj is Item nested && (nested.IsEquipped || nested.ContainedIn.IsValid))
+                BroadcastNearby(deleteAt, 18, new PacketDeleteObject(obj.Uid.Value), 0);
+            MarkNearbyClientsRefresh(deleteAt);
         }
         else if (obj is Character ch && !ch.IsPlayer)
         {
@@ -735,6 +746,19 @@ public static partial class Program
         var pos = obj.Position;
         bool tooltipChanged = (obj.LastConsumedDirtyFlags &
             ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
+
+        // The status window is the character's own, and nothing refreshed it: upstream
+        // flushes one addStatusWindow per client cycle for a character whose stats
+        // changed (CClient::UpdateStats, CClientMsg.cpp:2174). Here the 0x11 packet only
+        // went out from the call sites that remembered to ask, so a script setting STR,
+        // a piece of armour or a weight change left the open window on the old numbers
+        // until the player closed and reopened it.
+        if ((obj.LastConsumedDirtyFlags & DirtyFlag.Stats) != DirtyFlag.None &&
+            obj is Character statChar &&
+            _clientsByCharUid.TryGetValue(statChar.Uid, out var owner) && owner.IsPlaying)
+        {
+            owner.RefreshStatusIfChanged();
+        }
         int cx = pos.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
         int cy = pos.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
         for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
@@ -1145,9 +1169,9 @@ public static partial class Program
             var weather = _weatherEngine.GetWeatherForRegion(r);
             client.Character.UpdateEnvironment(light, (byte)weather.Item1,
                 dead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
-            client.Send(new PacketSeason(dead
+            client.SendSeason(dead
                 ? (byte)SeasonType.Desolation
-                : (byte)_weatherEngine.CurrentSeason, playSound));
+                : (byte)_weatherEngine.CurrentSeason, playSound);
             client.Send(new PacketGlobalLight(light));
 
             if (r != null && !string.IsNullOrEmpty(r.Name))

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -1769,7 +1769,16 @@ public sealed class ClientCombatHandler
         // and IsFemale reads the live body, which is about to become a ghost body.
         bool deathSoundFemale = _character.IsFemale;
 
-        ushort ghostBody = _character.BodyId == 0x0191 ? (ushort)0x0193 : (ushort)0x0192;
+        // Source-X picks the ghost body from the PRE-DEATH body and puts that same
+        // body back on resurrection: Death() reads _iPrev_id (CCharAct.cpp:4448) and
+        // Spell_Resurrection does SetID(_iPrev_id) (CCharSpell.cpp:465). _iPrev_id is
+        // the OBODY property. Nothing captured it here, so the resurrect path had only
+        // the ghost body to work back from and mapped every ghost to the plain human
+        // body - a GM body, an elf, a gargoyle or any scripted player body came back
+        // as c_man, while the character's own BODY property still said otherwise.
+        if (_character.OBody == 0)
+            _character.OBody = _character.BodyId;
+        ushort ghostBody = deathSoundFemale ? (ushort)0x0193 : (ushort)0x0192;
         _character.BodyId = ghostBody;
         _character.OSkin = deathSkinHue;
         _character.Hue = Core.Types.Color.Default;
@@ -1970,6 +1979,17 @@ public sealed class ClientCombatHandler
             victimUid, ghostBody, _character.Hue,
             ghostFlags, cx, cy, cz, ghostDir);
         _netState.Send(drawPacket);
+        // 0x20 resets the CLIENT's walk sequence to zero, so the server has to reset
+        // its own or the two disagree from the next step onward. Upstream says so in
+        // as many words at the one place it sends this packet (CClient::
+        // addPlayerUpdate, CClientMsg.cpp:2162: "reset it on server side too, to
+        // prevent client request an unnecessary 'resync'"). Every other 0x20 here did
+        // it; death and resurrection did not - the two moments a player is most likely
+        // to be mid-stride. The mismatch costs a rejected step and a resync round
+        // trip, which is the hitch on the screen, and it leaves the ghost standing
+        // wherever the client had predicted rather than on the corpse.
+        _netState.WalkSequence = 0;
+        ResetWalkValidator();
 
         var ghostMoving = new PacketMobileMoving(
             victimUid, ghostBody,
@@ -1977,7 +1997,7 @@ public sealed class ClientCombatHandler
             _character.Hue, ghostFlags, ghostNoto);
         _netState.Send(ghostMoving);
 
-        _netState.Send(new PacketSeason((byte)SeasonType.Desolation, playSound: true));
+        _client.SendSeason((byte)SeasonType.Desolation, playSound: true);
         _netState.Send(new PacketGlobalLight(0));
         if (corpseSerial != 0 && _netState.SupportsMapWaypoints)
         {
@@ -2050,12 +2070,17 @@ public sealed class ClientCombatHandler
         if (rezHitPct > 0 && _character.MaxHits > 0)
             _character.Hits = (short)Math.Clamp(_character.MaxHits * rezHitPct / 100, 1, _character.MaxHits);
 
-        ushort restoredBody = _character.BodyId switch
-        {
-            0x0193 => (ushort)0x0191,
-            0x0192 => (ushort)0x0190,
-            _      => _spellEngine?.GetResurrectBody(_character) ?? _character.BodyId,
-        };
+        // The body the character had when they died, as upstream restores it. The
+        // ghost -> human mapping below it is the fallback for a ghost that never
+        // recorded one (an old save, a script that set the ghost body directly).
+        ushort restoredBody = _character.OBody != 0
+            ? _character.OBody
+            : _character.BodyId switch
+            {
+                0x0193 => (ushort)0x0191,
+                0x0192 => (ushort)0x0190,
+                _      => _spellEngine?.GetResurrectBody(_character) ?? _character.BodyId,
+            };
         _character.BodyId = restoredBody;
         if (_character.OBody != 0 && _character.BodyId == _character.OBody)
             _character.OBody = 0;
@@ -2106,6 +2131,9 @@ public sealed class ClientCombatHandler
         _netState.Send(new PacketDrawPlayer(
             uid, restoredBody, _character.Hue,
             resFlags, cx, cy, cz, resDir));
+        // Same rule on the way back (CClientMsg.cpp:2162).
+        _netState.WalkSequence = 0;
+        ResetWalkValidator();
 
         var resMoving = new PacketMobileMoving(
             uid, restoredBody,
@@ -2119,7 +2147,7 @@ public sealed class ClientCombatHandler
             _character.Hue, resFlags, resNoto,
             resEquipment, _netState.SupportsNewMobileIncoming));
 
-        _netState.Send(new PacketSeason((byte)_world.CurrentSeason, playSound: true));
+        _client.SendSeason((byte)_world.CurrentSeason, playSound: true);
         _netState.Send(new PacketGlobalLight(_world.GetLightLevel(_character.Position)));
         if (corpseRestored && ownCorpse != null && _netState.SupportsMapWaypoints)
             _netState.Send(new PacketWaypointRemove(ownCorpse.Uid.Value));

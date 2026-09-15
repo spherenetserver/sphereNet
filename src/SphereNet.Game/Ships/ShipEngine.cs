@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Objects;
@@ -89,6 +89,13 @@ public sealed class ShipEngine
     /// and the loose deck cargo - with ARGN1 the new direction and ARGN2 the previous
     /// one (Face, CCMultiMovable.cpp:628). Characters do not get an item trigger.</summary>
     public Action<Item, int, int>? OnShipTurned { get; set; }
+
+    /// <summary>A redeed has just put the deed in a player's pack. Upstream
+    /// announces new container content to every client that has the container
+    /// open (CItemContainer::ContentAdd -> CClient::addContents); nothing here
+    /// did, so the deed existed on the server and the player's open backpack
+    /// only showed it after being closed and reopened.</summary>
+    public Action<Character, Item>? OnDeedDelivered { get; set; }
 
     /// <summary>A ship is being turned back into its deed: the ship multi, the deed and
     /// the deed's graphic. Source-X runs @Redeed on the OLD multi with the new deed as
@@ -336,6 +343,8 @@ public sealed class ShipEngine
             var recipient = owner ?? requestor;
             if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
                 _world.PlaceItemWithDecay(deed, position);
+            else
+                OnDeedDelivered?.Invoke(recipient, deed);
         }
         return deed;
     }
@@ -354,6 +363,8 @@ public sealed class ShipEngine
         {
             if (owner?.Backpack == null || !owner.Backpack.TryAddItem(deed))
                 _world.PlaceItemWithDecay(deed, pos);
+            else
+                OnDeedDelivered?.Invoke(owner, deed);
         }
         return deed;
     }

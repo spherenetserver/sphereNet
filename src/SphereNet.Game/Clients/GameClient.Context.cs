@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -170,6 +170,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.SendSkillList() => SendSkillList();
     void IClientContext.SendPickupFailed(byte reason) => SendPickupFailed(reason);
     bool IClientContext.CanSendStatusFor(Character ch) => CanSendStatusFor(ch);
+    void IClientContext.SendSeason(byte season, bool playSound, bool force) => SendSeason(season, playSound, force);
     void IClientContext.PlaceItemInPack(Character target, Item item) => PlaceItemInPack(target, item);
     bool IClientContext.TryDClickEquip(Item item, Layer layer) => Inventory.TryDClickEquip(item, layer);
     Item? IClientContext.GetTopContainer(Item item) => GetTopContainer(item);
@@ -186,7 +187,11 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.OpenInspectPropDialog(ObjBase obj, int requestedPage) => OpenInspectPropDialog(obj, requestedPage);
     bool IClientContext.OpenNamedDialog(string dialogId, int requestedPage, ObjBase? subject) => OpenNamedDialog(dialogId, requestedPage, subject);
     bool IClientContext.IsScriptDialogOpen(string dialogId) => IsScriptDialogOpen(dialogId);
-    bool IClientContext.CloseScriptDialog(string dialogId) => CloseScriptDialog(dialogId);
+    bool IClientContext.CloseScriptDialog(string dialogId, int buttonId) => CloseScriptDialog(dialogId, buttonId);
+
+    void IClientContext.HandleGumpResponse(uint serial, uint gumpId, uint buttonId,
+        uint[] switches, (ushort Id, string Text)[] textEntries) =>
+        HandleGumpResponse(serial, gumpId, buttonId, switches, textEntries);
     bool IClientContext.TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection) => TryFindMenuSection(menuDefname, out menuSection);
     void IClientContext.SendInputPromptGump(IScriptObj target, string propName, int maxLength) => SendInputPromptGump(target, propName, maxLength);
     void IClientContext.SendScriptPrompt(IScriptObj target, string functionName, string message)

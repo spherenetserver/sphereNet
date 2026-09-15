@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Interfaces;
@@ -750,9 +750,9 @@ public sealed partial class GameClient
 
         _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GetLightLevel(_character.Position)));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
-        _netState.Send(new PacketSeason(_character.IsDead
+        SendSeason(_character.IsDead
             ? (byte)SeasonType.Desolation
-            : (byte)_world.CurrentSeason));
+            : (byte)_world.CurrentSeason, playSound: true);
         SendCurrentWeather();
 
         // Send player's own character with equipment — client needs this to render worn items
@@ -925,9 +925,9 @@ public sealed partial class GameClient
         // 4. Re-send light & season
         _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GetLightLevel(_character.Position)));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
-        _netState.Send(new PacketSeason(_character.IsDead
+        SendSeason(_character.IsDead
             ? (byte)SeasonType.Desolation
-            : (byte)_world.CurrentSeason, playSound: false));
+            : (byte)_world.CurrentSeason, playSound: false, force: true);
         SendCurrentWeather();
 
         // 5. Reset walk sequence (0 = resync sentinel, client must send seq 0 next)

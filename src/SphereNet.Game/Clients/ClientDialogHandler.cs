@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -187,16 +187,38 @@ public sealed class ClientDialogHandler
     public bool IsScriptDialogOpen(string dialogId) =>
         Gumps.OpenScriptDialogs.ContainsKey(dialogId);
 
-    /// <summary>Force-close an open script dialog (0xBF 0x04) and drop its
-    /// server-side tracking. Returns false when no such dialog is open.</summary>
-    public bool CloseScriptDialog(string dialogId)
+    /// <summary>Force-close an open script dialog (0xBF 0x04) and run its
+    /// ON=&lt;button&gt; handler, as upstream does. Returns false when no such
+    /// dialog is open.
+    ///
+    /// Closing does not stop at the packet: CClient::Dialog_Close feeds a gump
+    /// response carrying the given button back through the receive path
+    /// (CClientDialog.cpp:200-222), because a client from 4.0.4a on does not echo
+    /// one of its own. That synthetic answer is what runs the dialog's ON=0
+    /// block, and a script pack relies on it - d_admin's ON=0 is
+    /// `CLEARCTAGS Dialog.Admin`, and `[FUNCTION admin]` opens with
+    /// `DIALOGCLOSE d_admin` precisely to get that clear. Dropping the callback
+    /// instead meant the tags were never cleared: every `.admin` appended its
+    /// client list to the last one, so the same player turned up on page after
+    /// page and the page count grew until the gump stopped coming up at all.</summary>
+    public bool CloseScriptDialog(string dialogId, int buttonId = 0)
     {
         if (!Gumps.OpenScriptDialogs.TryGetValue(dialogId, out uint gumpId))
             return false;
         Gumps.OpenScriptDialogs.Remove(dialogId);
+        Send(new PacketCloseGump(gumpId));
+
+        // The response path owns the rest of the teardown (it removes the gump
+        // from the active set and consumes the callback), so hand over rather
+        // than clearing first - HandleGumpResponse rejects a gump it cannot find.
+        if (_character != null && Gumps.ActiveGumps.Contains(gumpId))
+        {
+            _client.HandleGumpResponse(_character.Uid.Value, gumpId, (uint)buttonId, [], []);
+            return true;
+        }
+
         Gumps.Callbacks.Remove(gumpId);
         Gumps.ActiveGumps.Remove(gumpId);
-        Send(new PacketCloseGump(gumpId));
         return true;
     }
 

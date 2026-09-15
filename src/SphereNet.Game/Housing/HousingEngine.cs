@@ -833,6 +833,13 @@ public sealed class HousingEngine
 
     /// <summary>Source-X @AddMulti notification for the owner's scripted
     /// CMultiStorage. SphereNet's native registry remains authoritative.</summary>
+    /// <summary>A redeed has just put the deed in a player's pack. Upstream
+    /// announces new container content to every client that has the container
+    /// open (CItemContainer::ContentAdd -> CClient::addContents); without it the
+    /// deed is on the server but the open backpack does not show it until it is
+    /// closed and reopened.</summary>
+    public Action<Character, Item>? OnDeedDelivered { get; set; }
+
     public Action<Character, Item, HousePriv>? OnAddMulti { get; set; }
 
     public HousingEngine(GameWorld world, MultiRegistry multiDefs)
@@ -1198,6 +1205,8 @@ public sealed class HousingEngine
             var recipient = owner ?? requestor;
             if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
                 _world.PlaceItemWithDecay(deed, position);
+            else
+                OnDeedDelivered?.Invoke(recipient, deed);
         }
         return deed;
     }

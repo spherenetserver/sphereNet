@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -70,6 +70,26 @@ public sealed partial class GameClient
         if (ch.IsStatFlag(StatFlag.Stone))
             return (ch.BodyId, new Color(0x0482)); // HUE_STONE
         return (ch.BodyId, ch.Hue);
+    }
+
+    /// <summary>The season this client was last told about, so the same one is not
+    /// sent twice. Upstream keeps it as CClient::m_Env.m_Season and returns early on a
+    /// repeat (CClientMsg.cpp:509).</summary>
+    private int _lastSeasonSent = -1;
+
+    /// <summary>Change the client's season, once. The client answers this packet by
+    /// walking every loaded map chunk and re-deriving each object's seasonal graphic
+    /// (ClassicUO World.ChangeSeason), which on a populated screen is long enough to
+    /// see - so re-sending a season the client is already in is a visible stall for no
+    /// change at all. Upstream guards it for exactly that reason.</summary>
+    /// <param name="force">A full resync re-establishes client state from scratch and
+    /// cannot assume what the client still holds, so it sends regardless.</param>
+    public void SendSeason(byte season, bool playSound, bool force = false)
+    {
+        if (!force && _lastSeasonSent == season)
+            return;
+        _lastSeasonSent = season;
+        _netState.Send(new PacketSeason(season, playSound));
     }
 
     internal void SendDrawObject(Character ch)
@@ -556,17 +576,32 @@ public sealed partial class GameClient
             var mem = mems[index - 1];
             if (mem != null)
             {
+                // A memory carried on a character has no world uid here - it is built
+                // directly rather than through the world, so FindObject cannot reach
+                // it. Upstream has no such split: a memory and a spell effect are both
+                // real IT_EQ_MEMORY_OBJ / IT_SPELL items equipped on LAYER_SPECIAL, so
+                // .edit opens the ordinary property dialog on them and TIMER,
+                // MORE and REMOVE all work.
+                //
+                // Printing two lines of text instead was the whole of ".edit cannot
+                // touch the things on me": the object is right there, it just could
+                // not be addressed by uid. The dialog takes the OBJECT, so hand it the
+                // memory itself; the TIMER property on a spell memory reads and writes
+                // through to the effect it mirrors.
                 var targetName = mem.Link.IsValid ? (_world.FindObject(mem.Link)?.Name ?? "?") : "?";
                 if (mem.ItemType == Core.Enums.ItemType.Spell)
                 {
-                    // Spell-effect mirror: MOREX = spell id, MOREY = effect
-                    // strength, LINK = caster (CharacterMemoryState.CreateSpellEffect).
-                    SysMessage($"[Spell effect] {mem.Name}");
-                    SysMessage($"  Spell={mem.MoreP.X} Strength={mem.MoreP.Y} Caster=0x{mem.Link.Value:X8} ({targetName})");
-                    return;
+                    // MOREX = spell id, MOREY = effect strength, LINK = caster
+                    // (CharacterMemoryState.CreateSpellEffect).
+                    SysMessage($"[Spell effect] {mem.Name} " +
+                               $"Spell={mem.MoreP.X} Strength={mem.MoreP.Y} Caster=0x{mem.Link.Value:X8} ({targetName})");
                 }
-                SysMessage($"[Memory] Link=0x{mem.Link.Value:X8} ({targetName})");
-                SysMessage($"  Types={mem.GetMemoryTypes()} Pos={mem.MoreP}");
+                else
+                {
+                    SysMessage($"[Memory] Link=0x{mem.Link.Value:X8} ({targetName}) " +
+                               $"Types={mem.GetMemoryTypes()}");
+                }
+                OpenInspectPropDialog(mem, 0);
                 return;
             }
         }
@@ -751,7 +786,7 @@ public sealed partial class GameClient
     /// than guessed at afterwards.</summary>
     private void SendContainerItemPacket(PacketContainerItem packet) => SendContainerItem(packet);
 
-    internal void SendContainerItem(PacketContainerItem packet)
+    public void SendContainerItem(PacketContainerItem packet)
     {
         uint uid = packet.ItemSerial;
         View.KnownItems.Remove(uid);
@@ -1130,8 +1165,63 @@ public sealed partial class GameClient
         _netState.Send(new PacketContainerContents(entries, _netState.IsClientPost6017));
     }
 
+    /// <summary>The non-vital half of the status window: everything the 0x11 packet
+    /// carries that does NOT have a cheap per-value packet of its own. Hits, mana and
+    /// stamina are excluded on purpose - they change constantly in a fight and the
+    /// client tracks them through 0xA1/0xA2/0xA3.</summary>
+    private readonly record struct StatusShape(
+        string Name, short Str, short Dex, short Int,
+        short MaxHits, short MaxStam, short MaxMana,
+        int Gold, ushort Armor, ushort Weight, ushort MaxWeight,
+        int Fame, int Karma, ushort Followers, ushort MaxFollowers);
+
+    private StatusShape? _lastStatusShape;
+
+    private StatusShape ShapeOf(Character ch)
+    {
+        int gold = 0;
+        var pack = ch.Backpack;
+        if (pack != null)
+            foreach (var gi in pack.Contents)
+                if (gi.BaseId == 0x0EED) gold += gi.Amount;
+        return new StatusShape(
+            ResolveStatusName(ch),
+            (short)SphereNet.Game.Combat.CombatEngine.EffectiveStr(ch),
+            (short)SphereNet.Game.Combat.CombatEngine.EffectiveDex(ch),
+            (short)SphereNet.Game.Combat.CombatEngine.EffectiveInt(ch),
+            ch.MaxHits, ch.MaxStam, ch.MaxMana,
+            gold,
+            (ushort)CombatEngine.CalcArmorDefense(ch),
+            (ushort)Math.Clamp(ch.GetTotalWeight(), 0, ushort.MaxValue),
+            (ushort)Math.Clamp(ch.MaxWeight, 0, ushort.MaxValue),
+            ch.Fame, ch.Karma,
+            (ushort)ch.CurFollower, (ushort)ch.MaxFollower);
+    }
+
+    /// <summary>Push the status window when something in it actually changed.
+    ///
+    /// Upstream refreshes the window from the client's own cycle: every stat change
+    /// calls CChar::UpdateStatsFlag, and CClient::UpdateStats flushes one
+    /// addStatusWindow per tick (CClientMsg.cpp:2174). Nothing here did that - the 0x11
+    /// packet only ever went out from the dozen call sites that remembered to ask for
+    /// it, so a change made anywhere else (a script setting STR, a piece of armour, a
+    /// weight change) left the open status window showing the old numbers until the
+    /// player closed and reopened it.
+    ///
+    /// Only the non-vital fields are compared: hits/mana/stamina have their own small
+    /// packets and would otherwise force a full status packet on every swing.</summary>
+    public void RefreshStatusIfChanged()
+    {
+        if (_character == null || !IsPlaying) return;
+        var shape = ShapeOf(_character);
+        if (_lastStatusShape is { } last && last == shape) return;
+        SendCharacterStatus(_character);
+    }
+
     public void SendCharacterStatus(Character ch, bool includeExtendedStats = true)
     {
+        if (_character != null && ch == _character)
+            _lastStatusShape = ShapeOf(ch);
         byte expansion;
         if (_netState.SupportsExtendedStatus)
             expansion = 7; // HS Extended (15 AOS bonus shorts)

@@ -143,6 +143,10 @@ internal interface IClientContext : ITextConsole
     void SendSkillList();
     void SendPickupFailed(byte reason);
     bool CanSendStatusFor(Character ch);
+
+    /// <summary>Change the client's season, skipping a season it is already in
+    /// (upstream CClient::addSeason, CClientMsg.cpp:509).</summary>
+    void SendSeason(byte season, bool playSound, bool force = false);
     void PlaceItemInPack(Character target, Item item);
     bool TryDClickEquip(Item item, Layer layer);
     Item? GetTopContainer(Item item);
@@ -164,7 +168,12 @@ internal interface IClientContext : ITextConsole
     void OpenInspectPropDialog(ObjBase obj, int requestedPage);
     bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null);
     bool IsScriptDialogOpen(string dialogId);
-    bool CloseScriptDialog(string dialogId);
+    bool CloseScriptDialog(string dialogId, int buttonId = 0);
+
+    /// <summary>Feed a gump response through the normal receive path. Used by
+    /// DIALOGCLOSE, which upstream answers on the client's behalf.</summary>
+    void HandleGumpResponse(uint serial, uint gumpId, uint buttonId,
+        uint[] switches, (ushort Id, string Text)[] textEntries);
     bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection);
     void SendInputPromptGump(IScriptObj target, string propName, int maxLength);
     void SendScriptPrompt(IScriptObj target, string functionName, string message);

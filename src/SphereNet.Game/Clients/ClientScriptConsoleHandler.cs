@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -92,7 +92,8 @@ public sealed class ClientScriptConsoleHandler
     private void SendGump(GumpBuilder gump, Action<uint, uint[], (ushort, string)[]>? callback = null) => _client.SendGump(gump, callback);
     private void OpenVendorBuy(Character vendor) => _client.OpenVendorBuy(vendor);
     private void OpenBankBox() => _client.OpenBankBox();
-    private bool CloseScriptDialog(string dialogId) => _client.CloseScriptDialog(dialogId);
+    private bool CloseScriptDialog(string dialogId, int buttonId = 0) =>
+        _client.CloseScriptDialog(dialogId, buttonId);
     private bool IsScriptDialogOpen(string dialogId) => _client.IsScriptDialogOpen(dialogId);
     private bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null) => _client.OpenNamedDialog(dialogId, requestedPage, subject);
     private void ClearPendingTargetState() => _client.ClearPendingTargetState();
@@ -686,11 +687,22 @@ public sealed class ClientScriptConsoleHandler
             // Close the named open script dialog (0xBF 0x04) using the
             // server-side open-dialog registry. Bare DIALOGCLOSE (no name)
             // stays a no-op for legacy script compatibility.
-            string dlgName = upper == "DIALOGCLOSE"
+            string dlgArgs = upper == "DIALOGCLOSE"
                 ? args.Trim()
                 : (cmd["DIALOGCLOSE ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
+            // DIALOGCLOSE <dialog> [buttonid] - upstream takes the button as a
+            // second argument and answers the gump with it (CObjBase.cpp:2866);
+            // omitted, it is 0, which is the pack's close/cancel handler.
+            string dlgName = dlgArgs;
+            int closeButton = 0;
+            int sep = dlgArgs.LastIndexOf(' ');
+            if (sep > 0 && int.TryParse(dlgArgs[(sep + 1)..], out int parsedButton))
+            {
+                dlgName = dlgArgs[..sep].Trim();
+                closeButton = parsedButton;
+            }
             if (dlgName.Length > 0)
-                CloseScriptDialog(dlgName);
+                CloseScriptDialog(dlgName, closeButton);
             return true;
         }
 

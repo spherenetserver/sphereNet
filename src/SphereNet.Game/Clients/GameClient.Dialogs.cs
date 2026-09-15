@@ -1,4 +1,4 @@
-using SphereNet.Game.Objects;
+﻿using SphereNet.Game.Objects;
 
 namespace SphereNet.Game.Clients;
 
@@ -12,7 +12,8 @@ public sealed partial class GameClient
 
     public bool IsScriptDialogOpen(string dialogId) => Dialogs.IsScriptDialogOpen(dialogId);
 
-    public bool CloseScriptDialog(string dialogId) => Dialogs.CloseScriptDialog(dialogId);
+    public bool CloseScriptDialog(string dialogId, int buttonId = 0) =>
+        Dialogs.CloseScriptDialog(dialogId, buttonId);
 
     public bool TryShowScriptDialog(string dialogId, int requestedPage) =>
         Dialogs.TryShowScriptDialog(dialogId, requestedPage);

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -56,6 +56,24 @@ namespace SphereNet.Server;
 
 public static partial class Program
 {
+    /// <summary>Tell a player's client about an item that an engine just put in
+    /// their backpack. Source-X sends the container-content packet from
+    /// CItemContainer::ContentAdd for every client with that container open; the
+    /// engines here add the item and send nothing, which is invisible until the
+    /// container is reopened.</summary>
+    private static void DeliverDeedToOpenPack(Character recipient, Item deed)
+    {
+        if (!TryGetClientFor(recipient, out var client))
+            return;
+        var container = deed.ContainedIn.IsValid ? deed.ContainedIn.Value : 0u;
+        if (container == 0u)
+            return;
+        client.SendContainerItem(new PacketContainerItem(
+            deed.Uid.Value, deed.DispIdFull, 0, deed.Amount,
+            deed.X, deed.Y, container, deed.Hue,
+            client.NetState.IsClientPost6017));
+    }
+
     private static bool TryGetClientFor(Character ch, out GameClient client) =>
         _clientsByCharUid.TryGetValue(ch.Uid, out client!) && client.Character == ch;
 
@@ -585,9 +603,13 @@ public static partial class Program
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }
 
                 gc.Send(new PacketGlobalLight(regionLight));
-                gc.Send(new PacketSeason(mover.IsDead
+                // Crossing a region boundary must not re-send a season the client is
+                // already in: the client answers the packet by re-deriving the seasonal
+                // graphic of every object in every loaded chunk, which is a visible
+                // stall. Upstream returns early on a repeat (CClientMsg.cpp:509).
+                gc.SendSeason(mover.IsDead
                     ? (byte)SeasonType.Desolation
-                    : (byte)_weatherEngine.CurrentSeason, playSound: false));
+                    : (byte)_weatherEngine.CurrentSeason, playSound: false);
                 if (!SphereNet.Game.World.WeatherEngine.NoWeather)
                     gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
@@ -1349,7 +1371,7 @@ public static partial class Program
                 if (!TryGetClientFor(character, out var envClient)) return;
                 if (!SphereNet.Game.World.WeatherEngine.NoWeather)
                     envClient.Send(new PacketWeather(sector.Weather, 0, 20));
-                envClient.Send(new PacketSeason(season, playSound: false));
+                envClient.SendSeason(season, playSound: false);
                 envClient.Send(new PacketGlobalLight(light));
             };
             _saver.GetSpellEffectRecords = _spellEngine.GetPersistedEffectRecords;
@@ -1487,11 +1509,18 @@ public static partial class Program
                 ushort body = obj is SphereNet.Game.Objects.Characters.Character speakerChar
                     ? speakerChar.BodyId
                     : (ushort)0;
+                // As upstream: addObjMessage goes through addBarkParse
+                // (CClientMsg.cpp:967), so a `@hue,font,unicode ` prefix is format,
+                // not text. A pack writes MESSAGE @,,1,1 [<SERV.NAME> Staff] and
+                // expects to see only what is inside the brackets.
+                var fmt = SphereNet.Game.Messages.SpeechPrefix.Parse(text, 0x03B2);
+                if (fmt.Drop || fmt.Text.Length == 0)
+                    return;
                 var pkt = new PacketSpeechUnicodeOut(
                     obj.Uid.Value, body,
                     0x06,               // TALKMODE_ITEM - text belonging to the object
-                    0x03B2, 3, "ENU",
-                    speaker, text);
+                    fmt.Hue, fmt.Font, "ENU",
+                    speaker, fmt.Text);
 
                 if (recipient != null)
                 {
@@ -1516,6 +1545,10 @@ public static partial class Program
             };
             SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover =
                 mem => _spellEngine.RemoveEffectByMemory(mem);
+            SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemaining =
+                mem => _spellEngine.GetEffectRemainingMsByMemory(mem);
+            SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRetimer =
+                (mem, ms) => _spellEngine.TryRetimeEffectByMemory(mem, ms);
             SphereNet.Game.Objects.Characters.Character.NpcWantThisItem =
                 (npc, wantedItem) => _npcAI.GetWantScore(npc, wantedItem);
             SphereNet.Game.Objects.Characters.Character.NpcCanEatFood =
@@ -2841,6 +2874,23 @@ public static partial class Program
                     mi.X, mi.Y, unchecked((ushort)(short)mi.Z),
                     entries);
                 BroadcastNearby(mi.Position, 18, pkt, 0);
+
+                // The smooth-move packet has already carried every deck passenger to
+                // the hull's new tile on each receiving client. Upstream does not then
+                // also send a per-character move for them: addCharMove is the
+                // NON-smooth-sailing branch (CCMultiMovable.cpp:375). The view delta
+                // here compares each known mobile against its last known position, so
+                // without being told, it saw every passenger jump a tile per ship step
+                // and sent a 0x77 for it - which the client draws as a walk. From the
+                // deck that reads as the other player jogging on the spot for the whole
+                // voyage.
+                foreach (var carried in shipObjs)
+                {
+                    if (carried is not SphereNet.Game.Objects.Characters.Character passenger)
+                        continue;
+                    ForEachClientInRange(mi.Position, 18, 0,
+                        (_, viewer) => viewer.UpdateKnownCharPosition(passenger));
+                }
             };
             // @Ship_Move belongs to the movement COMMAND, not to each tile of it, and
             // it carries the direction in ARGN1 and whether the ship has stopped in
@@ -2865,6 +2915,12 @@ public static partial class Program
             _shipEngine.OnShipRedeed = (multi, deed, deedId) =>
                 _triggerDispatcher?.FireItemTrigger(multi, ItemTrigger.Redeed,
                     new TriggerArgs { ItemSrc = multi, O1 = deed, N1 = deedId });
+            // The deed goes into the owner's pack, and the pack may be open on
+            // their screen right now. Upstream announces it (CItemContainer::
+            // ContentAdd); this engine only wrote it server-side, so the deed
+            // showed up only after the bag was closed and reopened.
+            _shipEngine.OnDeedDelivered = DeliverDeedToOpenPack;
+            _housingEngine.OnDeedDelivered = DeliverDeedToOpenPack;
             _shipEngine.OnShipTurned = (item, newDir, oldDir) =>
                 _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ShipTurn,
                     new TriggerArgs { ItemSrc = item, N1 = newDir, N2 = oldDir });

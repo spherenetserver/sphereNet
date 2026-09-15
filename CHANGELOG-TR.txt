@@ -3,6 +3,36 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Yerine cop konmus bir shard, bos dunya degil yirtik nesildir
+----------------------------------------
+
+FIX - Okunamayacak bir seyle degistirilmis dunya shard'i, dunyada bir delik olarak
+        yukleniyordu. Save olmayan duz metin, hata vermek yerine sifir kayit olarak
+        cozumleniyor ve uzerinde save damgasi tasimiyor; tutarlilik denetimi de
+        damgasiz dosyalari atladigi icin damgali kardesleri nesli butun gosteriyordu.
+        Dunya eksik ya da bos aciliyordu - hem de yaninda saglam bir yedek dururken ve
+        bir sonraki kayit o boslugu uzerine yazmak uzereyken: ilk inceleme bulgusunun
+        anlattigi sonun baska bir yoldan tekrari. Dunya/karakter shard'lari KISMEN
+        damgali olan nesil artik reddediliyor ve kurtarma onceki butun nesle donuyor.
+
+        Bilincli olarak dar: kural yalnizca dunya ve karakter shard'lari icin gecerli,
+        cunku bir kayit onlarin ya hepsini damgalar ya hicbirini. spheredata'yi
+        kapsamiyor; onun damgasi SAVECOUNT'tur ve klasik Sphere kayitlari da onu yazar,
+        yani "data damgali, shard'lar degil" bir legacy kayittir ve yuklenmeye devam
+        ediyor. Ayni sekilde bozulan gzip ya da ikili shard zaten okunabilirlik
+        denetimine takiliyordu; bu, onun goremedigi duz metin durumu.
+
+TEST - SaveGenerationMatrixTests (13): her format, 0/1/2/4 shard duzenlerinde
+        karakteriyle birlikte butun donuyor; bozulmus shard hem metin hem ikili-gzip'te
+        onceki nesle donuyor; yedek yokken yukleme dunya uydurmak yerine reddediyor;
+        iki shard'inda da damga olmayan klasik bicimli kayit yine yukleniyor; ve yedek
+        kapaliyken canli kayit okunabilir kaliyor. Sondaj: karisik nesli yeniden kabul
+        etmek 2 testi kirmiziya donduruyor.
+
+        BootFallbackTests'in legacy duzenegi damgayi yalnizca sphereworld'den
+        siliyordu; bu, legacy durumu gibi okunurken aslinda karisik olani kuruyordu.
+        Artik klasik bir kaydin oldugu gibi iki shard'dan da siliyor.
+
 [2026-09-15] - Replay, seyirciye buldugunu geri veriyor
 ----------------------------------------
 

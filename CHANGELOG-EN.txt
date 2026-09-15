@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A shard replaced by rubbish is a torn generation, not an empty world
+----------------------------------------
+
+FIX - A world shard replaced by something unreadable loaded as a hole in the world.
+        Plain text that is not a save parses as zero records rather than failing, and it
+        carries no save stamp - and the consistency check skips unstamped files, so its
+        stamped siblings made the generation look whole. The world came up short, or
+        empty, with a good backup sitting beside it and the next save about to write
+        that emptiness over it: the ending the first review finding was about, reached
+        by a different road. A generation whose world/char shards are PARTLY stamped is
+        refused now, and recovery falls back to the previous whole one.
+
+        Deliberately narrow: the rule covers the world and character shards, where a
+        save either stamps every one of them or none. It does not cover spheredata,
+        whose stamp is SAVECOUNT - classic Sphere saves write that too, so "data
+        stamped, shards not" is a legacy save and still loads. A gzip or binary shard
+        replaced the same way was already caught by the readability check; this is the
+        plain-text case it could not see.
+
+TEST - SaveGenerationMatrixTests (13): every format across shard layouts 0, 1, 2 and 4
+        round-trips whole with its character; a ruined shard falls back to the previous
+        generation in text and in binary-gzip; with no backup the load refuses rather
+        than inventing a world; a classic-shaped save with no stamps in either shard
+        still loads; and backups-off leaves the live save readable. Probe: accepting a
+        mixed generation again turns 2 red.
+
+        BootFallbackTests' legacy fixture stripped the stamp from sphereworld only,
+        which read as the legacy case while actually building the mixed one. It strips
+        both shards now, as a classic save has.
+
 [2026-09-15] - A replay gives the spectator back what it found
 ----------------------------------------
 

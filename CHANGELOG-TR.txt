@@ -3,6 +3,36 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Statik ihraci oncekini emekliye ayiriyor ve basladigini soyluyor
+----------------------------------------
+
+FIX - SERV.SAVESTATICS onceki ihracin uzerine yaziyordu. Source-X bu dosyayi
+        OpenScriptBackup uzerinden yazar ve onu diger her kayit dosyasi gibi dondurur;
+        nedeni de operatorun cabucak karsilastigi bir sey: statik ihraci, bir bolgeyi
+        duzeltirken arka arkaya iki kez calistirdiginiz seydir ve ikinci calistirma
+        birincisini yok edebilmemelidir. Artik dunya kaydiyla ayni yedek dondurmesinden
+        geciyor; kac tanesinin tutulacagina BackupLevels karar veriyor ve
+        BackupLevels=0 geride bayat seviye de birakmiyor.
+
+NEW - Kayit, yuruyus baslamadan once her oyuncuya duyuruluyor; Source-X'in yaptigi gibi
+        (CWorld.cpp:1250) ve onun kullandigi metinle (DEFMSG_SERVER_WORLDSTATICSAVE,
+        "World statics save has been initiated"). server_worldstaticsave'i ezen bir pack
+        artik bekledigini aliyor.
+
+DOC - Parite satiri, kalan dilim olarak "native statik harita dosyasi uretimi"
+        vadediyordu. Source-X de bunu yapmiyor: CWorld::SaveStatics sektorleri gezer ve
+        her ATTR_STATIC esyayi bir SCRIPT dosyasina yazar, statics0.mul'a degil. Satir
+        artik formatin gercekte ne oldugu ve secimin hangi kurallari izledigiyle
+        birlikte "uygulandi" diyor.
+
+TEST - StaticsExportTests (6): yalnizca statik yer esyalari yaziliyor - yanlarindaki
+        siradan esya, statik bir multi ve cantadaki statik degil; her biri Source-X'in
+        atladigi nedenle atlaniyor; dosya [EOF] ile bitiyor; ikinci ihrac birincisini
+        emekliye ayiriyor; ucuncusu yedekleri bir seviye asagi itiyor; yedek kapaliyken
+        yalnizca canli dosya kaliyor; ve hicbir sey bulamayan bir ihrac bile oncekini
+        okunabilir birakiyor. Sondaj: dondurmeyi kaldirmak 3 testi kirmiziya
+        donduruyor.
+
 [2026-09-15] - Iki verb yuzeyi daha olculdu, olu girdiler durust tutuldu
 ----------------------------------------
 

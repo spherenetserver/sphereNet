@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A statics export retires the one before it, and says it is starting
+----------------------------------------
+
+FIX - SERV.SAVESTATICS overwrote the previous export. Upstream writes this file through
+        OpenScriptBackup, which rotates it like every other save file, and for a reason
+        an operator meets quickly: a statics export is what you run twice in a row while
+        getting a region right, and the second run must not be able to destroy the
+        first. It goes through the same backup rotation as the world save now, so
+        BackupLevels decides how many are kept, and BackupLevels=0 still leaves no stale
+        levels behind.
+
+NEW - The save is announced to every player before the walk starts, as upstream does
+        (CWorld.cpp:1250) with the message text it uses
+        (DEFMSG_SERVER_WORLDSTATICSAVE, "World statics save has been initiated"). A pack
+        that overrides server_worldstaticsave now gets what it expects.
+
+DOC - The parity row promised "native static-map file generation" as the remaining
+        slice. Upstream does not do that either: CWorld::SaveStatics walks the sectors
+        and writes a SCRIPT file of every ATTR_STATIC item, not statics0.mul. The row
+        says implemented now, with what the format actually is and which rules the
+        selection follows.
+
+TEST - StaticsExportTests (6): only static ground items are written - not an ordinary
+        item beside them, not a static multi, not a static in a bag, each skipped for
+        the reason upstream skips it; the file ends with its [EOF]; a second export
+        retires the first; a third pushes the backups down a level; backups-off keeps
+        only the live file; and an export that finds nothing still leaves the previous
+        one readable. Probe: removing the rotation turns 3 red.
+
 [2026-09-15] - Two more verb surfaces measured, and the dead entries kept honest
 ----------------------------------------
 

@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Calisma aninda yapilan DEFMSG degisikligi kaydedilmez; parite budur
+----------------------------------------
+
+DOC - Parite matrisi "calisma anindaki DEFMSG degisikliklerinin kalici save/load'u"nu
+        acik madde olarak listeliyordu. Degil. Source-X varsayilan mesajlari
+        CServerConfig'te tutar, sphere_msgs.scp'den yukler ve calisma aninda ezilmesine
+        izin verir; dunya kaydi ise onlari hicbir zaman yazmaz - CWorld bir mesaji
+        yalnizca yayinlamak icin okur. Calisma anindaki degisiklik, scriptler yeniden
+        okunana kadar surer ve kayit defteri scriptlerdir. Onlari kalici yapmak
+        SAPMA olurdu, ustelik kafa karistirici bir sapma: ayni anahtarin iki dogruluk
+        kaynagi olurdu - operatorun duzenledigi script paketi ve goremedigi kayitli bir
+        deger - ve duzenleme sessizce kaybederdi. Satir artik gerekcesiyle birlikte
+        "uygulandi" diyor.
+
+TEST - DefMsgRuntimeOverrideTests (4): calisma anindaki ezme yerlesik varsayilani
+        geciyor, yeniden yukleme script degerini calisma anindaki degisikligin uzerine
+        geri getiriyor, temizleme hicbir seye degil motorun kendi metnine dusuyor ve
+        anahtar iki kaynaktan da taniniyor. Sozlesme sabitlendi; bir gun hata raporu
+        olarak gelmek yerine karar olarak kalsin.
+
 [2026-09-15] - Saklama supurmesi, kayit surerken neyi koruyor
 ----------------------------------------
 

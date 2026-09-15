@@ -77,6 +77,11 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.OnItemUnequipped = null;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = 60000;
         SphereNet.Game.Objects.Characters.Character.BroadcastNearby = null;
+        // The spell-memory bridges: a test that wires one leaves every later test
+        // reading its TIMER through that engine instance.
+        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;
+        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemaining = null;
+        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRetimer = null;
         SphereNet.Game.Objects.Characters.Character.FieldTouchHook = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedEra = 0;

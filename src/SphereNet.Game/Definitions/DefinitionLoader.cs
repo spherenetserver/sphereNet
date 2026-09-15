@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Magic;
 using SphereNet.Scripting.Definitions;
@@ -263,9 +263,24 @@ public sealed class DefinitionLoader
         foreach (var kv in _regionResourceDefs)
         {
             var def = kv.Value;
-            if (def.Reap != 0 || string.IsNullOrEmpty(def.ReapRaw))
+            if (string.IsNullOrEmpty(def.ReapRaw))
+            {
+                // A numeric REAP names a graphic that is also its own def index.
+                if (def.Reap != 0)
+                    def.ReapDefIndex = def.Reap;
                 continue;
+            }
 
+            // Keep the DEFINITION, not just the graphic it happens to draw as. The
+            // pack's coloured ores are named defs sharing iron's art (ID=i_ore_iron)
+            // and differing only in their name, their ingot and their @Create colour;
+            // resolving REAP to a graphic alone turned every one of them into iron.
+            int defIndex = TemplateEngine.ResolveItemDefIndex(_resources, def.ReapRaw);
+            if (defIndex != 0)
+                def.ReapDefIndex = defIndex;
+
+            if (def.Reap != 0)
+                continue;
             ushort dispId = TemplateEngine.ResolveDispId(_resources, def.ReapRaw);
             if (dispId != 0)
                 def.Reap = dispId;

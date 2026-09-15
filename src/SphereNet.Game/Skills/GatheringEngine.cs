@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
@@ -192,6 +192,7 @@ public sealed class GatheringEngine
             int reapAmount = Math.Clamp(
                 resDef.GetRandomReapAmount(ch.GetSkill(skill), Rng), 1, ushort.MaxValue);
             ushort reapItemId = resDef.Reap;
+            bool scriptChoseReapId = false;
 
             // Never hand out more than the pool actually holds — otherwise a
             // near-empty node still yields a full reap. The reference clamps here
@@ -242,8 +243,14 @@ public sealed class GatheringEngine
                 // A local left at zero or holding something that is not an item id
                 // keeps the definition's own reap; the reference would build id 0.
                 long scriptItemId = locals.GetInt("ResourceID");
-                if (scriptItemId > 0 && scriptItemId <= ushort.MaxValue)
+                if (scriptItemId > 0 && scriptItemId <= ushort.MaxValue &&
+                    (ushort)scriptItemId != reapItemId)
+                {
+                    // A script naming its own id names a GRAPHIC, so it replaces the
+                    // definition the resource would otherwise have built from.
                     reapItemId = (ushort)scriptItemId;
+                    scriptChoseReapId = true;
+                }
             }
 
             // ConsumeAmount takes what the pool can give and answers with what was
@@ -260,20 +267,28 @@ public sealed class GatheringEngine
             SetPool(activeMarker, remaining);
 
             var item = _world.CreateItem();
-            item.BaseId = reapItemId;
-            // Carry the itemdef display name so single-click labels and the
-            // vendor/sell lists name the resource ("iron ore") instead of an
-            // empty string. GetName() pluralizes per Amount on read.
-            var reapDef = DefinitionLoader.GetItemDef(reapItemId);
-            if (reapDef != null && !string.IsNullOrWhiteSpace(reapDef.Name))
-                item.Name = reapDef.Name;
 
             // Source-X builds the reaped item through CItem::CreateScript
-            // (CCharSkill.cpp:1050), which runs GenerateScript and with it the
-            // ITEMDEF's @Create (CItem.cpp:404/415), and sets the amount only
-            // afterwards. Building it raw meant a resource whose definition scripts
-            // its hue, tags or type in @Create came out of the ground bare.
-            item.FireCreateTrigger();
+            // (CCharSkill.cpp:1050) from the REAP resource id - a DEFINITION, not a
+            // graphic - so GenerateScript runs that definition's own @Create
+            // (CItem.cpp:404/415) and the item comes out with its name, its TDATA and
+            // its scripted colour.
+            //
+            // Resolving the reap to a graphic instead collapsed a pack's ore table
+            // into one item: every colour but iron is written as a named def sharing
+            // iron's art (`[ITEMDEF i_ore_copper] ID=i_ore_iron` + an @Create that
+            // colours it), so the graphic is iron's for all fifteen of them. Mining
+            // produced iron ore whatever the vein was.
+            int reapDefIndex = resDef.ReapDefIndex;
+            if (scriptChoseReapId || reapDefIndex == 0)
+                reapDefIndex = reapItemId;
+
+            if (!ItemDefHelper.ApplyInstanceMetadata(item, reapDefIndex))
+            {
+                // No definition behind the id: a bare graphic still becomes an item.
+                item.BaseId = reapItemId;
+                item.FireCreateTrigger();
+            }
             if (item.IsDeleted)
                 return new GatherResult { Handled = true, Success = false };
 

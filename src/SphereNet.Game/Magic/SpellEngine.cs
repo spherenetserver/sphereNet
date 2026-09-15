@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -3324,6 +3324,57 @@ public sealed class SpellEngine
     /// scripts reach this through Character.SpellMemoryEffectRemover when
     /// they REMOVE the memory (the Scripts-X Reaper/Stone Form @Select
     /// toggles). Returns true when a matching effect was reverted.</summary>
+    /// <summary>Register a bare active effect bound to a memory item. Exists so the
+    /// memory-to-effect bridge can be exercised without casting a real spell, which
+    /// would drag in targeting, reagents and skill rolls.</summary>
+    internal void AddActiveEffectForTests(Character target, SpellType spell, Item memory, long expireTick)
+        => _activeEffects.Add(new ActiveSpellEffect
+        {
+            Target = target,
+            Spell = spell,
+            Memory = memory,
+            ExpireTick = expireTick,
+        });
+
+    /// <summary>How long the effect behind this spell-memory has left, in
+    /// milliseconds; -1 when it never expires and 0 when there is no such effect.
+    ///
+    /// The memory item is a MIRROR - the authority is the active-effect record - so a
+    /// TIMER read straight off the item answers with the mirror's own (permanent)
+    /// timeout rather than with the effect's remaining time. Upstream has no such
+    /// split: the spell effect IS the item, and reading its TIMER reads the effect
+    /// (CChar::Spell_Effect_Create equips a real IT_SPELL item). This is the bridge
+    /// that makes the mirror answer for the thing it mirrors.</summary>
+    public long GetEffectRemainingMsByMemory(Item memory)
+    {
+        foreach (var eff in _activeEffects)
+        {
+            if (!ReferenceEquals(eff.Memory, memory))
+                continue;
+            if (eff.ExpireTick == long.MaxValue)
+                return -1;
+            return Math.Max(0, eff.ExpireTick - Environment.TickCount64);
+        }
+        return 0;
+    }
+
+    /// <summary>Re-arm the effect behind this spell-memory. A negative value makes it
+    /// permanent, mirroring how a negative TIMER turns a timer off everywhere else.
+    /// Returns false when the memory belongs to no active effect.</summary>
+    public bool TryRetimeEffectByMemory(Item memory, long remainingMs)
+    {
+        foreach (var eff in _activeEffects)
+        {
+            if (!ReferenceEquals(eff.Memory, memory))
+                continue;
+            eff.ExpireTick = remainingMs < 0
+                ? long.MaxValue
+                : Environment.TickCount64 + remainingMs;
+            return true;
+        }
+        return false;
+    }
+
     public bool RemoveEffectByMemory(Item memory)
     {
         for (int i = 0; i < _activeEffects.Count; i++)

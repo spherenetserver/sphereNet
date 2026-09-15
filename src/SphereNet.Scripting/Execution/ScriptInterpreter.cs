@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Scripting.Expressions;
@@ -1700,19 +1700,40 @@ public sealed class ScriptInterpreter
         }
         if (varName.StartsWith("ARGV", StringComparison.OrdinalIgnoreCase))
         {
+            string suffix = (varName.Length > 4 ? varName[4..] : "").Trim();
+            if (suffix.StartsWith("[", StringComparison.Ordinal) &&
+                suffix.EndsWith("]", StringComparison.Ordinal) && suffix.Length > 2)
+                suffix = suffix[1..^1].Trim();
+
+            // Bare <ARGV> is the argument COUNT, not the first argument
+            // (CScriptTriggerArgs.cpp:511: an empty key formats the quantity). A
+            // pack's list helpers are built on it - `[FUNCTION ARRAYCOUNT] RETURN
+            // <EVAL <ARGV>>`, and ARRAY reads the last field with
+            // `<ARGV[<EVAL <ARGV> - 1>]>` - so returning argument zero made every
+            // count come back as the first element, which evaluates to nothing.
+            // A dialog looping `FOR 1 <ARRAYCOUNT <LOCAL.list>>` then ran
+            // "FOR 1 0", which counts DOWN, and produced two rows of nothing.
             if (args == null || string.IsNullOrEmpty(args.ArgString))
-                return "";
+                return suffix.Length == 0 ? "0" : "";
 
             IReadOnlyList<string> argv = args is TriggerArgs triggerArgs
                 ? triggerArgs.GetArgv()
-                : args.ArgString.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            int idx = 0;
-            string suffix = varName.Length > 4 ? varName[4..] : "";
-            if (suffix.StartsWith("[", StringComparison.Ordinal) && suffix.EndsWith("]", StringComparison.Ordinal) && suffix.Length > 2)
-                suffix = suffix[1..^1];
-            if (int.TryParse(suffix, out int parsed))
-                idx = parsed;
-            return (idx >= 0 && idx < argv.Count) ? argv[idx] : "";
+                : args.ArgString.Split(',', StringSplitOptions.TrimEntries);
+
+            if (suffix.Length == 0)
+                return argv.Count.ToString();
+
+            // The index is an EXPRESSION, not a literal: upstream runs it through
+            // Exp_GetUSingle (CScriptTriggerArgs.cpp:518). A pack's ARRAY helper
+            // relies on it - `<ARGV[<DLOCAL.TEMP>]>` where TEMP holds "2 -1" - and a
+            // plain integer parse simply fails on that and returns nothing.
+            int idx;
+            if (!int.TryParse(suffix, out idx))
+            {
+                try { idx = (int)_expr.Evaluate(suffix); }
+                catch (Exception) { return ""; }
+            }
+            return idx >= 0 && idx < argv.Count ? argv[idx] : "";
         }
 
         // LOCAL.varname / DLOCAL.varname — read from scope local variables.

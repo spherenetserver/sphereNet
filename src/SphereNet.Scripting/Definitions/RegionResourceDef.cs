@@ -1,4 +1,4 @@
-using SphereNet.Core.Types;
+﻿using SphereNet.Core.Types;
 using SphereNet.Scripting.Resources;
 
 namespace SphereNet.Scripting.Definitions;
@@ -17,6 +17,16 @@ public sealed class RegionResourceDef : ResourceLink
 
     /// <summary>The BASEID of the item produced when gathered.</summary>
     public ushort Reap { get; set; }
+
+    /// <summary>The ITEMDEF this resource reaps, as a DEFINITION index rather than a
+    /// graphic. The two are not the same thing and the difference is the whole of the
+    /// coloured-ore problem: the pack writes every ore but iron as a NAMED def with no
+    /// numeric id - `[ITEMDEF i_ore_copper] ID=i_ore_iron` plus an @Create that sets
+    /// its colour - so they all share the iron graphic and differ only in their
+    /// definition. Resolving REAP to a graphic collapses the fifteen of them into one,
+    /// and the item built from it is iron: iron's name, iron's ingot, iron's @Create.
+    /// Zero when the reap is a plain numeric graphic with no definition behind it.</summary>
+    public int ReapDefIndex { get; set; }
 
     /// <summary>Raw REAP value from script (defname like "i_ore_iron"). Resolved post-load.</summary>
     public string? ReapRaw { get; set; }

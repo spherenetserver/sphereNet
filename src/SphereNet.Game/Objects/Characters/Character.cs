@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -109,6 +109,17 @@ public partial class Character : ObjBase
     /// via FINDID.&lt;RUNE_ITEM&gt;.REMOVE). Returns true when an effect was
     /// found and reverted.</summary>
     public static Func<Item, bool>? SpellMemoryEffectRemover;
+
+    /// <summary>Remaining milliseconds of the spell effect a memory mirrors: -1 for
+    /// permanent, 0 for "no such effect". Wired to SpellEngine so a TIMER read on the
+    /// mirror answers for the effect, which is what upstream reads - there the effect
+    /// IS the item.</summary>
+    public static Func<Item, long>? SpellMemoryEffectRemaining;
+
+    /// <summary>Re-arm the spell effect a memory mirrors; negative = permanent.
+    /// Returns false when the memory belongs to no active effect, so the caller can
+    /// fall back to the item's own timer.</summary>
+    public static Func<Item, long, bool>? SpellMemoryEffectRetimer;
 
     /// <summary>Source-X NPC_WantThisItem: how badly this NPC wants an item
     /// (0-100). Wired to NpcAI.GetWantScore; the give-item flow refuses
@@ -3563,6 +3574,14 @@ public partial class Character : ObjBase
             case "FLAGS": value = ((uint)_statFlags).ToString(); return true;
             case "FAME": value = _fame.ToString(); return true;
             case "KARMA": value = _karma.ToString(); return true;
+            // Upstream reads the brain back as a number (CCharNPC::r_WriteVal,
+            // CCharNPC.cpp:168; the numbering is NPCBRAIN_TYPE, CChar.h:32 - the
+            // same order this enum uses). Only the WRITE existed here, so a script
+            // testing `IF (<NPC> == brain_monster)` got nothing, PROPLIST advertised
+            // a key it could not answer, and .info on a creature showed no brain at
+            // all - which is exactly the field you want when a monster will not
+            // attack.
+            case "NPC": value = ((int)_npcBrain).ToString(); return true;
             case "ISGM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
             case "GM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
             case "INVUL": value = IsStatFlag(StatFlag.Invul) ? "1" : "0"; return true;
@@ -7524,25 +7543,18 @@ public partial class Character : ObjBase
 
     private void BroadcastSpeech(byte msgType, bool unicode, string rawArgs)
     {
-        ushort hue = 0x03B2;
-        string text = rawArgs?.Trim() ?? "";
-        if (text.StartsWith('@'))
-        {
-            int sp = text.IndexOfAny(new[] { ' ', '\t' });
-            string spec = sp >= 0 ? text[1..sp] : text[1..];
-            text = sp >= 0 ? text[(sp + 1)..].Trim() : "";
-            var f = spec.Split(',');
-            if (f.Length > 0 && f[0].Length > 0 &&
-                ushort.TryParse(f[0], System.Globalization.NumberStyles.HexNumber, null, out ushort c))
-                hue = c;
-        }
-        if (string.IsNullOrEmpty(text)) return;
+        // The `@hue,font,unicode ` prefix, parsed the way upstream parses it for every
+        // line of text (CClient::addBarkParse, CClientMsg.cpp:798). This read the hue
+        // only, and only as hex - so `@1234 hi` lost its colour and the font field
+        // never arrived at all.
+        var fmt = Messages.SpeechPrefix.Parse(rawArgs?.Trim(), 0x03B2);
+        if (fmt.Drop || string.IsNullOrEmpty(fmt.Text)) return;
 
         SphereNet.Network.Packets.PacketWriter pkt = unicode
             ? new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
-                Uid.Value, BodyId, msgType, hue, 3, "ENU", GetName(), text)
+                Uid.Value, BodyId, msgType, fmt.Hue, fmt.Font, "ENU", GetName(), fmt.Text)
             : new SphereNet.Network.Packets.Outgoing.PacketSpeechOut(
-                Uid.Value, BodyId, msgType, hue, 3, GetName(), text);
+                Uid.Value, BodyId, msgType, fmt.Hue, fmt.Font, GetName(), fmt.Text);
         BroadcastNearby?.Invoke(Position, 18, pkt, 0);
     }
 

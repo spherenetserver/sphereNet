@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -722,19 +722,19 @@ public sealed partial class GameClient
 
     public PrivLevel GetPrivLevel() => _account?.PrivLevel ?? PrivLevel.Guest;
 
-    public void SysMessage(string text)
-    {
-        string msg = ResolveMessage(text);
-        _netState.Send(new PacketSpeechUnicodeOut(
-            0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", msg
-        ));
-    }
+    public void SysMessage(string text) => SysMessage(text, 0x0035);
 
     public void SysMessage(string text, ushort hue)
     {
-        string msg = ResolveMessage(text);
+        // Upstream routes every system message through addBarkParse
+        // (CClientLog.cpp:200), which is where the `@hue,font,unicode ` prefix a
+        // script may have written is taken off the front of the line. Without it
+        // the prefix was printed as part of the text.
+        var fmt = SpeechPrefix.Parse(ResolveMessage(text), hue);
+        if (fmt.Drop)
+            return;
         _netState.Send(new PacketSpeechUnicodeOut(
-            0xFFFFFFFF, 0xFFFF, 6, hue, 3, "TRK", "System", msg
+            0xFFFFFFFF, 0xFFFF, 6, fmt.Hue, fmt.Font, "TRK", "System", fmt.Text
         ));
     }
 

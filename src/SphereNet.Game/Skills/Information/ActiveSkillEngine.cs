@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
@@ -1007,7 +1007,12 @@ public static class ActiveSkillEngine
             sink.SysMessage("You need a pickaxe to mine.");
             return false;
         }
-        BroadcastAnimation(ch, SkillType.Mining, (ushort)AnimationType.Attack1HBash, 0x0125);
+        FaceSkillTarget(ch, target);
+        // Upstream alternates the two pick sounds at random
+        // (Skill_GetSound, CCharSkill.cpp:3562); one of them on every swing is the
+        // flat repetition the report described.
+        BroadcastAnimation(ch, SkillType.Mining, (ushort)AnimationType.Attack1HBash,
+            System.Random.Shared.Next(2) == 0 ? (ushort)0x0125 : (ushort)0x0126);
         DamageGatherTool(sink, pickaxe);
 
         if (gatheringEngine != null)
@@ -1181,7 +1186,10 @@ public static class ActiveSkillEngine
             sink.SysMessage("You need a fishing pole to fish.");
             return false;
         }
-        BroadcastAnimation(ch, SkillType.Fishing, (ushort)AnimationType.AttackWeapon, 0x0240);
+        FaceSkillTarget(ch, target);
+        // Source-X Skill_GetAnim/Skill_GetSound for fishing: the two-handed bash
+        // and sound 0x364 (CCharSkill.cpp:3530/3548).
+        BroadcastAnimation(ch, SkillType.Fishing, (ushort)AnimationType.Attack2HBash, 0x0364);
         DamageGatherTool(sink, pole);
 
         if (gatheringEngine != null)
@@ -1247,6 +1255,7 @@ public static class ActiveSkillEngine
             sink.SysMessage("You need an axe to chop wood.");
             return false;
         }
+        FaceSkillTarget(ch, target);
         BroadcastAnimation(ch, SkillType.Lumberjacking, (ushort)AnimationType.Attack2HSlash, 0x013E);
         DamageGatherTool(sink, axe);
 
@@ -1283,6 +1292,26 @@ public static class ActiveSkillEngine
         return false;
     }
 
+
+    /// <summary>Face the point the skill is working on.
+    ///
+    /// Upstream turns the character toward m_Act_p on every stroke
+    /// (CChar::Skill_Stroke, CCharSkill.cpp:3608) - the same call the forge, the
+    /// campfire and the fishing spot get. Nothing here did, so a miner swung at a
+    /// rock face while looking somewhere else entirely, and the pick animation
+    /// played across the wrong axis.</summary>
+    internal static void FaceSkillTarget(Character ch, Point3D target)
+    {
+        if (target.X == ch.X && target.Y == ch.Y)
+            return;
+        var dir = ch.Position.GetDirectionTo(target);
+        if (ch.Direction == dir)
+            return;
+        ch.Direction = dir;
+        // The delta view compares direction alongside position, so telling the
+        // character is enough for every watcher to be told in the same tick.
+        ch.MarkDirty(Core.Enums.DirtyFlag.Direction);
+    }
 
     private static void BroadcastAnimation(Character ch, SkillType skill, ushort animId, ushort soundId)
     {

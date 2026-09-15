@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -581,6 +581,22 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "TAGCOUNT": value = _tags.Count.ToString(); return true;
             case "TIMER":
             {
+                // A spell-effect memory is a mirror of an active effect, and the
+                // effect owns the clock. Upstream has no such split - the effect IS
+                // the item there - so reading TIMER off the mirror has to answer for
+                // the effect, or .edit and every script that inspects a buff read the
+                // mirror's own permanent timer instead of the time left.
+                if (this is Items.Item spellMem &&
+                    spellMem.ItemType == Core.Enums.ItemType.Spell &&
+                    Characters.Character.SpellMemoryEffectRemaining is { } remainingOf)
+                {
+                    long ms = remainingOf(spellMem);
+                    if (ms != 0)
+                    {
+                        value = ms < 0 ? "-1" : (ms / 1000).ToString();
+                        return true;
+                    }
+                }
                 long t = Timeout;
                 if (t <= 0) { value = "-1"; return true; }
                 long remaining = (t - Environment.TickCount64) / 1000;
@@ -987,6 +1003,16 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "TIMER":
                 if (long.TryParse(args, out long timerVal))
                 {
+                    // Written on a spell-effect memory, TIMER re-arms the EFFECT: the
+                    // mirror's own timeout is not what expires the buff, so setting it
+                    // would have looked like it worked and done nothing.
+                    if (this is Items.Item retimeMem &&
+                        retimeMem.ItemType == Core.Enums.ItemType.Spell &&
+                        Characters.Character.SpellMemoryEffectRetimer is { } retime &&
+                        retime(retimeMem, timerVal < 0 ? -1 : timerVal * 1000))
+                    {
+                        return true;
+                    }
                     // Sphere: a negative TIMER DISABLES the timer (scripts
                     // toggle loops off with TIMER -1); clamping to 0 made it
                     // fire immediately instead — the flash-robe off switch

@@ -3727,11 +3727,59 @@ public class Item : ObjBase
         if (def == null)
             return false;
 
-        ushort next = 0;
+        // A DUPEITEM child is not a definition of its own upstream: CItemBase::
+        // FindItemBase redirects it to its master, so an item whose graphic is the
+        // SECOND art of a flip pair is still looking at the pair's own definition.
+        // Here the child is a real entry that inherits only TYPE/LAYER/TDATA, so it
+        // carries no FLIP and no DUPELIST - and a katana already showing its flipped
+        // art had nothing to flip back to.
+        for (int hop = 0; hop < 4 && def.DupItemId != 0; hop++)
+        {
+            var master = Definitions.DefinitionLoader.GetItemDef(def.DupItemId);
+            if (master == null || master == def)
+                break;
+            def = master;
+        }
+
+        // A stackable pile never flips: upstream gates the drop on
+        // !IsStackableType(), which is CAN_I_PILE (CCharAct.cpp:3266,
+        // CItemBase.h:329). The pile's DUPELIST is an amount ramp, not a flip pair.
+        if (IsPileBase(def))
+            return false;
+
+        ushort next;
         if (def.FlipId != 0)
+        {
             next = def.FlipId;
-        else if (def.Flip)
-            next = (ushort)(BaseId ^ 1);
+        }
+        else
+        {
+            // Source-X CItemBase::GetNextFlipID (CItemBase.cpp:885) walks the
+            // DUPELIST as a CYCLE: start at the def's own display id, and for each
+            // entry, if the previous id is the one we hold, take this one - falling
+            // off the end returns to the display id. This toggled the low bit
+            // instead, which is a guess that happens to be right only for a
+            // two-entry pair starting on an even id. A pair starting on an ODD id
+            // flipped DOWNWARD into whatever graphic the pack has below it, which is
+            // some other item entirely, and a list of more than two (ore's
+            // DUPELIST=019b8,019b9,019ba) never reached anything past the first.
+            var flips = def.DupeIds;
+            if (flips.Length == 0)
+                return false;       // nothing to flip to; upstream keeps the display id
+
+            ushort dispId = def.DispIndex != 0 ? def.DispIndex : (ushort)def.Id.Index;
+            next = dispId;
+            ushort prev = dispId;
+            foreach (ushort candidate in flips)
+            {
+                if (prev == BaseId)
+                {
+                    next = candidate;
+                    break;
+                }
+                prev = candidate;
+            }
+        }
 
         if (next == 0 || next == BaseId)
             return false;

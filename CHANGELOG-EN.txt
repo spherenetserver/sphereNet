@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A replay gives the spectator back what it found
+----------------------------------------
+
+FIX - Watching a replay freezes the spectator, and finishing cleared that flag whatever
+        it had been. A GM who was already frozen - by a staff command, by a paralyse -
+        came back able to walk, and nothing anywhere said the replay had done it. The
+        invisibility beside it WAS remembered and restored; the freeze was not. It is
+        remembered now, and put back the same way.
+
+FIX - The phantom serial allocator had no end. Replayed packets carry phantoms so a
+        spectator's client can never bind to a real object, and they are handed out
+        from the top of each real range - 65,534 of them for mobiles, 131,070 for
+        items. A recording long and busy enough to use a range up would have carried on
+        counting into serials the world really holds: the client would bind to one, and
+        FinishReplay deletes every phantom it handed out, which would take a real object
+        off that client's screen. Past the end the packet is refused instead, and the
+        refusals are counted.
+
+TEST - ReplaySpectatorLifecycleTests (8): the four combinations of arriving frozen and
+        invisible all leave as they arrived, the position is remembered, two spectators
+        of one recording get their own mapping rather than sharing one, phantoms come
+        from the top of each range, and an exhausted range refuses instead of
+        overflowing - with the control that an ordinary packet is still rewritten.
+        Probes: forgetting the freeze turns 2 red, removing the range guard 1.
+
 [2026-09-15] - The bot tells its own results apart before it measures anything
 ----------------------------------------
 

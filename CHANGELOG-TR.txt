@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Replay, seyirciye buldugunu geri veriyor
+----------------------------------------
+
+FIX - Replay izlemek seyirciyi donduruyor ve bitiste bu bayrak, onceden ne oldugundan
+        bagimsiz olarak temizleniyordu. Zaten dondurulmus bir GM - bir gorevli komutuyla
+        ya da bir felcle - yurunebilir halde geri donuyordu ve bunu replay'in yaptigini
+        hicbir yer soylemiyordu. Yanindaki gorunmezlik hatirlaniyor ve geri veriliyordu;
+        donma verilmiyordu. Artik hatirlaniyor ve ayni sekilde geri konuyor.
+
+FIX - Hayalet (phantom) serial dagiticisinin sonu yoktu. Replay paketleri hayalet
+        serial tasir, boylece seyircinin istemcisi gercek bir nesneye baglanamaz; bunlar
+        her gercek araligin tepesinden dagitilir - mobil icin 65.534, esya icin 131.070
+        adet. Araligi tuketecek kadar uzun ve yogun bir kayit, dunyanin gercekten
+        tuttugu serial'lara dogru saymaya devam ederdi: istemci bunlardan birine
+        baglanir ve FinishReplay dagittigi her hayaleti sildigi icin gercek bir nesne o
+        istemcinin ekranindan kalkardi. Aralik bitince paket artik reddediliyor ve
+        reddedilenler sayiliyor.
+
+TEST - ReplaySpectatorLifecycleTests (8): dondurulmus ve gorunmez gelmenin dort
+        bilesimi de geldigi gibi ayriliyor, konum hatirlaniyor, ayni kaydi izleyen iki
+        seyirci tek harita paylasmak yerine kendi haritasini aliyor, hayaletler her
+        araligin tepesinden geliyor ve tukenen aralik tasmak yerine reddediyor - siradan
+        paketin yine yeniden yazildigi kontroluyle birlikte. Sondaj: donmayi unutmak 2,
+        aralik korumasini kaldirmak 1 testi kirmiziya donduruyor.
+
 [2026-09-15] - Bot, olcum yapmadan once kendi sonuclarini ayirt ediyor
 ----------------------------------------
 

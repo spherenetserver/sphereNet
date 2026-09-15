@@ -66,9 +66,16 @@ leaves it (`config/sphere.ini`, 1 minute as shipped; Source-X
 elsewhere cost zero CPU until a player approaches.
 
 The grace is stamped on the sector a player is **in**, not on the whole window that
-sweeps over it, so a traveller leaves a trail one sector wide. `SECTORSLEEP=0` means
-no sector ever sleeps — upstream's meaning, and a loaded gun here (see the measured
-cost below).
+sweeps over it, so a traveller leaves a trail one sector wide.
+
+`SECTORSLEEP=0` does **not** mean what it means upstream. Upstream ticks every sector
+and lets `_CanSleep` decide, so a delay of zero really does keep the whole map awake.
+Here the tick set is built from the 5×5 window and the predicate is only ever asked
+about sectors that were awake last tick, so zero means: **a sector that has woken never
+sleeps again, and a sector no player has been near still never ticks**. The awake set
+therefore only grows — measured at 32 → 137 sectors as one player crossed eight areas
+(`SectorWakeTransitionTests`) — and keeps growing for the life of the process. Use a
+small non-zero value (the shipped `1`) rather than `0` for "barely sleeps".
 
 **Measured** — 500 online players, 50,000 NPCs, 300,000 ground items on a
 6144×4096 map (96×64 = 6144 sectors), 355 MB of managed heap (~1 KB per object),
@@ -110,6 +117,19 @@ how much:
 | Ground-item decay, corpses included, anywhere | next tick: armed deadlines sit in a due-ordered queue, drained **256** per tick, with an audit every **60 s** that re-queues anything armed the queue does not hold |
 | Everything a character does — AI, regen, poison — in a sleeping sector | not at all until a player comes within two sectors |
 | A sector flagged `SECF_NoSleep` | like an active sector |
+| A pet or a summon, wherever it is | next tick: a creature with a master stays in the AI wheel whatever its sector does, which is what makes a summon's expiry and a pet's loyalty and food exact. Releasing it in a sleeping sector stops all three |
+
+**Transitions**, measured in `SectorWakeTransitionTests`: a teleport wakes the
+destination on the next tick (the window is rebuilt from positions, so no sector needs
+to be walked through); the sector left behind keeps ticking through its grace, while a
+sector nobody has been near does not; pacing a sector boundary causes no sleep/wake
+churn; a map change wakes the same coordinates on the new map and leaves the old map's
+sector to its grace; a client that is lingering after a link loss still holds its sector
+awake. Waking a sector of **240** creatures spreads them over about three ticks, worst
+tick **100** — the spread is the creature's uid modulo 800 ms, so creatures with
+consecutive uids (a sector filled by one spawner, or by a world load) are one
+millisecond apart and occupy as many 100 ms ticks as they are hundreds. The per-tick AI
+budget of 500 is the backstop.
 
 What sleeps is **character work** — AI, regen, poison. Item deadlines are held in
 world-level due queues (one for `TIMER`, one for decay), drained every tick, so an

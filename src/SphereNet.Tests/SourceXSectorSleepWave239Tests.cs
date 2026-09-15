@@ -7,7 +7,13 @@ namespace SphereNet.Tests;
 /// Source-X CSector::_CanSleep model: SECF_NoSleep/InstaSleep flags, the
 /// clientless timeout measured from the last-client time, and the 8-neighbour
 /// adjacency sweep that keeps the ring around an active sector awake.
+///
+/// Serialized with the rest of the engine-static tests: this class both reads and
+/// WRITES Sector.SleepDelayMs, which is process-wide, and xUnit runs classes outside
+/// the collection in parallel with it. Two tests changing that one field is a race
+/// that shows up as one unexplained failure in a full run and passes on the retry.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class SourceXSectorSleepWave239Tests
 {
     private static Sector NewSector(int x = 5, int y = 5) => new(x, y, 0, 64);

@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - A stall report that says whether the loop was slow or was not scheduled
+----------------------------------------
+
+FIX - The panel's stats refresh walked every sector of every map TWICE. It runs on the
+        main loop every two seconds for as long as a dashboard is open, and it asked for
+        the world totals and the per-map figures separately - each a full grid walk. On
+        a six-map shard that is around 74,000 sector visits per refresh to produce a
+        handful of numbers, and it showed up in a live log as a 100 ms main-loop stall
+        (cmd=100.2ms). The totals are derived from the per-map walk now, so there is one
+        pass, and the two figures can no longer drift apart either.
+
+CHANGE - The stall report says what the yield ASKED for beside what it took:
+        `yield=231.4ms(asked 5ms)`. Nothing the yield can do takes more than five
+        milliseconds, so a yield measured in hundreds is not the engine being slow - it
+        is the thread not getting the CPU back, which is fixed on the machine rather
+        than in the code. The old line named the phase and left the reader to guess
+        which of the two it was.
+
+TEST - LoopStallAttributionTests (7): no yield mode ever asks for more than a few
+        milliseconds whatever slack it is offered, the adaptive yield never sleeps past
+        the tick deadline, and the world totals agree with the per-map figures they are
+        now summed from, including on an empty world where the sector count is what the
+        panel draws its rows from.
+
 [2026-09-15] - A statics export retires the one before it, and says it is starting
 ----------------------------------------
 

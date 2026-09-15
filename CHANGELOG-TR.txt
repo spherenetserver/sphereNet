@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Dongunun mu yavas oldugunu yoksa zamanlanmadigini mi soyleyen takilma raporu
+----------------------------------------
+
+FIX - Panelin istatistik yenilemesi her haritanin her sektorunu IKI KEZ yuruyordu. Bir
+        pano acik oldugu surece ana dongude iki saniyede bir calisiyor ve dunya
+        toplamlarini ayri, harita basina rakamlari ayri istiyordu - her biri tam bir
+        izgara yuruyusu. Alti haritali bir shard'da bu, avuc dolusu sayi uretmek icin
+        yenileme basina yaklasik 74.000 sektor ziyareti demek ve canli bir logda 100 ms'lik
+        ana dongu takilmasi olarak gorundu (cmd=100,2ms). Toplamlar artik harita basina
+        yuruyusten turetiliyor; tek gecis var ve iki rakam birbirinden ayrisamiyor.
+
+CHANGE - Takilma raporu, yield'in NE KADAR istedigini aldigi surenin yanina yaziyor:
+        `yield=231,4ms(asked 5ms)`. Yield'in yapabilecegi hicbir sey bes milisaniyeyi
+        gecmez; dolayisiyla yuzlerce milisaniye olculen bir yield, motorun yavasligi
+        degildir - is parcaciginin CPU'yu geri alamamasidir ve bu, kodda degil makinede
+        cozulur. Eski satir yalnizca asamayi adlandirip hangisi oldugunu okuyucunun
+        tahminine birakiyordu.
+
+TEST - LoopStallAttributionTests (7): hangi bosluk sunulursa sunulsun hicbir yield modu
+        birkac milisaniyeden fazlasini istemiyor, uyarlanabilir yield tick son tarihini
+        asarak uyumuyor ve dunya toplamlari artik toplandiklari harita basina rakamlarla
+        uyusuyor - panelin satirlarini cizdigi sektor sayisinin onemli oldugu bos dunya
+        dahil.
+
 [2026-09-15] - Statik ihraci oncekini emekliye ayiriyor ve basladigini soyluyor
 ----------------------------------------
 

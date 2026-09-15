@@ -410,7 +410,7 @@ public sealed class BotClient : IDisposable
         catch { }
     }
 
-    private void ProcessIncomingPacket(byte[] packet)
+    internal void ProcessIncomingPacket(byte[] packet)
     {
         if (packet.Length == 0) return;
         long now = Environment.TickCount64;
@@ -533,16 +533,28 @@ public sealed class BotClient : IDisposable
                 break;
 
             case 0x22: // Move Ack (3 bytes)
-                _world.MoveRejectCount = 0;
-                _world.ConsecutivePickupRejects = 0;
-                _world.LastActionResult = BotActionResult.Success;
-                _world.LastActionTimeMs = now;
-                _actionApi?.CompleteMove(true);
+                // packet[1] is the sequence of the move being answered. Without
+                // comparing it, a late ack for a move that already timed out was
+                // applied to whatever move is in flight now.
+                if (_actionApi?.CompleteMove(packet.Length >= 2 ? packet[1] : (byte)0, true) != false)
+                {
+                    _world.MoveRejectCount = 0;
+                    _world.ConsecutivePickupRejects = 0;
+                    _world.LastActionResult = BotActionResult.Success;
+                    _world.LastActionTimeMs = now;
+                    _world.TotalMoveAcks++;
+                }
+                else
+                {
+                    _world.LateMoveAcks++;
+                }
                 break;
 
             case 0x21: // Move Rejected (8 bytes)
                 if (packet.Length >= 8)
                 {
+                    // The correction applies whatever sequence it carries: the server
+                    // is saying where this character really is.
                     _world.MoveRejectCount++;
                     _world.TotalMoveRejects++;
                     _world.PrevX = _world.X;
@@ -552,9 +564,20 @@ public sealed class BotClient : IDisposable
                     _world.Y = _y = (short)ReadUInt16BE(packet, 4);
                     _world.Direction = packet[6];
                     _world.Z = _z = (sbyte)packet[7];
-                    _world.LastActionResult = BotActionResult.Rejected;
                     _world.LastActionTimeMs = now;
-                    _actionApi?.CompleteMove(false);
+
+                    // The server pins its walk sequence to 0 on a reject and ignores
+                    // the steps already in flight, which is what the real client's
+                    // "clear the queue and resend from 0" is written against. A bot
+                    // that kept counting up would be out of step with the server from
+                    // the first reject onwards.
+                    _moveSequence = 0;
+
+                    // Whether it ANSWERS the move in flight is a different question.
+                    if (_actionApi?.CompleteMove(packet[1], false) != false)
+                        _world.LastActionResult = BotActionResult.Rejected;
+                    else
+                        _world.LateMoveAcks++;
                 }
                 break;
 
@@ -996,9 +1019,13 @@ public sealed class BotClient : IDisposable
         catch { State = BotState.Disconnected; }
     }
 
-    internal void SendMovePacket(byte dir)
+    /// <summary>Send one move request and return the sequence it went out with, so
+    /// the caller can tell this move's answer from an earlier one's.</summary>
+    internal byte SendMovePacket(byte dir)
     {
-        SendRawPacket(BotPacketBuilder.BuildMoveRequest(dir, _moveSequence++));
+        byte seq = _moveSequence++;
+        SendRawPacket(BotPacketBuilder.BuildMoveRequest(dir, seq));
+        return seq;
     }
 
     private async Task SendPacketAsync(byte[] packet, CancellationToken ct)

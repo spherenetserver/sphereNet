@@ -7,6 +7,12 @@ public sealed class BotActionApi
 
     private TaskCompletionSource<BotActionResult>? _pendingAction;
     private BotActionWaitKind _waitKind;
+    /// <summary>The sequence byte of the move this bot is waiting to hear about. The
+    /// server echoes it in both the accept (0x22) and the reject (0x21), and without
+    /// comparing it a LATE answer to a move that already timed out completes the NEXT
+    /// move as a success - a false positive in the instrument a load report is built
+    /// from (review work item D09).</summary>
+    private byte _pendingMoveSeq;
     // Guards _waitKind/_pendingAction: the behavior thread sets them (SetWait /
     // WaitResult) while the background receive loop completes them (CompleteXxx).
     private readonly object _waitLock = new();
@@ -20,8 +26,8 @@ public sealed class BotActionApi
     {
         if (_bot.State != BotState.Playing) return BotActionResult.Disconnected;
 
-        SetWait(BotActionWaitKind.MoveAck);
-        _bot.SendMovePacket(dir);
+        byte seq = _bot.SendMovePacket(dir);
+        SetWaitForMove(seq);
         World.TotalMoveRequests++;
         return await WaitResult(1000, ct);
     }
@@ -135,11 +141,16 @@ public sealed class BotActionApi
         return Task.FromResult(BotActionResult.Success);
     }
 
+    /// <summary>Ask the server to attack. The answer - accepted, out of range, not a
+    /// valid target, or nothing at all - arrives later as combat packets, and this
+    /// method does not wait for any of it, so it reports <see cref="BotActionResult.Sent"/>
+    /// rather than success (review work item D09).</summary>
     public Task<BotActionResult> Attack(uint targetSerial, CancellationToken ct = default)
     {
         if (_bot.State != BotState.Playing) return Task.FromResult(BotActionResult.Disconnected);
         _bot.SendRawPacket(BotPacketBuilder.BuildAttackRequest(targetSerial));
-        return Task.FromResult(BotActionResult.Success);
+        World.TotalRequestsSent++;
+        return Task.FromResult(BotActionResult.Sent);
     }
 
     public Task<BotActionResult> SetWarMode(bool enabled, CancellationToken ct = default)
@@ -147,7 +158,8 @@ public sealed class BotActionApi
         if (_bot.State != BotState.Playing) return Task.FromResult(BotActionResult.Disconnected);
         World.IsWarMode = enabled;
         _bot.SendRawPacket(BotPacketBuilder.BuildWarMode(enabled));
-        return Task.FromResult(BotActionResult.Success);
+        World.TotalRequestsSent++;
+        return Task.FromResult(BotActionResult.Sent);
     }
 
     public async Task<BotActionResult> UseSkill(int skillId, int timeoutMs = 3000,
@@ -211,7 +223,8 @@ public sealed class BotActionApi
 
         _bot.SendRawPacket(BotPacketBuilder.BuildGumpResponse(serial, gumpId, buttonId, switches));
         World.ActiveGump = null;
-        return Task.FromResult(BotActionResult.Success);
+        World.TotalRequestsSent++;
+        return Task.FromResult(BotActionResult.Sent);
     }
 
     public async Task<BotActionResult> WaitForTarget(int timeoutMs = 3000,
@@ -233,7 +246,8 @@ public sealed class BotActionApi
 
         _bot.SendRawPacket(BotPacketBuilder.BuildTargetObject(World.TargetCursorId, serial));
         World.HasPendingTarget = false;
-        return Task.FromResult(BotActionResult.Success);
+        World.TotalRequestsSent++;
+        return Task.FromResult(BotActionResult.Sent);
     }
 
     public Task<BotActionResult> TargetLocation(int x, int y, int z,
@@ -245,16 +259,30 @@ public sealed class BotActionApi
         _bot.SendRawPacket(BotPacketBuilder.BuildTargetLocation(
             World.TargetCursorId, (short)x, (short)y, (sbyte)z));
         World.HasPendingTarget = false;
-        return Task.FromResult(BotActionResult.Success);
+        World.TotalRequestsSent++;
+        return Task.FromResult(BotActionResult.Sent);
     }
 
     // --- Internal completion API (called by BotClient packet handlers) ---
 
-    internal void CompleteMove(bool success)
+    /// <summary>Answer the move this bot is actually waiting for. Returns false when
+    /// the sequence belongs to an earlier move - the caller counts that as a late ack
+    /// rather than treating it as this move's outcome.
+    ///
+    /// There is no answer coming for those earlier moves: the server pins its walk
+    /// sequence to 0 on a reject and DROPS the in-flight steps silently (see
+    /// RejectStaleMove), which is what the real client's reset is written against. The
+    /// bot resets its own sequence the same way, so a timeout is the honest outcome for
+    /// a step the server threw away.</summary>
+    internal bool CompleteMove(byte sequence, bool success)
     {
         lock (_waitLock)
-            if (_waitKind == BotActionWaitKind.MoveAck)
-                Complete(success ? BotActionResult.Success : BotActionResult.Rejected);
+        {
+            if (_waitKind != BotActionWaitKind.MoveAck || sequence != _pendingMoveSeq)
+                return false;
+            Complete(success ? BotActionResult.Success : BotActionResult.Rejected);
+            return true;
+        }
     }
 
     internal void CompleteContainerOpen()
@@ -312,15 +340,28 @@ public sealed class BotActionApi
         _pendingAction?.TrySetResult(result);
     }
 
-    private void SetWait(BotActionWaitKind kind)
+    /// <summary>Wait for the answer to one particular move.</summary>
+    private void SetWaitForMove(byte sequence)
     {
         lock (_waitLock)
         {
-            _pendingAction?.TrySetResult(BotActionResult.TimedOut);
-            _waitKind = kind;
-            _pendingAction = new TaskCompletionSource<BotActionResult>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
+            _pendingMoveSeq = sequence;
+            SetWaitLocked(BotActionWaitKind.MoveAck);
         }
+    }
+
+    private void SetWait(BotActionWaitKind kind)
+    {
+        lock (_waitLock)
+            SetWaitLocked(kind);
+    }
+
+    private void SetWaitLocked(BotActionWaitKind kind)
+    {
+        _pendingAction?.TrySetResult(BotActionResult.TimedOut);
+        _waitKind = kind;
+        _pendingAction = new TaskCompletionSource<BotActionResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     private async Task<BotActionResult> WaitResult(int timeoutMs, CancellationToken ct)

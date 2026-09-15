@@ -26,6 +26,18 @@ public sealed class BotWorldModel
     public int MoveRejectCount;
     public int TotalMoveRequests;
     public int TotalMoveRejects;
+    /// <summary>Moves the server actually acknowledged. Separate from
+    /// TotalMoveRequests on purpose: what was asked for and what happened are two
+    /// different numbers, and a load report needs both.</summary>
+    public int TotalMoveAcks;
+    /// <summary>Requests this bot sent and did not wait for an answer to (attack, war
+    /// mode, gump response, targeting). A load report that adds these to confirmed
+    /// actions is counting its own packets.</summary>
+    public int TotalRequestsSent;
+    /// <summary>Answers that arrived for a move nobody is waiting for any more -
+    /// the previous request timed out and this is its late reply. Counted rather than
+    /// applied to whatever move is in flight now.</summary>
+    public int LateMoveAcks;
 
     // Navigation state
     public short DestX, DestY;
@@ -207,6 +219,11 @@ public enum BotActionResult
 {
     None,
     Success,
+    /// <summary>The request left the client and nothing here observes the server's
+    /// answer. An attack that reaches the server and is refused looks exactly like one
+    /// that lands, so a load report must not count this as a game action (review work
+    /// item D09).</summary>
+    Sent,
     Rejected,
     TimedOut,
     Desynced,

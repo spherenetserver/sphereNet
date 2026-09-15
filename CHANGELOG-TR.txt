@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - Decay birikiminin maliyeti olculdu
+----------------------------------------
+
+DOC - Yer esyasi curumesi tick basina 256 tanesini bosaltiyor ve bu sinir, var olma
+        nedeni olan birikim hic olculmeden belgelenmisti: dunya yuklemesi, saklanmis her
+        son tarih coktan gecmis halde gelir. 5.000 gecikmis esya tam 20 tick'te
+        temizleniyor - saniyede on tick ile iki saniye - en eski son tarih once, hicbiri
+        iki kez toplanmadan ve hicbiri kaybolmadan. Beklerken yeniden kurulan esya,
+        tasinmis bir son tarihte curumek yerine eski kuyruk girdisini emekliye ayiriyor;
+        beklerken silinen ise atlaniyor. Sayilar ARCHITECTURE'da.
+
+TEST - DecayBacklogTests (6): bosalma hizi ve tick basina sinir, birikimin tamaminda
+        sira, yirmi tick boyunca cift toplama olmamasi, yeniden kurulan ve silinen
+        vakalari ve kontrol: gelecekteki son tarih erken toplanmiyor - zamani gelince
+        toplaniyor. Kusur bulunmadi; kuyruk soyledigini yapiyor.
+
 [2026-09-15] - Oynatilamayan kayit, kayit degildir
 ----------------------------------------
 

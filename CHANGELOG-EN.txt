@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - What a decay backlog costs, measured
+----------------------------------------
+
+DOC - Ground-item decay drains at 256 per tick, and that cap was documented without
+        anything measuring the backlog it exists for: a world load arrives with every
+        stored deadline already past. 5,000 overdue items clear in exactly 20 ticks -
+        two seconds at ten ticks a second - oldest deadline first, nothing collected
+        twice and nothing lost. An item re-armed while it waits retires its old queue
+        entry rather than decaying on a deadline that has moved, and one deleted while
+        it waits is skipped. The numbers are in ARCHITECTURE.
+
+TEST - DecayBacklogTests (6): the drain rate and per-tick bound, due order across the
+        whole backlog, no duplicates over twenty ticks, the re-armed and deleted cases,
+        and the control that a deadline still in the future is not collected early -
+        and is collected when its time comes. No defect was found; the queue does what
+        it says.
+
 [2026-09-15] - A recording that cannot be played back is not a recording
 ----------------------------------------
 

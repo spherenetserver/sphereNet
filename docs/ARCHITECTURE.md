@@ -119,6 +119,13 @@ how much:
 | A sector flagged `SECF_NoSleep` | like an active sector |
 | A pet or a summon, wherever it is | next tick: a creature with a master stays in the AI wheel whatever its sector does, which is what makes a summon's expiry and a pet's loyalty and food exact. Releasing it in a sleeping sector stops all three |
 
+A **decay backlog** — what a world load arrives with, every stored deadline already
+past — drains at that cap and no faster: 5,000 overdue items clear in exactly 20 ticks,
+**2 seconds** at ten ticks a second, oldest deadline first, nothing collected twice and
+nothing lost (`DecayBacklogTests`). An item re-armed while it waits retires its old
+queue entry instead of decaying on a deadline that has moved, and one deleted while it
+waits is skipped.
+
 **Transitions**, measured in `SectorWakeTransitionTests`: a teleport wakes the
 destination on the next tick (the window is rebuilt from positions, so no sector needs
 to be walked through); the sector left behind keeps ticking through its grace, while a

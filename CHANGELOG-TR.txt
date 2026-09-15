@@ -3,6 +3,39 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-15] - PARTY.SETMASTER yeniden bir verb ve stone'un olu tablo girdileri adlandirildi
+----------------------------------------
+
+NEW - PARTY.SETMASTER. Parti verb tablosunda on girdi var ve sekizi yonlendirilmisti;
+        bir uyeyi lider yapmak yalnizca ozelligi YAZARAK (PARTY.MASTER=<uid>)
+        mumkundu, yani Source-X'in verb bicimini kullanan bir pack hicbir sey elde
+        etmiyordu. Iki argüman bicimi de kabul ediliyor (CParty.cpp:821): bir uid ya da
+        uye listesine @<indeks>, ki bu bir script'in uid'ini bilmeden "listedeki ikinci
+        kisiyi" lider yapma yoludur. Indeks 0 orada reddedilir, cunku 0 numarali uye
+        zaten liderdir. Partinin kendi korumasi, uye olmayan bir uid'i hala reddediyor;
+        boylece bir yazim hatasi partiyi yoldan gecene teslim edemiyor.
+
+NEW - PARTY.MESSAGE kabul ediliyor ve hicbir sey yapmiyor; Source-X'te de tam olarak
+        bunu yapiyor: PDV_MESSAGE bos bir break (CParty.cpp:796). Reddetmek, her ikisinde
+        de atil olan bir verb yuzunden Source-X'te calisan bir pack'i burada
+        basarisiz kilardi.
+
+DOC - Guild/kasaba stone verb tablosunda 30 girdi var ve Source-X'in kendi switch'i
+        bunlarin 13'unu isliyor - ACCEPTCANDIDATE, GRANTTITLE, SETNAME, VIEWROSTER,
+        MASTERMENU ve digerleri `default: return false`'a dusuyor (CItemStone.cpp:998);
+        eski stone menusunden kalma girdiler. SphereNet, Source-X'in uyguladigi 13'un
+        hepsini yonlendiriyor. Diger 17'yi uygulamak, Source-X'te olmayan bir davranis
+        uydurmak olurdu; bu yuzden bilincli olarak yonlendirilmiyorlar ve ileride bir
+        "parite duzeltmesi" onlari sessizce eklemesin diye yaziya gecirildi.
+
+TEST - PartySetMasterVerbTests (7): uid ve @indeks bicimleri, sondan sonraki indeks,
+        lider yapilamayan yabanci, verb ile ozelligin uyusmasi, indeks 0'in partiye
+        dokunmamasi ve MESSAGE'in hicbir seyi degistirmemesi. Indeks-0 vakasi gercekten
+        neyi denetledigini soyluyor: Source-X o indeksi reddeder ve buradaki koruma da
+        oyle, ama ikisi disaridan ayirt edilemez - mevcut lideri lider yapmak hicbir
+        seyi degistirmez - bu yuzden test, hangi dalin calistigini kanitliyormus gibi
+        yapmak yerine sonucu sabitliyor.
+
 [2026-09-15] - Oyun akisi kripto vektorleri, sifreleme turu basina
 ----------------------------------------
 

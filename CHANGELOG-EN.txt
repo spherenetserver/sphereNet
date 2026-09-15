@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-15] - PARTY.SETMASTER is a verb again, and the stone's dead table entries are named
+----------------------------------------
+
+NEW - PARTY.SETMASTER. The party verb table has ten entries and eight were routed;
+        promoting a member could only be done by WRITING the property
+        (PARTY.MASTER=<uid>), so a pack using upstream's verb form got nothing. Both
+        argument shapes are accepted, as upstream takes them (CParty.cpp:821): a uid, or
+        @<index> into the member list, which is how a script promotes "the second person
+        in the list" without knowing their uid. Index 0 is refused there because member
+        0 is the master already. The party's own guard still refuses a uid that is not a
+        member, so a typo cannot hand the party to a passer-by.
+
+NEW - PARTY.MESSAGE is accepted and does nothing, which is exactly what it does
+        upstream: PDV_MESSAGE is a bare break (CParty.cpp:796). Refusing it would make a
+        pack that runs on Source-X fail here over a verb that is inert on both.
+
+DOC - The guild/town stone verb table has 30 entries and upstream's own switch handles
+        13 of them - ACCEPTCANDIDATE, GRANTTITLE, SETNAME, VIEWROSTER, MASTERMENU and
+        the rest fall to `default: return false` (CItemStone.cpp:998), leftovers of the
+        old stone menu. SphereNet routes all 13 that upstream implements. Implementing
+        the other 17 would be inventing behaviour upstream does not have, so they stay
+        unrouted deliberately; this is written down so a later "parity fix" does not
+        quietly add them.
+
+TEST - PartySetMasterVerbTests (7): the uid and @index forms, an index past the end, a
+        stranger who cannot be made leader, verb and property agreeing, index 0 leaving
+        the party untouched, and MESSAGE changing nothing. The index-0 case says what it
+        actually checks - upstream refuses that index and the guard here matches, but
+        the two are indistinguishable from outside because promoting the existing master
+        changes nothing, so the test pins the outcome rather than pretending to prove
+        which branch ran.
+
 [2026-09-15] - Game-stream crypto vectors, per encryption type
 ----------------------------------------
 

@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects;
@@ -544,8 +544,12 @@ public sealed class SkillHandlers
 
     private static void BroadcastSkillAnimation(Character ch, ushort animId, ushort soundId)
     {
-        var animPkt = new SphereNet.Network.Packets.Outgoing.PacketAnimation(ch.Uid.Value, animId);
-        Character.BroadcastNearby?.Invoke(ch.Position, 18, animPkt, 0);
+        // One door for every animation: the action id is body- and mount-relative and
+        // the packet itself depends on the viewer's client
+        // (GameClient.PlayAnimation).
+        SphereNet.Game.Clients.GameClient.PlayAnimation(
+            ch, animId, Core.Enums.NewAnimationGesture.Emote, 18,
+            Character.BroadcastNearby, forEachClientInRange: null);
         var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(soundId, ch.X, ch.Y, ch.Z);
         Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);
     }

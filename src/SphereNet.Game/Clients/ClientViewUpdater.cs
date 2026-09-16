@@ -165,7 +165,7 @@ public sealed class ClientViewUpdater
 
             uint uid = ch.Uid.Value;
             View.KnownChars.Add(uid);
-            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
             // A bonded pet's ghost is announced as bonded to whoever can see it
             // (Source-X addChar, CClientMsg.cpp:1196-1202). Without this the
             // client has no way to tell that ghost from any other corpse-less
@@ -181,12 +181,16 @@ public sealed class ClientViewUpdater
             bool posChanged = false;
             bool bodyChanged = false;
             bool visChanged = false;
-            byte curVis = ComputeVisKey(ch);
+            ushort curVis = ComputeVisKey(ch);
+            // Per VIEWER, not per character: a guild war, a party join or an attack
+            // changes the colour this client must draw without the target itself
+            // changing at all, so the target's own state cannot detect it.
+            byte curNoto = _client.GetNotoriety(ch);
             if (View.LastKnownPos.TryGetValue(uid, out var last))
             {
                 posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;
                 bodyChanged = last.Body != ch.BodyId || last.Hue != ch.Hue;
-                visChanged = last.Vis != curVis;
+                visChanged = last.Vis != curVis || last.Noto != curNoto;
             }
             else
             {
@@ -224,7 +228,7 @@ public sealed class ClientViewUpdater
             }
 
             if (posChanged || bodyChanged || visChanged)
-                View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, curVis);
+                View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, curVis, curNoto);
         }
 
         foreach (var (item, hiddenAsAllShow) in delta.NewItems)
@@ -366,21 +370,24 @@ public sealed class ClientViewUpdater
             View.KnownDoorOverrides.Remove(s);
     }
 
-    internal static byte ComputeVisKey(Character ch)
+    /// <summary>The whole visual-state word for a mobile, as this client sees it.
+    ///
+    /// The low byte IS the mobile flags byte the viewer receives, carried verbatim:
+    /// frozen, female, poisoned/flying, yellow bar, staff, war, greyed. Picking out
+    /// individual bits by hand is what made a STATIONARY character's state changes
+    /// invisible - the criminal and murderer bits had to be added for exactly that
+    /// reason once already, and freeze, invulnerability, flight and sleep were still
+    /// missing. Taking the byte whole means the next flag added to it is covered
+    /// without anyone having to remember to come back here.
+    ///
+    /// The high byte carries what the flags byte does not say and the client still
+    /// needs re-drawing for: dead, criminal, murderer.</summary>
+    internal ushort ComputeVisKey(Character ch)
     {
-        byte vis = 0;
-        if (ch.IsStatFlag(Core.Enums.StatFlag.Hidden)) vis |= 1;
-        if (ch.IsInvisible) vis |= 2;
-        if (ch.IsDead) vis |= 4;
-        if (ch.IsInWarMode) vis |= 8;
-        // Notoriety state drives the 0x77/0x78 noto byte (grey criminal / red
-        // murderer highlight). Without these bits the view-delta never re-sent
-        // an observer's 0x78 when only the criminal/murderer flag flipped, so a
-        // stationary attacker stayed blue/green on screen until they moved.
-        // MakeCriminal → SetStatFlag marks the char dirty, which flags nearby
-        // clients for refresh; the changed vis key then triggers the redraw.
-        if (ch.IsCriminal) vis |= 16;
-        if (ch.IsMurderer) vis |= 32;
+        ushort vis = _client.BuildMobileFlags(ch);
+        if (ch.IsDead) vis |= 0x0100;
+        if (ch.IsCriminal) vis |= 0x0200;
+        if (ch.IsMurderer) vis |= 0x0400;
         return vis;
     }
 
@@ -392,7 +399,7 @@ public sealed class ClientViewUpdater
     {
         uint uid = ch.Uid.Value;
         if (View.KnownChars.Contains(uid))
-            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
     }
 
     /// <summary>Returns true if this client already tracks the given mobile (has sent 0x78 spawn).</summary>
@@ -402,10 +409,14 @@ public sealed class ClientViewUpdater
     /// broadcast out-of-band (death ghost transition / resurrect restore) so
     /// the next BuildViewDelta does not re-emit a duplicate 0x78. No-op when
     /// the UID is not currently known.</summary>
-    public void UpdateKnownCharRender(uint uid, ushort newBody, ushort newHue, byte direction, short x, short y, sbyte z, byte visKey = 0)
+    public void UpdateKnownCharRender(uint uid, ushort newBody, ushort newHue, byte direction, short x, short y, sbyte z, ushort visKey = 0)
     {
-        if (View.KnownChars.Contains(uid))
-            View.LastKnownPos[uid] = (x, y, z, direction, newBody, newHue, visKey);
+        if (!View.KnownChars.Contains(uid))
+            return;
+        byte noto = WorldRef.FindChar(new Serial(uid)) is { } known
+            ? _client.GetNotoriety(known)
+            : (byte)0;
+        View.LastKnownPos[uid] = (x, y, z, direction, newBody, newHue, visKey, noto);
     }
 
     /// <summary>Drop the character from the known set; optionally emit 0x1D.
@@ -457,7 +468,7 @@ public sealed class ClientViewUpdater
             _client.SendDrawObject(ch);
 
         View.KnownChars.Add(uid);
-        View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+        View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
     }
 
     /// <summary>
@@ -504,7 +515,7 @@ public sealed class ClientViewUpdater
                 if (!posChanged) return;
             }
             _client.SendUpdateMobile(ch);
-            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
         }
         else if (nowInRange)
         {

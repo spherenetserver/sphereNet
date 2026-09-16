@@ -3741,9 +3741,12 @@ public sealed class SpellEngine
                     if (!drunk.IsStatFlag(StatFlag.OnHorse))
                     {
                         drunk.Direction = (Direction)_rand.Next(8);
-                        Character.BroadcastNearby?.Invoke(drunk.Position, 18,
-                            new SphereNet.Network.Packets.Outgoing.PacketAnimation(
-                                drunk.Uid.Value, (ushort)AnimationType.Bow), 0);
+                        // Through the shared door: the action id is body-relative, and
+                        // a non-humanoid drunk was playing a human frame set.
+                        SphereNet.Game.Clients.GameClient.PlayAnimation(
+                            drunk, (ushort)AnimationType.Bow,
+                            Core.Enums.NewAnimationGesture.Emote, 18,
+                            Character.BroadcastNearby, forEachClientInRange: null);
                     }
                 }
                 return true;

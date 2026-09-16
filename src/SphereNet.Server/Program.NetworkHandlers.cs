@@ -743,7 +743,15 @@ public static partial class Program
         const int Range = 18;
         int secRadius = (Range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
 
-        var pos = obj.Position;
+        // The TOP-LEVEL position, not the object's own: a worn or contained item's
+        // own coordinates are wherever it last lay on the ground, so marking the
+        // clients around THOSE reaches the wrong sector - usually nobody at all, and
+        // the item's property tooltip went out to no one. Same rule the delete path
+        // already follows (CObjBase::RemoveFromView works from the object itself,
+        // whose position IS its top-level one upstream).
+        var pos = obj.GetTopLevelObj().Position;
+        bool wornVisualChanged = obj is Item { IsEquipped: true } &&
+            (obj.LastConsumedDirtyFlags & (DirtyFlag.Hue | DirtyFlag.Body)) != DirtyFlag.None;
         bool tooltipChanged = (obj.LastConsumedDirtyFlags &
             ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
 
@@ -774,6 +782,14 @@ public static partial class Program
                     c.ViewNeedsRefresh = true;
                     if (tooltipChanged)
                         c.SendAosTooltip(obj, requested: false, invalidate: true);
+                    // A WORN item's look is in neither of the delta's two tables: the
+                    // character tuple carries the wearer's own body and hue, the item
+                    // tuple carries GROUND items. So a script recolouring a robe or
+                    // swapping its graphic changed nothing on any screen until a
+                    // resync. Upstream has no such gap - the item's own Update() goes
+                    // out to everyone who can see the wearer.
+                    if (wornVisualChanged && obj is Item wornItem)
+                        c.SendItemVisualUpdate(wornItem);
                 }
             }
         }

@@ -685,6 +685,11 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
             return false;
         }
+
+        // Upstream turns the tamer toward the animal before the attempt
+        // (CChar::Skill_Taming, CCharSkill.cpp:2307) - the same UpdateDir the forge,
+        // the campfire and the gathering stroke get.
+        FaceSkillTarget(ch, target.Position);
         if (target.IsStatFlag(StatFlag.Pet))
         {
             sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, target.Name));

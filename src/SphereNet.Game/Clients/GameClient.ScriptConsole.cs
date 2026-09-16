@@ -150,16 +150,67 @@ public sealed partial class GameClient
     /// <c>CChar::IsFemale()</c> returns the same lookup): human female
     /// = 0x191, female ghost = 0x193.
     /// </summary>
-    internal static byte BuildMobileFlags(Character ch)
+    /// <summary>The hues that turn a state's "draw me greyed out" bit off. Upstream
+    /// keeps them as COLORINVIS / COLORHIDDEN / COLORINVISSPELL: a shard that gives
+    /// one of those states its own colour does NOT want the client's grey overlay on
+    /// top of it, so the INVIS bit is withheld for that state (CCharStatus.cpp:687).
+    /// Wired from the ini at startup; zero (the default) means "use the grey".</summary>
+    public static ushort ColorInvisHue, ColorHiddenHue, ColorInvisSpellHue;
+
+    /// <summary>The mobile flags byte, as the VIEWER must read it.
+    ///
+    /// Source-X builds it per viewer (CChar::GetModeFlag, CCharStatus.cpp:659-702)
+    /// and the viewer matters: bit 0x04 is POISONED for a pre-Stygian-Abyss client
+    /// and FLYING for a newer one - the same bit, two meanings, decided by who is
+    /// looking (ClassicUO Mobile.cs:126/145 reads it exactly that way).</summary>
+    internal static byte BuildMobileFlagsFor(Character ch, NetState? viewer)
     {
         byte flags = 0;
-        if (ch.IsInvisible) flags |= 0x80;
+
+        // Frozen covers being turned to stone as well (STATF_FREEZE|STATF_STONE).
+        if (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone))
+            flags |= 0x01;
+
+        // Female. Upstream asks the DEFINITION; the body is what this engine has,
+        // and the ghost bodies count too - a dead woman is still drawn as one.
+        if (IsFemaleBody(ch.BodyId))
+            flags |= 0x02;
+
+        // 0x04: one bit, two meanings, chosen by the viewer's client.
+        bool viewerIsModern = viewer == null ||
+            viewer.SupportsStygianAbyss || viewer.IsEnhancedClient || viewer.IsKingdomRebornClient;
+        if (viewerIsModern)
+        {
+            if (ch.IsStatFlag(StatFlag.Hovering)) flags |= 0x04;   // gargoyle flight
+        }
+        else
+        {
+            if (ch.IsStatFlag(StatFlag.Poisoned)) flags |= 0x04;   // green health bar
+        }
+
+        if (ch.IsStatFlag(StatFlag.Invul)) flags |= 0x08;          // yellow health bar
+        if (ch.PrivLevel > PrivLevel.Player) flags |= 0x10;        // staff walk through mobiles
         if (ch.IsInWarMode) flags |= 0x40;
-        if (ch.BodyId == 0x0191 || ch.BodyId == 0x0193) flags |= 0x02;
-        if (ch.IsStatFlag(StatFlag.Hovering)) flags |= 0x04; // gargoyle flight
-        if (ch.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
+
+        // The grey overlay. Upstream folds four states into this one bit and lets a
+        // shard opt each of them out by giving that state its own hue instead.
+        bool greyed = ch.IsStatFlag(StatFlag.Sleeping)
+            || (ColorInvisHue == 0 && ch.IsStatFlag(StatFlag.Insubstantial))
+            || (ColorHiddenHue == 0 && ch.IsStatFlag(StatFlag.Hidden))
+            || (ColorInvisSpellHue == 0 && ch.IsStatFlag(StatFlag.Invisible));
+        if (greyed) flags |= 0x80;
+
         return flags;
     }
+
+    /// <summary>Female player bodies, living and ghost, across the three races.</summary>
+    private static bool IsFemaleBody(ushort bodyId) => bodyId is
+        0x0191 or 0x0193 or        // human, and her ghost
+        0x025E or 0x0260 or        // elf
+        0x029B or 0x02B7;          // gargoyle
+
+    /// <summary>This client's own reading of another mobile's flags.</summary>
+    internal byte BuildMobileFlags(Character ch) => BuildMobileFlagsFor(ch, _netState);
 
     /// <summary>
     /// Turn the player to face <paramref name="target"/>, update the player's own

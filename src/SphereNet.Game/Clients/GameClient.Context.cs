@@ -170,6 +170,9 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.SendSkillList() => SendSkillList();
     void IClientContext.SendPickupFailed(byte reason) => SendPickupFailed(reason);
     bool IClientContext.CanSendStatusFor(Character ch) => CanSendStatusFor(ch);
+    byte IClientContext.BuildMobileFlags(Character ch) => BuildMobileFlags(ch);
+    void IClientContext.PlayAnimation(Character actor, ushort action,
+        SphereNet.Core.Enums.NewAnimationGesture gesture) => PlayAnimation(actor, action, gesture);
     void IClientContext.SendSeason(byte season, bool playSound, bool force) => SendSeason(season, playSound, force);
     void IClientContext.PlaceItemInPack(Character target, Item item) => PlaceItemInPack(target, item);
     bool IClientContext.TryDClickEquip(Item item, Layer layer) => Inventory.TryDClickEquip(item, layer);

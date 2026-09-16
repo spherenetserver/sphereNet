@@ -1,4 +1,4 @@
-namespace SphereNet.Game.Clients;
+﻿namespace SphereNet.Game.Clients;
 
 public sealed record TooltipCacheEntry(
     uint Hash,
@@ -19,7 +19,17 @@ public sealed class ClientViewCache
     public HashSet<uint> KnownChars { get; } = [];
     public HashSet<uint> KnownItems { get; } = [];
     public HashSet<uint> KnownDoorOverrides { get; } = [];
-    public Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue, byte Vis)> LastKnownPos { get; } = [];
+    /// <summary>What this client was last told about each mobile it knows.
+    ///
+    /// <c>Vis</c> is the whole visual-state word, not a hand-picked subset: the
+    /// mobile flags byte the viewer receives plus the view-only bits (dead,
+    /// criminal, murderer). Picking individual bits is what left a stationary
+    /// character's state changes invisible until it moved, twice over.
+    ///
+    /// <c>Noto</c> is the notoriety byte, which is computed PER VIEWER - a guild
+    /// war, a party join or an attack changes the colour this client must draw
+    /// without the target itself changing at all.</summary>
+    public Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue, ushort Vis, byte Noto)> LastKnownPos { get; } = [];
     public Dictionary<uint, (short X, short Y, sbyte Z, ushort DispId, ushort Hue, ushort Amount, byte Direction)> LastKnownItemState { get; } = [];
     // Tooltip state lives on the object (ObjBase.TooltipCache, Source-X
     // SetPropertyList model) — no per-client tooltip bookkeeping remains: pushes

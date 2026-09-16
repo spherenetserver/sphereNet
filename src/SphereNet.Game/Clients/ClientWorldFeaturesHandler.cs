@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -93,7 +93,10 @@ public sealed class ClientWorldFeaturesHandler
     private Character? DismountCharacter() => _client.DismountCharacter();
     private void BroadcastDeleteObject(uint uid) => _client.BroadcastDeleteObject(uid);
     private void ResetWalkValidator() => _client.ResetWalkValidator();
-    private static byte BuildMobileFlags(Character ch) => GameClient.BuildMobileFlags(ch);
+    private byte BuildMobileFlags(Character ch) => _client.BuildMobileFlags(ch);
+    private void PlayAnimation(Character actor, ushort action,
+        SphereNet.Core.Enums.NewAnimationGesture gesture) =>
+        _client.PlayAnimation(actor, action, gesture);
     private byte GetNotoriety(Character ch) => _client.GetNotoriety(ch);
     private void BeginInfoSkill(SkillType skill, int skillId) => _client.BeginInfoSkill(skill, skillId);
     private void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind) => _client.BeginActiveSkill(skill, skillId, kind);
@@ -425,8 +428,7 @@ public sealed class ClientWorldFeaturesHandler
             new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill, N2 = stroke });
         var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
         if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoAnim))
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                new PacketAnimation(_character.Uid.Value, craftAnim), 0);
+            PlayAnimation(_character, craftAnim, NewAnimationGesture.Emote);
         if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
@@ -2221,8 +2223,7 @@ public sealed class ClientWorldFeaturesHandler
             SysMessage(ServerMessages.Get("potion_drink"));
         }
 
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Eat), 0);
+        PlayAnimation(_character, (ushort)AnimationType.Eat, NewAnimationGesture.Eat);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x0031, _character.X, _character.Y, _character.Z), 0);
 

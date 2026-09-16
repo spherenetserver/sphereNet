@@ -114,7 +114,7 @@ public sealed class ClientCombatHandler
     private void NpcSpeech(Character npc, string text) => _client.NpcSpeech(npc, text);
     private void SendCharacterStatus(Character ch) => _client.SendCharacterStatus(ch);
     private byte GetNotoriety(Character ch) => _client.GetNotoriety(ch);
-    private static byte BuildMobileFlags(Character ch) => GameClient.BuildMobileFlags(ch);
+    private byte BuildMobileFlags(Character ch) => _client.BuildMobileFlags(ch);
     private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) => _client.SetPendingTarget(callback, cursorType);
     private void ClearPendingTargetState() => _client.ClearPendingTargetState();
     private void SendDrawObject(Character ch) => _client.SendDrawObject(ch);

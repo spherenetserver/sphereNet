@@ -84,6 +84,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRetimer = null;
         SphereNet.Game.Objects.Characters.Character.FieldTouchHook = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
+        SphereNet.Game.Clients.GameClient.ColorInvisHue = 0;
+        SphereNet.Game.Clients.GameClient.ColorHiddenHue = 0;
+        SphereNet.Game.Clients.GameClient.ColorInvisSpellHue = 0;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedEra = 0;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedScaleFactor = 15_000;
         SphereNet.Game.Objects.Characters.Character.CombatParryingEra =

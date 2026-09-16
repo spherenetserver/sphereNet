@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -735,6 +735,13 @@ public static partial class Program
         Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;
         Character.CombatMeleeMovementDelay  = _config.CombatMeleeMovementDelay;
         Character.MagicFlags = _config.MagicFlags;
+        // COLORINVIS / COLORHIDDEN / COLORINVISSPELL: a shard that gives one of these
+        // states its own hue does not want the client's grey overlay on top of it, so
+        // the mobile flags byte withholds the INVIS bit for that state
+        // (CChar::GetModeFlag, CCharStatus.cpp:687-700).
+        SphereNet.Game.Clients.GameClient.ColorInvisHue = _config.ColorInvis;
+        SphereNet.Game.Clients.GameClient.ColorHiddenHue = _config.ColorHidden;
+        SphereNet.Game.Clients.GameClient.ColorInvisSpellHue = _config.ColorInvisSpell;
         Character.EquippedCastEnabled = _config.EquippedCast;
         Character.ReagentLossAbort = _config.ReagentLossAbort;
         Character.ReagentLossFail = _config.ReagentLossFail;

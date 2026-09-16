@@ -144,6 +144,16 @@ internal interface IClientContext : ITextConsole
     void SendPickupFailed(byte reason);
     bool CanSendStatusFor(Character ch);
 
+    /// <summary>The mobile flags byte as THIS client must read it - bit 0x04 means
+    /// poisoned or flying depending on the viewer's client (CChar::GetModeFlag,
+    /// CCharStatus.cpp:659).</summary>
+    byte BuildMobileFlags(Character ch);
+
+    /// <summary>Play an action on a character for everyone who can see them, with the
+    /// body/mount translation and the per-viewer packet choice applied once, here.</summary>
+    void PlayAnimation(Character actor, ushort action,
+        SphereNet.Core.Enums.NewAnimationGesture gesture);
+
     /// <summary>Change the client's season, skipping a season it is already in
     /// (upstream CClient::addSeason, CClientMsg.cpp:509).</summary>
     void SendSeason(byte season, bool playSound, bool force = false);

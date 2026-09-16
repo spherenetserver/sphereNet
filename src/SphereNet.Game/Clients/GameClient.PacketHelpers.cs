@@ -325,13 +325,66 @@ public sealed partial class GameClient
         SendTargetRequest(0);
     }
 
+    /// <summary>Play an action on a character for everyone who can see them.
+    ///
+    /// This is the ONE door every animation should go through, because two separate
+    /// corrections have to happen before the packet is built and neither is obvious at
+    /// a call site:
+    ///
+    /// * The action id is body-relative. A non-humanoid plays a different frame set,
+    ///   and a MOUNTED rider plays a different one again - upstream maps the action
+    ///   through the creature's own table, and ClassicUO draws a foot animation on a
+    ///   rider by taking them off the horse and putting them back. Eating, bowing and
+    ///   crafting in the saddle all looked like that.
+    /// * The packet itself depends on the viewer: a KR/Enhanced client takes the
+    ///   body-agnostic 0xE2 and never sees a 0x6E at all.
+    ///
+    /// Both live in this file already; what was missing was a single entry point, so
+    /// eleven call sites built the raw packet and got neither.</summary>
+    public static void PlayAnimation(
+        Character actor, ushort action, NewAnimationGesture gesture, int range,
+        Action<Point3D, int, PacketWriter, uint>? broadcastNearby,
+        Action<Point3D, int, uint, Action<Character, GameClient>>? forEachClientInRange,
+        ushort frameCount = 7, ushort repeatCount = 1, bool forward = true,
+        bool repeat = false, byte animDelay = 0)
+    {
+        ushort translated = actor.IsMounted
+            ? SphereNet.Game.Combat.BodyAnimTranslator.ToMounted(action)
+            : SphereNet.Game.Combat.BodyAnimTranslator.Translate(actor.BodyId, action);
+
+        uint serial = actor.Uid.Value;
+        if (forEachClientInRange != null)
+        {
+            forEachClientInRange(actor.Position, range, 0, (_, observer) =>
+            {
+                if (observer.NetState.IsKingdomRebornClient || observer.NetState.IsEnhancedClient)
+                    observer.Send(new PacketNewAnimation(serial, gesture, 0, 0));
+                else
+                    observer.Send(new PacketAnimation(serial, translated, frameCount,
+                        repeatCount, forward, repeat, animDelay));
+            });
+            return;
+        }
+
+        broadcastNearby?.Invoke(actor.Position, range,
+            new PacketAnimation(serial, translated, frameCount, repeatCount,
+                forward, repeat, animDelay), 0);
+    }
+
+    /// <summary>This client's own view of <see cref="PlayAnimation"/>.</summary>
+    public void PlayAnimation(Character actor, ushort action,
+        NewAnimationGesture gesture = NewAnimationGesture.Fidget,
+        ushort frameCount = 7, ushort repeatCount = 1, bool forward = true,
+        bool repeat = false, byte animDelay = 0)
+        => PlayAnimation(actor, action, gesture, UpdateRange, BroadcastNearby,
+            ForEachClientInRange, frameCount, repeatCount, forward, repeat, animDelay);
+
     /// <summary>Source-X CV_ANIM. Plays the given action on this client's
     /// own character so the GM can verify animation IDs visually.</summary>
     public void PlayOwnAnimation(ushort animId)
     {
         if (_character == null) return;
-        var pkt = new PacketAnimation(_character.Uid.Value, animId);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, pkt, 0);
+        PlayAnimation(_character, animId);
     }
 
     public void SendSpeedMode()

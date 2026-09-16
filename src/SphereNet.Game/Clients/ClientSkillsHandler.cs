@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -53,6 +53,9 @@ public sealed class ClientSkillsHandler
 
     // --- context shims (the GameClient surface this handler depends on) ---
     private Character? _character => _client.Character;
+    private void PlayAnimation(Character actor, ushort action,
+        SphereNet.Core.Enums.NewAnimationGesture gesture) =>
+        _client.PlayAnimation(actor, action, gesture);
     private GameWorld _world => _client.World;
     private NetState _netState => _client.NetState;
     private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
@@ -340,8 +343,7 @@ public sealed class ClientSkillsHandler
         {
             ushort animId = GetSkillStrokeAnimation((SkillType)skillId);
             if (animId != 0)
-                BroadcastNearby?.Invoke(_character.Position, 18,
-                    new PacketAnimation(_character.Uid.Value, animId), 0);
+                PlayAnimation(_character, animId, NewAnimationGesture.Emote);
 
             if ((SkillType)skillId == SkillType.Fishing &&
                 _character.TryGetSkillPendingPoint(out Point3D splashAt))

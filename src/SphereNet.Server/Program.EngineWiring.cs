@@ -969,11 +969,12 @@ public static partial class Program
                 if (TryGetClientFor(ch, out var c))
                     c.SendSelfRedraw();
             };
+            // Only the clients who can actually see it. Sending to every client on the
+            // shard produced one packet per player for every visual change, and the
+            // receiving client discards what it cannot see anyway.
             Item.OnVisualUpdate = item =>
-            {
-                foreach (var c in _clients.Values)
-                    c.SendItemVisualUpdate(item);
-            };
+                ForEachClientInRange(item.GetTopLevelObj().Position, 18, 0,
+                    (_, c) => c.SendItemVisualUpdate(item));
             // @Unequip on engine/script unequip paths (Source-X ITRIG_UnEquip
             // from ItemBounce / RemoveSelf). The client pickup path fires its
             // own; this covers the .UNEQUIP verb and worn .REMOVE so worn-item
@@ -2196,10 +2197,12 @@ public static partial class Program
                 if (damage == CombatEngine.AttackResolvedByProc)
                     return; // The proc ran its own damage/death feedback.
 
-                ushort getHitAction = target.IsMounted
-                    ? MapAnimToMounted((ushort)AnimationType.GetHit)
-                    : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
-                BroadcastNearby(target.Position, 18, new PacketAnimation(target.Uid.Value, getHitAction), 0);
+                // The shared door translates the action for the body and the saddle and
+                // picks 0x6E or 0xE2 per viewer (GameClient.PlayAnimation).
+                SphereNet.Game.Clients.GameClient.PlayAnimation(
+                    target, (ushort)AnimationType.GetHit,
+                    SphereNet.Core.Enums.NewAnimationGesture.Impact, 18,
+                    BroadcastNearby, ForEachClientInRange);
 
                 // Only an armed strike makes a weapon sound; an unarmed creature
                 // vocalizes via its own NPC Hit sound (CharDef SOUNDHIT), so don't
@@ -2271,9 +2274,10 @@ public static partial class Program
             };
             _npcAI.OnHealerAction = (healer, target, isResurrect) =>
             {
-                ushort healAnim = healer.IsMounted ? MapAnimToMounted(16) : BodyAnimTranslator.Translate(healer.BodyId, 16);
-                var anim = new PacketAnimation(healer.Uid.Value, healAnim, 4, 1, false, false, 0);
-                BroadcastNearby(healer.Position, 18, anim, 0);
+                SphereNet.Game.Clients.GameClient.PlayAnimation(
+                    healer, 16, SphereNet.Core.Enums.NewAnimationGesture.Emote, 18,
+                    BroadcastNearby, ForEachClientInRange,
+                    frameCount: 4, repeatCount: 1, forward: false);
                 var sound = new PacketSound(isResurrect ? (ushort)0x0214 : (ushort)0x01F2,
                     healer.X, healer.Y, healer.Z);
                 BroadcastNearby(healer.Position, 18, sound, 0);
@@ -2288,9 +2292,10 @@ public static partial class Program
             };
             _npcAI.OnHealerCure = (healer, target) =>
             {
-                ushort healAnim = healer.IsMounted ? MapAnimToMounted(16) : BodyAnimTranslator.Translate(healer.BodyId, 16);
-                var anim = new PacketAnimation(healer.Uid.Value, healAnim, 4, 1, false, false, 0);
-                BroadcastNearby(healer.Position, 18, anim, 0);
+                SphereNet.Game.Clients.GameClient.PlayAnimation(
+                    healer, 16, SphereNet.Core.Enums.NewAnimationGesture.Emote, 18,
+                    BroadcastNearby, ForEachClientInRange,
+                    frameCount: 4, repeatCount: 1, forward: false);
                 var sound = new PacketSound(0x01E0, healer.X, healer.Y, healer.Z);
                 BroadcastNearby(healer.Position, 18, sound, 0);
             };

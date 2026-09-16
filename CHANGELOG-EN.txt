@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - One writer per thread instead of one per object
+----------------------------------------
+
+CHANGE - The save snapshot allocated a writer and a property list for EVERY
+        object it captured - on a live shard about 184,000 of each, plus the
+        garbage every one of those lists made while doubling its way to the right
+        size. That burst is what shows up as 21 gen0 and 19 gen1 collections
+        inside the single loop iteration that captures, with the GC pause
+        accounting for most of the half second the world is held still at each
+        save (measured live: total 466-608ms, of which 285-488ms was GC pause).
+        The writer is now per THREAD, leaving one exact-size array per record -
+        the part that actually has to outlive the capture.
+
+        The properties are still COPIED out of the reused writer. Handing the live
+        list over would be the whole allocation saved and a corrupt save earned:
+        every record on a thread would end up describing whichever object that
+        thread wrote last, and the file would still load. A test walks the written
+        save and fails on exactly that.
+
 [2026-09-16] - Raising the ships the save already had under the sea
 ----------------------------------------
 

@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Nesne basina degil, thread basina tek writer
+----------------------------------------
+
+CHANGE - Save snapshot'i yakaladigi HER nesne icin bir writer ve bir ozellik
+        listesi tahsis ediyordu - canli bir shard'da her birinden yaklasik
+        184.000 tane, ustune o listelerin dogru boya ulasana kadar ikiye
+        katlanirken urettigi cop. Yakalamayi yapan tek dongu iterasyonunun icinde
+        21 gen0 ve 19 gen1 toplama olarak gorunen sey bu patlamadir; her save'de
+        dunyanin durdugu yarim saniyenin buyuk kismini da GC duraklamasi tutar
+        (canli olcum: toplam 466-608ms, bunun 285-488ms'i GC duraklamasi). Writer
+        artik THREAD basina; geriye kayit basina tam boyutlu tek bir dizi
+        kaliyor - yakalamadan sag cikmasi gereken kisim zaten o.
+
+        Ozellikler yeniden kullanilan writer'dan hala KOPYALANIYOR. Canli listeyi
+        oldugu gibi vermek, tahsisin tamamini kazanmak ve karsiliginda bozuk bir
+        save almak olurdu: bir thread'deki her kayit, o thread'in en son yazdigi
+        nesneyi anlatir hale gelir ve dosya yine de yuklenir. Bir test yazilmis
+        save'i dolasip tam olarak bunu yakaliyor.
+
 [2026-09-16] - Kaydin denizin altinda tuttugu gemileri kaldirmak
 ----------------------------------------
 

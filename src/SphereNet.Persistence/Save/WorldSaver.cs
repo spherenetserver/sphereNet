@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects;
@@ -390,28 +390,43 @@ public sealed class WorldSaver
         // original object order so the output stays deterministic.
         var itemSlots = new SaveRecord?[allObjects.Length];
         var charSlots = new SaveRecord?[allObjects.Length];
-        System.Threading.Tasks.Parallel.For(0, allObjects.Length, i =>
-        {
-            var obj = allObjects[i];
-            if (obj is Item item)
+        //
+        // The writer is per THREAD, not per object. It was allocated fresh for every
+        // object, which on a live shard is ~184,000 writers, ~184,000 property lists
+        // and every doubling those lists did while filling - a burst big enough to
+        // show up as 21 gen0 + 19 gen1 collections inside the one loop iteration that
+        // captures, with the GC pause accounting for most of the half-second the
+        // world is held still. Reusing it leaves one exact-size array per record,
+        // which is the part that actually has to survive the capture.
+        System.Threading.Tasks.Parallel.For(
+            0, allObjects.Length,
+            () => new SnapshotSaveWriter(),
+            (i, _, writer) =>
             {
-                if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
-                    return;
-                if (IsInsideVendorStock(item.Uid.Value, vendorStock, parentOf))
-                    return; // virtual vendor stock (or nested inside it) — never persisted
-                if (!ShouldExportItem(item, scope, byUid))
-                    return;
-                itemSlots[i] = CaptureItem(item, now);
-            }
-            else if (obj is Character ch)
-            {
-                if (ch.IsDeleted)
-                    return;
-                if (!ShouldExportChar(ch, scope))
-                    return;
-                charSlots[i] = CaptureChar(ch, now);
-            }
-        });
+                var obj = allObjects[i];
+                if (obj is Item item)
+                {
+                    if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
+                        return writer;
+                    if (IsInsideVendorStock(item.Uid.Value, vendorStock, parentOf))
+                        return writer; // virtual vendor stock (or nested inside it) — never persisted
+                    if (!ShouldExportItem(item, scope, byUid))
+                        return writer;
+                    WriteItem(writer, item, now);
+                    itemSlots[i] = writer.ToRecord(item.Uid.Value);
+                }
+                else if (obj is Character ch)
+                {
+                    if (ch.IsDeleted)
+                        return writer;
+                    if (!ShouldExportChar(ch, scope))
+                        return writer;
+                    WriteChar(writer, ch, now);
+                    charSlots[i] = writer.ToRecord(ch.Uid.Value);
+                }
+                return writer;
+            },
+            writer => writer.Dispose());
         foreach (var rec in itemSlots)
             if (rec != null) items.Add(rec);
         foreach (var rec in charSlots)
@@ -718,19 +733,6 @@ public sealed class WorldSaver
         return count;
     }
 
-    private SaveRecord CaptureItem(Item item, long now)
-    {
-        using var writer = new SnapshotSaveWriter();
-        WriteItem(writer, item, now);
-        return writer.ToRecord(item.Uid.Value);
-    }
-
-    private SaveRecord CaptureChar(Character ch, long now)
-    {
-        using var writer = new SnapshotSaveWriter();
-        WriteChar(writer, ch, now);
-        return writer.ToRecord(ch.Uid.Value);
-    }
 
     private static void WriteRecord(ISaveWriter writer, SaveRecord record)
     {
@@ -1567,11 +1569,19 @@ public sealed class WorldSaver
         {
         }
 
+        /// <summary>Take the record and leave the writer ready for the next object -
+        /// the properties are COPIED out because the list itself is reused. Handing
+        /// the live list over instead would give every record the same contents,
+        /// whichever object happened to be written last.</summary>
         public SaveRecord ToRecord(uint uid)
         {
             if (string.IsNullOrEmpty(_section))
                 throw new InvalidOperationException("Snapshot record was not opened");
-            return new SaveRecord(uid, _section, _properties.ToArray());
+            var record = new SaveRecord(uid, _section, _properties.ToArray());
+            _properties.Clear();
+            _section = null;
+            _recordOpen = false;
+            return record;
         }
 
         public void Dispose()

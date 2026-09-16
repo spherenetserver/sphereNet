@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -34,6 +34,7 @@ public sealed class SmeltRepairParity08ATests
     private const ushort OreTile = 0x19B9;
     private const ushort IronIngot = 0x1BF2;
     private const ushort SpecialIngot = 0x6001;
+    private const int CopperOreDef = 0x6002;
 
     private sealed record Bench(GameWorld World, GameClient Client, Character Me, Item Pack);
 
@@ -91,11 +92,12 @@ public sealed class SmeltRepairParity08ATests
         table[baseId] = def;
     }
 
+    /// <param name="ingot">TDATA1 of the ore's definition - the ingot it yields.
+    /// Zero means the definition names none, which upstream refuses outright.</param>
     private static (Item Ore, Item Forge) Smeltable(Bench bench, ushort amount = 4,
-        ushort ingot = 0)
+        ushort ingot = IronIngot)
     {
-        if (ingot != 0)
-            DefineItem(OreTile, d => { d.Type = ItemType.Ore; d.TData1 = ingot; });
+        DefineItem(OreTile, d => { d.Type = ItemType.Ore; d.TData1 = ingot; });
 
         var ore = bench.World.CreateItem();
         ore.BaseId = OreTile;
@@ -136,14 +138,71 @@ public sealed class SmeltRepairParity08ATests
     }
 
     [Fact]
-    public void AnOreWithNoDefinitionStillSmeltsIntoIron()
+    public void AnOreWhoseIngotDoesNotResolveSmeltsIntoNothing()
     {
+        // Upstream looks the ingot definition up and refuses when it is not there
+        // (FindItemBase == nullptr -> DEFMSG_MINING_NOTHING, CCharSkill.cpp:1149).
+        // Falling back to iron instead meant every ore that failed to resolve came
+        // out of the forge as the same grey bar.
         var bench = Setup();
-        var (ore, forge) = Smeltable(bench);
+        var (ore, forge) = Smeltable(bench, ingot: 0);
 
         Smelt(bench, ore, forge);
 
-        Assert.NotNull(Ingots(bench, IronIngot));
+        Assert.DoesNotContain(bench.Pack.Contents, i => i.ItemType == ItemType.Ingot);
+        Assert.Equal(4, ore.Amount); // the pile is not consumed either
+    }
+
+    [Fact]
+    public void AColourVariantOreSmeltsIntoItsOwnIngotNotIrons()
+    {
+        // The shape every Sphere pack uses: coloured ores are NAMED defs that draw
+        // as iron ore (ID=i_ore_iron) and differ only in name, TDATA1 and @Create
+        // colour. Reading the ore's definition by its drawn graphic answers with the
+        // IRON definition, so every colour smelted to iron ingots - which is what
+        // "all my ingots are the same colour" looks like from the forge.
+        var bench = Setup();
+        DefineItem(OreTile, d => { d.Type = ItemType.Ore; d.TData1 = IronIngot; });
+        DefineItem(CopperOreDef, d =>
+        {
+            d.Type = ItemType.Ore;
+            d.DispIndex = OreTile;      // draws as iron ore
+            d.TData1 = SpecialIngot;    // but yields its own ingot
+        });
+
+        var ore = bench.World.CreateItem();
+        Assert.True(SphereNet.Game.Definitions.ItemDefHelper
+            .ApplyInstanceMetadata(ore, CopperOreDef));
+        ore.Amount = 4;
+        Assert.Equal(OreTile, ore.BaseId);
+        Assert.True(bench.Pack.TryAddItem(ore));
+
+        var forge = bench.World.CreateItem();
+        forge.ItemType = ItemType.Forge;
+        bench.World.PlaceItem(forge, new Point3D(101, 100, 0, 0));
+
+        Smelt(bench, ore, forge);
+
+        Assert.NotNull(Ingots(bench, SpecialIngot));
+        Assert.Null(Ingots(bench, IronIngot));
+    }
+
+    [Fact]
+    public void TheIngotDoesNotInheritTheOresHue()
+    {
+        // Upstream builds the ingot with CreateScript and never copies the ore's
+        // colour (CCharSkill.cpp:1258). A pack whose ingot table is separate
+        // GRAPHICS already holds the colour in the art, so painting the ore's hue on
+        // top tinted a correctly coloured bar with a second colour.
+        var bench = Setup();
+        var (ore, forge) = Smeltable(bench, ingot: SpecialIngot);
+        ore.Hue = new SphereNet.Core.Types.Color(0x0641); // color_o_copper
+
+        Smelt(bench, ore, forge);
+
+        var ingot = Ingots(bench, SpecialIngot);
+        Assert.NotNull(ingot);
+        Assert.Equal((ushort)0, ingot!.Hue.Value);
     }
 
     [Fact]
@@ -255,19 +314,22 @@ public sealed class SmeltRepairParity08ATests
     {
         // Merging first and firing afterwards ran the creation script over the pile
         // the player already had.
+        // The ingot is built through the same door as every other fresh instance
+        // (ItemDefHelper.ApplyInstanceMetadata -> Item.FireCreateTrigger), which is
+        // what the host wires @Create to; upstream fires it from CreateScript before
+        // the amount is set and long before the bounce (CCharSkill.cpp:1258/1284).
         int seenAmount = -1;
         var triggers = new TriggerDispatcher();
-        triggers.RegisterItemEvent("EVENTSITEM", "Create", (obj, _) =>
-        {
-            if (obj is Item made && made.BaseId == IronIngot)
-                seenAmount = made.Amount;
-            return TriggerResult.Default;
-        });
         var bench = Setup(triggers);
+        Item.CreateTriggerHook = made =>
+        {
+            if (made.BaseId == IronIngot && made.ItemType == ItemType.Ingot)
+                seenAmount = made.Amount;
+        };
 
         // The pile has to be able to take the new ingots, or the merge this finding
         // is about never happens: CAN_I_PILE is what makes an ingot stackable.
-        DefineItem(IronIngot, d => { d.Type = ItemType.Ingot; d.Can = CanFlags.I_Pile; });
+        DefineItem(IronIngot, d => { d.Type = ItemType.Ingot; d.Can = CanFlags.I_Pile; d.Name = "iron ingot"; });
         var already = bench.World.CreateItem();
         already.BaseId = IronIngot;
         already.ItemType = ItemType.Ingot;
@@ -278,7 +340,10 @@ public sealed class SmeltRepairParity08ATests
         var (ore, forge) = Smeltable(bench, amount: 4);
         Smelt(bench, ore, forge);
 
-        Assert.Equal(4, seenAmount);              // the four just made, not fourteen
+        // Not fourteen: the creation script saw the new ingot alone, before it was
+        // handed over and merged into the pile that was already in the pack.
+        Assert.NotEqual(-1, seenAmount);
+        Assert.NotEqual(14, seenAmount);
         Assert.Equal(14, already.Amount);         // and they still merged afterwards
     }
 

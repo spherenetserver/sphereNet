@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - Every ore came out of the forge as iron
+----------------------------------------
+
+FIX - Smelting read the ore's definition by the GRAPHIC it draws as, so every
+        colour of ore yielded iron ingots. A pack writes its coloured ores as
+        NAMED definitions that share one art - i_ore_copper is ID=i_ore_iron
+        plus TDATA1=i_ingot_copper and an @Create colour - so looking the ore up
+        by BaseId answers with the IRON definition and hands back iron's ingot,
+        for copper, gold, verite and valorite alike. The definition an item was
+        actually built from is recorded on the instance (SCRIPTDEF) precisely
+        because the two differ; the smelt reads that now, exactly as the reap
+        already did.
+
+FIX - The ingot was built from a bare graphic and then painted with the ore's
+        hue. Upstream builds it from the DEFINITION - CreateScript(pBaseDef->
+        GetID()), Skill_Mining_Smelt, CCharSkill.cpp:1258 - so it comes out with
+        that definition's art, name, TDATA and its own @Create colour, and the
+        ore's hue is never copied. This pack's ingot table is separate GRAPHICS
+        (i_ingot_iron 01bef, i_ingot_copper 01be3) that already hold the colour
+        in the art, so tinting them with the ore's hue coloured a correctly
+        coloured bar a second time. The ore table is the one written as hue
+        variants of one graphic - that is the ore's business, not the ingot's.
+
+FIX - An ore whose ingot definition did not resolve smelted into iron anyway.
+        Upstream refuses it (FindItemBase == nullptr -> DEFMSG_MINING_NOTHING,
+        :1149); the invented iron fallback was the last thing turning an
+        unresolved ore into the same grey bar. The pile is left alone, as a
+        refused smelt leaves it.
+
 [2026-09-16] - Telling a house's neighbours that it was ever built
 ----------------------------------------
 

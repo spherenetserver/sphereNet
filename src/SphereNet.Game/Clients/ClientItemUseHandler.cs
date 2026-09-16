@@ -2404,7 +2404,17 @@ public sealed class ClientItemUseHandler
         }
 
         int oreQty = Math.Max(1, (int)ore.Amount);
-        ushort ingotId = ResolveSmeltIngotId(ore);
+        int ingotDefIndex = ResolveSmeltIngotDefIndex(ore);
+        if (ingotDefIndex == 0)
+        {
+            // Upstream refuses when the ore's TDATA1 names no definition it can
+            // build (FindItemBase == nullptr -> DEFMSG_MINING_NOTHING,
+            // CCharSkill.cpp:1149-1154). There is no iron-ingot fallback there, and
+            // inventing one here turned every ore whose ingot failed to resolve into
+            // the same grey bar.
+            SysMessage(ServerMessages.GetFormatted(Msg.MiningNothing, ore.GetName()));
+            return;
+        }
         int perOre = 1;
 
         // Source-X @Smelt arguments (Skill_Mining_Smelt, CCharSkill.cpp:1138):
@@ -2418,7 +2428,7 @@ public sealed class ClientItemUseHandler
         if (_triggerDispatcher != null)
         {
             var locals = new SphereNet.Scripting.Variables.VarMap();
-            locals.SetInt("resource.0.ID", ingotId);
+            locals.SetInt("resource.0.ID", ingotDefIndex);
             locals.SetInt("resource.0.amount", perOre);
             var args = new TriggerArgs
             {
@@ -2437,8 +2447,8 @@ public sealed class ClientItemUseHandler
             miningSkill = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
             skipSkillReq = args.N3 != 0;
             if (long.TryParse(locals.Get("resource.0.ID"), out long scriptedId) &&
-                scriptedId is > 0 and <= ushort.MaxValue)
-                ingotId = (ushort)scriptedId;
+                scriptedId is > 0 and <= int.MaxValue)
+                ingotDefIndex = (int)scriptedId;
             if (long.TryParse(locals.Get("resource.0.amount"), out long scriptedQty) && scriptedQty > 0)
                 perOre = (int)Math.Min(scriptedQty, ushort.MaxValue);
         }
@@ -2454,34 +2464,33 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        var oreHue = ore.Hue;
         int amount = oreQty * Math.Max(1, perOre);
         ConsumeOreStack(ore);
 
         var ingot = _world.CreateItem();
-        ingot.BaseId = ingotId;
-        ingot.ItemType = ItemType.Ingot;
-        // Carry the ore's hue onto the ingot so a coloured/special ore (valorite,
-        // verite, …) smelts to its matching coloured ingot instead of always
-        // becoming plain iron — coloured ingots share the iron ingot graphic and
-        // differ only by hue.
-        ingot.Hue = oreHue;
-        var ingotDef = DefinitionLoader.GetItemDef(ingotId);
-        ingot.Name = ingotDef != null && !string.IsNullOrWhiteSpace(ingotDef.Name)
-            ? DefinitionLoader.ResolveNames(ingotDef.Name)
-            : (oreHue.Value != 0 ? "ingot" : "iron ingot");
-        ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
-        // @Create belongs to the item that was just made, BEFORE it is handed over
-        // and possibly merged into a pile that was already there: Source-X builds the
-        // ingot with CreateScript and only bounces it afterwards (CCharSkill.cpp:1260
-        // / :1284). Firing it on the merged result re-ran the creation script over the
-        // player's existing ingots - a callback that recoloured the new ingots
-        // recoloured the old ones with them.
-        _triggerDispatcher?.FireItemTrigger(ingot, ItemTrigger.Create,
-            new TriggerArgs { CharSrc = _character, ItemSrc = ingot });
+        // Build the ingot from its DEFINITION, exactly as upstream does
+        // (CItem::CreateScript(pBaseDef->GetID()), CCharSkill.cpp:1258) - so it comes
+        // out with that definition's art, name, TDATA and its own @Create colour.
+        //
+        // The ore's hue is NOT carried over. Upstream never copies it, and a pack
+        // that writes its ingot table as separate graphics (i_ingot_copper 01be3,
+        // i_ingot_iron 01bef ...) already holds the colour in the art: painting the
+        // ore's hue on top tinted a correctly coloured bar with a second colour. The
+        // ore table is the one written as hue variants of one graphic - that is the
+        // ore's business, not the ingot's.
+        if (!ItemDefHelper.ApplyInstanceMetadata(ingot, ingotDefIndex))
+        {
+            // A bare graphic with no definition behind it still becomes an ingot.
+            if (ingotDefIndex is > 0 and <= ushort.MaxValue)
+                ingot.BaseId = (ushort)ingotDefIndex;
+            ingot.FireCreateTrigger();
+        }
         if (ingot.IsDeleted)
             return;
+        if (ingot.ItemType == ItemType.Normal)
+            ingot.ItemType = ItemType.Ingot;
+        ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
         var pack = _character.Backpack;
         if (pack != null && (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(ingot)))
@@ -2504,17 +2513,23 @@ public sealed class ClientItemUseHandler
         _world.PlaceItemWithDecay(ingot, _character.Position);
     }
 
-    /// <summary>Resolve the ingot id an ore smelts into.
+    /// <summary>Resolve the DEFINITION an ore smelts into.
     ///
     /// Source-X reads it from the ore definition's TDATA1 (m_ttOre.m_idIngot,
-    /// CItemBase.h:145; Skill_Mining_Smelt, CCharSkill.cpp:1150), so a custom ore
-    /// yields the ingot its own definition names. SphereNet knew only about the local
-    /// TAG.SMELT_TO override and turned everything else into iron, carrying just the
-    /// hue across. The explicit tag still wins - packs may already rely on it - and
-    /// the native definition is the fallback ahead of plain iron.</summary>
-    private static ushort ResolveSmeltIngotId(Item ore)
+    /// CItemBase.h:145), looks the definition up with FindItemBase and builds from
+    /// THAT (Skill_Mining_Smelt, CCharSkill.cpp:1149/1258) - so a custom ore yields
+    /// the ingot its own definition names, with that definition's art and colour.
+    ///
+    /// The index matters, not the graphic: a pack writes its coloured variants as
+    /// named defs sharing one art, so resolving to a graphic collapses the table.
+    /// The ore's own def has to be read through its SCRIPTDEF/ITEMDEF routing tag for
+    /// the same reason - i_ore_copper draws as i_ore_iron, so looking the ore up by
+    /// BaseId alone answers with the iron definition and hands back iron's ingot.
+    ///
+    /// An explicit TAG.SMELT_TO still wins; packs may already rely on it.</summary>
+    private static int ResolveSmeltIngotDefIndex(Item ore)
     {
-        var def = DefinitionLoader.GetItemDef(ore.BaseId);
+        var def = ResolveOwnItemDef(ore);
 
         string? raw = null;
         if (ore.TryGetTag("SMELT_TO", out string? itemTag) && !string.IsNullOrWhiteSpace(itemTag))
@@ -2530,10 +2545,32 @@ public sealed class ClientItemUseHandler
                 : ushort.TryParse(raw, out id);
             if (ok && id != 0)
                 return id;
+            int tagged = DefinitionLoader.ResolveItemDefIndexByName(raw);
+            if (tagged != 0)
+                return tagged;
         }
 
-        ushort native = ResolvePlantId(def?.TData1 ?? 0, def?.TData1Name);
-        return native != 0 ? native : (ushort)0x1BF2;
+        if (def == null)
+            return 0;
+        if (def.TData1 != 0)
+            return (int)def.TData1;
+        return DefinitionLoader.ResolveItemDefIndexByName(def.TData1Name);
+    }
+
+    /// <summary>The definition an item was actually built from, not the one its
+    /// drawn graphic belongs to. ApplyInstanceMetadata records it as SCRIPTDEF when
+    /// the two differ (the whole point of a named colour variant), so reading it back
+    /// is how a reaped copper ore still answers as copper.</summary>
+    private static SphereNet.Scripting.Definitions.ItemDef? ResolveOwnItemDef(Item item)
+    {
+        if (item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
+            int.TryParse(scriptDef, out int idx) && idx != 0)
+        {
+            var own = DefinitionLoader.GetItemDef(idx);
+            if (own != null)
+                return own;
+        }
+        return DefinitionLoader.GetItemDef(item.BaseId);
     }
 
     /// <summary>Take part of a pile of ore, telling the client what is left.</summary>

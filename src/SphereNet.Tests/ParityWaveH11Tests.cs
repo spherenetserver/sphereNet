@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -50,6 +50,10 @@ public class ParityWaveH11Tests
         ore.BaseId = 0x19B9;
         ore.ItemType = ItemType.Ore;
         ore.Amount = 4;
+        // The ingot an ore yields comes from its definition; this harness registers
+        // none, so name it on the instance (upstream refuses a smelt whose ingot
+        // definition does not resolve, CCharSkill.cpp:1149).
+        ore.SetTag("SMELT_TO", "0x1BF2");
         player.Backpack!.AddItem(ore);
 
         // No forge uid in the arg: the nearest one in reach is used.

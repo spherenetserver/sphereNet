@@ -125,6 +125,20 @@ public sealed class DefinitionLoader
         return false;
     }
 
+    /// <summary>Resolve an itemdef defname to its DEFINITION index - not to the
+    /// graphic that definition happens to draw as. A pack writes its coloured
+    /// variants as named defs that share one art (ID=i_ore_iron / ID=i_ingot_iron)
+    /// and differ only in name, TDATA and @Create colour, so resolving to the
+    /// graphic collapses the whole table into its first member. Returns 0 when the
+    /// defname is unknown or is not an ItemDef.</summary>
+    public static int ResolveItemDefIndexByName(string? defname)
+    {
+        if (string.IsNullOrWhiteSpace(defname) || _resourcesStatic == null)
+            return 0;
+        var rid = _resourcesStatic.ResolveDefName(defname.Trim());
+        return rid.IsValid && rid.Type == ResType.ItemDef ? rid.Index : 0;
+    }
+
     /// <summary>Resolve #NAMES_xxx placeholders in a string using loaded [NAMES] resources.</summary>
     public static string ResolveNames(string input) =>
         _resourcesStatic?.ResolveNamesInString(input) ?? input;

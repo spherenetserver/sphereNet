@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Ocaktan cikan her cevher demirdi
+----------------------------------------
+
+FIX - Eritme, cevherin tanimini CIZDIGI grafikten okuyordu; bu yuzden her renk
+        cevher demir kulce veriyordu. Paket renkli cevherlerini tek bir sanati
+        paylasan ADLI tanimlar olarak yazar - i_ore_copper, ID=i_ore_iron arti
+        TDATA1=i_ingot_copper ve bir @Create rengidir - dolayisiyla cevheri
+        BaseId ile aramak DEMIR tanimini yanitlar ve demirin kulcesini verir;
+        bakir, altin, verite ve valorite icin de ayni. Bir esyanin gercekte
+        hangi tanimdan uretildigi tam da ikisi farkli oldugu icin ornek uzerine
+        yazilir (SCRIPTDEF); eritme artik onu okuyor, tipki toplamanin yaptigi
+        gibi.
+
+FIX - Kulce ciplak bir grafikten kurulup uzerine cevherin rengi suruluyordu. Ust
+        kaynak onu TANIMDAN kurar - CreateScript(pBaseDef->GetID()),
+        Skill_Mining_Smelt, CCharSkill.cpp:1258 - yani o tanimin sanati, adi,
+        TDATA'si ve kendi @Create rengiyle cikar; cevherin rengi asla
+        kopyalanmaz. Bu paketin kulce tablosu ayri GRAFIKLERDIR (i_ingot_iron
+        01bef, i_ingot_copper 01be3) ve rengi zaten sanat tasir; uzerine
+        cevherin rengini surmek dogru renkli bir kulceyi ikinci kez boyuyordu.
+        Tek grafigin renk turevleri olarak yazilan tablo CEVHER tablosudur - o da
+        cevherin isi, kulcenin degil.
+
+FIX - Kulce tanimi cozulemeyen bir cevher yine de demire eriyordu. Ust kaynak
+        bunu reddeder (FindItemBase == nullptr -> DEFMSG_MINING_NOTHING, :1149);
+        uydurma demir yedegi, cozulemeyen bir cevheri ayni gri cubuga ceviren son
+        seydi. Yigin da reddedilmis bir eritmede oldugu gibi yerinde birakiliyor.
+
 [2026-09-16] - Bir evin kurulmus oldugunu komsularina da soylemek
 ----------------------------------------
 

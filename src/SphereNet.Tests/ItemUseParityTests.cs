@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -133,6 +133,11 @@ public class ItemUseParityTests
         ore.BaseId = 0x19B9;
         ore.Name = "iron ore";
         ore.Amount = 4;
+        // Name the ingot on the ore itself. A real pack names it in the ore
+        // definition's TDATA1; upstream refuses the smelt outright when it resolves
+        // to no definition (CCharSkill.cpp:1149), and this harness registers no
+        // definitions - it is not in the DefinitionLoaderSerial collection.
+        ore.SetTag("SMELT_TO", "0x1BF2");
         pack.AddItem(ore);
 
         var forge = world.CreateItem();
@@ -165,6 +170,7 @@ public class ItemUseParityTests
         ore.ItemType = ItemType.Ore;
         ore.BaseId = 0x19B9;
         ore.Amount = 2;
+        ore.SetTag("SMELT_TO", "0x1BF2"); // see the sibling test: no defs registered here
         pack.AddItem(ore);
 
         var forge = world.CreateItem();

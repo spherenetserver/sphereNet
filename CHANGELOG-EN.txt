@@ -4,6 +4,65 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - What the screen is told, audited end to end
+----------------------------------------
+
+An audit of every way the client's picture can drift from the server's truth -
+animation, facing, the delta view's change detection and the visual-state
+notifications. Written up in docs/GORSEL_SENKRON_DENETIMI_TR.md; eight of the
+eleven findings are fixed here.
+
+FIX - The mobile flags byte was missing seven states and ignored the viewer.
+        Upstream builds it per viewer (CChar::GetModeFlag, CCharStatus.cpp:659-702)
+        and the viewer decides what bit 0x04 MEANS: poisoned for a pre-Stygian-Abyss
+        client, flying for a newer one - the same bit, two meanings, and ClassicUO
+        reads it exactly that way (Mobile.cs:126/145). Also absent: the yellow health
+        bar for invulnerability, the staff walk-through-mobiles bit, petrification
+        counting as frozen, the grey overlay for sleeping / insubstantial / hidden,
+        and female for anything but a human body - an elf or gargoyle woman was drawn
+        as a man. COLORINVIS / COLORHIDDEN / COLORINVISSPELL now do what they do
+        upstream: a state given its own hue keeps the client's grey off.
+
+FIX - The delta view could not see those flags change. Its per-mobile key carried six
+        hand-picked bits, so a character standing still who froze, became
+        invulnerable, was poisoned or took flight changed nothing on screen until
+        they moved. The criminal and murderer bits had to be added for exactly this
+        reason once already; the key now carries the flags byte WHOLE, so the next
+        state added to it is covered without anyone remembering to come back.
+
+FIX - Notoriety is computed per viewer but change detection was per character, so a
+        guild war, a party join or an attack left the other side's name and health
+        bar in the old colour until they moved. The per-client tuple carries the
+        notoriety byte now.
+
+FIX - Eleven animation call sites built the raw 0x6E packet and got neither of the
+        two corrections that have to happen first: the action id is relative to the
+        body playing it and to whether that body is in a saddle, and a KR/Enhanced
+        client takes the body-agnostic 0xE2 and never sees a 0x6E at all. Eating,
+        bowing and crafting in the saddle played the on-foot animation, which
+        ClassicUO draws by taking the rider off the horse and putting them back. All
+        of them go through one door now, with a guardrail test that names any file
+        that builds the packet itself.
+
+FIX - The dirty-object pass used the object's OWN position, which for a worn or
+        contained item is wherever it last lay on the ground - so the clients marked
+        for a refresh were in the wrong sector, usually nobody, and the item's
+        property tooltip went out to no one. It uses the top-level position now, the
+        same rule the delete path already follows.
+
+FIX - A worn item that changed colour or graphic reached nobody. It is in neither of
+        the delta's two tables - the character tuple carries the WEARER's body and
+        hue, the item tuple carries ground items - so a script recolouring a robe
+        changed nothing on any screen until a resync. A worn item going dirty on hue
+        or body now sends the worn-item packet to everyone who can see the wearer.
+
+FIX - Item.OnVisualUpdate broadcast to every client on the shard, one packet per
+        player for every visual change. It is range-limited now.
+
+FIX - Taming did not turn the tamer toward the animal (CChar::Skill_Taming calls
+        UpdateDir, CCharSkill.cpp:2307), so the attempt animation played across the
+        wrong axis.
+
 [2026-09-15] - Defaults an operator can read, and things that changed only on the server
 ----------------------------------------
 

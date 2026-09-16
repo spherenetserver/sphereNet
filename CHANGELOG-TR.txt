@@ -3,6 +3,64 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Ekrana ne soylendiginin bastan sona denetimi
+----------------------------------------
+
+Istemcinin gordugu resmin sunucudaki gercekten ayrisabilecegi her yolun denetimi -
+animasyon, yon, delta gorunumun degisiklik tespiti ve gorsel durum bildirimleri.
+Belge: docs/GORSEL_SENKRON_DENETIMI_TR.md; on bir bulgunun sekizi burada duzeltildi.
+
+FIX - Mobil bayrak baytinda yedi durum eksikti ve izleyici hic dikkate alinmiyordu.
+        Ust kaynak onu izleyici basina kurar (CChar::GetModeFlag,
+        CCharStatus.cpp:659-702) ve 0x04 bitinin NE ANLAMA geldigine izleyici karar
+        verir: Stygian Abyss oncesi bir istemcide zehirli, yenisinde ucan - ayni bit,
+        iki anlam, ve ClassicUO tam da boyle okur (Mobile.cs:126/145). Ayrica eksik
+        olanlar: yenilmezlik icin sari can barasi, gorevlilerin mobilleri-gec biti,
+        taslasmanin donmus sayilmasi, uyuyan / insubstantial / gizli icin gri kaplama,
+        ve insan disi govdeler icin disilik - bir elf ya da gargoyle kadin erkek olarak
+        ciziliyordu. COLORINVIS / COLORHIDDEN / COLORINVISSPELL artik ust kaynaktaki
+        isi yapiyor: kendi rengi verilen bir durum istemcinin grisini almaz.
+
+FIX - Delta gorunum bu bayraklarin degistigini goremiyordu. Mobil basina anahtari elle
+        secilmis alti bit tasiyordu; bu yuzden yerinde duran bir karakter donsa,
+        yenilmez olsa, zehirlense ya da ucmaya baslasa hareket edene kadar ekranda
+        hicbir sey degismiyordu. Kriminal ve katil bitleri tam da bu sebeple bir kez
+        eklenmisti; anahtar artik bayrak baytini BUTUN olarak tasiyor, boylece ona
+        eklenen bir sonraki durum kimse buraya donmeyi hatirlamadan kapsama giriyor.
+
+FIX - Notorluk izleyici basina hesaplaniyor ama degisiklik tespiti karakter bazliydi;
+        bu yuzden lonca savasi, gruba katilma veya bir saldiri karsi tarafin ismini ve
+        can barasini o hareket edene kadar eski renkte birakiyordu. Istemci basina
+        tutulan demet artik notorluk baytini da tasiyor.
+
+FIX - On bir animasyon cagri yeri ham 0x6E paketini kuruyor ve once yapilmasi gereken
+        iki duzeltmenin ikisini de kaciriyordu: eylem kimligi onu oynatan govdeye ve o
+        govdenin eyerde olup olmadigina goredir, ve KR/Enhanced bir istemci govdeden
+        bagimsiz 0xE2 alir, 0x6E'yi hic gormez. Eyerde yemek yemek, egilmek ve zanaat
+        yapmak yaya animasyonunu oynatiyordu; ClassicUO bunu biniciyi attan indirip
+        bindirerek cizer. Hepsi artik tek bir kapidan geciyor ve bir guardrail testi
+        paketi kendi kuran her dosyayi isimle bildiriyor.
+
+FIX - Kirli-nesne pasi nesnenin KENDI konumunu kullaniyordu; giyili ya da kap icindeki
+        bir esya icin bu, en son yerde yattigi yerdir - yani yenilenmek uzere
+        isaretlenen istemciler yanlis sektordeydi, cogu zaman hic kimse, ve esyanin
+        ozellik balonu kimseye gitmiyordu. Artik ust seviye konum kullaniliyor; silme
+        yolunun zaten izledigi kural.
+
+FIX - Rengi ya da grafigi degisen giyili bir esya kimseye ulasmiyordu. Delta'nin iki
+        tablosunun ikisinde de yok - karakter demeti GIYENIN govdesini ve rengini,
+        esya demeti yer esyalarini tasir - bu yuzden bir cubbeyi yeniden renklendiren
+        script resync'e kadar hicbir ekranda bir sey degistirmiyordu. Giyili bir
+        esyanin rengi ya da govdesi kirlendiginde artik giyeni gorebilen herkese
+        giyili-esya paketi gidiyor.
+
+FIX - Item.OnVisualUpdate shard'daki her istemciye yayin yapiyordu; her gorsel
+        degisiklik icin oyuncu sayisi kadar paket. Artik menzil sinirli.
+
+FIX - Evcillestirme, evcillestireni hayvana dondurmuyordu (CChar::Skill_Taming
+        UpdateDir cagirir, CCharSkill.cpp:2307); bu yuzden deneme animasyonu yanlis
+        eksende oynuyordu.
+
 [2026-09-15] - Okunabilir varsayilanlar ve yalnizca sunucuda degisen seyler
 ----------------------------------------
 

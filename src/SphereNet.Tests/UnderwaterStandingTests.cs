@@ -26,6 +26,7 @@ namespace SphereNet.Tests;
 /// looks like from inside the game, and why the client then refuses every step:
 /// it knows the water is impassable and will not walk a character standing there.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class UnderwaterStandingTests
 {
     private const ushort SeaFloor = 0x005E;   // dry land, under the water

@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Denizin on birim altina demirlemis bir gemi
+----------------------------------------
+
+FIX - Gemi, tiklanan noktada ISTEMCININ bildirdigi Z'ye konuyordu; oysa su
+        uzerinde istemci ARAZIYI - yani deniz tabanini - bildirir. Su, bir kiyi
+        karosuna kuru arazinin uzerine serilmis bir STATIK olarak gelir: canli
+        shard'in (1460,1881) noktasinda bu, z=-15'teki 0x005E arazisinin uzerinde
+        z=-5'te duran 0x1799 statigidir. Yani oraya birakilan her tekne,
+        istemcinin cizdigi suyun on birim altina demirliyordu; guvertesi, planki
+        ve ona binen herkes deniz tabaninda oturuyordu. Ust kaynak yerlestirme
+        yuksekligini yuruyus kuraliyla degil YUZME kuraliyla cozer
+        (GetHeightPoint2 + CAN_C_SWIM, CItemMulti.cpp:3374) ve tiklanan noktayi
+        yalnizca bir akil siniri olarak kullanir.
+
+        Bir rapor ailesinin tek sebebi buydu: planka cift tiklayinca binenin
+        "guvertenin altina" dusmesi (aslinda on bir birim asagida, deniz
+        tabaniydi); ayni karonun bir an z=-15 bir an z=-4 bildirmesi (taban ile
+        yuzey); ve sonrasinda istemcinin her adimi reddetmesi - suyun
+        yurunemeyecegini bilir, dolayisiyla suyun icinde duran bir karakteri
+        hicbir yere goturmez. Sunucu bir sorun gormuyordu, cunku kendi yuruyus
+        kontrolune hic secmedigi bir konum soruluyordu.
+
+        Gemiler artik suyun tepesinde yuzuyor: en yuksek islak statigin ustu, ya
+        da suyun ARAZININ kendisi oldugu yerde arazi yuksekligi.
+
 [2026-09-16] - Istemcinin okudugu arazi dosyasini okumak
 ----------------------------------------
 

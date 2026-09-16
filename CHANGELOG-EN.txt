@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - A ship moored ten units under the sea
+----------------------------------------
+
+FIX - A ship was placed at the Z the CLIENT reported for the spot that was
+        clicked, and on water the client reports the TERRAIN - the sea bed. Water
+        reaches a coast tile as a STATIC laid over dry land: at the live shard's
+        (1460,1881) that is static 0x1799 at z=-5 over land 0x005E at z=-15, so
+        every hull dropped there was moored ten units below the water the client
+        draws. Its deck, its plank and everyone who boarded it sat on the sea
+        floor. Upstream resolves the placement height with the SWIM rule instead
+        of the walk rule (GetHeightPoint2 with CAN_C_SWIM, CItemMulti.cpp:3374)
+        and treats the clicked point only as a sanity bound.
+
+        This is the single cause behind a family of reports: double-clicking the
+        plank dropped the boarder "below the deck" (it was the sea bed, eleven
+        units down); the same tile reported z=-15 at one moment and z=-4 at
+        another (bed versus surface); and the client refused every step
+        afterwards - it knows water cannot be walked on, so a character standing
+        in it cannot go anywhere. The server saw nothing wrong because its own
+        walk check was asked about a position it had never chosen.
+
+        Ships now float at the water's top: the highest wet static's top, or the
+        terrain height where the water IS the terrain.
+
 [2026-09-16] - Reading the same terrain file the client reads
 ----------------------------------------
 

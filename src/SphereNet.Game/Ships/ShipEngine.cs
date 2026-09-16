@@ -154,6 +154,24 @@ public sealed class ShipEngine
             pos.X + def.MaxX >= mapWidth || pos.Y + def.MaxY >= mapHeight)
         { failure = SphereNet.Game.Housing.PlacementFailure.OutOfMap; return null; }
 
+        // A hull floats on the WATER, not on the sea bed. Upstream resolves the
+        // placement height with the SWIM rule rather than the walk rule
+        // (GetHeightPoint2 with CAN_C_SWIM, CItemMulti.cpp:3374) and treats the
+        // targeted point only as a sanity bound.
+        //
+        // The Z arriving here is the one the client reported for the spot the player
+        // clicked, and on water the client reports the TERRAIN - the sea floor. In
+        // the live data that is z=-15 while the water surface is at -5, so a ship
+        // was being moored ten units under the sea: its deck, its plank and everyone
+        // who boarded it all sat below the water the client draws. Boarding put the
+        // player on the sea bed, and every step after that was refused by the client,
+        // which knows perfectly well that water cannot be walked on.
+        if (TryGetWaterSurfaceZ(pos.Map, (short)pos.X, (short)pos.Y, out sbyte waterZ) &&
+            waterZ != pos.Z)
+        {
+            pos = new Point3D(pos.X, pos.Y, waterZ, pos.Map);
+        }
+
         if (!magic && !CanPlaceShip(pos, def))
         { failure = SphereNet.Game.Housing.PlacementFailure.LocationBlocked; return null; }
 
@@ -1143,6 +1161,46 @@ public sealed class ShipEngine
                 return true;
         }
         return false;
+    }
+
+    /// <summary>The Z a hull floats at: the TOP of the water covering this tile.
+    ///
+    /// Water reaches a tile two ways and they resolve differently. Laid as STATICS -
+    /// the usual case on a coast, and what the live shard has at (1460,1881):
+    /// static 0x1799 z=-5 h=0 'water' over land 0x005E at z=-15 - the surface is the
+    /// static's top and the terrain underneath is the sea BED, ten units down. Laid
+    /// as wet TERRAIN, the land tile itself is the surface. Answering with the
+    /// terrain height in the first case is what moors a ship on the sea floor.</summary>
+    public bool TryGetWaterSurfaceZ(int mapId, short x, short y, out sbyte surfaceZ)
+    {
+        surfaceZ = 0;
+        if (_mapData == null) return false;
+
+        bool found = false;
+        int best = int.MinValue;
+
+        foreach (var st in _mapData.GetStatics(mapId, x, y))
+        {
+            var td = _mapData.GetItemTileData(st.TileId);
+            if ((td.Flags & SphereNet.MapData.Tiles.TileFlag.Wet) == 0) continue;
+            int top = st.Z + td.Height;
+            if (top > best) { best = top; found = true; }
+        }
+
+        if (!found)
+        {
+            var terrain = _mapData.GetTerrainTile(mapId, x, y);
+            if (!_mapData.GetLandTileData(terrain.TileId).IsWet)
+                return false;
+            _mapData.GetAverageZ(mapId, x, y, out _, out int center, out _);
+            best = center;
+            found = true;
+        }
+
+        if (!found || best is < sbyte.MinValue or > sbyte.MaxValue)
+            return false;
+        surfaceZ = (sbyte)best;
+        return true;
     }
 
     /// <summary>

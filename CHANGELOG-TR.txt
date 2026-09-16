@@ -3,6 +3,44 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Damara vurmadan once ona sor
+----------------------------------------
+
+FIX - Tukenmis bir damarda calismak tum animasyonu oynatip ancak sonunda orada bir sey
+        olmadigini soyluyordu. Ust kaynak bir toplama becerisinin HER asamasinda kaynak
+        kontrolunu calistirir ve kare bos ya da bos bir dugum tasidiginda SKTRIG_START'ta
+        dogrudan reddeder (Skill_Mining, CCharSkill.cpp:1448-1459); yani tukenmis bir
+        damar tek bir vurus bile zamanlanmadan yanitlanir. Buradaki kod kaynaga ancak
+        vurus BITTIGINDE bakiyordu, dolayisiyla once iki ila alti vurusluk animasyon ve
+        ses oynuyordu - vurus makinesini paylastiklari icin balikcilik ve oduncululuk da
+        ayni. Dugume artik once soruluyor: gercek toplamanin yaptigi gibi dugumu baglayan
+        ama beceri atmayan, @ResourceGather tetiklemeyen ve havuzdan hicbir sey almayan
+        bir sonda ile.
+
+FIX - Sifira esitlenen bir beceri DELAY'i tum beceriyi aninda yapiyordu. Ust kaynak
+        cevirmeden once maximum(1, onda) ile kirpar (Skill_GetTimeout,
+        CCharSkill.cpp:671); yani DELAY 0 olsa da - ya da egri yuksek beceride bir
+        ondanin altina insa da - yine yuz milisaniye surer. Bir toplama becerisinde eski
+        okuma, vurusun tum adimlarinin ayni tick'te patlamasi demekti.
+
+FIX - Zanaatci is yerine donmuyordu. Ust kaynak her vuruste ona doner: UpdateDir(m_Act_p)
+        "ocaga dogru" (Skill_Blacksmith, CCharSkill.cpp:3155) ve "ates kaynagina dogru"
+        (Skill_Cooking, :2252). Is yeri kontrolu zaten zanaata izin vermek icin ocagi ya
+        da atesi bulmak zorundaydi; evet/hayir cevabi verip konumu atiyordu.
+
+FIX - Gemiye binis, plankin bir degil uc birim ustune indiriyordu. Ust kaynak plankin
+        kendi noktasini alip BIR artirir (CChar::Use_Item, CCharUse.cpp:1822); dolayisiyla
+        binen kisi, inecegi guvertenin iki birim ustunde duruyordu - ve sonrasinda attigi
+        her adim o yanlis yukseklikten olculuyordu, ki kendi yuksekligi yalnizca biraz
+        farkli olan bir kiyida "karaya yuru"yu reddedilmis bir adima ceviren sey budur.
+
+CHANGE - .WALKDIAG (Counsel+) reddedilen bir adimin sebebini soyletir. Yuruyus kontrolu
+        her cagrida, ileri karenin her aday yuzeyi nasil reddettigine dair tam bir iz
+        kurar ve bunu hicbir zaman kimse okumuyordu - yani "oraya adim atamadim" icinde
+        hicbir kanit olmayan bir bildirim olarak geliyordu. Anahtar acikken bir ret;
+        sebebi, hedef karenin arazi geometrisini, yuzey ve gecilmez sayilarini ve statik
+        dokumunu yanit olarak verir.
+
 [2026-09-16] - ANIM verb'inin argumanlari ve bir esyanin tasinabilecegi kime soyleniyor
 ----------------------------------------
 

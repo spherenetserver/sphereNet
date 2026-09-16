@@ -25,6 +25,11 @@ public sealed class SkillHandlers
     /// <summary>Callback for scripted (custom) skill use. Set by Program.cs to fire trigger chain.</summary>
     public static Func<Character, SkillType, bool>? OnScriptedSkillUse { get; set; }
 
+    /// <summary>What the node at a tile has to say before a gathering swing starts.
+    /// Null when there is no gathering engine wired (unit tests).</summary>
+    public GatherResult? ProbeGatherNode(Character ch, SkillType skill, Point3D target) =>
+        _gatheringEngine?.ProbeResource(ch, skill, target);
+
     public SkillHandlers(GameWorld world, GatheringEngine? gatheringEngine = null)
     {
         _world = world;

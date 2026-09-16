@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - Ask the vein before swinging at it
+----------------------------------------
+
+FIX - Working an exhausted vein played the whole animation and only then said there
+        was nothing there. Upstream runs the resource check at EVERY stage of a
+        gathering skill and refuses outright at SKTRIG_START when the tile holds no
+        node or an empty one (Skill_Mining, CCharSkill.cpp:1448-1459), so a spent vein
+        is answered before a single stroke is scheduled. This consulted the resource
+        only when the swing FINISHED, so two to six strokes of animation and sound
+        played first - the same for fishing and lumberjacking, which share the stroke
+        machinery. The node is asked first now, through a probe that binds it exactly
+        as the real gather does but rolls no skill, fires no @ResourceGather and takes
+        nothing out of the pool.
+
+FIX - A skill DELAY that evaluated to zero made the whole skill instant. Upstream
+        clamps with maximum(1, tenths) before converting (Skill_GetTimeout,
+        CCharSkill.cpp:671), so a DELAY of 0 - or a curve interpolating below one tenth
+        at high skill - still takes a hundred milliseconds. For a gathering skill the
+        old reading meant every stroke of the swing firing in the same tick.
+
+FIX - A crafter did not turn toward the work site. Upstream faces it on every stroke:
+        UpdateDir(m_Act_p) "toward the forge" (Skill_Blacksmith, CCharSkill.cpp:3155)
+        and "toward the fire source" (Skill_Cooking, :2252). The work-site check
+        already had to find the forge or the fire to allow the craft at all; it
+        answered yes or no and threw the position away.
+
+FIX - Boarding a ship landed three above the plank instead of one. Upstream takes the
+        plank's own point and raises it by ONE (CChar::Use_Item, CCharUse.cpp:1822),
+        so the boarder stood two units above the deck they were meant to land on - and
+        every step they took afterwards was measured from that wrong height, which is
+        what turns "walk ashore" into a refused step on a shoreline whose own height is
+        only a little different.
+
+CHANGE - .WALKDIAG (Counsel+) makes a refused step say why. The walk check builds a
+        full trace of how the forward tile rejected every candidate surface, on every
+        call, and nothing ever read it - so "I could not step there" arrived as a
+        report with no evidence in it. With the toggle on, a refusal answers with the
+        reason, the target tile's land geometry, the surface and impassable counts and
+        the static dump.
+
 [2026-09-16] - The ANIM verb's arguments, and who is told an item can be moved
 ----------------------------------------
 

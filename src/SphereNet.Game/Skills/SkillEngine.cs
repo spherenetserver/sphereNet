@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Scripting.Definitions;
@@ -96,7 +96,13 @@ public static class SkillEngine
         var def = DefinitionLoader.GetSkillDef((int)skill);
         if (def == null || def.Delay.IsEmpty) return 0;
         int tenths = def.Delay.GetLinear(skillValue);
-        return tenths <= 0 ? 0 : (int)Math.Min(int.MaxValue, (long)tenths * 100L);
+        // A tenth is the floor, not zero: upstream clamps with maximum(1, tenths)
+        // before converting (Skill_GetTimeout, CCharSkill.cpp:671), so a DELAY of 0 -
+        // or a curve that interpolates below one tenth at high skill - still takes a
+        // hundred milliseconds. Returning 0 made the whole skill instant, and for a
+        // gathering skill that means every stroke of the swing firing in the same
+        // tick.
+        return (int)Math.Min(int.MaxValue, (long)Math.Max(1, tenths) * 100L);
     }
 
     /// <summary>Interval between @SkillStroke firings during a delayed skill.

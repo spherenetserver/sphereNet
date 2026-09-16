@@ -84,7 +84,26 @@ public sealed class GatheringEngine
             return TryGatherForSinkCore(ch, skill, target);
     }
 
-    private GatherResult TryGatherForSinkCore(Character ch, SkillType skill, Point3D target)
+    /// <summary>What the node at this tile has to say BEFORE the swing starts.
+    ///
+    /// Upstream asks twice. Skill_Mining runs the resource check at every stage and
+    /// refuses outright at SKTRIG_START when the tile holds no node or an empty one
+    /// (CCharSkill.cpp:1448-1459) - so a spent vein is answered before a single
+    /// stroke is scheduled, and nothing is animated. Here the resource was consulted
+    /// only when the swing FINISHED, so working an exhausted vein played the whole
+    /// two-to-six stroke animation and then said there was nothing there.
+    ///
+    /// This is the START half: it finds or binds the node exactly as the real gather
+    /// does - upstream creates the bit at START too - but rolls no skill, fires no
+    /// @ResourceGather and takes nothing out of the pool.</summary>
+    public GatherResult ProbeResource(Character ch, SkillType skill, Point3D target)
+    {
+        lock (_world)
+            return TryGatherForSinkCore(ch, skill, target, probeOnly: true);
+    }
+
+    private GatherResult TryGatherForSinkCore(Character ch, SkillType skill, Point3D target,
+        bool probeOnly = false)
     {
         if (!_skillTypeFilters.TryGetValue(skill, out var typeFilter))
             return new GatherResult { Handled = false };
@@ -166,6 +185,11 @@ public sealed class GatheringEngine
         // that ends the node's life, after which the next search rolls a new one.
         if (marker != null && GetPool(marker) <= 0)
             return new GatherResult { Handled = true, Depleted = true };
+
+        // The probe stops here: the node exists and has something in it, which is all
+        // the caller needed to know before committing to a swing.
+        if (probeOnly)
+            return new GatherResult { Handled = true, Success = true };
 
         // Source-X Skill_NaturalResource_Setup uses m_vcSkill.GetRandom()/10:
         // each attempt samples this resource's full SKILL curve. There is no

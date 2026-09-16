@@ -325,12 +325,49 @@ public sealed class ClientSkillsHandler
         Objects.ObjBase? target, Point3D? point)
     {
         if (_character == null) return;
+
+        // Ask the node BEFORE committing to a swing. Upstream runs the resource check
+        // at SKTRIG_START and refuses outright when the tile holds nothing or an empty
+        // vein (Skill_Mining, CCharSkill.cpp:1448-1459) - so a spent vein is answered
+        // before a single stroke is scheduled. Here the resource was consulted only
+        // when the swing finished, which meant working an exhausted vein played the
+        // whole two-to-six stroke animation and only then said there was nothing
+        // there. The same for every gathering skill: fishing, lumberjacking, mining.
+        if (!GatherNodeAnswers(skill, point, skillId))
+            return;
+
         if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, point))
             return;
         FireActiveSkillStroke(skillId);
         var sink = new GameClient.InfoSkillSink(_client, _character);
         bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
         FireActiveSkillResult(skillId, ok);
+    }
+
+    /// <summary>False when a gathering skill's target tile has nothing worth swinging
+    /// at. Messages the reason and reports the failure, exactly as the real attempt
+    /// would - the point is to do it BEFORE any stroke is animated.</summary>
+    private bool GatherNodeAnswers(SkillType skill, Point3D? point, int skillId)
+    {
+        if (_character == null)
+            return true;
+        if (!SkillEngine.HasFlag(skill, SkillFlag.Gather))
+            return true;
+
+        var probe = _skillHandlers?.ProbeGatherNode(_character, skill, point ?? _character.Position);
+        if (probe is not { } result)
+            return true;
+        if (!result.Handled || (result.Success && !result.Depleted))
+            return true;
+
+        SysMessage(ServerMessages.Get(skill switch
+        {
+            SkillType.Fishing => result.Depleted ? Msg.Fishing3 : Msg.Fishing2,
+            SkillType.Lumberjacking => result.Depleted ? Msg.Lumberjacking3 : Msg.Lumberjacking2,
+            _ => result.Depleted ? Msg.Mining1 : Msg.Mining3,
+        }));
+        FireActiveSkillResult(skillId, false);
+        return false;
     }
 
     private void FireActiveSkillStroke(int skillId)

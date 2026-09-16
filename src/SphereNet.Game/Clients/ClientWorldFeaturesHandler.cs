@@ -426,6 +426,16 @@ public sealed class ClientWorldFeaturesHandler
         int stroke = 3 - _pendingCraftStrokes;
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
             new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill, N2 = stroke });
+        // Face the work site, as upstream does on every stroke: UpdateDir(m_Act_p)
+        // "toward the forge" (Skill_Blacksmith, CCharSkill.cpp:3155) and "toward the
+        // fire source" (Skill_Cooking, :2252). Without it the hammer swings at
+        // whatever the crafter happened to be looking at.
+        if (_craftingEngine != null &&
+            _craftingEngine.TryFindWorkSite(_character, craftSkill, out var workSite))
+        {
+            SphereNet.Game.Skills.Information.ActiveSkillEngine.FaceSkillTarget(_character, workSite);
+        }
+
         var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
         if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoAnim))
             PlayAnimation(_character, craftAnim, NewAnimationGesture.Emote);

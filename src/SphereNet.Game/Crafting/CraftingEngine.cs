@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -528,15 +528,39 @@ public sealed class CraftingEngine
         }
     }
 
+    /// <summary>Where the work site is, when there is one. Upstream turns the
+    /// crafter toward it on every stroke - UpdateDir(m_Act_p) "toward the forge"
+    /// (Skill_Blacksmith, CCharSkill.cpp:3155) and "toward the fire source"
+    /// (Skill_Cooking, :2252) - so the hammer swings at the anvil rather than at
+    /// whatever the crafter happened to be looking at.</summary>
+    public bool TryFindWorkSite(Character crafter, SkillType skill, out SphereNet.Core.Types.Point3D at)
+    {
+        at = crafter.Position;
+        return skill switch
+        {
+            SkillType.Blacksmithing => FindNearbyType(crafter, 2, ref at, ItemType.Forge),
+            SkillType.Cooking => FindNearbyType(crafter, 3, ref at,
+                ItemType.Fire, ItemType.Forge, ItemType.Campfire),
+            _ => false,
+        };
+    }
+
     private bool HasNearbyType(Character crafter, int range, params ItemType[] types)
+    {
+        SphereNet.Core.Types.Point3D ignored = crafter.Position;
+        return FindNearbyType(crafter, range, ref ignored, types);
+    }
+
+    private bool FindNearbyType(Character crafter, int range, ref SphereNet.Core.Types.Point3D at, params ItemType[] types)
     {
         foreach (var item in _world.GetItemsInRange(crafter.Position, range))
         {
             if (item.IsDeleted) continue;
             foreach (var t in types)
             {
-                if (item.ItemType == t)
-                    return true;
+                if (item.ItemType != t) continue;
+                at = item.Position;
+                return true;
             }
         }
 
@@ -557,8 +581,9 @@ public sealed class CraftingEngine
                     if (sdef == null) continue;
                     foreach (var t in types)
                     {
-                        if (sdef.Type == t)
-                            return true;
+                        if (sdef.Type != t) continue;
+                        at = new SphereNet.Core.Types.Point3D(x, y, (sbyte)s.Z, crafter.MapIndex);
+                        return true;
                     }
                 }
             }

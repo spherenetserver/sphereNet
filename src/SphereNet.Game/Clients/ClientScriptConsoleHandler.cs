@@ -984,7 +984,16 @@ public sealed class ClientScriptConsoleHandler
                 ? args.Trim()
                 : (cmd["WEBLINK ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
             if (url.Length > 0)
+            {
+                // Upstream says so before it sends (addWebLaunch, CClientLog.cpp:211).
+                // Without it the verb is entirely invisible: the packet leaves, the
+                // shell takes a moment to decide what to do with the address - longer
+                // still when it has no scheme and Windows puts its "how do you want to
+                // open this" dialog BEHIND a fullscreen client - and from the player's
+                // side the game simply stopped responding for no stated reason.
+                SysMessage(ServerMessages.Get(Msg.WebBrowserStart));
                 Send(new PacketWebLink(url));
+            }
             return true;
         }
 

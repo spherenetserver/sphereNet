@@ -3,6 +3,18 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - WEBLINK bir sey baslattigini soyluyor
+----------------------------------------
+
+FIX - WEBLINK paketini gonderiyor ve oyuncuya hicbir sey soylemiyordu. Ust kaynak
+        once baslatmayi duyurur (addWebLaunch, CClientLog.cpp:211). Istemci adresi
+        dogrudan kabuga verir (ClassicUO PacketHandlers.cs:3461 ->
+        PlatformHelper.LaunchBrowser) ve kabugun ne yapacagina karar vermesi gozle
+        gorulur bir an alabilir - adresin sema'si yoksa ve Windows "bunu nasil
+        acmak istersiniz" penceresini tam ekran istemcinin ARKASINDA acarsa daha da
+        uzun. Hicbir sey soylenmeyince ve hicbir sey cizilmeyince bu, bir tarayici
+        acilmasi gibi degil, oyunun yanit vermeyi birakmasi gibi gorunur.
+
 [2026-09-17] - Nesne basina degil, thread basina tek writer
 ----------------------------------------
 

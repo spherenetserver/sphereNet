@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - WEBLINK says it is launching something
+----------------------------------------
+
+FIX - WEBLINK sent its packet and told the player nothing. Upstream announces the
+        launch first (addWebLaunch, CClientLog.cpp:211). The client hands the
+        address straight to the shell (ClassicUO PacketHandlers.cs:3461 ->
+        PlatformHelper.LaunchBrowser), and the shell can take a visible moment to
+        decide what to do with it - longest when the address has no scheme and
+        Windows raises its "how do you want to open this" dialog BEHIND a
+        fullscreen client. With nothing said and nothing drawn, that reads as the
+        game having stopped responding rather than as a browser starting.
+
 [2026-09-17] - One writer per thread instead of one per object
 ----------------------------------------
 

@@ -53,18 +53,16 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     private static readonly HashSet<string> KnownUnanswered =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "ARMOR", "ATTACKER", "CANMAKE", "CANMAKESKILL",
-            "DAM", "DEBUG", "DETAIL", "DISTANCE",
-            "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS", "FUNC_GetChar_List",
-            "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle", "Func_NoGold_Msg",
-            "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item", "HEARALL", "HouseDesign",
-            "ISARMOR", "ISDISS", "ISINSAFE", "ISJAIL",
-            "ISNEARTYPE", "ISNOMOVERFLAGS", "ISWEAPON", "LOG",
-            "MOREM", "MOVETO", "NOTICE", "PAGE",
-            "RESTEST", "SECTOR", "SKILLMENU", "SYSMESSSYSMESSAGELOC",
-            "SendGMPage", "TARGPRV", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
-            "WEBPAGE", "abbrev", "align", "dmore2",
-            "masteruid", "nototitle", "sys_red",
+            "ARMOR", "ATTACKER", "DAM", "DEBUG",
+            "DETAIL", "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS",
+            "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
+            "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item", "HEARALL",
+            "HouseDesign", "ISDISS", "ISINSAFE", "ISJAIL",
+            "ISNOMOVERFLAGS", "LOG", "MOREM", "MOVETO",
+            "NOTICE", "PAGE", "SECTOR", "SKILLMENU",
+            "SYSMESSSYSMESSAGELOC", "SendGMPage", "TARGPRV", "UOSOFT_CLIENT_LOGOUT",
+            "VIRTUAL", "WEBPAGE", "abbrev", "align",
+            "dmore2", "masteruid", "nototitle", "sys_red",
         };
 
     private sealed class Console : ITextConsole
@@ -129,9 +127,15 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         // them - .PROBE made every reference member look unanswered, including ACT,
         // which the pack uses sixteen hundred times. Any suffix answering is enough
         // to prove the member itself is understood.
+        // ...and a member can take its argument after a SPACE instead of a dot:
+        // the pack writes <SRC.CANMAKE i_dagger>, which reaches the engine as the
+        // key "CANMAKE i_dagger". Probing only the bare word reports every
+        // space-argument member as unanswered - CANMAKE among them, which is
+        // implemented and would have been "fixed" a second time.
         string[] keys = dotted
-            ? [member + ".P", member + ".0", member + ".NAME", member + ".PROBE"]
-            : [member];
+            ? [member + ".P", member + ".0", member + ".NAME", member + ".PROBE",
+               member + " 1"]
+            : [member, member + " 1"];
         // A plausible argument: a key that needs one and gets none can refuse for
         // that reason alone and be counted as unanswered when it is not.
         const string arg = "1";

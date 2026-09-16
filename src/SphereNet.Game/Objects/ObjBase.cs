@@ -549,6 +549,10 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         value = "";
         if (TryGetTimerFProperty(key.ToUpperInvariant(), out value))
             return true;
+        if (TryGetTypeQueryProperty(key, out value))
+            return true;
+        if (TryGetDistanceProperty(key, out value))
+            return true;
         switch (key.ToUpperInvariant())
         {
             // Reaching this getter means the ref already resolved to a live
@@ -777,6 +781,104 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// client interface alone made every such call refuse.</summary>
     protected static Characters.Character? ResolveSourceCharacter(ITextConsole? source) =>
         source?.GetSourceChar() as Characters.Character;
+
+    /// <summary>The armour and weapon classifications upstream keeps on the item
+    /// BASE, asked of any object (OC_ISARMOR / OC_ISWEAPON, CObjBase.cpp:1470/1509).
+    ///
+    /// With an argument the question is about THAT thing - a uid, or an itemdef name
+    /// whose TYPE is classified - so a script can ask before it owns one. Without an
+    /// argument it is about this object, and a character is neither.
+    ///
+    /// The weapon set is upstream's, which includes a WAND (IsTypeWeapon,
+    /// CItemBase.cpp:288 says so in a comment); the engine's own IsWeaponType answers
+    /// a different question - what the equip-last-weapon macro should remember - and
+    /// deliberately leaves wands out, so the two must not be shared.</summary>
+    private bool TryGetTypeQueryProperty(string key, out string value)
+    {
+        value = "";
+        string upper = key.ToUpperInvariant();
+        bool armour = upper.StartsWith("ISARMOR", StringComparison.Ordinal);
+        bool weapon = !armour && upper.StartsWith("ISWEAPON", StringComparison.Ordinal);
+        if (!armour && !weapon)
+            return false;
+
+        string rest = key[(armour ? 7 : 8)..].TrimStart('.', ' ');
+        Core.Enums.ItemType? type = null;
+
+        if (rest.Length > 0)
+        {
+            var world = ResolveWorld?.Invoke();
+            if (uint.TryParse(rest.TrimStart('0').TrimStart('x', 'X'),
+                    System.Globalization.NumberStyles.HexNumber, null, out uint uid) &&
+                world?.FindItem(new Core.Types.Serial(uid)) is { } byUid)
+            {
+                type = byUid.ItemType;
+            }
+            else
+            {
+                // A defname, resolved to its DEFINITION - the same distinction the
+                // reap and smelt paths needed: a named colour variant draws as
+                // another item and only its own definition knows its type.
+                int defIndex = Definitions.DefinitionLoader.ResolveItemDefIndexByName(rest);
+                var def = defIndex != 0 ? Definitions.DefinitionLoader.GetItemDef(defIndex) : null;
+                if (def != null) type = def.Type;
+            }
+            if (type == null) { value = "0"; return true; }
+        }
+        else if (this is Items.Item self)
+        {
+            type = self.ItemType;
+        }
+
+        value = type != null && (armour ? IsTypeArmor(type.Value) : IsTypeWeapon(type.Value))
+            ? "1" : "0";
+        return true;
+    }
+
+    /// <summary>Source-X CItemBase::IsTypeArmor (CItemBase.cpp:272).</summary>
+    internal static bool IsTypeArmor(Core.Enums.ItemType type) => type is
+        Core.Enums.ItemType.Clothing or Core.Enums.ItemType.Armor or
+        Core.Enums.ItemType.ArmorBone or Core.Enums.ItemType.ArmorChain or
+        Core.Enums.ItemType.ArmorLeather or Core.Enums.ItemType.ArmorRing or
+        Core.Enums.ItemType.Shield;
+
+    /// <summary>Source-X CItemBase::IsTypeWeapon (CItemBase.cpp:288) - a wand
+    /// counts, which is the one place this differs from Item.IsWeaponType.</summary>
+    internal static bool IsTypeWeapon(Core.Enums.ItemType type) => type is
+        Core.Enums.ItemType.WeaponMaceStaff or Core.Enums.ItemType.WeaponMaceCrook or
+        Core.Enums.ItemType.WeaponMacePick or Core.Enums.ItemType.WeaponAxe or
+        Core.Enums.ItemType.WeaponXBow or Core.Enums.ItemType.WeaponThrowing or
+        Core.Enums.ItemType.WeaponMaceSmith or Core.Enums.ItemType.WeaponMaceSharp or
+        Core.Enums.ItemType.WeaponSword or Core.Enums.ItemType.WeaponFence or
+        Core.Enums.ItemType.WeaponBow or Core.Enums.ItemType.WeaponWhip or
+        Core.Enums.ItemType.Wand;
+
+    /// <summary>DISTANCE [uid] - tiles between this object and another, measured
+    /// between TOP-LEVEL positions so a thing in a backpack answers for its carrier
+    /// (OC_DISTANCE, CObjBase.cpp:1252). With no argument upstream measures to the
+    /// asking character; with no source and no argument there is nothing to measure
+    /// against and the key does not answer.</summary>
+    private bool TryGetDistanceProperty(string key, out string value)
+    {
+        value = "";
+        if (!key.StartsWith("DISTANCE", StringComparison.OrdinalIgnoreCase))
+            return false;
+        string rest = key[8..].TrimStart('.', ' ');
+        if (rest.Length == 0)
+            return false;   // no target: the caller decides, not this getter
+
+        var world = ResolveWorld?.Invoke();
+        if (!uint.TryParse(rest.TrimStart('0').TrimStart('x', 'X'),
+                System.Globalization.NumberStyles.HexNumber, null, out uint uid))
+            return false;
+        var other = world?.FindObject(new Core.Types.Serial(uid));
+        if (other == null)
+            return false;
+
+        value = GetTopLevelObj().Position.GetDistanceTo(other.GetTopLevelObj().Position)
+            .ToString();
+        return true;
+    }
 
     /// <summary>ISTIMERF.&lt;name&gt; - milliseconds until that delayed job runs, or 0 when
     /// there is none (CObjBase.cpp:1499). It is a REMAINING TIME, not a yes/no.</summary>

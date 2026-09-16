@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - Three type questions the pack asks and nothing answered
+----------------------------------------
+
+FIX - ISARMOR, ISWEAPON and DISTANCE now answer, on any object, as upstream does
+        (CObjBase.cpp:1470, :1509, :1252). The first two take an optional argument
+        - a uid, or an itemdef name resolved to its DEFINITION - so a script can
+        classify something it does not hold; with no argument they describe this
+        object, and a character is neither. DISTANCE measures between TOP-LEVEL
+        positions, so a thing in a backpack answers for its carrier, and refuses
+        rather than inventing a zero when given no target.
+
+        The weapon set is upstream's, which counts a WAND. The engine already had
+        IsWeaponType, but it answers a different question - what the
+        equip-last-weapon macro should remember - and deliberately leaves wands
+        out, so the two are kept apart rather than shared.
+
+        The shipped pin system asks ISWEAPON and ISARMOR about a layer it has just
+        looked up. With nothing answering, both read as 0 and every branch behind
+        them quietly took the wrong side.
+
+CHANGE - The pack-member baseline shrinks from 47 to 40. Four of the seven were
+        never gaps at all: CANMAKE, CANMAKESKILL, ISNEARTYPE and RESTEST are
+        implemented and take their argument after a SPACE rather than a dot, which
+        the probe had not been asking. They would have been implemented a second
+        time; the baseline's own shrink-check named them instead.
+
 [2026-09-17] - The letter I, and sixteen hundred lines that did nothing
 ----------------------------------------
 

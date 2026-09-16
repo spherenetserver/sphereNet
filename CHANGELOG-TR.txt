@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Paketin sordugu ve hicbir seyin yanitlamadigi uc tur sorusu
+----------------------------------------
+
+FIX - ISARMOR, ISWEAPON ve DISTANCE artik her nesnede, ust kaynaktaki gibi yanit
+        veriyor (CObjBase.cpp:1470, :1509, :1252). Ilk ikisi istege bagli bir
+        arguman alir - bir uid ya da TANIMINA cozulen bir itemdef adi - boylece
+        bir script elinde olmayan bir seyi siniflandirabilir; argumansiz hallerinde
+        bu nesneyi anlatirlar ve bir karakter ikisi de degildir. DISTANCE UST
+        SEVIYE konumlar arasinda olcer, yani cantadaki bir sey tasiyicisi icin
+        yanit verir, ve hedef verilmediginde sifir uydurmak yerine yanit vermez.
+
+        Silah kumesi ust kaynagindir ve bir ASA'yi da sayar. Motorda zaten
+        IsWeaponType vardi ama o baska bir soruya yanit verir - son-silahi-kusan
+        makrosunun neyi hatirlamasi gerektigine - ve asalari bilerek disarida
+        birakir; bu yuzden ikisi paylasilmadi, ayri tutuldu.
+
+        Paketle gelen pin sistemi, az once buldugu bir katman icin ISWEAPON ve
+        ISARMOR soruyor. Hicbir sey yanitlamadigi icin ikisi de 0 okunuyordu ve
+        arkalarindaki her dal sessizce yanlis tarafi seciyordu.
+
+CHANGE - Paket-uye baseline'i 47'den 40'a indi. Yedinin dordu zaten bosluk
+        degildi: CANMAKE, CANMAKESKILL, ISNEARTYPE ve RESTEST uygulanmis ve
+        argumanlarini noktayla degil BOSLUKLA aliyorlar - sonda bunu hic
+        sormuyordu. Ikinci kez uygulanacaklardi; baseline'in kendi kuculme
+        denetimi onlari adiyla bildirdi.
+
 [2026-09-17] - I harfi, ve hicbir sey yapmayan bin alti yuz satir
 ----------------------------------------
 

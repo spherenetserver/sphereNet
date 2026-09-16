@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -27,7 +27,7 @@ namespace SphereNet.Tests;
 /// derived rather than maintained.
 ///
 /// Skips cleanly when oldSphere/ is absent, so CI without the reference tree stays
-/// green - see docs/SOURCEX_TABLO_PAYDALARI_TR.md.
+/// green - docs/data/sourcex_tables.csv is the extracted reference.
 /// </summary>
 public sealed class SourceXTableInventoryGuardrailTests
 {
@@ -327,26 +327,4 @@ public sealed class SourceXTableInventoryGuardrailTests
         Assert.Equal(62, byEra["RDS_PRET2A"]);
     }
 
-    [Fact]
-    public void TheDenominatorDocumentStatesTheSameTotals()
-    {
-        var root = RepoRoot();
-        string? doc = root == null ? null
-            : Path.Combine(root.FullName, "docs", "SOURCEX_TABLO_PAYDALARI_TR.md");
-        if (Gate.MissingValue(_out, "denominator document", doc)) return;
-        if (Gate.Missing(_out, "denominator document", !File.Exists(doc))) return;
-
-        string text = File.ReadAllText(doc);
-        string? export = ExportPath();
-        if (Gate.MissingValue(_out, "table export", export)) return;
-        if (Gate.Missing(_out, "table export", !File.Exists(export))) return;
-
-        int lines = File.ReadAllLines(export).Length - 1;   // minus the header
-        _out.WriteLine($"export rows: {lines}");
-
-        Assert.Contains($"**{lines} giriş**", text);
-        Assert.Contains("206", text);
-        Assert.Contains("186", text);
-        Assert.Contains("645", text);
-    }
 }

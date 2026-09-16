@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,7 +21,7 @@ namespace SphereNet.Tests;
 /// The status report used to carry one blanket line - "Bushido/Ninjitsu/Mysticism/
 /// Spellweaving enum-only" - which the measurement contradicts in both directions:
 /// Spellweaving and Mysticism are mostly castable, while Bard Masteries (not named
-/// at all) are entirely dead. docs/BUYU_MATRISI_TR.md now holds the counts, and this
+/// at all) are entirely dead. The counts live in the assertions below, and this
 /// pins them so the document cannot quietly drift away from the pack.
 ///
 /// Classification is the engine's own (SpellEngine.IsInertSchoolSpell): a spell is

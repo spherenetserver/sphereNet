@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 Guidance for AI coding agents (Claude Code and similar) working in this repository.
 For the product overview, feature list, and deployment docs, read [README.md](README.md)
@@ -103,5 +103,12 @@ dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --filter "FullyQualifiedN
 - `oldSphere/Source-X-full/` — Source-X C++ engine (behavior reference)
 - `oldSphere/scripts/`, `oldSphere/Scripts-X-main/` — script packs
 - `oldSphere/ClassicUO-main/` — client source (packet format / client behavior)
-- `docs/` — architecture, staff commands, triggers, deploy, runbook
-- `wiki/` — parity notes and roadmaps
+- `docs/` — architecture, staff commands, triggers, packet flow, deploy, runbook
+- `CHANGELOG-EN.txt` / `CHANGELOG-TR.txt` — what changed and why
+
+`docs/` holds only documents that describe how the engine works. It deliberately
+holds no progress trackers, parity scorecards, audit chapters or coverage
+matrices: every one of those drifted into stating things that were no longer
+true. Do not add one back. A measurement is worth writing down only when a test
+fails once it goes stale — and then it belongs in the test, or as data next to
+it, not as prose.

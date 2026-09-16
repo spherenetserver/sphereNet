@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -108,19 +108,14 @@ public sealed class DataGateGuardrailTests
             "Source-X reference tree",
             "UOP map files",
             "config/sphere.ini",
-            "denominator document",
             "engine source",
             "external script pack",
-            "findings document",
             "live script pack",
             "live shard (scripts + mul + save)",
             "mul tables",
-            "progress plan",
             "reference tables",
             "reference tables + live pack",
             "reference tables + modern pack",
-            "release package",
-            "review corpus",
             "script pack fixtures",
             "table export",
         ], used.ToArray());
@@ -143,22 +138,4 @@ public sealed class DataGateGuardrailTests
         Assert.Contains("| Test | Resource | Data |", text);
     }
 
-    [Fact]
-    public void TheDocumentListsTheResourcesAReaderWillSeeInTheReport()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
-            dir = dir.Parent;
-        string? doc = dir == null ? null : Path.Combine(dir.FullName, "docs", "VERI_KAPILARI_TR.md");
-        if (Gate.MissingValue(_out, "denominator document", doc)) return;
-        if (Gate.Missing(_out, "denominator document", !File.Exists(doc))) return;
-
-        string text = File.ReadAllText(doc);
-        foreach (string r in new[]
-                 {
-                     "live script pack", "external script pack", "Source-X reference tree",
-                     "56T scripts and save", "mul tables", "UOP map files",
-                 })
-            Assert.Contains(r, text);
-    }
 }

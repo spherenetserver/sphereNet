@@ -1,60 +1,67 @@
 ﻿# SphereNet Documentation
 
-This folder holds the technical and operational documentation for SphereNet — a .NET 10 Ultima Online private server emulator with Source-X script compatibility.
+Technical and operational documentation for SphereNet — a .NET 10 Ultima Online
+server emulator with Source-X script compatibility.
 
-For the project overview, features, and quick start, see the top-level **[README.md](../README.md)** (🇹🇷 **[README-TR.md](../README-TR.md)**).
+For the project overview, features, and quick start, see the top-level
+**[README.md](../README.md)** (🇹🇷 **[README-TR.md](../README-TR.md)**).
 
 ---
 
 ## Index
 
 ### Reference
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — How the engine is put together: the tick pipeline, sectors, persistence, scripting, and networking.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — How the engine is put together: the tick pipeline, sectors, persistence, scripting, networking.
 - **[STAFF_COMMANDS.md](STAFF_COMMANDS.md)** — Every in-game staff/GM command and server-console command, by privilege level.
 - **[TRIGGERS.md](TRIGGERS.md)** — Every script trigger that fires, with the `<src>`/`<argo>`/`<argn>`/`<args>` values available inside it.
-- **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (kept in sync with `PacketManagerTests`).
-- **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How packets move from network parsing to `GameClient` and its handler classes, plus behavior-level packet sequences for Source-X developers (TR + EN).
-- **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Geliştirici haritası: Source-X → SphereNet eşleşmeleri, paket yolculuğu, kod haritası, özellik ekleme rehberi.
-
-### Parity & open work
-- **[PARITY.md](PARITY.md)** — The single Source-X / Sphere 56x parity document: domain summary, itemised behaviour-surface detail (SERV verbs, triggers, persistence, object verbs), and the deferred tail / sound-visual gaps at the end.
-- **[STUB_INVENTORY_TR.md](STUB_INVENTORY_TR.md)** — Kodda kalan stub, no-op ve bilinçli ertelenmiş uyumluluk açıkları.
-- **[INCELEME_DOGRULAMA_PLANI_TR.md](INCELEME_DOGRULAMA_PLANI_TR.md)** — Doğrulanmış inceleme bulgularının tek yaşayan iş takipçisi (açık A/B/C/D/E maddeleri burada).
-- **[BUYU_MATRISI_TR.md](BUYU_MATRISI_TR.md)** — Büyü bazında kapsama: canlı pakette hangi büyü çalışıyor, hangisi reddediliyor. Testle sabitlenmiş.
-- **[AOS_PROPERTY_MATRISI_TR.md](AOS_PROPERTY_MATRISI_TR.md)** — AOS+ component property'lerinin era kapısı ve hangi paketin hangisini kullandığı.
-- **[PAKET_MATRISI_TR.md](PAKET_MATRISI_TR.md)** — Paket katmanının opcode/alt-komut ölçümü (sınıf sayısı neden yanıltır).
-- **[INI_ANAHTAR_SINIFLANDIRMASI_TR.md](INI_ANAHTAR_SINIFLANDIRMASI_TR.md)** — Her ini anahtarının sınıfı (tüketiliyor / saklanıyor / desteklenmiyor) ve ini işaretlerinin koddan sapması. Testle sabitlenmiş.
-- **[SOURCEX_TABLO_PAYDALARI_TR.md](SOURCEX_TABLO_PAYDALARI_TR.md)** — Kapsama paydalarının hangi Source-X tablosundan geldiği; [`data/sourcex_tables.csv`](data/sourcex_tables.csv) tam döküm. Testle sabitlenmiş.
-- **[VERI_KAPILARI_TR.md](VERI_KAPILARI_TR.md)** — Gerçek veri gerektiren testlerin hangi kaynağı beklediği ve bir koşunun ne kadarını gerçekten ölçtüğü; rapor TRX'in yanına düşüyor.
-- **[REVIEW_KAYIT_ESLEME_TR.md](REVIEW_KAYIT_ESLEME_TR.md)** — `docs/reviews/` bulgularının takip planı ve testlerle eşlemesi; hangi bulgunun hangi testle kapandığı. Testle sabitlenmiş.
-- **[NESNE_URETIM_SOZLESMESI_TR.md](NESNE_URETIM_SOZLESMESI_TR.md)** — Nesne üreten/kopyalayan dokuz kapının ne taşıdığı; yansımayla ölçülüp testle sabitlenmiş.
-- **[56T_ESLENMEYEN_ANAHTARLAR_TR.md](56T_ESLENMEYEN_ANAHTARLAR_TR.md)** — Gerçek 56T kaydında eslenmeyen anahtar envanteri (bugün sıfır) ve bu ölçümün nasıl yanlış yapıldığı. Testle sabitlenmiş.
+- **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (pinned by `PacketManagerTests`).
+- **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How a packet travels from network parsing to `GameClient` and its handlers, plus behaviour-level packet sequences (TR + EN).
+- **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Gelistirici haritasi: Source-X → SphereNet eslesmeleri, paket yolculugu, kod haritasi, ozellik ekleme rehberi.
 
 ### Operations
-- **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.
+- **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model, and the validation needed to run a shard.
 - **[RUNBOOK.md](RUNBOOK.md)** — First-response actions for a live shard (tick lag, save failures, health checks).
 - **[PERFORMANCE.md](PERFORMANCE.md)** — Telemetry signals and a repeatable benchmark recipe.
-- **[RELEASE_KABUL_PAKETI_TR.md](RELEASE_KABUL_PAKETI_TR.md)** — Sürüm kabul paketi: tam test, veri manifesti, açık sapmalar, bilinen sorunlar ve hangi adımın koşulup hangisinin koşulmadığı.
 
 ### Changelog
-- **[CHANGELOG-EN.txt](../CHANGELOG-EN.txt)** / **[CHANGELOG-TR.txt](../CHANGELOG-TR.txt)** — Per-language changelog.
+- **[CHANGELOG-EN.txt](../CHANGELOG-EN.txt)** / **[CHANGELOG-TR.txt](../CHANGELOG-TR.txt)** — Per-language changelog. **This is the record of what changed and why.**
 - **[CHANGELOG_OLD.txt](../CHANGELOG_OLD.txt)** — Bilingual history archive (entries before 2026-05-29).
 
-> Housekeeping (2026-07-18): docs/ trimmed from 24 to 13 files. Merged:
-> `PARITY_MATRIX` + the open tails of `PARITY_BACKLOG_SUB90` and
-> `SOUND_VISUAL_MOVEMENT_PARITY_TR` → `PARITY.md`; `TRANSITION_GUIDE_TR` →
-> `DEVELOPER_MAP_TR.md`. Deleted (closed reports / stale / absorbed — full text
-> in git history): `PARITY_ROADMAP_TR`, `PACKET_GUIDE_SIMPLE_TR`,
-> `PROJE_GENEL_INCELEME_PLANI_TR`, `HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR`,
-> `PERFORMANS_LOG_INCELEMESI_TR`, `PERF_KONUSMA_NPC_VIEW_PLANI_TR`,
-> `GAMECLIENT_DECOMPOSITION_TR`, `PARITY_BACKLOG_SUB90`,
-> `SOUND_VISUAL_MOVEMENT_PARITY_TR`.
+---
+
+## What belongs here, and what does not
+
+This folder holds documents that describe **how the engine works** — things that
+stay true until the code itself changes, and that a reader consults to
+understand or operate the server.
+
+It deliberately holds **no** progress trackers, parity scorecards, audit
+chapters, coverage matrices or release-acceptance reports. Those were written
+against a moving codebase, and every one of them drifted into stating things
+that were no longer true — which is worse than having no document at all. They
+were removed on 2026-09-16 (full text remains in git history).
+
+Where to look instead:
+
+| Question | Source of truth |
+|---|---|
+| What changed, and why? | `CHANGELOG-EN.txt` / `CHANGELOG-TR.txt` |
+| How does Source-X do this? | `oldSphere/Source-X-full/src` (the C++ reference) |
+| What does the client expect? | `oldSphere/ClassicUO-main/src` |
+| Is this behaviour actually pinned? | The test suite — `dotnet test src/SphereNet.Tests` |
+| Which opcodes are routed? | `PROTOCOL_MATRIX.md` (a test keeps it honest) |
+
+A measurement is worth keeping only when a test fails if it goes stale. Two do,
+and they live as data rather than prose: `PROTOCOL_MATRIX.md` and
+[`data/sourcex_tables.csv`](data/sourcex_tables.csv).
 
 ---
 
 ## What SphereNet is, in one minute
 
-SphereNet keeps the classic Sphere/Source-X content model — `.scp` scripts, defnames, triggers, the `.` staff commands — and rebuilds the server engine on modern .NET:
+SphereNet keeps the classic Sphere/Source-X content model — `.scp` scripts,
+defnames, triggers, the `.` staff commands — and rebuilds the server engine on
+modern .NET:
 
 - **Scripting** runs Sphere-style `.scp` content: an expression engine, flow control, object queries, and the trigger system documented in [TRIGGERS.md](TRIGGERS.md).
 - **The world** is partitioned into sectors; only sectors near online players tick, and changes are tracked per-field so clients receive deltas, not full resends.

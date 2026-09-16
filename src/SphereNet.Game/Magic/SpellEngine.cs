@@ -719,7 +719,7 @@ public sealed class SpellEngine
         // Mysticism range) whose def carries NO behaviour — no flags, no
         // effect/duration curve, no scripted ON= stage — used to swallow mana and
         // reagents and then silently no-op. Refuse it up front instead; the
-        // schools themselves are a deferred project (PARITY.md "Deferred tail").
+        // schools themselves are a deferred project.
         // A pack that scripts these spells (flags/curves/trigger stages) passes.
         if (IsInertSchoolSpell(def))
         {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,7 +21,7 @@ namespace SphereNet.Tests;
 /// A marker that understates is not harmless. A working setting labelled dead is
 /// a setting nobody tries.
 ///
-/// The measurement lives in docs/INI_ANAHTAR_SINIFLANDIRMASI_TR.md; these pin it.
+/// The measurement is the assertions below; config/sphere.ini is the source.
 /// </summary>
 public sealed class IniKeyClassificationGuardrailTests
 {
@@ -174,40 +174,5 @@ public sealed class IniKeyClassificationGuardrailTests
         Assert.Empty(promises);
     }
 
-    [Fact]
-    public void TheClassificationDocumentMatchesTheIni()
-    {
-        string? ini = ReadRepo(@"config\sphere.ini");
-        string? doc = ReadRepo(@"docs\INI_ANAHTAR_SINIFLANDIRMASI_TR.md");
-        if (Gate.MissingValue(_out, "config/sphere.ini", ini)) return;
-        if (Gate.MissingValue(_out, "denominator document", doc)) return;
 
-        var rows = ParseIni(ini);
-        int keys = rows.Select(r => r.Key).Distinct().Count();
-        int unimplemented = rows.Count(r => r.Marker == "UYGULANMADI");
-
-        _out.WriteLine($"keys={keys} unimplemented={unimplemented}");
-
-        // The document states both numbers in prose. If a key is added, removed or
-        // reclassified, the document has to come along.
-        Assert.Contains($"**{keys} anahtar**", doc);
-        Assert.Contains($"desteklenmeyen {unimplemented} anahtar", doc);
-    }
-
-    [Fact]
-    public void TheDocumentRecordsTheKeysThatAreStoredButNeverConsumed()
-    {
-        string? doc = ReadRepo(@"docs\INI_ANAHTAR_SINIFLANDIRMASI_TR.md");
-        if (Gate.MissingValue(_out, "denominator document", doc)) return;
-
-        // Project rule: no setting without a consumer. These predate the rule and
-        // are recorded rather than silently tolerated, so the list has to stay
-        // visible in the document that closes PLAN-002.
-        foreach (string key in new[]
-                 {
-                     "ADVANCEDLOS", "CONNECTINGMAX", "COLORINVIS", "COLORHIDDEN",
-                     "PETSINHERITNOTORIETY", "SECTORSLEEP", "NOTOTIMEOUT", "NETWORKTHREADS",
-                 })
-            Assert.Contains(key, doc);
-    }
 }

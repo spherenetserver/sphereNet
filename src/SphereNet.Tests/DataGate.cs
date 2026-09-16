@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -133,7 +133,7 @@ public static class Gate
               .Append(CultureInfo.InvariantCulture,
                       $"**{rows.Length} gate(s) evaluated, {missing} found no data.**\n\n")
               .Append("A gate with no data means the test ran, measured nothing and still\n")
-              .Append("reported as passing. See docs/VERI_KAPILARI_TR.md.\n\n")
+              .Append("reported as passing.\n\n")
               .Append("| Test | Resource | Data |\n|---|---|---|\n");
 
             foreach (var o in rows)

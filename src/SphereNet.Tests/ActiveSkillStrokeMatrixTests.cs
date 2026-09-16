@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Clients;
@@ -23,7 +23,7 @@ namespace SphereNet.Tests;
 //
 // SkillDelayTests already covers single-stroke order, target-cancel and the
 // initial-state movement/damage interrupts. This file closes the remaining gaps
-// PARITY.md flagged: multi-stroke loop ordering, interrupt DURING the loop, and
+// Open at the time of writing: multi-stroke loop ordering, interrupt DURING the loop, and
 // the engine's synchronous pre-check short-circuit. The stroke clock is wall
 // time (Environment.TickCount64); tests drive it deterministically by setting the
 // pending-skill timing fields directly (BeginSkillPending / SetSkillStrokeNext),

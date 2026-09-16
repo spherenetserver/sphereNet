@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - Measuring a script pack from the pack's side
+----------------------------------------
+
+CHANGE - Every section header a real pack declares is now checked against the
+        loader, beside the existing check that every trigger it hooks is one the
+        engine fires. A header the loader maps to Unknown is a whole block nobody
+        reads - no error, no log, the definitions in it simply are not there -
+        which is the same silent shape as an unfired trigger and is found the same
+        way: from the PACK, not from our own tables, because measuring our
+        coverage with our own enum only proves the enum agrees with itself.
+
+        The shard pack declares 37 section types across 554 files and the loader
+        reads all 37, so the baseline is empty. It is an assertion rather than a
+        note precisely so it cannot quietly stop being true: a pack that starts
+        using an unread section fails the test, and an entry that becomes readable
+        has to leave the baseline.
+
 [2026-09-17] - WEBLINK says it is launching something
 ----------------------------------------
 

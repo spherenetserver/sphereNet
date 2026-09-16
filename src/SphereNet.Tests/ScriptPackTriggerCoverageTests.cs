@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -83,6 +83,73 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
         Assert.Contains("RegPeriodic", names);
         Assert.Contains("CliPeriodic", names);
         Assert.Contains("Effect", names);
+    }
+
+    /// <summary>Section headers a pack declares, measured the same way the hooks
+    /// above are: from the PACK side. A header the loader maps to Unknown is a whole
+    /// block the engine never reads - no error, no log, the definitions in it simply
+    /// are not there - which is the same silent shape as an unfired trigger.</summary>
+    private static readonly Regex SectionLine =
+        new(@"^\s*\[\s*([A-Za-z_]+)", RegexOptions.Multiline | RegexOptions.Compiled);
+
+    /// <summary>Section names that are not sections: EOF terminates a file.</summary>
+    private static readonly HashSet<string> NotASection =
+        new(StringComparer.OrdinalIgnoreCase) { "EOF" };
+
+    /// <summary>Section types a real pack declares that the loader maps to Unknown.
+    /// Empty today - every one of the 37 types the shard pack uses is recognised -
+    /// and the assertion below fails the moment a pack starts using one that is not,
+    /// so this can only be added to deliberately.</summary>
+    private static readonly HashSet<string> KnownUnreadSections =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public void EverySectionARealPackDeclaresIsOneTheLoaderReads()
+    {
+        var files = PackFiles().ToList();
+        if (Gate.Missing(outp, "live script pack", files.Count == 0)) return;
+
+        var unread = new Dictionary<string, (int Uses, string FirstFile)>(StringComparer.OrdinalIgnoreCase);
+        var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string file in files)
+        {
+            string text;
+            try { text = File.ReadAllText(file); }
+            catch (IOException) { continue; }
+
+            foreach (Match m in SectionLine.Matches(text))
+            {
+                string name = m.Groups[1].Value;
+                if (NotASection.Contains(name)) continue;
+                distinct.Add(name);
+                if (SphereNet.Scripting.Resources.ResourceHolder.SectionToResType(name)
+                    != SphereNet.Core.Enums.ResType.Unknown)
+                    continue;
+                if (unread.TryGetValue(name, out var seen))
+                    unread[name] = (seen.Uses + 1, seen.FirstFile);
+                else
+                    unread[name] = (1, Path.GetFileName(file));
+            }
+        }
+
+        outp.WriteLine($"{files.Count} files, {distinct.Count} distinct section types");
+        foreach (var (name, info) in unread.OrderByDescending(e => e.Value.Uses))
+            outp.WriteLine($"UNREAD {name} x{info.Uses} (first: {info.FirstFile})");
+
+        Assert.True(distinct.Count >= 20,
+            $"expected a real pack's variety of sections, saw {distinct.Count}");
+
+        var surprises = unread.Keys.Where(k => !KnownUnreadSections.Contains(k)).ToArray();
+        Assert.True(surprises.Length == 0,
+            "the loader maps these to Unknown, so their whole blocks are skipped: " +
+            string.Join(", ", surprises));
+
+        // And the baseline may not rot the other way: an entry that became readable
+        // has to leave the list.
+        foreach (string k in KnownUnreadSections)
+            Assert.True(unread.ContainsKey(k),
+                $"{k} is readable now - remove it from KnownUnreadSections");
     }
 
     [Fact]

@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Bir script paketini paketin tarafindan olcmek
+----------------------------------------
+
+CHANGE - Gercek bir paketin bildirdigi her bolum basligi artik yukleyiciye karsi
+        denetleniyor; mevcut "kancaladigi her trigger motorun atesledigi bir
+        trigger mi" denetiminin yaninda. Yukleyicinin Unknown'a esledigi bir
+        baslik, kimsenin okumadigi koca bir bloktur - hata yok, log yok, icindeki
+        tanimlar oylece yoktur - ve bu, ateslenmeyen bir trigger ile ayni sessiz
+        bicimdir; ayni yoldan da bulunur: PAKETTEN, kendi tablolarimizdan degil.
+        Cunku kendi kapsamimizi kendi enum'umuzla olcmek yalnizca enum'un kendisiyle
+        uyustugunu kanitlar.
+
+        Shard paketi 554 dosyada 37 bolum tipi bildiriyor ve yukleyici 37'sini de
+        okuyor; yani baseline bos. Bunun not degil de bir assertion olmasinin sebebi
+        tam da sessizce dogru olmaktan cikamamasi: okunmayan bir bolum kullanmaya
+        baslayan bir paket testi kirar, okunabilir hale gelen bir kayit da
+        baseline'dan cikmak zorunda kalir.
+
 [2026-09-17] - WEBLINK bir sey baslattigini soyluyor
 ----------------------------------------
 

@@ -983,6 +983,14 @@ public partial class Character : ObjBase
     /// Requires PrivLevel.GM+ to be honored. Runtime-only, not persisted.</summary>
     public bool AllMove { get => _allMove; set => _allMove = value; }
 
+    /// <summary>PRIV_DEBUG (Source-X CClient_props.tbl DEBUG): the staff toggle that
+    /// shows what the game normally hides from the view - a mount is the concrete
+    /// one, filtered out for everybody else because it is "inside" its rider
+    /// (CClient.cpp:421). Runtime-only, not persisted, and readable and settable by
+    /// script: the shipped login script clears it on every player, which it cannot
+    /// do while nothing answers the name.</summary>
+    public bool DebugView { get; set; }
+
     public bool IsReplaySpectator { get => _isReplaySpectator; set => _isReplaySpectator = value; }
 
     // --- Stats ---
@@ -3611,14 +3619,27 @@ public partial class Character : ObjBase
             case "GM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
             case "INVUL": value = IsStatFlag(StatFlag.Invul) ? "1" : "0"; return true;
             case "ALLSHOW": value = _allShow ? "1" : "0"; return true;
+            case "DEBUG": value = DebugView ? "1" : "0"; return true;
             case "PRIVSHOW": value = _privShow ? "1" : "0"; return true;
             case "ISPLAYER": value = _isPlayer ? "1" : "0"; return true;
             case "ISNPC": value = (!_isPlayer && _npcBrain != NpcBrainType.None) ? "1" : "0"; return true;
             case "NPCBRAIN": value = ((int)_npcBrain).ToString(); return true;
             case "DAM":
+            case "DAM.LO":
+            case "DAM.HI":
             {
+                // Upstream splits this range with .LO / .HI and answers the pair
+                // bare (OC_DAM, CObjBase.cpp:1081). The pack's own damage log reads
+                // all three off both sides of a hit; only the bare form answered, so
+                // every LO/HI column went in empty.
                 var dam = Combat.CombatEngine.NpcDamageDefLookup?.Invoke(_charDefIndex);
-                value = dam.HasValue ? $"{dam.Value.Min},{dam.Value.Max}" : "0,0";
+                int lo = dam?.Min ?? 0, hi = dam?.Max ?? 0;
+                value = upper switch
+                {
+                    "DAM.LO" => lo.ToString(),
+                    "DAM.HI" => hi.ToString(),
+                    _ => $"{lo},{hi}",
+                };
                 return true;
             }
             case "CAN":
@@ -3874,7 +3895,15 @@ public partial class Character : ObjBase
             }
             case "ARMOR":
             case "AR":
-                // Total worn armour rating (Source-X OC_ARMOR / CHC_AR).
+            case "ARMOR.LO":
+            case "ARMOR.HI":
+            case "AR.LO":
+            case "AR.HI":
+                // Total worn armour rating (Source-X OC_ARMOR / CHC_AR). The LO/HI
+                // split is an ITEM's range: upstream checks IsChar FIRST and answers
+                // the total for a character whatever suffix followed
+                // (CObjBase.cpp:1051), so all four spellings agree here rather than
+                // inventing a character-side range that has no source.
                 value = Combat.CombatEngine.CalcArmorDefense(this).ToString();
                 return true;
             case "WEIGHT": value = GetTotalWeight().ToString(); return true;
@@ -4974,6 +5003,9 @@ public partial class Character : ObjBase
                 return true;
             case "ALLSHOW":
                 _allShow = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                return true;
+            case "DEBUG":
+                DebugView = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
             case "PRIVSHOW":
                 _privShow = normalized != "0" && !string.IsNullOrEmpty(normalized);

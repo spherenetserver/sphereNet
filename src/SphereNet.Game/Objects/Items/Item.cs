@@ -1558,6 +1558,43 @@ public class Item : ObjBase
 
     // --- IScriptObj overrides ---
 
+    /// <summary>The guild/town stone record, read off the stone itself (Source-X
+    /// CItemStone r_WriteVal - ABBREV, ALIGN, MASTERUID and WEBPAGE all live on the
+    /// stone, CItemStone_props.tbl).
+    ///
+    /// The WRITE side of these already existed, because a classic save carries them
+    /// as stone lines and the importer had to accept them. Nothing read them back, so
+    /// every dialog asking &lt;uid.&lt;stone&gt;.abbrev&gt; or comparing
+    /// &lt;masteruid&gt; to &lt;src.uid&gt; got an empty answer: the guild list showed
+    /// no abbreviations and every "are you the master" gate in the stone dialogs
+    /// compared a uid against nothing and refused the master too.</summary>
+    private bool TryGetStoneProperty(string upperKey, out string value)
+    {
+        value = "";
+        if (upperKey is not ("ABBREV" or "ALIGN" or "MASTERUID" or "WEBPAGE"))
+            return false;
+        var guild = ResolveGuild?.Invoke(Uid);
+        if (guild == null)
+            return false;
+
+        switch (upperKey)
+        {
+            case "ABBREV": value = guild.Abbreviation; return true;
+            case "WEBPAGE": value = guild.WebUrl; return true;
+            case "ALIGN": value = ((int)guild.Align).ToString(); return true;
+            case "MASTERUID":
+            {
+                var master = guild.GetMaster();
+                // A stone with no master answers 0, the way every other absent uid
+                // does - not an empty string, which a comparison would read as a
+                // match against anything else that failed to resolve.
+                value = master == null ? "0" : $"0{master.CharUid.Value:X}";
+                return true;
+            }
+        }
+        return false;
+    }
+
     public override bool TryGetProperty(string key, out string value)
     {
         // Champion altar read keys (Source-X ICHMPL_*).
@@ -1566,6 +1603,9 @@ public class Item : ObjBase
 
         value = "";
         var upper = key.ToUpperInvariant();
+
+        if (TryGetStoneProperty(upper, out value))
+            return true;
 
         // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...) are
         // tag-backed like the SLAYER pair; ITEMDEF-level values live in the

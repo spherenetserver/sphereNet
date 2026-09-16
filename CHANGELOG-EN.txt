@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The stone's own record, and asking with the pack's own words
+----------------------------------------
+
+FIX - A guild or town stone could not be read. ABBREV, ALIGN, MASTERUID and
+        WEBPAGE all live on the stone upstream (CItemStone_props.tbl) and the
+        write side already existed - a classic save carries them as stone lines -
+        but nothing answered them back. Every stone dialog gating on
+        <MASTERUID> != <SRC.UID> was comparing a uid against an empty answer,
+        which refuses the guild master along with everyone else, and the guild
+        list showed no abbreviations at all.
+
+FIX - A character could not be asked for half of a damage range. The pack's own
+        damage log reads ARMOR.LO/.HI and DAM.LO/.HI off both sides of every hit;
+        items answered those, characters did not, so the columns went in empty.
+        DAM splits the way upstream splits it; ARMOR does NOT - upstream checks
+        IsChar first and answers the worn total whatever suffix followed
+        (CObjBase.cpp:1051), so all four spellings agree rather than inventing a
+        character-side range with no source behind it.
+
+FIX - DEBUG is a staff toggle again, with the one concrete thing it does: a
+        mount is drawn as part of its rider and kept out of everybody's view, and
+        upstream lets a viewer in DEBUG see it anyway (CClient.cpp:421). The
+        shipped login script clears the flag on every player, which it cannot do
+        while nothing answers the name.
+
+CHANGE - The pack-member probe now asks with the suffixes the PACK wrote instead
+        of invented ones. Guessing them asks questions the engine was never meant
+        to answer: .PROBE reported ACT as missing with sixteen hundred uses behind
+        it, and .P reported ARMOR.LO as missing while the engine answers it. With
+        the real suffixes, four more names left the baseline as never having been
+        gaps at all - ATTACKER and SECTOR among them. 47 -> 31.
+
 [2026-09-17] - Three type questions the pack asks and nothing answered
 ----------------------------------------
 

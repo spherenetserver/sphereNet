@@ -75,7 +75,10 @@ public sealed class ClientViewUpdater
         WorldRef.VisitInRange(center, range, ch =>
         {
             if (ch == me || ch.IsDeleted) return;
-            if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden)) return;
+            // A mount is drawn as part of its rider, so it is kept out of everyone's
+            // view - except a viewer in DEBUG, which is exactly what upstream's
+            // !IsPriv(PRIV_DEBUG) guard on the same filter is for (CClient.cpp:421).
+            if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden) && !me.DebugView) return;
 
             bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline && !ch.IsClientLingering;
             if (isOfflinePlayer && !me.AllShow)

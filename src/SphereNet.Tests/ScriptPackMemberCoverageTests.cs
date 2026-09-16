@@ -53,16 +53,14 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     private static readonly HashSet<string> KnownUnanswered =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "ARMOR", "ATTACKER", "DAM", "DEBUG",
             "DETAIL", "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS",
             "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
             "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item", "HEARALL",
             "HouseDesign", "ISDISS", "ISINSAFE", "ISJAIL",
             "ISNOMOVERFLAGS", "LOG", "MOREM", "MOVETO",
-            "NOTICE", "PAGE", "SECTOR", "SKILLMENU",
-            "SYSMESSSYSMESSAGELOC", "SendGMPage", "TARGPRV", "UOSOFT_CLIENT_LOGOUT",
-            "VIRTUAL", "WEBPAGE", "abbrev", "align",
-            "dmore2", "masteruid", "nototitle", "sys_red",
+            "NOTICE", "PAGE", "SKILLMENU", "SYSMESSSYSMESSAGELOC",
+            "SendGMPage", "TARGPRV", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
+            "dmore2", "nototitle", "sys_red",
         };
 
     private sealed class Console : ITextConsole
@@ -119,23 +117,21 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     /// because reaching a handler is the opposite of the silent no-op being sought.
     /// </summary>
     private static bool EngineAnswers(GameWorld world, ITextConsole console,
-        string member, bool dotted)
+        string member, IEnumerable<string> suffixes)
     {
-        // A dotted member is two different shapes and the suffix decides which:
-        // FINDID.0 takes an ARGUMENT, while ACT.P dereferences to another object and
-        // reads a property off it. One fixed suffix therefore answers only half of
-        // them - .PROBE made every reference member look unanswered, including ACT,
-        // which the pack uses sixteen hundred times. Any suffix answering is enough
-        // to prove the member itself is understood.
-        // ...and a member can take its argument after a SPACE instead of a dot:
-        // the pack writes <SRC.CANMAKE i_dagger>, which reaches the engine as the
-        // key "CANMAKE i_dagger". Probing only the bare word reports every
-        // space-argument member as unanswered - CANMAKE among them, which is
-        // implemented and would have been "fixed" a second time.
-        string[] keys = dotted
-            ? [member + ".P", member + ".0", member + ".NAME", member + ".PROBE",
-               member + " 1"]
-            : [member, member + " 1"];
+        // Probe with the suffixes the pack ITSELF wrote, not invented ones. A
+        // dotted member is several different shapes - FINDID.0 takes an argument,
+        // ACT.P dereferences to another object, ARMOR.LO names a half of a range -
+        // and guessing the suffix asks a question the engine was never meant to
+        // answer: .PROBE reported ACT as missing (sixteen hundred uses) and .P
+        // reported ARMOR.LO as missing while the engine answers it. The space form
+        // is probed too, because <SRC.CANMAKE i_dagger> reaches the engine as the
+        // key "CANMAKE i_dagger" and probing the bare word alone reported CANMAKE
+        // as a gap when it is implemented.
+        var keyList = new List<string> { member, member + " 1" };
+        foreach (string suffix in suffixes)
+            keyList.Add(member + "." + suffix);
+        string[] keys = [.. keyList];
         // A plausible argument: a key that needs one and gets none can refuse for
         // that reason alone and be counted as unanswered when it is not.
         const string arg = "1";
@@ -198,7 +194,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         // name -> uses, and whether it was ever written bare / ever written dotted.
         // SRC.P and SRC.P.X are different questions; answering one does not answer
         // the other, so a name used both ways is probed both ways.
-        var seen = new Dictionary<string, (int Uses, bool Dotted, bool Bare, string File)>(
+        var seen = new Dictionary<string, (int Uses, HashSet<string> Suffixes, string File)>(
             StringComparer.OrdinalIgnoreCase);
 
         foreach (string file in files)
@@ -209,11 +205,15 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             foreach (Match m in MemberCall.Matches(text))
             {
                 string name = m.Groups[1].Value;
-                bool dotted = m.Groups[2].Value == ".";
-                if (seen.TryGetValue(name, out var prev))
-                    seen[name] = (prev.Uses + 1, prev.Dotted || dotted, prev.Bare || !dotted, prev.File);
-                else
-                    seen[name] = (1, dotted, !dotted, Path.GetFileName(file));
+                string suffix = m.Groups[2].Success ? m.Groups[2].Value : "";
+                if (!seen.TryGetValue(name, out var prev))
+                {
+                    prev = (0, new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                            Path.GetFileName(file));
+                }
+                if (suffix.Length > 0 && prev.Suffixes.Count < 12)
+                    prev.Suffixes.Add(suffix);
+                seen[name] = (prev.Uses + 1, prev.Suffixes, prev.File);
             }
         }
 
@@ -221,6 +221,11 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         var world = TestHarness.CreateWorld();
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;
+        // Some members only answer when the object HAS the thing they describe: a
+        // stone with no guild record behind it cannot answer ABBREV, and reporting
+        // that as "nothing answers it" would be measuring the probe, not the engine.
+        var probeGuild = new SphereNet.Game.Guild.GuildDef(new Core.Types.Serial(1));
+        Item.ResolveGuild = _ => probeGuild;
 
         // A real client, because its verb table is the one the interpreter reaches
         // through; a stub console answers nothing and would report every client verb
@@ -238,8 +243,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         foreach (var (name, info) in seen)
         {
             if (functions.Contains(name)) continue;
-            if (info.Bare && EngineAnswers(world, client, name, false)) continue;
-            if (info.Dotted && EngineAnswers(world, client, name, true)) continue;
+            if (EngineAnswers(world, client, name, info.Suffixes)) continue;
             unanswered.Add((name, info.Uses, info.File));
         }
 

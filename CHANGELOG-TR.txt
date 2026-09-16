@@ -3,6 +3,39 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Tasin kendi kaydi, ve paketin kendi sozcukleriyle sormak
+----------------------------------------
+
+FIX - Bir lonca ya da sehir tasi okunamiyordu. ABBREV, ALIGN, MASTERUID ve
+        WEBPAGE ust kaynakta tasin uzerinde durur (CItemStone_props.tbl) ve yazma
+        tarafi zaten vardi - klasik bir kayit bunlari tas satirlari olarak tasir -
+        ama hicbiri geri okunamiyordu. <MASTERUID> != <SRC.UID> ile kapi tutan her
+        tas dialogu, bir uid'i BOS bir yanitla karsilastiriyordu; bu da lonca
+        ustasini herkesle birlikte reddeder, ve lonca listesinde hic kisaltma
+        gorunmuyordu.
+
+FIX - Bir karaktere hasar araliginin yarisi sorulamiyordu. Paketin kendi hasar
+        kaydi her vurusun iki tarafindan ARMOR.LO/.HI ve DAM.LO/.HI okuyor;
+        esyalar bunlari yanitliyor, karakterler yanitlamiyordu, yani o sutunlar
+        bos gidiyordu. DAM ust kaynaktaki gibi bolunuyor; ARMOR ise BOLUNMUYOR -
+        ust kaynak once IsChar'a bakar ve sonek ne olursa olsun kusanilmis toplami
+        yanitlar (CObjBase.cpp:1051), bu yuzden dort yazim da ayni yaniti veriyor;
+        kaynagi olmayan bir karakter-tarafi araligi uydurulmadi.
+
+FIX - DEBUG yeniden bir gorevli anahtari, ve yaptigi tek somut seyle: bir binek
+        binicisinin parcasi olarak cizilir ve herkesin gorusunden cikarilir; ust
+        kaynak DEBUG'daki bir izleyicinin onu yine de gormesine izin verir
+        (CClient.cpp:421). Paketle gelen giris script'i bu bayragi her oyuncuda
+        temizliyor - ki adi yanitlayan bir sey yokken bunu yapamaz.
+
+CHANGE - Paket-uye sondasi artik uydurma soneklerle degil PAKETIN yazdigi
+        soneklerle soruyor. Sonek tahmin etmek, motorun hic yanitlamasi
+        beklenmeyen sorular sormaktir: .PROBE, arkasinda bin alti yuz kullanim olan
+        ACT'i eksik diye bildirdi; .P ise motorun yanitladigi ARMOR.LO'yu eksik
+        diye bildirdi. Gercek soneklerle dort ad daha, hic bosluk olmadiklari
+        anlasilarak baseline'dan cikti - ATTACKER ve SECTOR bunlar arasinda.
+        47 -> 31.
+
 [2026-09-17] - Paketin sordugu ve hicbir seyin yanitlamadigi uc tur sorusu
 ----------------------------------------
 

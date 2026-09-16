@@ -3,6 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Sunucuya onundeki karede ne gordugunu sormak
+----------------------------------------
+
+CHANGE - .WALKDIAG artik reddedilmis bir adimin gelmesini beklemek yerine
+        onundeki kareyi sorabiliyor. Istemcinin KENDI reddettigi adim hic
+        gonderilmez: ClassicUO gondermeden once kendi Pathfinder.CanWalk
+        kontrolunu calistirir ve basarisiz olursa adimi duser
+        (PlayerMobile.cs:572); yani karaya cikamayan bir oyuncu tusa gun boyu
+        basabilir, sunucu hicbir sey gormez ve anahtar sessiz kalir. Anahtari
+        acmak artik ileri kareyi de bildiriyor, `.walkdiag probe` ise anahtara
+        dokunmadan bildiriyor. Sonda "sunucu bu adima IZIN VERIRDI" diyorsa ret
+        istemcinindir ve anlasmazlik ikisinin okudugu kare geometrisindedir -
+        karsilastirilmasi gereken sey de odur. Iki okuyucu da artik ayni izi
+        basiyor.
+
 [2026-09-16] - Bir fazla vurus, ve kurtardigini adiyla soyleyen bir denetim
 ----------------------------------------
 

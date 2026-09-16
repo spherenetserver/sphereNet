@@ -1421,12 +1421,40 @@ public sealed class CommandHandler
         // with no evidence attached.
         Register("WALKDIAG", PrivLevel.Counsel, (gm, args) =>
         {
-            gm.WalkDiag = string.IsNullOrEmpty(args)
-                ? !gm.WalkDiag
-                : args != "0" && !args.Equals("off", StringComparison.OrdinalIgnoreCase);
-            OnSysMessage?.Invoke(gm, gm.WalkDiag
-                ? "Walk diagnostic ON - a refused step will say why."
-                : "Walk diagnostic OFF.");
+            // A refused step often never reaches the server: ClassicUO runs its own
+            // Pathfinder.CanWalk before sending and simply drops the step when it
+            // fails (PlayerMobile.cs:572), so the toggle alone can stay silent while
+            // the player is being stopped every time they press the key. The probe is
+            // the other half - it asks the server what IT sees on the tile ahead,
+            // which is the only way to tell "the server refused" from "the client
+            // refused and never asked".
+            bool probeOnly = args.Equals("probe", StringComparison.OrdinalIgnoreCase)
+                || args == "?";
+            if (!probeOnly)
+            {
+                gm.WalkDiag = string.IsNullOrEmpty(args)
+                    ? !gm.WalkDiag
+                    : args != "0" && !args.Equals("off", StringComparison.OrdinalIgnoreCase);
+                OnSysMessage?.Invoke(gm, gm.WalkDiag
+                    ? "Walk diagnostic ON - a refused step will say why, and the tile ahead follows."
+                    : "Walk diagnostic OFF.");
+                if (!gm.WalkDiag)
+                    return;
+            }
+
+            var probeDir = (SphereNet.Core.Enums.Direction)((byte)gm.Direction & 0x07);
+            var probe = new SphereNet.Game.Movement.WalkCheck(world);
+            bool ok = probe.CheckMovementDetailed(gm, gm.Position, probeDir,
+                out int probeZ, out var probeDiag);
+            OnSysMessage?.Invoke(gm, ok
+                ? $"[walk] the server would allow {probeDir} from " +
+                  $"{gm.X},{gm.Y},{gm.Z}, landing at z={probeZ}. A step you cannot " +
+                  "take is being refused by the client, not here."
+                : $"[walk] the server would refuse {probeDir}:");
+            if (!ok)
+                foreach (string line in SphereNet.Game.Movement.WalkCheck.DescribeDiagnostic(
+                             probeDiag, probeDir, gm.Position))
+                    OnSysMessage?.Invoke(gm, line);
         });
 
         Register("TELE", PrivLevel.Counsel, (gm, _) =>

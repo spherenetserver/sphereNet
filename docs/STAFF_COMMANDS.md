@@ -1,4 +1,4 @@
-# Staff / GM Commands
+﻿# Staff / GM Commands
 
 Complete reference of in-game staff commands and server-console commands.
 
@@ -50,6 +50,7 @@ Complete reference of in-game staff commands and server-console commands.
 | `.tele` | — | Target; teleport to the picked point/object. |
 | `.unstick` | — | Teleport to the default Britain bank (stuck recovery). |
 | `.update` | — | Trigger a script resync. |
+| `.walkdiag` | `[0\|1\|on\|off\|probe]` | Explain refused steps. Toggling on also reports the tile ahead; `probe` reports it without changing the toggle. The client drops a step its own check refuses without sending it, so a silent toggle plus an allowing probe means the refusal is the client's. |
 | `.xedit` | `[uid page]` | With args like `.edit`; no arg opens an EVENTS target cursor. |
 | `.xshow` | `[text]` (def EVENTS) | Target; show the picked object's EVENTS. |
 

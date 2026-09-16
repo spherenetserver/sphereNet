@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
@@ -89,6 +89,39 @@ public sealed class WalkCheck
         int FwdStaticTotal, int FwdImpassableCount, ushort FwdLandTileId,
         string FwdStaticDump,
         int FwdMobileCount, string FwdMobileDump);
+
+    /// <summary>The refusal trace, as lines a staff member can read.
+    ///
+    /// Both readers of a diagnostic print the same thing: the step handler when a
+    /// step was actually refused, and .WALKDIAG's own probe. The probe exists
+    /// because a refused step often never reaches the server at all - ClassicUO
+    /// runs its own Pathfinder.CanWalk before sending and simply drops the step
+    /// when it fails (PlayerMobile.cs:572), so "I could not step there" can come
+    /// with no packet behind it and nothing for the server to explain. Asking the
+    /// server what IT sees on the tile ahead is then the only way to compare the
+    /// two.</summary>
+    public static List<string> DescribeDiagnostic(Diagnostic diag, Direction d, Point3D from)
+    {
+        var lines = new List<string>(4)
+        {
+            $"[walk] {d} from {from.X},{from.Y},{from.Z}: " +
+            $"reason={diag.FwdReason ?? "(none)"} fwdOk={diag.ForwardOk} " +
+            $"mobBlocked={diag.MobBlocked} diag={diag.DiagonalChecked}/" +
+            $"L{diag.LeftOk}R{diag.RightOk}",
+
+            $"[walk] target land tile 0x{diag.FwdLandTileId:X4} " +
+            $"z={diag.FwdLandZ} centre={diag.FwdLandCenter} top={diag.FwdLandTop} " +
+            $"blocks={diag.FwdLandBlocks} considered={diag.FwdConsiderLand}; " +
+            $"surfaces={diag.FwdSurfaceCount}+{diag.FwdItemSurfaceCount} " +
+            $"statics={diag.FwdStaticTotal} impassable={diag.FwdImpassableCount} " +
+            $"mobiles={diag.FwdMobileCount}",
+        };
+        if (!string.IsNullOrEmpty(diag.FwdStaticDump))
+            lines.Add($"[walk] {diag.FwdStaticDump}");
+        if (!string.IsNullOrEmpty(diag.FwdMobileDump))
+            lines.Add($"[walk] {diag.FwdMobileDump}");
+        return lines;
+    }
 
     /// <summary>Entry point. Returns true if <paramref name="mover"/> can step
     /// in direction <paramref name="d"/> from <paramref name="loc"/>, and sets

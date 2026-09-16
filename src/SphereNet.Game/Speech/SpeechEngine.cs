@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
@@ -1414,6 +1414,19 @@ public sealed class CommandHandler
                     ? ServerMessages.Get("gm_allshow_on")
                     : ServerMessages.Get("gm_allshow_off"));
             }
+        });
+
+        // The walk check already explains every refusal to itself; this is the switch
+        // that lets a GM read it. Without it, "I could not step there" is a report
+        // with no evidence attached.
+        Register("WALKDIAG", PrivLevel.Counsel, (gm, args) =>
+        {
+            gm.WalkDiag = string.IsNullOrEmpty(args)
+                ? !gm.WalkDiag
+                : args != "0" && !args.Equals("off", StringComparison.OrdinalIgnoreCase);
+            OnSysMessage?.Invoke(gm, gm.WalkDiag
+                ? "Walk diagnostic ON - a refused step will say why."
+                : "Walk diagnostic OFF.");
         });
 
         Register("TELE", PrivLevel.Counsel, (gm, _) =>

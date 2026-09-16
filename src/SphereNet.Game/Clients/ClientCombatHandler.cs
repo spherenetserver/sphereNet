@@ -358,6 +358,28 @@ public sealed class ClientCombatHandler
             moved = true;
         }
 
+        // A refused step, explained - but only when a GM asked for it with .WALKDIAG.
+        // The check builds this trace on every call and nothing ever read it.
+        if (!moved && _character.WalkDiag)
+        {
+            SysMessage(
+                $"[walk] refused {direction} from {_character.X},{_character.Y},{_character.Z}: " +
+                $"reason={moveDiag.FwdReason ?? "(none)"} fwdOk={moveDiag.ForwardOk} " +
+                $"mobBlocked={moveDiag.MobBlocked} diag={moveDiag.DiagonalChecked}/" +
+                $"L{moveDiag.LeftOk}R{moveDiag.RightOk}");
+            SysMessage(
+                $"[walk] target land tile 0x{moveDiag.FwdLandTileId:X4} " +
+                $"z={moveDiag.FwdLandZ} centre={moveDiag.FwdLandCenter} top={moveDiag.FwdLandTop} " +
+                $"blocks={moveDiag.FwdLandBlocks} considered={moveDiag.FwdConsiderLand}; " +
+                $"surfaces={moveDiag.FwdSurfaceCount}+{moveDiag.FwdItemSurfaceCount} " +
+                $"statics={moveDiag.FwdStaticTotal} impassable={moveDiag.FwdImpassableCount} " +
+                $"mobiles={moveDiag.FwdMobileCount}");
+            if (!string.IsNullOrEmpty(moveDiag.FwdStaticDump))
+                SysMessage($"[walk] {moveDiag.FwdStaticDump}");
+            if (!string.IsNullOrEmpty(moveDiag.FwdMobileDump))
+                SysMessage($"[walk] {moveDiag.FwdMobileDump}");
+        }
+
         if (moved)
         {
             _character.LastMoveTick = now;

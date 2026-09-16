@@ -742,8 +742,14 @@ public sealed class ClientItemUseHandler
                     SysMessage(ServerMessages.Get(Msg.TillerNotyourship));
                     break;
                 }
+                // ONE above the plank, as upstream boards: CCharUse.cpp:1824 takes the
+                // plank's own point and does ++m_z before teleporting. Three put the
+                // boarder two units above the deck they were meant to land on, and
+                // every step they took afterwards was measured from that wrong height -
+                // which is what turns "walk ashore" into "the server says no" on a
+                // shoreline whose own height is only a little different.
                 _world.MoveCharacter(_character,
-                    new Point3D(item.X, item.Y, (sbyte)(item.Z + 3), item.MapIndex));
+                    new Point3D(item.X, item.Y, (sbyte)(item.Z + 1), item.MapIndex));
                 // Stepping aboard is a teleport, and a teleport reveals: Source-X runs
                 // the plank boarding through Spell_Teleport, which ends in Reveal
                 // (CCharUse.cpp:1827 -> CCharSpell.cpp:232 -> CCharAct.cpp:3491). A

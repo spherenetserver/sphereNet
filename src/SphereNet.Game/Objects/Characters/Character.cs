@@ -972,6 +972,13 @@ public partial class Character : ObjBase
     /// <summary>GM AllShow mode — shows invisible objects with a grey hue. Runtime-only, not persisted.</summary>
     public bool AllShow { get => _allShow; set => _allShow = value; }
 
+    /// <summary>Staff walk diagnostic: while on, a REFUSED step answers with the
+    /// reason the walk check gave. The check already builds a full trace of why the
+    /// forward tile rejected every candidate surface - it was simply never shown to
+    /// anyone, which left "I could not walk there" as a report with no evidence in
+    /// it. Runtime-only, not persisted.</summary>
+    public bool WalkDiag { get; set; }
+
     /// <summary>GM AllMove mode — bypass walk collision (walls, statics, mobiles).
     /// Requires PrivLevel.GM+ to be honored. Runtime-only, not persisted.</summary>
     public bool AllMove { get => _allMove; set => _allMove = value; }

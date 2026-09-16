@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - One swing too many, and an audit that names what it rescued
+----------------------------------------
+
+FIX - A gathering swing played one animation more than it had strokes, and the
+        surplus one landed after the result. Upstream animates a gathering skill
+        only from Skill_Stroke, which runs on the DELAY timeout: the first swing
+        lands one DELAY in and the stroke that takes the count to zero IS the
+        success (CCharSkill.cpp:3630-3643). This fired one at schedule time as
+        well, so a swing played strokeCount+1 - and because the loop fires its
+        last stroke on the same tick that completes the skill, that surplus
+        animation started just before the result message and was still playing
+        after it: a pick still swinging at a vein the player had just been told
+        was empty. Fishing and lumberjacking share the machinery and the fix.
+
+CHANGE - The decay registration audit now names the items it re-queued: uid,
+        graphic, type, attributes, script timeout, how overdue the deadline is
+        and where the item is standing, up to eight of them. It has been
+        reporting a count for weeks without ever saying which door skipped
+        registration, and the candidates - a type that survives its own expiry, a
+        script that re-armed by writing the deadline, an item armed before the
+        world resolver was wired - are only distinguishable by what the items
+        ARE.
+
 [2026-09-16] - Every ore came out of the forge as iron
 ----------------------------------------
 

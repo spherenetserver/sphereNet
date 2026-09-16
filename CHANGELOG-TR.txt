@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Bir fazla vurus, ve kurtardigini adiyla soyleyen bir denetim
+----------------------------------------
+
+FIX - Bir toplama salinimi, vurus sayisindan bir fazla animasyon oynatiyor ve
+        fazlalik sonuctan SONRA dusuyordu. Ust kaynak toplama becerisini yalnizca
+        Skill_Stroke'tan canlandirir; o da DELAY zaman asiminda calisir: ilk
+        salinim bir DELAY sonra duser ve sayiyi sifira indiren vurus BASARININ
+        kendisidir (CCharSkill.cpp:3630-3643). Burada bir tane de zamanlama
+        aninda atiliyordu, yani bir salinim strokeCount+1 oynuyordu - ve dongu
+        son vurusunu beceriyi tamamlayan tick'te attigi icin o fazlalik animasyon
+        sonuc mesajindan hemen once basliyor ve mesajdan sonra da oynamaya devam
+        ediyordu: oyuncuya bos oldugu az once soylenmis bir damara hala vuran bir
+        kazma. Balikcilik ve oduncululuk ayni duzenegi ve ayni duzeltmeyi
+        paylasiyor.
+
+CHANGE - Decay kayit denetimi artik yeniden kuyruga aldigi esyalari adiyla
+        soyluyor: uid, grafik, tur, oznitelikler, script zaman asimi, sure
+        asiminin ne kadar oldugu ve esyanin nerede durdugu - en fazla sekiz tane.
+        Haftalardir yalnizca bir SAYI bildiriyordu ve hangi kapinin kaydi
+        atladigini hic soylemiyordu; adaylar da (kendi sona erisinden sag cikan
+        bir tur, son tarihi dogrudan yazarak yeniden kuran bir script, dunya
+        cozucusu baglanmadan once kurulmus bir esya) ancak esyalarin NE oldugu
+        ile ayirt edilebiliyor.
+
 [2026-09-16] - Ocaktan cikan her cevher demirdi
 ----------------------------------------
 

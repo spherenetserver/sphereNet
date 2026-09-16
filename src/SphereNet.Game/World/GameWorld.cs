@@ -2305,10 +2305,33 @@ public sealed class GameWorld
             queued.Add(item);
 
         int missing = 0;
+        // Naming them is the point. "N items were unqueued" has been true for weeks
+        // without ever saying WHICH door skipped registration, and the candidates
+        // (a type that survives its own expiry, a script that re-armed by writing the
+        // deadline, an item armed while the world resolver was not yet wired) are
+        // only distinguishable by what the items ARE. A handful per audit costs
+        // nothing to describe; a flood is capped so a broken invariant cannot drown
+        // the log.
+        System.Text.StringBuilder? detail = null;
         foreach (var it in _groundItems)
         {
             if (it.IsDeleted || it.DecayTime <= 0 || queued.Contains(it))
                 continue;
+            if (missing < DecayAuditDetailCap)
+            {
+                detail ??= new System.Text.StringBuilder();
+                if (detail.Length > 0) detail.Append("; ");
+                long overdueMs = now - it.DecayTime;
+                detail.Append("uid=0x").Append(it.Uid.Value.ToString("X8"))
+                      .Append(" id=0x").Append(it.DispIdFull.ToString("X4"))
+                      .Append(" type=").Append(it.ItemType)
+                      .Append(" attr=").Append(it.Attributes)
+                      .Append(" timeout=").Append(it.Timeout)
+                      .Append(overdueMs >= 0 ? " overdue=" : " due_in=")
+                      .Append(Math.Abs(overdueMs) / 1000).Append('s')
+                      .Append(" at=").Append(it.X).Append(',').Append(it.Y)
+                      .Append(',').Append(it.Z).Append(',').Append(it.MapIndex);
+            }
             _decayDue.Enqueue(it, it.DecayTime);
             missing++;
         }
@@ -2316,12 +2339,18 @@ public sealed class GameWorld
         if (missing > 0)
             _logger.LogWarning(
                 "Decay audit re-queued {Missing} armed item(s) the due queue did not hold. " +
-                "Their deadlines were set without reaching the registration door.", missing);
+                "Their deadlines were set without reaching the registration door. [{Detail}]",
+                missing, detail?.ToString() ?? "");
         return missing;
     }
 
     /// <summary>How often the decay registration audit runs.</summary>
     internal const long DecayAuditIntervalMs = 60_000;
+
+    /// <summary>How many of the re-queued items the audit describes by name. A
+    /// handful is the diagnosis; a flood would be a broken invariant drowning the
+    /// log, and the count alone says that.</summary>
+    internal const int DecayAuditDetailCap = 8;
 
     public void CollectExpiredGroundItems(long now, int max, List<Item> buffer)
     {

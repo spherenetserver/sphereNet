@@ -440,7 +440,16 @@ public sealed class ClientSkillsHandler
             point,
             isInfo);
 
-        FireActiveSkillStroke(skillId);
+        // A gathering swing gets its strokes from the loop below and NOTHING here.
+        // Upstream animates only from Skill_Stroke, which runs on the timeout - the
+        // first swing lands one DELAY in, and the count reaching zero IS the success
+        // (CCharSkill.cpp:3630-3643). Firing one here as well made every swing play
+        // strokeCount+1 animations, and because the loop fires its last stroke on the
+        // same tick that completes the skill, that surplus animation started just
+        // before the result message and was still playing after it - a pick still
+        // swinging at a vein the player had just been told was empty.
+        if (!isGather)
+            FireActiveSkillStroke(skillId);
         return true;
     }
 

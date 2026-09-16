@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
@@ -82,6 +82,11 @@ public sealed class GatherParity05BTests
             RESOURCES=100.0 r_05b_ore
             """;
 
+        return BuildRig(lf, script, onCreate);
+    }
+
+    private static Rig BuildRig(ILoggerFactory lf, string script, Action<Item>? onCreate)
+    {
         string path = Path.Combine(Path.GetTempPath(), $"sphnet_05b_{Guid.NewGuid():N}.scp");
         File.WriteAllText(path, script);
 
@@ -125,6 +130,37 @@ public sealed class GatherParity05BTests
         };
 
         return rig;
+    }
+
+    /// <summary>The shape every Sphere pack writes its coloured resources in: a
+    /// NAMED definition that draws as another one (ID=i_ore_iron) and carries its
+    /// colour in @Create, reached from REAP by that name. Resolving REAP to a
+    /// graphic collapses the whole table into the art they share.</summary>
+    private static Rig SetupNamedColourVariant()
+    {
+        var lf = LoggerFactory.Create(_ => { });
+        string script = $"""
+            [ITEMDEF 019b9]
+            NAME=iron ore
+
+            [ITEMDEF i_ore_05b_copper]
+            NAME=Copper Ore
+            ID=019b9
+            ON=@Create
+            COLOR=0641
+
+            [REGIONRESOURCE r_05b_copper]
+            DEFNAME=r_05b_copper
+            AMOUNT={Pool}
+            REAP=i_ore_05b_copper
+            REAPAMOUNT={ReapAmount}
+            SKILL=0.0
+
+            [REGIONTYPE r_05b_rock t_rock]
+            DEFNAME=r_05b_rock
+            RESOURCES=100.0 r_05b_copper
+            """;
+        return BuildRig(lf, script, null);
     }
 
     private static GatherResult Gather(Rig rig) =>
@@ -224,6 +260,23 @@ public sealed class GatherParity05BTests
         Assert.Equal((ushort)0x0455, result.Item!.Hue);
         Assert.True(result.Item.TryGetTag("REVIEW_CREATED", out string? tag));
         Assert.Equal("1", tag);
+    }
+
+    [Fact]
+    public void ANamedColourVariantIsReapedAsItself_NotAsTheArtItShares()
+    {
+        // i_ore_copper is ID=i_ore_iron plus an @Create colour, and REAP names it by
+        // name. Resolving that to the GRAPHIC answers with iron's definition, so
+        // every colour in the table came out of the ground as plain iron ore - which
+        // is what "all my ore is the same colour" looks like at the vein, and what
+        // then made every ingot iron at the forge.
+        var result = Gather(SetupNamedColourVariant());
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Item);
+        Assert.Equal((ushort)0x019b9, result.Item!.BaseId);   // shares iron's art
+        Assert.Equal((ushort)0x0641, result.Item.Hue.Value);  // but is copper
+        Assert.Equal("Copper Ore", result.Item.Name);
     }
 
     [Fact]

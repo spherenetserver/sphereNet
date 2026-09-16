@@ -77,6 +77,58 @@ public class SkillDelayTests
     }
 
     [Fact]
+    public void GatheringSwing_DoesNotStrokeBeforeTheFirstDelayHasPassed()
+    {
+        // Upstream animates a gathering swing only from Skill_Stroke, which runs on
+        // the DELAY timeout: the first swing lands one DELAY in, and the stroke that
+        // takes the count to zero IS the success (CCharSkill.cpp:3630-3643). Firing
+        // one at schedule time as well played strokeCount+1 animations - and because
+        // the loop fires its last stroke on the tick that completes the skill, the
+        // surplus one started just before the result and was still playing after it:
+        // a pick still swinging at a vein the player had just been told was empty.
+        LoadDefinitions("""
+            [SKILL 45]
+            KEY=Mining
+            FLAGS=skf_gather
+            DELAY=10
+            """);
+
+        var lf = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var client = TestHarness.CreateClient(lf, world,
+            new SphereNet.Game.Accounts.AccountManager(lf), 1309);
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.SetSkill(SkillType.Mining, 1000);
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, player);
+
+        var dispatcher = new TriggerDispatcher();
+        int strokes = 0;
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "SkillStroke",
+            (_, _) => { strokes++; return TriggerResult.Default; });
+        // No skill handlers: the resource probe is skipped, so the schedule is what
+        // is under test rather than what is under the tile.
+        client.SetEngines(triggerDispatcher: dispatcher);
+
+        client.HandleUseSkill((int)SkillType.Mining);
+        Assert.True(client.HasPendingTarget);
+        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 101, 100, 0, 0);
+
+        Assert.True(player.HasActiveSkillPending());
+        Assert.Equal(0, strokes);
+
+        // And the schedule holds exactly strokeCount boundaries, the last of them
+        // landing on the completion instant - so the loop fires strokeCount strokes
+        // and stops, with the last one coinciding with the result as upstream's does.
+        int delayMs = SkillEngine.GetSkillDelayMs(SkillType.Mining, player.GetSkill(SkillType.Mining));
+        Assert.True(delayMs > 0);
+        long span = player.SkillDelayEnd - player.SkillStrokeNext;
+        Assert.Equal(0, span % delayMs);
+        Assert.InRange(span / delayMs + 1, 2, 6); // mining rolls 2-6 (CCharSkill.cpp:1463)
+    }
+
+    [Fact]
     public void DelayedActiveSkill_FiresStrokeBeforeSuccessInSourceXOrder()
     {
         LoadDefinitions("""

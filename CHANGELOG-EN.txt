@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - Reading the same terrain file the client reads
+----------------------------------------
+
+FIX - The server took any map{N}LegacyMUL.uop it could find, while the client
+        reads the UOP terrain only when the folder is a UOP installation - a
+        MainMisc.uop beside the rest (ClassicUO UOFileManager:29) - and otherwise
+        reads map{N}.mul even with the .uop sitting right there
+        (MapLoader.cs:147-166). A folder holding both files, which is what copying
+        a client install next to a shard's own legacy map produces, therefore had
+        the server reading one terrain and the client reading the other, with
+        nothing reporting it: the disagreement surfaces only as the server
+        allowing a step the client refuses, or a character standing at a height
+        the client draws ground below. The choice now follows the client's rule.
+
+CHANGE - The startup log names the terrain file and which rule picked it, so a
+        mismatched data folder is visible in the first ten lines of a log rather
+        than inferred from movement bugs.
+
 [2026-09-16] - A colour named in a defname resolved to no colour at all
 ----------------------------------------
 

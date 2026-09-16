@@ -1,4 +1,4 @@
-using SphereNet.MapData.Map;
+﻿using SphereNet.MapData.Map;
 using SphereNet.MapData.Multi;
 using SphereNet.MapData.Tiles;
 
@@ -128,8 +128,27 @@ public sealed class MapDataManager : IDisposable
         OnMapFileLoadedDetailed?.Invoke(mapId, path, info.Length, info.LastWriteTimeUtc);
     }
 
+    /// <summary>Whether this data folder is a UOP installation, by the CLIENT's own
+    /// test: a MainMisc.uop next to the rest (ClassicUO UOFileManager:29,
+    /// IsUOPInstallation). The client reads the UOP terrain only when this holds and
+    /// otherwise reads map{N}.mul EVEN IF the .uop file is sitting right there
+    /// (MapLoader.cs:147-166).
+    ///
+    /// The server has to make the same choice for the same reason, and used to
+    /// prefer any .uop it could find. A folder holding both files - which is what
+    /// copying a client install plus a shard's own custom legacy map produces -
+    /// then had the server reading one terrain and the client reading the other,
+    /// with no error anywhere: every disagreement showed up only as the server
+    /// allowing a step the client refused, or a character standing at a height the
+    /// client draws ground below.</summary>
+    private bool IsUopInstallation =>
+        File.Exists(Path.Combine(_mulPath, "MainMisc.uop"));
+
     private string? FindUopMap(int mapId)
     {
+        if (!IsUopInstallation)
+            return null;
+
         // Prefer the 'x' (patched/updated) variant — matches modern client terrain
         string xName = $"map{mapId}xLegacyMUL.uop";
         string xPath = Path.Combine(_mulPath, xName);

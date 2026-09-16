@@ -673,7 +673,14 @@ public static partial class Program
 
         _mapData = new MapDataManager(mulPath);
         _mapData.OnMapFileLoaded += (id, path) =>
-            _log.LogInformation("Map{Id} loaded from: {Path}", id, path);
+            // Name the terrain file, loudly. The client picks between map{N}.mul and
+            // map{N}LegacyMUL.uop by its own rule, and a folder holding both is the
+            // shape where server and client silently read different ground - a
+            // disagreement that surfaces only as refused steps and wrong heights.
+            _log.LogInformation("Map{Id} terrain: {Path} ({Kind})", id, path,
+                path.EndsWith(".uop", StringComparison.OrdinalIgnoreCase)
+                    ? "UOP - the client reads this only when MainMisc.uop is present"
+                    : "MUL - the client reads this when MainMisc.uop is absent");
         _mapData.OnMapFileLoadedDetailed += (id, path, bytes, utc) =>
             _log.LogInformation("Map{Id} data file: {Path} bytes={Bytes} modifiedUtc={ModifiedUtc:O}",
                 id, path, bytes, utc);

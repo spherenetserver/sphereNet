@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Istemcinin okudugu arazi dosyasini okumak
+----------------------------------------
+
+FIX - Sunucu bulabildigi herhangi bir map{N}LegacyMUL.uop dosyasini aliyordu;
+        oysa istemci UOP araziyi yalnizca klasor bir UOP kurulumuysa - yaninda
+        MainMisc.uop varsa - okur (ClassicUO UOFileManager:29), aksi halde .uop
+        dosyasi orada dururken bile map{N}.mul okur (MapLoader.cs:147-166). Ikisini
+        birden barindiran bir klasor - ki bir istemci kurulumunu shard'in kendi
+        eski haritasinin yanina kopyalamak tam da bunu uretir - sunucunun bir
+        araziyi, istemcinin baskasini okumasi demekti ve bunu bildiren hicbir sey
+        yoktu: anlasmazlik ancak sunucunun istemcinin reddettigi bir adima izin
+        vermesi ya da karakterin istemcinin altina zemin cizdigi bir yukseklikte
+        durmasi olarak gorunuyordu. Secim artik istemcinin kuralini izliyor.
+
+CHANGE - Acilis logu arazi dosyasini ve onu hangi kuralin sectigini adiyla
+        yaziyor; boylece uyumsuz bir veri klasoru, hareket hatalarindan cikarim
+        yapmak yerine logun ilk on satirinda gorunuyor.
+
 [2026-09-16] - Defname ile verilen renk hicbir renge cozulmuyordu
 ----------------------------------------
 

@@ -305,12 +305,38 @@ araligi (stroke DELAY) ayri bir konu ve gozden gecirilmedi.
 
 ---
 
-## 11. `ARASTIRILACAK` - Coklu yapilarin (multi/house) gorsel yenilenmesi
+## 11. `UYGULANDI` - Coklu yapilarin (multi/house) gorsel yenilenmesi
 
-Delta gorunum coklu yapilari yer esyasi gibi takip ediyor (`IsMultiBody` dali).
-Bir evin tasarimi degistiginde (0xD8 ozel ev akisi) veya bir gemi dondugunde
-bilesenlerin yeniden cizimi ayri yollardan gidiyor. Bu denetimde yalnizca gemi
-yolcusu yolu incelendi (ve duzeltildi); ev tasarim akisi acik.
+**Belirti:** Ozellestirilmis bir ev, onu inseden baskasinin ekraninda ciplak temel
+olarak duruyor.
+
+**Kok:** Ozel bir evin tasarimi istemcinin ISTEMESI gereken bir akista gelir
+(0xD8). Istemci bunu yalnizca elinde olmayan bir revizyon numarasi
+soylendiginde ister (0xBF 0x1D; ClassicUO `PacketHandlers.cs:4548-4566`).
+Buradaki kod revizyonu SADECE commit aninda ve yalnizca yakindaki istemcilere
+gonderiyordu; ev kurulurken yaninda durmayan herkes - sonradan giris yapan,
+yuruyerek gelen, resync olan - hic revizyon gormedigi icin hic istemiyor ve
+temeli cizmeye devam ediyordu.
+
+**Ust kaynak:** Revizyon, coklu yapinin KENDISI bir istemciye her gonderilisinde
+pesinden gider - `CClient::addItem` icinde tooltip'ten hemen sonra
+(`CClientMsg.cpp:380-386`, `SendVersionTo`). Yani goruse girmek, giris yapmak ve
+commit ayni isteme cikar.
+
+**Duzeltme:** `SendWorldItem` / `SendWorldItemWithHue` / `SendWorldItemAllShow`
+- yer esyasinin istemciye gittigi tek kapi - artik `ItemType.MultiCustom` icin
+revizyonu ardindan gonderiyor. Kapi, evin gercekten commit edilmis bir tasarimi
+olmasina bagli (DESIGN_REVISION etiketi): hic ozellestirilmemis bir temelde
+istegi ancak BOS bir bilesen listesiyle yanitlayabilirdik, ki bu istemciye
+"evin ici bos" demektir - "elindeki multi'yi cizmeye devam et" degil.
+Test: `CustomHouseRevisionOnViewTests`.
+
+**Gemi tarafi:** Ayni bulgunun gemi yarisi zaten calisiyor. Donen tekne govdesine
+yeni multi grafigi yaziliyor (`ShipEngine.cs:643`), delta demeti `DispIdFull`
+tasidigi icin 0x1A yeniden gidiyor ve istemci grafik/konum/renk degisen bir
+multi'de bilesenleri kendisi yeniden kuruyor (`WantUpdateMulti`,
+`PacketHandlers.cs:6267-6276`). Commit'in gercege donusturdugu kapi/kap
+esyalari da siradan yer esyasi olarak delta'dan geciyor.
 
 ---
 
@@ -336,7 +362,8 @@ listeleniyor (hepsi commit'li):
 
 Bulgu 1-10 uygulandi ve testleri yazildi (`MobileFlagsTests`, `AnimationDoorTests`,
 `WornItemVisualTests`, `GroundItemFlagsTests`, `AnimVerbArgumentTests`; VisKey ve
-notorluk mevcut delta testlerinin kapsaminda). Bulgu 11 arastirma bekliyor.
+notorluk mevcut delta testlerinin kapsaminda). Bulgu 11 uygulandi
+(`CustomHouseRevisionOnViewTests`).
 
 Ayrica acik kalan iki nokta:
 
@@ -353,8 +380,7 @@ Ayrica acik kalan iki nokta:
 
 ## Onerilen sira
 
-Bulgu 1-10 tamamlandi. Sirada Bulgu 11 (ozel ev tasarim akisi) ve yukarida
-listelenen uc acik nokta var.
+Bulgu 1-11 tamamlandi. Sirada yukarida listelenen acik noktalar var.
 
 Her madde icin bu oturumda kullanilan yontem gecerli: once davranisi sabitleyen
 bir test yaz, duzeltmeden once kirmizi oldugunu gor, sonra duzelt.

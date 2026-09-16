@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Bir evin kurulmus oldugunu komsularina da soylemek
+----------------------------------------
+
+FIX - Ozellestirilmis bir ev, onu inseden herkes icin ciplak temel olarak
+        ciziliyordu. Ozel bir evin tasarimi istemcinin ISTEMESI gereken bir
+        akista gelir (0xD8) ve istemci bunu yalnizca elinde olmayan bir revizyon
+        numarasi soylendiginde ister (0xBF 0x1D; ClassicUO
+        PacketHandlers.cs:4548-4566). Revizyon yalnizca commit aninda ve yalnizca
+        o sirada yakinda olan istemcilere gidiyordu - sonradan giris yapan,
+        yuruyerek gelen ya da resync olan hic kimseye alinacak bir tasarim
+        oldugu soylenmiyordu. Ust kaynak revizyonu, coklu yapinin KENDISI bir
+        istemciye her gonderilisinde, tooltip'in hemen ardindan yollar
+        (CClient::addItem, CClientMsg.cpp:380-386); boylece goruse girmek, giris
+        yapmak ve commit ayni isteme cikar - yer esyasi kapisi artik bunu
+        yapiyor. Hic ozellestirilmemis bir temelde sessiz kaliyor: o istegi
+        yanitlayabilecegimiz tek akis BOS bir bilesen listesidir, ki bu
+        istemciye "evin ici bos" demektir, "elindeki multi'yi cizmeye devam et"
+        degil.
+
 [2026-09-16] - Damara vurmadan once ona sor
 ----------------------------------------
 

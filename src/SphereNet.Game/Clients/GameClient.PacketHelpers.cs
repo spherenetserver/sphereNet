@@ -862,6 +862,7 @@ public sealed partial class GameClient
             item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
             isMulti: IsMultiBody(item), source: item
         ));
+        SendHouseRevisionIfCustomMulti(item);
     }
 
     private void SendWorldItemWithHue(Item item, ushort hue)
@@ -871,6 +872,7 @@ public sealed partial class GameClient
             item.X, item.Y, item.Z, hue, item.Direction,
             isMulti: IsMultiBody(item), source: item
         ));
+        SendHouseRevisionIfCustomMulti(item);
     }
 
     internal void SendWorldItemAllShow(Item item)
@@ -880,6 +882,31 @@ public sealed partial class GameClient
             item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
             isMulti: IsMultiBody(item), source: item
         ));
+        SendHouseRevisionIfCustomMulti(item);
+    }
+
+    /// <summary>A customizable multi carries its design in a stream the client has
+    /// to ASK for, and it only asks when it is told a revision it does not already
+    /// hold (0xBF 0x1D; ClassicUO PacketHandlers.cs:4548-4566). Upstream therefore
+    /// sends the revision every time the multi itself is sent to a client - right
+    /// after the tooltip in CClient::addItem (CClientMsg.cpp:380-386) - so that
+    /// coming into view, logging in and a commit all lead to the same request.
+    /// Sending it at commit alone meant anyone who was not already standing next to
+    /// the house when it was built kept drawing the bare foundation.</summary>
+    private void SendHouseRevisionIfCustomMulti(Item item)
+    {
+        if (item.ItemType != ItemType.MultiCustom)
+            return;
+        // Only once the house HAS a committed design. A foundation that has never
+        // been customized carries no DESIGN_REVISION tag and no tiles, and a
+        // revision would make the client ask for a design stream we would have to
+        // answer with an empty component list - which is how the client is told a
+        // custom house has nothing in it, not how it is told to keep drawing the
+        // multi it already has.
+        if (!item.TryGetTag(HouseDesign.RevisionTag, out string? revStr) ||
+            !uint.TryParse(revStr, out uint revision))
+            return;
+        _netState.Send(new PacketHouseDesignVersion(item.Uid.Value, revision));
     }
 
     public void SendItemVisualUpdate(Item item)

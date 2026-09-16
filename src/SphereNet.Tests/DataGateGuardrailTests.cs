@@ -107,6 +107,7 @@ public sealed class DataGateGuardrailTests
             "56T scripts and save",
             "Source-X reference tree",
             "UOP map files",
+            "build stamp",
             "config/sphere.ini",
             "engine source",
             "external script pack",

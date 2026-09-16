@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Kazmayi dirgene ceviren bayt
+----------------------------------------
+
+FIX - Yerdeki bir esyanin kendi yonu, istemcinin grafige EKLEDIGI alanda
+        gonderiliyordu; bu yuzden yerdeki esyalar birkac id ilerideki sanat
+        neyse o olarak ciziliyordu. Grafigin ardindaki bayt bir yon degil,
+        grafik ARTISIDIR - 0x1A onu 0x8000 bayraginin arkasinda tasir, 0xF3'te
+        ayri bir graphicInc alani vardir ve istemci graphic += graphic_inc yapar
+        (ClassicUO PacketHandlers.cs:802-806 / :5699 / :6263). Ust kaynak onu tek
+        bir durum icin doldurur, cesedin bakis yonu (adjustItemData,
+        send.cpp:580), ve kurali aciklikla yazar: "bu paketle esya ya
+        cevrilebilir ya da isik kaynagi olabilir, ikisi birden degil" (:510).
+        Yere birakilan esyaya (o karoda zaten duran esya sayisi % 7) + 1 yonu
+        veriliyor; yani dolu bir karoya birakilan bir kazma (0x0E85) 0x0E87 -
+        dirgen - olarak, bir katana (0x13FF) ise 0x1400, bir kryss olarak
+        variyordu. Bos bir karoda artis 1 oluyordu, ki bir cevirme cifti icin bu
+        esyanin DIGER sanatidir ve dogru gorunur - bu yuzden sorun yalnizca bazen
+        cikiyordu ve .INFO ekranla hep celisiyordu: sunucudaki id bastan beri
+        dogruydu.
+
+CHANGE - Derleme artik hangi commit'ten uretildigini damgaliyor ve bunu
+        soyluyor. Sunucu acilista "Build: <commit> (built <ne zaman>)" satirini
+        yaziyor, panel ise GET /api/server/version ile commit'i, kirli bayragini,
+        derleme anini ve assembly surumunu yanitliyor. Dogrudan evet/hayir icin
+        ?expected=<sha> (yedi karakter veya daha uzun) ekleyin. Damgasiz bir
+        derleme - git olmadan ya da kaynak arsivinden uretilmis - uyusmazlik
+        iddia etmek yerine BILMEDIGINI bildiriyor; cunku "soyleyemem" ile "hayir"
+        farkli yanitlardir. "Shard duzeltmeyi calistiriyor mu?" sorusu aksi halde
+        tahminle yanitlaniyordu ve yanlis tahmin, kapanmis bir hatanin yeniden
+        aranmasina mal oluyor.
+
 [2026-09-16] - Sunucuya onundeki karede ne gordugunu sormak
 ----------------------------------------
 

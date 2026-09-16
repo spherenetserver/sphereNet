@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
@@ -597,6 +597,27 @@ public sealed class PanelHost : IDisposable
             // Same snapshot the SignalR push sends — no second, differently-sourced
             // CPU reading for the same moment.
             return Results.Ok(stats);
+        });
+
+        // Which commit this binary was built from. Asked because "is the shard
+        // running the fix?" otherwise has no answer but a guess, and guessing it
+        // wrong means hunting a bug that was already fixed. Pass ?expected=<sha>
+        // (7 characters or more) to get a direct yes/no; without it the endpoint
+        // only reports, and `upToDate` stays null because an unknown is not a no.
+        app.MapGet("/api/server/version", (string? expected) =>
+        {
+            return Results.Ok(new
+            {
+                commit = SphereNet.Core.Diagnostics.BuildInfo.Commit,
+                shortCommit = SphereNet.Core.Diagnostics.BuildInfo.ShortCommit,
+                dirty = SphereNet.Core.Diagnostics.BuildInfo.Dirty,
+                builtUtc = SphereNet.Core.Diagnostics.BuildInfo.BuiltUtc,
+                assemblyVersion = SphereNet.Core.Diagnostics.BuildInfo.AssemblyVersion,
+                raw = SphereNet.Core.Diagnostics.BuildInfo.Raw,
+                stamped = SphereNet.Core.Diagnostics.BuildInfo.Commit.Length > 0,
+                expected,
+                upToDate = SphereNet.Core.Diagnostics.BuildInfo.Matches(expected),
+            });
         });
 
         app.MapGet("/api/server/running", () =>

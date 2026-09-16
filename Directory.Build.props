@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <!--
     Tüm C# projeleri tek bir ortak çıktı klasörüne derlenir:
       bin\Debug\    veya    bin\Release\
@@ -15,6 +15,31 @@
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+
+  <!--
+    Build damgasi: calisan surumun HANGI commit'ten derlendigini soyleyebilmek icin.
+    "Sunucudaki kod guncel mi?" sorusu aksi halde ancak tahminle yanitlanabiliyor,
+    ve eski bir derlemede duzeltilmis bir hatayi yeniden aramakla vakit harcaniyor.
+    Git yoksa (yayinlanmis bir kopya, arsivden acilmis kaynak) damga bos kalir ve
+    derleme normal surer - bu yuzden hem .git kontrolu hem ContinueOnError var.
+  -->
+  <Target Name="SphereNetStampGitVersion" BeforeTargets="GetAssemblyAttributes"
+          Condition="'$(SphereNetSkipGitStamp)' != 'true' AND Exists('$(MSBuildThisFileDirectory).git')">
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SphereNetGitCommit" />
+    </Exec>
+    <Exec Command="git status --porcelain --untracked-files=no" ConsoleToMSBuild="true"
+          ContinueOnError="true" StandardOutputImportance="low"
+          WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SphereNetGitDirty" />
+    </Exec>
+    <PropertyGroup>
+      <_SphereNetCommit>$(_SphereNetGitCommit.Trim())</_SphereNetCommit>
+      <_SphereNetDirtyFlag Condition="'$(_SphereNetGitDirty.Trim())' != ''">+dirty</_SphereNetDirtyFlag>
+      <InformationalVersion Condition="'$(_SphereNetCommit)' != ''">$(_SphereNetCommit)$(_SphereNetDirtyFlag) $([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>

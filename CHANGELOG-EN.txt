@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - The byte that was turning a pickaxe into a pitchfork
+----------------------------------------
+
+FIX - A ground item's own facing was sent in the field the client ADDS to the
+        graphic, so items on the ground drew as whatever art sits a few ids
+        further on. The byte after the graphic is a graphic INCREMENT, not a
+        direction - 0x1A carries it behind the 0x8000 flag and 0xF3 has a
+        dedicated graphicInc field, and the client does graphic += graphic_inc
+        (ClassicUO PacketHandlers.cs:802-806 / :5699 / :6263). Upstream fills it
+        for exactly one case, a corpse's facing (adjustItemData, send.cpp:580),
+        and states the rule plainly: "with this packet the item can be flippable
+        OR a light source, not both" (:510). A dropped item is given a facing of
+        (items already on that tile % 7) + 1, so a pickaxe (0x0E85) dropped on an
+        occupied tile arrived as 0x0E87 - a pitchfork - and a katana (0x13FF) as
+        0x1400, a kryss. On an empty tile the increment was 1, which for a flip
+        pair is the item's OTHER art and looks right, which is why it only went
+        wrong sometimes and why .INFO always disagreed with the screen: the id on
+        the server was correct the whole time.
+
+CHANGE - The build now stamps the commit it was built from, and says so. The
+        server logs "Build: <commit> (built <when>)" at startup, and the panel
+        answers GET /api/server/version with the commit, a dirty flag, the build
+        instant and the assembly version. Pass ?expected=<sha> (seven characters
+        or more) for a direct yes/no. An unstamped build - built without git, or
+        from a source archive - reports that it does not know rather than
+        claiming a mismatch, because "I cannot tell" and "no" are different
+        answers. "Is the shard running the fix?" was otherwise answered by
+        guessing, and a wrong guess costs a re-hunt of a bug already closed.
+
 [2026-09-16] - Asking the server what it sees on the tile ahead
 ----------------------------------------
 

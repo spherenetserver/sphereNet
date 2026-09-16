@@ -569,6 +569,16 @@ public static partial class Program
         ConsoleAppend("");
 
         _log.LogInformation("Server: {Name}", _config.ServName);
+        // Say which commit this binary is, at startup, in the log. "Is the shard
+        // running the fix?" is otherwise answered by guessing, and guessing it wrong
+        // costs a re-hunt of a bug that was already closed.
+        if (SphereNet.Core.Diagnostics.BuildInfo.Commit.Length > 0)
+            _log.LogInformation("Build: {Commit}{Dirty} (built {Built})",
+                SphereNet.Core.Diagnostics.BuildInfo.ShortCommit,
+                SphereNet.Core.Diagnostics.BuildInfo.Dirty ? " +local changes" : "",
+                SphereNet.Core.Diagnostics.BuildInfo.BuiltUtc);
+        else
+            _log.LogInformation("Build: unstamped (built without git metadata)");
         _log.LogInformation("Port: {Port}", _config.ServPort);
         _log.LogInformation("Client Version: {Ver}", _config.ClientVersion);
         if (_config.DebugPackets)

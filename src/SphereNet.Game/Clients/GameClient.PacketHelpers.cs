@@ -802,6 +802,24 @@ public sealed partial class GameClient
         if (_character != null && source != null && ItemMoveRules.CanMove(_character, source, out _))
             flags |= 0x20;
 
+        // The byte after the graphic is NOT a general direction: the client ADDS it
+        // to the graphic (0x1A: "graphic += graphic_inc" behind the 0x8000 flag;
+        // 0xF3: the dedicated graphicInc field, PacketHandlers.cs:802/5699). Upstream
+        // says so in as many words - "with this packet the item can be flippable OR a
+        // light source, not both" (send.cpp:510) - and fills it for ONE case: a
+        // corpse's facing (adjustItemData, send.cpp:580). Everything else leaves it
+        // DIR_N.
+        //
+        // Sending a ground item's own Direction here shifted its art by that many
+        // ids. A dropped item is given a facing of (items already on the tile % 7) + 1,
+        // so a pickaxe (0x0E85) dropped on an occupied tile arrived as 0x0E87 - a
+        // pitchfork - and a katana (0x13FF) as 0x1400, a kryss. Dropped on an empty
+        // tile it became +1, which for a flip pair is the item's OTHER art and looks
+        // correct, which is why it only went wrong sometimes.
+        if (source != null)
+            direction = source.ItemType == SphereNet.Core.Enums.ItemType.Corpse
+                ? source.Direction : (byte)0;
+
         if (_netState.SupportsStygianAbyss)
             return new PacketWorldItemSA(serial, itemId, amount, x, y, z, hue,
                 highSeas: _netState.SupportsHighSeas, flags: flags, direction: direction,

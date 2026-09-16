@@ -39,6 +39,16 @@ public sealed class BuildInfoTests
     }
 
     [Fact]
+    public void AnUntoldBuildDoesNotClaimToBeClean()
+    {
+        // Three-valued on purpose. A binary built from a modified tree matches no
+        // commit exactly, and a build that was never told must not answer "clean" -
+        // that is the reading that turns the whole check into false reassurance.
+        if (BuildInfo.Commit.Length == 0)
+            Assert.Null(BuildInfo.Dirty);
+    }
+
+    [Fact]
     public void AStampedBuildAnswersAboutItself()
     {
         // The test host is built by the same props file, so when git was present

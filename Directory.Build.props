@@ -20,24 +20,68 @@
     Build damgasi: calisan surumun HANGI commit'ten derlendigini soyleyebilmek icin.
     "Sunucudaki kod guncel mi?" sorusu aksi halde ancak tahminle yanitlanabiliyor,
     ve eski bir derlemede duzeltilmis bir hatayi yeniden aramakla vakit harcaniyor.
-    Git yoksa (yayinlanmis bir kopya, arsivden acilmis kaynak) damga bos kalir ve
-    derleme normal surer - bu yuzden hem .git kontrolu hem ContinueOnError var.
+
+    .git DOSYALARI dogrudan okunur; git.exe cagrilmaz. Iki sebep:
+      - MSBuild Exec cmd.exe uzerinden gider ve cmd PATH'i 2047 karakterde keser;
+        bu makinede git tam da o sinirin otesinde kaliyor, yani Exec onu HIC
+        bulamiyordu - damga sessizce bos kaliyor, her derleme uc uyari basiyordu.
+      - Surec baslatmamak derlemeyi hizlandirir ve git'i olmayan bir kopyada
+        (kaynak arsivi) dogal olarak sessizce atlanir.
+
+    Commit TARIHI degil commit'in kendisi damgalanir: tarih nesnenin icindedir ve
+    onu okumak git ister. Derleme saati ise bilerek kullanilmaz - her derlemede
+    degisen bir damga tum projelerin assembly-info'sunu yeniden yazar ve her
+    build'i tam build'e cevirirdi.
+
+    DIRTY bayragini derleme betikleri verir (-p:SphereNetBuildDirty=true): onlar
+    PowerShell'de calisir ve git'e erisebilir. Verilmezse "unknown" kalir, cunku
+    "temiz" demek ile "bilmiyorum" demek ayni sey degildir.
   -->
+  <PropertyGroup>
+    <SphereNetGitDir>$(MSBuildThisFileDirectory).git</SphereNetGitDir>
+  </PropertyGroup>
+
   <Target Name="SphereNetStampGitVersion" BeforeTargets="GetAssemblyAttributes"
-          Condition="'$(SphereNetSkipGitStamp)' != 'true' AND Exists('$(MSBuildThisFileDirectory).git')">
-    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" ContinueOnError="true"
-          StandardOutputImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
-      <Output TaskParameter="ConsoleOutput" PropertyName="_SphereNetGitCommit" />
-    </Exec>
-    <Exec Command="git status --porcelain --untracked-files=no" ConsoleToMSBuild="true"
-          ContinueOnError="true" StandardOutputImportance="low"
-          WorkingDirectory="$(MSBuildThisFileDirectory)">
-      <Output TaskParameter="ConsoleOutput" PropertyName="_SphereNetGitDirty" />
-    </Exec>
+          Condition="'$(SphereNetSkipGitStamp)' != 'true' AND Exists('$(SphereNetGitDir)/HEAD')">
+    <ReadLinesFromFile File="$(SphereNetGitDir)/HEAD">
+      <Output TaskParameter="Lines" PropertyName="_SnHead" />
+    </ReadLinesFromFile>
     <PropertyGroup>
-      <_SphereNetCommit>$(_SphereNetGitCommit.Trim())</_SphereNetCommit>
-      <_SphereNetDirtyFlag Condition="'$(_SphereNetGitDirty.Trim())' != ''">+dirty</_SphereNetDirtyFlag>
-      <InformationalVersion Condition="'$(_SphereNetCommit)' != ''">$(_SphereNetCommit)$(_SphereNetDirtyFlag) $([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</InformationalVersion>
+      <_SnHead>$(_SnHead.Trim())</_SnHead>
+      <!-- Detached HEAD: the file IS the sha. -->
+      <_SnCommit Condition="!$(_SnHead.StartsWith('ref:'))">$(_SnHead)</_SnCommit>
+      <_SnRef Condition="$(_SnHead.StartsWith('ref:'))">$(_SnHead.Substring(4).Trim())</_SnRef>
+      <_SnBranch Condition="'$(_SnRef)' != ''">$(_SnRef.Replace('refs/heads/', ''))</_SnBranch>
+      <!-- Forward slashes on purpose: MSBuild and Windows both accept them, and a
+           backslash here has to survive XML, the property function and the shell. -->
+      <_SnRefFile Condition="'$(_SnRef)' != ''">$(SphereNetGitDir)/$(_SnRef)</_SnRefFile>
+    </PropertyGroup>
+
+    <!-- Loose ref. -->
+    <ReadLinesFromFile File="$(_SnRefFile)" Condition="'$(_SnRefFile)' != '' AND Exists('$(_SnRefFile)')">
+      <Output TaskParameter="Lines" PropertyName="_SnLooseRef" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_SnCommit Condition="'$(_SnCommit)' == '' AND '$(_SnLooseRef)' != ''">$(_SnLooseRef.Trim())</_SnCommit>
+    </PropertyGroup>
+
+    <!-- Packed ref: "<sha> refs/heads/main" lines in .git/packed-refs. -->
+    <ReadLinesFromFile File="$(SphereNetGitDir)/packed-refs"
+                       Condition="'$(_SnCommit)' == '' AND Exists('$(SphereNetGitDir)/packed-refs')">
+      <Output TaskParameter="Lines" ItemName="_SnPacked" />
+    </ReadLinesFromFile>
+    <ItemGroup Condition="'$(_SnCommit)' == '' AND '$(_SnRef)' != ''">
+      <_SnPackedMatch Include="@(_SnPacked)" Condition="$([System.String]::Copy('%(Identity)').EndsWith(' $(_SnRef)'))" />
+    </ItemGroup>
+    <PropertyGroup Condition="'$(_SnCommit)' == ''">
+      <_SnPackedLine>@(_SnPackedMatch)</_SnPackedLine>
+      <_SnCommit Condition="'$(_SnPackedLine)' != ''">$(_SnPackedLine.Split(' ')[0])</_SnCommit>
+    </PropertyGroup>
+
+    <PropertyGroup>
+      <_SnDirty Condition="'$(SphereNetBuildDirty)' == ''">unknown</_SnDirty>
+      <_SnDirty Condition="'$(SphereNetBuildDirty)' != ''">$(SphereNetBuildDirty.ToLowerInvariant())</_SnDirty>
+      <InformationalVersion Condition="'$(_SnCommit)' != ''">commit=$(_SnCommit);branch=$(_SnBranch);dirty=$(_SnDirty)</InformationalVersion>
     </PropertyGroup>
   </Target>
 

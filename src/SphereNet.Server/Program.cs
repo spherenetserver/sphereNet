@@ -573,10 +573,15 @@ public static partial class Program
         // running the fix?" is otherwise answered by guessing, and guessing it wrong
         // costs a re-hunt of a bug that was already closed.
         if (SphereNet.Core.Diagnostics.BuildInfo.Commit.Length > 0)
-            _log.LogInformation("Build: {Commit}{Dirty} (built {Built})",
+            _log.LogInformation("Build: {Commit} ({Branch}){Dirty}",
                 SphereNet.Core.Diagnostics.BuildInfo.ShortCommit,
-                SphereNet.Core.Diagnostics.BuildInfo.Dirty ? " +local changes" : "",
-                SphereNet.Core.Diagnostics.BuildInfo.BuiltUtc);
+                SphereNet.Core.Diagnostics.BuildInfo.Branch,
+                SphereNet.Core.Diagnostics.BuildInfo.Dirty switch
+                {
+                    true => " +local changes",
+                    false => "",
+                    null => " (local changes unknown)",
+                });
         else
             _log.LogInformation("Build: unstamped (built without git metadata)");
         _log.LogInformation("Port: {Port}", _config.ServPort);

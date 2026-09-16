@@ -610,8 +610,8 @@ public sealed class PanelHost : IDisposable
             {
                 commit = SphereNet.Core.Diagnostics.BuildInfo.Commit,
                 shortCommit = SphereNet.Core.Diagnostics.BuildInfo.ShortCommit,
+                branch = SphereNet.Core.Diagnostics.BuildInfo.Branch,
                 dirty = SphereNet.Core.Diagnostics.BuildInfo.Dirty,
-                builtUtc = SphereNet.Core.Diagnostics.BuildInfo.BuiltUtc,
                 assemblyVersion = SphereNet.Core.Diagnostics.BuildInfo.AssemblyVersion,
                 raw = SphereNet.Core.Diagnostics.BuildInfo.Raw,
                 stamped = SphereNet.Core.Diagnostics.BuildInfo.Commit.Length > 0,

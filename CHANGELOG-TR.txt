@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Hangi commit oldugunu soyleyen bir derleme
+----------------------------------------
+
+CHANGE - Derleme, uretildigi commit'i damgaliyor; bunu git'i calistirarak degil
+        dogrudan .git dosyalarindan okuyarak yapiyor. Dosyadan okunmasinin iki
+        sebebi var: MSBuild Exec cmd.exe uzerinden gider, cmd PATH'i 2047
+        karakterde keser ve git'in tam da o sinirin otesinde kaldigi bir makinede
+        damga sessizce bos kaliyor, ustelik her derleme bununla ilgili uc uyari
+        basiyordu; ve hic surec baslatmayan bir derleme hem daha hizlidir hem de
+        .git'in hic olmadigi bir kopyada dogal olarak sessizce atlanir. Derleme
+        SAATI bilerek damganin parcasi degil: her derlemede degisen bir deger tum
+        projelerin uretilmis assembly-info'sunu yeniden yazar ve her build'i tam
+        build'e cevirir.
+
+CHANGE - Sunucu acilista "Build: <commit> (<branch>)" satirini yaziyor, panel ise
+        GET /api/server/version ile commit, branch, dirty ve assembly surumunu
+        yanitliyor; ?expected=<sha> (yedi karakter veya daha uzun) dogrudan
+        evet/hayir veriyor. "Shard su duzeltmeyi calistiriyor mu?" sorusu aksi
+        halde tahminle yanitlaniyordu ve yanlis tahmin, kapanmis bir hatanin
+        yeniden arastirilmasina mal oluyor.
+
+CHANGE - Dirty bayragi uc degerli: true, false ya da unknown. Bunu yalnizca
+        derleme betikleri belirleyebilir (git'e erisebildikleri yerde calisirlar)
+        ve artik parametre olarak geciyorlar; hic soylenmemis bir derleme
+        bilmedigini bildiriyor. Orada "temiz" demek, kaydedilmemis degisiklikler
+        uzerine derlenmis bir binari'nin tam olarak bir commit oldugunu iddia
+        etmesine izin verirdi - ki tum kontrolu yanlis bir guvene ceviren okuma
+        budur. build.ps1 ayrica kirli bir agactan derlerken yerinde uyariyor.
+
 [2026-09-16] - Kazmayi dirgene ceviren bayt
 ----------------------------------------
 

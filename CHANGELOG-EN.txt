@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - A build that says which commit it is
+----------------------------------------
+
+CHANGE - The build stamps the commit it was produced from, read straight out of
+        .git rather than by running git. Two reasons it is read as files: an
+        MSBuild Exec goes through cmd.exe, cmd truncates PATH at 2047 characters,
+        and on a machine where git sits past that cut the stamp was silently
+        empty while every build logged three warnings about it; and a build that
+        starts no processes is faster and degrades naturally where there is no
+        .git at all. The commit CLOCK is deliberately not part of the stamp: a
+        value that changes every build rewrites every project's generated
+        assembly-info and turns every build into a full rebuild.
+
+CHANGE - The server logs "Build: <commit> (<branch>)" at startup and the panel
+        answers GET /api/server/version with commit, branch, dirty and the
+        assembly version; ?expected=<sha> (seven characters or more) gives a
+        direct yes/no. Whether a shard is running a given fix was otherwise a
+        guess, and a wrong guess costs a re-investigation of a closed bug.
+
+CHANGE - The dirty flag is three-valued - true, false, or unknown. Only the build
+        scripts can determine it (they run where git is reachable) and they now
+        pass it in; a build that was never told reports that it does not know.
+        Answering "clean" there would let a binary built over uncommitted changes
+        claim to be exactly a commit, which is the reading that turns the whole
+        check into false reassurance. build.ps1 also warns on the spot when it
+        builds from a dirty tree.
+
 [2026-09-16] - The byte that was turning a pickaxe into a pitchfork
 ----------------------------------------
 

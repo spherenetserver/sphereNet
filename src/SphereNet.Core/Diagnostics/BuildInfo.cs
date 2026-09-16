@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 namespace SphereNet.Core.Diagnostics;
 
@@ -16,7 +16,7 @@ namespace SphereNet.Core.Diagnostics;
 /// </summary>
 public static class BuildInfo
 {
-    private static readonly Lazy<(string Commit, bool Dirty, string BuiltUtc, string Raw)> _parsed =
+    private static readonly Lazy<(string Commit, string Branch, bool? Dirty, string Raw)> _parsed =
         new(Parse, isThreadSafe: true);
 
     /// <summary>Full 40-character commit hash, or "" when the build was not stamped.</summary>
@@ -27,11 +27,12 @@ public static class BuildInfo
         Commit.Length >= 12 ? Commit[..12] : (Commit.Length > 0 ? Commit : "unknown");
 
     /// <summary>True when the working tree had uncommitted tracked changes at build
-    /// time — the binary then matches NO commit exactly.</summary>
-    public static bool Dirty => _parsed.Value.Dirty;
+    /// time - the binary then matches NO commit exactly. Null when the build was
+    /// not told, which is not the same as clean.</summary>
+    public static bool? Dirty => _parsed.Value.Dirty;
 
-    /// <summary>Build instant in ISO-8601 UTC, or "" when not stamped.</summary>
-    public static string BuiltUtc => _parsed.Value.BuiltUtc;
+    /// <summary>Branch the commit was read from, or "" when detached/unstamped.</summary>
+    public static string Branch => _parsed.Value.Branch;
 
     /// <summary>The raw informational version, whatever shape it has.</summary>
     public static string Raw => _parsed.Value.Raw;
@@ -55,36 +56,40 @@ public static class BuildInfo
         return Commit.StartsWith(expected, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static (string, bool, string, string) Parse()
+    private static (string, string, bool?, string) Parse()
     {
         string raw =
             (Assembly.GetEntryAssembly() ?? typeof(BuildInfo).Assembly)
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
             ?? "";
 
-        // "<40 hex>[+dirty] <iso-8601>" — anything else is an unstamped build and
-        // is reported as raw text with no commit.
         string commit = "";
-        bool dirty = false;
-        string built = "";
+        string branch = "";
+        bool? dirty = null;
 
-        string[] parts = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length >= 1)
+        foreach (string field in raw.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
-            string head = parts[0];
-            if (head.EndsWith("+dirty", StringComparison.Ordinal))
+            int eq = field.IndexOf('=');
+            if (eq <= 0) continue;
+            string key = field[..eq].Trim();
+            string value = field[(eq + 1)..].Trim();
+            switch (key)
             {
-                dirty = true;
-                head = head[..^"+dirty".Length];
+                case "commit":
+                    // Only a real 40-hex sha counts. Anything else is some other
+                    // version scheme's text and must not be reported as a commit.
+                    if (value.Length == 40 && value.All(Uri.IsHexDigit))
+                        commit = value.ToLowerInvariant();
+                    break;
+                case "branch":
+                    branch = value;
+                    break;
+                case "dirty":
+                    if (bool.TryParse(value, out bool d)) dirty = d;
+                    break;
             }
-            if (head.Length == 40 && head.All(Uri.IsHexDigit))
-                commit = head.ToLowerInvariant();
-            else
-                dirty = false;   // not our shape; the flag would be a guess
         }
-        if (commit.Length > 0 && parts.Length >= 2)
-            built = parts[1];
 
-        return (commit, dirty, built, raw);
+        return (commit, branch, dirty, raw);
     }
 }

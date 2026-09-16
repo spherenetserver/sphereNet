@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     SphereNet tam derleme scripti.
     Debug:   bin\Debug\   (hizli derleme, DLL'ler ayri)
@@ -76,6 +76,24 @@ if ($Clean) {
         ForEach-Object { Remove-IfExists $_.FullName }
 }
 
+# ── 0b. Calisma kopyasi kirli mi ─────────────────────────────────────────────
+# Binari'ye damgalanan commit, yalnizca agac temizse o commit'i gercekten temsil
+# eder. MSBuild bunu kendisi soramaz - Exec cmd.exe'den gider ve cmd PATH'i 2047
+# karakterde keser, bu makinede git tam da o sinirin otesinde - bu yuzden burada,
+# git'in erisilebildigi yerde olculur ve derlemeye parametre olarak verilir.
+# Olculemezse "unknown" kalir: "temiz" demek ile "bilmiyorum" demek ayni degildir.
+$dirtyArg = @()
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $porcelain = git -C $root status --porcelain --untracked-files=no 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $isDirty = [bool]$porcelain
+        $dirtyArg = @("-p:SphereNetBuildDirty=$($isDirty.ToString().ToLower())")
+        if ($isDirty) {
+            Write-Host "  UYARI: calisma kopyasi kirli - uretilen binari hicbir commit'e tam uymuyor." -ForegroundColor DarkYellow
+        }
+    }
+}
+
 # ── 1. Vue panel ─────────────────────────────────────────────────────────────
 if (-not $SkipPanel) {
     Write-Step 1 4 "Panel bagimliliklari kilit dosyasindan kuruluyor (npm ci)..."
@@ -117,7 +135,7 @@ if ($Configuration -eq "Release") {
         "-p:DebugType=none",
         "-p:DebugSymbols=false",
         "-p:nowarn=NU1507"
-    )
+    ) + $dirtyArg
 
     # 3a. SphereNet.Server (oyun sunucusu — tek EXE odakli publish)
     $publishKind = if ($FrameworkDependent) { "framework-dependent" } else { "self-contained" }
@@ -191,7 +209,7 @@ if ($Configuration -eq "Release") {
     dotnet build "$root\sphereNet.sln" `
         --configuration Debug `
         --nologo `
-        -p:nowarn=NU1507
+        -p:nowarn=NU1507 @dirtyArg
 
     if ($LASTEXITCODE -ne 0) { throw "dotnet build basarisiz oldu." }
 

@@ -253,29 +253,55 @@ noktalari (eritme, kamp atesi, ocak) hala gozden gecirilmedi.
 
 ---
 
-## 9. `SUPHELI` - Yer esyasi bayrak bayti yalnizca GM'e gonderiliyor
+## 9. `UYGULANDI` - Yer esyasi hareket-edilebilir biti yalnizca GM'e gidiyordu
 
-**Kok:** `GameClient.BuildWorldItemPacket` (GameClient.PacketHelpers.cs:697-714)
-flags baytina yalnizca GM icin 0x20 (movable) koyuyor. Normal oyuncuda bayrak
-bayti hic gonderilmiyor.
+**Belirti:** Siradan bir oyuncu, tiledata agirligi yuksek ama aslinda tasinabilir bir
+esyayi hic suruklyemiyor; uzerine gelince vurgulanmiyor.
 
-ClassicUO `Flags.Movable = 0x20` bitini taniyor; tasinabilir bir esyanin
-suruklenmeye baslamasi istemci tarafinda bu bite bagli olabilir. Koddaki yorum
-kisitin yalnizca "tiledata agirligi 255 olan grafikler" icin gecerli oldugunu
-soyluyor - yani siradan esyalar icin sorun olmayabilir.
+**Kok:** `GameClient.BuildWorldItemPacket` ITEMF_MOVABLE (0x20) bitini yalnizca
+`PrivLevel >= GM` icin koyuyordu. Ust kaynak ise **bu izleyicinin** esyayi gercekten
+tasiyip tasiyamayacagina bakar - bir gorevli testine degil, `CanMoveItem`'a
+(`PacketItemWorld::adjustItemData`, send.cpp:583).
 
-**Yapilacak:** Source-X'in ayni bayti nasil doldurdugunu (`PacketItemWorld`)
-okuyup karsilastirmak. Bu denetimde yapilmadi.
+Istemci tarafi: `Item.cs:104` bitin YOKLUGUNU, tiledata agirligi 90'in ustundeki her
+sey icin `IsLocked`'a cevirir; kilitli bir yer esyasi suruklenemez
+(`GameActions.cs:457`), fare uzerine gelince vurgulanmaz (`ItemView.cs:123`) ve farkli
+siralanir (`GameSceneDrawingSorting.cs:1072`).
+
+**Uygulandi:** Bit artik `ItemMoveRules.CanMove(izleyici, esya)` sonucuna gore
+konuyor - gorevliler zaten o kurallardan geciyor. Testler: `GroundItemFlagsTests`.
+
+**Kalan:** Paylasimli yayin paketleri (tek paket, coklu alici) izleyici basina bir bit
+tasiyamaz; ust kaynak paketi alici basina kurar. Bu, `BroadcastWorldItem` gibi
+yollarda hala boyle.
 
 ---
 
-## 10. `ARASTIRILACAK` - Animasyon kare/tekrar varsayilanlari
+## 10. `UYGULANDI` - ANIM verb'inin argumanlari yanlis siradaydi
 
-`PacketAnimation` varsayilanlari `frameCount: 7, repeatCount: 1, forward: true,
-repeat: false, delay: 0` (ExtendedPackets.cs:1404). Source-X'in ayni pakette
-eylem basina farkli kare sayilari kullanip kullanmadigi karsilastirilmadi.
-Sahadan gelen "madencilik hareketi daha kisa gibi" gozlemi buraya da
-bakilmasini gerektirebilir.
+**Belirti:** `ANIM` yazan bir script'in animasyonu beklenenden kisa/hizli oynuyor.
+
+**Kok:** Ust kaynak tam olarak uc arguman alir
+(CHV_ANIM, CChar.cpp:4459-4469):
+
+    ANIM <eylem>, <kare gecikmesi = 0>, <kare sayisi = 7>
+
+ve geriye-oynatmayi false, tekrar sayisini 1 olarak sabitler. Bizdeki okuma ikinci
+argumani kare SAYISI, ucuncusunu tekrar sayisi sayiyor, ayrica dorduncu ve besinci
+argumanlari uyduruyordu. Yani `ANIM 11,1,7` - "eylem 11, yavas, yedi kare" - bizde
+**tek kareli, yedi kez tekrarlanan** bir animasyon oluyordu.
+
+Ayrica paketteki tekrar BAYRAGI ust kaynakta sayidan turetilir
+(`writeBool(repeat != 1)`, send.cpp:1844); bizde bagimsiz bir parametreydi, yani
+"bir kez oynat" ile "dongu" birbiriyle celisebiliyordu.
+
+**Uygulandi:** Verb ust kaynagin uc argumanina donduruldu; tekrar bayragi artik
+sayidan tureliyor. Testler: `AnimVerbArgumentTests`.
+
+**Not:** Paket alan sayisi ve varsayilanlari (7 kare, 1 tekrar, gecikme 0) zaten ust
+kaynakla ayniydi - `UpdateAnimate` varsayilani `iAnimLen = 7` (CChar.h:560). Yani
+"madencilik hareketi kisa" gozleminin kaynagi paket varsayilanlari degil; vurus
+araligi (stroke DELAY) ayri bir konu ve gozden gecirilmedi.
 
 ---
 
@@ -308,9 +334,9 @@ listeleniyor (hepsi commit'li):
 
 ## Durum
 
-Bulgu 1-8 uygulandi ve testleri yazildi (`MobileFlagsTests`, `AnimationDoorTests`,
-`WornItemVisualTests`; VisKey ve notorluk mevcut delta testlerinin kapsaminda).
-Bulgu 9, 10 ve 11 arastirma bekliyor.
+Bulgu 1-10 uygulandi ve testleri yazildi (`MobileFlagsTests`, `AnimationDoorTests`,
+`WornItemVisualTests`, `GroundItemFlagsTests`, `AnimVerbArgumentTests`; VisKey ve
+notorluk mevcut delta testlerinin kapsaminda). Bulgu 11 arastirma bekliyor.
 
 Ayrica acik kalan iki nokta:
 
@@ -319,18 +345,16 @@ Ayrica acik kalan iki nokta:
   statik yok (bkz. Bulgu 4, "Kalan").
 - Upstream'in `UpdateDir` noktalarindan eritme (CCharSkill.cpp:1127), kamp atesi
   (:2252) ve ocak (:3155) gozden gecirilmedi (bkz. Bulgu 8).
+- Paylasimli yayin paketleri izleyici basina bir bayrak tasiyamaz (bkz. Bulgu 9).
+- Toplama becerilerinin vurus araligi (stroke DELAY) ust kaynakla karsilastirilmadi
+  (bkz. Bulgu 10).
 
 ---
 
 ## Onerilen sira
 
-1. **Bulgu 5** - tek satir, desen zaten uygulandi.
-2. **Bulgu 1 + 2** birlikte - bayrak bayti ve anahtar ayni isin iki yuzu.
-3. **Bulgu 4** - animasyon yardimcisi + guardrail testi.
-4. **Bulgu 3** - notorlugu demete al.
-5. **Bulgu 6 + 7** - giyili esya gorsel guncellemesi.
-6. **Bulgu 8** - kalan becerilerde donus.
-7. Bulgu 9, 10, 11 icin once arastirma.
+Bulgu 1-10 tamamlandi. Sirada Bulgu 11 (ozel ev tasarim akisi) ve yukarida
+listelenen uc acik nokta var.
 
 Her madde icin bu oturumda kullanilan yontem gecerli: once davranisi sabitleyen
 bir test yaz, duzeltmeden once kirmizi oldugunu gor, sonra duzelt.

@@ -782,16 +782,24 @@ public sealed partial class GameClient
         ));
     }
 
+    /// <param name="source">The item itself, when the caller has it. The movable
+    /// flag is a question about THIS item and THIS viewer, so a synthetic packet with
+    /// no item behind it (a trade window's container art, a placement preview) simply
+    /// does not carry it.</param>
     internal PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
-        short x, short y, sbyte z, ushort hue, byte direction = 0, bool isMulti = false)
+        short x, short y, sbyte z, ushort hue, byte direction = 0, bool isMulti = false,
+        Item? source = null)
     {
-        // Staff clients get the force-movable flag (0x20) on ground items.
-        // The client refuses to even START a drag on tiledata-locked graphics
-        // (weight 255 — corpses, anvils, …) unless this flag is set, so a GM
-        // could not pick them up at all; the server side has no such
-        // restriction for staff.
+        // ITEMF_MOVABLE (0x20), for whoever is looking. Upstream sets it whenever
+        // THIS viewer could actually move the item - CanMoveItem, not a staff test
+        // (PacketItemWorld::adjustItemData, send.cpp:583). The client turns the
+        // absence of it into IsLocked for anything the tiledata calls heavy
+        // (Item.cs:104: no Movable bit AND weight > 90), and a locked ground item
+        // cannot be dragged, highlighted on mouse-over or walked over the same way
+        // (GameActions.cs:457, ItemView.cs:123). Sending it to staff alone therefore
+        // left an ordinary player unable to pick up a heavy-but-movable item at all.
         byte flags = 0;
-        if (_character != null && _character.PrivLevel >= PrivLevel.GM)
+        if (_character != null && source != null && ItemMoveRules.CanMove(_character, source, out _))
             flags |= 0x20;
 
         if (_netState.SupportsStygianAbyss)
@@ -852,7 +860,7 @@ public sealed partial class GameClient
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
-            isMulti: IsMultiBody(item)
+            isMulti: IsMultiBody(item), source: item
         ));
     }
 
@@ -861,7 +869,7 @@ public sealed partial class GameClient
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, hue, item.Direction,
-            isMulti: IsMultiBody(item)
+            isMulti: IsMultiBody(item), source: item
         ));
     }
 
@@ -870,7 +878,7 @@ public sealed partial class GameClient
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
-            isMulti: IsMultiBody(item)
+            isMulti: IsMultiBody(item), source: item
         ));
     }
 

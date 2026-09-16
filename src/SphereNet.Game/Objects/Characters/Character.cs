@@ -5702,11 +5702,9 @@ public partial class Character : ObjBase
             case "ANIM":
             {
                 // Source-X CChar::r_Verb ANIM action[,frameCount[,repeatCount[,backwards[,repeat[,delay]]]]]
-                // Broadcasts the 0x6E animation packet to every client
-                // observing the character. Only the action id is
-                // mandatory; the remaining tokens reuse Source-X
-                // defaults (frameCount=7, repeatCount=1, fwd, no
-                // repeat, delay=0) when omitted.
+                // Broadcasts the 0x6E animation packet to every client observing the
+                // character. Only the action id is mandatory; the other two reuse
+                // upstream's defaults (delay 0, seven frames).
                 var aparts = (args ?? "").Split(
                     new[] { ',', ' ', '\t' },
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -5716,15 +5714,18 @@ public partial class Character : ObjBase
                     animAction = MapAnimToMounted(animAction);
                 else
                     animAction = Combat.BodyAnimTranslator.Translate(BodyId, animAction);
-                ushort animFrames = aparts.Length > 1 && TryParseScriptUShort(aparts[1], out ushort fc) ? fc : (ushort)7;
-                ushort animRepeats = aparts.Length > 2 && TryParseScriptUShort(aparts[2], out ushort rc) ? rc : (ushort)1;
-                bool animBackwards = aparts.Length > 3 && aparts[3] != "0";
-                bool animRepeat = aparts.Length > 4 && aparts[4] != "0";
-                byte animDelay = aparts.Length > 5 && byte.TryParse(aparts[5], out byte d) ? d : (byte)0;
+                // ANIM <action>, <frame delay = 0>, <frame count = 7>. That is the
+                // whole of it upstream (CHV_ANIM, CChar.cpp:4459-4469): three
+                // arguments, backwards always false and repeat always 1. This read
+                // the second argument as the frame COUNT and the third as a repeat
+                // count, so `ANIM 11,1,7` - action 11 played slowly over seven frames -
+                // became a ONE-frame animation repeated seven times.
+                byte animDelay = aparts.Length > 1 && byte.TryParse(aparts[1], out byte d) ? d : (byte)0;
+                ushort animFrames = aparts.Length > 2 && TryParseScriptUShort(aparts[2], out ushort fc) ? fc : (ushort)7;
                 BroadcastNearby?.Invoke(Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketAnimation(
-                        Uid.Value, animAction, animFrames, animRepeats,
-                        forward: !animBackwards, repeat: animRepeat, delay: animDelay),
+                        Uid.Value, animAction, animFrames, repeatCount: 1,
+                        forward: true, delay: animDelay),
                     0);
                 return true;
             }

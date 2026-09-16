@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Text;
 using SphereNet.Core.Enums;
 using SphereNet.Network.Packets;
@@ -1401,6 +1401,8 @@ public sealed class PacketAnimation : PacketWriter
     private readonly bool _forward;
     private readonly byte _delay;
 
+    /// <param name="repeat">Ignored: the wire flag is derived from
+    /// <paramref name="repeatCount"/>, as upstream derives it (send.cpp:1844).</param>
     public PacketAnimation(uint serial, ushort action, ushort frameCount = 7, ushort repeatCount = 1,
         bool forward = true, bool repeat = false, byte delay = 0) : base(0x6E)
     {
@@ -1421,7 +1423,11 @@ public sealed class PacketAnimation : PacketWriter
         buf.WriteUInt16(_frameCount);
         buf.WriteUInt16(_repeatCount);
         buf.WriteByte((byte)(_forward ? 0 : 1));
-        buf.WriteByte((byte)(_repeat ? 1 : 0));
+        // Upstream DERIVES this flag from the repeat count rather than taking it
+        // separately (PacketAction, send.cpp:1844: writeBool(repeat != 1)), so the
+        // two can never disagree - a caller cannot ask for one playthrough and set
+        // the loop flag, or ask for five and leave it clear.
+        buf.WriteByte((byte)(_repeatCount != 1 ? 1 : 0));
         buf.WriteByte(_delay);
         return buf;
     }

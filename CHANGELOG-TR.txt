@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - ANIM verb'inin argumanlari ve bir esyanin tasinabilecegi kime soyleniyor
+----------------------------------------
+
+Gorsel senkron denetiminin arastirma bekleyen iki bulgusu sonuca baglandi.
+
+FIX - ANIM verb'i argumanlarini yanlis sirada okuyordu. Ust kaynak tam olarak uc tane
+        alir (CHV_ANIM, CChar.cpp:4459-4469): eylem, kare GECIKMESI ve kare SAYISI;
+        geriye-oynatma false, tekrar sayisi 1 olarak sabittir. Buradaki okuma ikinci
+        argumani kare sayisi, ucuncusunu tekrar sayisi sayiyor, ayrica dorduncu ve
+        besinci argumanlari uyduruyordu - bu yuzden `ANIM 11,1,7` yazan bir script,
+        yani "eylem 11, yavas, yedi kare", TEK kareli ve yedi kez tekrarlanan bir
+        animasyon aliyordu. Paketteki tekrar BAYRAGI da ust kaynakta sayidan turetilir
+        (send.cpp:1844), ayri bir parametre degildir; artik "bir kez oynat" ile "dongu"
+        birbiriyle celisemez.
+
+FIX - Bir yer esyasinin tasinabilir oldugu yalnizca gorevlilere soyleniyordu. Ust
+        kaynak bu biti, BU izleyicinin esyayi gercekten tasiyip tasiyamayacagina gore
+        koyar - yetki testine degil, CanMoveItem'a
+        (PacketItemWorld::adjustItemData, send.cpp:583). Istemci bitin yoklugunu,
+        tiledata agirligi 90'in ustundeki her sey icin IsLocked'a cevirir
+        (Item.cs:104); kilitli bir yer esyasi suruklenemez, fare uzerine gelince
+        vurgulanmaz ve farkli siralanir (GameActions.cs:457, ItemView.cs:123,
+        GameSceneDrawingSorting.cs:1072) - yani siradan bir oyuncu agir ama aslinda
+        tasinabilir bir esyayi hic alamiyordu.
+
 [2026-09-16] - Ekrana ne soylendiginin bastan sona denetimi
 ----------------------------------------
 

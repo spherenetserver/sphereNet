@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - The ANIM verb's arguments, and who is told an item can be moved
+----------------------------------------
+
+The two research findings from the visual-sync audit, resolved.
+
+FIX - The ANIM verb read its arguments in the wrong order. Upstream takes exactly
+        three (CHV_ANIM, CChar.cpp:4459-4469): the action, a frame DELAY and a frame
+        COUNT, with backwards hardcoded false and the repeat count hardcoded to 1.
+        This read the second argument as the frame count and the third as a repeat
+        count, and invented a fourth and a fifth - so a script writing `ANIM 11,1,7`,
+        meaning "action 11, played slowly, over seven frames", got a ONE-frame
+        animation repeated seven times. The packet's repeat FLAG is also derived from
+        the count upstream (send.cpp:1844) rather than taken separately, so "play once"
+        and "loop" can no longer disagree.
+
+FIX - Only staff were told a ground item could be moved. Upstream sets the movable
+        flag whenever THIS viewer could actually move it - CanMoveItem, not a
+        privilege test (PacketItemWorld::adjustItemData, send.cpp:583). The client
+        turns its absence into IsLocked for anything the tiledata calls heavy
+        (Item.cs:104: no movable bit AND weight > 90), and a locked ground item cannot
+        be dragged, cannot be highlighted on mouse-over and sorts differently
+        (GameActions.cs:457, ItemView.cs:123, GameSceneDrawingSorting.cs:1072) - so an
+        ordinary player could not pick up a heavy-but-movable item at all.
+
 [2026-09-16] - What the screen is told, audited end to end
 ----------------------------------------
 

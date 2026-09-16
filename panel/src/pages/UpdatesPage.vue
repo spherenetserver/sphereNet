@@ -64,6 +64,34 @@
         </p>
       </section>
 
+      <!-- What the running binary says about ITSELF -->
+      <section class="section">
+        <h2 class="section-title">Calisan binari</h2>
+        <p class="running-hint">
+          Asagidakiler guncelleyicinin indirdigi surumden degil, su anda calisan
+          dosyanin kendi damgasindan okunur. Ikisinin ayrilmasi, "sunucu guncel mi"
+          sorusunun tek dogru yanitidir.
+        </p>
+        <dl v-if="running" class="meta">
+          <div><dt>Commit</dt><dd><code>{{ running.stamped ? running.shortCommit : '—' }}</code></dd></div>
+          <div><dt>Dal</dt><dd><code>{{ running.branch || '—' }}</code></dd></div>
+          <div>
+            <dt>Yerel degisiklik</dt>
+            <dd>{{ running.dirty === null ? 'bilinmiyor' : (running.dirty ? 'VAR' : 'yok') }}</dd>
+          </div>
+          <div><dt>Assembly</dt><dd><code>{{ running.assemblyVersion }}</code></dd></div>
+        </dl>
+        <p v-else-if="runningError" class="vc-empty">{{ runningError }}</p>
+        <p v-else class="vc-empty">Okunuyor…</p>
+
+        <p v-if="running && !running.stamped" class="running-warn">
+          Bu binari damgasiz derlenmis — hangi commit oldugunu soyleyemiyor.
+        </p>
+        <p v-else-if="running?.dirty === true" class="running-warn">
+          Bu binari kaydedilmemis degisiklikler uzerine derlenmis; hicbir commit'e tam uymuyor.
+        </p>
+      </section>
+
       <!-- Versions -->
       <section class="section">
         <h2 class="section-title">Surumler</h2>
@@ -106,13 +134,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   RefreshCw, Download, CheckCircle2, AlertTriangle, PackageX, Info, Loader, Sparkles,
 } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
+import { serverApi, type BuildVersion } from '@/lib/api'
 
 const store = useUpdateStore()
+
+// Read straight from the server rather than through the update store: the store
+// describes what the updater knows about, and the whole point here is to show
+// what is actually running, including when the two disagree.
+const running = ref<BuildVersion | null>(null)
+const runningError = ref('')
+onMounted(async () => {
+  try {
+    const { data } = await serverApi.version()
+    running.value = data
+  } catch (e) {
+    runningError.value = e instanceof Error ? e.message : 'Surum bilgisi alinamadi'
+  }
+})
 
 // Refresh on entry so the page never opens on a minute-old snapshot. The
 // Sidebar owns the long-lived poll, so this must not stop it on unmount —
@@ -322,6 +365,9 @@ function confirmApply() {
   white-space: nowrap;
 }
 .vc-empty { margin: 0; font-size: 13px; color: var(--text-muted); }
+
+.running-hint { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.running-warn { margin: 10px 0 0; font-size: 12px; color: var(--warning, #d08a00); }
 
 .meta {
   display: grid;

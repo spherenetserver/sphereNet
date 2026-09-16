@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - A colour named in a defname resolved to no colour at all
+----------------------------------------
+
+FIX - COLOR=<defname> silently produced hue 0 whenever the defname held a
+        NUMBER, which is how every colour constant in a pack is written
+        (color_o_copper 0641). A [DEFNAME] entry is filed by the shape of its
+        value - a number becomes a DefName resource carrying that number, text
+        goes to the text table - and the COLOR setter only consulted the text
+        table. So COLOR=colors_skin ({1002 1058}) worked, every
+        COLOR=color_o_<metal> did not, and a whole ore table came out of the
+        ground the same colourless iron. This is why coloured ore never appeared
+        even after the reap was taught to build from the definition: the
+        definition's own @Create was running and setting nothing.
+
+        Now the numeric defname table is consulted too. The fix is not about
+        ores - it is every COLOR= in every script that names a colour constant.
+
+CHANGE - .WALKDIAG's probe is in the panel-visible flow now: the running
+        binary's commit, branch and dirty flag appear on the Updates page, read
+        from the server's own build stamp rather than from the updater's
+        metadata. The two disagreeing is exactly the situation worth seeing, and
+        the endpoint needs the panel's bearer token, so a browser typing the URL
+        by hand gets 401 rather than an answer.
+
 [2026-09-16] - A build that says which commit it is
 ----------------------------------------
 

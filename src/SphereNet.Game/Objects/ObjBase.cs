@@ -1293,6 +1293,18 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                         // Resolve defname color ranges like colors_skin → {1002 1058}
                         _hue = new Color(ResolveRandomHueRange(rangeText));
                     }
+                    else if (Definitions.DefinitionLoader.TryGetDefNumber(v, out int defHue) &&
+                             defHue is >= 0 and <= ushort.MaxValue)
+                    {
+                        // ...and a defname whose value is a plain NUMBER, which is
+                        // how every colour constant in a pack is written
+                        // (color_o_copper 0641). Those are filed as numeric
+                        // defnames, not as text, so the range lookup above never saw
+                        // them: an ITEMDEF doing `COLOR=color_o_copper` in @Create
+                        // silently kept hue 0, and a whole ore table came out of the
+                        // ground the same colour as iron.
+                        _hue = new Color((ushort)defHue);
+                    }
                     MarkDirty(DirtyFlag.Hue);
                     if (this is Items.Item changedItem)
                         Items.Item.OnVisualUpdate?.Invoke(changedItem);

@@ -144,6 +144,26 @@ public sealed class DefinitionLoader
         _resourcesStatic?.ResolveNamesInString(input) ?? input;
 
     /// <summary>Resolve a defname text value (e.g. "colors_skin" → "{1002 1058}").</summary>
+    /// <summary>Resolve a NUMERIC defname to its value.
+    ///
+    /// A [DEFNAME] entry is filed by the shape of its value: a number becomes a
+    /// DefName resource carrying that number, anything else becomes text. A reader
+    /// that only consults the text table therefore sees every numeric defname as
+    /// missing - which is how `COLOR=color_o_copper` resolved to nothing while
+    /// `COLOR=colors_skin` ({1002 1058}, text) worked, and why an entire ore table
+    /// came out of the ground colourless.</summary>
+    public static bool TryGetDefNumber(string? name, out int value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(name) || _resourcesStatic == null)
+            return false;
+        var rid = _resourcesStatic.ResolveDefName(name.Trim());
+        if (!rid.IsValid || rid.Type != ResType.DefName)
+            return false;
+        value = rid.Index;
+        return true;
+    }
+
     public static bool TryGetDefValue(string name, out string value)
     {
         value = "";

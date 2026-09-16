@@ -134,6 +134,19 @@ export interface UpdateStatus {
   runtime: string
 }
 
+export interface BuildVersion {
+  commit: string
+  shortCommit: string
+  branch: string
+  /** true / false / null — null means the build was never told (not "clean"). */
+  dirty: boolean | null
+  assemblyVersion: string
+  raw: string
+  stamped: boolean
+  expected: string | null
+  upToDate: boolean | null
+}
+
 // --- API helpers ---
 
 export const serverApi = {
@@ -149,6 +162,12 @@ export const serverApi = {
   restock:   () => api.post('/server/restock'),
   broadcast: (message: string) => api.post('/server/broadcast', { message }),
   command:   (command: string) => api.post<{ lines: string[] }>('/server/command', { command }),
+  // What the RUNNING binary says about itself, read from its own build stamp.
+  // Deliberately separate from the updater's version metadata: those describe
+  // what was downloaded, this describes what is actually executing, and the two
+  // disagreeing is precisely the situation worth seeing.
+  version:   (expected?: string) => api.get<BuildVersion>(
+    expected ? `/server/version?expected=${encodeURIComponent(expected)}` : '/server/version'),
 }
 
 export const playersApi = {

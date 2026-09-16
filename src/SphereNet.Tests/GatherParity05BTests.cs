@@ -143,11 +143,14 @@ public sealed class GatherParity05BTests
             [ITEMDEF 019b9]
             NAME=iron ore
 
+            [DEFNAME COLOR_ORE_05B]
+            color_o_05b_copper 0641 //option: 060c
+
             [ITEMDEF i_ore_05b_copper]
             NAME=Copper Ore
             ID=019b9
             ON=@Create
-            COLOR=0641
+            COLOR=color_o_05b_copper
 
             [REGIONRESOURCE r_05b_copper]
             DEFNAME=r_05b_copper

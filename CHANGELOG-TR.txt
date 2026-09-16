@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Defname ile verilen renk hicbir renge cozulmuyordu
+----------------------------------------
+
+FIX - COLOR=<defname>, defname bir SAYI tasidiginda sessizce hue 0 uretiyordu -
+        ki bir pakette her renk sabiti boyle yazilir (color_o_copper 0641). Bir
+        [DEFNAME] girdisi degerinin BICIMINE gore dosyalanir: sayi olan, o sayiyi
+        tasiyan bir DefName kaynagi olur; metin olan metin tablosuna gider. COLOR
+        setter'i ise yalnizca metin tablosuna bakiyordu. Yani COLOR=colors_skin
+        ({1002 1058}) calisiyor, COLOR=color_o_<metal> olanlarin hicbiri
+        calismiyordu ve butun cevher tablosu yerden ayni renksiz demir olarak
+        cikiyordu. Toplama, tanimdan uretmeyi ogrendikten sonra bile renkli
+        cevherin neden gorunmedigi buydu: tanimin kendi @Create'i calisiyor ama
+        hicbir sey ayarlamiyordu.
+
+        Artik sayisal defname tablosuna da bakiliyor. Duzeltme cevherlerle ilgili
+        degil - bir renk sabitini adiyla anan HER script'teki HER COLOR= ile
+        ilgili.
+
+CHANGE - Calisan binari'nin commit'i, dali ve kirli bayragi artik panelde
+        Guncellemeler sayfasinda gorunuyor; guncelleyicinin metadata'sindan degil
+        sunucunun kendi damgasindan okunuyor. Ikisinin ayrilmasi tam da
+        gorulmeye deger durumdur. Uc noktasi panelin bearer token'ini istedigi
+        icin adresi tarayiciya elle yazmak yanit degil 401 dondurur.
+
 [2026-09-16] - Hangi commit oldugunu soyleyen bir derleme
 ----------------------------------------
 

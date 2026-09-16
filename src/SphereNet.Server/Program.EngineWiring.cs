@@ -2964,6 +2964,13 @@ public static partial class Program
             SphereNet.Game.Housing.HousingEngine.OnHouseCheck = (placer, pos) =>
                 _triggerDispatcher?.FireCharTriggerByName(placer, "HouseCheck",
                     new TriggerArgs { CharSrc = placer, N1 = pos.X, N2 = pos.Y, N3 = pos.Z }) == TriggerResult.True;
+            // A hull the save has below its water line is raised back onto it during
+            // the restore; say so, because a ship that moves on its own at startup is
+            // something an operator should read rather than discover.
+            _shipEngine.OnShipRefloated = (ship, lift) =>
+                _log.LogWarning(
+                    "Ship 0x{Uid:X8} was saved {Lift} below its water line at {X},{Y} and has been refloated.",
+                    ship.MultiItem.Uid.Value, lift, ship.MultiItem.X, ship.MultiItem.Y);
             _shipEngine.DeserializeFromWorld();
             if (_shipEngine.ShipCount > 0)
                 _log.LogInformation("Restored {Count} ships from world save", _shipEngine.ShipCount);

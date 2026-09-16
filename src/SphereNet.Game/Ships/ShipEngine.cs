@@ -1725,7 +1725,51 @@ public sealed class ShipEngine
                     ship.Pilot = Serial.Invalid;
             }
         }
+
+        RefloatSunkenShips();
     }
+
+    /// <summary>Raise any hull the save has sitting BELOW the water it floats on.
+    ///
+    /// Placement used to take the Z the client reported for the clicked spot, which
+    /// on a coast tile is the sea BED under the water static - ten units down in the
+    /// live data. Those ships are in the save at that height, and fixing placement
+    /// does nothing for them: the deck, the plank and anyone who boards stay under
+    /// the sea until the ship is redeeded and dropped again.
+    ///
+    /// Only ever UPWARD, and only onto water this tile actually has. A hull that is
+    /// already at or above its water line is left exactly where it is - a ship
+    /// deliberately raised by a script (MoveDelta up, the magic-ship path) must not
+    /// be dragged back down, and a ship on a tile with no water at all is not this
+    /// correction's business.</summary>
+    public int RefloatSunkenShips()
+    {
+        if (_mapData == null) return 0;
+
+        int raised = 0;
+        foreach (var ship in _ships.Values.ToList())
+        {
+            var hull = ship.MultiItem;
+            if (hull.IsDeleted) continue;
+            if (!TryGetWaterSurfaceZ(hull.MapIndex, hull.X, hull.Y, out sbyte waterZ))
+                continue;
+            int lift = waterZ - hull.Z;
+            if (lift <= 0 || lift > sbyte.MaxValue)
+                continue;
+            if (MoveDelta(ship, 0, 0, (sbyte)lift))
+            {
+                raised++;
+                OnShipRefloated?.Invoke(ship, lift);
+            }
+        }
+        return raised;
+    }
+
+    /// <summary>Raised a hull that was saved below its water line, and by how much.
+    /// Wired by the host so the correction is reported rather than silent - a ship
+    /// moving on its own at startup is exactly the kind of thing an operator should
+    /// read about instead of discover.</summary>
+    public Action<Ship, int>? OnShipRefloated { get; set; }
 
     // =====================================================================
     // Direction Helpers

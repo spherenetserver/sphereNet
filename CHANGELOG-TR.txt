@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-16] - Kaydin denizin altinda tuttugu gemileri kaldirmak
+----------------------------------------
+
+FIX - Dunya kaydinda zaten bulunan gemiler su hattinin altinda demirli kaliyordu.
+        Yerlestirme yuksekligini duzeltmek, deniz tabaninda kayitli bir tekneye
+        hicbir sey yapmaz: guvertesi, planki ve ona binen herkes, biri gemiyi
+        yeniden deed edip tekrar birakana kadar suyun altinda kalir. Dunya geri
+        yuklemesi artik karosundaki suyun altinda duran her tekneyi kaldiriyor -
+        govde, bilesenler ve guverte yuku birlikte - ve sunucu tasidigi her birini
+        loga yaziyor; acilista kendi kendine yer degistiren bir gemi, bir
+        operatorun kesfetmesi degil okumasi gereken bir seydir.
+
+        Yalnizca YUKARI dogru ve yalnizca karoda gercekten su varsa: su hattinda
+        ya da uzerinde olan bir tekne oldugu yerde birakiliyor, boylece bir
+        script'in bilerek yukselttigi gemi (sihirli gemi yolu, MoveDelta ile
+        yukari) geri asagi cekilmiyor.
+
 [2026-09-16] - Denizin on birim altina demirlemis bir gemi
 ----------------------------------------
 

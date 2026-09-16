@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-16] - Raising the ships the save already had under the sea
+----------------------------------------
+
+FIX - Ships already in a world save stayed moored below their water line. Fixing
+        the placement height does nothing for a hull that is already stored at the
+        sea bed: its deck, its plank and everyone who boards it stay under the
+        water until somebody redeeds the ship and drops it again. The world
+        restore now raises any hull sitting below the water at its tile, hull,
+        components and deck cargo together, and the server logs each one it moved
+        - a ship that relocates itself at startup is something an operator should
+        read rather than discover.
+
+        Only ever upward, and only where the tile actually has water: a hull at or
+        above its water line is left exactly where it is, so a ship a script
+        deliberately raised (the magic-ship path, MoveDelta up) is not dragged
+        back down.
+
 [2026-09-16] - A ship moored ten units under the sea
 ----------------------------------------
 

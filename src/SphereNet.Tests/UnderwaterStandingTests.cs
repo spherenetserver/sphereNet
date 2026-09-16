@@ -7,6 +7,7 @@ using SphereNet.MapData;
 using SphereNet.MapData.Tiles;
 using SphereNet.Game.Ships;
 using SphereNet.Game.Housing;
+using SphereNet.Scripting.Definitions;
 using SphereNet.Game.Objects.Characters;
 
 namespace SphereNet.Tests;
@@ -133,5 +134,98 @@ public sealed class UnderwaterStandingTests
 
         var ships = new ShipEngine(world, new MultiRegistry(), md);
         Assert.False(ships.TryGetWaterSurfaceZ(0, 10, 10, out _));
+    }
+
+    // --- Placement and restore ------------------------------------------
+
+    private static (GameWorld World, ShipEngine Ships, MultiRegistry Reg) WaterWorld()
+    {
+        var (world, _) = Setup();
+        var reg = new MultiRegistry();
+        var def = new MultiDef { Id = 0x4000, Name = "test ship" };
+        def.Components.Add(new MultiComponent
+        { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
+        def.RecalcBounds();
+        reg.Register(def);
+        var ships = new ShipEngine(world, reg, world.MapData)
+        { MaxShipsPerPlayer = -1, MaxShipsPerAccount = -1 };
+        return (world, ships, reg);
+    }
+
+    private static Character Owner(GameWorld world)
+    {
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(2, 2, -4, 0));
+        return ch;
+    }
+
+    [Fact]
+    public void AShipTargetedOnTheSeaBedIsPlacedOnTheWaterInstead()
+    {
+        // The client reports the terrain for a water tile, so this is the Z a real
+        // placement arrives with: ten units under the water it should float on.
+        var (world, ships, _) = WaterWorld();
+        var ship = ships.PlaceShip(Owner(world), 0x4000,
+            new Point3D(20, 20, -15, 0), Direction.North);
+
+        Assert.NotNull(ship);
+        Assert.Equal(-5, ship!.MultiItem.Z);
+    }
+
+    [Fact]
+    public void ARestoredShipBelowItsWaterLineIsRefloated()
+    {
+        // Placement is fixed, but the ships already in a save are not: without this
+        // they stay under the sea until somebody redeeds them.
+        var (world, ships, _) = WaterWorld();
+        var ship = ships.PlaceShip(Owner(world), 0x4000,
+            new Point3D(20, 20, -5, 0), Direction.North)!;
+
+        // Put it back where the old placement left it, hull and component alike.
+        Assert.True(ships.MoveDelta(ship, 0, 0, -10));
+        Assert.Equal(-15, ship.MultiItem.Z);
+
+        int raised = ships.RefloatSunkenShips();
+
+        Assert.Equal(1, raised);
+        Assert.Equal(-5, ship.MultiItem.Z);
+        Assert.Equal(-5, world.FindItem(ship.Components[0])!.Z);
+    }
+
+    [Fact]
+    public void AShipAtOrAboveItsWaterLineIsLeftAlone()
+    {
+        // Only ever upward, and never onto a ship a script deliberately raised.
+        var (world, ships, _) = WaterWorld();
+        var ship = ships.PlaceShip(Owner(world), 0x4000,
+            new Point3D(20, 20, -5, 0), Direction.North)!;
+        Assert.True(ships.MoveDelta(ship, 0, 0, 20));
+        sbyte lifted = ship.MultiItem.Z;
+
+        Assert.Equal(0, ships.RefloatSunkenShips());
+        Assert.Equal(lifted, ship.MultiItem.Z);
+    }
+
+    [Fact]
+    public void TheRestoreItselfRefloats_NotOnlyAManualCall()
+    {
+        // The correction is worth nothing unless the world load runs it: a save full
+        // of sunken ships is exactly the situation it exists for.
+        var (world, ships, reg) = WaterWorld();
+        var ship = ships.PlaceShip(Owner(world), 0x4000,
+            new Point3D(20, 20, -5, 0), Direction.North)!;
+        Assert.True(ships.MoveDelta(ship, 0, 0, -10));
+
+        var reloaded = new ShipEngine(world, reg, world.MapData)
+        { MaxShipsPerPlayer = -1, MaxShipsPerAccount = -1 };
+        int reported = 0;
+        reloaded.OnShipRefloated = (_, lift) => reported = lift;
+        reloaded.DeserializeFromWorld();
+
+        var restored = reloaded.GetShip(ship.MultiItem.Uid);
+        Assert.NotNull(restored);
+        Assert.Equal(-5, restored!.MultiItem.Z);
+        Assert.Equal(10, reported);
     }
 }

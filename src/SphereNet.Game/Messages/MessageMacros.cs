@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 
 namespace SphereNet.Game.Messages;
@@ -15,11 +15,18 @@ namespace SphereNet.Game.Messages;
 /// </summary>
 public static class MessageMacros
 {
+    // CultureInvariant on every one of these, not as tidiness: .NET's IgnoreCase
+    // follows the CURRENT culture, and in Turkish the lower case of 'I' is 'ı', not
+    // 'i'. On a tr-TR machine - which is where this shard runs - a case-insensitive
+    // pattern containing I therefore does NOT match its own lowercase spelling, so
+    // a script writing <name_title> got no substitution at all while <NAME_TITLE>
+    // worked. Script and protocol text is not prose in the operator's language; it
+    // is matched invariantly or it is matched wrongly.
     // <SEX maleWord/femaleWord> -- captures both halves; / is the delimiter.
     // Embedded < or > are not allowed inside the alternatives, mirroring Source-X.
     private static readonly Regex s_sexRx = new(
         @"<SEX\s+([^/<>]*?)/([^<>]*?)>",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // <NAME> -- replaced with the speaker's name. Source-X also exposes
     // <CNAME> (capitalised first letter) and <NAME_TITLE> (name with its title
@@ -28,15 +35,15 @@ public static class MessageMacros
     // still resolved first for clarity.
     private static readonly Regex s_nameRx = new(
         @"<NAME>",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex s_cnameRx = new(
         @"<CNAME>",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex s_nameTitleRx = new(
         @"<NAME_TITLE>",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// Optional inputs into a single resolve call. Pass <c>null</c> for any

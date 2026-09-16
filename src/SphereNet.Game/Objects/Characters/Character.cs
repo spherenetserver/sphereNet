@@ -3347,6 +3347,24 @@ public partial class Character : ObjBase
         FightTarget = Serial.Invalid;
     }
 
+    /// <summary>A character adds ACT to the shared reference heads: written with a
+    /// dot it dereferences to whatever the action uid points at, exactly as upstream
+    /// does (CHR_ACT, CChar.cpp:2211 - "only used as a ref!", so the bare word keeps
+    /// answering with the uid through the property path).
+    ///
+    /// Without it, <c>SRC.ACT.&lt;anything&gt;</c> resolved to nothing. That is not a
+    /// corner: the shipped newbie script alone writes src.act.p, src.act.type,
+    /// src.act.amount and their kin sixteen hundred times, each immediately after a
+    /// SERV.NEWITEM, so every line customising a freshly created item was a silent
+    /// no-op - the item appeared, unplaced and unconfigured, and nothing said why.
+    /// </summary>
+    public override ObjBase? ResolveRefHead(string head)
+    {
+        if (head.Equals("ACT", StringComparison.OrdinalIgnoreCase))
+            return _act.IsValid ? ResolveWorld?.Invoke()?.FindObject(_act) : null;
+        return base.ResolveRefHead(head);
+    }
+
     // --- IScriptObj overrides ---
     public override bool TryGetProperty(string key, out string value)
     {

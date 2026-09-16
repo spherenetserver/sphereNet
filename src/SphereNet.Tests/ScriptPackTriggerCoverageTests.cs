@@ -59,7 +59,9 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
         new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly Regex HookLine =
-        new(@"^\s*ON\s*=\s*@(\w+)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
+        new(@"^\s*ON\s*=\s*@(\w+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant |
+            RegexOptions.Multiline | RegexOptions.Compiled);
 
     /// <summary>Resolve a repo-relative pack root. Path.GetFullPath would resolve it
     /// against the TEST BIN directory, where no pack exists - so a relative root

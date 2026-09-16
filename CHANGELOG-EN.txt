@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The letter I, and sixteen hundred lines that did nothing
+----------------------------------------
+
+FIX - ACT was not a reference head on a character, so SRC.ACT.<anything> resolved
+        to nothing. Upstream dereferences it when written with a dot and says so
+        outright - "only used as a ref!" (CHR_ACT, CChar.cpp:2211). Everything a
+        script does to a freshly made object goes through it: SERV.NEWITEM sets
+        ACT and the lines after it are src.act.p, src.act.type, src.act.amount.
+        The shipped newbie script alone writes sixteen hundred of them, so every
+        line configuring a newly created item was a silent no-op - the item
+        appeared, unplaced and unconfigured, and nothing reported a problem.
+
+FIX - Message macros matched case-insensitively by the CURRENT culture. .NET
+        follows the culture for RegexOptions.IgnoreCase, and in Turkish the lower
+        case of I is not i - so on this shard's own machine <name_title> was not
+        recognised as <NAME_TITLE> and was delivered to the client unsubstituted.
+        Script and protocol text is matched invariantly or it is matched wrongly;
+        a test now fails on any case-insensitive engine regex without
+        CultureInvariant.
+
+CHANGE - Every member a real pack calls on an object is now checked against the
+        engine. The names are gathered statically and resolved by ASKING the
+        engine - property read, verb, client verb table, reference head, and the
+        pack's own FUNCTION blocks - because grepping the C# for a name reports
+        CTAG0, FINDID and ISEVENT as missing when all three are answered. Across
+        1109 files and 323 distinct members, 47 are answered by nothing at all
+        and are pinned as a baseline that can only shrink.
+
+        The same Turkish-I fault had been hiding inside this measurement while it
+        was being built: the pattern FUNCTION did not match "function", a quarter
+        of the pack's function definitions went uncounted, and the first run
+        produced a list of gaps that were not gaps. It was not published.
+
 [2026-09-17] - Half the script packs were never being read
 ----------------------------------------
 

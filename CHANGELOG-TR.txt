@@ -3,6 +3,39 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - I harfi, ve hicbir sey yapmayan bin alti yuz satir
+----------------------------------------
+
+FIX - ACT bir karakterde referans BASI degildi, yani SRC.ACT.<herhangi sey>
+        hicbir seye cozulmuyordu. Ust kaynak noktayla yazildiginda onu
+        dereference eder ve bunu acikca yazar - "yalnizca referans olarak
+        kullanilir" (CHR_ACT, CChar.cpp:2211). Bir script'in yeni yaratilmis bir
+        nesneye yaptigi her sey bundan gecer: SERV.NEWITEM ACT'i kurar, sonraki
+        satirlar src.act.p, src.act.type, src.act.amount'tur. Yalnizca paketle
+        gelen newbie script'i bunlardan bin alti yuz tane yaziyor; yani yeni
+        yaratilan bir esyayi ayarlayan her satir sessiz bir bos islemdi - esya
+        yerlesmemis ve ayarlanmamis olarak beliriyor, hicbir sey sorun bildirmiyordu.
+
+FIX - Mesaj makrolari GECERLI KULTURE gore buyuk/kucuk harf duyarsiz esliyordu.
+        .NET RegexOptions.IgnoreCase icin kulturu izler ve Turkcede I'nin kucugu i
+        degildir - yani bu shard'in kendi makinesinde <name_title>, <NAME_TITLE>
+        olarak taninmiyor ve istemciye yerine konmadan gidiyordu. Script ve
+        protokol metni ya degismez (invariant) eslenir ya da yanlis eslenir;
+        CultureInvariant tasimayan her motor regex'inde artik bir test kiriliyor.
+
+CHANGE - Gercek bir paketin bir nesne uzerinde cagirdigi her uye artik motora
+        karsi denetleniyor. Adlar statik toplaniyor ve MOTORA SORULARAK cozuluyor
+        - ozellik okuma, verb, istemci verb tablosu, referans basi ve paketin
+        kendi FUNCTION bloklari - cunku C# icinde adi grep'lemek CTAG0, FINDID ve
+        ISEVENT'i eksik diye bildirir, oysa ucu de yanitlaniyor. 1109 dosya ve 323
+        farkli uye icinde 47'sini hicbir sey yanitlamiyor; bunlar yalnizca
+        kucultulebilen bir baseline olarak sabitlendi.
+
+        Ayni Turkce-I hatasi bu olcumun kendi insasinda da sakliydi: FUNCTION
+        deseni "function" ile eslesmiyordu, paketin fonksiyon tanimlarinin dortte
+        biri sayilmiyordu ve ilk kosu, bosluk olmayan seylerden bir bosluk listesi
+        uretti. Yayinlanmadi.
+
 [2026-09-17] - Script paketlerinin yarisi hic okunmuyordu
 ----------------------------------------
 

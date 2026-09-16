@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - Half the script packs were never being read
+----------------------------------------
+
+FIX - The pack-coverage guardrail resolved its relative roots with
+        Path.GetFullPath, which resolves against the TEST BIN directory - where no
+        script pack exists. Both repo-relative roots therefore contributed nothing
+        and the measurement quietly ran on the absolute root alone: 1109 files
+        instead of 2236. A check that silently measures half of what it names is
+        worse than no check, because its green is read as coverage.
+
+        With the roots resolved against the repository, the same check
+        immediately named three hooks nothing fires: @HouseSysInit, @HouseTraded
+        and @ItemUnEquipTest. All three come from the reference script
+        distribution and none is in the reference's own triggers.tbl - it has
+        ITEMUNEQUIP and UNEQUIP but no ...TEST form, and no house-system hooks at
+        all - so they are dead script upstream too and are recorded as such
+        rather than implemented, which would be inventing behaviour.
+
 [2026-09-17] - Measuring a script pack from the pack's side
 ----------------------------------------
 

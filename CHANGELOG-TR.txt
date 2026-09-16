@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Script paketlerinin yarisi hic okunmuyordu
+----------------------------------------
+
+FIX - Paket kapsama guardrail'i goreli koklerini Path.GetFullPath ile cozuyordu;
+        o da TEST BIN klasorune gore cozer - orada ise hicbir script paketi yok.
+        Depoya goreli iki kok bu yuzden hicbir sey katmiyor ve olcum sessizce
+        yalnizca mutlak kok uzerinde kosuyordu: 2236 yerine 1109 dosya. Adini
+        koydugu seyin yarisini sessizce olcen bir denetim, hic denetim
+        olmamasindan kotudur; cunku yesili kapsam diye okunur.
+
+        Kokler depoya gore cozulunce ayni denetim aninda hicbir seyin atesledigi
+        uc kanca bildirdi: @HouseSysInit, @HouseTraded ve @ItemUnEquipTest.
+        Ucu de referans script dagitimindan geliyor ve hicbiri referansin kendi
+        triggers.tbl'inde yok - orada ITEMUNEQUIP ve UNEQUIP var ama ...TEST
+        bicimi yok, ev sistemi kancalari ise hic yok - yani ust kaynakta da olu
+        script. Uygulamak davranis uydurmak olacagi icin oyle kaydedildiler.
+
 [2026-09-17] - Bir script paketini paketin tarafindan olcmek
 ----------------------------------------
 

@@ -41,6 +41,13 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
         {
             "TameAbort", "SpellStart", "PartyJoin",
             "npcmount", "NPCDisMount", "move", "skilluse", "statgain",
+            // Found once the relative pack roots actually resolved (they were being
+            // resolved against the test bin directory, so half the roots contributed
+            // nothing and these went unseen). All three come from the reference
+            // script distribution itself and none is in the reference's own
+            // triggers.tbl - it has ITEMUNEQUIP and UNEQUIP but no ...TEST, and no
+            // house-system hooks at all - so they are dead script upstream too.
+            "HouseSysInit", "HouseTraded", "ItemUnEquipTest",
         };
 
     /// <summary>Triggers the reference HAS and this engine does not fire yet. A pack
@@ -54,11 +61,24 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
     private static readonly Regex HookLine =
         new(@"^\s*ON\s*=\s*@(\w+)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
 
+    /// <summary>Resolve a repo-relative pack root. Path.GetFullPath would resolve it
+    /// against the TEST BIN directory, where no pack exists - so a relative root
+    /// silently contributed nothing and the measurement quietly halved.</summary>
+    private static string ResolveRoot(string root)
+    {
+        if (Path.IsPathRooted(root)) return root;
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "oldSphere")))
+            dir = dir.Parent;
+        return dir == null ? Path.GetFullPath(root)
+            : Path.GetFullPath(Path.Combine(dir.FullName, root));
+    }
+
     private static IEnumerable<string> PackFiles()
     {
         foreach (string root in PackRoots)
         {
-            string full = Path.IsPathRooted(root) ? root : Path.GetFullPath(root);
+            string full = ResolveRoot(root);
             if (!Directory.Exists(full)) continue;
             foreach (string f in Directory.EnumerateFiles(full, "*.scp", SearchOption.AllDirectories))
                 yield return f;

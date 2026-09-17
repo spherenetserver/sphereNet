@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - MULTIDEF'in yazdigi triggerlar ve onlari okuyan hicbir sey
+----------------------------------------
+
+FIX - Bir [MULTIDEF] bolumunun trigger bloklari ve TEVENTS satirlari tanimladiklari
+        multi'ye hic ulasmiyordu. Ust kaynakta MULTIDEF basligi bir itemdef basligidir
+        - LoadResourceSection onu RES_ITEMDEF'e esler ve ResourceGetNewID sayisal olani
+        ITEMID_MULTI kadar kaydirir (CServerConfig.cpp:3276, 4394) - yani bir ITEMDEF
+        govdesinin tasidigi her sey MULTIDEF'te de calisir; referans dagitim @Create,
+        @DClick ve @ClientTooltip bloklarini dogrudan bunlarin icine yaziyor. SphereNet
+        multileri ham multi.mul indeksiyle ayri bir kaynak turunde tutuyor ve bu dogru
+        bir tercih - paketin 372 sayisal multi basliginin 345'i ayni zamanda bir itemdef
+        basligi, tek indekste birbirlerini ezerlerdi - ama o indeksten hicbir zaman bir
+        tanim govdesi veya trigger okunmuyordu. Tanim govdesi artik multi indeksi basina
+        ayristirilip saklaniyor ve yerlestirilmis bir multinin trigger dagitimi hem kendi
+        trigger bloklari hem de adini verdigi TEVENTS icin ona basvuruyor.
+
 [2026-09-17] - NEWBIE esyasinin altindaki satir ve ait oldugu esya
 ----------------------------------------
 

@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The triggers a MULTIDEF wrote, and nothing that read them
+----------------------------------------
+
+FIX - A [MULTIDEF] section's trigger blocks and TEVENTS never reached the multi they
+        define. Upstream a MULTIDEF header IS an itemdef header - LoadResourceSection
+        maps it to RES_ITEMDEF and ResourceGetNewID offsets a numeric one by
+        ITEMID_MULTI (CServerConfig.cpp:3276, 4394) - so everything an ITEMDEF body
+        carries works on a MULTIDEF, and the reference distribution writes @Create,
+        @DClick and @ClientTooltip blocks straight into them. SphereNet indexes multis
+        by their raw multi.mul index in a separate resource type, which is the right
+        call - 345 of the shipped pack's 372 numeric multi headers are also itemdef
+        headers, so a single index would have them overwrite each other - but nothing
+        ever read a definition body or a trigger off that index. The definition body
+        is now parsed and kept per multi index, and a placed multi's trigger dispatch
+        consults it for its own trigger blocks and for the TEVENTS it names.
+
 [2026-09-17] - The line under a NEWBIE item, and the item it belongs to
 ----------------------------------------
 

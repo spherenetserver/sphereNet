@@ -25,6 +25,17 @@ public sealed class DefinitionLoader
     // Definition registries — accessible for runtime lookups
     private static readonly Dictionary<int, CharDef> _charDefs = new();
     private static readonly Dictionary<int, ItemDef> _itemDefs = new();
+
+    /// <summary>Definition bodies of [MULTIDEF] sections, keyed by multi index.
+    ///
+    /// Upstream a MULTIDEF section IS an itemdef: LoadResourceSection maps the header
+    /// to RES_ITEMDEF (CServerConfig.cpp:3276) and ResourceGetNewID offsets a numeric
+    /// one by ITEMID_MULTI (CServerConfig.cpp:4394), which is what keeps [ITEMDEF 010]
+    /// and [MULTIDEF 010] apart - 345 of the shipped pack's 372 numeric multi headers
+    /// collide with an itemdef header. SphereNet indexes multis by their raw multi.mul
+    /// index instead, so the two definition spaces are kept in separate maps here
+    /// rather than offset into one.</summary>
+    private static readonly Dictionary<int, ItemDef> _multiItemDefs = new();
     private static readonly Dictionary<int, SkillClassDef> _skillClassDefs = new();
     private static readonly Dictionary<int, RegionResourceDef> _regionResourceDefs = new();
     private static readonly Dictionary<int, RegionTypeDef> _regionTypeDefs = new();
@@ -73,6 +84,11 @@ public sealed class DefinitionLoader
 
     private static readonly Dictionary<ushort, CharDef> _charDefsByBody = [];
     public static ItemDef? GetItemDef(int baseId) => _itemDefs.GetValueOrDefault(baseId);
+
+    /// <summary>The definition body a [MULTIDEF] section wrote, by multi index. A
+    /// placed multi carries that index as its BaseId, and it is NOT an itemdef index -
+    /// see <see cref="_multiItemDefs"/>.</summary>
+    public static ItemDef? GetMultiItemDef(int multiId) => _multiItemDefs.GetValueOrDefault(multiId);
     public static IEnumerable<KeyValuePair<int, CharDef>> AllCharDefs => _charDefs;
     public static IEnumerable<KeyValuePair<int, ItemDef>> AllItemDefs => _itemDefs;
     public static RegionResourceDef? GetRegionResourceDef(int id) => _regionResourceDefs.GetValueOrDefault(id);
@@ -191,6 +207,7 @@ public sealed class DefinitionLoader
     {
         _charDefs.Clear();
         _itemDefs.Clear();
+        _multiItemDefs.Clear();
         _skillClassDefs.Clear();
         _regionResourceDefs.Clear();
         _regionTypeDefs.Clear();
@@ -220,6 +237,9 @@ public sealed class DefinitionLoader
                     break;
                 case ResType.ItemDef:
                     LoadItemDef(link);
+                    break;
+                case ResType.MultiDef:
+                    LoadItemDef(link, _multiItemDefs);
                     break;
                 case ResType.CharDef:
                     LoadCharDef(link);
@@ -271,6 +291,7 @@ public sealed class DefinitionLoader
     {
         _charDefs.Clear();
         _itemDefs.Clear();
+        _multiItemDefs.Clear();
         _skillClassDefs.Clear();
         _regionResourceDefs.Clear();
         _regionTypeDefs.Clear();
@@ -538,12 +559,17 @@ public sealed class DefinitionLoader
         CharDefsLoaded++;
     }
 
-    private void LoadItemDef(ResourceLink link)
+    private void LoadItemDef(ResourceLink link, Dictionary<int, ItemDef>? target = null)
     {
+        target ??= _itemDefs;
         var def = new ItemDef(link.Id);
 
         var keys = link.StoredKeys;
-        if (keys == null || keys.Count == 0) { ItemDefsLoaded++; return; }
+        if (keys == null || keys.Count == 0)
+        {
+            if (target == _itemDefs) ItemDefsLoaded++;
+            return;
+        }
 
         // Definition properties end at the first @trigger. Trigger bodies act
         // on item instances at runtime and must never mutate the shared base
@@ -602,8 +628,8 @@ public sealed class DefinitionLoader
         if (!string.IsNullOrEmpty(def.DefName))
             _resources.RegisterDefName(def.DefName, link.Id);
 
-        _itemDefs[link.Id.Index] = def;
-        ItemDefsLoaded++;
+        target[link.Id.Index] = def;
+        if (target == _itemDefs) ItemDefsLoaded++;
     }
 
     private void LoadSpellDef(ResourceLink link)

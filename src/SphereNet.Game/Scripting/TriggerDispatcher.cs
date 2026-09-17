@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
@@ -423,6 +423,34 @@ public sealed class TriggerDispatcher
         // 3. TEVENTS from ITEMDEF definition
         if (Resources != null && Runner != null)
         {
+            // A placed multi's definition is a [MULTIDEF] section, and upstream reads
+            // that header as an itemdef (CServerConfig.cpp:3276), so its TEVENTS and
+            // its own @trigger blocks belong to the multi exactly as an ITEMDEF's do.
+            // SphereNet indexes multis separately from itemdefs, and nothing consulted
+            // that index for triggers - every trigger and TEVENTS line a MULTIDEF wrote
+            // was loaded and then never reached.
+            if (item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
+                or Core.Enums.ItemType.Ship)
+            {
+                var multiDef = Definitions.DefinitionLoader.GetMultiItemDef(item.BaseId);
+                if (multiDef != null)
+                {
+                    foreach (var tevRid in multiDef.Events)
+                    {
+                        if (item.Events.Contains(tevRid)) continue;
+                        var tevLink = Resources.GetResource(tevRid);
+                        if (tevLink == null) continue;
+                        if (RunWrapped(tevLink, trigName, item, args) == TriggerResult.True)
+                            return TriggerResult.True;
+                    }
+                }
+
+                var multiLink = Resources.GetResource(ResType.MultiDef, item.BaseId);
+                if (multiLink != null &&
+                    RunWrapped(multiLink, trigName, item, args) == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+
             var itemDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
             if (itemDef != null)
             {

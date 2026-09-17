@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - Two that were never missing, and the signal that proves it
+----------------------------------------
+
+CHANGE - MOVETO and SKILLMENU were on the unanswered list and neither was a gap.
+        MOVETO is the P setter under its other name - upstream shares one case
+        between them (OV_MOVETO / OV_P, CObjBase.cpp:2489) - and SKILLMENU opens a
+        [SKILLMENU] section and sends the menu. Both were simply refusing the
+        sweep's probe ARGUMENT, which is a different thing from not knowing the
+        name.
+
+        The engine already keeps those two apart: TryExecuteCommand reports
+        nameOwned precisely so "no such verb" and "that verb refused" cannot be
+        confused - the reason being that a refusing verb must not hand its line to
+        a like-named script function. The sweep now reads that flag instead of the
+        return value, and MOVETO left the baseline on its own.
+
+        A CLIENT verb has no such flag, so SKILLMENU still looks unknown to the
+        sweep and is recorded as implemented-but-not-probeable rather than left
+        among the gaps. Both are pinned by tests now, including the exact shape
+        that misled the sweep: a verb refusing a destination it cannot read while
+        still owning the name.
+
+        Baseline 31 -> 29.
+
 [2026-09-17] - The stone's own record, and asking with the pack's own words
 ----------------------------------------
 

@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Hic eksik olmayan ikisi, ve bunu kanitlayan sinyal
+----------------------------------------
+
+CHANGE - MOVETO ve SKILLMENU yanitsizlar listesindeydi ve ikisi de bosluk
+        degildi. MOVETO, P setter'inin diger adi - ust kaynak ikisine tek bir case
+        verir (OV_MOVETO / OV_P, CObjBase.cpp:2489) - SKILLMENU ise bir [SKILLMENU]
+        bolumunu acip menuyu gonderiyor. Ikisi de yalnizca taramanin sonda
+        ARGUMANINI reddediyordu; bu ise adi bilmemekten baska bir seydir.
+
+        Motor bu ikisini zaten ayri tutuyor: TryExecuteCommand nameOwned bildirir,
+        tam da "boyle bir verb yok" ile "o verb reddetti" karismasin diye -
+        gerekcesi de reddeden bir verb'un satirini ayni adli bir script
+        fonksiyonuna devretmemesi. Tarama artik donus degeri yerine o bayragi
+        okuyor ve MOVETO kendiliginden baseline'dan cikti.
+
+        Bir ISTEMCI verb'unde boyle bir bayrak yok, bu yuzden SKILLMENU taramaya
+        hala bilinmiyor gibi gorunuyor; bosluklarin arasinda birakilmak yerine
+        "uygulanmis ama sondalanamaz" olarak kaydedildi. Ikisi de artik testlerle
+        sabit - taramayi yaniltan tam bicim dahil: okuyamadigi bir hedefi reddeden
+        ama adin sahibi olmayi surduren bir verb.
+
+        Baseline 31 -> 29.
+
 [2026-09-17] - Tasin kendi kaydi, ve paketin kendi sozcukleriyle sormak
 ----------------------------------------
 

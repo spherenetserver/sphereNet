@@ -47,6 +47,21 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant |
         RegexOptions.Multiline | RegexOptions.Compiled);
 
+    /// <summary>Implemented, but this probe cannot demonstrate it.
+    ///
+    /// A CLIENT verb has no nameOwned signal - the object verb table has one
+    /// precisely so "no such verb" and "that verb refused" stay apart, and the
+    /// client side does not - so a client verb that validates its argument looks
+    /// exactly like an unknown name here. SKILLMENU needs a loaded [SKILLMENU]
+    /// section to succeed and there is none in a bare probe world; it is covered by
+    /// MoveToAndSkillMenuVerbTests instead. Entries here are excluded from the sweep
+    /// so nobody implements them a second time.</summary>
+    private static readonly HashSet<string> AnsweredButNotProbeable =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "SKILLMENU",
+        };
+
     /// <summary>Members a real pack calls that nothing answers and no FUNCTION
     /// defines. Each is a line that does nothing at all. The assertions below fail
     /// when a name joins this set AND when one leaves it.</summary>
@@ -57,8 +72,8 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
             "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item", "HEARALL",
             "HouseDesign", "ISDISS", "ISINSAFE", "ISJAIL",
-            "ISNOMOVERFLAGS", "LOG", "MOREM", "MOVETO",
-            "NOTICE", "PAGE", "SKILLMENU", "SYSMESSSYSMESSAGELOC",
+            "ISNOMOVERFLAGS", "LOG", "MOREM",
+            "NOTICE", "PAGE", "SYSMESSSYSMESSAGELOC",
             "SendGMPage", "TARGPRV", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
             "dmore2", "nototitle", "sys_red",
         };
@@ -150,13 +165,21 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             world.PlaceItem(acted, new Point3D(102, 100, 0, 0));
             try { ch.TrySetProperty("ACT", $"0{acted.Uid.Value:X}"); } catch { }
             try { if (ch.TryGetProperty(key, out _)) return true; } catch { return true; }
-            try { if (ch.TryExecuteCommand(key, arg, console)) return true; } catch { return true; }
+            // nameOwned, not the return value: a verb that recognises the name and
+            // then refuses the ARGUMENT is not an unknown name, and the engine keeps
+            // the two apart for exactly the reason this probe needs them apart
+            // (ObjBase.TryExecuteCommand). Judging by success alone reported MOVETO
+            // and SKILLMENU as gaps - both implemented, both simply declining a
+            // probe argument of "1".
+            try { if (ch.TryExecuteCommand(key, arg, console, out bool chOwned) || chOwned) return true; }
+            catch { return true; }
 
             var it = world.CreateItem();
             it.BaseId = 0x0EED;
             world.PlaceItem(it, new Point3D(101, 100, 0, 0));
             try { if (it.TryGetProperty(key, out _)) return true; } catch { return true; }
-            try { if (it.TryExecuteCommand(key, arg, console)) return true; } catch { return true; }
+            try { if (it.TryExecuteCommand(key, arg, console, out bool itOwned) || itOwned) return true; }
+            catch { return true; }
 
             // The third link: the acting CLIENT own verbs (WEBLINK, DIALOG, TARGETF,
             // SENDPACKET...). Skipping it reports every console verb as a gap.
@@ -175,7 +198,8 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
                 {
                     var target = ch.ResolveRefHead(head) ?? it.ResolveRefHead(head);
                     if (target != null && (target.TryGetProperty(rest, out _) ||
-                                           target.TryExecuteCommand(rest, arg, console)))
+                                           target.TryExecuteCommand(rest, arg, console, out bool refOwned) ||
+                                           refOwned))
                         return true;
                 }
                 catch { return true; }
@@ -243,6 +267,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         foreach (var (name, info) in seen)
         {
             if (functions.Contains(name)) continue;
+            if (AnsweredButNotProbeable.Contains(name)) continue;
             if (EngineAnswers(world, client, name, info.Suffixes)) continue;
             unanswered.Add((name, info.Uses, info.File));
         }

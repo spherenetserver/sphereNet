@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir cliloc'un argumanlarini virgul degil sekme ayirir
+----------------------------------------
+
+FIX - ADDCLILOC arguman listesini IKI parcaya boluyor ve kalani oldugu gibi
+        geciriyordu; yani cok argumanli bir cliloc tum kuyrugunu birinci arguman olarak
+        aliyordu. "ADDCLILOC 1060658,Access,Owner Only" satiri "~1_val~: ~2_val~"
+        bicimindedir ve "Access: Owner Only" yerine ilk yuvada "Access,Owner Only",
+        ikinci yuvada bos olarak gorunuyordu. Ust kaynak her virgulu boler ve kalani
+        sekme ile birlestirir; bos olan ya da NULL yazan arguman yerine tek bosluk koyar
+        (OV_ADDCLILOC, CObjBase.cpp:2160). O bosluk onemlidir: olmazsa bos argumandan
+        sonrakiler bir yuva yukari kayar.
+
+        Paketlerde bu bicimde 27 satir var; ev tabelasinda ve ekipmanda. Motorun kendi
+        tooltip kodu ayni cliloc'lar icin hep sekme kullaniyordu; uyumsuzlugun icerden
+        gorunmemesinin sebebi buydu.
+
 [2026-09-17] - HASCOMPONENTPROPS hicbir sey donmuyordu ve bir tooltip kapisi onu okuyor
 ----------------------------------------
 

@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A cliloc's arguments are separated by a tab, not a comma
+----------------------------------------
+
+FIX - ADDCLILOC split its argument list into TWO parts and passed the remainder
+        through untouched, so a multi-argument cliloc got its whole tail as argument
+        one. "ADDCLILOC 1060658,Access,Owner Only" is "~1_val~: ~2_val~" and rendered
+        as "Access,Owner Only" in the first slot with the second empty, instead of
+        "Access: Owner Only". Upstream splits every comma and joins the rest with a
+        tab, putting a single space where an argument is empty or the literal word
+        NULL (OV_ADDCLILOC, CObjBase.cpp:2160) - the space matters, because without it
+        the arguments after an empty one shift up a slot.
+
+        The packs write 27 such lines, on the house sign and on equipment. The engine's
+        own tooltip code has always used tabs for the same clilocs, which is what made
+        the mismatch invisible from inside.
+
 [2026-09-17] - HASCOMPONENTPROPS answered nothing, and a tooltip gate read it
 ----------------------------------------
 

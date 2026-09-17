@@ -145,9 +145,25 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper == "ADDCLILOC")
         {
-            string[] parts = args.Split(',', 2, StringSplitOptions.TrimEntries);
+            // A cliloc's arguments are TAB separated on the wire, and the script
+            // writes them comma separated: upstream splits every comma and joins the
+            // rest with a tab, putting a single space where an argument is empty or
+            // the word NULL (OV_ADDCLILOC, CObjBase.cpp:2160). Splitting into two
+            // parts and passing the remainder through handed a multi-argument cliloc
+            // its whole tail as argument one - "1060658,Access,Owner Only" rendered as
+            // "Access,Owner Only" in the first slot with the second empty, instead of
+            // "Access: Owner Only". The packs write 27 such lines, on the house sign
+            // and on equipment.
+            string[] parts = args.Split(',', StringSplitOptions.TrimEntries);
             if (parts.Length > 0 && uint.TryParse(parts[0], out uint cliloc))
-                _client.ScriptTooltipProperties?.Add((cliloc, parts.Length > 1 ? parts[1] : ""));
+            {
+                var clilocArgs = new string[parts.Length - 1];
+                for (int a = 1; a < parts.Length; a++)
+                    clilocArgs[a - 1] = parts[a].Length == 0 ||
+                        parts[a].StartsWith("NULL", StringComparison.OrdinalIgnoreCase)
+                            ? " " : parts[a];
+                _client.ScriptTooltipProperties?.Add((cliloc, string.Join('\t', clilocArgs)));
+            }
             return true;
         }
 

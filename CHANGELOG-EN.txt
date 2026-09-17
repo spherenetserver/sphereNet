@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The message colours a pack sets, loaded and never read
+----------------------------------------
+
+FIX - SMSG_DEF_COLOR was loaded into a property nothing consulted. Every send site
+        carried the hue and font as a literal, so the live pack's SMSG_DEF_COLOR of 946
+        changed nothing and every system message came out in the engine's own 0x35.
+        Upstream picks the pair by talkmode and reads it out of the defname table on
+        every line it sends (addBarkParse, CClientMsg.cpp:730-790).
+
+        All five talkmodes are read now - SMSG, EMOTE, SAY, CMSG and IMSG, each with
+        _DEF_COLOR and _DEF_FONT - and the system, NPC-speech and emote send paths take
+        their defaults from them. An absent defname leaves the engine default standing:
+        upstream's lookup answers 0 for a key nothing sets, and taking that literally
+        would paint every message black. The reference distribution sets all fifteen.
+
 [2026-09-17] - The OVERRIDE tags a pack sets and nothing read
 ----------------------------------------
 

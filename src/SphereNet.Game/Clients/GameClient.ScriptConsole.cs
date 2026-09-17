@@ -773,7 +773,8 @@ public sealed partial class GameClient
 
     public PrivLevel GetPrivLevel() => _account?.PrivLevel ?? PrivLevel.Guest;
 
-    public void SysMessage(string text) => SysMessage(text, 0x0035);
+    public void SysMessage(string text) =>
+        SysMessage(text, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System));
 
     public void SysMessage(string text, ushort hue)
     {
@@ -796,9 +797,12 @@ public sealed partial class GameClient
     /// NPC speech.</summary>
     internal void NpcSpeech(Character npc, string text)
     {
-        ushort hue = npc.SpeechColor != 0 ? npc.SpeechColor : (ushort)0x03B2;
+        ushort hue = npc.SpeechColor != 0
+            ? npc.SpeechColor
+            : SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Say);
         var packet = new PacketSpeechUnicodeOut(
-            npc.Uid.Value, npc.BodyId, 0, hue, 3, "TRK", npc.GetName(), text);
+            npc.Uid.Value, npc.BodyId, 0, hue,
+            SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Say), "TRK", npc.GetName(), text);
         BroadcastNearby?.Invoke(npc.Position, 18, packet, 0);
     }
 

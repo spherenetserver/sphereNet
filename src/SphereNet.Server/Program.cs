@@ -644,13 +644,29 @@ public static partial class Program
                 ServerMessages.LoadOverrides(defMsgs);
                 _log.LogInformation("DEFMESSAGE overrides loaded: {Count}", defMsgs.Count);
             }
-            // Read messages_settings defnames (SMSG_DEF_COLOR, SMSG_DEF_FONT)
-            var colorRid = _resources.ResolveDefName("SMSG_DEF_COLOR");
-            if (colorRid != ResourceId.Invalid)
-                ServerMessages.SetDefaults((ushort)colorRid.Index, ServerMessages.DefaultFont);
-            var fontRid = _resources.ResolveDefName("SMSG_DEF_FONT");
-            if (fontRid != ResourceId.Invalid)
-                ServerMessages.SetDefaults(ServerMessages.DefaultColor, (byte)fontRid.Index);
+            // The per-talkmode default hue and font a pack sets by DEFNAME. Upstream
+            // picks the pair by talkmode on every line it sends (addBarkParse,
+            // CClientMsg.cpp:730-790); only the SMSG pair was read here, into a
+            // property nothing consulted.
+            ServerMessages.ResetTalkDefaults();
+            foreach (var (mode, prefix) in new[]
+            {
+                (ServerMessages.TalkDefault.System,  "SMSG"),
+                (ServerMessages.TalkDefault.Emote,   "EMOTE"),
+                (ServerMessages.TalkDefault.Say,     "SAY"),
+                (ServerMessages.TalkDefault.CharMsg, "CMSG"),
+                (ServerMessages.TalkDefault.ItemMsg, "IMSG"),
+            })
+            {
+                var hueRid = _resources.ResolveDefName($"{prefix}_DEF_COLOR");
+                var fntRid = _resources.ResolveDefName($"{prefix}_DEF_FONT");
+                ushort hue = hueRid != ResourceId.Invalid && hueRid.Index is > 0 and <= ushort.MaxValue
+                    ? (ushort)hueRid.Index : (ushort)0;
+                byte font = fntRid != ResourceId.Invalid && fntRid.Index is > 0 and <= byte.MaxValue
+                    ? (byte)fntRid.Index : (byte)0;
+                if (hue != 0 || font != 0)
+                    ServerMessages.SetTalkDefault(mode, hue, font);
+            }
         }
 
         // --- 4. Map Data ---

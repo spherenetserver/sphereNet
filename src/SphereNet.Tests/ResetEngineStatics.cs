@@ -202,6 +202,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // moves a character or fires a char trigger; zero them per test so a
         // profile assertion measures its own test and not the ones before it.
         SphereNet.Game.Diagnostics.LoadProfile.Reset();
+        // Per-talkmode default hue/font: a pack sets these by DEFNAME at load, so a
+        // test that loads one must not tint the next test's messages.
+        SphereNet.Game.Messages.ServerMessages.ResetTalkDefaults();
         SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = null;
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;

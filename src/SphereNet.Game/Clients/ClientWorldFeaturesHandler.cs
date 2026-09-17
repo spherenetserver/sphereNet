@@ -3040,7 +3040,8 @@ public sealed class ClientWorldFeaturesHandler
                     // send pipeline. party_decline_1: "<name>: Does not wish to join the party."
                     string declineNote = ServerMessages.GetFormatted("party_decline_1", _character.Name ?? "Someone");
                     SendToChar?.Invoke(new Serial(declineInviterUid),
-                        new PacketSpeechUnicodeOut(0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", declineNote));
+                        new PacketSpeechUnicodeOut(0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System", declineNote));
                 }
                 else if (declinedUid != 0)
                 {

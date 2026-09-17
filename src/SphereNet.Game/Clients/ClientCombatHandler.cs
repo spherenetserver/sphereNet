@@ -1325,7 +1325,7 @@ public sealed class ClientCombatHandler
                 // alone gets "*X is attacking you!*" (%s = attacker). The old
                 // code formatted the "attacking you" template with the
                 // VICTIM's name and broadcast it to everyone.
-                const ushort emoteHue = 0x0022;
+                ushort emoteHue = SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Emote);
                 string atkName = _character.Name ?? "";
                 var emoteOthers = new PacketSpeechUnicodeOut(
                     _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
@@ -1574,7 +1574,8 @@ public sealed class ClientCombatHandler
                     SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
                 if (target.DetailView && _character != null)
                     _client.SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
-                        0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System",
+                        0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System",
                         ServerMessages.GetFormatted(Msg.CombatMisso, _character.Name)));
                 EmitMissSound(weapon);
             }

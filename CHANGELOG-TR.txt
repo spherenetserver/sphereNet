@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Paketin ayarladigi, yuklenip hic okunmayan mesaj renkleri
+----------------------------------------
+
+FIX - SMSG_DEF_COLOR, hicbir seyin basvurmadigi bir ozellige yukleniyordu. Tum gonderim
+        noktalari rengi ve fontu duz sayi olarak tasiyordu; yani canli paketin
+        SMSG_DEF_COLOR=946 ayari hicbir sey degistirmiyor ve her sistem mesaji motorun
+        kendi 0x35'inde cikiyordu. Ust kaynak cifti konusma moduna gore secer ve
+        gonderdigi her satirda defname tablosundan okur (addBarkParse,
+        CClientMsg.cpp:730-790).
+
+        Artik bes konusma modunun tamami okunuyor - SMSG, EMOTE, SAY, CMSG ve IMSG, her
+        biri _DEF_COLOR ve _DEF_FONT ile - ve sistem, NPC konusmasi ve emote gonderim
+        yollari varsayilanlarini bunlardan aliyor. Tanimsiz bir defname motor
+        varsayilanini bozmaz: ust kaynagin aramasi da kurulmamis anahtara 0 doner ve bunu
+        harfiyen almak her mesaji siyaha boyardi. Referans dagitim on besinin hepsini
+        ayarliyor.
+
 [2026-09-17] - Paketin kurdugu, hicbir seyin okumadigi OVERRIDE etiketleri
 ----------------------------------------
 

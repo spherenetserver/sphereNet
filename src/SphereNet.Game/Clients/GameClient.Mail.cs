@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Messages;
 using SphereNet.Game.Scripting;
@@ -43,6 +43,7 @@ public sealed partial class GameClient
 
         string text = ServerMessages.GetFormatted(Msg.MsgMailbagDrop2, _character.GetName());
         SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
-            0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", text));
+            0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System", text));
     }
 }

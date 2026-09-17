@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -27,6 +27,48 @@ public static partial class ServerMessages
 
     /// <summary>Default system message font (SMSG_DEF_FONT).</summary>
     public static byte DefaultFont { get; private set; } = 3;
+
+    /// <summary>The five talkmodes whose default hue and font a pack sets by DEFNAME.
+    ///
+    /// Upstream picks the pair by talkmode and reads it out of the defname table on
+    /// every line it sends - SMSG / EMOTE / SAY / CMSG / IMSG, each with _DEF_COLOR
+    /// and _DEF_FONT (addBarkParse, CClientMsg.cpp:730-790). Only the SMSG pair was
+    /// loaded here, and nothing read even that: the send sites carried the hue as a
+    /// literal, so the live pack's SMSG_DEF_COLOR of 946 changed nothing and every
+    /// system message stayed the engine's own 0x35.</summary>
+    public enum TalkDefault { System, Emote, Say, CharMsg, ItemMsg }
+
+    private static readonly ushort[] _talkHue = [0x0035, 0x0022, 0x03B2, 0x03B2, 0x03B2];
+    private static readonly byte[] _talkFont = [3, 3, 3, 3, 3];
+
+    /// <summary>Default hue for a talkmode.</summary>
+    public static ushort HueOf(TalkDefault mode) => _talkHue[(int)mode];
+
+    /// <summary>Default font for a talkmode.</summary>
+    public static byte FontOf(TalkDefault mode) => _talkFont[(int)mode];
+
+    /// <summary>Set one talkmode's default pair. A zero hue or font means the pack
+    /// wrote none, and the engine default stands - upstream treats an absent defname
+    /// the same way (GetKeyNum returns 0).</summary>
+    public static void SetTalkDefault(TalkDefault mode, ushort hue, byte font)
+    {
+        if (hue != 0) _talkHue[(int)mode] = hue;
+        if (font != 0) _talkFont[(int)mode] = font;
+        if (mode == TalkDefault.System)
+        {
+            DefaultColor = _talkHue[(int)mode];
+            DefaultFont = _talkFont[(int)mode];
+        }
+    }
+
+    /// <summary>Reset every talkmode to the engine defaults (reload / tests).</summary>
+    public static void ResetTalkDefaults()
+    {
+        ushort[] hues = [0x0035, 0x0022, 0x03B2, 0x03B2, 0x03B2];
+        for (int i = 0; i < _talkHue.Length; i++) { _talkHue[i] = hues[i]; _talkFont[i] = 3; }
+        DefaultColor = 0x0035;
+        DefaultFont = 3;
+    }
 
     /// <summary>Total number of default keys currently registered (Source-X + custom).</summary>
     public static int DefaultCount => _defaults.Count;
@@ -100,8 +142,7 @@ public static partial class ServerMessages
     /// </summary>
     public static void SetDefaults(ushort color, byte font)
     {
-        DefaultColor = color;
-        DefaultFont = font;
+        SetTalkDefault(TalkDefault.System, color, font);
     }
 
     /// <summary>

@@ -84,46 +84,14 @@ public sealed class ScriptInterpreter
                 continue;
             }
 
+            if (TryExecuteBlockStatement(lines, cmd, ref i, target, source, args, scope, ref result))
+            {
+                if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing) break;
+                continue;
+            }
+
             switch (cmd)
             {
-                case "IF":
-                    i = ExecuteIf(lines, i, target, source, args, scope, out result);
-                    break;
-
-                case "FOR":
-                    i = ExecuteFor(lines, i, target, source, args, scope, out result);
-                    break;
-
-                case "WHILE":
-                    i = ExecuteWhile(lines, i, target, source, args, scope, out result);
-                    break;
-
-                case "DORAND":
-                    i = ExecuteDoRand(lines, i, target, source, args, scope, out result);
-                    break;
-
-                case "DOSWITCH":
-                    i = ExecuteDoSwitch(lines, i, target, source, args, scope, out result);
-                    break;
-
-                case "BEGIN":
-                    i = ExecuteBegin(lines, i, target, source, args, scope, out result);
-                    break;
-
-                case "FORPLAYERS":
-                case "FORINSTANCES":
-                case "FORCHARS":
-                case "FORCLIENTS":
-                case "FORITEMS":
-                case "FOROBJS":
-                case "FORCONT":
-                case "FORCONTID":
-                case "FORCONTTYPE":
-                case "FORCHARLAYER":
-                case "FORCHARMEMORYTYPE":
-                    i = ExecuteForObjects(lines, i, target, source, args, scope, out result, cmd);
-                    break;
-
                 case "BREAK":
                     if (scope.LoopDepth > 0)
                     {
@@ -1033,6 +1001,59 @@ public sealed class ScriptInterpreter
     /// the scope, mark the block as returning, and report True for a non-zero number.
     /// A numeric RETURN stores the evaluated number; a string RETURN (a [FUNCTION]
     /// returning a name, defname or message) keeps its text.</summary>
+    /// <summary>Run a block-opening statement, whatever block it is nested in.
+    ///
+    /// Execute and ExecuteIf both need this, and ExecuteIf used to carry a partial
+    /// copy of it: IF, FOR and WHILE had cases there, the other block kinds did not,
+    /// and so they fell through to ExecuteLine as ordinary statements. A DORAND inside
+    /// an IF ran EVERY option instead of one - the shipped packs write 4754 of those,
+    /// most of them the guarded random barkline of a town NPC - and an object loop ran
+    /// its body once, on the wrong object, instead of iterating.
+    ///
+    /// Returns false when the statement opens no block, leaving it to the caller.
+    /// </summary>
+    private bool TryExecuteBlockStatement(IReadOnlyList<ScriptKey> lines, string cmd, ref int i,
+        IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope scope,
+        ref TriggerResult result)
+    {
+        switch (cmd)
+        {
+            case "IF":
+                i = ExecuteIf(lines, i, target, source, args, scope, out result);
+                return true;
+            case "FOR":
+                i = ExecuteFor(lines, i, target, source, args, scope, out result);
+                return true;
+            case "WHILE":
+                i = ExecuteWhile(lines, i, target, source, args, scope, out result);
+                return true;
+            case "DORAND":
+                i = ExecuteDoRand(lines, i, target, source, args, scope, out result);
+                return true;
+            case "DOSWITCH":
+                i = ExecuteDoSwitch(lines, i, target, source, args, scope, out result);
+                return true;
+            case "BEGIN":
+                i = ExecuteBegin(lines, i, target, source, args, scope, out result);
+                return true;
+            case "FORPLAYERS":
+            case "FORINSTANCES":
+            case "FORCHARS":
+            case "FORCLIENTS":
+            case "FORITEMS":
+            case "FOROBJS":
+            case "FORCONT":
+            case "FORCONTID":
+            case "FORCONTTYPE":
+            case "FORCHARLAYER":
+            case "FORCHARMEMORYTYPE":
+                i = ExecuteForObjects(lines, i, target, source, args, scope, out result, cmd);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private TriggerResult ApplyReturn(ScriptKey line, IScriptObj target, ITextConsole? source,
         ITriggerArgs? args, ScriptScope scope)
     {
@@ -1091,17 +1112,18 @@ public sealed class ScriptInterpreter
 
             if (condResult)
             {
+                // Every block kind, through the one dispatcher Execute uses. This used
+                // to be a partial copy with IF, FOR and WHILE in it; the rest fell to
+                // ExecuteLine below and their block structure was simply ignored.
+                if (TryExecuteBlockStatement(lines, cmd, ref i, target, source, args, scope, ref result))
+                {
+                    if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing)
+                        return lines.Count;
+                    continue;
+                }
+
                 switch (cmd)
                 {
-                    case "IF":
-                        i = ExecuteIf(lines, i, target, source, args, scope, out result);
-                        break;
-                    case "FOR":
-                        i = ExecuteFor(lines, i, target, source, args, scope, out result);
-                        break;
-                    case "WHILE":
-                        i = ExecuteWhile(lines, i, target, source, args, scope, out result);
-                        break;
                     // The out-parameter used to keep the Default it was initialised
                     // with, so a RETURN 1 inside an IF stopped the block and then
                     // reported nothing - and "IF <condition> ... RETURN 1 ... ENDIF" is

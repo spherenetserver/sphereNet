@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - IF icine yerlesmis bir blok, blok olarak islenmiyordu
+----------------------------------------
+
+FIX - ExecuteIf, Execute'un kullandigi deyim switch'inin KISMI BIR KOPYASINI tasiyordu.
+        Icinde IF, FOR ve WHILE dallari vardi; diger on sekiz blok turu yoktu, bu yuzden
+        siradan deyim gibi ExecuteLine'a dusuyor ve yapilari yok sayiliyordu. IF icindeki
+        bir DORAND, tek secenek yerine HER secenegi calistiriyor; bir DOSWITCH,
+        adlandirdigi giris yerine tum girisleri calistiriyor; bir nesne dongusu
+        (FORCHARS, FORITEMS, FORCONT ve digerleri) yinelemek yerine govdesini, satirin
+        zaten uzerinde calistigi nesnede bir kez calistiriyordu.
+
+        Gonderilen paketler bunlardan 4817 tanesini bir IF icine yerlestiriyor ve 4754'u
+        DORAND - bir sehir NPC'sinin kosula bagli rastgele repligi. Hepsi tum satirlarini
+        ayni anda soyluyordu.
+
+        Iki dagitici artik tek bir metodu paylasiyor. Asil hata kismi kopyanin
+        kendisiydi: BREAK, CONTINUE ve RETURN'un de orada eksik kalmasinin sebebi oydu.
+
 [2026-09-17] - Onlari calistiran bloklarda BREAK, CONTINUE ve RETURN
 ----------------------------------------
 

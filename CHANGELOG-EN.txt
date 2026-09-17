@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A block nested inside an IF was not treated as a block
+----------------------------------------
+
+FIX - ExecuteIf carried a PARTIAL COPY of the statement switch Execute uses. IF, FOR
+        and WHILE had cases in it; the other eighteen block kinds did not, so they fell
+        through to ExecuteLine as ordinary statements and their structure was ignored.
+        A DORAND inside an IF ran EVERY option instead of one, a DOSWITCH ran every
+        entry instead of the one it names, and an object loop (FORCHARS, FORITEMS,
+        FORCONT and the rest) ran its body once, on whatever object the line was
+        already running on, instead of iterating.
+
+        The shipped packs nest 4817 of these inside an IF and 4754 of them are DORAND -
+        the guarded random barkline of a town NPC. Every one said all of its lines at
+        once.
+
+        Both dispatchers now share one method. The partial copy WAS the bug: it is what
+        let BREAK, CONTINUE and RETURN go missing there too.
+
 [2026-09-17] - BREAK, CONTINUE and RETURN in the blocks that ran them
 ----------------------------------------
 

@@ -1107,9 +1107,15 @@ public sealed partial class GameClient
                     entry.Dice = parts[2];
                 entries.Add(entry);
             }
-            else if (key == "COLOR" && entries.Count > 0)
+            else if (entries.Count > 0)
             {
-                entries[^1].Color = sk.Arg.Trim();
+                // Anything after an ITEM= line belongs to that item
+                // (ReadScriptReduced, CChar.cpp:1444). COLOR keeps its own slot
+                // because the hue resolution below is not a plain property write.
+                if (key == "COLOR")
+                    entries[^1].Color = sk.Arg.Trim();
+                else
+                    entries[^1].Properties.Add((sk.Key.Trim(), sk.Arg));
             }
         }
 

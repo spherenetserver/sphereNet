@@ -2086,6 +2086,16 @@ public sealed partial class GameClient
                 }
             }
 
+            // And every other line the section wrote under this item, in order.
+            foreach (var (propKey, propValue) in entry.Properties)
+            {
+                try { item.TrySetProperty(propKey, propValue); }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[newbie] {Def}.{Key} refused", entry.DefName, propKey);
+                }
+            }
+
             Layer layer = itemDef?.Layer ?? Layer.None;
             if (layer == Layer.None && _world.MapData != null)
             {

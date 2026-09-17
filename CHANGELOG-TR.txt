@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - NEWBIE esyasinin altindaki satir ve ait oldugu esya
+----------------------------------------
+
+FIX - [NEWBIE] bolumunde ITEM= satirindan sonra sadece COLOR= okunuyordu. Ust
+        kaynak, sablon komutu olmayan her satiri en son yarattigi esyaya uygular
+        (CChar::ReadScriptReduced, CChar.cpp:1444 -> r_LoadVal); buradaki COLOR bu
+        genel kuralin tek basina uygulanmis bir ornegiydi. Diger tum satirlar
+        okunup atiliyordu. Referans dagitimin necromancer meslekleri buyu kitabinin
+        altina MORE1=08981 yaziyor; bu, kitabin buyu icerigi - dusunce karakter bos
+        kitapla basliyor. Artik bir esyanin altina yazilan ozellik satiri, script
+        atamasinin kullandigi ayni yuzey uzerinden o esyaya ulasiyor; COLOR kendi
+        yolunda kaliyor, cunku arkasindaki renk dogrudan yazilmiyor, bir renk
+        araligindan cozuluyor.
+
 [2026-09-17] - Bir odanin soz sahibi oldugu tek bayrak
 ----------------------------------------
 

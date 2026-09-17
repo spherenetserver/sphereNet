@@ -17,6 +17,16 @@ public sealed class NewbieItemEntry
     /// Source-X flags these with ATTR_NEWBIE; we just remember the
     /// origin so a future loot table can skip them.</summary>
     public bool Newbie { get; set; }
+
+    /// <summary>Property lines written after this item's ITEM= line, in order.
+    ///
+    /// Upstream applies any line that is not a template command to the item it most
+    /// recently created (CChar::ReadScriptReduced, CChar.cpp:1444 -> r_LoadVal), and
+    /// COLOR above is just the one case of that this engine happened to implement.
+    /// The one that showed the gap is MORE1: the reference distribution's necromancer
+    /// professions write MORE1=08981 under their spellbook, which is the book's spell
+    /// content - without it the character starts holding an empty book.</summary>
+    public List<(string Key, string Value)> Properties { get; } = [];
 }
 
 /// <summary>

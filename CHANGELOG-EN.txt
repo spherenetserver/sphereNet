@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The line under a NEWBIE item, and the item it belongs to
+----------------------------------------
+
+FIX - A [NEWBIE] section's ITEM= line took only a COLOR= after it. Upstream applies
+        any line that is not a template command to the item it most recently created
+        (CChar::ReadScriptReduced, CChar.cpp:1444 -> r_LoadVal), and COLOR here was
+        one instance of that general rule implemented on its own. Every other line
+        was read and discarded. The reference distribution's necromancer professions
+        write MORE1=08981 under their spellbook, which is the book's spell content -
+        dropped, the character starts holding an empty book. A property line written
+        under an item now reaches that item, through the same surface a script
+        assignment uses; COLOR keeps its own path, because the hue behind it is
+        resolved from a colour range rather than written straight through.
+
 [2026-09-17] - The one flag a room gets a say in
 ----------------------------------------
 

@@ -157,7 +157,7 @@ public class Room : IScriptObj
         if (upper.StartsWith("ISEVENT.", StringComparison.Ordinal))
         {
             string evName = key[8..];
-            var checkRid = ResourceId.FromString(evName, ResType.Events);
+            var checkRid = Definitions.DefinitionLoader.ResolveEventName(evName);
             value = _events.Contains(checkRid) ? "1" : "0";
             return true;
         }
@@ -185,13 +185,13 @@ public class Room : IScriptObj
         {
             if (val.StartsWith('+'))
             {
-                var rid = ResourceId.FromString(val[1..], ResType.Events);
+                var rid = Definitions.DefinitionLoader.ResolveEventName(val[1..]);
                 if (!_events.Contains(rid))
                     _events.Add(rid);
             }
             else if (val.StartsWith('-'))
             {
-                var rid = ResourceId.FromString(val[1..], ResType.Events);
+                var rid = Definitions.DefinitionLoader.ResolveEventName(val[1..]);
                 _events.Remove(rid);
             }
             return true;

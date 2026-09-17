@@ -171,4 +171,32 @@ public sealed class EventsNameResolutionTests : IDisposable
         Assert.Single(def!.Events);
         Assert.Equal(ResType.Events, def.Events[0].Type);
     }
+
+    /// <summary>An AREADEF's EVENTS list names REGIONTYPE blocks - 2169 references in
+    /// the live pack, 4488 in the reference distribution, and not one of them names an
+    /// [EVENTS] block. The region trigger dispatch looks each entry up as a resource,
+    /// so those had to be the resolved reference, not a hash into a namespace where a
+    /// regiontype does not live. What was unreachable: @Enter, @RegPeriodic and
+    /// @CliPeriodic on the regiontypes - the area background music among them.</summary>
+    [Fact]
+    public void ARegionEventsEntryNamingARegiontypeRuns()
+    {
+        var (dispatcher, resources) = Load(
+            "[REGIONTYPE r_probe_area]" + Nl +
+            "ON=@Enter" + Nl +
+            "TAG.ENTERED=1" + Nl);
+
+        var region = new SphereNet.Game.World.Regions.Region { Name = "probe" };
+        region.AddEventsFromTag("r_probe_area");
+
+        var world = TestHarness.CreateWorld();
+        ObjBase.ResolveWorld = () => world;
+        var ch = world.CreateCharacter();
+
+        dispatcher.FireRegionEvents(region, "Enter", ch,
+            new SphereNet.Game.Scripting.TriggerArgs());
+
+        Assert.True(region.TryGetProperty("TAG.ENTERED", out string v));
+        Assert.Equal("1", v);
+    }
 }

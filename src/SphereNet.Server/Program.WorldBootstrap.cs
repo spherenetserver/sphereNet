@@ -517,7 +517,14 @@ public static partial class Program
                                 var evResolved = _resources.ResolveDefName(evName);
                                 if (evResolved.IsValid && evResolved.Type == ResType.RegionType)
                                     region.AddRegionType(evResolved);
-                                region.AddEvent(ResourceId.FromString(evName, ResType.Events));
+                                // And the EVENTS entry itself has to be the resolved
+                                // reference, not a hash into the EVENTS namespace: the
+                                // region's trigger dispatch looks the entry up as a
+                                // resource, and a regiontype does not live there. Every
+                                // @Enter / @RegPeriodic / @CliPeriodic block the
+                                // regiontypes carry - the area music among them - was
+                                // unreachable for that reason.
+                                region.AddEvent(DefinitionLoader.ResolveEventName(evName, _resources));
                             }
                         }
                         break;
@@ -653,7 +660,7 @@ public static partial class Program
                         if (!string.IsNullOrEmpty(key.Arg))
                         {
                             foreach (var ev in key.Arg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                                room.AddEvent(ResourceId.FromString(ev, ResType.Events));
+                                room.AddEvent(DefinitionLoader.ResolveEventName(ev.TrimStart('+'), _resources));
                         }
                         break;
                     case "FLAGS":

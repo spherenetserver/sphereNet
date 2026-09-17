@@ -1173,6 +1173,29 @@ public sealed class DefinitionLoader
     ///
     /// Runs after every section is loaded, since a definition can name a block that
     /// appears later in the pack.</summary>
+    /// <summary>Resolve an EVENTS/TEVENTS reference the way upstream does: the name
+    /// against the DEFNAME table first, and only labelled with the EVENTS type when
+    /// the name carries none of its own ("Do not enforce the restype",
+    /// CResourceHolder.cpp:99-104).
+    ///
+    /// This is what makes EVENTS=&lt;typedef&gt; and an AREADEF's EVENTS=&lt;regiontype&gt;
+    /// reach the block they name. Hashing straight into the EVENTS namespace produced
+    /// an id no resource answers to, and every consumer skips an entry that resolves
+    /// to nothing - so the reference simply did not exist.</summary>
+    public static ResourceId ResolveEventName(string name, ResourceHolder? resources = null)
+    {
+        string text = name.Trim();
+        if (text.Length == 0) return ResourceId.Invalid;
+
+        var holder = resources ?? _resourcesStatic;
+        var resolved = holder?.ResolveDefName(text) ?? ResourceId.Invalid;
+        if (resolved.IsValid && resolved.Type is ResType.TypeDef or ResType.Events
+                or ResType.RegionType or ResType.Function)
+            return resolved;
+
+        return ResourceId.FromEventName(text);
+    }
+
     private void ResolveEventReferences()
     {
         foreach (var def in _itemDefs.Values) ResolveEventRefsOn(def);
@@ -1184,16 +1207,11 @@ public sealed class DefinitionLoader
     {
         foreach (string name in def.EventNamesRaw)
         {
-            var resolved = _resources.ResolveDefName(name);
-            if (!resolved.IsValid || resolved.Type == ResType.Events)
-                continue;
-            // Only section types that carry a trigger body are worth swapping in; a
-            // name that resolves to, say, an ITEMDEF is a pack mistake and keeping the
-            // EVENTS entry leaves it as inert as it was.
-            if (resolved.Type is not (ResType.TypeDef or ResType.RegionType or ResType.Function))
-                continue;
-
+            var resolved = ResolveEventName(name, _resources);
             var hashed = ResourceId.FromEventName(name);
+            if (resolved == hashed)
+                continue;   // nothing defines the name; it stays an EVENTS reference
+
             int at = def.Events.IndexOf(hashed);
             if (at >= 0)
                 def.Events[at] = resolved;

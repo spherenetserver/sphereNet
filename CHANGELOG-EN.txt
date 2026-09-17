@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The regiontype blocks an area named, and never ran
+----------------------------------------
+
+FIX - An AREADEF's and a ROOMDEF's EVENTS list names REGIONTYPE blocks - 2169 and
+        2512 references in the live pack, 4488 and 4120 in the reference
+        distribution, and not one of them names an [EVENTS] block. The loader hashed
+        each name into the EVENTS namespace, where a regiontype does not live, and the
+        region trigger dispatch looks every entry up as a resource and skips what it
+        cannot find. Unreachable that way: the @Enter, @RegPeriodic and @CliPeriodic
+        blocks the regiontypes carry, the area background music among them. The area
+        loader already resolved the name a second time to fill the region-type list
+        that mining and fishing read, which is why the resource tables worked while
+        the triggers did not. EVENTS entries are now the resolved reference, on areas,
+        on rooms, and on a runtime EVENTS +/- write.
+
 [2026-09-17] - A TEVENTS line that named a typedef, and reached nothing
 ----------------------------------------
 

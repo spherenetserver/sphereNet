@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir alanin adlandirdigi regiontype bloklari ve hic calismamalari
+----------------------------------------
+
+FIX - Bir AREADEF'in ve ROOMDEF'in EVENTS listesi REGIONTYPE bloklarini adlandirir -
+        canli pakette 2169 ve 2512, referans dagitimda 4488 ve 4120 referans; hicbiri
+        bir [EVENTS] blogunu adlandirmiyor. Yukleyici her adi EVENTS ad alanina
+        hash'liyordu; regiontype orada yasamaz, bolge trigger dagitimi ise her kaydi
+        kaynak olarak arar ve bulamadigini atlar. Bu yuzden erisilemez kalanlar:
+        regiontype'larin tasidigi @Enter, @RegPeriodic ve @CliPeriodic bloklari - alan
+        arka plan muzigi dahil. Alan yukleyicisi adi, madencilik ve balikciligin okudugu
+        bolge-turu listesini doldurmak icin zaten ikinci kez cozuyordu; kaynak
+        tablolarinin calisip triggerlarin calismamasinin sebebi buydu. EVENTS kayitlari
+        artik cozulmus referans: alanlarda, odalarda ve calisma anindaki EVENTS +/-
+        atamasinda.
+
 [2026-09-17] - Bir typedef'i adlandiran TEVENTS satiri ve ulastigi hicbir sey
 ----------------------------------------
 

@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 
@@ -87,7 +87,7 @@ public class Region : IScriptObj
         {
             string name = raw.TrimStart('+');
             if (name.Length == 0) continue;
-            var rid = ResourceId.FromString(name, ResType.Events);
+            var rid = Definitions.DefinitionLoader.ResolveEventName(name);
             if (!_events.Contains(rid))
                 _events.Add(rid);
         }
@@ -294,7 +294,7 @@ public class Region : IScriptObj
         if (upper.StartsWith("ISEVENT.", StringComparison.Ordinal))
         {
             string evName = key[8..];
-            var checkRid = ResourceId.FromString(evName, ResType.Events);
+            var checkRid = Definitions.DefinitionLoader.ResolveEventName(evName);
             value = _events.Contains(checkRid) ? "1" : "0";
             return true;
         }
@@ -363,13 +363,13 @@ public class Region : IScriptObj
         {
             if (val.StartsWith('+'))
             {
-                var rid = ResourceId.FromString(val[1..], ResType.Events);
+                var rid = Definitions.DefinitionLoader.ResolveEventName(val[1..]);
                 if (!_events.Contains(rid))
                     _events.Add(rid);
             }
             else if (val.StartsWith('-'))
             {
-                var rid = ResourceId.FromString(val[1..], ResType.Events);
+                var rid = Definitions.DefinitionLoader.ResolveEventName(val[1..]);
                 _events.Remove(rid);
             }
             return true;

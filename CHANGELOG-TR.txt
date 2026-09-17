@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - IF icinde CALL ve TRY hicbir sey yapmiyordu
+----------------------------------------
+
+FIX - CALL ve TRY ailesi (TRY, TRYSRV, TRYSRC, TRYP, TRYLEVEL) yalnizca Execute'un deyim
+        switch'inde bulunuyordu. Bir IF icinde ya da bir DORAND/DOSWITCH'in sectigi satir
+        olarak, ikisini de tanimayan ExecuteLine'a dusuyor ve hicbir sey yapmiyorlardi -
+        hic gerceklesmeyen bir CALL, hicbir sey yapmamis bir fonksiyondan ayirt edilemez.
+        Cikplak fonksiyon adi her zaman calisiyordu; delligin kolay kacirilmasinin sebebi
+        buydu: IF icinde "f_something" calisiyor, "CALL f_something" calismiyordu.
+        Gonderilen paketler bunlardan 84 tanesini bir IF icine yaziyor, cogu yonetici ve
+        zanaat dialoglarinda.
+
+        Artik blok deyimleri gibi tek bir metottan dagitiliyorlar.
+
 [2026-09-17] - Yanlis dongumu kapatan ENDFOR
 ----------------------------------------
 

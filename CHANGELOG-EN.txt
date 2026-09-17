@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - CALL and TRY did nothing inside an IF
+----------------------------------------
+
+FIX - CALL and the TRY family (TRY, TRYSRV, TRYSRC, TRYP, TRYLEVEL) lived only in
+        Execute's statement switch. Inside an IF, or as the line a DORAND or DOSWITCH
+        picked, they fell through to ExecuteLine, which does not know either, and did
+        nothing at all - and a CALL that never happens looks exactly like a function
+        that did nothing. A bare function name always worked, which is what made the
+        hole easy to miss: "f_something" inside an IF ran, "CALL f_something" did not.
+        The shipped packs write 84 of them inside an IF, most in the admin and crafting
+        dialogs.
+
+        They are now dispatched from one method, the way the block statements are.
+
 [2026-09-17] - The ENDFOR that closed the wrong loop
 ----------------------------------------
 

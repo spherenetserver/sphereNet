@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir sesin adi
+----------------------------------------
+
+FIX - SOUND ve EFFECT'e DEFNAME verilemiyordu. Bir paket caldigi seyi adlandirir -
+        "SOUND snd_spell_poison", "EFFECT 0,i_fx_fireball,10,16,0,044,4" - ve iki
+        id de sayi olarak ayristirilamiyordu; yani verb satiri tuketiyor, basarili
+        donuyor ve hicbir sey yayinlamiyordu. Paketlerdeki yirmi yedi SOUND ve on
+        dokuz EFFECT cagrisi sessizdi. Bir ses sabiti [DEFNAME] blogundan, bir efekt
+        grafigi ITEMDEF'inden yanit verir - grafik odunc aliniyorsa DISPID'inden,
+        alinmiyorsa kendi anahtarindan - ve hicbir seyin tanimlamadigi bir ad yine
+        hicbir sey calar; bunu, hatali bir token neye benziyorsa onu yayinlama
+        iznine degil bir aramaya donusturen sey budur.
+
+FIX - Bu verb'lerin sayilari Sphere sayisi olarak okunmuyordu. Dilin her yerinde
+        bastaki sifir ONALTILIK demektir (ScriptNumber.TryParseToken); yani bir
+        efektin 044 diye yazdigi renk 44 olarak okunuyordu: makul gorunen ama yanlis
+        renkte bir efekt, ki kimsenin hata diye bildirmedigi tur budur. Iki verb'in
+        her sayisal argumani artik ayni ayristirmadan geciyor.
+
 [2026-09-17] - Menudeki resimler
 ----------------------------------------
 

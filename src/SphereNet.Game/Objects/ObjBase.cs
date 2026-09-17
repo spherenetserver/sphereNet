@@ -97,14 +97,55 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <summary>Set the callback invoked on clean→dirty transition (used by GameWorld).</summary>
     public void SetDirtyNotify(Action<ObjBase>? notify) => _dirtyNotify = notify;
 
+    /// <summary>Resolve a SOUND or EFFECT argument the way a pack writes it.
+    ///
+    /// Two things were missing and both fail silently. A pack names its sounds and
+    /// its effect graphics by DEFNAME - "SOUND snd_spell_poison", "EFFECT 0,
+    /// i_fx_fireball,..." - which parsed as no number at all, so the verb returned
+    /// success and nothing was heard or seen; there are twenty-seven such SOUND calls
+    /// and nineteen such EFFECT calls across the packs. And a numeric argument follows
+    /// Sphere's leading-zero-is-HEX convention (ScriptNumber.TryParseToken, the same
+    /// one every other numeric key uses), so a hue written 044 is 68 and not 44 - a
+    /// plausible-looking wrong colour, which nobody reports as a bug.</summary>
+    protected static bool TryResolveScriptValue(string? token, out int value)
+    {
+        value = 0;
+        string t = (token ?? "").Trim();
+        if (t.Length == 0) return false;
+
+        if (Core.Types.ScriptNumber.TryParseToken(t, out long parsed))
+        {
+            value = (int)parsed;
+            return true;
+        }
+        // A plain [DEFNAME] constant: snd_spell_poison 517.
+        if (Definitions.DefinitionLoader.TryGetDefNumber(t, out int defValue))
+        {
+            value = defValue;
+            return true;
+        }
+        // An ITEMDEF, for the effect graphic: i_fx_fireball. Its DISPID when it
+        // borrows a graphic, its own key when it does not - the same rule a menu
+        // row's picture follows.
+        int defIndex = Definitions.DefinitionLoader.ResolveItemDefIndexByName(t);
+        if (defIndex != 0)
+        {
+            var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
+            value = idef != null && idef.DispIndex != 0 ? idef.DispIndex : defIndex;
+            return true;
+        }
+        return false;
+    }
+
     protected bool EmitScriptSound(string args, int range = 18)
     {
         var parts = SplitScriptArgs(args);
-        if (parts.Length == 0 || !TryParseScriptUShort(parts[0], out ushort soundId))
+        if (parts.Length == 0 || !TryResolveScriptValue(parts[0], out int soundValue))
             return true;
+        ushort soundId = (ushort)soundValue;
 
-        byte mode = parts.Length > 1 && TryParseScriptByte(parts[1], out byte parsedMode)
-            ? parsedMode
+        byte mode = parts.Length > 1 && TryResolveScriptValue(parts[1], out int parsedMode)
+            ? (byte)parsedMode
             : (byte)1;
 
         BroadcastNearby?.Invoke(Position, range, new PacketSound(soundId, X, Y, Z, mode), 0);
@@ -115,19 +156,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     {
         var parts = SplitScriptArgs(args);
         if (parts.Length < 2
-            || !TryParseScriptByte(parts[0], out byte effectType)
-            || !TryParseScriptUShort(parts[1], out ushort effectId))
+            || !TryResolveScriptValue(parts[0], out int effectTypeValue)
+            || !TryResolveScriptValue(parts[1], out int effectIdValue))
             return true;
+        byte effectType = (byte)effectTypeValue;
+        ushort effectId = (ushort)effectIdValue;
 
-        byte speed = parts.Length > 2 && TryParseScriptByte(parts[2], out byte parsedSpeed)
-            ? parsedSpeed
+        byte speed = parts.Length > 2 && TryResolveScriptValue(parts[2], out int parsedSpeed)
+            ? (byte)parsedSpeed
             : (byte)5;
-        byte duration = parts.Length > 3 && TryParseScriptByte(parts[3], out byte parsedDuration)
-            ? parsedDuration
+        byte duration = parts.Length > 3 && TryResolveScriptValue(parts[3], out int parsedDuration)
+            ? (byte)parsedDuration
             : (byte)1;
         bool explode = parts.Length > 4 && !IsFalseToken(parts[4]);
-        uint hue = parts.Length > 5 && TryParseScriptUInt(parts[5], out uint parsedHue) ? parsedHue : 0;
-        uint render = parts.Length > 6 && TryParseScriptUInt(parts[6], out uint parsedRender) ? parsedRender : 0;
+        uint hue = parts.Length > 5 && TryResolveScriptValue(parts[5], out int parsedHue) ? (uint)parsedHue : 0;
+        uint render = parts.Length > 6 && TryResolveScriptValue(parts[6], out int parsedRender) ? (uint)parsedRender : 0;
         ushort particleEffectId = parts.Length > 7 && TryParseScriptUShort(parts[7], out ushort parsedParticleEffectId)
             ? parsedParticleEffectId
             : (ushort)0;

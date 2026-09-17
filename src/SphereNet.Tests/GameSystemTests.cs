@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -3242,8 +3242,16 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.DoesNotContain(GetQueuedPackets(netState), p => p.Span[0] == 0xDC);
     }
 
+    /// <summary>RETURN 1 from @ClientTooltip drops the BUILT-IN entries and keeps what
+    /// the script added - it does not suppress the tooltip.
+    ///
+    /// Upstream builds and sends the property list from m_TooltipData whatever the
+    /// trigger returned; TRUE only skips the name entry and the default entries
+    /// (CClientMsg_AOSTooltip.cpp:107-119, then :166 unconditionally). This test used
+    /// to assert that nothing was sent at all, which is what the engine did while it
+    /// threw the script's own entries away with the defaults.</summary>
     [Fact]
-    public void GameClient_AOSTooltip_ReturnTrueSuppressesTooltipPackets()
+    public void GameClient_AOSTooltip_ReturnTrueDropsTheBuiltInEntries()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
@@ -3273,8 +3281,13 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.HandleAOSTooltip(item.Uid.Value);
 
+        // The trigger added nothing and suppressed the defaults, so the object's
+        // tooltip is empty - and the list is still sent, which is how the client's
+        // revision bookkeeping stays in step.
+        Assert.NotNull(item.TooltipCache);
+        Assert.Empty(item.TooltipCache!.Properties);
         Assert.DoesNotContain(GetQueuedPackets(netState), p => p.Span[0] == 0xDC);
-        Assert.DoesNotContain(GetQueuedPackets(netState), p => p.Span[0] == 0xD6);
+        Assert.Contains(GetQueuedPackets(netState), p => p.Span[0] == 0xD6);
     }
 
     [Fact]

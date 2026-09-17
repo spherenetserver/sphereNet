@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - RETURN 1 from @ClientTooltip threw the script's tooltip away
+----------------------------------------
+
+FIX - RETURN 1 means "do not add the built-in tooltip", not "send nothing". Upstream
+        skips the name entry and the default entries on TRUE and KEEPS what the script
+        added during the trigger, then builds and sends the property list either way
+        (CClientMsg_AOSTooltip.cpp:107-119 and :166). This discarded the script's own
+        entries along with the defaults and sent no tooltip at all.
+
+        The reference distribution's equipment tooltip ends with exactly that RETURN 1
+        and says so in its own comment - "When you RETURN 1 in this trigger, the
+        built-in tooltip is prevented" - so with the trigger finally reachable, every
+        piece of gear would have shown a blank tooltip instead of the one the script
+        had just built. @ClientTooltip_AfterDefault now runs whatever the first trigger
+        returned, as upstream fires it outside that branch; it used to sit inside the
+        item-enrichment block, which the RETURN 1 path never reached.
+
 [2026-09-17] - The sector an object stands in could not be asked
 ----------------------------------------
 

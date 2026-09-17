@@ -700,6 +700,7 @@ public sealed class ClientSkillsHandler
         var scriptProperties = new List<(uint ClilocId, string Args)>();
         _client.ScriptTooltipProperties = scriptProperties;
 
+        bool skipDefaults = false;
         if (_triggerDispatcher != null)
         {
             // IsTrigUsed-gated: view-apply builds a tooltip for every object entering
@@ -718,22 +719,26 @@ public sealed class ClientSkillsHandler
                 _ => TriggerResult.Default
             };
 
-            if (triggerResult == TriggerResult.True)
-            {
-                _client.ScriptTooltipProperties = null;
-                return;
-            }
+            // RETURN 1 means "do not add the built-in tooltip", NOT "send nothing".
+            // Upstream skips the name entry and the default entries and keeps what the
+            // script added during the trigger (CClientMsg_AOSTooltip.cpp:107-119). This
+            // threw the script's own entries away and sent no tooltip at all - and the
+            // reference distribution's equipment tooltip ends with exactly that RETURN 1,
+            // saying so in its own comment: "When you RETURN 1 in this trigger, the
+            // built-in tooltip is prevented."
+            skipDefaults = triggerResult == TriggerResult.True;
         }
 
-        var propList = new List<(uint ClilocId, string Args)>
+        var propList = new List<(uint ClilocId, string Args)>();
+        if (!skipDefaults)
         {
             // Pile items show their stack amount on the tooltip header
             // ("1234 gold coins"), matching the single-click label.
-            (1050045, obj is Item nameItem ? nameItem.GetDisplayName() : obj.GetName())
-        };
+            propList.Add((1050045, obj is Item nameItem ? nameItem.GetDisplayName() : obj.GetName()));
+        }
 
         // Enrich tooltips for items
-        if (obj is Item item)
+        if (obj is Item item && !skipDefaults)
         {
             switch (item.ItemType)
             {
@@ -786,10 +791,18 @@ public sealed class ClientSkillsHandler
                 }
             }
 
-            if (_triggerDispatcher != null &&
-                _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault))
-                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client, N1 = requested ? 1 : 0 });
+        }
+
+        // @ClientTooltip_AfterDefault runs whatever the first trigger returned -
+        // upstream fires it outside that branch (CClientMsg_AOSTooltip.cpp:121), so a
+        // script that suppressed the defaults can still append to what it built. It
+        // used to sit inside the item-enrichment block, which the RETURN 1 path never
+        // reached. (Only the item side exists here; no pack hooks the char one.)
+        if (_triggerDispatcher != null && obj is Item afterItem &&
+            _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault))
+        {
+            _triggerDispatcher.FireItemTrigger(afterItem, ItemTrigger.ClientTooltipAfterDefault,
+                new TriggerArgs { CharSrc = _character, ItemSrc = afterItem, ScriptConsole = _client, N1 = requested ? 1 : 0 });
         }
 
         propList.AddRange(scriptProperties);

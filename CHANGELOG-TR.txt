@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - @ClientTooltip'ten RETURN 1 scriptin tooltip'ini cope atiyordu
+----------------------------------------
+
+FIX - RETURN 1 "yerlesik tooltip'i ekleme" demektir, "hicbir sey gonderme" degil. Ust
+        kaynak TRUE durumunda ad girdisini ve varsayilan girdileri atlar, trigger
+        sirasinda scriptin EKLEDIKLERINI KORUR ve ozellik listesini her iki durumda da
+        olusturup gonderir (CClientMsg_AOSTooltip.cpp:107-119 ve :166). Bizde scriptin
+        kendi girdileri varsayilanlarla birlikte atiliyor ve hic tooltip
+        gonderilmiyordu.
+
+        Referans dagitimin ekipman tooltip'i tam da bu RETURN 1 ile biter ve kendi
+        yorumunda bunu soyler: "When you RETURN 1 in this trigger, the built-in tooltip
+        is prevented." Yani trigger nihayet erisilebilir olunca her esya, scriptin
+        az once olusturdugu tooltip yerine bos bir tooltip gosterecekti.
+        @ClientTooltip_AfterDefault artik ilk trigger ne dondururse dondursun
+        calisiyor - ust kaynak onu o dalin disinda tetikler; bizde esya zenginlestirme
+        blogunun icindeydi ve RETURN 1 yolu oraya hic ulasmiyordu.
+
 [2026-09-17] - Bir nesnenin icinde durdugu sektor sorulamiyordu
 ----------------------------------------
 

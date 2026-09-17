@@ -4,6 +4,96 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - An ITEM= line's amount and chance were both misread
+----------------------------------------
+
+FIX - "ITEM=i_gold,{750 900}" dropped one coin. Upstream states the form in the
+        function that reads it - "ITEM=#id,#amount,R#chance" (CItem::CreateHeader,
+        CItem.cpp:461-488): every argument after the defname is either an amount
+        expression, which goes through the expression engine, or R#, a one-in-# chance
+        for the line to produce anything at all, and an amount of 0 creates nothing.
+
+        Three paths parsed those arguments themselves - the ITEM=/ITEMNEWBIE= verb
+        inside a trigger, the same lines in a CHARDEF body, and the player's starting
+        equipment - and got both halves wrong. The amount was a plain integer parse, so
+        the {lo hi} form the live pack writes 1,066 times resolved to nothing and the
+        item came out as one. The third argument was read as a "dice roll", a form
+        upstream does not have, so R8 was taken for an amount, failed to parse, and the
+        line created its item every time instead of one time in eight - 103 lines in the
+        live pack, each dropping eight times too often.
+
+        The correct reading already existed for loot templates; all three paths now use
+        it, and the two copies of the dice roller they used instead are gone. Those also
+        read R5 as 1..5 where the engine's own expression parser reads it as 0..4, which
+        is Source-X's g_Rand.GetVal.
+
+[2026-09-18] - Whether a sector slept depended on the host's uptime
+----------------------------------------
+
+FIX - A sector no client had ever entered could not sleep until the MACHINE had been
+        up longer than SECTORSLEEP. The sleep timeout is measured from the last time a
+        client stood in the sector against Environment.TickCount64, and a sector with
+        no such visit carried a stamp of 0 - so the test read as "has this host been up
+        for ten minutes". For the first ten minutes after a reboot, which is exactly
+        when a shard is started, not one sector in the world could sleep and every one
+        of them ticked. Never-visited is now a state of its own rather than a timestamp
+        of zero, and such a sector is asleep on any clock.
+
+        It surfaced as two tests that passed on a developer machine, whose uptime is
+        measured in days, and failed on CI, whose runners boot minutes before the job.
+
+[2026-09-18] - An assignment that was arithmetic was stored as text
+----------------------------------------
+
+FIX - "MORE2=<MOREX>/3" stored zero. Upstream loads a numeric key with s.GetArgVal(),
+        which is Exp_GetVal on the whole argument (CScript.cpp:154), so the operators
+        are part of the value. This engine substituted <...> into the line and stopped,
+        and the object parsed the text "30/3" as zero - silently, because a property set
+        that stores 0 still reports success. Both packs write 26 of these against object
+        properties inside trigger blocks: DISPID=<DISPIDDEC>+1 produced graphic 0,
+        TIMER=(a * b) produced no timer, and COLOR=010+1 no hue.
+
+        Which keys are numeric is not knowable at the assignment layer, so the decision
+        is made on the shape of the value: numbers, operators and brackets only, with
+        every operand a Sphere number. A defname, a name, a coordinate list, a decimal
+        skill value and anything else carrying a letter that is not a hex digit is
+        stored exactly as it arrived. P, NAME, EVENTS, TEVENTS and ARGS are held out by
+        name as well, since a substitution can leave one of them looking like a number.
+
+        This also settles what a TAG holds. Upstream stores a tag value as a number when
+        it is made of numbers and math separators and as text otherwise
+        (CVarDefMap::SetStr -> IsSimpleNumberString), so TAG.X=0|1 is the 1 it works out
+        to. A comma is not one of those separators, so a list written that way is still
+        text.
+
+[2026-09-18] - An item asked for a random value got zero
+----------------------------------------
+
+FIX - "{lo hi}" assigned to an item parsed as 0. Upstream evaluates braces inside the
+        expression engine (CExpression::GetSingle case '{' -> GetRangeNumber), so the
+        shape works against any object and any key read as a number. Here the
+        interpreter substitutes <...> into an assignment but does not evaluate the
+        braces, and the literal text "{100 200}" reached Item.TrySetProperty, which
+        parsed it as zero. The shipped pack writes that shape about 1,070 times inside
+        ITEMDEF trigger blocks - 866 of them HITPOINTS, the rest MOREY, MORE2, COLOR and
+        DISPID - so items created from a script came out with zero durability, no hue
+        and no MORE values. Tokens are read with the Sphere number convention, so the
+        hex hue ranges the packs are written in (COLOR={0481 0489}) land in range.
+
+        Four or more tokens are (value, weight) pairs and are picked from, not ranged
+        over; an odd count above two is a script error and yields 0, as upstream's
+        GetRangeNumber does.
+
+        Two shapes are deliberately left alone: a list of resource names
+        (FRUIT={i_fruit_pumpkin ...}), which is not a number, and the decimal skill form
+        (TACTICS={29.0 44.0}), whose x10 scaling belongs to the character that knows the
+        key names a skill - 4,596 pack lines depend on it.
+
+CHANGE - The brace rules - one token, a range, weighted pairs, the odd-count error - now
+        live in one place (BraceRange) that both the expression engine and an object
+        assignment use, instead of the expression engine's copy plus the character's own
+        simplified one.
+
 [2026-09-18] - A creature could not be asked what its own CHARDEF says
 ----------------------------------------
 

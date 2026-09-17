@@ -4,6 +4,98 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir ITEM= satirinin miktari da sansi da yanlis okunuyordu
+----------------------------------------
+
+FIX - "ITEM=i_gold,{750 900}" tek bir altin dusuruyordu. Ust kaynak bicimi, onu okuyan
+        fonksiyonda yaziyor: "ITEM=#id,#amount,R#chance" (CItem::CreateHeader,
+        CItem.cpp:461-488). Defname'den sonraki her arguman ya bir miktar ifadesidir -
+        ifade motorundan gecer - ya da R#, yani satirin herhangi bir sey uretmesi icin
+        #'da bir sans; 0 miktar hicbir sey yaratmaz.
+
+        Uc yol bu argumanlari kendisi ayristiriyordu - trigger icindeki ITEM=/ITEMNEWBIE=
+        verb'u, CHARDEF govdesindeki ayni satirlar ve oyuncunun baslangic techizati - ve
+        iki yarisini da yanlis yapiyordu. Miktar duz bir tamsayi ayristirmasiydi; canli
+        paketin 1.066 kez yazdigi {alt ust} bicimi hicbir seye cozulup esya tek olarak
+        cikiyordu. Ucuncu arguman ise ust kaynakta olmayan bir "zar atisi" olarak
+        okunuyordu; R8 miktar sanilip ayristirilamiyor ve satir esyasini sekizde bir
+        yerine her seferinde yaratiyordu - canli pakette 103 satir, her biri sekiz kat
+        fazla dusuyordu.
+
+        Dogru okuma ganimet sablonlari icin zaten vardi; uc yol da artik onu kullaniyor
+        ve yerine kullandiklari iki zar atici kopyasi kaldirildi. O kopyalar ayrica R5'i
+        1..5 okuyordu; motorun kendi ifade ayristiricisi ise Source-X'in
+        g_Rand.GetVal'i gibi 0..4 okur.
+
+[2026-09-18] - Bir sektorun uyumasi makinenin acik kalma suresine bagliydi
+----------------------------------------
+
+FIX - Hicbir istemcinin girmedigi bir sektor, MAKINE SECTORSLEEP suresinden uzun sure
+        acik kalmadikca uyuyamiyordu. Uyku zaman asimi, bir istemcinin sektorde en son
+        bulundugu ana gore Environment.TickCount64 uzerinden olculur; boyle bir ziyareti
+        olmayan sektorde bu damga 0 idi, dolayisiyla kontrol "bu makine on dakikadir
+        acik mi" anlamina geliyordu. Yeniden baslatmadan sonraki ilk on dakika boyunca -
+        ki bir shard tam da o sirada baslatilir - dunyadaki hicbir sektor uyuyamiyor ve
+        hepsi tick aliyordu. Artik "hic ziyaret edilmedi" sifir zaman damgasi degil,
+        kendi basina bir durum; boyle bir sektor her saatte uykudadir.
+
+        Gelistirici makinesinde - acik kalma suresi gunlerle olculur - gecen, CI'da -
+        kosucular is baslamadan dakikalar once aciliyor - dusen iki test olarak ortaya
+        cikti.
+
+[2026-09-18] - Aritmetik olan bir atama metin olarak saklaniyordu
+----------------------------------------
+
+FIX - "MORE2=<MOREX>/3" sifir sakliyordu. Ust kaynak sayisal bir anahtari
+        s.GetArgVal() ile yukler; bu da argumanin tamaminda Exp_GetVal demektir
+        (CScript.cpp:154), yani operatorler degerin parcasidir. Bizde satirdaki <...>
+        yerine konuyor ve orada duruluyordu; nesne "30/3" metnini sifir olarak
+        cozuyordu - sessizce, cunku 0 saklayan bir ozellik atamasi yine de basarili
+        raporlar. Iki paket de trigger bloklarinda nesne ozelliklerine bunlardan 26 tane
+        yaziyor: DISPID=<DISPIDDEC>+1 grafik 0 veriyordu, TIMER=(a * b) hic zamanlayici
+        vermiyordu, COLOR=010+1 ise renk.
+
+        Hangi anahtarin sayisal oldugu atama katmaninda bilinemedigi icin karar degerin
+        BICIMINE gore veriliyor: yalnizca sayilar, operatorler ve parantezler, her
+        operand bir Sphere sayisi. Bir defname, bir isim, bir koordinat listesi,
+        ondalikli beceri degeri ve onaltilik basamak olmayan harf tasiyan her sey geldigi
+        gibi saklanir. P, NAME, EVENTS, TEVENTS ve ARGS ayrica adlariyla disarida
+        tutulur; cunku bir yerine koyma sonrasi bunlardan biri sayi gibi gorunebilir.
+
+        Bu ayni zamanda bir TAG'in ne tuttugunu da belirler. Ust kaynak bir tag degerini
+        sayilardan ve matematik ayraclarindan olusuyorsa sayi, degilse metin olarak
+        saklar (CVarDefMap::SetStr -> IsSimpleNumberString); yani TAG.X=0|1 sonucundaki
+        1'dir. Virgul bu ayraclardan biri degildir, dolayisiyla o bicimde yazilan bir
+        liste hala metindir.
+
+[2026-09-18] - Rastgele deger istenen bir esya sifir aliyordu
+----------------------------------------
+
+FIX - Bir esyaya atanan "{alt ust}" 0 olarak cozuluyordu. Ust kaynak suslu parantezi
+        ifade motorunun icinde degerlendirir (CExpression::GetSingle case '{' ->
+        GetRangeNumber); yani bu bicim herhangi bir nesnede ve sayi olarak okunan
+        herhangi bir anahtarda calisir. Bizde yorumlayici atamadaki <...> ifadelerini
+        yerine koyuyor ama suslu parantezi degerlendirmiyordu; "{100 200}" metni
+        Item.TrySetProperty'ye duz metin olarak ulasip sifir olarak cozuluyordu. Canli
+        paket bu bicimi ITEMDEF trigger bloklarinda yaklasik 1.070 kez yaziyor - 866'si
+        HITPOINTS, kalani MOREY, MORE2, COLOR ve DISPID - dolayisiyla scriptten uretilen
+        esyalar sifir dayaniklilikla, renksiz ve MORE degerleri bos cikiyordu. Parcalar
+        Sphere sayi kuralina gore okunur; boylece paketlerin yazdigi onaltilik renk
+        araliklari (COLOR={0481 0489}) dogru araliga duser.
+
+        Dort ve daha fazla parca (deger, agirlik) ciftidir; aralik degil, listeden secim
+        yapilir. Ikiden buyuk tek sayida parca ust kaynakta script hatasidir ve 0 doner.
+
+        Iki bicim bilerek disarida birakildi: kaynak adi listesi
+        (FRUIT={i_fruit_pumpkin ...}) sayi degildir; ondalikli beceri bicimi
+        (TACTICS={29.0 44.0}) ise x10 olceklemesini bilen karakterin isidir - 4.596
+        paket satiri buna dayanir.
+
+CHANGE - Suslu parantez kurallari - tek parca, aralik, agirlikli ciftler, tek sayi
+        hatasi - artik tek bir yerde (BraceRange) duruyor ve hem ifade motoru hem de
+        nesne atamasi ayni yeri kullaniyor; ifade motorunun kopyasi ile karakterin
+        basitlestirilmis kendi kopyasi yerine.
+
 [2026-09-18] - Bir yaratiga kendi CHARDEF'inin ne dedigi sorulamiyordu
 ----------------------------------------
 

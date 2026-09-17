@@ -1469,6 +1469,26 @@ public sealed class ScriptInterpreter
         }
     }
 
+    /// <summary>Evaluate a [FUNCTION] named by the whole token, with no arguments.
+    /// TryResolveFunctionExpression exists for the &lt;name args&gt; form and declines a
+    /// bare name; this is the bare one.</summary>
+    private string? CallNoArgFunction(string name, IScriptObj target, ITextConsole? source,
+        ITriggerArgs? args, ScriptScope? scope)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+        string text = name.Trim();
+        if (!(char.IsLetter(text[0]) || text[0] == '_'))
+            return null;
+
+        if (ResolveFunctionExpressionWithScope != null && scope != null)
+        {
+            string? v = ResolveFunctionExpressionWithScope(text, "", target, source, args, scope);
+            if (v != null) return v;
+        }
+        return ResolveFunctionExpression?.Invoke(text, "", target, source, args);
+    }
+
     private string? TryResolveFunctionExpression(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
     {
         if (ResolveFunctionExpressionWithScope == null && ResolveFunctionExpression == null ||
@@ -1839,6 +1859,22 @@ public sealed class ScriptInterpreter
             string servProp = varName[5..];
             string? servVal = ServerPropertyResolver?.Invoke(servProp);
             if (servVal != null) return servVal;
+
+            // Upstream, a key the server does not answer is tried as a [FUNCTION]
+            // before anything else (CServerDef.cpp:509 - r_GetFunctionIndex on the
+            // remaining key, then the parent's own table). Returning "0" here instead
+            // meant the resolution ENDED at the server, and a pack function meant to
+            // answer a SERV read could never run - the live pack's date line reads
+            // <SERV.DAYNAME>, which its own [FUNCTION SERV.DAYNAME] exists to answer,
+            // and got "0". Both spellings are tried: the remainder as upstream does,
+            // and the whole token, which is how the pack spells the section header.
+            // The read carries no arguments, which TryResolveFunctionExpression does
+            // not handle (it splits a name from an argument list), so call straight
+            // through with an empty argument string.
+            string? fnVal = CallNoArgFunction(servProp, target, source, args, scope)
+                         ?? CallNoArgFunction(varName, target, source, args, scope);
+            if (fnVal != null) return fnVal;
+
             return "0";
         }
 

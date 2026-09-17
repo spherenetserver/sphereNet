@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A SERV read the server cannot answer, and the function behind it
+----------------------------------------
+
+FIX - When SERV had no answer for a key, resolution ENDED there and returned "0".
+        Upstream tries the key as a [FUNCTION] first and only then falls back to the
+        parent's own table (CServerDef.cpp:509), which is how a pack function written
+        to answer a SERV read gets to run at all. The live pack's date line reads
+        <SERV.DAYNAME>, which its own [FUNCTION SERV.DAYNAME] exists to answer, and
+        got "0" where the weekday belongs - and "0" is an ordinary enough answer that
+        nothing looked wrong. Both spellings are tried now: the remainder after the
+        prefix, as upstream does, and the whole token, which is how the pack spells
+        the section header. A name nothing answers still reads back as "0".
+
+FIX - Seven settings the packs read off SERV had no case in the resolver and returned
+        that same "0", which a script branching on one cannot tell from the setting
+        being off: LOGMASK, CLIENTLINGER, ITEMSMAXAMOUNT, MURDERMINCOUNT,
+        ATTACKERTIMEOUT, AUTORESDISP and AUTOHOUSEKEYS.
+
+NEW - AUTOHOUSEKEYS (default on). Off, placing a house or transferring one hands out
+        no key at all and the doors answer to the house privilege alone
+        (CItemMulti.cpp:417). The engine generated a key into the pack and a spare
+        into the bank either way, so the setting could not be turned off; the
+        reference pack's door script branches on it to decide whether to run its own
+        access check.
+
 [2026-09-17] - SERV.<function> reaches the function table
 ----------------------------------------
 

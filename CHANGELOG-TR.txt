@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Sunucunun yanitlayamadigi SERV okumasi ve arkasindaki fonksiyon
+----------------------------------------
+
+FIX - SERV bir anahtara yanit veremediginde cozumleme orada BITIYOR ve "0" donuyordu.
+        Ust kaynak once anahtari bir [FUNCTION] olarak dener, ancak ondan sonra ust
+        sinifin kendi tablosuna duser (CServerDef.cpp:509); bir SERV okumasini
+        yanitlamak icin yazilmis paket fonksiyonunun calisabilmesinin tek yolu budur.
+        Canli paketin tarih satiri <SERV.DAYNAME> okuyor - kendi [FUNCTION SERV.DAYNAME]
+        blogu bunu yanitlamak icin var - ve gun adinin yerine "0" aliyordu; "0" yeterince
+        siradan bir cevap oldugu icin hicbir sey yanlis gorunmuyordu. Artik iki yazim da
+        deneniyor: ust kaynaktaki gibi onekten sonraki kisim ve paketin bolum basliginda
+        kullandigi tam token. Hicbir seyin yanitlamadigi ad yine "0" donuyor.
+
+FIX - Paketlerin SERV uzerinden okudugu yedi ayarin cozucude dali yoktu ve ayni "0"i
+        donuyorlardi; bir script bunu ayarin kapali olmasindan ayirt edemez: LOGMASK,
+        CLIENTLINGER, ITEMSMAXAMOUNT, MURDERMINCOUNT, ATTACKERTIMEOUT, AUTORESDISP ve
+        AUTOHOUSEKEYS.
+
+YENI - AUTOHOUSEKEYS (varsayilan acik). Kapaliyken ev yerlestirmek veya devretmek hic
+        anahtar vermez, kapilar yalnizca ev yetkisine yanit verir (CItemMulti.cpp:417).
+        Motor her durumda cantaya bir, bankaya bir yedek anahtar uretiyordu; yani ayar
+        kapatilamiyordu. Referans paketin kapi scripti kendi erisim kontrolunu calistirip
+        calistirmayacagina bu ayara bakarak karar veriyor.
+
 [2026-09-17] - SERV.<fonksiyon> fonksiyon tablosuna ulasiyor
 ----------------------------------------
 

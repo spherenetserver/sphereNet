@@ -127,6 +127,16 @@ public static partial class Program
             "NPCTRAINCOST" => (_config?.NpcTrainCost ?? 30).ToString(),
             "NPCTRAINMAX" => (_config?.NpcTrainMax ?? 420).ToString(),
             "GUARDSINSTANTKILL" => (_config?.GuardsInstantKill == true ? "1" : "0"),
+            // Settings the packs read back that had no case here. Each is already
+            // honoured by the engine; only the readback was missing, so a script
+            // branching on one took the "0" an unresolved SERV read returns.
+            "LOGMASK" => $"0{_config?.LogMask ?? 0:X}",
+            "CLIENTLINGER" => (_config?.ClientLinger ?? 0).ToString(),
+            "ITEMSMAXAMOUNT" => (_config?.ItemsMaxAmount ?? 0).ToString(),
+            "MURDERMINCOUNT" => (_config?.MurderMinCount ?? 0).ToString(),
+            "ATTACKERTIMEOUT" => (_config?.AttackerTimeout ?? 0).ToString(),
+            "AUTORESDISP" => (_config?.AutoResDisp == true ? "1" : "0"),
+            "AUTOHOUSEKEYS" => (_config?.AutoHouseKeys == true ? "1" : "0"),
             "GUILDSTONES" => CountWorldStones(ItemType.StoneGuild),
             "TOWNSTONES" => CountWorldStones(ItemType.StoneTown),
             // Iterable stone lists (Source-X CServerConfig GUILDSTONES./

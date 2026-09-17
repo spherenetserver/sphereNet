@@ -2831,7 +2831,8 @@ public static partial class Program
             _housingEngine = new HousingEngine(_world, multiRegistry)
             {
                 MaxHousesPerPlayer = _config.MaxHousesPlayer,
-                MaxHousesPerAccount = _config.MaxHousesAccount
+                MaxHousesPerAccount = _config.MaxHousesAccount,
+                AutoHouseKeys = _config.AutoHouseKeys
             };
             _housingEngine.OnAddMulti = (owner, multi, privilege) =>
                 _triggerDispatcher.FireCharTrigger(owner, CharTrigger.AddMulti,

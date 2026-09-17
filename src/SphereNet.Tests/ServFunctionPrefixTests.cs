@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 namespace SphereNet.Tests;
 
@@ -63,5 +63,34 @@ public sealed class ServFunctionPrefixTests
         Assert.Equal("", Resolve("NOT_A_SERVER_PROPERTY"));
         Assert.Equal("", Resolve("NOTAFUNCTION abc"));
         Assert.Equal("", Resolve("SERV.CHR 65"));
+    }
+
+    /// <summary>The settings a pack reads back off SERV. Each is already honoured by
+    /// the engine; only the readback was missing, and a script branching on one saw
+    /// the "0" that an unresolved SERV read returns - indistinguishable from the
+    /// setting being off.</summary>
+    [Fact]
+    public void TheSettingsAPackReadsBackAreAnswered()
+    {
+        var cfg = new SphereNet.Core.Configuration.SphereConfig
+        {
+            LogMask = 0x3F00, ClientLinger = 45, ItemsMaxAmount = 60000,
+            MurderMinCount = 5, AttackerTimeout = 300, AutoResDisp = true,
+            AutoHouseKeys = false,
+        };
+        typeof(SphereNet.Server.Program)
+            .GetField("_config", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, cfg);
+
+        Assert.Equal("03F00", Resolve("LOGMASK"));
+        Assert.Equal("45", Resolve("CLIENTLINGER"));
+        Assert.Equal("60000", Resolve("ITEMSMAXAMOUNT"));
+        Assert.Equal("5", Resolve("MURDERMINCOUNT"));
+        Assert.Equal("300", Resolve("ATTACKERTIMEOUT"));
+        Assert.Equal("1", Resolve("AUTORESDISP"));
+        // The one with behaviour behind it: off means the shard hands out no house
+        // key at all (CItemMulti.cpp:417), and the reference pack's door script
+        // branches on it to decide whether to run its own access check.
+        Assert.Equal("0", Resolve("AUTOHOUSEKEYS"));
     }
 }

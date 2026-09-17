@@ -632,6 +632,11 @@ public sealed class SphereConfig
     public int RacialFlags { get; set; }
     public bool AutoResDisp { get; set; } = true;
 
+    /// <summary>Generate and check house keys (Source-X AUTOHOUSEKEYS, default on).
+    /// With it off, placing a house hands out no key and the doors answer to the
+    /// house privilege alone (CItemMulti.cpp:417, 1162).</summary>
+    public bool AutoHouseKeys { get; set; } = true;
+
     // Tooltip
     public int ToolTipMode { get; set; } = 0; // 0=off, 1=revision/request, 2=force full
     public int ToolTipCache { get; set; } = 30;
@@ -1059,6 +1064,7 @@ public sealed class SphereConfig
         FeatureExtra = ini.GetInt(section, "FeatureExtra", FeatureExtra);
         RacialFlags = ini.GetInt(section, "RacialFlags", RacialFlags);
         AutoResDisp = ini.GetBool(section, "AutoResDisp", AutoResDisp);
+        AutoHouseKeys = ini.GetBool(section, "AutoHouseKeys", AutoHouseKeys);
 
         ToolTipMode = ini.GetInt(section, "ToolTipMode", ToolTipMode);
         ToolTipCache = ini.GetInt(section, "ToolTipCache", ToolTipCache);

@@ -858,6 +858,10 @@ public sealed class HousingEngine
 {
     private readonly GameWorld _world;
     private readonly MultiRegistry _multiDefs;
+
+    /// <summary>Source-X AUTOHOUSEKEYS: generate a key when a house is placed or
+    /// changes owner. Off, the doors answer to the house privilege alone.</summary>
+    public bool AutoHouseKeys { get; set; } = true;
     private readonly Dictionary<Serial, House> _houses = [];
 
     public int MaxHousesPerPlayer { get; set; } = 1;
@@ -1062,6 +1066,14 @@ public sealed class HousingEngine
     /// the lock-matching uses; Link mirrors it for scripts).</summary>
     private void CreateHouseKey(Character owner, Item multiItem, bool toBank)
     {
+        // AUTOHOUSEKEYS off means the shard runs on house privilege alone and hands
+        // out no key at all (CItemMulti.cpp:417). The engine generated one either
+        // way, so a shard that turned the setting off still got keys - and the
+        // reference pack's own door script branches on the setting to decide whether
+        // to do its own access check.
+        if (!AutoHouseKeys)
+            return;
+
         var key = _world.CreateItem();
         key.BaseId = 0x100F; // gold key
         key.ItemType = ItemType.Key;

@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using System.Globalization;
 using SphereNet.Core.Types;
 
@@ -179,6 +179,11 @@ public sealed class ItemDef : BaseDef
             // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...):
             // same def-tag flow as the SLAYER pair.
             case var _ when AosOnHitProperties.Contains(key):
+                TagDefs.Set(key.ToUpperInvariant(), value.Trim());
+                break;
+            // The AOS suit family an equippable carries, same def-tag flow. The
+            // combat engine reads these off a worn item's def tags already.
+            case var _ when AosEquipProperties.Contains(key):
                 TagDefs.Set(key.ToUpperInvariant(), value.Trim());
                 break;
             case var _ when SpellCastingProperties.Contains(key):

@@ -36,6 +36,11 @@ public partial class Character : ObjBase
     /// <summary>Script MOUNT verb on an NPC (Source-X Horse_Mount): seat the
     /// NPC's own owner on it. Args: (npc). Wired to MountEngine.TryMount.
     /// The staff-horse script (REF1.MOUNT after NEW.MAKEMYPET SRC) needs it.</summary>
+    /// <summary>The multi this character is currently customizing, for the
+    /// HOUSEDESIGN reference head (CLIR_HOUSEDESIGN, CClient.cpp:542). The design
+    /// session lives in CustomHousingEngine, which the object layer cannot see.</summary>
+    public static Func<Character, Item?>? ResolveHouseDesignMulti;
+
     public static Func<Character, bool>? OnScriptMount;
 
     /// <summary>Script EQUIP verb (Source-X CHV_EQUIP ItemEquip): equip the
@@ -3383,6 +3388,25 @@ public partial class Character : ObjBase
     {
         if (head.Equals("ACT", StringComparison.OrdinalIgnoreCase))
             return _act.IsValid ? ResolveWorld?.Invoke()?.FindObject(_act) : null;
+        // The acting client's own reference heads (CClient::sm_szRefKeys,
+        // CClient.cpp:538-548). A pack asks <src.housedesign> to find out whether
+        // this player is already inside the design editor and <src.housedesign.uid>
+        // for which building; with no head to resolve, both read as nothing and the
+        // "you are already designing another building" branch was unreachable.
+        if (head.Equals("HOUSEDESIGN", StringComparison.OrdinalIgnoreCase))
+            return ResolveHouseDesignMulti?.Invoke(this);
+        // TARGPRV is the previous target, which scripts SET and then expect to read
+        // back (the treasure-map hand-off writes it as a uid). It was write-only.
+        if (head.Equals("TARGPRV", StringComparison.OrdinalIgnoreCase))
+        {
+            if (TryGetTag("TARGPRV", out string? prv) && !string.IsNullOrWhiteSpace(prv))
+            {
+                uint prvUid = ParseHexOrDecUInt(prv!);
+                if (prvUid != 0)
+                    return ResolveWorld?.Invoke()?.FindObject(new Serial(prvUid));
+            }
+            return null;
+        }
         return base.ResolveRefHead(head);
     }
 
@@ -3398,6 +3422,13 @@ public partial class Character : ObjBase
         if (AosOnHitProperties.Contains(upper))
         {
             value = TryGetTag(upper, out var aosv) ? aosv ?? "0" : "0";
+            return true;
+        }
+        // The AOS SUIT properties, on the same tags the combat engine already sums
+        // across the equipment (GetEquipmentPropertyValue).
+        if (AosEquipProperties.Contains(upper))
+        {
+            value = TryGetTag(upper, out var equipv) ? equipv ?? "0" : "0";
             return true;
         }
         if (SpellCastingProperties.Contains(upper))
@@ -3728,7 +3759,11 @@ public partial class Character : ObjBase
                 value = info.Type == ClientType.Classic3D ? "1" : "0";
                 return true;
             }
+            // CLIENTISENHANCED is the name the reference answers (CClient_props.tbl:10,
+            // beside CLIENTISKR which was already spelled that way here); ISENHANCED is
+            // kept as the shorter alias this shard's packs already write.
             case "ISENHANCED":
+            case "CLIENTISENHANCED":
             {
                 var info = ResolveClientInfo?.Invoke(this) ?? (0, ClientType.ClassicWindows);
                 value = info.Type == ClientType.Enhanced ? "1" : "0";
@@ -3889,6 +3924,11 @@ public partial class Character : ObjBase
             case "ISITEM": value = "0"; return true;
             case "DISPIDDEC": value = _bodyId.ToString(); return true;
             case "BASEID": value = $"0{BaseId:X}"; return true;
+            // The CHARDEF's own defname (CBaseBaseDef_props.tbl DEFNAME), asked of the
+            // instance - the counterpart of the item read.
+            case "DEFNAME":
+                value = DefinitionLoader.GetCharDef(CharDefIndex)?.DefName ?? "";
+                return true;
             case "DUID": value = Uid.Value.ToString(); return true;
             case "HEIGHT":
             {
@@ -4505,7 +4545,7 @@ public partial class Character : ObjBase
         if (upper.StartsWith("SKILLUSEQUICK.", StringComparison.Ordinal) ||
             upper.StartsWith("SKILLUSEQUICK ", StringComparison.Ordinal))
         {
-            string[] parts = upper[14..].Split(',');
+            string[] parts = SplitScriptArgs(upper[14..]);
             if (parts.Length >= 2 &&
                 SkillNames.TryResolve(parts[0].Trim(), out SkillType useSkill) &&
                 SphereNet.Core.Types.ScriptNumber.TryParseToken(parts[1].Trim(), out long diff))
@@ -4536,7 +4576,7 @@ public partial class Character : ObjBase
         if (upper.StartsWith("SKILLCHECK.", StringComparison.Ordinal) ||
             upper.StartsWith("SKILLCHECK ", StringComparison.Ordinal))
         {
-            string[] checkArgs = upper[11..].Split(',');
+            string[] checkArgs = SplitScriptArgs(upper[11..]);
             if (checkArgs.Length >= 2 &&
                 SkillNames.TryResolve(checkArgs[0].Trim(), out SkillType checkSkill) &&
                 SphereNet.Core.Types.ScriptNumber.TryParseToken(checkArgs[1].Trim(), out long checkDiff))
@@ -4737,6 +4777,11 @@ public partial class Character : ObjBase
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
         if (AosOnHitProperties.Contains(key))
+        {
+            SetTag(key.ToUpperInvariant(), normalized);
+            return true;
+        }
+        if (AosEquipProperties.Contains(key))
         {
             SetTag(key.ToUpperInvariant(), normalized);
             return true;

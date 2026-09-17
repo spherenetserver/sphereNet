@@ -3,6 +3,78 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+
+[2026-09-17] - Referans dagitimin cagirdigi isimler
+----------------------------------------
+
+Resmi Source-X script paketi uye taramasina katildi. Onun yazdigi ve hicbir seyin
+yanitlamadigi bir ad, yapisi geregi bir eksiktir - cunku referans motora karsi
+yazilmistir - ve tarama on dokuz tane buldu, hepsi referansin kendi anahtar
+tablolarinda var. On yedisi burada duzeltildi.
+
+FIX - Tum AOS takim ozelligi ailesi hicbir sey yanitlamiyordu: Balanced,
+        EnhancePotions, HitLowerAtk, HitLowerDef, IncreaseDam, IncreaseDefChance,
+        IncreaseGold, IncreaseHitChance, IncreaseSpellDam, MageArmor, MageWeapon,
+        ReflectPhysicalDam ve SpellChanneling (CCPropsChar,
+        CCPropsItemEquippable, CCPropsItemWeapon - ADDPROP ile kayitli, yani
+        referans her birini ciplak okumada yanitlar). Bunlarin DORDUNU savas
+        motoru ZATEN okuyordu, tam da simdi acilan o tag'lerden:
+        INCREASEHITCHANCE ve INCREASEDEFCHANCE AOS vurus zarini,
+        INCREASEDAM hasar bonusunu, REFLECTPHYSICALDAM yansiyan payi belirliyor.
+        Yani motorun uzerine islem yaptigi deger script'ten gorunmuyordu ve onu
+        kuran satir hicbir sey yapmiyordu - takim ancak bir CHARDEF'in sabitledigi
+        sey olabiliyordu. Artik hem karakterde hem esyada okunup yazilabiliyor ve
+        bir ITEMDEF/CHARDEF satiri da ayni yere iniyor; referans paketin kendi
+        kusam scriptlerinin bekledigi sey bu.
+
+FIX - SKILLCHECK ve SKILLUSEQUICK argumanlarini yalnizca virgulle ayiriyordu.
+        Referansin kendi ayiricisi "=, \t" kumesini kullanir (Str_Parse,
+        CExpression.cpp:144) ve referans dagitim cagriyi BOSLUKLA yazar:
+        "SKILLCHECK TINKERING 300". Bu tek arguman olarak geliyordu, dolayisiyla
+        anahtar dogrudan reddediliyor ve tum kontrol hicbir sey olarak okunuyordu -
+        hicbir zaman kapi olmayan bir beceri kapisi.
+
+FIX - Bir zamanlayici onda ya da milisaniye olarak yazilabiliyor ama yalnizca
+        saniye olarak geri okunabiliyordu. TIMERD ve TIMERMS ikisi de sorunsuz
+        kuruluyor, ikisi de okunamiyordu (OC_TIMERD / OC_TIMERMS,
+        CObjBase.cpp:1573-1577). Artik ucu de ayni saatten yanit veriyor ve
+        kurulmamis bir zamanlayici her birinde -1 diyor.
+
+FIX - HOUSETYPE multi uzerinde okunamiyordu ve yazildiginda yalnizca canli evin
+        hic gormedigi bir tag'e iniyordu (SHL_HOUSETYPE, CItemMulti.cpp:2847/3024).
+        Ev paketleri bu testin uzerine kurulu - if <link.housetype> ==
+        <def.house_private> - yani hicligi 0 ile karsilastiriyordu ve her ev, acik
+        olani da lonca evi de, ozel dalina giriyordu.
+
+FIX - DEFNAME yalnizca bir bolgede yanit veriyordu. O, ORNEGE sorulan bir TEMEL
+        def anahtaridir (CBaseBaseDef_props.tbl) - bir paketin grafikleri
+        karsilastirmadan elindekinin ne oldugunu ogrenme yolu - ve bir esyada ya da
+        karakterde hicbir sey donduruyordu.
+
+FIX - MOREM, bir esyanin MOREP noktasinin harita bileseni (IC_MOREM,
+        CItem.cpp:2923). Uc eksenin her birinin kendi anahtari vardi, facet'in
+        yoktu; yani isaretlenen bir konum uzerinde bulundugu haritayla birlikte
+        geri okunamiyordu.
+
+FIX - HOUSEDESIGN ve TARGPRV, isleyen istemcinin iki referans basligi
+        (CClient::sm_szRefKeys, CClient.cpp:538-548). Bir referans basligi baska
+        bir nesneye cozulur ve yorumlayici gerisini O nesneye sorar; cozulecek
+        baslik olmayinca <src.housedesign> tasarim editorunun icinde duran biri
+        icin bile yanlis oluyordu - "zaten baska bir bina tasarliyorsun" dali
+        erisilemezdi - ve TARGPRV'ye yazilan bir uid asla geri okunamiyordu.
+
+FIX - CLIENTISENHANCED, referansin yanitladigi ad (CClient_props.tbl:10);
+        yanindaki CLIENTISKR zaten burada da oyle yaziliyordu. Kisa olan
+        ISENHANCED korundu.
+
+CHANGE - Uye taramasi artik uc paketi okuyor, referans dagitim dahil, ve //
+        yorumlarini cagri saymiyor. Bildirdigi isimlerin otuz yedisi yoruma
+        alinmis koddan ve Ingilizce duz metinden geliyordu - kendini olcuyordu.
+        Yanitsiz kalanlar gerekcesiyle birlikte testte listeli: cogu paketlere ait
+        ve hala acik iki motor ailesi orada adlandirildi - NPC eylem verb'leri
+        (on altinin on biri uygulanmamis; bu AI'in kanali olmayan bir eylem durumu
+        gerektiriyorlar) ve burada script nesnesi olmayan GM sayfalari.
+
 [2026-09-17] - Bir paketin bulmayi bekledigi gorevli bayraklari
 ----------------------------------------
 

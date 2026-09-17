@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 
 namespace SphereNet.Scripting.Definitions;
@@ -262,6 +262,11 @@ public sealed class CharDef : BaseDef
             case "RESPOISONMAX": short.TryParse(value, out short rpom); ResPoisonMax = rpom; break;
             case "RESENERGYMAX": short.TryParse(value, out short rem); ResEnergyMax = rem; break;
             case "REFLECTPHYSICALDAM": short.TryParse(value, out short reflect); ReflectPhysicalDam = reflect; break;
+            // The rest of the AOS suit family, same def-tag flow. Placed after the
+            // typed case above so REFLECTPHYSICALDAM keeps its own field.
+            case var _ when AosEquipProperties.Contains(key):
+                TagDefs.Set(key.ToUpperInvariant(), value.Trim());
+                break;
             case "SPEECH":
                 SpeechResource = ResourceId.FromString(value);
                 var speechRid = ResourceId.FromString(value, ResType.Speech);

@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -22,12 +23,17 @@ namespace SphereNet.Tests;
 /// instead makes the measurement lie: CTAG0, FINDID and ISEVENT are all answered
 /// and none appears as a quoted literal anywhere in the engine.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
 {
     private static readonly string[] PackRoots =
     [
         @"C:\sphereNetServer",
         "oldSphere/scripts",
+        // The REFERENCE distribution, written against the reference engine: a name
+        // it calls and nothing answers is a gap by construction, not a shard's
+        // private convention.
+        "oldSphere/Scripts-X-main",
     ];
 
     /// <summary>Object references a pack writes a member on. SERV is deliberately
@@ -55,42 +61,69 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     /// exactly like an unknown name here. SKILLMENU needs a loaded [SKILLMENU]
     /// section to succeed and there is none in a bare probe world; it is covered by
     /// MoveToAndSkillMenuVerbTests instead. Entries here are excluded from the sweep
-    /// so nobody implements them a second time.</summary>
+    /// so nobody implements them a second time.
+    ///
+    /// SKILLCHECK needs TWO arguments and this probe can only offer one, so a key
+    /// that parses its arguments correctly still refuses. HOUSEDESIGN and TARGPRV are
+    /// reference HEADS that resolve to whatever they point at, and in a bare probe
+    /// world they point at nothing - which is the correct answer, and indistinguishable
+    /// from an unknown head. All three are covered by ReferencePackMemberGapTests.</summary>
     private static readonly HashSet<string> AnsweredButNotProbeable =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "SKILLMENU",
+            "SKILLMENU", "SKILLCHECK", "HouseDesign", "TARGPRV",
         };
 
     /// <summary>Members a real pack calls that nothing answers and no FUNCTION
     /// defines. Each is a line that does nothing at all. The assertions below fail
     /// when a name joins this set AND when one leaves it.
     ///
-    /// Most of what is left belongs to the PACK rather than the engine: FlagEkle,
-    /// FLAGSIL, ISJAIL, ISINSAFE, ISDISS, ISNOMOVERFLAGS and the FUNC_* names have
-    /// no definition anywhere - not in this engine, not in the reference tables and
-    /// not in any [FUNCTION] block of either pack - and SYSMESSSYSMESSAGELOC is a
-    /// typo for SYSMESSAGELOC. Those are fixed by writing the missing functions or
-    /// correcting the call, not here.
+    /// Most of what is left belongs to the PACK rather than the engine. FlagEkle,
+    /// FLAGSIL, ISJAIL, ISINSAFE, ISDISS, dmore2 and the FUNC_*/Func_* names have no
+    /// definition anywhere - not in this engine, not in the reference tables and not
+    /// in any [FUNCTION] block of any of the three packs - and SYSMESSSYSMESSAGELOC
+    /// is a typo for SYSMESSAGELOC. f_lich_polymorph is the reference distribution's
+    /// own dangling call: e_npcs.scp schedules it and nothing defines it. Those are
+    /// fixed by writing the missing function or correcting the call, not here.
     ///
-    /// TARGPRV is the one deliberate engine refusal. Upstream keeps a
-    /// previous-target slot on the client, fed from a dozen different targeting
-    /// flows; this engine models none of them, and the pack's single use is a WRITE
-    /// that nothing ever reads (clearing it in a chest's @PickUp_Self). Adding a
-    /// slot nothing feeds and nothing consumes would silence the sweep and change
-    /// no behaviour - which is exactly the shape of bug this sweep exists to
-    /// find.</summary>
+    /// LOCATION, MYNAME, PLACE, NOTICE, REMOVETIMER, VIRTUAL, LOG and
+    /// UOSOFT_CLIENT_LOGOUT are names no reference table carries either: shard
+    /// conventions that were never defined. (LOG exists upstream, but as a SERV verb -
+    /// SERV.LOG works here; the pack writes SRC.LOG, which upstream would refuse too.)
+    ///
+    /// The engine gaps that remain, and why they are not one-line fixes:
+    ///
+    /// LEAVE is the NPC action verb table (CCharNPC::sm_szVerbKeys, CCharNPCAct.cpp:44),
+    /// of which eleven of sixteen are unimplemented - FLEE, GOTO, RUNTO, RUN, WALK,
+    /// HIRE, TRAIN, SHRINK, PETRETRIEVE, PETSTABLE and LEAVE itself. Upstream drives
+    /// them through an NPC ACTION state (Skill_Start(NPCACT_FLEE) and friends) that
+    /// this AI has no channel for; its decisions come from a different architecture.
+    /// Only LEAVE appears here because only LEAVE is written as a member (I.LEAVE) -
+    /// the others are bare statements this sweep does not collect. That family is its
+    /// own wave, not a key to add.
+    ///
+    /// GMPAGEP and SendGMPage need a GM PAGE as a script object. Upstream's CGMPage
+    /// is one, with its own properties; here a page is a plain GmPageRecord struct in
+    /// a list, which a reference head cannot resolve to. Answering the pack's single
+    /// bare truth test while every dotted read still returned nothing would be worse
+    /// than answering neither.
+    ///
+    /// F_HOUSE_NEAR_DOOR is a pack function the housing scripts expect to exist.
+    ///
+    /// "e" is the collector, not the engine: a book's page TEXT contains the English
+    /// "i.e.", and prose inside a quoted string is not distinguishable from a member
+    /// call by name alone. Comments are stripped; page text cannot be.</summary>
     private static readonly HashSet<string> KnownUnanswered =
         new(StringComparer.OrdinalIgnoreCase)
         {
             "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS",
             "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
             "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item",
-            "HouseDesign", "ISDISS", "ISINSAFE", "ISJAIL",
-            "ISNOMOVERFLAGS", "LOG", "MOREM",
-            "NOTICE", "PAGE", "SYSMESSSYSMESSAGELOC",
-            "SendGMPage", "TARGPRV", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
-            "dmore2", "nototitle", "sys_red",
+            "GMPAGEP", "ISDISS", "ISINSAFE", "ISJAIL",
+            "LEAVE", "LOCATION", "LOG", "MYNAME",
+            "NOTICE", "PLACE", "REMOVETIMER", "SYSMESSSYSMESSAGELOC",
+            "SendGMPage", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
+            "dmore2", "e", "f_lich_polymorph",
         };
 
     private sealed class Console : ITextConsole
@@ -146,6 +179,62 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     /// A verb runs for real, so the world is disposable; a throw counts as answered,
     /// because reaching a handler is the opposite of the silent no-op being sought.
     /// </summary>
+    /// <summary>Give the probe item a real ITEMDEF behind it.
+    ///
+    /// A whole family of item members answers only off the definition
+    /// (CBaseBaseDef / CItemBase upstream: VALUE, RESOURCES, SKILLMAKE...), so an
+    /// instance with nothing behind it refuses them for a reason that has nothing
+    /// to do with whether the engine implements them - and the sweep then reports
+    /// three implemented members as gaps.</summary>
+    /// <summary>Drop the // comments before looking for calls.
+    ///
+    /// A commented-out line is not a call: the reference pack carries
+    /// "// &lt;src.f_combatsys_hitspeed 3.0&gt;" as a note beside the live code, and
+    /// English prose in a comment reads "i.e." as a member named e. Both were
+    /// reported as gaps nothing answers, which is the sweep measuring itself. The
+    /// "://" of a URL is left alone.</summary>
+    private static string StripComments(string text)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (string line in text.Split('\n'))
+        {
+            int cut = -1;
+            for (int i = 0; i + 1 < line.Length; i++)
+            {
+                if (line[i] != '/' || line[i + 1] != '/') continue;
+                if (i > 0 && line[i - 1] == ':') continue;   // http://
+                cut = i;
+                break;
+            }
+            sb.Append(cut < 0 ? line : line[..cut]).Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    private static void LoadProbeItemDef()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "spn_probe_def_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string file = Path.Combine(dir, "probe.scp");
+        File.WriteAllText(file, """
+            [ITEMDEF 0eed]
+            DEFNAME=i_probe_def
+            TYPE=t_normal
+            VALUE=10
+            WEIGHT=1
+            RESOURCES=1 i_probe_def
+            SKILLMAKE=Blacksmithing 50.0
+            """);
+        using var lf = Microsoft.Extensions.Logging.LoggerFactory.Create(_ => { });
+        var resources = new SphereNet.Scripting.Resources.ResourceHolder(
+            lf.CreateLogger<SphereNet.Scripting.Resources.ResourceHolder>())
+        { ScpBaseDir = dir };
+        resources.LoadResourceFile(file);
+        new SphereNet.Game.Definitions.DefinitionLoader(
+            resources, new SphereNet.Game.Magic.SpellRegistry()).LoadAll();
+        try { Directory.Delete(dir, true); } catch (IOException) { }
+    }
+
     private static bool EngineAnswers(GameWorld world, ITextConsole console,
         string member, IEnumerable<string> suffixes)
     {
@@ -196,6 +285,22 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             try { if (it.TryExecuteCommand(key, arg, console, out bool itOwned) || itOwned) return true; }
             catch { return true; }
 
+            // A MULTI with a live house behind it. The whole CItemMulti surface -
+            // HOUSETYPE, ISOWNER, GETCOOWNERPOS, MOVINGCRATE, DELBAN, REDEED - is
+            // gated on the item BEING a house, and refuses on a plain item for a
+            // reason that has nothing to do with whether the engine implements it.
+            // Probed as a second object rather than by making the one probe item a
+            // multi, so the multi gate cannot hide a non-multi answer either.
+            var multi = world.CreateItem();
+            multi.BaseId = 0x4064;
+            multi.ItemType = ItemType.Multi;
+            world.PlaceItem(multi, new Point3D(103, 100, 0, 0));
+            var house = new SphereNet.Game.Housing.House(multi);
+            Item.ResolveHouse = u => u == multi.Uid ? house : null;
+            try { if (multi.TryGetProperty(key, out _)) return true; } catch { return true; }
+            try { if (multi.TryExecuteCommand(key, arg, console, out bool mOwned) || mOwned) return true; }
+            catch { return true; }
+
             // The third link: the acting CLIENT own verbs (WEBLINK, DIALOG, TARGETF,
             // SENDPACKET...). Skipping it reports every console verb as a gap.
             try { if (console.TryExecuteScriptCommand(ch, key, arg, null)) return true; }
@@ -211,7 +316,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
                 string head = key[..dot], rest = key[(dot + 1)..];
                 try
                 {
-                    var target = ch.ResolveRefHead(head) ?? it.ResolveRefHead(head);
+                    var target = ch.ResolveRefHead(head) ?? it.ResolveRefHead(head) ?? multi.ResolveRefHead(head);
                     if (target != null && (target.TryGetProperty(rest, out _) ||
                                            target.TryExecuteCommand(rest, arg, console, out bool refOwned) ||
                                            refOwned))
@@ -241,7 +346,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             string text;
             try { text = File.ReadAllText(file); }
             catch (IOException) { continue; }
-            foreach (Match m in MemberCall.Matches(text))
+            foreach (Match m in MemberCall.Matches(StripComments(text)))
             {
                 string name = m.Groups[1].Value;
                 string suffix = m.Groups[2].Success ? m.Groups[2].Value : "";
@@ -257,6 +362,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         }
 
         var functions = PackFunctions(files);
+        LoadProbeItemDef();
         var world = TestHarness.CreateWorld();
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;

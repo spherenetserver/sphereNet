@@ -2818,6 +2818,8 @@ public static partial class Program
             if (_housingEngine.HouseCount > 0)
                 _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);
             _customHousing = new CustomHousingEngine(_world, _housingEngine);
+            SphereNet.Game.Objects.Characters.Character.ResolveHouseDesignMulti =
+                ch => _customHousing.GetSessionMulti(ch.Uid);
             _chatEngine = new SphereNet.Game.Chat.ChatEngine("General");
             // Committed custom-house designs become virtual walk geometry
             // (the tiles are not real items — clients render them from 0xD8).

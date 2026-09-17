@@ -1615,6 +1615,13 @@ public class Item : ObjBase
             value = TryGetTag(upper, out var aosv) ? aosv ?? "0" : "0";
             return true;
         }
+        // The AOS SUIT properties a piece of equipment carries. The combat engine
+        // already reads these tags off every worn item; nothing could write one.
+        if (AosEquipProperties.Contains(upper))
+        {
+            value = TryGetTag(upper, out var equipv) ? equipv ?? "0" : "0";
+            return true;
+        }
         if (SpellCastingProperties.Contains(upper))
         {
             value = TryGetTag(upper, out var castingValue) ? castingValue ?? "0" : "0";
@@ -1667,6 +1674,11 @@ public class Item : ObjBase
             case "MOREX": value = _moreP.X.ToString(); return true;
             case "MOREY": value = _moreP.Y.ToString(); return true;
             case "MOREZ": value = _moreP.Z.ToString(); return true;
+            // The MAP component of the same point (IC_MOREM, CItem.cpp:2923/3429).
+            // MOREP round-trips it, but the three axes each had their own key and
+            // the map did not, so a script reading a marked location back could
+            // not tell which facet it named.
+            case "MOREM": value = _moreP.Map.ToString(); return true;
             case "RUNE_X": value = _moreP.X.ToString(); return true;
             case "RUNE_Y": value = _moreP.Y.ToString(); return true;
             case "RUNE_Z": value = _moreP.Z.ToString(); return true;
@@ -2108,6 +2120,11 @@ public class Item : ObjBase
 
             switch (upper)
             {
+                // DEFNAME is a BASE def key (CBaseBaseDef_props.tbl), asked of the
+                // INSTANCE: <ARGO.DEFNAME> is how a pack finds out what it is holding
+                // without comparing graphics. Only a region answered it, so on an item
+                // or a character the test compared nothing against a name.
+                case "DEFNAME": value = def.DefName ?? ""; return true;
                 case "VALUE": value = def.ValueMin == def.ValueMax ? def.ValueMin.ToString() : $"{def.ValueMin},{def.ValueMax}"; return true;
                 case "WEIGHT": value = (Weight / WeightUnits).ToString(); return true;
                 case "HEIGHT": value = def.Height.ToString(); return true;
@@ -2216,6 +2233,11 @@ public class Item : ObjBase
         }
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
+        if (AosEquipProperties.Contains(upper))
+        {
+            SetTag(upper, value.Trim());
+            return true;
+        }
         if (AosOnHitProperties.Contains(upper))
         {
             SetTag(upper, value.Trim());
@@ -2362,6 +2384,9 @@ public class Item : ObjBase
                 return true;
             case "MOREZ":
                 if (sbyte.TryParse(value, out sbyte mz)) _moreP = new Point3D(_moreP.X, _moreP.Y, mz, _moreP.Map);
+                return true;
+            case "MOREM":
+                if (byte.TryParse(value, out byte mm)) _moreP = new Point3D(_moreP.X, _moreP.Y, _moreP.Z, mm);
                 return true;
             case "LINK":
                 _link = new Serial(ParseHexOrDecUInt(value));
@@ -2522,9 +2547,23 @@ public class Item : ObjBase
                 return true;
             }
             // Multi/housing properties — round-trip as TAGs
-            case "REGION.FLAGS": case "REGION.EVENTS": case "HOUSETYPE":
+            case "REGION.FLAGS": case "REGION.EVENTS":
                 SetTag(upper, value);
                 return true;
+            // HOUSETYPE reaches the LIVE house (SHL_HOUSETYPE, CItemMulti.cpp:3024).
+            // The tag is still written so a template applied before the house is
+            // registered keeps working, as with the storage keys below.
+            case "HOUSETYPE":
+            {
+                SetTag(upper, value);
+                var typeHouse = ResolveHouse?.Invoke(Uid);
+                if (typeHouse != null && byte.TryParse(value.Trim(), out byte houseTypeVal) &&
+                    Enum.IsDefined(typeof(Housing.HouseType), houseTypeVal))
+                {
+                    typeHouse.Type = (Housing.HouseType)houseTypeVal;
+                }
+                return true;
+            }
             // A REGION.<key> line on a multi belongs to the structure's own region:
             // upstream strips the prefix and hands the rest to the region's r_LoadVal
             // (SHL_REGION, CItemMulti.cpp:3011). REGION.TAG.<name> - a house's owner,
@@ -4864,7 +4903,13 @@ public class Item : ObjBase
         switch (subKey)
         {
             case "OWNER": value = FormatSerial(house.Owner); return true;
-            case "TYPE": value = ((byte)house.Type).ToString(); return true;
+            // HOUSETYPE is the name upstream answers on the multi itself
+            // (SHL_HOUSETYPE, CItemMulti.cpp:2847); HOUSE.TYPE is the prefixed
+            // form. Only the prefixed one could be read, so every housing
+            // permission test written as <link.housetype>==<def.house_private>
+            // compared nothing against 0 and took the private branch.
+            case "TYPE":
+            case "HOUSETYPE": value = ((byte)house.Type).ToString(); return true;
             case "GUILDSTONE": value = FormatSerial(house.GuildStone); return true;
             case "STORAGE":
             case "BASESTORAGE": value = house.BaseStorage.ToString(); return true;

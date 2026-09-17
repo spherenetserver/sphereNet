@@ -240,9 +240,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         return true;
     }
 
+    /// <summary>Split a key's arguments the way the reference's own parser does.
+    /// Str_ParseCmds hands each argument to Str_Parse, whose default separator set
+    /// is "=, \t" (CExpression.cpp:144) - equals as well as comma, space and tab.
+    /// The equals sign was the one missing here.</summary>
     protected static string[] SplitScriptArgs(string? args)
         => (args ?? "").Split(
-            new[] { ',', ' ', '\t' },
+            new[] { ',', '=', ' ', '\t' },
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     protected static bool TryParseScriptUShort(string text, out ushort value)
@@ -583,8 +587,20 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "ID": value = $"0{_baseId:X}"; return true;
             case "ATTR": value = ((uint)_attr).ToString(); return true;
             case "TAGCOUNT": value = _tags.Count.ToString(); return true;
-            case "TIMER":
+            // The same clock in three units (OC_TIMER / OC_TIMERD / OC_TIMERMS,
+            // CObjBase.cpp:1570-1578 -> _GetTimerSAdjusted / _GetTimerDAdjusted /
+            // _GetTimerAdjusted). Only the seconds key could be read, so a script
+            // that WROTE its timer in tenths or milliseconds - both of which set
+            // fine - had to read it back in a unit it never used, and reading
+            // TIMERD got nothing at all.
+            case "TIMER": case "TIMERD": case "TIMERMS":
             {
+                long unitMs = key.ToUpperInvariant() switch
+                {
+                    "TIMERD" => 100,
+                    "TIMERMS" => 1,
+                    _ => 1000,
+                };
                 // A spell-effect memory is a mirror of an active effect, and the
                 // effect owns the clock. Upstream has no such split - the effect IS
                 // the item there - so reading TIMER off the mirror has to answer for
@@ -597,13 +613,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                     long ms = remainingOf(spellMem);
                     if (ms != 0)
                     {
-                        value = ms < 0 ? "-1" : (ms / 1000).ToString();
+                        value = ms < 0 ? "-1" : (ms / unitMs).ToString();
                         return true;
                     }
                 }
                 long t = Timeout;
                 if (t <= 0) { value = "-1"; return true; }
-                long remaining = (t - Environment.TickCount64) / 1000;
+                long remaining = (t - Environment.TickCount64) / unitMs;
                 value = remaining > 0 ? remaining.ToString() : "0";
                 return true;
             }

@@ -4,6 +4,77 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The names the reference distribution calls
+----------------------------------------
+
+The official Source-X script pack joined the member sweep. A name it writes and
+nothing answers is a gap by construction - it was written against the reference
+engine - and the sweep found nineteen, all present in the reference's own key
+tables. Seventeen are fixed here.
+
+FIX - The whole AOS suit property family answered nothing: Balanced,
+        EnhancePotions, HitLowerAtk, HitLowerDef, IncreaseDam, IncreaseDefChance,
+        IncreaseGold, IncreaseHitChance, IncreaseSpellDam, MageArmor, MageWeapon,
+        ReflectPhysicalDam and SpellChanneling (CCPropsChar,
+        CCPropsItemEquippable, CCPropsItemWeapon - registered with ADDPROP, so the
+        reference answers every one of them on a bare read). FOUR of these the
+        combat engine was ALREADY reading, out of exactly the tags this now
+        exposes: INCREASEHITCHANCE and INCREASEDEFCHANCE gate the AOS hit roll,
+        INCREASEDAM the damage bonus and REFLECTPHYSICALDAM the reflected share.
+        So the value the engine acted on was invisible from script and a line
+        setting it did nothing at all - the suit could only ever be what a CHARDEF
+        hardcoded. Readable and writable now on both a character and an item, and
+        an ITEMDEF/CHARDEF line lands the same way, which is what the reference
+        pack's own equip scripts expect.
+
+FIX - SKILLCHECK and SKILLUSEQUICK split their arguments on the comma alone. The
+        reference's own parser splits on "=, \t" (Str_Parse, CExpression.cpp:144),
+        and the reference distribution writes the call with SPACES:
+        "SKILLCHECK TINKERING 300". That arrived as a single argument, so the key
+        was refused outright and the whole test read as nothing - a skill gate
+        that never gated.
+
+FIX - A timer could be written in tenths or milliseconds but only read back in
+        seconds. TIMERD and TIMERMS both set fine and neither could be read
+        (OC_TIMERD / OC_TIMERMS, CObjBase.cpp:1573-1577). All three units answer
+        now, off the same clock, and an unset timer answers -1 in each.
+
+FIX - HOUSETYPE could not be read on the multi, and writing it only set a tag
+        that the live house never saw (SHL_HOUSETYPE, CItemMulti.cpp:2847/3024).
+        The housing packs are built on this test - if <link.housetype> ==
+        <def.house_private> - so it compared nothing against 0 and every house,
+        public and guild alike, took the private branch.
+
+FIX - DEFNAME answered only on a region. It is a BASE def key asked of the
+        INSTANCE (CBaseBaseDef_props.tbl) - how a pack finds out what it is
+        holding without comparing graphics - and on an item or a character it
+        returned nothing.
+
+FIX - MOREM, the map component of an item's MOREP point (IC_MOREM,
+        CItem.cpp:2923). The three axes each had their own key and the facet did
+        not, so a marked location could not be read back with the map it was on.
+
+FIX - HOUSEDESIGN and TARGPRV, two of the acting client's reference heads
+        (CClient::sm_szRefKeys, CClient.cpp:538-548). A reference head resolves to
+        another object and the interpreter asks THAT one for the rest; with no
+        head to resolve, <src.housedesign> was false for someone standing inside
+        the design editor - the "you are already designing another building"
+        branch was unreachable - and a uid written to TARGPRV could never be read
+        back.
+
+FIX - CLIENTISENHANCED, the name the reference answers (CClient_props.tbl:10),
+        beside CLIENTISKR which was already spelled that way here. The shorter
+        ISENHANCED is kept.
+
+CHANGE - The member sweep reads three packs now, the reference distribution
+        included, and no longer counts // comments as calls. Thirty-seven of the
+        names it was reporting came from commented-out code and English prose -
+        it was measuring itself. What remains unanswered is listed with its reason
+        in the test: most of it belongs to the packs, and the two engine families
+        still open are named there - the NPC action verbs (eleven of sixteen
+        unimplemented, they need an action state this AI has no channel for) and
+        GM pages, which are not script objects here.
+
 [2026-09-17] - The staff flags a pack expects to find
 ----------------------------------------
 

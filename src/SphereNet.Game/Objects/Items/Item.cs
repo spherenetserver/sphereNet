@@ -1595,6 +1595,81 @@ public class Item : ObjBase
         return false;
     }
 
+    /// <summary>Source-X HASCOMPONENTPROPS &lt;id&gt;: does this object carry that
+    /// component-props block (OBC_HASCOMPONENTPROPS, CBase.cpp:189)?
+    ///
+    /// The ids are the COMPPROPS_TYPE enum and the reference pack names them in
+    /// core/defs_component_props.scp: 0 ITEMCHAR, 1 CHAR, 2 ITEM, 3 ITEMEQUIPPABLE,
+    /// 4 ITEMWEAPON, 5 ITEMWEAPONRANGED. Upstream subscribes each by the same
+    /// predicates used here (CCPropsItemEquippable/Weapon/WeaponRanged::CanSubscribe
+    /// over the item type), so this answers the question rather than modelling the
+    /// components.
+    ///
+    /// The read had no case at all and came back empty, which reads as 0 - and the
+    /// reference pack's equipment tooltip opens with
+    /// "IF !(&lt;HasComponentProps &lt;DEF.CompProps_ItemEquippable&gt;&gt;) RETURN 1",
+    /// so every AOS property line on every piece of gear was abandoned before it was
+    /// written.</summary>
+    internal static int HasComponentProps(ObjBase obj, string key)
+    {
+        int sp = key.IndexOfAny([' ', '	', '(']);
+        string arg = sp < 0 ? "" : key[(sp + 1)..].Trim().TrimEnd(')').Trim();
+        if (!ScriptNumber.TryParseToken(arg, out long id))
+            return 0;
+
+        var item = obj as Item;
+        return id switch
+        {
+            0 => 1,                                   // ITEMCHAR: chars and items both
+            1 => item == null ? 1 : 0,                // CHAR
+            2 => item != null ? 1 : 0,                // ITEM
+            3 => item != null && item.IsTypeEquippable ? 1 : 0,
+            4 => item != null && item.IsWeaponComponentType ? 1 : 0,
+            5 => item != null && item.ItemType is ItemType.WeaponBow or ItemType.WeaponXBow ? 1 : 0,
+            _ => 0,
+        };
+    }
+
+    /// <summary>Upstream CCPropsItemWeapon::CanSubscribe - the weapon types plus the
+    /// fishing pole and instruments, which carry weapon properties there.</summary>
+    internal bool IsWeaponComponentType =>
+        IsWeaponType || ItemType is ItemType.FishPole or ItemType.Musical;
+
+    /// <summary>Upstream CItemBase::IsTypeEquippable (CItemBase.cpp:370): the visible
+    /// equippable types, every armour and weapon and spellbook, and the invisible
+    /// equipped bookkeeping items when they are not on a visible layer.</summary>
+    internal bool IsTypeEquippable
+    {
+        get
+        {
+            switch (ItemType)
+            {
+                case ItemType.LightLit:
+                case ItemType.LightOut:
+                case ItemType.FishPole:
+                case ItemType.Musical:
+                case ItemType.Hair:
+                case ItemType.Beard:
+                case ItemType.Jewelry:
+                case ItemType.EqHorse:
+                case ItemType.Talisman:
+                    return true;
+            }
+            if (IsSpellbookComponentType || IsArmorComponentType || IsWeaponType)
+                return true;
+            return false;
+        }
+    }
+
+    private bool IsSpellbookComponentType => ItemType is
+        ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala or
+        ItemType.SpellbookExtra or ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
+        ItemType.SpellbookArcanist or ItemType.SpellbookMystic or ItemType.SpellbookMastery;
+
+    private bool IsArmorComponentType => ItemType is
+        ItemType.Armor or ItemType.ArmorLeather or ItemType.ArmorChain or
+        ItemType.ArmorRing or ItemType.ArmorBone or ItemType.Shield;
+
     public override bool TryGetProperty(string key, out string value)
     {
         // Champion altar read keys (Source-X ICHMPL_*).
@@ -1603,6 +1678,14 @@ public class Item : ObjBase
 
         value = "";
         var upper = key.ToUpperInvariant();
+
+        // HASCOMPONENTPROPS carries its id on the same key, so it is matched by prefix
+        // rather than as a switch label.
+        if (upper.StartsWith("HASCOMPONENTPROPS", StringComparison.Ordinal))
+        {
+            value = HasComponentProps(this, upper).ToString();
+            return true;
+        }
 
         if (TryGetStoneProperty(upper, out value))
             return true;

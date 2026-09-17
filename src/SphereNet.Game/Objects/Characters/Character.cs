@@ -3438,6 +3438,14 @@ public partial class Character : ObjBase
     // --- IScriptObj overrides ---
     public override bool TryGetProperty(string key, out string value)
     {
+        // A char carries the CHAR and ITEMCHAR component blocks and none of the item
+        // ones (CChar.cpp:334). Matched by prefix: the id rides on the same key.
+        if (key.StartsWith("HASCOMPONENTPROPS", StringComparison.OrdinalIgnoreCase))
+        {
+            value = Items.Item.HasComponentProps(this, key.ToUpperInvariant()).ToString();
+            return true;
+        }
+
         value = "";
         var upper = key.ToUpperInvariant();
 

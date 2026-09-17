@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - HASCOMPONENTPROPS hicbir sey donmuyordu ve bir tooltip kapisi onu okuyor
+----------------------------------------
+
+FIX - HASCOMPONENTPROPS'un iki nesnede de dali yoktu ve bos donuyordu; bu da 0 okunur.
+        Referans dagitimin ekipman tooltip'i soyle basliyor:
+
+            IF !(<HasComponentProps <DEF.CompProps_ItemEquippable>>)
+               RETURN 1
+
+        yani her esyadaki her AOS ozellik satiri yazilmadan once terk ediliyordu; kusanma
+        kapisinin silah dallari da ayni sekilde atlaniyordu.
+
+        Ust kaynak, nesne o bileseni abone etmisse 1 doner (OBC_HASCOMPONENTPROPS,
+        CBase.cpp:189) ve abonelik yuklemleri duz tip testleridir - kusanilabilir blok
+        icin IsTypeEquippable, silah blogu icin t_weapon_* listesi arti olta ve calgilar,
+        menzilli blok icin yay ve tatar yayi. Kimlikler COMPPROPS_TYPE enum'udur; referans
+        paket bunlari core/defs_component_props.scp'de adlandiriyor. Soru, bilesenler
+        modellenerek degil esyanin tipinden yanitlaniyor.
+
+        Buraya ancak bir TEVENTS satiri bir typedef'i adlandirabildikten ve IF icindeki
+        bir RETURN kendini bildirebildikten sonra ulasilabildi - ondan onceki iki onarim.
+
 [2026-09-17] - IF icinde CALL ve TRY hicbir sey yapmiyordu
 ----------------------------------------
 

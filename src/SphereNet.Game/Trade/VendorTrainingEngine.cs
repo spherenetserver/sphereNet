@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Skills;
@@ -34,10 +34,27 @@ public static class VendorTrainingEngine
     /// NPC_GetTrainMax. min(percent-of-trainer, absolute cap, student per-skill cap).</summary>
     public static int GetTrainMax(Character trainer, Character student, SkillType skill)
     {
-        int byPercent = TrainSkillPercent * trainer.GetSkill(skill) / 100;
-        int allowed = Math.Min(byPercent, TrainSkillMax);
+        // Both caps are overridable per trainer (NPC_GetTrainMax reads
+        // OVERRIDE.TRAINSKILLMAXPERCENT and OVERRIDE.TRAINSKILLMAX off the char's key
+        // chain, CCharNPCStatus.cpp:523/529). The reference pack's guildmasters set
+        // both - TRAINSKILLMAX=50.0, TRAINSKILLMAXPERCENT=50 - and without them every
+        // master trainer here taught to the shard default, 30% and 42.0.
+        int percent = OverrideOr(trainer, "OVERRIDE.TRAINSKILLMAXPERCENT", TrainSkillPercent);
+        int byPercent = percent * trainer.GetSkill(skill) / 100;
+        int allowed = Math.Min(byPercent, OverrideOr(trainer, "OVERRIDE.TRAINSKILLMAX", TrainSkillMax));
         int studentCap = SkillEngine.GetSkillMax(student, skill);
         return Math.Min(allowed, studentCap);
+    }
+
+    /// <summary>A per-trainer OVERRIDE tag, else the shard setting. The value follows
+    /// the script number convention, so a cap written as 50.0 is 500 tenths and one
+    /// written as 500 is the same number.</summary>
+    private static int OverrideOr(Character trainer, string tag, int fallback)
+    {
+        if (!trainer.TryGetTag(tag, out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return fallback;
+        int v = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(raw);
+        return v > 0 ? v : fallback;
     }
 
     /// <summary>How much of <paramref name="skill"/> the student can buy now —
@@ -62,6 +79,11 @@ public static class VendorTrainingEngine
 
     /// <summary>Gold price for training <paramref name="amount"/> points.</summary>
     public static int TrainCost(int amount) => Math.Max(0, amount) * TrainSkillCost;
+
+    /// <summary>The same price with the trainer's own multiplier, if it carries one
+    /// (OVERRIDE.TRAINSKILLCOST, CCharNPCAct_Vendor.cpp:286).</summary>
+    public static int TrainCost(Character trainer, int amount) =>
+        Math.Max(0, amount) * OverrideOr(trainer, "OVERRIDE.TRAINSKILLCOST", TrainSkillCost);
 
     /// <summary>Raise <paramref name="student"/>'s <paramref name="skill"/> by
     /// <paramref name="amount"/> — Source-X NPC_TrainSkill. When that would exceed
@@ -140,7 +162,7 @@ public static class VendorTrainingEngine
             return null;
         }
 
-        int fullCost = TrainCost(trainable);
+        int fullCost = TrainCost(trainer, trainable);
         int paid = Math.Min(gold.Amount, fullCost);
         int pointsPaid = fullCost > 0 ? (int)((long)trainable * paid / fullCost) : 0;
         if (pointsPaid <= 0)

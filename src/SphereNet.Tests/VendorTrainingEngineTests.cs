@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Skills;
 using SphereNet.Game.Trade;
@@ -163,5 +163,46 @@ public class VendorTrainingEngineTests
         Assert.Equal(SkillType.Alchemy, trained);
         Assert.Equal(200, student.GetSkill(SkillType.Alchemy)); // 100 of 200 points
         Assert.True(gold.IsDeleted);                             // all 100 gold consumed
+    }
+
+    /// <summary>A trainer's own caps win over the shard's.
+    ///
+    /// NPC_GetTrainMax reads OVERRIDE.TRAINSKILLMAXPERCENT and OVERRIDE.TRAINSKILLMAX
+    /// off the character's key chain before falling back to the config
+    /// (CCharNPCStatus.cpp:523/529), and the reference pack's guildmasters set both -
+    /// TRAINSKILLMAX=50.0 with TRAINSKILLMAXPERCENT=50. Ignored, every master trainer
+    /// taught to the shard default of 30% and 42.0, the same as a village smith.</summary>
+    [Fact]
+    public void ATrainersOwnCapsOverrideTheShardDefaults()
+    {
+        var trainer = MakeChar();
+        var student = MakeChar();
+        trainer.SetSkill(SkillType.Swordsmanship, 1500);   // 150.0
+
+        // Shard defaults: 30% of 1500 = 450, clipped to 420.
+        Assert.Equal(420, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
+
+        // A guildmaster: half its own skill, up to 50.0. 50% of 1500 is 750, and the
+        // trainer's own absolute cap of 500 binds.
+        trainer.SetTag("OVERRIDE.TRAINSKILLMAXPERCENT", "50");
+        trainer.SetTag("OVERRIDE.TRAINSKILLMAX", "50.0");   // the script number: 500
+        Assert.Equal(500, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
+
+        // Under that cap the percent binds again: 50% of 800 is 400.
+        trainer.SetSkill(SkillType.Swordsmanship, 800);
+        Assert.Equal(400, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
+    }
+
+    /// <summary>And its own price per point (OVERRIDE.TRAINSKILLCOST,
+    /// CCharNPCAct_Vendor.cpp:286).</summary>
+    [Fact]
+    public void ATrainersOwnPriceOverridesTheShardDefault()
+    {
+        var trainer = MakeChar();
+        Assert.Equal(VendorTrainingEngine.TrainSkillCost * 100,
+            VendorTrainingEngine.TrainCost(trainer, 100));
+
+        trainer.SetTag("OVERRIDE.TRAINSKILLCOST", "7");
+        Assert.Equal(700, VendorTrainingEngine.TrainCost(trainer, 100));
     }
 }

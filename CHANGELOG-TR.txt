@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Paketin kurdugu, hicbir seyin okumadigi OVERRIDE etiketleri
+----------------------------------------
+
+FIX - TAG.OVERRIDE.TRAINSKILLMAX ve TAG.OVERRIDE.TRAINSKILLMAXPERCENT yok sayiliyordu.
+        NPC_GetTrainMax ikisini de, shard ayarlarina dusmeden once egiticinin uzerinden
+        okur (CCharNPCStatus.cpp:523/529); referans dagitimin lonca ustalari her ikisini
+        de kuruyor - kendi becerisinin yarisi, 50.0'a kadar. Bunlar olmadan her usta
+        egitici, koy demircisiyle ayni sekilde shard varsayilanina (%30 ve 42.0) kadar
+        ogretiyordu. TRAINSKILLCOST de artik ayni yoldan okunuyor
+        (CCharNPCAct_Vendor.cpp:286).
+
+FIX - TAG.OVERRIDE.PracticeMax.SKILL_<n> yok sayiliyordu. Bir antrenman gereci, belirli
+        bir beceriyi ne kadar yukseltecegini bildirir; ust kaynak bunu shard'in
+        SKILLPRACTICEMAX degerinden once ESYANIN uzerinden okur (CCharUse.cpp:369, 531).
+        Anahtar birlestirmeyle uretildigi icin iki motorda da duz metin olarak gecmiyor.
+        Canli paketin gothic antrenman kuklalari her silah becerisi icin 60.0 bildiriyor
+        ve diger tum kuklalar gibi 30.0'da ogretmeyi birakiyorlardi.
+
+FIX - TAG.OVERRIDE.SPIDERWEB yok sayiliyordu. Bir bayrak kurmaz, beden kontrolunu TERS
+        CEVIRIR: anahtar varsa dev orumcek OLMAYAN bir yaratik ag birakir, yoksa sadece
+        dev orumcek birakir; degeri hic okunmaz (CCharNPCAct.cpp:2007). Referans dagitim
+        onu on yaratiga ag vermek icin, canli paket ise bir orumcegin agini almak icin
+        kullaniyor; ikisi de hicbir sey yapmiyordu. Ag birakma yalnizca beden kimliginden
+        ve bu motorun kendi dosya-kimligi secenegi olan WEBTRAIL'den geliyordu; WEBTRAIL
+        kaliyor.
+
 [2026-09-17] - Sunucunun yanitlayamadigi SERV okumasi ve arkasindaki fonksiyon
 ----------------------------------------
 

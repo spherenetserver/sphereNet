@@ -1,4 +1,4 @@
-// NPC casting: spell selection, wands, breath/throw and special abilities.
+﻿// NPC casting: spell selection, wands, breath/throw and special abilities.
 // Decomposed from the former single-file NpcAI.cs (see NpcAI.cs core).
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -594,7 +594,18 @@ public sealed partial class NpcAI
         bool hasFireTag = npc.TryGetTag("FIRETRAIL", out string? fireTag);
         bool hasWebTag = npc.TryGetTag("WEBTRAIL", out string? webTag);
         bool fire = hasFireTag || npc.BodyId == FireElementalBody;
-        bool web = !fire && (hasWebTag || npc.BodyId == GiantSpiderBody);
+
+        // OVERRIDE.SPIDERWEB INVERTS the body check rather than setting a flag: with
+        // the key present a creature that is NOT a giant spider webs, and without it
+        // only a giant spider does (CCharNPCAct.cpp:2007-2022). Its VALUE is never
+        // read, which is why the shipped pack writes both 0 and 1 and means the same
+        // thing by them - the reference distribution puts it on ten creatures to give
+        // them webs, and the live pack puts it on a spider to take its webs away.
+        // Nothing here read it at all: webbing came from the body id and from
+        // WEBTRAIL, which is this engine's own tile-id opt-in and stays.
+        bool isSpider = npc.BodyId == GiantSpiderBody;
+        bool webByOverride = npc.TryGetTag("OVERRIDE.SPIDERWEB", out _) ? !isSpider : isSpider;
+        bool web = !fire && (hasWebTag || webByOverride);
         if (!fire && !web) return;
 
         // ~1 in 4 acting ticks, and never two trails on the same tile.

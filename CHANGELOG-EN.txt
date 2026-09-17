@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The OVERRIDE tags a pack sets and nothing read
+----------------------------------------
+
+FIX - TAG.OVERRIDE.TRAINSKILLMAX and TAG.OVERRIDE.TRAINSKILLMAXPERCENT were ignored.
+        NPC_GetTrainMax reads both off the trainer before falling back to the shard
+        settings (CCharNPCStatus.cpp:523/529), and the reference distribution's
+        guildmasters set both - half their own skill, up to 50.0. Without them every
+        master trainer taught to the shard default of 30% and 42.0, the same as a
+        village smith. TRAINSKILLCOST is read the same way now
+        (CCharNPCAct_Vendor.cpp:286).
+
+FIX - TAG.OVERRIDE.PracticeMax.SKILL_<n> was ignored. A training aid declares how high
+        it will raise a given skill and upstream reads it off the ITEM before the
+        shard's SKILLPRACTICEMAX (CCharUse.cpp:369, 531) - the key is built by
+        concatenation, so it appears as a literal in neither engine. The live pack's
+        gothic training dummies declare 60.0 for each weapon skill and stopped teaching
+        at 30.0 like every other dummy.
+
+FIX - TAG.OVERRIDE.SPIDERWEB was ignored. It INVERTS the body check rather than
+        setting a flag: with the key present a creature that is not a giant spider
+        leaves webs, without it only a giant spider does, and the value is never read
+        (CCharNPCAct.cpp:2007). The reference distribution puts it on ten creatures to
+        give them webs and the live pack puts it on a spider to take its webs away;
+        neither did anything. Webbing came from the body id and from WEBTRAIL, which is
+        this engine's own tile-id opt-in and stays.
+
 [2026-09-17] - A SERV read the server cannot answer, and the function behind it
 ----------------------------------------
 

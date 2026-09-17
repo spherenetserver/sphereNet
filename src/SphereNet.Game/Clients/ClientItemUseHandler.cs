@@ -3013,6 +3013,28 @@ public sealed class ClientItemUseHandler
     /// a sound and handed the dummy to the generic skill pipeline, which sets up no
     /// training at all - and picked the skill from whatever filled the two-handed layer
     /// rather than from the weapon.</summary>
+    /// <summary>The cap THIS training aid raises the skill to.
+    ///
+    /// Upstream reads OVERRIDE.PracticeMax.SKILL_&lt;n&gt; off the ITEM before falling
+    /// back to the shard's SKILLPRACTICEMAX (CCharUse.cpp:369 and 531) - the key is
+    /// built by concatenation, which is why it does not appear as a literal anywhere.
+    /// The live pack's gothic training dummies declare 60.0 per weapon skill, and with
+    /// only the global read every one of them stopped teaching at 30.0.</summary>
+    private static int PracticeMaxFor(Item aid, SkillType skill)
+    {
+        string key = $"OVERRIDE.PRACTICEMAX.SKILL_{(int)skill}";
+        if (!aid.TryGetTag(key, out string? raw) || string.IsNullOrWhiteSpace(raw))
+        {
+            var def = DefinitionLoader.GetItemDef(aid.BaseId);
+            raw = def?.TagDefs.Get(key);
+        }
+        if (string.IsNullOrWhiteSpace(raw))
+            return SkillPracticeMax;
+
+        int v = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(raw);
+        return v > 0 ? v : SkillPracticeMax;
+    }
+
     private void TrainOnDummy(Item dummy)
     {
         if (_character == null) return;
@@ -3034,7 +3056,7 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.ItemuseTrainingdummyRanged));
             return;
         }
-        if (_character.GetSkill(skill) > SkillPracticeMax)
+        if (_character.GetSkill(skill) > PracticeMaxFor(dummy, skill))
         {
             SysMessage(ServerMessages.Get(Msg.ItemuseTrainingdummySkill));
             return;
@@ -3095,7 +3117,7 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.ItemusePickpocketMount));
             return;
         }
-        if (_character.GetSkill(SkillType.Stealing) > SkillPracticeMax)
+        if (_character.GetSkill(SkillType.Stealing) > PracticeMaxFor(dip, SkillType.Stealing))
         {
             SysMessage(ServerMessages.Get(Msg.ItemusePickpocketSkill));
             return;

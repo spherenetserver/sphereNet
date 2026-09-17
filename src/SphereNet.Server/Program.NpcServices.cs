@@ -354,7 +354,7 @@ public static partial class Program
         if (amount <= 0)
             return $"I cannot teach thee more {skill}.";
 
-        int cost = SphereNet.Game.Trade.VendorTrainingEngine.TrainCost(amount);
+        int cost = SphereNet.Game.Trade.VendorTrainingEngine.TrainCost(npc, amount);
         SphereNet.Game.Trade.VendorTrainingEngine.RememberOffer(npc, speaker, skill);
         return $"To train {(amount / 10.0):0.0} points of {skill} will cost thee {cost} gold. " +
                "Hand me the coin and I shall teach thee.";

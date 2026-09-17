@@ -130,6 +130,7 @@ public sealed partial class GameClient : IClientContext
     Action<Point3D, int, PacketWriter, uint, Character>? IClientContext.BroadcastMoveNearby => BroadcastMoveNearby;
     Action<Character>? IClientContext.BroadcastCharacterAppear => BroadcastCharacterAppear;
     Action<Point3D, int, uint, Action<Character, GameClient>>? IClientContext.ForEachClientInRange => ForEachClientInRange;
+    Action<Action<Character, GameClient>>? IClientContext.ForEachPlayingClient => ForEachPlayingClient;
     Action<Serial, PacketWriter>? IClientContext.SendToChar => SendToChar;
     Action<Character>? IClientContext.OnCharacterDeathOfOther => OnCharacterDeathOfOther;
     Action<Character>? IClientContext.OnResurrectOther => OnResurrectOther;

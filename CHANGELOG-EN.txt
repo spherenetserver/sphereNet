@@ -4,6 +4,42 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The staff flags a pack expects to find
+----------------------------------------
+
+FIX - HEARALL carries say, whisper and yell to a listener holding it from
+        anywhere on the shard, which no ranged broadcast can reach - so the
+        server now walks the playing clients for it. Upstream's two limits are
+        kept and both matter: only those three modes travel, and only speakers at
+        or below the listener's own privilege (CClient.cpp:440). It is an ear on
+        the shard, not on the staff.
+
+FIX - DETAIL is the running commentary of a fight, and it changes who sees the
+        miss lines. Upstream sends "you miss" to an attacker holding DETAIL and
+        "he misses you" to a target holding it (CCharFight.cpp:2052-2055). This
+        sent the attacker's line to EVERYONE - commentary reserved upstream for
+        staff who asked for it - and never sent the target's at all. Ordinary
+        combat is quieter now and a GM with DETAIL sees both sides.
+
+FIX - DEBUG shows what the view hides: a mount, drawn as part of its rider and
+        filtered from every other view, is visible to a viewer holding it
+        (CClient.cpp:421).
+
+        All three are read and written by script, which is what the shipped login
+        script needs - it clears all three on every player and could not while
+        nothing answered the names.
+
+CHANGE - TARGPRV is deliberately NOT implemented, and the reason is recorded
+        beside it. Upstream keeps a previous-target slot fed by a dozen targeting
+        flows; this engine models none of them and the pack's only use is a write
+        nothing reads. A slot nothing feeds and nothing consumes would silence the
+        sweep and change no behaviour - the exact shape of bug the sweep exists to
+        find. The rest of the baseline is the PACK's: FlagEkle, FLAGSIL, ISJAIL
+        and the FUNC_* names are defined nowhere at all, and SYSMESSSYSMESSAGELOC
+        is a typo for SYSMESSAGELOC.
+
+        Baseline 29 -> 27.
+
 [2026-09-17] - Two that were never missing, and the signal that proves it
 ----------------------------------------
 

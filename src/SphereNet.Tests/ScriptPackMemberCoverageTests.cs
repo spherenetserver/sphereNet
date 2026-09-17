@@ -64,13 +64,28 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
 
     /// <summary>Members a real pack calls that nothing answers and no FUNCTION
     /// defines. Each is a line that does nothing at all. The assertions below fail
-    /// when a name joins this set AND when one leaves it.</summary>
+    /// when a name joins this set AND when one leaves it.
+    ///
+    /// Most of what is left belongs to the PACK rather than the engine: FlagEkle,
+    /// FLAGSIL, ISJAIL, ISINSAFE, ISDISS, ISNOMOVERFLAGS and the FUNC_* names have
+    /// no definition anywhere - not in this engine, not in the reference tables and
+    /// not in any [FUNCTION] block of either pack - and SYSMESSSYSMESSAGELOC is a
+    /// typo for SYSMESSAGELOC. Those are fixed by writing the missing functions or
+    /// correcting the call, not here.
+    ///
+    /// TARGPRV is the one deliberate engine refusal. Upstream keeps a
+    /// previous-target slot on the client, fed from a dozen different targeting
+    /// flows; this engine models none of them, and the pack's single use is a WRITE
+    /// that nothing ever reads (clearing it in a chest's @PickUp_Self). Adding a
+    /// slot nothing feeds and nothing consumes would silence the sweep and change
+    /// no behaviour - which is exactly the shape of bug this sweep exists to
+    /// find.</summary>
     private static readonly HashSet<string> KnownUnanswered =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "DETAIL", "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS",
+            "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS",
             "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
-            "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item", "HEARALL",
+            "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item",
             "HouseDesign", "ISDISS", "ISINSAFE", "ISJAIL",
             "ISNOMOVERFLAGS", "LOG", "MOREM",
             "NOTICE", "PAGE", "SYSMESSSYSMESSAGELOC",

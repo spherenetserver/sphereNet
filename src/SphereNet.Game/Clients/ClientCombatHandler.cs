@@ -722,6 +722,34 @@ public sealed class ClientCombatHandler
         BroadcastNearby?.Invoke(_character.Position, range,
             MakeSpeechPacket(type, hue, font, isGhost ? routeText : clearText),
             _character.Uid.Value);
+        SendToHearAllListeners(type, hue, font, isGhost ? routeText : clearText, range);
+    }
+
+    /// <summary>PRIV_HEARALL: a staff listener holding it hears say, whisper and
+    /// yell from anywhere, so the ranged broadcast above cannot reach them
+    /// (CClient.cpp:440).
+    ///
+    /// Two limits are upstream's and both matter: only those three modes carry, and
+    /// only speakers at or below the listener's own privilege - it is an ear on the
+    /// shard, not a way to read what staff say to each other. Anyone already inside
+    /// earshot was served by the broadcast and must not be sent the line twice.</summary>
+    private void SendToHearAllListeners(byte type, ushort hue, ushort font,
+        string text, int range)
+    {
+        var walk = _client.ForEachPlayingClient;
+        if (walk == null || _character == null)
+            return;
+        if (type is not (0 or 8 or 9))   // say, whisper, yell
+            return;
+
+        walk((listener, listenerClient) =>
+        {
+            if (!listener.HearAll) return;
+            if (listener == _character) return;
+            if (listener.PrivLevel < _character.PrivLevel) return;
+            if (_character.Position.GetDistanceTo(listener.Position) <= range) return;
+            listenerClient.Send(MakeSpeechPacket(type, hue, font, text));
+        });
     }
 
     private PacketSpeechUnicodeOut MakeSpeechPacket(byte type, ushort hue, ushort font, string text) =>
@@ -1537,7 +1565,17 @@ public sealed class ClientCombatHandler
             // dropped by the engine then.
             if (!HandleMissTriggerAndAmmo(target, weapon, ammoStack))
             {
-                SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
+                // Both miss lines are PRIV_DETAIL, on their own sides of the swing
+                // (CCharFight.cpp:2052-2055): the attacker is told they missed, the
+                // target is told they were missed. This sent the attacker's line to
+                // everybody - a commentary upstream reserves for staff who asked for
+                // it - and never sent the target's at all.
+                if (_character != null && _character.DetailView)
+                    SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
+                if (target.DetailView && _character != null)
+                    _client.SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
+                        0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System",
+                        ServerMessages.GetFormatted(Msg.CombatMisso, _character.Name)));
                 EmitMissSound(weapon);
             }
         }

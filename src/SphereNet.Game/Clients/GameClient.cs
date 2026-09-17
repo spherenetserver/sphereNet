@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -112,6 +112,11 @@ public sealed partial class GameClient : ITextConsole
     /// observerClient). Wired from Program.cs.ForEachClientInRange.
     /// </summary>
     public Action<Point3D, int, uint, Action<Character, GameClient>>? ForEachClientInRange { get; set; }
+    /// <summary>Every playing client on the shard, for the cases that are about WHO
+    /// is listening rather than where they stand - HEARALL is the one: a staff
+    /// listener holding it hears speech from anywhere, which no range-bounded walk
+    /// can reach. Wired from Program.cs.</summary>
+    public Action<Action<Character, GameClient>>? ForEachPlayingClient { get; set; }
     /// <summary>Send a packet to a specific character (by UID). Wired from Program.cs.</summary>
     public Action<Serial, PacketWriter>? SendToChar { get; set; }
     /// <summary>Notify all nearby clients that a character appeared (login/teleport). Each client renders from its own perspective.</summary>

@@ -3,6 +3,44 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-17] - Bir paketin bulmayi bekledigi gorevli bayraklari
+----------------------------------------
+
+FIX - HEARALL, onu tasiyan bir dinleyiciye say, whisper ve yell'i shard'in her
+        yerinden tasiyor; menzile bagli hicbir yayin oraya ulasamaz, bu yuzden
+        sunucu artik oynayan istemcileri bunun icin dolasiyor. Ust kaynagin iki
+        siniri korundu ve ikisi de onemli: yalnizca bu uc mod tasinir ve yalnizca
+        dinleyicinin kendi yetkisine esit ya da altindaki konusmacilar
+        (CClient.cpp:440). Bu, shard'a acilmis bir kulaktir; gorevlilere degil.
+
+FIX - DETAIL bir dovusun anlik anlatimidir ve iskalama satirlarini KIMIN
+        gordugunu degistirir. Ust kaynak "iskaladin"i DETAIL tasiyan saldirana,
+        "iskaladi"yi ise DETAIL tasiyan hedefe gonderir (CCharFight.cpp:2052-2055).
+        Bizde saldiranin satiri HERKESE gidiyordu - ust kaynagin isteyen
+        gorevliye ayirdigi bir anlatim - hedefin satiri ise hic gonderilmiyordu.
+        Siradan dovus artik daha sessiz, DETAIL'li bir GM ise iki tarafi da
+        goruyor.
+
+FIX - DEBUG, gorunumun sakladigini gosterir: binicisinin parcasi olarak cizilen
+        ve diger tum gorunumlerden suzulen bir binek, onu tasiyan izleyiciye
+        gorunur (CClient.cpp:421).
+
+        Ucu de script'ten okunup yazilabiliyor; paketle gelen giris script'inin
+        ihtiyaci da tam bu - uc bayragi da her oyuncuda temizliyor ve adlari
+        yanitlayan bir sey yokken bunu yapamiyordu.
+
+CHANGE - TARGPRV bilerek uygulanMADI ve gerekcesi yanina yazildi. Ust kaynak, bir
+        duzine hedefleme akisindan beslenen bir "onceki hedef" yuvasi tutar; bu
+        motor onlarin hicbirini modellemiyor ve paketteki tek kullanim, hicbir
+        seyin okumadigi bir yazma. Hicbir seyin beslemedigi ve hicbir seyin
+        tuketmedigi bir yuva eklemek taramayi susturur ve hicbir davranisi
+        degistirmez - taramanin var olma sebebi olan hatanin ta kendisi. Geri
+        kalan baseline PAKETIN: FlagEkle, FLAGSIL, ISJAIL ve FUNC_* adlari hicbir
+        yerde tanimli degil, SYSMESSSYSMESSAGELOC ise SYSMESSAGELOC'un yazim
+        hatasi.
+
+        Baseline 29 -> 27.
+
 [2026-09-17] - Hic eksik olmayan ikisi, ve bunu kanitlayan sinyal
 ----------------------------------------
 

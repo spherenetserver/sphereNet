@@ -297,6 +297,7 @@ public static partial class Program
             client.BroadcastNearby = BroadcastNearby;
             client.BroadcastMoveNearby = BroadcastMoveNearby;
             client.ForEachClientInRange = ForEachClientInRange;
+            client.ForEachPlayingClient = ForEachPlayingClient;
             client.SendToChar = SendPacketToChar;
             client.BroadcastCharacterAppear = BroadcastCharacterAppear;
             client.OnCharacterDeathOfOther = victim =>
@@ -517,6 +518,23 @@ public static partial class Program
             shared.MarkShared(oldBucket.Count);
             foreach (var c in oldBucket) c.NetState.EnqueueShared(shared);
             oldBucket.Clear();
+        }
+    }
+
+    /// <summary>Every client currently playing, regardless of where it stands.
+    ///
+    /// The sector walk above answers "who is near this point", which is the right
+    /// question almost always. HEARALL is the exception: it is about WHO is
+    /// listening, and a listener holding it hears from anywhere on the shard, so no
+    /// range can bound the search.</summary>
+    private static void ForEachPlayingClient(Action<Character, GameClient> action)
+    {
+        foreach (var client in _clients.Values)
+        {
+            if (!client.IsPlaying) continue;
+            var ch = client.Character;
+            if (ch == null || ch.IsDeleted) continue;
+            action(ch, client);
         }
     }
 

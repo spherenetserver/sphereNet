@@ -94,6 +94,7 @@ internal interface IClientContext : ITextConsole
     Action<Point3D, int, PacketWriter, uint, Character>? BroadcastMoveNearby { get; }
     Action<Character>? BroadcastCharacterAppear { get; }
     Action<Point3D, int, uint, Action<Character, GameClient>>? ForEachClientInRange { get; }
+    Action<Action<Character, GameClient>>? ForEachPlayingClient { get; }
     Action<Serial, PacketWriter>? SendToChar { get; }
     Action<Character>? OnCharacterDeathOfOther { get; }
     Action<Character>? OnResurrectOther { get; }

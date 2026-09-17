@@ -991,6 +991,19 @@ public partial class Character : ObjBase
     /// do while nothing answers the name.</summary>
     public bool DebugView { get; set; }
 
+    /// <summary>PRIV_HEARALL (Source-X CClient_props.tbl HEARALL): this listener
+    /// hears say, whisper and yell from anywhere on the shard, not just from
+    /// earshot. Upstream restricts it to those three modes and to speakers at or
+    /// below the listener's own privilege (CClient.cpp:440), so it is a staff ear,
+    /// not a way to read a GM conversation. Runtime-only, not persisted.</summary>
+    public bool HearAll { get; set; }
+
+    /// <summary>PRIV_DETAIL (Source-X CClient_props.tbl DETAIL): the running
+    /// commentary a staff member can switch on - the miss lines of a fight are the
+    /// concrete case, sent to whoever holds it on either side of the swing
+    /// (CCharFight.cpp:2052-2055). Runtime-only, not persisted.</summary>
+    public bool DetailView { get; set; }
+
     public bool IsReplaySpectator { get => _isReplaySpectator; set => _isReplaySpectator = value; }
 
     // --- Stats ---
@@ -3620,6 +3633,8 @@ public partial class Character : ObjBase
             case "INVUL": value = IsStatFlag(StatFlag.Invul) ? "1" : "0"; return true;
             case "ALLSHOW": value = _allShow ? "1" : "0"; return true;
             case "DEBUG": value = DebugView ? "1" : "0"; return true;
+            case "HEARALL": value = HearAll ? "1" : "0"; return true;
+            case "DETAIL": value = DetailView ? "1" : "0"; return true;
             case "PRIVSHOW": value = _privShow ? "1" : "0"; return true;
             case "ISPLAYER": value = _isPlayer ? "1" : "0"; return true;
             case "ISNPC": value = (!_isPlayer && _npcBrain != NpcBrainType.None) ? "1" : "0"; return true;
@@ -5006,6 +5021,12 @@ public partial class Character : ObjBase
                 return true;
             case "DEBUG":
                 DebugView = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                return true;
+            case "HEARALL":
+                HearAll = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                return true;
+            case "DETAIL":
+                DetailView = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
             case "PRIVSHOW":
                 _privShow = normalized != "0" && !string.IsNullOrEmpty(normalized);

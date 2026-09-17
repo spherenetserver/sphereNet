@@ -6304,11 +6304,15 @@ public partial class Character : ObjBase
                 // order semantics (ITEM then COLOR pairs).
                 var parts = args.Split(',', StringSplitOptions.TrimEntries);
                 string name = parts.Length > 0 ? parts[0] : "";
-                int amount = 0;
-                if (parts.Length >= 2 && int.TryParse(parts[1], out int a) && a > 0)
-                    amount = a;
-                string? dice = parts.Length >= 3 ? parts[2] : null;
-                SpawnAndEquipItem(name, amount, dice,
+
+                // "ITEM=#id,#amount,R#chance" (Source-X CItem::CreateHeader): every
+                // argument after the defname is an amount expression or a one-in-#
+                // chance for the line to produce anything at all. A failed chance
+                // creates nothing.
+                if (!Definitions.TemplateEngine.TryRollCreateHeaderArgs(parts[1..], out int amount))
+                    return true;
+
+                SpawnAndEquipItem(name, amount,
                     newbie: key.Equals("ITEMNEWBIE", StringComparison.OrdinalIgnoreCase));
                 return true;
             }
@@ -7729,7 +7733,7 @@ public partial class Character : ObjBase
     /// its natural layer (falls back to the backpack). Resolves
     /// random_* defname pools via TemplateEngine.PickRandomItemDefName
     /// so @Create ITEM=random_shirts_human lands as a concrete shirt.</summary>
-    private void SpawnAndEquipItem(string defname, int amount, string? dice, bool newbie = false)
+    private void SpawnAndEquipItem(string defname, int amount, bool newbie = false)
     {
         if (string.IsNullOrWhiteSpace(defname)) return;
         var world = ResolveWorld?.Invoke();
@@ -7789,12 +7793,8 @@ public partial class Character : ObjBase
         if (newbie)
             item.SetAttr(Core.Enums.ObjAttributes.Newbie);
 
-        // Dice roll wins over explicit amount for stackables.
-        int finalAmount = amount;
-        if (finalAmount <= 0 && !string.IsNullOrWhiteSpace(dice))
-            finalAmount = RollDice(dice!);
-        if (finalAmount > 1)
-            item.Amount = (ushort)Math.Min(finalAmount, ushort.MaxValue);
+        if (amount > 1)
+            item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
         var layer = idef?.Layer ?? Core.Enums.Layer.None;
         if (layer == Core.Enums.Layer.None)
@@ -7918,6 +7918,11 @@ public partial class Character : ObjBase
             if (entry.Newbie) continue;              // ITEMNEWBIE = NPC's own gear, never loot
             if (string.IsNullOrWhiteSpace(entry.DefName)) continue;
 
+            // "ITEM=#id,#amount,R#chance" (Source-X CItem::CreateHeader): the args
+            // carry the amount AND the chance for the line to produce anything.
+            if (!Definitions.TemplateEngine.TryRollCreateHeaderArgs(entry.RawArgs, out int amount))
+                continue;
+
             string picked = Definitions.TemplateEngine.PickRandomItemDefName(entry.DefName);
             if (string.IsNullOrWhiteSpace(picked)) continue;
             var rid = resources.ResolveDefName(picked);
@@ -7948,9 +7953,6 @@ public partial class Character : ObjBase
             if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
                 item.Name = idef.Name;
 
-            int amount = entry.Amount;
-            if (amount <= 0 && !string.IsNullOrWhiteSpace(entry.Dice))
-                amount = RollDice(entry.Dice!);
             if (amount > 1)
                 item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
@@ -8017,28 +8019,6 @@ public partial class Character : ObjBase
         return ushort.TryParse(n, out ushort dec) ? dec : (ushort)0;
     }
 
-    /// <summary>Sphere dice expression roller (R5 / 2d6 / 1d10+2).
-    /// Kept small and defensive — unrecognised expressions default to 1
-    /// so a broken line never silently mints a zero-amount stack.</summary>
-    private static int RollDice(string expr)
-    {
-        expr = expr.Trim();
-        if (expr.Length == 0) return 1;
-        if ((expr[0] == 'R' || expr[0] == 'r') &&
-            int.TryParse(expr.AsSpan(1), out int max) && max > 0)
-            return Random.Shared.Next(1, max + 1);
-        int dIdx = expr.IndexOf('d');
-        if (dIdx < 0) dIdx = expr.IndexOf('D');
-        if (dIdx > 0 &&
-            int.TryParse(expr.AsSpan(0, dIdx), out int n) && n > 0 &&
-            int.TryParse(expr.AsSpan(dIdx + 1), out int sides) && sides > 0)
-        {
-            int total = 0;
-            for (int i = 0; i < n; i++) total += Random.Shared.Next(1, sides + 1);
-            return total;
-        }
-        return int.TryParse(expr, out int literal) && literal > 0 ? literal : 1;
-    }
 
     /// <summary>Populate the vendor's stock from a <c>VENDOR_S_*</c> /
     /// <c>VENDOR_B_*</c> template name. Called from the SELL= / BUY=

@@ -3,16 +3,19 @@ using SphereNet.Core.Types;
 
 namespace SphereNet.Scripting.Definitions;
 
-/// <summary>Entry for an ITEMNEWBIE/ITEM line in a CHARDEF. The stock
-/// script form is <c>ITEM=defname[,amount[,dice]]</c> where <c>dice</c>
-/// is a Sphere dice roll (R5 = 1..5, 2d6 = 2 six-sided). When Dice is
-/// non-null it overrides Amount at spawn time.</summary>
+/// <summary>Entry for an ITEMNEWBIE/ITEM line in a CHARDEF. The script form is
+/// <c>ITEM=#id,#amount,R#chance</c>, which upstream hands whole to
+/// CItem::CreateHeader (CItem.cpp:461): every argument after the defname is either an
+/// amount expression (<c>3</c>, <c>{40 60}</c>) or <c>R#</c>, a one-in-# chance for the
+/// line to produce anything at all. They are kept verbatim and rolled at spawn time,
+/// since both forms are random.</summary>
 public sealed class NewbieItemEntry
 {
     public string DefName { get; set; } = "";
     public string? Color { get; set; }
-    public int Amount { get; set; }
-    public string? Dice { get; set; }
+
+    /// <summary>The arguments after the defname, verbatim.</summary>
+    public List<string> RawArgs { get; } = [];
     /// <summary>True when loaded from ITEMNEWBIE (no-loot on death).
     /// Source-X flags these with ATTR_NEWBIE; we just remember the
     /// origin so a future loot table can skip them.</summary>
@@ -291,20 +294,20 @@ public sealed class CharDef : BaseDef
             case "ITEMNEWBIE":
             case "ITEM":
             {
-                // ITEM=defname[,amount[,dice]]
+                // ITEM=#id,#amount,R#chance — Source-X CItem::CreateHeader.
                 //   ITEM=i_dagger                 → just the item
                 //   ITEM=i_gold,50                → 50 gold
-                //   ITEM=random_facial_hair,1,R5  → one pick, 1..5 rand
+                //   ITEM=i_gold,{40 60}           → 40..60 gold
+                //   ITEM=random_facial_hair,1,R5  → one, with a 1-in-5 chance
                 var parts = value.Split(',', StringSplitOptions.TrimEntries);
                 var entry = new NewbieItemEntry
                 {
                     DefName = parts.Length > 0 ? parts[0] : "",
                     Newbie = key.Equals("ITEMNEWBIE", StringComparison.OrdinalIgnoreCase),
                 };
-                if (parts.Length >= 2 && int.TryParse(parts[1], out int amt) && amt > 0)
-                    entry.Amount = amt;
-                if (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2]))
-                    entry.Dice = parts[2];
+                for (int i = 1; i < parts.Length; i++)
+                    if (parts[i].Length > 0)
+                        entry.RawArgs.Add(parts[i]);
                 NewbieItems.Add(entry);
                 break;
             }

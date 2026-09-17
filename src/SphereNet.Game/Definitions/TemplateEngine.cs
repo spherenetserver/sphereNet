@@ -135,10 +135,25 @@ public static class TemplateEngine
     /// amount expression (<c>3</c> / <c>{600 750}</c> dice). Returns false when
     /// the chance roll fails or the amount resolves to 0; otherwise the rolled
     /// amount (minimum 1).</summary>
-    public static bool TryRollTemplateRow(TemplateEntry entry, out int amount)
+    public static bool TryRollTemplateRow(TemplateEntry entry, out int amount) =>
+        TryRollCreateHeaderArgs(entry.RawArgs, out amount);
+
+    /// <summary>
+    /// The same roll for any line written in CreateHeader's shape, not only a template
+    /// row: an ITEM= verb inside a trigger, and the ITEM=/ITEMNEWBIE= lines of a CHARDEF
+    /// body, are the same "ITEM=#id,#amount,R#chance" that upstream hands to the same
+    /// function (CChar.cpp:1408 -> CItem::CreateHeader).
+    ///
+    /// Those paths used to parse the arguments themselves, reading the second as a plain
+    /// integer and the third as a "dice roll" - a form upstream does not have. An amount
+    /// written as {40 60} parsed as nothing and the item came out as one, and an R8 meant
+    /// to give the row a one-in-eight chance was read as an amount, failed to parse, and
+    /// left the row creating its item every single time.
+    /// </summary>
+    public static bool TryRollCreateHeaderArgs(IReadOnlyList<string> rawArgs, out int amount)
     {
         amount = 1;
-        foreach (string rawArg in entry.RawArgs)
+        foreach (string rawArg in rawArgs)
         {
             string arg = rawArg.Trim();
             if (arg.Length == 0) continue;
@@ -163,19 +178,13 @@ public static class TemplateEngine
     {
         if (string.IsNullOrWhiteSpace(expr)) return 0;
         string trimmed = expr.Trim();
-        if (trimmed[0] == '{')
-        {
-            int close = trimmed.LastIndexOf('}');
-            string inner = trimmed.Substring(1, (close < 0 ? trimmed.Length : close) - 1).Trim();
-            var parts = inner.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2 &&
-                int.TryParse(parts[0], out int lo) && int.TryParse(parts[^1], out int hi))
-            {
-                if (hi < lo) (lo, hi) = (hi, lo);
-                return _rand.Next(lo, hi + 1);
-            }
-            return parts.Length == 1 && int.TryParse(parts[0], out int single) ? single : 0;
-        }
+
+        // The braces are the expression engine's, not this file's: a range, a weighted
+        // pick and the leading-zero hex convention mean the same thing here as in any
+        // other value (Source-X Exp_GetWVal on the argument).
+        if (SphereNet.Scripting.Expressions.BraceRange.TryRollNumeric(trimmed, out long rolled))
+            return (int)Math.Clamp(rolled, int.MinValue, int.MaxValue);
+
         return int.TryParse(trimmed, out int plain) ? plain : 0;
     }
 

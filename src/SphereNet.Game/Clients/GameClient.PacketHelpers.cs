@@ -2020,6 +2020,12 @@ public sealed partial class GameClient
         ushort lastHue = 0; // for COLOR=match_hair / match_*
         foreach (var entry in newbieItems)
         {
+            // "ITEM=#id,#amount,R#chance" (Source-X CItem::CreateHeader): the args
+            // carry the amount AND the chance for the line to produce anything, so
+            // this is rolled before the item exists.
+            if (!TemplateEngine.TryRollCreateHeaderArgs(entry.RawArgs, out int amount))
+                continue;
+
             // Resolve random_* / weighted-template pools to a single itemdef.
             string pickedName = TemplateEngine.PickRandomItemDefName(entry.DefName);
             if (string.IsNullOrWhiteSpace(pickedName))
@@ -2059,10 +2065,6 @@ public sealed partial class GameClient
             if (entry.Newbie)
                 item.SetAttr(ObjAttributes.Newbie);
 
-            // Amount: explicit wins; else dice roll; else leave default (1).
-            int amount = entry.Amount;
-            if (amount <= 0 && !string.IsNullOrWhiteSpace(entry.Dice))
-                amount = RollSphereDice(entry.Dice);
             if (amount > 1)
                 item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
@@ -2129,29 +2131,6 @@ public sealed partial class GameClient
         }
     }
 
-    /// <summary>Very small Sphere dice roller. Supports R&lt;max&gt;
-    /// (1..max) and NdM (N M-sided). Anything unrecognised falls back
-    /// to 1 so a broken script line never silently spawns a 0-amount
-    /// item.</summary>
-    private static int RollSphereDice(string expr)
-    {
-        expr = expr.Trim();
-        if (expr.Length == 0) return 1;
-        if ((expr[0] == 'R' || expr[0] == 'r') &&
-            int.TryParse(expr.AsSpan(1), out int max) && max > 0)
-            return Random.Shared.Next(1, max + 1);
-        int dIdx = expr.IndexOf('d');
-        if (dIdx < 0) dIdx = expr.IndexOf('D');
-        if (dIdx > 0 &&
-            int.TryParse(expr.AsSpan(0, dIdx), out int n) && n > 0 &&
-            int.TryParse(expr.AsSpan(dIdx + 1), out int sides) && sides > 0)
-        {
-            int total = 0;
-            for (int i = 0; i < n; i++) total += Random.Shared.Next(1, sides + 1);
-            return total;
-        }
-        return int.TryParse(expr, out int literal) && literal > 0 ? literal : 1;
-    }
 
     /// <summary>Resolve a <c>colors_*</c> / <c>match_*</c> defname to an
     /// actual hue value. Source-X defines <c>colors_skin</c>,

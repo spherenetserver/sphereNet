@@ -1101,10 +1101,9 @@ public sealed partial class GameClient
                     DefName = parts.Length > 0 ? parts[0] : "",
                     Newbie = key == "ITEMNEWBIE",
                 };
-                if (parts.Length >= 2 && int.TryParse(parts[1], out int amt) && amt > 0)
-                    entry.Amount = amt;
-                if (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2]))
-                    entry.Dice = parts[2];
+                for (int i = 1; i < parts.Length; i++)
+                    if (parts[i].Length > 0)
+                        entry.RawArgs.Add(parts[i]);
                 entries.Add(entry);
             }
             else if (entries.Count > 0)

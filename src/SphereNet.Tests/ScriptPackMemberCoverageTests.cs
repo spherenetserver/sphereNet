@@ -140,7 +140,15 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             string full = ResolveRoot(root);
             if (!Directory.Exists(full)) { log?.WriteLine($"root missing: {full}"); continue; }
             int before = all.Count;
-            try { all.AddRange(Directory.EnumerateFiles(full, "*.scp", SearchOption.AllDirectories)); }
+            try
+            {
+                // _incomplete is the reference distribution's OWN marker for scripts
+                // its authors say are not finished. Measuring the engine against them
+                // measures work nobody claims is done.
+                all.AddRange(Directory.EnumerateFiles(full, "*.scp", SearchOption.AllDirectories)
+                    .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}_incomplete{Path.DirectorySeparatorChar}",
+                                            StringComparison.OrdinalIgnoreCase)));
+            }
             catch (Exception ex) { log?.WriteLine($"root unreadable: {full} ({ex.GetType().Name})"); }
             log?.WriteLine($"root {full}: {all.Count - before} files");
         }

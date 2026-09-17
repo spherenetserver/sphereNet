@@ -1410,6 +1410,14 @@ public sealed class ClientScriptConsoleHandler
                 Resync();
                 return true;
 
+            // FLUSH: push whatever is queued for this client out NOW
+            // (CV_FLUSH, CClient.cpp:1509 -> NetworkManager::flush). A script writes
+            // it when the next thing it does will block or take time and the player
+            // should already be seeing the packets queued before it.
+            case "FLUSH":
+                _netState.FlushOutput();
+                return true;
+
             case "SAVE":
                 _commands?.Execute(_character, "SAVE");
                 return true;

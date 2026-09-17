@@ -45,7 +45,11 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientDialogHandler
 {
-    private static readonly HashSet<string> DialogRenderCommands = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>The gump LAYOUT vocabulary. Internal rather than private because a
+    /// pack's [FUNCTION] may emit dialog rows - printing a table of houses, say -
+    /// so a sweep over function bodies has to be able to tell a layout command from
+    /// a verb, and the engine is where that list actually lives.</summary>
+    internal static readonly HashSet<string> DialogRenderCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "BUTTON", "BUTTONTILEART", "CHECKBOX", "CHECKERTRANS", "CROPPEDTEXT",
         "DCROPPEDTEXT", "DHTMLGUMP", "DORIGIN", "DTEXT", "DTEXTENTRY",

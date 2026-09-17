@@ -4,6 +4,43 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Kendi satirinda yazilan verb'ler
+----------------------------------------
+
+Uye taramasi OBJ.AD olcer ve ifade olarak yazilan bir verb'i goremez - oysa
+verb'lerin cogu oyledir: SOUND, UPDATE, REMOVE, TIMERF, EVENTS. Bu kor nokta
+kuramsal degildi; eksik on bir NPC eylem verb'inden yalnizca birinin bildirilmis
+olmasinin sebebi buydu. Ciplak ifadeleri ayni yontemle taramak, motorun hic sahip
+olmadigi iki tane daha buldu.
+
+FIX - CLEARTAGS, bir nesnenin tag'lerini silen verb (CObjBase.cpp:2122). Iki paket
+        de kullaniyor - gizli bir sandik oyuncu-basina durumunu "CLEARTAGS Player"
+        ile temizliyor, iki disa-aktarim fonksiyonu ciplak "ClearTags" ile hepsini
+        siliyor - ve hicbir sey yanitlamiyordu; yani durum hic temizlenmiyor ve
+        sandik herkese, onu en son acan oyuncu gibi davraniyordu. Argumansiz her
+        tag'i siler; argumanli ise anahtari onu ICEREN tag'leri siler, buyuk-kucuk
+        harf ayirmadan, cunku ust kaynak onek testi yapmaz, ikisini de kucultup
+        strstr ile karsilastirir.
+
+FIX - FLUSH, bir istemcinin kuyruktaki paketlerini simdi gonderen verb (CV_FLUSH,
+        CClient.cpp:1509). Canli paket bunu zaman alacak bir isten once yaziyor, ki
+        oyuncu kuyruga girmis olani o isten sonra degil once gorsun.
+
+CHANGE - Ikinci bir tarama ciplak verb'leri olcuyor; uye taramasinin uyeleri olctugu
+        yontemle: statik topla, motora sorarak coz. Dogruyu soylemesi icin dort
+        duzeltme gerekti ve her biri calisan kodu eksik diye bildiriyordu - adini
+        hicbir verb tablosunun sahiplenmedigi ciplak bir satir PROPERTY atamasina
+        doner, ki bu yorumlayicinin yurudugu son halkadir ve prob onu sormuyordu;
+        gump duzen komutlari [FUNCTION] govdelerinde mesru olarak bulunur, cunku bir
+        fonksiyon dialog satiri basabilir; ve spawner ile multi verb yuzeyleri
+        esyanin bir spawn bileseni ya da bir evi OLMASINA baglidir, dolayisiyla duz
+        bir prob esyasi onlari, uygulanmis olup olmamalariyla ilgisi olmayan bir
+        sebeple reddeder. Sahipsiz kalan, paketlere ait dort ad.
+
+CHANGE - Iki tarama da referans dagitimin _incomplete klasorunu atliyor. Orasi o
+        dagitimin, yazarlarinin bitmedigini soyledigi scriptler icin kendi
+        isaretidir; motoru onlara karsi olcmek, kimsenin bitti demedigi isi olcmektir.
+
 [2026-09-17] - GM sayfalari
 ----------------------------------------
 

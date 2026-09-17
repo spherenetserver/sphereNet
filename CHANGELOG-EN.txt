@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The verbs written on a line of their own
+----------------------------------------
+
+The member sweep measures OBJ.NAME, and cannot see a verb written as a statement -
+which is most verbs: SOUND, UPDATE, REMOVE, TIMERF, EVENTS. That blind spot was not
+theoretical; it is why only one of the eleven missing NPC action verbs was ever
+reported. Sweeping bare statements the same way found two more the engine never had.
+
+FIX - CLEARTAGS, which removes an object's tags (CObjBase.cpp:2122). Both packs use
+        it - a secret chest clears its per-player state with "CLEARTAGS Player",
+        two export functions clear everything with a bare "ClearTags" - and nothing
+        answered it, so the state was never cleared and the chest kept treating
+        everyone as the last player who opened it. With no argument it clears every
+        tag; with one it deletes the tags whose key CONTAINS it, matched case
+        insensitively, because upstream compares with strstr on both lowercased
+        rather than testing a prefix.
+
+FIX - FLUSH, which pushes a client's queued packets out now (CV_FLUSH,
+        CClient.cpp:1509). The live pack writes it before work that will take time,
+        so the player sees what was queued before it rather than after.
+
+CHANGE - A second sweep measures the bare verbs, the same way the member sweep
+        measures members: collect statically, resolve by asking the engine. Getting
+        it to tell the truth took four corrections, each of which had been reporting
+        working code as a gap - a bare line whose name no verb table owns becomes a
+        PROPERTY assignment, which is the last link the interpreter walks and the
+        probe was not asking; gump layout commands turn up inside [FUNCTION] bodies
+        legitimately, because a function may print dialog rows; and the spawner and
+        multi verb surfaces are gated on the item HAVING a spawn component or a
+        house, so a plain probe item refuses them for a reason that has nothing to
+        do with whether they are implemented. What is left unowned is four names
+        belonging to the packs.
+
+CHANGE - Both sweeps skip the reference distribution's _incomplete folder. It is
+        that distribution's own marker for scripts its authors say are unfinished,
+        and measuring the engine against them measures work nobody claims is done.
+
 [2026-09-17] - GM pages
 ----------------------------------------
 

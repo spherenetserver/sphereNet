@@ -1084,6 +1084,27 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "TAG.REMOVE":
                 _tags.Remove(args.Trim());
                 return true;
+            // CLEARTAGS [mask] on any object (CObjBase.cpp:2122 -> CVarDefMap::ClearKeys,
+            // CVarDefMap.cpp:621). No argument clears every tag; an argument deletes
+            // the ones whose key CONTAINS it - upstream matches with strstr on both
+            // lowercased, so it is a substring test and not a prefix, and a chest
+            // clearing "Player" that way also clears PLAYER_LAST and OLDPLAYER.
+            case "CLEARTAGS":
+            {
+                string mask = args.Trim();
+                if (mask.Length == 0)
+                {
+                    foreach (var (k, _) in _tags.GetAll().ToList())
+                        _tags.Remove(k);
+                    return true;
+                }
+                foreach (var (k, _) in _tags.GetAll().ToList())
+                {
+                    if (k.Contains(mask, StringComparison.OrdinalIgnoreCase))
+                        _tags.Remove(k);
+                }
+                return true;
+            }
             case "TAGLIST":
             {
                 // List all tags on this object to the console

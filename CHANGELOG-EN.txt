@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - RETURN 1 from a character's @ContextMenuRequest
+----------------------------------------
+
+CHANGE - The hardcoded character entries - paperdoll, vendor buy and sell, the banker's
+        box and the rest - are added only when the trigger did NOT return TRUE
+        (CClientEvent.cpp:2596-2608). Adding them regardless gave a script that had
+        claimed the menu the engine's entries on top of its own. Nothing in the shipped
+        packs returns TRUE here, so no pack behaviour changes: all 26
+        @ContextMenuRequest blocks hang off items, where upstream has no hardcoded
+        entries either and this already matched. It makes the return value mean what a
+        script writing one would expect - the same misreading that had @ClientTooltip
+        throwing a script's own tooltip away.
+
 [2026-09-17] - RETURN 1 from @ClientTooltip threw the script's tooltip away
 ----------------------------------------
 

@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir karakterin @ContextMenuRequest'inden RETURN 1
+----------------------------------------
+
+DEGISIKLIK - Gomulu karakter girdileri - kagit bebek, saticida al ve sat, bankacinin
+        kasasi ve digerleri - yalnizca trigger TRUE DONDURMEDIGINDE ekleniyor
+        (CClientEvent.cpp:2596-2608). Kosulsuz eklemek, menuyu ustlenmis bir scripte
+        motorun girdilerini kendi girdilerinin ustune koyuyordu. Gonderilen paketlerde
+        burada TRUE donduren hicbir sey yok, yani paket davranisi degismiyor: 26
+        @ContextMenuRequest blogunun tamami esyalara bagli ve orada ust kaynakta da
+        gomulu girdi yok, bizde zaten uyuyordu. Bu degisiklik donus degerinin, onu yazan
+        bir scriptin bekleyecegi anlami tasimasini sagliyor - @ClientTooltip'in bir
+        scriptin kendi tooltip'ini cope atmasina yol acan ayni yanlis okuma.
+
 [2026-09-17] - @ClientTooltip'ten RETURN 1 scriptin tooltip'ini cope atiyordu
 ----------------------------------------
 

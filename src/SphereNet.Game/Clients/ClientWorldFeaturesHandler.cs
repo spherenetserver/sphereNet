@@ -3128,33 +3128,45 @@ public sealed class ClientWorldFeaturesHandler
 
         if (ch != null)
         {
-            FireContextMenuTrigger(ch, CharTrigger.ContextMenuRequest, 0);
-            entries.Add((1, 3006123, 0)); // Open Paperdoll
-            if (ch == _character)
+            // RETURN 1 means the script built the menu itself: upstream adds the
+            // hardcoded character entries only when the trigger did NOT return TRUE
+            // (CClientEvent.cpp:2596-2608). Adding them regardless gave a script that
+            // claimed the menu the engine's entries on top of its own.
+            //
+            // Nothing in the shipped packs returns TRUE here today - all 26 blocks
+            // hang off items - so this changes no pack behaviour; it makes the return
+            // value mean what a script writing one would expect.
+            bool scriptOwnsMenu =
+                FireContextMenuTrigger(ch, CharTrigger.ContextMenuRequest, 0) == TriggerResult.True;
+            if (!scriptOwnsMenu)
             {
-                entries.Add((2, 3006145, 0)); // Open Backpack
-            }
-            if (VendorEngine.IsVendorLike(ch))
-            {
-                entries.Add((3, 3006103, 0)); // Buy
-                entries.Add((4, 3006106, 0)); // Sell
-            }
-            if (!ch.IsPlayer && ch.NpcBrain == NpcBrainType.Banker)
-            {
-                entries.Add((5, 3006105, 0)); // Open Bankbox
-            }
-            // Mount / Dismount: exposed as a context-menu action so the client
-            // does not require a DoubleClick to saddle. Double-click remains
-            // equivalent. Entry is filtered by IsMountable so non-ridable
-            // mobs (monsters, humans) don't get a useless "Mount Me" line.
-            if (!ch.IsPlayer && ch != _character &&
-                Mounts.MountEngine.IsMountable(ch.BodyId))
-            {
-                entries.Add((6, 3006155, 0)); // Mount Me
-            }
-            if (ch == _character && _character.IsMounted)
-            {
-                entries.Add((7, 3006112, 0)); // Dismount
+                entries.Add((1, 3006123, 0)); // Open Paperdoll
+                if (ch == _character)
+                {
+                    entries.Add((2, 3006145, 0)); // Open Backpack
+                }
+                if (VendorEngine.IsVendorLike(ch))
+                {
+                    entries.Add((3, 3006103, 0)); // Buy
+                    entries.Add((4, 3006106, 0)); // Sell
+                }
+                if (!ch.IsPlayer && ch.NpcBrain == NpcBrainType.Banker)
+                {
+                    entries.Add((5, 3006105, 0)); // Open Bankbox
+                }
+                // Mount / Dismount: exposed as a context-menu action so the client
+                // does not require a DoubleClick to saddle. Double-click remains
+                // equivalent. Entry is filtered by IsMountable so non-ridable
+                // mobs (monsters, humans) don't get a useless "Mount Me" line.
+                if (!ch.IsPlayer && ch != _character &&
+                    Mounts.MountEngine.IsMountable(ch.BodyId))
+                {
+                    entries.Add((6, 3006155, 0)); // Mount Me
+                }
+                if (ch == _character && _character.IsMounted)
+                {
+                    entries.Add((7, 3006112, 0)); // Dismount
+                }
             }
         }
         else if (item != null)
@@ -3272,13 +3284,13 @@ public sealed class ClientWorldFeaturesHandler
         }
     }
 
-    private void FireContextMenuTrigger(Character target, CharTrigger trigger, ushort entryTag)
+    private TriggerResult FireContextMenuTrigger(Character target, CharTrigger trigger, ushort entryTag)
     {
-        _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
+        return _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
         {
             CharSrc = _character,
             N1 = entryTag
-        });
+        }) ?? TriggerResult.Default;
     }
 
     private void FireContextMenuTrigger(Item target, ItemTrigger trigger, ushort entryTag)

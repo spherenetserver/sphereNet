@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir nesnenin icinde durdugu sektor sorulamiyordu
+----------------------------------------
+
+FIX - SECTOR ust kaynakta her nesnenin tasidigi bir referans basligidir (sm_szRefKeys,
+        CObjBase.cpp:899); yani <SRC.SECTOR.ISNIGHTTIME> karakterin icinde durdugu
+        sektore yurur ve ona sorar. Sector burada kendi anahtarlarina zaten yanit
+        veriyordu - ISNIGHTTIME, ISDARK, LOCALTIME, CLIENTS - ama hicbir sey ona bir
+        nesneden ulasamiyordu; bu yuzden gonderilen paketin gece kontrolu hicbir sey
+        okuyor ve arkasindaki dal hic calismiyordu. Bir kap icindeki esya, ust kaynagin
+        okudugu gibi, yiginin tepesinin durdugu yeri sorar.
+
+        O tablodaki diger baslik olan ROOM zaten sunucu uzerinden yanitlaniyordu ve
+        bilerek orada birakildi: ikinci bir okuma yolu, ikisine yalnizca anlasmazlik
+        konusu verirdi. Artik CALL yolunun yurudugu referans basligi olarak da var.
+
 [2026-09-17] - Bir cliloc'un argumanlarini virgul degil sekme ayirir
 ----------------------------------------
 

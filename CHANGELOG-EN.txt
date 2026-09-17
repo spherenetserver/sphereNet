@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The sector an object stands in could not be asked
+----------------------------------------
+
+FIX - SECTOR is a reference head on every object upstream (sm_szRefKeys,
+        CObjBase.cpp:899), so <SRC.SECTOR.ISNIGHTTIME> walks to the sector the
+        character is standing in and asks it. Sector already answered for its own keys
+        here - ISNIGHTTIME, ISDARK, LOCALTIME, CLIENTS - and nothing could reach it
+        from an object, so the shipped pack's night check read as nothing and the
+        branch behind it never ran. A contained item asks about where the top of its
+        stack stands, the way upstream reads it.
+
+        ROOM, the other head on that table, was already answered through the host and
+        is deliberately left there: a second read path would only give the two
+        something to disagree about. It is a reference head now as well, which is what
+        the CALL path walks.
+
 [2026-09-17] - A cliloc's arguments are separated by a tab, not a comma
 ----------------------------------------
 

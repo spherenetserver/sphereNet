@@ -727,6 +727,25 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // SECTOR.<key> — one of the reference heads every object carries
+        // (OBR_SECTOR, CObjBase.cpp:899). Upstream resolves the head and then asks
+        // what it found, which is what this does: Sector already answers ISNIGHTTIME,
+        // ISDARK, LOCALTIME and the rest, and nothing could reach it from an object,
+        // so the shipped pack's "IF (<SRC.SECTOR.ISNIGHTTIME>)" read as nothing and
+        // the night branch behind it never ran.
+        //
+        // ROOM is the other one, and it is NOT here: the interpreter already answers
+        // ROOM.<key> through the host, ahead of this read. Adding a second path would
+        // only give the two something to disagree about.
+        if (key.StartsWith("SECTOR.", StringComparison.OrdinalIgnoreCase))
+        {
+            int headDot = key.IndexOf('.');
+            var refObj = ResolveScriptRefHead(key[..headDot]);
+            value = refObj != null && refObj.TryGetProperty(key[(headDot + 1)..], out string refVal)
+                ? refVal : "";
+            return true;
+        }
+
         // ISTEVENT.defname / ISEVENT.defname
         if (key.StartsWith("ISTEVENT.", StringComparison.OrdinalIgnoreCase) ||
             key.StartsWith("ISEVENT.", StringComparison.OrdinalIgnoreCase))
@@ -841,7 +860,20 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// lives in a queue rather than in the world. Narrowing the answer to ObjBase
     /// left those heads with no way to be expressed at all. Overriders that only
     /// need world objects keep overriding <see cref="ResolveRefHead"/>.</summary>
-    public virtual IScriptObj? ResolveScriptRefHead(string head) => ResolveRefHead(head);
+    public virtual IScriptObj? ResolveScriptRefHead(string head)
+    {
+        // The two reference heads every object carries that are not world objects
+        // themselves (OBR_SECTOR and OBR_ROOM, CObjBase.cpp:899-922): the sector and
+        // the room the object stands in. Both already answer for their own keys here -
+        // Sector for ISNIGHTTIME, ISDARK, LOCALTIME and the rest, Room for its name and
+        // flags - and neither could be reached, so "IF (<SRC.SECTOR.ISNIGHTTIME>)" read
+        // as nothing and the night branch behind it never ran.
+        if (head.Equals("SECTOR", StringComparison.OrdinalIgnoreCase))
+            return ResolveWorld?.Invoke()?.GetSector(GetTopLevelObj()?.Position ?? Position);
+        if (head.Equals("ROOM", StringComparison.OrdinalIgnoreCase))
+            return ResolveWorld?.Invoke()?.FindRoom(GetTopLevelObj()?.Position ?? Position);
+        return ResolveRefHead(head);
+    }
 
     /// <summary>The character a verb should act for, given the console that issued it —
     /// the port of <c>pSrc-&gt;GetChar()</c> (CItem.cpp:3574). A connected client is one

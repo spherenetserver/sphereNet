@@ -76,7 +76,12 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
         var item = _world.CreateItem();
         item.BaseId = 0x0EED;
         _world.PlaceItem(item, at);
-        item.SetTimeout(Environment.TickCount64 - overdueByMs);
+        // Clamped to 1, not allowed to go negative: the engine reads a deadline of
+        // 0 or less as "no timer armed" (GameWorld.TickItemTimers), and the clock
+        // here is host uptime - so on a machine that booted minutes ago, "ten minutes
+        // overdue" would be a negative deadline and the timer would be dropped rather
+        // than being the overdue one this test is about. 1 is still in the past.
+        item.SetTimeout(Math.Max(1, Environment.TickCount64 - overdueByMs));
         return item;
     }
 

@@ -163,12 +163,24 @@ public sealed class Sector : IScriptObj
     }
 
     /// <summary>Last time (ms) a client was present in this sector — the sleep
-    /// timeout is measured from here (Source-X GetLastClientTime).</summary>
-    public long LastClientTimeMs { get; set; }
+    /// timeout is measured from here (Source-X GetLastClientTime). Null while no
+    /// client has ever been here, which is NOT the same as "was here at time 0";
+    /// see <see cref="CanSleep"/>.</summary>
+    private long? _lastClientTimeMs;
+
+    /// <summary>Last time (ms) a client was present, or 0 if none ever was.</summary>
+    public long LastClientTimeMs
+    {
+        get => _lastClientTimeMs ?? 0;
+        set => _lastClientTimeMs = value;
+    }
+
+    /// <summary>Whether a client has ever been in this sector at all.</summary>
+    public bool HasEverHadClient => _lastClientTimeMs.HasValue;
 
     /// <summary>Stamp the last-client time (method form so callers can use it
     /// through a null-conditional sector reference).</summary>
-    public void SetLastClientTime(long nowMs) => LastClientTimeMs = nowMs;
+    public void SetLastClientTime(long nowMs) => _lastClientTimeMs = nowMs;
 
     /// <summary>Host bridge: resolve an adjacent sector by absolute sector
     /// coordinates (Source-X CSector::_GetAdjacentSector), or null off-map.</summary>
@@ -435,7 +447,15 @@ public sealed class Sector : IScriptObj
             }
         }
 
-        return nowMs - LastClientTimeMs > SleepDelayMs;
+        // A sector no client has ever entered is asleep. Reading the missing stamp
+        // as 0 made the answer "has this MACHINE been up longer than SECTORSLEEP",
+        // because nowMs is Environment.TickCount64: for the first ten minutes after
+        // a host reboot - which is exactly when a shard is started - not one sector
+        // in the world could sleep, and every one of them ticked.
+        if (_lastClientTimeMs is not long lastClient)
+            return true;
+
+        return nowMs - lastClient > SleepDelayMs;
     }
 
     /// <summary>Get all objects within a range from a point inside this sector.

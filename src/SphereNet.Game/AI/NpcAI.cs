@@ -1,4 +1,4 @@
-using SphereNet.Core.Configuration;
+﻿using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Combat;
@@ -253,7 +253,12 @@ public sealed partial class NpcAI
         // Base delays: combat 400ms, idle wander 1000ms, service 3-5s.
         bool isActive = npc.FightTarget.IsValid ||
             (npc.NpcMaster.IsValid && npc.PetAIMode is PetAIMode.Attack
-                or PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard);
+                or PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard) ||
+            // A scripted RUNTO. The running bit itself goes nowhere - the Direction
+            // setter masks everything but the three facing bits - so in this engine
+            // the whole difference between running and walking IS the step cadence,
+            // and a RUNTO on the idle cadence would be indistinguishable from GOTO.
+            (NpcAction)npc.Action == NpcAction.RunTo;
         bool isService = npc.NpcBrain is NpcBrainType.Vendor or NpcBrainType.Banker
             or NpcBrainType.Stable or NpcBrainType.Healer;
 
@@ -294,6 +299,13 @@ public sealed partial class NpcAI
         // Atmospheric special trail — giant spiders web the ground, fire
         // elementals leave fire patches, as they move and fight.
         TryDropSpecialTrail(npc);
+
+        // An action a script started outranks the brain until it finishes, the way
+        // upstream's action dispatcher runs before anything the brain would pick
+        // (CCharNPCAct.cpp:2340). Pets included: RUNTO is told to one as often as to
+        // a wild creature.
+        if (RunScriptedAction(npc))
+            return;
 
         // Pet behavior — owned NPCs follow pet AI mode
         if (npc.NpcMaster.IsValid)

@@ -3679,6 +3679,8 @@ public static partial class Program
                 return owner != null && _mountEngine.TryMount(owner, npc);
             };
 
+            WireNpcActionVerbs();
+
             // Script EQUIP verb (Source-X CHV_EQUIP): resolve the item's
             // definition layer, equip it, fire @Equip, and show the worn item
             // to nearby clients. Layer/trigger plumbing lives here so the

@@ -36,12 +36,25 @@ public partial class Character : ObjBase
     /// <summary>Script MOUNT verb on an NPC (Source-X Horse_Mount): seat the
     /// NPC's own owner on it. Args: (npc). Wired to MountEngine.TryMount.
     /// The staff-horse script (REF1.MOUNT after NEW.MAKEMYPET SRC) needs it.</summary>
+    public static Func<Character, bool>? OnScriptMount;
+
     /// <summary>The multi this character is currently customizing, for the
     /// HOUSEDESIGN reference head (CLIR_HOUSEDESIGN, CClient.cpp:542). The design
     /// session lives in CustomHousingEngine, which the object layer cannot see.</summary>
     public static Func<Character, Item?>? ResolveHouseDesignMulti;
 
-    public static Func<Character, bool>? OnScriptMount;
+    /// <summary>The NPC action verbs that need an engine the object layer cannot
+    /// reach (CCharNPC::sm_szVerbKeys, CCharNPCAct.cpp:44). Each takes the NPC the
+    /// verb was said to and the character who said it, and answers whether the NPC
+    /// owned the request - the same true/false upstream's handlers return.</summary>
+    public static Func<Character, Character?, bool>? NpcHireQuote;
+    public static Func<Character, Character?, string, bool>? NpcTrainOffer;
+    /// <summary>SHRINK: the NPC becomes a figurine. The bool is upstream's
+    /// "an argument was given", which bounces the figurine into the owner's pack
+    /// rather than leaving it on the ground (CCharNPCAct.cpp:218).</summary>
+    public static Func<Character, Character?, bool, bool>? NpcShrink;
+    public static Func<Character, Character?, bool>? NpcStablePetSelect;
+    public static Func<Character, Character?, bool>? NpcStablePetRetrieve;
 
     /// <summary>Script EQUIP verb (Source-X CHV_EQUIP ItemEquip): equip the
     /// item on this character at its definition layer AND fire @Equip. Wired
@@ -6092,6 +6105,94 @@ public partial class Character : ObjBase
             {
                 PopulateVendorStock(args.Trim(), buySide: key.Equals("BUY", StringComparison.OrdinalIgnoreCase));
                 return true;
+            }
+            // --- The NPC action verb table (CCharNPC::sm_szVerbKeys,
+            // CCharNPCAct.cpp:44). Only an NPC answers these; on a player the name
+            // is not owned, so the interpreter keeps looking, which is what
+            // upstream's "return false" out of the NPC dispatcher means.
+            case "LEAVE":
+            case "FLEE":
+            {
+                // A short, step-counted retreat (CCharNPCAct.cpp:165-174). The
+                // argument is the step budget and zero means the default twenty.
+                if (IsPlayer) break;
+                FleeStepsMax = int.TryParse(args.Trim(), out int fleeSteps) && fleeSteps > 0
+                    ? fleeSteps : 20;
+                FleeStepsCurrent = 0;
+                Action = (SkillType)NpcAction.Flee;
+                return true;
+            }
+            case "GOTO":
+            case "RUNTO":
+            {
+                // A destination, resolved the way every scripted destination is:
+                // coordinates, or the name of a region (CCharNPCAct.cpp:175/195).
+                if (IsPlayer) break;
+                if (ResolveWorld?.Invoke() is not { } gotoWorld ||
+                    !gotoWorld.TryGetRegionPoint(args, out var gotoPoint))
+                {
+                    return true;   // the name was ours; the destination was not valid
+                }
+                ActP = gotoPoint;
+                Action = (SkillType)(key.Equals("RUNTO", StringComparison.OrdinalIgnoreCase)
+                    ? NpcAction.RunTo : NpcAction.GoTo);
+                return true;
+            }
+            case "WALK":
+            case "RUN":
+            {
+                // These name a DIRECTION, not a destination: upstream takes the
+                // NPC's own point, moves it one tile that way and walks to it
+                // (CCharNPCAct.cpp:190/228). Routed through the same action channel
+                // so the step goes through the walk check rather than teleporting,
+                // and it clears itself on arrival one tile later.
+                if (IsPlayer) break;
+                if (!TryParseDirectionToken(args.Trim(), out Direction stepDir))
+                    return true;
+                GetDirectionStep(stepDir, out int sdx, out int sdy);
+                ActP = new Point3D((short)(X + sdx), (short)(Y + sdy), Z, MapIndex);
+                Action = (SkillType)(key.Equals("RUN", StringComparison.OrdinalIgnoreCase)
+                    ? NpcAction.RunTo : NpcAction.GoTo);
+                return true;
+            }
+            case "BYE":
+            {
+                // End the interaction: drop the running action and forget who the
+                // NPC was dealing with (NV_BYE, CCharNPCAct.cpp:163).
+                if (IsPlayer) break;
+                Action = SkillType.None;
+                FleeStepsCurrent = 0;
+                _act = Serial.Invalid;
+                return true;
+            }
+            case "HIRE":
+            {
+                if (IsPlayer) break;
+                return NpcHireQuote?.Invoke(this, ResolveSourceCharacter(source)) ?? true;
+            }
+            case "TRAIN":
+            {
+                if (IsPlayer) break;
+                return NpcTrainOffer?.Invoke(this, ResolveSourceCharacter(source), args.Trim()) ?? true;
+            }
+            case "PETSTABLE":
+            {
+                if (IsPlayer) break;
+                return NpcStablePetSelect?.Invoke(this, ResolveSourceCharacter(source)) ?? true;
+            }
+            case "PETRETRIEVE":
+            {
+                if (IsPlayer) break;
+                return NpcStablePetRetrieve?.Invoke(this, ResolveSourceCharacter(source)) ?? true;
+            }
+            case "SHRINK":
+            {
+                // Upstream refuses unless the speaker owns the NPC, and the
+                // argument decides whether the figurine lands in their pack or on
+                // the ground (CCharNPCAct.cpp:211-221).
+                if (IsPlayer) break;
+                return NpcShrink?.Invoke(this, ResolveSourceCharacter(source),
+                    args.Trim().Length > 0) ?? true;
             }
             case "ITEM":
             case "ITEMNEWBIE":

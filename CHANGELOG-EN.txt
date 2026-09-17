@@ -4,6 +4,61 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The NPC action verbs
+----------------------------------------
+
+FIX - Eleven of the sixteen NPC action verbs answered nothing at all: FLEE, LEAVE,
+        GOTO, RUNTO, RUN, WALK, HIRE, TRAIN, SHRINK, PETSTABLE and PETRETRIEVE
+        (CCharNPC::sm_szVerbKeys, CCharNPCAct.cpp:44). Every line a pack writes
+        with one was a no-op with no error behind it - the reference distribution
+        says I.LEAVE to send an NPC away twenty-one times over, and it never went
+        anywhere.
+
+        Four of them start an ACTION rather than doing something immediately, and
+        that was the reason they could not simply be added as keys. Upstream parks
+        an action in the same slot a skill uses (Skill_Start(NPCACT_FLEE) and
+        friends) and runs it before the brain decides anything; this engine decides
+        per tick from the brain and had nowhere to put one. The field was already
+        there - the SKILL verb writes Character.Action, and the NPC action values
+        share the numeric space with skills exactly as NPCACT_* shares SKILL_TYPE
+        upstream - and nothing read it. Now an action a script starts outranks the
+        brain until it finishes, and releases the NPC when it does.
+
+        GOTO and RUNTO take a destination, resolved the way every scripted
+        destination is (CServerConfig.cpp:2719): coordinates, or the name of a
+        region. A name that matches neither leaves the NPC where it is rather than
+        walking it somewhere arbitrary. RUN and WALK take a DIRECTION instead - one
+        tile that way. FLEE and LEAVE start a step-counted retreat from whoever the
+        NPC is dealing with, which is upstream's rule and not a guess: the fight
+        target if there is one, else the act target, and with neither the action
+        simply ends rather than leaving the NPC stuck in it. The argument is the
+        step budget and zero means twenty.
+
+        HIRE, TRAIN, SHRINK, PETSTABLE and PETRETRIEVE each reach the engine that
+        already does the work. All five were reachable by SPEECH and none by a
+        script writing the verb, which is how the reference distribution drives
+        them. HIRE was the one with a piece genuinely missing: paying the wage
+        already hired, but nothing quoted the price first. PETRETRIEVE hands back
+        every stabled pet, not one.
+
+        BYE on an NPC ends the interaction - drops the running action and forgets
+        who it was dealing with (NV_BYE). The client verb of the same name, which
+        closes the player's dialogs, is a different one and is unchanged.
+
+        These are NPC verbs: on a player the name is not owned and the interpreter
+        keeps looking, which is what upstream's refusal out of the NPC dispatcher
+        means.
+
+CHANGE - A RUNTO is scheduled on the running step cadence rather than the idle one.
+        The running BIT goes nowhere on a character here - the direction setter
+        keeps only the three facing bits - so the cadence is the whole difference
+        between running and walking, and a RUNTO left on the idle cadence would
+        have been a GOTO by another name.
+
+CHANGE - The member sweep probes an NPC as well as a player. A whole verb table
+        belongs to NPCs alone, so probing only a player reported every one of them
+        as a name nothing answers.
+
 [2026-09-17] - The names the reference distribution calls
 ----------------------------------------
 

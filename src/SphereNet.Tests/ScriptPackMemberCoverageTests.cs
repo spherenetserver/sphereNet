@@ -93,15 +93,6 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     ///
     /// The engine gaps that remain, and why they are not one-line fixes:
     ///
-    /// LEAVE is the NPC action verb table (CCharNPC::sm_szVerbKeys, CCharNPCAct.cpp:44),
-    /// of which eleven of sixteen are unimplemented - FLEE, GOTO, RUNTO, RUN, WALK,
-    /// HIRE, TRAIN, SHRINK, PETRETRIEVE, PETSTABLE and LEAVE itself. Upstream drives
-    /// them through an NPC ACTION state (Skill_Start(NPCACT_FLEE) and friends) that
-    /// this AI has no channel for; its decisions come from a different architecture.
-    /// Only LEAVE appears here because only LEAVE is written as a member (I.LEAVE) -
-    /// the others are bare statements this sweep does not collect. That family is its
-    /// own wave, not a key to add.
-    ///
     /// GMPAGEP and SendGMPage need a GM PAGE as a script object. Upstream's CGMPage
     /// is one, with its own properties; here a page is a plain GmPageRecord struct in
     /// a list, which a reference head cannot resolve to. Answering the pack's single
@@ -120,7 +111,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
             "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item",
             "GMPAGEP", "ISDISS", "ISINSAFE", "ISJAIL",
-            "LEAVE", "LOCATION", "LOG", "MYNAME",
+            "LOCATION", "LOG", "MYNAME",
             "NOTICE", "PLACE", "REMOVETIMER", "SYSMESSSYSMESSAGELOC",
             "SendGMPage", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
             "dmore2", "e", "f_lich_polymorph",
@@ -276,6 +267,16 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             // and SKILLMENU as gaps - both implemented, both simply declining a
             // probe argument of "1".
             try { if (ch.TryExecuteCommand(key, arg, console, out bool chOwned) || chOwned) return true; }
+            catch { return true; }
+
+            // An NPC as well as the player. A whole verb table belongs to NPCs
+            // alone - upstream's NPC dispatcher refuses on a player and the
+            // interpreter keeps looking - so probing only a player reported every
+            // one of them as a name nothing answers.
+            var npc = world.CreateCharacter();
+            world.PlaceCharacter(npc, new Point3D(104, 100, 0, 0));
+            try { if (npc.TryGetProperty(key, out _)) return true; } catch { return true; }
+            try { if (npc.TryExecuteCommand(key, arg, console, out bool npcOwned) || npcOwned) return true; }
             catch { return true; }
 
             var it = world.CreateItem();

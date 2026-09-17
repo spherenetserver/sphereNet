@@ -1164,6 +1164,31 @@ public sealed class GameWorld
         return region?.RepresentativePoint ?? LegacyJailPoint;
     }
 
+    /// <summary>Resolve a script-written destination the way the reference does
+    /// (CServerConfig::GetRegionPoint, CServerConfig.cpp:2719): a leading digit or
+    /// minus sign means it is a coordinate literal, anything else is a region or
+    /// AREADEF name and resolves to that region's anchor. Returns false for a name
+    /// that matches neither, which is what makes a mistyped GOTO do nothing rather
+    /// than walk somewhere arbitrary.</summary>
+    public bool TryGetRegionPoint(string? text, out Point3D point)
+    {
+        point = default;
+        string arg = (text ?? "").Trim();
+        if (arg.Length == 0)
+            return false;
+
+        if (char.IsDigit(arg[0]) || arg[0] == '-')
+            return Point3D.TryParse(arg, out point);
+
+        var region = FindRegionByName(arg);
+        if (region?.RepresentativePoint is { } anchor)
+        {
+            point = anchor;
+            return true;
+        }
+        return false;
+    }
+
     // --- Rooms ---
 
     public void AddRoom(Room room) => _rooms.Add(room);

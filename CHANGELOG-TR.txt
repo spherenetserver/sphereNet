@@ -4,6 +4,59 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - NPC eylem verb'leri
+----------------------------------------
+
+FIX - On alti NPC eylem verb'inin on biri hicbir sey yanitlamiyordu: FLEE, LEAVE,
+        GOTO, RUNTO, RUN, WALK, HIRE, TRAIN, SHRINK, PETSTABLE ve PETRETRIEVE
+        (CCharNPC::sm_szVerbKeys, CCharNPCAct.cpp:44). Bir paketin bunlardan
+        biriyle yazdigi her satir, arkasinda hicbir hata olmayan bir bos islemdi -
+        referans dagitim bir NPC'yi uzaklastirmak icin yirmi bir kez I.LEAVE der ve
+        o hicbir yere gitmiyordu.
+
+        Bunlarin dordu hemen bir sey yapmak yerine bir EYLEM baslatir; anahtar
+        olarak oylece eklenememelerinin sebebi buydu. Ust kaynak bir eylemi bir
+        becerinin kullandigi yuvaya park eder (Skill_Start(NPCACT_FLEE) ve
+        benzerleri) ve onu beyin herhangi bir karar vermeden once calistirir; bu
+        motor her tick'te beyinden karar veriyor ve eylemi koyacak bir yeri yoktu.
+        Alan zaten vardi - SKILL verb'i Character.Action'a yaziyor ve NPC eylem
+        degerleri, ust kaynakta NPCACT_*'in SKILL_TYPE ile paylastigi gibi sayi
+        uzayini becerilerle paylasiyor - ve onu hicbir sey okumuyordu. Artik bir
+        script'in baslattigi eylem, bitene kadar beynin onunde geliyor ve bitince
+        NPC'yi birakiyor.
+
+        GOTO ve RUNTO bir hedef alir; her script hedefi gibi cozulur
+        (CServerConfig.cpp:2719): koordinat ya da bir bolgenin adi. Ikisine de
+        uymayan bir ad NPC'yi yerinde birakir, rastgele bir yere yurutmez. RUN ve
+        WALK ise bir YON alir - o yone bir kare. FLEE ve LEAVE, NPC'nin muhatap
+        oldugu kisiden adim sayili bir geri cekilme baslatir; bu bir tahmin degil
+        ust kaynagin kurali: varsa dovus hedefi, yoksa eylem hedefi ve ikisi de
+        yoksa eylem NPC'yi icinde sikistirmak yerine sonlanir. Arguman adim
+        butcesidir ve sifir yirmi demektir.
+
+        HIRE, TRAIN, SHRINK, PETSTABLE ve PETRETRIEVE isi zaten yapan motora
+        ulasiyor. Besi de KONUSMA ile erisilebiliyordu, hicbiri verb'i yazan bir
+        script ile erisilemiyordu; referans dagitim onlari boyle surer. Gercekten
+        eksik parcasi olan HIRE'di: ucreti odemek zaten ise aliyordu ama once
+        fiyati soyleyen bir sey yoktu. PETRETRIEVE ahirdaki evcil hayvanlarin
+        birini degil hepsini geri verir.
+
+        Bir NPC'de BYE etkilesimi bitirir - calisan eylemi birakir ve muhatabini
+        unutur (NV_BYE). Ayni adi tasiyan ve oyuncunun dialoglarini kapatan istemci
+        verb'i baska bir seydir, degismedi.
+
+        Bunlar NPC verb'leridir: bir oyuncuda ad sahiplenilmez ve yorumlayici
+        aramaya devam eder; ust kaynagin NPC dagiticisindan verdigi ret budur.
+
+CHANGE - RUNTO artik bosta temposuyla degil kosma temposuyla zamanlaniyor. Kosma
+        BITI burada bir karakterde hicbir yere gitmiyor - yon kurucusu yalnizca uc
+        yon bitini saklar - dolayisiyla kosmakla yurumek arasindaki tum fark tempo;
+        bosta temposunda birakilan bir RUNTO baska adla bir GOTO olurdu.
+
+CHANGE - Uye taramasi artik oyuncunun yani sira bir NPC de sonduyor. Bir verb
+        tablosunun tamami yalnizca NPC'lere aittir; sadece oyuncu sondalamak
+        bunlarin her birini hicbir seyin yanitlamadigi ad diye bildiriyordu.
+
 [2026-09-17] - Referans dagitimin cagirdigi isimler
 ----------------------------------------
 

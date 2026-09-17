@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A house region the size of its walls
+----------------------------------------
+
+FIX - MULTIREGION was read nowhere, so a multi's region was its component
+        footprint. The key names an inclusive rectangle and upstream stores it as
+        the multi's region rect (CItemBaseMulti::SetMultiRegion, CItemBase.cpp:1936)
+        for MultiRealizeRegion to lay on the world; every one of the 340 multi
+        definitions in the reference distribution declares one, and they
+        deliberately reach past the walls. The small stone-and-plaster house
+        declares -3,-3,3,4 over a 7x7 footprint - one row further south, which is
+        where its front step is. So a house region was the shape of the building
+        and not of the property: standing on your own step put you outside it, and
+        with it outside the Safe and NoBuild flags the region carries and the
+        @Enter and @Step scripts hung on it. A definition that declares no
+        MULTIREGION still falls back to the footprint.
+
 [2026-09-17] - Two tools that were ordinary items
 ----------------------------------------
 

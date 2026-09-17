@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Duvarlari kadar buyuk bir ev bolgesi
+----------------------------------------
+
+FIX - MULTIREGION hicbir yerde okunmuyordu, dolayisiyla bir multi'nin bolgesi
+        bilesen ayak izinden ibaretti. Bu anahtar, ucu dahil bir dikdortgen
+        adlandirir ve ust kaynak onu multi'nin bolge dikdortgeni olarak saklar
+        (CItemBaseMulti::SetMultiRegion, CItemBase.cpp:1936); MultiRealizeRegion de
+        onu dunyaya serer. Referans dagitimdaki 340 multi tanimin her biri boyle bir
+        dikdortgen bildirir ve bunlar bilerek duvarlarin otesine uzanir. Kucuk tas-
+        ve-siva ev, 7x7 ayak izi uzerinde -3,-3,3,4 bildirir: guneyde bir sira
+        fazla, ki oraya on basamak denk gelir. Yani bir ev bolgesi binanin sekliydi,
+        mulkun degil: kendi basamaginda durmak seni onun disinda birakiyordu ve
+        onunla birlikte bolgenin tasidigi Safe ve NoBuild bayraklarinin ve ona asili
+        @Enter ile @Step scriptlerinin de disinda. MULTIREGION bildirmeyen bir tanim
+        yine ayak izine duser.
+
 [2026-09-17] - Siradan esyaya donusen iki alet
 ----------------------------------------
 

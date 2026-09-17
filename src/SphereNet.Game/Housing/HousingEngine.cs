@@ -86,6 +86,20 @@ public sealed class MultiDef
     public short MaxX { get; set; }
     public short MaxY { get; set; }
 
+    /// <summary>The region rectangle the SCRIPT declares, when it declares one
+    /// (Source-X CItemBaseMulti::SetMultiRegion, CItemBase.cpp:1936). It is not the
+    /// component footprint: a house's MULTIREGION reaches past its walls to take in
+    /// the step and the ground the structure owns, so the small stone-and-plaster
+    /// house declares -3,-3,3,4 over a 7x7 footprint - one row further south, which
+    /// is exactly where its front step is. Null when the definition declares none,
+    /// and then the footprint stands in as before.</summary>
+    public (short MinX, short MinY, short MaxX, short MaxY)? ScriptRegion { get; set; }
+
+    /// <summary>The rectangle a placed multi's region should cover: what the script
+    /// declared if it declared anything, else the footprint.</summary>
+    public (short MinX, short MinY, short MaxX, short MaxY) RegionBounds =>
+        ScriptRegion ?? (MinX, MinY, MaxX, MaxY);
+
     public void RecalcBounds()
     {
         if (Components.Count == 0)
@@ -797,6 +811,24 @@ public sealed class MultiRegistry
                         // in the pack is parsed.
                         def.RegionFlags = (RegionFlag)Objects.ObjBase.ParseHexOrDecUInt(arg);
                         break;
+                    case "MULTIREGION":
+                        {
+                            // "x1,y1,x2,y2[,map]", inclusive on every edge
+                            // (SetMultiRegion, CItemBase.cpp:1936). Fewer than four
+                            // numbers is not a rectangle and upstream ignores it.
+                            var mr = arg.Split([',', ' ', '	'],
+                                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                            if (mr.Length >= 4 &&
+                                short.TryParse(mr[0], out short rx1) &&
+                                short.TryParse(mr[1], out short ry1) &&
+                                short.TryParse(mr[2], out short rx2) &&
+                                short.TryParse(mr[3], out short ry2))
+                            {
+                                def.ScriptRegion = (Math.Min(rx1, rx2), Math.Min(ry1, ry2),
+                                                    Math.Max(rx1, rx2), Math.Max(ry1, ry2));
+                            }
+                        }
+                        break;
                     case "SHIPSPEED":
                         {
                             // SHIPSPEED=period,tiles (period in tenths of a second).
@@ -1307,10 +1339,11 @@ public sealed class HousingEngine
         var def = _multiDefs.Get(mi.BaseId);
         if (def == null) return null;
 
-        short x1 = (short)(mi.X + def.MinX);
-        short y1 = (short)(mi.Y + def.MinY);
-        short x2 = (short)(mi.X + def.MaxX);
-        short y2 = (short)(mi.Y + def.MaxY);
+        var bounds = def.RegionBounds;
+        short x1 = (short)(mi.X + bounds.MinX);
+        short y1 = (short)(mi.Y + bounds.MinY);
+        short x2 = (short)(mi.X + bounds.MaxX);
+        short y2 = (short)(mi.Y + bounds.MaxY);
         var center = new Point3D((short)(mi.X), (short)(mi.Y), mi.Z, mi.MapIndex);
 
         // Parent = the region this footprint sits in BEFORE the house region exists.

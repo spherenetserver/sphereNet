@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The engine ran its own context-menu action beside the script's
+----------------------------------------
+
+FIX - An item's context-menu selection ran the CHARACTER entry switch after firing the
+        trigger. Upstream fires it and returns - "there's no hardcoded stuff for items"
+        (CClientEvent.cpp:2768) - so an entry tag that happened to match one of the
+        engine's own did that to the item as well; tag 6 is Mount Me, which
+        double-clicks the target. Nothing in the packs collides today, since their tags
+        all start at 100 where upstream reserves them from, but the engine should not
+        be waiting for one that does.
+
+FIX - RETURN 1 from a character's @ContextMenuSelect now skips the engine's action for
+        that tag (CClientEvent.cpp:2778). The return value was discarded and both ran,
+        so a script answering an entry itself got the engine's answer on top of it.
+
 [2026-09-17] - RETURN 1 from a character's @ContextMenuRequest
 ----------------------------------------
 

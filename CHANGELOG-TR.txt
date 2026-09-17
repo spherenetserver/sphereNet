@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Motor kendi baglam-menusu eylemini scriptinkinin yanina calistiriyordu
+----------------------------------------
+
+FIX - Bir esyanin baglam menusu secimi, trigger'i tetikledikten sonra KARAKTER girdi
+        switch'ini de calistiriyordu. Ust kaynak tetikleyip doner - "esyalar icin gomulu
+        bir sey yok" (CClientEvent.cpp:2768) - yani motorun kendi girdilerinden biriyle
+        ayni olan bir girdi etiketi, o eylemi esyaya da uyguluyordu; 6 numara "Mount Me"
+        ve hedefe cift tiklar. Bugun paketlerde cakisan yok, cunku etiketleri ust
+        kaynagin ayirdigi 100'den basliyor; ama motorun cakisani beklemesi dogru degil.
+
+FIX - Bir karakterin @ContextMenuSelect'inden RETURN 1 artik motorun o etiket icin
+        yapacagi eylemi atliyor (CClientEvent.cpp:2778). Donus degeri atiliyordu ve
+        ikisi birden calisiyordu; bir girdiyi kendi yanitlayan script motorun yanitini da
+        ustune aliyordu.
+
 [2026-09-17] - Bir karakterin @ContextMenuRequest'inden RETURN 1
 ----------------------------------------
 

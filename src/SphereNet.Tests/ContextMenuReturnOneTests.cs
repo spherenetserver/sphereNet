@@ -115,4 +115,42 @@ public sealed class ContextMenuReturnOneTests
         Assert.Contains((ushort)1, tags);
         Assert.Contains((ushort)200, tags);
     }
+
+    /// <summary>And on the way back: RETURN 1 from @ContextMenuSelect means the script
+    /// handled the entry, so the engine's own action for that tag is skipped
+    /// (CClientEvent.cpp:2778). The return value used to be discarded and both ran -
+    /// a script answering "Open Paperdoll" itself got the paperdoll anyway.</summary>
+    [Fact]
+    public void ReturnOneFromSelectSkipsTheEngineAction()
+    {
+        Assert.False(SelectPaperdollOpensIt(TriggerResult.True));
+        Assert.True(SelectPaperdollOpensIt(TriggerResult.Default));
+    }
+
+    /// <summary>Pick entry 1 (Open Paperdoll) on ourselves with a select trigger that
+    /// returns what the caller asks; answer whether the paperdoll went out.</summary>
+    private static bool SelectPaperdollOpensIt(TriggerResult selectResult)
+    {
+        using var lf = LoggerFactory.Create(_ => { });
+        var world = TestHarness.CreateWorld();
+        ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+
+        var dispatcher = new TriggerDispatcher();
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ContextMenuSelect", (_, _) => selectResult);
+
+        var client = TestHarness.CreateClient(lf, world, new AccountManager(lf), 5301);
+        client.SetEngines(triggerDispatcher: dispatcher);
+
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, ch);
+        TestHarness.GetQueuedPackets(client.NetState).Clear();
+
+        client.WorldFeatures.HandleContextMenuResponse(ch.Uid.Value, 1);
+
+        // 0x88 is the paperdoll packet.
+        return TestHarness.GetQueuedPackets(client.NetState).Any(p => p.Span[0] == 0x88);
+    }
 }

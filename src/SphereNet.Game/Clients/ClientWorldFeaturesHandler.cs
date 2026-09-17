@@ -3195,10 +3195,26 @@ public sealed class ClientWorldFeaturesHandler
             return;
 
         var target = charTarget;
-        if (target != null)
-            FireContextMenuTrigger(target, CharTrigger.ContextMenuSelect, entryTag);
-        else if (_world.FindItem(new Serial(targetSerial)) is { } itemTarget)
-            FireContextMenuTrigger(itemTarget, ItemTrigger.ContextMenuSelect, entryTag);
+        if (target == null)
+        {
+            // An item's menu is the script's alone: upstream fires the trigger and
+            // returns, "there's no hardcoded stuff for items" (CClientEvent.cpp:2768).
+            // Running the character switch afterwards meant an entry tag that happened
+            // to match one of the engine's own - 6 is Mount Me, which double-clicks the
+            // target - did that to the ITEM as well. Nothing in the packs collides
+            // today (their tags all start at 100, which is where upstream reserves
+            // them from), but the engine should not be waiting for one that does.
+            if (_world.FindItem(new Serial(targetSerial)) is { } itemTarget)
+                FireContextMenuTrigger(itemTarget, ItemTrigger.ContextMenuSelect, entryTag);
+            return;
+        }
+
+        // RETURN 1 means the script handled the entry, so the engine's own action for
+        // that tag is skipped (CClientEvent.cpp:2778). The return value used to be
+        // discarded and both ran.
+        if (FireContextMenuTrigger(target, CharTrigger.ContextMenuSelect, entryTag)
+            == TriggerResult.True)
+            return;
 
         switch (entryTag)
         {

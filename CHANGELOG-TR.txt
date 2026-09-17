@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir yaratiga kendi CHARDEF'inin ne dedigi sorulamiyordu
+----------------------------------------
+
+FIX - ANIM, ICON, MOVERATE, HIREDAYWAGE, RESLEVEL, RESDISPDNHUE, RESDISPDNID ve bes SOUND
+        anahtari bir yaratikta hicbir sey donduruyordu. Ust kaynak bunlari CChar'in
+        arkasindaki CCharBase'den okur (CCharBase::r_WriteVal); yani <SOUNDDIE> ya da
+        <MOVERATE> tanimin bildirdigini doner. Bizde bir scriptin sordugu bos dize
+        aliyordu; bir IF bunu sifir okur, dolayisiyla bir yaratigin olum sesine ya da
+        ikonuna dallanan satir her seferinde yanlis dala giriyordu. Artik tanima
+        zincirleniyorlar.
+
+FIX - MAXFOOD ham ornek etiketini okuyor ve yoksa 0 donduruyordu; oysa motorun kendi
+        MaxFood'u once ornegi, sonra tanimi, sonra klasik 60'i cozer. Ust kaynak
+        Stat_GetMaxAdjusted(STAT_FOOD) doner - motorun calistigi sayi (CChar.cpp:3184) -
+        yani FOOD'u MAXFOOD ile karsilastiran bir script hicbir seye karsi olcuyordu ve
+        gonderilen yemek dialogu tam da bunu asmak icin bir SERV.CHARDEF aramasi tasiyor.
+        Artik tek cevap var: motorunki.
+
 [2026-09-17] - Bir yaratigin elemental hasari, nasil dogduguna bagliydi
 ----------------------------------------
 

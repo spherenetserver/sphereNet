@@ -3759,11 +3759,54 @@ public partial class Character : ObjBase
                 return true;
             }
             case "FOOD": value = _food.ToString(); return true;
-            // MAXFOOD / VIRTUALGOLD are stored as tags by their setters (Source-X
-            // CHC_MAXFOOD / CHC_VIRTUALGOLD are readable). Default 0 when unset;
-            // the food dialog falls back to SERV.CHARDEF.<id>.MAXFOOD from there.
+
+            // The base-definition keys a character chains to. Upstream reads them off
+            // the CCharBase behind the CChar (CCharBase::r_WriteVal), so <SOUNDDIE> or
+            // <MOVERATE> on a creature answers what its CHARDEF declared; here they
+            // answered nothing at all, and a script asking one got an empty string.
+            case "ANIM":
+            case "HIREDAYWAGE":
+            case "ICON":
+            case "MOVERATE":
+            case "RESLEVEL":
+            case "RESDISPDNHUE":
+            case "RESDISPDNID":
+            case "SOUND":
+            case "SOUNDDIE":
+            case "SOUNDGETHIT":
+            case "SOUNDHIT":
+            case "SOUNDIDLE":
+            case "SOUNDNOTICE":
+            {
+                var baseDef = Definitions.DefinitionLoader.GetCharDef(_charDefIndex);
+                value = baseDef == null ? "0" : upper switch
+                {
+                    "ANIM" => $"0{baseDef.Anim:X}",
+                    "HIREDAYWAGE" => baseDef.HireDayWage.ToString(),
+                    "ICON" => baseDef.Icon ?? "",
+                    "MOVERATE" => baseDef.MoveRate.ToString(),
+                    "RESLEVEL" => baseDef.ResLevel.ToString(),
+                    "RESDISPDNHUE" => $"0{baseDef.ResDispDnHue:X}",
+                    "RESDISPDNID" => string.IsNullOrEmpty(baseDef.ResDispDnIdRaw)
+                        ? $"0{baseDef.ResDispDnId:X}" : baseDef.ResDispDnIdRaw,
+                    "SOUND" or "SOUNDIDLE" => $"0{baseDef.SoundIdle:X}",
+                    "SOUNDDIE" => $"0{baseDef.SoundDie:X}",
+                    "SOUNDGETHIT" => $"0{baseDef.SoundGetHit:X}",
+                    "SOUNDHIT" => $"0{baseDef.SoundHit:X}",
+                    "SOUNDNOTICE" => $"0{baseDef.SoundNotice:X}",
+                    _ => "0",
+                };
+                return true;
+            }
+            // MAXFOOD answers what the engine itself uses: the instance tag when it
+            // carries a positive one, else the definition's, else the classic 60 (see
+            // the MaxFood property). It used to read the raw tag and answer 0 when
+            // there was none, so a script comparing FOOD against MAXFOOD measured
+            // against zero while the engine was working from the creature's real
+            // ceiling - and the food dialog carried a SERV.CHARDEF lookup to work
+            // around exactly that.
             case "MAXFOOD":
-                value = TryGetTag("MAXFOOD", out string? mf) ? (mf ?? "0") : "0";
+                value = MaxFood.ToString();
                 return true;
             case "VIRTUALGOLD":
                 value = TryGetTag("VIRTUALGOLD", out string? vg) ? (vg ?? "0") : "0";

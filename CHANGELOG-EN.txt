@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A creature could not be asked what its own CHARDEF says
+----------------------------------------
+
+FIX - ANIM, ICON, MOVERATE, HIREDAYWAGE, RESLEVEL, RESDISPDNHUE, RESDISPDNID and the
+        five SOUND keys answered nothing on a creature. Upstream reads them off the
+        CCharBase behind the CChar (CCharBase::r_WriteVal), so <SOUNDDIE> or <MOVERATE>
+        answers what the definition declared; here a script asking one got an empty
+        string, which an IF reads as zero, so a line branching on a creature's death
+        sound or its icon took the wrong branch every time. They chain to the
+        definition now.
+
+FIX - MAXFOOD read the raw instance tag and answered 0 when there was none, while the
+        engine's own MaxFood resolves instance, then definition, then the classic 60.
+        Upstream answers Stat_GetMaxAdjusted(STAT_FOOD), the number the engine works
+        from (CChar.cpp:3184) - so a script comparing FOOD against MAXFOOD measured
+        against nothing, and the shipped food dialog carries a SERV.CHARDEF lookup to
+        work around exactly that. One answer now, the engine's.
+
 [2026-09-17] - A creature's elemental damage depended on how it was born
 ----------------------------------------
 

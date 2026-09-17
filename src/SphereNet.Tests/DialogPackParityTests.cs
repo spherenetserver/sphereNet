@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
@@ -140,8 +140,17 @@ public sealed class DialogPackParityTests
         Assert.Equal(1, def2.MaxFood);
     }
 
+    /// <summary>VIRTUALGOLD is a plain tag and starts empty; MAXFOOD is the effective
+    /// ceiling, which is not the same thing.
+    ///
+    /// Upstream answers MAXFOOD with Stat_GetMaxAdjusted(STAT_FOOD) - what the engine
+    /// itself works from (CChar.cpp:3184) - so a creature with no MAXFOOD of its own
+    /// reads the classic ceiling, not zero. This used to read the raw tag and answer 0,
+    /// so a script comparing FOOD against MAXFOOD measured against nothing while the
+    /// engine was using the real number; the food dialog carried a SERV.CHARDEF lookup
+    /// to work around exactly that.</summary>
     [Fact]
-    public void VirtualGoldAndMaxFood_CharReadsDefaultZero()
+    public void VirtualGoldStartsEmptyAndMaxFoodIsTheEffectiveCeiling()
     {
         var world = World();
         var ch = world.CreateCharacter();
@@ -152,7 +161,14 @@ public sealed class DialogPackParityTests
         Assert.True(ch.TryGetProperty("VIRTUALGOLD", out string vg2));
         Assert.Equal("500", vg2);
 
+        // No chardef behind this character and no instance MAXFOOD: the classic 60.
         Assert.True(ch.TryGetProperty("MAXFOOD", out string mf));
-        Assert.Equal("0", mf);
+        Assert.Equal(ch.MaxFood.ToString(), mf);
+        Assert.Equal("60", mf);
+
+        // An instance MAXFOOD wins, and the read follows it.
+        Assert.True(ch.TrySetProperty("MAXFOOD", "35"));
+        Assert.True(ch.TryGetProperty("MAXFOOD", out string mf2));
+        Assert.Equal("35", mf2);
     }
 }

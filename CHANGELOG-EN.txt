@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A message that was never sent
+----------------------------------------
+
+FIX - SYSMESSAGELOC dropped the message entirely when its hue was named rather than
+        numbered. The packs write "SYSMESSAGELOC color_text,1070821,<NAME>" - 76 of
+        the 93 calls across them - where color_text is a [DEFNAME] whose value is -1,
+        the cliloc default-colour sentinel. Parsing it as a number failed, and
+        because the parse sat inside the guard, the failure took the whole condition
+        down with it: those messages were not mis-coloured, they were never sent at
+        all. The hue and the cliloc both resolve through the same lookup the SOUND
+        and EFFECT ids use now, so a name resolves and an unknown one still sends
+        nothing. SYSMESSAGELOCEX takes the same two arguments and now reads them the
+        same way.
+
 [2026-09-17] - What a sound is called
 ----------------------------------------
 

@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Hic gonderilmeyen mesaj
+----------------------------------------
+
+FIX - SYSMESSAGELOC, rengi sayiyla degil adla verildiginde mesaji tumuyle
+        dusuruyordu. Paketler "SYSMESSAGELOC color_text,1070821,<NAME>" yazar -
+        icindeki 93 cagrinin 76'si boyle - ve color_text degeri -1 olan bir
+        [DEFNAME]'dir; cliloc varsayilan-renk isaretcisi. Bunu sayi olarak
+        ayristirmak basarisiz oluyordu ve ayristirma korumanin icinde durdugu icin
+        bu basarisizlik kosulun tamamini birlikte dusuruyordu: o mesajlar yanlis
+        renkli degildi, hic gonderilmiyordu. Renk de cliloc da artik SOUND ve EFFECT
+        id'lerinin kullandigi ayni aramadan geciyor; yani bir ad cozuluyor ve
+        bilinmeyen bir ad yine hicbir sey gondermiyor. SYSMESSAGELOCEX ayni iki
+        argumani alir, artik ayni sekilde okuyor.
+
 [2026-09-17] - Bir sesin adi
 ----------------------------------------
 

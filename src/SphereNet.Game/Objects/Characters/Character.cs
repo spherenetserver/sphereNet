@@ -6300,9 +6300,16 @@ public partial class Character : ObjBase
                 // Source-X: SYSMESSAGELOC hue, cliloc_id, args
                 var parts = args.Split(',', 3, StringSplitOptions.TrimEntries);
                 if (parts.Length >= 2
-                    && TryParseScriptUShort(parts[0], out ushort hue)
-                    && uint.TryParse(parts[1], out uint cliloc))
+                    // The hue is a DEFNAME in 76 of the 93 calls across the packs:
+                    // "SYSMESSAGELOC color_text,1070821,<NAME>", where color_text is
+                    // -1, the cliloc default-colour sentinel. Parsing it as a number
+                    // failed, which took the whole condition down with it - so those
+                    // messages were not mis-coloured, they were never sent.
+                    && TryResolveScriptValue(parts[0], out int hueValue)
+                    && TryResolveScriptValue(parts[1], out int clilocValue))
                 {
+                    ushort hue = (ushort)hueValue;
+                    uint cliloc = (uint)clilocValue;
                     string argText = parts.Length >= 3 ? parts[2] : "";
                     SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketClilocMessage(
                         Serial.Invalid.Value, 0xFFFF, 6 /* system */, hue, 3, cliloc, "System", argText));
@@ -6314,9 +6321,11 @@ public partial class Character : ObjBase
                 // Source-X: hue,cliloc,affixFlags,affix,args...
                 var parts = args.Split(',', StringSplitOptions.TrimEntries);
                 if (parts.Length >= 4
-                    && TryParseScriptUShort(parts[0], out ushort hue)
-                    && TryParseScriptUInt(parts[1], out uint cliloc))
+                    && TryResolveScriptValue(parts[0], out int hueValueEx)
+                    && TryResolveScriptValue(parts[1], out int clilocValueEx))
                 {
+                    ushort hue = (ushort)hueValueEx;
+                    uint cliloc = (uint)clilocValueEx;
                     int flags = parts.Length > 2 && int.TryParse(parts[2], out int parsedFlags)
                         ? parsedFlags : 0;
                     string affix = parts[3];

@@ -132,6 +132,52 @@ public sealed class SoundEffectDefnameTests : IDisposable
         Assert.Single(sent);
     }
 
+    /// <summary>SYSMESSAGELOC takes its hue as a DEFNAME too, and it is the same
+    /// resolver. 76 of the 93 calls across the packs write "color_text" - a constant
+    /// whose value is -1, the cliloc default-colour sentinel. Parsing it as a number
+    /// failed and took the whole guard down with it, so those messages were not
+    /// mis-coloured: they were never sent.</summary>
+    [Fact]
+    public void AClilocMessageWithADefnameHueIsSent()
+    {
+        Directory.CreateDirectory(_dir);
+        string file = Path.Combine(_dir, "hues.scp");
+        File.WriteAllText(file,
+            "[DEFNAME hues_probe]" + Nl +
+            "color_text   -1" + Nl);
+        using var lf = LoggerFactory.Create(_ => { });
+        var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = _dir };
+        resources.LoadResourceFile(file);
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
+
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 256, 256);
+        ObjBase.ResolveWorld = () => world;
+        var ch = world.CreateCharacter();
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+
+        var sent = new List<PacketWriter>();
+        Character.SendPacketToOwner = (_, packet) => sent.Add(packet);
+        try
+        {
+            Assert.True(ch.TryExecuteCommand("SYSMESSAGELOC", "color_text,1070821,Bob",
+                new Console(), out bool owned));
+            Assert.True(owned);
+            Assert.Single(sent);
+
+            // And the plain numeric form is unchanged.
+            sent.Clear();
+            ch.TryExecuteCommand("SYSMESSAGELOC", "0,1070821,Bob", new Console(), out _);
+            Assert.Single(sent);
+
+            // A hue nothing defines still sends nothing, as before.
+            sent.Clear();
+            ch.TryExecuteCommand("SYSMESSAGELOC", "no_such_hue,1070821,Bob", new Console(), out _);
+            Assert.Empty(sent);
+        }
+        finally { Character.SendPacketToOwner = null; }
+    }
+
     /// <summary>The resolution itself: a defname constant answers its number, an
     /// ITEMDEF answers its graphic, and an unknown name answers nothing. This is what
     /// the two verbs above are built on.</summary>

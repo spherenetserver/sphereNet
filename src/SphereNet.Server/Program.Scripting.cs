@@ -314,9 +314,38 @@ public static partial class Program
 
             // Bare defname constants (e.g. statf_insubstantial) used by
             // script expressions without DEF./DEF0. prefix.
-            _ => ResolveDefConstant(upper)
+            _ => ResolveDefConstant(upper) ?? ResolveServFunction(property)
         };
     }
+
+    /// <summary>A function from the script expression table, reached through the SERV
+    /// prefix.
+    ///
+    /// Upstream the SERV chain ends at CScriptObj::r_WriteVal, which owns that table
+    /// (the SSC_ cases, CScriptObj.cpp:410), so &lt;SERV.CHR 65&gt; and &lt;CHR 65&gt;
+    /// are the same call. Here SERV had its own switch and nothing behind it, so every
+    /// SERV-prefixed function read resolved to nothing - the live pack's packet
+    /// scripts rebuild received bytes into text with &lt;SERV.CHR &lt;byte&gt;&gt; in
+    /// 350 places, and got an empty string for each.
+    ///
+    /// The evaluation runs on a parser of its own, with no diagnostic sink: the table
+    /// is object-independent, and an unresolved name here is the ordinary "SERV has no
+    /// such property" answer rather than something to warn about.</summary>
+    private static string? ResolveServFunction(string property)
+    {
+        string text = property.Trim();
+        if (text.Length == 0 ||
+            // No second hop: SERV.SERV.X would re-enter this resolver.
+            text.StartsWith("SERV", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        string result = _servFunctionParser.ResolveAngleBrackets($"<{text}>");
+        // The parser answers an unknown name with an empty string, which is exactly
+        // what "no such server property" already returns - so only a real value counts.
+        return string.IsNullOrEmpty(result) ? null : result;
+    }
+
+    private static readonly ExpressionParser _servFunctionParser = new();
 
     /// <summary>Resolve <c>ISEVENT.name</c>. Returns "1" when a script event
     /// with this defname exists in the loaded resource set, else "0".</summary>

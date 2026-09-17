@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - SERV.<function> reaches the function table
+----------------------------------------
+
+FIX - A SERV-prefixed function read resolved to nothing. Upstream the SERV chain ends
+        at CScriptObj::r_WriteVal, which is where the script function table lives (the
+        SSC_ cases, CScriptObj.cpp:410), so <SERV.CHR 65> and <CHR 65> are the same
+        call. Here SERV had a switch of its own and fell through to the defname
+        lookup, which rejects anything containing a space. The live pack's packet
+        scripts rebuild received bytes into text with <SERV.CHR <byte>> in 350 places
+        across three files, and got an empty string for every one. The whole table is
+        now reachable through the prefix, after every server property and the defname
+        lookup have declined.
+
 [2026-09-17] - The era-display hue a script could set but not read
 ----------------------------------------
 

@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - SERV.<fonksiyon> fonksiyon tablosuna ulasiyor
+----------------------------------------
+
+FIX - SERV onekli bir fonksiyon okumasi hicbir seye cozulmuyordu. Ust kaynakta SERV
+        zinciri CScriptObj::r_WriteVal'de biter ve script fonksiyon tablosu orada
+        yasar (SSC_ dallari, CScriptObj.cpp:410); yani <SERV.CHR 65> ile <CHR 65> ayni
+        cagridir. Bizde SERV'in kendi switch'i vardi ve icinde bosluk olan her seyi
+        reddeden defname aramasina dusuyordu. Canli paketin paket scriptleri alinan
+        baytlari uc dosyada 350 yerde <SERV.CHR <bayt>> ile metne ceviriyor ve her
+        birinde bos dize aliyordu. Tablonun tamami artik onek uzerinden erisilebilir;
+        once tum sunucu ozellikleri ve defname aramasi denenir.
+
 [2026-09-17] - Scriptin yazip okuyamadigi donem-gorunum rengi
 ----------------------------------------
 

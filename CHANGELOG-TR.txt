@@ -4,6 +4,27 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Onlari calistiran bloklarda BREAK, CONTINUE ve RETURN
+----------------------------------------
+
+FIX - IF icindeki BREAK ve CONTINUE hicbir sey yapmiyordu. ExecuteIf'in ic deyim
+        switch'inde ikisinin de dali yoktu; ikisi de onlari tanimayan ExecuteLine'a
+        dusuyor ve donguyu durduran bayraklar hic kurulmuyordu. "IF <kosul> BREAK ENDIF"
+        bir dongudan erken cikmanin tek yoludur; yani kosullu cikan her dongu sonuna
+        kadar calisiyordu - bir arama dongusu zaten buldugu eslesmeyi gecip devam
+        ediyor, bir WHILE'i yalnizca yineleme siniri durduruyordu. Gonderilen paketlerde
+        on alti satir bu sekilde yazilmis: zanaat dialoglarinda, dinamik sablonlarda ve
+        hazine haritalarinda.
+
+FIX - DORAND veya DOSWITCH'in sectigi satir bir RETURN olamiyordu. Ikisi de secimi
+        ExecuteLine uzerinden calistiriyordu; deger hicbir yere gitmiyor ve fonksiyon
+        bos donuyordu. RETURN'lerden olusan bir DOSWITCH, bir arama tablosunun olagan
+        yazilis seklidir; referans dagitimin AOS oncesi silah metin rengi tam olarak
+        budur - her seviye hicbir sey donduruyordu.
+
+        Bir RETURN'un ne yaptigi artik tek bir kod parcasi; onu calistirabilen dort
+        yerin hepsi onu kullaniyor.
+
 [2026-09-17] - IF icindeki RETURN hicbir sey bildirmiyordu
 ----------------------------------------
 

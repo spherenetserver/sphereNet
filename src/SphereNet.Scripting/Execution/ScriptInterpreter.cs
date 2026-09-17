@@ -141,17 +141,9 @@ public sealed class ScriptInterpreter
                     break;
 
                 case "RETURN":
-                {
-                    string argStr = ResolveArgs(key.Arg, target, source, args, scope);
-                    bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
-                    // A numeric RETURN stores the evaluated number; a string RETURN (a
-                    // [FUNCTION] returning a name/defname/message) keeps its text.
-                    scope.ReturnValue = numeric ? val.ToString() : argStr;
-                    scope.IsReturning = true;
-                    result = val != 0 ? TriggerResult.True : TriggerResult.Default;
+                    result = ApplyReturn(key, target, source, args, scope);
                     i = lines.Count;
                     break;
-                }
 
                 case "CALL":
                 {
@@ -1037,6 +1029,20 @@ public sealed class ScriptInterpreter
         return false;
     }
 
+    /// <summary>What a RETURN line does, wherever it is written: store the value on
+    /// the scope, mark the block as returning, and report True for a non-zero number.
+    /// A numeric RETURN stores the evaluated number; a string RETURN (a [FUNCTION]
+    /// returning a name, defname or message) keeps its text.</summary>
+    private TriggerResult ApplyReturn(ScriptKey line, IScriptObj target, ITextConsole? source,
+        ITriggerArgs? args, ScriptScope scope)
+    {
+        string argStr = ResolveArgs(line.Arg, target, source, args, scope);
+        bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
+        scope.ReturnValue = numeric ? val.ToString() : argStr;
+        scope.IsReturning = true;
+        return val != 0 ? TriggerResult.True : TriggerResult.Default;
+    }
+
     private int ExecuteIf(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
     {
@@ -1096,22 +1102,38 @@ public sealed class ScriptInterpreter
                     case "WHILE":
                         i = ExecuteWhile(lines, i, target, source, args, scope, out result);
                         break;
+                    // The out-parameter used to keep the Default it was initialised
+                    // with, so a RETURN 1 inside an IF stopped the block and then
+                    // reported nothing - and "IF <condition> ... RETURN 1 ... ENDIF" is
+                    // how every conditional veto in every pack is written, from
+                    // @EquipTest to @DClick to @Buy. Loops were never affected: they
+                    // run their body through Execute, which maps it.
                     case "RETURN":
-                    {
-                        string argStr = ResolveArgs(lines[i].Arg, target, source, args, scope);
-                        bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
-                        scope.ReturnValue = numeric ? val.ToString() : argStr;
-                        scope.IsReturning = true;
-                        // The same mapping the top-level RETURN makes. Without it the
-                        // out-parameter kept the Default it was initialised with, so a
-                        // RETURN 1 inside an IF stopped the block and then reported
-                        // nothing - and "IF <condition> ... RETURN 1 ... ENDIF" is how
-                        // every conditional veto in every pack is written, from
-                        // @EquipTest to @DClick to @Buy. Loops were never affected:
-                        // they run their body through Execute, which maps it.
-                        result = val != 0 ? TriggerResult.True : TriggerResult.Default;
+                        result = ApplyReturn(lines[i], target, source, args, scope);
                         return lines.Count;
-                    }
+                    // BREAK and CONTINUE are loop control, and "IF <cond> BREAK ENDIF"
+                    // is how a loop is exited conditionally - there is no other way to
+                    // write it. Neither had a case here, so both fell to ExecuteLine,
+                    // which does not know them: the loop ran to its end every time, and
+                    // a search loop kept going past the match it had already found.
+                    case "BREAK":
+                        if (scope.LoopDepth > 0)
+                        {
+                            scope.IsBreaking = true;
+                            return lines.Count;
+                        }
+                        i++;
+                        break;
+
+                    case "CONTINUE":
+                        if (scope.LoopDepth > 0)
+                        {
+                            scope.IsContinuing = true;
+                            return lines.Count;
+                        }
+                        i++;
+                        break;
+
                     default:
                         if (!TryExecuteAssignmentLine(lines[i], cmd, target, source, args, scope))
                             ExecuteLine(lines[i], target, source, args, scope);
@@ -1119,7 +1141,10 @@ public sealed class ScriptInterpreter
                         break;
                 }
 
-                if (scope.IsReturning) return lines.Count;
+                // A nested block may have set any of the three; leaving the IF is the
+                // only way they reach the loop that has to act on them.
+                if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing)
+                    return lines.Count;
             }
             else
             {
@@ -1274,7 +1299,12 @@ public sealed class ScriptInterpreter
         {
             int pick = Random.Shared.Next(options.Count);
             var picked = lines[options[pick]];
-            if (!TryExecuteAssignmentLine(picked, picked.Key.ToUpperInvariant(), target, source, args, scope))
+            // The picked line can be a RETURN, and a lookup table written as a DOSWITCH
+            // of RETURNs is the ordinary way to write one. ExecuteLine does not know
+            // RETURN, so the value went nowhere and the function returned blank.
+            if (picked.Key.Equals("RETURN", StringComparison.OrdinalIgnoreCase))
+                result = ApplyReturn(picked, target, source, args, scope);
+            else if (!TryExecuteAssignmentLine(picked, picked.Key.ToUpperInvariant(), target, source, args, scope))
                 ExecuteLine(picked, target, source, args, scope);
         }
 
@@ -1294,7 +1324,9 @@ public sealed class ScriptInterpreter
         {
             if (lineIdx == switchIdx)
             {
-                if (!TryExecuteAssignmentLine(lines[i], lines[i].Key.ToUpperInvariant(), target, source, args, scope))
+                if (lines[i].Key.Equals("RETURN", StringComparison.OrdinalIgnoreCase))
+                    result = ApplyReturn(lines[i], target, source, args, scope);
+                else if (!TryExecuteAssignmentLine(lines[i], lines[i].Key.ToUpperInvariant(), target, source, args, scope))
                     ExecuteLine(lines[i], target, source, args, scope);
                 break;
             }

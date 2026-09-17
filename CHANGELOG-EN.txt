@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - BREAK, CONTINUE and RETURN in the blocks that ran them
+----------------------------------------
+
+FIX - BREAK and CONTINUE inside an IF did nothing. ExecuteIf's inner statement switch
+        had no case for either, so both fell to ExecuteLine, which does not know them,
+        and the flags that stop a loop were never set. "IF <cond> BREAK ENDIF" is the
+        only way to leave a loop early, so every loop that exits conditionally ran to
+        its end instead - a search loop kept going past the match it had already found,
+        and only the iteration cap stopped a WHILE. Sixteen lines across the shipped
+        packs are written that way, in the crafting dialogs, the dynamic templates and
+        the treasure maps.
+
+FIX - The line DORAND or DOSWITCH picks could not be a RETURN. Both executed the pick
+        through ExecuteLine, so the value went nowhere and the function came back
+        blank. A lookup table written as a DOSWITCH of RETURNs is the ordinary way to
+        write one, and the reference distribution's pre-AOS weapon text hue is exactly
+        that: every level returned nothing.
+
+        What a RETURN does is now one piece of code, used by all four places that can
+        run one.
+
 [2026-09-17] - RETURN inside an IF reported nothing
 ----------------------------------------
 

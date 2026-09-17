@@ -64,12 +64,19 @@ public sealed class NpcActionVerbTests
         }
     }
 
-    /// <summary>Tick until the scripted action releases the NPC. Ticking a fixed
-    /// count past that point measures the BRAIN's wander, not the action - the NPC
-    /// arrives, goes idle and strolls off the tile the test is about.</summary>
-    private static void TickUntilActionEnds(NpcAI ai, Character npc, int limit = 40)
+    /// <summary>Tick until the NPC stands on the point its action was given, and no
+    /// further.
+    ///
+    /// The tick that ENDS an action also hands the NPC back to its brain - upstream's
+    /// NPC_Act_Goto calls NPC_Act_Idle the moment it arrives (CCharNPCAct.cpp:1712),
+    /// and this engine follows it: RunScriptedAction returns false on completion and
+    /// OnTickAction carries on into the brain dispatch in that same tick. So the
+    /// brain may take a wander step on the arrival tick, and a test that ticks until
+    /// the action clears and THEN reads the position is measuring the wander. That is
+    /// what made this class fail about one run in six.</summary>
+    private static void TickUntilAt(NpcAI ai, Character npc, int x, int y, int limit = 40)
     {
-        for (int i = 0; i < limit && npc.Action != SkillType.None; i++)
+        for (int i = 0; i < limit && (npc.X != x || npc.Y != y); i++)
         {
             npc.NextNpcActionTime = 0;
             ai.OnTickAction(npc);
@@ -89,11 +96,16 @@ public sealed class NpcActionVerbTests
         Assert.True(owned);
         Assert.Equal((SkillType)NpcAction.GoTo, npc.Action);
 
-        TickUntilActionEnds(ai, npc);
+        TickUntilAt(ai, npc, 104, 100);
 
         Assert.Equal(104, npc.X);
         Assert.Equal(100, npc.Y);
-        // Arrived, so the action released the NPC back to its brain.
+
+        // One more tick: standing on the destination, the action releases the NPC
+        // back to its brain. The position is deliberately not read again - the brain
+        // is free to move it from here, and that is the correct behaviour.
+        npc.NextNpcActionTime = 0;
+        ai.OnTickAction(npc);
         Assert.Equal(SkillType.None, npc.Action);
     }
 
@@ -127,8 +139,12 @@ public sealed class NpcActionVerbTests
             "a RUNTO must come round again sooner than a GOTO");
 
         // And it still arrives, which is the part that matters to the script.
-        TickUntilActionEnds(ai, runner, 60);
+        TickUntilAt(ai, runner, 112, 104, 60);
         Assert.Equal(112, runner.X);
+        Assert.Equal(104, runner.Y);
+
+        runner.NextNpcActionTime = 0;
+        ai.OnTickAction(runner);
         Assert.Equal(SkillType.None, runner.Action);
     }
 
@@ -142,10 +158,13 @@ public sealed class NpcActionVerbTests
         var npc = NewNpc(world, new Point3D(100, 100, 0, 0));
 
         npc.TryExecuteCommand("WALK", "E", new Console(), out _);
-        TickUntilActionEnds(ai, npc);
+        TickUntilAt(ai, npc, 101, 100);
 
         Assert.Equal(101, npc.X);
         Assert.Equal(100, npc.Y);
+
+        npc.NextNpcActionTime = 0;
+        ai.OnTickAction(npc);
         Assert.Equal(SkillType.None, npc.Action);   // one tile, then done
     }
 

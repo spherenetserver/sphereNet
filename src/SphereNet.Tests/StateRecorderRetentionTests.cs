@@ -95,12 +95,24 @@ public sealed class StateRecorderRetentionTests : IDisposable
         return list;
     }
 
+    /// <summary>The recorder's clock, advanced one whole cleanup interval per sweep.
+    ///
+    /// Tick stamps _lastCleanupTick BEFORE queueing the cleanup work, so calling it
+    /// twice with the SAME nowMs sweeps once - the second call is no longer past the
+    /// interval. A test that swept, changed something and swept again was therefore
+    /// not exercising its second sweep at all: it passed only when the first sweep's
+    /// background pass happened to still be running and picked the change up, and
+    /// timed out when that pass had already finished. Giving every call its own
+    /// interval makes each sweep really run.</summary>
+    private long _sweepClock;
+
     /// <summary>Drive the sweep and wait for it: it runs on a pool thread, so the
     /// test waits for the row count to settle rather than for a fixed time.</summary>
     private void SweepAndWait(StateRecorder rec, int expectedCount)
     {
         var chars = new List<Character>();
-        rec.Tick(600_001, () => chars);           // past the cleanup interval
+        _sweepClock += 600_001;                   // past the cleanup interval, again
+        rec.Tick(_sweepClock, () => chars);
 
         var sw = Stopwatch.StartNew();
         while (sw.Elapsed < TimeSpan.FromSeconds(10) && MoveCount() != expectedCount)

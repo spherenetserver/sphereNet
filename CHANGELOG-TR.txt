@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir odanin soz sahibi oldugu tek bayrak
+----------------------------------------
+
+FIX - ROOMDEF'in FLAGS satiri dusuruluyordu. Yukleyici dort anahtar okuyordu -
+        NAME, MAP, RECT ve EVENTS - ve harita paketi 1828 odasinin 1703'unde FLAGS
+        yaziyor. O satirlarin tasidiginin cogu hicbir seyi degistirmez: guarded,
+        nobuilding ve underground ust kaynakta da iceren ALANIN isidir; bunun fark
+        edilmemesinin sebebi budur. INSTA_LOGOUT istisnadir - CanInstantLogOut once
+        alani sonra odayi sorar ve referansin yanindaki kendi yorumu soyle der:
+        "Allows Room flag to work!" (CClient.cpp:159). Onu bildiren bir oda bunu
+        veremiyordu, cunku bir Room hic bayrak tasimiyordu. Artik tasiyor ve
+        cikis yapmak alanin yani sira odayi da soruyor.
+
 [2026-09-17] - Duvarlari kadar buyuk bir ev bolgesi
 ----------------------------------------
 

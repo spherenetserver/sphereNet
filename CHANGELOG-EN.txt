@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The one flag a room gets a say in
+----------------------------------------
+
+FIX - A ROOMDEF's FLAGS line was dropped. The loader read four keys - NAME, MAP,
+        RECT and EVENTS - and the map pack writes FLAGS on 1703 of its 1828 rooms.
+        Most of what those lines carry changes nothing: guarded, nobuilding and
+        underground are the containing AREA's business upstream as well, which is
+        why this went unnoticed. INSTA_LOGOUT is the exception - CanInstantLogOut
+        asks the area and then the room, and the reference's own comment beside it
+        reads "Allows Room flag to work!" (CClient.cpp:159). A room declaring it
+        could not grant it, because a Room carried no flags at all. It carries them
+        now, and logging out consults the room as well as the area.
+
 [2026-09-17] - A house region the size of its walls
 ----------------------------------------
 

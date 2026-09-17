@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 
@@ -35,6 +35,18 @@ public class Room : IScriptObj
     public IReadOnlyList<RegionRect> Rects => _rects;
     public IReadOnlyList<ResourceId> Events => _events;
     public uint Uid => _uid;
+
+    /// <summary>The room's own region flags, from its ROOMDEF FLAGS line.
+    ///
+    /// Upstream consults a ROOM's flags in exactly one place - CanInstantLogOut
+    /// (CClient.cpp:159, whose own comment reads "Allows Room flag to work!") - and
+    /// everything else asks the containing AREA. So the guarded and nobuilding bits
+    /// the map pack writes on its 1700-odd rooms are the area's business there as
+    /// they are here; REGION_FLAG_INSTA_LOGOUT is the one that belongs to the room,
+    /// and the line carrying it was being dropped.</summary>
+    public Core.Enums.RegionFlag Flags { get; set; }
+
+    public bool IsFlag(Core.Enums.RegionFlag flag) => (Flags & flag) != 0;
 
     public void AddRect(short x1, short y1, short x2, short y2)
     {

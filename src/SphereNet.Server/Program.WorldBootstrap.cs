@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -655,6 +655,12 @@ public static partial class Program
                             foreach (var ev in key.Arg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                                 room.AddEvent(ResourceId.FromString(ev, ResType.Events));
                         }
+                        break;
+                    case "FLAGS":
+                        // Parsed the same way an AREADEF's are. Only INSTA_LOGOUT is
+                        // read off a room (CClient.cpp:159); the rest are kept so the
+                        // room answers for what its definition says.
+                        room.Flags = ParseRegionFlags(key.Arg);
                         break;
                     default:
                         if (upper.StartsWith("TAG.", StringComparison.Ordinal))

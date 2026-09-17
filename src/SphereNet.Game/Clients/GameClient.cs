@@ -276,7 +276,11 @@ public sealed partial class GameClient : ITextConsole
             long utcNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             bool campingSafe = _character.TryGetTag("CAMPING_SAFE_LOGOUT_UNTIL", out string? safeText) &&
                 long.TryParse(safeText, out long safeUntil) && utcNow <= safeUntil;
-            bool instantRegion = _world.FindRegion(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true;
+            // The AREA, and then the ROOM: upstream checks both and the room is the
+            // only flag a room gets a say in (CanInstantLogOut, CClient.cpp:155-160).
+            bool instantRegion =
+                _world.FindRegion(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true ||
+                _world.FindRoom(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true;
             bool safeLogout = campingSafe || instantRegion || _character.PrivLevel >= PrivLevel.GM;
             bool linger = wasOnline && !safeLogout && !_character.IsDead && ClientLingerSeconds > 0;
 

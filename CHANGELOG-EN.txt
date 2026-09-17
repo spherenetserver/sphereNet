@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - RETURN inside an IF reported nothing
+----------------------------------------
+
+FIX - ExecuteIf set the return value and stopped the block but left its result at the
+        Default it was initialised with, so
+
+            IF <condition>
+               RETURN 1
+            ENDIF
+
+        came back as "no opinion", which the dispatcher reads as "carry on". That shape
+        is how every conditional veto in every pack is written - @EquipTest refusing a
+        piece of gear, @DClick swallowing a use, @Buy cancelling a sale - and none of
+        them could cancel anything. A RETURN 1 at the top of a block always worked,
+        which is why it went unnoticed, and the loops were never affected: they run
+        their body through Execute, which maps the result. RETURN 0 still means "no
+        opinion" at every level.
+
+FIX - An item answered for neither CAN nor CANUSE. Upstream keeps both masks on the
+        base and an instance read chains to it (IBC_CAN / IBC_CANUSE), so <CANUSE>
+        resolves inside a trigger running on the item. CANUSE is the mask the reference
+        pack's equip gate is written around - <CanUse>&<def.can_u_gargoyle> and the
+        male/female pair - and it hangs off 907 items, so the gate tested a blank on
+        every one of them, which looks exactly like an item that declared no
+        restriction.
+
 [2026-09-17] - The message colours a pack sets, loaded and never read
 ----------------------------------------
 

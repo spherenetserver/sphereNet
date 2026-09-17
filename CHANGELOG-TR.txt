@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - IF icindeki RETURN hicbir sey bildirmiyordu
+----------------------------------------
+
+FIX - ExecuteIf donus degerini kurup blogu durduruyor ama sonucunu, baslangicta
+        verilen Default degerinde birakiyordu; yani
+
+            IF <kosul>
+               RETURN 1
+            ENDIF
+
+        "gorus yok" olarak donuyordu ve dagitici bunu "devam et" diye okuyor. Bu bicim,
+        tum paketlerdeki her kosullu vetonun yazilis seklidir - @EquipTest bir esyayi
+        reddederken, @DClick bir kullanimi yutarken, @Buy bir satisi iptal ederken - ve
+        hicbiri hicbir seyi iptal edemiyordu. Blogun en ustundeki RETURN 1 her zaman
+        calisiyordu; fark edilmemesinin sebebi bu. Donguler hic etkilenmedi: govdelerini
+        sonucu esleyen Execute uzerinden calistiriyorlar. RETURN 0 her duzeyde yine
+        "gorus yok" demek.
+
+FIX - Bir esya ne CAN ne CANUSE'a yanit veriyordu. Ust kaynak iki maskeyi de temelde
+        tutar ve ornek uzerinden yapilan okuma oraya zincirlenir (IBC_CAN / IBC_CANUSE);
+        yani esya uzerinde calisan bir trigger icinde <CANUSE> cozulur. CANUSE, referans
+        paketin kusanma kapisinin tamamen etrafina yazildigi maskedir -
+        <CanUse>&<def.can_u_gargoyle> ve erkek/kadin cifti - ve 907 esyaya TEVENTS ile
+        bagli; kapi hepsinde bos bir deger test ediyordu, ki bu tam olarak hicbir
+        kisitlama bildirmemis bir esya gibi gorunur.
+
 [2026-09-17] - Paketin ayarladigi, yuklenip hic okunmayan mesaj renkleri
 ----------------------------------------
 

@@ -1686,6 +1686,27 @@ public class Item : ObjBase
             // the map did not, so a script reading a marked location back could
             // not tell which facet it named.
             case "MOREM": value = _moreP.Map.ToString(); return true;
+
+            // The two flag masks the item's own definition declares. Upstream keeps
+            // them on the base and an instance read chains straight to it (IBC_CAN /
+            // IBC_CANUSE, CItemBase.cpp), so <CAN> and <CANUSE> answer inside a
+            // trigger running on the item. Neither had a case here, and CANUSE is the
+            // mask the reference pack's equip gate tests on every piece of gear -
+            // <CanUse>&<def.can_u_gargoyle> and the gender pair - so the whole gate
+            // was reading a blank: 800-odd items declare a CANUSE that nothing could
+            // see. Written in the leading-zero hex a script compares against.
+            case "CAN":
+            {
+                var canDef = ResolveDefinition();
+                value = canDef != null ? $"0{(ulong)canDef.Can:X}" : "0";
+                return true;
+            }
+            case "CANUSE":
+            {
+                var useDef = ResolveDefinition();
+                value = useDef != null ? $"0{(ushort)useDef.CanUse:X}" : "0";
+                return true;
+            }
             case "RUNE_X": value = _moreP.X.ToString(); return true;
             case "RUNE_Y": value = _moreP.Y.ToString(); return true;
             case "RUNE_Z": value = _moreP.Z.ToString(); return true;

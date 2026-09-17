@@ -1102,6 +1102,14 @@ public sealed class ScriptInterpreter
                         bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
                         scope.ReturnValue = numeric ? val.ToString() : argStr;
                         scope.IsReturning = true;
+                        // The same mapping the top-level RETURN makes. Without it the
+                        // out-parameter kept the Default it was initialised with, so a
+                        // RETURN 1 inside an IF stopped the block and then reported
+                        // nothing - and "IF <condition> ... RETURN 1 ... ENDIF" is how
+                        // every conditional veto in every pack is written, from
+                        // @EquipTest to @DClick to @Buy. Loops were never affected:
+                        // they run their body through Execute, which maps it.
+                        result = val != 0 ? TriggerResult.True : TriggerResult.Default;
                         return lines.Count;
                     }
                     default:

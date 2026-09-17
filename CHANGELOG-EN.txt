@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The era-display hue a script could set but not read
+----------------------------------------
+
+FIX - SERV.CHARDEF.<def>.RESDISPDNHUE and its ITEMDEF counterpart had no case in the
+        resolver and read back as an empty string. 141 lines across the shipped packs
+        write COLOR=<SERV.CHARDEF.<BASEID>.RESDISPDNHUE> inside an @Create body, so
+        that COLOR= assigned nothing and every one of those creatures spawned at the
+        default hue instead of its own. The key is parsed into a typed field, which is
+        also why the ITEMDEF resolver's tag fallback never covered it - an unparsed key
+        lands in the definition's tags, a parsed one does not.
+
+        RESLEVEL, RESDISPDNID and the base scalars upstream answers for (BASEID,
+        HEIGHT, DAM, ARMOR, RANGE/RANGEH/RANGEL, MOVERATE, HIREDAYWAGE, ANIM,
+        BLOODCOLOR, FOLLOWERSLOTS, RESOURCES, CATEGORY, SUBSECTION, DESCRIPTION) read
+        back too, and the CHARDEF resolver gained the tag fallback the ITEMDEF one had,
+        so any key the chardef parser does not name returns what the pack wrote. A
+        TAG.<name> read strips the prefix the parser strips when it stores it.
+        RESDISPDNID is written as a defname and now reads back as one, the way upstream
+        answers it (ResourceGetName over the stored index, CCharBase.cpp:277).
+
 [2026-09-17] - The global EVENTS lists resolve their names the same way
 ----------------------------------------
 

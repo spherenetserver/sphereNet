@@ -227,7 +227,7 @@ public sealed class CharDef : BaseDef
                 break;
             case "RESLEVEL": byte.TryParse(value, out byte rsl); ResLevel = rsl; break;
             case "RESDISPDNHUE": ResDispDnHue = ParseHexOrDec(value); break;
-            case "RESDISPDNID": ResDispDnId = ParseHexOrDec(value); break;
+            case "RESDISPDNID": ResDispDnId = ParseHexOrDec(value); ResDispDnIdRaw = value.Trim(); break;
             case "RESOURCES": ParseCarveResources(value); break;
             case "EVENTS":
             case "TEVENTS":

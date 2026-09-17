@@ -4,6 +4,27 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Scriptin yazip okuyamadigi donem-gorunum rengi
+----------------------------------------
+
+FIX - SERV.CHARDEF.<def>.RESDISPDNHUE ve ITEMDEF karsiliginin cozucude bir dali yoktu;
+        bos dize donuyorlardi. Gonderilen paketlerde 141 satir bir @Create govdesinin
+        icinde COLOR=<SERV.CHARDEF.<BASEID>.RESDISPDNHUE> yaziyor; yani o COLOR= hicbir
+        sey atamiyor ve bu yaratiklarin hepsi kendi rengi yerine varsayilan renkle
+        doguyordu. Anahtar tipli bir alana ayristiriliyor; ITEMDEF cozucusunun etiket
+        yedeginin de onu yakalamamasinin sebebi bu - ayristirilmayan anahtar tanimin
+        etiketlerine duser, ayristirilan dusmez.
+
+        RESLEVEL, RESDISPDNID ve ust kaynagin yanit verdigi temel skalerler de (BASEID,
+        HEIGHT, DAM, ARMOR, RANGE/RANGEH/RANGEL, MOVERATE, HIREDAYWAGE, ANIM,
+        BLOODCOLOR, FOLLOWERSLOTS, RESOURCES, CATEGORY, SUBSECTION, DESCRIPTION) artik
+        okunuyor; CHARDEF cozucusu ITEMDEF'te olan etiket yedegini kazandi, boylece
+        chardef ayristiricisinin adlandirmadigi her anahtar paketin yazdigi degeri
+        donduruyor. TAG.<ad> okumasi, ayristiricinin saklarken attigi oneki atiyor.
+        RESDISPDNID bir defname olarak yaziliyor ve artik ust kaynaktaki gibi defname
+        olarak geri okunuyor (saklanan indeks uzerinden ResourceGetName,
+        CCharBase.cpp:277).
+
 [2026-09-17] - Genel EVENTS listeleri adlarini ayni yoldan cozuyor
 ----------------------------------------
 

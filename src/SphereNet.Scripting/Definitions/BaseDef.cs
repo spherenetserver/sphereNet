@@ -30,6 +30,11 @@ public abstract class BaseDef : ResourceLink
     public ushort ResDispDnHue { get; set; }
     public ushort ResDispDnId { get; set; }
 
+    /// <summary>RESDISPDNID as written. Packs give it as a defname
+    /// (RESDISPDNID=c_elemental_air), which is also how upstream reads it back -
+    /// ResourceGetName over the stored index (CCharBase.cpp:277).</summary>
+    public string ResDispDnIdRaw { get; set; } = "";
+
     /// <summary>Dynamic property tags on the definition.</summary>
     public VarMap TagDefs { get; } = new();
 

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -645,9 +645,48 @@ public static partial class Program
             "SOUNDHIT" => $"0{def.SoundHit:X}",
             "SOUNDGETHIT" => $"0{def.SoundGetHit:X}",
             "SOUNDDIE" => $"0{def.SoundDie:X}",
-            _ => ""
+
+            // The era-display family. A pack writes COLOR=<SERV.CHARDEF.<BASEID>.
+            // RESDISPDNHUE> in 141 @Create bodies across the shipped packs, and an
+            // unanswered read made that COLOR= assign an empty string - every one of
+            // those creatures spawned at the default hue instead of its own.
+            "RESLEVEL" => def.ResLevel.ToString(),
+            "RESDISPDNHUE" => $"0{def.ResDispDnHue:X}",
+            "RESDISPDNID" => string.IsNullOrEmpty(def.ResDispDnIdRaw)
+                ? $"0{def.ResDispDnId:X}" : def.ResDispDnIdRaw,
+
+            "BASEID" => $"0{def.DispIndex:X}",
+            "HEIGHT" => def.Height.ToString(),
+            "DAM" => def.AttackMin == def.AttackMax
+                ? def.AttackMin.ToString() : $"{def.AttackMin},{def.AttackMax}",
+            "ARMOR" => def.DefenseMin == def.DefenseMax
+                ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}",
+            "RANGE" => def.RangeMin == def.RangeMax
+                ? def.RangeMax.ToString() : $"{def.RangeMax},{def.RangeMin}",
+            "RANGEH" => def.RangeMax.ToString(),
+            "RANGEL" => def.RangeMin.ToString(),
+            "MOVERATE" => def.MoveRate.ToString(),
+            "HIREDAYWAGE" => def.HireDayWage.ToString(),
+            "ANIM" => $"0{def.Anim:X}",
+            "BLOODCOLOR" => def.BloodColor.ToString(),
+            "FOLLOWERSLOTS" => def.FollowerSlots.ToString(),
+            "RESOURCES" => string.Join(",", def.CarveResources.Select(r => $"{r.Amount} {r.DefName}")),
+            "CATEGORY" => def.Category,
+            "SUBSECTION" => def.Subsection,
+            "DESCRIPTION" => def.Description,
+
+            // And the same tag fallback the ITEMDEF side has: an unparsed key is kept
+            // in the definition's tags, and a script reading one back gets what the
+            // pack wrote instead of an empty string. The parser stores a TAG. key
+            // WITHOUT its prefix (CharDef.cs:331), so a TAG.<name> read strips it.
+            _ => def.TagDefs.Get(StripTagPrefix(field)) ?? ""
         };
     }
+
+    /// <summary>A definition's tags are stored without the TAG. prefix, and a script
+    /// reads them back with it (upstream OBC_TAG, CBase.cpp:216).</summary>
+    private static string StripTagPrefix(string field) =>
+        field.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase) ? field[4..] : field;
 
     private static string? ResolveServItemDef(string sub)
     {
@@ -691,7 +730,14 @@ public static partial class Program
             "ARMOR" => def.DefenseMin == def.DefenseMax ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}",
             "RESOURCES" => def.ResourcesRaw,
             "SKILLMAKE" => def.SkillMakeRaw,
-            _ => def.TagDefs.Get(field) ?? ""
+            // Typed on the definition, so the tag fallback below never saw them.
+            "RESLEVEL" => def.ResLevel.ToString(),
+            "RESDISPDNHUE" => $"0{def.ResDispDnHue:X}",
+            "RESDISPDNID" => string.IsNullOrEmpty(def.ResDispDnIdRaw)
+                ? $"0{def.ResDispDnId:X}" : def.ResDispDnIdRaw,
+            "BASEID" => $"0{def.DispIndex:X}",
+            "DUPELIST" => def.DupeList ?? "",
+            _ => def.TagDefs.Get(StripTagPrefix(field)) ?? ""
         };
     }
 

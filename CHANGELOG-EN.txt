@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A creature's elemental damage depended on how it was born
+----------------------------------------
+
+FIX - The CHARDEF damage split was written out twice - once in the spawner, once in
+        the client's NPC creation - and NOT in the shared helper both of them call for
+        the rest of the definition. A creature born any other way dealt pure physical
+        damage however much elemental its chardef declared: a GM .add, a script NEWNPC,
+        anything reaching TryApplyDefName. The shipped packs declare it on about forty
+        creatures per element (DAMENERGY 44, DAMFIRE 36, DAMCOLD 35, DAMPOISON 35).
+
+        It lives in the shared helper now and the two copies are gone. An unset
+        DAMPHYSICAL is still the remainder the elemental percents leave of 100
+        (Source-X OnTakeDamage), not the 100 a pure-physical creature keeps.
+
 [2026-09-17] - Armour that declared its resists in @Create had none
 ----------------------------------------
 

@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
@@ -272,17 +272,7 @@ public sealed class SpawnComponent
             if (ch.NpcFood == 0)
                 ch.NpcFood = 50;
 
-            if (charDef.DamPhysical != 0) ch.DamPhysical = charDef.DamPhysical;
-            else if (charDef.DamFire != 0 || charDef.DamCold != 0 || charDef.DamPoison != 0 || charDef.DamEnergy != 0)
-                // Source-X OnTakeDamage: an unset DAMPHYSICAL is the remainder the
-                // elemental percents leave of 100 (same rule as the packet-helper
-                // NPC path), NOT the 100 default a pure-physical char keeps.
-                ch.DamPhysical = (short)Math.Max(0, 100 - charDef.DamFire - charDef.DamCold - charDef.DamPoison - charDef.DamEnergy);
-            if (charDef.DamFire != 0) ch.DamFire = charDef.DamFire;
-            if (charDef.DamCold != 0) ch.DamCold = charDef.DamCold;
-            if (charDef.DamPoison != 0) ch.DamPoison = charDef.DamPoison;
-            if (charDef.DamEnergy != 0) ch.DamEnergy = charDef.DamEnergy;
-
+            CharDefHelper.ApplyDamageSplit(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionSkills(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionTags(ch, charDef);
 

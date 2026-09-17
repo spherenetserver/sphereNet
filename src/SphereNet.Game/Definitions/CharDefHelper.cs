@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Scripting.Definitions;
 using SphereNet.Scripting.Resources;
@@ -269,5 +269,35 @@ public static class CharDefHelper
         if (def.EraLimitLoot != 0) ch.SetTag("ERALIMITLOOT", def.EraLimitLoot.ToString());
         if (def.EraLimitProps != 0) ch.SetTag("ERALIMITPROPS", def.EraLimitProps.ToString());
         if (!string.IsNullOrWhiteSpace(def.FoodTypeRaw)) ch.SetTag("FOODTYPE", def.FoodTypeRaw);
+
+        ApplyDamageSplit(ch, def);
+    }
+
+    /// <summary>The elemental share of the damage this creature deals.
+    ///
+    /// An unset DAMPHYSICAL is the remainder the elemental percents leave of 100
+    /// (Source-X OnTakeDamage), NOT the 100 a pure-physical creature keeps - a drake
+    /// declaring DAMFIRE=20 deals 80 physical and 20 fire, not 100 and 20.
+    ///
+    /// This used to be written out twice, in the spawner and in the client's NPC
+    /// creation, and NOT in the shared helper both of them call for the rest of the
+    /// definition. So a creature born any other way - a GM .add, a script NEWNPC,
+    /// anything reaching TryApplyDefName - dealt pure physical damage however much
+    /// elemental its chardef declared. The shipped packs declare it on about forty
+    /// creatures per element.</summary>
+    public static void ApplyDamageSplit(Character ch, CharDef def)
+    {
+        bool anyElemental = def.DamFire != 0 || def.DamCold != 0 ||
+                            def.DamPoison != 0 || def.DamEnergy != 0;
+        if (def.DamPhysical != 0)
+            ch.DamPhysical = def.DamPhysical;
+        else if (anyElemental)
+            ch.DamPhysical = (short)Math.Max(0,
+                100 - def.DamFire - def.DamCold - def.DamPoison - def.DamEnergy);
+
+        if (def.DamFire != 0) ch.DamFire = def.DamFire;
+        if (def.DamCold != 0) ch.DamCold = def.DamCold;
+        if (def.DamPoison != 0) ch.DamPoison = def.DamPoison;
+        if (def.DamEnergy != 0) ch.DamEnergy = def.DamEnergy;
     }
 }

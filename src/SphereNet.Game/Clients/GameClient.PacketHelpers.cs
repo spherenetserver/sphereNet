@@ -1931,14 +1931,7 @@ public sealed partial class GameClient
             if (TryParseHue(colorText, out ushort hue))
                 npc.Hue = new Color(hue);
 
-            // Elemental damage percentages
-            if (charDef.DamFire != 0) npc.DamFire = charDef.DamFire;
-            if (charDef.DamCold != 0) npc.DamCold = charDef.DamCold;
-            if (charDef.DamPoison != 0) npc.DamPoison = charDef.DamPoison;
-            if (charDef.DamEnergy != 0) npc.DamEnergy = charDef.DamEnergy;
-            if (charDef.DamPhysical != 0) npc.DamPhysical = charDef.DamPhysical;
-            else if (charDef.DamFire != 0 || charDef.DamCold != 0 || charDef.DamPoison != 0 || charDef.DamEnergy != 0)
-                npc.DamPhysical = (short)(100 - charDef.DamFire - charDef.DamCold - charDef.DamPoison - charDef.DamEnergy);
+            SphereNet.Game.Definitions.CharDefHelper.ApplyDamageSplit(npc, charDef);
 
             EquipNewbieItems(npc, charDef.NewbieItems, npcDeferLoot: true);
         }

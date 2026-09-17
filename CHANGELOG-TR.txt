@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir yaratigin elemental hasari, nasil dogduguna bagliydi
+----------------------------------------
+
+FIX - CHARDEF hasar dagilimi iki ayri yerde yaziliydi - biri yaratici (spawner), digeri
+        istemcinin NPC olusturmasi - ve tanimin geri kalani icin ikisinin de cagirdigi
+        ORTAK yardimcida yoktu. Baska bir yoldan dogan bir yaratik, chardef'i ne kadar
+        elemental bildirirse bildirsin saf fiziksel hasar veriyordu: GM .add, script
+        NEWNPC, TryApplyDefName'e ulasan her sey. Gonderilen paketler bunu element basina
+        yaklasik kirk yaratikta bildiriyor (DAMENERGY 44, DAMFIRE 36, DAMCOLD 35,
+        DAMPOISON 35).
+
+        Artik ortak yardimcida ve iki kopya kaldirildi. Ayarlanmamis bir DAMPHYSICAL yine
+        elemental yuzdelerin 100'den geriye biraktigi paydir (Source-X OnTakeDamage), saf
+        fiziksel bir yaratigin korudugu 100 degil.
+
 [2026-09-17] - @Create icinde direncini bildiren zirhin hic direnci yoktu
 ----------------------------------------
 

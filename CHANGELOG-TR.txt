@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Menudeki resimler
+----------------------------------------
+
+FIX - Bir MENU satiri resmini bir ITEMDEF ile adlandiramiyordu. Ust kaynak id'yi bir
+        KAYNAK olarak okur ve o tanimin grafigini gosterir (CMenuItem::ParseLine,
+        CClientDialog.cpp:305); yani "i_gold" ile "0eed" esit derecede gecerlidir ve
+        yalnizca "0" resim yok demektir. Burada yalnizca sayisal yazim okunuyordu,
+        dolayisiyla resmini defname ile adlandiran her satir resimsiz ciziliyordu -
+        referans dagitimin eski ekleme menusu tam olarak boyle 723 satirdir ve tum
+        amaci resimlerdir. Tanim bir grafik odunc aliyorsa resim onun DISPID'sidir,
+        almiyorsa kendi anahtaridir; cogu oyledir.
+
+FIX - Satirin etiketi istemciye genisletilmeden gonderiliyordu. Ust kaynak metni,
+        cozulen tanim nesne olacak sekilde degerlendirir (:323); paketlerin satiri
+        "ON=i_gold <NAME>" diye yazip esyanin adini almasinin sebebi budur.
+        Referansta 699 satir boyle yazilmis ve hepsi harfiyen "<NAME>" metniyle
+        gidiyordu. Artik tanimin adi yerine konuyor; yanindaki SKILLMENU
+        ayristiricisinin zaten yaptigi seyle ayni.
+
+CHANGE - Hatali bir menu item id'si, bos bir satir cizmek yerine satiri dusurup log
+        yaziyor; ust kaynagin yaptigi gibi.
+
 [2026-09-17] - Bir esyanin bonusu ne ise yariyordu
 ----------------------------------------
 

@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The pictures on a menu
+----------------------------------------
+
+FIX - A MENU row could not name its picture with an ITEMDEF. Upstream reads the id
+        as a RESOURCE and shows that definition's graphic (CMenuItem::ParseLine,
+        CClientDialog.cpp:305), so "i_gold" and "0eed" are equally valid and "0"
+        alone means no picture. Only the numeric spelling was read here, so every
+        row naming its picture by defname drew none - and the reference
+        distribution's legacy add-menu is 723 such rows, a menu whose entire point
+        is the pictures. The definition's DISPID is the picture when it borrows a
+        graphic, and its own key when it does not, which is most of them.
+
+FIX - The row's label was sent to the client unexpanded. Upstream evaluates the
+        text with the resolved definition as the object (:323), which is why the
+        packs write the row as "ON=i_gold <NAME>" and get the item's name. 699 rows
+        in the reference are written that way, and every one of them went out as the
+        literal text "<NAME>". The definition's name is substituted now, matching
+        what the SKILLMENU parser beside it already did.
+
+CHANGE - A bad menu item id drops the row and logs, as upstream does, rather than
+        drawing a blank one.
+
 [2026-09-17] - What an item's bonus was worth
 ----------------------------------------
 

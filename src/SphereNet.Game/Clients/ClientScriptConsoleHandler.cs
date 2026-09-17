@@ -612,14 +612,16 @@ public sealed class ClientScriptConsoleHandler
                     string text = "";
 
                     int firstSpace = onArg.IndexOf(' ');
+                    string idPart;
                     if (firstSpace < 0)
                     {
                         // ON=baseid with no text
+                        idPart = onArg;
                         _ = ushort.TryParse(onArg, System.Globalization.NumberStyles.HexNumber, null, out modelId);
                     }
                     else
                     {
-                        string idPart = onArg[..firstSpace].Trim();
+                        idPart = onArg[..firstSpace].Trim();
                         string rest = onArg[(firstSpace + 1)..].Trim();
 
                         if (idPart.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || idPart.StartsWith("0", StringComparison.OrdinalIgnoreCase))
@@ -647,6 +649,60 @@ public sealed class ClientScriptConsoleHandler
                         else
                         {
                             text = rest;
+                        }
+                    }
+
+                    // An id that is not "0" is an ITEMDEF, and the picture shown is
+                    // that definition's DISPID (CMenuItem::ParseLine,
+                    // CClientDialog.cpp:305-317) - it is looked up as a RESOURCE, so
+                    // "i_gold" is as valid as "0eed". Only the numeric spelling was
+                    // read here, so every menu row naming its picture by defname drew
+                    // none: the reference's own add-menu is seven hundred such rows.
+                    if (modelId == 0 && !idPart.Equals("0", StringComparison.Ordinal))
+                    {
+                        int defIndex = SphereNet.Game.Definitions.DefinitionLoader
+                            .ResolveItemDefIndexByName(idPart);
+                        var idef = defIndex != 0
+                            ? SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(defIndex)
+                            : null;
+                        // DISPID when the definition borrows another graphic, the
+                        // definition's own key when it does not - most ITEMDEFs are
+                        // [ITEMDEF 0eed] with no DISPID line at all, and their key IS
+                        // the picture. Reading DISPID alone would drop every one of
+                        // them as a bad id.
+                        ushort picture = idef == null ? (ushort)0
+                            : idef.DispIndex != 0 ? idef.DispIndex : (ushort)defIndex;
+                        if (idef != null && picture != 0)
+                        {
+                            modelId = picture;
+                            // Upstream evaluates the row's TEXT with the resolved
+                            // definition as the object (CClientDialog.cpp:323), which
+                            // is why the packs write the row as "ON=i_gold <NAME>" and
+                            // get the item's name. Six hundred and ninety-nine rows in
+                            // the reference distribution are written that way. The
+                            // SKILLMENU parser beside this one already substitutes the
+                            // same token; this matches it rather than running the whole
+                            // menu body through the interpreter, which the menu path
+                            // does not do at all.
+                            if (!string.IsNullOrEmpty(idef.Name) &&
+                                text.Contains("<NAME>", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Ordinal, not a regex: the token is a literal and
+                                // case-insensitive matching by CURRENT culture is the
+                                // Turkish-I hazard this engine has been bitten by.
+                                text = text.Replace("<NAME>", idef.Name,
+                                    StringComparison.OrdinalIgnoreCase);
+                            }
+                        }
+                        else
+                        {
+                            // Upstream drops the row and logs rather than drawing a
+                            // blank one (DEBUG_ERR "Bad MENU item id", then --i).
+                            _logger.LogWarning(
+                                "[menu] MENU {Defname}: bad item id '{Id}' - row skipped",
+                                menuDefname, idPart);
+                            current = null;
+                            continue;
                         }
                     }
 

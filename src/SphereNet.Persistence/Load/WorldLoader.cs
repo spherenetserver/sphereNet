@@ -1700,20 +1700,28 @@ public sealed class WorldLoader
             }
             else if (upper.StartsWith("GMPAGE", StringComparison.OrdinalIgnoreCase))
             {
-                string account = "", reason = "", handler = "", status = "open";
-                long created = 0;
+                var page = new SphereNet.Game.World.GmPage();
                 while (reader.NextProperty(out string key, out string val))
                 {
                     switch (key.ToUpperInvariant())
                     {
-                        case "ACCOUNT": account = val; break;
-                        case "REASON": reason = val; break;
-                        case "HANDLER": handler = val; break;
-                        case "STATUS": status = val; break;
-                        case "TIME": case "CREATED": long.TryParse(val, out created); break;
+                        case "ACCOUNT": page.Account = val; break;
+                        case "REASON": page.Reason = val; break;
+                        // CHARUID and P arrived later than this section did, so a
+                        // page saved before them simply has neither.
+                        case "CHARUID": page.TrySetProperty("CHARUID", val); break;
+                        case "P": page.TrySetProperty("P", val); break;
+                        // HANDLER used to be a staff NAME and is now the staff uid.
+                        // A name parses to nothing, which is the honest answer: the
+                        // old value could not be compared against SRC either.
+                        case "HANDLER": page.TrySetProperty("HANDLED", val); break;
+                        case "STATUS": page.Status = val; break;
+                        // The absolute stamp the saver writes, not the age the
+                        // script-facing TIME key answers.
+                        case "TIME": case "CREATED": page.TrySetProperty("CREATED", val); break;
                     }
                 }
-                world.AddGmPage(new GameWorld.GmPageRecord(account, reason, handler, status, created));
+                world.AddGmPage(page);
             }
             else if (upper == "DOORS")
             {

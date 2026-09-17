@@ -237,7 +237,9 @@ public static partial class Program
             // a CALL resolves through it (CScriptObj.cpp:1217).
             scriptInterpreter.ResolveObjectRef = (obj, head) => obj switch
             {
-                ObjBase o => o.ResolveRefHead(head),
+                // The WIDER resolver: upstream's r_GetRef answers with a CScriptObj,
+                // and a GM page is one without being a world object.
+                ObjBase o => o.ResolveScriptRefHead(head),
                 _ => null,
             };
             scriptInterpreter.ServerPropertyResolver = ResolveServerProperty;
@@ -1170,6 +1172,25 @@ public static partial class Program
             };
             _commands.OnPageReceived += (player, message) =>
             {
+                // Put the page in the QUEUE. It was only ever logged and announced,
+                // so SERV.GMPAGES stayed at zero however many players paged and the
+                // queue dialog opened on an empty list every time - the one thing a
+                // page is for. Who paged and from where are recorded because that is
+                // what a GM answering it needs (CGMPage CHARUID / P).
+                if (_world != null)
+                {
+                    _world.AddGmPage(new SphereNet.Game.World.GmPage
+                    {
+                        Account = SphereNet.Game.Objects.Characters.Character
+                            .ResolveAccountForChar?.Invoke(player.Uid)?.Name
+                            ?? player.GetName(),
+                        CharUid = player.Uid,
+                        Position = player.Position,
+                        Reason = message,
+                        Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    });
+                }
+
                 var pageMsg = $"[PAGE from {player.GetName()}] {message}";
                 _log.LogInformation("{PageMessage}", pageMsg);
                 var staffNotified = false;

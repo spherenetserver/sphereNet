@@ -787,17 +787,17 @@ public static partial class Program
         if (pages == null || !int.TryParse(idxStr, out int index) || index < 0 || index >= pages.Count)
             return "0";
         var page = pages[index];
-        return field switch
-        {
-            "" => page.Reason,
-            "ACCOUNT" => page.Account,
-            "REASON" => page.Reason,
-            "HANDLER" => page.Handler,
-            "STATUS" => page.Status,
-            "TIME" or "CREATED" => page.Created.ToString(),
-            "DELETE" => RemoveGmPage(index),
-            _ => ""
-        };
+        if (field.Length == 0)
+            return page.Reason;
+        // DELETE reads as a removal, which is how the reference distribution's own
+        // queue dialog spells it: SERV.GMPAGE.<n>.DELETE on a line of its own.
+        if (field == "DELETE")
+            return RemoveGmPage(index);
+        // Everything else the page answers for itself (CGMPage::r_WriteVal):
+        // ACCOUNT, CHARUID, HANDLED, P, REASON and TIME - the last as the page's AGE
+        // in seconds, which is what a queue renders and what this used to return a
+        // raw unix stamp for.
+        return page.TryGetProperty(field, out string value) ? value : "";
     }
 
     private static string RemoveGmPage(int index)
@@ -1704,10 +1704,21 @@ public static partial class Program
         if (_world == null)
             return "0";
         string account = src;
+        var page = new SphereNet.Game.World.GmPage
+        {
+            Reason = reason,
+            Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+        // Naming a character as the source records WHO paged and from WHERE, not
+        // just their account name - the two keys a GM answering it reads.
         if (TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
+        {
             account = Character.ResolveAccountForChar?.Invoke(ch.Uid)?.Name ?? ch.Name ?? src;
-        _world.AddGmPage(new GameWorld.GmPageRecord(
-            account, reason, "", "open", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+            page.CharUid = ch.Uid;
+            page.Position = ch.Position;
+        }
+        page.Account = account;
+        _world.AddGmPage(page);
         return _world.GmPages.Count.ToString();
     }
 

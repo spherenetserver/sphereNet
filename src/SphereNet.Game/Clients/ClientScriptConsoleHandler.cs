@@ -1019,6 +1019,32 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        // SERV.GMPAGE.<n>.<key> written as a STATEMENT rather than read as a value:
+        // the reference distribution's queue dialog claims a page with
+        // "SERV.GMPAGE.<n>.HANDLED <SRC>", releases it with "HANDLED 0" and drops it
+        // with ".DELETE". All three landed in the unimplemented-verb warning below,
+        // so a GM could open the queue and change nothing in it.
+        if (upper.StartsWith("SERV.GMPAGE.", StringComparison.Ordinal))
+        {
+            string rest = upper["SERV.GMPAGE.".Length..];
+            int dot = rest.IndexOf('.');
+            string idxPart = dot >= 0 ? rest[..dot] : rest;
+            string field = dot >= 0 ? rest[(dot + 1)..] : "";
+            var pages = _world?.GmPages;
+            if (pages != null && int.TryParse(idxPart, out int pageIdx) &&
+                pageIdx >= 0 && pageIdx < pages.Count)
+            {
+                if (field == "DELETE")
+                {
+                    _world!.RemoveGmPageAt(pageIdx);
+                    return true;
+                }
+                if (pages[pageIdx].TryExecuteCommand(field, args, (ITextConsole)_client, out bool pageOwned) || pageOwned)
+                    return true;
+            }
+            return true;   // a bad index is not a crash, as everywhere else here
+        }
+
         if (upper.StartsWith("SERV.", StringComparison.Ordinal))
         {
             // Unimplemented service verbs must not crash scripts (Sphere keeps

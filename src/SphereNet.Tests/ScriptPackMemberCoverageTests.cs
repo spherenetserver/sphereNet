@@ -93,13 +93,8 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     ///
     /// The engine gaps that remain, and why they are not one-line fixes:
     ///
-    /// GMPAGEP and SendGMPage need a GM PAGE as a script object. Upstream's CGMPage
-    /// is one, with its own properties; here a page is a plain GmPageRecord struct in
-    /// a list, which a reference head cannot resolve to. Answering the pack's single
-    /// bare truth test while every dotted read still returned nothing would be worse
-    /// than answering neither.
-    ///
-    /// F_HOUSE_NEAR_DOOR is a pack function the housing scripts expect to exist.
+    /// SendGMPage and F_HOUSE_NEAR_DOOR are pack functions the scripts expect to
+    /// exist. (GMPAGEP itself is answered now, by GmPage.)
     ///
     /// "e" is the collector, not the engine: a book's page TEXT contains the English
     /// "i.e.", and prose inside a quoted string is not distinguishable from a member
@@ -110,7 +105,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             "FLAGSIL", "FUNC_DIALOGCLOSEALL", "FUNC_EMOTE_BONUS",
             "FUNC_GetChar_List", "FUNC_WARMODE", "F_HOUSE_NEAR_DOOR", "FlagEkle",
             "Func_NoGold_Msg", "Func_Server_All_Entities_PageBild_Char", "Func_Server_All_Entities_PageBild_Item",
-            "GMPAGEP", "ISDISS", "ISINSAFE", "ISJAIL",
+            "ISDISS", "ISINSAFE", "ISJAIL",
             "LOCATION", "LOG", "MYNAME",
             "NOTICE", "PLACE", "REMOVETIMER", "SYSMESSSYSMESSAGELOC",
             "SendGMPage", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",

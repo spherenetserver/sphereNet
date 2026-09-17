@@ -3423,6 +3423,18 @@ public partial class Character : ObjBase
         return base.ResolveRefHead(head);
     }
 
+    /// <summary>GMPAGEP: the GM page this staff character is handling
+    /// (CLIR_GMPAGEP -> CClient::m_pGMPage, CClient.cpp:541). It is not a world
+    /// object - a page has no uid and lives in a queue - so it can only be answered
+    /// here, on the wider resolver. The reference's own queue dialog asks the bare
+    /// head as a truth test before letting a GM claim a second page.</summary>
+    public override SphereNet.Core.Interfaces.IScriptObj? ResolveScriptRefHead(string head)
+    {
+        if (head.Equals("GMPAGEP", StringComparison.OrdinalIgnoreCase))
+            return ResolveWorld?.Invoke()?.FindGmPageHandledBy(Uid);
+        return base.ResolveScriptRefHead(head);
+    }
+
     // --- IScriptObj overrides ---
     public override bool TryGetProperty(string key, out string value)
     {
@@ -3602,6 +3614,30 @@ public partial class Character : ObjBase
             }
 
             return acc.TryGetProperty(subKey, out value);
+        }
+
+        // GMPAGEP — the GM page this staff character is handling
+        // (CLIR_GMPAGEP -> CClient::m_pGMPage, CClient.cpp:541).
+        //
+        // Read BARE it is a truth test, and upstream's rule for a reference that is
+        // not a world object is to answer 1 (CScriptObj.cpp:511: a CObjBase ref reads
+        // as its uid, anything else as 1, an absent ref as false). A GM page has no
+        // uid, so 1/0 is the whole answer - and it is the answer the reference
+        // distribution's queue dialog needs before it lets a GM claim a second page.
+        if (upper == "GMPAGEP" || upper.StartsWith("GMPAGEP.", StringComparison.Ordinal))
+        {
+            var heldPage = ResolveWorld?.Invoke()?.FindGmPageHandledBy(Uid);
+            if (upper.Length == "GMPAGEP".Length)
+            {
+                value = heldPage != null ? "1" : "0";
+                return true;
+            }
+            if (heldPage == null)
+            {
+                value = "0";
+                return true;
+            }
+            return heldPage.TryGetProperty(key[("GMPAGEP.".Length)..], out value);
         }
 
         if (upper.StartsWith("STATPERCENT", StringComparison.Ordinal))

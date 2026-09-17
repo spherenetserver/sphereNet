@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -145,7 +145,11 @@ public class SaveFormatTests
             Assert.Equal(1234567890, dst.GmPages[0].Created);
             Assert.Equal("Bob", dst.GmPages[1].Account);
             Assert.Equal("lost item, need help", dst.GmPages[1].Reason);
-            Assert.Equal("GM_Joe", dst.GmPages[1].Handler);
+            // HANDLER is a staff UID now, not a name. Nothing ever wrote a name
+            // into it and a name could not be compared against SRC, which is all a
+            // queue dialog does with it - so a name-shaped legacy value resolves to
+            // nobody rather than to a handler that cannot be checked.
+            Assert.False(dst.GmPages[1].Handler.IsValid);
             Assert.Equal("assigned", dst.GmPages[1].Status);
         }
         finally

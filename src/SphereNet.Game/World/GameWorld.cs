@@ -2447,18 +2447,50 @@ public sealed class GameWorld
     // them as GMPAGE sections (CGMPage::r_Write, "SAVED in World"), so the world
     // owns the queue and it survives a restart.
 
+    /// <summary>The five fields the queue has always carried. Kept as the shorthand
+    /// constructor for the save loader and for callers that have nothing more to
+    /// record; <see cref="GmPage"/> is the thing itself.</summary>
     public readonly record struct GmPageRecord(
         string Account, string Reason, string Handler, string Status, long Created);
 
-    private readonly List<GmPageRecord> _gmPages = new();
+    private readonly List<GmPage> _gmPages = new();
 
-    public IReadOnlyList<GmPageRecord> GmPages => _gmPages;
-    public void AddGmPage(in GmPageRecord page) => _gmPages.Add(page);
+    public IReadOnlyList<GmPage> GmPages => _gmPages;
+
+    public void AddGmPage(GmPage page) => _gmPages.Add(page);
+
+    public void AddGmPage(in GmPageRecord page)
+    {
+        var made = new GmPage
+        {
+            Account = page.Account,
+            Reason = page.Reason,
+            Status = page.Status,
+            Created = page.Created,
+        };
+        // The handler is a staff UID now, not a name. Nothing ever wrote a name into
+        // it - every caller passed an empty string - and a name could not be compared
+        // against SRC, which is the only thing a queue dialog does with it. A
+        // name-shaped value parses to nobody, which is the honest answer.
+        made.TrySetProperty("HANDLED", page.Handler);
+        _gmPages.Add(made);
+    }
+
     public void RemoveGmPageAt(int index)
     {
         if (index >= 0 && index < _gmPages.Count)
             _gmPages.RemoveAt(index);
     }
+
+    /// <summary>Remove a page by identity, for the paths that hold the page rather
+    /// than its position in a list that shifts under them.</summary>
+    public bool RemoveGmPage(GmPage page) => _gmPages.Remove(page);
+
+    /// <summary>The page this staff character is handling, or null
+    /// (CClient::m_pGMPage, which the GMPAGEP reference head resolves to).</summary>
+    public GmPage? FindGmPageHandledBy(Serial handler) =>
+        handler.IsValid ? _gmPages.FirstOrDefault(p => p.Handler == handler) : null;
+
     public void ClearGmPages() => _gmPages.Clear();
 
     // ==================== Global Lists ====================

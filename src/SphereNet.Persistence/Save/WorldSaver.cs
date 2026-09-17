@@ -1307,9 +1307,16 @@ public sealed class WorldSaver
                 w.BeginRecord($"GMPAGE {gp}");
                 w.WriteProperty("ACCOUNT", page.Account);
                 w.WriteProperty("REASON", page.Reason);
-                if (!string.IsNullOrEmpty(page.Handler))
-                    w.WriteProperty("HANDLER", page.Handler);
-                w.WriteProperty("STATUS", page.Status.ToString());
+                // Who paged and from where (CGMPage::r_Write CHARUID / P). Written
+                // only when set, so a save from before they were recorded and a save
+                // of a page that never had them look the same.
+                if (page.CharUid.IsValid)
+                    w.WriteProperty("CHARUID", $"0{page.CharUid.Value:X}");
+                if (page.Position.Map != 0 || page.Position.X != 0 || page.Position.Y != 0)
+                    w.WriteProperty("P", page.Position.ToString());
+                if (page.Handler.IsValid)
+                    w.WriteProperty("HANDLER", $"0{page.Handler.Value:X}");
+                w.WriteProperty("STATUS", page.Status);
                 w.WriteProperty("TIME", page.Created.ToString());
             }
 

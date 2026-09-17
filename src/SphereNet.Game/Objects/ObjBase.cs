@@ -790,6 +790,16 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     public virtual ObjBase? ResolveRefHead(string head) =>
         head.Equals("TOPOBJ", StringComparison.OrdinalIgnoreCase) ? GetTopLevelObj() : null;
 
+    /// <summary>The same question, but able to answer with something that is not a
+    /// world object.
+    ///
+    /// Upstream's r_GetRef hands back a CScriptObj (CScriptObj.cpp:1217), and not
+    /// every reference head names a thing with a uid: a GM page is a CScriptObj that
+    /// lives in a queue rather than in the world. Narrowing the answer to ObjBase
+    /// left those heads with no way to be expressed at all. Overriders that only
+    /// need world objects keep overriding <see cref="ResolveRefHead"/>.</summary>
+    public virtual IScriptObj? ResolveScriptRefHead(string head) => ResolveRefHead(head);
+
     /// <summary>The character a verb should act for, given the console that issued it —
     /// the port of <c>pSrc-&gt;GetChar()</c> (CItem.cpp:3574). A connected client is one
     /// case, not the only one: a delayed call runs with the top-level character as SRC

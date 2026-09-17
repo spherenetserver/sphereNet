@@ -4,6 +4,57 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - GM pages
+----------------------------------------
+
+FIX - .PAGE never put anything in the GM page queue. It logged the request and
+        announced it to online staff, and that was all - so SERV.GMPAGES stayed at
+        zero however many players paged, the queue dialog opened on an empty list
+        every time, and a page made while no staff were online was gone for good.
+        A page is enqueued now, carrying who made it and where they were standing,
+        which is what a GM answering it needs.
+
+FIX - A GM page is a script object (Source-X CGMPage, a CScriptObj rather than a
+        CObjBase: no uid, living in a queue instead of in the world). It was a
+        five-field value record here, and four of the keys the reference's own
+        queue dialog reads had nowhere to live:
+
+        CHARUID, the character who paged - the dialog resolves it to show their
+        name and whether they are online, and to send them the reply.
+
+        P, where the page was made from - what the "go to the player" button
+        travels to. Without it there was nowhere to go.
+
+        TIME, which is the AGE of the page in seconds and not the moment it was
+        made. This returned a raw unix stamp, and the queue renders it as
+        "<TIME>/60 minutes ago", so every page claimed to be about thirty-four
+        million minutes old.
+
+        HANDLED, the UID of the staff member who took the page. The old field was
+        a handler NAME, which nothing ever wrote and which could not be compared
+        against SRC - and comparing it against SRC is the whole of what a queue
+        does with it: whoever holds a page may close it, and nobody else may.
+
+FIX - SERV.GMPAGE.<n>.HANDLED and .DELETE written as STATEMENTS - which is how the
+        queue claims, releases and drops a page - landed in the unimplemented-SERV-
+        verb warning. A GM could open the queue and change nothing in it.
+
+FIX - GMPAGEP, the page a staff member is currently handling
+        (CClient::sm_szRefKeys). Read bare it is a truth test and answers 1 or 0,
+        which is upstream's rule for a reference that is not a world object
+        (CScriptObj.cpp:511); read through, it reaches the page. The queue asks it
+        before letting a GM claim a second page, so without it one GM could hold
+        every page at once.
+
+CHANGE - A reference head can now answer with something that is not a world object.
+        Upstream's r_GetRef hands back a CScriptObj and not every reference names a
+        thing with a uid; narrowing the answer left those heads with no way to be
+        expressed at all.
+
+CHANGE - The saved page carries CHARUID and P as well. A page saved before they
+        existed loads with neither, and the old handler NAME resolves to nobody -
+        the honest answer, since it could not be checked against anyone either.
+
 [2026-09-17] - The NPC action verbs
 ----------------------------------------
 

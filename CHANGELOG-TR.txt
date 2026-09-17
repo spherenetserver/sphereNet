@@ -4,6 +4,57 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - GM sayfalari
+----------------------------------------
+
+FIX - .PAGE GM sayfa kuyruguna hicbir sey koymuyordu. Istegi logluyor ve cevrimici
+        gorevlilere duyuruyordu, hepsi bu - yani kac oyuncu page atarsa atsin
+        SERV.GMPAGES sifirda kaliyor, kuyruk dialogu her seferinde bos listeyle
+        aciliyor ve hicbir gorevli cevrimici degilken atilan bir page temelli
+        kayboluyordu. Artik sayfa kuyruga giriyor; onu kimin attigini ve nerede
+        durdugunu da tasiyor, ki cevap veren bir GM'in ihtiyaci olan sey budur.
+
+FIX - Bir GM sayfasi bir script nesnesidir (Source-X CGMPage; CObjBase degil
+        CScriptObj: uid'i yok, dunyada degil bir kuyrukta yasar). Burada bes alanli
+        bir deger kaydiydi ve referansin kendi kuyruk dialogunun okudugu dort
+        anahtarin yasayacak yeri yoktu:
+
+        CHARUID, page'i atan karakter - dialog bunu cozup adini ve cevrimici olup
+        olmadigini gosteriyor, cevabi da ona gonderiyor.
+
+        P, page'in atildigi yer - "oyuncuya git" dugmesinin gittigi nokta. O
+        olmadan gidilecek bir yer yoktu.
+
+        TIME, ki bu sayfanin saniye cinsinden YASIdir, atildigi an degil. Burada
+        ham bir unix damgasi donuyordu ve kuyruk bunu "<TIME>/60 dakika once" diye
+        yaziyor; yani her sayfa yaklasik otuz dort milyon dakikalik gorunuyordu.
+
+        HANDLED, sayfayi ustlenen gorevlinin UID'i. Eski alan bir gorevli ADIydi;
+        onu hicbir sey yazmiyordu ve SRC ile karsilastirilamiyordu - oysa bir
+        kuyrugun onunla yaptigi tek sey SRC ile karsilastirmaktir: sayfayi tutan
+        onu kapatabilir, baskasi kapatamaz.
+
+FIX - SERV.GMPAGE.<n>.HANDLED ve .DELETE'in IFADE olarak yazilmasi - kuyrugun bir
+        sayfayi ustlenme, birakma ve silme yolu budur - uygulanmamis-SERV-verb
+        uyarisina dusuyordu. Bir GM kuyrugu acip icinde hicbir seyi
+        degistiremiyordu.
+
+FIX - GMPAGEP, bir gorevlinin o an ustlendigi sayfa (CClient::sm_szRefKeys).
+        Ciplak okundugunda bir dogruluk testidir ve 1 ya da 0 doner; bu, ust
+        kaynagin dunya nesnesi olmayan bir referans icin kuralidir
+        (CScriptObj.cpp:511). Noktali okundugunda sayfaya ulasir. Kuyruk, bir GM'in
+        ikinci bir sayfa ustlenmesine izin vermeden once bunu sorar; yani o olmadan
+        tek bir GM tum sayfalari ayni anda tutabilirdi.
+
+CHANGE - Bir referans basligi artik dunya nesnesi olmayan bir seyle de yanit
+        verebiliyor. Ust kaynagin r_GetRef'i bir CScriptObj dondurur ve her referans
+        uid'i olan bir seyi adlandirmaz; yaniti daraltmak bu basliklara ifade
+        edilecek hicbir yol birakmiyordu.
+
+CHANGE - Kaydedilen sayfa artik CHARUID ve P'yi de tasiyor. Bunlar var olmadan once
+        kaydedilmis bir sayfa ikisi olmadan yuklenir ve eski gorevli ADI kimseye
+        cozulmez - durust yanit budur, cunku o zaten kimseyle karsilastirilamiyordu.
+
 [2026-09-17] - NPC eylem verb'leri
 ----------------------------------------
 

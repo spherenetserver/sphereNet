@@ -1622,6 +1622,13 @@ public class Item : ObjBase
             value = TryGetTag(upper, out var equipv) ? equipv ?? "0" : "0";
             return true;
         }
+        // The stat and pool bonuses, on the same footing - and summed by the very
+        // same aggregation (CombatEngine.EffectiveStr and its neighbours).
+        if (EquipmentStatBonuses.Contains(upper))
+        {
+            value = TryGetTag(upper, out var bonusv) ? bonusv ?? "0" : "0";
+            return true;
+        }
         if (SpellCastingProperties.Contains(upper))
         {
             value = TryGetTag(upper, out var castingValue) ? castingValue ?? "0" : "0";
@@ -2234,6 +2241,11 @@ public class Item : ObjBase
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
         if (AosEquipProperties.Contains(upper))
+        {
+            SetTag(upper, value.Trim());
+            return true;
+        }
+        if (EquipmentStatBonuses.Contains(upper))
         {
             SetTag(upper, value.Trim());
             return true;

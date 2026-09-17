@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir esyanin bonusu ne ise yariyordu
+----------------------------------------
+
+Bir script satiri uc bicim alabilir. Ikisi olculmustu: uye olarak okunan OBJ.AD ve
+kendi satirinda verb olarak calisan AD. Ucuncusu AD=deger; bir paketin neredeyse her
+seyi kurma bicimi bu - ve yerden renksiz cikan cevher tablosunun arkasindaki bicim de
+buydu. Onu taramak, var olup erisilemeyen bir yol daha buldu.
+
+FIX - Bir kusam stat bonusu kurulamiyordu. BONUSSTR, BONUSDEX, BONUSINT ve uc
+        maksimum-havuz bonusu (Source-X CCPropsItemEquippable) her okumada giyili
+        her esyadan ZATEN toplaniyordu - EffectiveStr ve komsulari tum takimi dolasir
+        - yani toplama oradaydi, dogruydu ve hicbir sey onu beslemiyordu. BonusStr=5
+        yazan bir ITEMDEF ya da tetikleyici satirini tuketilip atilmis oluyordu,
+        cunku hicbir seyin kabul etmedigi bir atama yine de basarili doner. Bonus
+        tasiyabilen tek techizat, bonusu baska bir yerde sabitlenmis techizatti.
+        Artik esyada gidip geliyor, toplamanin zaten okudugu tag'e iniyor ve esya
+        cikarilinca birlikte gidiyor.
+
+CHANGE - Ucuncu bir tarama atanan anahtarlari olcuyor; diger ikisiyle ayni yontemle:
+        statik topla, motora sorarak coz. Dogruyu soylemesi icin bes duzeltme
+        gerekti ve her biri calisan kodu eksik diye bildiriyordu - bir anahtarin onune
+        REF1'den REF100'e kadar herhangi biri gelebilir, bir listenin tuttugu birkac
+        tane degil; FINDID.<defname>.<anahtar> buldugu esyaya atama yapar, yani
+        anahtar ciftin ardindan gelendir; float.x herhangi bir seyin anahtari degil
+        kayan noktali bir yerel depodur; bir tas lonca kaydi icin ancak arkasinda bir
+        kayit varsa yanit verir; ve ev ile spawner verb tablolarina atama yoluyla da
+        ulasilir (REF1.DelObj=<LINK>).
+
+        Hicbir seyin kabul etmedigi on uc anahtar kaldi; hepsi referans anahtar
+        tablolarina gore gercek birer fark ve hepsi uygulanmak yerine listelendi: bu
+        motorda o degerlerin hicbirini okuyan bir sey yok ve onlari yazan paketler de
+        geri okumuyor. Onlari depolamak listeyi yesile cevirir ve oyunda olan hicbir
+        seyi degistirmezdi - ki bu taramalarin var olma sebebi tam olarak bu tur bir
+        hatadir. Her biri, once neyin var olmasi gerektigiyle birlikte testte adli.
+
 [2026-09-17] - Kendi satirinda yazilan verb'ler
 ----------------------------------------
 

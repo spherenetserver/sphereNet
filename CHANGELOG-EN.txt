@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - What an item's bonus was worth
+----------------------------------------
+
+A script line can take three shapes. Two were measured: OBJ.NAME read as a member,
+and NAME run as a verb on a line of its own. The third is NAME=value, which is how
+a pack sets almost everything - and it was the shape behind the ore table that came
+out of the ground colourless. Sweeping it found one more path that existed and was
+unreachable.
+
+FIX - An equipment stat bonus could not be set. BONUSSTR, BONUSDEX, BONUSINT and
+        the three max-pool bonuses (Source-X CCPropsItemEquippable) were already
+        being SUMMED off every worn item on each read - EffectiveStr and its
+        neighbours walk the whole suit - so the aggregation was there, correct, and
+        fed by nothing. An ITEMDEF or a trigger writing BonusStr=5 had the line
+        consumed and discarded, because an assignment nothing accepts still returns
+        success. The only gear that could carry a bonus was gear whose bonus was
+        hardcoded elsewhere. They round-trip on the item now, land on the tag the
+        aggregation already reads, and come off with the item.
+
+CHANGE - A third sweep measures the assigned keys, the same way as the other two:
+        collect statically, resolve by asking the engine. Five corrections were
+        needed before it told the truth, and every one had been reporting working
+        code as a gap - a key may be prefixed by any of REF1 through REF100, not the
+        handful a list held; FINDID.<defname>.<key> assigns to the item it finds, so
+        the key is what follows the pair; float.x is a floating-point local store
+        rather than a key on anything; a stone answers for its guild record only
+        when one is behind it; and the housing and spawner verb tables are reached
+        by assignment too (REF1.DelObj=<LINK>).
+
+        Thirteen keys are left that nothing accepts, all of them real differences
+        from the reference key tables, and all of them listed rather than
+        implemented: nothing in this engine reads any of those values, and the packs
+        that write them do not read them back either. Storing them would turn the
+        list green and change nothing that happens in the game - which is precisely
+        the kind of bug these sweeps exist to find. Each is named in the test with
+        what would have to exist first.
+
 [2026-09-17] - The verbs written on a line of their own
 ----------------------------------------
 

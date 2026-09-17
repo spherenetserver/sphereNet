@@ -186,6 +186,10 @@ public sealed class ItemDef : BaseDef
             case var _ when AosEquipProperties.Contains(key):
                 TagDefs.Set(key.ToUpperInvariant(), value.Trim());
                 break;
+            // The stat and pool bonuses an equippable grants, same def-tag flow.
+            case var _ when EquipmentStatBonuses.Contains(key):
+                TagDefs.Set(key.ToUpperInvariant(), value.Trim());
+                break;
             case var _ when SpellCastingProperties.Contains(key):
                 TagDefs.Set(key.ToUpperInvariant(), value.Trim());
                 break;

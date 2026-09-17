@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Defname yerine yazilan bir havuz hicbir sey yaratmiyordu
+----------------------------------------
+
+FIX - SERV.NEWITEM { i_fish_big_1 1 i_fish_big_2 1 } hicbir esya uretmiyordu. Ust kaynak
+        defname konumundaki suslu parantezi ortak kaynak aramasinda cozer; bu arama adi
+        once ifade motorundan gecirir - oradaki yorum da bunu soyler: "May be some
+        complex expression {}" (CResourceHolder.cpp:129) - yani bicim her kaynak turunde
+        calisir. Bizde parantezler defname cozucusune oldugu gibi ulasiyor, cozulemiyor
+        ve satir hicbir sey uretmeden sessizce geciyordu. Canli pakette bu bicimi
+        kullanan dokuz satir var: balik, havai fisek efektleri, yunuslar ve liman
+        saticilari. SERV.NEWNPC de aynidir. Ganimet sablonlarinin zaten kullandigi
+        secici artik ikisine de hizmet ediyor.
+
 [2026-09-18] - Bir ITEM= satirinin miktari da sansi da yanlis okunuyordu
 ----------------------------------------
 

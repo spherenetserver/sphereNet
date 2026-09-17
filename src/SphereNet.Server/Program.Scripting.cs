@@ -1227,6 +1227,16 @@ public static partial class Program
         if (token.Length == 0)
             return "0";
 
+        // "{ i_fish_big_1 1 i_fish_big_2 1 }" in defname position is a pool to pick
+        // from, not a name. Upstream resolves it in the shared resource lookup, which
+        // runs the name through the expression engine first (CResourceHolder.cpp:129);
+        // here the braces reached ResolveDefName verbatim, failed, and the line made
+        // nothing at all.
+        if (token.StartsWith('{'))
+            token = TemplateEngine.PickFromInlinePool(token);
+        if (token.Length == 0)
+            return FailedFactory();
+
         ResourceId rid = _resources.ResolveDefName(token);
         if (!rid.IsValid)
         {
@@ -1396,6 +1406,13 @@ public static partial class Program
             return "0";
         string token = raw.Split(',', 2, StringSplitOptions.TrimEntries)[0];
         if (string.IsNullOrWhiteSpace(token))
+            return "0";
+
+        // A CHARDEF pool reads the same way an ITEMDEF one does - the resource lookup
+        // that resolves the braces upstream is shared across every resource type.
+        if (token.StartsWith('{'))
+            token = TemplateEngine.PickFromInlinePool(token);
+        if (token.Length == 0)
             return "0";
 
         var npc = _world.CreateCharacter();

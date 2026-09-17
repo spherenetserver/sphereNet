@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A pool written where a defname goes created nothing
+----------------------------------------
+
+FIX - SERV.NEWITEM { i_fish_big_1 1 i_fish_big_2 1 } made no item. Upstream resolves
+        braces in defname position inside the shared resource lookup, which runs the
+        name through the expression engine first - the comment there says as much, "May
+        be some complex expression {}" (CResourceHolder.cpp:129) - so the form works for
+        every resource type. Here the braces reached the defname resolver verbatim,
+        failed, and the line produced nothing and said nothing. Nine lines in the live
+        pack use it, for fish, firework effects, dolphins and harbour vendors; SERV.NEWNPC
+        was the same. The picker that loot templates already used now serves both.
+
 [2026-09-18] - An ITEM= line's amount and chance were both misread
 ----------------------------------------
 

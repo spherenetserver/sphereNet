@@ -37,7 +37,7 @@ public static class TemplateEngine
             //    A "0" member is a deliberate empty slot ("nothing" chance).
             if (current.StartsWith('{'))
             {
-                current = PickFromDefValue(current);
+                current = PickFromInlinePool(current);
                 if (string.IsNullOrEmpty(current) || current == "0")
                     return "";
                 continue;
@@ -60,7 +60,7 @@ public static class TemplateEngine
             if (resources != null && resources.TryGetDefValue(current, out string? val) &&
                 !string.IsNullOrWhiteSpace(val))
             {
-                string picked = PickFromDefValue(val);
+                string picked = PickFromInlinePool(val);
                 if (!string.IsNullOrEmpty(picked) && !picked.Equals(current, StringComparison.OrdinalIgnoreCase))
                 {
                     current = picked;
@@ -73,11 +73,18 @@ public static class TemplateEngine
         return current;
     }
 
-    /// <summary>Parse the RHS of a <c>[DEFNAME ...]</c> entry. Handles
-    /// <c>{ a w b w }</c> weighted lists, single <c>i_foo</c> aliases,
-    /// and unweighted space-separated lists. Returns empty when the
-    /// value doesn't look like an item selector.</summary>
-    private static string PickFromDefValue(string value)
+    /// <summary>
+    /// Pick one name out of an inline pool. Handles <c>{ a w b w }</c> weighted lists,
+    /// a single <c>i_foo</c> alias, and unweighted space-separated lists; returns empty
+    /// when the value does not look like a selector at all.
+    ///
+    /// Nothing about this is item-specific, and upstream's is not either: braces in
+    /// defname position are resolved by the shared resource lookup, which runs the name
+    /// through the expression engine first ("May be some complex expression {}",
+    /// CResourceHolder.cpp:129). So a CHARDEF pool reads the same way an ITEMDEF one
+    /// does, which is what SERV.NEWNPC { c_dolphin 1 c_sea_serpent 1 } relies on.
+    /// </summary>
+    public static string PickFromInlinePool(string value)
     {
         string trimmed = value.Trim();
         if (trimmed.Length == 0) return "";

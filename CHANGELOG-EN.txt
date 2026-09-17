@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The rounding on a house price
+----------------------------------------
+
+FIX - MULDIV truncated where upstream rounds. It computes a*b/c, and upstream's
+        IMulDivLL adds half the divisor before dividing and subtracts one for a
+        negative product (common.h:207), so the rounding goes away from zero on both
+        sides. This threw the remainder away instead: <MULDIV 7,3,2> answered 10
+        where it should answer 11. MULDIV is how the housing pack works out every
+        house price, every maintenance charge and every percentage of a house's
+        value - 25 of its 43 uses across the packs are in that one system - so the
+        figures were quietly a shade cheap, in a way that only shows up as a total
+        that never quite matches.
+
 [2026-09-17] - A message that was never sent
 ----------------------------------------
 

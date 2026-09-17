@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace SphereNet.Scripting.Expressions;
 
@@ -1343,7 +1343,18 @@ public sealed class ExpressionParser
                 long num = Evaluate(parts[0].AsSpan());
                 long mul = Evaluate(parts[1].AsSpan());
                 long div = Evaluate(parts[2].AsSpan());
-                return div != 0 ? (num * mul / div).ToString() : "0";
+                if (div == 0)
+                    return "0";
+                // Upstream ROUNDS: ((a*b + c/2) / c) - IsNegative(a*b)
+                // (IMulDivLL, common.h:207). Truncating instead was off by one
+                // wherever the product did not divide evenly - and MULDIV is how
+                // every house price and maintenance figure in the housing pack is
+                // worked out, so the prices were quietly a shade cheap.
+                long product = num * mul;
+                long rounded = (product + div / 2) / div;
+                if (product < 0)
+                    rounded -= 1;
+                return rounded.ToString();
             }
             return "0";
         }

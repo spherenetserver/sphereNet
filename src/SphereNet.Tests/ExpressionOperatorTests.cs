@@ -81,4 +81,23 @@ public sealed class ExpressionOperatorTests
         Assert.Equal(0x1BF2, Eval("01bf2"));
         Assert.Equal(44, Eval("44"));
     }
+
+    /// <summary>MULDIV a,b,c is a*b/c computed wide, which is how every house price
+    /// and maintenance figure in the housing pack is worked out (25 uses there). A
+    /// divisor of zero answers 0 rather than throwing (SSC_MULDIV,
+    /// CScriptObj.cpp:1130).</summary>
+    [Theory]
+    [InlineData("<MULDIV 100,50,100>", 50)]
+    [InlineData("<MULDIV 7,3,2>", 11)]        // 21/2, rounded
+    [InlineData("<MULDIV 1000,15,100>", 150)]
+    [InlineData("<MULDIV 5,5,0>", 0)]         // divide by zero answers zero
+    // The negative half: upstream subtracts one when the product is negative, so
+    // the rounding goes AWAY from zero on both sides rather than toward it.
+    [InlineData("<MULDIV -7,3,2>", -11)]
+    [InlineData("<MULDIV -1,7,2>", -4)]
+    [InlineData("<MULDIV -100,50,100>", -50)]  // exact division is unaffected
+    public void MuldivComputesTheHousePriceShape(string expr, long expected)
+    {
+        Assert.Equal(expected, Eval(expr));
+    }
 }

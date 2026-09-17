@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir ev fiyatindaki yuvarlama
+----------------------------------------
+
+FIX - MULDIV, ust kaynagin yuvarladigi yerde kesiyordu. a*b/c hesaplar ve ust
+        kaynagin IMulDivLL'i bolmeden once bolenin yarisini ekler, carpim negatifse
+        bir cikarir (common.h:207); yani yuvarlama iki tarafta da sifirdan uzaga
+        gider. Buradaki kod kalani atiyordu: <MULDIV 7,3,2> 11 olmasi gerekirken 10
+        yanitliyordu. MULDIV, ev paketinin her ev fiyatini, her bakim ucretini ve
+        ev degerinin her yuzdesini hesaplama yoludur - paketlerdeki 43 kullanimin
+        25'i tek basina o sistemde - dolayisiyla rakamlar sessizce birazcik ucuzdu;
+        yalnizca hicbir zaman tam tutmayan bir toplam olarak kendini gosteren turden.
+
 [2026-09-17] - Hic gonderilmeyen mesaj
 ----------------------------------------
 

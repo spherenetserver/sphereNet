@@ -215,6 +215,8 @@ public sealed class ItemDef : BaseDef
         var parts = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         foreach (var name in parts)
         {
+            if (!EventNamesRaw.Contains(name, StringComparer.OrdinalIgnoreCase))
+                EventNamesRaw.Add(name);
             var rid = ResourceId.FromEventName(name);
             if (rid.IsValid && !Events.Contains(rid))
                 Events.Add(rid);

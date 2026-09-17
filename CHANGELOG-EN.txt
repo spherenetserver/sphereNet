@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - A TEVENTS line that named a typedef, and reached nothing
+----------------------------------------
+
+FIX - EVENTS / TEVENTS references were hashed straight into the EVENTS namespace, so
+        a line naming a [TYPEDEF] block resolved to no resource and was skipped at
+        dispatch without a word. Upstream resolves the name against the DEFNAME table
+        BEFORE labelling it with the type the caller asked for - "Do not enforce the
+        restype. Just fill it in if we are not sure what the type is"
+        (CResourceHolder.cpp:99-104) - which is what makes TEVENTS=<typedef> work
+        there. Nearly every TEVENTS line in every pack is that form: 720 of the live
+        pack's 725 and 1715 of the reference distribution's name a typedef, and only
+        one live-pack reference names an actual [EVENTS] block. The name is now
+        resolved through the defname table first, both for definitions (a pass after
+        every section is loaded, since a def may name a block defined later) and for
+        an instance-level EVENTS write. ObjBase already had the instance branch
+        written out, below a line that always succeeds, so it could never run.
+
+        NOTE: this activates trigger blocks that have been inert. On the shipped pack
+        that is chiefly the equip gate behind 684 items, which enforces the race and
+        gender restrictions its ITEMDEFs declare - equipping refusals that did not
+        happen before will start happening.
+
 [2026-09-17] - The triggers a MULTIDEF wrote, and nothing that read them
 ----------------------------------------
 

@@ -263,6 +263,7 @@ public sealed class DefinitionLoader
         }
 
         IndexCharDefsByBody();
+        ResolveEventReferences();
         ResolveItemDefReferences();
         ResolveDupeItemInheritance();
         ResolveRegionResourceReapDefNames();
@@ -1154,6 +1155,50 @@ public sealed class DefinitionLoader
                 }
             }
             if (!changed) break;
+        }
+    }
+
+    /// <summary>Re-point every EVENTS/TEVENTS reference at the section it actually
+    /// names.
+    ///
+    /// Upstream resolves the name against the DEFNAME table BEFORE labelling it with
+    /// the type the caller asked for - "Do not enforce the restype. Just fill it in if
+    /// we are not sure what the type is" (CResourceHolder.cpp:99-104) - so TEVENTS
+    /// naming a [TYPEDEF] block reaches that block. Here the name was hashed straight
+    /// into the EVENTS namespace, where a typedef does not live, and the reference
+    /// resolved to nothing: 720 of the live pack's 725 TEVENTS references and 1715 of
+    /// the reference distribution's name a typedef, so nearly the whole surface was
+    /// inert. Nothing logged, because a def-level EVENTS entry that finds no resource
+    /// is simply skipped at dispatch.
+    ///
+    /// Runs after every section is loaded, since a definition can name a block that
+    /// appears later in the pack.</summary>
+    private void ResolveEventReferences()
+    {
+        foreach (var def in _itemDefs.Values) ResolveEventRefsOn(def);
+        foreach (var def in _multiItemDefs.Values) ResolveEventRefsOn(def);
+        foreach (var def in _charDefs.Values) ResolveEventRefsOn(def);
+    }
+
+    private void ResolveEventRefsOn(SphereNet.Scripting.Definitions.BaseDef def)
+    {
+        foreach (string name in def.EventNamesRaw)
+        {
+            var resolved = _resources.ResolveDefName(name);
+            if (!resolved.IsValid || resolved.Type == ResType.Events)
+                continue;
+            // Only section types that carry a trigger body are worth swapping in; a
+            // name that resolves to, say, an ITEMDEF is a pack mistake and keeping the
+            // EVENTS entry leaves it as inert as it was.
+            if (resolved.Type is not (ResType.TypeDef or ResType.RegionType or ResType.Function))
+                continue;
+
+            var hashed = ResourceId.FromEventName(name);
+            int at = def.Events.IndexOf(hashed);
+            if (at >= 0)
+                def.Events[at] = resolved;
+            else if (!def.Events.Contains(resolved))
+                def.Events.Add(resolved);
         }
     }
 

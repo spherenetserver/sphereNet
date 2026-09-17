@@ -2035,18 +2035,19 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         if (int.TryParse(text, out int numeric))
             return new ResourceId(ResType.Events, numeric);
 
-        // Primary format used by scripts (e.g. e_staff).
-        var rid = ResourceId.FromEventName(text);
-        if (rid.IsValid)
-            return rid;
-
-        // Fallback: typedef names (e.g. t_custom_spawner_char) are registered as
-        // ResType.TypeDef, not ResType.Events. ResolveDefName covers both.
+        // The DEFNAME table first, because a name carries its own section type and
+        // upstream does not force the caller's ("Do not enforce the restype",
+        // CResourceHolder.cpp:99). This is what lets EVENTS name a [TYPEDEF] block.
+        // It used to sit BELOW the hash below, which always succeeds - so the typedef
+        // branch could never be reached.
         var resolved = DefinitionLoader.StaticResources?.ResolveDefName(text) ?? ResourceId.Invalid;
-        if (resolved.IsValid && resolved.Type is ResType.TypeDef or ResType.Events)
+        if (resolved.IsValid && resolved.Type is ResType.TypeDef or ResType.Events
+                or ResType.RegionType or ResType.Function)
             return resolved;
 
-        return ResourceId.Invalid;
+        // Otherwise the name belongs to the EVENTS namespace (e.g. e_staff).
+        var rid = ResourceId.FromEventName(text);
+        return rid.IsValid ? rid : ResourceId.Invalid;
     }
 
     public static uint ParseHexOrDecUInt(string val)

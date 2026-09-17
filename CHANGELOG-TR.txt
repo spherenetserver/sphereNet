@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Bir typedef'i adlandiran TEVENTS satiri ve ulastigi hicbir sey
+----------------------------------------
+
+FIX - EVENTS / TEVENTS referanslari dogrudan EVENTS ad alanina hash'leniyordu; bu
+        yuzden bir [TYPEDEF] blogunu adlandiran satir hicbir kaynaga cozulmuyor ve
+        dagitimda tek kelime etmeden atlaniyordu. Ust kaynak adi, cagiranin istedigi
+        turle etiketlemeden ONCE DEFNAME tablosuna karsi cozer - "Do not enforce the
+        restype. Just fill it in if we are not sure what the type is"
+        (CResourceHolder.cpp:99-104) - TEVENTS=<typedef> orada bu yuzden calisir.
+        Paketlerdeki TEVENTS satirlarinin neredeyse tamami bu bicimde: canli paketin
+        725 referansindan 720'si, referans dagitimin 1715'i bir typedef'i adlandiriyor;
+        canli pakette gercek bir [EVENTS] blogunu adlandiran yalnizca bir referans var.
+        Ad artik once defname tablosundan cozuluyor - hem tanimlar icin (tum bolumler
+        yuklendikten sonra calisan bir gecis, cunku bir tanim daha sonra gelen bir
+        blogu adlandirabilir) hem de ornek duzeyindeki EVENTS atamasi icin. ObjBase
+        ornek dali zaten yazilmisti ama her zaman basarili olan bir satirin altinda
+        duruyordu, dolayisiyla hic calisamiyordu.
+
+        NOT: bu, o gune kadar atil kalmis trigger bloklarini devreye alir. Gonderilen
+        pakette bu esas olarak 684 esyanin arkasindaki kusanma kapisidir; ITEMDEF'lerin
+        bildirdigi irk ve cinsiyet kisitlamalarini uygular - daha once olmayan kusanma
+        redleri artik olacaktir.
+
 [2026-09-17] - MULTIDEF'in yazdigi triggerlar ve onlari okuyan hicbir sey
 ----------------------------------------
 

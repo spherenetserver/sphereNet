@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Scripting.Resources;
 using SphereNet.Scripting.Variables;
@@ -38,6 +38,17 @@ public abstract class BaseDef : ResourceLink
 
     /// <summary>Linked EVENTS resources.</summary>
     public List<ResourceId> Events { get; } = [];
+
+    /// <summary>The names EVENTS/TEVENTS were written with, in order.
+    ///
+    /// A reference is resolved against the DEFNAME table before it is labelled with a
+    /// type upstream (CResourceHolder.cpp:99 - "Do not enforce the restype"), so an
+    /// EVENTS line may legitimately name a [TYPEDEF] block, and the packs lean on that
+    /// hard: 720 of the live pack's 725 TEVENTS references name a typedef. The names
+    /// are kept here because the resource tables are not built yet while a definition
+    /// is being parsed; DefinitionLoader re-resolves them once everything is
+    /// loaded.</summary>
+    public List<string> EventNamesRaw { get; } = [];
 
     /// <summary>Resources required for creation (crafting).</summary>
     public List<ResourceId> BaseResources { get; } = [];

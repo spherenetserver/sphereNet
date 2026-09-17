@@ -664,15 +664,15 @@ public sealed class ExpressionParser
         return ReadNumber(text, ref pos);
     }
 
-    /// <summary>Evaluate a Sphere brace expression. Two tokens = numeric range
-    /// (random lo..hi); more = (value weight) weighted pairs; one = that value.
-    /// Each token is itself evaluated so &lt;...&gt;/hex/identifiers work.</summary>
+    /// <summary>Evaluate a Sphere brace expression: each token is evaluated as a full
+    /// expression (so &lt;...&gt;/hex/identifiers work), then <see cref="BraceRange"/>
+    /// decides what the list means.</summary>
     private long EvaluateBraceRange(string inner)
     {
         inner = inner.Trim();
         if (inner.Length == 0) return 0;
 
-        var tokens = SplitBraceTokens(inner);
+        var tokens = BraceRange.SplitTokens(inner);
         if (tokens.Count == 0) return 0;
 
         var vals = new long[tokens.Count];
@@ -682,89 +682,9 @@ public sealed class ExpressionParser
             vals[i] = ParseExpression(tokens[i], ref p);
         }
 
-        if (vals.Length == 1) return vals[0];
-
-        if (vals.Length == 2)
-        {
-            long lo = Math.Min(vals[0], vals[1]);
-            long hi = Math.Max(vals[0], vals[1]);
-            return NextInclusiveRandom(lo, hi);
-        }
-
-        // Weighted (value, weight) pairs — Source-X GetRangeNumber requires an
-        // even token count; an odd count (>2) is a script error and yields 0.
-        if ((vals.Length & 1) != 0)
-        {
-            DiagnosticLogger?.Invoke($"[script] Bad {{...}} range: odd number of values/weights ({vals.Length}) in '{{{inner}}}'");
-            return 0;
-        }
-
-        long totalWeight = 0;
-        for (int i = 1; i < vals.Length; i += 2)
-        {
-            if (vals[i] <= 0)
-                DiagnosticLogger?.Invoke($"[script] Bad {{...}} range: non-positive weight {vals[i]} in '{{{inner}}}'");
-            totalWeight += Math.Max(0, vals[i]);
-        }
-        if (totalWeight <= 0) return vals[0];
-
-        long roll = Random.Shared.NextInt64(totalWeight);
-        for (int i = 0; i + 1 < vals.Length; i += 2)
-        {
-            roll -= Math.Max(0, vals[i + 1]);
-            if (roll < 0) return vals[i];
-        }
-        return vals[0];
+        return BraceRange.Pick(vals, inner, DiagnosticLogger);
     }
 
-    /// <summary>Uniform random in the INCLUSIVE range [lo, hi] without the
-    /// <c>hi + 1</c> that overflows (and throws) when hi == long.MaxValue — the
-    /// bug that let <c>{1 0x7fffffffffffffff}</c> crash the tick. The short-R /
-    /// RAND intrinsics already guard MaxValue; this covers the {lo hi} path.</summary>
-    private static long NextInclusiveRandom(long lo, long hi)
-    {
-        if (lo >= hi) return lo; // lo == hi, and defensively any inverted range
-        if (hi == long.MaxValue)
-        {
-            // hi + 1 would overflow. NextInt64(min,max) is exclusive of max, so
-            // [lo, MaxValue) drops only the single endpoint MaxValue — acceptable
-            // for a pathological range, and it never throws. The whole-range case
-            // (lo == MinValue too) falls back to a non-negative draw.
-            return lo == long.MinValue
-                ? Random.Shared.NextInt64()
-                : Random.Shared.NextInt64(lo, long.MaxValue);
-        }
-        return Random.Shared.NextInt64(lo, hi + 1);
-    }
-
-    /// <summary>Split brace content on whitespace, respecting nested &lt;...&gt;
-    /// and {...} so a token may itself be an expression.</summary>
-    private static List<string> SplitBraceTokens(string s)
-    {
-        var tokens = new List<string>();
-        int depth = 0, angle = 0, start = 0;
-        bool inTok = false;
-        for (int i = 0; i < s.Length; i++)
-        {
-            char c = s[i];
-            if (c == '<') angle++;
-            else if (c == '>' && angle > 0) angle--;
-            else if (c == '{') depth++;
-            else if (c == '}' && depth > 0) depth--;
-
-            if (char.IsWhiteSpace(c) && angle == 0 && depth == 0)
-            {
-                if (inTok) { tokens.Add(s[start..i]); inTok = false; }
-            }
-            else if (!inTok)
-            {
-                start = i;
-                inTok = true;
-            }
-        }
-        if (inTok) tokens.Add(s[start..]);
-        return tokens;
-    }
 
     private long ReadNumber(string text, ref int pos)
     {

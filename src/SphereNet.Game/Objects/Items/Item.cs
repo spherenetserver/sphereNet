@@ -2338,6 +2338,21 @@ public class Item : ObjBase
 
     public override bool TrySetProperty(string key, string value)
     {
+        // "{lo hi}" is a range and "{a w b w}" a weighted pick, wherever a value is
+        // read as a number (CExpression.cpp:790). An item assignment arrives here as
+        // plain text - the interpreter substitutes <...> but does not evaluate the
+        // braces - so HITPOINTS={100 200} used to parse as 0. The shipped packs write
+        // that shape 1,178 times inside ITEMDEF @Create blocks (durability, VALUE,
+        // COLOR, MOREY, USESMAX), and every one of them produced zero.
+        //
+        // The character side has always rolled its own, which is why this went unseen:
+        // Character.TrySetProperty normalises first because it also has to scale the
+        // decimal skill form. That scaling is why this is not done in the interpreter
+        // for every object at once - TACTICS={29.0 44.0} means 290..440, and 4,596 pack
+        // lines depend on the character keeping that knowledge.
+        if (SphereNet.Scripting.Expressions.BraceRange.TryRollNumeric(value, out long rolledValue))
+            value = rolledValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
         // Champion altar writable keys (Source-X ICHMPL_* loaders).
         if (Champion != null && Champion.TrySetProperty(key, value))
             return true;

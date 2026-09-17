@@ -175,7 +175,7 @@ public sealed class ScriptInterpreter
             IScriptObj? srcObj = args?.Source;
             if (srcObj != null)
             {
-                if (key.HasArg && srcObj.TrySetProperty(subCmd, resolvedArg))
+                if (key.HasArg && srcObj.TrySetProperty(subCmd, EvalNumericArg(resolvedArg)))
                 {
                     if (_expr.DebugUnresolved)
                         _logger.LogDebug("[script_exec] handled via src setprop '{Cmd}'", subCmd);
@@ -574,7 +574,7 @@ public sealed class ScriptInterpreter
         }
 
         // Try as property set (KEY=VALUE)
-        if (key.HasArg && target.TrySetProperty(cmd, resolvedArg))
+        if (key.HasArg && target.TrySetProperty(cmd, EvalNumericArg(cmd, resolvedArg)))
         {
             if (_expr.DebugUnresolved)
                 _logger.LogDebug("[script_exec] handled via setprop '{Cmd}'", cmd);
@@ -840,7 +840,7 @@ public sealed class ScriptInterpreter
                         {
                             string prop = tryLine[..eqIdx].Trim();
                             string val = tryLine[(eqIdx + 1)..].Trim();
-                            if (!target.TrySetProperty(prop, val))
+                            if (!target.TrySetProperty(prop, EvalNumericArg(prop, val)))
                                 target.TryExecuteCommand(prop, val, source ?? NullConsole.Instance);
                         }
                         else
@@ -969,7 +969,7 @@ public sealed class ScriptInterpreter
                     {
                         string prop = rest[..eqIdx].Trim();
                         string val = rest[(eqIdx + 1)..].Trim();
-                        if (!target.TrySetProperty(prop, val))
+                        if (!target.TrySetProperty(prop, EvalNumericArg(prop, val)))
                             target.TryExecuteCommand(prop, val, actor);
                     }
                     else
@@ -1705,8 +1705,42 @@ public sealed class ScriptInterpreter
         }
 
         if (verbArgs.Length > 0)
-            target.TrySetProperty(verb, verbArgs);
+            target.TrySetProperty(verb, EvalNumericArg(verb, verbArgs));
     }
+
+    /// <summary>
+    /// Work out an assignment's value when it is arithmetic and nothing else.
+    ///
+    /// Upstream loads a numeric key through the expression engine
+    /// (CScript.cpp:154, GetArgVal -> Exp_GetVal), so "MORE2=&lt;MOREX&gt;/3" is a
+    /// division, not the text "30/3". Only &lt;...&gt; substitution happened here, and
+    /// the object parsed what was left as zero - silently, since a property set that
+    /// stores 0 still reports success.
+    ///
+    /// Which keys are numeric is not knowable at this layer, so
+    /// <see cref="ScriptArithmetic.IsPlainArithmetic"/> decides on the value instead:
+    /// numbers, operators and brackets only. A text value is returned untouched, and so
+    /// is anything the expression engine refuses.
+    /// </summary>
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(arg))]
+    private string? EvalNumericArg(string? arg)
+    {
+        if (arg == null || !ScriptArithmetic.IsPlainArithmetic(arg)) return arg;
+        return _expr.TryEvaluate(arg, out long value)
+            ? value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : arg;
+    }
+
+    /// <summary>The same, for the keys that must keep their text whatever shape the
+    /// value has. P is a coordinate list upstream parses itself (CPointBase::Read), and
+    /// a bare "1,2" never reaches the arithmetic test - but "P=&lt;SRC.P&gt;" can
+    /// resolve to a single number, and evaluating that would be a placement.</summary>
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(arg))]
+    private string? EvalNumericArg(string key, string? arg) =>
+        NonNumericKeys.Contains(key) ? arg : EvalNumericArg(arg);
+
+    private static readonly HashSet<string> NonNumericKeys =
+        new(StringComparer.OrdinalIgnoreCase) { "P", "POS", "NAME", "EVENTS", "TEVENTS", "ARGS" };
 
     /// <summary>Whether a script [FUNCTION] answers to this name. Lets the verb line
     /// tell "the function ran and returned nothing" apart from "there is no such

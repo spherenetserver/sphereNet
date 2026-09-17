@@ -47,7 +47,13 @@ public sealed class SectorRoomRefHeadTests
 
     /// <summary>The read the pack makes, through the interpreter. Whichever hour it
     /// is the sector answers 0 or 1 - the point is that something answers, where
-    /// before the whole expression collapsed to the unresolved "0".</summary>
+    /// before the whole expression collapsed to the unresolved "0".
+    ///
+    /// The two reads are joined with a comma rather than an operator on purpose. A
+    /// value made only of numbers and math separators is a number upstream
+    /// (IsSimpleNumberString counts "+-\*~|&amp;!%^()" and '/'), so "0|1" would be
+    /// stored as the 1 it works out to; a comma is not one of them, so the pair
+    /// survives as text and each half can still be read back.</summary>
     [Fact]
     public void ACharacterReadsItsSectorThroughTheInterpreter()
     {
@@ -55,11 +61,11 @@ public sealed class SectorRoomRefHeadTests
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
 
         stack.Interpreter.Execute(
-            [new ScriptKey("TAG.OUT", "<SECTOR.ISNIGHTTIME>|<SECTOR.ISDARK>")],
+            [new ScriptKey("TAG.OUT", "<SECTOR.ISNIGHTTIME>,<SECTOR.ISDARK>")],
             ch, null, new TriggerArgs(), new ScriptScope());
 
         Assert.True(ch.TryGetProperty("TAG.OUT", out string v));
-        string[] parts = v.Split('|');
+        string[] parts = v.Split(',');
         Assert.Equal(2, parts.Length);
         Assert.All(parts, p => Assert.True(p is "0" or "1", $"expected the sector to answer, got '{p}'"));
     }

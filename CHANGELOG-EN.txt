@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The ENDFOR that closed the wrong loop
+----------------------------------------
+
+FIX - FORCHARLAYER and FORCHARMEMORYTYPE were dispatched as loops but missing from the
+        list the block-end search and the skip path consult, so an ENDFOR belonging to
+        one of them closed the loop AROUND it. The outer loop's body ended at the inner
+        ENDFOR and its tail ran once, outside the loop, instead of once per pass. The
+        three now read from one predicate, which is the same repair the nested-block
+        dispatcher needed: a second copy of a list drifts.
+
 [2026-09-17] - A block nested inside an IF was not treated as a block
 ----------------------------------------
 

@@ -1036,21 +1036,11 @@ public sealed class ScriptInterpreter
             case "BEGIN":
                 i = ExecuteBegin(lines, i, target, source, args, scope, out result);
                 return true;
-            case "FORPLAYERS":
-            case "FORINSTANCES":
-            case "FORCHARS":
-            case "FORCLIENTS":
-            case "FORITEMS":
-            case "FOROBJS":
-            case "FORCONT":
-            case "FORCONTID":
-            case "FORCONTTYPE":
-            case "FORCHARLAYER":
-            case "FORCHARMEMORYTYPE":
+            default:
+                if (!IsForVariant(cmd))
+                    return false;
                 i = ExecuteForObjects(lines, i, target, source, args, scope, out result, cmd);
                 return true;
-            default:
-                return false;
         }
     }
 
@@ -2138,6 +2128,9 @@ public sealed class ScriptInterpreter
 
     private static int SkipBlock(IReadOnlyList<ScriptKey> lines, int idx, string cmd)
     {
+        if (IsForVariant(cmd))
+            cmd = "FOR";
+
         switch (cmd)
         {
             case "IF":
@@ -2154,22 +2147,13 @@ public sealed class ScriptInterpreter
                 return idx + 1;
             }
             case "FOR":
-            case "FORPLAYERS":
-            case "FORCHARS":
-            case "FORITEMS":
-            case "FORCLIENTS":
-            case "FOROBJS":
-            case "FORINSTANCES":
-            case "FORCONT":
-            case "FORCONTID":
-            case "FORCONTTYPE":
             {
                 int depth = 1;
                 idx++;
                 while (idx < lines.Count && depth > 0)
                 {
                     string c = lines[idx].Key.ToUpperInvariant();
-                    if (c == "FOR" || c.StartsWith("FOR", StringComparison.Ordinal) && IsForVariant(c))
+                    if (c == "FOR" || IsForVariant(c))
                         depth++;
                     if (c == "ENDFOR") depth--;
                     if (depth > 0) idx++;
@@ -2221,9 +2205,16 @@ public sealed class ScriptInterpreter
         }
     }
 
+    /// <summary>The loops that walk objects rather than a number range. Every one of
+    /// them opens a block that ENDFOR closes, so the dispatcher, the block-end search
+    /// and the skip path all have to agree on the list - and they did not:
+    /// FORCHARLAYER and FORCHARMEMORYTYPE were dispatched but absent from the other
+    /// two, so an ENDFOR belonging to one of them closed the loop AROUND it. The outer
+    /// loop's body ended early and its tail ran once, outside the loop.</summary>
     private static bool IsForVariant(string cmd) =>
         cmd is "FORPLAYERS" or "FORCHARS" or "FORITEMS" or "FORCLIENTS"
-            or "FOROBJS" or "FORINSTANCES" or "FORCONT" or "FORCONTID" or "FORCONTTYPE";
+            or "FOROBJS" or "FORINSTANCES" or "FORCONT" or "FORCONTID" or "FORCONTTYPE"
+            or "FORCHARLAYER" or "FORCHARMEMORYTYPE";
 
     private static IReadOnlyList<ScriptKey> GetSubList(IReadOnlyList<ScriptKey> lines, int start, int end)
     {

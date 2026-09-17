@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Scripting.Execution;
 using SphereNet.Scripting.Parsing;
@@ -97,5 +97,49 @@ public sealed class NestedBlockDispatchTests
         Assert.Equal((TriggerResult.Default, "3"),
             Run("TAG.X=0", "IF (1)", "FOR 1 3", "IF (1)", "TAG.X=<eval <tag.x>+1>", "ENDIF",
                 "ENDFOR", "ENDIF", "RETURN 0"));
+    }
+
+    /// <summary>Every object loop closes with ENDFOR, so the dispatcher, the block-end
+    /// search and the skip path have to agree on which commands are one.
+    ///
+    /// They did not: FORCHARLAYER and FORCHARMEMORYTYPE were dispatched as loops but
+    /// missing from IsForVariant, which both of the other two consult. An ENDFOR
+    /// belonging to one of them closed the loop AROUND it instead - the outer body
+    /// ended early and its tail ran once, outside the loop, rather than once per pass.
+    /// The three now read from one predicate.</summary>
+    [Theory]
+    [InlineData("FORCHARS")]
+    [InlineData("FORITEMS")]
+    [InlineData("FOROBJS")]
+    [InlineData("FORCONT")]
+    [InlineData("FORCONTID")]
+    [InlineData("FORCONTTYPE")]
+    [InlineData("FORPLAYERS")]
+    [InlineData("FORCLIENTS")]
+    [InlineData("FORINSTANCES")]
+    [InlineData("FORCHARLAYER")]
+    [InlineData("FORCHARMEMORYTYPE")]
+    public void AnObjectLoopNestedInALoopClosesItsOwnEndfor(string loop)
+    {
+        // The inner loop walks nothing here, so only the tail counts: once per pass of
+        // the outer FOR, three passes.
+        Assert.Equal((TriggerResult.Default, "3"),
+            Run("TAG.X=0", "FOR 1 3",
+                $"{loop} 2", "TAG.X=<eval <tag.x>+100>", "ENDFOR",
+                "TAG.X=<eval <tag.x>+1>", "ENDFOR", "RETURN 0"));
+    }
+
+    /// <summary>And the same nesting inside an untaken IF stays untaken - that is the
+    /// skip path reading the same list.</summary>
+    [Theory]
+    [InlineData("FORCHARLAYER")]
+    [InlineData("FORCHARMEMORYTYPE")]
+    public void AnObjectLoopInAnUntakenBranchIsSkippedWhole(string loop)
+    {
+        Assert.Equal((TriggerResult.Default, "0"),
+            Run("TAG.X=0", "IF (0)",
+                $"{loop} 2", "TAG.X=<eval <tag.x>+100>", "ENDFOR",
+                "TAG.X=<eval <tag.x>+1>",
+                "ENDIF", "RETURN 0"));
     }
 }

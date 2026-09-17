@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Yanlis dongumu kapatan ENDFOR
+----------------------------------------
+
+FIX - FORCHARLAYER ve FORCHARMEMORYTYPE dongu olarak dagitiliyor ama blok-sonu aramasi
+        ile atlama yolunun basvurdugu listede bulunmuyordu; bu yuzden bunlardan birine
+        ait bir ENDFOR, ETRAFINDAKI donguyu kapatiyordu. Dis dongunun govdesi icteki
+        ENDFOR'da bitiyor ve kuyrugu her turda bir kez yerine dongunun disinda bir kez
+        calisiyordu. Ucu de artik tek bir yuklemden okuyor; bu, ic ice blok dagiticisinin
+        ihtiyac duydugu onarimin aynisi: bir listenin ikinci kopyasi kayar.
+
 [2026-09-17] - IF icine yerlesmis bir blok, blok olarak islenmiyordu
 ----------------------------------------
 

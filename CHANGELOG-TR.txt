@@ -4,6 +4,27 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Siradan esyaya donusen iki alet
+----------------------------------------
+
+FIX - TYPE=t_cooking ve TYPE=t_cartography hicbir seye cozulmuyordu. Referans
+        onlari 196 ve 195 diye numaralar (item_types.h:212) ve bu motorda iki
+        numara da var - CookingTool ve CartographyTool uye adlariyla - dolayisiyla
+        paketlerin yazdigi AD hicbir seyle eslesmiyor ve esya siradan bir esya
+        olarak yukleniyordu. Dokuz itemdef t_cooking, ucu t_cartography bildiriyor
+        ve kaybettikleri sey tipin butun amaci: birine cift tiklamak zanaat
+        menusunu acan seydir. Yeniden adlandirma degil takma ad olarak alindi,
+        cunku uye adi typedef kaydinin kullandigi anahtardir.
+
+CHANGE - Referans dagitim, sabit kodlu 200 tipinin tamamini numaralariyla listeleyen
+        bir [TYPEDEFS] blogu tasiyor; bu, motorun kendisi hakkinda ileri
+        surebilecegi her seyden daha iyi bir otorite. Hepsi artik gercek
+        ayristiriciyla karsilastiriliyor: 196'si uyusuyor, 4'u referans motorun da
+        bilmedigi 500-araligindaki dagitim uzantisi ve hicbiri celismiyor. Daha
+        kotu hatayi yakalayan soru ikincisidir - bir adin taninip taninmadigi degil,
+        AYNI numaraya cozulup cozulmedigi; cunku baska bir numaraya cozulen bir tip
+        bambaska bir sey gibi davranir.
+
 [2026-09-17] - Bir ev fiyatindaki yuvarlama
 ----------------------------------------
 

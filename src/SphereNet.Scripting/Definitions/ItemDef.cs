@@ -388,7 +388,24 @@ public sealed class ItemDef : BaseDef
         if (Enum.TryParse(normalized, true, out ItemType result))
             return result;
 
-        return ItemType.Normal;
+        // The reference's own spelling, where this enum's member is named
+        // differently for the same NUMBER. Both of these are tool types the packs
+        // declare with the reference name (t_cooking on nine itemdefs, t_cartography
+        // on three), and the member here is CookingTool / CartographyTool - so the
+        // name matched nothing and the item loaded as an ordinary one, with the
+        // craft menu its double-click is supposed to open never opening.
+        //
+        // An alias rather than a rename: the enum member NAME is the key the C#-side
+        // typedef registration uses (TriggerDispatcher keys on ItemType.ToString()),
+        // so renaming would silently unhook those. ItemTypeNumberParityTests compares
+        // every one of the reference's 200 hardcoded types against this parser, so a
+        // future divergence fails there rather than going unnoticed.
+        return normalized.ToUpperInvariant() switch
+        {
+            "COOKING" => ItemType.CookingTool,
+            "CARTOGRAPHY" => ItemType.CartographyTool,
+            _ => ItemType.Normal,
+        };
     }
 
     /// <summary>

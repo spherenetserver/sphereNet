@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - Two tools that were ordinary items
+----------------------------------------
+
+FIX - TYPE=t_cooking and TYPE=t_cartography resolved to nothing. The reference
+        numbers them 196 and 195 (item_types.h:212) and this engine has both
+        numbers - under the member names CookingTool and CartographyTool - so the
+        NAME the packs write matched nothing and the item loaded as an ordinary
+        one. Nine itemdefs declare t_cooking and three declare t_cartography, and
+        what they lose is the whole point of the type: double-clicking one is what
+        opens its craft menu. Taken as an alias rather than a rename, because the
+        member name is the key the typedef registration uses.
+
+CHANGE - The reference distribution ships a [TYPEDEFS] block listing all 200 of
+        its hardcoded types beside their numbers, which is a better authority than
+        anything this engine could assert about itself. Every one is now compared
+        against the real parser: 196 agree, 4 are the distribution's own 500-range
+        extension that the reference engine does not know either, and none
+        disagree. The question that catches the worse bug is the second one - not
+        whether a name is recognised, but whether it resolves to the SAME number,
+        since a type that resolves to a different one behaves as something else
+        entirely.
+
 [2026-09-17] - The rounding on a house price
 ----------------------------------------
 

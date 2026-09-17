@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - Armour that declared its resists in @Create had none
+----------------------------------------
+
+FIX - A component property set on an INSTANCE was refused. Upstream keeps these on
+        entity components (the ADDPROP tables under src/tables), so every one of them
+        is settable on an item or a character and not only on a definition. Here the
+        definition side already worked - an ITEMDEF key the parser does not name lands
+        in the def's tags, and the combat aggregations read those - while
+        TrySetProperty had no such catch-all and refused the write outright.
+
+        That is exactly what an item's @Create block does. The shipped packs write
+        RESPHYSICAL, RESFIRE, RESCOLD, RESPOISON and RESENERGY inside @Create about
+        1,100 times between them, and every one was dropped on the floor: the armour
+        came out with no resists at all. NIGHTSIGHT, LUCK, REGENHITS, the DAM* split,
+        the EATER and SOULCHARGE families and the rest went the same way - 93 names on
+        an item, 35 on a character.
+
+        An instance value wins over the definition's, an unset one reads 0, and they
+        are tags, so they survive a save. The lists deliberately hold ONLY the names
+        nothing else here already answers for: a character's base resists, LUCK and the
+        resist caps are real fields, and the first cut of this list shadowed them and
+        broke eight tests.
+
 [2026-09-17] - The engine ran its own context-menu action beside the script's
 ----------------------------------------
 

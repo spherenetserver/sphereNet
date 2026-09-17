@@ -1712,6 +1712,19 @@ public class Item : ObjBase
             value = TryGetTag(upper, out var bonusv) ? bonusv ?? "0" : "0";
             return true;
         }
+        // Every other component property upstream declares in its ADDPROP tables, on
+        // the same tags. The DEFINITION side already worked - an ITEMDEF key the parser
+        // does not name lands in the def's tags - but an instance write was refused, so
+        // an item's @Create saying "RESPHYSICAL=2" was dropped on the floor. Read the
+        // instance tag first and fall back to the definition's, the way the combat
+        // aggregations already resolve the pair.
+        if (ComponentProperties.IsItemProperty(upper))
+        {
+            value = TryGetTag(upper, out var compv) && !string.IsNullOrEmpty(compv)
+                ? compv
+                : ResolveDefinition()?.TagDefs.Get(upper) ?? "0";
+            return true;
+        }
         if (SpellCastingProperties.Contains(upper))
         {
             value = TryGetTag(upper, out var castingValue) ? castingValue ?? "0" : "0";
@@ -2355,6 +2368,11 @@ public class Item : ObjBase
             return true;
         }
         if (AosOnHitProperties.Contains(upper))
+        {
+            SetTag(upper, value.Trim());
+            return true;
+        }
+        if (ComponentProperties.IsItemProperty(upper))
         {
             SetTag(upper, value.Trim());
             return true;

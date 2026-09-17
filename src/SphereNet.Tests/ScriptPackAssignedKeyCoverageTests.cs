@@ -115,9 +115,14 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
         new(StringComparer.OrdinalIgnoreCase)
         {
             "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM", "FRUIT", "ID",
-            "LowerReq", "MODAC", "ONAME", "OWNEDBY", "Rarity", "RESDISPDNHUE",
+            "MODAC", "ONAME", "OWNEDBY", "Rarity", "RESDISPDNHUE",
             "SelfRepair",
         };
+
+    // LOWERREQ left this list when the component-property tables were wired up: it is
+    // one of upstream's ADDPROP names, so an instance write lands in a tag and reads
+    // back, the same as the resists beside it. Nothing consumes it yet - that part of
+    // the note above still stands - but the write is no longer refused.
 
     private sealed class Console : ITextConsole
     {

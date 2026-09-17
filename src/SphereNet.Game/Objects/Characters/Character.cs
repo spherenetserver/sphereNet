@@ -3464,6 +3464,13 @@ public partial class Character : ObjBase
             value = TryGetTag(upper, out var equipv) ? equipv ?? "0" : "0";
             return true;
         }
+        // The rest of upstream's CCPropsChar table, on the same footing - only the
+        // names nothing else here already answers for.
+        if (ComponentProperties.IsCharProperty(upper))
+        {
+            value = TryGetTag(upper, out var compv) ? compv ?? "0" : "0";
+            return true;
+        }
         if (SpellCastingProperties.Contains(upper))
         {
             value = SphereNet.Game.Magic.SpellEngine.GetCastingPropertyValue(this, upper).ToString();
@@ -4839,6 +4846,11 @@ public partial class Character : ObjBase
             return true;
         }
         if (AosEquipProperties.Contains(key))
+        {
+            SetTag(key.ToUpperInvariant(), normalized);
+            return true;
+        }
+        if (ComponentProperties.IsCharProperty(key))
         {
             SetTag(key.ToUpperInvariant(), normalized);
             return true;

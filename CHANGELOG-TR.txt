@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - @Create icinde direncini bildiren zirhin hic direnci yoktu
+----------------------------------------
+
+FIX - ORNEK uzerinde ayarlanan bir bilesen ozelligi reddediliyordu. Ust kaynak bunlari
+        varlik bilesenlerinde tutar (src/tables altindaki ADDPROP tablolari); yani her
+        biri yalnizca tanimda degil, bir esya ya da karakter uzerinde de ayarlanabilir.
+        Bizde tanim tarafi zaten calisiyordu - ayristiricinin adlandirmadigi bir ITEMDEF
+        anahtari tanimin etiketlerine duser ve savas toplamalari onlari okur - ama
+        TrySetProperty'de boyle bir yakalayici yoktu ve yazma dogrudan reddediliyordu.
+
+        Bir esyanin @Create blogu tam olarak bunu yapar. Gonderilen paketler @Create
+        icinde RESPHYSICAL, RESFIRE, RESCOLD, RESPOISON ve RESENERGY'yi aralarinda yaklasik
+        1.100 kez yaziyor ve hepsi yere dusuyordu: zirh hic direnci olmadan cikiyordu.
+        NIGHTSIGHT, LUCK, REGENHITS, DAM* dagilimi, EATER ve SOULCHARGE aileleri ve
+        digerleri de ayni yoldan gitti - esyada 93, karakterde 35 ad.
+
+        Ornek degeri tanimdakini yener, ayarlanmamis olan 0 okunur ve bunlar etiket
+        oldugu icin kayittan sonra da yasarlar. Listeler bilerek YALNIZCA burada baska
+        hicbir seyin yanit vermedigi adlari tutuyor: bir karakterin temel direncleri,
+        LUCK ve direnc tavanlari gercek alanlardir; listenin ilk hali onlari golgeleyip
+        sekiz testi kirmisti.
+
 [2026-09-17] - Motor kendi baglam-menusu eylemini scriptinkinin yanina calistiriyordu
 ----------------------------------------
 

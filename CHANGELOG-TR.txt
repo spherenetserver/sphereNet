@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-17] - Genel EVENTS listeleri adlarini ayni yoldan cozuyor
+----------------------------------------
+
+DEGISIKLIK - Ini'deki EVENTSPLAYER / EVENTSPET / EVENTSITEM / EVENTSREGION, ust
+        kaynakta bir TEVENTS satiriyla ayni kaynak-referans dizisi uzerinden yuklenir
+        (CServerConfig.cpp:5217); yani oradaki bir ad bir [EVENTS] blogu kadar bir
+        [TYPEDEF] de olabilir. Artik EVENTS ad alanina hash'lenmek yerine diger tum
+        EVENTS referanslariyla ayni cozucuden geciyorlar.
+
 [2026-09-17] - Bir alanin adlandirdigi regiontype bloklari ve hic calismamalari
 ----------------------------------------
 

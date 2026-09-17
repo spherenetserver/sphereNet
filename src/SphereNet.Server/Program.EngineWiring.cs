@@ -95,7 +95,12 @@ public static partial class Program
 
         foreach (var token in rawValue.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            var rid = ResourceId.FromString(token, type);
+            // EVENTSPLAYER and its siblings are loaded through the same resource-ref
+            // array as a TEVENTS line upstream (CServerConfig.cpp:5217, RES_EVENTS),
+            // so a name that belongs to another section type resolves to that section.
+            var rid = type == ResType.Events
+                ? DefinitionLoader.ResolveEventName(token, _resources)
+                : ResourceId.FromString(token, type);
             if (rid.IsValid && !target.Contains(rid))
                 target.Add(rid);
         }

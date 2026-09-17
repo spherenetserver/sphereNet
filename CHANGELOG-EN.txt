@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-17] - The global EVENTS lists resolve their names the same way
+----------------------------------------
+
+CHANGE - EVENTSPLAYER / EVENTSPET / EVENTSITEM / EVENTSREGION from the ini are loaded
+        through the same resource-ref array as a TEVENTS line upstream
+        (CServerConfig.cpp:5217), so a name there may belong to a [TYPEDEF] as well as
+        an [EVENTS] block. They now go through the same resolver as every other EVENTS
+        reference instead of being hashed into the EVENTS namespace.
+
 [2026-09-17] - The regiontype blocks an area named, and never ran
 ----------------------------------------
 

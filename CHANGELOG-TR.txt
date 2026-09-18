@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Yeni hesap misafir degil, oyuncudur
+----------------------------------------
+
+CHANGE - Hesaplar varsayilan olarak Guest oluyordu. Ust kaynak buna yalnizca ada bakarak
+        karar verir: yeni bir hesap PLEVEL_Player'dir; adi GUEST ile basliyorsa
+        PLEVEL_Guest olur (CAccount.cpp:593). Guest, komut yuzeyinin ve gonderilen
+        scriptlerin yazildigi seviyenin bir altidir; dolayisiyla siradan bir oyuncu,
+        hicbir scriptin aciklayamayacagi bir nedenle siradan seylerden reddediliyordu.
+
+        Varsayilan deger, cıplak hesap nesnesi ve DEFAULTCOMMANDLEVEL artik Player
+        diyor; GUEST adli bir hesap ise varsayilan ne olursa olsun misafir kaliyor.
+
+        Dogrulayici, DEFAULTCOMMANDLEVEL sifirin ustunde oldugunda uyariyordu; bu
+        degisiklikten sonra dogru yapilandirilmis her shard'da yanardi. Artik Player'in
+        ustunde uyariyor - zaten yazilma nedeni olan yukselme budur.
+
 [2026-09-19] - Sayi, dilin yazdigi bicimde
 ----------------------------------------
 

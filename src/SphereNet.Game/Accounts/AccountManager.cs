@@ -20,8 +20,14 @@ public sealed class AccountManager
     public bool Md5Passwords { get; set; } = true;
     public int DefaultMaxChars { get; set; } = 7;
 
-    /// <summary>Default PrivLevel for auto-created accounts. Maps to DEFAULTCOMMANDLEVEL in sphere.ini.</summary>
-    public Core.Enums.PrivLevel DefaultPrivLevel { get; set; } = Core.Enums.PrivLevel.Guest;
+    /// <summary>Default PrivLevel for auto-created accounts. Maps to DEFAULTCOMMANDLEVEL
+    /// in sphere.ini.
+    ///
+    /// Player, as upstream: a new account is PLEVEL_Player and only a name beginning
+    /// with GUEST (or an explicit guest creation) gets PLEVEL_Guest
+    /// (CAccount.cpp:593). Defaulting everyone to Guest put ordinary players a level
+    /// below the one the whole command and script surface is written against.</summary>
+    public Core.Enums.PrivLevel DefaultPrivLevel { get; set; } = Core.Enums.PrivLevel.Player;
     public event Action<Account>? AccountCreated;
     public event Action<Account>? AccountLogin;
     public event Action<Account>? AccountBlocked;
@@ -144,7 +150,11 @@ public sealed class AccountManager
         var account = new Account
         {
             Name = name,
-            PrivLevel = DefaultPrivLevel,
+            // Upstream's rule: the name decides the guest case, nothing else
+            // (CAccount.cpp:593).
+            PrivLevel = name.StartsWith("GUEST", StringComparison.OrdinalIgnoreCase)
+                ? Core.Enums.PrivLevel.Guest
+                : DefaultPrivLevel,
             UseMd5Passwords = Md5Passwords,
             MaxChars = DefaultMaxChars,
         };

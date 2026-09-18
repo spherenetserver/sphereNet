@@ -732,7 +732,10 @@ public sealed class SphereConfig
     public string LogFileLevel { get; set; } = "Warning";
     public string DebugPacketOpcodes { get; set; } = "";
     public string CommandPrefix { get; set; } = ".";
-    public int DefaultCommandLevel { get; set; }
+    /// <summary>DEFAULTCOMMANDLEVEL. Player, as upstream gives a new account
+    /// (CAccount.cpp:593); Guest is a level below what the command and script surface
+    /// is written against.</summary>
+    public int DefaultCommandLevel { get; set; } = (int)Core.Enums.PrivLevel.Player;
 
     // Chat / sound compatibility flags
     public int ChatFlags { get; set; }
@@ -1262,7 +1265,9 @@ public sealed class SphereConfig
         if (NetTTL < 10) warnings.Add($"NetTTL={NetTTL} — very short idle timeout");
         if (SavePeriodMinutes < 0) warnings.Add($"SavePeriodMinutes={SavePeriodMinutes} — negative save period");
         if (AccApp != 0) warnings.Add($"AccApp={AccApp} — public shards should disable automatic account creation");
-        if (DefaultCommandLevel > 0) warnings.Add($"DefaultCommandLevel={DefaultCommandLevel} — auto-created accounts may receive elevated commands");
+        // Player (1) is the ordinary level every command and script is written against,
+        // so it is not what this warning is about; anything ABOVE it is.
+        if (DefaultCommandLevel > (int)Core.Enums.PrivLevel.Player) warnings.Add($"DefaultCommandLevel={DefaultCommandLevel} — auto-created accounts may receive elevated commands");
         if (string.IsNullOrWhiteSpace(AdminPassword)) warnings.Add("AdminPassword is empty — admin panel/telnet must remain disabled");
         if (!Md5Passwords) warnings.Add("Md5Passwords=0 — account passwords are stored in plain text (Source-X default)");
         if (FloodDetectionCount <= 0) warnings.Add($"FloodDetectionCount={FloodDetectionCount} — flood detection disabled");

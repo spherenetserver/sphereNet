@@ -13,7 +13,9 @@ public sealed class Account : IScriptObj
 {
     private string _name = "";
     private string _passwordHash = "";
-    private PrivLevel _privLevel = PrivLevel.Guest;
+    // Player, as upstream: a new account is PLEVEL_Player and only a GUEST-named one is
+    // PLEVEL_Guest (CAccount.cpp:593).
+    private PrivLevel _privLevel = PrivLevel.Player;
     private readonly Serial[] _charSlots = new Serial[7];
     private int _charCount;
     private DateTime _lastLogin;

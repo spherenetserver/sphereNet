@@ -51,7 +51,11 @@ public class AdminSecurityTests
         var warnings = new SphereConfig
         {
             AccApp = 2,
-            DefaultCommandLevel = 1,
+            // Above Player. Player (1) is what upstream gives every new account
+            // (CAccount.cpp:593), so warning at 1 would warn about the ordinary
+            // configuration and mean nothing; Counsel and up is the elevation this
+            // warning is about.
+            DefaultCommandLevel = 2,
             AdminPassword = "",
             // Source-X MD5PASSWORDS=0 means plaintext storage, which is what
             // deserves the warning; the setting is honoured now rather than ignored.
@@ -59,9 +63,19 @@ public class AdminSecurityTests
         }.Validate();
 
         Assert.Contains(warnings, w => w.Contains("AccApp=2"));
-        Assert.Contains(warnings, w => w.Contains("DefaultCommandLevel=1"));
+        Assert.Contains(warnings, w => w.Contains("DefaultCommandLevel=2"));
         Assert.Contains(warnings, w => w.Contains("AdminPassword is empty"));
         Assert.Contains(warnings, w => w.Contains("Md5Passwords=0"));
+    }
+
+
+    /// <summary>And the ordinary level does NOT warn, or the warning is noise that
+    /// fires on every correctly configured shard.</summary>
+    [Fact]
+    public void SphereConfig_Validate_DoesNotWarnForThePlayerDefault()
+    {
+        var warnings = new SphereConfig { DefaultCommandLevel = 1 }.Validate();
+        Assert.DoesNotContain(warnings, w => w.Contains("DefaultCommandLevel"));
     }
 
     [Fact]

@@ -107,6 +107,21 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     /// "e" is the collector, not the engine: a book's page TEXT contains the English
     /// "i.e.", and prose inside a quoted string is not distinguishable from a member
     /// call by name alone. Comments are stripped; page text cannot be.</summary>
+    /// <summary>The two names on the list below that Source-X DOES contain, and why
+    /// each is still not an engine gap.
+    ///
+    /// Everything else on that list has to be absent from the reference, which is what
+    /// the test beside it checks. Without that check the list is just an allowlist, and
+    /// adding a name to it is indistinguishable from accepting an engine bug.</summary>
+    private static readonly Dictionary<string, string> UnansweredButPresentUpstream =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["LOG"] = "a SERV console command upstream (CServer.cpp:1762); the pack " +
+                      "calls it on a character, which is the wrong object for it",
+            ["e"] = "one letter - it matches the logarithm base constant in " +
+                    "CExpression.cpp:901, which is not what the pack line meant",
+        };
+
     private static readonly HashSet<string> KnownUnanswered =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -339,6 +354,62 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         }
 
         return false;
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    /// <summary>
+    /// Nothing on the known-unanswered list is a name Source-X answers.
+    ///
+    /// The list exists because a pack can call a name nothing defines - a typo, a
+    /// function that was never written, a member read on the wrong object. That is the
+    /// pack's business. But as a bare allowlist it cannot tell those apart from a real
+    /// engine gap: adding an entry silences the failure either way.
+    ///
+    /// So each entry is checked against the reference tree. A name Source-X names is an
+    /// engine gap until someone writes down why it is not - which is what the two
+    /// recorded exceptions do.
+    ///
+    /// Skips when the reference tree is not on this machine; it is not in the
+    /// repository.
+    /// </summary>
+    [Fact]
+    public void NothingOnTheUnansweredListIsAThingSourceXAnswers()
+    {
+        string reference = Path.Combine(FindRepoRoot(), "oldSphere", "Source-X-full", "src");
+        // Through the gate, not a bare early return: a test that quietly returns when
+        // its data is absent is reported as Passed, which is the thing the gate exists
+        // to stop.
+        if (Gate.Missing(outp, "Source-X reference tree", !Directory.Exists(reference)))
+            return;
+
+        var sources = Directory.EnumerateFiles(reference, "*.*", SearchOption.AllDirectories)
+            .Where(p => p.EndsWith(".cpp", StringComparison.OrdinalIgnoreCase) ||
+                        p.EndsWith(".h", StringComparison.OrdinalIgnoreCase) ||
+                        p.EndsWith(".tbl", StringComparison.OrdinalIgnoreCase))
+            .Select(File.ReadAllText)
+            .ToList();
+
+        var engineGaps = new List<string>();
+        foreach (string name in KnownUnanswered)
+        {
+            if (UnansweredButPresentUpstream.ContainsKey(name))
+                continue;
+            string token = "\"" + name + "\"";
+            if (sources.Any(src => src.Contains(token, StringComparison.Ordinal)))
+                engineGaps.Add(name);
+        }
+
+        Assert.True(engineGaps.Count == 0,
+            "these are named by Source-X, so they are engine gaps rather than pack " +
+            "gaps and do not belong on the unanswered list: " + string.Join(", ", engineGaps));
     }
 
     [Fact]

@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Yanitlanmayan script adlarindan hangisi motorun sorunu
+----------------------------------------
+
+CHANGE - Hicbir seyin yanitlamadigi paket uyeleri listesi duz bir izin listesiydi: bir ad
+        eklemek, o ad ister paket yazim hatasi ister gercek bir motor eksigi olsun,
+        basarisizligi susturuyordu. Artik her girdi referans agacina karsi denetleniyor
+        ve Source-X'in yanitladigi bir ad testi dusuruyor - o bir motor eksigidir ve o
+        listede yeri yoktur. Referansta gercekten bulunan iki girdi yazili gerekce
+        tasiyor: LOG, karaktere cagrilan bir SERV konsol fiilidir; "e" ise logaritma
+        taban sabitiyle eslesen tek harftir.
+
+        Mevcut listeye gore olculdu: yirmi besinin hicbiri motor eksigi degil. Hicbir
+        paketin tanimlamadigi adlar, yanlis nesnede okunan bir uye, SYSMESSSYSMESSAGELOC
+        yazim hatasi ve iki toplayici yapayi. Ikisi - REMOVETIMER ve hancinin
+        SRC.LOCATION'u - resmi Source-X script paketinden geliyor ve orada da tanimsiz;
+        yani o satirlar Source-X'te de hicbir sey yapmiyor.
+
+        Denetim erken donmek yerine veri kapisindan geciyor, cunku verisi yokken sessizce
+        donen bir test gecmis sayilir.
+
 [2026-09-18] - Client'in sorup hic yanit alamadigi uc standart paket
 ----------------------------------------
 

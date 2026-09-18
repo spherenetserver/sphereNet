@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Which unanswered script names are the engine's problem
+----------------------------------------
+
+CHANGE - The list of pack members nothing answers was a bare allowlist: adding a name to
+        it silenced the failure whether the name was a pack typo or a real engine gap.
+        Every entry is now checked against the reference tree, and a name Source-X
+        answers fails the test - it is an engine gap and does not belong on that list.
+        The two entries the reference does contain carry a written reason: LOG is a SERV
+        console command called on a character, and "e" is one letter that matches the
+        logarithm base constant.
+
+        Measured against the current list: none of the twenty-five is an engine gap.
+        They are names no pack defines, a member read on the wrong object, the typo
+        SYSMESSSYSMESSAGELOC, and two collector artifacts. Two of them - REMOVETIMER and
+        the innkeeper's SRC.LOCATION - come from the official Source-X script pack and
+        are undefined there too, so those lines do nothing on Source-X either.
+
+        The check goes through the data gate rather than returning early, because a test
+        that quietly returns when its data is absent is reported as passing.
+
 [2026-09-18] - Three standard packets the client asked for and never got
 ----------------------------------------
 

@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Su testi hicbir zaman dogru olamiyordu
+----------------------------------------
+
+FIX - <P.TERRAIN> hicbir sey donmuyordu. Deger aslinda yanitlaniyordu ama yalnizca
+        oneksiz yazildiginda: <TERRAIN> calisiyor, paketlerin gercekte yazdigi onekli
+        yazilis ise duserek gecip gidiyordu. Dolayisiyla shard'in su testi - "ayagin
+        altindaki zemin 05f, 055, 059, 064 ya da 0AA mi" - her seferinde hiclikle
+        karsilastiriliyordu. Ust kaynak tile indeksine iki yazilistan da ulasir
+        (PT_TERRAIN, CPointBase.cpp:827). Yukseklik eki de artik iki yazilisi kabul
+        ediyor.
+
+CHANGE - <hDEGER> bir uyeyi onaltilik okur; <dDEGER>'in ondalik okuyan halinin aynadaki
+        karsiligidir (CScriptObj.cpp:553). Negatif deger, orada oldugu gibi, oldugu
+        haliyle birakilir; sonuc ise bu motordaki her onaltilik okumanin tasidigi bas
+        sifiri tasir - on alti "10" diye yazilsa geri okundugunda on olurdu. Adi zaten H
+        ile baslayan bir uye yine yanitlanir: onek, yalnizca kalani kendi basina
+        cozulebildiginde uygulanir.
+
 [2026-09-18] - Tum dialoglari kapatan staff fonksiyonu hicbirini kapatmiyordu
 ----------------------------------------
 

@@ -1923,18 +1923,23 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
-        if (upper == "TERRAIN")
+        // Both spellings: the packs write <P.TERRAIN> - their water test asks whether
+        // the ground underfoot is 05f, 055, 059, 064 or 0AA - and the bare form was
+        // the only one answered, so every one of those comparisons was against nothing.
+        // Upstream reaches the same value either way (PT_TERRAIN, CPointBase.cpp:827).
+        if (upper is "TERRAIN" or "P.TERRAIN")
         {
             var cell = mapData.GetTerrainTile(pos.Map, pos.X, pos.Y);
             value = $"0{cell.TileId:X}";
             return true;
         }
-        if (upper == "TERRAIN.Z")
+        if (upper is "TERRAIN.Z" or "P.TERRAIN.Z")
         {
             var cell = mapData.GetTerrainTile(pos.Map, pos.X, pos.Y);
             value = cell.Z.ToString();
             return true;
         }
+
 
         // --- STATICS ---
         if (upper == "STATICS")

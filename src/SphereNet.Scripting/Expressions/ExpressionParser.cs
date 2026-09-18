@@ -830,6 +830,23 @@ public sealed class ExpressionParser
                 if (text[pos] == '<')
                 {
                     char next = pos + 1 < text.Length ? text[pos + 1] : '\0';
+                    // <<X>> reads the key NAMED BY X. Upstream gets this from the
+                    // recursion in ParseScriptText: a bracket's contents are parsed
+                    // first, and the bracket is then looked up with what they produced
+                    // (CExpression.cpp:2590). Without that second pass the whole thing
+                    // came back as the literal text "<ALCHEMY>", brackets and all.
+                    //
+                    // The second '<' has to open an identifier for this to be the
+                    // indirection rather than a shift: inside an expression << is the
+                    // shift operator (CExpression.cpp:1378), and 1 << 3 must stay one.
+                    char afterSecond = pos + 2 < text.Length ? text[pos + 2] : ' ';
+                    if (next == '<' && (afterSecond == '_' || char.IsLetter(afterSecond)))
+                    {
+                        string named = ReadAngleBracket(text, ref pos);
+                        sb.Append(ResolveVariable(ResolveAngleBrackets(named)));
+                        continue;
+                    }
+
                     bool isBracketOpen = next == '_' || char.IsLetter(next);
                     if (!isBracketOpen)
                     {

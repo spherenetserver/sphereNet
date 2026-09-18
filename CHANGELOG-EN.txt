@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - <<X>> came back as literal brackets
+----------------------------------------
+
+FIX - <<X>> is meant to read the key NAMED BY X, and read nothing at all. Upstream gets
+        the indirection from the recursion in ParseScriptText: a bracket's contents are
+        parsed first and the bracket is then looked up with what they produced
+        (CExpression.cpp:2590). Here the walker did not count a second '<' as opening a
+        bracket, so the inner half resolved and the outer half was copied out as plain
+        text - <<SERV.SKILL.0.KEY>> came back as the seven characters <ALCHEMY>, angle
+        brackets included, and every comparison against it was false.
+
+        That is how a table is walked by index: the inner half names the skill and the
+        outer half reads it off the character. A loop written that way ran its full 58
+        turns and entered the body on none of them.
+
+        Inside an expression << is still the shift operator (CExpression.cpp:1378). The
+        indirection is taken only when the second bracket opens an identifier, so
+        1 << 3 is still 8.
+
 [2026-09-18] - The float evaluator recognised no function call
 ----------------------------------------
 

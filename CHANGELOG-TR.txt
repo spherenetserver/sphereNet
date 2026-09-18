@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - <<X>> duz ayrac metni olarak geri geliyordu
+----------------------------------------
+
+FIX - <<X>>, X'IN ADLANDIRDIGI anahtari okumak icindir; hic okumuyordu. Ust kaynak bu
+        dolayliligi ParseScriptText'teki ozyinelemeden alir: bir ayracin icerigi once
+        ayristirilir, ayrac sonra onlarin urettigiyle aranir (CExpression.cpp:2590).
+        Burada yuruyucu ikinci bir '<' karakterini ayrac acilisi saymiyordu; ic yari
+        cozuluyor, dis yari ise duz metin olarak disari kopyalaniyordu -
+        <<SERV.SKILL.0.KEY>> geriye <ALCHEMY> diye yedi karakter olarak, ayraclariyla
+        birlikte donuyor ve ona karsi yapilan her karsilastirma yanlis cikiyordu.
+
+        Bir tablo indeksle iste boyle yurunur: ic yari beceriyi adlandirir, dis yari onu
+        karakterden okur. Boyle yazilmis bir dongu 58 turunu tam donuyor ve hicbirinde
+        govdeye girmiyordu.
+
+        Ifade icinde << hala kaydirma operatorudur (CExpression.cpp:1378). Dolaylilik
+        yalnizca ikinci ayrac bir tanimlayici actiginda uygulanir, yani 1 << 3 yine 8.
+
 [2026-09-18] - Float degerlendirici hicbir fonksiyon cagrisini taniyamiyordu
 ----------------------------------------
 

@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - No music on entering a city
+----------------------------------------
+
+FIX - A verb's numeric argument could not be a DEFNAME, and a leading zero was read as
+        decimal. Upstream runs these through the expression evaluator (Str_ParseCmds
+        over an int64 array, CClient.cpp:1438), so both work there. Here anything that
+        was not plain decimal or 0x-prefixed hex was refused, and the verb then did
+        nothing at all.
+
+        That is how the shipped region script lost its music: regiontypes.scp writes
+        SRC.MIDILIST=midi_britain1,midi_ForestA,... and every one of those names failed
+        to parse, so entering a city sent no track. The same reader serves SOUND and
+        ANIM, whose arguments the packs write as snd_* and anim_* names for the same
+        reason. A name nothing defines still sends nothing rather than a track zero.
+
 [2026-09-19] - A new account is a player, not a guest
 ----------------------------------------
 

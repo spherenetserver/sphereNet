@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Sehre girerken muzik yok
+----------------------------------------
+
+FIX - Bir fiilin sayisal argumani DEFNAME olamiyordu ve bastaki sifir ondalik okunuyordu.
+        Ust kaynak bunlari ifade degerlendiricisinden gecirir (int64 dizisi uzerinde
+        Str_ParseCmds, CClient.cpp:1438), yani orada ikisi de calisir. Burada duz ondalik
+        ya da 0x onekli olmayan her sey reddediliyor, fiil de bunun uzerine hicbir sey
+        yapmiyordu.
+
+        Gonderilen bolge script'i muzigini iste boyle kaybetmis: regiontypes.scp
+        SRC.MIDILIST=midi_britain1,midi_ForestA,... yazar ve bu adlarin her biri parse
+        edilemiyordu; dolayisiyla bir sehre girmek hicbir parca gondermiyordu. Ayni
+        okuyucu SOUND ve ANIM'e de hizmet eder; paketler onlarin argumanlarini da ayni
+        nedenle snd_* ve anim_* adlariyla yazar. Tanimsiz bir ad yine sifir numarali bir
+        parca degil, hicbir sey gonderiyor.
+
 [2026-09-19] - Yeni hesap misafir degil, oyuncudur
 ----------------------------------------
 

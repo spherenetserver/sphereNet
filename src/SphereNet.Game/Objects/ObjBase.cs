@@ -292,14 +292,38 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             new[] { ',', '=', ' ', '\t' },
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    /// <summary>Read a verb's numeric argument the way the language writes one.
+    ///
+    /// Upstream runs these through the expression evaluator (Str_ParseCmds over an
+    /// int64 array, CClient.cpp:1438), so a leading zero means hex and a DEFNAME
+    /// resolves to its number. This read only 0x-prefixed hex and plain decimal, and
+    /// anything else was refused - so the verb did nothing at all.
+    ///
+    /// That is how the shipped region script lost its music: it writes
+    /// SRC.MIDILIST=midi_britain1,... and every name failed to parse, so no track was
+    /// ever sent. The same read serves SOUND and ANIM, whose arguments the packs write
+    /// as snd_* and anim_* names for the same reason.</summary>
     protected static bool TryParseScriptUShort(string text, out ushort value)
     {
         value = 0;
         if (string.IsNullOrEmpty(text)) return false;
         text = text.Trim();
-        if (text.Length > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
-            return ushort.TryParse(text[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
-        return ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+
+        if (SphereNet.Core.Types.ScriptNumber.TryParseToken(text, out long n) &&
+            n is >= 0 and <= ushort.MaxValue)
+        {
+            value = (ushort)n;
+            return true;
+        }
+
+        // A DEFNAME carrying a number (midi_britain1 9, snd_special_human 0x1234).
+        if (Definitions.DefinitionLoader.TryGetDefNumber(text, out int defVal) &&
+            defVal is >= 0 and <= ushort.MaxValue)
+        {
+            value = (ushort)defVal;
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Range check the ADDBUFF/REMOVEBUFF icon argument the way

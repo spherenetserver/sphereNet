@@ -2149,6 +2149,26 @@ public sealed class ScriptInterpreter
             return value;
         if ((source ?? NullConsole.Instance).TryResolveScriptVariable(varName, target, args, out string resolved))
             return resolved;
+
+        // A [FUNCTION] named by the whole token, called with no arguments.
+        //
+        // Upstream tries this inside r_WriteVal itself: a key the object's own table
+        // does not name is looked up with r_GetFunctionIndex and CALLED
+        // (CObjBase.cpp:971, CScriptObj.cpp:1481), before anything treats the word as
+        // a constant. Only the SERV branch did that here, so a bare <f_something> fell
+        // straight through to the defname fallback below - and a FUNCTION *is* a named
+        // resource, so the fallback answered with its resource index. The read did not
+        // just fail: it came back as a large non-zero number, which is TRUE. Every
+        // guard written as IF (<f_isHuman>) passed, and every one written as
+        // IF !(<f_isHuman>) failed, whoever was asking.
+        if (!varName.Contains('.', StringComparison.Ordinal) &&
+            !varName.Contains('(', StringComparison.Ordinal))
+        {
+            string? fnVal = CallNoArgFunction(varName, target, source, args, scope);
+            if (fnVal != null)
+                return fnVal;
+        }
+
         // Bare defname/constant fallback (e.g. <statf_insubstantial>,
         // <memory_ipet>) via the shared server resolver. Source scripts use
         // these names without DEF./DEF0. prefixes inside expressions.

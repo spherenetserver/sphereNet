@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A bare <f_something> was a name, not a call
+----------------------------------------
+
+FIX - A script FUNCTION named by the whole token was never called. Upstream does it
+        inside r_WriteVal: a key the object's own table does not name is looked up with
+        r_GetFunctionIndex and CALLED (CObjBase.cpp:971, CScriptObj.cpp:1481) before
+        anything treats the word as a constant. Only the SERV branch did that here, so
+        a bare <f_something> fell through to the bare-defname fallback - and a FUNCTION
+        is itself a named resource, so that fallback answered with its RESOURCE INDEX.
+
+        The read did not fail quietly. It came back as a large non-zero number, which
+        is TRUE: every guard written IF (<f_x>) passed and every IF !(<f_x>) failed,
+        whatever the function would have answered.
+
+        The shipped pack gates clothing on exactly that shape - type_equipitem.scp asks
+        IF ((<CanUse>&can_u_human) && !<SRC.f_isHuman>) and answers "You cannot equip
+        that." - so no human character could put on any piece of clothing, including
+        the one they had just taken off.
+
 [2026-09-18] - Two of the object reference heads
 ----------------------------------------
 

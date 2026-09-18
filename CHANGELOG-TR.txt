@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Duz <f_birsey> bir cagri degil, bir ad sayiliyordu
+----------------------------------------
+
+FIX - Tumuyle bir adla anilan script FUNCTION'i hic cagrilmiyordu. Ust kaynak bunu
+        r_WriteVal'in icinde yapar: nesnenin kendi tablosunun adlandirmadigi bir
+        anahtar r_GetFunctionIndex ile aranir ve CAGRILIR (CObjBase.cpp:971,
+        CScriptObj.cpp:1481); hicbir sey o kelimeyi sabit saymadan once. Burada bunu
+        yalnizca SERV dali yapiyordu, dolayisiyla duz bir <f_birsey> duz-defname
+        yedegine dusuyordu - ve bir FUNCTION zaten adlandirilmis bir kaynak oldugu icin
+        o yedek KAYNAK INDEKSIYLE yanitliyordu.
+
+        Okuma sessizce basarisiz olmuyordu. Geriye buyuk ve sifirdan farkli bir sayi
+        donuyordu, yani DOGRU: IF (<f_x>) diye yazilmis her koruma geciyor, IF !(<f_x>)
+        diye yazilmis her koruma kaliyordu - fonksiyon ne yanitlayacak olursa olsun.
+
+        Gonderilen paket giysileri tam olarak bu sekle baglar - type_equipitem.scp
+        IF ((<CanUse>&can_u_human) && !<SRC.f_isHuman>) diye sorar ve "You cannot equip
+        that." der - dolayisiyla hicbir insan karakter hicbir giysiyi giyemiyordu; az
+        once cikardigini bile.
+
 [2026-09-18] - Nesne referans basliklarindan ikisi
 ----------------------------------------
 

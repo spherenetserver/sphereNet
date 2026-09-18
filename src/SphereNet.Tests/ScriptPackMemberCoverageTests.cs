@@ -79,12 +79,20 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     /// when a name joins this set AND when one leaves it.
     ///
     /// Most of what is left belongs to the PACK rather than the engine. FlagEkle,
-    /// FLAGSIL, ISJAIL, ISINSAFE, ISDISS, dmore2 and the FUNC_*/Func_* names have no
+    /// FLAGSIL, ISJAIL, ISINSAFE, ISDISS and the FUNC_*/Func_* names have no
     /// definition anywhere - not in this engine, not in the reference tables and not
     /// in any [FUNCTION] block of any of the three packs - and SYSMESSSYSMESSAGELOC
     /// is a typo for SYSMESSAGELOC. f_lich_polymorph is the reference distribution's
     /// own dangling call: e_npcs.scp schedules it and nothing defines it. Those are
     /// fixed by writing the missing function or correcting the call, not here.
+    ///
+    /// dmore2 was on this list and should not have been: a leading 'd' asks for a
+    /// member's DECIMAL form, so it is MORE2 - which reads back in hex - written out
+    /// as a number. The engine has always answered it; the probe asked the object for
+    /// the whole word, and the object never sees the prefix because the interpreter
+    /// strips it first. The packs write about fifteen hundred of these, mostly
+    /// &lt;dLOCAL.x&gt;, so the check now tries the word without its 'd' before
+    /// calling anything missing.
     ///
     /// LOCATION, MYNAME, PLACE, NOTICE, REMOVETIMER, VIRTUAL, LOG and
     /// UOSOFT_CLIENT_LOGOUT are names no reference table carries either: shard
@@ -109,7 +117,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             "LOCATION", "LOG", "MYNAME",
             "NOTICE", "PLACE", "REMOVETIMER", "SYSMESSSYSMESSAGELOC",
             "SendGMPage", "UOSOFT_CLIENT_LOGOUT", "VIRTUAL",
-            "dmore2", "e", "f_lich_polymorph",
+            "e", "f_lich_polymorph",
         };
 
     private sealed class Console : ITextConsole
@@ -394,6 +402,19 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
             if (functions.Contains(name)) continue;
             if (AnsweredButNotProbeable.Contains(name)) continue;
             if (EngineAnswers(world, client, name, info.Suffixes)) continue;
+
+            // A leading 'd' asks for the DECIMAL form of a member - <dMORE1> is
+            // MORE1, which reads back in hex, written out as 35201. The interpreter
+            // strips it before the object is ever asked, so probing the object with
+            // the whole word reports a member the engine does answer: the packs write
+            // about fifteen hundred of these, mostly <dLOCAL.x>.
+            //
+            // Only tried when the word is otherwise unanswered, so DISPID, DIR, DAM
+            // and the rest of the keys that simply begin with 'd' are never stripped.
+            if (name.Length > 1 && (name[0] is 'd' or 'D') &&
+                EngineAnswers(world, client, name[1..], info.Suffixes))
+                continue;
+
             unanswered.Add((name, info.Uses, info.File));
         }
 

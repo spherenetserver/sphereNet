@@ -610,7 +610,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "ISVALIDE": value = IsDeleted ? "0" : "1"; return true;
             case "UID": value = $"0{_uid.Value:X}"; return true;
             case "UUID": value = _uuid.ToString("D"); return true;
-            case "NAME": value = _name; return true;
+            // GetName(), not the raw field: upstream answers OC_NAME with the virtual
+            // (CObjBase.cpp:1546), which falls back to the definition's name when the
+            // instance carries none - a creature or item that was never given one of
+            // its own still has the name its definition declares. Reading the field
+            // directly made that depend on which door the object came through: an NPC
+            // from a spawner answered, because that path copies the name onto the
+            // instance, while the same NPC from SERV.NEWNPC answered an empty string.
+            case "NAME": value = GetName(); return true;
             case "P": value = _position.ToString(); return true;
             case "X": value = _position.X.ToString(); return true;
             case "Y": value = _position.Y.ToString(); return true;

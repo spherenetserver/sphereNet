@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir nesnenin adi, nasil yaratildigina bagliydi
+----------------------------------------
+
+FIX - <NAME>, ust kaynagin OC_NAME'i yanitladigi sanal GetName() yerine ornek alanini
+        okuyordu (CObjBase.cpp:1546); o sanal metot, ornegin kendine ait adi yoksa
+        tanima geri duser. Spawner'dan gelen bir yaratik cevap veriyordu - cunku o yol
+        tanimin adini ornege kopyalar - ama ayni yaratik SERV.NEWNPC'ten geldiginde bos
+        dize donuyordu ve <NAME> karsilastiran bir scriptin elinde hicbir sey olmuyordu.
+        Kendi adi olmayan bir esya da ITEMDEF'i karsisinda ayni durumdaydi. Geri dusus,
+        ust kaynakta oldugu gibi cogul isaretcisini de beraberinde tasir.
+
 [2026-09-18] - Defname yerine yazilan bir havuz hicbir sey yaratmiyordu
 ----------------------------------------
 

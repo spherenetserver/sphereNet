@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A prompt asked its question where nobody could read it
+----------------------------------------
+
+FIX - PROMPTCONSOLE opened a text box that asked nothing. The question was written
+        into the prompt packet, and the client's handler for that packet reads a single
+        64-bit context id and stops (ASCIIPrompt / UnicodePrompt) - it never looks for
+        text there. Upstream sends the question as a system message first and then the
+        packet, which carries the two context words and a terminator and nothing else
+        (addPromptConsole, CClientMsg.cpp:1796-1799; PacketAddPrompt, send.cpp:2997).
+        The live pack raises nine of these, for guild and town names; every one of them
+        asked the player a question they could not see.
+
+FIX - PROMPTCONSOLEU is the Unicode form and now goes out as its own packet (0xC2),
+        with the language tag and the wide terminator upstream writes. It was being sent
+        as the ASCII one, which drops the distinction the U form exists for - the reason
+        to reach for it is a question that is not plain ASCII.
+
 [2026-09-18] - A refused bank deposit said nothing
 ----------------------------------------
 

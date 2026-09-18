@@ -171,12 +171,21 @@ public sealed partial class GameClient
     private uint _pendingPromptId;
 
     /// <summary>Send a text prompt to the client and register a callback for the response.</summary>
-    public void SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback = null)
+    public void SendPrompt(uint promptId, string message,
+        Action<uint, uint, uint, string>? callback = null, bool unicode = false)
     {
         if (_character == null) return;
         _pendingPromptId = promptId;
         _pendingPromptCallback = callback;
-        _netState.Send(new PacketPromptRequest(_character.Uid.Value, promptId, message).Build());
+
+        // The question is a system message, not part of the packet: that is where
+        // upstream puts it (addPromptConsole, CClientMsg.cpp:1796) and the client's
+        // prompt handler reads nothing but the context id. Writing it into the packet
+        // meant nobody ever saw it.
+        if (!string.IsNullOrWhiteSpace(message))
+            SysMessage(message);
+
+        _netState.Send(new PacketPromptRequest(_character.Uid.Value, promptId, unicode).Build());
     }
 
     /// <summary>Handle prompt response (0x9A) — rune names, house signs, etc.</summary>

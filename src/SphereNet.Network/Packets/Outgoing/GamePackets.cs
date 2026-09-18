@@ -626,29 +626,52 @@ public sealed class PacketAllNamesResponse : PacketWriter
     }
 }
 
-/// <summary>0x9A — Prompt request (ask client for text input).</summary>
+/// <summary>
+/// 0x9A / 0xC2 — put the client into text-entry mode.
+///
+/// The packet carries no question. Upstream sends the text as a system message and
+/// then this, which holds only the two context words the reply comes back with
+/// (addPromptConsole, CClientMsg.cpp:1796-1799; PacketAddPrompt, send.cpp:2997). The
+/// client agrees: its handler for both opcodes reads a single 64-bit id and nothing
+/// else (ASCIIPrompt / UnicodePrompt).
+///
+/// The message used to be written into the packet, where the client never looked for
+/// it, and was not sent any other way - so every prompt the packs raise (a guild name,
+/// a town abbreviation) opened a text box that asked nothing.
+///
+/// 0xC2 is the same packet with a UTF-16 terminator behind a four-byte language tag,
+/// and is what PROMPTCONSOLEU means; sending the ASCII one for it quietly dropped the
+/// distinction, which matters wherever the question is not plain ASCII.
+/// </summary>
 public sealed class PacketPromptRequest : PacketWriter
 {
     private readonly uint _serial;
     private readonly uint _promptId;
-    private readonly uint _type; // 0=ASCII, 1=Unicode
-    private readonly string _message;
+    private readonly bool _unicode;
 
-    public PacketPromptRequest(uint serial, uint promptId, string message, uint type = 0) : base(0x9A)
+    public PacketPromptRequest(uint serial, uint promptId, bool unicode = false)
+        : base(unicode ? (byte)0xC2 : (byte)0x9A)
     {
         _serial = serial;
         _promptId = promptId;
-        _type = type;
-        _message = message;
+        _unicode = unicode;
     }
 
     public override PacketBuffer Build()
     {
-        var buf = CreateVariable(64);
+        var buf = CreateVariable(24);
         buf.WriteUInt32(_serial);
         buf.WriteUInt32(_promptId);
-        buf.WriteUInt32(_type);
-        buf.WriteAsciiNull(_message);
+        buf.WriteUInt32(0);
+        if (_unicode)
+        {
+            buf.WriteAsciiFixed("", 4);   // language tag, as upstream leaves it
+            buf.WriteUInt16(0);           // UTF-16 terminator
+        }
+        else
+        {
+            buf.WriteByte(0);
+        }
         buf.WriteLengthAt(1);
         return buf;
     }

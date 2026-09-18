@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir istem sorusunu kimsenin okuyamayacagi yere yaziyordu
+----------------------------------------
+
+FIX - PROMPTCONSOLE hicbir sey sormayan bir metin kutusu aciyordu. Soru istem paketinin
+        icine yaziliyordu; oysa client'in o paket icin isleyicisi tek bir 64-bitlik
+        baglam kimligi okuyup duruyor (ASCIIPrompt / UnicodePrompt) - orada metin
+        aramiyor. Ust kaynak soruyu once sistem mesaji olarak gonderir, ardindan paketi;
+        paket iki baglam kelimesi ve bir sonlandirici disinda bir sey tasimaz
+        (addPromptConsole, CClientMsg.cpp:1796-1799; PacketAddPrompt, send.cpp:2997).
+        Canli paket bunlardan dokuz tane aciyor - guild ve kasaba adlari icin - ve
+        hepsi oyuncuya goremedigi bir soru soruyordu.
+
+FIX - PROMPTCONSOLEU Unicode bicimidir ve artik kendi paketiyle (0xC2), ust kaynagin
+        yazdigi dil etiketi ve genis sonlandiriciyla gidiyor. ASCII olani
+        gonderiliyordu; bu da U bicimin var olma sebebini - duz ASCII olmayan bir soru -
+        ortadan kaldiriyordu.
+
 [2026-09-18] - Reddedilen banka yatirimi hicbir sey soylemiyordu
 ----------------------------------------
 

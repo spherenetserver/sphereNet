@@ -187,7 +187,7 @@ internal interface IClientContext : ITextConsole
         uint[] switches, (ushort Id, string Text)[] textEntries);
     bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection);
     void SendInputPromptGump(IScriptObj target, string propName, int maxLength);
-    void SendScriptPrompt(IScriptObj target, string functionName, string message);
+    void SendScriptPrompt(IScriptObj target, string functionName, string message, bool unicode = false);
 
     // --- gameplay bridges ---
     void OpenVendorBuy(Character vendor);
@@ -207,7 +207,7 @@ internal interface IClientContext : ITextConsole
     void BeginAreaTarget(string verb, int range, string verbArgs = "");
     void ResendCharacterList();
     void ApplyNewbieSection(Objects.Characters.Character ch, string sectionName);
-    void SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback = null);
+    void SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback = null, bool unicode = false);
     void OnResurrect();
     Character? DismountCharacter();
     bool TryMountCharacter(Character mount);

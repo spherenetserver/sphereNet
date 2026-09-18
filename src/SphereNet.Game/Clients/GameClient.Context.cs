@@ -198,11 +198,12 @@ public sealed partial class GameClient : IClientContext
         HandleGumpResponse(serial, gumpId, buttonId, switches, textEntries);
     bool IClientContext.TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection) => TryFindMenuSection(menuDefname, out menuSection);
     void IClientContext.SendInputPromptGump(IScriptObj target, string propName, int maxLength) => SendInputPromptGump(target, propName, maxLength);
-    void IClientContext.SendScriptPrompt(IScriptObj target, string functionName, string message)
+    void IClientContext.SendScriptPrompt(IScriptObj target, string functionName, string message, bool unicode)
     {
         uint promptId = unchecked((uint)HashCode.Combine(functionName.ToUpperInvariant(), target.GetName()));
         SendPrompt(promptId, string.IsNullOrWhiteSpace(message) ? "Enter text:" : message,
-            (_, _, _, text) =>
+            unicode: unicode,
+            callback: (_, _, _, text) =>
             {
                 if (Triggers?.Runner == null || string.IsNullOrWhiteSpace(functionName)) return;
                 var args = new SphereNet.Scripting.Execution.TriggerArgs(Character, argStr: text)
@@ -230,7 +231,8 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.BeginAreaTarget(string verb, int range, string verbArgs) => BeginAreaTarget(verb, range, verbArgs);
     void IClientContext.ResendCharacterList() => ResendCharacterList();
     void IClientContext.ApplyNewbieSection(Character ch, string sectionName) => ApplyNewbieSection(ch, sectionName);
-    void IClientContext.SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback) => SendPrompt(promptId, message, callback);
+    void IClientContext.SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback, bool unicode) =>
+        SendPrompt(promptId, message, callback, unicode);
     void IClientContext.OnResurrect() => OnResurrect();
     Character? IClientContext.DismountCharacter() => DismountCharacter();
     bool IClientContext.TryMountCharacter(Character mount) => TryMountCharacter(mount);

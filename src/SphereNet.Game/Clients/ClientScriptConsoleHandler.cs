@@ -100,7 +100,8 @@ public sealed class ClientScriptConsoleHandler
     private void Resync() => _client.Resync();
     private void BroadcastDrawObject(Character ch) => _client.BroadcastDrawObject(ch);
     private void SendInputPromptGump(IScriptObj target, string propName, int maxLength) => _client.SendInputPromptGump(target, propName, maxLength);
-    private void SendScriptPrompt(IScriptObj target, string functionName, string message) => _client.SendScriptPrompt(target, functionName, message);
+    private void SendScriptPrompt(IScriptObj target, string functionName, string message, bool unicode) =>
+        _client.SendScriptPrompt(target, functionName, message, unicode);
     private void BeginXVerbTarget(string verb, string args) => _client.BeginXVerbTarget(verb, args);
     private bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection) => _client.TryFindMenuSection(menuDefname, out menuSection);
     private static bool IsPlainDefToken(string token) => GameClient.IsPlainDefToken(token);
@@ -186,7 +187,9 @@ public sealed class ClientScriptConsoleHandler
             int split = raw.IndexOfAny([' ', '\t', ',']);
             string function = split < 0 ? raw : raw[..split].Trim();
             string message = split < 0 ? "Enter text:" : raw[(split + 1)..].Trim(' ', '\t', ',');
-            SendScriptPrompt(target, function, message);
+            // The U form is the Unicode one (CObjBase.cpp:2523 passes the flag on),
+            // which is what a question written in anything but plain ASCII needs.
+            SendScriptPrompt(target, function, message, upper == "PROMPTCONSOLEU");
             return true;
         }
 

@@ -993,36 +993,47 @@ public static partial class Program
                 inferredBrain = NpcBrainType.Vendor;
         }
 
+        // The trade keywords belong to every VENDOR brain, not just the one called
+        // Vendor. Upstream counts a HEALER, a BANKER, a VENDOR and a STABLE alike
+        // (CCharNPC::IsVendor, CCharNPC.cpp:253), and the shipped pack gives the animal
+        // trainer and the stablemaster brain=Stable - so they answered nothing when a
+        // customer said "buy" right next to them, while a shop down the street did.
+        //
+        // Handled ahead of the brain switch so each brain keeps its own extra keywords
+        // (a stablemaster still answers "stable", a banker "bank") without either
+        // having to repeat these.
+        if (SphereNet.Game.Trade.VendorEngine.IsVendorBrain(inferredBrain))
+        {
+            if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
+            {
+                var vgc = FindGameClient(speaker);
+                _log.LogDebug(
+                    "[vendor_speech] BUY speaker={Speaker} npc={Npc} brain={Brain} client={HasClient}",
+                    speaker.Name, npc.Name, npc.NpcBrain, vgc != null);
+                if (vgc != null)
+                    vgc.OpenVendorBuy(npc);
+                response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorBuyfast);
+                if (string.IsNullOrEmpty(response))
+                    response = "Take a look at my goods.";
+            }
+            if (HasWord(lower, "sell"))
+            {
+                var vgc = FindGameClient(speaker);
+                _log.LogDebug(
+                    "[vendor_speech] SELL speaker={Speaker} npc={Npc} brain={Brain} client={HasClient}",
+                    speaker.Name, npc.Name, npc.NpcBrain, vgc != null);
+                if (vgc != null)
+                    vgc.OpenVendorSell(npc);
+                response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorSellfast);
+                if (string.IsNullOrEmpty(response))
+                    response = "Show me what you have to sell.";
+            }
+        }
+
         switch (inferredBrain)
         {
             case NpcBrainType.Vendor:
-                if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
-                {
-                    // Source-X CClient::Event_TalkBroadcast → Cmd_VendorBuy:
-                    // open the vendor buy window on the speaker's client.
-                    var gc = FindGameClient(speaker);
-                    _log.LogDebug(
-                        "[vendor_speech] BUY speaker={Speaker} npc={Npc} brain={Brain} client={HasClient}",
-                        speaker.Name, npc.Name, npc.NpcBrain, gc != null);
-                    if (gc != null)
-                        gc.OpenVendorBuy(npc);
-                    response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorBuyfast);
-                    if (string.IsNullOrEmpty(response))
-                        response = "Take a look at my goods.";
-                }
-                else if (HasWord(lower, "sell"))
-                {
-                    var gc = FindGameClient(speaker);
-                    _log.LogDebug(
-                        "[vendor_speech] SELL speaker={Speaker} npc={Npc} brain={Brain} client={HasClient}",
-                        speaker.Name, npc.Name, npc.NpcBrain, gc != null);
-                    if (gc != null)
-                        gc.OpenVendorSell(npc);
-                    response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorSellfast);
-                    if (string.IsNullOrEmpty(response))
-                        response = "Show me what you have to sell.";
-                }
-                else if (HasWord(lower, "train") || HasWord(lower, "teach"))
+                if (HasWord(lower, "train") || HasWord(lower, "teach"))
                 {
                     response = HandleTrainRequest(speaker, npc, lower);
                 }

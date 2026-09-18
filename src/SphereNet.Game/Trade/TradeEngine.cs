@@ -144,10 +144,20 @@ public static class VendorEngine
     public static bool IsVendorLike(Character npc)
     {
         if (npc.IsPlayer) return false;
-        if (npc.NpcBrain == Core.Enums.NpcBrainType.Vendor) return true;
+        // Upstream's own set, in full: a vendor is a HEALER, a BANKER, a VENDOR or a
+        // STABLE brain (CCharNPC::IsVendor, CCharNPC.cpp:253). Accepting only VENDOR
+        // left the stablemaster and the animal trainer - brain=Stable in the shipped
+        // pack - out of every path that asks this question, so they answered nothing
+        // when a customer said "buy" while a shop across the street did.
+        if (IsVendorBrain(npc.NpcBrain)) return true;
         return npc.NpcBrain is Core.Enums.NpcBrainType.Human or Core.Enums.NpcBrainType.None
                && HasVendorNameKeyword(npc.Name);
     }
+
+    /// <summary>The brains upstream counts as a vendor (CCharNPC.cpp:253).</summary>
+    public static bool IsVendorBrain(Core.Enums.NpcBrainType brain) =>
+        brain is Core.Enums.NpcBrainType.Vendor or Core.Enums.NpcBrainType.Healer
+              or Core.Enums.NpcBrainType.Banker or Core.Enums.NpcBrainType.Stable;
 
     /// <summary>
     /// Process a buy request from player to vendor.

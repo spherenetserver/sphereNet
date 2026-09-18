@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - The vendor next to you said nothing
+----------------------------------------
+
+FIX - Only the brain literally named Vendor counted as one. Upstream's set is HEALER,
+        BANKER, VENDOR and STABLE alike (CCharNPC::IsVendor, CCharNPC.cpp:253), and the
+        shipped pack gives the animal trainer and the stablemaster brain=Stable - so
+        they answered nothing when a customer said "buy" standing right next to them,
+        while a shop down the street whose brain happened to be Vendor opened its window
+        instead. Every path that asks the question - the double-click, the context menu,
+        the speech keywords and the trade validation - was affected, because they all
+        share the one predicate.
+
+CHANGE - The trade keywords are answered ahead of the brain-specific switch, so each
+        brain keeps its own extra words (a stablemaster still answers "stable", a banker
+        "bank") without any of them repeating buy and sell.
+
 [2026-09-18] - Gold the player had and could not see
 ----------------------------------------
 

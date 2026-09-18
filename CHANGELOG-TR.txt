@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Yanindaki satici hicbir sey demiyordu
+----------------------------------------
+
+FIX - Yalnizca adi birebir Vendor olan beyin satici sayiliyordu. Ust kaynagin kumesi
+        HEALER, BANKER, VENDOR ve STABLE'i esit sayar (CCharNPC::IsVendor,
+        CCharNPC.cpp:253); gonderilen paket ise hayvan egitmenine ve ahir sahibine
+        brain=Stable verir - dolayisiyla musteri tam yanlarinda "buy" dediginde onlar
+        hicbir sey demiyor, sokagin asagisindaki, beyni denk gelmis bir dukkan kendi
+        penceresini aciyordu. Bu soruyu soran her yol - cift tiklama, baglam menusu,
+        konusma kelimeleri ve alisveris dogrulamasi - etkilenmisti; hepsi ayni yuklemi
+        paylasiyor.
+
+CHANGE - Alisveris kelimeleri beyne ozgu switch'ten once yanitlaniyor; boylece her beyin
+        kendi ek kelimelerini koruyor (ahir sahibi hala "stable", bankaci "bank" diyor)
+        ve hicbiri buy ile sell'i tekrar etmek zorunda kalmiyor.
+
 [2026-09-18] - Oyuncunun sahip olup goremedigi altin
 ----------------------------------------
 

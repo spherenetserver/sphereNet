@@ -1086,6 +1086,7 @@ public sealed class TriggerDispatcher
         CharTrigger.CharTradeAccepted => "CharTradeAccepted",
         CharTrigger.Click => "Click",
         CharTrigger.ClientTooltip => "ClientTooltip",
+        CharTrigger.ClientTooltipAfterDefault => "ClientTooltipAfterDefault",
         CharTrigger.ContextMenuRequest => "ContextMenuRequest",
         CharTrigger.ContextMenuSelect => "ContextMenuSelect",
         CharTrigger.DClick => "DClick",

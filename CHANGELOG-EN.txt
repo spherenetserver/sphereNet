@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - The protocol matrix contradicted the code
+----------------------------------------
+
+FIX - Three 0xBF subcommands were documented as the wrong thing. 0x001C is the spell
+        select, not a view size; 0x002C is the bandage macro, not a virtue invoke;
+        0x0032 is the gargoyle flight toggle, not the quest button. Upstream's own names
+        settle it - EXTDATA_NewSpellSelect, EXTDATA_BandageMacro, EXTDATA_GargoyleFly,
+        all marked "client message". 0x32 is reused in the other direction, where it IS
+        the quest button (EXTAOS_QuestButton); that section is about what the client
+        sends, and the note now says so.
+
+FIX - The "Known Ignored" list named eight opcodes - 0x01, 0x2C, 0x83, 0x95, 0x9A, 0x9B,
+        0xD1 and 0xD4 - that all have handlers which act and are wired through to the
+        server. So did "Deferred", for 0x66 and 0x7D. Anyone reading the matrix to find
+        out what still needed building was sent to work that was already done.
+
+CHANGE - The guardrail can now catch that. It used to check only that an opcode's text
+        appeared somewhere in the file, which cannot tell a right entry from a wrong
+        one; it now reads the heading each opcode sits under and fails when a registered
+        opcode is filed as ignored or deferred.
+
+CHANGE - Both READMEs claimed about 1,900 tests. The count is a number that goes stale
+        on its own, so it is gone rather than corrected.
+
+[2026-09-18] - A character's tooltip never reached the after-default trigger
+----------------------------------------
+
+FIX - @ClientTooltip_AfterDefault fired only on items. Upstream calls it on the OBJECT
+        and keeps a character-specific slot beside the item one
+        (TRIGGER_CHARCLIENTTOOLTIP_AFTERDEFAULT, CClientMsg_AOSTooltip.cpp:121). Only
+        the item half existed here, on the grounds that no shipped pack hooks the
+        character one - a reason to expect the trigger unused, not a reason for it to be
+        unanswerable.
+
 [2026-09-18] - The packet log could not see the movement stream
 ----------------------------------------
 

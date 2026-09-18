@@ -4,6 +4,40 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Protokol matrisi kodla celisiyordu
+----------------------------------------
+
+FIX - Uc 0xBF altkomutu yanlis seyle belgelenmisti. 0x001C goruntu boyutu degil buyu
+        secimi; 0x002C erdem cagirma degil bandaj makrosu; 0x0032 gorev dugmesi degil
+        gargoyle ucus anahtari. Ust kaynagin kendi adlari kararı veriyor -
+        EXTDATA_NewSpellSelect, EXTDATA_BandageMacro, EXTDATA_GargoyleFly; ucu de
+        "client message" diye isaretli. 0x32 diger yonde yeniden kullanilir ve orada
+        gercekten gorev dugmesidir (EXTAOS_QuestButton); o bolum client'in ne
+        gonderdigiyle ilgili oldugu icin not artik bunu soyluyor.
+
+FIX - "Known Ignored" listesi sekiz opcode aniyordu - 0x01, 0x2C, 0x83, 0x95, 0x9A,
+        0x9B, 0xD1 ve 0xD4 - ve sekizinin de is yapan, sunucuya baglanmis handler'i var.
+        "Deferred" de 0x66 ve 0x7D icin oyleydi. Matrisi "daha ne yapilmali" diye okuyan
+        biri, coktan yapilmis ise yonlendiriliyordu.
+
+CHANGE - Koruma testi artik bunu yakalayabiliyor. Onceden yalnizca opcode metninin
+        dosyada bir yerde gectigine bakiyordu; bu, dogru girdiyle yanlisini ayirt
+        edemez. Artik her opcode'un hangi baslik altinda durdugunu okuyor ve kayitli bir
+        opcode "ignored" ya da "deferred" diye dosyalanmissa duşuyor.
+
+CHANGE - Iki README de yaklasik 1.900 test diyordu. Sayi kendiliginden bayatlayan bir
+        sey oldugu icin duzeltilmedi, kaldirildi.
+
+[2026-09-18] - Bir karakterin tooltip'i son tetikleyiciye ulasmiyordu
+----------------------------------------
+
+FIX - @ClientTooltip_AfterDefault yalnizca esyalarda calisiyordu. Ust kaynak onu
+        NESNENIN uzerinde cagirir ve esya slotunun yaninda karaktere ozgu bir slot da
+        tutar (TRIGGER_CHARCLIENTTOOLTIP_AFTERDEFAULT, CClientMsg_AOSTooltip.cpp:121).
+        Burada yalnizca esya yarisi vardi ve gerekcesi "gonderilen hicbir paket karakter
+        olanini kancalamiyor" idi - bu, tetikleyicinin kullanilmamasini beklemek icin bir
+        neden olabilir, yanitlanamaz olmasi icin degil.
+
 [2026-09-18] - Paket log'u hareket akisini goremiyordu
 ----------------------------------------
 

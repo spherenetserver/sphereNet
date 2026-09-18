@@ -797,12 +797,28 @@ public sealed class ClientSkillsHandler
         // upstream fires it outside that branch (CClientMsg_AOSTooltip.cpp:121), so a
         // script that suppressed the defaults can still append to what it built. It
         // used to sit inside the item-enrichment block, which the RETURN 1 path never
-        // reached. (Only the item side exists here; no pack hooks the char one.)
-        if (_triggerDispatcher != null && obj is Item afterItem &&
-            _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault))
+        // reached.
+        //
+        // It fires on the OBJECT, whatever the object is: upstream calls
+        // pObj->OnTrigger for it and keeps a char-specific slot beside the item one
+        // (TRIGGER_CHARCLIENTTOOLTIP_AFTERDEFAULT, CClientMsg_AOSTooltip.cpp:121).
+        // Only the item half existed here, on the grounds that no shipped pack hooked
+        // the character one - which is a reason to expect it unused, not a reason for
+        // it to be unanswerable.
+        if (_triggerDispatcher != null)
         {
-            _triggerDispatcher.FireItemTrigger(afterItem, ItemTrigger.ClientTooltipAfterDefault,
-                new TriggerArgs { CharSrc = _character, ItemSrc = afterItem, ScriptConsole = _client, N1 = requested ? 1 : 0 });
+            if (obj is Item afterItem &&
+                _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault))
+            {
+                _triggerDispatcher.FireItemTrigger(afterItem, ItemTrigger.ClientTooltipAfterDefault,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = afterItem, ScriptConsole = _client, N1 = requested ? 1 : 0 });
+            }
+            else if (obj is Character afterChar &&
+                     _triggerDispatcher.IsCharTriggerUsed(CharTrigger.ClientTooltipAfterDefault))
+            {
+                _triggerDispatcher.FireCharTrigger(afterChar, CharTrigger.ClientTooltipAfterDefault,
+                    new TriggerArgs { CharSrc = _character, O1 = afterChar, ScriptConsole = _client, N1 = requested ? 1 : 0 });
+            }
         }
 
         propList.AddRange(scriptProperties);

@@ -167,6 +167,70 @@ public class PacketManagerTests
             Assert.Contains($"`0x{opcode:X2}`", matrix);
     }
 
+    /// <summary>
+    /// A registered opcode must not be documented as one the server ignores.
+    ///
+    /// The check above only asks whether the opcode appears somewhere in the file, so
+    /// it could not tell a correct entry from a wrong one. Eight opcodes sat under
+    /// "Known Ignored" - 0x01, 0x2C, 0x83, 0x95, 0x9A, 0x9B, 0xD1 and 0xD4 - while all
+    /// eight had handlers that act and are wired through to the server. Anyone reading
+    /// the matrix to decide what still needed building was sent to work that was
+    /// already done.
+    ///
+    /// This reads the heading each opcode sits under, so the claim and the code have
+    /// to agree.
+    /// </summary>
+    [Fact]
+    public void ProtocolMatrix_DoesNotCallARegisteredOpcodeIgnored()
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        using var network = new NetworkManager(1, loggerFactory);
+        var sections = ReadMatrixSections(FindRepoFile("docs", "PROTOCOL_MATRIX.md"));
+
+        var wrong = new List<string>();
+        foreach (byte opcode in GetRegisteredOpcodes(network))
+        {
+            string tag = $"`0x{opcode:X2}`";
+            foreach (var (heading, body) in sections)
+            {
+                bool claimsUnhandled =
+                    heading.Contains("Ignored", StringComparison.OrdinalIgnoreCase) ||
+                    heading.Contains("Deferred", StringComparison.OrdinalIgnoreCase);
+                if (claimsUnhandled && body.Contains(tag, StringComparison.Ordinal))
+                    wrong.Add($"0x{opcode:X2} is registered but documented under " +
+                              $"the heading {heading}");
+            }
+        }
+
+        Assert.True(wrong.Count == 0,
+            "The matrix contradicts the registry: " + string.Join(" ; ", wrong));
+    }
+
+    /// <summary>Split the matrix into (heading, body) pairs.</summary>
+    private static List<(string Heading, string Body)> ReadMatrixSections(string path)
+    {
+        var sections = new List<(string, string)>();
+        string heading = "";
+        var body = new System.Text.StringBuilder();
+        foreach (string line in File.ReadAllLines(path))
+        {
+            if (line.StartsWith("## ", StringComparison.Ordinal))
+            {
+                if (heading.Length > 0)
+                    sections.Add((heading, body.ToString()));
+                heading = line[3..].Trim();
+                body.Clear();
+            }
+            else
+            {
+                body.AppendLine(line);
+            }
+        }
+        if (heading.Length > 0)
+            sections.Add((heading, body.ToString()));
+        return sections;
+    }
+
     [Fact]
     public void RegisteredPacketHandlers_TruncatedPayloads_DoNotThrow()
     {

@@ -87,7 +87,7 @@ src/
 ├── SphereNet.Persistence/   # Save/load, legacy import
 ├── SphereNet.Panel/ + Host/ # Web dashboard / launcher
 ├── SphereNet.Server/        # Server entry point
-└── SphereNet.Tests/         # ~1,900 automated tests (kept green)
+└── SphereNet.Tests/         # automated test suite (kept green)
 ```
 
 ## Roadmap

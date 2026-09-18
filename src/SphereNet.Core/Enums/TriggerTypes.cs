@@ -91,6 +91,7 @@ public enum CharTrigger : short
     CharTradeAccepted,
     Click,
     ClientTooltip,
+    ClientTooltipAfterDefault,
     CombatAdd,
     CombatDelete,
     CombatEnd,

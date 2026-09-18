@@ -87,7 +87,7 @@ src/
 ├── SphereNet.Persistence/   # Save/load, eski veri import'u
 ├── SphereNet.Panel/ + Host/ # Web dashboard / başlatıcı
 ├── SphereNet.Server/        # Sunucu giriş noktası
-└── SphereNet.Tests/         # ~1.900 otomatik test (her commit'te yeşil)
+└── SphereNet.Tests/         # otomatik test paketi (her commit'te yeşil)
 ```
 
 ## Yol haritası

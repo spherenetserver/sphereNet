@@ -63,19 +63,24 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xFA` Ultima Store button (fires @UserUltimaStoreButton)
 - `0xFB` Show public house content toggle
 
-## Known Ignored
-- `0x01` Disconnect notification
-- `0x2C` Death menu
+- `0x01` Disconnect notification (closes the session)
+- `0x2C` Death menu (request / resurrect / ghost)
+- `0x66` Book page write (pages are parsed and stored on the book)
+- `0x7D` Menu choice (old-style menu response)
 - `0x83` Character delete
-- `0x95` Dye response
-- `0x9A` Prompt response
+- `0x95` Dye response (applies the chosen hue)
+- `0x9A` Prompt response (ASCII; `0xC2` is the Unicode one)
 - `0x9B` Help request
 - `0xD1` Logout request
 - `0xD4` New book header (AOS+ variable-length format)
 
-## Deferred
-- `0x66` Book page editing is parser-supported but gameplay persistence is limited.
-- `0x7D` Menu choice is parser-supported for compatibility flows.
+## Known Ignored
+Nothing. Every opcode this server registers reaches a handler that acts on it; an
+opcode it does not register is not listed here, it simply falls to the unknown path
+below. The list that used to sit here named eight opcodes that all had working
+handlers, which is the failure this section is now shaped to avoid: if an opcode is
+registered, it does not belong under this heading, and the guardrail test enforces
+exactly that.
 
 ## Unknown / Drop
 Unknown opcodes are routed to the network unknown-packet path and must not crash the
@@ -90,8 +95,10 @@ Known incoming subcommands are centralized in `ExtendedCommandRegistry`.
 - `0x0013` Context menu request
 - `0x0015` Context menu response
 - `0x001A` Stat lock change
-- `0x001C` Client view size
+- `0x001C` Spell select (the client's new spell-select command)
 - `0x0024` Known ignored
 - `0x0028` Guild button
-- `0x002C` Virtue invoke
-- `0x0032` Quest button
+- `0x002C` Bandage macro (targeted bandage use)
+- `0x0032` Gargoyle flight toggle — note the value is reused in the other
+  direction, where upstream calls it the quest button (`EXTAOS_QuestButton`);
+  this section is about what the CLIENT sends, and there it is the flight toggle

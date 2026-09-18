@@ -677,6 +677,36 @@ public sealed class PacketPromptRequest : PacketWriter
     }
 }
 
+/// <summary>
+/// 0x3B — close the shop window for this vendor.
+///
+/// It is the buy-list packet with a count of zero, which is how upstream says "clear
+/// the vendor display" (PacketCloseVendor, send.cpp:1182). The client disposes the
+/// ShopGump belonging to that serial and nothing else (CloseVendorInterface).
+///
+/// Upstream sends it when a purchase or a sale completes, and when the vendor's
+/// containers are missing (CClientEvent.cpp:1413/1451/1566): without it the window
+/// stays open over stock that has already been bought.
+/// </summary>
+public sealed class PacketCloseVendor : PacketWriter
+{
+    private readonly uint _vendorSerial;
+
+    public PacketCloseVendor(uint vendorSerial) : base(0x3B)
+    {
+        _vendorSerial = vendorSerial;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(8);
+        buf.WriteUInt32(_vendorSerial);
+        buf.WriteByte(0);            // no items: the list is empty, so the gump closes
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0x93 — Book header (outgoing: displays book gump with title/author).
 ///
 /// FIXED 99 bytes, with fixed-width strings: uid(4), writable(1), writable(1),

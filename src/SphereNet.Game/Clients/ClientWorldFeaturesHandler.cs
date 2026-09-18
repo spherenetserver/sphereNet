@@ -568,9 +568,19 @@ public sealed class ClientWorldFeaturesHandler
         else
             NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_b1", result, result == 1 ? "" : "s"));
 
+        // The window showed stock that has now been bought. Upstream closes it when
+        // a purchase completes (CClientEvent.cpp:1413) - left open, the client offers
+        // a list the vendor no longer has.
+        CloseVendorWindow(vendor);
+
         RefreshBackpackContents();
         SendCharacterStatus(_character);
     }
+
+    /// <summary>Clear the shop display for this vendor (Source-X addVendorClose,
+    /// CClientMsg.cpp:2386).</summary>
+    private void CloseVendorWindow(Character vendor) =>
+        _netState.Send(new SphereNet.Network.Packets.Outgoing.PacketCloseVendor(vendor.Uid.Value).Build());
 
     /// <summary>Handle vendor sell packet (0x9F).</summary>
     public void HandleVendorSell(uint vendorSerial,
@@ -632,6 +642,11 @@ public sealed class ClientWorldFeaturesHandler
             NpcSpeech(vendor, "I cannot afford to buy all of that from thee.");
         if (result > 0 || !shortfall)
             NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
+
+        // Same on the way out: upstream closes the window when a sale completes
+        // (CClientEvent.cpp:1566).
+        CloseVendorWindow(vendor);
+
         RefreshBackpackContents();
         SendCharacterStatus(_character);
     }

@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Satin alinmis stogun uzerinde dukkan penceresi acik kaliyordu
+----------------------------------------
+
+FIX - Bir alim ya da satim tamamlandiginda satici penceresini kapatan bir sey yoktu.
+        Ust kaynak her iki noktada da alis-listesi paketini sifir adetle gonderir
+        (addVendorClose, CClientMsg.cpp:2386; CClientEvent.cpp:1413 ve :1566'da
+        cagrilir) ve client o saticinin dukkan penceresini bunun uzerine kapatir
+        (CloseVendorInterface). Acik kalinca pencere, saticinin artik sahip olmadigi bir
+        listeyi sunmaya devam ediyor ve ikinci bir tiklama coktan tukenmis stoktan alim
+        deniyordu.
+
+        Iptal durumunda hala bir sey gonderilmiyor; cunku pencereyi client'in kendisi
+        kapatmistir.
+
 [2026-09-18] - Bir istem sorusunu kimsenin okuyamayacagi yere yaziyordu
 ----------------------------------------
 

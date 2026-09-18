@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - A number written the way the language writes them
+----------------------------------------
+
+FIX - Several numeric keys read a plain decimal where upstream reads a Sphere number
+        through the expression evaluator (GetArgVal / GetArgWVal), so a leading zero
+        means hex. AMOUNT and MAXAMOUNT could not read one at all and DISCARDED it: the
+        assignment answered true and changed nothing.
+
+        That is the ordinary case, not a corner: <DEF.name> answers in hex, so a DEF of
+        65000 arrives as 0FDE8. A script doing
+
+            REF1.MAXAMOUNT=<DEF.sn_player_gold_amount>
+            REF1.AMOUNT=<DEF.sn_player_gold_amount>
+
+        set neither, and the pile kept the single coin it was created with. MOREX,
+        MOREY, MOREZ, PRICE, QUALITY, HITPOINTS and HITSMAX had the same reading and
+        now share the one parser. A value that does not fit its field still leaves the
+        key alone rather than zeroing it.
+
+FIX - A script putting a stackable item into a container did not merge it with the pile
+        already there. Upstream stacks inside ContentAdd, so it happens however the item
+        arrived (CItemContainer.cpp:618-634); the merge here lived only in the client's
+        drop handler, so CONT= left a second pile every time. The stacking is one
+        implementation now, and both paths call it.
+
 [2026-09-19] - A function reached through SRC was still never called
 ----------------------------------------
 

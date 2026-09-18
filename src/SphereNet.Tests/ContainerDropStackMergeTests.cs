@@ -152,4 +152,44 @@ public sealed class ContainerDropStackMergeTests
 
         Assert.Equal(2, b.Pack.Contents.Count(i => i.ItemType == ItemType.WeaponSword));
     }
+
+    /// <summary>A script putting an item in a container stacks the same way a drop
+    /// does. Upstream does it inside ContentAdd, so it happens however the item got
+    /// there (CItemContainer.cpp:618-634); here the merge lived only in the client's
+    /// drop handler, so CONT= left a second pile - which is what a script handing out
+    /// gold produced, every time.</summary>
+    [Fact]
+    public void AScriptSettingContStacksToo()
+    {
+        var b = Build(8915);
+        var have = Gold(b, 500);
+        Assert.True(b.Pack.TryAddItem(have));
+
+        var fresh = Gold(b, 250);
+        b.World.PlaceItem(fresh, b.Me.Position);
+        Assert.True(fresh.TrySetProperty("CONT", $"0{b.Pack.Uid.Value:X}"));
+
+        var piles = b.Pack.Contents.Where(i => i.ItemType == ItemType.Gold)
+                                   .Select(i => (int)i.Amount).ToList();
+        Assert.Equal([750], piles);
+    }
+
+    /// <summary>And the remainder still lands when the pile cannot take it all.</summary>
+    [Fact]
+    public void AScriptContLeavesTheRemainder()
+    {
+        var b = Build(8916);
+        var have = Gold(b, 500);
+        have.TrySetProperty("MAXAMOUNT", "600");
+        Assert.True(b.Pack.TryAddItem(have));
+
+        var fresh = Gold(b, 250);
+        fresh.TrySetProperty("MAXAMOUNT", "600");
+        b.World.PlaceItem(fresh, b.Me.Position);
+        fresh.TrySetProperty("CONT", $"0{b.Pack.Uid.Value:X}");
+
+        var piles = b.Pack.Contents.Where(i => i.ItemType == ItemType.Gold)
+                                   .Select(i => (int)i.Amount).OrderBy(a => a).ToList();
+        Assert.Equal([150, 600], piles);
+    }
 }

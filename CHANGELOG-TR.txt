@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Sayi, dilin yazdigi bicimde
+----------------------------------------
+
+FIX - Birkac sayisal anahtar duz ondalik okuyordu; oysa ust kaynak bunlari ifade
+        degerlendiricisinden gecirir (GetArgVal / GetArgWVal) ve orada bastaki sifir
+        onaltilik demektir. AMOUNT ile MAXAMOUNT boyle bir degeri hic okuyamiyor ve
+        SESSIZCE ATIYORDU: atama true diyor, hicbir sey degismiyordu.
+
+        Bu kose durumu degil, siradan durum: <DEF.ad> onaltilik yanitlar, yani 65000'lik
+        bir DEF 0FDE8 olarak gelir. Soyle yazan bir script
+
+            REF1.MAXAMOUNT=<DEF.sn_player_gold_amount>
+            REF1.AMOUNT=<DEF.sn_player_gold_amount>
+
+        ikisini de ayarlamiyor, yigin yaratildigi tek sikkede kaliyordu. MOREX, MOREY,
+        MOREZ, PRICE, QUALITY, HITPOINTS ve HITSMAX ayni okumaya sahipti; artik tek
+        okuyucuyu paylasiyorlar. Alanina sigmayan bir deger anahtari yine sifirlamiyor,
+        oldugu gibi birakiyor.
+
+FIX - Bir script'in konteynere koydugu yiginlanabilir esya, oradaki yiginla
+        birlesmiyordu. Ust kaynak yiginlamayi ContentAdd icinde yapar; yani esya oraya
+        nasil geldiyse gelsin olur (CItemContainer.cpp:618-634). Buradaki birlestirme
+        yalnizca client'in birakma isleyicisindeydi, dolayisiyla CONT= her seferinde
+        ikinci bir yigin birakiyordu. Yiginlama artik tek uygulama ve iki yol da onu
+        cagiriyor.
+
 [2026-09-19] - SRC uzerinden cagrilan fonksiyon hala calismiyordu
 ----------------------------------------
 

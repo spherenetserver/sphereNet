@@ -1517,6 +1517,43 @@ public class Item : ObjBase
     /// <summary>Implements the <c>CONT=</c> script setter: move this item into
     /// the given container item, or into a character's backpack. Detaches it
     /// from its current container/ground first.</summary>
+    /// <summary>Merge <paramref name="incoming"/> into the matching piles already in
+    /// <paramref name="container"/>, and say what is left of it.
+    ///
+    /// Upstream stacks on the way IN, inside ContentAdd (CItemContainer.cpp:618-634),
+    /// so it happens however the item got there - a client drop, a script CONT=, loot.
+    /// A pile that cannot take the whole amount is topped up to its maximum and the
+    /// rest carries on to the next, which is what CItem::Stack does before returning
+    /// false.
+    ///
+    /// The model change lives here and the packets stay with the caller, which is the
+    /// only part that differs between those paths. Returns the remainder; zero means
+    /// the incoming pile is spent and the caller should remove it. Piles that grew are
+    /// reported so the caller can tell the client about them.</summary>
+    public static int StackInto(Item container, Item incoming, List<Item>? grown = null)
+    {
+        int left = incoming.Amount;
+        var world = ResolveWorld?.Invoke();
+        if (world == null || left <= 0)
+            return left;
+
+        foreach (var existing in world.GetContainerContents(container.Uid).ToList())
+        {
+            if (left <= 0) break;
+            if (existing.Uid == incoming.Uid || !existing.CanStackWith(incoming))
+                continue;
+            int room = existing.MaxAmount - existing.Amount;
+            if (room <= 0)
+                continue;
+
+            int moved = Math.Min(room, left);
+            existing.Amount = (ushort)(existing.Amount + moved);
+            left -= moved;
+            grown?.Add(existing);
+        }
+        return left;
+    }
+
     private bool TryMoveToContainer(string value)
     {
         var world = ResolveWorld?.Invoke();
@@ -1528,7 +1565,19 @@ public class Item : ObjBase
         if (target == null) return true;
 
         if (target is Item contItem)
-            return contItem.TryAddItem(this);
+            {
+                // Stack on the way in, as ContentAdd does: a script that drops gold
+                // into a pack holding gold grows that pile rather than leaving two.
+                int left = StackInto(contItem, this);
+                if (left <= 0)
+                {
+                    world.RemoveItem(this);
+                    return true;
+                }
+                if (left != Amount)
+                    Amount = (ushort)left;
+                return contItem.TryAddItem(this);
+            }
         else if (target is Character ch && ch.Backpack != null)
             return ch.Backpack.TryAddItem(this);
         return false;
@@ -2431,8 +2480,16 @@ public class Item : ObjBase
                 return true;
             }
             case "AMOUNT":
-                if (ushort.TryParse(value, out ushort av))
+                // A Sphere number, not a plain decimal: upstream reads it through the
+                // expression evaluator (SetAmount(s.GetArgWVal())), so a leading zero
+                // means hex. A value this could not read was discarded in silence - the
+                // assignment answered true and the pile kept the single coin it was
+                // made with. <DEF.name> hands back hex, so a DEF of 65000 arrives as
+                // 0FDE8 and every script setting an amount from one set nothing.
+                if (ScriptNumber.TryParseToken(value, out long amtRaw) &&
+                    amtRaw >= 0 && amtRaw <= ushort.MaxValue)
                 {
+                    ushort av = (ushort)amtRaw;
                     Amount = av;
                     // On a SPAWNER, AMOUNT is the capacity and upstream routes it to
                     // the component (SetAmount, CCSpawn.cpp:938/123). Writing only the
@@ -2446,8 +2503,8 @@ public class Item : ObjBase
                 // Per-item stack cap (Source-X SetMaxAmount). The getter gates on
                 // stackability, so a value on a non-stackable item is inert. A
                 // negative/blank value clears the override back to the global default.
-                if (int.TryParse(value, out int maxAmt) && maxAmt >= 0)
-                    _maxAmountOverride = Math.Min(maxAmt, ushort.MaxValue);
+                if (ScriptNumber.TryParseToken(value, out long maxAmtRaw) && maxAmtRaw >= 0)
+                    _maxAmountOverride = (int)Math.Min(maxAmtRaw, ushort.MaxValue);
                 else
                     _maxAmountOverride = null;
                 return true;
@@ -2514,11 +2571,13 @@ public class Item : ObjBase
                 return true;
             case "HITS":
             case "HITPOINTS":
-                if (int.TryParse(value, out int hits)) HitsCur = hits;
+                if (ScriptNumber.TryParseToken(value, out long hits) && hits is >= int.MinValue and <= int.MaxValue)
+                    HitsCur = (int)hits;
                 return true;
             case "MAXHITS":
             case "HITSMAX":
-                if (int.TryParse(value, out int maxHits)) HitsMax = maxHits;
+                if (ScriptNumber.TryParseToken(value, out long maxHits) && maxHits is >= int.MinValue and <= int.MaxValue)
+                    HitsMax = (int)maxHits;
                 return true;
 
             // Move this item into another container (or a char's pack). Very
@@ -2595,13 +2654,16 @@ public class Item : ObjBase
                 if (Point3D.TryParse(value, out var mp)) _moreP = mp;
                 return true;
             case "MOREX":
-                if (short.TryParse(value, out short mx)) _moreP = new Point3D(mx, _moreP.Y, _moreP.Z, _moreP.Map);
+                if (ScriptNumber.TryParseToken(value, out long mx) && mx is >= short.MinValue and <= short.MaxValue)
+                    _moreP = new Point3D((short)mx, _moreP.Y, _moreP.Z, _moreP.Map);
                 return true;
             case "MOREY":
-                if (short.TryParse(value, out short my)) _moreP = new Point3D(_moreP.X, my, _moreP.Z, _moreP.Map);
+                if (ScriptNumber.TryParseToken(value, out long my) && my is >= short.MinValue and <= short.MaxValue)
+                    _moreP = new Point3D(_moreP.X, (short)my, _moreP.Z, _moreP.Map);
                 return true;
             case "MOREZ":
-                if (sbyte.TryParse(value, out sbyte mz)) _moreP = new Point3D(_moreP.X, _moreP.Y, mz, _moreP.Map);
+                if (ScriptNumber.TryParseToken(value, out long mz) && mz is >= sbyte.MinValue and <= sbyte.MaxValue)
+                    _moreP = new Point3D(_moreP.X, _moreP.Y, (sbyte)mz, _moreP.Map);
                 return true;
             case "MOREM":
                 if (byte.TryParse(value, out byte mm)) _moreP = new Point3D(_moreP.X, _moreP.Y, _moreP.Z, mm);
@@ -2610,10 +2672,12 @@ public class Item : ObjBase
                 _link = new Serial(ParseHexOrDecUInt(value));
                 return true;
             case "PRICE":
-                if (int.TryParse(value, out int pv)) _price = pv;
+                if (ScriptNumber.TryParseToken(value, out long pv) && pv is >= int.MinValue and <= int.MaxValue)
+                    _price = (int)pv;
                 return true;
             case "QUALITY":
-                if (ushort.TryParse(value, out ushort qv)) _quality = qv;
+                if (ScriptNumber.TryParseToken(value, out long qv) && qv is >= 0 and <= ushort.MaxValue)
+                    _quality = (ushort)qv;
                 return true;
             case "CRAFTER":
             case "CRAFTEDBY":

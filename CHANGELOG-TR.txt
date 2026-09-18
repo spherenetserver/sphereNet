@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Float degerlendirici hicbir fonksiyon cagrisini taniyamiyordu
+----------------------------------------
+
+FIX - FLOATVAL icindeki her intrinsic 0 okuyordu. Ust kaynak ayni tabloyu iki
+        degerlendiriciden de dagitir (CFloatMath.cpp:254); burada ise float ayristirici
+        bir tanimlayici okuyup onu degisken diye ariyordu, dolayisiyla bir cagri hicbir
+        zaman cagri olarak taninmiyordu - SQRT, MAX, STRLEN ve digerlerinin hepsi orada
+        0 yanitliyordu. Artik yanitliyorlar ve kesri atmiyorlar; float bicimi zaten
+        bunun icin var: SQRT(2) tamsayi ifadesinde 1, float ifadesinde 1.414...
+        Kendisi de bir cagri olan bir arguman, iceri girerken hassasiyetini koruyor.
+
+        ABS bilincli tek fark. Ust kaynagin float switch'inde bunun icin bir case yok;
+        default'a dusup 0 yanitliyor ve hata basiyor. Float ifadesindeki diger her
+        fonksiyon calistigina gore, bundan gelen sessiz bir 0 eslesmeye deger bir
+        davranis degil, tuzaktir.
+
 [2026-09-18] - Degerlendiricinin uc intrinsic'i
 ----------------------------------------
 

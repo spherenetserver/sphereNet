@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - The float evaluator recognised no function call
+----------------------------------------
+
+FIX - Every intrinsic inside FLOATVAL read 0. Upstream dispatches the same table from
+        both evaluators (CFloatMath.cpp:254); here the float parser read an identifier
+        and looked it up as a variable, so a call was never recognised as one - SQRT,
+        MAX, STRLEN and the rest all answered 0 there. They answer now, and they do not
+        truncate, which is what the float form is for: SQRT(2) is 1 in an integer
+        expression and 1.414... in a float one. An argument that is itself a call keeps
+        its precision on the way in.
+
+        ABS is the one deliberate difference. Upstream has no case for it in the float
+        switch, so it falls to the default, answers 0 and logs an error. Given every
+        other function in a float expression works, a silent 0 from that one is a trap
+        rather than a behaviour worth matching.
+
 [2026-09-18] - Three of the evaluator's intrinsics
 ----------------------------------------
 

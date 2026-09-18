@@ -2012,11 +2012,120 @@ public sealed class ExpressionParser
             while (pos < text.Length && (char.IsLetterOrDigit(text[pos]) || text[pos] == '_'))
                 pos++;
             string ident = text[idStart..pos];
+
+            // An intrinsic call. Upstream dispatches the same table here as in the
+            // integer evaluator (CFloatMath.cpp:254), so every one of these has to
+            // answer in a float expression too - they were all reading 0.
+            if (pos < text.Length && text[pos] == '(' && IntrinsicNames.Contains(ident))
+            {
+                string args = ReadBalancedArgs(text, ref pos);
+                return EvaluateFloatIntrinsic(ident, args);
+            }
+
             string val = ResolveVariable(ident) ?? "";
             return ParseFloatLiteral(val);
         }
 
+
         return ReadFloatNumber(text, ref pos);
+    }
+
+    /// <summary>The intrinsic table, spelled once (sm_IntrinsicFunctions,
+    /// CExpression.h:109). The integer evaluator matches these by prefix as it walks
+    /// its chain; the float one needs the names up front to tell a call from a
+    /// variable.</summary>
+    private static readonly HashSet<string> IntrinsicNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ABS", "ARCCOS", "ARCSIN", "ARCTAN", "COS", "ID", "ISNUMBER", "ISOBSCENE",
+        "LOGARITHM", "MAX", "MIN", "NAPIERPOW", "QVAL", "RAND", "RANDBELL", "SIN",
+        "SQRT", "STRASCII", "STRCMP", "STRCMPI", "STRINDEXOF", "STRLEN", "STRMATCH",
+        "STRREGEX", "TAN"
+    };
+
+    /// <summary>Read the text between a call's parentheses, leaving pos past the
+    /// closing one. Nested calls keep their own parentheses.</summary>
+    private static string ReadBalancedArgs(string text, ref int pos)
+    {
+        ++pos;                       // past '('
+        int start = pos, depth = 1;
+        while (pos < text.Length && depth > 0)
+        {
+            if (text[pos] == '(') ++depth;
+            else if (text[pos] == ')' && --depth == 0) break;
+            ++pos;
+        }
+        string args = text[start..Math.Min(pos, text.Length)];
+        if (pos < text.Length) ++pos; // past ')'
+        return args;
+    }
+
+    /// <summary>
+    /// The intrinsics whose float form genuinely differs from the integer one: upstream
+    /// computes them in real arithmetic and does NOT truncate, so SQRT(2) is 1.414...
+    /// here where the integer evaluator answers 1. Their arguments run back through the
+    /// float parser, so a nested call keeps its precision too.
+    ///
+    /// Everything else - the string tests, the comparisons, ID - has the same answer
+    /// in both, so it is delegated to the one implementation rather than written twice.
+    /// </summary>
+    private double EvaluateFloatIntrinsic(string name, string args)
+    {
+        double Arg(int i)
+        {
+            var parts = SplitTopLevel(args);
+            if (i >= parts.Count) return 0;
+            int p = 0;
+            return ParseFloatExpression(ResolveAngleBrackets(parts[i]), ref p);
+        }
+
+        switch (name.ToUpperInvariant())
+        {
+            // Upstream has no ABS case in the float switch, so it falls to the default
+            // and answers 0 with a console error. Answering it is the deliberate
+            // difference: every other function in a float expression works, and a
+            // silent 0 from this one is a trap rather than a behaviour to match.
+            case "ABS":       return Math.Abs(Arg(0));
+            case "SQRT":      return Math.Sqrt(Math.Abs(Arg(0)));
+            case "SIN":       return Math.Sin(Arg(0));
+            case "COS":       return Math.Cos(Arg(0));
+            case "TAN":       return Math.Tan(Arg(0));
+            case "ARCSIN":    return Math.Asin(Arg(0));
+            case "ARCCOS":    return Math.Acos(Arg(0));
+            case "ARCTAN":    return Math.Atan(Arg(0));
+            case "NAPIERPOW": return Math.Exp(Arg(0));
+            case "MAX":       return Math.Max(Arg(0), Arg(1));
+            case "MIN":       return Math.Min(Arg(0), Arg(1));
+            case "LOGARITHM":
+            {
+                double v = Arg(0);
+                if (v <= 0) return 0;
+                var parts = SplitTopLevel(args);
+                return parts.Count >= 2 ? Math.Log(v, Arg(1)) : Math.Log10(v);
+            }
+            default:
+                return ParseFloatLiteral(ResolveVariable($"{name}({args})") ?? "0");
+        }
+    }
+
+    /// <summary>Split an argument list on commas that are not inside parentheses or
+    /// angle brackets.</summary>
+    private static List<string> SplitTopLevel(string args)
+    {
+        var outList = new List<string>();
+        int depth = 0, start = 0;
+        for (int i = 0; i < args.Length; ++i)
+        {
+            char c = args[i];
+            if (c is '(' or '<') ++depth;
+            else if (c is ')' or '>') --depth;
+            else if (c == ',' && depth == 0)
+            {
+                outList.Add(args[start..i]);
+                start = i + 1;
+            }
+        }
+        outList.Add(args[start..]);
+        return outList;
     }
 
     private static double ReadFloatNumber(string text, ref int pos)

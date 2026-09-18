@@ -110,4 +110,57 @@ public sealed class IntrinsicFunctionCoverageTests
         Assert.Equal(0L, Ask("STRLEN()"));
         Assert.Equal(5L, Ask("STRLEN( hello )"));
     }
+
+    /// <summary>The same table again, this time through the float evaluator.
+    ///
+    /// Upstream dispatches sm_IntrinsicFunctions from BOTH evaluators - the integer one
+    /// at CExpression.cpp:826 and the float one at CFloatMath.cpp:254. Here the float
+    /// parser read an identifier and looked it up as a variable, so a call was never
+    /// recognised: every intrinsic inside FLOATVAL answered 0, including the ones the
+    /// float form exists for.
+    /// </summary>
+    [Theory]
+    [InlineData("SQRT(81)", "9")]
+    [InlineData("MAX(3,9)", "9")]
+    [InlineData("MIN(3,9)", "3")]
+    [InlineData("STRLEN(hello)", "5")]
+    [InlineData("ISNUMBER(42)", "1")]
+    [InlineData("STRCMP(abc,abc)", "0")]
+    [InlineData("NAPIERPOW(0)", "1")]
+    [InlineData("LOGARITHM(1000)", "3")]
+    public void TheFloatEvaluatorAnswersThemToo(string call, string want)
+        => Assert.Equal(want, new ExpressionParser().EvaluateStr($"<FLOATVAL {call}>"));
+
+    /// <summary>And it does not truncate, which is the whole reason the float form
+    /// exists: SQRT(2) is 1 in the integer evaluator and 1.414... here.</summary>
+    [Fact]
+    public void TheFloatFormKeepsItsFraction()
+    {
+        string got = new ExpressionParser().EvaluateStr("<FLOATVAL SQRT(2)>");
+        Assert.StartsWith("1.41", got);
+        Assert.Equal(1L, new ExpressionParser().TryEvaluate("SQRT(2)", out long i) ? i : -1);
+    }
+
+    /// <summary>An argument that is itself a call keeps its precision on the way in.</summary>
+    [Fact]
+    public void ANestedCallStaysInFloat()
+    {
+        string got = new ExpressionParser().EvaluateStr("<FLOATVAL SQRT(SQRT(16))>");
+        Assert.StartsWith("2", got);
+        Assert.StartsWith("1.41", new ExpressionParser().EvaluateStr("<FLOATVAL MAX(SQRT(2),1)>"));
+    }
+
+    /// <summary>ABS is the one deliberate difference. Upstream has no case for it in
+    /// the float switch, so it falls to the default and answers 0 with a console error
+    /// - a trap, given every other function in a float expression works. It answers
+    /// here.</summary>
+    [Fact]
+    public void AbsAnswersInAFloatExpressionToo()
+        => Assert.Equal("2.5", new ExpressionParser().EvaluateStr("<FLOATVAL ABS(-2.5)>"));
+
+    /// <summary>A name that is not an intrinsic is still a variable, not a call - the
+    /// float parser must not start swallowing parentheses after every identifier.</summary>
+    [Fact]
+    public void ANonIntrinsicNameIsStillAVariable()
+        => Assert.Equal("0", new ExpressionParser().EvaluateStr("<FLOATVAL NOTAREALINTRINSIC(2)>"));
 }

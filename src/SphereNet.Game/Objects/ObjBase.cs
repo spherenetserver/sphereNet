@@ -805,6 +805,19 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // TOPOBJ.<key> — the other reference head that reads through here
+        // (OBR_TOPOBJ, CObjBase.cpp:936). Upstream hands back GetTopLevelObj()
+        // unconditionally, so an object that IS its own top level answers about
+        // itself; refusing that case left a top-level item reading "" for its own
+        // keys, and a character - always its own top level - had no such read at all.
+        if (key.StartsWith("TOPOBJ.", StringComparison.OrdinalIgnoreCase))
+        {
+            var topObj = GetTopLevelObj();
+            string sub = key["TOPOBJ.".Length..];
+            value = topObj != null && topObj.TryGetProperty(sub, out string topVal) ? topVal : "";
+            return true;
+        }
+
         // ISTEVENT.defname / ISEVENT.defname
         if (key.StartsWith("ISTEVENT.", StringComparison.OrdinalIgnoreCase) ||
             key.StartsWith("ISEVENT.", StringComparison.OrdinalIgnoreCase))

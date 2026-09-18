@@ -1960,6 +1960,35 @@ public sealed class ScriptInterpreter
             return "0";
         }
 
+        // TYPEDEF / TYPEDEF.property — the object's own base definition.
+        //
+        // Upstream lists it on CObjBase beside ROOM, SECTOR, TOPOBJ and SPAWNITEM
+        // (sm_szRefKeys, CObjBase.cpp:899) and resolves it to Base_GetDef(), so
+        // <TYPEDEF.TDATA1> asks the ITEMDEF or CHARDEF this thing was made from
+        // rather than the thing itself. Nothing answered it here, so every such read
+        // came back as the unresolved "0".
+        //
+        // It goes through the host for the same reason ROOM does: the definition
+        // tables and the reader for their fields already live there, and a second
+        // reader would only be something for the first one to disagree with.
+        if (varName.Equals("TYPEDEF", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("TYPEDEF.", StringComparison.OrdinalIgnoreCase))
+        {
+            if (varName.Length == 7)
+            {
+                // The head on its own: what the object already answers, which is the
+                // definition's name for a character and its defname for an item.
+                return target.TryGetProperty("TYPEDEF", out string ownDef) ? ownDef : "0";
+            }
+            if (target.TryGetProperty("UID", out string defUid))
+            {
+                string? defVal = ServerPropertyResolver?.Invoke(
+                    $"_TYPEDEF_GET={defUid}|{varName[8..]}");
+                if (!string.IsNullOrEmpty(defVal)) return defVal;
+            }
+            return "0";
+        }
+
         // SERV.* — server-level property resolution
         if (varName.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase))
         {

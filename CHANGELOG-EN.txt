@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Two of the object reference heads
+----------------------------------------
+
+FIX - <TYPEDEF.<key>> read as nothing. It is a reference head on every object, listed
+        beside ROOM, SECTOR, TOPOBJ and SPAWNITEM (sm_szRefKeys, CObjBase.cpp:899), and
+        it resolves to the object's own base definition (CObjBase.cpp:941) - so
+        <TYPEDEF.TDATA1> asks the ITEMDEF or CHARDEF the thing was made from rather than
+        the thing itself. Nothing answered it, so every such read collapsed to "0", and
+        being a read it did so silently. It is answered through the host, the way ROOM
+        is: the definition tables and the reader for their fields already live there.
+
+FIX - <TOPOBJ.<key>> refused the case where the object IS the top level. Upstream hands
+        back GetTopLevelObj() with no further test (CObjBase.cpp:936), so a loose item
+        answers about itself; here it came back empty. A character - always its own top
+        level - had no such read at all and answered "0" for all of them. There is one
+        implementation now instead of one per class, which is how the character came to
+        be missing it.
+
 [2026-09-18] - <<X>> came back as literal brackets
 ----------------------------------------
 

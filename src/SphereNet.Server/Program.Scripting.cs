@@ -322,6 +322,11 @@ public static partial class Program
             // Room property access
             _ when upper.StartsWith("_ROOM_GET=") => HandleRoomGet(property[10..]),
 
+            // TYPEDEF.<key> on an object: its own base definition (OBR_TYPEDEF ->
+            // Base_GetDef, CObjBase.cpp:941). The uid says which object asked; the
+            // field is then read by the same reader SERV.ITEMDEF / SERV.CHARDEF use.
+            _ when upper.StartsWith("_TYPEDEF_GET=") => HandleTypeDefGet(property[13..]),
+
             // Bare defname constants (e.g. statf_insubstantial) used by
             // script expressions without DEF./DEF0. prefix.
             _ => ResolveDefConstant(upper) ?? ResolveServFunction(property)
@@ -726,6 +731,44 @@ public static partial class Program
     /// reads them back with it (upstream OBC_TAG, CBase.cpp:216).</summary>
     private static string StripTagPrefix(string field) =>
         field.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase) ? field[4..] : field;
+
+
+    /// <summary>TYPEDEF.&lt;key&gt; on an object - the base definition it was made
+    /// from. Takes "&lt;uid&gt;|&lt;key&gt;"; answers empty when the object is gone or
+    /// its definition names nothing, which reads as the ordinary unresolved "0".</summary>
+    private static string? HandleTypeDefGet(string arg)
+    {
+        int bar = arg.IndexOf('|');
+        if (bar <= 0) return "";
+        string key = arg[(bar + 1)..].Trim();
+        if (key.Length == 0) return "";
+
+        var world = _world;
+        if (world == null) return "";
+        if (!TryParseSerial(arg[..bar].Trim(), out var uid))
+            return "";
+
+        var obj = world.FindObject(uid);
+        switch (obj)
+        {
+            case SphereNet.Game.Objects.Items.Item item:
+            {
+                var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+                string? defName = idef?.DefName;
+                if (string.IsNullOrEmpty(defName)) return "";
+                return ResolveServItemDef($"{defName}.{key}");
+            }
+            case SphereNet.Game.Objects.Characters.Character ch:
+            {
+                var cdef = SphereNet.Game.Definitions.DefinitionLoader.GetCharDef(ch.CharDefIndex);
+                string? defName = cdef?.DefName;
+                if (string.IsNullOrEmpty(defName)) return "";
+                return ResolveServCharDef($"{defName}.{key}");
+            }
+            default:
+                return "";
+        }
+    }
 
     private static string? ResolveServItemDef(string sub)
     {

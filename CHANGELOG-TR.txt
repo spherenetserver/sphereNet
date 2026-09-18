@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Nesne referans basliklarindan ikisi
+----------------------------------------
+
+FIX - <TYPEDEF.<anahtar>> hicbir sey okumuyordu. Bu, her nesnede bulunan bir referans
+        basligidir; ROOM, SECTOR, TOPOBJ ve SPAWNITEM'in yaninda listelenir
+        (sm_szRefKeys, CObjBase.cpp:899) ve nesnenin kendi taban tanimina cozulur
+        (CObjBase.cpp:941) - yani <TYPEDEF.TDATA1>, seyin kendisine degil, yapildigi
+        ITEMDEF ya da CHARDEF'e sorar. Hicbir sey yanitlamadigi icin boyle her okuma
+        "0"a cokuyordu; okuma oldugu icin de sessizce. Artik ROOM gibi host uzerinden
+        yanitlaniyor: tanim tablolari ve alanlarini okuyan kod zaten orada.
+
+FIX - <TOPOBJ.<anahtar>>, nesnenin kendisinin en ust duzey oldugu durumu reddediyordu.
+        Ust kaynak GetTopLevelObj()'i baska bir sinav yapmadan verir
+        (CObjBase.cpp:936); yani yerde duran bir esya kendisi hakkinda yanit verir,
+        burada ise bos donuyordu. Karakter - ki her zaman kendi en ust duzeyidir -
+        boyle bir okumaya hic sahip degildi ve hepsine "0" diyordu. Artik sinif basina
+        bir tane degil, tek bir uygulama var; karakterin eksik kalmasi da zaten bundan
+        olmustu.
+
 [2026-09-18] - <<X>> duz ayrac metni olarak geri geliyordu
 ----------------------------------------
 

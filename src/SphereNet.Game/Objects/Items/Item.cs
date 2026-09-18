@@ -2329,16 +2329,6 @@ public class Item : ObjBase
             value = "";
             return true;
         }
-        if (upper.StartsWith("TOPOBJ.", StringComparison.Ordinal))
-        {
-            string sub = key["TOPOBJ.".Length..];
-            var topObj = ResolveTopObject();
-            if (topObj != null && !ReferenceEquals(topObj, this))
-                return topObj.TryGetProperty(sub, out value);
-            value = "";
-            return true;
-        }
-
         if (upper.StartsWith("HOUSE.", StringComparison.Ordinal) &&
             TryGetHouseProperty(upper["HOUSE.".Length..], out value))
         {

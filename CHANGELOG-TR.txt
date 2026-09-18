@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Tum dialoglari kapatan staff fonksiyonu hicbirini kapatmiyordu
+----------------------------------------
+
+FIX - DIALOGLIST hicbir sey donmuyordu. Ust kaynak bunu, dialoglari kapatirken
+        kullandigi haritanin uzerinden okur: COUNT istemcinin kac dialogu acik oldugu,
+        indeksli bir girdinin ID'si ise dialogun ADIdir (OC_DIALOGLIST,
+        CObjBase.cpp:1203). Shard'in staff fonksiyonu bu listeyi dolasip iki adlandirilmis
+        dialog disinda hepsini kapatir; okuma olmadigi icin dongu hic baslamiyor ve
+        fonksiyon hicbir seyi kapatmiyordu.
+
+        Motor acik dialoglari zaten adlariyla tutuyordu; eksik olan yalnizca okumaydi.
+        Listenin sonunu asan bir indeks reddetmek yerine 0 doner, boylece bir adim fazla
+        donen bir dongu scripti de beraberinde goturmez.
+
 [2026-09-18] - Altin odemesinin ust siniri yoktu
 ----------------------------------------
 

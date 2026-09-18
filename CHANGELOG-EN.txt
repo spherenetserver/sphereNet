@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A staff function that closes every dialog closed none
+----------------------------------------
+
+FIX - DIALOGLIST answered nothing. Upstream reads it off the same map it closes dialogs
+        from: COUNT is how many the client has open, and an indexed entry's ID is the
+        dialog's NAME (OC_DIALOGLIST, CObjBase.cpp:1203). The shard's staff function
+        walks that list and closes everything except two named dialogs, so with the read
+        missing the loop never started and the function closed nothing at all.
+
+        The engine was already tracking the open dialogs by name; only the read was
+        missing. An index past the end answers 0 rather than refusing, so a loop that
+        runs one step too far does not take the script with it.
+
 [2026-09-18] - A gold payout had no ceiling
 ----------------------------------------
 

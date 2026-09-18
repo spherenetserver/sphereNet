@@ -2502,6 +2502,44 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        // DIALOGLIST.COUNT and DIALOGLIST.<n>.ID / .COUNT — the dialogs this client has
+        // open, which upstream answers off the same map it closes them from
+        // (OC_DIALOGLIST, CObjBase.cpp:1203). The pack's staff function walks the list
+        // and closes everything except two named dialogs, so .ID is the dialog's NAME,
+        // which is what the entries are keyed by here.
+        //
+        // The order is the map's own. Upstream indexes its map the same way, and the
+        // only thing the packs do with the index is walk all of them.
+        if (varName.Equals("DIALOGLIST", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("DIALOGLIST.", StringComparison.OrdinalIgnoreCase))
+        {
+            var open = Gumps.OpenScriptDialogs;
+            string rest = varName.Length > "DIALOGLIST".Length
+                ? varName["DIALOGLIST.".Length..].Trim()
+                : "";
+
+            if (rest.Length == 0 || rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
+            {
+                value = open.Count.ToString();
+                return true;
+            }
+
+            int dot = rest.IndexOf('.');
+            string indexText = dot < 0 ? rest : rest[..dot];
+            string want = dot < 0 ? "ID" : rest[(dot + 1)..].Trim();
+
+            value = "0";
+            if (int.TryParse(indexText, out int index) && index >= 0 && index < open.Count)
+            {
+                var entry = open.ElementAt(index);
+                if (want.Equals("ID", StringComparison.OrdinalIgnoreCase))
+                    value = entry.Key;
+                else if (want.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
+                    value = entry.Value.ToString();
+            }
+            return true;
+        }
+
         if (varName.StartsWith("FILE.", StringComparison.OrdinalIgnoreCase))
         {
             if (_scriptFile == null)

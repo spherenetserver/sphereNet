@@ -151,7 +151,7 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
         world.PlaceItem(gem, new Point3D(120, 120, 0, 0));
         var spawn = new SphereNet.Game.Components.SpawnComponent(gem, world) { MaxCount = 1 };
 
-        int creatures = 0, items = 0, restocked = 0;
+        int creatures = 0, items = 0, restocked = 0, lootItems = 0, lootGold = 0;
         var threw = new List<string>();
         // Snapshot first: a definition can be resolved lazily while a trigger runs,
         // which adds to the table being walked.
@@ -170,6 +170,12 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
                 dispatcher.FireCharTrigger(npc, CharTrigger.NPCRestock,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
                 restocked++;
+
+                foreach (var loot in npc.Backpack?.Contents ?? Enumerable.Empty<Item>())
+                {
+                    lootItems++;
+                    if (loot.ItemType == ItemType.Gold) lootGold += loot.Amount;
+                }
             }
             catch (Exception ex) { threw.Add($"CHARDEF 0x{kv.Key:X}: {ex.GetType().Name} {ex.Message}"); }
         }
@@ -185,6 +191,16 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
 
         outp.WriteLine($"{creatures} creatures spawned, {restocked} restocked, " +
                        $"{items} items made, {s_unresolved.Count} unresolved");
+        outp.WriteLine($"loot: {lootItems} items, {lootGold} gold");
+
+        // The shard's loot lines name amounts as ranges - "ITEM=i_gold,{750 900}" and
+        // a thousand more like it. When the range does not roll, each line yields one
+        // of the thing instead, and this same walk produces a few hundred coins rather
+        // than tens of thousands. The bound is far below what the pack actually pays
+        // out and far above what a collapsed amount could reach.
+        Assert.True(lootGold > 10_000,
+            $"four hundred creatures dropped {lootGold} gold between them, which is the " +
+            "shape of amounts that stopped rolling");
         Assert.True(creatures > 100, $"only {creatures} creatures spawned - the sweep measured almost nothing");
         Assert.True(items > 500, $"only {items} items made - the sweep measured almost nothing");
         Assert.True(threw.Count == 0, "creation threw: " + string.Join(" | ", threw.Take(5)));

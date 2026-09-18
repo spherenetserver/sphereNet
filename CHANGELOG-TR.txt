@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Oyuncunun sahip olup goremedigi altin
+----------------------------------------
+
+FIX - Durum cubugundaki altin yalnizca cantanin UST SEVIYESINI ve yalnizca tek bir
+        grafigi (0x0EED) sayiyordu; oysa odeme cantayi ozyinelemeli ve esya TIPINE gore
+        sayar. Dolayisiyla bir kesenin icindeki altin - ya da farkli cizilen herhangi
+        bir altin tanimi - karakterin sahip olup goremedigi paraydi. Ust kaynak durum
+        rakamini, odemenin nereden geldigine karar veren ayni anahtarla secer
+        (send.cpp:235); yani gosterilen sayi ile harcanabilen sayi tek seydir. Artik
+        burada da tek sey.
+
+        Durum yolunda o ust-seviye sayimin iki kopyasi vardi; odeme yoluyla ve
+        birbirleriyle de bu yuzden ayrismislardi.
+
+NOT - Banka kutusuna tasinan altin bu rakamdan cikar, cunku bu ekonomi cantadan oder.
+        Bu, ust kaynagin PAYFROMPACKONLY davranisidir; kayip degildir.
+
 [2026-09-18] - Ayni seyin tek cantada iki yigini
 ----------------------------------------
 

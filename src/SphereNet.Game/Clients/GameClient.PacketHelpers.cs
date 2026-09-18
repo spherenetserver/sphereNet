@@ -1301,11 +1301,17 @@ public sealed partial class GameClient
 
     private StatusShape ShapeOf(Character ch)
     {
-        int gold = 0;
-        var pack = ch.Backpack;
-        if (pack != null)
-            foreach (var gi in pack.Contents)
-                if (gi.BaseId == 0x0EED) gold += gi.Amount;
+        // The same count the character can actually SPEND, rather than a second one.
+        // Upstream picks the status figure with the same switch that decides where
+        // payment comes from (send.cpp:235 - virtual gold, PAYFROMPACKONLY, or
+        // everything carried), so the number on the status bar is the number the
+        // player can pay with. This economy pays from the pack, so that is what is
+        // shown - but recursively and by item TYPE, where before it counted only the
+        // pack's top level and only the one graphic 0x0EED: gold inside a pouch, or
+        // from a def drawn differently, was money the player had and could not see.
+        // There were two copies of that count, which is how they came to disagree.
+        int gold = (int)Math.Clamp(
+            SphereNet.Game.Trade.VendorEngine.CountGold(ch), 0, int.MaxValue);
         return new StatusShape(
             ResolveStatusName(ch),
             (short)SphereNet.Game.Combat.CombatEngine.EffectiveStr(ch),
@@ -1363,11 +1369,8 @@ public sealed partial class GameClient
         var (stam, maxStam) = NormalizeStatusPair(ch.Stam, ch.MaxStam, ch.Dex);
         var (mana, maxMana) = NormalizeStatusPair(ch.Mana, ch.MaxMana, ch.Int);
 
-        int gold = 0;
-        var pack = ch.Backpack;
-        if (pack != null)
-            foreach (var gi in pack.Contents)
-                if (gi.BaseId == 0x0EED) gold += gi.Amount;
+        int gold = (int)Math.Clamp(
+            SphereNet.Game.Trade.VendorEngine.CountGold(ch), 0, int.MaxValue);
 
         ushort armor = (ushort)CombatEngine.CalcArmorDefense(ch);
         ushort weight = (ushort)Math.Clamp(ch.GetTotalWeight(), 0, ushort.MaxValue);

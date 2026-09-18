@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Gold the player had and could not see
+----------------------------------------
+
+FIX - The gold on the status bar counted only the pack's TOP LEVEL, and only the single
+        graphic 0x0EED, while payment counts the pack recursively and by item type. So
+        gold inside a pouch - or from any gold def drawn differently - was money the
+        character had and could not see. Upstream picks the status figure with the same
+        switch that decides where payment comes from (send.cpp:235), so the number
+        shown and the number spendable are one thing; they are one thing here now too.
+
+        There were two copies of that top-level count in the status path, which is how
+        they came to disagree with the payment path and with each other.
+
+NOTE - Gold moved into the bank box leaves this figure, because this economy pays from
+        the pack. That is upstream's PAYFROMPACKONLY behaviour and not a loss.
+
 [2026-09-18] - Two piles of the same thing in one pack
 ----------------------------------------
 

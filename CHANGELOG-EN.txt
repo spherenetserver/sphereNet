@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A bought figurine could not be opened
+----------------------------------------
+
+FIX - A figurine with nothing stored in it answered "This figurine is not yours". The
+        path that MAKES the creature was missing entirely: upstream's Use_Figurine
+        creates the NPC when none is linked, from MORE1 or, when that is zero, from the
+        definition's TDATA3 (CCharUse.cpp:1152), and the double-click then consumes the
+        figurine (CCharUse.cpp:1748). That is the only kind a vendor sells - a shrunk
+        mount bought off the shelf has never held a creature, it names one.
+
+FIX - The stored-pet read was looking at the wrong field. Upstream keeps that uid in
+        MORE2 (m_itFigurine.m_UID, CItem.h:403) while MORE1 is the creature id, so
+        reading MORE1 as a uid looked a creature id up as a character and found nothing.
+
 [2026-09-18] - A bare <f_something> was a name, not a call
 ----------------------------------------
 

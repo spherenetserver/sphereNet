@@ -1642,7 +1642,13 @@ public sealed class ClientItemUseHandler
                     break;
                 }
 
-                uint linkedSerial = item.More1;
+                // Upstream reads the STORED pet from MORE2 (m_itFigurine.m_UID,
+                // CItem.h:403); MORE1 is the creature this figurine turns INTO
+                // (m_itFigurine.m_ID), and when that is 0 the definition's TDATA3 names
+                // it (m_ttFigurine.m_idChar, CItemBase.h:119). Reading MORE1 as the
+                // stored uid matched neither: a legacy figurine's creature id was
+                // looked up as a character and of course found none.
+                uint linkedSerial = item.More2;
                 if (linkedSerial != 0)
                 {
                     var pet = _world.FindChar(new Serial(linkedSerial));
@@ -1668,7 +1674,7 @@ public sealed class ClientItemUseHandler
                         SysMessage("The creature is lost.");
                     }
                 }
-                else
+                else if (!RestoreFigurineCreature(item))
                 {
                     SysMessage(ServerMessages.Get(Msg.MsgFigurineNotyours));
                 }
@@ -2511,6 +2517,63 @@ public sealed class ClientItemUseHandler
         }
 
         _world.PlaceItemWithDecay(ingot, _character.Position);
+    }
+
+
+    /// <summary>A figurine with no creature stored in it MAKES one.
+    ///
+    /// Upstream's Use_Figurine creates the NPC when nothing is linked, from
+    /// m_itFigurine.m_ID (MORE1) or, when that is zero, from the definition's TDATA3
+    /// through FindCharTrack (CCharUse.cpp:1152, CItemBase.cpp FindCharTrack). The
+    /// double-click then consumes the figurine (CCharUse.cpp:1748).
+    ///
+    /// That is the ONLY kind a vendor sells: a shrunk mount bought off the shelf has
+    /// never held a creature, it names one. Without this path every one of them
+    /// answered "This figurine is not yours" and could not be opened.
+    /// </summary>
+    private bool RestoreFigurineCreature(Item figurine)
+    {
+        if (_character == null) return false;
+
+        int creatureId = (int)figurine.More1;
+        if (creatureId == 0)
+        {
+            var def = ResolveOwnItemDef(figurine);
+            if (def != null)
+            {
+                creatureId = def.TData3 != 0
+                    ? (int)def.TData3
+                    : DefinitionLoader.ResolveCharDefIndexByName(def.TData3Name);
+            }
+        }
+        if (creatureId == 0)
+            return false;
+
+        var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:X}");
+        if (pet == null)
+            return false;
+
+        if (!pet.TryAssignOwnership(_character, _character, summoned: false,
+                                    enforceFollowerCap: true))
+        {
+            _world.DeleteObject(pet);
+            pet.Delete();
+            SysMessage("You have too many followers to restore that now.");
+            return true;   // answered; not an unopenable figurine
+        }
+
+        if (!_world.PlaceCharacter(pet, _character.Position))
+        {
+            _world.DeleteObject(pet);
+            pet.Delete();
+            SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
+            return true;
+        }
+
+        pet.ClearStatFlag(StatFlag.Ridden);
+        _world.RemoveItem(figurine);
+        SysMessage("Your pet materializes beside you.");
+        return true;
     }
 
     /// <summary>Resolve the DEFINITION an ore smelts into.

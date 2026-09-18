@@ -155,6 +155,17 @@ public sealed class DefinitionLoader
         return rid.IsValid && rid.Type == ResType.ItemDef ? rid.Index : 0;
     }
 
+    /// <summary>The CHARDEF a defname names, for the readers that have no
+    /// ResourceHolder of their own. Returns 0 when the name is unknown or is not a
+    /// CharDef - a figurine's TDATA3 is written as a name (TDATA3=c_ettin).</summary>
+    public static int ResolveCharDefIndexByName(string? defname)
+    {
+        if (string.IsNullOrWhiteSpace(defname) || _resourcesStatic == null)
+            return 0;
+        var rid = _resourcesStatic.ResolveDefName(defname.Trim());
+        return rid.IsValid && rid.Type == ResType.CharDef ? rid.Index : 0;
+    }
+
     /// <summary>Resolve #NAMES_xxx placeholders in a string using loaded [NAMES] resources.</summary>
     public static string ResolveNames(string input) =>
         _resourcesStatic?.ResolveNamesInString(input) ?? input;

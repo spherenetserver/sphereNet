@@ -1880,7 +1880,11 @@ public sealed partial class GameClient
         return npc;
     }
 
-    private Character CreateNpcFromDef(int defIndexOrBaseId, string fallbackName)
+    /// <summary>IClientContext surface for CreateNpcFromDef.</summary>
+    public Character CreateNpcFromDefinition(int defIndex, string fallbackName) =>
+        CreateNpcFromDef(defIndex, fallbackName);
+
+    internal Character CreateNpcFromDef(int defIndexOrBaseId, string fallbackName)
     {
         var npc = _world.CreateCharacter();
         ushort safeBaseId = (ushort)Math.Clamp(defIndexOrBaseId, 0, ushort.MaxValue);

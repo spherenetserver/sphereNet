@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Satin alinan figurin acilamiyordu
+----------------------------------------
+
+FIX - Icinde hicbir sey saklanmayan bir figurin "This figurine is not yours" diyordu.
+        Yaratigi URETEN yol tumuyle eksikti: ust kaynagin Use_Figurine'i bagli bir
+        yaratik yokken NPC'yi MORE1'den ya da o sifirsa tanimin TDATA3'unden yaratir
+        (CCharUse.cpp:1152); cift tiklama da ardindan figurini tuketir
+        (CCharUse.cpp:1748). Bir saticinin sattigi tek tur zaten budur - raftan alinan
+        kuculmus bir binek hicbir zaman yaratik tasimamistir, bir yaratigi adlandirir.
+
+FIX - Saklanan pet okumasi yanlis alana bakiyordu. Ust kaynak o uid'i MORE2'de tutar
+        (m_itFigurine.m_UID, CItem.h:403), MORE1 ise yaratik kimligidir; dolayisiyla
+        MORE1'i uid saymak bir yaratik kimligini karakter diye ariyor ve hicbir sey
+        bulamiyordu.
+
 [2026-09-18] - Duz <f_birsey> bir cagri degil, bir ad sayiliyordu
 ----------------------------------------
 

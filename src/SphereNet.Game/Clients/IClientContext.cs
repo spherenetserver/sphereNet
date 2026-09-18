@@ -63,6 +63,11 @@ internal interface IClientContext : ITextConsole
 
     // --- decomposition components / sibling handlers ---
     ClientViewCache View { get; }
+
+    /// <summary>Build an NPC from a CHARDEF index, the same way ".add" does. Handlers
+    /// that create a creature (a figurine turning into the thing it names) need it and
+    /// have no other route to the definition-to-character mapping.</summary>
+    SphereNet.Game.Objects.Characters.Character CreateNpcFromDefinition(int defIndex, string fallbackName);
     ClientGumpRegistry Gumps { get; }
     ClientTargetState Targets { get; }
     ClientTargetingHandler Targeting { get; }

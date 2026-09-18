@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir bitkiye ne verecegi soylenemiyordu
+----------------------------------------
+
+FIX - FRUIT= reddediliyordu. Ust kaynak bir bitkinin meyve override'ini mahsulun kendi
+        alaninda tutar; bu alan MORE2 ile ayni depoyu paylasir (IC_FRUIT,
+        CItem.cpp:3404) ve argumani ifade motorundan gecirir - boylece bir defname
+        cozulur, mahsul satirlarinin yazildigi satir ici havuzdan da secim yapilir.
+
+        Bizdeki hasat MORE2'yi zaten bu override olarak okuyordu; eksik olan yalnizca
+        onu yazacak anahtardi. Canli paketteki 28 satir - bir palmiyeye hindistan
+        cevizini veren ya da bir tarlanin mahsulunu listeden secen satirlar - hicbir sey
+        yapmiyor, bitki tanimindaki meyveye geri dusuyordu.
+
 [2026-09-18] - ITEM='den sonra yazilan satir esyaya degil yaratiga gidiyordu
 ----------------------------------------
 

@@ -2461,6 +2461,31 @@ public class Item : ObjBase
                 else
                     _maxAmountOverride = null;
                 return true;
+            // What this plant yields, which upstream keeps in the crop's fruit override
+            // - the same storage as MORE2 (IC_FRUIT, CItem.cpp:3404). The harvest here
+            // already reads MORE2 as that override; only the key to write it was
+            // missing, so the 28 lines in the live pack that set a palm's coconuts or
+            // pick a field's crop from a list left the plant on its definition's fruit.
+            //
+            // The argument goes through the expression engine upstream, which is what
+            // makes both spellings work: a defname, and the inline pool the crop rows
+            // are written as.
+            case "FRUIT":
+            {
+                string fruit = value.Trim();
+                if (fruit.StartsWith('{'))
+                    fruit = Definitions.TemplateEngine.PickFromInlinePool(fruit);
+                if (fruit.Length == 0) return true;
+
+                ushort fruitId = ResolveDefName?.Invoke(fruit)
+                    ?? (ushort)SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(fruit);
+                if (fruitId == 0)
+                    fruitId = (ushort)SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(fruit);
+                if (fruitId != 0)
+                    More2 = fruitId;
+                return true;
+            }
+
             // The packs write this as an assignment inside a creature's @Create, right
             // after the ITEM= that made the book (CItem.cpp:3241).
             case "ADDSPELL":

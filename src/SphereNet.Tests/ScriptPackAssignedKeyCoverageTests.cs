@@ -102,11 +102,11 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
     /// Storing them would turn this list green and change nothing that happens in
     /// the game - which is the exact shape of bug these sweeps exist to find, so
     /// doing it to satisfy the sweep would be scoring our own exam. Each becomes
-    /// worth implementing the day something consumes it: FRUIT when a plant yields
-    /// one, BREATH when a creature breathes, RARITY and SELFREPAIR and the BONUSSKILL
-    /// pair when the item systems that read them exist, ID when a script may change a
-    /// body, MODAC when armour class has a modifier term, ONAME when a renamed object
-    /// must remember what it was.
+    /// worth implementing the day something consumes it: BREATH when a creature
+    /// breathes, RARITY and SELFREPAIR and the BONUSSKILL pair when the item systems
+    /// that read them exist, ID when a script may change a body, MODAC when armour
+    /// class has a modifier term, ONAME when a renamed object must remember what it
+    /// was.
     ///
     /// Contrast the six stat bonuses that came out of this same sweep and WERE
     /// implemented: CombatEngine had been summing them off worn items all along, so
@@ -114,10 +114,16 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
     private static readonly HashSet<string> KnownUnaccepted =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM", "FRUIT", "ID",
+            "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM", "ID",
             "MODAC", "ONAME", "OWNEDBY", "Rarity", "RESDISPDNHUE",
             "SelfRepair",
         };
+
+    // FRUIT left this list when its consumer turned out to already exist: the harvest
+    // reads MORE2 as the plant's fruit override, which is where upstream keeps it
+    // (m_itCrop.m_ridFruitOverride, CItem.cpp:3404). Only the key to write it was
+    // missing, so the palms and crop fields in the pack fell back to their
+    // definition's fruit - the condition this note names was met, not worked around.
 
     // LOWERREQ left this list when the component-property tables were wired up: it is
     // one of upstream's ADDPROP names, so an instance write lands in a tag and reads

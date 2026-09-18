@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A plant could not be told what it yields
+----------------------------------------
+
+FIX - FRUIT= was refused. Upstream keeps a plant's fruit override in the crop's own
+        field, which shares storage with MORE2 (IC_FRUIT, CItem.cpp:3404), and reads
+        the argument through the expression engine - so a defname resolves and the
+        inline pool the crop rows are written as is picked from.
+
+        The harvest here already read MORE2 as that override; only the key to write it
+        was missing. The 28 lines in the live pack that give a palm its coconuts or pick
+        a field's crop from a list did nothing, and the plant fell back to whatever its
+        definition declared.
+
 [2026-09-18] - A line written after an ITEM= reached the creature, not the item
 ----------------------------------------
 

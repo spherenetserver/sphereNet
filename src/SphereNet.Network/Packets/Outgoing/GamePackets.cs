@@ -736,12 +736,26 @@ public sealed class PacketBookPageContent : PacketWriter
     }
 }
 
-/// <summary>0x28 — Drop reject (item cannot be dropped at target location).</summary>
+/// <summary>
+/// 0x27 — the move was refused, so put back what the cursor is holding.
+///
+/// This used to be sent as 0x28 with two bytes. 0x28 is a FIVE byte packet in the
+/// client's table, and the client reads a fixed-length packet by that table, so those
+/// three missing bytes were taken out of whatever came next: from that point on the
+/// stream was read at the wrong offset and nothing after it arrived intact. A player
+/// whose drop was refused saw the item vanish and then could not move, because the
+/// packets that would have told the client otherwise were being parsed as garbage.
+///
+/// 0x27 is two bytes and is the one that means this: the client's handler for it puts
+/// the held item back where it came from (DenyMoveItem), which is also what the server
+/// does on its side (RestoreToOrigin). Upstream sends the same packet for a cancelled
+/// drag (PacketDragCancel, send.h:342).
+/// </summary>
 public sealed class PacketDropReject : PacketWriter
 {
     private readonly byte _reason; // 0=cannot lift, 5=rejected
 
-    public PacketDropReject(byte reason = 5) : base(0x28)
+    public PacketDropReject(byte reason = 5) : base(0x27)
     {
         _reason = reason;
     }

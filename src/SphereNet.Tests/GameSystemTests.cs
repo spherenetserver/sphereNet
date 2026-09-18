@@ -2688,7 +2688,16 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.Equal(pack.Uid, item.ContainedIn);
         Assert.Contains(item, pack.Contents);
         Assert.DoesNotContain(item, trade.InitiatorContainer.Contents);
-        Assert.Equal(0x28, GetQueuedPackets(netState).Last().Span[0]);
+        // 0x27, not 0x28: the client reads a fixed-length opcode by its table, where
+        // 0x28 is five bytes and is never adjusted for any client version, so sending
+        // it as two moved every byte after it. 0x27 is the two-byte packet that means
+        // "put back what you are holding" and whose handler does exactly that.
+        //
+        // It is looked for rather than expected last, because it goes out at HIGH
+        // priority - the class upstream gives it too (PacketDragCancel, send.h:338) -
+        // so it overtakes the container line that puts the item back. Both say the
+        // same thing, and the cancel is the one that must not wait.
+        Assert.Contains(GetQueuedPackets(netState), p => p.Span[0] == 0x27);
     }
 
     [Fact]

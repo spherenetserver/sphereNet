@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A refused drop desynchronised the connection
+----------------------------------------
+
+FIX - The packet sent when a drop is refused was 0x28 with two bytes. The client reads
+        a fixed-length opcode by a table, and there 0x28 is FIVE bytes and is never
+        adjusted for any client version, so the three missing bytes were taken out of
+        whatever followed: from that point the stream was read at the wrong offset and
+        nothing after it arrived intact. A player whose deposit was refused saw the item
+        disappear and then could not move, because the packets that would have said
+        otherwise were being parsed as garbage - and only reconnecting cleared it.
+
+        0x27 is the two-byte packet that means this, and the client's handler for it
+        puts back what the cursor is holding, which is also what the server does on its
+        side. Upstream sends the same one for a cancelled drag (PacketDragCancel,
+        send.h:342) and at the same HIGH priority, so it now overtakes the container
+        line that returns the item rather than trailing it.
+
+        Nothing was lost: the item is bounced server-side before the refusal is sent, so
+        it was in the pack the whole time - the client simply could not be told.
+
 [2026-09-18] - A plant could not be told what it yields
 ----------------------------------------
 

@@ -104,9 +104,8 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
     /// doing it to satisfy the sweep would be scoring our own exam. Each becomes
     /// worth implementing the day something consumes it: BREATH when a creature
     /// breathes, RARITY and SELFREPAIR and the BONUSSKILL pair when the item systems
-    /// that read them exist, ID when a script may change a body, MODAC when armour
-    /// class has a modifier term, ONAME when a renamed object must remember what it
-    /// was.
+    /// that read them exist, MODAC when armour class has a modifier term, ONAME when a
+    /// renamed object must remember what it was.
     ///
     /// Contrast the six stat bonuses that came out of this same sweep and WERE
     /// implemented: CombatEngine had been summing them off worn items all along, so
@@ -114,10 +113,16 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
     private static readonly HashSet<string> KnownUnaccepted =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM", "ID",
+            "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM",
             "MODAC", "ONAME", "OWNEDBY", "Rarity", "RESDISPDNHUE",
             "SelfRepair",
         };
+
+    // ID left on the same terms: an item re-bases onto another ITEMDEF, which is what
+    // upstream's SetID does (SetBaseID sets the base and the type, CItem.cpp:2128) and
+    // what the pack's decorations and levers ask for in their TIMER, DCLICK, STEP and
+    // EQUIP bodies. The consumer is the item itself - what it looks like, what type it
+    // is, which definition its keys read from - not a system still to be written.
 
     // FRUIT left this list when its consumer turned out to already exist: the harvest
     // reads MORE2 as the plant's fruit override, which is where upstream keeps it

@@ -30,7 +30,7 @@ public static class ItemDefHelper
     }
 
     public static bool ApplyInstanceMetadata(Item item, int defIndex,
-        bool setDisplayId = true, bool setName = true)
+        bool setDisplayId = true, bool setName = true, bool fireCreate = true)
     {
         var def = DefinitionLoader.GetItemDef(defIndex);
         if (def == null)
@@ -78,7 +78,13 @@ public static class ItemDefHelper
         // creation here. The ITEMDEF/SCRIPTDEF routing tags are set above so the
         // dispatcher resolves the right def; the call is a once-per-instance,
         // guarded no-op when no @Create trigger is wired (unit tests) or defined.
-        item.FireCreateTrigger();
+        //
+        // Re-basing an existing item onto another definition asks for everything above
+        // and NOT for this: upstream's SetID re-points the base and the type
+        // (CItem.cpp:2128) without running a creation script over an object that is
+        // already in the world.
+        if (fireCreate)
+            item.FireCreateTrigger();
 
         return true;
     }

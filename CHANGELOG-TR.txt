@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Reddedilen bir birakma baglantiyi bozuyordu
+----------------------------------------
+
+FIX - Bir birakma reddedildiginde gonderilen paket iki baytlik 0x28'di. Client sabit
+        uzunluklu bir opcode'u tablodan okur ve orada 0x28 BES bayttir; ustelik hicbir
+        client surumu icin duzeltilmez. Dolayisiyla eksik uc bayt, ardindan gelen neyse
+        onun icinden alinir: o noktadan sonra akis yanlis konumdan okunur ve sonraki
+        hicbir paket saglam ulasmaz. Yatirimi reddedilen oyuncu esyanin kayboldugunu
+        gorur ve sonra hareket edemez - cunku aksini soyleyecek paketler bozuk
+        ayristiriliyordur; yalnizca yeniden baglanmak bunu temizler.
+
+        Bunun anlamini tasiyan iki baytlik paket 0x27'dir ve client'in bu paket icin
+        isleyicisi imlecin tuttugu seyi geri koyar - sunucunun kendi tarafinda zaten
+        yaptigi sey. Ust kaynak iptal edilen surukleme icin ayni paketi ve ayni YUKSEK
+        onceligi kullanir (PacketDragCancel, send.h:342); bu yuzden red artik esyayi
+        geri koyan konteyner satirinin arkasinda kalmak yerine onune geciyor.
+
+        Hicbir sey kaybolmadi: esya, red gonderilmeden once sunucu tarafinda geri
+        konuyor, yani bastan beri cantadaydi - yalnizca client'a soylenemiyordu.
+
 [2026-09-18] - Bir bitkiye ne verecegi soylenemiyordu
 ----------------------------------------
 

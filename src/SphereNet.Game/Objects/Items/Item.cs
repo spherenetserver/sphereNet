@@ -2703,6 +2703,40 @@ public class Item : ObjBase
             case "TDATA3": _tdata3 = ParseHexOrDecUInt(value); return true;
             case "TDATA4": _tdata4 = ParseHexOrDecUInt(value); return true;
 
+            // Source-X IC_ID -> SetID: re-base the item onto another ITEMDEF, which
+            // sets the base AND the type (SetBaseID, CItem.cpp:2128-2129), and then
+            // change the graphic. That is what makes it different from DISPID, which
+            // only changes what the thing looks like - and it is what the pack's
+            // decorations and levers write in their TIMER, DCLICK, STEP and EQUIP
+            // bodies to turn into another item.
+            //
+            // No @Create: SetID does not run one over an object already in the world.
+            case "ID":
+            {
+                string target = value.Trim();
+                if (target.Length == 0) return true;
+
+                var res = Definitions.DefinitionLoader.StaticResources;
+                var rid = res?.ResolveDefName(target) ?? Core.Types.ResourceId.Invalid;
+                int defIndex = rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef
+                    ? rid.Index
+                    : SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(target);
+
+                if (defIndex > 0 &&
+                    Definitions.DefinitionLoader.GetItemDef(defIndex) != null)
+                {
+                    Definitions.ItemDefHelper.ApplyInstanceMetadata(this, defIndex,
+                        setDisplayId: true, setName: false, fireCreate: false);
+                    return true;
+                }
+
+                // No definition behind it - a bare graphic id. Change the look, which
+                // is all there is to change.
+                if (defIndex is > 0 and <= ushort.MaxValue)
+                    _dispId = (ushort)defIndex;
+                return true;
+            }
+
             case "DISPID":
             {
                 uint parsed = ParseHexOrDecUInt(value);

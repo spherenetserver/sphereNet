@@ -151,14 +151,29 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
         world.PlaceItem(gem, new Point3D(120, 120, 0, 0));
         var spawn = new SphereNet.Game.Components.SpawnComponent(gem, world) { MaxCount = 1 };
 
-        int creatures = 0, items = 0;
+        int creatures = 0, items = 0, restocked = 0;
         var threw = new List<string>();
-        foreach (var kv in DefinitionLoader.AllCharDefs.Take(400))
+        // Snapshot first: a definition can be resolved lazily while a trigger runs,
+        // which adds to the table being walked.
+        foreach (var kv in DefinitionLoader.AllCharDefs.Take(400).ToList())
         {
-            try { if (spawn.SpawnSpecific(kv.Key) != null) creatures++; }
+            try
+            {
+                var npc = spawn.SpawnSpecific(kv.Key);
+                if (npc == null) continue;
+                creatures++;
+
+                // The loot pass is the second biggest body the packs write - four
+                // hundred and fifty blocks - and it runs on the creature that was just
+                // made, so it belongs in the same sweep.
+                var (_, dispatcher, _) = Shard();
+                dispatcher.FireCharTrigger(npc, CharTrigger.NPCRestock,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+                restocked++;
+            }
             catch (Exception ex) { threw.Add($"CHARDEF 0x{kv.Key:X}: {ex.GetType().Name} {ex.Message}"); }
         }
-        foreach (var kv in DefinitionLoader.AllItemDefs.Take(1500))
+        foreach (var kv in DefinitionLoader.AllItemDefs.Take(1500).ToList())
         {
             try
             {
@@ -168,8 +183,8 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
             catch (Exception ex) { threw.Add($"ITEMDEF 0x{kv.Key:X}: {ex.GetType().Name} {ex.Message}"); }
         }
 
-        outp.WriteLine($"{creatures} creatures spawned, {items} items made, " +
-                       $"{s_unresolved.Count} unresolved");
+        outp.WriteLine($"{creatures} creatures spawned, {restocked} restocked, " +
+                       $"{items} items made, {s_unresolved.Count} unresolved");
         Assert.True(creatures > 100, $"only {creatures} creatures spawned - the sweep measured almost nothing");
         Assert.True(items > 500, $"only {items} items made - the sweep measured almost nothing");
         Assert.True(threw.Count == 0, "creation threw: " + string.Join(" | ", threw.Take(5)));

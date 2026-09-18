@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Ayni seyin tek cantada iki yigini
+----------------------------------------
+
+FIX - Bir konteynerin UZERINE birakilan yiginlanabilir esya, icindeki mevcut yigina
+        katilmiyordu. Ust kaynak girerken yiginlar: hicbir yuva adlandirilmamissa - ki
+        client, birakma konteynerin kendisine ya da paperdoll'a dustugunde tam olarak
+        bunu, -1,-1 diye gonderir - ContentAdd icerigi yurur ve eslesen ilk yiginla
+        birlestirir (CItemContainer.cpp:618-634). Dolayisiyla bir cesetten alinip
+        cantaya birakilan altin, oradaki altinin yanina ikinci bir yigin olarak
+        oturuyordu.
+
+        Tamamini alamayan bir yigin ust sinirina kadar doldurulur, kalan da bir
+        sonrakine gecer; CItem::Stack de false donmeden once bunu yapar. Oyuncunun
+        gercekten adlandirdigi bir yuvaya birakma ise hala birlestirme degil,
+        yerlestirmedir.
+
 [2026-09-18] - Banka kutusu yanlis soruyu soruyordu
 ----------------------------------------
 

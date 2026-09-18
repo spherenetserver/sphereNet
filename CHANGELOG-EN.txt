@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Two piles of the same thing in one pack
+----------------------------------------
+
+FIX - A stackable item dropped ON a container did not join the pile already inside it.
+        Upstream stacks on the way in: when no slot is named - which is what the client
+        sends, as -1,-1, whenever the drop lands on the container itself or on the
+        paperdoll - ContentAdd walks the contents and merges with the first pile it
+        matches (CItemContainer.cpp:618-634). So gold looted off a corpse and dropped
+        on the pack sat beside the gold already there as a second pile.
+
+        A pile that cannot take the whole amount is topped up to its maximum and the
+        remainder carries on to the next one, which is what CItem::Stack does before it
+        returns false. Dropping into a slot the player actually named is still a
+        placement, not a merge.
+
 [2026-09-18] - The bank box asked the wrong question
 ----------------------------------------
 

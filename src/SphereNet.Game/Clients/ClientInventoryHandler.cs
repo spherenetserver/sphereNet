@@ -1442,6 +1442,49 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
+                // A stackable item dropped ON a container - with no slot named, which
+                // is what the client sends as -1,-1 - merges with a matching pile
+                // already inside it (CItemContainer::ContentAdd, CItemContainer.cpp:
+                // 618-634). Without this, gold looted off a corpse and dropped on the
+                // pack sat beside the gold already there as a second pile.
+                //
+                // A pile that cannot take all of it is topped up and the remainder
+                // carries on to the next candidate, exactly as CItem::Stack does
+                // (CItem.cpp: tops the target to its max, reduces the source, returns
+                // false so the caller keeps looking).
+                if (x < 0 && y < 0)
+                {
+                    // The remainder is tracked here rather than written back each time:
+                    // Amount clamps to a minimum of one, so writing a fully consumed
+                    // pile back left a stray single coin behind.
+                    int left = item.Amount;
+                    foreach (var existing in _world.GetContainerContents(container.Uid).ToList())
+                    {
+                        if (left <= 0 || existing.Uid == item.Uid || !existing.CanStackWith(item))
+                            continue;
+                        int room = existing.MaxAmount - existing.Amount;
+                        if (room <= 0)
+                            continue;
+
+                        int moved = Math.Min(room, left);
+                        existing.Amount = (ushort)(existing.Amount + moved);
+                        left -= moved;
+                        SendContainerItemPacket(new PacketContainerItem(
+                            existing.Uid.Value, existing.DispIdFull, 0,
+                            existing.Amount, existing.X, existing.Y,
+                            container.Uid.Value, existing.Hue, _netState.IsClientPost6017));
+                    }
+
+                    if (left <= 0)
+                    {
+                        _world.RemoveItem(item);
+                        _netState.Send(new PacketDropAck());
+                        return;
+                    }
+                    if (left != item.Amount)
+                        item.Amount = (ushort)left;
+                }
+
                 if (!container.TryAddItem(item))
                 {
                     RestoreToOrigin(item);

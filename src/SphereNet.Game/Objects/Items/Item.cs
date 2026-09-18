@@ -2461,6 +2461,12 @@ public class Item : ObjBase
                 else
                     _maxAmountOverride = null;
                 return true;
+            // The packs write this as an assignment inside a creature's @Create, right
+            // after the ITEM= that made the book (CItem.cpp:3241).
+            case "ADDSPELL":
+                AddSpellbookSpell(value);
+                return true;
+
             // "DAM=10,15" is base 10 with a spread of 5; one value means no spread
             // (CObjBase.cpp:1857-1863). Writing either stamps THIS item, leaving every
             // other one of its kind alone.
@@ -3630,13 +3636,7 @@ public class Item : ObjBase
 
             // Faz 3: Spellbook commands
             case "ADDSPELL":
-                if (int.TryParse(args.Trim(), out int addSpell) && addSpell >= 0 && addSpell < 64)
-                {
-                    if (addSpell < 32)
-                        _more1 |= (1u << addSpell);
-                    else
-                        _more2 |= (1u << (addSpell - 32));
-                }
+                AddSpellbookSpell(args);
                 return true;
             // Source-X IC_ADDCIRCLE (CItem.cpp:3213): ADDCIRCLE <circle>[,<andLower>]
             // writes the eight spells of that circle into the book - and every circle
@@ -5779,4 +5779,26 @@ public class Item : ObjBase
         0x123 => (35, 13, 112, 165),
         _ => (44, 65, 186, 159),
     };
+    /// <summary>
+    /// Write one spell into this book. Upstream reads the argument through the
+    /// expression engine, so a SPELLDEF defname resolves to its index
+    /// (ResGetIndex(s.GetArgVal()), CItem.cpp:3244) - which is how the packs write it:
+    /// "ADDSPELL=s_paralyze", not a number. Only a number was accepted here, so every
+    /// one of those lines added nothing.
+    /// </summary>
+    public void AddSpellbookSpell(string value)
+    {
+        int index;
+        if (int.TryParse(value.Trim(), out int numeric) && numeric is >= 0 and < 64)
+            index = numeric;
+        else if (SphereNet.Game.Magic.SpellNames.TryResolve(value, out var spell) &&
+                 (int)spell is >= 0 and < 64)
+            index = (int)spell;
+        else
+            return;
+
+        if (index < 32) _more1 |= 1u << index;
+        else _more2 |= 1u << (index - 32);
+    }
+
 }

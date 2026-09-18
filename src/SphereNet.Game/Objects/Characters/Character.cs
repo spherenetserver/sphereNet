@@ -5524,11 +5524,51 @@ public partial class Character : ObjBase
         if (TrySetPartyProperty(key, normalized))
             return true;
 
+        // COLOR is the one key the creature would otherwise swallow. The verb path
+        // has always meant it for the item ("Applies the hue to the last item spawned
+        // via ITEM="), but an assignment never reached it: ObjBase answers COLOR, so
+        // "COLOR=colors_hair" after an ITEM= tinted the CREATURE's body instead of the
+        // hair it was written for - 937 lines of it in the live pack.
+        if (_lastCreatedItem is { IsDeleted: false } tinted &&
+            upperKey is "COLOR" or "HUE")
+        {
+            ushort hue = ResolveColorArg(normalized, _lastVerbHue);
+            if (hue != 0)
+            {
+                tinted.Hue = new Core.Types.Color(hue);
+                _lastVerbHue = hue;
+            }
+            return true;
+        }
+
         // Skill name-based assignment (MAGICRESISTANCE={84.0 100.0}, TACTICS=97.0, etc.)
         if (TrySetSkillByName(upperKey, normalized))
             return true;
 
-        return base.TrySetProperty(key, value);
+        if (base.TrySetProperty(key, value))
+            return true;
+
+        // A line that follows an ITEM= belongs to the item that ITEM= made.
+        //
+        // Upstream reads a creature's script with the last-created item held in pItem
+        // and sends every following line to it, falling back to the creature only when
+        // there is none - the comment there says so outright: "I'm setting an attribute
+        // to myself, not the item (e.g. @Create trigger)" (CChar.cpp:1441-1449). Only
+        // COLOR was routed that way here, so the other keys went to the creature, which
+        // does not answer them, and vanished: the live pack fills monster spellbooks
+        // with 109 ADDSPELL lines right after an ITEM=i_spellbook, and every one of
+        // them left the book empty.
+        //
+        // Ordering differs from upstream on purpose: the item is tried only after the
+        // creature has refused, so no key that works today can be taken away from it.
+        // Every one of the 1,051 lines the live pack writes after an ITEM= is an item
+        // property (COLOR, ADDSPELL, ATTR, MORE1, MORE2, ADDCIRCLE) and none is a
+        // creature key, so the two orderings agree on all of them. The item stays
+        // addressable for as long as the COLOR verb has always kept it.
+        if (_lastCreatedItem is { IsDeleted: false } lastItem)
+            return lastItem.TrySetProperty(key, value);
+
+        return false;
     }
 
     private static bool TryNormalizeScriptValue(string key, string value, out string normalized)
@@ -5636,45 +5676,10 @@ public partial class Character : ObjBase
         return false;
     }
 
-    private static bool TryParseSpellTypeValue(string value, out SpellType spell)
-    {
-        spell = SpellType.None;
-        string normalized = value.Trim();
-
-        // SpellType is backed by ushort; Enum.IsDefined throws ArgumentException
-        // unless the boxed value is the exact underlying type, so range-check
-        // and cast to ushort before probing.
-        if (int.TryParse(normalized, out int numeric) &&
-            numeric >= 0 && numeric <= ushort.MaxValue &&
-            Enum.IsDefined(typeof(SpellType), (ushort)numeric))
-        {
-            spell = (SpellType)numeric;
-            return true;
-        }
-
-        if (normalized.StartsWith("spell_", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[6..];
-        else if (normalized.StartsWith("s_", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[2..];
-
-        if (Enum.TryParse<SpellType>(normalized, true, out var named))
-        {
-            spell = named;
-            return true;
-        }
-
-        var resources = DefinitionLoader.StaticResources;
-        var rid = resources?.ResolveDefName(value.Trim()) ?? ResourceId.Invalid;
-        if (rid.IsValid && rid.Type == ResType.SpellDef &&
-            rid.Index >= 0 && rid.Index <= ushort.MaxValue &&
-            Enum.IsDefined(typeof(SpellType), (ushort)rid.Index))
-        {
-            spell = (SpellType)rid.Index;
-            return true;
-        }
-
-        return false;
-    }
+    /// <summary>A spell written as a number, an enum name or a defname. Shared with
+    /// the item side, which needs the same reading for ADDSPELL.</summary>
+    private static bool TryParseSpellTypeValue(string value, out SpellType spell) =>
+        Magic.SpellNames.TryResolve(value, out spell);
 
     private static bool TryParseSkillClassValue(string value, out int classId)
     {
@@ -7687,6 +7692,11 @@ public partial class Character : ObjBase
     // live only inside the trigger run — they are cleared by
     // Resurrect() and are not persisted because they're purely a
     // write-order cache for ITEM/COLOR pairs.
+    /// <summary>Drop the ITEM=-created item the following lines were being applied to.
+    /// Called when a trigger run begins, which is the boundary upstream reads a script
+    /// section within (CChar.cpp:1441).</summary>
+    public void ForgetLastCreatedItem() => _lastCreatedItem = null;
+
     private Items.Item? _lastCreatedItem;
     private ushort _lastVerbHue;
 
@@ -8051,11 +8061,14 @@ public partial class Character : ObjBase
         if (lo != 0 || hi != 0)
             return (ushort)Random.Shared.Next(lo, hi + 1);
 
-        // Hex / decimal literal fallback (COLOR=0x0481).
+        // A hue is a Sphere number, so a leading zero means hex: the packs write
+        // COLOR=0481 for 0x481, and reading it as four hundred and eighty-one picked a
+        // different colour entirely. The 0x form is accepted too.
         if (n.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
             ushort.TryParse(n.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out ushort hx))
             return hx;
-        return ushort.TryParse(n, out ushort dec) ? dec : (ushort)0;
+        int parsed = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(n);
+        return parsed is > 0 and <= ushort.MaxValue ? (ushort)parsed : (ushort)0;
     }
 
 

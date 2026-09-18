@@ -4,6 +4,36 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - ITEM='den sonra yazilan satir esyaya degil yaratiga gidiyordu
+----------------------------------------
+
+FIX - Bir yaratigin @Create'inde ITEM='i izleyen satirlar, o ITEM='in yarattigi esyaya
+        aittir. Ust kaynak scripti o esyayi elinde tutarak okur ve sonraki her satiri
+        ona gonderir; yalnizca ortada esya yoksa yaratiga duser - oradaki yorum bunu
+        aciktan soyler: "I'm setting an attribute to myself, not the item (e.g. @Create
+        trigger)" (CChar.cpp:1441-1449).
+
+        Canli paketteki 1.051 satirin tamami esya ozelligidir ve hicbiri yerine
+        ulasmiyordu. 109'u ADDSPELL'dir ve kitabi yaratan ITEM=i_spellbook'un hemen
+        ardindan bir canavarin buyu kitabini doldurur: bunlar ADDSPELL'i yanitlamayan
+        yaratiga gidip kayboluyordu - buyuculer ve lich'ler bos kitap tasiyordu. Kalan
+        937'si COLOR'dur ve onlar kaybolmaktan betersini yapiyordu: yaratik COLOR'u
+        yanitladigi icin, sac icin yazilan "COLOR=colors_hair" yaratigin tum bedenini
+        boyuyordu.
+
+        Yaratigin yanitladigi bir anahtar yine yaratiga ulasir; esya, yaratigin
+        reddettiklerini ve zaten ona yazilmis olan COLOR'u alir. Yonlendirme tek bir
+        tetikleyici kosumu surer - ust kaynagin bir script bolumunu okudugu sinir.
+
+FIX - ADDSPELL yalnizca sayi kabul ediyordu, paketler ise defname yaziyor
+        ("ADDSPELL=s_paralyze"). Ust kaynak argumani ifade motorundan gecirir ve orada
+        defname kendi indeksine cozulur (CItem.cpp:3244). Artik iki yazilis da, karakter
+        ile esyanin paylastigi tek bir yerde okunuyor.
+
+FIX - Sphere sayisi olarak yazilan bir renk, basindaki sifirin ardindan onaltiliktir.
+        COLOR=0481 dort yuz seksen bir olarak okunuyor ve satirin istedigi 0x481'den
+        baska bir renk seciliyordu.
+
 [2026-09-18] - Bir silahin hasari ve bir zirhin degeri artik kendisine ait
 ----------------------------------------
 

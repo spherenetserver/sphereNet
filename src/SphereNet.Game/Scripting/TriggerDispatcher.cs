@@ -226,6 +226,13 @@ public sealed class TriggerDispatcher
         // numbers a soak run is supposed to record, and this is where char
         // triggers funnel through.
         Diagnostics.LoadProfile.CountTrigger();
+
+        // A line following an ITEM= belongs to the item that ITEM= made, and upstream
+        // bounds that to the script section being read (CChar.cpp:1441). This is the
+        // matching boundary here: each trigger run starts with no item in hand, so the
+        // routing can never reach across two of them.
+        ch.ForgetLastCreatedItem();
+
         var result = FireCharTriggerByName(ch, GetCharTriggerName(trigger), args);
         if (result == TriggerResult.True)
             return result;

@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A line written after an ITEM= reached the creature, not the item
+----------------------------------------
+
+FIX - In a creature's @Create, the lines that follow an ITEM= are meant for the item
+        that ITEM= made. Upstream reads the script holding it and sends every following
+        line to it, falling back to the creature only when there is none - the comment
+        there says so outright: "I'm setting an attribute to myself, not the item (e.g.
+        @Create trigger)" (CChar.cpp:1441-1449).
+
+        Every one of the 1,051 such lines in the live pack is an item property, and none
+        of them arrived. 109 are ADDSPELL, filling a monster's spellbook right after the
+        ITEM=i_spellbook that made it: those went to the creature, which does not answer
+        ADDSPELL, and vanished - the mages and liches carried empty books. The other 937
+        are COLOR, and they did worse than vanish: the creature answers COLOR, so a
+        "COLOR=colors_hair" written for the hair tinted the creature's whole body.
+
+        A key the creature answers still reaches the creature; the item gets what the
+        creature refuses, plus COLOR, which was already meant for it. The routing lasts
+        one trigger run, which is the boundary upstream reads a script section within.
+
+FIX - ADDSPELL took only a number, and the packs write a defname ("ADDSPELL=s_paralyze").
+        Upstream reads the argument through the expression engine, where a defname
+        resolves to its index (CItem.cpp:3244). Both spellings are read now, in one
+        place the character and the item share.
+
+FIX - A hue written as a Sphere number is hex behind its leading zero. COLOR=0481 was
+        read as four hundred and eighty-one, picking a different colour than the 0x481
+        the line asked for.
+
 [2026-09-18] - A weapon's damage and a piece of armour's rating are its own
 ----------------------------------------
 

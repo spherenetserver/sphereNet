@@ -1197,6 +1197,35 @@ public sealed class ExpressionParser
             return Evaluate(resolved.AsSpan()).ToString();
         }
 
+        // H — force a HEX reading of the rest, the mirror of the D above
+        // (<hSOMEVAL> is upstream's shorthand for <HVAL <SOMEVAL>>,
+        // CScriptObj.cpp:553). A negative value is left alone, as it is there.
+        //
+        // The result carries the leading zero every other hex read in this engine
+        // writes (<MORE1> answers 08981), because that zero is what marks a number as
+        // hex when it is read back: <hSTR> of 16 written as "10" would come back as
+        // ten, and as "010" it comes back as sixteen. Upstream's own commented-out
+        // line in FormatLLHex says 0%x for the same reason.
+        if (varExpr.Length > 1 && (varExpr[0] == 'H' || varExpr[0] == 'h') &&
+            char.IsLetterOrDigit(varExpr[1]))
+        {
+            string hInner = ResolveAngleBrackets(varExpr[1..]);
+            string? hVal = VariableResolver?.Invoke(hInner);
+            if (hVal != null)
+            {
+                if (hVal.StartsWith('-') || !TryEvaluate(hVal.AsSpan(), out long hNum))
+                    return hVal;
+                return "0" + hNum.ToString("X", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            // Not a known member once the H is removed, so the H belonged to the name:
+            // HITS, HOME, HITPOINTS, or a [FUNCTION] whose name starts with one.
+            string hFull = ResolveAngleBrackets(varExpr);
+            string? hFullVal = VariableResolver?.Invoke(hFull) ?? FunctionResolver?.Invoke(hFull);
+            if (hFullVal != null)
+                return hFullVal;
+        }
+
         // EXPLODE — split string by separator chars into comma-delimited list
         if (varExpr.StartsWith("EXPLODE ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("EXPLODE(", StringComparison.OrdinalIgnoreCase))

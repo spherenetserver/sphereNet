@@ -4068,9 +4068,21 @@ public partial class Character : ObjBase
                 // inventing a character-side range that has no source.
                 value = Combat.CombatEngine.CalcArmorDefense(this).ToString();
                 return true;
-            case "WEIGHT": value = GetTotalWeight().ToString(); return true;
+            // Both in tenths of a stone, which is the unit the scripts are written in:
+            // upstream answers WEIGHT with GetTotalWeight() and MAXWEIGHT with
+            // Calc_MaxCarryWeight, and that function ends on "return iQty *
+            // WEIGHT_UNITS" (CResourceCalc.cpp:30). The packs say the same thing from
+            // the other side - they print <FVAL <WEIGHT>>, which renders tenths as
+            // "21.5", and test (<WEIGHT> == 10) to pick the singular "1 stone" cliloc.
+            // Answering whole stones made a status line read 2.1 where it meant 21.5.
+            case "WEIGHT": value = GetTotalWeightTenths().ToString(); return true;
+
+            // Through the property, not a second copy of the formula: this one used
+            // the raw STR where MaxWeight uses the adjusted one, so a blessed or
+            // cursed character's carrying capacity was whatever it would have been
+            // without the spell.
             case "MAXWEIGHT":
-                value = ((_str * 7 / 2) + 40 + _modMaxWeight).ToString();
+                value = ((long)MaxWeight * Item.WeightUnits).ToString();
                 return true;
             case "RANGE":
             {

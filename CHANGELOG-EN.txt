@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - WEIGHT was answered in the wrong unit, without the stack
+----------------------------------------
+
+FIX - <WEIGHT> answered whole stones and counted one of a stack. Upstream answers it
+        with GetWeight(): the unit weight times the STACK (CItem.cpp:2025), plus
+        everything inside for a container (CItemContainer.cpp:341), and the whole
+        carried tree for a character - all in tenths of a stone. MAXWEIGHT is
+        Calc_MaxCarryWeight, which ends on "return iQty * WEIGHT_UNITS"
+        (CResourceCalc.cpp:30), so it is in tenths too. The packs say the same from the
+        other side: they print <FVAL <WEIGHT>>, which renders tenths as "21.5", and test
+        (<WEIGHT> == 10) to choose between the "1 stone" and "N stones" clilocs - so a
+        status line read 2.1 where it meant 21.5, and a hundred ingots weighed what one
+        ingot does.
+
+        The engine already had the accessors that answer this correctly and the reads
+        were not using them, which is also how MAXWEIGHT came to work its formula out a
+        second time from the RAW strength: a blessed or cursed character's carrying
+        capacity was whatever it would have been without the spell.
+
+        Nothing inside the engine reads these through the script layer, so the status
+        bar and the carry checks, which use the properties directly, are unchanged.
+
 [2026-09-18] - What an object is called depended on how it was made
 ----------------------------------------
 

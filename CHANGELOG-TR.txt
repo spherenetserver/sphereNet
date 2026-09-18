@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - WEIGHT yanlis birimde ve yigin sayilmadan donuyordu
+----------------------------------------
+
+FIX - <WEIGHT> tam tas donduruyor ve bir yigindan tek parcayi sayiyordu. Ust kaynak bunu
+        GetWeight() ile yanitlar: birim agirlik CARPI YIGIN (CItem.cpp:2025), kapsayici
+        icin artI icindeki her sey (CItemContainer.cpp:341), karakter icin ise tasidigi
+        tum agac - hepsi onda bir tas biriminde. MAXWEIGHT ise Calc_MaxCarryWeight'tir ve
+        o fonksiyon "return iQty * WEIGHT_UNITS" ile biter (CResourceCalc.cpp:30), yani o
+        da onda birdir. Paketler ayni seyi obur taraftan soyler: <FVAL <WEIGHT>> ile
+        yazdirirlar - bu onda biri "21.5" diye gosterir - ve "1 tas" ile "N tas"
+        cliloc'lari arasinda secim icin (<WEIGHT> == 10) testi yaparlar. Dolayisiyla bir
+        durum satiri 21.5 demek isterken 2.1 okuyor, yuz kulce ise tek kulce kadar
+        cekiyordu.
+
+        Motorda bunu dogru yanitlayan erisimciler zaten vardi ve okumalar onlari
+        kullanmiyordu; MAXWEIGHT'in formulu HAM guc uzerinden ikinci kez hesaplamasi da
+        buradan geliyordu: kutsanmis ya da lanetlenmis bir karakterin tasima kapasitesi,
+        o buyu hic yokmus gibi kaliyordu.
+
+        Motorun icinde bu degerleri script katmanindan okuyan yok; durum cubugu ve
+        tasima kontrolleri ozellikleri dogrudan kullandigi icin degismedi.
+
 [2026-09-18] - Bir nesnenin adi, nasil yaratildigina bagliydi
 ----------------------------------------
 

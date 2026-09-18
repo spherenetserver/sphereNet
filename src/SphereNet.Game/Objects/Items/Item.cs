@@ -2250,7 +2250,13 @@ public class Item : ObjBase
                 // or a character the test compared nothing against a name.
                 case "DEFNAME": value = def.DefName ?? ""; return true;
                 case "VALUE": value = def.ValueMin == def.ValueMax ? def.ValueMin.ToString() : $"{def.ValueMin},{def.ValueMax}"; return true;
-                case "WEIGHT": value = (Weight / WeightUnits).ToString(); return true;
+                // What the thing actually weighs, in tenths: upstream answers
+                // OC_WEIGHT with GetWeight(), which is the unit weight times the STACK
+                // (CItem.cpp:2025) and, for a container, plus everything inside it
+                // (CItemContainer.cpp:341). TotalWeightTenths is that sum. Answering
+                // the def's own weight in whole stones made a stack of 100 ingots
+                // weigh what one ingot does, and a full pack weigh nothing.
+                case "WEIGHT": value = TotalWeightTenths.ToString(); return true;
                 case "HEIGHT": value = def.Height.ToString(); return true;
                 case "ARMOR": value = def.DefenseMin == def.DefenseMax ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}"; return true;
                 case "ARMOR.LO": value = def.DefenseMin.ToString(); return true;

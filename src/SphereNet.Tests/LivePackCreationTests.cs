@@ -39,6 +39,10 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
     // Read once for the whole class: it is nineteen hundred files.
     private static (GameWorld World, TriggerDispatcher Dispatcher, ResourceHolder Resources)? s_shard;
 
+    /// <summary>Every expression the interpreter could not resolve while this class
+    /// ran, in the order they were reported.</summary>
+    private static readonly List<string> s_unresolved = [];
+
     private static (GameWorld World, TriggerDispatcher Dispatcher, ResourceHolder Resources) Shard()
     {
         s_shard ??= LoadShard();
@@ -76,7 +80,12 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
             resources.LoadResourceFile(file);
         new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
 
-        var interpreter = new ScriptInterpreter(new ExpressionParser(), lf.CreateLogger<ScriptInterpreter>());
+        var expr = new ExpressionParser
+        {
+            DebugUnresolved = true,
+            DiagnosticLogger = m => s_unresolved.Add(m)
+        };
+        var interpreter = new ScriptInterpreter(expr, lf.CreateLogger<ScriptInterpreter>());
         var runner = new TriggerRunner(interpreter, resources, lf.CreateLogger<TriggerRunner>());
         var dispatcher = new TriggerDispatcher { Resources = resources, Runner = runner };
         dispatcher.BuildUsedTriggerCache();
@@ -114,6 +123,74 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
         Assert.InRange(icer.Dex, 105, 130);
         Assert.InRange(icer.Int, 140, 165);
         Assert.InRange(icer.GetSkill(SkillType.Tactics), 500, 700);   // TACTICS={50.0 70.0}
+    }
+
+    /// <summary>
+    /// Every definition the shard declares materialises, and the interpreter
+    /// understands every line it runs on the way.
+    ///
+    /// This is the creation surface as a whole rather than one creature: four hundred
+    /// CHARDEFs spawned and fifteen hundred ITEMDEFs made, with the interpreter set to
+    /// report anything it cannot resolve. A line the engine does not understand is
+    /// silent in production - it stores nothing and says nothing - so the report is the
+    /// only place it shows.
+    ///
+    /// Names the PACK defines are allowed through: the live server resolves those with
+    /// its own constant resolver, which is not wired into a test harness, so
+    /// &lt;statf_invul&gt; arrives here unresolved while the real server answers it from
+    /// the defname table. Anything the pack does NOT define is a gap in the engine.
+    /// </summary>
+    [Fact]
+    public void TheShardsOwnDefinitionsAllMaterialise()
+    {
+        if (Gate.Missing(outp, "live shard (scripts + mul + save)", !Directory.Exists(PackRoot))) return;
+        var (world, _, resources) = Shard();
+        s_unresolved.Clear();
+
+        var gem = world.CreateItem();
+        world.PlaceItem(gem, new Point3D(120, 120, 0, 0));
+        var spawn = new SphereNet.Game.Components.SpawnComponent(gem, world) { MaxCount = 1 };
+
+        int creatures = 0, items = 0;
+        var threw = new List<string>();
+        foreach (var kv in DefinitionLoader.AllCharDefs.Take(400))
+        {
+            try { if (spawn.SpawnSpecific(kv.Key) != null) creatures++; }
+            catch (Exception ex) { threw.Add($"CHARDEF 0x{kv.Key:X}: {ex.GetType().Name} {ex.Message}"); }
+        }
+        foreach (var kv in DefinitionLoader.AllItemDefs.Take(1500))
+        {
+            try
+            {
+                var made = world.CreateItem();
+                if (ItemDefHelper.ApplyInstanceMetadata(made, kv.Key)) items++;
+            }
+            catch (Exception ex) { threw.Add($"ITEMDEF 0x{kv.Key:X}: {ex.GetType().Name} {ex.Message}"); }
+        }
+
+        outp.WriteLine($"{creatures} creatures spawned, {items} items made, " +
+                       $"{s_unresolved.Count} unresolved");
+        Assert.True(creatures > 100, $"only {creatures} creatures spawned - the sweep measured almost nothing");
+        Assert.True(items > 500, $"only {items} items made - the sweep measured almost nothing");
+        Assert.True(threw.Count == 0, "creation threw: " + string.Join(" | ", threw.Take(5)));
+
+        // Keep only what the pack does not define for itself.
+        var gaps = new List<string>();
+        foreach (string line in s_unresolved.Distinct())
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"unresolved <([^>]+)>");
+            string token = m.Success ? m.Groups[1].Value : "";
+            // A [DEFNAME] constant arrives as a DefName resource whose index IS its
+            // value, which is what the live server's constant resolver reads; the
+            // text-valued table is a different store and does not carry these.
+            if (token.Length > 0 &&
+                (resources.ResolveDefName(token).IsValid || resources.TryGetDefValue(token, out _)))
+                continue;
+            gaps.Add(line);
+        }
+        Assert.True(gaps.Count == 0,
+            "the engine did not understand these, and the pack does not define them: " +
+            string.Join(" | ", gaps.Take(10)));
     }
 
     /// <summary>And it carries the spellbook its definition fills: the ADDSPELL on the

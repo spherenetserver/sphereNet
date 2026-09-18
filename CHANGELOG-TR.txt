@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Degerlendiricinin uc intrinsic'i
+----------------------------------------
+
+Ifade degerlendiricisinin intrinsic tablosundaki 27 ad tek tek yuruyup yanit istendi.
+Ucu ust kaynagin verdigi yaniti vermedi.
+
+FIX - STRLEN() cozulmuyordu. Ad, degisken aramasina duserek gecip gidiyor, dolayisiyla
+        etrafindaki ifade 0 okuyordu - bunlar intrinsic oldugu, script FUNCTION'i
+        olmadigi icin de hicbir paket bunu kendi tarafindan saglayamazdi. Bir paketin
+        yukunun uzunlugunu soran paket log satirlarinin hepsi 0 basiyordu.
+
+FIX - ISNUMBER() de ayni sonucla cozulmuyordu. Ilk rakama kadar ilerler ve kalani okur;
+        bastaki sifir onaltilik rakamlara izin verdigi icin 0ff sayilir, 12x sayilmaz
+        (CExpression.cpp:1163).
+
+FIX - ID() argumanini ondalik okuyordu. Ust kaynak onu GetVal ile, siradan sayi yolundan
+        okur; orada bastaki sifir onaltilik demektir (CExpression.cpp:842). Ondalik
+        okumak cagriyi tumden islevsiz birakiyordu: 0401234 yazilmis bir id ondalik
+        401234 olarak geri geliyor, bu da 20 bitlik indeks maskesinin altinda kaldigi
+        icin hicbir tur biti hic soyulmuyordu. Arguman artik her sayiyla ayni
+        degerlendirmeden geciyor; bu da orada bir defname'in ya da bir ifadenin
+        calismasi demek.
+
 [2026-09-18] - Su testi hicbir zaman dogru olamiyordu
 ----------------------------------------
 

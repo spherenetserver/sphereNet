@@ -1480,6 +1480,29 @@ public sealed class ExpressionParser
             return inner.Length > 0 ? ((int)inner[0]).ToString() : "0";
         }
 
+        // STRLEN — length of the argument text (INTRINSIC_STRLEN, CExpression.cpp:1151:
+        // strlen of the argument as it stands, after the leading whitespace Str_Parse
+        // skips). The packs reach for it while logging a packet's payload.
+        if (varExpr.StartsWith("STRLEN(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("STRLEN ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = varExpr.StartsWith("STRLEN(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..].Trim());
+            return inner.Trim().Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        // ISNUMBER — upstream skips forward to the first digit and then asks whether
+        // what remains is a number (INTRINSIC_ISNUMBER, CExpression.cpp:1163). A
+        // leading zero puts it in hex, so 0ff counts; 12x does not, and text with no
+        // digit at all runs off the end and counts as false.
+        if (varExpr.StartsWith("ISNUMBER(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("ISNUMBER ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = varExpr.StartsWith("ISNUMBER(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 8) : ResolveAngleBrackets(varExpr[9..].Trim());
+            return IsSphereStrNumeric(inner) ? "1" : "0";
+        }
+
         // LOGARITHM — log base-10, or log with custom base
         if (varExpr.StartsWith("LOGARITHM(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("LOGARITHM ", StringComparison.OrdinalIgnoreCase))
@@ -1692,19 +1715,14 @@ public sealed class ExpressionParser
         {
             const long ResIndexMask = 0xFFFFF;
             string inner = ExtractFuncArg(varExpr, 2);
-            string resolved = ResolveAngleBrackets(inner);
-            // Try as hex first
-            if (resolved.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
-                long.TryParse(resolved[2..], System.Globalization.NumberStyles.HexNumber, null, out long hexVal))
-                return (hexVal & ResIndexMask).ToString();
-            // Try as defname via variable resolver
-            string? defVal = VariableResolver?.Invoke(resolved);
-            if (defVal != null && long.TryParse(defVal, out long numVal))
-                return (numVal & ResIndexMask).ToString();
-            // Try direct number
-            if (long.TryParse(resolved, out long directVal))
-                return (directVal & ResIndexMask).ToString();
-            return "0";
+            // Upstream reads the argument with GetVal - the ordinary number path -
+            // so a leading zero means hex, a defname resolves, and arithmetic works
+            // (INTRINSIC_ID, CExpression.cpp:842). Reading it as decimal instead made
+            // the whole call a no-op: an id written 0401234 came back as the decimal
+            // 401234, which is below the 20-bit mask, so nothing was ever stripped.
+            return TryEvaluate(inner.AsSpan(), out long idVal)
+                ? (idVal & ResIndexMask).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "0";
         }
 
         // ISEMPTY — returns 1 if arg is empty/0
@@ -2049,6 +2067,30 @@ public sealed class ExpressionParser
     /// prefixLen is the length of the function name (e.g. 3 for "ABS", 4 for "SQRT").
     /// Strips parentheses if present.
     /// </summary>
+    /// <summary>ISNUMBER's test: skip to the first digit (SKIP_NONNUM), then read the
+    /// rest as a number, where a leading zero admits hex digits (IsStrNumeric,
+    /// sstring.cpp). Running off the end without finding a digit is false.</summary>
+    private static bool IsSphereStrNumeric(string text)
+    {
+        int i = 0;
+        while (i < text.Length && !char.IsAsciiDigit(text[i]))
+            ++i;
+        if (i >= text.Length)
+            return false;
+
+        bool hex = text[i] == '0';
+        for (; i < text.Length; ++i)
+        {
+            char c = text[i];
+            if (char.IsAsciiDigit(c))
+                continue;
+            if (hex && char.ToLowerInvariant(c) is >= 'a' and <= 'f')
+                continue;
+            return false;
+        }
+        return true;
+    }
+
     private string ExtractFuncArg(string varExpr, int prefixLen)
     {
         string rest = varExpr[prefixLen..];

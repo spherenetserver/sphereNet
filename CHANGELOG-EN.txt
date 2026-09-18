@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Three of the evaluator's intrinsics
+----------------------------------------
+
+The 27 names in the expression evaluator's intrinsic table were walked one at a time and
+asked for an answer. Three did not give upstream's.
+
+FIX - STRLEN() did not resolve. The name fell through to the variable lookup, so the
+        expression around it read 0 - and because these are intrinsics, not script
+        FUNCTIONs, no pack could have supplied it. The packet log lines that ask for a
+        payload's length were all printing 0.
+
+FIX - ISNUMBER() did not resolve either, with the same consequence. It skips forward to
+        the first digit and reads what remains, a leading zero admitting hex digits, so
+        0ff counts and 12x does not (CExpression.cpp:1163).
+
+FIX - ID() read its argument as decimal. Upstream reads it with GetVal, the ordinary
+        number path, where a leading zero means hex (CExpression.cpp:842). Reading it as
+        decimal made the call do nothing at all: an id written 0401234 came back as the
+        decimal 401234, which is below the 20-bit index mask, so no type bits were ever
+        stripped. The argument now goes through the same evaluation as any other number,
+        which also means a defname or an expression works there.
+
 [2026-09-18] - The water test could never be true
 ----------------------------------------
 

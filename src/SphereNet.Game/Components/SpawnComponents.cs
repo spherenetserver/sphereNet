@@ -272,7 +272,7 @@ public sealed class SpawnComponent
             if (ch.NpcFood == 0)
                 ch.NpcFood = 50;
 
-            CharDefHelper.ApplyDamageSplit(ch, charDef);
+            CharDefHelper.ApplyCombatProperties(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionSkills(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionTags(ch, charDef);
 

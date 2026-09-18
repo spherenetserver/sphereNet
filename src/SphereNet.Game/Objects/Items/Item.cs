@@ -885,6 +885,22 @@ public class Item : ObjBase
 
     public const int WeightUnits = 10;
 
+    /// <summary>This item's damage and armour come from its ITEMDEF until something
+    /// stamps or changes them; the storage itself is on <see cref="ObjBase"/>, where
+    /// upstream also keeps it (CObjBase::m_attackBase).</summary>
+    protected override (int Lo, int Hi) DefinitionAttack
+    {
+        get { var d = ResolveDefinition(); return d == null ? (0, 0) : (d.AttackMin, d.AttackMax); }
+    }
+
+    /// <inheritdoc cref="DefinitionAttack"/>
+    protected override (int Lo, int Hi) DefinitionDefense
+    {
+        get { var d = ResolveDefinition(); return d == null ? (0, 0) : (d.DefenseMin, d.DefenseMax); }
+    }
+
+
+
     // Per-item weight override in tenths of a stone (Source-X CItem::m_weight,
     // settable via BASEWEIGHT). Null = use the ITEMDEF/tiledata weight. Persisted.
     private int? _weightOverride;
@@ -2258,12 +2274,14 @@ public class Item : ObjBase
                 // weigh what one ingot does, and a full pack weigh nothing.
                 case "WEIGHT": value = TotalWeightTenths.ToString(); return true;
                 case "HEIGHT": value = def.Height.ToString(); return true;
-                case "ARMOR": value = def.DefenseMin == def.DefenseMax ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}"; return true;
-                case "ARMOR.LO": value = def.DefenseMin.ToString(); return true;
-                case "ARMOR.HI": value = def.DefenseMax.ToString(); return true;
-                case "DAM": value = def.AttackMin == def.AttackMax ? def.AttackMin.ToString() : $"{def.AttackMin},{def.AttackMax}"; return true;
-                case "DAM.LO": value = def.AttackMin.ToString(); return true;
-                case "DAM.HI": value = def.AttackMax.ToString(); return true;
+                // This item's own ratings, which start as the definition's and can be
+                // changed on the one item (CObjBase.cpp:1081/1855).
+                case "ARMOR": value = DefenseLo == DefenseHi ? DefenseLo.ToString() : $"{DefenseLo},{DefenseHi}"; return true;
+                case "ARMOR.LO": value = DefenseLo.ToString(); return true;
+                case "ARMOR.HI": value = DefenseHi.ToString(); return true;
+                case "DAM": value = AttackLo == AttackHi ? AttackLo.ToString() : $"{AttackLo},{AttackHi}"; return true;
+                case "DAM.LO": value = AttackLo.ToString(); return true;
+                case "DAM.HI": value = AttackHi.ToString(); return true;
                 case "SPEED": value = def.Speed.ToString(); return true;
                 case "SKILL": value = ((int)def.Skill).ToString(); return true;
                 case "REQSTR": value = def.ReqStr.ToString(); return true;
@@ -2274,8 +2292,8 @@ public class Item : ObjBase
                 case "FLIP": value = def.Flip ? "1" : "0"; return true;
                 case "REPAIR": value = def.Repair ? "1" : "0"; return true;
                 case "TWOHANDS": value = def.TwoHands ? "1" : "0"; return true;
-                case "ISARMOR": value = (def.DefenseMin > 0 || def.DefenseMax > 0) ? "1" : "0"; return true;
-                case "ISWEAPON": value = (def.AttackMin > 0 || def.AttackMax > 0) ? "1" : "0"; return true;
+                case "ISARMOR": value = (DefenseLo > 0 || DefenseHi > 0) ? "1" : "0"; return true;
+                case "ISWEAPON": value = (AttackLo > 0 || AttackHi > 0) ? "1" : "0"; return true;
             }
             var extended = def.TagDefs.Get(upper);
             if (extended != null)
@@ -2443,6 +2461,30 @@ public class Item : ObjBase
                 else
                     _maxAmountOverride = null;
                 return true;
+            // "DAM=10,15" is base 10 with a spread of 5; one value means no spread
+            // (CObjBase.cpp:1857-1863). Writing either stamps THIS item, leaving every
+            // other one of its kind alone.
+            case "DAM":
+            case "ARMOR":
+            {
+                var nums = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (nums.Length == 0) return true;
+                int ratingLo = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(nums[0]);
+                int ratingHi = nums.Length > 1
+                    ? SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(nums[1])
+                    : ratingLo;
+                if (upper == "DAM") SetAttackRating(ratingLo, ratingHi);
+                else SetDefenseRating(ratingLo, ratingHi);
+                return true;
+            }
+            case "DAM.LO": SetAttackRating(
+                SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(value), AttackHi); return true;
+            case "DAM.HI": SetAttackRating(AttackLo,
+                SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(value)); return true;
+            case "ARMOR.LO": SetDefenseRating(
+                SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(value), DefenseHi); return true;
+            case "ARMOR.HI": SetDefenseRating(DefenseLo,
+                SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(value)); return true;
             case "BASEWEIGHT":
                 // Source-X sets m_weight on the instance (per-unit tenths). A
                 // negative/blank value clears the override back to the def weight.

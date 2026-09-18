@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A weapon's damage and a piece of armour's rating are its own
+----------------------------------------
+
+CHANGE - DAM and ARMOR are now carried by the object rather than read live off its
+        definition. Upstream keeps them on CObjBase (m_attackBase/m_attackRange and the
+        defense pair), copies the definition's values onto the instance when it is made
+        (CBase.cpp:416-419), lets a script change them there (CObjBase.cpp:1855), reads
+        the instance in combat (CCharFight.cpp:1220) and writes them with the object
+        (CItem.cpp:2468, CChar.cpp:4159).
+
+        Here they could not be changed at all: DAM= on an item was refused outright, and
+        on a creature the case existed but dropped the value and reported success. So
+        one sword could never differ from another, and editing an ITEMDEF changed every
+        copy already in the world instead of only the ones made afterwards.
+
+        DAM, DAM.LO, DAM.HI, ARMOR, ARMOR.LO and ARMOR.HI now read and write the
+        object's own pair; the weapon's rating drives the swing, the armour's drives the
+        defence rating, and both are saved. An object from an older save carries no
+        stamp and reads its definition, which is what every object used to do.
+
+FIX - A creature's damage was stamped from the CHARDEF in the shared helper, next to
+        the elemental split. The spawner and the client's NPC creation reach that call
+        directly rather than through the full definition helper - the same shape that
+        once left the split missing from two creation paths out of three.
+
 [2026-09-18] - WEIGHT was answered in the wrong unit, without the stack
 ----------------------------------------
 

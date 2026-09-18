@@ -591,6 +591,58 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     public virtual string GetName() => _name;
 
+    // Combat ratings, in the shape upstream keeps them on CObjBase: a base and a
+    // range (m_attackBase/m_attackRange, m_defenseBase/m_defenseRange). The
+    // definition's values are copied onto the object when it is made
+    // (CBase.cpp:416-419), which is what makes them changeable on ONE object, and
+    // they are written with it (CItem.cpp:2468, CChar.cpp:4160).
+    //
+    // Null means no stamp: an object from a save that predates this, which reads its
+    // definition instead - the behaviour the whole engine used to have.
+    private int? _attackBase;
+    private int? _attackRange;
+    private int? _defenseBase;
+    private int? _defenseRange;
+
+    /// <summary>The stamped attack base, or null when the object reads its definition.</summary>
+    public int? AttackBaseRaw => _attackBase;
+    /// <summary>The stamped defense base, or null when the object reads its definition.</summary>
+    public int? DefenseBaseRaw => _defenseBase;
+
+    /// <summary>What this object's definition declares, for an object carrying no
+    /// stamp of its own.</summary>
+    protected virtual (int Lo, int Hi) DefinitionAttack => (0, 0);
+    /// <inheritdoc cref="DefinitionAttack"/>
+    protected virtual (int Lo, int Hi) DefinitionDefense => (0, 0);
+
+    /// <summary>Lowest damage this object deals.</summary>
+    public int AttackLo => _attackBase ?? DefinitionAttack.Lo;
+    /// <summary>Highest damage this object deals.</summary>
+    public int AttackHi => _attackBase.HasValue
+        ? _attackBase.Value + (_attackRange ?? 0)
+        : DefinitionAttack.Hi;
+    /// <summary>Lowest armour rating this object gives.</summary>
+    public int DefenseLo => _defenseBase ?? DefinitionDefense.Lo;
+    /// <summary>Highest armour rating this object gives.</summary>
+    public int DefenseHi => _defenseBase.HasValue
+        ? _defenseBase.Value + (_defenseRange ?? 0)
+        : DefinitionDefense.Hi;
+
+    /// <summary>Stamp this object's own damage. Upstream stores the low value and the
+    /// spread, so "DAM=10,15" is base 10 range 5 (CObjBase.cpp:1859).</summary>
+    public void SetAttackRating(int lo, int hi)
+    {
+        _attackBase = Math.Max(0, lo);
+        _attackRange = Math.Max(0, hi - _attackBase.Value);
+    }
+
+    /// <summary>Stamp this object's own armour rating.</summary>
+    public void SetDefenseRating(int lo, int hi)
+    {
+        _defenseBase = Math.Max(0, lo);
+        _defenseRange = Math.Max(0, hi - _defenseBase.Value);
+    }
+
     public virtual bool TryGetProperty(string key, out string value)
     {
         value = "";

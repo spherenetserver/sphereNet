@@ -787,6 +787,15 @@ public sealed class WorldSaver
         if (item.Hue.Value != 0) w.WriteProperty("COLOR", $"0{item.Hue.Value:x}");
         if (item.Amount > 1) w.WriteProperty("AMOUNT", item.Amount.ToString());
         if (item.WeightOverride is int baseWeight) w.WriteProperty("BASEWEIGHT", baseWeight.ToString());
+
+        // The item's own combat ratings, written like upstream's - only when it has
+        // any, so an object that never had them stays as small as it was
+        // (CItem.cpp:2468). Absent on load means "read the definition", which is how
+        // every item saved before this reads.
+        if (item.AttackBaseRaw is > 0)
+            w.WriteProperty("DAM", $"{item.AttackLo},{item.AttackHi}");
+        if (item.DefenseBaseRaw is > 0)
+            w.WriteProperty("ARMOR", $"{item.DefenseLo},{item.DefenseHi}");
         if (item.MaxAmountOverride is int maxAmt) w.WriteProperty("MAXAMOUNT", maxAmt.ToString());
         if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
@@ -1082,6 +1091,9 @@ public sealed class WorldSaver
         if (ch.PFlag != 0) w.WriteProperty("PFLAG", ch.PFlag.ToString());
         if (ch.Tithing != 0) w.WriteProperty("TITHING", ch.Tithing.ToString());
         if (ch.SkillClass != 0) w.WriteProperty("SKILLCLASS", ch.SkillClass.ToString());
+
+        // The creature's own damage, written only when it has one (CChar.cpp:4159).
+        if (ch.AttackBaseRaw is > 0) w.WriteProperty("DAM", $"{ch.AttackLo},{ch.AttackHi}");
 
         if (ch.IsPlayer) w.WriteProperty("ISPLAYER", "1");
 

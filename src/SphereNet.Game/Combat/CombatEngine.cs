@@ -413,11 +413,17 @@ public static class CombatEngine
             // the CHARDEF's DAM line — for players too (c_man DAM=1,4 is the
             // classic fists damage). The old path invented Str/4 for anyone
             // whose chardef didn't resolve.
-            var defDam = NpcDamageDefLookup?.Invoke(attacker.CharDefIndex);
-            if (defDam.HasValue && defDam.Value.Max > 0)
+            // The creature's OWN rating first: stamped from the chardef when it was
+            // made, and changeable on the one creature (CCharFight.cpp:1220).
+            if (attacker.AttackBaseRaw is > 0)
             {
-                dmgMin = defDam.Value.Min;
-                dmgMax = defDam.Value.Max;
+                dmgMin = attacker.AttackLo;
+                dmgMax = attacker.AttackHi;
+            }
+            else if (NpcDamageDefLookup?.Invoke(attacker.CharDefIndex) is { Max: > 0 } defDam)
+            {
+                dmgMin = defDam.Min;
+                dmgMax = defDam.Max;
             }
             else if (attacker.IsPlayer)
             {
@@ -440,11 +446,19 @@ public static class CombatEngine
         }
         else
         {
-            var defDamage = WeaponDefLookup?.Invoke(weapon.BaseId);
-            if (defDamage.HasValue && defDamage.Value.Max > 0)
+            // The weapon's OWN rating first. Upstream reads m_attackBase off the item
+            // (CCharFight.cpp:1220), which is stamped from the definition when the
+            // item is made - so a script that changed this one weapon is what decides
+            // its damage, and every other weapon of the kind is untouched.
+            if (weapon.AttackBaseRaw is > 0)
             {
-                dmgMin = defDamage.Value.Min;
-                dmgMax = defDamage.Value.Max;
+                dmgMin = weapon.AttackLo;
+                dmgMax = weapon.AttackHi;
+            }
+            else if (WeaponDefLookup?.Invoke(weapon.BaseId) is { Max: > 0 } defDamage)
+            {
+                dmgMin = defDamage.Min;
+                dmgMax = defDamage.Max;
             }
             else
             {

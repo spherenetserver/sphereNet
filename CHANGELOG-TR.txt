@@ -4,6 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir silahin hasari ve bir zirhin degeri artik kendisine ait
+----------------------------------------
+
+CHANGE - DAM ve ARMOR artik tanimdan canli okunmak yerine nesnenin uzerinde tasiniyor.
+        Ust kaynak bunlari CObjBase'de tutar (m_attackBase/m_attackRange ve savunma
+        cifti), nesne yaratilirken tanimin degerlerini ornege kopyalar
+        (CBase.cpp:416-419), scriptin orada degistirmesine izin verir
+        (CObjBase.cpp:1855), dovuste ornegi okur (CCharFight.cpp:1220) ve nesneyle
+        birlikte kaydeder (CItem.cpp:2468, CChar.cpp:4159).
+
+        Bizde hic degistirilemiyordu: bir esyada DAM= dogrudan reddediliyor, bir
+        yaratikta ise ilgili dal vardi ama degeri dusurup basarili donuyordu. Yani bir
+        kilic digerinden farkli olamiyor ve bir ITEMDEF'i degistirmek dunyadaki tum
+        mevcut kopyalari da degistiriyordu - yalnizca sonradan uretilenleri degil.
+
+        DAM, DAM.LO, DAM.HI, ARMOR, ARMOR.LO ve ARMOR.HI artik nesnenin kendi ciftini
+        okuyup yaziyor; silahin degeri vurusu, zirhin degeri savunma puanini belirliyor
+        ve ikisi de kaydediliyor. Eski bir kayittan gelen nesnede damga yoktur ve
+        tanimini okur - yani eskiden her nesnenin yaptigi sey.
+
+FIX - Bir yaratigin hasari CHARDEF'ten, elemental bolusmenin yaninda, ortak yardimcida
+        damgalaniyor. Spawner ve istemcinin NPC yaratimi bu cagriya tam tanim
+        yardimcisindan gecmeden dogrudan ulasiyor - bolusmenin bir zamanlar uc
+        yaratilis yolundan ikisinde eksik kalmasina yol acan yapinin aynisi.
+
 [2026-09-18] - WEIGHT yanlis birimde ve yigin sayilmadan donuyordu
 ----------------------------------------
 

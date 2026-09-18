@@ -109,6 +109,10 @@ internal static class InfoSkillExtensions
     /// </summary>
     public static int GetArmorDefense(this Item it)
     {
+        // The item's own stamped rating first (Source-X m_defenseBase), then the tag
+        // an older pack may have set by hand, then the definition.
+        if (it.DefenseBaseRaw is > 0)
+            return it.DefenseLo == it.DefenseHi ? it.DefenseLo : (it.DefenseLo + it.DefenseHi) / 2;
         if (it.TryGetTag("ARMOR", out string? tag) && int.TryParse(tag, out int v))
             return v;
         var def = DefinitionLoader.GetItemDef(it.BaseId);
@@ -121,6 +125,8 @@ internal static class InfoSkillExtensions
     /// <summary>Attack rating used by ARMSLORE_DAM (CItem::Weapon_GetAttack).</summary>
     public static int GetWeaponAttack(this Item it)
     {
+        if (it.AttackBaseRaw is > 0)
+            return it.AttackLo == it.AttackHi ? it.AttackLo : (it.AttackLo + it.AttackHi) / 2;
         if (it.TryGetTag("DAM", out string? tag) && int.TryParse(tag, out int v))
             return v;
         var def = DefinitionLoader.GetItemDef(it.BaseId);

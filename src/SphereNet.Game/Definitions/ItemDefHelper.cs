@@ -57,6 +57,15 @@ public static class ItemDefHelper
         foreach (var (key, value) in def.TagDefs.GetAll())
             item.SetTag(key, value);
 
+        // Upstream copies the definition's combat ratings onto the instance when it
+        // is made (CBase.cpp:416-419), which is what makes them changeable on one
+        // item: after this, DAM= and ARMOR= on the object are its own. Stamped before
+        // @Create so a magic weapon's script body can change what it inherited.
+        if (def.AttackMin != 0 || def.AttackMax != 0)
+            item.SetAttackRating(def.AttackMin, def.AttackMax);
+        if (def.DefenseMin != 0 || def.DefenseMax != 0)
+            item.SetDefenseRating(def.DefenseMin, def.DefenseMax);
+
         if (!string.IsNullOrWhiteSpace(def.DefName))
             item.SetTag("ITEMDEF", def.DefName);
         if (defIndex != item.BaseId)

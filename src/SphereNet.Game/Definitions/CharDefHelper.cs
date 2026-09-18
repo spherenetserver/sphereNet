@@ -270,7 +270,7 @@ public static class CharDefHelper
         if (def.EraLimitProps != 0) ch.SetTag("ERALIMITPROPS", def.EraLimitProps.ToString());
         if (!string.IsNullOrWhiteSpace(def.FoodTypeRaw)) ch.SetTag("FOODTYPE", def.FoodTypeRaw);
 
-        ApplyDamageSplit(ch, def);
+        ApplyCombatProperties(ch, def);
     }
 
     /// <summary>The elemental share of the damage this creature deals.
@@ -285,8 +285,19 @@ public static class CharDefHelper
     /// anything reaching TryApplyDefName - dealt pure physical damage however much
     /// elemental its chardef declared. The shipped packs declare it on about forty
     /// creatures per element.</summary>
-    public static void ApplyDamageSplit(Character ch, CharDef def)
+    public static void ApplyCombatProperties(Character ch, CharDef def)
     {
+        // The creature's own damage, copied off the chardef the way upstream copies it
+        // (CChar.cpp:313), so a script can arm ONE creature differently from the rest
+        // of its kind and that stays with it.
+        //
+        // It lives HERE, next to the split, because this is the one call every path
+        // that makes a creature already shares: the spawner and the client's NPC
+        // creation reach it directly rather than through the full definition helper,
+        // which is exactly how the split came to be missing from two of three paths.
+        if (def.AttackMin != 0 || def.AttackMax != 0)
+            ch.SetAttackRating(def.AttackMin, def.AttackMax);
+
         bool anyElemental = def.DamFire != 0 || def.DamCold != 0 ||
                             def.DamPoison != 0 || def.DamEnergy != 0;
         if (def.DamPhysical != 0)

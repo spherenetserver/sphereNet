@@ -1304,6 +1304,18 @@ public partial class Character : ObjBase
     /// still an unresolved template.</summary>
     public override string GetName() => GetDisplayName();
 
+    /// <summary>A creature's innate damage comes from its CHARDEF until something
+    /// stamps or changes it (Source-X CChar::m_attackBase, copied from the chardef at
+    /// CChar.cpp:313). The storage is on <see cref="ObjBase"/>.</summary>
+    protected override (int Lo, int Hi) DefinitionAttack
+    {
+        get
+        {
+            var dam = Combat.CombatEngine.NpcDamageDefLookup?.Invoke(_charDefIndex);
+            return dam.HasValue ? (dam.Value.Min, dam.Value.Max) : (0, 0);
+        }
+    }
+
     public string GetDisplayName()
     {
         string raw = (Name ?? "").Trim();
@@ -3742,13 +3754,11 @@ public partial class Character : ObjBase
                 // bare (OC_DAM, CObjBase.cpp:1081). The pack's own damage log reads
                 // all three off both sides of a hit; only the bare form answered, so
                 // every LO/HI column went in empty.
-                var dam = Combat.CombatEngine.NpcDamageDefLookup?.Invoke(_charDefIndex);
-                int lo = dam?.Min ?? 0, hi = dam?.Max ?? 0;
                 value = upper switch
                 {
-                    "DAM.LO" => lo.ToString(),
-                    "DAM.HI" => hi.ToString(),
-                    _ => $"{lo},{hi}",
+                    "DAM.LO" => AttackLo.ToString(),
+                    "DAM.HI" => AttackHi.ToString(),
+                    _ => $"{AttackLo},{AttackHi}",
                 };
                 return true;
             }
@@ -5103,8 +5113,25 @@ public partial class Character : ObjBase
             case "NPCBRAIN":
                 if (TryParseNpcBrain(normalized, out var brain)) _npcBrain = brain;
                 return true;
+            // This creature's own damage. The case existed and did nothing - it
+            // returned success and dropped the value, so a script arming one NPC
+            // differently from its kind was answered "done" and changed nothing.
             case "DAM":
+            case "DAM.LO":
+            case "DAM.HI":
+            {
+                string damKey = key.ToUpperInvariant();
+                var nums = normalized.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (nums.Length == 0) return true;
+                int first = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(nums[0]);
+                if (damKey == "DAM.LO") SetAttackRating(first, AttackHi);
+                else if (damKey == "DAM.HI") SetAttackRating(AttackLo, first);
+                else
+                    SetAttackRating(first, nums.Length > 1
+                        ? SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(nums[1])
+                        : first);
                 return true;
+            }
             case "NPCSPELL":
                 if (TryParseSpellTypeValue(normalized, out var spell))
                     NpcSpellAdd(spell);

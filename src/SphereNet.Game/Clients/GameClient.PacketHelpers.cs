@@ -1931,7 +1931,7 @@ public sealed partial class GameClient
             if (TryParseHue(colorText, out ushort hue))
                 npc.Hue = new Color(hue);
 
-            SphereNet.Game.Definitions.CharDefHelper.ApplyDamageSplit(npc, charDef);
+            SphereNet.Game.Definitions.CharDefHelper.ApplyCombatProperties(npc, charDef);
 
             EquipNewbieItems(npc, charDef.NewbieItems, npcDeferLoot: true);
         }

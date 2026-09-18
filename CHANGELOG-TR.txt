@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Altin odemesinin ust siniri yoktu
+----------------------------------------
+
+CHANGE - Altin, en fazla ITEMSMAXAMOUNT buyuklugunde yiginlar halinde verilir; yani
+        miktar aslinda gizli bir esya sayisidir: altmis bes bin iki yigin, altmis bes
+        milyon binden fazla, ve bir milyar isteyen bir script tek cagride otuz bes bin
+        esya uretirdi. Ust kaynak yirmi bes milyonda durur ve durmak zorunda kaldiginda
+        gunluge yazar (AddGoldToPack, CCharAct.cpp:222); bizde hic sinir yoktu.
+
+        Bolme islemi zaten dogruydu; cantaya sigmayan bir odeme de kaybolmak yerine
+        odemeyi alanin ayaklarinin dibine birakiliyor.
+
 [2026-09-18] - Paketteki her moongate yuklemede dusuyordu
 ----------------------------------------
 

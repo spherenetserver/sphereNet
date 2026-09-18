@@ -573,9 +573,28 @@ public static class VendorEngine
 
     /// <summary>Deliver <paramref name="amount"/> gold to a character's pack,
     /// split into piles (Source-X CItem::MakeGold), dropping overflow at the feet.</summary>
+    /// <summary>The most gold one call may hand over. Upstream stops at the same
+    /// number and logs when it has to (AddGoldToPack, CCharAct.cpp:222): the gold is
+    /// paid out in stacks, so an unbounded amount is an unbounded number of items -
+    /// sixty-five million arrives as more than a thousand of them, and a script that
+    /// asks for a billion would make thirty-five thousand in one call.</summary>
+    public const int MaxGoldPerGift = 25_000_000;
+
+    /// <summary>Reported when a payout is capped, so the line that asked for it can be
+    /// found. Wired to the server log.</summary>
+    public static Action<string>? OnGoldCapped;
+
     public static void GiveGoldToPack(Character ch, int amount)
     {
         if (World == null || amount <= 0) return;
+
+        if (amount > MaxGoldPerGift)
+        {
+            OnGoldCapped?.Invoke(
+                $"gold payout of {amount} to 0x{ch.Uid.Value:X8} capped at {MaxGoldPerGift}");
+            amount = MaxGoldPerGift;
+        }
+
         var backpack = ch.Backpack;
         int remaining = amount;
         while (remaining > 0 && backpack != null)

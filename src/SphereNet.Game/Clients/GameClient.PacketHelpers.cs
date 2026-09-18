@@ -1060,6 +1060,22 @@ public sealed partial class GameClient
 
     internal void SendOpenContainer(Item container)
     {
+        // A bank or vendor box records the point its opener was standing on, and is
+        // reachable afterwards only from there (m_itEqBankBox.m_pntOpen,
+        // CItemContainer.cpp:1119 - "these are special. they can only be opened near
+        // the designated opener" - enforced in CanTouch, CCharStatus.cpp:1067). It
+        // belongs on the OPEN, whichever way the box was opened, not on the one verb
+        // that happens to open it most often.
+        // Identified the same way the reach test identifies it: by the LAYER it is
+        // worn on as well as by type, so a pack that builds its bank box as a plain
+        // container on the bank layer is still the bank box to both.
+        if (_character != null &&
+            (container.ItemType is ItemType.EqBankBox or ItemType.EqVendorBox ||
+             container.EquipLayer is Layer.BankBox or Layer.VendorStock))
+        {
+            container.MoreP = _character.Position;
+        }
+
         // Source-X CClient::addContainerSetup parity: before opening
         // any container the client must already know about that
         // container as either a worn item (0x2E) or a world item

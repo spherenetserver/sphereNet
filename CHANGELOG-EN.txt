@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - The bank box asked the wrong question
+----------------------------------------
+
+FIX - Dropping into your own bank box was refused unless a BANKER stood within three
+        tiles. Upstream has no such test. The box records the point its opener was
+        standing on (m_itEqBankBox.m_pntOpen = pCharOpener->GetTopPoint(),
+        CItemContainer.cpp:1119 - "these are special. they can only be opened near the
+        designated opener") and CanTouch refuses it unless the character is still on
+        that exact point (CCharStatus.cpp:1067).
+
+        The two rules disagree in the case that matters: the banker opens the box from
+        as far as it can HEAR, so a player who banked from across the room got an open
+        box that refused every drop - which, from the client, reads as the deposit
+        vanishing. The point is stamped on the container open itself, whichever way the
+        box was opened, and the reach test is now upstream's.
+
 [2026-09-18] - A bought figurine could not be opened
 ----------------------------------------
 

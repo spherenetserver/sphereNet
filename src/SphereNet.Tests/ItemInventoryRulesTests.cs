@@ -408,40 +408,43 @@ public class ItemInventoryRulesTests
         Assert.DoesNotContain(bank.Contents, i => i.Uid == item.Uid); // deep cap rejects
     }
 
-    // ---- #6: self bank box is only reachable while near a banker ----
+    // ---- #6: the self bank box is reachable from where it was opened ----
 
+    /// <summary>Upstream stamps the point the box was opened at and allows the reach
+    /// only while the character is still standing on it (m_itEqBankBox.m_pntOpen,
+    /// CClientUse.cpp:46).
+    ///
+    /// This used to re-test the BANKER's distance instead, which is a rule upstream
+    /// does not have and which contradicted the box's own opening range: the banker
+    /// opens it from as far as it can hear, so a deposit made from across the room hit
+    /// an open box that refused every drop.</summary>
     [Fact]
-    public void SelfBankBox_RequiresNearbyBanker_ForDropAndPickup()
+    public void SelfBankBox_IsReachableFromWhereItWasOpened()
     {
         var world = CreateWorld();
         var (client, player, pack) = MakePlayer(world, 9307);
-
-        var bank = world.CreateItem();
-        bank.BaseId = 0x0E75; bank.ItemType = ItemType.Container;
-        player.Equip(bank, Layer.BankBox);
+        client.OpenBankBox();
+        var bank = player.GetEquippedItem(Layer.BankBox)!;
 
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
         pack.AddItem(item);
 
-        // No banker nearby -> the drop into the bank is rejected (bounced to the pack).
-        client.HandleItemPickup(item.Uid.Value, 0);
-        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, bank.Uid.Value);
-        Assert.DoesNotContain(bank.Contents, i => i.Uid == item.Uid);
-        Assert.Equal(pack.Uid, item.ContainedIn);
-
-        // With a banker beside the player the drop succeeds.
-        var banker = world.CreateCharacter();
-        banker.NpcBrain = NpcBrainType.Banker;
-        world.PlaceCharacter(banker, player.Position);
+        // Standing where it was opened: the drop lands, with no banker anywhere.
         client.HandleItemPickup(item.Uid.Value, 0);
         client.HandleItemDrop(item.Uid.Value, 0, 0, 0, bank.Uid.Value);
         Assert.Contains(bank.Contents, i => i.Uid == item.Uid);
 
-        // Banker leaves -> picking the item back out of the bank is now rejected.
-        world.MoveCharacter(banker, new Point3D(150, 150, 0, 0));
+        // Walk away: the box is no longer reachable, so the item stays in it.
+        world.MoveCharacter(player, new Point3D(150, 150, 0, 0));
         client.HandleItemPickup(item.Uid.Value, 0);
-        Assert.Contains(bank.Contents, i => i.Uid == item.Uid); // still in the bank
+        Assert.Contains(bank.Contents, i => i.Uid == item.Uid);
+
+        // Re-open it where we now stand and it answers again.
+        client.OpenBankBox();
+        client.HandleItemPickup(item.Uid.Value, 0);
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, pack.Uid.Value);
+        Assert.Contains(pack.Contents, i => i.Uid == item.Uid);
     }
 
     // ---- #6: a contained item must be reachable through its top parent ----

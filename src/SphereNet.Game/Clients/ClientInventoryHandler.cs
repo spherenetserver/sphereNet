@@ -301,18 +301,28 @@ public sealed class ClientInventoryHandler
         return current;
     }
 
-    /// <summary>True when a live banker NPC is within reach (Source-X bank-open
-    /// proximity). The bank box is only manipulable while near a banker — the box was
-    /// opened at one — so pickup/drop into the self bank box re-checks this.</summary>
-    private bool IsNearBanker(Character ch)
+    /// <summary>True when the character may still reach into their own bank box.
+    ///
+    /// The rule is upstream's, in full: the box records the point its opener was
+    /// standing on (m_itEqBankBox.m_pntOpen = pCharOpener-&gt;GetTopPoint(),
+    /// CItemContainer.cpp:1119 - "these are special. they can only be opened near the
+    /// designated opener"), and CanTouch refuses the box unless the character is still
+    /// on that exact point (CCharStatus.cpp:1067). A box that was never opened carries
+    /// no point and is not reachable, which is what upstream's comparison against an
+    /// unset point says too.
+    ///
+    /// There is no second test against the BANKER's distance - upstream has none. The
+    /// banker opens the box from as far as it can hear, so asking for three tiles
+    /// afterwards refused every deposit made from across the room: an open box that
+    /// took nothing, which reads from the client like the gold vanishing.</summary>
+    private static bool CanReachOwnBank(Character ch)
     {
-        foreach (var other in _world.GetCharsInRange(ch.Position, 3))
-        {
-            if (!other.IsDead && other.NpcBrain == NpcBrainType.Banker &&
-                other.MapIndex == ch.MapIndex)
-                return true;
-        }
-        return false;
+        var box = ch.GetEquippedItem(Layer.BankBox);
+        if (box == null)
+            return false;
+        var openedAt = box.MoreP;
+        return openedAt.X == ch.X && openedAt.Y == ch.Y &&
+               openedAt.Z == ch.Z && openedAt.Map == ch.MapIndex;
     }
 
     /// <summary>True when <paramref name="item"/>'s top-level container is THIS
@@ -694,9 +704,10 @@ public sealed class ClientInventoryHandler
                             SendPickupFailed(1);
                             return;
                         }
-                        // Self bank box: only reachable while near a banker.
+                        // Self bank box: reachable while still standing where it was
+                        // opened (CClientUse.cpp:46).
                         if (wearer == _character && topCont.EquipLayer == Layer.BankBox &&
-                            !IsNearBanker(_character))
+                            !CanReachOwnBank(_character))
                         {
                             SendPickupFailed(4); return;
                         }
@@ -1176,16 +1187,14 @@ public sealed class ClientInventoryHandler
                 {
                     if (IsInSelfBankBox(_character, container))
                     {
-                        // Self bank box (direct or via a nested bag) — re-check banker
-                        // proximity; the box was opened at one.
+                        // Self bank box (direct or via a nested bag): reachable while
+                        // the character still stands where the box was opened
+                        // (CClientUse.cpp:46).
                         //
-                        // This refusal used to be silent, which is the worst way to
-                        // lose a deposit: the item came back to the pack and nothing
-                        // said why, so it read as the gold having vanished. Note that
-                        // the box opens at whatever range the banker HEARS from, while
-                        // this asks for three tiles, so a player who banked from across
-                        // the room got an open box and a refusal for every drop.
-                        if (!IsNearBanker(_character))
+                        // The refusal says so rather than being silent, which is the
+                        // worst way to lose a deposit: the item came back to the pack
+                        // and nothing said why, so it read as the gold vanishing.
+                        if (!CanReachOwnBank(_character))
                         {
                             SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
                             RestoreToOrigin(item);

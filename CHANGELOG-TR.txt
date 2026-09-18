@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Banka kutusu yanlis soruyu soruyordu
+----------------------------------------
+
+FIX - Kendi banka kutunuza item birakmak, uc kare icinde bir BANKACI durmadikca
+        reddediliyordu. Ust kaynakta boyle bir sinav yok. Kutu, kendisini acanin
+        uzerinde durdugu noktayi kaydeder (m_itEqBankBox.m_pntOpen =
+        pCharOpener->GetTopPoint(), CItemContainer.cpp:1119 - "bunlar ozeldir, yalnizca
+        belirlenen acicinin yakininda acilabilirler") ve CanTouch, karakter hala tam o
+        noktada degilse kutuyu reddeder (CCharStatus.cpp:1067).
+
+        Iki kural tam da onemli olan durumda ayrisiyor: bankaci kutuyu DUYABILDIGI
+        mesafeden acar, dolayisiyla odanin obur ucundan bankaya giren oyuncu acilmis
+        ama her birakmayi reddeden bir kutu buluyordu - ki bu, client tarafindan
+        bakildiginda yatirilan seyin yok olmasi gibi gorunur. Nokta artik kutu nasil
+        acilmis olursa olsun konteyner acilisinda damgalaniyor ve erisim sinavi ust
+        kaynagin sinavi.
+
 [2026-09-18] - Satin alinan figurin acilamiyordu
 ----------------------------------------
 

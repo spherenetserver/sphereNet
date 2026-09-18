@@ -68,7 +68,13 @@ public sealed class SmeltRepairParity08ATests
     /// <summary>Decide skill rolls instead of drawing them. Source-X's own
     /// @SkillUseQuick hook, reset between tests by ResetEngineStatics - without it a
     /// bell curve gives a 0-skill smith the occasional success and the outcome of
-    /// these tests is a coin toss.</summary>
+    /// these tests is a coin toss.
+    ///
+    /// It is needed just as much by the tests that expect the smelt to WORK: mining at
+    /// 100.0 against difficulty 30 still draws the curve, so those failed now and then
+    /// with no ingots at all. One of them did, in a full run, which is how this was
+    /// found. A test that expects nothing to be produced needs it too, or it passes
+    /// whenever the roll happens to fail - for the wrong reason.</summary>
     private static void SkillRolls(params (SkillType Skill, bool Succeeds)[] outcomes)
     {
         Character.OnSkillUseQuick = (_, skillId, _, result) =>
@@ -128,6 +134,7 @@ public sealed class SmeltRepairParity08ATests
     public void AnOreSmeltsIntoTheIngotItsDefinitionNames()
     {
         // Every coloured ore turned into iron, carrying only its hue.
+        SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup();
         var (ore, forge) = Smeltable(bench, ingot: SpecialIngot);
 
@@ -144,6 +151,7 @@ public sealed class SmeltRepairParity08ATests
         // (FindItemBase == nullptr -> DEFMSG_MINING_NOTHING, CCharSkill.cpp:1149).
         // Falling back to iron instead meant every ore that failed to resolve came
         // out of the forge as the same grey bar.
+        SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup();
         var (ore, forge) = Smeltable(bench, ingot: 0);
 
@@ -161,6 +169,7 @@ public sealed class SmeltRepairParity08ATests
         // colour. Reading the ore's definition by its drawn graphic answers with the
         // IRON definition, so every colour smelted to iron ingots - which is what
         // "all my ingots are the same colour" looks like from the forge.
+        SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup();
         DefineItem(OreTile, d => { d.Type = ItemType.Ore; d.TData1 = IronIngot; });
         DefineItem(CopperOreDef, d =>
@@ -194,6 +203,7 @@ public sealed class SmeltRepairParity08ATests
         // colour (CCharSkill.cpp:1258). A pack whose ingot table is separate
         // GRAPHICS already holds the colour in the art, so painting the ore's hue on
         // top tinted a correctly coloured bar with a second colour.
+        SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup();
         var (ore, forge) = Smeltable(bench, ingot: SpecialIngot);
         ore.Hue = new SphereNet.Core.Types.Color(0x0641); // color_o_copper
@@ -208,6 +218,7 @@ public sealed class SmeltRepairParity08ATests
     [Fact]
     public void AnExplicitSmeltToTagStillWins()
     {
+        SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup();
         var (ore, forge) = Smeltable(bench, ingot: SpecialIngot);
         ore.SetTag("SMELT_TO", IronIngot.ToString());
@@ -320,6 +331,7 @@ public sealed class SmeltRepairParity08ATests
         // the amount is set and long before the bounce (CCharSkill.cpp:1258/1284).
         int seenAmount = -1;
         var triggers = new TriggerDispatcher();
+        SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup(triggers);
         Item.CreateTriggerHook = made =>
         {

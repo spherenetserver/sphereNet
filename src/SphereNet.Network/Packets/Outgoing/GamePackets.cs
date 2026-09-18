@@ -746,15 +746,15 @@ public sealed class PacketBookHeaderOut : PacketWriter
         buf.WriteByte((byte)(_writable ? 1 : 0));
         buf.WriteByte((byte)(_writable ? 1 : 0));
         buf.WriteUInt16(_pageCount);
-        // Truncate one short of the field so the string is always NUL-terminated
-        // inside it, as writeStringFixedASCII does.
-        buf.WriteAsciiFixed(Clamp(_title, TitleFieldLength), TitleFieldLength);
-        buf.WriteAsciiFixed(Clamp(_author, AuthorFieldLength), AuthorFieldLength);
+        // UTF-8, because that is how the client reads these two back: its book handler
+        // takes them with ReadUTF8(60) and ReadUTF8(30) (OpenBook), for this opcode and
+        // for the newer one alike. Writing a byte per char instead turned every
+        // non-ASCII title into punctuation. The writer keeps the field NUL-terminated
+        // and never ends inside a character.
+        buf.WriteUtf8Fixed(_title, TitleFieldLength);
+        buf.WriteUtf8Fixed(_author, AuthorFieldLength);
         return buf;
     }
-
-    private static string Clamp(string text, int field) =>
-        text.Length > field - 1 ? text[..(field - 1)] : text;
 }
 
 /// <summary>0x66 — Book page content (outgoing: sends page text to client).</summary>

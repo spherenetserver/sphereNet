@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A book's title was written in a way the client could not read
+----------------------------------------
+
+FIX - The title and author went out a byte per character. The client reads both with
+        ReadUTF8 - 60 and 30 bytes for this opcode, length-prefixed for the newer one
+        (OpenBook) - so anything outside ASCII arrived as punctuation: Turkish 'i'
+        without the dot came through as '1', 's' with a cedilla as '_'. They are written
+        as UTF-8 now, cut between characters rather than through one, and a title that
+        was already ASCII is byte-for-byte what it was.
+
+        The same byte-per-character writer is used for about thirty other fields. Most
+        are read back by the client as ASCII, where there is nothing better to write,
+        so they are left alone; this changes only the fields the client itself decodes
+        as UTF-8.
+
 [2026-09-18] - The shop window stayed open over stock that had been bought
 ----------------------------------------
 

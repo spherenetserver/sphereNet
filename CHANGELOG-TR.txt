@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Bir kitabin basligi client'in okuyamayacagi bicimde yaziliyordu
+----------------------------------------
+
+FIX - Baslik ve yazar, karakter basina bir bayt olarak gidiyordu. Client ikisini de
+        ReadUTF8 ile okur - bu opcode icin 60 ve 30 bayt, yenisi icin uzunluk onekli
+        (OpenBook) - dolayisiyla ASCII disindaki her sey noktalama isareti olarak
+        variyordu: noktasiz 'i' '1', kuyruklu 's' '_' oluyordu. Artik UTF-8 olarak
+        yaziliyorlar, bir karakterin ortasindan degil arasindan kesiliyor; zaten ASCII
+        olan bir baslik ise bayt bayt eskisiyle ayni.
+
+        Ayni karakter-basina-bayt yazici otuz kadar baska alanda da kullaniliyor.
+        Cogunu client ASCII olarak geri okuyor ve orada yazilacak daha iyi bir sey yok,
+        bu yuzden dokunulmadi; bu degisiklik yalnizca client'in kendisinin UTF-8 cozdugu
+        alanlari kapsiyor.
+
 [2026-09-18] - Satin alinmis stogun uzerinde dukkan penceresi acik kaliyordu
 ----------------------------------------
 

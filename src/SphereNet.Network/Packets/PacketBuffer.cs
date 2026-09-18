@@ -186,6 +186,38 @@ public sealed class PacketBuffer
         if (_position > _length) _length = _position;
     }
 
+    /// <summary>
+    /// A fixed-width field the client decodes as UTF-8, truncated on a character
+    /// boundary and zero-padded.
+    ///
+    /// <see cref="WriteAsciiFixed"/> casts each char to a byte, which is fine while the
+    /// text is ASCII and destroys it otherwise: Turkish 'i' without the dot (U+0131)
+    /// becomes '1' and 's' with a cedilla (U+015F) becomes '_'. Where the client reads
+    /// the field back with ReadUTF8 - a book's title and author are the cases - this is
+    /// what it is waiting for. For text that is already ASCII the two produce identical
+    /// bytes.
+    /// </summary>
+    public void WriteUtf8Fixed(string text, int length)
+    {
+        EnsureCapacity(length);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text ?? "");
+
+        // Never end inside a multi-byte character, and always leave room for the NUL.
+        // The walk back only applies when the text was actually cut: a continuation
+        // byte at the cut means the character it belongs to is unfinished.
+        int count = Math.Min(bytes.Length, length - 1);
+        while (count > 0 && count < bytes.Length && (bytes[count] & 0xC0) == 0x80)
+            count--;
+
+        for (int i = 0; i < count; i++)
+            _data[_position + i] = bytes[i];
+        for (int i = count; i < length; i++)
+            _data[_position + i] = 0;
+
+        _position += length;
+        if (_position > _length) _length = _position;
+    }
+
     public void WriteAsciiNull(string text)
     {
         int len = text.Length + 1;

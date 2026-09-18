@@ -451,17 +451,7 @@ public sealed class NetState : IDisposable
         if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
         LastActivityTick = Environment.TickCount64;
 
-        if (DebugPackets)
-        {
-            var raw = packet.Span;
-            byte opcode = raw.Length > 0 ? raw[0] : (byte)0;
-            if (opcode != 0x73) // skip Ping spam
-            {
-                string cat = ClassifyPacket(raw);
-                _logger.LogDebug("SEND #{Id} cat={Cat} 0x{Op:X2} len={Len} data=[{Data}]",
-                    Id, cat, opcode, raw.Length, FormatHex(raw, 32));
-            }
-        }
+        LogSend(packet);
 
         var priority = packet.Length > 0
             ? PacketPriorityClassifier.Classify(packet.Data[0])
@@ -479,7 +469,9 @@ public sealed class NetState : IDisposable
     /// opcode-based classification (rarely needed).</summary>
     public void Send(PacketWriter writer, PacketPriority priority)
     {
-        EnqueueAt(writer.Build(), priority);
+        var built = writer.Build();
+        LogSend(built);
+        EnqueueAt(built, priority);
     }
 
     /// <summary>Enqueue a latency-critical packet (movement ack/reject) at
@@ -487,7 +479,29 @@ public sealed class NetState : IDisposable
     /// wrapper; equivalent to <c>Send(writer, PacketPriority.Highest)</c>.</summary>
     public void SendPriority(PacketWriter writer)
     {
-        EnqueueAt(writer.Build(), PacketPriority.Highest);
+        var built = writer.Build();
+        LogSend(built);
+        EnqueueAt(built, PacketPriority.Highest);
+    }
+
+    /// <summary>Write one outgoing packet to the debug log.
+    ///
+    /// Kept in one place because it was in two: the buffer overload logged and the
+    /// priority overloads went straight to the queue. Everything sent at an explicit
+    /// priority was therefore invisible - which is every movement ack and reject, the
+    /// packets a stutter report is about. A log that cannot see the stream it exists to
+    /// explain sends the reader looking for a bug somewhere else.</summary>
+    private void LogSend(PacketBuffer packet)
+    {
+        if (!DebugPackets)
+            return;
+        var raw = packet.Span;
+        byte opcode = raw.Length > 0 ? raw[0] : (byte)0;
+        if (opcode == 0x73)   // skip Ping spam
+            return;
+        string cat = ClassifyPacket(raw);
+        _logger.LogDebug("SEND #{Id} cat={Cat} 0x{Op:X2} len={Len} data=[{Data}]",
+            Id, cat, opcode, raw.Length, FormatHex(raw, 32));
     }
 
     /// <summary>Drop a packet whose finalized size overflowed the ushort length

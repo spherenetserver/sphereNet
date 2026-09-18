@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - The packet log could not see the movement stream
+----------------------------------------
+
+FIX - Every packet sent at an explicit priority was missing from the debug log. There
+        were two send paths and only one of them wrote a line: the buffer overload
+        logged, the priority overloads went straight to the queue. What goes out at
+        Highest is the movement ack and reject - the exact packets a "walking stutters"
+        or "it threw me back" report is about - so the log could not show the stream it
+        exists to explain, and reading it sent the reader looking somewhere else.
+
 [2026-09-18] - The vendor next to you said nothing
 ----------------------------------------
 

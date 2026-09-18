@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Paket log'u hareket akisini goremiyordu
+----------------------------------------
+
+FIX - Belirli bir oncelikle gonderilen her paket hata ayiklama log'unda eksikti. Iki
+        gonderim yolu vardi ve yalnizca biri satir yaziyordu: buffer asiri yuklemesi
+        logluyor, oncelikli asiri yuklemeler dogrudan kuyruga giriyordu. En yuksek
+        oncelikle cikan sey ise hareket onayi ve reddi - yani "yururken takiliyor" ya da
+        "beni geri atti" raporlarinin tam olarak ilgili oldugu paketler. Dolayisiyla log,
+        var olma nedeni olan akisi gosteremiyordu ve okuyani baska yerde arattiriyordu.
+
 [2026-09-18] - Yanindaki satici hicbir sey demiyordu
 ----------------------------------------
 

@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - A refused bank deposit said nothing
+----------------------------------------
+
+CHANGE - Dropping into your own bank box re-checks that a banker is within three tiles,
+        and that refusal was silent: the item came back to the pack with no word of why,
+        which reads as the gold having vanished. It says so now.
+
+        The check itself is worth knowing about: the box OPENS at whatever range the
+        banker hears "bank" from, while this asks for three tiles, so a player who banked
+        from across the room got an open box and a refusal for every drop. Upstream has
+        no such re-check - a drop is gated on CanTouch, and a bank box is on the player -
+        so the rule is this engine's own, added to stop a forged packet reaching a
+        container the client merely had open. Left as it stands; the asymmetry between
+        the two ranges is the part to decide.
+
 [2026-09-18] - A refused drop desynchronised the connection
 ----------------------------------------
 

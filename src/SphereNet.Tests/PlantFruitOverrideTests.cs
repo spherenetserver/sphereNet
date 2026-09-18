@@ -28,7 +28,7 @@ public sealed class PlantFruitOverrideTests : IDisposable
 
     public void Dispose()
     {
-        Item.ResolveDefName = null;
+        // Item.ResolveDefName is cleared by ResetEngineStatics between tests.
         try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 

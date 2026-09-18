@@ -1178,8 +1178,16 @@ public sealed class ClientInventoryHandler
                     {
                         // Self bank box (direct or via a nested bag) — re-check banker
                         // proximity; the box was opened at one.
+                        //
+                        // This refusal used to be silent, which is the worst way to
+                        // lose a deposit: the item came back to the pack and nothing
+                        // said why, so it read as the gold having vanished. Note that
+                        // the box opens at whatever range the banker HEARS from, while
+                        // this asks for three tiles, so a player who banked from across
+                        // the room got an open box and a refusal for every drop.
                         if (!IsNearBanker(_character))
                         {
+                            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
                             RestoreToOrigin(item);
                             _netState.Send(new PacketDropReject());
                             return;

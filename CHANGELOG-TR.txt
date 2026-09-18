@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Reddedilen banka yatirimi hicbir sey soylemiyordu
+----------------------------------------
+
+CHANGE - Kendi banka kutuna birakma, bir bankacinin uc karo icinde olmasini yeniden
+        kontrol ediyor ve bu red sessizdi: esya sebebi soylenmeden cantaya geri
+        donuyordu, bu da altinin kayboldugu gibi okunuyor. Artik sebebini soyluyor.
+
+        Kontrolun kendisi de bilinmeye deger: kutu, bankacinin "bank" sozunu DUYDUGU
+        menzilden aciliyor, ama bu kontrol uc karo istiyor; yani odanin obur ucundan
+        bankaya giren oyuncu acik bir kutu ve her birakmada bir red aliyordu. Ust
+        kaynakta boyle bir yeniden kontrol yok - birakma CanTouch ile sinirlanir ve
+        banka kutusu zaten oyuncunun uzerindedir - yani kural bu motorun kendi eklemesi;
+        sahte bir paketin, client'in yalnizca acik tuttugu bir konteynere ulasmasini
+        engellemek icin konmus. Oldugu gibi birakildi; karar verilecek kisim iki menzil
+        arasindaki tutarsizlik.
+
 [2026-09-18] - Reddedilen bir birakma baglantiyi bozuyordu
 ----------------------------------------
 

@@ -33,6 +33,10 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;
+        // The defname -> graphic resolver. Several tests wire it and one of them
+        // cleared it afterwards, which left whichever test ran next resolving nothing;
+        // it belongs here for the same reason every other hook does.
+        SphereNet.Game.Objects.Items.Item.ResolveDefName = null;
         // Config-fed engine switches must not leak from one test into the next.
         SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = false;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;

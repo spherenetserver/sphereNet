@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Paketteki her moongate yuklemede dusuyordu
+----------------------------------------
+
+FIX - Bir [MoonGates] satiri, ardindan etiketi gelen bir NOKTADIR -
+        "1336,1997,5,0=mg_britain", her facet icin sekiz tane - ve ust kaynak bolumu
+        ReadKey ile okuyup GetKey()'i nokta olarak alir, sonrasina hic bakmaz
+        (CServerConfig.cpp:4080). Bizimki noktayi esittirin obur tarafindan okuyordu;
+        her satir (0,0) olarak cozulup eleniyordu: liste hep bostu ama log satiri
+        yuklendigini soyluyordu.
+
+        Ust kaynakta anahtar bir bolge adi ya da baslangic listesi indeksi de olabilir;
+        burada yalnizca koordinat bicimi okunuyor - paketlerin kullandigi tek bicim.
+
+        Listeyi henuz kimse tuketmiyor: bizde moongate kendi MOREP'ine isinlar, ust
+        kaynakta ise hedef ay evresiyle doner (CCharUse.cpp:207). Yani bu, oyundaki
+        davranisi degil bir degeri duzeltiyor. Iki test satiri ters yazmisti; ayristirici
+        dogru gorunmesinin sebebi buydu.
+
 [2026-09-18] - Bir kitabin basligi client'in okuyamayacagi bicimde yaziliyordu
 ----------------------------------------
 

@@ -464,7 +464,7 @@ public class ScriptReadingParityTests
 
             [MOONGATES]
             1000,2000,0,0
-            Britain=1496,1628,10
+            1496,1628,10=Britain
 
             [EOF]
             """);
@@ -474,6 +474,10 @@ public class ScriptReadingParityTests
         Assert.NotNull(name);
         Assert.True(name == "John Smith" || name == "Mary, the Baker");
 
+        // Both shapes of the row: a bare point, and a point with a label after it.
+        // Upstream takes the key as the point and never reads what follows
+        // (CServerConfig.cpp:4080), so the label is a label - it was written the other
+        // way round here, which is a form neither the packs nor upstream use.
         Assert.Equal(2, resources.Moongates.Count);
         Assert.Equal(1000, resources.Moongates[0].Point.X); // bare coordinate line
         Assert.Equal("Britain", resources.Moongates[1].Name);

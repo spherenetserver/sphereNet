@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Every moongate in the pack was dropped on load
+----------------------------------------
+
+FIX - A [MoonGates] row is a POINT with a label after it - "1336,1997,5,0=mg_britain",
+        eight per facet - and upstream reads the section with ReadKey, taking GetKey()
+        as the point and never reading what follows (CServerConfig.cpp:4080). This read
+        the point from the other side of the '=', so every row parsed as (0,0) and was
+        skipped: the list was always empty while the log line said it had loaded them.
+
+        Upstream's key may also be a region name or a start-list index; only the
+        coordinate form is read here, which is the only one the packs use.
+
+        Nothing consumes the list yet - a moongate here teleports to its own MOREP,
+        where upstream rotates the destination with the moon phase (CCharUse.cpp:207) -
+        so this corrects a value rather than changing what happens in game. Two tests
+        had the row written the other way round and were the reason the parser looked
+        right.
+
 [2026-09-18] - A book's title was written in a way the client could not read
 ----------------------------------------
 

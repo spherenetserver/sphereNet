@@ -1485,13 +1485,26 @@ public sealed class ResourceHolder
     {
         foreach (var key in section.Keys)
         {
-            // "Name=x,y,z,map" or bare "x,y,z,map" — same raw-line rule as
-            // [STARTS].
-            ScriptKey.TrySplitOnEquals(key.RawLine, out string name, out string value);
-            var point = ParseTeleportPoint(value.Trim());
+            // The POINT is the key and whatever follows the '=' is a label:
+            // "1336,1997,5,0=mg_britain". Upstream reads the section with ReadKey and
+            // takes GetKey() as the point, ignoring the rest (CServerConfig.cpp:4080),
+            // and that is how the packs write it - eight gates per facet.
+            //
+            // Reading the point from the other side of the '=' meant every line parsed
+            // as (0,0) and was skipped, so the list was always empty while the log said
+            // it had loaded them.
+            // With no '=' the whole line is the point, which is what GetKey() gives
+            // upstream for a bare row; the splitter hands an unsplit line back as the
+            // value, so it is moved across.
+            if (!ScriptKey.TrySplitOnEquals(key.RawLine, out string pointText, out string label))
+            {
+                pointText = label;
+                label = "";
+            }
+            var point = ParseTeleportPoint(pointText.Trim());
             if (point.X == 0 && point.Y == 0)
                 continue;
-            _moongates.Add(new MoongateEntry(name.Trim(), point));
+            _moongates.Add(new MoongateEntry(label.Trim(), point));
         }
         _logger.LogInformation("Loaded {Count} moongates", _moongates.Count);
     }

@@ -369,7 +369,7 @@ Britain=1495,1629,10,0
 gold=500
 
 [MOONGATES]
-Moonglow=4467,1283,5,0
+4467,1283,5,0=Moonglow
 """);
 
         using var loggerFactory = LoggerFactory.Create(_ => { });
@@ -380,8 +380,13 @@ Moonglow=4467,1283,5,0
         Assert.Equal(new Point3D(1495, 1629, 10, 0), resources.Starts[0].Point);
         Assert.Single(resources.StartGold);
         Assert.Equal(500, resources.StartGold[0].Amount);
+        // The point is the KEY and the label follows it, which is how the packs write
+        // the section and how upstream reads it (ReadKey -> GetKey, CServerConfig.cpp:4080).
+        // [STARTS] above really is name-first; the two sections do not match, and this
+        // fixture used to assume they did.
         Assert.Single(resources.Moongates);
         Assert.Equal("Moonglow", resources.Moongates[0].Name);
+        Assert.Equal(4467, resources.Moongates[0].Point.X);
     }
 
     [Fact]

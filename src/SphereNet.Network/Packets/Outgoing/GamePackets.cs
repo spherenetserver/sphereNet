@@ -898,3 +898,34 @@ public sealed class PacketPopupMessage : PacketWriter
         return buf;
     }
 }
+
+/// <summary>0xF2 — Time sync response.
+///
+/// Upstream writes the current time three times over, each as a 64-bit count of
+/// milliseconds since the UNIX epoch (PacketTimeSyncResponse, send.cpp:5223). The
+/// packet is a fixed 25 bytes: the opcode and three eight-byte stamps.
+/// </summary>
+public sealed class PacketTimeSyncResponse : PacketWriter
+{
+    private readonly long _unixMilliseconds;
+
+    public PacketTimeSyncResponse(long unixMilliseconds) : base(0xF2)
+    {
+        _unixMilliseconds = unixMilliseconds;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(25);
+        // Written as two big-endian halves because the buffer has no 64-bit writer;
+        // the bytes on the wire are the same.
+        uint high = (uint)(_unixMilliseconds >> 32);
+        uint low = (uint)(_unixMilliseconds & 0xFFFFFFFF);
+        for (int i = 0; i < 3; i++)
+        {
+            buf.WriteUInt32(high);
+            buf.WriteUInt32(low);
+        }
+        return buf;
+    }
+}

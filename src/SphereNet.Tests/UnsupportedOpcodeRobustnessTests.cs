@@ -15,9 +15,12 @@ public class UnsupportedOpcodeRobustnessTests
 {
     // Opcodes that are framed (fixed or length-prefixed) but have no incoming
     // handler. These must be consumed using their declared framing, not crash.
-    // (0xFA gained a real handler — Ultima Store button — so it is no longer
-    // part of this set.)
-    private static readonly byte[] FixedUnsupported = { 0xFB, 0xF1 }; // len 2, 9
+    //
+    // The set shrinks as opcodes gain handlers, and each one that does has to leave
+    // here or the test starts asserting the opposite of the truth: 0xFA went when the
+    // Ultima Store button arrived, and 0xF1/0xE0 went when the time sync request and
+    // the bug report were registered.
+    private static readonly byte[] FixedUnsupported = { 0xFB, 0xE8 }; // len 2, 13
 
     private static (NetworkManager Mgr, NetState State) CreatePlaintextConnection(int id = 1)
     {
@@ -64,20 +67,20 @@ public class UnsupportedOpcodeRobustnessTests
         var seen = new List<(byte Op, int Len)>();
         mgr.OnUnknownPacket += (_, op, bytes) => seen.Add((op, bytes.Length));
 
-        // 0x33 (2) + 0xF1 (9), back to back. Both are fixed-length opcodes with
+        // 0x33 (2) + 0xE8 (13), back to back. Both are fixed-length opcodes with
         // no registered handler, so the framer must still consume exactly their
         // declared size and hand the next packet over intact.
-        var buffer = new byte[2 + 9];
+        var buffer = new byte[2 + 13];
         buffer[0] = 0x33;
         // buffer[1] is 0x33 payload
-        buffer[2] = 0xF1;
+        buffer[2] = 0xE8;
         state.InjectReceived(buffer);
 
         Process(mgr, state);
 
         Assert.False(state.IsClosing);
         Assert.Equal(0, state.ReceivedData.Length); // fully consumed, no leftover
-        Assert.Equal(new[] { ((byte)0x33, 2), ((byte)0xF1, 9) }, seen);
+        Assert.Equal(new[] { ((byte)0x33, 2), ((byte)0xE8, 13) }, seen);
     }
 
     [Fact]
@@ -87,11 +90,11 @@ public class UnsupportedOpcodeRobustnessTests
         var seen = new List<(byte Op, int Len)>();
         mgr.OnUnknownPacket += (_, op, bytes) => seen.Add((op, bytes.Length));
 
-        // 0xF2 (len 5), 0xD0 (len 8), 0xDD (len 4), 0xE0 (len 12), 0xF7 (len 6), 0xF9 (len 3)
+        // 0xF2 (len 5), 0xD0 (len 8), 0xDD (len 4), 0xEB (len 12), 0xF7 (len 6), 0xF9 (len 3)
         var p1 = VarPacket(0xF2, 2);
         var p2 = VarPacket(0xD0, 5);
         var p3 = VarPacket(0xDD, 1);
-        var p4 = VarPacket(0xE0, 9);
+        var p4 = VarPacket(0xEB, 9);
         var p5 = VarPacket(0xF7, 3);
         var p6 = VarPacket(0xF9, 0);
         var buffer = new[] { p1, p2, p3, p4, p5, p6 }.SelectMany(x => x).ToArray();
@@ -104,7 +107,7 @@ public class UnsupportedOpcodeRobustnessTests
         Assert.Equal(new[]
         {
             ((byte)0xF2, 5), ((byte)0xD0, 8), ((byte)0xDD, 4),
-            ((byte)0xE0, 12), ((byte)0xF7, 6), ((byte)0xF9, 3)
+            ((byte)0xEB, 12), ((byte)0xF7, 6), ((byte)0xF9, 3)
         }, seen);
     }
 

@@ -164,6 +164,14 @@ public sealed class NetworkManager : IDisposable
         // Faz 2: Packet Audit & Hardening
         _packetManager.Register(new PacketNewBookHeader());
         _packetManager.Register(new PacketCrashReport());
+        // Three standard registrations upstream has and this server did not, so the
+        // client asked and reached the unknown path: the pre-AOS tooltip request
+        // (0xB6 -> the same tooltip route as 0xD6), the in-game bug report (0xE0 ->
+        // the same place the crash report goes) and the time sync question
+        // (0xF1 -> answered with 0xF2).
+        _packetManager.Register(new PacketOldToolTipReq());
+        _packetManager.Register(new PacketBugReport());
+        _packetManager.Register(new PacketTimeSyncRequest());
         _packetManager.Register(new PacketDisconnect());
         _packetManager.Register(new PacketUltimaStoreButton());
         _packetManager.Register(new PacketChatOpen());

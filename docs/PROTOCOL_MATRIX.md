@@ -59,6 +59,9 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xC2` Unicode prompt response (counterpart of the `0x9A` ASCII one)
 - `0xEC` Equip item macro (Source-X `PacketEquipItemMacro`, batch capped at 3)
 - `0xED` Unequip item macro (Source-X `PacketUnEquipItemMacro`, batch capped at 3)
+- `0xB6` Old tooltip request (pre-AOS; same route as `0xD6`)
+- `0xE0` Bug report (fires @UserBugReport)
+- `0xF1` Time sync request (answered with `0xF2`)
 - `0xF4` Crash report (logs and fires @UserBugReport)
 - `0xFA` Ultima Store button (fires @UserUltimaStoreButton)
 - `0xFB` Show public house content toggle

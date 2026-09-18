@@ -4,6 +4,38 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-18] - Client'in sorup hic yanit alamadigi uc standart paket
+----------------------------------------
+
+FIX - 0xB6, AOS oncesi tooltip istegi, kayitli degildi. Ust kaynak onu yeni 0xD6 ile
+        ayni yoldan gecirir (PacketToolTipReq -> Event_ToolTip, receive.cpp:2396);
+        dolayisiyla o donemin client'i tooltip istiyor ve hicbir sey duymuyordu.
+
+FIX - 0xE0, oyun ici hata bildirimi, kayitli degildi. Cokme bildiriminin zaten ulastigi
+        @UserBugReport tetikleyicisine ulasir; yani birini loglayan bir shard digerini
+        sessizce dusuruyordu (receive.cpp:4273).
+
+FIX - 0xF1, zaman esitleme istegi, kayitli degildi. Ust kaynak buna hemen 0xF2 ile,
+        guncel zamani uc kez tasiyarak yanit verir (send.cpp:5223); yanitsiz kalinca
+        soru bilinmeyen yola gidiyor ve client bekliyordu.
+
+NOT - Bu sunucuda olmayan diger alti standart kayittan ikisi ust kaynakta da no-op:
+        0x3F (UltimaLive static guncellemesi) gövdesi yorum satirinda, yalnizca bir
+        hata ayiklama dokumu basiyor; 0xE8 (UI vurgusu kaldirma) yalnizca kendi
+        alanlarini atliyor. Kalan dordu - 0x8D KR karakter olusturma, 0xA7 gunun ipucu,
+        0xEB hotbar, 0xF9 global sohbet - ayri birer alt sistem gerektiriyor ve
+        kapsanmadi.
+
+CHANGE - Iki dayaniklilik testi 0xF1 ve 0xE0'i desteklenmeyen opcode ornegi olarak
+        kullaniyordu. Handler kazanan her opcode o kumeden cikmali; yoksa test gercegin
+        tersini iddia etmeye baslar.
+
+CHANGE - Iki veritabani zaman asimi testi zamanlama yarisiydi: kuyruga alinan isin isci
+        tarafindan alinmis oldugunu varsayiyorlardi, ki yuklu bir makinede alinmamis
+        olabilir. Ikisi de artik gozlemlenebilir devir anini bekliyor ve isciyi once
+        isitiyor; boylece olctukleri zaman asimi, adini koyduklari zaman asimi oluyor.
+        Sinifin on kosusu temiz.
+
 [2026-09-18] - Protokol matrisi kodla celisiyordu
 ----------------------------------------
 

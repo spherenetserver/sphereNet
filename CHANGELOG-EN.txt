@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-18] - Three standard packets the client asked for and never got
+----------------------------------------
+
+FIX - 0xB6, the pre-AOS tooltip request, was not registered. Upstream routes it down the
+        same path as the newer 0xD6 (PacketToolTipReq -> Event_ToolTip,
+        receive.cpp:2396), so a client of that era asked for a tooltip and heard nothing.
+
+FIX - 0xE0, the in-game bug report, was not registered. It reaches the same
+        @UserBugReport trigger the crash report already does, so a shard that logs one
+        was silently dropping the other (receive.cpp:4273).
+
+FIX - 0xF1, the time sync request, was not registered. Upstream answers it at once with
+        0xF2 carrying the current time three times over (send.cpp:5223); unanswered, the
+        question went to the unknown path and the client waited.
+
+NOTE - Of the other six standard registrations this server does not have, two are no-ops
+        upstream as well: 0x3F (UltimaLive static update) has its body commented out and
+        only dumps a debug line, and 0xE8 (remove UI highlight) does nothing but skip its
+        own fields. The remaining four - 0x8D KR character creation, 0xA7 tip of the day,
+        0xEB hotbar, 0xF9 global chat - each need a subsystem and are not covered.
+
+CHANGE - Two robustness tests used 0xF1 and 0xE0 as examples of unsupported opcodes.
+        Every opcode that gains a handler has to leave that set, or the test starts
+        asserting the opposite of the truth.
+
+CHANGE - Two database timeout tests were timing races: they assumed a queued job had
+        been picked up by the worker, which on a loaded machine it may not have been.
+        Both now wait for the observable hand-over and warm the worker first, so the
+        timeout they measure is the one they name. Ten runs of the class, clean.
+
 [2026-09-18] - The protocol matrix contradicted the code
 ----------------------------------------
 

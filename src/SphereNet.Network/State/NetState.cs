@@ -1173,6 +1173,15 @@ public sealed class NetState : IDisposable
         CrashReportHandler?.Invoke(this);
     }
 
+    /// <summary>0xF1 time sync — answer with 0xF2 carrying the current time three
+    /// times over, as upstream does (PacketTimeSyncResponse, send.cpp:5223). The value
+    /// is milliseconds since the UNIX epoch.</summary>
+    internal void OnTimeSyncRequest()
+    {
+        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        Send(new Packets.Outgoing.PacketTimeSyncResponse(nowMs));
+    }
+
     /// <summary>0xF4 crash report — lets the game layer fire @UserBugReport.</summary>
     public Action<NetState>? CrashReportHandler { get; set; }
 

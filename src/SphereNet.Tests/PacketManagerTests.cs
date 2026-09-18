@@ -268,6 +268,10 @@ public class PacketManagerTests
         }
     }
 
+    /// <summary>The same inventory, reachable from the registration tests.</summary>
+    internal static IEnumerable<byte> GetRegisteredOpcodesFor(NetworkManager network) =>
+        GetRegisteredOpcodes(network);
+
     private static IEnumerable<byte> GetRegisteredOpcodes(NetworkManager network) =>
         GetRegisteredHandlers(network).Select(handler => handler.PacketId).Order();
 

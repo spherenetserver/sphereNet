@@ -103,17 +103,46 @@ public sealed class DbQueryTimeoutTests : IDisposable
         Assert.Equal("0", numrows);
     }
 
+
+    /// <summary>Wait until the queued job has actually been PICKED UP by the worker.
+    ///
+    /// Enqueueing is not the same as running: under load the caller can reach its own
+    /// query before the worker has taken the long one, and then that query succeeds
+    /// immediately and the test asserts the opposite of what it means. PendingWorkCount
+    /// falling to zero is the observable moment the queue handed the job over.</summary>
+    private static void WaitUntilTheWorkerHasTakenIt(
+        SphereNet.Scripting.Execution.ScriptDbAdapter db)
+    {
+        var until = Stopwatch.StartNew();
+        while (db.PendingWorkCount > 0 && until.ElapsedMilliseconds < 5000)
+            Thread.Sleep(1);
+    }
+
+    /// <summary>Run one trivial query so the worker thread is alive and idle.
+    ///
+    /// A cold worker has to start before it can take anything, and on a loaded machine
+    /// that start can outlast the wait budget - at which point the timeout is reported
+    /// as QUEUED rather than RUNNING and a test about which of the two happened reads
+    /// the wrong one. Warming it makes the pick-up immediate.</summary>
+    private static void WarmTheWorker(SphereNet.Scripting.Execution.ScriptDbAdapter db)
+    {
+        db.Query("SELECT 1", out _, out _);
+        WaitUntilTheWorkerHasTakenIt(db);
+    }
+
     [Fact]
     public void ATimeoutIsNotReportedAsAnOrdinaryFailure()
     {
         var db = Adapter(useThread: true);
         Seed(db);
+        WarmTheWorker(db);
 
         // Occupy the single worker with something slower than the wait budget. SQLite
         // has no SLEEP, so a recursive CTE burns the time.
         Assert.True(db.QueryAsync(
             "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 40000000) " +
             "SELECT COUNT(*) FROM c"));
+        WaitUntilTheWorkerHasTakenIt(db);
 
         var sw = Stopwatch.StartNew();
         bool ok = db.Query("SELECT marker FROM t", out int rows, out string err);
@@ -228,6 +257,7 @@ public sealed class DbQueryTimeoutTests : IDisposable
     {
         var db = Adapter(useThread: true);
         Seed(db);
+        WarmTheWorker(db);
 
         // Nothing ahead of it: the worker takes this one straight away and is still
         // inside the database when the wait budget runs out.

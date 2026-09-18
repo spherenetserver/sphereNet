@@ -921,6 +921,55 @@ public sealed class PacketNewBookHeader : PacketHandler
     }
 }
 
+/// <summary>0xB6 — Old tooltip request (pre-AOS clients).
+///
+/// Upstream reads one serial and routes it to the same tooltip path the newer 0xD6
+/// request uses (PacketToolTipReq::onReceive -> Event_ToolTip, receive.cpp:2396). It was
+/// not registered here at all, so a client on that era asked and heard nothing.</summary>
+public sealed class PacketOldToolTipReq : PacketHandler
+{
+    public PacketOldToolTipReq() : base(0xB6, 9) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        if (buffer.Remaining < 4) return;
+        uint serial = buffer.ReadUInt32();
+        state.OnAOSTooltip(serial);
+    }
+}
+
+/// <summary>0xE0 — Bug report (the client's in-game report window).
+///
+/// Upstream reads the language, the report type and the text, then hands them on
+/// (PacketBugReport::onReceive, receive.cpp:4273). It reaches the same place the crash
+/// report does here, which is the @UserBugReport trigger; a shard that logs one now
+/// logs both instead of silently dropping this one.</summary>
+public sealed class PacketBugReport : PacketHandler
+{
+    public PacketBugReport() : base(0xE0, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.OnCrashReport();
+    }
+}
+
+/// <summary>0xF1 — Time sync request.
+///
+/// The client asks, and upstream answers immediately with 0xF2 carrying the current
+/// time three times over (PacketTimeSyncResponse, send.cpp:5223). Unregistered, the
+/// question went to the unknown path and the client waited for an answer that never
+/// came.</summary>
+public sealed class PacketTimeSyncRequest : PacketHandler
+{
+    public PacketTimeSyncRequest() : base(0xF1, 9) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.OnTimeSyncRequest();
+    }
+}
+
 /// <summary>0xF4 — Client crash report. Accept silently and log.</summary>
 public sealed class PacketCrashReport : PacketHandler
 {

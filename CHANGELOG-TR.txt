@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - SRC uzerinden cagrilan fonksiyon hala calismiyordu
+----------------------------------------
+
+FIX - SRC.<ad> yalnizca ozellik olarak okunuyordu; bu yolla cagrilan bir [FUNCTION] hic
+        calismiyordu. Ust kaynak referansi cozer ve uzerinde r_WriteVal calistirir; o da
+        r_GetFunctionIndex'e duser ve fonksiyonu CAGIRIR (CObjBase.cpp:971,
+        CScriptObj.cpp:1481).
+
+        Paketlerin gercekte kullandigi yazilis bu ve giysi kapisi buna dayaniyor:
+        type_equipitem !<SRC.f_isHuman> diye sorar; dolayisiyla duz <f_isHuman> bicimi
+        duzeltildikten sonra da bir insan her giysiden reddedilmeye devam ediyordu. Ayni
+        adi tasiyan bir ozellik hala oncelikli, tanimsiz bir ad hala 0 okuyor.
+
 [2026-09-18] - Yanitlanmayan script adlarindan hangisi motorun sorunu
 ----------------------------------------
 

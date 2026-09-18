@@ -1924,8 +1924,24 @@ public sealed class ScriptInterpreter
         {
             int dot = varName.IndexOf('.');
             string subProp = varName[(dot + 1)..];
-            if (args?.Source != null && args.Source.TryGetProperty(subProp, out string srcVal))
+            if (args?.Source == null)
+                return "0";
+            if (args.Source.TryGetProperty(subProp, out string srcVal))
                 return srcVal;
+
+            // A key the object's own table does not name is a [FUNCTION] called ON it,
+            // which is what r_WriteVal does after the property tables miss
+            // (CObjBase.cpp:971, CScriptObj.cpp:1481). Reading SRC.<name> as a property
+            // and nothing else meant a function reached through SRC was never called -
+            // and the packs reach for them that way constantly. The clothing gate asks
+            // !<SRC.f_isHuman>, so every human was refused every garment.
+            if (!subProp.Contains('.', StringComparison.Ordinal) &&
+                !subProp.Contains('(', StringComparison.Ordinal))
+            {
+                string? fnVal = CallNoArgFunction(subProp, args.Source, source, args, scope);
+                if (fnVal != null)
+                    return fnVal;
+            }
             return "0";
         }
 

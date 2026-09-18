@@ -75,6 +75,20 @@ public sealed class BareFunctionReadTests : IDisposable
         return new Bench(stack, ch);
     }
 
+    /// <summary>The same read, but with SRC set - which is how the packs reach a
+    /// function: &lt;SRC.f_isHuman&gt;, not &lt;f_isHuman&gt;. Reading without a source
+    /// measures the harness, not the engine: every SRC.x answers "0" then, including
+    /// SRC.BODY.</summary>
+    private static string ReadWithSource(Bench b, string expr, ObjBase src)
+    {
+        var item = b.Stack.Interpreter;
+        item.Execute([new ScriptKey("TAG.OUT", expr)], b.Ch, null,
+            new TriggerArgs { Source = src },
+            new ScriptScope());
+        b.Ch.TryGetProperty("TAG.OUT", out string v);
+        return v;
+    }
+
     private static string Read(Bench b, string expr)
     {
         b.Stack.Interpreter.Execute([new ScriptKey("TAG.OUT", expr)], b.Ch, null,
@@ -96,6 +110,7 @@ public sealed class BareFunctionReadTests : IDisposable
         "[FUNCTION f_always_zero]",
         "RETURN 0",
     ];
+
 
     /// <summary>The shape the pack's clothing gate is built on.</summary>
     [Fact]
@@ -140,5 +155,43 @@ public sealed class BareFunctionReadTests : IDisposable
     {
         var b = Build(IsHuman);
         Assert.Equal("0", Read(b, "<f_no_such_function>"));
+    }
+
+    /// <summary>The spelling the pack actually writes.
+    ///
+    /// SRC.&lt;name&gt; was read as a property and nothing else, so a [FUNCTION] reached
+    /// through SRC was never called. Upstream resolves the reference and then runs
+    /// r_WriteVal on it, which falls through to r_GetFunctionIndex and calls it
+    /// (CObjBase.cpp:971). The clothing gate asks !&lt;SRC.f_isHuman&gt;, so every human
+    /// was refused every garment - the bare-name fix alone did not reach this.</summary>
+    [Fact]
+    public void AFunctionReachedThroughSrcIsCalled()
+    {
+        var b = Build(IsHuman);
+
+        // Calibration first: if SRC itself does not resolve here, the rest measures
+        // nothing.
+        Assert.Equal("0190", ReadWithSource(b, "<SRC.BODY>", b.Ch));
+
+        Assert.Equal("1", ReadWithSource(b, "<SRC.f_isHuman>", b.Ch));
+        Assert.Equal("0", ReadWithSource(b, "<SRC.f_always_zero>", b.Ch));
+    }
+
+    /// <summary>And the negation the gate is built on.</summary>
+    [Fact]
+    public void TheClothingGateNoLongerRefusesAHuman()
+    {
+        var b = Build(IsHuman);
+        Assert.Equal("0", ReadWithSource(b, "<EVAL !(<SRC.f_isHuman>)>", b.Ch));
+    }
+
+    /// <summary>A property still wins over a function of the same name, and an unknown
+    /// name still reads 0 rather than something invented.</summary>
+    [Fact]
+    public void APropertyStillWinsAndUnknownStillReadsZero()
+    {
+        var b = Build(IsHuman);
+        Assert.Equal("0190", ReadWithSource(b, "<SRC.BODY>", b.Ch));
+        Assert.Equal("0", ReadWithSource(b, "<SRC.f_no_such_function>", b.Ch));
     }
 }

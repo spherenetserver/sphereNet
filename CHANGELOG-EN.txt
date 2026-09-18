@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - A function reached through SRC was still never called
+----------------------------------------
+
+FIX - SRC.<name> was read as a property and nothing else, so a [FUNCTION] called that
+        way never ran. Upstream resolves the reference and then runs r_WriteVal on it,
+        which falls through to r_GetFunctionIndex and CALLS it (CObjBase.cpp:971,
+        CScriptObj.cpp:1481).
+
+        This is the spelling the packs actually use, and the clothing gate is built on
+        it: type_equipitem asks !<SRC.f_isHuman>, so a human was still refused every
+        garment after the bare <f_isHuman> form was fixed. A property of the same name
+        still wins, and a name nothing defines still reads 0.
+
 [2026-09-18] - Which unanswered script names are the engine's problem
 ----------------------------------------
 

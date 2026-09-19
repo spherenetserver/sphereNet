@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - The config said a live protection was dead
+----------------------------------------
+
+FIX - sphere.ini shipped MAXPACKETSPERTICK=0, and its own note said the value was loaded
+        but not applied. NetworkManager has applied it all along: zero means no packet
+        quota, and the flood detection is built on the quota, so both were off on every
+        shard that used the shipped file. A note in that direction is worse than no note -
+        it tells an operator the value does not matter, so nobody looks at it again. The
+        note is corrected and the value is 100, the code's own default.
+
+FIX - Two more notes claimed the same thing and were also wrong. CLIENTMAXIP said
+        NetworkManager does not check per-IP connections; it counts them on every accept
+        and refuses over the limit. DEADCANNOTSEELIVING said the filter is not applied;
+        Character.CanSee applies it.
+
+CHANGE - A test now checks that class of claim against the code: a setting documented as
+        having no effect must not be read by the engine. It would have caught all three.
+        Proved by putting a wrong note back and watching it fail.
+
+CHANGE - CLIENTMAXIP is 16, the same as upstream, and its note now says what that means
+        for a shared address: an internet cafe with more than sixteen players needs it
+        raised, and a reconnecting player can hold two connections until the old one is
+        reaped, so leave headroom. The packet quota is per CONNECTION, not per address, so
+        a shared address is not a shared budget - and the fastest legitimate movement
+        there is (mounted running, one step per 100ms against a 100ms tick) is about one
+        packet per tick against a quota of 100. Both are now covered by tests.
+
+CHANGE - DEBUGPACKETCATEGORIES added to the shipped config as well as the live one.
+
 [2026-09-19] - What an open port survives, proved rather than claimed
 ----------------------------------------
 

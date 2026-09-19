@@ -4,6 +4,36 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Config, canli bir korumayi olu diye tanitiyordu
+----------------------------------------
+
+FIX - sphere.ini MAXPACKETSPERTICK=0 ile gonderiliyordu ve kendi notu, degerin
+        yuklendigini ama uygulanmadigini soyluyordu. NetworkManager onu ta bastan beri
+        uyguluyor: sifir, paket kotasi yok demek; flood tespiti de kotanin uzerine
+        kuruldugu icin, gonderilen dosyayi kullanan her shard'da ikisi de kapaliydi. Bu
+        yondeki bir not, notsuzluktan kotudur - isletmeciye degerin onemsiz oldugunu
+        soyler, boylece kimse bir daha bakmaz. Not duzeltildi, deger de kodun kendi
+        varsayilani olan 100.
+
+FIX - Iki not daha ayni seyi iddia ediyordu ve onlar da yanlisti. CLIENTMAXIP,
+        NetworkManager'in IP basina kontrol yapmadigini soyluyordu; her kabulde sayiyor ve
+        siniri gecende reddediyor. DEADCANNOTSEELIVING filtrenin uygulanmadigini
+        soyluyordu; Character.CanSee uyguluyor.
+
+CHANGE - Bir test artik bu iddia sinifini koda karsi denetliyor: etkisi yok diye belgelenen
+        bir ayar motor tarafindan okunmamalidir. Ucunu de yakalardi. Yanlis notu geri
+        koyup dustugunu gorerek kanitlandi.
+
+CHANGE - CLIENTMAXIP 16, ust kaynakla ayni; notu artik paylasilan bir adres icin ne
+        demek oldugunu da soyluyor: on altidan fazla kisinin oynadigi bir internet
+        kafesinde yukseltilmesi gerekir ve yeniden baglanan bir oyuncu, eskisi toplanana
+        kadar iki baglanti tutabilir, yani pay birakilmalidir. Paket kotasi BAGLANTI
+        basinadir, adres basina degil; yani paylasilan adres paylasilan butce degildir - ve
+        en hizli mesru hareket (atli kosu, 100ms tick'e karsi 100ms'de bir adim) 100'luk
+        kotaya karsi tick basina yaklasik bir pakettir. Ikisi de artik testlerle kapsandi.
+
+CHANGE - DEBUGPACKETCATEGORIES canli config'in yaninda gonderilen config'e de eklendi.
+
 [2026-09-19] - Acik bir portun neye dayandigi, iddia degil kanit
 ----------------------------------------
 

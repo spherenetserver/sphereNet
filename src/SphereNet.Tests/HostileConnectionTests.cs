@@ -199,4 +199,122 @@ public sealed class HostileConnectionTests
         Assert.True(mgr.ClientMaxIP > 0,
             "an unlimited per-IP connection count lets one address take every slot");
     }
+
+    /// <summary>And the shipped sphere.ini does not turn them back off.
+    ///
+    /// The pin above checks the CODE default, which is 100 - and the shipped ini set
+    /// MAXPACKETSPERTICK=0, so the shard ran with no packet quota and no flood detection
+    /// at all. Its own note said the setting was read but not applied, which is why
+    /// nobody thought the zero mattered; NetworkManager has applied it all along.
+    ///
+    /// A default that is right and a config that overrides it is the same as no default,
+    /// so the file is checked too.</summary>
+    [Fact]
+    public void TheShippedConfigDoesNotDisableThem()
+    {
+        string ini = Path.Combine(FindRepoRoot(), "config", "sphere.ini");
+        if (Gate.Missing(null, "config/sphere.ini", !File.Exists(ini)))
+            return;
+
+        foreach (string line in File.ReadAllLines(ini))
+        {
+            string t = line.Trim();
+            if (t.StartsWith("//", StringComparison.Ordinal)) continue;
+
+            int eq = t.IndexOf('=');
+            if (eq <= 0) continue;
+            string key = t[..eq].Trim();
+            string val = t[(eq + 1)..].Trim();
+
+            if (key.Equals("MAXPACKETSPERTICK", StringComparison.OrdinalIgnoreCase))
+                Assert.True(int.TryParse(val, out int q) && q > 0,
+                    $"the shipped config sets MAXPACKETSPERTICK={val}, which disables the " +
+                    "packet quota and the flood detection built on it");
+        }
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    /// <summary>A real player running flat out is nowhere near the quota.
+    ///
+    /// The question this answers: five people in one internet cafe, all running, all on
+    /// one address - does the flood protection take them for an attack?
+    ///
+    /// No, on two counts. The quota is per CONNECTION, not per address, so each of the
+    /// five has its own. And the fastest legitimate movement there is - mounted running,
+    /// one step per 100ms (MovementEngine.RunDelayMount) against a 100ms tick - is about
+    /// ONE movement packet per tick. The quota is 100.
+    ///
+    /// This drives a client at that rate, with the ordinary chatter around it, for long
+    /// enough to trip the flood window several times over, and asserts it is never
+    /// touched.</summary>
+    [Fact]
+    public void APlayerRunningAtFullSpeedIsNeverDropped()
+    {
+        var (mgr, state) = Connection();
+        int quotaHits = 0;
+        mgr.OnPacketQuotaExceeded += (_, _) => quotaHits++;
+
+        // 200 ticks - twenty seconds of play, twice the flood window.
+        for (int tick = 0; tick < 200; tick++)
+        {
+            // One movement request at the mounted-run rate, a ping, and a status
+            // request: more per tick than a real client sends, not less.
+            var traffic = new List<byte>();
+            traffic.AddRange([0x02, 0x00, (byte)(tick & 0xFF), 0x00, 0x00, 0x00, 0x00]);
+            traffic.AddRange([0x73, 0x00]);
+            traffic.AddRange([0x34, 0xED, 0xED, 0xED, 0xED, 0x04, 0x00, 0x00, 0x00, 0x00]);
+
+            state.ConsumeReceived(int.MaxValue);
+            state.InjectReceived(traffic.ToArray());
+            Process(mgr, state);
+
+            Assert.False(state.IsClosing, $"dropped a normal player at tick {tick}");
+        }
+
+        Assert.Equal(0, quotaHits);
+    }
+
+    /// <summary>And the quota is per connection: five clients on one address each get
+    /// their own, so a shared address is not a shared budget.</summary>
+    [Fact]
+    public void TheQuotaIsPerConnectionNotPerAddress()
+    {
+        var mgr = new NetworkManager(8, NullLoggerFactory.Instance);
+        mgr.MaxPacketsPerTick = 10;
+
+        var states = new List<NetState>();
+        for (int i = 0; i < 5; i++)
+        {
+            var st = mgr.GetState(i)!;
+            typeof(NetState)
+                .GetField("<IsInUse>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(st, true);
+            st.Id = i + 1;
+            st.IsSeeded = true;
+            var crypto = st.Crypto;
+            var t = crypto.GetType();
+            t.GetField("_initialized", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(crypto, true);
+            t.GetField("_encType", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(crypto, EncryptionType.None);
+            states.Add(st);
+        }
+
+        // Each sends 8 pings - under the 10 quota individually, 40 between them.
+        foreach (var st in states)
+        {
+            var pings = new byte[16];
+            for (int i = 0; i < 8; i++) pings[i * 2] = 0x73;
+            st.InjectReceived(pings);
+            Process(mgr, st);
+        }
+
+        Assert.All(states, st => Assert.False(st.IsClosing));
+    }
 }

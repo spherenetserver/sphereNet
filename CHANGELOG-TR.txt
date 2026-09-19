@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Sunucu, nedenini soylemeden olebiliyordu
+----------------------------------------
+
+FIX - Sunucu surecinin cokme yakalayicisi yoktu. Tick dongusu kendi fazlarindaki bir
+        hatayi kapsar, yani kotu bir script ya da kotu bir paket shard'i indirmez - ama
+        BASKA herhangi bir thread'deki (ag kabul dongusu, zamanlayicilar, kayit iscisi,
+        konsol okuyucu) bir istisna ya da dongu henuz yokken boot sirasinda atilan bir
+        istisna, sureci konsolda ne kalmissa onunla bitiriyordu. Ayrilmis ya da yeniden
+        baglanmis bir oturumda bu hicbir sey demek. Host'ta bu koruma, bir RDP kopmasi onu
+        sessizce oldurdugunden beri var; dunyayi tutan surecte ise yoktu.
+
+        Boyle her hata artik <LogDir>/server-crash.log dosyasina, istisna zinciri ve
+        etrafindaki durumla birlikte ekleniyor: calisma suresi, tick, nesne ve istemci
+        sayilari, GC yigini ve gerceklestigi thread. Yigin izi nerede kirildigini soyler;
+        bu satirlar onu teshise cevirir. Eklemeli yaziliyor, boylece cokme dongusu kendi
+        kanitini uzerine yazmak yerine bir tarih birakiyor; her alan da savunmali okunuyor
+        ki yarim baslamis bir sunucu gerisini yine uretsin.
+
+        Runbook artik bunun YAKALAYAMADIGINI da kaydediyor - yigin tasmasi, bazi bellek
+        yetmezlikleri, FailFast, native cokme - ve onlari yakalayan calisma zamani
+        minidump ayarlarini.
+
 [2026-09-19] - Paket log'unu acmak oyuna bir adima mal olmamali
 ----------------------------------------
 

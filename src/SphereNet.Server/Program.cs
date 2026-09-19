@@ -368,10 +368,21 @@ public static partial class Program
                 }
             }) { IsBackground = true, Name = "ConsoleInput" };
 
-            Console.CancelKeyPress += (_, e) => { e.Cancel = true; _running = false; };
-            inputThread.Start();
+                inputThread.Start();
         }
-        ServerMain(args);
+
+        // A boot failure is a crash too, and the least explained one: it happens before
+        // the tick loop's containment exists and often before the logger is wired, so
+        // all that survived was whatever the console still showed.
+        try
+        {
+            ServerMain(args);
+        }
+        catch (Exception ex)
+        {
+            RecordCrash(ex, "ServerMain", terminating: true);
+            throw;
+        }
     }
 
     private static readonly ConcurrentQueue<string> _headlessCommandQueue = new();
@@ -523,8 +534,12 @@ public static partial class Program
         // there during normal play.
         ParseLogFileLevel(_config.LogFileLevel, out var fileLogMinLevel,
             out var fileLogWhitelist);
-        string filePath = Path.Combine(
-            ResolvePath(basePath, _config.LogDir), "spherenet-.log");
+        string resolvedLogDir = ResolvePath(basePath, _config.LogDir);
+        string filePath = Path.Combine(resolvedLogDir, "spherenet-.log");
+
+        // Before anything else that can fail: from here on, a fault on any thread and a
+        // failure of the boot that follows both leave a durable record.
+        InstallCrashRecorder(resolvedLogDir);
         const string fileTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
         serilogConfig = serilogConfig.WriteTo.Logger(lc =>
         {

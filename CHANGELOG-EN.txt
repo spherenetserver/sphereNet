@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - The server could die without saying why
+----------------------------------------
+
+FIX - The server process had no crash handler. The tick loop contains a fault in any of
+        its phases, so a bad script or a bad packet does not take the shard down - but an
+        exception on any OTHER thread (network accept, timers, save worker, console
+        reader), or one thrown during boot before the loop exists, ended the process with
+        nothing but whatever the console still showed. On a detached or reconnected
+        session that is nothing at all. The Host has had this since an RDP drop killed it
+        silently; the process holding the world had none.
+
+        Every such fault is now appended to <LogDir>/server-crash.log with the exception
+        chain and the state around it: uptime, the tick, object and client counts, the GC
+        heap, and the thread it happened on. A stack trace says where it broke; those
+        lines are what makes it a diagnosis. Appended, so a crash loop leaves a history
+        rather than overwriting its own evidence, and every field is read defensively so
+        a half-initialised server still produces the rest.
+
+        The runbook now also records what this CANNOT catch - stack overflow, some
+        out-of-memory, FailFast, a native crash - and the runtime minidump settings that
+        do.
+
 [2026-09-19] - Turning the packet log on should not cost the game a step
 ----------------------------------------
 

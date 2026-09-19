@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Dunyaya geri donen bir yaratik programa da geri donuyor
+----------------------------------------
+
+FIX - Bir binek, uzerine binildigi konumu koruyordu ve NPC programi o konumun yakininda bir
+        oyuncu durup durmadigini soruyordu. Bu yuzden o noktadan uzaklasmak yaratigi zaman
+        carkindan dusuruyor, ondan inmek ise onu dunyaya geri koyuyor ama programa geri
+        koymuyordu: takip davranisi ne kadar dogru olursa olsun, at birakildigi yerde
+        sonsuza kadar duruyordu. Ust kaynak, binilen bir yaratigi bir sektorden degil
+        dunyanin kendi listesinden tick alan baglantisiz bir nesne yapar (Horse_Mount:
+        STATF_RIDDEN + SetDisconnected), dolayisiyla yaratigin kendi noktasi hicbir seye
+        karar vermez.
+
+        Binilen bir yaratik artik o bayat noktaya gore yargilanmiyor ve dunyaya
+        yerlestirilen her yaratik uyandiriliyor - binekten inme, bir figurinin acilmasi,
+        ahirdan alma, bir script yerlestirmesi, hepsi.
+
 [2026-09-19] - Bir karaktere verilen yigin, onun zaten tasidigi yiginla birlesiyor
 ----------------------------------------
 

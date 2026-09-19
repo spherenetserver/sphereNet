@@ -2513,6 +2513,12 @@ public static partial class Program
             _world.ObjectDeleting += OnWorldObjectDeleting;
             _world.CharacterMoved += OnCharacterMoved;
             _world.CharacterPlaced += BroadcastCharacterAppear;
+            // A creature that re-enters the world is put back to work, whichever way it
+            // got there - stepping off it as a mount, a figurine opening, a stable
+            // retrieval, a script placement. Upstream has no schedule to fall off: a
+            // char placed in the world is awake where it stands. Here it was made
+            // visible and left out of the wheel, so it stood there doing nothing.
+            _world.CharacterPlaced += WakeNpc;
             _accounts.AccountCreated += account => _systemHooks.DispatchAccount("create", account);
             _accounts.AccountLogin += account => _systemHooks.DispatchAccount("login", account);
             _accounts.AccountDeleted += account => _systemHooks.DispatchAccount("delete", account);

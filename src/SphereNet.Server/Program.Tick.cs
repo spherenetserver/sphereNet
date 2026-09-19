@@ -784,7 +784,14 @@ public static partial class Program
     /// <inheritdoc cref="ShouldStayScheduled(Character)"/>
     internal static bool ShouldStayScheduled(GameWorld world, Character npc)
         => !npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
-           (npc.NpcMaster.IsValid || world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y));
+           // A ridden creature is carried, and the position it still reports is the spot
+           // it was mounted at - upstream makes it a disconnected object that ticks off
+           // the world's own list rather than a sector (Horse_Mount: STATF_RIDDEN +
+           // SetDisconnected). Judging it by whether a player stands near that stale spot
+           // dropped a mount off the schedule as soon as its rider left the area, and
+           // nothing put it back: the creature came off the horse and never moved again.
+           (npc.IsStatFlag(StatFlag.Ridden) || npc.NpcMaster.IsValid ||
+            world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y));
 
     /// <summary>Take the NPCs whose timers have fired, act on each, and leave none of
     /// them out of the wheel.

@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - Three ways a script's value was thrown away
+----------------------------------------
+
+FIX - A skill set from a script read a plain decimal and, when that failed, discarded the
+        value while still answering true - so the assignment looked accepted and the skill
+        did not move. <DEF.name> hands values back in hex, so a pack doing
+
+            SRC.ALLSKILLS 0
+            SRC.Alchemy=<DEF.sn_player_skill_value>     // 1000 arrives as 03E8
+
+        cleared every skill and then set none of them. Its own guard then reported that
+        some other trigger must have changed the result; nothing had.
+
+FIX - SERV.NEWITEM stamped the DEFNAME as the item's name when the definition carried no
+        NAME= line. A per-instance name wins over everything, so that cut off the chain
+        which resolves a nameless definition properly - the itemdef NAME, then the
+        tiledata name. The shipped pack's [ITEMDEF 0eed] has no NAME=, tiledata calls
+        0x0EED "gold coin", and a pile made this way read "65000 i_gold" while the same
+        pile made any other way read "65000 gold coins". Upstream stamps no instance name
+        here either.
+
+FIX - A dialog's indexed accessor - ARGCHK[n], ARGTXT[n] - read a plain decimal. The
+        index is usually a literal but a loop computes it, <ARGCHK[<LOCAL.i>]>, and the
+        inner bracket is resolved before the accessor is parsed, so whatever it produced
+        arrives here. A hex result silently became switch zero.
+
 [2026-09-19] - Every NPC was handed every line
 ----------------------------------------
 

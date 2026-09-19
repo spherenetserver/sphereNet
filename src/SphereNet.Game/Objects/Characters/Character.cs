@@ -5631,8 +5631,17 @@ public partial class Character : ObjBase
     {
         if (!TryResolveSkillName(upperKey, out var skillType))
             return false;
-        if (ushort.TryParse(normalized, out ushort skillVal))
-            SetSkillRuntime(skillType, skillVal); // runtime set — fires cancelable @SkillChange
+
+        // A Sphere number, not a plain decimal: upstream reads a skill value through the
+        // expression evaluator, where a leading zero means hex. A decimal-only read threw
+        // the value away while still answering true, so the assignment looked accepted
+        // and the skill stayed where it was - and <DEF.name> hands values back in hex, so
+        // a script setting a skill from a DEF set nothing at all. A pack doing
+        // ALLSKILLS 0 and then seven assignments ended with a skill total of zero and its
+        // own guard reporting that something else must have changed the result.
+        if (SphereNet.Core.Types.ScriptNumber.TryParseToken(normalized, out long raw) &&
+            raw is >= 0 and <= ushort.MaxValue)
+            SetSkillRuntime(skillType, (ushort)raw); // runtime set — fires cancelable @SkillChange
         return true;
     }
 

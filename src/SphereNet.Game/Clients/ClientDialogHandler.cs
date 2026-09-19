@@ -1185,7 +1185,15 @@ public sealed class ClientDialogHandler
         int close = upperVar.IndexOf(']');
         if (close <= prefix.Length + 1) return false;
         string num = upperVar.Substring(prefix.Length + 1, close - prefix.Length - 1);
-        return int.TryParse(num, out index);
+        // A Sphere number, not a plain decimal. The index is usually written as a
+        // literal, but a loop computes it - <ARGCHK[<LOCAL.i>]> - and the inner bracket
+        // is resolved before this sees it, so whatever that produced arrives here. A
+        // decimal-only read turned a hex result into switch zero without a word.
+        if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(num, out long parsed) ||
+            parsed is < 0 or > int.MaxValue)
+            return false;
+        index = (int)parsed;
+        return true;
     }
 
     /// <summary>Pre-expand FOR / WHILE / IF / LOCAL blocks in a dialog's

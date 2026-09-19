@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Bir script'in degerinin cope gitmesinin uc yolu
+----------------------------------------
+
+FIX - Script'ten kurulan bir skill duz ondalik okuyor ve okuyamadiginda degeri atiyor ama
+        yine true yanitliyordu - yani atama kabul edilmis gorunuyor, skill yerinden
+        kimildamiyordu. <DEF.ad> degerleri onaltilik verir; dolayisiyla
+
+            SRC.ALLSKILLS 0
+            SRC.Alchemy=<DEF.sn_player_skill_value>     // 1000, 03E8 olarak gelir
+
+        yazan bir paket butun skilleri sifirliyor ve ardindan hicbirini kurmuyordu.
+        Kendi korumasi da baska bir tetikleyicinin sonucu degistirdigini bildiriyordu;
+        hicbir sey degistirmemisti.
+
+FIX - SERV.NEWITEM, tanimin NAME= satiri yokken esyanin adina DEFNAME'i damgaliyordu.
+        Ornek adi her seyin onune gectigi icin bu, adsiz bir tanimi dogru cozen zinciri -
+        itemdef NAME, sonra tiledata adi - kesiyordu. Gonderilen pakette [ITEMDEF 0eed]'in
+        NAME'i yok, tiledata 0x0EED'e "gold coin" der; boylece bu yolla yapilan bir yigin
+        "65000 i_gold", baska her yolla yapilan ayni yigin "65000 gold coins" okunuyordu.
+        Ust kaynak da burada ornek adi damgalamaz.
+
+FIX - Bir dialog'un indeksli erisimcisi - ARGCHK[n], ARGTXT[n] - duz ondalik okuyordu.
+        Indeks genelde sabittir ama bir dongu onu hesaplar, <ARGCHK[<LOCAL.i>]>, ve ic
+        ayrac erisimci ayristirilmadan once cozulur; yani ne urettiyse buraya o gelir.
+        Onaltilik bir sonuc sessizce sifir numarali anahtar oluyordu.
+
 [2026-09-19] - Her NPC'ye her satir veriliyordu
 ----------------------------------------
 

@@ -1307,7 +1307,17 @@ public static partial class Program
 
         var item = _world.CreateItem();
         item.BaseId = dispId;
-        item.Name = string.IsNullOrWhiteSpace(def?.Name) ? (def?.DefName ?? token) : def!.Name;
+        // A per-instance name ONLY when the definition actually carries one.
+        //
+        // Stamping the DEFNAME as a fallback looked harmless and was not: the instance
+        // name wins over everything, so it cut off the chain that resolves a nameless
+        // definition properly - the itemdef NAME, then the tiledata name. The shipped
+        // pack's [ITEMDEF 0eed] has no NAME= line, tiledata calls 0x0EED "gold coin",
+        // and a pile made this way showed up as "65000 i_gold" while the same pile made
+        // any other way read "65000 gold coins". Upstream stamps no instance name here
+        // either; the base def and the tiledata are where a name comes from.
+        if (!string.IsNullOrWhiteSpace(def?.Name))
+            item.Name = def!.Name;
         ItemDefHelper.ApplyInstanceMetadata(item, rid.Index, setDisplayId: false,
             setName: !string.IsNullOrWhiteSpace(def?.Name));
 

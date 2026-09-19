@@ -564,7 +564,20 @@ public sealed class SphereConfig
     // NPC
     public int NpcTrainCost { get; set; } = 30;
     public int NpcTrainMax { get; set; } = 420;
-    public int NpcDistanceHear { get; set; } = 16;
+    /// <summary>NPCDISTANCEHEAR. Upstream's default is UO_MAP_VIEW_SIGHT, 14
+    /// (CServerConfig.cpp:215). This said 16, which quietly overrode the engine's own
+    /// default - the same trap as a config that disables a limit the code enables.
+    /// Negative keeps the magnitude as the radius and drops the sight requirement.</summary>
+    public int NpcDistanceHear { get; set; } = 14;
+
+    /// <summary>NPCHEARTHROUGHWALLS. Words an NPC hears whether or not it can see the
+    /// speaker, comma separated. Empty gives upstream's behaviour, where the sight test
+    /// applies to every spoken keyword.
+    ///
+    /// Default "bank": a banker inside its building answers from the street, which is how
+    /// a player expects a bank to work, while "buy" and the rest stay behind the wall so
+    /// a whole street of shopkeepers does not answer two people chatting.</summary>
+    public string NpcHearThroughWalls { get; set; } = "bank";
 
     // Global script hooks
     public string SpeechSelf { get; set; } = "";
@@ -1112,6 +1125,7 @@ public sealed class SphereConfig
         LogFileLevel = ini.GetValue(section, "LogFileLevel") ?? LogFileLevel;
         DebugPacketOpcodes = ini.GetValue(section, "DebugPacketOpcodes") ?? DebugPacketOpcodes;
         DebugPacketCategories = ini.GetValue(section, "DebugPacketCategories") ?? DebugPacketCategories;
+        NpcHearThroughWalls = ini.GetValue(section, "NpcHearThroughWalls") ?? NpcHearThroughWalls;
         CommandPrefix = ini.GetValue(section, "CommandPrefix") ?? CommandPrefix;
         DefaultCommandLevel = ini.GetInt(section, "DefaultCommandLevel", DefaultCommandLevel);
         ChatFlags = ini.GetInt(section, "ChatFlags", ChatFlags);

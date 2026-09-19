@@ -153,4 +153,93 @@ public sealed class NpcHearingRangeTests
 
         Assert.Empty(b.Heard);
     }
+
+    /// <summary>ONE NPC answers, not every NPC in earshot.
+    ///
+    /// Upstream tracks the closest candidate and calls NPC_OnHear once after the walk
+    /// (CClientEvent.cpp:1987-2019). Handing the line to all of them is why three
+    /// shopkeepers in one building all answered the same sentence - reported from a shard
+    /// exactly that way - and why the keyword chain ran once per NPC for anything said
+    /// nearby.</summary>
+    [Fact]
+    public void OnlyTheNearestNpcAnswers()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        Npc(b, "far", 106, 100);
+        Npc(b, "near", 102, 100);
+        Npc(b, "middle", 104, 100);
+
+        b.Speech.ProcessSpeech(speaker, "hello", TalkMode.Say);
+
+        Assert.Equal(["near:hello"], b.Heard);
+    }
+
+    /// <summary>A banker asked for the bank wins over whoever is nearer, which is where
+    /// "bank behaves differently from buy" comes from (CClientEvent.cpp:2005).</summary>
+    [Fact]
+    public void ABankerAskedForTheBankWinsOverACloserNpc()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        Npc(b, "shopkeeper", 101, 100);
+        var banker = Npc(b, "Malka", 106, 100);
+        banker.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Banker;
+
+        b.Speech.ProcessSpeech(speaker, "bank", TalkMode.Say);
+
+        Assert.Equal(["Malka:bank"], b.Heard);
+    }
+
+    /// <summary>And for anything else the banker does not jump the queue.</summary>
+    [Fact]
+    public void ABankerDoesNotWinForOtherWords()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        Npc(b, "shopkeeper", 101, 100);
+        var banker = Npc(b, "Malka", 106, 100);
+        banker.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Banker;
+
+        b.Speech.ProcessSpeech(speaker, "buy", TalkMode.Say);
+
+        Assert.Equal(["shopkeeper:buy"], b.Heard);
+    }
+
+    /// <summary>Addressing one by name reaches that one even with others closer.</summary>
+    [Fact]
+    public void AnNpcAddressedByNameAnswers()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        Npc(b, "Bob", 106, 100);
+        Npc(b, "closer", 101, 100);
+
+        b.Speech.ProcessSpeech(speaker, "Bob hello", TalkMode.Say);
+
+        Assert.Equal(["Bob:Bob hello"], b.Heard);
+    }
+
+    /// <summary>The shard's own requirement, kept as a named setting rather than a
+    /// special case: a banker answers "bank" from outside its building, while "buy" stays
+    /// behind the wall. Upstream applies the sight test to both; this is a deliberate
+    /// difference, listed in NPCHEARTHROUGHWALLS so a shard can drop it.</summary>
+    [Fact]
+    public void ABankerAnswersBankThroughAWall()
+    {
+        var b = Build();
+        var speaker = Player(b, 100, 100);
+        var banker = Npc(b, "Malka", 104, 100);
+        banker.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Banker;
+        var wall = b.World.CreateItem();
+        wall.BaseId = WallGraphic;
+        b.World.PlaceItem(wall, new Point3D((short)102, (short)100, 0, 0));
+
+        b.Speech.ProcessSpeech(speaker, "bank", TalkMode.Say);
+        Assert.Equal(["Malka:bank"], b.Heard);
+
+        b.Heard.Clear();
+        b.Speech.ProcessSpeech(speaker, "buy", TalkMode.Say);
+        Assert.Empty(b.Heard);
+    }
 }

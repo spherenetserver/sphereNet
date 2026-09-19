@@ -4,6 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Tek NPC yanit verir, duyan her NPC degil
+----------------------------------------
+
+FIX - Soylenen bir satir menzildeki her NPC'ye veriliyordu. Ust kaynak tam olarak BIRINE
+        verir: dongusu EN YAKIN adayi izler ve yurumeden sonra bir kez NPC_OnHear cagirir
+        (CClientEvent.cpp:1987-2019). Bir binadaki uc dukkancinin ayni cumleye birlikte
+        yanit vermesi bu yuzdendi; yakinda ne soylenirse kelime ve script zincirinin NPC
+        basina bir kez calismasi da - ayni raporun yuk tarafi.
+
+        Ust kaynakta oldugu gibi iki sey yakinligi yener ve aramayi bitirir: adiyla
+        seslenilen NPC ve satirda "bank" varsa BANKACI. Sonuncusu, "bank'in buy'dan farkli
+        davranmasi"nin gercek kaynagidir - bir menzil kurali degil, bir secim kuralidir.
+
+FIX - NPCDISTANCEHEAR sphere.ini'de 16 olarak gonderiliyordu; ust kaynagin varsayilani
+        UO_MAP_VIEW_SIGHT, yani 14 - ve config degeri, ayni gun duzeltilen motor
+        varsayilanini sessizce eziyordu. Kodun actigi bir siniri kapatan bir config ile
+        ayni tuzak.
+
+CHANGE - NPCHEARTHROUGHWALLS: bir NPC'nin konusani goremese de duydugu kelimeler,
+        varsayilan "bank". Ust kaynaktan BILINCLI bir fark; orada gorus sinavi her
+        soylenen kelimeye uygulanir. Shard'in gereksinimi: bina icindeki bankaci sokaktan
+        yanit verir - bir oyuncunun bankadan bekledigi sey budur - ama "buy" ve digerleri
+        duvarin arkasinda kalir. Kodda bir ozel durum degil, listelenmis bir ayar; ust
+        kaynagin davranisini isteyen bir shard onu bosaltir.
+
 [2026-09-19] - Panel zaman asiminin surec hatasi diye bildirilmesi
 ----------------------------------------
 

@@ -820,6 +820,10 @@ public static partial class Program
             _speech.DistanceWhisper = _config.DistanceWhisper;
             _speech.DistanceYell = _config.DistanceYell;
             _speech.NpcDistanceHear = _config.NpcDistanceHear;
+            _speech.HearThroughWalls.Clear();
+            foreach (string w in (_config.NpcHearThroughWalls ?? "").Split(',',
+                         StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                _speech.HearThroughWalls.Add(w);
             _speech.PartyManager = _partyManager;
             _speech.GuildManager = _guildManager;
             _speech.OnNpcHear += OnNpcHearSpeech;

@@ -60,6 +60,105 @@ public sealed class SpeechEngine
     /// can see me" (CClientEvent.cpp:1892). The magnitude is still the radius.</summary>
     private bool IgnoreHearLineOfSight => NpcDistanceHear < 0;
 
+
+    /// <summary>Whether this NPC becomes the one that answers.
+    ///
+    /// Upstream hands a line to exactly ONE NPC. Its loop tracks the CLOSEST candidate
+    /// and, after the walk, calls NPC_OnHear once on it (CClientEvent.cpp:1987-2019).
+    /// Two things beat proximity and end the search there: an NPC addressed by name, and
+    /// a BANKER when the line contains "bank" - which is where "bank works differently
+    /// from buy" actually comes from.
+    ///
+    /// Every NPC in earshot used to be handed every line here. That is why three
+    /// shopkeepers in one building all answered the same sentence, and why the keyword
+    /// and script chain ran once per NPC for anything anyone said nearby.
+    /// </summary>
+    private void ConsiderNpcListener(Character speaker, Character listener, string lowerText,
+        ref Character? chosen, ref int chosenDist, ref bool decided)
+    {
+        if (decided)
+            return;
+
+        // Addressed by name: that one, and no further looking.
+        string? name = listener.Name;
+        if (!string.IsNullOrEmpty(name))
+        {
+            int space = name.IndexOf(' ');
+            string first = space > 0 ? name[..space] : name;
+            if (first.Length > 1 && lowerText.StartsWith(first, StringComparison.OrdinalIgnoreCase))
+            {
+                chosen = listener;
+                decided = true;
+                return;
+            }
+        }
+
+        // A banker asked for the bank wins over whoever is nearer.
+        if (listener.NpcBrain == Core.Enums.NpcBrainType.Banker &&
+            CarriesWord(lowerText, "bank"))
+        {
+            chosen = listener;
+            decided = true;
+            return;
+        }
+
+        int dist = speaker.Position.GetDistanceTo(listener.Position);
+        if (dist <= chosenDist)
+        {
+            chosen = listener;
+            chosenDist = dist;
+        }
+    }
+
+    /// <summary>Word match with an open tail: the packs and their players write "banka",
+    /// "bankaya" and "banker" for the same request, so the start has to be a boundary and
+    /// the end does not.</summary>
+    private static bool CarriesWord(string lowerText, string word)
+    {
+        int idx = 0;
+        while ((idx = lowerText.IndexOf(word, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            if (idx == 0 || !char.IsLetterOrDigit(lowerText[idx - 1]))
+                return true;
+            idx += word.Length;
+        }
+        return false;
+    }
+
+    /// <summary>Words an NPC hears whether or not it can see the speaker.
+    ///
+    /// A DELIBERATE difference from upstream, which applies the sight test to all spoken
+    /// keywords (CClientEvent.cpp:1949). The shard's own requirement: a banker inside its
+    /// building must answer "bank" from the street, while "buy" and the rest stay behind
+    /// the wall - which is how a player expects a bank to work and is what stops every
+    /// shopkeeper in town answering two people chatting.
+    ///
+    /// It is a list rather than a special case in the code so a shard can decide for
+    /// itself; NPCHEARTHROUGHWALLS in sphere.ini, empty for upstream's behaviour.</summary>
+    public HashSet<string> HearThroughWalls { get; } =
+        new(StringComparer.OrdinalIgnoreCase) { "bank" };
+
+    /// <summary>Whether the line carries one of those words as a WORD - "bank" must not
+    /// match inside "embankment".</summary>
+    private bool CarriesAHearThroughWallsWord(string lowerText)
+    {
+        foreach (string word in HearThroughWalls)
+        {
+            int idx = 0;
+            while ((idx = lowerText.IndexOf(word, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+            {
+                bool startOk = idx == 0 || !char.IsLetterOrDigit(lowerText[idx - 1]);
+                int end = idx + word.Length;
+                // The tail is open on purpose: the packs and their players write "banka",
+                // "bankaya", "banker" for the same request.
+                if (startOk)
+                    return true;
+                idx = end;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Range NPCs hear at when NPCDISTANCEHEAR is left at 0
     /// (Source-X UO_MAP_VIEW_SIGHT).</summary>
     /// <summary>Upstream's default hearing radius is UO_MAP_VIEW_SIGHT, which is 14
@@ -204,6 +303,12 @@ public sealed class SpeechEngine
         int npcRange = NpcHearRange;
         var listeners = _world.GetCharsInRange(speaker.Position, npcRange);
 
+        // ONE NPC answers, not every NPC in earshot. See PickNpcListener.
+        Character? chosen = null;
+        int chosenDist = int.MaxValue;
+        bool chosenIsDecided = false;
+        string lowerForPick = text.ToLowerInvariant();
+
         foreach (var listener in listeners)
         {
             if (listener == speaker) continue;
@@ -212,23 +317,27 @@ public sealed class SpeechEngine
             // Being hidden/invisible does NOT stop you from hearing (Source-X
             // CanHear has no such gate) — a hidden GM still hears a whisper.
 
-            // NPC keyword handling
+            // NPC keyword handling: gather candidates here, hand the line to ONE of
+            // them after the walk. See PickNpcListener below for why.
             if (!listener.IsPlayer)
             {
-                // An NPC that cannot SEE the speaker does not hear them
+                // An NPC that cannot SEE the speaker is not a candidate
                 // (CClientEvent.cpp:1949 - CanSeeLOS, skipped only when
-                // NPCDISTANCEHEAR is negative). Without this a shopkeeper indoors
-                // answered two players talking in the street through the wall: wrong,
-                // and the whole keyword and script chain ran for each of them on every
-                // line anyone said nearby.
+                // NPCDISTANCEHEAR is negative, or for the words a shard lists as
+                // audible through walls).
                 if (!IgnoreHearLineOfSight &&
+                    !CarriesAHearThroughWallsWord(text) &&
                     !_world.CanSeeLOS(speaker.GetTopLevelPosition(),
                                       listener.GetTopLevelPosition()))
                     continue;
 
-                OnNpcHear?.Invoke(speaker, listener, text, mode);
+                ConsiderNpcListener(speaker, listener, lowerForPick, ref chosen, ref chosenDist,
+                                    ref chosenIsDecided);
             }
         }
+
+        if (chosen != null)
+            OnNpcHear?.Invoke(speaker, chosen, text, mode);
 
         // Items within hearing range receive @Hear (Source-X item/multi OnHear).
         // Source-X gates this scan on the per-sector listen-item count

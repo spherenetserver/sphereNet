@@ -56,9 +56,17 @@ public sealed class SpeechEngine
     /// </summary>
     public int NpcDistanceHear { get; set; }
 
+    /// <summary>A negative NPCDISTANCEHEAR means "this far, and never mind whether they
+    /// can see me" (CClientEvent.cpp:1892). The magnitude is still the radius.</summary>
+    private bool IgnoreHearLineOfSight => NpcDistanceHear < 0;
+
     /// <summary>Range NPCs hear at when NPCDISTANCEHEAR is left at 0
     /// (Source-X UO_MAP_VIEW_SIGHT).</summary>
-    private const int DefaultNpcHearSight = 18;
+    /// <summary>Upstream's default hearing radius is UO_MAP_VIEW_SIGHT, which is 14
+    /// (uofiles_macros.h:17; CServerConfig.cpp:215 sets m_iNPCDistanceHear to it). This
+    /// was 18, which is more than twice the area - and every NPC in it was handed the
+    /// line to consider.</summary>
+    private const int DefaultNpcHearSight = 14;
 
     /// <summary>Tiles to scan for listening NPCs, from <see cref="NpcDistanceHear"/>.</summary>
     private int NpcHearRange =>
@@ -207,6 +215,17 @@ public sealed class SpeechEngine
             // NPC keyword handling
             if (!listener.IsPlayer)
             {
+                // An NPC that cannot SEE the speaker does not hear them
+                // (CClientEvent.cpp:1949 - CanSeeLOS, skipped only when
+                // NPCDISTANCEHEAR is negative). Without this a shopkeeper indoors
+                // answered two players talking in the street through the wall: wrong,
+                // and the whole keyword and script chain ran for each of them on every
+                // line anyone said nearby.
+                if (!IgnoreHearLineOfSight &&
+                    !_world.CanSeeLOS(speaker.GetTopLevelPosition(),
+                                      listener.GetTopLevelPosition()))
+                    continue;
+
                 OnNpcHear?.Invoke(speaker, listener, text, mode);
             }
         }

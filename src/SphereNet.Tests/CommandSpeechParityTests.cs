@@ -63,8 +63,10 @@ public class CommandSpeechParityTests
         Assert.DoesNotContain(far, heard); // inside the 48-tile yell, outside 16
     }
 
-    /// <summary>Left at 0 the NPC scan falls back to the default sight range,
-    /// so an unconfigured server keeps hearing NPCs at 18 tiles.</summary>
+    /// <summary>Left at 0 the NPC scan falls back to the default sight range, which is
+    /// upstream's UO_MAP_VIEW_SIGHT of 14 (uofiles_macros.h:17; CServerConfig.cpp:215).
+    /// This asserted 17 tiles, from a local default of 18 - more than twice the area, and
+    /// every NPC in it was handed each line to consider.</summary>
     [Fact]
     public void NpcDistanceHear_Zero_UsesTheDefaultSightRange()
     {
@@ -72,16 +74,21 @@ public class CommandSpeechParityTests
         var speech = new SpeechEngine(world); // NpcDistanceHear stays 0
         var speaker = MakeChar(world, PrivLevel.Player);
 
-        var npc = world.CreateCharacter();
-        npc.IsPlayer = false;
-        world.PlaceCharacter(npc, new Point3D(117, 100, 0, 0)); // 17 tiles
+        var inside = world.CreateCharacter();
+        inside.IsPlayer = false;
+        world.PlaceCharacter(inside, new Point3D(114, 100, 0, 0)); // 14 tiles
+
+        var outside = world.CreateCharacter();
+        outside.IsPlayer = false;
+        world.PlaceCharacter(outside, new Point3D(115, 100, 0, 0)); // 15
 
         var heard = new List<Character>();
         speech.OnNpcHear += (_, listener, _, _) => heard.Add(listener);
 
         speech.ProcessSpeech(speaker, "hello there", TalkMode.Say, 0, 3);
 
-        Assert.Contains(npc, heard);
+        Assert.Contains(inside, heard);
+        Assert.DoesNotContain(outside, heard);
     }
 
     // ---- P0: players cannot set properties via the command prefix ----

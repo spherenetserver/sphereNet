@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Her NPC'ye her satir veriliyordu
+----------------------------------------
+
+FIX - Bir NPC, duymasinin hicbir yolu olmayan konusmalari duyuyordu. Birbiriyle konusan
+        iki oyuncunun cevresindeki her dukkanciya - kapali mekanda, duvarlarin ardinda -
+        satir veriliyor ve yakinda biri her ne dediyse tum kelime ve script zinciri her
+        biri icin calisiyordu. Bir shard'dan gereksiz yuk kaynagi olarak bildirildi, ve
+        gercekten oyleydi.
+
+        Ust kaynak, konusani GOREMEYEN bir NPC'yi reddeder (CanSeeLOS,
+        CClientEvent.cpp:1949); burada boyle bir kapi hic yoktu. Negatif bir
+        NPCDISTANCEHEAR yine "bu kadar uzak, gormek onemli degil" demektir; ust kaynagin
+        isaret kurali boyle.
+
+FIX - Varsayilan yaricap 18'di; ust kaynakta UO_MAP_VIEW_SIGHT, yani 14
+        (uofiles_macros.h:17, CServerConfig.cpp:215) - iki kattan fazla alan ve icindeki
+        her NPC bir aday. Eski 18'i savunan bir test korunmayip 14'e duzeltildi.
+
 [2026-09-19] - Hicbir yere ulasmayan cürüme suresi
 ----------------------------------------
 

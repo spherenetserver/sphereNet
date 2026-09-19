@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - Every NPC was handed every line
+----------------------------------------
+
+FIX - An NPC heard speech it had no way of hearing. Two players talking to each other had
+        every shopkeeper around them - indoors, behind walls - handed the line, and the
+        whole keyword and script chain ran for each of them on every line anyone said
+        nearby. Reported from a shard as a source of needless load, and it was.
+
+        Upstream refuses an NPC that cannot SEE the speaker (CanSeeLOS,
+        CClientEvent.cpp:1949), and there was no such gate here at all. A negative
+        NPCDISTANCEHEAR still means "this far, never mind sight", as upstream's sign
+        convention says.
+
+FIX - The default radius was 18 where upstream's is UO_MAP_VIEW_SIGHT, 14
+        (uofiles_macros.h:17, CServerConfig.cpp:215) - more than twice the area, and every
+        NPC in it was a candidate. A test asserting the old 18 has been corrected to 14
+        rather than kept.
+
 [2026-09-19] - A decay deadline that reached nothing
 ----------------------------------------
 

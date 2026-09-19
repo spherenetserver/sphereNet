@@ -414,7 +414,18 @@ public static partial class Program
         }
         catch (TimeoutException)
         {
+            // Faulting the completion is the signal to the queued action that nobody is
+            // waiting any more - it checks IsCompleted and skips the work. But a faulted
+            // Task nobody reads is rethrown by the finalizer thread as an
+            // UnobservedTaskException, which is how a panel stats request that timed out
+            // during a long boot turned into a process-level fault report with no caller
+            // left to name.
+            //
+            // So the exception is observed here, deliberately. The caller still gets its
+            // own throw below; this only tells the runtime that the abandoned task's
+            // fault has been read.
             completion.TrySetException(new TimeoutException($"Main-loop operation '{operation}' timed out"));
+            _ = completion.Task.Exception;
             throw new TimeoutException($"Main-loop operation '{operation}' timed out");
         }
     }

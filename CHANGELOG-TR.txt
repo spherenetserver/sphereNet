@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Panel zaman asiminin surec hatasi diye bildirilmesi
+----------------------------------------
+
+FIX - Ana dongu koprusu, bir panel istegi zaman asimina ugradiginda kendi tamamlayicisini
+        hataya dusurur; bu, kuyruktaki ise "artik kimse beklemiyor" sinyalidir - is
+        IsCompleted'i kontrol edip atlar. Ama kimsenin okumadigi hataya dusmus bir Task,
+        finalizer thread'i tarafindan UnobservedTaskException olarak yeniden atilir ve bu
+        surec duzeyindedir: 180.000 esyalik bir dunya yuklenirken zaman asimina ugrayan bir
+        istatistik istegi, cokme log'una FATAL olarak, adlandirilacak bir cagiran kalmadan
+        dusuyordu. Terk edilmis hata artik bilincli olarak gozlemleniyor; cagiran yine
+        kendi istisnasini aliyor.
+
+        Zaman asiminin kendisi, uzun bir boot sirasinda olmasi adil bir sey. Olumcul bir
+        hata diye bildirilmesi degildi.
+
+        Ayni gun eklenen cokme kaydedicisi buldu ve gerceklestigi anda adlandirdi - zaten
+        bunun icindi.
+
 [2026-09-19] - Save'in anlik goruntusu kendi listelerini buyutuyordu
 ----------------------------------------
 

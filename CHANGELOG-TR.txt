@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Bir geminin ambarina birakilan esya ambara giriyor
+----------------------------------------
+
+FIX - Birakma isleyicisi kendi kap turu listesini tasiyordu ve ikisinin kisa olani oydu:
+        gemi ambarini, cop kutusunu, anahtarligi ve oyun tahtasini saymiyordu; oysa esya
+        modeli bunlarin hepsine kap diyor ve ust kaynak hepsini CItemContainer olarak kurar.
+        Bunlardan birine yapilan birakma duz-esya yolunu izliyordu - "o esyanin yasadigi
+        yere koy" - ve yerde duran bir sey icin bu, altindaki karo demek. Boylece bir
+        geminin ambari her seyi reddediyor ve mali guverteye birakiyordu; cop kutusuna da
+        hicbir sey atilamiyordu.
+
+        Isleyici artik tek listeyi soruyor ve ikisi bir daha ayrisirsa bir test kaliyor.
+
 [2026-09-19] - Bir seye uzanip uzanamadiginiza karar veren CAN bayraklari okunuyor
 ----------------------------------------
 

@@ -908,12 +908,23 @@ public sealed class ClientInventoryHandler
     /// Whether a drop target can legitimately hold children. Anything that is not a
     /// container is a plain item, however the client addressed it.
     /// </summary>
+    /// <summary>Is this drop landing IN something, rather than on top of it?
+    ///
+    /// This used to carry its own list of container types, and it was the shorter of the
+    /// two: it did not name the ship hold, the trash can, the keyring or the game board,
+    /// all of which <see cref="Item.IsContainerItemType"/> does and all of which upstream
+    /// builds as a CItemContainer. A drop aimed at one of them was therefore redirected
+    /// as if it had been aimed at a plain item - onto the tile the thing stands on. That
+    /// is a chest on a ship's deck refusing everything and leaving it lying on the deck,
+    /// which is how a shard reported it, and a trash can you cannot throw anything into.
+    ///
+    /// It asks the one list now, plus the two the drop path alone treats as containers:
+    /// a spellbook takes scrolls, and a memory object is the engine's own.</summary>
     private static bool IsDropTargetContainer(Item target) =>
-        target.ItemType is ItemType.Container or ItemType.ContainerLocked or
-            ItemType.Corpse or ItemType.EqBankBox or ItemType.EqVendorBox or
-            ItemType.EqTradeWindow or ItemType.Spellbook or ItemType.EqMemoryObj ||
-        target.EquipLayer == Layer.Pack || target.EquipLayer == Layer.BankBox ||
-        target.EquipLayer == Layer.VendorStock || target.EquipLayer == Layer.VendorExtra;
+        Item.IsContainerItemType(target.ItemType) ||
+        target.ItemType is ItemType.Spellbook or ItemType.EqMemoryObj ||
+        target.EquipLayer is Layer.Pack or Layer.BankBox or
+                            Layer.VendorStock or Layer.VendorExtra;
 
     /// <summary>
     /// Resolve a drop aimed at a plain item to the place that item actually lives

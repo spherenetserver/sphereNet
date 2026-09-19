@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - A drop aimed at a ship's hold lands in it
+----------------------------------------
+
+FIX - The drop handler carried its own list of container types and it was the shorter of
+        the two: it did not name the ship hold, the trash can, the keyring or the game
+        board, all of which the item model already calls containers and all of which
+        upstream builds as a CItemContainer. A drop aimed at one took the plain-item path -
+        "put it where that item lives" - and for something standing on the ground that
+        means the tile under it. So a ship's hold refused everything and left the goods
+        lying on the deck, and a trash can could not be thrown into.
+
+        The handler asks the one list now, and a test fails if the two ever drift apart
+        again.
+
 [2026-09-19] - The CAN flags that decide whether you can reach something are read
 ----------------------------------------
 

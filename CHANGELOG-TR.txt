@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Paket log'unu acmak oyuna bir adima mal olmamali
+----------------------------------------
+
+FIX - DebugPacketOpcodes beyaz listesi yalnizca alma tarafina ulasiyordu. Gonderimler ne
+        derse dese loglaniyordu; dolayisiyla log'u birkac opcode'a daraltan bir shard
+        yine her giden paketi siniflandirip bicimlendirmenin bedelini oduyordu - ve en
+        yuksek oncelikle cikan sey hareket onayidir. Karar iki yerde yasiyordu, biri
+        eksik; artik tek yerde ve iki yonu de kapsiyor.
+
+CHANGE - DEBUGPACKETCATEGORIES: log'un hangi tur paketleri tutacagi - player, npc, item,
+        packet'ten herhangi biri. Bos birakmak hepsini tutar, yani mevcut bir shard
+        degismez. Yaratik dolu bir sokak, izleyen oyuncuyla ilgili olandan cok daha
+        fazlasini onlar ve esyalari hakkinda gonderir; debug kosusunda log'un da
+        maliyetinin de buyuk kismi odur. "player,packet" demek, istemcinin sunucuyla
+        kendi konusmasini okunur birakir ve gerisini bicimlendirmeden once atar.
+
+CHANGE - Debug seviyesinde dinleyen bir sink yoksa hicbir sey bicimlendirilmiyor; paket
+        log'u acikken dosya sink'i de, onay gondermek uzere olan thread'de yazmak yerine
+        bir saniyelik tamponla calisiyor. Siradan kosu tamponsuz kaliyor: cokmeden onceki
+        son saniye, elde tutmaya deger olan kisimdir.
+
+        Giden paket basina olculdu: log kapali 0,1 us; bir filtre eledigi zaman 0,2 us;
+        yazildiginda 1,2 us. Bicimlendirme tek basina bir yuruyusu takilmaya hicbir zaman
+        yetmezdi; paket basina eszamanli disk yazmak baska bir meseledir ve tamponlama
+        onu ortadan kaldiriyor.
+
 [2026-09-19] - Sehre girerken muzik yok
 ----------------------------------------
 

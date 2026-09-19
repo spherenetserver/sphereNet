@@ -249,6 +249,19 @@ public static partial class Program
         _log.LogInformation("Registered {Count} DB connection(s)", config.DbConnections.Count);
     }
 
+    /// <summary>DEBUGPACKETCATEGORIES into a set. Null/empty keeps every category, so
+    /// a shard that says nothing gets what it had.</summary>
+    private static HashSet<string>? ParseDebugPacketCategories(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string part in raw.Split(',', StringSplitOptions.TrimEntries |
+                                              StringSplitOptions.RemoveEmptyEntries))
+            set.Add(part);
+        return set.Count == 0 ? null : set;
+    }
+
     private static HashSet<byte>? ParseDebugPacketOpcodes(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))

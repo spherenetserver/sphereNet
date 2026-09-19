@@ -536,11 +536,22 @@ public static partial class Program
                 var allowed = fileLogWhitelist;
                 lc = lc.Filter.ByIncludingOnly(e => allowed.Contains(e.Level));
             }
+            // Serilog's file sink writes on the calling thread. With the packet debug
+            // log on, that thread is the one about to send a movement acknowledgement,
+            // and every packet becomes a disk write: the session meant to explain a
+            // stutter can cause one. So the firehose case is buffered and flushed on an
+            // interval instead.
+            //
+            // Only that case. An ordinary run stays unbuffered, because the last second
+            // of log before a crash is exactly the part worth having.
+            bool firehose = _config.DebugPackets;
             lc.WriteTo.File(
                 filePath,
                 restrictedToMinimumLevel: fileLogMinLevel,
                 rollingInterval: RollingInterval.Day,
-                outputTemplate: fileTemplate);
+                outputTemplate: fileTemplate,
+                buffered: firehose,
+                flushToDiskInterval: firehose ? TimeSpan.FromSeconds(1) : null);
         });
 
         Log.Logger = serilogConfig.CreateLogger();

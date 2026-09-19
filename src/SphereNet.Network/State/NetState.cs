@@ -239,6 +239,16 @@ public sealed class NetState : IDisposable
 
     /// <summary>Debug mode — log all outgoing packets.</summary>
     public bool DebugPackets { get; set; }
+
+    /// <summary>The DebugPacketOpcodes whitelist, applied to sends as well as receives.
+    /// It used to reach only the receive side, so a shard narrowing the log still paid
+    /// to format every outgoing packet.</summary>
+    public HashSet<byte>? DebugPacketOpcodeFilter { get; set; }
+
+    /// <summary>DebugPacketCategories: which of player / npc / item / packet to keep.
+    /// Empty means all. A busy street sends far more about its creatures than about the
+    /// player, and that traffic is most of a debug log's volume and cost.</summary>
+    public HashSet<string>? DebugPacketCategoryFilter { get; set; }
     public Func<ReadOnlySpan<byte>, string>? PacketDebugClassifier { get; set; }
 
     public NetState(ILogger logger)
@@ -497,9 +507,16 @@ public sealed class NetState : IDisposable
             return;
         var raw = packet.Span;
         byte opcode = raw.Length > 0 ? raw[0] : (byte)0;
-        if (opcode == 0x73)   // skip Ping spam
+        if (!PacketDebugFilter.ShouldLog(DebugPackets, DebugPacketOpcodeFilter, opcode))
+            return;
+        // Nothing is formatted unless a sink is actually listening: the hex string is
+        // an allocation per packet, on the thread that is about to send a movement
+        // acknowledgement.
+        if (!_logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
             return;
         string cat = ClassifyPacket(raw);
+        if (!PacketDebugFilter.ShouldLogCategory(DebugPacketCategoryFilter, cat))
+            return;
         _logger.LogDebug("SEND #{Id} cat={Cat} 0x{Op:X2} len={Len} data=[{Data}]",
             Id, cat, opcode, raw.Length, FormatHex(raw, 32));
     }

@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - Turning the packet log on should not cost the game a step
+----------------------------------------
+
+FIX - The DebugPacketOpcodes whitelist reached only the receive side. Sends were logged
+        whatever it said, so a shard narrowing the log to a few opcodes still paid to
+        classify and format every outgoing packet - and what goes out at the highest
+        priority is the movement acknowledgement. The decision lived in two places, one
+        of them incomplete; it is one now, and it covers both directions.
+
+CHANGE - DEBUGPACKETCATEGORIES: which kinds of packet the log keeps - any of player,
+        npc, item, packet. Empty keeps all of them, so an existing shard is unchanged.
+        A street full of creatures sends far more about them and their gear than about
+        the player watching, so on a debug run that traffic is most of the log and most
+        of its cost. Naming player,packet leaves the client's own conversation with the
+        server readable and drops the rest before anything is formatted.
+
+CHANGE - Nothing is formatted unless a sink is listening at Debug, and with the packet
+        log on the file sink is buffered with a one-second flush instead of writing on
+        the thread that is about to send an acknowledgement. An ordinary run stays
+        unbuffered: the last second of log before a crash is the part worth having.
+
+        Measured per outgoing packet: 0.1 us with the log off, 0.2 us when a filter
+        drops it, 1.2 us when it is written. The formatting alone was never enough to
+        stutter a walk; a synchronous disk write per packet is a different matter, and
+        that is what the buffering removes.
+
 [2026-09-19] - No music on entering a city
 ----------------------------------------
 

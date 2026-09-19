@@ -731,6 +731,16 @@ public sealed class SphereConfig
     /// </summary>
     public string LogFileLevel { get; set; } = "Warning";
     public string DebugPacketOpcodes { get; set; } = "";
+
+    /// <summary>DEBUGPACKETCATEGORIES. Which kinds of packet the debug log keeps:
+    /// any of <c>player</c>, <c>npc</c>, <c>item</c>, <c>packet</c>, comma separated.
+    /// Empty keeps all of them.
+    ///
+    /// A street full of creatures sends far more about them and their gear than about
+    /// the player watching, so on a debug run that traffic is most of the log and most
+    /// of what it costs. "player,packet" leaves the client's own conversation with the
+    /// server readable and drops the rest before it is formatted.</summary>
+    public string DebugPacketCategories { get; set; } = "";
     public string CommandPrefix { get; set; } = ".";
     /// <summary>DEFAULTCOMMANDLEVEL. Player, as upstream gives a new account
     /// (CAccount.cpp:593); Guest is a level below what the command and script surface
@@ -1101,6 +1111,7 @@ public sealed class SphereConfig
         ScriptDebug = ini.GetBool(section, "ScriptDebug", ScriptDebug);
         LogFileLevel = ini.GetValue(section, "LogFileLevel") ?? LogFileLevel;
         DebugPacketOpcodes = ini.GetValue(section, "DebugPacketOpcodes") ?? DebugPacketOpcodes;
+        DebugPacketCategories = ini.GetValue(section, "DebugPacketCategories") ?? DebugPacketCategories;
         CommandPrefix = ini.GetValue(section, "CommandPrefix") ?? CommandPrefix;
         DefaultCommandLevel = ini.GetInt(section, "DefaultCommandLevel", DefaultCommandLevel);
         ChatFlags = ini.GetInt(section, "ChatFlags", ChatFlags);

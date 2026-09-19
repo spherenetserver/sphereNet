@@ -4055,6 +4055,7 @@ public static partial class Program
             _network.DefaultClientEra = _config.ClientEra;
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
+            _network.DebugPacketCategoryFilter = ParseDebugPacketCategories(_config.DebugPacketCategories);
             _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;
             _network.SlowPacketWarnMs = _config.SlowPacketWarnMs;
             _network.FloodDetectionCount = _config.FloodDetectionCount;

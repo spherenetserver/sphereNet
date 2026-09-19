@@ -47,6 +47,9 @@ public sealed class NetworkManager : IDisposable
     }
     public bool DebugPackets { get; set; }
     public HashSet<byte>? DebugPacketOpcodeFilter { get; set; }
+
+    /// <summary>DebugPacketCategories, handed to each connection.</summary>
+    public HashSet<string>? DebugPacketCategoryFilter { get; set; }
     /// <summary>Warn ([slow_packet]) when a single inbound packet handler runs longer
     /// than this many milliseconds. 0 disables. Attributes net_in loop stalls to a
     /// concrete opcode instead of an opaque phase total.</summary>
@@ -286,6 +289,8 @@ public sealed class NetworkManager : IDisposable
                 slot.Init(clientSocket);
                 OnStateInit(slot.RemoteEndPoint?.Address);
                 slot.DebugPackets = DebugPackets;
+                slot.DebugPacketOpcodeFilter = DebugPacketOpcodeFilter;
+                slot.DebugPacketCategoryFilter = DebugPacketCategoryFilter;
                 _logger.LogInformation("Connection #{Id} from {EP}", slot.Id, slot.RemoteEndPoint);
                 try
                 {
@@ -1009,22 +1014,8 @@ public sealed class NetworkManager : IDisposable
 
     public void Dispose() => Stop();
 
-    private bool ShouldLogPacketDebug(byte opcode)
-    {
-        if (!DebugPackets)
-            return false;
-
-        // Skip ping spam by default.
-        if (opcode == 0x73)
-            return false;
-
-        // Optional opcode whitelist. If empty/null => log all packets.
-        var filter = DebugPacketOpcodeFilter;
-        if (filter == null || filter.Count == 0)
-            return true;
-
-        return filter.Contains(opcode);
-    }
+    private bool ShouldLogPacketDebug(byte opcode) =>
+        State.PacketDebugFilter.ShouldLog(DebugPackets, DebugPacketOpcodeFilter, opcode);
 
     private static string FormatHex(ReadOnlySpan<byte> data, int maxBytes)
     {

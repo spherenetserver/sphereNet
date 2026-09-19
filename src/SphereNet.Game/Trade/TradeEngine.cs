@@ -1,4 +1,4 @@
-using SphereNet.Core.Types;
+﻿using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -759,7 +759,10 @@ public static class VendorEngine
         }
     }
 
-    private static bool IsGold(Item item) =>
+    /// <summary>Is this a coin pile? Public because half a dozen client paths asked the
+    /// same question in three different spellings, and the narrowest of them - the bare
+    /// graphic test - missed a pack whose gold is TYPE=t_gold on another graphic.</summary>
+    public static bool IsGold(Item item) =>
         item.ItemType == Core.Enums.ItemType.Gold || item.BaseId == 0x0EED;
 
     public static long CountGold(Character ch)

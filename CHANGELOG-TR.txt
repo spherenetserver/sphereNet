@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Bir karaktere verilen yigin, onun zaten tasidigi yiginla birlesiyor
+----------------------------------------
+
+FIX - Yalnizca istemcinin bir kaba birakma yolu yiginlari birlestiriyordu. Ust kaynak,
+        hicbir goz belirtilmediginde birlestirmeyi cantaya ekleme isleminin kendi icinde
+        yapar (CItemContainer::ContentAdd, CItemContainer.cpp:619-636) ve bir karaktere
+        esya veren her yol oradan gecer: esyayi kendi paperdoll'unuza birakmak, bir hediye,
+        bir geri donus, bir script teslimi. Bu yuzden kendi uzerine birakilan altin ve oklar
+        cantadaki yiginin yanina ayri duruyordu. Girerken tamamen yutulan para artik durum
+        cubugunu da yeniliyor; erken donus bunu atliyordu.
+
+FIX - Alti istemci yolu "bu altin mi?" sorusunu uc ayri yazimla soruyordu ve en dar olani
+        yalnizca para grafigini sinaviyordu - altini baska bir grafik uzerinde TYPE=t_gold
+        olan bir paket onlar icin altin degildi. Artik hepsi tek bir yuklemi soruyor.
+
+TESTS - TestHarness.GetQueuedPackets, oncelik kuyruklarindan derlenmis bir kopya donduruyor;
+        dolayisiyla uzerinde Clear() cagirmak kopyayi temizliyor ve daha onceki her paketi
+        yerinde birakiyordu. "Temizle, sonra ne gonderildigini dogrula" diyen dokuz yer bu
+        nedenle kendi hazirligini da goruyordu ve bunlardan biri, sabitledigi davranis
+        kaldirildiginda da geciyordu. Artik gercek kuyruklari temizleyen bir
+        ClearQueuedPackets var ve her yer onu kullaniyor.
+
 [2026-09-19] - Yavas bir tick artik surenin is mi GC duraklamasi mi oldugunu soyluyor
 ----------------------------------------
 

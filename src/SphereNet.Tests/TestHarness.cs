@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -83,6 +83,22 @@ internal static class TestHarness
             foreach (var pkt in queues[p])
                 combined.Enqueue(pkt);
         return combined;
+    }
+
+    /// <summary>Drop everything queued so far, so what follows is measured on its own.
+    ///
+    /// The snapshot above is a COPY assembled from the priority queues, so calling
+    /// Clear() on it cleared the copy and left every earlier packet in place - a test
+    /// that cleared and then asserted "the client was sent X" was also seeing whatever
+    /// the setup had sent, and passed with the behaviour it was pinning removed. This
+    /// clears the real queues.</summary>
+    public static void ClearQueuedPackets(NetState state)
+    {
+        var queues = (Queue<PacketBuffer>[])typeof(NetState)
+            .GetField("_queues", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(state)!;
+        foreach (var q in queues)
+            q.Clear();
     }
 
     public static void AttachCharacter(GameClient client, Character ch, Account? account = null)

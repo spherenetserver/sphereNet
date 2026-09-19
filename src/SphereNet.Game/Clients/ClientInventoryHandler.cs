@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -337,7 +337,7 @@ public sealed class ClientInventoryHandler
     /// path), and @NPCAcceptItem RETURN 1 cancels the native accept.</summary>
     private void HandleGiveItemToNpc(Character npc, Item item)
     {
-        bool isGold = item.ItemType == ItemType.Gold || item.BaseId == 0x0EED;
+        bool isGold = VendorEngine.IsGold(item);
 
         // Own pet / hireling.
         if (npc.HasOwner(_character!.Uid))
@@ -868,7 +868,7 @@ public sealed class ClientInventoryHandler
         _netState.Send(new PacketSound(item.GetPickupSound(),
             _character.X, _character.Y, _character.Z));
 
-        if (item.BaseId == 0x0EED)
+        if (VendorEngine.IsGold(item))
             SendCharacterStatus(_character);
     }
 
@@ -1501,7 +1501,7 @@ public sealed class ClientInventoryHandler
                     container.Uid.Value, item.Hue,
                     _netState.IsClientPost6017));
                 _netState.Send(new PacketDropAck());
-                if (item.BaseId == 0x0EED)
+                if (VendorEngine.IsGold(item))
                     SendCharacterStatus(_character);
                 return;
             }
@@ -1581,7 +1581,7 @@ public sealed class ClientInventoryHandler
                 // "train <skill>" offer buys skill points — 1 gp per 0.1, capped
                 // at the trainer's limit. Leftover gold bounces back.
                 if (!charTarget.IsPlayer &&
-                    (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED) &&
+                    VendorEngine.IsGold(item) &&
                     _character.TryGetTag("TRAIN_PENDING", out string? trainPending) &&
                     TryApplyTrainPayment(charTarget, item, trainPending!))
                 {
@@ -1594,7 +1594,7 @@ public sealed class ClientInventoryHandler
                 // wage balance — the hireling later drains this balance per
                 // period (NPC_CheckHirelingStatus), never the master's bank.
                 if (!charTarget.IsPlayer &&
-                    (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED) &&
+                    VendorEngine.IsGold(item) &&
                     TryApplyHirePayment(charTarget, item))
                 {
                     _netState.Send(new PacketDropAck());
@@ -1605,7 +1605,7 @@ public sealed class ClientInventoryHandler
                 // pending training offer buys skill points. Any change stays with
                 // the player's gold stack (TryPay trims the amount in place).
                 if (!charTarget.IsPlayer && _character != null &&
-                    (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED))
+                    VendorEngine.IsGold(item))
                 {
                     var trained = Trade.VendorTrainingEngine.TryPay(charTarget, _character, item);
                     if (trained != null)

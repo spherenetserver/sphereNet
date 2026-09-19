@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.Objects;
@@ -37,7 +37,7 @@ public sealed class ScriptPromptTests
         ch.IsPlayer = true;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, ch);
-        TestHarness.GetQueuedPackets(client.NetState).Clear();
+        TestHarness.ClearQueuedPackets(client.NetState);
         return (client, world);
     }
 

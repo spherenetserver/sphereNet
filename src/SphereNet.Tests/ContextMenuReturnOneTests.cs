@@ -146,7 +146,7 @@ public sealed class ContextMenuReturnOneTests
         ch.IsPlayer = true;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, ch);
-        TestHarness.GetQueuedPackets(client.NetState).Clear();
+        TestHarness.ClearQueuedPackets(client.NetState);
 
         client.WorldFeatures.HandleContextMenuResponse(ch.Uid.Value, 1);
 

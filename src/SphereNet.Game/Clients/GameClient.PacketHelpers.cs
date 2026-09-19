@@ -1031,6 +1031,37 @@ public sealed partial class GameClient
             return;
         }
 
+        // Upstream's no-point ContentAdd stacks on the way in: a pile handed to a
+        // character merges with the pile already in their pack, and only the client's
+        // own drop-with-coordinates names a slot and skips the merge
+        // (CItemContainer::ContentAdd, CItemContainer.cpp:619-636 - pt.m_x < 0 &&
+        // pt.m_y < 0). Every path that hands a character an item goes through here:
+        // dropping it on their own paperdoll, a gift, a bounce, a script delivery. None
+        // of them merged, so gold and arrows dropped on oneself sat beside the pile
+        // already there.
+        {
+            var grown = new List<Item>();
+            int left = Item.StackInto(pack, item, grown);
+            foreach (var pile in grown)
+                SendContainerItemPacket(new PacketContainerItem(
+                    pile.Uid.Value, pile.DispIdFull, 0,
+                    pile.Amount, pile.X, pile.Y,
+                    pack.Uid.Value, pile.Hue, _netState.IsClientPost6017));
+
+            if (left <= 0)
+            {
+                // Fully absorbed. Amount clamps to a minimum of one, so the remainder
+                // is never written back as zero - the item is simply gone.
+                _world.RemoveItem(item);
+                if (grown.Count > 0 && target == _character &&
+                    VendorEngine.IsGold(grown[0]))
+                    SendCharacterStatus(_character);
+                return;
+            }
+            if (left != item.Amount)
+                item.Amount = (ushort)left;
+        }
+
         if (!pack.TryAddItem(item))
         {
             _world.PlaceItemWithDecay(item, target.Position);
@@ -1049,7 +1080,7 @@ public sealed partial class GameClient
             pack.Uid.Value, item.Hue,
             _netState.IsClientPost6017));
 
-        if (item.BaseId == 0x0EED && target == _character)
+        if (VendorEngine.IsGold(item) && target == _character)
             SendCharacterStatus(_character);
     }
 

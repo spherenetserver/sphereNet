@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -187,6 +187,106 @@ public sealed class ContainerDropStackMergeTests
         fresh.TrySetProperty("MAXAMOUNT", "600");
         b.World.PlaceItem(fresh, b.Me.Position);
         fresh.TrySetProperty("CONT", $"0{b.Pack.Uid.Value:X}");
+
+        var piles = b.Pack.Contents.Where(i => i.ItemType == ItemType.Gold)
+                                   .Select(i => (int)i.Amount).OrderBy(a => a).ToList();
+        Assert.Equal([150, 600], piles);
+    }
+
+    /// <summary>Dropping a pile on YOURSELF - the paperdoll, or your own body - merges
+    /// it too. Upstream's pack add for a character takes no slot at all
+    /// (GetPackSafe()->ContentAdd, the two-argument overload, which stacks), and every
+    /// path that hands a character an item goes through it: the drop on oneself, a gift
+    /// from an NPC, a bounce. None of them merged here, so gold and arrows dropped on
+    /// oneself sat beside the pile already in the pack - which is how a shard reported
+    /// it, for both.</summary>
+    [Fact]
+    public void GoldDroppedOnYourselfJoinsThePile()
+    {
+        var b = Build(8917);
+        var have = Gold(b, 500);
+        Assert.True(b.Pack.TryAddItem(have));
+
+        var looted = Looted(b, 250);
+        b.Client.Inventory.HandleItemPickup(looted.Uid.Value, 0);
+        b.Client.Inventory.HandleItemDrop(looted.Uid.Value, -1, -1, 0, b.Me.Uid.Value);
+
+        var piles = b.Pack.Contents.Where(i => i.ItemType == ItemType.Gold)
+                                   .Select(i => (int)i.Amount).ToList();
+        Assert.Equal([750], piles);
+    }
+
+    /// <summary>Arrows behave the same way - the report named them alongside gold, and
+    /// nothing about the merge is specific to coin.</summary>
+    [Fact]
+    public void ArrowsDroppedOnYourselfJoinThePile()
+    {
+        var b = Build(8918);
+        b.World.MapData!.SetSyntheticItemTile(0x0F3F, new SphereNet.MapData.Tiles.ItemTileData
+        {
+            Flags = SphereNet.MapData.Tiles.TileFlag.Generic, Weight = 0
+        });
+
+        Item Arrows(ushort n)
+        {
+            var it = b.World.CreateItem();
+            it.BaseId = 0x0F3F;
+            it.ItemType = ItemType.WeaponArrow;
+            it.Amount = n;
+            return it;
+        }
+
+        var have = Arrows(40);
+        Assert.True(b.Pack.TryAddItem(have));
+
+        var pouch = b.World.CreateItem();
+        pouch.BaseId = 0x0E76; pouch.ItemType = ItemType.Container;
+        Assert.True(b.Pack.TryAddItem(pouch));
+        var loose = Arrows(15);
+        Assert.True(pouch.TryAddItem(loose));
+
+        b.Client.Inventory.HandleItemPickup(loose.Uid.Value, 0);
+        b.Client.Inventory.HandleItemDrop(loose.Uid.Value, -1, -1, 0, b.Me.Uid.Value);
+
+        var piles = b.Pack.Contents.Where(i => i.ItemType == ItemType.WeaponArrow)
+                                   .Select(i => (int)i.Amount).ToList();
+        Assert.Equal([55], piles);
+    }
+
+    /// <summary>Coin absorbed into a pile on the way into the pack still redraws the
+    /// status bar. The add returns early once the pile has taken everything, and the
+    /// status send sat after it - so the merge itself would have stopped the figure from
+    /// moving.</summary>
+    [Fact]
+    public void AFullyAbsorbedPileStillRedrawsTheStatusBar()
+    {
+        var b = Build(8919);
+        var have = Gold(b, 500);
+        Assert.True(b.Pack.TryAddItem(have));
+        var looted = Looted(b, 250);
+
+        b.Client.Inventory.HandleItemPickup(looted.Uid.Value, 0);
+        TestHarness.ClearQueuedPackets(b.Client.NetState);
+        b.Client.Inventory.HandleItemDrop(looted.Uid.Value, -1, -1, 0, b.Me.Uid.Value);
+
+        Assert.Contains(TestHarness.GetQueuedPackets(b.Client.NetState),
+            pkt => pkt.Span[0] == 0x11);   // 0x11 StatusFull carries the gold
+    }
+
+    /// <summary>The remainder still lands in the pack when the pile cannot take it
+    /// all - a drop on oneself must never eat the difference.</summary>
+    [Fact]
+    public void ADropOnYourselfLeavesTheRemainder()
+    {
+        var b = Build(8921);
+        var have = Gold(b, 500);
+        have.TrySetProperty("MAXAMOUNT", "600");
+        Assert.True(b.Pack.TryAddItem(have));
+
+        var looted = Looted(b, 250);
+        looted.TrySetProperty("MAXAMOUNT", "600");
+        b.Client.Inventory.HandleItemPickup(looted.Uid.Value, 0);
+        b.Client.Inventory.HandleItemDrop(looted.Uid.Value, -1, -1, 0, b.Me.Uid.Value);
 
         var piles = b.Pack.Contents.Where(i => i.ItemType == ItemType.Gold)
                                    .Select(i => (int)i.Amount).OrderBy(a => a).ToList();

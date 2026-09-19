@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Movement;
@@ -287,7 +287,7 @@ public class MovementTests
             var state = client.NetState;
 
             client.HandleMove((byte)Direction.East, 0, 0);
-            TestHarness.GetQueuedPackets(state).Clear();
+            TestHarness.ClearQueuedPackets(state);
             now += 1;
             client.HandleMove((byte)Direction.East, 1, 0);
 
@@ -329,7 +329,7 @@ public class MovementTests
             var state = client.NetState;
 
             client.HandleMove((byte)Direction.East, 0, 0);
-            TestHarness.GetQueuedPackets(state).Clear();
+            TestHarness.ClearQueuedPackets(state);
             now += MovementEngine.GetMoveDelay(false, false) + 1;
             client.HandleMove((byte)Direction.East, 1, 0);
 
@@ -374,7 +374,7 @@ public class MovementTests
             {
                 client.HandleMove((byte)Direction.East, seq, 0);
                 Assert.DoesNotContain(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] == 0x21);
-                TestHarness.GetQueuedPackets(state).Clear();
+                TestHarness.ClearQueuedPackets(state);
                 now += delay - GameClient.MoveToleranceMs;
             }
 
@@ -707,7 +707,7 @@ public class MovementTests
                     }
 
                     rejects += TestHarness.GetQueuedPackets(state).Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
-                    TestHarness.GetQueuedPackets(state).Clear();
+                    TestHarness.ClearQueuedPackets(state);
                 }
 
                 Assert.Equal(0, rejects);

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -62,7 +62,7 @@ public sealed class VendorWindowCloseTests
         coins.Amount = 5000;
         pack.AddItem(coins);
 
-        TestHarness.GetQueuedPackets(client.NetState).Clear();
+        TestHarness.ClearQueuedPackets(client.NetState);
         return (client, vendor, goods, world);
     }
 

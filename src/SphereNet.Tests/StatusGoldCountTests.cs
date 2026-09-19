@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -58,7 +58,7 @@ public sealed class StatusGoldCountTests
     /// <summary>Read the gold field back off the status packet the client was sent.</summary>
     private static int StatusGold(SphereNet.Game.Clients.GameClient client)
     {
-        TestHarness.GetQueuedPackets(client.NetState).Clear();
+        TestHarness.ClearQueuedPackets(client.NetState);
         client.SendCharacterStatus(client.Character!);
         foreach (var buf in TestHarness.GetQueuedPackets(client.NetState))
         {

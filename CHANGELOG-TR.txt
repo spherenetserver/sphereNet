@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Client'in tasip okudugu sayaclar
+----------------------------------------
+
+CHANGE - Kac girdi gelecegini beyan eden her giden paket, artik gercekten yazdigiyla
+        karsilastiriliyor. Bu, client'i sasirtmak yerine coketen hatadir: client sayaci
+        okur ve o kadar sabit boyutlu girdi okur; dolayisiyla govdeden buyuk bir sayac
+        paketin sonunu tasip okur. Kucuk bir sayac daha hafiftir ama yine yanlistir -
+        arta kalan baytlar baska bir paketin basi sanilir ve akis bozulur.
+
+        Bugun beside dogruyu tasiyor (0x3C konteyner icerigi, 0x74 ve 0x9E satici
+        listeleri, 0x89 ceset ekipmani, 0x7C menu) ve her birinin baslik uzunlugu
+        govdesiyle uyusuyor. Duzeltilecek bir sey bulunmadi; denetim, sonrakinin sessizce
+        eklenememesi icin burada. 0x3C sayacini bir artirip dustugunu gorerek kanitlandi.
+
+        Bunun icin once iki statik supurme denendi ve gurultuden baska bir sey uretmedi:
+        bir dongunun onunde yazilan bir serial ya da renk, duzenli ifadeye tam olarak
+        sayac gibi gorunuyor. Onun yerine paketlere dogrudan soruldu.
+
 [2026-09-19] - Sunucu, nedenini soylemeden olebiliyordu
 ----------------------------------------
 

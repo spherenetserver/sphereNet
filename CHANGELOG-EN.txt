@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - The counts a client reads past
+----------------------------------------
+
+CHANGE - Every outgoing packet that declares how many entries follow is now checked
+        against what it actually wrote. That is the mistake which crashes a client
+        rather than confusing it: the client reads the count and then reads that many
+        fixed-size entries, so a count larger than the body reads past the end of the
+        packet. A count that is too small is milder and still wrong - the trailing bytes
+        are parsed as the start of another packet and the stream desyncs.
+
+        All five carry the truth today (0x3C container contents, 0x74 and 0x9E vendor
+        lists, 0x89 corpse equipment, 0x7C menu), and each one's header length matches
+        its body. Nothing was found to fix; the check is here so the next one cannot be
+        added quietly. Proved by inflating the 0x3C count by one and watching it fail.
+
+        Two static sweeps for this were tried first and produced nothing but noise: a
+        serial or a hue written before a loop looks exactly like a count to a regular
+        expression. The packets were asked directly instead.
+
 [2026-09-19] - The server could die without saying why
 ----------------------------------------
 

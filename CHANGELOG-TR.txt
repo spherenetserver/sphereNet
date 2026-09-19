@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Bir seye uzanip uzanamadiginiza karar veren CAN bayraklari okunuyor
+----------------------------------------
+
+FIX - CAN_I_DCIGNORELOS, CAN_I_DCIGNOREDIST, uzanan taraftaki CAN_C_ karsiliklari ve
+        CAN_I_FORCEDC bayrak enum'una ayristiriliyor ve sonra hic danisilmiyordu. Ust
+        kaynak dorduna da dokunma sinavinin icinde bakar (CanTouch,
+        CCharStatus.cpp:1415-1430) ve besincisi icin sinavi tumuyle kaldirir
+        (Cmd_Use_Item, CClientUse.cpp:31).
+
+        Gonderilen paket bunlari istiyor: her tillerman CAN=can_i_dcignorelos tasiyor ve
+        bir geminin kendi govdesi, dumeni ile kiyidaki herkesin arasinda duruyor - bu
+        yuzden tillermana rihtimdan cift tiklamak, ki bir gemiyi deed'e cevirmenin yolu
+        budur ve geminin DISINDAN yapilmak zorundadir, her seferinde reddediliyordu. Okculuk
+        hedefi de CAN=can_i_dcignoredist tasiyor.
+
+FIX - Reddedilen bir cift tiklama, sebebi ne olursa olsun "Target is too far away" cevabini
+        veriyordu; boylece bir gorus hatti reddi mesafe olarak bildiriliyordu. Artik ust
+        kaynagin verdigi cevabi veriyor: "You can't reach that." ya da oluyken hayalet
+        satiri (CClientUse.cpp:97).
+
 [2026-09-19] - Dunyaya geri donen bir yaratik programa da geri donuyor
 ----------------------------------------
 

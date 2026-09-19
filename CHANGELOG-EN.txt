@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - The CAN flags that decide whether you can reach something are read
+----------------------------------------
+
+FIX - CAN_I_DCIGNORELOS, CAN_I_DCIGNOREDIST, their CAN_C_ counterparts on the reacher, and
+        CAN_I_FORCEDC were parsed into the flag enum and then never consulted. Upstream
+        checks all four inside the touch test (CanTouch, CCharStatus.cpp:1415-1430) and
+        clears the test outright for the fifth (Cmd_Use_Item, CClientUse.cpp:31).
+
+        The shipped pack asks for them: every tillerman carries CAN=can_i_dcignorelos, and
+        a ship's own hull stands between its tiller and anyone on the shore - so
+        double-clicking the tillerman from the dock, which is how a ship is turned back
+        into a deed and has to be done from OFF the ship, was refused every time. The
+        archery butte carries CAN=can_i_dcignoredist.
+
+FIX - A refused double-click answered "Target is too far away" whatever the reason, so a
+        line-of-sight refusal was reported as distance. It now answers what upstream
+        answers: "You can't reach that.", or the ghost line when dead (CClientUse.cpp:97).
+
 [2026-09-19] - A creature that comes back into the world goes back on the schedule
 ----------------------------------------
 

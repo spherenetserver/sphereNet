@@ -237,7 +237,10 @@ public sealed class ClientItemUseHandler
 
             FaceUsePoint(usePoint);
 
-            if (_character.PrivLevel < PrivLevel.GM)
+            // CAN_I_FORCEDC skips the reach test outright, priv level aside
+            // (Cmd_Use_Item clears fTestTouch for it, CClientUse.cpp:31).
+            if (_character.PrivLevel < PrivLevel.GM &&
+                (CanFlagsOf(item) & Core.Enums.CanFlags.I_ForceDC) == 0)
             {
                 // Loose ground item: simple tile-distance reach. A contained item
                 // must be reachable through its top parent (Source-X CClientUse:
@@ -247,7 +250,12 @@ public sealed class ClientItemUseHandler
                 bool reachable = CanReachTargetItem(item);
                 if (!reachable)
                 {
-                    SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                    // Upstream answers a failed touch with REACH_FAIL, or REACH_GHOST
+                    // for the dead (CClientUse.cpp:97). "Target is too far away" named
+                    // one of the two reasons and misreported the other: the tillerman
+                    // refusal was line of sight, and it read as distance.
+                    SysMessage(ServerMessages.Get(
+                        _character.IsDead ? Msg.ReachGhost : Msg.ReachFail));
                     return;
                 }
             }
@@ -2345,11 +2353,42 @@ public sealed class ClientItemUseHandler
         ItemType.WeaponBow or ItemType.WeaponXBow or ItemType.WeaponMaceCrook or
         ItemType.WeaponMacePick or ItemType.WeaponThrowing or ItemType.WeaponWhip;
 
+    /// <summary>The CAN flags an item declares, from its definition.</summary>
+    private static Core.Enums.CanFlags CanFlagsOf(Item item) =>
+        DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item))?.Can
+            ?? Core.Enums.CanFlags.None;
+
+    /// <summary>Whether the reach test skips line of sight, or skips distance, for this
+    /// item and this reacher.
+    ///
+    /// Upstream's touch test consults three CAN flags before refusing: the item's
+    /// CAN_I_DCIGNORELOS / CAN_I_DCIGNOREDIST and the reacher's CAN_C_DCIGNORELOS /
+    /// CAN_C_DCIGNOREDIST (CanTouch, CCharStatus.cpp:1415-1430). Every one of them was
+    /// parsed into the flag enum and then never read, so a definition that asked for them
+    /// got nothing - and the shipped pack asks on all twelve tillermen (a ship's own hull
+    /// stands between the tiller and anyone on the shore, so redeeding from the dock was
+    /// refused outright) and on the archery butte (shot at from a bow's range).</summary>
+    private (bool IgnoreLos, bool IgnoreDist) ReachExemptions(Item item)
+    {
+        var itemCan = CanFlagsOf(item);
+        var charCan = _character != null
+            ? CharDefHelper.GetCanFlags(_character)
+            : Core.Enums.CanFlags.None;
+        return ((itemCan & Core.Enums.CanFlags.I_DcIgnoreLOS) != 0 ||
+                (charCan & Core.Enums.CanFlags.C_DcIgnoreLOS) != 0,
+                (itemCan & Core.Enums.CanFlags.I_DcIgnoreDist) != 0 ||
+                (charCan & Core.Enums.CanFlags.C_DcIgnoreDist) != 0);
+    }
+
     private bool CanReachTargetItem(Item? obj)
     {
         if (obj == null || _character == null) return false;
         var topCont = GetTopContainer(obj);
         if (topCont == null) return false;
+
+        // The flags are read off the object that was dclicked, as upstream reads them off
+        // the item it was handed - not off the top-level container it resolves to.
+        var (ignoreLos, ignoreDist) = ReachExemptions(obj);
 
         if (topCont.ContainedIn.IsValid)
         {
@@ -2359,16 +2398,17 @@ public sealed class ClientItemUseHandler
                 if (wearer == _character) return true;
                 if (wearer.MapIndex != _character.MapIndex) return false;
                 if (_character.PrivLevel >= PrivLevel.GM) return true;
-                return _character.Position.GetDistanceTo(wearer.Position) <= 3 &&
-                    _world.CanSeeLOS(_character.Position, wearer.Position);
+                return (ignoreDist ||
+                        _character.Position.GetDistanceTo(wearer.Position) <= 3) &&
+                    (ignoreLos || _world.CanSeeLOS(_character.Position, wearer.Position));
             }
         }
 
         Point3D point = topCont.Position;
         if (point.Map != _character.MapIndex) return false;
         if (_character.PrivLevel >= PrivLevel.GM) return true;
-        return _character.Position.GetDistanceTo(point) <= 3 &&
-            _world.CanSeeLOS(_character.Position, point);
+        return (ignoreDist || _character.Position.GetDistanceTo(point) <= 3) &&
+            (ignoreLos || _world.CanSeeLOS(_character.Position, point));
     }
 
     private void DetachFromItemSpawner(Item item)

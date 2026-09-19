@@ -459,6 +459,13 @@ public static partial class Program
     {
         _tickCounter++;
         long tickStart = Stopwatch.GetTimestamp();
+        // A slow tick reads the same whether the work was slow or the runtime suspended
+        // the thread mid-tick, so the report carries both: the pause the collector took
+        // during this tick and the collections that caused it.
+        long tickGcPauseUs = GcPauseUs();
+        int tickGen0 = GC.CollectionCount(0);
+        int tickGen1 = GC.CollectionCount(1);
+        int tickGen2 = GC.CollectionCount(2);
         try
         {
             if (!_multicoreRuntimeEnabled && _multicoreFallbackMs > 0
@@ -519,7 +526,7 @@ public static partial class Program
                 _slowTickCount++;
                 _lastSlowTickDominantPhase = GetDominantTickPhase();
                 _log.LogWarning(
-                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms(worst {FlushStep} {FlushStepMs}ms)",
+                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms(worst {FlushStep} {FlushStepMs}ms gc={FlushStepGcMs}ms) gc={GcPauseMs}ms/{Gen0}/{Gen1}/{Gen2} heap={HeapMB}MB",
                     _multicoreRuntimeEnabled ? "multicore" : "single",
                     _tickCounter,
                     (totalUs / 1000.0).ToString("F1"),
@@ -540,7 +547,13 @@ public static partial class Program
                     (_telemetryPostApplyUs / 1000.0).ToString("F1"),
                     (_telemetryFlushUs / 1000.0).ToString("F1"),
                     _flushDominantStep.Length > 0 ? _flushDominantStep : "-",
-                    (_flushDominantUs / 1000.0).ToString("F1"));
+                    (_flushDominantUs / 1000.0).ToString("F1"),
+                    (_flushDominantGcUs / 1000.0).ToString("F1"),
+                    ((GcPauseUs() - tickGcPauseUs) / 1000.0).ToString("F1"),
+                    GC.CollectionCount(0) - tickGen0,
+                    GC.CollectionCount(1) - tickGen1,
+                    GC.CollectionCount(2) - tickGen2,
+                    (GC.GetTotalMemory(false) / (1024 * 1024)).ToString());
             }
 
             // Periodic tick stats: log average and max tick time every 30 seconds
@@ -1216,16 +1229,26 @@ public static partial class Program
     /// `dominant=flush flush=103.3ms` named the bucket and nothing inside it.</summary>
     private static string _flushDominantStep = "";
     private static long _flushDominantUs;
+    private static long _flushDominantGcUs;
 
-    /// <summary>Time one maintenance step and keep it if it is the pass's worst.</summary>
+    /// <summary>Total GC pause the process has taken, in microseconds. A collection
+    /// suspends this thread wherever it happens to be, so the pause lands on whichever
+    /// step was running - and the step gets blamed for work it never did. Reading the
+    /// runtime's own pause counter across a step separates the two.</summary>
+    private static long GcPauseUs() => (long)GC.GetTotalPauseDuration().TotalMicroseconds;
+
+    /// <summary>Time one maintenance step and keep it if it is the pass's worst, along
+    /// with the part of it that was a GC pause rather than the step's own work.</summary>
     private static void FlushStep(string name, Action step)
     {
         long t0 = Stopwatch.GetTimestamp();
+        long gc0 = GcPauseUs();
         step();
         long us = ToMicroseconds(Stopwatch.GetTimestamp() - t0);
         if (us > _flushDominantUs)
         {
             _flushDominantUs = us;
+            _flushDominantGcUs = GcPauseUs() - gc0;
             _flushDominantStep = name;
         }
     }
@@ -1235,6 +1258,7 @@ public static partial class Program
         long now = Environment.TickCount64;
         _flushDominantStep = "";
         _flushDominantUs = 0;
+        _flushDominantGcUs = 0;
         FlushStep("guards", () => CleanupSummonedGuards(now));
         FlushStep("decay", () => RunDecayCatchup(now));
         FlushStep("doors", () => CloseExpiredStaticDoors(now));

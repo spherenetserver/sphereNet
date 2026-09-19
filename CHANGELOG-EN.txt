@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - A slow tick now says whether the time was work or a GC pause
+----------------------------------------
+
+CHANGE - The slow-tick report blamed whichever maintenance step happened to be running
+        when the runtime suspended the thread, so a live report of
+        `flush=206.8ms(worst weather 206.7ms)` accused a step that does almost nothing on
+        an idle shard. The line now carries the collector's own pause counter - the pause
+        inside the worst step, the pause across the whole tick, the collections per
+        generation that caused it, and the managed heap size - so the two are told apart
+        from the log alone.
+
+PERF  - The weather tick allocated an expiry list on every tick, ten times a second for
+        the life of the shard, even with NOWEATHER set and nothing stored to expire. It
+        now allocates nothing at all when there is nothing to expire, and the region
+        broadcast skips the copy for sectors that hold no characters - a region spanning
+        a continent walked hundreds of them.
+
 [2026-09-19] - Banked gold was gold the character did not have
 ----------------------------------------
 

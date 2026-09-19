@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Yavas bir tick artik surenin is mi GC duraklamasi mi oldugunu soyluyor
+----------------------------------------
+
+CHANGE - Yavas-tick raporu, calisma zamani is parcacigini askiya aldiginda o an hangi
+        bakim adimi calisiyorsa onu sucluyordu; bu yuzden canli bir raporda gorulen
+        `flush=206.8ms(worst weather 206.7ms)` satiri, bos bir shard'da neredeyse hic is
+        yapmayan bir adimi isaret ediyordu. Satir artik toplayicinin kendi duraklama
+        sayacini tasiyor: en kotu adimin icindeki duraklama, tick boyunca toplam
+        duraklama, buna yol acan nesil basina toplama sayilari ve yonetilen yigin boyutu -
+        boylece ikisi yalnizca logdan ayirt edilebiliyor.
+
+PERF  - Hava durumu tick'i her tick'te, shard'in omru boyunca saniyede on kez, bir sona-erme
+        listesi ayiriyordu; NOWEATHER acik ve sona erecek hicbir sey saklanmamis olsa bile.
+        Artik sona erecek bir sey yoksa hicbir sey ayirmiyor ve bolge yayini hic karakter
+        tutmayan sektorler icin kopyayi atliyor - bir kitayi kaplayan bolge bunlardan
+        yuzlercesini yuruyordu.
+
 [2026-09-19] - Bankadaki altin, karakterin sahip olmadigi altindi
 ----------------------------------------
 

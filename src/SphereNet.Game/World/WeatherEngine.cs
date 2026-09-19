@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Core.Configuration;
 
@@ -142,19 +142,26 @@ public sealed class WeatherEngine
     {
         long now = Environment.TickCount64;
 
-        // Expire region weather
-        var expired = new List<(byte, uint)>();
+        // Expire region weather. The list is built only when something has actually
+        // expired: this runs ten times a second for the life of the shard, and on a
+        // shard with NOWEATHER (the shipped default) the dictionary is always empty, so
+        // an unconditional allocation here was pure per-tick garbage feeding the
+        // collector that later pauses a tick.
+        List<(byte, uint)>? expired = null;
         foreach (var (key, state) in _regionWeather)
         {
             if (now >= state.EndTick)
-                expired.Add(key);
+                (expired ??= []).Add(key);
         }
-        foreach (var key in expired)
+        if (expired != null)
         {
-            var state = _regionWeather[key];
-            _regionWeather.Remove(key);
-            if (state.Region != null)
-                OnWeatherChanged?.Invoke(state.Region, WeatherType.None, 0, 20);
+            foreach (var key in expired)
+            {
+                var state = _regionWeather[key];
+                _regionWeather.Remove(key);
+                if (state.Region != null)
+                    OnWeatherChanged?.Invoke(state.Region, WeatherType.None, 0, 20);
+            }
         }
 
         // Random weather generation — only for regions that actually

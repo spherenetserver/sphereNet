@@ -1317,9 +1317,16 @@ public sealed class GameWorld
 
         for (int sx = sx1; sx <= sx2; sx++)
             for (int sy = sy1; sy <= sy2; sy++)
-                foreach (var ch in grid[sx, sy].Characters.ToList())
+            {
+                // The copy is deliberate - a caller's loop body may move or delete the
+                // character - but an EMPTY sector needs no copy, and a region spanning
+                // a continent walks hundreds of them.
+                var sector = grid[sx, sy];
+                if (sector.Characters.Count == 0) continue;
+                foreach (var ch in sector.Characters.ToList())
                     if (!ch.IsDeleted && FindRegion(ch.Position) == region)
                         yield return ch;
+            }
     }
 
     public IEnumerable<Character> GetCharsInRange(Point3D center, int range = 18)

@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - The save's snapshot grew its own lists
+----------------------------------------
+
+CHANGE - The capture phase is the one part of a save that holds the world still, and most
+        of it had already been pre-allocated for exactly that reason - a reusable writer
+        per thread, exact-size slot arrays, with a comment naming the symptom: gen0 and
+        gen1 collections inside the single loop iteration that captures, the GC pause
+        accounting for most of the pause. The two record lists were then left to grow from
+        nothing, which for 180,000 items is eighteen reallocations whose last few copy
+        megabyte arrays. They are sized up front now, from one extra pass over an array
+        that was already being walked twice.
+
+        Measured at 22,000 objects: 14ms, 21.6MB, no collections at all. A test reports
+        that figure and pins the shape - the lists must not be grown while filling, which
+        a doubling series fails at 8192 against 5000 records.
+
+NOTE - Two other lines from the same shard log were looked at and left alone. The 105ms
+        first tick and the 55ms character-select are boot and login costs paid once. The
+        51.8ms across 37 NPC decisions is sector-wake work: the notification path itself
+        only flags the moved character's own client, so what remains is the AI acting for
+        creatures that have just woken, not a scan that could be removed. Saying so is
+        better than inventing an optimisation for it.
+
 [2026-09-19] - Three ways a script's value was thrown away
 ----------------------------------------
 

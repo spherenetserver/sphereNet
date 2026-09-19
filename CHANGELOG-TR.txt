@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Save'in anlik goruntusu kendi listelerini buyutuyordu
+----------------------------------------
+
+CHANGE - Yakalama fazi, bir save'in dunyayi hareketsiz tuttugu tek kismidir ve buyuk
+        bolumu tam bu nedenle onceden ayrilmisti - thread basina yeniden kullanilan bir
+        yazici, tam boyutlu yuva dizileri ve belirtiyi adlandiran bir yorum: yakalamayi
+        yapan tek dongu adiminin icinde gen0 ve gen1 toplamalari, duraklamanin buyuk
+        kismini olusturan GC. Iki kayit listesi ise sifirdan buyumeye birakilmisti; bu da
+        180.000 esya icin, son birkaci megabaytlik dizileri kopyalayan on sekiz yeniden
+        ayirma demek. Artik bastan boyutlandiriliyorlar; zaten iki kez yurunen bir dizi
+        uzerinde tek bir fazladan gecisle.
+
+        22.000 nesnede olculdu: 14ms, 21,6MB, hic toplama yok. Bir test bu rakami
+        bildiriyor ve sekli sabitliyor - listeler dolarken buyutulmemeli; ikiye katlama
+        serisi 5000 kayda karsi 8192 ile bunu gecemiyor.
+
+NOT - Ayni shard log'undan iki satir daha incelendi ve dokunulmadi. 105ms'lik ilk tick ve
+        55ms'lik karakter secimi, bir kez odenen boot ve giris maliyetleri. 37 NPC karari
+        icindeki 51,8ms ise sektor uyanma isi: bildirim yolunun kendisi yalnizca hareket
+        eden karakterin kendi istemcisini isaretliyor, yani geriye kalan sey, az once
+        uyanmis yaratiklar icin AI'nin calismasi - kaldirilabilecek bir tarama degil.
+        Bunu soylemek, ona bir iyilestirme uydurmaktan iyidir.
+
 [2026-09-19] - Bir script'in degerinin cope gitmesinin uc yolu
 ----------------------------------------
 

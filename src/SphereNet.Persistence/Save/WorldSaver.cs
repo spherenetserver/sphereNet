@@ -349,8 +349,19 @@ public sealed class WorldSaver
         var byUid = scope.HasValue
             ? allObjects.ToDictionary(obj => obj.Uid.Value)
             : null;
-        var items = new List<SaveRecord>();
-        var chars = new List<SaveRecord>();
+        // Sized up front. Everything else in this capture was pre-allocated to stop the
+        // doubling, and these two were left to grow: 180,000 adds is eighteen
+        // reallocations whose last few copy megabyte arrays, on the thread holding the
+        // world still. Counting the two kinds here costs one pass over an array that is
+        // walked twice below anyway.
+        int itemCount = 0, charCount = 0;
+        foreach (var obj in allObjects)
+        {
+            if (obj is Item) itemCount++;
+            else if (obj is Character) charCount++;
+        }
+        var items = new List<SaveRecord>(itemCount);
+        var chars = new List<SaveRecord>(charCount);
         long now = Environment.TickCount64;
 
         // Vendor SELL stock is virtual: the container equipped at LAYER 26 and

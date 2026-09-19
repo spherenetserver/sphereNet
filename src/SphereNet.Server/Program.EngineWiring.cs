@@ -2505,6 +2505,7 @@ public static partial class Program
                 return ((byte)w.Type, w.Intensity, w.Temperature);
             };
             VendorEngine.World = _world;
+            VendorEngine.PayFromPackOnly = _config.PayFromPackOnly;
             // A capped payout is worth a line: it means a script asked for more gold
             // than one call may hand over, and the difference has gone nowhere.
             VendorEngine.OnGoldCapped = msg => _log?.LogWarning("[gold] {Msg}", msg);

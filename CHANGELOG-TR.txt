@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Bankadaki altin, karakterin sahip olmadigi altindi
+----------------------------------------
+
+FIX - Altinin sayilmasi ve harcanmasi kosulsuz olarak cantaya kisitliydi. Ust kaynak
+        PAYFROMPACKONLY'yi false birakir (CServerConfig.cpp:237) ve sayimi KARAKTER
+        uzerinden yapar (send.cpp:243) - banka kutusu giyili oldugu icin bankadaki altin
+        hem sayilir hem harcanir. Daha kisitlayici olan ayar, kimse secmeden
+        uygulaniyordu: altinini bankaya koyan bir oyuncu hic parasi yokmus gibi
+        davraniliyordu; bir shard'in bildirdigi de buydu.
+
+        Canta once harcaniyor, yani bozuk para bankaya uzanilmadan once gidiyor;
+        PAYFROMPACKONLY=1 isteyen bir shard icin eski davranisi geri getiriyor. Durum
+        cubugu kendiliginden uyuyor, cunku zaten ayni sayaci okuyor.
+
 [2026-09-19] - Tek NPC yanit verir, duyan her NPC degil
 ----------------------------------------
 

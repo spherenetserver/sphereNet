@@ -726,44 +726,79 @@ public static class VendorEngine
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>
+    /// <summary>PAYFROMPACKONLY. False, as upstream (CServerConfig.cpp:237): a character
+    /// pays from everything they CARRY, and the bank box is worn, so banked gold is
+    /// spendable. True restricts it to the backpack.
+    ///
+    /// This was pack-only unconditionally, which is the stricter setting applied without
+    /// anyone choosing it: a player who banked their gold was treated as having none.</summary>
+    public static bool PayFromPackOnly { get; set; }
+
+    /// <summary>The containers a character pays from, nearest to hand first.
+    ///
+    /// The backpack always comes first so a purchase spends loose coin before it reaches
+    /// into the bank. With PAYFROMPACKONLY the list stops there; otherwise it continues
+    /// with every other container worn, which is what upstream's ContentCount over the
+    /// CHARACTER covers (send.cpp:243).</summary>
+    private static IEnumerable<Item> PaymentContainers(Character ch)
+    {
+        var backpack = ch.Backpack;
+        if (backpack != null)
+            yield return backpack;
+        if (PayFromPackOnly)
+            yield break;
+
+        for (int layer = 0; layer < (int)Core.Enums.Layer.Qty; layer++)
+        {
+            var worn = ch.GetEquippedItem((Core.Enums.Layer)layer);
+            if (worn == null || worn.IsDeleted || ReferenceEquals(worn, backpack))
+                continue;
+            if (worn.ContentCount > 0 || worn.ItemType is Core.Enums.ItemType.Container
+                    or Core.Enums.ItemType.EqBankBox)
+                yield return worn;
+        }
+    }
+
+    private static bool IsGold(Item item) =>
+        item.ItemType == Core.Enums.ItemType.Gold || item.BaseId == 0x0EED;
+
     public static long CountGold(Character ch)
     {
         if (World == null) return 0;
-        var backpack = ch.Backpack;
-        if (backpack == null) return 0;
 
         long total = 0;
-        foreach (var item in EnumerateContainerContentsRecursive(backpack))
-        {
-            if (item.ItemType == Core.Enums.ItemType.Gold || item.BaseId == 0x0EED)
-                total += item.Amount;
-        }
+        foreach (var container in PaymentContainers(ch))
+            foreach (var item in EnumerateContainerContentsRecursive(container))
+                if (IsGold(item))
+                    total += item.Amount;
         return total;
     }
 
-    /// <summary>Remove gold from player's backpack.</summary>
+    /// <summary>Take gold from the character, backpack first.</summary>
     public static void RemoveGold(Character ch, int amount)
     {
         if (World == null || amount <= 0) return;
-        var backpack = ch.Backpack;
-        if (backpack == null) return;
 
         int remaining = amount;
-        foreach (var item in EnumerateContainerContentsRecursive(backpack).ToList())
+        foreach (var container in PaymentContainers(ch))
         {
             if (remaining <= 0) break;
-            if (item.ItemType != Core.Enums.ItemType.Gold && item.BaseId != 0x0EED)
-                continue;
+            foreach (var item in EnumerateContainerContentsRecursive(container).ToList())
+            {
+                if (remaining <= 0) break;
+                if (!IsGold(item))
+                    continue;
 
-            if (item.Amount <= remaining)
-            {
-                remaining -= item.Amount;
-                World.RemoveItem(item);
-            }
-            else
-            {
-                item.Amount -= (ushort)remaining;
-                remaining = 0;
+                if (item.Amount <= remaining)
+                {
+                    remaining -= item.Amount;
+                    World.RemoveItem(item);
+                }
+                else
+                {
+                    item.Amount -= (ushort)remaining;
+                    remaining = 0;
+                }
             }
         }
     }

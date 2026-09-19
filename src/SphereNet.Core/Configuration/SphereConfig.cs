@@ -579,6 +579,11 @@ public sealed class SphereConfig
     /// a whole street of shopkeepers does not answer two people chatting.</summary>
     public string NpcHearThroughWalls { get; set; } = "bank";
 
+    /// <summary>PAYFROMPACKONLY. False, as upstream (CServerConfig.cpp:237): a character
+    /// pays from everything they carry, the worn bank box included, so banked gold is
+    /// spendable and the status bar counts it. True restricts both to the backpack.</summary>
+    public bool PayFromPackOnly { get; set; }
+
     // Global script hooks
     public string SpeechSelf { get; set; } = "";
     public string SpeechPet { get; set; } = "";
@@ -1126,6 +1131,7 @@ public sealed class SphereConfig
         DebugPacketOpcodes = ini.GetValue(section, "DebugPacketOpcodes") ?? DebugPacketOpcodes;
         DebugPacketCategories = ini.GetValue(section, "DebugPacketCategories") ?? DebugPacketCategories;
         NpcHearThroughWalls = ini.GetValue(section, "NpcHearThroughWalls") ?? NpcHearThroughWalls;
+        PayFromPackOnly = ini.GetBool(section, "PayFromPackOnly", PayFromPackOnly);
         CommandPrefix = ini.GetValue(section, "CommandPrefix") ?? CommandPrefix;
         DefaultCommandLevel = ini.GetInt(section, "DefaultCommandLevel", DefaultCommandLevel);
         ChatFlags = ini.GetInt(section, "ChatFlags", ChatFlags);

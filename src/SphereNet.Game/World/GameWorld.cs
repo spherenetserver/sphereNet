@@ -2161,7 +2161,17 @@ public sealed class GameWorld
             else if (item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Decay) && item.DecayTime == 0)
             {
                 // 0x2236: decay-flagged ground item with no timer never rots.
-                item.SetDecayAt(Environment.TickCount64 + DefaultDecayTimeMs);
+                //
+                // Registered on THIS world rather than left to the ambient hook the item
+                // reaches for. This pass runs at boot, when that hook may not be wired
+                // yet, and an unreachable world there means the deadline is set and the
+                // registration silently skipped - which the decay audit then reported as
+                // "deadlines set without reaching the registration door", a dozen items
+                // at a time, on a shard that had just started. Duplicates are free: the
+                // queue carries the deadline an entry was made with.
+                long armedAt = Environment.TickCount64 + DefaultDecayTimeMs;
+                item.SetDecayAt(armedAt);
+                TrackDecay(item, armedAt);
                 log?.Invoke($"GC: armed missing decay timer on 0x{item.Uid.Value:X} (0x2236)");
                 fixedCount++;
             }

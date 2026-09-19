@@ -4056,6 +4056,15 @@ public static partial class Program
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
             _network.DebugPacketCategoryFilter = ParseDebugPacketCategories(_config.DebugPacketCategories);
+            // A decay deadline armed with no world to register it with would sit unqueued
+            // until the audit swept it up - a minute of not decaying, reported by a
+            // warning that cannot name the caller. This names it at the moment it
+            // happens, once per process.
+            SphereNet.Game.Objects.Items.Item.OnDecayRegistrationLost = it =>
+                _log?.LogWarning(
+                    "[decay] armed 0x{Uid:X} (id=0x{Id:X4} type={Type}) with no world to " +
+                    "register it with; it will not decay until the audit finds it",
+                    it.Uid.Value, it.DispIdFull, it.ItemType);
             _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;
             _network.SlowPacketWarnMs = _config.SlowPacketWarnMs;
             _network.FloodDetectionCount = _config.FloodDetectionCount;

@@ -690,9 +690,36 @@ public class Item : ObjBase
     private void AssignDecay(long deadlineMs)
     {
         DecayTime = deadlineMs;
-        if (deadlineMs > 0)
-            ResolveWorld?.Invoke()?.TrackDecay(this, deadlineMs);
+        if (deadlineMs <= 0)
+            return;
+
+        var world = ResolveWorld?.Invoke();
+        if (world != null)
+        {
+            world.TrackDecay(this, deadlineMs);
+            return;
+        }
+
+        // The deadline is set and nothing knows about it: the item would sit armed and
+        // unqueued until the audit swept it up, which is a minute of not decaying and a
+        // warning that cannot name the caller. Say so here, where the caller is still on
+        // the stack - and only once, because a load that arms thousands would otherwise
+        // bury the line that matters.
+        if (!_warnedUnregisteredDecay)
+        {
+            _warnedUnregisteredDecay = true;
+            OnDecayRegistrationLost?.Invoke(this);
+        }
     }
+
+    /// <summary>Reported when a decay deadline is armed with no world to register it
+    /// with. Wired by the host to a log line; null in tests that do not care.</summary>
+    public static Action<Item>? OnDecayRegistrationLost { get; set; }
+
+    private static bool _warnedUnregisteredDecay;
+
+    /// <summary>Test hook: forget that the warning above has already fired.</summary>
+    internal static void ResetDecayRegistrationWarning() => _warnedUnregisteredDecay = false;
 
     public override bool IsDeleted => _isDeleted;
 

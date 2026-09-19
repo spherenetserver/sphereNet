@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - A decay deadline that reached nothing
+----------------------------------------
+
+FIX - The world's own repair pass arms decay on a decay-flagged ground item with no
+        timer, and reached for the ambient world hook to register it - from inside
+        GameWorld. That pass runs at boot, when the hook may not be wired yet, so the
+        deadline was set and the registration silently skipped. The item then sat armed
+        and unqueued until the once-a-minute audit swept it up, which is exactly what a
+        shard reported: a dozen ground items whose "deadlines were set without reaching
+        the registration door", on the tick it started. It registers on itself now.
+
+CHANGE - A deadline armed with no world at all now says so at the moment it happens,
+        naming the item, instead of surfacing a minute later in an audit line that cannot
+        name the caller. Once per process, so a load that arms thousands does not bury it.
+
 [2026-09-19] - The config said a live protection was dead
 ----------------------------------------
 

@@ -37,6 +37,10 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // cleared it afterwards, which left whichever test ran next resolving nothing;
         // it belongs here for the same reason every other hook does.
         SphereNet.Game.Objects.Items.Item.ResolveDefName = null;
+        // The decay-registration report and its once-per-process latch: a test that
+        // deliberately loses a registration must not silence the next one.
+        SphereNet.Game.Objects.Items.Item.OnDecayRegistrationLost = null;
+        SphereNet.Game.Objects.Items.Item.ResetDecayRegistrationWarning();
         // Config-fed engine switches must not leak from one test into the next.
         SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = false;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;

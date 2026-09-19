@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Hicbir yere ulasmayan cürüme suresi
+----------------------------------------
+
+FIX - Dunyanin kendi onarim gecisi, zamanlayicisi olmayan ama cürüme bayrakli bir yer
+        esyasina sure kuruyor ve bunu kaydetmek icin ortam dunya kancasina uzaniyordu -
+        GameWorld'un ta icinden. O gecis boot'ta calisir ve kanca henuz bagli olmayabilir;
+        dolayisiyla sure kuruluyor, kayit ise sessizce atlaniyordu. Esya da dakikada bir
+        calisan denetim onu toplayana kadar armalanmis ve kuyruksuz kaliyordu - bir
+        shard'in bildirdigi tam olarak buydu: basladigi tick'te, "kayit kapisina
+        ulasmadan suresi kurulmus" bir dolu yer esyasi. Artik kendi uzerine kaydediyor.
+
+CHANGE - Hicbir dunyaya ulasilamadan kurulan bir sure, artik bir dakika sonra cagiran
+        kodu adlandiramayan bir denetim satirinda degil, gerceklestigi anda esyayi
+        adlandirarak bildiriliyor. Surec basina bir kez, boylece binlercesini armalayan
+        bir yukleme onu gommez.
+
 [2026-09-19] - Config, canli bir korumayi olu diye tanitiyordu
 ----------------------------------------
 

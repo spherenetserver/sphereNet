@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-19] - What an open port survives, proved rather than claimed
+----------------------------------------
+
+CHANGE - The server already refuses hostile input on 2593: a lying or zero length drops
+        the connection, a stalled partial packet times out after 15 seconds, an
+        unauthenticated socket that says nothing is reaped after 15 (an authenticated one
+        after two minutes), a connection over its per-tick packet quota often enough
+        inside the window is dropped, the receive buffer is a fixed 64KB per connection
+        and a full one disconnects, and one address may hold only so many slots.
+
+        Not one of those was covered by a test. A mechanism nobody exercises is a claim:
+        a refactor can disable it and nothing notices until someone points a script at
+        the port. They are driven now, through the real framing path with real hostile
+        input - noise, a length that lies, a zero length, a ping flood, a silent socket.
+
+        The shipped DEFAULTS are pinned separately, because the tests that drive a
+        mechanism set their own limits and would not notice the default being turned
+        off. A protection that ships disabled is the same as no protection.
+
+        Nothing needed fixing. One apparent failure - an unauthenticated connection that
+        looked unreaped - was the test reading IsClosing after the same tick had already
+        closed AND released the slot.
+
 [2026-09-19] - The counts a client reads past
 ----------------------------------------
 

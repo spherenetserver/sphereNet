@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Acik bir portun neye dayandigi, iddia degil kanit
+----------------------------------------
+
+CHANGE - Sunucu 2593'te dusmanca girdiyi zaten reddediyor: yalan ya da sifir uzunluk
+        baglantiyi dusuruyor, takilmis kismi paket 15 saniyede zaman asimina ugruyor,
+        hicbir sey soylemeyen kimliksiz bir soket 15 saniyede topluyor (kimlikli olan iki
+        dakikada), tick basina paket kotasini pencere icinde yeterince asan baglanti
+        dusuruluyor, alma tamponu baglanti basina sabit 64KB ve dolan bir tampon baglantiyi
+        kesiyor, bir adres de ancak belli sayida yuva tutabiliyor.
+
+        Bunlarin hicbiri testle kapsanmamisti. Kimsenin calistirmadigi bir mekanizma bir
+        iddiadir: bir yeniden duzenleme onu kapatabilir ve biri porta bir script
+        dogrultana kadar kimse fark etmez. Artik gercek cerceveleme yolundan, gercek
+        dusmanca girdiyle suruluyorlar - gurultu, yalan uzunluk, sifir uzunluk, ping
+        seli, sessiz soket.
+
+        Gonderilen VARSAYILANLAR ayrica sabitlendi; cunku mekanizmayi suren testler kendi
+        sinirlarini kurar ve varsayilanin kapatildigini fark etmezlerdi. Kapali gonderilen
+        bir koruma, korumasizlikla aynidir.
+
+        Duzeltilecek bir sey cikmadi. Gorunurdeki tek basarisizlik - toplanmamis gibi
+        duran kimliksiz baglanti - testin, ayni tick'in coktan kapatip yuvayi serbest
+        biraktigi bir anda IsClosing okumasiydi.
+
 [2026-09-19] - Client'in tasip okudugu sayaclar
 ----------------------------------------
 

@@ -2531,7 +2531,7 @@ public sealed class ClientWorldFeaturesHandler
         var engine = Item.ResolveShipEngine?.Invoke();
         if (engine == null) return;
 
-        var ship = engine.FindShipAt(_character.Position);
+        var ship = engine.FindShipCarrying(_character);
         if (ship == null) return;
         if (ship.Pilot != _character.Uid) return;
 

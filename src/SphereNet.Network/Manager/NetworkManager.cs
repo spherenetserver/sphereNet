@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
@@ -526,13 +526,28 @@ public sealed class NetworkManager : IDisposable
                 catch (Exception ex)
                 {
                     // The handler surface (game logic + synchronous .scp triggers)
-                    // is the largest attacker-reachable code path. A throw here
-                    // must close only this connection, never propagate out of the
-                    // input phase and terminate the server.
+                    // is the largest attacker-reachable code path. A throw here must
+                    // never propagate out of the input phase and terminate the server -
+                    // but it must not end the player's session either. Upstream tallies
+                    // the faults per connection and kicks only past ten
+                    // (m_packetExceptions, CNetworkInput.cpp:420); a single one is logged
+                    // and the client keeps playing. Closing on the first throw meant one
+                    // bug in a use handler read, to the player, as the client freezing
+                    // with nothing to do but restart it.
+                    state.PacketExceptionCount++;
+                    bool overExceptionBudget = state.PacketExceptionCount > MaxPacketExceptions;
                     _logger.LogError(ex,
-                        "Packet handler threw for #{Id} 0x{Op:X2} ({Name}) from {EP}; closing connection",
-                        state.Id, opcode, handler.GetType().Name, state.RemoteEndPoint);
-                    state.MarkClosing();
+                        "Packet handler threw for #{Id} 0x{Op:X2} ({Name}) from {EP} (fault {Count} of {Max}){Action}",
+                        state.Id, opcode, handler.GetType().Name, state.RemoteEndPoint,
+                        state.PacketExceptionCount, MaxPacketExceptions,
+                        overExceptionBudget ? "; closing connection" : "");
+                    if (overExceptionBudget)
+                        state.MarkClosing();
+                    // The failing packet is consumed either way: leaving it buffered
+                    // would re-parse and re-throw it on every pass, and burn through the
+                    // budget on one bad packet. The rest of this read is left for the
+                    // next pass, as upstream abandons the rest of its own.
+                    consumed += packetLen;
                     break;
                 }
                 long handlerUs = (System.Diagnostics.Stopwatch.GetTimestamp() - handlerStart)
@@ -586,6 +601,12 @@ public sealed class NetworkManager : IDisposable
         if (consumed > 0)
             state.ConsumeReceived(consumed);
     }
+
+    /// <summary>How many handler faults one connection may cause before it is dropped.
+    /// Upstream's threshold (m_packetExceptions > 10, CNetworkInput.cpp:421): enough that
+    /// a single gameplay bug does not end a session, few enough that a client
+    /// deliberately feeding the server faults still gets dropped.</summary>
+    public const int MaxPacketExceptions = 10;
 
     private void MarkOrDropPartialPacket(NetState state, byte opcode, int packetLen)
     {

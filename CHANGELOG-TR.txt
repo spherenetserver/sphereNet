@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-19] - Tek bir isleyici hatasi artik oyuncunun oturumuna mal olmuyor
+----------------------------------------
+
+FIX - Bir paket isleyicisinin firlatmasi baglantiyi dogrudan kapatiyordu. Oyuncunun
+        tarafindan bu, cevap vermeyi birakan ve yeniden baslatilmasi gereken bir client
+        demek; hicbir sey soylenmiyor ve bunu bir kilitlenmeden ayirt etmenin yolu yok -
+        bir shard tillerman cift tiklamasini boyle bildirdi. Ust kaynak ayni hata sayimini
+        baglanti basina tutar ve ancak onu gectiginde atar (m_packetExceptions,
+        CNetworkInput.cpp:420): bir hata loglanir ve oturum devam eder, sunucuya bilerek
+        hata besleyen bir client ise yine dusurulur. Hata veren paket her durumda
+        tuketiliyor, boylece her gecliste yeniden ayristirilip yeniden firlatilmiyor.
+
+FIX - "Bu karakter bu geminin uzerinde mi" sorusu geminin BOLGESI ile yanitlaniyordu; o da
+        govdenin sinirlayici dikdortgeni. Bir govde pruvada daralir, dolayisiyla o
+        dikdortgen yanindaki suyu ve rihtimi da kaplar ve pruvanin yanindaki iskelede duran
+        herkes gemide sayiliyordu - yukseklik ikisini ayirmaz, cunku bir rihtim hizmet
+        ettigi guvertenin yuksekliginde durur. Soru artik karo ile yanitlaniyor: karakterin
+        durdugu karoyu kaplayan gemi.
+
+        Bu soruyu alti yer soruyordu; gorunur sekilde bozulan tillerman'in kuru havuzuydu:
+        redeed sahibin gemiden INMIS olmasini gerektirir, bu yuzden rihtimdan reddediliyor
+        ve tillerman yalnizca konusuyordu. Digerleri iskele, gemi komutlari ve dumen
+        talebiydi.
+
 [2026-09-19] - Bir geminin ambarina birakilan esya ambara giriyor
 ----------------------------------------
 

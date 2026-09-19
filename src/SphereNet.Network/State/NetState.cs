@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
@@ -143,6 +143,14 @@ public sealed class NetState : IDisposable
     // Packet flood detection
     public int PacketFloodCount { get; set; }
     public long PacketFloodWindowStart { get; set; }
+
+    /// <summary>How many times a handler has thrown on this connection. Upstream keeps
+    /// the same per-connection tally and only kicks the client once it passes ten
+    /// (m_packetExceptions, CNetworkInput.cpp:420) - one fault is logged and the session
+    /// carries on. Dropping the connection on the first throw made any bug in a use
+    /// handler cost the player their session, which from their side is a client that
+    /// stops answering and has to be restarted.</summary>
+    public int PacketExceptionCount { get; set; }
 
     // RTT measurement
     private byte _rttPingSeq;

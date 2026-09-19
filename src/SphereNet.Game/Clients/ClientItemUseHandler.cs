@@ -727,7 +727,7 @@ public sealed class ClientItemUseHandler
                 // anyone standing on a LOCKED plank close it without the key.
                 var shipEngine = Item.ResolveShipEngine?.Invoke();
                 var ship = shipEngine?.GetShip(item.Link) ?? shipEngine?.FindShipAt(item.Position);
-                bool aboard = ship != null && shipEngine?.FindShipAt(_character.Position) == ship;
+                bool aboard = ship != null && shipEngine?.FindShipCarrying(_character) == ship;
 
                 if (aboard)
                 {
@@ -1204,7 +1204,7 @@ public sealed class ClientItemUseHandler
                 var tillerShip = tillerEngine?.GetShip(item.Link)
                                  ?? tillerEngine?.FindShipAt(item.Position);
                 if (tillerShip != null &&
-                    tillerEngine!.FindShipAt(_character.Position) != tillerShip)
+                    tillerEngine!.FindShipCarrying(_character) != tillerShip)
                 {
                     bool tillerOwner = tillerShip.Owner == _character.Uid ||
                                        _character.PrivLevel >= PrivLevel.GM;

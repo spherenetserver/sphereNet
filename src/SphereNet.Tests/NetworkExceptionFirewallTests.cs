@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Game.Accounts;
@@ -16,6 +16,12 @@ namespace SphereNet.Tests;
 /// largest attacker-reachable surface: game logic + synchronous .scp triggers)
 /// must be contained to the offending connection instead of escaping the input
 /// phase and killing the whole server (which would also skip the shutdown save).
+///
+/// Contained is not the same as ended. Upstream tallies the faults per connection and
+/// kicks only once they pass ten (m_packetExceptions, CNetworkInput.cpp:420); a single
+/// fault is logged and the client keeps playing. Closing on the first throw meant that
+/// any bug in a use handler cost the player their session - which from their side is a
+/// client that stops answering and has to be restarted, with no idea why.
 ///
 /// These drive the REAL private ProcessInput pump in-process (the same code path
 /// a socket read reaches through ProcessAllInput), the way the login integration
@@ -120,11 +126,57 @@ public sealed class NetworkExceptionFirewallTests
         Assert.Equal(ConnectType.Login, state.ConnectionType);
 
         // The throwing handler runs but its exception must NOT propagate out of
-        // the input pump — it is caught and the connection is marked closing.
+        // the input pump - and one fault must not end the session either.
         var ex = Record.Exception(() => Pump(nm, state, ThrowingPacket()));
         Assert.Null(ex);
         Assert.Equal(1, throwing.Calls);   // the handler really was reached
-        Assert.True(state.IsClosing);      // only this connection is dropped
+        Assert.False(state.IsClosing);     // the player keeps playing
+        Assert.Equal(1, state.PacketExceptionCount);
+    }
+
+    /// <summary>The failing packet is consumed, so it is not re-parsed and re-thrown on
+    /// every pass. Leaving it buffered would spend the whole budget on one bad packet and
+    /// drop the connection anyway - the bug this fix is about, one pass later.</summary>
+    [Fact]
+    public void AFaultingPacketIsNotRetriedForever()
+    {
+        var (world, accounts, lf) = CreateEnv();
+        var nm = new NetworkManager(maxClients: 8, lf) { UseNoCrypt = true, UseCrypt = false };
+        var throwing = new ThrowingHandler();
+        nm.Packets.Register(throwing);
+
+        var (_, state) = NewConnection(lf, world, accounts, 1);
+        Pump(nm, state, Concat(SeedBytes(), LoginPacket("hero", "secret")));
+
+        Pump(nm, state, ThrowingPacket());
+        Assert.Equal(1, throwing.Calls);
+
+        // Another pass with nothing new to read must not run the handler again.
+        s_processInput.Invoke(nm, [state]);
+        Assert.Equal(1, throwing.Calls);
+        Assert.False(state.IsClosing);
+    }
+
+    /// <summary>A client that keeps causing faults is still dropped, at upstream's
+    /// threshold - the abuse defence the first-throw close was there for.</summary>
+    [Fact]
+    public void AConnectionThatKeepsFaultingIsDropped()
+    {
+        var (world, accounts, lf) = CreateEnv();
+        var nm = new NetworkManager(maxClients: 8, lf) { UseNoCrypt = true, UseCrypt = false };
+        nm.Packets.Register(new ThrowingHandler());
+
+        var (_, state) = NewConnection(lf, world, accounts, 1);
+        Pump(nm, state, Concat(SeedBytes(), LoginPacket("hero", "secret")));
+
+        for (int i = 1; i <= NetworkManager.MaxPacketExceptions; i++)
+        {
+            Pump(nm, state, ThrowingPacket());
+            Assert.False(state.IsClosing, $"dropped after only {i} fault(s)");
+        }
+
+        Pump(nm, state, ThrowingPacket());   // one past the budget
+        Assert.True(state.IsClosing);
     }
 
     [Fact]
@@ -136,8 +188,8 @@ public sealed class NetworkExceptionFirewallTests
 
         var (_, victim) = NewConnection(lf, world, accounts, 1);
         Pump(nm, victim, Concat(SeedBytes(), LoginPacket("hero", "secret")));
-        Pump(nm, victim, ThrowingPacket()); // victim faults and is closed
-        Assert.True(victim.IsClosing);
+        Pump(nm, victim, ThrowingPacket()); // victim faults
+        Assert.Equal(1, victim.PacketExceptionCount);
 
         // A second, independent connection logs in normally and gets its server
         // list — the first connection's fault did not poison the pipeline.

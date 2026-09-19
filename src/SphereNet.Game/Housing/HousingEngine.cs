@@ -100,8 +100,27 @@ public sealed class MultiDef
     public (short MinX, short MinY, short MaxX, short MaxY) RegionBounds =>
         ScriptRegion ?? (MinX, MinY, MaxX, MaxY);
 
+    /// <summary>The tiles the structure actually occupies, as offsets from its anchor.
+    /// Built once on <see cref="RecalcBounds"/>.
+    ///
+    /// The bounding rectangle is not the footprint, and for a ship the difference is the
+    /// whole question: a hull narrows at the bow, so the rectangle also covers the water
+    /// and the quay beside it. Anything that asks "is this character standing ON the
+    /// structure" has to ask this, not the rectangle - a person on the dock next to the
+    /// bow is inside the rectangle, and on a dock they are at the deck's own height too,
+    /// so no height test separates them either.</summary>
+    public IReadOnlySet<(short Dx, short Dy)> Footprint => _footprint;
+    private readonly HashSet<(short Dx, short Dy)> _footprint = [];
+
+    /// <summary>Does the structure occupy this offset from its anchor?</summary>
+    public bool OccupiesOffset(short dx, short dy) => _footprint.Contains((dx, dy));
+
     public void RecalcBounds()
     {
+        _footprint.Clear();
+        foreach (var c in Components)
+            _footprint.Add((c.DeltaX, c.DeltaY));
+
         if (Components.Count == 0)
         {
             MinX = MinY = MaxX = MaxY = 0;

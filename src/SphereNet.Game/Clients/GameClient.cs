@@ -241,7 +241,7 @@ public sealed partial class GameClient : ITextConsole
         if (_character == null)
             return;
         var engine = Objects.Items.Item.ResolveShipEngine?.Invoke();
-        if (engine?.FindShipAt(_character.Position) is { } ship)
+        if (engine?.FindShipCarrying(_character) is { } ship)
             engine.Stop(ship);
     }
 

@@ -971,7 +971,7 @@ public sealed class ShipEngine
             return true;
         }
         if (ship.Anchored || pilot.IsMounted || pilot.IsStatFlag(StatFlag.Hovering) ||
-            !ship.CanBoard(pilot.Uid) || FindShipAt(pilot.Position) != ship)
+            !ship.CanBoard(pilot.Uid) || FindShipCarrying(pilot) != ship)
             return false;
 
         ReleasePilotMarker(ship);
@@ -1506,12 +1506,43 @@ public sealed class ShipEngine
     /// Deck membership is resolved through the Ship-flag region (region-bound, so it
     /// matches exactly the footprint the engine maintains) rather than a separate
     /// bounding-box test. Used by the boarding gate and eject.</summary>
+    /// <summary>The ship whose REGION covers this point. A ship region is the hull's
+    /// bounding rectangle at any height, so this answers "is a ship moored here" - for a
+    /// placement, a movement destination, or resolving which ship a component belongs to.
+    /// It does NOT answer "is this character aboard": use
+    /// <see cref="FindShipCarrying"/> for that.</summary>
     public Ship? FindShipAt(Point3D pt)
     {
         foreach (var ship in _ships.Values)
         {
             var region = ship.RegionUid != 0 ? _world.FindRegionByUid(ship.RegionUid) : null;
             if (region != null && region.IsFlag(RegionFlag.Ship) && region.Contains(pt))
+                return ship;
+        }
+        return null;
+    }
+
+    /// <summary>The ship this object is standing ON: a ship that occupies the very tile
+    /// the object is on.
+    ///
+    /// "Aboard" used to be asked of <see cref="FindShipAt"/>, which is the region
+    /// RECTANGLE. A hull is not a rectangle - its bow narrows - so the rectangle also
+    /// covers the water and the quay beside it, and anyone standing on the dock next to
+    /// the bow counted as aboard. That is what made the tillerman refuse to dry-dock: the
+    /// redeed needs the owner to be OFF the ship, and from the dock they were judged to be
+    /// on it.
+    ///
+    /// Height does not separate the two - a dock sits at about the height of the deck it
+    /// serves, which is the point of a dock - so the tile does. A tile the hull occupies
+    /// has nowhere else to stand.</summary>
+    public Ship? FindShipCarrying(ObjBase obj)
+    {
+        foreach (var ship in _ships.Values)
+        {
+            var def = _multiDefs.Get(ship.MultiItem.BaseId);
+            if (def == null || obj.MapIndex != ship.MultiItem.MapIndex) continue;
+            if (def.OccupiesOffset((short)(obj.X - ship.MultiItem.X),
+                                   (short)(obj.Y - ship.MultiItem.Y)))
                 return ship;
         }
         return null;
@@ -1721,7 +1752,7 @@ public sealed class ShipEngine
             {
                 var pilot = _world.FindChar(ship.Pilot);
                 if (pilot == null || ship.Anchored || pilot.IsMounted || pilot.IsStatFlag(StatFlag.Hovering) ||
-                    !ship.CanBoard(pilot.Uid) || FindShipAt(pilot.Position) != ship)
+                    !ship.CanBoard(pilot.Uid) || FindShipCarrying(pilot) != ship)
                     ship.Pilot = Serial.Invalid;
             }
         }

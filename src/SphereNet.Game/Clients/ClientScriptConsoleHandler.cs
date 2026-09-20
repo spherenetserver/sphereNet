@@ -710,11 +710,17 @@ public sealed class ClientScriptConsoleHandler
             // omitted, it is 0, which is the pack's close/cancel handler.
             string dlgName = dlgArgs;
             int closeButton = 0;
-            int sep = dlgArgs.LastIndexOf(' ');
-            if (sep > 0 && int.TryParse(dlgArgs[(sep + 1)..], out int parsedButton))
+            int sep = dlgArgs.IndexOfAny([' ', '\t', ',']);
+            if (sep >= 0)
             {
                 dlgName = dlgArgs[..sep].Trim();
-                closeButton = parsedButton;
+                string buttonExpression = dlgArgs[(sep + 1)..].TrimStart(' ', '\t', ',');
+                var parser = new ExpressionParser
+                {
+                    VariableResolver = name => _commands?.Resources != null &&
+                        _commands.Resources.TryGetDefValue(name, out string value) ? value : null
+                };
+                closeButton = unchecked((int)parser.Evaluate(buttonExpression));
             }
             if (dlgName.Length > 0)
                 CloseScriptDialog(dlgName, closeButton);

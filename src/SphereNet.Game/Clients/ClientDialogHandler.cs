@@ -210,7 +210,7 @@ public sealed class ClientDialogHandler
         if (!Gumps.OpenScriptDialogs.TryGetValue(dialogId, out uint gumpId))
             return false;
         Gumps.OpenScriptDialogs.Remove(dialogId);
-        Send(new PacketCloseGump(gumpId));
+        Send(new PacketCloseGump(gumpId, unchecked((uint)buttonId)));
 
         // The response path owns the rest of the teardown (it removes the gump
         // from the active set and consumes the callback), so hand over rather

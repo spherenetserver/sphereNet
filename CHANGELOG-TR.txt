@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-20] - Script dialog kapatma buton parametreleri
+------------------------------------------------------------------------
+FIX - DIALOGCLOSE virgul/bosluk ayraclarini ve Sphere sayisal ifadelerini okuyor.
+      Kapatma paketi, script olayina verilen yapay yanit ile ayni buton
+      numarasini tasiyor.
+TEST - Alti regresyon: eksik/ondalik/hex/ifade parametreleri, ayraclar,
+       script geri cagirilari ve giden kapatma paketi.
+
 [2026-09-20] - Dialog kurulum iptali ve eksik kaynak davranisi
 ------------------------------------------------------------------------
 FIX - Eksik DIALOG/SDIALOG kaynaklari artik ornek pencere olusturmuyor.

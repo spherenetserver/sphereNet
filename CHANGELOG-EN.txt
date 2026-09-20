@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-20] - Preserve scripted dialog close button arguments
+------------------------------------------------------------------------
+FIX - DIALOGCLOSE accepts comma/whitespace separators and Sphere numeric
+      expressions instead of decimal-only parsing. The close packet now carries
+      the same button ID as the synthetic response used by the script handler.
+TEST - Six regressions cover omitted/decimal/hexadecimal/expression arguments,
+       separators, script callbacks and the outgoing close packet.
+
 [2026-09-20] - Honor dialog setup cancellation and missing resources
 ------------------------------------------------------------------------
 FIX - Missing DIALOG/SDIALOG resources no longer create placeholder windows.

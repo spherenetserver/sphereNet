@@ -48,6 +48,7 @@ public sealed class PetParity06EHTests
     private static Character Player(GameWorld world, int x)
     {
         var ch = world.CreateCharacter();
+        ch.BodyId = 0x0190;
         ch.IsPlayer = true;
         // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
         SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;

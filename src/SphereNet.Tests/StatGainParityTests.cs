@@ -14,7 +14,7 @@ namespace SphereNet.Tests;
 /// <summary>
 /// Stat-gain parity (reference Skill_Experience stat section + the
 /// [ADVANCE] curves): stats train toward the skill's STAT_* ceiling, only
-/// while the skill lock is Up, polymorph blocks STR/DEX, and without
+/// while the stat lock is Up (independent of skill lock), polymorph blocks STR/DEX, and without
 /// [ADVANCE] curves no stat gain happens at all.
 /// </summary>
 [Collection("DefinitionLoaderSerial")]
@@ -73,16 +73,33 @@ public class StatGainParityTests
         Assert.Equal(30, ch.Int);
     }
 
-    [Fact]
-    public void StatGain_RequiresSkillLockUp()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void StatGain_IsIndependentOfSkillLock(byte skillLock)
     {
         LoadDefinitions(TrainingDefs);
         var ch = CreatePlayer();
         ch.SetSkill(SkillType.Swordsmanship, 200);
-        ch.SetSkillLock(SkillType.Swordsmanship, 1); // Down
+        ch.SetSkillLock(SkillType.Swordsmanship, skillLock);
 
-        for (int i = 0; i < 50; i++)
-            SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
+        SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
+
+        Assert.Equal(51, ch.Str);
+        Assert.Equal(200, ch.GetSkill(SkillType.Swordsmanship));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void StatGain_StillHonorsStatLock(byte statLock)
+    {
+        LoadDefinitions(TrainingDefs);
+        var ch = CreatePlayer();
+        ch.SetSkill(SkillType.Swordsmanship, 200);
+        ch.SetStatLock(0, statLock);
+
+        SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
 
         Assert.Equal(50, ch.Str);
     }

@@ -29,7 +29,7 @@ public class Item : ObjBase
 
     /// <summary>Ship-engine REDEED (dry-dock: cargo crate + full teardown,
     /// deed delivered to the owner). Ships had no in-game decommission path.</summary>
-    public static Func<Serial, Item?>? RedeedShip;
+    public static Func<Serial, bool, bool, Character?, Item?>? RedeedShip;
     public static Func<Ships.ShipEngine?>? ResolveShipEngine;
     public new static Func<World.GameWorld>? ResolveWorld;
     public static Func<Serial, Guild.GuildDef?>? ResolveGuild;
@@ -333,7 +333,16 @@ public class Item : ObjBase
     public ushort Amount
     {
         get => _amount;
-        set { _amount = Math.Max((ushort)1, value); MarkDirty(DirtyFlag.Amount); }
+        set
+        {
+            ushort amount = Math.Max((ushort)1, value);
+            if (_amount == amount) return;
+            long oldWeight = StatusUnitWeight(_amount);
+            _amount = amount;
+            MarkDirty(DirtyFlag.Amount);
+            NotifyCarrierInventoryChanged();
+            NotifyParentWeightChanged(StatusUnitWeight(amount) - oldWeight);
+        }
     }
 
     /// <summary>UID of the parent container or character (CONT in sphere scripts).</summary>
@@ -1136,7 +1145,70 @@ public class Item : ObjBase
         if (item.X == 0 && item.Y == 0)
             AssignRandomContainerPosition(this, item);
         NotifyTradeContentChanged();
+        NotifyCarrierInventoryChanged();
+        NotifyContentWeightChanged(item.StatusTreeWeight());
         return true;
+    }
+
+    // Source-X CItem::SetAmount / CContainer::ContentAddPrivate / OnRemoveObj
+    // propagate weight changes for every item type, not just gold. Weight itself is
+    // calculated on demand here; this path supplies the missing status notification.
+    private int StatusWeightReduction => ResolveDefinition()?.WeightReduction ?? 0;
+
+    private long StatusUnitWeight(ushort amount)
+    {
+        long weight = (long)Weight * amount;
+        return Math.Max(0, weight - weight * StatusWeightReduction / 100);
+    }
+
+    private bool PropagatesContentWeight => ItemType is not (ItemType.EqBankBox or ItemType.EqVendorBox)
+        && !IsAttr(ObjAttributes.Magic);
+
+    private long StatusTreeWeight(int depth = 0)
+    {
+        long weight = StatusUnitWeight(Amount);
+        if (depth < 64)
+            foreach (var child in _contents)
+                if (!child.IsContainerType || child.PropagatesContentWeight)
+                    weight += child.StatusTreeWeight(depth + 1);
+        return weight;
+    }
+
+    private void NotifyCarrierInventoryChanged()
+    {
+        // Inventory-derived status (including gold) can change with zero weight.
+        // Keep display invalidation independent of Source-X weight propagation.
+        if (GetTopLevelObj() is Character carrier)
+            carrier.MarkDirty(DirtyFlag.Stats);
+    }
+
+    private void NotifyParentWeightChanged(long change)
+    {
+        var parent = ResolveWorld?.Invoke()?.FindObject(ContainedIn);
+        if (parent is Item container) container.NotifyContentWeightChanged(change);
+        else if (parent is Character carrier) carrier.MarkDirty(DirtyFlag.Stats);
+    }
+
+    private void NotifyContentWeightChanged(long change)
+    {
+        // CItemContainer::OnWeightChange stops at zero and at unweighed containers.
+        // Iterate with a depth bound so damaged containment cannot recurse forever.
+        Item current = this;
+        var world = ResolveWorld?.Invoke();
+        for (int depth = 0; depth < 64 && change != 0; depth++)
+        {
+            change = change * (100 - current.StatusWeightReduction) / 100;
+            current.MarkDirty(DirtyFlag.Amount);
+            if (!current.PropagatesContentWeight) return;
+            var parent = world?.FindObject(current.ContainedIn);
+            if (parent is Character carrier)
+            {
+                carrier.MarkDirty(DirtyFlag.Stats);
+                return;
+            }
+            if (parent is not Item next) return;
+            current = next;
+        }
     }
 
     /// <summary>Add an item to this container. Returns false when the add would
@@ -1302,36 +1374,33 @@ public class Item : ObjBase
 
         if (_more1 != other._more1 || _more2 != other._more2) return false;
         if (_moreB != other._moreB || _moreP != other._moreP || _link != other._link ||
-            _price != other._price || _quality != other._quality ||
+            _quality != other._quality ||
             _hitsCur != other._hitsCur || _hitsMax != other._hitsMax ||
             _crafter != other._crafter || _usesRemaining != other._usesRemaining ||
             _dispId != other._dispId || _type != other._type ||
             _tdata1 != other._tdata1 || _tdata2 != other._tdata2 ||
-            _tdata3 != other._tdata3 || _tdata4 != other._tdata4 ||
-            !string.Equals(Name, other.Name, StringComparison.Ordinal))
+            _tdata3 != other._tdata3 || _tdata4 != other._tdata4)
             return false;
 
-        // Two piles only merge when their tags match. Source-X CItem::Stack
-        // compares m_TagDefs (and the ATTR_* flags, which SphereNet stores as
-        // tags) before merging; merging stacks with differing tags would
-        // silently drop one set. Cheap: the vast majority of piles carry no tags.
-        if (!TagsEqual(Tags, other.Tags)) return false;
+        // Source-X IsSameType/Stack does not compare instance names. Creation
+        // paths can stamp NAME=arrow%s or leave NAME empty for the same arrow.
+        // Actual attributes must match; only the decay marker is ignored.
+        if ((Attributes & ~ObjAttributes.Decay) != (other.Attributes & ~ObjAttributes.Decay))
+            return false;
+
+        // Source-X compares every custom tag, including TAG.PRICE.
+        if (!StackTagsEqual(this, other)) return false;
         return true;
     }
 
-    /// <summary>Order-independent equality of two tag maps (used to gate stack
-    /// merges). Returns true when both hold the same keys with the same values.</summary>
-    private static bool TagsEqual(SphereNet.Scripting.Variables.VarMap a,
-        SphereNet.Scripting.Variables.VarMap b)
+    private static bool StackTagsEqual(Item first, Item second)
     {
-        if (ReferenceEquals(a, b)) return true;
-        if (a.Count != b.Count) return false;
-        foreach (var kv in a.GetAll())
-        {
-            var bv = b.Get(kv.Key);
-            if (bv == null || !string.Equals(bv, kv.Value, StringComparison.Ordinal))
+        var a = first.Tags.GetAll();
+        var b = second.Tags.GetAll();
+        if (a.Count() != b.Count()) return false;
+        foreach (var kv in a)
+            if (!string.Equals(second.Tags.Get(kv.Key), kv.Value, StringComparison.Ordinal))
                 return false;
-        }
         return true;
     }
 
@@ -1346,6 +1415,7 @@ public class Item : ObjBase
     {
         BaseId = src.BaseId;
         Attributes = src.Attributes;
+        CanMask = src.CanMask;
         Hue = src.Hue;
         Name = src.Name;
         _type = src._type; // direct field — avoid the ItemType setter's spawn/def side effects
@@ -1516,6 +1586,10 @@ public class Item : ObjBase
     {
         if (_contents.Remove(item))
         {
+            // Asked BEFORE the link is cut: afterwards this container may itself be the
+            // thing being taken off a character, and the walk up would find nobody.
+            NotifyCarrierInventoryChanged();
+            NotifyContentWeightChanged(-item.StatusTreeWeight());
             item.ContainedIn = Serial.Invalid;
             NotifyTradeContentChanged();
             return true;
@@ -1753,6 +1827,43 @@ public class Item : ObjBase
         }
     }
 
+    public bool IsSpellbook => IsSpellbookComponentType;
+
+    public ushort SpellbookOffset => (ushort)(ResolveDefinition()?.TData3 is > 0 and <= ushort.MaxValue
+        ? ResolveDefinition()!.TData3
+        : ItemType switch
+        {
+            ItemType.SpellbookNecro => 100,
+            ItemType.SpellbookPala => 200,
+            ItemType.SpellbookBushido => 400,
+            ItemType.SpellbookNinjitsu => 500,
+            ItemType.SpellbookArcanist => 600,
+            ItemType.SpellbookMystic => 676,
+            ItemType.SpellbookMastery => 700,
+            _ => 0
+        });
+
+    /// <summary>Source-X AddSpellbookSpell: spell ids are one-based relative
+    /// to TDATA3. Refuse duplicates and spells outside this book's mask.</summary>
+    public bool TryLearnSpell(int spellId)
+    {
+        int bit = spellId - SpellbookOffset - 1;
+        if (!IsSpellbook || bit is < 0 or >= 64) return false;
+        uint mask = 1u << (bit % 32);
+        if (bit < 32)
+        {
+            if ((_more1 & mask) != 0) return false;
+            More1 |= mask;
+        }
+        else
+        {
+            if ((_more2 & mask) != 0) return false;
+            More2 |= mask;
+        }
+        MarkDirty(DirtyFlag.Amount);
+        return true;
+    }
+
     private bool IsSpellbookComponentType => ItemType is
         ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala or
         ItemType.SpellbookExtra or ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
@@ -1886,7 +1997,7 @@ public class Item : ObjBase
             case "CAN":
             {
                 var canDef = ResolveDefinition();
-                value = canDef != null ? $"0{(ulong)canDef.Can:X}" : "0";
+                value = $"0{((ulong)(canDef?.Can ?? CanFlags.None) ^ CanMask):X}";
                 return true;
             }
             case "CANUSE":
@@ -3686,7 +3797,12 @@ public class Item : ObjBase
                     // Not a registered house: a SHIP multi dry-docks through
                     // the ship engine (cargo crate + teardown + deed).
                     if (key.Equals("REDEED", StringComparison.OrdinalIgnoreCase) && RedeedShip != null)
-                        RedeedShip(Uid);
+                    {
+                        var parts = args.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
+                        bool Flag(int at) => at < parts.Length &&
+                            ScriptNumber.TryParseToken(parts[at], out long n) && n != 0;
+                        RedeedShip(Uid, Flag(0), Flag(1), ResolveSourceCharacter(source));
+                    }
                     return true;
                 }
 

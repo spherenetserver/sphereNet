@@ -1,8 +1,242 @@
-﻿================================================================================
+================================================================================
  SphereNet Changelog (English)
  All notable changes are documented in this file.
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
+
+[2026-09-20] - Scope the legacy Britain event test baseline
+-------------------------------------------------------
+TEST - Recognize the missing R_BRIT event only in the archived worldfiles-55a
+       a_townBritain save record. Keep the original save unchanged and continue
+       rejecting this reference in other records or live scripts.
+
+[2026-09-20] - Refresh the incoming item on double-click equip
+----------------------------------------------------------
+CHANGE - Use the Source-X ResendOnEquip remove/replace sequence for the initiating
+         client on successful double-click equips, including ClassicUO. This extends
+         the upstream EC redraw workaround without changing drag-equip behavior.
+TEST - Verify repeated light/weapon/bow swaps, remove/container/wear packet order,
+       actual hand/owner fields, and drag settlement.
+
+[2026-09-20] - Run world cleanup before the save timer
+---------------------------------------------------
+CHANGE - Wire the existing world integrity sweep before each new server save,
+         controlled by Source-X FORCEGARBAGECOLLECT (default 1). Log cleanup
+         duration and repair/deletion counts separately; start the save timer
+         afterwards in both synchronous and background modes. Main-loop stall
+         telemetry still includes cleanup. No forced .NET GC is introduced.
+
+[2026-09-20] - Disable the death-screen packet by default
+------------------------------------------------------
+CHANGE - PACKETDEATHANIMATION defaults to 0, including when omitted from the
+         configuration. Ghost redraws remain active. Set 1 to send 0x2C again.
+
+[2026-09-20] - Continue active Meditation on the skill timer
+---------------------------------------------------------
+
+FIX - Client Meditation now adds mana on each skill DELAY, preserving ACTEFFECT
+      and using the skill EFFECT or one point by default. Active recovery no
+      longer depends on passive REGEN1. Completion clears the action and buff;
+      successful experience is granted only at full mana. Damage/cancellation
+      clears the continuation. Remove the non-Source-X hardcoded armor gate.
+TEST - Cover client requests, repeated gains with REGEN1 disabled, ACTEFFECT=0,
+       completion credit, armor, failure, damage and the mana update packet.
+
+[2026-09-20] - Preserve numeric spell flags from script DEFNAMEs
+------------------------------------------------------------
+
+FIX - Keep full-width numeric DEFNAME values outside 24-bit resource indices.
+      Spell FLAGS now resolve numeric constants without losing Heal, Damage,
+      Bless, Curse, Area, Poly, TargDead or Tick. Normalize signed 32-bit flags.
+      Numeric/text redefinitions clear stale values of the other kind.
+TEST - Reproduce self-Heal leaving HP unchanged and all eight truncated flags;
+       cover restored healing, flag values and numeric constant redefinition.
+       Exercise script-defined damage, greater healing, buffs and curses across
+       twelve additional Magery spells and verify HP/stat changes.
+
+[2026-09-20] - Let stats train independently of skill locks
+--------------------------------------------------------
+
+FIX - Match Source-X Skill_Experience: a Down/Locked skill can train an Up-locked
+      stat. Keep skill values locked and retain stat targets, caps and advance
+      curves. Previously both skill locks incorrectly prevented stat training.
+TEST - Reproduce both blocked gains, then verify training and stat-lock guards.
+
+[2026-09-20] - Restore client skill gain and loss notifications
+------------------------------------------------------------
+
+FIX - Send Source-X single-skill 0x3A/0xDF updates after skill gain and decay.
+      Full-list refreshes suppressed the client's own blue change message.
+      Preserve adjusted value, base value, lock and configured skill cap.
+TEST - Verify gain/loss packet mode and fields, including bonuses and caps.
+
+[2026-09-20] - Separate combat pursuit from NPC home roaming
+----------------------------------------------------------
+
+FIX - Remove the invented max(HOMEDIST*2,18) combat leash and its triple-radius
+      forced home teleport. A visible nearby opponent remains the target even
+      far from the spawn; closing movement checks target-relative MAPVIEWRADAR.
+FIX - Keep HOMEDIST and LOSTNPCTELEPORT in idle home return. A different map no
+      longer bypasses LOSTNPCTELEPORT=0. Teleport veto falls through to walking,
+      invalid home points are ignored, and NPCLostTeleport receives home distance
+      in ARGN1 (INT16_MAX across maps), matching Source-X.
+TEST - Cover normal NPC ticks following an archer, target-relative range,
+       disabled/enabled home teleport, thresholds, veto and cross-map homes.
+
+[2026-09-20] - Weather trigger dispatch avoids missing-script reparsing
+--------------------------------------------------------------------
+
+PERF - Match Source-X's global EnvironChange usage gate before allocating
+       trigger arguments. Keep NPC/player environment snapshots and weather
+       packets unchanged; evaluate the gate live so RESYNC can add/remove hooks.
+PERF - Missing triggers in retained sections return immediately. Lazy trigger
+       fallback parses only its own section and retains both hits and misses.
+FIX  - Rescanning a resource clears old trigger bodies/bitmasks. Rebuilding used
+       trigger indexes removes stale script hooks while preserving native handlers.
+DIAG - Time weather updates and season broadcasting in separate flush buckets.
+TEST - Cover absent-trigger allocation, section boundaries, lazy cached hits,
+       rescans and NPC environment delivery across script reloads.
+
+[2026-09-20] - Character CAN inheritance and runtime capabilities
+-------------------------------------------------------------
+
+FIX - Parse full-width mixed numeric/DEFNAME CAN flags and resolve CHARDEF ID
+      inheritance in script order, including explicit CAN=0 overrides.
+      Existing NPCs read the current definition after reload; base CAN is not
+      copied into world saves. Native per-object CANMASK persists separately
+      and toggles effective capabilities with Source-X XOR semantics.
+FIX - Use effective CAN in NPC movement, pathfinding, doors, hands/equipment,
+      mounting, fire immunity (preserving GOD), sex and armor wear. Enforce
+      WALK/SWIM, NONMOVER/STATUE, GHOST versus PASSWALLS, HOVER, NOINDOORS and
+      NOBLOCKHEIGHT surface rules. Preserve eligible NPC running direction.
+FIX - Reject NONSELECTABLE client interactions. STATUE prevents NPC actions,
+      casting, hunger and shoving, and sends the Source-X fixed-frame packet.
+TEST - Add regression coverage for the audit findings, native mask save/load,
+       definition reload on existing NPCs, inheritance order and packet layout.
+
+[2026-09-20] - Recovered ammunition and NPC loot lifecycle
+--------------------------------------------------------
+
+FIX - Recovered arrows/bolts copy the fired stack's instance state like
+      Source-X UnStackSplit, retaining type, hue, tags and definition identity
+      so corpse/ground recovery can stack back with the original ammunition.
+FIX - Gem-spawned NPC initialization runs Create/NPCRestock once. CreateLoot
+      now runs at death before corpse creation instead of during spawn or
+      GM/script NPC creation. Direct and template loot no longer runs twice
+      through the two server spawn hooks. Existing inventory is not rewritten.
+
+[2026-09-20] - Ship hold requires boarding its linked ship
+--------------------------------------------------------
+
+FIX - Default ship hold double-click checks that the player's current region
+      belongs to the hold's linked ship before opening or applying its trap.
+      Match Source-X Skill_Snoop_Check, including the GM exemption and the
+      existing itemuse_hatch_fail DEFMESSAGE. Nearby shore/other-ship access
+      no longer opens the hold.
+
+[2026-09-20] - Script-configurable dry docking messages
+------------------------------------------------------
+
+FIX - Route every default dry docking rejection through ServerMessages and
+      the existing DEFMESSAGE overrides. Reuse Source-X tiller_notyourship;
+      register ship_drydock_moving/invalid/hold/passengers/deck/pack as custom
+      defaults for checks that have no upstream message key.
+
+[2026-09-20] - NPC door use requires hands
+----------------------------------------
+
+FIX - Both wandering and directed NPC movement check CHARDEF CAN_C_USEHANDS
+      before attempting to open a door, matching Source-X NPC_LookAtItem.
+      Animals without that capability no longer open doors; capable NPCs retain
+      the existing unlocked-door behavior.
+
+[2026-09-20] - Default tillerman dry docking
+-----------------------------------------
+
+ADD - Double-clicking a reachable tillerman from shore dry docks the owner's
+      stopped, empty ship using the existing REDEED flow. Reject non-owners,
+      hold/deck cargo, passengers and full/missing backpacks before teardown.
+      Onboard pilot behavior, script @DClick overrides and raw REDEED semantics
+      remain available. This is a SphereNet default beyond Source-X tiller use.
+
+[2026-09-20] - Region transition music
+------------------------------------
+
+FIX - Run region Exit/Enter scripts before committing the new position/region,
+      for both walking and teleports. SRC.REGION still identifies the old area
+      during Enter, allowing script TAG.MUSIC comparisons and SRC.MIDILIST to
+      send the new area's 0x6D music packet. Detect transitions by region identity.
+      Validate region cache hits by exact point so a parent area cannot hide a
+      smaller city across a boundary inside the same cache cell.
+
+[2026-09-20] - Dyes open the tub hue picker
+----------------------------------------
+
+FIX - Targeting a dye tub with dyes opens the 0x95 picker instead of copying
+      the dyes' hue immediately. Player replies apply to the selected tub once,
+      recheck reach and Source-X dye type/hue rules, and honor @Dye changes/veto.
+      Refresh the item according to its container/equipment/world placement.
+      Decode the selected hue from the final word of the client's 0x95 reply.
+
+[2026-09-20] - Hand replacement removes stale equipment visuals
+----------------------------------------
+
+FIX - Resolve two-handed weapon layer promotion before checking hand conflicts.
+      Send removal updates for both same-hand and opposite-hand replacements
+      before drawing the newly worn weapon, including displaced candles.
+      Light toggles use containment-aware visual updates instead of sending
+      held candles/lanterns as ground items and corrupting client equipment state.
+
+[2026-09-20] - Stack identity follows Source-X name/attribute rules
+----------------------------------------
+
+FIX - Instance NAME differences no longer block identical arrow/item piles from
+      merging on a character, backpack or target pile. Compare actual attributes
+      except DECAY, as Source-X does, so newbie/magic differences still prevent
+      merging. Explicit container slot placement keeps its existing behavior.
+      Native vendor PRICE does not prevent merging. Vendor creation/restock no
+      longer fabricates TAG.PRICE; pricing reads native PRICE as well as legacy
+      tags. All custom tags still compare, including existing TAG.PRICE values.
+      Ordinary vendor stock no longer freezes ITEMDEF VALUE into instance PRICE;
+      quotes read the current script definition, including named ITEMDEFs.
+
+[2026-09-20] - Spellbook opening packet parity
+----------------------------------------
+
+FIX - Dropping a scroll onto a spellbook learns its SPELLDEF.SCROLL_ITEM spell
+      instead of hiding the scroll inside the book as container content. Consume
+      one scroll, return the remainder, and reject duplicates/wrong schools without
+      consuming anything. Use the book's TDATA3 offset and update its spell mask.
+
+FIX - Spellbook double-click uses Source-X's 0xFFFF window selector instead of
+      the barrel gump 0x003E. Send the item before opening and its contents after.
+      Spell masks use the reference's little-endian byte order so partially
+      filled books display the correct spells.
+
+[2026-09-20] - Inventory status and ship use follow Source-X
+----------------------------------------
+
+FIX - Container add/remove and stack amount changes notify the carrier's status for
+      all item types, including nested bags. Equipment changes also refresh status.
+      Weight notifications preserve Source-X's zero-delta and unweighed-container
+      boundaries; an unchanged amount does not enqueue another update.
+      Inventory status invalidation is independent of weight: zero-weight gold
+      (including the 65000-gold menu reward) now updates without moving an item.
+      Contained item changes also send the owner an item packet without reopening
+      the bag, following Source-X ContentAdd/Update's separate visual update.
+
+FIX - Tillerman double-click no longer implicitly redeeds a ship. Classic clients
+      hear the tillerman; High Seas clients use the owner/key-gated pilot flow.
+      Tillerman touch uses the Source-X two-tile, height-aware range. Ship use
+      commands use the ship region, rather than a newly invented hull-tile rule.
+
+FIX - Ship REDEED forwards its message/bank arguments and source character.
+      @Redeed receives the deed and ARGN1/2/3; script changes control transfer and
+      bank delivery. RETURN 1 suppresses the deed without cancelling teardown.
+      No used @Redeed means no automatic loose-item transfer, as in the reference.
+      Components are removed after the trigger: scripts must move hold contents
+      during @Redeed if they are to be preserved. The old automatic hold rescue
+      was not Source-X behavior. Legacy save formats are unchanged.
 
 [2026-09-19] - One handler fault no longer costs the player their session
 ----------------------------------------

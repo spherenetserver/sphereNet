@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Configuration;
+using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Combat;
@@ -222,6 +222,7 @@ public sealed partial class NpcAI
     public void OnTickAction(Character npc)
     {
         if (npc.IsPlayer || npc.IsDead || npc.IsDeleted || npc.IsStatFlag(StatFlag.Ridden)) return;
+        if ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_Statue) != 0) return;
 
         long now = Environment.TickCount64;
 
@@ -383,8 +384,8 @@ public sealed partial class NpcAI
         if (OnNpcAction != null && OnNpcAction(npc))
             return;
 
-        var can = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
-        if ((can & (CanFlags.C_Equip | CanFlags.C_UseHands)) == 0)
+        var can = CharDefHelper.GetCanFlags(npc);
+        if ((can & CanFlags.C_UseHands) == 0)
             return;
 
         var pack = npc.Backpack;

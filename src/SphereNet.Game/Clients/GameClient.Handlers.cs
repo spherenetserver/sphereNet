@@ -133,38 +133,46 @@ public sealed partial class GameClient
             _netState.SupportsNewCharacterList, flags).Build());
     }
 
-    /// <summary>Handle dye response from color picker (0x95).</summary>
+    private ObjBase? _pendingDyeTarget;
+
+    /// <summary>Source-X addDyeOption: open the picker and remember its target.</summary>
+    public void OpenDyeWindow(ObjBase target)
+    {
+        if (_character == null || target.IsDeleted) return;
+        _pendingDyeTarget = target;
+        ushort graphic = target is Item item ? item.DispIdFull
+            : target is Character ch ? ch.BodyId : (ushort)0;
+        _netState.Send(new PacketDyeWindow(target.Uid.Value, target.Hue.Value, graphic));
+    }
+
+    /// <summary>Handle the one-shot response to an opened hue picker (0x95).</summary>
     public void HandleDyeResponse(uint itemSerial, ushort hue)
     {
-        if (_character == null) return;
+        var pending = _pendingDyeTarget;
+        _pendingDyeTarget = null;
+        if (_character == null || pending == null || pending.IsDeleted ||
+            pending.Uid.Value != itemSerial) return;
 
         var item = _world.FindItem(new Serial(itemSerial));
-        if (item == null) return;
+        if (item == null || !ReferenceEquals(item, pending) || !ItemUse.CanTouchItem(item)) return;
 
-        // Only GM can dye any item; players need a dye vat interaction (handled by script)
-        if (_account?.PrivLevel < PrivLevel.GM)
+        if (_character.PrivLevel < PrivLevel.GM)
         {
-            SysMessage(ServerMessages.Get("itemuse_dye_fail"));
-            return;
+            // Source-X Event_Item_Dye: classic tub graphic, or TYPE with OF_DyeType.
+            if (ItemDefHelper.ResolveInstanceDefIndex(item) != 0x0FAB &&
+                (item.ItemType != ItemType.DyeVat || !ServerOptionFlags.HasFlag(OptionFlags.DyeType)))
+                return;
+            hue = (ushort)Math.Clamp((int)hue, 0x0002, 0x03E9);
         }
 
-        _logger.LogDebug("[dye_response] char=0x{Uid:X8} item=0x{Item:X8} hue={Hue}",
-            _character.Uid.Value, itemSerial, hue);
-        if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Dye, new TriggerArgs
-        {
-            CharSrc = _character,
-            ItemSrc = item,
-            N1 = hue
-        }) == TriggerResult.True)
-            return;
+        var args = new TriggerArgs { CharSrc = _character, ItemSrc = item, N1 = hue };
+        if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Dye, args) == TriggerResult.True ||
+            item.IsDeleted) return;
 
-        item.Hue = new Core.Types.Color(hue);
-
-        // Refresh item for nearby clients
-        var itemPacket = new PacketWorldItem(
-            item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue);
-        BroadcastNearby?.Invoke(item.Position, UpdateRange, itemPacket, 0);
+        item.Hue = new Core.Types.Color((ushort)args.N1);
+        if (item.ItemType == ItemType.DyeVat) item.RemoveTag("DYE_HUE");
+        if (Item.OnVisualUpdate != null) Item.OnVisualUpdate(item);
+        else SendItemVisualUpdate(item);
     }
 
     private Action<uint, uint, uint, string>? _pendingPromptCallback;

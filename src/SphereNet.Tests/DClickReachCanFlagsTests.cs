@@ -20,10 +20,8 @@ namespace SphereNet.Tests;
 /// into the flag enum and then never read.
 ///
 /// The shipped pack asks for them: all twelve tillermen carry CAN=can_i_dcignorelos and
-/// the archery butte carries CAN=can_i_dcignoredist. A ship's own hull stands between
-/// its tiller and anyone on the shore, so double-clicking the tillerman from the dock -
-/// which is how a ship is turned back into a deed, and has to be done from OFF the ship -
-/// was refused every time, and reported as distance.
+/// the archery butte carries CAN=can_i_dcignoredist. LOS and distance are separate:
+/// a tillerman with only DCIGNORELOS still needs Source-X's two-tile touch range.
 /// </summary>
 [Collection("DefinitionLoaderSerial")]
 public sealed class DClickReachCanFlagsTests : IDisposable
@@ -121,10 +119,10 @@ public sealed class DClickReachCanFlagsTests : IDisposable
     public void AnItemThatIgnoresLineOfSightIsReachableThroughAWall()
     {
         var withFlag = Build(8931, 0x3E4A, "CAN=04000");
-        Assert.True(CanReach(withFlag, Behind(withFlag, 3)));
+        Assert.True(CanReach(withFlag, Behind(withFlag, 2)));
 
         var without = Build(8932, 0x3E4B);
-        Assert.False(CanReach(without, Behind(without, 3)),
+        Assert.False(CanReach(without, Behind(without, 2)),
             "calibration: without the flag the wall must still refuse it");
     }
 
@@ -152,7 +150,7 @@ public sealed class DClickReachCanFlagsTests : IDisposable
     public void TheReachersOwnFlagCountsToo()
     {
         var b = Build(8935, 0x3E4E);
-        var target = Behind(b, 3);
+        var target = Behind(b, 2);
         Assert.False(CanReach(b, target));
 
         // The same character, now on a body whose CHARDEF declares CAN_C_DCIGNORELOS.

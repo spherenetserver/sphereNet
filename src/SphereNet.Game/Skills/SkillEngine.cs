@@ -250,10 +250,9 @@ public static class SkillEngine
         int currentSkill = ch.GetSkill(skill);
         int skillMax = GetSkillMax(ch, skill);
 
-        // Lock state: 0=Up (gain), 1=Down (decay only), 2=Locked (no change)
+        // Skill locks restrict the skill value through GetSkillMax and the
+        // gain branch, not stat training (Source-X Skill_Experience).
         byte lockState = ch.GetSkillLock(skill);
-        if (lockState == 2)
-            return;
 
         // Check total skill cap
         int totalSkill = GetSkillSum(ch);
@@ -461,10 +460,6 @@ public static class SkillEngine
 
     private static void TryStatGain(Character ch, SkillType skill)
     {
-        // Reference: stats train only while the used skill's lock is Up.
-        if (ch.GetSkillLock(skill) != 0)
-            return;
-
         var def = DefinitionLoader.GetSkillDef((int)skill);
         int statSumMax = ResolveStatSumCap(ch);
 

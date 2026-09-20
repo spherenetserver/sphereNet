@@ -83,6 +83,19 @@ public sealed partial class GameClient
         return name.Length > 30 ? name[..30] : name;
     }
 
+    /// <summary>Source-X addSkillWindow(skill): a single update lets the client
+    /// report a skill delta instead of silently replacing the complete list.</summary>
+    public void SendSkillUpdate(SkillType skill)
+    {
+        if (_character == null || (uint)skill >= (uint)SkillType.Qty) return;
+
+        ushort raw = _character.GetSkill(skill);
+        ushort adjusted = (ushort)Math.Clamp(SkillEngine.GetAdjustedSkill(_character, skill), 0, ushort.MaxValue);
+        ushort cap = (ushort)SkillEngine.GetSkillDisplayCap(_character, skill);
+        _netState.Send(new PacketSkillSingle((ushort)skill, adjusted, raw,
+            _character.GetSkillLock(skill), cap));
+    }
+
     public void SendSkillList()
     {
         if (_character == null) return;

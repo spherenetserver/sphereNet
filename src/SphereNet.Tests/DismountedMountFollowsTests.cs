@@ -36,6 +36,7 @@ public sealed class DismountedMountFollowsTests
         SphereNet.Game.Objects.Items.Item.ResolveWorld = () => world;
 
         var rider = world.CreateCharacter();
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true; rider.IsOnline = true;
         rider.Hits = rider.MaxHits = 100;
         rider.Str = rider.Dex = rider.Int = 100;

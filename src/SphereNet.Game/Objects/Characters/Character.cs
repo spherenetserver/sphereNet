@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -75,8 +75,9 @@ public partial class Character : ObjBase
 
     /// <summary>Fired before a severely lost NPC (far past its home leash)
     /// teleports home (Source-X @NPCLostTeleport). Return true to cancel the
-    /// teleport — the NPC walks back instead.</summary>
-    public static Func<Character, bool>? OnNpcLostTeleport;
+    /// teleport — the NPC walks back instead. The second argument is the
+    /// distance to home, exposed to scripts as ARGN1.</summary>
+    public static Func<Character, int, bool>? OnNpcLostTeleport;
     /// <summary>Fired when a timed jail sentence expires and the character
     /// should be released (move out of jail, clear Freeze, resync).</summary>
     public static Action<Character>? OnJailReleaseRequested;
@@ -1218,7 +1219,9 @@ public partial class Character : ObjBase
 
     /// <summary>True for the standard UO female bodies (human/elf/gargoyle),
     /// used to pick the gendered get-hit/death vocalizations.</summary>
-    public bool IsFemale => _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
+    public bool IsFemale => Definitions.DefinitionLoader.GetCharDef(CharDefIndex) is { } def
+        ? (def.Can & CanFlags.C_Female) != 0
+        : _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
     public bool IsHuman => _bodyId is 0x0190 or 0x0191 or 0x0192 or 0x0193;
     public bool IsGargoyle => _bodyId is 0x029A or 0x029B or 0x02B6 or 0x02B7;
 
@@ -1355,7 +1358,7 @@ public partial class Character : ObjBase
         get => _direction;
         set
         {
-            var masked = (Direction)((byte)value & 0x07);
+            var masked = (Direction)((byte)value & 0x87);
             if (masked != _direction)
             {
                 _direction = masked;
@@ -1703,6 +1706,8 @@ public partial class Character : ObjBase
             return -1;
 
         int skillId = _skillPendingId;
+        if (skillId == (int)SkillType.Meditation)
+            ClearStatFlag(StatFlag.Meditation);
         _skillPendingId = -1;
         ActionEffect = -1;
         ActionEffect = -1;
@@ -1722,6 +1727,8 @@ public partial class Character : ObjBase
         if (!IsStatFlag(StatFlag.Meditation))
             return false;
         ClearStatFlag(StatFlag.Meditation);
+        if (_skillPendingId == (int)SkillType.Meditation)
+            ClearActiveSkillPending();
         ActiveSkillAborted?.Invoke(this, (int)SkillType.Meditation);
         return true;
     }
@@ -2869,6 +2876,7 @@ public partial class Character : ObjBase
         copy.IsPlayer = false;          // a duplicate is never someone's account char
         copy.NpcBrain = NpcBrain;
         copy.Attributes = Attributes;
+        copy.CanMask = CanMask;
 
         // Stats, and the pools with them: a copy that kept the maxima but started at
         // zero hits would be a different creature.
@@ -3039,7 +3047,7 @@ public partial class Character : ObjBase
         // (Source-X CChar::m_uidWeaponLast, set on equip, CCharAct.cpp:314).
         if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && item.IsWeaponType)
             _lastWeaponUid = item.Uid;
-        MarkDirty(DirtyFlag.Equip);
+        MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
         return true;
     }
 
@@ -3066,6 +3074,20 @@ public partial class Character : ObjBase
 
         int idx = (int)layer;
         if (idx <= 0 || idx >= (int)Layer.Dragging || idx >= _equipment.Length)
+        {
+            denial = EquipDenial.InvalidLayer;
+            return false;
+        }
+
+        var can = Definitions.CharDefHelper.GetCanFlags(this);
+        bool incapable = layer switch
+        {
+            Layer.OneHanded or Layer.TwoHanded => item.BaseId != 0x1647 && (can & CanFlags.C_UseHands) == 0,
+            Layer.Horse => !Definitions.CharDefHelper.IsMountCapable(this),
+            Layer.Pack or Layer.Hair or Layer.FacialHair or Layer.Face or Layer.Ring or Layer.Neck or Layer.Earrings or Layer.Talisman => false,
+            _ => Item.IsVisibleLayer(layer) && (can & CanFlags.C_Equip) == 0,
+        };
+        if (incapable)
         {
             denial = EquipDenial.InvalidLayer;
             return false;
@@ -3106,7 +3128,7 @@ public partial class Character : ObjBase
             _backpack = null;
         item.IsEquipped = false;
         item.ContainedIn = Serial.Invalid;
-        MarkDirty(DirtyFlag.Equip);
+        MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
 
         // Source-X Stat_AddMaxMod on unequip clamps the current pool down to the
         // lowered adjusted max. The item is already out of _equipment, so the Max*
@@ -3284,10 +3306,10 @@ public partial class Character : ObjBase
     public static int HitpointPercentOnRez { get; set; } = 10;
 
     /// <summary>sphere.ini PACKETDEATHANIMATION (Source-X m_iPacketDeathAnimation,
-    /// default on): send the 0x2C death-screen packet to a dying client. When
-    /// off, the client never enters ClassicUO's 1.5s death-screen freeze and
-    /// the plain player-update redraw carries the ghost transition.</summary>
-    public static bool PacketDeathAnimationEnabled { get; set; } = true;
+    /// Source-X default on, SphereNet default off): send the 0x2C death-screen
+    /// packet to a dying client. When off, the player-update redraw carries
+    /// the ghost transition.</summary>
+    public static bool PacketDeathAnimationEnabled { get; set; } = false;
 
     public void Kill()
     {
@@ -3764,8 +3786,7 @@ public partial class Character : ObjBase
             }
             case "CAN":
             {
-                var cdef = Definitions.DefinitionLoader.GetCharDef(_charDefIndex);
-                value = cdef != null ? $"0{(uint)cdef.Can:X}" : "0";
+                value = $"0{(ulong)Definitions.CharDefHelper.GetCanFlags(this):X}";
                 return true;
             }
             case "FOOD": value = _food.ToString(); return true;
@@ -7593,15 +7614,10 @@ public partial class Character : ObjBase
         if (manaRateMs >= 0 && now >= _nextManaRegen && _mana < _maxMana)
         {
             int regenAmount = _regenValMana > 0 ? _regenValMana : 1;
-            if (IsStatFlag(StatFlag.Meditation))
-                regenAmount += Math.Max(1, SkillEngine.GetEffect(SkillType.Meditation,
-                    SkillEngine.GetAdjustedSkill(this, SkillType.Meditation), 1));
             int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
             if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
                 regenAmount += focus / 200;
             _mana = (short)Math.Min(_mana + regenAmount, _maxMana);
-            if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))
-                ClearStatFlag(StatFlag.Meditation);
             MarkDirty(DirtyFlag.Stats);
             _nextManaRegen = now + manaRateMs;
         }
@@ -7624,7 +7640,8 @@ public partial class Character : ObjBase
 
         // Hunger decay: Source-X m_iRegenRate[STAT_FOOD] = 60 minutes per point.
         long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
-        if (_isPlayer && foodRateMs >= 0 && now >= _nextFoodDecay)
+        if (_isPlayer && foodRateMs >= 0 && now >= _nextFoodDecay &&
+            (Definitions.CharDefHelper.GetCanFlags(this) & CanFlags.C_Statue) == 0)
         {
             if (_food > 0)
                 _food = (ushort)Math.Max(0, _food - (_regenValFood > 0 ? _regenValFood : 1));
@@ -8192,21 +8209,7 @@ public partial class Character : ObjBase
             // every read (CItem::GetName parity, CItem.cpp:1769).
             if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
                 item.Name = idef.Name;
-            // Stamp the buy price from the itemdef VALUE (Source-X uses
-            // VALUE for vendor pricing). Without this the server-side
-            // price check fell back to 0 and rejected the purchase even
-            // though the client displayed a fallback price.
-            if (idef != null)
-            {
-                int value = idef.ValueMin > 0 && idef.ValueMax > 0
-                    ? (idef.ValueMin + idef.ValueMax) / 2
-                    : Math.Max(idef.ValueMin, idef.ValueMax);
-                if (value > 0)
-                {
-                    item.Price = value;
-                    item.SetTag("PRICE", value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                }
-            }
+            // Leave PRICE unset: ordinary stock follows the current ITEMDEF VALUE.
             if (entryAmount > 1)
                 item.Amount = (ushort)Math.Min(entryAmount, ushort.MaxValue);
             if (!pack.TryAddItem(item))

@@ -115,8 +115,10 @@ public class VendorStableParityTests
 
     // ---- #4: buy price uses the selected stock entry, not the first same-id one ----
 
-    [Fact]
-    public void ProcessBuy_SameBaseIdDifferentPrice_ChargesSelectedEntry()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProcessBuy_SameBaseIdDifferentPrice_ChargesSelectedEntry(bool nativePrice)
     {
         var world = CreateWorld();
         VendorEngine.World = world;
@@ -133,10 +135,12 @@ public class VendorStableParityTests
         // Two stock entries share a BaseId but have different prices; the cheap
         // one is added first (it is what GetServerBuyPrice-by-BaseId returns).
         var cheap = world.CreateItem();
-        cheap.BaseId = 0x1F03; cheap.Amount = 5; cheap.SetTag("PRICE", "10");
+        cheap.BaseId = 0x1F03; cheap.Amount = 5;
+        if (nativePrice) cheap.Price = 10; else cheap.SetTag("PRICE", "10");
         stock.AddItem(cheap);
         var dear = world.CreateItem();
-        dear.BaseId = 0x1F03; dear.Amount = 5; dear.SetTag("PRICE", "999");
+        dear.BaseId = 0x1F03; dear.Amount = 5;
+        if (nativePrice) dear.Price = 999; else dear.SetTag("PRICE", "999");
         stock.AddItem(dear);
 
         var buyer = world.CreateCharacter();

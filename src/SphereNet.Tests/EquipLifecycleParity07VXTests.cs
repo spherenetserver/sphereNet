@@ -80,6 +80,107 @@ public sealed class EquipLifecycleParity07VXTests
     }
 
     private static Item Sword(GameWorld world) => Gear(world, SwordTile, ItemType.WeaponSword);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RepeatedHandSwapsRedrawTheIncomingItemOnlyForDoubleClick(bool doubleClick)
+    {
+        var b = Setup();
+        var light = Gear(b.World, ShieldTile, ItemType.LightLit);
+        var weapon = Gear(b.World, BowTile, ItemType.WeaponAxe);
+        var bow = Bow(b.World);
+        b.Me.Equip(light, Layer.TwoHanded);
+        b.Pack.TryAddItem(weapon);
+        b.Pack.TryAddItem(bow);
+
+        Item previous = light;
+        foreach (var next in new[] { weapon, bow, light, weapon })
+        {
+            TestHarness.ClearQueuedPackets(b.Client.NetState);
+            if (doubleClick)
+                b.Client.ItemUse.HandleDoubleClick(next.Uid.Value);
+            else
+                PickUpAndEquip(b, next, Layer.TwoHanded);
+
+            Assert.Same(next, b.Me.GetEquippedItem(Layer.TwoHanded));
+            Assert.Equal(b.Pack.Uid, previous.ContainedIn);
+            var packets = TestHarness.GetQueuedPackets(b.Client.NetState).ToList();
+            int Find(byte opcode, uint uid) => packets.FindIndex(p => p.Length >= 5 && p.Span[0] == opcode &&
+                System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(p.Span[1..]) == uid);
+            int oldRemove = Find(0x1D, previous.Uid.Value);
+            int packed = Find(0x25, previous.Uid.Value);
+            int newRemove = Find(0x1D, next.Uid.Value);
+            int worn = Find(0x2E, next.Uid.Value);
+            Assert.True(oldRemove >= 0 && packed > oldRemove && worn > packed);
+            if (doubleClick) Assert.True(newRemove > packed && worn > newRemove);
+            else Assert.Equal(-1, newRemove);
+            Assert.Equal((byte)Layer.TwoHanded, packets[worn].Span[8]);
+            Assert.Equal(b.Me.Uid.Value, System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(packets[worn].Span[9..]));
+            Assert.False(b.Me.TryGetTag("DRAGGING", out _));
+            previous = next;
+        }
+    }
+
+    [Theory]
+    [InlineData(ItemType.LightOut, Layer.OneHanded)]
+    [InlineData(ItemType.LightLit, Layer.OneHanded)]
+    [InlineData(ItemType.LightOut, Layer.TwoHanded)]
+    [InlineData(ItemType.LightLit, Layer.TwoHanded)]
+    public void DoubleClickHeldLightNeverSendsItAsAGroundItem(ItemType initialType, Layer hand)
+    {
+        var b = Setup();
+        b.Client.BroadcastNearby = (_, _, packet, _) => b.Client.NetState.Send(packet);
+        Item.OnVisualUpdate = b.Client.SendItemVisualUpdate;
+        var light = Gear(b.World, hand == Layer.OneHanded ? SwordTile : ShieldTile, initialType);
+        b.Pack.TryAddItem(light);
+        b.Client.ItemUse.HandleDoubleClick(light.Uid.Value);
+        Assert.Same(light, b.Me.GetEquippedItem(hand));
+        Assert.DoesNotContain(TestHarness.GetQueuedPackets(b.Client.NetState), p => p.Span[0] == 0x1A);
+        Assert.True(TestHarness.GetQueuedPackets(b.Client.NetState).Count(p => p.Span[0] == 0x2E) >= 2,
+            "Both equip and light toggle must update the worn item.");
+
+        var weapon = hand == Layer.OneHanded ? Gear(b.World, SwordTile, ItemType.WeaponFence) : Bow(b.World);
+        b.Pack.TryAddItem(weapon);
+        b.Client.ItemUse.HandleDoubleClick(weapon.Uid.Value);
+        Assert.Same(weapon, b.Me.GetEquippedItem(hand));
+        Assert.Equal(b.Pack.Uid, light.ContainedIn);
+    }
+
+    [Theory]
+    [InlineData(Layer.OneHanded, Layer.TwoHanded)]
+    [InlineData(Layer.TwoHanded, Layer.OneHanded)]
+    [InlineData(Layer.TwoHanded, Layer.TwoHanded)]
+    public void PromotedTwoHanderRemovesCandleFromClientBeforeWearingWeapon(Layer requested, Layer candleLayer)
+    {
+        var runtime = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = Path.Combine(Path.GetTempPath(), $"equip_candle_{Guid.NewGuid():N}.scp");
+        try
+        {
+            File.WriteAllText(path, "[ITEMDEF 0542]\nTYPE=t_weapon_bow\nTWOHANDS=1\nLAYER=1\n");
+            runtime.Resources.LoadResourceFile(path);
+            ScriptTestBootstrap.LoadDefinitions(runtime.Resources);
+            var b = Setup();
+            var candle = Gear(b.World, ShieldTile, ItemType.LightLit);
+            b.Me.Equip(candle, candleLayer);
+            var weapon = Bow(b.World);
+            Assert.True(weapon.IsTwoHanded);
+            b.Pack.TryAddItem(weapon);
+            TestHarness.ClearQueuedPackets(b.Client.NetState);
+
+            PickUpAndEquip(b, weapon, requested);
+
+            Assert.Same(weapon, b.Me.GetEquippedItem(Layer.TwoHanded));
+            Assert.Equal(b.Pack.Uid, candle.ContainedIn);
+            var packets = TestHarness.GetQueuedPackets(b.Client.NetState).ToList();
+            int removed = packets.FindIndex(p => p.Span[0] == 0x1D &&
+                System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(p.Span[1..]) == candle.Uid.Value);
+            int worn = packets.FindIndex(p => p.Span[0] == 0x2E &&
+                System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(p.Span[1..]) == weapon.Uid.Value);
+            Assert.True(removed >= 0 && worn > removed, "Remove the candle before drawing the replacement weapon.");
+        }
+        finally { File.Delete(path); }
+    }
     private static Item Shield(GameWorld world) => Gear(world, ShieldTile, ItemType.Shield);
     private static Item Bow(GameWorld world) => Gear(world, BowTile, ItemType.WeaponBow);
 

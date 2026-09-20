@@ -83,6 +83,8 @@ public sealed class MovementEngine
         _world = world;
         _triggerDispatcher = triggerDispatcher;
         _walkCheck = new WalkCheck(world);
+        if (triggerDispatcher != null)
+            world.OnRegionTransition = FireRegionTransition;
     }
 
     /// <summary>
@@ -116,7 +118,9 @@ public sealed class MovementEngine
         // no walk packets". We still block Freeze (paralyze, GM .freeze)
         // and Stone (stone form / petrified) since those are explicit
         // immobility states even on living characters.
-        if (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone))
+        if (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone) ||
+            (ch.PrivLevel < PrivLevel.GM &&
+             (CharDefHelper.GetCanFlags(ch) & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0))
             return false;
 
         // A cast that roots the caster (MAGICF_FREEZEONCAST / SPELLFLAG_FREEZEONCAST)
@@ -212,8 +216,9 @@ public sealed class MovementEngine
                 Character.ActiveSkillAborted?.Invoke(ch, skillId);
         }
 
-        // Move
-        _world.MoveCharacter(ch, target);
+        // Region scripts run centrally for walking and every teleport path.
+        var previousRegion = _world.FindRegion(ch.Position);
+        if (!_world.MoveCharacter(ch, target)) return false;
 
         // Shove cost — applied once here (not in the two shove predicates) so a
         // player who pushes past a mobile spends 10 stamina and is revealed,
@@ -238,7 +243,7 @@ public sealed class MovementEngine
         TickStealthStep(ch);
 
         // Region/item step effects
-        CheckLocationEffects(ch, target);
+        CheckLocationEffects(ch, target, previousRegion);
 
         return true;
     }
@@ -365,6 +370,7 @@ public sealed class MovementEngine
     /// </summary>
     private static bool CanShove(Objects.Characters.Character mover, Objects.Characters.Character blocker)
     {
+        if ((CharDefHelper.GetCanFlags(blocker) & CanFlags.C_Statue) != 0) return false;
         // ServUO / RunUO Mobile.CheckShove parity.
         if (mover.PrivLevel >= PrivLevel.Counsel) return true;
 
@@ -391,8 +397,31 @@ public sealed class MovementEngine
         return false;
     }
 
+    private void FireRegionTransition(Character ch, World.Regions.Region? oldRegion, World.Regions.Region? newRegion)
+    {
+        if (_triggerDispatcher == null) return;
+        if (oldRegion != null)
+        {
+            _triggerDispatcher.FireRegionEvents(oldRegion, "Exit", ch,
+                new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name });
+            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionLeave,
+                new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name });
+            _triggerDispatcher.Runner?.TryRunFunction("f_onchar_regionleave", ch, null,
+                new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, oldRegion.Name), out _);
+        }
+        if (newRegion != null)
+        {
+            _triggerDispatcher.FireRegionEvents(newRegion, "Enter", ch,
+                new TriggerArgs { CharSrc = ch, S1 = newRegion.Name });
+            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionEnter,
+                new TriggerArgs { CharSrc = ch, S1 = newRegion.Name });
+            _triggerDispatcher.Runner?.TryRunFunction("f_onchar_regionenter", ch, null,
+                new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, newRegion.Name), out _);
+        }
+    }
+
     /// <summary>Check step effects (traps, fields, region enter/leave).</summary>
-    private void CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos)
+    private void CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos, World.Regions.Region? previousRegion)
     {
         var pos = originalPos;
         bool spellHit = false;
@@ -495,70 +524,10 @@ public sealed class MovementEngine
             }
         }
 
-        // Region enter/leave detection
+        // Exit/Enter already ran in GameWorld.MoveCharacter, before SRC.REGION
+        // changed. Only same-region footsteps belong in this location-effects path.
         var newRegion = _world.FindRegion(pos);
-        string? prevRegionName = null;
-        ch.TryGetTag("CURRENT_REGION", out prevRegionName);
-        string newRegionName = newRegion?.Name ?? "";
-
-        if (prevRegionName != newRegionName)
-        {
-            // Exit old region — fire region's own EVENTS @Exit
-            if (!string.IsNullOrEmpty(prevRegionName))
-            {
-                _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.RegionLeave,
-                    new TriggerArgs { S1 = prevRegionName });
-
-                // Fire old region's EVENTS
-                ch.TryGetTag("CURRENT_REGION_UID", out string? prevRegionUidStr);
-                if (!string.IsNullOrEmpty(prevRegionUidStr) && uint.TryParse(prevRegionUidStr, out uint oldRegionUid))
-                {
-                    var oldRegion = _world.FindRegionByUid(oldRegionUid);
-                    if (oldRegion != null && _triggerDispatcher != null)
-                    {
-                        _triggerDispatcher.FireRegionEvents(oldRegion, "Exit", ch,
-                            new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name });
-                    }
-                }
-
-                // Optional global hook — silently skip if not defined in scripts.
-                _triggerDispatcher?.Runner?.TryRunFunction(
-                    "f_onchar_regionleave",
-                    ch,
-                    null,
-                    new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, prevRegionName),
-                    out _);
-            }
-
-            // Enter new region — fire region's own EVENTS @Enter
-            if (!string.IsNullOrEmpty(newRegionName))
-            {
-                _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.RegionEnter,
-                    new TriggerArgs { S1 = newRegionName });
-
-                if (newRegion != null && _triggerDispatcher != null)
-                {
-                    _triggerDispatcher.FireRegionEvents(newRegion, "Enter", ch,
-                        new TriggerArgs { CharSrc = ch, S1 = newRegion.Name });
-                }
-
-                // Source-X CCharBase::Region_Notify is now centralised in
-                // GameWorld.OnRegionChanged so walking, .go teleport, recall
-                // and gate all produce the same MSG_REGION_ENTER / guard /
-                // PvP banner — no per-engine duplication needed here.
-
-                // Optional global hook — silently skip if not defined in scripts.
-                _triggerDispatcher?.Runner?.TryRunFunction(
-                    "f_onchar_regionenter",
-                    ch,
-                    null,
-                    new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, newRegionName),
-                    out _);
-            }
-            ch.SetTag("CURRENT_REGION", newRegionName);
-            ch.SetTag("CURRENT_REGION_UID", newRegion?.Uid.ToString() ?? "");
-        }
-        else if (newRegion != null && _triggerDispatcher != null)
+        if (newRegion != null && newRegion == previousRegion && _triggerDispatcher != null)
         {
             // Step within same region — fire @Step
             _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionStep,

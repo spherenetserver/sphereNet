@@ -684,6 +684,9 @@ public sealed class ClientTargetingHandler
             Enum.TryParse<SpellType>(spellStr, out var spell))
         {
             _character.RemoveTag("CAST_SPELL");
+            if (_world.FindChar(new Serial(serial)) is { } selected &&
+                (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(selected) & CanFlags.C_NonSelectable) != 0)
+                return;
             HandleCastSpell(spell, serial);
         }
     }

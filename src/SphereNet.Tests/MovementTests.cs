@@ -145,11 +145,11 @@ public class MovementTests
     }
 
     [Fact]
-    public void Character_Direction_StripsRunningBit()
+    public void Character_Direction_PreservesRunningBit()
     {
         var ch = new Character();
         ch.Direction = Direction.East | Direction.Running;
-        Assert.Equal(Direction.East, ch.Direction);
+        Assert.Equal(Direction.East | Direction.Running, ch.Direction);
     }
 
     [Fact]

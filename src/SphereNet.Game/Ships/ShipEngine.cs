@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Objects;
@@ -7,6 +7,7 @@ using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
 using SphereNet.Game.World.Regions;
 using SphereNet.MapData;
+using SphereNet.Game.Scripting;
 
 namespace SphereNet.Game.Ships;
 
@@ -97,11 +98,11 @@ public sealed class ShipEngine
     /// only showed it after being closed and reopened.</summary>
     public Action<Character, Item>? OnDeedDelivered { get; set; }
 
-    /// <summary>A ship is being turned back into its deed: the ship multi, the deed and
-    /// the deed's graphic. Source-X runs @Redeed on the OLD multi with the new deed as
-    /// the object argument and the deed id in ARGN1 (CItemMulti::Redeed,
-    /// CItemMulti.cpp:1225).</summary>
-    public Action<Item, Item, int>? OnShipRedeed { get; set; }
+    /// <summary>Source-X @Redeed on the old multi. O1 is the deed, ARGN1 its ID;
+    /// mutable ARGN2/3 control cargo and bank delivery. Null means no globally
+    /// used trigger. RETURN 1 suppresses the deed but does not cancel teardown.</summary>
+    public Func<Item, TriggerArgs, TriggerResult?>? OnShipRedeed { get; set; }
+    public Action<Character, string>? OnRedeedMessage { get; set; }
 
     /// <summary>Sailing sound (Source-X CCMultiMovable::SetMoveDir plays 0x12 or
     /// 0x13 on roughly one move command in ten). Args: ship, sound id.</summary>
@@ -353,42 +354,75 @@ public sealed class ShipEngine
         if (ship.Owner != requestor.Uid && requestor.PrivLevel < PrivLevel.GM)
             return null;
 
-        var position = ship.MultiItem.Position;
-        var owner = _world.FindChar(ship.Owner);
-        var deed = RemoveShipCore(ship, multiItemUid);
-        if (deed != null)
-        {
-            var recipient = owner ?? requestor;
-            if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
-                _world.PlaceItemWithDecay(deed, position);
-            else
-                OnDeedDelivered?.Invoke(recipient, deed);
-        }
-        return deed;
+        return RemoveShipCore(ship, multiItemUid, false, false, requestor);
     }
 
-    /// <summary>Script/verb-driven dry-dock (server authority — no priv gate):
-    /// the REDEED verb on a ship multi. The deed is delivered to the owner's
-    /// backpack, else dropped (with decay) at the ship's spot.</summary>
-    public Item? RedeedFromScript(Serial multiItemUid)
+    /// <summary>Default shore-side player dry docking. The raw script REDEED
+    /// verb retains its Source-X semantics; these guards belong to player use.</summary>
+    public bool TryDryDock(Ship ship, Character requestor, out string message)
+    {
+        message = "";
+        if (!_ships.TryGetValue(ship.MultiItem.Uid, out var registered) || registered != ship)
+            return false;
+        if (ship.Owner != requestor.Uid)
+            message = Messages.ServerMessages.Get(Messages.Msg.TillerNotyourship);
+        else if (ship.MovementType != ShipMovementType.Stop)
+            message = Messages.ServerMessages.Get("ship_drydock_moving");
+        else if (ship.RegionUid == 0 || _world.FindRegionByUid(ship.RegionUid) is not { } region)
+            message = Messages.ServerMessages.Get("ship_drydock_invalid");
+        else if (_multiDefs.Get(ship.MultiItem.BaseId) is not { } def)
+            message = Messages.ServerMessages.Get("ship_drydock_invalid");
+        else if (ship.Components.Any(uid => _world.FindItem(uid) is { Contents.Count: > 0 }))
+            message = Messages.ServerMessages.Get("ship_drydock_hold");
+        else if (_world.GetCharsInRange(ship.MultiItem.Position, DeckSearchRange(def))
+                     .Any(ch => region.Contains(ch.Position)))
+            message = Messages.ServerMessages.Get("ship_drydock_passengers");
+        else if (_world.GetItemsInRange(ship.MultiItem.Position, DeckSearchRange(def))
+                     .Any(item => item != ship.MultiItem && !item.ContainedIn.IsValid &&
+                         !ship.Components.Contains(item.Uid) && region.Contains(item.Position)))
+            message = Messages.ServerMessages.Get("ship_drydock_deck");
+        else if (requestor.Backpack is not { IsDeleted: false } pack || pack.Contents.Count >= Item.MaxContainerItems)
+            message = Messages.ServerMessages.Get("ship_drydock_pack");
+        else
+        {
+            var deed = RedeedFromScript(ship.MultiItem.Uid, true, false, requestor);
+            return deed != null;
+        }
+        return false;
+    }
+
+    /// <summary>Source-X REDEED showMessage,moveToBank. Scripts control the
+    /// transfer flags through @Redeed; the owner receives the deed, or SRC
+    /// when the ship has no owner.</summary>
+    public Item? RedeedFromScript(Serial multiItemUid, bool displayMessage = false,
+        bool moveToBank = false, Character? source = null)
     {
         if (!_ships.TryGetValue(multiItemUid, out var ship))
             return null;
-        var pos = ship.MultiItem.Position;
-        var owner = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
-        var deed = RemoveShipCore(ship, multiItemUid);
-        if (deed != null)
-        {
-            if (owner?.Backpack == null || !owner.Backpack.TryAddItem(deed))
-                _world.PlaceItemWithDecay(deed, pos);
-            else
-                OnDeedDelivered?.Invoke(owner, deed);
-        }
-        return deed;
+        return RemoveShipCore(ship, multiItemUid, displayMessage, moveToBank, source);
     }
 
-    private Item? RemoveShipCore(Ship ship, Serial multiItemUid)
+    private readonly HashSet<Serial> _redeeding = [];
+
+    private Item? RemoveShipCore(Ship ship, Serial multiItemUid, bool displayMessage,
+        bool moveToBank, Character? source)
     {
+        if (!_redeeding.Add(multiItemUid)) return null;
+        try { return RedeedCore(ship, multiItemUid, displayMessage, moveToBank, source); }
+        finally { _redeeding.Remove(multiItemUid); }
+    }
+
+    private Item? RedeedCore(Ship ship, Serial multiItemUid, bool displayMessage,
+        bool moveToBank, Character? source)
+    {
+        var owner = _world.FindChar(ship.Owner);
+        source ??= owner;
+        var recipient = owner ?? source;
+        if (recipient == null)
+        {
+            _world.RemoveItem(ship.MultiItem);
+            return null;
+        }
         // Create deed — preserve ship UUID for identity continuity
         var deed = _world.CreateItem();
         deed.BaseId = 0x14F1; // ITEMID_SHIP_PLANS1
@@ -401,33 +435,39 @@ public sealed class ShipEngine
         deed.SetTag("SHIP_MULTI_UUID", ship.MultiItem.Uuid.ToString("D"));
         deed.SetTag("SHIP_MULTI_BASEID", ship.MultiItem.BaseId.ToString());
 
-        // @Redeed belongs to the OLD multi, with the new deed as its object argument
-        // and the deed's graphic in ARGN1 (CItemMulti::Redeed, CItemMulti.cpp:1225).
-        // The server only wired the house redeed, so a ship's script never heard about
-        // it. As upstream, this is a notification: it does not veto the redeed.
-        OnShipRedeed?.Invoke(ship.MultiItem, deed, deed.BaseId);
+        // CItemMulti::Redeed: RETURN 1 suppresses the deed, not the teardown.
+        // With no globally used trigger, fTransferAll remains false.
+        var args = new TriggerArgs { ItemSrc = ship.MultiItem, CharSrc = source,
+            O1 = deed, N1 = deed.BaseId, N2 = 1, N3 = moveToBank ? 1 : 0 };
+        TriggerResult? result = OnShipRedeed?.Invoke(ship.MultiItem, args);
+        bool transferAll = result.HasValue && args.N2 != 0;
+        if (result.HasValue) moveToBank = transferAll && args.N3 != 0;
+        owner = _world.FindChar(ship.Owner);
+        recipient = owner ?? source!;
 
-        // Source-X ship Redeed: TransferAllItemsToMovingCrate — the hold's
-        // cargo moves to a crate (owner's bank, else dropped with decay at
-        // the ship's spot) instead of being deleted with the components.
-        List<Item> cargo = [];
+        // Source-X removes components first. Their contents are not implicitly
+        // rescued: scripts can move hold cargo during @Redeed before this point.
         foreach (var compUid in ship.Components)
+            if (_world.FindItem(compUid) is { } component) _world.RemoveItem(component);
+
+        List<Item> cargo = [];
+        if (transferAll && _multiDefs.Get(ship.MultiItem.BaseId) is { } multiDef)
         {
-            var comp = _world.FindItem(compUid);
-            if (comp == null || comp.Contents.Count == 0) continue;
-            foreach (var it in new List<Item>(comp.Contents))
+            // CItemMulti::TransferAllItemsToMovingCrate searches a square and
+            // compares HOUSE regions, not ship deck tiles or passenger height.
+            Region? HouseAt(Point3D point) => _world.FindAllRegions(point)
+                .Select(r => r.Region).FirstOrDefault(r => r.IsFlag(RegionFlag.House));
+            var house = HouseAt(ship.MultiItem.Position);
+            foreach (var loose in _world.GetItemsInRange(ship.MultiItem.Position,
+                         DeckSearchRange(multiDef) - 1).ToList())
             {
-                comp.RemoveItem(it);
-                cargo.Add(it);
+                if (loose == ship.MultiItem || ship.Components.Contains(loose.Uid) || loose.IsDeleted ||
+                    loose.ContainedIn.IsValid || loose.ItemType == ItemType.StoneGuild ||
+                    HouseAt(loose.Position) != house)
+                    continue;
+                _world.HideFromSector(loose);
+                cargo.Add(loose);
             }
-        }
-        foreach (var loose in ListDeckItems(ship))
-        {
-            if (ship.Components.Contains(loose.Uid) || loose.IsDeleted ||
-                loose.IsAttr(ObjAttributes.Static | ObjAttributes.Move_Never))
-                continue;
-            _world.HideFromSector(loose);
-            cargo.Add(loose);
         }
         while (cargo.Count > 0)
         {
@@ -442,27 +482,59 @@ public sealed class ShipEngine
                 crate.TryAddItem(it);
                 it.ClearDecay(); // protected inside the crate
             }
-            var ownerCh = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
-            var bank = ownerCh?.GetEquippedItem(Layer.BankBox);
-            if (bank == null || !bank.TryAddItem(crate))
-                _world.PlaceItemWithDecay(crate, ship.MultiItem.Position);
+            if (!moveToBank || owner == null || !GetRedeedBank(owner).TryAddItem(crate))
+                _world.PlaceItem(crate, ship.MultiItem.Position.WithZ(
+                    (sbyte)Math.Max(sbyte.MinValue, ship.MultiItem.Z - 20)));
         }
 
-        var owner = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
         RemoveShipKeys(owner, ship.MultiItem.Uid);
+        ReleasePilotMarker(ship);
         ship.Pilot = Serial.Invalid;
-
-        // Remove all component items
-        foreach (var compUid in ship.Components)
-        {
-            var item = _world.FindItem(compUid);
-            if (item != null) _world.RemoveItem(item);
-        }
 
         RemoveShipRegion(ship);
         _ships.Remove(multiItemUid); // before RemoveItem: the ObjectDeleting handler must see no entry
         _world.RemoveItem(ship.MultiItem);
+        if (result == TriggerResult.True || deed.IsDeleted)
+        {
+            if (!deed.IsDeleted) _world.RemoveItem(deed);
+            return null;
+        }
+        // Transfer flags affect both the moving crate and the returned deed.
+        var destination = moveToBank ? GetRedeedBank(recipient) : GetRedeedPack(recipient);
+        if (!destination.TryAddItem(deed))
+        {
+            _world.PlaceItemWithDecay(deed, recipient.Position);
+            OnRedeedMessage?.Invoke(recipient, Messages.ServerMessages.GetFormatted(
+                Messages.Msg.MsgItemplace, deed.Name, Messages.ServerMessages.Get(Messages.Msg.MsgFeet)));
+        }
+        else
+        {
+            OnDeedDelivered?.Invoke(recipient, deed);
+            if (displayMessage && !moveToBank)
+                OnRedeedMessage?.Invoke(recipient, Messages.ServerMessages.GetFormatted(
+                    Messages.Msg.MsgItemplace, deed.Name, Messages.ServerMessages.Get(Messages.Msg.MsgBouncePack)));
+        }
         return deed;
+    }
+
+    private Item GetRedeedBank(Character owner)
+    {
+        if (owner.GetEquippedItem(Layer.BankBox) is { } bank) return bank;
+        bank = _world.CreateItem();
+        bank.BaseId = 0x09AB;
+        bank.ItemType = ItemType.EqBankBox;
+        owner.Equip(bank, Layer.BankBox);
+        return bank;
+    }
+
+    private Item GetRedeedPack(Character owner)
+    {
+        if (owner.Backpack is { } pack) return pack;
+        pack = _world.CreateItem();
+        pack.BaseId = 0x0E75;
+        pack.ItemType = ItemType.Container;
+        owner.Equip(pack, Layer.Pack);
+        return pack;
     }
 
     // =====================================================================
@@ -961,18 +1033,21 @@ public sealed class ShipEngine
 
     /// <summary>Assign or release the HS wheel pilot. Source-X only permits an
     /// unmounted, non-hovering character already aboard an unanchored ship.</summary>
-    public bool SetPilot(Ship ship, Character? pilot)
+    public bool SetPilot(Ship ship, Character? pilot, Action<string>? message = null)
     {
         Stop(ship);
         if (pilot == null || ship.Pilot == pilot.Uid)
         {
             ReleasePilotMarker(ship);
             ship.Pilot = Serial.Invalid;
+            if (pilot != null) message?.Invoke(Messages.Msg.ShipPilotOff);
             return true;
         }
-        if (ship.Anchored || pilot.IsMounted || pilot.IsStatFlag(StatFlag.Hovering) ||
-            !ship.CanBoard(pilot.Uid) || FindShipCarrying(pilot) != ship)
-            return false;
+        string? failure = FindShipAt(pilot.Position) != ship ? Messages.Msg.ShipPilotCantaboard
+            : pilot.IsMounted ? Messages.Msg.ItemuseCantmounted
+            : pilot.IsStatFlag(StatFlag.Hovering) ? Messages.Msg.ShipPilotCantflying
+            : ship.Anchored ? Messages.Msg.ShipPilotCantanchor : null;
+        if (failure != null) { message?.Invoke(failure); return false; }
 
         ReleasePilotMarker(ship);
         ship.Pilot = pilot.Uid;
@@ -989,6 +1064,7 @@ public sealed class ShipEngine
         marker.Link = ship.MultiItem.Uid;
         marker.SetAttr(ObjAttributes.Newbie | ObjAttributes.Move_Never);
         pilot.Equip(marker, Layer.Horse);
+        message?.Invoke(Messages.Msg.ShipPilotOn);
         return true;
     }
 
@@ -1502,15 +1578,9 @@ public sealed class ShipEngine
         ship.RegionUid = 0;
     }
 
-    /// <summary>The ship whose dynamic region contains <paramref name="pt"/>, or null.
-    /// Deck membership is resolved through the Ship-flag region (region-bound, so it
-    /// matches exactly the footprint the engine maintains) rather than a separate
-    /// bounding-box test. Used by the boarding gate and eject.</summary>
-    /// <summary>The ship whose REGION covers this point. A ship region is the hull's
-    /// bounding rectangle at any height, so this answers "is a ship moored here" - for a
-    /// placement, a movement destination, or resolving which ship a component belongs to.
-    /// It does NOT answer "is this character aboard": use
-    /// <see cref="FindShipCarrying"/> for that.</summary>
+    /// <summary>The ship whose dynamic region contains this point. Source-X uses
+    /// this region for use/pilot commands; moving passengers also need the separate
+    /// deck-height test in IsOnDeck.</summary>
     public Ship? FindShipAt(Point3D pt)
     {
         foreach (var ship in _ships.Values)
@@ -1522,31 +1592,10 @@ public sealed class ShipEngine
         return null;
     }
 
-    /// <summary>The ship this object is standing ON: a ship that occupies the very tile
-    /// the object is on.
-    ///
-    /// "Aboard" used to be asked of <see cref="FindShipAt"/>, which is the region
-    /// RECTANGLE. A hull is not a rectangle - its bow narrows - so the rectangle also
-    /// covers the water and the quay beside it, and anyone standing on the dock next to
-    /// the bow counted as aboard. That is what made the tillerman refuse to dry-dock: the
-    /// redeed needs the owner to be OFF the ship, and from the dock they were judged to be
-    /// on it.
-    ///
-    /// Height does not separate the two - a dock sits at about the height of the deck it
-    /// serves, which is the point of a dock - so the tile does. A tile the hull occupies
-    /// has nowhere else to stand.</summary>
-    public Ship? FindShipCarrying(ObjBase obj)
-    {
-        foreach (var ship in _ships.Values)
-        {
-            var def = _multiDefs.Get(ship.MultiItem.BaseId);
-            if (def == null || obj.MapIndex != ship.MultiItem.MapIndex) continue;
-            if (def.OccupiesOffset((short)(obj.X - ship.MultiItem.X),
-                                   (short)(obj.Y - ship.MultiItem.Y)))
-                return ship;
-        }
-        return null;
-    }
+    /// <summary>Source-X use/pilot commands identify the ship by its region.
+    /// Movement separately filters passengers by deck height in IsOnDeck;
+    /// these are distinct reference rules, not a hull-tile membership test.</summary>
+    public Ship? FindShipCarrying(ObjBase obj) => FindShipAt(obj.Position);
 
     /// <summary>Ban a player from the ship and, if they are currently aboard, eject
     /// them. The boarding gate (CanBoard) then keeps them off. Owner-proof.</summary>

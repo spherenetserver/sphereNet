@@ -1552,10 +1552,7 @@ public sealed class ClientScriptConsoleHandler
                     dyeObj = _world.FindObject(new Serial((uint)duid));
                 dyeObj ??= target as ObjBase;
                 if (dyeObj == null) return true;
-                ushort dispId = dyeObj is Item dyeItem ? dyeItem.DispIdFull
-                    : dyeObj is Character dyeChar ? dyeChar.BodyId : (ushort)0;
-                Send(new SphereNet.Network.Packets.Outgoing.PacketDyeWindow(
-                    dyeObj.Uid.Value, dyeObj.Hue.Value, dispId));
+                _client.OpenDyeWindow(dyeObj);
                 return true;
             }
 

@@ -386,11 +386,12 @@ public sealed class ShipParity10ABTests
         Serial toldAbout = Serial.Invalid;
         Item? toldDeed = null;
         int toldId = -1;
-        engine.OnShipRedeed = (multi, deed, deedId) =>
+        engine.OnShipRedeed = (multi, args) =>
         {
             toldAbout = multi.Uid;
-            toldDeed = deed;
-            toldId = deedId;
+            toldDeed = (Item)args.O1!;
+            toldId = (int)args.N1;
+            return TriggerResult.Default;
         };
 
         var made = engine.RemoveShip(ship.MultiItem.Uid, owner);

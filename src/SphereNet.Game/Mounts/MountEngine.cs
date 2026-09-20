@@ -28,6 +28,8 @@ public sealed class MountEngine
     {
         if (rider.IsDead || rider.IsMounted || npc.IsDead)
             return false;
+        if (!Definitions.CharDefHelper.IsMountCapable(rider))
+            return false;
         // Source-X builds the mount item with Make_Figurine, which refuses a creature
         // that is already disconnected - carrying someone, sitting in a stable, or
         // shrunk into a figurine - and refuses a player outright (CCharAct.cpp:3619);

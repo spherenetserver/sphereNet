@@ -133,6 +133,8 @@ internal interface IClientContext : ITextConsole
     /// keep the uid and delete it on the next tick.</summary>
     void SendContainerItem(SphereNet.Network.Packets.Outgoing.PacketContainerItem packet);
     void SendWorldItem(Item item);
+    void SendItemVisualUpdate(Item item);
+    void OpenDyeWindow(ObjBase target);
     void SendWorldItemAllShow(Item item);
     void SendSelfRedraw();
     void SendPaperdoll(Character ch);

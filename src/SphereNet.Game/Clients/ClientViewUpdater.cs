@@ -391,6 +391,7 @@ public sealed class ClientViewUpdater
         if (ch.IsDead) vis |= 0x0100;
         if (ch.IsCriminal) vis |= 0x0200;
         if (ch.IsMurderer) vis |= 0x0400;
+        if ((Definitions.CharDefHelper.GetCanFlags(ch) & Core.Enums.CanFlags.C_Statue) != 0) vis |= 0x0800;
         return vis;
     }
 

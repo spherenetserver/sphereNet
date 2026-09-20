@@ -84,6 +84,10 @@ public sealed class TriggerDispatcher
     // live; BuildUsedTriggerCache scans the loaded scripts once after load.
     private readonly HashSet<string> _usedCharTriggers = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedItemTriggers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _registeredCharTriggers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _registeredItemTriggers = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<CharTrigger, string> CharMirrorNames =
+        Enum.GetValues<CharTrigger>().Distinct().ToDictionary(t => t, t => "char" + GetCharTriggerName(t));
 
     // Trigger names that have an f_onchar_<x>/f_onitem_<x> [FUNCTION] fallback.
     // Gates FireCharTriggerByName step 6 / FireItemTriggerByName step 7 so the
@@ -807,6 +811,7 @@ public sealed class TriggerDispatcher
         }
         list.Add(handler);
         _usedCharTriggers.Add(trigName);
+        _registeredCharTriggers.Add(trigName);
     }
 
     private TriggerResult RunResourceEventHandlers(
@@ -841,6 +846,11 @@ public sealed class TriggerDispatcher
     {
         if (Resources == null)
             return;
+
+        _usedCharTriggers.Clear();
+        _usedCharTriggers.UnionWith(_registeredCharTriggers);
+        _usedItemTriggers.Clear();
+        _usedItemTriggers.UnionWith(_registeredItemTriggers);
 
         foreach (var link in Resources.GetAllResources())
         {
@@ -888,7 +898,16 @@ public sealed class TriggerDispatcher
     public bool IsCharTriggerUsed(CharTrigger trigger)
     {
         string name = GetCharTriggerName(trigger);
-        return _usedCharTriggers.Contains(name) || _usedCharTriggers.Contains("char" + name);
+        return _usedCharTriggers.Contains(name) ||
+            (CharMirrorNames.TryGetValue(trigger, out string? mirror) && _usedCharTriggers.Contains(mirror));
+    }
+
+    /// <summary>Source-X CSector environment gate. Check at dispatch time so
+    /// RESYNC can both add and remove handlers without rewiring the callback.</summary>
+    public void FireEnvironChange(Character ch, int light)
+    {
+        if (_funcTriggerGateBuilt && !IsCharTriggerUsed(CharTrigger.EnvironChange)) return;
+        FireCharTrigger(ch, CharTrigger.EnvironChange, new TriggerArgs { CharSrc = ch, N1 = light });
     }
 
     /// <summary>
@@ -929,6 +948,7 @@ public sealed class TriggerDispatcher
         }
         list.Add(handler);
         _usedItemTriggers.Add(trigName);
+        _registeredItemTriggers.Add(trigName);
     }
 
     /// <summary>Register a TYPEDEF handler.</summary>

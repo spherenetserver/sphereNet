@@ -97,6 +97,24 @@ public sealed class ScriptPackEventReferenceCoverageTests(ITestOutputHelper outp
         return line;
     }
 
+    // The archived 0.56b save references a shard-specific Britain event that is
+    // absent from the bundled packs. Preserve the historical fixture and scope
+    // this allowance to that exact record; a new live-script R_BRIT typo must fail.
+    private static bool IsKnownArchivedReference(string file, string section, string sectionName, string name) =>
+        name.Equals("R_BRIT", StringComparison.OrdinalIgnoreCase) &&
+        section.Equals("WORLDSCRIPT", StringComparison.OrdinalIgnoreCase) &&
+        sectionName.Equals("a_townBritain", StringComparison.OrdinalIgnoreCase) &&
+        file.Replace('\\', '/').EndsWith("/oldSphere/scripts/add-on/worldfiles-55a/save/spheredata.scp",
+            StringComparison.OrdinalIgnoreCase);
+
+    [Theory]
+    [InlineData("/repo/oldSphere/scripts/add-on/worldfiles-55a/save/spheredata.scp", "a_townBritain", "R_BRIT", true)]
+    [InlineData("/repo/scripts/spheredata.scp", "a_townBritain", "R_BRIT", false)]
+    [InlineData("/repo/oldSphere/scripts/add-on/worldfiles-55a/save/spheredata.scp", "a_other", "R_BRIT", false)]
+    [InlineData("/repo/oldSphere/scripts/add-on/worldfiles-55a/save/spheredata.scp", "a_townBritain", "R_NEW_TYPO", false)]
+    public void ArchivedReferenceAllowanceDoesNotHideNewBrokenReferences(string file, string region, string name, bool expected) =>
+        Assert.Equal(expected, IsKnownArchivedReference(file, "WORLDSCRIPT", region, name));
+
     [Fact]
     public void EveryEventsReferenceNamesASectionThatCanRun()
     {
@@ -104,6 +122,7 @@ public sealed class ScriptPackEventReferenceCoverageTests(ITestOutputHelper outp
         var definedAs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var refs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var firstSeen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var knownArchivedRefs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (string file in PackFiles())
         {
@@ -112,6 +131,7 @@ public sealed class ScriptPackEventReferenceCoverageTests(ITestOutputHelper outp
             catch (IOException) { continue; }
 
             string section = "";
+            string sectionName = "";
             foreach (string raw in lines)
             {
                 string line = StripComment(raw);
@@ -120,6 +140,7 @@ public sealed class ScriptPackEventReferenceCoverageTests(ITestOutputHelper outp
                 {
                     section = header.Groups[1].Value.ToUpperInvariant();
                     string arg = header.Groups[2].Value.Trim();
+                    sectionName = arg.Split(' ', '\t')[0];
                     if (arg.Length > 0)
                     {
                         string name = arg.Split(' ', '\t')[0].ToUpperInvariant();
@@ -145,6 +166,8 @@ public sealed class ScriptPackEventReferenceCoverageTests(ITestOutputHelper outp
                     string name = tok.TrimStart('+', '-').ToUpperInvariant();
                     if (name.Length == 0 || name is "0" or "*") continue;
                     refs[name] = refs.GetValueOrDefault(name) + 1;
+                    if (IsKnownArchivedReference(file, section, sectionName, name))
+                        knownArchivedRefs[name] = knownArchivedRefs.GetValueOrDefault(name) + 1;
                     firstSeen.TryAdd(name, $"{section} in {Path.GetFileName(file)}");
                 }
             }
@@ -163,7 +186,7 @@ public sealed class ScriptPackEventReferenceCoverageTests(ITestOutputHelper outp
             if (!definedAs.TryGetValue(name, out string? kind))
             {
                 byKind["<undefined>"] = byKind.GetValueOrDefault("<undefined>") + count;
-                if (!KnownDangling.Contains(name))
+                if (!KnownDangling.Contains(name) && count > knownArchivedRefs.GetValueOrDefault(name))
                     dangling.Add($"{name} (x{count}, {firstSeen[name]})");
                 continue;
             }

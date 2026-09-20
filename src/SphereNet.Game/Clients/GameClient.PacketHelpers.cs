@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -92,6 +92,19 @@ public sealed partial class GameClient
         _netState.Send(new PacketSeason(season, playSound));
     }
 
+    private bool SendStatueAnimation(Character ch)
+    {
+        if ((CharDefHelper.GetCanFlags(ch) & CanFlags.C_Statue) == 0) return false;
+        ch.TryGetTag("STATUE_ANIM", out string? animation);
+        ch.TryGetTag("STATUE_FRAME", out string? frame);
+        var def = DefinitionLoader.GetCharDef(ch.CharDefIndex);
+        animation ??= def?.TagDefs.Get("STATUE_ANIM");
+        frame ??= def?.TagDefs.Get("STATUE_FRAME");
+        ScriptNumber.TryParseToken(animation ?? "0", out long animValue);
+        ScriptNumber.TryParseToken(frame ?? "0", out long frameValue);
+        _netState.Send(new PacketStatueAnimation(ch.Uid.Value, (ushort)animValue, (ushort)frameValue));
+        return true;
+    }
     internal void SendDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
@@ -110,6 +123,7 @@ public sealed partial class GameClient
             (byte)ch.Direction, hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming
         ));
+        SendStatueAnimation(ch);
     }
 
     /// <summary>Send a 0x6C target request and record its cursor session id.
@@ -717,6 +731,7 @@ public sealed partial class GameClient
 
     internal void SendUpdateMobile(Character ch)
     {
+        if (SendStatueAnimation(ch)) return;
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
         // Source-X PacketCharacterMove runs GetAdjustedCharID per client —
@@ -732,6 +747,7 @@ public sealed partial class GameClient
 
     internal void SendUpdateMobileWithHue(Character ch, ushort hue)
     {
+        if (SendStatueAnimation(ch)) return;
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
         _netState.Send(new PacketMobileMoving(
@@ -743,6 +759,7 @@ public sealed partial class GameClient
 
     internal void SendUpdateMobileHidden(Character ch)
     {
+        if (SendStatueAnimation(ch)) return;
         byte flags = (byte)(BuildMobileFlags(ch) | 0x80);
         byte noto = GetNotoriety(ch);
         var (body, hue) = AdjustCharViewForViewer(ch);
@@ -765,6 +782,7 @@ public sealed partial class GameClient
             (byte)ch.Direction, hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming
         ));
+        SendStatueAnimation(ch);
     }
 
     internal void SendDrawObjectHidden(Character ch)
@@ -780,6 +798,7 @@ public sealed partial class GameClient
             (byte)ch.Direction, hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming
         ));
+        SendStatueAnimation(ch);
     }
 
     /// <param name="source">The item itself, when the caller has it. The movable
@@ -1782,12 +1801,11 @@ public sealed partial class GameClient
                     "[npc_spawn] AFTER @Create: def='{Def}' STR={Str} MaxHits={MH} Hits={H}",
                     cleaned, npc.Str, npc.MaxHits, npc.Hits);
                 FinalizeNpcBrain(npc);
-                _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.CreateLoot, new TriggerArgs { CharSrc = _character });
                 npc.Hits = npc.MaxHits;
                 npc.Stam = npc.MaxStam;
                 npc.Mana = npc.MaxMana;
                 _logger.LogDebug(
-                    "[npc_spawn] AFTER @CreateLoot: def='{Def}' STR={Str} MaxHits={MH} Hits={H} brain={Brain}",
+                    "[npc_spawn] AFTER NPC initialization: def='{Def}' STR={Str} MaxHits={MH} Hits={H} brain={Brain}",
                     cleaned, npc.Str, npc.MaxHits, npc.Hits, npc.NpcBrain);
                 BroadcastDrawObject(npc);
                 SysMessage(ServerMessages.GetFormatted("gm_npc_created2", npc.Name, $"{rid.Index:X}", targetPos));
@@ -1818,7 +1836,6 @@ public sealed partial class GameClient
         _world.PlaceCharacter(createdNpc, targetPos);
         _triggerDispatcher?.FireCharTrigger(createdNpc, CharTrigger.Create, new TriggerArgs { CharSrc = _character });
         FinalizeNpcBrain(createdNpc);
-        _triggerDispatcher?.FireCharTrigger(createdNpc, CharTrigger.CreateLoot, new TriggerArgs { CharSrc = _character });
         createdNpc.Hits = createdNpc.MaxHits;
         createdNpc.Stam = createdNpc.MaxStam;
         createdNpc.Mana = createdNpc.MaxMana;
@@ -1895,7 +1912,7 @@ public sealed partial class GameClient
 
     /// <summary>Script NEWNPC (Source-X CScriptObj SSV_NEWNPC): spawn a chardef
     /// NPC at <paramref name="pos"/> through the full GM-add pipeline —
-    /// @Create, brain finalisation, @CreateLoot, stat refill and appearance
+    /// @Create, brain finalisation, stat refill and appearance
     /// broadcast. Records the NPC as SERV.LASTNEWCHAR. Returns null when the
     /// defname/id resolves to no chardef.</summary>
     public Character? SpawnNpcForScript(string defNameOrId, Point3D pos)
@@ -1921,7 +1938,6 @@ public sealed partial class GameClient
         _world.PlaceCharacter(npc, pos);
         _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.Create, new TriggerArgs { CharSrc = npc });
         FinalizeNpcBrain(npc);
-        _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.CreateLoot, new TriggerArgs { CharSrc = npc });
         npc.Hits = npc.MaxHits;
         npc.Stam = npc.MaxStam;
         npc.Mana = npc.MaxMana;

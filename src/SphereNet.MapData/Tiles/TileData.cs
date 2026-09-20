@@ -32,6 +32,7 @@ public enum TileFlag : ulong
     LightSource = 1 << 23,
     Animation = 1 << 24,
     NoDiagonal = 1 << 25,
+    HoverOver = 1 << 25, // Source-X UFLAG4_HOVEROVER (SA tiledata meaning)
     Armor = 1 << 27,
     Roof = 1 << 28,
     Door = 1 << 29,

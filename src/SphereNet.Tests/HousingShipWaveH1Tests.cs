@@ -21,7 +21,7 @@ public class HousingShipWaveH1Tests
     }
 
     [Fact]
-    public void ShipRedeed_MovesHoldCargoToACrate_InsteadOfDeletingIt()
+    public void ShipRedeedScriptCanRescueHoldContentsBeforeComponentsAreRemoved()
     {
         var world = TestHarness.CreateWorld();
         var engine = new ShipEngine(world, MakeShipRegistry(), null);
@@ -38,14 +38,23 @@ public class HousingShipWaveH1Tests
         cargo.Name = "treasure";
         hold.AddItem(cargo);
 
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        owner.Equip(pack, Layer.Pack);
+        engine.OnShipRedeed = (_, args) =>
+        {
+            Assert.False(hold.IsDeleted);
+            Assert.Equal(owner, args.CharSrc);
+            Assert.True(pack.TryAddItem(cargo));
+            return TriggerResult.Default;
+        };
+
         Assert.NotNull(engine.RemoveShip(ship.MultiItem.Uid, owner));
 
-        // No bank box on the owner: the crate drops at the ship's spot with
-        // the cargo inside (previously the cargo was deleted outright).
+        // Source-X calls @Redeed before RemoveAllComponents. A shard script
+        // can rescue hold cargo; the engine does not invent a transfer for it.
         Assert.False(cargo.IsDeleted);
-        var crate = world.FindItem(cargo.ContainedIn);
-        Assert.NotNull(crate);
-        Assert.Equal("a moving crate", crate!.Name);
+        Assert.Equal(pack.Uid, cargo.ContainedIn);
     }
 
     [Fact]
@@ -155,7 +164,8 @@ public class HousingShipWaveH1Tests
         var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
 
         // Production wiring: the verb goes through the static hook.
-        SphereNet.Game.Objects.Items.Item.RedeedShip = uid => engine.RedeedFromScript(uid);
+        SphereNet.Game.Objects.Items.Item.RedeedShip = (uid, show, bank, source) =>
+            engine.RedeedFromScript(uid, show, bank, source);
 
         // The multi item carries ItemType.Ship — this integration path caught
         // that the verb gate only admitted Multi/MultiCustom.

@@ -258,6 +258,11 @@ public sealed class SpellEngine
     /// <summary>Get a spell definition by type (for flag checks, etc.).</summary>
     public SpellDef? GetSpellDef(SpellType spell) => _spells.Get(spell);
 
+    // Source-X GetScrollSpell resolves through SPELLDEF.SCROLL_ITEM, not MORE.
+    public SpellDef? GetScrollSpell(Item scroll) => _spells.GetAll()
+        .Where(s => s.Id != SpellType.None && s.ScrollItemId != 0 && s.ScrollItemId == scroll.BaseId)
+        .OrderBy(s => s.Id).FirstOrDefault();
+
     /// <summary>Source-X Spell_CastStart timing: CAST_TIME minus two tenths
     /// per effective FASTERCASTING point, floored at one tenth.</summary>
     public static int CalculateCastTimeTenths(Character caster, SpellDef def, int? skillValue = null)
@@ -727,7 +732,7 @@ public sealed class SpellEngine
             return -1;
         }
 
-        if (caster.IsDead)
+        if (caster.IsDead || (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
             return -1;
         if (caster.IsCasting)
             return -1;
@@ -887,7 +892,7 @@ public sealed class SpellEngine
 
     private bool CastDoneCore(Character caster)
     {
-        if (caster.IsDead)
+        if (caster.IsDead || (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
         {
             ClearCastState(caster);
             return false;

@@ -132,28 +132,34 @@ public static class ActiveSkillEngine
         var ch = sink.Self;
         if (ch.Mana >= ch.MaxMana)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.MeditationPeace1));
-            return false;
+            bool completed = ch.IsStatFlag(StatFlag.Meditation);
+            ch.ClearStatFlag(StatFlag.Meditation);
+            sink.SysMessage(ServerMessages.Get(completed ? Msg.MeditationPeace2 : Msg.MeditationPeace1));
+            if (completed)
+                SkillEngine.GainExperience(ch, SkillType.Meditation, ch.ActDiff);
+            return completed;
         }
 
-        // Source-X parity: meditation blocked by metal armor (chest/legs/gloves)
-        if (IsWearingMeditationBlockingArmor(ch))
+        if (!ch.IsStatFlag(StatFlag.Meditation))
         {
-            sink.SysMessage("You cannot focus with all that armor on.");
-            return false;
-        }
-
-        sink.SysMessage(ServerMessages.Get(Msg.MeditationTry));
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Meditation, sink.Random.Next(100));
-        if (success)
-        {
+            sink.SysMessage(ServerMessages.Get(Msg.MeditationTry));
+            ch.ActDiff = sink.Random.Next(100);
+            if (!SkillEngine.UseQuick(ch, SkillType.Meditation, ch.ActDiff, allowGain: false))
+            {
+                SkillEngine.GainExperience(ch, SkillType.Meditation, -ch.ActDiff);
+                return false;
+            }
             ch.SetStatFlag(StatFlag.Meditation);
             if (!SkillEngine.HasFlag(SkillType.Meditation, SkillFlag.NoSfx))
                 sink.Sound(0x0F9);
             sink.SysMessage(ServerMessages.Get(Msg.MeditationSuccess));
         }
-        return success;
+        // Source-X Skill_Meditation SUCCESS: one application per skill DELAY,
+        // independent of passive REGEN1. ACTEFFECT may explicitly be zero.
+        int amount = ch.ActionEffect >= 0 ? ch.ActionEffect :
+            SkillEngine.GetEffect(SkillType.Meditation, ch.GetSkill(SkillType.Meditation), 1);
+        ch.Mana = (short)Math.Min(ch.MaxMana, (long)ch.Mana + Math.Max(0, amount));
+        return true;
     }
 
     // ---------------------------------------------------------- SpiritSpeak
@@ -947,18 +953,6 @@ public static class ActiveSkillEngine
     private static bool IsBladeOrFood(ItemType t) => t is
         ItemType.WeaponMaceSharp or ItemType.WeaponSword or ItemType.WeaponFence or
         ItemType.WeaponAxe or ItemType.Food or ItemType.MeatRaw or ItemType.Fruit;
-
-    private static bool IsWearingMeditationBlockingArmor(Character ch)
-    {
-        Layer[] armorLayers = [Layer.Chest, Layer.Legs, Layer.Gloves, Layer.Helm];
-        foreach (var layer in armorLayers)
-        {
-            var armor = ch.GetEquippedItem(layer);
-            if (armor != null && armor.ItemType is ItemType.Armor or ItemType.ArmorChain or ItemType.ArmorRing)
-                return true;
-        }
-        return false;
-    }
 
     private static Character? ResolveItemOwner(Item it, World.GameWorld world, int maxDepth = 16)
     {

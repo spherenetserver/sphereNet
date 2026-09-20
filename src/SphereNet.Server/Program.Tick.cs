@@ -558,21 +558,20 @@ public static partial class Program
 
             // Periodic tick stats: log average and max tick time every 30 seconds
             RecordTickTelemetry(totalUs);
-            _tickStatsTotalUs += totalUs;
-            if (totalUs > _tickStatsMaxUs) _tickStatsMaxUs = totalUs;
             _tickStatsCount++;
 
             if (nowMs - _lastTickStatsLogMs >= 30_000)
             {
-                double avgMs = _tickStatsCount > 0 ? (_tickStatsTotalUs / _tickStatsCount / 1000.0) : 0;
-                double maxMs = _tickStatsMaxUs / 1000.0;
+                // Every number on the line describes the SAME ticks - this window's.
+                var tickTelemetry = GetTickTelemetrySnapshot(_tickStatsCount);
+                double avgMs = tickTelemetry.AvgMs;
+                double maxMs = tickTelemetry.MaxMs;
                 // Idle-CPU gauge: main-loop iterations per tick this window. A hot
                 // spinning yield reports a large number here (the loop churns
                 // between ticks doing nothing); an adaptive/sleeping yield reports
                 // ~1. This is the measurement to take before/after changing
                 // TickSleepMode on a small host.
                 double loopsPerTick = _tickStatsCount > 0 ? (double)_loopIterationCount / _tickStatsCount : 0;
-                var tickTelemetry = GetTickTelemetrySnapshot();
                 int onlinePlayers = _clients.Values.Count(c => c.IsPlaying);
                 var (chars, items, _) = _world.GetStats();
 
@@ -616,8 +615,6 @@ public static partial class Program
                 _gcWindowStartShed = shedNow;
                 _gcWindowInit = true;
 
-                _tickStatsTotalUs = 0;
-                _tickStatsMaxUs = 0;
                 _tickStatsCount = 0;
                 _loopIterationCount = 0;
                 _lastTickStatsLogMs = nowMs;
@@ -653,14 +650,31 @@ public static partial class Program
             _tickTelemetrySampleCount++;
     }
 
-    private static TickTelemetrySnapshot GetTickTelemetrySnapshot()
+    private static TickTelemetrySnapshot GetTickTelemetrySnapshot() =>
+        GetTickTelemetrySnapshot(int.MaxValue);
+
+    /// <summary>The tick-time distribution over at most the last
+    /// <paramref name="lastSamples"/> ticks.
+    ///
+    /// The ring holds 2048 samples - about three and a half minutes - while the stats
+    /// line reports a thirty-second window. Taking the percentiles from the whole ring
+    /// and the average and maximum from the window put two different distributions on one
+    /// line, and the contradiction showed: a live report read
+    /// "max=7.0ms ... p99=58.9ms", which no single sample set can produce. The line now
+    /// asks for its own window's samples.</summary>
+    private static TickTelemetrySnapshot GetTickTelemetrySnapshot(int lastSamples)
     {
-        int count = _tickTelemetrySampleCount;
+        int count = Math.Min(_tickTelemetrySampleCount, Math.Max(0, lastSamples));
         if (count == 0)
             return new TickTelemetrySnapshot(false, _multicoreRuntimeEnabled, 0, 0, 0, 0, 0, 0, 0);
 
+        // The ring is written in order and wraps, so the newest `count` samples end at
+        // the write cursor.
         var samples = new long[count];
-        Array.Copy(_tickTelemetryWindowUs, samples, count);
+        int start = ((_tickTelemetryWriteIndex - count) % TickTelemetryWindowSize
+                     + TickTelemetryWindowSize) % TickTelemetryWindowSize;
+        for (int i = 0; i < count; i++)
+            samples[i] = _tickTelemetryWindowUs[(start + i) % TickTelemetryWindowSize];
         Array.Sort(samples);
 
         double p50 = Percentile(samples, 0.50) / 1000.0;
@@ -1292,11 +1306,10 @@ public static partial class Program
         }
 
         // Weather & season update
-        FlushStep("weather", () =>
-        {
-            if (_weatherEngine.OnTick())
-                BroadcastSeasonChange(playSound: true);
-        });
+        bool seasonChanged = false;
+        FlushStep("weather", () => seasonChanged = _weatherEngine.OnTick());
+        if (seasonChanged)
+            FlushStep("season", () => BroadcastSeasonChange(playSound: true));
 
         // Region periodic triggers (Source-X CSector environ tick): fire
         // @CliPeriodic for every online player on their current region, and

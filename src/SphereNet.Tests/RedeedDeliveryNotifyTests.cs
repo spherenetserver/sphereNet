@@ -77,9 +77,8 @@ public sealed class RedeedDeliveryNotifyTests
     [Fact]
     public void ADeedThatFallsOnTheGroundIsNotAnnouncedAsPackContent()
     {
-        // No backpack to put it in: the deed is dropped at the ship's spot, where the
-        // ordinary ground view is what shows it. A container notification there would
-        // point the client at a container the item is not in.
+        // Source-X GetPackSafe creates a missing pack. Use a full pack to exercise
+        // ItemBounce's ground fallback, at the owner's feet rather than at the ship.
         var world = TestHarness.CreateWorld();
         var engine = new ShipEngine(world, ShipRegistry(), null);
         var owner = world.CreateCharacter();
@@ -90,10 +89,14 @@ public sealed class RedeedDeliveryNotifyTests
         engine.OnDeedDelivered = (_, what) => delivered.Add(what);
 
         var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        var pack = Backpack(world, owner);
+        for (int i = 0; i < Item.MaxContainerItems; i++)
+            Assert.True(pack.TryAddItem(world.CreateItem()));
         var deed = engine.RemoveShip(ship!.MultiItem.Uid, owner);
 
         Assert.NotNull(deed);
         Assert.False(deed!.ContainedIn.IsValid);
+        Assert.Equal(owner.Position, deed.Position);
         Assert.Empty(delivered);
     }
 

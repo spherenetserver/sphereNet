@@ -43,7 +43,7 @@ public sealed class SpawnComponent
     public static Func<Item, ItemTrigger, SpawnTriggerArgs, TriggerResult>? OnSpawnTrigger;
 
     /// <summary>Chardef script init for a freshly spawned NPC — the host wires
-    /// this to fire @Create, @CreateLoot and @NPCRestock through the trigger
+    /// this to fire @Create and @NPCRestock through the trigger
     /// dispatcher (Source-X CreateNPC → NPC_LoadScript(fRestock=true)), the
     /// same sequence the GM .add path runs. Unwired (tests) skips cleanly.</summary>
     public static Action<Objects.Characters.Character>? OnNpcScriptInit;

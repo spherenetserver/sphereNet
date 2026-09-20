@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -197,6 +197,7 @@ public class GameSystemTests
     [Fact]
     public void OnCharacterDeath_DoesNotSendObserverDeathAnimationToSelf()
     {
+        Character.PacketDeathAnimationEnabled = true;
         var world = CreateWorld();
         var loggerFactory = LoggerFactory.Create(_ => { });
         var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 16003);
@@ -1359,6 +1360,7 @@ public class GameSystemTests
 
         var rider = world.CreateCharacter();
         rider.Name = "Rider";
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true;
         world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
 
@@ -1811,12 +1813,20 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         ch.IsPlayer = true;
         ch.PrivLevel = PrivLevel.GM; // bypass collision/map checks
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
-        ch.SetTag("CURRENT_REGION", "old_region");
+        var oldRegion = new SphereNet.Game.World.Regions.Region { Name = "old_region" };
+        oldRegion.AddRect(90, 90, 100, 110);
+        world.AddRegion(oldRegion);
+        var newRegion = new SphereNet.Game.World.Regions.Region { Name = "new_region" };
+        newRegion.AddRect(101, 90, 110, 110);
+        world.AddRegion(newRegion);
 
         mover.TryMove(ch, Direction.East, running: false, sequence: 0);
 
         Assert.True(ch.TryGetProperty("TAG.REGION_LEAVE", out var leaveVal));
         Assert.Equal("1", leaveVal);
+        Assert.True(ch.TryGetProperty("TAG.REGION_ENTER", out var enterVal));
+        Assert.Equal("1", enterVal);
+        File.Delete(tempFile);
     }
 
     [Fact]
@@ -3560,6 +3570,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.HandleRename(target.Uid.Value, "New Name");
         client.HandleProfileRequest(1, target.Uid.Value, "blocked profile");
+        client.OpenDyeWindow(item);
         client.HandleDyeResponse(item.Uid.Value, 0x0456);
 
         Assert.Equal(1, renameCount);

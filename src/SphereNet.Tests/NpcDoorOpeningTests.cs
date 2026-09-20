@@ -13,8 +13,59 @@ namespace SphereNet.Tests;
 /// walk through). Covers the pure door state flip and the blocked-tile door
 /// lookup the AI uses before re-validating a blocked step.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public class NpcDoorOpeningTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void DoorUseRequiresHandsInBothMovementPaths(bool useHands, bool wander)
+    {
+        var runtime = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = Path.Combine(Path.GetTempPath(), $"npc_door_{Guid.NewGuid():N}.scp");
+        try
+        {
+            File.WriteAllText(path, "[CHARDEF 0cf]\nCAN=04\n[CHARDEF 0190]\nCAN=0304\n");
+            runtime.Resources.LoadResourceFile(path);
+            ScriptTestBootstrap.LoadDefinitions(runtime.Resources);
+            var world = TestHarness.CreateWorld();
+            var ai = new NpcAI(world, new SphereConfig()) { Flags = NpcAIFlags.None };
+            var npc = world.CreateCharacter();
+            npc.CharDefIndex = useHands ? 0x190 : 0xcf;
+            npc.Str = npc.Dex = npc.Hits = npc.Stam = 100;
+            npc.Int = 100;
+            var start = new Point3D(100, 100, 0, 0);
+            world.PlaceCharacter(npc, start);
+            // Surround the NPC: every candidate step encounters a closed door.
+            for (short dx = -1; dx <= 1; dx++)
+            for (short dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0) continue;
+                var door = world.CreateItem();
+                door.BaseId = 0x06A5;
+                door.ItemType = ItemType.Door;
+                world.PlaceItem(door, new Point3D((short)(100 + dx), (short)(100 + dy), 0, 0));
+            }
+            int attempts = 0;
+            ai.OnNpcOpenDoor = (_, _) => { attempts++; return false; };
+            var method = typeof(NpcAI).GetMethod(wander ? "Wander" : "MoveToward",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            // Door attempts have a 50% roll (wander also has an idle roll).
+            // Retry a bounded number, keeping the NPC next to the same doors.
+            for (int i = 0; i < 128; i++)
+            {
+                world.MoveCharacter(npc, start);
+                npc.Direction = Direction.East;
+                method.Invoke(ai, wander ? [npc] : [npc, new Point3D(105, 100, 0, 0), false]);
+            }
+            if (useHands) Assert.True(attempts > 0);
+            else Assert.Equal(0, attempts);
+        }
+        finally { File.Delete(path); }
+    }
+
     private static GameWorld CreateWorld()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });

@@ -175,6 +175,9 @@ public partial class Character
 
     public long SkillDelayEnd => _skillDelayEnd;
 
+    /// <summary>Re-arm a continuing native skill without clearing ACTEFFECT or its context.</summary>
+    public void ContinueSkillPending(long delayEnd) => _skillDelayEnd = delayEnd;
+
     public long SkillStrokeNext => _skillStrokeNext;
 
     public void SetSkillStrokeNext(long tickMs) => _skillStrokeNext = tickMs;

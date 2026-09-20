@@ -15,6 +15,8 @@ public sealed class ResourceHolder
 {
     private readonly SortedResourceHash<ResourceLink> _resources = new();
     private readonly Dictionary<string, ResourceId> _defNames = new(StringComparer.OrdinalIgnoreCase);
+    // Numeric constants are values, not resource indices (which have only 24 bits).
+    private readonly Dictionary<string, long> _numericDefValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _defTexts = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ResourceScript> _scriptFiles = [];
     private readonly Dictionary<string, string> _defMessages = new(StringComparer.OrdinalIgnoreCase);
@@ -651,10 +653,15 @@ public sealed class ResourceHolder
                 string value = ScriptKey.StripQuotePair(key.Arg);
                 if (ScriptKey.TryParseNumber(value.AsSpan(), out long val))
                 {
+                    _numericDefValues[key.Key] = val;
+                    _defTexts.Remove(key.Key);
                     _defNames[key.Key] = new ResourceId(ResType.DefName, (int)val);
                 }
                 else
                 {
+                    _numericDefValues.Remove(key.Key);
+                    if (_defNames.TryGetValue(key.Key, out var prior) && prior.Type == ResType.DefName)
+                        _defNames.Remove(key.Key);
                     _defTexts[key.Key] = value;
                 }
             }
@@ -788,15 +795,15 @@ public sealed class ResourceHolder
     }
 
     /// <summary>Resolve a numeric DEFNAME constant (e.g. a can_flags MT_* name)
-    /// to its script-defined integer value. Numeric defnames are stored with the
-    /// value in the ResourceId index by <see cref="LoadDefNames"/>, so we read it
-    /// back here. Returns false for unknown names and for string-valued defnames.</summary>
+    /// to its full-width script-defined integer value. ResourceId indices are
+    /// retained for resource lookup compatibility, not numeric evaluation.
+    /// Returns false for unknown names and for string-valued defnames.</summary>
     public bool TryResolveDefNameValue(string name, out long value)
     {
         if (!string.IsNullOrEmpty(name) &&
             _defNames.TryGetValue(name, out var rid) && rid.Type == ResType.DefName)
         {
-            value = rid.Index;
+            value = _numericDefValues.TryGetValue(name, out long number) ? number : rid.Index;
             return true;
         }
         value = 0;
@@ -1235,7 +1242,10 @@ public sealed class ResourceHolder
             .Select(kvp => kvp.Key)
             .ToList();
         foreach (var key in staleDefNames)
+        {
             _defNames.Remove(key);
+            _numericDefValues.Remove(key);
+        }
 
         _teleporters.RemoveAll(t => string.Equals(Path.GetFullPath(t.FilePath), normalized,
             StringComparison.OrdinalIgnoreCase));

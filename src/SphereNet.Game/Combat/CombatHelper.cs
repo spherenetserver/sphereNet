@@ -68,6 +68,8 @@ public static class CombatHelper
             return true;
         if (ch.IsStatFlag(StatFlag.Stone))
             return true;
+        if (!asTarget && (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(ch) & CanFlags.C_Statue) != 0)
+            return true;
         if (asTarget && ch.IsStatFlag(StatFlag.Invul | StatFlag.Insubstantial | StatFlag.Ridden))
             return true;
         return false;

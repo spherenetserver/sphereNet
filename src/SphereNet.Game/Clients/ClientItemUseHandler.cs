@@ -151,6 +151,9 @@ public sealed class ClientItemUseHandler
         // Bit 31 = paperdoll request flag (client status bar button, Alt+DClick)
         bool paperdollRequest = (uid & 0x80000000) != 0;
         uid &= 0x7FFFFFFF;
+        if (_world.FindChar(new Serial(uid)) is { } selected &&
+            (CharDefHelper.GetCanFlags(selected) & CanFlags.C_NonSelectable) != 0)
+            return;
 
         if (paperdollRequest)
         {
@@ -656,6 +659,18 @@ public sealed class ClientItemUseHandler
             case ItemType.TrashCan:
             case ItemType.ShipHold:
             {
+                // Source-X Skill_Snoop_Check: a hold may only be opened from
+                // its linked ship's region. GM bypasses this check upstream.
+                if (item.ItemType == ItemType.ShipHold && _character.PrivLevel < PrivLevel.GM)
+                {
+                    var ship = Item.ResolveShipEngine?.Invoke()?.GetShip(item.Link);
+                    if (ship == null || ship.RegionUid == 0 ||
+                        _world.FindRegion(_character.Position)?.Uid != ship.RegionUid)
+                    {
+                        SysMessage(ServerMessages.Get(Msg.ItemuseHatchFail));
+                        break;
+                    }
+                }
                 // Snoop gate: opening another player's sub-container requires Snooping skill
                 if (_character.PrivLevel < PrivLevel.GM && item.ItemType == ItemType.Container)
                 {
@@ -897,21 +912,15 @@ public sealed class ClientItemUseHandler
                 if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellBook,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item }) == TriggerResult.True)
                     break;
-                ushort scrollOffset = item.ItemType switch
-                {
-                    ItemType.SpellbookNecro => 101,
-                    ItemType.SpellbookPala => 201,
-                    ItemType.SpellbookBushido => 401,
-                    ItemType.SpellbookNinjitsu => 501,
-                    ItemType.SpellbookArcanist => 601,
-                    ItemType.SpellbookMystic => 677,
-                    ItemType.SpellbookMastery => 701,
-                    _ => 1
-                };
+                ushort scrollOffset = (ushort)(item.SpellbookOffset + 1);
                 ulong spellBits = ((ulong)item.More2 << 32) | item.More1;
+                // Source-X addSpellbookOpen: announce the item before opening,
+                // then send contents. 0xFFFF selects the client's spellbook UI;
+                // 0x003E is a barrel container gump.
+                _client.SendItemVisualUpdate(item);
+                _netState.Send(new PacketOpenContainer(item.Uid.Value, 0xFFFF, _netState.IsClientPost7090));
                 _netState.Send(new PacketSpellbookContent(
-                    item.Uid.Value, item.BaseId, scrollOffset, spellBits));
-                _netState.Send(new PacketOpenContainer(item.Uid.Value, 0x003E, _netState.IsClientPost7090));
+                    item.Uid.Value, item.DispIdFull, scrollOffset, spellBits));
                 break;
             }
 
@@ -1194,30 +1203,26 @@ public sealed class ClientItemUseHandler
             // ---- ship / sign / shrine / runes ----
             case ItemType.ShipTiller:
             {
-                // Classic dry-dock: the OWNER (or staff) double-clicking the
-                // tillerman while NOT aboard converts the ship back to a deed.
-                // Source-X pre-HS tiller dclick only talks and leaves redeed
-                // to shard scripts (CClientUse IT_SHIP_TILLER); this pack
-                // scripts none, so the engine provides the classic flow.
-                // Aboard (or non-owner), the tillerman just talks.
+                // Source-X CClientUse IT_SHIP_TILLER: HS assigns a pilot;
+                // older clients hear the tillerman. SphereNet additionally offers
+                // guarded shore-side dry docking unless @DClick handled the use.
                 var tillerEngine = Item.ResolveShipEngine?.Invoke();
-                var tillerShip = tillerEngine?.GetShip(item.Link)
-                                 ?? tillerEngine?.FindShipAt(item.Position);
-                if (tillerShip != null &&
-                    tillerEngine!.FindShipCarrying(_character) != tillerShip)
+                var tillerShip = tillerEngine?.GetShip(item.Link);
+                if (tillerShip != null && tillerEngine!.FindShipCarrying(_character) != tillerShip)
                 {
-                    bool tillerOwner = tillerShip.Owner == _character.Uid ||
-                                       _character.PrivLevel >= PrivLevel.GM;
-                    if (!tillerOwner)
+                    tillerEngine.TryDryDock(tillerShip, _character, out string failure);
+                    if (!string.IsNullOrEmpty(failure)) SysMessage(failure);
+                    break;
+                }
+                if (_netState.IsClientPost7090 && tillerShip != null)
+                {
+                    if (tillerShip.Owner != _character.Uid && _character.FindKeyFor(item) == null)
                     {
                         ObjectMessage(item, ServerMessages.Get(Msg.TillerNotyourship));
                         break;
                     }
-                    if (tillerEngine.RemoveShip(tillerShip.MultiItem.Uid, _character) != null)
-                    {
-                        SysMessage("You dry dock the ship.");
-                        break;
-                    }
+                    tillerEngine!.SetPilot(tillerShip, _character, message => SysMessage(ServerMessages.Get(message)));
+                    break;
                 }
                 ObjectMessage(item, ServerMessages.Get(Msg.ItemuseTillerman));
                 break;
@@ -1528,9 +1533,10 @@ public sealed class ClientItemUseHandler
             case ItemType.LightLit:
                 item.ItemType = ItemType.LightOut;
                 _netState.Send(new PacketSound(0x0047, _character.X, _character.Y, _character.Z));
-                BroadcastNearby?.Invoke(item.Position, UpdateRange,
-                    new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
-                        item.X, item.Y, item.Z, item.Hue), 0);
+                // Source-X Use_Light calls Update: a held light is still worn,
+                // not a ground item. Preserve its parent/layer in the client.
+                if (Item.OnVisualUpdate != null) Item.OnVisualUpdate(item);
+                else _client.SendItemVisualUpdate(item);
                 break;
             case ItemType.LightOut:
             {
@@ -1556,9 +1562,8 @@ public sealed class ClientItemUseHandler
                 item.ItemType = ItemType.LightLit;
                 item.SetTimeout(Environment.TickCount64 + Item.LightBurnTickMs);
                 _netState.Send(new PacketSound(0x0047, _character.X, _character.Y, _character.Z));
-                BroadcastNearby?.Invoke(item.Position, UpdateRange,
-                    new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
-                        item.X, item.Y, item.Z, item.Hue), 0);
+                if (Item.OnVisualUpdate != null) Item.OnVisualUpdate(item);
+                else _client.SendItemVisualUpdate(item);
                 break;
             }
 
@@ -2407,7 +2412,16 @@ public sealed class ClientItemUseHandler
         Point3D point = topCont.Position;
         if (point.Map != _character.MapIndex) return false;
         if (_character.PrivLevel >= PrivLevel.GM) return true;
-        return (ignoreDist || _character.Position.GetDistanceTo(point) <= 3) &&
+        // Tillermen have no plank-distance exemption in CChar::CanTouch.
+        // Source-X's default GetDist3D scales Z by half PLAYER_HEIGHT (8).
+        int distance = _character.Position.GetDistanceTo(point);
+        int reach = 3;
+        if (obj.ItemType == ItemType.ShipTiller)
+        {
+            distance = Math.Max(distance, Math.Abs(_character.Z - point.Z) / 8);
+            reach = 2;
+        }
+        return (ignoreDist || distance <= reach) &&
             (ignoreLos || _world.CanSeeLOS(_character.Position, point));
     }
 
@@ -3622,19 +3636,13 @@ public sealed class ClientItemUseHandler
         else { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNolock)); return; }
     }
 
-    /// <summary>Pick a hue from a Dye onto a DyeVat (Source-X two-step).</summary>
+    /// <summary>Open the Source-X hue picker for the targeted dye vat.</summary>
     private void HandleDyePickup(Item dye, Serial target)
     {
         var vat = target.IsValid ? _world.FindObject(target) as Item : null;
         if (vat == null || vat.ItemType != ItemType.DyeVat || !CanReachTargetItem(vat))
         { SysMessage(ServerMessages.Get(Msg.ItemuseDyeFail)); return; }
-        // The vat wears the colour it will hand out - that is what the reference
-        // reads when the vat is used (GetHue, CClientTarg.cpp:2331). A private tag
-        // gave the vat two different colours and left the visible one inert.
-        vat.Hue = dye.Hue;
-        vat.RemoveTag("DYE_HUE");   // a legacy vat's stale copy must not outrank it
-        Item.OnVisualUpdate?.Invoke(vat);
-        SysMessage("You apply the dye to the vat.");
+        _client.OpenDyeWindow(vat);
     }
 
     /// <summary>The colour a vat hands out. Its own hue is the authority; a vat
@@ -4339,7 +4347,6 @@ public sealed class ClientItemUseHandler
             case "price":
                 if (obj is Item priced)
                 {
-                    priced.SetTag("PRICE", priced.Price > 0 ? priced.Price.ToString() : "1");
                     SendInputPromptGump(priced, "PRICE", 9);
                 }
                 break;

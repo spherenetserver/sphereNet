@@ -193,8 +193,9 @@ public static partial class Program
     private static long _slowTickCount;
     private static string _lastSlowTickDominantPhase = "";
     private static long _lastTickStatsLogMs;
-    private static long _tickStatsTotalUs;
-    private static long _tickStatsMaxUs;
+    // The window's average and maximum are read off the same sample ring as its
+    // percentiles; a second pair of accumulators was the only reason one line could
+    // report a p99 above its own maximum.
     private static int _tickStatsCount;
     // Main-loop iterations in the current tick_stats window. Divided by the tick
     // count it yields "loops per tick" — the idle-CPU / hot-spin gauge: a spinning

@@ -41,6 +41,10 @@ public class ResourceLink : ResourceDef
     public void ScanSection(ScriptSection section, Func<string, int>? triggerNameToIndex = null,
         bool retainKeys = false)
     {
+        _triggerBitmask.Clear();
+        _triggerBodies.Clear();
+        StoredKeys = null;
+        FunctionBody = null;
         foreach (var key in section.Keys)
         {
             if (key.Key.Equals("DEFNAME", StringComparison.OrdinalIgnoreCase))
@@ -61,11 +65,20 @@ public class ResourceLink : ResourceDef
 
         if (retainKeys)
         {
-            StoredKeys = section.Keys;
-            BuildBodyIndexes(section.Keys);
+            RetainSection(section);
         }
 
         HasBeenScanned = true;
+    }
+
+    // Retain the complete section, so an absent trigger is also a cached result.
+    // Lazy reading must not change trigger bitmasks established by ScanSection.
+    internal void RetainSection(ScriptSection section)
+    {
+        StoredKeys = section.Keys;
+        _triggerBodies.Clear();
+        FunctionBody = null;
+        BuildBodyIndexes(section.Keys);
     }
 
     /// <summary>The retained section carried at least one ON=@... trigger block

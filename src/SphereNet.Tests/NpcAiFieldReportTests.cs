@@ -25,6 +25,7 @@ public class NpcAiFieldReportTests
         var ai = new NpcAI(world, new SphereConfig());
 
         var owner = world.CreateCharacter();
+        owner.BodyId = 0x0190;
         owner.IsPlayer = true;
         owner.IsOnline = true;
         owner.Hits = owner.MaxHits = 100;
@@ -69,6 +70,7 @@ public class NpcAiFieldReportTests
         var ai = new NpcAI(world, new SphereConfig());
 
         var rider = world.CreateCharacter();
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true;
         rider.IsOnline = true;
         rider.Hits = rider.MaxHits = 100;
@@ -108,6 +110,7 @@ public class NpcAiFieldReportTests
         var ai = new NpcAI(world, new SphereConfig());
 
         var rider = world.CreateCharacter();
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true;
         rider.IsOnline = true;
         rider.Hits = rider.MaxHits = 100;
@@ -149,6 +152,7 @@ public class NpcAiFieldReportTests
         var ai = new NpcAI(world, new SphereConfig());
 
         var rider = world.CreateCharacter();
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true;
         rider.IsOnline = true;
         rider.Hits = rider.MaxHits = 100;
@@ -170,6 +174,7 @@ public class NpcAiFieldReportTests
         Assert.Equal(PetAIMode.Guard, horse.PetAIMode);
 
         var victim = world.CreateCharacter();
+        victim.BodyId = 0x0190;
         victim.IsPlayer = true;
         victim.Hits = victim.MaxHits = 100;
         world.PlaceCharacter(victim, new Point3D(102, 100, 0, 0));

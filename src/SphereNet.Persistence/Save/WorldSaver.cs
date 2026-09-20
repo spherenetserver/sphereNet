@@ -810,6 +810,7 @@ public sealed class WorldSaver
         if (item.MaxAmountOverride is int maxAmt) w.WriteProperty("MAXAMOUNT", maxAmt.ToString());
         if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
+        if (item.CanMask != 0) w.WriteProperty("CANMASK", $"0{item.CanMask:X}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
 
         // Persist the instance TYPE whenever the item's type is its OWN rather than
@@ -970,6 +971,7 @@ public sealed class WorldSaver
         w.WriteProperty("NAME", ch.Name);
         w.WriteProperty("P", ch.Position.ToString());
         w.WriteProperty("BODY", $"0{ch.BodyId:X}");
+        if (ch.CanMask != 0) w.WriteProperty("CANMASK", $"0{ch.CanMask:X}");
         // Full-width chardef hash (24-bit). Without this, NPCs reload with
         // CharDefIndex=0 → trigger / brain lookups fall back to BaseId
         // (the truncated body id) and re-introduce the c_alchemist→c_man

@@ -2318,8 +2318,10 @@ public sealed class PacketSpellbookContent : PacketWriter
         buf.WriteUInt32(_serial);
         buf.WriteUInt16(_graphic);
         buf.WriteUInt16(_scrollOffset);
-        buf.WriteUInt32((uint)(_spellBits & 0xFFFFFFFF));
-        buf.WriteUInt32((uint)(_spellBits >> 32));
+        // Source-X Packet::writeInt64(spells1, spells2) writes each mask
+        // least-significant byte first, unlike the packet's other fields.
+        for (int shift = 0; shift < 64; shift += 8)
+            buf.WriteByte((byte)(_spellBits >> shift));
         buf.WriteLengthAt(1);
         return buf;
     }

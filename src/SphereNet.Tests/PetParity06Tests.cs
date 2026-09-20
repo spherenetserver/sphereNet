@@ -53,6 +53,7 @@ public sealed class PetParity06Tests
         var lf = LoggerFactory.Create(_ => { });
         var client = TestHarness.CreateClient(lf, world, new AccountManager(lf), id);
         var actor = world.CreateCharacter();
+        actor.BodyId = 0x0190;
         actor.IsPlayer = true;
         world.PlaceCharacter(actor, new Point3D((short)x, 100, 0, 0));
         TestHarness.AttachCharacter(client, actor);
@@ -213,6 +214,7 @@ public sealed class PetParity06Tests
         TestHarness.RecycleDeletedUids(world);
 
         var heir = world.CreateCharacter();
+        heir.BodyId = 0x0190;
         heir.IsPlayer = true;
         // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
         SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
@@ -281,6 +283,7 @@ public sealed class PetParity06Tests
         var engine = new MountEngine(world);
 
         var rider = world.CreateCharacter();
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true;
         // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
         SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;
@@ -337,6 +340,7 @@ public sealed class PetParity06Tests
         TestHarness.RecycleDeletedUids(world);
 
         var bystander = world.CreateCharacter();
+        bystander.BodyId = 0x0190;
         bystander.IsPlayer = true;
         world.PlaceCharacter(bystander, new Point3D(200, 100, 0, 0));
         Assert.Equal(horseUid, bystander.Uid);
@@ -354,10 +358,12 @@ public sealed class PetParity06Tests
         var world = CreateWorld();
         var engine = new MountEngine(world);
         var rider = world.CreateCharacter();
+        rider.BodyId = 0x0190;
         rider.IsPlayer = true;
         world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
 
         var player = world.CreateCharacter();
+        player.BodyId = 0x0190;
         player.IsPlayer = true;
         world.PlaceCharacter(player, new Point3D(101, 100, 0, 0));
 
@@ -378,6 +384,7 @@ public sealed class PetParity06Tests
         Item.FigurineDeletedHook = item => PetFigurine.OnFigurineDeleted(item, world);
 
         var owner = world.CreateCharacter();
+        owner.BodyId = 0x0190;
         owner.IsPlayer = true;
         // The follower cap only binds while OF_PETSLOTS is on (Source-X CCharUse.cpp:1236).
         SphereNet.Game.Clients.GameClient.ServerOptionFlags |= SphereNet.Core.Enums.OptionFlags.PetSlots;

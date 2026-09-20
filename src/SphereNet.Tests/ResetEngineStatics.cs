@@ -33,6 +33,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;
+        SphereNet.Game.Objects.Items.Item.OnVisualUpdate = null;
         // The defname -> graphic resolver. Several tests wire it and one of them
         // cleared it afterwards, which left whichever test ran next resolving nothing;
         // it belongs here for the same reason every other hook does.
@@ -227,7 +228,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Housing.HousingEngine.OnHouseCheck = null;
         SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = 36;
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
-        SphereNet.Game.Objects.Characters.Character.PacketDeathAnimationEnabled = true;
+        SphereNet.Game.Objects.Characters.Character.PacketDeathAnimationEnabled = false;
         SphereNet.Game.Clients.GameClient.ClientLingerSeconds = 60;
         SphereNet.Game.Clients.GameClient.ServerFeatureT2A = 0x03;
         SphereNet.Game.Clients.GameClient.ServerFeatureLBR = 0x03;

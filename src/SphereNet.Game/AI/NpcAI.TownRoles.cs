@@ -1,4 +1,4 @@
-﻿// Town-role brains: guard, healer, vendor, animal, human idle behavior.
+// Town-role brains: guard, healer, vendor, animal, human idle behavior.
 // Decomposed from the former single-file NpcAI.cs (see NpcAI.cs core).
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -543,8 +543,7 @@ public sealed partial class NpcAI
             // Source-X pickup guards: scavenging requires CAN_C_USEHANDS on
             // EVERY brain (no humanoid exemption), and corpse looting never
             // happens in guarded or safe territory.
-            var can = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can
-                ?? SphereNet.Core.Enums.CanFlags.None;
+            var can = Definitions.CharDefHelper.GetCanFlags(npc);
             if ((can & SphereNet.Core.Enums.CanFlags.C_UseHands) == 0)
                 continue;
             if (item.ItemType == ItemType.Corpse && IsProtectedGround(npc.Position))

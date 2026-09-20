@@ -26,6 +26,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     private ushort _baseId;
     private Color _hue;
     private ObjAttributes _attr;
+    /// <summary>Source-X per-object XOR override; never stored as a TAG.</summary>
+    public ulong CanMask { get; set; }
     private readonly VarMap _tags = new();
     private readonly Dictionary<ComponentType, IComponent> _components = [];
     private readonly List<TimerFEntry> _timerFEntries = [];
@@ -669,6 +671,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     public virtual bool TryGetProperty(string key, out string value)
     {
+        if (key.Equals("CANMASK", StringComparison.OrdinalIgnoreCase))
+        {
+            value = $"0{CanMask:X}";
+            return true;
+        }
         value = "";
         if (TryGetTimerFProperty(key.ToUpperInvariant(), out value))
             return true;
@@ -1582,6 +1589,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     public virtual bool TrySetProperty(string key, string value)
     {
+        if (key.Equals("CANMASK", StringComparison.OrdinalIgnoreCase))
+        {
+            if (ScriptNumber.TryParseToken(value.Trim(), out long mask))
+                CanMask = unchecked((ulong)mask);
+            else
+                CanMask = (uint)SphereNet.Scripting.Definitions.CharDef.ParseCanFlags(value);
+            return true;
+        }
         switch (key.ToUpperInvariant())
         {
             case "NAME":

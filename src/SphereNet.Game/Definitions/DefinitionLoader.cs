@@ -273,6 +273,7 @@ public sealed class DefinitionLoader
             }
         }
 
+        ResolveCharCanInheritance();
         IndexCharDefsByBody();
         ResolveEventReferences();
         ResolveItemDefReferences();
@@ -546,13 +547,6 @@ public sealed class DefinitionLoader
             if (insideTrigger)
                 continue;
 
-            // CAN uses pipe-separated defnames (e.g. MT_WALK|MT_FLY|MT_FIRE_IMMUNE)
-            if (key.Key.Equals("CAN", StringComparison.OrdinalIgnoreCase) && key.Arg.Contains('|'))
-            {
-                def.Can = (CanFlags)ResolvePipeFlags(key.Arg);
-                continue;
-            }
-
             def.LoadFromKey(key.Key, key.Arg);
         }
 
@@ -569,6 +563,40 @@ public sealed class DefinitionLoader
 
         _charDefs[link.Id.Index] = def;
         CharDefsLoaded++;
+    }
+
+    private void ResolveCharCanInheritance()
+    {
+        var complete = new HashSet<int>();
+        var visiting = new HashSet<int>();
+        CanFlags Resolve(int index)
+        {
+            if (!_charDefs.TryGetValue(index, out var def)) return CanFlags.None;
+            if (complete.Contains(index) || !visiting.Add(index)) return def.Can;
+            var keys = _resources.GetResource(ResType.CharDef, index)?.StoredKeys;
+            CanFlags can = CanFlags.None;
+            if (keys != null)
+                foreach (var key in keys)
+                {
+                    if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase)) break;
+                    if (key.Key.Equals("ID", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var parent = _resources.ResolveDefName(key.Arg.Trim());
+                        int parentIndex = parent.IsValid ? parent.Index :
+                            ScriptNumber.TryParseToken(key.Arg.Trim(), out long number) ? (int)number : 0;
+                        if (parentIndex != index && _charDefs.ContainsKey(parentIndex))
+                            can = Resolve(parentIndex);
+                    }
+                    else if (key.Key.Equals("CAN", StringComparison.OrdinalIgnoreCase))
+                        can = CharDef.ParseCanFlags(key.Arg, name =>
+                            _resources.TryResolveDefNameValue(name, out long flags) ? flags : null);
+                }
+            def.Can = can;
+            visiting.Remove(index);
+            complete.Add(index);
+            return can;
+        }
+        foreach (int index in _charDefs.Keys) Resolve(index);
     }
 
     private void LoadItemDef(ResourceLink link, Dictionary<int, ItemDef>? target = null)
@@ -981,7 +1009,16 @@ public sealed class DefinitionLoader
         SpellFlag result = SpellFlag.None;
         foreach (var token in val.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            // 1) Try defname resolve first (script-first approach)
+            // Flags are numeric constants, not 24-bit resource indices.
+            if (_resourcesStatic?.TryResolveDefNameValue(token, out long flagValue) == true)
+            {
+                // Sphere's 32-bit hex literals can be sign-extended (080000000).
+                // Preserve their flag bits without extending the sign to 64 bits.
+                result |= (SpellFlag)(flagValue < 0 ? unchecked((uint)flagValue) : (ulong)flagValue);
+                continue;
+            }
+
+            // 1) Try resource defname resolve (legacy compatibility)
             var rid = _resourcesStatic?.ResolveDefName(token) ?? ResourceId.Invalid;
             if (rid.IsValid)
             {

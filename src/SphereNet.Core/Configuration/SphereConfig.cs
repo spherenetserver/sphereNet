@@ -60,6 +60,10 @@ public sealed class SphereConfig
     // World Save
     public int SavePeriodMinutes { get; set; } = 15;
 
+    /// <summary>Source-X FORCEGARBAGECOLLECT: run world integrity cleanup before
+    /// each new save and before its timer starts. This is not .NET GC.</summary>
+    public bool ForceGarbageCollect { get; set; } = true;
+
     /// <summary>Persist the world during a clean shutdown so changes since the last
     /// periodic save survive a planned stop. Safe default on; set 0 to disable.</summary>
     public bool SaveOnShutdown { get; set; } = true;
@@ -194,8 +198,9 @@ public sealed class SphereConfig
 
     /// <summary>Source-X PACKETDEATHANIMATION (m_iPacketDeathAnimation): send
     /// the 0x2C death-screen packet to a dying client. 0 disables it — the
-    /// client then skips ClassicUO's 1.5s death-screen freeze entirely.</summary>
-    public int PacketDeathAnimation { get; set; } = 1;
+    /// client receives the ghost redraw without the death-screen packet.
+    /// Defaults to 0 in SphereNet; set 1 for Source-X's default behavior.</summary>
+    public int PacketDeathAnimation { get; set; } = 0;
 
     // Crime & Notoriety
     public int CriminalTimer { get; set; } = 180;
@@ -850,6 +855,7 @@ public sealed class SphereConfig
         LoadMapDefinitions(ini, section);
 
         SavePeriodMinutes = ini.GetInt(section, "SavePeriod", SavePeriodMinutes);
+        ForceGarbageCollect = ini.GetBool(section, "ForceGarbageCollect", ForceGarbageCollect);
         SaveOnShutdown = ini.GetBool(section, "SaveOnShutdown", SaveOnShutdown);
         BackupLevels = ini.GetInt(section, "BackupLevels", BackupLevels);
         SaveBackgroundMinutes = ini.GetInt(section, "SaveBackground", SaveBackgroundMinutes);

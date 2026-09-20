@@ -773,6 +773,7 @@ public sealed class ClientCombatHandler
 
         var target = _world.FindChar(new Serial(targetUid));
         if (target == null || target == _character || target.MapIndex != _character.MapIndex ||
+            (CharDefHelper.GetCanFlags(target) & CanFlags.C_NonSelectable) != 0 ||
             CombatHelper.IsInvalidSwingParticipant(target, asTarget: true))
         {
             Send(new PacketAttackResponse(0));
@@ -1310,6 +1311,11 @@ public sealed class ClientCombatHandler
         // @Hit-chain LOCAL.ArrowHandled=1 hands the ammo to the script instead
         // (Source-X nulls pAmmo); the miss branch below handles its own
         // consumption the same way via the @HitMiss locals.
+        Item? recoveredAmmo = null;
+        if (damage > 0 && ammoStack != null && !ammoHandled &&
+            !target.IsPlayer && target.Backpack != null && Random.Shared.Next(100) < 40)
+            recoveredAmmo = CreateRecoveredAmmo(ammoStack);
+
         if ((damage >= 0 || damage == CombatEngine.AttackResolvedByProc) &&
             ammoStack != null && !ammoHandled)
             ConsumeFromStack(ammoStack);
@@ -1390,23 +1396,11 @@ public sealed class ClientCombatHandler
             // Source-X hit economy: 40% of arrows that strike an NPC stick in
             // the body — they ride in its pack and surface on the corpse loot.
             // Skipped when a @Hit script took the ammo over (ArrowHandled).
-            if (CombatHelper.IsRangedWeapon(weapon) && !CombatHelper.IsThrowingWeapon(weapon) &&
-                !target.IsPlayer && !ammoHandled &&
-                target.Backpack != null && Random.Shared.Next(100) < 40)
+            if (recoveredAmmo != null)
             {
-                var stuckAmmo = ResolveAmmo(weapon!);
-                var stuck = _world.CreateItem();
-                if (stuckAmmo.BaseId != 0)
-                    stuck.BaseId = stuckAmmo.BaseId;
-                else
-                {
-                    stuck.ItemType = stuckAmmo.FallbackType;
-                    stuck.BaseId = stuckAmmo.FallbackType == ItemType.WeaponArrow ? (ushort)0x0F3F : (ushort)0x1BFB;
-                }
-                stuck.Amount = 1;
-                var actual = target.Backpack.AddItemWithStack(stuck);
-                if (actual != stuck || stuck.ContainedIn != target.Backpack.Uid)
-                    _world.RemoveItem(stuck);
+                var actual = target.Backpack!.AddItemWithStack(recoveredAmmo);
+                if (actual != recoveredAmmo || recoveredAmmo.ContainedIn != target.Backpack.Uid)
+                    _world.RemoveItem(recoveredAmmo);
             }
 
             if (target.Hits <= 0 && !target.IsDead && _deathEngine != null)
@@ -1651,29 +1645,29 @@ public sealed class ClientCombatHandler
             missLocals.GetInt("ArrowHandled") != 0)
             return false;
 
-        ConsumeFromStack(ammoStack);
         if (Random.Shared.Next(100) < 40)
-        {
-            var missAmmo = ResolveAmmo(weapon!);
-            DropRecoveredAmmo(missAmmo.BaseId, missAmmo.FallbackType, target.Position);
-        }
+            DropRecoveredAmmo(ammoStack, target.Position);
+        ConsumeFromStack(ammoStack);
         return false;
     }
 
     /// <summary>Materialise one recovered ammo item (Source-X MoveToDecay of the
     /// split arrow): dropped on the ground at <paramref name="pos"/> with the
     /// normal decay window.</summary>
-    private void DropRecoveredAmmo(ushort baseId, ItemType fallbackType, Point3D pos)
+    private Item CreateRecoveredAmmo(Item source)
     {
         var ammo = _world.CreateItem();
-        if (baseId != 0)
-            ammo.BaseId = baseId;
-        else
-        {
-            ammo.ItemType = fallbackType;
-            ammo.BaseId = fallbackType == ItemType.WeaponArrow ? (ushort)0x0F3F : (ushort)0x1BFB;
-        }
+        // Source-X UnStackSplit(1) preserves the fired stack's identity and
+        // instance state. Reconstructing just its graphic lost TYPE, hue,
+        // definition routing and custom tags, preventing later stacking.
+        ammo.CopyStackInstanceStateFrom(source);
         ammo.Amount = 1;
+        return ammo;
+    }
+
+    private void DropRecoveredAmmo(Item source, Point3D pos)
+    {
+        var ammo = CreateRecoveredAmmo(source);
         _world.PlaceItemWithDecay(ammo, pos);
     }
 

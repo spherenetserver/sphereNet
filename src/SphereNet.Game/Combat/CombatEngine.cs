@@ -687,7 +687,9 @@ public static class CombatEngine
     /// is flagged DAMAGE_GOD. SphereNet has no single damage choke-point, so each
     /// damage site (melee, spells, script DAMAGE, traps, fields) consults this guard.</summary>
     public static bool IsDamageImmune(Character target, DamageType type = DamageType.Physical)
-        => target.IsStatFlag(StatFlag.Invul) && !type.HasFlag(DamageType.God);
+        => !type.HasFlag(DamageType.God) &&
+           (target.IsStatFlag(StatFlag.Invul) ||
+            (type.HasFlag(DamageType.Fire) && (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(target) & CanFlags.C_FireImmune) != 0));
 
     /// <summary>
     /// Apply damage that a defender bounces back at its attacker — Blood Oath,
@@ -1310,6 +1312,7 @@ public static class CombatEngine
         // armor modes, so elemental combat wears armor too. A RETURN 1 anywhere
         // in the chain (Cancelled) returned before this roll in Source-X.
         if (!hitCtx.Cancelled && DurabilityEnabled &&
+            (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(target) & CanFlags.C_NonHumanoid) == 0 &&
             _rand.Next(100) < Math.Clamp(hitCtx.ItemDamageChance, 0, 100))
         {
             var itemHit = target.GetEquippedItem(hitCtx.ItemDamageLayer);

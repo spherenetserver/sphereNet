@@ -783,6 +783,12 @@ public static partial class Program
         var pos = obj.GetTopLevelObj().Position;
         bool wornVisualChanged = obj is Item { IsEquipped: true } &&
             (obj.LastConsumedDirtyFlags & (DirtyFlag.Hue | DirtyFlag.Body)) != DirtyFlag.None;
+        // Source-X ContentAdd/Update sends the contained item independently of
+        // weight. The world-view delta only covers ground items.
+        bool containedVisualChanged = obj is Item { IsEquipped: false } contained &&
+            _world.FindItem(contained.ContainedIn) != null &&
+            (obj.LastConsumedDirtyFlags & (DirtyFlag.Amount | DirtyFlag.Container |
+                DirtyFlag.Hue | DirtyFlag.Body | DirtyFlag.Position)) != DirtyFlag.None;
         bool tooltipChanged = (obj.LastConsumedDirtyFlags &
             ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
 
@@ -819,8 +825,8 @@ public static partial class Program
                     // swapping its graphic changed nothing on any screen until a
                     // resync. Upstream has no such gap - the item's own Update() goes
                     // out to everyone who can see the wearer.
-                    if (wornVisualChanged && obj is Item wornItem)
-                        c.SendItemVisualUpdate(wornItem);
+                    if ((wornVisualChanged || containedVisualChanged) && obj is Item changedItem)
+                        c.SendItemVisualUpdate(changedItem);
                 }
             }
         }

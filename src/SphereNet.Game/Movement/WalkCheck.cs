@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
@@ -143,6 +143,12 @@ public sealed class WalkCheck
         diag = default;
         var md = _world.MapData;
         if (md == null) return false;
+
+        var can = CharDefHelper.GetCanFlags(mover);
+        if (mover.PrivLevel < PrivLevel.GM && ((can & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0 ||
+            ((can & (CanFlags.C_Walk | CanFlags.C_Swim | CanFlags.C_Fly | CanFlags.C_Hover | CanFlags.C_PassWalls)) == 0 &&
+             !mover.IsStatFlag(StatFlag.Hovering))))
+            return false;
 
         if (CharDefHelper.CanPassWalls(mover))
         {
@@ -412,11 +418,16 @@ public sealed class WalkCheck
     /// surface inventory both the walk path and the standing-surface
     /// resolver select from; the trace counters feed the reject log.</summary>
     private List<PathEntry> BuildPathEntries(MapDataManager md, int mapId, int x, int y,
-        List<Item> items, bool ghost, ref CheckTrace trace)
+        List<Item> items, Character mover, ref CheckTrace trace)
     {
+        var can = CharDefHelper.GetCanFlags(mover);
+        bool ghost = CharDefHelper.CanPassDoors(mover);
+        bool swims = (can & CanFlags.C_Swim) != 0;
+        bool walks = (can & CanFlags.C_Walk) != 0;
+        bool hovers = (can & CanFlags.C_Hover) != 0 || mover.IsStatFlag(StatFlag.Hovering);
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
-        bool landBlocks = LandBlocks(landData);
+        bool landBlocks = landData.IsWet ? !swims : !walks;
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
         md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTop);
@@ -461,15 +472,22 @@ public sealed class WalkCheck
             // CAN_C_PASSWALLS. Treating it as an open door is the same geometry.
             bool isDoorOpen = (data.Flags & TileFlag.Door) != 0 &&
                 (ghost || _world.IsMapStaticDoorOpen((byte)mapId, (short)x, (short)y, tile.Z));
-            bool effectiveImpassable = data.IsImpassable && !isDoorOpen;
+            bool water = (data.Flags & TileFlag.Wet) != 0;
+            bool surface = water ? swims : data.IsSurface && walks;
+            bool effectiveImpassable = (data.IsImpassable && !(water && swims)) && !isDoorOpen;
+            if ((data.Flags & TileFlag.HoverOver) != 0)
+            {
+                effectiveImpassable = !hovers;
+                surface = hovers;
+            }
 
             PathFlags pf = PathFlags.None;
-            if (effectiveImpassable || data.IsSurface)
+            if (effectiveImpassable || surface || data.IsRoof)
                 pf |= PathFlags.ImpSurf;
             if (!effectiveImpassable)
             {
-                if (data.IsSurface) pf |= PathFlags.Surface;
-                if (data.IsBridge) pf |= PathFlags.Bridge;
+                if (surface) pf |= PathFlags.Surface;
+                if (data.IsBridge && walks) pf |= PathFlags.Bridge;
             }
             if (pf == PathFlags.None) continue;
 
@@ -490,15 +508,22 @@ public sealed class WalkCheck
             if (!ShouldTreatAsMovementGeometry(item, data)) continue;
 
             // Same ghost rule as the static tiles above, for door ITEMS.
-            bool impassable = data.IsImpassable && !(ghost && IsDoorGeometry(item, data));
+            bool water = (data.Flags & TileFlag.Wet) != 0;
+            bool surface = water ? swims : data.IsSurface && walks;
+            bool impassable = data.IsImpassable && !(water && swims) && !(ghost && IsDoorGeometry(item, data));
+            if ((data.Flags & TileFlag.HoverOver) != 0)
+            {
+                impassable = !hovers;
+                surface = hovers;
+            }
 
             PathFlags pf = PathFlags.None;
-            if (impassable || data.IsSurface)
+            if (impassable || surface || data.IsRoof)
                 pf |= PathFlags.ImpSurf;
             if (!impassable)
             {
-                if (data.IsSurface) pf |= PathFlags.Surface;
-                if (data.IsBridge) pf |= PathFlags.Bridge;
+                if (surface) pf |= PathFlags.Surface;
+                if (data.IsBridge && walks) pf |= PathFlags.Bridge;
             }
             if (pf == PathFlags.None) continue;
 
@@ -522,9 +547,11 @@ public sealed class WalkCheck
     {
         newZ = 0;
 
-        var list = BuildPathEntries(md, mapId, x, y, items, mover.IsDead, ref trace);
+        var list = BuildPathEntries(md, mapId, x, y, items, mover, ref trace);
         list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
 
+        int requiredHeight = (CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoBlockHeight) != 0 ? 0 : PersonHeight;
+        bool noIndoors = (CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoIndoors) != 0;
         int resultZ = -128;
         int minZ = preMinZ;
         int currentZ = -128;
@@ -540,7 +567,7 @@ public sealed class WalkCheck
 
             int objZ = obj.Z;
 
-            if (objZ - minZ >= PersonHeight)
+            if (objZ - minZ >= requiredHeight)
             {
                 for (int j = i - 1; j >= 0; j--)
                 {
@@ -550,7 +577,7 @@ public sealed class WalkCheck
 
                     int candAvg = cand.AverageZ;
                     if (candAvg < currentZ) continue;
-                    if (objZ - candAvg < PersonHeight) continue;
+                    if (objZ - candAvg < requiredHeight || (noIndoors && obj.Z != 128)) continue;
 
                     bool maxOk = ((cand.Flags & PathFlags.Surface) != 0 && candAvg <= preMaxZ)
                               || ((cand.Flags & PathFlags.Bridge) != 0 && cand.Z <= preMaxZ);
@@ -647,7 +674,7 @@ public sealed class WalkCheck
 
         var items = CollectItems(mapId, x, y);
         var trace = new CheckTrace();
-        var list = BuildPathEntries(md, mapId, x, y, items, mover.IsDead, ref trace);
+        var list = BuildPathEntries(md, mapId, x, y, items, mover, ref trace);
         // Sentinel so the topmost surface always gets a headroom verdict.
         list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
 
@@ -672,7 +699,8 @@ public sealed class WalkCheck
                 var above = list[j];
                 if ((above.Flags & PathFlags.ImpSurf) == 0) continue;
                 if (above.Z <= standZ) continue;
-                if (above.Z - standZ < PersonHeight)
+                if (((CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoIndoors) != 0 && above.Z != 128) ||
+                    ((CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoBlockHeight) == 0 && above.Z - standZ < PersonHeight))
                     hasHeadroom = false;
                 break; // list is sorted — the first entry above decides
             }
@@ -932,6 +960,7 @@ public sealed class WalkCheck
 
     private static bool CanMoveOver(Character mover, Character blocker)
     {
+        if ((CharDefHelper.GetCanFlags(blocker) & CanFlags.C_Statue) != 0) return false;
         // ServUO / RunUO-style shove rule (PURE predicate — no side effects):
         // - staff can always move through mobiles
         // - dead bodies / dead movers do not block

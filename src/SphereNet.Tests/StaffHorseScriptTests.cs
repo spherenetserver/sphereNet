@@ -41,6 +41,7 @@ public sealed class StaffHorseScriptTests
     {
         var (world, _) = Setup();
         var player = world.CreateCharacter();
+        player.BodyId = 0x0190;
         player.IsPlayer = true;
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
 
@@ -60,6 +61,7 @@ public sealed class StaffHorseScriptTests
     {
         var (world, _) = Setup();
         var player = world.CreateCharacter();
+        player.BodyId = 0x0190;
         player.IsPlayer = true;
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
 
@@ -82,6 +84,7 @@ public sealed class StaffHorseScriptTests
     {
         var (world, _) = Setup();
         var player = world.CreateCharacter();
+        player.BodyId = 0x0190;
         player.IsPlayer = true;
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
 

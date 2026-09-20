@@ -292,6 +292,7 @@ public sealed class ItemUseParity07YTests
     private static Item Vat(Bench bench, ushort hue, string? legacyTag = null)
     {
         var vat = bench.World.CreateItem();
+        vat.BaseId = 0x0FAB;
         vat.ItemType = ItemType.DyeVat;
         vat.Hue = new Color(hue);
         if (legacyTag != null)
@@ -358,8 +359,92 @@ public sealed class ItemUseParity07YTests
 
         UseOn(bench, dye, vat.Uid.Value);
 
-        Assert.Equal((ushort)1110, vat.Hue.Value);
+        Assert.Equal((ushort)0, vat.Hue.Value); // targeting only opens the picker
+        Assert.Contains(TestHarness.GetQueuedPackets(bench.Client.NetState), p => p.Span[0] == 0x95);
+        // Raw ClassicUO reply payload: serial, reserved word, selected hue.
+        byte[] reply = new byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(reply, vat.Uid.Value);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(reply.AsSpan(6), 500);
+        bench.Client.NetState.DyeResponseHandler = (_, serial, hue) => bench.Client.HandleDyeResponse(serial, hue);
+        new SphereNet.Network.Packets.Incoming.PacketDyeResponse().OnReceive(
+            new SphereNet.Network.Packets.PacketBuffer(reply), bench.Client.NetState);
+        Assert.Equal((ushort)500, vat.Hue.Value);
         Assert.False(vat.TryGetTag("DYE_HUE", out _));
+    }
+
+    [Theory]
+    [InlineData(0, 2)]
+    [InlineData(500, 500)]
+    [InlineData(65535, 1001)]
+    public void PlayerPickerUsesSourceXHueRange(int selected, int expected)
+    {
+        var b = Setup();
+        var vat = Vat(b, 10);
+        b.Client.OpenDyeWindow(vat);
+        b.Client.HandleDyeResponse(vat.Uid.Value, (ushort)selected);
+        Assert.Equal((ushort)expected, vat.Hue.Value);
+        Assert.Contains(TestHarness.GetQueuedPackets(b.Client.NetState), p => p.Span[0] == 0x25);
+        Assert.DoesNotContain(TestHarness.GetQueuedPackets(b.Client.NetState), p => p.Span[0] == 0x1A);
+        b.Client.HandleDyeResponse(vat.Uid.Value, 600);
+        Assert.Equal((ushort)expected, vat.Hue.Value); // response cannot be replayed
+    }
+
+    [Fact]
+    public void PickerRejectsUnsolicitedAndDifferentTargetReplies()
+    {
+        var b = Setup();
+        var vat = Vat(b, 10);
+        var other = Vat(b, 20);
+        b.Client.HandleDyeResponse(vat.Uid.Value, 500);
+        Assert.Equal((ushort)10, vat.Hue.Value);
+        b.Client.OpenDyeWindow(vat);
+        b.Client.HandleDyeResponse(other.Uid.Value, 500);
+        Assert.Equal((ushort)20, other.Hue.Value);
+        Assert.Equal((ushort)10, vat.Hue.Value);
+    }
+
+    [Fact]
+    public void PickerRechecksReachWhenTheReplyArrives()
+    {
+        var b = Setup();
+        var vat = Vat(b, 10);
+        b.Client.OpenDyeWindow(vat);
+        b.Pack.RemoveItem(vat);
+        b.World.PlaceItem(vat, new Point3D(150, 150, 0, 0));
+        b.Client.HandleDyeResponse(vat.Uid.Value, 500);
+        Assert.Equal((ushort)10, vat.Hue.Value);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CustomVatRequiresSourceXDyeTypeOption(bool enabled)
+    {
+        var b = Setup();
+        GameClient.ServerOptionFlags = enabled ? OptionFlags.DyeType : 0;
+        var vat = Vat(b, 10);
+        vat.BaseId = 0x0E7B;
+        b.Client.OpenDyeWindow(vat);
+        b.Client.HandleDyeResponse(vat.Uid.Value, 500);
+        Assert.Equal((ushort)(enabled ? 500 : 10), vat.Hue.Value);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PickerHonorsDyeTriggerVetoAndHueChange(bool veto)
+    {
+        var triggers = new TriggerDispatcher();
+        triggers.RegisterItemEvent("EVENTSITEM", "Dye", (_, args) =>
+        {
+            args.N1 = 700;
+            return veto ? TriggerResult.True : TriggerResult.Default;
+        });
+        var b = Setup(triggers);
+        var vat = Vat(b, 10);
+        b.Client.OpenDyeWindow(vat);
+        b.Client.HandleDyeResponse(vat.Uid.Value, 500);
+        Assert.Equal((ushort)(veto ? 10 : 700), vat.Hue.Value);
     }
 
     [Fact]

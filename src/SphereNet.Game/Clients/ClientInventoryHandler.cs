@@ -918,11 +918,10 @@ public sealed class ClientInventoryHandler
     /// is a chest on a ship's deck refusing everything and leaving it lying on the deck,
     /// which is how a shard reported it, and a trash can you cannot throw anything into.
     ///
-    /// It asks the one list now, plus the two the drop path alone treats as containers:
-    /// a spellbook takes scrolls, and a memory object is the engine's own.</summary>
+    /// Spellbooks have a separate scroll-learning path, never physical contents.</summary>
     private static bool IsDropTargetContainer(Item target) =>
         Item.IsContainerItemType(target.ItemType) ||
-        target.ItemType is ItemType.Spellbook or ItemType.EqMemoryObj ||
+        target.ItemType == ItemType.EqMemoryObj ||
         target.EquipLayer is Layer.Pack or Layer.BankBox or
                             Layer.VendorStock or Layer.VendorExtra;
 
@@ -1139,7 +1138,7 @@ public sealed class ClientInventoryHandler
             // special-target cases below have had their chance. Passing it to
             // TryAddItem instead turned a sword into a container, and the gem inside
             // it could not be reached through any container view again.
-            if (container != null && !IsDropTargetContainer(container) &&
+            if (container != null && !container.IsSpellbook && !IsDropTargetContainer(container) &&
                 !container.CanStackWith(item))
             {
                 container = RedirectNonContainerTarget(container, item, ref x, ref y);
@@ -1261,9 +1260,10 @@ public sealed class ClientInventoryHandler
                 // stacks (e.g. dropping 5000 gold — 500 stones — onto a ground pile
                 // when the container weight cap is 400).
                 bool isPileMerge = container.CanStackWith(item);
+                bool isSpellbook = container.IsSpellbook;
 
                 // Nesting depth limit — prevent container-in-container bypass of slot limits.
-                if (!isPileMerge && _character.PrivLevel < PrivLevel.GM)
+                if (!isPileMerge && !isSpellbook && _character.PrivLevel < PrivLevel.GM)
                 {
                     int depth = 0;
                     var parent = container;
@@ -1280,7 +1280,7 @@ public sealed class ClientInventoryHandler
                     }
                 }
 
-                if (!isPileMerge && _character.PrivLevel < PrivLevel.GM)
+                if (!isPileMerge && !isSpellbook && _character.PrivLevel < PrivLevel.GM)
                 {
                     // A drop anywhere in the bank tree (the box itself or a nested
                     // bag) counts against the bank cap, computed over the WHOLE
@@ -1369,6 +1369,37 @@ public sealed class ClientInventoryHandler
                         _netState.Send(new PacketDropReject());
                         return;
                     }
+                }
+                if (isSpellbook)
+                {
+                    // Source-X AddSpellbookScroll consumes ONE and bounces any
+                    // remainder. A book must never become a hidden container.
+                    var spell = _spellEngine?.GetScrollSpell(item);
+                    if (spell == null || !container.TryLearnSpell((int)spell.Id))
+                    {
+                        SysMessage(ServerMessages.Get(Msg.CantAddSpellbook));
+                        RestoreToOrigin(item);
+                    }
+                    else
+                    {
+                        ulong bits = ((ulong)container.More2 << 32) | container.More1;
+                        _netState.Send(new PacketSpellbookContent(container.Uid.Value,
+                            container.DispIdFull, (ushort)(container.SpellbookOffset + 1), bits));
+                        if (item.Amount > 1)
+                        {
+                            item.Amount--;
+                            RestoreToOrigin(item);
+                        }
+                        else
+                        {
+                            _world.RemoveItem(item);
+                            _dragOrigin = null;
+                            var soundPos = container.GetTopLevelPosition();
+                            _netState.Send(new PacketSound(0x057, soundPos.X, soundPos.Y, soundPos.Z));
+                        }
+                    }
+                    _netState.Send(new PacketDropReject());
+                    return;
                 }
                 // Dropping one stack onto another: the client sends the TARGET
                 // STACK's serial as the "container". If that target is itself a
@@ -1915,7 +1946,7 @@ public sealed class ClientInventoryHandler
         // entry and no drag to bounce it back from - and took the wearer's previous
         // piece off for an equip that never happened. Both are the equip's own
         // business now (SettleEquipDrag, and the occupant bounce behind the gates).
-        return HandleItemEquip(item.Uid.Value, (byte)layer, _character.Uid.Value);
+        return HandleItemEquipCore(item.Uid.Value, (byte)layer, _character.Uid.Value, fromDoubleClick: true);
     }
 
     /// <summary>0xEC equip-item macro (Source-X PacketEquipItemMacro). Each
@@ -2029,6 +2060,9 @@ public sealed class ClientInventoryHandler
     }
 
     public bool HandleItemEquip(uint serial, byte layer, uint charSerial)
+        => HandleItemEquipCore(serial, layer, charSerial, fromDoubleClick: false);
+
+    private bool HandleItemEquipCore(uint serial, byte layer, uint charSerial, bool fromDoubleClick)
     {
         if (_character == null) return false;
         if (_character.IsDead) return false;
@@ -2061,6 +2095,12 @@ public sealed class ClientInventoryHandler
                 return SettleEquipDrag(item, false);
         }
 
+        // Resolve the final hand before testing/bouncing occupants. Character.Equip
+        // applies the same promotion; doing it only there bypassed client updates
+        // for the item displaced from HAND2 (for example a held candle).
+        if ((Layer)layer == Layer.OneHanded && item.IsTwoHanded)
+            layer = (byte)Layer.TwoHanded;
+
         // Central equip gate (Source-X CChar::CanEquipLayer): block an
         // underpowered wearer from a high-REQSTR item. GM actor bypasses; the
         // layer-31 / ownership / hand-conflict guards are handled separately.
@@ -2075,28 +2115,35 @@ public sealed class ClientInventoryHandler
         // Spell interruption on equip change
         _spellEngine?.TryInterruptFromEquip(target);
 
+        void BounceWornItem(Item worn)
+        {
+            target.Unequip(worn.EquipLayer);
+            var removed = new PacketDeleteObject(worn.Uid.Value);
+            _netState.Send(removed);
+            BroadcastNearby?.Invoke(target.Position, UpdateRange, removed, _character.Uid.Value);
+            PlaceItemInPack(target, worn);
+        }
+
         // Hands mutual exclusion (UO rules): a true two-handed weapon needs
         // BOTH hands, so it bounces whatever the other hand holds — weapon or
         // shield. Conversely any one-hand-layer equip bounces a held
         // two-handed weapon (it coexists with a shield, which is not
         // two-handed). The old check only covered the shield cases, so a
         // 1H weapon + 2H weapon could end up held together.
-        if ((Layer)layer == Layer.TwoHanded && item.IsTwoHanded)
+        if ((Layer)layer == Layer.TwoHanded && (item.IsWeaponType || item.IsTwoHanded))
         {
             var offhand = target.GetEquippedItem(Layer.OneHanded);
             if (offhand != null)
             {
-                target.Unequip(Layer.OneHanded);
-                PlaceItemInPack(target, offhand);
+                BounceWornItem(offhand);
             }
         }
         else if ((Layer)layer == Layer.OneHanded)
         {
             var oldWeapon = target.GetEquippedItem(Layer.TwoHanded);
-            if (oldWeapon != null && oldWeapon.IsTwoHanded)
+            if (oldWeapon != null && oldWeapon.IsWeaponType)
             {
-                target.Unequip(Layer.TwoHanded);
-                PlaceItemInPack(target, oldWeapon);
+                BounceWornItem(oldWeapon);
             }
         }
 
@@ -2107,11 +2154,7 @@ public sealed class ClientInventoryHandler
         var occupant = target.GetEquippedItem((Layer)layer);
         if (occupant != null && !ReferenceEquals(occupant, item))
         {
-            target.Unequip((Layer)layer);
-            var occupantPkt = new PacketDeleteObject(occupant.Uid.Value);
-            _netState.Send(occupantPkt);
-            BroadcastNearby?.Invoke(target.Position, UpdateRange, occupantPkt, _character.Uid.Value);
-            PlaceItemInPack(target, occupant);
+            BounceWornItem(occupant);
         }
 
         target.Equip(item, (Layer)layer);
@@ -2136,6 +2179,14 @@ public sealed class ClientInventoryHandler
         var wornPkt = new PacketWornItem(
             item.Uid.Value, item.DispIdFull, actualLayer,
             target.Uid.Value, item.Hue);
+        // A double-click has no client-side lift to detach the incoming item.
+        // Source-X ItemEquip(fFromDClick) uses ResendOnEquip (CObjBase.cpp):
+        // remove the item's old client representation, then send the worn item.
+        // Extend that redraw to the initiating ClassicUO client as well as EC;
+        // the drag path already detached its item and needs no extra removal.
+        // Both packets are Normal priority, preserving remove-before-wear order.
+        if (fromDoubleClick)
+            _netState.Send(new PacketDeleteObject(item.Uid.Value));
         _netState.Send(wornPkt);
         BroadcastNearby?.Invoke(target.Position, UpdateRange, wornPkt, _character.Uid.Value);
 

@@ -203,14 +203,14 @@ public static class VendorEngine
             if (stockItem.Amount < entry.Amount)
                 return -1; // not enough in stock
 
-            // Price from THIS stock entry's own PRICE tag — not a GetServerBuyPrice
+            // Price from THIS stock entry's own PRICE/tag — not a GetServerBuyPrice
             // lookup by BaseId, which returns the first same-BaseId stock item's
             // price. With two same-id entries at different prices the server could
             // otherwise charge a different price than the client's selected row.
             int serverPrice = (stockItem.TryGetTag("PRICE", out string? rowPrice)
                     && int.TryParse(rowPrice, out int rp) && rp > 0)
                 ? rp
-                : GetServerBuyPrice(vendor, stockItem.BaseId);
+                : stockItem.Price > 0 ? stockItem.Price : Math.Max(1, GetDefValue(stockItem));
             if (serverPrice <= 0) return -1;
             totalCost += (long)serverPrice * entry.Amount;
             resolved.Add((stockItem, (int)entry.Amount, serverPrice));
@@ -649,7 +649,7 @@ public static class VendorEngine
         return set;
     }
 
-    /// <summary>Look up server-side price for an item. Checks vendor stock PRICE tags, item def, fallback to baseId formula.</summary>
+    /// <summary>Look up server-side price for an item. Checks vendor stock legacy PRICE tags, native PRICE, then itemdef VALUE.</summary>
     internal static int GetServerBuyPrice(Character vendor, ushort itemId)
     {
         var stock = vendor.GetEquippedItem(Core.Enums.Layer.VendorStock);
@@ -660,6 +660,8 @@ public static class VendorEngine
                 if (item.BaseId == itemId &&
                     item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
                     return Math.Max(1, p);
+                if (item.BaseId == itemId)
+                    return item.Price > 0 ? item.Price : Math.Max(1, GetDefValue(item));
             }
         }
         var pack = vendor.Backpack;
@@ -670,9 +672,11 @@ public static class VendorEngine
                 if (item.BaseId == itemId &&
                     item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
                     return Math.Max(1, p);
+                if (item.BaseId == itemId)
+                    return item.Price > 0 ? item.Price : Math.Max(1, GetDefValue(item));
             }
         }
-        // No PRICE tag — price from the itemdef VALUE like Source-X
+        // No explicit price — price from the itemdef VALUE like Source-X
         // (CItemVendable::GetMakeValue). The old fallback derived the price
         // from the ART TILE ID (/10 + 5), so high-graphic items cost a fortune.
         return Math.Max(1, GetDefValue(itemId));
@@ -680,7 +684,10 @@ public static class VendorEngine
 
     /// <summary>Itemdef VALUE midpoint — the Source-X vendor pricing base.
     /// Returns 0 when the def declares no VALUE.</summary>
-    internal static int GetDefValue(ushort itemId)
+    internal static int GetDefValue(Item item) =>
+        GetDefValue(Definitions.ItemDefHelper.ResolveInstanceDefIndex(item));
+
+    internal static int GetDefValue(int itemId)
     {
         var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(itemId);
         if (idef == null) return 0;
@@ -720,7 +727,7 @@ public static class VendorEngine
     {
         int buyPrice = item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p)
             ? Math.Max(1, p)
-            : Math.Max(1, GetServerBuyPrice(vendor, item.BaseId));
+            : item.Price > 0 ? item.Price : Math.Max(1, GetServerBuyPrice(vendor, item.BaseId));
         int markup = GetVendorMarkup(vendor);
         return Math.Max(1, buyPrice * (100 - markup) / (100 + markup));
     }
@@ -907,22 +914,7 @@ public static class VendorEngine
             newItem.BaseId = itemId;
             newItem.Amount = (ushort)Math.Min(deficit, 60000);
 
-            // Stamp the buy price from the itemdef VALUE when available so
-            // the server-side price check has an explicit figure (it falls
-            // back to the display formula otherwise).
-            var idef = Definitions.DefinitionLoader.GetItemDef(itemId);
-            if (idef != null)
-            {
-                int value = idef.ValueMin > 0 && idef.ValueMax > 0
-                    ? (idef.ValueMin + idef.ValueMax) / 2
-                    : Math.Max(idef.ValueMin, idef.ValueMax);
-                if (value > 0)
-                {
-                    newItem.Price = value;
-                    newItem.SetTag("PRICE", value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                }
-            }
-
+            // Ordinary stock reads ITEMDEF VALUE when quoted; do not freeze PRICE.
             if (!stock.TryAddItem(newItem))
                 World.RemoveItem(newItem);
         }

@@ -159,6 +159,14 @@ public sealed class ClientSkillsHandler
             FireActiveSkillStroke(skillId);
             var sink0 = new GameClient.InfoSkillSink(_client, _character);
             bool ok0 = _skillHandlers?.UseActiveSkill(sink0, skill, null) ?? false;
+            if (skill == SkillType.Meditation && ok0 && _character.IsStatFlag(StatFlag.Meditation))
+            {
+                int actionEffect = _character.ActionEffect;
+                _character.BeginSkillPending(skillId,
+                    Environment.TickCount64 + Math.Max(100, SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill))),
+                    long.MaxValue, Serial.Invalid, null);
+                _character.ActionEffect = actionEffect;
+            }
             FireActiveSkillResult(skillId, ok0);
             return;
         }
@@ -483,6 +491,21 @@ public sealed class ClientSkillsHandler
     private void CompletePendingSkill(SkillType skill, int skillId)
     {
         if (_character == null) return;
+
+        // Meditation continues on the skill timer until full, instead of
+        // completing once and waiting for the unrelated passive mana timer.
+        if (skill == SkillType.Meditation)
+        {
+            var meditationSink = new GameClient.InfoSkillSink(_client, _character);
+            bool meditationOk = _skillHandlers?.UseActiveSkill(meditationSink, skill, null) ?? false;
+            if (meditationOk && _character.IsStatFlag(StatFlag.Meditation))
+                _character.ContinueSkillPending(Environment.TickCount64 +
+                    Math.Max(100, SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill))));
+            else
+                _character.ClearActiveSkillPending();
+            FireActiveSkillResult(skillId, meditationOk);
+            return;
+        }
 
         Serial targetUid = _character.SkillPendingTarget;
         bool isInfo = _character.SkillPendingIsInfo;

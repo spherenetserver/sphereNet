@@ -185,7 +185,7 @@ public sealed partial class NpcAI
     {
         if (!GetNpcFlags(npc).HasFlag(NpcAIFlags.MoveObstacles))
             return false;
-        var can = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        var can = CharDefHelper.GetCanFlags(npc);
         if (!can.HasFlag(CanFlags.C_UseHands))
             return false;
         if (npc.Int <= _rand.Next(100))
@@ -223,8 +223,7 @@ public sealed partial class NpcAI
 
         if (StandsOnWater(mapData, pos))
         {
-            var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-            bool canSwim = charDef != null && (charDef.Can & Core.Enums.CanFlags.C_Swim) != 0;
+            bool canSwim = (CharDefHelper.GetCanFlags(npc) & CanFlags.C_Swim) != 0;
             if (!canSwim) return false;
         }
 
@@ -240,8 +239,7 @@ public sealed partial class NpcAI
         {
             if (!item.TryGetTag("FIELD_DAMAGE", out _))
                 continue;
-            var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-            bool fireImmune = charDef != null && (charDef.Can & CanFlags.C_FireImmune) != 0;
+            bool fireImmune = (CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0;
             if (!fireImmune)
                 return true;
         }
@@ -286,18 +284,25 @@ public sealed partial class NpcAI
 
     private bool CanNpcMoveTo(Character npc, Point3D pos, bool checkChars = true)
     {
+        if (!CanNpcMove(npc)) return false;
         if (!CanNpcOccupy(npc, pos, checkChars))
             return false;
 
         if (!CharDefHelper.CanPassWalls(npc))
         {
             var mapData = _world.MapData;
-            if (mapData != null && !mapData.IsPassable(pos.Map, pos.X, pos.Y, pos.Z))
-                return false;
+            if (mapData != null)
+            {
+                var stand = _world.Standing.ResolveStandingSurface(npc, pos.Map, pos.X, pos.Y, pos.Z,
+                    WalkCheck.StandingPolicy.Settle);
+                if (!stand.Found || stand.Z != pos.Z) return false;
+            }
 
             foreach (var item in _world.GetItemsInRange(pos, 0))
             {
-                if (item.IsStaticBlock && BlocksAtHeight(item, pos.Z))
+                bool passDoor = CharDefHelper.CanPassDoors(npc) &&
+                    item.ItemType is ItemType.Door or ItemType.DoorLocked or ItemType.DoorOpen;
+                if (!passDoor && item.IsStaticBlock && BlocksAtHeight(item, pos.Z))
                     return false;
             }
         }
@@ -348,6 +353,7 @@ public sealed partial class NpcAI
 
     private void Wander(Character npc)
     {
+        if (!CanNpcMove(npc)) return;
         if (OnNpcActWander?.Invoke(npc) == true)
             return;
 
@@ -376,7 +382,9 @@ public sealed partial class NpcAI
         var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
         if (!CanNpcMoveTo(npc, newPos))
         {
-            if (OnNpcOpenDoor != null && _rand.Next(2) == 0)
+            // Source-X NPC_LookAtItem rejects door use without CAN_C_USEHANDS.
+            if (OnNpcOpenDoor != null &&
+                (CharDefHelper.GetCanFlags(npc) & CanFlags.C_UseHands) != 0 && _rand.Next(2) == 0)
             {
                 var door = FindClosedDoorAt(newPos);
                 if (door != null)
@@ -432,21 +440,15 @@ public sealed partial class NpcAI
             Wander(npc);
             return;
         }
+        if (_world.GetSector(home) == null) return;
 
         // Chebyshev like Source-X GetDist — the old Manhattan sum over-counted
         // diagonals, halving the effective HOMEDIST leash on the diagonal.
         int curDist = npc.MapIndex == home.Map
             ? npc.Position.GetDistanceTo(home)
-            : int.MaxValue;
+            : short.MaxValue;
         if (curDist > homeDist)
         {
-            if (npc.MapIndex != home.Map)
-            {
-                if (Character.OnNpcLostTeleport?.Invoke(npc) != true)
-                    _world.MoveCharacter(npc, home);
-                return;
-            }
-
             // LOSTNPCTELEPORT — a creature that has wandered absurdly far is put back
             // rather than asked to walk (CCharNPCAct.cpp:1547). It is a backstop, not a
             // leash: the distance has to beat BOTH the global and the creature's own
@@ -454,9 +456,9 @@ public sealed partial class NpcAI
             // global setting. @NPCLostTeleport may veto it.
             if (LostNpcTeleport > 0 && curDist > LostNpcTeleport)
             {
-                if (Character.OnNpcLostTeleport?.Invoke(npc) != true)
-                    _world.MoveCharacter(npc, home);
-                return;
+                if (Character.OnNpcLostTeleport?.Invoke(npc, curDist) != true &&
+                    _world.MoveCharacter(npc, home))
+                    return;
             }
 
             MoveToward(npc, home);
@@ -513,6 +515,11 @@ public sealed partial class NpcAI
     /// did not.</summary>
     private static bool CanNpcMove(Character npc)
     {
+        var can = CharDefHelper.GetCanFlags(npc);
+        if ((can & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0 ||
+            ((can & (CanFlags.C_Walk | CanFlags.C_Swim | CanFlags.C_Fly | CanFlags.C_Hover | CanFlags.C_PassWalls)) == 0 &&
+             !npc.IsStatFlag(StatFlag.Hovering)))
+            return false;
         if (npc.PrivLevel >= PrivLevel.GM)
             return true;
         if (npc.IsStatFlag(StatFlag.Freeze) || npc.IsStatFlag(StatFlag.Stone))
@@ -631,6 +638,7 @@ public sealed partial class NpcAI
 
     private void MoveToward(Character npc, Point3D target, bool run = false)
     {
+        run = run && (CharDefHelper.GetCanFlags(npc) & (CanFlags.C_Run | CanFlags.C_Fly)) != 0 && npc.Stam > 1;
         if (target.Map != npc.MapIndex || (target.X == npc.X && target.Y == npc.Y))
             return;
 
@@ -656,7 +664,8 @@ public sealed partial class NpcAI
         // Reference parity (NPC door handling in the idle look-at path): a
         // blocked adjacent step may just be a closed door — try to open it
         // (50% per attempt, like the reference) and re-check the tile.
-        if (directBlocked && OnNpcOpenDoor != null && _rand.Next(2) == 0)
+        if (directBlocked && OnNpcOpenDoor != null &&
+            (CharDefHelper.GetCanFlags(npc) & CanFlags.C_UseHands) != 0 && _rand.Next(2) == 0)
         {
             var door = FindClosedDoorAt(stepTile);
             if (door != null && OnNpcOpenDoor(npc, door))
@@ -754,8 +763,7 @@ public sealed partial class NpcAI
             }
 
             // Calculate new path
-            var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-            var npcCanFlags = npcDef?.Can ?? Core.Enums.CanFlags.None;
+            var npcCanFlags = CharDefHelper.GetCanFlags(npc);
             path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc,
                 NpcPathMaxNodes, NpcPathMaxDist);
             if (path == null || path.Count == 0)
@@ -985,7 +993,7 @@ public sealed partial class NpcAI
         if (_pathfindBudgetArmed && !_pathfindAdmitted.Contains(uid))
             return (null, goal, false, true);
 
-        var npcCanFlags = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        var npcCanFlags = CharDefHelper.GetCanFlags(npc);
         var path = _pathfinder.FindPath(npc.Position, goal, npc.MapIndex, npcCanFlags, npc,
             NpcPathMaxNodes, NpcPathMaxDist);
         return (path, goal, true, false);

@@ -96,6 +96,8 @@ public sealed class TriggerRunner
                 return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope);
             }
 
+            if (link.StoredKeys != null) return TriggerResult.Default;
+
             using var scriptFile = link.OpenAtStoredPosition();
             if (scriptFile == null)
                 return TriggerResult.Default;
@@ -105,10 +107,10 @@ public sealed class TriggerRunner
             // header, so only sections[0] may be searched — scanning further
             // would execute a same-named ON= block belonging to the NEXT
             // definition in the file.
-            var sections = scriptFile.ReadAllSections();
-            if (sections.Count > 0)
+            var section = scriptFile.ReadNextSection();
+            if (section != null)
             {
-                var section = sections[0];
+                link.RetainSection(section);
                 foreach (var key in section.Keys)
                 {
                     if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
@@ -161,6 +163,8 @@ public sealed class TriggerRunner
                 return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope);
             }
 
+            if (link.StoredKeys != null) return TriggerResult.Default;
+
             using var scriptFile = link.OpenAtStoredPosition();
             if (scriptFile == null)
             {
@@ -175,10 +179,10 @@ public sealed class TriggerRunner
             // section (sections[0] at the stored header position) may carry the
             // trigger. Scanning later sections executed same-named ON= blocks
             // of unrelated definitions further down the same file.
-            var sections = scriptFile.ReadAllSections();
-            if (sections.Count > 0)
+            var section = scriptFile.ReadNextSection();
+            if (section != null)
             {
-                var section = sections[0];
+                link.RetainSection(section);
                 foreach (var key in section.Keys)
                 {
                     if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&

@@ -421,11 +421,10 @@ public sealed class HousingShipIntegrityTests
         Assert.Null(engine.PlaceShip(owner, 0x4000, new Point3D(300, 300, 0, 0), Direction.North));
     }
 
-    /// <summary>Classic dry-dock: the owner double-clicks the TILLERMAN while
-    /// standing OFF the ship → the ship converts to a deed in the backpack.
-    /// Aboard, the tillerman only talks and the ship stays.</summary>
+    /// <summary>Onboard use retains pilot/speech behavior; the SphereNet
+    /// shore-side default dry docks an empty owned ship.</summary>
     [Fact]
-    public void TillermanDoubleClick_OffShipOwner_DryDocksToDeed()
+    public void TillermanDoubleClick_ClassicOwner_DryDocksOnlyFromShore()
     {
         var oldResolver = Item.ResolveShipEngine;
         try
@@ -449,13 +448,12 @@ public sealed class HousingShipIntegrityTests
             client.HandleDoubleClick(tiller.Uid.Value);
             Assert.NotNull(engine.GetShip(ship.MultiItem.Uid));
 
-            // Off the ship, within reach: dry dock.
+            // Off the ship, within reach: dry dock into the owner's backpack.
             world.MoveCharacter(owner, new Point3D(202, 200, 0, 0));
             client.HandleDoubleClick(tiller.Uid.Value);
             Assert.Null(engine.GetShip(ship.MultiItem.Uid));
             Assert.True(ship.MultiItem.IsDeleted);
-            var deed = owner.Backpack!.Contents.FirstOrDefault(i => i.ItemType == ItemType.Deed);
-            Assert.NotNull(deed);
+            Assert.Single(owner.Backpack!.Contents, i => i.ItemType == ItemType.Deed);
         }
         finally
         {
@@ -528,12 +526,21 @@ public sealed class HousingShipIntegrityTests
             var loose = world.CreateItem();
             world.PlaceItem(loose, new Point3D(200, 200, 3, 0));   // on the deck
 
+            // Source-X cargo transfer is selected by @Redeed, not unconditional.
+            engine.OnShipRedeed = (_, args) =>
+            {
+                args.N2 = 1;
+                args.N3 = 1;
+                return TriggerResult.Default;
+            };
+
             var plan = engine.RemoveShip(ship.MultiItem.Uid, owner)!;
             Assert.Equal((ushort)0x14F1, plan.BaseId);
             var crate = world.FindItem(loose.ContainedIn);
             Assert.NotNull(crate);
             Assert.Equal("a moving crate", crate!.Name);
             Assert.Equal(owner.GetEquippedItem(Layer.BankBox)!.Uid, crate.ContainedIn);
+            Assert.True(owner.Backpack!.TryAddItem(plan)); // withdraw the banked deed
 
             var loggerFactory = LoggerFactory.Create(_ => { });
             var client = TestHarness.CreateClient(loggerFactory, world,

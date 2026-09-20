@@ -43,11 +43,17 @@ public sealed class Pathfinder
     public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes, int maxRadius = 0)
     {
         if (maxNodes <= 0) maxNodes = MaxNodes;
+        if (self != null)
+        {
+            canFlags = Definitions.CharDefHelper.GetCanFlags(self);
+            if ((canFlags & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0)
+                return null;
+        }
         if (IsGoalReached(start, goal))
             return [goal];
 
         if (start.GetDistanceTo(goal) <= 1 && Math.Abs(start.Z - goal.Z) <= MaxClimb)
-            return [goal];
+            return IsWalkable(goal, canFlags, self, ignoreChars: true) ? [goal] : null;
 
         var openSet = _tlOpenSet ??= new PriorityQueue<PathNode, int>();
         var closedSet = _tlClosedSet ??= new HashSet<long>();
@@ -165,6 +171,13 @@ public sealed class Pathfinder
         var mapData = _world.MapData;
         if (mapData != null)
         {
+            if (self != null)
+            {
+                var standing = _world.Standing.ResolveStandingSurface(self, pos.Map, pos.X, pos.Y, pos.Z,
+                    Definitions.CharDefHelper.CanPassWalls(self)
+                        ? WalkCheck.StandingPolicy.IgnoreCollision : WalkCheck.StandingPolicy.Settle);
+                return standing.Found && Math.Abs(standing.Z - pos.Z) <= MaxClimb;
+            }
             if (!mapData.IsPassable(pos.Map, pos.X, pos.Y, pos.Z))
                 return false;
 

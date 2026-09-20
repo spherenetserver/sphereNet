@@ -77,7 +77,7 @@ public sealed class DeathEngine
     /// </summary>
     public Item? ProcessDeath(Character victim, Character? killer = null)
     {
-        if (victim.IsDead)
+        if (victim.IsDead || victim.IsDeleted)
             return null;
 
         // Source-X CChar::Death: an invulnerable character cannot die.
@@ -261,6 +261,13 @@ public sealed class DeathEngine
         // exactly this.
         // Source-X MakeCorpse: summoned creatures and a DEATH_NOCORPSE flag leave
         // no corpse — they simply vanish (DeleteObject refreshes nearby clients).
+        // Source-X CChar::Death runs @CreateLoot once, immediately before
+        // MakeCorpse. Running it during NPC initialization duplicated spawn
+        // loot and made death-time conditions observe a living creature.
+        if (!victim.IsSummoned)
+            TriggerDispatcher?.FireCharTrigger(victim, CharTrigger.CreateLoot,
+                new TriggerArgs { CharSrc = victim });
+
         if (ShouldLeaveNoCorpse(victim, deathFlags))
         {
             // Source-X MakeCorpse: a summon that leaves no corpse bursts a

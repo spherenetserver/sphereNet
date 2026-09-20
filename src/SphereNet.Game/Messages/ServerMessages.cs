@@ -250,6 +250,15 @@ public static partial class ServerMessages
     /// </summary>
     private static void RegisterCustomDefaults()
     {
+        // Default player dry docking is a SphereNet extension. Ownership uses
+        // Source-X tiller_notyourship; these additional guards have no upstream key.
+        Def("ship_drydock_moving", "Stop the ship before dry docking it.");
+        Def("ship_drydock_invalid", "This ship cannot be dry docked here.");
+        Def("ship_drydock_hold", "Empty the ship's hold before dry docking it.");
+        Def("ship_drydock_passengers", "Everyone must leave the ship before it can be dry docked.");
+        Def("ship_drydock_deck", "Remove all items from the deck before dry docking the ship.");
+        Def("ship_drydock_pack", "Make room in your backpack for the ship deed.");
+
         // ===== SphereNet combat extras =====
         Def("combat_nopvp", "You cannot attack players in this area.");
         Def("combat_dead", "You have died. Seek a healer to be resurrected.");

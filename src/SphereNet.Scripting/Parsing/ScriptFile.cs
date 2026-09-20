@@ -189,53 +189,37 @@ public sealed class ScriptFile : IDisposable
     public List<ScriptSection> ReadAllSections()
     {
         var sections = new List<ScriptSection>();
-
-        while (true)
-        {
-            string? header = FindNextSection();
-            if (header == null) break;
-
-            var (name, arg) = ScriptSection.ParseHeader(header.AsSpan());
-            var section = new ScriptSection(name, arg, Context.Snapshot());
-
-            while (true)
-            {
-                string? line = ReadLine();
-                if (line == null) break;
-
-                if (line.StartsWith('['))
-                {
-                    // Push back — we'll re-find this section header next iteration
-                    if (_cachedLines != null)
-                    {
-                        _cacheLineIndex--;
-                        Context.LineNumber--;
-                    }
-                    else
-                    {
-                        // Non-cached mode: store the line for re-reading
-                        _pushedBackLine = line;
-                        Context.LineNumber--;
-                    }
-                    break;
-                }
-
-                var key = new ScriptKey
-                {
-                    SourceFile = Context.FilePath,
-                    SourceLine = Context.LineNumber
-                };
-                key.Parse(line.AsSpan());
-                if (!string.IsNullOrEmpty(key.Key))
-                    section.Keys.Add(key);
-            }
-
+        while (ReadNextSection() is { } section)
             sections.Add(section);
-        }
-
         return sections;
     }
 
+    /// <summary>Read only the next section, leaving the following header unread.</summary>
+    public ScriptSection? ReadNextSection()
+    {
+        string? header = FindNextSection();
+        if (header == null) return null;
+        var (name, arg) = ScriptSection.ParseHeader(header.AsSpan());
+        var section = new ScriptSection(name, arg, Context.Snapshot());
+        while (true)
+        {
+            string? line = ReadLine();
+            if (line == null) break;
+            if (line.StartsWith('['))
+            {
+                if (_cachedLines != null)
+                    _cacheLineIndex--;
+                else
+                    _pushedBackLine = line;
+                Context.LineNumber--;
+                break;
+            }
+            var key = new ScriptKey { SourceFile = Context.FilePath, SourceLine = Context.LineNumber };
+            key.Parse(line.AsSpan());
+            if (!string.IsNullOrEmpty(key.Key)) section.Keys.Add(key);
+        }
+        return section;
+    }
     /// <summary>
     /// Seek to a specific line (cache mode only).
     /// </summary>

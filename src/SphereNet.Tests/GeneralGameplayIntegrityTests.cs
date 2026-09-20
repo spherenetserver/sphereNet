@@ -31,6 +31,7 @@ public sealed class GeneralGameplayIntegrityTests
     private static Character CreatePlayer(GameWorld world, short x = 100, short y = 100)
     {
         var player = world.CreateCharacter();
+        player.BodyId = 0x0190;
         player.IsPlayer = true;
         player.Str = short.MaxValue;
         player.MaxHits = player.Hits = 100;

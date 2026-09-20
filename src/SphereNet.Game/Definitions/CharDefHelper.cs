@@ -126,7 +126,10 @@ public static class CharDefHelper
     public static CanFlags GetCanFlags(Character ch)
     {
         var def = DefinitionLoader.GetCharDef(ch.CharDefIndex);
-        return def?.Can ?? CanFlags.None;
+        // Unresolved definitions retain the legacy engine defaults. A loaded
+        // definition with explicit CAN=0 must remain incapable of movement.
+        var baseCan = def?.Can ?? (CanFlags.C_Walk | CanFlags.C_Run | CanFlags.C_UseHands | CanFlags.C_Equip);
+        return (CanFlags)((ulong)baseCan ^ ch.CanMask);
     }
 
     public static bool CanPassWalls(Character ch)
@@ -145,8 +148,14 @@ public static class CharDefHelper
         if ((GetCanFlags(ch) & CanFlags.C_PassWalls) != 0)
             return true;
 
-        return (GetCanFlags(ch) & CanFlags.C_Ghost) != 0 && ch.IsDead;
+        return false;
     }
+
+    public static bool CanPassDoors(Character ch) => ch.IsDead ||
+        (GetCanFlags(ch) & CanFlags.C_Ghost) != 0;
+
+    public static bool IsMountCapable(Character ch) => !ch.IsDead &&
+        (ch.IsHuman || ch.BodyId is 0x025D or 0x025E || (GetCanFlags(ch) & CanFlags.C_Mount) != 0);
 
     /// <summary>Fired after BODY/CHARDEF defname apply — wire to @Create dispatch.</summary>
     public static Action<Character>? AfterApplyDefName;

@@ -370,6 +370,7 @@ public static partial class Program
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
+            sw = BeginWorldSave(_world, _config.ForceGarbageCollect, _log);
             _housingEngine?.SerializeAllToTags();
             _shipEngine?.SerializeAllToTags();
             _guildManager?.SerializeAllToTags(_world);
@@ -477,6 +478,24 @@ public static partial class Program
         {
             FinishSaveFailure(sw, ex.Message);
         }
+    }
+
+    // Source-X CWorld::SaveTry runs world garbage collection before starting
+    // _iSaveTimer. Keep this on the main thread, before snapshot/temporary spell
+    // changes, and only after the in-flight-save guard. Never force .NET GC here.
+    private static Stopwatch BeginWorldSave(GameWorld world, bool forceGarbageCollect, Microsoft.Extensions.Logging.ILogger log)
+    {
+        if (forceGarbageCollect)
+        {
+            var cleanup = Stopwatch.StartNew();
+            var result = world.GarbageCollection(message => log.LogWarning("{Reason}", message));
+            cleanup.Stop();
+            log.LogInformation(
+                "Pre-save world cleanup: checked={Checked} fixed={Fixed} deleted={Deleted} duration={Ms:F1}ms (excluded from save timer)",
+                result.Checked, result.Fixed, result.Deleted, cleanup.Elapsed.TotalMilliseconds);
+        }
+        // loop_stall still measures the entire main-loop job, including cleanup.
+        return Stopwatch.StartNew();
     }
 
     private static Task<bool>? _backgroundSaveTask;

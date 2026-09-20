@@ -460,8 +460,8 @@ public sealed class PacketDyeResponse : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         uint itemSerial = buffer.ReadUInt32();
+        buffer.ReadUInt16(); // item-id/reserved field; NOT the chosen hue
         ushort hue = buffer.ReadUInt16();
-        ushort dyeVatSerial = buffer.ReadUInt16();
         state.OnDyeResponse(itemSerial, hue);
     }
 }

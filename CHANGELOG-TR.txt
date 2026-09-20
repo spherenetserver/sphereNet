@@ -1,8 +1,243 @@
-﻿================================================================================
+================================================================================
  SphereNet Changelog (Turkce)
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+
+[2026-09-20] - Eski Britain olay referansinin test kapsami
+------------------------------------------------------
+TEST - Eksik R_BRIT sadece arsiv worldfiles-55a a_townBritain save kaydinda
+       bilinen veri hatasi sayilir. Orijinal save korunur; baska kayitlarda
+       veya canli scriptlerde ayni eksik referans hata vermeye devam eder.
+
+[2026-09-20] - Cift tikla takilan esyanin istemci kaydi yenilenir
+------------------------------------------------------------
+CHANGE - Basarili cift tikla takmada Source-X ResendOnEquip kaldir/yeniden gonder
+         sirasi ClassicUO dahil islemi yapan istemciye uygulanir. Upstream EC
+         yenilemesi genisletildi; elle surukleyerek takma akisi degistirilmedi.
+TEST - Tekrarli isik/silah/yay degisimleri, kaldir/canta/tak paket sirasi,
+       gercek el/sahip alanlari ve surukleme durumunun kapanmasi dogrulandi.
+
+[2026-09-20] - Save sayacindan once dunya temizligi
+-----------------------------------------------
+CHANGE - Mevcut dunya tutarlilik taramasi her yeni sunucu save'i oncesine
+         baglandi. Source-X FORCEGARBAGECOLLECT varsayilan 1; temizlik suresi,
+         onarilan ve silinen nesne sayilari ayri loglanir. Senkron ve arka plan
+         save sayaci temizlikten sonra baslar. Loop-stall temizligi de olcer;
+         zorunlu .NET GC eklenmedi.
+
+[2026-09-20] - Olum ekrani paketi varsayilan olarak kapatildi
+---------------------------------------------------------
+CHANGE - PACKETDEATHANIMATION dosyada yazmasa da 0 kabul edilir. Hayalet
+         gorunumu guncellenir. 0x2C paketini tekrar gondermek icin 1 yapilir.
+
+[2026-09-20] - Aktif Meditation skill zamanlayicisinda surdurulur
+-------------------------------------------------------------
+
+FIX - Meditation her skill DELAY araliginda mana ekler; ACTEFFECT korunur,
+      skill EFFECT veya varsayilan bir puan kullanilir. Aktif yenilenme pasif
+      REGEN1 beklemez. Mana dolunca eylem/buff temizlenir ve basari deneyimi
+      verilir. Hasar/iptal donguyu bitirir. Source-X'te olmayan sabit zirh
+      engeli kaldirildi.
+TEST - Istemci istegi, kapali REGEN1, ACTEFFECT=0, tamamlanma deneyimi,
+       zirh, basarisizlik, hasar ve mana guncelleme paketi dogrulandi.
+
+[2026-09-20] - Script DEFNAME buyu bayraklarinin bit kaybi duzeltildi
+----------------------------------------------------------------
+
+FIX - Sayisal DEFNAME degerleri 24 bit kaynak indeksinden ayri, tam genislikle
+      saklanir. Buyu FLAGS okumasi Heal, Damage, Bless, Curse, Area, Poly,
+      TargDead ve Tick bitlerini korur; isaretli 32 bit bayraklar duzeltilir.
+      Sayi/metin yeniden tanimlarinda onceki turden kalan deger temizlenir.
+TEST - HP artirmayan self-Heal ve sekiz bayrak kaybi uretildi; iyilesme,
+       bayrak degerleri ve sayisal sabit yeniden tanimlari dogrulandi.
+       On iki ek Magery buyusunde script tanimli hasar, iyilestirme,
+       guclendirme ve zayiflatmanin HP/stat degisimi dogrulandi.
+
+[2026-09-20] - Stat gelisimi skill kilidinden ayrildi
+--------------------------------------------------
+
+FIX - Source-X Skill_Experience gibi, asagi oklu veya kilitli skill kullanimi
+      yukari oklu stati gelistirebilir. Skill degeri kilidi, stat hedefleri,
+      tavanlari ve artis egrileri korunur. Iki skill kilidi de statlari kesiyordu.
+TEST - Iki engel once uretildi; duzeltme ve stat kilidi kontrolleri dogrulandi.
+
+[2026-09-20] - Istemci skill artis ve dusus bildirimleri duzeltildi
+---------------------------------------------------------------
+
+FIX - Skill artis ve dususunde Source-X tek skill 0x3A/0xDF paketi gonderilir.
+      Tum listeyi yenilemek istemcinin mavi degisim mesajini engelliyordu.
+      Bonuslu deger, taban deger, kilit ve tanimli skill tavani korunur.
+TEST - Artis/dusus paket turu, bonuslar ve tavan alanlari dogrulandi.
+
+[2026-09-20] - NPC savas takibi ile ev dolasma siniri ayrildi
+----------------------------------------------------------
+
+FIX - Savas icindeki max(HOMEDIST*2,18) siniri ve uc katinda zorunlu eve
+      isinlama kaldirildi. NPC spawn'dan uzakta olsa da gorunur yakin hedefi
+      takip eder; yaklasma hareketi hedefe uzakligi MAPVIEWRADAR ile denetler.
+FIX - HOMEDIST ve LOSTNPCTELEPORT bosta eve donuste kullanilir. Farkli harita
+      LOSTNPCTELEPORT=0 ayarini atlamaz. Isinlama iptal edilince yurume denenir;
+      gecersiz ev noktasi kullanilmaz. NPCLostTeleport ARGN1 ev uzakligini
+      alir (farkli haritalarda INT16_MAX), Source-X ile uyumlu.
+TEST - Normal NPC tick takibi, hedef uzakligi, isinlama ayari/esikleri,
+       script iptali ve farkli haritadaki ev icin regresyon testleri eklendi.
+
+[2026-09-20] - Hava olayi dagitiminda eksik tetikleyici yeniden okunmaz
+--------------------------------------------------------------------
+
+PERF - Source-X gibi EnvironChange kullanim kontrolu arguman olusturmadan
+       yapilir. NPC/oyuncu cevre durumlari ve hava paketleri korunur. Kontrol
+       her dagitimda yapildigindan RESYNC ile olay ekleme/kaldirma desteklenir.
+PERF - Bellekteki bolumde bulunmayan tetikleyici dogrudan doner. Gerektiginde
+       dosyadan yalniz ilgili bolum okunur; bulunan ve bulunmayan olaylar saklanir.
+FIX  - Kaynak yeniden taraninca eski tetikleyici govdeleri/bitleri temizlenir.
+       Kullanim dizini yeniden kurulurken eski script kayitlari silinir,
+       C# tarafinda kaydedilen isleyiciler korunur.
+DIAG - Hava guncellemesi ve mevsim yayini ayri flush surelerinde raporlanir.
+TEST - Bellek tahsisi, bolum siniri, gec yukleme, yeniden tarama ve RESYNC
+       sonrasinda NPC cevre olayi davranisi icin regresyon testleri eklendi.
+
+[2026-09-20] - Karakter CAN kalitimi ve etkin yetenek kontrolleri
+-------------------------------------------------------------
+
+FIX - Sayisal/DEFNAME CAN birlesimleri tam genislikte okunur. CHARDEF ID
+      kalitimi script sirasini ve acik CAN=0 degerini korur. Mevcut NPC'ler
+      tanim yenilendiginde yeni CAN degerini okur; temel CAN save'e kopyalanmaz.
+      Nesneye ozel CANMASK ayri yerel alan olarak saklanir ve Source-X gibi
+      etkin yetenekleri XOR ile degistirir.
+FIX - NPC hareketi, yol bulma, kapi, el/ekipman, binme, ates bagisikligi
+      (GOD istisnasi korunarak), cinsiyet ve zirh asinmasi yeteneklere baglandi.
+      WALK/SWIM, NONMOVER/STATUE, GHOST/PASSWALLS, HOVER, NOINDOORS ve
+      NOBLOCKHEIGHT yuzey kontrolleri duzeltildi; uygun NPC kosu biti korunur.
+FIX - NONSELECTABLE istemci etkilesimlerini engeller. STATUE NPC eylemlerini,
+      buyu, aclik ve itilmeyi durdurur; Source-X sabit kare paketi gonderilir.
+TEST - Denetim bulgulari, CANMASK save/load, mevcut NPC'de tanim yenileme,
+       kalitim sirasi ve paket duzeni icin regresyon testleri eklendi.
+
+[2026-09-20] - Geri alinan muhimmat ve NPC loot yasam dongusu
+-----------------------------------------------------------
+
+FIX - Cesetten veya yerden geri alinan ok/bolt, Source-X UnStackSplit gibi
+      atilan yigindaki tur, renk, tag ve tanim kimligini korur; orijinal
+      muhimmatla yeniden birlesebilir. Ozel script ozellikleri silinmez.
+FIX - Spawn NPC'lerinde Create/NPCRestock birer kez calisir. CreateLoot,
+      spawn ve GM/script yaratilisindan olumde ceset olusturma oncesine tasindi.
+      Iki sunucu spawn baglantisinin ayni loot'u tekrar uretmesi giderildi.
+      Mevcut esya ve NPC envanterleri otomatik degistirilmez.
+
+[2026-09-20] - Gemi ambarini acmak icin bagli gemide olunmali
+----------------------------------------------------------
+
+FIX - Ambar cift tiklamasinda acma ve tuzak isleminden once oyuncunun bolgesi
+      ambarin bagli oldugu gemiyle karsilastirilir. Source-X Skill_Snoop_Check
+      davranisi, GM istisnasi ve itemuse_hatch_fail DEFMESSAGE kullanilir.
+      Kiyidan veya baska gemiden yakin durarak ambar acilmasi engellenir.
+
+[2026-09-20] - Gemiyi deed yapma mesajlari script ile ayarlanir
+-------------------------------------------------------------
+
+FIX - Varsayilan deed isleminin tum ret mesajlari ServerMessages ve mevcut
+      DEFMESSAGE akisindan okunur. Source-X tiller_notyourship kullanilir;
+      karsiligi olmayan kontroller icin ship_drydock_moving/invalid/hold/
+      passengers/deck/pack varsayilan mesajlari kaydedilir.
+
+[2026-09-20] - NPC kapi kullanimi el yetenegi gerektirir
+-----------------------------------------------------
+
+FIX - Rastgele dolasma ve hedefe yurume yollarinda kapi acmadan once CHARDEF
+      CAN_C_USEHANDS kontrol edilir; Source-X NPC_LookAtItem ile uyumludur.
+      Bu yetenegi olmayan hayvanlar artik kapi acamaz. Yetenegi olan NPC'lerin
+      kilitsiz kapi acma davranisi korunur.
+
+[2026-09-20] - Varsayilan tillerman deed islemi
+--------------------------------------------
+
+ADD - Sahibi kiyidan erisilebilir tillermana cift tiklayinca durmus ve bos gemi
+      mevcut REDEED akisiyla deed olur. Baska sahip, ambar/guverte yuku, yolcu
+      veya dolu/eksik canta durumunda gemi kaldirilmadan islem engellenir.
+      Gemide pilotluk, script @DClick onceligi ve ham REDEED davranisi korunur.
+      Bu, Source-X tillerman kullanimina ek SphereNet varsayilan davranisidir.
+
+[2026-09-20] - Bolge gecisinde muzik
+----------------------------------
+
+FIX - Yurume ve isinlanmada bolge Exit/Enter scriptleri konum ve bolge
+      degismeden calisir. Enter sirasinda SRC.REGION eski bolgeyi gosterir;
+      TAG.MUSIC karsilastirmasi ve SRC.MIDILIST yeni bolgenin 0x6D muzik
+      paketini gonderir. Gecisler bolge kimligiyle ayirt edilir.
+      Ayni onbellek hucresindeki kucuk sehir bolgesinin genis ust bolge
+      tarafindan gizlenmemesi icin onbellek tam konumla dogrulanir.
+
+[2026-09-20] - Dyes boya kabi renk menusunu acar
+----------------------------------------
+
+FIX - Dyes ile boya kabi hedeflenince renk kopyalamak yerine 0x95 menusu acilir.
+      Oyuncunun cevabi secilen kaba bir kez uygulanir; erisim ve Source-X renk/tip
+      kurallari yeniden denetlenir. @Dye degisikligi/iptali korunur; esyanin
+      canta, ekipman veya dunya konumuna uygun guncelleme paketi gonderilir.
+      Secilen renk istemcinin 0x95 cevabindaki son iki bayttan okunur.
+
+[2026-09-20] - El degisiminde eski ekipman goruntusu temizlenir
+----------------------------------------
+
+FIX - Iki elli silahin gercek slotu el cakismalari kontrol edilmeden belirlenir.
+      Ayni veya diger elden cikarilan esyanin kaldirma paketi yeni silah
+      gosterilmeden gonderilir; elde kalan eski mum goruntusu onlenir.
+      Mum/fener yakilip sondurulurken esyanin konumuna uygun paket gonderilir;
+      eldeki isik kaynagi yerdeki esya gibi bildirilmez.
+
+[2026-09-20] - Yigin kimliginde Source-X ad ve nitelik kurallari
+----------------------------------------
+
+FIX - Esya NAME farki, ayni arrow/esya yiginlarinin karakter, canta veya hedef
+      yigin uzerine birakilinca birlesmesini engellemez. Source-X gibi DECAY
+      disindaki nitelikler karsilastirilir; newbie/magic farklari birlesmez.
+      Canta icinde belirli bir konuma birakma davranisi korunur.
+      Vendor PRICE alani birlesmeyi engellemez. Vendor olusturma/restock artik
+      TAG.PRICE uretmez; fiyat okumalari PRICE alanini ve eski etiketleri destekler.
+      Mevcut TAG.PRICE dahil tum ozel etiketler karsilastirilmaya devam eder.
+      Normal vendor stogu ITEMDEF VALUE degerini PRICE alanina sabitlemez;
+      fiyat guncel script tanimindan okunur, isimli ITEMDEF kimligi korunur.
+
+[2026-09-20] - Spellbook acilis paketleri Source-X ile uyumlu
+----------------------------------------
+
+FIX - Kitaba birakilan scroll konteyner icerigi olarak gizlenmek yerine
+      SPELLDEF.SCROLL_ITEM ile eslesen buyuyu ogretir. Bir scroll tuketilir,
+      kalani geri verilir; tekrarlar ve yanlis okul tuketim olmadan reddedilir.
+      Kitabin TDATA3 ofseti kullanilir ve buyu maskesi istemciye gonderilir.
+
+FIX - Spellbook cift tiklamasi varil penceresi 0x003E yerine Source-X'in 0xFFFF
+      kitap penceresini acar. Esya acilistan once, icerik acilistan sonra iletilir.
+      Buyu maskesi referanstaki little-endian bayt sirasini kullanir; kismen dolu
+      kitaplarda dogru buyuler gosterilir.
+
+[2026-09-20] - Envanter status ve gemi kullanimi Source-X ile uyumlu
+----------------------------------------
+
+FIX - Konteynere ekleme/cikarma ve yigin miktari degisimi, ic cantalar dahil tum
+      esya turlerinde tasiyicinin status bilgisini gunceller. Ekipman degisimi de
+      status bildirir. Source-X'in sifir agirlik farki ve agirlik aktarmayan
+      konteyner sinirlari korunur; ayni miktar yeniden bildirim olusturmaz.
+      Envanter status bildirimi agirliktan bagimsizdir: sifir agirlikli altin
+      (65000 altin menu odulu dahil) esya oynatmadan guncellenir. Canta icindeki
+      esya degisimi, Source-X ContentAdd/Update akisindaki gibi, canta yeniden
+      acilmadan sahibine esya guncelleme paketi de gonderir.
+
+FIX - Tillerman cift tiklamasi gemiyi kendiliginden deed'e donusturmez. Eski
+      istemcilerde konusur; High Seas istemcilerinde sahip/anahtar denetimiyle
+      pilot akisini kullanir. Erisim iki karo ve yukseklik hesabi kullanir.
+      Gemi kullanim komutlari ozel govde karosi kurali yerine bolgeyi kullanir.
+
+FIX - Gemi REDEED komutu mesaj/banka parametrelerini ve kaynak karakteri iletir.
+      @Redeed deed nesnesini ve ARGN1/2/3 degerlerini alir; script degisiklikleri
+      transferi ve banka teslimini belirler. RETURN 1 deed'i kaldirir, geminin
+      kaldirilmasini iptal etmez. Kullanilan @Redeed yoksa yerdeki esyalar
+      otomatik tasinmaz. Gemi parcalari tetikleyiciden sonra silinir; ambar
+      icerigini korumak isteyen script @Redeed sirasinda tasimalidir. Onceki
+      otomatik ambar kurtarma davranisi Source-X'e ait degildi. Kayit formati
+      degistirilmedi.
 
 [2026-09-19] - Tek bir isleyici hatasi artik oyuncunun oturumuna mal olmuyor
 ----------------------------------------

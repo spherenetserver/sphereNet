@@ -402,9 +402,8 @@ public static partial class Program
             // @EnvironChange — fired when a character's perceived light level changes
             // (surface/dungeon boundary). N1 = new light level. Only fires on an
             // actual change (UpdateEnvironLight), which is infrequent.
-            SphereNet.Game.Objects.Characters.Character.OnEnvironChange = (ch, light) =>
-                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.EnvironChange,
-                    new TriggerArgs { CharSrc = ch, N1 = light });
+            SphereNet.Game.Objects.Characters.Character.OnEnvironChange =
+                _triggerDispatcher.FireEnvironChange;
 
             // @SkillGain (Source-X Skill_Experience) — pre-roll hook: fires before the
             // gain roll so a script can tune the gain chance (ARGN2) / effective cap
@@ -440,8 +439,8 @@ public static partial class Program
                 };
             }
 
-            // Post-gain notification (Source-X parity): @SkillChange + blue system
-            // message + skill-list refresh. @SkillGain itself fires PRE-roll above.
+            // Post-gain notification: @SkillChange + single-skill update.
+            // @SkillGain itself fires PRE-roll above.
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>
             {
                 // @SkillChange (Source-X CTRIG_SkillChange) fires on a runtime skill
@@ -451,19 +450,18 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange,
                     new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = 1 });
 
-                // Source-X sends NO gain text — Skill_SetBase only refreshes the
-                // skill window (addSkillWindow, CCharSkill.cpp:222). The old
-                // "Your skill in X has increased" line was invented; scripts can
-                // add one via @SkillChange if a shard wants it.
+                // Source-X addSkillWindow(skill) sends 0x3A/0xDF. The client
+                // generates its gain message from that delta; a full list
+                // silently refreshes values and suppresses the notification.
                 if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
-                    gc.SendSkillList();
+                    gc.SendSkillUpdate(skill);
             };
             SkillEngine.OnSkillDecrease = (ch, skill, newVal) =>
             {
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange,
                     new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = -1 });
                 if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
-                    gc.SendSkillList();
+                    gc.SendSkillUpdate(skill);
             };
             // Wire stat gain message (Source-X: "You feel stronger/more agile/smarter")
             SkillEngine.OnStatGain = (ch, statIdx, newVal) =>
@@ -679,64 +677,7 @@ public static partial class Program
                 }
             };
 
-            // Source-X parity: spawn-driven NPCs (CItemSpawn) need the same
-            // trigger sequence the manual ".add" pipeline runs. Without this
-            // hook a vendor that comes from a SPAWN never fires @NPCRestock,
-            // so its stock list stays empty and "buy" responds with "no
-            // goods". Mirrors the GameClient.CreateNpcFromDef ordering.
-            _world.OnNpcSpawned = npc =>
-            {
-                try
-                {
-                    _triggerDispatcher?.FireCharTrigger(
-                        npc, SphereNet.Core.Enums.CharTrigger.Create,
-                        new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-
-                    if (npc.NpcBrain == SphereNet.Core.Enums.NpcBrainType.None)
-                        npc.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Animal;
-
-                    // Source-X NPC_LoadScript fires @NPCRestock for EVERY new
-                    // NPC (CCharNPC.cpp:289-290) — monster chardefs put gear
-                    // (ITEMNEWBIE) and backpack loot (ITEM) in ON=@NPCRestock,
-                    // so the old vendor-only gate spawned empty monsters.
-                    _triggerDispatcher?.FireCharTrigger(
-                        npc, SphereNet.Core.Enums.CharTrigger.NPCRestock,
-                        new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-
-                    _triggerDispatcher?.FireCharTrigger(
-                        npc, SphereNet.Core.Enums.CharTrigger.CreateLoot,
-                        new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-
-                    // Classic packs assign STR/DEX/INT inside @Create, which
-                    // raises the max vitals AFTER SpawnResolved seeded them from
-                    // the (stat-less) chardef section — leaving a fresh spawn at
-                    // 1/102 hp. Top off like the .add pipeline does post-@Create.
-                    npc.Hits = npc.MaxHits;
-                    npc.Stam = npc.MaxStam;
-                    npc.Mana = npc.MaxMana;
-
-                    var spawnCharDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-                    if (spawnCharDef != null)
-                    {
-                        foreach (int spellId in spawnCharDef.NpcSpells)
-                        {
-                            // SpellType is ushort-backed; Enum.IsDefined throws on a
-                            // boxed int, so range-check and cast first.
-                            if (spellId >= 0 && spellId <= ushort.MaxValue &&
-                                Enum.IsDefined(typeof(SpellType), (ushort)spellId))
-                                npc.NpcSpellAdd((SpellType)spellId);
-                        }
-                    }
-
-                    npc.Hits = npc.MaxHits;
-                    npc.Stam = npc.MaxStam;
-                    npc.Mana = npc.MaxMana;
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "[spawn_hook] failed for {Name}", npc.Name);
-                }
-            };
+            ConfigureNpcSpawnScripts(_world, _triggerDispatcher);
 
             // One owner per spawned object: handing an object to a second spawner
             // releases it from the first (AddObj, CCSpawn.cpp:621). Without it the
@@ -1584,23 +1525,6 @@ public static partial class Program
                 (npc, wantedItem) => _npcAI.GetWantScore(npc, wantedItem);
             SphereNet.Game.Objects.Characters.Character.NpcCanEatFood =
                 (npc, foodItem) => _npcAI.NpcCanEat(npc, foodItem);
-            // Gem-spawned NPCs run the same chardef script init as GM .add
-            // (Source-X NPC_LoadScript): @Create, @CreateLoot, then
-            // @NPCRestock — the pack's monster gear and backpack loot live in
-            // those bodies, so without this every spawned monster dropped
-            // nothing.
-            SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = npc =>
-            {
-                _triggerDispatcher.FireCharTrigger(npc,
-                    SphereNet.Core.Enums.CharTrigger.Create,
-                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-                _triggerDispatcher.FireCharTrigger(npc,
-                    SphereNet.Core.Enums.CharTrigger.CreateLoot,
-                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-                _triggerDispatcher.FireCharTrigger(npc,
-                    SphereNet.Core.Enums.CharTrigger.NPCRestock,
-                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-            };
             _spellEngine.OnCasterFacingChanged = caster =>
             {
                 // Source-X UpdateMove(GetTopPoint()) — broadcast new facing only.
@@ -2960,9 +2884,15 @@ public static partial class Program
             // loose deck cargo - with ARGN1 the new facing and ARGN2 the old one
             // (CCMultiMovable.cpp:628). Only the hull used to hear about it, and with
             // no directions at all.
-            _shipEngine.OnShipRedeed = (multi, deed, deedId) =>
-                _triggerDispatcher?.FireItemTrigger(multi, ItemTrigger.Redeed,
-                    new TriggerArgs { ItemSrc = multi, O1 = deed, N1 = deedId });
+            _shipEngine.OnShipRedeed = (multi, args) =>
+                _triggerDispatcher?.IsItemTriggerUsed(ItemTrigger.Redeed) == true
+                    ? _triggerDispatcher.FireItemTrigger(multi, ItemTrigger.Redeed, args)
+                    : null;
+            _shipEngine.OnRedeedMessage = (character, message) =>
+            {
+                if (_clientsByCharUid.TryGetValue(character.Uid, out var client))
+                    client.SysMessage(message);
+            };
             // The deed goes into the owner's pack, and the pack may be open on
             // their screen right now. Upstream announces it (CItemContainer::
             // ContentAdd); this engine only wrote it server-side, so the deed
@@ -3034,7 +2964,8 @@ public static partial class Program
             SphereNet.Game.Objects.Items.Item.ResolveShip = uid => _shipEngine.GetShip(uid);
             SphereNet.Game.Objects.Items.Item.ResolveHouse = uid => _housingEngine?.GetHouse(uid);
             SphereNet.Game.Objects.Items.Item.RedeedHouse = uid => _housingEngine?.RedeedFromScript(uid);
-            SphereNet.Game.Objects.Items.Item.RedeedShip = uid => _shipEngine?.RedeedFromScript(uid);
+            SphereNet.Game.Objects.Items.Item.RedeedShip = (uid, show, bank, source) =>
+                _shipEngine?.RedeedFromScript(uid, show, bank, source);
             // Script NEWNPC: route through the invoker's client spawn pipeline
             // (any online client works — the method only touches world state);
             // on an empty server the spawn is skipped.
@@ -3339,9 +3270,9 @@ public static partial class Program
 
             // @NPCLostTeleport — a severely lost NPC is about to teleport home;
             // RETURN 1 cancels (the NPC walks back instead).
-            SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = npc =>
+            SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = (npc, distance) =>
                 _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCLostTeleport,
-                    new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
+                    new TriggerArgs { CharSrc = npc, N1 = distance }) == TriggerResult.True;
 
             // @Start / @Stop — the spawner START/STOP verbs toggled spawning.
             Item.OnSpawnStartStop = (spawnItem, started) =>

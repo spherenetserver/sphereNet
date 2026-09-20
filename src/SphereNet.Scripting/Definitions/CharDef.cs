@@ -661,7 +661,7 @@ public sealed class CharDef : BaseDef
         return false;
     }
 
-    private static CanFlags ParseCanFlags(string value)
+    public static CanFlags ParseCanFlags(string value, Func<string, long?>? resolver = null)
     {
         if (string.IsNullOrWhiteSpace(value)) return CanFlags.None;
         uint flags = 0;
@@ -692,7 +692,7 @@ public sealed class CharDef : BaseDef
             // Prefer the script's own [DEFNAME can_flags] values when wired
             // (production). The hardcoded map below is the fallback for isolated
             // parsing (e.g. unit tests) where no resolver is attached.
-            if (DefNameResolver?.Invoke(tok) is long resolved)
+            if ((resolver ?? DefNameResolver)?.Invoke(tok) is long resolved)
             {
                 flags |= (uint)resolved;
                 continue;
@@ -715,6 +715,10 @@ public sealed class CharDef : BaseDef
                 "MT_RUN" => 0x2000u,
                 "MT_NODCLICKLOS" => 0x4000u,
                 "MT_NODCLICKDIST" => 0x8000u,
+                "MT_NONMOVER" => 0x10000u,
+                "MT_NOBLOCKHEIGHT" => 0x20000u,
+                "MT_STATUE" => 0x40000u,
+                "MT_NONSELECTABLE" => 0x80000u,
                 _ => 0u,
             };
         }

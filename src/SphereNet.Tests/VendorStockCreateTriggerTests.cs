@@ -25,6 +25,43 @@ public sealed class VendorStockCreateTriggerTests
     }
 
     [Fact]
+    public void OrdinaryStockFollowsCurrentDefinitionValueWithoutFreezingPrice()
+    {
+        var runtime = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = WriteScript("""
+            [ITEMDEF 0f3f]
+            DEFNAME=i_arrow
+            TYPE=t_weapon_arrow
+            VALUE=3
+
+            [TEMPLATE t_price_test]
+            ITEM=i_arrow,10
+            """);
+        try
+        {
+            runtime.Resources.LoadResourceFile(path);
+            ScriptTestBootstrap.LoadDefinitions(runtime.Resources);
+            var world = TestHarness.CreateWorld();
+            var vendor = world.CreateCharacter();
+            vendor.NpcBrain = NpcBrainType.Vendor;
+            world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+            typeof(SphereNet.Game.Objects.Characters.Character)
+                .GetMethod("PopulateVendorStock", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(vendor, ["t_price_test", false]);
+            var item = Assert.Single(vendor.GetEquippedItem(Layer.VendorStock)!.Contents);
+            Assert.Equal(0, item.Price);
+            Assert.False(item.TryGetTag("PRICE", out _));
+            Assert.Equal(3, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item));
+            var def = DefinitionLoader.GetItemDef(0x0F3F)!;
+            def.ValueMin = def.ValueMax = 7;
+            Assert.Equal(7, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item));
+            item.Price = 11;
+            Assert.Equal(11, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void VendorStock_FiresCreateTrigger_DeedCarriesMultiReference()
     {
         var stack = ScriptTestBootstrap.CreateRuntimeStack();

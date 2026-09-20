@@ -190,7 +190,7 @@ public sealed partial class NpcAI
         // Source-X looting guards: hands required, and never inside guarded
         // or safe territory. (Summons leave no corpse in this engine, so the
         // reference's summon-corpse exclusion has nothing to act on.)
-        var lootCan = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        var lootCan = CharDefHelper.GetCanFlags(npc);
         if ((lootCan & CanFlags.C_UseHands) == 0) return false;
         if (IsProtectedGround(npc.Position)) return false;
 
@@ -366,41 +366,8 @@ public sealed partial class NpcAI
         }
         npc.FleeStepsCurrent = 0;
 
-        // Home leash: a wild (non-pet, masterless) monster that has chased its
-        // target too far from home gives up and walks back, instead of trailing
-        // a player across the whole map. Pets/summons follow their master and
-        // are exempt; NPCs without a home anchor can't leash.
-        if (!npc.IsStatFlag(StatFlag.Pet) && !npc.NpcMaster.IsValid &&
-            TryResolveHome(npc, out Point3D leashHome, out int leashWander))
-        {
-            int homeDist = npc.MapIndex == leashHome.Map
-                ? npc.Position.GetDistanceTo(leashHome)
-                : int.MaxValue;
-            int leash = Math.Max(leashWander * 2, 18);
-            if (homeDist > leash)
-            {
-                npc.FightTarget = Serial.Invalid;
-                ClearLosFailCount(npc);
-                // Severely lost — way past the leash radius: teleport straight
-                // home (Source-X lost-NPC go-home behaviour). @NPCLostTeleport
-                // fires first; RETURN 1 cancels the teleport and the NPC walks
-                // back instead. Safe to fire here: ActChase runs in the serial
-                // ApplyDecision phase.
-                if (homeDist > leash * 3 &&
-                    Character.OnNpcLostTeleport?.Invoke(npc) != true)
-                {
-                    _world.MoveCharacter(npc, leashHome);
-                    return;
-                }
-                MoveToward(npc, leashHome, run: true);
-                return;
-            }
-        }
-
-        // Past every give-up branch (flee, leash) — the NPC is committed to
-        // this fight. Announce the engagement once per target so the victim
-        // sees the aggression while the NPC is still closing in, not only
-        // after the first hit lands.
+        // Combat pursuit is relative to the target, not the spawn/home radius.
+        // Source-X NPC_Act_Follow keeps HOMEDIST in idle/go-home behavior.
         if (!_lastAttackNotify.TryGetValue(npc.Uid.Value, out uint lastNotified) ||
             lastNotified != target.Uid.Value)
         {
@@ -414,6 +381,7 @@ public sealed partial class NpcAI
         // No line of sight — pathfind around obstacles to reach target
         if (!hasLOS && dist > 1)
         {
+            if (!CanContinueCombatPursuit(npc, target)) return;
             IncrementLosFailCount(npc);
             int losFails = GetLosFailCount(npc);
             // Stuck for a while — a caster that knows Teleport blinks toward the
@@ -457,8 +425,7 @@ public sealed partial class NpcAI
         bool canBreath = npc.NpcBrain == NpcBrainType.Dragon || IsDragonBody(npc.BodyId);
         if (!canBreath)
         {
-            var breathDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-            canBreath = breathDef != null && (breathDef.Can & CanFlags.C_FireImmune) != 0
+            canBreath = (CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0
                         && npc.NpcBrain is NpcBrainType.Monster or NpcBrainType.Dragon or NpcBrainType.Berserk;
         }
         if (!canBreath)
@@ -567,11 +534,24 @@ public sealed partial class NpcAI
         else
         {
             // When closing distance, approach from an open flank if possible
+            if (!CanContinueCombatPursuit(npc, target)) return;
             if (dist <= 3)
                 MoveTowardFlank(npc, target);
             else
                 MoveToward(npc, target.Position, run: true);
         }
+    }
+
+    private bool CanContinueCombatPursuit(Character npc, Character target)
+    {
+        // Source-X NPC_Act_Follow retains the opponent of an immobile NPC.
+        if ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_NonMover) != 0)
+            return false;
+        int radar = _config.MapViewRadar > 0 ? _config.MapViewRadar : Character.MapViewRadarTiles;
+        if (npc.Position.GetDistanceTo(target.Position) <= Math.Max(1, radar)) return true;
+        npc.FightTarget = Serial.Invalid;
+        ClearLosFailCount(npc);
+        return false;
     }
 
     /// <summary>

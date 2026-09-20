@@ -48,7 +48,7 @@ public sealed class GameWorld
     private readonly List<Room> _rooms = [];
     // Only successful (non-null) lookups are cached — see FindRegion for why a
     // null result must never poison an 8x8 cell.
-    private readonly ConcurrentDictionary<long, Region> _regionCache = new();
+    private readonly ConcurrentDictionary<long, (Point3D Point, Region Region)> _regionCache = new();
     private readonly ILogger<GameWorld> _logger;
     private readonly List<ObjBase> _timerFSnapshot = [];
 
@@ -866,14 +866,16 @@ public sealed class GameWorld
     /// regardless of the call path. Args: (character, oldRegion, newRegion).</summary>
     public Action<Character, Regions.Region?, Regions.Region?>? OnRegionChanged { get; set; }
 
+    /// <summary>Script Exit/Enter phase, before committing position and region.
+    /// Source-X keeps SRC.REGION on the previous area during the new area's Enter.</summary>
+    public Action<Character, Regions.Region?, Regions.Region?>? OnRegionTransition { get; set; }
+
     /// <summary>
     /// Source-X parity: fired after an NPC has been placed into the world
     /// by an automated spawner (CItemSpawn / IT_SPAWN_CHAR). The handler
-    /// is expected to fire @Create, finalise the NPC brain (Animal
-    /// fallback for None) and run @NPCRestock + @CreateLoot, mirroring
-    /// the manual ".add" path in <c>GameClient.CreateNpcFromDef</c>.
-    /// Routing this through a hook keeps the trigger-dispatch dependency
-    /// out of the spawn component itself.
+    /// finalizes vitals and other post-spawn state. Script initialization
+    /// belongs to SpawnComponent.OnNpcScriptInit, which runs before this
+    /// notification; replaying those triggers here duplicates equipment.
     /// </summary>
     public Action<Character>? OnNpcSpawned { get; set; }
 
@@ -887,6 +889,19 @@ public sealed class GameWorld
         var newSector = GetSector(newPos);
         if (newSector == null) return false;
         var oldPos = ch.Position;
+        var oldRegion = fireRegionEvents ? FindRegion(oldPos) : null;
+        var newRegion = fireRegionEvents ? FindRegion(newPos) : null;
+        bool regionChanged = oldRegion != newRegion;
+        if (regionChanged)
+        {
+            // Both bare REGION and REGION.TAG.* must resolve the old area until
+            // Exit/Enter finish. Position is deliberately still oldPos here.
+            ch.SetTag("CURRENT_REGION", oldRegion?.Name ?? "");
+            ch.SetTag("CURRENT_REGION_UID", oldRegion?.Uid.ToString() ?? "");
+            OnRegionTransition?.Invoke(ch, oldRegion, newRegion);
+            // A script may have removed or relocated the character itself.
+            if (ch.IsDeleted || !ch.Position.Equals(oldPos)) return false;
+        }
         var oldSector = GetSector(oldPos);
         if (oldSector != newSector)
         {
@@ -910,16 +925,12 @@ public sealed class GameWorld
 
         CharacterMoved?.Invoke(ch, oldPos);
 
-        if (ch.IsPlayer && fireRegionEvents)
+        if (regionChanged)
         {
-            var oldRegion = FindRegion(oldPos);
-            var newRegion = FindRegion(newPos);
-            if (oldRegion != newRegion)
-            {
-                ch.SetTag("CURRENT_REGION", newRegion?.Name ?? "");
-                ch.SetTag("CURRENT_REGION_UID", newRegion?.Uid.ToString() ?? "");
+            ch.SetTag("CURRENT_REGION", newRegion?.Name ?? "");
+            ch.SetTag("CURRENT_REGION_UID", newRegion?.Uid.ToString() ?? "");
+            if (ch.IsPlayer)
                 OnRegionChanged?.Invoke(ch, oldRegion, newRegion);
-            }
         }
         return true;
     }
@@ -1043,21 +1054,20 @@ public sealed class GameWorld
 
     public Region? FindRegion(Point3D pt)
     {
-        // 8x8 tile grid cache key — same cell ⇒ almost always same region.
+        // Keep one entry per 8x8 cell, but reuse it only for the exact queried
+        // point. A parent area can contain two tiles while a smaller city/room
+        // wins at only one of them; Contains alone cannot validate a cell hit.
         long cacheKey = ((long)pt.Map << 40) | ((long)(pt.X >> 3) << 20) | (long)(pt.Y >> 3);
 
-        if (_regionCache.TryGetValue(cacheKey, out var cached) && cached.Contains(pt))
-            return cached;
+        if (_regionCache.TryGetValue(cacheKey, out var cached) &&
+            cached.Point.Equals(pt) && cached.Region.Contains(pt))
+            return cached.Region;
 
         var result = FindRegionUncached(pt);
-        // Only cache hits. Region edges are not 8-aligned, so a single 8x8 cell
-        // can straddle a region boundary. Caching a null would poison the whole
-        // cell: a later query for a tile in the SAME cell that DOES fall inside a
-        // region would wrongly read the cached null. Non-null entries are
-        // self-validating via Contains() above — an edge tile that misses the
-        // cached region simply re-resolves rather than returning a stale hit.
+        // A miss is cheap to leave uncached; moved/added regions invalidate
+        // this table through the existing world region lifecycle hooks.
         if (result != null)
-            _regionCache[cacheKey] = result;
+            _regionCache[cacheKey] = (pt, result);
         return result;
     }
 
@@ -1388,7 +1398,10 @@ public sealed class GameWorld
                 if (i >= items.Count) continue;
                 var item = items[i];
                 if (item.IsDeleted || !item.IsOnGround || pos.GetDistanceTo(item.Position) > 0) continue;
-                if (item.IsStaticBlock && AI.NpcAI.BlocksAtHeight(item, pos.Z)) return true;
+                bool passWalls = (canFlags & CanFlags.C_PassWalls) != 0;
+                bool passDoor = ((canFlags & CanFlags.C_Ghost) != 0 || self?.IsDead == true) &&
+                    (item.ItemType is ItemType.Door or ItemType.DoorLocked or ItemType.DoorOpen);
+                if (!passWalls && !passDoor && item.IsStaticBlock && AI.NpcAI.BlocksAtHeight(item, pos.Z)) return true;
                 if ((canFlags & CanFlags.C_FireImmune) == 0 && item.TryGetTag("FIELD_DAMAGE", out _))
                     return true;
             }

@@ -4,6 +4,172 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-20] - Honor dialog setup cancellation and missing resources
+------------------------------------------------------------------------
+FIX - Missing DIALOG/SDIALOG resources no longer create placeholder windows.
+      Layout RETURN 1 suppresses the gump and its open-dialog registration;
+      RETURN 0/2 stop layout execution without cancelling the prepared window.
+      Nested returns also propagate through the fallback layout expander.
+FIX - A cancelled script dialog does not open its native fallback instead.
+TEST - Thirteen regressions cover missing/empty names, exact return values,
+       nested IF/FOR/WHILE, both layout paths and help-dialog cancellation.
+
+[2026-09-20] - Prevent repeated SDIALOG rendering on an open client dialog
+------------------------------------------------------------------------
+FIX - SDIALOG now checks the source client's open-dialog registry before layout
+      execution. Repeated calls preserve the existing subject and callback and
+      send no extra gump. DIALOG retains its repeat-send behavior.
+TEST - Eight regressions cover native/interpreted/delayed calls, case/page changes,
+       preserved render/callback subjects, separate clients and reopening after
+       a client response or DIALOGCLOSE.
+
+[2026-09-20] - Restore TRY verb dispatch and argument parsing
+-----------------------------------------------------------
+FIX - TRY is now a native object verb, so direct and TIMERF calls execute the
+      payload with the original source and suppress refusal like Source-X.
+      A declined native payload cannot fall through to a function named TRY.
+FIX - Interpreter TRY uses the shared command-line splitter and normal dispatch
+      for space, equals, comma and tab separators. Function arguments containing
+      '=' remain data instead of being misread as a property assignment.
+TEST - Eighteen regressions cover direct/interpreted/delayed function calls,
+       argument preservation, source identity and refused payloads.
+
+[2026-09-20] - Enforce TRYP privilege and touch gates in object dispatch
+---------------------------------------------------------------------
+FIX - TRYP now uses a native object verb for interpreted, referenced and delayed
+      calls. It evaluates the privilege expression, rejects levels >= PLEVEL_QTY,
+      requires a touching character through Counsel, and retains Seer+ bypass.
+      Accepted payloads use normal verb/function/property dispatch with the
+      original source; refused calls cannot run a same-named function.
+FIX - Add world-object touch checks for TRYP: 3D reach, LOS, definition CAN
+      exemptions, character state, container ownership, trade/bank access and
+      special item reach. Read MAXSHIPPLANKTELEPORT and support the Source-X
+      ATTR_CANUSE_PARALYZED bit. Denial text uses overridable message keys.
+TEST - Thirty-nine regressions cover entry paths, privilege boundaries,
+       reach/state/container cases, real LOS blocking and script CAN exemptions.
+       Correct the old guest-console test: without a character it cannot touch.
+
+[2026-09-20] - Keep TRYSRV execution in the server source context
+---------------------------------------------------------------
+FIX - Direct and delayed TRYSRV verbs now dispatch functions and property
+      assignments with owner privilege and no player source. Interpreter calls
+      use the same server console and never fall back to the original client.
+      Command separators such as function=argument are parsed normally.
+FIX - Interpreter DIALOG/SDIALOG/DIALOGCLOSE dispatch uses the source console,
+      not an implicit target-client bridge; server and source-less calls cannot
+      open a player dialog or fall through to a same-named dialog function.
+TEST - Eleven regressions cover direct/interpreted/delayed calls, source reset
+       inside a function, caller restoration and dialog recipient selection.
+
+[2026-09-20] - Unify TRYSRC dispatch while preserving the target
+--------------------------------------------------------------
+FIX - TRYSRC is now an object verb shared by interpreter, client and TIMERF
+      entry points. It selects a character source without changing the target,
+      uses that character's connected client for dialogs, and preserves the
+      character's privileges when offline. Invalid/non-character sources refuse
+      without falling through to a same-named function or legacy GM command.
+TEST - Fourteen regressions cover target preservation, selected-client dialog
+       delivery, delayed dispatch, offline function context, UID arithmetic and
+       rejection of zero, missing, deleted and item sources.
+
+[2026-09-20] - Preserve native dialog dispatch in delayed object commands
+-----------------------------------------------------------------------
+FIX - DIALOG, SDIALOG and DIALOGCLOSE now belong to the object verb table,
+      forwarding to the source console without falling through to same-named
+      script functions when no client exists. This also fixes direct TIMERF
+      dialog commands on carried items, matching Source-X CObjBase dispatch.
+TEST - Nine timer regressions cover connected, offline and ground-item contexts,
+       owner selection at execution time, subject UID and delayed dialog close.
+
+[2026-09-20] - Deliver referenced client commands to the original source
+---------------------------------------------------------------------
+FIX - Object verb-line dispatch now reaches client-side native commands before
+      script-function fallback, preserving the referenced subject and source.
+      Script dialog packets carry the subject UID like Source-X.
+TEST - Verify LINK/CONT/ACT dialogs reach only the source client, retain their
+       subject through the close handler, and send nothing for absent targets.
+
+[2026-09-20] - Route chained ACT reads and commands through the character
+----------------------------------------------------------------------
+FIX - Character ACT.property reads and ACT.verb commands now reach the selected
+      object, including SRC.ACT and TOPOBJ.ACT chains. The interpreter uses this
+      same read path. Missing/deleted targets cannot modify another object.
+TEST - Cover source/linked chains, writes and missing/deleted ACT targets.
+
+[2026-09-20] - Preserve nested CALL context and character ACT references
+----------------------------------------------------------------------
+FIX - CALL shares REF and FLOAT pools along with LOCAL, while ordinary function
+      calls remain isolated. Argument initialization clears ARGO; CALL restores
+      the caller's object argument on return. Bare SRC resolves the source UID.
+      ACT reads the current character's target instead of trigger Object2.
+      REF assignment rejects objects no longer present in the world.
+TEST - Cover nested calls, with/without arguments, ordinary-call isolation,
+       ARGO restoration, ACT selection and references assigned after deletion.
+
+[2026-09-20] - Evaluate REF assignments and preserve reference command sources
+---------------------------------------------------------------------------
+FIX - Evaluate REF assignments as Sphere numeric expressions and normalize UIDs
+      before server lookup, so decimal IDs and arithmetic select the right object.
+      Dispatch referenced commands/functions with their original console and SRC,
+      preserving source-dependent equipment and dialog behavior.
+TEST - Cover numeric reference lookup through the server and distinct function
+       targets/sources, alongside the expression and call compatibility suite.
+
+[2026-09-20] - Preserve source when equipping newly created script items
+--------------------------------------------------------------------
+FIX - Dispatch NEW object verbs with the original script console/source.
+      Implement item EQUIP through the existing script equipment handler,
+      including @Equip initialization; the argument does not replace SRC.
+      The client fallback also equips instead of putting the item in a pack,
+      and retains NEW for subsequent property assignments.
+TEST - Verify NEW.EQUIP with and without arguments, source selection, memory
+       placement and properties written before and after equipping.
+
+[2026-09-20] - Resolve LDB paths from the server working directory
+---------------------------------------------------------------
+FIX - LDB.CONNECT now resolves relative filenames from the process working
+      directory, matching Source-X, instead of the script or assembly directory.
+      Both server-side and client-side script execution use the same rule.
+TEST - Verify all three connection entry points open the existing database
+       without creating a second file under the script directory.
+
+[2026-09-20] - Preserve HTML in expanded dialog text
+-------------------------------------------------
+FIX - Do not expand dynamic dialog text a second time after script execution.
+      Preserve line breaks and formatting emitted by DEF/LOCAL substitutions,
+      including help statistics assembled with LOCAL string concatenation.
+TEST - Verify outgoing gump text for HTML, labels and entry controls; indexed
+       TEXT-section content still expands once.
+
+[2026-09-20] - Preserve script function return text
+-------------------------------------------------
+FIX - Preserve expanded RETURN text as Source-X does. Named resources returned
+      by ARRAY no longer become numeric IDs, fixing stuck city names and
+      destination lookups. Numeric trigger control results remain evaluated.
+TEST - Load AREADEFs through the server loader and verify nested ARRAY reads
+       for region names and positions; retain numeric use of hex return values.
+
+[2026-09-20] - Restore Source-X dialog and instance-query behavior
+--------------------------------------------------------------
+FIX - Map the requested dialog page and navigation buttons to the client's
+      opening page. Preserve DORIGIN across absolute control coordinates;
+      support relative origin advances and unchanged origin axes.
+FIX - FORINSTANCES matches full item/character definition identities rather
+      than truncated display IDs, separating definitions sharing a graphic.
+TEST - Cover page markers, both navigation button types, mixed coordinates,
+       and named item/character instance queries.
+
+[2026-09-20] - Synchronize equipment removed when casting
+------------------------------------------------------
+FIX - When EQUIPPEDCAST is disabled, notify nearby clients as each held item
+      leaves the hand; send its new pack location only to its owner, or its
+      ground location to viewers if the pack is full. Notify even if freeing
+      the other hand subsequently fails. Shields follow normal unequip rules.
+      Honor SPELLCHANNELING definition/instance values and effective CANMASK;
+      channeling does not bypass CASTPARALYZED frozen-hand restrictions.
+TEST - Cover owner/observer packets, full-pack fallback, partial failure,
+       channeling, frozen hands, and script-definition/instance overrides.
+
 [2026-09-20] - Scope the legacy Britain event test baseline
 -------------------------------------------------------
 TEST - Recognize the missing R_BRIT event only in the archived worldfiles-55a

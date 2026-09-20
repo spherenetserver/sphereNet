@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Scripting.Expressions;
@@ -292,7 +292,18 @@ public sealed class ScriptInterpreter
             return;
         }
 
-        // NEW.property=value — write through that reference.
+        // Resolve NEW as an object before dispatch so verbs retain the caller's
+        // console/SRC (notably CItem::EQUIP, which uses pSrc->GetChar()).
+        if (cmd.StartsWith("NEW.", StringComparison.OrdinalIgnoreCase) &&
+            ResolveObjectRef?.Invoke(target, "NEW") is { } newObject)
+        {
+            string newKey = cmd[4..];
+            if (!key.HasArg || !newObject.TrySetProperty(newKey, resolvedArg))
+                ExecuteVerbLine(newKey, resolvedArg, newObject, source, args, scope);
+            return;
+        }
+
+        // NEW.property=value — compatibility for hosts without an object resolver.
         if (cmd.StartsWith("NEW.", StringComparison.OrdinalIgnoreCase) && key.HasArg)
         {
             ServerPropertyResolver?.Invoke($"_SET_{cmd}={resolvedArg}");
@@ -581,20 +592,14 @@ public sealed class ScriptInterpreter
             return;
         }
 
-        // Client-bound dialog verbs should still work when script fallback
-        // runs without a concrete ITextConsole (source can be null in some
-        // call paths). Route directly to the target object's owning client
-        // through the same _REF_EXEC bridge used by UID.<...>.DIALOG.
+        // A dialog belongs to the source client, never implicitly to the
+        // target's client. In particular TRYSRV has no client to receive it.
         if (cmd.Equals("DIALOG", StringComparison.OrdinalIgnoreCase) ||
-            cmd.Equals("SDIALOG", StringComparison.OrdinalIgnoreCase))
+            cmd.Equals("SDIALOG", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("DIALOGCLOSE", StringComparison.OrdinalIgnoreCase))
         {
-            if (target.TryGetProperty("UID", out string dialogUid) && !string.IsNullOrWhiteSpace(dialogUid))
-            {
-                ServerPropertyResolver?.Invoke($"_REF_EXEC={dialogUid}|DIALOG|{resolvedArg}");
-                if (_expr.DebugUnresolved)
-                    _logger.LogDebug("[script_exec] handled via dialog bridge uid='{Uid}' arg='{Arg}'", dialogUid, resolvedArg);
-                return;
-            }
+            ExecuteVerbLine(cmd, resolvedArg, target, source, args, scope);
+            return;
         }
 
         // Try as verb/command
@@ -705,7 +710,14 @@ public sealed class ScriptInterpreter
             if (int.TryParse(cmd.AsSpan(3), out int refIdx) && key.HasArg)
             {
                 string refVal = ResolveArgs(key.Arg, target, source, args, scope);
-                scope.SetRef(refIdx, refVal);
+                // CScriptTriggerArgs uses GetArgVal: decimal UIDs and arithmetic
+                // must name the same object as an explicitly hexadecimal UID.
+                uint refSerial = TryEvaluateWithResolver(refVal, target, source, args, scope, out long numericRef)
+                    ? unchecked((uint)numericRef) : 0;
+                string canonicalRef = refSerial == 0 ? "0" : $"0{refSerial:X}";
+                if (refSerial != 0 && ServerPropertyResolver?.Invoke($"_REF_GET={canonicalRef}|UID") == "0")
+                    canonicalRef = "0";
+                scope.SetRef(refIdx, canonicalRef);
             }
             return true;
         }
@@ -719,7 +731,13 @@ public sealed class ScriptInterpreter
                 string refUid = scope.GetRef(refIdx2);
                 string subCmd = cmd[(dotIdx + 1)..];
                 string resolvedVal = ResolveArgs(key.Arg, target, source, args, scope);
-                ServerPropertyResolver?.Invoke($"_REF_EXEC={refUid}|{subCmd}|{resolvedVal}");
+                if (ResolveObjectRef?.Invoke(target, $"UID.{refUid}") is { } referencedObject)
+                {
+                    if (!key.HasArg || !referencedObject.TrySetProperty(subCmd, resolvedVal))
+                        ExecuteVerbLine(subCmd, resolvedVal, referencedObject, source, args, scope);
+                }
+                else
+                    ServerPropertyResolver?.Invoke($"_REF_EXEC={refUid}|{subCmd}|{resolvedVal}");
             }
             return true;
         }
@@ -741,8 +759,8 @@ public sealed class ScriptInterpreter
 
     /// <summary>What a RETURN line does, wherever it is written: store the value on
     /// the scope, mark the block as returning, and report True for a non-zero number.
-    /// A numeric RETURN stores the evaluated number; a string RETURN (a [FUNCTION]
-    /// returning a name, defname or message) keeps its text.</summary>
+    /// The string result preserves the expanded argument, independently of the
+    /// numeric trigger control result (Source-X SK_RETURN with pResult).</summary>
     /// <summary>Run a CALL or a TRY-family statement. Both are single lines rather
     /// than blocks, and both used to live only in Execute's switch - so inside an IF,
     /// or as the line a DORAND picked, they fell to ExecuteLine, which does not know
@@ -828,28 +846,11 @@ public sealed class ScriptInterpreter
                     string tryLine = ResolveArgs(line.Arg, target, source, args, scope);
                     if (!string.IsNullOrWhiteSpace(tryLine))
                     {
-                        // TRY runs the REST OF THE LINE through the target's ordinary
-                        // verb path and only suppresses the invalid-reference error
-                        // (CObjBase.cpp:2899 builds a CScript and calls r_Verb). It had
-                        // its own cut-down executor instead: the space form tried a
-                        // native verb and the console bridge and stopped, so
-                        // "TRY TAG.FLAG 1" and "TRY f_mark" both did nothing while the
-                        // same lines worked unwrapped.
-                        int eqIdx = tryLine.IndexOf('=');
-                        if (eqIdx > 0)
-                        {
-                            string prop = tryLine[..eqIdx].Trim();
-                            string val = tryLine[(eqIdx + 1)..].Trim();
-                            if (!target.TrySetProperty(prop, EvalNumericArg(prop, val)))
-                                target.TryExecuteCommand(prop, val, source ?? NullConsole.Instance);
-                        }
-                        else
-                        {
-                            int spIdx = tryLine.IndexOf(' ');
-                            string verb = spIdx > 0 ? tryLine[..spIdx].Trim() : tryLine.Trim();
-                            string verbArgs = spIdx > 0 ? tryLine[(spIdx + 1)..].Trim() : "";
-                            ExecuteVerbLine(verb, verbArgs, target, source, args, scope);
-                        }
+                        // Parse only the first separator. An '=' inside an
+                        // argument is data, not a property assignment; '=' and
+                        // ',' after the verb must still reach script functions.
+                        ScriptCommandLine.Split(tryLine, out string verb, out string verbArgs);
+                        ExecuteVerbLine(verb, verbArgs, target, source, args, scope);
                     }
                     return true;
                 }
@@ -860,126 +861,29 @@ public sealed class ScriptInterpreter
                     string srvLine = ResolveArgs(line.Arg, target, source, args, scope);
                     if (!string.IsNullOrWhiteSpace(srvLine))
                     {
-                        int spIdx = srvLine.IndexOf(' ');
-                        string verb = spIdx > 0 ? srvLine[..spIdx].Trim() : srvLine.Trim();
-                        string verbArgs = spIdx > 0 ? srvLine[(spIdx + 1)..].Trim() : "";
-                        // Execute with SERVER privilege (Source-X g_Serv / PLEVEL 7) so the
-                        // verb bypasses the original source's PLEVEL restriction — the whole
-                        // point of TRYSRV. Previously it passed the original source (a
-                        // low-plevel player, or Guest when null), so a privileged verb still
-                        // failed. The original source's script bridge stays as the fallback
-                        // so client-scoped verbs can still reach a client.
-                        if (!target.TryExecuteCommand(verb, verbArgs, ServerConsole.Instance))
-                            (source ?? NullConsole.Instance).TryExecuteScriptCommand(target, verb, verbArgs, args);
+                        ScriptCommandLine.Split(srvLine, out string verb, out string verbArgs);
+                        // Do not retain the caller's character in TriggerArgs or
+                        // fall back to their client when the server verb refuses.
+                        ExecuteVerbLine(verb, verbArgs, target, ScriptServerConsole.Instance, null, scope);
                     }
                     return true;
                 }
 
-                // TRYSRC <srcRef> <verb args...> — execute the verb on the
-                // referenced source object. Common pattern:
-                //   TRYSRC <UID> DIALOGCLOSE d_spawn
-                // If srcRef can be resolved, route through _REF_EXEC so
-                // object verbs and client-scoped verbs (DIALOG/SDIALOG/...)
-                // follow the same bridge. Fall back to legacy behaviour when
-                // the first token isn't a source reference.
+                // One native path also serves TIMERF and reference-prefixed calls:
+                // TRYSRC changes the source console while retaining this target.
                 case "TRYSRC":
                 {
                     string srcLine = ResolveArgs(line.Arg, target, source, args, scope);
-                    if (string.IsNullOrWhiteSpace(srcLine))
-                    {
-                        return true;
-                    }
-
-                    string work = srcLine.Trim();
-                    int firstSpace = work.IndexOf(' ');
-                    if (firstSpace > 0)
-                    {
-                        string srcRef = work[..firstSpace].Trim();
-                        string rest = work[(firstSpace + 1)..].Trim();
-                        if (!string.IsNullOrWhiteSpace(srcRef) && !string.IsNullOrWhiteSpace(rest))
-                        {
-                            int cmdSpace = rest.IndexOf(' ');
-                            string trysrcVerb = cmdSpace > 0 ? rest[..cmdSpace].Trim() : rest;
-                            string trysrcArgs = cmdSpace > 0 ? rest[(cmdSpace + 1)..].Trim() : "";
-                            if (!string.IsNullOrWhiteSpace(trysrcVerb))
-                            {
-                                // TRYSRC changes WHO is asking, not WHAT is asked of.
-                                // Source-X resolves the uid to a source console and
-                                // runs the verb on `this`: r_Verb(script, pNewSrc)
-                                // (CObjBase.cpp:2917). Sending only the source uid made
-                                // the bridge treat it as the TARGET, so
-                                // "TRYSRC <player> TAG.TEST 1" tagged the player and
-                                // left the item that ran the line untouched.
-                                string trysrcTarget = target.TryGetProperty("UID", out string ttuid)
-                                    ? ttuid : "0";
-                                ServerPropertyResolver?.Invoke(
-                                    $"_REF_EXEC_AS={srcRef}|{trysrcTarget}|{trysrcVerb}|{trysrcArgs}");
-                                return true;
-                            }
-                        }
-                    }
-
-                    // Legacy fallback: execute payload directly on current target.
-                    int spIdx = work.IndexOf(' ');
-                    string verb = spIdx > 0 ? work[..spIdx].Trim() : work.Trim();
-                    string verbArgs = spIdx > 0 ? work[(spIdx + 1)..].Trim() : "";
-                    if (!target.TryExecuteCommand(verb, verbArgs, source ?? NullConsole.Instance))
-                        (source ?? NullConsole.Instance).TryExecuteScriptCommand(target, verb, verbArgs, args);
+                    target.TryExecuteCommand("TRYSRC", srcLine, source ?? NullConsole.Instance);
                     return true;
                 }
 
-                // TRYP <plevel> <verb args...> — Source-X CObjBase.cpp:2869.
-                // First token is the minimum PrivLevel required; if SRC's
-                // PLEVEL is lower we abort with a SysMessage. Otherwise the
-                // remainder is executed exactly like TRY (verb on target).
-                // Used by every standard property-edit dialog button:
-                //   ON=100   TRYP 4 INPDLG BODY 30
+                // Native TRYP owns privilege and world-object touch checks for
+                // both interpreted and delayed calls.
                 case "TRYP":
                 {
-                    string trypLine = ResolveArgs(line.Arg, target, source, args, scope);
-                    if (string.IsNullOrWhiteSpace(trypLine))
-                    {
-                        return true;
-                    }
-
-                    int firstSpace = trypLine.IndexOf(' ');
-                    string plevelTok = firstSpace > 0 ? trypLine[..firstSpace].Trim() : trypLine.Trim();
-                    string rest = firstSpace > 0 ? trypLine[(firstSpace + 1)..].Trim() : "";
-
-                    if (!int.TryParse(plevelTok, out int minPlevel))
-                    {
-                        _logger.LogWarning("TRYP: invalid plevel token '{Tok}'", plevelTok);
-                        return true;
-                    }
-
-                    var actor = source ?? NullConsole.Instance;
-                    if ((int)actor.GetPrivLevel() < minPlevel)
-                    {
-                        actor.SysMessage($"You lack the privilege to change the {rest} property.");
-                        return true;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(rest))
-                    {
-                        return true;
-                    }
-
-                    int eqIdx = rest.IndexOf('=');
-                    if (eqIdx > 0)
-                    {
-                        string prop = rest[..eqIdx].Trim();
-                        string val = rest[(eqIdx + 1)..].Trim();
-                        if (!target.TrySetProperty(prop, EvalNumericArg(prop, val)))
-                            target.TryExecuteCommand(prop, val, actor);
-                    }
-                    else
-                    {
-                        int spIdx2 = rest.IndexOf(' ');
-                        string trypVerb = spIdx2 > 0 ? rest[..spIdx2].Trim() : rest.Trim();
-                        string trypVerbArgs = spIdx2 > 0 ? rest[(spIdx2 + 1)..].Trim() : "";
-                        if (!target.TryExecuteCommand(trypVerb, trypVerbArgs, actor))
-                            actor.TryExecuteScriptCommand(target, trypVerb, trypVerbArgs, args);
-                    }
+                    string payload = ResolveArgs(line.Arg, target, source, args, scope);
+                    target.TryExecuteCommand("TRYP", payload, source ?? NullConsole.Instance);
                     return true;
                 }
 
@@ -1059,8 +963,12 @@ public sealed class ScriptInterpreter
         ITriggerArgs? args, ScriptScope scope)
     {
         string argStr = ResolveArgs(line.Arg, target, source, args, scope);
-        bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
-        scope.ReturnValue = numeric ? val.ToString() : argStr;
+        // Source-X copies the expanded argument verbatim when a function result
+        // is requested. A registered defname is still text here, not its ID.
+        // Keep numeric trigger control flow separate from the returned string.
+        TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
+        scope.ReturnValue = argStr;
+        scope.NumericReturnValue = val;
         scope.IsReturning = true;
         return val != 0 ? TriggerResult.True : TriggerResult.Default;
     }
@@ -1762,6 +1670,8 @@ public sealed class ScriptInterpreter
 
         if (varName.Equals("ARGS", StringComparison.OrdinalIgnoreCase))
             return args?.ArgString ?? "";
+        if (varName.Equals("SRC", StringComparison.OrdinalIgnoreCase))
+            return GetObjectRef(args?.Source ?? source?.GetSourceChar());
         if (varName.Equals("ARGN1", StringComparison.OrdinalIgnoreCase) ||
             varName.Equals("ARGN", StringComparison.OrdinalIgnoreCase))
             return args?.Number1.ToString() ?? "0";
@@ -1778,14 +1688,12 @@ public sealed class ScriptInterpreter
                 return objVal;
             return "0";
         }
-        if (varName.Equals("ACT", StringComparison.OrdinalIgnoreCase))
-            return GetObjectRef(args?.Object2);
-        if (varName.StartsWith("ACT.", StringComparison.OrdinalIgnoreCase))
+        if (varName.Equals("ACT", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("ACT.", StringComparison.OrdinalIgnoreCase))
         {
-            string subProp = varName[4..];
-            if (args?.Object2 != null && args.Object2.TryGetProperty(subProp, out string objVal))
-                return objVal;
-            return "0";
+            // ACT belongs to the current character (CChar::r_GetRef / CHR_ACT),
+            // not to the engine's secondary trigger object.
+            return target.TryGetProperty(varName, out string actValue) ? actValue : "0";
         }
         // Source-X CHC_ISMYPET: is this char a pet owned by SRC? It needs the
         // caller context, so it resolves here — a plain Character property
@@ -2354,13 +2262,4 @@ public sealed class ScriptInterpreter
         public string GetName() => "SYSTEM";
     }
 
-    /// <summary>Server source context for TRYSRV (Source-X g_Serv): maximum
-    /// privilege so a TRYSRV verb bypasses the original source's PLEVEL checks.</summary>
-    private sealed class ServerConsole : ITextConsole
-    {
-        public static readonly ServerConsole Instance = new();
-        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
-        public void SysMessage(string text) { }
-        public string GetName() => "SERV";
-    }
 }

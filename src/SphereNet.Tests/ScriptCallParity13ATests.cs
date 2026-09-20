@@ -74,6 +74,58 @@ public sealed class ScriptCallParity13ATests
     }
 
     // ============================================================ 13A-1
+    [Theory]
+    [InlineData("CALL f_child", true)]
+    [InlineData("CALL f_child 37", true)]
+    [InlineData("f_child", false)]
+    public void CallSharesReferenceAndFloatPoolsButOrdinaryFunctionsAreIsolated(string call, bool shared)
+    {
+        using var h = new Harness(
+            "[FUNCTION f_grandchild]\nTAG.SEENREF=<REF1>\nTAG.SEENFLOAT=<FLOAT.RATE>\n" +
+            "REF1=0\nFLOAT.RATE=2.5\nLOCAL.FLAG=child\nRETURN 1\n" +
+            "[FUNCTION f_child]\nCALL f_grandchild\nRETURN 1\n" +
+            "[FUNCTION f_parent]\nREF1=<UID>\nFLOAT.RATE=1.5\nLOCAL.FLAG=parent\n" +
+            call + "\nTAG.AFTERREF=<REF1>\nTAG.AFTERFLOAT=<FLOAT.RATE>\nTAG.AFTERLOCAL=<LOCAL.FLAG>\nRETURN 1\n");
+        var item = GroundItem(TestHarness.CreateWorld());
+        Assert.True(h.Runner.TryRunFunction("f_parent", item, null, new TriggerArgs(), out _));
+        item.TryGetProperty("UID", out string uid);
+        item.TryGetProperty("TAG.SEENREF", out string seenRef);
+        item.TryGetProperty("TAG.SEENFLOAT", out string seenFloat);
+        item.TryGetProperty("TAG.AFTERREF", out string afterRef);
+        item.TryGetProperty("TAG.AFTERFLOAT", out string afterFloat);
+        item.TryGetProperty("TAG.AFTERLOCAL", out string afterLocal);
+        Assert.Equal(shared ? uid : "0", seenRef);
+        Assert.Equal(shared ? "1.5" : "0.0", seenFloat);
+        Assert.Equal(shared ? "0" : uid, afterRef);
+        Assert.Equal(shared ? "2.5" : "1.5", afterFloat);
+        Assert.Equal(shared ? "child" : "parent", afterLocal);
+    }
+
+    [Theory]
+    [InlineData("CALL f_child 37", false)]
+    [InlineData("CALL f_child", true)]
+    public void CallWithArgumentsClearsArgoTemporarilyAndRestoresIt(string call, bool keepsArgo)
+    {
+        using var h = new Harness(
+            "[FUNCTION f_child]\nTAG.CHILDARGO=<ARGO>\nTAG.CHILDSRC=<SRC>\nRETURN 1\n" +
+            "[FUNCTION f_parent]\n" + call + "\nTAG.AFTERARGO=<ARGO>\nRETURN 1\n");
+        var world = TestHarness.CreateWorld();
+        var item = GroundItem(world);
+        var argObject = GroundItem(world);
+        var source = world.CreateCharacter();
+        var args = new TriggerArgs(source) { Object1 = argObject };
+        Assert.True(h.Runner.TryRunFunction("f_parent", item, new AdminConsole(source), args, out _));
+        argObject.TryGetProperty("UID", out string objectUid);
+        source.TryGetProperty("UID", out string sourceUid);
+        item.TryGetProperty("TAG.CHILDARGO", out string childArgo);
+        item.TryGetProperty("TAG.CHILDSRC", out string childSrc);
+        item.TryGetProperty("TAG.AFTERARGO", out string afterArgo);
+        Assert.Equal(keepsArgo ? objectUid : "0", childArgo);
+        Assert.Equal(objectUid, afterArgo);
+        Assert.Equal(sourceUid, childSrc);
+        Assert.Same(argObject, args.Object1);
+    }
+
     // CALL prepares ARGN/ARGS from its own argument, and an argument-less CALL leaves
     // the caller's args alone rather than blanking them.
 

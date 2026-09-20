@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -176,8 +176,8 @@ public sealed class ClientDialogHandler
         if (string.IsNullOrWhiteSpace(dialogId))
             return false;
 
-        if (TryShowScriptDialog(dialogId, requestedPage, subject))
-            return true;
+        if (TryFindDialogSections(dialogId, out _))
+            return TryShowScriptDialog(dialogId, requestedPage, subject);
 
         if (_nativeDialogFallbacks.TryGetValue(dialogId, out var nativeOpen))
         {
@@ -454,7 +454,11 @@ public sealed class ClientDialogHandler
     {
         if (_character == null) return false;
 
-        int currentPage = Math.Max(0, requestedPage);
+        int openingPage = Math.Max(0, requestedPage);
+        // Source-X CDialogDef remaps the requested page to client page 1.
+        // Apply the same permutation to both page markers and navigation buttons.
+        int RemapPage(int page) => openingPage == 0 || page == 0 || page > openingPage
+            ? page : page == openingPage ? 1 : page + 1;
 
         // Sphere dialog first line is the screen position "x,y".
         // Source-X reads this via s.ReadKey() before processing controls —
@@ -479,7 +483,8 @@ public sealed class ClientDialogHandler
             }
         }
 
-        var gump = new GumpBuilder(_character.Uid.Value, (uint)Math.Abs(dialogId.GetHashCode()))
+        var gump = new GumpBuilder(subjectUid.IsValid ? subjectUid.Value : _character.Uid.Value,
+            (uint)Math.Abs(dialogId.GetHashCode()))
         {
             ExplicitX = dialogX,
             ExplicitY = dialogY
@@ -507,7 +512,8 @@ public sealed class ClientDialogHandler
         // copy of a loop body runs with the iterator's value substituted
         // into <local._for> / <local.n> / etc. before render commands see
         // the args — matching Sphere's runtime-expansion behaviour.
-        var expandedKeys = ExecuteDialogLayout(layoutSection.Keys, dialogLocals, requestedPage, dialogId);
+        var expandedKeys = ExecuteDialogLayout(layoutSection.Keys, dialogLocals, requestedPage, dialogId, out bool cancelled);
+        if (cancelled) return false;
 
         // Diagnostic: count of commands per page post-expansion. If page 4
         // (FLAGS) comes out empty while the others are populated, the
@@ -557,7 +563,8 @@ public sealed class ClientDialogHandler
                     // so that PAGE 1 content can use +N offsets relative
                     // to the last DORIGIN set on PAGE 0.
                     int pageNo = ParseIntToken(args);
-                    gump.SetPage(pageNo);
+                    if (pageNo > 0)
+                        gump.SetPage(RemapPage(pageNo));
                     currentPageVisible = true;
                     break;
                 }
@@ -575,8 +582,8 @@ public sealed class ClientDialogHandler
                         // zero and move the baseline cursors instead.
                         originX = 0;
                         originY = 0;
-                        cursorX = ParseIntToken(parts[0]);
-                        cursorY = ParseIntToken(parts[1]);
+                        cursorX = ResolveDialogOrigin(parts[0], rowCursorX);
+                        cursorY = ResolveDialogOrigin(parts[1], rowCursorY);
                         rowCursorX = cursorX;
                         rowCursorY = cursorY;
                     }
@@ -658,7 +665,7 @@ public sealed class ClientDialogHandler
                             ParseIntToken(parts[3]),
                             ParseIntToken(parts[6]),
                             ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]));
+                            RemapPage(ParseIntToken(parts[5])));
                     }
                     break;
                 }
@@ -673,7 +680,7 @@ public sealed class ClientDialogHandler
                         gump.AddButtonTileArt(
                             x, y,
                             ParseIntToken(parts[2]), ParseIntToken(parts[3]),
-                            ParseIntToken(parts[6]), ParseIntToken(parts[4]), ParseIntToken(parts[5]),
+                            ParseIntToken(parts[6]), ParseIntToken(parts[4]), RemapPage(ParseIntToken(parts[5])),
                             ParseIntToken(parts[7]), ParseIntToken(parts[8]),
                             ParseIntToken(parts[9]), ParseIntToken(parts[10]));
                     }
@@ -687,7 +694,9 @@ public sealed class ClientDialogHandler
                     {
                         int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
                         int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        string html = ResolveDialogHtml(parts[6], _character);
+                        // ExecuteDialogLayout already expanded this text. Re-parsing
+                        // would consume emitted HTML such as <br> and <basefont>.
+                        string html = parts[6];
                         gump.AddHtmlGump(
                             x, y,
                             ParseIntToken(parts[2]),
@@ -734,7 +743,7 @@ public sealed class ClientDialogHandler
                             ParseIntToken(parts[2]),
                             ParseIntToken(parts[3]),
                             ParseIntToken(parts[4]),
-                            ResolveDialogHtml(parts[5], _character));
+                            parts[5]);
                     }
                     break;
                 }
@@ -770,7 +779,7 @@ public sealed class ClientDialogHandler
                         int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
                         int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
                         gump.AddText(x, y, ParseIntToken(parts[2]),
-                            ResolveDialogHtml(parts[3], _character));
+                            parts[3]);
                     }
                     break;
                 }
@@ -854,7 +863,7 @@ public sealed class ClientDialogHandler
                             ParseIntToken(parts[3]),
                             ParseIntToken(parts[4]),
                             ParseIntToken(parts[5]),
-                            ResolveDialogHtml(parts[6], _character));
+                            parts[6]);
                     }
                     break;
                 }
@@ -895,7 +904,7 @@ public sealed class ClientDialogHandler
                             ParseIntToken(parts[3]),
                             ParseIntToken(parts[4]),
                             ParseIntToken(parts[5]),
-                            ResolveDialogHtml(parts[7], _character),
+                            parts[7],
                             maxLen);
                     }
                     break;
@@ -1206,10 +1215,10 @@ public sealed class ClientDialogHandler
     private List<SphereNet.Scripting.Parsing.ScriptKey> ExpandDialogScriptKeys(
         IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> input,
         Dictionary<string, string> locals,
-        int dialogArgN1)
+        int dialogArgN1, out bool cancelled)
     {
         var output = new List<SphereNet.Scripting.Parsing.ScriptKey>(input.Count);
-        ExpandRange(input, 0, input.Count, output, locals, dialogArgN1);
+        cancelled = ExpandRange(input, 0, input.Count, output, locals, dialogArgN1) == 1;
         return output;
     }
 
@@ -1217,11 +1226,11 @@ public sealed class ClientDialogHandler
         IReadOnlyList<ScriptKey> input,
         Dictionary<string, string> fallbackLocals,
         int dialogArgN1,
-        string dialogId)
+        string dialogId, out bool cancelled)
     {
         var interpreter = _triggerDispatcher?.Runner?.Interpreter;
         if (interpreter == null || _character == null)
-            return ExpandDialogScriptKeys(input, fallbackLocals, dialogArgN1);
+            return ExpandDialogScriptKeys(input, fallbackLocals, dialogArgN1, out cancelled);
 
         var output = new List<ScriptKey>(input.Count);
         IScriptObj subject = _dialogSubjectUid.IsValid
@@ -1250,12 +1259,14 @@ public sealed class ClientDialogHandler
 
         IReadOnlyList<ScriptKey> executable = start == 0 ? input : input.Skip(start).ToArray();
         interpreter.Execute(executable, renderTarget, _client, triggerArgs, scope);
+        // Source-X suppresses a gump only for the exact RETURN 1 value.
+        cancelled = scope.IsReturning && scope.NumericReturnValue == 1;
         return output;
     }
 
     private const int MaxExpandedLines = 10000;
 
-    private void ExpandRange(
+    private long? ExpandRange(
         IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> input, int start, int end,
         List<SphereNet.Scripting.Parsing.ScriptKey> output,
         Dictionary<string, string> locals,
@@ -1265,10 +1276,13 @@ public sealed class ClientDialogHandler
         while (i < end)
         {
             if (output.Count >= MaxExpandedLines)
-                return;
+                return null;
             var k = input[i];
             string cmd = k.Key.Trim().ToUpperInvariant();
             string args = k.Arg;
+
+            if (cmd == "RETURN")
+                return ParseLongToken(ResolveInlineExpressions($"<EVAL {args}>", locals, dialogArgN1));
 
             if (cmd == "IF")
             {
@@ -1296,7 +1310,10 @@ public sealed class ClientDialogHandler
                     }
                 }
                 if (chosenStart >= 0)
-                    ExpandRange(input, chosenStart, chosenEnd, output, locals, dialogArgN1);
+                {
+                    var returned = ExpandRange(input, chosenStart, chosenEnd, output, locals, dialogArgN1);
+                    if (returned.HasValue) return returned;
+                }
                 i = ifEnd + 1;
                 continue;
             }
@@ -1314,7 +1331,10 @@ public sealed class ClientDialogHandler
                 string defName = ResolveInlineExpressions(args, locals, dialogArgN1).Trim();
                 int instCount = Math.Min(500, CountWorldItemInstances(defName));
                 for (int it = 0; it < instCount; it++)
-                    ExpandRange(input, i + 1, fiEnd, output, locals, dialogArgN1);
+                {
+                    var returned = ExpandRange(input, i + 1, fiEnd, output, locals, dialogArgN1);
+                    if (returned.HasValue) return returned;
+                }
                 i = fiEnd + 1;
                 continue;
             }
@@ -1336,7 +1356,8 @@ public sealed class ClientDialogHandler
                     locals["_FOR"] = cur;
                     if (iterName != null)
                         locals[iterName] = cur;
-                    ExpandRange(input, i + 1, forEnd, output, locals, dialogArgN1);
+                    var returned = ExpandRange(input, i + 1, forEnd, output, locals, dialogArgN1);
+                    if (returned.HasValue) return returned;
                 }
                 if (savedFor != null) locals["_FOR"] = savedFor; else locals.Remove("_FOR");
                 if (iterName != null)
@@ -1393,7 +1414,8 @@ public sealed class ClientDialogHandler
                 {
                     string resolved = ResolveInlineExpressions(args, locals, dialogArgN1);
                     if (!EvaluateDialogCondition(resolved)) break;
-                    ExpandRange(input, i + 1, whileEnd, output, locals, dialogArgN1);
+                    var returned = ExpandRange(input, i + 1, whileEnd, output, locals, dialogArgN1);
+                    if (returned.HasValue) return returned;
                     iter++;
                 }
                 i = whileEnd + 1;
@@ -1461,6 +1483,7 @@ public sealed class ClientDialogHandler
             output.Add(new SphereNet.Scripting.Parsing.ScriptKey(k.Key, resolvedArg));
             i++;
         }
+        return null;
     }
 
     /// <summary>FOR-family block end: every FOR* loop keyword (FOR,
@@ -1928,8 +1951,8 @@ public sealed class ClientDialogHandler
 
     /// <summary>Resolve a dialog coordinate token.
     /// Formats:
-    ///   N      — absolute (resets cursor to N)
-    ///   +N     — cursor += N
+    ///   N      — absolute (preserves origin)
+    ///   +N     — offset from origin (preserves origin)
     ///   *N     — rowCursor += N; cursor = rowCursor (next-row step, independent
     ///            of the +/- column walk)
     /// <paramref name="rowCursor"/> may alias <paramref name="cursor"/> when the
@@ -1937,7 +1960,7 @@ public sealed class ClientDialogHandler
     private static int ResolveDialogCoord(string token, ref int cursor, ref int rowCursor)
     {
         // Sphere DORIGIN coord rules (verified against d_SphereAdmin_PlayerTweak):
-        //   bare N : SET baseline to N and return it (origin offset reset)
+        //   bare N : return N without changing the baseline
         //   +N     : return baseline + N (NON-mutating row-relative offset)
         //   -N     : return baseline - N (NON-mutating row-relative offset)
         //   *N     : baseline += N, return baseline (advance the row)
@@ -1972,9 +1995,15 @@ public sealed class ClientDialogHandler
             return rowCursor;
         }
 
-        rowCursor = ParseIntToken(token);
-        cursor = rowCursor;
-        return rowCursor;
+        // Absolute coordinates do not move the DORIGIN baseline.
+        return ParseIntToken(token);
+    }
+
+    private static int ResolveDialogOrigin(string token, int origin)
+    {
+        token = token.Trim();
+        if (token == "-") return origin;
+        return token.StartsWith('*') ? origin + ParseIntToken(token[1..]) : ParseIntToken(token);
     }
 
     private static int ResolveDialogCoord(string token, ref int cursor)

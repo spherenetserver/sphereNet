@@ -4,6 +4,169 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-20] - Dialog kurulum iptali ve eksik kaynak davranisi
+------------------------------------------------------------------------
+FIX - Eksik DIALOG/SDIALOG kaynaklari artik ornek pencere olusturmuyor.
+      Layout RETURN 1 pencereyi ve acik-dialog kaydini iptal ediyor;
+      RETURN 0/2 layout islemesini bitirip hazirlanan pencereyi gonderiyor.
+      Yedek layout genisleticisinde ic bloklardaki RETURN disariya tasiniyor.
+FIX - Script dialogu iptal edildiginde yerlesik yedek pencere acilmiyor.
+TEST - On uc regresyon: eksik/bos ad, kesin donus degeri, ic ice IF/FOR/WHILE,
+       iki layout yolu ve yardim dialogunun iptali.
+
+[2026-09-20] - Acik dialog icin yinelenen SDIALOG olusturmasi onlendi
+-------------------------------------------------------------------
+FIX - SDIALOG, yerlesimi calistirmadan once kaynak istemcinin acik dialog
+      kaydini kontrol eder. Tekrar cagri mevcut hedefi ve buton isleyicisini
+      korur; yeni pencere paketi gondermez. DIALOG yeniden gonderebilir.
+TEST - Sekiz test dogrudan/yorumlanan/gecikmeli cagrilari, harf/sayfa farklarini,
+       hedefin korunmasini, bagimsiz istemcileri ve istemci cevabi veya
+       DIALOGCLOSE sonrasinda yeniden acilmayi kapsar.
+
+[2026-09-20] - TRY komut yolu ve arguman ayrisitirmasi duzeltildi
+---------------------------------------------------------------
+FIX - TRY yerlesik nesne komutuna eklendi. Dogrudan ve TIMERF cagrilari asil
+      kaynakla calisir; komut reddi Source-X gibi bastirilir. Reddedilen
+      yerlesik komut, TRY adli script fonksiyonuna dusmez.
+FIX - Yorumlayicida TRY ortak komut ayrisiticisini ve normal yonlendirmeyi
+      kullanir. Bosluk, esittir, virgul ve sekme ayiricilari desteklenir;
+      argumanin icindeki '=' yanlislikla ozellik atamasi sayilmaz.
+TEST - On sekiz test dogrudan, yorumlanan ve gecikmeli fonksiyon cagrilarini,
+       argumanlari, kaynak kimligini ve reddedilen komutlari kapsar.
+
+[2026-09-20] - TRYP yetki ve dokunma denetimleri nesne yoluna tasindi
+-------------------------------------------------------------------
+FIX - TRYP yorumlanan, referansli ve gecikmeli cagrilarda ortak nesne komutunu
+      kullanir. Yetki ifadesini degerlendirir, PLEVEL_QTY ve ustunu reddeder;
+      Counsel dahil alt seviyelerde karakter ve dokunma denetimi ister.
+      Seer ve ustu dokunma kontrolunu atlar. Kabul edilen komut/fonksiyon/atama
+      asil kaynakla calisir; ret durumunda ayni adli fonksiyona dusulmez.
+FIX - TRYP icin 3B mesafe, gorus hatti, tanimdan CAN istisnalari, karakter
+      durumu, konteyner sahipligi ve banka/takas erisimi kontrol edilir.
+      Ozel esya erisimi icin MAXSHIPPLANKTELEPORT ve ATTR_CANUSE_PARALYZED
+      destegi eklendi. Ret metinleri messages sisteminden degistirilebilir.
+TEST - Otuz dokuz test komut yollarini, yetki sinirlarini, erisim/durum/konteyner
+       kurallarini, gercek duvar engelini ve script CAN istisnalarini kapsar.
+       Eski guest testi duzeltildi: karaktersiz kaynak dokunma kosulunu gecemez.
+
+[2026-09-20] - TRYSRV cagrisinda sunucu kaynagi korunur
+-----------------------------------------------------
+FIX - Dogrudan ve gecikmeli TRYSRV komutlari fonksiyon ve ozellik atamalarina
+      Owner yetkisiyle, oyuncu kaynagi olmadan ulasir. Yorumlayici ayni sunucu
+      konsolunu kullanir; eski oyuncunun istemcisine geri dusmez.
+      Fonksiyon=arguman gibi komut ayiricilari normal sekilde ayrisitirilir.
+FIX - Yorumlayicinin DIALOG/SDIALOG/DIALOGCLOSE yolu hedefin istemcisine otomatik
+      yonelmek yerine kaynak konsolunu kullanir. Sunucu veya kaynaksiz cagri
+      oyuncu dialogu acmaz ve ayni adli dialog fonksiyonuna dusmez.
+TEST - On bir test dogrudan, yorumlanan ve gecikmeli cagriyi, fonksiyon kaynagini,
+       cagiran kaynagin korunmasini ve dialog alicisinin secimini kapsar.
+
+[2026-09-20] - TRYSRC yonlendirmesi hedef korunarak birlestirildi
+--------------------------------------------------------------
+FIX - TRYSRC yorumlayici, istemci ve TIMERF yollarinin kullandigi ortak nesne
+      komutuna tasindi. Hedef degismeden karakter kaynagi secilir; dialoglar
+      secilen karakterin istemcisine gider. Cevrimdisiyken karakterin yetkisi
+      korunur. Gecersiz veya karakter olmayan kaynaklar ayni adli fonksiyona
+      ya da eski GM komut yoluna dusmeden reddedilir.
+TEST - On dort test hedefi koruma, secilen istemciye dialog gonderme, zamanlayici,
+       cevrimdisi fonksiyon kaynagi, UID aritmetigi ve gecersiz kaynaklari kapsar.
+
+[2026-09-20] - Gecikmeli nesne komutlarinda yerlesik dialog yonlendirmesi
+-----------------------------------------------------------------------
+FIX - DIALOG, SDIALOG ve DIALOGCLOSE nesne komut tablosuna alindi. Kaynak
+      konsoluna iletilir; istemci yoksa ayni adli script fonksiyonuna dusmez.
+      Boylece tasinan esyalardaki dogrudan TIMERF dialog komutlari Source-X
+      CObjBase akisina uygun calisir.
+TEST - Dokuz zamanlayici testi bagli, cevrimdisi ve yerdeki esya durumlarini,
+       calisma anindaki sahip secimini, hedef UID ve gecikmeli kapatmayi kapsar.
+
+[2026-09-20] - Referansli istemci komutlari asil kaynaga ulastirilir
+----------------------------------------------------------------
+FIX - Nesne komut yolu, script fonksiyonu aramadan once istemci komutlarina da
+      ulasir; referanstaki hedef ve kaynak korunur. Script dialog paketleri
+      Source-X gibi hedef nesnenin UID bilgisini tasir.
+TEST - LINK/CONT/ACT dialoglari yalniz kaynak istemciye gider; kapanis tetikleyicisi
+       dogru hedefte calisir ve bos referanslarda paket gonderilmez.
+
+[2026-09-20] - Zincirli ACT okuma ve komutlari karakter uzerinden cozulur
+----------------------------------------------------------------------
+FIX - Karakterin ACT.alan okumasi ve ACT.komut islemi secili nesneye ulasir;
+      SRC.ACT ve TOPOBJ.ACT zincirleri de ayni yolu kullanir. Yorumlayicidaki
+      ayri okuma yolu kaldirildi. Bos/silinmis hedef baska nesneyi degistiremez.
+TEST - Kaynak/link zincirleri, alan yazma ve bos/silinmis ACT hedefleri kapsandi.
+
+[2026-09-20] - Ic ice CALL baglami ve karakter ACT referansi korunur
+-----------------------------------------------------------------
+FIX - CALL, LOCAL ile birlikte REF ve FLOAT alanlarini paylasir; normal fonksiyon
+      cagrilari ayri kalir. Arguman baslatma ARGO'yu temizler; CALL donuste eski
+      nesne argumanini geri yukler. Yalin SRC kaynak UID'sini verir.
+      ACT, tetikleyicinin Object2 alani yerine karakterin hedefini okur.
+      Artik dunyada bulunmayan nesnelere REF atamasi sifir sonucunu verir.
+TEST - Ic ice/argumanli/argumansiz cagrilar, normal fonksiyon yalitimi, ARGO
+       geri yukleme, ACT hedefi ve silme sonrasi referans atamalari dogrulandi.
+
+[2026-09-20] - REF atamalari hesaplanir ve referans komutlarinin kaynagi korunur
+---------------------------------------------------------------------------
+FIX - REF atamalari Sphere sayisal ifadesi olarak hesaplanir; ondalik UID ve
+      aritmetik ifadeler sunucuda dogru nesneyi bulur. Referans komutlari ve
+      fonksiyonlari asil konsol/SRC ile calisir; takma ve dialog kaynagi korunur.
+TEST - Sunucu uzerinden sayisal referans okuma, ayri fonksiyon hedefi/kaynagi,
+       mevcut ifade cozumleme ve cagri uyumlulugu senaryolariyla dogrulandi.
+
+[2026-09-20] - Yeni script esyasi takilirken kaynak korunur
+----------------------------------------------------------
+FIX - NEW nesne komutlari asil script konsolu ve SRC ile calisir. Esya EQUIP
+      komutu mevcut takma isleyicisini ve @Equip baslatmasini kullanir;
+      komut argumani SRC yerine baska bir karakter secmez.
+      Istemci yolu da esyayi cantaya koymak yerine takar ve sonraki
+      alan atamalari icin NEW referansini korur.
+TEST - Argumanli/argumansiz NEW.EQUIP, kaynak secimi, memory katmani ve
+       takma oncesi/sonrasi esya alanlari dogrulandi.
+
+[2026-09-20] - LDB yollari sunucunun calisma klasorunden cozulur
+---------------------------------------------------------------
+FIX - LDB.CONNECT goreli dosya yollarini Source-X gibi islem calisma klasorunden
+      cozer; script veya assembly klasoru kullanilmaz. Sunucu ve istemci
+      uzerinden calisan scriptler ayni kurali uygular.
+TEST - Uc baglanti girisinde mevcut veritabaninin acildigi ve script klasoru
+       altinda ikinci bir dosya olusturulmadigi dogrulandi.
+
+[2026-09-20] - Cozulmus dialog metnindeki HTML korunur
+---------------------------------------------------
+FIX - Script calistiktan sonra dinamik dialog metni ikinci kez yorumlanmaz.
+      DEF/LOCAL ile olusan satir sonlari ve renk etiketleri korunur;
+      yardim istatistiklerindeki satirlar birbirine yapismaz.
+TEST - Giden pakette HTML, yazi ve giris alanlari dogrulanir; indeksli TEXT
+       bolumu metinlerinin bir kez cozulmesi korunur.
+
+[2026-09-20] - Script fonksiyon donus metni korunur
+------------------------------------------------
+FIX - RETURN metni Source-X gibi korunur. ARRAY ile donen bolge defnameleri
+      sayisal ID'ye donusmez; stuck sehir adlari ve hedef koordinatlari duzelir.
+      Tetikleyicilerin sayisal donus davranisi korunur.
+TEST - Sunucu yukleyicisiyle AREADEF yuklenip ic ice ARRAY ile bolge adi ve
+       konumu okunur; hex donus degerlerinin sayisal kullanimi dogrulanir.
+
+[2026-09-20] - Source-X dialog ve tanim sorgusu uyumu
+--------------------------------------------------
+FIX - Istenen dialog sayfasi ve gezinme dugmeleri istemcinin acilis sayfasina
+      birlikte donusturulur. Mutlak koordinatlar DORIGIN baslangicini bozmaz;
+      goreli baslangic artisi ve ekseni koruma davranislari desteklenir.
+FIX - FORINSTANCES kesilmis gorsel ID yerine tam esya/NPC tanim kimligini
+      kullanir; ayni gorseli kullanan farkli tanimlari birbirine karistirmaz.
+TEST - Sayfa isaretleri, iki gezinme dugmesi turu, karma koordinatlar ve
+       isimli esya/NPC tanim sorgulari dogrulanir.
+
+[2026-09-20] - Buyu sirasinda elden cikan esyanin gorunumu guncellenir
+-----------------------------------------------------------------
+FIX - EQUIPPEDCAST kapaliyken her elden cikan esya cevredeki istemcilerden
+      kaldirilir; canta konumu sadece sahibine, dolu cantada zemin konumu
+      izleyicilere gonderilir. Ikinci el buyuyu engellese de ilk el bildirilir.
+      Kalkanlar normal cikarilir. SPELLCHANNELING tanim/nesne degerleri ve
+      CANMASK dikkate alinir; channeling donmus el kisitini atlamaz.
+TEST - Sahip/izleyici paketleri, dolu canta, kismi basarisizlik, channeling,
+       donmus eller ve script tanimi/nesne istisnalari dogrulandi.
+
 [2026-09-20] - Eski Britain olay referansinin test kapsami
 ------------------------------------------------------
 TEST - Eksik R_BRIT sadece arsiv worldfiles-55a a_townBritain save kaydinda

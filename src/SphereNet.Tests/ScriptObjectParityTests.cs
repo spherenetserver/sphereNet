@@ -149,19 +149,21 @@ public class ScriptObjectParityTests
     }
 
     [Fact]
-    public void ScriptInterpreter_Tryp_GatesOnSourcePrivilege()
+    public void ScriptInterpreter_Tryp_RejectsGuestWithoutTouchingCharacter()
     {
         var interpreter = NewInterpreter();
-        var target = new PrivCapturingObj();
+        var target = TestHarness.CreateWorld().CreateItem();
+        target.Name = "original";
         var guest = new FixedPrivConsole(PrivLevel.Guest);
 
         // A plevel-4 (GM) gate blocks a guest source — the verb does not run.
-        interpreter.Execute([new ScriptKey("TRYP", "4 MARKPRIV")], target, guest, null, new ScriptScope());
-        Assert.Equal(0, target.VerbRuns);
+        interpreter.Execute([new ScriptKey("TRYP", "4 NAME=changed")], target, guest, null, new ScriptScope());
+        Assert.Equal("original", target.Name);
 
-        // A plevel-0 gate passes for a guest.
-        interpreter.Execute([new ScriptKey("TRYP", "0 MARKPRIV")], target, guest, null, new ScriptScope());
-        Assert.Equal(1, target.VerbRuns);
+        // Source-X also requires GetChar()->CanTouch at guest/player/counsel
+        // levels, so an unbound guest console cannot pass even a zero gate.
+        interpreter.Execute([new ScriptKey("TRYP", "0 NAME=changed")], target, guest, null, new ScriptScope());
+        Assert.Equal("original", target.Name);
     }
 
     [Fact]
@@ -183,8 +185,7 @@ public class ScriptObjectParityTests
         lever.Name = "lever";
         lever.Link = door.Uid; // the lever's m_uidLink points at the door
 
-        // A different object sits in the ACT / Object2 slot, to prove LINK no longer
-        // collides with ACT (both used to resolve Object2).
+        // An unrelated secondary trigger object must not become LINK or ACT.
         var bystander = new Character { Name = "Bystander" };
         bystander.SetUid(new Serial(0x00009999));
         var args = new TriggerArgs { Object2 = bystander };
@@ -204,9 +205,9 @@ public class ScriptObjectParityTests
         Assert.Equal($"0{door.Uid.Value:X}", linkUid);
         Assert.True(lever.TryGetProperty("TAG.LINKNAME", out var linkName));
         Assert.Equal("oak door", linkName);
-        // ACT still resolves Object2 — the two references are now independent.
+        // ACT is a character reference; this lever has no ACT target.
         Assert.True(lever.TryGetProperty("TAG.ACTNAME", out var actName));
-        Assert.Equal("Bystander", actName);
+        Assert.Equal("0", actName);
     }
 
     [Fact]
@@ -225,7 +226,7 @@ public class ScriptObjectParityTests
         string? refExec = null;
         interpreter.ServerPropertyResolver = request =>
         {
-            if (request == $"_REF_GET={linked.Uid.Value}|NAME")
+            if (request == $"_REF_GET=0{linked.Uid.Value:X}|NAME")
                 return linked.Name;
             if (request.StartsWith("_REF_EXEC=", StringComparison.Ordinal))
             {
@@ -259,7 +260,7 @@ public class ScriptObjectParityTests
         Assert.Equal("1.5", flt);
         Assert.True(target.TryGetProperty("TAG.REFNAME", out var refName));
         Assert.Equal("Linked", refName);
-        Assert.Equal($"_REF_EXEC={linked.Uid.Value}|TAG.MARK|ok", refExec);
+        Assert.Equal($"_REF_EXEC=0{linked.Uid.Value:X}|TAG.MARK|ok", refExec);
     }
 
     [Fact]

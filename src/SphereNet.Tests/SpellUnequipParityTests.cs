@@ -150,17 +150,94 @@ public sealed class SpellUnequipParityTests : IDisposable
     }
 
     [Fact]
-    public void AShieldIsNotAHandTheCastNeeds()
+    public void AShieldWithoutChannelingGoesToThePack()
     {
         var (world, engine, caster) = Setup();
         var shield = Equip(world, caster, ItemType.Shield, Layer.TwoHanded, 0x1B76);
 
         Assert.True(engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position) > 0);
 
-        Assert.Same(shield, caster.GetEquippedItem(Layer.TwoHanded));
+        Assert.Null(caster.GetEquippedItem(Layer.TwoHanded));
+        Assert.Contains(shield, caster.Backpack!.Contents);
     }
 
     // ---- when it does refuse ------------------------------------------------
+
+    [Theory]
+    [InlineData(ItemType.WeaponSword, false)]
+    [InlineData(ItemType.Shield, false)]
+    [InlineData(ItemType.WeaponSword, true)]
+    public void CastBounceRemovesWornItemForObserversAndUpdatesItsFinalLocation(ItemType type, bool fullPack)
+    {
+        var (world, engine, caster) = Setup();
+        using var lf = LoggerFactory.Create(_ => { });
+        var accounts = new SphereNet.Game.Accounts.AccountManager(lf);
+        var ownerClient = TestHarness.CreateClient(lf, world, accounts, 8301);
+        TestHarness.AttachCharacter(ownerClient, caster);
+        var observer = world.CreateCharacter();
+        observer.IsPlayer = true;
+        world.PlaceCharacter(observer, caster.Position);
+        var observerClient = TestHarness.CreateClient(lf, world, accounts, 8302);
+        TestHarness.AttachCharacter(observerClient, observer);
+        if (fullPack)
+            for (int i = 0; i < Item.MaxContainerItems; i++)
+                Assert.True(caster.Backpack!.TryAddItem(world.CreateItem()));
+        var held = Equip(world, caster, type, type == ItemType.Shield ? Layer.TwoHanded : Layer.OneHanded);
+        engine.OnCastItemUnequipped = (wearer, item) =>
+        {
+            ownerClient.SendCastUnequipUpdate(wearer, item);
+            observerClient.SendCastUnequipUpdate(wearer, item);
+        };
+        TestHarness.ClearQueuedPackets(ownerClient.NetState);
+        TestHarness.ClearQueuedPackets(observerClient.NetState);
+
+        Assert.True(engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position) > 0);
+
+        var ownerPackets = TestHarness.GetQueuedPackets(ownerClient.NetState).ToList();
+        int removed = ownerPackets.FindIndex(p => p.Span[0] == 0x1D &&
+            System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(p.Span[1..]) == held.Uid.Value);
+        int relocated = ownerPackets.FindIndex(p => p.Span[0] == (fullPack ? 0x1A : 0x25));
+        Assert.True(removed >= 0 && relocated > removed);
+        var seen = TestHarness.GetQueuedPackets(observerClient.NetState).ToList();
+        Assert.Contains(seen, p => p.Span[0] == 0x1D);
+        Assert.DoesNotContain(seen, p => p.Span[0] == 0x25);
+        Assert.Equal(fullPack, seen.Any(p => p.Span[0] == 0x1A));
+        Assert.False(held.IsEquipped);
+        Assert.Equal(fullPack, held.IsOnGround);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ChannelingKeepsWeaponExceptWhenHandsAreFrozen(bool frozen)
+    {
+        var (world, engine, caster) = Setup();
+        var held = Equip(world, caster, ItemType.WeaponSword, Layer.OneHanded);
+        Assert.True(held.TrySetProperty("SPELLCHANNELING", "1"));
+        Character.MagicFlags = (int)MagicConfigFlags.CastParalyzed;
+        if (frozen) caster.SetStatFlag(StatFlag.Freeze);
+        int updates = 0;
+        engine.OnCastItemUnequipped = (_, _) => updates++;
+        int duration = engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position);
+        Assert.Equal(!frozen, duration > 0);
+        Assert.Same(held, caster.GetEquippedItem(Layer.OneHanded));
+        Assert.Equal(0, updates);
+    }
+
+    [Fact]
+    public void FirstHandUpdateIsNotLostWhenSecondHandPreventsCasting()
+    {
+        var (world, engine, caster) = Setup();
+        var sword = Equip(world, caster, ItemType.WeaponSword, Layer.OneHanded);
+        var shield = Equip(world, caster, ItemType.Shield, Layer.TwoHanded);
+        shield.SetAttr(ObjAttributes.Cursed);
+        var moved = new List<Item>();
+        engine.OnCastItemUnequipped = (_, item) => moved.Add(item);
+        Assert.Equal(-1, engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position));
+        Assert.Equal(new[] { sword }, moved);
+        Assert.Contains(sword, caster.Backpack!.Contents);
+        Assert.Same(shield, caster.GetEquippedItem(Layer.TwoHanded));
+    }
 
     [Fact]
     public void AnUnmovableItemStopsTheCast()
@@ -212,8 +289,12 @@ public sealed class SpellUnequipParityTests : IDisposable
         Assert.Equal(-1, engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position));
     }
 
-    [Fact]
-    public void AnItemFlaggedEquipOnCastStaysInHand()
+    [Theory]
+    [InlineData("CAN=08000000", false)]
+    [InlineData("SPELLCHANNELING=1", false)]
+    [InlineData("CAN=08000000", true)]
+    [InlineData("SPELLCHANNELING=1", true)]
+    public void DefinitionCastingExceptionsHonorInstanceOverrides(string property, bool disable)
     {
         // CAN_I_EQUIPONCAST (Source-X CBase.h:61) is the pack's way of saying a
         // held item survives a cast with EQUIPPEDCAST off. Nothing read it before.
@@ -223,8 +304,7 @@ public sealed class SpellUnequipParityTests : IDisposable
             DEFNAME=i_staff_eoc
             NAME=Channeling staff
             TYPE=t_weapon_mace_staff
-            CAN=08000000
-            """);
+            """ + "\n" + property + "\n");
         try
         {
             var resources = new SphereNet.Scripting.Resources.ResourceHolder(
@@ -235,9 +315,19 @@ public sealed class SpellUnequipParityTests : IDisposable
 
             var (world, engine, caster) = Setup();
             var staff = Equip(world, caster, ItemType.WeaponMaceStaff, Layer.OneHanded);
+            if (disable)
+            {
+                if (property.StartsWith("CAN=")) staff.CanMask = (ulong)CanFlags.I_EquipOnCast;
+                else Assert.True(staff.TrySetProperty("SPELLCHANNELING", "0"));
+            }
 
             Assert.True(engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position) > 0);
-            Assert.Same(staff, caster.GetEquippedItem(Layer.OneHanded));
+            if (disable)
+            {
+                Assert.Null(caster.GetEquippedItem(Layer.OneHanded));
+                Assert.Contains(staff, caster.Backpack!.Contents);
+            }
+            else Assert.Same(staff, caster.GetEquippedItem(Layer.OneHanded));
         }
         finally { File.Delete(defFile); }
     }

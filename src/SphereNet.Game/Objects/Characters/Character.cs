@@ -3483,6 +3483,16 @@ public partial class Character : ObjBase
         value = "";
         var upper = key.ToUpperInvariant();
 
+        // CChar::r_GetRef resolves ACT before the target reads the remaining
+        // property, including when reached via SRC/REF/TOPOBJ chains.
+        if (upper.StartsWith("ACT.", StringComparison.Ordinal))
+        {
+            var actObject = ResolveRefHead("ACT");
+            value = actObject != null && !actObject.IsDeleted &&
+                actObject.TryGetProperty(key[4..], out string actValue) ? actValue : "0";
+            return true;
+        }
+
         // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...) are
         // tag-backed like the Slayer faction pair — persisted with the char
         // and readable by the combat engine's on-hit pipeline.
@@ -5736,6 +5746,13 @@ public partial class Character : ObjBase
         // Assumed owned until the shared fall-through at the bottom of
         // ObjBase.TryExecuteCommand says otherwise.
         nameOwned = true;
+        if (key.StartsWith("ACT.", StringComparison.OrdinalIgnoreCase))
+        {
+            var actObject = ResolveRefHead("ACT");
+            if (actObject == null || actObject.IsDeleted)
+                return true;
+            return actObject.ExecuteVerbLine(key[4..], args, source);
+        }
         if (key.Equals("SOUND", StringComparison.OrdinalIgnoreCase))
             return EmitScriptSound(args);
         if (key.Equals("NOTOUPDATE", StringComparison.OrdinalIgnoreCase) ||

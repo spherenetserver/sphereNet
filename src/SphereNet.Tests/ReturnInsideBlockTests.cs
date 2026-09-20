@@ -151,13 +151,15 @@ public sealed class ReturnInsideBlockTests
     }
 
     /// <summary>And the VALUE it returns is what a function hands back - the point of
-    /// the table. A numeric RETURN stores the evaluated number, so the pack's
-    /// "return 0a37" comes back as the 2615 that leading-zero hex means.</summary>
+    /// the table. Source-X SK_RETURN copies the expanded string to pResult;
+    /// the consuming numeric expression evaluates the preserved hex token.</summary>
     [Fact]
     public void ThePickedReturnCarriesItsValue()
     {
-        Assert.Equal("2615", ValueOf("DOSWITCH 1", "RETURN 0", "RETURN 0a37", "RETURN 07be", "ENDDO"));
-        Assert.Equal("1982", ValueOf("DOSWITCH 2", "RETURN 0", "RETURN 0a37", "RETURN 07be", "ENDDO"));
+        Assert.Equal("0a37", ValueOf("DOSWITCH 1", "RETURN 0", "RETURN 0a37", "RETURN 07be", "ENDDO"));
+        Assert.Equal("07be", ValueOf("DOSWITCH 2", "RETURN 0", "RETURN 0a37", "RETURN 07be", "ENDDO"));
+        Assert.Equal(2615, new SphereNet.Scripting.Expressions.ExpressionParser().Evaluate(
+            ValueOf("RETURN 0a37").AsSpan()));
         Assert.Equal("77", ValueOf("DORAND 1", "RETURN 77", "ENDDO"));
         // A string RETURN keeps its text, the way a [FUNCTION] returning a name does.
         Assert.Equal("chosen", ValueOf("DOSWITCH 0", "RETURN chosen", "ENDDO"));

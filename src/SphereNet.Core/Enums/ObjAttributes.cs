@@ -29,5 +29,6 @@ public enum ObjAttributes : uint
     DamageD = 0x80000,
     LockedDown = 0x100000,
     Nodropt = 0x200000,
-    NotRading = 0x400000
+    NotRading = 0x400000,
+    CanUseParalyzed = 0x80000000
 }

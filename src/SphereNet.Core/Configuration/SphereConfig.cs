@@ -127,6 +127,7 @@ public sealed class SphereConfig
     /// <see cref="SectorSleep"/>); negatives clamp to 0.</summary>
     public long SectorSleepMs => Math.Max(0, SectorSleep) * 60_000L;
     public int MapViewSize { get; set; } = 18;
+    public int MaxShipPlankTeleport { get; set; } = 18;
     public int MapViewSizeMax { get; set; } = 18;
     /// <summary>Combat retreat distance (tiles). 0 = use MapViewSize. sphere.ini MAPVIEWRADAR.</summary>
     public int MapViewRadar { get; set; }
@@ -884,6 +885,7 @@ public sealed class SphereConfig
         TimerCallMinutes = Math.Max(0, ini.GetInt(section, "TimerCall", TimerCallMinutes));
         SectorSleep = ini.GetInt(section, "SectorSleep", SectorSleep);
         MapViewSize = ini.GetInt(section, "MapViewSize", MapViewSize);
+        MaxShipPlankTeleport = ini.GetInt(section, "MaxShipPlankTeleport", MaxShipPlankTeleport);
         MapViewSizeMax = ini.GetInt(section, "MapViewSizeMax", MapViewSizeMax);
         MapViewRadar = ini.GetInt(section, "MapViewRadar", MapViewRadar);
         AttackerTimeout = ini.GetInt(section, "AttackerTimeout", AttackerTimeout);

@@ -20,6 +20,85 @@ namespace SphereNet.Tests;
 [Collection("DefinitionLoaderSerial")]
 public sealed class ActReferenceHeadTests
 {
+    [Theory]
+    [InlineData("SRC.ACT.NAME")]
+    [InlineData("SRC.ACT.LINK.NAME")]
+    [InlineData("SRC.TOPOBJ.ACT.NAME")]
+    public void InterpreterReadsActThroughSourceAndChainedReferences(string expression)
+    {
+        var (world, ch) = Setup();
+        var actual = world.CreateItem();
+        actual.Name = "selected item";
+        actual.Link = actual.Uid;
+        ch.TrySetProperty("ACT", $"0{actual.Uid.Value:X}");
+        var unrelated = world.CreateItem();
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        stack.Interpreter.Execute([
+            new SphereNet.Scripting.Parsing.ScriptKey("TAG.RESULT", $"<{expression}>")],
+            unrelated, null, new SphereNet.Scripting.Execution.TriggerArgs(ch),
+            new SphereNet.Scripting.Execution.ScriptScope());
+        unrelated.TryGetTag("RESULT", out var result);
+        Assert.Equal("selected item", result);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ActCommandChangesOnlyTheSelectedObject(bool hasTarget)
+    {
+        var (world, ch) = Setup();
+        var actual = world.CreateItem();
+        actual.Name = "original";
+        if (hasTarget) ch.TrySetProperty("ACT", $"0{actual.Uid.Value:X}");
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        stack.Interpreter.Execute([
+            new SphereNet.Scripting.Parsing.ScriptKey("SRC.ACT.NAME", "changed")],
+            ch, null, new SphereNet.Scripting.Execution.TriggerArgs(ch),
+            new SphereNet.Scripting.Execution.ScriptScope());
+        Assert.Equal(hasTarget ? "changed" : "original", actual.Name);
+        Assert.NotEqual("changed", ch.Name);
+    }
+
+    [Fact]
+    public void DeletedActTargetCannotBeReadOrModifiedThroughAChain()
+    {
+        var (world, ch) = Setup();
+        var actual = world.CreateItem();
+        actual.Name = "original";
+        ch.TrySetProperty("ACT", $"0{actual.Uid.Value:X}");
+        world.DeleteObject(actual);
+        Assert.True(ch.TryGetProperty("ACT.NAME", out var name));
+        Assert.Equal("0", name);
+        ScriptTestBootstrap.CreateRuntimeStack().Interpreter.Execute([
+            new SphereNet.Scripting.Parsing.ScriptKey("SRC.ACT.NAME", "changed")],
+            ch, null, new SphereNet.Scripting.Execution.TriggerArgs(ch),
+            new SphereNet.Scripting.Execution.ScriptScope());
+        Assert.Equal("original", actual.Name);
+        Assert.NotEqual("changed", ch.Name);
+    }
+
+    [Fact]
+    public void InterpreterActReadsTheCharacterTargetInsteadOfTriggerObject2()
+    {
+        var (world, ch) = Setup();
+        var actual = world.CreateItem();
+        actual.Name = "actual target";
+        var unrelated = world.CreateItem();
+        unrelated.Name = "unrelated trigger object";
+        ch.TrySetProperty("ACT", $"0{actual.Uid.Value:X}");
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        stack.Interpreter.ResolveObjectRef = (obj, head) => (obj as ObjBase)?.ResolveScriptRefHead(head);
+        stack.Interpreter.Execute([
+            new SphereNet.Scripting.Parsing.ScriptKey("TAG.ACTUID", "<ACT>"),
+            new SphereNet.Scripting.Parsing.ScriptKey("TAG.ACTNAME", "<ACT.NAME>")],
+            ch, null, new SphereNet.Scripting.Execution.TriggerArgs { Object2 = unrelated },
+            new SphereNet.Scripting.Execution.ScriptScope());
+        ch.TryGetProperty("TAG.ACTUID", out var uid);
+        ch.TryGetProperty("TAG.ACTNAME", out var name);
+        Assert.Equal($"0{actual.Uid.Value:X}", uid);
+        Assert.Equal("actual target", name);
+    }
+
     private static (GameWorld World, SphereNet.Game.Objects.Characters.Character Ch) Setup()
     {
         var world = new GameWorld(LoggerFactory.Create(_ => { }));

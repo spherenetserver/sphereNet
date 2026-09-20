@@ -2133,7 +2133,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var resources = new SphereNet.Scripting.Resources.ResourceHolder(loggerFactory.CreateLogger<SphereNet.Scripting.Resources.ResourceHolder>());
         string tempFile = Path.Combine(Path.GetTempPath(), $"spherenet_dialog_{Guid.NewGuid():N}.scp");
         File.WriteAllText(tempFile,
-            "[FUNCTION f_dialogclose_testdlg]\nSRC.TAG.DIALOG_CLOSED=1\nRETURN 1\n\n" +
+            "[DIALOG testdlg]\n0,0\nDTEXT 10 10 0 Test\n[DIALOG testdlg BUTTON]\nON=1\nSRC.TAG.DIALOG_CLOSED=1\nRETURN 1\n\n" +
             "[DEFMESSAGE]\nHELLO_MSG=Merhaba SourceX\n");
         resources.LoadResourceFile(tempFile);
         var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
@@ -2142,7 +2142,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         dispatcher.Resources = resources;
         var hooks = new ScriptSystemHooks(runner);
 
-        client.SetEngines(triggerDispatcher: dispatcher);
+        client.SetEngines(commands: new SphereNet.Game.Speech.CommandHandler { Resources = resources }, triggerDispatcher: dispatcher);
         client.SetScriptServices(hooks, null, k => resources.TryGetDefMessage(k, out var v) ? v : null);
 
         var acc = accountManager.CreateAccount("tester", "pw")!;
@@ -2153,7 +2153,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         var activeChar = client.Character!;
         Assert.True(client.TryExecuteScriptCommand(activeChar, "DIALOG", "testdlg", null));
-        client.HandleGumpResponse(0, (uint)Math.Abs("testdlg".GetHashCode()), 1, [], []);
+        client.HandleGumpResponse(activeChar.Uid.Value, (uint)Math.Abs("testdlg".GetHashCode()), 1, [], []);
         Assert.True(activeChar.TryGetProperty("TAG.DIALOG_CLOSED", out var closedVal));
         Assert.Equal("1", closedVal);
     }

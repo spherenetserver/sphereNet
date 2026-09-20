@@ -440,6 +440,9 @@ public static partial class ServerMessages
         Def("gm_npc_created_hex", "NPC created: %s (0x%s) at %s.");
         Def("gm_insuf_priv", "Insufficient privileges. Required=%s, YourPLEVEL=%s.");
         Def("cmd_invalid", "Not a valid command or format");
+        Def("tryp_invalid_level", "The %s property can't be changed.");
+        Def("tryp_lack_privilege", "You lack the privilege to change the %s property.");
+        Def("tryp_cannot_touch", "Can't touch %s object %s");
         Def("gm_object_serial", "Object not found: 0x%s");
         Def("gm_xverb_target", "Select target for %s.");
         Def("gm_xverb_applied", "Applied %s to %s.");

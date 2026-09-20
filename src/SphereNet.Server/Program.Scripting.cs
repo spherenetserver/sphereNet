@@ -546,7 +546,7 @@ public static partial class Program
         {
             case "CONNECT":
                 ok = parts[0].Equals("LDB", StringComparison.OrdinalIgnoreCase)
-                    ? db.ConnectFile(arg, _resources?.ScpBaseDir ?? AppContext.BaseDirectory, out error)
+                    ? db.ConnectFile(arg, out error)
                     : db.Connect(arg, out error);
                 break;
             case "CLOSE":

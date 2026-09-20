@@ -3366,6 +3366,12 @@ public class Item : ObjBase
 
         switch (upper)
         {
+            case "EQUIP":
+                // Source-X CItem::r_Verb CIV_EQUIP equips on the source
+                // character; the argument does not select another wearer.
+                return source.GetSourceChar() is Characters.Character equipSource &&
+                    Characters.Character.ScriptEquipItem?.Invoke(equipSource, this) == true;
+
             // CONTP x,y — reposition a CONTAINED item at (x,y) inside its
             // container (Source-X CItem IC_CONTP). A ground/equipped item is
             // a no-op like the reference. GM item-creation scripts use it to

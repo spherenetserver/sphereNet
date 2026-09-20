@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -432,67 +432,7 @@ public sealed class ClientScriptConsoleHandler
         }
 
         if (upper == "TRYSRC")
-        {
-            // Source-X compatibility: execute the provided verb line against SRC,
-            // but never fail the caller when the verb is missing.
-            string payload = args.Trim();
-            if (payload.Length == 0)
-                return true;
-
-            if (payload[0] is '.' or '/')
-                payload = payload[1..].TrimStart();
-            // Proper TRYSRC semantics:
-            //   TRYSRC <srcRef> <verb...>
-            // where <srcRef> can be UID/REF/etc. Examples from scripts:
-            //   TRYSRC <UID> DIALOGCLOSE d_spawn
-            //   TRYSRC <REF2> EFFECT 0,i_fx_fireball,10,16,0,044,4
-            // If the first token resolves to an object reference, execute
-            // the remaining command line against that object. Otherwise,
-            // keep the legacy fallback and run the whole payload as a GM
-            // command line.
-            int firstSpace = payload.IndexOf(' ');
-            if (firstSpace > 0)
-            {
-                string srcRefToken = payload[..firstSpace].Trim();
-                string rest = payload[(firstSpace + 1)..].Trim();
-                if (rest.Length > 0 && TryFindObjectByScriptRef(srcRefToken, out var srcRefObj))
-                {
-                    int cmdSpace = rest.IndexOf(' ');
-                    string subCmd = cmdSpace > 0 ? rest[..cmdSpace] : rest;
-                    string subArg = cmdSpace > 0 ? rest[(cmdSpace + 1)..].Trim() : "";
-                    if (subCmd.Length > 0)
-                    {
-                        if (srcRefObj.TrySetProperty(subCmd, subArg))
-                            return true;
-                        if (srcRefObj.TryExecuteCommand(subCmd, subArg, _client))
-                            return true;
-                        _ = TryExecuteScriptCommand(srcRefObj, subCmd, subArg, triggerArgs);
-                    }
-                    return true;
-                }
-            }
-
-            if (_commands != null)
-            {
-                _ = _commands.TryExecute(_character, payload);
-                return true;
-            }
-
-            string fallbackCmd = payload;
-            int fallbackSpace = fallbackCmd.IndexOf(' ');
-            string cmd2 = fallbackSpace > 0 ? fallbackCmd[..fallbackSpace] : fallbackCmd;
-            string arg2 = fallbackSpace > 0 ? fallbackCmd[(fallbackSpace + 1)..].Trim() : "";
-            IScriptObj srcObj = triggerArgs?.Source ?? target;
-            if (cmd2.Length > 0)
-            {
-                if (srcObj.TrySetProperty(cmd2, arg2))
-                    return true;
-                if (srcObj.TryExecuteCommand(cmd2, arg2, _client))
-                    return true;
-                _ = TryExecuteScriptCommand(srcObj, cmd2, arg2, triggerArgs);
-            }
-            return true;
-        }
+            return target.TryExecuteCommand("TRYSRC", args, _client);
 
         if (upper is "TARGETF" or "TARGETFG")
         {
@@ -781,14 +721,13 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
-        // SDIALOG = "send dialog", a Sphere alias for DIALOG used by some
-        // shards' script packs. Accept both so imported scripts don't
-        // need to be rewritten.
+        // Source-X SDIALOG opens only when this source client does not already
+        // have that dialog open; DIALOG may send it again.
         if (upper == "DIALOG" || upper == "SDIALOG")
         {
             if (_dialogDepth >= 4) return true;
             _dialogDepth++;
-            try { return HandleDialogCommand(args, target as ObjBase); } finally { _dialogDepth--; }
+            try { return HandleDialogCommand(args, target as ObjBase, onlyIfClosed: upper == "SDIALOG"); } finally { _dialogDepth--; }
         }
 
         if (upper == "GO" && target is Character goChar)
@@ -852,14 +791,7 @@ public sealed class ClientScriptConsoleHandler
             switch (sub)
             {
                 case "EQUIP":
-                    _character.Backpack ??= _world.CreateItem();
-                    _character.Backpack.BaseId = 0x0E75;
-                    _character.Backpack.ItemType = ItemType.Container;
-                    _character.Backpack.Name = "Backpack";
-                    _character.Equip(_character.Backpack, Layer.Pack);
-                    if (!_character.Backpack.TryAddItem(Targets.ScriptNewItem))
-                        _world.PlaceItemWithDecay(Targets.ScriptNewItem, _character.Position);
-                    Targets.ScriptNewItem = null;
+                    Targets.ScriptNewItem.TryExecuteCommand("EQUIP", args, _client);
                     return true;
                 case "CONT":
                 {
@@ -1330,7 +1262,7 @@ public sealed class ClientScriptConsoleHandler
                         SysMessage("LDB.CONNECT requires a filename.");
                         return true;
                     }
-                    if (!_scriptLdb.ConnectFile(fileName, _scriptDatabaseRoot, out string err))
+                    if (!_scriptLdb.ConnectFile(fileName, out string err))
                         SysMessage(ServerMessages.GetFormatted("db_connect_fail", err));
                     return true;
                 }
@@ -2210,12 +2142,12 @@ public sealed class ClientScriptConsoleHandler
         _client.BeginPendingCraft(recipe, recipe.PrimarySkill, reopenGump: false);
     }
 
-    private bool HandleDialogCommand(string args, ObjBase? subject = null)
+    private bool HandleDialogCommand(string args, ObjBase? subject = null, bool onlyIfClosed = false)
     {
         if (_character == null) return false;
 
         string raw = args.Trim();
-        string dialogId = "script_dialog";
+        string dialogId = "";
         string closeSpec = "";
         int requestedPage = 1;
 
@@ -2227,7 +2159,11 @@ public sealed class ClientScriptConsoleHandler
         }
 
         dialogId = dialogId.Trim().Trim(',', ';');
-        if (string.IsNullOrWhiteSpace(dialogId)) dialogId = "script_dialog";
+        if (string.IsNullOrWhiteSpace(dialogId)) return false;
+
+        // Guard before layout execution: repeated SDIALOG must preserve the
+        // existing subject/callback as well as avoid sending a second packet.
+        if (onlyIfClosed && IsScriptDialogOpen(dialogId)) return true;
 
         if (!string.IsNullOrWhiteSpace(closeSpec))
         {
@@ -2236,35 +2172,7 @@ public sealed class ClientScriptConsoleHandler
                 requestedPage = parsedPage;
         }
 
-        if (OpenNamedDialog(dialogId, requestedPage, subject)) return true;
-
-        string closeFn = "";
-        if (!string.IsNullOrWhiteSpace(closeSpec))
-        {
-            string[] tokens = closeSpec.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (tokens.Length > 0)
-            {
-                if (tokens[0].Equals("DIALOGCLOSE", StringComparison.OrdinalIgnoreCase))
-                    closeFn = tokens.Length > 1 ? tokens[1] : "";
-                else
-                    closeFn = tokens[0];
-            }
-        }
-
-        _pendingDialogCloseFunction = string.IsNullOrWhiteSpace(closeFn)
-            ? $"f_dialogclose_{dialogId}"
-            : closeFn.Trim().Trim(',', ';');
-        _pendingDialogArgs = dialogId;
-        string title = $"Dialog {dialogId}";
-
-        uint gumpId = (uint)Math.Abs(dialogId.GetHashCode());
-        var gump = new GumpBuilder(_character.Uid.Value, gumpId, 360, 180);
-        gump.AddResizePic(0, 0, 5054, 360, 180);
-        gump.AddText(20, 20, 0, title);
-        gump.AddText(20, 60, 0, $"[{dialogId}]");
-        gump.AddButton(140, 130, 4005, 4007, 1);
-        SendGump(gump);
-        return true;
+        return OpenNamedDialog(dialogId, requestedPage, subject);
     }
 
     private static bool TryParseScriptPacket(string args, out byte[] packet, out string error)
@@ -2854,8 +2762,9 @@ public sealed class ClientScriptConsoleHandler
 
             return _world.GetAllObjects()
                 .Where(o =>
-                    (o is Item it && itemBase.HasValue && it.BaseId == (ushort)itemBase.Value) ||
-                    (o is Character ch && charBase.HasValue && ch.BaseId == (ushort)charBase.Value))
+                    !o.IsDeleted && (
+                    (o is Item it && itemBase.HasValue && ItemDefHelper.ResolveInstanceDefIndex(it, _commands?.Resources) == itemBase.Value) ||
+                    (o is Character ch && charBase.HasValue && ch.CharDefIndex == charBase.Value)))
                 .Cast<IScriptObj>()
                 .ToList();
         }

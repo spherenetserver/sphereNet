@@ -400,7 +400,9 @@ public sealed class TriggerRunner
                 TriggerName = funcName,
                 CallDepth = callDepth,
                 MaxCallDepth = maxCallDepth,
-                LocalVars = callerLocals
+                LocalVars = callerLocals,
+                RefMap = callerScope!.RefMap,
+                FloatMap = callerScope.FloatMap
             }
             : new ScriptScope
             {

@@ -37,6 +37,10 @@ public sealed class SpellEngine
     /// poison resisted, etc.) reach only the caster, matching upstream.</summary>
     public Action<Character, string>? OnSysMessage { get; set; }
 
+    /// <summary>Notify viewers after a cast bounces a held item to its final
+    /// location. Runs for each hand even if freeing the other hand later fails.</summary>
+    public Action<Character, Item>? OnCastItemUnequipped { get; set; }
+
     /// <summary>Free one hand for a cast — the port of Source-X Spell_Unequip
     /// (CCharSpell.cpp:2827). An item that may stay on (a spellbook, a wand, or one
     /// flagged CAN_I_EQUIPONCAST) is left alone; anything else is bounced into the
@@ -59,13 +63,14 @@ public sealed class SpellEngine
         }
 
         // Kept in hand: the book you cast from, a wand, or an item the pack
-        // flagged CAN_I_EQUIPONCAST. A shield is not a hand the cast needs.
+        // flagged CAN_I_EQUIPONCAST. SPELLCHANNELING does not bypass frozen
+        // hands under CASTPARALYZED (Source-X Spell_Unequip).
         bool staysEquipped =
             held.ItemType is ItemType.Spellbook or ItemType.SpellbookNecro or
                 ItemType.SpellbookPala or ItemType.SpellbookExtra or
                 ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
                 ItemType.SpellbookArcanist or ItemType.SpellbookMystic or
-                ItemType.SpellbookMastery or ItemType.Wand or ItemType.Shield ||
+                ItemType.SpellbookMastery or ItemType.Wand ||
             HasEquipOnCast(held);
 
         if (magicFlags.HasFlag(MagicConfigFlags.CastParalyzed))
@@ -81,7 +86,7 @@ public sealed class SpellEngine
 
         if (!ItemMoveRules.CanMove(caster, held, out _))
             return false;
-        if (staysEquipped)
+        if (staysEquipped || HasSpellChanneling(held))
             return true;
 
         var pack = caster.Backpack;
@@ -99,6 +104,7 @@ public sealed class SpellEngine
             held.ContainedIn = Serial.Invalid;
             _world.PlaceItemWithDecay(held, caster.Position);
         }
+        OnCastItemUnequipped?.Invoke(caster, held);
         return true;
     }
 
@@ -107,8 +113,20 @@ public sealed class SpellEngine
     /// off.</summary>
     private static bool HasEquipOnCast(Item item)
     {
-        var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
-        return def != null && (def.Can & CanFlags.I_EquipOnCast) != 0;
+        return item.TryGetProperty("CAN", out string can) &&
+            Core.Types.ScriptNumber.TryParseToken(can, out long flags) &&
+            ((ulong)flags & (ulong)CanFlags.I_EquipOnCast) != 0;
+    }
+
+    private static bool HasSpellChanneling(Item item)
+    {
+        // Use the existing AOS property storage, with instance override before
+        // the full script definition (the graphic alone may name another def).
+        string? raw = item.TryGetTag("SPELLCHANNELING", out string? own)
+            ? own
+            : Definitions.DefinitionLoader.GetItemDef(
+                Definitions.ItemDefHelper.ResolveInstanceDefIndex(item))?.TagDefs.Get("SPELLCHANNELING");
+        return raw != null && Core.Types.ScriptNumber.TryParseToken(raw, out long value) && value != 0;
     }
 
     /// <summary>Callback fired when a spell is interrupted. Args: (Character caster, string reason).</summary>

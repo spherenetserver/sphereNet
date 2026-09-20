@@ -12,6 +12,7 @@ public sealed class ScriptScope
     // can seed values before the fire and read script writes back after.
     public Variables.VarMap LocalVars { get; init; } = new();
     public string? ReturnValue { get; set; }
+    public long NumericReturnValue { get; set; }
     public bool IsReturning { get; set; }
     public bool IsBreaking { get; set; }
     public bool IsContinuing { get; set; }
@@ -66,6 +67,12 @@ public sealed class ScriptScope
     /// FLOAT variables (FLOAT.name). Stored as strings with decimal point.
     /// </summary>
     private Dictionary<string, string>? _floats;
+
+    public Dictionary<string, string> FloatMap
+    {
+        get => _floats ??= new(StringComparer.OrdinalIgnoreCase);
+        set => _floats = value;
+    }
 
     public string GetFloat(string name) =>
         _floats != null && _floats.TryGetValue(name, out string? v) ? v : "0.0";

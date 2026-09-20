@@ -1021,6 +1021,17 @@ public sealed partial class GameClient
             _netState.IsClientPost6017));
     }
 
+    /// <summary>Source-X ItemBounce visual transition: remove the worn entity
+    /// for each viewer, then reveal its new location only to eligible viewers.</summary>
+    public void SendCastUnequipUpdate(Character wearer, Item item)
+    {
+        if (_character == null || !IsPlaying ||
+            wearer.Position.GetDistanceTo(_character.Position) > UpdateRange)
+            return;
+        _netState.Send(new PacketDeleteObject(item.Uid.Value));
+        SendItemVisualUpdate(item);
+    }
+
     /// <summary>Place a dragged item into the target character's backpack and
     /// send the client a 0x25 ContainerItem packet so it actually appears there.
     /// Without the packet the client only sees the previous 0x1D delete and

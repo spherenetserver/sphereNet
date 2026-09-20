@@ -66,6 +66,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// the TriggerRunner; null in a headless world, where the step simply does not
     /// exist. Returns true when a function with that name ran.</summary>
     public static Func<ObjBase, string, string, ITextConsole?, bool>? RunScriptFunction;
+    /// <summary>Connected console for a script source character; null for offline characters and NPCs.</summary>
+    public static Func<Characters.Character, ITextConsole?>? ResolveClientConsole;
 
     /// <summary>Broadcast a packet to nearby clients. Wired by the server host.</summary>
     public static Action<Point3D, int, PacketWriter, uint>? BroadcastNearby;
@@ -1155,6 +1157,66 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
         switch (key.ToUpperInvariant())
         {
+            case "TRY":
+            {
+                // Source-X runs the payload through r_Verb on this object and
+                // suppresses refusal (IgnoreInvalidRef), retaining the source.
+                SphereNet.Scripting.Parsing.ScriptCommandLine.Split(args, out string verb, out string verbArgs);
+                if (verb.Length > 0) ExecuteVerbLine(verb, verbArgs, source);
+                return true;
+            }
+            case "TRYP":
+            {
+                if (!ScriptNumber.TryEvaluatePrefix(args, out long rawMinimum, out int consumed)) return false;
+                int minimum = unchecked((int)rawMinimum);
+                string payload = args[consumed..].TrimStart(' ', '\t', ',');
+                if (minimum >= (int)PrivLevel.Qty)
+                {
+                    source.SysMessage(Messages.ServerMessages.GetFormatted("tryp_invalid_level", payload));
+                    return false;
+                }
+                if ((int)source.GetPrivLevel() < minimum)
+                {
+                    source.SysMessage(Messages.ServerMessages.GetFormatted("tryp_lack_privilege", payload));
+                    return false;
+                }
+                if (source.GetPrivLevel() <= PrivLevel.Counsel &&
+                    (source.GetSourceChar() is not Characters.Character actor || !Scripting.ScriptTouchAccess.CanTouch(actor, this)))
+                {
+                    source.SysMessage(Messages.ServerMessages.GetFormatted("tryp_cannot_touch", payload, GetName()));
+                    return false;
+                }
+                SphereNet.Scripting.Parsing.ScriptCommandLine.Split(payload, out string verb, out string verbArgs);
+                return verb.Length > 0 && ExecuteVerbLine(verb, verbArgs, source);
+            }
+            case "TRYSRV":
+            {
+                SphereNet.Scripting.Parsing.ScriptCommandLine.Split(args, out string verb, out string verbArgs);
+                return verb.Length > 0 && ExecuteVerbLine(verb, verbArgs, ScriptServerConsole.Instance);
+            }
+            case "TRYSRC":
+            {
+                // CObjBase::r_Verb changes pSrc but calls r_Verb on the SAME
+                // object. Only character UIDs may become a source console.
+                if (!ScriptNumber.TryEvaluatePrefix(args, out long rawUid, out int consumed))
+                    return false;
+                var newSource = ResolveWorld?.Invoke()?.FindChar(new Serial(unchecked((uint)rawUid)));
+                if (newSource == null || newSource.IsDeleted)
+                    return false;
+                string payload = args[consumed..].TrimStart(' ', '\t', ',');
+                SphereNet.Scripting.Parsing.ScriptCommandLine.Split(payload, out string verb, out string verbArgs);
+                if (verb.Length == 0) return false;
+                var console = ResolveClientConsole?.Invoke(newSource)
+                    ?? (source.GetSourceChar() == newSource ? source : new ScriptCharacterConsole(newSource));
+                return ExecuteVerbLine(verb, verbArgs, console);
+            }
+            // Source-X owns these names in CObjBase::r_Verb even without a
+            // connected source client. A refused dialog must not run a
+            // same-named script function, including through TIMERF dispatch.
+            case "DIALOG":
+            case "SDIALOG":
+            case "DIALOGCLOSE":
+                return source.TryExecuteScriptCommand(this, key, args, null);
             case "DAMAGE":
             {
                 string[] parts = SplitScriptArgs(args);
@@ -1523,9 +1585,22 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         if (owned)
             return false;   // the verb owns the name and declined; upstream stops here
+        // Client-owned native verbs (DIALOG, targeting, etc.) must also be
+        // reachable after a reference head, with this object as the subject
+        // and the original console as SRC. Match interpreter dispatch order.
+        if (source.TryExecuteScriptCommand(this, key, args, null))
+            return true;
         if (RunScriptFunction?.Invoke(this, key, args, source) == true)
             return true;
         return args.Length > 0 && TrySetProperty(key, args);
+    }
+
+    private sealed class ScriptCharacterConsole(Characters.Character character) : ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => character.PrivLevel;
+        public string GetName() => character.Name;
+        public IScriptObj? GetSourceChar() => character;
+        public void SysMessage(string text) { }
     }
 
     private bool TryMoveScriptObject(Point3D destination)

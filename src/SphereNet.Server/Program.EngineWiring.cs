@@ -240,7 +240,12 @@ public static partial class Program
             scriptInterpreter.FunctionLookup = _triggerRunner.HasFunction;
             // r_GetRef: the object layer owns TOPOBJ/CONT/LINK, so a reference head on
             // a CALL resolves through it (CScriptObj.cpp:1217).
-            scriptInterpreter.ResolveObjectRef = (obj, head) => obj switch
+            scriptInterpreter.ResolveObjectRef = (obj, head) =>
+                head.Equals("NEW", StringComparison.OrdinalIgnoreCase)
+                ? _world?.FindObject(_world.LastNewObject)
+                : head.StartsWith("UID.", StringComparison.OrdinalIgnoreCase)
+                ? (TryParseSerial(head[4..], out var referenceUid) ? _world?.FindObject(referenceUid) : null)
+                : obj switch
             {
                 // The WIDER resolver: upstream's r_GetRef answers with a CScriptObj,
                 // and a GM page is one without being a world object.
@@ -1348,6 +1353,9 @@ public static partial class Program
             };
             _saver.GetSpellEffectRecords = _spellEngine.GetPersistedEffectRecords;
             _spellEngine.TriggerDispatcher = _triggerDispatcher;
+            _spellEngine.OnCastItemUnequipped = (caster, item) =>
+                ForEachClientInRange(caster.Position, 18, 0,
+                    (_, client) => client.SendCastUnequipUpdate(caster, item));
             _spellEngine.OnPlaySound = (pos, soundId) =>
             {
                 var pkt = new PacketSound(soundId, pos.X, pos.Y, pos.Z);
@@ -3093,6 +3101,8 @@ public static partial class Program
                 onError: (ex, verb) =>
                     _log.LogWarning(ex, "Delayed TIMERF payload '{Verb}' failed", verb));
             _world.TimerFExpired = delayedCalls.Run;
+            ObjBase.ResolveClientConsole = ch => TryGetClientFor(ch, out var client) ? client : null;
+            SphereNet.Game.Scripting.ScriptTouchAccess.Configuration = _config;
             SphereNet.Game.Objects.Items.Item.ResolveShipEngine = () => _shipEngine;
             SphereNet.Game.Objects.Items.Item.ResolveWorld = () => _world;
             SphereNet.Game.Objects.ObjBase.ResolveWorld = () => _world;

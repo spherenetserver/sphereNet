@@ -83,6 +83,8 @@ public sealed class TriggerArgs : ITriggerArgs
     /// number must follow an argument separator (comma or whitespace).</summary>
     public void InitFromRaw(string? raw)
     {
+        // Source-X Init(string) resets ARGO, but retains LOCAL/FLOAT/REF pools.
+        Object1 = null;
         ArgString = raw ?? "";
         Number1 = 0;
         Number2 = 0;

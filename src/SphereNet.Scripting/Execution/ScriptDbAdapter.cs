@@ -83,23 +83,11 @@ public sealed class ScriptDbAdapter : IDisposable
         return session.Connect(providerInvariantName, connectionString, out error);
     }
 
-    /// <summary>Connect a SQLite file directly (LDB.CONNECT &lt;filename&gt; style).</summary>
+    /// <summary>Resolve LDB.CONNECT paths from the process working directory,
+    /// as Source-X CSQLite::Open does, independently of the script directory.</summary>
     public bool ConnectFile(string fileName, out string error)
     {
-        error = "";
-        string resolvedFileName = ResolveSafeDatabasePath(fileName, AppContext.BaseDirectory, out error);
-        if (resolvedFileName.Length == 0)
-            return false;
-
-        var cfg = new DbConnectionConfig
-        {
-            Name = "default",
-            Provider = "Microsoft.Data.Sqlite",
-            Database = resolvedFileName
-        };
-        var session = GetOrCreateActiveSession();
-        session.UpdateConfig(cfg);
-        return session.Connect("Microsoft.Data.Sqlite", $"Data Source={resolvedFileName};", out error);
+        return ConnectFile(fileName, Directory.GetCurrentDirectory(), out error);
     }
 
     /// <summary>Connect a SQLite file under a trusted script/save root.</summary>

@@ -328,13 +328,13 @@ public class SourceXScriptStructureRegressionTests
             commands: new CommandHandler { Resources = stack.Resources },
             triggerDispatcher: stack.Dispatcher);
 
-        Assert.True(client.TryShowScriptDialog("d_layout_runtime_probe", 0));
+        Assert.False(client.TryShowScriptDialog("d_layout_runtime_probe", 0));
         Assert.True(player.TryGetTag("LAYOUT_FUNCTION", out string? called));
         Assert.Equal("1", called);
         Assert.True(player.TryGetTag("LAYOUT_CALL_ARGS", out string? callArgs));
         Assert.Equal("source-x-args", callArgs);
         Assert.False(player.TryGetTag("AFTER_LAYOUT_RETURN", out _));
-        Assert.Single(TestHarness.GetQueuedPackets(client.NetState));
+        Assert.Empty(TestHarness.GetQueuedPackets(client.NetState));
     }
 
     [Fact]

@@ -16,13 +16,15 @@ public sealed class DialogCloseArgumentTests
     [InlineData(" 010", 16)]
     [InlineData("\t010", 16)]
     [InlineData(", (8 + 8)", 16)]
+    [InlineData(", close_id", 16)]
+    [InlineData(", close_id+0", 16)]
     public void CloseUsesSameButtonForPacketAndScript(string suffix, int button)
     {
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
         string path = Path.Combine(Path.GetTempPath(), $"dialog-close-{Guid.NewGuid():N}.scp");
         try
         {
-            File.WriteAllText(path, "[DIALOG d_close_probe]\n0,0\nDTEXT 10 10 0 Test\n[DIALOG d_close_probe BUTTON]\nON=0\nSRC.TAG.CLOSED=0\nON=16\nSRC.TAG.CLOSED=16\n");
+            File.WriteAllText(path, "[DEFNAME close_test]\nclose_id=16\n[DIALOG d_close_probe]\n0,0\nDTEXT 10 10 0 Test\n[DIALOG d_close_probe BUTTON]\nON=0\nSRC.TAG.CLOSED=0\nON=16\nSRC.TAG.CLOSED=16\n");
             stack.Resources.LoadResourceFile(path);
             var world = TestHarness.CreateWorld();
             using var logs = LoggerFactory.Create(_ => { });

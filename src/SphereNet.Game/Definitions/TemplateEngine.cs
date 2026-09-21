@@ -15,6 +15,9 @@ namespace SphereNet.Game.Definitions;
 public static class TemplateEngine
 {
     private static readonly Random _rand = Random.Shared;
+    // Deterministic integration tests can supply each outcome of an R# roll.
+    // Normal server execution always uses the shared random source.
+    internal static Func<int, int>? CreateHeaderRollForTests { get; set; }
     private const int MaxNestedResolves = 8;
 
     /// <summary>Pick one concrete ItemDef defname from a template's
@@ -167,7 +170,7 @@ public static class TemplateEngine
             if ((arg[0] == 'R' || arg[0] == 'r') && arg.Length > 1 &&
                 int.TryParse(arg.AsSpan(1), out int chance))
             {
-                if (chance > 1 && _rand.Next(chance) != 0)
+                if (chance > 1 && (CreateHeaderRollForTests?.Invoke(chance) ?? _rand.Next(chance)) != 0)
                     return false; // g_Rand.GetVal(x) != 0 → don't create
                 continue;
             }

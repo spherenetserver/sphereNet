@@ -34,6 +34,7 @@ public sealed class ResourceHolder
     // pipeline as _dialogTextCache.
     private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _dialogLayoutCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _dialogButtonCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _dialogPrebuttonCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _menuSectionCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, List<ScriptKey>> _plevelCommands = [];
     private readonly List<string> _obsceneWords = [];
@@ -1043,6 +1044,8 @@ public sealed class ResourceHolder
         if (id.Length == 0) return;
         if (argParts.Length >= 2 && argParts[1].Equals("BUTTON", StringComparison.OrdinalIgnoreCase))
             _dialogButtonCache[id] = (filePath, section);
+        else if (argParts.Length >= 2 && argParts[1].Equals("PREBUTTON", StringComparison.OrdinalIgnoreCase))
+            _dialogPrebuttonCache[id] = (filePath, section);
         else if (argParts.Length == 1)
             _dialogLayoutCache[id] = (filePath, section);
     }
@@ -1072,6 +1075,17 @@ public sealed class ResourceHolder
     public bool TryGetDialogButton(string dialogId, out ScriptSection section)
     {
         if (_dialogButtonCache.TryGetValue(dialogId, out var entry))
+        {
+            section = entry.Section;
+            return true;
+        }
+        section = null!;
+        return false;
+    }
+
+    public bool TryGetDialogPrebutton(string dialogId, out ScriptSection section)
+    {
+        if (_dialogPrebuttonCache.TryGetValue(dialogId, out var entry))
         {
             section = entry.Section;
             return true;
@@ -1178,6 +1192,7 @@ public sealed class ResourceHolder
         _dialogTextCache.Clear();
         _dialogLayoutCache.Clear();
         _dialogButtonCache.Clear();
+        _dialogPrebuttonCache.Clear();
         _menuSectionCache.Clear();
         // Force fresh disk reads for all script files.
         ScriptFile.ClearFileCache();
@@ -1260,6 +1275,7 @@ public sealed class ResourceHolder
 
         PurgeSectionCache(_dialogLayoutCache, normalized);
         PurgeSectionCache(_dialogButtonCache, normalized);
+        PurgeSectionCache(_dialogPrebuttonCache, normalized);
         PurgeSectionCache(_menuSectionCache, normalized);
     }
 

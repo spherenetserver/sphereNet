@@ -1929,7 +1929,7 @@ public sealed class PacketGumpDialog : PacketWriter
 
 /// <summary>0xB0 — Display gump (uncompressed). The pre-compression fallback Source-X
 /// sends to clients below MINCLIVER_COMPRESSDIALOG (send.cpp:3713, writeStandardControls),
-/// i.e. very old (pre-3.0) clients that do not understand the 0xDD compressed form. Same
+/// i.e. pre-5.0 clients that do not understand the 0xDD compressed form. Same
 /// content — plain-ASCII layout + a Unicode text block — just uncompressed.</summary>
 public sealed class PacketGumpDialogStandard : PacketWriter
 {

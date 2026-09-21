@@ -53,7 +53,7 @@ public sealed class ClientDialogHandler
     {
         "BUTTON", "BUTTONTILEART", "CHECKBOX", "CHECKERTRANS", "CROPPEDTEXT",
         "DCROPPEDTEXT", "DHTMLGUMP", "DORIGIN", "DTEXT", "DTEXTENTRY",
-        "DTEXTENTRYLIMITED", "GROUP", "GUMPIC", "GUMPPIC", "GUMPPICTILED",
+        "DTEXTENTRYLIMITED", "GROUP", "GUMPPIC", "GUMPPICTILED",
         "HTMLGUMP", "ITEMPROPERTY", "NOCLOSE", "NODISPOSE", "NOMOVE", "PAGE",
         "PICINPIC", "RADIO", "RESIZEPIC", "TEXT", "TEXTENTRY",
         "TEXTENTRYLIMITED", "TILEPIC", "TILEPICHUE", "TOOLTIP", "XMFHTMLGUMP",
@@ -78,6 +78,8 @@ public sealed class ClientDialogHandler
         }
 
         public string GetName() => _subject.GetName();
+
+        public bool PreferScriptFunction(string key) => !DialogRenderCommands.Contains(key);
 
         public bool TryGetProperty(string key, out string value)
         {
@@ -171,13 +173,13 @@ public sealed class ClientDialogHandler
     /// any registered native gump. Returns true when something was
     /// rendered. <paramref name="subject"/> binds the gump's CLIMODE_DIALOG
     /// pObj for property reads (used by edit / inspect).</summary>
-    public bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null)
+    public bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null, string? arguments = null)
     {
         if (string.IsNullOrWhiteSpace(dialogId))
             return false;
 
         if (TryFindDialogSections(dialogId, out _))
-            return TryShowScriptDialog(dialogId, requestedPage, subject);
+            return TryShowScriptDialog(dialogId, requestedPage, subject, arguments);
 
         if (_nativeDialogFallbacks.TryGetValue(dialogId, out var nativeOpen))
         {
@@ -209,20 +211,25 @@ public sealed class ClientDialogHandler
     {
         if (!Gumps.OpenScriptDialogs.TryGetValue(dialogId, out uint gumpId))
             return false;
-        Gumps.OpenScriptDialogs.Remove(dialogId);
         Send(new PacketCloseGump(gumpId, unchecked((uint)buttonId)));
+
+        // Before 4.0.4a the client sends its own response to the close packet.
+        uint version = _client.NetState.ClientVersionNumber;
+        if (version != 0 && version < 40_004_000) return true;
 
         // The response path owns the rest of the teardown (it removes the gump
         // from the active set and consumes the callback), so hand over rather
         // than clearing first - HandleGumpResponse rejects a gump it cannot find.
         if (_character != null && Gumps.ActiveGumps.Contains(gumpId))
         {
-            _client.HandleGumpResponse(_character.Uid.Value, gumpId, (uint)buttonId, [], []);
+            if (!Gumps.HasScript(gumpId)) Gumps.OpenScriptDialogs.Remove(dialogId);
+            _client.HandleGumpResponse(Gumps.ScriptSerial(gumpId, _character.Uid.Value), gumpId, (uint)buttonId, [], []);
             return true;
         }
 
         Gumps.Callbacks.Remove(gumpId);
         Gumps.ActiveGumps.Remove(gumpId);
+        Gumps.OpenScriptDialogs.Remove(dialogId);
         return true;
     }
 
@@ -426,7 +433,7 @@ public sealed class ClientDialogHandler
     /// that object first (Source-X CLIMODE_DIALOG pObj semantics) — needed
     /// by d_charprop1 / d_itemprop1 where the gump is bound to an inspected
     /// target instead of the GM.</summary>
-    public bool TryShowScriptDialog(string dialogId, int requestedPage, ObjBase? subject)
+    public bool TryShowScriptDialog(string dialogId, int requestedPage, ObjBase? subject, string? arguments = null)
     {
         if (_character == null || _commands?.Resources == null)
             return false;
@@ -437,24 +444,49 @@ public sealed class ClientDialogHandler
         var textLines = _commands.Resources.GetDialogTextLines(dialogId);
 
         var prevSubject = _dialogSubjectUid;
+        var parser = _triggerDispatcher?.Runner?.Interpreter.Expressions;
+        var previousResponseResolver = parser?.DialogArgResolver;
         _dialogSubjectUid = subject?.Uid ?? Serial.Invalid;
+        // A dialog opened by a button has fresh setup args. The caller's
+        // response accessor must not override ARGN or leak its input fields.
+        if (parser != null) parser.DialogArgResolver = null;
         try
         {
-            return RenderScriptDialog(dialogId, requestedPage, layoutSection, subject?.Uid ?? Serial.Invalid, textLines);
+            return RenderScriptDialog(dialogId, requestedPage, layoutSection, subject?.Uid ?? Serial.Invalid, textLines, arguments);
         }
         finally
         {
+            if (parser != null) parser.DialogArgResolver = previousResponseResolver;
             _dialogSubjectUid = prevSubject;
         }
     }
 
     private bool RenderScriptDialog(string dialogId, int requestedPage,
         SphereNet.Scripting.Parsing.ScriptSection layoutSection, Serial subjectUid,
-        List<string>? textLines = null)
+        List<string>? textLines = null, string? arguments = null)
     {
-        if (_character == null) return false;
+        if (_character == null || layoutSection.Keys.Count == 0) return false;
 
-        int openingPage = Math.Max(0, requestedPage);
+        var dialogLocals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["__ARGS"] = arguments ?? ""
+        };
+        IScriptObj subject = subjectUid.IsValid ? _world.FindObject(subjectUid) ?? _character : _character;
+        var layoutArgs = new ExecTriggerArgs(_character, requestedPage, 0, arguments ?? "")
+        {
+            Object1 = subject,
+            Object2 = _character
+        };
+        var layoutScope = new ScriptScope { TriggerName = $"DIALOG:{dialogId}", MaxLoopIterations = 500 };
+        var interpreter = _triggerDispatcher?.Runner?.Interpreter;
+        string ExpandInitialText(string text) => interpreter != null
+            ? interpreter.ExpandText(text, subject, _client, layoutArgs, layoutScope)
+            : ResolveInlineExpressions(text, dialogLocals, requestedPage);
+        // Source-X expands TEXT once, before position and layout side effects.
+        // Copy per opening: cached resource lines must remain unexpanded.
+        textLines = textLines?.Select(ExpandInitialText).ToList();
+
+        int openingPage = unchecked((ushort)requestedPage);
         // Source-X CDialogDef remaps the requested page to client page 1.
         // Apply the same permutation to both page markers and navigation buttons.
         int RemapPage(int page) => openingPage == 0 || page == 0 || page > openingPage
@@ -473,22 +505,18 @@ public sealed class ClientDialogHandler
             // resolves instead of collapsing the dialog to 0,0.
             string firstLine = layoutSection.Keys[0].RawLine.Trim();
             if (firstLine.IndexOf('<') >= 0)
-                firstLine = ResolveInlineExpressions(firstLine,
-                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), requestedPage);
-            var posParts = firstLine.Split(',', StringSplitOptions.TrimEntries);
-            if (posParts.Length >= 2 && int.TryParse(posParts[0], out int px) && int.TryParse(posParts[1], out int py))
-            {
-                dialogX = px;
-                dialogY = py;
-            }
+                firstLine = ExpandInitialText(firstLine);
+            (dialogX, dialogY) = ReadDialogPosition(firstLine);
         }
 
+        var resourceId = _commands!.Resources!.ResolveDefName(dialogId);
         var gump = new GumpBuilder(subjectUid.IsValid ? subjectUid.Value : _character.Uid.Value,
-            (uint)Math.Abs(dialogId.GetHashCode()))
+            ((uint)resourceId.Type << 24) | (uint)resourceId.Index)
         {
             ExplicitX = dialogX,
             ExplicitY = dialogY
         };
+        if (textLines != null) gump.AddScriptTexts(textLines);
         int originX = 0, originY = 0;
         int cursorX = 0, cursorY = 0;
         // Separate "row tracker" for the `*N` operator. Sphere treats *N as a
@@ -501,18 +529,12 @@ public sealed class ClientDialogHandler
         // drop the entire layout and produce an almost-empty 0xDD packet.
         bool currentPageVisible = true;
 
-        // Per-call local variable scope for LOCAL.x= assignments and
-        // <local.x> / <dlocal.x> references — used by Sphere dialog
-        // scripts that loop over a list (FOR) and emit a row per
-        // iteration. Resolvers below look here first before delegating.
-        var dialogLocals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
         // Expand FOR / WHILE / IF blocks into a flat key sequence so the
         // render switch below can remain a linear walk. Each unrolled
         // copy of a loop body runs with the iterator's value substituted
         // into <local._for> / <local.n> / etc. before render commands see
         // the args — matching Sphere's runtime-expansion behaviour.
-        var expandedKeys = ExecuteDialogLayout(layoutSection.Keys, dialogLocals, requestedPage, dialogId, out bool cancelled);
+        var expandedKeys = ExecuteDialogLayout(layoutSection.Keys, dialogLocals, requestedPage, subject, layoutArgs, layoutScope, out bool cancelled);
         if (cancelled) return false;
 
         // Diagnostic: count of commands per page post-expansion. If page 4
@@ -562,7 +584,7 @@ public sealed class ClientDialogHandler
                     // PAGE — the DORIGIN baseline persists across pages
                     // so that PAGE 1 content can use +N offsets relative
                     // to the last DORIGIN set on PAGE 0.
-                    int pageNo = ParseIntToken(args);
+                    int pageNo = unchecked((int)CreateDialogNumberParser().EvaluateSingle(args.TrimStart('.')));
                     if (pageNo > 0)
                         gump.SetPage(RemapPage(pageNo));
                     currentPageVisible = true;
@@ -570,27 +592,24 @@ public sealed class ClientDialogHandler
                 }
                 case "DORIGIN":
                 {
-                    var parts = SplitTokens(args, 2);
-                    if (parts.Length >= 2)
-                    {
-                        // Sphere semantics: DORIGIN seeds the coordinate
-                        // baseline for subsequent +/* resolution; commands
-                        // that follow are already expressed in dialog-space.
-                        // Adding originX/originY again at emit-time causes a
-                        // double offset (notably d_spawn's right-side groups
-                        // jump far to the right). Keep the runtime origin at
-                        // zero and move the baseline cursors instead.
-                        originX = 0;
-                        originY = 0;
-                        cursorX = ResolveDialogOrigin(parts[0], rowCursorX);
-                        cursorY = ResolveDialogOrigin(parts[1], rowCursorY);
-                        rowCursorX = cursorX;
-                        rowCursorY = cursorY;
-                    }
+                    // Controls already emit dialog-space coordinates; update
+                    // their baseline without adding an extra offset at emit time.
+                    originX = originY = 0;
+                    ReadDialogOrigin(args, ref rowCursorX, ref rowCursorY);
+                    cursorX = rowCursorX;
+                    cursorY = rowCursorY;
                     break;
                 }
+                case "TEXT":
+                case "HTMLGUMP":
+                case "CROPPEDTEXT":
+                case "TEXTENTRY":
+                case "TEXTENTRYLIMITED":
+                case "GROUP":
+                case "ITEMPROPERTY":
+                    gump.AddScriptControl(cmd, args);
+                    break;
                 case "RESIZE":
-                case "RESIZEPIC":
                 {
                     if (!currentPageVisible) break;
                     var parts = SplitTokens(args, 5);
@@ -610,468 +629,185 @@ public sealed class ClientDialogHandler
                     }
                     break;
                 }
-                case "GUMPIC":
+                case "RESIZEPIC":
+                {
+                    var p = ReadControlArguments(args, 5, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddResizePic(p[0], p[1], p[2], p[3], p[4]);
+                    break;
+                }
                 case "GUMPPIC":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 4);
-                    if (parts.Length >= 3)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int gumpId = ParseIntToken(parts[2]);
-                        int hue = parts.Length >= 4 ? ParseIntToken(parts[3]) : 0;
-                        gump.AddGumpPic(x, y, gumpId, hue);
-                    }
+                    var p = ReadControlArguments(args, 3, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string hue);
+                    gump.AddGumpPic(p[0], p[1], p[2], hue);
                     break;
                 }
                 case "TOOLTIP":
                 {
                     if (!currentPageVisible) break;
-                    // TOOLTIP <cliloc> [@<args>] — Source-X forwards the trailing
-                    // tilde-arg string so parameterized clilocs (e.g. "~1_val~")
-                    // render with their argument.
-                    string targ = args.Trim();
-                    int sp = targ.IndexOfAny([' ', '\t']);
-                    string clilocStr = sp < 0 ? targ : targ[..sp];
-                    string ttArgs = sp < 0 ? "" : targ[(sp + 1)..].Trim();
-                    if (clilocStr.Length > 0)
-                        gump.AddTooltip(ParseIntToken(clilocStr), ttArgs);
+                    if (TryReadTooltip(args, out uint cliloc, out string tooltipArguments))
+                        gump.AddTooltip(cliloc, tooltipArguments);
                     break;
                 }
                 case "GUMPPICTILED":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 5);
-                    if (parts.Length >= 5)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddGumpPicTiled(x, y, ParseIntToken(parts[2]), ParseIntToken(parts[3]), ParseIntToken(parts[4]));
-                    }
+                    var p = ReadControlArguments(args, 5, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddGumpPicTiled(p[0], p[1], p[2], p[3], p[4]);
                     break;
                 }
                 case "BUTTON":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 7);
+                    var parts = ReadButtonArguments(args, 7, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY);
                     if (parts.Length >= 7)
                     {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
+                        int x = parts[0] + originX;
+                        int y = parts[1] + originY;
                         gump.AddButton(
                             x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[6]),
-                            ParseIntToken(parts[4]),
-                            RemapPage(ParseIntToken(parts[5])));
+                            parts[2], parts[3], parts[6], parts[4], RemapPage(parts[5]));
                     }
                     break;
                 }
                 case "BUTTONTILEART":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 11);
+                    var parts = ReadButtonArguments(args, 11, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY);
                     if (parts.Length >= 11)
                     {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
+                        int x = parts[0] + originX;
+                        int y = parts[1] + originY;
                         gump.AddButtonTileArt(
                             x, y,
-                            ParseIntToken(parts[2]), ParseIntToken(parts[3]),
-                            ParseIntToken(parts[6]), ParseIntToken(parts[4]), RemapPage(ParseIntToken(parts[5])),
-                            ParseIntToken(parts[7]), ParseIntToken(parts[8]),
-                            ParseIntToken(parts[9]), ParseIntToken(parts[10]));
+                            parts[2], parts[3], parts[6], parts[4], RemapPage(parts[5]),
+                            parts[7], parts[8], parts[9], parts[10]);
                     }
                     break;
                 }
                 case "DHTMLGUMP":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 6, keepRemainder: true);
-                    if (parts.Length >= 7)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        // ExecuteDialogLayout already expanded this text. Re-parsing
-                        // would consume emitted HTML such as <br> and <basefont>.
-                        string html = parts[6];
-                        gump.AddHtmlGump(
-                            x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            html,
-                            ParseIntToken(parts[4]) != 0,
-                            ParseIntToken(parts[5]) != 0);
-                    }
-                    break;
-                }
-                case "HTMLGUMP":
-                {
-                    if (!currentPageVisible) break;
-                    // HTMLGUMP x y w h textIndex hasBackground hasScrollbar
-                    var parts = SplitTokens(args, 7);
-                    if (parts.Length >= 7)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int idx = ParseIntToken(parts[4]);
-                        string html = "";
-                        if (textLines != null && idx >= 0 && idx < textLines.Count)
-                            html = ResolveDialogHtml(textLines[idx], _character);
-                        gump.AddHtmlGump(
-                            x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            html,
-                            ParseIntToken(parts[5]) != 0,
-                            ParseIntToken(parts[6]) != 0);
-                    }
+                    var p = ReadControlArguments(args, 6, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string html);
+                    // Layout already expanded the text; preserve emitted HTML.
+                    gump.AddHtmlGump(p[0], p[1], p[2], p[3], html, p[4], p[5]);
                     break;
                 }
                 case "DCROPPEDTEXT":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 5, keepRemainder: true);
-                    if (parts.Length >= 6)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddCroppedText(
-                            x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]),
-                            parts[5]);
-                    }
-                    break;
-                }
-                case "CROPPEDTEXT":
-                {
-                    if (!currentPageVisible) break;
-                    // CROPPEDTEXT x y w h hue textIndex
-                    var parts = SplitTokens(args, 6);
-                    if (parts.Length >= 6)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int idx = ParseIntToken(parts[5]);
-                        string txt = "";
-                        if (textLines != null && idx >= 0 && idx < textLines.Count)
-                            txt = ResolveDialogHtml(textLines[idx], _character);
-                        gump.AddCroppedText(
-                            x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]),
-                            txt);
-                    }
+                    var p = ReadControlArguments(args, 5, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string text);
+                    if (text.StartsWith('.')) text = text[1..];
+                    gump.AddCroppedText(p[0], p[1], p[2], p[3], p[4], text);
                     break;
                 }
                 case "DTEXT":
                 {
                     if (!currentPageVisible) break;
-                    // DTEXT x y hue text...
-                    var parts = SplitTokens(args, 3, keepRemainder: true);
-                    if (parts.Length >= 4)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddText(x, y, ParseIntToken(parts[2]),
-                            parts[3]);
-                    }
-                    break;
-                }
-                case "TEXT":
-                {
-                    if (!currentPageVisible) break;
-                    // TEXT x y hue textIndex — index into [dialog NAME text] section
-                    var parts = SplitTokens(args, 4);
-                    if (parts.Length >= 4)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int hue = ParseIntToken(parts[2]);
-                        int idx = ParseIntToken(parts[3]);
-                        string txt = "";
-                        if (textLines != null && idx >= 0 && idx < textLines.Count)
-                            txt = ResolveDialogHtml(textLines[idx], _character);
-                        gump.AddText(x, y, hue, txt);
-                    }
+                    var p = ReadControlArguments(args, 3, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string text);
+                    if (text.StartsWith('.')) text = text[1..];
+                    gump.AddText(p[0], p[1], p[2], text);
                     break;
                 }
                 case "CHECKERTRANS":
                 {
                     if (!currentPageVisible) break;
-                    // CHECKERTRANS x y w h
-                    var parts = SplitTokens(args, 4);
-                    if (parts.Length >= 4)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddCheckerTrans(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]));
-                    }
+                    var p = ReadControlArguments(args, 4, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddCheckerTrans(p[0], p[1], p[2], p[3]);
                     break;
                 }
                 case "CHECKBOX":
                 {
                     if (!currentPageVisible) break;
-                    // CHECKBOX x y uncheckedGumpId checkedGumpId initialState switchId
-                    var parts = SplitTokens(args, 6);
-                    if (parts.Length >= 6)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddCheckbox(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]) != 0,
-                            ParseIntToken(parts[5]));
-                    }
+                    var p = ReadControlArguments(args, 6, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddCheckbox(p[0], p[1], p[2], p[3], p[4], p[5]);
                     break;
                 }
                 case "RADIO":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 6);
-                    if (parts.Length >= 6)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddRadio(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]) != 0,
-                            ParseIntToken(parts[5]));
-                    }
+                    var p = ReadControlArguments(args, 6, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddRadio(p[0], p[1], p[2], p[3], p[4], p[5]);
                     break;
                 }
                 case "DTEXTENTRY":
                 {
                     if (!currentPageVisible) break;
-                    // DTEXTENTRY x y w h hue entryId initialText...
-                    var parts = SplitTokens(args, 6, keepRemainder: true);
-                    if (parts.Length >= 7)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddTextEntry(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]),
-                            parts[6]);
-                    }
-                    break;
-                }
-                case "TEXTENTRY":
-                {
-                    if (!currentPageVisible) break;
-                    // TEXTENTRY x y w h hue entryId textIndex
-                    var parts = SplitTokens(args, 7);
-                    if (parts.Length >= 7)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int idx = ParseIntToken(parts[6]);
-                        string txt = "";
-                        if (textLines != null && idx >= 0 && idx < textLines.Count)
-                            txt = ResolveDialogHtml(textLines[idx], _character);
-                        gump.AddTextEntry(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]),
-                            txt);
-                    }
+                    var p = ReadControlArguments(args, 6, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string text);
+                    gump.AddTextEntry(p[0], p[1], p[2], p[3], p[4], p[5], text);
                     break;
                 }
                 case "DTEXTENTRYLIMITED":
                 {
                     if (!currentPageVisible) break;
-                    // DTEXTENTRYLIMITED x y w h hue entryId maxChars initialText...
-                    var parts = SplitTokens(args, 7, keepRemainder: true);
-                    if (parts.Length >= 8)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int maxLen = ParseIntToken(parts[6]);
-                        gump.AddTextEntryLimited(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]),
-                            parts[7],
-                            maxLen);
-                    }
-                    break;
-                }
-                case "TEXTENTRYLIMITED":
-                {
-                    if (!currentPageVisible) break;
-                    // TEXTENTRYLIMITED x y w h hue entryId textIndex maxChars
-                    var parts = SplitTokens(args, 8);
-                    if (parts.Length >= 8)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        int idx = ParseIntToken(parts[6]);
-                        int maxLen = ParseIntToken(parts[7]);
-                        string txt = "";
-                        if (textLines != null && idx >= 0 && idx < textLines.Count)
-                            txt = ResolveDialogHtml(textLines[idx], _character);
-                        gump.AddTextEntryLimited(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]),
-                            txt,
-                            maxLen);
-                    }
+                    var p = ReadControlArguments(args, 7, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string text);
+                    gump.AddScriptTextEntryLimited(p[0], p[1], p[2], p[3], p[4], p[5], text, p[6]);
                     break;
                 }
                 case "TILEPIC":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 3);
-                    if (parts.Length >= 3)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddTilePic(x, y, ParseIntToken(parts[2]));
-                    }
+                    var p = ReadControlArguments(args, 3, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddTilePic(p[0], p[1], p[2]);
                     break;
                 }
                 case "TILEPICHUE":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 4);
-                    if (parts.Length >= 4)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddTilePicHue(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]));
-                    }
-                    break;
-                }
-                case "GROUP":
-                {
-                    int g = ParseIntToken(args);
-                    gump.AddGroup(g);
+                    var p = ReadControlArguments(args, 3, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string hue);
+                    gump.AddTilePicHue(p[0], p[1], p[2], hue);
                     break;
                 }
                 case "XMFHTMLGUMP":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 7);
-                    if (parts.Length >= 7)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddXmfHtmlGump(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            (uint)ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]) != 0,
-                            ParseIntToken(parts[6]) != 0);
-                    }
+                    var p = ReadControlArguments(args, 7, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddXmfHtmlGump(p[0], p[1], p[2], p[3], p[4], p[5], p[6]);
                     break;
                 }
                 case "XMFHTMLGUMPCOLOR":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 8);
-                    if (parts.Length >= 8)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddXmfHtmlGumpColor(x, y,
-                            ParseIntToken(parts[2]),
-                            ParseIntToken(parts[3]),
-                            (uint)ParseIntToken(parts[4]),
-                            ParseIntToken(parts[5]) != 0,
-                            ParseIntToken(parts[6]) != 0,
-                            ParseIntToken(parts[7]));
-                    }
+                    var p = ReadControlArguments(args, 7, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string color, preserveRemainder: true);
+                    gump.AddXmfHtmlGumpColor(p[0], p[1], p[2], p[3], p[4], p[5], p[6], color);
                     break;
                 }
                 case "XMFHTMLTOK":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 8, keepRemainder: true);
-                    if (parts.Length >= 9)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddXmfHtmlTok(x, y,
-                            ParseIntToken(parts[2]), ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]) != 0, ParseIntToken(parts[5]) != 0,
-                            ParseIntToken(parts[6]), (uint)ParseIntToken(parts[7]), parts[8]);
-                    }
-                    break;
-                }
-                case "ITEMPROPERTY":
-                {
-                    if (currentPageVisible)
-                        gump.AddItemProperty((uint)ParseIntToken(args));
+                    var p = ReadControlArguments(args, 8, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out string textArguments);
+                    gump.AddXmfHtmlTok(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], textArguments);
                     break;
                 }
                 case "PICINPIC":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 7);
-                    if (parts.Length >= 7)
-                    {
-                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
-                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
-                        gump.AddPicInPic(x, y, ParseIntToken(parts[2]), ParseIntToken(parts[3]),
-                            ParseIntToken(parts[4]), ParseIntToken(parts[5]), ParseIntToken(parts[6]));
-                    }
+                    var p = ReadControlArguments(args, 7, ref cursorX, ref cursorY, ref rowCursorX, ref rowCursorY, out _);
+                    gump.AddPicInPic(p[0], p[1], p[2], p[3], p[4], p[5], p[6]);
                     break;
                 }
             }
         }
 
-        Gumps.OpenScriptDialogs[dialogId] = gump.GumpId;
-        SendGump(gump, (buttonId, switches, textEntries) =>
+        Gumps.RegisterScript(dialogId, gump.GumpId, gump.Serial, (buttonId, switches, textEntries) =>
         {
             if (_character == null)
                 return;
-            // The client closed the gump to answer it — only clear tracking
-            // if a page re-open below didn't already re-register it.
-            if (Gumps.OpenScriptDialogs.TryGetValue(dialogId, out uint trackedId) && trackedId == gump.GumpId)
-                Gumps.OpenScriptDialogs.Remove(dialogId);
             var prevSubject = _dialogSubjectUid;
             _dialogSubjectUid = subjectUid;
             try
             {
-            // Try the script's [Dialog d_xxx Button] handler first. If a matching
-            // ON=buttonId block exists, its body runs and we're done. Otherwise
-            // fall back to page navigation behaviour so the old in-dialog page
-            // buttons still work. Button 0 = close/escape — still needs to run
-            // the ON=0 handler (e.g. ClearCTags).
-            if (TryRunScriptDialogButton(dialogId, (int)buttonId, switches, textEntries))
-                return;
-
-            if (buttonId == 0)
-                return;
-
-            if (buttonId is >= 1 and <= 5000)
-            {
-                ObjBase? subject = subjectUid.IsValid ? _world.FindObject(subjectUid) : null;
-                TryShowScriptDialog(dialogId, (int)buttonId, subject);
-            }
+                // Source-X ignores unmatched responses. Page buttons are handled
+                // by the client; only the script may explicitly reopen a dialog.
+                TryRunScriptDialogButton(dialogId, (int)buttonId, switches, textEntries);
             }
             finally
             {
                 _dialogSubjectUid = prevSubject;
             }
         });
+
+        SendGump(gump);
 
         return true;
     }
@@ -1092,34 +828,37 @@ public sealed class ClientDialogHandler
         // Build a lookup for Argtxt[N] / Argchk[N].
         var textById = new Dictionary<ushort, string>();
         foreach (var te in textEntries)
-            textById[te.Id] = te.Text;
+            textById.TryAdd(te.Id, te.Text);
         var switchSet = new HashSet<uint>(switches);
+        var indexParser = new ExpressionParser
+        {
+            VariableResolver = name => _commands.Resources.TryResolveDefNameValue(name, out long number)
+                ? number.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : _commands.Resources.TryGetDefValue(name, out string value) ? value : null
+        };
 
         string? Resolve(string varExpr)
         {
             string upper = varExpr.ToUpperInvariant();
-            if (upper == "ARGN") return buttonId.ToString();
-            if (upper == "ARGV") return buttonId.ToString();
-            // ARGCHK (no brackets) — 1 if any switch is flipped, 0 else.
-            // ARGCHKID — the ID of the first selected switch (0 if none).
-            // Sphere dialogs rely on these two to gate "OK" handlers:
-            //   elseif !(<argchk>) src.sysmessage You did not select …
-            //   local.n=<eval <argchkid>-1>
-            if (upper == "ARGCHK") return switchSet.Count > 0 ? "1" : "0";
-            if (upper == "ARGCHKID")
+            if (upper.StartsWith("ARGCHK", StringComparison.Ordinal))
             {
-                uint first = 0;
-                foreach (var s in switchSet) { if (first == 0 || s < first) first = s; }
-                return first.ToString();
+                string operand = upper[6..].TrimStart('.');
+                if (operand.Length == 0) return switches.Length.ToString();
+                if (operand.StartsWith("ID", StringComparison.Ordinal))
+                    return switches.Length > 0 && switches[0] != 0 ? switches[0].ToString() : "-1";
+                uint id = unchecked((uint)indexParser.EvaluateSingle(operand));
+                return switchSet.Contains(id) ? "1" : "0";
             }
-
-            if (TryParseIndexedAccessor(upper, "ARGTXT", out int txtIdx))
-                return textById.TryGetValue((ushort)txtIdx, out var txt) ? txt : "";
-            if (TryParseIndexedAccessor(upper, "ARGCHK", out int chkIdx))
-                return switchSet.Contains((uint)chkIdx) ? "1" : "0";
-            // ARGV[N] falls through to the interpreter's default handling
-            // so the updated args.ArgString (from a script-side "args=…"
-            // assignment) is tokenised, not the button id.
+            if (upper.StartsWith("ARGTXT", StringComparison.Ordinal))
+            {
+                string operand = upper[6..].TrimStart('.');
+                if (operand.Length == 0) return textEntries.Length.ToString();
+                uint id = unchecked((uint)indexParser.EvaluateSingle(operand));
+                return id <= ushort.MaxValue && textById.TryGetValue((ushort)id, out var text) ? text : "";
+            }
+            // ARGN/ARGS/ARGV use the mutable trigger args, including writes
+            // made by PREBUTTON and called functions. Only input fields above
+            // belong to the original client response.
             return null;
         }
 
@@ -1138,14 +877,15 @@ public sealed class ClientDialogHandler
             if (_dialogSubjectUid.IsValid)
             {
                 var subj = _world.FindObject(_dialogSubjectUid);
-                if (subj != null)
-                    buttonTarget = subj;
+                if (subj == null || subj.IsDeleted)
+                    return false;
+                buttonTarget = subj;
             }
 
             var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(_character)
             {
-                Number1 = buttonId,
-                ArgString = buttonId.ToString(),
+                Number1 = unchecked((uint)buttonId),
+                DialogResponseResolver = Resolve,
             };
 
             var posBefore = _character.Position;
@@ -1153,8 +893,9 @@ public sealed class ClientDialogHandler
             ushort hueBefore = _character.Hue.Value;
             var flagsBefore = _character.StatFlags;
 
+            _commands.Resources.TryGetDialogPrebutton(dialogId, out var prebuttonSection);
             bool ran = _triggerDispatcher.Runner.TryRunDialogButton(
-                buttonSection, buttonId, buttonTarget, _client, trigArgs);
+                buttonSection, buttonId, buttonTarget, _client, trigArgs, prebuttonSection);
             if (ran && _character != null)
             {
                 bool moved = !_character.Position.Equals(posBefore);
@@ -1187,24 +928,6 @@ public sealed class ClientDialogHandler
         }
     }
 
-    private static bool TryParseIndexedAccessor(string upperVar, string prefix, out int index)
-    {
-        index = 0;
-        if (!upperVar.StartsWith(prefix + "[", StringComparison.Ordinal)) return false;
-        int close = upperVar.IndexOf(']');
-        if (close <= prefix.Length + 1) return false;
-        string num = upperVar.Substring(prefix.Length + 1, close - prefix.Length - 1);
-        // A Sphere number, not a plain decimal. The index is usually written as a
-        // literal, but a loop computes it - <ARGCHK[<LOCAL.i>]> - and the inner bracket
-        // is resolved before this sees it, so whatever that produced arrives here. A
-        // decimal-only read turned a hex result into switch zero without a word.
-        if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(num, out long parsed) ||
-            parsed is < 0 or > int.MaxValue)
-            return false;
-        index = (int)parsed;
-        return true;
-    }
-
     /// <summary>Pre-expand FOR / WHILE / IF / LOCAL blocks in a dialog's
     /// key sequence. Dialog scripts mix render verbs (BUTTON, DTEXT, …)
     /// with control-flow verbs Sphere's interpreter otherwise handles at
@@ -1226,38 +949,18 @@ public sealed class ClientDialogHandler
         IReadOnlyList<ScriptKey> input,
         Dictionary<string, string> fallbackLocals,
         int dialogArgN1,
-        string dialogId, out bool cancelled)
+        IScriptObj subject, ExecTriggerArgs triggerArgs, ScriptScope scope, out bool cancelled)
     {
+        // GumpSetup consumes the first raw line as position, even when it
+        // resembles a command or contains just one coordinate.
+        IReadOnlyList<ScriptKey> executable = input.Skip(1).ToArray();
         var interpreter = _triggerDispatcher?.Runner?.Interpreter;
         if (interpreter == null || _character == null)
-            return ExpandDialogScriptKeys(input, fallbackLocals, dialogArgN1, out cancelled);
+            return ExpandDialogScriptKeys(executable, fallbackLocals, dialogArgN1, out cancelled);
 
         var output = new List<ScriptKey>(input.Count);
-        IScriptObj subject = _dialogSubjectUid.IsValid
-            ? _world.FindObject(_dialogSubjectUid) ?? _character
-            : _character;
         var renderTarget = new DialogRenderTarget(subject, output);
-        var triggerArgs = new ExecTriggerArgs(_character, dialogArgN1, 0, dialogArgN1.ToString())
-        {
-            Object1 = subject,
-            Object2 = _character
-        };
-        var scope = new ScriptScope
-        {
-            TriggerName = $"DIALOG:{dialogId}",
-            MaxLoopIterations = 500
-        };
 
-        int start = 0;
-        if (input.Count > 0)
-        {
-            string first = input[0].Key.Trim();
-            var position = first.Split(',', StringSplitOptions.TrimEntries);
-            if (position.Length >= 2 && int.TryParse(position[0], out _) && int.TryParse(position[1], out _))
-                start = 1;
-        }
-
-        IReadOnlyList<ScriptKey> executable = start == 0 ? input : input.Skip(start).ToArray();
         interpreter.Execute(executable, renderTarget, _client, triggerArgs, scope);
         // Source-X suppresses a gump only for the exact RETURN 1 value.
         cancelled = scope.IsReturning && scope.NumericReturnValue == 1;
@@ -1999,11 +1702,27 @@ public sealed class ClientDialogHandler
         return ParseIntToken(token);
     }
 
-    private static int ResolveDialogOrigin(string token, int origin)
+    private void ReadDialogOrigin(string text, ref int x, ref int y)
     {
-        token = token.Trim();
-        if (token == "-") return origin;
-        return token.StartsWith('*') ? origin + ParseIntToken(token[1..]) : ParseIntToken(token);
+        var parser = CreateDialogNumberParser();
+        int position = 0;
+        int ReadAxis(int current)
+        {
+            while (position < text.Length && (char.IsWhiteSpace(text[position]) || text[position] is '.' or ',')) position++;
+            if (position < text.Length && text[position] == '-' &&
+                (position + 1 == text.Length || char.IsWhiteSpace(text[position + 1])))
+            {
+                position++;
+                return current;
+            }
+            bool advance = position < text.Length && text[position] == '*';
+            if (advance) position++;
+            int value = unchecked((int)parser.EvaluateSingle(text.AsSpan(position), out int consumed));
+            position += consumed;
+            return advance ? current + value : value;
+        }
+        x = ReadAxis(x);
+        y = ReadAxis(y);
     }
 
     private static int ResolveDialogCoord(string token, ref int cursor)
@@ -2022,6 +1741,169 @@ public sealed class ClientDialogHandler
         if (s.Length >= 2 && s[0] == '"' && s[^1] == '"')
             return s[1..^1];
         return s;
+    }
+
+    private static bool TryReadTooltip(string text, out uint cliloc, out string arguments)
+    {
+        cliloc = 0;
+        arguments = "";
+        text = text.Trim();
+        int depth = 0;
+        bool quoted = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (c == '"') quoted = !quoted;
+            if (quoted) continue;
+            if (c is '(' or '[' or '{') depth++;
+            else if (c is ')' or ']' or '}') depth--;
+            else if (depth == 0 && (char.IsWhiteSpace(c) || c is ',' or '='))
+            {
+                int next = i + 1;
+                if (char.IsWhiteSpace(c))
+                {
+                    while (next < text.Length && char.IsWhiteSpace(text[next])) next++;
+                    if (next < text.Length && text[next] is ',' or '=') next++;
+                }
+                arguments = text[next..].Trim();
+                return TryReadTooltipNumber(text.AsSpan(0, i), out cliloc);
+            }
+        }
+        // CDialogDef requires two Str_ParseCmds arguments, even if the
+        // second is explicitly empty after a separator.
+        return false;
+    }
+
+    private static bool TryReadTooltipNumber(ReadOnlySpan<char> text, out uint value)
+    {
+        // Str_ToU/cstr_to_num uses an unsigned accumulator, auto-detected
+        // Sphere hex and prefix conversion (not the expression evaluator).
+        value = 0;
+        if (text.IsEmpty) return false;
+        static int Digit(char c) => c is >= '0' and <= '9' ? c - '0'
+            : c is >= 'a' and <= 'f' ? c - 'a' + 10
+            : c is >= 'A' and <= 'F' ? c - 'A' + 10 : -1;
+        bool hex = text.Length > 1 && text[0] == '0' && Digit(text[1]) >= 0;
+        int position = hex ? 1 : 0;
+        int digits = 0;
+        // The reference's decimal and hex fast paths fall through to the
+        // following conversion stages; preserve that prefix behavior.
+        for (int stage = hex ? 1 : 0; stage < 3; stage++)
+        {
+            int radix = stage == 1 || hex ? 16 : 10;
+            if (stage == 1)
+                while (position < text.Length && text[position] == '0') position++;
+            while (position < text.Length)
+            {
+                char c = text[position];
+                if (stage == 0 && c == '.') { position++; continue; }
+                int digit = Digit(c);
+                if (digit < 0) break;
+                if (digit >= radix)
+                {
+                    if (stage == 2) return false;
+                    break;
+                }
+                if (value > (uint.MaxValue - (uint)digit) / (uint)radix) return false;
+                value = value * (uint)radix + (uint)digit;
+                position++;
+                digits++;
+            }
+        }
+        return digits > 0;
+    }
+
+    private ExpressionParser CreateDialogNumberParser()
+        => new ExpressionParser
+        {
+            VariableResolver = name =>
+            {
+                var resources = _commands?.Resources;
+                if (resources == null) return null;
+                if (resources.TryResolveDefNameValue(name, out long number))
+                    return number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return resources.TryGetDefValue(name, out string value) ? value : null;
+            }
+        };
+
+    private int[] ReadButtonArguments(string text, int count,
+        ref int cursorX, ref int cursorY, ref int originX, ref int originY)
+        => ReadControlArguments(text, count, ref cursorX, ref cursorY, ref originX, ref originY, out _);
+
+    private int[] ReadControlArguments(string text, int count,
+        ref int cursorX, ref int cursorY, ref int originX, ref int originY, out string remainder, bool preserveRemainder = false)
+    {
+        var parser = CreateDialogNumberParser();
+        var values = new int[count];
+        int position = 0;
+        for (int i = 0; i < count; i++)
+        {
+            // Retain the port's comma-separated form as well as Source-X's
+            // whitespace/dot separators. Read one operand, not one word.
+            while (position < text.Length && (char.IsWhiteSpace(text[position]) || text[position] is '.' or ','))
+                position++;
+            char relative = '\0';
+            if (i < 2 && position < text.Length && text[position] is '+' or '-' or '*')
+            {
+                relative = text[position++];
+                if (relative == '-' && position < text.Length && char.IsWhiteSpace(text[position]))
+                {
+                    values[i] = i == 0 ? originX : originY;
+                    continue;
+                }
+            }
+            int value = unchecked((int)parser.EvaluateSingle(text.AsSpan(position), out int consumed));
+            position += consumed;
+            int origin = i == 0 ? originX : originY;
+            values[i] = relative switch
+            {
+                '+' or '*' => origin + value,
+                '-' => origin - value,
+                _ => value
+            };
+            if (relative == '*')
+            {
+                if (i == 0) cursorX = originX = values[i];
+                else cursorY = originY = values[i];
+            }
+        }
+        if (!preserveRemainder)
+        {
+            while (position < text.Length && text[position] == '.') position++;
+            while (position < text.Length && (char.IsWhiteSpace(text[position]) || text[position] == ',')) position++;
+        }
+        remainder = text[position..];
+        return values;
+    }
+
+    private (int X, int Y) ReadDialogPosition(string line)
+    {
+        var parser = CreateDialogNumberParser();
+        // Source-X Str_ParseCmds uses =, comma, space and tab outside
+        // grouped expressions. An omitted coordinate evaluates to zero.
+        line = line.Trim();
+        int depth = 0;
+        bool quoted = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"') quoted = !quoted;
+            if (quoted) continue;
+            if (c is '(' or '[' or '{') depth++;
+            else if (c is ')' or ']' or '}') depth--;
+            else if (depth == 0 && (c is ',' or '=' || char.IsWhiteSpace(c)))
+            {
+                int next = i + 1;
+                if (char.IsWhiteSpace(c))
+                {
+                    while (next < line.Length && char.IsWhiteSpace(line[next])) next++;
+                    if (next < line.Length && line[next] is ',' or '=') next++;
+                }
+                return (unchecked((int)parser.Evaluate(line.AsSpan(0, i))),
+                    unchecked((int)parser.Evaluate(line.AsSpan(next))));
+            }
+        }
+        return (unchecked((int)parser.Evaluate(line)), 0);
     }
 
     private static int ParseIntToken(string token)

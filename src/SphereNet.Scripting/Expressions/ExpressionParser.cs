@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 
 namespace SphereNet.Scripting.Expressions;
 
@@ -147,6 +147,23 @@ public sealed class ExpressionParser
         int pos = 0;
         string text = expr.ToString();
         return ParseExpression(text, ref pos);
+    }
+
+    /// <summary>Read one Source-X GetSingle operand. Grouped expressions are
+    /// evaluated fully; an ungrouped trailing operator belongs to the caller.</summary>
+    public long EvaluateSingle(ReadOnlySpan<char> expr)
+        => EvaluateSingle(expr, out _);
+
+    /// <summary>Read one operand and report the characters consumed, allowing
+    /// sequential GetSingle-style callers to retain the remaining arguments.</summary>
+    public long EvaluateSingle(ReadOnlySpan<char> expr, out int consumed)
+    {
+        consumed = 0;
+        if (expr.IsEmpty || expr.Length > MaxExpressionLength) return 0;
+        int pos = 0;
+        long value = ParseUnary(expr.ToString(), ref pos);
+        consumed = pos;
+        return value;
     }
 
     /// <summary>Evaluate <paramref name="expr"/> as a number, reporting whether it was
@@ -882,12 +899,10 @@ public sealed class ExpressionParser
         {
             if (varExpr.Equals("ARGN", StringComparison.OrdinalIgnoreCase) ||
                 varExpr.Equals("ARGV", StringComparison.OrdinalIgnoreCase) ||
-                varExpr.Equals("ARGCHK", StringComparison.OrdinalIgnoreCase) ||
-                varExpr.Equals("ARGCHKID", StringComparison.OrdinalIgnoreCase) ||
+                varExpr.StartsWith("ARGCHK", StringComparison.OrdinalIgnoreCase) ||
+                varExpr.StartsWith("ARGTXT", StringComparison.OrdinalIgnoreCase) ||
                 varExpr.StartsWith("ARGV[", StringComparison.OrdinalIgnoreCase) ||
-                varExpr.StartsWith("ARGV.", StringComparison.OrdinalIgnoreCase) ||
-                varExpr.StartsWith("ARGTXT[", StringComparison.OrdinalIgnoreCase) ||
-                varExpr.StartsWith("ARGCHK[", StringComparison.OrdinalIgnoreCase))
+                varExpr.StartsWith("ARGV.", StringComparison.OrdinalIgnoreCase))
             {
                 string? v = DialogArgResolver(varExpr);
                 if (v != null) return v;

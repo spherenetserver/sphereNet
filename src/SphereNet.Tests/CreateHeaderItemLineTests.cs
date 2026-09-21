@@ -39,6 +39,7 @@ public sealed class CreateHeaderItemLineTests : IDisposable
 
     public void Dispose()
     {
+        TemplateEngine.CreateHeaderRollForTests = null;
         SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = null;
         try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
@@ -100,23 +101,26 @@ public sealed class CreateHeaderItemLineTests : IDisposable
     }
 
     /// <summary>R# is a chance, not an amount: the line sometimes produces nothing.
-    /// One in eight over 40 tries is all but certain to show both outcomes - and
-    /// whatever it does produce is one item, not eight.</summary>
+    /// Exercise all eight possible rolls through the real @Create path.
+    /// Only zero creates an item, whose amount is one rather than eight.</summary>
     [Fact]
     public void AnRArgumentIsAChanceToCreateAtAll()
     {
-        int made = 0;
-        for (int i = 0; i < 40; i++)
+        for (int roll = 0; roll < 8; roll++)
         {
-            var loot = SpawnAndCollect("ON=@Create", "ITEM=i_hdr_gold,R8");
-            if (loot.Count > 0)
+            int calls = 0;
+            TemplateEngine.CreateHeaderRollForTests = bound =>
             {
-                made++;
-                Assert.Equal(1, loot[0].Amount);
-            }
+                Assert.Equal(8, bound);
+                calls++;
+                return roll;
+            };
+            var loot = SpawnAndCollect("ON=@Create", "ITEM=i_hdr_gold,R8");
+            Assert.Equal(1, calls);
+            if (roll == 0) Assert.Equal(1, Assert.Single(loot).Amount);
+            else Assert.Empty(loot);
             Dispose();
         }
-        Assert.InRange(made, 1, 39);   // neither never nor always
     }
 
     /// <summary>Both together, which is how the packs write a chance drop of a
@@ -124,13 +128,30 @@ public sealed class CreateHeaderItemLineTests : IDisposable
     [Fact]
     public void AnAmountAndAChanceBothApply()
     {
-        for (int i = 0; i < 25; i++)
+        for (int roll = 0; roll < 2; roll++)
         {
+            int calls = 0;
+            TemplateEngine.CreateHeaderRollForTests = bound =>
+            {
+                Assert.Equal(2, bound);
+                calls++;
+                return roll;
+            };
             var loot = SpawnAndCollect("ON=@Create", "ITEM=i_hdr_gold,{10 20},R2");
-            if (loot.Count > 0)
-                Assert.InRange(loot[0].Amount, 10, 20);
+            Assert.Equal(1, calls);
+            if (roll == 0) Assert.InRange(Assert.Single(loot).Amount, 10, 20);
+            else Assert.Empty(loot);
             Dispose();
         }
+    }
+
+    [Theory]
+    [InlineData("R0")]
+    [InlineData("R1")]
+    public void UnconditionalChanceDoesNotRoll(string chance)
+    {
+        TemplateEngine.CreateHeaderRollForTests = _ => throw new InvalidOperationException("Unexpected roll");
+        Assert.Equal(1, Assert.Single(SpawnAndCollect("ON=@Create", $"ITEM=i_hdr_gold,{chance}")).Amount);
     }
 
     /// <summary>An amount of zero creates nothing (CItem.cpp:487).</summary>

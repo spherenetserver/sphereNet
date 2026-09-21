@@ -82,6 +82,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // A recipe's FUNC= row reaches the script layer through this hook; a test
         // that installs one must not leave it standing for the next.
         SphereNet.Game.Definitions.TemplateEngine.FunctionRowHook = null;
+        SphereNet.Game.Definitions.TemplateEngine.CreateHeaderRollForTests = null;
         SphereNet.Game.Components.ChampionComponent.ResolveGameClockMs = null;
         SphereNet.Game.Components.SpawnComponent.ReleaseFromPreviousSpawner = null;
         SphereNet.Game.Objects.Characters.Character.ReleaseFromSpawner = null;

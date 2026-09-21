@@ -95,7 +95,7 @@ public sealed class ClientScriptConsoleHandler
     private bool CloseScriptDialog(string dialogId, int buttonId = 0) =>
         _client.CloseScriptDialog(dialogId, buttonId);
     private bool IsScriptDialogOpen(string dialogId) => _client.IsScriptDialogOpen(dialogId);
-    private bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null) => _client.OpenNamedDialog(dialogId, requestedPage, subject);
+    private bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null, string? arguments = null) => _client.OpenNamedDialog(dialogId, requestedPage, subject, arguments);
     private void ClearPendingTargetState() => _client.ClearPendingTargetState();
     private void Resync() => _client.Resync();
     private void BroadcastDrawObject(Character ch) => _client.BroadcastDrawObject(ch);
@@ -715,12 +715,7 @@ public sealed class ClientScriptConsoleHandler
             {
                 dlgName = dlgArgs[..sep].Trim();
                 string buttonExpression = dlgArgs[(sep + 1)..].TrimStart(' ', '\t', ',');
-                var parser = new ExpressionParser
-                {
-                    VariableResolver = name => _commands?.Resources != null &&
-                        _commands.Resources.TryGetDefValue(name, out string value) ? value : null
-                };
-                closeButton = unchecked((int)parser.Evaluate(buttonExpression));
+                closeButton = EvaluateDialogNumber(buttonExpression);
             }
             if (dlgName.Length > 0)
                 CloseScriptDialog(dlgName, closeButton);
@@ -2154,14 +2149,14 @@ public sealed class ClientScriptConsoleHandler
 
         string raw = args.Trim();
         string dialogId = "";
-        string closeSpec = "";
-        int requestedPage = 1;
+        string pageSpec = "";
+        int requestedPage = 0;
 
         if (!string.IsNullOrWhiteSpace(raw))
         {
-            int sep = raw.IndexOfAny([' ', ',']);
+            int sep = raw.IndexOfAny([' ', '\t', ',']);
             if (sep < 0) { dialogId = raw; }
-            else { dialogId = raw[..sep]; closeSpec = raw[(sep + 1)..].TrimStart(' ', ','); }
+            else { dialogId = raw[..sep]; pageSpec = raw[(sep + 1)..].TrimStart(' ', '\t', ','); }
         }
 
         dialogId = dialogId.Trim().Trim(',', ';');
@@ -2171,14 +2166,60 @@ public sealed class ClientScriptConsoleHandler
         // existing subject/callback as well as avoid sending a second packet.
         if (onlyIfClosed && IsScriptDialogOpen(dialogId)) return true;
 
-        if (!string.IsNullOrWhiteSpace(closeSpec))
+        string? arguments = null;
+        if (!string.IsNullOrWhiteSpace(pageSpec))
         {
-            string[] dialogTokens = closeSpec.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (dialogTokens.Length > 0 && int.TryParse(dialogTokens[0], out int parsedPage))
-                requestedPage = parsedPage;
+            string pageExpression = FirstDialogArgument(pageSpec);
+            requestedPage = EvaluateDialogNumber(pageExpression);
+            if (pageExpression.Length < pageSpec.Length)
+            {
+                int next = pageExpression.Length;
+                char separator = pageSpec[next++];
+                if (char.IsWhiteSpace(separator))
+                {
+                    while (next < pageSpec.Length && char.IsWhiteSpace(pageSpec[next])) next++;
+                    if (next < pageSpec.Length && pageSpec[next] is ',' or '=') next++;
+                }
+                arguments = pageSpec[next..].Trim();
+            }
         }
 
-        return OpenNamedDialog(dialogId, requestedPage, subject);
+        return OpenNamedDialog(dialogId, requestedPage, subject, arguments);
+    }
+
+    private int EvaluateDialogNumber(string expression)
+    {
+        var parser = new ExpressionParser
+        {
+            VariableResolver = name =>
+            {
+                var resources = _commands?.Resources;
+                if (resources == null) return null;
+                if (resources.TryResolveDefNameValue(name, out long number))
+                    return number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return resources.TryGetDefValue(name, out string value) ? value : null;
+            }
+        };
+        return unchecked((int)parser.Evaluate(expression));
+    }
+
+    // The page is one Str_ParseCmds argument, not the dialog's remaining
+    // script arguments. Separators inside grouped expressions stay intact.
+    private static string FirstDialogArgument(string text)
+    {
+        int depth = 0;
+        bool quoted = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (c == '"') quoted = !quoted;
+            if (quoted) continue;
+            if (c is '(' or '[' or '{') depth++;
+            else if (c is ')' or ']' or '}') depth--;
+            else if (depth == 0 && (c is ',' or '=' || char.IsWhiteSpace(c)))
+                return text[..i];
+        }
+        return text;
     }
 
     private static bool TryParseScriptPacket(string args, out byte[] packet, out string error)
@@ -2446,7 +2487,7 @@ public sealed class ClientScriptConsoleHandler
                 if (want.Equals("ID", StringComparison.OrdinalIgnoreCase))
                     value = entry.Key;
                 else if (want.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
-                    value = entry.Value.ToString();
+                    value = Gumps.ScriptCount(entry.Value).ToString();
             }
             return true;
         }

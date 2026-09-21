@@ -59,8 +59,13 @@ public sealed class SingleDialogParityTests
             Assert.True(first.TryGetTag("RENDERED", out _));
             Assert.Equal(verb == "DIALOG", second.TryGetTag("RENDERED", out _));
             Assert.True(client.CloseScriptDialog("d_single_probe"));
-            Assert.Equal(verb == "SDIALOG", first.TryGetTag("CLOSED", out _));
-            Assert.Equal(verb == "DIALOG", second.TryGetTag("CLOSED", out _));
+            Assert.True(first.TryGetTag("CLOSED", out _));
+            Assert.False(second.TryGetTag("CLOSED", out _));
+            if (verb == "DIALOG")
+            {
+                Assert.True(client.CloseScriptDialog("d_single_probe"));
+                Assert.True(second.TryGetTag("CLOSED", out _));
+            }
         }
         finally { ObjBase.ResolveClientConsole = null; File.Delete(path); }
     }

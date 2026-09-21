@@ -160,6 +160,8 @@ public sealed class DialogSourceXRegressionTests(ITestOutputHelper output)
         me.IsPlayer = true;
         world.PlaceCharacter(me, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, me);
+        var resources = Resources(lf, "[DIALOG d_audit]\n0,0\n");
+        client.SetEngines(commands: new SphereNet.Game.Speech.CommandHandler { Resources = resources });
         var section = new ScriptSection("DIALOG", "d_audit", new ScriptContext());
         section.Keys.AddRange(new[] {
             new ScriptKey("0,0", ""), new ScriptKey("PAGE", "0"),
@@ -172,7 +174,7 @@ public sealed class DialogSourceXRegressionTests(ITestOutputHelper output)
             new ScriptKey("PAGE", "2"), new ScriptKey("DTEXT", "20 20 0 Second") });
         var handler = typeof(GameClient).GetProperty("Dialogs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client);
         typeof(ClientDialogHandler).GetMethod("RenderScriptDialog", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(handler, ["d_audit", requestedPage, section, Serial.Invalid, null]);
+            .Invoke(handler, ["d_audit", requestedPage, section, Serial.Invalid, null, null]);
         byte[] packet = TestHarness.GetQueuedPackets(client.NetState)
             .Last(p => p.Span[0] == 0xDD || p.Span[0] == 0xB0).Span.ToArray();
         string layout;

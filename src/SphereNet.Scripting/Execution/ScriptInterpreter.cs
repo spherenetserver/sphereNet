@@ -52,6 +52,19 @@ public sealed class ScriptInterpreter
         ITriggerArgs? args,
         ScriptScope scope)
     {
+        var previousResponse = _expr.DialogArgResolver;
+        _expr.DialogArgResolver = (args as TriggerArgs)?.DialogResponseResolver;
+        try { return ExecuteCore(lines, target, source, args, scope); }
+        finally { _expr.DialogArgResolver = previousResponse; }
+    }
+
+    private TriggerResult ExecuteCore(
+        IReadOnlyList<ScriptKey> lines,
+        IScriptObj target,
+        ITextConsole? source,
+        ITriggerArgs? args,
+        ScriptScope scope)
+    {
         var result = TriggerResult.Default;
         int i = 0;
 
@@ -585,6 +598,9 @@ public sealed class ScriptInterpreter
         }
 
         // Try as property set (KEY=VALUE)
+        if (TryPreferredFunction(cmd, resolvedArg, target, source, args, scope))
+            return;
+
         if (key.HasArg && target.TrySetProperty(cmd, EvalNumericArg(cmd, resolvedArg)))
         {
             if (_expr.DebugUnresolved)
@@ -1359,6 +1375,10 @@ public sealed class ScriptInterpreter
             : $"{file} {trigger}";
     }
 
+    /// <summary>Expand resource text with the same context as its script body.</summary>
+    public string ExpandText(string text, IScriptObj target, ITextConsole? source,
+        ITriggerArgs? args, ScriptScope scope) => ResolveArgs(text, target, source, args, scope);
+
     private string ResolveArgs(string arg, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)
     {
         if (string.IsNullOrEmpty(arg)) return "";
@@ -1580,6 +1600,23 @@ public sealed class ScriptInterpreter
         return resolved;
     }
 
+    private bool TryPreferredFunction(string name, string rawArgs, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
+    {
+        if (!target.PreferScriptFunction(name) || !FunctionExists(name) ||
+            (CallFunctionWithScope == null && CallFunction == null))
+            return false;
+        var functionArgs = new TriggerArgs
+        {
+            Source = args?.Source,
+            Object1 = args?.Object1,
+            Object2 = args?.Object2,
+        };
+        functionArgs.InitFromRaw(rawArgs);
+        InvokeFunction(name, target, source, functionArgs, scope);
+        return true;
+    }
+
     /// <summary>Run one verb LINE on <paramref name="target"/> in Source-X's r_Verb
     /// order: the verb table owns its names outright, an UNKNOWN name reaches the
     /// script [FUNCTION] (CObjBase.cpp:2134), and what neither claims becomes a
@@ -1589,6 +1626,8 @@ public sealed class ScriptInterpreter
     private void ExecuteVerbLine(string verb, string verbArgs, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
     {
+        if (TryPreferredFunction(verb, verbArgs, target, source, args, scope))
+            return;
         var console = source ?? NullConsole.Instance;
         if (target.TryExecuteCommand(verb, verbArgs, console, out bool nameOwned))
             return;

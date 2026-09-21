@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -189,7 +189,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.OpenBankBox() => OpenBankBox();
     void IClientContext.OpenForeignBank(Character victim) => OpenForeignBank(victim);
     void IClientContext.OpenInspectPropDialog(ObjBase obj, int requestedPage) => OpenInspectPropDialog(obj, requestedPage);
-    bool IClientContext.OpenNamedDialog(string dialogId, int requestedPage, ObjBase? subject) => OpenNamedDialog(dialogId, requestedPage, subject);
+    bool IClientContext.OpenNamedDialog(string dialogId, int requestedPage, ObjBase? subject, string? arguments) => OpenNamedDialog(dialogId, requestedPage, subject, arguments);
     bool IClientContext.IsScriptDialogOpen(string dialogId) => IsScriptDialogOpen(dialogId);
     bool IClientContext.CloseScriptDialog(string dialogId, int buttonId) => CloseScriptDialog(dialogId, buttonId);
 

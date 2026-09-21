@@ -62,6 +62,10 @@ public sealed class TriggerArgs : ITriggerArgs
     /// a fresh pool, which is why only CALL sets this.</summary>
     public bool ShareCallerLocals { get; set; }
 
+    /// <summary>Input fields owned by a dialog response argument object.
+    /// CALL retains this object; ordinary function calls create fresh args.</summary>
+    public Func<string, string?>? DialogResponseResolver { get; set; }
+
     public TriggerArgs() { }
 
     public TriggerArgs(IScriptObj? source, long n1 = 0, long n2 = 0, string argStr = "")

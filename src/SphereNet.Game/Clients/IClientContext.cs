@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -184,7 +184,7 @@ internal interface IClientContext : ITextConsole
     void OpenBankBox();
     void OpenForeignBank(Character victim);
     void OpenInspectPropDialog(ObjBase obj, int requestedPage);
-    bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null);
+    bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null, string? arguments = null);
     bool IsScriptDialogOpen(string dialogId);
     bool CloseScriptDialog(string dialogId, int buttonId = 0);
 

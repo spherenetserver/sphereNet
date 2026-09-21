@@ -292,12 +292,8 @@ public sealed class TriggerRunner
         out string value)
     {
         value = "";
-        var funcArgs = new TriggerArgs(args?.Source, args?.Number1 ?? 0, args?.Number2 ?? 0, argString)
-        {
-            Object1 = args?.Object1,
-            Object2 = args?.Object2,
-            Number3 = args?.Number3 ?? 0
-        };
+        var funcArgs = new TriggerArgs { Source = args?.Source };
+        funcArgs.InitFromRaw(argString);
         if (!TryExecuteFunction(funcName, target, source, funcArgs, null, out var result, out var returnValue))
             return false;
 
@@ -315,12 +311,8 @@ public sealed class TriggerRunner
         out string value)
     {
         value = "";
-        var funcArgs = new TriggerArgs(args?.Source, args?.Number1 ?? 0, args?.Number2 ?? 0, argString)
-        {
-            Object1 = args?.Object1,
-            Object2 = args?.Object2,
-            Number3 = args?.Number3 ?? 0
-        };
+        var funcArgs = new TriggerArgs { Source = args?.Source };
+        funcArgs.InitFromRaw(argString);
         if (!TryExecuteFunction(funcName, target, source, funcArgs, callerScope, out var result, out var returnValue))
             return false;
 
@@ -613,9 +605,12 @@ public sealed class TriggerRunner
         int buttonId,
         IScriptObj target,
         ITextConsole? source,
-        ITriggerArgs? args)
+        ITriggerArgs? args,
+        ScriptSection? prebuttonSection = null)
     {
         var keys = buttonSection.Keys;
+        var scope = CreateTriggerScope($"BUTTON {buttonId}", args);
+        bool matched = false;
         for (int i = 0; i < keys.Count; i++)
         {
             var key = keys[i];
@@ -632,32 +627,74 @@ public sealed class TriggerRunner
             if (!MatchesButton(key.Arg, buttonId))
                 continue;
 
+            matched = true;
+            // Source-X widens the packet's dword into the int64 trigger arg.
+            // The int routing API retains those bits but must not sign-extend.
+            if (args != null) args.Number1 = unchecked((uint)buttonId);
+            if (prebuttonSection != null)
+            {
+                var preScope = new ScriptScope
+                {
+                    TriggerName = $"PREBUTTON {buttonId}",
+                    LocalVars = scope.LocalVars,
+                    RefMap = scope.RefMap,
+                    FloatMap = scope.FloatMap
+                };
+                _interpreter.Execute(prebuttonSection.Keys, target, source, args, preScope);
+                // Source-X vetoes only RETURN 1 and continues looking for
+                // another matching ON block. The response args remain shared.
+                if (preScope.IsReturning && preScope.NumericReturnValue == 1)
+                    continue;
+            }
             var body = CollectDialogButtonBody(keys, i + 1);
-            var scope = new ScriptScope { TriggerName = $"BUTTON {buttonId}" };
             _interpreter.Execute(body, target, source, args, scope);
             return true;
         }
-        return false;
+        return matched;
     }
 
     /// <summary>Check whether an <c>ON=</c> argument matches a numeric button.
     /// Forms: <c>N</c> (exact), <c>N M</c> or <c>N,M</c> (inclusive range).</summary>
-    private static bool MatchesButton(string arg, int buttonId)
+    private bool MatchesButton(string arg, int buttonId)
     {
-        string trimmed = arg.Trim();
-        int sep = trimmed.IndexOfAny(new[] { ' ', '\t', ',' });
-        if (sep < 0)
+        // Str_ParseCmds keeps grouped expressions together. Only the first
+        // two values are used by CClient::Dialog_OnButton (exact or range).
+        var values = new List<string>(3);
+        int start = 0, round = 0, square = 0, curly = 0;
+        bool quoted = false;
+        for (int i = 0; i <= arg.Length; i++)
         {
-            if (ScriptKey.TryParseNumber(trimmed.AsSpan(), out long single))
-                return single == buttonId;
-            return false;
+            char ch = i == arg.Length ? '\0' : arg[i];
+            if (ch == '"') quoted = !quoted;
+            if (!quoted)
+            {
+                if (ch == '(') round++;
+                else if (ch == ')') round--;
+                else if (ch == '[') square++;
+                else if (ch == ']') square--;
+                else if (ch == '{') curly++;
+                else if (ch == '}') curly--;
+            }
+            if (i != arg.Length && (quoted || round > 0 || square > 0 || curly > 0 ||
+                (ch != ',' && ch != '=' && !char.IsWhiteSpace(ch)))) continue;
+            string value = arg[start..i].Trim();
+            if (value.Length > 0) values.Add(value);
+            start = i + 1;
+            if (values.Count == 3) break;
         }
-
-        string loStr = trimmed[..sep].Trim();
-        string hiStr = trimmed[(sep + 1)..].Trim();
-        if (!ScriptKey.TryParseNumber(loStr.AsSpan(), out long lo)) return false;
-        if (!ScriptKey.TryParseNumber(hiStr.AsSpan(), out long hi)) return false;
-        if (lo > hi) (lo, hi) = (hi, lo);
-        return buttonId >= lo && buttonId <= hi;
+        if (values.Count == 0) return false;
+        var parser = new SphereNet.Scripting.Expressions.ExpressionParser
+        {
+            VariableResolver = name => _resources.TryResolveDefNameValue(name, out long number)
+                ? number.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : _resources.TryGetDefValue(name, out string value) ? value : null
+        };
+        if (!parser.TryEvaluate(values[0], out long lowValue)) return false;
+        uint button = unchecked((uint)buttonId);
+        uint low = unchecked((uint)lowValue);
+        if (values.Count == 1) return button == low;
+        if (!parser.TryEvaluate(values[1], out long highValue)) return false;
+        uint high = unchecked((uint)highValue);
+        return button >= low && button <= high;
     }
 }

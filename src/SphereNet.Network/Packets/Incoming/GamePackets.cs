@@ -223,25 +223,35 @@ public sealed class PacketGumpResponse : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
+        if (!buffer.HasBytes(16)) return;
         uint serial = buffer.ReadUInt32();
         uint gumpId = buffer.ReadUInt32();
         uint buttonId = buffer.ReadUInt32();
 
-        const int MaxSwitches = 1024;
-        const int MaxTextEntries = 256;
-        uint switchCount = buffer.Remaining >= 4 ? Math.Min(buffer.ReadUInt32(), MaxSwitches) : 0;
+        const int MaxSwitches = 1000; // Source-X MAX_DIALOG_CONTROLTYPE_QTY
+        const int MaxTextEntries = 4096; // Source-X THREAD_STRING_LENGTH
+        uint switchCount = buffer.ReadUInt32();
+        if (switchCount > MaxSwitches || !buffer.HasBytes((int)switchCount * 4 + 4)) return;
         var switches = new uint[switchCount];
-        for (int i = 0; i < switchCount && buffer.Remaining >= 4; i++)
+        for (int i = 0; i < switchCount; i++)
             switches[i] = buffer.ReadUInt32();
 
-        uint textCount = buffer.Remaining >= 4 ? Math.Min(buffer.ReadUInt32(), MaxTextEntries) : 0;
+        uint textCount = buffer.ReadUInt32();
+        if (textCount > MaxTextEntries || !buffer.HasBytes((int)textCount * 4)) return;
         var textEntries = new (ushort Id, string Text)[textCount];
-        for (int i = 0; i < textCount && buffer.Remaining >= 4; i++)
+        for (int i = 0; i < textCount; i++)
         {
+            if (!buffer.HasBytes(4)) return;
             ushort id = buffer.ReadUInt16();
-            ushort len = Math.Min(buffer.ReadUInt16(), (ushort)1024);
-            if (!buffer.HasBytes(len * 2)) break;
-            string text = buffer.ReadUnicodeFixed(len);
+            ushort len = buffer.ReadUInt16();
+            if (!buffer.HasBytes(len * 2)) return;
+            string text = System.Text.Encoding.BigEndianUnicode.GetString(buffer.ReadBytes(len * 2));
+            // Consume the complete wire field before limiting the script value.
+            if (text.Length > 4095) text = text[..4095];
+            int newline = text.IndexOfAny(['\0', '\r', '\n']);
+            if (newline >= 0) text = text[..newline];
+            int tab = text.IndexOf('\t');
+            if (tab >= 0) text = text[..tab] + " " + text[(tab + 1)..];
             textEntries[i] = (id, text);
         }
 

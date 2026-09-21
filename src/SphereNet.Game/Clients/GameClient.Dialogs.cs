@@ -1,4 +1,4 @@
-﻿using SphereNet.Game.Objects;
+using SphereNet.Game.Objects;
 
 namespace SphereNet.Game.Clients;
 
@@ -21,8 +21,8 @@ public sealed partial class GameClient
     public bool TryShowScriptDialog(string dialogId, int requestedPage, ObjBase? subject) =>
         Dialogs.TryShowScriptDialog(dialogId, requestedPage, subject);
 
-    public bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null) =>
-        Dialogs.OpenNamedDialog(dialogId, requestedPage, subject);
+    public bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null, string? arguments = null) =>
+        Dialogs.OpenNamedDialog(dialogId, requestedPage, subject, arguments);
 
     // Cross-partial bridges (ScriptConsole MENU rendering + def-token checks)
     // until that partial gets its own phase-3 conversion.

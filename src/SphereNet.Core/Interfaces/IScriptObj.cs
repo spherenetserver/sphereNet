@@ -20,6 +20,10 @@ public interface IScriptObj
     /// </summary>
     bool TryExecuteCommand(string key, string args, ITextConsole source);
 
+    /// <summary>Some adapters, such as Source-X CDialogDef, search script
+    /// functions before delegating non-native names to their subject.</summary>
+    bool PreferScriptFunction(string key) => false;
+
     /// <summary>Execute a verb, reporting through <paramref name="nameOwned"/> whether
     /// the NAME belongs to this object's verb table at all. Source-X needs the
     /// distinction: a name the table owns settles the line, and only an UNKNOWN name

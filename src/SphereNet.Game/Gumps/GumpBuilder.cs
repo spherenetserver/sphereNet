@@ -75,6 +75,12 @@ public sealed class GumpBuilder
         return idx;
     }
 
+    internal void AddScriptTexts(IEnumerable<string> texts) => _texts.AddRange(texts);
+
+    // Used only for controls CDialogDef forwards after script expansion.
+    internal void AddScriptControl(string command, string arguments)
+        => _layout.Add($"{{ {command.ToLowerInvariant()} {arguments} }}");
+
     // --- Layout commands (match Source-X script keywords) ---
 
     public GumpBuilder SetPage(int page)
@@ -104,6 +110,15 @@ public sealed class GumpBuilder
         return this;
     }
 
+    /// <summary>Source-X forwards the script hue suffix as text after hue=.</summary>
+    public GumpBuilder AddGumpPic(int x, int y, int gumpId, string hue)
+    {
+        _layout.Add(hue.Length == 0
+            ? $"{{ gumppic {x} {y} {gumpId} }}"
+            : $"{{ gumppic {x} {y} {gumpId} hue={hue} }}");
+        return this;
+    }
+
     /// <summary>Cliloc tooltip attached to the previous layout element
     /// (Source-X GUMPCTL_TOOLTIP, client 4.0.0+).</summary>
     public GumpBuilder AddTooltip(long cliloc) => AddTooltip(cliloc, "");
@@ -128,6 +143,15 @@ public sealed class GumpBuilder
     public GumpBuilder AddTilePicHue(int x, int y, int tileId, int hue)
     {
         _layout.Add($"{{ tilepichue {x} {y} {tileId} {hue} }}");
+        return this;
+    }
+
+    /// <summary>Preserve the optional Source-X script hue suffix verbatim.</summary>
+    public GumpBuilder AddTilePicHue(int x, int y, int tileId, string hue)
+    {
+        _layout.Add(hue.Length == 0
+            ? $"{{ tilepichue {x} {y} {tileId} }}"
+            : $"{{ tilepichue {x} {y} {tileId} {hue} }}");
         return this;
     }
 
@@ -159,14 +183,20 @@ public sealed class GumpBuilder
     }
 
     public GumpBuilder AddCheckbox(int x, int y, int uncheckedId, int checkedId, bool initialState, int switchId)
+        => AddCheckbox(x, y, uncheckedId, checkedId, initialState ? 1 : 0, switchId);
+
+    public GumpBuilder AddCheckbox(int x, int y, int uncheckedId, int checkedId, int initialState, int switchId)
     {
-        _layout.Add($"{{ checkbox {x} {y} {uncheckedId} {checkedId} {(initialState ? 1 : 0)} {switchId} }}");
+        _layout.Add($"{{ checkbox {x} {y} {uncheckedId} {checkedId} {initialState} {switchId} }}");
         return this;
     }
 
     public GumpBuilder AddRadio(int x, int y, int uncheckedId, int checkedId, bool initialState, int switchId)
+        => AddRadio(x, y, uncheckedId, checkedId, initialState ? 1 : 0, switchId);
+
+    public GumpBuilder AddRadio(int x, int y, int uncheckedId, int checkedId, int initialState, int switchId)
     {
-        _layout.Add($"{{ radio {x} {y} {uncheckedId} {checkedId} {(initialState ? 1 : 0)} {switchId} }}");
+        _layout.Add($"{{ radio {x} {y} {uncheckedId} {checkedId} {initialState} {switchId} }}");
         return this;
     }
 
@@ -183,27 +213,55 @@ public sealed class GumpBuilder
     /// Source-X CDialogDef writes this as control id GUMPCTL_TEXTENTRYLIMITED.
     /// </summary>
     public GumpBuilder AddTextEntryLimited(int x, int y, int width, int height, int hue, int entryId, string initialText, int limit)
+        => AddScriptTextEntryLimited(x, y, width, height, hue, entryId, initialText, Math.Max(0, limit));
+
+    // CDialogDef emits the script's signed limit without normalizing it.
+    internal GumpBuilder AddScriptTextEntryLimited(int x, int y, int width, int height, int hue, int entryId, string initialText, int limit)
     {
         int idx = AddText(initialText);
         // Older 2D clients read the trailing 8th token as the cap. Sphere's
         // CDialogDef serialises the same shape; sphere admin INPDLGs rely
         // on it to keep INPDLG NAME, BODY, COLOR, … inside their script
         // limits.
-        if (limit < 0) limit = 0;
         _layout.Add($"{{ textentrylimited {x} {y} {width} {height} {hue} {entryId} {idx} {limit} }}");
         return this;
     }
 
     public GumpBuilder AddHtmlGump(int x, int y, int width, int height, string html, bool hasBackground, bool hasScrollbar)
+        => AddHtmlGump(x, y, width, height, html, hasBackground ? 1 : 0, hasScrollbar ? 1 : 0);
+
+    public GumpBuilder AddHtmlGump(int x, int y, int width, int height, string html, int background, int options)
     {
         int idx = AddText(html);
-        _layout.Add($"{{ htmlgump {x} {y} {width} {height} {idx} {(hasBackground ? 1 : 0)} {(hasScrollbar ? 1 : 0)} }}");
+        _layout.Add($"{{ htmlgump {x} {y} {width} {height} {idx} {background} {options} }}");
         return this;
     }
 
     public GumpBuilder AddXmfHtmlGump(int x, int y, int width, int height, uint clilocId, bool hasBackground, bool hasScrollbar)
     {
         _layout.Add($"{{ xmfhtmlgump {x} {y} {width} {height} {clilocId} {(hasBackground ? 1 : 0)} {(hasScrollbar ? 1 : 0)} }}");
+        return this;
+    }
+
+    /// <summary>Script controls preserve the numeric options passed by Source-X.</summary>
+    public GumpBuilder AddXmfHtmlGump(int x, int y, int width, int height, int clilocId, int background, int scrollbar)
+    {
+        _layout.Add($"{{ xmfhtmlgump {x} {y} {width} {height} {clilocId} {background} {scrollbar} }}");
+        return this;
+    }
+
+    /// <summary>Source-X leaves the color suffix unevaluated, including its spacing.</summary>
+    public GumpBuilder AddXmfHtmlGumpColor(int x, int y, int width, int height, int clilocId, int background, int scrollbar, string color)
+    {
+        string suffix = color.Length == 0 ? "" : $" {color}";
+        _layout.Add($"{{ xmfhtmlgumpcolor {x} {y} {width} {height} {clilocId} {background} {scrollbar}{suffix} }}");
+        return this;
+    }
+
+    public GumpBuilder AddXmfHtmlTok(int x, int y, int width, int height,
+        int background, int scrollbar, int color, int clilocId, string arguments)
+    {
+        _layout.Add($"{{ xmfhtmltok {x} {y} {width} {height} {background} {scrollbar} {color} {clilocId} {arguments} }}");
         return this;
     }
 

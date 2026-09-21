@@ -4,6 +4,247 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - Sinirlandirilmis dialog uyumluluk paketinin tamamlanmasi
+------------------------------------------------------------------------
+FIX - Script dialoglari kaynak kimligini kullaniyor; her acik ornek kendi
+      nesnesiyle tutuluyor. Yanit ilgili ornegi tuketiyor, tekrar acilislar
+      baska nesnenin yanitini ezmiyor. DIALOGLIST satir COUNT degeri kalan
+      ornek sayisini veriyor. Baglanti kapaninca kayitlar temizleniyor.
+FIX - Script calismadan once gump yanit alanlari dogrulaniyor. Gecersiz
+      sayilar ve eksik paketler reddediliyor; uzun metin sonraki alani
+      kaydirmiyor. Source-X satir sonu, sifir karakter ve tab kurallari uygulaniyor.
+FIX - Sikistirma icin 5.0.0, kapatma yaniti icin 4.0.4a siniri kullaniliyor.
+      KR/Enhanced sikistirmasi korunuyor. Eski istemcilerin kendi kapatma
+      yaniti bekleniyor; sunucu ayni yaniti onceden calistirmiyor.
+FIX - Sayfa eslemesi unsigned word kullaniyor; ARGN asil argumani koruyor.
+      Bos layout bolumu dialog paketi veya acik pencere kaydi olusturmuyor.
+TEST - Yasam dongusu, paket sinirlari ve acilis testleri eklendi. Istege
+       bagli SPHERENET_DIALOG_PACK testiyle verilen 20 ana dialog, canli DB
+       veya save kullanmadan izole dunyada acildi ve iptal yaniti islendi.
+VERIFY - Tam test paketi: 5483 basarili, 0 hatali; verilen dialog paketi dahil.
+
+[2026-09-22] - Dialog yanit alanlarinin arguman nesnesine baglanmasi
+------------------------------------------------------------------------
+FIX - ARGTXT ve ARGCHK, CALL sirasinda yanit arguman nesnesiyle korunuyor;
+      normal ve ifade fonksiyonlari yeni argumanlarla calisiyor. Ic ice
+      cagrilardan donuste cagiranin yanit alanlari geri yukleniyor.
+FIX - Ifade fonksiyonlari ARGN1/2/3 degerlerini kendi argumanlarindan okuyor;
+      cagiranin sayisal ve nesne argumanlarini devralmiyor.
+TEST - Sekiz test normal/CALL/ifade cagrilarinda yanit gorunurlugunu, cagiran
+       baglaminin korunmasini ve iki ifade yolunun sayisal argumanlarini kapsiyor.
+
+[2026-09-22] - Dialog buton kimliginin unsigned arguman olarak korunmasi
+------------------------------------------------------------------------
+FIX - Buton kimligi paketteki unsigned 32-bit degerinden ARGN1'e aktariliyor.
+      int.MaxValue uzerindeki kimlikler PREBUTTON ve buton blogunda negatif
+      gorunmuyor. Scriptin daha sonraki isaretli ARGN atamalari korunuyor.
+TEST - Sekiz yanit/DIALOGCLOSE testi normal kimlikleri, isaret sinirini,
+       uint.MaxValue ve yonlendirme sonrasi ARGN degisikligini kapsiyor.
+
+[2026-09-22] - Script dialog secenekleri ve isaretli giris sinirlari
+------------------------------------------------------------------------
+FIX - DHTMLGUMP, CHECKBOX ve RADIO sayisal secenek/durum degerlerini bire
+      indirgemeden koruyor. DTEXTENTRYLIMITED scriptteki isaretli siniri
+      Source-X gibi iletiyor. Native builder'in bool ve negatif olmayan
+      sinir davranisi native cagiranlar icin korunuyor.
+TEST - Alti paket testi sayisal secenekleri, ifadeleri, isaretli/sifir giris
+       sinirlarini ve uretilen metin icerigini kapsiyor.
+
+[2026-09-21] - Dialog fonksiyonlarinin nesne komutlarina gore onceligi
+------------------------------------------------------------------------
+FIX - Dialog hedefi, yerlesik kontrol olmayan adlarda nesne ozelliklerinden
+      ve komutlarindan once mevcut fonksiyonlari ariyor. Yerlesik dialog
+      kontrolleri oncelikli; normal nesnelerin komut sirasi degismedi.
+TEST - Alti paket testi NAME/SOUND yardimcilarinin dogrudan, CALL ve TRY
+       yollarini, ortak metin tablosunu ve fonksiyon parametrelerini kapsiyor.
+
+[2026-09-21] - GUMPIC takma adinin dialog fonksiyonunu engellemesi
+------------------------------------------------------------------------
+FIX - Source-X'te bulunmayan yerlesik GUMPIC takma adi kaldirildi. Yerlesik
+      kontrol adi GUMPPIC; GUMPIC adli script fonksiyonu artik calisiyor.
+TEST - Alti gercek dialog senaryosu dogrudan/CALL yardimcilarini, ortak metin
+       indekslerini, ARGV ve cagiran dialogu iptal etmeyen RETURN'u kapsiyor.
+
+[2026-09-21] - Dialog metin tablosu ve istemcinin okudugu kontroller
+------------------------------------------------------------------------
+FIX - Genisletilmis TEXT listesi dinamik metinlerden once yerlestiriliyor;
+      Source-X indeksleri ve kullanilmayan satirlar pakette korunuyor.
+FIX - TEXT, HTMLGUMP, CROPPEDTEXT, TEXTENTRY, TEXTENTRYLIMITED, GROUP ve
+      ITEMPROPERTY parametreleri genisletildikten sonra sayiya cevrilmeden
+      ve metin indeksleri yeniden olusturulmadan iletiliyor.
+TEST - Yedi paket testi ozgun parametreleri, metin sirasini ve statik/dinamik
+       kontroller birlikteyken dinamik metin indekslerini dogruluyor.
+
+[2026-09-21] - Script tooltip parametreleri ve sayi donusumu
+------------------------------------------------------------------------
+FIX - TOOLTIP Source-X virgul/esittir/bosluk ayiricilarini kabul ediyor;
+      acikca bos birakilabilen ikinci parametreyi zorunlu tutuyor.
+FIX - Referansin unsigned sayi oneki donusumu ve tasma reddi uygulandi;
+      donusum asamalari ve kalan metin parametreleri korunuyor.
+TEST - On bir paket senaryosu ayiricilari, uint sinirlarini, eksik/gecersiz
+       parametreleri, Sphere hex ve referansin onek donusumunu kapsiyor.
+
+[2026-09-21] - Dialog sayfa ve baslangic konumunda Source-X ifadeleri
+------------------------------------------------------------------------
+FIX - PAGE tek ifade parametresi okuyor; defname ve gruplu ifadeler
+      destekleniyor, sondaki operator sayfa ifadesine dahil edilmiyor.
+FIX - DORIGIN iki parametreyi sirayla okuyor. Yildiz baslangici ilerletiyor,
+      isaretli sayi yeni degeri atiyor, tek basina eksi mevcut degeri koruyor.
+TEST - Yedi paket testi sayfa degerini, ifade sinirlarini, baslangic
+       ifadelerini, defname ve isaretli/goreli konum davranisini kapsiyor.
+
+[2026-09-21] - Yerellestirilmis HTML kontrollerinde Source-X parametreleri
+------------------------------------------------------------------------
+FIX - XMFHTMLGUMP, XMFHTMLGUMPCOLOR ve XMFHTMLTOK koordinat, boyut ve cliloc
+      kimligini sirali ifadelerle okuyor. Scriptteki sayisal secenekler
+      yalnizca 0/1 degerlerine indirgenmeden korunuyor.
+FIX - Istege bagli renk eki ve metin parametreleri, bos degerler dahil,
+      kendilerine ait Source-X akisina gore korunuyor.
+TEST - Alti paket testi ifadeleri, renk eklerini, sayisal secenekleri,
+       bos ekleri ve bosluk/sekme iceren metin parametrelerini kapsiyor.
+
+[2026-09-21] - Gorsel kontrollerinde Source-X parametreleri ve renk ekleri
+------------------------------------------------------------------------
+FIX - GUMPPIC, TILEPIC, TILEPICHUE ve PICINPIC sayisal parametreleri sirali
+      ifade okuyucusuyla okuyor. GUMPPIC/TILEPICHUE renk ekleri, acikca yazilan
+      sifir dahil, yeniden sayiya cevrilmeden metin olarak korunuyor.
+TEST - Yedi paket testi ifadeleri, gorsel kimligini, goreli koordinatlari,
+       sifir, eksik ve sifirla baslayan renk eklerini kapsiyor.
+
+[2026-09-21] - Dinamik giris ve secim kontrollerinde ifadeler
+------------------------------------------------------------------------
+FIX - DTEXTENTRY, DTEXTENTRYLIMITED, CHECKBOX ve RADIO boyut, renk, kimlik,
+      sinir ve durum degerlerini Source-X gibi sirayla okuyor. Gruplu ifadeler
+      ve yuklenen defname'ler artik parametreleri kaydirmiyor.
+TEST - Alti paket testi ifadeleri, secim durumunu, bos baslangic metnini ve
+       giris metninin basindaki noktanin korunmasini kapsiyor.
+
+[2026-09-21] - Arka plan ve dinamik metinlerde ifade parametreleri
+------------------------------------------------------------------------
+FIX - RESIZEPIC, GUMPPICTILED, CHECKERTRANS, DTEXT, DCROPPEDTEXT ve DHTMLGUMP
+      sirali parametre okuyucusunu kullaniyor. Defname ve gruplu ifadeler
+      boyut, renk veya metin baslangicinin yanlis okunmasina yol acmiyor.
+FIX - Kalan metin/HTML yeniden genisletilmeden korunuyor. DTEXT ve
+      DCROPPEDTEXT, Source-X'in bastaki nokta metin isaretini tuketiyor.
+TEST - Dokuz regresyon kontrol parametrelerini ve metin/HTML icerigini kapsiyor.
+
+[2026-09-21] - Dialog butonlarinda Source-X GetSingle parametreleri
+------------------------------------------------------------------------
+FIX - BUTTON ve BUTTONTILEART parametreleri bosluklardan bolunmek yerine
+      sirayla okunuyor; yuklenen defname ve gruplu ifadeler destekleniyor.
+      Goreli koordinatlar ve yildizla origin ilerletme korunuyor. Sondaki
+      operator Source-X gibi sonraki parametreye birakiliyor.
+TEST - Yedi paket testi buton/gorsel parametrelerini, origin devamini,
+       gruplu ifadeleri ve mevcut virgullu sozdizimini kapsiyor.
+
+[2026-09-21] - Dialog acilis konumunda Sphere ifadeleri
+------------------------------------------------------------------------
+FIX - Ilk konum satiri Sphere sayilari, yuklenen defname'ler ve gruplu
+      ifadelerle okunuyor. Source-X ayiricilari kullaniliyor; eksik koordinat
+      sifir oluyor. Bos ilk koordinat dosya ayrisma sirasinda korunuyor.
+FIX - Konum satiri, yedek renderer dahil, layout komutlarindan once tuketiliyor;
+      yanlislikla script komutu olarak calistirilmasi onlendi.
+TEST - On paket testi koordinatlari ve layout calisma sirasini kapsiyor.
+
+[2026-09-21] - Dialog butonlarinda degistirilebilir script parametreleri
+------------------------------------------------------------------------
+FIX - ARGN ve ARGV degerlerini buton numarasina sabitleyen yanit gecersiz
+      kilmalari kaldirildi. ARGN, ARGN1 yazimlarini izliyor; ARGV guncel
+      parametre sayisini veriyor. Yanit ARGS alani Source-X gibi bos basliyor.
+      Secim/metin girdileri gelen yanittan okunmaya devam ediyor.
+TEST - Dort regresyon: PREBUTTON/buton yazimlari, gercek yanit ve DIALOGCLOSE,
+       ilk degerler, parametre sayilari ve korunan girdi alanlari.
+
+[2026-09-21] - Ic ice dialog acilisini onceki yanittan ayir
+------------------------------------------------------------------------
+FIX - Yeni script dialogu acilirken etkin yanit cozumleyicisi gecici olarak
+      devre disi kaliyor. TEXT/layout onceki buton numarasi ve girdileri yerine
+      kendi acilis parametrelerini kullaniyor. Iptal dahil donuste onceki
+      cozumleyici finally ile geri yukleniyor.
+TEST - Alti regresyon: DIALOG/SDIALOG, basarili/iptal/eksik alt dialog,
+       yeni sayfa parametreleri ve geri yuklenen ana dialog yanit alanlari.
+
+[2026-09-21] - Dialog TEXT bolumunu acilis baglamiyla layout oncesi cozumle
+------------------------------------------------------------------------
+FIX - Indeksli TEXT satirlari layout oncesinde hedef nesne, kaynak, sayfa,
+      ARGO ve ek metinle bir kez cozumleniyor. Acilis script kapsami layout ile
+      paylasiliyor; konum metni de ayni baglamdan geciyor. Onbellekteki kaynak
+      metin korunarak sonraki acilislara eski deger tasinmasi onleniyor.
+TEST - Bes paket regresyonu: metin, HTML, kirpilmis metin, iki metin giris kontrolu,
+       layout oncesi degerler ve sonraki acilista farkli parametreler.
+
+[2026-09-21] - Dialog layout parametrelerini sayfadan ayri aktar
+------------------------------------------------------------------------
+FIX - DIALOG/SDIALOG ucuncu parametreyi istemci dialog akisindan layout
+      ARGS/ARGV alanlarina iletiyor. ARGN1 sayfa, ARGO hedef nesne olarak
+      kaliyor; ek metin verilmezse sayfa numarasi yerine bos metin geliyor.
+      Yedek layout kapsamina da ayni parametre metni aktariliyor.
+TEST - Alti regresyon: DIALOG/SDIALOG, gruplu sayfa ifadesi, virgullu liste,
+       sayisal metin, eksik parametre ve hedef nesne kimligi.
+
+[2026-09-21] - Dialog komutlarinin sayisal parametrelerini ortak cozumle
+------------------------------------------------------------------------
+FIX - DIALOG/SDIALOG sayfalari Sphere hex, ifade ve sayisal DEFNAME degerlerini
+      kabul ediyor; belirtilmeyen sayfa Source-X gibi 0. Sekme ayraci ve gruplu
+      sayfa ifadeleri sonraki script parametreleriyle karismiyor.
+FIX - DIALOGCLOSE metin tanimlarinin yaninda sayisal DEFNAME degerlerini de okuyor.
+TEST - On bir ek senaryo: varsayilan sayfa, ifade, ayrac, parametre sinirlari
+       ve tanimla verilen kapatma butonu.
+
+[2026-09-21] - Esya olusturma olasilik testlerini kararli hale getir
+------------------------------------------------------------------------
+TEST - R8 testinde rastgele ornekleme yerine tum cekilis sonuclari gercek NPC
+       @Create akisinda deneniyor. Miktar araligiyla iki R2 sonucu ve kosulsuz
+       R0/R1 davranisi dogrulaniyor. Yalniz testlere acik cekilis gecersiz kilmasi
+       testler arasinda sifirlaniyor; sunucu Random.Shared kullanmaya devam ediyor.
+
+[2026-09-21] - Dialog yanit indekslerinde Source-X deger okuma
+------------------------------------------------------------------------
+FIX - ARGCHK/ARGTXT noktali, parantezli ve bosluklu indeksleri, gruplu
+      aritmetik ifadeleri ve DEFNAME degerlerini okuyor. GetSingle gibi tek
+      deger cozulup aramadan once isaretsiz 32 bit kimlige cevriliyor.
+      Sayaclar, ilk kimlik ve sinir disi metin davranisi korunuyor.
+TEST - On iki regresyon: erisim bicimleri, gruplu/grupsuz aritmetik,
+       tanimlar, isaretsiz kimlik ve sinirli metin aramasi.
+
+[2026-09-21] - Dialog yanit sayilari ve girdi sirasi
+------------------------------------------------------------------------
+FIX - ARGCHK gelen secim sayisini, ARGCHKID ilk gelen kimligi donduruyor;
+      bos veya ilk kimligi sifir olan secimde sonuc -1. ARGTXT metin sayisini
+      veriyor. Tekrarlanan metin kimliginde ilk deger okunuyor; buyuk metin
+      kimlikleri ushort daraltmasiyla baska bir girise eslesmiyor.
+TEST - Dort yanit senaryosu: bos, sirali, sifirla baslayan ve tekrarli secim;
+       metin sayisi, tekrarli metin kimligi ve sinir disi okuma.
+
+[2026-09-21] - Dialog buton secicilerinde Sphere sayisal davranisi
+------------------------------------------------------------------------
+FIX - Dialog ON secicileri aritmetik ve DEFNAME degerlerini hesapliyor;
+      aralik ayriminda gruplu ifadeler korunuyor. Karsilastirma isaretsiz
+      32 bit buton kimligiyle yapiliyor, ters araliklar otomatik cevrilmiyor.
+      Ucuncu parametre ilk iki aralik degerini gecersiz kilmiyor.
+TEST - On dort regresyon: tek/hex kimlik, ifade, tanim, ayrac,
+       ters aralik ve isaretsiz sinir degerleri.
+
+[2026-09-21] - Eslesmeyen ve hedefi silinen dialog yanitlari
+------------------------------------------------------------------------
+FIX - Scriptte eslesmeyen butonlar artik kendiliginden sayfa degistirerek dialogu
+      yeniden acmiyor. Istemci sayfa butonlari ve scriptin acikca yeniden
+      dialog acmasi mevcut davranisini koruyor.
+FIX - Dialog nesnesi silinmisse PREBUTTON/buton scripti oyuncunun uzerinde
+      calistirilmak yerine yanit sonlandiriliyor.
+TEST - Yedi regresyon: eksik/eslesmeyen buton, kapatma, silinen nesne,
+       gecerli olay ve scriptin yeniden dialog acmasi.
+
+[2026-09-21] - Dialog butonlarindan once PREBUTTON kontrollerini calistir
+------------------------------------------------------------------------
+FIX - Eslesen dialog yanitlarinda PREBUTTON bolumu onbellekten calistiriliyor;
+      DIALOGCLOSE da ayni yoldan geciyor. Nesne, kaynak, yanit alanlari ve ortak
+      LOCAL/REF/FLOAT kapsami korunuyor. Yalniz RETURN 1 buton islemini engelliyor.
+      Engellenen buton yedek sayfa gecisini tetiklemiyor.
+FIX - Kismi ve tam resync sirasinda eski PREBUTTON bolumleri temizleniyor.
+TEST - Yedi regresyon: donusler, eslesmeyen buton, nesne/girdi baglami,
+       ortak LOCAL, script ile kapatma ve resync temizligi.
+
 [2026-09-20] - Script dialog kapatma buton parametreleri
 ------------------------------------------------------------------------
 FIX - DIALOGCLOSE virgul/bosluk ayraclarini ve Sphere sayisal ifadelerini okuyor.

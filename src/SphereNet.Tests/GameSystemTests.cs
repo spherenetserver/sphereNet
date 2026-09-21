@@ -1711,8 +1711,8 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.Single(GetQueuedPackets(gmClient.NetState));
         Assert.Empty(GetQueuedPackets(targetClient.NetState));
 
-        uint gumpId = (uint)Math.Abs("d_admin_target_smoke".GetHashCode());
-        gmClient.HandleGumpResponse(gm.Uid.Value, gumpId, 1, [], []);
+        uint gumpId = gmClient.Gumps.OpenScriptDialogs["d_admin_target_smoke"];
+        gmClient.HandleGumpResponse(target.Uid.Value, gumpId, 1, [], []);
 
         Assert.True(target.TryGetProperty("TAG.DIALOG_SUBJECT_TOUCHED", out var touched));
         Assert.Equal("1", touched);
@@ -2153,7 +2153,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         var activeChar = client.Character!;
         Assert.True(client.TryExecuteScriptCommand(activeChar, "DIALOG", "testdlg", null));
-        client.HandleGumpResponse(activeChar.Uid.Value, (uint)Math.Abs("testdlg".GetHashCode()), 1, [], []);
+        client.HandleGumpResponse(activeChar.Uid.Value, client.Gumps.OpenScriptDialogs["testdlg"], 1, [], []);
         Assert.True(activeChar.TryGetProperty("TAG.DIALOG_CLOSED", out var closedVal));
         Assert.Equal("1", closedVal);
     }

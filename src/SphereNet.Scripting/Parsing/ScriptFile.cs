@@ -201,6 +201,8 @@ public sealed class ScriptFile : IDisposable
         if (header == null) return null;
         var (name, arg) = ScriptSection.ParseHeader(header.AsSpan());
         var section = new ScriptSection(name, arg, Context.Snapshot());
+        bool isDialogLayout = name == "DIALOG" &&
+            arg.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries).Length == 1;
         while (true)
         {
             string? line = ReadLine();
@@ -216,7 +218,10 @@ public sealed class ScriptFile : IDisposable
             }
             var key = new ScriptKey { SourceFile = Context.FilePath, SourceLine = Context.LineNumber };
             key.Parse(line.AsSpan());
-            if (!string.IsNullOrEmpty(key.Key)) section.Keys.Add(key);
+            // The first layout line is raw position data, not a verb. A
+            // missing X (",020") must survive the key/argument split.
+            if (!string.IsNullOrEmpty(key.Key) || (isDialogLayout && section.Keys.Count == 0))
+                section.Keys.Add(key);
         }
         return section;
     }

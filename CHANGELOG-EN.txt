@@ -4,6 +4,247 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Complete the bounded dialog compatibility batch
+------------------------------------------------------------------------
+FIX - Script dialogs use resolved resource IDs and retain each open instance
+      with its subject. Responses consume the matching instance; repeated
+      opens no longer replace another object's callback. DIALOGLIST entry
+      COUNT reports the remaining instance count. Disconnect clears tracking.
+FIX - Validate complete gump response fields before invoking scripts. Reject
+      invalid counts/truncated payloads, consume long text without shifting
+      subsequent fields, and apply Source-X text termination/tab handling.
+FIX - Use the 5.0.0 compression and 4.0.4a close-response version boundaries;
+      retain compressed packets for KR/Enhanced clients. Old clients supply
+      their own close response instead of receiving a duplicate server one.
+FIX - Page remapping uses an unsigned word while ARGN retains the original
+      argument. Empty layout sections do not send or register a dialog.
+TEST - Add lifecycle, packet-boundary and opening tests, plus an opt-in
+       SPHERENET_DIALOG_PACK smoke test. All 20 supplied main dialogs opened
+       and dispatched cancel in an isolated world without a live DB/save.
+VERIFY - Full suite: 5483 passed, 0 failed; includes the supplied dialog pack.
+
+[2026-09-22] - Scope dialog response fields to their argument object
+------------------------------------------------------------------------
+FIX - ARGTXT and ARGCHK follow the response argument object through CALL,
+      while ordinary and expression function calls receive fresh arguments.
+      Returning from nested calls restores the caller's response fields.
+FIX - Expression functions initialize ARGN1/2/3 from their own arguments
+      instead of inheriting the caller's numeric and object arguments.
+TEST - Eight cases cover direct/CALL/expression response visibility, caller
+       restoration and numeric initialization in both expression call paths.
+
+[2026-09-22] - Keep unsigned dialog button IDs in trigger arguments
+------------------------------------------------------------------------
+FIX - Widen button IDs from their unsigned 32-bit packet value into ARGN1.
+      IDs above int.MaxValue no longer appear negative in PREBUTTON or the
+      matched button handler. Later signed script writes remain unchanged.
+TEST - Eight response/DIALOGCLOSE cases cover ordinary IDs, signed-boundary
+       values, uint.MaxValue and mutation of ARGN after dispatch.
+
+[2026-09-22] - Preserve script dialog options and signed entry limits
+------------------------------------------------------------------------
+FIX - DHTMLGUMP, CHECKBOX and RADIO retain numeric option/state values instead
+      of collapsing all nonzero values to one. DTEXTENTRYLIMITED preserves
+      the script's signed limit as Source-X does. Native builder boolean and
+      nonnegative-limit behavior remains available to native callers.
+TEST - Six packet cases cover numeric options, expressions and signed/zero
+       entry limits while checking the resulting text payload.
+
+[2026-09-21] - Honor dialog function priority over subject commands
+------------------------------------------------------------------------
+FIX - Dialog targets search existing functions before subject properties or
+      verbs for non-native control names, matching CDialogDef. Native dialog
+      controls retain priority; ordinary object command order is unchanged.
+TEST - Six packet cases cover NAME/SOUND helpers through direct, CALL and TRY
+       paths, preserving the shared dialog text table and function arguments.
+
+[2026-09-21] - Stop shadowing dialog functions with the GUMPIC alias
+------------------------------------------------------------------------
+FIX - Remove the non-Source-X GUMPIC built-in alias. The native control name
+      remains GUMPPIC; a script function named GUMPIC now executes normally.
+TEST - Six real-dialog cases cover direct/CALL helpers, shared text indices,
+       ARGV expansion and a helper RETURN that does not cancel its caller.
+
+[2026-09-21] - Preserve dialog text tables and client-parsed controls
+------------------------------------------------------------------------
+FIX - Seed the complete expanded TEXT table before appending dynamic text,
+      preserving Source-X indices and unused entries in the outgoing packet.
+FIX - Forward TEXT, HTMLGUMP, CROPPEDTEXT, TEXTENTRY, TEXTENTRYLIMITED, GROUP
+      and ITEMPROPERTY arguments after expansion without numeric conversion
+      or rebuilding their text indices, matching CDialogDef's raw path.
+TEST - Seven packet regressions verify original arguments, text order and
+       dynamic indices when static and dynamic controls are mixed.
+
+[2026-09-21] - Match script tooltip argument and number conversion
+------------------------------------------------------------------------
+FIX - TOOLTIP accepts Source-X comma/equal/whitespace argument separators
+      and requires a second argument, which may be explicitly empty.
+FIX - Match the reference unsigned prefix conversion, including overflow
+      rejection and its numeric conversion stages; preserve token text.
+TEST - Eleven packet cases cover separators, uint limits, missing/invalid
+       arguments, Sphere hex and the reference's prefix conversion behavior.
+
+[2026-09-21] - Evaluate dialog pages and origins with Source-X operands
+------------------------------------------------------------------------
+FIX - PAGE reads one expression operand, supporting defnames and grouped
+      expressions without consuming a trailing operator as part of the page.
+FIX - DORIGIN reads its two operands sequentially. Star offsets advance the
+      baseline, signed values replace it, and a standalone minus preserves it.
+TEST - Seven packet regressions cover page values, expression boundaries,
+       origin expressions, defnames and signed/relative origin behavior.
+
+[2026-09-21] - Preserve Source-X localized HTML control arguments
+------------------------------------------------------------------------
+FIX - XMFHTMLGUMP, XMFHTMLGUMPCOLOR and XMFHTMLTOK use sequential expression
+      operands for coordinates, sizes and cliloc IDs. Script numeric options
+      retain their values instead of being coerced to booleans.
+FIX - Preserve the optional color suffix and token text arguments according
+      to their separate Source-X paths, including empty arguments.
+TEST - Six packet regressions cover expressions, raw colors, numeric options,
+       empty suffixes and token arguments with spaces and tabs.
+
+[2026-09-21] - Match Source-X image control operands and hue suffixes
+------------------------------------------------------------------------
+FIX - GUMPPIC, TILEPIC, TILEPICHUE and PICINPIC read numeric operands with
+      the sequential expression reader. Preserve GUMPPIC/TILEPICHUE hue
+      suffixes as text, including explicit zero, instead of reinterpreting them.
+TEST - Seven packet regressions cover expressions, image IDs, relative
+       coordinates, explicit zero and optional or leading-zero hue suffixes.
+
+[2026-09-21] - Evaluate dynamic entry and selection control operands
+------------------------------------------------------------------------
+FIX - DTEXTENTRY, DTEXTENTRYLIMITED, CHECKBOX and RADIO now use the Source-X
+      sequential operand reader for dimensions, hues, IDs, limits and states.
+      Grouped expressions and loaded defnames no longer shift these fields.
+TEST - Six packet regressions cover expressions, selection states, empty
+       initial text and preservation of a leading dot in entry text.
+
+[2026-09-21] - Extend expression operands to backgrounds and dynamic text
+------------------------------------------------------------------------
+FIX - RESIZEPIC, GUMPPICTILED, CHECKERTRANS, DTEXT, DCROPPEDTEXT and DHTMLGUMP
+      share the sequential operand reader. Defnames and grouped expressions
+      no longer shift dimensions, colors or the start of the text payload.
+FIX - Preserve the remaining dynamic text/HTML without expanding it again;
+      DTEXT and DCROPPEDTEXT consume the Source-X leading-dot text marker.
+TEST - Nine regressions cover control parameters and exact text/HTML payloads.
+
+[2026-09-21] - Read dialog button operands using Source-X GetSingle semantics
+------------------------------------------------------------------------
+FIX - BUTTON and BUTTONTILEART now read sequential operands with loaded
+      defnames and grouped expressions instead of splitting on whitespace.
+      Relative coordinates retain their origin and star updates; trailing
+      operators remain available to the next operand as in Source-X.
+TEST - Seven packet-level regressions cover button and tile parameters,
+       origin persistence, grouped expressions and legacy comma syntax.
+
+[2026-09-21] - Evaluate dialog opening coordinates as Sphere expressions
+------------------------------------------------------------------------
+FIX - Read the initial dialog position using Sphere numbers, loaded defnames
+      and grouped expressions, with Source-X argument separators and zero for
+      omitted coordinates. Preserve an empty first coordinate during parsing.
+FIX - Consume the position line before executing layout commands, including
+      the fallback renderer, so it cannot accidentally execute as a verb.
+TEST - Ten packet-level cases cover coordinates and layout execution order.
+
+[2026-09-21] - Use mutable script arguments in dialog button handlers
+------------------------------------------------------------------------
+FIX - Remove response overrides that pinned ARGN and ARGV to the button ID.
+      ARGN now follows ARGN1 writes, ARGV reports the current argument count,
+      and response ARGS starts empty as in Source-X. Input checkbox/text access
+      remains tied to the received response.
+TEST - Four regressions cover PREBUTTON/button writes with real responses and
+       DIALOGCLOSE, initial values, argument counts and preserved input fields.
+
+[2026-09-21] - Isolate nested dialog setup from the caller's response
+------------------------------------------------------------------------
+FIX - Temporarily suspend the active dialog response resolver while opening a
+      new script dialog. Its TEXT/layout use fresh setup arguments instead of
+      inheriting the caller's button number and input fields. Restore the caller
+      resolver in finally, including cancelled setup.
+TEST - Six regressions cover DIALOG/SDIALOG, successful/cancelled/missing child
+       dialogs, child page arguments and restored parent response fields.
+
+[2026-09-21] - Resolve dialog TEXT before layout with the opening context
+------------------------------------------------------------------------
+FIX - Expand indexed TEXT once before layout execution using the subject,
+      source, page, ARGO and argument text. Share the opening script scope with
+      layout execution, and resolve position text through the same context.
+      Keep cached resource text raw so repeated openings cannot reuse stale data.
+TEST - Five packet regressions cover indexed text, HTML, cropped text and both
+       text-entry controls, pre-layout values and different subsequent arguments.
+
+[2026-09-21] - Forward dialog layout arguments separately from page numbers
+------------------------------------------------------------------------
+FIX - DIALOG/SDIALOG forward the third parameter through the client dialog
+      pipeline to layout ARGS/ARGV. ARGN1 remains the requested page and ARGO
+      remains the subject; omitted text is empty instead of the page number.
+      Seed the fallback layout scope with the same argument text.
+TEST - Six regressions cover DIALOG/SDIALOG, grouped page expressions, comma
+       lists, numeric text, omitted arguments and subject identity.
+
+[2026-09-21] - Resolve dialog command numeric parameters consistently
+------------------------------------------------------------------------
+FIX - DIALOG/SDIALOG page parameters accept Sphere hex, expressions and numeric
+      DEFNAME values; an omitted page is 0, as in Source-X. Tab separators and
+      grouped page expressions preserve the boundary before script arguments.
+FIX - DIALOGCLOSE resolves numeric DEFNAME values as well as textual definitions.
+TEST - Eleven additional cases cover page defaults, expressions, separators,
+       argument boundaries and definition-based close buttons.
+
+[2026-09-21] - Make item creation chance regressions deterministic
+------------------------------------------------------------------------
+TEST - Replace probabilistic R8 sampling with every roll outcome through the
+       actual NPC @Create path. Verify both R2 outcomes with an amount range and
+       unconditional R0/R1 behavior. A test-only internal roll override is reset
+       between tests; normal server rolls continue to use Random.Shared.
+
+[2026-09-21] - Parse dialog response indices as Source-X operands
+------------------------------------------------------------------------
+FIX - ARGCHK/ARGTXT accept dotted, parenthesized and space-separated indices,
+      grouped arithmetic and DEFNAME values. Index evaluation reads one operand,
+      matching GetSingle, and converts it to an unsigned 32-bit ID before lookup.
+      Existing count, first-ID and out-of-range text behavior remains intact.
+TEST - Twelve regressions cover accessor spellings, grouped versus ungrouped
+       arithmetic, definitions, unsigned IDs and bounded text lookup.
+
+[2026-09-21] - Preserve dialog response counts and input order
+------------------------------------------------------------------------
+FIX - ARGCHK returns the received switch count; ARGCHKID returns the first
+      received ID or -1 for empty/zero-first input. ARGTXT exposes the text count.
+      Duplicate text IDs resolve to the first received value, and out-of-range
+      text IDs no longer wrap into an unrelated ushort entry.
+TEST - Four response scenarios cover empty, ordered, zero-first and duplicate
+       selections, text counts, duplicate text IDs and out-of-range lookup.
+
+[2026-09-21] - Evaluate dialog button selectors with Sphere numeric semantics
+------------------------------------------------------------------------
+FIX - Dialog ON selectors evaluate arithmetic and DEFNAME values, preserving
+      grouped expressions when splitting range arguments. Comparisons use the
+      unsigned 32-bit button ID and retain the written order of range bounds.
+      A third argument no longer invalidates the first two range values.
+TEST - Fourteen regressions cover exact/hex IDs, expressions, definitions,
+       separators, reversed ranges and unsigned boundary values.
+
+[2026-09-21] - Ignore unmatched and stale dialog responses
+------------------------------------------------------------------------
+FIX - Responses without a matching script button no longer reopen the dialog
+      as an implicit page change. Client page buttons and explicit script
+      reopening keep their existing behavior.
+FIX - Discard responses whose dialog subject was deleted instead of executing
+      its PREBUTTON/button script on the player character.
+TEST - Seven regressions cover absent/unmatched buttons, close responses,
+       deleted subjects, valid handlers and explicit script reopening.
+
+[2026-09-21] - Execute dialog PREBUTTON guards before button handlers
+------------------------------------------------------------------------
+FIX - Cache and execute PREBUTTON sections for matching dialog responses,
+      including DIALOGCLOSE. Preserve subject, source, response fields and shared
+      LOCAL/REF/FLOAT scope; only RETURN 1 vetoes the matching button handler.
+      A veto counts as handled so it cannot trigger fallback page navigation.
+FIX - Remove cached PREBUTTON sections during incremental and full resync.
+TEST - Seven regressions cover return values, missing button matches, subject
+       and input context, shared locals, scripted close and resync removal.
+
 [2026-09-20] - Preserve scripted dialog close button arguments
 ------------------------------------------------------------------------
 FIX - DIALOGCLOSE accepts comma/whitespace separators and Sphere numeric

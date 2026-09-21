@@ -345,8 +345,7 @@ public sealed partial class GameClient : ITextConsole
             View.KnownItems.Clear();
             View.KnownChars.Clear();
             View.KnownDoorOverrides.Clear();
-            Gumps.ActiveGumps.Clear();
-            Gumps.Callbacks.Clear();
+            Gumps.Clear();
             View.LastKnownPos.Clear();
             View.LastKnownItemState.Clear();
             _paperdollThrottle.Clear();

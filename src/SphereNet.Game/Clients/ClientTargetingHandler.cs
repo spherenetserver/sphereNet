@@ -779,7 +779,9 @@ public sealed class ClientTargetingHandler
     {
         if (_character == null) return;
 
-        if (!Gumps.ActiveGumps.Remove(gumpId))
+        bool script = Gumps.HasScript(gumpId);
+        Action<uint, uint[], (ushort, string)[]>? scriptCallback = null;
+        if (script ? !Gumps.TryTakeScript(gumpId, serial, out scriptCallback) : !Gumps.ActiveGumps.Remove(gumpId))
         {
             _logger.LogWarning("Rejected forged/stale gump response from {Char}: serial=0x{S:X}, gumpId=0x{G:X}, button={B}",
                 _character.Name, serial, gumpId, buttonId);
@@ -826,6 +828,12 @@ public sealed class ClientTargetingHandler
             }
         }
 
+        if (scriptCallback != null)
+        {
+            scriptCallback(buttonId, switches, textEntries);
+            return;
+        }
+
         // Route to registered callback if present
         if (Gumps.Callbacks.TryGetValue(gumpId, out var callback))
         {
@@ -854,11 +862,11 @@ public sealed class ClientTargetingHandler
         int gy = gump.ExplicitY ?? (gump.Height > 0 ? (600 - gump.Height) / 2 : 50);
 
         // Source-X send.cpp:3617 picks compressed (0xDD) vs standard (0xB0) by client
-        // version. Only explicitly-old clients (< 3.0.0) get the uncompressed 0xB0
+        // version. Only explicitly-old clients (< 5.0.0) get the uncompressed 0xB0
         // fallback; modern and not-yet-detected (version 0) clients keep 0xDD, so the
         // established path is untouched.
         uint ver = _netState.ClientVersionNumber;
-        if (ver != 0 && ver < 30_000_000)
+        if (ver != 0 && ver < 50_000_000 && !_netState.IsKingdomRebornClient && !_netState.IsEnhancedClient)
             _netState.Send(new PacketGumpDialogStandard(
                 gump.Serial, gump.GumpId, gx, gy, layout, gump.Texts));
         else

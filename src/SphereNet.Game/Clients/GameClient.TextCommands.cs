@@ -20,6 +20,22 @@ public sealed partial class GameClient
                     HandleUseSkill(skillId);
                 }
                 break;
+            case 0x43:
+                int.TryParse(parts[0], out int school);
+                int spell = school switch
+                {
+                    2 => 101, 3 => 201, 4 => 401, 5 => 501,
+                    6 => 601, 7 => 678, 8 => 701, _ => 1
+                };
+                var book = _character!.FindSpellbook(spell);
+                if (book != null) HandleDoubleClick(book.Uid.Value);
+                break;
+            case 0xC7:
+                if (parts[0].StartsWith("bow", StringComparison.OrdinalIgnoreCase))
+                    PlayAnimation(_character!, (ushort)AnimationType.Bow, NewAnimationGesture.Emote);
+                else if (parts[0].StartsWith("salute", StringComparison.OrdinalIgnoreCase))
+                    PlayAnimation(_character!, (ushort)AnimationType.Salute, NewAnimationGesture.Emote);
+                break;
             case 0x27: // Cast from book and cast macro share the same path.
             case 0x56:
                 if (int.TryParse(parts[0], out int spellId) && spellId > 0)

@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Unify spellbook validation and route virtue selections
+------------------------------------------------------------------------
+FIX - Casts and book macros share school-aware hand/backpack book selection.
+      Book requirements apply beyond spells 1-64, preserving GM/NPC and
+      scroll/wand exemptions. Invalid IDs cannot wrap the classic bit mask.
+      Correct the Mysticism fallback offset to 677.
+FIX - Use existing missing-book, missing-spell and missing-reagent message
+      keys. Format the missing reagent name at cast start and completion.
+FIX - Route client-owned virtue dialog 0x1CD to @UserVirtue before the script
+      dialog registry. Require the player's serial; pass button in ARGN1
+      and viewed character in ARGO with the Source-X fallback.
+TEST - Add 17 regressions for school requirements, masks, Mysticism,
+       message overrides, GM exemption and virtue response identity.
+
+[2026-09-22] - Implement spellbook and emote client macros
+------------------------------------------------------------------------
+FIX - Handle text-command 0x43 through the normal spellbook use path. Match
+      Source-X school selection, hand/top-level backpack search, definition
+      spell ranges and preference for a book containing the requested spell.
+      Empty matching books remain usable; nested bags are not searched.
+FIX - Handle 0xC7 bow/salute through the shared animation broadcast path,
+      retaining @UserExtCmd cancellation and argument rewriting.
+TEST - Add 15 macro regression cases covering all eight schools, fallback,
+       hand/pack precedence, nested bags and animation packets.
+
 [2026-09-22] - Wire client text-command triggers and validate input replies
 ------------------------------------------------------------------------
 FIX - Fire @UserExtCmd for actual 0x12 commands before built-in dispatch.

@@ -203,6 +203,24 @@ public sealed class ScriptResponseLifecycleTests
         Assert.Equal("3", f.Tag("VIRTUE"));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ClientVirtueWindowFiresWithoutPendingScriptDialog(bool selectedTarget, bool missingTarget)
+    {
+        using var f = new Fixture("[EVENTS e_virtue]\nON=@UserVirtue\nTAG.BUTTON=<ARGN1>\nTAG.VIEWED=<ARGO.NAME>\n", "e_virtue");
+        f.Player.Name = "owner";
+        var other = f.World.CreateCharacter(); other.Name = "viewed";
+        uint[] checks = selectedTarget ? [missingTarget ? 0xFFFFFFu : other.Uid.Value] : [];
+        f.Client.HandleGumpResponse(other.Uid.Value, 0x1CD, 1, checks, []);
+        Assert.False(f.Player.TryGetTag("BUTTON", out _));
+        f.Client.HandleGumpResponse(f.Player.Uid.Value, 0x1CD, 1, checks, []);
+        Assert.Equal("1", f.Tag("BUTTON"));
+        var viewed = selectedTarget && !missingTarget ? other : f.Player;
+        Assert.Equal(viewed.Name, f.Tag("VIEWED"));
+    }
+
     [Fact]
     public void TextCommandCannotMasqueradeAsSkillLockPacket()
     {

@@ -777,6 +777,17 @@ public sealed class ClientTargetingHandler
     {
         if (_character == null) return;
 
+        // Source-X PacketGumpDialogRet handles client-owned virtue windows
+        // before the server's pending-dialog registry, only for our own UID.
+        if (gumpId == 0x1CD && serial == _character.Uid.Value)
+        {
+            var viewed = buttonId == 1 && switches.Length > 0
+                ? _world.FindChar(new Serial(switches[0])) ?? _character : _character;
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtue,
+                new TriggerArgs { CharSrc = _character, O1 = viewed, N1 = buttonId });
+            return;
+        }
+
         bool script = Gumps.HasScript(gumpId);
         Action<uint, uint[], (ushort, string)[]>? scriptCallback = null;
         if (script ? !Gumps.TryTakeScript(gumpId, serial, out scriptCallback) : !Gumps.ActiveGumps.Remove(gumpId))

@@ -839,20 +839,20 @@ public sealed class SpellEngine
         if (caster.IsPlayer && !isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
             Character.ReagentsRequiredEnabled && !HasRequiredReagents(caster, def))
         {
-            OnSysMessage?.Invoke(caster, "You lack the reagents to cast that spell.");
+            SendMissingReagentMessage(caster, def);
             return -1;
         }
 
         // Spellbook requirement (reference Spell_CanCast): a player casting
         // from memory must have the spell in an accessible spellbook; scroll
-        // and wand casts bypass the book. Only the classic 1-64 ids are
-        // tracked through the book bit mask (More1/More2).
+        // and wand casts bypass the book. All schools use their definition
+        // offset and capacity when selecting a book and reading its bit mask.
         if (Character.SpellbookRequiredEnabled && caster.IsPlayer &&
             !isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
-            (int)def.Id is >= 1 and <= 64 &&
             !HasSpellInBook(caster, (int)def.Id))
         {
-            OnSysMessage?.Invoke(caster, "You don't know that spell.");
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(caster.FindSpellbook((int)def.Id) == null
+                ? Msg.SpellTryNobook : Msg.SpellTryNotyourbook));
             return -1;
         }
 
@@ -1051,7 +1051,7 @@ public sealed class SpellEngine
             DiscardSummon(summoned);
             ClearCastSourceTags(caster);
             ClearCastState(caster);
-            OnSysMessage?.Invoke(caster, "You lack the reagents to cast that spell.");
+            SendMissingReagentMessage(caster, def);
             return false;
         }
 
@@ -1308,32 +1308,8 @@ public sealed class SpellEngine
     /// content uses the classic 64-bit mask in More1/More2.</summary>
     internal bool HasSpellInBook(Character caster, int spellId)
     {
-        ulong bit = 1UL << (spellId - 1);
-        foreach (var book in EnumerateSpellbooks(caster))
-        {
-            ulong bits = ((ulong)book.More2 << 32) | book.More1;
-            if ((bits & bit) != 0)
-                return true;
-        }
-        return false;
-    }
-
-    private IEnumerable<Item> EnumerateSpellbooks(Character caster)
-    {
-        var oneHand = caster.GetEquippedItem(Layer.OneHanded);
-        if (oneHand?.ItemType == ItemType.Spellbook)
-            yield return oneHand;
-        var twoHand = caster.GetEquippedItem(Layer.TwoHanded);
-        if (twoHand?.ItemType == ItemType.Spellbook)
-            yield return twoHand;
-        if (caster.Backpack != null)
-        {
-            foreach (var item in caster.Backpack.Contents)
-            {
-                if (item.ItemType == ItemType.Spellbook)
-                    yield return item;
-            }
-        }
+        var book = caster.FindSpellbook(spellId);
+        return book != null && book.ContainsSpell(spellId);
     }
 
     /// <summary>Whether the caster can pay the spell's reagent cost right now.
@@ -1363,6 +1339,17 @@ public sealed class SpellEngine
                 return false;
         }
         return true;
+    }
+
+    private void SendMissingReagentMessage(Character caster, SpellDef def)
+    {
+        foreach (var (id, needed) in def.Reagents)
+        {
+            if (caster.Backpack != null && CountReagent(caster, id, needed) >= needed) continue;
+            string name = Definitions.DefinitionLoader.GetItemDef(id)?.Name ?? $"0{id:X}";
+            OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNoregs, name));
+            return;
+        }
     }
 
     private int CountReagent(Character caster, ushort regBaseId, int stopAt)

@@ -4,6 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - Ortak spellbook dogrulamasi ve virtue secimleri
+------------------------------------------------------------------------
+FIX - Buyu atma ve kitap makrolari okula gore el/canta kitap secimini ortak
+      kullaniyor. Kitap kontrolu 1-64 disinda da calisiyor; GM/NPC ve
+      scroll/wand istisnalari korunuyor. Gecersiz kimlikler maskeye sarilmiyor.
+      Mysticism varsayilan baslangici 677 olarak duzeltildi.
+FIX - Eksik kitap, buyu ve reagent mesajlari mevcut mesaj anahtarlarindan
+      geliyor. Baslangicta ve bitiste eksik reagent adi mesaja ekleniyor.
+FIX - Istemcinin 0x1CD virtue penceresi script dialog kaydindan once
+      @UserVirtue tetikliyor; oyuncunun kendi serial degeri zorunlu.
+      ARGN1 dugmeyi, ARGO bakilan karakteri Source-X kurallariyla tasiyor.
+TEST - Okul kitap sartlari, maske sinirlari, Mysticism, mesaj ozellestirme,
+       GM istisnasi ve virtue yanit kimligi icin 17 regresyon vakasi eklendi.
+
+[2026-09-22] - Spellbook ve selamlama istemci makrolari
+------------------------------------------------------------------------
+FIX - 0x43 metin komutu normal spellbook kullanim yoluna baglandi. Source-X
+      okul secimi, el/canta ust seviye aramasi, tanimdaki buyu araligi ve
+      istenen buyuyu iceren kitabin onceligi uygulaniyor. Bos uygun kitap
+      acilabiliyor; ic ice cantalar aranmiyor.
+FIX - 0xC7 bow/salute ortak animasyon yayin yoluna baglandi. @UserExtCmd
+      iptali ve arguman degistirme davranisi korunuyor.
+TEST - Sekiz okul, varsayilan secim, el/canta onceligi, ic ice cantalar ve
+       animasyon paketleri icin 15 makro regresyon vakasi eklendi.
+
 [2026-09-22] - Istemci metin komutlari ve metin girisi yanitlari
 ------------------------------------------------------------------------
 FIX - Gercek 0x12 komutlari yerlesik islemden once @UserExtCmd tetikliyor.

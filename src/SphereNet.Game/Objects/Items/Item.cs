@@ -1829,6 +1829,10 @@ public class Item : ObjBase
 
     public bool IsSpellbook => IsSpellbookComponentType;
 
+    // Source-X CItemBase::m_ttSpellbook.m_iMaxSpells (TDATA4).
+    // Definitionless items retain the port's 64-bit spell-mask capacity.
+    internal uint SpellbookSpellCount => ResolveDefinition()?.TData4 ?? 64;
+
     public ushort SpellbookOffset => (ushort)(ResolveDefinition()?.TData3 is > 0 and <= ushort.MaxValue
         ? ResolveDefinition()!.TData3
         : ItemType switch
@@ -1838,13 +1842,20 @@ public class Item : ObjBase
             ItemType.SpellbookBushido => 400,
             ItemType.SpellbookNinjitsu => 500,
             ItemType.SpellbookArcanist => 600,
-            ItemType.SpellbookMystic => 676,
+            ItemType.SpellbookMystic => 677,
             ItemType.SpellbookMastery => 700,
             _ => 0
         });
 
-    /// <summary>Source-X AddSpellbookSpell: spell ids are one-based relative
-    /// to TDATA3. Refuse duplicates and spells outside this book's mask.</summary>
+    /// <summary>Source-X IsSpellInBook: read the school-relative mask.</summary>
+    internal bool ContainsSpell(int spellId)
+    {
+        int bit = spellId - SpellbookOffset - 1;
+        return IsSpellbook && bit is >= 0 and < 64 &&
+            ((((ulong)More2 << 32) | More1) & (1UL << bit)) != 0;
+    }
+
+    /// <summary>Source-X AddSpellbookSpell: reject duplicates and out-of-mask spells.</summary>
     public bool TryLearnSpell(int spellId)
     {
         int bit = spellId - SpellbookOffset - 1;

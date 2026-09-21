@@ -193,6 +193,7 @@ internal interface IClientContext : ITextConsole
     void HandleGumpResponse(uint serial, uint gumpId, uint buttonId,
         uint[] switches, (ushort Id, string Text)[] textEntries);
     bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection);
+    void SetPendingMenuContext(IScriptObj subject, IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> keys);
     void SendInputPromptGump(IScriptObj target, string propName, int maxLength);
     void SendScriptPrompt(IScriptObj target, string functionName, string message, bool unicode = false);
 

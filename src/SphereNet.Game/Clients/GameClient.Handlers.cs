@@ -177,6 +177,7 @@ public sealed partial class GameClient
 
     private Action<uint, uint, uint, string>? _pendingPromptCallback;
     private uint _pendingPromptId;
+    private bool _promptActive, _promptUnicode, _scriptPrompt;
 
     /// <summary>Send a text prompt to the client and register a callback for the response.</summary>
     public void SendPrompt(uint promptId, string message,
@@ -184,6 +185,9 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
         _pendingPromptId = promptId;
+        _promptActive = true;
+        _promptUnicode = unicode;
+        _scriptPrompt = false;
         _pendingPromptCallback = callback;
 
         // The question is a system message, not part of the packet: that is where
@@ -199,33 +203,22 @@ public sealed partial class GameClient
     /// <summary>Handle prompt response (0x9A) — rune names, house signs, etc.</summary>
     public void HandlePromptResponse(uint serial, uint promptId, uint type, string text)
     {
-        if (_character == null) return;
-
-        _logger.LogDebug("[prompt_response] char=0x{Uid:X8} promptId={PromptId} type={Type} text='{Text}'",
-            _character.Uid.Value, promptId, type, text);
-
-        if (type == 0)
-        {
-            // Cancelled
-            _pendingPromptCallback = null;
+        if (_character == null || !_promptActive || serial != _character.Uid.Value || promptId != _pendingPromptId)
             return;
-        }
-
-        // Dispatch to pending callback
-        if (_pendingPromptCallback != null)
-        {
-            _pendingPromptCallback(serial, promptId, type, text);
-            _pendingPromptCallback = null;
-            return;
-        }
-
-        // Default: try to set the name of the target item (rune, house sign)
-        var item = _world.FindItem(new Serial(serial));
-        if (item != null && !string.IsNullOrWhiteSpace(text))
-        {
-            item.Name = text.Trim();
-            SysMessage(ServerMessages.GetFormatted("msg_name_set", item.Name));
-        }
+        var callback = _pendingPromptCallback;
+        bool script = _scriptPrompt;
+        bool unicode = _promptUnicode;
+        _promptActive = false;
+        _pendingPromptCallback = null;
+        _scriptPrompt = false;
+        // Consume before invoking: the callback may arm the next prompt.
+        if (!script && type == 0) return;
+        int nul = text.IndexOf('\0');
+        if (nul >= 0) text = text[..nul];
+        if (!unicode)
+            text = new string(text.Where(c => c >= ' ' && c < 127 && !(script ? "|~=[]{|}~" : "|~,=[]{|}~").Contains(c)).ToArray());
+        if (text.Length > 255) text = text[..255];
+        callback?.Invoke(serial, promptId, type, text);
     }
 
     /// <summary>Handle old-style menu choice response (0x7D).</summary>
@@ -242,38 +235,18 @@ public sealed partial class GameClient
             return;
         }
 
+        if (_pendingMenuOptions == null || menuId != _pendingMenuId || serial != _character.Uid.Value)
+            return;
         var options = _pendingMenuOptions;
-        var defname = _pendingMenuDefname;
+        if (index > options.Count) return;
+        var subject = _pendingMenuSubject ?? _character;
+        var body = index == 0 ? _pendingMenuCancel : options[index - 1].Script;
         _pendingMenuOptions = null;
         _pendingMenuDefname = "";
-
-        if (index == 0)
-        {
-            // Cancel — fire @Cancel trigger if a MENU section trigger handler exists
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserExtCmd,
-                new TriggerArgs { CharSrc = _character, S1 = $"menu_{defname}_cancel" });
-            return;
-        }
-
-        if (options != null && index >= 1 && index <= options.Count)
-        {
-            var chosen = options[index - 1];
-            foreach (var scriptKey in chosen.Script)
-            {
-                // Console verbs first (SUMMON/MAKEITEM/SKILLMENU...), then the
-                // character's own property/verb surface (POLY, flags, ...).
-                if (TryExecuteScriptCommand(_character, scriptKey.Key, scriptKey.Arg, null))
-                    continue;
-                if (_character.TrySetProperty(scriptKey.Key, scriptKey.Arg))
-                    continue;
-                _character.TryExecuteCommand(scriptKey.Key, scriptKey.Arg, this);
-            }
-            return;
-        }
-
-        // Fallback: generic trigger for unhandled menus
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserExtCmd,
-            new TriggerArgs { CharSrc = _character, S1 = $"menu_{menuId}_{index}" });
+        _pendingMenuSubject = null;
+        _pendingMenuCancel = [];
+        if (subject is ObjBase obj && obj.IsDeleted) return;
+        ExecuteMenuResponse(subject, body);
     }
 
     // ==================== Phase 2: Content Feature Handlers ====================
@@ -708,7 +681,7 @@ public sealed partial class GameClient
         }
         Dialogs.PendingInputDlg.Remove(key);
 
-        if (action == 0)
+        if (action != 1)
         {
             _logger.LogDebug("[inpdlg] cancelled by user (serial=0x{S:X8} prop={P})", serial, propName);
             return;
@@ -722,20 +695,20 @@ public sealed partial class GameClient
             return;
         }
 
-        // Source-X parity: a single "#" means "default value" — currently
-        // we just clear the property (TrySetProperty empty arg).
-        string value = text == "#" ? "" : text;
+        // Source-X passes the input unchanged to r_Verb; the property or
+        // command owns the meaning of special values such as "#".
+        string value = text;
 
         var posBefore = (target as Character)?.Position;
         ushort bodyBefore = (target as Character)?.BodyId ?? 0;
         ushort hueBefore = (target as Character)?.Hue.Value ?? 0;
 
         byte? speedModeBefore = target is Character targetChar ? targetChar.SpeedMode : null;
-        if (!target.TrySetProperty(propName, value))
+        if (!target.TryExecuteCommand(propName, value, this))
         {
-            // Source-X falls back to executing the verb if it isn't a
-            // straight property — handles "INPDLG ANIM 30" style edits.
-            target.TryExecuteCommand(propName, value, this);
+            // Retain direct property support for script objects without a
+            // generic property-assignment verb bridge.
+            target.TrySetProperty(propName, value);
         }
 
         if (target is Character ch)
@@ -782,6 +755,7 @@ public sealed partial class GameClient
         if (Dialogs.NextInputDlgContext == 0)
             Dialogs.NextInputDlgContext = 0x1000;
 
+        Dialogs.PendingInputDlg.Clear();
         Dialogs.PendingInputDlg[(targetSerial, context)] = propName;
 
         string current = ".";

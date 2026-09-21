@@ -821,12 +821,21 @@ public sealed class PacketGumpTextEntry : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
+        if (!buffer.HasBytes(9)) return;
         uint serial = buffer.ReadUInt32();
         ushort context = buffer.ReadUInt16();
         byte action = buffer.ReadByte();
-        ushort textLen = buffer.Remaining >= 2 ? Math.Min(buffer.ReadUInt16(), (ushort)1024) : (ushort)0;
-        string text = textLen > 0 && buffer.Remaining >= textLen
-            ? buffer.ReadAsciiFixed(textLen).TrimEnd('\0') : "";
+        ushort textLen = buffer.ReadUInt16();
+        if (!buffer.HasBytes(textLen)) return;
+        // Source-X PacketGumpTextEntry: MAX_NAME_SIZE (30 including NUL),
+        // first CR/LF terminates and only the first TAB becomes a space.
+        string text = buffer.ReadAsciiFixed(textLen);
+        int limit = Math.Min(29, Math.Max(0, textLen - 1));
+        if (text.Length > limit) text = text[..limit];
+        int end = text.IndexOfAny(['\r', '\n']);
+        if (end >= 0) text = text[..end];
+        int tab = text.IndexOf('\t');
+        if (tab >= 0) text = text[..tab] + " " + text[(tab + 1)..];
         state.OnGumpTextEntry(serial, context, action, text);
     }
 }

@@ -4046,6 +4046,7 @@ public static partial class Program
                 clientVersion: OnClientVersion,
                 aosTooltip: OnAOSTooltip,
                 textCommand: OnTextCommand,
+                skillLock: OnSkillLock,
                 extendedCommand: OnExtendedCommand,
                 resyncRequest: OnResyncRequest,
                 logoutRequest: OnLogoutRequest,

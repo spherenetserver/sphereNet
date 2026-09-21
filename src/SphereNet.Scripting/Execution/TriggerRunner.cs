@@ -400,7 +400,11 @@ public sealed class TriggerRunner
             {
                 TriggerName = funcName,
                 CallDepth = callDepth,
-                MaxCallDepth = maxCallDepth
+                MaxCallDepth = maxCallDepth,
+                // Host callbacks can seed this argument object's LOCAL pool
+                // (e.g. TARGETF supplies LOCAL.ID). Ordinary calls construct
+                // fresh arguments, so this does not share their caller's pool.
+                LocalVars = (args as TriggerArgs)?.SharedLocals ?? new()
             };
         result = _interpreter.Execute(functionLines, target, source, args, scope);
         returnValue = scope.ReturnValue;

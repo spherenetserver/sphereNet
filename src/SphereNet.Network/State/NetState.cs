@@ -917,6 +917,7 @@ public sealed class NetState : IDisposable
     public Action<NetState, uint, byte, List<VendorBuyEntry>>? VendorBuyHandler { get; set; }
     public Action<NetState, uint, List<VendorSellEntry>>? VendorSellHandler { get; set; }
     public Action<NetState, byte, string>? TextCommandHandler { get; set; }
+    public Action<NetState, ushort, byte>? SkillLockHandler { get; set; }
     public Action<NetState>? ResyncRequestHandler { get; set; }
     public Action<NetState>? LogoutRequestHandler { get; set; }
     public Action<NetState>? HelpRequestHandler { get; set; }

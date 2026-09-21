@@ -4,6 +4,45 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Wire client text-command triggers and validate input replies
+------------------------------------------------------------------------
+FIX - Fire @UserExtCmd for actual 0x12 commands before built-in dispatch.
+      Preserve Source-X ARGN/ARGS initialization, cancellation, rewritten
+      arguments and the 300-character incoming argument limit. Cast-from-book
+      opcode 0x27 now shares the existing cast-macro path.
+FIX - Separate binary skill-lock packets from virtue text commands so skill
+      locks cannot invoke @UserExtCmd or be spoofed through its old text funnel.
+FIX - Honor LOCAL.DoorAutoDist (0..14), search around the tile in front of the
+      player and reject doors 20 Z units away. Use the normal double-click
+      path for item doors, including portcullises, locks and script triggers.
+FIX - Reject incomplete INPDLG response headers/text instead of dispatching
+      an empty answer. Consume the complete declared text field, apply the
+      Source-X 29-character payload limit, CR/LF termination and first-TAB
+      replacement. Empty text-command and truncated skill-lock packets stop.
+TEST - Add 25 regression cases for command cancellation/rewrites, virtue
+       routing, door searches, input cleanup and separate skill-lock dispatch.
+
+[2026-09-22] - Align pending script responses with Source-X execution
+------------------------------------------------------------------------
+FIX - Match prompt responses to the pending session and consume callbacks
+      before invoking them, preserving prompts opened by a callback. Ignore
+      unsolicited responses instead of renaming arbitrary items. Script
+      prompts run on the player, handle cancellation, initialize numeric
+      arguments and honor ASCII versus Unicode text handling.
+FIX - Execute MENU/SKILLMENU selection bodies through the shared interpreter,
+      preserving the subject, LOCAL, IF, RETURN and function calls. Validate
+      response context, run ON=@Cancel, and keep nested menus alive. Deleted
+      subjects and stale responses do not execute the pending body.
+FIX - TARGETF accepts tab-separated arguments, initializes ARGN1/2/3 and
+      exposes the target graphic through its argument object's LOCAL.ID.
+FIX - INPDLG accepts comma/tab separators, replaces the previous pending
+      input, accepts only action 1 and passes special values to the target
+      command/property instead of clearing '#' in the response handler.
+TEST - Add 19 regression cases for pending responses and update older tests
+       to echo the actual request identifiers instead of arbitrary IDs.
+NOTE - Remove the unrelated UserExtCmd menu fallback. The subsequent
+       text-command fix connects its real 0x12 hook.
+
 [2026-09-22] - Complete the bounded dialog compatibility batch
 ------------------------------------------------------------------------
 FIX - Script dialogs use resolved resource IDs and retain each open instance

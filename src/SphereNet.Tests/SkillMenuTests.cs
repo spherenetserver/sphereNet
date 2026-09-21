@@ -91,7 +91,8 @@ public class SkillMenuTests
         ushort originalBody = player.BodyId;
 
         Assert.True(client.TryExecuteScriptCommand(player, "SKILLMENU", "sm_polymorph", null));
-        client.HandleMenuChoice(player.Uid.Value, 0, 1, 0); // pick first entry
+        var menu = TestHarness.GetQueuedPackets(client.NetState).Last(p => p.Span[0] == 0x7C);
+        client.HandleMenuChoice(player.Uid.Value, System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(menu.Span[7..]), 1, 0);
 
         Assert.Equal(0x00D0, player.BodyId);
         Assert.True(player.IsStatFlag(StatFlag.Polymorph));

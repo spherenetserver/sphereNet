@@ -197,21 +197,24 @@ public sealed partial class GameClient : IClientContext
         uint[] switches, (ushort Id, string Text)[] textEntries) =>
         HandleGumpResponse(serial, gumpId, buttonId, switches, textEntries);
     bool IClientContext.TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection) => TryFindMenuSection(menuDefname, out menuSection);
+    void IClientContext.SetPendingMenuContext(IScriptObj subject, IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> keys) => SetPendingMenuContext(subject, keys);
     void IClientContext.SendInputPromptGump(IScriptObj target, string propName, int maxLength) => SendInputPromptGump(target, propName, maxLength);
     void IClientContext.SendScriptPrompt(IScriptObj target, string functionName, string message, bool unicode)
     {
-        uint promptId = unchecked((uint)HashCode.Combine(functionName.ToUpperInvariant(), target.GetName()));
-        SendPrompt(promptId, string.IsNullOrWhiteSpace(message) ? "Enter text:" : message,
+        uint promptId = unchecked((uint)Random.Shared.Next(1, int.MaxValue));
+        SendPrompt(promptId, message,
             unicode: unicode,
             callback: (_, _, _, text) =>
             {
-                if (Triggers?.Runner == null || string.IsNullOrWhiteSpace(functionName)) return;
-                var args = new SphereNet.Scripting.Execution.TriggerArgs(Character, argStr: text)
-                {
-                    Object1 = target
-                };
-                Triggers.Runner.TryRunFunction(functionName, target, this, args, out _);
+                if (Character == null || string.IsNullOrWhiteSpace(functionName)) return;
+                var subject = (IScriptObj)Character;
+                if (subject.TryExecuteCommand(functionName, text, this, out bool owned) || owned) return;
+                var args = new SphereNet.Scripting.Execution.TriggerArgs(Character);
+                args.InitFromRaw(text);
+                if (!(Triggers?.Runner?.TryRunFunction(functionName, Character, this, args, out _) ?? false))
+                    subject.TrySetProperty(functionName, text);
             });
+        _scriptPrompt = true;
     }
 
     void IClientContext.OpenVendorBuy(Character vendor) => OpenVendorBuy(vendor);

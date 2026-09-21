@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -321,6 +321,10 @@ public sealed partial class GameClient : ITextConsole
             Targets.CursorActive = false;
             Dialogs.PendingInputDlg.Clear();
             _pendingMenuOptions = null;
+            _pendingMenuSubject = null;
+            _pendingMenuCancel = [];
+            _promptActive = false;
+            _pendingPromptCallback = null;
             _pendingEditMenuUids = null;
             _pendingEditMenuMemories = null;
             if (Targets.ScriptNewItem != null)

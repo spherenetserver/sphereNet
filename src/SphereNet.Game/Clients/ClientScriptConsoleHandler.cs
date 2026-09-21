@@ -186,7 +186,7 @@ public sealed class ClientScriptConsoleHandler
             string raw = args.Trim();
             int split = raw.IndexOfAny([' ', '\t', ',']);
             string function = split < 0 ? raw : raw[..split].Trim();
-            string message = split < 0 ? "Enter text:" : raw[(split + 1)..].Trim(' ', '\t', ',');
+            string message = split < 0 ? "" : raw[(split + 1)..].Trim(' ', '\t', ',');
             // The U form is the Unicode one (CObjBase.cpp:2523 passes the flag on),
             // which is what a question written in anything but plain ASCII needs.
             SendScriptPrompt(target, function, message, upper == "PROMPTCONSOLEU");
@@ -415,11 +415,11 @@ public sealed class ClientScriptConsoleHandler
 
             string propName;
             int maxLen = 1;
-            int sp = raw.IndexOf(' ');
+            int sp = raw.IndexOfAny([' ', '\t', ',']);
             if (sp > 0)
             {
                 propName = raw[..sp].Trim();
-                if (!int.TryParse(raw[(sp + 1)..].Trim(), out maxLen) || maxLen <= 0)
+                if (!int.TryParse(raw[(sp + 1)..].TrimStart(' ', '\t', ','), out maxLen) || maxLen <= 0)
                     maxLen = 1;
             }
             else
@@ -436,7 +436,7 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper is "TARGETF" or "TARGETFG")
         {
-            string[] parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            string[] parts = args.Split([' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return true;
             if (Targets.CursorActive)
                 return true;
@@ -566,6 +566,7 @@ public sealed class ClientScriptConsoleHandler
 
                     // Parse: ON=baseid text  or  ON=baseid @hue, text  or  ON=0 text
                     string onArg = k.Arg.Trim();
+                    if (onArg.StartsWith('@')) { current = null; continue; }
                     ushort modelId = 0;
                     ushort hue = 0;
                     string text = "";
@@ -687,6 +688,7 @@ public sealed class ClientScriptConsoleHandler
             _pendingMenuId = (ushort)(Math.Abs(menuDefname.GetHashCode()) & 0xFFFF);
             _pendingMenuDefname = menuDefname;
             _pendingMenuOptions = options;
+            _client.SetPendingMenuContext(target, keys);
 
             // Build and send 0x7C packet
             var items = new List<MenuItemEntry>(options.Count);
@@ -1987,6 +1989,7 @@ public sealed class ClientScriptConsoleHandler
                 skipping = false;
 
                 string onArg = k.Arg.Trim();
+                if (onArg.StartsWith('@')) { current = null; skipping = true; continue; }
                 int sp = onArg.IndexOfAny([' ', '\t']);
                 string itemRef = sp < 0 ? onArg : onArg[..sp];
                 string text = sp < 0 ? "" : onArg[(sp + 1)..].Trim();
@@ -2050,6 +2053,7 @@ public sealed class ClientScriptConsoleHandler
         _pendingMenuId = (ushort)(Math.Abs(menuName.GetHashCode()) & 0xFFFF);
         _pendingMenuDefname = menuName;
         _pendingMenuOptions = options;
+        _client.SetPendingMenuContext(_character, keys);
 
         var items = new List<MenuItemEntry>(options.Count);
         foreach (var opt in options)

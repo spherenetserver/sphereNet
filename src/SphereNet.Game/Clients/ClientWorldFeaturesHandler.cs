@@ -1894,33 +1894,42 @@ public sealed class ClientWorldFeaturesHandler
     }
 
 
-    public void OpenDoor()
+    public void OpenDoor(int distance = 1)
     {
         if (_character == null) return;
         if (_character.IsDead) return;
-        foreach (var item in _world.GetItemsInRange(_character.Position, 2))
+        distance = Math.Clamp(distance, 0, 14);
+        var (dx, dy) = ((byte)_character.Direction & 7) switch
         {
-            if (!DoorHelper.IsDoorItem(item, _world.MapData))
+            0 => (0, -1), 1 => (1, -1), 2 => (1, 0), 3 => (1, 1),
+            4 => (0, 1), 5 => (-1, 1), 6 => (-1, 0), _ => (-1, -1)
+        };
+        var center = new Point3D((short)(_character.X + dx), (short)(_character.Y + dy),
+            _character.Z, _character.MapIndex);
+        foreach (var item in _world.GetItemsInRange(center, distance))
+        {
+            if (!DoorHelper.IsDoorItem(item, _world.MapData) || Math.Abs(item.Z - _character.Z) >= 20)
                 continue;
-            if (item.ItemType == ItemType.DoorLocked)
-            {
-                SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
-                return;
-            }
-            ToggleDoor(item);
+            SysMessage(ServerMessages.Get(Msg.MacroOpendoor));
+            _client.HandleDoubleClick(item.Uid.Value);
             return;
         }
 
-        TryToggleNearestMapStaticDoor(0);
+        TryToggleNearestMapStaticDoor(0, center, distance);
     }
 
-    internal bool TryToggleNearestMapStaticDoor(uint clientSerial)
+    internal bool TryToggleNearestMapStaticDoor(uint clientSerial, Point3D? searchCenter = null, int radius = 2)
     {
         if (_character == null) return false;
         if (_character.IsDead) return false;
+        var center = searchCenter ?? _character.Position;
         if (!DoorHelper.FindNearestStaticDoor(
-                _world.MapData, _character.MapIndex, _character.X, _character.Y, 2,
+                _world.MapData, _character.MapIndex, center.X, center.Y, radius,
                 out short x, out short y, out sbyte z, out ushort tileId, out ushort hue))
+            return false;
+
+        if (searchCenter.HasValue && Math.Abs(z - _character.Z) >= 20) return false;
+        if (searchCenter.HasValue && (Math.Abs(x - _character.X) > 2 || Math.Abs(y - _character.Y) > 2))
             return false;
 
         bool open = _world.IsMapStaticDoorOpen(_character.MapIndex, x, y, z);

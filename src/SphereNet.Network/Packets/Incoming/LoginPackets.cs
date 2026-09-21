@@ -360,6 +360,7 @@ public sealed class PacketTextCommand : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
+        if (!buffer.HasBytes(2)) return;
         byte type = buffer.ReadByte();
         string command = buffer.ReadAsciiNull();
         state.OnTextCommand(type, command);
@@ -373,9 +374,10 @@ public sealed class PacketSkillLock : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
+        if (!buffer.HasBytes(3)) return;
         ushort skillId = buffer.ReadUInt16();
         byte lockState = buffer.ReadByte();
-        state.OnTextCommand(0xF4, $"SKILLLOCK {skillId} {lockState}");
+        state.SkillLockHandler?.Invoke(state, skillId, lockState);
     }
 }
 

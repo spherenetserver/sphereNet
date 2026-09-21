@@ -173,7 +173,9 @@ public sealed class SourceXDeepCompatibilityTests
         Assert.Equal(((ushort)200, 3000001u, (ushort)2), Assert.Single(context.ScriptContextEntries));
 
         Assert.True(client.TryExecuteScriptCommand(player, "PROMPTCONSOLE", "f_deep_prompt,Enter value", null));
-        client.HandlePromptResponse(player.Uid.Value, 1, 1, "source-x reply");
+        var promptPacket = TestHarness.GetQueuedPackets(client.NetState).Last(p => p.Span[0] == 0x9A);
+        uint promptId = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(promptPacket.Span[7..]);
+        client.HandlePromptResponse(player.Uid.Value, promptId, 1, "source-x reply");
         Assert.True(player.TryGetTag("PROMPT_RESULT", out string? prompt));
         Assert.Equal("source-x reply", prompt);
 

@@ -654,13 +654,11 @@ public sealed class ClientTargetingHandler
                 return;
             }
 
-            var trigArgs = new ExecTriggerArgs(_character, 0, 0, Targets.FunctionArgs)
-            {
-                Object1 = argo,
-                Object2 = pendingItemUid.IsValid
-                    ? ((IScriptObj?)_world.FindItem(pendingItemUid) ?? _character)
-                    : _character
-            };
+            var trigArgs = new ExecTriggerArgs(_character);
+            trigArgs.InitFromRaw(Targets.FunctionArgs);
+            trigArgs.Object1 = argo;
+            trigArgs.SharedLocals = new();
+            trigArgs.SharedLocals.Set("ID", graphic.ToString());
             Targets.FunctionArgs = "";
 
             // Snapshot position before running the script function so we can

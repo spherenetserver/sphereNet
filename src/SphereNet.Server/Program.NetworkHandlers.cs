@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -1121,46 +1121,21 @@ public static partial class Program
             client.HandleAOSTooltip(serial);
     }
 
+    private static void OnSkillLock(NetState state, ushort skillId, byte lockState)
+    {
+        if (skillId < 58 && lockState <= 2 && _clients.TryGetValue(state.Id, out var client))
+            client.Character?.SetSkillLock((SkillType)skillId, lockState);
+    }
+
     private static void OnTextCommand(NetState state, byte type, string command)
     {
         if (!_clients.TryGetValue(state.Id, out var client)) return;
-
-        switch (type)
+        client.HandleTextCommand(type, command, skillId =>
         {
-            case 0x24: // UseSkill
-                if (int.TryParse(command.Split(' ')[0], out int skillId))
-                {
-                    if (_macroEngine != null && client.Character != null &&
-                        _macroEngine.IsRecording(client.Character.Uid.Value))
-                        _macroEngine.CaptureUseSkill(client.Character.Uid.Value, skillId);
-                    client.HandleUseSkill(skillId);
-                }
-                break;
-            case 0x56: // CastSpell
-                if (int.TryParse(command.Split(' ')[0], out int spellId) && spellId > 0)
-                    client.HandleCastSpell((SpellType)spellId, 0);
-                break;
-            case 0x58: // OpenDoor
-                client.OpenDoor();
-                break;
-            case 0xF4: // 0x12 ext-type 0xF4: either the SphereNet-internal SKILLLOCK
-                       // funnel (re-emitted from the binary 0x3A packet) or the real
-                       // client's EXTCMD_INVOKE_VIRTUE (Source-X CClientEvent.cpp:3127).
-                var parts = command.Split(' ');
-                if (parts.Length >= 3 && parts[0] == "SKILLLOCK" &&
-                    ushort.TryParse(parts[1], out ushort sid) &&
-                    sid < 58 &&
-                    byte.TryParse(parts[2], out byte lockVal) && lockVal <= 2)
-                {
-                    client.Character?.SetSkillLock((SkillType)sid, lockVal);
-                }
-                else if (parts.Length >= 1 && parts[0].Length == 1 && char.IsDigit(parts[0][0]))
-                {
-                    // Virtue hotkey: a lone digit char (1=Honor, 2=Sacrifice, 3=Valor).
-                    client.HandleVirtueInvoke(parts[0][0] - '0');
-                }
-                break;
-        }
+            if (_macroEngine != null && client.Character != null &&
+                _macroEngine.IsRecording(client.Character.Uid.Value))
+                _macroEngine.CaptureUseSkill(client.Character.Uid.Value, skillId);
+        });
     }
 
     private static void OnExtendedCommand(NetState state, ushort subCmd, PacketBuffer buffer)

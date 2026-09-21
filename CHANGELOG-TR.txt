@@ -4,6 +4,44 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - Istemci metin komutlari ve metin girisi yanitlari
+------------------------------------------------------------------------
+FIX - Gercek 0x12 komutlari yerlesik islemden once @UserExtCmd tetikliyor.
+      Source-X ARGN/ARGS hazirlama, iptal, degistirilen argumanlari kullanma
+      ve gelen arguman icin 300 karakter siniri uygulaniyor. Kitaptan buyu
+      atma 0x27 kodu mevcut buyu makrosu yolunu kullaniyor.
+FIX - Binary skill kilidi paketi virtue metin komutundan ayrildi. Skill
+      kilitleri @UserExtCmd tetiklemiyor ve eski metin yolu ile degismiyor.
+FIX - LOCAL.DoorAutoDist (0..14) okunuyor; kapi aramasi karakterin onundeki
+      kareyi merkez aliyor ve 20 Z farkini reddediyor. Esya kapilari normal
+      cift tiklama yolundan gecerek kilit, portcullis ve scriptleri kullaniyor.
+FIX - Eksik INPDLG basligi/metni bos yanit gibi islenmiyor. Bildirilen metin
+      alani tamamen tuketiliyor; Source-X 29 karakter siniri, CR/LF kesmesi
+      ve ilk TAB temizligi uygulaniyor. Bos metin komutu ve eksik skill
+      kilidi paketleri islenmiyor.
+TEST - Komut iptali/degisimi, virtue yonlendirmesi, kapi aramasi, metin
+       temizligi ve ayri skill kilidi yolu icin 25 regresyon vakasi eklendi.
+
+[2026-09-22] - Bekleyen script yanitlarinin Source-X akisina uyarlanmasi
+------------------------------------------------------------------------
+FIX - Prompt yaniti bekleyen oturumla eslestiriliyor; callback calismadan
+      once tuketiliyor, callback'in actigi yeni prompt korunuyor. Isteksiz
+      yanitlarla esya adi degistirme yolu kaldirildi. Script prompt'u oyuncu
+      uzerinde calisiyor; iptal, sayisal arguman ve ASCII/Unicode farki korunuyor.
+FIX - MENU/SKILLMENU secimleri ortak yorumlayicidan geciyor; hedef nesne,
+      LOCAL, IF, RETURN ve fonksiyon cagrilari korunuyor. Yanit kimligi
+      denetleniyor, ON=@Cancel calisiyor ve ic ice menuler korunuyor. Silinen
+      nesne veya eski yanit bekleyen script govdesini calistirmiyor.
+FIX - TARGETF tab ayracini kabul ediyor, ARGN1/2/3 degerlerini ayristiriyor
+      ve hedef grafigini arguman nesnesinin LOCAL.ID alaninda sunuyor.
+FIX - INPDLG virgul/tab ayracini kabul ediyor, onceki bekleyen girisi
+      degistiriyor ve yalniz action 1'i uyguluyor. '#' gibi ozel degerler
+      yanit isleyicisinde silinmeden hedef komut/ozellik yoluna aktariliyor.
+TEST - Bekleyen yanitlar icin 19 regresyon senaryosu eklendi. Eski testler
+       sabit kimlik yerine gonderilen gercek istek kimligini yanitliyor.
+NOTE - Menudeki ilgisiz UserExtCmd cagrisi kaldirildi. Sonraki metin komutu
+       duzeltmesi gercek 0x12 baglantisini tamamliyor.
+
 [2026-09-22] - Sinirlandirilmis dialog uyumluluk paketinin tamamlanmasi
 ------------------------------------------------------------------------
 FIX - Script dialoglari kaynak kimligini kullaniyor; her acik ornek kendi

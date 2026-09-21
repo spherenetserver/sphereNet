@@ -61,7 +61,7 @@ public sealed partial class GameClient
 
     internal void OpenHouseSignGump(Item signOrMulti) => WorldFeatures.OpenHouseSignGump(signOrMulti);
 
-    public void OpenDoor() => WorldFeatures.OpenDoor();
+    public void OpenDoor(int distance = 1) => WorldFeatures.OpenDoor(distance);
 
     internal bool TryToggleNearestMapStaticDoor(uint clientSerial) =>
         WorldFeatures.TryToggleNearestMapStaticDoor(clientSerial);

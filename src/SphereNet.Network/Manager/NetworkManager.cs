@@ -957,7 +957,8 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, ushort, string>? chatAction = null,
         Action<NetState, IReadOnlyList<uint>>? equipMacro = null,
         Action<NetState, IReadOnlyList<ushort>>? unequipMacro = null,
-        Action<NetState, bool>? publicHouseContent = null)
+        Action<NetState, bool>? publicHouseContent = null,
+        Action<NetState, ushort, byte>? skillLock = null)
     {
         foreach (var state in _states)
         {
@@ -983,6 +984,7 @@ public sealed class NetworkManager : IDisposable
             state.ViewRangeHandler = viewRange;
             state.AOSTooltipHandler = aosTooltip;
             state.TextCommandHandler = textCommand;
+            state.SkillLockHandler = skillLock;
             state.ExtendedCommandHandler = extendedCommand;
             state.EncodedCommandHandler = encodedCommand;
             state.CrashReportHandler = crashReport;

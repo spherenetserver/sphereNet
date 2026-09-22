@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Istemci isleyicisinin cevaplamadigi isinlanmadan sonra resync
+------------------------------------------------------------------------
+DUZELTME - Kendi yurumesi disinda bir seyle (item @Timer'dan script GO, NPC,
+           REF.GO) bir adimdan uzaga ya da baska haritaya tasinan oyuncu, bir
+           sonraki gorunum guncellemesinde kendi gorunumunun resync'ini alir (yeni
+           konumuyla 0x20 ve yeniden kurulan gorunum); Source-X de MoveToChar'i
+           boyle cevaplar. Sunucu karakteri tasiyordu ama istemcisine hic
+           soylemiyordu; yardim menusundeki stuck geri sayimi oyuncu yerinde
+           kalarak bitiyordu. Dogrudan resync yapan isleyici bekleyeni temizler,
+           hicbir sey iki kez resync edilmez.
+TEST - TeleportResyncTests.
+
 [2026-09-23] - Bagimsiz updater
 ------------------------------------------------------------------------
 EKLEME - SphereNet.Updater.exe: panelden bagimsiz tek dosya guncelleyici/kurucu.

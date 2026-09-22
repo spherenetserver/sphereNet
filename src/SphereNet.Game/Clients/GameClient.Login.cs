@@ -889,6 +889,7 @@ public sealed partial class GameClient
     /// </summary>
     public void Resync()
     {
+        ResyncPending = false;
         if (_character == null || !IsPlaying) return;
         _mountEngine?.EnsureMountedState(_character);
 

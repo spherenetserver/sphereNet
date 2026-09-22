@@ -127,6 +127,11 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     /// (character enter/leave/move handled by events).</summary>
     public bool ViewNeedsRefresh { get; set; }
 
+    /// <summary>The character was moved further than a step by something other than
+    /// this client's own walk (a teleport). The next view update resyncs the client
+    /// once; a handler that resyncs directly clears it first.</summary>
+    public bool ResyncPending { get; set; }
+
 
     /// <summary>Fired when this client's character goes online (post-login
     /// complete, character placed). Program.cs uses it to populate the

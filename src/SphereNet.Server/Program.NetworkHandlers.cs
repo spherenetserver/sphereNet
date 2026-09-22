@@ -696,7 +696,17 @@ public static partial class Program
         if (isPlayer && ch.IsOnline)
         {
             if (_clientsByCharUid.TryGetValue(ch.Uid, out var ownClient))
+            {
                 ownClient.ViewNeedsRefresh = true;
+                // A walk moves one tile and the client already knows where it went.
+                // Anything further (or onto another map) is a teleport the client
+                // has not been told about: Source-X answers a MoveToChar with a
+                // resync of the player's own view.
+                bool teleported = oldPos.Map != ch.Position.Map ||
+                    Math.Max(Math.Abs(oldPos.X - ch.Position.X), Math.Abs(oldPos.Y - ch.Position.Y)) > 1;
+                if (teleported)
+                    ownClient.ResyncPending = true;
+            }
         }
 
         const int range = 18;

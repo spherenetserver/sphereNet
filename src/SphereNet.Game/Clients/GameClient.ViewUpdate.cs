@@ -14,7 +14,15 @@ public sealed partial class GameClient
 
     /// <summary>Source-X CClient::addObjMessage loop. Sends newly visible
     /// objects and removes objects that went out of range.</summary>
-    public void UpdateClientView() => ViewUpdater.UpdateClientView();
+    public void UpdateClientView()
+    {
+        // A teleport that no client handler answered (a script GO from an item
+        // timer, an NPC, a REF.GO) still has to put the player where the server
+        // now has him: the full resync sends 0x20 and rebuilds the view.
+        if (ResyncPending)
+            Resync();
+        ViewUpdater.UpdateClientView();
+    }
 
     /// <summary>Build a readonly visibility delta. Safe for parallel build phase.</summary>
     public ClientViewDelta? BuildViewDelta() => ViewUpdater.BuildViewDelta();

@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Unify worn-item removal notifications
+------------------------------------------------------------------------
+FIX - Dispatch Unequip from the shared layer-removal operation while the item
+      is still worn, with its wearer as source. Script return values do not
+      veto removal, matching Source-X OnRemoveObj; skip the dragging layer.
+FIX - Cover script, engine, container and deletion paths without duplicate
+      notifications. Keep deleting items registered until detachment completes.
+FIX - Guard recursive removal/deletion and preserve replacement equipment;
+      do not reinsert items deleted by their own Unequip trigger. Re-equipping
+      the same item on the same layer remains a no-op.
+TEST - Add lifecycle, source/context, recursive deletion and replacement tests;
+       correct the macro test that previously expected an unsupported veto.
+
+[2026-09-22] - Preserve timed command identity across scheduling and saves
+------------------------------------------------------------------------
+FIX - TIMERF STOP and ISTIMERF match the original command text, including
+      equals/comma separators and repeated whitespace, as Source-X does.
+FIX - Retain raw TimerFCall text when importing Source-X saves. Native text
+      and binary saves add optional TIMERFCOMMAND metadata beside unchanged
+      TIMERF records; old records continue to load without duplicate jobs.
+TEST - Cover live matching, Source-X imports, item/character round trips in
+       text and binary, pipe-containing arguments and invalid metadata.
+
+[2026-09-22] - Complete casting pre-start, gain and abort ordering
+------------------------------------------------------------------------
+FIX - Dispatch skill PreStart before spell startup; honor vetoes before casting
+      effects. Refuse preparation while dead or already casting.
+FIX - Award success credit only after spell completion. Fizzles, including
+      precast, receive failure credit only when the Fail hook permits it.
+FIX - Late completion failures dispatch Abort once before configured resource
+      loss and cleanup, allowing the script to veto abort costs.
+FIX - Precast target cursors honor SPELLTIMEOUT and clear their pending cast
+      through the cancellation path when the deadline expires.
+TEST - Add pre-start veto, gain order, late abort, fizzle and timeout regressions.
+
 [2026-09-22] - Honor script-driven casting freeze deadlines
 ------------------------------------------------------------------------
 FIX - Expose the casting spell through ACTARG1 and dispatch the primary skill's

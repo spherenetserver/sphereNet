@@ -3009,6 +3009,10 @@ public partial class Character : ObjBase
         int idx = (int)layer;
         if (idx < 0 || idx >= _equipment.Length) return false;
 
+        // Source-X LayerAdd treats an already occupied identical layer as a no-op.
+        if (ReferenceEquals(_equipment[idx], item) && item.IsEquipped && item.ContainedIn == Uid)
+            return true;
+
         // Keep one authoritative parent/layer. Script and engine paths can call
         // Equip directly without first removing the item from a container or a
         // previous wearer; retaining both references duplicates save/weight state.
@@ -3027,6 +3031,7 @@ public partial class Character : ObjBase
             world.HideFromSector(item);
         }
 
+        if (item.IsDeleted) return false;
         var displaced = _equipment[idx];
         if (displaced != null && !ReferenceEquals(displaced, item))
         {
@@ -3037,6 +3042,7 @@ public partial class Character : ObjBase
                 world.PlaceItemWithDecay(displaced, Position);
         }
 
+        if (item.IsDeleted) return false;
         _equipment[idx] = item;
         if (layer == Layer.Pack)
             _backpack = item;
@@ -3115,13 +3121,24 @@ public partial class Character : ObjBase
         return true;
     }
 
-    public Item? Unequip(Layer layer)
+    public Item? Unequip(Layer layer, Action<Item, Character>? notify = null)
     {
         int idx = (int)layer;
         if (idx < 0 || idx >= _equipment.Length) return null;
 
         var item = _equipment[idx];
         if (item == null) return null;
+
+        // Source-X OnRemoveObj: notify while still worn, using the wearer as SRC.
+        // Return values cannot veto removal. Recursive script removal must not
+        // dispatch twice or let the outer call clear a replacement in this layer.
+        if (layer != Layer.Dragging && !item.UnequipNotificationActive)
+        {
+            item.UnequipNotificationActive = true;
+            try { (notify ?? Item.OnItemUnequipped)?.Invoke(item, this); }
+            finally { item.UnequipNotificationActive = false; }
+            if (!ReferenceEquals(_equipment[idx], item)) return item;
+        }
 
         _equipment[idx] = null;
         if (layer == Layer.Pack && ReferenceEquals(_backpack, item))
@@ -5331,6 +5348,8 @@ public partial class Character : ObjBase
             case "BONDED":
                 IsBonded = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
+            case "TIMERFCOMMAND":
+                return TryLoadTimerFCommand(value);
             case "TIMERF": // restore a persisted TIMERF/TIMERFMS timer (world load)
                 return TryLoadTimerFEntry(value);
             case "POISON": // restore an active poison (world load): level|ticks|remainingMs|source

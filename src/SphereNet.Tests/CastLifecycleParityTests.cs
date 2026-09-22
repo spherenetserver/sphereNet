@@ -56,12 +56,17 @@ public sealed class CastLifecycleParityTests
     }
 
     [Theory]
-    [InlineData("removed")]
-    [InlineData("forgotten")]
-    [InlineData("nested")]
-    public void CompletionRevalidatesBookBeforeCostsOrEffects(string change)
+    [InlineData("removed", false)]
+    [InlineData("forgotten", false)]
+    [InlineData("nested", false)]
+    [InlineData("removed", true)]
+    [InlineData("forgotten", true)]
+    [InlineData("nested", true)]
+    public void CompletionRevalidatesBookAndOnlyChargesConfiguredAbortCost(string change, bool abortLoss)
     {
         using var f = new Fixture(); var book = f.Book();
+        Character.ManaLossAbort = abortLoss;
+        Character.ManaLossPercent = 100;
         Assert.True(f.Start() > 0);
         if (change == "forgotten") book.More1 = 0;
         else if (change == "removed") f.World.RemoveItem(book);
@@ -75,7 +80,7 @@ public sealed class CastLifecycleParityTests
         f.Engine.OnCastResolved = (_, _, success) => resolved = success;
         Assert.False(f.Engine.CastDone(f.Player));
         Assert.Equal(false, resolved);
-        Assert.Equal(mana, f.Player.Mana);
+        Assert.Equal(abortLoss ? mana - f.Heal.ManaCost : mana, f.Player.Mana);
         Assert.False(f.Player.IsCasting);
         Assert.Null(f.Player.CastDifficulty);
     }
@@ -228,6 +233,123 @@ public sealed class CastLifecycleParityTests
             cancel ? (short)-1 : (short)100, cancel ? (short)-1 : (short)100, 0, 0);
         Assert.Equal(1, success);
         Assert.Equal(cancel ? 1 : 0, abort);
+        Assert.False(f.Player.IsCasting);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PreStartCanVetoBeforeSpellCast(bool skillSection)
+    {
+        using var f = new Fixture(); f.Player.PrivLevel = PrivLevel.GM;
+        int casts = 0;
+        string path = Path.Combine(Path.GetTempPath(), $"prestart-{Guid.NewGuid():N}.scp");
+        try
+        {
+            if (skillSection)
+            {
+                File.WriteAllText(path, "[SKILL 25]\nON=@PreStart\nTAG.PRE=<ACTARG1>\nRETURN 1\n");
+                var stack = ScriptTestBootstrap.CreateRuntimeStack();
+                stack.Resources.LoadResourceFile(path); f.Engine.TriggerDispatcher = stack.Dispatcher;
+            }
+            else f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillPreStart", (_, _) => TriggerResult.True);
+            f.Engine.TriggerDispatcher!.RegisterCharEvent("EVENTSPLAYER", "SpellCast", (_, _) =>
+            { casts++; return TriggerResult.Default; });
+            Assert.Equal(-1, f.Start());
+            Assert.Equal(0, casts); Assert.False(f.Player.IsCasting);
+            if (skillSection) { Assert.True(f.Player.TryGetTag("PRE", out var v)); Assert.Equal("4", v); }
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData("veto")]
+    [InlineData("mana")]
+    [InlineData("reagent")]
+    [InlineData("success")]
+    public void GainFollowsSuccessfulCompletionAndFailuresAbortOnce(string outcome)
+    {
+        using var f = new Fixture(); f.Book();
+        Character.ReagentsRequiredEnabled = true;
+        f.Player.SetSkill(SkillType.Magery, 1000);
+        var events = new List<string>();
+        SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck =
+            (Character ch, SkillType skill, ref int chance, ref int max) =>
+            { events.Add("gain"); return true; };
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillSuccess", (_, _) =>
+        {
+            events.Add("success");
+            if (outcome == "mana") f.Player.Mana = 0;
+            if (outcome == "reagent") f.Heal.Reagents.Add(0x7FFE, 1);
+            return outcome == "veto" ? TriggerResult.True : TriggerResult.Default;
+        });
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillAbort", (_, _) =>
+        { events.Add("abort"); return TriggerResult.Default; });
+        Assert.True(f.Start() > 0);
+        f.Player.CastDifficulty = 0;
+        Assert.Equal(outcome == "success", f.Engine.CastDone(f.Player));
+        Assert.Equal(outcome == "success" ? new[] { "success", "gain" } : new[] { "success", "abort" }, events);
+    }
+
+    [Fact]
+    public void PrecastTargetTimeoutClearsCastAndDispatchesCancellation()
+    {
+        using var f = new Fixture(); f.Player.PrivLevel = PrivLevel.GM;
+        Character.MagicFlags = (int)MagicConfigFlags.Precast;
+        ClientTargetingHandler.SpellTimeoutSeconds = 5;
+        int cancels = 0;
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SpellTargetCancel", (_, _) =>
+        { cancels++; return TriggerResult.Default; });
+        f.Client.HandleCastSpell(SpellType.Heal, 0);
+        f.Player.SetCastTimerEnd(Environment.TickCount64 - 1);
+        f.Client.TickSpellCast();
+        Assert.True(f.Client.Targets.TimeoutAtMs > Environment.TickCount64);
+        f.Client.Targets.TimeoutAtMs = Environment.TickCount64 - 1;
+        f.Client.Targeting.TickTargetTimeout();
+        Assert.Equal(1, cancels);
+        Assert.False(f.Player.IsCasting);
+        Assert.False(f.Client.HasPendingTarget);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PrecastFizzleGrantsFailureCreditUnlessFailHookCancels(bool cancel)
+    {
+        using var f = new Fixture(); f.Book();
+        int gains = 0;
+        SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck =
+            (Character ch, SkillType skill, ref int chance, ref int max) =>
+            { gains++; return true; };
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillFail", (_, _) =>
+            cancel ? TriggerResult.True : TriggerResult.Default);
+        Assert.True(f.Start() > 0); f.Player.CastDifficulty = 100000;
+        Assert.False(f.Engine.CompletePrecastSkill(f.Player));
+        Assert.Equal(cancel ? 0 : 1, gains);
+        Assert.False(f.Player.IsCasting);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LateAbortHookCanVetoResourceLossBeforeStateCleanup(bool veto)
+    {
+        using var f = new Fixture(); f.Book();
+        f.Player.SetSkill(SkillType.Magery, 1000);
+        Character.ManaLossAbort = true; Character.ManaLossPercent = 100;
+        Character.ReagentsRequiredEnabled = true;
+        bool castingAtAbort = false; int manaAtAbort = -1;
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillSuccess", (_, _) =>
+        { f.Heal.Reagents.Add(0x7FFE, 1); return TriggerResult.Default; });
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillAbort", (_, _) =>
+        {
+            castingAtAbort = f.Player.IsCasting; manaAtAbort = f.Player.Mana;
+            return veto ? TriggerResult.True : TriggerResult.Default;
+        });
+        Assert.True(f.Start() > 0); f.Player.CastDifficulty = 0;
+        Assert.False(f.Engine.CastDone(f.Player));
+        Assert.True(castingAtAbort); Assert.Equal(100, manaAtAbort);
+        Assert.Equal(veto ? 100 : 90, f.Player.Mana);
         Assert.False(f.Player.IsCasting);
     }
 }

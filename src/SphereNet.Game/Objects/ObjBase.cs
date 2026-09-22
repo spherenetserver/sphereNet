@@ -32,7 +32,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     private readonly Dictionary<ComponentType, IComponent> _components = [];
     private readonly List<TimerFEntry> _timerFEntries = [];
 
-    public sealed record TimerFEntry(long DueTickMs, string FunctionName, string Args);
+    public sealed record TimerFEntry(long DueTickMs, string FunctionName, string Args)
+    {
+        // Source-X retains the command until execution; STOP/ISTIMERF match this text.
+        public string? OriginalCommand { get; internal set; }
+    }
+    private TimerFEntry? _lastRestoredTimerF;
 
     /// <summary>Resolve the GameWorld instance (set at startup).</summary>
     public static Func<World.GameWorld>? ResolveWorld;
@@ -423,14 +428,15 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// (CTimedFunctionHandler.cpp:103) has no per-object limit, so a caller
     /// restoring authoritative data passes <paramref name="bypassCap"/> rather than
     /// silently losing work. Callers that ignore the result get the old behaviour.</summary>
-    public bool AddTimerF(long delayMs, string functionName, string args, bool bypassCap = false)
+    public bool AddTimerF(long delayMs, string functionName, string args, bool bypassCap = false, string? originalCommand = null)
     {
         if (string.IsNullOrWhiteSpace(functionName))
             return false;
         if (!bypassCap && _timerFEntries.Count >= MaxTimersPerObject)
             return false;
         long due = Environment.TickCount64 + Math.Max(0, delayMs);
-        _timerFEntries.Add(new TimerFEntry(due, functionName.Trim(), args.Trim()));
+        _timerFEntries.Add(new TimerFEntry(due, functionName.Trim(), args.Trim())
+        { OriginalCommand = originalCommand });
         // Register in the world's timer active-set so the per-tick sweep iterates
         // only timer-bearing objects instead of every object. Uses the same world
         // resolver as the rest of ObjBase; a null resolver (no world) simply falls
@@ -469,7 +475,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             payload, out string functionName, out string functionArgs);
         functionArgs = functionArgs.Trim();
 
-        AddTimerF(delay * delayUnitMs, functionName, functionArgs);
+        AddTimerF(delay * delayUnitMs, functionName, functionArgs, originalCommand: payload);
     }
 
     /// <summary>Read a Sphere numeric literal or simple sum: a leading zero means hex
@@ -479,10 +485,10 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// pattern is matched against. Upstream keeps the whole line and matches the
     /// pattern against all of it, arguments included
     /// (CTimedFunctionHandler.cpp:19/34), so a pattern naming only the function does
-    /// NOT match a job that was given arguments. The line is rebuilt with a space,
-    /// which is the separator this engine splits payloads on.</summary>
+    /// NOT match a job that was given arguments. Legacy records without the original
+    /// text retain their historical space-separated representation.</summary>
     private static string CommandOf(TimerFEntry entry) =>
-        entry.Args.Length == 0 ? entry.FunctionName : $"{entry.FunctionName} {entry.Args}";
+        entry.OriginalCommand ?? (entry.Args.Length == 0 ? entry.FunctionName : $"{entry.FunctionName} {entry.Args}");
 
     /// <summary>Cancel this object's delayed work. A null pattern clears everything
     /// (TIMERF CLEAR); otherwise the jobs whose COMMAND matches the pattern are removed
@@ -528,6 +534,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// first two delimiters are structural.</summary>
     public bool TryLoadTimerFEntry(string value)
     {
+        _lastRestoredTimerF = null;
         if (string.IsNullOrWhiteSpace(value))
             return false;
         var parts = value.Split('|', 3);
@@ -535,7 +542,22 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return false;
         // A save is authoritative — restore past the live scheduling cap rather
         // than dropping work the previous run legitimately held.
-        return AddTimerF(remainingMs, parts[1], parts.Length > 2 ? parts[2] : "", bypassCap: true);
+        if (!AddTimerF(remainingMs, parts[1], parts.Length > 2 ? parts[2] : "", bypassCap: true)) return false;
+        _lastRestoredTimerF = _timerFEntries[^1];
+        return true;
+    }
+
+    /// <summary>Optional metadata following a legacy TIMERF record. Keeping the
+    /// original record intact lets old readers still restore and execute the job.</summary>
+    protected bool TryLoadTimerFCommand(string command)
+    {
+        var entry = _lastRestoredTimerF;
+        _lastRestoredTimerF = null;
+        if (entry == null || !_timerFEntries.Any(e => ReferenceEquals(e, entry))) return false;
+        SphereNet.Scripting.Parsing.ScriptCommandLine.Split(command, out string name, out string args);
+        if (name != entry.FunctionName || args.Trim() != entry.Args) return false;
+        entry.OriginalCommand = command;
+        return true;
     }
 
     /// <summary>The jobs due at <paramref name="nowMs"/>, in due order, WITHOUT taking

@@ -932,10 +932,8 @@ public static partial class Program
             Item.OnVisualUpdate = item =>
                 ForEachClientInRange(item.GetTopLevelObj().Position, 18, 0,
                     (_, c) => c.SendItemVisualUpdate(item));
-            // @Unequip on engine/script unequip paths (Source-X ITRIG_UnEquip
-            // from ItemBounce / RemoveSelf). The client pickup path fires its
-            // own; this covers the .UNEQUIP verb and worn .REMOVE so worn-item
-            // cleanup blocks run.
+            // Shared Character.Unequip notification for engine and script paths.
+            // Client handlers provide their dispatcher to that same removal point.
             Item.OnItemUnequipped = (item, wearer) =>
                 _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Unequip,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = wearer, ItemSrc = item });

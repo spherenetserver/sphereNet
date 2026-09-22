@@ -152,10 +152,14 @@ public sealed class SpellReagentCostTests
 
     // --- G06: the bill is re-checked at completion -------------------------
 
-    [Fact]
-    public void RemovingTheReagentsDuringTheCastFailsTheSpell()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RemovingTheReagentsDuringTheCastFailsTheSpell(bool abortLoss)
     {
         var (world, engine, caster) = Setup();
+        Character.ManaLossAbort = abortLoss;
+        Character.ManaLossPercent = 100;
         var stack = AddReagents(world, caster.Backpack!, 10);
 
         Assert.True(engine.CastStart(caster, Spell, caster.Uid, caster.Position) >= 0);
@@ -166,7 +170,7 @@ public sealed class SpellReagentCostTests
         world.PlaceItemWithDecay(stack, new Point3D(120, 120, 0, 0));
 
         Assert.False(engine.CastDone(caster), "an unpayable cast must not succeed");
-        Assert.Equal(manaAfterStart, caster.Mana);
+        Assert.Equal(abortLoss ? manaAfterStart - engine.GetSpellDef(Spell)!.ManaCost : manaAfterStart, caster.Mana);
         Assert.Equal(10, Math.Max(1, (int)stack.Amount));
     }
 

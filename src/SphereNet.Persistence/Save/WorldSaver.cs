@@ -780,6 +780,8 @@ public sealed class WorldSaver
             // remainingMs | functionName | args — functionName holds no '|'; args may,
             // so the loader splits on the first two delimiters only.
             w.WriteProperty("TIMERF", $"{remainingMs}|{t.FunctionName}|{t.Args}");
+            if (t.OriginalCommand != null)
+                w.WriteProperty("TIMERFCOMMAND", t.OriginalCommand);
         }
     }
 

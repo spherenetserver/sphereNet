@@ -1004,6 +1004,7 @@ public class Item : ObjBase
 
     public void Delete()
     {
+        if (_isDeleted) return;
         SpawnChar?.KillAll();
         // An item spawner's children go with it too: upstream's single component
         // clears both kinds from its destructor (CCSpawn.cpp:76 -> KillChildren,
@@ -1023,12 +1024,10 @@ public class Item : ObjBase
     /// so the slot/object table would retain a dead reference). Falls back to the
     /// low-level flag-set when no world is wired (e.g. unit tests).
     /// </summary>
-    /// <summary>Fires @Unequip when a WORN item leaves the character through
-    /// a script/engine path (Source-X ItemBounce / RemoveSelf run
-    /// ITRIG_UnEquip). The client pickup path fires it itself, so this hook is
-    /// invoked only from the engine-side unequip/remove paths — its cleanup
-    /// block (e.g. clearing a combat-bonus freeze) would otherwise never run.</summary>
+    /// <summary>Shared notification from Character.Unequip, before detaching the item.
+    /// Source-X OnRemoveObj ignores the trigger return value.</summary>
     public static Action<Item, Characters.Character>? OnItemUnequipped;
+    internal bool UnequipNotificationActive { get; set; }
 
     /// <summary>How long a hive rests between refills, and how much it holds
     /// (Source-X 15 minutes, up to 5).</summary>
@@ -1085,14 +1084,6 @@ public class Item : ObjBase
     public void RemoveFromWorld()
     {
         var world = ResolveWorld?.Invoke();
-        // A worn item being removed (script .REMOVE, engine cleanup) must fire
-        // @Unequip while it is still equipped, before it leaves the world.
-        if (IsEquipped && _containedIn.IsValid &&
-            world?.FindObject(_containedIn) is Characters.Character wornWearer &&
-            wornWearer.GetEquippedItem(EquipLayer) == this)
-        {
-            OnItemUnequipped?.Invoke(this, wornWearer);
-        }
         if (world != null)
             world.RemoveItem(this);
         else
@@ -1138,6 +1129,7 @@ public class Item : ObjBase
         {
             world.HideFromSector(item);
         }
+        if (item.IsDeleted || IsDeleted) return false;
         item.IsEquipped = false;
 
         _contents.Add(item);
@@ -2897,6 +2889,8 @@ public class Item : ObjBase
                 SetTag("BOOK_AUTHOR", value);
                 return true;
 
+            case "TIMERFCOMMAND":
+                return TryLoadTimerFCommand(value);
             case "TIMERF": // restore a persisted TIMERF/TIMERFMS timer (world load)
                 return TryLoadTimerFEntry(value);
 
@@ -3553,20 +3547,16 @@ public class Item : ObjBase
                 if (sourceChar == null || world == null)
                     return false;
 
-                Characters.Character? unequippedFrom = null;
                 if (ContainedIn.IsValid && world.FindObject(ContainedIn) is Character wearer &&
                     IsEquipped && wearer.GetEquippedItem(EquipLayer) == this)
                 {
-                    unequippedFrom = wearer;
                     wearer.Unequip(EquipLayer);
                 }
                 else if (ContainedIn.IsValid && world.FindObject(ContainedIn) is Item parent)
                     parent.RemoveItem(this);
 
+                if (IsDeleted) return false;
                 IsEquipped = false;
-                // Source-X CIV_UNEQUIP runs ITRIG_UnEquip after the bounce.
-                if (unequippedFrom != null)
-                    OnItemUnequipped?.Invoke(this, unequippedFrom);
                 if (sourceChar.Backpack != null && sourceChar.Backpack.TryAddItem(this))
                     return true;
                 return world.PlaceItemWithDecay(this, sourceChar.Position);

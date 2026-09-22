@@ -535,12 +535,8 @@ public sealed class SpellEngine
     /// into SKTRIG_ABORT and prices through Spell_CastFail(fAbort = true) - so this
     /// is NOT an unconditional refund, it is the configured abort cost
     /// (MANALOSSABORT / REAGENTLOSSABORT, CCharSpell.cpp:3316).</summary>
-    private bool FailCastAtCompletion(Character caster, SpellDef def, CastSourceKind kind, string? message)
+    private bool FailCastAtCompletion(Character caster, string? message)
     {
-        ApplyCastResourceLoss(caster, def, kind == CastSourceKind.Wand,
-            kind == CastSourceKind.Scroll, fizzle: false, abort: true);
-        ClearCastSourceTags(caster);
-        ClearCastState(caster);
         if (message != null)
             OnSysMessage?.Invoke(caster, message);
         return false;
@@ -744,9 +740,16 @@ public sealed class SpellEngine
 
     public CastPreparation? PrepareCast(Character caster, SpellType spell)
     {
+        if (caster.IsCasting || caster.IsDead) return null;
         var def = _spells.Get(spell);
         if (def == null) return null;
         caster.ActArg1 = (int)spell;
+        // Skill_Start runs both pre-start hooks before Spell_CastStart.
+        if (FireCastSkillTrigger(caster, spell, CharTrigger.SkillPreStart) == TriggerResult.True)
+        {
+            ClearCastSourceTags(caster);
+            return null;
+        }
         int difficulty = def.GetDifficulty() / 10;
         if (TryResolveCastSource(caster, out var kind, out _))
         {
@@ -975,11 +978,19 @@ public sealed class SpellEngine
         // shared resolution hook so NPC/direct casts reach @SpellSuccess /
         // @SpellEffect / @SpellFail — the client path no longer fires these.
         bool wasCasting = caster.TryGetCastingSpell(out SpellType resolvedSpell);
-        bool ok = CastDoneCore(caster, out bool skillStageFired);
-        if (wasCasting && !skillStageFired)
-            FireCastSkillTrigger(caster, resolvedSpell, CharTrigger.SkillAbort);
+        var resolvedDef = wasCasting ? _spells.Get(resolvedSpell) : null;
+        int gainDifficulty = caster.CastDifficulty ?? (resolvedDef?.GetDifficulty() / 10 ?? 0);
+        bool ok = CastDoneCore(caster, out bool terminalHandled);
+        if (wasCasting && !ok && !terminalHandled)
+        {
+            if (caster.IsCasting) CancelCast(caster);
+            else FireCastSkillTrigger(caster, resolvedSpell, CharTrigger.SkillAbort);
+        }
         if (wasCasting)
             OnCastResolved?.Invoke(caster, resolvedSpell, ok);
+        // Source-X Skill_Done grants credit only after the success stage completes.
+        if (ok && resolvedDef != null)
+            SkillEngine.GainExperience(caster, resolvedDef.GetPrimarySkill(), gainDifficulty);
         return ok;
     }
 
@@ -993,12 +1004,12 @@ public sealed class SpellEngine
             CancelCast(caster);
             return false;
         }
-        bool ok = CompleteCastSkill(caster, def, kind, awardGain: false);
+        bool ok = CompleteCastSkill(caster, def, kind);
         if (!ok) OnCastResolved?.Invoke(caster, spell, false);
         return ok;
     }
 
-    private bool CompleteCastSkill(Character caster, SpellDef def, CastSourceKind sourceKind, bool awardGain)
+    private bool CompleteCastSkill(Character caster, SpellDef def, CastSourceKind sourceKind)
     {
         var primarySkill = def.GetPrimarySkill();
         var spell = def.Id;
@@ -1006,12 +1017,7 @@ public sealed class SpellEngine
         bool castFromScroll = sourceKind == CastSourceKind.Scroll;
         int difficulty = caster.CastDifficulty ?? (castWithWand ? 1 : def.GetDifficulty() / (castFromScroll ? 20 : 10));
         difficulty *= 10;
-        if (caster.CastSkillSucceeded)
-        {
-            if (awardGain && caster.PrivLevel < PrivLevel.GM)
-                SkillEngine.GainExperience(caster, primarySkill, difficulty / 10);
-            return true;
-        }
+        if (caster.CastSkillSucceeded) return true;
         // Source-X: skill check at cast completion — fizzle on failure.
         // GetDifficulty() is on the 0-1000 skill scale, but CheckSuccess expects
         // a 0-100 difficulty (it multiplies by 10 internally) — convert here so
@@ -1019,19 +1025,16 @@ public sealed class SpellEngine
         bool fizzled = caster.PrivLevel < PrivLevel.GM &&
             !SkillEngine.CheckSuccess(caster, primarySkill, difficulty / 10);
 
-        // Source-X Spell_CastDone awards the casting skill a gain attempt on every
-        // resolved cast, whether it succeeds or fizzles. (GainExperience itself
-        // guards GM/dead/locked/safe-region.)
-        if (awardGain && caster.PrivLevel < PrivLevel.GM)
-            SkillEngine.GainExperience(caster, primarySkill, difficulty / 10);
-
         if (fizzled)
         {
-            if (FireCastSkillTrigger(caster, spell, CharTrigger.SkillFail) != TriggerResult.True)
-                ApplyCastResourceLoss(caster, def, castWithWand, castFromScroll, fizzle: true, abort: false);
+            bool cancelled = FireCastSkillTrigger(caster, spell, CharTrigger.SkillFail) == TriggerResult.True;
+            ApplyCastResourceLoss(caster, def, castWithWand, castFromScroll,
+                fizzle: !cancelled, abort: cancelled);
+            if (!cancelled)
+                SkillEngine.GainExperience(caster, primarySkill, -Math.Abs(difficulty / 10));
             ClearCastSourceTags(caster);
             ClearCastState(caster);
-            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+            if (!cancelled) OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
             return false;
         }
 
@@ -1045,12 +1048,11 @@ public sealed class SpellEngine
         return true;
     }
 
-    private bool CastDoneCore(Character caster, out bool skillStageFired)
+    private bool CastDoneCore(Character caster, out bool terminalHandled)
     {
-        skillStageFired = false;
+        terminalHandled = false;
         if (caster.IsDead || (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
         {
-            ClearCastState(caster);
             return false;
         }
 
@@ -1060,7 +1062,6 @@ public sealed class SpellEngine
         var def = _spells.Get(spell);
         if (def == null)
         {
-            ClearCastState(caster);
             return false;
         }
 
@@ -1071,7 +1072,7 @@ public sealed class SpellEngine
         // Source-X re-resolves the cast source at completion and refuses the cast if
         // it is gone or no longer on the caster (CCharSpell.cpp:2882 -> :3010).
         if (!TryResolveCastSource(caster, out CastSourceKind sourceKind, out Item? castSource))
-            return FailCastAtCompletion(caster, def, sourceKind,
+            return FailCastAtCompletion(caster,
                 ServerMessages.Get(Msg.SpellEnchantActivate));
 
         if (Character.SpellbookRequiredEnabled && caster.IsPlayer &&
@@ -1080,8 +1081,6 @@ public sealed class SpellEngine
         {
             string message = ServerMessages.Get(caster.FindSpellbook((int)spell) == null
                 ? Msg.SpellTryNobook : Msg.SpellTryNotyourbook);
-            ClearCastSourceTags(caster);
-            ClearCastState(caster);
             OnSysMessage?.Invoke(caster, message);
             return false;
         }
@@ -1096,7 +1095,7 @@ public sealed class SpellEngine
         {
             int losDist = Math.Max(Math.Abs(caster.X - targetPos.X), Math.Abs(caster.Y - targetPos.Y));
             if (losDist > 0 && !_world.CanSeeLOS(caster.Position, targetPos))
-                return FailCastAtCompletion(caster, def, sourceKind, "Target not in line of sight.");
+                return FailCastAtCompletion(caster, "Target not in line of sight.");
         }
 
         // Source-X opens Spell_CastDone with Spell_TargCheck (CCharSpell.cpp:2878)
@@ -1111,16 +1110,16 @@ public sealed class SpellEngine
             {
                 // :2740 - a ghost is not a legal target unless the spell says so.
                 if (preTarget.IsDead && !def.IsFlag(SpellFlag.TargDead))
-                    return FailCastAtCompletion(caster, def, sourceKind,
+                    return FailCastAtCompletion(caster,
                         ServerMessages.Get(Msg.SpellTargDead));
                 if (preTarget.MapIndex != caster.MapIndex ||
                     caster.Position.GetDistanceTo(preTarget.Position) > 12)
-                    return FailCastAtCompletion(caster, def, sourceKind, "That is too far away.");
+                    return FailCastAtCompletion(caster, "That is too far away.");
             }
             // :2728 - "need a target". A spell that may also be aimed at the ground
             // (TARG_XYZ) is allowed to complete without one.
             else if (_world?.FindItem(targetUid) == null && !def.IsFlag(SpellFlag.TargXYZ))
-                return FailCastAtCompletion(caster, def, sourceKind,
+                return FailCastAtCompletion(caster,
                     ServerMessages.Get(Msg.SpellTargObj));
         }
 
@@ -1129,8 +1128,11 @@ public sealed class SpellEngine
         bool castWithWand = sourceKind == CastSourceKind.Wand;
         bool castFromScroll = sourceKind == CastSourceKind.Scroll;
 
-        skillStageFired = true;
-        if (!CompleteCastSkill(caster, def, sourceKind, awardGain: true)) return false;
+        if (!CompleteCastSkill(caster, def, sourceKind))
+        {
+            terminalHandled = true; // @Fail or @Abort already dispatched.
+            return false;
+        }
 
         // Source-X builds the summon and weighs it against the follower cap BEFORE
         // the spell is paid for: Spell_Summon_Try (CCharSpell.cpp:3002) creates the
@@ -1145,7 +1147,7 @@ public sealed class SpellEngine
         {
             summoned = PrepareSummon(caster, targetPos, def, spell, skillVal);
             if (summoned == null)
-                return FailCastAtCompletion(caster, def, sourceKind, null);
+                return FailCastAtCompletion(caster, null);
         }
 
         // Mana requirement and consumption share ONE discounted cost (wand
@@ -1158,8 +1160,6 @@ public sealed class SpellEngine
         if (caster.Mana < manaCost)
         {
             DiscardSummon(summoned);
-            ClearCastSourceTags(caster);
-            ClearCastState(caster);
             OnSysMessage?.Invoke(caster, "You lack the mana to cast that spell.");
             return false;
         }
@@ -1177,8 +1177,6 @@ public sealed class SpellEngine
             // the spell cannot be paid for, so it does not happen. Source-X fails the
             // whole cast the same way when its re-check at CastDone cannot pay.
             DiscardSummon(summoned);
-            ClearCastSourceTags(caster);
-            ClearCastState(caster);
             SendMissingReagentMessage(caster, def);
             return false;
         }

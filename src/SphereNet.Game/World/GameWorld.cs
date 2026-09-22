@@ -618,7 +618,17 @@ public sealed class GameWorld
         return ch;
     }
 
+    private readonly HashSet<ObjBase> _deletingObjects = new(ReferenceEqualityComparer.Instance);
+
     public void DeleteObject(ObjBase obj)
+    {
+        // @Unequip may REMOVE its own item while deletion is already underway.
+        if (!_deletingObjects.Add(obj)) return;
+        try { DeleteObjectCore(obj); }
+        finally { _deletingObjects.Remove(obj); }
+    }
+
+    private void DeleteObjectCore(ObjBase obj)
     {
         // A stale reference may outlive UID recycling. Never let deleting that
         // old instance remove/free the newer object now registered at the same
@@ -656,6 +666,26 @@ public sealed class GameWorld
             }
         }
 
+        if (obj is Item delItem && delItem.ContainedIn.IsValid)
+        {
+            ContainerIndexRemove(delItem.ContainedIn.Value, delItem);
+            if (_objects.TryGetValue(delItem.ContainedIn.Value, out var parentObj))
+            {
+                if (parentObj is Item parentItem)
+                    parentItem.RemoveItem(delItem);
+                // Equipped items live in the wearer's layer array, not in a
+                // container's contents — clear the slot so the layer does not
+                // retain a dead reference to the deleted item. The cached
+                // Backpack field needs the same cleanup or it keeps handing
+                // back the deleted pack.
+                else if (parentObj is Character parentChar && delItem.IsEquipped)
+                {
+                    parentChar.Unequip(delItem.EquipLayer);
+                    parentChar.ClearBackpackReference(delItem);
+                }
+            }
+        }
+
         if (_objects.Remove(obj.Uid.Value))
         {
             if (obj.IsChar) _totalChars--;
@@ -677,26 +707,6 @@ public sealed class GameWorld
             _uuidIndex.Remove(obj.Uuid);
         _uidTable.Free(obj.Uid);
 
-        if (obj is Item delItem && delItem.ContainedIn.IsValid)
-        {
-            ContainerIndexRemove(delItem.ContainedIn.Value, delItem);
-            if (_objects.TryGetValue(delItem.ContainedIn.Value, out var parentObj))
-            {
-                if (parentObj is Item parentItem)
-                    parentItem.RemoveItem(delItem);
-                // Equipped items live in the wearer's layer array, not in a
-                // container's contents — clear the slot so the layer does not
-                // retain a dead reference to the deleted item. The cached
-                // Backpack field needs the same cleanup or it keeps handing
-                // back the deleted pack.
-                else if (parentObj is Character parentChar && delItem.IsEquipped)
-                {
-                    parentChar.Unequip(delItem.EquipLayer);
-                    parentChar.ClearBackpackReference(delItem);
-                }
-            }
-        }
-
         var sector = GetSector(obj.Position);
         if (sector != null)
         {
@@ -712,7 +722,6 @@ public sealed class GameWorld
     public void RemoveItem(Item item)
     {
         DeleteObject(item);
-        item.Delete();
     }
 
     /// <summary>
@@ -812,6 +821,7 @@ public sealed class GameWorld
     /// caller must then delete the item rather than leave it orphaned.</summary>
     public bool PlaceItem(Item item, Point3D pos)
     {
+        if (item.IsDeleted) return false;
         var sector = GetSector(pos);
         if (sector == null)
         {
@@ -837,6 +847,7 @@ public sealed class GameWorld
                      parentChar.GetEquippedItem(item.EquipLayer) == item)
                 parentChar.Unequip(item.EquipLayer);
         }
+        if (item.IsDeleted) return false;
         item.IsEquipped = false;
         RemoveFromSector(item);
         item.Position = pos;

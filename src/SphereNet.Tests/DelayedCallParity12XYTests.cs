@@ -209,6 +209,8 @@ public sealed class DelayedCallParity12XYTests
             var job = Assert.Single(world.FindItem(new Serial(0x40000001))!.TimerFEntries);
             Assert.Equal("f_mark", job.FunctionName);
             Assert.Equal("37", job.Args);
+            Assert.True(world.FindItem(new Serial(0x40000001))!
+                .GetTimerFRemaining(savedCall, Environment.TickCount64) > 0);
         }
         finally { Directory.Delete(dir, true); }
     }

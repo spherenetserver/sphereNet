@@ -1919,7 +1919,7 @@ public sealed class WorldLoader
             // scheduling cap, which is a SphereNet guard with no upstream
             // counterpart (CTimedFunctionHandler::Add, :103, has no per-object
             // limit). Counting a dropped job as restored hid the loss entirely.
-            if (!target.AddTimerF(Math.Max(0, elapsed), name, args, bypassCap: true))
+            if (!target.AddTimerF(Math.Max(0, elapsed), name, args, bypassCap: true, originalCommand: command))
             {
                 _logger.LogWarning("TIMERF: '{Call}' on 0x{Uid:X} was refused; dropped", command, uid);
                 continue;

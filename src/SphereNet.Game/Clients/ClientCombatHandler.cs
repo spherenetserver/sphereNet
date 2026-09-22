@@ -2477,6 +2477,7 @@ public sealed class ClientCombatHandler
                 targetPos = targetChar.Position;
             FinishPrecastCast(spell, uid, targetPos);
         });
+        _client.Targeting.ArmSpellTimeout();
     }
 
     private void FinishPrecastCast(SpellType spell, uint targetUid, Point3D targetPos)

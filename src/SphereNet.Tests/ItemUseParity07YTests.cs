@@ -124,14 +124,15 @@ public sealed class ItemUseParity07YTests
     }
 
     [Fact]
-    public void AVetoedUnequipKeepsTheItemWorn()
+    public void UnequipReturnTrueDoesNotPreventRemoval()
     {
         var (bench, worn, calls) = UnequipBench(TriggerResult.True);
 
         bench.Client.HandleUnequipMacro([(ushort)Layer.OneHanded]);
 
         Assert.Equal(1, calls());
-        Assert.Same(worn, bench.Me.GetEquippedItem(Layer.OneHanded));
+        Assert.Null(bench.Me.GetEquippedItem(Layer.OneHanded));
+        Assert.Contains(worn, bench.Pack.Contents);
     }
 
     // --- SX-07Y-02: scissors cut something into something else ------------

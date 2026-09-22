@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - Takili esya cikarma olaylarini ortak noktada calistir
+------------------------------------------------------------------------
+DUZELTME - Unequip, esya hala takiliyken ortak cikarma yolunda calisir; kaynak
+           takan karakterdir. Source-X OnRemoveObj gibi RETURN 1 cikarmayi
+           engellemez; surukleme katmaninda olay calismaz.
+DUZELTME - Script, motor, konteyner ve silme yollarinda olay eksigi/tekrari
+           giderildi. Silinen esya ayrilana kadar dunya kaydinda tutulur.
+DUZELTME - Olay icinden tekrar cikarma/silme korunur; yeni takilan esya
+           temizlenmez, silinen esya tekrar eklenmez. Ayni esyayi ayni katmana
+           takma degisiklik yapmaz.
+TEST - Yasam dongusu, kaynak/baglam, ic ice silme ve esya degistirme testleri;
+       Source-X disi veto bekleyen makro testi duzeltildi.
+
+[2026-09-22] - Zamanlanmis komut metnini zamanlama ve savede koru
+------------------------------------------------------------------------
+DUZELTME - TIMERF STOP ve ISTIMERF, Source-X gibi ozgun komut metniyle eslesir;
+           esittir/virgul ayiricilari ve birden fazla bosluk korunur.
+DUZELTME - Source-X savelerindeki TimerFCall metni korunur. Text ve binary
+           savelerde mevcut TIMERF satirina istege bagli TIMERFCOMMAND bilgisi
+           eklenir; eski kayitlar yuklenir, zamanlayicilar cogaltilmaz.
+TEST - Canli eslesme, Source-X yukleme, item/karakter text ve binary save/load,
+       dikey cizgi iceren argumanlar ve gecersiz ek bilgi testleri eklendi.
+
+[2026-09-22] - Buyu on baslangic, kazanim ve iptal sirasini tamamla
+------------------------------------------------------------------------
+DUZELTME - Skill PreStart buyu baslangicindan once calisir ve iptali uygular.
+           Olu veya zaten buyu atan karakterde yeni hazirlik reddedilir.
+DUZELTME - Basari kazanimi buyu tamamlandiktan sonra isler. Precast dahil
+           basarisizlik kazanimi Fail olayi izin verdiginde uygulanir.
+DUZELTME - Son asamadaki hatalar Abort olayini kaynak kaybi ve temizlikten
+           once bir kez calistirir; script iptal maliyetini engelleyebilir.
+DUZELTME - Precast hedef imleci SPELLTIMEOUT suresine uyar; sure doldugunda
+           bekleyen buyu iptal akisiyla temizlenir.
+TEST - PreStart iptali, kazanim sirasi, gec iptal, fizzle ve timeout testleri.
+
 [2026-09-22] - Script kaynakli buyu donma surelerini uygula
 ------------------------------------------------------------------------
 DUZELTME - Buyu kimligi ACTARG1 ile okunur; ana skill Start/Success/Fail/Abort

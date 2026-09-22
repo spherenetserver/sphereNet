@@ -97,6 +97,9 @@ public sealed class MagicCastFlowParityTests
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
         caster.Equip(wand, Layer.OneHanded);
+        // Item use explicitly selects this wand as the cast source; merely
+        // holding it must not exempt a spell cast from the player's book.
+        caster.SetTag("WAND_UID", wand.Uid.Value.ToString());
 
         int castTime = engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position);
         Assert.True(castTime > 0, "wand cast refused for lack of mana it does not need");

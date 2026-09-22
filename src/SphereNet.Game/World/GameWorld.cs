@@ -110,7 +110,8 @@ public sealed class GameWorld
 
     /// <summary>World clock: in-game minutes since epoch. 1 real second = configurable game minutes.</summary>
     private long _worldClock;
-    private long _lastClockUpdate;
+    private long _lastClockUpdate = Environment.TickCount64;
+    private long _worldClockRemainderMs;
 
     /// <summary>Interval (ms) between maintenance ticks for sleeping sectors.
     /// Keeps item timers (decay, spawn, TIMER) alive in empty areas.</summary>
@@ -485,7 +486,8 @@ public sealed class GameWorld
     private void AdvanceWorldClock(long currentTime)
     {
         if (GameMinuteLengthMs <= 0) return;
-        long elapsed = currentTime - _lastClockUpdate;
+        long elapsed = Math.Max(0, currentTime - _lastClockUpdate);
+        _worldClockRemainderMs = elapsed % GameMinuteLengthMs;
         if (elapsed < GameMinuteLengthMs) return;
         long minutes = elapsed / GameMinuteLengthMs;
         _worldClock += minutes;
@@ -565,9 +567,23 @@ public sealed class GameWorld
 
     public void LightFlash(Point3D position) => GetSector(position)?.LightFlash();
 
-    /// <summary>Set the game clock, in game minutes. Public because the save loader
-    /// restores it (Source-X InitTime from the TIMEHIRES header, CWorld.cpp:1625).</summary>
-    public void SetWorldClockMinutes(long minutes) => _worldClock = Math.Max(0, minutes);
+    /// <summary>Restore the millisecond clock from TIMEHIRES (Source-X InitTime).</summary>
+    public void SetGameClockMs(long milliseconds)
+    {
+        milliseconds = Math.Max(0, milliseconds);
+        int minuteLength = Math.Max(1, GameMinuteLengthMs);
+        _worldClock = milliseconds / minuteLength;
+        _worldClockRemainderMs = milliseconds % minuteLength;
+        _lastClockUpdate = Environment.TickCount64 - _worldClockRemainderMs;
+    }
+
+    /// <summary>Restore the legacy GAMETIME value, in game minutes.</summary>
+    public void SetWorldClockMinutes(long minutes)
+    {
+        _worldClock = Math.Max(0, minutes);
+        _worldClockRemainderMs = 0;
+        _lastClockUpdate = Environment.TickCount64;
+    }
 
     // --- Object creation ---
 
@@ -1417,7 +1433,7 @@ public sealed class GameWorld
     /// <summary>The game clock in MILLISECONDS - the unit Source-X keeps it in
     /// (CWorldGameTime.cpp:11) and stamps things like a champion's activation
     /// with.</summary>
-    public long GameClockMs => _worldClock * (long)Math.Max(1, GameMinuteLengthMs);
+    public long GameClockMs => _worldClock * (long)Math.Max(1, GameMinuteLengthMs) + _worldClockRemainderMs;
 
     /// <summary>
     /// Main world tick. Called from the game loop.

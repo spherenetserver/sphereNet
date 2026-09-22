@@ -166,11 +166,20 @@ public sealed class ClientTargetingHandler
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
                         new TriggerArgs { CharSrc = _character, N1 = (int)cancelledSpell });
                 }
+                _client.Spells?.CancelCast(_character);
                 _character.RemoveTag("CAST_SPELL");
                 // The cast never started — drop the wand/scroll source tags so they
                 // don't leak into and get consumed by the next cast.
                 _character.RemoveTag("WAND_UID");
                 _character.RemoveTag("SCROLL_UID");
+            }
+            // Precast cursors use a callback, not the legacy CAST_SPELL tag.
+            if (_character.CastSkillSucceeded && _character.CastTimerEnd == 0 &&
+                _character.TryGetCastingSpell(out var precastSpell))
+            {
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = (int)precastSpell });
+                _client.Spells?.CancelCast(_character);
             }
             _character.RemoveTag("TARGP");
             _character.RemoveTag("TARG.X");

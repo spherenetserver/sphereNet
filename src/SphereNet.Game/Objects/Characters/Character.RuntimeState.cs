@@ -85,9 +85,17 @@ public partial class Character
         return true;
     }
 
+    internal int? CastDifficulty { get; set; }
+
+    internal bool CastSkillSucceeded { get; set; }
+    internal Action<Character>? CastAborted { get; set; }
+
     public void BeginCast(SpellType spell, Serial targetUid, Point3D targetPos)
     {
+        CastDifficulty = null;
+        CastSkillSucceeded = false;
         _castingSpell = (int)spell;
+        ActArg1 = (int)spell;
         _castTargetUid = targetUid;
         _castTargetPos = targetPos;
         _spellPrecast = false;
@@ -139,8 +147,13 @@ public partial class Character
         return true;
     }
 
-    public void ClearCastState()
+    public void ClearCastState(bool notifyAbort = true)
     {
+        var aborted = CastAborted;
+        CastAborted = null;
+        if (notifyAbort && IsCasting) aborted?.Invoke(this);
+        CastSkillSucceeded = false;
+        CastDifficulty = null;
         _castingSpell = -1;
         _castTimerEnd = 0;
         _spellPrecast = false;

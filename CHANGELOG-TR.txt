@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - Script kaynakli buyu donma surelerini uygula
+------------------------------------------------------------------------
+DUZELTME - Buyu kimligi ACTARG1 ile okunur; ana skill Start/Success/Fail/Abort
+           olaylari calisir. Precast basari olayi hedef imlecinden once isler;
+           iptal, baglanti kesilmesi ve olum script temizligine ulasir.
+DUZELTME - TAG.NOMOVETILL, SERV.TIME dunya saatinin onda bir saniye birimiyle
+           denetlenir. Dakika ici milisaniye hassasiyeti, SERV.TIMEHIRES ve
+           save/load destegi eklendi; eski GAMETIME kayitlari korunur.
+TEST - Gercek FREEZETIME ifadeleri, hareket suresi sinirlari, skill bitisleri,
+       precast hedefleme ve dunya saati kaliciligi dogrulanir.
+
+[2026-09-22] - Buyu baslangici, bitisi ve degistirilebilir tetikleyici argumanlari
+------------------------------------------------------------------------
+FIX - Bitiste erisilebilir kitap ve kayitli buyu maliyet/etkiden once tekrar
+      denetleniyor. Kitap veya buyu kaybi atisi temizliyor; kaynak harcamadan
+      yapilandirilmis hata mesaji gonderiliyor.
+FIX - Wand/scroll sahipligi baslangicta bitisle ayni kaynaktan cozuluyor.
+      Sadece wand tutmak normal buyuye kitap/reagent/mana istisnasi vermiyor;
+      eski veya kayip kaynak baslangicta reddediliyor.
+FIX - @SpellCast ve [SPELL] @Start ortak motor yolundan hazirlaniyor.
+      Degisen buyu, zorluk ve sure hedef yanitinda/precast sirasinda korunuyor;
+      baslangic tetikleyicileri iki kez calismiyor. Sifir sure sonraki isleme
+      firsatina planlaniyor. Zorluk gecici karakter alaninda bitise tasiniyor
+      ve temizlikte sifirlaniyor. Istemci @SpellSelect buyu degisikligi de
+      uygulanarak yeni tanim cozuluyor.
+TEST - Kitap/buyu kaybi, kaynak istisnalari, arguman degisimi, normal/precast
+       sureleri, iptal ve tek calisma icin 16 regresyon vakasi eklendi.
+
 [2026-09-22] - Ortak spellbook dogrulamasi ve virtue secimleri
 ------------------------------------------------------------------------
 FIX - Buyu atma ve kitap makrolari okula gore el/canta kitap secimini ortak

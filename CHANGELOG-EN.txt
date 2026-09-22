@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Honor script-driven casting freeze deadlines
+------------------------------------------------------------------------
+FIX - Expose the casting spell through ACTARG1 and dispatch the primary skill's
+      Start/Success/Fail/Abort stages. Precast runs skill success before its
+      target cursor; cancellation, disconnect and death reach script cleanup.
+FIX - Check TAG.NOMOVETILL against SERV.TIME in world-clock tenths. Keep
+      millisecond precision within game minutes; expose SERV.TIMEHIRES and
+      persist it alongside legacy GAMETIME so deadlines survive save/load.
+TEST - Cover real FREEZETIME expressions, exact movement deadline boundaries,
+       terminal skill stages, precast targeting and clock persistence.
+
+[2026-09-22] - Align spell startup, completion and mutable trigger arguments
+------------------------------------------------------------------------
+FIX - Revalidate the accessible spellbook and learned spell at completion,
+      before costs/effects. A missing book or removed spell clears the cast
+      and reports the configured message without spending resources.
+FIX - Resolve wand/scroll ownership at startup through the same source
+      resolver as completion. Merely holding a wand no longer grants normal
+      casts book/reagent/mana exemptions; stale sources fail at startup.
+FIX - Prepare @SpellCast and [SPELL] @Start through the shared engine path.
+      Read back spell, difficulty and delay; preserve them across target
+      replies and precast without firing the startup hooks twice. Zero delay
+      schedules the next processing opportunity. Difficulty is runtime state,
+      used at completion and cleared on cleanup. Honor client @SpellSelect
+      spell rewrites and re-resolve the selected definition.
+TEST - Add 16 regressions for lost books/spells, source exemptions, mutable
+       arguments, normal/precast timing, cancellation and single execution.
+
 [2026-09-22] - Unify spellbook validation and route virtue selections
 ------------------------------------------------------------------------
 FIX - Casts and book macros share school-aware hand/backpack book selection.

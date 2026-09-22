@@ -1303,6 +1303,7 @@ public sealed class WorldSaver
             // equivalent, every restart put the world back at midnight and took the
             // moon phases with it.
             w.WriteProperty("GAMETIME", world.WorldClockMinutes.ToString());
+            w.WriteProperty("TIMEHIRES", world.GameClockMs.ToString());
 
             // GLOBALS
             var globals = world.GetAllGlobalVars().ToList();

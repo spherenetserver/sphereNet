@@ -1810,6 +1810,7 @@ public sealed class WorldLoader
             }
             else if (upper == "SPHERE")
             {
+                long? highResolutionTime = null;
                 while (reader.NextProperty(out string key, out string val))
                 {
                     if (key.Equals("VERSION", StringComparison.OrdinalIgnoreCase))
@@ -1817,7 +1818,11 @@ public sealed class WorldLoader
                     else if (key.Equals("GAMETIME", StringComparison.OrdinalIgnoreCase) &&
                              long.TryParse(val, out long gameMinutes))
                         world.SetWorldClockMinutes(gameMinutes);
+                    else if (key.Equals("TIMEHIRES", StringComparison.OrdinalIgnoreCase) &&
+                             long.TryParse(val, out long milliseconds))
+                        highResolutionTime = milliseconds;
                 }
+                if (highResolutionTime.HasValue) world.SetGameClockMs(highResolutionTime.Value);
             }
             else if (upper == "TIMERF")
             {

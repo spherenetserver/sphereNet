@@ -291,6 +291,7 @@ public sealed partial class GameClient : ITextConsole
             if (abortedSkill >= 0)
                 Character.ActiveSkillAborted?.Invoke(_character, abortedSkill);
             _character.InterruptMeditation();
+            _spellEngine?.CancelCast(_character);
             _character.ClearCastState();
             _worldFeatures?.CancelPendingCraftOnDisconnect();
             if (Targets.SkillCancelId >= 0)

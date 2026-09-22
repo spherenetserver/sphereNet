@@ -546,13 +546,30 @@ public sealed class SpellEngine
         return false;
     }
 
-    private void InterruptCast(Character caster, string reason)
+    public void CancelCast(Character caster)
+    {
+        if (caster.IsCasting) InterruptCast(caster, null);
+    }
+
+    private TriggerResult FireCastSkillTrigger(Character caster, SpellType spell, CharTrigger stage, TriggerArgs? args = null)
+    {
+        var def = _spells.Get(spell);
+        if (def == null) return TriggerResult.Default;
+        args ??= new TriggerArgs();
+        args.CharSrc = caster;
+        args.N1 = (int)def.GetPrimarySkill();
+        args.Locals ??= new SphereNet.Scripting.Variables.VarMap();
+        args.Locals.SetInt("spell", (int)spell);
+        return TriggerDispatcher?.FireCharTrigger(caster, stage, args) ?? TriggerResult.Default;
+    }
+
+    private void InterruptCast(Character caster, string? reason)
     {
         SpellDef? def = null;
         if (caster.TryGetCastingSpell(out SpellType spell))
             def = _spells.Get(spell);
 
-        if (def != null)
+        if (def != null && FireCastSkillTrigger(caster, spell, CharTrigger.SkillAbort) != TriggerResult.True)
         {
             TryResolveCastSource(caster, out CastSourceKind kind, out _);
             ApplyCastResourceLoss(caster, def, kind == CastSourceKind.Wand,
@@ -564,6 +581,7 @@ public sealed class SpellEngine
         ClearCastSourceTags(caster);
         ClearCastState(caster);
 
+        if (reason == null) return;
         string msg = reason switch
         {
             "damaged" or "moved" or "equip_changed" => ServerMessages.Get(Msg.SpellGenFizzles),
@@ -720,6 +738,41 @@ public sealed class SpellEngine
         return true;
     }
 
+    /// <summary>One immutable result shared by target selection and cast start.</summary>
+    public sealed record CastPreparation(SpellType Spell, int Difficulty, int WaitMs,
+        string? Words, ushort Hue, byte Font);
+
+    public CastPreparation? PrepareCast(Character caster, SpellType spell)
+    {
+        var def = _spells.Get(spell);
+        if (def == null) return null;
+        caster.ActArg1 = (int)spell;
+        int difficulty = def.GetDifficulty() / 10;
+        if (TryResolveCastSource(caster, out var kind, out _))
+        {
+            if (kind == CastSourceKind.Wand) difficulty = 1;
+            else if (kind == CastSourceKind.Scroll) difficulty /= 2;
+        }
+        string words = def.GetPowerWords();
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.Set("WOP", words);
+        locals.SetInt("WOPColor", 0);
+        locals.SetInt("WOPFont", 0);
+        var args = new TriggerArgs { CharSrc = caster, N1 = (int)spell,
+            N2 = difficulty, N3 = CalculateCastTimeTenths(caster, def), Locals = locals };
+        if (TriggerDispatcher?.FireCharTrigger(caster, CharTrigger.SpellCast, args) == TriggerResult.True)
+            return null;
+        if (args.N1 < 0 || args.N1 > ushort.MaxValue || _spells.Get((SpellType)args.N1) == null)
+            return null;
+        string changedWords = locals.Get("WOP") ?? "";
+        return new CastPreparation((SpellType)args.N1,
+            (int)Math.Clamp(args.N2, -100000, 100000),
+            (int)Math.Clamp(args.N3, 0, int.MaxValue / 100) * 100,
+            changedWords == words ? null : changedWords,
+            (ushort)Math.Clamp(locals.GetInt("WOPColor"), 0, ushort.MaxValue),
+            (byte)Math.Clamp(locals.GetInt("WOPFont"), 0, byte.MaxValue));
+    }
+
     /// <summary>
     /// Begin casting a spell. Maps to Spell_CastStart.
     /// Returns cast time in milliseconds, or -1 on failure.
@@ -728,8 +781,16 @@ public sealed class SpellEngine
     /// replaces the spoken mantra.
     /// </summary>
     public int CastStart(Character caster, SpellType spell, Serial targetUid, Point3D targetPos,
-        string? wopOverride = null, ushort wopHue = 0, byte wopFont = 0)
+        string? wopOverride = null, ushort wopHue = 0, byte wopFont = 0,
+        CastPreparation? preparation = null)
     {
+        if (caster.IsCasting || caster.IsDead) return -1;
+        preparation ??= PrepareCast(caster, spell);
+        if (preparation == null) return -1;
+        spell = preparation.Spell;
+        wopOverride ??= preparation.Words;
+        if (wopHue == 0) wopHue = preparation.Hue;
+        if (wopFont == 0) wopFont = preparation.Font;
         var def = _spells.Get(spell);
         if (def == null || def.IsFlag(SpellFlag.Disabled))
             return -1;
@@ -794,10 +855,14 @@ public sealed class SpellEngine
             }
         }
 
-        var weapon = caster.GetEquippedItem(Layer.OneHanded);
-        var offhand = caster.GetEquippedItem(Layer.TwoHanded);
-        bool isWand = weapon?.ItemType == ItemType.Wand;
-        bool fromScroll = caster.TryGetTag("SCROLL_UID", out _);
+        if (!TryResolveCastSource(caster, out var sourceKind, out _))
+        {
+            ClearCastSourceTags(caster);
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellEnchantActivate));
+            return -1;
+        }
+        bool isWand = sourceKind == CastSourceKind.Wand;
+        bool fromScroll = sourceKind == CastSourceKind.Scroll;
 
         // Mana check — the SAME discounted cost the completion will consume
         // (wand = free, scroll = half). Requiring the full effective cost up
@@ -814,9 +879,6 @@ public sealed class SpellEngine
             OnSysMessage?.Invoke(caster, "That spell does not work here.");
             return -1;
         }
-
-        var primarySkill = def.GetPrimarySkill();
-        int skillVal = caster.GetSkill(primarySkill);
 
         // Source-X Spell_CastStart (CCharSpell.cpp:3544): with EQUIPPEDCAST off the
         // caster's HANDS ARE EMPTIED, not the cast refused — Spell_Unequip bounces
@@ -856,13 +918,12 @@ public sealed class SpellEngine
             return -1;
         }
 
-        // Cast time
-        int castTimeTenths = CalculateCastTimeTenths(caster, def, skillVal);
-
         RevealOnCast(caster);
 
         // Store cast state on character
         caster.BeginCast(spell, targetUid, targetPos);
+        caster.CastDifficulty = preparation.Difficulty;
+        caster.CastAborted = ch => FireCastSkillTrigger(ch, spell, CharTrigger.SkillAbort);
 
         if (!targetPos.Equals(caster.Position))
         {
@@ -889,7 +950,19 @@ public sealed class SpellEngine
             : (ushort)Core.Enums.AnimationType.CastDirected;
         OnCastAnimation?.Invoke(caster, castAnim);
 
-        return castTimeTenths * 100;
+        // Skill_Start runs after Spell_CastStart; ARGN2 is the skill delay in tenths.
+        var skillDef = Definitions.DefinitionLoader.GetSkillDef((int)def.GetPrimarySkill());
+        int skillDelay = skillDef?.Delay.GetLinear(caster.GetSkill(def.GetPrimarySkill())) ?? 0;
+        var skillArgs = new TriggerArgs { N2 = skillDelay };
+        if (FireCastSkillTrigger(caster, spell, CharTrigger.SkillStart, skillArgs) == TriggerResult.True)
+        {
+            ClearCastSourceTags(caster);
+            ClearCastState(caster);
+            return -1;
+        }
+        int waitMs = skillArgs.N2 > 0
+            ? (int)Math.Min(skillArgs.N2, int.MaxValue / 100) * 100 : preparation.WaitMs;
+        return Math.Max(1, waitMs);
     }
 
     /// <summary>
@@ -902,14 +975,79 @@ public sealed class SpellEngine
         // shared resolution hook so NPC/direct casts reach @SpellSuccess /
         // @SpellEffect / @SpellFail — the client path no longer fires these.
         bool wasCasting = caster.TryGetCastingSpell(out SpellType resolvedSpell);
-        bool ok = CastDoneCore(caster);
+        bool ok = CastDoneCore(caster, out bool skillStageFired);
+        if (wasCasting && !skillStageFired)
+            FireCastSkillTrigger(caster, resolvedSpell, CharTrigger.SkillAbort);
         if (wasCasting)
             OnCastResolved?.Invoke(caster, resolvedSpell, ok);
         return ok;
     }
 
-    private bool CastDoneCore(Character caster)
+    // Source-X Skill_Done runs @Success before the precast target cursor.
+    public bool CompletePrecastSkill(Character caster)
     {
+        if (!caster.TryGetCastingSpell(out var spell)) return false;
+        var def = _spells.Get(spell);
+        if (def == null || !TryResolveCastSource(caster, out var kind, out _))
+        {
+            CancelCast(caster);
+            return false;
+        }
+        bool ok = CompleteCastSkill(caster, def, kind, awardGain: false);
+        if (!ok) OnCastResolved?.Invoke(caster, spell, false);
+        return ok;
+    }
+
+    private bool CompleteCastSkill(Character caster, SpellDef def, CastSourceKind sourceKind, bool awardGain)
+    {
+        var primarySkill = def.GetPrimarySkill();
+        var spell = def.Id;
+        bool castWithWand = sourceKind == CastSourceKind.Wand;
+        bool castFromScroll = sourceKind == CastSourceKind.Scroll;
+        int difficulty = caster.CastDifficulty ?? (castWithWand ? 1 : def.GetDifficulty() / (castFromScroll ? 20 : 10));
+        difficulty *= 10;
+        if (caster.CastSkillSucceeded)
+        {
+            if (awardGain && caster.PrivLevel < PrivLevel.GM)
+                SkillEngine.GainExperience(caster, primarySkill, difficulty / 10);
+            return true;
+        }
+        // Source-X: skill check at cast completion — fizzle on failure.
+        // GetDifficulty() is on the 0-1000 skill scale, but CheckSuccess expects
+        // a 0-100 difficulty (it multiplies by 10 internally) — convert here so
+        // the bell curve compares like-for-like against the 0-1000 skill value.
+        bool fizzled = caster.PrivLevel < PrivLevel.GM &&
+            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty / 10);
+
+        // Source-X Spell_CastDone awards the casting skill a gain attempt on every
+        // resolved cast, whether it succeeds or fizzles. (GainExperience itself
+        // guards GM/dead/locked/safe-region.)
+        if (awardGain && caster.PrivLevel < PrivLevel.GM)
+            SkillEngine.GainExperience(caster, primarySkill, difficulty / 10);
+
+        if (fizzled)
+        {
+            if (FireCastSkillTrigger(caster, spell, CharTrigger.SkillFail) != TriggerResult.True)
+                ApplyCastResourceLoss(caster, def, castWithWand, castFromScroll, fizzle: true, abort: false);
+            ClearCastSourceTags(caster);
+            ClearCastState(caster);
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+            return false;
+        }
+
+        if (FireCastSkillTrigger(caster, spell, CharTrigger.SkillSuccess) == TriggerResult.True)
+        {
+            CancelCast(caster);
+            return false;
+        }
+
+        caster.CastSkillSucceeded = true;
+        return true;
+    }
+
+    private bool CastDoneCore(Character caster, out bool skillStageFired)
+    {
+        skillStageFired = false;
         if (caster.IsDead || (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
         {
             ClearCastState(caster);
@@ -935,6 +1073,18 @@ public sealed class SpellEngine
         if (!TryResolveCastSource(caster, out CastSourceKind sourceKind, out Item? castSource))
             return FailCastAtCompletion(caster, def, sourceKind,
                 ServerMessages.Get(Msg.SpellEnchantActivate));
+
+        if (Character.SpellbookRequiredEnabled && caster.IsPlayer &&
+            caster.PrivLevel < PrivLevel.GM && sourceKind == CastSourceKind.Self &&
+            !HasSpellInBook(caster, (int)spell))
+        {
+            string message = ServerMessages.Get(caster.FindSpellbook((int)spell) == null
+                ? Msg.SpellTryNobook : Msg.SpellTryNotyourbook);
+            ClearCastSourceTags(caster);
+            ClearCastState(caster);
+            OnSysMessage?.Invoke(caster, message);
+            return false;
+        }
 
         // LOS check BEFORE consuming resources
         if (_world != null &&
@@ -976,33 +1126,11 @@ public sealed class SpellEngine
 
         var primarySkill = def.GetPrimarySkill();
         int skillVal = caster.GetSkill(primarySkill);
-        int difficulty = def.GetDifficulty();
         bool castWithWand = sourceKind == CastSourceKind.Wand;
         bool castFromScroll = sourceKind == CastSourceKind.Scroll;
-        if (castWithWand) difficulty = 10;          // reference: wand = minimal difficulty
-        else if (castFromScroll) difficulty /= 2;   // reference: scroll = half difficulty
 
-        // Source-X: skill check at cast completion — fizzle on failure.
-        // GetDifficulty() is on the 0-1000 skill scale, but CheckSuccess expects
-        // a 0-100 difficulty (it multiplies by 10 internally) — convert here so
-        // the bell curve compares like-for-like against the 0-1000 skill value.
-        bool fizzled = caster.PrivLevel < PrivLevel.GM &&
-            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty / 10);
-
-        // Source-X Spell_CastDone awards the casting skill a gain attempt on every
-        // resolved cast, whether it succeeds or fizzles. (GainExperience itself
-        // guards GM/dead/locked/safe-region.)
-        if (caster.PrivLevel < PrivLevel.GM)
-            SkillEngine.GainExperience(caster, primarySkill, difficulty / 10);
-
-        if (fizzled)
-        {
-            ApplyCastResourceLoss(caster, def, castWithWand, castFromScroll, fizzle: true, abort: false);
-            ClearCastSourceTags(caster);
-            ClearCastState(caster);
-            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
-            return false;
-        }
+        skillStageFired = true;
+        if (!CompleteCastSkill(caster, def, sourceKind, awardGain: true)) return false;
 
         // Source-X builds the summon and weighs it against the follower cap BEFORE
         // the spell is paid for: Spell_Summon_Try (CCharSpell.cpp:3002) creates the
@@ -3202,7 +3330,7 @@ public sealed class SpellEngine
         }
     }
 
-    private static void ClearCastState(Character ch) => ch.ClearCastState();
+    private static void ClearCastState(Character ch) => ch.ClearCastState(notifyAbort: false);
 
     /// <summary>Spell mana cost after per-caster modifiers. Necromancy Mind Rot
     /// raises the victim's spell mana cost by 10% (reference LOWERMANACOST -10).</summary>

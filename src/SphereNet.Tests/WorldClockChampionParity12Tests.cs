@@ -85,7 +85,7 @@ public sealed class WorldClockChampionParity12Tests
             // Strip the clock line the way a save written before this field looks.
             foreach (var file in Directory.GetFiles(dir, "*.scp"))
                 File.WriteAllLines(file,
-                    File.ReadAllLines(file).Where(l => !l.StartsWith("GAMETIME", StringComparison.OrdinalIgnoreCase)));
+                    File.ReadAllLines(file).Where(l => !l.StartsWith("GAMETIME", StringComparison.OrdinalIgnoreCase) && !l.StartsWith("TIMEHIRES", StringComparison.OrdinalIgnoreCase)));
 
             var reloaded = new GameWorld(lf);
             reloaded.InitMap(0, 1024, 1024);

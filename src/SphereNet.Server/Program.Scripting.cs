@@ -75,7 +75,8 @@ public static partial class Program
             "SERVNAME" or "NAME" => _config?.ServName ?? "SphereNet",
 
             // --- Time properties ---
-            "TIME" => DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+            "TIME" => ((_world?.GameClockMs ?? 0) / 100).ToString(),
+            "TIMEHIRES" => (_world?.GameClockMs ?? 0).ToString(),
             "TIMEUP" => ((int)(DateTime.UtcNow - _serverStartTime).TotalSeconds).ToString(),
             "RTIME" => DateTime.Now.ToString("ddd MMM dd HH:mm:ss yyyy"),
             "RTICKS" => DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),

@@ -2307,57 +2307,23 @@ public sealed class ClientCombatHandler
     // ==================== Spell Casting ====================
 
     public void HandleCastSpell(SpellType spell, uint targetUid)
+        => HandleCastSpellCore(spell, targetUid, null);
+
+    private void HandleCastSpellCore(SpellType spell, uint targetUid, SpellEngine.CastPreparation? preparation)
     {
         if (_character == null || _spellEngine == null) return;
-
-        // @SpellSelect (Source-X) — a spell was chosen. Fires before @SpellCast and
-        // the mana/skill/reagent checks so a script can cancel early. N1 = spell.
-        if (_triggerDispatcher != null &&
-            _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellSelect,
-                new TriggerArgs { CharSrc = _character, N1 = (int)spell }) == TriggerResult.True)
-            return;
-
-        var spellDef = _spellEngine.GetSpellDef(spell);
-
-        // Fire @SpellCast — if script blocks, don't cast. Source-X contract:
-        // ARGN1 = spell, ARGN2 = difficulty (skill req / 10), ARGN3 = cast
-        // wait time in tenths — writable, the classic "change the cast delay
-        // from script" hook. LOCAL.WOP carries the power words: a script may
-        // rewrite them or clear them for a silent cast.
-        int castTimeOverrideMs = 0;
-        string? wopOverride = null;
-        ushort wopHue = 0;
-        byte wopFont = 0;
-        if (_triggerDispatcher != null)
+        if (preparation == null)
         {
-            int seededWaitTenths = spellDef != null
-                ? SpellEngine.CalculateCastTimeTenths(_character, spellDef)
-                : 0;
-            string seededWop = spellDef?.GetPowerWords() ?? "";
-            var castLocals = new SphereNet.Scripting.Variables.VarMap();
-            castLocals.Set("WOP", seededWop);
-            castLocals.SetInt("WOPColor", 0);
-            castLocals.SetInt("WOPFont", 0);
-            var castArgs = new TriggerArgs
-            {
-                CharSrc = _character,
-                N1 = (int)spell,
-                N2 = (spellDef?.GetDifficulty() ?? 0) / 10,
-                N3 = seededWaitTenths,
-                Locals = castLocals,
-            };
-            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellCast, castArgs);
-            if (result == TriggerResult.True)
+            var selectArgs = new TriggerArgs { CharSrc = _character, N1 = (int)spell };
+            if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellSelect, selectArgs) == TriggerResult.True)
                 return;
-            if (castArgs.N3 != seededWaitTenths && castArgs.N3 > 0)
-                castTimeOverrideMs = SphereNet.Core.Types.ScriptNumber.ToEngineInt(castArgs.N3 * 100);
-            // VarMap removes a key set to "" — a cleared WOP means silence.
-            string wopNow = castLocals.Get("WOP") ?? "";
-            if (wopNow != seededWop)
-                wopOverride = wopNow;
-            wopHue = (ushort)Math.Clamp(castLocals.GetInt("WOPColor", 0), 0, ushort.MaxValue);
-            wopFont = (byte)Math.Clamp(castLocals.GetInt("WOPFont", 0), 0, byte.MaxValue);
+            if (selectArgs.N1 < 0 || selectArgs.N1 > ushort.MaxValue) return;
+            spell = (SpellType)selectArgs.N1;
+            preparation = _spellEngine.PrepareCast(_character, spell);
+            if (preparation == null) return;
         }
+        spell = preparation.Spell;
+        var spellDef = _spellEngine.GetSpellDef(spell);
 
         // Reference Cmd_Skill_Magery: Polymorph/Summon casts open their
         // script selection menu when one exists (@SkillMenu with the menu
@@ -2392,7 +2358,7 @@ public sealed class ClientCombatHandler
         // Precast: power words + animation first, target cursor after timer.
         if (targetUid == 0 && spellDef != null && SpellEngine.IsPrecastEnabled(spellDef))
         {
-            StartPrecast(spell, castTimeOverrideMs, wopOverride, wopHue, wopFont);
+            StartPrecast(spell, preparation);
             return;
         }
 
@@ -2419,7 +2385,7 @@ public sealed class ClientCombatHandler
                         return;
                     }
                     _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
-                    HandleCastSpell(spell, serial != 0 ? serial : _character.Uid.Value);
+                    HandleCastSpellCore(spell, serial != 0 ? serial : _character.Uid.Value, preparation);
                 });
                 // A spell's cursor is the one upstream puts a clock on
                 // (CClientUse.cpp:1061); the GM and script cursors around it have none.
@@ -2442,11 +2408,9 @@ public sealed class ClientCombatHandler
         }
 
         int castTime = _spellEngine.CastStart(_character, spell, new Serial(targetUid), targetPos,
-            wopOverride, wopHue, wopFont);
+            preparation: preparation);
         if (castTime > 0)
         {
-            if (castTimeOverrideMs > 0)
-                castTime = castTimeOverrideMs; // @SpellCast ARGN3 rewrite
             _character.SetCastTimerEnd(Environment.TickCount64 + castTime);
         }
         else
@@ -2458,17 +2422,14 @@ public sealed class ClientCombatHandler
         }
     }
 
-    private void StartPrecast(SpellType spell, int castTimeOverrideMs = 0, string? wopOverride = null,
-        ushort wopHue = 0, byte wopFont = 0)
+    private void StartPrecast(SpellType spell, SpellEngine.CastPreparation preparation)
     {
         if (_character == null || _spellEngine == null) return;
 
         int castTime = _spellEngine.CastStart(_character, spell, _character.Uid, _character.Position,
-            wopOverride, wopHue, wopFont);
+            preparation: preparation);
         if (castTime > 0)
         {
-            if (castTimeOverrideMs > 0)
-                castTime = castTimeOverrideMs; // @SpellCast ARGN3 rewrite
             _character.SpellPrecast = true;
             _character.SetCastTimerEnd(Environment.TickCount64 + castTime);
             return;
@@ -2506,7 +2467,7 @@ public sealed class ClientCombatHandler
                 spellDef.IsFlag(SpellFlag.TargObj) && !spellDef.IsFlag(SpellFlag.TargXYZ))
             {
                 SysMessage(ServerMessages.Get("target_must_object"));
-                _character.ClearCastState();
+                _spellEngine.CancelCast(_character);
                 return;
             }
             var targetPos = new Point3D(x, y, z, _character.MapIndex);
@@ -2547,6 +2508,7 @@ public sealed class ClientCombatHandler
 
             if (_character.SpellPrecast)
             {
+                if (!_spellEngine.CompletePrecastSkill(_character)) return;
                 _character.SpellPrecast = false;
                 SpellType preSpell = default;
                 if (_character.TryGetCastingSpell(out SpellType pre))

@@ -110,6 +110,11 @@ public sealed class MovementEngine
         byte sequence, out WalkCheck.Diagnostic diag)
     {
         diag = default;
+        // Source-X OnFreezeCheck: NoMoveTill is a world-clock deadline in tenths,
+        // including for GMs. Expiration does not delete the script-owned tag.
+        if (ch.TryGetTag("NOMOVETILL", out string? noMoveText) &&
+            ScriptNumber.TryParseToken(noMoveText, out long noMoveTill) && noMoveTill > _world.GameClockMs / 100)
+            return false;
         // IsDead is intentionally NOT a hard reject here. Source-X /
         // OSI ghosts can walk freely (just slower, can't open most doors,
         // can't mount). Treating death as "cannot move" leaves the player

@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Script DB sorgulari artik sema meta verisi okumuyor
+------------------------------------------------------------------------
+PERF - DB/LDB/MDB QUERY sonuc kumesini sadece sutun adi ve degeriyle kopyalar.
+       DataTable.Load'dan geciyordu; Load okuyucudan sema tablosunu ister,
+       Microsoft.Data.Sqlite bunu her sutun icin ek meta veri sorgulariyla
+       cevaplar. Dokuz sutunlu bir LIMIT 15 sayfasi ~46 ms suruyordu (simdi
+       0.35 ms); DB'den beslenen staff dialog'larinin her cizimi ana thread'i
+       30-40 ms kilitliyordu. db.row.* ayni metni okur; tekrar eden sutunun
+       id/id1 adlari ve bos NULL dahil.
+TEST - DbRowReadTests.
+
 [2026-09-23] - Multicore gorunum resync'i, LOCAL/FLOAT tirnaklari, ilan panosu, STRSUB
 ------------------------------------------------------------------------
 DUZELTME - Bekleyen isinlanma resync'i multicore tick'te de calisir. O yol

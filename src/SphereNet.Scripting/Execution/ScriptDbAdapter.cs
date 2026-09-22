@@ -809,8 +809,7 @@ public sealed class ScriptDbAdapter : IDisposable
                     if (Config?.ReadTimeout > 0)
                         cmd.CommandTimeout = Config.ReadTimeout;
                     using var reader = cmd.ExecuteReader();
-                    var table = new DataTable();
-                    table.Load(reader);
+                    var table = ReadRows(reader);
                     _rowTable = table;
                     rowCount = table.Rows.Count;
                     return true;
@@ -822,6 +821,39 @@ public sealed class ScriptDbAdapter : IDisposable
                     return false;
                 }
             }
+        }
+
+        /// <summary>Copy a result set into a plain table: column names and values,
+        /// nothing else. DataTable.Load asks the reader for its schema table, and
+        /// Microsoft.Data.Sqlite answers that with extra metadata queries per column
+        /// (index lists, key info) - 5 ms for a one-column LIMIT 15 and ~46 ms for a
+        /// nine-column row, paid on every script query. db.row.* only ever reads a
+        /// cell as text, so the columns are untyped. A repeated name gets the suffix
+        /// Load gave it (id, id1, ...), so joins read the same keys as before.</summary>
+        internal static DataTable ReadRows(DbDataReader reader)
+        {
+            var table = new DataTable();
+            int fieldCount = reader.FieldCount;
+            for (int i = 0; i < fieldCount; i++)
+            {
+                string name = reader.GetName(i);
+                if (string.IsNullOrEmpty(name))
+                    name = "Column" + (i + 1);
+                string unique = name;
+                for (int n = 1; table.Columns.Contains(unique); n++)
+                    unique = name + n;
+                table.Columns.Add(unique, typeof(object));
+            }
+
+            var values = new object[fieldCount];
+            table.BeginLoadData();
+            while (reader.Read())
+            {
+                reader.GetValues(values);
+                table.Rows.Add(values);
+            }
+            table.EndLoadData();
+            return table;
         }
 
         private bool EnsureConnection(out string error)

@@ -1001,6 +1001,9 @@ public static partial class Program
         refreshClients.Clear();
         foreach (var client in clientSnapshot)
         {
+            // The same pre-delta step UpdateClientView runs, here on the main thread
+            // before the parallel build (which calls BuildViewDelta directly).
+            client.PrepareViewUpdate();
             if (client.ViewNeedsRefresh)
                 refreshClients.Add(client);
         }

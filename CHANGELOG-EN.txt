@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Multicore view resync, LOCAL/FLOAT quotes, bulletin board, STRSUB
+------------------------------------------------------------------------
+FIX - The pending teleport resync also runs on the multicore tick. That path
+      builds view deltas in parallel through BuildViewDelta/ApplyViewDelta and
+      never went through UpdateClientView, so on a live server the resync was
+      never performed and a help-menu stuck still left the player in place.
+      Both view paths now share one main-thread pre-step (PrepareViewUpdate).
+FIX - LOCAL.x = "..." and FLOAT.x = "..." drop the enclosing quote pair as
+      Source-X GetArgStr does. The quotes were kept in the value, so a JSON
+      string built in a LOCAL and written with LDB.EXECUTE was stored wrapped
+      in quotes and SQLite rejected it as malformed JSON.
+FIX - 0x71 bulletin board request sub-commands: 3 is a full-message request
+      (answered with sub 2), 4 a header request (answered with sub 1). They
+      were swapped, so opening a post showed only its header.
+FIX - STRSUB parses its arguments like Source-X Str_ParseCmds: separated by
+      spaces as well as commas (<STRSUB 0 3 <ARGS>>), the string argument keeps
+      the rest of the line, a negative start counts from the end, a zero count
+      runs to the end, quotes are dropped. The space form returned nothing, so
+      the save-finished broadcast showed no elapsed time.
+TEST - BulletinBoardSubcommandTests, DialogExpressionFunctionTests (STRSUB).
+
 [2026-09-23] - Resync the player after a teleport no client handler answered
 ------------------------------------------------------------------------
 FIX - A player moved further than a step (or onto another map) by something other

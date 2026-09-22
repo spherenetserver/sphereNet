@@ -952,20 +952,31 @@ public sealed class ExpressionParser
             return sp > 0 ? inner[..sp] : inner;
         }
 
-        // STRSUB — substring: <STRSUB start,length,string>
+        // STRSUB — substring: <STRSUB start,length,string>. Source-X SSC_StrSub
+        // (CScriptObj.cpp:823) splits with Str_ParseCmds, whose separators are
+        // "=, 	" - packs write both <STRSUB 0,3,x> and <STRSUB 0 3 <ARGS>> - and the
+        // third slot keeps the rest of the line. A negative start counts back from
+        // the end, a zero or overlong count runs to the end, quotes are dropped.
         if (varExpr.StartsWith("STRSUB ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRSUB(", StringComparison.OrdinalIgnoreCase))
         {
-            var parts = SplitFuncArgsResolved(varExpr, 6, 3);
-            if (parts.Count < 3) return "";
-            if (!int.TryParse(parts[0], out int start)) return "";
-            if (!int.TryParse(parts[1], out int length)) return "";
-            string resolved = parts[2];
-            if (start < 0) start = 0;
-            if (start >= resolved.Length) return "";
-            length = Math.Min(length, resolved.Length - start);
-            if (length <= 0) return "";
-            return resolved.Substring(start, length);
+            string rest = varExpr[6..];
+            if (rest.StartsWith('('))
+                rest = rest.EndsWith(')') ? rest[1..^1] : rest[1..];
+            rest = ResolveAngleBrackets(rest).TrimStart();
+            if (!TryTakeCmdToken(ref rest, out string posTok) || !TryTakeCmdToken(ref rest, out string cntTok))
+                return "";
+            if (!TryEvaluate(posTok, out long pos) || !TryEvaluate(cntTok, out long cnt) || cnt < 0)
+                return "";
+            string str = rest;
+            if (str.StartsWith('"')) str = str[1..];
+            int lastQuote = str.LastIndexOf('"');
+            if (lastQuote >= 0) str = str[..lastQuote];
+            long len = str.Length;
+            if (pos < 0) pos = len - cnt;
+            if (pos > len || pos < 0) pos = 0;
+            if (pos + cnt > len || cnt == 0) cnt = len - pos;
+            return str.Substring((int)pos, (int)cnt);
         }
 
         // STRLEN — string length: <STRLEN string>
@@ -2280,6 +2291,26 @@ public sealed class ExpressionParser
     /// resolving first lets a value containing commas (a "1,2" coordinate)
     /// corrupt the split. <paramref name="maxArgs"/> &gt; 0 merges surplus
     /// parts back into the last argument.</summary>
+    /// <summary>One Str_Parse step with the default "=, 	" separators: take the
+    /// leading token and leave <paramref name="rest"/> at the next argument.</summary>
+    private static bool TryTakeCmdToken(ref string rest, out string token)
+    {
+        int i = rest.IndexOfAny(CmdSeparators);
+        if (i < 0)
+        {
+            token = rest;
+            rest = "";
+            return token.Length > 0;
+        }
+        token = rest[..i];
+        int j = i;
+        while (j < rest.Length && Array.IndexOf(CmdSeparators, rest[j]) >= 0) j++;
+        rest = rest[j..];
+        return token.Length > 0;
+    }
+
+    private static readonly char[] CmdSeparators = ['=', ',', ' ', '	'];
+
     private List<string> SplitFuncArgsResolved(string varExpr, int prefixLen, int maxArgs = 0)
     {
         string rest = varExpr[prefixLen..];

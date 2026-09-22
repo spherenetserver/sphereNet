@@ -749,7 +749,12 @@ public sealed class ScriptInterpreter
             if (eqIdx > 0)
             {
                 string varName = localExpr[..eqIdx].Trim();
-                string varVal = localExpr[(eqIdx + 1)..].Trim();
+                // Source-X CScriptTriggerArgs::r_LoadVal reads the value with
+                // GetArgStr (CScriptTriggerArgs.cpp:246): a leading quote and the
+                // LAST quote are the script's, not the value's. Keeping them put
+                // LOCAL.Data = "{...}" into an SQL insert as "\"{...}\"" - a JSON
+                // string, not an object - and every json_extract over the table failed.
+                string varVal = ScriptKey.StripQuotePair(localExpr[(eqIdx + 1)..].Trim());
                 scope.LocalVars.Set(varName, varVal);
             }
             return true;
@@ -830,7 +835,8 @@ public sealed class ScriptInterpreter
             string floatName = cmd[6..];
             if (key.HasArg)
             {
-                string floatVal = ResolveArgs(key.Arg, target, source, args, scope);
+                // GetArgStr, as for LOCAL (CScriptTriggerArgs.cpp:240).
+                string floatVal = ScriptKey.StripQuotePair(ResolveArgs(key.Arg, target, source, args, scope).Trim());
                 scope.SetFloat(floatName, floatVal);
             }
             return true;

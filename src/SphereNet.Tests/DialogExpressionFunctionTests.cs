@@ -62,6 +62,12 @@ public sealed class DialogExpressionFunctionTests(ITestOutputHelper outp)
     /// the first token.</summary>
     [Theory]
     [InlineData("STRSUB", "<STRSUB 0,3,abcdef>", "abc")]
+    // Str_ParseCmds splits on spaces too - the pack's save_finished message is
+    // <STRSUB 0 3 <ARGS>> over the elapsed seconds.
+    [InlineData("STRSUB", "<STRSUB 0 3 0.1734>", "0.1")]
+    [InlineData("STRSUB", "<STRSUB 2 0 abcdef>", "cdef")]
+    [InlineData("STRSUB", "<STRSUB -2 2 abcdef>", "ef")]
+    [InlineData("STRSUB", "<STRSUB 0 5 \"ab cd\">", "ab cd")]
     [InlineData("STRARG", "<STRARG one two three>", "one")]
     [InlineData("STREAT", "<STREAT one two three>", "two three")]
     // <FVAL n> renders a TENTHS value as "X.Y" (SSC_FVAL, CScriptObj.cpp:729) -

@@ -489,7 +489,7 @@ public sealed partial class GameClient
 
     private const int MaxBoardBodyLines = 32;
 
-    /// <summary>Handle bulletin board header request (0x71 sub 3, Source-X
+    /// <summary>Handle bulletin board header request (0x71 sub 4, Source-X
     /// BBOARDF_REQ_HEAD): reply with the message summary (sub 1).</summary>
     public void HandleBulletinBoardRequestHead(uint boardSerial, uint msgSerial)
     {
@@ -500,7 +500,7 @@ public sealed partial class GameClient
             msg.Tags.Get("AUTHOR") ?? "", msg.Name ?? "", msg.Tags.Get("TIME") ?? "", null));
     }
 
-    /// <summary>Handle bulletin board message read (0x71 sub 4, BBOARDF_REQ_FULL):
+    /// <summary>Handle bulletin board message read (0x71 sub 3, BBOARDF_REQ_FULL):
     /// reply with the full message body (sub 2).</summary>
     public void HandleBulletinBoardRequestMessage(uint boardSerial, uint msgSerial)
     {

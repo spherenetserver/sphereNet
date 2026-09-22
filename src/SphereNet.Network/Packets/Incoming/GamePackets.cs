@@ -679,18 +679,18 @@ public sealed class PacketBulletinBoard : PacketHandler
 
         switch (subCmd)
         {
-            case 3: // Request message HEADER (Source-X BBOARDF_REQ_HEAD carries the msg uid)
-                if (buffer.Remaining >= 4)
-                {
-                    uint headSerial = buffer.ReadUInt32();
-                    state.OnBulletinBoardRequestHead(boardSerial, headSerial);
-                }
-                break;
-            case 4: // Request specific message
+            case 3: // BBOARDF_REQ_FULL: the whole message (sphereproto.h:361); answered with sub 2
                 if (buffer.Remaining >= 4)
                 {
                     uint msgSerial = buffer.ReadUInt32();
                     state.OnBulletinBoardRequestMessage(boardSerial, msgSerial);
+                }
+                break;
+            case 4: // BBOARDF_REQ_HEAD: just the header (sphereproto.h:362); answered with sub 1
+                if (buffer.Remaining >= 4)
+                {
+                    uint headSerial = buffer.ReadUInt32();
+                    state.OnBulletinBoardRequestHead(boardSerial, headSerial);
                 }
                 break;
             case 5: // Post new message

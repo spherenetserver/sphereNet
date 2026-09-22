@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Multicore gorunum resync'i, LOCAL/FLOAT tirnaklari, ilan panosu, STRSUB
+------------------------------------------------------------------------
+DUZELTME - Bekleyen isinlanma resync'i multicore tick'te de calisir. O yol
+           gorunum deltalarini BuildViewDelta/ApplyViewDelta ile paralel kurar
+           ve UpdateClientView'dan hic gecmiyordu; canli sunucuda resync hic
+           yapilmiyor, yardim menusu stuck'i oyuncuyu yerinde birakiyordu. Iki
+           gorunum yolu artik ayni ana-thread on adimini (PrepareViewUpdate)
+           paylasir.
+DUZELTME - LOCAL.x = "..." ve FLOAT.x = "..." Source-X GetArgStr gibi dis
+           tirnak ciftini atar. Tirnaklar degerde kaliyordu; LOCAL'de kurulup
+           LDB.EXECUTE ile yazilan JSON tirnak icinde kaydediliyor, SQLite
+           bozuk JSON diye reddediyordu.
+DUZELTME - 0x71 ilan panosu istek alt-komutlari: 3 tam mesaj istegi (alt 2 ile
+           cevaplanir), 4 baslik istegi (alt 1 ile cevaplanir). Ters baglanmisti;
+           bir ilan acilinca sadece basligi gorunuyordu.
+DUZELTME - STRSUB argumanlarini Source-X Str_ParseCmds gibi ayirir: virgulun
+           yaninda bosluk da ayractir (<STRSUB 0 3 <ARGS>>), metin argumani
+           satirin geri kalanini alir, negatif baslangic sondan sayar, sifir
+           sayi sona kadar gider, tirnaklar atilir. Bosluklu bicim bos donuyordu;
+           kayit-bitti duyurusunda gecen sure gorunmuyordu.
+TEST - BulletinBoardSubcommandTests, DialogExpressionFunctionTests (STRSUB).
+
 [2026-09-23] - Istemci isleyicisinin cevaplamadigi isinlanmadan sonra resync
 ------------------------------------------------------------------------
 DUZELTME - Kendi yurumesi disinda bir seyle (item @Timer'dan script GO, NPC,

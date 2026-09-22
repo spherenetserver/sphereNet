@@ -16,12 +16,22 @@ public sealed partial class GameClient
     /// objects and removes objects that went out of range.</summary>
     public void UpdateClientView()
     {
-        // A teleport that no client handler answered (a script GO from an item
-        // timer, an NPC, a REF.GO) still has to put the player where the server
-        // now has him: the full resync sends 0x20 and rebuilds the view.
-        if (ResyncPending)
-            Resync();
+        PrepareViewUpdate();
         ViewUpdater.UpdateClientView();
+    }
+
+    /// <summary>Main-thread work that must run before ANY view delta is built for
+    /// this client. Both view paths call it - <see cref="UpdateClientView"/> and the
+    /// multicore tick, which builds deltas in parallel through
+    /// <see cref="BuildViewDelta"/> - so the two cannot drift apart again.
+    ///
+    /// A teleport that no client handler answered (a script GO from an item timer,
+    /// an NPC, a REF.GO) has to put the player where the server now has him: the
+    /// full resync sends 0x20 and clears the known lists the delta then rebuilds.</summary>
+    public void PrepareViewUpdate()
+    {
+        if (ResyncPending && IsPlaying)
+            Resync();
     }
 
     /// <summary>Build a readonly visibility delta. Safe for parallel build phase.</summary>

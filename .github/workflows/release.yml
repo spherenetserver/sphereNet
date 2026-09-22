@@ -172,11 +172,13 @@ jobs:
           | Build | #${{ github.run_number }} |
           | Konu | $subject |
 
-          Bu release'i elle indirmene gerek yok: sunucu panelindeki **Updates**
-          sayfasi (varsayilan http://localhost:9999/updates) ayni asset'leri
-          kullanir. Asagidaki ``spherenet-win-x64.zip`` bin/Release ciktisinin
-          aynisidir; ``config/``, ``save/`` ve ``scripts/`` icermez — yani
-          guncelleme dunya kaydina ve scriptlere dokunmaz.
+          Guncellemek icin: sunucu panelindeki **Updates** sayfasi (varsayilan
+          http://localhost:9999/updates) ya da kurulum klasorundeki
+          ``SphereNet.Updater.exe``. Sifirdan kurulum: ``SphereNet.Updater.exe``'yi
+          bos bir klasore indirip calistir. ``spherenet-win-x64.zip`` bin/Release
+          ciktisinin aynisidir; ``save/`` ve ``scripts/`` icermez ve kurulumdaki
+          ``config/`` dosyalarina dokunmaz — config sablonlari ``defaults/config/``
+          altinda gelir ve yalnizca eksikse kopyalanir.
           "@
 
           # Release yoksa olustur. Varsa asset'leri clobber ile tazele —
@@ -203,6 +205,12 @@ jobs:
           gh release upload $tag "${{ env.PACKAGE_NAME }}" "${{ env.PACKAGE_NAME }}.sha256" `
             --repo "${{ github.repository }}" --clobber
           if ($LASTEXITCODE -ne 0) { throw "paket upload basarisiz." }
+
+          # 1b) Updater tek basina da indirilebilsin: bos bir klasore konup
+          # calistirildiginda tum kurulumu kendisi indirir.
+          gh release upload $tag "bin/Release/SphereNet.Updater.exe" `
+            --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "updater upload basarisiz." }
 
           # 2) EN SON version.json — "yeni surum yayinda" isaretini bu ceviriyor.
           gh release upload $tag "bin/Release/version.json" `

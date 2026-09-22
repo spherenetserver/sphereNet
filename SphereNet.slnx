@@ -8,6 +8,7 @@
     <Project Path="src/SphereNet.Panel/SphereNet.Panel.csproj" />
     <Project Path="src/SphereNet.Persistence/SphereNet.Persistence.csproj" />
     <Project Path="src/SphereNet.Server/SphereNet.Server.csproj" />
+    <Project Path="src/SphereNet.Updater/SphereNet.Updater.csproj" />
     <Project Path="src/SphereNet.Tests/SphereNet.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/" />

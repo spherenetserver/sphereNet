@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Bagimsiz updater
+------------------------------------------------------------------------
+EKLEME - SphereNet.Updater.exe: panelden bagimsiz tek dosya guncelleyici/kurucu.
+         Nightly release'i okur (APPUPDATE* anahtarlari, parametreler ezer),
+         spherenet-win-x64.zip'i indirir, SHA256'sini dogrular, o klasorun
+         sunucusu kapatilana kadar bekler (ya da --kill), degistirecegi seyleri
+         .update\backup'a yedekler, paketi klasore uygular, hatada geri alir ve
+         SphereNet.Host'u baslatir. Bos bir klasorde sifirdan kurar; kendini de
+         gunceller. Parametreler: --check, --force, --kill, --no-start,
+         --no-pause, --dir, --repo, --channel, --runtime, --token.
+EKLEME - build.ps1 updater'i publish eder ve config sablonlarini defaults\config\
+         altina koyar; release workflow'u SphereNet.Updater.exe'yi ayri bir asset
+         olarak da yukler.
+DEGISIKLIK - Hem updater hem panelin uygulama scripti config\, save\, scripts\,
+             logs\ ve accounts\ klasorlerine asla yazmaz; defaults\config\
+             altindaki bir sablonu ancak dosya config\ icinde ve kurulum kokunde
+             (Host'un okudugu iki yer) YOKSA kopyalar - var olan sphere.ini asla
+             degistirilmez.
+TEST - Sahte release'e karsi UpdaterEngineTests: config ile sifirdan kurulum,
+       mevcut ve koktaki sphere.ini'ye dokunmama, kullanici klasorlerinin
+       korunmasi, panel yenilenmesi, checksum uyusmazligi, geri alma, ini
+       ayarlari, kaynaktan derlenmis kurulum tespiti.
+
 [2026-09-23] - ONAME ve OWNEDBY
 ------------------------------------------------------------------------
 EKLEME - Her nesnede ONAME (Source-X OC_ONAME) ve item'larda OWNEDBY (IC_OWNEDBY):

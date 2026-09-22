@@ -87,8 +87,8 @@ Before accepting real players:
 
 ## Updating
 
-Two independent update paths ship with SphereNet. They solve different problems;
-pick one per box.
+Three update paths ship with SphereNet. The first two apply the same prebuilt
+package; the third builds from source. Pick one per box.
 
 ### Panel update (binary, no toolchain)
 
@@ -117,13 +117,37 @@ click**. Applying saves the world (and aborts if the save is rejected), verifies
 the package SHA256 against the published checksum, then hands the file swap to a
 short-lived external process that waits for the Host to exit, backs up, swaps,
 and relaunches. On failure it restores the backup and still relaunches. The
-package contains no `config/`, `save/`, or `scripts/`, so shard data is never
-touched. Details land in `logs/update.log`; the previous build stays in
-`.update/backup/`.
+package contains no `save/` or `scripts/`, and the swap never writes into
+`config/`, `save/`, `scripts/`, `logs/` or `accounts/`. The config templates
+travel as `defaults/config/` and are copied into `config/` **only when the file is
+missing** (checked in both `config/` and the install root, the two places the
+Host looks), so an existing `sphere.ini` is never replaced. Details land in
+`logs/update.log`; the previous build stays in `.update/backup/`.
 
 A build without a `version.json` next to the exe reports as a dev build and
 refuses to apply, so a locally compiled shard is never silently overwritten
 (`build.ps1` strips `version.json` from local Release output).
+
+### Standalone updater (`SphereNet.Updater.exe`)
+
+The same package, without the panel: `SphereNet.Updater.exe` ships in the install
+folder and as its own asset on the `nightly` release. Run it in the install
+folder to update, or drop it into an empty folder to install from scratch — it
+downloads the package, verifies the SHA256, lays it over the folder with the
+same rules as the panel (user data untouched, missing config from
+`defaults/config/`, backup in `.update/backup/`, rollback on failure) and starts
+`SphereNet.Host`. It reads the same `APPUPDATE*` keys; command-line flags override
+them.
+
+A running server is never killed silently: the updater waits until the
+operator closes it (saving the world), unless `--kill` is given.
+
+```text
+SphereNet.Updater.exe              update (or install) this folder, then start the Host
+SphereNet.Updater.exe --check      only compare versions
+SphereNet.Updater.exe --dir D:\shard --no-start --no-pause
+SphereNet.Updater.exe --force      reinstall even when current / over a source build
+```
 
 ### Source update (`update.cmd`)
 

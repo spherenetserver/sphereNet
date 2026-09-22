@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Standalone updater
+------------------------------------------------------------------------
+ADD - SphereNet.Updater.exe: a single-file updater/installer independent of the
+      panel. It reads the nightly release (APPUPDATE* keys, flags override),
+      downloads spherenet-win-x64.zip, verifies its SHA256, waits for the server
+      of that folder to be closed (or --kill), backs up what it replaces into
+      .update\backup, lays the package over the folder, rolls back on failure and
+      starts SphereNet.Host. In an empty folder it installs from scratch; it also
+      replaces itself. Flags: --check, --force, --kill, --no-start, --no-pause,
+      --dir, --repo, --channel, --runtime, --token.
+ADD - build.ps1 publishes the updater and puts the config templates in
+      defaults\config\; the release workflow also uploads SphereNet.Updater.exe
+      as its own asset.
+CHANGE - Both the updater and the panel's apply script never write into config\,
+         save\, scripts\, logs\ or accounts\, and copy a template from
+         defaults\config\ only when the file is missing in config\ AND in the
+         install root (the two places the Host reads it), so an existing
+         sphere.ini is never replaced.
+TEST - UpdaterEngineTests against a fake release: fresh install with config,
+       existing and root sphere.ini untouched, user folders kept, panel refreshed,
+       checksum mismatch, rollback, ini settings, source-build detection.
+
 [2026-09-23] - ONAME and OWNEDBY
 ------------------------------------------------------------------------
 ADD - ONAME on every object (Source-X OC_ONAME) and OWNEDBY on items (IC_OWNEDBY):

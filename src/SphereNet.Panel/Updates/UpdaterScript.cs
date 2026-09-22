@@ -130,9 +130,12 @@ internal static class UpdaterScript
             New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 
             Write-Log 'Mevcut surum yedekleniyor...'
-            # Yalnizca paketin degistirecegi seyler yedeklenir. config\, save\,
-            # scripts\ ve logs\ pakette YOK, dolayisiyla hic dokunulmaz.
-            Get-ChildItem -LiteralPath $StageDir -Force | ForEach-Object {
+            # Yalnizca paketin degistirecegi seyler yedeklenir. Kullanici verisi
+            # (config\, save\, scripts\, logs\, accounts\) pakette olsa bile atlanir.
+            $protected = @('config', 'save', 'scripts', 'logs', 'accounts', '.update')
+            $entries = @(Get-ChildItem -LiteralPath $StageDir -Force |
+                Where-Object { $protected -notcontains $_.Name.ToLowerInvariant() })
+            $entries | ForEach-Object {
                 Backup-Item $_.Name
             }
             Write-Log "Yedek: $backupDir"
@@ -141,7 +144,7 @@ internal static class UpdaterScript
             Write-Log 'Yeni dosyalar kopyalaniyor...'
             $fileCount = 0
 
-            Get-ChildItem -LiteralPath $StageDir -Force | ForEach-Object {
+            $entries | ForEach-Object {
                 $dst = Join-Path $TargetDir $_.Name
 
                 if ($_.PSIsContainer) {
@@ -158,6 +161,22 @@ internal static class UpdaterScript
                 }
             }
             Write-Log "Kopyalandi: $fileCount dosya + klasorler."
+
+            # Eksik config dosyalari sablonlardan: defaults\config\ altindaki her
+            # dosya, kurulumda (config\ ya da kok) karsiligi YOKSA config\ altina kopyalanir.
+            # Var olan sphere.ini'ye asla dokunulmaz.
+            $templates = Join-Path $TargetDir 'defaults\config'
+            if (Test-Path -LiteralPath $templates) {
+                Get-ChildItem -LiteralPath $templates -File | ForEach-Object {
+                    $inConfig = Join-Path (Join-Path $TargetDir 'config') $_.Name
+                    $inRoot = Join-Path $TargetDir $_.Name
+                    if (-not (Test-Path -LiteralPath $inConfig) -and -not (Test-Path -LiteralPath $inRoot)) {
+                        New-Item -ItemType Directory -Force -Path (Join-Path $TargetDir 'config') | Out-Null
+                        Copy-Item -LiteralPath $_.FullName -Destination $inConfig
+                        Write-Log "  eksik oldugu icin eklendi: config\$($_.Name)"
+                    }
+                }
+            }
 
             if (-not (Test-Path -LiteralPath $HostExe)) {
                 throw "Takas sonrasi Host EXE bulunamadi: $HostExe"

@@ -70,6 +70,7 @@ if ($Clean) {
     Write-Host "Onceki ciktilar temizleniyor..." -ForegroundColor Yellow
     Remove-IfExists $outDir
     Remove-IfExists "$root\bin\_host_tmp"
+    Remove-IfExists "$root\bin\_updater_tmp"
     Remove-IfExists "$root\panel\dist"
     Get-ChildItem "$root\src" -Directory -Recurse -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in @("bin", "obj") } |
@@ -184,6 +185,30 @@ if ($Configuration -eq "Release") {
 
         # Gecici klasoru temizle
         Remove-Item -Recurse -Force $hostTmp -Confirm:$false
+
+        # 3c. SphereNet.Updater (panelden bagimsiz tek EXE guncelleyici/kurucu)
+        Write-Host ""
+        Write-Host "  SphereNet.Updater derleniyor (single-file, $publishKind, $Runtime)..." -ForegroundColor Cyan
+        $updTmp = "$root\bin\_updater_tmp"
+        if (Test-Path $updTmp) { Remove-Item -Recurse -Force $updTmp -Confirm:$false }
+
+        dotnet publish "$root\src\SphereNet.Updater\SphereNet.Updater.csproj" `
+            @publishArgs `
+            --output $updTmp
+
+        if ($LASTEXITCODE -ne 0) { throw "SphereNet.Updater publish basarisiz oldu." }
+        Copy-Item "$updTmp\SphereNet.Updater$exeExt" $outDir -Force
+        Remove-Item -Recurse -Force $updTmp -Confirm:$false
+    }
+
+    # Config sablonlari: updater ve panel bunlari SADECE kurulumda karsiligi yoksa
+    # config\ altina kopyalar. Pakette dogrudan config\ olarak degil defaults\config\
+    # olarak durur ki hicbir guncelleme var olan bir sphere.ini'nin uzerine yazamasin.
+    $defaultsDir = "$outDir\defaults\config"
+    if (Test-Path "$outDir\defaults") { Remove-Item "$outDir\defaults" -Recurse -Force -Confirm:$false }
+    New-Item -ItemType Directory -Force -Path $defaultsDir | Out-Null
+    foreach ($ini in @("sphere.ini", "sphereCrypt.ini")) {
+        if (Test-Path "$root\config\$ini") { Copy-Item "$root\config\$ini" $defaultsDir -Force }
     }
 
     # Ara build ciktilari temizle — single-file EXE icinde gomulu, ayrica gerekmez.
@@ -192,6 +217,7 @@ if ($Configuration -eq "Release") {
     $keep = @(
         "SphereNet.Host.exe", "SphereNet.Host", # Linux'ta uzantisiz
         "SphereNet.Server.exe", "SphereNet.Server",
+        "SphereNet.Updater.exe", "SphereNet.Updater",
         "SphereNet.Host.deps.json", "SphereNet.Host.runtimeconfig.json",
         "SphereNet.Server.deps.json", "SphereNet.Server.runtimeconfig.json"
     )

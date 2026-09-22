@@ -89,9 +89,23 @@ static async Task<int> RunAsync(Options opts)
     }
 
     if (engine.LooksLikeDevBuild() && !opts.Force)
-        throw new InvalidOperationException(
-            "Bu klasorde version.json olmadan SphereNet binari'leri var (kaynaktan derlenmis). " +
-            "Uzerine paket yazmak icin --force ile calistirin.");
+    {
+        // Cift tikla acilan pencerede parametre verilemez: etkilesimliyse sor.
+        WriteColor("Bu klasorde version.json olmadan SphereNet binari'leri var " +
+            "(kaynaktan derlenmis ya da elle kopyalanmis bir kurulum).", ConsoleColor.Yellow);
+        bool interactive = !opts.NoPause && !Console.IsInputRedirected;
+        if (!interactive)
+            throw new InvalidOperationException(
+                "Uzerine paket yazmak icin --force ile calistirin.");
+        Console.Write("Binari'ler release paketiyle degistirilsin mi? config, save ve scripts'e dokunulmaz. (e/h): ");
+        string answer = (Console.ReadLine() ?? "").Trim();
+        if (!answer.StartsWith("e", StringComparison.OrdinalIgnoreCase) &&
+            !answer.StartsWith("y", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("Vazgecildi.");
+            return 0;
+        }
+    }
 
     // Sunucu acikken EXE'ler kilitlidir; habersiz kapatmak da kaydedilmemis dunyayi kaybettirir.
     bool wasRunning = await WaitForServerStopAsync(engine, opts.Kill, cts.Token);

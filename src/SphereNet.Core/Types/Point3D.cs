@@ -88,6 +88,53 @@ public readonly struct Point3D : IEquatable<Point3D>
 
     public override string ToString() => $"{X},{Y},{Z},{Map}";
 
+    /// <summary>Split a written point into its components the way Sphere does.
+    ///
+    /// A coordinate list separates on COMMA, SPACE and TAB, not on comma alone
+    /// (Source-X CPointBase::Read passes " ,	" to Str_ParseCmds). Packs rely on it:
+    /// one AREADEF in the live map file reads <c>P=1978 2080,0,0</c>, and a
+    /// comma-only split hands "1978 2080" to the number parser, fails, and leaves
+    /// the region with no P at all - which a script then reads back as 0,0,0,0 and
+    /// teleports a player to the corner of the map.
+    ///
+    /// Whitespace RUNS collapse and whitespace around a comma is absorbed, because
+    /// Str_Parse skips leading whitespace before each argument; repeated COMMAS do
+    /// not collapse, so "100,,5" still yields an empty middle component the way it
+    /// does upstream.</summary>
+    public static string[] SplitComponents(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        var sb = new System.Text.StringBuilder(text.Length);
+        bool pendingSeparator = false, wroteAny = false, lastWasComma = false;
+        foreach (char c in text)
+        {
+            if (c == ' ' || c == '	')
+            {
+                // A run of whitespace is one separator at most, and leading
+                // whitespace is none at all.
+                if (wroteAny) pendingSeparator = true;
+                continue;
+            }
+            if (c == ',')
+            {
+                // The comma is the separator; whitespace on either side of it is
+                // absorbed rather than counted a second time.
+                sb.Append(',');
+                pendingSeparator = false;
+                lastWasComma = true;
+                wroteAny = true;
+                continue;
+            }
+            if (pendingSeparator && !lastWasComma)
+                sb.Append(',');
+            pendingSeparator = false;
+            lastWasComma = false;
+            sb.Append(c);
+            wroteAny = true;
+        }
+        return sb.ToString().Split(',');
+    }
+
     public static bool TryParse(ReadOnlySpan<char> text, out Point3D result)
     {
         result = Zero;

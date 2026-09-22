@@ -105,7 +105,10 @@ public static partial class Program
                          CountWorldStonesInt(ItemType.StoneTown)).ToString(),
             "AGE" => ((int)(DateTime.UtcNow - _serverStartTime).TotalDays).ToString(),
             "BUILD" => ThisAssemblyVersion(),
-            "URL" => "localhost",
+            // Source-X SC_URL: the ini's URL=, verbatim (CServerDef.cpp:403, :492).
+            // This was the literal "localhost", so a pack's web links and its
+            // donation page all pointed at whatever machine the server ran on.
+            "URL" => _config?.Url ?? "",
             "MYSQL" => _scriptDb?.IsConnected == true ? "1" : "0",
             "SEASON" => ((int)(_weatherEngine?.CurrentSeason ?? SeasonType.Spring)).ToString(),
             "SEASONMODE" => (_weatherEngine?.CurrentSeasonMode ?? SeasonMode.Auto).ToString(),
@@ -1247,7 +1250,6 @@ public static partial class Program
             if (!_world.PlaceCharacter(clone, origChar.GetTopLevelPosition()))
             {
                 _world.DeleteObject(clone);
-                clone.Delete();
                 _world.LastNewObject = SphereNet.Core.Types.Serial.Invalid;
                 return "";
             }
@@ -1471,14 +1473,14 @@ public static partial class Program
 
         var npc = _world.CreateCharacter();
         npc.IsPlayer = false;
-        bool applied = CharDefHelper.TryApplyDefName(npc, token, _resources, stats: true, refresh: false);
+        bool applied = CharDefHelper.TryApplyDefName(npc, token, _resources, stats: true, refresh: false, fireCreate: true);
         if (!applied)
         {
             int numeric = ValueCurve.ParseSphereNumber(token);
             var link = _resources.GetResource(ResType.CharDef, numeric);
             if (link != null)
                 applied = CharDefHelper.TryApplyDefName(npc, link.DefName ?? link.HeaderArgument, _resources,
-                    stats: true, refresh: false);
+                    stats: true, refresh: false, fireCreate: true);
         }
         if (!applied)
         {
@@ -2915,6 +2917,11 @@ public static partial class Program
 
     private sealed class ServerHookContext : IScriptObj
     {
+        public IReadOnlyList<IScriptObj> QueryScriptObjects(string query, string args, ITriggerArgs? triggerArgs) =>
+            ObjBase.ResolveWorld?.Invoke() is { } world
+                ? SphereNet.Game.Scripting.ScriptObjectQueries.Query(world, this, query, args, DefinitionLoader.StaticResources)
+                : Array.Empty<IScriptObj>();
+
         public string GetName() => "SERVER";
 
         public bool TryGetProperty(string key, out string value)

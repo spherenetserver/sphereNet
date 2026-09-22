@@ -42,5 +42,5 @@ public interface ITextConsole
     /// Optional object query for script loop verbs (FORPLAYERS / FORINSTANCES).
     /// </summary>
     IReadOnlyList<IScriptObj> QueryScriptObjects(string query, IScriptObj target, string args, ITriggerArgs? triggerArgs) =>
-        Array.Empty<IScriptObj>();
+        target.QueryScriptObjects(query, args, triggerArgs);
 }

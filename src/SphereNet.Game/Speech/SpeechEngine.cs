@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
@@ -1037,7 +1037,6 @@ public sealed class CommandHandler
             if (item != null)
             {
                 world.DeleteObject(item);
-                item.Delete();
                 return;
             }
 
@@ -1050,7 +1049,6 @@ public sealed class CommandHandler
                     return;
                 }
                 world.DeleteObject(ch);
-                ch.Delete();
                 return;
             }
 

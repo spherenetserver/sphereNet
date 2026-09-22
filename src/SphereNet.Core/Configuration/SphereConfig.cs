@@ -24,6 +24,17 @@ public sealed class SphereConfig
     public int ServPort { get; set; } = 2593;
     public string AdminEmail { get; set; } = "";
 
+    /// <summary>[SPHERE] URL — the shard's website, answered by SERV.URL
+    /// (Source-X CServerDef m_sURL, SC_URL). Script packs build their help-page
+    /// links and donation pages out of it; with it stubbed, every one of those
+    /// pointed at the machine the server runs on.
+    ///
+    /// Written as the shard writes it, scheme included or not — upstream returns the
+    /// ini value verbatim. A link with no scheme is one a browser cannot resolve, so
+    /// a pack that drops it straight into an href wants the scheme added on the
+    /// script side, because "//" opens a comment and cannot be written in the key.</summary>
+    public string Url { get; set; } = "www.spherenetserver.com";
+
     /// <summary>An extra login-list shard (Source-X [SERVERS] block entry) advertised
     /// in the 0xA8 packet in addition to this shard: display name, host/ip, game port.</summary>
     public sealed record ServerDef(string Name, string Ip, int Port);
@@ -827,6 +838,7 @@ public sealed class SphereConfig
         ServPort = ini.GetInt(section, "ServPort", ServPort);
         ParseServerList(ini.GetValue(section, "SERVERLIST"));
         AdminEmail = ini.GetValue(section, "AdminEmail") ?? AdminEmail;
+        Url = ini.GetValue(section, "URL") ?? Url;
 
         ClientVersion = ini.GetValue(section, "ClientVersion") ?? ClientVersion;
         string? clientEraRaw = ini.GetValue(section, "ClientEra");

@@ -17,6 +17,11 @@ namespace SphereNet.Game.Objects;
 /// </summary>
 public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 {
+    public IReadOnlyList<IScriptObj> QueryScriptObjects(string query, string args, ITriggerArgs? triggerArgs) =>
+        ResolveWorld?.Invoke() is { } world
+            ? Scripting.ScriptObjectQueries.Query(world, this, query, args, DefinitionLoader.StaticResources)
+            : Array.Empty<IScriptObj>();
+
     public static Action<string>? OnNameChangeWarning;
 
     private Serial _uid;
@@ -34,6 +39,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     public sealed record TimerFEntry(long DueTickMs, string FunctionName, string Args)
     {
+        private static long _nextSequence;
+        public long Sequence { get; } = Interlocked.Increment(ref _nextSequence);
         // Source-X retains the command until execution; STOP/ISTIMERF match this text.
         public string? OriginalCommand { get; internal set; }
     }
@@ -487,7 +494,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// (CTimedFunctionHandler.cpp:19/34), so a pattern naming only the function does
     /// NOT match a job that was given arguments. Legacy records without the original
     /// text retain their historical space-separated representation.</summary>
-    private static string CommandOf(TimerFEntry entry) =>
+    internal static string CommandOf(TimerFEntry entry) =>
         entry.OriginalCommand ?? (entry.Args.Length == 0 ? entry.FunctionName : $"{entry.FunctionName} {entry.Args}");
 
     /// <summary>Cancel this object's delayed work. A null pattern clears everything
@@ -1385,7 +1392,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "DSPEECH":
             {
                 // Per-char dynamic SPEECH list (Source-X m_Speech). Append/remove
-                // with +/-<resource>; a bare list replaces it.
+                // with +/-<resource>; bare names append and -* clears it.
                 if (this is Characters.Character dch)
                     return ApplySpeechListCommand(dch.DSpeech, args);
                 return true;
@@ -1400,19 +1407,26 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             }
             case "REMOVE":
-            // Source-X CHV_DESTROY: hard removal that bypasses the @Destroy
-            // veto — same engine path as REMOVE in SphereNet.
+            // Item removal honours @Destroy through the shared world path.
             case "DESTROY":
                 if (this is Items.Item delItem) delItem.RemoveFromWorld();
                 else if (this is Characters.Character delCh)
                 {
                     var destroyWorld = ResolveWorld?.Invoke();
-                    if (destroyWorld != null) destroyWorld.DeleteObject(delCh);
+                    // Source-X requires an explicit 1 and admin privileges for players.
+                    if (delCh.IsPlayer && (!args.StartsWith('1') || source == null ||
+                        source.GetPrivLevel() < Core.Enums.PrivLevel.Admin)) return false;
+                    if (destroyWorld != null) destroyWorld.TryDeleteObject(delCh, force: key.Equals("DESTROY", StringComparison.OrdinalIgnoreCase));
                     else delCh.Delete();
                 }
                 return true;
             case "TIMER":
-                if (long.TryParse(args, out long timerVal))
+                var timerParser = new SphereNet.Scripting.Expressions.ExpressionParser
+                {
+                    VariableResolver = name => DefinitionLoader.StaticResources?.TryResolveDefNameValue(name, out var value) == true
+                        ? value.ToString(CultureInfo.InvariantCulture) : null
+                };
+                if (timerParser.TryEvaluate(args, out long timerVal))
                 {
                     // Written on a spell-effect memory, TIMER re-arms the EFFECT: the
                     // mirror's own timeout is not what expires the buff, so setting it
@@ -1645,7 +1659,10 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     private static bool TryParseScriptPoint(string text, Point3D current, out Point3D point)
     {
         point = current;
-        string[] parts = (text ?? "").Split(',', StringSplitOptions.TrimEntries);
+        // Comma, space or tab, the way a written point separates in Sphere
+        // (Point3D.SplitComponents). A script that writes P=<x> <y> or hands over a
+        // space-separated point from a pack was losing the whole assignment.
+        string[] parts = SphereNet.Core.Types.Point3D.SplitComponents(text);
         if (parts.Length < 2 ||
             !short.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out short x) ||
             !short.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out short y))
@@ -2166,95 +2183,36 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         return r;
     }
 
-    private static bool SetEventsList(List<ResourceId> list, string value)
+    private static bool SetEventsList(List<ResourceId> list, string value) =>
+        ApplyResourceList(list, value, ParseEventResourceId);
+
+    private static bool ApplyEventsCommand(List<ResourceId> list, string args) =>
+        SetEventsList(list, args);
+
+    private static bool ApplySpeechListCommand(List<ResourceId> list, string args) =>
+        ApplyResourceList(list, args, name => ResourceId.FromString(name, ResType.Speech));
+
+    // CResourceRefArray::r_LoadVal applies each fragment in order. Bare names append;
+    // only -0 / -* clear the list. Keep numeric resource IDs readable for old saves.
+    private static bool ApplyResourceList(List<ResourceId> list, string args, Func<string, ResourceId> resolve)
     {
-        bool isMultiValue = value.Contains(',') || value.Contains(' ');
-        if (isMultiValue)
-            list.Clear();
-        var parts = value.Split([',', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
+        bool success = true;
+        foreach (string token in args.Split([',', ' ', '\t'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            var rid = ParseEventResourceId(part);
-            if (rid.IsValid && !list.Contains(rid))
-                list.Add(rid);
-        }
-        return true;
-    }
-
-    private static bool ApplyEventsCommand(List<ResourceId> list, string args)
-    {
-        string text = args.Trim();
-        if (string.IsNullOrEmpty(text))
-            return true;
-
-        char op = text[0];
-        if (op is '+' or '-')
-        {
-            string name = text[1..].Trim();
-            if (name.Length == 0)
-                return true;
-
-            var rid = ParseEventResourceId(name);
-            if (!rid.IsValid)
-                return true;
-
-            if (op == '+')
+            bool remove = token[0] == '-';
+            string name = token[0] is '+' or '-' ? token[1..] : token;
+            if (remove && name.Length > 0 && name[0] is '0' or '*')
             {
-                if (!list.Contains(rid))
-                    list.Add(rid);
+                list.Clear();
+                success = true;
+                continue;
             }
-            else
-            {
-                list.Remove(rid);
-            }
-            return true;
+            var rid = resolve(name);
+            if (!rid.IsValid) { success = false; continue; }
+            if (remove) success &= list.Remove(rid);
+            else if (!list.Contains(rid)) list.Add(rid);
         }
-
-        return SetEventsList(list, text);
-    }
-
-    private static bool ApplySpeechListCommand(List<ResourceId> list, string args)
-    {
-        string text = args.Trim();
-        if (string.IsNullOrEmpty(text))
-            return true;
-
-        char op = text[0];
-        if (op is '+' or '-')
-        {
-            string name = text[1..].Trim();
-            if (name.Length == 0)
-                return true;
-
-            var rid = ResourceId.FromString(name, ResType.Speech);
-            if (!rid.IsValid)
-                return true;
-
-            if (op == '+')
-            {
-                if (!list.Contains(rid))
-                    list.Add(rid);
-            }
-            else
-            {
-                list.Remove(rid);
-            }
-            return true;
-        }
-
-        // A multi-value assignment replaces the list; a single bare name appends
-        // (so successive saved DSPEECH lines accumulate, matching EVENTS).
-        bool isMultiValue = text.Contains(',') || text.Contains(' ');
-        if (isMultiValue)
-            list.Clear();
-        var parts = text.Split([',', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
-        {
-            var rid = ResourceId.FromString(part, ResType.Speech);
-            if (rid.IsValid && !list.Contains(rid))
-                list.Add(rid);
-        }
-        return true;
+        return success;
     }
 
     private static ResourceId ParseEventResourceId(string token)

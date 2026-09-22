@@ -57,6 +57,8 @@ public sealed class TimerFCommandIdentityTests
             var restored = loaded.FindObject(uid)!;
             Assert.Equal(2, restored.TimerFEntries.Count);
             Assert.True(restored.GetTimerFRemaining(command, Environment.TickCount64) > 0);
+            Assert.Same(restored, Assert.Single(restored.QueryScriptObjects("FORTIMERF", command, null)));
+            Assert.Empty(restored.QueryScriptObjects("FORTIMERF", "f_job one|two", null));
             Assert.Equal(1, restored.ClearTimerF(command));
             Assert.Single(restored.TimerFEntries);
             Assert.Equal(1, restored.ClearTimerF("f_other legacy"));

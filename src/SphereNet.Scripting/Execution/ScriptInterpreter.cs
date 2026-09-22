@@ -35,10 +35,55 @@ public sealed class ScriptInterpreter
     /// <summary>Resolves SERV.* and other server-level property lookups from scripts.</summary>
     public Func<string, string?>? ServerPropertyResolver { get; set; }
 
+    // The resolver context, held in fields instead of captured in a lambda.
+    //
+    // Every ResolveArgs / EvaluateWithResolver / EvaluateConditionWithResolver call
+    // used to build two closures and two delegates over (target, source, args,
+    // scope) just to hand them to the parser and take them off again. That is four
+    // allocations per resolved <X> and per IF condition - the single largest
+    // per-line cost in a script body, and it grows with nothing but how many lines
+    // the shard runs. The delegates below are created once and read these fields
+    // instead; the push/pop pairs save and restore them exactly the way the
+    // resolver properties were already being saved and restored, so nesting (a
+    // function called from inside a resolver) behaves the same.
+    private IScriptObj? _ctxTarget;
+    private ITextConsole? _ctxSource;
+    private ITriggerArgs? _ctxArgs;
+    private ScriptScope? _ctxScope;
+    private readonly Func<string, string?> _ctxVarResolver;
+    private readonly Func<string, string?> _ctxFuncResolver;
+
+    private readonly record struct ResolverFrame(
+        Func<string, string?>? Var, Func<string, string?>? Func,
+        IScriptObj? Target, ITextConsole? Source, ITriggerArgs? Args, ScriptScope? Scope);
+
+    private ResolverFrame PushResolvers(
+        IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
+    {
+        var saved = new ResolverFrame(_expr.VariableResolver, _expr.FunctionResolver,
+            _ctxTarget, _ctxSource, _ctxArgs, _ctxScope);
+        _ctxTarget = target; _ctxSource = source; _ctxArgs = args; _ctxScope = scope;
+        _expr.VariableResolver = _ctxVarResolver;
+        _expr.FunctionResolver = _ctxFuncResolver;
+        return saved;
+    }
+
+    private void PopResolvers(in ResolverFrame saved)
+    {
+        _expr.VariableResolver = saved.Var;
+        _expr.FunctionResolver = saved.Func;
+        _ctxTarget = saved.Target; _ctxSource = saved.Source;
+        _ctxArgs = saved.Args; _ctxScope = saved.Scope;
+    }
+
     public ScriptInterpreter(ExpressionParser expr, ILogger<ScriptInterpreter> logger)
     {
         _expr = expr;
         _logger = logger;
+        _ctxVarResolver = name => _ctxTarget == null
+            ? null : ResolveVarForTarget(name, _ctxTarget, _ctxSource, _ctxArgs, _ctxScope);
+        _ctxFuncResolver = text => _ctxTarget == null
+            ? null : TryResolveFunctionExpression(text, _ctxTarget, _ctxSource, _ctxArgs, _ctxScope);
     }
 
     /// <summary>
@@ -81,11 +126,18 @@ public sealed class ScriptInterpreter
             // Skipped when the key carries no source info (synthetic keys
             // built in code) — t_currentSourceLabel falls back to the parent
             // frame in that case, which is still better than empty.
-            using var __srcLabel = !string.IsNullOrEmpty(key.SourceFile)
+            // Only when scriptdebug is on. The label has exactly one consumer,
+            // ExpressionParser.ReportUnresolved, and that returns immediately unless
+            // DebugUnresolved is set — so with it off this was two string
+            // allocations per executed line (a path trim and an interpolation) for a
+            // value nothing would ever read. On the live pack's arena that alone was
+            // ~8,700 lines/second of pure garbage. The flag is read per line, so
+            // toggling scriptdebug still takes effect on the next line.
+            using var __srcLabel = _expr.DebugUnresolved && !string.IsNullOrEmpty(key.SourceFile)
                 ? _expr.PushSourceLabel(FormatSourceLabel(key, scope))
                 : default;
 
-            string cmd = key.Key.ToUpperInvariant();
+            string cmd = key.KeyUpper;
 
             // LOCAL./ARGN/ARGS/REFn/FLOAT assignments — shared with the block
             // executors (IF/DORAND/DOSWITCH bodies dispatch single lines and
@@ -179,6 +231,19 @@ public sealed class ScriptInterpreter
                 resolvedArg,
                 target.GetName(),
                 source?.GetName() ?? "SYSTEM");
+        }
+
+        // CScriptTriggerArgs routes ARGO verbs to the actual argument object,
+        // including non-world references such as CClient.
+        if (cmd.StartsWith("ARGO.", StringComparison.OrdinalIgnoreCase))
+        {
+            if (args?.Object1 is { } argumentObject)
+            {
+                string argumentKey = cmd[5..];
+                if (!key.HasArg || !argumentObject.TrySetProperty(argumentKey, resolvedArg))
+                    ExecuteVerbLine(argumentKey, resolvedArg, argumentObject, source, args, scope);
+            }
+            return;
         }
 
         // Handle SRC. prefix — redirect to source object
@@ -694,7 +759,7 @@ public sealed class ScriptInterpreter
         // mutates the trigger's numeric args (Source-X @Hit damage, @DropOn drop-Z,
         // @NPCActFight dist/motivation). TriggerDispatcher.RunWrapped copies these
         // back into the caller's TriggerArgs after the block.
-        if (key.HasArg && args is TriggerArgs argnTarget &&
+        if (args is TriggerArgs argnTarget &&
             cmd is "ARGN" or "ARGN1" or "ARGN2" or "ARGN3")
         {
             string rawVal = ResolveArgs(key.Arg, target, source, args, scope).Trim();
@@ -702,7 +767,8 @@ public sealed class ScriptInterpreter
             // assigns through GetArgVal (CScriptTriggerArgs.cpp:313), which is the
             // full expression parser. The narrow parser read "010" as ten instead of
             // sixteen and rejected "1+1" outright, leaving the previous ARGN standing.
-            if (TryEvaluateWithResolver(rawVal, target, source, args, scope, out long argnVal))
+            long argnVal = 0;
+            if (rawVal.Length == 0 || TryEvaluateWithResolver(rawVal, target, source, args, scope, out argnVal))
             {
                 if (cmd == "ARGN2") argnTarget.Number2 = argnVal;
                 else if (cmd == "ARGN3") argnTarget.Number3 = argnVal;
@@ -711,11 +777,11 @@ public sealed class ScriptInterpreter
             return true;
         }
 
-        // ARGS assignment — a script rewrites the trigger's string argument
-        // (Source-X @Speech text rewrite, @DropOn item filter).
-        if (key.HasArg && args is TriggerArgs argsTarget && cmd == "ARGS")
+        // Source-X AGC_S invokes Init(GetArgStr()), including for an empty line:
+        // rebuild ARGN/ARGV and clear ARGO, retaining LOCAL/FLOAT/REF pools.
+        if (args is TriggerArgs argsTarget && cmd == "ARGS")
         {
-            argsTarget.ArgString = ResolveArgs(key.Arg, target, source, args, scope);
+            argsTarget.InitFromRaw(ScriptKey.StripQuotePair(ResolveArgs(key.Arg, target, source, args, scope)));
             return true;
         }
 
@@ -723,7 +789,7 @@ public sealed class ScriptInterpreter
         if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 &&
             char.IsDigit(cmd[3]) && !cmd.Contains('.'))
         {
-            if (int.TryParse(cmd.AsSpan(3), out int refIdx) && key.HasArg)
+            if (int.TryParse(cmd.AsSpan(3), out int refIdx))
             {
                 string refVal = ResolveArgs(key.Arg, target, source, args, scope);
                 // CScriptTriggerArgs uses GetArgVal: decimal UIDs and arithmetic
@@ -1002,7 +1068,7 @@ public sealed class ScriptInterpreter
 
         while (i < lines.Count)
         {
-            string cmd = lines[i].Key.ToUpperInvariant();
+            string cmd = lines[i].KeyUpper;
 
             if (cmd == "ENDIF")
             {
@@ -1147,6 +1213,7 @@ public sealed class ScriptInterpreter
         int bodyEnd = FindBlockEnd(lines, bodyStart, "ENDFOR");
 
         scope.LoopDepth++;
+        var forBody = GetSubList(lines, bodyStart, bodyEnd);
         bool countDown = min > max;
         long iterations = 0;
         for (long v = min;
@@ -1156,7 +1223,7 @@ public sealed class ScriptInterpreter
             scope.LocalVars.SetInt("_FOR", v);
             if (!loopVar.Equals("_FOR", StringComparison.OrdinalIgnoreCase))
                 scope.LocalVars.SetInt(loopVar, v);
-            result = Execute(GetSubList(lines, bodyStart, bodyEnd), target, source, args, scope);
+            result = Execute(forBody, target, source, args, scope);
             if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
             if (scope.IsBreaking) { scope.IsBreaking = false; break; }
             if (scope.IsReturning) break;
@@ -1216,6 +1283,7 @@ public sealed class ScriptInterpreter
         int bodyEnd = FindBlockEnd(lines, bodyStart, "ENDWHILE");
 
         scope.LoopDepth++;
+        var whileBody = GetSubList(lines, bodyStart, bodyEnd);
         int iterations = 0;
         while (iterations < scope.MaxLoopIterations)
         {
@@ -1223,7 +1291,7 @@ public sealed class ScriptInterpreter
             if (!EvaluateConditionWithResolver(resolved, target, source, args, scope))
                 break;
 
-            result = Execute(GetSubList(lines, bodyStart, bodyEnd), target, source, args, scope);
+            result = Execute(whileBody, target, source, args, scope);
             if (scope.IsContinuing) { scope.IsContinuing = false; iterations++; continue; }
             if (scope.IsBreaking) { scope.IsBreaking = false; break; }
             if (scope.IsReturning) break;
@@ -1255,7 +1323,7 @@ public sealed class ScriptInterpreter
             // The picked line can be a RETURN, and a lookup table written as a DOSWITCH
             // of RETURNs is the ordinary way to write one. ExecuteLine does not know
             // RETURN, so the value went nowhere and the function returned blank.
-            string pickedCmd = picked.Key.ToUpperInvariant();
+            string pickedCmd = picked.KeyUpper;
             if (pickedCmd == "RETURN")
                 result = ApplyReturn(picked, target, source, args, scope);
             else if (!TryExecuteAssignmentLine(picked, pickedCmd, target, source, args, scope) &&
@@ -1279,7 +1347,7 @@ public sealed class ScriptInterpreter
         {
             if (lineIdx == switchIdx)
             {
-                string pickedCmd = lines[i].Key.ToUpperInvariant();
+                string pickedCmd = lines[i].KeyUpper;
                 if (pickedCmd == "RETURN")
                     result = ApplyReturn(lines[i], target, source, args, scope);
                 else if (!TryExecuteAssignmentLine(lines[i], pickedCmd, target, source, args, scope) &&
@@ -1321,24 +1389,21 @@ public sealed class ScriptInterpreter
         if (objects.Count == 0)
             return bodyEnd + 1;
 
-        // Source-X behavior: each loop iteration changes the default object (target)
-        // to the iterated object, while also setting ARGO for compatibility.
-        IScriptObj? prevObj1 = args?.Object1;
+        // Source-X changes the default object, retaining the original trigger arguments.
         int iterations = 0;
         scope.LoopDepth++;
-        foreach (var obj in objects)
+        try
         {
-            if (iterations++ >= scope.MaxLoopIterations) break;
-            if (args is TriggerArgs ta)
-                ta.Object1 = obj;
-            result = Execute(body, obj, source, args, scope);
-            if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
-            if (scope.IsBreaking) { scope.IsBreaking = false; break; }
-            if (scope.IsReturning) break;
+            foreach (var obj in objects)
+            {
+                if (iterations++ >= scope.MaxLoopIterations) break;
+                result = Execute(body, obj, source, args, scope);
+                if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
+                if (scope.IsBreaking) { scope.IsBreaking = false; break; }
+                if (scope.IsReturning) break;
+            }
         }
-        scope.LoopDepth--;
-        if (args is TriggerArgs ta2)
-            ta2.Object1 = prevObj1;
+        finally { scope.LoopDepth--; }
 
         return bodyEnd + 1;
     }
@@ -1385,38 +1450,21 @@ public sealed class ScriptInterpreter
         if (arg.IndexOf('<') < 0) return arg;
 
         // Set resolver to target object for <property> lookups
-        var oldResolver = _expr.VariableResolver;
-        var oldFunctionResolver = _expr.FunctionResolver;
-        try
-        {
-            _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-            _expr.FunctionResolver = expr => TryResolveFunctionExpression(expr, target, source, args, scope);
-            return _expr.EvaluateStr(arg);
-        }
-        finally
-        {
-            _expr.VariableResolver = oldResolver;
-            _expr.FunctionResolver = oldFunctionResolver;
-        }
+        var saved = PushResolvers(target, source, args, scope);
+        try { return _expr.EvaluateStr(arg); }
+        finally { PopResolvers(saved); }
     }
 
     private long EvaluateWithResolver(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)
     {
         if (string.IsNullOrWhiteSpace(expr))
             return 0;
-        var oldResolver = _expr.VariableResolver;
-        var oldFunctionResolver = _expr.FunctionResolver;
-        _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
+        var saved = PushResolvers(target, source, args, scope);
         try
         {
             return _expr.Evaluate(expr.AsSpan());
         }
-        finally
-        {
-            _expr.VariableResolver = oldResolver;
-            _expr.FunctionResolver = oldFunctionResolver;
-        }
+        finally { PopResolvers(saved); }
     }
 
     /// <summary>Evaluate an IF/ELIF/WHILE condition with the target-bound
@@ -1428,19 +1476,12 @@ public sealed class ScriptInterpreter
     {
         if (string.IsNullOrWhiteSpace(expr))
             return false;
-        var oldResolver = _expr.VariableResolver;
-        var oldFunctionResolver = _expr.FunctionResolver;
-        _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
+        var saved = PushResolvers(target, source, args, scope);
         try
         {
             return _expr.EvaluateConditional(expr);
         }
-        finally
-        {
-            _expr.VariableResolver = oldResolver;
-            _expr.FunctionResolver = oldFunctionResolver;
-        }
+        finally { PopResolvers(saved); }
     }
 
     /// <summary>Public entry to evaluate a condition string against a target object,
@@ -1455,19 +1496,12 @@ public sealed class ScriptInterpreter
     private bool TryEvaluateWithResolver(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope, out long value)
     {
         if (string.IsNullOrWhiteSpace(expr)) { value = 0; return false; }
-        var oldResolver = _expr.VariableResolver;
-        var oldFunctionResolver = _expr.FunctionResolver;
-        _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
+        var saved = PushResolvers(target, source, args, scope);
         try
         {
             return _expr.TryEvaluate(expr.AsSpan(), out value);
         }
-        finally
-        {
-            _expr.VariableResolver = oldResolver;
-            _expr.FunctionResolver = oldFunctionResolver;
-        }
+        finally { PopResolvers(saved); }
     }
 
     /// <summary>Evaluate a [FUNCTION] named by the whole token, with no arguments.
@@ -1719,7 +1753,8 @@ public sealed class ScriptInterpreter
         if (varName.Equals("ARGN3", StringComparison.OrdinalIgnoreCase))
             return args?.Number3.ToString() ?? "0";
         if (varName.Equals("ARGO", StringComparison.OrdinalIgnoreCase))
-            return GetObjectRef(args?.Object1);
+            return args?.Object1 is not { } argo ? "0" :
+                argo.TryGetProperty("UID", out string argoUid) ? argoUid : "1";
         if (varName.StartsWith("ARGO.", StringComparison.OrdinalIgnoreCase))
         {
             string subProp = varName[5..];
@@ -2171,7 +2206,7 @@ public sealed class ScriptInterpreter
 
         for (int i = start; i < lines.Count; i++)
         {
-            string cmd = lines[i].Key.ToUpperInvariant();
+            string cmd = lines[i].KeyUpper;
 
             bool isOpener = endKeyword switch
             {
@@ -2206,7 +2241,7 @@ public sealed class ScriptInterpreter
                 idx++;
                 while (idx < lines.Count && depth > 0)
                 {
-                    string c = lines[idx].Key.ToUpperInvariant();
+                    string c = lines[idx].KeyUpper;
                     if (c == "IF") depth++;
                     if (c == "ENDIF") depth--;
                     if (depth > 0) idx++;
@@ -2219,7 +2254,7 @@ public sealed class ScriptInterpreter
                 idx++;
                 while (idx < lines.Count && depth > 0)
                 {
-                    string c = lines[idx].Key.ToUpperInvariant();
+                    string c = lines[idx].KeyUpper;
                     if (c == "FOR" || IsForVariant(c))
                         depth++;
                     if (c == "ENDFOR") depth--;
@@ -2233,7 +2268,7 @@ public sealed class ScriptInterpreter
                 idx++;
                 while (idx < lines.Count && depth > 0)
                 {
-                    string c = lines[idx].Key.ToUpperInvariant();
+                    string c = lines[idx].KeyUpper;
                     if (c == "WHILE") depth++;
                     if (c == "ENDWHILE") depth--;
                     if (depth > 0) idx++;
@@ -2247,7 +2282,7 @@ public sealed class ScriptInterpreter
                 idx++;
                 while (idx < lines.Count && depth > 0)
                 {
-                    string c = lines[idx].Key.ToUpperInvariant();
+                    string c = lines[idx].KeyUpper;
                     if (c == "DORAND" || c == "DOSWITCH") depth++;
                     if (c == "ENDDO") depth--;
                     if (depth > 0) idx++;
@@ -2260,7 +2295,7 @@ public sealed class ScriptInterpreter
                 idx++;
                 while (idx < lines.Count && depth > 0)
                 {
-                    string c = lines[idx].Key.ToUpperInvariant();
+                    string c = lines[idx].KeyUpper;
                     if (c == "BEGIN") depth++;
                     if (c == "END") depth--;
                     if (depth > 0) idx++;
@@ -2281,16 +2316,31 @@ public sealed class ScriptInterpreter
     private static bool IsForVariant(string cmd) =>
         cmd is "FORPLAYERS" or "FORCHARS" or "FORITEMS" or "FORCLIENTS"
             or "FOROBJS" or "FORINSTANCES" or "FORCONT" or "FORCONTID" or "FORCONTTYPE"
-            or "FORCHARLAYER" or "FORCHARMEMORYTYPE";
+        or "FORCHARLAYER" or "FORCHARMEMORYTYPE" or "FORTIMERF";
 
     private static IReadOnlyList<ScriptKey> GetSubList(IReadOnlyList<ScriptKey> lines, int start, int end)
     {
         if (start >= end || start >= lines.Count) return [];
-        int count = Math.Min(end, lines.Count) - start;
-        var result = new ScriptKey[count];
-        for (int i = 0; i < count; i++)
-            result[i] = lines[start + i];
-        return result;
+        return new LineSlice(lines, start, Math.Min(end, lines.Count) - start);
+    }
+
+    /// <summary>A window onto an already-parsed body rather than a copy of it.
+    ///
+    /// Loop bodies were copied into a fresh ScriptKey[] every time a block ran -
+    /// and for WHILE / numeric FOR, once per ITERATION, so a 20-line body inside a
+    /// 100-iteration loop copied 2,000 references for no reason. Execute only ever
+    /// indexes and reads Count, so a view is enough; the enumerator is here for
+    /// completeness and is not on any hot path.</summary>
+    private sealed class LineSlice(IReadOnlyList<ScriptKey> source, int start, int count)
+        : IReadOnlyList<ScriptKey>
+    {
+        public int Count => count;
+        public ScriptKey this[int index] => source[start + index];
+        public IEnumerator<ScriptKey> GetEnumerator()
+        {
+            for (int i = 0; i < count; i++) yield return source[start + i];
+        }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private sealed class NullConsole : ITextConsole

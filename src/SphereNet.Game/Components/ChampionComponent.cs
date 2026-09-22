@@ -484,7 +484,6 @@ public sealed class ChampionComponent
         if (FireTrigger(ItemTrigger.AddWhiteCandle, new SpawnTriggerArgs { SpawnedItem = candle }) == TriggerResult.True)
         {
             _world.DeleteObject(candle);
-            candle.Delete();
             return;
         }
         // The candle's own ITEMDEF @Create, which upstream runs through
@@ -534,7 +533,6 @@ public sealed class ChampionComponent
         if (FireTrigger(ItemTrigger.AddRedCandle, new SpawnTriggerArgs { SpawnedItem = candle }) == TriggerResult.True)
         {
             _world.DeleteObject(candle);
-            candle.Delete();
             return;
         }
         candle.FireCreateTrigger();
@@ -637,7 +635,6 @@ public sealed class ChampionComponent
         if (candle == null || candle.IsDeleted)
             return;
         _world.DeleteObject(candle);
-        candle.Delete();
     }
 
     // ------------------------------------------------------------------

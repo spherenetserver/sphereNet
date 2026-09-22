@@ -95,7 +95,6 @@ public sealed partial class NpcAI
         if (npc.TickPetOwnershipTimers(Environment.TickCount64))
         {
             _world.DeleteObject(npc);
-            npc.Delete();
             return;
         }
 
@@ -105,7 +104,6 @@ public sealed partial class NpcAI
             if (npc.IsSummoned)
             {
                 _world.DeleteObject(npc);
-                npc.Delete();
                 return;
             }
 

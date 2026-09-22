@@ -88,7 +88,7 @@ public static partial class Program
         // Reloaded files may add or remove [ON=@X] hooks and f_onchar_*/
         // f_onitem_* fallback functions; refresh the used-trigger gates so
         // hot paths see the new state without a restart.
-        _triggerDispatcher?.BuildUsedTriggerCache();
+        RefreshScriptTriggerHooks();
 
         sw.Stop();
         _log.LogInformation(
@@ -451,7 +451,8 @@ public static partial class Program
                         region.Name = key.Arg;
                         break;
                     case "P":
-                        var pp = key.Arg.Split(',');
+                        // Comma, space or tab — see Point3D.SplitComponents.
+                        var pp = SphereNet.Core.Types.Point3D.SplitComponents(key.Arg);
                         if (pp.Length >= 3 &&
                             short.TryParse(pp[0].Trim(), out short px) &&
                             short.TryParse(pp[1].Trim(), out short py) &&

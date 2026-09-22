@@ -8,6 +8,10 @@ namespace SphereNet.Core.Interfaces;
 /// </summary>
 public interface IScriptObj
 {
+    /// <summary>World queries belong to the target, independently of its console.</summary>
+    IReadOnlyList<IScriptObj> QueryScriptObjects(string query, string args, ITriggerArgs? triggerArgs) =>
+        Array.Empty<IScriptObj>();
+
     string GetName();
 
     /// <summary>

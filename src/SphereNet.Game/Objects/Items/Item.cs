@@ -387,7 +387,28 @@ public class Item : ObjBase
     /// sector goes to sleep. SphereNet defined the flag and read it nowhere, so a
     /// shard that asked for an exact timer on a remote item got the three-minute
     /// maintenance sweep like everything else, with nothing to say why.</summary>
-    public bool NeverSleeps => ResolveDefinition()?.Can.HasFlag(CanFlags.O_NoSleep) == true;
+    /// <para>Read from the EFFECTIVE can-flags, definition XOR <see cref="ObjBase.CanMask"/>,
+    /// because upstream sets this one at RUNTIME as well as from the ITEMDEF: a spawn
+    /// point that owes creatures gets it while it owes them
+    /// (<c>CCSpawn::DelObj</c> / <c>CCSpawn::KillChildren</c> - "Avoid the spawn point
+    /// to sleep until job is finish") and loses it again the moment its quota fills
+    /// (<c>CCSpawn::AddObj</c>). Reading only the definition meant an under-quota
+    /// spawner in a sleeping sector stopped refilling until somebody walked in.
+    /// CanMask is XORed, not ORed, exactly as m_CanMask is (CObjBase.h:159).</para>
+    public bool NeverSleeps =>
+        (((ulong)(ResolveDefinition()?.Can ?? CanFlags.None) ^ CanMask)
+            & (ulong)CanFlags.O_NoSleep) != 0;
+
+    /// <summary>Turn the runtime CAN_O_NOSLEEP override on or off, the way upstream
+    /// flips it on a spawn point around the work it still owes.</summary>
+    internal void SetNoSleepOverride(bool on)
+    {
+        bool fromDef = (ResolveDefinition()?.Can ?? CanFlags.None).HasFlag(CanFlags.O_NoSleep);
+        // XOR mask: the bit must be SET when the definition disagrees with what we
+        // want, and CLEAR when it already agrees.
+        if (fromDef == on) CanMask &= ~(ulong)CanFlags.O_NoSleep;
+        else CanMask |= (ulong)CanFlags.O_NoSleep;
+    }
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
     public byte Direction { get; set; }
@@ -1004,7 +1025,15 @@ public class Item : ObjBase
 
     public void Delete()
     {
+        var world = ResolveWorld?.Invoke();
+        if (world != null) world.DeleteObject(this);
+        else CompleteDeletion();
+    }
+
+    internal void CompleteDeletion()
+    {
         if (_isDeleted) return;
+        _isDeleted = true;
         SpawnChar?.KillAll();
         // An item spawner's children go with it too: upstream's single component
         // clears both kinds from its destructor (CCSpawn.cpp:76 -> KillChildren,
@@ -1012,18 +1041,9 @@ public class Item : ObjBase
         // spawner left everything it had produced lying on the ground.
         SpawnItem?.KillAll();
         FigurineDeletedHook?.Invoke(this);
-        _isDeleted = true;
         _contents.Clear();
     }
 
-    /// <summary>
-    /// Fully unlink this item from the world — object table, parent container,
-    /// equipment slot and sector — and then mark it deleted. This is the
-    /// high-level counterpart to <see cref="Delete"/>, which only flags the item
-    /// and clears its own contents (leaving the item registered in the world,
-    /// so the slot/object table would retain a dead reference). Falls back to the
-    /// low-level flag-set when no world is wired (e.g. unit tests).
-    /// </summary>
     /// <summary>Shared notification from Character.Unequip, before detaching the item.
     /// Source-X OnRemoveObj ignores the trigger return value.</summary>
     public static Action<Item, Characters.Character>? OnItemUnequipped;
@@ -1081,6 +1101,8 @@ public class Item : ObjBase
         Delete();
     }
 
+    /// <summary>Unlink and delete through the same veto-aware lifecycle as
+    /// <see cref="Delete"/>. Without a world, perform local cleanup.</summary>
     public void RemoveFromWorld()
     {
         var world = ResolveWorld?.Invoke();

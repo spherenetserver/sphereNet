@@ -157,12 +157,12 @@ public static class CharDefHelper
     public static bool IsMountCapable(Character ch) => !ch.IsDead &&
         (ch.IsHuman || ch.BodyId is 0x025D or 0x025E || (GetCanFlags(ch) & CanFlags.C_Mount) != 0);
 
-    /// <summary>Fired after BODY/CHARDEF defname apply — wire to @Create dispatch.</summary>
+    /// <summary>Fresh-character initialization only; never BODY changes or save/login repair.</summary>
     public static Action<Character>? AfterApplyDefName;
 
     /// <summary>Apply a CHARDEF defname (e.g. c_man, c_man_gm) to a character.</summary>
     public static bool TryApplyDefName(Character ch, string? defname, ResourceHolder? resources,
-        bool stats = false, bool refresh = true)
+        bool stats = false, bool refresh = true, bool fireCreate = false)
     {
         if (string.IsNullOrWhiteSpace(defname) || resources == null)
             return false;
@@ -220,7 +220,10 @@ public static class CharDefHelper
             ApplyNpcDefinitionProperties(ch, def);
         }
 
-        AfterApplyDefName?.Invoke(ch);
+        // Source-X SetID does not run @Create. Only fresh NPC creation does;
+        // replaying it during BODY assignment can recursively change BODY again.
+        if (fireCreate)
+            AfterApplyDefName?.Invoke(ch);
         if (refresh)
             ch.RefreshAppearance();
         return true;

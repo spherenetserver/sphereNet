@@ -515,14 +515,29 @@ public static partial class Program
         var serilogConfig = new LoggerConfiguration()
             .MinimumLevel.ControlledBy(_logLevelSwitch);
 
+        // Both live views go through NonBlockingSink: writing a log line must never
+        // be able to stall the caller, and for most of this server the caller is the
+        // main loop. See the class comment — a wedged console froze a live shard for
+        // 15 seconds inside one item timer.
 #if WINFORMS
         if (_consoleForm != null)
-            serilogConfig = serilogConfig.WriteTo.Sink(_consoleForm);
+        {
+            var form = _consoleForm;
+            serilogConfig = serilogConfig.WriteTo.Sink(
+                new Logging.NonBlockingSink(form.Emit));
+        }
         else
 #endif
-            serilogConfig = serilogConfig.WriteTo.Console(
-                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
-                theme: WarningConsoleTheme);
+        {
+            var consoleLogger = new LoggerConfiguration()
+                .MinimumLevel.Verbose()
+                .WriteTo.Console(
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+                    theme: WarningConsoleTheme)
+                .CreateLogger();
+            serilogConfig = serilogConfig.WriteTo.Sink(
+                new Logging.NonBlockingSink(consoleLogger.Write, consoleLogger));
+        }
 
         // File sink keeps its own filtering, independent of the live
         // console. Two syntaxes are supported via [SPHERE] LogFileLevel:
@@ -929,8 +944,6 @@ public static partial class Program
         };
         _saver.ResolveResourceName = rid =>
         {
-            if (rid.Type != ResType.Events)
-                return null;
             var link = _resources.GetResource(rid);
             if (!string.IsNullOrWhiteSpace(link?.DefName))
                 return link!.DefName!;
@@ -954,17 +967,32 @@ public static partial class Program
         // loader can resolve it and dress NPCs instead of leaving them naked.
         _loader.ResolveEquipLayerFromTile = baseId =>
             _mapData?.GetItemTileData(baseId).Quality ?? 0;
+        int ResolveSavedItemIndex(string name)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (seen.Add(name))
+            {
+                var resource = _resources.ResolveDefName(name);
+                if (resource.IsValid && resource.Type == ResType.ItemDef) return resource.Index;
+                if (_resources.TryResolveDefNameValue(name, out long number) ||
+                    ScriptNumber.TryParseToken(name, out number))
+                    return number is > 0 and <= int.MaxValue ? (int)number : 0;
+                if (!_resources.TryGetDefValue(name, out string alias)) return 0;
+                name = alias.Trim();
+            }
+            return 0;
+        }
         _loader.ResolveItemDef = defname =>
         {
-            var rid = _resources.ResolveDefName(defname);
-            if (rid.IsValid && rid.Type == ResType.ItemDef)
+            int index = ResolveSavedItemIndex(defname);
+            if (index > 0)
             {
                 // A def without an explicit ID override has DispIndex 0 —
                 // `def?.DispIndex ?? rid.Index` returned that 0 (the null-
                 // coalescing never fired), importing e.g. every 56T
                 // i_worldgem_bit spawner with BaseId 0.
-                var def = DefinitionLoader.GetItemDef(rid.Index);
-                return def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
+                var def = DefinitionLoader.GetItemDef(index);
+                return def == null ? (ushort)0 : def.DispIndex > 0 ? def.DispIndex : (ushort)index;
             }
             return 0;
         };
@@ -990,10 +1018,11 @@ public static partial class Program
             }
             return ((ushort)rid.Index, SphereNet.Scripting.Definitions.ItemDef.ParseTypeName(typeName));
         };
-        _loader.ResolveItemDefFullIndex = defname =>
+        _loader.ResolveItemDefFullIndex = ResolveSavedItemIndex;
+        _loader.ResolveItemBase = index =>
         {
-            var rid = _resources.ResolveDefName(defname);
-            return rid.IsValid && rid.Type == ResType.ItemDef ? rid.Index : 0;
+            var def = DefinitionLoader.GetItemDef(index) ?? DefinitionLoader.GetMultiItemDef(index);
+            return def == null ? null : def.DispIndex > 0 ? def.DispIndex : (ushort)index;
         };
         _loader.ResolveCharDef = defname =>
         {

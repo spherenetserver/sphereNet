@@ -26,6 +26,22 @@ namespace SphereNet.Tests;
 /// than asserting the general claim, because the general claim is not true of every
 /// path and the documentation has to say which.
 ///
+/// The split per path, matching Source-X:
+///   - a GROUND item's @Timer does not run while its sector sleeps (CSector::
+///     _GoSleep -> CObjBase::_GoSleep leaves the ticking list; CItem::_OnTick
+///     refuses the trigger anyway). It runs on the tick the sector wakes, once,
+///     however long it was overdue;
+///   - CAN=O_NOSLEEP on the ITEMDEF and SECF_NoSleep on the sector are the two
+///     documented escape hatches, and SECTORSLEEP=0 disables sleeping outright;
+///   - a CONTAINED or equipped item belongs to no sector list, so it is exact
+///     wherever it is - upstream's m_Items sweep cannot reach it either;
+///   - TIMERF is exact everywhere: it lives in a separate, world-level list
+///     (CTimedFunctionHandler), not in any sector.
+///
+/// This matters for load, not only for semantics. The live pack has a 29x30 arena
+/// of 870 boxes on TIMERD 1; without the sleep gate their @Timer ran 8,700 times a
+/// second on an empty shard and was the entire idle world tick.
+///
 /// An active sector window is 5x5 sectors of 64 tiles around each player, so a
 /// sleeping sector is at least ~128 tiles away — far outside the 18-tile view range.
 /// Nothing in a sleeping sector is observable while it is late; it becomes
@@ -130,7 +146,7 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
     }
 
     [Fact]
-    public void AnArmedTimerInASleepingSectorRunsOnTheNextTick()
+    public void AnArmedTimerInASleepingSectorWaitsForTheSectorToWake()
     {
         Setup();
         var fires = CountTimerFires();
@@ -138,11 +154,20 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
 
         _world.OnTick();
 
-        // This used to wait for the three-minute maintenance sweep, because the
-        // sector's item list WAS the mechanism and a sleeping sector has no tick.
-        // Armed item timers are in the world's due queue now, so where the item lies
-        // stopped mattering: the deadline is what is waited on.
+        // Upstream does not run this @Timer. CSector::_GoSleep calls GoSleep on every
+        // top-level item of a sleeping sector, CObjBase::_GoSleep takes it out of the
+        // ticking list, and CItem::_OnTick refuses to fire the trigger for an item
+        // whose sector is asleep even if it is reached anyway.
         _out.WriteLine($"sleeping sector: fired {Fired(fires, item)}x after one tick");
+        Assert.Equal(0, Fired(fires, item));
+
+        // The deadline is not lost, only deferred: CSector::_GoAwake puts the item
+        // back with the raw timeout it still holds, so an overdue one runs on the
+        // very tick the sector comes up.
+        _world.PlaceCharacter(_player, new Point3D(Far.X, Far.Y, 0, 0));
+        _world.OnTick();
+
+        _out.WriteLine($"after the sector wakes: fired {Fired(fires, item)}x");
         Assert.Equal(1, Fired(fires, item));
     }
 
@@ -162,6 +187,12 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
         _out.WriteLine($"after a full sweep, with no world tick: fired {Fired(fires, item)}x");
         Assert.Equal(0, Fired(fires, item));
 
+        // Nor does the ordinary tick, while the sector is down — the sweep is not a
+        // second, slower way in; there is one way in, and it is the sector being up.
+        _world.OnTick();
+        Assert.Equal(0, Fired(fires, item));
+
+        _world.PlaceCharacter(_player, new Point3D(Far.X, Far.Y, 0, 0));
         _world.OnTick();
         Assert.Equal(1, Fired(fires, item));
     }
@@ -245,20 +276,22 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
     }
 
     [Fact]
-    public void AnOverdueTimerDoesNotWaitForAnybodyToArrive()
+    public void AnOverdueTimerRunsExactlyOnceWhenSomebodyArrives()
     {
         Setup();
         var fires = CountTimerFires();
         var item = GroundItem(Far, overdueByMs: 600_000);   // ten minutes past due
 
         _world.OnTick();
+        Assert.Equal(0, Fired(fires, item));
 
-        // The deadline is absolute and the queue is world-level, so a timer that is
-        // overdue runs at once and exactly once - no player has to walk into the
-        // sector to collect it, and walking in later collects nothing extra.
+        // However long it has been overdue, the wake collects it once and not once
+        // per missed deadline: the item holds ONE absolute timeout, and _GoAwake
+        // re-registers that one value (there is no backlog to replay).
+        _world.PlaceCharacter(_player, new Point3D(Far.X, Far.Y, 0, 0));
+        _world.OnTick();
         Assert.Equal(1, Fired(fires, item));
 
-        _world.PlaceCharacter(_player, new Point3D(Far.X, Far.Y, 0, 0));
         _world.OnTick();
 
         _out.WriteLine($"ten-minute-overdue timer: fired {Fired(fires, item)}x in total");
@@ -310,14 +343,13 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
         _out.WriteLine($"NOSLEEP item: fired {Fired(fires, item)}x; " +
                        $"ordinary item beside it: fired {Fired(fires, ordinary)}x");
 
-        // Both fire now. CAN=O_NOSLEEP bought a ground item an exact timer when the
-        // sector tick was the mechanism; with every armed timer in the world's due
-        // queue there is nothing left for it to buy, and the honest thing is to say
-        // so rather than keep a flag that appears to do something. It still means
-        // what upstream means for the rest of an object's ticking, and SECF_NoSleep
-        // still governs whether the SECTOR runs its characters.
+        // This is what the flag is FOR, and the pair is the whole statement: two
+        // ground items one tile apart in the same sleeping sector, and only the one
+        // that declared CAN=O_NOSLEEP keeps its timer. Upstream reads it in
+        // CObjBase::_TickableStateOverride, which is the single override _CanTick
+        // consults when the sector takes everything else down.
         Assert.Equal(1, Fired(fires, item));
-        Assert.Equal(1, Fired(fires, ordinary));
+        Assert.Equal(0, Fired(fires, ordinary));
     }
 
     [Fact]

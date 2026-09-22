@@ -87,6 +87,23 @@ public static partial class Program
 
     private static void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
     {
+        if (obj is Character deletingPlayer && deletingPlayer.IsPlayer)
+        {
+            var connected = FindGameClient(deletingPlayer);
+            if (connected != null)
+            {
+                deletingPlayer.IsOnline = false; // deletion never leaves a lingering character
+                connected.OnDisconnect();
+                connected.NetState.MarkClosing();
+            }
+            if (deletingPlayer.TryGetTag("ACCOUNT", out string? accountName) && accountName != null &&
+                _accounts.FindAccount(accountName) is { } account)
+            {
+                for (int slot = 0; slot < 7; slot++)
+                    if (account.GetCharSlot(slot) == deletingPlayer.Uid)
+                        account.SetCharSlot(slot, Serial.Invalid);
+            }
+        }
         _systemHooks.DispatchObject("delete", obj);
         if (obj.IsItem)
         {

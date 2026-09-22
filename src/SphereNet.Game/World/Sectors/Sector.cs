@@ -36,7 +36,16 @@ public sealed class Sector : IScriptObj
     private byte _light = 0;
     private short _rainChance = 15;
     private short _coldChance = 5;
-    private bool _isSleeping;
+    /// <summary>Sectors start ASLEEP, as upstream's do — CSector::CSector calls
+    /// GoSleep() with the comment "Every sector is sleeping at start, they only
+    /// awake when any player enter (this eases the load at startup)".
+    ///
+    /// Defaulting this to false meant a sector no player had ever visited reported
+    /// itself awake for ever, because MarkSleepState only ever flips the sectors
+    /// that have been in the active window. Anything gating on the flag — the admin
+    /// sector list, and now the item timer drain — therefore saw the whole
+    /// untouched map as running.</summary>
+    private bool _isSleeping = true;
     private SectorFlag _flags;
 
     /// <summary>Milliseconds a sector must sit clientless before it may sleep

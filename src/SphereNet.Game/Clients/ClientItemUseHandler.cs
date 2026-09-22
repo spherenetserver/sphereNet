@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -135,10 +135,9 @@ public sealed class ClientItemUseHandler
             else
                 SendWorldItem(item);
         }
-        else if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
-                     new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
+        else
         {
-            _world.RemoveItem(item);
+            _client.TryDeleteItemFromClient(item);
         }
     }
     private static int GetVendorItemPrice(Character vendor, Item item) => GameClient.GetVendorItemPrice(vendor, item);
@@ -1295,7 +1294,9 @@ public sealed class ClientItemUseHandler
                     }
                     else
                     {
-                        item.SpawnChar.ForceSpawn();
+                        // Source-X directly ticks the component even after STOP.
+                        // Clear our separate stopped flag before that explicit use.
+                        item.SpawnChar.Start();
                         item.SpawnChar.OnTick(Environment.TickCount64);
                         SysMessage(ServerMessages.Get(Msg.ItemuseSpawnReset));
                     }
@@ -1310,7 +1311,7 @@ public sealed class ClientItemUseHandler
                     }
                     else
                     {
-                        item.SpawnItem.ForceSpawn();
+                        item.SpawnItem.Start();
                         item.SpawnItem.OnTick(Environment.TickCount64);
                         SysMessage(ServerMessages.Get(Msg.ItemuseSpawnReset));
                     }
@@ -1505,11 +1506,7 @@ public sealed class ClientItemUseHandler
                             RestoreRedeededMultiUuid(deedItem, placedMulti,
                                 isShip ? "SHIP_MULTI_UUID" : "HOUSE_MULTI_UUID");
                             SysMessage(isShip ? "Ship placed." : ServerMessages.Get("house_placed"));
-                            if (_triggerDispatcher?.FireItemTrigger(deedItem, ItemTrigger.Destroy,
-                                    new TriggerArgs { CharSrc = _character, ItemSrc = deedItem }) != TriggerResult.True)
-                            {
-                                _world.RemoveItem(deedItem);
-                            }
+                            _client.TryDeleteItemFromClient(deedItem);
                         }
                         else
                         {
@@ -2611,7 +2608,6 @@ public sealed class ClientItemUseHandler
                                     enforceFollowerCap: true))
         {
             _world.DeleteObject(pet);
-            pet.Delete();
             SysMessage("You have too many followers to restore that now.");
             return true;   // answered; not an unopenable figurine
         }
@@ -2619,7 +2615,6 @@ public sealed class ClientItemUseHandler
         if (!_world.PlaceCharacter(pet, _character.Position))
         {
             _world.DeleteObject(pet);
-            pet.Delete();
             SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
             return true;
         }
@@ -3014,9 +3009,7 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        if (_triggerDispatcher?.FireItemTrigger(food, ItemTrigger.Destroy,
-                new TriggerArgs { CharSrc = _character, ItemSrc = food }) != TriggerResult.True)
-            _world.RemoveItem(food);
+        _client.TryDeleteItemFromClient(food);
     }
 
     /// <summary>Source-X SKILLPRACTICEMAX default: a training aid is only useful up

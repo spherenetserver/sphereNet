@@ -73,6 +73,101 @@ public sealed class ScriptCallParity13ATests
         return item;
     }
 
+    [Theory]
+    [InlineData("ARGS=010,2,-3", "010,2,-3", 16, 2, -3)]
+    [InlineData("ARGS hello,5", "hello,5", 0, 0, 0)]
+    [InlineData("ARGS", "", 0, 0, 0)]
+    [InlineData("ARGS=", "", 0, 0, 0)]
+    [InlineData("ARGS=\"12,3,4\"", "12,3,4", 12, 3, 4)]
+    public void ArgsAssignmentReinitializesNumbersAndArgoWithoutClearingScope(
+        string statement, string text, long n1, long n2, long n3)
+    {
+        using var h = new Harness($"""
+            [FUNCTION f_parent]
+            LOCAL.keep=42
+            REF1=<UID>
+            {statement}
+            TAG.keep=<LOCAL.keep>
+            TAG.ref=<REF1>
+            TAG.argv=<ARGV[0]>
+            RETURN 1
+            """);
+        var world = TestHarness.CreateWorld(); var item = GroundItem(world);
+        var args = new TriggerArgs { Source = item, Object1 = item, Number1 = 91, Number2 = 92, Number3 = 93, ArgString = "old,values" };
+        Assert.Equal("old", args.GetArgv()[0]);
+        Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
+        Assert.Equal(text, args.ArgString); Assert.Equal(n1, args.Number1);
+        Assert.Equal(n2, args.Number2); Assert.Equal(n3, args.Number3); Assert.Null(args.Object1);
+        Assert.Same(item, args.Source);
+        item.TryGetProperty("TAG.keep", out var keep); Assert.Equal("42", keep);
+        item.TryGetProperty("TAG.ref", out var reference); Assert.Equal($"0{item.Uid.Value:X}", reference);
+        Assert.Equal(text.Length == 0 ? Array.Empty<string>() : text.Split(','), args.GetArgv());
+    }
+
+    [Theory]
+    [InlineData("\"a,b\",c", new[] { "a,b", "c" })]
+    [InlineData("x,\"y,z\"", new[] { "x", "y,z" })]
+    [InlineData("a,", new[] { "a" })]
+    [InlineData(",,a", new[] { "", "", "a" })]
+    [InlineData("  a  , b", new[] { "a  ", "b" })]
+    [InlineData("pre\"a,b\"post,c", new[] { "pre\"a,b\"post", "c" })]
+    public void ArgvPreservesSourceXQuotedFieldsAndSeparatorBoundaries(string raw, string[] expected)
+    {
+        var args = new TriggerArgs { ArgString = raw };
+        Assert.Equal(expected, args.GetArgv());
+        Assert.Equal(raw, args.ArgString);
+    }
+
+    [Theory]
+    [InlineData("CALL f_child", false)]
+    [InlineData("CALL f_child 5", true)]
+    public void ArgsReinitializationInsideCallFollowsCallerRestorationRules(string call, bool restored)
+    {
+        using var h = new Harness($"""
+            [FUNCTION f_child]
+            ARGS=17,18,19
+            TAG.child=<ARGN1>,<ARGN2>,<ARGN3>,<ARGO>
+            RETURN 1
+            [FUNCTION f_parent]
+            {call}
+            RETURN 1
+            """);
+        var world = TestHarness.CreateWorld(); var item = GroundItem(world);
+        var args = new TriggerArgs { Source = item, Object1 = item, Number1 = 1, Number2 = 2, Number3 = 3, ArgString = "old" };
+        Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
+        item.TryGetProperty("TAG.child", out var child); Assert.Equal("17,18,19,0", child);
+        Assert.Equal(restored ? "old" : "17,18,19", args.ArgString);
+        Assert.Equal(restored ? 1 : 17, args.Number1);
+        Assert.Equal(restored ? 2 : 18, args.Number2);
+        Assert.Equal(restored ? 3 : 19, args.Number3);
+        Assert.Same(restored ? item : null, args.Object1);
+    }
+
+    [Fact]
+    public void CallRestoresQuotedArgumentVectorAfterChildReinitializesIt()
+    {
+        using var h = new Harness("""
+            [FUNCTION f_child]
+            TAG.child_count=<ARGV>
+            TAG.child_first=<ARGV[0]>
+            ARGS=7,8
+            RETURN 1
+            [FUNCTION f_parent]
+            TAG.before=<ARGV[0]>
+            CALL f_child "a,b",c
+            TAG.after=<ARGV[0]>
+            RETURN 1
+            """);
+        var world = TestHarness.CreateWorld(); var item = GroundItem(world);
+        var args = new TriggerArgs { ArgString = "\"original,field\",second" };
+        Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
+        item.TryGetProperty("TAG.child_count", out var count); Assert.Equal("2", count);
+        item.TryGetProperty("TAG.child_first", out var child); Assert.Equal("a,b", child);
+        item.TryGetProperty("TAG.before", out var before); Assert.Equal("original,field", before);
+        item.TryGetProperty("TAG.after", out var after); Assert.Equal(before, after);
+        Assert.Equal(new[] { "original,field", "second" }, args.GetArgv());
+    }
+
     // ============================================================ 13A-1
     [Theory]
     [InlineData("CALL f_child", true)]

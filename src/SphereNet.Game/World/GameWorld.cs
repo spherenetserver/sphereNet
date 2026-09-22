@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Collections;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects;
@@ -619,16 +619,61 @@ public sealed class GameWorld
     }
 
     private readonly HashSet<ObjBase> _deletingObjects = new(ReferenceEqualityComparer.Instance);
+    public Func<Item, bool>? ItemDeleteAllowed { get; set; }
+    public Func<Character, bool>? CharacterDeleteAllowed { get; set; }
+    public Func<Character, bool>? PlayerDeleteAllowed { get; set; }
+
+    private bool NotifyItemDelete(Item item, Func<Item, bool>? notify)
+    {
+        if ((notify ?? ItemDeleteAllowed)?.Invoke(item) == false) return false;
+        // Source-X CItemContainer::NotifyDelete / ContentNotifyDelete: a child
+        // veto saves it from the container, unless its script already moved it.
+        foreach (var child in item.Contents.ToArray())
+        {
+            if (child.ContainedIn != item.Uid || !_deletingObjects.Add(child)) continue;
+            bool allowed;
+            try { allowed = NotifyItemDelete(child, notify); }
+            finally { _deletingObjects.Remove(child); }
+            if (!allowed && !child.IsDeleted && child.ContainedIn == item.Uid)
+                PlaceItem(child, item.GetTopLevelObj().Position);
+        }
+        return true;
+    }
 
     public void DeleteObject(ObjBase obj)
+        => TryDeleteObject(obj);
+
+    public bool TryDeleteObject(ObjBase obj, bool force = false, Func<Item, bool>? notify = null,
+        Func<Character, bool>? notifyCharacter = null)
     {
         // @Unequip may REMOVE its own item while deletion is already underway.
-        if (!_deletingObjects.Add(obj)) return;
-        try { DeleteObjectCore(obj); }
+        if (!_deletingObjects.Add(obj)) return false;
+        try
+        {
+            if (!obj.IsDeleted && obj is Item item && !NotifyItemDelete(item, notify) && !force) return false;
+            if (!obj.IsDeleted && obj is Character character)
+            {
+                if ((notifyCharacter ?? CharacterDeleteAllowed)?.Invoke(character) == false && !force) return false;
+                if (character.IsPlayer && PlayerDeleteAllowed?.Invoke(character) == false && !force) return false;
+                // CChar::ContentNotifyDelete precedes the forced equipment teardown.
+                for (int layer = 0; layer < (int)Layer.Qty; layer++)
+                {
+                    var equipped = character.GetEquippedItem((Layer)layer);
+                    if (equipped == null || !_deletingObjects.Add(equipped)) continue;
+                    bool allowed;
+                    try { allowed = NotifyItemDelete(equipped, notify); }
+                    finally { _deletingObjects.Remove(equipped); }
+                    if (!allowed && !equipped.IsDeleted && equipped.ContainedIn == character.Uid)
+                        PlaceItem(equipped, character.Position);
+                }
+            }
+            DeleteObjectCore(obj, notify);
+            return true;
+        }
         finally { _deletingObjects.Remove(obj); }
     }
 
-    private void DeleteObjectCore(ObjBase obj)
+    private void DeleteObjectCore(ObjBase obj, Func<Item, bool>? notify)
     {
         // A stale reference may outlive UID recycling. Never let deleting that
         // old instance remove/free the newer object now registered at the same
@@ -636,8 +681,8 @@ public sealed class GameWorld
         if (!_objects.TryGetValue(obj.Uid.Value, out var registered) ||
             !ReferenceEquals(registered, obj))
         {
-            if (obj is Item staleItem) staleItem.Delete();
-            else if (obj is Character staleChar) staleChar.Delete();
+            if (obj is Item staleItem) staleItem.CompleteDeletion();
+            else if (obj is Character staleChar) staleChar.CompleteDeletion();
             return;
         }
 
@@ -650,7 +695,11 @@ public sealed class GameWorld
         if (obj is Item container)
         {
             foreach (var child in container.Contents.ToArray())
-                DeleteObject(child);
+            {
+                if (child.ContainedIn != container.Uid) continue;
+                if (!TryDeleteObject(child, notify: notify) && !child.IsDeleted && child.ContainedIn == container.Uid)
+                    PlaceItem(child, container.GetTopLevelObj().Position);
+            }
         }
         else if (obj is Character owner)
         {
@@ -662,7 +711,10 @@ public sealed class GameWorld
             {
                 var equipped = owner.GetEquippedItem((Layer)i);
                 if (equipped != null && seenEquipment.Add(equipped))
-                    DeleteObject(equipped);
+                {
+                    if (!TryDeleteObject(equipped, force: true, notify: notify) && !equipped.IsDeleted && equipped.ContainedIn == owner.Uid)
+                        PlaceItem(equipped, owner.Position);
+                }
             }
         }
 
@@ -714,8 +766,8 @@ public sealed class GameWorld
             else if (obj is Item item) sector.RemoveItem(item);
         }
 
-        if (obj is Item deletedItem) deletedItem.Delete();
-        else if (obj is Character deletedChar) deletedChar.Delete();
+        if (obj is Item deletedItem) deletedItem.CompleteDeletion();
+        else if (obj is Character deletedChar) deletedChar.CompleteDeletion();
     }
 
     /// <summary>Remove an item from the world and mark it deleted.</summary>
@@ -853,6 +905,13 @@ public sealed class GameWorld
         item.Position = pos;
         item.ContainedIn = Serial.Invalid;
         sector.AddItem(item);
+        // Upstream does the same on entry (CSector::MoveItemToSector): an item that
+        // lands in a sector which is NOT sleeping is woken, so a script that moves a
+        // box out of a dormant arena gets its timer back without waiting for the
+        // sector itself to wake. The reverse (entering a sleeping sector) needs no
+        // action here — the drain puts it to sleep when its deadline comes round.
+        if (!sector.IsSleeping)
+            WakeItemTimer(item);
         // Sole sector.AddItem choke point — index every on-ground item so the decay
         // catch-up can sweep this set instead of the full object dictionary.
         _groundItems.Add(item);
@@ -1257,7 +1316,12 @@ public sealed class GameWorld
     /// </summary>
     public IEnumerable<ObjBase> GetObjectsInRange(Point3D center, int range = 18)
     {
+        if (range < 0 || !_sectors.TryGetValue(center.Map, out var grid)) yield break;
         var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
+        minSx = Math.Max(0, minSx);
+        minSy = Math.Max(0, minSy);
+        maxSx = Math.Min(grid.GetLength(0) - 1, maxSx);
+        maxSy = Math.Min(grid.GetLength(1) - 1, maxSy);
 
         for (int sx = minSx; sx <= maxSx; sx++)
         {
@@ -1293,6 +1357,55 @@ public sealed class GameWorld
     public void NotifyGroundItemTypeChanged(Item item,
         Core.Enums.ItemType oldType, Core.Enums.ItemType newType)
         => GetSector(item.Position)?.OnItemTypeChanged(item, oldType, newType);
+
+    /// <summary>Fill the caller's lists with the ground items and characters inside
+    /// a radius, walking the sectors directly.
+    ///
+    /// <see cref="GetObjectsInRange"/> is an iterator that yields out of a second
+    /// iterator (the sector's), so reading one object costs two MoveNext frames plus
+    /// an interface dispatch. That is invisible at view range and not at all
+    /// invisible in a script radius loop: an arena of 870 boxes each running
+    /// FORITEMS 0 walks its own sector 870 times a tick, which is 756,000 objects
+    /// through that chain. This is the same selection over plain indexed list
+    /// walks, with no iterator state machine and no delegate per object.</summary>
+    internal void CollectInRange(Point3D center, int range, List<Item>? items, List<Character>? chars)
+    {
+        if (range < 0 || !_sectors.TryGetValue(center.Map, out var grid)) return;
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
+        minSx = Math.Max(0, minSx);
+        minSy = Math.Max(0, minSy);
+        maxSx = Math.Min(grid.GetLength(0) - 1, maxSx);
+        maxSy = Math.Min(grid.GetLength(1) - 1, maxSy);
+
+        for (int sx = minSx; sx <= maxSx; sx++)
+        for (int sy = minSy; sy <= maxSy; sy++)
+        {
+            var sector = GetSector(center.Map, sx, sy);
+            if (sector == null) continue;
+
+            if (items != null)
+            {
+                var list = sector.Items;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var item = list[i];
+                    if (!item.IsDeleted && item.IsOnGround &&
+                        center.GetDistanceTo(item.Position) <= range)
+                        items.Add(item);
+                }
+            }
+            if (chars != null)
+            {
+                var list = sector.Characters;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var ch = list[i];
+                    if (!ch.IsDeleted && center.GetDistanceTo(ch.Position) <= range)
+                        chars.Add(ch);
+                }
+            }
+        }
+    }
 
     public void VisitInRange(Point3D center, int range, Action<Character>? visitChar, Action<Item>? visitItem)
     {
@@ -1452,21 +1565,44 @@ public sealed class GameWorld
     /// </summary>
     public void OnTick()
     {
+        var probe = Diagnostics.WorldTickProbe.Begin();
         _tickCount++;
         long currentTime = Environment.TickCount64;
 
         AdvanceWorldClock(currentTime);
 
+        probe.Mark("clock");
+
         // Sector sleep: only tick sectors within view-range of an online player.
         // Without this, a 130K-sector map with 1M+ NPCs spends ~150ms per tick
         // iterating sectors no client can see — pings spike to 300-500ms.
         TickActiveSectors(currentTime);
+        probe.Mark("sectors");
 
         // Recycle the uids of deleted objects on the old maintenance cadence.
         TickSleepingMaintenance(currentTime);
+        probe.Mark("maintenance");
 
         TickTimerF(currentTime);
+        probe.Mark("timerf");
         TickItemTimers(currentTime);
+        probe.Mark("item_timers");
+        probe.Report(_logger, ref _lastWorldTickDetailMs);
+    }
+
+    private long _lastWorldTickDetailMs;
+    private long _lastWorldCallbackDetailMs;
+
+    private void ReportSlowWorldCallback(ObjBase obj, string kind, long started, long allocated)
+    {
+        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        if (ms < 50 && bytes < 8 * 1024 * 1024) return;
+        long now = Environment.TickCount64;
+        if (_lastWorldCallbackDetailMs != 0 && now - _lastWorldCallbackDetailMs < 10000) return;
+        _lastWorldCallbackDetailMs = now;
+        _logger.LogWarning("[world_callback_detail] kind={Kind} uid=0x{Uid:X8} baseid=0x{Base:X4} total={Ms:F1}ms alloc={KB}KB",
+            kind, obj.Uid.Value, obj.BaseId, ms, bytes / 1024);
     }
 
     // Every ARMED item timer, in due order. Worn, contained and lying on the floor
@@ -1477,12 +1613,83 @@ public sealed class GameWorld
     // dropped when it surfaces - the queue never has to find and remove anything.
     // Drained in the serial phase, because @Timer bodies mutate the world.
     private readonly PriorityQueue<Item, long> _timerDue = new();
+    // SetTimeout and container moves may register the same deadline repeatedly.
+    // Keep one entry per item/deadline, matching Source-X's unique timed-object list.
+    private readonly HashSet<(Item Item, long Deadline)> _timerRegistrations = [];
     private long _lastTimerAuditTick;
 
     /// <summary>How many armed item timers are waiting (stale entries included).</summary>
     internal int TimerQueueCount => _timerDue.Count;
 
-    internal void TrackItemTimer(Item item, long deadlineMs) => _timerDue.Enqueue(item, deadlineMs);
+    internal void TrackItemTimer(Item item, long deadlineMs)
+    {
+        // Upstream refuses the same registration: CTimedObject::_SetTimeout hands the
+        // object to CWorldTicker::AddTimedObject, which only inserts it when
+        // _TickableStateBase() holds — false for a sleeping object. The deadline is
+        // still stored on the object, and _GoAwake re-adds it from there.
+        if (item.IsSleeping)
+            return;
+        if (_timerRegistrations.Add((item, deadlineMs)))
+            _timerDue.Enqueue(item, deadlineMs);
+    }
+
+    /// <summary>An armed timer whose ground sector is asleep must not run its
+    /// <c>@Timer</c>.
+    ///
+    /// Upstream puts every top-level item of a sleeping sector to sleep
+    /// (CSector::_GoSleep walks m_Items and calls GoSleep on each one that cannot
+    /// tick with its parent going down), CObjBase::_GoSleep then pulls it out of the
+    /// ticking list, and CItem::_OnTick refuses to fire @Timer for an item whose
+    /// sector is sleeping even if it is reached anyway. SphereNet had the sector
+    /// sleep machinery and the flag on the item, and the timer drain asked neither:
+    /// a 29x30 minigame arena of 870 boxes on TIMERD 1 kept running its @Timer 8,700
+    /// times a second on an empty shard, which was the whole of the idle world tick.
+    ///
+    /// CAN=O_NOSLEEP is the documented per-item escape hatch
+    /// (CObjBase::_TickableStateOverride), SECF_NoSleep the per-sector one, and
+    /// SECTORSLEEP=0 disables sleeping outright (CSector::_CanSleep).</summary>
+    private bool ShouldSleepInsteadOfFiring(Item item)
+    {
+        if (Sector.SleepDelayMs == 0 || item.NeverSleeps)
+            return false;
+        // Only top-level items belong to a sector's item list upstream; contained and
+        // equipped ones follow their holder and are left exact, as they are there.
+        // Both halves are needed. _groundItems says the item actually went through
+        // PlaceItem into a sector, which IsOnGround alone does not: an item created
+        // but never placed has no container AND no sector, and upstream's
+        // CSector::_GoSleep can only reach what is in some m_Items. IsOnGround says
+        // it has not since been picked up into a container - Item.AddItem does not
+        // go through the world, so the index can still name an item that is now in
+        // a bag, and a bagged item is exact wherever it lies.
+        if (!item.IsOnGround || !_groundItems.Contains(item))
+            return false;
+        return GetSector(item.Position) is { IsSleeping: true };
+    }
+
+    /// <summary>Source-X CSector::_GoAwake walks the sector's items and wakes each
+    /// sleeping one; CObjBase::_GoAwake then re-adds an object that still holds a
+    /// timer to the ticking list with its stored raw timeout. Deadlines are absolute
+    /// here too, so re-registering <c>Timeout</c> is the same operation — a deadline
+    /// that expired while the sector was down is already due and runs on this
+    /// tick.</summary>
+    private void WakeSleepingItemTimers()
+    {
+        for (int i = 0; i < _newlyActiveSectors.Count; i++)
+        {
+            var items = _newlyActiveSectors[i].Items;
+            for (int j = 0; j < items.Count; j++)
+                WakeItemTimer(items[j]);
+        }
+    }
+
+    private void WakeItemTimer(Item item)
+    {
+        if (item.IsDeleted || !item.IsSleeping)
+            return;
+        item.GoAwake();
+        if (item.Timeout > 0)
+            TrackItemTimer(item, item.Timeout);
+    }
 
     private readonly List<Item> _timerDueBuffer = [];
 
@@ -1511,10 +1718,19 @@ public sealed class GameWorld
         {
             if (!_timerDue.TryDequeue(out var item, out long deadline) || item == null)
                 break;
+            _timerRegistrations.Remove((item, deadline));
             if (item.IsDeleted || item.Timeout <= 0)
                 continue;
             if (item.Timeout != deadline)
                 continue;               // re-armed or cleared: a later entry owns it
+            if (ShouldSleepInsteadOfFiring(item))
+            {
+                // Keeps its deadline. WakeSleepingItemTimers re-registers it with
+                // the same absolute Timeout when the sector comes back, so an
+                // overdue timer fires on the tick the player arrives.
+                item.GoSleep();
+                continue;
+            }
             _timerDueBuffer.Add(item);
         }
 
@@ -1526,7 +1742,11 @@ public sealed class GameWorld
                 continue;
             // A re-armed timer (@Timer body runs TIMER n again) re-registers through
             // SetTimeout, so nothing needs to be put back here.
-            if (!item.OnTick())
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            long allocated = GC.GetAllocatedBytesForCurrentThread();
+            bool keep = item.OnTick();
+            ReportSlowWorldCallback(item, "item_timer", started, allocated);
+            if (!keep)
                 GetSector(item.Position)?.RemoveItem(item);
         }
         _timerDueBuffer.Clear();
@@ -1549,9 +1769,13 @@ public sealed class GameWorld
         int missing = 0;
         foreach (var obj in _objects.Values)
         {
-            if (obj is not Item it || it.IsDeleted || it.Timeout <= 0 || queued.Contains(it))
+            // A sleeping item is absent from the queue on purpose (its sector is
+            // down); re-queueing it here would undo the sleep every audit interval
+            // and report the engine losing timers it has not lost.
+            if (obj is not Item it || it.IsDeleted || it.IsSleeping ||
+                it.Timeout <= 0 || queued.Contains(it))
                 continue;
-            _timerDue.Enqueue(it, it.Timeout);
+            TrackItemTimer(it, it.Timeout);
             missing++;
         }
 
@@ -1566,6 +1790,8 @@ public sealed class GameWorld
     /// <see cref="TickTimerF"/> can iterate only timer-bearing objects. Called from
     /// <c>ObjBase.AddTimerF</c> via <c>ResolveWorld</c>. Idempotent (backed by a set).</summary>
     internal void TrackTimerFObject(ObjBase obj) => _objectsWithTimerF.Add(obj);
+
+    internal IEnumerable<ObjBase> GetTimerFObjects() => _objectsWithTimerF;
 
     private void TickTimerF(long nowMs)
     {
@@ -1615,7 +1841,10 @@ public sealed class GameWorld
             // Gone already: an earlier callback in this same pass cancelled it.
             if (!obj.RemoveTimerFEntry(entry))
                 continue;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            long allocated = GC.GetAllocatedBytesForCurrentThread();
             TimerFExpired?.Invoke(obj, entry);
+            ReportSlowWorldCallback(obj, "timerf", started, allocated);
         }
         _timerFDueBuffer.Clear();
 
@@ -1688,6 +1917,10 @@ public sealed class GameWorld
 
         ApplySleepGrace(nowMs);
         MarkSleepState();
+        // After the flags are published, not before: a sector only counts as newly
+        // active once MarkSleepState has cleared its sleeping flag, or the timers put
+        // back here would be refused again by TrackItemTimer on the same tick.
+        WakeSleepingItemTimers();
     }
 
     /// <summary>A sector a player has left does not fall asleep the instant the
@@ -1880,10 +2113,12 @@ public sealed class GameWorld
     /// </summary>
     public void OnTickParallel(int workerCount = 0, CancellationToken cancellationToken = default)
     {
+        var probe = Diagnostics.WorldTickProbe.Begin();
         _tickCount++;
         long currentTime = Environment.TickCount64;
 
         AdvanceWorldClock(currentTime);
+        probe.Mark("clock");
 
         RefreshActiveSectors();
         var sectors = _tickSectors;
@@ -1904,11 +2139,16 @@ public sealed class GameWorld
         ExpireClientLingers();
 
         // Recycle the uids of deleted objects on the old maintenance cadence.
+        probe.Mark("sectors");
         TickSleepingMaintenance(currentTime);
+        probe.Mark("maintenance");
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
         TickTimerF(currentTime);
+        probe.Mark("timerf");
         TickItemTimers(currentTime);
+        probe.Mark("item_timers");
+        probe.Report(_logger, ref _lastWorldTickDetailMs);
     }
 
     private void ExpireClientLingers()
@@ -2134,9 +2374,11 @@ public sealed class GameWorld
             // 0x2103: an item with no graphic can never render or be used.
             if (item.BaseId == 0)
             {
-                log?.Invoke($"GC: deleted graphicless item 0x{item.Uid.Value:X} (0x2103)");
-                RemoveItem(item);
-                deletedCount++;
+                if (TryDeleteObject(item))
+                {
+                    log?.Invoke($"GC: deleted graphicless item 0x{item.Uid.Value:X} (0x2103)");
+                    deletedCount++;
+                }
                 continue;
             }
 
@@ -2161,9 +2403,11 @@ public sealed class GameWorld
                     }
                     else
                     {
-                        log?.Invoke($"GC: deleted unreachable mislinked item 0x{item.Uid.Value:X} (0x2205)");
-                        RemoveItem(item);
-                        deletedCount++;
+                        if (TryDeleteObject(item))
+                        {
+                            log?.Invoke($"GC: deleted unreachable mislinked item 0x{item.Uid.Value:X} (0x2205)");
+                            deletedCount++;
+                        }
                     }
                     continue;
                 }
@@ -2186,9 +2430,11 @@ public sealed class GameWorld
                         }
                         else
                         {
-                            log?.Invoke($"GC: deleted phantom-equip item 0x{item.Uid.Value:X} (0x2202)");
-                            RemoveItem(item);
-                            deletedCount++;
+                            if (TryDeleteObject(item))
+                            {
+                                log?.Invoke($"GC: deleted phantom-equip item 0x{item.Uid.Value:X} (0x2202)");
+                                deletedCount++;
+                            }
                         }
                     }
                 }
@@ -2301,7 +2547,6 @@ public sealed class GameWorld
             if (!marked || legitChildren.Contains(ch.Uid.Value)) continue;
 
             DeleteObject(ch);
-            ch.Delete();
             orphans++;
         }
         return orphans;

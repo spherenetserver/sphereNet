@@ -77,7 +77,7 @@ public sealed class SystemsPackParityTests
     }
 
     [Fact]
-    public void DSpeech_BareSingleValue_Appends_MultiValue_Replaces()
+    public void DSpeech_BareAndMultiValueAppend_ExplicitMinusStarReplaces()
     {
         var world = World();
         var ch = world.CreateCharacter();
@@ -87,11 +87,15 @@ public sealed class SystemsPackParityTests
         Assert.True(ch.TrySetProperty("DSPEECH", "spk_guildspeech"));
         Assert.Equal(2, ch.DSpeech.Count);
 
-        // A multi-value assignment replaces the whole list.
+        // CResourceRefArray::r_LoadVal appends each fragment; replacement requires -*.
         Assert.True(ch.TrySetProperty("DSPEECH", "spk_a spk_b"));
-        Assert.Equal(2, ch.DSpeech.Count);
+        Assert.Equal(4, ch.DSpeech.Count);
         Assert.True(ch.TryGetProperty("ISDSPEECH.spk_a", out string a));
         Assert.Equal("1", a);
+        Assert.True(ch.TryGetProperty("ISDSPEECH.spk_townspeech", out string kept));
+        Assert.Equal("1", kept);
+        Assert.True(ch.TrySetProperty("DSPEECH", "-*,spk_a"));
+        Assert.Single(ch.DSpeech);
         Assert.True(ch.TryGetProperty("ISDSPEECH.spk_townspeech", out string gone));
         Assert.Equal("0", gone);
     }

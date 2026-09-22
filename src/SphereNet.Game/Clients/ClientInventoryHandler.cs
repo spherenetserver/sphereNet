@@ -393,7 +393,6 @@ public sealed class ClientInventoryHandler
                 if (eaten >= item.Amount)
                 {
                     _world.RemoveItem(item);
-                    item.Delete();
                 }
                 else
                 {
@@ -427,7 +426,6 @@ public sealed class ClientInventoryHandler
                 else
                 {
                     _world.RemoveItem(item);
-                    item.Delete();
                 }
                 _netState.Send(new PacketDropAck());
                 return;

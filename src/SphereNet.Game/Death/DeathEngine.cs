@@ -277,7 +277,6 @@ public sealed class DeathEngine
             if (!victim.IsPlayer && !victim.IsBonded)
             {
                 _world.DeleteObject(victim);
-                victim.Delete();
             }
             return null;
         }
@@ -331,7 +330,6 @@ public sealed class DeathEngine
         if (!victim.IsPlayer && !victim.IsBonded)
         {
             _world.DeleteObject(victim);
-            victim.Delete();
         }
 
         return corpse;

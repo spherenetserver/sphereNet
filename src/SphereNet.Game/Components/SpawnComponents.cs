@@ -1,4 +1,4 @@
-﻿using SphereNet.Core.Enums;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
@@ -326,7 +326,6 @@ public sealed class SpawnComponent
             if (result == TriggerResult.True)
             {
                 _world.DeleteObject(ch);
-                ch.Delete();
                 return null;
             }
         }
@@ -338,12 +337,16 @@ public sealed class SpawnComponent
             && (ch.Position.X != 0 || ch.Position.Y != 0);
         Point3D pos = scriptPlaced ? ch.Position : FindSpawnPosition(charDef);
         ch.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
+        // Quota reached: the job IS finished, so the spawn point may sleep with its
+        // sector again (CCSpawn::AddObj, CCSpawn.cpp:663-668). Counted with this one
+        // included, the way upstream counts it.
+        if (_spawnedUids.Count + 1 >= _maxCount && !IsChampion)
+            _spawnItem.SetNoSleepOverride(false);
         if (!_world.PlaceCharacter(ch, pos))
         {
             // Placement refused (out of bounds) — delete instead of leaving an
             // orphan NPC with no sector (Source-X deletes on MoveNear/MoveTo fail).
             _world.DeleteObject(ch);
-            ch.Delete();
             return null;
         }
         _spawnedUids.Add(ch.Uid);
@@ -490,6 +493,9 @@ public sealed class SpawnComponent
         // out of the middle of the teardown and left _killingChildren stuck true - after
         // which nothing fired @DelObj again. Upstream's DelObj simply returns while a
         // teardown is in progress (CCSpawn.cpp:512).
+        // CCSpawn::KillChildren sets it before the sweep (CCSpawn.cpp:718) - the
+        // spawner is about to owe its whole quota again.
+        _spawnItem.SetNoSleepOverride(true);
         _killingChildren = true;
         try
         {
@@ -503,7 +509,6 @@ public sealed class SpawnComponent
                 if (!ch.IsDead)
                     ch.Kill();
                 _world.DeleteObject(ch);
-                ch.Delete();
             }
             _spawnedUids.Clear();
         }
@@ -529,6 +534,13 @@ public sealed class SpawnComponent
             return;
         if (!_spawnedUids.Remove(uid))
             return;
+
+        // "Avoid the spawn point to sleep until job is finish" (CCSpawn.cpp:535).
+        // A spawner that owes creatures keeps ticking wherever it lies; AddObj takes
+        // the override away again once the quota is full. Without this the re-arm
+        // below writes a deadline that a sleeping sector will never run, and the
+        // spawner stays empty until a player happens to walk into it.
+        _spawnItem.SetNoSleepOverride(true);
 
         // Re-open the schedule FIRST: upstream sets the timeout and only then fires
         // @DelObj with the resulting seconds (CCSpawn.cpp:551/568), so the value the
@@ -1085,7 +1097,6 @@ public sealed class ItemSpawnComponent
             if (SpawnComponent.OnSpawnTrigger(_spawnItem, ItemTrigger.Spawn, spawnArgs) == TriggerResult.True)
             {
                 _world.DeleteObject(item);
-                item.Delete();
                 return;
             }
         }
@@ -1101,7 +1112,6 @@ public sealed class ItemSpawnComponent
                 !_world.PlaceItem(item, _spawnItem.Position))
             {
                 _world.DeleteObject(item);
-                item.Delete();
                 return;
             }
         }
@@ -1302,7 +1312,6 @@ public sealed class ItemSpawnComponent
             if (item == null || item.IsDeleted) continue;
             item.RemoveTag("SPAWN_POINT_UUID");
             _world.DeleteObject(item);
-            item.Delete();
         }
         _spawnedUids.Clear();
     }

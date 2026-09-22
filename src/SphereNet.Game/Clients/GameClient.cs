@@ -42,7 +42,7 @@ internal record MenuOptionEntry(ushort ModelId, ushort Hue, string Text, List<Sp
 /// Integrates all game engines: movement, combat, speech, magic, trade, inventory.
 /// Manages the client update loop (sending nearby objects, removing out-of-range).
 /// </summary>
-public sealed partial class GameClient : ITextConsole
+public sealed partial class GameClient : ITextConsole, IScriptObj
 {
     // Source-X FEATURE* settings are independent per-expansion capability
     // masks. They are translated to 0xB9/0xA9 wire flags during login.

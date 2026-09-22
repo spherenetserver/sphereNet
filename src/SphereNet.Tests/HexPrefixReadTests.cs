@@ -65,11 +65,19 @@ public sealed class HexPrefixReadTests
         Assert.Equal("-5", Parser().EvaluateStr("<hDEBT>"));
     }
 
-    /// <summary>And text that is not a number comes back unchanged rather than as
-    /// zero.</summary>
+    /// <summary>Text that is not a number becomes zero, because the prefix asks for a
+    /// NUMBER and upstream converts unconditionally:
+    /// <c>if (*sVal != '-') sVal.FormatLLHex(Str_ToLL(sVal).value_or(0));</c>
+    /// (CScriptObj.cpp:554-562) — the negative above is the only value left as
+    /// written. This file used to assert the opposite, that the text came back
+    /// unchanged, which contradicted the very lines its own header cites. It matters:
+    /// the D side is the same code and passing text through there let
+    /// <c>ELSEIF (&lt;dLOCAL.ASC&gt; == 0)</c> compare against a string, read its
+    /// leading number and never reach the "== 0" — which is how the reference pack's
+    /// IsBlank came to answer "blank" for every non-empty string.</summary>
     [Fact]
-    public void TextComesBackAsItself()
+    public void TextBecomesZero()
     {
-        Assert.Equal("Bob", Parser().EvaluateStr("<hNAME>"));
+        Assert.Equal("00", Parser().EvaluateStr("<hNAME>"));
     }
 }

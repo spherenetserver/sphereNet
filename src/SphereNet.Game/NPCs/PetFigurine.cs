@@ -70,7 +70,6 @@ public static class PetFigurine
             return;
 
         world.DeleteObject(pet);
-        pet.Delete();
     }
 
     /// <summary>Park the creature and stamp the figurine that refers to it.</summary>
@@ -109,7 +108,6 @@ public static class PetFigurine
             // inside it.
             figurine.RemoveTag(SnapshotTag);
             world.DeleteObject(figurine);
-            figurine.Delete();
             return parked;
         }
 
@@ -141,7 +139,6 @@ public static class PetFigurine
         if (!pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: true))
         {
             world.DeleteObject(pet);
-            pet.Delete();
             return null;
         }
 
@@ -167,11 +164,9 @@ public static class PetFigurine
         {
             pet.ClearOwnership(clearFriends: true);
             world.DeleteObject(pet);
-            pet.Delete();
             return null;
         }
         world.DeleteObject(figurine);
-        figurine.Delete();
         return pet;
     }
 

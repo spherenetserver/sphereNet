@@ -794,7 +794,18 @@ public sealed class ClientTargetingHandler
         Action<uint, uint[], (ushort, string)[]>? scriptCallback = null;
         if (script ? !Gumps.TryTakeScript(gumpId, serial, out scriptCallback) : !Gumps.ActiveGumps.Remove(gumpId))
         {
-            _logger.LogWarning("Rejected forged/stale gump response from {Char}: serial=0x{S:X}, gumpId=0x{G:X}, button={B}",
+            // Dropped, and quietly — upstream's own sanity check is
+            //     if (itGumpFound == m_mapOpenedGumps.end() || itGumpFound->second <= 0)
+            //         return true;
+            // (PacketGumpDialogRet::onReceive, receive.cpp:2240-2243), with no log at
+            // all. This was a WARNING naming the player and the word "forged", and a
+            // client produces it in ordinary play: an old-style MENU (0x7C) is not a
+            // gump and its id is not in this map, yet closing one sends a 0xB1 for
+            // that id alongside the 0x7D that actually carries the choice. Every
+            // .edit therefore accused whoever ran it of forging a packet. Kept at
+            // debug so the check is still visible when something is being chased.
+            _logger.LogDebug("Dropped gump response for an id this client has not been sent: " +
+                "char={Char}, serial=0x{S:X}, gumpId=0x{G:X}, button={B}",
                 _character.Name, serial, gumpId, buttonId);
             return;
         }

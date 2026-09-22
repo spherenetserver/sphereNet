@@ -6,7 +6,23 @@ namespace SphereNet.Scripting.Parsing;
 /// </summary>
 public sealed class ScriptKey
 {
-    public string Key { get; private set; } = "";
+    private string _key = "";
+    private string? _keyUpper;
+    public string Key
+    {
+        get => _key;
+        private set { _key = value; _keyUpper = null; }
+    }
+
+    /// <summary>The key folded to upper case, computed once per parsed line.
+    ///
+    /// The interpreter compares the command against upper-case literals, so it was
+    /// calling ToUpperInvariant on every line of every execution — a fresh string
+    /// each time, for a value that cannot change between runs of the same cached
+    /// trigger body. A 10-line @Timer on 870 items at TIMERD 1 allocated 8,700 of
+    /// them a second on nothing.</summary>
+    public string KeyUpper => _keyUpper ??= _key.ToUpperInvariant();
+
     public string Arg { get; private set; } = "";
     public bool HasArg => Arg.Length > 0;
 

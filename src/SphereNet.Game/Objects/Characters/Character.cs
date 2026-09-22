@@ -3403,12 +3403,20 @@ public partial class Character : ObjBase
 
     public void Delete()
     {
+        var world = ResolveWorld?.Invoke();
+        if (world != null) world.DeleteObject(this);
+        else CompleteDeletion();
+    }
+
+    internal void CompleteDeletion()
+    {
+        if (_isDeleted) return;
+        _isDeleted = true;
         int abortedSkill = ClearActiveSkillPending();
         if (abortedSkill >= 0)
             ActiveSkillAborted?.Invoke(this, abortedSkill);
         InterruptMeditation();
         ClearCastState();
-        _isDeleted = true;
 
         // Source-X tears an NPC down through NPC_PetClearOwners (CChar.cpp:364),
         // which hands the creature's slot cost back to its owner
@@ -5923,7 +5931,6 @@ public partial class Character : ObjBase
                 if (!world.PlaceCharacter(clone, Position))
                 {
                     world.DeleteObject(clone);
-                    clone.Delete();
                     return false;
                 }
                 return true;

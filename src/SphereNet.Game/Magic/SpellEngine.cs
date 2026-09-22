@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -1534,7 +1534,6 @@ public sealed class SpellEngine
                 if (newAmt == 0)
                 {
                     _world.DeleteObject(item);
-                    item.Delete();
                 }
             }
         }
@@ -2087,7 +2086,6 @@ public sealed class SpellEngine
         if (summoned == null) return;
         summoned.ClearOwnership(clearFriends: true);
         _world.DeleteObject(summoned);
-        summoned.Delete();
     }
 
     /// <summary>Summon a creature at target location.</summary>
@@ -2160,7 +2158,7 @@ public sealed class SpellEngine
         {
             var res = Definitions.DefinitionLoader.StaticResources;
             if (res != null &&
-                Definitions.CharDefHelper.TryApplyDefName(creature, defName, res, refresh: false))
+                Definitions.CharDefHelper.TryApplyDefName(creature, defName, res, refresh: false, fireCreate: true))
             {
                 creature.SetStatFlag(StatFlag.Conjured);
                 creature.Hits = creature.MaxHits;
@@ -2174,7 +2172,6 @@ public sealed class SpellEngine
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.PetslotsTrySummon));
             _world.DeleteObject(creature);
-            creature.Delete();
             return null;
         }
         creature.SetTag("SUMMON_DURATION", duration.ToString());
@@ -2186,7 +2183,6 @@ public sealed class SpellEngine
         {
             creature.ClearOwnership(clearFriends: true);
             _world.DeleteObject(creature);
-            creature.Delete();
             return null;
         }
         return creature;
@@ -3651,7 +3647,6 @@ public sealed class SpellEngine
         else
         {
             _world.DeleteObject(target);
-            target.Delete();
         }
     }
 

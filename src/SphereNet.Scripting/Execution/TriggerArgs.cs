@@ -42,6 +42,9 @@ public sealed class TriggerArgs : ITriggerArgs
     /// <c>for &lt;ARGN1&gt; ... &lt;REF&lt;dLOCAL._FOR&gt;&gt;</c>.</summary>
     public Dictionary<int, string>? SharedRefs { get; set; }
 
+    /// <summary>FLOAT variables travel with the same trigger argument object.</summary>
+    public Dictionary<string, string>? SharedFloats { get; set; }
+
     /// <summary>What the trigger block's <c>RETURN</c> actually said, as written.
     ///
     /// TriggerResult only distinguishes zero from non-zero, which is enough for the
@@ -213,8 +216,43 @@ public sealed class TriggerArgs : ITriggerArgs
     // Splitting on spaces too would fragment every multi-word argument. Empty
     // fields are preserved (not dropped): "  ,,230,90,Pin" must keep ARGV[0..1]
     // as empty so the remaining indices stay aligned (Source-X keeps empty args).
-    private static string[] SplitArgString(string argString) =>
-        string.IsNullOrWhiteSpace(argString)
-            ? []
-            : argString.Split(',', StringSplitOptions.TrimEntries);
+    private static string[] SplitArgString(string argString)
+    {
+        // CScriptTriggerArgs::r_WriteVal(ARGV): walk a private mutable copy, so
+        // quote/comma terminators never alter ARGS. Only leading spaces are skipped;
+        // a trailing separator ends the scan rather than creating another field.
+        var buffer = (argString + '\0').ToCharArray();
+        var fields = new List<string>();
+        int cursor = 0;
+        bool quoted = false, innerQuotes = false;
+        while (cursor < argString.Length && buffer[cursor] != '\0')
+        {
+            if (char.IsWhiteSpace(buffer[cursor])) { cursor++; continue; }
+            if (buffer[cursor] == ',' && !quoted) { fields.Add(""); cursor++; continue; }
+            if (buffer[cursor] == '"') { cursor++; quoted = true; innerQuotes = false; }
+            int start = cursor++;
+            while (cursor < argString.Length && buffer[cursor] != '\0')
+            {
+                if (buffer[cursor] == '"' && quoted)
+                {
+                    quoted = false;
+                    int next = cursor + 1;
+                    while (next < argString.Length && buffer[next] is not ('"' or ',' or '\0')) next++;
+                    if (next < argString.Length && buffer[next] != '\0') buffer[next - 1] = '\0';
+                    else buffer[cursor] = '\0';
+                }
+                else if (buffer[cursor] == '"') innerQuotes = !innerQuotes;
+                if (!quoted && !innerQuotes && buffer[cursor] == ',')
+                {
+                    buffer[cursor++] = '\0';
+                    break;
+                }
+                cursor++;
+            }
+            int end = start;
+            while (end < buffer.Length && buffer[end] != '\0') end++;
+            fields.Add(new string(buffer, start, end - start));
+        }
+        return fields.ToArray();
+    }
 }

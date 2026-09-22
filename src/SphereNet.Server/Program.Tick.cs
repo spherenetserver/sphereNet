@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -1177,7 +1177,6 @@ public static partial class Program
             var removePacket = new PacketDeleteObject(uid.Value);
             BroadcastNearby(guard.Position, 18, removePacket, 0);
             _world.DeleteObject(guard);
-            guard.Delete();
             _summonedGuardExpiry.Remove(uid);
         }
     }
@@ -1210,7 +1209,6 @@ public static partial class Program
             var removePacket = new PacketDeleteObject(item.Uid.Value);
             BroadcastNearby(item.Position, 18, removePacket, 0);
             _world.DeleteObject(item);
-            item.Delete();
         }
     }
 

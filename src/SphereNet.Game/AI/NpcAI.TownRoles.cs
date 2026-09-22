@@ -50,7 +50,6 @@ public sealed partial class NpcAI
                 return;
             }
             _world.DeleteObject(npc);
-            npc.Delete();
             return;
         }
 

@@ -128,6 +128,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.RacialFlags = 0;
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
+        SphereNet.Game.Definitions.CharDefHelper.AfterApplyDefName = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;
         SphereNet.Game.Objects.Characters.Character.NpcWantThisItem = null;

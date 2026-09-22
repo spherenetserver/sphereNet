@@ -41,6 +41,29 @@ public sealed class WorldLoader
     /// the truncated graphic would miss. Returns 0 when unknown.</summary>
     public Func<string, int>? ResolveItemDefFullIndex { get; set; }
 
+    /// <summary>Authoritative script lookup for a numeric ITEMDEF resource index.
+    /// Null result means the definition is absent. Leave the callback unset only
+    /// for standalone save tools that do not load a script pack.</summary>
+    public Func<int, ushort?>? ResolveItemBase { get; set; }
+
+    private bool TryDefaultItem(Item item, string original)
+    {
+        int defaultIndex = ResolveItemDefFullIndex?.Invoke("DEFAULTITEM") ?? 0;
+        if (defaultIndex <= 0) defaultIndex = 0xEED;
+        ushort? graphic = ResolveItemBase?.Invoke(defaultIndex);
+        if (graphic is null or 0)
+        {
+            _logger.LogError("Cannot load item '{Original}': fallback ITEMDEF 0x{Default:X} is unavailable", original, defaultIndex);
+            return false;
+        }
+        item.BaseId = graphic.Value;
+        item.Tags.Remove("ITEMDEF");
+        item.Tags.Remove("SCRIPTDEF");
+        if (defaultIndex != graphic.Value) item.SetTag("SCRIPTDEF", defaultIndex.ToString());
+        _logger.LogWarning("Item '{Original}' has no script definition; using ITEMDEF 0x{Default:X}", original, defaultIndex);
+        return true;
+    }
+
     /// <summary>What a record header naming a <c>[MULTIDEF]</c> resolves to: the multi
     /// id it is drawn as, and the TYPE the block declares. A classic save writes a
     /// structure as <c>[WORLDITEM m_small_ship_n]</c> with no ID and no TYPE line of
@@ -952,6 +975,18 @@ public sealed class WorldLoader
                 continue;
             }
 
+            // Source-X rejects an unresolved symbolic header before creating an
+            // object, even if the record later contains an ID property.
+            if (defname != null && ResolveItemDef != null && ResolveItemDef(defname) == 0 &&
+                ResolveMultiDef?.Invoke(defname) == null &&
+                (ResolveItemDefFullIndex?.Invoke(defname) ?? 0) == 0 &&
+                !ScriptNumber.TryParseToken(defname, out _))
+            {
+                _logger.LogError("Undefined item type '{DefName}' in {File}; record skipped", defname, Path.GetFileName(path));
+                while (reader.NextProperty(out _, out _)) { }
+                continue;
+            }
+
             var item = world.CreateItem();
             Serial contSerial = Serial.Invalid;
             byte layer = 0;
@@ -1067,6 +1102,25 @@ public sealed class WorldLoader
             }
             if (skipItem)
                 continue;
+
+            if (ResolveItemBase != null)
+            {
+                // Native records carry ID and may pin a synthetic definition in
+                // ITEMDEF; legacy records carry the resource in the header.
+                string definition = item.Tags.Get("ITEMDEF") ?? "";
+                if (string.IsNullOrEmpty(definition)) definition = defname ?? $"0{item.BaseId:X}";
+                int index = ResolveItemDefFullIndex?.Invoke(definition) ?? 0;
+                if (int.TryParse(item.Tags.Get("SCRIPTDEF"), out int pinnedIndex) && pinnedIndex > 0)
+                    index = pinnedIndex;
+                if (index == 0 && ScriptNumber.TryParseToken(definition, out long raw) && raw is >= 0 and <= int.MaxValue)
+                    index = (int)raw;
+                bool multi = ResolveMultiDef?.Invoke(definition) != null;
+                if (!multi && ResolveItemBase(index) is not > 0 && !TryDefaultItem(item, definition))
+                {
+                    world.TryDeleteObject(item, force: true);
+                    continue;
+                }
+            }
 
             if (!hasUuid)
                 _migratedUuids++;

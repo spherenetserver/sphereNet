@@ -1572,9 +1572,8 @@ public sealed partial class GameClient
                         affected++;
                         continue;
                     }
+                    if (!TryDeleteItemFromClient(item)) continue;
                     BroadcastDeleteObject(item.Uid.Value);
-                    _world.DeleteObject(item);
-                    item.Delete();
                     affected++;
                 }
                 break;
@@ -1592,9 +1591,8 @@ public sealed partial class GameClient
                         affected++;
                         continue;
                     }
+                    if (!TryDeleteCharacterFromClient(ch)) continue;
                     BroadcastDeleteObject(ch.Uid.Value);
-                    _world.DeleteObject(ch);
-                    ch.Delete();
                     affected++;
                 }
                 break;
@@ -1721,6 +1719,15 @@ public sealed partial class GameClient
         SendOpenContainer(bank);
     }
 
+    internal bool TryDeleteItemFromClient(Item item) =>
+        _world.TryDeleteObject(item, notify: _triggerDispatcher == null ? null : target =>
+            _triggerDispatcher.FireItemTrigger(target, ItemTrigger.Destroy,
+                new TriggerArgs()) != TriggerResult.True);
+
+    internal bool TryDeleteCharacterFromClient(Character ch) =>
+        _world.TryDeleteObject(ch, notifyCharacter: _triggerDispatcher == null ? null : target =>
+            _triggerDispatcher.FireCharTrigger(target, CharTrigger.Destroy, new TriggerArgs()) != TriggerResult.True);
+
     internal bool RemoveTargetedObject(uint uid)
     {
         if (_character == null)
@@ -1731,11 +1738,8 @@ public sealed partial class GameClient
         var item = _world.FindItem(new Serial(uid));
         if (item != null)
         {
-            _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item });
+            if (!TryDeleteItemFromClient(item)) return false;
             BroadcastDeleteObject(uid);
-            _world.DeleteObject(item);
-            item.Delete();
             return true;
         }
 
@@ -1745,11 +1749,8 @@ public sealed partial class GameClient
             if (ch == _character)
                 return false;
 
-            _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Destroy,
-                new TriggerArgs { CharSrc = _character });
+            if (ch.IsPlayer || !TryDeleteCharacterFromClient(ch)) return false;
             BroadcastDeleteObject(uid);
-            _world.DeleteObject(ch);
-            ch.Delete();
             return true;
         }
 

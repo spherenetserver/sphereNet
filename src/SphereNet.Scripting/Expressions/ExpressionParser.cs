@@ -221,6 +221,13 @@ public sealed class ExpressionParser
         if (depth > 16)
             return Evaluate(expr.AsSpan()) != 0;
 
+        // No '|' and no '&' anywhere means there is no || or && to split on, so the
+        // whole expression is a single subexpression. Skipping the splitter saves a
+        // List plus a substring per condition - and the overwhelming majority of IF
+        // lines in a script pack are one comparison.
+        if (expr.IndexOf('|') < 0 && expr.IndexOf('&') < 0)
+            return EvaluateConditionalSub(expr, depth);
+
         var subs = SplitConditionalSubexpressions(expr);
         if (subs.Count == 0)
             return false;
@@ -1211,10 +1218,22 @@ public sealed class ExpressionParser
             string? varVal = VariableResolver?.Invoke(resolved);
             if (varVal != null)
             {
-                if (varVal.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ||
-                    varVal.StartsWith("0", StringComparison.Ordinal))
-                    return Evaluate(varVal.AsSpan()).ToString();
-                return varVal;
+                // Upstream converts UNCONDITIONALLY: "<dSOMEVAL> same as
+                // <eval <SOMEVAL>>", and the code is
+                //     if (*sVal != '-') sVal.FormatLLVal(Str_ToLL(sVal));
+                // (CScriptObj.cpp:543-551) — the only value left as written is one
+                // starting with '-'. Converting only when the value happened to
+                // start with a '0' meant <dX> handed back whatever text X held, and
+                // a comparison against it then read the leading number and stopped:
+                // the pack's IsBlank does <ASC> (which answers "68 65 6C 6C 6F" for
+                // "hello", as upstream's does) and then ELSEIF (<dLOCAL.ASC> == 0).
+                // With the text passed through, that condition evaluated to 68 — the
+                // leading number, with "== 0" never reached — so it was TRUE for
+                // every non-empty string and IsBlank answered "blank" for all of
+                // them. Every ISBLANK gate in the pack fired, GM pages included.
+                if (varVal.StartsWith('-'))
+                    return varVal;
+                return Evaluate(varVal.AsSpan()).ToString();
             }
             // The stripped remainder is not a known variable — so the leading
             // 'd' was NOT a prefix but part of a real property name (DISPID,
@@ -1245,8 +1264,14 @@ public sealed class ExpressionParser
             string? hVal = VariableResolver?.Invoke(hInner);
             if (hVal != null)
             {
-                if (hVal.StartsWith('-') || !TryEvaluate(hVal.AsSpan(), out long hNum))
+                // The mirror of the D above, and converted on the same terms:
+                // upstream runs FormatLLHex(Str_ToLL(sVal)) for anything that does
+                // not start with '-' (CScriptObj.cpp:554-562). Str_ToLL reads the
+                // leading number and ignores the rest, so a value that is not a
+                // clean number becomes one rather than passing through as text.
+                if (hVal.StartsWith('-'))
                     return hVal;
+                long hNum = Evaluate(hVal.AsSpan());
                 return "0" + hNum.ToString("X", System.Globalization.CultureInfo.InvariantCulture);
             }
 

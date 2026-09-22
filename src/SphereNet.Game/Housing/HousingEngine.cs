@@ -307,7 +307,6 @@ public sealed class House
                 current.RemoveItem(item);
                 crate.TryAddItem(item);
             }
-            Objects.ObjBase.ResolveWorld?.Invoke()?.RemoveItem(current);
             current.Delete();
         }
 
@@ -538,7 +537,6 @@ public sealed class House
 
         if (crate.Contents.Count == 0)
         {
-            world?.RemoveItem(crate);
             crate.Delete();
             return;
         }
@@ -731,7 +729,6 @@ public sealed class House
                 if (crate.Contents.Count == 0)
                 {
                     world.RemoveItem(crate);
-                    crate.Delete();
                     continue;
                 }
                 if (bank == null || !bank.TryAddItem(crate))

@@ -1,0 +1,367 @@
+using SphereNet.Core.Enums;
+using SphereNet.Core.Types;
+using SphereNet.Game.AI;
+using SphereNet.Game.Clients;
+using SphereNet.Game.Magic;
+using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Skills;
+using SphereNet.Game.Scripting;
+using TriggerArgs = SphereNet.Game.Scripting.TriggerArgs;
+
+namespace SphereNet.Server;
+
+public static partial class Program
+{
+    // Reinstall startup-gated callbacks after RESYNC as well: Source-X checks
+    // IsTrigUsed at runtime. Removed hooks must return to the cheap null path.
+    private static void RefreshScriptTriggerHooks()
+    {
+        _triggerDispatcher?.BuildUsedTriggerCache();
+        RefreshCharacterScriptHooks();
+        RefreshNpcScriptHooks();
+    }
+
+    private static void RefreshCharacterScriptHooks()
+    {
+        Character.OnNotoSend = null;
+        Character.OnEffectAdd = null;
+        Character.OnRevealing = null;
+        Character.OnSpellEffectAdd = null;
+        Character.OnSpellEffectRemove = null;
+        Character.OnSpellEffectTick = null;
+        Character.OnMemoryEquip = null;
+        Character.OnSkillUseQuickDetailed = null;
+        Character.OnNpcSeeNewPlayer = null;
+        Character.OnPersonalSpace = null;
+        Character.OnPetDesert = null;
+        Character.OnJailed = null;
+        Character.OnEnvironChange = null;
+        SkillEngine.OnSkillGainCheck = null;
+        Character.OnSkillChange = null;
+        if (_triggerDispatcher == null) return;
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NotoSend))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnNotoSend = (viewer, subject, noto) =>
+            {
+                var args = new TriggerArgs { CharSrc = viewer, N1 = noto };
+                _triggerDispatcher.FireCharTrigger(subject, CharTrigger.NotoSend, args);
+                return (byte)Math.Clamp(args.N1, 0, 255);
+            };
+        }
+        // <NOTOGETFLAG uid> script property → full Noto_GetFlag of the subject
+        // as seen by the given viewer.
+        SphereNet.Game.Objects.Characters.Character.ResolveNotoFlag =
+            (subject, viewer) => GameClient.ComputeNotoriety(_world, viewer, subject);
+        // @EffectAdd — fired per applied buff; gate to a null check when unhooked.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.EffectAdd))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnEffectAdd = (target, spellId) =>
+                _triggerDispatcher.FireCharTrigger(target, CharTrigger.EffectAdd,
+                    new TriggerArgs { CharSrc = target, N1 = spellId });
+        }
+        // @Reveal — fired before hidden/invisible state drops; RETURN 1
+        // keeps the character concealed (Source-X CChar::Reveal).
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.Reveal))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnRevealing = ch =>
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Reveal,
+                    new TriggerArgs { CharSrc = ch }) != TriggerResult.True;
+        }
+        // @SpellEffectAdd / @SpellEffectRemove — timed buff lifecycle
+        // (Source-X CCharSpell). ARGN1 = spell id; SRC = caster on add.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectAdd))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnSpellEffectAdd = (target, caster, spellId) =>
+                _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectAdd,
+                    new TriggerArgs { CharSrc = caster ?? target, N1 = spellId });
+        }
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectRemove))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnSpellEffectRemove = (target, spellId) =>
+                _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectRemove,
+                    new TriggerArgs { CharSrc = target, N1 = spellId });
+        }
+        // @SpellEffectTick — Source-X SPELLFLAG_TICK bridge on the native
+        // poison tick (the era's only TICK consumer). Script contract:
+        // ARGN1 = spell id, ARGN2 = strength, ARGO = memory shim (BASEID =
+        // the spell's RUNE_ITEM, MOREY = strength, LINK = poisoner);
+        // LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE seeded, script writes read
+        // back from the shared pool; RETURN 1 destroys the effect (cure).
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectTick) ||
+            _triggerDispatcher.IsTriggerNameUsed("EffectTick"))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnSpellEffectTick = (victim, ctx) =>
+            {
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.Set("EFFECT", ctx.Damage.ToString());
+                locals.Set("DELAY", (ctx.DelayMs / 1000.0).ToString(
+                    "0.###", System.Globalization.CultureInfo.InvariantCulture));
+                locals.Set("CHARGES", ctx.Charges.ToString());
+                locals.Set("DAMAGETYPE", "08"); // dam_poison
+                var spellDef = _spellEngine?.GetSpellDef((SpellType)ctx.SpellId);
+                var memory = new SpellMemoryShim
+                {
+                    SpellId = ctx.SpellId,
+                    BaseId = spellDef?.RuneItemId ?? 0,
+                    MoreY = ctx.Strength,
+                    LinkUid = ctx.SourceUid.IsValid ? ctx.SourceUid.Value : 0,
+                    Name = spellDef?.Name ?? "poison",
+                };
+                var args = new TriggerArgs
+                {
+                    CharSrc = victim,
+                    N1 = ctx.SpellId,
+                    N2 = ctx.Strength,
+                    O1 = memory,
+                    Locals = locals,
+                };
+                if (_triggerDispatcher.FireCharTrigger(victim, CharTrigger.SpellEffectTick, args)
+                    == TriggerResult.True)
+                    return false;
+                // [SPELL n] @EffectTick resource-section stage (Source-X
+                // SPTRIG_EFFECTTICK) — shares the same args/LOCAL pool, so
+                // a section script can adjust EFFECT/DELAY/CHARGES too.
+                if (_triggerDispatcher.FireSpellTrigger((SpellType)ctx.SpellId, "EffectTick",
+                        victim, args) == TriggerResult.True)
+                    return false;
+                ctx.Damage = (int)locals.GetInt("EFFECT", ctx.Damage);
+                ctx.Charges = (int)locals.GetInt("CHARGES", ctx.Charges);
+                if (double.TryParse(locals.Get("DELAY"),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out double delaySec) && delaySec > 0)
+                    ctx.DelayMs = (int)(delaySec * 1000);
+                return true;
+            };
+        }
+        // @MemoryEquip — memory items are created frequently in combat; install
+        // the fire only when a script hooks the item trigger (item IsTrigUsed gate).
+        if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.MemoryEquip))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = mem =>
+                _triggerDispatcher.FireItemTrigger(mem, ItemTrigger.MemoryEquip,
+                    new TriggerArgs { ItemSrc = mem });
+        }
+        // @SkillUseQuick — fires per quick skill check; install only when hooked
+        // (IsTrigUsed gate). N1 = skill, N2 = difficulty; RETURN 1 cancels the use.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillUseQuick) ||
+            _triggerDispatcher.IsTriggerNameUsed("UseQuick"))
+        {
+            // N1 = skill, N2 = difficulty, N3 = rolled result (1/0). RETURN 1
+            // cancels the use; otherwise ARGN3 is read back as the final result.
+            SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickDetailed =
+                (SphereNet.Game.Objects.Characters.Character ch, int skillId, ref int difficulty, int result) =>
+            {
+                var args = new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty, N3 = result };
+                var triggerResult = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick, args);
+                difficulty = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                if (triggerResult == TriggerResult.True) return -1;
+                return (int)Math.Clamp(args.N3, 0L, 1L);
+            };
+        }
+        // @NPCSeeNewPlayer — install only when hooked so the per-NPC perception
+        // scan is skipped entirely otherwise. O1 = the newly-seen player.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeNewPlayer))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = (npc, player) =>
+                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSeeNewPlayer,
+                    new TriggerArgs { CharSrc = npc, O1 = player });
+        }
+        // @PersonalSpace — fired on a shove; low frequency, no gate needed.
+        SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (mover, blocker) =>
+            _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,
+                new TriggerArgs { CharSrc = mover, O1 = blocker });
+
+        // @PetDesert — fired on the pet when loyalty hits zero; RETURN 1 cancels
+        // the desertion. O1 = owner (may be null if it could not be resolved).
+        SphereNet.Game.Objects.Characters.Character.OnPetDesert = (pet, owner) =>
+            _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetDesert,
+                new TriggerArgs { CharSrc = pet, O1 = owner }) == TriggerResult.True;
+
+        // @Jail — fired on a character sent to jail. N1 = sentence minutes (0 = indefinite).
+        SphereNet.Game.Objects.Characters.Character.OnJailed = (ch, minutes) =>
+            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Jail,
+                new TriggerArgs { CharSrc = ch, N1 = minutes });
+
+        // @EnvironChange — fired when a character's perceived light level changes
+        // (surface/dungeon boundary). N1 = new light level. Only fires on an
+        // actual change (UpdateEnvironLight), which is infrequent.
+        SphereNet.Game.Objects.Characters.Character.OnEnvironChange =
+            _triggerDispatcher.FireEnvironChange;
+
+        // @SkillGain (Source-X Skill_Experience) — pre-roll hook: fires before the
+        // gain roll so a script can tune the gain chance (ARGN2) / effective cap
+        // (ARGN3) or RETURN 1 to cancel the attempt. Installed only when hooked so
+        // unscripted shards skip it on every gain attempt.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillGain) ||
+            _triggerDispatcher.IsTriggerNameUsed("Gain"))
+        {
+            SkillEngine.OnSkillGainCheck =
+                (SphereNet.Game.Objects.Characters.Character ch, SkillType skill, ref int chance, ref int skillMax) =>
+            {
+                var args = new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = chance, N3 = skillMax };
+                bool cancel = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillGain, args) == TriggerResult.True;
+                chance = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                skillMax = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N3);
+                return cancel;
+            };
+        }
+
+        // @SkillChange as a cancelable SETTER guard (Source-X) for RUNTIME value
+        // changes — GM .ADDSKILL and script property assignment (MAGERY=80) — so a
+        // script can adjust the new value (ARGN2) or RETURN 1 to veto it. Gated so
+        // unscripted shards skip it; load/spawn/decay/gain use the raw setter and do
+        // NOT fire here (gain keeps its own post @SkillChange notification below).
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillChange))
+        {
+            SphereNet.Game.Objects.Characters.Character.OnSkillChange =
+                (SphereNet.Game.Objects.Characters.Character ch, SkillType skill, int oldVal, ref int newVal) =>
+            {
+                var args = new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = newVal - oldVal };
+                bool cancel = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange, args) == TriggerResult.True;
+                newVal = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                return cancel;
+            };
+        }
+
+
+    }
+
+    private static void RefreshNpcScriptHooks()
+    {
+        if (_npcAI == null) return;
+        _npcAI.OnNpcLookAtChar = null;
+        _npcAI.OnNpcActFight = null;
+        _npcAI.OnNpcActWander = null;
+        _npcAI.OnNpcActFollow = null;
+        _npcAI.OnNpcActCast = null;
+        _npcAI.OnNpcLookAtItem = null;
+        _npcAI.OnNpcSeeWantItem = null;
+        _npcAI.OnNpcAction = null;
+        if (_triggerDispatcher == null) return;
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtChar))
+            _npcAI.OnNpcLookAtChar = (npc, target) =>
+                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtChar,
+                    new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFight))
+            _npcAI.OnNpcActFight = (npc, target, dist, motivation) =>
+            {
+                // Source-X NPC_Act_Fight args: ARGN1=distance, ARGN2=motivation,
+                // ARGO=target. The script may flip motivation (ARGN2 readback,
+                // wired through RunWrapped) or force a cast via LOCAL.skill +
+                // LOCAL.spell. RETURN 1 fully handles the action.
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                var args = new TriggerArgs
+                {
+                    CharSrc = target, O1 = target,
+                    N1 = dist, N2 = motivation, Locals = locals
+                };
+                var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight, args);
+                var forcedSkill = locals.Has("skill")
+                    ? (SkillType)(int)locals.GetInt("skill") : SkillType.None;
+                var forcedSpell = locals.Has("spell")
+                    ? (SpellType)(int)locals.GetInt("spell") : SpellType.None;
+                // LOCAL.skiphardcoded = bypass the engine's breath/throw specials
+                // (Source-X fSkipHardcoded) while keeping flee/magery/melee.
+                bool skipHardcoded = locals.Has("skiphardcoded") && locals.GetInt("skiphardcoded") != 0;
+                return new NpcAI.NpcFightDecision(
+                    res == TriggerResult.True, SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2), forcedSkill, forcedSpell, skipHardcoded);
+            };
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActWander))
+            _npcAI.OnNpcActWander = npc =>
+                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander,
+                    new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFollow))
+            _npcAI.OnNpcActFollow = (npc, target, followArgs) =>
+            {
+                // Source-X NPC_Act_Follow args: ARGN1 = flee, ARGN2 = the distance
+                // to keep, ARGN3 = move away, ARGO = the target - seeded before the
+                // trigger and read back when it falls through (CCharNPCAct.cpp:1357).
+                // The old adapter passed none of them and threw the answer away as
+                // a bool.
+                var args = new TriggerArgs
+                {
+                    CharSrc = target,
+                    O1 = target,
+                    N1 = followArgs.Flee ? 1 : 0,
+                    N2 = followArgs.MaxDistance,
+                    N3 = followArgs.MoveAway ? 1 : 0,
+                };
+
+                var result = _triggerDispatcher.FireCharTrigger(
+                    npc, CharTrigger.NPCActFollow, args);
+                if (result == TriggerResult.True)
+                    return SphereNet.Game.AI.NpcAI.FollowTriggerResult.GiveUp;
+
+                // NOTE: a script's RETURN 0 cannot be told from falling off the end
+                // here - ScriptInterpreter maps zero onto Default - so only a native
+                // handler can answer Handled today. Recorded as an open item rather
+                // than pretended away.
+                if (result == TriggerResult.False)
+                    return SphereNet.Game.AI.NpcAI.FollowTriggerResult.Handled;
+
+                followArgs.Flee = args.N1 != 0;
+                followArgs.MaxDistance = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                followArgs.MoveAway = args.N3 != 0;
+                return SphereNet.Game.AI.NpcAI.FollowTriggerResult.Continue;
+            };
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActCast))
+            _npcAI.OnNpcActCast = (npc, target, spell, wandUse) =>
+            {
+                // Source-X NPC_FightMagery args: ARGN1=spell, ARGN2=wand-use,
+                // ARGO=target, LOCAL.HealThreshold seeded from config. RETURN 1
+                // aborts the cast and reverts to melee; otherwise ARGN1 carries
+                // the (possibly script-overridden) spell back (via RunWrapped),
+                // and LOCAL.target = a uid redirects the cast (Source-X REF1).
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("HealThreshold", _config.NpcHealThreshold);
+                var args = new TriggerArgs
+                {
+                    CharSrc = target, O1 = target, N1 = (int)spell,
+                    N2 = wandUse ? 1 : 0, Locals = locals
+                };
+                var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast, args);
+                if (res == TriggerResult.True)
+                    return new NpcAI.NpcCastDecision(true, spell, target); // abort → melee
+                var newSpell = (SpellType)args.N1;
+                if (newSpell == SpellType.None) newSpell = spell;
+                var newTarget = target;
+                if (locals.Has("target"))
+                {
+                    var redirect = _world.FindChar(new Serial((uint)locals.GetInt("target")));
+                    if (redirect != null && !redirect.IsDeleted)
+                        newTarget = redirect;
+                }
+                return new NpcAI.NpcCastDecision(false, newSpell, newTarget);
+            };
+        bool npcLookAtItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem);
+        bool npcSeeWantItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeWantItem);
+        if (npcLookAtItemUsed || npcSeeWantItemUsed)
+            _npcAI.OnNpcLookAtItem = (npc, item, dist, want) =>
+            {
+                // Source-X NPC_LookAtItem contract (CCharNPCAct.cpp:954):
+                // ARGN1 = distance, ARGN2 = want-score (writable), ARGO =
+                // the item. RETURN 1 = script took the item over, RETURN 0
+                // = ignore it; otherwise ARGN2 reads back.
+                var args = new TriggerArgs
+                {
+                    CharSrc = npc, O1 = item, ItemSrc = item, N1 = dist, N2 = want
+                };
+                var res = npcLookAtItemUsed
+                    ? _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem, args)
+                    : TriggerResult.Default;
+                return new NpcAI.NpcLookDecision(
+                    res == TriggerResult.True, res == TriggerResult.False, SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2));
+            };
+        if (npcSeeWantItemUsed)
+            _npcAI.OnNpcSeeWantItem = (npc, item) =>
+                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSeeWantItem,
+                    new TriggerArgs { CharSrc = npc, O1 = item, ItemSrc = item }) == TriggerResult.True;
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCAction))
+            _npcAI.OnNpcAction = npc =>
+                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCAction,
+                    new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
+
+
+    }
+}

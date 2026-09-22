@@ -23,6 +23,59 @@ namespace SphereNet.Tests;
 [Collection("DefinitionLoaderSerial")]
 public sealed class SpawnDoubleClickVisibilityTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void OwnerDoubleClickStoppedSpawnerRestartsProductionWithoutDialog(bool items, bool configuredPack)
+    {
+        string? root = Environment.GetEnvironmentVariable("SPHERENET_DIALOG_PACK");
+        if (configuredPack && string.IsNullOrWhiteSpace(root)) return;
+        using var lf = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var client = CreateClient(lf, world, new AccountManager(lf), out var player);
+        player.PrivLevel = PrivLevel.Owner;
+        var account = new Account { PrivLevel = PrivLevel.Owner };
+        Character.ResolveAccountForChar = uid => uid == player.Uid ? account : null;
+        if (configuredPack)
+        {
+            var stack = ScriptTestBootstrap.CreateRuntimeStack();
+            foreach (string file in new[] { "defnames/defs_types_hardcoded.scp",
+                "itemdefs/misc/sphere_item_unsorted.scp", "itemdefs/sphere_item_typedefs.scp" })
+                stack.Resources.LoadResourceFile(Path.Combine(root!, file));
+            ScriptTestBootstrap.LoadDefinitions(stack.Resources);
+            client.SetEngines(triggerDispatcher: stack.Dispatcher);
+        }
+        var spawner = MakeInvisibleSpawner(world, player.Position);
+        if (items)
+        {
+            spawner.SpawnChar = null;
+            spawner.ItemType = ItemType.SpawnItem;
+            spawner.SpawnItem = new ItemSpawnComponent(spawner, world)
+                { ItemDefId = 0x0EED, MaxCount = 1, SpawnRange = 0 };
+            spawner.SpawnItem.Stop();
+            spawner.SpawnItem.OnTick(Environment.TickCount64 + 3600000);
+            Assert.Equal(0, spawner.SpawnItem.CurrentCount);
+        }
+        else
+        {
+            spawner.SpawnChar!.Stop();
+            spawner.SpawnChar.OnTick(Environment.TickCount64 + 3600000);
+            Assert.Equal(0, spawner.SpawnChar.CurrentCount);
+        }
+
+        client.HandleDoubleClick(spawner.Uid.Value);
+        Assert.Equal(1, items ? spawner.SpawnItem!.CurrentCount : spawner.SpawnChar!.CurrentCount);
+        client.HandleDoubleClick(spawner.Uid.Value);
+        Assert.Equal(0, items ? spawner.SpawnItem!.CurrentCount : spawner.SpawnChar!.CurrentCount);
+        client.HandleDoubleClick(spawner.Uid.Value);
+        Assert.Equal(1, items ? spawner.SpawnItem!.CurrentCount : spawner.SpawnChar!.CurrentCount);
+        Assert.False(spawner.IsDeleted);
+        Assert.DoesNotContain(TestHarness.GetQueuedPackets(client.NetState),
+            packet => packet.Span[0] is 0xB0 or 0xDD);
+    }
+
     [Fact]
     public void GmDoubleClick_InvisibleSpawner_TriggersSpawn_AndKeepsItem()
     {

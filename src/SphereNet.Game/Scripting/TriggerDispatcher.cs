@@ -38,6 +38,8 @@ public sealed class TriggerArgs
     /// the chain, so a script's own REF writes are visible afterwards.</summary>
     public Dictionary<int, string>? Refs { get; set; }
 
+    public Dictionary<string, string>? Floats { get; set; }
+
     /// <summary>The number the trigger's <c>RETURN</c> named, when it named one.
     /// The reference's own contracts use negative returns (@HitCheck's -1 and -2),
     /// which a true/false result cannot carry. Null when no block returned.</summary>
@@ -323,8 +325,11 @@ public sealed class TriggerDispatcher
             }
         }
 
+        // CChar::OnTrigger executes an event resource at most once across
+        // dynamic EVENTS, NPC TEVENTS and configured global character events.
+        var executedEvents = new HashSet<ResourceLink>();
         // 2. Dynamic EVENTS on this character
-        var evResult = RunObjectHandlers(ch, trigName, args);
+        var evResult = RunObjectHandlers(ch, trigName, args, executedEvents);
         if (evResult == TriggerResult.True)
         {
             if (ScriptDebug)
@@ -332,8 +337,8 @@ public sealed class TriggerDispatcher
             return TriggerResult.True;
         }
 
-        // 3. TEVENTS from CHARDEF definition (type-level event scripts)
-        if (Resources != null && Runner != null)
+        // 3. NPC TEVENTS and CHARDEF stages do not apply to player characters.
+        if (!ch.IsPlayer && Resources != null && Runner != null)
         {
             var charDef = Definitions.DefinitionLoader.GetCharDef(ch.CharDefIndex);
             if (charDef != null)
@@ -341,7 +346,7 @@ public sealed class TriggerDispatcher
                 foreach (var tevRid in charDef.Events)
                 {
                     var tevLink = Resources.GetResource(tevRid);
-                    if (tevLink == null) continue;
+                    if (tevLink == null || !executedEvents.Add(tevLink)) continue;
                     var result = RunWrapped(tevLink, trigName, ch, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
@@ -371,7 +376,7 @@ public sealed class TriggerDispatcher
             }
         }
         var globalEventResult = RunResourceEventHandlers(
-            ch.IsPlayer ? GlobalPlayerEvents : GlobalPetEvents, trigName, ch, args);
+            ch.IsPlayer ? GlobalPlayerEvents : GlobalPetEvents, trigName, ch, args, executedEvents);
         if (globalEventResult == TriggerResult.True)
             return TriggerResult.True;
 
@@ -818,7 +823,8 @@ public sealed class TriggerDispatcher
         IReadOnlyList<ResourceId> eventResources,
         string trigName,
         IScriptObj target,
-        TriggerArgs args)
+        TriggerArgs args,
+        HashSet<ResourceLink>? executedEvents = null)
     {
         if (Resources == null || Runner == null || eventResources.Count == 0)
             return TriggerResult.Default;
@@ -826,7 +832,7 @@ public sealed class TriggerDispatcher
         foreach (var eventRid in eventResources)
         {
             var link = Resources.GetResource(eventRid);
-            if (link == null) continue;
+            if (link == null || (executedEvents != null && !executedEvents.Add(link))) continue;
 
             var result = RunWrapped(link, trigName, target, args);
             if (result == TriggerResult.True)
@@ -968,10 +974,22 @@ public sealed class TriggerDispatcher
     /// Iterates the object's runtime Events list and runs matching triggers from EVENTS scripts.
     /// Also checks TAG.EVENT_* overrides for backward compat.
     /// </summary>
-    private TriggerResult RunObjectHandlers(IScriptObj obj, string trigName, TriggerArgs args)
+    /// <summary>"TAG.EVENT_&lt;TRIGGER&gt;" for a trigger name, built once per name.
+    /// The lookup key was composed (upper-case fold plus concatenation, two strings)
+    /// on every single trigger fire of every object, and the set of trigger names is
+    /// small and fixed.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _eventTagKeys = new(StringComparer.OrdinalIgnoreCase);
+    private static string EventTagKey(string trigName) =>
+        _eventTagKeys.GetOrAdd(trigName, static n => "TAG.EVENT_" + n.ToUpperInvariant());
+
+    private TriggerResult RunObjectHandlers(IScriptObj obj, string trigName, TriggerArgs args,
+        HashSet<ResourceLink>? executedEvents = null)
     {
+        // Cross-character/item mirrors use this helper directly; retain the
+        // character deduplication rule there without changing item list semantics.
+        if (obj is Character) executedEvents ??= new HashSet<ResourceLink>();
         // Check TAG.EVENT_<trigName> override first
-        if (obj.TryGetProperty("TAG.EVENT_" + trigName.ToUpperInvariant(), out string value))
+        if (obj.TryGetProperty(EventTagKey(trigName), out string value))
         {
             if (value == "1")
                 return TriggerResult.True;
@@ -989,15 +1007,23 @@ public sealed class TriggerDispatcher
 
             if (events != null)
             {
-                var snapshot = events.ToArray();
-                foreach (var eventRid in snapshot)
+                // Source-X walks the live list: additions participate immediately;
+                // shrinking it backs up the cursor so self-removal skips no handler.
+                int originalCount = events.Count;
+                for (int index = 0; index < events.Count; index++)
                 {
+                    var eventRid = events[index];
                     var eventLink = Resources.GetResource(eventRid);
-                    if (eventLink == null) continue;
+                    if (eventLink == null || (executedEvents != null && !executedEvents.Add(eventLink))) continue;
 
                     var result = RunWrapped(eventLink, trigName, obj, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
+                    if (events.Count < originalCount)
+                    {
+                        index--;
+                        originalCount = events.Count;
+                    }
                 }
             }
         }
@@ -1015,12 +1041,16 @@ public sealed class TriggerDispatcher
     private TriggerResult RunWrapped(SphereNet.Scripting.Resources.ResourceLink link,
         string trigName, IScriptObj obj, TriggerArgs args)
     {
+        // Avoid allocating argument pools for a retained definition with no such trigger.
+        if (link.StoredKeys != null && !link.TryGetTriggerBody(trigName, out _))
+            return TriggerResult.Default;
         var wrapped = WrapArgs(args);
         var result = Runner!.RunTriggerByName(link, trigName, obj, args.ScriptConsole, wrapped);
         args.N1 = wrapped.Number1;
         args.N2 = wrapped.Number2;
         args.N3 = wrapped.Number3;
         args.S1 = wrapped.ArgString; // ARGS the script rewrote (Source-X m_s1 readback)
+        args.O1 = wrapped.Object1;
         // The raw RETURN number, for the triggers whose contract is numeric.
         if (wrapped.ReturnValue != null && long.TryParse(wrapped.ReturnValue, out long retNum))
             args.ReturnNumber = retNum;
@@ -1042,8 +1072,9 @@ public sealed class TriggerDispatcher
         wrapped.Object2 = args.CharSrc ?? (IScriptObj?)args.ItemSrc;
         // Reference, not copy: every chain step's wrapped args share the one
         // LOCAL pool, so cross-step and engine readback semantics hold.
-        wrapped.SharedLocals = args.Locals;
-        wrapped.SharedRefs = args.Refs;
+        wrapped.SharedLocals = args.Locals ??= new();
+        wrapped.SharedRefs = args.Refs ??= new();
+        wrapped.SharedFloats = args.Floats ??= new(StringComparer.OrdinalIgnoreCase);
         return wrapped;
     }
 

@@ -4,6 +4,274 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - SERV.URL degerini ini'den oku
+------------------------------------------------------------------------
+DUZELTME - SERV.URL artik [SPHERE] URL= degerini dondurur; ust kaynak da m_sURL'i
+           dondurur (CServerDef.cpp:403, :492). Bizde sabit "localhost" yaziyordu ve
+           anahtar hic okunmuyordu; bu yuzden paketin web linkleri sunucunun kostugu
+           makineyi gosteriyordu. Referans paket yardim sayfasi linklerini ve bagis
+           sayfasini sekiz ayri yerde SERV.URL uzerinden kuruyor. Semasiz bir adresi
+           tarayici baslatici cozemez; Windows'ta "bunu nasil acmak istersiniz"
+           penceresi tam ekran istemcinin arkasinda acilir ve oyunun icinden bakinca
+           istemci donmus gibi gorunur.
+TEST - Ini degeri oldugu gibi dondurulur, anahtar yoksa bos kalir. Ayrica anahtara
+       sema yazilamayacagi da sabitlendi: "//" satirin herhangi bir yerinde yorum
+       baslatir ve ust kaynagin okuyucusu da orada keser (CScript.cpp:406); yani
+       anahtar cipla adresi tutar, semayi paket ekler.
+TEST - WEBLINK verb'unun 0xA5 cercevesi: opcode, toplam uzunluk, adres ve sifir;
+       bildirilen uzunluk gonderilen baytlarla birebir - bu paketin bir istemciyi
+       bozabilecegi tek yol odur - ve bos adres hicbir sey gondermez.
+
+[2026-09-22] - Acilmamis gump yanitini sessizce dusur
+------------------------------------------------------------------------
+DUZELTME - Istemciye hic gonderilmemis bir id tasiyan gump yaniti yine dusuruluyor,
+           ama artik uyari basmadan. Ust kaynagin ayni denetimi de dusurur ve hicbir
+           sey loglamaz (PacketGumpDialogRet::onReceive, receive.cpp:2240-2243).
+           Bizimki oyuncunun adini ve "forged" kelimesini iceren bir UYARI basiyordu;
+           oysa bunu siradan bir istemci normal oyunda uretiyor: eski tip MENU (0x7C)
+           gump degildir ve id'si hicbir gump haritasinda yoktur, ama pencere
+           kapaninca secimi tasiyan 0x7D'nin yani sira o id icin bir 0xB1 de gider.
+           Boylece her .edit, komutu kullanani paket sahteciligiyle sucluyordu.
+           Denetim aynen duruyor, olay da kaydediliyor - debug seviyesinde.
+TEST - .edit esya listesini kapatmak uyari uretmez ve ardindan gelen menu secimi
+       calismaya devam eder; istemciye verilmemis bir id dusurulur ve kaydedilir.
+
+[2026-09-22] - D ve H deger onekleri her zaman sayi dondursun
+------------------------------------------------------------------------
+DUZELTME - <dX> ve <hX> degerini ust kaynaktaki gibi kosulsuz cevirir: yalnizca '-'
+           ile baslayan deger oldugu gibi kalir, sayi olmayan her sey sifira doner
+           (CScriptObj.cpp:543-562, Str_ToLL uzerinde FormatLLVal/FormatLLHex).
+           SphereNet yalnizca deger '0' ile basliyorsa ceviriyor, aksi halde ham
+           metni geri veriyordu.
+DUZELTME - Bu, referans paketteki tum ISBLANK kapilarini bozuyordu. Paketin IsBlank
+           fonksiyonu once <ASC> aliyor - ust kaynagin ASC'si gibi bosluklarla
+           ayrilmis hex kod listesi - sonra ELSEIF (<dLOCAL.ASC> == 0) soruyor. Metin
+           oldugu gibi gecince kosul "68 65 6C 6C 6F == 0" oluyordu; degerlendirici
+           bastaki 68'i okuyup, Sphere'de hep oldugu gibi sonraki simgede duruyor ve
+           "== 0" hic uygulanmiyordu. Kapi bos olmayan her metin icin DOGRU cikiyor,
+           yazilan GM page "lutfen sorununuzu belirtiniz" ile cope gidiyordu; ayni
+           kapi vendor, destek, market ve bilgi dialoglarini da koruyor.
+TEST - Ondalik onek hex, ondalik, metin ve sayi-artik-simge durumlarinda sayi
+       dondurur; negatifi oldugu gibi birakir; adi D ile baslayan uyeyi yemez; ve
+       deger uzerindeki karsilastirma gercekten karsilastirmadir, sadece bastaki
+       sayi degil. Hex onek paketindeki metin durumu, kendi basliginin gosterdigi
+       kaynak satirlariyla hizalandi.
+TEST - Metin kutusu id'si 0 olan dialog girdisi; dogrudan ve script fonksiyonu
+       uzerinden, canli GM page kapisinin bicimiyle sinandi.
+
+[2026-09-22] - Yazili noktalari her Sphere ayracinda oku
+------------------------------------------------------------------------
+DUZELTME - Koordinat listesi virgul, BOSLUK veya tab ile ayrilir; ust kaynak her
+           noktayi boyle okur (CPointBase::Read, Str_ParseCmds'e " ,	" verir).
+           Sadece virgulle ayirmak atamanin tamamini sessizce dusuruyordu: canli
+           harita paketinde bir AREADEF "P=1978 2080,0,0" yaziyor, o bolge P'siz
+           yukleniyor, SERV.AREA.<ad>.P okuyan script eksik P'nin karsiligi olan
+           0,0,0,0 aliyor ve yardim menusundeki Stuck oyuncuyu yurunemeyen 0,0
+           noktasina isinliyordu. AREADEF P= ve script P= / GO hedefi icin gecerli.
+DUZELTME - Ardisik bosluklar tek ayraca iner, virgul cevresindeki bosluk yutulur
+           (Str_Parse her argumandan once bosluk atlar); ardisik virguller ust
+           kaynaktaki gibi bos bileseni korur, yani "bu koordinata dokunma" calisir.
+TEST - Bir noktanin her yazim bicimi ayni okunur, ardisik virgul bos bilesenini
+       korur, bos metin hicbir bilesen uretmez.
+
+[2026-09-22] - Kotasi eksik spawn noktasini uyanik tut
+------------------------------------------------------------------------
+DUZELTME - Yaratik borcu olan spawner artik sektoruyle birlikte uyumuyor. Ust kaynak
+           borclu oldugu surece spawn esyasina CAN_O_NOSLEEP koyuyor ("Avoid the
+           spawn point to sleep until job is finish", CCSpawn::DelObj / KillChildren)
+           ve kota dolunca kaldiriyor (CCSpawn::AddObj). Uyuyan sektor timer kapisi
+           bayragi sadece ITEMDEF'ten okuyordu; bu yuzden kimse yokken yaratigini
+           kaybeden spawner hicbir seyin calistirmayacagi bir sure yazip bir oyuncu
+           gelene kadar bos kaliyordu. NeverSleeps artik etkin can-bayraklarini
+           okuyor: tanim XOR CANMASK.
+TEST - Script REMOVE veya baska bir silme ile kaybedilen cocuk spawner'i yeniden
+       kuruyor ve bu kayit dunya kuyruguna da giriyor; operatorun kendi temizligi
+       spawner'i park halinde birakiyor - ikinci cift tiklamanin baslatici olmasinin
+       sebebi bu.
+
+[2026-09-22] - Konsol loglamasini ana donguden ayir
+------------------------------------------------------------------------
+DUZELTME - Konsol ve WinForms log ciktisi sinirli bir arka plan yazicisindan gecer;
+           log satiri yazmak artik yazan is parcacigini bekletemez. Konsol sink'i
+           cagiran is parcaciginda yazar ve SCRIPTDEBUG veya DEBUGPACKETS acikken
+           o is parcacigi ana dongudur, saniyede binlerce satir. Canli sunucuda tek
+           bir esya timer cagrisi 15,4 sn, apply asamasi 4,0 sn olctu; ikisinde de
+           GC sifir ve tahsis yok denecek kadar az - mesgul degil, bloke bir is
+           parcaciginin izi - oysa ayni kesitte tick p50 degeri 0,2 ms.
+DUZELTME - Tasma bekletilmez, dusurulur; yazici yetisince dusurulen satir sayisi
+           raporlanir, boylece logdaki bosluk kendini soyler. Hata veren bir sink
+           artik yazici is parcacigini oldurup kalan satirlari susturmaz.
+           Dosya sink'i degismedi: kalici kayit odur.
+TEST - Ic sink kilitliyken Emit doner, sira korunur, tasma raporlanir ve hata
+       firlatam bir sink sonraki satirlari susturmaz.
+
+[2026-09-22] - Script yurutme yolunda satir basina tahsisi azalt
+------------------------------------------------------------------------
+PERF - ScriptKey komut adini buyuk harfe cevrilmis halde saklar; her calistirmada
+       degil, satir ayristirilirken bir kez hesaplanir.
+PERF - Satir basina uretilen tani etiketi yalnizca scriptdebug acikken olusur.
+       Tek okuyucusu (ExpressionParser.ReportUnresolved) bayrak kapaliyken hemen
+       donuyordu; yani her calisan satirda iki string bosa gidiyordu.
+PERF - Yorumlayicinin degisken ve fonksiyon cozuculeri, her cagrida yeniden
+       olusturulan closure yerine kaydedilip geri yuklenen bir baglam uzerinde
+       sabit delegelerdir. Her cozulen <X> ve her IF kosulu bunun icin dort nesne
+       ayiriyordu.
+PERF - Dongu govdesi kopya degil, ayristirilmis govde uzerine bir penceredir.
+       WHILE ve sayisal FOR govdeyi her YINELEMEDE bastan kopyaliyordu.
+PERF - FORITEMS/FORCHARS/FOROBJS/FORCLIENTS/FORPLAYERS, ExpressionParser ve LINQ
+       Where/OrderBy/Cast/ToArray zinciri yerine dogrudan sektor yuruyusuyle secer;
+       duz tamsayi mesafe ifade cozumleyicisine hic ugramaz. Secim ve siralama ayni
+       kaldi: once esyalar, sonra karakterler.
+PERF - Icinde '|' ve '&' bulunmayan IF/WHILE kosullari || / && ayiricisini atlar.
+       Tek operatorlu bit islemleri tam yoldan gecmeye devam eder.
+PERF - TAG.EVENT_<tetikleyici> arama anahtari tetikleyici adi basina bir kez kurulur.
+       Canli paketteki 870 esyalik TIMERD 1 arenasinda, Release derlemesi:
+       @Timer calistirmasi basina 6,64 KB -> 3,38 KB ve 9,7 us -> 8,6 us.
+TEST - Kisayollarin dayandigi varsayimlar sabitlendi: yeniden ayristirmada buyuk
+       harf onbelleginin tazelenmesi, ic ice cozumde baglamin geri yuklenmesi,
+       kosul kisayolunun ayiriciyla ayni sonucu vermesi (bit islemi & ve | dahil),
+       dongu penceresi sinirlari ve mesafe sorgusunun iki yolunun ortusmesi.
+
+[2026-09-22] - Uyuyan sektorde yerdeki esya timerlarini durdur
+------------------------------------------------------------------------
+DUZELTME - Yerdeki bir esya, sektoru uyurken @Timer calistirmaz. Source-X
+           CSector::_GoSleep / CObjBase::_GoSleep (esya tick listesinden cikar) ve
+           CItem::_OnTick (tetikleyici reddedilir) ile ayni. Sure kaybolmaz: sektor
+           uyaninca esya yeniden kaydedilir, gecikmis timer o tickte bir kez calisir.
+DUZELTME - Sektorler Source-X'teki gibi uyur halde baslar. Hic oyuncu girmemis
+           sektor kendini uyanik bildiriyordu; bayragi okuyan her sey dokunulmamis
+           haritayi calisiyor sayiyordu.
+DUZELTME - ITEMDEF uzerindeki CAN=O_NOSLEEP, sektor uyurken tek bir yer esyasinin
+           timerini tam tutar (Source-X CObjBase::_TickableStateOverride).
+           SECF_NoSleep sektoru, SECTORSLEEP=0 tum sunucuyu muaf tutmayi surdurur.
+DUZELTME - Giyili, konteyner icindeki ve hic yerlestirilmemis esyalar bulunduklari
+           yerde tam calisir; hicbir sektorun esya listesine ait degiller (Source-X
+           m_Items de onlari tutmaz). TIMERF degismedi, her yerde tam calisir.
+DUZELTME - Timer denetimi uyuyan esyalari yeniden kuyruga almaz; uyuyan esyaya
+           kurulan timer sektor uyanana kadar kuyruga girmez. Uyanik sektore tasinan
+           esya varista uyandirilir.
+TEST - Uyuyan sektor timer sozlesmesi yol yol guncellendi: ertelenen yer timerlari,
+       gecikmis timerin uyanista bir kez calismasi, ayni sektorde O_NOSLEEP ciftinin
+       ayrismasi, konteyner icindeki esyanin tamligi.
+BELGE - ARCHITECTURE.md timer tablosunda yer esyasi kurali giyili/konteyner
+        kuralindan ayri yazildi.
+
+[2026-09-22] - Script mesafe dongulerini sektor aramasina tasi
+------------------------------------------------------------------------
+DUZELTME - FORITEMS/FORCHARS/FOROBJS/FORCLIENTS/FORPLAYERS, Source-X CWorldSearch
+           gibi yakin sektorleri arar; her cagrida tum nesneleri kopyalayip taramaz.
+           Sik TIMERD 1 / FORITEMS 0 scriptleri dunya boyutunda dizi ayirmaz.
+DUZELTME - Genis mesafe aramalari da haritanin mevcut sektorleriyle sinirlanir.
+TEST - Uzak nesne sayisinin tahsise etkisi, harita/sektor sinirlari, once esya
+       sirasi ve sonuc kopyasi sinandi. Istege bagli yerel save timer olcumu eklendi.
+
+[2026-09-22] - Dunya tick gecikmesini ve bellek tahsisini ayristir
+------------------------------------------------------------------------
+DUZELTME - Ayni esya/deadline timer kaydi cogalmaz. Timer kurma veya konteyner
+           takibi, kendini kuran callback'i ayni tick icinde tekrar calistiramaz.
+TANI - world_tick_detail logu saat, sektor, bakim, TIMERF ve esya timer
+       asamalarindan hangisinin sure ve bellek tahsisinde agir oldugunu gosterir.
+TANI - Agir timer cagrilarinda nesne UID ve base ID yazilir. Loglar sinirlidir;
+       normal tick olcum noktalari bellek ayirmaz, oyun zamanlamasi degismez.
+TEST - Bellek tahsis kaynagi, log siniri ve olcum tahsis maliyeti sinandi.
+       Tek cagri yerine 100 cagri hatasi uretildi; iki tick modunda dogrulandi.
+
+[2026-09-22] - Karakter body degisikligini olusturma olayindan ayir
+------------------------------------------------------------------------
+DUZELTME - BODY/CHARDEF degisikligi ve save/giris tanim onarimi artik @Create
+           olayini yeniden calistirmaz. Olusturma scriptinin BODY degistirmesi,
+           ayni karakterin olusturulmasini tekrar tekrar tetiklemez.
+DUZELTME - Yeni SERV.NEWNPC ve summon yollarinda @Create acikca korunur.
+TEST - Oyuncu/NPC body degisikligi, GM body ile giris onarimi ve olusturma
+       olayinda body degistirmenin @Create'e tekrar girmemesi sinandi.
+
+[2026-09-22] - Durdurulmus spawnlari cift tiklama ile yeniden calistir
+------------------------------------------------------------------------
+DUZELTME - Bos NPC/esya spawnina cift tiklamak, Source-X gibi dogrudan uretim
+           yapmadan once dahili STOP durumunu temizler.
+TEST - Owner yetkisiyle gorunmez worldgem uzerinde STOP sonrasi yeniden
+       uretim ve dialog acmadan uret/sil/uret sirasi sinandi.
+
+[2026-09-22] - Calisma zamani script baglantilarini ve karakter olaylarini duzelt
+------------------------------------------------------------------------
+DUZELTME - RESYNC tetikleyici kullanimini taradiktan sonra karakter ve NPC
+           baglantilarini yeniler; eklenen olaylar acilir, kaldirilanlar kapanir.
+DUZELTME - Buyu EffectTick ve skill Gain/UseQuick kaynak olaylari, karakter
+           tetikleyicisi tanimli olmasa da motor tarafindan calistirilir.
+DUZELTME - Karakter EVENTS, NPC TEVENTS ve global olaylarda ayni kaynak,
+           canli listeden silme sirasinda da her cagri icin bir kez calisir.
+DUZELTME - Oyunculara NPC TEVENTS ve CHARDEF tetikleyici govdeleri uygulanmaz.
+TEST - Resync ile olay ekleme/kaldirma, yenilenen script govdeleri, yalniz
+       kaynakta tanimli buyu/skill olaylari ve NPC/oyuncu ayrimi sinandi.
+
+[2026-09-22] - Canli olay zincirlerini ve kaynak listesi islemlerini koru
+------------------------------------------------------------------------
+DUZELTME - EVENTS ve DSPEECH ekleme/cikarma komutlarini sirayla uygular;
+           coklu isimler mevcut listeyi silmez; -* ve -0 listeyi temizler.
+DUZELTME - Esya/karakter olaylari Source-X gibi canli listeyi izler;
+           yeni eklenen ve kendisini cikaran olaylar dogru sirayla islenir.
+DUZELTME - Onceden hazirlanmamis LOCAL/REF/FLOAT havuzlari olay zincirinde
+           paylasilir; ARGO degisiklikleri sonraki olaya ve motora aktarilir.
+DUZELTME - Bos REF ve ARGN eski degeri temizler; TRY TIMER Sphere onaltilik
+           sayilarini ve ifadelerini destekler.
+DUZELTME - Esya/karakter EVENTS listesindeki TYPEDEF baglantilari kaydedilir;
+           sunucunun kaynak adi filtresi TYPEDEF ve DSPEECH kayitlarini dusurmez.
+TEST - Olay, kapsam, kaynak listesi ve timer hatalari yeniden uretildi;
+       duzenlenmis listelerin text/binary save-load korunmasi sinandi.
+
+[2026-09-22] - Script argumanlarini yenile ve tirnakli ARGV alanlarini koru
+------------------------------------------------------------------------
+DUZELTME - Bos ARGS dahil atamalar, Source-X Init gibi ARGN1/2/3 ve ARGV'yi
+           yeniden hazirlar ve ARGO'yu temizler; script kapsami korunur.
+DUZELTME - ARGV tirnakli virgulleri ve ic tirnaklari korur; alan sonundaki
+           bosluklari silmez, sondaki ayiractan fazladan alan uretmez.
+TEST - Eski arguman ve tirnakli alan hatalari yeniden uretildi; CALL geri
+       yukleme, ARGV onbellegi ve LOCAL, REF, SRC korunmasi sinandi.
+
+[2026-09-22] - Dunya dongulerini ve istemci silme baglamini tamamla
+------------------------------------------------------------------------
+DUZELTME - Nesne donguleri sunucu, cevrimdisi ve gecikmeli scriptlerde calisir.
+           MAPVIEWSIZE, ust nesne konumu, tam tanim kimligi, karakter ekipmani
+           ve aranabilir ic ice cantalar Source-X derinlikleriyle kullanilir.
+DUZELTME - FORTIMERF ozgun komut metnini harf duyarsiz tam eslestirir ve
+           eklenme sirasini korur; nesne donguleri tetikleyici ARGO'yu korur.
+DUZELTME - f_onchar_delete ARGO bagli istemciyi alir; oturum ozellikleri,
+           ARGO uzerinden ozellik yazma ve komut calistirma desteklenir.
+DUZELTME - Garbage sayaci ve logu yalniz Destroy'un kabul ettigi silmeleri sayar.
+TEST - Istemcisiz donguler, konteyner filtreleri, timer save/load eslesmesi,
+       tetikleyici baglami, istemci ARGO ve iptal edilen garbage silmesi.
+
+[2026-09-22] - Karakter silme iptalini ve zorunlu script silmesini uygula
+------------------------------------------------------------------------
+DUZELTME - Destroy ve oyuncu f_onchar_delete, dunya temizliginden once calisir;
+           secim ekraninda iptal hesap yuvasini korur ve InvalidRequest doner.
+DUZELTME - Karakter REMOVE ve zorunlu DESTROY ayrildi; oyuncunun scriptle
+           silinmesi yonetici yetkisi ve acik 1 argumani gerektirir.
+DUZELTME - On bildirimi iptal eden ekipman korunur; ic ice silme ve tekrarlanan
+           Delete cagrilari duzeltildi, silinen oyuncunun oturumu kapatilir.
+TEST - Ortak silme, zorunlu olay sirasi, oyuncu yetkisi ve ekipman iptali.
+
+[2026-09-22] - Savede eksik esya tanimlarini Source-X ile uyumla
+------------------------------------------------------------------------
+DUZELTME - Cozulemeyen sembolik WORLDITEM basliklari nesne olusmadan atlanir.
+           Tanimlar yukluyken eksik sayisal taban DEFAULTITEM, bu belirtilmemisse
+           altin kullanir. Varsayilan tanim da yoksa hata kaydiyla atlanir.
+DUZELTME - Yerel ID/SCRIPTDEF kayitlari da denetlenir; gecerli ozel ve multi
+           tanimlari korunur. Varsayilana donuste eski tanim kimligi temizlenir.
+TEST - Text/binary savede eksik ad, sayisal/yerel varsayilan ve gecerli tanimlar.
+
+[2026-09-22] - Esya silme yollarinda Destroy bildirimini uygula
+------------------------------------------------------------------------
+DUZELTME - Ortak silme yolunda Destroy once calisir; iptal, esya ayrilmadan,
+           icerik silinmeden ve istemciye kaldirma paketi gitmeden uygulanir.
+           Dogrudan Delete ve script REMOVE/CONSUME ayni yasam dongusunu kullanir.
+DUZELTME - Destroy kaynagi etkilesen oyuncu yerine sunucu baglamidir.
+           Tuketim, deed ve hedefli silme bildirimleri ortaklastirildi.
+DUZELTME - Konteyner icerigi silinmeden bildirilir; iptal eden esya scriptin
+           tasidigi yerde korunur veya en ust nesnenin konumuna birakilir.
+TEST - Iptal, zorunlu silme, ic ice silme, olay sirasi, kaynak baglami ve
+       konteyner iceriginin korunmasi testleri eklendi.
+
 [2026-09-22] - Takili esya cikarma olaylarini ortak noktada calistir
 ------------------------------------------------------------------------
 DUZELTME - Unequip, esya hala takiliyken ortak cikarma yolunda calisir; kaynak

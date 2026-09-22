@@ -255,6 +255,8 @@ internal interface IClientContext : ITextConsole
     void ClearPendingTargetState();
     bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0, ushort amount = 1);
     bool RemoveTargetedObject(uint uid);
+    bool TryDeleteItemFromClient(Item item) => World.TryDeleteObject(item, notify: Triggers == null ? null : target =>
+        Triggers.FireItemTrigger(target, ItemTrigger.Destroy, new TriggerArgs()) != TriggerResult.True);
     Item? DuplicateItem(Item src);
     void SpawnCageAround(Point3D centre);
     int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "");

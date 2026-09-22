@@ -35,6 +35,11 @@ public sealed class SectorTickReentrancyTests
             items.Add(it);
         }
         var sector = world.GetSector(pos)!;
+        // Nobody is online in this test, so the sector would be asleep and its
+        // ground items would keep their timers instead of running them. SECF_NoSleep
+        // is the engine's own way to say "run this area anyway" — this test is about
+        // the reentrancy of the drain, not about who is standing where.
+        sector.Flags |= SphereNet.Core.Enums.SectorFlag.NoSleep;
         Assert.Equal(5, sector.ItemCount);
 
         var ticked = new List<uint>();
@@ -84,10 +89,11 @@ public sealed class SectorTickReentrancyTests
         var world = TestHarness.CreateWorld();
         var pos = new Point3D(120, 120, 0, 0);
 
+        var sector = world.GetSector(pos)!;
+        sector.Flags |= SphereNet.Core.Enums.SectorFlag.NoSleep;   // see the test above
         var first = world.CreateItem();
         world.PlaceItem(first, pos);
         first.SetTimeout(1);
-        var sector = world.GetSector(pos)!;
 
         var ticked = new List<uint>();
         uint newItemUid = 0;

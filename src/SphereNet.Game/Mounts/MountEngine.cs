@@ -228,7 +228,6 @@ public sealed class MountEngine
         {
             rider.Unequip(Layer.Horse);
             _world.DeleteObject(mountItem);
-            mountItem.Delete();
         }
 
         rider.ClearStatFlag(StatFlag.OnHorse);
@@ -257,7 +256,6 @@ public sealed class MountEngine
         {
             rider.Unequip(Layer.Horse);
             _world.DeleteObject(mountItem);
-            mountItem.Delete();
         }
 
         rider.ClearStatFlag(StatFlag.OnHorse);

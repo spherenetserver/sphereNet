@@ -64,6 +64,8 @@ public sealed class TriggerRunner
         // list survives the whole chain and a script's own REF writes reach the engine.
         if (args is TriggerArgs { SharedRefs: not null } refArgs)
             scope.RefMap = refArgs.SharedRefs;
+        if (args is TriggerArgs { SharedFloats: not null } floatArgs)
+            scope.FloatMap = floatArgs.SharedFloats;
         return scope;
     }
 
@@ -570,7 +572,7 @@ public sealed class TriggerRunner
         var body = new List<ScriptKey>();
         for (int i = startIdx; i < allKeys.Count; i++)
         {
-            string cmd = allKeys[i].Key.ToUpperInvariant();
+            string cmd = allKeys[i].KeyUpper;
             // Stop at next ON= trigger or end of section. Speech sections use
             // ON=*keyword* blocks, so continuing past the next ON would execute
             // unrelated responses for the same spoken line.
@@ -591,7 +593,7 @@ public sealed class TriggerRunner
         var body = new List<ScriptKey>();
         for (int i = startIdx; i < allKeys.Count; i++)
         {
-            string cmd = allKeys[i].Key.ToUpperInvariant();
+            string cmd = allKeys[i].KeyUpper;
             // Accept both ON= and ONBUTTON= as the next-handler delimiter
             // (match TryRunDialogButton's lookup).
             if ((cmd == "ON" || cmd == "ONBUTTON") && allKeys[i].HasArg)

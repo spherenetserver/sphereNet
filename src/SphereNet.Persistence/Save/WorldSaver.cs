@@ -888,7 +888,7 @@ public sealed class WorldSaver
 
         foreach (var r in item.Events)
         {
-            if (r.Type != SphereNet.Core.Enums.ResType.Events || r.Index == 0) continue;
+            if (!r.IsValid) continue;
             string? name = ResolveResourceName?.Invoke(r);
             if (!string.IsNullOrWhiteSpace(name))
                 w.WriteProperty("EVENTS", name!);
@@ -1164,7 +1164,7 @@ public sealed class WorldSaver
 
         foreach (var r in ch.Events)
         {
-            if (r.Type != SphereNet.Core.Enums.ResType.Events || r.Index == 0) continue;
+            if (!r.IsValid) continue;
             string? name = ResolveResourceName?.Invoke(r);
             if (!string.IsNullOrWhiteSpace(name))
                 w.WriteProperty("EVENTS", name!);

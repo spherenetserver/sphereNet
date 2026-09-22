@@ -2280,10 +2280,9 @@ public sealed class ClientWorldFeaturesHandler
                     potion.Uid.Value, potion.DispIdFull, 0, potion.Amount, potion.X, potion.Y,
                     potion.ContainedIn.Value, potion.Hue, _netState.IsClientPost6017));
         }
-        else if (_triggerDispatcher?.FireItemTrigger(potion, ItemTrigger.Destroy,
-                new TriggerArgs { CharSrc = _character, ItemSrc = potion }) != TriggerResult.True)
+        else
         {
-            _world.RemoveItem(potion);
+            _client.TryDeleteItemFromClient(potion);
         }
 
         // Source-X Use_Drink returns the empty container (m_ttDrink.m_ridEmpty,

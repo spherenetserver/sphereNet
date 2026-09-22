@@ -4,6 +4,273 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Answer SERV.URL from the ini
+------------------------------------------------------------------------
+FIX - SERV.URL returns the [SPHERE] URL= value, as upstream returns m_sURL
+      (CServerDef.cpp:403, :492). It was the literal string "localhost" and the key
+      was never read, so a pack's web links pointed at the machine the server runs
+      on: the reference pack builds its help-page links and its donation page out of
+      SERV.URL in eight places. A scheme-less address is one a browser launcher
+      cannot resolve, and on Windows the shell's "how do you want to open this"
+      question opens behind a fullscreen client, which from inside the game looks
+      like the client has frozen.
+TEST - The ini value is answered verbatim and a missing key leaves it empty. Also
+       pins that a scheme cannot be written in the key at all: "//" opens a comment
+       anywhere in a line and upstream's reader breaks on it too (CScript.cpp:406),
+       so the key holds a bare host and the pack supplies the scheme.
+TEST - The WEBLINK verb's 0xA5 frame is opcode, total length, address and a zero,
+       with the declared length matching the bytes sent — a mismatch there is the
+       one way this packet can desync a client — and a blank address sends nothing.
+
+[2026-09-22] - Drop an unopened gump response quietly
+------------------------------------------------------------------------
+FIX - A gump response carrying an id this client was never sent is still dropped,
+      but without a warning. Upstream's own sanity check drops it and logs nothing
+      (PacketGumpDialogRet::onReceive, receive.cpp:2240-2243). Ours raised a WARNING
+      naming the player and the word "forged" for something an ordinary client
+      produces in normal play: an old-style MENU (0x7C) is not a gump and its id is
+      in no gump map, yet closing one sends a 0xB1 for that id beside the 0x7D that
+      carries the choice - so every .edit accused whoever ran it of forging a
+      packet. The check is unchanged and the event is still recorded, at debug.
+TEST - Closing the .edit item list raises no warning and the menu choice after it
+       still works; an id the client was never handed is dropped and recorded.
+
+[2026-09-22] - Make the D and H value prefixes answer a number
+------------------------------------------------------------------------
+FIX - <dX> and <hX> convert their value unconditionally, as upstream does: only a
+      value starting with '-' is left as written, and anything that is not a number
+      converts to zero (CScriptObj.cpp:543-562, FormatLLVal/FormatLLHex over
+      Str_ToLL). SphereNet converted only when the value happened to begin with a
+      '0' and otherwise handed the raw text back.
+FIX - That broke every ISBLANK gate in the reference pack. Its IsBlank takes <ASC>
+      of the string - a space-separated list of hex codes, as upstream's ASC answers
+      too - and then asks ELSEIF (<dLOCAL.ASC> == 0). With the text passed through,
+      the condition read "68 65 6C 6C 6F == 0", the evaluator took the leading 68
+      and stopped at the next token the way Sphere's always has, and the "== 0" was
+      never reached. The gate was therefore TRUE for every non-empty string, so a
+      typed-in GM page was answered with "please describe your problem" and thrown
+      away; the same gate guards vendor, support, market and info dialogs.
+TEST - The decimal prefix answers a number for hex, decimal, text and a
+       number-with-trailing-tokens, leaves a negative alone, and does not eat a
+       member whose name begins with D; a comparison against it is a comparison and
+       not just the leading number. The hex-prefix suite's text case now matches the
+       lines its own header cites.
+TEST - Cover a dialog text entry whose id is 0, read directly and through a script
+       function, against the live GM-page gate shape.
+
+[2026-09-22] - Read written points on any Sphere separator
+------------------------------------------------------------------------
+FIX - A coordinate list separates on comma, SPACE or tab, as upstream reads every
+      point (CPointBase::Read passes " ,	" to Str_ParseCmds). Splitting on the
+      comma alone silently dropped a whole assignment: the live map pack writes
+      "P=1978 2080,0,0" on one AREADEF, so that region loaded with no P, a script
+      reading SERV.AREA.<name>.P got the 0,0,0,0 a missing P reads back as, and the
+      help menu's Stuck option teleported the player to 0,0 where nothing is
+      walkable. Applies to AREADEF P= and to the script P= / GO destination.
+FIX - Whitespace runs collapse and whitespace around a comma is absorbed (Str_Parse
+      skips leading whitespace per argument); repeated commas still yield the empty
+      component they yield upstream, so "leave this coordinate alone" still works.
+TEST - Every written form of one point reads back the same, repeated commas keep
+       their empty component, and nothing written is no components.
+
+[2026-09-22] - Keep an under-quota spawn point awake
+------------------------------------------------------------------------
+FIX - A spawner that owes creatures no longer sleeps with its sector. Upstream sets
+      CAN_O_NOSLEEP on the spawn item while it owes them ("Avoid the spawn point to
+      sleep until job is finish", CCSpawn::DelObj / KillChildren) and clears it once
+      the quota fills (CCSpawn::AddObj). The sleeping-sector timer gate read the
+      flag from the ITEMDEF only, so a spawner that lost a creature while nobody was
+      near wrote a deadline nothing would run and stayed empty until a player walked
+      in. NeverSleeps now reads the effective can-flags, definition XOR CANMASK.
+TEST - A child lost to a script REMOVE or to any other deletion re-arms the spawner
+       and the re-arm reaches the world's due queue; the operator's own teardown
+       still leaves it parked, which is what makes the second double-click the one
+       that restarts it.
+
+[2026-09-22] - Keep console logging off the main loop
+------------------------------------------------------------------------
+FIX - Console and WinForms log output goes through a bounded background writer, so
+      writing a log line can no longer stall the thread that produced it. The
+      console sink writes on the calling thread, and with SCRIPTDEBUG or
+      DEBUGPACKETS on that thread is the main loop, thousands of lines per second.
+      A live shard measured a single item timer callback at 15.4s and an apply
+      phase at 4.0s, both with zero GC and almost no allocation - a blocked thread,
+      not a busy one - with a tick p50 of 0.2ms either side.
+FIX - Overflow is dropped rather than made to wait, and the dropped count is
+      reported once the writer catches up, so a gap in the log says so.
+      A faulting sink no longer kills the writer thread and silences the rest.
+      The file sink is unchanged: it stays the durable record.
+TEST - Emit returns while the inner sink is wedged, order is preserved, an
+       overflow is reported, and a throwing sink does not silence later lines.
+
+[2026-09-22] - Cut per-line allocation on the script execution path
+------------------------------------------------------------------------
+PERF - ScriptKey caches its upper-case command, computed once per parsed line
+       instead of once per execution of that line.
+PERF - The per-line diagnostic source label is built only when scriptdebug is on.
+       Its only reader (ExpressionParser.ReportUnresolved) returns immediately
+       otherwise, so with the flag off it was two strings per executed line.
+PERF - The interpreter's variable and function resolvers are fixed delegates over
+       a saved/restored context instead of closures rebuilt per call. Every
+       resolved <X> and every IF condition allocated four objects for this.
+PERF - Loop bodies are a view onto the parsed body, not a copy. WHILE and numeric
+       FOR copied the whole body once per ITERATION.
+PERF - FORITEMS/FORCHARS/FOROBJS/FORCLIENTS/FORPLAYERS select through a direct
+       sector walk instead of an ExpressionParser plus a LINQ Where/OrderBy/Cast/
+       ToArray chain; a plain integer radius skips the expression parser entirely.
+       Selection and ordering are unchanged: items first, then characters.
+PERF - IF/WHILE conditions holding no '|' or '&' skip the || / && splitter.
+       Bitwise single-operator conditions still take the full path.
+PERF - The TAG.EVENT_<trigger> lookup key is built once per trigger name.
+       Measured on the live pack's 870-item TIMERD 1 arena, Release build:
+       6.64 KB -> 3.38 KB and 9.7 us -> 8.6 us per @Timer execution.
+TEST - Pin what the shortcuts assume: upper-key cache invalidation on reparse,
+       nested resolver context restore, conditional fast path against the
+       splitter (bitwise & and | included), loop-body window bounds, and the
+       radius query's fast and expression paths agreeing.
+
+[2026-09-22] - Stop ground item timers in sleeping sectors
+------------------------------------------------------------------------
+FIX - A ground item no longer runs @Timer while its sector sleeps, matching
+      Source-X CSector::_GoSleep / CObjBase::_GoSleep (the item leaves the ticking
+      list) and CItem::_OnTick (the trigger is refused). The deadline is kept: the
+      item is re-registered when the sector wakes and an overdue timer runs once on
+      that tick, however long it was overdue.
+FIX - Sectors start asleep, as in Source-X. A sector no player had ever entered
+      reported itself awake, so anything reading the flag saw the untouched map as
+      running.
+FIX - CAN=O_NOSLEEP on an ITEMDEF keeps a single ground item exact while its sector
+      sleeps (Source-X CObjBase::_TickableStateOverride). SECF_NoSleep and
+      SECTORSLEEP=0 continue to exempt a sector and the whole shard.
+FIX - Worn, contained and never-placed items stay exact wherever they are: they
+      belong to no sector item list, as upstream's m_Items does not hold them.
+      TIMERF is unchanged and exact everywhere.
+FIX - The timer audit no longer re-queues sleeping items, and a timer armed on a
+      sleeping item is not queued until the sector wakes. An item moved into an
+      awake sector is woken on arrival.
+TEST - Sleeping-sector timer contract updated per path: deferred ground timers,
+       wake-once-when-overdue, the O_NOSLEEP pair in one sector, contained-item
+       exactness.
+DOC - ARCHITECTURE.md timer table states the ground-item rule separately from the
+      worn/contained one.
+
+[2026-09-22] - Use sector searches for script radius loops
+------------------------------------------------------------------------
+FIX - FORITEMS/FORCHARS/FOROBJS/FORCLIENTS/FORPLAYERS search nearby sectors,
+      like Source-X CWorldSearch, instead of copying and scanning every object.
+      Frequent TIMERD 1 / FORITEMS 0 scripts no longer allocate world-sized arrays.
+FIX - Bound range enumeration to existing map sectors, including large radii.
+TEST - Cover distant-population allocation growth, map/sector boundaries, item-first
+       ordering and stable result snapshots. Add an opt-in local save timer probe.
+
+[2026-09-22] - Attribute world tick stalls and allocation spikes
+------------------------------------------------------------------------
+FIX - Deduplicate identical item-timer registrations. Repeated timer setup or
+      container tracking cannot run a self-rearming callback repeatedly in one tick.
+DIAG - Add throttled world_tick_detail reports identifying the dominant time
+       and allocation phase: clock, sectors, maintenance, TIMERF or item timers.
+DIAG - Slow/allocation-heavy timer callbacks report object UID and base ID.
+       Normal ticks use allocation-free checkpoints; gameplay timing is unchanged.
+TEST - Verify allocation attribution, log throttling and zero checkpoint allocation.
+       Reproduce 100 callbacks instead of one and verify serial/multicore scheduling.
+
+[2026-09-22] - Separate character body changes from creation triggers
+------------------------------------------------------------------------
+FIX - BODY/CHARDEF changes and save/login definition repair no longer replay
+      @Create. A creation script changing BODY cannot recursively reinitialize
+      the same character through the definition-application callback.
+FIX - Fresh SERV.NEWNPC and summon paths explicitly retain their @Create stage.
+TEST - Cover player/NPC BODY changes, GM-body login repair and a fresh NPC's
+       creation callback changing its own body without reentering @Create.
+
+[2026-09-22] - Resume stopped spawners on native double-click
+------------------------------------------------------------------------
+FIX - Double-clicking an empty NPC/item spawner now clears the internal STOP
+      state before the explicit spawn tick, matching Source-X component use.
+TEST - Owner-level invisible worldgems restart after STOP and continue the
+       spawn/delete/spawn sequence without opening a dialog.
+
+[2026-09-22] - Refresh runtime script hooks and correct character event stages
+------------------------------------------------------------------------
+FIX - RESYNC now reinstalls gated character and NPC callbacks after rebuilding
+      trigger usage; added hooks become active and removed hooks return to null.
+FIX - Spell EffectTick and skill Gain/UseQuick resource stages enable their
+      engine callbacks even without a corresponding character trigger.
+FIX - Character EVENTS, NPC TEVENTS and global events execute each linked
+      resource once per dispatch, including during live event-list removals.
+FIX - Player characters no longer execute NPC TEVENTS or CHARDEF trigger bodies.
+TEST - Cover runtime hook addition/removal, reloaded script bodies, resource-only
+       spell/skill stages, character stage deduplication and NPC/player separation.
+
+[2026-09-22] - Preserve live event chains and resource-list operations
+------------------------------------------------------------------------
+FIX - EVENTS and DSPEECH apply comma-separated additions/removals in order;
+      bare lists append without clearing existing entries; -* and -0 clear them.
+FIX - Item/character event dispatch observes live list mutations like Source-X,
+      including newly added handlers and handlers removing themselves.
+FIX - Allocate shared LOCAL/REF/FLOAT pools for unseeded trigger chains and
+      propagate ARGO changes to later events and engine callers.
+FIX - Empty REF and ARGN assignments clear stale values; TRY TIMER accepts
+      Sphere hexadecimal values and expressions instead of decimal integers only.
+FIX - Save named TYPEDEF references attached through item/character EVENTS;
+      server resource-name resolution no longer drops TYPEDEF or DSPEECH entries.
+TEST - Reproduce failures across event dispatch, scope, resource lists and timers;
+       verify edited lists survive both text and binary save/load.
+
+[2026-09-22] - Reinitialize script arguments and preserve quoted ARGV fields
+------------------------------------------------------------------------
+FIX - ARGS assignments, including empty ARGS, now rebuild ARGN1/2/3 and ARGV
+      and clear ARGO through Source-X Init semantics while retaining script scope.
+FIX - ARGV respects quoted commas and inner quotes, preserves trailing field
+      whitespace and does not invent a final field after a trailing separator.
+TEST - Reproduce stale arguments and quoted-field failures; cover CALL restoration,
+       cached ARGV invalidation and preservation of LOCAL, REF and SRC.
+
+[2026-09-22] - Share world loops and complete client deletion context
+------------------------------------------------------------------------
+FIX - World object loops now work from server, offline and delayed script calls.
+      Use MAPVIEWSIZE, top-level positions, full definition IDs, character gear
+      and searchable nested containers with Source-X depth defaults.
+FIX - Implement FORTIMERF with exact case-insensitive original-command matching
+      and timer insertion order; retain trigger ARGO across object loops.
+FIX - Supply the connected client as f_onchar_delete ARGO, expose its session
+      properties and route ARGO property writes and verbs to that object.
+FIX - Garbage cleanup only counts and logs deletions accepted by Destroy.
+TEST - Cover headless loops, container filters, timer save/load matching,
+       trigger argument preservation, client ARGO and vetoed garbage removal.
+
+[2026-09-22] - Honor character deletion vetoes and forced script removal
+------------------------------------------------------------------------
+FIX - Run Destroy and player f_onchar_delete before world removal or cleanup;
+      preserve account slots on char-selection veto and report InvalidRequest.
+FIX - Separate character REMOVE from forced DESTROY; player script removal
+      requires administrator privileges and the explicit argument 1.
+FIX - Preserve equipment that vetoes the pre-delete notification, guard recursive
+      deletion, remove redundant Delete calls and close accepted player sessions.
+TEST - Cover shared deletion, forced ordering, player authorization and gear vetoes.
+
+[2026-09-22] - Align missing saved-item definitions with Source-X
+------------------------------------------------------------------------
+FIX - Skip unresolved symbolic WORLDITEM headers before creating objects.
+      With loaded definitions, missing numeric item bases use DEFAULTITEM,
+      or gold when DEFAULTITEM is unset. Log and skip if the fallback is absent.
+FIX - Validate native ID/SCRIPTDEF records too, retaining valid custom and
+      multi definitions. Clear stale definition identity when applying fallback.
+TEST - Cover missing names, numeric/native fallback and valid definitions in
+       text and binary saves.
+
+[2026-09-22] - Honor item destruction notifications across removal paths
+------------------------------------------------------------------------
+FIX - Dispatch Destroy before shared item removal and honor vetoes before
+      detachment, child deletion or client removal packets. Direct Delete and
+      script REMOVE/CONSUME now use the same world lifecycle.
+FIX - Use server-origin Destroy context instead of the interacting player.
+      Consolidate consumable, deed and targeted removal notifications.
+FIX - Notify container contents before destruction; preserve vetoed children
+      at script-selected destinations or drop them at the top-level position.
+TEST - Cover veto preservation, forced removal, recursive removal, notification
+       order, source context and container-content survival.
+
 [2026-09-22] - Unify worn-item removal notifications
 ------------------------------------------------------------------------
 FIX - Dispatch Unequip from the shared layer-removal operation while the item

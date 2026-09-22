@@ -156,7 +156,6 @@ public sealed class StableEngine
         if (!pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: true))
         {
             world.DeleteObject(pet);
-            pet.Delete();
             return null;
         }
 
@@ -188,7 +187,6 @@ public sealed class StableEngine
         {
             pet.ClearOwnership(clearFriends: true);
             world.DeleteObject(pet);
-            pet.Delete();
             return null;
         }
 

@@ -112,7 +112,8 @@ how much:
 |---|---|
 | Anything in an active sector (5×5 sectors around a player) | next tick |
 | `TIMERF` on any object | next tick, wherever it is |
-| `TIMER` on any item — worn, contained, or lying in a sleeping sector | next tick, wherever it is |
+| `TIMER` on a worn or contained item | next tick, wherever it is: it belongs to no sector list, so sector sleep cannot reach it (Source-X `CSector::_GoSleep` walks `m_Items`, which holds only top-level items) |
+| `TIMER` on a ground item in a sleeping sector | **not at all** until the sector wakes, then once on that tick however long it was overdue — Source-X `CSector::_GoSleep` → `CObjBase::_GoSleep` drops it from the ticking list and `CItem::_OnTick` refuses the trigger. `CAN=O_NOSLEEP` on the ITEMDEF opts a single item out; `SECTORSLEEP=0` disables sleeping shard-wide |
 | Spawn interval | next tick when it comes due; a spawner at its cap is restarted by the death of one of its creatures, not by being polled |
 | Ground-item decay, corpses included, anywhere | next tick: armed deadlines sit in a due-ordered queue, drained **256** per tick, with an audit every **60 s** that re-queues anything armed the queue does not hold |
 | Everything a character does — AI, regen, poison — in a sleeping sector | not at all until a player comes within two sectors |

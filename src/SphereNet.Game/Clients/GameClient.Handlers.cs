@@ -103,8 +103,11 @@ public sealed partial class GameClient
 
             _logger.LogInformation("Deleting character '{Name}' (0x{Uid:X8}) from account '{Acct}'",
                 ch.Name, charUid.Value, _account.Name);
-            ch.Delete();
-            _world.DeleteObject(ch);
+            if (!TryDeleteCharacterFromClient(ch))
+            {
+                _netState.Send(new PacketCharDeleteResult(5)); // InvalidRequest: script veto
+                return;
+            }
         }
 
         _account.SetCharSlot(charIndex, Serial.Invalid);

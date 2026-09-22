@@ -700,11 +700,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         _defenseRange = Math.Max(0, hi - _defenseBase.Value);
     }
 
+    /// <summary>Source-X OC_ONAME: a script-owned "original name" kept in the object's
+    /// base defs (CObjBase.cpp:1024/1813) - read back as written, "" when unset,
+    /// saved as ONAME="...". Disguise scripts park the real name here.</summary>
+    public string OName { get; set; } = "";
+
     public virtual bool TryGetProperty(string key, out string value)
     {
         if (key.Equals("CANMASK", StringComparison.OrdinalIgnoreCase))
         {
             value = $"0{CanMask:X}";
+            return true;
+        }
+        if (key.Equals("ONAME", StringComparison.OrdinalIgnoreCase))
+        {
+            value = OName;
             return true;
         }
         value = "";
@@ -1703,6 +1713,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     public virtual bool TrySetProperty(string key, string value)
     {
+        if (key.Equals("ONAME", StringComparison.OrdinalIgnoreCase))
+        {
+            // SetDefStr: the quotes are the script's, and an empty value drops the key.
+            OName = SphereNet.Scripting.Parsing.ScriptKey.StripQuotePair(value.Trim());
+            return true;
+        }
         if (key.Equals("CANMASK", StringComparison.OrdinalIgnoreCase))
         {
             if (ScriptNumber.TryParseToken(value.Trim(), out long mask))

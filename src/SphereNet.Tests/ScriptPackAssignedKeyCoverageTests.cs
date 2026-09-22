@@ -114,7 +114,7 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
         new(StringComparer.OrdinalIgnoreCase)
         {
             "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM",
-            "MODAC", "ONAME", "OWNEDBY", "Rarity", "RESDISPDNHUE",
+            "MODAC", "Rarity", "RESDISPDNHUE",
             "SelfRepair",
         };
 

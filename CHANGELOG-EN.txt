@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - ONAME and OWNEDBY
+------------------------------------------------------------------------
+ADD - ONAME on every object (Source-X OC_ONAME) and OWNEDBY on items (IC_OWNEDBY):
+      script-owned strings kept in the object's base defs. They read back as
+      written ("" when unset), an empty value drops them, the quotes are the
+      script's, DUPE copies them and a save writes them as KEY="value" the way
+      upstream's r_WritePrefix does. A disguise deed's SRC.ONAME=<SRC.NAME> and a
+      market's NEW.OWNEDBY=<UID> used to be written into nothing.
+TEST - BaseDefStringKeyTests; both keys leave the pack coverage baseline.
+
 [2026-09-22] - Poison is a worn spell memory, as in Source-X
 ------------------------------------------------------------------------
 CHANGE - An active poison is one IT_SPELL memory of SPELL_Poison worn on

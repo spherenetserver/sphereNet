@@ -784,6 +784,10 @@ public class Item : ObjBase
     public int Price { get => _price; set => _price = value; }
     public ushort Quality { get => _quality; set => _quality = value; }
 
+    /// <summary>Source-X IC_OWNEDBY: a script-owned owner reference (usually a uid)
+    /// kept in the item's base defs; saved as OWNEDBY="...".</summary>
+    public string OwnedBy { get; set; } = "";
+
     /// <summary>Current durability (0 = unset). Source-X item hits field.</summary>
     public int HitsCur
     {
@@ -1452,6 +1456,9 @@ public class Item : ObjBase
         _hitsMax = src._hitsMax;
         _crafter = src._crafter;
         _usesRemaining = src._usesRemaining;
+        // m_BaseDefs.Copy (CItem.cpp:4123).
+        OwnedBy = src.OwnedBy;
+        OName = src.OName;
         _dispId = src._dispId;
         _tdata1 = src._tdata1;
         _tdata2 = src._tdata2;
@@ -2042,6 +2049,8 @@ public class Item : ObjBase
             case "CRAFTER":
             case "CRAFTEDBY": // Source-X IC_CRAFTEDBY — the crafter's uid
                 value = _crafter.IsValid ? $"0{_crafter.Value:X}" : ""; return true;
+            case "OWNEDBY": // Source-X IC_OWNEDBY: a base-def string, "" when unset
+                value = OwnedBy; return true;
             case "USESREMAINING":
             case "USESCUR": value = _usesRemaining.ToString(); return true; // Source-X IC_USESCUR alias
             case "USESMAX": value = (TryGetTag("USESMAX", out string? um) ? um : "0") ?? "0"; return true;
@@ -2845,6 +2854,11 @@ public class Item : ObjBase
             case "CRAFTER":
             case "CRAFTEDBY":
                 _crafter = new Serial(ParseHexOrDecUInt(value));
+                return true;
+            case "OWNEDBY":
+                // SetDefStr (CItem.cpp:3136): stored as written, quotes stripped,
+                // an empty value drops it.
+                OwnedBy = SphereNet.Scripting.Parsing.ScriptKey.StripQuotePair(value.Trim());
                 return true;
             case "USESREMAINING":
             case "USESCUR":

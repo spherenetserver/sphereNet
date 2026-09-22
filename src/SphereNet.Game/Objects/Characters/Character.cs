@@ -2943,6 +2943,7 @@ public partial class Character : ObjBase
         }
 
         // EVENTS is behaviour, not decoration: a copy without them stops reacting.
+        copy.OName = OName;   // m_BaseDefs.Copy (CObjBase.cpp:3680)
         copy.Events.Clear();
         copy.Events.AddRange(Events);
 

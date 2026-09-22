@@ -839,6 +839,10 @@ public sealed class WorldSaver
         if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:X}");
         if (item.MoreP != Point3D.Zero) w.WriteProperty("MOREP", item.MoreP.ToString());
         if (item.Crafter.IsValid) w.WriteProperty("CRAFTER", $"0{item.Crafter.Value:X}");
+        // Base-def strings, written the way upstream's r_WritePrefix writes a string
+        // def: KEY="value" (CVarDefMap.cpp:708).
+        if (item.OwnedBy.Length > 0) w.WriteProperty("OWNEDBY", $"\"{item.OwnedBy}\"");
+        if (item.OName.Length > 0) w.WriteProperty("ONAME", $"\"{item.OName}\"");
         if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining.ToString());
         if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:X}");
         if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
@@ -974,6 +978,7 @@ public sealed class WorldSaver
         w.WriteProperty("P", ch.Position.ToString());
         w.WriteProperty("BODY", $"0{ch.BodyId:X}");
         if (ch.CanMask != 0) w.WriteProperty("CANMASK", $"0{ch.CanMask:X}");
+        if (ch.OName.Length > 0) w.WriteProperty("ONAME", $"\"{ch.OName}\"");
         // Full-width chardef hash (24-bit). Without this, NPCs reload with
         // CharDefIndex=0 → trigger / brain lookups fall back to BaseId
         // (the truncated body id) and re-introduce the c_alchemist→c_man

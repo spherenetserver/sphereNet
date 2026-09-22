@@ -110,9 +110,13 @@ public sealed class MovementEngine
         byte sequence, out WalkCheck.Diagnostic diag)
     {
         diag = default;
-        // Source-X OnFreezeCheck: NoMoveTill is a world-clock deadline in tenths,
-        // including for GMs. Expiration does not delete the script-owned tag.
-        if (ch.TryGetTag("NOMOVETILL", out string? noMoveText) &&
+        // Source-X CanMove (CCharAct.cpp:4571): a character in GM mode skips the
+        // whole freeze test - FREEZE, STONE, NoMoveTill and freeze-on-cast alike -
+        // so a staff member is never rooted by a script's freeze.
+        bool gmMode = ch.PrivLevel >= PrivLevel.GM;
+        // Source-X OnFreezeCheck: NoMoveTill is a world-clock deadline in tenths.
+        // Expiration does not delete the script-owned tag.
+        if (!gmMode && ch.TryGetTag("NOMOVETILL", out string? noMoveText) &&
             ScriptNumber.TryParseToken(noMoveText, out long noMoveTill) && noMoveTill > _world.GameClockMs / 100)
             return false;
         // IsDead is intentionally NOT a hard reject here. Source-X /
@@ -123,15 +127,15 @@ public sealed class MovementEngine
         // no walk packets". We still block Freeze (paralyze, GM .freeze)
         // and Stone (stone form / petrified) since those are explicit
         // immobility states even on living characters.
-        if (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone) ||
-            (ch.PrivLevel < PrivLevel.GM &&
+        if (!gmMode &&
+            (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone) ||
              (CharDefHelper.GetCanFlags(ch) & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0))
             return false;
 
         // A cast that roots the caster (MAGICF_FREEZEONCAST / SPELLFLAG_FREEZEONCAST)
         // refuses the STEP; it does not cancel the spell. Source-X weighs this in
         // OnFreezeCheck alongside paralyze (CCharAct.cpp:4539).
-        if (SpellEngine?.IsMovementFrozenByCast(ch) == true)
+        if (!gmMode && SpellEngine?.IsMovementFrozenByCast(ch) == true)
             return false;
 
         // Overweight running prevention — can't run when carrying more than max weight

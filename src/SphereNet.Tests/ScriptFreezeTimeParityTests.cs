@@ -72,6 +72,9 @@ public sealed class ScriptFreezeTimeParityTests
             Assert.True(engine.CastStart(caster, SpellType.Heal, caster.Uid, caster.Position) > 0);
             Assert.Equal(4, caster.ActArg1);
             var movement = new MovementEngine(world) { SpellEngine = engine };
+            // The freeze test is skipped outright in GM mode (CanMove,
+            // CCharAct.cpp:4575), so the walk checks run as a player.
+            caster.PrivLevel = PrivLevel.Player;
             if (tenths > 0)
             {
                 Assert.True(caster.TryGetTag("NOMOVETILL", out var deadline));
@@ -82,6 +85,7 @@ public sealed class ScriptFreezeTimeParityTests
                 Advance(world, tenths * 100);
             }
             Assert.True(movement.TryMove(caster, Direction.East, false, 0));
+            caster.PrivLevel = PrivLevel.GM;
             Assert.True(caster.IsCasting);
             if (terminal == "death") caster.Kill();
             else if (terminal == "success") Assert.True(engine.CastDone(caster));

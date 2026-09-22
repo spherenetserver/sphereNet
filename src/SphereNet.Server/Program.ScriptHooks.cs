@@ -99,7 +99,9 @@ public static partial class Program
                 locals.Set("CHARGES", ctx.Charges.ToString());
                 locals.Set("DAMAGETYPE", "08"); // dam_poison
                 var spellDef = _spellEngine?.GetSpellDef((SpellType)ctx.SpellId);
-                var memory = new SpellMemoryShim
+                // ARGO is the effect's memory item itself (upstream pItem); the shim
+                // stands in only for an effect that has no real memory.
+                SphereNet.Core.Interfaces.IScriptObj memory = (SphereNet.Core.Interfaces.IScriptObj?)ctx.Memory ?? new SpellMemoryShim
                 {
                     SpellId = ctx.SpellId,
                     BaseId = spellDef?.RuneItemId ?? 0,

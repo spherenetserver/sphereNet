@@ -1210,14 +1210,8 @@ public sealed class WorldSaver
             }
         }
 
-        // Active poison (level, remaining ticks + time, poisoner). Saved as remaining
-        // time so it resumes after load instead of silently ending on restart.
-        if (ch.Poison.IsPoisoned && ch.Poison.TicksRemaining > 0)
-        {
-            string src = ch.Poison.Source.IsValid ? $"0{ch.Poison.Source.Value:X}" : "0";
-            w.WriteProperty("POISON",
-                $"{ch.Poison.Level}|{ch.Poison.TicksRemaining}|{ch.Poison.RemainingTickMs}|{src}");
-        }
+        // An active poison is its LAYER_FLAG_Poison memory item and saves with the
+        // rest of the equipment; the old POISON= record is only read (legacy saves).
 
         foreach (var (key, val) in ch.Tags.GetAll())
         {

@@ -71,26 +71,16 @@ public static class EatEngine
         return qty;
     }
 
-    /// <summary>Poison the eater when the meal was poisoned. The Poisoning skill
-    /// writes POISON_SKILL onto food (Skill_Poisoning, CCharSkill.cpp:2197) but
-    /// nothing read it back, so a successfully poisoned meal was eaten with no
-    /// effect at all. Source-X applies it in Use_EatQty BEFORE the meal itself
-    /// (CCharUse.cpp:905), which is why it sits ahead of @Eat here: a script that
-    /// vetoes the gains does not undo the poison.
-    ///
-    /// The stored value is the poisoner's skill, not a poison level - the two are
-    /// different units. It goes through the same OSI banding the poisoned-weapon
-    /// path already uses, so blade and meal cannot disagree about what a given
-    /// skill is worth.</summary>
+    /// <summary>Poison the eater when the meal was poisoned. Source-X applies it in
+    /// Use_EatQty BEFORE the meal itself (CCharUse.cpp:907), which is why it sits
+    /// ahead of @Eat here: a script that vetoes the gains does not undo the poison.
+    /// The coat is m_itFood.m_poison_skill (MOREZ, 0-100), and the eater is its own
+    /// poison source: SetPoison(coat * 10, 1 + coat / 50, this).</summary>
     private static void ApplyFoodPoison(Character eater, Item food)
     {
-        if (!food.TryGetTag("POISON_SKILL", out string? raw) ||
-            !int.TryParse(raw, out int poisonSkill) || poisonSkill <= 0)
-            return;
-
-        byte level = Combat.CombatEngine.CalcOsiPoisonLevel(poisonSkill, 1, evilOmen: false);
-        if (level > 0)
-            eater.ApplyPoison(level, food.Uid);
+        int coat = Combat.CombatEngine.GetWeaponPoisonSkill(food);
+        if (coat > 0)
+            eater.SetPoison(coat * 10, 1 + coat / 50, eater);
     }
 
     /// <summary>The EatAnim half: fire @Eat with the reference's arguments, read the

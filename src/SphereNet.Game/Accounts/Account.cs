@@ -36,6 +36,7 @@ public sealed class Account : IScriptObj
     private string _lang = "";
     private uint _priv;
     private byte _resDisp;
+    private uint _lastConnectTime;
 
     public string Name { get => _name; set => _name = value; }
     public string PasswordHash { get => _passwordHash; set => _passwordHash = value; }
@@ -45,6 +46,8 @@ public sealed class Account : IScriptObj
     public DateTime CreateDate { get => _createDate; set => _createDate = value; }
     public string LastIp { get => _lastIp; set => _lastIp = value; }
     public uint TotalConnectTime { get => _totalConnectTime; set => _totalConnectTime = value; }
+    /// <summary>Length of the previous in-game session in minutes (Source-X LASTCONNECTTIME).</summary>
+    public uint LastConnectTime { get => _lastConnectTime; set => _lastConnectTime = value; }
     public bool IsBanned { get => _isBanned; set => _isBanned = value; }
     public VarMap Tags => _tags;
     public string ChatName { get => _chatName; set => _chatName = value; }
@@ -148,13 +151,14 @@ public sealed class Account : IScriptObj
             case "CHARCOUNT": value = _charCount.ToString(); return true;
             case "CHATNAME": value = _chatName; return true;
             case "CREATEDATE": value = _createDate.ToString("O"); return true;
-            case "FIRSTCONNECTDATE": value = _firstConnectDate == default ? "" : _firstConnectDate.ToString("O"); return true;
+            case "FIRSTCONNECTDATE": value = FormatConnectDate(_firstConnectDate); return true;
             case "FIRSTIP": value = _firstIp; return true;
             case "GUEST": value = _guest ? "1" : "0"; return true;
             case "JAIL": value = _jail ? "1" : "0"; return true;
             case "LANG": value = _lang; return true;
             case "LASTCHARUID": value = _lastCharUid.IsValid ? $"0{_lastCharUid.Value:X8}" : "0"; return true;
-            case "LASTCONNECTDATE":
+            case "LASTCONNECTDATE": value = FormatConnectDate(_lastLogin); return true;
+            case "LASTCONNECTTIME": value = _lastConnectTime.ToString(); return true;
             case "LASTLOGIN": value = _lastLogin.ToString("O"); return true;
             case "LASTIP": value = _lastIp; return true;
             case "MAXCHARS": value = _maxChars.ToString(); return true;
@@ -250,9 +254,51 @@ public sealed class Account : IScriptObj
             case "TOTALCONNECTTIME":
                 if (uint.TryParse(value, out uint tct)) _totalConnectTime = tct;
                 return true;
+            case "LASTCONNECTTIME":
+                if (uint.TryParse(value, out uint lct)) _lastConnectTime = lct;
+                return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>Source-X CSTime::Format(nullptr): local "yyyy/MM/dd HH:mm:ss",
+    /// empty when the date was never recorded.</summary>
+    public static string FormatConnectDate(DateTime date)
+    {
+        if (date == default) return "";
+        var local = date.Kind == DateTimeKind.Utc ? date.ToLocalTime() : date;
+        return local.ToString("yyyy/MM/dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Source-X CAccount::OnLogin: every login refreshes LASTIP; until
+    /// the account has any recorded play time the login also (re)stamps
+    /// FIRSTIP / FIRSTCONNECTDATE.</summary>
+    public void RecordLogin(string ip)
+    {
+        _lastIp = ip;
+        if (_totalConnectTime == 0)
+        {
+            _firstIp = ip;
+            _firstConnectDate = DateTime.UtcNow;
+        }
+    }
+
+    /// <summary>Source-X Setup_Play: the previous LASTCONNECTDATE moves to
+    /// TAG.LastLogged, then LASTCONNECTDATE becomes now.</summary>
+    public void RecordCharacterEnter()
+    {
+        _tags.Set("LastLogged", FormatConnectDate(_lastLogin));
+        _lastLogin = DateTime.UtcNow;
+    }
+
+    /// <summary>Source-X CAccount::OnLogout (with a character): the session
+    /// length in minutes becomes LASTCONNECTTIME and is added to TOTALCONNECTTIME.</summary>
+    public void RecordLogout(TimeSpan session)
+    {
+        uint minutes = session <= TimeSpan.Zero ? 0u : (uint)Math.Min(session.TotalMinutes, uint.MaxValue);
+        _lastConnectTime = minutes;
+        _totalConnectTime += minutes;
     }
 
     public TriggerResult OnTrigger(int triggerType, IScriptObj? source, ITriggerArgs? args)

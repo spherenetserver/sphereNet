@@ -122,7 +122,6 @@ public sealed class AccountManager
             NotifyAccountsChanged();
         }
 
-        account.LastLogin = DateTime.UtcNow;
         AccountLogin?.Invoke(account);
         return account;
     }

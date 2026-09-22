@@ -815,6 +815,7 @@ public static partial class Program
         Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;
         Character.CombatMeleeMovementDelay  = _config.CombatMeleeMovementDelay;
         Character.MagicFlags = _config.MagicFlags;
+        Character.EmoteFlags = _config.EmoteFlags;
         // COLORINVIS / COLORHIDDEN / COLORINVISSPELL: a shard that gives one of these
         // states its own hue does not want the client's grey overlay on top of it, so
         // the mobile flags byte withholds the INVIS bit for that state

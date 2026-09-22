@@ -383,7 +383,7 @@ public sealed class TriggerDispatcher
         if (Runner != null && (!_funcTriggerGateBuilt || _funcCharTriggers.Contains(trigName)))
         {
             string funcName = "f_onchar_" + trigName.ToLowerInvariant();
-            if (Runner.TryRunFunction(funcName, ch, args.ScriptConsole, WrapArgs(args), out var result) &&
+            if (Runner.TryRunFunction(funcName, ch, ConsoleFor(args), WrapArgs(args), out var result) &&
                 result == TriggerResult.True)
                 return TriggerResult.True;
         }
@@ -574,7 +574,7 @@ public sealed class TriggerDispatcher
         if (Runner != null && (!_funcTriggerGateBuilt || _funcItemTriggers.Contains(trigName)))
         {
             string funcName = "f_onitem_" + trigName.ToLowerInvariant();
-            if (Runner.TryRunFunction(funcName, item, args.ScriptConsole, WrapArgs(args), out var result) &&
+            if (Runner.TryRunFunction(funcName, item, ConsoleFor(args), WrapArgs(args), out var result) &&
                 result == TriggerResult.True)
                 return TriggerResult.True;
         }
@@ -1038,6 +1038,15 @@ public sealed class TriggerDispatcher
     /// copy-back those mutations would be lost. LOCAL.* readback already works
     /// via the shared Locals pool. Copying after each block in a chain also
     /// forward-propagates the values to the next block, matching Source-X.</summary>
+    /// <summary>The console a trigger runs under. Source-X hands OnTrigger the
+    /// acting character itself as pSrc, and a verb reaches that character's client
+    /// through pSrc-&gt;GetChar()-&gt;GetClientActive() (CObjBase.cpp:2156) - so a
+    /// DIALOG in an item's @DClick opens on the clicker's screen. A caller that
+    /// passes no console therefore still gets the source character's client.</summary>
+    private static ITextConsole? ConsoleFor(TriggerArgs args) =>
+        args.ScriptConsole ??
+        (args.CharSrc != null ? SphereNet.Game.Objects.ObjBase.ResolveClientConsole?.Invoke(args.CharSrc) : null);
+
     private TriggerResult RunWrapped(SphereNet.Scripting.Resources.ResourceLink link,
         string trigName, IScriptObj obj, TriggerArgs args)
     {
@@ -1045,7 +1054,7 @@ public sealed class TriggerDispatcher
         if (link.StoredKeys != null && !link.TryGetTriggerBody(trigName, out _))
             return TriggerResult.Default;
         var wrapped = WrapArgs(args);
-        var result = Runner!.RunTriggerByName(link, trigName, obj, args.ScriptConsole, wrapped);
+        var result = Runner!.RunTriggerByName(link, trigName, obj, ConsoleFor(args), wrapped);
         args.N1 = wrapped.Number1;
         args.N2 = wrapped.Number2;
         args.N3 = wrapped.Number3;

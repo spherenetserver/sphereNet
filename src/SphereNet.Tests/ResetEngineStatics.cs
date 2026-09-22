@@ -102,6 +102,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRetimer = null;
         SphereNet.Game.Objects.Characters.Character.FieldTouchHook = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
+        SphereNet.Game.Objects.Characters.Character.EmoteFlags = 0;
+        SphereNet.Game.Objects.Characters.Character.ResolveSpellDef = null;
+        SphereNet.Game.Objects.Characters.Character.BreakParalyzeHook = null;
         SphereNet.Game.Clients.GameClient.ColorInvisHue = 0;
         SphereNet.Game.Clients.GameClient.ColorHiddenHue = 0;
         SphereNet.Game.Clients.GameClient.ColorInvisSpellHue = 0;
@@ -128,6 +131,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.RacialFlags = 0;
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveClientVersionText = null;
         SphereNet.Game.Definitions.CharDefHelper.AfterApplyDefName = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;

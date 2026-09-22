@@ -682,23 +682,30 @@ public class SaveFormatTests
             ch.MaxHits = 100; ch.Hits = 100;
             src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
 
+            // The poison is its LAYER_FLAG_Poison memory item, made in the world.
+            SphereNet.Game.Objects.ObjBase.ResolveWorld = () => src;
             var poisoner = new Serial(0x40001234);
-            ch.ApplyPoison(3, poisoner); // greater poison → 6 ticks (Source-X OSI charges)
-            // Advance one tick so the remaining count (5) is non-fresh — proving load
+            ch.ApplyPoison(3, poisoner); // greater: strength 600, 12 ticks (non-OSI)
+            // Advance one tick so the remaining count is non-fresh — proving load
             // restores the exact remaining state rather than re-applying a fresh poison.
             ch.ProcessPoisonTick(Environment.TickCount64 + 10_000);
-            Assert.Equal(5, ch.Poison.TicksRemaining);
+            int ticksLeft = ch.Poison.TicksRemaining;
+            Assert.Equal(11, ticksLeft);
 
             Assert.True(saver.Save(src, tmp));
 
             var dst = MakeWorld();
+            SphereNet.Game.Objects.ObjBase.ResolveWorld = () => dst;
             loader.Load(dst, tmp);
 
             var reloaded = dst.FindChar(ch.Uid);
             Assert.NotNull(reloaded);
-            Assert.True(reloaded!.IsPoisoned);
+            var memory = reloaded!.GetEquippedItem(Layer.FlagPoison);
+            Assert.NotNull(memory);                            // saved as a worn item
+            Assert.Equal(ItemType.Spell, memory!.ItemType);
+            Assert.True(reloaded.IsPoisoned);
             Assert.Equal((byte)3, reloaded.PoisonLevel);
-            Assert.Equal(5, reloaded.Poison.TicksRemaining); // remaining, not re-freshed to 6
+            Assert.Equal(ticksLeft, reloaded.Poison.TicksRemaining); // remaining, not re-freshed
             Assert.Equal(poisoner, reloaded.Poison.Source);    // poisoner kept for kill attribution
         }
         finally

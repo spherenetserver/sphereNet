@@ -158,8 +158,8 @@ internal static class InfoSkillExtensions
 
     public static int GetHitsMax(this Item it) => it.HitsMax;
 
-    public static int GetPoisonSkill(this Item it) =>
-        it.TryGetTag("POISON_SKILL", out string? s) && int.TryParse(s, out int v) ? v : 0;
+    /// <summary>The poison coat on a weapon or meal, 0-100 (m_poison_skill, MOREZ).</summary>
+    public static int GetPoisonSkill(this Item it) => Combat.CombatEngine.GetWeaponPoisonSkill(it);
 
     /// <summary>
     /// Item full name (Source-X CItem::GetNameFull). Falls back to <see cref="Item.Name"/>

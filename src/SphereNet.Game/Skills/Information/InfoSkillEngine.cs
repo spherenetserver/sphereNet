@@ -428,7 +428,7 @@ public static class InfoSkillEngine
                 if (item.TryGetTag("POTION_SPELL", out string? spell) &&
                     string.Equals(spell, "Poison", StringComparison.OrdinalIgnoreCase))
                 {
-                    poisonLevel = item.Quality;
+                    poisonLevel = item.More2 > 0 ? (int)Math.Min(item.More2, 1000) : item.Quality;
                 }
                 break;
             case ItemType.Food:

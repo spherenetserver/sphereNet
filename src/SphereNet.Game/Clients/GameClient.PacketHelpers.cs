@@ -526,6 +526,10 @@ public sealed partial class GameClient
         DismountCharacter();
     }
 
+    /// <summary>Script MOUNT verb entry: ride <paramref name="horse"/> through
+    /// the same path as a double-click (fires @Mount).</summary>
+    public bool MountFromScript(Character horse) => TryMountCharacter(horse);
+
     internal void ClearPendingTargetState()
     {
         Targets.Tele = false;

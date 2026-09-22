@@ -237,12 +237,12 @@ public class CombatWaveC2ParityTests
     }
 
     [Fact]
-    public void Hit_DefaultPoisonReduction_SpendsOneCharge()
+    public void Hit_DefaultPoisonReduction_WearsTheCoatByHalfTheDose()
     {
         var savedHook = CombatEngine.OnHitDamage;
         try
         {
-            CombatEngine.OnHitDamage = null; // engine defaults (100% / 1)
+            CombatEngine.OnHitDamage = null; // engine defaults (100% / dose/2)
 
             var world = TestHarness.CreateWorld();
             var attacker = MakeCombatant(world, 100);
@@ -251,12 +251,15 @@ public class CombatWaveC2ParityTests
             var sword = world.CreateItem();
             sword.ItemType = ItemType.WeaponSword;
             sword.BaseId = 0x0F5E;
-            sword.SetTag("POISON_SKILL", "1000");
-            sword.SetTag("POISON_CHARGES", "5");
+            // A full coat (m_poison_skill = MOREZ = 100) always delivers.
+            CombatEngine.SetWeaponPoisonSkill(sword, 100);
             attacker.Equip(sword, Layer.OneHanded);
 
             Assert.True(ResolveHit(attacker, target, sword) > 0);
-            Assert.True(sword.TryGetTag("POISON_CHARGES", out var charges) && charges == "4");
+            Assert.True(target.IsPoisoned);
+            // The swing's dose is rand(100); ItemPoisonReductionAmount = dose / 2 comes
+            // off the coat (CCharFight.cpp:2154/2233).
+            Assert.InRange(sword.MoreP.Z, 51, 100);
         }
         finally
         {

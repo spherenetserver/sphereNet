@@ -41,8 +41,9 @@ public class ItemUseParityTests
         Assert.True(client.HasPendingTarget);
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, blade.Uid.Value, 0, 0, 0, 0);
 
-        Assert.True(blade.TryGetTag("POISON_SKILL", out var poisonSkill));
-        Assert.Equal("80", poisonSkill);
+        // m_poison_skill lives in MOREZ as the potion strength / 10 (CCharSkill.cpp:2208).
+        Assert.Equal(8, blade.MoreP.Z);
+        Assert.False(blade.TryGetTag("POISON_SKILL", out _));
         Assert.True(poison.IsDeleted);
         Assert.False(client.HasPendingTarget);
     }

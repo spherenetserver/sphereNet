@@ -2765,7 +2765,10 @@ public sealed class ClientScriptConsoleHandler
         if (_commands?.Resources != null && IsPlainDefToken(varName))
         {
             var rid = _commands.Resources.ResolveDefName(varName);
-            if (rid.IsValid)
+            // A [FUNCTION] is a named resource too, but Source-X calls it
+            // (r_GetFunctionIndex) before any constant fallback. Answering with
+            // its index here made every bare IF (<f_x>) guard true under a client.
+            if (rid.IsValid && rid.Type != SphereNet.Core.Enums.ResType.Function)
             {
                 value = rid.Index.ToString();
                 return true;

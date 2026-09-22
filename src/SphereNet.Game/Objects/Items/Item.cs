@@ -4407,6 +4407,19 @@ public class Item : ObjBase
     {
         if (_isDeleted) return false;
 
+        // An equipped IT_SPELL memory ticks through its wearer, not through @Timer:
+        // CWorldTicker hands a worn item to CChar::OnTickEquip, which for IT_SPELL is
+        // Spell_Equip_OnTick (CWorldTicker.cpp:1163, CCharAct.cpp:4143). The poison
+        // memory is the one SphereNet keeps as a real worn item.
+        if (IsEquipped && _type == ItemType.Spell && EquipLayer == Layer.FlagPoison)
+        {
+            long due = Timeout;
+            if (due > 0 && Environment.TickCount64 >= due &&
+                ResolveWorld?.Invoke()?.FindChar(ContainedIn) is { } wearer)
+                wearer.Poison.EquipTick(this);
+            return !_isDeleted;
+        }
+
         // Item decay: if DecayTime is set and elapsed, mark deleted — unless the
         // item is a loose ground item in a NODECAY region (Source-X
         // REGION_FLAG_NODECAY: things on the ground don't decay here), in which

@@ -1730,8 +1730,104 @@ public sealed class ScriptInterpreter
 
     private bool FunctionExists(string name) => FunctionLookup?.Invoke(name) ?? false;
 
+    /// <summary>First segments that name a variable store or a namespace, never an
+    /// object reference: a function name after them is not a call ON anything.</summary>
+    private static readonly HashSet<string> NonReferenceHeads = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SRC", "DSRC", "SERV", "DEF", "DEF0", "TAG", "TAG0", "DTAG", "DTAG0", "CTAG", "CTAG0",
+        "DCTAG", "DCTAG0", "LOCAL", "DLOCAL", "VAR", "VAR0", "DVAR", "FLOAT", "ARGV", "DB", "LDB",
+        "FILE", "DEFMSG", "ARGS", "ARGN", "ARGN1", "ARGN2", "ARGN3", "ARGTXT", "ARGCHK",
+    };
+
+    /// <summary>&lt;REF1.f_x&gt;, &lt;ARGO.f_x&gt;, &lt;LINK.f_x&gt;, &lt;SRC.TARG.f_x&gt;, &lt;UID.x.f_x&gt; ...:
+    /// a [FUNCTION] called ON the referenced object. Source-X r_WriteVal walks the
+    /// reference (r_GetRef) and, when the object's own tables do not name the key,
+    /// calls the function on it (CObjBase.cpp:971, CScriptObj.cpp:1481). Only SRC had
+    /// that fallback here, so every other head read such a call as "0" - and a guard
+    /// like IF (&lt;LINK.IsDeath&gt;) never saw a dead character.</summary>
+    private string? TryResolveReferencedFunction(string varName, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
+    {
+        int dot = varName.LastIndexOf('.');
+        if (dot <= 0 || dot == varName.Length - 1 || ResolveObjectRef == null)
+            return null;
+        string fn = varName[(dot + 1)..];
+        if (!(char.IsLetter(fn[0]) || fn[0] == '_'))
+            return null;
+        foreach (char c in fn)
+            if (!(char.IsLetterOrDigit(c) || c == '_'))
+                return null;
+        if (!FunctionExists(fn))
+            return null;
+
+        var obj = ResolveReferencePrefix(varName[..dot], target, source, args, scope);
+        if (obj == null)
+            return null;
+
+        // The object's own key wins over a same-named function, as upstream.
+        if (obj.TryGetProperty(fn, out string own))
+            return own;
+        return CallNoArgFunction(fn, obj, source, args, scope);
+    }
+
+    /// <summary>The object a reference prefix (REF1, ARGO, LINK, SRC.TARG, UID.x,
+    /// TOPOBJ ...) names, or null when it names none - Source-X r_GetRef.</summary>
+    private IScriptObj? ResolveReferencePrefix(string prefix, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
+    {
+        if (ResolveObjectRef == null || prefix.Length == 0)
+            return null;
+        int firstDot = prefix.IndexOf('.');
+        string head = firstDot < 0 ? prefix : prefix[..firstDot];
+        if (prefix.Equals("SRC", StringComparison.OrdinalIgnoreCase))
+            return args?.Source ?? source?.GetSourceChar();
+        if (NonReferenceHeads.Contains(head))
+            return null;
+
+        // UID.<x>, NEW, TOPOBJ, CONT, LINK...: the host names these directly;
+        // anything else (REF1, ARGO, OBJ, SRC.TARG) reads as a uid first.
+        var obj = firstDot < 0 || head.Equals("UID", StringComparison.OrdinalIgnoreCase)
+            ? ResolveObjectRef(target, prefix)
+            : null;
+        if (obj != null)
+            return obj;
+        string? refValue = ResolveVarForTarget(prefix, target, source, args, scope);
+        if (string.IsNullOrWhiteSpace(refValue) || refValue.Trim() is "0" or "-1")
+            return null;
+        return ResolveObjectRef(target, "UID." + refValue.Trim());
+    }
+
+    /// <summary>Source-X CHC_ISMYPET: NPC_IsOwnedBy(SRC, fAllowGM=true)
+    /// (CCharNPCStatus.cpp:449) - asked of the NPC, answered about SRC.</summary>
+    private static string IsMyPet(IScriptObj npc, IScriptObj? src)
+    {
+        static string Prop(IScriptObj o, string key) => o.TryGetProperty(key, out string v) ? v : "";
+        static ulong Uid(string s) =>
+            ulong.TryParse(s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s,
+                System.Globalization.NumberStyles.HexNumber, null, out ulong v) ? v : 0;
+        if (src == null || Prop(npc, "ISPLAYER") == "1")
+            return "0";
+        ulong npcUid = Uid(Prop(npc, "UID")), srcUid = Uid(Prop(src, "UID"));
+        if (srcUid == 0)
+            return "0";
+        if (npcUid == srcUid)
+            return "1";
+        if (Prop(src, "GM") == "1" &&
+            int.TryParse(Prop(src, "PRIVLEVEL"), out int srcPriv) &&
+            int.TryParse(Prop(npc, "PRIVLEVEL"), out int npcPriv) && srcPriv > npcPriv)
+            return "1";
+        return Uid(Prop(npc, "NPCMASTER")) == srcUid ? "1" : "0";
+    }
+
     private string? ResolveVarForTarget(string varName, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)
     {
+        if (varName.EndsWith(".ISMYPET", StringComparison.OrdinalIgnoreCase) &&
+            ResolveReferencePrefix(varName[..^".ISMYPET".Length], target, source, args, scope) is { } petObj)
+            return IsMyPet(petObj, args?.Source ?? source?.GetSourceChar());
+        if (varName.IndexOf('.') > 0 &&
+            TryResolveReferencedFunction(varName, target, source, args, scope) is { } referenced)
+            return referenced;
+
         static string GetObjectRef(IScriptObj? obj)
         {
             if (obj == null)
@@ -1773,16 +1869,7 @@ public sealed class ScriptInterpreter
         // caller context, so it resolves here — a plain Character property
         // read has no SRC to compare against.
         if (varName.Equals("ISMYPET", StringComparison.OrdinalIgnoreCase))
-        {
-            string srcUid = args?.Source is IScriptObj srcObj &&
-                srcObj.TryGetProperty("UID", out string su) ? su : "";
-            string ownerUid = target.TryGetProperty("NPCMASTER", out string ou) ? ou : "";
-            static bool TryUid(string s, out ulong v) =>
-                ulong.TryParse(s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s,
-                    System.Globalization.NumberStyles.HexNumber, null, out v);
-            return TryUid(srcUid, out ulong a) && TryUid(ownerUid, out ulong b) && a != 0 && a == b
-                ? "1" : "0";
-        }
+            return IsMyPet(target, args?.Source ?? source?.GetSourceChar());
 
         // LINK is the CURRENT object's link property (Source-X m_uidLink) — e.g. a
         // lever's linked door — NOT a trigger-arg object. Delegate to the target,

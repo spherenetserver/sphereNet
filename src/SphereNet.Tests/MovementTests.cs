@@ -64,6 +64,24 @@ public class MovementTests
         Assert.False(moved);
     }
 
+    /// <summary>Source-X CanMove skips the whole freeze test for a character in GM
+    /// mode (CCharAct.cpp:4575): a script's STATF_FREEZE or NoMoveTill does not
+    /// root staff.</summary>
+    [Fact]
+    public void TryMove_FrozenGm_StillWalks()
+    {
+        var (world, engine) = CreateWorld();
+        var ch = world.CreateCharacter();
+        ch.Str = 50; ch.MaxHits = 50; ch.Hits = 50;
+        ch.MaxStam = 50; ch.Stam = 50;
+        ch.PrivLevel = PrivLevel.GM;
+        ch.SetStatFlag(StatFlag.Freeze);
+        ch.SetTag("NOMOVETILL", (world.GameClockMs / 100 + 100_000).ToString());
+        world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+        Assert.True(engine.TryMove(ch, Direction.East, false, 1));
+    }
+
     [Fact]
     public void MapData_Load_MissingRequiredFiles_ThrowsExplicitHealthError()
     {

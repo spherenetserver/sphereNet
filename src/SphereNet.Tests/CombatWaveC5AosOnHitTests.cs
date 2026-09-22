@@ -250,33 +250,6 @@ public class CombatWaveC5AosOnHitTests
         }
     }
 
-    [Theory]
-    [InlineData(500, 1, 1)]   // Lesser  (OSI 0) at melee range → level 1
-    [InlineData(700, 1, 2)]   // Standard (OSI 1) → level 2
-    [InlineData(900, 1, 3)]   // Greater  (OSI 2) → level 3
-    [InlineData(1000, 1, 4)]  // Lethal   (OSI 3, floor) → level 4
-    public void OsiPoisonLevel_SkillBands_MapToSourceXLevels(int skill, int dist, int minLevel)
-    {
-        // The 1/10 Deadly bump can push a 1000-skill hit one higher, so assert a
-        // floor rather than equality for the top band.
-        byte level = CombatEngine.CalcOsiPoisonLevel(skill, dist, evilOmen: false);
-        Assert.True(level >= minLevel, $"skill {skill} → {level}, expected >= {minLevel}");
-        Assert.InRange((int)level, 1, 5);
-    }
-
-    [Fact]
-    public void OsiPoisonLevel_DistanceFalloff_AndEvilOmenBump()
-    {
-        // Greater (level 3 base) cast from 8 tiles: -8/2 = -4 → floors at OSI 0 → 1.
-        Assert.Equal(1, CombatEngine.CalcOsiPoisonLevel(900, 8, evilOmen: false));
-
-        // Evil-Omen adds one level on top (OSI +1).
-        Assert.Equal(4, CombatEngine.CalcOsiPoisonLevel(900, 1, evilOmen: true));
-
-        // Melee range (dist < 4) never applies falloff.
-        Assert.Equal(3, CombatEngine.CalcOsiPoisonLevel(900, 3, evilOmen: false));
-    }
-
     [Fact]
     public void HitChanceEra2_DefenseChanceIncreaseLowersAttackerChance()
     {

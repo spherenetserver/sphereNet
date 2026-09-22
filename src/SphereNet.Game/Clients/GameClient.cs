@@ -158,6 +158,9 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     public CharCreateInfo? PendingCharCreate { get; set; }
 
     private Account? _account;
+    /// <summary>When the current character entered the world; the session length
+    /// feeds ACCOUNT.LASTCONNECTTIME / TOTALCONNECTTIME on disconnect.</summary>
+    private DateTime? _sessionEnterUtc;
     private Character? _character;
 
     /// <summary>View-delta bookkeeping (decomposition phase 2).</summary>
@@ -308,6 +311,11 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
                     new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
             }
 
+            if (_account != null && _sessionEnterUtc is { } enteredUtc)
+            {
+                _account.RecordLogout(DateTime.UtcNow - enteredUtc);
+                _sessionEnterUtc = null;
+            }
             _systemHooks?.DispatchClient("disconnect", _character, _account);
             AbortActiveTradeOnDisconnect();
             ChatOnDisconnect();

@@ -33,10 +33,9 @@ public partial class Character : ObjBase
     /// update; when unset the verb falls back to clearing the OnHorse flag.</summary>
     public static Action<Character>? OnScriptDismount;
 
-    /// <summary>Script MOUNT verb on an NPC (Source-X Horse_Mount): seat the
-    /// NPC's own owner on it. Args: (npc). Wired to MountEngine.TryMount.
-    /// The staff-horse script (REF1.MOUNT after NEW.MAKEMYPET SRC) needs it.</summary>
-    public static Func<Character, bool>? OnScriptMount;
+    /// <summary>Script MOUNT verb (Source-X CHV_MOUNT → Horse_Mount): THIS
+    /// char rides the NPC named by the argument uid. Args: (rider, horse).</summary>
+    public static Func<Character, Character, bool>? OnScriptMount;
 
     /// <summary>The multi this character is currently customizing, for the
     /// HOUSEDESIGN reference head (CLIR_HOUSEDESIGN, CClient.cpp:542). The design
@@ -231,6 +230,21 @@ public partial class Character : ObjBase
     /// (0, ClassicWindows) when the character is offline or no session
     /// info is recorded. Wired in Program.cs.</summary>
     public static Func<Character, (int ReportedCliver, ClientType Type)>? ResolveClientInfo;
+
+    /// <summary>Spell definition lookup for effects kept on the character (the poison
+    /// memory's rune graphic and SPELLFLAG_NOUNPARALYZE). Wired to the spell engine.</summary>
+    public static Func<SpellType, Magic.SpellDef?>? ResolveSpellDef;
+
+    /// <summary>Break an active paralyze (the paralyze memory is deleted) - SetPoison
+    /// releases the victim first. Wired to the spell engine.</summary>
+    public static Action<Character>? BreakParalyzeHook;
+
+    /// <summary>sphere.ini EMOTEFLAGS (Source-X m_iEmoteFlags).</summary>
+    public static int EmoteFlags { get; set; }
+
+    /// <summary>Dotted client version text ("7.0.20.0") of the active session
+    /// of <paramref name="ch"/>, or "" when offline. Wired in Program.cs.</summary>
+    public static Func<Character, string>? ResolveClientVersionText;
 
     /// <summary>Broadcast a packet to every connected client whose
     /// character is within <paramref name="range"/> tiles of
@@ -1824,6 +1838,13 @@ public partial class Character : ObjBase
 
     public void ApplyPoison(byte level, Serial source) => Poison.Apply(level, source);
 
+    /// <summary>Source-X CChar::SetPoison(iSkill, iHits, pCharSrc): skill 0-1000 is how
+    /// bad the poison is, hits the tick count on the non-OSI formula.</summary>
+    public bool SetPoison(int skill, int hits, Character? source) => Poison.SetPoison(skill, hits, source);
+
+    /// <summary>Source-X CChar::SetPoisonCure: delete the poison memory.</summary>
+    public void SetPoisonCure(bool extra) => Poison.Cure(extra);
+
     /// <summary>Typed field touch (SpellEngine.ApplyFieldTouch, wired by the
     /// host): fire damages, poison poisons, paralyze freezes, barriers are
     /// inert. The answer says whether the touch was consumed there and whether an
@@ -3049,6 +3070,9 @@ public partial class Character : ObjBase
         item.IsEquipped = true;
         item.EquipLayer = layer;
         item.ContainedIn = Uid;
+        // Spell_Effect_Add for the poison memory (CCharSpell.cpp:1134).
+        if (layer == Layer.FlagPoison)
+            Poison.OnEffectAdded();
         // Track the last weapon wielded for the EquipLastWeapon client macro
         // (Source-X CChar::m_uidWeaponLast, set on equip, CCharAct.cpp:314).
         if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && item.IsWeaponType)
@@ -3145,6 +3169,10 @@ public partial class Character : ObjBase
             _backpack = null;
         item.IsEquipped = false;
         item.ContainedIn = Serial.Invalid;
+        // Spell_Effect_Remove for the poison memory (CCharSpell.cpp:583): however the
+        // memory leaves the layer, the poison leaves with it.
+        if (layer == Layer.FlagPoison)
+            Poison.OnEffectRemoved();
         MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
 
         // Source-X Stat_AddMaxMod on unequip clamps the current pool down to the
@@ -3336,7 +3364,7 @@ public partial class Character : ObjBase
         InterruptMeditation();
         ClearCastState();
         _hits = 0;
-        CurePoison();
+        SetPoisonCure(true);
         ClearPendingHit();
         FightTarget = Serial.Invalid;
         // Source-X CChar::Death: Reveal() + StatFlag_Clear(STONE|FREEZE|
@@ -3914,7 +3942,26 @@ public partial class Character : ObjBase
             // Source-X client introspection (CClient::GetReportedVer
             // and friends). Sphere admin search row uses these to
             // decorate online players with their client kind.
+            case "LASTEVENTWALK":
+            {
+                // Source-X CC_LASTEVENTWALK: the world time of the last accepted
+                // step, on the same clock as SERV.TIMEHIRES so scripts can subtract.
+                long clock = ResolveWorld?.Invoke()?.GameClockMs ?? 0;
+                long sinceStep = LastMoveTick > 0 ? Math.Max(0, Environment.TickCount64 - LastMoveTick) : 0;
+                value = Math.Max(0, clock - sinceStep).ToString();
+                return true;
+            }
             case "REPORTEDCLIVER":
+            case "CLIENTVERSION":
+            {
+                // Source-X CC_REPORTEDCLIVER / CC_CLIENTVERSION: the bare key is
+                // the version string ("7.0.20.0"); REPORTEDCLIVER.<x> below is
+                // the raw number.
+                value = ResolveClientVersionText?.Invoke(this) ?? "";
+                return true;
+            }
+            case "REPORTEDCLIVER.NUM":
+            case "REPORTEDCLIVER.RAW":
             {
                 var info = ResolveClientInfo?.Invoke(this) ?? (0, ClientType.ClassicWindows);
                 value = info.ReportedCliver.ToString();
@@ -5362,6 +5409,10 @@ public partial class Character : ObjBase
                 return TryLoadTimerFEntry(value);
             case "POISON": // restore an active poison (world load): level|ticks|remainingMs|source
             {
+                // Only the save form belongs here. A script's "SRC.POISON 1000" is
+                // the CHV_POISON verb; claiming it would swallow the line.
+                if (value.IndexOf('|') < 0)
+                    return false;
                 var pp = value.Split('|');
                 if (pp.Length >= 3 && byte.TryParse(pp[0], out byte plvl)
                     && int.TryParse(pp[1], out int pticks) && long.TryParse(pp[2], out long premMs))
@@ -6030,7 +6081,8 @@ public partial class Character : ObjBase
                 else Resurrect();
                 return true;
             case "CURE":
-                CurePoison();
+                // Source-X CHV_CURE [1]: the optional argument also cures hallucination.
+                SetPoisonCure(!string.IsNullOrWhiteSpace(args) && args.Trim() != "0");
                 return true;
             case "REVEAL":
                 ClearStatFlag(StatFlag.Hidden);
@@ -6635,11 +6687,36 @@ public partial class Character : ObjBase
                 return true;
             }
             case "MOUNT":
-                // Source-X Horse_Mount as a VERB on the NPC: seat its owner.
-                // (The same token is a property read elsewhere — SRC.MOUNT —
-                // returning the worn mount item; the verb path is the write.)
-                OnScriptMount?.Invoke(this);
+            {
+                // Source-X CHV_MOUNT (CChar.cpp): `rider.MOUNT <horse uid>` —
+                // THIS char is the rider; an argument that resolves to no char
+                // is a silent no-op. (The same token read as a property —
+                // <SRC.MOUNT> — returns the worn mount item instead.)
+                Serial horseUid = ParseSerial(args?.Trim() ?? "");
+                var horse = horseUid.IsValid
+                    ? ResolveWorld?.Invoke()?.FindObject(horseUid) as Character
+                    : null;
+                if (horse != null && horse != this)
+                    OnScriptMount?.Invoke(this, horse);
                 return true;
+            }
+            case "POISON":
+            {
+                // Source-X CHV_POISON <skill>[,<ticks>] -> SetPoison(skill, ticks, SRC)
+                // (CChar.cpp:4808). Ticks default to skill/50.
+                string[] pp = SplitScriptArgs(args);
+                if (pp.Length == 0 || !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(
+                        pp[0].AsSpan(), out long poisonSkill))
+                    return true;
+                long poisonTicks = poisonSkill / 50;
+                if (pp.Length > 1 && SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(
+                        pp[1].AsSpan(), out long explicitTicks))
+                    poisonTicks = explicitTicks;
+                SetPoison((int)Math.Clamp(poisonSkill, int.MinValue, int.MaxValue),
+                    (int)Math.Clamp(poisonTicks, int.MinValue, int.MaxValue),
+                    ResolveSourceCharacter(source));
+                return true;
+            }
             case "MAKEMYPET":
             {
                 // Source-X MAKEMYPET <char>: make THIS npc the argument's pet.
@@ -7710,8 +7787,9 @@ public partial class Character : ObjBase
             }
         }
 
-        // Poison tick
-        ProcessPoisonTick(now);
+        // Poison ticks on its memory item's own timer; the character tick only turns a
+        // poison restored from a pre-item save into that memory.
+        _poison?.MaterializeRestore();
 
         // Field damage tick — periodic damage while standing in a fire/poison
         // field, so a stationary victim still takes damage (not only on step).

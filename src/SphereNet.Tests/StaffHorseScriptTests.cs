@@ -13,10 +13,9 @@ namespace SphereNet.Tests;
 /// Field report: the staff .bineq mount script does nothing. Its @DClick
 /// body makes a new mount NPC a pet of the caster and then rides it:
 ///     NEW.MAKEMYPET &lt;SRC&gt;
-///     REF1.MOUNT
-/// Both were unimplemented — MAKEMYPET was not a char verb at all, and
-/// MOUNT existed only as a property READ (returns the worn mount item),
-/// never as the ride VERB.
+///     SRC.MOUNT &lt;REF1&gt;
+/// MOUNT is Source-X CHV_MOUNT: the verb's owner is the RIDER and the
+/// argument is the horse uid (CChar.cpp → Horse_Mount).
 /// </summary>
 [Collection("VendorStateSerial")]
 public sealed class StaffHorseScriptTests
@@ -28,11 +27,7 @@ public sealed class StaffHorseScriptTests
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;
         var engine = new MountEngine(world);
-        Character.OnScriptMount = npc =>
-        {
-            var owner = npc.OwnerSerial.IsValid ? world.FindChar(npc.OwnerSerial) : null;
-            return owner != null && engine.TryMount(owner, npc);
-        };
+        Character.OnScriptMount = (rider, horse) => engine.TryMount(rider, horse);
         return (world, engine);
     }
 
@@ -57,7 +52,7 @@ public sealed class StaffHorseScriptTests
     }
 
     [Fact]
-    public void MountVerb_OnOwnedNpc_SeatsTheOwner()
+    public void MountVerb_OnRiderWithHorseUid_SeatsTheRider()
     {
         var (world, _) = Setup();
         var player = world.CreateCharacter();
@@ -71,12 +66,33 @@ public sealed class StaffHorseScriptTests
 
         // The script order: pet first, then ride.
         Assert.True(mount.TryExecuteCommand("MAKEMYPET", player.Uid.Value.ToString(), null!));
-        Assert.True(mount.TryExecuteCommand("MOUNT", "", null!));
+        Assert.True(player.TryExecuteCommand("MOUNT", $"0{mount.Uid.Value:X}", null!));
 
         // The owner is now mounted, and the mount NPC was hidden/ridden.
         Assert.True(player.IsStatFlag(StatFlag.OnHorse));
         Assert.NotNull(player.GetEquippedItem(Layer.Horse));
         Assert.True(mount.IsStatFlag(StatFlag.Ridden));
+    }
+
+    [Fact]
+    public void MountVerb_WithoutArgument_IsNoOp()
+    {
+        var (world, _) = Setup();
+        var player = world.CreateCharacter();
+        player.BodyId = 0x0190;
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+
+        var mount = world.CreateCharacter();
+        mount.BodyId = 0x00C8;
+        world.PlaceCharacter(mount, new Point3D(100, 100, 0, 0));
+        Assert.True(mount.TryExecuteCommand("MAKEMYPET", player.Uid.Value.ToString(), null!));
+
+        // Source-X resolves the argument uid; an NPC-side bare MOUNT names
+        // no horse and must not seat the owner.
+        Assert.True(mount.TryExecuteCommand("MOUNT", "", null!));
+        Assert.False(player.IsStatFlag(StatFlag.OnHorse));
+        Assert.False(mount.IsStatFlag(StatFlag.Ridden));
     }
 
     [Fact]

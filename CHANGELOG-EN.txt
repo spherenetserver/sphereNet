@@ -4,6 +4,83 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-22] - Poison is a worn spell memory, as in Source-X
+------------------------------------------------------------------------
+CHANGE - An active poison is one IT_SPELL memory of SPELL_Poison worn on
+         LAYER_FLAG_Poison (42): MOREX the spell, MOREY the level (OSI 0-4) or
+         strength (0-1000), MORE2 the ticks left, LINK the poisoner, its timer the
+         next tick (CChar::SetPoison, CCharAct.cpp:4175). It replaces the separate
+         poison counter. Scripts reach it with FINDLAYER; it saves as an ordinary
+         worn item. The old POISON= record still loads and becomes the memory on the
+         character's first tick.
+FIX - SetPoison is ported whole: the first tick 1-2 s out, paralyze released, the
+      OSI ladder (>=1000 deadly with 1 in 10 lethal, >850 greater, >650 standard)
+      with -dist/2 fall-off and no source meaning lesser, Evil Omen only under the
+      OSI formulas, and a new poison REPLACING the old one (a weaker poison used to
+      be refused - invented).
+FIX - The tick is Spell_Equip_OnTick: OSI damage from MAXHITS by level with 2-5 s
+      delays, the non-OSI branch (strength banded, -50 per tick, 5-8 s), the
+      minimum per level, the "*You see NAME ...*" emote to bystanders and the
+      "You feel" line to the victim, and damage through the one damage entry as
+      MAGIC|POISON|NODISTURB|NOREVEAL - so poison resist applies and a poison tick
+      no longer interrupts a spell. @SpellEffectTick gets the memory as ARGO and
+      the 0-4 level in ARGN2.
+FIX - Removing the memory by any road - cure, death, a script REMOVE - clears
+      STATF_POISONED, the buff and the green bar (Spell_Effect_Remove).
+FIX - Cure spells and bandage healing roll Calc_CurePoisonChance (OSI table, S-curve
+      otherwise, OVERRIDE.CUREPOISONCHANCE, GM always) and send the reference's
+      four messages; Arch Cure / skill > 900 also cures hallucination. The healing
+      roll was skill/1000 and the cure spell never failed.
+FIX - Weapon and food poison is m_poison_skill in MOREZ (0-100, potion strength /
+      10). A hit rolls a dose of rand(MOREZ) before @Hit (ItemPoisonReductionAmount
+      = dose/2), delivers SetPoison(10*dose, dose/5) when the coat beats a d100 or is
+      under 10, and wears the coat down; a creature bites with its Poisoning skill
+      only when it has no weapon. A meal poisons its eater with SetPoison(coat*10,
+      1+coat/50). Old POISON_SKILL tags are still read.
+FIX - Spell Poison uses GetSpellEffect or (skill + poisoning)/2 under the OSI
+      formulas; a poison field stores its caster's skill and does not re-poison the
+      already poisoned.
+ADD - sphere.ini EMOTEFLAGS (0x02 EMOTEF_POISON: the poison emote goes only to the
+      victim).
+TEST - PoisonMemoryParityTests; poison tests in SaveFormat, SpellEffectTickBridge,
+       CombatWaveC2, ItemUseParity and SourceXWave256 follow the reference model.
+
+[2026-09-22] - Resolve script reads, verbs and dialogs the way the reference does
+------------------------------------------------------------------------
+FIX - MOUNT is CHV_MOUNT: "rider.MOUNT <horse uid>" seats the verb's owner on the
+      named NPC (CChar.cpp:4729). It was an argument-less verb on the NPC that seated
+      its owner, so "SRC.MOUNT <REF1>" resolved nothing and the rider stayed afoot.
+FIX - A bare <f_name> read under a client calls the [FUNCTION]. The client's bare
+      defname fallback answered first with the function's resource index - a large
+      non-zero number - so every IF (<f_x>) guard was true (a living character was
+      told it was dead). Upstream calls the function before any constant fallback.
+FIX - <REF1.f>, <ARGO.f>, <OBJ.f>, <LINK.f>, <TOPOBJ.f>, <UID.x.f>, <SRC.TARG.f> call
+      the function ON the referenced object when that object's own tables do not
+      name the key (r_WriteVal -> r_GetRef, CObjBase.cpp:971). Only SRC had this;
+      every other head read the call as 0.
+FIX - <x.ISMYPET> is NPC_IsOwnedBy(SRC, true) on the referenced NPC
+      (CCharNPCStatus.cpp:449); only the bare form was answered.
+FIX - SRC.POISON <skill>[,ticks] is the CHV_POISON verb (SetPoison with the OSI level
+      ladder and distance fall-off). The world-load POISON setter claimed the line
+      first and dropped it.
+FIX - A trigger fired without an explicit console runs under the source
+      character's client, as upstream hands OnTrigger the acting char as pSrc
+      (CObjBase.cpp:2156). A DIALOG in an item's @DClick never reached the screen.
+FIX - Accounts record FIRSTIP/FIRSTCONNECTDATE and LASTIP on login, LASTCONNECTDATE
+      (previous value to TAG.LastLogged) on character entry, and LASTCONNECTTIME /
+      TOTALCONNECTTIME in minutes on logout (CAccount::OnLogin/OnLogout). None was
+      written at runtime. Dates read and save as local "yyyy/MM/dd HH:mm:ss";
+      LASTCONNECTTIME is a real account key again instead of a tag.
+FIX - Character REPORTEDCLIVER / CLIENTVERSION read as the dotted version string;
+      REPORTEDCLIVER.<x> keeps the raw number. LASTEVENTWALK answers the last step on
+      the SERV.TIMEHIRES clock.
+FIX - A character in GM mode is never rooted: the walk check skips STATF_FREEZE,
+      STATF_STONE, NoMoveTill and freeze-on-cast for staff, as Source-X CanMove
+      skips OnFreezeCheck under PRIV_GM (CCharAct.cpp:4575). A pack's stuck
+      countdown froze a plevel 7 character for its whole duration.
+TEST - ScriptReferenceAndClientContextTests, AccountConnectRecordTests, MovementTests and the
+       updated StaffHorseScriptTests pin each of the above.
+
 [2026-09-22] - Answer SERV.URL from the ini
 ------------------------------------------------------------------------
 FIX - SERV.URL returns the [SPHERE] URL= value, as upstream returns m_sURL

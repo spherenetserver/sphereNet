@@ -2347,9 +2347,11 @@ public static partial class Program
                 return SphereNet.Core.Types.ScriptNumber.ToEngineInt(triggerArgs.N1);
             };
 
-            CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage) =>
+            CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage, damageType) =>
             {
-                _spellEngine?.TryInterruptFromDamage(target, damage);
+                // DAMAGE_NODISTURB (a poison tick): the victim keeps casting.
+                if (!damageType.HasFlag(DamageType.NoDisturb))
+                    _spellEngine?.TryInterruptFromDamage(target, damage);
                 BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
@@ -2714,6 +2716,8 @@ public static partial class Program
             };
             SphereNet.Game.Clients.GameClient.OnCharacterOffline =
                 ch => { _clientsByCharUid.Remove(ch.Uid); _macroEngine?.OnCharDisconnect(ch.Uid.Value); };
+            SphereNet.Game.Objects.Characters.Character.ResolveSpellDef = spell => _spellEngine?.GetSpellDef(spell);
+            SphereNet.Game.Objects.Characters.Character.BreakParalyzeHook = ch => _spellEngine?.BreakParalyze(ch);
             SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = ch =>
             {
                 _spellEngine?.BreakParalyze(ch);
@@ -3234,6 +3238,16 @@ public static partial class Program
                     c.BeginSummonCageTarget();
             };
 
+            SphereNet.Game.Objects.Characters.Character.ResolveClientVersionText = ch =>
+            {
+                if (!TryGetClientFor(ch, out var c))
+                    return "";
+                if (!string.IsNullOrEmpty(c.NetState.ClientVersion))
+                    return c.NetState.ClientVersion;
+                uint n = c.NetState.ClientVersionNumber;
+                return n == 0 ? "" :
+                    $"{n / 10_000_000}.{n / 1_000_000 % 10}.{n / 1_000 % 1_000}.{n % 1_000}";
+            };
             SphereNet.Game.Objects.Characters.Character.ResolveClientInfo = ch =>
             {
                 if (!TryGetClientFor(ch, out var c))
@@ -3356,15 +3370,14 @@ public static partial class Program
                 else
                     _mountEngine.Dismount(ch);
             };
-            // Script MOUNT verb on an NPC: seat its owner (Source-X Horse_Mount).
-            // The staff-horse script runs REF1.MOUNT after making the mount a
-            // pet of SRC; resolve the owner and route through the engine.
-            SphereNet.Game.Objects.Characters.Character.OnScriptMount = npc =>
+            // Script MOUNT verb (Source-X CHV_MOUNT → Horse_Mount): the rider
+            // is the verb's owner, the horse its argument. An online rider goes
+            // through the client path so @Mount fires as on a double-click.
+            SphereNet.Game.Objects.Characters.Character.OnScriptMount = (rider, horse) =>
             {
-                var owner = npc.OwnerSerial.IsValid
-                    ? _world.FindChar(npc.OwnerSerial)
-                    : null;
-                return owner != null && _mountEngine.TryMount(owner, npc);
+                if (TryGetClientFor(rider, out var c))
+                    return c.MountFromScript(horse);
+                return _mountEngine.TryMount(rider, horse);
             };
 
             WireNpcActionVerbs();

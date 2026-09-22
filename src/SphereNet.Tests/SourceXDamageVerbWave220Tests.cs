@@ -48,7 +48,7 @@ public class SourceXDamageVerbWave220Tests
         target.ResFire = 0;
         int applied = 0;
         Character? appliedSource = null;
-        CombatEngine.OnDirectCharacterDamageApplied = (_, src, damage) =>
+        CombatEngine.OnDirectCharacterDamageApplied = (_, src, damage, _) =>
         {
             applied = damage;
             appliedSource = src;

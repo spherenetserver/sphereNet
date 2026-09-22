@@ -47,6 +47,7 @@ public enum Layer : byte
     // Source-X keeps its spell and flag layers above LAYER_DRAGGING (uofiles_enums.h:592).
     // SphereNet models the ones it needs at the reference's own numbers, so a layer
     // byte means the same thing on both sides.
+    FlagPoison = 42,    // LAYER_FLAG_Poison - the SPELL_Poison memory (CChar::SetPoison)
     FlagWool = 46,      // LAYER_FLAG_Wool - a shorn sheep's regrowing fleece
     Qty
 }

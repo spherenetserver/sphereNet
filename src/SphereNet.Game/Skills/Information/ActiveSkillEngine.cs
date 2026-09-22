@@ -557,16 +557,25 @@ public static class ActiveSkillEngine
 
         if (target.IsStatFlag(StatFlag.Poisoned))
         {
+            // Source-X Skill_Healing (CCharSkill.cpp:2859): Calc_CurePoisonChance on the
+            // worn poison against the healer's skill; a success only cures.
             int skillLvl = ch.GetSkill(healingSkill);
-            if (sink.Random.Next(1000) < skillLvl)
+            if (CharacterPoisonState.CureChance(target.Poison.Memory, skillLvl, ch.PrivLevel >= PrivLevel.GM))
             {
-                target.CurePoison();
+                target.SetPoisonCure(true);
                 sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingCure1,
                     target == ch ? ServerMessages.Get(Msg.HealingYourself) : target.Name));
+                if (target != ch)
+                    Character.SendOwnerMessage?.Invoke(target, ServerMessages.GetFormatted(Msg.HealingCure2, ch.Name));
             }
             else
             {
-                sink.SysMessage(ServerMessages.Get(Msg.HealingCure4));
+                if (target != ch)
+                    sink.SysMessage(ServerMessages.Get(Msg.HealingCure3));
+                if (target != ch)
+                    Character.SendOwnerMessage?.Invoke(target, ServerMessages.Get(Msg.HealingCure4));
+                else
+                    sink.SysMessage(ServerMessages.Get(Msg.HealingCure4));
                 return false;
             }
             return true;
@@ -815,7 +824,10 @@ public static class ActiveSkillEngine
         bool success = SkillEngine.UseQuick(ch, SkillType.Poisoning, diff);
         if (success)
         {
-            weapon.SetTag("POISON_SKILL", potion.Quality.ToString());
+            // Source-X Skill_Poisoning: m_poison_skill (MOREZ) = the potion's
+            // m_dwSkillQuality (MORE2) / 10. A bottle without one keeps its old reading.
+            int potionStrength = potion.More2 > 0 ? (int)Math.Min(potion.More2, 1000) : potion.Quality;
+            Combat.CombatEngine.SetWeaponPoisonSkill(weapon, potionStrength / 10);
             sink.ConsumeAmount(potion);
             sink.SysMessage(ServerMessages.Get(Msg.PoisoningSuccess));
         }

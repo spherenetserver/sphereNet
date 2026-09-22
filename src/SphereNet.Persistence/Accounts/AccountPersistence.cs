@@ -339,6 +339,7 @@ public static class AccountPersistence
         if (acc.ResDisp != 0) w.WriteProperty("RESDISP", acc.ResDisp.ToString());
         w.WriteProperty("PASSWORD", acc.PasswordHash ?? string.Empty);
         if (acc.TotalConnectTime != 0) w.WriteProperty("TOTALCONNECTTIME", acc.TotalConnectTime.ToString());
+        if (acc.LastConnectTime != 0) w.WriteProperty("LASTCONNECTTIME", acc.LastConnectTime.ToString());
         if (acc.LastCharUid.IsValid) w.WriteProperty("LASTCHARUID", $"0{acc.LastCharUid.Value:x}");
 
         for (int i = 0; i < 7; i++)
@@ -349,9 +350,9 @@ public static class AccountPersistence
         }
 
         if (acc.FirstConnectDate != default)
-            w.WriteProperty("FIRSTCONNECTDATE", acc.FirstConnectDate.ToString("yyyy/MM/dd HH:mm:ss"));
+            w.WriteProperty("FIRSTCONNECTDATE", Account.FormatConnectDate(acc.FirstConnectDate));
         if (acc.LastLogin != default)
-            w.WriteProperty("LASTCONNECTDATE", acc.LastLogin.ToString("yyyy/MM/dd HH:mm:ss"));
+            w.WriteProperty("LASTCONNECTDATE", Account.FormatConnectDate(acc.LastLogin));
         if (!string.IsNullOrEmpty(acc.FirstIp)) w.WriteProperty("FIRSTIP", acc.FirstIp);
         if (!string.IsNullOrEmpty(acc.LastIp)) w.WriteProperty("LASTIP", acc.LastIp);
         if (!string.IsNullOrEmpty(acc.ChatName)) w.WriteProperty("CHATNAME", acc.ChatName);
@@ -389,11 +390,11 @@ public static class AccountPersistence
             case "LASTCONNECTDATE":
                 if (DateTime.TryParse(val, System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.None, out var lcd))
-                    acc.LastLogin = lcd;
+                    acc.LastLogin = DateTime.SpecifyKind(lcd, DateTimeKind.Local).ToUniversalTime();
                 break;
             case "LASTCONNECTTIME":
-                // Sphere last session length — store as TAG for round-trip
-                acc.SetTag("LASTCONNECTTIME", val);
+                if (uint.TryParse(val, out uint lct))
+                    acc.LastConnectTime = lct;
                 break;
             case "MAXHOUSES":
                 acc.SetTag("MaxHouses", val);
@@ -408,7 +409,9 @@ public static class AccountPersistence
                 break;
             case "CHATNAME": acc.ChatName = val; break;
             case "FIRSTCONNECTDATE":
-                if (DateTime.TryParse(val, out var fcd)) acc.FirstConnectDate = fcd;
+                if (DateTime.TryParse(val, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var fcd))
+                    acc.FirstConnectDate = DateTime.SpecifyKind(fcd, DateTimeKind.Local).ToUniversalTime();
                 break;
             case "FIRSTIP": acc.FirstIp = val; break;
             case "LASTCHARUID":

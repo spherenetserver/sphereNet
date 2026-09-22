@@ -4,6 +4,79 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-22] - Zehir, Source-X'teki gibi giyili bir buyu memory'si
+------------------------------------------------------------------------
+DEGISIKLIK - Aktif zehir, LAYER_FLAG_Poison (42) uzerine giyilmis tek bir
+             SPELL_Poison IT_SPELL memory'sidir: MOREX buyu, MOREY seviye (OSI 0-4)
+             veya guc (0-1000), MORE2 kalan tik, LINK zehirleyen, timer'i sonraki
+             tik (CChar::SetPoison, CCharAct.cpp:4175). Ayri zehir sayacinin yerini
+             alir. Scriptler FINDLAYER ile ulasir; normal giyili item olarak
+             kaydedilir. Eski POISON= kaydi hala yuklenir ve karakterin ilk tikinde
+             memory'ye donusur.
+DUZELTME - SetPoison tam port edildi: ilk tik 1-2 sn sonra, paraliz cozulur, OSI
+           merdiveni (>=1000 deadly, 10'da 1 lethal; >850 greater; >650 standard),
+           -mesafe/2 dususu, kaynak yoksa lesser, Evil Omen sadece OSI formullerinde,
+           ve yeni zehir eskisinin YERINE gecer (zayif zehrin reddedilmesi uydurmaydi).
+DUZELTME - Tik Spell_Equip_OnTick'tir: OSI'de MAXHITS'ten seviyeye gore hasar ve 2-5
+           sn gecikme, OSI-disi dal (guc bantlanir, tik basina -50, 5-8 sn), seviye
+           basina minimum, cevredekilere "*You see NAME ...*" emote'u ve kurbana "You
+           feel" satiri; hasar tek hasar girisinden MAGIC|POISON|NODISTURB|NOREVEAL
+           olarak gecer - zehir direnci uygulanir ve zehir tiki artik buyu bozmaz.
+           @SpellEffectTick ARGO olarak memory'yi, ARGN2 olarak 0-4 seviyeyi alir.
+DUZELTME - Memory hangi yoldan kalkarsa kalksin - cure, olum, script REMOVE -
+           STATF_POISONED, buff ve yesil bar temizlenir (Spell_Effect_Remove).
+DUZELTME - Cure buyuleri ve bandaj Calc_CurePoisonChance atar (OSI tablosu, degilse
+           S-egrisi, OVERRIDE.CUREPOISONCHANCE, GM her zaman) ve referansin dort
+           mesajini gonderir; Arch Cure / skill > 900 halusinasyonu da iyilestirir.
+           Bandaj zari skill/1000 idi, cure buyusu hic basarisiz olmuyordu.
+DUZELTME - Silah ve yiyecek zehri MOREZ'deki m_poison_skill'dir (0-100, iksir gucu /
+           10). Vurus @Hit'ten once rand(MOREZ) doz atar (ItemPoisonReductionAmount =
+           doz/2), kaplama d100'u gecerse ya da 10'un altindaysa SetPoison(10*doz,
+           doz/5) uygular ve kaplamayi asindirir; yaratik sadece silahi yokken
+           Poisoning skill'iyle isirir. Yemek yiyeni SetPoison(kaplama*10,
+           1+kaplama/50) ile zehirler. Eski POISON_SKILL tag'leri hala okunur.
+DUZELTME - Poison buyusu GetSpellEffect'i ya da OSI formullerinde (skill +
+           poisoning)/2'yi kullanir; poison field buyucunun skill'ini saklar ve
+           zaten zehirli olani tekrar zehirlemez.
+EKLEME - sphere.ini EMOTEFLAGS (0x02 EMOTEF_POISON: zehir emote'u sadece kurbana).
+TEST - PoisonMemoryParityTests; SaveFormat, SpellEffectTickBridge, CombatWaveC2,
+       ItemUseParity ve SourceXWave256 icindeki zehir testleri referans modele uyar.
+
+[2026-09-22] - Script okumalari, verb'ler ve dialoglar referans gibi cozulur
+------------------------------------------------------------------------
+DUZELTME - MOUNT artik CHV_MOUNT: "binici.MOUNT <binek uid>" verb sahibini verilen
+           NPC'ye bindirir (CChar.cpp:4729). Onceden NPC uzerinde argumansiz bir
+           verb'du; "SRC.MOUNT <REF1>" hicbir sey yapmiyordu, karakter binmiyordu.
+DUZELTME - Istemci altinda ciplak <f_isim> okumasi [FUNCTION]'i cagirir. Istemcinin
+           ciplak defname yedegi once fonksiyonun kaynak index'ini donduruyordu
+           (buyuk, sifir olmayan sayi); her IF (<f_x>) kontrolu dogru cikiyordu
+           (yasayan karaktere "oluyken yapamazsiniz" deniyordu).
+DUZELTME - <REF1.f>, <ARGO.f>, <OBJ.f>, <LINK.f>, <TOPOBJ.f>, <UID.x.f>, <SRC.TARG.f>
+           fonksiyonu referans verilen nesne UZERINDE cagirir (r_WriteVal ->
+           r_GetRef, CObjBase.cpp:971). Bunu sadece SRC yapiyordu; digerleri 0 okurdu.
+DUZELTME - <x.ISMYPET> referans verilen NPC'de NPC_IsOwnedBy(SRC, true) olarak
+           cozulur (CCharNPCStatus.cpp:449); sadece ciplak hali cozuluyordu.
+DUZELTME - SRC.POISON <skill>[,tick] CHV_POISON verb'udur (OSI seviye merdiveni ve
+           mesafe dususu). World-load POISON setter'i satiri once sahipleniyordu.
+DUZELTME - Acik konsol verilmeden tetiklenen trigger kaynak karakterin istemcisi
+           altinda calisir; ust kaynak OnTrigger'a karakteri pSrc olarak verir
+           (CObjBase.cpp:2156). Item @DClick icindeki DIALOG ekrana hic ulasmiyordu.
+DUZELTME - Hesaplar giriste FIRSTIP/FIRSTCONNECTDATE ve LASTIP, karakter girisinde
+           LASTCONNECTDATE (onceki deger TAG.LastLogged'a), cikista dakika olarak
+           LASTCONNECTTIME / TOTALCONNECTTIME kaydeder (CAccount::OnLogin/OnLogout).
+           Hicbiri calisma zamaninda yazilmiyordu. Tarihler yerel
+           "yyyy/MM/dd HH:mm:ss" olarak okunur ve kaydedilir; LASTCONNECTTIME tekrar
+           gercek hesap anahtari (tag degil).
+DUZELTME - Karakter REPORTEDCLIVER / CLIENTVERSION noktali surum metni dondurur;
+           REPORTEDCLIVER.<x> ham sayiyi verir. LASTEVENTWALK son adimi
+           SERV.TIMEHIRES saatinde verir.
+DUZELTME - GM modundaki karakter hic kilitlenmez: yurume kontrolu yetkili icin
+           STATF_FREEZE, STATF_STONE, NoMoveTill ve buyu-donmasini atlar; Source-X
+           CanMove da PRIV_GM altinda OnFreezeCheck'i atlar (CCharAct.cpp:4575).
+           Paketin stuck geri sayimi plevel 7 karakteri sure boyunca donduruyordu.
+TEST - ScriptReferenceAndClientContextTests, AccountConnectRecordTests, MovementTests ve guncel
+       StaffHorseScriptTests yukaridakilerin her birini sabitler.
+
 [2026-09-22] - SERV.URL degerini ini'den oku
 ------------------------------------------------------------------------
 DUZELTME - SERV.URL artik [SPHERE] URL= degerini dondurur; ust kaynak da m_sURL'i

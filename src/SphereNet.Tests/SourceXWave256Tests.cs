@@ -183,13 +183,17 @@ public sealed class SourceXWave256Tests
             ManaCost = 0, CastTimeBase = 1,
         });
         var engine = new SpellEngine(world, registry);
+        // Evil Omen lives in SetPoison's OSI branch (CCharAct.cpp:4239).
+        Character.MagicFlags = (int)MagicConfigFlags.OsiFormulas;
 
         Character CastPoisonOn(bool withOmen)
         {
             var caster = world.CreateCharacter();
             caster.PrivLevel = PrivLevel.GM;
             caster.MaxMana = 100; caster.Mana = 100;
-            caster.SetSkill(SkillType.Magery, 800); // base deadly (level 4)
+            // OSI strength (magery + poisoning) / 2 = 900 -> greater (OSI 2, level 3).
+            caster.SetSkill(SkillType.Magery, 900);
+            caster.SetSkill(SkillType.Poisoning, 900);
             world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
             var victim = world.CreateCharacter();
             victim.MaxHits = 100; victim.Hits = 100;
@@ -204,9 +208,9 @@ public sealed class SourceXWave256Tests
             return victim;
         }
 
-        Assert.Equal(4, CastPoisonOn(withOmen: false).PoisonLevel);
+        Assert.Equal(3, CastPoisonOn(withOmen: false).PoisonLevel);
         var omened = CastPoisonOn(withOmen: true);
-        Assert.Equal(5, omened.PoisonLevel);       // 4 + 1
+        Assert.Equal(4, omened.PoisonLevel);       // one level higher
         Assert.False(omened.EvilOmenActive);        // consumed
     }
 }

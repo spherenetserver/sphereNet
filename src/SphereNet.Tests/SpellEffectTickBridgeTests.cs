@@ -49,8 +49,11 @@ public class SpellEffectTickBridgeTests
         Assert.NotNull(seen);
         Assert.Equal((int)SpellType.Poison, seen!.SpellId);
         Assert.Equal(2, seen.Level);
-        Assert.Equal(300, seen.Strength);          // level 2 → normal band midpoint
-        Assert.Equal(3, seen.Charges);              // Source-X OSI standard poison: 3 charges, seeded before the auto-decrement
+        // ARGN2 is upstream's banded iLevel (0-4): strength 300 is band 1 (normal).
+        Assert.Equal(1, seen.Strength);
+        Assert.Equal(6, seen.Charges);              // non-OSI: strength/50 ticks, seeded before the auto-decrement
+        Assert.NotNull(seen.Memory);                // ARGO is the worn LAYER_FLAG_Poison memory
+        Assert.Equal(Layer.FlagPoison, seen.Memory!.EquipLayer);
     }
 
     [Fact]

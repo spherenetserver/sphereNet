@@ -1588,6 +1588,10 @@ public sealed class SpellEngine
         ApplyCharEffect(source, target, def, Math.Max(0, strength));
     }
 
+    /// <summary>The iSkillLevel of the effect being applied (Source-X OnSpellEffect's
+    /// argument): the caster's skill, or a potion's quality. Cure and poison read it.</summary>
+    private int _effectSkillLevel;
+
     private void ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel)
     {
         if (def.Id is SpellType.Lightning or SpellType.ChainLightning)
@@ -1708,6 +1712,8 @@ public sealed class SpellEngine
                 ? (int)durOverride : null;
         }
 
+        int prevSkillLevel = _effectSkillLevel;
+        _effectSkillLevel = skillLevel;
         try
         {
             ApplyCharEffectResolved(caster, target, def, effect, resistPct);
@@ -1715,6 +1721,7 @@ public sealed class SpellEngine
         finally
         {
             _durationOverrideTenths = null;
+            _effectSkillLevel = prevSkillLevel;
         }
     }
 
@@ -1874,9 +1881,6 @@ public sealed class SpellEngine
         long durMs = durTenths > 0 ? durTenths * 100L : 30_000L;
 
         bool isBarrier = def.Id is SpellType.WallOfStone or SpellType.EnergyField;
-        // Poison strength is fixed at cast time from the caster's skill
-        // (Source-X field poisoning level), consumed by the step effect.
-        byte poisonLevel = skill switch { >= 800 => 4, >= 600 => 3, >= 400 => 2, _ => 1 };
 
         for (int offset = -2; offset <= 2; offset++)
         {
@@ -1920,7 +1924,7 @@ public sealed class SpellEngine
             fieldItem.SetTag("FIELD_CASTER_UUID", caster.Uuid.ToString("D"));
             fieldItem.SetTag("FIELD_SPELL", ((int)def.Id).ToString());
             if (def.Id == SpellType.PoisonField)
-                fieldItem.SetTag("FIELD_POISON", poisonLevel.ToString());
+                fieldItem.SetTag("FIELD_POISON_SKILL", skill.ToString());
             // Flat step damage only for damage-flagged fields (fire); the
             // typed effects (poison/paralyze) and barriers carry none.
             if (def.IsFlag(SpellFlag.Damage) && dmg > 0)
@@ -2004,12 +2008,29 @@ public sealed class SpellEngine
             }
             case SpellType.PoisonField:
             {
+                // Source-X: the field carries its caster's skill (m_spelllevel) and a
+                // touch runs OnSpellEffect(SPELL_Poison_Field, link, skill), which does
+                // nothing to someone already poisoned (CCharSpell.cpp:3626) and else
+                // poisons with GetSpellEffect(skill) - (skill + poisoning) / 2 under the
+                // OSI formulas (:3906).
+                if (ch.IsStatFlag(StatFlag.Poisoned))
+                    return FieldTouchResult.Handled;
                 MarkFieldCrime(caster, ch);
-                byte level = field.TryGetTag("FIELD_POISON", out string? pStr) &&
-                             byte.TryParse(pStr, out byte p) ? p : (byte)1;
-                // The caster rides along as the poison SOURCE so a poison
-                // death credits the kill/crime to the right character.
-                ch.ApplyPoison(level, caster?.Uid ?? Serial.Invalid);
+                if (field.TryGetTag("FIELD_POISON_SKILL", out string? skillStr) &&
+                    int.TryParse(skillStr, out int fieldSkill))
+                {
+                    int fieldEffect = GetSpellDef(SpellType.PoisonField)?.GetEffect(fieldSkill) ?? fieldSkill;
+                    if (caster != null && IsMagicFlag(MagicConfigFlags.OsiFormulas))
+                        fieldEffect = (fieldSkill + caster.GetSkill(SkillType.Poisoning)) / 2;
+                    ch.SetPoison(fieldEffect, fieldEffect / 50, caster);
+                }
+                else
+                {
+                    // A field laid before the skill was stored kept a poison level.
+                    byte level = field.TryGetTag("FIELD_POISON", out string? pStr) &&
+                                 byte.TryParse(pStr, out byte p) ? p : (byte)1;
+                    ch.ApplyPoison(level, caster?.Uid ?? Serial.Invalid);
+                }
                 return FieldTouchResult.SpellHit;
             }
             case SpellType.ParalyzeField:
@@ -2642,7 +2663,26 @@ public sealed class SpellEngine
             case SpellType.Cure:
             case SpellType.ArchCure:
                 caster.FlagForHelpingCriminalIfNeeded(target);
-                target.CurePoison();
+                // Source-X OnSpellEffect SPELL_Cure (CCharSpell.cpp:3914): the cure can
+                // fail against a strong poison (Calc_CurePoisonChance).
+                if (target.IsStatFlag(StatFlag.Poisoned))
+                {
+                    if (CharacterPoisonState.CureChance(target.Poison.Memory, _effectSkillLevel,
+                            caster.PrivLevel >= PrivLevel.GM))
+                    {
+                        target.SetPoisonCure(def.Id == SpellType.ArchCure || _effectSkillLevel > 900);
+                        OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.HealingCure1,
+                            caster == target ? ServerMessages.Get(Msg.HealingYourself) : target.Name));
+                        if (caster != target)
+                            OnSysMessage?.Invoke(target, ServerMessages.GetFormatted(Msg.HealingCure2, caster.Name));
+                    }
+                    else
+                    {
+                        if (caster != target)
+                            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.HealingCure3));
+                        OnSysMessage?.Invoke(target, ServerMessages.Get(Msg.HealingCure4));
+                    }
+                }
                 break;
             case SpellType.Paralyze:
             {
@@ -2680,33 +2720,13 @@ public sealed class SpellEngine
                 break;
             case SpellType.Poison:
             {
-                if (target.IsDead) break;
-                byte poisonLvl = caster.GetSkill(SkillType.Magery) switch
-                {
-                    >= 800 => 4, // deadly
-                    >= 600 => 3, // greater
-                    >= 400 => 2, // normal
-                    _ => 1       // lesser
-                };
-                // OSI SetPoison distance falloff (CCharAct.cpp:4218): a poison
-                // landed from more than 3 tiles away weakens by -dist/2.
-                int poisonDist = caster.Position.GetDistanceTo(target.Position);
-                if (poisonDist >= 4)
-                    poisonLvl = (byte)Math.Max(1, poisonLvl - poisonDist / 2);
-                // Necromancy Evil Omen: a poison spell lands one level higher on a
-                // marked target, then the omen is spent (reference CCharAct.cpp:4239).
-                if (target.ConsumeEvilOmen())
-                    poisonLvl = (byte)Math.Min(5, poisonLvl + 1);
-                target.ApplyPoison(poisonLvl, caster.Uid);
-                string poisonKey = poisonLvl switch
-                {
-                    1 => Msg.SpellPoison1,
-                    2 => Msg.SpellPoison2,
-                    3 => Msg.SpellPoison3,
-                    4 => Msg.SpellPoison4,
-                    _ => Msg.SpellPoison5
-                };
-                OnSysMessage?.Invoke(target, ServerMessages.Get(poisonKey));
+                // Source-X OnSpellEffect SPELL_Poison (CCharSpell.cpp:3906): under the
+                // OSI formulas the strength is (magery + the caster's poisoning) / 2;
+                // SetPoison does the level ladder, distance fall-off and Evil Omen.
+                int poisonEffect = effect;
+                if (IsMagicFlag(MagicConfigFlags.OsiFormulas))
+                    poisonEffect = (_effectSkillLevel + caster.GetSkill(SkillType.Poisoning)) / 2;
+                target.SetPoison(poisonEffect, poisonEffect / 50, caster);
                 break;
             }
             case SpellType.NightSight:

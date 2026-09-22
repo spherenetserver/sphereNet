@@ -108,7 +108,7 @@ public sealed partial class GameClient
         }
 
         RegisterLoginSuccess(account);
-        _account.LastIp = _netState.RemoteEndPoint?.Address.ToString() ?? "";
+        _account.RecordLogin(_netState.RemoteEndPoint?.Address.ToString() ?? "");
         // The login socket's 0xEF seed carries the version; hand it to the game
         // socket through the account, exactly like Source-X does before the
         // relay ("pass detected client version to the game server").
@@ -149,6 +149,7 @@ public sealed partial class GameClient
         }
 
         RegisterLoginSuccess(account);
+        _account.RecordLogin(_netState.RemoteEndPoint?.Address.ToString() ?? "");
         // Adopt the version the login connection detected BEFORE any capability
         // decision below: 0xB9 picks a 3- or 5-byte body from it, and a modern
         // client whose packet table expects 5 desyncs on a 3-byte one.
@@ -539,6 +540,8 @@ public sealed partial class GameClient
             SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(_account.Name))
             ApplyBotCombatBuff(_character);
 
+        _account?.RecordCharacterEnter();
+        _sessionEnterUtc = DateTime.UtcNow;
         EnterWorld();
     }
 
@@ -802,11 +805,15 @@ public sealed partial class GameClient
         else if (otherPlayers > 1)
             SysMessage(ServerMessages.GetFormatted(Msg.LoginPlayers, otherPlayers));
 
-        // Source-X also stamps the previous login timestamp via LOGIN_LASTLOGGED.
-        if (_account != null && _account.LastLogin > DateTime.MinValue)
+        // Source-X Setup_Start: the PREVIOUS connect date (TAG.LastLogged,
+        // stamped at character select) through LOGIN_LASTLOGGED, then the tag
+        // is dropped (CClientMsg.cpp:2847/2873).
+        if (_account != null)
         {
-            SysMessage(ServerMessages.GetFormatted(Msg.LoginLastlogged,
-                _account.LastLogin.ToString("yyyy-MM-dd HH:mm:ss")));
+            if (_account.Tags.Get("LastLogged") is { } lastLogged &&
+                !string.IsNullOrEmpty(lastLogged))
+                SysMessage(ServerMessages.GetFormatted(Msg.LoginLastlogged, lastLogged));
+            _account.Tags.Remove("LastLogged");
         }
 
         if (_character.IsDead)

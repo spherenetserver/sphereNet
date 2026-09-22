@@ -65,6 +65,7 @@ public enum DamageType : ushort
     NoReveal = 0x400,
     NoUnparalyze = 0x800,
     Fixed = 0x1000,
+    NoDisturb = 0x2000,   // DAMAGE_NODISTURB: the victim is not disturbed (no spell interrupt)
 }
 
 public enum ArmorHitRegion
@@ -116,10 +117,14 @@ public sealed class HitDamageContext
     /// Source-X seeds 100).</summary>
     public int PoisonReductionChance { get; set; } = 100;
 
-    /// <summary>Poison charges removed when the reduction chance passes
-    /// (LOCAL.ItemPoisonReductionAmount, script-writable; SphereNet's
-    /// level+charges poison model spends 1 per delivery by default).</summary>
+    /// <summary>Poison strength taken off the weapon when the reduction chance passes
+    /// (LOCAL.ItemPoisonReductionAmount, script-writable; Source-X seeds it with
+    /// half of this swing's poison dose).</summary>
     public int PoisonReductionAmount { get; set; } = 1;
+
+    /// <summary>This swing's poison dose, rand(weapon MOREZ) - rolled before @Hit as
+    /// upstream rolls iPoison (CCharFight.cpp:2154). Not script-visible.</summary>
+    public int PoisonDose { get; set; }
 
     /// <summary>UID of the pack ammo stack a ranged shot draws from (0 for
     /// melee) — exposed to @Hit and the weapon item @Hit as LOCAL.Arrow
@@ -254,7 +259,7 @@ public static class CombatEngine
 
     /// <summary>Host feedback after direct character damage is applied:
     /// interrupt casting, broadcast damage/health and run the death engine.</summary>
-    public static Action<Character, Character?, int>? OnDirectCharacterDamageApplied;
+    public static Action<Character, Character?, int, DamageType>? OnDirectCharacterDamageApplied;
 
     /// <summary>Leech feedback on an AOS on-hit drain (Source-X sound 0x44D
     /// at the attacker). Wired to a nearby-sound broadcast.</summary>
@@ -902,7 +907,7 @@ public static class CombatEngine
             character.RecordAttack(source.Uid, damage);
         if (reflectable)
             ApplyBloodOathAndSuitReflect(source!, character, damage);
-        OnDirectCharacterDamageApplied?.Invoke(character, source, damage);
+        OnDirectCharacterDamageApplied?.Invoke(character, source, damage, damageType);
         return damage;
     }
 
@@ -1280,12 +1285,16 @@ public static class CombatEngine
         // (LOCAL.DamagePercent*) for the hook to expose to scripts.
         bool elemental = flags.HasFlag(CombatFlags.ElementalEngine);
         var split = elemental ? GetElementalSplit(attacker) : default;
+        int weaponPoison = weapon != null ? GetWeaponPoisonSkill(weapon) : 0;
+        int poisonDose = weaponPoison > 0 ? _rand.Next(weaponPoison) : 0;
         var hitCtx = new HitDamageContext
         {
             Attacker = attacker,
             Target = target,
             Weapon = weapon,
             Damage = damage,
+            PoisonDose = poisonDose,
+            PoisonReductionAmount = weapon != null ? poisonDose / 2 : 1,
             ItemDamageLayer = ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],
             ItemDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
             WeaponDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
@@ -1327,58 +1336,31 @@ public static class CombatEngine
             damage = ApplySlayerDamage(attacker, target, damage, weapon);
         damage = Math.Clamp(damage, 0, short.MaxValue);
 
-        // Weapon poison on-hit: transfer poison from weapon to target.
-        // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
-        // set by Poisoning skill. Uses 1 charge per hit; cleared at 0.
-        bool poisonApplied = false;
-        if (damage > 0 && weapon != null && !flags.HasFlag(CombatFlags.NoPoisonHit))
+        // Poisoned weapon / venomous creature (Source-X CCharFight.cpp:2224-2254). The
+        // weapon's poison is its MOREZ (m_itWeapon.m_poison_skill, 0-100); a hit
+        // delivers this swing's dose when the poison beats a d100 - or always, for a
+        // very weak coat - and may wear the coat down by LOCAL.ItemPoisonReductionAmount.
+        // A creature with no weapon bites with its Poisoning skill half the time.
+        if (weapon != null)
         {
-            if (weapon.TryGetTag("POISON_SKILL", out string? poisonStr) &&
-                int.TryParse(poisonStr, out int poisonLevel) && poisonLevel > 0)
+            int poisonSkill = GetWeaponPoisonSkill(weapon);
+            if (!flags.HasFlag(CombatFlags.NoPoisonHit) && poisonSkill > 0 &&
+                (poisonSkill > _rand.Next(100) || poisonSkill < 10))
             {
-                // OSI SetPoison banding from the weapon's stored envenom skill
-                // (melee range → no distance falloff).
-                byte targetLevel = CalcOsiPoisonLevel(poisonLevel, 1, evilOmen: false);
-                target.ApplyPoison(targetLevel, attacker.Uid);
-                poisonApplied = true;
+                int deliver = (byte)hitCtx.PoisonDose;
+                target.SetPoison(10 * deliver, deliver / 5, attacker);
 
-                int charges = 1;
-                if (weapon.TryGetTag("POISON_CHARGES", out string? chargesStr))
-                    int.TryParse(chargesStr, out charges);
-                charges = Math.Max(0, charges);
-                // Source-X @Hit LOCAL.ItemPoisonReductionChance/Amount: the
-                // script controls whether (and by how much) delivering the
-                // poison spends the weapon's charges. Defaults (100% / 1)
-                // reproduce the fixed 1-per-hit spend.
-                if (_rand.Next(100) < Math.Clamp(hitCtx.PoisonReductionChance, 0, 100))
-                {
-                    long remaining = (long)charges - Math.Max(0, hitCtx.PoisonReductionAmount);
-                    charges = (int)Math.Max(remaining, int.MinValue);
-                }
-                if (charges <= 0)
-                {
-                    weapon.RemoveTag("POISON_SKILL");
-                    weapon.RemoveTag("POISON_CHARGES");
-                }
-                else
-                    weapon.SetTag("POISON_CHARGES", charges.ToString());
+                if (hitCtx.PoisonReductionChance > _rand.Next(100))
+                    SetWeaponPoisonSkill(weapon, poisonSkill - hitCtx.PoisonReductionAmount);
             }
         }
-
-        // Creature innate poison-on-hit (Source-X CChar::Fight_Hit: m_pNPC && 50%
-        // && SKILL_POISONING > 0). A venomous creature — spider, snake, scorpion —
-        // envenoms on a bite from its Poisoning skill alone, with no weapon and no
-        // POISON_SKILL tag. Skipped when the weapon already poisoned this hit or
-        // when poison hits are globally disabled. Poison level uses the OSI
-        // SetPoison banding of the creature's Poisoning skill (melee → no falloff).
-        if (damage > 0 && !poisonApplied && !attacker.IsPlayer &&
-            !flags.HasFlag(CombatFlags.NoPoisonHit))
+        else if (!attacker.IsPlayer)
         {
-            int poisonSkill = attacker.GetSkill(SkillType.Poisoning);
-            if (poisonSkill > 0 && _rand.Next(100) < 50)
+            if (!flags.HasFlag(CombatFlags.NoPoisonHit) && 50 >= _rand.Next(100))
             {
-                byte level = CalcOsiPoisonLevel(poisonSkill, 1, evilOmen: false);
-                target.ApplyPoison(level, attacker.Uid);
+                int poisoning = attacker.GetSkill(SkillType.Poisoning);
+                if (poisoning > 0)
+                    target.SetPoison(_rand.Next(poisoning), _rand.Next(Math.Max(1, poisoning / 50)), attacker);
             }
         }
 
@@ -1583,25 +1565,25 @@ public static class CombatEngine
         };
     }
 
-    /// <summary>
-    /// OSI poison level from an envenoming skill — Source-X CChar::SetPoison
-    /// (CCharAct.cpp:4204). Skill bands: &gt;=1000 Lethal (with a 1/10 bump to
-    /// Deadly), &gt;850 Greater, &gt;650 Standard, else Lesser. Beyond 3 tiles a
-    /// distance falloff of -dist/2 weakens it, and an Evil-Omen on the victim adds
-    /// one level. Returned on SphereNet's 1-5 scale (OSI 0-4 + 1, clamped).
-    /// </summary>
-    public static byte CalcOsiPoisonLevel(int skill, int distance, bool evilOmen)
+    /// <summary>The poison coat on a weapon or a meal, 0-100 (Source-X m_poison_skill,
+    /// the item's MOREZ). A pre-MOREZ save kept it in the POISON_SKILL tag as the
+    /// potion quality, ten times the coat.</summary>
+    public static int GetWeaponPoisonSkill(Item item)
     {
-        int level;
-        if (skill >= 1000) level = 3 + (_rand.Next(10) == 0 ? 1 : 0);
-        else if (skill > 850) level = 2;
-        else if (skill > 650) level = 1;
-        else level = 0;
-        if (distance >= 4)
-            level = Math.Max(0, level - distance / 2);
-        if (evilOmen)
-            level += 1;
-        return (byte)Math.Clamp(level + 1, 1, 5);
+        if (item.MoreP.Z > 0)
+            return item.MoreP.Z;
+        return item.TryGetTag("POISON_SKILL", out string? legacy) && int.TryParse(legacy, out int q) && q > 0
+            ? Math.Clamp(q / 10, 0, 100)
+            : 0;
+    }
+
+    /// <summary>Write the poison coat back into MOREZ (and retire the legacy tag).</summary>
+    public static void SetWeaponPoisonSkill(Item item, int value)
+    {
+        int coat = Math.Clamp(value, 0, 100);
+        item.MoreP = new SphereNet.Core.Types.Point3D(item.MoreP.X, item.MoreP.Y, (sbyte)coat, item.MoreP.Map);
+        item.RemoveTag("POISON_SKILL");
+        item.RemoveTag("POISON_CHARGES");
     }
 
     /// <summary>

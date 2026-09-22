@@ -166,6 +166,9 @@ public sealed class SphereConfig
     public int ArcheryMinDist { get; set; } = 1;
     public int ArcheryMaxDist { get; set; } = 12;
     public int MagicFlags { get; set; }
+    /// <summary>EMOTEFLAGS (Source-X m_iEmoteFlags). 0x02 EMOTEF_POISON: the poison
+    /// emote is shown only to the poisoned character.</summary>
+    public int EmoteFlags { get; set; }
     public bool ReagentsRequired { get; set; } = true;
     public bool SpellbookRequired { get; set; } = true;
     public bool EquippedCast { get; set; }
@@ -919,6 +922,7 @@ public sealed class SphereConfig
         ArcheryMinDist = ini.GetInt(section, "ArcheryMinDist", ArcheryMinDist);
         ArcheryMaxDist = ini.GetInt(section, "ArcheryMaxDist", ArcheryMaxDist);
         MagicFlags = ini.GetInt(section, "MagicFlags", MagicFlags);
+        EmoteFlags = ini.GetInt(section, "EmoteFlags", EmoteFlags);
         ReagentsRequired = ini.GetBool(section, "ReagentsRequired", ReagentsRequired);
         SpellbookRequired = ini.GetBool(section, "SpellbookRequired", SpellbookRequired);
         EquippedCast = ini.GetBool(section, "EquippedCast", EquippedCast);

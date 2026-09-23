@@ -261,9 +261,7 @@ internal sealed class UpdaterEngine
                 {
                     // Klasorler (panel\, defaults\) tamamen tazelenir: eski hash'li
                     // bundle dosyalari kalirsa index.html olmayan asset'e isaret eder.
-                    if (Directory.Exists(dst))
-                        DeleteDirectory(dst);
-                    CopyDirectory(dir.FullName, dst);
+                    ReplaceDirectory(dir.FullName, dst);
                     folders.Add(e.Name);
                 }
                 else
@@ -273,8 +271,9 @@ internal sealed class UpdaterEngine
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            ReportAccessProblem(ex);
             Rollback(backedUp);
             throw;
         }
@@ -369,12 +368,7 @@ internal sealed class UpdaterEngine
         {
             try
             {
-                foreach (string f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-                {
-                    var attr = File.GetAttributes(f);
-                    if ((attr & FileAttributes.ReadOnly) != 0)
-                        File.SetAttributes(f, attr & ~FileAttributes.ReadOnly);
-                }
+                ClearReadOnly(path);
                 Directory.Delete(path, recursive: true);
                 return;
             }
@@ -383,6 +377,98 @@ internal sealed class UpdaterEngine
                 Thread.Sleep(delayMs);
             }
         }
+    }
+
+    /// <summary>Salt-okunur ozniteligi dosyalardan VE klasorlerden kaldirir:
+    /// salt-okunur bir klasor de Directory.Delete'te "Access denied" verir.</summary>
+    private static void ClearReadOnly(string path)
+    {
+        foreach (string entry in Directory.EnumerateFileSystemEntries(path, "*", SearchOption.AllDirectories)
+                     .Append(path))
+        {
+            try
+            {
+                var attr = File.GetAttributes(entry);
+                if ((attr & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(entry, attr & ~FileAttributes.ReadOnly);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>Klasoru paketteki haliyle degistirir. Once tamamen silip yeniden
+    /// kopyalar (eski hash'li dosyalar kalmasin); silinemezse - bir dosyayi baska bir
+    /// surec tutuyor olabilir - paketteki dosyalari mevcutlarin uzerine yazar ve
+    /// paketin tasimadigi eski dosyalari silmeyi dener. Artik kalan eski bir dosya
+    /// zararsizdir; yazilamayan bir dosya ise gercek hatadir ve firlatilir.</summary>
+    internal void ReplaceDirectory(string src, string dst)
+    {
+        if (Directory.Exists(dst))
+        {
+            try
+            {
+                DeleteDirectory(dst);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log($"  {Path.GetFileName(dst)} klasoru silinemedi ({ex.Message}); dosyalar uzerine yaziliyor.");
+                OverlayDirectory(src, dst);
+                return;
+            }
+        }
+        CopyDirectory(src, dst);
+    }
+
+    private void OverlayDirectory(string src, string dst)
+    {
+        ClearReadOnly(dst);
+        var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+        {
+            string rel = Path.GetRelativePath(src, file);
+            string target = Path.Combine(dst, rel);
+            wanted.Add(Path.GetFullPath(target));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+        int left = 0;
+        foreach (string stale in Directory.EnumerateFiles(dst, "*", SearchOption.AllDirectories).ToList())
+        {
+            if (wanted.Contains(Path.GetFullPath(stale))) continue;
+            try { File.Delete(stale); }
+            catch (IOException) { left++; }
+            catch (UnauthorizedAccessException) { left++; }
+        }
+        if (left > 0)
+            _log($"  {left} eski dosya silinemedi (kullanimda); zararsiz, sonraki guncellemede temizlenir.");
+    }
+
+    /// <summary>Bir dosya ya da klasor yazilamadiginda sebebini operatore soyler:
+    /// hangi surec tutuyor (Restart Manager) ve yonetici izni gerekip gerekmedigi.</summary>
+    private void ReportAccessProblem(Exception ex)
+    {
+        if (ex is not (IOException or UnauthorizedAccessException))
+            return;
+        var candidates = new List<string>();
+        foreach (string dir in new[] { "panel", "defaults" })
+        {
+            string d = Path.Combine(InstallDir, dir);
+            if (Directory.Exists(d))
+                candidates.AddRange(Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories).Take(48));
+        }
+        candidates.AddRange(Directory.EnumerateFiles(InstallDir, "*.dll").Take(8));
+        candidates.AddRange(Directory.EnumerateFiles(InstallDir, "*.exe"));
+        var holders = FileLockInfo.WhoIsLocking(candidates);
+        if (holders.Count > 0)
+            _log("  Dosyalari tutan surec(ler): " + string.Join(", ", holders) +
+                 " - bunlari kapatip tekrar deneyin.");
+        else if (ex is UnauthorizedAccessException && !FileLockInfo.IsElevated())
+            _log("  Dosyayi tutan bir surec bulunamadi. Kurulum klasorune yazma izni yok olabilir: " +
+                 "updater'i 'Yonetici olarak calistir' ile deneyin.");
+        else
+            _log("  Dosyayi tutan bir surec bulunamadi; klasorun Explorer'da ya da antivirus " +
+                 "taramasinda acik olmadigindan emin olun.");
     }
 
     private static void CopyDirectory(string src, string dst)

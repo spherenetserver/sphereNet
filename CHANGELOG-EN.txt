@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Updater: overwrite a folder it cannot delete, name what holds it
+------------------------------------------------------------------------
+FIX - When the updater cannot delete a folder it replaces (panelssets held
+      by a running Host, an Explorer window, an antivirus scan), it no longer
+      rolls the whole update back: it writes the package's files over the
+      existing ones and removes the stale ones it can. Read-only attributes
+      are cleared from folders as well as files.
+ADD - When a file still cannot be written, the updater names the processes
+      holding it (Windows Restart Manager) or, if none, suggests running it
+      as administrator.
+TEST - UpdaterFolderReplaceTests.
+
 [2026-09-23] - Skill, craft and combat animations and timing
 ------------------------------------------------------------------------
 FIX - Using a tool on its target (pickaxe/shovel on rock, axe on a tree,

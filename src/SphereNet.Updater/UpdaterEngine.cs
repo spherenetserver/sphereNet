@@ -74,7 +74,10 @@ internal sealed class UpdaterEngine
     public UpdaterEngine(string installDir, UpdaterSettings settings, Action<string> log,
         HttpMessageHandler? handler = null)
     {
-        InstallDir = Path.GetFullPath(installDir);
+        // Sondaki ayraci at: AppContext.BaseDirectory "C:\sphereNet\" dondurur ve
+        // yol karsilastirmasi "C:\sphereNet\\" ile yapilinca calisan sunucu hic
+        // bulunmuyordu - guncelleme acik sunucunun dosyalarini silmeye girisiyordu.
+        InstallDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(installDir));
         Settings = settings;
         _log = log;
         _http = new HttpClient(handler ?? new SocketsHttpHandler
@@ -259,7 +262,7 @@ internal sealed class UpdaterEngine
                     // Klasorler (panel\, defaults\) tamamen tazelenir: eski hash'li
                     // bundle dosyalari kalirsa index.html olmayan asset'e isaret eder.
                     if (Directory.Exists(dst))
-                        Directory.Delete(dst, recursive: true);
+                        DeleteDirectory(dst);
                     CopyDirectory(dir.FullName, dst);
                     folders.Add(e.Name);
                 }
@@ -342,7 +345,7 @@ internal sealed class UpdaterEngine
                 string dst = Path.Combine(InstallDir, name);
                 if (Directory.Exists(src))
                 {
-                    if (Directory.Exists(dst)) Directory.Delete(dst, recursive: true);
+                    if (Directory.Exists(dst)) DeleteDirectory(dst);
                     CopyDirectory(src, dst);
                 }
                 else if (File.Exists(src))
@@ -353,6 +356,31 @@ internal sealed class UpdaterEngine
             catch (Exception ex)
             {
                 _log($"  geri yuklenemedi: {name} ({ex.Message}) - yedek: {BackupDir}");
+            }
+        }
+    }
+
+    /// <summary>Klasoru siler; salt-okunur dosyalarin ozniteligini kaldirir ve
+    /// kisa sureli kilitler (antivirus taramasi, Explorer onizlemesi) icin birkac
+    /// kez yeniden dener.</summary>
+    internal static void DeleteDirectory(string path, int attempts = 5, int delayMs = 500)
+    {
+        for (int i = 1; ; i++)
+        {
+            try
+            {
+                foreach (string f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                {
+                    var attr = File.GetAttributes(f);
+                    if ((attr & FileAttributes.ReadOnly) != 0)
+                        File.SetAttributes(f, attr & ~FileAttributes.ReadOnly);
+                }
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (i < attempts && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(delayMs);
             }
         }
     }
@@ -402,13 +430,24 @@ internal sealed class UpdaterEngine
             {
                 string? path = null;
                 try { path = p.MainModule?.FileName; } catch { }
-                if (path != null && Path.GetFullPath(path)
-                        .StartsWith(InstallDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                // Yolu okunamayan surec (baska kullanici / yonetici olarak calisan,
+                // orn. VDS'te servis) bu kurulumun olabilir: atlamak, acik sunucunun
+                // dosyalarini silmek demek. Bekle; gerekirse --kill.
+                if (path == null || IsUnderDir(path, InstallDir))
                     found.Add(p);
                 else
                     p.Dispose();
             }
         }
         return found;
+    }
+
+    /// <summary>Yol, klasorun icinde mi (klasor siniriyla: C:\srv\sphere,
+    /// C:\srv\sphere2'yi kapsamaz). Sondaki ayraclar onemsizdir.</summary>
+    internal static bool IsUnderDir(string path, string dir)
+    {
+        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+        string prefix = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 }

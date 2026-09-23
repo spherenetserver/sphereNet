@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Updater: sonu ayracli kurulum klasorunde calisan sunucuyu bulur
+------------------------------------------------------------------------
+DUZELTME - Updater calisan SphereNet.Host/Server yollarini kurulum klasoruyle,
+           sondaki ayractan bagimsiz olarak klasor siniriyla karsilastirir.
+           Klasor AppContext.BaseDirectory'den ("C:\sphereNet\") geliyor ve
+           sonuna ikinci bir ayrac ekleniyordu; calisan hicbir sunucu
+           eslesmiyor, guncelleme acik kurulumun uzerine gidip panelssets'i
+           silerken "Access to the path is denied" ile dusuyordu. Yolu
+           okunamayan surec (baska kullanici, yonetici servis) artik bu
+           kurulumun olabilecegi kabul edilip beklenir.
+DUZELTME - Klasor degistirilirken salt-okunur oznitelikler kaldirilir, kisa
+           sureli kilitlerde (antivirus, Explorer onizlemesi) yeniden denenir.
+TEST - UpdaterRunningServerTests.
+
 [2026-09-23] - Panel dili: Turkce / Ingilizce
 ------------------------------------------------------------------------
 EKLEME - Panel Turkce ve Ingilizce kullanilabilir. TR/EN secici ust barda ve

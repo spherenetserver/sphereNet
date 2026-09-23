@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Updater: detect a running server in an install folder given with a trailing slash
+------------------------------------------------------------------------
+FIX - The updater compares running SphereNet.Host/Server paths with the install
+      folder on a directory boundary, whatever its trailing separator. The
+      folder came from AppContext.BaseDirectory ("C:\sphereNet\") and got a
+      second separator appended, so no running server ever matched: the update
+      went ahead against a live install and failed deleting panelssets
+      ("Access to the path is denied"). A process whose path cannot be read
+      (another user, elevated service) is now treated as possibly this install
+      and waited for.
+FIX - Replacing a folder clears read-only attributes and retries briefly on a
+      transient lock (antivirus scan, Explorer preview).
+TEST - UpdaterRunningServerTests.
+
 [2026-09-23] - Panel language: Turkish / English
 ------------------------------------------------------------------------
 ADD - The panel speaks Turkish and English. A TR/EN switch sits in the top bar

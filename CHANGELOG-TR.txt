@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Item'dan TARGET kendi @TargOn trigger'larini tetikler; TARG secilen nesnedir
+------------------------------------------------------------------------
+DUZELTME - Bir item uzerinde (@DClick'inde) calisan TARGET/TARGETG, Source-X
+           OV_TARGET gibi kullanilan-item imleci acar (m_Targ_UID = item,
+           CLIMODE_TARG_USE_ITEM): secim o item'in @TargOn_Item/@TargOn_Char/
+           @TargOn_Ground trigger'larini tetikler. Imlec aciliyordu ama secim
+           kimseye gitmiyordu; bu sekilde yazilmis boya kazani hic boyamiyordu.
+DUZELTME - SRC.TARG son secilen nesnedir (CClient m_Targ_UID): TARG.<ozellik>
+           o nesneyi okur ve yazar (TARG.COLOR, TARG.NAME, TARG.TOPOBJ.UID...),
+           TARG.X/Y/Z/MAP/UID secim noktasini tutar. Nokta ve uid artik sadece
+           TARGETF'te degil her secimde kaydedilir. Once diger tum
+           TARG.<ozellik> okumalari "0" donuyor, yazmalar bosa gidiyordu.
+TEST - ScriptTargetUsedItemTests.
+
 [2026-09-23] - Updater: sonu ayracli kurulum klasorunde calisan sunucuyu bulur
 ------------------------------------------------------------------------
 DUZELTME - Updater calisan SphereNet.Host/Server yollarini kurulum klasoruyle,

@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - TARGET from an item fires its @TargOn triggers; TARG is the picked object
+------------------------------------------------------------------------
+FIX - TARGET/TARGETG run on an item (its @DClick) arms a used-item cursor, as
+      Source-X OV_TARGET does (m_Targ_UID = the item, CLIMODE_TARG_USE_ITEM):
+      the pick fires that item's @TargOn_Item/@TargOn_Char/@TargOn_Ground. The
+      cursor opened, but the pick went to nobody, so a dye tub scripted this
+      way never dyed.
+FIX - SRC.TARG is the last picked object (CClient m_Targ_UID): TARG.<prop>
+      reads and writes that object (TARG.COLOR, TARG.NAME, TARG.TOPOBJ.UID
+      ...), TARG.X/Y/Z/MAP/UID keep the pick point. The point and uid are
+      recorded for every pick, not only for TARGETF. Before, every other
+      TARG.<prop> read "0" and writes went nowhere.
+TEST - ScriptTargetUsedItemTests.
+
 [2026-09-23] - Updater: detect a running server in an install folder given with a trailing slash
 ------------------------------------------------------------------------
 FIX - The updater compares running SphereNet.Host/Server paths with the install

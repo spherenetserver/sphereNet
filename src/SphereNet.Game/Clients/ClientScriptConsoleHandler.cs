@@ -458,6 +458,23 @@ public sealed class ClientScriptConsoleHandler
             if (Targets.CursorActive)
                 return true;
             ClearPendingTargetState();
+
+            // Run on an item (its @DClick: TARGET), the verb arms a USED-ITEM cursor:
+            // Source-X OV_TARGET sets m_Targ_UID to the object and opens
+            // CLIMODE_TARG_USE_ITEM, so the pick fires that item's
+            // @TargOn_Item/@TargOn_Char/@TargOn_Ground (OnTarg_Use_Item). The bare
+            // cursor below answered nothing: the pick went nowhere and a dye tub
+            // scripted this way never dyed. A script item has no native use after
+            // its triggers, hence the empty callback.
+            if (target is Item usedItem && !usedItem.IsDeleted)
+            {
+                _client.SetPendingTarget(static (_, _, _, _, _) => { }, (byte)(upper == "TARGETG" ? 1 : 0));
+                Targets.ItemUid = usedItem.Uid;
+                Targets.ItemParentUid = usedItem.ContainedIn;
+                Targets.AllowGround = upper == "TARGETG";
+                return true;
+            }
+
             Targets.AllowGround = upper == "TARGETG";
             Targets.CursorActive = true;
             byte tType = (byte)(upper == "TARGETG" ? 1 : 0);

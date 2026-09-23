@@ -196,6 +196,10 @@ public sealed class ClientTargetingHandler
         // survives ClearPendingTargetState by design.
         if (serial != 0 && serial != 0xFFFFFFFF)
             Targets.LastPickedSerial = serial;
+        // SRC.TARG and its point, for every pick - not only a TARGETF one - so a
+        // used item's @TargOn_* sees what was picked (OnTarg_Use_Item sets
+        // m_Targ_UID to the target before the trigger).
+        RecordPick(serial, x, y, z);
 
         // Callback-based target (housing, tools, weapons, ...). When the
         // cursor was armed for a USED ITEM (SetPendingItemTarget pins it in
@@ -689,6 +693,17 @@ public sealed class ClientTargetingHandler
                 return;
             HandleCastSpell(spell, serial);
         }
+    }
+
+    private void RecordPick(uint serial, short x, short y, sbyte z)
+    {
+        if (_character == null) return;
+        _character.SetTag("TARGP", $"{x},{y},{z},{_character.MapIndex}");
+        _character.SetTag("TARG.X", x.ToString());
+        _character.SetTag("TARG.Y", y.ToString());
+        _character.SetTag("TARG.Z", z.ToString());
+        _character.SetTag("TARG.MAP", _character.MapIndex.ToString());
+        _character.SetTag("TARG.UID", serial is 0 or 0xFFFFFFFF ? "0" : $"0{serial:X}");
     }
 
     private ItemTrigger ResolveItemTargetTrigger(uint serial, IScriptObj? target)

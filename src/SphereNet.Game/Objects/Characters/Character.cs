@@ -3489,6 +3489,8 @@ public partial class Character : ObjBase
     {
         if (head.Equals("ACT", StringComparison.OrdinalIgnoreCase))
             return _act.IsValid ? ResolveWorld?.Invoke()?.FindObject(_act) : null;
+        if (head.Equals("TARG", StringComparison.OrdinalIgnoreCase))
+            return ResolveTargObject();
         // The acting client's own reference heads (CClient::sm_szRefKeys,
         // CClient.cpp:538-548). A pack asks <src.housedesign> to find out whether
         // this player is already inside the design editor and <src.housedesign.uid>
@@ -3509,6 +3511,27 @@ public partial class Character : ObjBase
             return null;
         }
         return base.ResolveRefHead(head);
+    }
+
+    /// <summary>The coordinates of the last pick live beside it; everything else
+    /// under TARG. is a property of the picked object.</summary>
+    private static bool IsTargPointKey(string sub) =>
+        sub is "X" or "Y" or "Z" or "MAP" or "UID";
+
+    /// <summary>TARG is the client's last picked object (CClient m_Targ_UID,
+    /// resolved by CClient::r_GetRef): after a pick, <c>SRC.TARG.COLOR</c>,
+    /// <c>SRC.TARG.TOPOBJ.UID</c> and <c>SRC.TARG.NAME</c> read that object. Only
+    /// the uid and the point were kept, so every other TARG.x read "0" and every
+    /// TARG.x write went nowhere - a dye tub's @TargOn_Item never saw what it
+    /// was dyeing.</summary>
+    private ObjBase? ResolveTargObject()
+    {
+        if (!TryGetTag("TARG.UID", out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return null;
+        uint uid = ParseHexOrDecUInt(raw!);
+        if (uid == 0 || uid == 0xFFFFFFFF) return null;
+        var obj = ResolveWorld?.Invoke()?.FindObject(new Serial(uid));
+        return obj is { IsDeleted: false } ? obj : null;
     }
 
     /// <summary>GMPAGEP: the GM page this staff character is handling
@@ -4448,14 +4471,21 @@ public partial class Character : ObjBase
         }
 
         // --- Prefix/reference properties ---
+        if (upper == "TARG")
+        {
+            value = TryGetTag("TARG.UID", out string? targUid) && !string.IsNullOrEmpty(targUid) ? targUid! : "0";
+            return true;
+        }
         if (upper.StartsWith("TARG.", StringComparison.Ordinal))
         {
-            if (TryGetTag(key, out string? targVal))
+            string targSub = upper[5..];
+            if (IsTargPointKey(targSub))
             {
-                value = targVal ?? "0";
+                value = TryGetTag("TARG." + targSub, out string? targVal) ? targVal ?? "0" : "0";
                 return true;
             }
-            value = "0";
+            var targObj = ResolveTargObject();
+            value = targObj != null && targObj.TryGetProperty(key[5..], out string targProp) ? targProp : "0";
             return true;
         }
 
@@ -5015,6 +5045,13 @@ public partial class Character : ObjBase
 
     public override bool TrySetProperty(string key, string value)
     {
+        if (key.StartsWith("TARG.", StringComparison.OrdinalIgnoreCase) &&
+            !IsTargPointKey(key[5..].ToUpperInvariant()))
+        {
+            var targObj = ResolveTargObject();
+            return targObj != null && targObj.TrySetProperty(key[5..], value);
+        }
+
         if (!TryNormalizeScriptValue(key, value, out string normalized))
             normalized = value;
 
@@ -5841,6 +5878,14 @@ public partial class Character : ObjBase
             if (actObject == null || actObject.IsDeleted)
                 return true;
             return actObject.ExecuteVerbLine(key[4..], args, source);
+        }
+        if (key.StartsWith("TARG.", StringComparison.OrdinalIgnoreCase) &&
+            !IsTargPointKey(key[5..].ToUpperInvariant()))
+        {
+            var targObj = ResolveTargObject();
+            if (targObj == null)
+                return true;
+            return targObj.ExecuteVerbLine(key[5..], args, source);
         }
         if (key.Equals("SOUND", StringComparison.OrdinalIgnoreCase))
             return EmitScriptSound(args);

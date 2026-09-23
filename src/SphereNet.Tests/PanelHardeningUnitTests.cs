@@ -126,4 +126,27 @@ public sealed class PanelHardeningUnitTests
         Assert.Contains("WaitForExit($HostWaitSeconds * 1000)", UpdaterScript.PowerShell);
         Assert.DoesNotContain("WaitForExit(120000)", UpdaterScript.PowerShell);
     }
+
+    // --- Script pack layout ---------------------------------------------------
+
+    [Theory]
+    // Scripts-X keeps its tree at the repository root.
+    [InlineData("Scripts-X-main/core/sphere_defs.scp", false, "core/sphere_defs.scp")]
+    [InlineData("Scripts-X-main/spheretables.scp", false, "spheretables.scp")]
+    [InlineData("Scripts-X-main/_incomplete/x.scp", false, null)]
+    [InlineData("Scripts-X-main/_syntax highlighting/sphere.xml", false, null)]
+    [InlineData("Scripts-X-main/", false, null)]
+    // A pack with a scripts/ folder installs only that folder.
+    [InlineData("Scripts-T-main/scripts/items/a.scp", true, "items/a.scp")]
+    [InlineData("Scripts-T-main/README.md", true, null)]
+    public void PackEntriesMapUnderTheScriptsFolder(string entry, bool nested, string? expected)
+    {
+        Assert.Equal(expected, PanelHost.PackRelativePath(entry, nested));
+    }
+
+    [Fact]
+    public void TheDefaultPackIsTheSourceXScripts()
+    {
+        Assert.Equal("Sphereserver/Scripts-X", PanelHost.DefaultScriptPackRepo);
+    }
 }

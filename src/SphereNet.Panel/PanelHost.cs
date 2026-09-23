@@ -992,12 +992,19 @@ public sealed class PanelHost : IDisposable
             return Results.Accepted(value: _updates.GetStatus());
         });
 
+        app.MapGet("/api/scripts/pack", () =>
+        {
+            var pack = ReadScriptPack();
+            return Results.Ok(new { repo = pack.Repo, branch = pack.Branch, url = $"https://github.com/{pack.Repo}" });
+        });
+
         app.MapPost("/api/scripts/download", async () =>
         {
             var scriptsPath = _ctx.ScriptsPath;
             if (scriptsPath is null)
                 return Results.Problem("ScriptsPath not configured");
 
+            var pack = ReadScriptPack();
             try
             {
                 using var client = new HttpClient();
@@ -1005,7 +1012,7 @@ public sealed class PanelHost : IDisposable
                 client.Timeout = TimeSpan.FromMinutes(2);
 
                 var zipBytes = await client.GetByteArrayAsync(
-                    "https://github.com/UOSoftware/Scripts-T/archive/refs/heads/main.zip");
+                    $"https://github.com/{pack.Repo}/archive/refs/heads/{pack.Branch}.zip");
 
                 using var archive = new ZipArchive(new MemoryStream(zipBytes), ZipArchiveMode.Read);
 
@@ -1019,19 +1026,13 @@ public sealed class PanelHost : IDisposable
                     "script-backups", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
                 int backedUp = 0;
 
+                bool nestedInScripts = archive.Entries.Any(e => PackRelativePath(e.FullName, false) is { } r &&
+                    r.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase));
+
                 int count = 0;
                 foreach (var entry in archive.Entries)
                 {
-                    // Entries: "Scripts-T-main/scripts/..."
-                    var parts = entry.FullName.Split('/', 2);
-                    if (parts.Length < 2) continue;
-
-                    var relative = parts[1]; // "scripts/..."
-                    if (!relative.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    // Strip "scripts/" prefix → path within scripts folder
-                    var scriptRelative = relative["scripts/".Length..];
+                    var scriptRelative = PackRelativePath(entry.FullName, nestedInScripts);
                     if (string.IsNullOrEmpty(scriptRelative)) continue;
 
                     if (!SafePath.TryResolveUnderRoot(scriptsPath, scriptRelative,
@@ -1056,7 +1057,7 @@ public sealed class PanelHost : IDisposable
                     count++;
                 }
 
-                _ctx.AuditLog?.Invoke($"script pack installed files={count} backedUp={backedUp}");
+                _ctx.AuditLog?.Invoke($"script pack {pack.Repo}@{pack.Branch} installed files={count} backedUp={backedUp}");
                 return Results.Ok(new
                 {
                     filesInstalled = count,
@@ -1069,6 +1070,47 @@ public sealed class PanelHost : IDisposable
                 return Results.Problem($"Download failed: {ex.Message}");
             }
         });
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex RepoPattern =
+        new(@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$");
+    private static readonly System.Text.RegularExpressions.Regex BranchPattern =
+        new(@"^[A-Za-z0-9_./-]+$");
+
+    /// <summary>The script pack the panel installs: SCRIPTPACKREPO (owner/name) and
+    /// SCRIPTPACKBRANCH, defaulting to the Source-X pack. Anything that is not a
+    /// plain GitHub name falls back to the default rather than going into a URL.</summary>
+    internal (string Repo, string Branch) ReadScriptPack()
+    {
+        string repo = ReadIniString("ScriptPackRepo", "").Trim();
+        string branch = ReadIniString("ScriptPackBranch", "").Trim();
+        if (!RepoPattern.IsMatch(repo) || repo.Contains(".."))
+            repo = DefaultScriptPackRepo;
+        if (!BranchPattern.IsMatch(branch) || branch.Contains(".."))
+            branch = "main";
+        return (repo, branch);
+    }
+
+    internal const string DefaultScriptPackRepo = "Sphereserver/Scripts-X";
+
+    /// <summary>Where an archive entry goes under the scripts folder, or null to skip
+    /// it. GitHub wraps the tree in "&lt;repo&gt;-&lt;branch&gt;/". Some packs keep their
+    /// scripts in a scripts/ subfolder (only that is installed), others at the root.
+    /// Top-level folders starting with '_' hold work in progress and editor files
+    /// (Scripts-X _incomplete, _syntax highlighting) and are left out.</summary>
+    internal static string? PackRelativePath(string entryName, bool nestedInScripts)
+    {
+        var parts = entryName.Split('/', 2);
+        if (parts.Length < 2 || parts[1].Length == 0) return null;
+        string relative = parts[1];
+        if (nestedInScripts)
+        {
+            if (!relative.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase)) return null;
+            relative = relative["scripts/".Length..];
+            if (relative.Length == 0) return null;
+        }
+        if (relative.StartsWith('_') || relative.StartsWith('.')) return null;
+        return relative;
     }
 
     private static bool SameContent(string path, ZipArchiveEntry entry)

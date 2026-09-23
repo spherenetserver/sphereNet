@@ -106,8 +106,8 @@
                 <strong>Scripts already installed.</strong>
                 <p>
                   Downloading replaces every file that also exists in the
-                  <a href="https://github.com/UOSoftware/Scripts-T" target="_blank" rel="noopener" class="gh-link-inline">
-                    <i class="bi bi-github" /> UOSoftware/Scripts-T <i class="bi bi-box-arrow-up-right" />
+                  <a :href="pack.url" target="_blank" rel="noopener" class="gh-link-inline">
+                    <i class="bi bi-github" /> {{ pack.repo }} <i class="bi bi-box-arrow-up-right" />
                   </a>
                   pack. Local files that differ are first copied to a dated
                   <code>script-backups</code> folder next to the scripts folder; files the pack
@@ -132,9 +132,9 @@
           <!-- No scripts yet -->
           <template v-else>
             <p class="step-desc">
-              Download the community scripts from
-              <a href="https://github.com/UOSoftware/Scripts-T" target="_blank" rel="noopener" class="gh-link-inline">
-                <i class="bi bi-github" /> UOSoftware/Scripts-T <i class="bi bi-box-arrow-up-right" />
+              Download the Source-X script pack from
+              <a :href="pack.url" target="_blank" rel="noopener" class="gh-link-inline">
+                <i class="bi bi-github" /> {{ pack.repo }} <i class="bi bi-box-arrow-up-right" />
               </a>
               to get started quickly.
             </p>
@@ -214,6 +214,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Check, CheckCircle, ChevronRight, AlertTriangle, Download } from 'lucide-vue-next'
 import { setupApi, scriptsApi } from '@/lib/api'
+import { useScriptPack } from '@/lib/scriptPack'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -227,6 +228,7 @@ const steps = ['Server Identity', 'Admin', 'Server Config', 'Review', 'Scripts',
 /** Mirrors PanelHost.PasswordMask — /api/setup/config returns this instead of the
  *  real password, and posting it back means "keep the current one". */
 const PASSWORD_MASK = '********'
+const pack = useScriptPack()
 const step  = ref(0)
 const saving = ref(false)
 const error  = ref('')

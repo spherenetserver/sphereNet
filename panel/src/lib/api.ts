@@ -218,6 +218,7 @@ export const updateApi = {
 
 export const scriptsApi = {
   list:     () => api.get<ScriptFileInfo[]>('/scripts'),
+  pack:     () => api.get<{ repo: string; branch: string; url: string }>('/scripts/pack'),
   content:  (path: string) => api.get<{ content: string }>(`/scripts/content`, { params: { path } }),
   validate: (path: string, content: string) => api.post<ScriptValidationResult>('/scripts/validate', { path, content }),
   save:     (path: string, content: string) => api.put<{ saved: boolean; path: string; validation: ScriptValidationResult }>('/scripts/content', { path, content }),

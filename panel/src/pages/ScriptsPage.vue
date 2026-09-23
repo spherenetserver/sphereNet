@@ -60,13 +60,13 @@
         <div class="download-info">
           <span>Download &amp; Install Scripts</span>
           <a
-            href="https://github.com/UOSoftware/Scripts-T"
+            :href="pack.url"
             target="_blank"
             rel="noopener"
             class="gh-link"
           >
             <i class="bi bi-github" />
-            UOSoftware/Scripts-T
+            {{ pack.repo }}
             <i class="bi bi-box-arrow-up-right" />
           </a>
         </div>
@@ -136,6 +136,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { scriptsApi, serverApi } from '@/lib/api'
+import { useScriptPack } from '@/lib/scriptPack'
 import type { ScriptFileInfo } from '@/lib/api'
 
 interface TreeNode {
@@ -216,6 +217,8 @@ const treeNodes = computed<TreeNode[]>(() => {
 
   return nodes
 })
+
+const pack = useScriptPack()
 
 onMounted(refresh)
 
@@ -328,7 +331,7 @@ async function resyncScripts() {
 
 async function downloadScripts() {
   if (!window.confirm(
-    'Install UOSoftware/Scripts-T over the scripts folder?\n\n' +
+    `Install ${pack.value.repo} over the scripts folder?\n\n` +
     'Every file the pack contains replaces the local file of the same name. ' +
     'Changed local files are copied to a dated script-backups folder next to the scripts folder first; ' +
     'files the pack does not contain are left alone.')) return
@@ -337,7 +340,7 @@ async function downloadScripts() {
   downloadError.value = false
   try {
     const { data } = await scriptsApi.download()
-    downloadMsg.value = `Installed ${data.filesInstalled} files from UOSoftware/Scripts-T` +
+    downloadMsg.value = `Installed ${data.filesInstalled} files from ${pack.value.repo}` +
       (data.filesBackedUp ? ` - ${data.filesBackedUp} changed file(s) backed up to ${data.backupFolder}` : '')
     await refresh()
   } catch (e: unknown) {

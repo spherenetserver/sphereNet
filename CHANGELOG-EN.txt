@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Points separated by spaces; refused script teleporters removed
+------------------------------------------------------------------------
+FIX - P=<point> and Point3D.TryParse accept comma, space or tab between the
+      fields, as Source-X does (CPointBase::Read, " ,	"). The worldgen
+      decoration writes NEW.P=6082 1450 5 (and a fourth map field for
+      Trammel); the setter split on commas only, so doors, signs and the rest
+      of the decoration were created at 0,0,0,0.
+FIX - A script teleporter on a map the server does not run is deleted
+      instead of staying at 0,0,0,0, where SAVESTATICS wrote it out on every
+      save. The startup line reports how many were skipped.
+
 [2026-09-24] - Spawner targets through DEFNAME aliases; header-named CHARDEFs keep their name
 ------------------------------------------------------------------------
 FIX - A spawner's MORE/MORE1/SPAWNID and RESOURCETYPE/RESOURCEINDEX now

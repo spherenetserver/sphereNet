@@ -138,6 +138,11 @@ public readonly struct Point3D : IEquatable<Point3D>
     public static bool TryParse(ReadOnlySpan<char> text, out Point3D result)
     {
         result = Zero;
+        // A point written with spaces or tabs ("1500 1620 5") is read the same way
+        // (CPointBase::Read, " ,\t"); the comma form stays on the allocation-free path
+        // the save loader uses.
+        if (text.IndexOfAny(' ', '\t') >= 0)
+            return TryParse(string.Join(',', SplitComponents(text.ToString())).AsSpan(), out result);
         Span<Range> ranges = stackalloc Range[4];
         int count = text.Split(ranges, ',');
         if (count < 2) return false;

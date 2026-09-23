@@ -393,7 +393,7 @@ public static partial class Program
         foreach (var item in toRemove)
             _world.RemoveItem(item);
 
-        int placed = 0;
+        int placed = 0, skipped = 0;
         foreach (var (src, dest, name) in teleporters)
         {
             var item = _world.CreateItem();
@@ -402,12 +402,19 @@ public static partial class Program
             item.MoreP = dest;
             item.Name = string.IsNullOrEmpty(name) ? "teleporter" : name;
             item.SetAttr(ObjAttributes.Invis | ObjAttributes.Static | ObjAttributes.Move_Never);
-            _world.PlaceItem(item, src);
+            // A teleporter on a map this server does not run is refused; left in the
+            // world it sat at 0,0,0,0 and SAVESTATICS wrote it out on every save.
+            if (!_world.PlaceItem(item, src))
+            {
+                _world.RemoveItem(item);
+                skipped++;
+                continue;
+            }
             placed++;
         }
 
-        _log.LogInformation("Placed {Count} teleporters from scripts ({Removed} old removed)",
-            placed, toRemove.Count);
+        _log.LogInformation("Placed {Count} teleporters from scripts ({Removed} old removed, {Skipped} on maps not in use)",
+            placed, toRemove.Count, skipped);
     }
 
 

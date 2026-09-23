@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Bosluklu koordinat; reddedilen script teleporter'lari silinir
+------------------------------------------------------------------------
+DUZELTME - P=<nokta> ve Point3D.TryParse alanlar arasinda virgul, bosluk ya
+           da sekme kabul eder; Source-X gibi (CPointBase::Read, " ,	").
+           Worldgen dekorasyonu NEW.P=6082 1450 5 yazar (Trammel icin
+           dorduncu alan harita); setter yalnizca virgulle boluyordu, kapilar,
+           tabelalar ve dekorasyonun geri kalani 0,0,0,0'da olusuyordu.
+DUZELTME - Sunucunun calistirmadigi haritadaki script teleporter'i 0,0,0,0'da
+           kalmak yerine silinir; SAVESTATICS onu her save'de yaziyordu.
+           Acilis satiri kac tanesinin atlandigini soyler.
+
 [2026-09-24] - Spawner hedefleri DEFNAME takma adlariyla; basliktan adlanan CHARDEF adini korur
 ------------------------------------------------------------------------
 DUZELTME - Spawner'in MORE/MORE1/SPAWNID ile RESOURCETYPE/RESOURCEINDEX

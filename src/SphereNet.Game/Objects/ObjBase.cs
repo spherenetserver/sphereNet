@@ -1808,7 +1808,10 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 }
                 return true;
             case "P":
-                var parts = value.Split(',');
+                // Comma, space or tab separate a point (CPointBase::Read, " ,\t").
+                // The worldgen decoration writes NEW.P=6082 1450 5; splitting on
+                // commas only left every such item at 0,0.
+                var parts = Point3D.SplitComponents(value);
                 if (parts.Length >= 2
                     && short.TryParse(parts[0], out short px)
                     && short.TryParse(parts[1], out short py))

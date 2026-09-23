@@ -245,6 +245,8 @@ internal interface IClientContext : ITextConsole
     bool InitiateTrade(Character partner, Item? firstItem = null);
     void SendTradeUpdateToBoth(SecureTrade trade);
     void TickPendingSkill();
+    /// <summary>Source-X Skill_Start for a skill a tool puts to work at a target.</summary>
+    void StartSkillFromTool(SkillType skill, Serial targetUid, Objects.ObjBase? target, Point3D? point, Objects.Items.Item? tool);
     void TickPendingCraft();
     bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump);
 

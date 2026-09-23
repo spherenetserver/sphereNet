@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Skill, craft ve dovus animasyonlari ile sureleri
+------------------------------------------------------------------------
+DUZELTME - Bir aleti hedefine kullanmak (kayaya kazma/kurek, agaca balta, olta,
+           maymuncuk, bandaj, cogan) skill'i Source-X Skill_Start gibi baslatir
+           (CCharSkill.cpp:4383): @SkillPreStart, ARGN1/ARGN2 ve
+           LOCAL.Sound/Anim/GatherStrokeCnt geri okunarak @SkillStart, baslangic
+           sesi ve animasyonu, sonra DELAY araliklarla her birinde ses ve
+           animasyon olan vuruslar (SKF_NOSFX/SKF_NOANIM uyulur, @SkillStroke
+           yazilabilir, RETURN 1 iptal eder). Alet yolu trigger'siz, vurussuz ve
+           animasyonsuz aninda sonuclaniyordu; mining animasyonunu @SkillStart'tan
+           yapan pack hic calismiyordu.
+DUZELTME - Suslu parantezli REAP ({ i_gem_ruby 1 ... }) Source-X ifadesi gibi
+           yuklemede bir kez secilir (CRegionResourceDef.cpp:68); hicbir seye
+           cozulmuyor, maden damarlarinin yaklasik %30'u bos cikiyordu.
+DUZELTME - Cantaya teslim edilen esya bir sonraki tick'te kirli-nesne taramasiyla
+           ikinci kez gonderilmez (0x25 iki kez gidiyordu).
+DUZELTME - Vurus ve craft tablolari Source-X'i izler: oduncu 2H sallar, demirci
+           elindeki cekicle animasyon yapar, tinkering ve cooking sessizdir, craft
+           tek DELAY'lik vurustur, healing/veterinary ve lockpicking ses
+           cikarmaz, her bard skill'inde enstruman TDATA1/TDATA2 sesini calar,
+           begging baslangicta egilir, herding sallar (cogan kullanilan alettir).
+DUZELTME - Animasyon secimi: binekli animasyon tablosu (CCharAct.cpp:852), silah
+           ve govdeye gore vurus animasyonu tek cevirici uzerinden (silahsiz, 2H,
+           binekli, polymorph, yaratiklar), canavar get-hit/block/stand
+           eslemesi, 0x6E kare-gecikme bayti, get-hit sadece oldurmeyen gercek
+           hasarda ve vurus ortasinda degilken, vurus sesi saldiranda, buyu
+           hareketi SPELLFLAG_DIR_ANIM / NO_CASTANIM / MAGICF_NOANIM ile.
+TEST - SkillAnimationTimingParityTests.
+
 [2026-09-23] - Panelde karakter paperdoll'u ve herkese acik paperdoll API'si
 ------------------------------------------------------------------------
 EKLEME - Sunucu karakterin paperdoll'unu client'in cizdigi gibi cizer (ClassicUO

@@ -279,10 +279,16 @@ public sealed class ClientWorldFeaturesHandler
     private ushort? _pendingCraftResourceHue;
     private Point3D _pendingCraftStartPosition;
 
-    /// <summary>Start a craft as a stroke loop (reference Skill_MakeItem →
-    /// Skill_Stroke): two work strokes with the skill's DELAY-curve timeout
-    /// (one-second floor), anim + sound per stroke; the roll and resource
-    /// consumption happen at completion, after a CanCraft re-check (covers
+    /// <summary>Start a craft as a stroke loop (reference Skill_Start for an
+    /// SKF_CRAFT skill → Skill_Stroke): ONE work stroke by default - Skill_Start sets
+    /// m_atCreate.m_dwStrokeCount = 1 ("the new strokes amount used on OSI",
+    /// CCharSkill.cpp:4481), after and over the 2 a smith's or carpenter's START
+    /// stage wrote (:3155/:3179), and @SkillStart may change it through
+    /// LOCAL.CraftStrokeCnt (:4538). The start makes the skill's sound and plays its
+    /// animation (:4543-4555); each stroke, one DELAY later, does it again, and the
+    /// count reaching zero is the success. So a default craft takes ONE delay, not
+    /// the two - each floored at a full second - this used to take. The roll and
+    /// resource consumption happen at completion, after a CanCraft re-check (covers
     /// walking away from the forge mid-craft).</summary>
     internal bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
         ushort? primaryResourceHue = null)
@@ -311,8 +317,7 @@ public sealed class ClientWorldFeaturesHandler
                 new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillPreStart,
                 new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStart,
-                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True)
+            FireCraftStart(craftSkill, out int craftStrokes, out long craftWaitTenths))
             return false;
 
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMakeItem,
@@ -320,13 +325,39 @@ public sealed class ClientWorldFeaturesHandler
 
         _pendingCraftRecipe = recipe;
         _pendingCraftSkill = craftSkill;
-        _pendingCraftStrokes = 2;
+        _pendingCraftStrokes = Math.Max(1, craftStrokes);
         _pendingCraftReopenGump = reopenGump;
         _pendingCraftResourceHue = primaryResourceHue;
         _pendingCraftStartPosition = _character.Position;
-        EmitCraftStroke(craftSkill);
-        _pendingCraftNextStroke = Environment.TickCount64 + GetCraftStrokeIntervalMs(craftSkill);
+        FaceCraftWorkSite(craftSkill);
+        PlayCraftEffects(craftSkill);
+        _pendingCraftNextStroke = Environment.TickCount64 +
+            (craftWaitTenths > 0 ? craftWaitTenths * 100L : GetCraftStrokeIntervalMs(craftSkill));
         return true;
+    }
+
+    /// <summary>@SkillStart for a craft (Skill_Start, CCharSkill.cpp:4466-4541):
+    /// ARGN1 = the skill, ARGN2 = the wait in tenths, LOCAL.CraftStrokeCnt = 1. True
+    /// when a script cancelled; otherwise the stroke count and the wait are what the
+    /// script left behind.</summary>
+    private bool FireCraftStart(SkillType craftSkill, out int strokes, out long waitTenths)
+    {
+        strokes = 1;
+        int delayMs = Skills.SkillEngine.GetSkillDelayMs(craftSkill, _character?.GetSkill(craftSkill) ?? 0);
+        waitTenths = delayMs / 100;
+        if (_triggerDispatcher == null || _character == null)
+            return false;
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("CraftStrokeCnt", strokes);
+        var args = new TriggerArgs
+        {
+            CharSrc = _character, N1 = (int)craftSkill, N2 = waitTenths, Locals = locals,
+        };
+        if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart, args) == TriggerResult.True)
+            return true;
+        strokes = (int)Math.Clamp(locals.GetInt("CraftStrokeCnt", 1), 1, 100);
+        waitTenths = args.N2;
+        return false;
     }
 
     /// <summary>Advance the pending craft stroke loop. Called from the
@@ -348,7 +379,7 @@ public sealed class ClientWorldFeaturesHandler
         // Source-X Skill_Stroke: @SkillStroke fires per stroke with
         // LOCAL.Strokes seeded to the remaining count and WRITABLE — a
         // script can lengthen or shorten the craft per recipe (the default
-        // stays the reference's fixed 2); RETURN 1 aborts the craft.
+        // is Skill_Start's one stroke); RETURN 1 aborts the craft.
         if (_triggerDispatcher != null)
         {
             var strokeLocals = new SphereNet.Scripting.Variables.VarMap();
@@ -370,10 +401,17 @@ public sealed class ClientWorldFeaturesHandler
                 _pendingCraftStrokes = (int)Math.Min(rewrittenStrokes, 100);
         }
 
+        // Skill_Stroke plays with a count of one or more, THEN counts down, and the
+        // count reaching zero is the success (CCharSkill.cpp:3578-3643) - so the last
+        // stroke is heard and seen too, in the same tick as the result.
+        if (_pendingCraftStrokes >= 1)
+        {
+            FaceCraftWorkSite(_pendingCraftSkill);
+            PlayCraftEffects(_pendingCraftSkill);
+        }
         _pendingCraftStrokes--;
         if (_pendingCraftStrokes > 0)
         {
-            EmitCraftStroke(_pendingCraftSkill);
             _pendingCraftNextStroke = Environment.TickCount64 + GetCraftStrokeIntervalMs(_pendingCraftSkill);
             return;
         }
@@ -419,13 +457,10 @@ public sealed class ClientWorldFeaturesHandler
     internal void CancelPendingCraftOnInterrupt() => CancelPendingCraft();
     internal void CancelPendingCraftOnDisconnect() => CancelPendingCraft(notify: false);
 
-    private void EmitCraftStroke(SkillType craftSkill)
+    private void FaceCraftWorkSite(SkillType craftSkill)
     {
         if (_character == null)
             return;
-        int stroke = 3 - _pendingCraftStrokes;
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
-            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill, N2 = stroke });
         // Face the work site, as upstream does on every stroke: UpdateDir(m_Act_p)
         // "toward the forge" (Skill_Blacksmith, CCharSkill.cpp:3155) and "toward the
         // fire source" (Skill_Cooking, :2252). Without it the hammer swings at
@@ -435,19 +470,30 @@ public sealed class ClientWorldFeaturesHandler
         {
             SphereNet.Game.Skills.Information.ActiveSkillEngine.FaceSkillTarget(_character, workSite);
         }
+    }
 
+    /// <summary>The craft skill's own sound and animation, unless its FLAGS switch
+    /// them off - played by the start and by every stroke.</summary>
+    private void PlayCraftEffects(SkillType craftSkill)
+    {
+        if (_character == null)
+            return;
         var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
-        if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoAnim))
+        if (craftAnim != 0 && !SkillEngine.HasFlag(craftSkill, SkillFlag.NoAnim))
             PlayAnimation(_character, craftAnim, NewAnimationGesture.Emote);
-        if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
+        if (craftSound != 0 && !SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
     }
 
+    /// <summary>The stroke re-arm interval: Skill_GetTimeout, the DELAY curve at the
+    /// crafter's base skill with a floor of ONE tenth (CCharSkill.cpp:659-671). The
+    /// old floor of a full second read Skill_Stroke's "delay &lt; 10" clamp as tenths;
+    /// it is milliseconds (:3645).</summary>
     private int GetCraftStrokeIntervalMs(SkillType craftSkill)
     {
         int delayMs = Skills.SkillEngine.GetSkillDelayMs(craftSkill, _character?.GetSkill(craftSkill) ?? 0);
-        return Math.Max(1000, delayMs); // reference floor: 10 tenths per stroke
+        return Math.Max(100, delayMs);
     }
 
     private void CompleteCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
@@ -2186,19 +2232,15 @@ public sealed class ClientWorldFeaturesHandler
                 door.X, door.Y, door.Z, door.Hue), _character!.Uid.Value);
     }
 
-    internal static (ushort Anim, ushort Sound) GetCraftAnimAndSound(SkillType skill) => skill switch
-    {
-        SkillType.Blacksmithing => ((ushort)AnimationType.Attack1HBash, (ushort)0x002A),
-        SkillType.Carpentry => ((ushort)AnimationType.Attack2HSlash, (ushort)0x023D),
-        SkillType.Tailoring => ((ushort)AnimationType.Bow, (ushort)0x0248),
-        SkillType.Tinkering => ((ushort)AnimationType.Attack1HBash, (ushort)0x002A),
-        SkillType.Cooking => ((ushort)AnimationType.Bow, (ushort)0x0225),
-        SkillType.Alchemy => ((ushort)AnimationType.Bow, (ushort)0x0242),
-        SkillType.Bowcraft => ((ushort)AnimationType.Bow, (ushort)0x023D),
-        SkillType.Inscription => ((ushort)AnimationType.Bow, (ushort)0x0249),
-        SkillType.Cartography => ((ushort)AnimationType.Bow, (ushort)0x0249),
-        _ => ((ushort)AnimationType.Bow, (ushort)0x002A),
-    };
+    /// <summary>A craft stroke's animation and sound: Source-X Skill_GetAnim and
+    /// Skill_GetSound (CCharSkill.cpp:3526-3569). Smithing is the only craft that
+    /// animates - its one-handed swing, which UpdateAnimate turns into the hammer's
+    /// own swing (GenerateAnimate, CCharAct.cpp:811-850) - and tinkering and cooking
+    /// make no stroke sound. The bows, slashes and bashes this table used to give
+    /// every other craft, and the tinkering and cooking sounds, are not upstream's.
+    /// Zero means none.</summary>
+    internal static (ushort Anim, ushort Sound) GetCraftAnimAndSound(SkillType skill) =>
+        (SkillEngine.GetSkillAnim(skill) ?? 0, SkillEngine.GetSkillSound(skill));
 
     internal void UsePotion(Item potion)
     {

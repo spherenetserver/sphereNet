@@ -114,6 +114,36 @@ public static class SkillEngine
         return GetSkillDelayMs(skill, skillValue);
     }
 
+    /// <summary>Source-X CChar::Skill_GetAnim (CCharSkill.cpp:3526): the action a
+    /// crafting or gathering stroke plays - fishing the two-handed bash, smithing the
+    /// one-handed slash, mining the one-handed bash, lumberjacking the two-handed
+    /// slash. Every other skill answers -1 (no animation), which is null here.</summary>
+    public static ushort? GetSkillAnim(SkillType skill) => skill switch
+    {
+        SkillType.Fishing => (ushort)AnimationType.Attack2HBash,
+        SkillType.Blacksmithing => (ushort)AnimationType.AttackWeapon,   // ANIM_ATTACK_1H_SLASH
+        SkillType.Mining => (ushort)AnimationType.Attack1HBash,
+        SkillType.Lumberjacking => (ushort)AnimationType.Attack2HSlash,
+        _ => null,
+    };
+
+    /// <summary>Source-X CChar::Skill_GetSound (CCharSkill.cpp:3543): the sound a
+    /// crafting or gathering stroke makes. Mining alternates its two pick sounds at
+    /// random; a skill with none answers 0 (SOUND_NONE).</summary>
+    public static ushort GetSkillSound(SkillType skill) => skill switch
+    {
+        SkillType.Fishing => 0x364,
+        SkillType.Alchemy => 0x242,
+        SkillType.Tailoring => 0x248,
+        SkillType.Cartography or SkillType.Inscription => 0x249,
+        SkillType.Bowcraft => 0x055,
+        SkillType.Blacksmithing => 0x02a,
+        SkillType.Carpentry => 0x23d,
+        SkillType.Mining => _rand.Next(2) != 0 ? (ushort)0x125 : (ushort)0x126,
+        SkillType.Lumberjacking => 0x13e,
+        _ => 0,
+    };
+
     /// <summary>Stroke count a delayed skill runs before completing — Source-X
     /// rolls it at SKTRIG_START: fishing 1-2 (CCharSkill.cpp:1568), mining and
     /// lumberjacking 2-6 (:1463/:1667). Other delayed skills complete after a

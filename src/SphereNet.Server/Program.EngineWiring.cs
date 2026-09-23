@@ -1830,11 +1830,15 @@ public static partial class Program
                     return; // The proc ran its own damage/death feedback.
 
                 // The shared door translates the action for the body and the saddle and
-                // picks 0x6E or 0xE2 per viewer (GameClient.PlayAnimation).
-                SphereNet.Game.Clients.GameClient.PlayAnimation(
-                    target, (ushort)AnimationType.GetHit,
-                    SphereNet.Core.Enums.NewAnimationGesture.Impact, 18,
-                    BroadcastNearby, ForEachClientInRange);
+                // picks 0x6E or 0xE2 per viewer (GameClient.PlayAnimation). The flinch
+                // is OnTakeDamage's: only for damage that landed, not for a killing
+                // blow, not over the target's own swing (CCharFight.cpp:1027-1060) -
+                // an armour-absorbed strike or a kill used to flinch too.
+                if (damage > 0 && CombatHelper.ShouldPlayGetHit(target))
+                    SphereNet.Game.Clients.GameClient.PlayAnimation(
+                        target, (ushort)AnimationType.GetHit,
+                        SphereNet.Core.Enums.NewAnimationGesture.Impact, 18,
+                        BroadcastNearby, ForEachClientInRange);
 
                 // Only an armed strike makes a weapon sound; an unarmed creature
                 // vocalizes via its own NPC Hit sound (CharDef SOUNDHIT), so don't

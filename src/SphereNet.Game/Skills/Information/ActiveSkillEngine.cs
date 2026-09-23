@@ -402,7 +402,9 @@ public static class ActiveSkillEngine
             lockedTarget.ItemType = lockedTarget.ItemType == ItemType.ContainerLocked
                 ? ItemType.Container
                 : ItemType.Door;
-            sink.Sound(0x241);
+            // Silently: neither Skill_Lockpicking nor CItem::Use_LockPick makes a
+            // sound (CCharSkill.cpp:2413-2466, CItem.cpp:5378); the click this played
+            // was not upstream's.
         }
         else if (sink.Random.Next(3) == 0)
         {
@@ -540,10 +542,10 @@ public static class ActiveSkillEngine
                  : sink.Random.Next(80);
         bool success = SkillEngine.UseQuick(ch, healingSkill, diff);
 
-        if (!SkillEngine.HasFlag(healingSkill, SkillFlag.NoAnim))
-            sink.Animation((ushort)Core.Enums.AnimationType.Bow);
-        if (!SkillEngine.HasFlag(healingSkill, SkillFlag.NoSfx))
-            sink.Sound(0x0057);
+        // No animation and no sound: Skill_Healing plays neither at any stage, and
+        // healing is neither a crafting nor a gathering skill, so Skill_Start and
+        // Skill_Stroke play none for it either (CCharSkill.cpp:2724-2886/4543). The
+        // bow and cloth rustle this used to send on every bandage were invented.
         sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
         // Used bandages become bloody bandages (Source-X parity).
         var bloody = sink.World.CreateItem();
@@ -765,7 +767,13 @@ public static class ActiveSkillEngine
             sink.SysMessage("That creature is too far away.");
             return false;
         }
-        var crook = sink.FindBackpackItem(ItemType.WeaponMaceCrook);
+        // Upstream herds with the crook that started the skill, m_Act_Prv_UID
+        // (Skill_Herding, CCharSkill.cpp:2536). Searched for in the backpack only,
+        // the crook a double-click had just put in the hand was never found.
+        var crook = (ch.ActPrv.IsValid ? sink.World.FindItem(ch.ActPrv) : null) is
+            { ItemType: ItemType.WeaponMaceCrook, IsDeleted: false } actCrook
+            ? actCrook
+            : FindGatherTool(sink, ItemType.WeaponMaceCrook);
         if (crook == null)
         {
             sink.SysMessage(ServerMessages.Get(Msg.HerdingNocrook));
@@ -1019,11 +1027,11 @@ public static class ActiveSkillEngine
             return false;
         }
         FaceSkillTarget(ch, target);
-        // Upstream alternates the two pick sounds at random
-        // (Skill_GetSound, CCharSkill.cpp:3562); one of them on every swing is the
-        // flat repetition the report described.
-        BroadcastAnimation(ch, SkillType.Mining, (ushort)AnimationType.Attack1HBash,
-            System.Random.Shared.Next(2) == 0 ? (ushort)0x0125 : (ushort)0x0126);
+        // No sound or animation here: this is the SUCCESS stage, and upstream plays
+        // both from Skill_Start and from every Skill_Stroke before it, never from the
+        // result (CCharSkill.cpp:4543-4555/3615-3618). Playing them again here made
+        // the last swing of every attempt land twice, and made a pack's SKF_NOSFX a
+        // dead letter for the final stroke.
         DamageGatherTool(sink, pickaxe);
 
         if (gatheringEngine != null)
@@ -1198,9 +1206,8 @@ public static class ActiveSkillEngine
             return false;
         }
         FaceSkillTarget(ch, target);
-        // Source-X Skill_GetAnim/Skill_GetSound for fishing: the two-handed bash
-        // and sound 0x364 (CCharSkill.cpp:3530/3548).
-        BroadcastAnimation(ch, SkillType.Fishing, (ushort)AnimationType.Attack2HBash, 0x0364);
+        // The cast's sound and animation come from the start and the strokes
+        // (SkillEngine.GetSkillAnim/GetSkillSound), not from the result - see Mining.
         DamageGatherTool(sink, pole);
 
         if (gatheringEngine != null)
@@ -1267,7 +1274,8 @@ public static class ActiveSkillEngine
             return false;
         }
         FaceSkillTarget(ch, target);
-        BroadcastAnimation(ch, SkillType.Lumberjacking, (ushort)AnimationType.Attack2HSlash, 0x013E);
+        // The chop's sound and animation come from the start and the strokes, not
+        // from the result - see Mining.
         DamageGatherTool(sink, axe);
 
         if (gatheringEngine != null)
@@ -1324,25 +1332,6 @@ public static class ActiveSkillEngine
         ch.MarkDirty(Core.Enums.DirtyFlag.Direction);
     }
 
-    private static void BroadcastAnimation(Character ch, SkillType skill, ushort animId, ushort soundId)
-    {
-        if (!SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
-        {
-            // Mounted riders need the horse-variant action — the foot animation
-            // makes the client dismount/remount the rider for its duration.
-            ushort anim = ch.IsMounted
-                ? Combat.BodyAnimTranslator.ToMounted(animId)
-                : Combat.BodyAnimTranslator.Translate(ch.BodyId, animId);
-            var animPkt = new SphereNet.Network.Packets.Outgoing.PacketAnimation(ch.Uid.Value, anim);
-            Character.BroadcastNearby?.Invoke(ch.Position, 18, animPkt, 0);
-        }
-        if (!SkillEngine.HasFlag(skill, SkillFlag.NoSfx))
-        {
-            var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(soundId, ch.X, ch.Y, ch.Z);
-            Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);
-        }
-    }
-
     // ---------------------------------------------------------- Musicianship
 
     /// <summary>Source-X CChar::Skill_Musicianship. Requires a musical instrument.</summary>
@@ -1355,9 +1344,23 @@ public static class ActiveSkillEngine
             return false;
         }
         DamageGatherTool(sink, instrument);
-        if (!SkillEngine.HasFlag(SkillType.Musicianship, SkillFlag.NoSfx))
-            sink.Sound(0x045);
-        return SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, 40);
+        bool played = SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, 40);
+        PlayInstrument(sink, instrument, played);
+        return played;
+    }
+
+    /// <summary>The instrument's own tune - Source-X Use_PlayMusic plays
+    /// CItem::Use_Music after the Musicianship roll: the definition's TDATA1 when it
+    /// was played well, TDATA2 when poorly (CCharUse.cpp:728-729, CItem.cpp:4620,
+    /// CItemBase.h:141). Every bard skill goes through it - musicianship,
+    /// peacemaking, enticement and provocation (CCharSkill.cpp:1787/1830/1956/2071).
+    /// A fixed drum-beat on musicianship alone, and silence for the other three, is
+    /// what this used to play.</summary>
+    private static void PlayInstrument(IActiveSkillSink sink, Item instrument, bool playedWell)
+    {
+        uint sound = playedWell ? instrument.TData1 : instrument.TData2;
+        if (sound is > 0 and <= ushort.MaxValue)
+            sink.Sound((ushort)sound);
     }
 
     // ----------------------------------------------------------- Peacemaking
@@ -1373,7 +1376,9 @@ public static class ActiveSkillEngine
             return false;
         }
         DamageGatherTool(sink, instrument);
-        if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
+        bool playedPeace = SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
+        PlayInstrument(sink, instrument, playedPeace);
+        if (!playedPeace)
             return false;
 
         sink.Emote(ServerMessages.Get(Msg.PeacemakingIgnore));
@@ -1419,7 +1424,9 @@ public static class ActiveSkillEngine
             return false;
         }
         DamageGatherTool(sink, instrument);
-        if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
+        bool playedDiscord = SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
+        PlayInstrument(sink, instrument, playedDiscord);
+        if (!playedDiscord)
             return false;
         if (!SkillEngine.UseQuick(ch, SkillType.Enticement, 50))
         {
@@ -1458,7 +1465,9 @@ public static class ActiveSkillEngine
             return false;
         }
         DamageGatherTool(sink, instrument);
-        if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
+        bool playedProvoke = SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
+        PlayInstrument(sink, instrument, playedProvoke);
+        if (!playedProvoke)
             return false;
 
         if (provokeAgainst == null || provokeAgainst == target || provokeAgainst == ch ||

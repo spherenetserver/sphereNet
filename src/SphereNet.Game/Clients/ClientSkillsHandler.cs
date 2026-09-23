@@ -344,12 +344,143 @@ public sealed class ClientSkillsHandler
         if (!GatherNodeAnswers(skill, point, skillId))
             return;
 
-        if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, point))
+        PlaySkillStageStartAnimation(skill);
+
+        // The gathering skill's start sound and swing, as Skill_Start plays them
+        // before the first timeout (CCharSkill.cpp:4543-4555).
+        if (SkillEngine.HasFlag(skill, SkillFlag.Gather))
+            PlaySkillStartEffects(skill, point, SkillEngine.GetSkillSound(skill),
+                SkillEngine.GetSkillAnim(skill) ?? 0);
+
+        RunActiveSkill(skill, skillId, targetUid, target, point);
+    }
+
+    /// <summary>The animations a skill's own START stage plays - begging bows to
+    /// the mark (Skill_Begging, CCharSkill.cpp:2943, not gated by SKF_NOANIM) and
+    /// herding swings the crook (Skill_Herding, :2573-2574, unless SKF_NOANIM).
+    /// Neither animated here before: the skills resolved with no gesture at all.</summary>
+    private void PlaySkillStageStartAnimation(SkillType skill)
+    {
+        if (_character == null) return;
+        if (skill == SkillType.Begging)
+            PlayAnimation(_character, (ushort)AnimationType.Bow, NewAnimationGesture.Emote);
+        else if (skill == SkillType.Herding && !SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
+            PlayAnimation(_character, (ushort)AnimationType.AttackWeapon, NewAnimationGesture.Attack);
+    }
+
+    /// <summary>Schedule the skill's timer, or - with no DELAY - stroke and resolve it
+    /// at once.</summary>
+    private void RunActiveSkill(SkillType skill, int skillId, Serial targetUid,
+        Objects.ObjBase? target, Point3D? point, int? startWaitMs = null, int? gatherStrokes = null)
+    {
+        if (_character == null) return;
+        if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, point,
+                startWaitMs: startWaitMs, gatherStrokes: gatherStrokes))
             return;
-        FireActiveSkillStroke(skillId);
+        // No timer: the one stroke still plays, so a gathering skill gets its count.
+        if (SkillEngine.HasFlag(skill, SkillFlag.Gather))
+            _character.SkillStrokesLeft = Math.Max(1, gatherStrokes ?? 1);
+        if (!FireActiveSkillStroke(skillId))
+            return;
         var sink = new GameClient.InfoSkillSink(_client, _character);
         bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
         FireActiveSkillResult(skillId, ok);
+    }
+
+    /// <summary>The start sound and animation of a crafting or gathering skill
+    /// (Skill_Start, CCharSkill.cpp:4543-4555): the character turns to the spot, and
+    /// each plays unless the skill's FLAGS switch it off.</summary>
+    private void PlaySkillStartEffects(SkillType skill, Point3D? point, ushort sound, int anim)
+    {
+        if (_character == null) return;
+        if (point.HasValue)
+            Skills.Information.ActiveSkillEngine.FaceSkillTarget(_character, point.Value);
+        if (sound != 0 && !SkillEngine.HasFlag(skill, SkillFlag.NoSfx))
+            BroadcastNearby?.Invoke(_character.Position, GameClient.UpdateRange,
+                new PacketSound(sound, _character.X, _character.Y, _character.Z), 0);
+        if (anim != 0 && !SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
+            PlayAnimation(_character, (ushort)anim, NewAnimationGesture.Emote);
+    }
+
+    /// <summary>A skill a TOOL puts to work at a picked target - Source-X
+    /// CChar::Skill_Start as the target handlers call it: a pickaxe or shovel at a
+    /// rock (CClientTarg.cpp:1806-1811), a fishing pole at water (:2266), an axe at a
+    /// tree, a bandage on a patient (:2002-2021), lockpicks at a lock.
+    ///
+    /// The tool path used to call the skill's resolver directly: no @SkillPreStart,
+    /// no @SkillStart, no DELAY and no strokes, so a mining swing finished the moment
+    /// the rock was clicked, the ore arrived with nothing animated, and a pack that
+    /// plays its own gathering animation from @SkillStart (with the skill's
+    /// SKF_NOANIM set) never got the chance. This runs the reference's start:
+    ///   1. the previous skill is cancelled (Skill_Fail(true), :4408);
+    ///   2. ACT / ACTP / ACTPRV name the target, the spot and the tool;
+    ///   3. @SkillPreStart, then the resource check at START (a spent or barren
+    ///      vein is answered before anything is scheduled, :1448-1459);
+    ///   4. @SkillStart with ARGN1 = skill, ARGN2 = the wait in tenths, and
+    ///      LOCAL.Sound / LOCAL.Anim / LOCAL.GatherStrokeCnt (:4466-4549) - RETURN 1
+    ///      cancels, and every one of them is read back;
+    ///   5. a crafting or gathering skill makes its start sound and plays its start
+    ///      animation (:4543-4555); Skill_Stroke does it on each stroke after that.</summary>
+    internal void StartSkillFromTool(SkillType skill, Serial targetUid, Objects.ObjBase? target,
+        Point3D? point, Item? tool)
+    {
+        if (_character == null) return;
+        int skillId = (int)skill;
+
+        int previous = _character.ClearActiveSkillPending();
+        if (previous >= 0)
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                new TriggerArgs { CharSrc = _character, N1 = previous });
+        _character.ResetSkillStrokeCount();
+
+        _character.Act = targetUid;
+        if (point.HasValue)
+            _character.ActP = point.Value;
+        if (tool != null)
+            _character.ActPrv = tool.Uid;
+
+        if (_triggerDispatcher != null &&
+            _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True)
+            return;
+
+        if (!GatherNodeAnswers(skill, point, skillId))
+            return;
+        // Skill_Stage(SKTRIG_START) runs before @SkillStart (:4447).
+        PlaySkillStageStartAnimation(skill);
+
+        bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
+        bool craft = SkillEngine.HasFlag(skill, SkillFlag.Craft);
+        int delayMs = SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill));
+        int waitTenths = delayMs > 0 ? delayMs / 100 : 1;
+        ushort sound = SkillEngine.HasFlag(skill, SkillFlag.NoSfx) ? (ushort)0 : SkillEngine.GetSkillSound(skill);
+        int anim = SkillEngine.HasFlag(skill, SkillFlag.NoAnim) ? 0 : SkillEngine.GetSkillAnim(skill) ?? 0;
+        int strokes = gather ? SkillEngine.RollStrokeCount(skill) : 1;
+
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("Sound", sound);
+        locals.SetInt("Anim", anim);
+        if (gather)
+            locals.SetInt("GatherStrokeCnt", strokes);
+        var startArgs = new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = waitTenths, Locals = locals };
+        if (_triggerDispatcher != null &&
+            _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart, startArgs) == TriggerResult.True)
+            return;
+
+        sound = (ushort)Math.Clamp(locals.GetInt("Sound"), 0, ushort.MaxValue);
+        anim = (int)Math.Clamp(locals.GetInt("Anim"), 0, ushort.MaxValue);
+        if (gather)
+            strokes = (int)Math.Clamp(locals.GetInt("GatherStrokeCnt"), 0, ushort.MaxValue);
+        long wait = startArgs.N2;
+        int? startWaitMs = wait > 0 ? (int)Math.Min(int.MaxValue / 2, wait * 100L) : null;
+
+        // The start sound and animation belong to crafting and gathering only
+        // (:4543-4555); the flags are asked again because a script may have changed
+        // them, and the values are the ones @SkillStart left behind.
+        if (gather || craft)
+            PlaySkillStartEffects(skill, point, sound, anim);
+
+        RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null);
     }
 
     /// <summary>False when a gathering skill's target tile has nothing worth swinging
@@ -378,44 +509,114 @@ public sealed class ClientSkillsHandler
         return false;
     }
 
-    private void FireActiveSkillStroke(int skillId)
+    /// <summary>One stroke of the running skill - Source-X CChar::Skill_Stroke
+    /// (CCharSkill.cpp:3571-3651).
+    ///
+    /// A stroke with a count of one or more makes the skill's own sound and plays
+    /// its own animation - unless the [SKILL] FLAGS carry SKF_NOSFX / SKF_NOANIM - and
+    /// hands both to @SkillStroke as LOCAL.Sound / LOCAL.Anim together with
+    /// LOCAL.Delay (the re-arm interval, ms) and LOCAL.Strokes (what is left), all of
+    /// which the script may rewrite; RETURN 1 aborts the skill. The sound used to be
+    /// made only once, when the swing completed, and every gathering stroke was
+    /// silent; lumberjacking swung the one-handed bash where the reference swings
+    /// the two-handed slash, and smithing the bash where it swings the slash.
+    ///
+    /// Returns false when a script aborted the skill.</summary>
+    private bool FireActiveSkillStroke(int skillId)
     {
-        int strokeCount = _character?.IncrementSkillStrokeCount() ?? 0;
-        _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillStroke,
-            new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = strokeCount });
+        if (_character == null)
+            return true;
+        var skill = (SkillType)skillId;
+        int strokeCount = _character.IncrementSkillStrokeCount();
 
-        if (_character != null)
+        // Only a crafting or gathering skill strokes upstream (Skill_Stage routes
+        // SKTRIG_STROKE to Skill_Stroke only for SKF_CRAFT/SKF_GATHER, :3665); the
+        // rest keep the @SkillStroke this engine has always fired for them, silently.
+        bool strokes = SkillEngine.HasFlag(skill, SkillFlag.Gather) ||
+                       SkillEngine.HasFlag(skill, SkillFlag.Craft);
+        bool gather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
+        int strokesLeft = gather ? _character.SkillStrokesLeft : 1;
+        long delayMs = _character.SkillStrokeDelayMs > 0
+            ? _character.SkillStrokeDelayMs
+            : SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill));
+
+        ushort sound = 0;
+        int anim = 0;   // ANIM_WALK_UNARM: "none" in the trigger's LOCAL.Anim
+        if (strokes && strokesLeft >= 1)
         {
-            ushort animId = GetSkillStrokeAnimation((SkillType)skillId);
-            if (animId != 0)
-                PlayAnimation(_character, animId, NewAnimationGesture.Emote);
-
-            if ((SkillType)skillId == SkillType.Fishing &&
-                _character.TryGetSkillPendingPoint(out Point3D splashAt))
-            {
-                // Source-X Skill_Stroke: each fishing stroke drops an
-                // ITEMID_FX_SPLASH water-wash item that decays after 1s at
-                // the cast point (CCharSkill.cpp:3620-3628).
-                var splash = _world.CreateItem();
-                splash.BaseId = 0x352d;
-                splash.ItemType = ItemType.WaterWash;
-                splash.SetAttr(ObjAttributes.Move_Never | ObjAttributes.Decay);
-                _world.PlaceItemWithDecay(splash, splashAt, 1000);
-            }
+            if (!SkillEngine.HasFlag(skill, SkillFlag.NoSfx))
+                sound = SkillEngine.GetSkillSound(skill);
+            if (!SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
+                anim = SkillEngine.GetSkillAnim(skill) ?? 0;
         }
-    }
 
-    private static ushort GetSkillStrokeAnimation(SkillType skill) => skill switch
-    {
-        _ when SkillEngine.HasFlag(skill, SkillFlag.NoAnim) => 0,
-        SkillType.Mining => (ushort)AnimationType.Attack1HBash,
-        SkillType.Lumberjacking => (ushort)AnimationType.Attack1HBash,
-        SkillType.Fishing => (ushort)AnimationType.Attack2HBash,
-        SkillType.Blacksmithing => (ushort)AnimationType.Attack1HBash,
-        SkillType.Hiding => 0,
-        SkillType.Meditation => 0,
-        _ => 0,
-    };
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("Skill", skillId);
+        locals.SetInt("Sound", sound);
+        locals.SetInt("Delay", delayMs);
+        locals.SetInt("Anim", anim);
+        locals.SetInt("Strokes", strokesLeft);
+        var args = new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = strokeCount, Locals = locals };
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke, args) == TriggerResult.True)
+        {
+            // Skill_Stroke answers -SKTRIG_ABORT and the tick runs Skill_Fail(true):
+            // @SkillAbort, no credit, the skill is over (CCharAct.cpp:5800).
+            if (_character.ClearActiveSkillPending() >= 0)
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+            return false;
+        }
+
+        if (!strokes)
+            return true;
+
+        sound = (ushort)Math.Clamp(locals.GetInt("Sound"), 0, ushort.MaxValue);
+        anim = (int)Math.Clamp(locals.GetInt("Anim"), 0, ushort.MaxValue);
+        if (gather)
+        {
+            _character.SkillStrokesLeft = (int)Math.Clamp(locals.GetInt("Strokes"), 0, int.MaxValue);
+            // A stroke delay under 10 ms is raised to it (CCharSkill.cpp:3645).
+            _character.SkillStrokeDelayMs = Math.Max(10, locals.GetInt("Delay"));
+        }
+
+        // The stroke faces the spot being worked (UpdateDir(m_Act_p), :3608).
+        if (_character.TryGetSkillPendingPoint(out Point3D facePoint))
+            Skills.Information.ActiveSkillEngine.FaceSkillTarget(_character, facePoint);
+
+        if (sound != 0)
+            BroadcastNearby?.Invoke(_character.Position, GameClient.UpdateRange,
+                new PacketSound(sound, _character.X, _character.Y, _character.Z), 0);
+        if (anim != 0)
+            PlayAnimation(_character, (ushort)anim, NewAnimationGesture.Emote);
+
+        if (skill == SkillType.Fishing &&
+            _character.TryGetSkillPendingPoint(out Point3D splashAt))
+        {
+            // Source-X Skill_Stroke: each fishing stroke drops an
+            // ITEMID_FX_SPLASH water-wash item that decays after 1s at
+            // the cast point (CCharSkill.cpp:3620-3628).
+            var splash = _world.CreateItem();
+            splash.BaseId = 0x352d;
+            splash.ItemType = ItemType.WaterWash;
+            splash.SetAttr(ObjAttributes.Move_Never | ObjAttributes.Decay);
+            _world.PlaceItemWithDecay(splash, splashAt, 1000);
+        }
+
+        if (gather && _character.HasActiveSkillPending())
+        {
+            // The count drops by one per stroke and reaching zero IS the success
+            // (:3630-3635); otherwise the next stroke comes one Delay later.
+            if (_character.SkillStrokesLeft > 0)
+                _character.SkillStrokesLeft--;
+            long now = Environment.TickCount64;
+            long step = _character.SkillStrokeDelayMs;
+            _character.SetSkillStrokeNext(now + step);
+            _character.ContinueSkillPending(_character.SkillStrokesLeft < 1
+                ? now
+                : now + step * _character.SkillStrokesLeft);
+        }
+        return true;
+    }
 
     private void FireActiveSkillResult(int skillId, bool ok)
     {
@@ -426,7 +627,7 @@ public sealed class ClientSkillsHandler
     }
 
     private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid,
-        Point3D? point, bool isInfo = false)
+        Point3D? point, bool isInfo = false, int? startWaitMs = null, int? gatherStrokes = null)
     {
         if (_character == null || _character.HasActiveSkillPending()) return false;
         int delayMs = SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill));
@@ -437,25 +638,32 @@ public sealed class ClientSkillsHandler
         // CCharSkill.cpp:1463/1568/1667, Skill_Stroke re-arms with the full
         // delay). Other delayed skills time out once with no repeated strokes
         // (Skill_Stage routes SKTRIG_STROKE only for SKF_CRAFT/SKF_GATHER).
+        //
+        // A skill started through Skill_Start hands its own numbers in: the first
+        // timeout is @SkillStart's ARGN2 (tenths, SetTimeoutD, CCharSkill.cpp:4535) and
+        // the stroke count is what LOCAL.GatherStrokeCnt holds afterwards (:4549).
         bool isGather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
-        int strokes = isGather ? SkillEngine.RollStrokeCount(skill) : 1;
+        int strokes = isGather ? gatherStrokes ?? SkillEngine.RollStrokeCount(skill) : 1;
+        int firstMs = startWaitMs is > 0 ? startWaitMs.Value : delayMs;
         long now = Environment.TickCount64;
         _character.BeginSkillPending(
             skillId,
-            now + (long)delayMs * strokes,
-            isGather ? now + delayMs : long.MaxValue,
+            now + firstMs + (long)delayMs * Math.Max(0, strokes - 1),
+            isGather ? now + firstMs : long.MaxValue,
             targetUid,
             point,
             isInfo);
+        if (isGather)
+        {
+            _character.SkillStrokesLeft = Math.Max(0, strokes);
+            _character.SkillStrokeDelayMs = delayMs;
+        }
 
-        // A gathering swing gets its strokes from the loop below and NOTHING here.
-        // Upstream animates only from Skill_Stroke, which runs on the timeout - the
-        // first swing lands one DELAY in, and the count reaching zero IS the success
-        // (CCharSkill.cpp:3630-3643). Firing one here as well made every swing play
-        // strokeCount+1 animations, and because the loop fires its last stroke on the
-        // same tick that completes the skill, that surplus animation started just
-        // before the result message and was still playing after it - a pick still
-        // swinging at a vein the player had just been told was empty.
+        // A gathering swing gets no STROKE here: Skill_Stroke runs on the timeout, the
+        // first one lands one DELAY in, and the count reaching zero IS the success
+        // (CCharSkill.cpp:3630-3643). What it does get before the first timeout is the
+        // start sound and animation Skill_Start plays (:4543-4555) - the callers play
+        // those, with the values @SkillStart left behind.
         if (!isGather)
             FireActiveSkillStroke(skillId);
         return true;
@@ -474,8 +682,13 @@ public sealed class ClientSkillsHandler
 
         if (now >= _character.SkillStrokeNext)
         {
-            FireActiveSkillStroke(skillId);
-            _character.SetSkillStrokeNext(now + SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill)));
+            if (!FireActiveSkillStroke(skillId))
+                return;
+            // A gathering stroke re-arms itself from its own LOCAL.Delay; the rest
+            // keep the plain DELAY cadence.
+            if (!SkillEngine.HasFlag(skill, SkillFlag.Gather))
+                _character.SetSkillStrokeNext(now + SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill)));
+            now = Environment.TickCount64;
         }
 
         if (now < _character.SkillDelayEnd)

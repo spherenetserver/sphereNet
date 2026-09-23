@@ -1134,6 +1134,11 @@ public sealed class PacketContainerItem : PacketWriter
     /// ground view can let go of the uid it has just re-homed.</summary>
     public uint ItemSerial => _serial;
 
+    /// <summary>Everything the client draws from this add: graphic, amount, slot,
+    /// parent and hue. Two adds with the same key tell the client nothing new.</summary>
+    public (ushort ItemId, ushort Amount, short X, short Y, uint Container, ushort Hue) ContentKey =>
+        (_itemId, _amount, _x, _y, _containerSerial, _hue);
+
     public PacketContainerItem(uint serial, ushort itemId, byte offset, ushort amount,
         short x, short y, uint containerSerial, ushort hue, bool useGridIndex = true)
         : base(0x25)

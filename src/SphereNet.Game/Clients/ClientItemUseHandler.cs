@@ -926,12 +926,12 @@ public sealed class ClientItemUseHandler
             // ---- tools that target a follow-up object ----
             case ItemType.Bandage:
                 SysMessage(ServerMessages.Get(Msg.ItemuseBandagePromt));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Healing, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Healing, new Serial(serial), tool: item));
                 break;
 
             case ItemType.Lockpick:
                 SysMessage(ServerMessages.Get("target_promt"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial), tool: item));
                 break;
 
             case ItemType.Scissors:
@@ -1029,7 +1029,7 @@ public sealed class ClientItemUseHandler
                     if (item.ItemType == ItemType.WeaponAxe && targetObj == null)
                     {
                         RouteSkillTarget(SkillType.Lumberjacking, targetSerial,
-                            new Point3D(x, y, z, _character.MapIndex));
+                            new Point3D(x, y, z, _character.MapIndex), item);
                         return;
                     }
                     if (targetObj is Item targetItem && IsWeaponItemType(targetItem.ItemType))
@@ -1054,19 +1054,19 @@ public sealed class ClientItemUseHandler
                     SysMessage("Where do you wish the animal to go?");
                     SetPendingTarget((destSerial, dx, dy, dz, destGfx) =>
                         RouteSkillTarget(SkillType.Herding, animalUid,
-                            new Point3D(dx, dy, dz, _character.MapIndex)));
+                            new Point3D(dx, dy, dz, _character.MapIndex), item));
                 });
                 break;
 
             case ItemType.WeaponMacePick:
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemuseMacepickTarg, item.Name ?? "pick"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z, _character.MapIndex), item));
                 break;
 
             // ---- pole/sextant/spyglass ----
             case ItemType.FishPole:
                 SysMessage(ServerMessages.Get("fishing_promt"));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z, _character.MapIndex), item));
                 break;
             case ItemType.Fish:
                 SysMessage(ServerMessages.Get(Msg.ItemuseFishFail));
@@ -2341,10 +2341,25 @@ public sealed class ClientItemUseHandler
     private Item? FindBackpackKeyFor(Item locked) => _character?.FindKeyFor(locked);
 
     /// <summary>Re-enter the active-skill pipeline with a pre-resolved Serial target.</summary>
-    private void RouteSkillTarget(SkillType skill, Serial target, Point3D? point = null)
+    private void RouteSkillTarget(SkillType skill, Serial target, Point3D? point = null, Item? tool = null)
     {
         if (_character == null) return;
         var obj = target.IsValid ? _world.FindObject(target) : null;
+
+        // The tools whose target handler calls Skill_Start upstream - pickaxe/shovel
+        // (CClientTarg.cpp:1811), axe at a tree (:1894), fishing pole (:2266),
+        // lockpicks (:2276), bandage (:2021), a crook's herding destination (:1441)
+        // - run the whole skill: its triggers,
+        // its DELAY, its strokes, its sound and its animation. Resolving the skill
+        // here in one call finished a mining swing the instant the rock was picked,
+        // with nothing animated.
+        if (tool != null && skill is SkillType.Mining or SkillType.Fishing or SkillType.Lumberjacking
+                or SkillType.Healing or SkillType.Lockpicking or SkillType.Herding)
+        {
+            _client.StartSkillFromTool(skill, target, obj, point, tool);
+            return;
+        }
+
         var sink = new GameClient.InfoSkillSink(_client, _character);
         _skillHandlers?.UseActiveSkill(sink, skill, obj, point);
     }

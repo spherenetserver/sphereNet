@@ -959,11 +959,19 @@ public sealed class SpellEngine
                 OnSpellWords?.Invoke(caster, powerWords);
         }
 
-        bool isAreaSpell = targetUid == caster.Uid;
-        ushort castAnim = isAreaSpell
-            ? (ushort)Core.Enums.AnimationType.CastArea
-            : (ushort)Core.Enums.AnimationType.CastDirected;
-        OnCastAnimation?.Invoke(caster, castAnim);
+        // The spell's own definition picks the gesture - SPELLFLAG_DIR_ANIM casts
+        // directed, everything else casts over an area - and SPELLFLAG_NO_CASTANIM or
+        // MAGICF_NOANIM plays none (Spell_CastStart, CCharSpell.cpp:3566-3567). This
+        // chose by the TARGET instead: every self-cast went up as an area cast and
+        // every targeted one as a directed cast, whatever the spell said, and the two
+        // switches that turn the gesture off were never asked.
+        if (!def.IsFlag(SpellFlag.NoCastAnim) && !IsMagicFlag(MagicConfigFlags.NoAnimation))
+        {
+            ushort castAnim = def.IsFlag(SpellFlag.DirAnim)
+                ? (ushort)Core.Enums.AnimationType.CastDirected
+                : (ushort)Core.Enums.AnimationType.CastArea;
+            OnCastAnimation?.Invoke(caster, castAnim);
+        }
 
         // Skill_Start runs after Spell_CastStart; ARGN2 is the skill delay in tenths.
         var skillDef = Definitions.DefinitionLoader.GetSkillDef((int)def.GetPrimarySkill());

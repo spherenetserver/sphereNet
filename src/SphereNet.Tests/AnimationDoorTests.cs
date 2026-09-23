@@ -71,8 +71,9 @@ public sealed class AnimationDoorTests
         _out.WriteLine($"eat on foot {onFoot:X2}, in the saddle {inSaddle:X2}");
         Assert.Equal((ushort)AnimationType.Eat, onFoot);
         Assert.NotEqual(onFoot, inSaddle);
-        // ToMounted sends every saddle-incompatible gesture to the horse slap.
-        Assert.Equal((ushort)AnimationType.HorseSlap, inSaddle);
+        // Source-X's horseback table rides a bow, a salute or a meal as the crossbow
+        // attack (GenerateAnimate, CCharAct.cpp:896-899).
+        Assert.Equal((ushort)AnimationType.HorseAttackXBow, inSaddle);
     }
 
     [Fact]

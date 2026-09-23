@@ -452,70 +452,28 @@ public sealed partial class GameClient
     public static int GetSwingDelayMs(Character attacker, Item? weapon)
         => CombatEngine.GetSwingDelayMs(attacker, weapon);
 
-    /// <summary>Map a weapon (or bare fists) to the correct humanoid
-    /// 0x6E animation action index. Ranged weapons trigger the nock/fire
-    /// action; blades use the slash; blunt/maces use the overhead swing;
-    /// unarmed uses the wrestling punch. Exact values come from
-    /// ServUO MobileAnimation / Source-X AnimationRange tables.</summary>
-    internal static ushort GetSwingAction(Character attacker, Item? weapon)
-    {
-        bool mounted = attacker.IsMounted;
-
-        if (weapon == null)
-            return mounted ? (ushort)AnimationType.HorseSlap : (ushort)AnimationType.AttackWrestle;
-
-        // Two-handedness drives the 1H vs 2H attack frame. Use IsTwoHanded
-        // (itemdef TWOHANDS / TwoHanded layer) rather than the layer alone, so a
-        // two-hander still animates correctly even if it momentarily sits on the
-        // OneHanded layer (e.g. a save predating the equip-layer promotion).
-        bool twoHand = weapon.IsTwoHanded;
-
-        if (mounted)
-        {
-            return weapon.ItemType switch
-            {
-                ItemType.WeaponBow => (ushort)AnimationType.HorseAttackBow,
-                ItemType.WeaponXBow => (ushort)AnimationType.HorseAttackXBow,
-                _ => (ushort)AnimationType.HorseAttack,
-            };
-        }
-
-        return weapon.ItemType switch
-        {
-            ItemType.WeaponBow => (ushort)AnimationType.AttackBow,
-            ItemType.WeaponXBow => (ushort)AnimationType.AttackXBow,
-            // Weapon → swing animation, mirroring Source-X CChar::GenerateAnimate
-            // (CCharAct.cpp): sword/axe/pickaxe SLASH, fencing PIERCE, the mace
-            // family BASH, throwing 1H-SLASH. Axe and pickaxe were wrongly on the
-            // PIERCE/BASH paths, so an axe stabbed instead of chopping.
-            ItemType.WeaponSword or ItemType.WeaponAxe or ItemType.WeaponMacePick => twoHand
-                ? (ushort)AnimationType.Attack2HSlash : (ushort)AnimationType.AttackWeapon,
-            ItemType.WeaponFence => twoHand
-                ? (ushort)AnimationType.Attack2HPierce : (ushort)AnimationType.Attack1HPierce,
-            ItemType.WeaponMaceSmith or ItemType.WeaponMaceSharp or
-            ItemType.WeaponMaceStaff or ItemType.WeaponMaceCrook or
-            ItemType.WeaponWhip => twoHand
-                ? (ushort)AnimationType.Attack2HBash : (ushort)AnimationType.Attack1HBash,
-            ItemType.WeaponThrowing => (ushort)AnimationType.AttackWeapon,
-            // Source-X groups the default case with the mace family (BASH).
-            _ => twoHand
-                ? (ushort)AnimationType.Attack2HBash : (ushort)AnimationType.Attack1HBash,
-        };
-    }
+    /// <summary>The swing animation - Source-X Fight_CanHit's
+    /// GenerateAnimate(ANIM_ATTACK_WEAPON) (CCharFight.cpp:1925), which the swing then
+    /// plays untranslated (:1990). The weapon in hand picks the swing
+    /// (sword/axe/pick slash, fencing pierce, the mace family bash, one- or
+    /// two-handed; bow and crossbow their own draws), the saddle turns it into the
+    /// rider's action and a creature's body into its own attack group
+    /// (BodyAnimTranslator.Generate).
+    ///
+    /// Bare hands swing ANIM_ATTACK_WEAPON itself - the weapon table applies only
+    /// when there is a weapon (CCharAct.cpp:814) - and on horseback that is the
+    /// horse attack. This sent the wrestling punch (0x1F) and, mounted, the slap;
+    /// and every mounted weapon rode as the attack, where upstream's two-handed
+    /// swings ride as the slap (:880-883). A player in a creature's body swung the
+    /// human groups, which the creature has not got.</summary>
+    internal static ushort GetSwingAction(Character attacker, Item? weapon) =>
+        BodyAnimTranslator.Generate(attacker, (ushort)AnimationType.AttackWeapon, weapon);
 
     public static ushort GetNpcSwingAction(Character npc) =>
-        GetNpcSwingAction(npc,
-            npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded));
+        GetNpcSwingAction(npc, BodyAnimTranslator.WeaponInHand(npc));
 
-    public static ushort GetNpcSwingAction(Character npc, Item? weapon)
-    {
-        // Non-humanoid bodies use their own anim.mul attack groups
-        // (monster 4-6, animal 5-6) via the body translation table.
-        if (!BodyAnimTranslator.IsHumanoidBody(npc.BodyId))
-            return BodyAnimTranslator.Translate(npc.BodyId, (ushort)AnimationType.AttackWrestle);
-
-        return GetSwingAction(npc, weapon);
-    }
+    public static ushort GetNpcSwingAction(Character npc, Item? weapon) =>
+        GetSwingAction(npc, weapon);
 
     /// <summary>Source-X CChar::SoundChar(CRESND_HIT) (CCharAct.cpp): the impact
     /// noise an armed strike makes, chosen by weapon type. Two-handed swords/axes

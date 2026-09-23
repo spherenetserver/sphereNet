@@ -271,14 +271,15 @@ public class CombatFlagParityTests
             var packets = new List<PacketBuffer>();
             client.BroadcastNearby = (_, _, packet, _) => packets.Add(packet.Build());
 
-            // Without the flag the 0x6E swing animation uses the default (0) delay.
+            // Without the flag the 0x6E swing animation lasts upstream's one second:
+            // the frame-delay byte is 1, never 0 (CCharFight.cpp:1973-1988).
             Character.CombatFlags = 0;
             attacker.NextAttackTime = 0;
             attacker.SetCombatSwingState(SwingState.Ready);
             client.TickCombat();
             var plain = packets.FirstOrDefault(p => IsSwingAnim(p, attacker.Uid.Value));
             Assert.NotNull(plain);
-            Assert.Equal(0, SwingAnimDelay(plain!));
+            Assert.Equal(1, SwingAnimDelay(plain!));
 
             // With COMBAT_ANIM_HIT_SMOOTH the swing animation carries a non-zero
             // per-frame delay (paced to the swing time).

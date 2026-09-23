@@ -256,6 +256,8 @@ public sealed partial class GameClient : IClientContext
     bool IClientContext.InitiateTrade(Character partner, Item? firstItem) => InitiateTrade(partner, firstItem);
     void IClientContext.SendTradeUpdateToBoth(SecureTrade trade) => SendTradeUpdateToBoth(trade);
     void IClientContext.TickPendingSkill() => TickPendingSkill();
+    void IClientContext.StartSkillFromTool(SkillType skill, Serial targetUid, Objects.ObjBase? target,
+        Point3D? point, Objects.Items.Item? tool) => SkillUse.StartSkillFromTool(skill, targetUid, target, point, tool);
     void IClientContext.TickPendingCraft() => TickPendingCraft();
     bool IClientContext.BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump) =>
         BeginPendingCraft(recipe, craftSkill, reopenGump);

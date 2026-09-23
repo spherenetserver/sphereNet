@@ -40,13 +40,17 @@ public class BodyAnimTranslationTests
     }
 
     [Fact]
-    public void MonsterGetHit_MapsToGetHitOrBlockGroups()
+    public void MonsterGetHit_IsTheGetHitGroup_AndABlockIsARandomBlock()
     {
-        var seen = new HashSet<ushort>();
+        // Source-X GenerateAnimate's monster branch (CCharAct.cpp:1896-1946): a hit
+        // is MON_GETHIT, always; the two blocks belong to ANIM_BLOCK (:2045-2087).
         for (int i = 0; i < 64; i++)
-            seen.Add(BodyAnimTranslator.Translate(MonsterBody, (ushort)AnimationType.GetHit, Seeded));
-        Assert.Subset(new HashSet<ushort> { 0x0A, 0x0F, 0x10 }, seen);
-        Assert.Contains((ushort)0x0A, seen);
+            Assert.Equal(0x0A, BodyAnimTranslator.Translate(MonsterBody, (ushort)AnimationType.GetHit, Seeded));
+
+        var blocks = new HashSet<ushort>();
+        for (int i = 0; i < 64; i++)
+            blocks.Add(BodyAnimTranslator.Translate(MonsterBody, (ushort)AnimationType.Block, Seeded));
+        Assert.Equal(new HashSet<ushort> { 0x0F, 0x10 }, blocks);
     }
 
     [Fact]
@@ -93,9 +97,15 @@ public class BodyAnimTranslationTests
     }
 
     [Fact]
-    public void UnknownActions_FallBackToWalkGroup()
+    public void UnknownActions_AndStanding_FallBackToTheStandGroup()
     {
-        Assert.Equal(0x00, BodyAnimTranslator.Translate(MonsterBody, (ushort)AnimationType.HorseAttack, Seeded));
-        Assert.Equal(0x00, BodyAnimTranslator.Translate(AnimalBody, (ushort)AnimationType.HorseAttack, Seeded));
+        // Source-X: anything a creature has no action for stands - MON_STAND and
+        // ANI_STAND (CCharAct.cpp:1692/2224) - and so does standing itself; it used
+        // to walk in place.
+        Assert.Equal(0x01, BodyAnimTranslator.Translate(MonsterBody, (ushort)AnimationType.HorseAttack, Seeded));
+        Assert.Equal(0x02, BodyAnimTranslator.Translate(AnimalBody, (ushort)AnimationType.HorseAttack, Seeded));
+        Assert.Equal(0x01, BodyAnimTranslator.Translate(MonsterBody, (ushort)AnimationType.Stand, Seeded));
+        Assert.Equal(0x02, BodyAnimTranslator.Translate(AnimalBody, (ushort)AnimationType.StandWar1H, Seeded));
+        Assert.Equal(0x07, BodyAnimTranslator.Translate(AnimalBody, (ushort)AnimationType.Block, Seeded));
     }
 }

@@ -1375,14 +1375,19 @@ public sealed class ClientCombatHandler
             _logger.LogDebug("{Attacker} hit {Target} for {Dmg} damage",
                 _character.Name, target.Name, damage);
 
+            // The strike's sound comes from the ATTACKER: SoundChar(CRESND_HIT) is the
+            // attacker's own call (Fight_Hit, CCharAct.cpp:2627-2681).
             ushort hitSound = GetWeaponHitSound(weapon);
-            var hitSoundPacket = new PacketSound(hitSound, target.X, target.Y, target.Z);
-            BroadcastNearby?.Invoke(target.Position, UpdateRange, hitSoundPacket, 0);
+            var hitSoundPacket = new PacketSound(hitSound, _character.X, _character.Y, _character.Z);
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange, hitSoundPacket, 0);
 
-            ushort getHitAction = target.IsMounted
-                ? (ushort)AnimationType.HorseSlap
-                : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
-            BroadcastAnimation(target, getHitAction, NewAnimationGesture.Impact);
+            // The flinch belongs to OnTakeDamage, and it is skipped for a blow that
+            // kills and for a target in the middle of its own swing ("don't interrupt
+            // my swing animation", CCharFight.cpp:1054-1060).
+            if (CombatHelper.ShouldPlayGetHit(target))
+                BroadcastAnimation(target,
+                    BodyAnimTranslator.Generate(target, (ushort)AnimationType.GetHit),
+                    NewAnimationGesture.Impact);
 
             // Source-X CRESND_GETHIT: the struck target's pain vocalization
             // (human "oomf" / creature SOUNDGETHIT). Only on a damaging hit.
@@ -1546,16 +1551,13 @@ public sealed class ClientCombatHandler
         }
         else if (damage == 0)
         {
-            // Source-X: a connecting hit that armor fully absorbed still lands.
-            // Play the weapon hit sound and the target's get-hit animation, but
-            // no pain vocalization, damage number or blood (no damage was dealt).
-            BroadcastNearby?.Invoke(target.Position, UpdateRange,
-                new PacketSound(GetWeaponHitSound(weapon), target.X, target.Y, target.Z), 0);
-
-            ushort absorbGetHit = target.IsMounted
-                ? (ushort)AnimationType.HorseSlap
-                : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
-            BroadcastAnimation(target, absorbGetHit, NewAnimationGesture.Impact);
+            // Source-X: a connecting hit that armor fully absorbed still lands - the
+            // attacker's strike sound plays - but OnTakeDamage returns before the
+            // flinch when no damage is left (CCharFight.cpp:1027-1028), so the target
+            // does not play a get-hit, and there is no pain vocalization, damage
+            // number or blood.
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(GetWeaponHitSound(weapon), _character.X, _character.Y, _character.Z), 0);
         }
         else if (damage == CombatEngine.AttackMiss)
         {

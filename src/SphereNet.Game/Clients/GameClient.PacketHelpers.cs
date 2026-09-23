@@ -362,9 +362,9 @@ public sealed partial class GameClient
         ushort frameCount = 7, ushort repeatCount = 1, bool forward = true,
         bool repeat = false, byte animDelay = 0)
     {
-        ushort translated = actor.IsMounted
-            ? SphereNet.Game.Combat.BodyAnimTranslator.ToMounted(action)
-            : SphereNet.Game.Combat.BodyAnimTranslator.Translate(actor.BodyId, action);
+        // UpdateAnimate translates by default (fTranslate = true, CChar.h:560):
+        // the weapon in hand, the saddle and the body (GenerateAnimate).
+        ushort translated = SphereNet.Game.Combat.BodyAnimTranslator.Generate(actor, action);
 
         uint serial = actor.Uid.Value;
         if (forEachClientInRange != null)
@@ -965,8 +965,16 @@ public sealed partial class GameClient
         uint uid = packet.ItemSerial;
         View.KnownItems.Remove(uid);
         View.LastKnownItemState.Remove(uid);
+        // Bounded: the entries only matter for the moment right after a send.
+        if (View.LastSentContainerItem.Count > 4096)
+            View.LastSentContainerItem.Clear();
+        View.LastSentContainerItem[uid] = (packet.ContentKey, Environment.TickCount64);
         _netState.Send(packet);
     }
+
+    /// <summary>How long an explicit container add stands in for the dirty-drain's
+    /// resend of the very same state. The drain runs on the next tick (100 ms).</summary>
+    private const long ContainerAddEchoWindowMs = 1000;
 
     internal void SendWorldItem(Item item)
     {
@@ -1022,7 +1030,12 @@ public sealed partial class GameClient
         _netState.Send(new PacketHouseDesignVersion(item.Uid.Value, revision));
     }
 
-    public void SendItemVisualUpdate(Item item)
+    public void SendItemVisualUpdate(Item item) => SendItemVisualUpdate(item, fromDirtyDrain: false);
+
+    /// <summary><paramref name="fromDirtyDrain"/>: the call is the world's dirty-object
+    /// drain catching up on a change, not a caller that wants the item redrawn - and
+    /// may therefore be dropped when it would only repeat an add just sent.</summary>
+    public void SendItemVisualUpdate(Item item, bool fromDirtyDrain)
     {
         if (_character == null || !IsPlaying || item.IsDeleted)
             return;
@@ -1090,11 +1103,27 @@ public sealed partial class GameClient
         if (owner != _character)
             return;
 
-        SendContainerItemPacket(new PacketContainerItem(
+        var add = new PacketContainerItem(
             item.Uid.Value, item.DispIdFull, 0,
             item.Amount, item.X, item.Y,
             parentItem.Uid.Value, item.Hue,
-            _netState.IsClientPost6017));
+            _netState.IsClientPost6017);
+
+        // Upstream sends a container add once, from ContentAdd
+        // (CItemContainer.cpp:639 -> CClient::addContainerContents). Here the engine
+        // that put the item in sends it, and the dirty-drain then resent the same
+        // add on the next tick because the item's container flag was dirty - every
+        // mined ore, crafted item and delivered reward reached the client twice. The
+        // drain's resend is dropped when it would repeat, byte for byte, the add this
+        // client was sent a moment ago. Only the drain's catch-up is dropped; a caller
+        // that asks for a redraw always gets one.
+        if (fromDirtyDrain &&
+            View.LastSentContainerItem.TryGetValue(item.Uid.Value, out var last) &&
+            last.Key == add.ContentKey &&
+            Environment.TickCount64 - last.SentAt <= ContainerAddEchoWindowMs)
+            return;
+
+        SendContainerItemPacket(add);
     }
 
     /// <summary>Source-X ItemBounce visual transition: remove the worn entity

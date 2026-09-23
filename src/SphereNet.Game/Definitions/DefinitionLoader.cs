@@ -343,16 +343,54 @@ public sealed class DefinitionLoader
             // pack's coloured ores are named defs sharing iron's art (ID=i_ore_iron)
             // and differing only in their name, their ingot and their @Create colour;
             // resolving REAP to a graphic alone turned every one of them into iron.
-            int defIndex = TemplateEngine.ResolveItemDefIndex(_resources, def.ReapRaw);
+            int defIndex = ResolveReapDefIndex(def.ReapRaw);
             if (defIndex != 0)
                 def.ReapDefIndex = defIndex;
 
             if (def.Reap != 0)
                 continue;
-            ushort dispId = TemplateEngine.ResolveDispId(_resources, def.ReapRaw);
+            // The graphic of the definition just picked - asked by index, since a
+            // braced REAP has no single name to look up again.
+            ushort dispId = 0;
+            if (defIndex != 0)
+            {
+                var reapDef = GetItemDef(defIndex);
+                dispId = reapDef?.DispIndex is > 0 ? reapDef.DispIndex
+                    : reapDef?.DupItemId is > 0 ? reapDef.DupItemId
+                    : defIndex <= 0xFFFF ? (ushort)defIndex : (ushort)0;
+            }
             if (dispId != 0)
                 def.Reap = dispId;
         }
+    }
+
+    /// <summary>The ITEMDEF a REAP= value names.
+    ///
+    /// Upstream reads REAP through ResourceGetIndexType (CRegionResourceDef.cpp:68),
+    /// which evaluates its argument as an expression (CResourceHolder.cpp:128) - so a
+    /// braced group such as <c>REAP={ i_gem_ruby 1 i_gem_diamond 1 }</c> is a weighted
+    /// random pick (CExpression::GetRangeNumber, CExpression.cpp:1955), rolled once
+    /// when the definition is read. Looked up as a plain defname here, the whole brace
+    /// text named nothing, the resource reaped item 0, and every vein that drew it
+    /// was treated as barren - a third of the draws on the live pack's rock.</summary>
+    private int ResolveReapDefIndex(string raw)
+    {
+        string text = raw.Trim();
+        if (text.Length < 3 || text[0] != '{' || text[^1] != '}')
+            return TemplateEngine.ResolveItemDefIndex(_resources, text);
+
+        string inner = text[1..^1];
+        var tokens = SphereNet.Scripting.Expressions.BraceRange.SplitTokens(inner.Replace(',', ' '));
+        var vals = new List<long>(tokens.Count);
+        foreach (string token in tokens)
+        {
+            if (SphereNet.Scripting.Expressions.BraceRange.TryParseSphereInteger(token, out long number))
+                vals.Add(number);
+            else
+                vals.Add(ResolveReapDefIndex(token));
+        }
+        long picked = SphereNet.Scripting.Expressions.BraceRange.Pick(vals, inner, Diagnostic);
+        return picked is > 0 and <= int.MaxValue ? (int)picked : 0;
     }
 
     /// <summary>Parse a <c>[TEMPLATE name]</c> block. Bodies use:

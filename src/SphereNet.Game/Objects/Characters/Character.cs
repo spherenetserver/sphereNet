@@ -6239,10 +6239,9 @@ public partial class Character : ObjBase
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 if (aparts.Length == 0 || !TryParseScriptUShort(aparts[0], out ushort animAction))
                     return true;
-                if (IsMounted)
-                    animAction = MapAnimToMounted(animAction);
-                else
-                    animAction = Combat.BodyAnimTranslator.Translate(BodyId, animAction);
+                // CHV_ANIM translates (UpdateAnimate(.., fTranslate = true),
+                // CChar.cpp:4466): the weapon in hand, the saddle and the body.
+                animAction = Combat.BodyAnimTranslator.Generate(this, animAction);
                 // ANIM <action>, <frame delay = 0>, <frame count = 7>. That is the
                 // whole of it upstream (CHV_ANIM, CChar.cpp:4459-4469): three
                 // arguments, backwards always false and repeat always 1. This read
@@ -6984,9 +6983,7 @@ public partial class Character : ObjBase
             }
             case "BOW":
             {
-                ushort bowAnim = IsMounted
-                    ? MapAnimToMounted(32)
-                    : Combat.BodyAnimTranslator.Translate(BodyId, 32);
+                ushort bowAnim = Combat.BodyAnimTranslator.Generate(this, 32);
                 BroadcastNearby?.Invoke(Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, bowAnim),
                     0);
@@ -6994,9 +6991,7 @@ public partial class Character : ObjBase
             }
             case "SALUTE":
             {
-                ushort saluteAnim = IsMounted
-                    ? MapAnimToMounted(33)
-                    : Combat.BodyAnimTranslator.Translate(BodyId, 33);
+                ushort saluteAnim = Combat.BodyAnimTranslator.Generate(this, 33);
                 BroadcastNearby?.Invoke(Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, saluteAnim),
                     0);
@@ -8586,30 +8581,6 @@ public partial class Character : ObjBase
         if (defIdx <= 0)
             return 0;
         return Definitions.CharDefHelper.ResolveBodyId(defIdx, Definitions.DefinitionLoader.StaticResources);
-    }
-
-    private static ushort MapAnimToMounted(ushort action)
-    {
-        return action switch
-        {
-            (ushort)AnimationType.CastDirected or
-            (ushort)AnimationType.CastArea => (ushort)AnimationType.HorseSlap,
-            (ushort)AnimationType.AttackWeapon or
-            (ushort)AnimationType.Attack1HPierce or
-            (ushort)AnimationType.Attack1HBash or
-            (ushort)AnimationType.Attack2HBash or
-            (ushort)AnimationType.Attack2HSlash or
-            (ushort)AnimationType.Attack2HPierce or
-            (ushort)AnimationType.AttackWrestle => (ushort)AnimationType.HorseAttack,
-            (ushort)AnimationType.AttackBow => (ushort)AnimationType.HorseAttackBow,
-            (ushort)AnimationType.AttackXBow => (ushort)AnimationType.HorseAttackXBow,
-            (ushort)AnimationType.GetHit => (ushort)AnimationType.HorseSlap,
-            (ushort)AnimationType.Block => (ushort)AnimationType.HorseSlap,
-            (ushort)AnimationType.Bow or
-            (ushort)AnimationType.Salute or
-            (ushort)AnimationType.Eat => (ushort)AnimationType.HorseSlap,
-            _ => action
-        };
     }
 
     private string FormatBodyProperty()

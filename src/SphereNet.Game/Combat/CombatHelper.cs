@@ -409,17 +409,27 @@ public static class CombatHelper
     public static bool SwingIgnoresStartRange() =>
         IsCombatFlagSet(CombatFlags.SwingNoRange) && !IsCombatFlagSet(CombatFlags.PreHit);
 
-    /// <summary>Legacy 0x6E animation per-frame delay for COMBAT_ANIM_HIT_SMOOTH:
-    /// 0 when the flag is off (the fixed default swing speed), otherwise a value
-    /// scaled to the swing time so a slow weapon shows a correspondingly slow swing.
-    /// The exact pacing is client-interpreted; the value is proportional and clamped
-    /// to a byte.</summary>
+    /// <summary>Whether a struck character flinches - Source-X OnTakeDamage plays
+    /// ANIM_GET_HIT only after damage actually landed, not on a blow that kills, and
+    /// not while the character is in the middle of its own swing, so as not to cut
+    /// that animation off (CCharFight.cpp:1027-1060). Callers ask only once damage is
+    /// known to be above zero.</summary>
+    public static bool ShouldPlayGetHit(Character target) =>
+        !target.IsDead && !target.IsDeleted && target.Hits > 0 && !target.HasPendingHit;
+
+    /// <summary>The 0x6E frame-delay byte of a swing - Source-X's
+    /// iSwingAnimationDelayInSeconds (CCharFight.cpp:1973-1988): the swing animation
+    /// lasts a second (kiMinSwingAnimationDelay, :21) so the byte is 1, and only
+    /// COMBAT_ANIM_HIT_SMOOTH stretches it to the whole swing, in whole seconds, the
+    /// attack speed floored at that second (:1662-1668). Never 0. This sent 0 by
+    /// default - and the client paces a server animation at (delay + 2) frame times
+    /// (ClassicUO Mobile.cs:610), so every swing played in two thirds of upstream's
+    /// time - and swingMs/70 under SMOOTH, which is not upstream's unit at all.</summary>
     public static byte GetSwingAnimDelay(int swingDelayMs)
     {
-        if (!IsCombatFlagSet(CombatFlags.AnimHitSmooth)) return 0;
-        // ~7-frame attack animation paced across the swing: per-frame delay scales
-        // with the swing time, in the 0x6E delay unit. At least 1 when enabled.
-        return (byte)Math.Clamp(swingDelayMs / 70, 1, 255);
+        if (!IsCombatFlagSet(CombatFlags.AnimHitSmooth)) return 1;
+        int tenths = Math.Max(10, swingDelayMs / 100);
+        return (byte)Math.Clamp(tenths / 10, 1, 255);
     }
 
     /// <summary>

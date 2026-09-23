@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Skill, craft and combat animations and timing
+------------------------------------------------------------------------
+FIX - Using a tool on its target (pickaxe/shovel on rock, axe on a tree,
+      fishing pole, lockpicks, bandage, crook) starts the skill the way
+      Source-X Skill_Start does (CCharSkill.cpp:4383): @SkillPreStart,
+      @SkillStart with ARGN1/ARGN2 and LOCAL.Sound/Anim/GatherStrokeCnt read
+      back, start sound and animation, then DELAY-timed strokes with a sound
+      and animation each (SKF_NOSFX/SKF_NOANIM respected, @SkillStroke
+      writable, RETURN 1 aborts). The tool path resolved instantly with no
+      trigger, no stroke and no animation, so a pack that animates mining from
+      @SkillStart never ran.
+FIX - A braced REAP ({ i_gem_ruby 1 ... }) is picked once at load like the
+      upstream expression (CRegionResourceDef.cpp:68); it resolved to nothing
+      and about 30% of mining veins were barren.
+FIX - An item delivered into a pack is not sent a second time by the dirty
+      drain on the next tick (0x25 went out twice).
+FIX - Stroke and craft tables follow Source-X: lumberjacking swings 2H,
+      smithing animates through the hammer in hand, tinkering and cooking are
+      silent, a craft is one stroke of DELAY, healing/veterinary and
+      lockpicking make no sound, instruments play their TDATA1/TDATA2 sound
+      for every bard skill, begging bows and herding swings at start (the
+      crook is the used tool).
+FIX - Animation choice: mounted animation table (CCharAct.cpp:852), swing
+      animation by weapon and body through one translator (unarmed, 2H,
+      mounted, polymorphed, creatures), monster get-hit/block/stand mapping,
+      the 0x6E frame-delay byte, get-hit only for real damage that does not
+      kill and not mid-swing, the hit sound at the attacker, and the cast
+      gesture decided by SPELLFLAG_DIR_ANIM / NO_CASTANIM / MAGICF_NOANIM.
+TEST - SkillAnimationTimingParityTests.
+
 [2026-09-23] - Character paperdoll in the panel and a public paperdoll API
 ------------------------------------------------------------------------
 ADD - The server renders a character's paperdoll the way the client draws it

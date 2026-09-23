@@ -171,6 +171,8 @@ public partial class Character
         _skillDelayEnd = delayEnd;
         _skillStrokeNext = strokeNext;
         _skillStrokeCount = 0;
+        SkillStrokesLeft = 0;
+        SkillStrokeDelayMs = 0;
         _skillPendingTarget = targetUid;
         _skillPendingIsInfo = isInfo;
         if (point.HasValue)
@@ -198,6 +200,18 @@ public partial class Character
     public int SkillStrokeCount => _skillStrokeCount;
 
     public int IncrementSkillStrokeCount() => ++_skillStrokeCount;
+
+    /// <summary>Strokes a gathering swing still has to run - Source-X
+    /// m_atResource.m_dwStrokeCount. Rolled at SKTRIG_START (mining 2-6, fishing 1-2)
+    /// and handed to @SkillStart as LOCAL.GatherStrokeCnt, which a script may rewrite;
+    /// every Skill_Stroke plays with a count of one or more, decrements it, and the
+    /// count reaching zero IS the success (CCharSkill.cpp:3578/3630-3635).</summary>
+    public int SkillStrokesLeft { get; set; }
+
+    /// <summary>Per-stroke re-arm interval in milliseconds for the running gather
+    /// swing: the skill DELAY, or what the last @SkillStroke wrote into LOCAL.Delay
+    /// (Skill_Stroke, CCharSkill.cpp:3574/3605/3645-3649).</summary>
+    public long SkillStrokeDelayMs { get; set; }
 
     public void ResetSkillStrokeCount() => _skillStrokeCount = 0;
 

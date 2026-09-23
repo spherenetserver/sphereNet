@@ -853,7 +853,7 @@ public static partial class Program
                     // resync. Upstream has no such gap - the item's own Update() goes
                     // out to everyone who can see the wearer.
                     if ((wornVisualChanged || containedVisualChanged) && obj is Item changedItem)
-                        c.SendItemVisualUpdate(changedItem);
+                        c.SendItemVisualUpdate(changedItem, fromDirtyDrain: true);
                 }
             }
         }

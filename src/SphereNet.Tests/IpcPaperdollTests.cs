@@ -23,7 +23,8 @@ public sealed class IpcPaperdollTests
             GetPaperdoll = serial => serial == 0x1234
                 ? new PaperdollInfo(serial, "Lord Test", "the Brave", "Lord Test, the Brave",
                     0x191, true, true, 1, "acct", false, true,
-                    [new PaperdollItemInfo(22, 0x40000010, 0x1F03, 0x0021, "robe")])
+                    [new PaperdollItemInfo(22, 0x40000010, 0x1F03, 0x0021, "robe")],
+                    FameTitle: "Lord", GuildAbbrev: "ABC", TradeTitle: "the Brave")
                 : null,
             GetPaperdollPng = (serial, frame) => serial == 0x1234
                 ? (frame ? new byte[70001] : [1, 2, 3])
@@ -40,6 +41,7 @@ public sealed class IpcPaperdollTests
         Assert.NotNull(info);
         Assert.Equal("Lord Test, the Brave", info!.PaperdollText);
         Assert.True(info.IsFemale);
+        Assert.Equal(("Lord", "ABC", "the Brave"), (info.FameTitle, info.GuildAbbrev, info.TradeTitle));
         var robe = Assert.Single(info.Equipment);
         Assert.Equal((22, 0x40000010u, 0x1F03, 0x21, "robe"),
             (robe.Layer, robe.Serial, robe.DispId, robe.Hue, robe.Name));

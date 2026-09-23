@@ -113,8 +113,14 @@ public sealed partial class NpcAI
         if (guard.HasPendingHit)
         {
             long now = Environment.TickCount64;
-            if (now >= guard.SwingHitTime)
-                ResolveNpcHit(guard, now);
+            if (now < guard.SwingHitTime)
+                return;
+            ResolveNpcHit(guard, now);
+            // A blow held for reach (the target stepped away during the swing
+            // animation): keep closing in, as ActFight does.
+            if (guard.HasPendingHit && guard.MapIndex == target.MapIndex &&
+                guard.Position.GetDistanceTo(target.Position) > GetAttackRange(guard))
+                MoveToward(guard, target.Position, run: true);
             return;
         }
 

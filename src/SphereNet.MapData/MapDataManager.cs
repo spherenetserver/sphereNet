@@ -83,6 +83,26 @@ public sealed class MapDataManager : IDisposable
     private readonly object _lazyLock = new();
     private HueReader? _hues;
     private bool _huesTried;
+    private AsciiFontReader? _asciiFonts;
+    private bool _asciiFontsTried;
+
+    /// <summary>Lazy fonts.mul access (the client's ASCII fonts). Optional file -
+    /// null when it is absent. Thread-safe; the reader is immutable once loaded.</summary>
+    public AsciiFontReader? GetAsciiFonts()
+    {
+        if (!Volatile.Read(ref _asciiFontsTried))
+        {
+            lock (_lazyLock)
+            {
+                if (!_asciiFontsTried)
+                {
+                    _asciiFonts = AsciiFontReader.Load(Path.Combine(_mulPath, "fonts.mul"));
+                    Volatile.Write(ref _asciiFontsTried, true);
+                }
+            }
+        }
+        return _asciiFonts;
+    }
 
     /// <summary>Lazy hues.mul access: the 32-colour table of a hue value
     /// (1-based, flag bits already masked off). Optional file — null when it is

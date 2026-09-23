@@ -773,6 +773,7 @@ public static partial class Program
             _config.FeatureT2A, _config.FeatureLBR, _config.FeatureAOS,
             _config.FeatureSE, _config.FeatureML, _config.FeatureSA, _config.FeatureTOL);
         GameClient.ServerOptionFlags = (SphereNet.Core.Enums.OptionFlags)(uint)_config.OptionFlags;
+        PaperdollText.NpcNoFameTitle = _config.NpcNoFameTitle;
         // Upper bound for the client's 0xBF.0x1C view-size request; the cap was
         // hardcoded to the default so the ini key did nothing.
         SphereNet.Network.State.NetState.MapViewSizeMax = (byte)Math.Clamp(_config.MapViewSizeMax, 5, 255);
@@ -810,6 +811,9 @@ public static partial class Program
         Character.CombatSpeedEra           = _config.CombatSpeedEra;
         Character.CombatParryingEra        = _config.CombatParryingEra;
         Character.CombatSpeedScaleFactor   = _config.SpeedScaleFactor;
+        // GENERICSOUNDS=0 silences every creature/character sound (Source-X
+        // CChar::SoundChar returns at once, CCharAct.cpp:2615).
+        SphereNet.Game.Combat.CharacterSounds.GenericSoundsEnabled = _config.GenericSounds;
         Character.FeatureSE                = _config.FeatureSE;
         Character.FeatureAOS               = _config.FeatureAOS;
         Character.RacialFlags              = _config.RacialFlags;

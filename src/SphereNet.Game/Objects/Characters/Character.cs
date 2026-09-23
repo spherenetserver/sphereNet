@@ -990,7 +990,10 @@ public partial class Character : ObjBase
     private bool _allShow; // Runtime-only GM flag, not saved
     private bool _allMove; // Runtime-only GM flag: bypass collision when walking. Not saved.
     private bool _isReplaySpectator;
-    private bool _privShow; // Runtime-only: show priv level tag above head
+    // Runtime-only PRIVSHOW. Upstream keeps it as the inverse account flag
+    // PRIV_PRIV_NOSHOW, which AUTOPRIVFLAGS (default 0) leaves clear, so staff
+    // show their title (GM, Counselor...) until they turn it off.
+    private bool _privShow = true;
     private bool _isOnline; // Has active client connection
     private int _skillClass = 0;
 
@@ -1015,6 +1018,8 @@ public partial class Character : ObjBase
 
     /// <summary>GM AllShow mode — shows invisible objects with a grey hue. Runtime-only, not persisted.</summary>
     public bool AllShow { get => _allShow; set => _allShow = value; }
+    /// <summary>PRIVSHOW: staff titles are shown (upstream !PRIV_PRIV_NOSHOW).</summary>
+    public bool PrivShow { get => _privShow; set => _privShow = value; }
 
     /// <summary>Staff walk diagnostic: while on, a REFUSED step answers with the
     /// reason the walk check gave. The check already builds a full trace of why the
@@ -3974,7 +3979,8 @@ public partial class Character : ObjBase
                     "RESDISPDNHUE" => $"0{baseDef.ResDispDnHue:X}",
                     "RESDISPDNID" => string.IsNullOrEmpty(baseDef.ResDispDnIdRaw)
                         ? $"0{baseDef.ResDispDnId:X}" : baseDef.ResDispDnIdRaw,
-                    "SOUND" or "SOUNDIDLE" => $"0{baseDef.SoundIdle:X}",
+                    "SOUND" => $"0{baseDef.SoundBase:X}",
+                    "SOUNDIDLE" => $"0{baseDef.SoundIdle:X}",
                     "SOUNDDIE" => $"0{baseDef.SoundDie:X}",
                     "SOUNDGETHIT" => $"0{baseDef.SoundGetHit:X}",
                     "SOUNDHIT" => $"0{baseDef.SoundHit:X}",

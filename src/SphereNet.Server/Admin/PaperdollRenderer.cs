@@ -16,6 +16,10 @@ public interface IPaperdollArt
 
     /// <summary>The 32-colour 1555 table of a hue value (1-based), or null.</summary>
     ushort[]? GetHueColorTable(int hue);
+
+    /// <summary>fonts.mul (the client's ASCII fonts), or null without the file; the
+    /// frame is then drawn without its name line.</summary>
+    AsciiFontReader? GetAsciiFonts() => null;
 }
 
 /// <summary><see cref="IPaperdollArt"/> over the server's loaded mul files.</summary>
@@ -27,23 +31,27 @@ public sealed class MapDataPaperdollArt(MapDataManager map) : IPaperdollArt
     public ItemTileData GetItemTile(int itemId) => map.GetItemTileData(itemId);
 
     public ushort[]? GetHueColorTable(int hue) => map.GetHueColorTable(hue);
+
+    public AsciiFontReader? GetAsciiFonts() => map.GetAsciiFonts();
 }
 
 /// <summary>One worn item as the client sees it: layer, display id, hue.</summary>
 public readonly record struct PaperdollWornItem(byte Layer, ushort DispId, ushort Hue);
 
 /// <summary>Everything the picture depends on, captured from the live world on the
-/// main loop so the drawing itself can run on any thread.</summary>
+/// main loop so the drawing itself can run on any thread. <see cref="Text"/> is the
+/// paperdoll name line (the 0x88 text).</summary>
 public sealed record PaperdollLook(
     uint Serial,
     ushort Body,
     ushort Hue,
     bool IsFemale,
-    IReadOnlyList<PaperdollWornItem> Items)
+    IReadOnlyList<PaperdollWornItem> Items,
+    string Text = "")
 {
-    /// <summary>64-bit FNV-1a over body, skin hue, gender and every worn item's
-    /// (layer, display id, hue). A change to any of them changes the hash, which is
-    /// what invalidates the cached picture.</summary>
+    /// <summary>64-bit FNV-1a over body, skin hue, gender, every worn item's
+    /// (layer, display id, hue) and the name line. A change to any of them changes
+    /// the hash, which is what invalidates the cached picture.</summary>
     public ulong ComputeHash()
     {
         ulong h = 14695981039346656037UL;
@@ -65,6 +73,9 @@ public sealed record PaperdollLook(
             Mix(it.DispId);
             Mix(it.Hue);
         }
+        Mix((uint)Text.Length);
+        foreach (char c in Text)
+            Mix(c);
         return h;
     }
 }
@@ -83,7 +94,12 @@ public sealed record PaperdollLook(
 ///  * the client's layer order, its "quiver" order when the cloak slot holds a
 ///    container, the arms/torso swap for 0x1410/0x1417 arms, and its covered-layer
 ///    rules (a robe hides the torso, leggings hide shoes, ...);
-///  * the backpack gump last, at Animation + 50000.
+///  * the backpack gump last, at Animation + 50000;
+///  * with the frame, the name line under the doll as the client's title label
+///    draws it (PaperDollGump: ASCII font 1, hue 0x0386, left-aligned at 39,262,
+///    wrapped to 185 pixels), from fonts.mul. The frameless picture carries no
+///    text: it is the one meant for embedding, where the page lays out the name
+///    parts from the JSON itself.
 ///
 /// Not modelled: the client's Equipconv.def / tileart.uop gump substitutions (need
 /// client files the server does not load) and the PaperdollBooks backpack x-shift.
@@ -106,6 +122,12 @@ public sealed class PaperdollRenderer
     public const int FrameDollX = 8, FrameDollY = 19;
     /// <summary>Transparent border around a frameless picture.</summary>
     public const int Margin = 4;
+    /// <summary>The frame's name/title label (ClassicUO PaperDollGump _titleLabel:
+    /// new Label("", false, 0x0386, 185, font: 1) { X = 39, Y = 262 }).</summary>
+    public const int TitleX = 39, TitleY = 262, TitleMaxWidth = 185, TitleFont = 1;
+    public const ushort TitleHue = 0x0386;
+    /// <summary>The 0x88 name field is 60 single-byte characters.</summary>
+    public const int TitleFieldLength = 60;
 
     // ClassicUO PaperDollInteractable._layerOrder (draw order, back to front).
     internal static readonly Layer[] LayerOrder =
@@ -311,6 +333,22 @@ public sealed class PaperdollRenderer
             height = dollH + Margin * 2;
         }
 
+        // Name line: rendered first so the canvas can grow to fit a wrapped
+        // second line that runs past the bottom of the frame.
+        byte[]? title = null;
+        int titleW = 0, titleH = 0;
+        if (frameGump != null && ClientTitleText(look.Text) is { Length: > 0 } text &&
+            _art.GetAsciiFonts() is { } fonts && TitleFont < fonts.FontCount)
+        {
+            title = fonts.Render(TitleFont, text, TitleMaxWidth, _art.GetHueColorTable(TitleHue),
+                out titleW, out titleH);
+            if (title != null)
+            {
+                width = Math.Max(width, TitleX + titleW);
+                height = Math.Max(height, TitleY + titleH);
+            }
+        }
+
         var canvas = new byte[width * height * 4];
         if (frameGump != null)
             Blit(canvas, width, height, 0, 0, frameGump, null, null, false);
@@ -324,7 +362,26 @@ public sealed class PaperdollRenderer
             ushort[]? table = ResolveHue(hue, ref partial);
             Blit(canvas, width, height, ox, oy, g, table, zeroRow, partial);
         }
+
+        if (title != null)
+            Blit(canvas, width, height, TitleX, TitleY, new Gump(titleW, titleH, title), null, null, false);
         return canvas;
+    }
+
+    /// <summary>The text the client's label actually receives: the 0x88 field keeps
+    /// the low byte of the first 60 characters and the client reads it up to the
+    /// first zero byte.</summary>
+    internal static string ClientTitleText(string text)
+    {
+        var sb = new System.Text.StringBuilder(Math.Min(text.Length, TitleFieldLength));
+        for (int i = 0; i < text.Length && i < TitleFieldLength; i++)
+        {
+            char c = (char)(byte)text[i];
+            if (c == '\0')
+                break;
+            sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     /// <summary>ShaderHueTranslator.GetHueVector: 0x8000 = partial, 0x4000 =

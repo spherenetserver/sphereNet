@@ -45,6 +45,12 @@ public sealed class CharDef : BaseDef
     public string DisplayIdRef { get; set; } = "";
 
     public ushort TrackId { get; set; }
+    /// <summary>SOUND= - the creature's base sound (Source-X m_soundBase). The
+    /// per-action sounds are derived from it by offset unless a SOUNDxxx key
+    /// overrides one (CChar::SoundChar, CCharAct.cpp:2686-2803).</summary>
+    public ushort SoundBase { get; set; }
+    /// <summary>Per-action overrides; 0 = derive from <see cref="SoundBase"/>,
+    /// 0xFFFF (written -1) = this action is silent.</summary>
     public ushort SoundIdle { get; set; }
     public ushort SoundNotice { get; set; }
     public ushort SoundHit { get; set; }
@@ -156,12 +162,12 @@ public sealed class CharDef : BaseDef
                 }
                 break;
             case "TRACKID": TrackId = ParseHexOrDec(value); break;
-            case "SOUND": ParseCharSounds(value); break;
-            case "SOUNDIDLE": SoundIdle = ParseUShort(value); break;
-            case "SOUNDNOTICE": SoundNotice = ParseUShort(value); break;
-            case "SOUNDHIT": SoundHit = ParseUShort(value); break;
-            case "SOUNDGETHIT": SoundGetHit = ParseUShort(value); break;
-            case "SOUNDDIE": SoundDie = ParseUShort(value); break;
+            case "SOUND": SoundBase = ParseSound(value); break;
+            case "SOUNDIDLE": SoundIdle = ParseSound(value); break;
+            case "SOUNDNOTICE": SoundNotice = ParseSound(value); break;
+            case "SOUNDHIT": SoundHit = ParseSound(value); break;
+            case "SOUNDGETHIT": SoundGetHit = ParseSound(value); break;
+            case "SOUNDDIE": SoundDie = ParseSound(value); break;
             case "STR": (StrMin, StrMax) = ParseRange(value); break;
             case "DEX": (DexMin, DexMax) = ParseRange(value); break;
             case "INT": (IntMin, IntMax) = ParseRange(value); break;
@@ -478,14 +484,16 @@ public sealed class CharDef : BaseDef
         }
     }
 
-    private void ParseCharSounds(string value)
+    /// <summary>One sound id (Source-X s.GetArgVal() into a SOUND_TYPE). SOUND= is a
+    /// single base, not a list: splitting it five ways put the base into the idle
+    /// slot and left every other action of a SOUND=-only creature silent. A -1
+    /// keeps its upstream meaning - "no sound for this action" - as 0xFFFF.</summary>
+    private static ushort ParseSound(string value)
     {
-        var parts = value.Split(',', StringSplitOptions.TrimEntries);
-        if (parts.Length >= 1) SoundIdle = ParseUShort(parts[0]);
-        if (parts.Length >= 2) SoundNotice = ParseUShort(parts[1]);
-        if (parts.Length >= 3) SoundHit = ParseUShort(parts[2]);
-        if (parts.Length >= 4) SoundGetHit = ParseUShort(parts[3]);
-        if (parts.Length >= 5) SoundDie = ParseUShort(parts[4]);
+        string first = value.Split(',', 2, StringSplitOptions.TrimEntries)[0];
+        if (first == "-1")
+            return ushort.MaxValue;
+        return ParseUShort(first);
     }
 
     private static ushort ParseUShort(string value)

@@ -2262,7 +2262,9 @@ public sealed class ClientInventoryHandler
         if (item.EquipLayer is Layer.OneHanded or Layer.TwoHanded && IsCombatEquipItem(item))
         {
             bool noWait = (Character.CombatFlags & (int)CombatFlags.FirstHitInstant) != 0;
-            int delayMs = CombatEngine.GetSwingDelayMs(target, item);
+            // A weapon change restarts the fight skill in WAR_SWING_EQUIPPING: the
+            // recoil runs before the next swing animation (CCharSkill.cpp:4559-4563).
+            int delayMs = CombatHelper.GetInitialSwingWaitMs(CombatEngine.GetSwingDelayMs(target, item));
             target.BeginEquipSwingWait(Environment.TickCount64, delayMs, noWait);
         }
 

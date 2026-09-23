@@ -66,6 +66,12 @@ public sealed class DeathEngine
     /// setups.</summary>
     public Action<Character>? DispelEffectsHook { get; set; }
 
+    /// <summary>Host hook: play a sound at the victim (args: victim, sound id).
+    /// ProcessDeath uses it for the death cry - Source-X CChar::Death plays
+    /// SoundChar(CRESND_DIE) for every death, player or creature, right before the
+    /// character is flagged dead (CCharAct.cpp:4391-4393). Null in bare test setups.</summary>
+    public Action<Character, ushort>? DeathSoundHook { get; set; }
+
     public DeathEngine(GameWorld world)
     {
         _world = world;
@@ -167,6 +173,12 @@ public sealed class DeathEngine
                 altar.Champion.OnMemberDeath(victim);
             }
         }
+
+        // The death cry, while the victim still has its living body (the chardef's
+        // SOUNDDIE, else its SOUND= base + the die offset, else the human set).
+        ushort deathSound = Combat.CharacterSounds.Resolve(victim, AI.CreatureSoundType.Die);
+        if (deathSound != 0)
+            DeathSoundHook?.Invoke(victim, deathSound);
 
         // Kill the character
         victim.Kill();
@@ -925,13 +937,6 @@ public sealed class DeathEngine
         ch.Equip(robe, Layer.Robe);
         return robe;
     }
-
-    /// <summary>The human death cry. Source-X / ServUO Mobile.GetDeathSound for a
-    /// human body returns a random gender-specific sound — female 0x314..0x317
-    /// (Random(0x314, 4)), male 0x423..0x427 (Random(0x423, 5)). A single fixed
-    /// sound for every player was a parity gap.</summary>
-    public static int GetHumanDeathSound(bool female, Random rng) =>
-        female ? 0x314 + rng.Next(4) : 0x423 + rng.Next(5);
 
     /// <summary>
     /// Check if looting a corpse is a criminal act.

@@ -453,6 +453,9 @@ public class NpcAiParityTests
         for (int i = 0; i < 100 && castSpell == SpellType.None; i++)
         {
             caster.NextNpcActionTime = 0; caster.NextAttackTime = 0;
+            // A melee swing's blow lands a swing animation delay later; let it, so
+            // a swing roll does not hold the NPC for the rest of the loop.
+            if (caster.HasPendingHit) caster.SwingHitTime = Environment.TickCount64 - 1;
             ai.OnTickAction(caster);
         }
 

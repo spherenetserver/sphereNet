@@ -43,11 +43,12 @@ public static partial class Program
                 e.Item.DispIdFull, e.Item.Hue.Value, e.Item.GetName()))
             .ToList();
 
+        var text = PaperdollText.BuildParts(ch);
         return new PaperdollInfo(
             ch.Uid.Value,
-            ch.GetName(),
+            text.Name,
             ch.Title,
-            PaperdollText.Build(ch),
+            text.Text,
             ch.BodyId,
             PaperdollRenderer.ResolveFemale(ch.BodyId, ch.IsFemale),
             ch.IsPlayer,
@@ -55,7 +56,14 @@ public static partial class Program
             Character.ResolveAccountForChar?.Invoke(ch.Uid)?.Name ?? "",
             _clientsByCharUid.ContainsKey(ch.Uid),
             PaperdollRenderer.IsHumanoidBody(ch.BodyId),
-            equipment);
+            equipment,
+            text.NotoTitle,
+            text.FameTitle,
+            text.NameSuffix,
+            text.FullName,
+            text.GuildAbbrev,
+            text.GuildTitle,
+            text.TradeTitle);
     }
 
     /// <summary>What the paperdoll picture depends on. Main loop only; the drawing
@@ -68,7 +76,8 @@ public static partial class Program
         var items = PaperdollWornItems(ch)
             .Select(e => new PaperdollWornItem((byte)e.Layer, e.Item.DispIdFull, e.Item.Hue.Value))
             .ToList();
-        return new PaperdollLook(ch.Uid.Value, ch.BodyId, ch.Hue.Value, ch.IsFemale, items);
+        return new PaperdollLook(ch.Uid.Value, ch.BodyId, ch.Hue.Value, ch.IsFemale, items,
+            PaperdollText.Build(ch));
     }
 
     /// <summary>Paperdoll PNG: world state read on the main loop, picture drawn (or

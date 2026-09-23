@@ -1420,6 +1420,10 @@ public sealed partial class GameClient
             return;
         _paperdollThrottle[ch.Uid.Value] = now;
 
+        if (_triggerDispatcher?.IsCharTriggerUsed(CharTrigger.SendPaperdoll) == true)
+            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SendPaperdoll,
+                new TriggerArgs { CharSrc = _character, ScriptConsole = this });
+
         string title = PaperdollText.Build(ch);
         byte paperdollFlags = 0;
         if (ch.IsInWarMode) paperdollFlags |= 0x01;

@@ -475,86 +475,25 @@ public sealed partial class GameClient
     public static ushort GetNpcSwingAction(Character npc, Item? weapon) =>
         GetSwingAction(npc, weapon);
 
-    /// <summary>Source-X CChar::SoundChar(CRESND_HIT) (CCharAct.cpp): the impact
-    /// noise an armed strike makes, chosen by weapon type. Two-handed swords/axes
-    /// land with the heavy-strike pair; a one-handed sword/axe shares the fencing
-    /// sound. Replaces a single generic thud so each weapon class hits with its
-    /// own sound.</summary>
-    internal static ushort GetWeaponHitSound(Item? weapon)
-    {
-        if (weapon == null)
-            return 0x0135; // unarmed/wrestling strike
-        bool twoHand = weapon.IsTwoHanded;
-        switch (weapon.ItemType)
-        {
-            case Core.Enums.ItemType.WeaponMaceCrook:
-            case Core.Enums.ItemType.WeaponMacePick:
-            case Core.Enums.ItemType.WeaponMaceSmith:
-            case Core.Enums.ItemType.WeaponMaceStaff:
-                return 0x0233; // blunt01
-            case Core.Enums.ItemType.WeaponMaceSharp: // war axe
-                return 0x0232; // axe01
-            case Core.Enums.ItemType.WeaponSword:
-            case Core.Enums.ItemType.WeaponAxe:
-                if (twoHand)
-                    return Random.Shared.Next(2) == 0 ? (ushort)0x0236 : (ushort)0x0237; // heavy sword
-                goto case Core.Enums.ItemType.WeaponFence; // 1H sword/axe shares fencing sound
-            case Core.Enums.ItemType.WeaponFence:
-                return Random.Shared.Next(2) == 0 ? (ushort)0x023B : (ushort)0x023C; // sword1/sword7
-            case Core.Enums.ItemType.WeaponBow:
-            case Core.Enums.ItemType.WeaponXBow:
-                return 0x0234; // xbow hit
-            case Core.Enums.ItemType.WeaponThrowing:
-                return 0x05D2; // throwH
-            case Core.Enums.ItemType.WeaponWhip:
-                return 0x067E; // whip01
-            default:
-                return 0x023B;
-        }
-    }
+    /// <summary>The sound of a landed strike: the ATTACKER's SoundChar(CRESND_HIT)
+    /// (Fight_Hit, CCharFight.cpp:2222) - the weapon's hit prop or class sound when
+    /// armed, the creature's own hit sound (SOUNDHIT or SOUND= + offset) otherwise.
+    /// See <see cref="CharacterSounds"/>. 0 = nothing to play.</summary>
+    internal static ushort GetAttackerHitSound(Character attacker, Item? weapon) =>
+        CharacterSounds.Resolve(attacker, AI.CreatureSoundType.Hit, weapon);
 
-    /// <summary>Source-X CChar::Fight_Hit miss sound (CCharFight.cpp): a
-    /// swing-through whoosh drawn at random from the ranged or melee miss set.</summary>
-    internal static ushort GetWeaponMissSound(Item? weapon)
-    {
-        if (weapon != null &&
-            (weapon.ItemType == Core.Enums.ItemType.WeaponBow ||
-             weapon.ItemType == Core.Enums.ItemType.WeaponXBow))
-            return Random.Shared.Next(2) == 0 ? (ushort)0x0233 : (ushort)0x0238;
+    /// <summary>Fight_Hit's miss sound (CCharFight.cpp:2057-2072).</summary>
+    internal static ushort GetWeaponMissSound(Item? weapon) => CharacterSounds.GetMissSound(weapon);
 
-        return Random.Shared.Next(3) switch
-        {
-            0 => (ushort)0x0238,
-            1 => (ushort)0x0239,
-            _ => (ushort)0x023A,
-        };
-    }
-
-    public static ushort GetWeaponHitSoundPublic(Item? weapon) => GetWeaponHitSound(weapon);
+    public static ushort GetAttackerHitSoundPublic(Character attacker, Item? weapon) =>
+        GetAttackerHitSound(attacker, weapon);
     public static ushort GetWeaponMissSoundPublic(Item? weapon) => GetWeaponMissSound(weapon);
 
-    private static readonly ushort[] s_maleHurtSounds =
-        { 0x0154, 0x0155, 0x0156, 0x0157, 0x0158, 0x0159 };
-    private static readonly ushort[] s_femaleHurtSounds =
-        { 0x014B, 0x014C, 0x014D, 0x014E, 0x014F };
-
-    /// <summary>Source-X CChar::SoundChar(CRESND_GETHIT) (CCharAct.cpp): the pain
-    /// vocalization a struck character makes when it takes damage. A creature
-    /// with a scripted SOUNDGETHIT uses it; humans use the gendered "oomf" set;
-    /// other bodies stay silent. Returns 0 when there is no sound to play.</summary>
-    internal static ushort GetDefenderHitSound(Character defender)
-    {
-        var cdef = DefinitionLoader.GetCharDef(defender.CharDefIndex);
-        if (cdef != null && cdef.SoundGetHit > 0)
-            return cdef.SoundGetHit;
-
-        if (BodyAnimTranslator.IsHumanoidBody(defender.BodyId))
-        {
-            var set = defender.IsFemale ? s_femaleHurtSounds : s_maleHurtSounds;
-            return set[Random.Shared.Next(set.Length)];
-        }
-        return 0;
-    }
+    /// <summary>The struck character's SoundChar(CRESND_GETHIT) (OnTakeDamage,
+    /// CCharFight.cpp:1031): SOUNDGETHIT, else the SOUND= base + offset, else the
+    /// human "oomf" set. 0 = nothing to play.</summary>
+    internal static ushort GetDefenderHitSound(Character defender) =>
+        CharacterSounds.Resolve(defender, AI.CreatureSoundType.GetHit);
 
     public static ushort GetDefenderHitSoundPublic(Character defender) => GetDefenderHitSound(defender);
 

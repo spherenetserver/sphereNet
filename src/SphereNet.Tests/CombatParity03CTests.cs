@@ -237,6 +237,9 @@ public sealed class CombatParity03CTests
             Character.CombatArcheryMovementDelay = 10_000;
             Character.CombatFlags = 0;
             archer.LastMoveTick = 100_000;
+            // In sword reach: a blow out of reach is held for it (Source-X
+            // swingTypeHold), which is not what this test is about.
+            world.MoveCharacter(target, new Point3D(101, 100, 0, 0));
 
             Assert.Equal(CombatHelper.HitTimeDecision.Resolve,
                 Evaluate(world, archer, target, Weapon(30)));

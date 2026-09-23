@@ -285,6 +285,7 @@ public class CombatFlagParityTests
             // per-frame delay (paced to the swing time).
             packets.Clear();
             Character.CombatFlags = (int)CombatFlags.AnimHitSmooth;
+            attacker.ClearPendingHit(); // the first swing's blow is still in its windup
             attacker.NextAttackTime = 0;
             attacker.SetCombatSwingState(SwingState.Ready);
             client.TickCombat();

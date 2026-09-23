@@ -113,6 +113,9 @@ public class CombatWaveC7TailTests
             // With the @Hit takeover a landed shot consumes NOTHING.
             archer.Events.Add(stack.Resources.ResolveDefName("e_hit_ammo_takeover"));
             client.TickCombat();
+            // The blow resolves a swing animation delay after the swing starts.
+            archer.SwingHitTime = Environment.TickCount64 - 1;
+            client.TickCombat();
             Assert.Equal(50, arrows.Amount);
 
             // Without it the landed shot spends one arrow.
@@ -120,6 +123,8 @@ public class CombatWaveC7TailTests
             target.Hits = target.MaxHits;
             archer.NextAttackTime = 0;
             archer.SetCombatSwingState(SwingState.Ready);
+            client.TickCombat();
+            archer.SwingHitTime = Environment.TickCount64 - 1;
             client.TickCombat();
             Assert.Equal(49, arrows.Amount);
         }

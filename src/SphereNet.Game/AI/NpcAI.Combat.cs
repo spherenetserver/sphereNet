@@ -313,14 +313,22 @@ public sealed partial class NpcAI
             return;
         }
 
-        // A committed swing is the NPC's action until its hit phase resolves.
-        // Otherwise a winding-up NPC can cast, breathe, throw, move or
-        // sidestep before the pending hit lands.
+        // A committed swing is the NPC's action while its animation plays: a
+        // winding-up NPC must not cast, breathe, throw, move or sidestep before
+        // the blow lands. Once the animation is over and the blow is still held
+        // (the target stepped out of reach), the NPC goes back to its fight AI so
+        // it can close in - Source-X's WAR_SWING_READY hold keeps the NPC's AI
+        // alive for exactly that (Fight_HitTry, CCharFight.cpp:1614-1626); a new
+        // swing cannot start while the held one is pending.
         if (npc.HasPendingHit)
         {
             long pendingNow = Environment.TickCount64;
-            if (pendingNow >= npc.SwingHitTime)
-                ResolveNpcHit(npc, pendingNow);
+            if (pendingNow < npc.SwingHitTime)
+                return;
+            ResolveNpcHit(npc, pendingNow);
+            if (npc.HasPendingHit &&
+                npc.Position.GetDistanceTo(target.Position) > GetAttackRange(npc))
+                MoveToward(npc, target.Position, run: true);
             return;
         }
 
@@ -844,11 +852,22 @@ public sealed partial class NpcAI
     /// <summary>Callback: NPC throws object. Parameters: npc, target, damage.</summary>
     public Action<Character, Character, int>? OnNpcThrow { get; set; }
 
-    /// <summary>@HitTry hook fired before an NPC swing's recoil is set. Receives
-    /// the swing delay in tenths of a second and returns a (possibly modified)
-    /// delay, or a negative value to abort the swing this tick. Mirrors the
-    /// player path's @HitTry. Args: npc, target, weapon, swingDelayTenths.</summary>
-    public Func<Character, Character, Item?, int, int>? OnNpcHitTry { get; set; }
+    /// <summary>What @HitTry answered for one swing (Source-X CCharFight.cpp:1927-
+    /// 1948): RETURN 1 holds the swing; otherwise ARGN1, LOCAL.AnimDelay and
+    /// LOCAL.Anim are read back (-1 Anim = the default swing animation).</summary>
+    public readonly record struct NpcHitTryOutcome(bool Held, long ArgN1, long AnimDelay, int Anim);
+
+    /// <summary>@HitTry hook, on the player path's contract: ARGN1 = the recoil and
+    /// LOCAL.AnimDelay = the swing animation delay, both in tenths (swapped under
+    /// COMBAT_ANIM_HIT_SMOOTH, see <see cref="CombatHelper.ToHitTryArgs"/>).
+    /// Args: npc, target, weapon, argN1, animDelay.</summary>
+    public Func<Character, Character, Item?, int, int, NpcHitTryOutcome>? OnNpcHitTry { get; set; }
+
+    /// <summary>The swing animation, sent as the swing starts - before the blow,
+    /// which lands once the animation delay has passed (Source-X READY state,
+    /// CCharFight.cpp:1957-1999). Args: npc, target, weapon, the @HitTry
+    /// LOCAL.Anim override (-1 = default), the 0x6E delay byte.</summary>
+    public Action<Character, Character, Item?, int, byte>? OnNpcSwingStart { get; set; }
 
     /// <summary>What @HitCheck answered for one swing: the raw RETURN number,
     /// whether that return was true at all, the swing state ARGN1 named, and the
@@ -967,18 +986,22 @@ public sealed partial class NpcAI
 
         int stagger = (int)(npc.Uid.Value * 2654435761u % 200);
 
-        // @HitTry (parity with the player path): fires before recoil is set so a
-        // script can adjust the swing delay or abort the swing this tick.
+        // @HitTry (parity with the player path): Fight_SetDefaultSwingDelays gives
+        // the recoil and animation delay, the script may rewrite both or hold the
+        // swing (RETURN 1 -> WAR_SWING_READY, look again a tenth later).
+        var delays = CombatHelper.GetDefaultSwingDelays(swingDelayMs);
+        int animOverride = -1;
         if (OnNpcHitTry != null)
         {
-            int tenths = Math.Max(1, swingDelayMs / 100);
-            int newTenths = OnNpcHitTry(npc, target, weapon, tenths);
-            if (newTenths < 0)
+            var (n1, animDelay) = CombatHelper.ToHitTryArgs(delays);
+            var hitTry = OnNpcHitTry(npc, target, weapon, n1, animDelay);
+            if (hitTry.Held)
             {
-                npc.NextAttackTime = now + 250; // aborted; recheck shortly, no recoil burned
+                npc.NextAttackTime = now + 100; // held; no recoil burned
                 return false;
             }
-            swingDelayMs = Math.Clamp(newTenths, 1, short.MaxValue) * 100;
+            delays = CombatHelper.FromHitTryArgs(hitTry.ArgN1, hitTry.AnimDelay);
+            animOverride = hitTry.Anim;
         }
 
         var newDir = npc.Position.GetDirectionTo(target.Position);
@@ -988,14 +1011,19 @@ public sealed partial class NpcAI
             OnNpcFacingChanged?.Invoke(npc);
         }
 
-        // Two-phase swing windup (Source-X): commit recoil + a pending hit now.
-        // A zero windup resolves the hit inline below (the atomic default);
-        // STAYINRANGE / SWING_NORANGE defer it to the NPC tick's pending-hit pump.
-        int recoilMs = swingDelayMs + stagger;
-        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(recoilMs, swingNoRange);
-        npc.BeginSwingWindup(now, hitDelayMs, recoilMs, target.Uid,
-            now + recoilMs * 2L, weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
+        // Two-phase swing (Source-X READY -> SWINGING): the swing animation goes out
+        // now and the blow lands after the animation delay (a second by default)
+        // from the NPC tick's pending-hit pump - inline below when there is no
+        // delay (PREHIT). The next swing follows the blow by the recoil; the
+        // per-NPC stagger only spreads the load of a crowd.
+        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(delays);
+        int cycleMs = hitDelayMs + delays.RecoilTenths * 100 + stagger;
+        npc.BeginSwingWindup(now, hitDelayMs, cycleMs, target.Uid,
+            now + Math.Max(cycleMs, swingDelayMs) * 2L,
+            weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
             effectiveRange.Min, effectiveRange.Max);
+        OnNpcSwingStart?.Invoke(npc, target, weapon, animOverride,
+            CombatHelper.GetSwingAnimDelay(delays));
 
         // Source-style owner attribution: a commanded pet/summon attack on an
         // innocent criminal-flags its player owner. Guard response is regional;
@@ -1106,15 +1134,11 @@ public sealed partial class NpcAI
                 npc.ClearPendingHit();
                 return;
             case CombatHelper.HitTimeDecision.Miss:
+                // A spent swing (COMBAT_STAYINRANGE target left reach, or the archer
+                // walked): Source-X returns WAR_SWING_EQUIPPING out of Fight_Hit
+                // before the miss branch (CCharFight.cpp:1857/:1896), so there is no
+                // @HitMiss, no miss sound and no ammo to account for.
                 npc.ClearPendingHit();
-                if (target != null)
-                {
-                    Item? missedAmmo = weapon != null && CombatHelper.IsRangedWeapon(weapon)
-                        ? FindNpcAmmo(npc, weapon)
-                        : null;
-                    OnNpcAttack?.Invoke(npc, target, weapon, CombatEngine.AttackMiss,
-                        missedAmmo?.Uid.Value ?? 0);
-                }
                 return;
         }
 
@@ -1144,15 +1168,10 @@ public sealed partial class NpcAI
 
         if (damage > 0)
         {
-            // Source-X SoundChar(CRESND_HIT): an armed strike makes the weapon
-            // sound (emitted by the OnNpcAttack hit feedback), so only fall back to
-            // the creature's own attack vocalization when unarmed — otherwise an
-            // armed creature would double up (creature sound + weapon sound).
-            if (weapon == null)
-                EmitSound(npc, CreatureSoundType.Hit);
-            // The struck target's get-hit vocalization (creature SOUNDGETHIT or a
-            // human "oomf") is emitted by the OnNpcAttack hit feedback so it covers
-            // both creature and player targets uniformly.
+            // The strike sound - Source-X SoundChar(CRESND_HIT): the weapon when
+            // armed, the creature's own hit sound when not - and the struck
+            // target's get-hit vocalization are both emitted by the OnNpcAttack
+            // hit feedback, so they cover creature and player targets uniformly.
 
             // Retaliation: NPC targets that aren't already fighting back
             // acquire the attacker as their fight target (Source-X parity).
@@ -1163,20 +1182,15 @@ public sealed partial class NpcAI
                 OnWakeNpc?.Invoke(target);
             }
 
+            // The death cry is SoundChar(CRESND_DIE) inside CChar::Death
+            // (CCharAct.cpp:4392), played by the death engine for every death.
             if (target.Hits <= 0 && !target.IsDead)
-            {
-                if (!target.IsPlayer)
-                    EmitSound(target, CreatureSoundType.Die);
                 OnNpcKill?.Invoke(npc, target);
-            }
         }
 
         // Reactive armor reflect may have killed the attacker
         if (npc.Hits < hpBefore && npc.Hits <= 0 && !npc.IsDead)
-        {
-            EmitSound(npc, CreatureSoundType.Die);
             OnNpcKill?.Invoke(target, npc);
-        }
     }
 
     private static int GetAttackRange(Character npc, Item? weapon = null)

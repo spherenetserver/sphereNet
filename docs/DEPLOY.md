@@ -211,6 +211,12 @@ telnet directly to the internet.
   below Counselor are shown; everything else is a 404. Responses carry
   `Cache-Control: max-age=60`, and each client address is limited to 60
   requests a minute (keyed on `X-Forwarded-For` from the proxy).
+  `?frame=1` on the `.png` draws the client's paperdoll frame with the name
+  line under the doll, in the client's own font; that needs `fonts.mul` in the
+  mul directory (without it the frame is drawn with no text). The frameless
+  picture never carries text. The JSON has the whole line as `paperdollText`
+  and its parts - `notoTitle`, `fameTitle`, `fullName`, `nameSuffix`,
+  `guildAbbrev`, `guildTitle`, `tradeTitle` - for a page that styles them.
 
 The Host starts the game server itself (`HOSTAUTOSTART=1`) and restarts it
 after a crash (`HOSTRESTARTONCRASH=1`, backing off, and giving up after five

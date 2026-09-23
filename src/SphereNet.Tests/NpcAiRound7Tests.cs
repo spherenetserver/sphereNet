@@ -96,7 +96,9 @@ public class NpcAiRound7Tests
 
         var ai = new NpcAI(world, new SphereConfig());
         var swungAt = new List<Character>();
-        ai.OnNpcAttack = (_, target, _, _, _) => swungAt.Add(target);
+        // A committed swing (its animation sent) proves the fight-back; the blow
+        // itself lands a swing animation delay later (Source-X Fight_Hit).
+        ai.OnNpcSwingStart = (_, target, _, _, _) => swungAt.Add(target);
         var actVendor = typeof(NpcAI).GetMethod("ActVendor",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         actVendor.Invoke(ai, [vendor]);
@@ -133,7 +135,9 @@ public class NpcAiRound7Tests
 
         var ai = new NpcAI(world, new SphereConfig());
         var swungAt = new List<Character>();
-        ai.OnNpcAttack = (_, target, _, _, _) => swungAt.Add(target);
+        // A committed swing (its animation sent) proves the fight-back; the blow
+        // itself lands a swing animation delay later (Source-X Fight_Hit).
+        ai.OnNpcSwingStart = (_, target, _, _, _) => swungAt.Add(target);
         var actAnimal = typeof(NpcAI).GetMethod("ActAnimal",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         actAnimal.Invoke(ai, [animal]);

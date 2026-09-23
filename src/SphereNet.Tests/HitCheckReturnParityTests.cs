@@ -143,6 +143,15 @@ public sealed class HitCheckReturnParityTests : IDisposable
         Assert.Equal(100, target.Hits);
     }
 
+    /// <summary>The blow of a started swing lands after the swing animation delay
+    /// (a second by default, Source-X Fight_Hit); let it elapse.</summary>
+    private static void LandPendingBlow(GameClient client, Character attacker)
+    {
+        if (!attacker.HasPendingHit) return;
+        attacker.SwingHitTime = Environment.TickCount64 - 1;
+        client.TickCombat();
+    }
+
     // ---- RETURN -2: run the hardcoded path anyway --------------------------
 
     [Fact]
@@ -156,6 +165,7 @@ public sealed class HitCheckReturnParityTests : IDisposable
             """, 1453);
 
         client.TickCombat();
+        LandPendingBlow(client, attacker);
 
         Assert.True(attacker.TryGetTag("SAW", out string? saw) && saw == "1");
         Assert.True(attacker.FightTarget.IsValid);
@@ -171,6 +181,7 @@ public sealed class HitCheckReturnParityTests : IDisposable
         var (client, attacker, target) = Setup("TAG.SAW=1", 1454);
 
         client.TickCombat();
+        LandPendingBlow(client, attacker);
 
         Assert.True(attacker.TryGetTag("SAW", out string? saw) && saw == "1");
         Assert.True(attacker.FightTarget.IsValid);

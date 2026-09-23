@@ -125,7 +125,7 @@ public sealed class ClientCombatHandler
     private void FaceTarget(Character target) => _client.FaceTarget(target);
     private static int GetSwingDelayMs(Character attacker, Item? weapon) => GameClient.GetSwingDelayMs(attacker, weapon);
     private static ushort GetSwingAction(Character attacker, Item? weapon) => GameClient.GetSwingAction(attacker, weapon);
-    private static ushort GetWeaponHitSound(Item? weapon) => GameClient.GetWeaponHitSound(weapon);
+    private static ushort GetAttackerHitSound(Character attacker, Item? weapon) => GameClient.GetAttackerHitSound(attacker, weapon);
     private static ushort GetWeaponMissSound(Item? weapon) => GameClient.GetWeaponMissSound(weapon);
     private static ushort GetDefenderHitSound(Character defender) => GameClient.GetDefenderHitSound(defender);
     private static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch) => GameClient.BuildEquipmentList(ch);
@@ -828,7 +828,7 @@ public sealed class ClientCombatHandler
         {
             if (Character.OnPetDesert == null || !Character.OnPetDesert(target, _character))
             {
-                SysMessage(ServerMessages.GetFormatted("pet_gone_wild", target.Name));
+                SysMessage(ServerMessages.GetFormatted("pet_gone_wild", target.GetName()));
                 target.ClearOwnership(clearFriends: false);
             }
         }
@@ -889,7 +889,11 @@ public sealed class ClientCombatHandler
         Send(new PacketSwing(_character.Uid.Value, target.Uid.Value));
         Send(new PacketAttackResponse(target.Uid.Value));
 
-        // Set initial swing delay so the first hit isn't instant (unless COMBATFLAGS allows it)
+        // Set initial swing delay so the first hit isn't instant (unless COMBATFLAGS allows it).
+        // Source-X starts the fight skill in WAR_SWING_EQUIPPING (CCharSkill.cpp:4559-4563):
+        // the RECOIL runs first, then the swing animation, then the blow - so the first
+        // blow still lands a full attack speed after the attack began, but the swing is
+        // seen a second earlier than that.
         if (_character.NextAttackTime == 0)
         {
             bool instantFirst = (Character.CombatFlags & (int)CombatFlags.FirstHitInstant) != 0;
@@ -897,7 +901,8 @@ public sealed class ClientCombatHandler
             {
                 var w = _character.GetEquippedItem(Layer.OneHanded)
                      ?? _character.GetEquippedItem(Layer.TwoHanded);
-                _character.BeginEquipSwingWait(Environment.TickCount64, GetSwingDelayMs(_character, w), noWait: false);
+                _character.BeginEquipSwingWait(Environment.TickCount64,
+                    CombatHelper.GetInitialSwingWaitMs(GetSwingDelayMs(_character, w)), noWait: false);
             }
             else
             {
@@ -942,9 +947,9 @@ public sealed class ClientCombatHandler
             return;
         }
 
-        // Two-phase swing: land a started swing's hit once its windup elapses,
-        // before gating the next swing on recoil. Atomic swings carry no pending
-        // hit (resolved inline), so this is a no-op for the default case.
+        // Two-phase swing: land a started swing's hit once its windup (the swing
+        // animation delay) elapses, before gating the next swing on recoil. A
+        // PREHIT swing carries no pending hit (resolved inline).
         if (_character.HasPendingHit && now >= _character.SwingHitTime)
             ResolvePlayerHit(now);
 
@@ -1122,37 +1127,44 @@ public sealed class ClientCombatHandler
 
         CombatHelper.RevealOnAttack(_character, _character.PrivLevel);
 
-        int swingDelayTenths = Math.Max(1, swingDelayMs / 100);
+        // Source-X Fight_SetDefaultSwingDelays: the recoil and the swing animation
+        // delay this swing runs on (by default a one-second animation, the rest of
+        // the attack speed as recoil; PREHIT folds the animation into the recoil).
+        var delays = CombatHelper.GetDefaultSwingDelays(swingDelayMs);
         int animOverride = -1;
-        int animDelayOverride = -1;
         if (_triggerDispatcher != null)
         {
-            // Source-X @HitTry contract (CCharFight Init(iARGN1Var,0,0,pWeapon),
-            // OnTrigger(..., pCharTarg)): SRC = the victim, ARGO = the weapon,
-            // ARGN1 = swing tenths (writable), LOCAL.Anim / LOCAL.AnimDelay
-            // (tenths) override the swing animation and its frame pacing.
+            // Source-X @HitTry contract (CCharFight.cpp:1927-1948, Init(iARGN1Var,
+            // 0, 0, pWeapon), OnTrigger(..., pCharTarg)): SRC = the victim, ARGO =
+            // the weapon, ARGN1 = the recoil in tenths and LOCAL.AnimDelay = the
+            // swing animation delay in tenths (the two swap under
+            // COMBAT_ANIM_HIT_SMOOTH), LOCAL.Anim = the swing animation. RETURN 1
+            // holds the swing. Upstream fires it as the recoil BEFORE the swing
+            // begins; here the swing is committed at its animation, so the recoil
+            // the script sets is the one that follows this swing's blow - the same
+            // cycle, measured from the animation.
+            var (hitTryN1, hitTryAnimDelay) = CombatHelper.ToHitTryArgs(delays);
             var hitTryLocals = new SphereNet.Scripting.Variables.VarMap();
             hitTryLocals.SetInt("Anim", -1);
-            hitTryLocals.SetInt("AnimDelay", 7);
+            hitTryLocals.SetInt("AnimDelay", hitTryAnimDelay);
             var hitTryArgs = new TriggerArgs
             {
                 CharSrc = target,
                 O1 = weapon,
                 ItemSrc = weapon,
-                N1 = swingDelayTenths,
+                N1 = hitTryN1,
                 Locals = hitTryLocals,
             };
             if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitTry, hitTryArgs) == TriggerResult.True)
             {
-                _character.NextAttackTime = now + 250;
+                // WAR_SWING_READY: hold and look again a tenth later (Fight_HitTry
+                // :1614-1626 _SetTimeoutD(1)).
+                _character.NextAttackTime = now + 100;
                 return;
             }
-            swingDelayTenths = (int)Math.Clamp(hitTryArgs.N1, 1L, short.MaxValue);
-            swingDelayMs = swingDelayTenths * 100;
+            delays = CombatHelper.FromHitTryArgs(hitTryArgs.N1,
+                hitTryLocals.GetInt("AnimDelay", hitTryAnimDelay));
             animOverride = (int)hitTryLocals.GetInt("Anim", -1);
-            long animDelay = hitTryLocals.GetInt("AnimDelay", 7);
-            if (animDelay != 7)
-                animDelayOverride = (int)Math.Clamp(animDelay, 0, 255);
         }
 
         // COMBAT_NODIRCHANGE: do not auto-rotate the attacker to face the target.
@@ -1179,32 +1191,29 @@ public sealed class ClientCombatHandler
             }
         }
 
-        // Two-phase swing (Source-X windup -> hit): commit the swing now (animation
-        // + recoil + a pending hit). With a zero windup the hit resolves in this
-        // same call (atomic — the flagless default and PREHIT); STAYINRANGE /
-        // SWING_NORANGE (or a @HitCheck LOCAL.Recoil_NoRange override) open a
-        // window so the hit lands later from TickCombat's pending-hit pump.
-        // `ammo` (presence) was validated just above.
-        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(swingDelayMs, swingNoRange);
+        // Two-phase swing (Source-X READY -> SWINGING): the animation goes out now
+        // and the blow lands once the animation delay has passed (a second by
+        // default, at once under PREHIT) - from TickCombat's pending-hit pump, or
+        // inline below when there is no delay. The next swing follows the blow by
+        // the recoil. `ammo` (presence) was validated just above.
+        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(delays);
+        int cycleMs = hitDelayMs + delays.RecoilTenths * 100;
         var committedRange = CombatHelper.GetWeaponRange(weapon);
-        _character.BeginSwingWindup(now, hitDelayMs, swingDelayMs, target.Uid,
-            now + swingDelayMs * 2L, weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
+        _character.BeginSwingWindup(now, hitDelayMs, cycleMs, target.Uid,
+            now + Math.Max(cycleMs, swingDelayMs) * 2L,
+            weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
             committedRange.Min, committedRange.Max);
 
-        // @HitTry LOCAL.Anim / LOCAL.AnimDelay override the swing animation and
-        // its frame pacing (Source-X reads them back after the trigger).
+        // @HitTry LOCAL.Anim overrides the swing animation (Source-X reads it back
+        // after the trigger); the 0x6E delay byte is the animation delay in seconds.
         ushort swingAction = animOverride >= 0
             ? (ushort)Math.Clamp(animOverride, 0, ushort.MaxValue)
             : GetSwingAction(_character, weapon);
-        // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
-        byte swingAnimDelay = animDelayOverride >= 0
-            ? (byte)animDelayOverride
-            : CombatHelper.GetSwingAnimDelay(swingDelayMs);
+        byte swingAnimDelay = CombatHelper.GetSwingAnimDelay(delays);
         BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack,
             animDelay: swingAnimDelay);
-        // Source-X plays a single combat sound per swing: the per-weapon hit
-        // sound on a hit, the miss whoosh on a miss (emitted below). No extra
-        // unconditional swing sound.
+        // Source-X plays a single combat sound per swing, when the blow resolves:
+        // the hit sound on a hit, the miss whoosh on a miss. Nothing at swing start.
 
         if (now >= _character.SwingHitTime)
             ResolvePlayerHit(now);
@@ -1245,25 +1254,14 @@ public sealed class ClientCombatHandler
                 _character.ClearPendingHit();
                 return;
             case CombatHelper.HitTimeDecision.Miss:
+                // A SPENT swing, not a failed hit roll: the target left reach or LoS
+                // under COMBAT_STAYINRANGE, or the archer walked, during the windup.
+                // Source-X returns WAR_SWING_EQUIPPING for both (CCharFight.cpp:1896
+                // and :1857) straight out of Fight_Hit - before the ammo lookup at
+                // :1862 and before the miss branch at :2023 - so nothing follows: no
+                // @HitMiss, no miss sound, no arrow spent. The recoil the swing armed
+                // is the only consequence.
                 _character.ClearPendingHit();
-                if (target != null)
-                {
-                    // A SPENT swing, not a failed hit roll: the target left reach or
-                    // LoS, or the archer walked, during the windup. Source-X returns
-                    // WAR_SWING_EQUIPPING for both (CCharFight.cpp:1896 and :1857),
-                    // and both return BEFORE the pAmmo block at :1862 — so no
-                    // ammunition is touched, for any ranged weapon. An arrow is spent
-                    // only on a genuine miss roll (:2023 m_Act_Difficulty < 0), which
-                    // reaches this handler by a different route.
-                    //
-                    // (A real miss roll never produces HitTimeDecision.Miss; that
-                    // decision is only ever returned for an unspent swing.)
-                    if (!HandleMissTriggerAndAmmo(target, weapon, null))
-                    {
-                        SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
-                        EmitMissSound(weapon);
-                    }
-                }
                 return;
         }
 
@@ -1339,13 +1337,13 @@ public sealed class ClientCombatHandler
                 // code formatted the "attacking you" template with the
                 // VICTIM's name and broadcast it to everyone.
                 ushort emoteHue = SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Emote);
-                string atkName = _character.Name ?? "";
+                var emote = CombatHelper.FormatAttackEmotes(_character, target);
                 var emoteOthers = new PacketSpeechUnicodeOut(
                     _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
-                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacko, atkName, target.Name));
+                    emote.AttackerName, emote.OthersText);
                 var emoteVictim = new PacketSpeechUnicodeOut(
                     _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
-                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacks, atkName));
+                    emote.AttackerName, emote.VictimText);
                 uint victimUid = target.Uid.Value;
                 ForEachClientInRange?.Invoke(_character.Position, UpdateRange, 0,
                     (obsCh, obsClient) => obsClient.Send(
@@ -1376,10 +1374,12 @@ public sealed class ClientCombatHandler
                 _character.Name, target.Name, damage);
 
             // The strike's sound comes from the ATTACKER: SoundChar(CRESND_HIT) is the
-            // attacker's own call (Fight_Hit, CCharAct.cpp:2627-2681).
-            ushort hitSound = GetWeaponHitSound(weapon);
-            var hitSoundPacket = new PacketSound(hitSound, _character.X, _character.Y, _character.Z);
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange, hitSoundPacket, 0);
+            // attacker's own call (Fight_Hit, CCharAct.cpp:2627-2681): the weapon when
+            // armed, the attacker's own body (fist slap, claw) when not.
+            ushort hitSound = GetAttackerHitSound(_character, weapon);
+            if (hitSound != 0)
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(hitSound, _character.X, _character.Y, _character.Z), 0);
 
             // The flinch belongs to OnTakeDamage, and it is skipped for a blow that
             // kills and for a target in the middle of its own swing ("don't interrupt
@@ -1556,8 +1556,10 @@ public sealed class ClientCombatHandler
             // flinch when no damage is left (CCharFight.cpp:1027-1028), so the target
             // does not play a get-hit, and there is no pain vocalization, damage
             // number or blood.
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                new PacketSound(GetWeaponHitSound(weapon), _character.X, _character.Y, _character.Z), 0);
+            ushort absorbedSound = GetAttackerHitSound(_character, weapon);
+            if (absorbedSound != 0)
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(absorbedSound, _character.X, _character.Y, _character.Z), 0);
         }
         else if (damage == CombatEngine.AttackMiss)
         {
@@ -1574,12 +1576,12 @@ public sealed class ClientCombatHandler
                 // everybody - a commentary upstream reserves for staff who asked for
                 // it - and never sent the target's at all.
                 if (_character != null && _character.DetailView)
-                    SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
+                    SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.GetName()));
                 if (target.DetailView && _character != null)
                     _client.SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
                         0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
                         SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System",
-                        ServerMessages.GetFormatted(Msg.CombatMisso, _character.Name)));
+                        ServerMessages.GetFormatted(Msg.CombatMisso, _character.GetName())));
                 EmitMissSound(weapon);
             }
         }
@@ -1694,7 +1696,9 @@ public sealed class ClientCombatHandler
     {
         if (_character == null) return;
 
-        // Source-X plays a single per-weapon miss whoosh from the attacker.
+        // Source-X plays a single miss whoosh from the attacker: the weapon's
+        // WEAPONSOUNDMISS / AMMOSOUNDMISS, else the ranged (archery and throwing)
+        // or melee set.
         var missSound = new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSound, 0);
     }
@@ -1784,7 +1788,7 @@ public sealed class ClientCombatHandler
         if (deathSkinHue == 0)
             deathSkinHue = _character.Hue.Value;
 
-        // Capture gender BEFORE the ghost-body swap — the death cry is gender-specific
+        // Capture gender BEFORE the ghost-body swap — the ghost body is gender-specific
         // and IsFemale reads the live body, which is about to become a ghost body.
         bool deathSoundFemale = _character.IsFemale;
 
@@ -1844,13 +1848,9 @@ public sealed class ClientCombatHandler
             ClearPendingTargetState();
         }
 
-        // Source-X only plays the character's death sound here. It does not
-        // create a persistent 0x3735 particle at the corpse position.
-
-        ushort deathSoundId = (ushort)SphereNet.Game.Death.DeathEngine.GetHumanDeathSound(deathSoundFemale, Random.Shared);
-        var deathSound = new PacketSound(deathSoundId, _character.X, _character.Y, _character.Z);
-        _netState.Send(deathSound);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathSound, _character.Uid.Value);
+        // The death cry went out from DeathEngine.ProcessDeath (Source-X plays
+        // SoundChar(CRESND_DIE) inside CChar::Death, CCharAct.cpp:4392), and Source-X
+        // creates no persistent 0x3735 particle at the corpse position.
 
         // ---------------------------------------------------------------
         //   Per-observer dispatch (mirror of CChar::UpdateCanSee with the

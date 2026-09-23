@@ -39,6 +39,8 @@ public sealed class PaperdollRendererTests(ITestOutputHelper output)
 
         public ItemTileData GetItemTile(int itemId) => Tiles.GetValueOrDefault(itemId);
         public ushort[]? GetHueColorTable(int hue) => Hues.GetValueOrDefault(hue);
+        public AsciiFontReader? Fonts;
+        public AsciiFontReader? GetAsciiFonts() => Fonts;
 
         /// <summary>A 4x4 gump transparent except the listed pixels.</summary>
         public void Gump(int id, params (int X, int Y, byte R, byte G, byte B)[] pixels)
@@ -345,5 +347,159 @@ public sealed class PaperdollRendererTests(ITestOutputHelper output)
         Assert.Contains(rgba!.Where((_, i) => i % 4 == 3), a => a == 255);
         Assert.NotNull(r.GetPng(look, true));
         output.WriteLine($"rendered {w}x{h}");
+    }
+
+    // --- name line / fonts.mul -----------------------------------------------
+
+    private const ushort Grey = 0x4210;   // r = g = b = 16
+    private const ushort Red = 0x7C00;    // pure red, not grey
+
+    /// <summary>A fonts.mul image of <paramref name="fonts"/> identical fonts: 'A' is
+    /// 3x2 grey, 'b' 2x2 red, space 2 wide and empty, everything else 1x1 blank.</summary>
+    private static byte[] SyntheticFonts(int fonts = 2)
+    {
+        var bytes = new List<byte>();
+        for (int f = 0; f < fonts; f++)
+        {
+            bytes.Add(0); // header
+            for (int i = 0; i < AsciiFontReader.GlyphCount; i++)
+            {
+                char c = (char)(i + 32);
+                (int w, int h, ushort px) = c switch
+                {
+                    'A' => (3, 2, Grey),
+                    'b' => (2, 2, Red),
+                    ' ' => (2, 1, (ushort)0),
+                    _ => (1, 1, (ushort)0),
+                };
+                bytes.Add((byte)w); bytes.Add((byte)h); bytes.Add(0);
+                for (int p = 0; p < w * h; p++) { bytes.Add((byte)px); bytes.Add((byte)(px >> 8)); }
+            }
+        }
+        return bytes.ToArray();
+    }
+
+    [Fact]
+    public void FontsMulParsesHeaderAndGlyphs()
+    {
+        var fonts = AsciiFontReader.FromBytes(SyntheticFonts(3))!;
+        Assert.Equal(3, fonts.FontCount);
+        var a = fonts.GetGlyph(2, 'A');
+        Assert.Equal((3, 2), (a.Width, a.Height));
+        Assert.All(a.Pixels, p => Assert.Equal(Grey, p));
+        Assert.Equal(2, fonts.GetGlyph(0, '\t').Width); // control chars draw as space
+        Assert.Equal(10, fonts.GetWidth(1, "AA b"));
+        Assert.Null(AsciiFontReader.FromBytes([]));
+
+        // A truncated last font is not counted.
+        var cut = SyntheticFonts(2);
+        Assert.Equal(1, AsciiFontReader.FromBytes(cut.AsSpan(0, cut.Length - 1))!.FontCount);
+    }
+
+    [Fact]
+    public void FontLayoutWrapsAtTheLastSpaceAndMidWordWhenItMust()
+    {
+        var fonts = AsciiFontReader.FromBytes(SyntheticFonts())!;
+        Assert.Equal(["AA", "AA", "AA"], fonts.Layout(1, "AA AA AA", 9).Select(l => l.Text));
+        Assert.Equal(["AA AA"], fonts.Layout(1, "AA AA", 14).Select(l => l.Text));
+        Assert.Equal(["AA", "AA"], fonts.Layout(1, "AAAA", 7).Select(l => l.Text));
+        var line = fonts.Layout(1, "AA AA AA", 9)[0];
+        Assert.Equal((6, 2), (line.Width, line.MaxHeight));
+    }
+
+    [Fact]
+    public void FontRenderAppliesAPartialHue()
+    {
+        var fonts = AsciiFontReader.FromBytes(SyntheticFonts())!;
+        var table = new ushort[32];
+        table[16] = 0x001F; // grey 16 -> blue
+        var rgba = fonts.Render(1, "Ab", 20, table, out int w, out int h)!;
+        Assert.Equal((24, 2), (w, h));
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, rgba[0..4]);  // grey 'A' hued blue
+        int b = 3 * 4;                                             // 'b' starts after the 3-wide 'A'
+        Assert.Equal(new byte[] { 255, 0, 0, 255 }, rgba[b..(b + 4)]); // red 'b' untouched
+
+        // Fonts 5 and 8 hue every pixel, not only grey ones.
+        var full = AsciiFontReader.FromBytes(SyntheticFonts(9))!;
+        table[31] = 0x03E0; // red channel 31 -> green
+        var all = full.Render(5, "b", 4, table, out _, out _)!;
+        Assert.Equal(new byte[] { 0, 255, 0, 255 }, all[0..4]);
+    }
+
+    [Fact]
+    public void TheFrameCarriesTheNameLineWhereTheClientDrawsIt()
+    {
+        var art = HumanWithBody();
+        var frame = new byte[40 * 50 * 4];
+        for (int i = 3; i < frame.Length; i += 4) frame[i] = 255;
+        art.Gumps[PaperdollRenderer.FrameGumpOther] = (40, 50, frame);
+        art.Fonts = AsciiFontReader.FromBytes(SyntheticFonts())!;
+        var table = new ushort[32];
+        table[16] = 0x001F;
+        art.Hues[PaperdollRenderer.TitleHue] = table;
+
+        var look = Look(0x0190, 0) with { Text = "A" };
+        var rgba = new PaperdollRenderer(art).Render(look, true, out int w, out int h)!;
+
+        // The canvas grows to hold the label (185 + 4 wide, one 2-pixel line).
+        Assert.Equal(PaperdollRenderer.TitleX + PaperdollRenderer.TitleMaxWidth + 4, w);
+        Assert.Equal(PaperdollRenderer.TitleY + 2, h);
+        int p = (PaperdollRenderer.TitleY * w + PaperdollRenderer.TitleX) * 4;
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, rgba[p..(p + 4)]);
+
+        // No frame, no text: the frameless picture is the doll alone.
+        new PaperdollRenderer(art).Render(look, false, out int fw, out int fh);
+        Assert.Equal((4 + 2 * M, 4 + 2 * M), (fw, fh));
+
+        // Without fonts.mul the frame is drawn without the line.
+        art.Fonts = null;
+        new PaperdollRenderer(art).Render(look, true, out int nw, out int nh);
+        Assert.Equal((40, 50), (nw, nh));
+    }
+
+    [Fact]
+    public void ANameLineChangeRendersAgain()
+    {
+        var art = HumanWithBody();
+        var r = new PaperdollRenderer(art);
+        var look = Look(0x0190, 0) with { Text = "Yunus, Master Warrior" };
+        r.GetPng(look, true);
+        r.GetPng(look with { }, true);
+        Assert.Equal(1, r.RenderCount);
+        r.GetPng(look with { Text = "The Glorious Lord Yunus, Master Warrior" }, true);
+        Assert.Equal(2, r.RenderCount);
+    }
+
+    [Fact]
+    public void TheLabelGetsWhatThePacketCarries()
+    {
+        Assert.Equal(new string('x', 60), PaperdollRenderer.ClientTitleText(new string('x', 70)));
+        Assert.Equal("ab", PaperdollRenderer.ClientTitleText("ab\0cd"));
+        Assert.Equal("\u005F", PaperdollRenderer.ClientTitleText("\u015F")); // low byte
+    }
+
+    /// <summary>The real fonts.mul, when this machine has one: font 1 exists and a
+    /// name line renders with ink in it.</summary>
+    [Fact]
+    public void RendersTextFromTheRealFontsMul()
+    {
+        string[] candidates =
+        [
+            @"C:\sphereNetServer\mul\fonts.mul",
+            @"C:\Program Files (x86)\EA Games\Ultima Online Mondain's Legacy\fonts.mul",
+        ];
+        string? path = candidates.FirstOrDefault(File.Exists);
+        if (Gate.Missing(output, "mul tables", path == null))
+            return;
+
+        var fonts = AsciiFontReader.Load(path!)!;
+        Assert.True(fonts.FontCount > PaperdollRenderer.TitleFont);
+        var rgba = fonts.Render(PaperdollRenderer.TitleFont, "The Glorious Lord Yunus, Grandmaster Warrior",
+            PaperdollRenderer.TitleMaxWidth, null, out int w, out int h);
+        Assert.NotNull(rgba);
+        Assert.Equal(PaperdollRenderer.TitleMaxWidth + 4, w);
+        Assert.True(h > 10, $"unexpected height {h}");
+        Assert.Contains(rgba!.Where((_, i) => i % 4 == 3), a => a == 255);
+        output.WriteLine($"{fonts.FontCount} fonts; line {w}x{h}");
     }
 }

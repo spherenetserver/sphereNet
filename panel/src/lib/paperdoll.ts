@@ -31,3 +31,23 @@ const layerNames: Record<number, string> = {
 export function layerName(layer: number): string {
   return layerNames[layer] ?? `Layer ${layer}`
 }
+
+const FRAME_KEY = 'spherenet.paperdoll.frame'
+
+/** Whether the paperdoll picture is shown with its frame: the viewer's last
+ *  choice, on by default (and when storage is unavailable). */
+export function readFramePreference(): boolean {
+  try {
+    return localStorage.getItem(FRAME_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+export function saveFramePreference(frame: boolean): void {
+  try {
+    localStorage.setItem(FRAME_KEY, frame ? '1' : '0')
+  } catch {
+    // Private mode / blocked storage: the choice just won't survive a reload.
+  }
+}

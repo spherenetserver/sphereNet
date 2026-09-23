@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { hexId, hexSerial, layerName, parseSerial } from './paperdoll'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { hexId, hexSerial, layerName, parseSerial, readFramePreference, saveFramePreference } from './paperdoll'
 
 describe('parseSerial', () => {
   it.each([
@@ -23,5 +23,28 @@ describe('formatting', () => {
   it('names layers and falls back to the number', () => {
     expect(layerName(22)).toBe('Robe')
     expect(layerName(99)).toBe('Layer 99')
+  })
+})
+
+describe('frame preference', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('defaults to on and remembers the choice', () => {
+    expect(readFramePreference()).toBe(true)
+    saveFramePreference(false)
+    expect(readFramePreference()).toBe(false)
+    saveFramePreference(true)
+    expect(readFramePreference()).toBe(true)
+  })
+
+  it('falls back to on when storage throws', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    try {
+      expect(readFramePreference()).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

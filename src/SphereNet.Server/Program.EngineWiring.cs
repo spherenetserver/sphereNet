@@ -1348,7 +1348,7 @@ public static partial class Program
                     speaker.Uid.Value, speaker.BodyId,
                     0x02, // emote-style speech
                     0x0022, 3, "ENU",
-                    speaker.Name ?? "", text);
+                    speaker.GetName(), text);
                 BroadcastNearby(speaker.Position, 18, pkt, 0);
             };
             SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover =
@@ -1627,6 +1627,11 @@ public static partial class Program
             // (CCharAct.cpp:4397) — death ends every spell on you, good and bad.
             _deathEngine.DispelEffectsHook = victim =>
                 _spellEngine?.StripDispellableEffects(victim);
+            // Source-X CChar::Death SoundChar(CRESND_DIE): every death is heard,
+            // the victim's own client included.
+            _deathEngine.DeathSoundHook = (victim, soundId) =>
+                BroadcastNearby(victim.Position, 18,
+                    new PacketSound(soundId, victim.X, victim.Y, victim.Z), 0);
             // Source-X CChar::Death Trade_Delete: an open secure trade is
             // cancelled before the corpse forms so the returned items reach
             // the loot drop. Client route closes both windows; the clientless
@@ -1753,13 +1758,34 @@ public static partial class Program
             };
             // Source-X @HitTry/@HitCheck contract: the trigger runs on the
             // attacker but SRC = the victim and ARGO = the weapon.
-            _npcAI.OnNpcHitTry = (attacker, target, weapon, swingTenths) =>
+            _npcAI.OnNpcHitTry = (attacker, target, weapon, argN1, animDelay) =>
             {
-                if (_triggerDispatcher == null) return swingTenths;
-                var args = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = swingTenths };
+                if (_triggerDispatcher == null)
+                    return new SphereNet.Game.AI.NpcAI.NpcHitTryOutcome(false, argN1, animDelay, -1);
+                // Same locals as the player path (CCharFight.cpp:1933-1942).
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("Anim", -1);
+                locals.SetInt("AnimDelay", animDelay);
+                var args = new TriggerArgs
+                {
+                    CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = argN1, Locals = locals,
+                };
                 if (_triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitTry, args) == TriggerResult.True)
-                    return -1; // RETURN 1 aborts the swing
-                return SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(1, args.N1));
+                    return new SphereNet.Game.AI.NpcAI.NpcHitTryOutcome(true, argN1, animDelay, -1);
+                return new SphereNet.Game.AI.NpcAI.NpcHitTryOutcome(false,
+                    SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1),
+                    locals.GetInt("AnimDelay", animDelay),
+                    (int)locals.GetInt("Anim", -1));
+            };
+            _npcAI.OnNpcSwingStart = (attacker, _, weapon, animOverride, animDelay) =>
+            {
+                // The swing animation goes out as the swing starts; the blow and its
+                // feedback (OnNpcAttack) follow once the animation delay has passed.
+                ushort swingAnim = animOverride >= 0
+                    ? (ushort)Math.Clamp(animOverride, 0, ushort.MaxValue)
+                    : GameClient.GetNpcSwingAction(attacker, weapon);
+                GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
+                    BroadcastNearby, ForEachClientInRange, animDelay: animDelay);
             };
             _npcAI.OnNpcHitCheck = (attacker, target, weapon, swingNoRange) =>
             {
@@ -1786,11 +1812,8 @@ public static partial class Program
             };
             _npcAI.OnNpcAttack = (attacker, target, weapon, damage, ammoUid) =>
             {
-                ushort swingAnim = GameClient.GetNpcSwingAction(attacker, weapon);
-                // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
-                byte animDelay = CombatHelper.GetSwingAnimDelay(GameClient.GetSwingDelayMs(attacker, weapon));
-                GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
-                    BroadcastNearby, ForEachClientInRange, animDelay: animDelay);
+                // The swing animation already went out when the swing started
+                // (OnNpcSwingStart); this is the hit phase.
 
                 // The ranged projectile is emitted by OnNpcRangedShot below, before
                 // the hit resolves (Source-X order, CCharFight.cpp:2001-2007).
@@ -1840,13 +1863,13 @@ public static partial class Program
                         SphereNet.Core.Enums.NewAnimationGesture.Impact, 18,
                         BroadcastNearby, ForEachClientInRange);
 
-                // Only an armed strike makes a weapon sound; an unarmed creature
-                // vocalizes via its own NPC Hit sound (CharDef SOUNDHIT), so don't
-                // overlay a human fist sound on a clawed monster.
-                if (weapon != null)
+                // The strike sound is the attacker's SoundChar(CRESND_HIT)
+                // (CCharFight.cpp:2222): the weapon's when armed, the creature's own
+                // (SOUNDHIT, else SOUND= + offset) when not.
+                ushort strikeSound = GameClient.GetAttackerHitSoundPublic(attacker, weapon);
+                if (strikeSound != 0)
                     BroadcastNearby(attacker.Position, 18,
-                        new PacketSound(GameClient.GetWeaponHitSoundPublic(weapon),
-                            attacker.X, attacker.Y, attacker.Z), 0);
+                        new PacketSound(strikeSound, attacker.X, attacker.Y, attacker.Z), 0);
 
                 if (damage > 0)
                 {
@@ -1891,13 +1914,13 @@ public static partial class Program
                 // the emote hue; the victim's client alone gets the
                 // "*X is attacking you!*" variant.
                 const ushort emoteHue = 0x0022;
-                string atkName = attacker.Name ?? "";
+                var emote = CombatHelper.FormatAttackEmotes(attacker, target);
                 var emoteOthers = new PacketSpeechUnicodeOut(
                     attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, "TRK",
-                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacko, atkName, target.Name));
+                    emote.AttackerName, emote.OthersText);
                 var emoteVictim = new PacketSpeechUnicodeOut(
                     attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, "TRK",
-                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacks, atkName));
+                    emote.AttackerName, emote.VictimText);
                 uint victimUid = target.Uid.Value;
                 ForEachClientInRange(attacker.Position, 18, 0,
                     (obsCh, obsClient) => obsClient.Send(
@@ -1949,17 +1972,9 @@ public static partial class Program
             _npcAI.OnWakeNpc = WakeNpc;
             _npcAI.OnNpcSound = (npc, type) =>
             {
-                var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-                if (charDef == null) return;
-                ushort soundId = type switch
-                {
-                    CreatureSoundType.Idle => charDef.SoundIdle,
-                    CreatureSoundType.Notice => charDef.SoundNotice,
-                    CreatureSoundType.Hit => charDef.SoundHit,
-                    CreatureSoundType.GetHit => charDef.SoundGetHit,
-                    CreatureSoundType.Die => charDef.SoundDie,
-                    _ => 0
-                };
+                // Source-X SoundChar: the SOUNDxxx override, else the SOUND= base
+                // plus the action's offset (CCharAct.cpp:2612-2808).
+                ushort soundId = CharacterSounds.Resolve(npc, type);
                 if (soundId == 0) return;
                 var snd = new PacketSound(soundId, npc.X, npc.Y, npc.Z);
                 BroadcastNearby(npc.Position, 18, snd, 0);

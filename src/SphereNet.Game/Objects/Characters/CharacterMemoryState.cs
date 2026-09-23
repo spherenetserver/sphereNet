@@ -311,8 +311,8 @@ public sealed class CharacterMemoryState
         if (_owner.IsPlayer)
         {
             string msg = cowardice
-                ? ServerMessages.GetFormatted(Msg.MsgCoward1, target.Name)
-                : ServerMessages.GetFormatted(Msg.MsgCoward2, target.Name);
+                ? ServerMessages.GetFormatted(Msg.MsgCoward1, target.GetName())
+                : ServerMessages.GetFormatted(Msg.MsgCoward2, target.GetName());
             Character.SendOwnerMessage?.Invoke(_owner, msg);
         }
 

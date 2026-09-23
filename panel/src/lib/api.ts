@@ -104,6 +104,19 @@ export interface PaperdollInfo {
   /** False for bodies without a paperdoll picture (animals, monsters). */
   hasPaperdoll: boolean
   equipment: PaperdollItem[]
+  // The parts of paperdollText, each empty when absent.
+  /** Karma/fame rank, or Murderer / Criminal. */
+  notoTitle: string
+  /** Lord / Lady, a staff title, or TAG.NAME.PREFIX. */
+  fameTitle: string
+  nameSuffix: string
+  /** Rank + fame title + name + suffix, e.g. "The Glorious Lord Name". */
+  fullName: string
+  /** Guild abbreviation and guild title, only while the member shows the abbreviation. */
+  guildAbbrev: string
+  guildTitle: string
+  /** What follows the comma: the guild title, or the TITLE / skill title. */
+  tradeTitle: string
 }
 
 export interface ShutdownSchedule {

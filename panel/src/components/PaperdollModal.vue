@@ -28,6 +28,18 @@
 
         <div class="details">
           <p class="doll-text">{{ info.paperdollText }}</p>
+          <dl v-if="info.notoTitle || info.fameTitle || info.guildAbbrev" class="parts">
+            <template v-if="info.notoTitle">
+              <dt>{{ t('paperdoll.rank') }}</dt><dd>{{ info.notoTitle }}</dd>
+            </template>
+            <template v-if="info.fameTitle">
+              <dt>{{ t('paperdoll.fameTitle') }}</dt><dd>{{ info.fameTitle }}</dd>
+            </template>
+            <template v-if="info.guildAbbrev">
+              <dt>{{ t('paperdoll.guild') }}</dt>
+              <dd>[{{ info.guildAbbrev }}]<span v-if="info.guildTitle"> {{ info.guildTitle }}</span></dd>
+            </template>
+          </dl>
           <div class="badges">
             <span v-if="info.isPlayer" class="badge" :class="info.online ? 'on' : 'off'">
               {{ info.online ? t('paperdoll.online') : t('paperdoll.offline') }}
@@ -66,7 +78,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AlertTriangle, Loader2, X } from 'lucide-vue-next'
 import { errorMessage, paperdollApi, type PaperdollInfo } from '@/lib/api'
-import { hexId, hexSerial, layerName } from '@/lib/paperdoll'
+import { hexId, hexSerial, layerName, readFramePreference, saveFramePreference } from '@/lib/paperdoll'
 import { t } from '@/i18n'
 
 const props = defineProps<{ serial: number }>()
@@ -77,7 +89,9 @@ const loading    = ref(true)
 const error      = ref('')
 const imageUrl   = ref('')
 const imageError = ref('')
-const frame      = ref(false)
+// The framed picture carries the name line the way the game client shows it,
+// so it is the default; the viewer's own choice is remembered.
+const frame      = ref(readFramePreference())
 
 function revokeImage() {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
@@ -135,7 +149,10 @@ onBeforeUnmount(() => {
   revokeImage()
 })
 watch(() => props.serial, load)
-watch(frame, loadImage)
+watch(frame, value => {
+  saveFramePreference(value)
+  loadImage()
+})
 </script>
 
 <style scoped>
@@ -173,6 +190,12 @@ watch(frame, loadImage)
   margin: 6px 0 0; font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.05em; color: var(--text-muted);
 }
+
+.parts {
+  margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px;
+}
+.parts dt { color: var(--text-muted); }
+.parts dd { margin: 0; color: var(--text-primary); }
 
 .badges { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 

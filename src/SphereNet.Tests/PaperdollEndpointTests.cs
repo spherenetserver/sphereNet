@@ -32,7 +32,9 @@ public sealed class PaperdollEndpointTests : IAsyncLifetime
     private static PaperdollInfo Info(uint serial, bool player, int plevel) => new(
         serial, $"Char{serial}", "the Tester", $"Char{serial}, the Tester", 0x190, false,
         player, plevel, "secretaccount", true, true,
-        [new PaperdollItemInfo(5, 0x40000001, 0x1517, 0x21, "shirt")]);
+        [new PaperdollItemInfo(5, 0x40000001, 0x1517, 0x21, "shirt")],
+        NotoTitle: "Glorious", FameTitle: "Lord", FullName: $"The Glorious Lord Char{serial}",
+        GuildAbbrev: "ABC", GuildTitle: "Knight", TradeTitle: "Knight");
 
     private PanelContext Context(string iniPath) => new()
     {
@@ -142,6 +144,13 @@ public sealed class PaperdollEndpointTests : IAsyncLifetime
         using var doc = JsonDocument.Parse(body);
         Assert.Equal("Char1, the Tester", doc.RootElement.GetProperty("paperdollText").GetString());
         Assert.Equal(1, doc.RootElement.GetProperty("equipment").GetArrayLength());
+        // The name line's parts, for a page that styles them separately.
+        Assert.Equal("Glorious", doc.RootElement.GetProperty("notoTitle").GetString());
+        Assert.Equal("Lord", doc.RootElement.GetProperty("fameTitle").GetString());
+        Assert.Equal("The Glorious Lord Char1", doc.RootElement.GetProperty("fullName").GetString());
+        Assert.Equal("ABC", doc.RootElement.GetProperty("guildAbbrev").GetString());
+        Assert.Equal("Knight", doc.RootElement.GetProperty("guildTitle").GetString());
+        Assert.Equal("Knight", doc.RootElement.GetProperty("tradeTitle").GetString());
         Assert.DoesNotContain("privLevel", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secretaccount", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("online", body, StringComparison.OrdinalIgnoreCase);

@@ -120,6 +120,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // so a value left behind could steer a later test's swing or cast and
         // surface as a failure once every dozen runs.
         SphereNet.Game.Objects.Characters.Character.CombatFlags = 0;
+        SphereNet.Game.Combat.CharacterSounds.GenericSoundsEnabled = true;
         SphereNet.Game.Objects.Characters.Character.CombatDamageEra = 0;
         SphereNet.Game.Objects.Characters.Character.CombatHitChanceEra = 0;
         SphereNet.Game.Objects.Characters.Character.EquippedCastEnabled = false;
@@ -204,6 +205,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.ResolveMultiDefId = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuild = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuildManager = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveGuildManager = null;
+        SphereNet.Game.Clients.PaperdollText.NpcNoFameTitle = false;
         SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = null;
         SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = null;
         SphereNet.Game.Objects.Characters.Character.OnCanMakeCheck = null;

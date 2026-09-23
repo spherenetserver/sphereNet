@@ -282,6 +282,22 @@ public static class CombatHelper
         return new SwingPrepFailure(SwingPrepResult.Ready, 0);
     }
 
+    /// <summary>Attacker_Add's two fight-start lines. Both name the characters by
+    /// their DISPLAY name (Source-X GetName(), CCharAttacker.cpp:72/:79, which falls
+    /// back to the CHARDEF NAME):
+    /// an NPC spawned from a chardef carries no instance name of its own, so the raw
+    /// Name field left the emote reading "* is attacking you!*".</summary>
+    public static (string AttackerName, string OthersText, string VictimText) FormatAttackEmotes(
+        Character attacker, Character target)
+    {
+        string atkName = attacker.GetName();
+        return (atkName,
+            SphereNet.Game.Messages.ServerMessages.GetFormatted(
+                SphereNet.Game.Messages.Msg.CombatAttacko, atkName, target.GetName()),
+            SphereNet.Game.Messages.ServerMessages.GetFormatted(
+                SphereNet.Game.Messages.Msg.CombatAttacks, atkName));
+    }
+
     public static CombatFlags ActiveCombatFlags =>
         (CombatFlags)(Character.CombatFlags & 0xFFFFFFFF);
 
@@ -290,12 +306,92 @@ public static class CombatHelper
         (Character.CombatFlags & (int)flag) != 0;
 
     // =====================================================================
-    // Two-phase swing (Source-X windup -> hit). The default (flagless) case
-    // keeps a zero-length windup so the hit resolves in the same tick the
-    // swing starts — byte-for-byte the previous atomic behaviour. A windup
-    // window only opens for STAYINRANGE / SWING_NORANGE (and PREHIT forces the
-    // hit back to swing-start and disables SWING_NORANGE).
+    // Two-phase swing (Source-X windup -> hit). Source-X runs a swing in three
+    // states (Fight_Hit, CCharFight.cpp:1923-1995): EQUIPPING waits the recoil,
+    // READY sends the attack animation, SWINGING lands the blow once the
+    // animation delay has passed. By default the animation lasts a second and
+    // the recoil is the rest of the attack speed, so the damage arrives a second
+    // after the swing is seen; COMBAT_PREHIT folds the animation delay into the
+    // recoil and lands the blow as the animation starts.
+    //
+    // Here a swing starts at the animation: the pending hit is armed for the
+    // animation delay and the next swing is due after it plus the recoil, which
+    // is the same cycle measured from a different point.
     // =====================================================================
+
+    /// <summary>kiMinSwingAnimationDelay (CCharFight.cpp:21): a swing animation
+    /// lasts at least a second, and no attack is faster than that.</summary>
+    public const int MinSwingAnimationTenths = 10;
+
+    /// <summary>m_iRecoilDelay / m_iSwingAnimationDelay, in tenths of a second.</summary>
+    public readonly record struct SwingDelays(int RecoilTenths, int AnimTenths);
+
+    /// <summary>Source-X Fight_SetDefaultSwingDelays (CCharFight.cpp:1655-1679)
+    /// for an attack speed of <paramref name="swingDelayMs"/>.</summary>
+    public static SwingDelays GetDefaultSwingDelays(int swingDelayMs)
+    {
+        int attack = Math.Max(MinSwingAnimationTenths, swingDelayMs / 100);
+        int recoil, anim;
+        if (IsCombatFlagSet(CombatFlags.AnimHitSmooth))
+        {
+            // No recoil at all: the animation spans the whole attack.
+            recoil = 0;
+            anim = attack;
+        }
+        else
+        {
+            recoil = attack - MinSwingAnimationTenths;
+            anim = MinSwingAnimationTenths;
+        }
+        if (IsCombatFlagSet(CombatFlags.PreHit))
+        {
+            recoil += anim;
+            anim = 0;
+        }
+        return new SwingDelays(recoil, anim);
+    }
+
+    /// <summary>The @HitTry view of the delays (CCharFight.cpp:1929-1935): ARGN1 is
+    /// the recoil and LOCAL.AnimDelay the animation delay - swapped under
+    /// COMBAT_ANIM_HIT_SMOOTH, where ARGN1 is the one that paces the swing.</summary>
+    public static (int ArgN1, int AnimDelay) ToHitTryArgs(SwingDelays delays) =>
+        IsCombatFlagSet(CombatFlags.AnimHitSmooth)
+            ? (delays.AnimTenths, delays.RecoilTenths)
+            : (delays.RecoilTenths, delays.AnimTenths);
+
+    /// <summary>Read the delays back from @HitTry, with the floors Source-X applies
+    /// after the trigger (CCharFight.cpp:1945-1948): a recoil of at least a tenth,
+    /// an animation delay of at least zero.</summary>
+    public static SwingDelays FromHitTryArgs(long argN1, long animDelay)
+    {
+        bool smooth = IsCombatFlagSet(CombatFlags.AnimHitSmooth);
+        long recoil = smooth ? animDelay : argN1;
+        long anim = smooth ? argN1 : animDelay;
+        return new SwingDelays(
+            (int)Math.Clamp(recoil, 1, short.MaxValue),
+            (int)Math.Clamp(anim, 0, short.MaxValue));
+    }
+
+    /// <summary>How long after the swing animation starts the blow lands
+    /// (CCharFight.cpp:1995-1998): the animation delay, or - under
+    /// COMBAT_ANIM_HIT_SMOOTH - the whole seconds the animation was sent with, so
+    /// the damage does not trail the animation's end. 0 = at once (PREHIT).</summary>
+    public static int GetSwingHitDelayMs(SwingDelays delays) =>
+        IsCombatFlagSet(CombatFlags.AnimHitSmooth)
+            ? GetSwingAnimDelay(delays) * 1000
+            : delays.AnimTenths * 100;
+
+    /// <summary>From one swing animation to the next: the hit delay, then the
+    /// recoil that follows the blow.</summary>
+    public static int GetSwingCycleMs(SwingDelays delays) =>
+        GetSwingHitDelayMs(delays) + delays.RecoilTenths * 100;
+
+    /// <summary>The wait before the first swing of a fight, or after a weapon
+    /// change: Source-X enters the fight skill in WAR_SWING_EQUIPPING
+    /// (CCharSkill.cpp:4559-4563), so the recoil runs before the first
+    /// animation - the attack speed less the second the animation takes.</summary>
+    public static int GetInitialSwingWaitMs(int swingDelayMs) =>
+        GetDefaultSwingDelays(swingDelayMs).RecoilTenths * 100;
 
     /// <summary>Outcome of the hit-time reach/LoS re-check.</summary>
     public enum HitTimeDecision { Resolve, Miss, Wait, Drop }
@@ -371,15 +467,20 @@ public static class CombatHelper
         if (InWeaponReachAndLos(world, attacker, target, weapon, privLevel, canSeeLos, effectiveRange))
             return HitTimeDecision.Resolve;
 
-        // Out of reach / LoS when the hit should land:
+        // Out of reach / LoS when the hit should land. Source-X re-checks both in
+        // the SWINGING state (Fight_CanHit LoS :1718, the reach test :1906-1918):
+        // COMBAT_STAYINRANGE spends the swing (WAR_SWING_EQUIPPING - the recoil
+        // restarts, nothing else happens); otherwise the loaded blow is HELD
+        // (swingTypeHold) and lands as soon as the target is back in reach.
+        //
+        // The hold is bounded by the deadline the swing was armed with, so a
+        // target that never comes back does not pin a pending hit for the rest of
+        // the fight; upstream holds without a limit but also has no pending-hit
+        // slot to leak.
         bool preHit = IsCombatFlagSet(CombatFlags.PreHit);
         if (IsCombatFlagSet(CombatFlags.StayInRange) && !preHit)
-            return HitTimeDecision.Miss;                 // moved out -> miss
-        if ((swingNoRange ?? IsCombatFlagSet(CombatFlags.SwingNoRange)) && !preHit)
-            return nowMs >= deadlineMs ? HitTimeDecision.Drop : HitTimeDecision.Wait;
-        // Default: resolve anyway — a flagless swing only starts in range, so the
-        // hit landing in the same tick is exactly the previous atomic behaviour.
-        return HitTimeDecision.Resolve;
+            return HitTimeDecision.Miss;                 // moved out -> swing spent
+        return nowMs >= deadlineMs ? HitTimeDecision.Drop : HitTimeDecision.Wait;
     }
 
     private static void NormaliseRange(ref int min, ref int max)
@@ -388,20 +489,6 @@ public static class CombatHelper
         max = Math.Max(0, max);
         if (min > max)
             (min, max) = (max, min);
-    }
-
-    /// <summary>Windup length before the hit lands. 0 = atomic (hit at swing
-    /// start), which is the flagless default and the PREHIT case. STAYINRANGE /
-    /// SWING_NORANGE (without PREHIT) open a full-swing window so the reach/LoS
-    /// re-check has meaning. <paramref name="swingNoRange"/> overrides the
-    /// SWING_NORANGE flag for this swing (the @HitCheck LOCAL.Recoil_NoRange
-    /// contract); null keeps the global flag.</summary>
-    public static int GetSwingHitDelayMs(int swingDelayMs, bool? swingNoRange = null)
-    {
-        if (IsCombatFlagSet(CombatFlags.PreHit)) return 0;
-        bool window = IsCombatFlagSet(CombatFlags.StayInRange) ||
-            (swingNoRange ?? IsCombatFlagSet(CombatFlags.SwingNoRange));
-        return window ? Math.Max(0, swingDelayMs) : 0;
     }
 
     /// <summary>True when the swing may START out of range / without LoS
@@ -418,19 +505,25 @@ public static class CombatHelper
         !target.IsDead && !target.IsDeleted && target.Hits > 0 && !target.HasPendingHit;
 
     /// <summary>The 0x6E frame-delay byte of a swing - Source-X's
-    /// iSwingAnimationDelayInSeconds (CCharFight.cpp:1973-1988): the swing animation
-    /// lasts a second (kiMinSwingAnimationDelay, :21) so the byte is 1, and only
-    /// COMBAT_ANIM_HIT_SMOOTH stretches it to the whole swing, in whole seconds, the
-    /// attack speed floored at that second (:1662-1668). Never 0. This sent 0 by
-    /// default - and the client paces a server animation at (delay + 2) frame times
-    /// (ClassicUO Mobile.cs:610), so every swing played in two thirds of upstream's
-    /// time - and swingMs/70 under SMOOTH, which is not upstream's unit at all.</summary>
-    public static byte GetSwingAnimDelay(int swingDelayMs)
+    /// iSwingAnimationDelayInSeconds (CCharFight.cpp:1973-1988): the animation delay
+    /// in whole seconds, never below one. By default that is the one second a swing
+    /// animation lasts (kiMinSwingAnimationDelay, :21); COMBAT_ANIM_HIT_SMOOTH
+    /// stretches it to the whole attack; under COMBAT_PREHIT it is 1, or the recoil
+    /// in seconds with ANIM_HIT_SMOOTH as well. The client paces a server animation
+    /// at (delay + 2) frame times (ClassicUO Mobile.cs:610).</summary>
+    public static byte GetSwingAnimDelay(SwingDelays delays)
     {
-        if (!IsCombatFlagSet(CombatFlags.AnimHitSmooth)) return 1;
-        int tenths = Math.Max(10, swingDelayMs / 100);
-        return (byte)Math.Clamp(tenths / 10, 1, 255);
+        bool preHit = IsCombatFlagSet(CombatFlags.PreHit);
+        if (preHit && !IsCombatFlagSet(CombatFlags.AnimHitSmooth))
+            return 1;
+        int seconds = (preHit ? delays.RecoilTenths : delays.AnimTenths) / 10;
+        return (byte)Math.Clamp(seconds, 1, 255);
     }
+
+    /// <summary><see cref="GetSwingAnimDelay(SwingDelays)"/> for the default
+    /// delays of an attack speed.</summary>
+    public static byte GetSwingAnimDelay(int swingDelayMs) =>
+        GetSwingAnimDelay(GetDefaultSwingDelays(swingDelayMs));
 
     /// <summary>
     /// Resolve which ammo a ranged weapon fires from its ITEMDEF (Source-X
@@ -515,6 +608,10 @@ public static class CombatHelper
             gfx = weapon.DispIdFull;
         return (gfx, hue, render);
     }
+
+    /// <summary>A numeric item prop as Sphere writes it: a defname, 0x-hex, a
+    /// leading-zero hex or plain decimal.</summary>
+    internal static ushort ParsePropUShort(string raw) => ParseAnimValue(raw);
 
     private static ushort ParseAnimValue(string raw)
     {

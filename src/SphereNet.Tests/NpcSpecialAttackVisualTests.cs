@@ -212,6 +212,9 @@ public class NpcSpecialAttackVisualTests : IDisposable
             {
                 ai.OnTickAction(npc);
                 npc.NextNpcActionTime = 0;
+                // The blow lands after the swing animation delay; let it elapse.
+                if (npc.HasPendingHit)
+                    npc.SwingHitTime = Environment.TickCount64 - 1;
             }
         }
         finally
@@ -259,6 +262,10 @@ public class NpcSpecialAttackVisualTests : IDisposable
 
         archer.FightTarget = target.Uid;
         archer.NextAttackTime = 0;
+        client.TickCombat();
+        // The arrow leaves when the blow resolves, a swing animation delay after the
+        // swing starts (Source-X Fight_Hit post-swing EFFECT_BOLT).
+        archer.SwingHitTime = Environment.TickCount64 - 1;
         client.TickCombat();
 
         Assert.Contains(sent, p =>

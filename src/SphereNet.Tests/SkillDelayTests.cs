@@ -301,6 +301,9 @@ public class SkillDelayTests
                 attacker.NextAttackTime = 0;
                 attacker.SetCombatSwingState(SwingState.Ready);
                 client.TickCombat();
+                // The blow lands a swing animation delay after the swing starts.
+                attacker.SwingHitTime = Environment.TickCount64 - 1;
+                client.TickCombat();
             }
 
             Assert.False(target.HasActiveSkillPending());

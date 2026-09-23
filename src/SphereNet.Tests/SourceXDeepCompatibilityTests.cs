@@ -91,7 +91,7 @@ public sealed class SourceXDeepCompatibilityTests
         var alias = stack.Resources.ResolveDefName("c_deep_alias");
         Assert.True(alias.IsValid);
         var character = Assert.IsType<SphereNet.Scripting.Definitions.CharDef>(DefinitionLoader.GetCharDef(alias.Index));
-        Assert.Equal((ushort)0x048D, character.SoundIdle);
+        Assert.Equal((ushort)0x048D, character.SoundBase);
         Assert.Equal(ItemType.MeatRaw, character.FoodType);
         Assert.Equal(3, character.EraLimitGear);
         Assert.Equal((short)12, character.ResPhysical);

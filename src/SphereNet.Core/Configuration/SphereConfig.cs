@@ -240,6 +240,9 @@ public sealed class SphereConfig
     public int NotoTimeout { get; set; } = 30;
     public bool MonsterFight { get; set; }
     public bool MonsterFear { get; set; } = true;
+    /// <summary>NPCNOFAMETITLE: NPCs never get the Lord/Lady fame title
+    /// (upstream CChar::Noto_GetFameTitle). Default off.</summary>
+    public bool NpcNoFameTitle { get; set; }
     public int AdvancedLos { get; set; }
 
     // NPC AI (Source-X NPCAI / NPCHEALTHRESHOLD / NPCWANDERLOOKAROUNDCHANCE).
@@ -967,6 +970,7 @@ public sealed class SphereConfig
         NotoTimeout = ini.GetInt(section, "NotoTimeout", NotoTimeout);
         MonsterFight = ini.GetBool(section, "MonsterFight", MonsterFight);
         MonsterFear = ini.GetBool(section, "MonsterFear", MonsterFear);
+        NpcNoFameTitle = ini.GetBool(section, "NPCNoFameTitle", NpcNoFameTitle);
         AdvancedLos = ini.GetInt(section, "AdvancedLos", AdvancedLos);
         NpcAi = GetIntOrHex(ini, section, "NpcAi",
             GetIntOrHex(ini, section, "NPCAI", NpcAi));

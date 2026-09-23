@@ -148,7 +148,13 @@ public record PlayerInfo(
 );
 
 /// <summary>A character's paperdoll data. <see cref="PaperdollText"/> is the exact
-/// name line the game client shows (0x88 OpenPaperdoll).</summary>
+/// name line the game client shows (0x88 OpenPaperdoll); the fields after
+/// <see cref="Equipment"/> are its parts, so a page can style them separately:
+/// <see cref="NotoTitle"/> the karma/fame rank (or Murderer / Criminal),
+/// <see cref="FameTitle"/> Lord / Lady / a staff title (or TAG.NAME.PREFIX),
+/// <see cref="FullName"/> rank + fame title + name + suffix, <see cref="GuildAbbrev"/>
+/// and <see cref="GuildTitle"/> when the member shows the abbreviation, and
+/// <see cref="TradeTitle"/> the part after the comma.</summary>
 public record PaperdollInfo(
     uint Serial,
     string Name,
@@ -161,7 +167,14 @@ public record PaperdollInfo(
     string AccountName,
     bool Online,
     bool HasPaperdoll,
-    IReadOnlyList<PaperdollItemInfo> Equipment
+    IReadOnlyList<PaperdollItemInfo> Equipment,
+    string NotoTitle = "",
+    string FameTitle = "",
+    string NameSuffix = "",
+    string FullName = "",
+    string GuildAbbrev = "",
+    string GuildTitle = "",
+    string TradeTitle = ""
 );
 
 public record PaperdollItemInfo(

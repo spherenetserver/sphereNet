@@ -311,6 +311,10 @@ public class MultiClientVisibilityTests
             };
 
             clientA.TickCombat();
+            // The blow lands a second after the swing animation (Source-X swing
+            // animation delay); let the windup elapse so its feedback goes out.
+            chA.SwingHitTime = Environment.TickCount64 - 1;
+            clientA.TickCombat();
 
             // Should have received swing animation (0x6E) or at least some combat packets
             bool hasAnyBroadcast = broadcastsToB.Count > 0;

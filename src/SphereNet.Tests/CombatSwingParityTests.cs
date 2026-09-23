@@ -109,6 +109,11 @@ public class CombatSwingParityTests
             archer.NextAttackTime = 0;
 
             client.TickCombat();
+            // The arrow is spent and flies when the blow resolves, a swing animation
+            // delay after the swing starts (Source-X Fight_Hit).
+            Assert.Equal(2, arrows.Amount);
+            archer.SwingHitTime = Environment.TickCount64 - 1;
+            client.TickCombat();
 
             Assert.Equal(1, arrows.Amount);
             Assert.Equal(SwingState.Swinging, archer.CombatSwingState);

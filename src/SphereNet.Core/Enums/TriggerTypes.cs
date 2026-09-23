@@ -293,5 +293,10 @@ public enum CharTrigger : short
     /// Same arguments as <see cref="ArrowQuestAdd"/>.</summary>
     ArrowQuestClose,
 
+    /// <summary>Fired on the character whose paperdoll is about to be sent, with the
+    /// viewer as SRC, before the name line is built (CClientMsg.cpp addCharPaperdoll).
+    /// A script can change TITLE or TAG.NAME.* here; the return value is ignored.</summary>
+    SendPaperdoll,
+
     Qty,
 }

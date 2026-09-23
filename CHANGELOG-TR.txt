@@ -4,6 +4,38 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Source-X vurus zamanlamasi, dovus sesleri, dovus adlari; paperdoll unvan satiri
+------------------------------------------------------------------------
+DUZELTME - Vuruslar Source-X Fight_SetDefaultSwingDelays / Fight_Hit'i izler
+           (CCharFight.cpp:1655, 1923): vurus animasyonu baslangicta gider,
+           darbe animasyon gecikmesinden (varsayilan 1 sn) sonra iner, ardindan
+           toparlanma isler; COMBAT_PREHIT darbeyi animasyonla indirir,
+           ANIM_HIT_SMOOTH'ta toparlanma yoktur. Iki asamali vurus sadece
+           STAYINRANGE ya da SWING_NORANGE aciksa calisiyordu; her vurus aninda
+           cozuluyordu. Vurus aninda menzil disindaki hedef darbeyi bekletir;
+           STAYINRANGE sessizce harcar; olu ya da gecersiz hedef dusurur.
+           @HitTry ARGN1 toparlanma, LOCAL.AnimDelay animasyon gecikmesidir
+           (onda bir saniye). NPC vuruslari animasyonu baslangicta gonderir;
+           menzilli mermiler darbe cozulurken gider.
+DUZELTME - Karakter sesleri SoundChar'i izler (CCharAct.cpp:2612): SOUND= eylem
+           ofsetli bir tabandir (liste olarak bolunuyordu, yaratiklarin cogu
+           sessizdi), SOUNDxxx ezer, -1 susturur, GENERICSOUNDS uygulanir.
+           WEAPONSOUNDHIT/MISS ve AMMOSOUNDHIT/MISS kullanilir; firlatma
+           silahlari menzilli iska sesini kullanir; olum sesi her olumde calar.
+DUZELTME - Dovus emote'lari ve vurus/iska mesajlari karakterin gorunen adini
+           kullanir; adi CHARDEF'ten gelen NPC'ler "* is attacking you!*"
+           gosteriyordu.
+DUZELTME - Paperdoll satiri PacketPaperdoll'u izler (send.cpp): noto/un unvani,
+           ad, lonca kisaltmasi ve lonca unvani, yoksa en iyi skill'den meslek
+           unvani (OF_NoPaperdollTradeTitle, NPCNOFAMETITLE). Yeni
+           @SendPaperdoll trigger'i. PRIVSHOW Source-X gibi varsayilan acik.
+EKLEME - Cerceveli paperdoll gorseli bu satiri client'in ASCII font 1'i, hue
+         0x386 ile client konumunda tasir (client'tan fonts.mul gerekir). JSON
+         parcalari da verir (rutbe, ad, lonca, unvan). Panel cerceveyi
+         varsayilan gosterir.
+TEST - SwingTimingAndSoundParityTests, PaperdollTextParityTests,
+       PaperdollRendererTests.
+
 [2026-09-23] - Updater: silemedigi klasorun uzerine yazar, tutan sureci soyler
 ------------------------------------------------------------------------
 DUZELTME - Updater degistirdigi bir klasoru silemediginde (calisan Host, acik bir

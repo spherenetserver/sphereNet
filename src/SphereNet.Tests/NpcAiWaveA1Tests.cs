@@ -79,7 +79,8 @@ public class NpcAiWaveA1Tests
         caster.SetSkill(SkillType.Tactics, 1000); // Source-X gate: > 20.0
 
         bool meleeFired = false;
-        ai.OnNpcAttack = (_, _, _, _, _) => meleeFired = true;
+        // A committed swing counts; its blow lands a swing animation delay later.
+        ai.OnNpcSwingStart = (_, _, _, _, _) => meleeFired = true;
         ai.OnNpcCastSpell = (_, _, _) => { };
 
         for (int i = 0; i < 60 && !meleeFired; i++)

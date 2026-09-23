@@ -326,7 +326,7 @@ public static partial class Program
             npc.SpeechColor != 0 ? npc.SpeechColor : (ushort)0x03B2,
             3,
             "TRK",
-            npc.Name ?? "",
+            npc.GetName(),
             line);
         BroadcastNearby(npc.Position, 14, speechPacket, 0);
     }
@@ -1195,7 +1195,7 @@ public static partial class Program
 
         // Send NPC speech response to nearby clients
         var speechPacket = new PacketSpeechUnicodeOut(
-            npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, "TRK", npc.Name ?? "", response);
+            npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, "TRK", npc.GetName(), response);
         BroadcastNearby(npc.Position, 18, speechPacket, 0);
     }
 }

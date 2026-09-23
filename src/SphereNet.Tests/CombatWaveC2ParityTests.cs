@@ -170,6 +170,9 @@ public class CombatWaveC2ParityTests
                 attacker.SetCombatSwingState(SwingState.Ready);
                 int before = arrows.Amount;
                 client.TickCombat();
+                // The blow resolves a swing animation delay after the swing starts.
+                attacker.SwingHitTime = Environment.TickCount64 - 1;
+                client.TickCombat();
                 if (attacker.TryGetTag("GOTARROW", out _))
                 {
                     missSeen = true;

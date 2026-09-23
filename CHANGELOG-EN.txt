@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Source-X swing timing, combat sounds, combat names; paperdoll title line
+------------------------------------------------------------------------
+FIX - Swings follow Source-X Fight_SetDefaultSwingDelays / Fight_Hit
+      (CCharFight.cpp:1655, 1923): the swing animation goes out at swing
+      start, the blow lands after the animation delay (1 s by default), then
+      the recoil runs; COMBAT_PREHIT lands the blow with the animation and
+      ANIM_HIT_SMOOTH has no recoil. The two-phase swing only ran with
+      STAYINRANGE or SWING_NORANGE set, so every hit resolved instantly. A
+      target out of reach at hit time holds the blow; STAYINRANGE spends it
+      silently; a dead or invalid target drops it. @HitTry ARGN1 is the recoil
+      and LOCAL.AnimDelay the animation delay in tenths, as upstream. NPC
+      swings send their animation at swing start; ranged projectiles go out
+      when the blow resolves.
+FIX - Character sounds follow SoundChar (CCharAct.cpp:2612): SOUND= is a base
+      with per-action offsets (it was split as a list, leaving most creatures
+      silent), SOUNDxxx overrides win and -1 silences, GENERICSOUNDS applies.
+      WEAPONSOUNDHIT/MISS and AMMOSOUNDHIT/MISS are used; throwing weapons miss
+      with the ranged set; the death cry plays for every death.
+FIX - Combat emotes and hit/miss messages use the character's display name;
+      NPCs named by their CHARDEF showed "* is attacking you!*".
+FIX - The paperdoll line follows PacketPaperdoll (send.cpp): notoriety/fame
+      title, name, guild abbreviation with guild title, else the trade title
+      from the best skill (OF_NoPaperdollTradeTitle, NPCNOFAMETITLE). New
+      @SendPaperdoll trigger. PRIVSHOW defaults to on as upstream.
+ADD - The framed paperdoll picture carries that line in the client's ASCII
+      font 1, hue 0x386, at the client position (fonts.mul from the client
+      is needed). The JSON also returns the parts (rank, name, guild, title).
+      The panel shows the frame by default.
+TEST - SwingTimingAndSoundParityTests, PaperdollTextParityTests,
+       PaperdollRendererTests.
+
 [2026-09-23] - Updater: overwrite a folder it cannot delete, name what holds it
 ------------------------------------------------------------------------
 FIX - When the updater cannot delete a folder it replaces (panelssets held

@@ -6,24 +6,24 @@
         <div class="header-row">
           <h2 class="panel-title">
             <i class="bi bi-journal-code" />
-            Scripts
+            {{ t('scripts.title') }}
           </h2>
-          <button class="btn-icon" @click="refresh" title="Refresh">
+          <button class="btn-icon" @click="refresh" :title="t('common.refresh')">
             <i class="bi bi-arrow-clockwise" :class="{ spin: loading }" />
           </button>
         </div>
 
         <div class="search-row">
           <i class="bi bi-search search-icon" />
-          <input v-model="search" placeholder="Filter files…" class="search-input" />
+          <input v-model="search" :placeholder="t('scripts.filter')" class="search-input" />
         </div>
       </div>
 
-      <div v-if="loading" class="empty">Loading…</div>
+      <div v-if="loading" class="empty">{{ t('common.loading') }}</div>
 
       <div v-else-if="treeNodes.length === 0" class="empty">
-        <span v-if="files.length === 0">No .scp files found</span>
-        <span v-else>No match for "{{ search }}"</span>
+        <span v-if="files.length === 0">{{ t('scripts.noFiles') }}</span>
+        <span v-else>{{ t('scripts.noMatch', { q: search }) }}</span>
       </div>
 
       <div v-else class="file-list">
@@ -58,7 +58,7 @@
       <!-- Download section -->
       <div class="download-section">
         <div class="download-info">
-          <span>Download &amp; Install Scripts</span>
+          <span>{{ t('scripts.downloadInstall') }}</span>
           <a
             :href="pack.url"
             target="_blank"
@@ -76,7 +76,7 @@
           :disabled="downloading"
         >
           <i class="bi bi-cloud-download" />
-          <span>{{ downloading ? 'Downloading…' : 'Install' }}</span>
+          <span>{{ downloading ? t('scripts.downloading') : t('scripts.install') }}</span>
         </button>
         <p v-if="downloadMsg" class="download-msg" :class="{ error: downloadError }">
           {{ downloadMsg }}
@@ -88,7 +88,7 @@
     <div class="content-panel">
       <div v-if="!selected" class="no-selection">
         <i class="bi bi-file-earmark-text" style="font-size: 36px; opacity: 0.2" />
-        <p>Select a file to view its contents</p>
+        <p>{{ t('scripts.selectFile') }}</p>
       </div>
 
       <template v-else>
@@ -96,23 +96,23 @@
           <span class="content-path">
             <i class="bi bi-file-earmark-text" />
             {{ selected.relativePath }}
-            <span v-if="dirty" class="dirty-dot">unsaved</span>
+            <span v-if="dirty" class="dirty-dot">{{ t('scripts.unsaved') }}</span>
           </span>
           <div class="content-actions">
             <span class="content-meta">{{ fmtSize(selected.sizeBytes) }}</span>
             <button class="btn-small" @click="validateCurrent" :disabled="saving || contentLoading">
-              Validate
+              {{ t('scripts.validate') }}
             </button>
             <button class="btn-small primary" @click="saveCurrent" :disabled="!dirty || saving || contentLoading">
-              {{ saving ? 'Saving…' : 'Save' }}
+              {{ saving ? t('common.saving') : t('common.save') }}
             </button>
             <button class="btn-small" @click="resyncScripts" :disabled="saving">
-              Resync
+              {{ t('scripts.resync') }}
             </button>
           </div>
         </div>
 
-        <div v-if="contentLoading" class="no-selection">Loading…</div>
+        <div v-if="contentLoading" class="no-selection">{{ t('common.loading') }}</div>
 
         <div v-else class="editor-wrap">
           <textarea
@@ -138,6 +138,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { scriptsApi, serverApi } from '@/lib/api'
 import { useScriptPack } from '@/lib/scriptPack'
+import { t, fmtNumber } from '@/i18n'
 import type { ScriptFileInfo } from '@/lib/api'
 
 interface TreeNode {
@@ -225,7 +226,7 @@ onMounted(refresh)
 
 // --- Unsaved-edit guards: in-app navigation and closing/reloading the tab ---
 onBeforeRouteLeave(() => {
-  if (dirty.value && !window.confirm('You have unsaved changes. Leave this page and discard them?')) return false
+  if (dirty.value && !window.confirm(t('scripts.confirmLeave'))) return false
 })
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -269,7 +270,7 @@ function toggleFolder(path: string) {
 }
 
 async function openFile(f: ScriptFileInfo) {
-  if (dirty.value && !window.confirm('Discard unsaved changes?')) return
+  if (dirty.value && !window.confirm(t('scripts.confirmDiscard'))) return
   selected.value = f
   content.value = ''
   originalContent.value = ''
@@ -283,8 +284,8 @@ async function openFile(f: ScriptFileInfo) {
     content.value = data.content
     originalContent.value = data.content
   } catch {
-    content.value = '(error loading file)'
-    statusMsg.value = 'Error loading file'
+    content.value = t('scripts.loadErrorContent')
+    statusMsg.value = t('scripts.loadError')
     statusError.value = true
   } finally {
     contentLoading.value = false
@@ -299,11 +300,11 @@ async function validateCurrent() {
   try {
     const { data } = await scriptsApi.validate(selected.value.relativePath, content.value)
     validationErrors.value = data.errors
-    statusMsg.value = data.ok ? 'Validation passed' : 'Validation failed'
+    statusMsg.value = data.ok ? t('scripts.validationPassed') : t('scripts.validationFailed')
     statusError.value = !data.ok
     return data.ok
   } catch {
-    statusMsg.value = 'Validation request failed'
+    statusMsg.value = t('scripts.validationRequestFailed')
     statusError.value = true
     return false
   }
@@ -320,13 +321,13 @@ async function saveCurrent() {
     await scriptsApi.save(selected.value.relativePath, content.value)
     originalContent.value = content.value
     dirty.value = false
-    statusMsg.value = 'Saved. Run Resync to reload scripts.'
+    statusMsg.value = t('scripts.saved')
     statusError.value = false
     await refresh()
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { error?: string; errors?: string[] } } })?.response?.data
     validationErrors.value = msg?.errors ?? []
-    statusMsg.value = msg?.error ?? 'Save failed'
+    statusMsg.value = msg?.error ?? t('scripts.saveFailed')
     statusError.value = true
   } finally {
     saving.value = false
@@ -338,30 +339,28 @@ async function resyncScripts() {
   statusError.value = false
   try {
     await serverApi.resync()
-    statusMsg.value = 'Resync requested'
+    statusMsg.value = t('scripts.resyncRequested')
   } catch {
-    statusMsg.value = 'Resync failed'
+    statusMsg.value = t('scripts.resyncFailed')
     statusError.value = true
   }
 }
 
 async function downloadScripts() {
-  if (!window.confirm(
-    `Install ${pack.value.repo} over the scripts folder?\n\n` +
-    'Every file the pack contains replaces the local file of the same name. ' +
-    'Changed local files are copied to a dated script-backups folder next to the scripts folder first; ' +
-    'files the pack does not contain are left alone.')) return
+  if (!window.confirm(t('scripts.confirmInstall', { repo: pack.value.repo }))) return
   downloading.value = true
   downloadMsg.value  = ''
   downloadError.value = false
   try {
     const { data } = await scriptsApi.download()
-    downloadMsg.value = `Installed ${data.filesInstalled} files from ${pack.value.repo}` +
-      (data.filesBackedUp ? ` - ${data.filesBackedUp} changed file(s) backed up to ${data.backupFolder}` : '')
+    downloadMsg.value = t('scripts.installed', { n: data.filesInstalled, repo: pack.value.repo }) +
+      (data.filesBackedUp
+        ? t('scripts.backedUp', { n: data.filesBackedUp, folder: data.backupFolder ?? '' })
+        : '')
     await refresh()
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    downloadMsg.value  = msg ?? 'Download failed'
+    downloadMsg.value  = msg ?? t('scripts.downloadFailed')
     downloadError.value = true
   } finally {
     downloading.value = false
@@ -370,8 +369,9 @@ async function downloadScripts() {
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  const one = { minimumFractionDigits: 1, maximumFractionDigits: 1 }
+  if (bytes < 1024 * 1024) return `${fmtNumber(bytes / 1024, one)} KB`
+  return `${fmtNumber(bytes / 1024 / 1024, one)} MB`
 }
 </script>
 

@@ -1,25 +1,25 @@
 <template>
   <div>
     <div class="stats-grid">
-      <StatCard label="Online Players" :value="stats?.onlinePlayers ?? '—'" :icon="Users"
-        :sub="stats ? `${stats.accounts} accounts total` : undefined" />
-      <StatCard label="Characters"     :value="fmt(stats?.totalChars)"      :icon="UserRound" />
-      <StatCard label="Items"          :value="fmt(stats?.totalItems)"       :icon="Package" />
-      <StatCard label="Memory"         :value="stats ? `${stats.memoryMB} MB` : '—'" :icon="MemoryStick" />
-      <StatCard label="CPU"            :value="stats ? `${stats.cpuPercent} %` : '—'" :icon="Cpu" />
-      <StatCard label="Uptime"         :value="stats?.uptime ?? '—'"         :icon="Clock" />
-      <StatCard label="Tick Count"     :value="fmt(stats?.tickCount)"        :icon="Activity"
-        :sub="stats ? `${stats.totalSectors} sectors` : undefined" />
-      <StatCard label="Threads"        :value="fmt(stats?.threadCount)"     :icon="Layers" />
+      <StatCard :label="t('dash.onlinePlayers')" :value="fmt(stats?.onlinePlayers)" :icon="Users"
+        :sub="stats ? t('dash.accountsTotal', { n: fmt(stats.accounts) }) : undefined" />
+      <StatCard :label="t('dash.characters')" :value="fmt(stats?.totalChars)"      :icon="UserRound" />
+      <StatCard :label="t('dash.items')"      :value="fmt(stats?.totalItems)"       :icon="Package" />
+      <StatCard :label="t('dash.memory')"     :value="stats ? `${fmt(stats.memoryMB)} MB` : '—'" :icon="MemoryStick" />
+      <StatCard :label="t('dash.cpu')"        :value="stats ? `${fmt(stats.cpuPercent)} %` : '—'" :icon="Cpu" />
+      <StatCard :label="t('dash.uptime')"     :value="stats?.uptime ?? '—'"         :icon="Clock" />
+      <StatCard :label="t('dash.tickCount')"  :value="fmt(stats?.tickCount)"        :icon="Activity"
+        :sub="stats ? t('dash.sectors', { n: fmt(stats.totalSectors) }) : undefined" />
+      <StatCard :label="t('dash.threads')"    :value="fmt(stats?.threadCount)"     :icon="Layers" />
     </div>
 
     <template v-if="stats">
       <!-- Tick latency -->
       <section class="card">
         <div class="card-head">
-          <h2 class="section-title">Tick Latency</h2>
+          <h2 class="section-title">{{ t('dash.tickLatency') }}</h2>
           <span class="badge" :class="stats.multicoreEnabled ? 'on' : 'off'">
-            {{ stats.multicoreEnabled ? 'Multicore' : 'Single-thread' }}
+            {{ stats.multicoreEnabled ? t('dash.multicore') : t('dash.singleThread') }}
           </span>
         </div>
         <div class="latency-grid">
@@ -37,7 +37,7 @@
             <span class="spark-label">{{ s.label }}</span>
             <span class="spark-value">{{ s.current }}</span>
           </div>
-          <Sparkline :values="s.values" :color="s.color" :label="`${s.label} history`" :zero-based="s.zeroBased" />
+          <Sparkline :values="s.values" :color="s.color" :label="t('dash.sparkHistory', { label: s.label })" :zero-based="s.zeroBased" />
           <span class="spark-sub">{{ historySpan }}</span>
         </div>
       </section>
@@ -46,51 +46,51 @@
         <!-- Last save -->
         <section class="card">
           <div class="card-head">
-            <h2 class="section-title">World Save</h2>
+            <h2 class="section-title">{{ t('dash.worldSave') }}</h2>
             <span v-if="stats.saveInProgress" class="badge warn">
-              <Loader2 :size="11" class="spin" /> Saving…
+              <Loader2 :size="11" class="spin" /> {{ t('dash.saving') }}
             </span>
-            <span v-else-if="stats.lastSaveOk === false" class="badge bad">Last save failed</span>
-            <span v-else-if="stats.lastSaveOk === true" class="badge on">OK</span>
+            <span v-else-if="stats.lastSaveOk === false" class="badge bad">{{ t('dash.lastSaveFailed') }}</span>
+            <span v-else-if="stats.lastSaveOk === true" class="badge on">{{ t('dash.ok') }}</span>
           </div>
           <div class="info-grid">
             <div class="info-row">
-              <span class="info-key">Last save</span>
+              <span class="info-key">{{ t('dash.lastSave') }}</span>
               <span class="info-val" :class="{ bad: stats.lastSaveOk === false }"
-                :title="stats.lastSaveUtc ? new Date(stats.lastSaveUtc).toLocaleString() : undefined">
-                {{ stats.lastSaveUtc ? timeAgo(stats.lastSaveUtc) : 'Not saved since start' }}
+                :title="stats.lastSaveUtc ? fmtDateTime(stats.lastSaveUtc) : undefined">
+                {{ stats.lastSaveUtc ? timeAgo(stats.lastSaveUtc) : t('dash.notSaved') }}
               </span>
             </div>
             <div class="info-row">
-              <span class="info-key">Duration</span>
-              <span class="info-val">{{ stats.lastSaveUtc ? `${(stats.lastSaveSeconds ?? 0).toFixed(2)} s` : '—' }}</span>
+              <span class="info-key">{{ t('dash.duration') }}</span>
+              <span class="info-val">{{ stats.lastSaveUtc ? `${fmtNumber(stats.lastSaveSeconds ?? 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} s` : '—' }}</span>
             </div>
             <div class="info-row">
-              <span class="info-key">Saves this session</span>
-              <span class="info-val">{{ stats.saveCount ?? 0 }}</span>
+              <span class="info-key">{{ t('dash.saveCount') }}</span>
+              <span class="info-val">{{ fmt(stats.saveCount ?? 0) }}</span>
             </div>
           </div>
         </section>
 
         <!-- Server info -->
         <section class="card">
-          <h2 class="section-title">Server Info</h2>
+          <h2 class="section-title">{{ t('dash.serverInfo') }}</h2>
           <div class="info-grid">
             <div class="info-row">
-              <span class="info-key">Server Name</span>
+              <span class="info-key">{{ t('dash.serverName') }}</span>
               <span class="info-val">{{ stats.serverName }}</span>
             </div>
             <div class="info-row">
-              <span class="info-key">Uptime (seconds)</span>
-              <span class="info-val">{{ stats.uptimeSeconds.toLocaleString() }}</span>
+              <span class="info-key">{{ t('dash.uptimeSeconds') }}</span>
+              <span class="info-val">{{ fmt(stats.uptimeSeconds) }}</span>
             </div>
             <div class="info-row">
-              <span class="info-key">Online / Accounts</span>
-              <span class="info-val">{{ stats.onlinePlayers }} / {{ stats.accounts }}</span>
+              <span class="info-key">{{ t('dash.onlineAccounts') }}</span>
+              <span class="info-val">{{ fmt(stats.onlinePlayers) }} / {{ fmt(stats.accounts) }}</span>
             </div>
             <div class="info-row">
-              <span class="info-key">Memory</span>
-              <span class="info-val">{{ stats.memoryMB }} MB</span>
+              <span class="info-key">{{ t('dash.memory') }}</span>
+              <span class="info-val">{{ fmt(stats.memoryMB) }} MB</span>
             </div>
           </div>
         </section>
@@ -98,25 +98,25 @@
 
       <!-- Per-map -->
       <section v-if="stats.maps && stats.maps.length > 0" class="card">
-        <h2 class="section-title">Maps</h2>
+        <h2 class="section-title">{{ t('dash.maps') }}</h2>
         <div class="table-scroll">
           <table class="table">
             <thead>
               <tr>
-                <th>Map</th>
-                <th class="num">Players</th>
-                <th class="num">Chars</th>
-                <th class="num">Items</th>
-                <th class="num">Active / Sectors</th>
+                <th>{{ t('dash.colMap') }}</th>
+                <th class="num">{{ t('dash.colPlayers') }}</th>
+                <th class="num">{{ t('dash.colChars') }}</th>
+                <th class="num">{{ t('dash.colItems') }}</th>
+                <th class="num">{{ t('dash.colSectors') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="m in stats.maps" :key="m.mapId">
                 <td class="bold">{{ mapName(m.mapId) }} <span class="text-muted">#{{ m.mapId }}</span></td>
-                <td class="num">{{ m.onlinePlayers.toLocaleString() }}</td>
-                <td class="num">{{ m.chars.toLocaleString() }}</td>
-                <td class="num">{{ m.items.toLocaleString() }}</td>
-                <td class="num">{{ m.activeSectors.toLocaleString() }} / {{ m.sectors.toLocaleString() }}</td>
+                <td class="num">{{ fmt(m.onlinePlayers) }}</td>
+                <td class="num">{{ fmt(m.chars) }}</td>
+                <td class="num">{{ fmt(m.items) }}</td>
+                <td class="num">{{ fmt(m.activeSectors) }} / {{ fmt(m.sectors) }}</td>
               </tr>
             </tbody>
           </table>
@@ -124,19 +124,19 @@
       </section>
 
       <p v-if="!server.connected" class="poll-note">
-        Live updates disconnected — refreshing every 5 s{{ fetchError ? ` (last attempt failed: ${fetchError})` : '' }}.
+        {{ fetchError ? t('dash.pollNoteFailed', { error: fetchError }) : t('dash.pollNote') }}
       </p>
     </template>
 
     <div v-else class="no-data">
       <template v-if="fetchError">
         <AlertTriangle :size="32" class="no-data-icon error-icon" />
-        <p>Could not read server stats: {{ fetchError }}</p>
-        <p class="sub">Retrying every 5 s while live updates are disconnected.</p>
+        <p>{{ t('dash.statsError', { error: fetchError }) }}</p>
+        <p class="sub">{{ t('dash.retrying') }}</p>
       </template>
       <template v-else>
         <Activity :size="32" class="no-data-icon" />
-        <p>Waiting for server stats…</p>
+        <p>{{ t('dash.waiting') }}</p>
       </template>
     </div>
   </div>
@@ -151,6 +151,7 @@ import StatCard from '@/components/StatCard.vue'
 import Sparkline from '@/components/Sparkline.vue'
 import { useServerStore } from '@/stores/server'
 import { serverApi, errorMessage } from '@/lib/api'
+import { t, fmtNumber, fmtDateTime } from '@/i18n'
 
 const server = useServerStore()
 const stats  = computed(() => server.stats)
@@ -201,11 +202,11 @@ const latencyCells = computed(() => {
   const s = stats.value
   if (!s) return []
   return [
-    { label: 'Avg', value: s.avgTickMs },
+    { label: t('dash.avg'), value: s.avgTickMs },
     { label: 'p50', value: s.p50TickMs },
     { label: 'p95', value: s.p95TickMs },
     { label: 'p99', value: s.p99TickMs },
-    { label: 'Max', value: s.maxTickMs },
+    { label: t('dash.max'), value: s.maxTickMs },
   ]
 })
 
@@ -219,7 +220,8 @@ function tickClass(ms: number | undefined): string {
 
 function fmtMs(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return '—'
-  return ms >= 100 ? `${ms.toFixed(0)} ms` : `${ms.toFixed(2)} ms`
+  const digits = ms >= 100 ? 0 : 2
+  return `${fmtNumber(ms, { minimumFractionDigits: digits, maximumFractionDigits: digits })} ms`
 }
 
 // --- Sparklines ---
@@ -227,39 +229,41 @@ const sparks = computed(() => {
   const h = server.history
   const last = h[h.length - 1]
   return [
-    { label: 'Players', values: h.map(x => x.players), color: 'var(--accent)', zeroBased: true,
-      current: last ? String(last.players) : '—' },
-    { label: 'Memory', values: h.map(x => x.memoryMB), color: 'var(--success)', zeroBased: false,
-      current: last ? `${last.memoryMB} MB` : '—' },
-    { label: 'CPU', values: h.map(x => x.cpuPercent), color: 'var(--warning)', zeroBased: true,
-      current: last ? `${last.cpuPercent} %` : '—' },
-    { label: 'p95 Tick', values: h.map(x => x.p95TickMs), color: 'var(--danger)', zeroBased: true,
+    { label: t('dash.sparkPlayers'), values: h.map(x => x.players), color: 'var(--accent)', zeroBased: true,
+      current: last ? fmt(last.players) : '—' },
+    { label: t('dash.sparkMemory'), values: h.map(x => x.memoryMB), color: 'var(--success)', zeroBased: false,
+      current: last ? `${fmt(last.memoryMB)} MB` : '—' },
+    { label: t('dash.sparkCpu'), values: h.map(x => x.cpuPercent), color: 'var(--warning)', zeroBased: true,
+      current: last ? `${fmt(last.cpuPercent)} %` : '—' },
+    { label: t('dash.sparkP95'), values: h.map(x => x.p95TickMs), color: 'var(--danger)', zeroBased: true,
       current: last ? fmtMs(last.p95TickMs) : '—' },
   ]
 })
 
 const historySpan = computed(() => {
   const h = server.history
-  if (h.length < 2) return 'Collecting samples…'
+  if (h.length < 2) return t('dash.collecting')
   const sec = Math.round((h[h.length - 1].t - h[0].t) / 1000)
-  return `Last ${sec >= 60 ? `${Math.round(sec / 60)} min` : `${sec} s`} · ${h.length} samples`
+  return sec >= 60
+    ? t('dash.spanMinutes', { n: Math.round(sec / 60), count: h.length })
+    : t('dash.spanSeconds', { n: sec, count: h.length })
 })
 
 // --- Formatting ---
 function timeAgo(iso: string): string {
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return '—'
-  const sec = Math.max(0, Math.round((now.value - t) / 1000))
-  if (sec < 60) return `${sec}s ago`
+  const at = Date.parse(iso)
+  if (Number.isNaN(at)) return '—'
+  const sec = Math.max(0, Math.round((now.value - at) / 1000))
+  if (sec < 60) return t('time.secondsAgo', { n: sec })
   const min = Math.floor(sec / 60)
-  if (min < 60) return `${min}m ago`
+  if (min < 60) return t('time.minutesAgo', { n: min })
   const h = Math.floor(min / 60)
-  if (h < 48) return `${h}h ${min % 60}m ago`
-  return `${Math.floor(h / 24)}d ago`
+  if (h < 48) return t('time.hoursAgo', { h, m: min % 60 })
+  return t('time.daysAgo', { n: Math.floor(h / 24) })
 }
 
-function fmt(n: number | undefined): string {
-  return n === undefined ? '—' : n.toLocaleString()
+function fmt(n: number | undefined | null): string {
+  return fmtNumber(n)
 }
 
 function mapName(id: number): string {

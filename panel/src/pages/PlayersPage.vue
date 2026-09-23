@@ -2,36 +2,36 @@
   <div>
     <div class="toolbar">
       <div class="toolbar-left">
-        <span class="count">{{ players.length }} online</span>
-        <input v-model="search" class="search-input" placeholder="Search name, account, IP, serial…" />
+        <span class="count">{{ t('players.online', { n: players.length }) }}</span>
+        <input v-model="search" class="search-input" :placeholder="t('players.search')" />
       </div>
       <button class="btn-ghost" @click="refetch()">
-        <RefreshCw :size="15" :class="{ spin: isFetching }" /> Refresh
+        <RefreshCw :size="15" :class="{ spin: isFetching }" /> {{ t('common.refresh') }}
       </button>
     </div>
 
     <div v-if="actionError" class="banner error">
       <span>{{ actionError }}</span>
-      <button class="icon-btn plain" title="Dismiss" @click="actionError = ''"><X :size="14" /></button>
+      <button class="icon-btn plain" :title="t('common.dismiss')" @click="actionError = ''"><X :size="14" /></button>
     </div>
     <div v-else-if="actionInfo" class="banner info">
       <span>{{ actionInfo }}</span>
-      <button class="icon-btn plain" title="Dismiss" @click="actionInfo = ''"><X :size="14" /></button>
+      <button class="icon-btn plain" :title="t('common.dismiss')" @click="actionInfo = ''"><X :size="14" /></button>
     </div>
 
     <div class="table-wrap">
       <table class="table" v-if="filtered.length > 0">
         <thead>
           <tr>
-            <th>Character</th>
-            <th>Serial</th>
-            <th>Account</th>
-            <th>PrivLevel</th>
-            <th>Map</th>
-            <th>Position</th>
-            <th>IP</th>
-            <th>Client</th>
-            <th>Session</th>
+            <th>{{ t('players.colCharacter') }}</th>
+            <th>{{ t('players.colSerial') }}</th>
+            <th>{{ t('players.colAccount') }}</th>
+            <th>{{ t('players.colPrivLevel') }}</th>
+            <th>{{ t('players.colMap') }}</th>
+            <th>{{ t('players.colPosition') }}</th>
+            <th>{{ t('players.colIp') }}</th>
+            <th>{{ t('players.colClient') }}</th>
+            <th>{{ t('players.colSession') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -47,10 +47,10 @@
             <td class="mono text-muted">{{ p.clientVersion || '—' }}</td>
             <td class="text-muted">{{ fmtSession(p.sessionSeconds) }}</td>
             <td class="actions">
-              <button class="icon-btn" title="Send message" :disabled="busy.has(p.serial)" @click="openMessage(p)">
+              <button class="icon-btn" :title="t('players.sendMessage')" :disabled="busy.has(p.serial)" @click="openMessage(p)">
                 <MessageSquare :size="15" />
               </button>
-              <button class="icon-btn danger" title="Disconnect" :disabled="busy.has(p.serial)" @click="disconnect(p)">
+              <button class="icon-btn danger" :title="t('players.disconnect')" :disabled="busy.has(p.serial)" @click="disconnect(p)">
                 <Unplug :size="15" />
               </button>
             </td>
@@ -60,40 +60,40 @@
 
       <div v-else-if="isPending" class="empty">
         <Loader2 :size="32" class="empty-icon spin" />
-        <p>Loading players…</p>
+        <p>{{ t('players.loading') }}</p>
       </div>
       <div v-else-if="isError && players.length === 0" class="empty">
         <AlertTriangle :size="32" class="empty-icon error-icon" />
-        <p>Could not load the player list: {{ loadError }}</p>
-        <button class="btn-ghost" @click="refetch()">Retry</button>
+        <p>{{ t('players.loadError', { error: loadError }) }}</p>
+        <button class="btn-ghost" @click="refetch()">{{ t('common.retry') }}</button>
       </div>
       <div v-else-if="players.length > 0" class="empty">
         <Search :size="32" class="empty-icon" />
-        <p>No online player matches "{{ search.trim() }}".</p>
+        <p>{{ t('players.noMatch', { q: search.trim() }) }}</p>
       </div>
       <div v-else class="empty">
         <Users :size="32" class="empty-icon" />
-        <p>No players online.</p>
+        <p>{{ t('players.none') }}</p>
       </div>
     </div>
     <p v-if="isError && players.length > 0" class="stale-note">
-      Refresh failed ({{ loadError }}); showing the last loaded list.
+      {{ t('common.staleList', { error: loadError }) }}
     </p>
 
     <!-- Message modal -->
     <div v-if="msgTarget" class="modal-overlay" @click.self="closeMessage">
       <div class="modal">
-        <h3>Message {{ msgTarget.charName }}</h3>
+        <h3>{{ t('players.messageTitle', { name: msgTarget.charName }) }}</h3>
         <div class="field">
-          <label>Text</label>
-          <input ref="msgInput" v-model="msgText" maxlength="500" placeholder="System message shown in game…"
+          <label>{{ t('players.text') }}</label>
+          <input ref="msgInput" v-model="msgText" maxlength="500" :placeholder="t('players.messagePlaceholder')"
             @keyup.enter="sendMessage" />
         </div>
         <p v-if="msgError" class="error-msg">{{ msgError }}</p>
         <div class="modal-actions">
-          <button class="btn-ghost" @click="closeMessage">Cancel</button>
+          <button class="btn-ghost" @click="closeMessage">{{ t('common.cancel') }}</button>
           <button class="btn-accent" :disabled="msgSending || !msgText.trim()" @click="sendMessage">
-            <Send :size="14" /> Send
+            <Send :size="14" /> {{ t('players.send') }}
           </button>
         </div>
       </div>
@@ -108,6 +108,7 @@ import {
 } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { playersApi, errorMessage, type PlayerInfo } from '@/lib/api'
+import { t } from '@/i18n'
 
 const qc = useQueryClient()
 const { data, isPending, isError, error, isFetching, refetch } = useQuery({
@@ -136,14 +137,14 @@ const actionInfo  = ref('')
 const busy        = ref(new Set<number>())
 
 async function disconnect(p: PlayerInfo) {
-  if (!confirm(`Disconnect ${p.charName} (${p.accountName})?`)) return
+  if (!confirm(t('players.confirmDisconnect', { name: p.charName, account: p.accountName }))) return
   actionError.value = actionInfo.value = ''
   busy.value.add(p.serial)
   try {
     const { data } = await playersApi.disconnect(p.serial)
-    actionInfo.value = data?.message ?? `${p.charName} disconnected.`
+    actionInfo.value = data?.message ?? t('players.disconnected', { name: p.charName })
   } catch (e) {
-    actionError.value = `Disconnect ${p.charName} failed: ${errorMessage(e)}`
+    actionError.value = t('players.disconnectFailed', { name: p.charName, error: errorMessage(e) })
   } finally {
     busy.value.delete(p.serial)
     qc.invalidateQueries({ queryKey: ['players'] })
@@ -178,10 +179,10 @@ async function sendMessage() {
   try {
     await playersApi.message(p.serial, text)
     actionError.value = ''
-    actionInfo.value = `Message sent to ${p.charName}.`
+    actionInfo.value = t('players.messageSent', { name: p.charName })
     closeMessage()
   } catch (e) {
-    msgError.value = errorMessage(e, 'Send failed')
+    msgError.value = errorMessage(e, t('players.sendFailed'))
   } finally {
     msgSending.value = false
   }
@@ -204,9 +205,9 @@ function fmtSession(sec: number): string {
   const s = Math.floor(sec)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s % 60}s`
-  return `${s}s`
+  if (h > 0) return t('time.hm', { h, m })
+  if (m > 0) return t('time.ms', { m, s: s % 60 })
+  return t('time.s', { s })
 }
 
 function mapName(id: number): string {

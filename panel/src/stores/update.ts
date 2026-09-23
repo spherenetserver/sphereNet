@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { updateApi, type UpdateStatus } from '@/lib/api'
+import { t } from '@/i18n'
 
 /** Poll interval while nothing is happening — just keeps the sidebar badge fresh. */
 const IDLE_POLL_MS = 60_000
@@ -122,8 +123,7 @@ export const useUpdateStore = defineStore('update', () => {
     const probe = async () => {
       if (Date.now() > deadline) {
         restarting.value = false
-        error.value =
-          'Sunucu 5 dakika icinde geri gelmedi. logs/update.log dosyasini kontrol et.'
+        error.value = t('updates.restartTimeout')
         schedule()
         return
       }
@@ -163,7 +163,7 @@ export const useUpdateStore = defineStore('update', () => {
 
   function describe(err: unknown): string {
     const e = err as { response?: { data?: { error?: string } }; message?: string }
-    return e?.response?.data?.error ?? e?.message ?? 'Bilinmeyen hata'
+    return e?.response?.data?.error ?? e?.message ?? t('common.unknownError')
   }
 
   return {

@@ -6,10 +6,13 @@
       <div class="notice">
         <PackageX :size="20" class="notice-icon muted" />
         <div>
-          <p class="notice-title">Guncelleme sistemi yapilandirilmamis</p>
+          <p class="notice-title">{{ t('updates.notConfiguredTitle') }}</p>
           <p class="notice-sub">
-            <code>config/sphere.ini</code> icinde <code>APPUPDATEREPO</code> bos.
-            Ornek: <code>APPUPDATEREPO=spherenetserver/sphereNet</code>
+            <I18nT k="updates.notConfiguredText">
+              <template #file><code>config/sphere.ini</code></template>
+              <template #key><code>APPUPDATEREPO</code></template>
+            </I18nT>
+            {{ t('updates.example') }} <code>APPUPDATEREPO=spherenetserver/sphereNet</code>
           </p>
         </div>
       </div>
@@ -19,10 +22,10 @@
       <!-- Status -->
       <section class="section">
         <div class="status-head">
-          <h2 class="section-title">Guncelleme Durumu</h2>
+          <h2 class="section-title">{{ t('updates.statusTitle') }}</h2>
           <button class="btn-ghost" :disabled="store.checking || store.busy" @click="store.check()">
             <RefreshCw :size="15" :class="{ spin: store.checking }" />
-            {{ store.checking ? 'Kontrol ediliyor…' : 'Check for update' }}
+            {{ store.checking ? t('updates.checking') : t('updates.check') }}
           </button>
         </div>
 
@@ -40,7 +43,7 @@
             :disabled="store.busy"
             @click="confirmApply"
           >
-            <Download :size="15" /> Simdi guncelle
+            <Download :size="15" /> {{ t('updates.applyNow') }}
           </button>
         </div>
 
@@ -60,51 +63,49 @@
 
         <p v-if="store.restarting" class="restart-note">
           <Loader :size="14" class="spin" />
-          Sunucu yeniden baslatiliyor — geri geldiginde bu sayfa kendiliginden tazelenecek.
+          {{ t('updates.restarting') }}
         </p>
       </section>
 
       <!-- What the running binary says about ITSELF -->
       <section class="section">
-        <h2 class="section-title">Calisan binari</h2>
+        <h2 class="section-title">{{ t('updates.runningTitle') }}</h2>
         <p class="running-hint">
-          Asagidakiler guncelleyicinin indirdigi surumden degil, su anda calisan
-          dosyanin kendi damgasindan okunur. Ikisinin ayrilmasi, "sunucu guncel mi"
-          sorusunun tek dogru yanitidir.
+          {{ t('updates.runningHint') }}
         </p>
         <dl v-if="running" class="meta">
-          <div><dt>Commit</dt><dd><code>{{ running.stamped ? running.shortCommit : '—' }}</code></dd></div>
-          <div><dt>Dal</dt><dd><code>{{ running.branch || '—' }}</code></dd></div>
+          <div><dt>{{ t('updates.commit') }}</dt><dd><code>{{ running.stamped ? running.shortCommit : '—' }}</code></dd></div>
+          <div><dt>{{ t('updates.branch') }}</dt><dd><code>{{ running.branch || '—' }}</code></dd></div>
           <div>
-            <dt>Yerel degisiklik</dt>
-            <dd>{{ running.dirty === null ? 'bilinmiyor' : (running.dirty ? 'VAR' : 'yok') }}</dd>
+            <dt>{{ t('updates.localChanges') }}</dt>
+            <dd>{{ running.dirty === null ? t('updates.dirtyUnknown') : (running.dirty ? t('updates.dirtyYes') : t('updates.dirtyNo')) }}</dd>
           </div>
-          <div><dt>Assembly</dt><dd><code>{{ running.assemblyVersion }}</code></dd></div>
+          <div><dt>{{ t('updates.assembly') }}</dt><dd><code>{{ running.assemblyVersion }}</code></dd></div>
         </dl>
         <p v-else-if="runningError" class="vc-empty">{{ runningError }}</p>
-        <p v-else class="vc-empty">Okunuyor…</p>
+        <p v-else class="vc-empty">{{ t('updates.reading') }}</p>
 
         <p v-if="running && !running.stamped" class="running-warn">
-          Bu binari damgasiz derlenmis — hangi commit oldugunu soyleyemiyor.
+          {{ t('updates.unstamped') }}
         </p>
         <p v-else-if="running?.dirty === true" class="running-warn">
-          Bu binari kaydedilmemis degisiklikler uzerine derlenmis; hicbir commit'e tam uymuyor.
+          {{ t('updates.dirtyBuild') }}
         </p>
       </section>
 
       <!-- Versions -->
       <section class="section">
-        <h2 class="section-title">Surumler</h2>
+        <h2 class="section-title">{{ t('updates.versions') }}</h2>
         <div class="version-grid">
           <div v-for="card in versionCards" :key="card.title" class="version-card">
             <p class="vc-title">{{ card.title }}</p>
             <dl v-if="card.version" class="vc-list">
-              <div class="vc-row"><dt>Commit</dt><dd><code>{{ card.version.shortSha }}</code></dd></div>
-              <div class="vc-row"><dt>Build</dt><dd>#{{ card.version.buildNumber }}</dd></div>
-              <div class="vc-row"><dt>Dal</dt><dd><code>{{ card.version.branch }}</code></dd></div>
-              <div class="vc-row"><dt>Tarih</dt><dd>{{ new Date(card.version.builtAt).toLocaleString() }}</dd></div>
+              <div class="vc-row"><dt>{{ t('updates.commit') }}</dt><dd><code>{{ card.version.shortSha }}</code></dd></div>
+              <div class="vc-row"><dt>{{ t('updates.build') }}</dt><dd>#{{ card.version.buildNumber }}</dd></div>
+              <div class="vc-row"><dt>{{ t('updates.branch') }}</dt><dd><code>{{ card.version.branch }}</code></dd></div>
+              <div class="vc-row"><dt>{{ t('updates.date') }}</dt><dd>{{ fmtDateTime(card.version.builtAt) }}</dd></div>
               <div class="vc-row subject" :title="card.version.commitSubject">
-                <dt>Konu</dt><dd>{{ card.version.commitSubject || '—' }}</dd>
+                <dt>{{ t('updates.subject') }}</dt><dd>{{ card.version.commitSubject || '—' }}</dd>
               </div>
             </dl>
             <p v-else class="vc-empty">{{ card.emptyText }}</p>
@@ -112,10 +113,10 @@
         </div>
 
         <dl class="meta">
-          <div><dt>Depo</dt><dd><code>{{ store.status?.repo ?? '—' }}</code></dd></div>
-          <div><dt>Kanal</dt><dd><code>{{ store.status?.channel ?? '—' }}</code></dd></div>
-          <div><dt>Platform</dt><dd><code>{{ store.status?.runtime ?? '—' }}</code></dd></div>
-          <div><dt>Son kontrol</dt><dd>{{ lastChecked }}</dd></div>
+          <div><dt>{{ t('updates.repo') }}</dt><dd><code>{{ store.status?.repo ?? '—' }}</code></dd></div>
+          <div><dt>{{ t('updates.channel') }}</dt><dd><code>{{ store.status?.channel ?? '—' }}</code></dd></div>
+          <div><dt>{{ t('updates.platform') }}</dt><dd><code>{{ store.status?.runtime ?? '—' }}</code></dd></div>
+          <div><dt>{{ t('updates.lastCheck') }}</dt><dd>{{ lastChecked }}</dd></div>
         </dl>
       </section>
 
@@ -124,7 +125,7 @@
         <div class="notice">
           <Info :size="20" class="notice-icon warning" />
           <div>
-            <p class="notice-title">Bu kurulumda guncelleme uygulanamaz</p>
+            <p class="notice-title">{{ t('updates.cannotApplyTitle') }}</p>
             <p class="notice-sub">{{ cannotApplyReason }}</p>
           </div>
         </div>
@@ -139,7 +140,9 @@ import {
   RefreshCw, Download, CheckCircle2, AlertTriangle, PackageX, Info, Loader, Sparkles,
 } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
-import { serverApi, type RunningBuild } from '@/lib/api'
+import { serverApi, type RunningBuild, type UpdateStateName } from '@/lib/api'
+import { t, fmtDateTime, type MessageKey } from '@/i18n'
+import I18nT from '@/i18n/I18nT'
 
 const store = useUpdateStore()
 
@@ -153,7 +156,7 @@ onMounted(async () => {
     const { data } = await serverApi.version()
     running.value = data
   } catch (e) {
-    runningError.value = e instanceof Error ? e.message : 'Surum bilgisi alinamadi'
+    runningError.value = e instanceof Error ? e.message : t('updates.versionReadFailed')
   }
 })
 
@@ -164,16 +167,17 @@ onMounted(() => void store.start())
 
 const progressPercent = computed(() => store.status?.progressPercent ?? 0)
 
-const stateLabel = computed(() => ({
-  Idle:       'Bekliyor',
-  Checking:   'Surum bilgisi aliniyor',
-  Downloading:'Indiriliyor',
-  Verifying:  'SHA256 dogrulaniyor',
-  Extracting: 'Paket aciliyor',
-  Staged:     'Hazirlaniyor',
-  Applying:   'Uygulaniyor',
-  Failed:     'Basarisiz',
-}[store.status?.state ?? 'Idle']))
+const stateKeys: Record<UpdateStateName, MessageKey> = {
+  Idle:        'updates.stateIdle',
+  Checking:    'updates.stateChecking',
+  Downloading: 'updates.stateDownloading',
+  Verifying:   'updates.stateVerifying',
+  Extracting:  'updates.stateExtracting',
+  Staged:      'updates.stateStaged',
+  Applying:    'updates.stateApplying',
+  Failed:      'updates.stateFailed',
+}
+const stateLabel = computed(() => t(stateKeys[store.status?.state ?? 'Idle']))
 
 const statusTone = computed(() => {
   if (store.status?.state === 'Failed') return 'danger'
@@ -190,49 +194,48 @@ const statusIcon = computed(() => {
 })
 
 const statusTitle = computed(() => {
-  if (!store.status) return 'Yukleniyor…'
-  if (store.status.isDevBuild) return 'Kaynaktan derlenmis kurulum'
+  if (!store.status) return t('common.loading')
+  if (store.status.isDevBuild) return t('updates.devBuild')
   if (store.available) {
-    return `Yeni surum hazir: ${store.status.latest?.shortSha} (build #${store.status.latest?.buildNumber})`
+    return t('updates.newVersion', {
+      sha: store.status.latest?.shortSha ?? '?', build: store.status.latest?.buildNumber ?? '?',
+    })
   }
-  if (store.status.state === 'Failed') return 'Guncelleme kontrolu basarisiz'
-  return 'Sunucu guncel'
+  if (store.status.state === 'Failed') return t('updates.checkFailed')
+  return t('updates.upToDate')
 })
 
 const cannotApplyReason = computed(() =>
   store.status?.isDevBuild
-    ? 'Bu kurulumda version.json yok — kaynaktan derlenmis demektir. Kaynak agacinda update.cmd kullan.'
-    : 'Guncelleme yalnizca SphereNet.Host.exe uzerinden calisirken uygulanabilir.'
+    ? t('updates.reasonDev')
+    : t('updates.reasonHost')
 )
 
 const lastChecked = computed(() => {
-  const t = store.status?.lastCheckedUtc
-  return t ? new Date(t).toLocaleString() : 'Henuz kontrol edilmedi'
+  const at = store.status?.lastCheckedUtc
+  return at ? fmtDateTime(at) : t('updates.neverChecked')
 })
 
 const versionCards = computed(() => [
   {
-    title: 'Kurulu',
+    title: t('updates.installed'),
     version: store.status?.current ?? null,
     emptyText: store.status?.isDevBuild
-      ? 'version.json yok (kaynaktan derlenmis)'
-      : 'Bilinmiyor',
+      ? t('updates.noVersionJson')
+      : t('updates.unknown'),
   },
   {
-    title: 'Yayindaki',
+    title: t('updates.published'),
     version: store.status?.latest ?? null,
-    emptyText: 'Henuz kontrol edilmedi',
+    emptyText: t('updates.neverChecked'),
   },
 ])
 
 function confirmApply() {
   const target = store.status?.latest
-  const ok = confirm(
-    `${target?.shortSha} (build #${target?.buildNumber}) surumune guncellensin mi?\n\n` +
-    'Dunya kaydedilecek, sunucu kapanacak, dosyalar degistirilecek ve sunucu ' +
-    'yeniden baslatilacak. Oyundaki tum oyuncular baglantisini kaybeder.\n\n' +
-    'config/, save/ ve scripts/ klasorlerine dokunulmaz.'
-  )
+  const ok = confirm(t('updates.confirmApply', {
+    sha: target?.shortSha ?? '?', build: target?.buildNumber ?? '?',
+  }))
   if (ok) void store.apply()
 }
 </script>

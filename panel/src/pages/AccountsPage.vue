@@ -1,27 +1,27 @@
 <template>
   <div>
     <div class="toolbar">
-      <input v-model="search" class="search-input" placeholder="Search accounts…" />
+      <input v-model="search" class="search-input" :placeholder="t('accounts.search')" />
       <button class="btn-accent" @click="openCreate">
-        <Plus :size="15" /> New Account
+        <Plus :size="15" /> {{ t('accounts.new') }}
       </button>
     </div>
 
     <div v-if="actionError" class="error-banner">
       <span>{{ actionError }}</span>
-      <button class="icon-btn" title="Dismiss" @click="actionError = ''"><X :size="14" /></button>
+      <button class="icon-btn" :title="t('common.dismiss')" @click="actionError = ''"><X :size="14" /></button>
     </div>
 
     <div class="table-wrap">
       <table class="table" v-if="filtered.length > 0">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>PrivLevel</th>
-            <th>Status</th>
-            <th>Last IP</th>
-            <th>Last Login</th>
-            <th>Chars</th>
+            <th>{{ t('accounts.colName') }}</th>
+            <th>{{ t('accounts.colPrivLevel') }}</th>
+            <th>{{ t('accounts.colStatus') }}</th>
+            <th>{{ t('accounts.colLastIp') }}</th>
+            <th>{{ t('accounts.colLastLogin') }}</th>
+            <th>{{ t('accounts.colChars') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -33,21 +33,21 @@
             </td>
             <td>
               <span class="badge" :class="a.isBanned ? 'banned' : 'active'">
-                {{ a.isBanned ? 'Banned' : 'Active' }}
+                {{ a.isBanned ? t('accounts.banned') : t('accounts.active') }}
               </span>
             </td>
             <td class="mono text-muted">{{ a.lastIp || '—' }}</td>
             <td class="text-muted">{{ fmtDate(a.lastLogin) }}</td>
             <td>{{ a.charCount }}</td>
             <td class="actions">
-              <button class="icon-btn" title="Edit" :disabled="pending.has(a.name)" @click="openEdit(a)">
+              <button class="icon-btn" :title="t('accounts.edit')" :disabled="pending.has(a.name)" @click="openEdit(a)">
                 <Pencil :size="15" />
               </button>
-              <button class="icon-btn" :title="a.isBanned ? 'Unban' : 'Ban'" :disabled="pending.has(a.name)"
+              <button class="icon-btn" :title="a.isBanned ? t('accounts.unban') : t('accounts.ban')" :disabled="pending.has(a.name)"
                 @click="toggleBan(a)">
                 <component :is="a.isBanned ? ShieldCheck : ShieldOff" :size="15" />
               </button>
-              <button class="icon-btn danger" title="Delete" :disabled="pending.has(a.name)"
+              <button class="icon-btn danger" :title="t('accounts.delete')" :disabled="pending.has(a.name)"
                 @click="confirmDelete(a.name)">
                 <Trash2 :size="15" />
               </button>
@@ -57,43 +57,43 @@
       </table>
       <div v-else-if="isPending" class="empty">
         <Loader2 :size="32" class="empty-icon spin" />
-        <p>Loading accounts…</p>
+        <p>{{ t('accounts.loading') }}</p>
       </div>
       <div v-else-if="isError && accounts.length === 0" class="empty">
         <AlertTriangle :size="32" class="empty-icon error-icon" />
-        <p>Could not load accounts: {{ loadError }}</p>
-        <button class="btn-ghost" @click="refetch()">Retry</button>
+        <p>{{ t('accounts.loadError', { error: loadError }) }}</p>
+        <button class="btn-ghost" @click="refetch()">{{ t('common.retry') }}</button>
       </div>
       <div v-else-if="accounts.length > 0" class="empty">
         <Search :size="32" class="empty-icon" />
-        <p>No accounts match "{{ search.trim() }}".</p>
+        <p>{{ t('accounts.noMatch', { q: search.trim() }) }}</p>
       </div>
       <div v-else class="empty">
         <UserCog :size="32" class="empty-icon" />
-        <p>No accounts yet.</p>
+        <p>{{ t('accounts.none') }}</p>
       </div>
     </div>
     <p v-if="isError && accounts.length > 0" class="error-msg stale-note">
-      Refresh failed ({{ loadError }}); showing the last loaded list.
+      {{ t('common.staleList', { error: loadError }) }}
     </p>
 
     <!-- Create account modal -->
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
       <div class="modal">
-        <h3>Create Account</h3>
+        <h3>{{ t('accounts.createTitle') }}</h3>
         <div class="field">
-          <label>Username</label>
-          <input v-model="newName" placeholder="account name" />
+          <label>{{ t('accounts.username') }}</label>
+          <input v-model="newName" :placeholder="t('accounts.usernamePlaceholder')" />
         </div>
         <div class="field">
-          <label>Password</label>
-          <input v-model="newPass" type="password" placeholder="password" @keyup.enter="createAccount" />
+          <label>{{ t('accounts.password') }}</label>
+          <input v-model="newPass" type="password" :placeholder="t('accounts.passwordPlaceholder')" @keyup.enter="createAccount" />
         </div>
         <p v-if="createError" class="error-msg">{{ createError }}</p>
         <div class="modal-actions">
-          <button class="btn-ghost" @click="showCreate = false">Cancel</button>
+          <button class="btn-ghost" @click="showCreate = false">{{ t('common.cancel') }}</button>
           <button class="btn-accent" :disabled="creating || !newName.trim() || !newPass" @click="createAccount">
-            Create
+            {{ t('accounts.create') }}
           </button>
         </div>
       </div>
@@ -102,26 +102,26 @@
     <!-- Edit account modal -->
     <div v-if="editing" class="modal-overlay" @click.self="closeEdit">
       <div class="modal">
-        <h3>Edit Account — {{ editing.name }}</h3>
+        <h3>{{ t('accounts.editTitle', { name: editing.name }) }}</h3>
         <div class="field">
-          <label>Privilege level</label>
+          <label>{{ t('accounts.privLevel') }}</label>
           <select v-model.number="editLevel">
             <option v-for="lvl in privLevels" :key="lvl" :value="lvl">{{ lvl }} — {{ privLabel(lvl) }}</option>
           </select>
         </div>
         <div class="field">
-          <label>New password <span class="hint">(leave empty to keep the current one)</span></label>
-          <input v-model="editPass" type="password" placeholder="new password" autocomplete="new-password" />
+          <label>{{ t('accounts.newPassword') }} <span class="hint">{{ t('accounts.keepHint') }}</span></label>
+          <input v-model="editPass" type="password" :placeholder="t('accounts.newPasswordPlaceholder')" autocomplete="new-password" />
         </div>
         <div v-if="editPass" class="field">
-          <label>Confirm password</label>
-          <input v-model="editPass2" type="password" placeholder="repeat new password" autocomplete="new-password"
+          <label>{{ t('accounts.confirmPassword') }}</label>
+          <input v-model="editPass2" type="password" :placeholder="t('accounts.confirmPasswordPlaceholder')" autocomplete="new-password"
             @keyup.enter="saveEdit" />
         </div>
         <p v-if="editError" class="error-msg">{{ editError }}</p>
         <div class="modal-actions">
-          <button class="btn-ghost" @click="closeEdit">Cancel</button>
-          <button class="btn-accent" :disabled="saving || !editChanged" @click="saveEdit">Save</button>
+          <button class="btn-ghost" @click="closeEdit">{{ t('common.cancel') }}</button>
+          <button class="btn-accent" :disabled="saving || !editChanged" @click="saveEdit">{{ t('common.save') }}</button>
         </div>
       </div>
     </div>
@@ -135,6 +135,7 @@ import {
 } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { accountsApi, errorMessage, type AccountInfo } from '@/lib/api'
+import { t, fmtDate as fmtLocaleDate } from '@/i18n'
 
 const qc = useQueryClient()
 const { data, isPending, isError, error, refetch } = useQuery({
@@ -162,7 +163,7 @@ async function run(name: string, what: string, fn: () => Promise<unknown>) {
   try {
     await fn()
   } catch (e) {
-    actionError.value = `${what} "${name}" failed: ${errorMessage(e)}`
+    actionError.value = t('accounts.actionFailed', { action: what, name, error: errorMessage(e) })
   } finally {
     pending.value.delete(name)
     qc.invalidateQueries({ queryKey: ['accounts'] })
@@ -191,7 +192,7 @@ async function createAccount() {
     newName.value = newPass.value = ''
     qc.invalidateQueries({ queryKey: ['accounts'] })
   } catch (e: unknown) {
-    createError.value = errorMessage(e, 'Create failed')
+    createError.value = errorMessage(e, t('accounts.createFailed'))
   } finally {
     creating.value = false
   }
@@ -199,13 +200,13 @@ async function createAccount() {
 
 function toggleBan(a: AccountInfo) {
   return a.isBanned
-    ? run(a.name, 'Unban', () => accountsApi.unban(a.name))
-    : run(a.name, 'Ban', () => accountsApi.ban(a.name))
+    ? run(a.name, t('accounts.unban'), () => accountsApi.unban(a.name))
+    : run(a.name, t('accounts.ban'), () => accountsApi.ban(a.name))
 }
 
 function confirmDelete(name: string) {
-  if (!confirm(`Delete account "${name}"? This cannot be undone.`)) return
-  return run(name, 'Delete', () => accountsApi.delete(name))
+  if (!confirm(t('accounts.confirmDelete', { name }))) return
+  return run(name, t('accounts.delete'), () => accountsApi.delete(name))
 }
 
 // --- Edit (privilege level + password) ---
@@ -235,11 +236,11 @@ async function saveEdit() {
   const acc = editing.value
   if (!acc || !editChanged.value) return
   if (editPass.value && !editPass.value.trim()) {
-    editError.value = 'Password cannot be blank.'
+    editError.value = t('accounts.passwordBlank')
     return
   }
   if (editPass.value && editPass.value !== editPass2.value) {
-    editError.value = 'Passwords do not match.'
+    editError.value = t('accounts.passwordMismatch')
     return
   }
   editError.value = ''
@@ -248,16 +249,16 @@ async function saveEdit() {
   try {
     if (editLevel.value !== acc.privLevel) {
       await accountsApi.setPrivLevel(acc.name, editLevel.value)
-      done.push('privilege level')
+      done.push(t('accounts.savedPrivLevel'))
     }
     if (editPass.value) {
       await accountsApi.setPassword(acc.name, editPass.value)
-      done.push('password')
+      done.push(t('accounts.savedPassword'))
     }
     closeEdit()
   } catch (e) {
     // The two calls are independent; say which part already went through.
-    editError.value = errorMessage(e, 'Save failed') + (done.length ? ` (${done.join(' and ')} already saved)` : '')
+    editError.value = [errorMessage(e, t('accounts.saveFailed')), ...done].join(' ')
   } finally {
     saving.value = false
     qc.invalidateQueries({ queryKey: ['accounts'] })
@@ -275,7 +276,7 @@ function privLabel(n: number): string { return privLabels[n] ?? `L${n}` }
 
 function fmtDate(s: string): string {
   if (!s || s.startsWith('0001')) return '—'
-  return new Date(s).toLocaleDateString()
+  return fmtLocaleDate(s)
 }
 </script>
 

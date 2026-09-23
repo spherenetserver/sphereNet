@@ -20,17 +20,17 @@
           :class="{ active: activePacketCat === cat.value }"
           @click="activePacketCat = activePacketCat === cat.value ? '' : cat.value"
         >
-          {{ cat.label }}
+          {{ t(cat.label) }}
         </button>
       </div>
       <div class="toolbar-right">
-        <input v-model="search" class="search-input" placeholder="Filter…" />
+        <input v-model="search" class="search-input" :placeholder="t('logs.filter')" />
         <button class="btn-ghost" @click="logs.paused = !logs.paused">
           <component :is="logs.paused ? Play : Pause" :size="15" />
-          {{ logs.paused ? (logs.held ? `Resume (${logs.held} new)` : 'Resume') : 'Pause' }}
+          {{ logs.paused ? (logs.held ? t('logs.resumeCount', { n: logs.held }) : t('logs.resume')) : t('logs.pause') }}
         </button>
         <button class="btn-ghost danger" @click="logs.clear()">
-          <Trash2 :size="15" /> Clear
+          <Trash2 :size="15" /> {{ t('logs.clear') }}
         </button>
       </div>
     </div>
@@ -50,7 +50,7 @@
 
       <div v-if="filtered.length === 0" class="empty">
         <Terminal :size="28" class="empty-icon" />
-        <p>No log entries yet.</p>
+        <p>{{ t('logs.empty') }}</p>
       </div>
     </div>
   </div>
@@ -60,6 +60,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { Pause, Play, Trash2, Terminal } from 'lucide-vue-next'
 import { useLogsStore } from '@/stores/logs'
+import { t, fmtTime, type MessageKey } from '@/i18n'
 
 const logs      = useLogsStore()
 const search    = ref('')
@@ -76,11 +77,11 @@ const levels = [
   { value: 'Fatal',       label: 'FTL' },
 ]
 
-const packetCats = [
-  { value: 'player', label: 'Player' },
-  { value: 'npc',    label: 'NPC' },
-  { value: 'item',   label: 'Item' },
-  { value: 'packet', label: 'Other' },
+const packetCats: { value: string; label: MessageKey }[] = [
+  { value: 'player', label: 'logs.catPlayer' },
+  { value: 'npc',    label: 'logs.catNpc' },
+  { value: 'item',   label: 'logs.catItem' },
+  { value: 'packet', label: 'logs.catOther' },
 ]
 
 const filtered = computed(() => {
@@ -114,8 +115,7 @@ watch(
 )
 
 function formatTime(ts: string): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString('en-GB', { hour12: false })
+  return fmtTime(ts, { hour12: false })
 }
 
 function levelClass(level: string): string {

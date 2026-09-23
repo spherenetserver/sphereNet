@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { t } from '@/i18n'
 
 export const api = axios.create({
   baseURL: '/api',
@@ -184,7 +185,8 @@ export function apiPath(base: string, ...segments: (string | number)[]): string 
 
 /** Best human-readable message from a failed request: the backend's
  *  `{ error }` / `{ message }` / `{ detail }` body, else the HTTP status. */
-export function errorMessage(e: unknown, fallback = 'Request failed'): string {
+export function errorMessage(e: unknown, fallback?: string): string {
+  fallback ??= t('common.requestFailed')
   const err = e as { response?: { status?: number; data?: unknown }; message?: string }
   const data = err?.response?.data
   if (typeof data === 'string' && data.trim()) return data

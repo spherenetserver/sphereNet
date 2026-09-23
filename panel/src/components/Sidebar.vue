@@ -14,22 +14,22 @@
         active-class="active"
       >
         <component :is="item.icon" :size="18" />
-        <span>{{ item.label }}</span>
-        <span v-if="item.to === '/updates' && updates.available" class="nav-badge" title="Yeni surum hazir" />
+        <span>{{ t(item.label) }}</span>
+        <span v-if="item.to === '/updates' && updates.available" class="nav-badge" :title="t('nav.updateReady')" />
       </RouterLink>
     </nav>
 
     <div class="sidebar-footer">
       <button class="logout-btn" @click="auth.logout()">
         <LogOut :size="16" />
-        <span>Logout</span>
+        <span>{{ t('nav.logout') }}</span>
       </button>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, type Component } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   LayoutDashboard, Terminal, Users, UserCog, Server, LogOut, ScrollText, Settings,
@@ -37,6 +37,7 @@ import {
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useUpdateStore } from '@/stores/update'
+import { t, type MessageKey } from '@/i18n'
 
 const auth    = useAuthStore()
 const updates = useUpdateStore()
@@ -49,16 +50,16 @@ const updates = useUpdateStore()
 onMounted(() => void updates.start())
 onUnmounted(() => updates.stopPolling())
 
-const navItems = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/logs',      label: 'Console',   icon: Terminal        },
-  { to: '/players',   label: 'Players',   icon: Users           },
-  { to: '/accounts',  label: 'Accounts',  icon: UserCog         },
-  { to: '/server',    label: 'Server',    icon: Server          },
-  { to: '/scripts',   label: 'Scripts',   icon: ScrollText      },
-  { to: '/gumps',     label: 'Gumps',     icon: PanelTop        },
-  { to: '/updates',   label: 'Updates',   icon: ArrowUpCircle   },
-  { to: '/settings',  label: 'Settings',  icon: Settings        },
+const navItems: { to: string; label: MessageKey; icon: Component }[] = [
+  { to: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard },
+  { to: '/logs',      label: 'nav.console',   icon: Terminal        },
+  { to: '/players',   label: 'nav.players',   icon: Users           },
+  { to: '/accounts',  label: 'nav.accounts',  icon: UserCog         },
+  { to: '/server',    label: 'nav.server',    icon: Server          },
+  { to: '/scripts',   label: 'nav.scripts',   icon: ScrollText      },
+  { to: '/gumps',     label: 'nav.gumps',     icon: PanelTop        },
+  { to: '/updates',   label: 'nav.updates',   icon: ArrowUpCircle   },
+  { to: '/settings',  label: 'nav.settings',  icon: Settings        },
 ]
 </script>
 

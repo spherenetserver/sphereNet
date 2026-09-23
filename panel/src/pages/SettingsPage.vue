@@ -1,21 +1,21 @@
 <template>
   <div>
-    <h1 class="page-title">Settings</h1>
+    <h1 class="page-title">{{ t('settings.title') }}</h1>
 
     <!-- Debugging -->
     <section class="card">
       <div class="card-header">
         <Bug :size="16" />
-        <h2>Debugging</h2>
+        <h2>{{ t('settings.debugging') }}</h2>
       </div>
 
-      <div v-if="debugLoading" class="loading">Loading…</div>
+      <div v-if="debugLoading" class="loading">{{ t('common.loading') }}</div>
 
       <div v-else class="toggle-list">
         <div class="toggle-row">
           <div class="toggle-info">
-            <span class="toggle-label">Packet Debug</span>
-            <span class="toggle-desc">Log raw network packets to the console. High volume — use briefly.</span>
+            <span class="toggle-label">{{ t('settings.packetDebug') }}</span>
+            <span class="toggle-desc">{{ t('settings.packetDebugDesc') }}</span>
           </div>
           <button
             class="toggle-btn"
@@ -23,14 +23,14 @@
             @click="togglePacket"
             :disabled="debugSaving"
           >
-            {{ debugState.packetDebug ? 'ON' : 'OFF' }}
+            {{ debugState.packetDebug ? t('common.on') : t('common.off') }}
           </button>
         </div>
 
         <div class="toggle-row">
           <div class="toggle-info">
-            <span class="toggle-label">Script Debug</span>
-            <span class="toggle-desc">Log every trigger dispatch to the console. Very verbose.</span>
+            <span class="toggle-label">{{ t('settings.scriptDebug') }}</span>
+            <span class="toggle-desc">{{ t('settings.scriptDebugDesc') }}</span>
           </div>
           <button
             class="toggle-btn"
@@ -38,25 +38,25 @@
             @click="toggleScript"
             :disabled="debugSaving"
           >
-            {{ debugState.scriptDebug ? 'ON' : 'OFF' }}
+            {{ debugState.scriptDebug ? t('common.on') : t('common.off') }}
           </button>
         </div>
       </div>
 
       <p v-if="debugError" class="error-msg">{{ debugError }}</p>
-      <p v-if="debugSaved" class="success-msg">Saved and persisted to sphere.ini</p>
+      <p v-if="debugSaved" class="success-msg">{{ t('settings.saved') }}</p>
     </section>
 
     <!-- Server Configuration -->
     <section class="card">
       <div class="card-header">
         <Settings :size="16" />
-        <h2>Configuration</h2>
+        <h2>{{ t('settings.configuration') }}</h2>
       </div>
       <p class="card-desc">
-        Edit server identity and ports via the
-        <RouterLink to="/setup" class="link">Setup Wizard</RouterLink>.
-        Changes are written directly to sphere.ini.
+        <I18nT k="settings.configText">
+          <template #link><RouterLink to="/setup" class="link">{{ t('settings.setupWizard') }}</RouterLink></template>
+        </I18nT>
       </p>
     </section>
 
@@ -64,24 +64,24 @@
     <section class="card danger-card">
       <div class="card-header">
         <AlertTriangle :size="16" />
-        <h2>Danger Zone</h2>
+        <h2>{{ t('settings.dangerZone') }}</h2>
       </div>
 
       <div class="danger-actions">
         <div class="danger-row">
           <div class="danger-info">
-            <span class="danger-label">Restart Server</span>
-            <span class="danger-desc">Stops the game engine and initiates a restart. The panel stays up.</span>
+            <span class="danger-label">{{ t('settings.restartServer') }}</span>
+            <span class="danger-desc">{{ t('settings.restartDesc') }}</span>
           </div>
-          <button class="btn-danger" @click="doRestart" :disabled="actionBusy">Restart</button>
+          <button class="btn-danger" @click="doRestart" :disabled="actionBusy">{{ t('settings.restart') }}</button>
         </div>
 
         <div class="danger-row">
           <div class="danger-info">
-            <span class="danger-label">Shutdown Server</span>
-            <span class="danger-desc">Gracefully stops the server process.</span>
+            <span class="danger-label">{{ t('settings.shutdownServer') }}</span>
+            <span class="danger-desc">{{ t('settings.shutdownDesc') }}</span>
           </div>
-          <button class="btn-danger" @click="doShutdown" :disabled="actionBusy">Shutdown</button>
+          <button class="btn-danger" @click="doShutdown" :disabled="actionBusy">{{ t('settings.shutdown') }}</button>
         </div>
       </div>
 
@@ -96,6 +96,8 @@ import { RouterLink } from 'vue-router'
 import { Bug, Settings, AlertTriangle } from 'lucide-vue-next'
 import { settingsApi, serverApi } from '@/lib/api'
 import type { DebugState } from '@/lib/api'
+import { t } from '@/i18n'
+import I18nT from '@/i18n/I18nT'
 
 const debugLoading = ref(true)
 const debugSaving  = ref(false)
@@ -111,7 +113,7 @@ onMounted(async () => {
     const { data } = await settingsApi.getDebug()
     debugState.value = data
   } catch {
-    debugError.value = 'Could not load debug state'
+    debugError.value = t('settings.loadDebugFailed')
   } finally {
     debugLoading.value = false
   }
@@ -126,7 +128,7 @@ async function saveDebug() {
     debugSaved.value = true
     setTimeout(() => { debugSaved.value = false }, 3000)
   } catch {
-    debugError.value = 'Failed to save debug settings'
+    debugError.value = t('settings.saveDebugFailed')
   } finally {
     debugSaving.value = false
   }
@@ -143,28 +145,28 @@ async function toggleScript() {
 }
 
 async function doRestart() {
-  if (!confirm('Restart the server?')) return
+  if (!confirm(t('settings.confirmRestart'))) return
   actionBusy.value = true
   actionMsg.value  = ''
   try {
     await serverApi.restart()
-    actionMsg.value = 'Restart initiated.'
+    actionMsg.value = t('settings.restartInitiated')
   } catch {
-    actionMsg.value = 'Restart request failed'
+    actionMsg.value = t('settings.restartFailed')
   } finally {
     actionBusy.value = false
   }
 }
 
 async function doShutdown() {
-  if (!confirm('Shut down the server? The process will exit.')) return
+  if (!confirm(t('settings.confirmShutdown'))) return
   actionBusy.value = true
   actionMsg.value  = ''
   try {
     await serverApi.shutdown()
-    actionMsg.value = 'Shutdown initiated.'
+    actionMsg.value = t('settings.shutdownInitiated')
   } catch {
-    actionMsg.value = 'Shutdown request failed'
+    actionMsg.value = t('settings.shutdownFailed')
   } finally {
     actionBusy.value = false
   }

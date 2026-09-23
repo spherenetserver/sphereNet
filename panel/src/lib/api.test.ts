@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/router', () => ({ default: { push: vi.fn() } }))
 
 import { apiPath, errorMessage } from './api'
+import { setLocale } from '@/i18n'
 
 describe('apiPath', () => {
   it('encodes each segment so it stays one path segment', () => {
@@ -21,10 +22,18 @@ describe('apiPath', () => {
 })
 
 describe('errorMessage', () => {
+  beforeEach(() => setLocale('en'))
+
   it('prefers the backend error body, then the HTTP status', () => {
     expect(errorMessage({ response: { status: 409, data: { error: 'Account already exists' } } }))
       .toBe('Account already exists')
     expect(errorMessage({ response: { status: 404, data: '' } }, 'Ban failed')).toBe('Ban failed (HTTP 404)')
     expect(errorMessage({ message: 'Network Error' }, 'Ban failed')).toBe('Ban failed: Network Error')
+  })
+
+  it('uses the active language for the default fallback', () => {
+    expect(errorMessage({})).toBe('Request failed')
+    setLocale('tr')
+    expect(errorMessage({})).toBe('İstek başarısız')
   })
 })

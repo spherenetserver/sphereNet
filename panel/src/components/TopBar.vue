@@ -6,29 +6,30 @@
       <div class="server-ctrl">
         <span class="status-badge" :class="gameRunning ? 'running' : 'stopped'">
           <span class="dot" />
-          {{ gameRunning ? 'Server Running' : 'Server Stopped' }}
+          {{ gameRunning ? t('topbar.serverRunning') : t('topbar.serverStopped') }}
         </span>
         <button v-if="!gameRunning" class="ctrl-btn start" @click="startServer" :disabled="busy">
-          <Play :size="12" /> Start
+          <Play :size="12" /> {{ t('topbar.start') }}
         </button>
         <button v-if="gameRunning" class="ctrl-btn restart" @click="restartServer" :disabled="busy">
-          <RotateCw :size="12" /> Restart
+          <RotateCw :size="12" /> {{ t('topbar.restart') }}
         </button>
         <button v-if="gameRunning" class="ctrl-btn stop" @click="stopServer" :disabled="busy">
-          <Square :size="12" /> Stop
+          <Square :size="12" /> {{ t('topbar.stop') }}
         </button>
         <span v-if="ctrlError" class="ctrl-error" :title="ctrlError">
           {{ ctrlError }}
-          <button class="ctrl-error-close" title="Dismiss" @click="ctrlError = ''">&times;</button>
+          <button class="ctrl-error-close" :title="t('common.dismiss')" @click="ctrlError = ''">&times;</button>
         </span>
       </div>
 
       <!-- Panel SignalR connection -->
       <span class="connection-badge" :class="server.connected ? 'online' : 'offline'">
         <span class="dot" />
-        {{ server.connected ? 'Panel Connected' : 'Panel Disconnected' }}
+        {{ server.connected ? t('topbar.panelConnected') : t('topbar.panelDisconnected') }}
       </span>
       <span class="server-name">{{ auth.serverName }}</span>
+      <LanguageSwitch />
     </div>
   </header>
 </template>
@@ -40,6 +41,8 @@ import { Play, Square, RotateCw } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useServerStore } from '@/stores/server'
 import { serverApi, errorMessage } from '@/lib/api'
+import { t, type MessageKey } from '@/i18n'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 
 const auth   = useAuthStore()
 const server = useServerStore()
@@ -50,19 +53,22 @@ const ctrlError   = ref('')
 const gameRunning = ref(true) // assume running until first poll
 let   pollTimer: ReturnType<typeof setInterval> | null = null
 
-const titleMap: Record<string, string> = {
-  dashboard: 'Dashboard',
-  logs:      'Console',
-  players:   'Players',
-  accounts:  'Accounts',
-  server:    'Server',
-  scripts:   'Scripts',
-  gumps:     'Gump Designer',
-  updates:   'Updates',
-  settings:  'Settings',
+const titleMap: Record<string, MessageKey> = {
+  dashboard: 'nav.dashboard',
+  logs:      'nav.console',
+  players:   'nav.players',
+  accounts:  'nav.accounts',
+  server:    'nav.server',
+  scripts:   'nav.scripts',
+  gumps:     'nav.gumpDesigner',
+  updates:   'nav.updates',
+  settings:  'nav.settings',
 }
 
-const title = computed(() => titleMap[route.name as string] ?? 'SphereNet')
+const title = computed(() => {
+  const key = titleMap[route.name as string]
+  return key ? t(key) : 'SphereNet'
+})
 
 async function pollRunning() {
   try {
@@ -86,7 +92,7 @@ async function control(what: string, call: () => Promise<unknown>, recheckMs: nu
   try {
     await call()
   } catch (e) {
-    ctrlError.value = `${what} failed: ${errorMessage(e)}`
+    ctrlError.value = t('topbar.actionFailed', { action: what, error: errorMessage(e) })
   } finally {
     busy.value = false
   }
@@ -94,17 +100,17 @@ async function control(what: string, call: () => Promise<unknown>, recheckMs: nu
 }
 
 function startServer() {
-  return control('Start', serverApi.startServer, 3000)
+  return control(t('topbar.start'), serverApi.startServer, 3000)
 }
 
 function restartServer() {
-  if (!confirm('Restart the game server?')) return
-  return control('Restart', serverApi.restart, 5000)
+  if (!confirm(t('topbar.confirmRestart'))) return
+  return control(t('topbar.restart'), serverApi.restart, 5000)
 }
 
 function stopServer() {
-  if (!confirm('Stop the game server?')) return
-  return control('Stop', serverApi.shutdown, 3000)
+  if (!confirm(t('topbar.confirmStop'))) return
+  return control(t('topbar.stop'), serverApi.shutdown, 3000)
 }
 </script>
 

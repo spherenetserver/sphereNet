@@ -3,73 +3,74 @@
 
     <!-- Quick Actions -->
     <section class="section">
-      <h2 class="section-title">Quick Actions</h2>
+      <h2 class="section-title">{{ t('server.quickActions') }}</h2>
       <div class="actions-grid">
         <button class="action-card" @click="action('save')" :disabled="busy.save">
           <Save :size="22" class="action-icon success" />
-          <span class="action-label">Save World</span>
-          <span class="action-sub">Persist all game data</span>
+          <span class="action-label">{{ t('server.saveWorld') }}</span>
+          <span class="action-sub">{{ t('server.saveWorldSub') }}</span>
         </button>
         <button class="action-card" @click="action('resync')" :disabled="busy.resync">
           <RefreshCw :size="22" class="action-icon accent" :class="{ spin: busy.resync }" />
-          <span class="action-label">Resync Scripts</span>
-          <span class="action-sub">Reload modified .scp files</span>
+          <span class="action-label">{{ t('server.resync') }}</span>
+          <span class="action-sub">{{ t('server.resyncSub') }}</span>
         </button>
         <button class="action-card" @click="action('respawn')" :disabled="busy.respawn">
           <Skull :size="22" class="action-icon warning" />
-          <span class="action-label">Respawn NPCs</span>
-          <span class="action-sub">Force respawn all NPCs</span>
+          <span class="action-label">{{ t('server.respawn') }}</span>
+          <span class="action-sub">{{ t('server.respawnSub') }}</span>
         </button>
         <button class="action-card" @click="action('restock')" :disabled="busy.restock">
           <ShoppingBag :size="22" class="action-icon accent" />
-          <span class="action-label">Restock Vendors</span>
-          <span class="action-sub">Restock all vendor inventories</span>
+          <span class="action-label">{{ t('server.restock') }}</span>
+          <span class="action-sub">{{ t('server.restockSub') }}</span>
         </button>
         <button class="action-card" @click="action('gc')" :disabled="busy.gc">
           <Trash2 :size="22" class="action-icon muted" />
-          <span class="action-label">Force GC</span>
-          <span class="action-sub">Run garbage collection</span>
+          <span class="action-label">{{ t('server.gc') }}</span>
+          <span class="action-sub">{{ t('server.gcSub') }}</span>
         </button>
         <button class="action-card danger" @click="confirmShutdown" :disabled="busy.shutdown">
           <PowerOff :size="22" class="action-icon danger" />
-          <span class="action-label">Shutdown Server</span>
-          <span class="action-sub">Graceful shutdown</span>
+          <span class="action-label">{{ t('server.shutdown') }}</span>
+          <span class="action-sub">{{ t('server.shutdownSub') }}</span>
         </button>
       </div>
     </section>
 
     <!-- Broadcast -->
     <section class="section">
-      <h2 class="section-title">Broadcast Message</h2>
+      <h2 class="section-title">{{ t('server.broadcastTitle') }}</h2>
       <div class="broadcast-row">
-        <input v-model="broadcastMsg" class="broadcast-input" placeholder="Message to all online players…" @keyup.enter="sendBroadcast" />
+        <input v-model="broadcastMsg" class="broadcast-input" :placeholder="t('server.broadcastPlaceholder')" @keyup.enter="sendBroadcast" />
         <button class="btn-accent" @click="sendBroadcast" :disabled="!broadcastMsg.trim() || broadcasting">
-          <Megaphone :size="15" /> Broadcast
+          <Megaphone :size="15" /> {{ t('server.broadcast') }}
         </button>
       </div>
-      <p v-if="broadcastSent" class="sent-msg">Message sent.</p>
+      <p v-if="broadcastSent" class="sent-msg">{{ t('server.broadcastSent') }}</p>
       <p v-if="broadcastError" class="error-msg">{{ broadcastError }}</p>
     </section>
 
     <!-- Scheduled shutdown / restart -->
     <section class="section">
-      <h2 class="section-title">Scheduled Shutdown / Restart</h2>
+      <h2 class="section-title">{{ t('server.scheduleTitle') }}</h2>
       <div class="panel-box">
         <div v-if="schedule?.pending" class="pending-row">
           <div class="pending-info">
             <Timer :size="20" class="action-icon warning" />
             <div>
               <div class="pending-title">
-                {{ schedule.restart ? 'Restart' : 'Shutdown' }} in
-                <span class="countdown">{{ countdown }}</span>
+                <I18nT :k="schedule.restart ? 'server.restartIn' : 'server.shutdownIn'">
+                  <template #time><span class="countdown">{{ countdown }}</span></template>
+                </I18nT>
               </div>
               <div class="pending-sub" v-if="schedule.dueUtc">
-                Due at {{ new Date(schedule.dueUtc).toLocaleTimeString() }} — players get countdown broadcasts in game.
+                {{ t('server.dueAt', { time: fmtTime(schedule.dueUtc) }) }}
               </div>
             </div>
           </div>
           <button class="btn-danger" :disabled="scheduleBusy" @click="cancelSchedule">
-            <X :size="14" /> Cancel
+            <X :size="14" /> {{ t('common.cancel') }}
           </button>
         </div>
 
@@ -77,22 +78,22 @@
           <div class="sched-row">
             <div class="seg">
               <button :class="{ active: schedRestart }" @click="schedRestart = true">
-                <RotateCw :size="13" /> Restart
+                <RotateCw :size="13" /> {{ t('server.restart') }}
               </button>
               <button :class="{ active: !schedRestart }" @click="schedRestart = false">
-                <PowerOff :size="13" /> Shutdown
+                <PowerOff :size="13" /> {{ t('server.shutdownShort') }}
               </button>
             </div>
             <div class="seg">
               <button v-for="m in delayPresets" :key="m" :class="{ active: schedMinutes === m }"
-                @click="schedMinutes = m">{{ m }} min</button>
+                @click="schedMinutes = m">{{ t('server.minutes', { n: m }) }}</button>
             </div>
           </div>
           <div class="broadcast-row">
             <input v-model="schedMessage" class="broadcast-input" maxlength="200"
-              placeholder="Optional message shown with the countdown…" />
+              :placeholder="t('server.scheduleMessagePlaceholder')" />
             <button class="btn-accent" :disabled="scheduleBusy || schedule === undefined" @click="scheduleShutdown">
-              <Timer :size="15" /> Schedule {{ schedRestart ? 'restart' : 'shutdown' }}
+              <Timer :size="15" /> {{ schedRestart ? t('server.scheduleRestart') : t('server.scheduleShutdown') }}
             </button>
           </div>
         </template>
@@ -104,26 +105,26 @@
 
     <!-- IP blocks -->
     <section class="section">
-      <h2 class="section-title">Blocked IPs</h2>
+      <h2 class="section-title">{{ t('server.ipTitle') }}</h2>
       <div class="panel-box">
         <p class="note">
-          <Info :size="13" /> Runtime only: the block list is cleared when the server restarts.
+          <Info :size="13" /> {{ t('server.ipNote') }}
         </p>
         <div class="broadcast-row">
-          <input v-model="newIp" class="broadcast-input mono" placeholder="IPv4 or IPv6 address, e.g. 203.0.113.7"
+          <input v-model="newIp" class="broadcast-input mono" :placeholder="t('server.ipPlaceholder')"
             @keyup.enter="addIp" />
           <button class="btn-accent" :disabled="!newIp.trim() || ipBusy" @click="addIp">
-            <Ban :size="15" /> Block
+            <Ban :size="15" /> {{ t('server.block') }}
           </button>
         </div>
         <p v-if="ipError" class="error-msg">{{ ipError }}</p>
-        <div v-if="ipLoading" class="ip-empty">Loading…</div>
-        <div v-else-if="ipLoadError" class="ip-empty error-msg">Could not load the block list: {{ ipLoadError }}</div>
-        <div v-else-if="ipBlocks.length === 0" class="ip-empty">No blocked IPs.</div>
+        <div v-if="ipLoading" class="ip-empty">{{ t('common.loading') }}</div>
+        <div v-else-if="ipLoadError" class="ip-empty error-msg">{{ t('server.ipLoadError', { error: ipLoadError }) }}</div>
+        <div v-else-if="ipBlocks.length === 0" class="ip-empty">{{ t('server.noBlocked') }}</div>
         <ul v-else class="ip-list">
           <li v-for="ip in ipBlocks" :key="ip">
             <span class="mono">{{ ip }}</span>
-            <button class="icon-btn danger" title="Unblock" :disabled="ipBusy" @click="removeIp(ip)">
+            <button class="icon-btn danger" :title="t('server.unblock')" :disabled="ipBusy" @click="removeIp(ip)">
               <Trash2 :size="14" />
             </button>
           </li>
@@ -133,21 +134,21 @@
 
     <!-- Console -->
     <section class="section">
-      <h2 class="section-title">Server Console</h2>
+      <h2 class="section-title">{{ t('server.console') }}</h2>
       <div class="console-box">
         <div ref="consoleEl" class="console-output">
           <div v-for="(line, i) in consoleLines" :key="i" class="console-line">
             <span class="console-prompt" v-if="line.type === 'cmd'">» </span>
             <span :class="line.type === 'cmd' ? 'console-cmd' : 'console-resp'">{{ line.text }}</span>
           </div>
-          <div v-if="consoleLines.length === 0" class="console-empty">Type a command and press Enter…</div>
+          <div v-if="consoleLines.length === 0" class="console-empty">{{ t('server.consoleEmpty') }}</div>
         </div>
         <div class="console-input-row">
           <span class="prompt-label">»</span>
           <input
             v-model="cmdText"
             class="console-input"
-            placeholder="save / status / help …"
+            :placeholder="t('server.consolePlaceholder')"
             @keyup.enter="runCommand"
             @keyup.up="historyUp"
             @keyup.down="historyDown"
@@ -167,6 +168,8 @@ import {
 } from 'lucide-vue-next'
 import { serverApi, ipBlocksApi, errorMessage, type ShutdownSchedule } from '@/lib/api'
 import { isValidIp } from '@/lib/ip'
+import { t, fmtTime, fmtNumber } from '@/i18n'
+import I18nT from '@/i18n/I18nT'
 import { executeCommand } from '@/lib/signalr'
 
 const broadcastMsg   = ref('')
@@ -192,16 +195,16 @@ async function action(key: ActionKey) {
       gc:       serverApi.gc,
       shutdown: serverApi.shutdown,
     } as Record<ActionKey, () => Promise<{ data: { message?: string; memoryMB?: number } }>>)[key]()
-    feedback.value = res.data.message ?? (res.data.memoryMB ? `GC done — ${res.data.memoryMB} MB` : 'Done.')
+    feedback.value = res.data.message ?? (res.data.memoryMB ? t('server.gcDone', { mb: fmtNumber(res.data.memoryMB) }) : t('common.done'))
   } catch {
-    feedback.value = 'Action failed.'
+    feedback.value = t('server.actionFailed')
   } finally {
     busy.value[key] = false
   }
 }
 
 function confirmShutdown() {
-  if (confirm('Shutdown the server? All players will be disconnected.')) action('shutdown')
+  if (confirm(t('server.confirmShutdown'))) action('shutdown')
 }
 
 async function sendBroadcast() {
@@ -214,7 +217,7 @@ async function sendBroadcast() {
     broadcastSent.value = true
     setTimeout(() => broadcastSent.value = false, 3000)
   } catch (e) {
-    broadcastError.value = errorMessage(e, 'Broadcast failed')
+    broadcastError.value = errorMessage(e, t('server.broadcastFailed'))
   } finally {
     broadcasting.value = false
   }
@@ -248,13 +251,13 @@ async function loadSchedule() {
   } catch (e) {
     // Keep the last known state; a failed poll alone shouldn't hide a pending shutdown.
     if (schedule.value === undefined) schedule.value = { pending: false, restart: false, dueUtc: null }
-    schedulePollError.value = errorMessage(e, 'Could not read the schedule')
+    schedulePollError.value = errorMessage(e, t('server.scheduleReadFailed'))
   }
 }
 
 async function scheduleShutdown() {
-  const kind = schedRestart.value ? 'restart' : 'shutdown'
-  if (!confirm(`Schedule a server ${kind} in ${schedMinutes.value} minute(s)?`)) return
+  const question = schedRestart.value ? 'server.confirmScheduleRestart' : 'server.confirmScheduleShutdown'
+  if (!confirm(t(question, { n: schedMinutes.value }))) return
   scheduleBusy.value = true
   scheduleError.value = ''
   try {
@@ -265,8 +268,8 @@ async function scheduleShutdown() {
   } catch (e) {
     const status = (e as { response?: { status?: number } }).response?.status
     scheduleError.value = status === 409
-      ? 'A shutdown or restart is already scheduled.'
-      : errorMessage(e, 'Schedule failed')
+      ? t('server.alreadyScheduled')
+      : errorMessage(e, t('server.scheduleFailed'))
     await loadSchedule()
   } finally {
     scheduleBusy.value = false
@@ -274,14 +277,14 @@ async function scheduleShutdown() {
 }
 
 async function cancelSchedule() {
-  if (!confirm('Cancel the scheduled shutdown/restart?')) return
+  if (!confirm(t('server.confirmCancel'))) return
   scheduleBusy.value = true
   scheduleError.value = ''
   try {
     const { data } = await serverApi.cancelSchedule()
     schedule.value = data
   } catch (e) {
-    scheduleError.value = errorMessage(e, 'Cancel failed')
+    scheduleError.value = errorMessage(e, t('server.cancelFailed'))
     await loadSchedule()
   } finally {
     scheduleBusy.value = false
@@ -312,7 +315,7 @@ async function addIp() {
   const ip = newIp.value.trim()
   if (!ip || ipBusy.value) return
   if (!isValidIp(ip)) {
-    ipError.value = `"${ip}" is not a valid IPv4 or IPv6 address.`
+    ipError.value = t('server.invalidIp', { ip })
     return
   }
   ipError.value = ''
@@ -321,7 +324,7 @@ async function addIp() {
     await ipBlocksApi.add(ip)
     newIp.value = ''
   } catch (e) {
-    ipError.value = errorMessage(e, `Block ${ip} failed`)
+    ipError.value = errorMessage(e, t('server.blockFailed', { ip }))
   } finally {
     ipBusy.value = false
     await loadIpBlocks()
@@ -329,13 +332,13 @@ async function addIp() {
 }
 
 async function removeIp(ip: string) {
-  if (!confirm(`Unblock ${ip}?`)) return
+  if (!confirm(t('server.confirmUnblock', { ip }))) return
   ipError.value = ''
   ipBusy.value = true
   try {
     await ipBlocksApi.remove(ip)
   } catch (e) {
-    ipError.value = errorMessage(e, `Unblock ${ip} failed`)
+    ipError.value = errorMessage(e, t('server.unblockFailed', { ip }))
   } finally {
     ipBusy.value = false
     await loadIpBlocks()
@@ -379,7 +382,7 @@ async function runCommand() {
     const lines = await executeCommand(cmd)
     lines.forEach(l => consoleLines.value.push({ type: 'resp', text: l }))
   } catch {
-    consoleLines.value.push({ type: 'resp', text: '(error: not connected or command failed)' })
+    consoleLines.value.push({ type: 'resp', text: t('server.consoleError') })
   }
 
   await nextTick()

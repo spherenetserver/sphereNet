@@ -1,10 +1,11 @@
 <template>
   <div class="setup-wrap">
+    <LanguageSwitch class="corner-lang" />
     <div class="setup-card">
       <div class="setup-header">
         <span class="setup-brand">⚔ SphereNet</span>
-        <h1 class="setup-title">Server Setup</h1>
-        <p class="setup-sub">Configure your server. Changes are written to sphere.ini.</p>
+        <h1 class="setup-title">{{ t('setup.title') }}</h1>
+        <p class="setup-sub">{{ t('setup.subtitle') }}</p>
       </div>
 
       <!-- Step indicator -->
@@ -23,69 +24,69 @@
 
       <!-- ── Step 0: Server Identity ─────────────────────────────────── -->
       <div v-if="step === 0" class="step-body">
-        <h2 class="step-title">Server Identity</h2>
+        <h2 class="step-title">{{ t('setup.stepIdentity') }}</h2>
         <div class="field">
-          <label>Server Name</label>
-          <input v-model="form.serverName" placeholder="My Sphere Server" />
+          <label>{{ t('setup.serverName') }}</label>
+          <input v-model="form.serverName" :placeholder="t('setup.serverNamePlaceholder')" />
         </div>
         <div class="field">
-          <label>Game Port</label>
+          <label>{{ t('setup.gamePort') }}</label>
           <input v-model.number="form.servPort" type="number" placeholder="2593" />
-          <span class="field-hint">Standard UO port is 2593</span>
+          <span class="field-hint">{{ t('setup.gamePortHint') }}</span>
         </div>
       </div>
 
       <!-- ── Step 1: Admin ───────────────────────────────────────────── -->
       <div v-if="step === 1" class="step-body">
-        <h2 class="step-title">Admin Access</h2>
+        <h2 class="step-title">{{ t('setup.adminTitle') }}</h2>
         <div class="field">
-          <label>Admin Password</label>
-          <input v-model="form.adminPassword" type="password" placeholder="Strong password" />
-          <span class="field-hint">Used to log in to this panel</span>
+          <label>{{ t('setup.adminPassword') }}</label>
+          <input v-model="form.adminPassword" type="password" :placeholder="t('setup.adminPasswordPlaceholder')" />
+          <span class="field-hint">{{ t('setup.adminPasswordHint') }}</span>
         </div>
         <div class="field">
-          <label>Panel Port</label>
-          <input v-model.number="form.adminPanelPort" type="number" placeholder="0 = auto" />
-          <span class="field-hint">0 = ServPort + 3. Requires restart to take effect.</span>
+          <label>{{ t('setup.panelPort') }}</label>
+          <input v-model.number="form.adminPanelPort" type="number" :placeholder="t('setup.panelPortPlaceholder')" />
+          <span class="field-hint">{{ t('setup.panelPortHint') }}</span>
         </div>
       </div>
 
       <!-- ── Step 2: Server Config ───────────────────────────────────── -->
       <div v-if="step === 2" class="step-body">
-        <h2 class="step-title">Server Config</h2>
+        <h2 class="step-title">{{ t('setup.stepConfig') }}</h2>
 
         <div class="field">
-          <label>Tick Sleep Mode</label>
+          <label>{{ t('setup.tickSleepMode') }}</label>
           <select v-model.number="form.tickSleepMode" class="select-input">
-            <option :value="0">0 — Spin (lowest latency, ~100% CPU)</option>
-            <option :value="1">1 — Sleep (low CPU, ~15 ms latency)</option>
-            <option :value="2">2 — Hybrid (balanced, recommended)</option>
+            <option :value="0">{{ t('setup.tick0') }}</option>
+            <option :value="1">{{ t('setup.tick1') }}</option>
+            <option :value="2">{{ t('setup.tick2') }}</option>
           </select>
         </div>
 
         <!-- Advanced toggle -->
         <button class="advanced-toggle" @click="showAdvanced = !showAdvanced">
           <ChevronRight :size="14" :class="{ rotated: showAdvanced }" />
-          Advanced settings
+          {{ t('setup.advanced') }}
         </button>
 
         <div v-if="showAdvanced" class="advanced-panel">
           <div class="toggle-row">
             <div>
-              <div class="toggle-label">Packet Debug</div>
-              <div class="toggle-desc">Log raw network packets. Very verbose — use briefly.</div>
+              <div class="toggle-label">{{ t('settings.packetDebug') }}</div>
+              <div class="toggle-desc">{{ t('setup.packetDebugDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: form.debugPackets }" @click="form.debugPackets = !form.debugPackets">
-              {{ form.debugPackets ? 'ON' : 'OFF' }}
+              {{ form.debugPackets ? t('common.on') : t('common.off') }}
             </button>
           </div>
           <div class="toggle-row">
             <div>
-              <div class="toggle-label">Script Debug</div>
-              <div class="toggle-desc">Log every trigger dispatch. Extremely verbose.</div>
+              <div class="toggle-label">{{ t('settings.scriptDebug') }}</div>
+              <div class="toggle-desc">{{ t('setup.scriptDebugDesc') }}</div>
             </div>
             <button class="toggle-btn" :class="{ on: form.scriptDebug }" @click="form.scriptDebug = !form.scriptDebug">
-              {{ form.scriptDebug ? 'ON' : 'OFF' }}
+              {{ form.scriptDebug ? t('common.on') : t('common.off') }}
             </button>
           </div>
         </div>
@@ -93,9 +94,9 @@
 
       <!-- ── Step 4: Scripts (runs with the session created by Apply) ── -->
       <div v-if="step === 4" class="step-body">
-        <h2 class="step-title">Scripts</h2>
+        <h2 class="step-title">{{ t('setup.stepScripts') }}</h2>
 
-        <div v-if="scriptsLoading" class="loading">Checking scripts folder…</div>
+        <div v-if="scriptsLoading" class="loading">{{ t('setup.checkingScripts') }}</div>
 
         <template v-else>
           <!-- Scripts already installed -->
@@ -103,20 +104,23 @@
             <div class="alert alert-warn">
               <AlertTriangle :size="16" />
               <div>
-                <strong>Scripts already installed.</strong>
+                <strong>{{ t('setup.scriptsInstalled') }}</strong>
                 <p>
-                  Downloading replaces every file that also exists in the
-                  <a :href="pack.url" target="_blank" rel="noopener" class="gh-link-inline">
-                    <i class="bi bi-github" /> {{ pack.repo }} <i class="bi bi-box-arrow-up-right" />
-                  </a>
-                  pack. Local files that differ are first copied to a dated
-                  <code>script-backups</code> folder next to the scripts folder; files the pack
-                  does not contain are kept.
+                  <I18nT k="setup.overwriteText">
+                    <template #repo>
+                      <a :href="pack.url" target="_blank" rel="noopener" class="gh-link-inline">
+                        <i class="bi bi-github" /> {{ pack.repo }} <i class="bi bi-box-arrow-up-right" />
+                      </a>
+                    </template>
+                    <template #folder><code>script-backups</code></template>
+                  </I18nT>
                 </p>
               </div>
             </div>
             <div class="field" style="margin-top: 12px;">
-              <label style="color:var(--danger)">Type <code>OVERWRITE</code> to confirm</label>
+              <label style="color:var(--danger)">
+                <I18nT k="setup.typeToConfirm"><template #word><code>OVERWRITE</code></template></I18nT>
+              </label>
               <input v-model="overwriteConfirm" placeholder="OVERWRITE" />
             </div>
             <button
@@ -125,25 +129,27 @@
               :disabled="overwriteConfirm !== 'OVERWRITE' || downloading"
             >
               <Download :size="14" />
-              {{ downloading ? 'Downloading…' : 'Overwrite from GitHub' }}
+              {{ downloading ? t('setup.downloading') : t('setup.overwrite') }}
             </button>
           </template>
 
           <!-- No scripts yet -->
           <template v-else>
             <p class="step-desc">
-              Download the Source-X script pack from
-              <a :href="pack.url" target="_blank" rel="noopener" class="gh-link-inline">
-                <i class="bi bi-github" /> {{ pack.repo }} <i class="bi bi-box-arrow-up-right" />
-              </a>
-              to get started quickly.
+              <I18nT k="setup.downloadIntro">
+                <template #repo>
+                  <a :href="pack.url" target="_blank" rel="noopener" class="gh-link-inline">
+                    <i class="bi bi-github" /> {{ pack.repo }} <i class="bi bi-box-arrow-up-right" />
+                  </a>
+                </template>
+              </I18nT>
             </p>
             <button class="btn-primary" @click="downloadScripts" :disabled="downloading">
               <Download :size="14" />
-              {{ downloading ? 'Downloading…' : 'Download & Install Scripts' }}
+              {{ downloading ? t('setup.downloading') : t('setup.downloadInstall') }}
             </button>
             <button class="btn-ghost" style="margin-left: 8px" @click="skipScripts">
-              Skip for now
+              {{ t('setup.skip') }}
             </button>
           </template>
 
@@ -154,41 +160,41 @@
 
           <div v-if="scriptsInstalled" class="alert alert-ok" style="margin-top: 12px;">
             <CheckCircle :size="16" />
-            <span>{{ installedCount }} script files installed successfully.</span>
+            <span>{{ t('setup.installedCount', { n: installedCount }) }}</span>
           </div>
         </template>
       </div>
 
       <!-- ── Step 3: Review ──────────────────────────────────────────── -->
       <div v-if="step === 3" class="step-body">
-        <h2 class="step-title">Review</h2>
+        <h2 class="step-title">{{ t('setup.stepReview') }}</h2>
         <div class="review-grid">
-          <div class="review-row"><span>Server Name</span><strong>{{ form.serverName }}</strong></div>
-          <div class="review-row"><span>Game Port</span><strong>{{ form.servPort }}</strong></div>
-          <div class="review-row"><span>Admin Password</span><strong>{{ passwordSummary }}</strong></div>
-          <div class="review-row"><span>Panel Port</span><strong>{{ form.adminPanelPort || 'auto' }}</strong></div>
-          <div class="review-row"><span>Tick Mode</span><strong>{{ tickModeLabel }}</strong></div>
-          <div class="review-row"><span>Packet Debug</span><strong>{{ form.debugPackets ? 'ON' : 'OFF' }}</strong></div>
-          <div class="review-row"><span>Script Debug</span><strong>{{ form.scriptDebug ? 'ON' : 'OFF' }}</strong></div>
+          <div class="review-row"><span>{{ t('setup.serverName') }}</span><strong>{{ form.serverName }}</strong></div>
+          <div class="review-row"><span>{{ t('setup.gamePort') }}</span><strong>{{ form.servPort }}</strong></div>
+          <div class="review-row"><span>{{ t('setup.adminPassword') }}</span><strong>{{ passwordSummary }}</strong></div>
+          <div class="review-row"><span>{{ t('setup.panelPort') }}</span><strong>{{ form.adminPanelPort || t('setup.auto') }}</strong></div>
+          <div class="review-row"><span>{{ t('setup.tickMode') }}</span><strong>{{ tickModeLabel }}</strong></div>
+          <div class="review-row"><span>{{ t('settings.packetDebug') }}</span><strong>{{ form.debugPackets ? t('common.on') : t('common.off') }}</strong></div>
+          <div class="review-row"><span>{{ t('settings.scriptDebug') }}</span><strong>{{ form.scriptDebug ? t('common.on') : t('common.off') }}</strong></div>
         </div>
-        <p v-if="!form.adminPassword" class="warn">⚠ Admin password is empty. You won't be able to log in after save.</p>
+        <p v-if="!form.adminPassword" class="warn">{{ t('setup.passwordEmpty') }}</p>
         <p class="step-desc" style="margin-top:10px">
-          Saving creates your panel session, then continues to the scripts step.
+          {{ t('setup.reviewNote') }}
         </p>
       </div>
 
       <!-- ── Step 5: Done ────────────────────────────────────────────── -->
       <div v-if="step === 5" class="step-body step-done">
         <CheckCircle :size="52" class="done-icon" />
-        <h2>Setup Complete</h2>
-        <p>Settings saved to sphere.ini and a script resync was initiated.</p>
-        <button class="btn-primary" @click="goToDashboard">Go to Dashboard</button>
+        <h2>{{ t('setup.completeTitle') }}</h2>
+        <p>{{ t('setup.completeText') }}</p>
+        <button class="btn-primary" @click="goToDashboard">{{ t('setup.goDashboard') }}</button>
       </div>
 
       <!-- Actions -->
       <div v-if="step < 5" class="step-actions">
         <!-- No going back past Apply: the settings are already written. -->
-        <button v-if="step > 0 && step < 3" class="btn-ghost" @click="step--">Back</button>
+        <button v-if="step > 0 && step < 3" class="btn-ghost" @click="step--">{{ t('setup.back') }}</button>
         <span class="flex-1" />
         <button
           v-if="step < 3"
@@ -196,12 +202,12 @@
           @click="next"
           :disabled="!canNext"
         >
-          Next
+          {{ t('setup.next') }}
         </button>
         <button v-if="step === 3" class="btn-primary" @click="apply" :disabled="saving">
-          {{ saving ? 'Saving…' : 'Apply & Save' }}
+          {{ saving ? t('common.saving') : t('setup.apply') }}
         </button>
-        <button v-if="step === 4" class="btn-primary" @click="step++">Continue</button>
+        <button v-if="step === 4" class="btn-primary" @click="step++">{{ t('setup.continue') }}</button>
       </div>
 
       <p v-if="error" class="error-msg">{{ error }}</p>
@@ -216,6 +222,9 @@ import { Check, CheckCircle, ChevronRight, AlertTriangle, Download } from 'lucid
 import { setupApi, scriptsApi } from '@/lib/api'
 import { useScriptPack } from '@/lib/scriptPack'
 import { useAuthStore } from '@/stores/auth'
+import { t } from '@/i18n'
+import I18nT from '@/i18n/I18nT'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 
 const router = useRouter()
 const auth   = useAuthStore()
@@ -223,7 +232,10 @@ const auth   = useAuthStore()
 // Scripts comes AFTER Apply on purpose: downloading a script pack writes to disk
 // and stays behind the bearer token, so the wizard must own a session first. With
 // Scripts before Apply there was no password yet, no token, and the step 401'd.
-const steps = ['Server Identity', 'Admin', 'Server Config', 'Review', 'Scripts', 'Done']
+const steps = computed(() => [
+  t('setup.stepIdentity'), t('setup.stepAdmin'), t('setup.stepConfig'),
+  t('setup.stepReview'), t('setup.stepScripts'), t('setup.stepDone'),
+])
 
 /** Mirrors PanelHost.PasswordMask — /api/setup/config returns this instead of the
  *  real password, and posting it back means "keep the current one". */
@@ -299,8 +311,8 @@ const canNext = computed(() => {
 })
 
 const passwordSummary = computed(() => {
-  if (!form.value.adminPassword) return '(not set)'
-  return form.value.adminPassword === PASSWORD_MASK ? '(unchanged)' : '••••••••'
+  if (!form.value.adminPassword) return t('setup.notSet')
+  return form.value.adminPassword === PASSWORD_MASK ? t('setup.unchanged') : '••••••••'
 })
 
 function next() {
@@ -326,7 +338,7 @@ async function downloadScripts() {
     overwriteConfirm.value = ''
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-    downloadMsg.value   = msg ?? 'Download failed. Check server logs.'
+    downloadMsg.value   = msg ?? t('setup.downloadFailed')
     downloadError.value = true
   } finally {
     downloading.value = false
@@ -354,8 +366,7 @@ async function apply() {
       try {
         await auth.establishSession(form.value.adminPassword)
       } catch {
-        error.value = 'Settings saved, but automatic sign-in failed. ' +
-                      'Log in with your new password to install scripts.'
+        error.value = t('setup.autoSignInFailed')
       }
     }
 
@@ -363,7 +374,7 @@ async function apply() {
     step.value = 4
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-    error.value = msg ?? 'Save failed'
+    error.value = msg ?? t('setup.saveFailed')
   } finally {
     saving.value = false
   }
@@ -379,6 +390,8 @@ function goToDashboard() {
 </script>
 
 <style scoped>
+.corner-lang { position: fixed; top: 16px; right: 16px; z-index: 10; }
+
 .setup-wrap {
   min-height: 100vh;
   display: flex;

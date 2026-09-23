@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Panel dili: Turkce / Ingilizce
+------------------------------------------------------------------------
+EKLEME - Panel Turkce ve Ingilizce kullanilabilir. TR/EN secici ust barda ve
+         giris ile kurulum sayfalarinda; secim tarayicida (localStorage)
+         saklanir, ilk seferde tarayici dilini izler. Tum sayfalar, pencereler,
+         onaylar ve hata metinleri cevrildi; sayi ve tarihler secilen dile gore
+         bicimlenir. Sunucudan gelen metin (log satirlari, adlar, sunucu hata
+         mesajlari) geldigi gibi gosterilir.
+TEST - Panel i18n testleri (iki dilde ayni anahtar ve yer tutucular,
+       yerlestirme, kalicilik, dil geri donusu).
+
 [2026-09-23] - Panel operator ozellikleri
 ------------------------------------------------------------------------
 EKLEME - Players: oyuncu basina serial, yetki seviyesi, client surumu ve oturum

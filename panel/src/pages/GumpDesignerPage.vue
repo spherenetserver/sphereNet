@@ -2,26 +2,26 @@
   <div class="gump-page">
     <!-- Sol: araçlar + dialog tarayıcı -->
     <section class="toolbox">
-      <h2>Dialog Tasarımcısı</h2>
+      <h2>{{ t('gump.title') }}</h2>
 
-      <h3>Sunucudan Yükle</h3>
+      <h3>{{ t('gump.loadFromServer') }}</h3>
       <select v-model="pickedDialog" class="full">
-        <option value="">— dialog seç —</option>
+        <option value="">{{ t('gump.pickDialog') }}</option>
         <option v-for="n in dialogNames" :key="n" :value="n">{{ n }}</option>
       </select>
-      <button class="tool-btn" :disabled="!pickedDialog" @click="loadFromServer">Script'i Yükle</button>
+      <button class="tool-btn" :disabled="!pickedDialog" @click="loadFromServer">{{ t('gump.loadScript') }}</button>
 
-      <h3>Kontrol Ekle</h3>
+      <h3>{{ t('gump.addControl') }}</h3>
       <button v-for="tool in tools" :key="tool.type" class="tool-btn" @click="addControl(tool.type)">
         {{ tool.label }}
       </button>
-      <button class="tool-btn danger" @click="removeSelected" :disabled="selectedIndex < 0">Seçileni Sil</button>
+      <button class="tool-btn danger" @click="removeSelected" :disabled="selectedIndex < 0">{{ t('gump.removeSelected') }}</button>
 
-      <h3>Görünüm</h3>
-      <label class="row"><input type="checkbox" v-model="showOutlines" /> kontrol çerçeveleri</label>
-      <label class="row">Sayfa:
+      <h3>{{ t('gump.view') }}</h3>
+      <label class="row"><input type="checkbox" v-model="showOutlines" /> {{ t('gump.outlines') }}</label>
+      <label class="row">{{ t('gump.page') }}
         <select v-model="activePage">
-          <option value="all">tümü</option>
+          <option value="all">{{ t('gump.allPages') }}</option>
           <option v-for="p in pages" :key="p" :value="String(p)">{{ p }}</option>
         </select>
       </label>
@@ -31,7 +31,7 @@
     <section class="canvas-panel">
       <div class="canvas-header">
         <input v-model="dialogName" class="name-input" placeholder="d_panel_test" />
-        <span>{{ visibleControls.length }} kontrol · sürükleyerek taşı</span>
+        <span>{{ t('gump.controlsHint', { n: visibleControls.length }) }}</span>
       </div>
       <div class="stage" @mousedown.self="selectedIndex = -1">
         <component
@@ -66,41 +66,40 @@
 
     <!-- Sağ: özellikler + script -->
     <section class="props">
-      <h3>Özellikler</h3>
+      <h3>{{ t('gump.properties') }}</h3>
       <template v-if="selected">
-        <label>Tip <span class="ro">{{ selected.type }}</span></label>
+        <label>{{ t('gump.type') }} <span class="ro">{{ selected.type }}</span></label>
         <label>X <input v-model.number="selected.x" type="number" /></label>
         <label>Y <input v-model.number="selected.y" type="number" /></label>
         <template v-if="hasSize(selected)">
-          <label>Genişlik <input v-model.number="selected.width" type="number" /></label>
-          <label>Yükseklik <input v-model.number="selected.height" type="number" /></label>
+          <label>{{ t('gump.width') }} <input v-model.number="selected.width" type="number" /></label>
+          <label>{{ t('gump.height') }} <input v-model.number="selected.height" type="number" /></label>
         </template>
-        <label v-if="usesGumpId(selected)">Gump ID
+        <label v-if="usesGumpId(selected)">{{ t('gump.gumpId') }}
           <input v-model.number="selected.gumpId" type="number" /></label>
-        <label v-if="selected.type === 'button'">Basılı ID
+        <label v-if="selected.type === 'button'">{{ t('gump.pressedId') }}
           <input v-model.number="selected.pressedId" type="number" /></label>
-        <label v-if="selected.type === 'button'">Buton ID
+        <label v-if="selected.type === 'button'">{{ t('gump.buttonId') }}
           <input v-model.number="selected.buttonId" type="number" /></label>
-        <label v-if="selected.type === 'button'">Sayfa
+        <label v-if="selected.type === 'button'">{{ t('gump.targetPage') }}
           <input v-model.number="selected.targetPage" type="number" /></label>
-        <label v-if="hasText(selected)">Hue
+        <label v-if="hasText(selected)">{{ t('gump.hue') }}
           <input v-model.number="selected.hue" type="number" /></label>
         <label v-if="selected.type === 'htmlgump'" class="row">
-          <input type="checkbox" v-model="selected.background" /> arka plan</label>
-        <label v-if="hasText(selected)" class="col">Metin
+          <input type="checkbox" v-model="selected.background" /> {{ t('gump.background') }}</label>
+        <label v-if="hasText(selected)" class="col">{{ t('gump.text') }}
           <textarea v-model="selected.text" rows="3" /></label>
-        <label>Önizleme sayfası <input v-model.number="selected.page" type="number" /></label>
+        <label>{{ t('gump.previewPage') }} <input v-model.number="selected.page" type="number" /></label>
       </template>
-      <p v-else class="hint">Sahneden bir kontrol seç.</p>
+      <p v-else class="hint">{{ t('gump.selectHint') }}</p>
 
       <div class="script-head">
-        <h3>Script</h3>
-        <button class="mini" @click="importFromScript">İçe Aktar ⤵</button>
-        <button class="mini" @click="copyExport">Kopyala</button>
+        <h3>{{ t('gump.script') }}</h3>
+        <button class="mini" @click="importFromScript">{{ t('gump.import') }}</button>
+        <button class="mini" @click="copyExport">{{ t('gump.copy') }}</button>
       </div>
       <textarea class="export" v-model="scriptText" spellcheck="false" />
-      <p class="hint">Dışa aktarım kontrollerden üretilir; "İçe Aktar" kutudaki scripti sahneye çizer
-        (&lt;ifade&gt; içeren satırlar olduğu gibi korunur).
+      <p class="hint">{{ t('gump.exportHint') }}
         <span v-if="copyMsg" class="copy-msg" :class="{ failed: copyFailed }" role="status">{{ copyMsg }}</span></p>
     </section>
   </div>
@@ -110,6 +109,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
+import { t } from '@/i18n'
 
 type ControlType =
   | 'resizepic' | 'gumppic' | 'gumppictiled' | 'button' | 'checkbox' | 'radio'
@@ -131,9 +131,9 @@ interface Ctl {
   cornerW: number; cornerH: number
 }
 
-const tools: { type: ControlType; label: string }[] = [
-  { type: 'resizepic',  label: 'ResizePic (arka plan)' },
-  { type: 'gumppic',    label: 'GumpPic (görsel)' },
+const tools = computed<{ type: ControlType; label: string }[]>(() => [
+  { type: 'resizepic',  label: t('gump.toolResizepic') },
+  { type: 'gumppic',    label: t('gump.toolGumppic') },
   { type: 'gumppictiled', label: 'GumpPicTiled' },
   { type: 'button',     label: 'Button' },
   { type: 'checkbox',   label: 'CheckBox' },
@@ -143,7 +143,7 @@ const tools: { type: ControlType; label: string }[] = [
   { type: 'htmlgump',   label: 'DHtmlGump' },
   { type: 'textentry',  label: 'DTextEntry' },
   { type: 'checkertrans', label: 'CheckerTrans' },
-]
+])
 
 const dialogName = ref('d_panel_gump')
 const controls = ref<Ctl[]>([])
@@ -168,7 +168,7 @@ const visibleControls = computed(() =>
 onMounted(() => {
   api.get<string[]>('/dialogs').then(r => { dialogNames.value = r.data }).catch(() => {})
   controls.value = [make('resizepic', 0, 0, { width: 420, height: 300, gumpId: 2600 }),
-                    make('text', 40, 30, { text: 'Yeni dialog', hue: 90 })]
+                    make('text', 40, 30, { text: t('gump.defaultDialogText'), hue: 90 })]
   regenerateScript()
 })
 
@@ -180,7 +180,7 @@ function make(type: ControlType, x = 40, y = 40, extra: Partial<Ctl> = {}): Ctl 
     hue: 0,
     gumpId: type === 'button' ? 4005 : type === 'checkbox' ? 210 : type === 'radio' ? 208 : 2600,
     pressedId: 4007, buttonId: 1, targetPage: 0,
-    background: true, text: type === 'text' ? 'Metin' : '',
+    background: true, text: type === 'text' ? t('gump.defaultText') : '',
     page: 0, cornerW: 0, cornerH: 0,
     ...extra,
   }
@@ -206,7 +206,7 @@ function hasSize(c: Ctl) {
 }
 function hasText(c: Ctl) { return ['text', 'croppedtext', 'htmlgump', 'textentry'].includes(c.type) }
 function ctlTitle(c: Ctl) {
-  return c.type === 'button' ? `button id=${c.buttonId} → sayfa ${c.targetPage}` : c.type
+  return c.type === 'button' ? t('gump.buttonTitle', { id: c.buttonId, page: c.targetPage }) : c.type
 }
 function ctlStyle(c: Ctl) {
   const sized = hasSize(c)
@@ -307,7 +307,7 @@ function regenerateScript() {
     }
   }
   if (passthroughLines.value.length) {
-    lines.push('// --- içe aktarımda korunan satırlar (ifade/akış) ---')
+    lines.push(t('gump.keptLinesComment'))
     lines.push(...passthroughLines.value)
   }
   lines.push('', `[DIALOG ${name} BUTTON]`, 'ON=1', 'RETURN 1')
@@ -323,7 +323,7 @@ function loadFromServer() {
       dialogName.value = pickedDialog.value
       importFromScript()
     })
-    .catch(() => { copyMsg.value = 'kaynak okunamadı'; copyFailed.value = true })
+    .catch(() => { copyMsg.value = t('gump.sourceReadFailed'); copyFailed.value = true })
 }
 
 function importFromScript() {
@@ -413,14 +413,16 @@ function importFromScript() {
   activePage.value = 'all'
   suppressExport = false
   copyFailed.value = false
-  copyMsg.value = `${out.length} kontrol içe aktarıldı${kept.length ? `, ${kept.length} satır korunarak geçildi` : ''}`
+  copyMsg.value = kept.length
+    ? t('gump.importedKept', { n: out.length, kept: kept.length })
+    : t('gump.imported', { n: out.length })
 }
 
 let copyMsgTimer: number | undefined
 
 async function copyExport() {
   const ok = await copyText(scriptText.value)
-  copyMsg.value = ok ? 'panoya kopyalandı' : 'kopyalanamadı — metni kutudan elle seçip kopyalayın'
+  copyMsg.value = ok ? t('gump.copied') : t('gump.copyFailed')
   copyFailed.value = !ok
   window.clearTimeout(copyMsgTimer)
   copyMsgTimer = window.setTimeout(() => {

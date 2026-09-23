@@ -1,30 +1,31 @@
 <template>
   <div class="login-wrap">
+    <LanguageSwitch class="corner-lang" />
     <div class="login-box">
       <div class="login-brand">
         <span class="brand-icon">⚔</span>
         <span class="brand-name">SphereNet</span>
       </div>
-      <p class="login-sub">Admin Panel</p>
+      <p class="login-sub">{{ t('login.subtitle') }}</p>
 
       <form class="login-form" @submit.prevent="submit">
         <div class="field">
-          <label>Admin Password</label>
+          <label>{{ t('login.password') }}</label>
           <input
             v-model="password"
             type="password"
-            placeholder="Enter admin password"
+            :placeholder="t('login.passwordPlaceholder')"
             autocomplete="current-password"
             :disabled="loading"
           />
           <p v-if="prefilled" class="hint-msg">
-            Filled in from sphere.ini (AdminPanelAutoFill).
+            {{ t('login.prefilled') }}
           </p>
         </div>
 
         <button type="submit" class="btn-primary" :disabled="loading">
-          <span v-if="loading">Connecting…</span>
-          <span v-else>Login</span>
+          <span v-if="loading">{{ t('login.connecting') }}</span>
+          <span v-else>{{ t('login.submit') }}</span>
         </button>
 
         <p v-if="error" class="error-msg">{{ error }}</p>
@@ -37,6 +38,8 @@
 import { onMounted, ref } from 'vue'
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
+import { t } from '@/i18n'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 
 const auth     = useAuthStore()
 const password = ref('')
@@ -63,10 +66,10 @@ async function submit() {
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } }).response?.status
     error.value = status === 401
-      ? 'Wrong password.'
+      ? t('login.wrongPassword')
       : status === 400
-        ? 'AdminPassword not configured in sphere.ini.'
-        : 'Server unreachable. Is SphereNet running?'
+        ? t('login.notConfigured')
+        : t('login.unreachable')
   } finally {
     loading.value = false
   }
@@ -74,6 +77,8 @@ async function submit() {
 </script>
 
 <style scoped>
+.corner-lang { position: fixed; top: 16px; right: 16px; }
+
 .login-wrap {
   min-height: 100vh;
   display: flex;

@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Client tipi 0xE1 okumasi; 0xE2 yeni animasyon eski aksiyondan turetilir
+------------------------------------------------------------------------
+DUZELTME - 0xE1 client tipi: paket [E1][u16 uzunluk][u16 sayac][u32 tip];
+           tip uzunluktan hemen sonra okunuyordu, sayac yuksek yariya dusuyor
+           (0x00010000) ve 3'e kirpma her gondereni Enhanced Client yapiyordu.
+           Sayac artik atlanir (Source-X PacketClientType::onReceive), kisa
+           paket yok sayilir, 0..3 disindaki tip Enhanced'a kirpilmaz, bilinen
+           hicbir client sayilmaz. 0xF0 toplu hareket ve surum-yedek kontrolleri
+           KR/Enhanced'i esitlikle sinar.
+DUZELTME - 0xE2 yeni animasyon: action, sub-action ve variation, Source-X
+           CChar::UpdateAnimate gibi eski (cevrilmis) aksiyondan, aktorun
+           govdesinden ve eldeki silahtan turetilir - gargoyle disindakilere
+           variation 1 ile silah tipi sub-action'lari, sabit vurus/buyu/darbe
+           alma/blok/yumruk/yeme tablosu, her govde icin olum, aksi halde eski
+           numara aynen. Cagri noktalari artik jest secmez: toplama/uretim
+           vurusu NANIM_EMOTE olarak gidiyor, KR/Enhanced izleyicide egilme
+           oynatiyordu.
+DUZELTME - Izleyici bazli secim UpdateAnimate'i izler: KR/Enhanced client 0xE2
+           alir, 7.0.0.0+ client (MINCLIVER_NEWMOBILEANIM) gargoyle aktor icin
+           0xE2 alir, digerleri eski 0x6E alir.
+DUZELTME - PacketNewAnimation Source-X PacketActionBasic duzenini yazar (action
+           u16, sub-action u16, variation byte); bos sub-action 0xFFFF'tir.
+
 [2026-09-23] - Yonetim paneli: karakter islemleri ve ayrintilari, yetkili mesaji, sunucu fonksiyonlari
 ------------------------------------------------------------------------
 EKLEME - POST /api/players/{serial}/action, cevrimici ya da cevrimdisi her
@@ -35,6 +58,30 @@ EKLEME - Panel: oyuncu basina islemler penceresi (konusma, ciktili verb
          calistirici ve son 20 konsol komutunun hatirlanan listesi (tiklayinca
          yeniden calisir).
 
+[2026-09-23] - Eski gorus hatti, NPC adimlari ve citler, statik uzerinde INFO
+------------------------------------------------------------------------
+DUZELTME - Gorus hatti Source-X CChar::CanSeeLOS'un ADVANCEDLOS kapali (varsayilan)
+           yolunu izler (CCharLOS.cpp:12-96): bakanin ayak hizasinda kare kare
+           yurunur, her kare yurume-yukseklik sorgusundan (GetHeightPoint2)
+           gecer. Govdenin alt yarisindaki engelleyici kare ya da kapali kapi
+           gorusu keser, 16'dan fazla tirmanis da keser; capraz adim iki dik
+           komsudan biri aciksa gecer; hedef karesi sinanmaz. Goz hizasindaki
+           isin 11 yuksekligindeki citlerin ve kapali ahsap kapilarin uzerinden
+           geciyordu, yakin dovus ve okculuk bunlarin arkasina isliyordu. Isin
+           (CanSeeLOS_New) ADVANCEDLOS 0x01 (oyuncu) / 0x02 (NPC) icin korunur;
+           deger artik sphere.ini'den okunur. Acik kapi esyasi kapi sayilmaz;
+           dinamik esyalar, multi parcalari ve ozel ev kareleri sorguya girer.
+DUZELTME - Dovus gorus hatti yetkilileri de baglar (bCombatCheck,
+           CCharFight.cpp:1720): GM artik duvarin arkasina vuramaz.
+DUZELTME - NPC dolasma, yana adim, kacma, geri cekilme ve kusatma adimlari
+           ortak yurume denetiminden gecer (CheckValidMove, CCharStatus.cpp:1978).
+           Yalnizca durulabilir zemin soruluyordu; zemin Z'sinde duran duvar
+           hic sayilmiyordu, yaratiklar cit ve duvar statiklerinin icinden
+           geciyor, aralarindaki koseleri kesiyordu.
+EKLEME - Harita statigi ya da bos zemin uzerinde INFO, Source-X kare satiriyla
+         yanitlanir (OnTarg_Obj_Info, CClientTarg.cpp:119): "[Static z=..,
+         0id=defname->tip], TERRAIN=0id TYPE=t_..", ITEMDEF yoksa "NON scripted",
+         zeminde "[No static tile]".
 [2026-09-23] - Source-X vurus zamanlamasi, dovus sesleri, dovus adlari; paperdoll unvan satiri
 ------------------------------------------------------------------------
 DUZELTME - Vuruslar Source-X Fight_SetDefaultSwingDelays / Fight_Hit'i izler

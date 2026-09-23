@@ -151,7 +151,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.Resync() => Resync();
     void IClientContext.BroadcastDrawObject(Character ch) => BroadcastDrawObject(ch);
     void IClientContext.BroadcastDeleteObject(uint uid) => BroadcastDeleteObject(uid);
-    void IClientContext.BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode, byte animDelay) => BroadcastAnimation(actor, legacyAction, gesture, mode, animDelay);
+    void IClientContext.BroadcastAnimation(Character actor, ushort legacyAction, byte animDelay) => BroadcastAnimation(actor, legacyAction, animDelay);
     void IClientContext.SendDrawObject(Character ch) => SendDrawObject(ch);
     void IClientContext.SendDrawObjectWithHue(Character ch, ushort hue) => SendDrawObjectWithHue(ch, hue);
     void IClientContext.SendDrawObjectHidden(Character ch) => SendDrawObjectHidden(ch);
@@ -172,8 +172,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.SendPickupFailed(byte reason) => SendPickupFailed(reason);
     bool IClientContext.CanSendStatusFor(Character ch) => CanSendStatusFor(ch);
     byte IClientContext.BuildMobileFlags(Character ch) => BuildMobileFlags(ch);
-    void IClientContext.PlayAnimation(Character actor, ushort action,
-        SphereNet.Core.Enums.NewAnimationGesture gesture) => PlayAnimation(actor, action, gesture);
+    void IClientContext.PlayAnimation(Character actor, ushort action) => PlayAnimation(actor, action);
     void IClientContext.SendSeason(byte season, bool playSound, bool force) => SendSeason(season, playSound, force);
     void IClientContext.PlaceItemInPack(Character target, Item item) => PlaceItemInPack(target, item);
     bool IClientContext.TryDClickEquip(Item item, Layer layer) => Inventory.TryDClickEquip(item, layer);

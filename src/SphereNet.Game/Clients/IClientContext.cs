@@ -121,7 +121,7 @@ internal interface IClientContext : ITextConsole
     void Resync();
     void BroadcastDrawObject(Character ch);
     void BroadcastDeleteObject(uint uid);
-    void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0, byte animDelay = 0);
+    void BroadcastAnimation(Character actor, ushort legacyAction, byte animDelay = 0);
     void SendDrawObject(Character ch);
     void SendDrawObjectWithHue(Character ch, ushort hue);
     void SendDrawObjectHidden(Character ch);
@@ -159,8 +159,7 @@ internal interface IClientContext : ITextConsole
 
     /// <summary>Play an action on a character for everyone who can see them, with the
     /// body/mount translation and the per-viewer packet choice applied once, here.</summary>
-    void PlayAnimation(Character actor, ushort action,
-        SphereNet.Core.Enums.NewAnimationGesture gesture);
+    void PlayAnimation(Character actor, ushort action);
 
     /// <summary>Change the client's season, skipping a season it is already in
     /// (upstream CClient::addSeason, CClientMsg.cpp:509).</summary>

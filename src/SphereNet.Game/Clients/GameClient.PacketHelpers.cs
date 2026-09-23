@@ -356,7 +356,7 @@ public sealed partial class GameClient
     /// Both live in this file already; what was missing was a single entry point, so
     /// eleven call sites built the raw packet and got neither.</summary>
     public static void PlayAnimation(
-        Character actor, ushort action, NewAnimationGesture gesture, int range,
+        Character actor, ushort action, int range,
         Action<Point3D, int, PacketWriter, uint>? broadcastNearby,
         Action<Point3D, int, uint, Action<Character, GameClient>>? forEachClientInRange,
         ushort frameCount = 7, ushort repeatCount = 1, bool forward = true,
@@ -364,34 +364,57 @@ public sealed partial class GameClient
     {
         // UpdateAnimate translates by default (fTranslate = true, CChar.h:560):
         // the weapon in hand, the saddle and the body (GenerateAnimate).
-        ushort translated = SphereNet.Game.Combat.BodyAnimTranslator.Generate(actor, action);
-
-        uint serial = actor.Uid.Value;
-        if (forEachClientInRange != null)
-        {
-            forEachClientInRange(actor.Position, range, 0, (_, observer) =>
-            {
-                if (observer.NetState.IsKingdomRebornClient || observer.NetState.IsEnhancedClient)
-                    observer.Send(new PacketNewAnimation(serial, gesture, 0, 0));
-                else
-                    observer.Send(new PacketAnimation(serial, translated, frameCount,
-                        repeatCount, forward, repeat, animDelay));
-            });
-            return;
-        }
-
-        broadcastNearby?.Invoke(actor.Position, range,
-            new PacketAnimation(serial, translated, frameCount, repeatCount,
-                forward, repeat, animDelay), 0);
+        var weapon = SphereNet.Game.Combat.BodyAnimTranslator.WeaponInHand(actor);
+        ushort translated = SphereNet.Game.Combat.BodyAnimTranslator.Generate(actor, action, weapon);
+        Dispatch(actor, translated, weapon, range, broadcastNearby, forEachClientInRange,
+            () => new PacketAnimation(actor.Uid.Value, translated, frameCount,
+                repeatCount, forward, repeat, animDelay));
     }
 
     /// <summary>This client's own view of <see cref="PlayAnimation"/>.</summary>
     public void PlayAnimation(Character actor, ushort action,
-        NewAnimationGesture gesture = NewAnimationGesture.Fidget,
         ushort frameCount = 7, ushort repeatCount = 1, bool forward = true,
         bool repeat = false, byte animDelay = 0)
-        => PlayAnimation(actor, action, gesture, UpdateRange, BroadcastNearby,
+        => PlayAnimation(actor, action, UpdateRange, BroadcastNearby,
             ForEachClientInRange, frameCount, repeatCount, forward, repeat, animDelay);
+
+    /// <summary>Source-X UpdateAnimate's per-viewer packet choice (CCharAct.cpp:2410-2422):
+    /// a KR or Enhanced client always takes the new 0xE2; any 7.0.0.0+ client
+    /// (MINCLIVER_NEWMOBILEANIM) takes it for a gargoyle actor, whose extra
+    /// animations the old packet cannot carry; everyone else takes the legacy 0x6E.</summary>
+    public static bool WantsNewAnimation(NetState viewer, Character actor) =>
+        viewer.IsEnhancedClient || viewer.IsKingdomRebornClient ||
+        (SphereNet.Game.Combat.BodyAnimTranslator.IsGargoyleBody(actor.BodyId) &&
+         viewer.ClientVersionNumber >= MinClientVersionNewMobileAnim);
+
+    /// <summary>Source-X MINCLIVER_NEWMOBILEANIM (sphereproto.h:741), 7.0.0.0.</summary>
+    public const uint MinClientVersionNewMobileAnim = 70_000_000;
+
+    /// <summary>Send one already-translated legacy action: the 0xE2 fields are derived
+    /// from it (BodyAnimTranslator.ToNewAnimation) for viewers that take the new
+    /// packet, the legacy packet goes to everyone else.</summary>
+    private static void Dispatch(Character actor, ushort translated,
+        SphereNet.Game.Objects.Items.Item? weapon, int range,
+        Action<Point3D, int, PacketWriter, uint>? broadcastNearby,
+        Action<Point3D, int, uint, Action<Character, GameClient>>? forEachClientInRange,
+        Func<PacketAnimation> legacy)
+    {
+        uint serial = actor.Uid.Value;
+        if (forEachClientInRange != null)
+        {
+            var n = SphereNet.Game.Combat.BodyAnimTranslator.ToNewAnimation(actor.BodyId, translated, weapon);
+            forEachClientInRange(actor.Position, range, 0, (_, observer) =>
+            {
+                if (WantsNewAnimation(observer.NetState, actor))
+                    observer.Send(new PacketNewAnimation(serial, n.Action, n.SubAction, n.Variation));
+                else
+                    observer.Send(legacy());
+            });
+            return;
+        }
+
+        broadcastNearby?.Invoke(actor.Position, range, legacy(), 0);
+    }
 
     /// <summary>Source-X CV_ANIM. Plays the given action on this client's
     /// own character so the GM can verify animation IDs visually.</summary>
@@ -421,36 +444,26 @@ public sealed partial class GameClient
     /// the legacy behaviour, so callers that route through this helper keep
     /// working in contexts that only wire BroadcastNearby.
     /// </summary>
-    public void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0, byte animDelay = 0)
-        => BroadcastAnimation(actor, legacyAction, gesture, UpdateRange, BroadcastNearby, ForEachClientInRange, mode, animDelay);
+    public void BroadcastAnimation(Character actor, ushort legacyAction, byte animDelay = 0)
+        => BroadcastAnimation(actor, legacyAction, UpdateRange, BroadcastNearby, ForEachClientInRange, animDelay);
 
     /// <summary>Shared version-aware animation dispatch usable from both
-    /// player-driven (GameClient) and engine-driven (NPC) combat paths.
+    /// player-driven (GameClient) and engine-driven (NPC) combat paths, for an
+    /// action the caller has ALREADY translated (UpdateAnimate with fTranslate=false).
+    /// The 0xE2 fields are derived from that action exactly like
+    /// <see cref="PlayAnimation(Character, ushort, int, Action{Point3D, int, PacketWriter, uint}?, Action{Point3D, int, uint, Action{Character, GameClient}}?, ushort, ushort, bool, bool, byte)"/>.
     /// <paramref name="animDelay"/> is the legacy 0x6E per-frame delay byte —
     /// COMBAT_ANIM_HIT_SMOOTH passes a non-zero value so a slow weapon's swing
     /// animation is paced to the swing time instead of the fixed default speed.</summary>
     public static void BroadcastAnimation(
-        Character actor, ushort legacyAction, NewAnimationGesture gesture, int range,
+        Character actor, ushort legacyAction, int range,
         Action<Point3D, int, PacketWriter, uint>? broadcastNearby,
         Action<Point3D, int, uint, Action<Character, GameClient>>? forEachClientInRange,
-        byte mode = 0, byte animDelay = 0)
+        byte animDelay = 0)
     {
-        uint serial = actor.Uid.Value;
-        if (forEachClientInRange != null)
-        {
-            forEachClientInRange(actor.Position, range, 0, (_, observer) =>
-            {
-                if (observer.NetState.IsKingdomRebornClient || observer.NetState.IsEnhancedClient)
-                    observer.Send(new PacketNewAnimation(serial, gesture, 0, mode));
-                else
-                    observer.Send(new PacketAnimation(serial, legacyAction, delay: animDelay));
-            });
-        }
-        else
-        {
-            broadcastNearby?.Invoke(actor.Position, range,
-                new PacketAnimation(serial, legacyAction, delay: animDelay), 0);
-        }
+        var weapon = SphereNet.Game.Combat.BodyAnimTranslator.WeaponInHand(actor);
+        Dispatch(actor, legacyAction, weapon, range, broadcastNearby, forEachClientInRange,
+            () => new PacketAnimation(actor.Uid.Value, legacyAction, delay: animDelay));
     }
 
     private static readonly ushort[] s_bloodGraphics =

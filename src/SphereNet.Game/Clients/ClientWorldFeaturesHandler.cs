@@ -94,9 +94,8 @@ public sealed class ClientWorldFeaturesHandler
     private void BroadcastDeleteObject(uint uid) => _client.BroadcastDeleteObject(uid);
     private void ResetWalkValidator() => _client.ResetWalkValidator();
     private byte BuildMobileFlags(Character ch) => _client.BuildMobileFlags(ch);
-    private void PlayAnimation(Character actor, ushort action,
-        SphereNet.Core.Enums.NewAnimationGesture gesture) =>
-        _client.PlayAnimation(actor, action, gesture);
+    private void PlayAnimation(Character actor, ushort action) =>
+        _client.PlayAnimation(actor, action);
     private byte GetNotoriety(Character ch) => _client.GetNotoriety(ch);
     private void BeginInfoSkill(SkillType skill, int skillId) => _client.BeginInfoSkill(skill, skillId);
     private void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind) => _client.BeginActiveSkill(skill, skillId, kind);
@@ -480,7 +479,7 @@ public sealed class ClientWorldFeaturesHandler
             return;
         var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
         if (craftAnim != 0 && !SkillEngine.HasFlag(craftSkill, SkillFlag.NoAnim))
-            PlayAnimation(_character, craftAnim, NewAnimationGesture.Emote);
+            PlayAnimation(_character, craftAnim);
         if (craftSound != 0 && !SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
@@ -2300,7 +2299,7 @@ public sealed class ClientWorldFeaturesHandler
             SysMessage(ServerMessages.Get("potion_drink"));
         }
 
-        PlayAnimation(_character, (ushort)AnimationType.Eat, NewAnimationGesture.Eat);
+        PlayAnimation(_character, (ushort)AnimationType.Eat);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x0031, _character.X, _character.Y, _character.Z), 0);
 

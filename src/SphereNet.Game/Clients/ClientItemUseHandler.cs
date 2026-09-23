@@ -71,9 +71,8 @@ public sealed class ClientItemUseHandler
     private void Send(SphereNet.Network.Packets.PacketWriter packet) => _client.Send(packet);
     private byte GetNotoriety(Character ch) => _client.GetNotoriety(ch);
     private byte BuildMobileFlags(Character ch) => _client.BuildMobileFlags(ch);
-    private void PlayAnimation(Character actor, ushort action,
-        SphereNet.Core.Enums.NewAnimationGesture gesture) =>
-        _client.PlayAnimation(actor, action, gesture);
+    private void PlayAnimation(Character actor, ushort action) =>
+        _client.PlayAnimation(actor, action);
     private void PlaceItemInPack(Character target, Item item) => _client.PlaceItemInPack(target, item);
     private void SendWorldItem(Item item) => _client.SendWorldItem(item);
     private Item? GetTopContainer(Item item) => _client.GetTopContainer(item);
@@ -876,7 +875,7 @@ public sealed class ClientItemUseHandler
                 // contract; left on the old path until that is modelled.
                 SphereNet.Game.NPCs.EatEngine.Eat(_character, item, _triggerDispatcher, 1);
                 SysMessage(ServerMessages.Get("itemuse_eat_food"));
-                PlayAnimation(_character, (ushort)AnimationType.Eat, NewAnimationGesture.Eat);
+                PlayAnimation(_character, (ushort)AnimationType.Eat);
                 BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                     new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);
                 if (item.ContainedIn.IsValid && item.Amount > 1)
@@ -2006,7 +2005,7 @@ public sealed class ClientItemUseHandler
         fruit.Amount = (ushort)Math.Clamp(amount, 1, ushort.MaxValue);
         PlaceItemInPack(_character, fruit);
 
-        PlayAnimation(_character, (ushort)AnimationType.Bow, NewAnimationGesture.Emote);
+        PlayAnimation(_character, (ushort)AnimationType.Bow);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x013E, _character.X, _character.Y, _character.Z), 0);
 
@@ -2196,7 +2195,7 @@ public sealed class ClientItemUseHandler
                 crop.X, crop.Y, crop.Z, crop.Hue), 0);
 
         if (seed.Amount > 1) seed.Amount--; else _world.RemoveItem(seed);
-        PlayAnimation(_character, (ushort)AnimationType.Bow, NewAnimationGesture.Emote);
+        PlayAnimation(_character, (ushort)AnimationType.Bow);
         SysMessage("You plant the seed.");
     }
 
@@ -3008,7 +3007,7 @@ public sealed class ClientItemUseHandler
         }
 
         SysMessage(ServerMessages.Get("itemuse_eat_food"));
-        PlayAnimation(_character, (ushort)AnimationType.Eat, NewAnimationGesture.Eat);
+        PlayAnimation(_character, (ushort)AnimationType.Eat);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);
 
@@ -3187,7 +3186,7 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        PlayAnimation(_character, (ushort)AnimationType.AttackWeapon, NewAnimationGesture.Attack);
+        PlayAnimation(_character, (ushort)AnimationType.AttackWeapon);
 
         ushort[] sounds = [0x03A4, 0x03A6, 0x03A9, 0x03AE, 0x03B4, 0x03B6];
         BroadcastNearby?.Invoke(dummy.Position, UpdateRange,

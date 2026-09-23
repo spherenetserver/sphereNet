@@ -900,6 +900,8 @@ public static partial class Program
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;
+        // Which line-of-sight method each kind of viewer uses (0 = legacy walk).
+        _world.AdvancedLos          = _config.AdvancedLos;
         _world.ToolTipMode       = _config.ToolTipMode;
         _world.ToolTipCache      = _config.ToolTipCache;
         _world.LightDay          = _config.LightDay;

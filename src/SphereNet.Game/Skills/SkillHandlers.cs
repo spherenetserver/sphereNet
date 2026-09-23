@@ -553,7 +553,7 @@ public sealed class SkillHandlers
         // the packet itself depends on the viewer's client
         // (GameClient.PlayAnimation).
         SphereNet.Game.Clients.GameClient.PlayAnimation(
-            ch, animId, Core.Enums.NewAnimationGesture.Emote, 18,
+            ch, animId, 18,
             Character.BroadcastNearby, forEachClientInRange: null);
         var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(soundId, ch.X, ch.Y, ch.Z);
         Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);

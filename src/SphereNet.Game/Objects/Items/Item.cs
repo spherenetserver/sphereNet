@@ -5317,6 +5317,12 @@ public class Item : ObjBase
         return ItemType.Invalid;
     }
 
+    /// <summary>The TYPEDEF resource name of a built-in type (Source-X
+    /// ResourceGetName(RES_TYPEDEF, type)) - "t_normal" included, which the TYPE
+    /// readback answers numerically.</summary>
+    internal static string FormatItemTypeName(ItemType t) =>
+        t == ItemType.Normal ? "t_normal" : FormatItemType(t);
+
     private static string FormatItemType(ItemType t)
     {
         if (t == ItemType.Invalid || t == ItemType.Normal)

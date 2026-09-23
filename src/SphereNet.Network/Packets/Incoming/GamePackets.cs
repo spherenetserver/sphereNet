@@ -881,16 +881,23 @@ public sealed class PacketChatAction : PacketHandler
     }
 }
 
-/// <summary>0xE1 — Client type announcement. Flag: 0=Classic2D, 1=3D, 2=KR, 3=EC.</summary>
+/// <summary>0xE1 — Client type announcement: [E1][u16 length][u16 count][u32 type],
+/// type 0=Classic2D, 1=3D, 2=KR, 3=EC. Source-X PacketClientType::onReceive
+/// (receive.cpp:4305) rejects a packet shorter than 9 bytes, skips the 2-byte
+/// count and stores the u32 type as sent. Reading the type straight after the
+/// length put the count in its high half (0x00010000...), which used to make
+/// every sender an Enhanced Client.</summary>
 public sealed class PacketClientType : PacketHandler
 {
     public PacketClientType() : base(0xE1, 0) { }
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
-        if (buffer.Remaining < 4) return;
-        uint clientFlag = buffer.ReadUInt32();
-        state.OnClientType(clientFlag);
+        // The length word has already been consumed; count (2) + type (4) remain.
+        if (buffer.Remaining < 6) return;
+        _ = buffer.ReadUInt16(); // count / unknown
+        uint clientType = buffer.ReadUInt32();
+        state.OnClientType(clientType);
     }
 }
 

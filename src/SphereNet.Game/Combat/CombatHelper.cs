@@ -228,12 +228,11 @@ public static class CombatHelper
                 if (dist > maxRange)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
 
-                if (privLevel < PrivLevel.GM)
-                {
-                    canSeeLos ??= world.CanSeeLOS;
-                    if (!canSeeLos(attacker.Position, target.Position))
-                        return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
-                }
+                // Fight_CanHit checks LoS with bCombatCheck set (CCharFight.cpp:1720),
+                // which withdraws the GM pass: staff do not swing through walls either.
+                canSeeLos ??= (a, b) => world.CanSeeLOSFor(attacker, a, b);
+                if (!canSeeLos(attacker.Position, target.Position))
+                    return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
             }
 
             // COMBAT_ARCHERYCANMOVE lets an archer fire while/just after moving,
@@ -260,12 +259,11 @@ public static class CombatHelper
                 if (distance < minRange || distance > maxRange)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
 
-                if (privLevel < PrivLevel.GM)
-                {
-                    canSeeLos ??= world.CanSeeLOS;
-                    if (!canSeeLos(attacker.Position, target.Position))
-                        return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
-                }
+                // Fight_CanHit checks LoS with bCombatCheck set (CCharFight.cpp:1720),
+                // which withdraws the GM pass: staff do not swing through walls either.
+                canSeeLos ??= (a, b) => world.CanSeeLOSFor(attacker, a, b);
+                if (!canSeeLos(attacker.Position, target.Position))
+                    return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
             }
 
             if (Character.CombatMeleeMovementDelay > 0 && attacker.LastMoveTick > 0)
@@ -408,11 +406,9 @@ public static class CombatHelper
         NormaliseRange(ref min, ref max);
         if (dist < min || dist > max)
             return false;
-        if (privLevel < PrivLevel.GM)
-        {
-            canSeeLos ??= world.CanSeeLOS;
-            if (!canSeeLos(attacker.Position, target.Position)) return false;
-        }
+        // Combat LoS binds staff too (bCombatCheck, CCharLOS.cpp:25).
+        canSeeLos ??= (a, b) => world.CanSeeLOSFor(attacker, a, b);
+        if (!canSeeLos(attacker.Position, target.Position)) return false;
         return true;
     }
 

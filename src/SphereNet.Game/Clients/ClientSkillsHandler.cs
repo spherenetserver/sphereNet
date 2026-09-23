@@ -53,9 +53,8 @@ public sealed class ClientSkillsHandler
 
     // --- context shims (the GameClient surface this handler depends on) ---
     private Character? _character => _client.Character;
-    private void PlayAnimation(Character actor, ushort action,
-        SphereNet.Core.Enums.NewAnimationGesture gesture) =>
-        _client.PlayAnimation(actor, action, gesture);
+    private void PlayAnimation(Character actor, ushort action) =>
+        _client.PlayAnimation(actor, action);
     private GameWorld _world => _client.World;
     private NetState _netState => _client.NetState;
     private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
@@ -363,9 +362,9 @@ public sealed class ClientSkillsHandler
     {
         if (_character == null) return;
         if (skill == SkillType.Begging)
-            PlayAnimation(_character, (ushort)AnimationType.Bow, NewAnimationGesture.Emote);
+            PlayAnimation(_character, (ushort)AnimationType.Bow);
         else if (skill == SkillType.Herding && !SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
-            PlayAnimation(_character, (ushort)AnimationType.AttackWeapon, NewAnimationGesture.Attack);
+            PlayAnimation(_character, (ushort)AnimationType.AttackWeapon);
     }
 
     /// <summary>Schedule the skill's timer, or - with no DELAY - stroke and resolve it
@@ -399,7 +398,7 @@ public sealed class ClientSkillsHandler
             BroadcastNearby?.Invoke(_character.Position, GameClient.UpdateRange,
                 new PacketSound(sound, _character.X, _character.Y, _character.Z), 0);
         if (anim != 0 && !SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
-            PlayAnimation(_character, (ushort)anim, NewAnimationGesture.Emote);
+            PlayAnimation(_character, (ushort)anim);
     }
 
     /// <summary>A skill a TOOL puts to work at a picked target - Source-X
@@ -587,7 +586,7 @@ public sealed class ClientSkillsHandler
             BroadcastNearby?.Invoke(_character.Position, GameClient.UpdateRange,
                 new PacketSound(sound, _character.X, _character.Y, _character.Z), 0);
         if (anim != 0)
-            PlayAnimation(_character, (ushort)anim, NewAnimationGesture.Emote);
+            PlayAnimation(_character, (ushort)anim);
 
         if (skill == SkillType.Fishing &&
             _character.TryGetSkillPendingPoint(out Point3D splashAt))

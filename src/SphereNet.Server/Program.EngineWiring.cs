@@ -1408,12 +1408,12 @@ public static partial class Program
             };
             _spellEngine.OnCastAnimation = (caster, animId) =>
             {
-                // Legacy 0x6E gets the body-translated group; KR/EC clients
-                // get the body-agnostic 0xE2 Spell gesture instead.
+                // Legacy 0x6E gets the body-translated group; the 0xE2 fields for
+                // KR/EC viewers are derived from it (ANIM_CAST_* -> NANIM_SPELL).
                 ushort anim = caster.IsMounted
                     ? MapAnimToMounted(animId)
                     : BodyAnimTranslator.Translate(caster.BodyId, animId);
-                GameClient.BroadcastAnimation(caster, anim, NewAnimationGesture.Spell, 18,
+                GameClient.BroadcastAnimation(caster, anim, 18,
                     BroadcastNearby, ForEachClientInRange);
             };
             _spellEngine.OnSpellTeleport = (caster, dest, oldMap) =>
@@ -1753,7 +1753,7 @@ public static partial class Program
                 ushort anim = npc.IsMounted
                     ? MapAnimToMounted((ushort)fidget)
                     : BodyAnimTranslator.Translate(npc.BodyId, (ushort)fidget);
-                GameClient.BroadcastAnimation(npc, anim, NewAnimationGesture.Fidget, 18,
+                GameClient.BroadcastAnimation(npc, anim, 18,
                     BroadcastNearby, ForEachClientInRange);
             };
             // Source-X @HitTry/@HitCheck contract: the trigger runs on the
@@ -1784,7 +1784,7 @@ public static partial class Program
                 ushort swingAnim = animOverride >= 0
                     ? (ushort)Math.Clamp(animOverride, 0, ushort.MaxValue)
                     : GameClient.GetNpcSwingAction(attacker, weapon);
-                GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
+                GameClient.BroadcastAnimation(attacker, swingAnim, 18,
                     BroadcastNearby, ForEachClientInRange, animDelay: animDelay);
             };
             _npcAI.OnNpcHitCheck = (attacker, target, weapon, swingNoRange) =>
@@ -1859,8 +1859,7 @@ public static partial class Program
                 // an armour-absorbed strike or a kill used to flinch too.
                 if (damage > 0 && CombatHelper.ShouldPlayGetHit(target))
                     SphereNet.Game.Clients.GameClient.PlayAnimation(
-                        target, (ushort)AnimationType.GetHit,
-                        SphereNet.Core.Enums.NewAnimationGesture.Impact, 18,
+                        target, (ushort)AnimationType.GetHit, 18,
                         BroadcastNearby, ForEachClientInRange);
 
                 // The strike sound is the attacker's SoundChar(CRESND_HIT)
@@ -1936,7 +1935,7 @@ public static partial class Program
             _npcAI.OnHealerAction = (healer, target, isResurrect) =>
             {
                 SphereNet.Game.Clients.GameClient.PlayAnimation(
-                    healer, 16, SphereNet.Core.Enums.NewAnimationGesture.Emote, 18,
+                    healer, 16, 18,
                     BroadcastNearby, ForEachClientInRange,
                     frameCount: 4, repeatCount: 1, forward: false);
                 var sound = new PacketSound(isResurrect ? (ushort)0x0214 : (ushort)0x01F2,
@@ -1954,7 +1953,7 @@ public static partial class Program
             _npcAI.OnHealerCure = (healer, target) =>
             {
                 SphereNet.Game.Clients.GameClient.PlayAnimation(
-                    healer, 16, SphereNet.Core.Enums.NewAnimationGesture.Emote, 18,
+                    healer, 16, 18,
                     BroadcastNearby, ForEachClientInRange,
                     frameCount: 4, repeatCount: 1, forward: false);
                 var sound = new PacketSound(0x01E0, healer.X, healer.Y, healer.Z);

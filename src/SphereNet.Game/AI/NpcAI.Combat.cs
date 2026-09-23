@@ -970,7 +970,7 @@ public sealed partial class NpcAI
         }
 
         var prep = CombatHelper.ValidateSwingPrep(
-            _world, npc, target, weapon, PrivLevel.Player, now, _world.CanSeeLOS,
+            _world, npc, target, weapon, PrivLevel.Player, now, (a, b) => _world.CanSeeLOSFor(npc, a, b),
             ignoreRangeLos: swingNoRange, effectiveRange: effectiveRange);
         switch (prep.Result)
         {
@@ -1125,7 +1125,7 @@ public sealed partial class NpcAI
         }
 
         switch (CombatHelper.EvaluateHitTime(_world, npc, target, weapon,
-            PrivLevel.Player, now, npc.PendingHitDeadline, _world.CanSeeLOS,
+            PrivLevel.Player, now, npc.PendingHitDeadline, (a, b) => _world.CanSeeLOSFor(npc, a, b),
             swingNoRange, committedRange))
         {
             case CombatHelper.HitTimeDecision.Wait:

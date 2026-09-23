@@ -103,6 +103,165 @@ public static class BodyAnimTranslator
         return hand != null && SphereNet.Game.Objects.ObjBase.IsTypeWeapon(hand.ItemType) ? hand : null;
     }
 
+    /// <summary>The 0xE2 fields (action, sub-action, variation) of Source-X
+    /// PacketActionBasic.</summary>
+    public readonly record struct NewAnimation(ushort Action, ushort SubAction, byte Variation);
+
+    /// <summary>Source-X's unset sub-action, (ANIM_TYPE_NEW)(-1) written as a word.</summary>
+    public const ushort NoSubAction = 0xFFFF;
+
+    /// <summary>Source-X CCharBase::IsHumanID/IsElfID/IsGargoyleID without ghosts -
+    /// the bodies CChar::IsPlayableCharacter accepts.</summary>
+    public static bool IsPlayableBody(ushort body) =>
+        body is 0x0190 or 0x0191 or 0x03DB   // CREID_MAN, CREID_WOMAN, CREID_EQUIP_GM_ROBE
+            or 0x025D or 0x025E              // CREID_ELFMAN, CREID_ELFWOMAN
+            || IsGargoyleBody(body);
+
+    /// <summary>Source-X CCharBase::IsGargoyleID(id, false): CREID_GARGMAN / GARGWOMAN.</summary>
+    public static bool IsGargoyleBody(ushort body) => body is 0x029A or 0x029B;
+
+    /// <summary>
+    /// The 0xE2 new-animation fields for a legacy action that has ALREADY been through
+    /// GenerateAnimate - Source-X CChar::UpdateAnimate (CCharAct.cpp:2257-2395). The
+    /// new packet is derived from the legacy action, never chosen by the caller:
+    /// a playable body (human/elf/gargoyle) swinging a weapon gets NANIM_ATTACK with
+    /// the weapon type's sub-action (variation 1 unless gargoyle), the named swings,
+    /// casts, get-hit, block, punch and meal map through a fixed table (bow and salute
+    /// deliberately do not - upstream skips them because they misplay mounted), dying
+    /// maps for any body, and anything else passes its legacy number through as the
+    /// new action.
+    /// </summary>
+    public static NewAnimation ToNewAnimation(ushort body, ushort action,
+        SphereNet.Game.Objects.Items.Item? weapon)
+    {
+        ushort subaction = NoSubAction;
+        byte variation = 0;
+        ushort action1 = action;
+        var a = (AnimationType)action;
+
+        if (IsPlayableBody(body))
+        {
+            if (weapon != null && a is AnimationType.AttackWeapon or AnimationType.AttackBow
+                    or AnimationType.AttackXBow or AnimationType.HorseSlap or AnimationType.HorseAttack
+                    or AnimationType.HorseAttackBow or AnimationType.HorseAttackXBow)
+            {
+                if (!IsGargoyleBody(body))
+                    variation = 1;
+                bool twoHand = weapon.IsTwoHanded;   // GetEquipLayer() == LAYER_HAND2
+                action1 = (ushort)NewAnimationGesture.Attack;
+                switch (weapon.ItemType)
+                {
+                    case ItemType.WeaponMaceCrook:
+                    case ItemType.WeaponMacePick:
+                    case ItemType.WeaponMaceSmith:
+                    case ItemType.WeaponMaceStaff:
+                    case ItemType.WeaponMaceSharp:
+                        subaction = (ushort)(twoHand ? NewAnimationAttack.TwoHandBash : NewAnimationAttack.OneHandBash);
+                        break;
+                    case ItemType.WeaponSword:
+                    case ItemType.WeaponAxe:
+                        subaction = (ushort)(twoHand ? NewAnimationAttack.TwoHandPierce : NewAnimationAttack.OneHandPierce);
+                        break;
+                    case ItemType.WeaponFence:
+                        subaction = (ushort)(twoHand ? NewAnimationAttack.TwoHandSlash : NewAnimationAttack.OneHandSlash);
+                        break;
+                    case ItemType.WeaponThrowing:
+                        subaction = (ushort)NewAnimationAttack.Throwing;
+                        break;
+                    case ItemType.WeaponBow:
+                        subaction = (ushort)NewAnimationAttack.Bow;
+                        break;
+                    case ItemType.WeaponXBow:
+                        subaction = (ushort)NewAnimationAttack.Crossbow;
+                        break;
+                    case ItemType.WeaponWhip:
+                        subaction = (ushort)NewAnimationAttack.OneHandBash;
+                        break;
+                }
+            }
+            else
+            {
+                switch (a)
+                {
+                    case AnimationType.HorseAttack:
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.TwoHandBash;
+                        break;
+                    case AnimationType.Attack1HPierce:
+                    case AnimationType.AttackWeapon:        // == ANIM_ATTACK_1H_SLASH
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.OneHandSlash;
+                        break;
+                    case AnimationType.Attack1HBash:
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.OneHandPierce;
+                        break;
+                    case AnimationType.HorseSlap:
+                    case AnimationType.Attack2HPierce:
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.TwoHandSlash;
+                        break;
+                    case AnimationType.Attack2HSlash:
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.TwoHandBash;
+                        break;
+                    case AnimationType.Attack2HBash:
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.TwoHandSlash;
+                        break;
+                    case AnimationType.CastDirected:
+                        action1 = (ushort)NewAnimationGesture.Spell;
+                        subaction = (ushort)NewAnimationSpell.Normal;
+                        break;
+                    case AnimationType.CastArea:
+                        action1 = (ushort)NewAnimationGesture.Spell;
+                        subaction = (ushort)NewAnimationSpell.Summon;
+                        break;
+                    // Upstream sets only the sub-action here and leaves the action at the
+                    // legacy number (0x12/0x13/0x1B/0x1C) - kept as is.
+                    case AnimationType.AttackBow:
+                    case AnimationType.HorseAttackBow:
+                        subaction = (ushort)NewAnimationAttack.Bow;
+                        break;
+                    case AnimationType.AttackXBow:
+                    case AnimationType.HorseAttackXBow:
+                        subaction = (ushort)NewAnimationAttack.Crossbow;
+                        break;
+                    case AnimationType.GetHit:
+                        action1 = (ushort)NewAnimationGesture.GetHit;
+                        break;
+                    case AnimationType.Block:
+                        action1 = (ushort)NewAnimationGesture.Block;
+                        variation = 1;
+                        break;
+                    case AnimationType.AttackWrestle:
+                        action1 = (ushort)NewAnimationGesture.Attack;
+                        subaction = (ushort)NewAnimationAttack.Wrestling;
+                        break;
+                    // ANIM_BOW / ANIM_SALUTE are commented out upstream: they do not
+                    // show properly hovering or mounted, so they pass through.
+                    case AnimationType.Eat:
+                        action1 = (ushort)NewAnimationGesture.Eat;
+                        break;
+                }
+            }
+        }
+
+        // Dying maps for humans, elves, gargoyles and everything else alike.
+        switch (a)
+        {
+            case AnimationType.DieBackward:
+                variation = 1;
+                action1 = (ushort)NewAnimationGesture.Death;
+                break;
+            case AnimationType.DieForward:
+                action1 = (ushort)NewAnimationGesture.Death;
+                break;
+        }
+
+        return new NewAnimation(action1, subaction, variation);
+    }
+
     /// <summary>GenerateAnimate with the character's own weapon in hand.</summary>
     public static ushort Generate(SphereNet.Game.Objects.Characters.Character ch, ushort action,
         Random? rand = null) => Generate(ch, action, WeaponInHand(ch), rand);

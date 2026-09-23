@@ -45,7 +45,7 @@ public sealed class AnimationDoorTests
     private static List<PacketWriter> Played(Character actor)
     {
         var sent = new List<PacketWriter>();
-        GameClient.PlayAnimation(actor, (ushort)AnimationType.Eat, NewAnimationGesture.Eat,
+        GameClient.PlayAnimation(actor, (ushort)AnimationType.Eat,
             18, (_, _, packet, _) => sent.Add(packet), forEachClientInRange: null);
         return sent;
     }
@@ -101,7 +101,7 @@ public sealed class AnimationDoorTests
         var enhanced = TestHarness.CreateClient(lf, world, new SphereNet.Game.Accounts.AccountManager(lf), 17102);
         enhanced.NetState.ClientTypeFlag = 3;   // ParsedClientType 3 = Enhanced
 
-        GameClient.PlayAnimation(actor, (ushort)AnimationType.Eat, NewAnimationGesture.Eat, 18,
+        GameClient.PlayAnimation(actor, (ushort)AnimationType.Eat, 18,
             broadcastNearby: null,
             forEachClientInRange: (_, _, _, act) =>
             {

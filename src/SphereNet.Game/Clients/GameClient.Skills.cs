@@ -72,7 +72,7 @@ public sealed partial class GameClient
                 new PacketSound(soundId, (short)Self.Position.X, (short)Self.Position.Y, Self.Position.Z), 0);
 
         public void Animation(ushort animId) =>
-            _client.PlayAnimation(Self, animId, Core.Enums.NewAnimationGesture.Emote);
+            _client.PlayAnimation(Self, animId);
 
         public Item? FindBackpackItem(Core.Enums.ItemType type)
         {

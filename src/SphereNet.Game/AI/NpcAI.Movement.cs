@@ -293,6 +293,32 @@ public sealed partial class NpcAI
             var mapData = _world.MapData;
             if (mapData != null)
             {
+                // A real one-tile step goes through the shared walk check, as Source-X
+                // routes every NPC step through CanMoveWalkTo -> CheckValidMove
+                // (CCharStatus.cpp:1978). The standing-surface probe below only asks
+                // whether there is ground with headroom: a wall or fence standing ON
+                // that ground (same Z as the floor) never registered as overhead, so
+                // wandering, side-stepping and fleeing creatures walked straight
+                // through stable fences - and cut diagonally between two of them,
+                // since the corner rule lives in the walk check as well (:1991).
+                int stepDx = pos.X - npc.X, stepDy = pos.Y - npc.Y;
+                if (pos.Map == npc.MapIndex && Math.Max(Math.Abs(stepDx), Math.Abs(stepDy)) == 1)
+                {
+                    var stepDir = (stepDx, stepDy) switch
+                    {
+                        (0, -1) => Direction.North,
+                        (1, -1) => Direction.NorthEast,
+                        (1, 0) => Direction.East,
+                        (1, 1) => Direction.SouthEast,
+                        (0, 1) => Direction.South,
+                        (-1, 1) => Direction.SouthWest,
+                        (-1, 0) => Direction.West,
+                        _ => Direction.NorthWest,
+                    };
+                    if (!_world.Standing.CheckMovement(npc, npc.Position, stepDir, out _))
+                        return false;
+                }
+
                 var stand = _world.Standing.ResolveStandingSurface(npc, pos.Map, pos.X, pos.Y, pos.Z,
                     WalkCheck.StandingPolicy.Settle);
                 if (!stand.Found || stand.Z != pos.Z) return false;

@@ -331,7 +331,7 @@ public class PacketManagerTests
     [Fact]
     public void PacketNewAnimation_Build_CorrectOpcodeAndLayout()
     {
-        var packet = new PacketNewAnimation(0x01020304, NewAnimationGesture.Spell, subAction: 0, mode: 5);
+        var packet = new PacketNewAnimation(0x01020304, NewAnimationGesture.Spell, subAction: 0, variation: 5);
         var buf = packet.Build();
         var d = buf.Data;
 
@@ -344,7 +344,7 @@ public class PacketManagerTests
         Assert.Equal(0x00, d[5]); Assert.Equal(11, d[6]);
         // sub-action
         Assert.Equal(0x00, d[7]); Assert.Equal(0x00, d[8]);
-        // mode
+        // variation
         Assert.Equal(5, d[9]);
     }
 

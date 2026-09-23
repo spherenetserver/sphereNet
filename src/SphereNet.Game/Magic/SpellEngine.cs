@@ -3971,8 +3971,7 @@ public sealed class SpellEngine
                         // Through the shared door: the action id is body-relative, and
                         // a non-humanoid drunk was playing a human frame set.
                         SphereNet.Game.Clients.GameClient.PlayAnimation(
-                            drunk, (ushort)AnimationType.Bow,
-                            Core.Enums.NewAnimationGesture.Emote, 18,
+                            drunk, (ushort)AnimationType.Bow, 18,
                             Character.BroadcastNearby, forEachClientInRange: null);
                     }
                 }

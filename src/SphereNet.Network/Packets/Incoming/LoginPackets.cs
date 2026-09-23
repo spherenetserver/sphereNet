@@ -253,7 +253,7 @@ public sealed class PacketNewMovementRequest : PacketHandler
         // Determine routing: batch movement (EC / ModernUO) vs single-step.
         // Prefer explicit version/type detection over payload-size heuristic.
         bool isBatchClient = state.HasProtocolChanges(Core.Enums.ProtocolChanges.StygianAbyss)
-            || state.ClientTypeFlag >= 2; // KR (2) or Enhanced (3)
+            || state.IsKingdomRebornClient || state.IsEnhancedClient;
 
         if (!isBatchClient)
         {

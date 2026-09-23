@@ -129,7 +129,7 @@ public sealed class ClientCombatHandler
     private static ushort GetWeaponMissSound(Item? weapon) => GameClient.GetWeaponMissSound(weapon);
     private static ushort GetDefenderHitSound(Character defender) => GameClient.GetDefenderHitSound(defender);
     private static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch) => GameClient.BuildEquipmentList(ch);
-    private void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0, byte animDelay = 0) => _client.BroadcastAnimation(actor, legacyAction, gesture, mode, animDelay);
+    private void BroadcastAnimation(Character actor, ushort legacyAction, byte animDelay = 0) => _client.BroadcastAnimation(actor, legacyAction, animDelay);
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy) => GameClient.GetDirectionDelta(dir, out dx, out dy);
     private void TickPendingSkill() => _client.TickPendingSkill();
     private void TickPendingCraft() => _client.TickPendingCraft();
@@ -1107,7 +1107,7 @@ public sealed class ClientCombatHandler
         }
 
         var prep = CombatHelper.ValidateSwingPrep(
-            _world, _character, target, weapon, _character.PrivLevel, now, _world.CanSeeLOS,
+            _world, _character, target, weapon, _character.PrivLevel, now, (a, b) => _world.CanSeeLOSFor(_character, a, b),
             ignoreRangeLos: swingNoRange);
         switch (prep.Result)
         {
@@ -1210,7 +1210,7 @@ public sealed class ClientCombatHandler
             ? (ushort)Math.Clamp(animOverride, 0, ushort.MaxValue)
             : GetSwingAction(_character, weapon);
         byte swingAnimDelay = CombatHelper.GetSwingAnimDelay(delays);
-        BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack,
+        BroadcastAnimation(_character, swingAction,
             animDelay: swingAnimDelay);
         // Source-X plays a single combat sound per swing, when the blow resolves:
         // the hit sound on a hit, the miss whoosh on a miss. Nothing at swing start.
@@ -1245,7 +1245,7 @@ public sealed class ClientCombatHandler
         }
 
         switch (CombatHelper.EvaluateHitTime(_world, _character, target, weapon,
-            _character.PrivLevel, now, _character.PendingHitDeadline, _world.CanSeeLOS,
+            _character.PrivLevel, now, _character.PendingHitDeadline, (a, b) => _world.CanSeeLOSFor(_character, a, b),
             swingNoRange, committedRange))
         {
             case CombatHelper.HitTimeDecision.Wait:
@@ -1386,8 +1386,7 @@ public sealed class ClientCombatHandler
             // my swing animation", CCharFight.cpp:1054-1060).
             if (CombatHelper.ShouldPlayGetHit(target))
                 BroadcastAnimation(target,
-                    BodyAnimTranslator.Generate(target, (ushort)AnimationType.GetHit),
-                    NewAnimationGesture.Impact);
+                    BodyAnimTranslator.Generate(target, (ushort)AnimationType.GetHit));
 
             // Source-X CRESND_GETHIT: the struck target's pain vocalization
             // (human "oomf" / creature SOUNDGETHIT). Only on a damaging hit.
@@ -1687,7 +1686,7 @@ public sealed class ClientCombatHandler
         if (_character == null) return;
 
         ushort missAction = GetSwingAction(_character, weapon);
-        BroadcastAnimation(_character, missAction, NewAnimationGesture.Attack);
+        BroadcastAnimation(_character, missAction);
 
         EmitMissSound(weapon);
     }

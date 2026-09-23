@@ -200,9 +200,15 @@ public sealed class NetState : IDisposable
 
     public uint ClientTypeFlag { get; set; }
 
-    /// <summary>Parsed client type from 0xE1 flag.
-    /// 0=Classic 2D, 1=Classic 3D (UO:3D), 2=Kingdom Reborn, 3=Enhanced Client.</summary>
-    public byte ParsedClientType => (byte)Math.Min(ClientTypeFlag, 3);
+    /// <summary>Parsed client type from the 0xE1 type field.
+    /// 0=Classic 2D, 1=Classic 3D (UO:3D), 2=Kingdom Reborn, 3=Enhanced Client.
+    /// Source-X stores the value as sent and tests it for equality
+    /// (CNetState::isClientKR/isClientEnhanced), so an unknown value is none of
+    /// them - it maps to <see cref="UnknownClientType"/>, never clamped to 3.</summary>
+    public byte ParsedClientType => ClientTypeFlag <= 3 ? (byte)ClientTypeFlag : UnknownClientType;
+
+    /// <summary><see cref="ParsedClientType"/> for a 0xE1 type outside 0..3.</summary>
+    public const byte UnknownClientType = 0xFF;
     public int UndecryptedOffset { get; set; }
     public byte PendingPacketOpcode { get; set; }
     public int PendingPacketLength { get; set; }
@@ -1275,7 +1281,7 @@ public sealed class NetState : IDisposable
         // has announced itself via 0xE1 (KR/EC), it's at least a 6.0+ client.
         if (ClientEra == ClientEra.Modern)
             return true;
-        if (ClientTypeFlag >= 2 && version <= 60_000_000)
+        if ((IsKingdomRebornClient || IsEnhancedClient) && version <= 60_000_000)
             return true; // KR/EC clients are at least 6.0
         return false;
     }

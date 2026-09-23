@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Client type 0xE1 parse; 0xE2 new-animation derived from the legacy action
+------------------------------------------------------------------------
+FIX - 0xE1 client type: the packet is [E1][u16 length][u16 count][u32 type];
+      the type was read straight after the length, so the count landed in the
+      high half (0x00010000) and the clamp to 3 made every sender an Enhanced
+      Client. The count is now skipped (Source-X PacketClientType::onReceive),
+      a short packet is ignored, and a type outside 0..3 is none of the known
+      clients instead of being clamped to Enhanced. The 0xF0 batch-movement and
+      version-fallback checks now test for KR/Enhanced by equality.
+FIX - 0xE2 new animation: the action, sub-action and variation are derived from
+      the legacy (already translated) action, the actor's body and the weapon in
+      hand, as Source-X CChar::UpdateAnimate does - weapon-type sub-actions with
+      variation 1 for non-gargoyles, the fixed swing/cast/get-hit/block/punch/
+      eat table, death for any body, the legacy number passed through otherwise.
+      Call sites no longer choose a gesture: a gathering or crafting stroke was
+      sent as NANIM_EMOTE and played a bow on KR/Enhanced viewers.
+FIX - Per-viewer dispatch follows UpdateAnimate: KR/Enhanced clients take 0xE2,
+      a 7.0.0.0+ client (MINCLIVER_NEWMOBILEANIM) takes it for a gargoyle actor,
+      everyone else takes the legacy 0x6E.
+FIX - PacketNewAnimation writes the Source-X PacketActionBasic layout (action
+      u16, sub-action u16, variation byte); an unset sub-action is 0xFFFF.
+
 [2026-09-23] - Admin panel: character actions and detail, staff message, server functions
 ------------------------------------------------------------------------
 ADD - POST /api/players/{serial}/action runs an action on any character by
@@ -31,6 +53,31 @@ ADD - Panel: per-player actions dialog (speak, verb runner with output,
       characters; server page staff message box, function runner, and a
       remembered list of the last 20 console commands (click to rerun).
 
+[2026-09-23] - Legacy line of sight, NPC steps against fences, INFO on statics
+------------------------------------------------------------------------
+FIX - Line of sight follows Source-X CChar::CanSeeLOS with ADVANCEDLOS
+      disabled, the reference default (CCharLOS.cpp:12-96): a tile-by-tile
+      walk at the viewer's feet through the walk-height probe
+      (CWorldMap::GetHeightPoint2). A blocking tile or a closed door in the
+      lower half of the body stops sight, as does a climb of more than 16; a
+      diagonal passes when either orthogonal neighbour is open; the target
+      tile is not tested. The eye-height ray passed over 11-high fences and
+      closed wooden gates, so melee and archery landed through them. The ray
+      (CanSeeLOS_New) is kept for ADVANCEDLOS 0x01 (players) / 0x02 (NPCs),
+      which is now read from sphere.ini. An open door item is no door
+      (GetItemSpecificFlags); dynamic items, multi components and custom-house
+      tiles feed the probe.
+FIX - Combat line of sight binds staff as well (bCombatCheck,
+      CCharFight.cpp:1720): a GM no longer swings through walls.
+FIX - NPC wander, side-step, flee, back-off and surround steps go through the
+      shared walk check (CheckValidMove, CCharStatus.cpp:1978). They only asked
+      for standable ground, and a wall standing on that ground at floor Z never
+      counted, so creatures walked through fence and wall statics and cut
+      corners between them.
+ADD - INFO on a map static or bare ground answers with the Source-X tile line
+      (OnTarg_Obj_Info, CClientTarg.cpp:119): "[Static z=.., 0id=defname->type],
+      TERRAIN=0id TYPE=t_..", "NON scripted" without an ITEMDEF, or
+      "[No static tile]" for ground.
 [2026-09-23] - Source-X swing timing, combat sounds, combat names; paperdoll title line
 ------------------------------------------------------------------------
 FIX - Swings follow Source-X Fight_SetDefaultSwingDelays / Fight_Hit

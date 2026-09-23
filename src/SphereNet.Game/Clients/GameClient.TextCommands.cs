@@ -32,9 +32,9 @@ public sealed partial class GameClient
                 break;
             case 0xC7:
                 if (parts[0].StartsWith("bow", StringComparison.OrdinalIgnoreCase))
-                    PlayAnimation(_character!, (ushort)AnimationType.Bow, NewAnimationGesture.Emote);
+                    PlayAnimation(_character!, (ushort)AnimationType.Bow);
                 else if (parts[0].StartsWith("salute", StringComparison.OrdinalIgnoreCase))
-                    PlayAnimation(_character!, (ushort)AnimationType.Salute, NewAnimationGesture.Emote);
+                    PlayAnimation(_character!, (ushort)AnimationType.Salute);
                 break;
             case 0x27: // Cast from book and cast macro share the same path.
             case 0x56:

@@ -89,6 +89,47 @@ public sealed class ClientTargetingHandler
     private Character? ResolvePickedChar(uint uid) => _client.ResolvePickedChar(uid);
 
 
+    /// <summary>The INFO answer for a target with no UID - a map static or bare
+    /// ground (Source-X OnTarg_Obj_Info, CClientTarg.cpp:119-153):
+    /// "[Static z=10, 0837=i_fence->t_normal], TERRAIN=077   TYPE=t_grass", or
+    /// "NON scripted" when no ITEMDEF covers the graphic, or "[No static tile], "
+    /// for ground.</summary>
+    public static string FormatStaticInfo(GameWorld world, Point3D pt, ushort id)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (id != 0)
+        {
+            sb.Append($"[Static z={pt.Z}, 0{id:x}=");
+            var def = DefinitionLoader.GetItemDef(id);
+            if (def != null)
+            {
+                string name = string.IsNullOrEmpty(def.DefName) ? $"0{id:x}" : def.DefName;
+                string type = def.Type == ItemType.Normal && !string.IsNullOrWhiteSpace(def.TypeRaw)
+                              && Item.ParseItemType(def.TypeRaw) == ItemType.Invalid
+                    ? def.TypeRaw.Trim()
+                    : Item.FormatItemTypeName(def.Type);
+                sb.Append($"{name}->{type}], ");
+            }
+            else
+            {
+                sb.Append("NON scripted], ");
+            }
+        }
+        else
+        {
+            sb.Append("[No static tile], ");
+        }
+
+        var md = world.MapData;
+        if (md != null)
+        {
+            var cell = md.GetTerrainTile(pt.Map, pt.X, pt.Y);
+            sb.Append($"TERRAIN=0{cell.TileId:x}   TYPE=" +
+                      ObjBase.ClassifyTerrainType(md.GetLandTileData(cell.TileId)));
+        }
+        return sb.ToString();
+    }
+
     public void HandleTargetResponse(byte type, uint targetId, uint serial, short x, short y, sbyte z, ushort graphic)
     {
         if (_character == null) return;
@@ -378,7 +419,10 @@ public sealed class ClientTargetingHandler
             Targets.Inspect = false;
             if (serial == 0 || serial == 0xFFFFFFFF)
             {
-                SysMessage(ServerMessages.Get("target_must_object"));
+                // A static or bare ground has no UID to open a dialog on: Source-X
+                // answers with a one-line tile report instead (OnTarg_Obj_Info,
+                // CClientTarg.cpp:119-153).
+                SysMessage(FormatStaticInfo(_world, new Point3D(x, y, z, _character.MapIndex), graphic));
                 return;
             }
             var infoObj = _world.FindObject(new Serial(serial));

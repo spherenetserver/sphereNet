@@ -10,7 +10,7 @@ using SphereNet.Network.Packets;
 namespace SphereNet.Tests;
 
 /// <summary>
-/// Verifies that <see cref="GameClient.BroadcastAnimation(Character, ushort, NewAnimationGesture, int, Action{Point3D, int, PacketWriter, uint}, Action{Point3D, int, uint, Action{Character, GameClient}}, byte)"/>
+/// Verifies that <see cref="GameClient.BroadcastAnimation(Character, ushort, int, Action{Point3D, int, PacketWriter, uint}, Action{Point3D, int, uint, Action{Character, GameClient}}, byte)"/>
 /// picks the 0xE2 (KR/Enhanced) or 0x6E (Classic/ClassicUO) animation packet per recipient,
 /// and falls back to a single 0x6E broadcast when per-recipient dispatch is
 /// unavailable.
@@ -23,6 +23,7 @@ public class AnimationVersionSelectionTests
         var world = new GameWorld(lf);
         world.InitMap(0, 6144, 4096);
         var actor = world.CreateCharacter();
+        actor.BodyId = 0x0190;   // a human: UpdateAnimate maps playable bodies
         world.PlaceCharacter(actor, new Point3D(1000, 1000, 0, 0));
         return (world, actor, new AccountManager(lf), lf);
     }
@@ -49,7 +50,7 @@ public class AnimationVersionSelectionTests
 
         ushort legacyAction = (ushort)AnimationType.AttackWeapon; // 0x09
         GameClient.BroadcastAnimation(
-            actor, legacyAction, NewAnimationGesture.Impact, 18,
+            actor, legacyAction, 18,
             broadcastNearby: null,
             forEachClientInRange: (_, _, _, action) =>
             {
@@ -67,7 +68,10 @@ public class AnimationVersionSelectionTests
         var enhancedPackets = TestHarness.GetQueuedPackets(enhancedClient.NetState).ToList();
         var e2 = enhancedPackets.Single(p => p.Span.Length == 10 && p.Span[0] == 0xE2);
         Assert.Equal(serial, ReadU32(e2, 1));
-        Assert.Equal((ushort)NewAnimationGesture.Impact, ReadU16(e2, 5)); // gesture field
+        // Derived from the legacy action (UpdateAnimate): the unarmed generic swing is
+        // ANIM_ATTACK_1H_SLASH -> NANIM_ATTACK + NANIM_ATTACK_1H_SLASH.
+        Assert.Equal((ushort)NewAnimationGesture.Attack, ReadU16(e2, 5));
+        Assert.Equal((ushort)NewAnimationAttack.OneHandSlash, ReadU16(e2, 7));
     }
 
     [Fact]
@@ -78,7 +82,7 @@ public class AnimationVersionSelectionTests
         PacketWriter? captured = null;
         int range = -1;
         GameClient.BroadcastAnimation(
-            actor, (ushort)AnimationType.Bow, NewAnimationGesture.Emote, 18,
+            actor, (ushort)AnimationType.Bow, 18,
             broadcastNearby: (_, r, pkt, _) => { captured = pkt; range = r; },
             forEachClientInRange: null);
 

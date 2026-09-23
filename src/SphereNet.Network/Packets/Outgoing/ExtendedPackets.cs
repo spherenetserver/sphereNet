@@ -2670,34 +2670,36 @@ public sealed class PacketClilocMessageAffix : PacketWriter
     }
 }
 
-/// <summary>0xE2 — New (body-agnostic) animation packet for High Seas+ clients.
-/// The client resolves the body-specific animation group from the gesture
-/// <paramref name="gesture"/>, sub-action and mode, so a single gesture plays a
-/// sensible animation on human, monster and gargoyle bodies alike. The legacy
-/// 0x6E packet (raw action index) is still used for pre-HS clients.</summary>
+/// <summary>0xE2 — new animation packet, Source-X PacketActionBasic (send.cpp:1849):
+/// serial u32, action u16 (ANIM_TYPE_NEW), sub-action u16, variation byte. Sent to
+/// KR/Enhanced clients, and to 7.0.0.0+ clients for a gargoyle actor; everyone else
+/// gets the legacy 0x6E. Source-X writes an unset sub-action as (word)-1 = 0xFFFF.</summary>
 public sealed class PacketNewAnimation : PacketWriter
 {
     private readonly uint _serial;
-    private readonly ushort _gesture;
+    private readonly ushort _action;
     private readonly ushort _subAction;
-    private readonly byte _mode;
+    private readonly byte _variation;
 
-    public PacketNewAnimation(uint serial, NewAnimationGesture gesture, ushort subAction = 0, byte mode = 0)
+    public PacketNewAnimation(uint serial, ushort action, ushort subAction, byte variation)
         : base(0xE2)
     {
         _serial = serial;
-        _gesture = (ushort)gesture;
+        _action = action;
         _subAction = subAction;
-        _mode = mode;
+        _variation = variation;
     }
+
+    public PacketNewAnimation(uint serial, NewAnimationGesture action, ushort subAction, byte variation)
+        : this(serial, (ushort)action, subAction, variation) { }
 
     public override PacketBuffer Build()
     {
         var buf = CreateFixed(10);
         buf.WriteUInt32(_serial);
-        buf.WriteUInt16(_gesture);
+        buf.WriteUInt16(_action);
         buf.WriteUInt16(_subAction);
-        buf.WriteByte(_mode);
+        buf.WriteByte(_variation);
         return buf;
     }
 }

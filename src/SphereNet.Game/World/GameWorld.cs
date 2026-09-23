@@ -203,7 +203,111 @@ public sealed class GameWorld
     public TerrainEngine Terrain => _terrain ??= new TerrainEngine(MapData)
     {
         DynamicOccluderAt = HasDynamicLosOccluder,
+        LegacyDynamicTiles = FeedLegacyDynamicTiles,
+        StaticDoorOpen = IsMapStaticDoorOpen,
     };
+
+    /// <summary>sphere.ini ADVANCEDLOS (Source-X m_iAdvancedLos, default 0 =
+    /// ADVANCEDLOS_DISABLED): 0x01 players, 0x02 NPCs use the eye-height ray
+    /// (CanSeeLOS_New); everyone else walks the legacy tile-by-tile check.</summary>
+    public int AdvancedLos { get; set; }
+
+    /// <summary>The dynamic-item and multi passes of the legacy walk-height probe
+    /// (CWorldMap::GetHeightPoint2, CWorldMap.cpp:1653-1730).</summary>
+    private void FeedLegacyDynamicTiles(byte mapId, short x, short y, TerrainEngine.LegacyBlockingState block)
+    {
+        var md = MapData;
+        if (md == null) return;
+        var cell = new Core.Types.Point3D(x, y, 0, mapId);
+
+        foreach (var item in GetItemsInRange(cell, 0))
+        {
+            if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) continue;
+            if (item.X != x || item.Y != y || item.MapIndex != mapId) continue;
+            // A multi's own item carries no tile of its own; its components come below.
+            if (item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
+                or Core.Enums.ItemType.Ship)
+                continue;
+
+            ushort dispId = item.DispIdFull;
+            var data = md.GetItemTileData(dispId);
+            // ITEMDEF Can(DOOR|WATER|CLIMB|BLOCK|PLATFORM): the tiledata flags the def
+            // inherits, then the door rule of GetItemSpecificFlags (CItemBase.cpp:721) -
+            // a door never BLOCKs, it is a DOOR while closed and nothing while open.
+            var flags = TerrainEngine.GetLegacyTiledataFlags(data);
+            var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+            if (def != null)
+                flags |= (TerrainEngine.LegacyCan)((uint)def.Can & 0xFF);
+            bool isDoor = DoorHelper.IsDoorItem(item, md);
+            if (isDoor)
+            {
+                flags &= ~TerrainEngine.LegacyCan.Block;
+                if (IsDoorItemOpen(item))
+                    flags &= ~TerrainEngine.LegacyCan.Door;
+                else
+                    flags |= TerrainEngine.LegacyCan.Door;
+            }
+            flags &= TerrainEngine.LegacyCan.Door | TerrainEngine.LegacyCan.Water |
+                     TerrainEngine.LegacyCan.Climb | TerrainEngine.LegacyCan.Block |
+                     TerrainEngine.LegacyCan.Platform;
+            int height = item.DefHeight > 0 ? item.DefHeight : 0;
+            if (flags == TerrainEngine.LegacyCan.None || height == 0)
+            {
+                int staticHeight = TerrainEngine.GetLegacyTileHeightFlags(data, out var staticFlags);
+                // A live item's own ITEMDEF answers GetItemHeight for its art too, so a
+                // door keeps the door rule: an open one stays passable.
+                if (flags == TerrainEngine.LegacyCan.None && !isDoor) flags = staticFlags;
+                if (height == 0) height = staticHeight;
+            }
+            block.CheckTile(flags, item.Z, height, isItem: true);
+        }
+
+        // Multi components (fHouseCheck): placed houses/ships and committed
+        // custom-house design tiles.
+        var multis = GroundMultis;
+        for (int m = 0; m < multis.Count; m++)
+        {
+            var multi = multis[m];
+            if (multi.IsDeleted || multi.IsEquipped || !multi.IsOnGround || multi.MapIndex != mapId)
+                continue;
+            if (Math.Abs(multi.X - x) > 32 || Math.Abs(multi.Y - y) > 32)
+                continue;
+            var mdef = md.GetMulti(multi.BaseId);
+            if (mdef != null)
+            {
+                foreach (var comp in mdef.Components)
+                {
+                    if (!comp.IsVisible) continue;
+                    if (multi.X + comp.XOffset != x || multi.Y + comp.YOffset != y) continue;
+                    int h = TerrainEngine.GetLegacyTileHeightFlags(md.GetItemTileData(comp.TileId), out var f);
+                    block.CheckTile(f, multi.Z + comp.ZOffset, h, isItem: true);
+                }
+            }
+            if (multi.ItemType == Core.Enums.ItemType.MultiCustom &&
+                Movement.WalkCheck.ResolveCustomDesign != null)
+            {
+                foreach (var tile in Movement.WalkCheck.ResolveCustomDesign(multi))
+                {
+                    if (!tile.Visible) continue;
+                    if (multi.X + tile.X != x || multi.Y + tile.Y != y) continue;
+                    int h = TerrainEngine.GetLegacyTileHeightFlags(md.GetItemTileData(tile.TileId), out var f);
+                    block.CheckTile(f, multi.Z + tile.Z, h, isItem: true);
+                }
+            }
+        }
+    }
+
+    /// <summary>Whether a door item currently shows its open art (Source-X
+    /// IsID_DoorOpen: the odd slot of a classic door set), else the DOOR_OPEN
+    /// state tag / IT_DOOR_OPEN type for doors outside the classic table.</summary>
+    private static bool IsDoorItemOpen(Objects.Items.Item door)
+    {
+        int doorDir = DoorHelper.GetDoorDir(door.DispIdFull);
+        if (doorDir >= 0)
+            return (doorDir & 1) != 0;
+        return door.ItemType == Core.Enums.ItemType.DoorOpen ||
+               (door.TryGetTag("DOOR_OPEN", out string? open) && open == "1");
+    }
 
     /// <summary>Does a dynamic (in-world) item or multi/custom-house wall at this
     /// cell occlude a LOS ray at the given height? (Source-X CanSeeLOS_New
@@ -328,7 +432,19 @@ public sealed class GameWorld
     /// terrain + impassable statics do not occlude the ray from 'from' to 'to'.
     /// Source-X equivalent: CWorldMap::CanSeeLOS.</summary>
     public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to)
-        => Terrain.CanSeeLOS(from, to);
+        => AdvancedLos != 0 ? Terrain.CanSeeLOS(from, to) : Terrain.CanSeeLOSLegacy(from, to);
+
+    /// <summary>Line of sight as a specific viewer sees it: the ADVANCEDLOS bit
+    /// for the viewer's kind (player 0x01, NPC 0x02) picks the eye-height ray,
+    /// otherwise the legacy walk (Source-X CChar::CanSeeLOS, CCharLOS.cpp:17/675).</summary>
+    public bool CanSeeLOSFor(Objects.Characters.Character viewer,
+        Core.Types.Point3D from, Core.Types.Point3D to)
+    {
+        int bit = viewer.IsPlayer ? 0x01 : 0x02;
+        return (AdvancedLos & bit) != 0
+            ? Terrain.CanSeeLOS(from, to)
+            : Terrain.CanSeeLOSLegacy(from, to);
+    }
 
     /// <summary>Line-of-sight with Source-X LOS flags (e.g. LosFlags.Fishing).</summary>
     public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to, Core.Enums.LosFlags flags)

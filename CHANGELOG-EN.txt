@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Spawned creatures scatter around the spawner again
+------------------------------------------------------------------------
+CHANGE - An NPC spawner places each creature MoveNear(gem, rand(MOREZ)+1),
+         somewhere walkable within that distance that can see the gem, and
+         only falls back to the gem tile when no spot fits (Source-X
+         CCSpawn.cpp:433). The 2026-07-16 deviation that put every creature
+         on the gem is withdrawn at the shard owner's request: it stacked a
+         whole spawn line (and two vendors of one line) on a single tile.
+
 [2026-09-24] - Points separated by spaces; refused script teleporters removed
 ------------------------------------------------------------------------
 FIX - P=<point> and Point3D.TryParse accept comma, space or tab between the

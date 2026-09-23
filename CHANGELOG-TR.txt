@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Spawn edilen yaratiklar yeniden spawner cevresine dagilir
+------------------------------------------------------------------------
+DEGISIKLIK - NPC spawner her yaratigi MoveNear(gem, rand(MOREZ)+1) ile
+             yerlestirir: o mesafe icinde yurunebilir ve spawner'i goren bir
+             noktaya; uygun nokta yoksa spawner karesine (Source-X
+             CCSpawn.cpp:433). Her yaratigi spawner'in ustunde doguran
+             2026-07-16 sapmasi shard sahibinin istegiyle geri alindi: bir
+             spawn satirinin tamamini (ve ayni satirdaki iki vendor'u) tek
+             kareye yigiyordu.
+
 [2026-09-24] - Bosluklu koordinat; reddedilen script teleporter'lari silinir
 ------------------------------------------------------------------------
 DUZELTME - P=<nokta> ve Point3D.TryParse alanlar arasinda virgul, bosluk ya

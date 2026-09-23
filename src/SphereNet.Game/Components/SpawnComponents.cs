@@ -370,23 +370,20 @@ public sealed class SpawnComponent
     {
         var mapData = _world.MapData;
 
-        // Deliberate deviation from Source-X (shard owner request): children are
-        // born ON the worldgem bit instead of the MoveNear(pt, rand(MOREZ)+1)
-        // scatter (CCSpawn.cpp:433). MOREZ keeps its wander-leash role via
-        // HomeDist. The scatter loop below survives only as a fallback for a
-        // gem whose own tile can't hold a char (buried in a wall/furniture).
+        // Source-X CCSpawn::GenerateChar (CCSpawn.cpp:433): each try places the
+        // child MoveNear(pt, rand(MOREZ)+1) - somewhere within a random distance of
+        // the gem that is walkable and can see the gem - and only when no try lands
+        // does it go ON the gem. (Children used to be born on the gem itself by
+        // shard request, which stacked every creature of a spawn line on one tile.)
         if (mapData == null)
             return new Point3D(_spawnItem.X, _spawnItem.Y, _spawnItem.Z, _spawnItem.MapIndex);
-        sbyte gemZ = mapData.GetEffectiveZ(_spawnItem.MapIndex, _spawnItem.X, _spawnItem.Y, _spawnItem.Z);
-        if (mapData.IsPassable(_spawnItem.MapIndex, _spawnItem.X, _spawnItem.Y, gemZ))
-            return new Point3D(_spawnItem.X, _spawnItem.Y, gemZ, _spawnItem.MapIndex);
 
         bool canSwim = charDef != null && (charDef.Can & CanFlags.C_Swim) != 0;
         var (mapW, mapH) = mapData.GetMapSize(_spawnItem.MapIndex);
-        int range = _spawnRange > 0 ? _spawnRange : 1;
 
         for (int attempt = 0; attempt < 25; attempt++)
         {
+            int range = _spawnRange > 0 ? _rand.Next(_spawnRange) + 1 : 1;
             short dx = (short)_rand.Next(-range, range + 1);
             short dy = (short)_rand.Next(-range, range + 1);
             short px = (short)(_spawnItem.X + dx);
@@ -411,7 +408,9 @@ public sealed class SpawnComponent
             return candidate;
         }
 
-        return new Point3D(_spawnItem.X, _spawnItem.Y, _spawnItem.Z, _spawnItem.MapIndex);
+        // Nothing near fitted: on the gem, as upstream's MoveTo(pt) fallback.
+        sbyte gemZ = mapData.GetEffectiveZ(_spawnItem.MapIndex, _spawnItem.X, _spawnItem.Y, _spawnItem.Z);
+        return new Point3D(_spawnItem.X, _spawnItem.Y, gemZ, _spawnItem.MapIndex);
     }
 
     private int RandomRange(int min, int max)

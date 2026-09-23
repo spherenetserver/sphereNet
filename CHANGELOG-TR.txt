@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - NPC buyuculer faydali buyuleri sadece gerektiginde yapar
+------------------------------------------------------------------------
+DUZELTME - NPC, karaktere yapilan faydali bir buyuyu Source-X NPC_FightCast
+           gibi sadece uygunsa yapar (CCharNPCAct_Magic.cpp:349): can esigin
+           altindaysa iyilestirme, zehirliyse cure, etki katmani uzerinde
+           degilse BLESS buyusu. Her faydali buyu uygun sayiliyordu; yansitan
+           bir hedefe karsi ejderha birkac saniyede bir kendine Invisibility
+           yapip hic dovusmuyordu. Yedek tarama her zaman ilk buyuden degil,
+           rastgele bir buyuden baslar (NPC_FightMagery).
+TEST - NpcGoodSpellSuitsTests, DragonBreathDecisionTests (pack'in brain_monster
+       ejderhasi nefes kullanir; menzil, stamina ve govde kosullari).
+
 [2026-09-23] - NPC menzilli, buyu ve ozel saldiri gorselleri
 ------------------------------------------------------------------------
 DUZELTME - Isimli tanimdan yapilan silah (ITEMDEF i_bow_exp, ID=I_BOW) menzil,

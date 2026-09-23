@@ -2001,6 +2001,7 @@ public static partial class Program
                 ApplyNpcSpecialDamage(npc, target, damage, DamageType.HitBlunt, 100, 0, 0, 0, 0);
             };
             _npcAI.ResolveNpcSpellFlags = spell => _spellEngine.GetSpellDef(spell)?.Flags;
+            _npcAI.ResolveNpcSpellLayer = spell => _spellEngine.GetSpellDef(spell)?.Layer ?? Layer.None;
             _npcAI.OnNpcTryStartSpellCast = (npc, target, spell) =>
             {
                 int castMs = _spellEngine.CastStart(npc, spell, target.Uid, target.Position);

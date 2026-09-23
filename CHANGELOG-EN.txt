@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - NPC casters cast good spells only when needed
+------------------------------------------------------------------------
+FIX - An NPC casts a good, character-targeted spell only when it suits, as
+      upstream NPC_FightCast does (CCharNPCAct_Magic.cpp:349): a heal under
+      the heal threshold, a cure while poisoned, a BLESS spell whose effect
+      layer is not already worn. Every good spell used to qualify, so a dragon
+      facing a reflecting target recast Invisibility on itself every few
+      seconds and never fought. The fallback walk starts at a random spell
+      (NPC_FightMagery), not always the first.
+TEST - NpcGoodSpellSuitsTests, DragonBreathDecisionTests (the pack's
+       brain_monster dragon breathes; range, stamina and body gates).
+
 [2026-09-23] - NPC ranged, spell and special-attack visuals
 ------------------------------------------------------------------------
 FIX - A weapon made from a named def (ITEMDEF i_bow_exp, ID=I_BOW) is read

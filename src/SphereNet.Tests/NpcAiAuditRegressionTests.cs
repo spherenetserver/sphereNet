@@ -329,6 +329,8 @@ public sealed class NpcAiAuditRegressionTests
         var ai = new NpcAI(world, new SphereConfig())
         {
             ResolveNpcSpellFlags = _ => SpellFlag.Good | SpellFlag.Bless | SpellFlag.TargChar,
+            // A BLESS spell suits only while its effect layer is free (NPC_FightCast).
+            ResolveNpcSpellLayer = _ => (Layer)32,
         };
         var caster = world.CreateCharacter();
         caster.Hits = caster.MaxHits = 100;

@@ -119,8 +119,14 @@ public sealed partial class NpcAI
         if (spell != SpellType.None)
             ResetNpcCombo(npc);
 
-        foreach (var candidate in npc.NpcSpells)
+        // Upstream starts at a random spell and walks to the end of the list
+        // (NPC_FightMagery, CCharNPCAct_Magic.cpp:203); always starting at the first
+        // one made the same spell win every attempt.
+        var npcSpells = npc.NpcSpells;
+        int firstCandidate = npcSpells.Count > 0 ? _rand.Next(npcSpells.Count) : 0;
+        for (int ci = firstCandidate; ci < npcSpells.Count; ci++)
         {
+            var candidate = npcSpells[ci];
             if (candidate == spell)
                 continue;
             if (!CanAfford(npc, candidate))
@@ -221,7 +227,21 @@ public sealed partial class NpcAI
             {
                 if (flags.HasFlag(SpellFlag.TargDead) || flags.HasFlag(SpellFlag.TargNoSelf))
                     return false;
-                castTarget = npc;
+                // A good spell aimed at a character is cast only when it is NEEDED
+                // (NPC_FightCast, CCharNPCAct_Magic.cpp:349): a heal below the heal
+                // threshold, a cure while poisoned, a BLESS spell whose effect layer
+                // the recipient does not already carry. Anything else - Invisibility,
+                // Night Sight, a buff already running - does not suit, and the NPC
+                // moves on. Every good spell used to qualify, so a dragon facing a
+                // reflecting target recast Invisibility on itself forever.
+                if (flags.HasFlag(SpellFlag.TargChar))
+                {
+                    if (!GoodSpellSuits(npc, spell, flags))
+                        return false;
+                    castTarget = npc;
+                    return true;
+                }
+                castTarget = flags.HasFlag(SpellFlag.Heal) ? npc : enemy;
                 return true;
             }
 
@@ -245,6 +265,23 @@ public sealed partial class NpcAI
             SpellType.Flamestrike or SpellType.MagicArrow or SpellType.Fireball or
             SpellType.Harm or SpellType.MeteorSwarm or SpellType.ChainLightning or
             SpellType.Curse or SpellType.Weaken);
+    }
+
+    private bool GoodSpellSuits(Character who, SpellType spell, SpellFlag flags)
+    {
+        int healThreshold = _config.NpcHealThreshold > 0 ? _config.NpcHealThreshold : 30;
+        if (flags.HasFlag(SpellFlag.Heal) && who.MaxHits > 0 && who.Hits * 100 <= who.MaxHits * healThreshold)
+            return true;
+        if (spell is SpellType.Cure or SpellType.ArchCure or SpellType.CleansingWinds &&
+            !flags.HasFlag(SpellFlag.Scripted) && who.IsPoisoned)
+            return true;
+        if (flags.HasFlag(SpellFlag.Bless))
+        {
+            var layer = ResolveNpcSpellLayer?.Invoke(spell) ?? Layer.None;
+            if (layer != Layer.None && who.GetEquippedItem(layer) == null)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -762,6 +799,10 @@ public sealed partial class NpcAI
 
     /// <summary>Resolve loaded spell flags for safe fallback targeting.</summary>
     public Func<SpellType, SpellFlag?>? ResolveNpcSpellFlags { get; set; }
+
+    /// <summary>The layer a spell's effect memory is worn on (SPELL LAYER=), so an
+    /// NPC does not recast a blessing it already carries.</summary>
+    public Func<SpellType, Layer>? ResolveNpcSpellLayer { get; set; }
 
     /// <summary>Advance an NPC's in-progress spell cast timer. Returns true while still casting.</summary>
     public Func<Character, bool>? OnNpcTickSpellCast { get; set; }

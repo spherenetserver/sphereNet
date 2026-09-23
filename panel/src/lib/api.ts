@@ -221,5 +221,5 @@ export const scriptsApi = {
   content:  (path: string) => api.get<{ content: string }>(`/scripts/content`, { params: { path } }),
   validate: (path: string, content: string) => api.post<ScriptValidationResult>('/scripts/validate', { path, content }),
   save:     (path: string, content: string) => api.put<{ saved: boolean; path: string; validation: ScriptValidationResult }>('/scripts/content', { path, content }),
-  download: () => api.post<{ filesInstalled: number }>('/scripts/download', null, { timeout: 120_000 }),
+  download: () => api.post<{ filesInstalled: number; filesBackedUp: number; backupFolder: string | null }>('/scripts/download', null, { timeout: 120_000 }),
 }

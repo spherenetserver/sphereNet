@@ -4000,11 +4000,21 @@ public partial class Character : ObjBase
                 value = (ResolveShipUidsByOwner?.Invoke(Uid).Count ?? 0).ToString();
                 return true;
             }
+            // The tags hold the area a region crossing is leaving until its @Exit and
+            // @Enter have run. They are only written by a crossing, so a character
+            // placed straight into an area - login, world load, a spawn - had none,
+            // and <REGION> read empty for somebody standing in the middle of one.
+            // Source-X keeps m_pArea current on every placement; the live lookup is
+            // that answer.
             case "REGION":
-                value = (TryGetTag("CURRENT_REGION_UID", out string? regionUid) ? regionUid : "") ?? "";
+                value = TryGetTag("CURRENT_REGION_UID", out string? regionUid) && !string.IsNullOrEmpty(regionUid)
+                    ? regionUid
+                    : ResolveWorld?.Invoke()?.FindRegion(Position)?.Uid.ToString() ?? "";
                 return true;
             case "REGION.NAME":
-                value = (TryGetTag("CURRENT_REGION", out string? regionName) ? regionName : "") ?? "";
+                value = TryGetTag("CURRENT_REGION", out string? regionName) && !string.IsNullOrEmpty(regionName)
+                    ? regionName
+                    : ResolveWorld?.Invoke()?.FindRegion(Position)?.Name ?? "";
                 return true;
             case "ROOM":
                 value = (TryGetTag("CURRENT_ROOM", out string? roomUid) ? roomUid : "") ?? "";

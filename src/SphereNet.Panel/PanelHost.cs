@@ -145,6 +145,26 @@ public sealed class PanelHost : IDisposable
                 }
             });
 
+            // DNS rebinding: the panel listens on localhost only, but a web page the
+            // operator opens can point a name it controls at 127.0.0.1 and then talk
+            // to the panel as a same-origin page. The browser still sends that name
+            // as Host, so only the loopback names and the ones listed in
+            // ADMINPANELALLOWEDHOSTS (the public name a reverse proxy passes on) are
+            // served.
+            var allowedHosts = ReadAllowedHosts();
+            _app.Use(async (httpCtx, next) =>
+            {
+                if (!IsAllowedHost(httpCtx.Request.Host.Host, allowedHosts))
+                {
+                    _logger.LogWarning("Panel request refused: Host '{Host}' is not allowed (ADMINPANELALLOWEDHOSTS)",
+                        httpCtx.Request.Host.Value);
+                    httpCtx.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await httpCtx.Response.WriteAsJsonAsync(new { error = "Host not allowed" });
+                    return;
+                }
+                await next();
+            });
+
             // Serve built Vue app
             var distPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "panel");
             if (Directory.Exists(distPath))
@@ -210,10 +230,12 @@ public sealed class PanelHost : IDisposable
                 if (id.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                     id = id[..^4];
                 int gumpId;
-                if (id.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                    _ = int.TryParse(id[2..], System.Globalization.NumberStyles.HexNumber, null, out gumpId);
-                else
-                    _ = int.TryParse(id, out gumpId);
+                bool parsed = id.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? int.TryParse(id[2..], System.Globalization.NumberStyles.HexNumber, null, out gumpId)
+                    : int.TryParse(id, out gumpId);
+                // Anonymous route: only a real gump index (0..0xFFFF) goes any further.
+                if (!parsed || gumpId < 0 || gumpId > 0xFFFF)
+                    return Results.NotFound();
                 var png = _ctx.GetGumpPng(gumpId);
                 return png == null
                     ? Results.NotFound()
@@ -366,6 +388,79 @@ public sealed class PanelHost : IDisposable
         return IPAddress.IsLoopback(address);
     }
 
+    private static readonly string[] LoopbackHostNames = ["localhost", "127.0.0.1", "::1", "[::1]"];
+
+    /// <summary>ADMINPANELALLOWEDHOSTS: comma-separated host names served besides the
+    /// loopback ones; "*" turns the check off. Read once at startup.</summary>
+    private HashSet<string>? ReadAllowedHosts()
+    {
+        var hosts = new HashSet<string>(LoopbackHostNames, StringComparer.OrdinalIgnoreCase);
+        string raw = ReadIniString("AdminPanelAllowedHosts", "");
+        foreach (string part in raw.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part == "*") return null;
+            hosts.Add(part.Trim());
+        }
+        return hosts;
+    }
+
+    internal static bool IsAllowedHost(string? host, HashSet<string>? allowed)
+    {
+        if (allowed is null) return true;
+        if (string.IsNullOrEmpty(host)) return false;
+        return allowed.Contains(host);
+    }
+
+    private static readonly string[] ProxyHeaders =
+        ["X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded", "X-Real-IP"];
+
+    /// <summary>Whether a reverse proxy relayed this request. Behind one, every
+    /// request reaches the panel from 127.0.0.1, so "loopback" says nothing about
+    /// where the operator is.</summary>
+    internal static bool IsProxied(HttpRequest request)
+    {
+        foreach (string header in ProxyHeaders)
+            if (request.Headers.ContainsKey(header))
+                return true;
+        return false;
+    }
+
+    /// <summary>The address to rate-limit and audit by. A request relayed by a
+    /// local proxy carries the real client as the last X-Forwarded-For entry (the
+    /// one the proxy appended); without this every client shares the proxy's
+    /// 127.0.0.1 and one bad actor locks everybody out. The header is only
+    /// believed from a loopback peer - from anywhere else it is the client's own
+    /// claim.</summary>
+    internal static string ClientAddress(HttpContext http)
+    {
+        var remote = http.Connection.RemoteIpAddress;
+        if (IsLoopback(remote) &&
+            http.Request.Headers.TryGetValue("X-Forwarded-For", out var forwarded))
+        {
+            string last = forwarded.ToString().Split(',').Last().Trim();
+            if (IPAddress.TryParse(last, out var ip))
+                return ip.ToString();
+        }
+        return remote?.ToString() ?? "unknown";
+    }
+
+    private string ReadIniString(string key, string fallback)
+    {
+        if (_ctx.IniPath is null || !File.Exists(_ctx.IniPath))
+            return fallback;
+        try
+        {
+            var parser = new Core.Configuration.IniParser();
+            parser.Load(_ctx.IniPath);
+            return parser.GetValue("SPHERE", key) ?? fallback;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Panel could not read {Key} from sphere.ini", key);
+            return fallback;
+        }
+    }
+
     private bool ReadIniBool(string key, bool fallback)
     {
         if (_ctx.IniPath is null || !File.Exists(_ctx.IniPath))
@@ -457,7 +552,7 @@ public sealed class PanelHost : IDisposable
         // --- Auth ---
         app.MapPost("/api/auth/login", (LoginRequest req, HttpContext http) =>
         {
-            string remoteIp = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            string remoteIp = ClientAddress(http);
             if (_authLimiter.IsLimited(remoteIp, out _))
                 return Results.StatusCode(StatusCodes.Status429TooManyRequests);
 
@@ -481,7 +576,7 @@ public sealed class PanelHost : IDisposable
         // an error, it just means "no hint" and the operator types it.
         app.MapGet("/api/auth/local-hint", (HttpContext http) =>
         {
-            if (!IsLoopback(http.Connection.RemoteIpAddress))
+            if (!IsLoopback(http.Connection.RemoteIpAddress) || IsProxied(http.Request))
                 return Results.Json(new { password = (string?)null });
 
             if (!ReadIniBool("AdminPanelAutoFill", false))
@@ -565,7 +660,16 @@ public sealed class PanelHost : IDisposable
                 patch["AdminPassword"] = passwordHash;
 
             PatchIniSection(_ctx.IniPath, "SPHERE", patch);
+            bool passwordChanged = !keepPassword && !string.IsNullOrEmpty(_ctx.AdminPassword);
             _ctx.AdminPassword = passwordHash;
+            // A new password is how an operator locks somebody out. Sessions opened
+            // with the old one - and their live consoles - end here instead of
+            // running on for the rest of their 24 hours.
+            if (passwordChanged)
+            {
+                int revoked = tokens.RevokeAll();
+                _ctx.AuditLog?.Invoke($"panel password changed; {revoked} session(s) ended");
+            }
             _ctx.ServerName    = req.ServerName;
 
             // Mark setup as complete
@@ -850,7 +954,7 @@ public sealed class PanelHost : IDisposable
 
             AtomicWriteAllText(full, req.Content);
             string rel = Path.GetRelativePath(_ctx.ScriptsPath!, full).Replace('\\', '/');
-            _ctx.AuditLog?.Invoke($"script saved path='{rel}' ip='{http.Connection.RemoteIpAddress}' bytes={req.Content.Length}");
+            _ctx.AuditLog?.Invoke($"script saved path='{rel}' ip='{ClientAddress(http)}' bytes={req.Content.Length}");
             return Results.Ok(new { saved = true, path = rel, validation });
         });
 
@@ -881,7 +985,7 @@ public sealed class PanelHost : IDisposable
                 return Results.Conflict(new { error });
 
             _ctx.AuditLog?.Invoke(
-                $"update apply requested ip='{http.Connection.RemoteIpAddress}'");
+                $"update apply requested ip='{ClientAddress(http)}'");
             _logger.LogWarning("Update: apply requested from {Ip} — server will restart.",
                 http.Connection.RemoteIpAddress);
 
@@ -904,6 +1008,16 @@ public sealed class PanelHost : IDisposable
                     "https://github.com/UOSoftware/Scripts-T/archive/refs/heads/main.zip");
 
                 using var archive = new ZipArchive(new MemoryStream(zipBytes), ZipArchiveMode.Read);
+
+                // Every local file the pack is about to replace is copied first, keeping
+                // its path, into a dated folder NEXT TO the scripts root - inside it the
+                // copies would be loaded as scripts. Files the pack does not carry are
+                // not touched at all.
+                string backupRoot = Path.Combine(
+                    Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(scriptsPath)))
+                        ?? scriptsPath,
+                    "script-backups", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+                int backedUp = 0;
 
                 int count = 0;
                 foreach (var entry in archive.Entries)
@@ -931,17 +1045,40 @@ public sealed class PanelHost : IDisposable
                     }
 
                     Directory.CreateDirectory(Path.GetDirectoryName(targetFull)!);
+                    if (File.Exists(targetFull) && !SameContent(targetFull, entry))
+                    {
+                        string backup = Path.Combine(backupRoot, scriptRelative.Replace('/', Path.DirectorySeparatorChar));
+                        Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+                        File.Copy(targetFull, backup, overwrite: true);
+                        backedUp++;
+                    }
                     entry.ExtractToFile(targetFull, overwrite: true);
                     count++;
                 }
 
-                return Results.Ok(new { filesInstalled = count });
+                _ctx.AuditLog?.Invoke($"script pack installed files={count} backedUp={backedUp}");
+                return Results.Ok(new
+                {
+                    filesInstalled = count,
+                    filesBackedUp = backedUp,
+                    backupFolder = backedUp > 0 ? backupRoot : null,
+                });
             }
             catch (Exception ex)
             {
                 return Results.Problem($"Download failed: {ex.Message}");
             }
         });
+    }
+
+    private static bool SameContent(string path, ZipArchiveEntry entry)
+    {
+        if (new FileInfo(path).Length != entry.Length) return false;
+        using var a = File.OpenRead(path);
+        using var b = entry.Open();
+        using var ha = System.Security.Cryptography.SHA256.Create();
+        using var hb = System.Security.Cryptography.SHA256.Create();
+        return ha.ComputeHash(a).AsSpan().SequenceEqual(hb.ComputeHash(b));
     }
 
     private static IResult InvokeBackendMutation(Func<bool>? operation, string successMessage)
@@ -969,11 +1106,56 @@ public sealed class PanelHost : IDisposable
             path.Replace('/', Path.DirectorySeparatorChar), out fullPath, out error);
     }
 
-    private static ScriptValidationResult ValidateScriptContent(string content)
+    /// <summary>The loops that walk objects instead of a number range. Each opens a
+    /// block ENDFOR closes - the same list the interpreter dispatches
+    /// (ScriptInterpreter.IsForVariant), or a pack that saves and runs fine is
+    /// refused here with "END block without FOR".</summary>
+    private static readonly HashSet<string> ForVariants = new(StringComparer.Ordinal)
+    {
+        "FOR", "FORPLAYERS", "FORCHARS", "FORITEMS", "FORCLIENTS", "FOROBJS",
+        "FORINSTANCES", "FORCONT", "FORCONTID", "FORCONTTYPE", "FORCHARLAYER",
+        "FORCHARMEMORYTYPE", "FORTIMERF",
+    };
+
+    /// <summary>Sections whose body is text, not script: a line there that happens
+    /// to start with "If" or "For" is prose and opens nothing.</summary>
+    private static bool IsTextSection(string header)
+    {
+        string[] words = header.Split((char[])[' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return false;
+        string head = words[0].ToUpperInvariant();
+        if (head == "DIALOG")
+            return words.Length >= 3 && words[2].Equals("TEXT", StringComparison.OrdinalIgnoreCase);
+        return head is "BOOK" or "NAMES" or "TIP" or "SCROLL" or "DEFNAME" or "DEFNAMES"
+            or "DEFMESSAGE" or "DEFMESSAGES" or "DEFMSG" or "RESOURCES" or "OBSCENE"
+            or "COMMENT" or "PLEVEL" or "STARTS" or "MOONGATES" or "RUNES" or "NOTOTITLES"
+            or "FAME" or "KARMA";
+    }
+
+    /// <summary>Leading keyword of a script line: letters only, so IF(&lt;x&gt;) and
+    /// IF (&lt;x&gt;) both read as IF.</summary>
+    private static string LeadingKeyword(string trimmed)
+    {
+        int n = 0;
+        while (n < trimmed.Length && char.IsAsciiLetter(trimmed[n])) n++;
+        return trimmed[..n].ToUpperInvariant();
+    }
+
+    internal static ScriptValidationResult ValidateScriptContent(string content)
     {
         var errors = new List<string>();
         var stack = new Stack<(string Token, int Line)>();
         string[] lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        bool textSection = false;
+
+        void CloseSection()
+        {
+            // Blocks never span sections: report what this one left open here, so
+            // the error points at the right section instead of the end of the file.
+            foreach (var item in stack)
+                errors.Add($"Line {item.Line}: {item.Token} block is not closed");
+            stack.Clear();
+        }
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -981,14 +1163,30 @@ public sealed class PanelHost : IDisposable
             if (trimmed.Length == 0 || trimmed.StartsWith("//"))
                 continue;
 
-            if (trimmed.StartsWith('[') && !trimmed.Contains(']'))
-                errors.Add($"Line {i + 1}: missing closing bracket");
+            if (trimmed.StartsWith('['))
+            {
+                int close = trimmed.IndexOf(']');
+                if (close < 0)
+                {
+                    errors.Add($"Line {i + 1}: missing closing bracket");
+                    continue;
+                }
+                CloseSection();
+                textSection = IsTextSection(trimmed[1..close]);
+                continue;
+            }
+            if (textSection)
+                continue;
 
-            string upper = trimmed.Split(' ', '\t')[0].ToUpperInvariant();
+            string upper = LeadingKeyword(trimmed);
+            if (ForVariants.Contains(upper))
+            {
+                stack.Push(("FOR", i + 1));
+                continue;
+            }
             switch (upper)
             {
                 case "IF":
-                case "FOR":
                 case "WHILE":
                 case "DORAND":
                 case "DOSWITCH":
@@ -1016,9 +1214,7 @@ public sealed class PanelHost : IDisposable
             }
         }
 
-        foreach (var item in stack)
-            errors.Add($"Line {item.Line}: {item.Token} block is not closed");
-
+        CloseSection();
         return new ScriptValidationResult(errors.Count == 0, errors.ToArray());
     }
 

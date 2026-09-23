@@ -27,7 +27,7 @@
         <input v-model="search" class="search-input" placeholder="Filter…" />
         <button class="btn-ghost" @click="logs.paused = !logs.paused">
           <component :is="logs.paused ? Play : Pause" :size="15" />
-          {{ logs.paused ? 'Resume' : 'Pause' }}
+          {{ logs.paused ? (logs.held ? `Resume (${logs.held} new)` : 'Resume') : 'Pause' }}
         </button>
         <button class="btn-ghost danger" @click="logs.clear()">
           <Trash2 :size="15" /> Clear
@@ -37,8 +37,8 @@
 
     <div ref="scrollEl" class="log-body">
       <div
-        v-for="(entry, i) in filtered"
-        :key="i"
+        v-for="entry in filtered"
+        :key="entry.id"
         class="log-row"
         :class="levelClass(entry.level)"
       >
@@ -99,15 +99,17 @@ const filtered = computed(() => {
   return list
 })
 
-// Auto-scroll to bottom when new entries arrive (unless paused)
+// Follow new lines only while the view is already at the bottom: an operator who
+// scrolled up to read something is not yanked back down by the next batch.
 watch(
-  () => logs.entries.length,
+  () => logs.received,
   async () => {
-    if (!logs.paused) {
-      await nextTick()
-      const el = scrollEl.value
-      if (el) el.scrollTop = el.scrollHeight
-    }
+    const el = scrollEl.value
+    if (!el || logs.paused) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    if (!atBottom) return
+    await nextTick()
+    el.scrollTop = el.scrollHeight
   }
 )
 

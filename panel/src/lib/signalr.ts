@@ -11,6 +11,16 @@ export interface LogEntry {
 
 let connection: signalR.HubConnection | null = null
 
+/** Reconnect delays after a drop. The library default (0/2/10/30 s) gives up after
+ *  the fourth try, and a laptop that slept a minute came back to a console that
+ *  never updated again while every REST page still worked. This one keeps trying. */
+const RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000]
+const RETRY_STEADY_MS = 15_000
+
+export const retryPolicy: signalR.IRetryPolicy = {
+  nextRetryDelayInMilliseconds: ctx => RETRY_DELAYS_MS[ctx.previousRetryCount] ?? RETRY_STEADY_MS,
+}
+
 export function getConnection(): signalR.HubConnection {
   if (connection) return connection
 
@@ -20,7 +30,7 @@ export function getConnection(): signalR.HubConnection {
     .withUrl('/hubs/server', {
       accessTokenFactory: () => auth.token ?? '',
     })
-    .withAutomaticReconnect()
+    .withAutomaticReconnect(retryPolicy)
     .configureLogging(signalR.LogLevel.Warning)
     .build()
 
@@ -40,10 +50,6 @@ export async function stopConnection() {
     await connection.stop()
     connection = null
   }
-}
-
-export function onLog(handler: (entry: LogEntry) => void) {
-  getConnection().on('ReceiveLog', handler)
 }
 
 export function onLogBatch(handler: (entries: LogEntry[]) => void) {

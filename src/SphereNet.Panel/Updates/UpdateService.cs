@@ -556,6 +556,8 @@ public sealed class UpdateService : IDisposable
         psi.ArgumentList.Add(hostExe);
         psi.ArgumentList.Add("-LogFile");
         psi.ArgumentList.Add(logFile);
+        psi.ArgumentList.Add("-HostWaitSeconds");
+        psi.ArgumentList.Add((_ctx.HostShutdownTimeoutMs / 1000 + 60).ToString());
 
         var proc = Process.Start(psi)
             ?? throw new InvalidOperationException("Updater sureci baslatilamadi.");

@@ -122,7 +122,8 @@ public sealed class IniUnreadKeyReportTests : IDisposable
                      "AppUpdateRepo", "AppUpdateRepoDir", "AppUpdateChannel",
                      "AppUpdateRuntime", "AppUpdateToken", "AppUpdateCheckMinutes",
                      "HostShutdownQuietMs", "HostShutdownTimeoutMs",
-                     "AdminPanelAutoFill",
+                     "HostAutoStart", "HostRestartOnCrash",
+                     "AdminPanelAutoFill", "AdminPanelAllowedHosts",
                  })
             ini.GetValue("SPHERE", owned);
 

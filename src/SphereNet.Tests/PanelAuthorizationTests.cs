@@ -26,6 +26,7 @@ public sealed class PanelAuthorizationTests : IAsyncLifetime
     private HttpClient? _http;
     private int _port;
     private int _commandsExecuted;
+    private int _gumpLookups;
     private string _iniPath = "";
     private string _tmpDir = "";
 
@@ -47,6 +48,7 @@ public sealed class PanelAuthorizationTests : IAsyncLifetime
             // Every mutation the tests can reach is counted, never performed.
             ExecuteCommand = _ => { Interlocked.Increment(ref _commandsExecuted); return ["mock-only"]; },
             OnResync = () => true,
+            GetGumpPng = _ => { Interlocked.Increment(ref _gumpLookups); return null; },
         };
 
         _port = FreePort();
@@ -115,6 +117,54 @@ public sealed class PanelAuthorizationTests : IAsyncLifetime
 
         var res = await _http!.SendAsync(req);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    // --- DNS rebinding: only loopback / configured Host names are served -----
+
+    [Theory]
+    [InlineData("localhost", HttpStatusCode.OK)]
+    [InlineData("127.0.0.1", HttpStatusCode.OK)]
+    [InlineData("rebind.attacker.example", HttpStatusCode.BadRequest)]
+    public async Task OnlyAllowedHostNamesAreServed(string host, HttpStatusCode expected)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/setup/needed");
+        req.Headers.Host = $"{host}:{_port}";
+        var res = await _http!.SendAsync(req);
+        Assert.Equal(expected, res.StatusCode);
+    }
+
+    // --- A new password ends the sessions opened with the old one -----------
+
+    [Fact]
+    public async Task ChangingThePasswordRevokesExistingTokens()
+    {
+        string oldToken = await LoginAsync();
+        var res = await PostAsync(oldToken, "/api/setup/apply", new
+        {
+            serverName = "Test",
+            servPort = 2593,
+            adminPassword = "a brand new password",
+            adminPanelPort = 0,
+        });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/server/running");
+        req.Headers.Add("Authorization", $"Bearer {oldToken}");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _http!.SendAsync(req)).StatusCode);
+    }
+
+    // --- /gumpart is anonymous: only a real gump index reaches the server ----
+
+    [Theory]
+    [InlineData("70000")]
+    [InlineData("0x10000")]
+    [InlineData("-1")]
+    [InlineData("not-a-number")]
+    public async Task GumpArtRefusesIdsOutsideTheIndexWithoutAskingTheServer(string id)
+    {
+        var res = await _http!.GetAsync($"/gumpart/{id}");
+        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
+        Assert.Equal(0, Volatile.Read(ref _gumpLookups));
     }
 
     // --- F08: setup validation ---------------------------------------------

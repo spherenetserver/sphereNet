@@ -479,7 +479,8 @@ public static partial class Program
                      "AppUpdateRepo", "AppUpdateRepoDir", "AppUpdateChannel",
                      "AppUpdateRuntime", "AppUpdateToken", "AppUpdateCheckMinutes",
                      "HostShutdownQuietMs", "HostShutdownTimeoutMs",   // SphereNet.Host
-                     "AdminPanelAutoFill",                              // SphereNet.Panel
+                     "HostAutoStart", "HostRestartOnCrash",            // SphereNet.Host
+                     "AdminPanelAutoFill", "AdminPanelAllowedHosts",   // SphereNet.Panel
                  })
             iniParser.GetValue("SPHERE", owned);
 

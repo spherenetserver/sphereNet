@@ -35,6 +35,24 @@ public sealed class ServerProcess : IDisposable
 
     public bool IsRunning => _process is { HasExited: false };
 
+    /// <summary>Start the server again when it dies on its own (HostRestartOnCrash).
+    /// An operator's Stop, a shutdown command and an update exit are not crashes.</summary>
+    public bool RestartOnCrash { get; set; }
+
+    /// <summary>Crashes inside <see cref="CrashWindow"/> after which the Host stops
+    /// restarting: a server that dies on boot every time would otherwise loop
+    /// forever, filling the log and hammering the save files.</summary>
+    public int CrashRestartLimit { get; set; } = 5;
+    public TimeSpan CrashWindow { get; set; } = TimeSpan.FromMinutes(10);
+
+    private readonly List<long> _crashTicks = [];
+    private CancellationTokenSource? _restartCts;
+
+    /// <summary>Delay before the n-th restart inside the window (1-based): 5 s,
+    /// 10 s, 20 s ... capped at 2 minutes.</summary>
+    internal static TimeSpan CrashRestartDelay(int attempt) =>
+        TimeSpan.FromSeconds(Math.Min(120, 5 * Math.Pow(2, Math.Max(0, attempt - 1))));
+
     /// <summary>Fired when the running state changes. True = started, False = stopped.</summary>
     public event Action<bool>? RunningChanged;
 
@@ -51,6 +69,7 @@ public sealed class ServerProcess : IDisposable
         {
             if (IsRunning) return;
             _intentionalStop = false;
+            _restartCts?.Cancel();
 
             _connectCts?.Cancel();
             _connectCts?.Dispose();
@@ -118,6 +137,7 @@ public sealed class ServerProcess : IDisposable
         {
             _intentionalStop = true;
             _connectCts?.Cancel();
+            _restartCts?.Cancel();
             if (_process is { HasExited: false })
             {
                 try
@@ -259,9 +279,55 @@ public sealed class ServerProcess : IDisposable
         if (!_intentionalStop)
         {
             RunningChanged?.Invoke(false);
+            int? code = null;
+            try { code = _process?.ExitCode; } catch (InvalidOperationException) { }
+            // Exit code 0 is the server ending itself on purpose (a console or
+            // script shutdown); only an abnormal exit is a crash to recover from.
+            if (code == 0)
+            {
+                _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Information",
+                    "Server process exited (code 0).", "Host"));
+                return;
+            }
             _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Warning",
-                $"Server process exited unexpectedly (code {_process?.ExitCode}).", "Host"));
+                $"Server process exited unexpectedly (code {code}).", "Host"));
+            if (RestartOnCrash)
+                ScheduleCrashRestart();
         }
+    }
+
+    private void ScheduleCrashRestart()
+    {
+        int attempt;
+        CancellationToken ct;
+        lock (_lock)
+        {
+            long now = Environment.TickCount64;
+            _crashTicks.RemoveAll(t => now - t > (long)CrashWindow.TotalMilliseconds);
+            _crashTicks.Add(now);
+            attempt = _crashTicks.Count;
+            if (attempt > CrashRestartLimit)
+            {
+                _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Error",
+                    $"Server crashed {attempt} times in {CrashWindow.TotalMinutes:0} minutes; " +
+                    "automatic restart stopped. Check the log, then start it from the panel.", "Host"));
+                return;
+            }
+            _restartCts?.Cancel();
+            _restartCts = new CancellationTokenSource();
+            ct = _restartCts.Token;
+        }
+
+        var delay = CrashRestartDelay(attempt);
+        _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Warning",
+            $"Restarting the server in {delay.TotalSeconds:0} s (attempt {attempt}/{CrashRestartLimit}).", "Host"));
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(delay, ct); }
+            catch (OperationCanceledException) { return; }
+            if (!ct.IsCancellationRequested && !IsRunning)
+                Start();
+        });
     }
 
     private static LogEntry ParseLine(string line)
@@ -300,6 +366,7 @@ public sealed class ServerProcess : IDisposable
     {
         _intentionalStop = true;
         _connectCts?.Cancel();
+        _restartCts?.Cancel();
         try { _process?.Kill(entireProcessTree: true); } catch { }
         _process?.Dispose();
         _connectCts?.Dispose();

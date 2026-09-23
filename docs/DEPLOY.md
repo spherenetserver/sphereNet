@@ -191,3 +191,16 @@ process. `BackupLevels` protects recent file generations, not disk loss.
 If the panel is exposed remotely, terminate TLS in a reverse proxy and forward
 only to the localhost panel port. Do not expose raw panel HTTP, web status, or
 telnet directly to the internet.
+
+- The panel only answers the Host names `localhost`, `127.0.0.1` and `::1`. If
+  the proxy passes the public name on as `Host`, add it to
+  `ADMINPANELALLOWEDHOSTS=panel.example.org` (comma-separated), otherwise every
+  request gets 400. The check blocks DNS rebinding against the local panel.
+- The proxy should append the client to `X-Forwarded-For`; the login limiter
+  keys on that address when the request comes from loopback.
+- `/api/auth/local-hint` never answers a proxied request, but keep
+  `ADMINPANELAUTOFILL=0` on any machine reachable from outside.
+
+The Host starts the game server itself (`HOSTAUTOSTART=1`) and restarts it
+after a crash (`HOSTRESTARTONCRASH=1`, backing off, and giving up after five
+crashes in ten minutes).

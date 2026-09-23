@@ -66,6 +66,8 @@ string  adminPass   = "";
 string  serverName  = "SphereNet";
 int     shutdownQuietMs   = 20_000;
 int     shutdownTimeoutMs = 180_000;
+bool    autoStart         = true;
+bool    restartOnCrash    = true;
 UpdateSettings? updateSettings = null;
 
 if (iniPath != null)
@@ -81,6 +83,11 @@ if (iniPath != null)
     // everything since the last periodic save.
     shutdownQuietMs   = parser.GetInt("SPHERE", "HostShutdownQuietMs",   20_000);
     shutdownTimeoutMs = parser.GetInt("SPHERE", "HostShutdownTimeoutMs", 180_000);
+
+    // A Host relaunched by the updater, a reboot or a service manager has nobody
+    // to press Start: the shard stays down until an operator logs in to the panel.
+    autoStart      = parser.GetBool("SPHERE", "HostAutoStart", true);
+    restartOnCrash = parser.GetBool("SPHERE", "HostRestartOnCrash", true);
 
     // Panel'in "check for update" akisi. AppUpdateRepo bos ise updater hic
     // kurulmaz ve /api/update/* 404 doner — panel de sayfayi gizler.
@@ -135,12 +142,14 @@ var proc    = new ServerProcess(serverExe, ipc, logSink)
 {
     ShutdownQuietMs   = Math.Clamp(shutdownQuietMs,   1_000, 600_000),
     ShutdownTimeoutMs = Math.Clamp(shutdownTimeoutMs, 1_000, 3_600_000),
+    RestartOnCrash    = restartOnCrash,
 };
 
 var panelCtx = HostPanelContext.Build(proc, ipc, iniPath, scriptsPath);
 panelCtx.AdminPassword  = adminPass;
 panelCtx.ServerName     = serverName;
 panelCtx.UpdateSettings = updateSettings;
+panelCtx.HostShutdownTimeoutMs = proc.ShutdownTimeoutMs;
 
 // Keep PanelContext AdminPassword in sync when setup wizard saves changes
 proc.RunningChanged += running =>
@@ -185,6 +194,13 @@ Console.WriteLine("[Host] Press Ctrl+C to stop. Type commands to forward to the 
 // Auto-open browser after a brief delay so the panel is ready
 _ = Task.Delay(1200).ContinueWith(_ => OpenBrowser(panelUrl));
 
+// Without sphere.ini there is nothing to run yet - the setup wizard writes it.
+if (autoStart && iniPath != null)
+{
+    Console.WriteLine("[Host] Starting the game server (HostAutoStart=1).");
+    proc.Start();
+}
+
 // ── Ctrl+C / SIGTERM ─────────────────────────────────────────────────────────
 
 Console.CancelKeyPress += (_, e) =>
@@ -212,8 +228,19 @@ var consoleThread = new Thread(() =>
             if (line == null) break;
             if (string.IsNullOrWhiteSpace(line)) continue;
             if (!proc.IsRunning) { Console.WriteLine("[Host] Server is not running."); continue; }
-            var result = Task.Run(() => ipc.QueryAsync<string[]>("exec", new { raw = line }))
-                            .GetAwaiter().GetResult();
+            string[]? result;
+            try
+            {
+                result = Task.Run(() => ipc.QueryAsync<string[]>("exec", new { raw = line }))
+                             .GetAwaiter().GetResult();
+            }
+            catch (Exception ex) when (ex is not IOException)
+            {
+                // One timed-out or refused command must not end the console for
+                // the rest of the Host's life.
+                Console.WriteLine($"[Host] Command failed: {ex.GetBaseException().Message}");
+                continue;
+            }
             if (result is { Length: > 0 })
                 foreach (var l in result) Console.WriteLine($"  {l}");
         }

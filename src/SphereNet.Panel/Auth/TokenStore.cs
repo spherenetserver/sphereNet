@@ -43,6 +43,16 @@ public sealed class TokenStore
 
     public void Revoke(string token) => Drop(token);
 
+    /// <summary>End every session; each one fires <see cref="TokenInvalidated"/>
+    /// so its live connection closes too. Returns how many were open.</summary>
+    public int RevokeAll()
+    {
+        int n = 0;
+        foreach (var key in _tokens.Keys)
+            if (Drop(key)) n++;
+        return n;
+    }
+
     public void PurgeExpired()
     {
         var now = _clock();
@@ -53,9 +63,11 @@ public sealed class TokenStore
 
     /// <summary>Remove the token and announce it exactly once — the removal is the
     /// gate, so a racing caller cannot fire the event a second time.</summary>
-    private void Drop(string token)
+    private bool Drop(string token)
     {
-        if (_tokens.TryRemove(token, out _))
-            TokenInvalidated?.Invoke(token);
+        if (!_tokens.TryRemove(token, out _))
+            return false;
+        TokenInvalidated?.Invoke(token);
+        return true;
     }
 }

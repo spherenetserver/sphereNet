@@ -4,6 +4,64 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Yerlestirme sonrasi bolge okumalari
+------------------------------------------------------------------------
+DUZELTME - Karakterin REGION (ve REGION.x) degeri, bolgeye hic yuruyerek
+           girmemis olsa da durdugu alani cozer. Referans sadece bolge gecisinin
+           yazdigi etiketten geliyordu; bir alana dogrudan yerlestirilen oyuncu
+           (login, dunya yukleme) bos REGION okuyordu ve <REGION.DEFNAME>'i safe
+           alanla karsilastiran pack kontrolu alanin icindeki oyuncuyu
+           reddediyordu.
+DUZELTME - Item'in REGION degeri karakterdeki gibi alan referansidir (UID) ve
+           en ust nesnenin noktasindan alinir (Source-X
+           GetTopLevelObj()->GetTopPoint()). Alanin gorunen adiydi, REGION.DEFNAME
+           "0" okuyordu; cantadaki item alani konteyner-ici koordinatla ariyordu.
+TEST - RegionReadAfterPlacementTests.
+
+[2026-09-23] - Panel ve Host saglamlastirma
+------------------------------------------------------------------------
+DUZELTME - Script editoru kayit kontrolu: tum nesne donguleri (FORCHARS,
+           FORITEMS, FORPLAYERS, FORCLIENTS, FORCONT*, FORCHARLAYER, FORTIMERF...)
+           interpreter'daki gibi ENDFOR ile kapanan blok acar; bosluksuz IF(
+           IF acar; metin bolumleri (BOOK, DIALOG TEXT, DEFNAME...) atlanir;
+           kapanmayan blok kendi bolumunde raporlanir. Gecerli scriptler "END
+           block without FOR" ile reddediliyordu.
+DUZELTME - Script paketi kurulumu, degistirecegi her yerel dosyayi (icerik
+           farkliysa) scripts klasorunun yanindaki script-backups\<tarih>
+           klasorune kopyalar ve sayisini bildirir; panel kurmadan once sorar.
+           Duzenlenmis scriptlerin uzerine kopyasiz ve sorusuz yaziyordu.
+DUZELTME - Konsol: otomatik kaydirma artan satir sayacini izler (2000 satirlik
+           tampon dolunca duruyordu), sadece gorunum en alttayken; duraklatma
+           sirasinda gelen satirlar atilmaz, devam edince gosterilir; satirlarin
+           sabit anahtari var.
+DUZELTME - Canli baglanti: hub vazgecmeden yeniden baglanir (0/2/5/10 sn, sonra
+           15 sn'de bir); ilk baslatma hatasi ya da kapanan baglanti oturum
+           gecerliyken tekrar denenir. ~42 sn kopukluktan sonra konsol ve
+           istatistikler kalici olarak donuyordu.
+EKLEME - HOSTAUTOSTART (varsayilan 1): Host oyun sunucusunu kendisi baslatir;
+         guncelleme, reboot ya da servis yoneticisi Host'u yeniden actiginda
+         shard ayaga kalkar. HOSTRESTARTONCRASH (varsayilan 1): anormal cikan
+         sunucu 5/10/20 sn... (en fazla 2 dk) sonra yeniden baslatilir; on
+         dakikada bes cokme durdurur. Cikis kodu 0 ve operator Stop'u cokme
+         sayilmaz.
+DUZELTME - Updater scripti Host'u HostShutdownTimeoutMs + 60 sn bekler (sabit
+           120 sn'ydi; Host'un kapanis kaydi icin bekledigi 180 sn'den kisa),
+           sadece Host'u oldurur, hala calisan sunucuya oldurmeden once 60 sn
+           verir ve kurulum klasorunu klasor siniriyla eslestirir.
+DUZELTME - Host konsolu basarisiz bir komuttan sonra kalici olarak durmaz.
+GUVENLIK - Host basligi kontrolu: sadece localhost/127.0.0.1/::1 ve yeni
+           ADMINPANELALLOWEDHOSTS'taki adlar cevaplanir ("*" kapatir);
+           localhost'a bagli panele DNS rebinding'i engeller.
+GUVENLIK - Reverse proxy arkasinda: giris sinirlayici yerel proxy'nin ekledigi
+           X-Forwarded-For istemcisini anahtar alir (sadece loopback'ten gelirse
+           inanilir); /api/auth/local-hint proxy'li istege hic cevap vermez.
+GUVENLIK - Panel sifresi degisince acik tum oturumlar ve canli konsollar kapanir.
+GUVENLIK - /gumpart (anonim) sadece 0..0xFFFF gump id'lerini kabul eder,
+           onbellekteki art'i ve bilinen eksikleri ana dongu disinda cevaplar,
+           cozulmus art'i 64 MB ile sinirlar.
+TEST - PanelHardeningUnitTests, PanelAuthorizationTests (Host, revoke,
+       gumpart), panel logs.test.ts.
+
 [2026-09-23] - Script DB sorgulari artik sema meta verisi okumuyor
 ------------------------------------------------------------------------
 PERF - DB/LDB/MDB QUERY sonuc kumesini sadece sutun adi ve degeriyle kopyalar.

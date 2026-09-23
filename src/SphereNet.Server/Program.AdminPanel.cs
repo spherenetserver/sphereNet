@@ -215,7 +215,11 @@ public static partial class Program
                 StartTime   = _serverStartTime,
                 AdminPassword = _config.AdminPassword,
 
-                GetGumpPng = id => InvokePanelOnMainLoop(() => GetGumpPngCached(id), "gump art"),
+                // A cached answer is served from the calling thread; only an id never
+                // asked before costs a main-loop decode, and each id does so once.
+                GetGumpPng = id => TryGetCachedGumpPng(id, out var cachedPng)
+                    ? cachedPng
+                    : InvokePanelOnMainLoop(() => GetGumpPngCached(id), "gump art"),
                 ListDialogNames = () => InvokePanelOnMainLoop<IReadOnlyList<string>>(
                     () => ListAllDialogNames(), "dialog list"),
                 GetDialogSource = name => InvokePanelOnMainLoop(() => GetDialogSectionSource(name), "dialog source"),
@@ -546,22 +550,54 @@ public static partial class Program
 
     // ==================== Dialog designer data sources ====================
 
-    private static readonly Dictionary<int, byte[]?> _gumpPngCache = [];
+    // The art endpoint is reachable without a login (plain <img> tags load it), so
+    // what it can make the server hold is bounded: ids outside the gump index range
+    // are refused before they get here, a miss is remembered as a bit (at most 64K of
+    // them), and the decoded PNGs stop being kept past a byte budget.
+    private const int GumpIdLimit = 0x10000;
+    private const long GumpPngCacheBudget = 64L * 1024 * 1024;
+    private static readonly Dictionary<int, byte[]> _gumpPngCache = [];
+    private static readonly System.Collections.BitArray _gumpPngMissing = new(GumpIdLimit);
+    private static long _gumpPngCacheBytes;
+
+    /// <summary>Answer from the cache without touching the main loop. True with a
+    /// null png means "known missing".</summary>
+    internal static bool TryGetCachedGumpPng(int id, out byte[]? png)
+    {
+        png = null;
+        if (id < 0 || id >= GumpIdLimit)
+            return true;
+        lock (_gumpPngCache)
+        {
+            if (_gumpPngMissing[id])
+                return true;
+            if (_gumpPngCache.TryGetValue(id, out var cached))
+            {
+                png = cached;
+                return true;
+            }
+            return false;
+        }
+    }
 
     /// <summary>PNG-encoded gump art for the panel designer (cached; null =
     /// missing id or no gumpart.mul in the muls directory).</summary>
     private static byte[]? GetGumpPngCached(int id)
     {
+        if (TryGetCachedGumpPng(id, out var known))
+            return known;
+        byte[]? png = null;
+        if (_mapData != null && _mapData.TryGetGumpArt(id, out int w, out int h, out byte[] rgba))
+            png = SphereNet.Server.Admin.MiniPng.Encode(w, h, rgba);
         lock (_gumpPngCache)
         {
-            if (_gumpPngCache.TryGetValue(id, out var cached))
-                return cached;
-            byte[]? png = null;
-            if (_mapData != null && _mapData.TryGetGumpArt(id, out int w, out int h, out byte[] rgba))
-                png = SphereNet.Server.Admin.MiniPng.Encode(w, h, rgba);
-            _gumpPngCache[id] = png;
-            return png;
+            if (png == null)
+                _gumpPngMissing[id] = true;
+            else if (_gumpPngCacheBytes + png.Length <= GumpPngCacheBudget &&
+                     _gumpPngCache.TryAdd(id, png))
+                _gumpPngCacheBytes += png.Length;
         }
+        return png;
     }
 
     /// <summary>All [DIALOG name] layout section names in the loaded packs

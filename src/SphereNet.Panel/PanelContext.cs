@@ -71,6 +71,11 @@ public sealed class PanelContext
     /// Null in standalone mode — /api/update/apply then reports CanApply=false.
     /// </summary>
     public Func<bool>? OnHostExit { get; set; }
+
+    /// <summary>How long the Host waits for the server's shutdown save
+    /// (HostShutdownTimeoutMs). The update script waits longer than this for the
+    /// Host to exit, so it never kills a Host that is still waiting on a save.</summary>
+    public int HostShutdownTimeoutMs { get; set; } = 180_000;
 }
 
 // ---------------------------------------------------------------------------

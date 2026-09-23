@@ -105,11 +105,13 @@
               <div>
                 <strong>Scripts already installed.</strong>
                 <p>
-                  Downloading will delete the existing scripts folder and replace it with the
+                  Downloading replaces every file that also exists in the
                   <a href="https://github.com/UOSoftware/Scripts-T" target="_blank" rel="noopener" class="gh-link-inline">
                     <i class="bi bi-github" /> UOSoftware/Scripts-T <i class="bi bi-box-arrow-up-right" />
                   </a>
-                  version. This cannot be undone.
+                  pack. Local files that differ are first copied to a dated
+                  <code>script-backups</code> folder next to the scripts folder; files the pack
+                  does not contain are kept.
                 </p>
               </div>
             </div>
@@ -123,7 +125,7 @@
               :disabled="overwriteConfirm !== 'OVERWRITE' || downloading"
             >
               <Download :size="14" />
-              {{ downloading ? 'Downloading…' : 'Delete & Re-install from GitHub' }}
+              {{ downloading ? 'Downloading…' : 'Overwrite from GitHub' }}
             </button>
           </template>
 

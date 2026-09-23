@@ -327,12 +327,18 @@ async function resyncScripts() {
 }
 
 async function downloadScripts() {
+  if (!window.confirm(
+    'Install UOSoftware/Scripts-T over the scripts folder?\n\n' +
+    'Every file the pack contains replaces the local file of the same name. ' +
+    'Changed local files are copied to a dated script-backups folder next to the scripts folder first; ' +
+    'files the pack does not contain are left alone.')) return
   downloading.value = true
   downloadMsg.value  = ''
   downloadError.value = false
   try {
     const { data } = await scriptsApi.download()
-    downloadMsg.value = `Installed ${data.filesInstalled} files from UOSoftware/Scripts-T`
+    downloadMsg.value = `Installed ${data.filesInstalled} files from UOSoftware/Scripts-T` +
+      (data.filesBackedUp ? ` - ${data.filesBackedUp} changed file(s) backed up to ${data.backupFolder}` : '')
     await refresh()
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail

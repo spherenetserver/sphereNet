@@ -4,6 +4,61 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Region reads after placement
+------------------------------------------------------------------------
+FIX - A character's REGION (and REGION.x) resolves the area it stands in even
+      when it never crossed into it. The reference came only from the tag a
+      region crossing writes, so a player placed straight into an area - login,
+      world load - read an empty REGION, and a pack guard comparing
+      <REGION.DEFNAME> with its safe area refused players standing inside it.
+FIX - An item's REGION is the area reference (UID), as on a character, taken
+      at its top-level point (Source-X GetTopLevelObj()->GetTopPoint()). It was
+      the area's display name, so REGION.DEFNAME read "0", and an item in a pack
+      looked its area up at its container-local coordinates.
+TEST - RegionReadAfterPlacementTests.
+
+[2026-09-23] - Panel and Host hardening
+------------------------------------------------------------------------
+FIX - Script editor save check: every object loop (FORCHARS, FORITEMS,
+      FORPLAYERS, FORCLIENTS, FORCONT*, FORCHARLAYER, FORTIMERF, ...) opens a
+      block ENDFOR closes, as the interpreter runs it; IF( without a space opens
+      an IF; text sections (BOOK, DIALOG TEXT, DEFNAME, ...) are skipped; an
+      unclosed block is reported in its own section. Valid scripts were refused
+      with "END block without FOR".
+FIX - Script pack install copies every local file it is about to replace, when
+      the content differs, into script-backups\<date> next to the scripts folder
+      and reports the count; the panel asks before installing. It overwrote
+      edited scripts without a copy or a question.
+FIX - Console: auto-scroll follows a running line count (it stopped once the
+      2000-line buffer was full), only while the view is at the bottom; lines
+      arriving while paused are held and shown on resume instead of dropped;
+      rows have stable keys.
+FIX - Live connection: the hub reconnects without giving up (0/2/5/10 s, then
+      every 15 s) and a failed first start or a closed connection is retried
+      while the session is valid. After ~42 s offline the console and stats
+      froze for good.
+ADD - HOSTAUTOSTART (default 1): the Host starts the game server itself, so a
+      Host relaunched by an update, a reboot or a service manager brings the
+      shard up. HOSTRESTARTONCRASH (default 1): an abnormal server exit is
+      restarted after 5/10/20 s ... (max 2 min); five crashes in ten minutes
+      stop it. Exit code 0 and an operator Stop are not crashes.
+FIX - Updater script waits HostShutdownTimeoutMs + 60 s for the Host (was a
+      fixed 120 s, shorter than the Host's own 180 s wait for the shutdown
+      save), kills only the Host, gives a still-running server 60 s before
+      killing it, and matches the install folder on a directory boundary.
+FIX - Host console survives a failed command instead of stopping for good.
+SEC - Host header check: only localhost/127.0.0.1/::1 and the names in the new
+      ADMINPANELALLOWEDHOSTS are served ("*" disables), which blocks DNS
+      rebinding against the localhost-bound panel.
+SEC - Behind a reverse proxy: the login limiter keys on the X-Forwarded-For
+      client a local proxy appended (believed only from a loopback peer), and
+      /api/auth/local-hint never answers a proxied request.
+SEC - Changing the panel password ends every open session and live console.
+SEC - /gumpart (anonymous) accepts only gump ids 0..0xFFFF, answers cached art
+      and known misses off the main loop, and caps decoded art at 64 MB.
+TEST - PanelHardeningUnitTests, PanelAuthorizationTests (Host, revoke,
+       gumpart), panel logs.test.ts.
+
 [2026-09-23] - Script DB queries no longer read schema metadata
 ------------------------------------------------------------------------
 PERF - DB/LDB/MDB QUERY copies the result set by column name and value only.

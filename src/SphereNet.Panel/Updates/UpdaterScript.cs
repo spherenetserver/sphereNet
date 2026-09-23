@@ -33,7 +33,11 @@ internal static class UpdaterScript
             [Parameter(Mandatory)][string]$TargetDir,
             [Parameter(Mandatory)][string]$StageDir,
             [Parameter(Mandatory)][string]$HostExe,
-            [Parameter(Mandatory)][string]$LogFile
+            [Parameter(Mandatory)][string]$LogFile,
+            # Host'un kapanmasi icin taninan sure. Host, sunucunun kapanis kaydini
+            # HostShutdownTimeoutMs boyunca bekler; bu sure ondan kisa olursa kayit
+            # ortasinda oldurulur. Panel HostShutdownTimeoutMs + 60 sn gecirir.
+            [int]$HostWaitSeconds = 300
         )
 
         $ErrorActionPreference = 'Stop'
@@ -95,10 +99,11 @@ internal static class UpdaterScript
             try { $proc = Get-Process -Id $HostPid -ErrorAction Stop } catch { }
 
             if ($proc) {
-                Write-Log 'Host surecinin cikmasi bekleniyor (en fazla 120 sn)...'
-                if (-not $proc.WaitForExit(120000)) {
-                    Write-Log 'Host 120 sn icinde cikmadi - sonlandiriliyor.'
-                    try { $proc.Kill($true) } catch { Write-Log "Kill basarisiz: $($_.Exception.Message)" }
+                Write-Log "Host surecinin cikmasi bekleniyor (en fazla $HostWaitSeconds sn)..."
+                if (-not $proc.WaitForExit($HostWaitSeconds * 1000)) {
+                    Write-Log "Host $HostWaitSeconds sn icinde cikmadi - sonlandiriliyor."
+                    # Yalnizca Host: sunucu hala kaydediyorsa asagidaki adim onu bekler.
+                    try { $proc.Kill() } catch { Write-Log "Kill basarisiz: $($_.Exception.Message)" }
                     $proc.WaitForExit(15000) | Out-Null
                 }
                 Write-Log 'Host cikti.'
@@ -114,9 +119,14 @@ internal static class UpdaterScript
                 try { $path = $_.Path } catch { }
                 # Yalnizca BU kurulumun surecine dokun: ayni makinede baska bir
                 # SphereNet kurulumu calisiyor olabilir.
-                if ($path -and $path.StartsWith($TargetDir, [StringComparison]::OrdinalIgnoreCase)) {
-                    Write-Log "Artik sunucu sureci sonlandiriliyor (pid $($_.Id))."
-                    try { $_.Kill($true); $_.WaitForExit(15000) | Out-Null } catch { }
+                # Klasor siniriyla karsilastir: C:\srv\sphere, C:\srv\sphere2'yi kapsamasin.
+                $prefix = $TargetDir.TrimEnd('\') + '\'
+                if ($path -and $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+                    Write-Log "Sunucu sureci hala acik (pid $($_.Id)); kapanis kaydi icin 60 sn bekleniyor."
+                    if (-not $_.WaitForExit(60000)) {
+                        Write-Log "Sunucu kapanmadi - sonlandiriliyor (pid $($_.Id))."
+                        try { $_.Kill($true); $_.WaitForExit(15000) | Out-Null } catch { }
+                    }
                 }
             }
 

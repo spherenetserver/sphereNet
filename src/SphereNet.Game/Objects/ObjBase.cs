@@ -1965,14 +1965,18 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         var pos = Position;
 
         // --- REGION ---
+        // The area of the top-level point (Source-X GetTopLevelObj()->GetTopPoint()):
+        // an item in a pack has container-local coordinates, which name no area.
+        // Bare REGION is the area's UID, as on a character, so REGION.x resolves
+        // through the same reference instead of a display name.
         if (upper == "REGION")
         {
-            value = world.FindRegion(pos)?.Name ?? "";
+            value = world.FindRegion(GetTopLevelPosition())?.Uid.ToString() ?? "";
             return true;
         }
         if (upper.StartsWith("REGION.", StringComparison.Ordinal))
         {
-            var region = world.FindRegion(pos);
+            var region = world.FindRegion(GetTopLevelPosition());
             if (region != null)
             {
                 string sub = upper["REGION.".Length..];

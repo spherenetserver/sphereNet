@@ -58,6 +58,9 @@ public sealed class IpcBridge : IDisposable
     public void Disconnect()
     {
         IsConnected = false;
+        // The last numbers the server sent describe a server that is gone: a panel
+        // showing them would report players online on a stopped shard.
+        LastStats = null;
         try { _cts.Cancel(); } catch (ObjectDisposedException) { }
         FailPending(new PanelBackendUnavailableException("Game server IPC connection is unavailable"));
         _pending.Clear();

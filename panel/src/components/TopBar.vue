@@ -17,6 +17,10 @@
         <button v-if="gameRunning" class="ctrl-btn stop" @click="stopServer" :disabled="busy">
           <Square :size="12" /> Stop
         </button>
+        <span v-if="ctrlError" class="ctrl-error" :title="ctrlError">
+          {{ ctrlError }}
+          <button class="ctrl-error-close" title="Dismiss" @click="ctrlError = ''">&times;</button>
+        </span>
       </div>
 
       <!-- Panel SignalR connection -->
@@ -35,13 +39,14 @@ import { useRoute } from 'vue-router'
 import { Play, Square, RotateCw } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useServerStore } from '@/stores/server'
-import { serverApi } from '@/lib/api'
+import { serverApi, errorMessage } from '@/lib/api'
 
 const auth   = useAuthStore()
 const server = useServerStore()
 const route  = useRoute()
 
 const busy        = ref(false)
+const ctrlError   = ref('')
 const gameRunning = ref(true) // assume running until first poll
 let   pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -52,6 +57,8 @@ const titleMap: Record<string, string> = {
   accounts:  'Accounts',
   server:    'Server',
   scripts:   'Scripts',
+  gumps:     'Gump Designer',
+  updates:   'Updates',
   settings:  'Settings',
 }
 
@@ -73,27 +80,31 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
 })
 
-async function startServer() {
+async function control(what: string, call: () => Promise<unknown>, recheckMs: number) {
   busy.value = true
-  try { await serverApi.startServer() } catch { /* ignore */ }
-  finally { busy.value = false }
-  setTimeout(pollRunning, 3000)
+  ctrlError.value = ''
+  try {
+    await call()
+  } catch (e) {
+    ctrlError.value = `${what} failed: ${errorMessage(e)}`
+  } finally {
+    busy.value = false
+  }
+  setTimeout(pollRunning, recheckMs)
 }
 
-async function restartServer() {
+function startServer() {
+  return control('Start', serverApi.startServer, 3000)
+}
+
+function restartServer() {
   if (!confirm('Restart the game server?')) return
-  busy.value = true
-  try { await serverApi.restart() } catch { /* ignore */ }
-  finally { busy.value = false }
-  setTimeout(pollRunning, 5000)
+  return control('Restart', serverApi.restart, 5000)
 }
 
-async function stopServer() {
+function stopServer() {
   if (!confirm('Stop the game server?')) return
-  busy.value = true
-  try { await serverApi.shutdown() } catch { /* ignore */ }
-  finally { busy.value = false }
-  setTimeout(pollRunning, 3000)
+  return control('Stop', serverApi.shutdown, 3000)
 }
 </script>
 
@@ -164,6 +175,28 @@ async function stopServer() {
 .ctrl-btn.start:not(:disabled):hover   { background: rgba(63, 185, 80, 0.15); }
 .ctrl-btn.restart:not(:disabled):hover { background: rgba(88, 166, 255, 0.1); }
 .ctrl-btn.stop:not(:disabled):hover    { background: rgba(248, 81, 73, 0.1); }
+
+.ctrl-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--danger, #f85149);
+}
+
+.ctrl-error-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
 
 /* Panel connection badge */
 .connection-badge {

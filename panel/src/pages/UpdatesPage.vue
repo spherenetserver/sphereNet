@@ -139,14 +139,14 @@ import {
   RefreshCw, Download, CheckCircle2, AlertTriangle, PackageX, Info, Loader, Sparkles,
 } from 'lucide-vue-next'
 import { useUpdateStore } from '@/stores/update'
-import { serverApi, type BuildVersion } from '@/lib/api'
+import { serverApi, type RunningBuild } from '@/lib/api'
 
 const store = useUpdateStore()
 
 // Read straight from the server rather than through the update store: the store
 // describes what the updater knows about, and the whole point here is to show
 // what is actually running, including when the two disagree.
-const running = ref<BuildVersion | null>(null)
+const running = ref<RunningBuild | null>(null)
 const runningError = ref('')
 onMounted(async () => {
   try {

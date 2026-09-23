@@ -134,7 +134,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { scriptsApi, serverApi } from '@/lib/api'
 import { useScriptPack } from '@/lib/scriptPack'
 import type { ScriptFileInfo } from '@/lib/api'
@@ -221,6 +222,21 @@ const treeNodes = computed<TreeNode[]>(() => {
 const pack = useScriptPack()
 
 onMounted(refresh)
+
+// --- Unsaved-edit guards: in-app navigation and closing/reloading the tab ---
+onBeforeRouteLeave(() => {
+  if (dirty.value && !window.confirm('You have unsaved changes. Leave this page and discard them?')) return false
+})
+
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (!dirty.value) return
+  // The browser shows its own generic prompt; the text is ignored.
+  e.preventDefault()
+  e.returnValue = ''
+}
+
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
 async function refresh() {
   loading.value = true

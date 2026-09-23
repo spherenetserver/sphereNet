@@ -43,11 +43,92 @@
       <h2 class="section-title">Broadcast Message</h2>
       <div class="broadcast-row">
         <input v-model="broadcastMsg" class="broadcast-input" placeholder="Message to all online players…" @keyup.enter="sendBroadcast" />
-        <button class="btn-accent" @click="sendBroadcast" :disabled="!broadcastMsg.trim()">
+        <button class="btn-accent" @click="sendBroadcast" :disabled="!broadcastMsg.trim() || broadcasting">
           <Megaphone :size="15" /> Broadcast
         </button>
       </div>
       <p v-if="broadcastSent" class="sent-msg">Message sent.</p>
+      <p v-if="broadcastError" class="error-msg">{{ broadcastError }}</p>
+    </section>
+
+    <!-- Scheduled shutdown / restart -->
+    <section class="section">
+      <h2 class="section-title">Scheduled Shutdown / Restart</h2>
+      <div class="panel-box">
+        <div v-if="schedule?.pending" class="pending-row">
+          <div class="pending-info">
+            <Timer :size="20" class="action-icon warning" />
+            <div>
+              <div class="pending-title">
+                {{ schedule.restart ? 'Restart' : 'Shutdown' }} in
+                <span class="countdown">{{ countdown }}</span>
+              </div>
+              <div class="pending-sub" v-if="schedule.dueUtc">
+                Due at {{ new Date(schedule.dueUtc).toLocaleTimeString() }} — players get countdown broadcasts in game.
+              </div>
+            </div>
+          </div>
+          <button class="btn-danger" :disabled="scheduleBusy" @click="cancelSchedule">
+            <X :size="14" /> Cancel
+          </button>
+        </div>
+
+        <template v-else>
+          <div class="sched-row">
+            <div class="seg">
+              <button :class="{ active: schedRestart }" @click="schedRestart = true">
+                <RotateCw :size="13" /> Restart
+              </button>
+              <button :class="{ active: !schedRestart }" @click="schedRestart = false">
+                <PowerOff :size="13" /> Shutdown
+              </button>
+            </div>
+            <div class="seg">
+              <button v-for="m in delayPresets" :key="m" :class="{ active: schedMinutes === m }"
+                @click="schedMinutes = m">{{ m }} min</button>
+            </div>
+          </div>
+          <div class="broadcast-row">
+            <input v-model="schedMessage" class="broadcast-input" maxlength="200"
+              placeholder="Optional message shown with the countdown…" />
+            <button class="btn-accent" :disabled="scheduleBusy || schedule === undefined" @click="scheduleShutdown">
+              <Timer :size="15" /> Schedule {{ schedRestart ? 'restart' : 'shutdown' }}
+            </button>
+          </div>
+        </template>
+
+        <p v-if="scheduleError" class="error-msg">{{ scheduleError }}</p>
+        <p v-if="schedulePollError" class="error-msg">{{ schedulePollError }}</p>
+      </div>
+    </section>
+
+    <!-- IP blocks -->
+    <section class="section">
+      <h2 class="section-title">Blocked IPs</h2>
+      <div class="panel-box">
+        <p class="note">
+          <Info :size="13" /> Runtime only: the block list is cleared when the server restarts.
+        </p>
+        <div class="broadcast-row">
+          <input v-model="newIp" class="broadcast-input mono" placeholder="IPv4 or IPv6 address, e.g. 203.0.113.7"
+            @keyup.enter="addIp" />
+          <button class="btn-accent" :disabled="!newIp.trim() || ipBusy" @click="addIp">
+            <Ban :size="15" /> Block
+          </button>
+        </div>
+        <p v-if="ipError" class="error-msg">{{ ipError }}</p>
+        <div v-if="ipLoading" class="ip-empty">Loading…</div>
+        <div v-else-if="ipLoadError" class="ip-empty error-msg">Could not load the block list: {{ ipLoadError }}</div>
+        <div v-else-if="ipBlocks.length === 0" class="ip-empty">No blocked IPs.</div>
+        <ul v-else class="ip-list">
+          <li v-for="ip in ipBlocks" :key="ip">
+            <span class="mono">{{ ip }}</span>
+            <button class="icon-btn danger" title="Unblock" :disabled="ipBusy" @click="removeIp(ip)">
+              <Trash2 :size="14" />
+            </button>
+          </li>
+        </ul>
+      </div>
     </section>
 
     <!-- Console -->
@@ -80,14 +161,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { Save, RefreshCw, Skull, ShoppingBag, Trash2, PowerOff, Megaphone } from 'lucide-vue-next'
-import { serverApi } from '@/lib/api'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import {
+  Save, RefreshCw, Skull, ShoppingBag, Trash2, PowerOff, Megaphone, Timer, RotateCw, X, Info, Ban,
+} from 'lucide-vue-next'
+import { serverApi, ipBlocksApi, errorMessage, type ShutdownSchedule } from '@/lib/api'
+import { isValidIp } from '@/lib/ip'
 import { executeCommand } from '@/lib/signalr'
 
-const broadcastMsg  = ref('')
-const broadcastSent = ref(false)
-const feedback      = ref('')
+const broadcastMsg   = ref('')
+const broadcastSent  = ref(false)
+const broadcastError = ref('')
+const broadcasting   = ref(false)
+const feedback       = ref('')
 
 // busy flags per action
 const busy = ref({ save: false, resync: false, respawn: false, restock: false, gc: false, shutdown: false })
@@ -119,12 +205,157 @@ function confirmShutdown() {
 }
 
 async function sendBroadcast() {
-  if (!broadcastMsg.value.trim()) return
-  await serverApi.broadcast(broadcastMsg.value.trim())
-  broadcastMsg.value  = ''
-  broadcastSent.value = true
-  setTimeout(() => broadcastSent.value = false, 3000)
+  if (!broadcastMsg.value.trim() || broadcasting.value) return
+  broadcastError.value = ''
+  broadcasting.value = true
+  try {
+    await serverApi.broadcast(broadcastMsg.value.trim())
+    broadcastMsg.value  = ''
+    broadcastSent.value = true
+    setTimeout(() => broadcastSent.value = false, 3000)
+  } catch (e) {
+    broadcastError.value = errorMessage(e, 'Broadcast failed')
+  } finally {
+    broadcasting.value = false
+  }
 }
+
+// --- Scheduled shutdown / restart ---
+const delayPresets  = [1, 5, 10, 15]
+// undefined until the first GET answers, so the form can't race a pending one.
+const schedule      = ref<ShutdownSchedule | undefined>(undefined)
+const schedRestart  = ref(true)
+const schedMinutes  = ref(5)
+const schedMessage  = ref('')
+const scheduleBusy  = ref(false)
+const scheduleError = ref('')
+const schedulePollError = ref('')
+const now           = ref(Date.now())
+
+const countdown = computed(() => {
+  const due = schedule.value?.dueUtc ? Date.parse(schedule.value.dueUtc) : NaN
+  if (Number.isNaN(due)) return '—'
+  const sec = Math.max(0, Math.ceil((due - now.value) / 1000))
+  const m = Math.floor(sec / 60)
+  return `${m}:${String(sec % 60).padStart(2, '0')}`
+})
+
+async function loadSchedule() {
+  try {
+    const { data } = await serverApi.getSchedule()
+    schedule.value = data
+    schedulePollError.value = ''
+  } catch (e) {
+    // Keep the last known state; a failed poll alone shouldn't hide a pending shutdown.
+    if (schedule.value === undefined) schedule.value = { pending: false, restart: false, dueUtc: null }
+    schedulePollError.value = errorMessage(e, 'Could not read the schedule')
+  }
+}
+
+async function scheduleShutdown() {
+  const kind = schedRestart.value ? 'restart' : 'shutdown'
+  if (!confirm(`Schedule a server ${kind} in ${schedMinutes.value} minute(s)?`)) return
+  scheduleBusy.value = true
+  scheduleError.value = ''
+  try {
+    const { data } = await serverApi.schedule(
+      schedMinutes.value * 60, schedRestart.value, schedMessage.value.trim() || undefined)
+    schedule.value = data
+    schedMessage.value = ''
+  } catch (e) {
+    const status = (e as { response?: { status?: number } }).response?.status
+    scheduleError.value = status === 409
+      ? 'A shutdown or restart is already scheduled.'
+      : errorMessage(e, 'Schedule failed')
+    await loadSchedule()
+  } finally {
+    scheduleBusy.value = false
+  }
+}
+
+async function cancelSchedule() {
+  if (!confirm('Cancel the scheduled shutdown/restart?')) return
+  scheduleBusy.value = true
+  scheduleError.value = ''
+  try {
+    const { data } = await serverApi.cancelSchedule()
+    schedule.value = data
+  } catch (e) {
+    scheduleError.value = errorMessage(e, 'Cancel failed')
+    await loadSchedule()
+  } finally {
+    scheduleBusy.value = false
+  }
+}
+
+// --- IP blocks ---
+const ipBlocks    = ref<string[]>([])
+const ipLoading   = ref(true)
+const ipLoadError = ref('')
+const ipError     = ref('')
+const ipBusy      = ref(false)
+const newIp       = ref('')
+
+async function loadIpBlocks() {
+  try {
+    const { data } = await ipBlocksApi.list()
+    ipBlocks.value = [...data].sort()
+    ipLoadError.value = ''
+  } catch (e) {
+    ipLoadError.value = errorMessage(e)
+  } finally {
+    ipLoading.value = false
+  }
+}
+
+async function addIp() {
+  const ip = newIp.value.trim()
+  if (!ip || ipBusy.value) return
+  if (!isValidIp(ip)) {
+    ipError.value = `"${ip}" is not a valid IPv4 or IPv6 address.`
+    return
+  }
+  ipError.value = ''
+  ipBusy.value = true
+  try {
+    await ipBlocksApi.add(ip)
+    newIp.value = ''
+  } catch (e) {
+    ipError.value = errorMessage(e, `Block ${ip} failed`)
+  } finally {
+    ipBusy.value = false
+    await loadIpBlocks()
+  }
+}
+
+async function removeIp(ip: string) {
+  if (!confirm(`Unblock ${ip}?`)) return
+  ipError.value = ''
+  ipBusy.value = true
+  try {
+    await ipBlocksApi.remove(ip)
+  } catch (e) {
+    ipError.value = errorMessage(e, `Unblock ${ip} failed`)
+  } finally {
+    ipBusy.value = false
+    await loadIpBlocks()
+  }
+}
+
+let schedulePoll: ReturnType<typeof setInterval> | null = null
+let clock: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  void loadSchedule()
+  void loadIpBlocks()
+  schedulePoll = setInterval(loadSchedule, 5000)
+  clock = setInterval(() => (now.value = Date.now()), 1000)
+})
+
+onUnmounted(() => {
+  if (schedulePoll) clearInterval(schedulePoll)
+  if (clock) clearInterval(clock)
+})
 
 // --- Console ---
 interface ConsoleLine { type: 'cmd' | 'resp'; text: string }
@@ -269,4 +500,86 @@ function historyDown() {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .feedback { font-size: 13px; color: var(--success); margin: 0; }
+
+.error-msg { font-size: 12px; color: var(--danger); margin: 8px 0 0; }
+
+.mono { font-family: 'Courier New', Consolas, monospace; }
+
+.panel-box {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.panel-box .error-msg { margin: 0; }
+
+.sched-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.seg {
+  display: inline-flex; border: 1px solid var(--border);
+  border-radius: 6px; overflow: hidden;
+}
+
+.seg button {
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border: none; border-right: 1px solid var(--border);
+  background: transparent; color: var(--text-muted);
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s;
+}
+
+.seg button:last-child { border-right: none; }
+.seg button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.seg button.active { background: rgba(88,166,255,0.15); color: var(--accent); }
+
+.pending-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pending-info { display: flex; align-items: center; gap: 12px; }
+.pending-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.pending-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.countdown { font-variant-numeric: tabular-nums; color: var(--warning); }
+
+.btn-danger {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; color: var(--danger);
+  border: 1px solid var(--danger); border-radius: 6px;
+  font-size: 13px; font-weight: 600; padding: 8px 14px;
+  cursor: pointer; transition: background 0.15s;
+}
+
+.btn-danger:hover:not(:disabled) { background: rgba(248,81,73,0.1); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.note {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--warning); margin: 0;
+}
+
+.ip-empty { font-size: 13px; color: var(--text-muted); }
+
+.ip-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 6px;
+}
+
+.ip-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; font-size: 13px; color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+}
+
+.ip-list li:last-child { border-bottom: none; }
+
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+}
+
+.icon-btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

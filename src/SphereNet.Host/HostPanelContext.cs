@@ -54,6 +54,15 @@ public static class HostPanelContext
             SetAccountPrivLevel = (name, level) =>
                 Run(() => ipc.MutateAsync("account_set_plevel", new { name, level })),
 
+            // ── Player actions / IP blocks ─────────────────────────────────
+            DisconnectPlayer = serial =>
+                Run(() => ipc.MutateAsync("player_disconnect", new { serial = (int)serial })),
+            MessagePlayer = (serial, text) =>
+                Run(() => ipc.MutateAsync("player_message", new { serial = (int)serial, text })),
+            GetIpBlocks = () => Run(() => ipc.QueryAsync<List<string>>("ipblocks")) ?? [],
+            AddIpBlock = ip => Run(() => ipc.MutateAsync("ipblock_add", new { ip })),
+            RemoveIpBlock = ip => Run(() => ipc.MutateAsync("ipblock_remove", new { ip })),
+
             // ── Commands ───────────────────────────────────────────────────
             OnSave = () => Run(() => ipc.MutateAsync("server_save")),
             OnResync = () => Run(() => ipc.MutateAsync("server_resync")),

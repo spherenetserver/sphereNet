@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Panel operator features
+------------------------------------------------------------------------
+ADD - Players: serial, privilege level, client version and session length per
+      player, search, and per-row Disconnect and Message (a system message to
+      that player). POST /api/players/{serial}/disconnect|message.
+ADD - Accounts: edit privilege level and password; errors of ban, delete and
+      create are shown instead of swallowed; "no match" differs from "no
+      accounts"; account names are URL-encoded.
+ADD - Dashboard: tick latency (avg/p50/p95/p99/max, multicore), sparklines of
+      players, memory, CPU and p95 tick, a per-map table and a world-save card
+      (last save, duration, count, in progress, failed). The status is fetched
+      on load and polled while the live connection is down. ServerStats gains
+      LastSaveUtc, LastSaveSeconds, SaveInProgress, LastSaveOk, SaveCount.
+ADD - Scheduled shutdown/restart with in-game countdown broadcasts (at the
+      start, then 10/5/2/1 min, 30 s, 10 s), one at a time, cancellable and
+      announced when cancelled. /api/server/schedule (+ /cancel).
+ADD - Blocked IP list management (GET/POST/DELETE /api/ipblocks). The server
+      keeps the list in memory; it is cleared on restart.
+ADD - Every authenticated panel change is written to the audit log with method,
+      path, status and client address (bodies are not logged). In Host mode the
+      audit lines reach the panel console too.
+FIX - Host: stats of a stopped server are no longer served after the IPC link
+      drops.
+FIX - Top bar titles for Gump Designer and Updates; Start/Restart/Stop errors
+      are shown; gump designer copy works over plain http; the script editor
+      warns before leaving with unsaved edits.
+TEST - PanelFeatureTests, PanelAuthorizationTests (players, ipblocks, audit),
+       panel server/api/ip tests.
+
 [2026-09-23] - Panel installs the Source-X script pack
 ------------------------------------------------------------------------
 CHANGE - The Scripts page and the setup wizard install Sphereserver/Scripts-X,

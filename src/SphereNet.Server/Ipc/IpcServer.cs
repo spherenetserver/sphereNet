@@ -226,6 +226,13 @@ public sealed class IpcServer : IDisposable
             _ctx?.SetAccountBanned?.Invoke(root.GetRequiredStr("name"), root.GetRequiredBool("banned")) ?? false,
         "account_set_pass" =>
             _ctx?.SetAccountPassword?.Invoke(root.GetRequiredStr("name"), root.GetRequiredStr("pass")) ?? false,
+        "player_disconnect" =>
+            _ctx?.DisconnectPlayer?.Invoke((uint)root.GetRequiredInt("serial")) ?? false,
+        "player_message" =>
+            _ctx?.MessagePlayer?.Invoke((uint)root.GetRequiredInt("serial"), root.GetRequiredStr("text")) ?? false,
+        "ipblocks" => (object?)(_ctx?.GetIpBlocks?.Invoke() ?? []),
+        "ipblock_add" => _ctx?.AddIpBlock?.Invoke(root.GetRequiredStr("ip")) ?? false,
+        "ipblock_remove" => _ctx?.RemoveIpBlock?.Invoke(root.GetRequiredStr("ip")) ?? false,
         "account_set_plevel" =>
             _ctx?.SetAccountPrivLevel?.Invoke(root.GetRequiredStr("name"), root.GetRequiredInt("level")) ?? false,
         "set_packet_debug" => _ctx?.SetPacketDebug?.Invoke(root.GetRequiredBool("on")) ?? false,

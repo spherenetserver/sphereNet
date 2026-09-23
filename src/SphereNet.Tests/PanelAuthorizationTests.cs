@@ -27,6 +27,8 @@ public sealed class PanelAuthorizationTests : IAsyncLifetime
     private int _port;
     private int _commandsExecuted;
     private int _gumpLookups;
+    private readonly List<string> _ipBlocks = [];
+    private readonly List<string> _audit = [];
     private string _iniPath = "";
     private string _tmpDir = "";
 
@@ -49,6 +51,11 @@ public sealed class PanelAuthorizationTests : IAsyncLifetime
             ExecuteCommand = _ => { Interlocked.Increment(ref _commandsExecuted); return ["mock-only"]; },
             OnResync = () => true,
             GetGumpPng = _ => { Interlocked.Increment(ref _gumpLookups); return null; },
+            DisconnectPlayer = serial => serial == 7,
+            GetIpBlocks = () => _ipBlocks.ToList(),
+            AddIpBlock = ip => { _ipBlocks.Add(ip); return true; },
+            RemoveIpBlock = ip => _ipBlocks.Remove(ip),
+            AuditLog = msg => { lock (_audit) _audit.Add(msg); },
         };
 
         _port = FreePort();
@@ -165,6 +172,41 @@ public sealed class PanelAuthorizationTests : IAsyncLifetime
         var res = await _http!.GetAsync($"/gumpart/{id}");
         Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
         Assert.Equal(0, Volatile.Read(ref _gumpLookups));
+    }
+
+    // --- Player actions, IP blocks, audit -------------------------------------
+
+    [Fact]
+    public async Task DisconnectAnswersNotFoundForAPlayerWhoIsNotOnline()
+    {
+        string token = await LoginAsync();
+        Assert.Equal(HttpStatusCode.OK, (await PostAsync(token, "/api/players/7/disconnect", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await PostAsync(token, "/api/players/8/disconnect", new { })).StatusCode);
+    }
+
+    [Fact]
+    public async Task IpBlocksAcceptOnlyAddressesAndAreAudited()
+    {
+        string token = await LoginAsync();
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await PostAsync(token, "/api/ipblocks", new { ip = "not-an-ip" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await PostAsync(token, "/api/ipblocks", new { ip = "203.0.113.9" })).StatusCode);
+        Assert.Contains("203.0.113.9", _ipBlocks);
+
+        using var del = new HttpRequestMessage(HttpMethod.Delete, "/api/ipblocks/203.0.113.9");
+        del.Headers.Add("Authorization", $"Bearer {token}");
+        Assert.Equal(HttpStatusCode.OK, (await _http!.SendAsync(del)).StatusCode);
+        Assert.Empty(_ipBlocks);
+
+        // The audit line is written after the response went out; give it a moment.
+        bool audited = false;
+        for (int i = 0; i < 50 && !audited; i++)
+        {
+            lock (_audit) audited = _audit.Any(a => a.StartsWith("POST /api/ipblocks -> 200 ip="));
+            if (!audited) await Task.Delay(20);
+        }
+        Assert.True(audited);
     }
 
     // --- F08: setup validation ---------------------------------------------

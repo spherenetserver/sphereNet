@@ -100,7 +100,8 @@
       </div>
       <textarea class="export" v-model="scriptText" spellcheck="false" />
       <p class="hint">Dışa aktarım kontrollerden üretilir; "İçe Aktar" kutudaki scripti sahneye çizer
-        (&lt;ifade&gt; içeren satırlar olduğu gibi korunur). {{ copyMsg }}</p>
+        (&lt;ifade&gt; içeren satırlar olduğu gibi korunur).
+        <span v-if="copyMsg" class="copy-msg" :class="{ failed: copyFailed }" role="status">{{ copyMsg }}</span></p>
     </section>
   </div>
 </template>
@@ -108,6 +109,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/lib/api'
+import { copyText } from '@/lib/clipboard'
 
 type ControlType =
   | 'resizepic' | 'gumppic' | 'gumppictiled' | 'button' | 'checkbox' | 'radio'
@@ -147,6 +149,7 @@ const dialogName = ref('d_panel_gump')
 const controls = ref<Ctl[]>([])
 const selectedIndex = ref(-1)
 const copyMsg = ref('')
+const copyFailed = ref(false)
 const dialogNames = ref<string[]>([])
 const pickedDialog = ref('')
 const activePage = ref('all')
@@ -320,7 +323,7 @@ function loadFromServer() {
       dialogName.value = pickedDialog.value
       importFromScript()
     })
-    .catch(() => { copyMsg.value = 'kaynak okunamadı' })
+    .catch(() => { copyMsg.value = 'kaynak okunamadı'; copyFailed.value = true })
 }
 
 function importFromScript() {
@@ -409,17 +412,28 @@ function importFromScript() {
   selectedIndex.value = -1
   activePage.value = 'all'
   suppressExport = false
+  copyFailed.value = false
   copyMsg.value = `${out.length} kontrol içe aktarıldı${kept.length ? `, ${kept.length} satır korunarak geçildi` : ''}`
 }
 
+let copyMsgTimer: number | undefined
+
 async function copyExport() {
-  await navigator.clipboard.writeText(scriptText.value)
-  copyMsg.value = 'panoya kopyalandı'
-  window.setTimeout(() => (copyMsg.value = ''), 2000)
+  const ok = await copyText(scriptText.value)
+  copyMsg.value = ok ? 'panoya kopyalandı' : 'kopyalanamadı — metni kutudan elle seçip kopyalayın'
+  copyFailed.value = !ok
+  window.clearTimeout(copyMsgTimer)
+  copyMsgTimer = window.setTimeout(() => {
+    copyMsg.value = ''
+    copyFailed.value = false
+  }, ok ? 2000 : 5000)
 }
 </script>
 
 <style scoped>
+.copy-msg { display: inline-block; margin-left: 4px; font-weight: 600; color: var(--success); }
+.copy-msg.failed { color: var(--danger); }
+
 .gump-page {
   display: grid;
   grid-template-columns: 230px 1fr 380px;

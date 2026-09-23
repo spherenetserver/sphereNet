@@ -166,6 +166,9 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     /// <summary>When the current character entered the world; the session length
     /// feeds ACCOUNT.LASTCONNECTTIME / TOTALCONNECTTIME on disconnect.</summary>
     private DateTime? _sessionEnterUtc;
+
+    /// <summary>When the current character entered the world; null before that.</summary>
+    public DateTime? SessionStartedUtc => _sessionEnterUtc;
     private Character? _character;
 
     /// <summary>View-delta bookkeeping (decomposition phase 2).</summary>

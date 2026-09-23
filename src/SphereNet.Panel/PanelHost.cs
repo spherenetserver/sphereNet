@@ -37,6 +37,7 @@ public sealed class PanelHost : IDisposable
     private Task? _updateCheckTask;
 
     private readonly LoginRateLimiter _authLimiter = new();
+    private ShutdownScheduler? _scheduler;
 
     public PanelHost(PanelContext ctx, int port, PanelLogSink logSink, ILogger logger)
     {
@@ -217,6 +218,14 @@ public sealed class PanelHost : IDisposable
                 }
 
                 await next();
+
+                // Every authenticated change is recorded with where it came from: an
+                // account deleted, a player disconnected or a shutdown scheduled from
+                // the panel otherwise leaves no trace of who did it. Bodies are not
+                // logged - some carry passwords.
+                if (!HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method))
+                    _ctx.AuditLog?.Invoke(
+                        $"{ctx.Request.Method} {path} -> {ctx.Response.StatusCode} ip={ClientAddress(ctx)}");
             });
 
             MapRoutes(_app, tokens);
@@ -755,6 +764,27 @@ public sealed class PanelHost : IDisposable
             return InvokeBackendMutation(_ctx.OnRestart, "Restart initiated");
         });
 
+        // --- Scheduled shutdown / restart with in-game countdown ---
+        _scheduler = new ShutdownScheduler(
+            msg => _ctx.OnBroadcast?.Invoke(msg) == true,
+            () => _ctx.OnShutdown?.Invoke() == true,
+            () => _ctx.OnRestart?.Invoke() == true);
+
+        app.MapGet("/api/server/schedule", () => Results.Ok(_scheduler.Status));
+
+        app.MapPost("/api/server/schedule", (ScheduleRequest req) =>
+        {
+            if (req.Seconds <= 0)
+                return Results.BadRequest(new { error = "Delay must be positive" });
+            if (req.Restart ? _ctx.OnRestart == null : _ctx.OnShutdown == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            return _scheduler.TrySchedule(req.Seconds, req.Restart, req.Message, out var status)
+                ? Results.Accepted(value: status)
+                : Results.Conflict(new { error = "A shutdown or restart is already scheduled", status });
+        });
+
+        app.MapPost("/api/server/schedule/cancel", () => Results.Ok(_scheduler.Cancel()));
+
         app.MapPost("/api/server/resync", () =>
         {
             return InvokeBackendMutation(_ctx.OnResync, "Script resync initiated");
@@ -799,6 +829,49 @@ public sealed class PanelHost : IDisposable
         {
             var players = _ctx.GetOnlinePlayers?.Invoke() ?? (IReadOnlyList<PlayerInfo>)[];
             return Results.Ok(players);
+        });
+
+        app.MapPost("/api/players/{serial}/disconnect", (uint serial) =>
+        {
+            if (_ctx.DisconnectPlayer == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            return _ctx.DisconnectPlayer(serial)
+                ? Results.Ok(new { message = "Disconnected" })
+                : Results.NotFound(new { error = "Player is not online" });
+        });
+
+        app.MapPost("/api/players/{serial}/message", (uint serial, PlayerMessageRequest req) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Text))
+                return Results.BadRequest(new { error = "Message required" });
+            if (_ctx.MessagePlayer == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            return _ctx.MessagePlayer(serial, req.Text.Trim())
+                ? Results.Ok(new { message = "Sent" })
+                : Results.NotFound(new { error = "Player is not online" });
+        });
+
+        // --- IP blocks (the server keeps them in memory: gone after a restart) ---
+        app.MapGet("/api/ipblocks", () =>
+            Results.Ok(_ctx.GetIpBlocks?.Invoke() ?? (IReadOnlyList<string>)[]));
+
+        app.MapPost("/api/ipblocks", (IpBlockRequest req) =>
+        {
+            if (!IPAddress.TryParse(req.Ip?.Trim(), out var ip))
+                return Results.BadRequest(new { error = "Not an IP address" });
+            if (_ctx.AddIpBlock == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            _ctx.AddIpBlock(ip.ToString());
+            return Results.Ok(new { ip = ip.ToString() });
+        });
+
+        app.MapDelete("/api/ipblocks/{ip}", (string ip) =>
+        {
+            if (_ctx.RemoveIpBlock == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            return _ctx.RemoveIpBlock(ip.Trim())
+                ? Results.Ok()
+                : Results.NotFound(new { error = "Not blocked" });
         });
 
         // --- Accounts ---
@@ -1420,3 +1493,6 @@ file record ChangePlevelRequest(int Level);
 file record DebugRequest(bool PacketDebug, bool ScriptDebug);
 file record ScriptContentRequest(string Path, string Content);
 internal record ScriptValidationResult(bool Ok, string[] Errors);
+internal record PlayerMessageRequest(string Text);
+internal record IpBlockRequest(string? Ip);
+internal record ScheduleRequest(int Seconds, bool Restart, string? Message);

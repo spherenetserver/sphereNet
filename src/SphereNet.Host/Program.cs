@@ -150,6 +150,12 @@ panelCtx.AdminPassword  = adminPass;
 panelCtx.ServerName     = serverName;
 panelCtx.UpdateSettings = updateSettings;
 panelCtx.HostShutdownTimeoutMs = proc.ShutdownTimeoutMs;
+// Panel mutations are recorded in the same console/log stream the operator reads.
+panelCtx.AuditLog = msg =>
+{
+    logSink.AddEntry(new SphereNet.Panel.LogEntry(DateTime.UtcNow, "Warning", $"Panel audit: {msg}", "Panel"));
+    Console.WriteLine($"[Host] Panel audit: {msg}");
+};
 
 // Keep PanelContext AdminPassword in sync when setup wizard saves changes
 proc.RunningChanged += running =>

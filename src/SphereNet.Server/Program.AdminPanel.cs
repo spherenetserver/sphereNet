@@ -259,7 +259,12 @@ public static partial class Program
                         P95TickMs: runtime.P95Ms,
                         P99TickMs: runtime.P99Ms,
                         MulticoreEnabled: runtime.MulticoreEnabled,
-                        Maps: maps);
+                        Maps: maps,
+                        LastSaveUtc: _lastSaveUtc,
+                        LastSaveSeconds: _lastSaveSeconds,
+                        SaveInProgress: _backgroundSaveTask is { IsCompleted: false },
+                        LastSaveOk: _lastSaveOk,
+                        SaveCount: _saveCount);
                 }, "stats snapshot"),
 
                 GetOnlinePlayers = () => InvokePanelOnMainLoop<IReadOnlyList<PlayerInfo>>(() => _clients.Values
@@ -270,8 +275,33 @@ public static partial class Program
                         c.Character.Position.Map,
                         c.Character.Position.X,
                         c.Character.Position.Y,
-                        c.NetState.RemoteEndPoint?.Address.ToString() ?? ""))
+                        c.NetState.RemoteEndPoint?.Address.ToString() ?? "",
+                        c.Character.Uid.Value,
+                        (int)c.Character.PrivLevel,
+                        c.NetState.ClientVersion,
+                        c.SessionStartedUtc is { } entered
+                            ? (int)(DateTime.UtcNow - entered).TotalSeconds
+                            : 0))
                     .ToList(), "player snapshot"),
+
+                DisconnectPlayer = serial => InvokePanelOnMainLoop(() =>
+                {
+                    var client = FindPlayingClient(serial);
+                    if (client == null) return false;
+                    client.NetState.MarkClosing();
+                    return true;
+                }, "player disconnect"),
+                MessagePlayer = (serial, text) => InvokePanelOnMainLoop(() =>
+                {
+                    var client = FindPlayingClient(serial);
+                    if (client == null) return false;
+                    client.SysMessage(text);
+                    return true;
+                }, "player message"),
+
+                GetIpBlocks = () => _ipBlockList?.GetAll().OrderBy(ip => ip).ToList() ?? [],
+                AddIpBlock = ip => _ipBlockList?.Add(ip) ?? false,
+                RemoveIpBlock = ip => _ipBlockList?.Remove(ip) ?? false,
 
                 GetAllAccounts = () => InvokePanelOnMainLoop<IReadOnlyList<AccountInfo>>(() => _accounts.GetAllAccounts()
                     .Select(a => new AccountInfo(
@@ -547,6 +577,9 @@ public static partial class Program
         }
         minLevel = lowest;
     }
+
+    private static SphereNet.Game.Clients.GameClient? FindPlayingClient(uint serial) =>
+        _clients.Values.FirstOrDefault(c => c.IsPlaying && c.Character?.Uid.Value == serial);
 
     // ==================== Dialog designer data sources ====================
 

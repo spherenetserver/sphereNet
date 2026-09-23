@@ -41,7 +41,21 @@ export interface ServerStats {
   accounts: number
   cpuPercent: number
   threadCount: number
-  maps?: MapStats[]
+  avgTickMs: number
+  maxTickMs: number
+  p50TickMs: number
+  p95TickMs: number
+  p99TickMs: number
+  multicoreEnabled: boolean
+  maps: MapStats[] | null
+  /** ISO timestamp of the last finished world save; null before the first one. */
+  lastSaveUtc: string | null
+  /** Duration of the last save, in seconds. */
+  lastSaveSeconds: number
+  saveInProgress: boolean
+  /** null until a save has finished at least once. */
+  lastSaveOk: boolean | null
+  saveCount: number
 }
 
 export interface MapStats {
@@ -54,12 +68,22 @@ export interface MapStats {
 }
 
 export interface PlayerInfo {
+  serial: number
   charName: string
   accountName: string
   mapId: number
   x: number
   y: number
   ip: string
+  privLevel: number
+  clientVersion: string
+  sessionSeconds: number
+}
+
+export interface ShutdownSchedule {
+  pending: boolean
+  restart: boolean
+  dueUtc: string | null
 }
 
 export interface AccountInfo {
@@ -134,7 +158,9 @@ export interface UpdateStatus {
   runtime: string
 }
 
-export interface BuildVersion {
+/** What the running binary reports about itself (/server/version). Not the
+ *  updater's {@link BuildVersion}, which describes a downloadable release. */
+export interface RunningBuild {
   commit: string
   shortCommit: string
   branch: string
@@ -148,6 +174,30 @@ export interface BuildVersion {
 }
 
 // --- API helpers ---
+
+/** Joins path segments onto a route, URL-encoding each one. Account names and
+ *  IPv6 addresses carry characters (space, '/', ':', '%', '#', '?') that would
+ *  otherwise change which route the request hits. */
+export function apiPath(base: string, ...segments: (string | number)[]): string {
+  return [base, ...segments.map(s => encodeURIComponent(String(s)))].join('/')
+}
+
+/** Best human-readable message from a failed request: the backend's
+ *  `{ error }` / `{ message }` / `{ detail }` body, else the HTTP status. */
+export function errorMessage(e: unknown, fallback = 'Request failed'): string {
+  const err = e as { response?: { status?: number; data?: unknown }; message?: string }
+  const data = err?.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object') {
+    const d = data as { error?: unknown; message?: unknown; detail?: unknown; title?: unknown }
+    for (const v of [d.error, d.message, d.detail, d.title]) {
+      if (typeof v === 'string' && v.trim()) return v
+    }
+  }
+  if (err?.response?.status) return `${fallback} (HTTP ${err.response.status})`
+  if (err?.message) return `${fallback}: ${err.message}`
+  return fallback
+}
 
 export const serverApi = {
   status:    () => api.get<ServerStats>('/server/status'),
@@ -166,23 +216,39 @@ export const serverApi = {
   // Deliberately separate from the updater's version metadata: those describe
   // what was downloaded, this describes what is actually executing, and the two
   // disagreeing is precisely the situation worth seeing.
-  version:   (expected?: string) => api.get<BuildVersion>(
+  version:   (expected?: string) => api.get<RunningBuild>(
     expected ? `/server/version?expected=${encodeURIComponent(expected)}` : '/server/version'),
+  // Delayed shutdown/restart with in-game countdown broadcasts. 409 when one is
+  // already pending.
+  schedule:       (seconds: number, restart: boolean, message?: string) =>
+    api.post<ShutdownSchedule>('/server/schedule', message ? { seconds, restart, message } : { seconds, restart }),
+  getSchedule:    () => api.get<ShutdownSchedule>('/server/schedule'),
+  cancelSchedule: () => api.post<ShutdownSchedule>('/server/schedule/cancel'),
+}
+
+// Runtime-only block list: the server forgets it on restart.
+export const ipBlocksApi = {
+  list:   () => api.get<string[]>('/ipblocks'),
+  add:    (ip: string) => api.post('/ipblocks', { ip }),
+  remove: (ip: string) => api.delete(apiPath('/ipblocks', ip)),
 }
 
 export const playersApi = {
-  list: () => api.get<PlayerInfo[]>('/players'),
+  list:       () => api.get<PlayerInfo[]>('/players'),
+  disconnect: (serial: number) => api.post<{ message?: string }>(apiPath('/players', serial, 'disconnect')),
+  message:    (serial: number, text: string) => api.post(apiPath('/players', serial, 'message'), { text }),
 }
 
 export const accountsApi = {
   list:        () => api.get<AccountInfo[]>('/accounts'),
-  get:         (name: string) => api.get<AccountInfo>(`/accounts/${name}`),
+  get:         (name: string) => api.get<AccountInfo>(apiPath('/accounts', name)),
   create:      (name: string, password: string) => api.post('/accounts', { name, password }),
-  delete:      (name: string) => api.delete(`/accounts/${name}`),
-  ban:         (name: string) => api.post(`/accounts/${name}/ban`),
-  unban:       (name: string) => api.post(`/accounts/${name}/unban`),
-  setPassword: (name: string, password: string) => api.put(`/accounts/${name}/password`, { password }),
-  setPrivLevel:(name: string, level: number)    => api.put(`/accounts/${name}/plevel`, { level }),
+  delete:      (name: string) => api.delete(apiPath('/accounts', name)),
+  ban:         (name: string) => api.post(apiPath('/accounts', name, 'ban')),
+  unban:       (name: string) => api.post(apiPath('/accounts', name, 'unban')),
+  setPassword: (name: string, password: string) => api.put(apiPath('/accounts', name, 'password'), { password }),
+  // PanelHost binds this body to ChangePlevelRequest(int Level) -> JSON "level".
+  setPrivLevel:(name: string, level: number)    => api.put(apiPath('/accounts', name, 'plevel'), { level }),
 }
 
 export const authApi = {

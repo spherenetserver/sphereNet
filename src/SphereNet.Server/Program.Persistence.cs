@@ -541,6 +541,19 @@ public static partial class Program
         }
     }
 
+    // What the panel shows as "last save": when it ended, how long it took and
+    // whether it landed. Written on the main loop, read by the stats snapshot.
+    private static DateTime? _lastSaveUtc;
+    private static double _lastSaveSeconds;
+    private static bool? _lastSaveOk;
+
+    private static void RecordSaveOutcome(System.Diagnostics.Stopwatch sw, bool ok)
+    {
+        _lastSaveUtc = DateTime.UtcNow;
+        _lastSaveSeconds = sw.Elapsed.TotalSeconds;
+        _lastSaveOk = ok;
+    }
+
     private static void FinishSaveSuccess(System.Diagnostics.Stopwatch sw)
     {
         const ushort SaveHue = 0x0040;
@@ -552,6 +565,7 @@ public static partial class Program
         // the numbers a soak run compares between snapshots. Both save modes end
         // here, so one call covers synchronous and background alike.
         SphereNet.Game.Diagnostics.LoadProfile.CountSave(sw.ElapsedMilliseconds);
+        RecordSaveOutcome(sw, ok: true);
         _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
         BroadcastToAllPlayers(
             ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),
@@ -571,6 +585,7 @@ public static partial class Program
         _systemHooks.DispatchServer("save_fail", _serverHookContext, message);
         sw.Stop();
         SphereNet.Game.Diagnostics.LoadProfile.CountSave(sw.ElapsedMilliseconds);
+        RecordSaveOutcome(sw, ok: false);
         _log.LogError("World saved, but the account file did not: {Message}", message);
         BroadcastToAllPlayers(
             ServerMessages.GetFormatted("worldsave_partial", message),
@@ -583,6 +598,7 @@ public static partial class Program
     {
         const ushort SaveHue = 0x0040;
         sw.Stop();
+        RecordSaveOutcome(sw, ok: false);
         _systemHooks.DispatchServer("save_fail", _serverHookContext, message);
         _log.LogError("World save failed: {Message}", message);
         BroadcastToAllPlayers(

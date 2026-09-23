@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Panel operator ozellikleri
+------------------------------------------------------------------------
+EKLEME - Players: oyuncu basina serial, yetki seviyesi, client surumu ve oturum
+         suresi, arama, satir basina Disconnect ve Message (o oyuncuya sistem
+         mesaji). POST /api/players/{serial}/disconnect|message.
+EKLEME - Accounts: yetki seviyesi ve sifre duzenleme; ban, silme ve olusturma
+         hatalari yutulmak yerine gosterilir; "eslesme yok" ile "hesap yok"
+         ayrilir; hesap adlari URL-kodlanir.
+EKLEME - Dashboard: tick gecikmesi (ort/p50/p95/p99/maks, multicore); oyuncu,
+         bellek, CPU ve p95 tick grafikleri; harita bazli tablo ve dunya kaydi
+         karti (son kayit, sure, sayi, suruyor, basarisiz). Durum acilista
+         alinir, canli baglanti kopukken yoklanir. ServerStats'a LastSaveUtc,
+         LastSaveSeconds, SaveInProgress, LastSaveOk, SaveCount eklendi.
+EKLEME - Oyun ici geri sayim duyurulu zamanli kapatma/yeniden baslatma (basta,
+         sonra 10/5/2/1 dk, 30 sn, 10 sn); ayni anda bir tane, iptal edilebilir,
+         iptal de duyurulur. /api/server/schedule (+ /cancel).
+EKLEME - Engelli IP listesi yonetimi (GET/POST/DELETE /api/ipblocks). Sunucu
+         listeyi bellekte tutar; yeniden baslatmada temizlenir.
+EKLEME - Kimligi dogrulanmis her panel degisikligi metot, yol, durum ve istemci
+         adresiyle audit log'a yazilir (govde yazilmaz). Host modunda audit
+         satirlari panel konsoluna da duser.
+DUZELTME - Host: IPC baglantisi kopunca durmus sunucunun istatistikleri artik
+           gosterilmez.
+DUZELTME - Gump Designer ve Updates icin ust bar basliklari; Start/Restart/Stop
+           hatalari gosterilir; gump designer kopyalama duz http'de calisir;
+           script editoru kaydedilmemis degisiklikle sayfadan cikarken uyarir.
+TEST - PanelFeatureTests, PanelAuthorizationTests (players, ipblocks, audit),
+       panel server/api/ip testleri.
+
 [2026-09-23] - Panel Source-X script paketini kurar
 ------------------------------------------------------------------------
 DEGISIKLIK - Scripts sayfasi ve kurulum sihirbazi UOSoftware/Scripts-T yerine

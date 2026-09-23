@@ -30,6 +30,15 @@ public sealed class PanelContext
     public Func<string, string, bool>? SetAccountPassword { get; set; }
     public Func<string, int, bool>? SetAccountPrivLevel { get; set; }
 
+    // Online player actions (by character serial)
+    public Func<uint, bool>? DisconnectPlayer { get; set; }
+    public Func<uint, string, bool>? MessagePlayer { get; set; }
+
+    // IP block list (runtime; the server keeps it in memory)
+    public Func<IReadOnlyList<string>>? GetIpBlocks { get; set; }
+    public Func<string, bool>? AddIpBlock { get; set; }
+    public Func<string, bool>? RemoveIpBlock { get; set; }
+
     // Server commands
     public Func<bool>? OnSave { get; set; }
     public Func<bool>? OnShutdown { get; set; }
@@ -101,7 +110,12 @@ public record ServerStats(
     double P95TickMs = 0,
     double P99TickMs = 0,
     bool MulticoreEnabled = false,
-    IReadOnlyList<MapStats>? Maps = null
+    IReadOnlyList<MapStats>? Maps = null,
+    DateTime? LastSaveUtc = null,
+    double LastSaveSeconds = 0,
+    bool SaveInProgress = false,
+    bool? LastSaveOk = null,
+    int SaveCount = 0
 );
 
 public record MapStats(
@@ -119,7 +133,11 @@ public record PlayerInfo(
     int MapId,
     int X,
     int Y,
-    string Ip
+    string Ip,
+    uint Serial = 0,
+    int PrivLevel = 0,
+    string ClientVersion = "",
+    int SessionSeconds = 0
 );
 
 public record AccountInfo(

@@ -85,7 +85,9 @@ public static class HostPanelContext
                 Run(() => ipc.MutateAsync("set_script_debug", new { on })),
 
             // ── Dialog designer ────────────────────────────────────────────
-            GetGumpPng = id => Run(() => ipc.QueryAsync<byte[]>("gump", new { id })),
+            // Not "id": that is the request id on the wire, and an argument named id
+            // replaced it, so the answer never matched and every gump timed out.
+            GetGumpPng = id => Run(() => ipc.QueryAsync<byte[]>("gump", new { gumpId = id })),
             ListDialogNames = () => Run(() => ipc.QueryAsync<List<string>>("dialogs")) ?? [],
             GetDialogSource = name => Run(() => ipc.QueryAsync<string>("dialog_source", new { name })),
         };

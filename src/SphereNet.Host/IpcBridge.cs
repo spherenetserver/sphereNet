@@ -91,11 +91,12 @@ public sealed class IpcBridge : IDisposable
             throw new PanelBackendUnavailableException("Game server is not connected");
 
         var id = Guid.NewGuid().ToString("N");
+        // Built before the request is registered: a bad argument throws here and
+        // leaves nothing pending behind.
+        var msg = BuildMsg(kind, id, op, args);
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pending.TryAdd(id, tcs))
             throw new InvalidOperationException("Could not allocate an IPC request id");
-
-        var msg = BuildMsg(kind, id, op, args);
 
         try
         {
@@ -152,7 +153,13 @@ public sealed class IpcBridge : IDisposable
         };
         if (args != null)
             foreach (var p in JsonSerializer.SerializeToElement(args, _json).EnumerateObject())
+            {
+                // The envelope keys are the protocol: an argument with the same name
+                // overwrote the request id, and the reply could no longer be matched.
+                if (d.ContainsKey(p.Name))
+                    throw new ArgumentException($"IPC argument '{p.Name}' collides with the message envelope");
                 d[p.Name] = p.Value;
+            }
         return d;
     }
 

@@ -214,7 +214,7 @@ public sealed class IpcServer : IDisposable
         "account" => _ctx?.GetAccount?.Invoke(root.GetStr("name") ?? ""),
         "debug" => _ctx?.GetDebugState?.Invoke() ?? new DebugState(false, false),
         "exec" => _ctx?.ExecuteCommand?.Invoke(root.GetStr("raw") ?? "") ?? [],
-        "gump" => _ctx?.GetGumpPng?.Invoke(root.GetRequiredInt("id")),
+        "gump" => _ctx?.GetGumpPng?.Invoke(root.GetRequiredInt("gumpId")),
         "dialogs" => _ctx?.ListDialogNames?.Invoke() ?? [],
         "dialog_source" => _ctx?.GetDialogSource?.Invoke(root.GetStr("name") ?? ""),
 

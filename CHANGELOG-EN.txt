@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Gump designer art in Host mode
+------------------------------------------------------------------------
+FIX - Gump art reaches the panel's gump designer when the server runs under
+      SphereNet.Host. The Host sent the gump number as an IPC argument named
+      "id", which is also the request id of the message envelope; the
+      argument replaced it, the server's reply matched no request, and every
+      /gumpart request timed out after 8 seconds. The argument is now gumpId,
+      and the bridge refuses any argument named like an envelope key.
+TEST - IpcGumpArtTests.
+
 [2026-09-23] - Teleport effect for GM commands and GO verbs
 ------------------------------------------------------------------------
 FIX - GO/GOUID/GOCHAR/.TELE, JAIL and the scripted GO* verbs (GO, GOUID,

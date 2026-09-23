@@ -270,6 +270,12 @@ public sealed partial class GameClient
         SendSelfRedraw();
     }
 
+    /// <summary>A command line run as if this client's player typed it after the
+    /// command prefix (the admin panel's "run as the character"): the player's own
+    /// plevel gates it and its output reaches this client.</summary>
+    public bool RunCommandAsPlayer(string commandLine) =>
+        TryHandleCommandSpeech("." + commandLine.TrimStart('.', '/'));
+
     internal bool TryHandleCommandSpeech(string text)
     {
         if (_character == null || _commands == null)

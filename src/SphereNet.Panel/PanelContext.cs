@@ -234,6 +234,10 @@ public static class PlayerActions
     public const string Emote = "emote";
     public const string Message = "message";
     public const string Verb = "verb";
+    /// <summary>A command line run as the character itself, as if its player had
+    /// typed it with the command prefix: the character is SRC, its own plevel
+    /// applies and the output goes to its own client. Needs the player online.</summary>
+    public const string Command = "command";
     public const string Heal = "heal";
     public const string Resurrect = "resurrect";
     public const string Kill = "kill";
@@ -247,13 +251,13 @@ public static class PlayerActions
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
-        Say, Emote, Message, Verb, Heal, Resurrect, Kill, Freeze, Unfreeze,
+        Say, Emote, Message, Verb, Command, Heal, Resurrect, Kill, Freeze, Unfreeze,
         Hide, Unhide, Teleport, Jail, Unjail,
     };
 
     /// <summary>Actions that need a line of text.</summary>
     public static bool NeedsText(string action) =>
-        action is Say or Emote or Message or Verb;
+        action is Say or Emote or Message or Verb or Command;
 }
 
 /// <summary>A character's state for the panel's detail view. Skill values are in

@@ -603,7 +603,8 @@ public static partial class Program
         _world,
         ch => TryGetClientFor(ch, out var c) && c.IsPlaying ? c : null,
         ch => { if (TryGetClientFor(ch, out var c)) c.SendSelfRedraw(); },
-        _commands);
+        _commands,
+        (ch, line) => TryGetClientFor(ch, out var c) && c.IsPlaying ? c.RunCommandAsPlayer(line) : null);
 
     /// <summary>A line to every playing client at Counsel level or above. Main loop
     /// only. Returns how many received it.</summary>

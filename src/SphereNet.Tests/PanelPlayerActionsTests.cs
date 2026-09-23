@@ -64,6 +64,38 @@ public sealed class PanelCharacterActionsTests
         return sent;
     }
 
+    /// <summary>Field report: ADMIN from the panel said "applied" and opened
+    /// nothing - the pack's ADMIN [FUNCTION] feeds SRC.CTAG and opens its dialog on
+    /// SRC, and the panel was SRC. "command" hands the line to the player's own
+    /// client as a typed .command instead.</summary>
+    [Fact]
+    public void CommandRunsTheLineAsThePlayersOwnCommand()
+    {
+        var (world, ch) = Setup();
+        var ran = new List<(Character, string)>();
+        var actions = new PanelCharacterActions(world, _ => null, null, null,
+            (who, line) => { ran.Add((who, line)); return true; });
+
+        var result = actions.Execute(ch.Uid.Value, new PlayerActionRequest("command", ".admin"));
+
+        Assert.True(result.Ok);
+        var (who, line) = Assert.Single(ran);
+        Assert.Same(ch, who);
+        Assert.Equal("admin", line);
+    }
+
+    [Fact]
+    public void CommandNeedsThePlayerOnline()
+    {
+        var (world, ch) = Setup();
+        var actions = new PanelCharacterActions(world, _ => null, null, null, (_, _) => null);
+
+        var result = actions.Execute(ch.Uid.Value, new PlayerActionRequest("command", "admin"));
+
+        Assert.False(result.Ok);
+        Assert.Contains("not online", Assert.Single(result.Lines));
+    }
+
     [Fact]
     public void SayBroadcastsTheLineAsTheCharactersSpeech()
     {

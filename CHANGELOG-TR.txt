@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Panel: komutu karakter olarak calistirma
+------------------------------------------------------------------------
+DUZELTME - Panelin verb calistiricisi her satiri SRC olarak paneli kullanarak
+           calistiriyordu. SRC'yi oyuncu sayan script fonksiyonlari (SERV.ALLCLIENTS
+           ile SRC.CTAG dolduran ve dialogunu SRC'de acan ADMIN [FUNCTION] gibi)
+           "applied" diyor ama hicbir sey acmiyordu. Yeni "command" islemi satiri
+           oyuncunun kendi client'indan, yazilmis bir .komut gibi calistirir: SRC
+           karakterin kendisidir, kendi plevel'i gecerlidir, dialog ve mesajlar
+           onun client'inda acilir. Online karakterde panel bunu varsayilan
+           kullanir; "panel olarak (Owner)" eski davranisi korur.
+
 [2026-09-23] - Client tipi 0xE1 okumasi; 0xE2 yeni animasyon eski aksiyondan turetilir
 ------------------------------------------------------------------------
 DUZELTME - 0xE1 client tipi: paket [E1][u16 uzunluk][u16 sayac][u32 tip];

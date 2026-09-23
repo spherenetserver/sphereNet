@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Panel: run a command as the character
+------------------------------------------------------------------------
+FIX - The panel's verb runner ran every line with the panel as SRC. Script
+      functions that take SRC to be the player (an ADMIN [FUNCTION] feeding
+      SRC.CTAG through SERV.ALLCLIENTS and opening its dialog on SRC) reported
+      "applied" and opened nothing. A new "command" action runs the line
+      through the player's own client as a typed .command: the character is
+      SRC, its plevel applies and dialogs/messages appear on its client. The
+      panel defaults to it for online characters; "as the panel (Owner)" keeps
+      the previous behaviour.
+
 [2026-09-23] - Client type 0xE1 parse; 0xE2 new-animation derived from the legacy action
 ------------------------------------------------------------------------
 FIX - 0xE1 client type: the packet is [E1][u16 length][u16 count][u32 type];

@@ -82,7 +82,7 @@ export interface PlayerInfo {
 }
 
 export type PlayerActionName =
-  | 'say' | 'emote' | 'message' | 'verb' | 'heal' | 'resurrect' | 'kill'
+  | 'say' | 'emote' | 'message' | 'verb' | 'command' | 'heal' | 'resurrect' | 'kill'
   | 'freeze' | 'unfreeze' | 'hide' | 'unhide' | 'teleport' | 'jail' | 'unjail'
 
 /** Body of POST /players/{serial}/action; each action reads only its own fields. */

@@ -1467,7 +1467,7 @@ public sealed class PanelHost : IDisposable
         if (PlayerActions.NeedsText(action))
         {
             text = req!.Text?.Trim() ?? "";
-            int max = action == PlayerActions.Verb ? MaxVerbLength : MaxSpeechLength;
+            int max = action is PlayerActions.Verb or PlayerActions.Command ? MaxVerbLength : MaxSpeechLength;
             if (text.Length == 0)
             {
                 error = "Text required";

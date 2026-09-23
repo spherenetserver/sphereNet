@@ -88,13 +88,23 @@
         <section class="block">
           <h4>{{ t('actions.verbTitle') }}</h4>
           <div class="row">
+            <div class="seg">
+              <button :class="{ active: verbMode === 'command' }" :disabled="!detail.online" @click="verbMode = 'command'">
+                {{ t('actions.verbAsSelf') }}
+              </button>
+              <button :class="{ active: verbMode === 'verb' }" @click="verbMode = 'verb'">
+                {{ t('actions.verbAsPanel') }}
+              </button>
+            </div>
+          </div>
+          <div class="row">
             <input v-model="verbText" class="input grow mono" maxlength="512"
               :placeholder="t('actions.verbPlaceholder')" @keyup.enter="runVerb" />
-            <button class="btn-accent" :disabled="running || !verbText.trim()" @click="runVerb">
+            <button class="btn-accent" :disabled="running || !verbText.trim() || (verbMode === 'command' && !detail.online)" @click="runVerb">
               <Play :size="14" /> {{ t('actions.run') }}
             </button>
           </div>
-          <p class="hint">{{ t('actions.verbHint') }}</p>
+          <p class="hint">{{ t(verbMode === 'command' ? 'actions.verbAsSelfHint' : 'actions.verbHint') }}</p>
         </section>
 
         <!-- Quick actions -->
@@ -201,7 +211,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   AlertTriangle, DoorOpen, Eye, EyeOff, HeartPulse, Loader2, Lock, MapPin, Play, RefreshCw,
   Send, Skull, Snowflake, Sparkles, UserSquare, X,
@@ -314,11 +324,17 @@ async function speak() {
 
 // --- Verb ---
 const verbText = ref('')
+// 'command' runs the line as the player's own .command (SRC = the character,
+// its plevel, output on its client); 'verb' runs it on the character with the
+// panel as an Owner-level source and returns the output here.
+const verbMode = ref<'command' | 'verb'>('verb')
+watch(() => detail.value?.online, online => { verbMode.value = online ? 'command' : 'verb' }, { immediate: true })
 
 async function runVerb() {
   const text = verbText.value.trim()
   if (!text || running.value) return
-  await run({ action: 'verb', text }, text)
+  const action = verbMode.value === 'command' && detail.value?.online ? 'command' : 'verb'
+  await run({ action, text }, action === 'command' ? `.${text.replace(/^[./]+/, '')}` : text)
 }
 
 // --- Dangerous actions: confirmed in place ---

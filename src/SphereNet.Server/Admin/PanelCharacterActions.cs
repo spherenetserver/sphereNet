@@ -32,15 +32,20 @@ internal sealed class PanelCharacterActions
     private readonly Func<Character, ITextConsole?> _clientFor;
     private readonly Action<Character>? _selfRedraw;
     private readonly CommandHandler? _commands;
+    private readonly Func<Character, string, bool?>? _runAsSelf;
 
     /// <param name="world">The world characters are looked up in.</param>
     /// <param name="clientFor">The playing client of a character, or null offline.</param>
     /// <param name="selfRedraw">Redraws a character on its own client after a verb
     /// changed its body or hue (the observers' views pick it up on their own).</param>
     /// <param name="commands">The GM command handler, for jail; null = no jail.</param>
+    /// <param name="runAsSelf">Runs a command line through the character's own
+    /// client as if its player typed it; null result = not online.</param>
     public PanelCharacterActions(GameWorld world, Func<Character, ITextConsole?> clientFor,
-        Action<Character>? selfRedraw = null, CommandHandler? commands = null)
+        Action<Character>? selfRedraw = null, CommandHandler? commands = null,
+        Func<Character, string, bool?>? runAsSelf = null)
     {
+        _runAsSelf = runAsSelf;
         _world = world;
         _clientFor = clientFor;
         _selfRedraw = selfRedraw;
@@ -96,6 +101,25 @@ internal sealed class PanelCharacterActions
 
             case PlayerActions.Verb:
                 return RunVerb(ch, text, console);
+
+            case PlayerActions.Command:
+            {
+                // Scripts such as an ADMIN or staff-panel [FUNCTION] take SRC to be
+                // the player (SRC.CTAG, DIALOG on SRC, SERV.ALLCLIENTS feeding SRC).
+                // With the panel as SRC they ran and reported success while opening
+                // nothing, so this runs the line as the player's own command.
+                if (_runAsSelf == null)
+                    return PlayerActionResult.Fail("Running as the character is not available.");
+                string line = text.TrimStart('.', '/').Trim();
+                if (line.Length == 0)
+                    return PlayerActionResult.Fail("Command required.");
+                bool? ran = _runAsSelf(ch, line);
+                if (ran == null)
+                    return PlayerActionResult.Fail($"{name} is not online.");
+                return ran.Value
+                    ? PlayerActionResult.Done($"{name} ran .{line} (output goes to their client).")
+                    : PlayerActionResult.Fail($"{name} could not run .{line}.");
+            }
 
             case PlayerActions.Heal:
                 // The GM heal (.HEAL): a dead character is raised first, then

@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - GMPAGE ADD page'i dogrudan kuyruga ekler
+------------------------------------------------------------------------
+DUZELTME - GMPAGE script verb'u metnini PAGE komutu olarak yeniden
+           calistiriyordu. Kendi PAGE komutunu (kuyruk goruntuleyici)
+           tanimlayan script paketi bu cagriyi aliyordu; page SERV.GMPAGES'e
+           hic ulasmiyor, kuyruk bos kaliyordu. GMPAGE ADD <sebep> artik page'i
+           dogrudan kuyruga ekler (Source-X CV_GMPAGE ->
+           Event_PromptResp_GMPage); ADD olmadan GMPAGE prompt acar, cevabi
+           ayni yoldan kuyruga eklenir.
+
 [2026-09-23] - Panel: komutu karakter olarak calistirma
 ------------------------------------------------------------------------
 DUZELTME - Panelin verb calistiricisi her satiri SRC olarak paneli kullanarak

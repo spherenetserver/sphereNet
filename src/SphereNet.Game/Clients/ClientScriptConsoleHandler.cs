@@ -1369,20 +1369,20 @@ public sealed class ClientScriptConsoleHandler
 
             case "GMPAGE":
             {
-                string reason = args.Trim();
-                if (reason.StartsWith("add ", StringComparison.OrdinalIgnoreCase))
-                    reason = reason[4..].Trim();
-                if (reason.Length > 0)
+                // Source-X CV_GMPAGE (CClient.cpp:1368): "ADD <reason>" queues the page
+                // directly; anything else opens the prompt.
+                string text = args.Trim();
+                if (text.StartsWith("ADD ", StringComparison.OrdinalIgnoreCase))
                 {
-                    _commands?.Execute(_character, $"PAGE {reason}");
+                    _commands?.SubmitPage(_character, text[4..]);
                     return true;
                 }
 
                 _client.SendPrompt(0x474D5047, "Enter your help request:",
-                    (_, _, _, text) =>
+                    (_, _, _, reply) =>
                     {
-                        if (!string.IsNullOrWhiteSpace(text))
-                            _commands?.Execute(_character, $"PAGE {text.Trim()}");
+                        if (!string.IsNullOrWhiteSpace(reply))
+                            _commands?.SubmitPage(_character, reply);
                     });
                 return true;
             }

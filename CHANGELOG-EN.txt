@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - GMPAGE ADD queues the page directly
+------------------------------------------------------------------------
+FIX - The GMPAGE script verb re-ran its text as a PAGE command. A script pack
+      that defines its own PAGE command (a queue viewer) took that call, so the
+      page never reached SERV.GMPAGES and the queue stayed empty. GMPAGE ADD
+      <reason> now queues the page directly (Source-X CV_GMPAGE ->
+      Event_PromptResp_GMPage); GMPAGE without ADD opens the prompt, whose
+      reply is queued the same way.
+
 [2026-09-23] - Panel: run a command as the character
 ------------------------------------------------------------------------
 FIX - The panel's verb runner ran every line with the panel as SRC. Script

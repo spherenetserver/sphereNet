@@ -523,6 +523,22 @@ public sealed class CommandHandler
     private const int MaxRecentPages = 100;
 
     public readonly record struct PageEntry(DateTime Utc, Serial From, string FromName, string Message);
+
+    /// <summary>Queue a page from <paramref name="player"/> (CClient::Event_PromptResp_GMPage).
+    /// The script verb GMPAGE ADD calls this directly: routing it through the PAGE
+    /// command let a script pack that defines its own PAGE command (a queue viewer)
+    /// swallow the page, so nothing was ever queued.</summary>
+    public void SubmitPage(Character player, string reason)
+    {
+        reason = reason.Trim();
+        if (reason.Length == 0)
+            return;
+        _recentPages.Add(new PageEntry(DateTime.UtcNow, player.Uid, player.GetName(), reason));
+        if (_recentPages.Count > MaxRecentPages)
+            _recentPages.RemoveAt(0);
+        OnSysMessage?.Invoke(player, ServerMessages.GetFormatted("gm_page_submitted", reason));
+        OnPageReceived?.Invoke(player, reason);
+    }
     /// <summary>Source-X parity: <c>.UNMOUNT</c> dismounts the caller.</summary>
     public event Action<Character>? OnUnmountRequested;
     /// <summary>Source-X parity: <c>.ANIM &lt;id&gt;</c> plays an
@@ -1404,11 +1420,7 @@ public sealed class CommandHandler
                 OnSysMessage?.Invoke(gm, "Usage: .PAGE <message>");
                 return;
             }
-            _recentPages.Add(new PageEntry(DateTime.UtcNow, gm.Uid, gm.GetName(), args.Trim()));
-            if (_recentPages.Count > MaxRecentPages)
-                _recentPages.RemoveAt(0);
-            OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_page_submitted", args));
-            OnPageReceived?.Invoke(gm, args);
+            SubmitPage(gm, args);
         });
 
         Register("RESYNC", PrivLevel.Admin, (gm, _) =>

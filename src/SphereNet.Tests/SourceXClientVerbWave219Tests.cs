@@ -110,6 +110,35 @@ public class SourceXClientVerbWave219Tests
     }
 
     [Fact]
+    public void GmPageAdd_QueuesEvenWhenPageCommandIsRedefined()
+    {
+        // A script pack's own PAGE command (a queue viewer) must not swallow GMPAGE ADD.
+        var (client, ch, commands) = CreateClient();
+        bool viewerOpened = false;
+        string? pageText = null;
+        commands.Register("PAGE", PrivLevel.Player, (_, _) => viewerOpened = true);
+        commands.OnPageReceived += (_, text) => pageText = text;
+
+        Assert.True(client.TryExecuteScriptCommand(ch, "GMPAGE", "ADD stuck under bridge", null));
+
+        Assert.Equal("stuck under bridge", pageText);
+        Assert.False(viewerOpened);
+    }
+
+    [Fact]
+    public void GmPageWithoutAdd_OpensPromptInsteadOfQueueing()
+    {
+        var (client, ch, commands) = CreateClient();
+        string? pageText = null;
+        commands.OnPageReceived += (_, text) => pageText = text;
+
+        Assert.True(client.TryExecuteScriptCommand(ch, "GMPAGE", "stuck under bridge", null));
+
+        Assert.Null(pageText);
+        Assert.Contains(TestHarness.GetQueuedPackets(client.NetState), p => p.Span[0] == 0x9A);
+    }
+
+    [Fact]
     public void Self_FeedsOwnCharacterIntoActiveTargetCallback()
     {
         var (client, ch, _) = CreateClient();

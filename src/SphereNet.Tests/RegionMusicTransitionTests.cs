@@ -84,6 +84,22 @@ public sealed class RegionMusicTransitionTests
         });
     }
 
+    /// <summary>Packs that play a town tune through a [FUNCTION MUSIC] wrapper
+    /// called in assignment form (SRC.MUSIC=MIDI_BRITAIN1) from the area's @Enter.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MusicFunctionCalledAsAssignmentPlaysTheTownTune(bool walking)
+    {
+        RunPack((world, movement, ch, _, _, music) =>
+        {
+            bool moved = walking ? movement.TryMove(ch, Direction.East, false, 0)
+                : world.MoveCharacter(ch, new Point3D(101, 100, 0, 0));
+            Assert.True(moved);
+            Assert.Equal(new ushort[] { 9 }, music);
+        });
+    }
+
     private static void Run(Action<GameWorld, MovementEngine, Character, Region, Region, List<ushort>> test)
     {
         var runtime = ScriptTestBootstrap.CreateRuntimeStack();
@@ -122,6 +138,65 @@ public sealed class RegionMusicTransitionTests
             var newRegion = new Region { Name = "City" };
             newRegion.AddRect(101, 80, 130, 120);
             newRegion.SetTag("MUSIC", "midi_city");
+            newRegion.AddEvent(runtime.Resources.ResolveDefName("r_city_music"));
+            world.AddRegion(oldRegion);
+            world.AddRegion(newRegion);
+            var ch = world.CreateCharacter();
+            ch.IsPlayer = true;
+            ch.Str = 100; ch.Dex = 100; ch.Stam = 100;
+            world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+            var music = new List<ushort>();
+            Character.SendPacketToOwner = (owner, packet) =>
+            {
+                var bytes = packet.Build().Span;
+                if (owner == ch && bytes[0] == 0x6D)
+                    music.Add(BinaryPrimitives.ReadUInt16BigEndian(bytes[1..]));
+            };
+            var movement = new MovementEngine(world, runtime.Dispatcher);
+            test(world, movement, ch, oldRegion, newRegion, music);
+        }
+        finally
+        {
+            Character.SendPacketToOwner = oldSend;
+            File.Delete(path);
+        }
+    }
+
+    private static void RunPack(Action<GameWorld, MovementEngine, Character, Region, Region, List<ushort>> test)
+    {
+        var runtime = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = Path.Combine(Path.GetTempPath(), $"region_music_fn_{Guid.NewGuid():N}.scp");
+        var oldSend = Character.SendPacketToOwner;
+        try
+        {
+            File.WriteAllText(path, """
+                [DEFNAME music_test]
+                midi_britain1 9
+
+                [FUNCTION MUSIC]
+                IF (<ISPLAYER>)
+                	MIDILIST <ARGS>
+                ENDIF
+
+                [REGIONTYPE r_city_music]
+                ON=@ENTER
+                IF (<SRC.ISPLAYER>)
+                SRC.MUSIC=MIDI_BRITAIN1
+                ENDIF
+                """);
+            runtime.Resources.LoadResourceFile(path);
+            ScriptTestBootstrap.LoadDefinitions(runtime.Resources);
+            var world = TestHarness.CreateWorld();
+            ObjBase.ResolveWorld = () => world;
+            var map = new MapDataManager("");
+            map.AddSyntheticMap(0, 256, 256);
+            world.MapData = map;
+            var oldRegion = new Region { Name = "Old area" };
+            oldRegion.AddRect(80, 80, 100, 120);
+            
+            var newRegion = new Region { Name = "City" };
+            newRegion.AddRect(101, 80, 130, 120);
+            
             newRegion.AddEvent(runtime.Resources.ResolveDefName("r_city_music"));
             world.AddRegion(oldRegion);
             world.AddRegion(newRegion);

@@ -51,6 +51,41 @@
       <p v-if="broadcastError" class="error-msg">{{ broadcastError }}</p>
     </section>
 
+    <!-- Staff-only message -->
+    <section class="section">
+      <h2 class="section-title">{{ t('server.staffTitle') }}</h2>
+      <div class="broadcast-row">
+        <input v-model="staffMsg" class="broadcast-input" maxlength="256"
+          :placeholder="t('server.staffPlaceholder')" @keyup.enter="sendStaff" />
+        <button class="btn-accent" @click="sendStaff" :disabled="!staffMsg.trim() || staffSending">
+          <ShieldCheck :size="15" /> {{ t('server.staffSend') }}
+        </button>
+      </div>
+      <p v-if="staffInfo" class="sent-msg">{{ staffInfo }}</p>
+      <p v-if="staffError" class="error-msg">{{ staffError }}</p>
+    </section>
+
+    <!-- Server function runner -->
+    <section class="section">
+      <h2 class="section-title">{{ t('server.functionTitle') }}</h2>
+      <div class="panel-box">
+        <p class="note muted-note"><Info :size="13" /> {{ t('server.functionNote') }}</p>
+        <div class="broadcast-row">
+          <input v-model="fnName" class="broadcast-input mono fn-name" maxlength="64"
+            :placeholder="t('server.functionNamePlaceholder')" @keyup.enter="runFunction" />
+          <input v-model="fnArgs" class="broadcast-input mono" maxlength="512"
+            :placeholder="t('server.functionArgsPlaceholder')" @keyup.enter="runFunction" />
+          <button class="btn-accent" :disabled="!fnName.trim() || fnRunning" @click="runFunction">
+            <Play :size="15" /> {{ t('server.functionRun') }}
+          </button>
+        </div>
+        <p v-if="fnError" class="error-msg">{{ fnError }}</p>
+        <div v-if="fnOutput.length > 0" class="fn-output">
+          <div v-for="(line, i) in fnOutput" :key="i">{{ line }}</div>
+        </div>
+      </div>
+    </section>
+
     <!-- Scheduled shutdown / restart -->
     <section class="section">
       <h2 class="section-title">{{ t('server.scheduleTitle') }}</h2>
@@ -155,6 +190,16 @@
           />
         </div>
       </div>
+      <div v-if="history.length > 0" class="history">
+        <div class="history-head">
+          <span>{{ t('server.historyTitle') }}</span>
+          <button class="link-btn" @click="forgetHistory">{{ t('server.historyClear') }}</button>
+        </div>
+        <div class="history-list">
+          <button v-for="h in history" :key="h" class="history-item mono" :title="t('server.historyRerun')"
+            @click="rerun(h)">{{ h }}</button>
+        </div>
+      </div>
     </section>
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
@@ -165,7 +210,9 @@
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import {
   Save, RefreshCw, Skull, ShoppingBag, Trash2, PowerOff, Megaphone, Timer, RotateCw, X, Info, Ban,
+  ShieldCheck, Play,
 } from 'lucide-vue-next'
+import { clearHistory, pushHistory, readHistory, saveHistory } from '@/lib/commandHistory'
 import { serverApi, ipBlocksApi, errorMessage, type ShutdownSchedule } from '@/lib/api'
 import { isValidIp } from '@/lib/ip'
 import { t, fmtTime, fmtNumber } from '@/i18n'
@@ -220,6 +267,51 @@ async function sendBroadcast() {
     broadcastError.value = errorMessage(e, t('server.broadcastFailed'))
   } finally {
     broadcasting.value = false
+  }
+}
+
+// --- Staff-only message ---
+const staffMsg     = ref('')
+const staffSending = ref(false)
+const staffInfo    = ref('')
+const staffError   = ref('')
+
+async function sendStaff() {
+  const message = staffMsg.value.trim()
+  if (!message || staffSending.value) return
+  staffError.value = staffInfo.value = ''
+  staffSending.value = true
+  try {
+    const { data } = await serverApi.staffMessage(message)
+    staffMsg.value = ''
+    staffInfo.value = t('server.staffSent', { n: data.recipients })
+    setTimeout(() => (staffInfo.value = ''), 4000)
+  } catch (e) {
+    staffError.value = errorMessage(e, t('server.staffFailed'))
+  } finally {
+    staffSending.value = false
+  }
+}
+
+// --- Server function runner ---
+const fnName    = ref('')
+const fnArgs    = ref('')
+const fnRunning = ref(false)
+const fnError   = ref('')
+const fnOutput  = ref<string[]>([])
+
+async function runFunction() {
+  const name = fnName.value.trim()
+  if (!name || fnRunning.value) return
+  fnError.value = ''
+  fnRunning.value = true
+  try {
+    const { data } = await serverApi.runFunction(name, fnArgs.value.trim())
+    fnOutput.value = data.lines.length > 0 ? data.lines : [t('server.functionNoOutput')]
+  } catch (e) {
+    fnError.value = errorMessage(e, t('server.functionFailed'))
+  } finally {
+    fnRunning.value = false
   }
 }
 
@@ -366,14 +458,26 @@ interface ConsoleLine { type: 'cmd' | 'resp'; text: string }
 const consoleEl    = ref<HTMLElement | null>(null)
 const cmdText      = ref('')
 const consoleLines = ref<ConsoleLine[]>([])
-const history      = ref<string[]>([])
+// Last ~20 commands, newest first, remembered per browser.
+const history      = ref<string[]>(readHistory())
 const histIdx      = ref(-1)
+
+function forgetHistory() {
+  history.value = []
+  clearHistory()
+}
+
+async function rerun(cmd: string) {
+  cmdText.value = cmd
+  await runCommand()
+}
 
 async function runCommand() {
   const cmd = cmdText.value.trim()
   if (!cmd) return
 
-  history.value.unshift(cmd)
+  history.value = pushHistory(history.value, cmd)
+  saveHistory(history.value)
   histIdx.value = -1
   consoleLines.value.push({ type: 'cmd', text: cmd })
   cmdText.value = ''
@@ -561,6 +665,34 @@ function historyDown() {
 }
 
 .ip-empty { font-size: 13px; color: var(--text-muted); }
+
+.muted-note { color: var(--text-muted); }
+.fn-name { flex: 0 0 220px; }
+
+.fn-output {
+  background: #0d1117; border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 12px; max-height: 220px; overflow-y: auto;
+  font-family: 'Courier New', Consolas, monospace; font-size: 12.5px; line-height: 1.6;
+  color: var(--text-primary); white-space: pre-wrap; word-break: break-word;
+}
+
+.history { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.history-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);
+}
+.history-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.history-item {
+  border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; max-width: 320px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.history-item:hover { border-color: var(--accent); color: var(--accent); }
+.link-btn {
+  background: none; border: none; padding: 0; font: inherit; color: var(--text-muted);
+  cursor: pointer; text-transform: none; letter-spacing: normal;
+}
+.link-btn:hover { color: var(--danger); text-decoration: underline; }
 
 .ip-list {
   list-style: none; margin: 0; padding: 0;

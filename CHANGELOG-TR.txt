@@ -4,6 +4,37 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Yonetim paneli: karakter islemleri ve ayrintilari, yetkili mesaji, sunucu fonksiyonlari
+------------------------------------------------------------------------
+EKLEME - POST /api/players/{serial}/action, cevrimici ya da cevrimdisi her
+         karakter uzerinde serial ile islem yapar: say / emote (SAY/SAYU/
+         EMOTE verb'leri, yakindaki client'lar duyar), message (istege bagli
+         renkli ozel SysMessage), verb (r_Verb zinciri - verb tablosu,
+         [FUNCTION], ozellik - panel owner seviyeli sunucu kaynagi olarak;
+         kaynaga donen SysMessage'lar yanitta doner), heal, resurrect ve kill
+         (karakterin RESURRECT/KILL verb'leri), freeze/unfreeze
+         (STATF_FREEZE), hide/unhide, teleport (yuklu harita boyutuna gore
+         denetlenir) ve jail/unjail (JAIL komutunun kendi hapis/serbest
+         birakma yolu). Yanit {ok, lines}; her cagri islem ve argumanlariyla
+         denetim kaydina yazilir.
+EKLEME - GET /api/players/{serial}/detail: statlar, maksimumlariyla hits/
+         mana/stam, fame, karma, kills, notoriety, konum, hesap, plevel, durum
+         bayraklari, sifirdan buyuk skill'ler ve en fazla 100 TAG (uzun
+         degerler kisaltilir).
+EKLEME - POST /api/server/staffmessage satiri yalnizca Counsel ve ustu
+         cevrimici client'lara gonderir; POST /api/server/function sunucuyu
+         nesne alarak bir [FUNCTION] calistirir, bir SERV ozelligini okur ya da
+         bir SERV verb satiri calistirir ve cikti satirlarini dondurur. Ikisi
+         de denetim kaydina yazilir.
+EKLEME - Dort islem de Host IPC koprusunden gecer (player_action,
+         player_detail, staff_message, server_function).
+EKLEME - Panel: oyuncu basina islemler penceresi (konusma, ciktili verb
+         calistirici, kill ve jail icin sayfa ici onayli hizli islemler,
+         isinlama formu, stat/skill/TAG), cevrimdisi karakterler icin serial
+         ile de acilir; sunucu sayfasinda yetkili mesaj kutusu, fonksiyon
+         calistirici ve son 20 konsol komutunun hatirlanan listesi (tiklayinca
+         yeniden calisir).
+
 [2026-09-23] - Source-X vurus zamanlamasi, dovus sesleri, dovus adlari; paperdoll unvan satiri
 ------------------------------------------------------------------------
 DUZELTME - Vuruslar Source-X Fight_SetDefaultSwingDelays / Fight_Hit'i izler

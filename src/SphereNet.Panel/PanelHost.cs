@@ -993,6 +993,31 @@ public sealed class PanelHost : IDisposable
             return Results.Ok(new { lines });
         });
 
+        app.MapPost("/api/server/staffmessage", (StaffMessageRequest? req, HttpContext http) =>
+        {
+            string text = req?.Message?.Trim() ?? "";
+            if (text.Length == 0)
+                return Results.BadRequest(new { error = "Message required" });
+            if (text.Length > MaxSpeechLength || HasControlChars(text))
+                return Results.BadRequest(new { error = $"Message must be one line of at most {MaxSpeechLength} characters" });
+            if (_ctx.StaffMessage == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            _ctx.AuditLog?.Invoke($"staff message '{Clip(text)}' ip={ClientAddress(http)}");
+            int recipients = _ctx.StaffMessage(text);
+            return Results.Ok(new { recipients });
+        });
+
+        app.MapPost("/api/server/function", (ServerFunctionRequest? req, HttpContext http) =>
+        {
+            if (!TryValidateServerFunction(req, out string name, out string args, out string? error))
+                return Results.BadRequest(new { error });
+            if (_ctx.ExecuteServerFunction == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            _ctx.AuditLog?.Invoke($"server function {name} args='{Clip(args)}' ip={ClientAddress(http)}");
+            var lines = _ctx.ExecuteServerFunction(name, args);
+            return Results.Ok(new { lines });
+        });
+
         // --- Players ---
         app.MapGet("/api/players", () =>
         {
@@ -1018,6 +1043,38 @@ public sealed class PanelHost : IDisposable
             return _ctx.MessagePlayer(serial, req.Text.Trim())
                 ? Results.Ok(new { message = "Sent" })
                 : Results.NotFound(new { error = "Player is not online" });
+        });
+
+        // One route for every character action, online or offline, by serial only.
+        // The audit line is written before the call, so an action that hangs or
+        // throws on the game side is still on record.
+        app.MapPost("/api/players/{serial}/action", (uint serial, PlayerActionRequest? req, HttpContext http) =>
+        {
+            if (!IsCharacterSerial(serial))
+                return Results.BadRequest(new { error = "Not a character serial" });
+            if (!TryValidatePlayerAction(req, out var action, out string? error))
+                return Results.BadRequest(new { error });
+            if (_ctx.PlayerAction == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+
+            _ctx.AuditLog?.Invoke(
+                $"player action serial=0x{serial:X8} {DescribePlayerAction(action)} ip={ClientAddress(http)}");
+            var result = _ctx.PlayerAction(serial, action);
+            if (result.NotFound)
+                return Results.NotFound(new { error = result.Lines.FirstOrDefault() ?? "Character not found" });
+            return Results.Ok(new { ok = result.Ok, lines = result.Lines });
+        });
+
+        app.MapGet("/api/players/{serial}/detail", (uint serial) =>
+        {
+            if (!IsCharacterSerial(serial))
+                return Results.NotFound(new { error = "Not a character serial" });
+            if (_ctx.GetPlayerDetail == null)
+                return Results.Problem("Operation is not available", statusCode: 501);
+            var detail = _ctx.GetPlayerDetail(serial);
+            return detail == null
+                ? Results.NotFound(new { error = $"No character with serial 0x{serial:X8}" })
+                : Results.Ok(detail);
         });
 
         // --- IP blocks (the server keeps them in memory: gone after a restart) ---
@@ -1365,6 +1422,156 @@ public sealed class PanelHost : IDisposable
         return ha.ComputeHash(a).AsSpan().SequenceEqual(hb.ComputeHash(b));
     }
 
+    // --- Character / server action validation --------------------------------
+
+    /// <summary>Longest spoken or messaged line (Source-X MAX_TALK_BUFFER).</summary>
+    internal const int MaxSpeechLength = 256;
+    /// <summary>Longest verb line or function argument string.</summary>
+    internal const int MaxVerbLength = 512;
+    internal const int MaxFunctionNameLength = 64;
+    /// <summary>Longest jail sentence the panel accepts: one year, in minutes.</summary>
+    internal const int MaxJailMinutes = 525_600;
+
+    /// <summary>Character serials only (items start at 0x40000000).</summary>
+    internal static bool IsCharacterSerial(uint serial) => serial is > 0 and < 0x40000000;
+
+    internal static bool HasControlChars(string text)
+    {
+        foreach (char c in text)
+            if (char.IsControl(c)) return true;
+        return false;
+    }
+
+    /// <summary>Shortened, single-line copy of a value for the audit log.</summary>
+    internal static string Clip(string? text, int max = 120)
+    {
+        string s = (text ?? "").Replace('\r', ' ').Replace('\n', ' ');
+        return s.Length <= max ? s : s[..max] + "...";
+    }
+
+    /// <summary>Checks a character action and returns it with its name lower-cased,
+    /// its text trimmed, and only the fields that action reads.</summary>
+    internal static bool TryValidatePlayerAction(PlayerActionRequest? req,
+        out PlayerActionRequest normalized, out string? error)
+    {
+        normalized = new PlayerActionRequest("");
+        error = null;
+        string action = req?.Action?.Trim().ToLowerInvariant() ?? "";
+        if (!PlayerActions.All.Contains(action))
+        {
+            error = $"Unknown action '{Clip(req?.Action, 32)}'";
+            return false;
+        }
+
+        string? text = null;
+        if (PlayerActions.NeedsText(action))
+        {
+            text = req!.Text?.Trim() ?? "";
+            int max = action == PlayerActions.Verb ? MaxVerbLength : MaxSpeechLength;
+            if (text.Length == 0)
+            {
+                error = "Text required";
+                return false;
+            }
+            if (text.Length > max || HasControlChars(text))
+            {
+                error = $"Text must be one line of at most {max} characters";
+                return false;
+            }
+        }
+
+        int? hue = null;
+        if (action == PlayerActions.Message && req!.Hue is { } h)
+        {
+            if (h is < 0 or > 0xFFFF)
+            {
+                error = "Hue must be 0..0xFFFF";
+                return false;
+            }
+            hue = h;
+        }
+
+        int? x = null, y = null, z = null, map = null;
+        if (action == PlayerActions.Teleport)
+        {
+            if (req!.X is not { } tx || req.Y is not { } ty)
+            {
+                error = "Teleport needs x and y";
+                return false;
+            }
+            if (tx is < 0 or > short.MaxValue || ty is < 0 or > short.MaxValue)
+            {
+                error = "x and y must be 0..32767";
+                return false;
+            }
+            if (req.Z is { } tz && tz is < sbyte.MinValue or > sbyte.MaxValue)
+            {
+                error = "z must be -128..127";
+                return false;
+            }
+            if (req.Map is { } tm && tm is < 0 or > byte.MaxValue)
+            {
+                error = "map must be 0..255";
+                return false;
+            }
+            (x, y, z, map) = (tx, ty, req.Z, req.Map);
+        }
+
+        int? minutes = null;
+        if (action == PlayerActions.Jail && req!.Minutes is { } m)
+        {
+            if (m is < 0 or > MaxJailMinutes)
+            {
+                error = $"minutes must be 0..{MaxJailMinutes}";
+                return false;
+            }
+            minutes = m;
+        }
+
+        normalized = new PlayerActionRequest(action, text, hue, x, y, z, map, minutes);
+        return true;
+    }
+
+    internal static string DescribePlayerAction(PlayerActionRequest a)
+    {
+        var sb = new System.Text.StringBuilder("action=").Append(a.Action);
+        if (a.Text != null) sb.Append(" text='").Append(Clip(a.Text)).Append('\'');
+        if (a.Hue != null) sb.Append(" hue=").Append(a.Hue);
+        if (a.X != null) sb.Append(" to=").Append(a.X).Append(',').Append(a.Y)
+            .Append(',').Append(a.Z?.ToString() ?? "-").Append(',').Append(a.Map?.ToString() ?? "-");
+        if (a.Minutes != null) sb.Append(" minutes=").Append(a.Minutes);
+        return sb.ToString();
+    }
+
+    /// <summary>A function or SERV verb name (letters, digits, '_' and '.', not
+    /// starting with a digit or '.') and a one-line argument string.</summary>
+    internal static bool TryValidateServerFunction(ServerFunctionRequest? req,
+        out string name, out string args, out string? error)
+    {
+        name = req?.Name?.Trim() ?? "";
+        args = req?.Args?.Trim() ?? "";
+        error = null;
+        if (name.Length == 0)
+        {
+            error = "Function name required";
+            return false;
+        }
+        bool validName = name.Length <= MaxFunctionNameLength &&
+            (char.IsAsciiLetter(name[0]) || name[0] == '_') &&
+            name.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.');
+        if (!validName)
+        {
+            error = "Function name may hold only letters, digits, '_' and '.'";
+            return false;
+        }
+        if (args.Length > MaxVerbLength || HasControlChars(args))
+        {
+            error = $"Arguments must be one line of at most {MaxVerbLength} characters";
+            return false;
+        }
+        return true;
+    }
+
     private static IResult InvokeBackendMutation(Func<bool>? operation, string successMessage)
     {
         if (operation == null)
@@ -1663,5 +1870,7 @@ file record DebugRequest(bool PacketDebug, bool ScriptDebug);
 file record ScriptContentRequest(string Path, string Content);
 internal record ScriptValidationResult(bool Ok, string[] Errors);
 internal record PlayerMessageRequest(string Text);
+internal record StaffMessageRequest(string? Message);
+internal record ServerFunctionRequest(string? Name, string? Args);
 internal record IpBlockRequest(string? Ip);
 internal record ScheduleRequest(int Seconds, bool Restart, string? Message);

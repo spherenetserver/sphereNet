@@ -81,6 +81,66 @@ export interface PlayerInfo {
   sessionSeconds: number
 }
 
+export type PlayerActionName =
+  | 'say' | 'emote' | 'message' | 'verb' | 'heal' | 'resurrect' | 'kill'
+  | 'freeze' | 'unfreeze' | 'hide' | 'unhide' | 'teleport' | 'jail' | 'unjail'
+
+/** Body of POST /players/{serial}/action; each action reads only its own fields. */
+export interface PlayerActionRequest {
+  action: PlayerActionName
+  text?: string
+  hue?: number
+  x?: number
+  y?: number
+  z?: number
+  map?: number
+  minutes?: number
+}
+
+export interface PlayerActionResult {
+  ok: boolean
+  lines: string[]
+}
+
+export interface PlayerDetail {
+  serial: number
+  name: string
+  title: string
+  accountName: string
+  privLevel: number
+  online: boolean
+  isPlayer: boolean
+  body: number
+  mapId: number
+  x: number
+  y: number
+  z: number
+  str: number
+  dex: number
+  int: number
+  hits: number
+  maxHits: number
+  mana: number
+  maxMana: number
+  stam: number
+  maxStam: number
+  fame: number
+  karma: number
+  kills: number
+  notoriety: number
+  notorietyName: string
+  dead: boolean
+  frozen: boolean
+  hidden: boolean
+  poisoned: boolean
+  jailed: boolean
+  /** Non-zero skills only; value in tenths (1000 = 100.0). */
+  skills: { id: number; name: string; value: number }[]
+  tags: { key: string; value: string }[]
+  /** True when the character has more tags than the list carries. */
+  tagsTruncated: boolean
+}
+
 export interface PaperdollItem {
   layer: number
   serial: number
@@ -252,6 +312,10 @@ export const serverApi = {
   restock:   () => api.post('/server/restock'),
   broadcast: (message: string) => api.post('/server/broadcast', { message }),
   command:   (command: string) => api.post<{ lines: string[] }>('/server/command', { command }),
+  // Online clients at Counsel level or above only.
+  staffMessage: (message: string) => api.post<{ recipients: number }>('/server/staffmessage', { message }),
+  // A [FUNCTION] or SERV verb run with the server as its object.
+  runFunction:  (name: string, args: string) => api.post<{ lines: string[] }>('/server/function', { name, args }),
   // What the RUNNING binary says about itself, read from its own build stamp.
   // Deliberately separate from the updater's version metadata: those describe
   // what was downloaded, this describes what is actually executing, and the two
@@ -277,6 +341,10 @@ export const playersApi = {
   list:       () => api.get<PlayerInfo[]>('/players'),
   disconnect: (serial: number) => api.post<{ message?: string }>(apiPath('/players', serial, 'disconnect')),
   message:    (serial: number, text: string) => api.post(apiPath('/players', serial, 'message'), { text }),
+  // Any character by serial, online or offline (message needs it online).
+  action:     (serial: number, req: PlayerActionRequest) =>
+    api.post<PlayerActionResult>(apiPath('/players', serial, 'action'), req),
+  detail:     (serial: number) => api.get<PlayerDetail>(apiPath('/players', serial, 'detail')),
 }
 
 export const paperdollApi = {

@@ -59,6 +59,26 @@ public static class HostPanelContext
                 Run(() => ipc.MutateAsync("player_disconnect", new { serial = (int)serial })),
             MessagePlayer = (serial, text) =>
                 Run(() => ipc.MutateAsync("player_message", new { serial = (int)serial, text })),
+            // "serial"/"action"/"text"..., never t/id/qry/mut: those are the envelope.
+            PlayerAction = (serial, req) =>
+                Run(() => ipc.MutateAsync<PlayerActionResult>("player_action", new
+                {
+                    serial = (int)serial,
+                    action = req.Action,
+                    text = req.Text,
+                    hue = req.Hue,
+                    x = req.X,
+                    y = req.Y,
+                    z = req.Z,
+                    map = req.Map,
+                    minutes = req.Minutes,
+                })) ?? PlayerActionResult.Fail("The game server returned no result."),
+            GetPlayerDetail = serial =>
+                Run(() => ipc.QueryAsync<PlayerDetail>("player_detail", new { serial = (int)serial })),
+            StaffMessage = text =>
+                RunValue(() => ipc.MutateAsync<int>("staff_message", new { text })),
+            ExecuteServerFunction = (name, args) =>
+                Run(() => ipc.MutateAsync<string[]>("server_function", new { name, args })) ?? [],
             GetIpBlocks = () => Run(() => ipc.QueryAsync<List<string>>("ipblocks")) ?? [],
             AddIpBlock = ip => Run(() => ipc.MutateAsync("ipblock_add", new { ip })),
             RemoveIpBlock = ip => Run(() => ipc.MutateAsync("ipblock_remove", new { ip })),
@@ -103,4 +123,6 @@ public static class HostPanelContext
     private static T? Run<T>(Func<Task<T?>> fn) => fn().GetAwaiter().GetResult();
 
     private static bool Run(Func<Task<bool>> fn) => fn().GetAwaiter().GetResult();
+
+    private static T RunValue<T>(Func<Task<T>> fn) where T : struct => fn().GetAwaiter().GetResult();
 }

@@ -234,6 +234,22 @@ public sealed class IpcServer : IDisposable
             _ctx?.DisconnectPlayer?.Invoke((uint)root.GetRequiredInt("serial")) ?? false,
         "player_message" =>
             _ctx?.MessagePlayer?.Invoke((uint)root.GetRequiredInt("serial"), root.GetRequiredStr("text")) ?? false,
+        // Argument names stay clear of the envelope keys (t, id, qry, mut).
+        "player_action" => _ctx?.PlayerAction?.Invoke(
+            (uint)root.GetRequiredInt("serial"),
+            new PlayerActionRequest(
+                root.GetRequiredStr("action"),
+                root.GetStr("text"),
+                root.GetOptInt("hue"),
+                root.GetOptInt("x"),
+                root.GetOptInt("y"),
+                root.GetOptInt("z"),
+                root.GetOptInt("map"),
+                root.GetOptInt("minutes"))),
+        "player_detail" => _ctx?.GetPlayerDetail?.Invoke((uint)root.GetRequiredInt("serial")),
+        "staff_message" => _ctx?.StaffMessage?.Invoke(root.GetRequiredStr("text")) ?? 0,
+        "server_function" => _ctx?.ExecuteServerFunction?.Invoke(
+            root.GetRequiredStr("name"), root.GetStr("args") ?? "") ?? [],
         "ipblocks" => (object?)(_ctx?.GetIpBlocks?.Invoke() ?? []),
         "ipblock_add" => _ctx?.AddIpBlock?.Invoke(root.GetRequiredStr("ip")) ?? false,
         "ipblock_remove" => _ctx?.RemoveIpBlock?.Invoke(root.GetRequiredStr("ip")) ?? false,
@@ -307,6 +323,17 @@ file static class JsonEx
         element.TryGetProperty(key, out var value) && value.TryGetInt32(out int result)
             ? result
             : throw new ArgumentException($"'{key}' must be an integer");
+
+    /// <summary>An optional integer: absent or null reads as null, anything else
+    /// that is not an integer is refused.</summary>
+    public static int? GetOptInt(this JsonElement element, string key)
+    {
+        if (!element.TryGetProperty(key, out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.TryGetInt32(out int result)
+            ? result
+            : throw new ArgumentException($"'{key}' must be an integer");
+    }
 
     public static string? TryGetProp(this JsonElement element, string key) =>
         element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String

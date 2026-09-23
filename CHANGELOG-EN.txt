@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Admin panel: character actions and detail, staff message, server functions
+------------------------------------------------------------------------
+ADD - POST /api/players/{serial}/action runs an action on any character by
+      serial, online or offline: say / emote (the SAY/SAYU/EMOTE verbs, heard
+      by nearby clients), message (private SysMessage with optional hue),
+      verb (a verb line through the r_Verb chain - verb table, [FUNCTION],
+      property - with the panel as an owner-level server source; SysMessages
+      back to the source are returned), heal, resurrect and kill (the
+      character RESURRECT/KILL verbs), freeze/unfreeze (STATF_FREEZE),
+      hide/unhide, teleport (checked against the loaded map size) and
+      jail/unjail (the JAIL command's own jail and release). Answers
+      {ok, lines}; every call is audited with the action and its arguments.
+ADD - GET /api/players/{serial}/detail: stats, hits/mana/stam with maxima,
+      fame, karma, kills, notoriety, position, account, plevel, state flags,
+      non-zero skills and up to 100 TAGs (long values cut short).
+ADD - POST /api/server/staffmessage sends a line to online clients at
+      Counsel level or above; POST /api/server/function runs a [FUNCTION]
+      with the server as its object, reads a SERV property, or runs a SERV
+      verb line, returning its output lines. Both are audited.
+ADD - All four operations cross the Host IPC bridge (player_action,
+      player_detail, staff_message, server_function).
+ADD - Panel: per-player actions dialog (speak, verb runner with output,
+      quick actions with in-page confirmation for kill and jail, teleport
+      form, stats/skills/tags), also reachable by serial for offline
+      characters; server page staff message box, function runner, and a
+      remembered list of the last 20 console commands (click to rerun).
+
 [2026-09-23] - Source-X swing timing, combat sounds, combat names; paperdoll title line
 ------------------------------------------------------------------------
 FIX - Swings follow Source-X Fight_SetDefaultSwingDelays / Fight_Hit

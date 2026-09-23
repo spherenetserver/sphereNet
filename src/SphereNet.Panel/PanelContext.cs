@@ -34,6 +34,20 @@ public sealed class PanelContext
     public Func<uint, bool>? DisconnectPlayer { get; set; }
     public Func<uint, string, bool>? MessagePlayer { get; set; }
 
+    // Character actions and detail by serial (online or offline; the whole world
+    // is in memory). An action answers with its outcome and the lines it produced;
+    // detail is null for an unknown or deleted character.
+    public Func<uint, PlayerActionRequest, PlayerActionResult>? PlayerAction { get; set; }
+    public Func<uint, PlayerDetail?>? GetPlayerDetail { get; set; }
+
+    // Staff-only message: sent to online clients at Counsel level or above.
+    // Returns how many received it.
+    public Func<string, int>? StaffMessage { get; set; }
+
+    // Server-level script call: a [FUNCTION] or a SERV verb line run with the
+    // server as its object and the panel as its source. Returns output lines.
+    public Func<string, string, string[]>? ExecuteServerFunction { get; set; }
+
     // IP block list (runtime; the server keeps it in memory)
     public Func<IReadOnlyList<string>>? GetIpBlocks { get; set; }
     public Func<string, bool>? AddIpBlock { get; set; }
@@ -184,6 +198,111 @@ public record PaperdollItemInfo(
     int Hue,
     string Name
 );
+
+/// <summary>One panel action on a character. <see cref="Action"/> is one of
+/// <see cref="PlayerActions.All"/>; the other fields are read by the actions that
+/// take them (text: say/emote/message/verb, hue: message, x/y/z/map: teleport,
+/// minutes: jail).</summary>
+public record PlayerActionRequest(
+    string Action,
+    string? Text = null,
+    int? Hue = null,
+    int? X = null,
+    int? Y = null,
+    int? Z = null,
+    int? Map = null,
+    int? Minutes = null
+);
+
+/// <summary>What an action did. <see cref="NotFound"/> = no such character.</summary>
+public record PlayerActionResult(
+    bool Ok,
+    IReadOnlyList<string> Lines,
+    bool NotFound = false
+)
+{
+    public static PlayerActionResult Missing(uint serial) =>
+        new(false, [$"No character with serial 0x{serial:X8}."], NotFound: true);
+    public static PlayerActionResult Fail(string line) => new(false, [line]);
+    public static PlayerActionResult Done(params string[] lines) => new(true, lines);
+}
+
+/// <summary>The action names the panel accepts.</summary>
+public static class PlayerActions
+{
+    public const string Say = "say";
+    public const string Emote = "emote";
+    public const string Message = "message";
+    public const string Verb = "verb";
+    public const string Heal = "heal";
+    public const string Resurrect = "resurrect";
+    public const string Kill = "kill";
+    public const string Freeze = "freeze";
+    public const string Unfreeze = "unfreeze";
+    public const string Hide = "hide";
+    public const string Unhide = "unhide";
+    public const string Teleport = "teleport";
+    public const string Jail = "jail";
+    public const string Unjail = "unjail";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Say, Emote, Message, Verb, Heal, Resurrect, Kill, Freeze, Unfreeze,
+        Hide, Unhide, Teleport, Jail, Unjail,
+    };
+
+    /// <summary>Actions that need a line of text.</summary>
+    public static bool NeedsText(string action) =>
+        action is Say or Emote or Message or Verb;
+}
+
+/// <summary>A character's state for the panel's detail view. Skill values are in
+/// tenths (1000 = 100.0); only non-zero skills are listed. Tags are capped at
+/// <see cref="MaxTags"/> entries with long values cut short.</summary>
+public record PlayerDetail(
+    uint Serial,
+    string Name,
+    string Title,
+    string AccountName,
+    int PrivLevel,
+    bool Online,
+    bool IsPlayer,
+    int Body,
+    int MapId,
+    int X,
+    int Y,
+    int Z,
+    int Str,
+    int Dex,
+    int Int,
+    int Hits,
+    int MaxHits,
+    int Mana,
+    int MaxMana,
+    int Stam,
+    int MaxStam,
+    int Fame,
+    int Karma,
+    int Kills,
+    int Notoriety,
+    string NotorietyName,
+    bool Dead,
+    bool Frozen,
+    bool Hidden,
+    bool Poisoned,
+    bool Jailed,
+    IReadOnlyList<SkillValueInfo> Skills,
+    IReadOnlyList<TagInfo> Tags,
+    bool TagsTruncated = false
+)
+{
+    public const int MaxTags = 100;
+    public const int MaxTagValueLength = 200;
+}
+
+public record SkillValueInfo(int Id, string Name, int Value);
+
+public record TagInfo(string Key, string Value);
 
 public record AccountInfo(
     string Name,

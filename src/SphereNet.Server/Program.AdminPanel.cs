@@ -303,6 +303,13 @@ public static partial class Program
                     client.SysMessage(text);
                     return true;
                 }, "player message"),
+                PlayerAction = (serial, req) => InvokePanelOnMainLoop(
+                    () => PanelActions.Execute(serial, req), "player action"),
+                GetPlayerDetail = serial => InvokePanelOnMainLoop(
+                    () => PanelActions.Detail(serial), "player detail"),
+                StaffMessage = text => InvokePanelOnMainLoop(() => SendStaffMessage(text), "staff message"),
+                ExecuteServerFunction = (name, args) => InvokePanelOnMainLoop(
+                    () => RunPanelServerFunction(name, args), "server function"),
 
                 GetIpBlocks = () => _ipBlockList?.GetAll().OrderBy(ip => ip).ToList() ?? [],
                 AddIpBlock = ip => _ipBlockList?.Add(ip) ?? false,
@@ -585,6 +592,72 @@ public static partial class Program
 
     private static SphereNet.Game.Clients.GameClient? FindPlayingClient(uint serial) =>
         _clients.Values.FirstOrDefault(c => c.IsPlaying && c.Character?.Uid.Value == serial);
+
+    // ==================== Panel character / server actions ====================
+
+    private static PanelCharacterActions? _panelActions;
+
+    /// <summary>The panel's character actions, built on first use (the world and
+    /// the command handler exist by then).</summary>
+    private static PanelCharacterActions PanelActions => _panelActions ??= new PanelCharacterActions(
+        _world,
+        ch => TryGetClientFor(ch, out var c) && c.IsPlaying ? c : null,
+        ch => { if (TryGetClientFor(ch, out var c)) c.SendSelfRedraw(); },
+        _commands);
+
+    /// <summary>A line to every playing client at Counsel level or above. Main loop
+    /// only. Returns how many received it.</summary>
+    private static int SendStaffMessage(string text)
+    {
+        int sent = 0;
+        foreach (var client in _clients.Values)
+        {
+            if (client.IsPlaying && client.Character is { } ch && ch.PrivLevel >= PrivLevel.Counsel)
+            {
+                client.SysMessage($"[Staff] {text}");
+                sent++;
+            }
+        }
+        return sent;
+    }
+
+    /// <summary>A server-level script call from the panel, resolved the way the
+    /// Source-X console resolves a line against g_Serv: a [FUNCTION] of that name
+    /// runs with the server as its object; otherwise a bare name with no argument
+    /// reads the SERV property; otherwise the line runs as a SERV verb. The panel is
+    /// the source (owner privilege), and what the script sends back to it is
+    /// returned. Main loop only.</summary>
+    private static string[] RunPanelServerFunction(string name, string args)
+    {
+        string bare = name.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase) ? name[5..] : name;
+        if (bare.Length == 0)
+            return ["Function name required."];
+
+        var console = new PanelCharacterActions.PanelConsole();
+        var lines = new List<string>();
+
+        if (_triggerRunner != null && !bare.Contains('.') && _triggerRunner.HasFunction(bare))
+        {
+            bool ran = _triggerRunner.TryEvaluateFunction(bare, args, _serverHookContext, console, null, out string value);
+            lines.AddRange(console.Lines);
+            lines.Add(ran ? $"{bare} returned: {value}" : $"{bare} could not be run.");
+            return [.. lines];
+        }
+
+        if (args.Length == 0 && ResolveServerProperty(bare) is { } property)
+            return [$"SERV.{bare} = {property}"];
+
+        if (_triggerRunner == null)
+            return ["The script engine is not running."];
+
+        string verb = "SERV." + bare;
+        _triggerRunner.Interpreter.Execute(
+            [new SphereNet.Scripting.Parsing.ScriptKey(verb, args)],
+            _serverHookContext, console, null, new ScriptScope());
+        lines.AddRange(console.Lines);
+        lines.Add(args.Length > 0 ? $"Executed: {verb} {args}" : $"Executed: {verb}");
+        return [.. lines];
+    }
 
     // ==================== Dialog designer data sources ====================
 

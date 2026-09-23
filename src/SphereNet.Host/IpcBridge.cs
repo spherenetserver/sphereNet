@@ -85,6 +85,10 @@ public sealed class IpcBridge : IDisposable
     public async Task<bool> MutateAsync(string mut, object? args = null)
         => await RequestAsync<bool>("mut", mut, args).ConfigureAwait(false);
 
+    /// <summary>A mutation that answers with data (an action's outcome and lines).</summary>
+    public Task<T?> MutateAsync<T>(string mut, object? args = null)
+        => RequestAsync<T>("mut", mut, args);
+
     private async Task<T?> RequestAsync<T>(string kind, string op, object? args)
     {
         if (!IsConnected)

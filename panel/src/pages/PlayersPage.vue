@@ -9,6 +9,9 @@
           <button type="submit" class="btn-ghost" :disabled="!serialInput.trim()">
             <UserSquare :size="15" /> {{ t('players.openBySerial') }}
           </button>
+          <button type="button" class="btn-ghost" :disabled="!serialInput.trim()" @click="actionsBySerial">
+            <Wrench :size="15" /> {{ t('players.actionsBySerial') }}
+          </button>
         </form>
       </div>
       <button class="btn-ghost" @click="refetch()">
@@ -58,6 +61,9 @@
               <button class="icon-btn" :title="t('players.openPaperdoll')" @click="paperdollSerial = p.serial">
                 <UserSquare :size="15" />
               </button>
+              <button class="icon-btn" :title="t('players.actions')" @click="openActions(p.serial, p.charName)">
+                <Wrench :size="15" />
+              </button>
               <button class="icon-btn" :title="t('players.sendMessage')" :disabled="busy.has(p.serial)" @click="openMessage(p)">
                 <MessageSquare :size="15" />
               </button>
@@ -91,6 +97,8 @@
       {{ t('common.staleList', { error: loadError }) }}
     </p>
 
+    <PlayerActionsModal v-if="actionsTarget !== null" :serial="actionsTarget.serial" :name-hint="actionsTarget.name"
+      @close="actionsTarget = null" @paperdoll="s => (paperdollSerial = s)" />
     <PaperdollModal v-if="paperdollSerial !== null" :serial="paperdollSerial" @close="paperdollSerial = null" />
 
     <!-- Message modal -->
@@ -117,12 +125,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import {
-  RefreshCw, Users, Search, Loader2, AlertTriangle, MessageSquare, Unplug, Send, X, UserSquare,
+  RefreshCw, Users, Search, Loader2, AlertTriangle, MessageSquare, Unplug, Send, X, UserSquare, Wrench,
 } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { playersApi, errorMessage, type PlayerInfo } from '@/lib/api'
 import { t } from '@/i18n'
 import PaperdollModal from '@/components/PaperdollModal.vue'
+import PlayerActionsModal from '@/components/PlayerActionsModal.vue'
 import { hexSerial, parseSerial } from '@/lib/paperdoll'
 
 const qc = useQueryClient()
@@ -179,6 +188,24 @@ function openBySerial() {
   }
   actionError.value = ''
   paperdollSerial.value = serial
+}
+
+// --- Actions / detail (any character by serial, offline too) ---
+const actionsTarget = ref<{ serial: number; name?: string } | null>(null)
+
+function openActions(serial: number, name?: string) {
+  actionsTarget.value = { serial, name }
+}
+
+function actionsBySerial() {
+  const serial = parseSerial(serialInput.value)
+  if (serial === null) {
+    actionInfo.value = ''
+    actionError.value = t('players.invalidSerial', { value: serialInput.value.trim() })
+    return
+  }
+  actionError.value = ''
+  openActions(serial)
 }
 
 // --- Message modal ---

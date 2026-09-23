@@ -2563,6 +2563,43 @@ public partial class Character : ObjBase
 
     public void Memory_Fight_Start(Character target) => MemoryState.Fight_Start(target);
 
+    /// <summary>Wakes a parked NPC so it acts on its next tick (the host wires the
+    /// timer-wheel reschedule).</summary>
+    public static Action<Character>? WakeNpc { get; set; }
+
+    /// <summary>Source-X CChar::OnAttackedBy (CCharFight.cpp:329): someone did me
+    /// harm. I remember them as HARMEDBY/IRRITATEDBY - and AGGREIVED when they struck
+    /// first - and they go on my attacker list. An NPC that is not already fighting
+    /// turns on them. Upstream runs this for every harmful spell that lands, damage
+    /// or not (CCharSpell.cpp:3777); SphereNet only noted an attacker when a spell
+    /// did damage, so a Clumsy or Curse on a grey NPC went unanswered and even a
+    /// Magic Arrow left it standing.</summary>
+    public bool OnAttackedBy(Character? src)
+    {
+        if (src == null || src == this)
+            return true;
+        if (IsDead || IsDeleted)
+            return false;
+        if (IsInWarMode && FightTarget == src.Uid)
+            return true;
+
+        var types = MemoryType.HarmedBy | MemoryType.IrritatedBy;
+        if ((CombatFlags & (int)SphereNet.Game.Combat.CombatFlags.AttackNoAggreived) == 0 &&
+            src.Memory_FindObjTypes(Uid, MemoryType.Aggreived) == null)
+            types |= MemoryType.Aggreived;
+        Memory_AddObjTypes(src.Uid, types);
+        CombatState.AddAttacker(src.Uid);
+
+        if (!IsPlayer && !FightTarget.IsValid)
+        {
+            FightTarget = src.Uid;
+            NextNpcActionTime = 0;
+            NextNpcReacquireTime = 0;
+            WakeNpc?.Invoke(this);
+        }
+        return true;
+    }
+
     public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType, World.GameWorld? world = null)
     {
         string normalized = NormalizeMemoryType(rawType);

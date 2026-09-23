@@ -1661,6 +1661,12 @@ public sealed class SpellEngine
             }
         }
 
+        // The victim learns it was attacked - memory, attacker list, and an NPC turns
+        // on the caster - whether or not the spell does damage (OnSpellEffect ->
+        // OnAttackedBy, CCharSpell.cpp:3777).
+        if (harmful && caster != target && !target.OnAttackedBy(caster))
+            return;
+
         int effect = def.GetEffect(skillLevel);
 
         // Randomize potency (Source-X: iSkillLevel/2 + rand(iSkillLevel/2))

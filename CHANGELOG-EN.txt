@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Harmful spells make the victim fight back; ADDCIRCLE fills the first spell
+------------------------------------------------------------------------
+FIX - Every harmful spell that lands runs upstream OnAttackedBy on the victim,
+      damage or not (CCharSpell.cpp:3777, CCharFight.cpp:329): it remembers the
+      caster as HARMEDBY/IRRITATEDBY (AGGREIVED when struck first), adds the
+      caster to its attacker list, and an NPC that is not already fighting
+      turns on the caster and wakes. A Clumsy or Curse on a grey NPC went
+      unanswered, and even damage spells only noted the attacker without
+      giving the NPC a target.
+FIX - ADDCIRCLE writes spell n at bit n-1 of the book mask, as
+      AddSpellbookSpell does (CItem.cpp:4485). Spell n went to bit n, so every
+      book filled this way (i_full_spellbook) lacked Clumsy and the 64th
+      spell. REMOVESPELL uses the same numbering. Books already filled by
+      the old code keep their shifted mask.
+TEST - HarmfulSpellAttackedByTests, AddCircleVerbTests.
+
 [2026-09-23] - NPC casters cast good spells only when needed
 ------------------------------------------------------------------------
 FIX - An NPC casts a good, character-targeted spell only when it suits, as

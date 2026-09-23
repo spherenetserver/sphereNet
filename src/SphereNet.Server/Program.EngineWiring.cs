@@ -2652,6 +2652,7 @@ public static partial class Program
             _world.ClientLingerExpired += ch =>
                 BroadcastNearby(ch.Position, 18, new PacketDeleteObject(ch.Uid.Value), ch.Uid.Value);
             SphereNet.Game.Clients.GameClient.OnWakeNpc = WakeNpc;
+            SphereNet.Game.Objects.Characters.Character.WakeNpc = WakeNpc;
             SphereNet.Game.Clients.GameClient.ServerListProvider = BuildServerList;
             SphereNet.Game.Clients.GameClient.BotSpawnLocationProvider = acctName =>
             {

@@ -1909,6 +1909,26 @@ public class Item : ObjBase
         return true;
     }
 
+    /// <summary>Remove a spell from the book (the counterpart of TryLearnSpell).</summary>
+    public bool TryForgetSpell(int spellId)
+    {
+        int bit = spellId - SpellbookOffset - 1;
+        if (!IsSpellbook || bit is < 0 or >= 64) return false;
+        uint mask = 1u << (bit % 32);
+        if (bit < 32)
+        {
+            if ((_more1 & mask) == 0) return false;
+            More1 &= ~mask;
+        }
+        else
+        {
+            if ((_more2 & mask) == 0) return false;
+            More2 &= ~mask;
+        }
+        MarkDirty(DirtyFlag.Amount);
+        return true;
+    }
+
     private bool IsSpellbookComponentType => ItemType is
         ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala or
         ItemType.SpellbookExtra or ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
@@ -3991,13 +4011,11 @@ public class Item : ObjBase
 
                 for (long circle = topCircle; circle > 0; --circle)
                 {
+                    // Spell n sits at bit n-1 (AddSpellbookSpell, CItem.cpp:4485). Writing
+                    // spell n at bit n dropped Clumsy (bit 0) from every book filled
+                    // this way and never reached the 64th spell.
                     for (int i = 1; i < 9; ++i)
-                    {
-                        long spell = ((circle - 1) * 8) + i;
-                        if (spell < 0 || spell >= 64) continue;
-                        if (spell < 32) _more1 |= 1u << (int)spell;
-                        else _more2 |= 1u << (int)(spell - 32);
-                    }
+                        TryLearnSpell((int)(((circle - 1) * 8) + i));
                     if (!andLower)
                         break;
                 }
@@ -4005,13 +4023,9 @@ public class Item : ObjBase
             }
 
             case "REMOVESPELL":
-                if (int.TryParse(args.Trim(), out int rmSpell) && rmSpell >= 0 && rmSpell < 64)
-                {
-                    if (rmSpell < 32)
-                        _more1 &= ~(1u << rmSpell);
-                    else
-                        _more2 &= ~(1u << (rmSpell - 32));
-                }
+                // The same spell numbering ADDSPELL takes: spell n at bit n-1.
+                if (int.TryParse(args.Trim(), out int rmSpell))
+                    TryForgetSpell(rmSpell);
                 return true;
 
             // Ship navigation commands

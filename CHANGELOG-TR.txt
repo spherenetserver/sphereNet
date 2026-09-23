@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Zararli buyuler kurbani karsilik vermeye iter; ADDCIRCLE ilk buyuyu ekler
+------------------------------------------------------------------------
+DUZELTME - Hedefe ulasan her zararli buyu, hasar olsun olmasin, kurbanda
+           Source-X OnAttackedBy'i calistirir (CCharSpell.cpp:3777,
+           CCharFight.cpp:329): buyucuyu HARMEDBY/IRRITATEDBY (ilk vuran
+           oysa AGGREIVED) olarak hatirlar, saldirgan listesine ekler; dovusmeyen
+           bir NPC buyucuye doner ve uyanir. Gri bir NPC'ye Clumsy ya da Curse
+           cevapsiz kaliyordu; hasar buyuleri bile NPC'ye hedef vermiyordu.
+DUZELTME - ADDCIRCLE, AddSpellbookSpell gibi n. buyuyu kitap maskesinin n-1.
+           bitine yazar (CItem.cpp:4485). n. buyu n. bite gidiyordu; bu sekilde
+           doldurulan her kitapta (i_full_spellbook) Clumsy ve 64. buyu eksikti.
+           REMOVESPELL ayni numaralamayi kullanir. Eski kodla doldurulmus
+           kitaplar kaymis maskelerini korur.
+TEST - HarmfulSpellAttackedByTests, AddCircleVerbTests.
+
 [2026-09-23] - NPC buyuculer faydali buyuleri sadece gerektiginde yapar
 ------------------------------------------------------------------------
 DUZELTME - NPC, karaktere yapilan faydali bir buyuyu Source-X NPC_FightCast

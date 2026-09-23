@@ -39,7 +39,34 @@ public sealed class AddCircleVerbTests
         Assert.True(book.TryGetProperty("MORE2", out string? m2));
         uint more1 = uint.Parse(m1!, System.Globalization.NumberStyles.HexNumber);
         uint more2 = uint.Parse(m2!, System.Globalization.NumberStyles.HexNumber);
-        return spell < 32 ? (more1 & (1u << spell)) != 0 : (more2 & (1u << (spell - 32))) != 0;
+        int bit = spell - 1;                             // spell n is bit n-1 (CItem.cpp:4485)
+        return bit < 32 ? (more1 & (1u << bit)) != 0 : (more2 & (1u << (bit - 32))) != 0;
+    }
+
+    /// <summary>Field report: i_full_spellbook (@Create: FOR c 1 8 / ADDCIRCLE c)
+    /// came without its first spell - spell n was written at bit n, so Clumsy's bit 0
+    /// never got set and the 64th spell was out of range.</summary>
+    [Fact]
+    public void EveryCircleGivesAFullBookFromClumsyToWaterElemental()
+    {
+        var book = Book();
+        for (int circle = 1; circle <= 8; circle++)
+            Assert.True(book.TryExecuteCommand("ADDCIRCLE", circle.ToString(), new Console()));
+
+        Assert.Equal(uint.MaxValue, book.More1);
+        Assert.Equal(uint.MaxValue, book.More2);
+        Assert.True(book.ContainsSpell((int)SpellType.Clumsy));
+        Assert.True(book.ContainsSpell(64));
+    }
+
+    [Fact]
+    public void RemoveSpellUsesTheSameNumbering()
+    {
+        var book = Book();
+        Assert.True(book.TryExecuteCommand("ADDCIRCLE", "1", new Console()));
+        Assert.True(book.TryExecuteCommand("REMOVESPELL", "1", new Console()));
+        Assert.False(Has(book, 1));
+        Assert.True(Has(book, 2));
     }
 
     [Fact]

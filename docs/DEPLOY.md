@@ -200,6 +200,17 @@ telnet directly to the internet.
   keys on that address when the request comes from loopback.
 - `/api/auth/local-hint` never answers a proxied request, but keep
   `ADMINPANELAUTOFILL=0` on any machine reachable from outside.
+- Public paperdolls (`PUBLICPAPERDOLL=1`) are served by the same panel port at
+  `/public/paperdoll/<serial>.png` and `/public/paperdoll/<serial>.json`, without
+  a login. To show them on a website, route only the `/public/` prefix to the
+  panel (keep `/api/` and the panel UI internal if you can), add the public name
+  to `ADMINPANELALLOWEDHOSTS`, and list the site in
+  `PUBLICPAPERDOLLORIGINS` if its scripts `fetch` the JSON (a plain `<img>` needs
+  no CORS). Write host names there (`www.example.org`, `example.org:8443`), not
+  `https://...`: sphere.ini treats `//` as a comment. Only player characters
+  below Counselor are shown; everything else is a 404. Responses carry
+  `Cache-Control: max-age=60`, and each client address is limited to 60
+  requests a minute (keyed on `X-Forwarded-For` from the proxy).
 
 The Host starts the game server itself (`HOSTAUTOSTART=1`) and restarts it
 after a crash (`HOSTRESTARTONCRASH=1`, backing off, and giving up after five

@@ -779,9 +779,7 @@ public sealed partial class GameClient
 
         // Source-X parity: send paperdoll on login so the client has name/title
         // data immediately (some clients restore the paperdoll window on reconnect).
-        string paperdollTitle = string.IsNullOrEmpty(_character.Title)
-            ? _character.GetName()
-            : $"{_character.GetName()}, {_character.Title}";
+        string paperdollTitle = PaperdollText.Build(_character);
         _netState.Send(new PacketOpenPaperdoll(
             _character.Uid.Value, paperdollTitle, 0x02));
         _paperdollThrottle[_character.Uid.Value] = Environment.TickCount64;

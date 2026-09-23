@@ -224,6 +224,11 @@ public static partial class Program
                     () => ListAllDialogNames(), "dialog list"),
                 GetDialogSource = name => InvokePanelOnMainLoop(() => GetDialogSectionSource(name), "dialog source"),
 
+                // Paperdoll by serial: the world read happens on the main loop, the
+                // picture is drawn on the calling (panel / IPC) thread.
+                GetPaperdoll = serial => InvokePanelOnMainLoop(() => BuildPaperdollInfo(serial), "paperdoll"),
+                GetPaperdollPng = GetPaperdollPng,
+
                 GetStats = () => InvokePanelOnMainLoop(() =>
                 {
                     // One sector walk, not two: the world totals are the sum of the

@@ -124,6 +124,7 @@ public sealed class IniUnreadKeyReportTests : IDisposable
                      "HostShutdownQuietMs", "HostShutdownTimeoutMs",
                      "HostAutoStart", "HostRestartOnCrash",
                      "AdminPanelAutoFill", "AdminPanelAllowedHosts",
+                     "PublicPaperdoll", "PublicPaperdollOrigins",
                      "ScriptPackRepo", "ScriptPackBranch",
                  })
             ini.GetValue("SPHERE", owned);

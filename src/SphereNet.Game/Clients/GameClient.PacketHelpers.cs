@@ -1391,9 +1391,7 @@ public sealed partial class GameClient
             return;
         _paperdollThrottle[ch.Uid.Value] = now;
 
-        string title = string.IsNullOrEmpty(ch.Title)
-            ? ch.GetName()
-            : $"{ch.GetName()}, {ch.Title}";
+        string title = PaperdollText.Build(ch);
         byte paperdollFlags = 0;
         if (ch.IsInWarMode) paperdollFlags |= 0x01;
         if (_character != null && ch == _character) paperdollFlags |= 0x02;

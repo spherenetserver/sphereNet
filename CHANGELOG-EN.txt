@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Character paperdoll in the panel and a public paperdoll API
+------------------------------------------------------------------------
+ADD - The server renders a character's paperdoll the way the client draws it
+      (ClassicUO PaperDollInteractable): body gump by race and gender with the
+      skin hue, every worn item's paperdoll gump (tiledata Animation + 50000 /
+      60000, falling back to the other gender) in the client's layer order,
+      covered layers hidden, item hues from hues.mul with partial hue, the
+      backpack, and optionally the paperdoll frame. Offline characters show
+      what they last wore. Results are cached per look.
+ADD - Panel: clicking a character on the Players page (or entering a serial)
+      opens the paperdoll with its text line - the same "Name, Title" string
+      the 0x88 packet sends - and the equipment list. Authenticated API:
+      /api/paperdoll/{serial}[.json|.png?frame=1].
+ADD - Public API, off by default: /public/paperdoll/{serial}.png and .json
+      with PUBLICPAPERDOLL=1. Only player characters (never staff or NPCs;
+      unknown, staff and NPC serials all answer the same 404); no account,
+      IP or privilege in the JSON; Cache-Control 60 s; 60 requests per minute
+      per client. PUBLICPAPERDOLLORIGINS lists the web site host names allowed
+      by CORS. Access is by serial, not by name.
+FIX - Gump art is decoded with 4-byte row offsets (ClassicUO
+      start + rowLookup[y] << 2); they were read as 2-byte units, so every
+      gump from gumpart.mul - including the gump designer's previews - came out
+      as horizontal streaks.
+TEST - PaperdollRendererTests, PaperdollEndpointTests, IpcPaperdollTests,
+       panel paperdoll tests.
+
 [2026-09-23] - Harmful spells make the victim fight back; ADDCIRCLE fills the first spell
 ------------------------------------------------------------------------
 FIX - Every harmful spell that lands runs upstream OnAttackedBy on the victim,

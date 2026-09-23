@@ -229,6 +229,7 @@ public sealed class PanelHost : IDisposable
             });
 
             MapRoutes(_app, tokens);
+            MapPaperdollRoutes(_app);
 
             // --- Dialog designer ---------------------------------------------
             // Gump art lives OUTSIDE /api so plain <img> tags can load it
@@ -553,6 +554,167 @@ public sealed class PanelHost : IDisposable
 
     private static string TrimTrailingSlash(string path) =>
         path.Length > 1 && path[^1] == '/' ? path[..^1] : path;
+
+    // --- Paperdoll ---------------------------------------------------------
+
+    /// <summary>Anonymous requests per address per minute on /public/paperdoll.</summary>
+    internal const int PublicPaperdollPerMinute = 60;
+    private const string PublicPaperdollCacheControl = "public, max-age=60";
+    private readonly PublicRequestLimiter _publicLimiter =
+        new(PublicPaperdollPerMinute, TimeSpan.FromMinutes(1));
+
+    /// <summary>Paperdoll request path segment: "{serial}", "{serial}.json" or
+    /// "{serial}.png". The serial is hex with a 0x prefix, hex with a leading 0
+    /// (Sphere's own notation, e.g. 01a2b), or decimal; only the character serial
+    /// range (1..0x3FFFFFFF) is accepted.</summary>
+    internal static bool TryParsePaperdollRequest(string raw, out uint serial, out bool png)
+    {
+        serial = 0;
+        png = false;
+        raw = raw.Trim();
+        if (raw.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            png = true;
+            raw = raw[..^4];
+        }
+        else if (raw.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            raw = raw[..^5];
+        }
+
+        bool ok;
+        if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            ok = uint.TryParse(raw[2..], System.Globalization.NumberStyles.AllowHexSpecifier, null, out serial);
+        else if (raw.Length > 1 && raw[0] == '0')
+            ok = uint.TryParse(raw, System.Globalization.NumberStyles.AllowHexSpecifier, null, out serial);
+        else
+            ok = uint.TryParse(raw, System.Globalization.NumberStyles.None, null, out serial);
+        return ok && serial is > 0 and < 0x40000000;
+    }
+
+    private static bool IsFrameRequested(string? frame) =>
+        frame is "1" || string.Equals(frame, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>PUBLICPAPERDOLLORIGINS: web sites allowed to read the public paperdoll
+    /// cross-site (CORS), as host names with an optional port ("www.shard.com",
+    /// "shard.com:8080"); "*" allows any site. Empty = no CORS header at all.
+    /// Host names rather than full origins because sphere.ini treats "//" as the
+    /// start of a comment, so "https://..." cannot be written there.</summary>
+    private HashSet<string> ReadPublicOrigins() =>
+        ParsePublicOrigins(ReadIniString("PublicPaperdollOrigins", ""));
+
+    internal static HashSet<string> ParsePublicOrigins(string raw)
+    {
+        var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string part in raw.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries))
+        {
+            string entry = part.Trim();
+            int scheme = entry.IndexOf("://", StringComparison.Ordinal);
+            if (scheme >= 0) entry = entry[(scheme + 3)..];
+            entry = entry.TrimEnd('/');
+            if (entry.Length > 0) origins.Add(entry);
+        }
+        return origins;
+    }
+
+    /// <summary>The Access-Control-Allow-Origin value for a request's Origin, or null
+    /// when that site is not listed.</summary>
+    internal static string? PublicCorsOrigin(string? origin, HashSet<string> allowed)
+    {
+        if (allowed.Count == 0 || string.IsNullOrEmpty(origin))
+            return null;
+        if (allowed.Contains("*"))
+            return "*";
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return null;
+        return allowed.Contains(uri.Authority) ? origin : null;
+    }
+
+    private void MapPaperdollRoutes(WebApplication app)
+    {
+        // Authenticated (under /api, so the bearer middleware guards it): any
+        // character, staff and NPCs included, with the full info record.
+        app.MapGet("/api/paperdoll/{serial}", (string serial, string? frame) =>
+        {
+            if (!TryParsePaperdollRequest(serial, out uint uid, out bool png))
+                return Results.NotFound();
+            if (png)
+            {
+                var bytes = _ctx.GetPaperdollPng?.Invoke(uid, IsFrameRequested(frame));
+                return bytes == null ? Results.NotFound() : Results.File(bytes, "image/png");
+            }
+            var info = _ctx.GetPaperdoll?.Invoke(uid);
+            return info == null ? Results.NotFound() : Results.Ok(info);
+        });
+
+        // Public (anonymous, off unless PUBLICPAPERDOLL=1): player characters only.
+        // Staff, NPCs, deleted and unknown serials all get the same bare 404, so the
+        // endpoint cannot be used to tell which serials exist.
+        bool publicEnabled = ReadIniBool("PublicPaperdoll", false);
+        var publicOrigins = ReadPublicOrigins();
+        app.MapGet("/public/paperdoll/{serial}", (string serial, string? frame, HttpContext http) =>
+        {
+            if (!publicEnabled)
+                return Results.NotFound();
+
+            if (PublicCorsOrigin(http.Request.Headers.Origin.ToString(), publicOrigins) is { } allowOrigin)
+            {
+                http.Response.Headers.AccessControlAllowOrigin = allowOrigin;
+                if (allowOrigin != "*")
+                    http.Response.Headers.Vary = "Origin";
+            }
+
+            if (!_publicLimiter.TryAcquire(ClientAddress(http)))
+            {
+                http.Response.Headers.RetryAfter = "60";
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            }
+
+            if (!TryParsePaperdollRequest(serial, out uint uid, out bool png))
+                return Results.NotFound();
+            var info = _ctx.GetPaperdoll?.Invoke(uid);
+            if (!IsPubliclyVisible(info))
+                return Results.NotFound();
+
+            http.Response.Headers.CacheControl = PublicPaperdollCacheControl;
+            if (png)
+            {
+                var bytes = _ctx.GetPaperdollPng?.Invoke(uid, IsFrameRequested(frame));
+                if (bytes == null)
+                {
+                    http.Response.Headers.Remove("Cache-Control");
+                    return Results.NotFound();
+                }
+                return Results.File(bytes, "image/png");
+            }
+            return Results.Ok(ToPublicPaperdoll(info!));
+        });
+    }
+
+    /// <summary>Public rule: a live player character below staff level.</summary>
+    internal static bool IsPubliclyVisible(PaperdollInfo? info) =>
+        info is { IsPlayer: true } && info.PrivLevel <= 1;
+
+    /// <summary>The public JSON shape: no privilege level, account, IP, online state
+    /// or item serials.</summary>
+    internal static object ToPublicPaperdoll(PaperdollInfo info) => new
+    {
+        serial = info.Serial,
+        name = info.Name,
+        title = info.Title,
+        paperdollText = info.PaperdollText,
+        body = info.Body,
+        isFemale = info.IsFemale,
+        hasPaperdoll = info.HasPaperdoll,
+        equipment = info.Equipment.Select(e => new
+        {
+            layer = e.Layer,
+            dispId = e.DispId,
+            hue = e.Hue,
+            name = e.Name,
+        }).ToList(),
+    };
 
     private void MapRoutes(WebApplication app, TokenStore tokens)
     {

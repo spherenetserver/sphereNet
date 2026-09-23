@@ -81,6 +81,31 @@ export interface PlayerInfo {
   sessionSeconds: number
 }
 
+export interface PaperdollItem {
+  layer: number
+  serial: number
+  dispId: number
+  hue: number
+  name: string
+}
+
+export interface PaperdollInfo {
+  serial: number
+  name: string
+  title: string
+  /** The name line exactly as the game client's paperdoll shows it. */
+  paperdollText: string
+  body: number
+  isFemale: boolean
+  isPlayer: boolean
+  privLevel: number
+  accountName: string
+  online: boolean
+  /** False for bodies without a paperdoll picture (animals, monsters). */
+  hasPaperdoll: boolean
+  equipment: PaperdollItem[]
+}
+
 export interface ShutdownSchedule {
   pending: boolean
   restart: boolean
@@ -239,6 +264,17 @@ export const playersApi = {
   list:       () => api.get<PlayerInfo[]>('/players'),
   disconnect: (serial: number) => api.post<{ message?: string }>(apiPath('/players', serial, 'disconnect')),
   message:    (serial: number, text: string) => api.post(apiPath('/players', serial, 'message'), { text }),
+}
+
+export const paperdollApi = {
+  info: (serial: number) => api.get<PaperdollInfo>(apiPath('/paperdoll', serial)),
+  // The picture is fetched with the bearer header (an <img> cannot send it)
+  // and shown through an object URL.
+  png:  (serial: number, frame: boolean) =>
+    api.get<Blob>(apiPath('/paperdoll', `${serial}.png`), {
+      params: frame ? { frame: 1 } : undefined,
+      responseType: 'blob',
+    }),
 }
 
 export const accountsApi = {

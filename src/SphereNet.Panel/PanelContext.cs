@@ -68,6 +68,13 @@ public sealed class PanelContext
     public Func<IReadOnlyList<string>>? ListDialogNames { get; set; }
     public Func<string, string?>? GetDialogSource { get; set; }
 
+    // Character paperdoll by serial (online or offline: the whole world is in
+    // memory). Info = name/title/equipment; PNG = the rendered paperdoll picture,
+    // second argument true draws the paperdoll background frame. Null = unknown
+    // or deleted character (PNG also null for a body without a paperdoll).
+    public Func<uint, PaperdollInfo?>? GetPaperdoll { get; set; }
+    public Func<uint, bool, byte[]?>? GetPaperdollPng { get; set; }
+
     // App update — read from sphere.ini by the Host. Null = /api/update/* 404s
     // (e.g. a build with no updater configured).
     public Updates.UpdateSettings? UpdateSettings { get; set; }
@@ -138,6 +145,31 @@ public record PlayerInfo(
     int PrivLevel = 0,
     string ClientVersion = "",
     int SessionSeconds = 0
+);
+
+/// <summary>A character's paperdoll data. <see cref="PaperdollText"/> is the exact
+/// name line the game client shows (0x88 OpenPaperdoll).</summary>
+public record PaperdollInfo(
+    uint Serial,
+    string Name,
+    string Title,
+    string PaperdollText,
+    int Body,
+    bool IsFemale,
+    bool IsPlayer,
+    int PrivLevel,
+    string AccountName,
+    bool Online,
+    bool HasPaperdoll,
+    IReadOnlyList<PaperdollItemInfo> Equipment
+);
+
+public record PaperdollItemInfo(
+    int Layer,
+    uint Serial,
+    int DispId,
+    int Hue,
+    string Name
 );
 
 public record AccountInfo(

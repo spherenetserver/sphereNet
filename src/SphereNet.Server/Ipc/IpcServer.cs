@@ -217,6 +217,10 @@ public sealed class IpcServer : IDisposable
         "gump" => _ctx?.GetGumpPng?.Invoke(root.GetRequiredInt("gumpId")),
         "dialogs" => _ctx?.ListDialogNames?.Invoke() ?? [],
         "dialog_source" => _ctx?.GetDialogSource?.Invoke(root.GetStr("name") ?? ""),
+        // "serial", not "id": id is the envelope's request id.
+        "paperdoll" => _ctx?.GetPaperdoll?.Invoke((uint)root.GetRequiredInt("serial")),
+        "paperdoll_png" => _ctx?.GetPaperdollPng?.Invoke(
+            (uint)root.GetRequiredInt("serial"), root.GetRequiredBool("frame")),
 
         "account_create" =>
             _ctx?.CreateAccount?.Invoke(root.GetRequiredStr("name"), root.GetRequiredStr("pass")) ?? false,

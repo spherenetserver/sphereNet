@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Panelde karakter paperdoll'u ve herkese acik paperdoll API'si
+------------------------------------------------------------------------
+EKLEME - Sunucu karakterin paperdoll'unu client'in cizdigi gibi cizer (ClassicUO
+         PaperDollInteractable): irk ve cinsiyete gore govde gump'i ve ten
+         rengi, her giyili esyanin paperdoll gump'i (tiledata Animation + 50000
+         / 60000, yoksa diger cinsiyet) client'in katman sirasiyla, ortulen
+         katmanlar gizli, esya renkleri hues.mul'dan kismi boyamayla, canta ve
+         istege bagli paperdoll cercevesi. Offline karakterler en son
+         giydiklerini gosterir. Sonuclar gorunume gore onbelleklenir.
+EKLEME - Panel: Players sayfasinda karaktere tiklamak (ya da serial girmek)
+         paperdoll'u, metin satiriyla - 0x88 paketinin gonderdigi ayni
+         "Isim, Unvan" - ve ekipman listesiyle acar. Yetkili API:
+         /api/paperdoll/{serial}[.json|.png?frame=1].
+EKLEME - Herkese acik API, varsayilan kapali: PUBLICPAPERDOLL=1 ile
+         /public/paperdoll/{serial}.png ve .json. Sadece oyuncu karakterleri
+         (staff ve NPC asla; bilinmeyen, staff ve NPC serial'lari ayni 404'u
+         alir); JSON'da hesap, IP ve yetki yok; Cache-Control 60 sn; istemci
+         basina dakikada 60 istek. PUBLICPAPERDOLLORIGINS, CORS icin izin
+         verilen site adlarini listeler. Erisim isimle degil serial iledir.
+DUZELTME - Gump gorselleri 4 baytlik satir ofsetleriyle cozulur (ClassicUO
+           start + rowLookup[y] << 2); 2 baytlik birim okunuyordu, gumpart.mul'dan
+           gelen her gump - gump designer onizlemeleri dahil - yatay cizgili
+           cikiyordu.
+TEST - PaperdollRendererTests, PaperdollEndpointTests, IpcPaperdollTests,
+       panel paperdoll testleri.
+
 [2026-09-23] - Zararli buyuler kurbani karsilik vermeye iter; ADDCIRCLE ilk buyuyu ekler
 ------------------------------------------------------------------------
 DUZELTME - Hedefe ulasan her zararli buyu, hasar olsun olmasin, kurbanda

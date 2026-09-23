@@ -71,15 +71,18 @@ public sealed class GumpArtReader : IDisposable
             }
         }
 
-        // Row lookup table: one uint per row, offsets in 16-bit words from
-        // the start of this gump's data block.
+        // Row lookup table: one uint per row, offsets in 4-byte units (one
+        // color+run pair each) from the start of this gump's data block
+        // (ClassicUO GumpsLoader: start + (rowLookup[y] << 2)). Reading them as
+        // 2-byte units started every row but the first mid-stream, which drew
+        // the gump as horizontal streaks.
         if (size < height * 4)
             return false;
 
         rgba = new byte[width * height * 4];
         for (int y = 0; y < height; y++)
         {
-            int rowOff = BitConverter.ToInt32(data, y * 4) * 2;
+            int rowOff = BitConverter.ToInt32(data, y * 4) * 4;
             int x = 0;
             int dst = y * width * 4;
             while (x < width && rowOff + 4 <= size)

@@ -4,6 +4,12 @@
       <div class="toolbar-left">
         <span class="count">{{ t('players.online', { n: players.length }) }}</span>
         <input v-model="search" class="search-input" :placeholder="t('players.search')" />
+        <form class="serial-form" @submit.prevent="openBySerial">
+          <input v-model="serialInput" class="search-input serial-input" :placeholder="t('players.serialPlaceholder')" />
+          <button type="submit" class="btn-ghost" :disabled="!serialInput.trim()">
+            <UserSquare :size="15" /> {{ t('players.openBySerial') }}
+          </button>
+        </form>
       </div>
       <button class="btn-ghost" @click="refetch()">
         <RefreshCw :size="15" :class="{ spin: isFetching }" /> {{ t('common.refresh') }}
@@ -37,7 +43,9 @@
         </thead>
         <tbody>
           <tr v-for="p in filtered" :key="p.serial">
-            <td class="bold">{{ p.charName }}</td>
+            <td class="bold">
+              <button class="link-btn" :title="t('players.openPaperdoll')" @click="paperdollSerial = p.serial">{{ p.charName }}</button>
+            </td>
             <td class="mono text-muted">{{ hex(p.serial) }}</td>
             <td>{{ p.accountName }}</td>
             <td><span class="badge" :class="`plevel-${p.privLevel}`">{{ privLabel(p.privLevel) }}</span></td>
@@ -47,6 +55,9 @@
             <td class="mono text-muted">{{ p.clientVersion || '—' }}</td>
             <td class="text-muted">{{ fmtSession(p.sessionSeconds) }}</td>
             <td class="actions">
+              <button class="icon-btn" :title="t('players.openPaperdoll')" @click="paperdollSerial = p.serial">
+                <UserSquare :size="15" />
+              </button>
               <button class="icon-btn" :title="t('players.sendMessage')" :disabled="busy.has(p.serial)" @click="openMessage(p)">
                 <MessageSquare :size="15" />
               </button>
@@ -80,6 +91,8 @@
       {{ t('common.staleList', { error: loadError }) }}
     </p>
 
+    <PaperdollModal v-if="paperdollSerial !== null" :serial="paperdollSerial" @close="paperdollSerial = null" />
+
     <!-- Message modal -->
     <div v-if="msgTarget" class="modal-overlay" @click.self="closeMessage">
       <div class="modal">
@@ -104,11 +117,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import {
-  RefreshCw, Users, Search, Loader2, AlertTriangle, MessageSquare, Unplug, Send, X,
+  RefreshCw, Users, Search, Loader2, AlertTriangle, MessageSquare, Unplug, Send, X, UserSquare,
 } from 'lucide-vue-next'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { playersApi, errorMessage, type PlayerInfo } from '@/lib/api'
 import { t } from '@/i18n'
+import PaperdollModal from '@/components/PaperdollModal.vue'
+import { hexSerial, parseSerial } from '@/lib/paperdoll'
 
 const qc = useQueryClient()
 const { data, isPending, isError, error, isFetching, refetch } = useQuery({
@@ -149,6 +164,21 @@ async function disconnect(p: PlayerInfo) {
     busy.value.delete(p.serial)
     qc.invalidateQueries({ queryKey: ['players'] })
   }
+}
+
+// --- Paperdoll (online players by row; any character, offline too, by serial) ---
+const paperdollSerial = ref<number | null>(null)
+const serialInput     = ref('')
+
+function openBySerial() {
+  const serial = parseSerial(serialInput.value)
+  if (serial === null) {
+    actionInfo.value = ''
+    actionError.value = t('players.invalidSerial', { value: serialInput.value.trim() })
+    return
+  }
+  actionError.value = ''
+  paperdollSerial.value = serial
 }
 
 // --- Message modal ---
@@ -197,7 +227,7 @@ const privLabels: Record<number, string> = {
 function privLabel(n: number): string { return privLabels[n] ?? `L${n}` }
 
 function hex(serial: number): string {
-  return '0x' + (serial >>> 0).toString(16).toUpperCase().padStart(8, '0')
+  return hexSerial(serial)
 }
 
 function fmtSession(sec: number): string {
@@ -245,6 +275,15 @@ function mapName(id: number): string {
 }
 
 .search-input:focus { border-color: var(--accent); }
+
+.serial-form { display: flex; gap: 6px; align-items: center; }
+.serial-input { width: 170px; }
+
+.link-btn {
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+}
+.link-btn:hover { color: var(--accent); text-decoration: underline; }
 
 .btn-ghost {
   display: flex;

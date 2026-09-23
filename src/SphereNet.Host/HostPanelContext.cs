@@ -90,6 +90,13 @@ public static class HostPanelContext
             GetGumpPng = id => Run(() => ipc.QueryAsync<byte[]>("gump", new { gumpId = id })),
             ListDialogNames = () => Run(() => ipc.QueryAsync<List<string>>("dialogs")) ?? [],
             GetDialogSource = name => Run(() => ipc.QueryAsync<string>("dialog_source", new { name })),
+
+            // ── Paperdoll ──────────────────────────────────────────────────
+            // "serial" for the same reason as gumpId above.
+            GetPaperdoll = serial =>
+                Run(() => ipc.QueryAsync<PaperdollInfo>("paperdoll", new { serial = (int)serial })),
+            GetPaperdollPng = (serial, frame) =>
+                Run(() => ipc.QueryAsync<byte[]>("paperdoll_png", new { serial = (int)serial, frame })),
         };
     }
 

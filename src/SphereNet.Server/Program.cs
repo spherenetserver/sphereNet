@@ -481,6 +481,7 @@ public static partial class Program
                      "HostShutdownQuietMs", "HostShutdownTimeoutMs",   // SphereNet.Host
                      "HostAutoStart", "HostRestartOnCrash",            // SphereNet.Host
                      "AdminPanelAutoFill", "AdminPanelAllowedHosts",   // SphereNet.Panel
+                     "PublicPaperdoll", "PublicPaperdollOrigins",      // SphereNet.Panel
                      "ScriptPackRepo", "ScriptPackBranch",              // SphereNet.Panel
                  })
             iniParser.GetValue("SPHERE", owned);

@@ -58,18 +58,49 @@ public sealed class MapDataManager : IDisposable
     public bool TryGetGumpArt(int id, out int width, out int height, out byte[] rgba)
     {
         width = 0; height = 0; rgba = [];
-        if (!_gumpArtTried)
+        // The paperdoll renderer reads art off the main loop, so the lazy open is
+        // guarded; the reader itself serialises its stream access.
+        if (!Volatile.Read(ref _gumpArtTried))
         {
-            _gumpArtTried = true;
-            var reader = new GumpArtReader(
-                Path.Combine(_mulPath, "gumpidx.mul"),
-                Path.Combine(_mulPath, "gumpart.mul"));
-            if (reader.Load())
-                _gumpArt = reader;
-            else
-                reader.Dispose();
+            lock (_lazyLock)
+            {
+                if (!_gumpArtTried)
+                {
+                    var reader = new GumpArtReader(
+                        Path.Combine(_mulPath, "gumpidx.mul"),
+                        Path.Combine(_mulPath, "gumpart.mul"));
+                    if (reader.Load())
+                        _gumpArt = reader;
+                    else
+                        reader.Dispose();
+                    Volatile.Write(ref _gumpArtTried, true);
+                }
+            }
         }
         return _gumpArt != null && _gumpArt.TryGetGump(id, out width, out height, out rgba);
+    }
+
+    private readonly object _lazyLock = new();
+    private HueReader? _hues;
+    private bool _huesTried;
+
+    /// <summary>Lazy hues.mul access: the 32-colour table of a hue value
+    /// (1-based, flag bits already masked off). Optional file — null when it is
+    /// absent, for hue 0, or for a value past the end of the table. Thread-safe.</summary>
+    public ushort[]? GetHueColorTable(int hue)
+    {
+        if (!Volatile.Read(ref _huesTried))
+        {
+            lock (_lazyLock)
+            {
+                if (!_huesTried)
+                {
+                    _hues = HueReader.Load(Path.Combine(_mulPath, "hues.mul"));
+                    Volatile.Write(ref _huesTried, true);
+                }
+            }
+        }
+        return _hues?.GetColorTable(hue);
     }
 
     /// <summary>

@@ -3310,7 +3310,9 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
     }
 
     [Fact]
-    public void GameClient_TargetFunction_FiresItemTargOnItemTrigger()
+    // Source-X OnTarg_Obj_Function (CClientTarg.cpp:89-106): a TARGETF pick runs the
+    // function and nothing else - the item that armed it gets no @TargOn_Item.
+    public void GameClient_TargetFunction_RunsTheFunctionNotTheItemTargOnItem()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
@@ -3349,13 +3351,6 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         dispatcher.RegisterItemEvent("EVENTSITEM", "TargOn_Item", (_, args) =>
         {
             targetItemCount++;
-            Assert.Same(player, args.CharSrc);
-            Assert.Same(sourceItem, args.ItemSrc);
-            Assert.Same(targetItem, args.O1);
-            Assert.Equal(10, args.N1);
-            Assert.Equal(11, args.N2);
-            Assert.Equal(12, args.N3);
-            Assert.Equal("0", args.S1);
             return TriggerResult.True;
         });
 
@@ -3366,8 +3361,8 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, targetItem.Uid.Value, 10, 11, 12, 0);
 
-        Assert.Equal(1, targetItemCount);
-        Assert.False(player.TryGetProperty("TAG.NEVER_RUN", out var neverRun) && neverRun == "1");
+        Assert.Equal(0, targetItemCount);
+        Assert.True(player.TryGetProperty("TAG.NEVER_RUN", out var ran) && ran == "1");
     }
 
     [Fact]
@@ -3410,7 +3405,10 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
     }
 
     [Fact]
-    public void GameClient_TargetFunction_FiresItemTargOnCharAndGroundTriggers()
+    // A used-item cursor's @TargOn_Char/@TargOn_Ground (OnTarg_Use_Item,
+    // CClientTarg.cpp:1720): ARGN1 = the static tile id, ARGN2/ARGN3 = 0, ARGO =
+    // the pick. A TARGETF cursor does not reach them (see the test above).
+    public void GameClient_UsedItemCursor_FiresItemTargOnCharAndGroundTriggers()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
@@ -3453,23 +3451,23 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             Assert.Same(player, args.CharSrc);
             Assert.Same(sourceItem, args.ItemSrc);
             Assert.Null(args.O1);
-            Assert.Equal(20, args.N1);
-            Assert.Equal(21, args.N2);
-            Assert.Equal(22, args.N3);
-            Assert.Equal("0", args.S1);
+            Assert.Equal(0x0EED, args.N1);
+            Assert.Equal(0, args.N2);
+            Assert.Equal(0, args.N3);
             return TriggerResult.True;
         });
 
         client.SetEngines(triggerDispatcher: dispatcher);
         AttachCharacter(client, player);
-        client.Targets.Function = "f_char";
+        client.SetPendingTarget(static (_, _, _, _, _) => { }, 0);
         client.Targets.ItemUid = sourceItem.Uid;
+        client.Targets.ItemParentUid = sourceItem.ContainedIn;
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, targetChar.Uid.Value, 10, 11, 12, 0);
 
-        client.Targets.Function = "f_ground";
-        client.Targets.AllowGround = true;
+        client.SetPendingTarget(static (_, _, _, _, _) => { }, 1);
         client.Targets.ItemUid = sourceItem.Uid;
-        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 20, 21, 22, 0);
+        client.Targets.ItemParentUid = sourceItem.ContainedIn;
+        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 20, 21, 22, 0x0EED);
 
         Assert.Equal(1, charCount);
         Assert.Equal(1, groundCount);

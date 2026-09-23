@@ -556,17 +556,39 @@ public sealed class ClientInventoryHandler
 
     // ==================== Item Pick Up ====================
 
-    // Picks the pickup-source trigger matching where the item is being taken from.
-    // Equipment and stack-splits are distinguished from the plain pack/ground cases
-    // so scripts can gate each independently (Source-X PICKUP_SELF / PICKUP_STACK).
-    // Equipped items report ContainedIn = the wearer, so the equip check must come
-    // before the container check to avoid misclassifying worn items as pack pickups.
-    private static ItemTrigger SelectPickupTrigger(Item item, ushort amount)
+    /// <summary>
+    /// The lift triggers of Source-X CChar::ItemPickup (CCharAct.cpp:2967-3007).
+    /// Returns false when a script refused the lift.
+    ///
+    /// A worn item hears no pickup trigger at all: taking it off the layer runs its
+    /// @Unequip (upstream's "unequip is done later", through OnRemoveObj). Anything
+    /// else hears @PickUp_Pack - taken out of a container or a character's pack - or
+    /// @PickUp_Ground, with ARGN1 = the amount being lifted; then the CONTAINER it
+    /// comes out of hears @PickUp_Self with the item as ARGO. A partial stack also
+    /// hears @PickUp_Stack, fired where the split happens. This used to fire exactly
+    /// one of the four on the item - @PickUp_Self for worn items, @PickUp_Stack
+    /// alone for a split - so a container's own @PickUp_Self never ran.
+    /// </summary>
+    private bool FirePickupTriggers(Item item, ushort amount)
     {
-        if (item.IsEquipped) return ItemTrigger.PickupSelf;
-        if (amount > 0 && amount < item.Amount && item.Amount > 1) return ItemTrigger.PickupStack;
-        if (item.ContainedIn.IsValid) return ItemTrigger.PickupPack;
-        return ItemTrigger.PickupGround;
+        if (_triggerDispatcher == null || item.IsEquipped)
+            return true;
+
+        ushort liftAmount = amount > 0 && amount < item.Amount ? amount : item.Amount;
+        var trigger = item.ContainedIn.IsValid ? ItemTrigger.PickupPack : ItemTrigger.PickupGround;
+        if (_triggerDispatcher.FireItemTrigger(item, trigger,
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, N1 = liftAmount })
+            == TriggerResult.True)
+            return false;
+
+        if (trigger == ItemTrigger.PickupPack && !item.IsDeleted &&
+            _world.FindItem(item.ContainedIn) is { } container &&
+            _triggerDispatcher.FireItemTrigger(container, ItemTrigger.PickupSelf,
+                new TriggerArgs { CharSrc = _character, O1 = item })
+            == TriggerResult.True)
+            return false;
+
+        return !item.IsDeleted;
     }
 
     /// <summary>
@@ -650,22 +672,6 @@ public sealed class ClientInventoryHandler
         CaptureDragOrigin(item);
 
         var (dragSourceSerial, dragSourcePos) = GetDragSource(item);
-
-        // Fire the pickup trigger, choosing the most specific source variant:
-        // Self  = dragged off the character's own equipment layers,
-        // Stack = a partial amount split out of a larger stack,
-        // Pack  = taken from inside a container, Ground = loose on the ground.
-        if (_triggerDispatcher != null)
-        {
-            var trigger = SelectPickupTrigger(item, amount);
-            var result = _triggerDispatcher.FireItemTrigger(item, trigger,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item });
-            if (result == TriggerResult.True)
-            {
-                SendPickupFailed(1);
-                return;
-            }
-        }
 
         if (_character.PrivLevel < PrivLevel.GM)
         {
@@ -763,6 +769,14 @@ public sealed class ClientInventoryHandler
             }
         }
 
+        // The pickup triggers, in upstream's order (CChar::ItemPickup,
+        // CCharAct.cpp:2967-3020), once every reach/ownership/weight gate has passed.
+        if (!FirePickupTriggers(item, amount))
+        {
+            SendPickupFailed(1);
+            return;
+        }
+
         // Stack splitting: the client keeps dragging the serial it clicked.
         // Source-X/ServUO reduce that original item to the lifted amount and
         // create a new leftover stack at the old location/container.
@@ -784,7 +798,6 @@ public sealed class ClientInventoryHandler
 
             if (sourceContainer != null)
             {
-                sourceContainer.RemoveItem(item);
                 sourceContainer.AddItem(remainder);
                 remainder.Position = sourcePos;
                 SendContainerItemPacket(new PacketContainerItem(
@@ -795,11 +808,36 @@ public sealed class ClientInventoryHandler
             }
             else
             {
-                var sector = _world.GetSector(sourcePos);
-                sector?.RemoveItem(item);
                 _world.PlaceItemWithDecay(remainder, sourcePos);
                 BroadcastWorldItem(remainder);
             }
+
+            // @PickUp_Stack fires IN ADDITION to the pack/ground trigger, on the
+            // lifted pile, with the left-behind pile as ARGO (CCharAct.cpp:3014-3020).
+            // RETURN 1 keeps the pile where it was: the split is undone and the lift
+            // refused. (Upstream returns 0 there, which leaves the split half-done
+            // with the client dragging a pile that never reached the cursor.)
+            if (_triggerDispatcher != null &&
+                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.PickupStack,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = remainder })
+                == TriggerResult.True)
+            {
+                if (!remainder.IsDeleted)
+                {
+                    uint remainderUid = remainder.Uid.Value;
+                    _world.RemoveItem(remainder);
+                    _netState.Send(new PacketDeleteObject(remainderUid));
+                }
+                if (!item.IsDeleted)
+                    item.Amount = originalAmount;
+                SendPickupFailed(1);
+                return;
+            }
+
+            if (sourceContainer != null)
+                sourceContainer.RemoveItem(item);
+            else
+                _world.GetSector(sourcePos)?.RemoveItem(item);
 
             item.ContainedIn = _character.Uid;
             // Picking something up ends its rot: upstream calls SetDecayTime(-1) at the
@@ -1054,6 +1092,44 @@ public sealed class ClientInventoryHandler
         PlaceItemInPack(_character, item);
     }
 
+    /// <summary>
+    /// Fire @DropOn_Self on <paramref name="receiver"/> - the container, pile or item
+    /// something was dropped on - with the dragged <paramref name="item"/> as ARGO
+    /// (Source-X Event_Item_Drop, CClientEvent.cpp:435-446). Returns true when the
+    /// drop is settled and the caller must stop: RETURN 1 bounces the item back to
+    /// where it was lifted from, unless the script already put it somewhere else, in
+    /// which case it stays there; a script that deleted the item ends the drop.
+    /// </summary>
+    private bool FireDropOnSelf(Item receiver, Item item)
+    {
+        if (_triggerDispatcher == null || _character == null) return false;
+        var result = _triggerDispatcher.FireItemTrigger(receiver, ItemTrigger.DropOnSelf,
+            new TriggerArgs { CharSrc = _character, O1 = item });
+        if (item.IsDeleted)
+        {
+            _dragOrigin = null;
+            _netState.Send(new PacketDropAck());
+            return true;
+        }
+        if (result != TriggerResult.True)
+            return false;
+
+        // Still on the cursor (parented to the dragger, on no layer) means the
+        // script left it alone: bounce it (Event_Item_Drop_Fail).
+        bool stillDragged = item.ContainedIn == _character.Uid && !item.IsEquipped;
+        if (stillDragged)
+        {
+            RestoreToOrigin(item);
+            _netState.Send(new PacketDropReject());
+        }
+        else
+        {
+            _dragOrigin = null;
+            _netState.Send(new PacketDropAck());
+        }
+        return true;
+    }
+
     private void BroadcastDragAnimation(Item item, uint sourceSerial, Point3D sourcePos,
         uint targetSerial, Point3D targetPos, Point3D origin)
     {
@@ -1116,9 +1192,18 @@ public sealed class ClientInventoryHandler
 
         _character.RemoveTag("DRAGGING");
 
+        // A plain item lying on the ground that the drop was aimed at: the drop lands
+        // on its tile, but that item still hears @DropOn_Self first.
+        Item? groundDropOnTarget = null;
+
         if (containerUid != 0 && containerUid != 0xFFFFFFFF)
         {
             var container = _world.FindItem(new Serial(containerUid));
+            // The object the client dropped ON (Source-X pObjOn / pItemOn). The
+            // redirect below may swap `container` for the place a plain item lives,
+            // but @DropOn_Item's ARGO and the @DropOn_Self receiver stay this item
+            // (CClientEvent.cpp:421-446 fire both before the redirect at :504).
+            var dropOnTarget = container;
 
             // Source-X Event_Item_Drop (CClientEvent.cpp:489) branches on whether the
             // target really is a container. A plain item is NOT one: the drop is
@@ -1130,6 +1215,8 @@ public sealed class ClientInventoryHandler
                 !container.CanStackWith(item))
             {
                 container = RedirectNonContainerTarget(container, item, ref x, ref y);
+                if (container == null)
+                    groundDropOnTarget = dropOnTarget;
             }
 
             if (container != null && _tradeManager?.FindByContainer(container.Uid.Value) is { } dropTrade)
@@ -1350,7 +1437,7 @@ public sealed class ClientInventoryHandler
                 if (_triggerDispatcher != null)
                 {
                     var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = container });
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = dropOnTarget ?? container });
                     if (result == TriggerResult.True)
                     {
                         RestoreToOrigin(item);
@@ -1358,6 +1445,10 @@ public sealed class ClientInventoryHandler
                         return;
                     }
                 }
+                // @DropOn_Self on the RECEIVER - the container, pile or item the drop
+                // landed on - with the dragged item as ARGO.
+                if (FireDropOnSelf(dropOnTarget ?? container, item))
+                    return;
                 if (isSpellbook)
                 {
                     // Source-X AddSpellbookScroll consumes ONE and bounces any
@@ -1539,17 +1630,23 @@ public sealed class ClientInventoryHandler
             var charTarget = _world.FindChar(new Serial(containerUid));
             if (charTarget != null && charTarget == _character)
             {
-                // Fire @DropOn_Self
-                if (_triggerDispatcher != null)
+                // Dropped on myself: upstream turns the target into the pack
+                // (CClientEvent.cpp:331) and carries on as a drop INTO it, so the pack
+                // hears @DropOn_Item's ARGO and runs @DropOn_Self with the dragged item
+                // as ARGO. This used to fire @DropOn_Self on the dragged item itself.
+                var ownPack = _character.Backpack;
+                if (ownPack != null && _triggerDispatcher != null)
                 {
-                    var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnSelf,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item });
+                    var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = ownPack });
                     if (result == TriggerResult.True)
                     {
-                        PlaceItemInPack(_character, item);
-                        _netState.Send(new PacketDropAck());
+                        RestoreToOrigin(item);
+                        _netState.Send(new PacketDropReject());
                         return;
                     }
+                    if (FireDropOnSelf(ownPack, item))
+                        return;
                 }
                 PlaceItemInPack(_character, item);
                 _netState.Send(new PacketDropAck());
@@ -1695,6 +1792,23 @@ public sealed class ClientInventoryHandler
                 _netState.Send(new PacketDropReject());
                 return;
             }
+        }
+
+        // Dropped on top of a plain item on the ground: upstream runs @DropOn_Item
+        // (ARGO = that item) and the item's @DropOn_Self before settling the drop on
+        // its tile (CClientEvent.cpp:421-446, then :504).
+        if (groundDropOnTarget != null && _triggerDispatcher != null)
+        {
+            var onItem = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = groundDropOnTarget });
+            if (onItem == TriggerResult.True)
+            {
+                RestoreToOrigin(item);
+                _netState.Send(new PacketDropReject());
+                return;
+            }
+            if (FireDropOnSelf(groundDropOnTarget, item))
+                return;
         }
 
         // @DropOn_Ground — Source-X hands ARGN1 the decay time in TENTHS OF A SECOND

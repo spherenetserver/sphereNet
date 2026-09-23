@@ -185,6 +185,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.DeadCannotSeeLiving = 0;
         SphereNet.Game.Objects.Characters.Character.OnHiddenStateCleared = null;
         SphereNet.Game.Objects.Characters.Character.OnSpellEffectTick = null;
+        SphereNet.Game.Objects.Characters.CharacterPoisonState.OnSpellEffectAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = null;
         SphereNet.Game.Objects.Characters.Character.OnJailed = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptDismount = null;
@@ -224,6 +225,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Messages.ServerMessages.ResetTalkDefaults();
         SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = null;
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
+        SphereNet.Game.Objects.Characters.Character.OnRegenStat = null;
+        SphereNet.Game.Objects.Characters.Character.OnArrowQuest = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickDetailed = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptSkillUse = null;

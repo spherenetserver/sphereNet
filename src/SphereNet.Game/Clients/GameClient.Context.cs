@@ -261,6 +261,9 @@ public sealed partial class GameClient : IClientContext
         BeginPendingCraft(recipe, craftSkill, reopenGump);
 
     void IClientContext.SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType) => SetPendingTarget(callback, cursorType);
+    void IClientContext.ArmTargetCursor(Action<uint, short, short, sbyte, ushort>? callback, byte cursorType,
+        byte flags, ushort? multiId, short yOff, ushort hue) =>
+        Targeting.ArmCursor(callback, cursorType, flags, multiId, 0, yOff, 0, hue);
     void IClientContext.SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
         ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
         SetPendingMultiTarget(callback, multiId, xOff, yOff, zOff, hue);

@@ -126,9 +126,14 @@ public sealed class ClientTargetingHandler
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {
-            // Source-X @Targon_Cancel — the player dismissed the target cursor.
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Targon_Cancel,
-                new TriggerArgs { CharSrc = _character, ScriptConsole = _client });
+            // The character's @Targon_Cancel belongs to a TARGETF cursor only, with
+            // ARGS = the function line it was waiting to run (SetTargMode,
+            // CClientMsg.cpp:1657-1666). A used-item cursor answers through the
+            // item's @TargOn_Cancel below instead; spell and skill cursors through
+            // their own cancel triggers. RETURN 1 from either keeps the "targeting
+            // cancelled" line off the screen. It used to fire on every cancel,
+            // spells and GM cursors included, and never said which function.
+            bool suppressCancelMessage = FireFunctionCursorCancel() == TriggerResult.True;
 
             var pendingItemUid = Targets.ItemUid;
             // Hard-cancel all pending target flows to avoid any stale state from triggering
@@ -181,14 +186,16 @@ public sealed class ClientTargetingHandler
             _character.RemoveTag("TARG.MAP");
             _character.RemoveTag("TARG.UID");
 
-            FirePendingItemTargetTrigger(pendingItemUid, ItemTrigger.TargOnCancel, Serial.Invalid, x, y, z, graphic);
+            if (FirePendingItemTargetTrigger(pendingItemUid, ItemTrigger.TargOnCancel, Serial.Invalid, 0) == TriggerResult.True)
+                suppressCancelMessage = true;
             if (pendingSkillTargetCancelId >= 0)
             {
                 _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
                     new TriggerArgs { CharSrc = _character, N1 = pendingSkillTargetCancelId });
             }
 
-            SysMessage(ServerMessages.Get("target_cancel_1"));
+            if (!suppressCancelMessage)
+                SysMessage(ServerMessages.Get("target_cancel_1"));
             return;
         }
 
@@ -228,9 +235,12 @@ public sealed class ClientTargetingHandler
                 IScriptObj? picked = serial != 0 && serial != 0xFFFFFFFF
                     ? _world.FindObject(new Serial(serial))
                     : null;
+                // TARGPRV is the used item from here on (m_Targ_Prv_UID = m_Targ_UID,
+                // CClientTarg.cpp:1698), so <SRC.TARGPRV> names it inside the trigger.
+                _character.SetTag("TARGPRV", $"0{sourceUid.Value:X}");
                 if (FirePendingItemTargetTrigger(sourceUid,
                         ResolveItemTargetTrigger(serial, picked),
-                        new Serial(serial), x, y, z, graphic) == TriggerResult.True)
+                        new Serial(serial), graphic) == TriggerResult.True)
                     return;
             }
             cb(serial, x, y, z, graphic);
@@ -635,8 +645,11 @@ public sealed class ClientTargetingHandler
             Targets.Function = null;
             bool allowGround = Targets.AllowGround;
             Targets.AllowGround = false;
-            var pendingItemUid = Targets.ItemUid;
+            // A TARGETF cursor only runs its function (OnTarg_Obj_Function,
+            // CClientTarg.cpp:89-106): the object that armed it gets no
+            // @TargOn_* - that is the plain TARGET (used-item) cursor's contract.
             Targets.ItemUid = Serial.Invalid;
+            Targets.ItemParentUid = Serial.Invalid;
             Targets.LastScriptPoint = new Point3D(x, y, z, _character.MapIndex);
             _character.SetTag("TARGP", $"{x},{y},{z},{_character.MapIndex}");
             _character.SetTag("TARG.X", x.ToString());
@@ -651,12 +664,6 @@ public sealed class ClientTargetingHandler
             if (argo == null && !allowGround)
             {
                 SysMessage(ServerMessages.Get("target_must_object"));
-                return;
-            }
-
-            if (FirePendingItemTargetTrigger(pendingItemUid, ResolveItemTargetTrigger(serial, argo), new Serial(serial), x, y, z, graphic) == TriggerResult.True)
-            {
-                Targets.FunctionArgs = "";
                 return;
             }
 
@@ -714,8 +721,14 @@ public sealed class ClientTargetingHandler
         return ItemTrigger.TargOnGround;
     }
 
+    /// <summary>A used item's @TargOn_Char/Item/Ground (or @TargOn_Cancel). The
+    /// arguments are upstream's (OnTarg_Use_Item, CClientTarg.cpp:1720
+    /// <c>Init(id, 0, 0, pObjTarg)</c>): ARGN1 = the static tile id picked (0 for
+    /// an object), ARGN2/ARGN3 = 0, ARGO = the pick. The point is TARGP / TARG.P,
+    /// not the arguments - they used to carry x/y/z, so a script reading ARGN1 for
+    /// the tile got the X coordinate.</summary>
     private TriggerResult FirePendingItemTargetTrigger(Serial sourceItemUid, ItemTrigger trigger, Serial targetUid,
-        short x, short y, sbyte z, ushort graphic)
+        ushort graphic)
     {
         if (!sourceItemUid.IsValid || _triggerDispatcher == null)
             return TriggerResult.Default;
@@ -730,11 +743,67 @@ public sealed class ClientTargetingHandler
             CharSrc = _character,
             ItemSrc = sourceItem,
             O1 = targetObj,
-            N1 = x,
-            N2 = y,
-            N3 = z,
-            S1 = graphic.ToString()
+            N1 = graphic,
         });
+    }
+
+    /// <summary>The character's @Targon_Cancel for a TARGETF cursor that is going
+    /// away - dismissed, or replaced by a new cursor (SetTargMode case
+    /// CLIMODE_TARG_OBJ_FUNC, CClientMsg.cpp:1657-1666): ARGS is the function line
+    /// the cursor was holding. Nothing fires for any other kind of cursor.</summary>
+    private TriggerResult FireFunctionCursorCancel()
+    {
+        if (_character == null || _triggerDispatcher == null || string.IsNullOrEmpty(Targets.Function))
+            return TriggerResult.Default;
+        string line = Targets.FunctionArgs.Length > 0
+            ? $"{Targets.Function} {Targets.FunctionArgs}"
+            : Targets.Function!;
+        return _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Targon_Cancel,
+            new TriggerArgs { CharSrc = _character, S1 = line, ScriptConsole = _client });
+    }
+
+    /// <summary>Opening a cursor while another is up cancels the old one first, the
+    /// way SetTargMode runs the old mode's cancel before switching
+    /// (CClientMsg.cpp:1644-1741): the TARGETF function's @Targon_Cancel, the used
+    /// item's @TargOn_Cancel, the skill's @SkillTargetCancel. No "cancelled"
+    /// line - that is only printed when the mode drops to normal.</summary>
+    private void CancelReplacedCursor()
+    {
+        if (!Targets.CursorActive)
+            return;
+        int replacedSkill = Targets.SkillCancelId;
+        var replacedItem = Targets.ItemUid;
+        _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+        FireFunctionCursorCancel();
+        FirePendingItemTargetTrigger(replacedItem, ItemTrigger.TargOnCancel, Serial.Invalid, 0);
+        if (replacedSkill >= 0 && _character != null)
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                new TriggerArgs { CharSrc = _character, N1 = replacedSkill });
+    }
+
+    /// <summary>Raise a target cursor on the client: cancel whatever cursor is up,
+    /// reset the pending state, record a fresh session id and send 0x6C - or 0x99
+    /// with the multi ghosted at the cursor when <paramref name="multiId"/> is
+    /// given (Source-X addTarget / addTargetItems -> PacketAddTarget). Every cursor
+    /// the server opens goes through here, so a replaced cursor is always
+    /// cancelled the same way.</summary>
+    /// <param name="cursorType">0 = object, 1 = ground allowed.</param>
+    /// <param name="flags">PacketAddTarget flags: 1 = harmful (TARGETW's crime
+    /// check), 2 = beneficial.</param>
+    internal void ArmCursor(Action<uint, short, short, sbyte, ushort>? callback, byte cursorType,
+        byte flags = 0, ushort? multiId = null, short xOff = 0, short yOff = 0, short zOff = 0, ushort hue = 0)
+    {
+        CancelReplacedCursor();
+        ClearPendingTargetState();
+        Targets.Callback = callback;
+        Targets.CursorActive = true;
+        uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
+        Targets.CursorId = cursorId;
+        if (multiId is ushort id)
+            _netState.Send(new PacketTargetMulti(cursorId, id, xOff, yOff, zOff, hue,
+                includeHue: _netState.IsClientPost7090));
+        else
+            _netState.Send(new PacketTarget(cursorType, cursorId, flags));
     }
 
     private static bool IsTargetCancelled(uint serial, short x, short y, sbyte z, ushort graphic)
@@ -912,25 +981,8 @@ public sealed class ClientTargetingHandler
     }
 
     /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>
-    internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
-    {
-        bool replacedOpenCursor = Targets.CursorActive;
-        if (replacedOpenCursor)
-        {
-            int replacedSkill = Targets.SkillCancelId;
-            _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
-            if (replacedSkill >= 0 && _character != null)
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
-                    new TriggerArgs { CharSrc = _character, N1 = replacedSkill });
-        }
-
-        ClearPendingTargetState();
-        Targets.Callback = callback;
-        Targets.CursorActive = true;
-        uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
-        Targets.CursorId = cursorId;
-        _netState.Send(new PacketTarget(cursorType, cursorId));
-    }
+    internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) =>
+        ArmCursor(callback, cursorType);
 
     /// <summary>SPELLTIMEOUT — seconds a spell's target cursor waits before giving up.
     /// 0 means never, which is upstream's default (CServerConfig.cpp:86).</summary>
@@ -977,10 +1029,15 @@ public sealed class ClientTargetingHandler
 
         CancelPrecastTarget();
         int cancelledSkill = Targets.SkillCancelId;
+        var cancelledItem = Targets.ItemUid;
         // The client is told to drop the cursor as well; leaving it drawn would let the
         // player answer a target the server has already forgotten.
         _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+        // addTargetCancel goes through SetTargMode too: a timed-out TARGETF or
+        // used-item cursor gets its cancel trigger like a dismissed one.
+        FireFunctionCursorCancel();
         ClearPendingTargetState();
+        FirePendingItemTargetTrigger(cancelledItem, ItemTrigger.TargOnCancel, Serial.Invalid, 0);
         if (cancelledSkill >= 0 && _character != null)
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
                 new TriggerArgs { CharSrc = _character, N1 = cancelledSkill });
@@ -992,26 +1049,8 @@ public sealed class ClientTargetingHandler
     /// differs. 7.0.9+ clients take the trailing hue dword (30 bytes); older
     /// clients use the 26-byte form (Source-X send.cpp threshold 7.0.9).</summary>
     internal void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
-        ushort multiId, short xOff, short yOff, short zOff, ushort hue)
-    {
-        bool replacedOpenCursor = Targets.CursorActive;
-        if (replacedOpenCursor)
-        {
-            int replacedSkill = Targets.SkillCancelId;
-            _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
-            if (replacedSkill >= 0 && _character != null)
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
-                    new TriggerArgs { CharSrc = _character, N1 = replacedSkill });
-        }
-
-        ClearPendingTargetState();
-        Targets.Callback = callback;
-        Targets.CursorActive = true;
-        uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
-        Targets.CursorId = cursorId;
-        _netState.Send(new PacketTargetMulti(cursorId, multiId, xOff, yOff, zOff, hue,
-            includeHue: _netState.IsClientPost7090));
-    }
+        ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
+        ArmCursor(callback, 1, multiId: multiId, xOff: xOff, yOff: yOff, zOff: zOff, hue: hue);
 
     // ==================== Information Skills ====================
 }

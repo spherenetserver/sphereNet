@@ -434,55 +434,14 @@ public sealed class ClientScriptConsoleHandler
         if (upper == "TRYSRC")
             return target.TryExecuteCommand("TRYSRC", args, _client);
 
-        if (upper is "TARGETF" or "TARGETFG")
-        {
-            string[] parts = args.Split([' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0) return true;
-            if (Targets.CursorActive)
-                return true;
-            ClearPendingTargetState();
-            Targets.Function = parts[0];
-            Targets.FunctionArgs = parts.Length > 1 ? parts[1].Trim() : "";
-            Targets.AllowGround = upper == "TARGETFG";
-            Targets.ItemUid = target is Item ti ? ti.Uid : Serial.Invalid;
-            Targets.CursorActive = true;
-            byte tType = (byte)(upper == "TARGETFG" ? 1 : 0);
-            uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
-            Targets.CursorId = cursorId; // session guard: record the request id
-            _netState.Send(new PacketTarget(tType, cursorId));
-            return true;
-        }
-
-        if (upper is "TARGET" or "TARGETG")
-        {
-            if (Targets.CursorActive)
-                return true;
-            ClearPendingTargetState();
-
-            // Run on an item (its @DClick: TARGET), the verb arms a USED-ITEM cursor:
-            // Source-X OV_TARGET sets m_Targ_UID to the object and opens
-            // CLIMODE_TARG_USE_ITEM, so the pick fires that item's
-            // @TargOn_Item/@TargOn_Char/@TargOn_Ground (OnTarg_Use_Item). The bare
-            // cursor below answered nothing: the pick went nowhere and a dye tub
-            // scripted this way never dyed. A script item has no native use after
-            // its triggers, hence the empty callback.
-            if (target is Item usedItem && !usedItem.IsDeleted)
-            {
-                _client.SetPendingTarget(static (_, _, _, _, _) => { }, (byte)(upper == "TARGETG" ? 1 : 0));
-                Targets.ItemUid = usedItem.Uid;
-                Targets.ItemParentUid = usedItem.ContainedIn;
-                Targets.AllowGround = upper == "TARGETG";
-                return true;
-            }
-
-            Targets.AllowGround = upper == "TARGETG";
-            Targets.CursorActive = true;
-            byte tType = (byte)(upper == "TARGETG" ? 1 : 0);
-            uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
-            Targets.CursorId = cursorId; // session guard: record the request id
-            _netState.Send(new PacketTarget(tType, cursorId));
-            return true;
-        }
+        // TARGET[f|g|w|m...] - the modifier letters follow TARGET in any order
+        // (OV_TARGET, CObjBase.cpp:2691-2751): f = run a function on the pick,
+        // g = the ground may be picked, w = check crime (the harmful cursor flag),
+        // m = place a multi/item preview. Only TARGET, TARGETG, TARGETF and
+        // TARGETFG were known, so TARGETW, TARGETFW, TARGETM and every other
+        // combination the packs write fell through as unknown verbs.
+        if (TryParseTargetVerb(upper, out var targetMode))
+            return ArmScriptTarget(target, args, targetMode);
 
         if (upper == "SKILLMENU")
         {
@@ -2822,6 +2781,154 @@ public sealed class ClientScriptConsoleHandler
         byte map = parts.Length > 3 && byte.TryParse(parts[3], out byte tm) ? tm : current.Map;
         point = new Point3D(x, y, z, map);
         return true;
+    }
+
+    [Flags]
+    private enum ScriptTargetMode
+    {
+        None = 0,
+        Function = 1,   // f
+        Ground = 2,     // g
+        CheckCrime = 4, // w
+        Multi = 8,      // m
+    }
+
+    /// <summary>TARGET followed only by modifier letters, in any order. Anything
+    /// else after TARGET (TARGETCLOSE) is a different verb.</summary>
+    private static bool TryParseTargetVerb(string upper, out ScriptTargetMode mode)
+    {
+        mode = ScriptTargetMode.None;
+        // "TARGETF, f_x" reaches here with the separator still on the key.
+        string key = upper.TrimEnd(',');
+        if (!key.StartsWith("TARGET", StringComparison.Ordinal))
+            return false;
+        foreach (char c in key.AsSpan(6))
+        {
+            switch (c)
+            {
+                case 'F': mode |= ScriptTargetMode.Function; break;
+                case 'G': mode |= ScriptTargetMode.Ground; break;
+                case 'W': mode |= ScriptTargetMode.CheckCrime; break;
+                case 'M': mode |= ScriptTargetMode.Multi; break;
+                default: return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Open the cursor a TARGET verb asks for (OV_TARGET, CObjBase.cpp:
+    /// 2691-2751). Every letter combination arms through the one shared cursor
+    /// path, so a cursor that is already up is cancelled - its @Targon_Cancel /
+    /// @TargOn_Cancel fire - and replaced (SetTargMode, CClientMsg.cpp:1644); the
+    /// new cursor used to be dropped silently while the old one stayed.
+    ///
+    /// Without f the argument is the prompt, printed as a system line
+    /// (SetTargMode -> addSysMessage, so an "@hue,font,unicode" prefix is honoured),
+    /// and the cursor answers the used item's @TargOn_*. With f it is the function
+    /// line run on the pick, and there is no prompt (addTargetFunction). With m the
+    /// argument is "id,hue" (or "function,id,hue" with f) and a multi id raises the
+    /// placement preview (addTargetItems / addTargetFunctionMulti).</summary>
+    private bool ArmScriptTarget(IScriptObj target, string args, ScriptTargetMode mode)
+    {
+        bool function = (mode & ScriptTargetMode.Function) != 0;
+        bool ground = (mode & ScriptTargetMode.Ground) != 0;
+        bool multi = (mode & ScriptTargetMode.Multi) != 0;
+        byte flags = (byte)((mode & ScriptTargetMode.CheckCrime) != 0 ? 1 : 0); // PacketAddTarget::Harmful
+        // GETNONWHITESPACE + SKIP_SEPARATORS (CClient.cpp:509-510).
+        string text = args.Trim().TrimStart(',', ' ', '\t');
+
+        ushort? preview = null;
+        short yOff = 0;
+        ushort hue = 0;
+        string? placeName = null;
+        if (multi)
+        {
+            string[] parts = text.Split(',');
+            int idIndex = function ? 1 : 0;
+            if (function && text.Length == 0)
+                return true;
+            string idToken = parts.Length > idIndex ? parts[idIndex].Trim() : "";
+            string hueToken = parts.Length > idIndex + 1 ? parts[idIndex + 1].Trim() : "";
+            ResolveTargetPreview(idToken, out preview, out yOff, out placeName);
+            if (TryParseScriptNumber(hueToken, out long hueValue))
+                hue = (ushort)Math.Clamp(hueValue, 0, ushort.MaxValue);
+            // addTargetItems: an id that is no multi still asks for a ground spot.
+            ground |= !function;
+            flags = 0;
+            text = function ? parts[0].Trim() : "";
+        }
+        byte cursorType = (byte)(ground ? 1 : 0);
+
+        if (function)
+        {
+            string[] fparts = text.Split([' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
+            if (fparts.Length == 0)
+                return true;
+            // The object running the verb is not the used item of a TARGETF
+            // cursor: the pick runs the function and nothing else.
+            _client.ArmTargetCursor(null, cursorType, flags, preview, yOff, hue);
+            Targets.Function = fparts[0];
+            Targets.FunctionArgs = fparts.Length > 1 ? fparts[1].Trim() : "";
+            Targets.AllowGround = ground;
+            return true;
+        }
+
+        // Run on an item (its @DClick: TARGET), the verb arms a USED-ITEM cursor:
+        // Source-X OV_TARGET sets m_Targ_UID to the object and opens
+        // CLIMODE_TARG_USE_ITEM, so the pick fires that item's
+        // @TargOn_Item/@TargOn_Char/@TargOn_Ground (OnTarg_Use_Item). A script item
+        // has no native use after its triggers, hence the empty callback.
+        if (target is Item usedItem && !usedItem.IsDeleted)
+        {
+            _client.ArmTargetCursor(static (_, _, _, _, _) => { }, cursorType, flags, preview, yOff, hue);
+            Targets.ItemUid = usedItem.Uid;
+            Targets.ItemParentUid = usedItem.ContainedIn;
+        }
+        else
+        {
+            _client.ArmTargetCursor(null, cursorType, flags, preview, yOff, hue);
+        }
+        Targets.AllowGround = ground;
+
+        string prompt = multi
+            ? $"{ServerMessages.Get(Msg.WhereToPlace)} {placeName ?? "template"}?"
+            : text;
+        if (prompt.Length > 0)
+            SysMessage(prompt);
+        return true;
+    }
+
+    /// <summary>The id of a TARGETM: a multi raises the 0x99 footprint preview
+    /// (PacketAddTarget with id/hue), anything else a plain cursor. Multi ids come
+    /// as a defname, or numeric with the multi base added (0x4000, or Source-X's
+    /// current 0x10000).</summary>
+    private void ResolveTargetPreview(string token, out ushort? multiId, out short yOff, out string? name)
+    {
+        multiId = null;
+        yOff = 0;
+        name = null;
+        if (token.Length == 0)
+            return;
+        int index = -1;
+        if (TryParseScriptNumber(token, out long raw))
+        {
+            if (raw is >= 0x10000 and < 0x20000) index = (int)(raw - 0x10000);
+            else if (raw is >= 0x4000 and < 0x8000) index = (int)(raw - 0x4000);
+            else if (raw is > 0 and <= ushort.MaxValue)
+                name = DefinitionLoader.GetItemDef((ushort)raw)?.Name;
+        }
+        else
+        {
+            index = Item.ResolveMultiDefId?.Invoke(token) ?? -1;
+        }
+        if (index < 0 || index > ushort.MaxValue)
+            return;
+        multiId = (ushort)index;
+        var def = _client.Housing?.MultiDefs.Get((ushort)index);
+        // The same anchor offset the deed preview uses (addTargetDeed): the
+        // footprint's bottom edge sits on the cursor.
+        yOff = def?.MaxY ?? 0;
+        name = def?.Name;
     }
 
     private static bool TryParseScriptNumber(string text, out long value) =>

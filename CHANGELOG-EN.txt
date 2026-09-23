@@ -4,6 +4,56 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Script trigger parity: drops, pickups, mirrors, TYPEDEF, regions, spells, cursors
+------------------------------------------------------------------------
+FIX - @DropOn_Self fires on the RECEIVING container/item with ARGO = the
+      dragged item; RETURN 1 bounces the drop (CClientEvent.cpp:421). It fired
+      on the dragged item, and only for a drop on one's own character. A drop
+      on one's own character targets the pack, as upstream does.
+FIX - Pickups follow CCharAct.cpp:2967: @PickUp_Pack/@PickUp_Ground on the
+      item with ARGN1 = amount, then @PickUp_Self on the container with ARGO =
+      the item; a worn item gets @Unequip; @PickUp_Stack fires in addition with
+      ARGO = the pile left behind; RETURN 1 refuses (a refused split is undone).
+FIX - @item*/@char* mirror triggers run with ACT pointing at the item or the
+      target character, restored afterwards (CItem.cpp:3767). Item blocks in
+      character events that read <ACT...> never matched.
+FIX - TYPEDEF triggers are found from the item's own type: a custom TYPE on
+      the instance or on a named ITEMDEF (t_ticaret_potion, t_telepad ...),
+      and run in upstream order EVENTS, TEVENTS, EVENTSITEM, TYPEDEF, ITEMDEF
+      (CItem.cpp:3844). Custom type names are kept on the item, saved as
+      TYPE=<name> and read back by <TYPE>.
+FIX - Region @Exit/@Enter and character @RegionLeave/@RegionEnter can refuse a
+      move with RETURN 1 and get ARGO = the region (CCharAct.cpp:5116); region
+      and room @Step fire on every step and can refuse it; a GM is never
+      refused. f_onchar_regionenter/leave no longer run twice. Region TAG0.x
+      reads answer.
+ADD - @RegenStat (CCharStat.cpp:538) with LOCAL.StatID/Value/StatLimit/
+      FocusValue/HitsHungerLoss read back; @ArrowQuest_Add/@ArrowQuest_Close
+      (CClientMsg.cpp:573).
+FIX - [SPELL] @EffectAdd runs with ARGO = the spell memory and SRC = the
+      caster; RETURN 1 removes the effect, RETURN 0 keeps the memory without
+      the engine effect (CCharSpell.cpp:1000); poison runs it too. @EffectTick
+      reads ARGN2 back.
+FIX - Target cursors: TARGET prints its prompt; a new cursor replaces an open
+      one and fires the old one's cancel triggers; every letter combination
+      of TARGET[F][G][W][M] is parsed (W = harmful cursor, M = multi preview);
+      @TargOn_* get ARGN1 = static tile id and ARGO = the pick; the character
+      @Targon_Cancel fires only for TARGETF with ARGS = the function; TARGPRV
+      is the used item; TARGETF from an item runs only the function
+      (CClientTarg.cpp, CClientMsg.cpp SetTargMode). SRC.TARGP.REGION.x and
+      TARGPRV.x resolve.
+ADD - f_onserver_broadcast runs for server broadcasts with ARGS = the text;
+      RETURN 1 cancels, a rewritten ARGS is sent (CWorldComm.cpp:228).
+FIX - Spawn gems look like upstream CCSpawn::SetTrackID: a char spawner shows
+      its creature's ICON (inherited through ID=), the wisp for a [SPAWN]
+      group or a creature without an icon, any other spawner the large world
+      gem; invisible and dark red unless coloured. Applied after load and on
+      a SPAWNID change - gems kept the graphic written in the save.
+TEST - ScriptTriggerParityGapTests, PickupTriggerVariantTests,
+       ScriptTargetVerbParityTests, SpellEffectAddStageTests,
+       ServerBroadcastHookTests, TargPointRegionTests, SpawnGemTrackIdTests,
+       ScriptHookResyncTests.
+
 [2026-09-23] - TARGET from an item fires its @TargOn triggers; TARG is the picked object
 ------------------------------------------------------------------------
 FIX - TARGET/TARGETG run on an item (its @DClick) arms a used-item cursor, as

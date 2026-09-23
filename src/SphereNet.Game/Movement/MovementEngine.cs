@@ -251,8 +251,21 @@ public sealed class MovementEngine
 
         TickStealthStep(ch);
 
-        // Region/item step effects
-        CheckLocationEffects(ch, target, previousRegion);
+        // Region/item step effects. A region or room @Step RETURN 1 refuses the
+        // step after the fact: upstream puts the walker back where it stood and
+        // rejects the move (Event_Walk, CClientEvent.cpp:894-900 - SetUnkPoint, a
+        // raw reposition that runs no region triggers).
+        if (!CheckLocationEffects(ch, target, previousRegion))
+        {
+            if (!ch.IsDeleted && ch.Position.Equals(target))
+            {
+                _world.MoveCharacter(ch, current, fireRegionEvents: false);
+                var standing = _world.FindRegion(current);
+                ch.SetTag("CURRENT_REGION", standing?.Name ?? "");
+                ch.SetTag("CURRENT_REGION_UID", standing?.Uid.ToString() ?? "");
+            }
+            return false;
+        }
 
         return true;
     }
@@ -406,34 +419,74 @@ public sealed class MovementEngine
         return false;
     }
 
-    private void FireRegionTransition(Character ch, World.Regions.Region? oldRegion, World.Regions.Region? newRegion)
+    /// <summary>
+    /// The region-crossing triggers of Source-X CChar::MoveToRegion
+    /// (CCharAct.cpp:5102-5195): the old area's @Exit, the character's @RegionLeave,
+    /// the new area's @Enter, the character's @RegionEnter - each able to refuse the
+    /// move with RETURN 1. Returns false on a refusal.
+    ///
+    /// The refusal only counts when there is somewhere to stay: leaving is refused
+    /// only with a new area to go to, entering only with an old area to stay in, and
+    /// a GM is never refused. @RegionLeave/@RegionEnter hand the area as ARGO - the
+    /// pack's key-gated areas read ARGO.TAG0/ARGO.DEFNAME from it. The
+    /// f_onchar_regionleave/regionenter functions are reached through the char
+    /// trigger's own function fallback; running them again here ran them twice.
+    /// </summary>
+    private bool FireRegionTransition(Character ch, World.Regions.Region? oldRegion,
+        World.Regions.Region? newRegion, bool allowReject)
     {
-        if (_triggerDispatcher == null) return;
+        if (_triggerDispatcher == null) return true;
+        if (allowReject && ch.PrivLevel >= PrivLevel.GM)
+            allowReject = false;
+
         if (oldRegion != null)
         {
-            _triggerDispatcher.FireRegionEvents(oldRegion, "Exit", ch,
-                new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name });
-            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionLeave,
-                new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name });
-            _triggerDispatcher.Runner?.TryRunFunction("f_onchar_regionleave", ch, null,
-                new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, oldRegion.Name), out _);
+            bool mayRefuse = allowReject && newRegion != null;
+            if (_triggerDispatcher.FireRegionEvents(oldRegion, "Exit", ch,
+                    new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name }) == TriggerResult.True && mayRefuse)
+                return false;
+            if (_triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionLeave,
+                    new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name, O1 = oldRegion }) == TriggerResult.True && mayRefuse)
+                return false;
         }
         if (newRegion != null)
         {
-            _triggerDispatcher.FireRegionEvents(newRegion, "Enter", ch,
-                new TriggerArgs { CharSrc = ch, S1 = newRegion.Name });
-            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionEnter,
-                new TriggerArgs { CharSrc = ch, S1 = newRegion.Name });
-            _triggerDispatcher.Runner?.TryRunFunction("f_onchar_regionenter", ch, null,
-                new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, newRegion.Name), out _);
+            bool mayRefuse = allowReject && oldRegion != null;
+            if (_triggerDispatcher.FireRegionEvents(newRegion, "Enter", ch,
+                    new TriggerArgs { CharSrc = ch, S1 = newRegion.Name }) == TriggerResult.True && mayRefuse)
+                return false;
+            if (_triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionEnter,
+                    new TriggerArgs { CharSrc = ch, S1 = newRegion.Name, O1 = newRegion }) == TriggerResult.True && mayRefuse)
+                return false;
         }
+        return true;
     }
 
-    /// <summary>Check step effects (traps, fields, region enter/leave).</summary>
-    private void CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos, World.Regions.Region? previousRegion)
+    /// <summary>Check step effects (traps, fields, region enter/leave). Returns false
+    /// when the area's or room's @Step refused the step.</summary>
+    private bool CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos, World.Regions.Region? previousRegion)
     {
         var pos = originalPos;
         bool spellHit = false;
+
+        // Region @Step, then the room's, on EVERY walking step and before any item
+        // underfoot is looked at (CChar::CheckLocationEffects, CCharAct.cpp:4904-4919).
+        // It used to fire only when the step stayed inside one region, and nothing
+        // read its RETURN 1.
+        if (_triggerDispatcher != null)
+        {
+            var stepRegion = _world.FindRegion(pos);
+            if (stepRegion != null &&
+                _triggerDispatcher.FireRegionEvents(stepRegion, "Step", ch,
+                    new TriggerArgs { CharSrc = ch, S1 = stepRegion.Name }) == TriggerResult.True)
+                return false;
+            var stepRoom = _world.FindRoom(pos);
+            if (stepRoom != null &&
+                _triggerDispatcher.FireRoomEvents(stepRoom, "Step", ch,
+                    new TriggerArgs { CharSrc = ch, S1 = stepRoom.Name }) == TriggerResult.True)
+                return false;
+        }
+
         foreach (var item in _world.GetItemsInRange(pos, 0))
         {
             // Source-X CheckLocation weeds out anything the character cannot
@@ -534,15 +587,14 @@ public sealed class MovementEngine
         }
 
         // Exit/Enter already ran in GameWorld.MoveCharacter, before SRC.REGION
-        // changed. Only same-region footsteps belong in this location-effects path.
+        // changed, and the area's own @Step ran at the top. The character-side
+        // @RegionStep (an engine extension - upstream has no such trigger) keeps to
+        // same-region footsteps.
         var newRegion = _world.FindRegion(pos);
         if (newRegion != null && newRegion == previousRegion && _triggerDispatcher != null)
         {
-            // Step within same region — fire @Step
             _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionStep,
                 new TriggerArgs { S1 = newRegion.Name });
-            _triggerDispatcher.FireRegionEvents(newRegion, "Step", ch,
-                new TriggerArgs { CharSrc = ch, S1 = newRegion.Name });
         }
 
         // Room enter/leave/step detection
@@ -578,12 +630,11 @@ public sealed class MovementEngine
         }
         else if (newRoom != null && _triggerDispatcher != null)
         {
-            // Step within same room
+            // Step within same room (the room's own @Step ran at the top).
             _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RoomStep,
                 new TriggerArgs { S1 = newRoom.Name });
-            _triggerDispatcher.FireRoomEvents(newRoom, "Step", ch,
-                new TriggerArgs { CharSrc = ch, S1 = newRoom.Name });
         }
+        return true;
     }
 
     /// <summary>

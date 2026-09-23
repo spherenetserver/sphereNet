@@ -19,8 +19,9 @@ public sealed class SpellEffectTickContext
     public byte Level { get; init; }
     /// <summary>ARGN2: upstream's iLevel at the trigger - for poison the 0-4 level
     /// under either formula (the non-OSI branch bands the strength first). The raw
-    /// strength is the memory's MOREY.</summary>
-    public int Strength { get; init; }
+    /// strength is the memory's MOREY. Read back after the trigger, as upstream
+    /// reads ARGN2 back into iLevel (CCharSpell.cpp:2011).</summary>
+    public int Strength { get; set; }
     /// <summary>Applier UID for ARGO.LINK; invalid when unattributed.</summary>
     public Core.Types.Serial SourceUid { get; init; }
     /// <summary>The effect's memory item itself - upstream's ARGO (pItem).</summary>
@@ -53,6 +54,13 @@ public sealed class CharacterPoisonState
     private const int HueTextDef = 0x03B2;
 
     private readonly Character _owner;
+
+    /// <summary>[SPELL] @EffectAdd for the poison memory the moment it is worn
+    /// (Source-X SetPoison -> LayerAdd -> Spell_Effect_Add, CCharAct.cpp:4195 /
+    /// CCharSpell.cpp:1000): args are the owner, the memory (ARGO) and the poisoner
+    /// (SRC). RETURN 1 deletes the memory - no poison. Installed only while a script
+    /// hooks the stage.</summary>
+    public static Func<Character, Item, Character?, TriggerResult>? OnSpellEffectAdd { get; set; }
 
     /// <summary>A poison read from a pre-item save (the old POISON= record), made
     /// into its memory on the first tick after load - creating an item while the
@@ -241,6 +249,20 @@ public sealed class CharacterPoisonState
             return null;
         }
         mem.SetTimeout(Environment.TickCount64 + Math.Max(1, firstTickMs));
+
+        // Worn: Spell_Effect_Add runs [SPELL] @EffectAdd with ARGO = this memory and
+        // SRC = the poisoner. RETURN 1 deletes it (CCharSpell.cpp:1006-1010).
+        var addHook = OnSpellEffectAdd;
+        if (addHook != null)
+        {
+            var caster = source ?? (link.IsValid ? Character.ResolveCharByUid?.Invoke(link) : null);
+            if (addHook(_owner, mem, caster) == TriggerResult.True || mem.IsDeleted)
+            {
+                if (!mem.IsDeleted)
+                    world.DeleteObject(mem);
+                return null;
+            }
+        }
         return mem;
     }
 

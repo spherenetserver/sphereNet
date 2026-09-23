@@ -4,6 +4,61 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - Script trigger paritesi: birakma, alma, aynalar, TYPEDEF, bolgeler, buyuler, imlecler
+------------------------------------------------------------------------
+DUZELTME - @DropOn_Self, esyayi ALAN konteyner/item'da, ARGO = suruklenen esya
+           ile tetiklenir; RETURN 1 birakmayi geri cevirir (CClientEvent.cpp:421).
+           Suruklenen esyada ve sadece kendi karakterine birakinca
+           tetikleniyordu. Kendi karakterine birakma, Source-X'teki gibi
+           cantayi hedef alir.
+DUZELTME - Alma CCharAct.cpp:2967'yi izler: item'da ARGN1 = miktar ile
+           @PickUp_Pack/@PickUp_Ground, sonra konteynerde ARGO = item ile
+           @PickUp_Self; giyili item @Unequip alir; @PickUp_Stack ek olarak,
+           ARGO = geride kalan yigin ile tetiklenir; RETURN 1 reddeder
+           (reddedilen bolme geri alinir).
+DUZELTME - @item*/@char* ayna trigger'lari ACT item'i ya da hedef karakteri
+           gosterirken calisir, sonra eski haline doner (CItem.cpp:3767).
+           Karakter event'lerinde <ACT...> okuyan item bloklari hic
+           eslesmiyordu.
+DUZELTME - TYPEDEF trigger'lari item'in kendi tipinden bulunur: ornekte ya da
+           isimli ITEMDEF'te ozel TYPE (t_ticaret_potion, t_telepad ...);
+           sira Source-X gibi EVENTS, TEVENTS, EVENTSITEM, TYPEDEF, ITEMDEF
+           (CItem.cpp:3844). Ozel tip adlari item'da tutulur, TYPE=<ad> olarak
+           kaydedilir ve <TYPE> ile okunur.
+DUZELTME - Bolge @Exit/@Enter ve karakter @RegionLeave/@RegionEnter RETURN 1
+           ile hareketi reddedebilir, ARGO = bolge alir (CCharAct.cpp:5116);
+           bolge ve oda @Step her adimda tetiklenir ve adimi reddedebilir; GM
+           hic reddedilmez. f_onchar_regionenter/leave artik iki kez calismaz.
+           Bolge TAG0.x okumalari cevaplanir.
+EKLEME - @RegenStat (CCharStat.cpp:538), LOCAL.StatID/Value/StatLimit/
+         FocusValue/HitsHungerLoss geri okunur; @ArrowQuest_Add/
+         @ArrowQuest_Close (CClientMsg.cpp:573).
+DUZELTME - [SPELL] @EffectAdd ARGO = buyu hafiza item'i, SRC = buyucu ile
+           calisir; RETURN 1 etkiyi kaldirir, RETURN 0 hafizayi motor etkisi
+           olmadan tutar (CCharSpell.cpp:1000); zehir de calistirir.
+           @EffectTick ARGN2'yi geri okur.
+DUZELTME - Hedef imlecleri: TARGET mesajini yazar; yeni imlec acik olanin
+           yerine gecer ve eskinin iptal trigger'larini tetikler;
+           TARGET[F][G][W][M] harflerinin her birlesimi taninir (W = zararli
+           imlec, M = multi onizleme); @TargOn_* ARGN1 = statik tile id, ARGO =
+           secim alir; karakter @Targon_Cancel sadece TARGETF'te, ARGS = fonksiyon
+           ile tetiklenir; TARGPRV kullanilan item'dir; item'dan TARGETF sadece
+           fonksiyonu calistirir (CClientTarg.cpp, CClientMsg.cpp SetTargMode).
+           SRC.TARGP.REGION.x ve TARGPRV.x cozulur.
+EKLEME - f_onserver_broadcast sunucu duyurularinda ARGS = metin ile calisir;
+         RETURN 1 iptal eder, yeniden yazilan ARGS gonderilir
+         (CWorldComm.cpp:228).
+DUZELTME - Spawn gem gorunumu Source-X CCSpawn::SetTrackID gibidir: char
+           spawner yaratiginin ICON'unu gosterir (ID= ile miras), [SPAWN]
+           grubu ya da ikonu olmayan yaratik icin wisp, diger spawner'lar
+           buyuk world gem; renk yoksa gorunmez ve koyu kirmizi. Yukleme
+           sonrasi ve SPAWNID degisince uygulanir - gem'ler save'deki grafigi
+           tutuyordu.
+TEST - ScriptTriggerParityGapTests, PickupTriggerVariantTests,
+       ScriptTargetVerbParityTests, SpellEffectAddStageTests,
+       ServerBroadcastHookTests, TargPointRegionTests, SpawnGemTrackIdTests,
+       ScriptHookResyncTests.
+
 [2026-09-23] - Item'dan TARGET kendi @TargOn trigger'larini tetikler; TARG secilen nesnedir
 ------------------------------------------------------------------------
 DUZELTME - Bir item uzerinde (@DClick'inde) calisan TARGET/TARGETG, Source-X

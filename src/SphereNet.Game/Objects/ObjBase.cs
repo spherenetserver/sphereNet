@@ -877,6 +877,38 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // TARGP.<key> — the last picked point is a point (CClient m_Targ_p, a
+        // CPointMap), and a point answers REGION.x, ROOM, TERRAIN, STATICS and its
+        // own coordinates (CPointBase::r_WriteVal). It was kept only as the
+        // "x,y,z,map" text, so <SRC.TARGP.REGION.FLAGS> - what the field and gate
+        // spells check before landing on the pick - read "0" wherever it was.
+        if (key.StartsWith("TARGP.", StringComparison.OrdinalIgnoreCase) &&
+            TryGetTag("TARGP", out string? targPoint) && Point3D.TryParse(targPoint, out var picked))
+        {
+            string sub = key["TARGP.".Length..].ToUpperInvariant();
+            value = sub switch
+            {
+                "X" => picked.X.ToString(),
+                "Y" => picked.Y.ToString(),
+                "Z" => picked.Z.ToString(),
+                "M" or "MAP" => picked.Map.ToString(),
+                _ => TryGetMapPointProperty(sub == "TYPE" ? "P.TYPE" : sub, picked, picked, out string pointVal)
+                    ? pointVal : "0",
+            };
+            return true;
+        }
+
+        // TARGPRV.<key> — the previous target (CClient m_Targ_Prv_UID; after a
+        // used-item pick, the item itself, CClientTarg.cpp:1698) is a reference head
+        // (CLIR_TARGPRV, CClient.cpp:534): its keys are the object's. The head
+        // resolved only for CALL, so <SRC.TARGPRV.UID> in an @TargOn_* read "0".
+        if (key.StartsWith("TARGPRV.", StringComparison.OrdinalIgnoreCase) &&
+            ResolveRefHead("TARGPRV") is { } previous)
+        {
+            value = previous.TryGetProperty(key["TARGPRV.".Length..], out string prvVal) ? prvVal : "0";
+            return true;
+        }
+
         // TOPOBJ.<key> — the other reference head that reads through here
         // (OBR_TOPOBJ, CObjBase.cpp:936). Upstream hands back GetTopLevelObj()
         // unconditionally, so an object that IS its own top level answers about
@@ -1956,13 +1988,17 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         return ld.IsImpassable ? "t_rock" : "t_grass";
     }
 
-    private bool TryGetMapPointProperty(string upper, out string value)
+    private bool TryGetMapPointProperty(string upper, out string value) =>
+        TryGetMapPointProperty(upper, Position, GetTopLevelPosition(), out value);
+
+    /// <summary>The map-point keys asked of an arbitrary point: <paramref name="pos"/>
+    /// is the point itself, <paramref name="areaPos"/> the one its area is looked
+    /// up at (an object's top-level point; a bare point is its own).</summary>
+    private static bool TryGetMapPointProperty(string upper, Point3D pos, Point3D areaPos, out string value)
     {
         value = "";
         var world = ResolveWorld?.Invoke();
         if (world == null) return false;
-
-        var pos = Position;
 
         // --- REGION ---
         // The area of the top-level point (Source-X GetTopLevelObj()->GetTopPoint()):
@@ -1971,12 +2007,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         // through the same reference instead of a display name.
         if (upper == "REGION")
         {
-            value = world.FindRegion(GetTopLevelPosition())?.Uid.ToString() ?? "";
+            value = world.FindRegion(areaPos)?.Uid.ToString() ?? "";
             return true;
         }
         if (upper.StartsWith("REGION.", StringComparison.Ordinal))
         {
-            var region = world.FindRegion(GetTopLevelPosition());
+            var region = world.FindRegion(areaPos);
             if (region != null)
             {
                 string sub = upper["REGION.".Length..];

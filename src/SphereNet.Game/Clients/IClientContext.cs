@@ -252,6 +252,10 @@ internal interface IClientContext : ITextConsole
     void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1);
     void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
         ushort multiId, short xOff, short yOff, short zOff, ushort hue);
+    /// <summary>Raise a cursor through the shared arming path (replaced-cursor
+    /// cancel, fresh session id, 0x6C or the 0x99 multi preview).</summary>
+    void ArmTargetCursor(Action<uint, short, short, sbyte, ushort>? callback, byte cursorType,
+        byte flags = 0, ushort? multiId = null, short yOff = 0, ushort hue = 0);
     void ClearPendingTargetState();
     bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0, ushort amount = 1);
     bool RemoveTargetedObject(uint uid);

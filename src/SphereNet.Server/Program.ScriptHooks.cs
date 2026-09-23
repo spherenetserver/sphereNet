@@ -29,6 +29,7 @@ public static partial class Program
         Character.OnSpellEffectAdd = null;
         Character.OnSpellEffectRemove = null;
         Character.OnSpellEffectTick = null;
+        CharacterPoisonState.OnSpellEffectAdd = null;
         Character.OnMemoryEquip = null;
         Character.OnSkillUseQuickDetailed = null;
         Character.OnNpcSeeNewPlayer = null;
@@ -36,9 +37,19 @@ public static partial class Program
         Character.OnPetDesert = null;
         Character.OnJailed = null;
         Character.OnEnvironChange = null;
+        Character.OnRegenStat = null;
+        Character.OnArrowQuest = null;
         SkillEngine.OnSkillGainCheck = null;
         Character.OnSkillChange = null;
         if (_triggerDispatcher == null) return;
+        // @RegenStat — per-stat regeneration hook; unhooked it stays a null check
+        // on the character tick (Source-X IsTrigUsed(TRIGGER_REGENSTAT)).
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.RegenStat))
+            Character.OnRegenStat = _triggerDispatcher.FireRegenStat;
+        // @ArrowQuest_Add / @ArrowQuest_Close — the ARROWQUEST verb.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.ArrowQuestAdd) ||
+            _triggerDispatcher.IsCharTriggerUsed(CharTrigger.ArrowQuestClose))
+            Character.OnArrowQuest = _triggerDispatcher.FireArrowQuest;
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NotoSend))
         {
             SphereNet.Game.Objects.Characters.Character.OnNotoSend = (viewer, subject, noto) =>
@@ -58,6 +69,16 @@ public static partial class Program
             SphereNet.Game.Objects.Characters.Character.OnEffectAdd = (target, spellId) =>
                 _triggerDispatcher.FireCharTrigger(target, CharTrigger.EffectAdd,
                     new TriggerArgs { CharSrc = target, N1 = spellId });
+        }
+        // [SPELL 20] @EffectAdd on the poison memory as it is worn (Source-X
+        // Spell_Effect_Add, CCharSpell.cpp:1000): ARGO = the memory, SRC = the
+        // poisoner, ARGN1 = the spell. The other effects run the stage from
+        // SpellEngine; poison makes its memory outside the spell engine.
+        if (_triggerDispatcher.IsTriggerNameUsed("EffectAdd"))
+        {
+            CharacterPoisonState.OnSpellEffectAdd = (owner, memory, caster) =>
+                _triggerDispatcher.FireSpellTrigger(SpellType.Poison, "EffectAdd", owner,
+                    new TriggerArgs { CharSrc = caster ?? owner, N1 = (int)SpellType.Poison, O1 = memory });
         }
         // @Reveal — fired before hidden/invisible state drops; RETURN 1
         // keeps the character concealed (Source-X CChar::Reveal).
@@ -128,6 +149,9 @@ public static partial class Program
                     return false;
                 ctx.Damage = (int)locals.GetInt("EFFECT", ctx.Damage);
                 ctx.Charges = (int)locals.GetInt("CHARGES", ctx.Charges);
+                // ARGN2 is read back as the level too (Source-X CCharSpell.cpp:2011
+                // iLevel = m_iN2) - a script caps a lethal poison with ARGN2=3.
+                ctx.Strength = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
                 if (double.TryParse(locals.Get("DELAY"),
                         System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture,

@@ -3483,9 +3483,9 @@ public static partial class Program
             {
                 if (string.IsNullOrWhiteSpace(message))
                     return;
-                foreach (var c in _clients.Values)
-                    if (c.Character != null)
-                        c.SysMessage(message);
+                // Through the one world-broadcast path, so f_onserver_broadcast sees it.
+                BroadcastToAllPlayers(message,
+                    ServerMessages.HueOf(ServerMessages.TalkDefault.System));
             };
             _commands.OnSaveFormatChangeRequested += RequestSaveFormatChangeOnMainLoop;
             _commands.OnScriptDebugToggleRequested += on =>

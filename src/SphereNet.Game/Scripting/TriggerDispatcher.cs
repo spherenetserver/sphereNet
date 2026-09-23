@@ -312,11 +312,14 @@ public sealed class TriggerDispatcher
         if (ScriptDebug)
             DebugLog?.Invoke($"[script_debug] CTRIG @{trigName} on char 0x{ch.Uid.Value:X8} '{ch.Name}' src={args.CharSrc?.Name ?? "-"}");
 
-        // 1. @Char* on source character (cross-target triggers)
+        // 1. @Char* on source character (cross-target triggers). The mirror runs on
+        // the SOURCE, so upstream points that character's ACT at the character being
+        // acted on for the duration and puts it back afterwards (CChar::OnTrigger,
+        // CCharAct.cpp:5562-5565) - which is how a @charDClick block reads <ACT.NAME>.
         if (args.CharSrc != null && args.CharSrc != ch)
         {
             string crossTrigName = "char" + trigName;
-            var result = RunObjectHandlers(args.CharSrc, crossTrigName, args);
+            var result = RunMirrorWithAct(args.CharSrc, ch.Uid, crossTrigName, args);
             if (result == TriggerResult.True)
             {
                 if (ScriptDebug)
@@ -412,13 +415,16 @@ public sealed class TriggerDispatcher
             // the old alias first without replacing the canonical trigger.
             if (trigName.Equals("Unequip", StringComparison.OrdinalIgnoreCase))
             {
-                var legacyResult = RunObjectHandlers(args.CharSrc, "itemUnequipTest", args);
+                var legacyResult = RunMirrorWithAct(args.CharSrc, item.Uid, "itemUnequipTest", args);
                 if (legacyResult == TriggerResult.True)
                     return TriggerResult.True;
             }
 
+            // ACT is the item for the duration of the mirror, restored afterwards
+            // (CItem::OnTrigger, CItem.cpp:3767-3770): an @itemDClick block reads the
+            // clicked item through <ACT...>, and SRC is the character itself.
             string charTrigName = "item" + trigName;
-            var result = RunObjectHandlers(args.CharSrc, charTrigName, args);
+            var result = RunMirrorWithAct(args.CharSrc, item.Uid, charTrigName, args);
             if (result == TriggerResult.True)
             {
                 if (ScriptDebug)
@@ -436,6 +442,17 @@ public sealed class TriggerDispatcher
             return TriggerResult.True;
         }
 
+        // Source-X CItem::OnTrigger order (CItem.cpp:3778-3880): EVENTS, TEVENTS,
+        // EVENTSITEM, TYPEDEF and only then the ITEMDEF's own blocks. The ITEMDEF
+        // used to run together with TEVENTS, ahead of the global events and the
+        // TYPEDEF, so a def-level RETURN 1 hid the TYPEDEF entirely and reversed who
+        // gets the first word.
+        ItemDef? graphicDef = null;
+        ItemDef? namedDef = null;
+        int scriptDefIdx = 0;
+        bool isMulti = item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
+            or Core.Enums.ItemType.Ship;
+
         // 3. TEVENTS from ITEMDEF definition
         if (Resources != null && Runner != null)
         {
@@ -445,8 +462,7 @@ public sealed class TriggerDispatcher
             // SphereNet indexes multis separately from itemdefs, and nothing consulted
             // that index for triggers - every trigger and TEVENTS line a MULTIDEF wrote
             // was loaded and then never reached.
-            if (item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
-                or Core.Enums.ItemType.Ship)
+            if (isMulti)
             {
                 var multiDef = Definitions.DefinitionLoader.GetMultiItemDef(item.BaseId);
                 if (multiDef != null)
@@ -460,17 +476,12 @@ public sealed class TriggerDispatcher
                             return TriggerResult.True;
                     }
                 }
-
-                var multiLink = Resources.GetResource(ResType.MultiDef, item.BaseId);
-                if (multiLink != null &&
-                    RunWrapped(multiLink, trigName, item, args) == TriggerResult.True)
-                    return TriggerResult.True;
             }
 
-            var itemDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
-            if (itemDef != null)
+            graphicDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+            if (graphicDef != null)
             {
-                foreach (var tevRid in itemDef.Events)
+                foreach (var tevRid in graphicDef.Events)
                 {
                     // Older saves may contain copied TEVENTS in the instance EVENTS
                     // list. RunObjectHandlers already executed those above.
@@ -483,25 +494,15 @@ public sealed class TriggerDispatcher
                 }
             }
 
-            // ITEMDEF own triggers (resolved graphic's def).
-            var itemDefLink = Resources.GetResource(ResType.ItemDef, item.BaseId);
-            if (itemDefLink != null)
-            {
-                var result = RunWrapped(itemDefLink, trigName, item, args);
-                if (result == TriggerResult.True)
-                    return TriggerResult.True;
-            }
-
-            // Named (scripted) ITEMDEF triggers — when [itemdef i_moongate]
-            // sets id=i_moongate_blue, the item's BaseId becomes 0x0F6C
-            // (the graphic) but the @DClick / @Step triggers live on the
-            // i_moongate section itself, keyed by its string-hash index.
-            // TryAddAtTarget stashes that index in TAG.SCRIPTDEF so the
-            // dispatcher can route triggers back to the scripted def.
-            int scriptDefIdx = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, Resources);
+            // Named (scripted) ITEMDEF — when [itemdef i_moongate] sets
+            // id=i_moongate_blue, the item's BaseId becomes 0x0F6C (the graphic)
+            // but the TEVENTS / @DClick / @Step live on the i_moongate section
+            // itself, keyed by its string-hash index. TryAddAtTarget stashes that
+            // index in TAG.SCRIPTDEF so the dispatcher can route back to it.
+            scriptDefIdx = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, Resources);
             if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
             {
-                var namedDef = Definitions.DefinitionLoader.GetItemDef(scriptDefIdx);
+                namedDef = Definitions.DefinitionLoader.GetItemDef(scriptDefIdx);
                 if (namedDef != null)
                 {
                     foreach (var tevRid in namedDef.Events)
@@ -513,14 +514,6 @@ public sealed class TriggerDispatcher
                         if (tevResult == TriggerResult.True)
                             return TriggerResult.True;
                     }
-                }
-
-                var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
-                if (scriptLink != null)
-                {
-                    var result = RunWrapped(scriptLink, trigName, item, args);
-                    if (result == TriggerResult.True)
-                        return TriggerResult.True;
                 }
             }
         }
@@ -552,23 +545,46 @@ public sealed class TriggerDispatcher
         }
         if (Resources != null && Runner != null)
         {
-            var itemDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
-            if (!string.IsNullOrWhiteSpace(itemDef?.TypeRaw))
+            var typeLink = ResolveTypeDefLink(item, namedDef, graphicDef);
+            if (typeLink != null)
             {
-                var typeRid = Resources.ResolveDefName(itemDef.TypeRaw.Trim());
-                var typeLink = typeRid.IsValid && typeRid.Type == ResType.TypeDef
-                    ? Resources.GetResource(typeRid)
-                    : null;
-                if (typeLink != null)
+                var result = RunWrapped(typeLink, trigName, item, args);
+                if (result == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+        }
+
+        // 6. ITEMDEF own triggers: the multi's [MULTIDEF], the graphic's def and the
+        // named (scripted) def the instance was made from.
+        if (Resources != null && Runner != null)
+        {
+            if (isMulti)
+            {
+                var multiLink = Resources.GetResource(ResType.MultiDef, item.BaseId);
+                if (multiLink != null &&
+                    RunWrapped(multiLink, trigName, item, args) == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+
+            var itemDefLink = Resources.GetResource(ResType.ItemDef, item.BaseId);
+            if (itemDefLink != null)
+            {
+                var result = RunWrapped(itemDefLink, trigName, item, args);
+                if (result == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+
+            if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
+            {
+                var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
+                if (scriptLink != null)
                 {
-                    var result = RunWrapped(typeLink, trigName, item, args);
+                    var result = RunWrapped(scriptLink, trigName, item, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
                 }
             }
         }
-
-        // 6. ITEMDEF (base definition script) — already covered by step 3
 
         // 7. Global f_onitem_* function (parity with f_onchar_*)
         if (Runner != null && (!_funcTriggerGateBuilt || _funcItemTriggers.Contains(trigName)))
@@ -729,9 +745,13 @@ public sealed class TriggerDispatcher
     /// Fire region event scripts for a given trigger name.
     /// Iterates the region's EVENTS list and runs matching triggers.
     /// </summary>
-    public void FireRegionEvents(World.Regions.Region region, string trigName, Character ch, TriggerArgs args)
+    /// <remarks>Returns <see cref="TriggerResult.True"/> when a block RETURNs 1 -
+    /// the region's refusal (CRegion::OnRegionTrigger, CRegion.cpp:882: "true = halt
+    /// processing, don't allow in this region"). The walk, the teleport and the
+    /// step paths read it; a periodic trigger simply ignores it.</remarks>
+    public TriggerResult FireRegionEvents(World.Regions.Region region, string trigName, Character ch, TriggerArgs args)
     {
-        if (Resources == null || Runner == null) return;
+        if (Resources == null || Runner == null) return TriggerResult.Default;
 
         // The script runs ON THE REGION, with the character as SRC: upstream calls
         // OnTriggerScript from the region itself and hands it the character's console
@@ -743,29 +763,31 @@ public sealed class TriggerDispatcher
         {
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
-            RunWrapped(link, trigName, region, args);
+            if (RunWrapped(link, trigName, region, args) == TriggerResult.True)
+                return TriggerResult.True;
         }
 
-        RunResourceEventHandlers(GlobalRegionEvents, trigName, region, args);
+        return RunResourceEventHandlers(GlobalRegionEvents, trigName, region, args);
     }
 
     /// <summary>
     /// Fire room event scripts for a given trigger name.
     /// Iterates the room's EVENTS list and runs matching triggers.
     /// </summary>
-    public void FireRoomEvents(World.Regions.Room room, string trigName, Character ch, TriggerArgs args)
+    public TriggerResult FireRoomEvents(World.Regions.Room room, string trigName, Character ch, TriggerArgs args)
     {
-        if (Resources == null || Runner == null) return;
+        if (Resources == null || Runner == null) return TriggerResult.Default;
 
         // Same as a region: the script runs on the ROOM, the character is SRC.
         foreach (var eventRid in room.Events)
         {
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
-            RunWrapped(link, trigName, room, args);
+            if (RunWrapped(link, trigName, room, args) == TriggerResult.True)
+                return TriggerResult.True;
         }
 
-        RunResourceEventHandlers(GlobalRegionEvents, trigName, room, args);
+        return RunResourceEventHandlers(GlobalRegionEvents, trigName, room, args);
     }
 
     /// <summary>
@@ -916,6 +938,42 @@ public sealed class TriggerDispatcher
         FireCharTrigger(ch, CharTrigger.EnvironChange, new TriggerArgs { CharSrc = ch, N1 = light });
     }
 
+    /// <summary>@ArrowQuest_Add (x &gt; 0) or @ArrowQuest_Close on the character, with
+    /// ARGN1..3 = x, y, id and the character as SRC (CClientMsg.cpp:577-592). The
+    /// target of <see cref="Character.OnArrowQuest"/>.</summary>
+    public void FireArrowQuest(Character ch, int x, int y, int id)
+    {
+        var trigger = x > 0 ? CharTrigger.ArrowQuestAdd : CharTrigger.ArrowQuestClose;
+        if (_funcTriggerGateBuilt && !IsCharTriggerUsed(trigger)) return;
+        FireCharTrigger(ch, trigger, new TriggerArgs { CharSrc = ch, N1 = x, N2 = y, N3 = id });
+    }
+
+    /// <summary>@RegenStat on the character (CCharStat.cpp:538-576), the target of
+    /// <see cref="Character.OnRegenStat"/>. The stat, amount, limit, Focus bonus and
+    /// starvation loss go out as LOCAL.StatID/Value/StatLimit/FocusValue/
+    /// HitsHungerLoss and come back from the same names. Returns true on RETURN 1.</summary>
+    public bool FireRegenStat(Character ch, RegenStatContext ctx)
+    {
+        if (_funcTriggerGateBuilt && !IsCharTriggerUsed(CharTrigger.RegenStat)) return false;
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("StatID", ctx.StatId);
+        locals.SetInt("Value", ctx.Value);
+        locals.SetInt("StatLimit", ctx.StatLimit);
+        if (ctx.StatId is 1 or 2)
+            locals.SetInt("FocusValue", ctx.FocusValue);
+        if (ctx.StatId == 3)
+            locals.SetInt("HitsHungerLoss", ctx.HitsHungerLoss);
+        if (FireCharTrigger(ch, CharTrigger.RegenStat, new TriggerArgs { CharSrc = ch, Locals = locals })
+            == TriggerResult.True)
+            return true;
+        ctx.StatId = (int)locals.GetInt("StatID", ctx.StatId);
+        ctx.Value = (int)locals.GetInt("Value", ctx.Value);
+        ctx.StatLimit = (int)locals.GetInt("StatLimit", ctx.StatLimit);
+        ctx.FocusValue = (int)locals.GetInt("FocusValue", ctx.FocusValue);
+        ctx.HitsHungerLoss = (int)locals.GetInt("HitsHungerLoss", ctx.HitsHungerLoss);
+        return false;
+    }
+
     /// <summary>
     /// O(1) item-trigger counterpart of <see cref="IsCharTriggerUsed"/>. Also
     /// covers the cross-fired <c>@item&lt;Name&gt;</c> mirror. Lets a hot item path
@@ -981,6 +1039,70 @@ public sealed class TriggerDispatcher
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _eventTagKeys = new(StringComparer.OrdinalIgnoreCase);
     private static string EventTagKey(string trigName) =>
         _eventTagKeys.GetOrAdd(trigName, static n => "TAG.EVENT_" + n.ToUpperInvariant());
+
+    /// <summary>The [TYPEDEF] this item's triggers run through. Upstream looks it up by
+    /// the INSTANCE type, m_type (CItem.cpp:3844), which starts as the ITEMDEF's TYPE
+    /// and follows any TYPE= a script or save gives the item. Resolving only the
+    /// graphic's def missed three cases: a custom TYPEDEF set on the instance, a
+    /// built-in retype of the instance, and - the common one - a named ITEMDEF whose
+    /// TYPE (t_ticaret_potion on ID=i_bottle_red) differs from its graphic's.</summary>
+    private ResourceLink? ResolveTypeDefLink(Item item, ItemDef? namedDef, ItemDef? graphicDef)
+    {
+        if (Resources == null) return null;
+
+        // A custom typedef the instance was given (TYPE=t_custom).
+        if (item.CustomTypeName is { } customName)
+            return TypeDefLinkForName(customName);
+
+        // A built-in type of the instance's own, differing from its definition. When
+        // no [TYPEDEF] is loaded for it, upstream falls back to the definition's type
+        // (CItem.cpp:3850, SetType(Item_GetDef()->GetType())), and so does this.
+        if (item.HasInstanceType &&
+            Resources.GetResource(ResType.TypeDef, (int)item.RawType) is { } instanceLink)
+            return instanceLink;
+
+        // The definition's TYPE: the named def the item was made from first, then
+        // the graphic's (a named def that says no TYPE inherits its base's).
+        if (!string.IsNullOrWhiteSpace(namedDef?.TypeRaw))
+            return TypeDefLinkForName(namedDef.TypeRaw);
+        if (!string.IsNullOrWhiteSpace(graphicDef?.TypeRaw))
+            return TypeDefLinkForName(graphicDef.TypeRaw);
+
+        // No script TYPE at all: a type the engine derived (door graphics).
+        var derived = item.ItemType;
+        return derived != Core.Enums.ItemType.Normal
+            ? Resources.GetResource(ResType.TypeDef, (int)derived)
+            : null;
+    }
+
+    private ResourceLink? TypeDefLinkForName(string typeName)
+    {
+        string name = typeName.Trim();
+        if (ushort.TryParse(name, out ushort numeric))
+            return Resources!.GetResource(ResType.TypeDef, numeric);
+        var typeRid = Resources!.ResolveDefName(name);
+        return typeRid.IsValid && typeRid.Type == ResType.TypeDef
+            ? Resources.GetResource(typeRid)
+            : null;
+    }
+
+    /// <summary>Run a <c>@char*</c>/<c>@item*</c> mirror on <paramref name="source"/>
+    /// with its ACT pointed at the object the trigger is about, restoring the previous
+    /// ACT afterwards whatever the script did with it (Source-X saves and restores
+    /// m_Act_UID around the mirror call).</summary>
+    private TriggerResult RunMirrorWithAct(Character source, Serial actUid, string trigName, TriggerArgs args)
+    {
+        var oldAct = source.Act;
+        source.Act = actUid;
+        try
+        {
+            return RunObjectHandlers(source, trigName, args);
+        }
+        finally
+        {
+            source.Act = oldAct;
+        }
+    }
 
     private TriggerResult RunObjectHandlers(IScriptObj obj, string trigName, TriggerArgs args,
         HashSet<ResourceLink>? executedEvents = null)
@@ -1270,6 +1392,10 @@ public sealed class TriggerDispatcher
         CharTrigger.HouseDesignBegin => "HouseDesignBegin",
         CharTrigger.ToolTip => "ToolTip",
         CharTrigger.Profile => "Profile",
+        CharTrigger.RegenStat => "RegenStat",
+        // Source-X CChar sm_szTrigName: @ArrowQuest_Add / @ArrowQuest_Close.
+        CharTrigger.ArrowQuestAdd => "ArrowQuest_Add",
+        CharTrigger.ArrowQuestClose => "ArrowQuest_Close",
         CharTrigger.itemAfterClick => "itemAfterClick",
         CharTrigger.itemBuy => "itemBuy",
         CharTrigger.itemClick => "itemClick",

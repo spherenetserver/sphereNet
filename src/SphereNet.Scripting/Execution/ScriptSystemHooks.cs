@@ -107,6 +107,23 @@ public sealed class ScriptSystemHooks
             : Core.Enums.TriggerResult.Default;
     }
 
+    /// <summary>Dispatch a server hook whose ARGS the script may rewrite, handing the
+    /// rewritten text back (Source-X CWorldComm::Broadcast, CWorldComm.cpp:228-234:
+    /// <c>f_onserver_broadcast</c> runs with ARGS = the message, RETURN 1 drops the
+    /// broadcast and otherwise <c>m_s1</c> is what gets sent).</summary>
+    public Core.Enums.TriggerResult DispatchServerRewrite(string hookSuffix, IScriptObj serverContext,
+        ref string args)
+    {
+        var triggerArgs = new TriggerArgs(serverContext, 0, 0, args)
+        {
+            Object2 = serverContext
+        };
+        if (!_runner.TryRunFunction($"f_onserver_{hookSuffix}", serverContext, null, triggerArgs, out var result))
+            return Core.Enums.TriggerResult.Default;
+        args = triggerArgs.ArgString;
+        return result;
+    }
+
     public bool DispatchAccount(string hookSuffix, IScriptObj accountObj, IScriptObj? argo = null, string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0)
     {
         if (TryDispatch($"f_onaccount_{hookSuffix}", accountObj, argo, args,

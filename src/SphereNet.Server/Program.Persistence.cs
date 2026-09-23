@@ -617,6 +617,19 @@ public static partial class Program
         if (string.IsNullOrEmpty(text))
             return;
 
+        // Every world broadcast passes f_onserver_broadcast first (CWorldComm::
+        // Broadcast, CWorldComm.cpp:228-234): ARGS is the message, RETURN 1 keeps it
+        // from being sent, and whatever the script left in ARGS is what goes out.
+        // The pack defines the function; nothing ever called it.
+        if (_systemHooks != null)
+        {
+            if (_systemHooks.DispatchServerRewrite("broadcast", _serverHookContext, ref text)
+                == SphereNet.Core.Enums.TriggerResult.True)
+                return;
+            if (string.IsNullOrEmpty(text))
+                return;
+        }
+
         foreach (var c in _clients.Values)
         {
             if (!c.IsPlaying)

@@ -125,6 +125,12 @@ public class Item : ObjBase
     public static Action<Item, bool>? OnSpawnStartStop;
 
     private ItemType _type;
+    // A script TYPE that names a [TYPEDEF] the engine has no built-in type for
+    // (t_ticaret_potion, t_etkinlik_gate ...). Upstream gives such a typedef a
+    // resource number of its own and m_type simply holds it (CItem.cpp:3844 looks
+    // the TYPEDEF up by m_type); the ItemType enum cannot carry that number, so the
+    // name is kept beside it and the dispatcher resolves the TYPEDEF through it.
+    private string? _customTypeName;
     private ushort _amount = 1;
     private Serial _containedIn = Serial.Invalid;
     private byte _containerGridIndex;
@@ -216,6 +222,11 @@ public class Item : ObjBase
     /// alongside SpawnChar when the item type is t_spawn_champion.</summary>
     public ChampionComponent? Champion { get; set; }
 
+    /// <summary>The script TYPE this instance was given when it names a custom
+    /// [TYPEDEF] rather than a built-in type; null otherwise. Set through
+    /// <c>TYPE=</c>, cleared by any built-in retype.</summary>
+    public string? CustomTypeName => _customTypeName;
+
     public ItemType ItemType
     {
         get
@@ -241,6 +252,7 @@ public class Item : ObjBase
             // it only needs resolving when a side is raw-Normal (masked by def).
             var oldRaw = _type;
             _type = value;
+            _customTypeName = null;
             if (oldRaw == value || !IsOnGround)
                 return;
 
@@ -1437,6 +1449,7 @@ public class Item : ObjBase
         Hue = src.Hue;
         Name = src.Name;
         _type = src._type; // direct field — avoid the ItemType setter's spawn/def side effects
+        _customTypeName = src._customTypeName;
         Direction = src.Direction;
         AssignDecay(src.DecayTime);
         // The script timer goes with the split too, not just the decay clock:
@@ -1979,10 +1992,23 @@ public class Item : ObjBase
             // showed t_normal/0 for those in <TYPE> and the property editor while
             // MORE1 already resolved — the "typedef okunmuyor" report.
             case "TYPE":
+            {
+                // A custom typedef reads back by its name, as upstream answers IC_TYPE
+                // with the TYPEDEF's resource name.
+                if (_customTypeName != null) { value = _customTypeName; return true; }
+                var typeDef = _type != ItemType.Normal ? null : ResolveDefinition();
+                if (typeDef != null && typeDef.Type == ItemType.Normal &&
+                    !string.IsNullOrWhiteSpace(typeDef.TypeRaw) &&
+                    ParseItemType(typeDef.TypeRaw) == ItemType.Invalid)
+                {
+                    value = typeDef.TypeRaw.Trim();
+                    return true;
+                }
                 value = FormatItemType(_type != ItemType.Normal
                     ? _type
-                    : ResolveDefinition()?.Type ?? ItemType.Normal);
+                    : typeDef?.Type ?? ItemType.Normal);
                 return true;
+            }
             case "AMOUNT": value = _amount.ToString(); return true;
             case "MAXAMOUNT": value = MaxAmount.ToString(); return true; // 0 for non-stackable
             case "BASEWEIGHT": value = Weight.ToString(); return true; // Source-X m_weight: per-unit tenths of a stone
@@ -2646,8 +2672,16 @@ public class Item : ObjBase
                 if (parsed != ItemType.Invalid)
                 {
                     _type = parsed;
+                    _customTypeName = null;
                     if (parsed is ItemType.SpawnChar or ItemType.SpawnItem or ItemType.SpawnChampion)
                         OnSpawnTypeChanged?.Invoke(this);
+                }
+                else if (IsCustomTypeDefName(value))
+                {
+                    // A [TYPEDEF] with no built-in number: keep its name so the
+                    // TYPEDEF's triggers are reached (CItem.cpp:3844) and a save
+                    // writes it back by name.
+                    _customTypeName = value.Trim();
                 }
                 return true;
             }
@@ -3003,6 +3037,8 @@ public class Item : ObjBase
                     {
                         SpawnChar?.SetFromDefName(value.Trim(), spawnRes);
                         SpawnItem?.SetFromDefName(value.Trim(), spawnRes);
+                        // Upstream re-looks the gem on a new target (CCSpawn.cpp:1027).
+                        ApplySpawnTrackId();
                     }
                 }
                 else if (upper == "MAXDIST" && int.TryParse(value, out int spawnMd))
@@ -4939,6 +4975,78 @@ public class Item : ObjBase
             Tags.Remove($"CHAMPION_LOAD.{k}");
     }
 
+    private const ushort ItemIdTrackWisp = 0x2100;   // ITEMID_TRACK_WISP
+    private const ushort ItemIdWorldGemLarge = 0x1F13; // ITEMID_WorldGem_lg
+    private const ushort HueRedDark = 0x0020;          // HUE_RED_DARK
+
+    /// <summary>Source-X CCSpawn::SetTrackID (CCSpawn.cpp:768): what a spawner looks
+    /// like to the GMs who can see it. It is invisible to players, dark red unless
+    /// coloured, and a char spawner shows the statuette (ICON) of the creature it
+    /// makes - the wisp when that creature has no icon or the target is a [SPAWN]
+    /// group; any other spawner is the large world gem. Upstream reapplies it when
+    /// SPAWNID changes and on every load (FixWeirdness, CItem.cpp:1107), so a gem
+    /// saved before its creature's ICON changed shows the new one. SphereNet only
+    /// ever showed the DISPID written into the save.</summary>
+    public void ApplySpawnTrackId()
+    {
+        var type = ItemType;
+        if (type is not (ItemType.SpawnChar or ItemType.SpawnItem or ItemType.SpawnChampion))
+            return;
+
+        SetAttr(Core.Enums.ObjAttributes.Invis);
+        if (Hue.Value == 0)
+            Hue = new Core.Types.Color(HueRedDark);
+
+        ushort look;
+        if (type != ItemType.SpawnChar)
+            look = ItemIdWorldGemLarge;
+        else if (SpawnChar is { SpawnGroup: null, CharDefId: > 0 } spawn)
+            look = ResolveCharTrackId(spawn.CharDefId);
+        else
+            look = ItemIdTrackWisp;
+
+        if (_dispId == look) return;
+        _dispId = look;
+        OnVisualUpdate?.Invoke(this);
+    }
+
+    /// <summary>The chardef's ICON as an item graphic (CBC_ICON -> m_trackID); a def
+    /// made from another one (ID=c_other) inherits it (CCharBase::CopyBasic).</summary>
+    private static ushort ResolveCharTrackId(int charDefIndex)
+    {
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        var def = Definitions.DefinitionLoader.GetCharDef(charDefIndex);
+        for (int depth = 0; def != null && depth < 8; depth++)
+        {
+            if (def.TrackId != 0)
+                return def.TrackId;
+            if (!string.IsNullOrWhiteSpace(def.Icon))
+            {
+                string icon = def.Icon.Trim();
+                if (SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(icon.AsSpan(), out long n) && n is > 0 and <= ushort.MaxValue)
+                    return (ushort)n;
+                var rid = resources?.ResolveDefName(icon) ?? Core.Types.ResourceId.Invalid;
+                if (rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef)
+                {
+                    if (rid.Index is > 0 and <= ushort.MaxValue)
+                        return (ushort)rid.Index;
+                    var idef = Definitions.DefinitionLoader.GetItemDef(rid.Index);
+                    if (idef is { DispIndex: > 0 })
+                        return idef.DispIndex;
+                }
+                return ItemIdTrackWisp;
+            }
+            if (string.IsNullOrWhiteSpace(def.DisplayIdRef) || resources == null)
+                break;
+            var baseRid = resources.ResolveDefName(def.DisplayIdRef);
+            if (!baseRid.IsValid || baseRid.Type != Core.Enums.ResType.CharDef || baseRid.Index == charDefIndex)
+                break;
+            charDefIndex = baseRid.Index;
+            def = Definitions.DefinitionLoader.GetCharDef(charDefIndex);
+        }
+        return ItemIdTrackWisp;
+    }
+
     /// <summary>Build the spawn component this item's TYPE calls for. The def table is
     /// only needed to resolve a NAMED spawn group or champion def; without one the
     /// component is still created and still ticks, which is what a duplicated spawner
@@ -5171,6 +5279,15 @@ public class Item : ObjBase
         if (ushort.TryParse(arg.Trim(), out ushort d))
             return d;
         return 0;
+    }
+
+    /// <summary>Does <paramref name="name"/> name a loaded [TYPEDEF] section?</summary>
+    private static bool IsCustomTypeDefName(string name)
+    {
+        var resources = DefinitionLoader.StaticResources;
+        if (resources == null || string.IsNullOrWhiteSpace(name)) return false;
+        var rid = resources.ResolveDefName(name.Trim());
+        return rid.IsValid && rid.Type == ResType.TypeDef;
     }
 
     internal static ItemType ParseItemType(string arg)

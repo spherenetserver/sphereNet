@@ -24,6 +24,9 @@ public static class EngineTags
         "CAMPING_SAFE_LOGOUT_UNTIL", "CLIENT_LINGER_UNTIL",
         "ATTACK_TARGET", "FOLLOW_TARGET", "GUARD_TARGET", "GO_TARGET",
         "TARGP", "TARG.X", "TARG.Y", "TARG.Z", "TARG.MAP", "TARG.UID",
+        // The used item of the last item cursor (CClient m_Targ_Prv_UID): client
+        // session state, never part of the character's saved record.
+        "TARGPRV",
     };
 
     /// <summary>True if scripts must not persist or override this tag key.</summary>

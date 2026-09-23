@@ -111,6 +111,49 @@ public sealed class ScriptHookResyncTests : IDisposable
         Assert.Equal(2, context.Charges);
     }
 
+    // Source-X reads ARGN2 back as the level after @EffectTick (CCharSpell.cpp:2011);
+    // the pack caps a lethal poison with ARGN2=3.
+    [Fact]
+    public void SpellResourceEffectTickReadsTheLevelBack()
+    {
+        Reload("[SPELL 20]\nON=@EffectTick\nIF (<ARGN2> >= 4)\nARGN2=3\nENDIF\n");
+        var context = new SpellEffectTickContext { SpellId = 20, Strength = 4, Damage = 1, Charges = 4 };
+        Assert.True(Character.OnSpellEffectTick!(_character, context));
+        Assert.Equal(3, context.Strength);
+    }
+
+    // [SPELL 20] @EffectAdd for the poison memory (SetPoison -> LayerAdd ->
+    // Spell_Effect_Add): ARGO is the memory, SRC the poisoner; RETURN 1 means no
+    // poison at all.
+    [Fact]
+    public void PoisonMemoryRunsTheSpellEffectAddStage()
+    {
+        var world = (SphereNet.Game.World.GameWorld)typeof(SphereNet.Server.Program)
+            .GetField("_world", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        world.PlaceCharacter(_character, new SphereNet.Core.Types.Point3D(100, 100, 0, 0));
+        var poisoner = world.CreateCharacter();
+        world.PlaceCharacter(poisoner, new SphereNet.Core.Types.Point3D(101, 100, 0, 0));
+
+        Reload("[SPELL 20]\nON=@EffectAdd\nARGO.TAG.OVERRIDE.CUREPOISONCHANCE=100\nTAG.FX_SRC=<SRC.UID>\n");
+        Assert.NotNull(CharacterPoisonState.OnSpellEffectAdd);
+        Assert.True(_character.SetPoison(500, 5, poisoner));
+        var memory = _character.GetEquippedItem(Layer.FlagPoison);
+        Assert.NotNull(memory);
+        Assert.True(memory!.TryGetTag("OVERRIDE.CUREPOISONCHANCE", out var chance) && chance == "100");
+        Assert.True(_character.TryGetTag("FX_SRC", out var src) &&
+            SphereNet.Core.Types.ScriptNumber.TryParseToken(src!, out long srcUid) &&
+            (uint)srcUid == poisoner.Uid.Value);
+
+        _character.Poison.Cure(false);
+        Reload("[SPELL 20]\nON=@EffectAdd\nRETURN 1\n");
+        Assert.False(_character.SetPoison(500, 5, poisoner));
+        Assert.Null(_character.GetEquippedItem(Layer.FlagPoison));
+
+        Reload("[EVENTS e_probe]\n");
+        Assert.Null(CharacterPoisonState.OnSpellEffectAdd);
+    }
+
     [Theory]
     [InlineData("Gain", "OnSkillGainCheck")]
     [InlineData("UseQuick", "OnSkillUseQuickDetailed")]

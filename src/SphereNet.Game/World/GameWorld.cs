@@ -953,8 +953,11 @@ public sealed class GameWorld
     public Action<Character, Regions.Region?, Regions.Region?>? OnRegionChanged { get; set; }
 
     /// <summary>Script Exit/Enter phase, before committing position and region.
-    /// Source-X keeps SRC.REGION on the previous area during the new area's Enter.</summary>
-    public Action<Character, Regions.Region?, Regions.Region?>? OnRegionTransition { get; set; }
+    /// Source-X keeps SRC.REGION on the previous area during the new area's Enter.
+    /// Args: (character, oldRegion, newRegion, allowReject). Returns false when a
+    /// script refused the crossing (CChar::MoveToRegion, CCharAct.cpp:5102) and the
+    /// move must not happen.</summary>
+    public Func<Character, Regions.Region?, Regions.Region?, bool, bool>? OnRegionTransition { get; set; }
 
     /// <summary>
     /// Source-X parity: fired after an NPC has been placed into the world
@@ -969,8 +972,13 @@ public sealed class GameWorld
     /// is false the region-change detection is skipped — used when a movable multi
     /// (ship) carries a deck character: the ship's region moves WITH the character,
     /// so they never logically cross a region boundary and must not fire @Enter/@Exit
-    /// or flip CURRENT_REGION as the hull sails.</summary>
-    public bool MoveCharacter(Character ch, Point3D newPos, bool fireRegionEvents = true)
+    /// or flip CURRENT_REGION as the hull sails.
+    ///
+    /// <paramref name="allowReject"/> lets a region's @Exit/@Enter or the character's
+    /// @RegionLeave/@RegionEnter RETURN 1 refuse the move; upstream's MoveToChar has
+    /// it on by default for walking and teleporting alike (CChar.h:509), and false
+    /// comes back when it did.</summary>
+    public bool MoveCharacter(Character ch, Point3D newPos, bool fireRegionEvents = true, bool allowReject = true)
     {
         var newSector = GetSector(newPos);
         if (newSector == null) return false;
@@ -984,9 +992,12 @@ public sealed class GameWorld
             // Exit/Enter finish. Position is deliberately still oldPos here.
             ch.SetTag("CURRENT_REGION", oldRegion?.Name ?? "");
             ch.SetTag("CURRENT_REGION_UID", oldRegion?.Uid.ToString() ?? "");
-            OnRegionTransition?.Invoke(ch, oldRegion, newRegion);
+            bool allowed = OnRegionTransition?.Invoke(ch, oldRegion, newRegion, allowReject) ?? true;
             // A script may have removed or relocated the character itself.
             if (ch.IsDeleted || !ch.Position.Equals(oldPos)) return false;
+            // Refused: the character stays where it was, and CURRENT_REGION already
+            // names the old area.
+            if (!allowed) return false;
         }
         var oldSector = GetSector(oldPos);
         if (oldSector != newSector)

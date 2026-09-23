@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -12,14 +12,14 @@ using Xunit;
 
 namespace SphereNet.Tests;
 
-// Verifies HandleItemPickup selects the correct pickup-source trigger variant.
-// SelectPickupTrigger distinguishes four cases that scripts can gate separately:
-//   Self  — dragged off the picker's own equipment layers,
-//   Stack — a partial amount split out of a larger stack,
-//   Pack  — taken from inside a container,
-//   Ground— loose on the ground.
-// Equipped items report ContainedIn = the wearer, so without the equip-first
-// ordering they would be misclassified as Pack pickups; that ordering is asserted.
+// HandleItemPickup runs the lift triggers the way Source-X CChar::ItemPickup does
+// (CCharAct.cpp:2967-3020):
+//   Ground - loose on the ground: @PickUp_Ground on the item, ARGN1 = amount;
+//   Pack   - out of a container: @PickUp_Pack on the item, ARGN1 = amount, then
+//            @PickUp_Self on the CONTAINER with ARGO = the item;
+//   worn   - no pickup trigger, the item's @Unequip runs instead;
+//   Stack  - a partial lift ALSO runs @PickUp_Stack on the lifted pile, ARGO = the
+//            pile left behind; RETURN 1 keeps the pile whole.
 public class PickupTriggerVariantTests
 {
     private static GameWorld CreateWorld()
@@ -48,42 +48,51 @@ public class PickupTriggerVariantTests
         return client;
     }
 
-    // Captures which Pickup_* trigger fired by registering all four names globally.
+    private sealed record Fire(string Name, SphereNet.Core.Interfaces.IScriptObj Obj, TriggerArgs Args);
+
+    // Records every Pickup_*/Unequip fire by registering the names globally.
     private static (SphereNet.Game.Clients.GameClient client, Character ch, GameWorld world,
-        Func<string?> fired) Setup()
+        List<Fire> fired, TriggerDispatcher dispatcher) Setup()
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
-        ch.PrivLevel = PrivLevel.GM; // bypass distance/access gates; the trigger fires first regardless
+        ch.PrivLevel = PrivLevel.GM; // bypass distance/access gates
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
         var dispatcher = new TriggerDispatcher();
-        string? last = null;
-        foreach (var name in new[] { "Pickup_Ground", "Pickup_Pack", "Pickup_Self", "Pickup_Stack" })
-            dispatcher.RegisterItemEvent("EVENTSITEM", name, (_, _) => { last = name; return TriggerResult.Default; });
+        var fired = new List<Fire>();
+        foreach (var name in new[] { "Pickup_Ground", "Pickup_Pack", "Pickup_Self", "Pickup_Stack", "Unequip" })
+            dispatcher.RegisterItemEvent("EVENTSITEM", name, (obj, args) =>
+            {
+                fired.Add(new Fire(name, obj, args));
+                return TriggerResult.Default;
+            });
 
         var client = MakeClient(world, ch, dispatcher);
-        return (client, ch, world, () => last);
+        return (client, ch, world, fired, dispatcher);
     }
 
     [Fact]
-    public void LooseGroundItem_FiresPickupGround()
+    public void LooseGroundItem_FiresPickupGround_WithTheAmount()
     {
-        var (client, ch, world, fired) = Setup();
+        var (client, ch, world, fired, _) = Setup();
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
         world.PlaceItem(item, ch.Position);
 
         client.HandleItemPickup(item.Uid.Value, 1);
 
-        Assert.Equal("Pickup_Ground", fired());
+        var f = Assert.Single(fired);
+        Assert.Equal("Pickup_Ground", f.Name);
+        Assert.Same(item, f.Obj);
+        Assert.Equal(1, f.Args.N1);
     }
 
     [Fact]
-    public void ItemInsideContainer_FiresPickupPack()
+    public void ItemInsideContainer_FiresPickupPackOnItem_ThenPickupSelfOnContainer()
     {
-        var (client, ch, world, fired) = Setup();
+        var (client, ch, world, fired, _) = Setup();
         var container = world.CreateItem();
         container.ItemType = ItemType.Container;
         world.PlaceItem(container, ch.Position);
@@ -93,26 +102,48 @@ public class PickupTriggerVariantTests
 
         client.HandleItemPickup(item.Uid.Value, 1);
 
-        Assert.Equal("Pickup_Pack", fired());
+        Assert.Equal(["Pickup_Pack", "Pickup_Self"], fired.Select(f => f.Name));
+        Assert.Same(item, fired[0].Obj);
+        Assert.Same(container, fired[1].Obj);          // the CONTAINER hears Pickup_Self
+        Assert.Same(item, fired[1].Args.O1);           // ...with the item as ARGO
     }
 
     [Fact]
-    public void EquippedItem_FiresPickupSelf_NotPack()
+    public void PickupSelfReturn1_KeepsTheItemInItsContainer()
     {
-        var (client, ch, world, fired) = Setup();
+        var (client, ch, world, _, dispatcher) = Setup();
+        dispatcher.RegisterItemEvent("EVENTSITEM", "Pickup_Self", (_, _) => TriggerResult.True);
+        var container = world.CreateItem();
+        container.ItemType = ItemType.Container;
+        world.PlaceItem(container, ch.Position);
         var item = world.CreateItem();
-        item.BaseId = 0x1F03;
-        ch.Equip(item, Layer.Shirt); // ContainedIn becomes the wearer — must NOT read as Pack
+        item.BaseId = 0x0F7A;
+        container.AddItem(item);
 
         client.HandleItemPickup(item.Uid.Value, 1);
 
-        Assert.Equal("Pickup_Self", fired());
+        Assert.Equal(container.Uid, item.ContainedIn);
+        Assert.False(ch.TryGetTag("DRAGGING", out _));
     }
 
     [Fact]
-    public void PartialStackSplit_FiresPickupStack()
+    public void EquippedItem_FiresUnequip_AndNoPickupTrigger()
     {
-        var (client, ch, world, fired) = Setup();
+        var (client, ch, world, fired, _) = Setup();
+        var item = world.CreateItem();
+        item.BaseId = 0x1F03;
+        ch.Equip(item, Layer.Shirt);
+
+        client.HandleItemPickup(item.Uid.Value, 1);
+
+        Assert.DoesNotContain(fired, f => f.Name.StartsWith("Pickup_"));
+        Assert.Contains(fired, f => f.Name == "Unequip" && ReferenceEquals(f.Obj, item));
+    }
+
+    [Fact]
+    public void PartialStackSplit_FiresPickupGroundAndPickupStack_WithTheLeftoverAsArgo()
+    {
+        var (client, ch, world, fired, _) = Setup();
         var item = world.CreateItem();
         item.BaseId = 0x0EED; // gold-like stackable
         item.Amount = 10;
@@ -120,12 +151,33 @@ public class PickupTriggerVariantTests
 
         client.HandleItemPickup(item.Uid.Value, 3); // partial → split
 
-        Assert.Equal("Pickup_Stack", fired());
+        Assert.Equal(["Pickup_Ground", "Pickup_Stack"], fired.Select(f => f.Name));
+        Assert.Equal(3, fired[0].Args.N1);
         Assert.True(ch.TryGetTag("DRAGGING", out var dragging));
         Assert.Equal(item.Uid.Value.ToString(), dragging);
         Assert.Equal(3, item.Amount); // clicked serial remains the dragged stack
 
         var remainder = world.GetSector(ch.Position)!.Items.Single(i => i.Uid != item.Uid);
         Assert.Equal(7, remainder.Amount); // newly created leftover stays behind
+        Assert.Same(item, fired[1].Obj);
+        Assert.Same(remainder, fired[1].Args.O1);
+    }
+
+    [Fact]
+    public void PickupStackReturn1_LeavesThePileWhole()
+    {
+        var (client, ch, world, _, dispatcher) = Setup();
+        dispatcher.RegisterItemEvent("EVENTSITEM", "Pickup_Stack", (_, _) => TriggerResult.True);
+        var item = world.CreateItem();
+        item.BaseId = 0x0EED;
+        item.Amount = 10;
+        world.PlaceItem(item, ch.Position);
+
+        client.HandleItemPickup(item.Uid.Value, 3);
+
+        Assert.Equal(10, item.Amount);
+        Assert.False(item.ContainedIn.IsValid);
+        Assert.False(ch.TryGetTag("DRAGGING", out _));
+        Assert.Single(world.GetSector(ch.Position)!.Items, i => !i.IsDeleted && i.BaseId == 0x0EED);
     }
 }

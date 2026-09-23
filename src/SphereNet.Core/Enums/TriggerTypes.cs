@@ -277,5 +277,21 @@ public enum CharTrigger : short
     /// back after the script runs.</summary>
     HitReactive,
 
+    /// <summary>Fired on the character each time one of its four regenerating stats
+    /// comes due (CCharStat.cpp:538-576). LOCAL.StatID (0 hits, 1 mana, 2 stamina,
+    /// 3 food), LOCAL.Value (the amount), LOCAL.StatLimit, LOCAL.FocusValue (mana and
+    /// stamina) and LOCAL.HitsHungerLoss (food) are read back; RETURN 1 skips this
+    /// regeneration.</summary>
+    RegenStat,
+
+    /// <summary>Fired on the character when the ARROWQUEST verb points its quest
+    /// arrow at x,y (CClientMsg.cpp:585-588). ARGN1 = x, ARGN2 = y, ARGN3 = the
+    /// arrow id.</summary>
+    ArrowQuestAdd,
+
+    /// <summary>Fired on the character when ARROWQUEST clears the arrow (x of 0).
+    /// Same arguments as <see cref="ArrowQuestAdd"/>.</summary>
+    ArrowQuestClose,
+
     Qty,
 }

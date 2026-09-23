@@ -827,7 +827,12 @@ public sealed class WorldSaver
         // but every OTHER retype was silently dropped: a script's `TYPE=t_door` or an
         // engine-set type reverted to whatever the ITEMDEF said on the next restart.
         // ParseItemType reads the numeric ItemType back on load.
-        if (item.HasInstanceType)
+        // A custom [TYPEDEF] has no built-in number to write; upstream saves m_type
+        // through the typedef's resource name, so the name goes out and TYPE= reads
+        // it back on load.
+        if (item.CustomTypeName != null)
+            w.WriteProperty("TYPE", item.CustomTypeName);
+        else if (item.HasInstanceType)
             w.WriteProperty("TYPE", ((ushort)item.ItemType).ToString());
 
         // A container's own weight limit: it is the only thing bounding one, so losing

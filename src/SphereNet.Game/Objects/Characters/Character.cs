@@ -817,6 +817,17 @@ public partial class Character : ObjBase
     /// gate), so the per-tick cost is a null check otherwise.</summary>
     public static Func<Character, SpellEffectTickContext, bool>? OnSpellEffectTick { get; set; }
 
+    /// <summary>@RegenStat (Source-X CChar::Stats_Regen, CCharStat.cpp:538-576): fired
+    /// as a stat's regeneration comes due, with the stat, amount and limit in the
+    /// context for the script to change. Returns true when the script RETURNed 1 and
+    /// this regeneration is skipped. Null when nothing hooks the trigger.</summary>
+    public static Func<Character, RegenStatContext, bool>? OnRegenStat { get; set; }
+
+    /// <summary>The ARROWQUEST verb pointing (x &gt; 0) or clearing the quest arrow:
+    /// @ArrowQuest_Add / @ArrowQuest_Close with ARGN1..3 = x, y, id (Source-X
+    /// CClient::addArrowQuest, CClientMsg.cpp:573-593).</summary>
+    public static Action<Character, int, int, int>? OnArrowQuest { get; set; }
+
     /// <summary>Fired when a pet's loyalty reaches zero and it is about to go wild
     /// (Source-X @PetDesert). Args: pet, owner (may be null). Return true to cancel
     /// the desertion — the pet keeps serving.</summary>
@@ -6657,6 +6668,11 @@ public partial class Character : ObjBase
                     && TryParseScriptUShort(parts[0], out ushort ax)
                     && TryParseScriptUShort(parts[1], out ushort ay))
                 {
+                    // @ArrowQuest_Add / @ArrowQuest_Close run first, with x, y and the
+                    // arrow id (CClientMsg.cpp:577-592); their return changes nothing.
+                    int arrowId = parts.Length >= 3 && ScriptNumber.TryParseToken(parts[2], out long aid)
+                        ? (int)aid : 0;
+                    OnArrowQuest?.Invoke(this, ax, ay, arrowId);
                     bool active = ax != 0 || ay != 0;
                     SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketArrowQuest(
                         active, ax, ay));
@@ -7766,19 +7782,21 @@ public partial class Character : ObjBase
 
         // HP regen: Source/Sphere REGEN0 interval, affected by hunger. Suspended while poisoned
         // so the poison can actually whittle the victim down.
+        //
+        // Each stat that comes due also runs @RegenStat when a script hooks it
+        // (CCharStat.cpp:538). Upstream's clock ticks whether or not the stat is
+        // full, and the trigger with it; without a hook the regeneration keeps its
+        // old shape and waits while the stat is full.
+        var regenHook = OnRegenStat;
         long hitRateMs = ResolveRegenRateMs(_regenHitsRateMs, RegenHitsSeconds, 40000);
-        if (hitRateMs >= 0 && now >= _nextHitRegen && _hits < _maxHits && Poison.Level == 0)
+        if (hitRateMs >= 0 && now >= _nextHitRegen && (_hits < _maxHits || regenHook != null) && Poison.Level == 0)
         {
             int regenAmount = _food > 0 ? (_regenValHits > 0 ? _regenValHits : 1) : 0;
             // Source-X CCharStat::Stats_Regen: the human race regens +2 extra hp.
             if (regenAmount > 0 && IsHuman)
                 regenAmount += 2;
-            if (regenAmount > 0)
-            {
-                _hits = (short)Math.Min(_hits + regenAmount, _maxHits);
-                MarkDirty(DirtyFlag.Stats);
-            }
             _nextHitRegen = now + hitRateMs;
+            ApplyStatRegen(RegenStatHits, regenAmount, _maxHits, 0);
         }
 
         // Mana regen: Source/Sphere REGEN1 (STAT_INT) interval. Source-X Stats_GetRegenVal
@@ -7787,15 +7805,15 @@ public partial class Character : ObjBase
         // regen 8-9 mana every 3s, matching or exceeding its spend, so its pool
         // never ran dry and it cast forever. Meditation is the way to regen faster.
         long manaRateMs = ResolveRegenRateMs(_regenManaRateMs, RegenManaSeconds, 20000);
-        if (manaRateMs >= 0 && now >= _nextManaRegen && _mana < _maxMana)
+        if (manaRateMs >= 0 && now >= _nextManaRegen && (_mana < _maxMana || regenHook != null))
         {
             int regenAmount = _regenValMana > 0 ? _regenValMana : 1;
+            int focusGain = 0;
             int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
-            if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
-                regenAmount += focus / 200;
-            _mana = (short)Math.Min(_mana + regenAmount, _maxMana);
-            MarkDirty(DirtyFlag.Stats);
+            if (_mana < _maxMana && focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
+                focusGain = focus / 200;
             _nextManaRegen = now + manaRateMs;
+            ApplyStatRegen(RegenStatMana, regenAmount, _maxMana, focusGain);
         }
 
         // Stam regen: Source-X Stats_GetRegenVal is a flat max(1, REGENVAL) per
@@ -7803,15 +7821,15 @@ public partial class Character : ObjBase
         // dex/30 and maxStam/20 fallbacks were invented and made big creatures
         // recover stamina many times faster than reference.
         long stamRateMs = ResolveRegenRateMs(_regenStamRateMs, RegenStamSeconds, 10000);
-        if (stamRateMs >= 0 && now >= _nextStamRegen && _stam < _maxStam)
+        if (stamRateMs >= 0 && now >= _nextStamRegen && (_stam < _maxStam || regenHook != null))
         {
             int regenAmt = _regenValStam > 0 ? _regenValStam : 1;
+            int focusGain = 0;
             int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
-            if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
-                regenAmt += focus / 100;
-            _stam = (short)Math.Min(_stam + regenAmt, _maxStam);
-            MarkDirty(DirtyFlag.Stats);
+            if (_stam < _maxStam && focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
+                focusGain = focus / 100;
             _nextStamRegen = now + stamRateMs;
+            ApplyStatRegen(RegenStatStam, regenAmt, _maxStam, focusGain);
         }
 
         // Hunger decay: Source-X m_iRegenRate[STAT_FOOD] = 60 minutes per point.
@@ -7819,28 +7837,8 @@ public partial class Character : ObjBase
         if (_isPlayer && foodRateMs >= 0 && now >= _nextFoodDecay &&
             (Definitions.CharDefHelper.GetCanFlags(this) & CanFlags.C_Statue) == 0)
         {
-            if (_food > 0)
-                _food = (ushort)Math.Max(0, _food - (_regenValFood > 0 ? _regenValFood : 1));
             _nextFoodDecay = now + foodRateMs;
-
-            // Let scripts react to hunger (@Hunger trigger).
-            OnHungerDecay?.Invoke(this);
-
-            // HITSHUNGERLOSS. Starvation does bite upstream - OnTakeDamage with a
-            // FLAT amount once food reaches zero (CCharAct.cpp:5788) - but only when
-            // the shard asks for it, and the reference ini ships the line commented
-            // out. This engine once chipped health UNCONDITIONALLY, which was the
-            // invented part; removing the bite entirely and writing "the reference
-            // never does this" overshot in the other direction.
-            //
-            // Staff and the dead starve for free, as upstream's guards say.
-            if (HitsHungerLoss > 0 && _food <= 0 && !IsDead &&
-                PrivLevel < PrivLevel.GM && !IsStatFlag(StatFlag.Sleeping))
-            {
-                Hits = (short)Math.Max(0, Hits - HitsHungerLoss);
-                if (Hits <= 0)
-                    Kill();
-            }
+            ApplyStatRegen(RegenStatFood, _regenValFood > 0 ? _regenValFood : 1, MaxFood, 0);
         }
 
         // Poison ticks on its memory item's own timer; the character tick only turns a
@@ -7867,6 +7865,95 @@ public partial class Character : ObjBase
         MemoryState.Tick(now);
 
         return true;
+    }
+
+    private const int RegenStatHits = 0, RegenStatMana = 1, RegenStatStam = 2, RegenStatFood = 3;
+
+    /// <summary>
+    /// Apply one due regeneration of stat <paramref name="statId"/>, after @RegenStat
+    /// has had its say (Source-X CChar::Stats_Regen, CCharStat.cpp:538-582): RETURN 1
+    /// skips it, and the script may change the stat, the amount, the limit, the
+    /// Focus bonus and the starvation loss. Focus is added after the script, as
+    /// upstream does; a zero amount does nothing.
+    /// </summary>
+    private void ApplyStatRegen(int statId, int value, int limit, int focusGain)
+    {
+        int hungerLoss = HitsHungerLoss;
+        if (OnRegenStat is { } hook)
+        {
+            var ctx = new RegenStatContext
+            {
+                StatId = statId, Value = value, StatLimit = limit,
+                FocusValue = focusGain, HitsHungerLoss = hungerLoss,
+            };
+            if (hook(this, ctx))
+                return;
+            statId = Math.Clamp(ctx.StatId, RegenStatHits, RegenStatFood);
+            value = ctx.Value;
+            limit = ctx.StatLimit;
+            focusGain = statId is RegenStatMana or RegenStatStam ? ctx.FocusValue : 0;
+            hungerLoss = ctx.HitsHungerLoss;
+        }
+        value += focusGain;
+        if (value == 0)
+            return;
+
+        switch (statId)
+        {
+            case RegenStatHits:
+                _hits = RegenClamp(_hits, value, limit);
+                MarkDirty(DirtyFlag.Stats);
+                break;
+            case RegenStatMana:
+                _mana = RegenClamp(_mana, value, limit);
+                MarkDirty(DirtyFlag.Stats);
+                break;
+            case RegenStatStam:
+                _stam = RegenClamp(_stam, value, limit);
+                MarkDirty(DirtyFlag.Stats);
+                break;
+            case RegenStatFood:
+                ApplyFoodDecay(value, hungerLoss);
+                break;
+        }
+    }
+
+    /// <summary>Add a regeneration amount without passing the limit - and without
+    /// pulling a stat that already sits above it down to it.</summary>
+    private static short RegenClamp(short current, int value, int limit)
+    {
+        int next = current + value;
+        if (value > 0)
+            next = Math.Min(next, Math.Max(limit, (int)current));
+        return (short)Math.Clamp(next, 0, short.MaxValue);
+    }
+
+    /// <summary>One food tick (Source-X OnTickFood): the food level drops by
+    /// <paramref name="amount"/>, @Hunger runs, and starvation bites for
+    /// <paramref name="hungerLoss"/>.</summary>
+    private void ApplyFoodDecay(int amount, int hungerLoss)
+    {
+        if (_food > 0)
+            _food = (ushort)Math.Clamp(_food - amount, 0, ushort.MaxValue);
+
+        // Let scripts react to hunger (@Hunger trigger).
+        OnHungerDecay?.Invoke(this);
+
+        // HITSHUNGERLOSS. Starvation does bite upstream - OnTakeDamage with a
+        // FLAT amount once food reaches zero (CCharAct.cpp:5788) - but only when
+        // the shard asks for it, and the reference ini ships the line commented
+        // out. This engine once chipped health UNCONDITIONALLY, which was the
+        // invented part; removing the bite entirely and writing "the reference
+        // never does this" overshot in the other direction.
+        //
+        // Staff and the dead starve for free, as upstream's guards say.
+        if (hungerLoss > 0 && _food <= 0 && !IsDead &&
+            PrivLevel < PrivLevel.GM && !IsStatFlag(StatFlag.Sleeping))
+        {
+            Hits = (short)Math.Max(0, Hits - hungerLoss);
+            if (Hits <= 0)
+                Kill();
+        }
     }
 
     // Source-X REGENx rates are seconds-to-recover-one-point (CServerConfig.cpp:1075
@@ -8479,4 +8566,26 @@ public partial class Character : ObjBase
 
     /// <summary>Broadcast appearance/body updates to clients (including self).</summary>
     public void RefreshAppearance() => OnAppearanceChanged?.Invoke(this);
+}
+
+/// <summary>
+/// The @RegenStat contract (Source-X CChar::Stats_Regen, CCharStat.cpp:538-576):
+/// the engine seeds it with the stat that came due, the wiring hands it to the
+/// script as LOCAL.StatID/Value/StatLimit/FocusValue/HitsHungerLoss and writes the
+/// script's values back before the regeneration applies.
+/// </summary>
+public sealed class RegenStatContext
+{
+    /// <summary>0 = hits, 1 = mana, 2 = stamina, 3 = food (Source-X STAT_STR..STAT_FOOD
+    /// as the regen table indexes them). A script may redirect the regeneration.</summary>
+    public int StatId { get; set; }
+    /// <summary>The amount to add (hits/mana/stamina) or to take (food).</summary>
+    public int Value { get; set; }
+    /// <summary>The ceiling the stat regenerates to.</summary>
+    public int StatLimit { get; set; }
+    /// <summary>The Focus bonus, mana and stamina only; added to the value after
+    /// the script ran, as upstream does.</summary>
+    public int FocusValue { get; set; }
+    /// <summary>Hits lost to starvation on a food tick.</summary>
+    public int HitsHungerLoss { get; set; }
 }

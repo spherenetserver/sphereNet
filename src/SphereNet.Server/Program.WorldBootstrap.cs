@@ -206,6 +206,10 @@ public static partial class Program
                 item.SpawnChar.ResetTimer(loadedTimeout);
             }
 
+            // The load-time FixWeirdness pass upstream: the gem shows its target's
+            // current icon, not whatever graphic the save carried (CItem.cpp:1107).
+            item.ApplySpawnTrackId();
+
             spawns++;
         }
         if (spawns > 0)

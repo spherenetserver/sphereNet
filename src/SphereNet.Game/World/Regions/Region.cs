@@ -290,6 +290,18 @@ public class Region : IScriptObj
             return true;
         }
 
+        // TAG0.key: the same tag, reading 0 rather than blank when it is unset
+        // (the TAG0 spelling every object answers). A region handed to a script as
+        // ARGO - @RegionEnter's key-gated areas ask <ARGO.TAG0.AreaKeyReq> - read
+        // nothing through it, so a region's own requirement never showed.
+        if (upper.StartsWith("TAG0.", StringComparison.Ordinal))
+        {
+            value = _tags.TryGetValue(upper[5..], out var tag0Val) && !string.IsNullOrEmpty(tag0Val)
+                ? tag0Val
+                : "0";
+            return true;
+        }
+
         // ISEVENT.defname
         if (upper.StartsWith("ISEVENT.", StringComparison.Ordinal))
         {

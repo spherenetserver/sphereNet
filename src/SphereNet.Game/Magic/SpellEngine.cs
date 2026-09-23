@@ -256,7 +256,19 @@ public sealed class SpellEngine
         // item on the target, created on apply and deleted on every removal.
         // Null for effects that predate the memory (defensive) or fail to create.
         public Item? Memory { get; set; }
+
+        /// <summary>The [SPELL] @EffectAdd stage answered RETURN 0: the memory stays
+        /// worn but the engine's own effect is not applied (Source-X
+        /// Spell_Effect_Add returns before its native switch, CCharSpell.cpp:1011).
+        /// The native part was already undone once when the verdict came in, so a
+        /// later removal or save/reload must not undo or redo it again.</summary>
+        public bool NativeSuppressed { get; set; }
     }
+
+    /// <summary>Effects created by the current application pass whose [SPELL]
+    /// @EffectAdd stage has not run yet; settled once the native code has
+    /// recorded what it changed (see <see cref="SettlePendingEffectAdds"/>).</summary>
+    private readonly List<(ActiveSpellEffect Effect, Character Caster)> _pendingEffectAdds = [];
 
     // Disguise names used by Incognito.
     private static readonly string[] s_incognitoNames =
@@ -1722,6 +1734,55 @@ public sealed class SpellEngine
         {
             _durationOverrideTenths = null;
             _effectSkillLevel = prevSkillLevel;
+        }
+        SettlePendingEffectAdds();
+    }
+
+    /// <summary>Run the [SPELL] @EffectAdd stage for every effect this pass created
+    /// and act on its verdict (Source-X CChar::Spell_Effect_Add, CCharSpell.cpp:
+    /// 1000-1014): ARGO is the spell memory, SRC the caster, ARGN1 the spell.
+    /// RETURN 1 deletes the memory - the effect never happened; RETURN 0 keeps the
+    /// memory worn but skips the engine's own effect.
+    ///
+    /// Upstream fires the stage before it applies anything. Here each spell's
+    /// native code writes its changes right after ScheduleEffectExpiry hands back
+    /// the record, so the stage is run once those changes are recorded and a veto
+    /// undoes them through the same revert the expiry uses - the net state is the
+    /// one upstream reaches. The stage used to run with the target as SRC, no
+    /// ARGO and its return ignored, so a script could neither see nor mark the
+    /// memory (TAG.OVERRIDE.x on ARGO) nor refuse the effect.</summary>
+    private void SettlePendingEffectAdds()
+    {
+        if (_pendingEffectAdds.Count == 0)
+            return;
+        var pending = _pendingEffectAdds.ToArray();
+        _pendingEffectAdds.Clear();
+        foreach (var (eff, caster) in pending)
+        {
+            // Refreshed or removed again within the same pass: nothing to settle.
+            if (!_activeEffects.Contains(eff))
+                continue;
+            var stageArgs = new TriggerArgs { CharSrc = caster, N1 = (int)eff.Spell, O1 = eff.Memory };
+            var result = TriggerDispatcher?.FireSpellTrigger(eff.Spell, "EffectAdd", eff.Target, stageArgs)
+                ?? TriggerResult.Default;
+            // RETURN 0 is a verdict of its own here (TRIGRET_RET_FALSE), not the
+            // same as a stage that returns nothing - the numeric RETURN tells them apart.
+            if (result == TriggerResult.Default && stageArgs.ReturnNumber == 0)
+                result = TriggerResult.False;
+            if (result == TriggerResult.True)
+            {
+                if (!_activeEffects.Remove(eff))
+                    continue;
+                RevertDeltas(eff); // deletes the memory item too
+                NotifySpellBuff(eff.Target, eff.Spell, false);
+                Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
+                FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
+            }
+            else if (result == TriggerResult.False)
+            {
+                RevertDeltas(eff, detachMemory: false);
+                eff.NativeSuppressed = true;
+            }
         }
     }
 
@@ -3600,8 +3661,9 @@ public sealed class SpellEngine
         Character.OnEffectAdd?.Invoke(target, (int)spell);
         // @SpellEffectAdd (Source-X CCharSpell) — SRC = caster, ARGN1 = spell.
         Character.OnSpellEffectAdd?.Invoke(target, caster, (int)spell);
-        // [SPELL n] @EffectAdd resource-section stage (SPTRIG_EFFECTADD).
-        FireSpellSectionStage(spell, "EffectAdd", target);
+        // [SPELL n] @EffectAdd resource-section stage (SPTRIG_EFFECTADD): queued, and
+        // run once the caller has recorded its changes (SettlePendingEffectAdds).
+        _pendingEffectAdds.Add((eff, caster));
         NotifySpellBuff(target, spell, false);
         NotifySpellBuff(target, spell, true,
             (ushort)Math.Clamp((durationTenths + 9) / 10, 1, ushort.MaxValue), buffMagnitude);
@@ -3980,6 +4042,9 @@ public sealed class SpellEngine
         // Source-X: removing the effect deletes its IT_SPELL memory item.
         if (detachMemory)
             DetachSpellMemory(eff);
+        // @EffectAdd RETURN 0 already took the native part back off.
+        if (eff.NativeSuppressed)
+            return;
         var t = eff.Target;
         if (eff.StrDelta != 0) t.Str -= eff.StrDelta;
         if (eff.DexDelta != 0) t.Dex -= eff.DexDelta;
@@ -4050,6 +4115,8 @@ public sealed class SpellEngine
 
     private void ApplyDeltas(ActiveSpellEffect eff)
     {
+        if (eff.NativeSuppressed)
+            return;
         var t = eff.Target;
         if (eff.StrDelta != 0) t.Str += eff.StrDelta;
         if (eff.DexDelta != 0) t.Dex += eff.DexDelta;

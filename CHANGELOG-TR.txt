@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - GM page: hesap basina tek page
+------------------------------------------------------------------------
+DUZELTME - Her page kuyruga yeni bir satir ekliyordu; ayni oyuncu tekrar
+           page atinca kuyruk doluyordu. Source-X'teki gibi
+           (Event_PromptResp_GMPage) hesap basina tek page vardir: ikinci page
+           ilkini gunceller (karakter, konum, sebep, zaman), kuyruktaki yeri ve
+           ilgilenen personel korunur. Oyuncuya "gonderildi" ya da
+           "guncellendi" ile kuyruk sayisi, personele isim, UID ve konum iceren
+           GMPAGE_RECEIVED satiri gider. Source-X'te olmayan "Page submitted"
+           ve "No staff members are currently online" mesajlari kaldirildi.
+
 [2026-09-23] - GMPAGE ADD page'i dogrudan kuyruga ekler
 ------------------------------------------------------------------------
 DUZELTME - GMPAGE script verb'u metnini PAGE komutu olarak yeniden

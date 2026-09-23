@@ -536,7 +536,6 @@ public sealed class CommandHandler
         _recentPages.Add(new PageEntry(DateTime.UtcNow, player.Uid, player.GetName(), reason));
         if (_recentPages.Count > MaxRecentPages)
             _recentPages.RemoveAt(0);
-        OnSysMessage?.Invoke(player, ServerMessages.GetFormatted("gm_page_submitted", reason));
         OnPageReceived?.Invoke(player, reason);
     }
     /// <summary>Source-X parity: <c>.UNMOUNT</c> dismounts the caller.</summary>

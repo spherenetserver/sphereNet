@@ -956,47 +956,31 @@ public static partial class Program
             };
             _commands.OnPageReceived += (player, message) =>
             {
-                // Put the page in the QUEUE. It was only ever logged and announced,
-                // so SERV.GMPAGES stayed at zero however many players paged and the
-                // queue dialog opened on an empty list every time - the one thing a
-                // page is for. Who paged and from where are recorded because that is
-                // what a GM answering it needs (CGMPage CHARUID / P).
-                if (_world != null)
-                {
-                    _world.AddGmPage(new SphereNet.Game.World.GmPage
-                    {
-                        Account = SphereNet.Game.Objects.Characters.Character
-                            .ResolveAccountForChar?.Invoke(player.Uid)?.Name
-                            ?? player.GetName(),
-                        CharUid = player.Uid,
-                        Position = player.Position,
-                        Reason = message,
-                        Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                    });
-                }
-
-                var pageMsg = $"[PAGE from {player.GetName()}] {message}";
+                // CClient::Event_PromptResp_GMPage: log the page, queue it one per
+                // account (a second page updates the first), tell the player which
+                // happened and the queue size, then announce it to staff.
+                if (_world == null)
+                    return;
+                var pageMsg = SphereNet.Game.Messages.ServerMessages.GetFormatted("gmpage_received",
+                    player.GetName(), player.Uid.Value, player.Position.ToString(), message);
                 _log.LogInformation("{PageMessage}", pageMsg);
-                var staffNotified = false;
+
+                string account = SphereNet.Game.Objects.Characters.Character
+                    .ResolveAccountForChar?.Invoke(player.Uid)?.Name ?? player.GetName();
+                bool updated = _world.SubmitGmPage(account, player, message);
                 foreach (var c in _clients.Values)
                 {
-                    if (c.Character != null && c.Character != player &&
-                        c.Character.PrivLevel >= PrivLevel.Counsel)
-                    {
-                        c.SysMessage(pageMsg);
-                        staffNotified = true;
-                    }
+                    if (c.Character != player)
+                        continue;
+                    c.SysMessage(SphereNet.Game.Messages.ServerMessages.Get(updated ? "gmpage_updated" : "gmpage_sent"));
+                    c.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted("gmpage_queue", _world.GmPages.Count));
+                    break;
                 }
-                if (!staffNotified)
+
+                foreach (var c in _clients.Values)
                 {
-                    foreach (var c in _clients.Values)
-                    {
-                        if (c.Character == player)
-                        {
-                            c.SysMessage("No staff members are currently online. Your page has been logged.");
-                            break;
-                        }
-                    }
+                    if (c.Character != null && c.Character.PrivLevel >= PrivLevel.Counsel)
+                        c.SysMessage(pageMsg);
                 }
             };
             _commands.OnSummonCageTargetRequested += gm =>

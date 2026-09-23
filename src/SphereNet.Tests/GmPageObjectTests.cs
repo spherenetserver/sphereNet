@@ -61,6 +61,41 @@ public sealed class GmPageObjectTests
         Assert.Equal(5, parsed.Z);
     }
 
+    /// <summary>One page per account (Event_PromptResp_GMPage): a second page from
+    /// the same account updates the first in place, keeping its queue slot and its
+    /// handler; another account gets its own page.</summary>
+    [Fact]
+    public void ASecondPageFromTheSameAccountUpdatesTheFirst()
+    {
+        var world = NewWorld();
+        var first = world.CreateCharacter();
+        var second = world.CreateCharacter();
+        var other = world.CreateCharacter();
+        GmPage.NowSeconds = () => 1_000;
+        try
+        {
+            Assert.False(world.SubmitGmPage("acct", first, "stuck"));
+            world.GmPages[0].Handler = new Serial(0x55);
+            Assert.False(world.SubmitGmPage("other", other, "lost"));
+
+            GmPage.NowSeconds = () => 2_000;
+            Assert.True(world.SubmitGmPage("acct", second, "still stuck"));
+
+            Assert.Equal(2, world.GmPages.Count);
+            var page = world.GmPages[0];
+            Assert.Equal("acct", page.Account);
+            Assert.Equal(second.Uid, page.CharUid);
+            Assert.Equal("still stuck", page.Reason);
+            Assert.Equal(2_000, page.Created);
+            Assert.Equal(new Serial(0x55), page.Handler);
+            Assert.Equal("other", world.GmPages[1].Account);
+        }
+        finally
+        {
+            GmPage.NowSeconds = null;
+        }
+    }
+
     /// <summary>TIME is the page's AGE in seconds, not the moment it was made
     /// (GC_TIME formats the difference against now). The queue renders it as
     /// "&lt;TIME&gt;/60 minutes ago", which a unix stamp turns into nonsense.</summary>

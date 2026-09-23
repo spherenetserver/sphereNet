@@ -50,7 +50,7 @@ public sealed class GmPage : IScriptObj
     /// waiting.</summary>
     public static Func<long>? NowSeconds;
 
-    private static long Now() => NowSeconds?.Invoke() ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    internal static long Now() => NowSeconds?.Invoke() ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
     public string GetName() => Account;
 

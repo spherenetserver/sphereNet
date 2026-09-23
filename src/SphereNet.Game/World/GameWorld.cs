@@ -2888,6 +2888,27 @@ public sealed class GameWorld
 
     public void AddGmPage(GmPage page) => _gmPages.Add(page);
 
+    /// <summary>Queue a page from <paramref name="player"/>, one per account
+    /// (CClient::Event_PromptResp_GMPage): an account that already has a page gets
+    /// that page re-pointed at this character, position, reason and time, keeping
+    /// its place in the queue and its handler. Returns true when an existing page
+    /// was updated rather than a new one added.</summary>
+    public bool SubmitGmPage(string account, Character player, string reason)
+    {
+        var page = _gmPages.FirstOrDefault(p => string.Equals(p.Account, account, StringComparison.Ordinal));
+        bool updated = page != null;
+        if (page == null)
+        {
+            page = new GmPage { Account = account };
+            _gmPages.Add(page);
+        }
+        page.CharUid = player.Uid;
+        page.Position = player.Position;
+        page.Reason = reason;
+        page.Created = GmPage.Now();
+        return updated;
+    }
+
     public void AddGmPage(in GmPageRecord page)
     {
         var made = new GmPage

@@ -117,7 +117,7 @@ public class SourceXDamageVerbWave220Tests
         item.HitsMax = 10;
         item.HitsCur = 10;
         world.PlaceItem(item, new Point3D(100, 100, 0, 0));
-        CombatEngine.OnItemDamaged = (_, _) => true;
+        CombatEngine.OnItemDamaged = (_, _, _, _) => true;
 
         Assert.True(item.TryExecuteCommand("DAMAGE", "9", new Console()));
 

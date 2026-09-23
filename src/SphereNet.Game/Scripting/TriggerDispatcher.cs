@@ -185,7 +185,11 @@ public sealed class TriggerDispatcher
 
         if (weapon != null)
         {
-            var wArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = dmg, N2 = dmgType, Locals = hitLocals };
+            // Source-X weapon @Hit: m_pO1 = the attacker, OnTrigger(ITRIG_Hit, args,
+            // pCharTarg) — SRC = the victim, ARGO = the wielder (CCharFight.cpp:
+            // 2185-2187). With the two swapped a weapon's "SRC.EFFECT" drew on the
+            // wielder instead of the one it struck.
+            var wArgs = new TriggerArgs { CharSrc = target, ItemSrc = weapon, O1 = attacker, N1 = dmg, N2 = dmgType, Locals = hitLocals };
             if (FireItemTrigger(weapon, ItemTrigger.Hit, wArgs) == TriggerResult.True)
             {
                 ctx.Cancelled = true;

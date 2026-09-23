@@ -1201,10 +1201,34 @@ public sealed class DefinitionLoader
                         changed = true;
                     }
                 }
+
+                // ID=<base> on a ranged weapon: Source-X CopyBasic also copies the
+                // base's TDATA1..4 (CItemBase.cpp:191-194) before the section's own
+                // TDATAn lines override them. For bows/crossbows/throwing weapons
+                // TDATA3 is the ammo and TDATA4 the in-flight art (m_ttWeaponBow,
+                // CItemBase.h:87-93), so "[ITEMDEF i_bow_power] ID=i_bow" must still
+                // need i_arrow and fly i_arrow_x. Scoped to the ranged family: that
+                // is the TDATA meaning the ammo/projectile code reads from the def.
+                if (IsRangedWeaponType(def.Type) && !string.IsNullOrEmpty(def.DisplayIdRef))
+                {
+                    var rid = _resources.ResolveDefName(def.DisplayIdRef!.Trim());
+                    if (rid.IsValid && rid.Type == ResType.ItemDef &&
+                        _itemDefs.TryGetValue(rid.Index, out var idBase) && idBase != def &&
+                        idBase.Type == def.Type)
+                    {
+                        if ((def.TDataSetMask & 1) == 0 && def.TData1 != idBase.TData1) { def.TData1 = idBase.TData1; changed = true; }
+                        if ((def.TDataSetMask & 2) == 0 && def.TData2 != idBase.TData2) { def.TData2 = idBase.TData2; changed = true; }
+                        if ((def.TDataSetMask & 4) == 0 && def.TData3 != idBase.TData3) { def.TData3 = idBase.TData3; changed = true; }
+                        if ((def.TDataSetMask & 8) == 0 && def.TData4 != idBase.TData4) { def.TData4 = idBase.TData4; changed = true; }
+                    }
+                }
             }
             if (!changed) break;
         }
     }
+
+    private static bool IsRangedWeaponType(ItemType type) =>
+        type is ItemType.WeaponBow or ItemType.WeaponXBow or ItemType.WeaponThrowing;
 
     /// <summary>Re-point every EVENTS/TEVENTS reference at the section it actually
     /// names.

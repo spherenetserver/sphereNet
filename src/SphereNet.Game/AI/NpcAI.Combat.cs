@@ -815,6 +815,16 @@ public sealed partial class NpcAI
     public Action<Character, Character, Item?, int, uint>? OnNpcAttack { get; set; }
 
     /// <summary>
+    /// Callback for an NPC ranged shot leaving the weapon (Source-X post-swing
+    /// EFFECT_BOLT, CCharFight.cpp:2001-2007). Invoked BEFORE the hit/miss
+    /// resolves, like the reference, so the projectile packet precedes anything the
+    /// @Hit / @HitMiss / weapon @Damage scripts emit on the target (an explosion
+    /// effect must not play before its bomb is even thrown). Parameters: attacker,
+    /// target, weapon.
+    /// </summary>
+    public Action<Character, Character, Item>? OnNpcRangedShot { get; set; }
+
+    /// <summary>
     /// Callback for when an NPC engages a new fight target (reference
     /// Attacker_Add). Fires before the first swing — at engage, while the NPC
     /// may still be closing in — so Program.cs can broadcast the
@@ -1048,9 +1058,12 @@ public sealed partial class NpcAI
         if (pack == null) return null;
 
         var spec = CombatHelper.ResolveAmmoSpec(
-            DefinitionLoader.GetItemDef(weapon.BaseId),
+            CombatHelper.GetWeaponDef(weapon),
             weapon.ItemType,
             Item.ResolveDefName);
+        // A weapon naming no ammo (TDATA3=0) neither looks for nor spends any
+        // (Source-X CCharFight.cpp:1864 — pAmmo stays null).
+        if (!spec.RequiresAmmo) return null;
         return CombatHelper.FindAmmoInContainer(pack, spec.BaseId, spec.FallbackType);
     }
 
@@ -1111,6 +1124,9 @@ public sealed partial class NpcAI
         Item? ammoStack = weapon != null && CombatHelper.IsRangedWeapon(weapon)
             ? FindNpcAmmo(npc, weapon)
             : null;
+
+        if (weapon != null && CombatHelper.IsRangedWeapon(weapon))
+            OnNpcRangedShot?.Invoke(npc, target, weapon);
 
         short hpBefore = npc.Hits;
         int damage = CombatEngine.ResolveAttack(

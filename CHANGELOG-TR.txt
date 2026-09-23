@@ -4,6 +4,38 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - NPC menzilli, buyu ve ozel saldiri gorselleri
+------------------------------------------------------------------------
+DUZELTME - Isimli tanimdan yapilan silah (ITEMDEF i_bow_exp, ID=I_BOW) menzil,
+           muhimmat, mermi, skill ve hasar tipi icin kendi taniminden okunur;
+           savas onu ortak yay grafigiyle arayip i_bow'u okuyordu.
+DUZELTME - Ucan mermi AMMOANIM, yoksa TDATA4, AMMOANIMHUE/RENDER ile
+           (CItem.cpp:5013, CCharFight.cpp:2001); NPC menzilli atislari sabit
+           ok/civata kullaniyor, firlatma silahlarinda hicbir sey atmiyordu.
+           Orc bomber'in bombasi artik bomba olarak ucar. TDATA3=0 muhimmat
+           istemez (CCharFight.cpp:1864); ID= takma adi, kendi yazmadigi
+           TDATA'yi tabandan miras alir (CItemBase::CopyBasic).
+DUZELTME - Silahin @Damage'i (asinma, varsayilan vuruslarin %25'i) SRC =
+           kurban, ARGN1 = darbe, ARGN2 = hasar tipi ile, kurbanin hasarindan
+           once ve HITPOINTS'i olmayan item'larda da calisir
+           (CCharFight.cpp:2240, CItem.cpp:5826). SRC.EFFECT gibi script
+           efektlerinin hedefi yoktu. Silah @Hit'te SRC = kurban, ARGO =
+           kullanan (ters baglanmisti).
+DUZELTME - NPC mermisi vurus cozulmeden once gonderilir; atis menzil ya da
+           gorus yuzunden birakilirsa hic gonderilmez.
+DUZELTME - Bolt buyuleri (magic arrow, fireball, energy bolt, fire bolt)
+           buyucuden hedefe ucar; yildirim gibi ciziliyordu. FX_TARG buyuleri
+           hedefte oynar (CCharSpell.cpp:4154).
+DUZELTME - BLOODCOLOR=-1 kan yok demektir (pack'te 435 yaratik kirmizi
+           kaniyordu); hex ve isimli renkler okunur; karakterin degeri
+           tanimininkinden once gelir.
+DUZELTME - Nefes BREATH.ANIM/TYPE/HUE ile Source-X hiz ve dongusuyle, hasar
+           tipi normal hasar yolundan (bagisiklik, @GetHit, direncler);
+           firlatilan nesneler kaya/tas ya da THROWOBJ, kut hasar, ayni yoldan.
+           Script hasari, zehir, tuzak, alan hasari, nefes ve firlatmayla olen
+           karakterler ceset ve olum animasyonu gonderir.
+TEST - NpcSpecialAttackVisualTests.
+
 [2026-09-23] - Host modunda gump designer gorselleri
 ------------------------------------------------------------------------
 DUZELTME - Sunucu SphereNet.Host altinda calisirken gump gorselleri panelin

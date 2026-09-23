@@ -207,7 +207,18 @@ public sealed class CharDef : BaseDef
                 break;
             case "CATEGORY": Category = value.Trim(); break;
             case "ANIM": Anim = ParseHexOrDecUInt(value); break;
-            case "BLOODCOLOR": short.TryParse(value, out short bc); BloodColor = bc; break;
+            // Source-X reads BLOODCOLOR as an expression into a HUE_TYPE (word):
+            // -1 (0xFFFF) means "no blood", and packs write hex (07EB) or a colour
+            // defname (color_o_verite). short.TryParse took only plain decimals,
+            // so every hex / named blood hue silently became 0 (default red).
+            case "BLOODCOLOR":
+            {
+                string bv = value.Trim();
+                BloodColor = bv.StartsWith('-') && int.TryParse(bv, out int neg)
+                    ? unchecked((short)neg)
+                    : unchecked((short)ParseUShort(bv));
+                break;
+            }
             case "RANGE": (RangeMin, RangeMax) = ParseRange(value); break;
             case "RANGEH": int.TryParse(value, out int rh); RangeMax = rh; break;
             case "RANGEL": int.TryParse(value, out int rl); RangeMin = rl; break;

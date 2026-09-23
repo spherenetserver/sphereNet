@@ -456,19 +456,30 @@ public sealed partial class GameClient
     private static readonly ushort[] s_bloodGraphics =
         { 0x1645, 0x122A, 0x122B, 0x122C, 0x122D, 0x122E, 0x122F };
 
-    /// <summary>Source-X CChar::Fight_Hit blood: scatter 1-2 short-lived blood
-    /// items around a struck target, hued by the target's CharDef BLOODCOLOR.
+    /// <summary>Source-X CChar::Fight_Hit blood: scatter 1-2 (4-5 with the SE
+    /// feature) short-lived blood items around a struck target, hued by its
+    /// BLOODCOLOR.
     /// They're placed as ground items so the view-delta renders them; a 5s decay
     /// removes them. Shared by the player and NPC hit paths.</summary>
     public static void EmitBloodSplat(GameWorld world, Character target)
     {
         if (world == null || target.IsDead) return;
-        ushort hue = 0;
+        // Source-X: the char's _wBloodHue (copied from the CHARDEF, overridable by
+        // BLOODCOLOR on the instance); (HUE_TYPE)-1 = no blood at all
+        // (CCharFight.cpp:2364). 435 of the pack's CHARDEFs say BLOODCOLOR=-1 and
+        // used to bleed default red.
         var cdef = DefinitionLoader.GetCharDef(target.CharDefIndex);
-        if (cdef != null && cdef.BloodColor > 0)
-            hue = (ushort)cdef.BloodColor;
+        ushort hue = target.BloodHue != 0
+            ? target.BloodHue
+            : unchecked((ushort)(cdef?.BloodColor ?? 0));
+        if (hue == 0xFFFF)
+            return;
 
-        int count = 1 + Random.Shared.Next(2); // 1-2
+        // Source-X: 4-5 splats with FEATURE_SE_UPDATE (0x01), else 1-2
+        // (CCharFight.cpp:2367).
+        int count = (Character.FeatureSE & 0x01) != 0
+            ? 4 + Random.Shared.Next(2)
+            : 1 + Random.Shared.Next(2);
         for (int i = 0; i < count; i++)
         {
             var blood = world.CreateItem();
@@ -486,22 +497,83 @@ public sealed partial class GameClient
 
     /// <summary>Source-X archery EFFECT_BOLT: a moving arrow/bolt projectile
     /// flying from the attacker to the target. Shared by the player and NPC
-    /// ranged paths so NPC archers' shots are visible too. Bow → arrow (0x0F3F),
-    /// crossbow → bolt (0x1BFB).</summary>
+    /// ranged paths so NPC archers' shots are visible too. The art is the
+    /// weapon's AMMOANIM / TDATA4 (legacy arrow / bolt only without a def).</summary>
     public static void BroadcastRangedProjectile(Character attacker, Character target, Item? weapon,
         Action<Point3D, int, PacketWriter, uint>? broadcastNearby)
     {
-        if (weapon == null) return;
-        ushort effectId = weapon.ItemType == ItemType.WeaponXBow ? (ushort)0x1BFB : (ushort)0x0F3F;
-        broadcastNearby?.Invoke(attacker.Position, 18, new PacketEffect(
-            type: 0,
-            srcSerial: attacker.Uid.Value, dstSerial: target.Uid.Value,
+        if (weapon == null || !CombatHelper.IsRangedWeapon(weapon)) return;
+        // Source-X fires the same post-swing EFFECT_BOLT for an NPC as for a
+        // player (CCharFight.cpp:2001-2007): the weapon's AMMOANIM / TDATA4 art
+        // with its AMMOANIMHUE / AMMOANIMRENDER. A hardcoded arrow/bolt here made
+        // every NPC ranged weapon (e.g. an exploding-bomb bow, TDATA4=01c1c) fly
+        // as a plain arrow, and NPC throwing weapons fly nothing at all.
+        var anim = CombatHelper.ResolveRangedAnim(weapon);
+        broadcastNearby?.Invoke(attacker.Position, 18,
+            BuildRangedProjectile(attacker, target, anim.Gfx, anim.Hue, anim.Render), 0);
+    }
+
+    /// <summary>The in-flight packet of a ranged shot (Source-X CChar::Effect
+    /// EFFECT_BOLT from the shooter, speed 18, CCharFight.cpp:2005).</summary>
+    public static PacketWriter BuildRangedProjectile(Character from, Character to, ushort effectId,
+        ushort hue, uint render) =>
+        BuildObjectEffect(0, from, to, effectId, 18, 1, false, hue, render);
+
+    /// <summary>The visuals a landed spell shows on its target (Source-X
+    /// CChar::OnSpellEffect tail, CCharSpell.cpp:4154-4160): SPELLFLAG_FX_BOLT
+    /// flies EFFECT_BOLT from the caster (speed 5, loop 1), SPELLFLAG_FX_TARG plays
+    /// EFFECT_OBJ on the target (speed 0, loop 15) — both when both are set, none
+    /// when neither is. Bolts of a non-GOOD spell explode on arrival
+    /// (CCharSpell.cpp:3638). The bolt used to go out as motion 1, which the client
+    /// draws as a lightning strike, so a Magic Arrow / Fireball / Energy Bolt never
+    /// flew.</summary>
+    public static List<PacketWriter> BuildSpellCastFx(Character caster, Character target,
+        SphereNet.Game.Magic.SpellDef def)
+    {
+        var packets = new List<PacketWriter>(2);
+        ushort gfx = def.EffectId;
+        if (gfx == 0)
+            return packets;
+        bool explode = def.IsFlag(SpellFlag.FxBolt) && !def.IsFlag(SpellFlag.Good);
+        if (def.IsFlag(SpellFlag.FxBolt))
+            packets.Add(BuildObjectEffect(0, caster, target, gfx, 5, 1, explode));
+        if (def.IsFlag(SpellFlag.FxTarg))
+            packets.Add(BuildObjectEffect(3, caster, target, gfx, 0, 15, explode));
+        return packets;
+    }
+
+    /// <summary>Source-X CObjBase::Effect toward a character, as the client gets
+    /// it (PacketEffect::writeBasicEffect, send.cpp:1986-2043, picked by
+    /// CClient::addEffect, CClientMsg.cpp:982-987). EFFECT_BOLT (0) flies from
+    /// <paramref name="source"/> to <paramref name="target"/>, rotates along its
+    /// path (oneDirection=false) and has no loop count ("does not apply", 0);
+    /// every other motion plays on the target alone with oneDirection=true. A hue
+    /// or render mode upgrades 0x70 to the hued 0xC0 form.</summary>
+    public static PacketWriter BuildObjectEffect(byte motion, Character? source, Character target,
+        ushort effectId, byte speed, byte loop, bool explode, ushort hue = 0, uint render = 0)
+    {
+        bool bolt = motion == 0;
+        var from = bolt && source != null ? source : target;
+        uint srcSerial = bolt ? from.Uid.Value : target.Uid.Value;
+        uint dstSerial = bolt ? target.Uid.Value : 0;
+        byte effLoop = bolt ? (byte)0 : loop;
+        bool fixedDir = !bolt;
+        if (hue != 0 || render != 0)
+            return new PacketEffectHued(
+                type: motion,
+                srcSerial: srcSerial, dstSerial: dstSerial,
+                effectId: effectId,
+                srcX: from.X, srcY: from.Y, srcZ: from.Z,
+                dstX: target.X, dstY: target.Y, dstZ: target.Z,
+                speed: speed, duration: effLoop, fixedDir: fixedDir, explode: explode,
+                hue: hue, renderMode: render);
+        return new PacketEffect(
+            type: motion,
+            srcSerial: srcSerial, dstSerial: dstSerial,
             effectId: effectId,
-            srcX: attacker.X, srcY: attacker.Y, srcZ: attacker.Z,
+            srcX: from.X, srcY: from.Y, srcZ: from.Z,
             dstX: target.X, dstY: target.Y, dstZ: target.Z,
-            // Source-X EFFECT_BOLT writes oneDirection=false so the arrow rotates
-            // to face its flight path (matches the player ranged effect).
-            speed: 18, duration: 1, fixedDir: false, explode: false), 0);
+            speed: speed, duration: effLoop, fixedDir: fixedDir, explode: explode);
     }
 
     /// <summary>ModernUO AbsorbDamageAOS block spark: a fixed 0x37B9 effect on a

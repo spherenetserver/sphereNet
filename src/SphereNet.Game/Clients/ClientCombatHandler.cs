@@ -1159,11 +1159,13 @@ public sealed class ClientCombatHandler
         if (!CombatHelper.IsCombatFlagSet(CombatFlags.NoDirChange))
             FaceTarget(target);
 
-        (ushort BaseId, ItemType FallbackType, ushort Gfx)? ammo = null;
+        (ushort BaseId, ItemType FallbackType, ushort Gfx, bool RequiresAmmo)? ammo = null;
         if (CombatHelper.IsRangedWeapon(weapon) && !CombatHelper.IsThrowingWeapon(weapon))
         {
             ammo = ResolveAmmo(weapon!);
-            if (!HasAmmoInPack(ammo.Value.BaseId, ammo.Value.FallbackType))
+            // Source-X only checks the pack when the weapon names an ammo
+            // resource (CCharFight.cpp:1864); a TDATA3=0 bow fires without one.
+            if (ammo.Value.RequiresAmmo && !HasAmmoInPack(ammo.Value.BaseId, ammo.Value.FallbackType))
             {
                 SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
                 // Advance the swing timer even though no swing happened. Without
@@ -1276,25 +1278,30 @@ public sealed class ClientCombatHandler
         if (CombatHelper.IsRangedWeapon(weapon))
         {
             var ammoSpec = ResolveAmmo(weapon!);
+            // Source-X Weapon_GetRangedAmmoAnim: AMMOANIM / TDATA4 art with the
+            // AMMOANIMHUE / AMMOANIMRENDER props (CCharFight.cpp:2003-2007).
+            var anim = CombatHelper.ResolveRangedAnim(weapon!);
             if (CombatHelper.IsThrowingWeapon(weapon))
             {
                 // The thrown weapon IS the projectile — no pack ammo (pack
                 // TDATA3 empty). TDATA4/AMMOANIM overrides the flight art,
                 // else the weapon's own graphic flies; the reverse leg
                 // mirrors Source-X's returning-weapon animation.
-                ushort throwGfx = ammoSpec.Gfx != 0 ? ammoSpec.Gfx : weapon!.DispIdFull;
-                EmitRangedProjectile(target, throwGfx);
-                EmitReturningProjectile(target, throwGfx);
+                EmitRangedProjectile(target, anim.Gfx, anim.Hue, anim.Render);
+                EmitReturningProjectile(target, anim.Gfx, anim.Hue, anim.Render);
             }
             else
             {
-                ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
-                if (ammoStack == null)
+                if (ammoSpec.RequiresAmmo)
                 {
-                    SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
-                    return;
+                    ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
+                    if (ammoStack == null)
+                    {
+                        SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
+                        return;
+                    }
                 }
-                EmitRangedProjectile(target, ammoSpec.Gfx);
+                EmitRangedProjectile(target, anim.Gfx, anim.Hue, anim.Render);
             }
         }
 
@@ -1694,9 +1701,9 @@ public sealed class ClientCombatHandler
     // ITEMDEF AMMOTYPE names the exact ammo item to consume (resolved to a
     // baseid) and AMMOANIM overrides the in-flight graphic; absent either, the
     // legacy arrow-for-bows / bolt-for-crossbows defaults apply.
-    private (ushort BaseId, ItemType FallbackType, ushort Gfx) ResolveAmmo(Item weapon) =>
+    private (ushort BaseId, ItemType FallbackType, ushort Gfx, bool RequiresAmmo) ResolveAmmo(Item weapon) =>
         CombatHelper.ResolveAmmoSpec(
-            SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(weapon.BaseId),
+            CombatHelper.GetWeaponDef(weapon),
             weapon.ItemType,
             Item.ResolveDefName);
 
@@ -1720,50 +1727,18 @@ public sealed class ClientCombatHandler
 
     /// <summary>The throwing return leg (Source-X client returning-weapon
     /// anim): the same art flies back from the target to the thrower.</summary>
-    private void EmitReturningProjectile(Character target, ushort effectId)
+    private void EmitReturningProjectile(Character target, ushort effectId, ushort hue, uint render)
     {
         if (_character == null) return;
-
-        var projectile = new PacketEffect(
-            type: 0,
-            srcSerial: target.Uid.Value,
-            dstSerial: _character.Uid.Value,
-            effectId: effectId,
-            srcX: target.X,
-            srcY: target.Y,
-            srcZ: target.Z,
-            dstX: _character.X,
-            dstY: _character.Y,
-            dstZ: _character.Z,
-            speed: 18,
-            duration: 1,
-            fixedDir: false,
-            explode: false);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, projectile, 0);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            GameClient.BuildRangedProjectile(target, _character, effectId, hue, render), 0);
     }
 
-    private void EmitRangedProjectile(Character target, ushort effectId)
+    private void EmitRangedProjectile(Character target, ushort effectId, ushort hue, uint render)
     {
         if (_character == null) return;
-
-        var projectile = new PacketEffect(
-            type: 0,
-            srcSerial: _character.Uid.Value,
-            dstSerial: target.Uid.Value,
-            effectId: effectId,
-            srcX: _character.X,
-            srcY: _character.Y,
-            srcZ: _character.Z,
-            dstX: target.X,
-            dstY: target.Y,
-            dstZ: target.Z,
-            speed: 18,
-            duration: 1,
-            // Source-X writeBasicEffect sets oneDirection=false for EFFECT_BOLT
-            // so the arrow graphic rotates to face its flight path.
-            fixedDir: false,
-            explode: false);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, projectile, 0);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            GameClient.BuildRangedProjectile(_character, target, effectId, hue, render), 0);
     }
 
     /// <summary>
@@ -2536,23 +2511,15 @@ public sealed class ClientCombatHandler
                 string spellName = spellDef?.Name ?? $"Spell #{spellId}";
                 SysMessage(ServerMessages.GetFormatted("spell_cast_ok", spellName));
 
-                // --- Visual effect (0x70) on target ---
+                // --- Spell visuals on the target (FX_BOLT / FX_TARG) ---
                 var effectTarget = targetChar ?? _character;
-                ushort effectGraphic = spellDef?.EffectId ?? 0;
-                if (effectGraphic != 0)
+                if (spellDef != null)
                 {
-                    // type 3 = effect at location (on char), type 1 = bolt from src to dst
-                    byte effectType = (spellDef != null && spellDef.IsFlag(SpellFlag.FxBolt)) ? (byte)1 : (byte)3;
-                    var effectPacket = new PacketEffect(
-                        effectType,
-                        effectType == 1 ? _character.Uid.Value : effectTarget.Uid.Value,
-                        effectTarget.Uid.Value,
-                        effectGraphic,
-                        effectTarget.X, effectTarget.Y, (short)effectTarget.Z,
-                        effectTarget.X, effectTarget.Y, (short)effectTarget.Z,
-                        10, 30, true, false);
-                    _netState.Send(effectPacket);
-                    BroadcastNearby?.Invoke(effectTarget.Position, UpdateRange, effectPacket, _character.Uid.Value);
+                    foreach (var effectPacket in GameClient.BuildSpellCastFx(_character, effectTarget, spellDef))
+                    {
+                        _netState.Send(effectPacket);
+                        BroadcastNearby?.Invoke(effectTarget.Position, UpdateRange, effectPacket, _character.Uid.Value);
+                    }
                 }
 
                 // @SpellEffect / @SpellSuccess and the wand-charge / scroll

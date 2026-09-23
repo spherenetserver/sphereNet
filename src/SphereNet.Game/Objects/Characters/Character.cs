@@ -5249,7 +5249,9 @@ public partial class Character : ObjBase
             case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = mmv; return true;
             case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = msv; return true;
             case "BLOODCOLOR":
+                // HUE_TYPE is a word: BLOODCOLOR=-1 is 0xFFFF, "no blood".
                 if (TryParseHexOrDecUshort(normalized, out ushort bcv)) _bloodHue = bcv;
+                else if (int.TryParse(normalized, out int bcNeg) && bcNeg < 0) _bloodHue = unchecked((ushort)bcNeg);
                 return true;
             case "FOLLOWERSLOTS":
                 if (int.TryParse(normalized, out int fsv)) _followerSlotsOverride = Math.Max(0, fsv);

@@ -207,7 +207,11 @@ public static class CombatEngine
     public static int DefaultHits { get; set; } = 50;
 
     public static Action<Item>? OnItemBroken;
-    public static Func<Item, int, bool>? OnItemDamaged;
+    /// <summary>Item @Damage hook (Source-X CItem::OnTakeDamage ITRIG_DAMAGE,
+    /// CItem.cpp:5826-5832): item, damage (ARGN1), the character dealing it (SRC,
+    /// may be null), damage type (ARGN2). Returns true when a script RETURN 1
+    /// spared the item.</summary>
+    public static Func<Item, int, Character?, DamageType, bool>? OnItemDamaged;
     /// <summary>Mutable @HitParry arguments (Source-X CCharFight.cpp:2095-2119).
     /// The reference documents them in the source itself:
     /// <list type="bullet">
@@ -913,7 +917,7 @@ public static class CombatEngine
 
     internal static int ApplyDirectItemDamage(Item item, int damage)
     {
-        if (item.IsDeleted || OnItemDamaged?.Invoke(item, damage) == true)
+        if (item.IsDeleted || OnItemDamaged?.Invoke(item, damage, null, 0) == true)
             return 0;
 
         // Source-X: an item whose def gives it no HITPOINTS has no durability
@@ -1020,7 +1024,9 @@ public static class CombatEngine
         // it is LOCAL.ItemParryDamageChance, so the global durability chance must
         // not be rolled a second time here.
         if (parryItem != null && DurabilityEnabled && itemDamageChance > _rand.Next(100))
-            ApplyDurabilityLoss(parryItem, rollConfiguredChance: false);
+            ApplyDurabilityLoss(parryItem, rollConfiguredChance: false,
+                source: attacker, triggerDamage: 1, damageType: GetWeaponDamageType(
+                    attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded)));
 
         OnParrySucceeded?.Invoke(defender);
         return true;
@@ -1325,8 +1331,11 @@ public static class CombatEngine
             _rand.Next(100) < Math.Clamp(hitCtx.ItemDamageChance, 0, 100))
         {
             var itemHit = target.GetEquippedItem(hitCtx.ItemDamageLayer);
+            // Source-X pItemHit->OnTakeDamage(iDmg, pSrc, uType) (CCharFight.cpp:792):
+            // the armour's @Damage sees the attacker as SRC and the blow as ARGN1.
             if (itemHit != null)
-                ApplyDurabilityLoss(itemHit, rollConfiguredChance: false);
+                ApplyDurabilityLoss(itemHit, rollConfiguredChance: false,
+                    source: attacker, triggerDamage: damage, damageType: GetWeaponDamageType(weapon));
         }
 
         // COMBAT_SLAYER (Source-X OnTakeDamage, CCharFight.cpp:821): the
@@ -1364,6 +1373,18 @@ public static class CombatEngine
             }
         }
 
+        // Source-X @Hit LOCAL.ItemDamageChance: the weapon takes damage only
+        // WeaponDamageChance% of the time (script-writable, seeded 25), via
+        // pWeapon->OnTakeDamage(iDmg, pCharTarg) (CCharFight.cpp:2240-2243) — BEFORE
+        // the victim's own OnTakeDamage and whatever the victim's immunity does to
+        // the blow. Its @Damage runs with SRC = the struck character and ARGN1 = the
+        // blow, which is what a weapon's "ON=@DAMAGE SRC.EFFECT ..." relies on to
+        // draw on the victim (the pack's exploding-bomb bow).
+        if (DurabilityEnabled && weapon != null && damage > 0 &&
+            _rand.Next(100) < Math.Clamp(hitCtx.WeaponDamageChance, 0, 100))
+            ApplyDurabilityLoss(weapon, rollConfiguredChance: false,
+                source: target, triggerDamage: damage, damageType: GetWeaponDamageType(weapon));
+
         // Reactive Armour bounces part of the blow back and takes that part OUT of
         // the blow: the reference subtracts it from iDmg before the hit points come
         // off and only then hits the attacker (CCharFight.cpp:993-999). SphereNet
@@ -1389,12 +1410,6 @@ public static class CombatEngine
             target.RecordAttack(attacker.Uid, damage);
 
             ApplyBloodOathAndSuitReflect(attacker, target, damage);
-
-            // Source-X @Hit LOCAL.ItemDamageChance: the weapon wears only
-            // WeaponDamageChance% of the time (script-writable, seeded 25).
-            if (DurabilityEnabled && weapon != null &&
-                _rand.Next(100) < Math.Clamp(hitCtx.WeaponDamageChance, 0, 100))
-                ApplyDurabilityLoss(weapon, rollConfiguredChance: false);
         }
 
         // AOS on-hit properties: leeches, mana drain, hit-area splashes and on-hit
@@ -1443,11 +1458,24 @@ public static class CombatEngine
         return damage;
     }
 
-    private static void ApplyDurabilityLoss(Item item, bool rollConfiguredChance = true)
+    private static void ApplyDurabilityLoss(Item item, bool rollConfiguredChance = true,
+        Character? source = null, int triggerDamage = 0, DamageType damageType = 0)
     {
         int chance = Math.Clamp(DurabilityLossChance, 0, 100);
         if (rollConfiguredChance && _rand.Next(100) >= chance)
             return;
+
+        // Source-X CItem::OnTakeDamage fires @Damage before it looks at the item's
+        // hit points at all (CItem.cpp:5826-5832), so a def without HITPOINTS still
+        // runs its @Damage script; only the wear below needs them. ARGN1 is the
+        // incoming damage (the blow, for combat) and SRC the character dealing it.
+        if (source != null)
+        {
+            if (item.IsDeleted ||
+                OnItemDamaged?.Invoke(item, triggerDamage > 0 ? triggerDamage : 1, source, damageType) == true ||
+                item.IsDeleted)
+                return;
+        }
 
         // Source-X: only items whose def (or crafting) gave them HITPOINTS
         // wear out. Classic packs define none on most gear — inventing a
@@ -1467,7 +1495,7 @@ public static class CombatEngine
         if (loss <= 0)
             return;
 
-        if (OnItemDamaged?.Invoke(item, loss) == true)
+        if (source == null && OnItemDamaged?.Invoke(item, loss, null, 0) == true)
             return;
 
         curHits = Math.Max(0, curHits - loss);
@@ -1514,7 +1542,7 @@ public static class CombatEngine
             IsWeaponSkill((SkillType)ovrId))
             return (SkillType)ovrId;
 
-        var weaponDef = Definitions.DefinitionLoader.GetItemDef(weapon.BaseId);
+        var weaponDef = CombatHelper.GetWeaponDef(weapon);
         if (weaponDef is { HasSkill: true } && IsWeaponSkill(weaponDef.Skill))
             return weaponDef.Skill;
 
@@ -1545,7 +1573,7 @@ public static class CombatEngine
             weapon.TryGetTag("OVERRIDE_DAMAGETYPE", out overrideRaw);
         if (overrideRaw == null)
         {
-            var def = Definitions.DefinitionLoader.GetItemDef(weapon.BaseId);
+            var def = CombatHelper.GetWeaponDef(weapon);
             overrideRaw = def?.TagDefs.Get("OVERRIDE.DAMAGETYPE")
                 ?? def?.TagDefs.Get("OVERRIDE_DAMAGETYPE");
         }

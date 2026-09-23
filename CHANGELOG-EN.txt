@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - NPC ranged, spell and special-attack visuals
+------------------------------------------------------------------------
+FIX - A weapon made from a named def (ITEMDEF i_bow_exp, ID=I_BOW) is read
+      through its own def for range, ammo, projectile, skill and damage type;
+      combat looked it up by the shared bow graphic and read i_bow.
+FIX - The in-flight projectile is AMMOANIM, else TDATA4, with AMMOANIMHUE/
+      RENDER (CItem.cpp:5013, CCharFight.cpp:2001); NPC ranged shots used a
+      hardcoded arrow/bolt and threw nothing for throwing weapons. The orc
+      bomber's bomb now flies as its bomb. TDATA3=0 needs no ammo
+      (CCharFight.cpp:1864), and an ID= alias inherits the base's TDATA it
+      does not set (CItemBase::CopyBasic).
+FIX - The weapon's @Damage (wear, 25% of hits by default) runs with SRC = the
+      victim, ARGN1 = the blow, ARGN2 = the damage type, before the victim's
+      damage, also for items without HITPOINTS (CCharFight.cpp:2240,
+      CItem.cpp:5826). Script effects like SRC.EFFECT had no target. Weapon
+      @Hit has SRC = victim and ARGO = wielder (they were swapped).
+FIX - The NPC projectile is sent before the hit resolves and not at all when
+      the swing is abandoned for range or line of sight.
+FIX - Bolt spells (magic arrow, fireball, energy bolt, fire bolt) fly from
+      the caster to the target; they were drawn as a lightning strike.
+      FX_TARG spells play on the target (CCharSpell.cpp:4154).
+FIX - BLOODCOLOR=-1 means no blood (435 pack creatures bled red); hex and
+      named colours parse; the character's value wins over its def.
+FIX - Breath uses BREATH.ANIM/TYPE/HUE with upstream speed and loop, and its
+      damage type through the normal damage path (immunity, @GetHit,
+      resists); thrown objects are boulders/rocks or THROWOBJ, blunt, through
+      the same path. Deaths from script damage, poison, traps, area splash,
+      breath and throws send the corpse and death animation.
+TEST - NpcSpecialAttackVisualTests.
+
 [2026-09-23] - Gump designer art in Host mode
 ------------------------------------------------------------------------
 FIX - Gump art reaches the panel's gump designer when the server runs under

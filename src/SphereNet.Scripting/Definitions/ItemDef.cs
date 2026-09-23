@@ -45,6 +45,11 @@ public sealed class ItemDef : BaseDef
     public string? TData3Name { get; set; }
     public string? TData4Name { get; set; }
     public string? DisplayIdRef { get; set; }
+    /// <summary>Which TDATA1..4 (bits 0..3) the section wrote itself, even as 0.
+    /// Source-X's ID=&lt;base&gt; copies the base's TDATA (CItemBase::CopyBasic,
+    /// CItemBase.cpp:191-194) and a later TDATAn line overrides it, so an explicit
+    /// "TDATA3=0" (no ammo) must be told apart from an unset one that inherits.</summary>
+    public byte TDataSetMask { get; set; }
     public ulong TFlags { get; set; }
     public ushort AmmoAnim { get; set; }
     public ushort AmmoAnimHue { get; set; }
@@ -144,19 +149,19 @@ public sealed class ItemDef : BaseDef
             case "TDATA1":
                 if (!ParseHexOrDecUInt(value, out uint td1) && value.Length > 0 &&
                     (char.IsLetter(value[0]) || value[0] == '_')) TData1Name = value.Trim();
-                TData1 = td1; break;
+                TData1 = td1; TDataSetMask |= 1; break;
             case "TDATA2":
                 if (!ParseHexOrDecUInt(value, out uint td2) && value.Length > 0 &&
                     (char.IsLetter(value[0]) || value[0] == '_')) TData2Name = value.Trim();
-                TData2 = td2; break;
+                TData2 = td2; TDataSetMask |= 2; break;
             case "TDATA3":
                 if (!ParseHexOrDecUInt(value, out uint td3) && value.Length > 0 &&
                     (char.IsLetter(value[0]) || value[0] == '_')) TData3Name = value.Trim();
-                TData3 = td3; break;
+                TData3 = td3; TDataSetMask |= 4; break;
             case "TDATA4":
                 if (!ParseHexOrDecUInt(value, out uint td4) && value.Length > 0 &&
                     (char.IsLetter(value[0]) || value[0] == '_')) TData4Name = value.Trim();
-                TData4 = td4; break;
+                TData4 = td4; TDataSetMask |= 8; break;
             case "TFLAGS": ParseHexOrDecULong(value, out ulong tf); TFlags = tf; break;
             case "AMMOANIM": ParseHexOrDec(value, out ushort aa); AmmoAnim = aa; break;
             case "AMMOANIMHUE": ParseHexOrDec(value, out ushort aah); AmmoAnimHue = aah; break;

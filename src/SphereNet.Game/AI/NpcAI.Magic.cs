@@ -691,6 +691,59 @@ public sealed partial class NpcAI
         return Math.Clamp(dmg, 1, ushort.MaxValue);
     }
 
+    /// <summary>What a breath looks like and burns with (Source-X Skill_Act_Breath,
+    /// CCharSkill.cpp:3316-3341): BREATH.ANIM (default ITEMID_FX_FIRE_BALL 0x36D4),
+    /// BREATH.TYPE (EFFECT_*, default EFFECT_BOLT 0), BREATH.HUE, and
+    /// BREATH.DAMTYPE (default DAMAGE_FIRE); the elemental split puts 100% on the
+    /// first element the type names (fire, cold, poison, energy), else physical.</summary>
+    public static (byte Motion, ushort Gfx, ushort Hue, DamageType DamageType,
+        int Physical, int Fire, int Cold, int Poison, int Energy) ResolveBreath(Character npc)
+    {
+        ushort gfx = (ushort)ReadSpecialTagNumber(npc, "BREATH.ANIM", resolveItemDef: true);
+        if (gfx == 0) gfx = 0x36D4;
+        byte motion = (byte)ReadSpecialTagNumber(npc, "BREATH.TYPE", resolveItemDef: false);
+        ushort hue = (ushort)ReadSpecialTagNumber(npc, "BREATH.HUE", resolveItemDef: false);
+        var type = (DamageType)(ushort)ReadSpecialTagNumber(npc, "BREATH.DAMTYPE", resolveItemDef: false);
+        if (type == 0) type = DamageType.Fire;
+        int phys = 0, fire = 0, cold = 0, poison = 0, energy = 0;
+        if (type.HasFlag(DamageType.Fire)) fire = 100;
+        else if (type.HasFlag(DamageType.Cold)) cold = 100;
+        else if (type.HasFlag(DamageType.Poison)) poison = 100;
+        else if (type.HasFlag(DamageType.Energy)) energy = 100;
+        else phys = 100;
+        return (motion, gfx, hue, type, phys, fire, cold, poison, energy);
+    }
+
+    /// <summary>What an NPC throws (Source-X Skill_Act_Throwing,
+    /// CCharSkill.cpp:3446-3462): the THROWOBJ item's graphic, else a random
+    /// boulder (ITEMID_ROCK_B 0x134F-0x1361) two times in three or a small rock
+    /// (ITEMID_ROCK_2 0x1363-0x136C) otherwise.</summary>
+    public static ushort ResolveThrowGraphic(Character npc)
+    {
+        if (npc.TryGetTag("THROWOBJ", out string? obj) && !string.IsNullOrWhiteSpace(obj))
+        {
+            ushort gfx = (ushort)ReadSpecialTagNumber(npc, "THROWOBJ", resolveItemDef: true);
+            if (gfx != 0) return gfx;
+        }
+        return _rand.Next(3) != 0
+            ? (ushort)(0x134F + _rand.Next(0x1362 - 0x134F))
+            : (ushort)(0x1363 + _rand.Next(0x136D - 0x1363));
+    }
+
+    private static long ReadSpecialTagNumber(Character npc, string key, bool resolveItemDef)
+    {
+        if (!npc.TryGetTag(key, out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return 0;
+        string s = raw.Trim();
+        if (resolveItemDef && (char.IsLetter(s[0]) || s[0] == '_'))
+            return Item.ResolveDefName?.Invoke(s) ?? 0;
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return long.TryParse(s.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out long h) ? h : 0;
+        if (s.Length > 1 && s[0] == '0')
+            return long.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out long h0) ? h0 : 0;
+        return long.TryParse(s, out long d) ? d : 0;
+    }
+
     /// <summary>Minimum gap between a caster's Paralyze re-casts on its target
     /// (ChooseBestSpell rule 5). Stops the lock-down rule from firing ahead of
     /// the damage spells every tick — including against a target that breaks

@@ -28,12 +28,19 @@ public static class CombatHelper
 
     public static bool IsMeleeWeapon(Item? weapon) => weapon == null || !IsRangedWeapon(weapon);
 
+    /// <summary>The ITEMDEF an equipped weapon was made from (Source-X
+    /// Item_GetDef). A named def such as "[ITEMDEF i_bow_exp] ID=I_BOW" shares
+    /// its graphic with i_bow, so the BaseId alone resolves the wrong definition —
+    /// the instance's SCRIPTDEF/ITEMDEF routing tags name the real one.</summary>
+    public static SphereNet.Scripting.Definitions.ItemDef? GetWeaponDef(Item weapon) =>
+        DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(weapon));
+
     /// <summary>Weapon min/max tile range. Ranged uses ITEMDEF RANGEL/RANGEH with ini fallback.</summary>
     public static (int Min, int Max) GetWeaponRange(Item? weapon)
     {
         if (!IsRangedWeapon(weapon))
         {
-            var meleeDef = weapon != null ? DefinitionLoader.GetItemDef(weapon.BaseId) : null;
+            var meleeDef = weapon != null ? GetWeaponDef(weapon) : null;
             int meleeMin = Math.Max(0, meleeDef?.RangeMin ?? 0);
             int meleeMax = meleeDef is { RangeMax: > 0 } ? meleeDef.RangeMax : 1;
             if (meleeMin > meleeMax)
@@ -41,7 +48,7 @@ public static class CombatHelper
             return (meleeMin, meleeMax);
         }
 
-        var def = weapon != null ? DefinitionLoader.GetItemDef(weapon.BaseId) : null;
+        var def = weapon != null ? GetWeaponDef(weapon) : null;
         int minDist = def is { RangeMin: > 0 } ? def.RangeMin : Character.ArcheryMinDist;
         int maxDist = def is { RangeMax: > 0 } ? def.RangeMax : Character.ArcheryMaxDist;
         if (maxDist < 1)
@@ -416,14 +423,19 @@ public static class CombatHelper
     }
 
     /// <summary>
-    /// Resolve which ammo a ranged weapon fires from its ITEMDEF. AMMOTYPE names
-    /// the exact ammo item (resolved to a baseid via <paramref name="resolveDefName"/>)
-    /// and AMMOANIM overrides the in-flight projectile graphic. When the weapon
-    /// def specifies neither, the legacy defaults apply: arrows (0x0F3F) for bows,
-    /// bolts (0x1BFB) for crossbows. A zero <c>BaseId</c> means "match by the
-    /// fallback ammo ItemType" instead of a specific item id.
+    /// Resolve which ammo a ranged weapon fires from its ITEMDEF (Source-X
+    /// CItem::Weapon_GetRangedAmmoRes / Weapon_GetRangedAmmoAnim, CItem.cpp:5013-5056).
+    /// AMMOTYPE names the exact ammo item (resolved to a baseid via
+    /// <paramref name="resolveDefName"/>), else TDATA3 does (m_ttWeaponBow.m_ridAmmo).
+    /// A def whose TDATA3 is 0 needs no ammo at all: Source-X only searches the pack
+    /// when the resource id is valid (CCharFight.cpp:1864-1874), so the pack's
+    /// "i_bow_exp TDATA3=0" fires without arrows. The in-flight graphic is AMMOANIM,
+    /// else TDATA4 (m_ridAmmoX). Only when there is no def at all do the legacy
+    /// defaults apply: arrows (0x0F3F) for bows, bolts (0x1BFB) for crossbows. A zero
+    /// <c>BaseId</c> with <c>RequiresAmmo</c> means "match by the fallback ammo
+    /// ItemType" instead of a specific item id.
     /// </summary>
-    public static (ushort BaseId, ItemType FallbackType, ushort Gfx) ResolveAmmoSpec(
+    public static (ushort BaseId, ItemType FallbackType, ushort Gfx, bool RequiresAmmo) ResolveAmmoSpec(
         SphereNet.Scripting.Definitions.ItemDef? weaponDef, ItemType weaponType, Func<string, ushort>? resolveDefName)
     {
         bool bow = weaponType == ItemType.WeaponBow;
@@ -433,17 +445,79 @@ public static class CombatHelper
         // weapon's own graphic (TDATA4/AMMOANIM still overrides when set).
         ushort gfx = bow ? (ushort)0x0F3F : throwing ? (ushort)0 : (ushort)0x1BFB;
         ushort baseId = 0;
+        // Throwing weapons are their own projectile (pack TDATA3 empty).
+        bool requiresAmmo = !throwing;
 
         if (weaponDef != null)
         {
+            bool ammoTypeResolved = false;
             if (!string.IsNullOrWhiteSpace(weaponDef.AmmoType) && resolveDefName != null)
             {
                 ushort resolved = resolveDefName(weaponDef.AmmoType);
-                if (resolved != 0) baseId = resolved;
+                if (resolved != 0) { baseId = resolved; ammoTypeResolved = true; }
             }
+            if (!ammoTypeResolved && !throwing)
+            {
+                if (weaponDef.TData3 is > 0 and <= ushort.MaxValue)
+                    baseId = (ushort)weaponDef.TData3;
+                else if (string.IsNullOrWhiteSpace(weaponDef.AmmoType))
+                    requiresAmmo = false;
+                // An AMMOTYPE that fails to resolve keeps the type-based fallback.
+            }
+
             if (weaponDef.AmmoAnim != 0) gfx = weaponDef.AmmoAnim;
+            else if (weaponDef.TData4 is > 0 and <= ushort.MaxValue) gfx = (ushort)weaponDef.TData4;
         }
-        return (baseId, fallbackType, gfx);
+        return (baseId, fallbackType, gfx, requiresAmmo);
+    }
+
+    /// <summary>The in-flight art, hue and render mode a ranged shot shows
+    /// (Source-X CItem::Weapon_GetRangedAmmoAnim, CItem.cpp:5013-5041): the
+    /// AMMOANIM / AMMOANIMHUE / AMMOANIMRENDER props, read from the item first and
+    /// its ITEMDEF second (GetPropStr/GetPropNum with fDef), with TDATA4 as the
+    /// graphic when no AMMOANIM is set. A throwing weapon with neither flies its
+    /// own graphic.</summary>
+    public static (ushort Gfx, ushort Hue, uint Render) ResolveRangedAnim(Item weapon)
+    {
+        var def = GetWeaponDef(weapon);
+        var spec = ResolveAmmoSpec(def, weapon.ItemType, Item.ResolveDefName);
+        ushort gfx = spec.Gfx;
+        ushort hue = def?.AmmoAnimHue ?? 0;
+        uint render = def?.AmmoAnimRender ?? 0;
+
+        if (weapon.TryGetTag("AMMOANIM", out string? anim) && !string.IsNullOrWhiteSpace(anim))
+        {
+            ushort instGfx = ParseAnimValue(anim);
+            if (instGfx != 0) gfx = instGfx;
+        }
+        if (weapon.TryGetTag("AMMOANIMHUE", out string? hueRaw) && !string.IsNullOrWhiteSpace(hueRaw))
+        {
+            ushort instHue = ParseAnimValue(hueRaw);
+            if (instHue != 0) hue = instHue;
+        }
+        if (weapon.TryGetTag("AMMOANIMRENDER", out string? renderRaw) && !string.IsNullOrWhiteSpace(renderRaw))
+        {
+            ushort instRender = ParseAnimValue(renderRaw);
+            if (instRender != 0) render = instRender;
+        }
+
+        if (gfx == 0 && weapon.ItemType == ItemType.WeaponThrowing)
+            gfx = weapon.DispIdFull;
+        return (gfx, hue, render);
+    }
+
+    private static ushort ParseAnimValue(string raw)
+    {
+        string s = raw.Trim();
+        if (s.Length > 0 && (char.IsLetter(s[0]) || s[0] == '_'))
+            return Item.ResolveDefName?.Invoke(s) ?? 0;
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            s = s[2..];
+        // Sphere numerics with a leading 0 are hex (01c1c); plain digits decimal.
+        bool hex = s.Length > 1 && s[0] == '0';
+        return hex
+            ? (ushort.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out ushort h) ? h : (ushort)0)
+            : (ushort.TryParse(s, out ushort d) ? d : (ushort)0);
     }
 
     /// <summary>Find ranged ammo anywhere in the backpack tree. Source-X's

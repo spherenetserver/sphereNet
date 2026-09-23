@@ -1402,19 +1402,9 @@ public static partial class Program
             // spells are visible to observers.
             _spellEngine.OnNpcCastFx = (caster, target, def) =>
             {
-                ushort gfx = def.EffectId;
-                if (gfx == 0) return;
                 var dst = target ?? caster;
-                byte effectType = def.IsFlag(SpellFlag.FxBolt) ? (byte)1 : (byte)3;
-                var fx = new PacketEffect(
-                    effectType,
-                    effectType == 1 ? caster.Uid.Value : dst.Uid.Value,
-                    dst.Uid.Value,
-                    gfx,
-                    dst.X, dst.Y, (short)dst.Z,
-                    dst.X, dst.Y, (short)dst.Z,
-                    10, 30, true, false);
-                BroadcastNearby(dst.Position, 18, fx, 0);
+                foreach (var fx in GameClient.BuildSpellCastFx(caster, dst, def))
+                    BroadcastNearby(dst.Position, 18, fx, 0);
             };
             _spellEngine.OnCastAnimation = (caster, animId) =>
             {
@@ -1802,9 +1792,8 @@ public static partial class Program
                 GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
                     BroadcastNearby, ForEachClientInRange, animDelay: animDelay);
 
-                if (weapon != null &&
-                    (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
-                    GameClient.BroadcastRangedProjectile(attacker, target, weapon, BroadcastNearby);
+                // The ranged projectile is emitted by OnNpcRangedShot below, before
+                // the hit resolves (Source-X order, CCharFight.cpp:2001-2007).
 
                 // Source-X plays one combat sound per swing: the per-weapon miss
                 // whoosh on a miss, the per-weapon hit sound on a hit (below). A
@@ -1889,6 +1878,8 @@ public static partial class Program
                 // the player and NPC paths, before HP is applied — see the hook
                 // wired above. The damage passed in here is already final.
             };
+            _npcAI.OnNpcRangedShot = (attacker, target, weapon) =>
+                GameClient.BroadcastRangedProjectile(attacker, target, weapon, BroadcastNearby);
             _npcAI.OnNpcAttackNotify = (attacker, target) =>
             {
                 // Same Attacker_Add messaging as the player attack path
@@ -1979,38 +1970,16 @@ public static partial class Program
 
                 FaceAndBroadcastToward(npc, target);
 
-                // Fire breath effect: moving fireball from NPC to target
-                var fx = new PacketEffect(0, npc.Uid.Value, target.Uid.Value, 0x36D4,
-                    npc.X, npc.Y, (short)(npc.Z + 10),
-                    target.X, target.Y, (short)(target.Z + 10),
-                    7, 10, true, true);
-                BroadcastNearby(npc.Position, 18, fx, 0);
-                var breathSound = new PacketSound(0x0227, npc.X, npc.Y, npc.Z);
-                BroadcastNearby(npc.Position, 18, breathSound, 0);
-
-                target.Hits -= (short)Math.Min(damage, target.Hits);
-                _spellEngine?.TryInterruptFromDamage(target, damage);
-                if (target.HasActiveSkillPending())
-                {
-                    int abortedSkill = target.ClearActiveSkillPending();
-                    if (abortedSkill >= 0)
-                        Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
-                }
-                if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
-                {
-                    target.FightTarget = npc.Uid;
-                    target.NextNpcActionTime = 0;
-                    WakeNpc(target);
-                }
-                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
-                var healthPkt = new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits);
-                BroadcastNearby(target.Position, 18, healthPkt, 0);
-
-                if (target.Hits <= 0 && !target.IsDead)
-                {
-                    _log.LogDebug("[death_path] breath victim=0x{V:X} dmg={Dmg}", target.Uid.Value, damage);
-                    _npcAI.OnNpcKill?.Invoke(npc, target);
-                }
+                // Source-X Skill_Act_Breath (CCharSkill.cpp:3316-3344): sound 0x227,
+                // then pChar->Effect(BREATH.TYPE, BREATH.ANIM, this, 20, 30, false,
+                // BREATH.HUE) and OnTakeDamage with BREATH.DAMTYPE (default fire) —
+                // so fire immunity, invulnerability, resists and @GetHit all apply.
+                var breath = NpcAI.ResolveBreath(npc);
+                BroadcastNearby(npc.Position, 18, new PacketSound(0x0227, npc.X, npc.Y, npc.Z), 0);
+                BroadcastNearby(npc.Position, 18, GameClient.BuildObjectEffect(
+                    breath.Motion, npc, target, breath.Gfx, 20, 30, false, breath.Hue), 0);
+                ApplyNpcSpecialDamage(npc, target, damage, breath.DamageType,
+                    breath.Physical, breath.Fire, breath.Cold, breath.Poison, breath.Energy);
             };
             _npcAI.OnNpcThrow = (npc, target, damage) =>
             {
@@ -2022,41 +1991,14 @@ public static partial class Program
 
                 FaceAndBroadcastToward(npc, target);
 
-                ushort throwGfx = 0x0F51;
-                if (npc.TryGetTag("THROWOBJ", out string? objStr) && !string.IsNullOrWhiteSpace(objStr))
-                {
-                    var cleanObj = objStr.Trim();
-                    if (cleanObj.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                        cleanObj = cleanObj[2..];
-                    if (ushort.TryParse(cleanObj, System.Globalization.NumberStyles.HexNumber, null, out ushort gfx) && gfx > 0)
-                        throwGfx = gfx;
-                }
-                var fx = new PacketEffect(0, npc.Uid.Value, target.Uid.Value, throwGfx,
-                    npc.X, npc.Y, (short)(npc.Z + 10),
-                    target.X, target.Y, (short)(target.Z + 10),
-                    10, 5, true, false);
-                BroadcastNearby(npc.Position, 18, fx, 0);
-
-                target.Hits -= (short)Math.Min(damage, target.Hits);
-                _spellEngine?.TryInterruptFromDamage(target, damage);
-                if (target.HasActiveSkillPending())
-                {
-                    int abortedSkill = target.ClearActiveSkillPending();
-                    if (abortedSkill >= 0)
-                        Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
-                }
-                if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
-                {
-                    target.FightTarget = npc.Uid;
-                    target.NextNpcActionTime = 0;
-                    WakeNpc(target);
-                }
-                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
-                var healthPkt = new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits);
-                BroadcastNearby(target.Position, 18, healthPkt, 0);
-
-                if (target.Hits <= 0 && !target.IsDead)
-                    _npcAI.OnNpcKill?.Invoke(npc, target);
+                // Source-X Skill_Act_Throwing (CCharSkill.cpp:3446-3475): the
+                // THROWOBJ item (else a random boulder / small rock) flies as an
+                // EFFECT_BOLT at the default speed 5, and the blow goes through
+                // OnTakeDamage as blunt damage. The old fallback art 0x0F51 is a dagger.
+                ushort throwGfx = NpcAI.ResolveThrowGraphic(npc);
+                BroadcastNearby(npc.Position, 18, GameClient.BuildObjectEffect(
+                    0, npc, target, throwGfx, 5, 1, false), 0);
+                ApplyNpcSpecialDamage(npc, target, damage, DamageType.HitBlunt, 100, 0, 0, 0, 0);
             };
             _npcAI.ResolveNpcSpellFlags = spell => _spellEngine.GetSpellDef(spell)?.Flags;
             _npcAI.OnNpcTryStartSpellCast = (npc, target, spell) =>
@@ -2195,10 +2137,12 @@ public static partial class Program
             CombatEngine.BreakOnZeroHits = _config.ItemBreakOnZeroHits;
             CombatEngine.DefaultHits = _config.ItemDefaultHits;
 
-            CombatEngine.OnItemDamaged = (item, loss) =>
+            CombatEngine.OnItemDamaged = (item, loss, src, dmgType) =>
             {
                 if (_triggerDispatcher == null) return false;
-                var args = new TriggerArgs { ItemSrc = item, N1 = loss };
+                // Source-X ITRIG_DAMAGE Init(iDmg, uType) with SRC = pSrc
+                // (CItem.cpp:5828-5830).
+                var args = new TriggerArgs { CharSrc = src, ItemSrc = item, N1 = loss, N2 = (long)dmgType };
                 var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Damage, args);
                 return result == TriggerResult.True;
             };
@@ -2338,8 +2282,12 @@ public static partial class Program
                     target.NextNpcActionTime = 0;
                     WakeNpc(target);
                 }
+                // The full death pipeline, not the bare DeathEngine call: that one
+                // makes the corpse but broadcasts none of it (no corpse packet, no
+                // death animation, no ghost for a player) — a script DAMAGE, poison,
+                // trap, breath or thrown-rock kill left the victim standing on screen.
                 if (target.Hits <= 0 && !target.IsDead)
-                    _deathEngine?.ProcessDeath(target, source);
+                    ProcessDeathWithEffects(target, source);
             };
 
             // @HitReactive (Source-X CCharFight.cpp:965). The whole bounce - what comes
@@ -2427,7 +2375,7 @@ public static partial class Program
                         ch.NextNpcActionTime = 0;
                     }
                     if (ch.Hits <= 0 && !ch.IsDead)
-                        _deathEngine?.ProcessDeath(ch, attacker);
+                        ProcessDeathWithEffects(ch, attacker);
                 }
 
                 if (hitAny)
@@ -3848,6 +3796,24 @@ public static partial class Program
                 Object1 = ch
             };
             _ = _triggerRunner.TryRunFunction(funcName, ch, c, callArgs, out _);
+        }
+    }
+
+    /// <summary>An NPC special (breath / thrown object) lands through the shared
+    /// OnTakeDamage path (CombatEngine.ApplyScriptDamage): invulnerability, fire
+    /// immunity, @GetHit and the resists apply, and the damage feedback, wake-up and
+    /// death come from OnDirectCharacterDamageApplied. The struck target's active
+    /// skill is interrupted like any other blow.</summary>
+    private static void ApplyNpcSpecialDamage(Character npc, Character target, int damage,
+        DamageType type, int physical, int fire, int cold, int poison, int energy)
+    {
+        int dealt = CombatEngine.ApplyScriptDamage(target, damage, type, npc,
+            physical, fire, cold, poison, energy);
+        if (dealt > 0 && !target.IsDead && target.HasActiveSkillPending())
+        {
+            int abortedSkill = target.ClearActiveSkillPending();
+            if (abortedSkill >= 0)
+                Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
         }
     }
 

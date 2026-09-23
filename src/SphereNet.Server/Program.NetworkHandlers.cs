@@ -1213,6 +1213,43 @@ public static partial class Program
             client.HandleHelpRequest();
     }
 
+    /// <summary>What a teleport looks and sounds like depends on WHO did it, and both
+    /// are configured (CCharSpell.cpp:178): a visible staff member, a player and an
+    /// NPC each have their own effect and sound. Upstream shows the effect as a
+    /// fixed-location effect where the character stood and where it arrived
+    /// (EffectLocation EFFECT_XYZ, CCharSpell.cpp:236) and plays the sound; an
+    /// insubstantial character shows nothing. <paramref name="from"/> is null when
+    /// the caller no longer knows the starting point.</summary>
+    private static void ShowTeleportEffect(Character ch, Point3D? from)
+    {
+        if (ch.IsDeleted || ch.IsStatFlag(StatFlag.Insubstantial))
+            return;
+        bool staff = ch.IsPlayer &&
+                     ch.PrivLevel >= PrivLevel.GM &&
+                     !ch.IsStatFlag(StatFlag.Incognito);
+        int effectId = ch.IsPlayer
+            ? (staff ? _config.TeleportEffectStaff : _config.TeleportEffectPlayers)
+            : _config.TeleportEffectNpc;
+        int soundId = ch.IsPlayer
+            ? (staff ? _config.TeleportSoundStaff : _config.TeleportSoundPlayers)
+            : _config.TeleportSoundNpc;
+
+        if (effectId > 0)
+        {
+            if (from is { } old && (old.X != ch.X || old.Y != ch.Y || old.Map != ch.MapIndex))
+                BroadcastNearby(old, 18, TeleportEffectAt(old, effectId), 0);
+            BroadcastNearby(ch.Position, 18, TeleportEffectAt(ch.Position, effectId), 0);
+        }
+        if (soundId > 0)
+            BroadcastNearby(ch.Position, 18,
+                new PacketSound((ushort)soundId, ch.X, ch.Y, ch.Z), 0);
+    }
+
+    private static PacketEffect TeleportEffectAt(Point3D p, int effectId) =>
+        new(2, 0, 0, (ushort)effectId,
+            p.X, p.Y, (short)p.Z, p.X, p.Y, (short)p.Z,
+            10, 10, true, false);
+
     private static void BroadcastSeasonChange(bool playSound)
     {
         foreach (var client in _clients.Values)

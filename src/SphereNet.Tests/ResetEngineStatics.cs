@@ -29,6 +29,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
     {
         SphereNet.Game.Objects.ObjBase.ResolveWorld = null;
         SphereNet.Game.Objects.ObjBase.ResolveClientConsole = null;
+        SphereNet.Game.Objects.Characters.Character.OnTeleportEffect = null;
         SphereNet.Game.Scripting.ScriptTouchAccess.Configuration = new();
         SphereNet.Game.Objects.ObjBase.OnObjectMessage = null;
         SphereNet.Game.Definitions.DefinitionLoader.ResetForTests();

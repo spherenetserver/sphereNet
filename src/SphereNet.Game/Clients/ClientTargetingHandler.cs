@@ -282,8 +282,13 @@ public sealed class ClientTargetingHandler
             if (teleStand.Found && teleStand.Z != dPos.Z)
                 destination = new Point3D(dPos.X, dPos.Y, teleStand.Z, _character.MapIndex);
 
-            _world.MoveCharacter(_character, destination.Value);
+            // .TELE is the Teleport spell upstream (CV_TELE -> Cmd_Skill_Magery),
+            // so the jump shows the teleport effect of whoever made it.
+            var teleFrom = _character.Position;
+            bool teleMoved = _world.MoveCharacter(_character, destination.Value);
             Resync();
+            if (teleMoved)
+                Character.OnTeleportEffect?.Invoke(_character, teleFrom);
             _mountEngine?.EnsureMountedState(_character);
             // Broadcast full appearance (including mount) to nearby clients at new location.
             BroadcastDrawObject(_character);

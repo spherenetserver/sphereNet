@@ -875,7 +875,9 @@ public sealed class CommandHandler
                 }
                 var pos = new Point3D(x, y, z, targetMap);
                 byte oldMap = gm.MapIndex;
-                world.MoveCharacter(gm, pos);
+                var goFrom = gm.Position;
+                if (world.MoveCharacter(gm, pos))
+                    Character.OnTeleportEffect?.Invoke(gm, goFrom);
                 if (oldMap != pos.Map)
                     OnCharacterMapChanged?.Invoke(gm);
                 OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_teleported", pos));
@@ -888,7 +890,9 @@ public sealed class CommandHandler
             if (namedPos != null)
             {
                 byte oldMap = gm.MapIndex;
-                world.MoveCharacter(gm, namedPos.Value);
+                var namedFrom = gm.Position;
+                if (world.MoveCharacter(gm, namedPos.Value))
+                    Character.OnTeleportEffect?.Invoke(gm, namedFrom);
                 if (oldMap != namedPos.Value.Map)
                     OnCharacterMapChanged?.Invoke(gm);
                 OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_teleported_named", safeArgs, namedPos.Value));
@@ -910,7 +914,9 @@ public sealed class CommandHandler
             var obj = _registeredWorld?.FindObject(new Core.Types.Serial(uid));
             if (obj == null) { OnSysMessage?.Invoke(gm, "Object not found."); return; }
             byte oldMap = gm.MapIndex;
-            _registeredWorld!.MoveCharacter(gm, obj.Position);
+            var uidFrom = gm.Position;
+            if (_registeredWorld!.MoveCharacter(gm, obj.Position))
+                Character.OnTeleportEffect?.Invoke(gm, uidFrom);
             if (oldMap != obj.Position.Map) OnCharacterMapChanged?.Invoke(gm);
             OnSysMessage?.Invoke(gm, $"Teleported to {obj.Name} at {obj.Position}.");
         });
@@ -932,7 +938,9 @@ public sealed class CommandHandler
             }
             if (found == null) { OnSysMessage?.Invoke(gm, $"Character '{name}' not found."); return; }
             byte oldMap = gm.MapIndex;
-            _registeredWorld!.MoveCharacter(gm, found.Position);
+            var charFrom = gm.Position;
+            if (_registeredWorld!.MoveCharacter(gm, found.Position))
+                Character.OnTeleportEffect?.Invoke(gm, charFrom);
             if (oldMap != found.Position.Map) OnCharacterMapChanged?.Invoke(gm);
             OnSysMessage?.Invoke(gm, $"Teleported to {found.Name} at {found.Position}.");
         });
@@ -1426,7 +1434,9 @@ public sealed class CommandHandler
                         target.RemoveTag("JAIL_CELL");
 
                     var jailPos = world.GetJailPoint(cell);
-                    world.MoveCharacter(target, jailPos);
+                    var jailFrom = target.Position;
+                    if (world.MoveCharacter(target, jailPos))
+                        Character.OnTeleportEffect?.Invoke(target, jailFrom);
                     target.SetStatFlag(StatFlag.Freeze);
 
                     // Jail duration (minutes). Stored as DateTime UTC ticks so the

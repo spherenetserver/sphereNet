@@ -3496,6 +3496,25 @@ public partial class Character : ObjBase
     /// SERV.NEWITEM, so every line customising a freshly created item was a silent
     /// no-op - the item appeared, unplaced and unconfigured, and nothing said why.
     /// </summary>
+    /// <summary>Show a teleport the way Source-X CChar::Spell_Teleport does by default
+    /// (fDisplayEffect, CCharSpell.cpp:178/236): the effect for who moved - visible
+    /// staff, player or NPC, each configured - at the old and the new spot, and its
+    /// sound. The host wires it; the argument is where the character stood.</summary>
+    public static Action<Character, Point3D>? OnTeleportEffect { get; set; }
+
+    /// <summary>Move somewhere as a teleport (GO, GOCHAR, GOUID, JAIL ...). Upstream
+    /// runs all of these through Spell_Teleport, which shows the effect; a plain
+    /// MoveTo arrived without it, so a GM's jump had no flamestrike under it.</summary>
+    public bool TeleportWithEffect(Point3D dest)
+    {
+        var from = Position;
+        MoveTo(dest);
+        if (Position.Equals(from))
+            return false;
+        OnTeleportEffect?.Invoke(this, from);
+        return true;
+    }
+
     public override ObjBase? ResolveRefHead(string head)
     {
         if (head.Equals("ACT", StringComparison.OrdinalIgnoreCase))
@@ -6210,7 +6229,7 @@ public partial class Character : ObjBase
                 {
                     sbyte gz = parts.Length > 2 && sbyte.TryParse(parts[2], out sbyte tz) ? tz : Z;
                     byte gm = parts.Length > 3 && byte.TryParse(parts[3], out byte tm) ? tm : MapIndex;
-                    MoveTo(new Point3D(gx, gy, gz, gm));
+                    TeleportWithEffect(new Point3D(gx, gy, gz, gm));
                 }
                 return true;
             }
@@ -6228,7 +6247,7 @@ public partial class Character : ObjBase
                 {
                     var dest = world.FindObject(new Serial(goUid));
                     if (dest != null)
-                        MoveTo(dest.GetTopLevelPosition());
+                        TeleportWithEffect(dest.GetTopLevelPosition());
                 }
                 return true;
             }
@@ -6244,7 +6263,7 @@ public partial class Character : ObjBase
                         gc != this &&
                         string.Equals(gc.Name, wanted, StringComparison.OrdinalIgnoreCase))
                     {
-                        MoveTo(gc.Position);
+                        TeleportWithEffect(gc.Position);
                         break;
                     }
                 }
@@ -6271,7 +6290,7 @@ public partial class Character : ObjBase
                     if (obj is Character gc && !gc.IsDeleted && gc != this &&
                         (gc.BodyId == wantedId || gc.CharDefIndex == wantedId))
                     {
-                        MoveTo(gc.Position);
+                        TeleportWithEffect(gc.Position);
                         break;
                     }
                 }
@@ -6302,7 +6321,7 @@ public partial class Character : ObjBase
                 {
                     if (obj is Items.Item it && !it.IsDeleted && (long)it.ItemType == typeVal)
                     {
-                        MoveTo(it.GetTopLevelPosition());
+                        TeleportWithEffect(it.GetTopLevelPosition());
                         break;
                     }
                 }
@@ -6318,7 +6337,7 @@ public partial class Character : ObjBase
                     ? FindCharByClientIndex?.Invoke(cliArg)
                     : FindCharBySocketId?.Invoke(cliArg);
                 if (found != null && found != this)
-                    MoveTo(found.Position);
+                    TeleportWithEffect(found.Position);
                 return true;
             }
             case "AFK":

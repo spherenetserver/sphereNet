@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-23] - Teleport effect for GM commands and GO verbs
+------------------------------------------------------------------------
+FIX - GO/GOUID/GOCHAR/.TELE, JAIL and the scripted GO* verbs (GO, GOUID,
+      GOITEMID, GOCHAR, GOCHARID, GOTYPE, GOCLI, GOSOCK) show the teleport of
+      whoever moved, as upstream's CChar::Spell_Teleport does for all of them
+      (CCharSpell.cpp:178/236): TELEPORTEFFECTSTAFF / TELEPORTSOUNDSTAFF for a
+      visible GM (flamestrike by default), the PLAYERS or NPC pair otherwise,
+      shown where the character stood and where it arrived. Only the Teleport
+      spell showed it, and only on arrival.
+TEST - TeleportEffectTests.
+
 [2026-09-23] - Script trigger parity: drops, pickups, mirrors, TYPEDEF, regions, spells, cursors
 ------------------------------------------------------------------------
 FIX - @DropOn_Self fires on the RECEIVING container/item with ARGO = the

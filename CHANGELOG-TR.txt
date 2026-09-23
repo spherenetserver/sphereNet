@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-23] - GM komutlari ve GO verb'leri icin teleport efekti
+------------------------------------------------------------------------
+DUZELTME - GO/GOUID/GOCHAR/.TELE, JAIL ve script GO* verb'leri (GO, GOUID,
+           GOITEMID, GOCHAR, GOCHARID, GOTYPE, GOCLI, GOSOCK), Source-X
+           CChar::Spell_Teleport'un hepsi icin yaptigi gibi hareket edenin
+           teleport efektini gosterir (CCharSpell.cpp:178/236): gorunur GM icin
+           TELEPORTEFFECTSTAFF / TELEPORTSOUNDSTAFF (varsayilan alev sutunu),
+           digerlerine PLAYERS ya da NPC cifti; karakterin durdugu ve vardigi
+           yerde gosterilir. Sadece Teleport buyusu gosteriyordu, o da yalnizca
+           varista.
+TEST - TeleportEffectTests.
+
 [2026-09-23] - Script trigger paritesi: birakma, alma, aynalar, TYPEDEF, bolgeler, buyuler, imlecler
 ------------------------------------------------------------------------
 DUZELTME - @DropOn_Self, esyayi ALAN konteyner/item'da, ARGO = suruklenen esya

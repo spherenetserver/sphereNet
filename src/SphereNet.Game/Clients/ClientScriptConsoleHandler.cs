@@ -2308,41 +2308,43 @@ public sealed class ClientScriptConsoleHandler
     }
 
     /// <summary>Map our internal <see cref="SphereNet.Core.Enums.ResType"/> to the
-    /// Source-X RES_* numeric code (as defined in [DEFNAME] sphere_defs), so that
-    /// <c>&lt;RESOURCETYPE x&gt;</c> compares equal to script constants like
-    /// <c>&lt;def.res_chardef&gt;</c> (=6) and <c>&lt;def.res_itemdef&gt;</c> (=14).</summary>
+    /// Source-X RES_* numeric code (the RES_TYPE enum in CResourceID.h, mirrored by
+    /// the packs' [DEFNAME] RES_* constants), so that <c>&lt;RESOURCETYPE x&gt;</c>
+    /// compares equal to <c>&lt;def.res_chardef&gt;</c> (=7) and
+    /// <c>&lt;def.res_itemdef&gt;</c> (=15).</summary>
     private static int SourceXResValue(SphereNet.Core.Enums.ResType type) => type switch
     {
         SphereNet.Core.Enums.ResType.Account => 1,
         SphereNet.Core.Enums.ResType.Area => 3,
         SphereNet.Core.Enums.ResType.Book => 5,
-        SphereNet.Core.Enums.ResType.CharDef => 6,
-        SphereNet.Core.Enums.ResType.Comment => 7,
-        SphereNet.Core.Enums.ResType.DefName => 8,
-        SphereNet.Core.Enums.ResType.Dialog => 9,
-        SphereNet.Core.Enums.ResType.Events => 10,
-        SphereNet.Core.Enums.ResType.Function => 12,
-        SphereNet.Core.Enums.ResType.GamePage => 13,
-        SphereNet.Core.Enums.ResType.ItemDef => 14,
-        SphereNet.Core.Enums.ResType.Menu => 17,
-        SphereNet.Core.Enums.ResType.Names => 19,
-        SphereNet.Core.Enums.ResType.NewBie => 20,
-        SphereNet.Core.Enums.ResType.Obscene => 22,
-        SphereNet.Core.Enums.ResType.PlevelCfg => 23,
-        SphereNet.Core.Enums.ResType.RegionResource => 24,
-        SphereNet.Core.Enums.ResType.RegionType => 25,
-        SphereNet.Core.Enums.ResType.ResourceList => 27,
-        SphereNet.Core.Enums.ResType.RoomDef => 29,
-        SphereNet.Core.Enums.ResType.Scroll => 31,
-        SphereNet.Core.Enums.ResType.Sector => 32,
-        SphereNet.Core.Enums.ResType.SkillDef => 34,
-        SphereNet.Core.Enums.ResType.SkillClass => 35,
-        SphereNet.Core.Enums.ResType.SkillMenu => 36,
-        SphereNet.Core.Enums.ResType.Spawn => 37,
-        SphereNet.Core.Enums.ResType.Speech => 38,
-        SphereNet.Core.Enums.ResType.SpellDef => 39,
-        SphereNet.Core.Enums.ResType.Sphere => 40,
-        SphereNet.Core.Enums.ResType.ServerConfig => 40,
+        SphereNet.Core.Enums.ResType.Champion => 6,
+        SphereNet.Core.Enums.ResType.CharDef => 7,
+        SphereNet.Core.Enums.ResType.Comment => 8,
+        SphereNet.Core.Enums.ResType.DefName => 9,
+        SphereNet.Core.Enums.ResType.Dialog => 10,
+        SphereNet.Core.Enums.ResType.Events => 11,
+        SphereNet.Core.Enums.ResType.Function => 13,
+        SphereNet.Core.Enums.ResType.GamePage => 14,
+        SphereNet.Core.Enums.ResType.ItemDef => 15,
+        SphereNet.Core.Enums.ResType.Menu => 18,
+        SphereNet.Core.Enums.ResType.Names => 20,
+        SphereNet.Core.Enums.ResType.NewBie => 21,
+        SphereNet.Core.Enums.ResType.Obscene => 23,
+        SphereNet.Core.Enums.ResType.PlevelCfg => 24,
+        SphereNet.Core.Enums.ResType.RegionResource => 25,
+        SphereNet.Core.Enums.ResType.RegionType => 26,
+        SphereNet.Core.Enums.ResType.ResourceList => 28,
+        SphereNet.Core.Enums.ResType.RoomDef => 30,
+        SphereNet.Core.Enums.ResType.Scroll => 32,
+        SphereNet.Core.Enums.ResType.Sector => 33,
+        SphereNet.Core.Enums.ResType.ServerConfig => 34,
+        SphereNet.Core.Enums.ResType.SkillDef => 35,
+        SphereNet.Core.Enums.ResType.SkillClass => 36,
+        SphereNet.Core.Enums.ResType.SkillMenu => 37,
+        SphereNet.Core.Enums.ResType.Spawn => 38,
+        SphereNet.Core.Enums.ResType.Speech => 39,
+        SphereNet.Core.Enums.ResType.SpellDef => 40,
+        SphereNet.Core.Enums.ResType.Sphere => 41,
         SphereNet.Core.Enums.ResType.Template => 46,
         SphereNet.Core.Enums.ResType.Tip => 48,
         SphereNet.Core.Enums.ResType.TypeDef => 49,
@@ -2416,7 +2418,11 @@ public sealed class ClientScriptConsoleHandler
             int sp = varName.IndexOf(' ');
             bool wantIndex = varName[..sp].Equals("RESOURCEINDEX", StringComparison.OrdinalIgnoreCase);
             string arg = varName[(sp + 1)..].Trim();
-            var rid = _commands?.Resources?.ResolveDefName(arg)
+            // Upstream evaluates the argument (Exp_GetVal, CScriptObj.cpp:608), so a
+            // [DEFNAME] alias - "orc" -> {c_orc} in the worldgen tables - answers for
+            // the resource it names, and the result is written in hex.
+            var holder = _commands?.Resources;
+            var rid = holder?.ResolveDefName(holder.FollowResourceAlias(arg))
                       ?? SphereNet.Core.Types.ResourceId.Invalid;
             if (!rid.IsValid)
             {
@@ -2424,8 +2430,8 @@ public sealed class ClientScriptConsoleHandler
                 return true;
             }
             value = wantIndex
-                ? rid.Index.ToString()
-                : SourceXResValue(rid.Type).ToString();
+                ? $"0{rid.Index:x}"
+                : $"0{SourceXResValue(rid.Type):x}";
             return true;
         }
         if (varName.StartsWith("ISDIALOGOPEN.", StringComparison.OrdinalIgnoreCase))

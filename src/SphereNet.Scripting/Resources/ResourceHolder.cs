@@ -1034,6 +1034,82 @@ public sealed class ResourceHolder
     public IReadOnlyDictionary<string, string> GetAllDefMessages() => _defMessages;
     public bool TryGetDefValue(string key, out string value) => _defTexts.TryGetValue(key, out value!);
 
+    /// <summary>Follow a [DEFNAME] alias to the name of a defined resource, the way
+    /// Source-X reads a resource argument (MORE1/SPAWNID go through GetArgDWVal, which
+    /// evaluates the name): an alias is replaced by its value, and a value written as a
+    /// brace group <c>{a wa b wb ...}</c> yields one member drawn by weight
+    /// (GetRangeNumber; a zero weight never draws). Returns the name unchanged when it
+    /// already names a resource, or when it resolves to nothing.</summary>
+    public string FollowResourceAlias(string name, Func<int, int>? roll = null)
+    {
+        roll ??= Random.Shared.Next;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string current = name.Trim();
+        while (current.Length > 0 && seen.Add(current))
+        {
+            if (current[0] == '{')
+            {
+                string? member = PickBraceMember(current, roll);
+                if (member == null)
+                    return name.Trim();
+                current = member;
+                continue;
+            }
+            if (ResolveDefName(current).IsValid || !TryGetDefValue(current, out string alias))
+                return current;
+            current = alias.Trim();
+        }
+        return current.Length > 0 ? current : name.Trim();
+    }
+
+    private static string? PickBraceMember(string group, Func<int, int> roll)
+    {
+        int close = group.LastIndexOf('}');
+        string inner = close > 0 ? group[1..close] : group[1..];
+        var tokens = new List<string>();
+        int depth = 0, start = -1;
+        for (int i = 0; i <= inner.Length; i++)
+        {
+            char c = i < inner.Length ? inner[i] : ' ';
+            bool separator = depth == 0 && (char.IsWhiteSpace(c) || c == ',');
+            if (!separator && start < 0) start = i;
+            if (c == '{') depth++;
+            else if (c == '}') depth--;
+            if (separator && start >= 0)
+            {
+                tokens.Add(inner[start..i]);
+                start = -1;
+            }
+        }
+        if (tokens.Count == 1)
+            return tokens[0];
+        if (tokens.Count < 2 || tokens.Count % 2 != 0)
+            return null;
+        // {lo hi} is a numeric range, not a choice between resources.
+        if (tokens.Count == 2 && Core.Types.ScriptNumber.TryParseToken(tokens[0], out _))
+            return null;
+
+        long total = 0;
+        var weights = new long[tokens.Count / 2];
+        for (int i = 0; i < weights.Length; i++)
+        {
+            if (!Core.Types.ScriptNumber.TryParseToken(tokens[i * 2 + 1], out long w) || w < 0)
+                return null;
+            weights[i] = w;
+            total += w;
+        }
+        if (total <= 0)
+            return null;
+        long pick = roll((int)Math.Min(total, int.MaxValue));
+        for (int i = 0; i < weights.Length; i++)
+        {
+            if (pick < weights[i])
+                return tokens[i * 2];
+            pick -= weights[i];
+        }
+        return tokens[^2];
+    }
+
     public List<string> GetDialogTextLines(string dialogId) =>
         _dialogTextCache.TryGetValue(dialogId, out var entry) ? entry.Lines : [];
 

@@ -588,6 +588,16 @@ public sealed class DefinitionLoader
             def.LoadFromKey(key.Key, key.Arg);
         }
 
+        // [CHARDEF c_jeweler_f] with no DEFNAME line is named by its header, as
+        // upstream names every resource. Leaving DefName empty wrote such NPCs to
+        // the save as a bare [WORLDCHAR] that only this engine could read back.
+        if (string.IsNullOrEmpty(def.DefName))
+        {
+            string header = (link.HeaderArgument ?? "").Trim().Split(' ', 2)[0];
+            if (header.Length > 0 && !SphereNet.Core.Types.ScriptNumber.TryParseToken(header, out _))
+                def.DefName = header;
+        }
+
         if (!string.IsNullOrEmpty(def.DefName))
             _resources.RegisterDefName(def.DefName, link.Id);
         foreach (string alias in def.Aliases)

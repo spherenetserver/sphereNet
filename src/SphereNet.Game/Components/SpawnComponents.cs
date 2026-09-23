@@ -649,6 +649,9 @@ public sealed class SpawnComponent
     public void SetFromDefName(string spawnId, ResourceHolder resources)
     {
         _resources = resources;
+        // A [DEFNAME] alias - the worldgen spawn tables name every creature that way,
+        // often as a {male 1 female 1} group - resolves to one member.
+        spawnId = resources.FollowResourceAlias(spawnId);
 
         var rid = resources.ResolveDefName(spawnId);
         if (rid.IsValid)
@@ -1209,6 +1212,7 @@ public sealed class ItemSpawnComponent
     /// <summary>Point this spawner at a named ITEMDEF or TEMPLATE (SPAWNID).</summary>
     public void SetFromDefName(string spawnId, ResourceHolder resources)
     {
+        spawnId = resources.FollowResourceAlias(spawnId);
         var rid = resources.ResolveDefName(spawnId.Trim());
         if (rid.IsValid && rid.Type is ResType.ItemDef or ResType.Template)
         {

@@ -516,6 +516,18 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.SAVE / SERV.RESPAWN / SERV.RESTOCK — server verbs (CServer::r_Verb
+        // SV_SAVE / SV_RESPAWN / SV_RESTOCK). Written as a script line they reached
+        // no handler and did nothing, with no warning; the host answers the same
+        // names as the console commands.
+        if (cmd.Equals("SERV.SAVE", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("SERV.RESPAWN", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("SERV.RESTOCK", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke(cmd[5..].ToUpperInvariant());
+            return;
+        }
+
         // SERV.SHRINKMEM — Source-X SetProcessWorkingSetSize; here a managed
         // compacting GC pass.
         if (cmd.Equals("SERV.SHRINKMEM", StringComparison.OrdinalIgnoreCase))

@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Spawner hedefleri DEFNAME takma adlariyla; basliktan adlanan CHARDEF adini korur
+------------------------------------------------------------------------
+DUZELTME - Spawner'in MORE/MORE1/SPAWNID ile RESOURCETYPE/RESOURCEINDEX
+           argumani Source-X gibi degerlendirilir (GetArgDWVal / Exp_GetVal):
+           [DEFNAME] takma adi izlenir, {a wa b wb} grubundan agirliga gore
+           bir uye secilir (agirligi 0 olan secilmez). Worldgen spawn
+           tablolari her yaratigi boyle adlandirir ("jeweler" ->
+           {c_jeweler 1 c_jeweler_f 1}); bu spawner'lar hedefsiz olusup
+           hicbir sey spawn etmiyordu. Secilen uye saklanir, yeniden
+           baslatmada ayni kalir.
+DUZELTME - Canli spawner'a atanan MORE1 hedefini degistirir; SPAWNID ile ayni
+           setter (CCSpawn.cpp:943). "Once TYPE, sonra MORE1" ile kurulan
+           spawner eski hedefinde kaliyordu. Tipi yalnizca itemdef'ten gelen
+           spawner bu atamada bilesenini kurar.
+DUZELTME - RESOURCETYPE ve RESOURCEINDEX onaltilik yazilir (FormatHex);
+           ornegin RES_CHARDEF 07 okunur.
+DUZELTME - DEFNAME satiri olmayan [CHARDEF c_ad] blogu adini basligindan
+           alir. Bu NPC'ler adsiz [WORLDCHAR] basligiyla kaydediliyor, diger
+           Sphere sunuculari bunu yukleyemiyordu.
+DUZELTME - Script satiri olarak yazilan SERV.SAVE, SERV.RESPAWN ve
+           SERV.RESTOCK sunucu fiilidir (CServer::r_Verb). Hicbir
+           isleyiciye ulasmiyor, sessizce hicbir sey yapmiyordu. Script'ten
+           SERV.RESPAWN artik script'in geri kalanindan sonraya kuyruklanmaz,
+           hemen calisir; sonraki satirdaki SERV.SAVE dolmus dunyayi kaydeder.
+
+[2026-09-23] - RESOURCETYPE Source-X RES_* kodlarini dondurur
+------------------------------------------------------------------------
+DUZELTME - RESOURCETYPE, Source-X RES_TYPE enum'undan kaymis kodlar
+           donduruyordu: CHARDEF 7 yerine 6, ITEMDEF 15 yerine 14, SPAWN 38
+           yerine 37, SPHERE'e kadar bu sekilde. Scriptler sonucu paketlerin
+           RES_* sabitleriyle karsilastirdigi icin <RESOURCETYPE x> ==
+           <def.res_chardef> hic tutmuyor, worldgen spawner'lari spawn tipi
+           olmadan olusuyordu. Tablo artik CResourceID.h'yi izler,
+           RES_CHAMPION (6) dahil.
+
 [2026-09-23] - GM page: hesap basina tek page
 ------------------------------------------------------------------------
 DUZELTME - Her page kuyruga yeni bir satir ekliyordu; ayni oyuncu tekrar

@@ -2842,6 +2842,27 @@ public class Item : ObjBase
                 return true;
             case "MORE1": case "MORE":
             {
+                // On a live spawner MORE/MORE1 is the spawn target, the same setter as
+                // SPAWNID (CCSpawn.cpp:943-945). Only storing it left a spawner made
+                // as "TYPE then MORE1" pointing at nothing.
+                // A spawner typed only by its itemdef never had TYPE assigned, so its
+                // component was never built; upstream's exists with the item.
+                if (SpawnChar == null && SpawnItem == null &&
+                    ItemType is ItemType.SpawnChar or ItemType.SpawnItem)
+                    OnSpawnTypeChanged?.Invoke(this);
+                if ((SpawnChar != null || SpawnItem != null) &&
+                    Definitions.DefinitionLoader.StaticResources is { } liveSpawnRes &&
+                    value.Any(char.IsLetter) &&
+                    !SphereNet.Core.Types.ScriptNumber.TryParseToken(value.Trim(), out _))
+                {
+                    string target = liveSpawnRes.FollowResourceAlias(value);
+                    _more1 = 0; // a group target has no index; the old one must not linger
+                    SpawnChar?.SetFromDefName(target, liveSpawnRes);
+                    SpawnItem?.SetFromDefName(target, liveSpawnRes);
+                    SetTag("MORE1_DEFNAME", target);
+                    ApplySpawnTrackId();
+                    return true;
+                }
                 uint v = ParseHexOrDecUInt(value);
                 if (v == 0 && value.Length > 0 && value.Any(char.IsLetter) && ResolveDefName != null)
                 {

@@ -1940,7 +1940,20 @@ public static partial class Program
     /// the admin console RESPAWN fires). Returns the spawner count touched.</summary>
     private static string? HandleServRespawn()
     {
-        try { RequestRespawnOnMainLoop(); }
+        try
+        {
+            // A script already runs on the main loop. Queueing from there deferred the
+            // respawn past the rest of the script, so a SERV.SAVE on the next line
+            // saved the world without the creatures (upstream's verb is synchronous).
+            int mainThreadId = Volatile.Read(ref _mainLoopThreadId);
+            if (_world != null && mainThreadId != 0 && Environment.CurrentManagedThreadId == mainThreadId)
+            {
+                int n = _world.RespawnAllSpawners();
+                _log?.LogInformation("[respawn] topped up {Count} spawners", n);
+            }
+            else
+                RequestRespawnOnMainLoop();
+        }
         catch (Exception ex) { _log?.LogWarning(ex, "Script-driven serv.respawn failed"); }
         return "";
     }

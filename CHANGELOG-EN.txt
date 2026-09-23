@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Spawner targets through DEFNAME aliases; header-named CHARDEFs keep their name
+------------------------------------------------------------------------
+FIX - A spawner's MORE/MORE1/SPAWNID and RESOURCETYPE/RESOURCEINDEX now
+      evaluate their argument as Source-X does (GetArgDWVal / Exp_GetVal): a
+      [DEFNAME] alias is followed and a brace group {a wa b wb} draws one
+      member by weight (zero weight never draws). The worldgen spawn tables
+      name every creature this way ("jeweler" -> {c_jeweler 1 c_jeweler_f 1}),
+      so their spawners were created with no target and produced nothing.
+      The drawn member is stored, so a restart keeps it.
+FIX - MORE1 set on a live spawner retargets it, the same setter as SPAWNID
+      (CCSpawn.cpp:943). A spawner built as "TYPE, then MORE1" kept the
+      target it had before. A spawner typed only by its itemdef builds its
+      component on that assignment.
+FIX - RESOURCETYPE and RESOURCEINDEX are written in hex (FormatHex), e.g.
+      RES_CHARDEF reads 07.
+FIX - A [CHARDEF c_name] block with no DEFNAME line takes its header as its
+      name. Such NPCs were saved under a bare [WORLDCHAR] header that other
+      Sphere servers cannot load.
+FIX - SERV.SAVE, SERV.RESPAWN and SERV.RESTOCK written as script lines are
+      server verbs (CServer::r_Verb). They reached no handler and did
+      nothing, silently. SERV.RESPAWN from a script now runs at once instead
+      of being queued past the rest of the script, so a SERV.SAVE on the next
+      line saves the refilled world.
+
+[2026-09-23] - RESOURCETYPE returns the Source-X RES_* codes
+------------------------------------------------------------------------
+FIX - RESOURCETYPE answered codes shifted from the Source-X RES_TYPE enum:
+      CHARDEF 6 instead of 7, ITEMDEF 14 instead of 15, SPAWN 37 instead of
+      38, and so on through SPHERE. Scripts compare the result with the
+      packs' RES_* constants, so <RESOURCETYPE x> == <def.res_chardef> never
+      matched and worldgen spawners were created without a spawn type. The
+      table now follows CResourceID.h, including RES_CHAMPION (6).
+
 [2026-09-23] - GM pages: one per account
 ------------------------------------------------------------------------
 FIX - Every page added a new queue entry, so one player paging repeatedly

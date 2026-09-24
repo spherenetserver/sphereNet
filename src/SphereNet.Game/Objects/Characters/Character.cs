@@ -7928,7 +7928,7 @@ public partial class Character : ObjBase
                 if (SendPacketToOwner != null && !string.IsNullOrEmpty(args))
                 {
                     SendPacketToOwner(this, new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
-                        0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", args));
+                        0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut.SystemLanguage, "System", args));
                 }
                 return true;
             }
@@ -8409,7 +8409,7 @@ public partial class Character : ObjBase
 
         SphereNet.Network.Packets.PacketWriter pkt = unicode
             ? new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
-                Uid.Value, BodyId, msgType, fmt.Hue, fmt.Font, "ENU", GetName(), fmt.Text)
+                Uid.Value, BodyId, msgType, fmt.Hue, fmt.Font, SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut.SystemLanguage, GetName(), fmt.Text)
             : new SphereNet.Network.Packets.Outgoing.PacketSpeechOut(
                 Uid.Value, BodyId, msgType, fmt.Hue, fmt.Font, GetName(), fmt.Text);
         BroadcastNearby?.Invoke(Position, 18, pkt, 0);

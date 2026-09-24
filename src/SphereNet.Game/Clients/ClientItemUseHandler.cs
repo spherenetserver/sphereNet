@@ -4501,7 +4501,7 @@ public sealed class ClientItemUseHandler
                         if (friend != _character)
                             SendToChar?.Invoke(friend.Uid, new PacketSpeechUnicodeOut(
                                 0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
-                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System",
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), PacketSpeechUnicodeOut.SystemLanguage, "System",
                                 ServerMessages.GetFormatted(Msg.NpcPetTargFriendSuccess2, pet.Name)));
                     }
                 }

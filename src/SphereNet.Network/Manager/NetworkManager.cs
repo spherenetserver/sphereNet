@@ -103,6 +103,7 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketCharSelect());
         _packetManager.Register(new PacketCreateCharacter());
         _packetManager.Register(new PacketCreateCharacterHS());
+        _packetManager.Register(new PacketCreateCharacterEnhanced());
         _packetManager.Register(new PacketPing());
         _packetManager.Register(new PacketMoveRequest());
         _packetManager.Register(new PacketNewMovementRequest());
@@ -179,6 +180,10 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketUltimaStoreButton());
         _packetManager.Register(new PacketChatOpen());
         _packetManager.Register(new PacketChatAction());
+        // Tip window paging (0xA7, Source-X PacketTipReq) and the 7.0.62.2+ global
+        // chat request (0xF9, Source-X PacketGlobalChatReq).
+        _packetManager.Register(new PacketTipRequest());
+        _packetManager.Register(new PacketGlobalChatRequest());
     }
 
     /// <summary>Initialize the listen socket.</summary>
@@ -959,7 +964,9 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, IReadOnlyList<ushort>>? unequipMacro = null,
         Action<NetState, bool>? publicHouseContent = null,
         Action<NetState, ushort, byte>? skillLock = null,
-        Action<NetState, uint, uint, uint>? secureTradeGold = null)
+        Action<NetState, uint, uint, uint>? secureTradeGold = null,
+        Action<NetState, ushort>? tipRequest = null,
+        Action<NetState, byte, string>? globalChat = null)
     {
         foreach (var state in _states)
         {
@@ -991,6 +998,8 @@ public sealed class NetworkManager : IDisposable
             state.CrashReportHandler = crashReport;
             state.ClientUiButtonHandler = clientUiButton;
             state.ChatActionHandler = chatAction;
+            state.TipRequestHandler = tipRequest;
+            state.GlobalChatHandler = globalChat;
             state.ResyncRequestHandler = resyncRequest;
             state.LogoutRequestHandler = logoutRequest;
             state.HelpRequestHandler = helpRequest;

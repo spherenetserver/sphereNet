@@ -90,13 +90,13 @@ public class UnsupportedOpcodeRobustnessTests
         var seen = new List<(byte Op, int Len)>();
         mgr.OnUnknownPacket += (_, op, bytes) => seen.Add((op, bytes.Length));
 
-        // 0xF2 (len 5), 0xD0 (len 8), 0xDD (len 4), 0xEB (len 12), 0xF7 (len 6), 0xF9 (len 3)
+        // 0xF2 (len 5), 0xD0 (len 8), 0xDD (len 4), 0xEB (len 12), 0xF7 (len 6), 0xDE (len 3)
         var p1 = VarPacket(0xF2, 2);
         var p2 = VarPacket(0xD0, 5);
         var p3 = VarPacket(0xDD, 1);
         var p4 = VarPacket(0xEB, 9);
         var p5 = VarPacket(0xF7, 3);
-        var p6 = VarPacket(0xF9, 0);
+        var p6 = VarPacket(0xDE, 0);
         var buffer = new[] { p1, p2, p3, p4, p5, p6 }.SelectMany(x => x).ToArray();
         state.InjectReceived(buffer);
 
@@ -107,7 +107,7 @@ public class UnsupportedOpcodeRobustnessTests
         Assert.Equal(new[]
         {
             ((byte)0xF2, 5), ((byte)0xD0, 8), ((byte)0xDD, 4),
-            ((byte)0xEB, 12), ((byte)0xF7, 6), ((byte)0xF9, 3)
+            ((byte)0xEB, 12), ((byte)0xF7, 6), ((byte)0xDE, 3)
         }, seen);
     }
 

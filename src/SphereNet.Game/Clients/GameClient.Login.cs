@@ -576,6 +576,17 @@ public sealed partial class GameClient
                 }
             }
 
+            // Enhanced Client creation (0x8D) names the shirt and the face itself;
+            // Source-X PacketCreateNew::onReceive (receive.cpp:1660) creates both once
+            // the character exists and adds them to their layers.
+            if (info != null)
+            {
+                if (info.ShirtId != 0)
+                    EquipCreationItem(_character, info.ShirtId, info.ShirtHue, Layer.Shirt);
+                if (info.FaceId != 0)
+                    EquipCreationItem(_character, info.FaceId, info.FaceHue, Layer.Face);
+            }
+
             int assignSlot = slot >= 0 ? slot : _account.FindFreeSlot();
             if (assignSlot >= 0)
                 _account.SetCharSlot(assignSlot, _character.Uid);
@@ -833,6 +844,13 @@ public sealed partial class GameClient
         _netState.Send(new PacketLoginComplete());
         SendSpeedMode();
         _spellEngine?.ResendBuffs(_character);
+        // Source-X CClient::addPlayerStart (CClientMsg.cpp:1514): with CHATF_GLOBALCHAT
+        // on, connect to global chat and toggle the status straight to online.
+        if ((ServerChatFlags & ChatFlagGlobalChat) != 0)
+        {
+            SendGlobalChatConnect();
+            SendGlobalChatStatusToggle();
+        }
 
         // Source-X parity: send paperdoll on login so the client has name/title
         // data immediately (some clients restore the paperdoll window on reconnect).
@@ -1115,6 +1133,32 @@ public sealed partial class GameClient
     /// <summary>Valid human/elf/gargoyle beard graphic IDs.</summary>
     private static bool IsValidBeardGraphic(ushort id) =>
         (id >= 0x203E && id <= 0x2041) || (id >= 0x204B && id <= 0x204D);
+
+    /// <summary>CItem::CreateScript(id) + SetHue + CChar::LayerAdd for the items the
+    /// 0x8D creation packet names. The layer comes from the item definition, then the
+    /// tiledata quality byte of a wearable, then <paramref name="fallback"/>.</summary>
+    private void EquipCreationItem(Character ch, ushort itemId, ushort hue, Layer fallback)
+    {
+        var item = _world.CreateItem();
+        item.BaseId = itemId;
+        ItemDefHelper.ApplyInstanceMetadata(item, itemId, setDisplayId: false, setName: false);
+        var itemDef = DefinitionLoader.GetItemDef(itemId);
+        if (itemDef != null && !string.IsNullOrWhiteSpace(itemDef.Name))
+            item.Name = itemDef.Name;
+        item.Hue = new Color(hue);
+
+        Layer layer = itemDef?.Layer ?? Layer.None;
+        if (layer == Layer.None && _world.MapData != null)
+        {
+            var tile = _world.MapData.GetItemTileData(itemId);
+            if ((tile.Flags & SphereNet.MapData.Tiles.TileFlag.Wearable) != 0 &&
+                tile.Quality > 0 && tile.Quality <= (byte)Layer.Horse)
+                layer = (Layer)tile.Quality;
+        }
+        if (layer == Layer.None)
+            layer = fallback;
+        ch.Equip(item, layer);
+    }
 
     private void EquipPlayerNewbieItems(Character ch, bool female)
     {

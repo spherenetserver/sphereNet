@@ -62,6 +62,10 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     public static int ServerMinCharDeleteDays { get; set; } = 7;
     public static bool ServerAutoResDisp { get; set; } = true;
     public static int ServerToolTipMode { get; set; } = 1;
+    /// <summary>sphere.ini CHATFLAGS (Source-X m_iChatFlags). Only the CHATF_GLOBALCHAT
+    /// bit (0x10) is read here: it gates the 0xF9 global chat handler and the global
+    /// chat connect sent at login.</summary>
+    public static int ServerChatFlags { get; set; }
     public static OptionFlags ServerOptionFlags { get; set; } = OptionFlags.FileCommands | OptionFlags.Buffs;
     public static NotorietyHueSettings NotorietyHues { get; set; } = new();
     public static int ClientLingerSeconds { get; set; } = 60;

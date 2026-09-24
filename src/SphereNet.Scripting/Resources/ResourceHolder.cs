@@ -337,7 +337,8 @@ public sealed class ResourceHolder
             link.ScanSection(section, retainKeys: IsDefinitionType(resType));
 
             // For string-named resources, auto-register the name as a DEFNAME
-            if (!IsNumericIdType(resType) && !string.IsNullOrEmpty(rawArg))
+            if (!IsNumericIdType(resType) && !string.IsNullOrEmpty(rawArg) &&
+                !TryGetNumberedIndex(rawArg, resType, out _))
             {
                 string defName = rawArg.Split(' ', 2)[0].Trim();
                 if (!string.IsNullOrEmpty(defName))
@@ -684,6 +685,12 @@ public sealed class ResourceHolder
         if (string.IsNullOrEmpty(arg))
             return -1;
 
+        // [TIP n]: Source-X ResourceGetNewID (CServerConfig.cpp:4360) takes a name
+        // that starts with a digit as the index itself, so CClient::Event_Tips can
+        // look tip n up by number. Hashing "1" like a defname lost that.
+        if (TryGetNumberedIndex(arg, resType, out int numbered))
+            return numbered;
+
         // Numeric ID types (ITEMDEF, CHARDEF, SPELL, SKILL, MULTIDEF) use the
         // legacy script number rule (reference Exp_GetVal): "0x.." and
         // leading-zero forms are hex, anything else is decimal. Real packs
@@ -747,6 +754,40 @@ public sealed class ResourceHolder
         int index = GenerateStringHash(name, resType);
         _defNames[name] = new ResourceId(resType, index);
         return index;
+    }
+
+    /// <summary>A [TIP] section named by a number (Exp_GetVal rule: "0x.." and a
+    /// leading zero are hex, anything else decimal). Such a section is looked up by
+    /// that number and registers no defname.</summary>
+    private static bool TryGetNumberedIndex(string arg, ResType resType, out int index)
+    {
+        index = -1;
+        if (resType != ResType.Tip)
+            return false;
+        string name = arg.Split(' ', 2)[0].Trim();
+        if (name.Length == 0 || !char.IsAsciiDigit(name[0]))
+            return false;
+
+        var span = name.AsSpan();
+        bool isHex = false;
+        if (span.Length > 2 && span[0] == '0' && (span[1] == 'x' || span[1] == 'X'))
+        {
+            span = span[2..];
+            isHex = true;
+        }
+        else if (span.Length > 1 && span[0] == '0')
+        {
+            isHex = true;
+        }
+
+        long value;
+        bool ok = isHex
+            ? long.TryParse(span, System.Globalization.NumberStyles.HexNumber, null, out value)
+            : long.TryParse(span, out value);
+        if (!ok || value < 0 || value > 0x00FFFFFF)
+            return false;
+        index = (int)value;
+        return true;
     }
 
     /// <summary>
@@ -1547,7 +1588,8 @@ public sealed class ResourceHolder
 
             link.ScanSection(section, retainKeys: IsDefinitionType(resType));
 
-            if (!IsNumericIdType(resType) && !string.IsNullOrEmpty(rawArg))
+            if (!IsNumericIdType(resType) && !string.IsNullOrEmpty(rawArg) &&
+                !TryGetNumberedIndex(rawArg, resType, out _))
             {
                 string defName = rawArg.Split(' ', 2)[0].Trim();
                 if (!string.IsNullOrEmpty(defName))

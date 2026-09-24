@@ -1603,7 +1603,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 ushort hue = f[0].Trim().Length > 0 && TryParseScriptUShort(f[0].Trim(), out ushort h) ? h : (ushort)0x03B2;
                 byte mode = f[1].Trim().Length > 0 && TryParseScriptByte(f[1].Trim(), out byte m) ? m : (byte)0;
                 byte font = f[2].Trim().Length > 0 && TryParseScriptByte(f[2].Trim(), out byte fo) ? fo : (byte)3;
-                string lang = f[3].Trim().Length > 0 ? f[3].Trim() : "ENU";
+                string lang = f[3].Trim(); // empty = no language (Source-X CLanguageID(""))
                 string text = f[4].Trim();
                 if (text.Length == 0)
                     return true;

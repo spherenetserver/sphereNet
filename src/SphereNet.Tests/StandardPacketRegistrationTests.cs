@@ -22,9 +22,9 @@ namespace SphereNet.Tests;
 ///
 /// Of the rest, 0x3F (UltimaLive static update) and 0xE8 (remove UI highlight) are
 /// no-ops upstream too - one dumps a debug line with its body commented out, the other
-/// only skips its fields - so registering them would add nothing. 0x8D, 0xA7, 0xEB and
-/// 0xF9 need a subsystem each (KR character creation, tip-of-the-day, hotbar, global
-/// chat) and are not covered here.
+/// only skips its fields - so registering them would add nothing. 0x8D, 0xA7 and 0xF9
+/// (KR character creation, tip-of-the-day, global chat) are covered by
+/// EnhancedClientPacketTests; 0xEB (hotbar) is not covered here.
 /// </summary>
 public sealed class StandardPacketRegistrationTests
 {

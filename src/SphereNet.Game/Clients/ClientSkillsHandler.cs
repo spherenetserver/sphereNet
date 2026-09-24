@@ -874,7 +874,7 @@ public sealed class ClientSkillsHandler
             default:
                 SysMessage(text); return;
         }
-        var packet = new PacketSpeechUnicodeOut(uid, body, 0, 0x03B2, 3, "ENU", name, text);
+        var packet = new PacketSpeechUnicodeOut(uid, body, 0, 0x03B2, 3, PacketSpeechUnicodeOut.SystemLanguage, name, text);
         _netState.Send(packet);
     }
 

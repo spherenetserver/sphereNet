@@ -709,7 +709,7 @@ public sealed partial class GameClient
         if (fmt.Drop)
             return;
         _netState.Send(new PacketSpeechUnicodeOut(
-            0xFFFFFFFF, 0xFFFF, 6, fmt.Hue, fmt.Font, "TRK", "System", fmt.Text
+            0xFFFFFFFF, 0xFFFF, 6, fmt.Hue, fmt.Font, PacketSpeechUnicodeOut.SystemLanguage, "System", fmt.Text
         ));
     }
 
@@ -725,7 +725,7 @@ public sealed partial class GameClient
             : SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Say);
         var packet = new PacketSpeechUnicodeOut(
             npc.Uid.Value, npc.BodyId, 0, hue,
-            SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Say), "TRK", npc.GetName(), text);
+            SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Say), PacketSpeechUnicodeOut.SystemLanguage, npc.GetName(), text);
         BroadcastNearby?.Invoke(npc.Position, 18, packet, 0);
     }
 

@@ -22,6 +22,13 @@ public sealed class CharCreateInfo
     /// <summary>Starter shirt/pants tints picked on the creation screen; 0 = default.</summary>
     public ushort ShirtHue { get; init; }
     public ushort PantsHue { get; init; }
+    /// <summary>Enhanced Client (0x8D) only: the shirt graphic and the face graphic/hue
+    /// picked on the creation screen. Source-X PacketCreateNew::onReceive
+    /// (receive.cpp:1660) creates both items after the character exists and adds them
+    /// to their layers. 0 = not sent.</summary>
+    public ushort ShirtId { get; init; }
+    public ushort FaceId { get; init; }
+    public ushort FaceHue { get; init; }
     public (byte Id, byte Value)[] Skills { get; init; } = [];
 
     /// <summary>Index of the starting city the player picked, into the city list

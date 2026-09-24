@@ -109,6 +109,106 @@ public sealed class PacketCreateCharacterHS : PacketHandler
     }
 }
 
+/// <summary>0x8D — Create Character (KR / Stygian Abyss Enhanced Client). 146 bytes on
+/// the wire including the length word, which the framing has already consumed.
+/// Source-X PacketCreateNew::onReceive (receive.cpp:1511): the race byte is a
+/// RACE_TYPE (KR sends it one lower than SA), and a chosen profession replaces the
+/// stats and the four skills with a fixed table because the packet carries no
+/// skills for it. Routed into the same creation path as 0x00 / 0xF8.</summary>
+public sealed class PacketCreateCharacterEnhanced : PacketHandler
+{
+    public PacketCreateCharacterEnhanced() : base(0x8D, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        buffer.ReadUInt32(); // pattern1
+        buffer.ReadUInt32(); // pattern2
+        string charName = buffer.ReadAsciiFixed(30);
+        buffer.ReadBytes(30); // unknown
+
+        byte profession = buffer.ReadByte();
+        byte city = buffer.ReadByte();
+        byte sex = buffer.ReadByte();
+        byte race = buffer.ReadByte();
+        // Source-X: "SA client sends race packet one higher than KR".
+        if (state.IsKingdomRebornClient && race > 0)
+            race--;
+        byte str = buffer.ReadByte();
+        byte dex = buffer.ReadByte();
+        byte intl = buffer.ReadByte();
+        ushort skinHue = buffer.ReadUInt16();
+        buffer.ReadBytes(8); // unknown
+
+        var skills = new (byte Id, byte Value)[4];
+        for (int i = 0; i < 4; i++)
+        {
+            skills[i].Id = buffer.ReadByte();
+            skills[i].Value = buffer.ReadByte();
+        }
+
+        buffer.ReadBytes(26); // unknown
+        ushort hairHue = buffer.ReadUInt16();
+        ushort hairStyle = buffer.ReadUInt16();
+        buffer.ReadBytes(6); // unknown
+        ushort shirtHue = buffer.ReadUInt16();
+        ushort shirtId = buffer.ReadUInt16();
+        buffer.ReadByte(); // unknown
+        ushort faceHue = buffer.ReadUInt16();
+        ushort faceId = buffer.ReadUInt16();
+        buffer.ReadByte(); // unknown
+        ushort beardHue = buffer.ReadUInt16();
+        ushort beardStyle = buffer.ReadUInt16();
+
+        ApplyProfessionTemplate(profession, ref str, ref dex, ref intl, skills);
+
+        state.OnCharCreate(new CharCreateInfo
+        {
+            Name = charName,
+            Female = sex > 0,
+            // Source-X passes UINT32_MAX as the client flags for this packet.
+            ClientFlags = uint.MaxValue,
+            Profession = profession,
+            Race = race,
+            Str = str, Dex = dex, Int = intl,
+            SkinHue = skinHue,
+            HairStyle = hairStyle, HairHue = hairHue,
+            BeardStyle = beardStyle, BeardHue = beardHue,
+            // Source-X hands the shirt hue to doCreate as both shirt and pants hue.
+            ShirtHue = shirtHue, PantsHue = shirtHue,
+            ShirtId = shirtId,
+            FaceId = faceId, FaceHue = faceHue,
+            Skills = skills,
+            City = city,
+        });
+    }
+
+    /// <summary>The PROFESSION_* table of PacketCreateNew::onReceive
+    /// (receive.cpp:1557-1650). PROFESSION_ADVANCED (0) and unknown ids keep what the
+    /// client sent.</summary>
+    internal static void ApplyProfessionTemplate(byte profession, ref byte str, ref byte dex, ref byte intl,
+        (byte Id, byte Value)[] skills)
+    {
+        (byte S, byte D, byte I, byte K1, byte K2, byte K3, byte K4)? t = profession switch
+        {
+            1 => (45, 35, 10, 40, 27, 17, 1),   // warrior: swordsmanship, tactics, healing, anatomy
+            2 => (25, 20, 45, 25, 16, 46, 43),  // mage: magery, evalint, meditation, wrestling
+            3 => (60, 10, 10, 7, 45, 37, 34),   // blacksmith: blacksmithing, mining, tinkering, tailoring
+            4 => (25, 20, 45, 49, 32, 42, 46),  // necromancer: necromancy, spiritspeak, fencing, meditation
+            5 => (45, 20, 25, 51, 40, 27, 50),  // paladin: chivalry, swordsmanship, tactics, focus
+            6 => (40, 30, 10, 52, 40, 50, 5),   // samurai: bushido, swordsmanship, focus, parrying
+            7 => (40, 30, 10, 53, 42, 21, 47),  // ninja: ninjitsu, fencing, hiding, stealth
+            _ => null,
+        };
+        if (t is not { } p)
+            return;
+        str = p.S; dex = p.D; intl = p.I;
+        skills[0] = (p.K1, 30);
+        skills[1] = (p.K2, 30);
+        skills[2] = (p.K3, 30);
+        skills[3] = (p.K4, 30);
+    }
+}
+
 /// <summary>0x00 — Create Character (old clients). 104 bytes.</summary>
 public sealed class PacketCreateCharacter : PacketHandler
 {

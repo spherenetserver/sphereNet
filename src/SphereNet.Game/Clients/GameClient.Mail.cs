@@ -44,6 +44,6 @@ public sealed partial class GameClient
         string text = ServerMessages.GetFormatted(Msg.MsgMailbagDrop2, _character.GetName());
         SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
             0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
-                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System", text));
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), PacketSpeechUnicodeOut.SystemLanguage, "System", text));
     }
 }

@@ -785,6 +785,7 @@ public static partial class Program
         GameClient.ServerMinCharDeleteDays = Math.Max(0, _config.MinCharDeleteTime);
         GameClient.ServerAutoResDisp = _config.AutoResDisp;
         GameClient.ServerToolTipMode = _config.ToolTipMode;
+        GameClient.ServerChatFlags = _config.ChatFlags;
         _log.LogInformation("Source-X feature masks: T2A={T2A:X} LBR={LBR:X} AOS={AOS:X} SE={SE:X} ML={ML:X} SA={SA:X} TOL={TOL:X}",
             _config.FeatureT2A, _config.FeatureLBR, _config.FeatureAOS,
             _config.FeatureSE, _config.FeatureML, _config.FeatureSA, _config.FeatureTOL);

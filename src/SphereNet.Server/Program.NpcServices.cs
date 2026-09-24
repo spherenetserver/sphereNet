@@ -325,7 +325,7 @@ public static partial class Program
             0x06,
             npc.SpeechColor != 0 ? npc.SpeechColor : (ushort)0x03B2,
             3,
-            "TRK",
+            PacketSpeechUnicodeOut.SystemLanguage,
             npc.GetName(),
             line);
         BroadcastNearby(npc.Position, 14, speechPacket, 0);
@@ -1137,7 +1137,7 @@ public static partial class Program
                                 ? $"Your pet {pet.Name} has been stabled."
                                 : "You cannot stable that.";
                             var pkt = new PacketSpeechUnicodeOut(
-                                stableNpc.Uid.Value, stableNpc.BodyId, 0, 0x03B2, 3, "TRK",
+                                stableNpc.Uid.Value, stableNpc.BodyId, 0, 0x03B2, 3, PacketSpeechUnicodeOut.SystemLanguage,
                                 stableNpc.Name ?? "", reply);
                             BroadcastNearby(stableNpc.Position, 18, pkt, 0);
                         });
@@ -1182,7 +1182,7 @@ public static partial class Program
 
         // Send NPC speech response to nearby clients
         var speechPacket = new PacketSpeechUnicodeOut(
-            npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, "TRK", npc.GetName(), response);
+            npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, PacketSpeechUnicodeOut.SystemLanguage, npc.GetName(), response);
         BroadcastNearby(npc.Position, 18, speechPacket, 0);
     }
 }

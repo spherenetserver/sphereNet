@@ -255,7 +255,7 @@ public sealed class ClientInventoryHandler
 
         _netState.Send(new PacketSpeechUnicodeOut(
             uid, (ushort)(obj is Character c ? c.BodyId : 0),
-            6, nameHue, 3, "TRK", "", label));
+            6, nameHue, 3, PacketSpeechUnicodeOut.SystemLanguage, "", label));
 
         if (_triggerDispatcher != null)
         {

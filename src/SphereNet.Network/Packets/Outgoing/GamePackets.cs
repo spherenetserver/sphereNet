@@ -351,6 +351,23 @@ public sealed class PacketSpeechOut : PacketWriter
 /// <summary>0xAE — Unicode speech message.</summary>
 public sealed class PacketSpeechUnicodeOut : PacketWriter
 {
+    /// <summary>The language of a server-generated message. Source-X builds those with
+    /// CLanguageID(0) (CClient::addBarkParse -> addBarkUNICODE(..., 0),
+    /// CClientMsg.cpp:912) and PacketMessageUNICODE writes its three codes plus a NUL
+    /// (send.cpp:3561), so the four language bytes are all zero.</summary>
+    public const string SystemLanguage = "";
+
+    /// <summary>Source-X CLanguageID::Set (CLanguageID.cpp): the first three
+    /// characters, and no language at all when the first is not alphanumeric.</summary>
+    public static string NormalizeLanguage(string? lang)
+    {
+        if (string.IsNullOrEmpty(lang) || !char.IsAsciiLetterOrDigit(lang[0]))
+            return SystemLanguage;
+        int end = lang.IndexOf('\0');
+        if (end < 0) end = lang.Length;
+        return lang[..Math.Min(3, end)];
+    }
+
     private readonly uint _serial;
     private readonly ushort _bodyId;
     private readonly byte _type;
@@ -375,7 +392,7 @@ public sealed class PacketSpeechUnicodeOut : PacketWriter
         _type = type;
         _hue = hue;
         _font = font;
-        _lang = string.IsNullOrWhiteSpace(lang) ? "ENU" : lang;
+        _lang = NormalizeLanguage(lang);
         _name = name ?? "";
         _text = text ?? "";
     }

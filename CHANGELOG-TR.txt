@@ -4,6 +4,70 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - Operasyon, ag, script, NPC/dunya, item ve sphere.ini paritesi
+------------------------------------------------------------------------
+Operasyon
+DUZELTME - MAP0..MAP255 okunur (once MAP0..MAP5), Source-X CUOMapList::Load
+           kurallariyla: bos deger haritayi kapatir, eksik alan varsayilani
+           korur, 8'in kati olmayan boyut ya da 2'nin kuvveti olmayan sektor
+           raporlanir ve varsayilan kalir. Bozuk satir acilisi durduruyordu.
+YENI - FREEZERESTARTTIME / SECURE: izleyici, ana dongu iki kontrolde
+       ilerlemezse askida sayar, loglar, kaydeder ve host yeniden baslatsin
+       diye cikar (.NET'te thread Source-X'teki gibi yerinde yeniden
+       baslatilamaz). 0 kapatir.
+YENI - sphereacct.scp: elle yapilan degisiklikler acilista ana hesap
+       dosyasindan sonra ve her hesap kaydindan once birlestirilir, sonra dosya
+       basligina dondurulur. ACCOUNT UPDATE hemen kaydeder.
+DUZELTME - Oyun ici .ACCOUNT panele yonlendirmek yerine konsol hesap komutunu
+           calistirir.
+YENI - USEMAPDIFFS: mapdifl/mapdif ve stadifl/stadifi/stadif yama dosyalari
+       her haritanin uzerine okunur.
+DUZELTME - Baska karakterin durumu (0x11) kisa bicimdir: isim, can,
+           yeniden-adlandirma, surum bayti (PacketObjectStatus). Herkese STR,
+           altin ve agirlik iceren tam blok gidiyordu ve vendor icin tum stok
+           taraniyordu. Sahip, petinin adini status bar'dan degistirebilir.
+
+Ag
+YENI - Enhanced Client karakter olusturma (0x8D), tip penceresi (0xA7), eski
+       tooltip istegi (0xBF 0x10) ve global chat (0xF9) Source-X gibi.
+DUZELTME - Sunucu mesajlarinda sabit "TRK" dili yok; konusma konusanin kendi
+           dilinde iletilir.
+
+Script
+YENI - STRTOKEN, STRRANDRANGE, STRFIRSTCAP ve LISTCOL Source-X tanimiyla.
+YENI - BREATH.* anahtarlari, MODAC (itemde de MODAR), BONUSSKILLn/AMT, RARITY,
+       SELFREPAIR ve RESLEVEL/RESDISPDNID/RESDISPDNHUE gorunum dusurme.
+DUZELTME - SERV.GARBAGE, SHRINKMEM ve CALCCRYPT CServer::r_Verb'i izler.
+
+NPC ve dunya
+DUZELTME - Oyuncu vendor sahibi bought, samples ve stock kutularini acar;
+           sahipli vendor'in stogu kaydedilir.
+YENI - NPC= olmayan NPC beynini govdesinden alir (GetNPCBrainAuto).
+YENI - NPC yagma hafizasi: NPC'nin alamadigi ceset itemi tekrar yagmalanmaz.
+DUZELTME - Guard ve kasaba halki bagirislari DEFMSG satirlari; guard cagrisi
+           sadece tam kelimeyle eslesir (FindStrWord), "help" guard cagirmaz.
+DUZELTME - Hava durumu sektor bazinda tutulur.
+
+Item ve savas
+YENI - MOREX'i ayarli switch'e basmak onu kullanir.
+DUZELTME - Cig yiyecek ve cop FOODTYPE diyet kontroluyle yeme yolundan gecer.
+YENI - Spyglass ay evrelerini ve denizde gozcu raporunu gosterir.
+DUZELTME - Talisman cift tiklamasi sessiz; Telekinesis hedefini kullanir;
+           yanan isik tutan karakter Hiding yapamaz.
+DUZELTME - Magic Trap artik container acilisinda uydurma hasar vermez;
+           Source-X'te itemde yerlesik etkisi yok.
+
+sphere.ini
+YENI - 49 Source-X anahtari daha Source-X varsayilanlariyla okunur; aralarinda
+       CANSEESAMEPLEVEL, EXPERIENCE*/LEVEL*, WOP*, DISTANCEFORMULA,
+       MOUNTHEIGHT, CONTEXTMENULIMIT, ALLOWNEWBTRANSFER, AUTONEWBIEKEYS,
+       AUTOSHIPKEYS, AUTOPRIVFLAGS, GUESTSMAX, ARRIVEDEPARTMSG,
+       TRADEWINDOWSNOOPING, CONNECTINGMAXIP, MAXCONNECTREQUESTSPERIP,
+       MAXPINGS ve TIMEOUTINCOMPLETECONN var. Varsayilanlarla: EXPERIENCEMODE
+       ayarlanana kadar deneyim kapali, staff guc kelimesi soylemeden buyu
+       yapar, en fazla 15 context menu satiri gider, GUESTSMAX 0 iken GUEST
+       girisi reddedilir. Loopback IP bazli baglanti sinirlarindan muaftir.
+
 [2026-09-24] - Magara boslugunda spawn, buyu etkisinde .edit, gemiden inme
 ------------------------------------------------------------------------
 DUZELTME - Spawn olan yaratik sadece durabilecegi yere konur (Source-X

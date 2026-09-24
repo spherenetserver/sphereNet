@@ -335,6 +335,11 @@ public class NpcAiWaveN1Tests
         {
             caster.NextNpcActionTime = 0;
             caster.NextAttackTime = 0;
+            // A melee swing that started holds the NPC until its animation ends in
+            // real time; this loop runs in well under that, so a swing begun early
+            // blocked every remaining turn and the test failed whenever timing let
+            // the creature close in first. Drop it so each turn reaches the magery.
+            caster.ClearPendingHit();
             ai.OnTickAction(caster);
         }
 

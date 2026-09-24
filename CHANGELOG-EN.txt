@@ -4,6 +4,72 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - Operations, network, scripting, NPC/world, items and sphere.ini parity
+------------------------------------------------------------------------
+Operations
+FIX - MAP0..MAP255 are read (was MAP0..MAP5), with Source-X CUOMapList::Load
+      rules: an empty value disables the map, a missing field keeps its
+      default, a size that is not a multiple of 8 or a sector size that is
+      not a power of two is reported and the default kept. A malformed line
+      used to stop startup.
+NEW - FREEZERESTARTTIME / SECURE: a monitor declares the main loop hung after
+      two checks without progress, logs and records it, and exits so the host
+      restarts the server (a .NET thread cannot be restarted in place as
+      Source-X restarts T_Main). 0 turns it off.
+NEW - sphereacct.scp: hand edits are merged after the main account file on
+      load and before every account save, then the file is reset to its
+      header (Account_LoadAll / Account_SaveAll). ACCOUNT UPDATE saves now.
+FIX - In-game .ACCOUNT runs the console account command instead of pointing
+      at the panel.
+NEW - USEMAPDIFFS: mapdifl/mapdif and stadifl/stadifi/stadif patch files are
+      read over each map.
+FIX - Another character's status (0x11) is the short form - name, hit points,
+      can-rename, version byte (PacketObjectStatus). Everyone received the
+      full block with strength, gold and weight, and building it walked a
+      vendor's whole stock. Owners can rename their pets from the status bar.
+
+Network
+NEW - Enhanced Client character creation (0x8D), tip window requests (0xA7),
+      the old tooltip request (0xBF 0x10) and global chat (0xF9) as Source-X
+      handles them.
+FIX - Server messages no longer hard-code the "TRK" language; speech is
+      relayed in the speaker's own language.
+
+Scripting
+NEW - STRTOKEN, STRRANDRANGE, STRFIRSTCAP and LISTCOL as Source-X defines them.
+NEW - BREATH.* keys, MODAC (MODAR on items too), BONUSSKILLn/AMT, RARITY,
+      SELFREPAIR and the RESLEVEL/RESDISPDNID/RESDISPDNHUE view downgrade.
+FIX - SERV.GARBAGE, SHRINKMEM and CALCCRYPT follow CServer::r_Verb.
+
+NPCs and world
+FIX - Player vendor owners open the bought, samples and stock boxes; an owned
+      vendor's stock is saved.
+NEW - An NPC with no NPC= gets its brain from its body (GetNPCBrainAuto).
+NEW - NPC loot memory: a corpse item an NPC could not take is not looted again.
+FIX - Guard and townsfolk shouts use DEFMSG lines; the guard call matches
+      whole words only (FindStrWord), so "help" no longer calls guards.
+FIX - Weather is kept per sector.
+
+Items and combat
+NEW - Stepping on a switch with MOREX set uses it.
+FIX - Raw food and garbage go through eating with the FOODTYPE diet check.
+NEW - The spyglass shows moon phases and, at sea, the lookout report.
+FIX - Talisman double-click is silent; Telekinesis uses its target; Hiding
+      fails while holding a lit light source.
+FIX - Magic Trap no longer invents damage on opening a container; Source-X
+      gives it no built-in item effect.
+
+sphere.ini
+NEW - 49 more Source-X keys are read with Source-X defaults, among them
+      CANSEESAMEPLEVEL, EXPERIENCE*/LEVEL*, WOP*, DISTANCEFORMULA,
+      MOUNTHEIGHT, CONTEXTMENULIMIT, ALLOWNEWBTRANSFER, AUTONEWBIEKEYS,
+      AUTOSHIPKEYS, AUTOPRIVFLAGS, GUESTSMAX, ARRIVEDEPARTMSG,
+      TRADEWINDOWSNOOPING, CONNECTINGMAXIP, MAXCONNECTREQUESTSPERIP, MAXPINGS
+      and TIMEOUTINCOMPLETECONN. With the defaults: experience stays off
+      until EXPERIENCEMODE is set, staff cast without power words, only 15
+      context menu entries are sent, and GUEST logins are refused while
+      GUESTSMAX is 0. Loopback is exempt from the per-IP connection limits.
+
 [2026-09-24] - Spawns in cave void, .edit on spell effects, walking off a ship
 ------------------------------------------------------------------------
 FIX - A spawned creature is only placed where it can stand (upstream MoveNear

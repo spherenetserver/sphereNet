@@ -60,7 +60,9 @@ public sealed class HouseShipLightParityTests
     {
         var world = TestHarness.CreateWorld();
         var torch = world.CreateItem();
+        torch.BaseId = 0x0A12;
         torch.ItemType = ItemType.LightLit;
+        torch.SetTag("OVERRIDE_LIGHTID", "0x0F6B");
         torch.SetTag("LIGHT_CHARGES", "2");
         world.PlaceItem(torch, new Point3D(100, 100, 0, 0));
 
@@ -75,6 +77,7 @@ public sealed class HouseShipLightParityTests
         torch.SetTimeout(Environment.TickCount64 - 1);
         torch.OnTick();
         Assert.Equal(ItemType.LightOut, torch.ItemType);
+        Assert.Equal((ushort)0x0F6B, torch.BaseId);
         Assert.True(torch.TryGetTag("LIGHT_BURNED", out _));
         Assert.Equal(0, torch.Timeout);
     }

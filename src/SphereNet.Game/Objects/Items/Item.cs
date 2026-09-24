@@ -4479,21 +4479,98 @@ public class Item : ObjBase
         }
 
         SetTag("LIGHT_BURNED", "1");
-        ExtinguishLight(burnedOut: true);
+        UseLight();
     }
 
-    /// <summary>Douse a lit light source (auto-burnout or scripted). Keeps
-    /// SphereNet's type-flip convention (no graphic pair swap) and plays the
-    /// Source-X douse sound (0x4B8 burned out / 0x3BE snuffed).</summary>
-    internal void ExtinguishLight(bool burnedOut)
+    /// <summary>Source-X CItem::Use_Light (CItem.cpp:5342): toggle a light source by
+    /// re-basing it onto its paired definition - the OVERRIDE_LIGHTID tag, else the
+    /// current definition's TDATA3 (lamppost lit &lt;-&gt; unlit). The pair carries the
+    /// other graphic and the other type, so the client sees the flame change. A doused
+    /// source that burned out or sits in a container cannot be lit; a definition with
+    /// no pair does nothing. Returns false when nothing changed.</summary>
+    internal bool UseLight()
     {
-        if (_type != ItemType.LightLit)
-            return;
-        _type = ItemType.LightOut;
-        SetTimeout(0);
-        EmitScriptSound(burnedOut ? "0x04B8" : "0x03BE");
+        if (_type is not (ItemType.LightLit or ItemType.LightOut))
+            return false;
+        bool burned = TryGetTag("LIGHT_BURNED", out _);
+        if (_type == ItemType.LightOut &&
+            (burned || (ContainedIn.IsValid && ResolveWorld?.Invoke()?.FindObject(ContainedIn) is Item)))
+            return false;
+
+        int target = ResolveLightPair();
+        if (target == 0)
+            return false;
+
+        if (DefinitionLoader.GetItemDef(target) != null)
+        {
+            RemoveTag("SCRIPTDEF");
+            ItemDefHelper.ApplyInstanceMetadata(this, target, setDisplayId: true,
+                setName: false, fireCreate: false);
+        }
+        else if (target <= 0xFFFF)
+        {
+            // A bare graphic with no script def: upstream builds its base from the
+            // tile data; the pair is still the other half of the same light.
+            RemoveTag("SCRIPTDEF");
+            RemoveTag("ITEMDEF");
+            BaseId = (ushort)target;
+            _type = _type == ItemType.LightLit ? ItemType.LightOut : ItemType.LightLit;
+        }
+        else
+            return false;
+
+        if (_type == ItemType.LightLit)
+        {
+            EmitScriptSound("0x0047");
+            SetTimeout(Environment.TickCount64 + LightBurnTickMs);
+            if (!TryGetTag("LIGHT_CHARGES", out string? raw) ||
+                !int.TryParse(raw, out int charges) || charges == 0)
+                SetTag("LIGHT_CHARGES", "20");
+        }
+        else if (_type == ItemType.LightOut)
+        {
+            EmitScriptSound(burned ? "0x04B8" : "0x03BE");
+            SetTimeout(0);
+        }
+
         MarkDirty((DirtyFlag)0xFFFFFFFF);
         OnVisualUpdate?.Invoke(this);
+        return true;
+    }
+
+    private int ResolveLightPair()
+    {
+        if (TryGetTag("OVERRIDE_LIGHTID", out string? over) &&
+            ParseLightId(over) is int overId and > 0)
+            return overId;
+
+        var def = DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(this));
+        if (def == null)
+            return 0;
+        if (!string.IsNullOrWhiteSpace(def.TData3Name))
+        {
+            var rid = DefinitionLoader.StaticResources?.ResolveDefName(def.TData3Name.Trim());
+            if (rid is { IsValid: true, Type: ResType.ItemDef })
+                return rid.Value.Index;
+        }
+        return (int)def.TData3;
+    }
+
+    private static int? ParseLightId(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        text = text.Trim();
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out int hx))
+            return hx;
+        if (text.Length > 1 && text[0] == '0' &&
+            int.TryParse(text, System.Globalization.NumberStyles.HexNumber, null, out int h0))
+            return h0;
+        if (int.TryParse(text, out int d))
+            return d;
+        var rid = DefinitionLoader.StaticResources?.ResolveDefName(text);
+        return rid is { IsValid: true, Type: ResType.ItemDef } ? rid.Value.Index : null;
     }
 
     public override bool OnTick()

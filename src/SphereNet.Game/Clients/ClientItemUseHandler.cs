@@ -1527,41 +1527,13 @@ public sealed class ClientItemUseHandler
             // ---- BankBox / VendorBox: anti-cheat reject ----
             // ---- light sources ----
             case ItemType.LightLit:
-                item.ItemType = ItemType.LightOut;
-                _netState.Send(new PacketSound(0x0047, _character.X, _character.Y, _character.Z));
-                // Source-X Use_Light calls Update: a held light is still worn,
-                // not a ground item. Preserve its parent/layer in the client.
-                if (Item.OnVisualUpdate != null) Item.OnVisualUpdate(item);
-                else _client.SendItemVisualUpdate(item);
-                break;
             case ItemType.LightOut:
-            {
-                // Can't light a torch/lantern while it sits inside a container
-                // (Source-X CItem::Use_Light rule).
-                if (item.ContainedIn.IsValid && _world.FindObject(item.ContainedIn) is Item)
-                {
-                    SysMessage("You cannot light that while it is in a container.");
-                    break;
-                }
-                // Source-X Use_Light: a burned-out source can never relight;
-                // charges default to 20 when unset and burn down ONE PER MINUTE
-                // via the lit-timer tick (Item.OnLightBurnTick), not per lighting.
-                int charges = 20;
-                if (item.TryGetTag("LIGHT_CHARGES", out string? cs) && int.TryParse(cs, out int c))
-                    charges = c;
-                if (charges <= 0 || item.TryGetTag("LIGHT_BURNED", out _))
-                {
-                    SysMessage("It has burned out and cannot be lit.");
-                    break;
-                }
-                item.SetTag("LIGHT_CHARGES", charges.ToString());
-                item.ItemType = ItemType.LightLit;
-                item.SetTimeout(Environment.TickCount64 + Item.LightBurnTickMs);
-                _netState.Send(new PacketSound(0x0047, _character.X, _character.Y, _character.Z));
-                if (Item.OnVisualUpdate != null) Item.OnVisualUpdate(item);
-                else _client.SendItemVisualUpdate(item);
+                // Source-X Use_Light (CCharUse.cpp:1872): swap to the paired lit/unlit
+                // definition. A held light is still worn, not a ground item, so the
+                // visual update keeps its parent/layer.
+                if (item.UseLight() && Item.OnVisualUpdate == null)
+                    _client.SendItemVisualUpdate(item);
                 break;
-            }
 
             // ---- telepad / switch ----
             case ItemType.Telepad:

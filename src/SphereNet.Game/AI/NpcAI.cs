@@ -479,19 +479,8 @@ public sealed partial class NpcAI
         if (light.ItemType != ItemType.LightOut)
             return false;
 
-        int charges = 20;
-        if (light.TryGetTag("LIGHT_CHARGES", out string? raw) &&
-            int.TryParse(raw, out int parsed))
-            charges = parsed;
-        if (charges <= 0 || light.TryGetTag("LIGHT_BURNED", out _))
-            return false;
-
-        // Charges burn one-per-minute via the lit timer (Item.OnLightBurnTick),
-        // not per lighting — Source-X Use_Light semantics.
-        light.SetTag("LIGHT_CHARGES", charges.ToString());
-        light.ItemType = ItemType.LightLit;
-        light.SetTimeout(Environment.TickCount64 + Item.LightBurnTickMs);
-        return true;
+        // Source-X NPC_Act_Idle lights it through Use_Obj -> Use_Light.
+        return light.UseLight();
     }
 
     /// <summary>

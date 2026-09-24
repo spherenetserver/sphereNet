@@ -50,9 +50,7 @@ public static class ItemDefHelper
 
         if (setDisplayId)
         {
-            ushort displayId = def.DispIndex != 0 ? def.DispIndex : def.DupItemId;
-            if (displayId == 0 && defIndex is > 0 and <= ushort.MaxValue)
-                displayId = (ushort)defIndex;
+            ushort displayId = CreateGraphic(def, defIndex);
             if (displayId != 0)
                 item.BaseId = displayId;
         }

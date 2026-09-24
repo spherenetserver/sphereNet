@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Light sources switch graphics and cast their own light shape
+------------------------------------------------------------------------
+FIX - Lighting or dousing a light re-bases it onto its paired definition
+      (upstream CItem::Use_Light): OVERRIDE_LIGHTID, else the definition's
+      TDATA3. Only the type flipped before, so a lamppost kept its lit
+      graphic and the client never saw it go out or come back on. A doused
+      light plays 0x3BE (0x4B8 when burned out), a lit one arms the one-minute
+      burn timer with 20 charges. A light with no pair does nothing. The
+      double-click, the burn-out tick and an NPC lighting its torch share
+      this path.
+FIX - A ground item whose tile is a light source sends its light shape:
+      MOREZ while it burns (lit light, fire, campfire, lava, spell, window),
+      LIGHT_LARGE otherwise (upstream PacketItemWorld::adjustItemData). The
+      byte was always 0, so lamps, fire pits and candles placed as items lit
+      with the smallest shape.
+FIX - Re-basing an item onto another itemdef picks the graphic by the same
+      rule as creating one (ItemDefHelper.CreateGraphic).
+
 [2026-09-24] - GM body can ride; help-menu pages reach the queue
 ------------------------------------------------------------------------
 FIX - The GM robe body (0x3DB, c_man_gm) is a human body, as upstream's

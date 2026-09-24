@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Isik kaynaklari grafik degistirir ve kendi isik seklini yayar
+------------------------------------------------------------------------
+DUZELTME - Isigi yakmak/sondurmek onu eslenik tanimina gecirir (Source-X
+           CItem::Use_Light): OVERRIDE_LIGHTID, yoksa tanimin TDATA3'u.
+           Once sadece tur degisiyordu; lamba diregi yanan grafigini
+           koruyor, client sondugunu ya da yandigini hic gormuyordu. Sonen
+           isik 0x3BE (tukenmisse 0x4B8) calar, yanan isik 20 sarjla bir
+           dakikalik yanma zamanlayicisini kurar. Esi olmayan isik bir sey
+           yapmaz. Cift tiklama, tukenme tick'i ve NPC'nin mesale yakmasi
+           ayni yolu kullanir.
+DUZELTME - Tile'i isik kaynagi olan yer itemi isik seklini gonderir: yanarken
+           MOREZ (yanan isik, ates, kamp atesi, lav, spell, pencere), degilse
+           LIGHT_LARGE (Source-X PacketItemWorld::adjustItemData). Bayt hep
+           0 gidiyordu; item olarak konan lambalar, fire pit'ler ve mumlar en
+           kucuk sekille isik veriyordu.
+DUZELTME - Bir itemi baska itemdef'e gecirmek grafigi yaratmayla ayni
+           kuralla secer (ItemDefHelper.CreateGraphic).
+
 [2026-09-24] - GM govdesi ata biner; help menusu page'i kuyruga ulasir
 ------------------------------------------------------------------------
 DUZELTME - GM robe govdesi (0x3DB, c_man_gm) insan govdesidir; Source-X

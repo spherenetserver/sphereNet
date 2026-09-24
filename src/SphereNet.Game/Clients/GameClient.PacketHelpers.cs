@@ -928,11 +928,34 @@ public sealed partial class GameClient
             direction = source.ItemType == SphereNet.Core.Enums.ItemType.Corpse
                 ? source.Direction : (byte)0;
 
+        byte light = source != null && !isMulti ? WorldItemLight(source, itemId) : (byte)0;
+
         if (_netState.SupportsStygianAbyss)
             return new PacketWorldItemSA(serial, itemId, amount, x, y, z, hue,
-                highSeas: _netState.SupportsHighSeas, flags: flags, direction: direction,
-                isMulti: isMulti);
-        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction, flags, isMulti);
+                highSeas: _netState.SupportsHighSeas, light: light, flags: flags,
+                direction: direction, isMulti: isMulti);
+        // 0x1A has one optional byte for both: "the item can be flippable OR a light
+        // source, not both" (send.cpp:510) - the light wins.
+        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue,
+            light != 0 ? light : direction, flags, isMulti);
+    }
+
+    /// <summary>The light shape a ground item casts (upstream adjustItemData,
+    /// send.cpp:597): a tile the tile data calls a light source sends its lit
+    /// pattern - MOREZ - while it burns, LIGHT_LARGE otherwise. The client draws a
+    /// ground item's light with exactly this id; zero drew every lamp, fire pit and
+    /// candle placed as an item with the smallest shape.</summary>
+    private byte WorldItemLight(Item item, ushort graphic)
+    {
+        var md = _world.MapData;
+        if (md == null ||
+            (md.GetItemTileData(graphic).Flags & SphereNet.MapData.Tiles.TileFlag.LightSource) == 0)
+            return 0;
+        return item.ItemType is SphereNet.Core.Enums.ItemType.Spell or SphereNet.Core.Enums.ItemType.Fire
+                or SphereNet.Core.Enums.ItemType.LightLit or SphereNet.Core.Enums.ItemType.Campfire
+                or SphereNet.Core.Enums.ItemType.Lava or SphereNet.Core.Enums.ItemType.Window
+            ? (byte)item.MoreP.Z
+            : (byte)1;
     }
 
     /// <summary>Placed structures must reach the client with the multi data

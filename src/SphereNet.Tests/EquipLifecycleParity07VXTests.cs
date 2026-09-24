@@ -132,7 +132,9 @@ public sealed class EquipLifecycleParity07VXTests
         var b = Setup();
         b.Client.BroadcastNearby = (_, _, packet, _) => b.Client.NetState.Send(packet);
         Item.OnVisualUpdate = b.Client.SendItemVisualUpdate;
-        var light = Gear(b.World, hand == Layer.OneHanded ? SwordTile : ShieldTile, initialType);
+        ushort tile = hand == Layer.OneHanded ? SwordTile : ShieldTile;
+        var light = Gear(b.World, tile, initialType);
+        light.SetTag("OVERRIDE_LIGHTID", $"0x{tile:X4}"); // a pair on the same tile keeps the slot
         b.Pack.TryAddItem(light);
         b.Client.ItemUse.HandleDoubleClick(light.Uid.Value);
         Assert.Same(light, b.Me.GetEquippedItem(hand));

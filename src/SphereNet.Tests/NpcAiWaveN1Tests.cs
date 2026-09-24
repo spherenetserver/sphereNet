@@ -179,7 +179,9 @@ public class NpcAiWaveN1Tests
         pack.ItemType = ItemType.Container;
         townsman.Equip(pack, Layer.Pack);
         var torch = world.CreateItem();
+        torch.BaseId = 0x0F6B;
         torch.ItemType = ItemType.LightOut;
+        torch.SetTag("OVERRIDE_LIGHTID", "0x0A12");
         pack.AddItem(torch);
 
         // Night: the torch comes out of the pack into the free hand.
@@ -188,6 +190,7 @@ public class NpcAiWaveN1Tests
         ai.OnTickAction(townsman);
         Assert.Equal(torch, townsman.GetEquippedItem(Layer.TwoHanded));
         Assert.Equal(ItemType.LightLit, torch.ItemType);
+        Assert.Equal((ushort)0x0A12, torch.BaseId);
         // D1 (Source-X Use_Light): lighting no longer spends a charge — charges
         // burn one-per-minute via the lit timer instead, so the fresh default
         // stays at 20 and the burn timer is armed.

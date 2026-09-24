@@ -33,8 +33,8 @@ namespace SphereNet.Tests;
 /// (sphereproto.h:514). Setting a sector's weather or season publishes it to everyone
 /// standing there and fires @EnvironChange (CSector.cpp:879/904). A pinned light wins
 /// over the clock (:684/818). Precipitation is rolled against the sector's own
-/// RAINCHANCE and then COLDCHANCE (:857). Weather belongs to a region's identity, not
-/// to its visible name.
+/// RAINCHANCE and then COLDCHANCE (:857). Weather belongs to the sector
+/// (CSectorEnviron), not to a region.
 /// </summary>
 public sealed class ContentEnvironmentParity11C12ATests
 {
@@ -423,107 +423,142 @@ public sealed class ContentEnvironmentParity11C12ATests
     // ================================================================ 12A-4
 
     [Fact]
-    public void ARainlessRegionStaysDry()
+    public void ARainlessSectorStaysDry()
     {
-        var (engine, _) = WeatherBench(rain: 0, cold: 0);
-        var seen = new List<WeatherType>();
-        engine.OnWeatherChanged = (_, t, _, _) => seen.Add(t);
+        var (engine, sector) = WeatherBench(rain: 0, cold: 0);
+        sector.Weather = (byte)WeatherType.Rain;
 
-        for (int i = 0; i < 20; i++) engine.OnTick();
+        for (int i = 0; i < 20; i++) engine.OnSectorTick(sector);
 
-        Assert.Empty(seen);
+        Assert.Equal(Sector.WeatherDry, sector.Weather);
     }
 
     [Fact]
-    public void AColdRegionGetsSnowWheneverItPrecipitates()
+    public void AColdSectorGetsSnowWheneverItPrecipitates()
     {
-        var (engine, _) = WeatherBench(rain: 100, cold: 100);
-        var seen = new List<WeatherType>();
-        engine.OnWeatherChanged = (_, t, _, _) => seen.Add(t);
+        var (engine, sector) = WeatherBench(rain: 100, cold: 100);
 
-        for (int i = 0; i < 20; i++) engine.OnTick();
+        engine.OnSectorTick(sector);
 
-        Assert.NotEmpty(seen);
-        Assert.All(seen.Where(t => t != WeatherType.None), t => Assert.Equal(WeatherType.Snow, t));
+        Assert.Equal((byte)WeatherType.Snow, sector.Weather);
     }
 
-    private static (WeatherEngine Engine, Region Region) WeatherBench(int rain, int cold)
+    [Fact]
+    public void ANearMissOnTheRainRollLeavesTheSkyCloudy()
+    {
+        // GetWeatherCalc (CSector.cpp:874): no precipitation, but half the roll is
+        // still under RAINCHANCE - overcast.
+        var (engine, sector) = WeatherBench(rain: 30, cold: 0, roll: 40);
+
+        engine.OnSectorTick(sector);
+
+        Assert.Equal((byte)WeatherType.Cloudy, sector.Weather);
+    }
+
+    [Fact]
+    public void AnUndergroundSectorHasNoWeather()
+    {
+        var (engine, sector) = WeatherBench(rain: 100, cold: 0);
+        sector.IsDungeon = () => true;
+
+        Assert.Equal(WeatherType.None, engine.GetWeatherCalc(sector));
+    }
+
+    [Fact]
+    public void ANoWeatherShardRollsDry()
+    {
+        var (engine, sector) = WeatherBench(rain: 100, cold: 100);
+        WeatherEngine.NoWeather = true;
+
+        Assert.Equal(WeatherType.None, engine.GetWeatherCalc(sector));
+    }
+
+    private static (WeatherEngine Engine, Sector Sector) WeatherBench(int rain, int cold, int roll = 0)
     {
         // A shard that wants weather says so: upstream's own default is NOWEATHER=1
         // (CServerConfig.cpp:160), so the bench turns it on the way an ini would.
         WeatherEngine.NoWeather = false;
         var b = Setup();
-        var region = new Region { Name = "climate test", MapIndex = 0 };
-        region.AddRect(0, 0, 4000, 4000);
-        region.P = new Point3D(100, 100, 0, 0);
-        b.World.AddRegion(region);
+        var sector = b.World.GetSector(b.Me.Position)!;
+        sector.RainChance = (short)rain;
+        sector.ColdChance = (short)cold;
 
-        // Weather is only rolled for a region that has an online player in it.
-        b.Me.IsOnline = true;
-        b.World.AddOnlinePlayer(b.Me);
-
-        var engine = new WeatherEngine(b.World)
-        {
-            GetClimate = _ => (rain, cold),
-        };
-        // The generation roll itself is pinned: whether a REGION precipitates is a
-        // 0.5%-per-tick draw, so leaving it to chance made this assertion a coin flip
-        // over any bounded number of ticks. With the low value forced, the climate
-        // numbers alone decide - which is what these two tests are about.
+        var engine = new WeatherEngine(b.World);
+        // The rolls are pinned: whether a sector recalculates at all is a 1-in-30 draw
+        // per sector tick, so leaving it to chance made these assertions a coin flip.
         typeof(WeatherEngine)
             .GetField("_rand", System.Reflection.BindingFlags.Instance |
                                System.Reflection.BindingFlags.NonPublic)!
-            .SetValue(engine, new LowestRoll());
-        return (engine, region);
+            .SetValue(engine, new FixedRoll(roll));
+        return (engine, sector);
     }
 
-    /// <summary>A Random that always rolls the bottom of its range.</summary>
-    private sealed class LowestRoll : Random
+    /// <summary>A Random whose 1-in-N gates always pass and whose percentile rolls
+    /// always land on <c>roll</c>.</summary>
+    private sealed class FixedRoll(int roll) : Random
     {
-        public override int Next(int maxValue) => 0;
+        public override int Next(int maxValue) => maxValue == 100 ? roll : 0;
         public override int Next(int minValue, int maxValue) => minValue;
     }
 
     // ================================================================ 12A-5
 
     [Fact]
-    public void TwoRegionsOfTheSameNameDoNotShareOneSky()
+    public void WeatherBelongsToTheSectorNotTheRegion()
     {
-        var lf = LoggerFactory.Create(_ => { });
-        var world = new GameWorld(lf);
-        world.InitMap(0, 1024, 1024);
-        world.InitMap(1, 1024, 1024);
-        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        // CSectorEnviron::m_Weather: two points in one region but different sectors
+        // can have different skies, and the weather at a point is its sector's.
+        var b = Setup();
+        var region = new Region { Name = "Britain", MapIndex = 0 };
+        region.AddRect(0, 0, 500, 500);
+        b.World.AddRegion(region);
+        var engine = new WeatherEngine(b.World);
 
-        var britain0 = new Region { Name = "Britain", MapIndex = 0 };
-        britain0.AddRect(0, 0, 500, 500);
-        var britain1 = new Region { Name = "Britain", MapIndex = 1 };
-        britain1.AddRect(0, 0, 500, 500);
-        world.AddRegion(britain0);
-        world.AddRegion(britain1);
+        var here = new Point3D(100, 100, 0, 0);
+        var there = new Point3D(400, 400, 0, 0);
+        Assert.NotSame(b.World.GetSector(here), b.World.GetSector(there));
+        b.World.GetSector(here)!.Weather = (byte)WeatherType.Rain;
 
-        var engine = new WeatherEngine(world);
-        engine.SetRegionWeather(britain0, WeatherType.Rain, 20, 15);
-
-        Assert.Equal(WeatherType.Rain, engine.GetWeatherForRegion(britain0).Type);
-        Assert.Equal(WeatherType.None, engine.GetWeatherForRegion(britain1).Type);
+        Assert.Equal(WeatherType.Rain, engine.GetWeatherAt(here).Type);
+        Assert.Equal(WeatherType.None, engine.GetWeatherAt(there).Type);
     }
 
     [Fact]
-    public void RenamingARegionDoesNotOrphanItsWeather()
+    public void AScriptSetSectorWeatherIsWhatTheEngineReports()
     {
-        var lf = LoggerFactory.Create(_ => { });
-        var world = new GameWorld(lf);
-        world.InitMap(0, 1024, 1024);
-        var region = new Region { Name = "Britain", MapIndex = 0 };
-        region.AddRect(0, 0, 500, 500);
-        world.AddRegion(region);
+        var b = Setup();
+        var engine = new WeatherEngine(b.World);
+        b.World.GetSector(b.Me.Position)!.Weather = (byte)WeatherType.Snow;
 
-        var engine = new WeatherEngine(world);
-        engine.SetRegionWeather(region, WeatherType.Storm, 60, 15);
-        region.Name = "New Britain";
+        var w = engine.GetWeatherAt(b.Me.Position);
 
-        Assert.Equal(WeatherType.Storm, engine.GetWeatherForRegion(region).Type);
+        Assert.Equal(WeatherType.Snow, w.Type);
+        Assert.InRange(w.Intensity, 10, 70);                     // addWeather GetVal2(10, 70)
+        Assert.Equal(WeatherEngine.PacketTemperature, w.Temperature);
+    }
+
+    [Fact]
+    public void ASectorTicksOnlyEveryThirtySeconds()
+    {
+        // SECTOR_TICKING_PERIOD (CSector.cpp:20): even with every roll passing, a
+        // sector a player has just entered does not recalculate until its tick is due.
+        WeatherEngine.NoWeather = false;
+        var b = Setup();
+        b.Me.IsOnline = true;
+        b.World.AddOnlinePlayer(b.Me);
+        var sector = b.World.GetSector(b.Me.Position)!;
+        sector.RainChance = 100;
+        sector.ColdChance = 100;
+        var engine = new WeatherEngine(b.World);
+        typeof(WeatherEngine)
+            .GetField("_rand", System.Reflection.BindingFlags.Instance |
+                               System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(engine, new FixedRoll(0));
+
+        engine.OnTick(); // first sight of the sector arms its 30 s tick
+        engine.OnTick();
+
+        Assert.Equal(Sector.WeatherDry, sector.Weather);
     }
 
     private sealed class TestConsole : SphereNet.Core.Interfaces.ITextConsole

@@ -108,6 +108,13 @@ public sealed partial class NpcAI
         }
     }
 
+    /// <summary>Source-X sm_szSpeakGuardStrike (CCharNPCAct.cpp:730).</summary>
+    private static readonly string[] s_guardStrikeMsgs =
+    [
+        Msg.NpcGuardStrike1, Msg.NpcGuardStrike2, Msg.NpcGuardStrike3,
+        Msg.NpcGuardStrike4, Msg.NpcGuardStrike5,
+    ];
+
     private void GuardEngage(Character guard, Character target)
     {
         if (guard.HasPendingHit)
@@ -131,7 +138,8 @@ public sealed partial class NpcAI
         if (!guard.TryGetTag("GUARD_YELLED", out string? yelledFor) || yelledFor != targetUid)
         {
             guard.SetTag("GUARD_YELLED", targetUid);
-            OnNpcSay?.Invoke(guard, "Halt, villain! Guards!");
+            // One of the five strike lines (NPC_LookAtCharGuard, CCharNPCAct.cpp:753).
+            OnNpcSay?.Invoke(guard, ServerMessages.Get(s_guardStrikeMsgs[_rand.Next(s_guardStrikeMsgs.Length)]));
         }
 
         if (guard.MapIndex != target.MapIndex) return;
@@ -262,7 +270,9 @@ public sealed partial class NpcAI
         // the region's RestockVendors tag, measured in tenths of a second
         // (MSECS_PER_TENTH) for legacy script compatibility; a NoRestock tag — on
         // the region or the NPC — suppresses restock entirely.
-        if (npc.NpcBrain == NpcBrainType.Vendor)
+        // A player vendor is its owner's pet and is never restocked
+        // (CCharNPCAct_Vendor.cpp:41): its stock is the owner's goods.
+        if (npc.NpcBrain == NpcBrainType.Vendor && !Trade.VendorEngine.HasRealStock(npc))
         {
             var vendorRegion = _world.FindRegion(npc.Position);
             bool noRestock = npc.TryGetTag("NORESTOCK", out _) ||
@@ -560,8 +570,16 @@ public sealed partial class NpcAI
                 return;
             }
 
-            if (!npc.CanCarry(item))
-                continue;
+            if (!ItemMoveRules.CanMove(npc, item, out _) || !npc.CanCarry(item))
+            {
+                // A corpse is looted piece by piece (TryLoot), never lifted whole.
+                if (item.ItemType == ItemType.Corpse)
+                    continue;
+                // Source-X NPC_Act_Looting: remember it and stop looking
+                // (NPC_LootMemory, CCharNPCAct.cpp:1623).
+                NpcLootMemory(npc, item);
+                return;
+            }
             var pack = npc.Backpack;
             if (pack == null)
             {
@@ -664,7 +682,11 @@ public sealed partial class NpcAI
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
             if (npc.Memory_FindObjTypes(ch.Uid, MemoryType.SawCrime) != null) continue;
 
-            OnNpcSay?.Invoke(npc, "Guards! A villain!");
+            // NPC_LookAtCharHuman (CCharNPCAct.cpp:824): a criminal is a "criminal",
+            // anyone else it yells about (a murderer) a "monster".
+            OnNpcSay?.Invoke(npc, ServerMessages.Get(
+                ch.IsStatFlag(StatFlag.Criminal) || ch.IsCriminal
+                    ? Msg.NpcGenericSeecrim : Msg.NpcGenericSeemons));
             npc.Memory_AddObjTypes(ch.Uid, MemoryType.SawCrime);
             OnWitnessCrime?.Invoke(npc, ch);
             return;

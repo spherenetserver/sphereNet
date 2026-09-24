@@ -226,7 +226,9 @@ public static partial class Program
             if (cdef != null && cdef.NpcBrain != SphereNet.Core.Enums.NpcBrainType.None)
                 ch.NpcBrain = cdef.NpcBrain;
             else
-                ch.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Monster;
+                // A brainless NPC acts as its body's auto brain (Source-X
+                // GetNPCBrainGroup -> GetNPCBrainAuto, CCharStatus.cpp:553).
+                ch.NpcBrain = ch.GetNpcBrainAuto();
             brainFixed++;
         }
         if (brainFixed > 0)

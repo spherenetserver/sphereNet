@@ -176,6 +176,35 @@ public static class VendorEngine
         brain is Core.Enums.NpcBrainType.Vendor or Core.Enums.NpcBrainType.Healer
               or Core.Enums.NpcBrainType.Banker or Core.Enums.NpcBrainType.Stable;
 
+    /// <summary>The vendor box worn on one of the three vendor layers (STOCK, EXTRA,
+    /// BUYS), created on first use. Source-X CChar::GetBank (CCharStatus.cpp:141):
+    /// only a vendor has these boxes, and each is an ITEMID_VENDOR_BOX.</summary>
+    public static Item? GetVendorBox(Character vendor, Core.Enums.Layer layer)
+    {
+        if (layer is not (Core.Enums.Layer.VendorStock or Core.Enums.Layer.VendorExtra
+                or Core.Enums.Layer.VendorBuy))
+            return null;
+        if (!IsVendorLike(vendor))
+            return null;
+        var box = vendor.GetEquippedItem(layer);
+        if (box != null && !box.IsDeleted)
+            return box;
+        if (World == null)
+            return null;
+        box = World.CreateItem();
+        box.BaseId = 0x408D; // ITEMID_VENDOR_BOX
+        box.ItemType = Core.Enums.ItemType.EqVendorBox;
+        vendor.Equip(box, layer);
+        return box;
+    }
+
+    /// <summary>Is the vendor's STOCK box real goods rather than a template list?
+    /// A player vendor is its owner's pet, and Source-X never restocks a pet
+    /// (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:41): what sits in its stock is what
+    /// the owner put there. Only an ownerless vendor's stock is the virtual,
+    /// template-rebuilt list.</summary>
+    public static bool HasRealStock(Character vendor) => vendor.OwnerSerial.IsValid;
+
     /// <summary>
     /// Process a buy request from player to vendor.
     /// Returns total gold cost. Negative = insufficient gold.
@@ -363,6 +392,12 @@ public static class VendorEngine
     private static Item? GetVendorExtraContainer(Character vendor) =>
         vendor.GetEquippedItem(Core.Enums.Layer.VendorExtra);
 
+    /// <summary>Source-X sm_VendorLayers (CCharNPCAct_Vendor.cpp).</summary>
+    private static readonly Core.Enums.Layer[] s_vendorLayers =
+    [
+        Core.Enums.Layer.VendorStock, Core.Enums.Layer.VendorExtra, Core.Enums.Layer.VendorBuy,
+    ];
+
     /// <summary>Hand a dismissed player vendor's holdings back to its owner.
     ///
     /// Source-X does this the moment a vendor loses its owner: NPC_PetClearOwners
@@ -372,10 +407,9 @@ public static class VendorEngine
     /// flags, so a shopkeeper's takings and everything it had bought from players
     /// went ownerless with it.
     ///
-    /// Only the goods that REALLY exist come back. This engine's SELL stock is a
-    /// template rebuilt on demand and is never persisted (see WorldSaver), so
-    /// returning it would mint items rather than return them; the extra container
-    /// — what the vendor bought from players — is the real one.</summary>
+    /// Only the goods that REALLY exist come back: an ownerless vendor's SELL stock is
+    /// a template rebuilt on demand and never persisted (see WorldSaver), but an owned
+    /// vendor's stock is what its owner put there (<see cref="HasRealStock"/>).</summary>
     public static void ReturnHoldingsToOwner(Character vendor, Character owner)
     {
         if (World == null || vendor == owner)
@@ -383,8 +417,15 @@ public static class VendorEngine
 
         var bank = owner.GetEquippedItem(Core.Enums.Layer.BankBox);
 
-        if (GetVendorExtraContainer(vendor) is { } extra)
+        // Every vendor layer (sm_VendorLayers: STOCK, EXTRA, BUYS). The STOCK box is
+        // included only when it holds real goods - an ownerless template list would be
+        // minted, not returned.
+        foreach (var layer in s_vendorLayers)
         {
+            if (layer == Core.Enums.Layer.VendorStock && !HasRealStock(vendor))
+                continue;
+            if (vendor.GetEquippedItem(layer) is not { } extra || extra.IsDeleted)
+                continue;
             foreach (var item in extra.Contents.ToList())
             {
                 extra.RemoveItem(item);
@@ -899,6 +940,11 @@ public static class VendorEngine
         // would be a free-gold faucet. Owned vendors keep only real earnings.
         if (!vendor.OwnerSerial.IsValid && GetVendorGold(vendor) < RestockGold)
             SetVendorGold(vendor, RestockGold);
+
+        // A player vendor's stock is its owner's goods; a pet is never restocked
+        // (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:41).
+        if (HasRealStock(vendor))
+            return;
 
         if (!vendor.TryGetTag("VENDORINV", out string? invDef) || string.IsNullOrEmpty(invDef))
             return;

@@ -2184,14 +2184,15 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Apply the post-@Create brain rules: default to Animal when nothing
-    /// set a brain, and fire @NPCRestock for vendors so they come stocked.
+    /// Apply the post-@Create brain rules: default to the body's auto brain when
+    /// nothing set one, and fire @NPCRestock so the creature comes stocked.
     /// Call this AFTER FireCharTrigger(Create), never before.
     /// </summary>
     private void FinalizeNpcBrain(Character npc)
     {
+        // Source-X GetNPCBrainAuto (CCharNPC.cpp:272): the body decides.
         if (npc.NpcBrain == NpcBrainType.None)
-            npc.NpcBrain = NpcBrainType.Animal;
+            npc.NpcBrain = npc.GetNpcBrainAuto();
 
         // Source-X NPC_LoadScript fires @NPCRestock for EVERY freshly created
         // NPC (CCharNPC.cpp:289-290), not just vendors — monster packs declare

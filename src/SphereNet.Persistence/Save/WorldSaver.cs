@@ -380,11 +380,17 @@ public sealed class WorldSaver
         // player vendor keeps the goods it bought from players (Source-X
         // pContExtra in Event_VendorSell). Excluding it too meant anything sold to
         // a player vendor would vanish on the next save.
+        //
+        // A PLAYER vendor's stock is not virtual: it is what the owner put there
+        // (Source-X PC_STOCK opens it for the owner, CCharNPCPet.cpp:348, and a pet
+        // vendor never restocks, CCharNPCAct_Vendor.cpp:41). It persists.
         var vendorStock = new HashSet<uint>();
         foreach (var obj in allObjects)
         {
             if (obj is Item it && !it.IsDeleted &&
-                it.EquipLayer == Core.Enums.Layer.VendorStock)
+                it.EquipLayer == Core.Enums.Layer.VendorStock &&
+                !(world.FindChar(it.ContainedIn) is { } stockHolder &&
+                  Game.Trade.VendorEngine.HasRealStock(stockHolder)))
                 vendorStock.Add(it.Uid.Value);
         }
 

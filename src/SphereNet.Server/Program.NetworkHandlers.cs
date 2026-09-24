@@ -1264,19 +1264,18 @@ public static partial class Program
             if (!client.IsPlaying || client.Character == null) continue;
             bool dead = client.Character.IsDead;
             byte light = dead ? (byte)0 : _world.GetLightLevel(client.Character.Position);
-            var r = _world.FindRegion(client.Character.Position);
-            var weather = _weatherEngine.GetWeatherForRegion(r);
-            client.Character.UpdateEnvironment(light, (byte)weather.Item1,
+            var weather = _weatherEngine.GetWeatherAt(client.Character.Position);
+            client.Character.UpdateEnvironment(light, (byte)weather.Type,
                 dead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
             client.SendSeason(dead
                 ? (byte)SeasonType.Desolation
                 : (byte)_weatherEngine.CurrentSeason, playSound);
             client.Send(new PacketGlobalLight(light));
 
-            if (r != null && !string.IsNullOrEmpty(r.Name))
-            {
-                client.Send(new PacketWeather((byte)weather.Item1, weather.Item2, weather.Item3));
-            }
+            // The weather is the sector's and does not change with the season; Source-X
+            // tells the client only when it has any (addWeather, CClientMsg.cpp:526).
+            if (!WeatherEngine.NoWeather)
+                client.Send(new PacketWeather((byte)weather.Type, weather.Intensity, weather.Temperature));
         }
     }
 

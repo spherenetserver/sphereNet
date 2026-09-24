@@ -426,7 +426,7 @@ public static partial class Program
                 // @EnvironChange — the perceived light level differs between surface
                 // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
                 byte regionLight = mover.IsDead ? (byte)0 : _world.GetLightLevel(mover.Position);
-                var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherForRegion(newRegion);
+                var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherAt(mover.Position);
                 mover.UpdateEnvironment(regionLight, (byte)weatherType,
                     mover.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
 
@@ -1161,7 +1161,9 @@ public static partial class Program
                 character.UpdateEnvironment(light, sector.Weather, season);
                 if (!TryGetClientFor(character, out var envClient)) return;
                 if (!SphereNet.Game.World.WeatherEngine.NoWeather)
-                    envClient.Send(new PacketWeather(sector.Weather, 0, 20));
+                    envClient.Send(new PacketWeather(sector.Weather,
+                        WeatherEngine.PacketIntensity((WeatherType)sector.Weather),
+                        WeatherEngine.PacketTemperature));
                 envClient.SendSeason(season, playSound: false);
                 envClient.Send(new PacketGlobalLight(light));
             };
@@ -2030,37 +2032,13 @@ public static partial class Program
                 _config.SeasonMode,
                 (SeasonType)Math.Clamp(_config.SeasonDefault, (byte)SeasonType.Spring, (byte)SeasonType.Desolation),
                 checked(_config.SeasonChangeIntervalMinutes * 60 * 1000));
-            // The climate a region sits in, read from the sector under its anchor - the
-            // same values Source-X rolls in GetWeatherCalc.
-            _weatherEngine.GetClimate = region =>
-            {
-                var anchor = region.P;
-                if (anchor == null) return null;
-                var sector = _world.GetSector(anchor.Value);
-                return sector == null ? null : ((int)sector.RainChance, (int)sector.ColdChance);
-            };
-            _weatherEngine.OnWeatherChanged = (region, type, intensity, temp) =>
-            {
-                if (SphereNet.Game.World.WeatherEngine.NoWeather) return;
-                var pkt = new PacketWeather((byte)type, intensity, temp);
-                // EVERY character in the region learns about it, NPCs included: upstream
-                // runs @EnvironChange before it ever asks whether the character has a
-                // client, and gates only the packet on that (CSector.cpp:1310). Walking
-                // the client list alone meant an NPC whose script watches the weather
-                // was never told it started raining.
-                foreach (var ch in _world.CharactersInRegion(region))
-                {
-                    byte light = ch.IsDead ? (byte)0 : _world.GetLightLevel(ch.Position);
-                    ch.UpdateEnvironment(light, (byte)type,
-                        ch.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
-                    if (TryGetClientFor(ch, out var wc) && wc.IsPlaying)
-                        wc.Send(pkt);
-                }
-            };
+            // Rolled weather is published by the sector itself (Sector.SetWeather ->
+            // OnSectorEnvironment), to every character standing in it, NPCs included
+            // (CSector::SetWeather, CSector.cpp:879).
             // The login and resync paths ask the world, not the engine.
             _world.ResolveWeather = pt =>
             {
-                var w = _weatherEngine.GetWeatherForRegion(_world.FindRegion(pt));
+                var w = _weatherEngine.GetWeatherAt(pt);
                 return ((byte)w.Type, w.Intensity, w.Temperature);
             };
             VendorEngine.World = _world;
@@ -2636,8 +2614,7 @@ public static partial class Program
             SphereNet.Game.Clients.GameClient.OnCharacterOnline = (ch, client) =>
             {
                 _clientsByCharUid[ch.Uid] = client;
-                var region = _world.FindRegion(ch.Position);
-                var weather = _weatherEngine.GetWeatherForRegion(region).Type;
+                var weather = _weatherEngine.GetWeatherAt(ch.Position).Type;
                 ch.UpdateEnvironment(ch.IsDead ? 0 : _world.GetLightLevel(ch.Position),
                     (byte)weather,
                     ch.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);

@@ -306,6 +306,13 @@ public sealed partial class GameClient
         var posBefore = _character.Position;
         byte speedModeBefore = _character.SpeedMode;
         var result = _commands.TryExecute(_character, commandLine);
+        // Source-X CClient::Event_Command logs every command at or above COMMANDLOG
+        // as "'name' commands 'line'=allowed" (CClientEvent.cpp:1113). It sat at Debug
+        // here, below the file log's level, so no staff command ever reached the log.
+        if (_commands.CommandLogPrivLevel >= 0 && (int)_character.PrivLevel >= _commands.CommandLogPrivLevel)
+            _logger.LogWarning("[AUDIT] [game] account={Account} char=0{Char:X8} '{Name}' plevel={PLevel} commands '{Cmd}'={Allowed}",
+                _account?.Name ?? "?", _character.Uid.Value, _character.Name, (int)_character.PrivLevel,
+                commandLine, result == CommandResult.Executed ? 1 : 0);
         switch (result)
         {
             case CommandResult.Executed:

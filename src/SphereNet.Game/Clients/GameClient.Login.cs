@@ -93,17 +93,15 @@ public sealed partial class GameClient
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {
             RegisterLoginFailure(account);
-            _netState.Send(new PacketLoginDenied(3));
-            _netState.MarkClosing();
+            DenyLogin(LoginDenyBadPass);
             return;
         }
 
-        _account = _accountManager.Authenticate(account, password);
+        _account = _accountManager.Authenticate(account, password, out var failure);
         if (_account == null)
         {
             RegisterLoginFailure(account);
-            _netState.Send(new PacketLoginDenied(3));
-            _netState.MarkClosing();
+            DenyLogin(LoginDenyCode(failure));
             return;
         }
 
@@ -132,19 +130,17 @@ public sealed partial class GameClient
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {
             RegisterLoginFailure(account);
-            _netState.Send(new PacketLoginDenied(3));
-            _netState.MarkClosing();
+            DenyLogin(LoginDenyBadPass);
             return;
         }
 
         _logger.LogDebug("HandleGameLogin: account='{Account}' authId=0x{AuthId:X8}", account, authId);
-        _account = _accountManager.Authenticate(account, password);
+        _account = _accountManager.Authenticate(account, password, out var failure);
         if (_account == null)
         {
             _logger.LogDebug("HandleGameLogin: AUTH FAILED for '{Account}'", account);
             RegisterLoginFailure(account);
-            _netState.Send(new PacketLoginDenied(3));
-            _netState.MarkClosing();
+            DenyLogin(LoginDenyCode(failure));
             return;
         }
 
@@ -299,9 +295,29 @@ public sealed partial class GameClient
 
         _logger.LogWarning("[AUTH] Login throttled for {Key}; retry after {Seconds:F1}s",
             key, retryAfter.TotalSeconds);
-        _netState.Send(new PacketLoginDenied(3));
-        _netState.MarkClosing();
+        DenyLogin(LoginDenyOther); // MaxPassTries -> Other
         return true;
+    }
+
+    // The 0x82 reasons a client understands (Source-X PacketLoginError, send.h:893).
+    // Upstream folds its internal reasons into these (addLoginErr, CClientLog.cpp:146);
+    // every refusal here used to say "incorrect password", a banned account included.
+    private const byte LoginDenyInvalid = 0x00;  // no such account
+    private const byte LoginDenyBlocked = 0x02;  // account blocked
+    private const byte LoginDenyBadPass = 0x03;  // incorrect password
+    private const byte LoginDenyOther = 0x04;    // anything else (too many tries)
+
+    private static byte LoginDenyCode(AccountManager.LoginFailure failure) => failure switch
+    {
+        AccountManager.LoginFailure.NoAccount => LoginDenyInvalid,
+        AccountManager.LoginFailure.Blocked => LoginDenyBlocked,
+        _ => LoginDenyBadPass,
+    };
+
+    private void DenyLogin(byte reason)
+    {
+        _netState.Send(new PacketLoginDenied(reason));
+        _netState.MarkClosing();
     }
 
     private void RegisterLoginFailure(string account) =>

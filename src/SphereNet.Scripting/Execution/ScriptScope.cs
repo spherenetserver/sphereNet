@@ -27,11 +27,18 @@ public sealed class ScriptScope
     /// or dialog dispatcher; safe to leave null.</summary>
     public string? TriggerName { get; set; }
 
-    /// <summary>
-    /// Maximum nested loop depth to prevent infinite loops.
-    /// Maps to MaxLoopTimes in sphere.ini.
-    /// </summary>
-    public int MaxLoopIterations { get; set; } = 512;
+    /// <summary>sphere.ini MAXLOOPTIMES (Source-X m_iMaxLoopTimes, default 100000):
+    /// the most passes one FOR/WHILE/FOR* loop makes before it is cut off as
+    /// dead-locked. 0 = no limit. It was a fixed 512, so any loop over a larger list
+    /// stopped part-way without a word.</summary>
+    public static int DefaultMaxLoopIterations { get; set; } = 100000;
+
+    /// <summary>The loop cap for this scope; see <see cref="DefaultMaxLoopIterations"/>.</summary>
+    public int MaxLoopIterations { get; set; } = DefaultMaxLoopIterations;
+
+    /// <summary>True once a loop has made as many passes as the cap allows.</summary>
+    public bool LoopLimitReached(long passes) =>
+        MaxLoopIterations > 0 && passes >= MaxLoopIterations;
 
     /// <summary>
     /// REF object references (REF1..REFn). Stores UID strings.

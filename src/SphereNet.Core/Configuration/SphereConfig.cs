@@ -342,6 +342,14 @@ public sealed class SphereConfig
     /// limit at all.</summary>
     public int BackpackOverload { get; set; } = 40;
 
+    /// <summary>sphere.ini MAXLOOPTIMES: the pass limit of one script loop
+    /// (Source-X m_iMaxLoopTimes, default 100000; 0 = no limit).</summary>
+    public int MaxLoopTimes { get; set; } = 100000;
+
+    /// <summary>sphere.ini COMMANDLOG: the lowest privilege level whose commands are
+    /// logged (Source-X m_iCommandLog, default 0 = every command; -1 = none).</summary>
+    public int CommandLog { get; set; }
+
     // ---- What carrying things costs while walking -----------------------
     //
     // BACKPACKOVERLOAD above lets a player exceed their own carry weight, and the
@@ -1028,6 +1036,8 @@ public sealed class SphereConfig
         MaxHousesGuild = Math.Max(0, ini.GetInt(section, "MaxHousesGuild", MaxHousesGuild));
         NpcCanFizzleOnHit = ini.GetBool(section, "NpcCanFizzleOnHit", NpcCanFizzleOnHit);
         BackpackOverload = ini.GetInt(section, "BackpackOverload", BackpackOverload);
+        MaxLoopTimes = Math.Max(0, ini.GetInt(section, "MaxLoopTimes", MaxLoopTimes));
+        CommandLog = ini.GetInt(section, "CommandLog", CommandLog);
         StaminaLossAtWeight = ini.GetInt(section, "StaminaLossAtWeight", StaminaLossAtWeight);
         StaminaLossOverweight = ini.GetInt(section, "StaminaLossOverweight", StaminaLossOverweight);
         RunningPenalty = ini.GetInt(section, "RunningPenalty", RunningPenalty);

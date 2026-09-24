@@ -661,6 +661,7 @@ public static partial class Program
             _commands = new CommandHandler();
             _commands.TriggerDispatcher = _triggerDispatcher;
             _commands.CommandPrefix = string.IsNullOrEmpty(_config.CommandPrefix) ? '.' : _config.CommandPrefix[0];
+            _commands.CommandLogPrivLevel = _config.CommandLog;
             _commands.Resources = _resources;
             _commands.ScriptFallbackExecutor = (gm, commandLine) =>
             {

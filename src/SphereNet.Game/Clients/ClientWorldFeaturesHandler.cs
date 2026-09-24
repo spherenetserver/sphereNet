@@ -3243,7 +3243,8 @@ public sealed class ClientWorldFeaturesHandler
         _client.ScriptContextEntries = null;
 
         if (entries.Count > 0)
-            _netState.Send(new PacketContextMenu(targetSerial, entries.ToArray()));
+            _netState.Send(new PacketContextMenu(targetSerial, entries.ToArray(),
+                _netState.SupportsNewContextMenu));
     }
 
     internal void HandleContextMenuResponse(uint targetSerial, ushort entryTag)

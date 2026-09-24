@@ -826,7 +826,11 @@ public static partial class Program
         WalkRecoverableBatch(due,
             npc =>
             {
-                act(npc);
+                // One creature's fault is its own: it is reported and keeps its place
+                // in the wheel, and the rest of the batch still acts (upstream ticks
+                // each object inside its own exception block).
+                try { act(npc); }
+                catch (Exception ex) { SphereNet.Game.Diagnostics.TickFaults.Report(npc, "npc action", ex); }
                 if (keepScheduled(npc))
                     wheel.Schedule(npc, npc.NextNpcActionTime);
             },
@@ -942,7 +946,13 @@ public static partial class Program
             };
             Parallel.ForEach(npcSnapshot, po, npc =>
             {
-                var decision = _npcAI.BuildDecision(npc, nowTick);
+                SphereNet.Game.AI.NpcAI.NpcDecision? decision;
+                try { decision = _npcAI.BuildDecision(npc, nowTick); }
+                catch (Exception ex)
+                {
+                    SphereNet.Game.Diagnostics.TickFaults.Report(npc, "npc decision", ex);
+                    return;
+                }
                 if (decision.HasValue)
                     lock (decisionList) decisionList.Add(decision.Value);
             });
@@ -951,7 +961,13 @@ public static partial class Program
         {
             foreach (var npc in npcSnapshot)
             {
-                var decision = _npcAI.BuildDecision(npc, nowTick);
+                SphereNet.Game.AI.NpcAI.NpcDecision? decision;
+                try { decision = _npcAI.BuildDecision(npc, nowTick); }
+                catch (Exception ex)
+                {
+                    SphereNet.Game.Diagnostics.TickFaults.Report(npc, "npc decision", ex);
+                    continue;
+                }
                 if (decision.HasValue)
                     decisionList.Add(decision.Value);
             }
@@ -978,7 +994,16 @@ public static partial class Program
         // Apply NPC decisions — fires CharacterMoved for each NPC move,
         // which immediately notifies nearby clients via OnCharacterMoved.
         foreach (var decision in decisionList)
-            _npcAI.ApplyDecision(decision);
+        {
+            try { _npcAI.ApplyDecision(decision); }
+            catch (Exception ex)
+            {
+                if (_world.FindChar(new SphereNet.Core.Types.Serial(decision.NpcUid)) is { } faulted)
+                    SphereNet.Game.Diagnostics.TickFaults.Report(faulted, "npc apply", ex);
+                else
+                    _log.LogError(ex, "[tick_fault] npc apply failed for 0{Uid:X8}", decision.NpcUid);
+            }
+        }
         long p1cApply = Stopwatch.GetTimestamp();
         _telemetryNpcApplyDecisionsUs = ToMicroseconds(p1cApply - p1c);
         _telemetryNpcApplyDecisionCount = decisionList.Count;
@@ -1205,7 +1230,12 @@ public static partial class Program
         foreach (var item in _decayCatchupBuffer)
         {
             // Drive the normal item decay path first (corpse spill, spawn cleanup).
-            _ = item.OnTick();
+            try { _ = item.OnTick(); }
+            catch (Exception ex)
+            {
+                SphereNet.Game.Diagnostics.TickFaults.Report(item, "item decay", ex);
+                continue;
+            }
             if (!item.IsDeleted)
                 continue;
 

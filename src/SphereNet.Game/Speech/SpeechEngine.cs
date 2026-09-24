@@ -437,6 +437,11 @@ public sealed class CommandHandler
     public ResourceHolder? Resources { get; set; }
     public char CommandPrefix { get; set; } = '.';
 
+    /// <summary>sphere.ini COMMANDLOG (Source-X m_iCommandLog, default 0): a command
+    /// typed by a character of at least this privilege level is written to the log
+    /// with whether it was allowed. -1 turns the log off.</summary>
+    public int CommandLogPrivLevel { get; set; }
+
     public event Action? OnSaveCommand;
     public event Action? OnShutdownCommand;
     public event Action<string>? OnBroadcastCommand;

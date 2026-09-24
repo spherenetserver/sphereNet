@@ -50,6 +50,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = false;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = 40;
+        SphereNet.Scripting.Execution.ScriptScope.DefaultMaxLoopIterations = 100000;
+        SphereNet.Game.Diagnostics.TickFaults.Reset();
         SphereNet.Game.Objects.Items.Item.DragWeightMax = 300;
         SphereNet.Game.Movement.MovementEngine.StaminaLossAtWeight = 150;
         SphereNet.Game.Movement.MovementEngine.StaminaLossOverweight = 5;

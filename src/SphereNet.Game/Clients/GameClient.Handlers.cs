@@ -58,68 +58,73 @@ public sealed partial class GameClient
         }
     }
 
-    /// <summary>Handle character delete from char select screen (0x83).</summary>
+    /// <summary>Handle character delete from char select screen (0x83), as Source-X
+    /// Setup_Delete (CClientMsg.cpp:2943) does it. The packet's password field is not
+    /// read there - the account is already logged in, and ClassicUO sends it blank -
+    /// so it is not checked here either: checking it refused every delete from that
+    /// client. A refusal is one 0x85 with upstream's reason; success sends none, only
+    /// the 0x86 list update. Success used to send 0x85 reason 0, which the client
+    /// shows as "that character password is invalid".</summary>
     public void HandleCharDelete(int charIndex, string password)
     {
+        _ = password;
         if (_account == null) return;
 
-        // Verify password
-        if (!_account.CheckPassword(password))
+        int slots = GetEffectiveMaxChars();
+        if (charIndex < 0 || charIndex >= slots)
         {
-            _netState.Send(new PacketCharDeleteResult(1)); // 1=bad password
+            RefuseCharDelete(1, charIndex, null); // does not exist
             return;
         }
 
         var charUid = _account.GetCharSlot(charIndex);
-        if (!charUid.IsValid)
+        var ch = charUid.IsValid ? _world.FindChar(charUid) : null;
+        if (ch == null)
         {
-            _netState.Send(new PacketCharDeleteResult(1));
+            // IsMyAccountChar(nullptr) - upstream answers "bad password" for an empty
+            // or foreign slot.
+            RefuseCharDelete(0, charIndex, null);
             return;
         }
 
-        var ch = _world.FindChar(charUid);
-        if (ch != null)
+        if (ch.IsOnline)
         {
-            if (ch.IsOnline)
-            {
-                _netState.Send(new PacketCharDeleteResult(5)); // 5=char in world
-                return;
-            }
+            RefuseCharDelete(2, charIndex, ch); // being played right now
+            return;
+        }
 
-            // Source-X Setup_Delete (CClientMsg.cpp:2961): a character younger
-            // than MINCHARDELETETIME cannot be deleted; Counsel+ accounts
-            // bypass. 0x85 reason 3 = "character is not old enough".
-            // CreatedUtcSeconds == 0 (legacy save, pre-stamp) counts as old.
-            if (ServerMinCharDeleteDays > 0 && ch.CreatedUtcSeconds > 0 &&
-                _account.PrivLevel < PrivLevel.Counsel)
+        // Source-X Setup_Delete (CClientMsg.cpp:2961): a character younger than
+        // MINCHARDELETETIME cannot be deleted; Counsel+ accounts bypass.
+        // CreatedUtcSeconds == 0 (legacy save, pre-stamp) counts as old.
+        if (ServerMinCharDeleteDays > 0 && ch.CreatedUtcSeconds > 0 &&
+            _account.PrivLevel < PrivLevel.Counsel)
+        {
+            long ageSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ch.CreatedUtcSeconds;
+            if (ageSeconds < ServerMinCharDeleteDays * 86400L)
             {
-                long ageSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ch.CreatedUtcSeconds;
-                if (ageSeconds < ServerMinCharDeleteDays * 86400L)
-                {
-                    _netState.Send(new PacketCharDeleteResult(3)); // 3=not old enough
-                    return;
-                }
-            }
-
-            _logger.LogInformation("Deleting character '{Name}' (0x{Uid:X8}) from account '{Acct}'",
-                ch.Name, charUid.Value, _account.Name);
-            if (!TryDeleteCharacterFromClient(ch))
-            {
-                _netState.Send(new PacketCharDeleteResult(5)); // InvalidRequest: script veto
+                RefuseCharDelete(3, charIndex, ch); // not old enough
                 return;
             }
         }
 
-        _account.SetCharSlot(charIndex, Serial.Invalid);
+        _logger.LogInformation("Deleting character '{Name}' (0x{Uid:X8}) from account '{Acct}'",
+            ch.Name, charUid.Value, _account.Name);
+        if (!TryDeleteCharacterFromClient(ch))
+        {
+            RefuseCharDelete(5, charIndex, ch); // a script refused the delete
+            return;
+        }
 
-        // Send success + new char list
-        _netState.Send(new PacketCharDeleteResult(0));
+        _account.SetCharSlot(charIndex, Serial.Invalid);
         var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
-        int maxChars = GetEffectiveMaxChars();
-        var res = ResolveAccountResDisplay();
-        uint flags = BuildCharacterListFlags(res, maxChars, ServerToolTipMode != 0);
-        _netState.Send(new PacketCharList(charNames, maxChars,
-            _netState.SupportsNewCharacterList, flags).Build());
+        _netState.Send(new PacketCharListUpdate(charNames, slots));
+    }
+
+    private void RefuseCharDelete(byte reason, int slot, Character? ch)
+    {
+        _logger.LogWarning("Bad Char Delete Attempted {Reason} (acct='{Acct}', slot={Slot}, char='{Char}', IP='{Ip}')",
+            reason, _account?.Name ?? "?", slot, ch?.Name ?? "INVALID", _netState.RemoteEndPoint);
+        _netState.Send(new PacketCharDeleteResult(reason));
     }
 
     /// <summary>Re-send the character selection list (Source-X CV_CHARLIST /

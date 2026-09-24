@@ -233,6 +233,12 @@ public sealed class NetState : IDisposable
     /// (PacketDisplayMapNew::CanSendTo, send.cpp:5390).</summary>
     public bool SupportsNewMapDisplay =>
         IsEnhancedClient || IsKingdomRebornClient || _clientVersionNumber >= 70_013_000;
+    /// <summary>The 0xBF.0x14 popup in format 2 (cliloc, tag, flags) rather than
+    /// format 1 (tag, cliloc - 3000000, flags). Source-X MINCLIVER_NEWCONTEXTMENU
+    /// (6.0.0.0) or a KR/enhanced client (PacketDisplayPopup, send.cpp:4135).</summary>
+    public bool SupportsNewContextMenu =>
+        IsEnhancedClient || IsKingdomRebornClient || _clientVersionNumber >= 60_000_000 ||
+        FallbackVersionAtLeast(60_000_000);
     public bool SupportsAosTooltip => HasProtocolChanges(ProtocolChanges.Version500a) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 40_000_000;
     public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_002_002;
     public bool SupportsMapWaypoints => ClientEra == ClientEra.Modern || IsKingdomRebornClient ||

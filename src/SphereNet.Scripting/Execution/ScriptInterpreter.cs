@@ -1235,9 +1235,10 @@ public sealed class ScriptInterpreter
         bool countDown = min > max;
         long iterations = 0;
         for (long v = min;
-             (countDown ? v >= max : v <= max) && iterations < scope.MaxLoopIterations;
+             countDown ? v >= max : v <= max;
              v += countDown ? -1 : 1, iterations++)
         {
+            if (scope.LoopLimitReached(iterations)) { ReportLoopLimit(scope, iterations); break; }
             scope.LocalVars.SetInt("_FOR", v);
             if (!loopVar.Equals("_FOR", StringComparison.OrdinalIgnoreCase))
                 scope.LocalVars.SetInt(loopVar, v);
@@ -1288,6 +1289,11 @@ public sealed class ScriptInterpreter
         return true;
     }
 
+    /// <summary>Source-X's words when a loop hits MAXLOOPTIMES (CScriptObj.cpp:2157).</summary>
+    private void ReportLoopLimit(ScriptScope scope, long passes) =>
+        _logger.LogError("Terminating loop cycle since it seems being dead-locked ({Passes} iterations already passed) in {Trigger}",
+            passes, scope.TriggerName ?? "script");
+
     private int ExecuteWhile(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
     {
@@ -1303,12 +1309,15 @@ public sealed class ScriptInterpreter
         scope.LoopDepth++;
         var whileBody = GetSubList(lines, bodyStart, bodyEnd);
         int iterations = 0;
-        while (iterations < scope.MaxLoopIterations)
+        while (true)
         {
+            if (scope.LoopLimitReached(iterations)) { ReportLoopLimit(scope, iterations); break; }
             string resolved = ResolveArgs(condition, target, source, args, scope);
             if (!EvaluateConditionWithResolver(resolved, target, source, args, scope))
                 break;
 
+            // Source-X sets LOCAL._WHILE to the pass number, from 0 (CScriptObj.cpp:1857).
+            scope.LocalVars.SetInt("_WHILE", iterations);
             result = Execute(whileBody, target, source, args, scope);
             if (scope.IsContinuing) { scope.IsContinuing = false; iterations++; continue; }
             if (scope.IsBreaking) { scope.IsBreaking = false; break; }
@@ -1414,7 +1423,8 @@ public sealed class ScriptInterpreter
         {
             foreach (var obj in objects)
             {
-                if (iterations++ >= scope.MaxLoopIterations) break;
+                if (scope.LoopLimitReached(iterations)) { ReportLoopLimit(scope, iterations); break; }
+                iterations++;
                 result = Execute(body, obj, source, args, scope);
                 if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
                 if (scope.IsBreaking) { scope.IsBreaking = false; break; }

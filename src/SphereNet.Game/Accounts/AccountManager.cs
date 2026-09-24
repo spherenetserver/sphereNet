@@ -76,21 +76,34 @@ public sealed class AccountManager
     /// Authenticate: find or auto-create, then check password.
     /// Returns null if auth fails.
     /// </summary>
-    public Account? Authenticate(string name, string password)
+    public Account? Authenticate(string name, string password) =>
+        Authenticate(name, password, out _);
+
+    /// <summary>Why a login was refused, in upstream's terms (CClient::LogIn,
+    /// CClientMsg.cpp:3162), so the client is told which one.</summary>
+    public enum LoginFailure { None, NoAccount, Blocked, BadPassword }
+
+    public Account? Authenticate(string name, string password, out LoginFailure failure)
     {
+        failure = LoginFailure.None;
         var account = FindAccount(name);
         if (account == null)
         {
             if (!_autoCreateAccounts)
             {
                 _logger.LogWarning("Account '{Name}' not found (auto-create disabled)", name);
+                failure = LoginFailure.NoAccount;
                 return null;
             }
 
             _logger.LogWarning("[AUTH] Account '{Name}' not found, auto-creating (DefaultPrivLevel={Def})",
                 name, DefaultPrivLevel);
             account = CreateAccount(name, password);
-            if (account == null) return null;
+            if (account == null)
+            {
+                failure = LoginFailure.BadPassword; // BadAccount: the name was refused
+                return null;
+            }
         }
         else
         {
@@ -102,12 +115,14 @@ public sealed class AccountManager
         {
             _logger.LogWarning("Account '{Name}' is banned", name);
             AccountBlocked?.Invoke(account);
+            failure = LoginFailure.Blocked;
             return null;
         }
 
         if (!account.CheckPassword(password))
         {
             _logger.LogWarning("Wrong password for account '{Name}'", name);
+            failure = LoginFailure.BadPassword;
             return null;
         }
 

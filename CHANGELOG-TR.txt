@@ -4,6 +4,40 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Acilis engelleri: context menu, script donguleri, tick hatalari, denetim, giris kodlari
+------------------------------------------------------------------------
+DUZELTME - Context menu (0xBF.0x14) istemcinin okudugu duzende yazilir:
+           6.0.0.0 ve KR/enhanced istemcide format 2 (cliloc, tag, flags),
+           oncesinde format 1 (tag, cliloc - 3000000, flags) (Source-X
+           PacketDisplayPopup). Paket format 1 ilan edip 4 baytlik cliloc
+           yaziyordu; paperdoll, buy/sell, bank ve mount menulerinin her
+           satiri kayik geliyordu.
+DUZELTME - Script donguleri sabit 512 yerine MAXLOOPTIMES'a kadar doner
+           (sphere.ini, varsayilan 100000, 0 = sinirsiz); sinirda kesilen
+           dongu Source-X'in "Terminating loop cycle" hatasini loglar.
+           Buyuk listede FOR/WHILE/FOR* sessizce yarida kaliyordu. Dialog
+           duzeni donguleri de kendi 500'u yerine ayni siniri kullanir.
+DUZELTME - WHILE, Source-X gibi LOCAL._WHILE'a 0'dan baslayan tur numarasini
+           yazar. Onu okuyan dongu (referans sac boyasi dialogu) ilerlemiyordu.
+DUZELTME - Bir nesnenin tick'indeki hata loglanir ve o nesneyle sinirli
+           kalir: NPC karar ve eylemleri, karakter tick'i, item timer ve item
+           decay. Gecis hatada bitiyordu; sonrasindaki her sey tick'ini
+           kaciriyor, kuyruktan alinmis item timer'lari tamamen kayboluyordu.
+           Ayni nesneden tekrarlar dakikada bir loglanir.
+YENI - COMMANDLOG (sphere.ini, varsayilan 0): bu yetki seviyesi ve uzerindeki
+       karakterin oyunda yazdigi komutlar "[AUDIT] ... commands 'satir'=izin"
+       olarak Warning seviyesinde loglanir, dosya logunda kalir. -1 kapatir.
+       Once Debug seviyesindeydi, dosyaya hic dusmuyordu.
+DUZELTME - Karakter silme Source-X Setup_Delete'i izler. Paketteki sifre
+           alani kontrol edilmez (Source-X hic okumaz, ClassicUO bos gonderir;
+           o istemciden her silme reddediliyordu). Redler Source-X kodlarini
+           tasir (bos slot 0, olmayan slot 1, dunyada 2, cok yeni 3, script
+           veto 5); basari yalnizca 0x86 liste guncellemesi gonderir. Once
+           0x85 kod 0 gidiyordu, istemci "karakter sifresi gecersiz" diyordu.
+DUZELTME - Giris redleri nedenini soyler: hesap yok 0, engelli 2, yanlis sifre
+           3, cok fazla deneme 4 (Source-X addLoginErr). Once her red "yanlis
+           sifre" diyordu.
+
 [2026-09-24] - World save donmasi kisaldi
 ------------------------------------------------------------------------
 PERF - Save kopyasi her nesneyi string listesi yerine tek bir paketlenmis

@@ -32,6 +32,7 @@ namespace SphereNet.Tests;
 /// starting, not a running one — and proving that needs the separate long-worker
 /// process test the plan keeps open.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class MulticoreFaultRecoveryTests
 {
     private readonly ITestOutputHelper _out;
@@ -82,6 +83,8 @@ public sealed class MulticoreFaultRecoveryTests
         long now = 1_000_000;
         var (wheel, npcs) = DueNpcs(world, 6, now);
         var acted = new List<string>();
+        var reported = new List<string>();
+        SphereNet.Game.Diagnostics.TickFaults.Log = (message, _) => reported.Add(message);
 
         var boom = Record.Exception(() => SphereNet.Server.Program.RunDueNpcs(wheel, now,
             npc =>
@@ -93,10 +96,14 @@ public sealed class MulticoreFaultRecoveryTests
 
         _out.WriteLine($"acted=[{string.Join(",", acted)}] exception={boom?.GetType().Name} wheel={wheel.Count}");
 
-        // The failure still reaches the tick handler: it decides whether to abandon
-        // the tick and fall back, and hiding it here would make a broken NPC look like
-        // a slow one.
-        Assert.IsType<InvalidOperationException>(boom);
+        // Upstream contains a fault to the object that raised it (CWorldTicker ticks
+        // each object in its own exception block): the creatures after the faulty one
+        // still act this tick. Letting it leave the batch meant the ones behind a
+        // creature whose script throws every time never acted at all.
+        Assert.Null(boom);
+        Assert.Equal(6, acted.Count);
+        Assert.Single(reported);
+        Assert.Contains("npc2", reported[0]);
 
         // Every NPC is back in the wheel - including the one that threw, which gets
         // another turn rather than falling silent for good.

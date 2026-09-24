@@ -519,7 +519,10 @@ public sealed class Sector : IScriptObj
                 var ch = scratch[i];
                 if (ch.IsDeleted) { _characters.Remove(ch); continue; }
                 if (!ch.IsSleeping)
-                    ch.OnTick();
+                {
+                    try { ch.OnTick(); }
+                    catch (Exception ex) { SphereNet.Game.Diagnostics.TickFaults.Report(ch, "char tick", ex); }
+                }
             }
             scratch.Clear(); // don't pin ticked references until the next tick
         }

@@ -1871,7 +1871,15 @@ public sealed class GameWorld
             // SetTimeout, so nothing needs to be put back here.
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             long allocated = GC.GetAllocatedBytesForCurrentThread();
-            bool keep = item.OnTick();
+            bool keep;
+            try { keep = item.OnTick(); }
+            catch (Exception ex)
+            {
+                // The rest of this buffer was already taken off the queue; letting the
+                // fault leave the loop lost every one of their timers for good.
+                SphereNet.Game.Diagnostics.TickFaults.Report(item, "item timer", ex);
+                keep = true;
+            }
             ReportSlowWorldCallback(item, "item_timer", started, allocated);
             if (!keep)
                 GetSector(item.Position)?.RemoveItem(item);

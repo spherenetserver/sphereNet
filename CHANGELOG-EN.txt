@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Launch blockers: context menus, script loops, tick faults, audit, login codes
+------------------------------------------------------------------------
+FIX - Context menus (0xBF.0x14) are written in the layout the client reads:
+      format 2 (cliloc, tag, flags) from 6.0.0.0 and on KR/enhanced clients,
+      format 1 (tag, cliloc - 3000000, flags) before that (upstream
+      PacketDisplayPopup). The packet announced format 1 and wrote a 4-byte
+      cliloc, so every line of the paperdoll, buy/sell, bank and mount menus
+      came out shifted.
+FIX - Script loops run to MAXLOOPTIMES (sphere.ini, default 100000, 0 = no
+      limit) instead of a fixed 512, and a loop cut off at the limit logs
+      upstream's "Terminating loop cycle" error. FOR/WHILE/FOR* over a larger
+      list used to stop part-way without a word. Dialog layout loops use the
+      same limit instead of their own 500.
+FIX - WHILE sets LOCAL._WHILE to the pass number from 0, as upstream does. A
+      loop reading it (the reference hair-dye dialog) never moved on.
+FIX - A fault in one object's tick is logged and contained to that object:
+      NPC decisions and actions, character ticks, item timers and item decay.
+      The pass used to end at the fault, so everything after it went without
+      its tick - and item timers already taken off the queue were lost for
+      good. Repeats from one object are logged once a minute.
+NEW - COMMANDLOG (sphere.ini, default 0): commands typed in game by a
+      character at or above this privilege level are written to the log as
+      "[AUDIT] ... commands 'line'=allowed", at Warning so the file log keeps
+      them. -1 turns it off. They were Debug and never reached the file.
+FIX - Character delete follows upstream Setup_Delete. The packet's password
+      field is not checked (upstream never reads it and ClassicUO sends it
+      blank, so every delete from that client was refused). Refusals carry
+      upstream's reasons (empty slot 0, no such slot 1, in the world 2, too
+      young 3, script veto 5); success sends only the 0x86 list update. It
+      used to send 0x85 reason 0, which the client shows as "character
+      password is invalid".
+FIX - Login refusals tell the client why: no such account 0, blocked 2, bad
+      password 3, too many tries 4 (upstream addLoginErr). Every refusal used
+      to say "incorrect password".
+
 [2026-09-24] - Shorter world-save stall
 ------------------------------------------------------------------------
 PERF - The save capture keeps each object as one packed byte array instead

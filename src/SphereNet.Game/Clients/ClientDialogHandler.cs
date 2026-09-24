@@ -480,7 +480,7 @@ public sealed class ClientDialogHandler
             Object1 = subject,
             Object2 = _character
         };
-        var layoutScope = new ScriptScope { TriggerName = $"DIALOG:{dialogId}", MaxLoopIterations = 500 };
+        var layoutScope = new ScriptScope { TriggerName = $"DIALOG:{dialogId}" };
         var interpreter = _triggerDispatcher?.Runner?.Interpreter;
         string ExpandInitialText(string text) => interpreter != null
             ? interpreter.ExpandText(text, subject, _client, layoutArgs, layoutScope)

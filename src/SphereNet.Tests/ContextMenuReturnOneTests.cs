@@ -64,9 +64,11 @@ public sealed class ContextMenuReturnOneTests
             if (span.Length < 13 || span[0] != 0xBF) continue;
             if (span[3] != 0x00 || span[4] != 0x14) continue;
             int count = span[11];
+            // Format 2: cliloc(4), tag(2), flags(2). Format 1: tag(2), cliloc(2), flags(2).
+            bool newFormat = span[6] == 2;
             for (int i = 0; i < count; i++)
             {
-                int at = 12 + i * 8;
+                int at = newFormat ? 12 + i * 8 + 4 : 12 + i * 6;
                 if (at + 1 < span.Length)
                     _captured.Add((ushort)((span[at] << 8) | span[at + 1]));
             }

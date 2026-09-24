@@ -1794,17 +1794,25 @@ public sealed class PacketMapPatches : PacketWriter
     }
 }
 
-/// <summary>0xBF sub 0x14 — Context menu (popup menu) sent to client.</summary>
+/// <summary>0xBF sub 0x14 — Context menu (popup menu) sent to client. Two layouts
+/// (Source-X PacketDisplayPopup, send.cpp:4130): format 2 writes each entry as
+/// cliloc(4), tag(2), flags(2); format 1, for clients before 6.0.0.0, writes
+/// tag(2), cliloc - 3000000 (2), flags(2). The packet used to announce format 1 and
+/// then write a 4-byte cliloc, which no client reads - every line came out shifted.</summary>
 public sealed class PacketContextMenu : PacketWriter
 {
+    private const ushort ColorFlag = 0x20;
     private readonly uint _serial;
     private readonly (ushort EntryTag, uint ClilocId, ushort Flags)[] _entries;
+    private readonly bool _newFormat;
 
-    public PacketContextMenu(uint serial, (ushort EntryTag, uint ClilocId, ushort Flags)[] entries)
+    public PacketContextMenu(uint serial, (ushort EntryTag, uint ClilocId, ushort Flags)[] entries,
+        bool newFormat = true)
         : base(0xBF)
     {
         _serial = serial;
         _entries = entries;
+        _newFormat = newFormat;
     }
 
     public override PacketBuffer Build()
@@ -1812,16 +1820,27 @@ public sealed class PacketContextMenu : PacketWriter
         int count = Math.Min(_entries.Length, 255);
         var buf = CreateVariable(16 + count * 8);
         buf.WriteUInt16(0x14); // sub-command
-        buf.WriteUInt16(0x0001); // new-style context menu
+        buf.WriteUInt16(_newFormat ? (ushort)2 : (ushort)1);
         buf.WriteUInt32(_serial);
         buf.WriteByte((byte)count);
 
         for (int i = 0; i < count; i++)
         {
             var (entryTag, clilocId, flags) = _entries[i];
-            buf.WriteUInt16(entryTag);
-            buf.WriteUInt32(clilocId);
-            buf.WriteUInt16(flags); // 0x00=enabled, 0x01=disabled, 0x20=highlighted
+            // No colour word is ever written, so the colour flag must not claim one.
+            flags = (ushort)(flags & ~ColorFlag);
+            if (_newFormat)
+            {
+                buf.WriteUInt32(clilocId <= 32767 ? clilocId + 3_000_000 : clilocId);
+                buf.WriteUInt16(entryTag);
+                buf.WriteUInt16(flags);
+            }
+            else
+            {
+                buf.WriteUInt16(entryTag);
+                buf.WriteUInt16((ushort)(clilocId >= 3_000_000 ? clilocId - 3_000_000 : clilocId));
+                buf.WriteUInt16(flags);
+            }
         }
 
         buf.WriteLengthAt(1);

@@ -587,6 +587,38 @@ public sealed class PacketWalkForce : PacketWriter
 }
 
 /// <summary>0x85 — Character delete result.</summary>
+/// <summary>0x86 — character list update after a delete (Source-X
+/// PacketCharacterListUpdate, send.cpp:2613): the slot count, then 30-byte name and
+/// 30-byte password per slot. Unlike 0xA9 it carries no cities or flags.</summary>
+public sealed class PacketCharListUpdate : PacketWriter
+{
+    private readonly string[] _charNames;
+    private readonly int _slots;
+
+    public PacketCharListUpdate(string[] charNames, int slots) : base(0x86)
+    {
+        _charNames = charNames;
+        _slots = slots;
+    }
+
+    public override PacketBuffer Build()
+    {
+        byte count = (byte)Math.Clamp(_slots, 0, 255);
+        var buf = CreateVariable(4 + count * 60);
+        buf.WriteByte(count);
+        for (int i = 0; i < count; i++)
+        {
+            buf.WriteAsciiFixed(i < _charNames.Length ? _charNames[i] : "", 30);
+            buf.WriteAsciiFixed("", 30);
+        }
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0x85 — character delete refused. Reasons (Source-X PacketDeleteError):
+/// 0 bad password, 1 does not exist, 2 being played, 3 not old enough, 4 queued for
+/// backup, 5 request could not be carried out. A successful delete sends no 0x85.</summary>
 public sealed class PacketCharDeleteResult : PacketWriter
 {
     private readonly byte _reason; // 0=success

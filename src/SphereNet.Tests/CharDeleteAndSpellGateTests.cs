@@ -73,7 +73,9 @@ public sealed class CharDeleteAndSpellGateTests
             client.HandleCharDelete(0, "pw");
 
             var packets = TestHarness.GetQueuedPackets(state).ToList();
-            Assert.Contains(packets, p => p.Span[0] == 0x85 && p.Span[1] == 0); // success
+            // Success is the 0x86 list update alone; a 0x85 would be shown as an error.
+            Assert.Contains(packets, p => p.Span[0] == 0x86);
+            Assert.DoesNotContain(packets, p => p.Span[0] == 0x85);
             Assert.Null(world.FindChar(ch.Uid));
         }
         finally { GameClient.ServerMinCharDeleteDays = saved; }

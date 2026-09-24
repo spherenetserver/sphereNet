@@ -1575,6 +1575,18 @@ public sealed partial class GameClient
             expansion = 0; // explicit pre-AOS client (version < 4.0)
         string statusName = ResolveStatusName(ch);
         var (hits, maxHits) = NormalizeStatusPair(ch.Hits, ch.MaxHits, ch.Str);
+
+        // Somebody else's status bar carries their name, hit points and whether this
+        // viewer may rename them - nothing more (PacketObjectStatus, send.cpp:180). The
+        // full block, gold and weight included, went to anyone who clicked a status bar,
+        // and working it out for a vendor walked all of its stock every time.
+        if (_character == null || ch != _character)
+        {
+            bool canRename = _character != null && !ch.IsPlayer && ch.HasOwner(_character.Uid);
+            _netState.Send(new PacketStatusShort(ch.Uid.Value, statusName, hits, maxHits, canRename, expansion));
+            return;
+        }
+
         var (stam, maxStam) = NormalizeStatusPair(ch.Stam, ch.MaxStam, ch.Dex);
         var (mana, maxMana) = NormalizeStatusPair(ch.Mana, ch.MaxMana, ch.Int);
 

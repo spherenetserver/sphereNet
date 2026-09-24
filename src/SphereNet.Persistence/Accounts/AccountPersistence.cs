@@ -69,6 +69,10 @@ public static class AccountPersistence
     {
         Directory.CreateDirectory(dir);
 
+        // Source-X Account_SaveAll "looks for changes FIRST" (CAccount.cpp:133): what
+        // an administrator typed into sphereacct.scp is folded in before the write.
+        ApplyChangesFile(accounts, dir, log);
+
         string ext = SaveIO.ExtensionFor(fmt);
         string finalPath = Path.Combine(dir, BaseName + ext);
         string tmpPath = finalPath + ".tmp";
@@ -168,10 +172,70 @@ public static class AccountPersistence
                 "The next load could select the stale snapshot.");
         }
 
+        // ...and once they are in the main file, the changes file is emptied back to
+        // its header (Account_LoadAll(true, true), CAccount.cpp:156).
+        ClearChangesFile(dir, log);
+
         if (skipped > 0)
             log?.LogWarning("{Skipped} account(s) skipped on save: unwritable name", skipped);
         log?.LogInformation("Saved {Count} accounts to {Path}", count, finalPath);
         return count;
+    }
+
+    /// <summary>Source-X's hand-edit file (SPHERE_FILE "acct"). The main file is written
+    /// by the server and rewritten on every save; changes go here and are merged.</summary>
+    public const string ChangesFileName = "sphereacct.scp";
+
+    private const string ChangesHeader =
+        "// Accounts are periodically moved to the sphereaccu.scp file.\n" +
+        "// All account changes should be made here.\n" +
+        "// Use the /ACCOUNT UPDATE command to force accounts to update.\n";
+
+    /// <summary>Source-X Account_LoadAll(fChanges=true) (CAccount.cpp:69/26): each section
+    /// of sphereacct.scp updates the account of that name, or creates it. It was never
+    /// read, so an account added or edited by hand in that file did not exist.</summary>
+    public static int ApplyChangesFile(AccountManager accounts, string dir, ILogger? log = null)
+    {
+        string path = Path.Combine(dir, ChangesFileName);
+        if (!File.Exists(path))
+            return 0;
+        int count = 0;
+        try
+        {
+            using var reader = SaveIO.OpenReader(path);
+            while (reader.NextRecord(out string section))
+            {
+                string? name = ExtractAccountName(section);
+                if (name == null || section.Equals(SaveIO.SaveIdSection, StringComparison.OrdinalIgnoreCase))
+                {
+                    while (reader.NextProperty(out _, out _)) { }
+                    continue;
+                }
+                var account = accounts.FindAccount(name);
+                bool isNew = account == null;
+                account ??= new Account { Name = name, UseMd5Passwords = accounts.Md5Passwords };
+                while (reader.NextProperty(out string key, out string value))
+                    ApplyProperty(account, key, value);
+                if (isNew)
+                    accounts.AddLoaded(account);
+                count++;
+            }
+        }
+        catch (Exception ex)
+        {
+            log?.LogError(ex, "Could not read the account changes file {Path}", path);
+            return count;
+        }
+        if (count > 0)
+            log?.LogInformation("Applied {Count} account change(s) from {Path}", count, path);
+        return count;
+    }
+
+    private static void ClearChangesFile(string dir, ILogger? log)
+    {
+        string path = Path.Combine(dir, ChangesFileName);
+        try { File.WriteAllText(path, ChangesHeader); }
+        catch (Exception ex) { log?.LogWarning(ex, "Could not reset the account changes file {Path}", path); }
     }
 
     /// <summary>Throw away a staged snapshot that will never be published - the world
@@ -200,6 +264,14 @@ public static class AccountPersistence
     /// <summary>Load accounts and report which world generation the file names, so
     /// the caller can check it against the world that actually loaded (D01).</summary>
     public static AccountLoadResult LoadSnapshot(AccountManager accounts, string dir, ILogger? log = null)
+    {
+        var result = LoadMainSnapshot(accounts, dir, log);
+        // Source-X loads the changes file right after the main one (CAccount.cpp:122).
+        ApplyChangesFile(accounts, dir, log);
+        return result;
+    }
+
+    private static AccountLoadResult LoadMainSnapshot(AccountManager accounts, string dir, ILogger? log)
     {
         string? active = ReadManifestTarget(dir);
         if (active != null)

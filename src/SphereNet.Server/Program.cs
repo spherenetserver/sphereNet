@@ -732,7 +732,9 @@ public static partial class Program
         _log.LogInformation("UO client data path resolved: configured='{Configured}' resolved='{Resolved}'",
             _config.MulFilesDir, mulPath);
 
-        _mapData = new MapDataManager(mulPath);
+        _mapData = new MapDataManager(mulPath) { UseMapDiffs = _config.UseMapDiffs };
+        _mapData.OnMapDiffsLoaded += (id, terrain, statics) =>
+            _log.LogInformation("Map{Id} diffs: {Terrain} terrain and {Statics} static blocks patched", id, terrain, statics);
         _mapData.OnMapFileLoaded += (id, path) =>
             // Name the terrain file, loudly. The client picks between map{N}.mul and
             // map{N}LegacyMUL.uop by its own rule, and a folder holding both is the

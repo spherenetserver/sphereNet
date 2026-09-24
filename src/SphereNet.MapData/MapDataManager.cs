@@ -130,6 +130,13 @@ public sealed class MapDataManager : IDisposable
     public event Action<int, string>? OnMapFileLoaded;
     public event Action<int, string, long, DateTime>? OnMapFileLoadedDetailed;
 
+    /// <summary>sphere.ini USEMAPDIFFS (Source-X m_fUseMapDiffs): read the mapdif/stadif
+    /// patch files over each map.</summary>
+    public bool UseMapDiffs { get; set; }
+
+    /// <summary>How many terrain / static blocks the patch files replaced per map.</summary>
+    public event Action<int, int, int>? OnMapDiffsLoaded;
+
     public void InitMap(int mapId, int width, int height)
     {
         string mapPath = Path.Combine(_mulPath, $"map{mapId}.mul");
@@ -170,6 +177,16 @@ public sealed class MapDataManager : IDisposable
         _staticReaders[mapId] = new StaticReader(idxPath, statPath, width, height);
         NotifyMapFileLoaded(mapId, idxPath);
         NotifyMapFileLoaded(mapId, statPath);
+
+        if (UseMapDiffs)
+        {
+            var terrain = MapDiffReader.LoadTerrain(_mulPath, mapId);
+            var statics = MapDiffReader.LoadStatics(_mulPath, mapId);
+            if (_mapReaders.TryGetValue(mapId, out var mul)) mul.Diff = terrain;
+            if (_uopMapReaders.TryGetValue(mapId, out var uop)) uop.Diff = terrain;
+            _staticReaders[mapId].ApplyDiff(statics);
+            OnMapDiffsLoaded?.Invoke(mapId, terrain.Count, statics.Count);
+        }
     }
 
     private void NotifyMapFileLoaded(int mapId, string path)

@@ -709,6 +709,14 @@ public sealed class SphereConfig
     public int FloodDetectionWindowMs { get; set; } = 10_000;
     public int DeadSocketTime { get; set; } = 300;
     public int FreezeRestartTime { get; set; } = 60;
+
+    /// <summary>sphere.ini SECURE (Source-X m_fSecure, default on). The freeze monitor
+    /// only watches for a hung main loop in secure mode.</summary>
+    public bool Secure { get; set; } = true;
+
+    /// <summary>sphere.ini USEMAPDIFFS (Source-X m_fUseMapDiffs, default off): read the
+    /// mapdif/stadif patch files over the maps.</summary>
+    public bool UseMapDiffs { get; set; }
     /// <summary>Accepted for sphere.ini compat, deliberately a NO-OP: SphereNet
     /// runs the network on the main loop with non-blocking sockets + per-pass
     /// budgets (see NetworkManager.MaxAcceptsPerPass) instead of Source-X's
@@ -1155,6 +1163,8 @@ public sealed class SphereConfig
         FloodDetectionWindowMs = ini.GetInt(section, "FloodDetectionWindowMs", FloodDetectionWindowMs);
         DeadSocketTime = ini.GetInt(section, "DeadSocketTime", DeadSocketTime);
         FreezeRestartTime = ini.GetInt(section, "FreezeRestartTime", FreezeRestartTime);
+        Secure = ini.GetBool(section, "Secure", Secure);
+        UseMapDiffs = ini.GetBool(section, "UseMapDiffs", UseMapDiffs);
         NetworkThreads = ini.GetInt(section, "NetworkThreads", NetworkThreads);
         NetTTL = ini.GetInt(section, "NetTTL", NetTTL);
         MulticoreDeterminismDebug = ini.GetBool(section, "MulticoreDeterminismDebug", MulticoreDeterminismDebug);
@@ -1309,34 +1319,84 @@ public sealed class SphereConfig
         cfg.AutoConnect = ini.GetBool(section, "AutoConnect", cfg.AutoConnect);
     }
 
+    /// <summary>Problems found reading MAPn lines, reported by <see cref="Validate"/>.</summary>
+    private readonly List<string> _mapWarnings = [];
+
+    /// <summary>Default geometry of each map file (Source-X CUOMapList::DetectMapSize,
+    /// CUOMapList.cpp:152): used for a MAPn line that leaves a size out.</summary>
+    private static (int X, int Y) DefaultMapSize(int mapFile) => mapFile switch
+    {
+        0 or 1 => (6144, 4096),
+        2 => (2304, 1600),
+        3 => (2560, 2048),
+        4 => (1448, 1448),
+        5 => (1280, 4096),
+        _ => (0, 0),
+    };
+
+    /// <summary>Source-X CUOMapList::Load (CUOMapList.cpp:77): MAP0..MAP255, each
+    /// "maxx,maxy,sectorsize,mapfile,mapid". An empty value disables the map; a zero or
+    /// missing field keeps its default; a size that is not a multiple of 8 or a sector
+    /// size that is not a power of two is reported and the default kept. It read only
+    /// MAP0..MAP5 and int.Parse'd every field, so one malformed line stopped startup.</summary>
     private void LoadMapDefinitions(IniParser ini, string section)
     {
+        _mapWarnings.Clear();
         var maps = new List<MapDefinition>();
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 256; i++)
         {
             string? mapVal = ini.GetValue(section, $"Map{i}");
             if (mapVal == null) continue;
+            if (string.IsNullOrWhiteSpace(mapVal)) continue; // MAPn= disables it
 
             string[] parts = mapVal.Split(',');
-            if (parts.Length < 5) continue;
+            int Field(int n) => n < parts.Length ? LeadingInt(parts[n]) : 0;
+            int maxX = Field(0), maxY = Field(1), sector = Field(2), mapFile = Field(3);
+            int mapId = parts.Length > 4 ? LeadingInt(parts[4]) : -1;
 
-            maps.Add(new MapDefinition
+            var (defX, defY) = DefaultMapSize(mapFile);
+            var def = new MapDefinition { MaxX = defX, MaxY = defY, SectorSize = 64, MapReadId = mapFile, MapSendId = i };
+            if (maxX != 0)
             {
-                MaxX = int.Parse(parts[0].Trim()),
-                MaxY = int.Parse(parts[1].Trim()),
-                SectorSize = int.Parse(parts[2].Trim()),
-                MapReadId = int.Parse(parts[3].Trim()),
-                MapSendId = int.Parse(parts[4].Trim())
-            });
+                if (maxX < 8 || maxX % 8 != 0) _mapWarnings.Add($"MAP{i}: X coord must be multiple of 8 ({maxX} is invalid, {def.MaxX} is still effective)");
+                else def.MaxX = maxX;
+            }
+            if (maxY != 0)
+            {
+                if (maxY < 8 || maxY % 8 != 0) _mapWarnings.Add($"MAP{i}: Y coord must be multiple of 8 ({maxY} is invalid, {def.MaxY} is still effective)");
+                else def.MaxY = maxY;
+            }
+            if (sector > 0)
+            {
+                if ((sector & (sector - 1)) != 0) _mapWarnings.Add($"MAP{i}: Invalid SectorSize ({sector}) is not a power of 2");
+                else def.SectorSize = sector;
+            }
+            if (mapId >= 0) def.MapSendId = mapId;
+            if (def.MaxX <= 0 || def.MaxY <= 0)
+            {
+                _mapWarnings.Add($"MAP{i}: no size given and none known for map file {mapFile}; map disabled");
+                continue;
+            }
+            maps.Add(def);
         }
 
         if (maps.Count > 0)
             Maps = maps.ToArray();
     }
 
+    /// <summary>atoi: the leading integer of a field, 0 when there is none.</summary>
+    private static int LeadingInt(string text)
+    {
+        text = text.Trim();
+        int end = 0;
+        if (end < text.Length && (text[end] == '-' || text[end] == '+')) end++;
+        while (end < text.Length && char.IsDigit(text[end])) end++;
+        return int.TryParse(text.AsSpan(0, end), out int v) ? v : 0;
+    }
+
     public List<string> Validate()
     {
-        var warnings = new List<string>();
+        var warnings = new List<string>(_mapWarnings);
         if (ClientMax <= 0) warnings.Add($"ClientMax={ClientMax} — no clients can connect");
         if (ServPort <= 0 || ServPort > 65535) warnings.Add($"ServPort={ServPort} — invalid port");
         if (MulticorePhaseTimeoutMs < 100) warnings.Add($"MulticorePhaseTimeoutMs={MulticorePhaseTimeoutMs} — too aggressive, will constantly fallback to single-thread");

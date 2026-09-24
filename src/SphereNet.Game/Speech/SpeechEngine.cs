@@ -756,6 +756,10 @@ public sealed class CommandHandler
     /// Program; null = unavailable (bare tests).</summary>
     public static Func<Character, string, bool>? ServerCommandBridge { get; set; }
 
+    /// <summary>In-game ACCOUNT: the console's account command run for a GM
+    /// (Source-X CAccounts::Account_OnCmd is the same command from anywhere).</summary>
+    public static Func<Character, string, bool>? AccountCommandBridge { get; set; }
+
     public CommandResult TryExecute(Character gm, string commandLine)
     {
         if (string.IsNullOrWhiteSpace(commandLine))
@@ -1409,7 +1413,10 @@ public sealed class CommandHandler
 
         Register("ACCOUNT", PrivLevel.Admin, (gm, args) =>
         {
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_account_mgmt"));
+            // Source-X runs Account_OnCmd for an in-game ".ACCOUNT" exactly as for the
+            // console (CAccount.cpp:420, PLEVEL_Admin). It only pointed at the panel.
+            if (AccountCommandBridge == null || !AccountCommandBridge(gm, args ?? ""))
+                OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_account_mgmt"));
         });
 
         Register("BROADCAST", PrivLevel.GM, (gm, args) =>

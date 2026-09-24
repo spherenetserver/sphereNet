@@ -24,6 +24,8 @@ public sealed class AdminCommandProcessor
     public IPBlockList BlockList => _blockList;
 
     public event Action? OnSaveRequested;
+    /// <summary>ACCOUNT UPDATE: fold sphereacct.scp in and write the accounts now.</summary>
+    public event Action? OnAccountUpdateRequested;
     public event Action? OnShutdownRequested;
     public event Action? OnResyncRequested;
     public event Action<string>? OnBroadcast;
@@ -301,6 +303,20 @@ public sealed class AdminCommandProcessor
         }
 
         string[] parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        // ACCOUNT UPDATE — Source-X VACS_UPDATE -> Account_SaveAll (CAccount.cpp:479):
+        // merge the hand-edit file and write the accounts now.
+        if (parts[0].Equals("UPDATE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (OnAccountUpdateRequested == null)
+            {
+                output("ACCOUNT UPDATE is not available here.");
+                return;
+            }
+            OnAccountUpdateRequested.Invoke();
+            output("Accounts updated.");
+            return;
+        }
 
         // ACCOUNT ADD <name> <pass>
         if (parts[0].Equals("ADD", StringComparison.OrdinalIgnoreCase))

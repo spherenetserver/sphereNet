@@ -46,10 +46,16 @@ public sealed class MapReader : IDisposable
         _length = RandomAccess.GetLength(_handle);
     }
 
+    /// <summary>USEMAPDIFFS patch blocks (mapdif), keyed by block number; they replace
+    /// the file's own block.</summary>
+    public Dictionary<int, MapBlock>? Diff { get; set; }
+
     public MapBlock ReadBlock(int blockX, int blockY)
     {
         if (blockX < 0 || blockX >= _blockWidth || blockY < 0 || blockY >= _blockHeight)
             return new MapBlock();
+        if (Diff != null && Diff.TryGetValue(blockX * _blockHeight + blockY, out var patched))
+            return patched;
 
         long offset = ((long)blockX * _blockHeight + blockY) * BlockDataSize;
         if (offset < 0 || offset + BlockDataSize > _length)

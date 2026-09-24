@@ -6,6 +6,39 @@ using SphereNet.Network.Packets;
 namespace SphereNet.Network.Packets.Outgoing;
 
 /// <summary>0x11 — Full status bar info (extended for AOS+).</summary>
+/// <summary>0x11 for somebody else (Source-X PacketObjectStatus, send.cpp:180): name,
+/// hit points, whether the viewer may rename it (their own pet) and the version byte -
+/// and nothing after it. Strength, gold, weight and the rest belong to the character's
+/// own status only.</summary>
+public sealed class PacketStatusShort : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly string _name;
+    private readonly short _hits, _maxHits;
+    private readonly bool _canRename;
+    private readonly byte _version;
+
+    public PacketStatusShort(uint serial, string name, short hits, short maxHits, bool canRename, byte version)
+        : base(0x11)
+    {
+        _serial = serial; _name = name; _hits = hits; _maxHits = maxHits;
+        _canRename = canRename; _version = version;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(48);
+        buf.WriteUInt32(_serial);
+        buf.WriteAsciiFixed(_name, 30);
+        buf.WriteInt16(_hits);
+        buf.WriteInt16(_maxHits);
+        buf.WriteBool(_canRename);
+        buf.WriteByte(_version);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 public sealed class PacketStatusFull : PacketWriter
 {
     private readonly uint _serial;

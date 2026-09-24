@@ -65,6 +65,14 @@ public sealed class StaticReader : IDisposable
     /// <summary>
     /// Read all static items in an 8x8 block.
     /// </summary>
+    /// <summary>USEMAPDIFFS: put the patched static blocks (stadif) in front of the file's
+    /// own, keyed by block number.</summary>
+    public void ApplyDiff(Dictionary<int, StaticItem[]> diff)
+    {
+        foreach (var (blockNum, items) in diff)
+            _blockCache[MakeBlockKey(blockNum / _blockHeight, blockNum % _blockHeight)] = items;
+    }
+
     public StaticItem[] ReadBlock(int blockX, int blockY)
     {
         if (blockX < 0 || blockX >= _blockWidth || blockY < 0 || blockY >= _blockHeight)

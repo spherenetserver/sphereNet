@@ -141,6 +141,26 @@ public static partial class Program
             _consoleProcessor = new AdminCommandProcessor(_world, _accounts, _config,
                 () => _network.ActiveConnections, _loggerFactory, _ipBlockList);
             _consoleProcessor.OnSaveRequested += RequestSaveOnMainLoop;
+            // The account file is rendered from live state, so the write runs on the
+            // main loop whichever console asked for it.
+            _consoleProcessor.OnAccountUpdateRequested += () => _mainLoopActions.Enqueue(SaveAccountsToDisk);
+            _telnet.Processor.OnAccountUpdateRequested += () => _mainLoopActions.Enqueue(SaveAccountsToDisk);
+            SphereNet.Game.Speech.CommandHandler.AccountCommandBridge = (gm, args) =>
+            {
+                if (_consoleProcessor == null)
+                    return false;
+                _clientsByCharUid.TryGetValue(gm.Uid, out var invoker);
+                void Echo(string line)
+                {
+                    if (invoker != null) invoker.SysMessage(line);
+                    else _log.LogInformation("[account:{Gm}] {Line}", gm.Name, line);
+                }
+                // A GM may not reach an account ranked above them unless they are an
+                // administrator (CAccount::r_Verb, CAccount.cpp:1642); the command
+                // itself already needs Admin, so that is every in-game user of it.
+                _consoleProcessor.ProcessCommand(("ACCOUNT " + args).Trim(), Echo, $"game:{gm.Name}");
+                return true;
+            };
             _consoleProcessor.OnShutdownRequested += () => _running = false;
             _consoleProcessor.OnResyncRequested += PerformScriptResync;
             _consoleProcessor.OnAccountPrivLevelChanged += SyncOnlineAccountPrivLevel;

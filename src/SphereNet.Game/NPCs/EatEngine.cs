@@ -78,6 +78,10 @@ public static class EatEngine
     /// poison source: SetPoison(coat * 10, 1 + coat / 50, this).</summary>
     private static void ApplyFoodPoison(Character eater, Item food)
     {
+        // Only food proper carries a coat; grain, grass and garbage do not
+        // (Use_EatQty type switch, CCharUse.cpp:900-906).
+        if (food.ItemType is not (ItemType.Fruit or ItemType.Food or ItemType.FoodRaw or ItemType.MeatRaw))
+            return;
         int coat = Combat.CombatEngine.GetWeaponPoisonSkill(food);
         if (coat > 0)
             eater.SetPoison(coat * 10, 1 + coat / 50, eater);

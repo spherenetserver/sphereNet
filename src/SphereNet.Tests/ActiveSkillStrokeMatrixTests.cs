@@ -154,7 +154,16 @@ public class ActiveSkillStrokeMatrixTests
 
         // Carrying a light fails the Hiding pre-check synchronously: no Hidden flag,
         // no roll — the whole stage machine resolves in the single engine call.
-        player.SetTag("LIGHT_CARRIED", "1");
+        var map = new SphereNet.MapData.MapDataManager("");
+        map.SetSyntheticItemTile(0x0A12, new SphereNet.MapData.Tiles.ItemTileData
+        {
+            Flags = SphereNet.MapData.Tiles.TileFlag.LightSource,
+        });
+        world.MapData = map;
+        var torch = world.CreateItem();
+        torch.BaseId = 0x0A12;                          // a lit torch in hand
+        torch.ItemType = ItemType.LightLit;
+        player.Equip(torch, Layer.TwoHanded);
         Assert.False(ActiveSkillEngine.Hiding(sink));
         Assert.False(player.IsStatFlag(StatFlag.Hidden));
     }

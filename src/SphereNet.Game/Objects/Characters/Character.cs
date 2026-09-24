@@ -3645,6 +3645,26 @@ public partial class Character : ObjBase
 
     /// <summary>The coordinates of the last pick live beside it; everything else
     /// under TARG. is a property of the picked object.</summary>
+    /// <summary>The BREATH sub-keys upstream accepts, matched as it matches them: by
+    /// prefix, so BREATH.DAMTYPE also answers the BREATH.DAM test (CChar.cpp:2522).</summary>
+    private static bool IsBreathKey(string key) =>
+        key.StartsWith("BREATH.MAXDIST", StringComparison.OrdinalIgnoreCase) ||
+        key.StartsWith("BREATH.DAM", StringComparison.OrdinalIgnoreCase) ||
+        key.StartsWith("BREATH.HUE", StringComparison.OrdinalIgnoreCase) ||
+        key.StartsWith("BREATH.ANIM", StringComparison.OrdinalIgnoreCase) ||
+        key.StartsWith("BREATH.TYPE", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A stored BREATH value as a number: a Sphere numeric token or sum, or a
+    /// defname (an ITEMDEF for BREATH.ANIM, a [DEFNAME] constant otherwise).</summary>
+    private static long ParseBreathNumber(string raw)
+    {
+        string s = raw.Trim();
+        if (s.Length == 0) return 0;
+        if (ScriptNumber.TryParseArgument(s, out long n)) return n;
+        if (Definitions.DefinitionLoader.TryGetDefNumber(s, out int dv)) return dv;
+        return Items.Item.ResolveDefName?.Invoke(s) ?? 0;
+    }
+
     private static bool IsTargPointKey(string sub) =>
         sub is "X" or "Y" or "Z" or "MAP" or "UID";
 
@@ -3689,6 +3709,23 @@ public partial class Character : ObjBase
 
         value = "";
         var upper = key.ToUpperInvariant();
+
+        // BREATH.* (CChar::r_WriteVal CHC_BREATH, CChar.cpp:2520): MAXDIST and DAM
+        // read back as decimal, HUE/ANIM/TYPE/DAMTYPE as hex, 0 when unset; the key is
+        // resolved on the character first and then on its CHARDEF (GetDefKey(.., true)).
+        if (IsBreathKey(upper))
+        {
+            string? raw = TryGetTag(upper, out string? own) && !string.IsNullOrEmpty(own)
+                ? own
+                : Definitions.DefinitionLoader.GetCharDef(CharDefIndex)?.TagDefs.Get(upper);
+            long num = ParseBreathNumber(raw ?? "");
+            // Prefix-matched like upstream, so BREATH.DAMTYPE reads as decimal too.
+            value = upper.StartsWith("BREATH.MAXDIST", StringComparison.Ordinal) ||
+                    upper.StartsWith("BREATH.DAM", StringComparison.Ordinal)
+                ? num.ToString()
+                : $"0{(uint)num:X}";
+            return true;
+        }
 
         // CChar::r_GetRef resolves ACT before the target reads the remaining
         // property, including when reached via SRC/REF/TOPOBJ chains.
@@ -4199,7 +4236,9 @@ public partial class Character : ObjBase
             case "MODSTR": value = _modStr.ToString(); return true;
             case "MODDEX": value = _modDex.ToString(); return true;
             case "MODINT": value = _modInt.ToString(); return true;
-            case "MODAR": value = _modAr.ToString(); return true;
+            case "MODAR":
+            case "MODAC": // OC_MODAC is an alias of OC_MODAR (CObjBase.cpp:1541)
+                value = _modAr.ToString(); return true;
             case "MODMAXWEIGHT": value = _modMaxWeight.ToString(); return true;
             case "OBODY": value = $"0{_oBody:X}"; return true;
             case "OSKIN": value = _oSkin.ToString(); return true;
@@ -5246,6 +5285,22 @@ public partial class Character : ObjBase
             return false;
         }
 
+        // BREATH.MAXDIST/DAM/HUE/ANIM/TYPE/DAMTYPE — CChar::r_LoadVal CHC_BREATH
+        // (CChar.cpp:3818) stores them as numbers; the NPC breath attack reads them back
+        // (Skill_Act_Breath, CCharSkill.cpp:3295-3319). Any other BREATH key is refused.
+        if (IsBreathKey(key))
+        {
+            // GetArgLLVal: a number is kept as its value; a defname (BREATH.ANIM=
+            // i_fx_fireball) is kept as written and resolved where it is read.
+            string bv = normalized.Trim();
+            SetTag(key.ToUpperInvariant(),
+                ScriptNumber.TryParseArgument(bv, out long breathVal) ? breathVal.ToString() : bv);
+            return true;
+        }
+        if (key.StartsWith("BREATH", StringComparison.OrdinalIgnoreCase) &&
+            (key.Length == 6 || key[6] == '.'))
+            return false;
+
         // ATTACKER.* writes — Source-X CChar::r_LoadVal CHC_ATTACKER
         // (CChar.cpp:3733). Whole-list verbs first (CLEAR / DELETE / ADD / TARGET),
         // then the per-entry fields. Only IGNORE existed here, so a pack that clears
@@ -5486,7 +5541,9 @@ public partial class Character : ObjBase
             case "MODSTR": if (short.TryParse(normalized, out short msv2)) _modStr = msv2; return true;
             case "MODDEX": if (short.TryParse(normalized, out short mdv)) _modDex = mdv; return true;
             case "MODINT": if (short.TryParse(normalized, out short miv)) _modInt = miv; return true;
-            case "MODAR": if (short.TryParse(normalized, out short mav)) _modAr = mav; return true;
+            case "MODAR":
+            case "MODAC": // alias of MODAR (CObjBase.cpp:1948)
+                if (short.TryParse(normalized, out short mav)) _modAr = mav; return true;
             case "MODMAXWEIGHT": if (short.TryParse(normalized, out short mmwv)) _modMaxWeight = mmwv; return true;
             case "OBODY": if (ushort.TryParse(normalized, out ushort obv)) _oBody = obv; return true;
             case "OSKIN": if (ushort.TryParse(normalized, out ushort oskinv)) _oSkin = oskinv; return true;

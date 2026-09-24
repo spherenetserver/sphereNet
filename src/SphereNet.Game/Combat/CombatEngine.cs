@@ -478,6 +478,14 @@ public static class CombatEngine
                 dmgMin = 0;
                 dmgMax = 1;
             }
+
+            // The weapon's MODAR shifts both ends: Weapon_GetAttack(false/true) is
+            // m_attackBase (+ m_attackRange) + m_ModAr, floored at 0 (CItem.cpp:4922).
+            if (weapon.ModAr != 0)
+            {
+                dmgMin = (int)Math.Max(0L, (long)dmgMin + weapon.ModAr);
+                dmgMax = (int)Math.Max(0L, (long)dmgMax + weapon.ModAr);
+            }
         }
 
         // Source-X Fight_CalcDamage: the bonus is a PERCENTAGE applied to the

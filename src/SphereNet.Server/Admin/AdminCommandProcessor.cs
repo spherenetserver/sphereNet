@@ -93,6 +93,8 @@ public sealed class AdminCommandProcessor
                 output("  RESPAWN FULL               - Delete ALL spawner children, then respawn fresh");
                 output("  RESTOCK                    - Restock all vendors");
                 output("  GARBAGE                    - Force garbage collection");
+                output("  SHRINKMEM                  - Trim the process working set");
+                output("  CALCCRYPT <ver>[,type][,enc] - Login keys for a client version");
                 output("  BLOCKIP <ip>               - Block an IP address");
                 output("  UNBLOCKIP <ip>             - Unblock an IP address");
                 output("  LISTBLOCKED                - List blocked IPs");
@@ -226,8 +228,33 @@ public sealed class AdminCommandProcessor
                 break;
             }
 
+            case "SHRINKMEM":
+            {
+                // SV_SHRINKMEM (CServer.cpp:2213).
+                var (_, shrinkMsg) = Program.ShrinkProcessMemory();
+                output(shrinkMsg);
+                break;
+            }
+
+            case "CALCCRYPT":
+            {
+                // SV_CALCCRYPT (CServer.cpp:1927): the SphereCrypt.ini line for a
+                // client version; with no argument the verb fails.
+                string? cryptLine = string.IsNullOrWhiteSpace(args) ? null : Program.CalcCryptLine(args);
+                output(string.IsNullOrEmpty(cryptLine) || cryptLine == "0"
+                    ? "Usage: CALCCRYPT <version>[,clientType][,encType]"
+                    : cryptLine);
+                break;
+            }
+
             case "GARBAGE":
             {
+                // SV_GARBAGE (CServer.cpp:2012): not while the world is saving.
+                if (Program.IsWorldSaveInProgress)
+                {
+                    output(Program.GarbageRefusedMessage);
+                    break;
+                }
                 // Source-X GARBAGE = FixWeirdness world-integrity sweep + GC.
                 var (checkedCount, fixedCount, deleted) = _world.GarbageCollection(output);
                 output($"World sweep: {checkedCount} items checked, {fixedCount} fixed, {deleted} deleted.");

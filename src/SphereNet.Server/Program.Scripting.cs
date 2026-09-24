@@ -276,9 +276,9 @@ public static partial class Program
             _ when upper.StartsWith("_VARLIST=") => HandleServVarListToCaller(property[9..]),
             _ when upper.StartsWith("_PRINTLISTS=") => HandleServPrintListsToCaller(property[12..]),
             _ when upper.StartsWith("_BROADCAST=") => HandleServBroadcast(property[11..]),
-            _ when upper.StartsWith("_GARBAGE") => HandleServGarbage(),
+            _ when upper.StartsWith("_GARBAGE") => HandleServGarbage(ServArgAfterEquals(property)),
             _ when upper.StartsWith("_INFORMATION=") => HandleServInformationToCaller(property[13..]),
-            _ when upper.StartsWith("_SHRINKMEM") => HandleServShrinkMem(),
+            _ when upper.StartsWith("_SHRINKMEM") => HandleServShrinkMem(ServArgAfterEquals(property)),
             _ when upper.StartsWith("_SECUREMODE") => HandleServSecure(),
             _ when upper.StartsWith("_HEARALL=") => HandleServHearAll(property[9..]),
             _ when upper.StartsWith("_EXPORT=") => HandleServExport(property[8..]),
@@ -2081,9 +2081,10 @@ public static partial class Program
     /// <summary>Port of CCryptoKeyCalc::CalculateLoginKeys + FormattedLoginKey.
     /// Args: "major.minor.revision[,clientType][,encType]" — clientType 3 (EC)
     /// offsets the major version by 63; encType 0 auto-detects from version.</summary>
-    private static string? CalcCryptLine(string argStr)
+    internal static string? CalcCryptLine(string argStr)
     {
-        var parts = argStr.Split(',', StringSplitOptions.TrimEntries);
+        // Str_ParseCmds(args, ppArgs, 3, ", ") (CServer.cpp:1930): comma OR space separated.
+        var parts = argStr.Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0 || parts[0].Length == 0)
             return "0";
 
@@ -2188,8 +2189,15 @@ public static partial class Program
     /// <summary>Source-X <c>serv.garbage</c> — the FixWeirdness world-integrity
     /// sweep (repair/delete malformed items with reason logging) followed by a
     /// managed GC pass, mirroring CWorld::GarbageCollection.</summary>
-    private static string HandleServGarbage()
+    private static string HandleServGarbage(string src)
     {
+        // SV_GARBAGE (CServer.cpp:2012): refused while the world is saving, the
+        // message going to the caller (or the log when the server itself asked).
+        if (IsWorldSaveInProgress)
+        {
+            ReplyToCallerOrLog(src, GarbageRefusedMessage);
+            return "0";
+        }
         if (_world != null)
         {
             var (checkedCount, fixedCount, deleted) = _world.GarbageCollection(
@@ -2211,18 +2219,57 @@ public static partial class Program
     private static bool _secureMode;
     public static bool SecureMode => _secureMode;
 
-    /// <summary>Source-X <c>serv.shrinkmem</c> (SetProcessWorkingSetSize):
-    /// mapped to a compacting managed GC pass.</summary>
-    private static string HandleServShrinkMem()
+    /// <summary>Source-X <c>serv.shrinkmem</c> as a script verb; see
+    /// <see cref="ShrinkProcessMemory"/>.</summary>
+    private static string HandleServShrinkMem(string src)
     {
-        long before = GC.GetTotalMemory(false);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        long after = GC.GetTotalMemory(true);
-        _log?.LogInformation("[script] SERV.SHRINKMEM — {Before} KB -> {After} KB",
-            before / 1024, after / 1024);
-        return "1";
+        var (ok, message) = ShrinkProcessMemory();
+        if (ok)
+            ReplyToCallerOrLog(src, message);
+        else
+            _log?.LogError("{Message}", message);
+        return ok ? "1" : "0";
+    }
+
+    internal const string GarbageRefusedMessage = "Not allowed during world save and/or resync pause";
+
+    /// <summary>A background world save is still writing - the window in which
+    /// Source-X refuses GARBAGE (g_World.IsSaving, CServer.cpp:2013).</summary>
+    internal static bool IsWorldSaveInProgress => _backgroundSaveTask is { IsCompleted: false };
+
+    /// <summary>SV_SHRINKMEM (CServer.cpp:2213): on Windows, trim the working set with
+    /// SetProcessWorkingSetSize(process, -1, -1); on any other OS the command is
+    /// refused with upstream's error. Returns the line upstream prints.</summary>
+    internal static (bool Ok, string Message) ShrinkProcessMemory()
+    {
+        if (!OperatingSystem.IsWindows())
+            return (false, "Command not avaible on *NIX os.");
+        if (!SetProcessWorkingSetSize(System.Diagnostics.Process.GetCurrentProcess().Handle,
+                (nint)(-1), (nint)(-1)))
+            return (false, "Error during process shrink.");
+        return (true, "Memory shrinked succesfully.");
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetProcessWorkingSetSize(nint hProcess, nint dwMinimumWorkingSetSize,
+        nint dwMaximumWorkingSetSize);
+
+    /// <summary>The text after the first '=' of a "_VERB=arg" protocol line.</summary>
+    private static string ServArgAfterEquals(string property)
+    {
+        int eq = property.IndexOf('=');
+        return eq >= 0 ? property[(eq + 1)..].Trim() : "";
+    }
+
+    /// <summary>Upstream's "pSrc != this ? pSrc->SysMessage : g_Log.Event" split: a
+    /// script run on behalf of a character answers that character's client; the
+    /// server's own context answers the log.</summary>
+    private static void ReplyToCallerOrLog(string src, string message)
+    {
+        var console = ResolveCallerConsole(src);
+        if (console != null) console.SysMessage(message);
+        else _log?.LogInformation("{Message}", message);
     }
 
     /// <summary>Source-X <c>serv.secure</c> — toggle secure mode. While enabled,

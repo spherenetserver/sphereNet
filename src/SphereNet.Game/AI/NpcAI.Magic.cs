@@ -722,8 +722,10 @@ public sealed partial class NpcAI
     /// UNCLAMPED (script authority); the STR*5/100 default clamps 1-65535.</summary>
     private static int GetBreathDamage(Character npc)
     {
-        if (npc.TryGetTag("BREATH.DAM", out string? dmgStr) && int.TryParse(dmgStr, out int custom))
-            return Math.Max(1, custom);
+        // A zero BREATH.DAM means "use the default" (if (!iDamage), CCharSkill.cpp:3307).
+        long custom = ReadSpecialTagNumber(npc, "BREATH.DAM", resolveItemDef: false);
+        if (custom != 0)
+            return (int)Math.Clamp(custom, 1, int.MaxValue);
         int dmg = npc.Str * 5 / 100;
         return Math.Clamp(dmg, 1, ushort.MaxValue);
     }

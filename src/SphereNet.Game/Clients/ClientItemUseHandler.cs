@@ -139,10 +139,195 @@ public sealed class ClientItemUseHandler
             _client.TryDeleteItemFromClient(item);
         }
     }
+    /// <summary>Use a switch (Do_Use_Item IT_SWITCH, CCharUse.cpp:1763): flip its
+    /// graphic, then work whatever it is linked to.</summary>
+    private void UseSwitch(Item item)
+    {
+        if (_character == null) return;
+        // Toggle the lever graphic (Source-X SetSwitchState): swap BaseId
+        // with the alternate held in MORE1 so the lever visibly flips.
+        if (item.More1 != 0)
+        {
+            ushort altGfx = (ushort)item.More1;
+            item.More1 = item.BaseId;
+            item.BaseId = altGfx;
+            BroadcastNearby?.Invoke(item.Position, UpdateRange,
+                new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
+                    item.X, item.Y, item.Z, item.Hue), 0);
+            _netState.Send(new PacketSound(0x0F, _character.X, _character.Y, _character.Z));
+        }
+
+        // Source-X follows the item's LINK chain after the use itself
+        // (Use_Item, CCharUse.cpp:1962) - a lever exists to work whatever it
+        // is wired to, and only the graphic was flipping.
+        FollowItemLinks(item);
+    }
+
+    private static readonly string[] SpyglassPhaseKeys =
+    [
+        Msg.ItemuseSpyglassM1, Msg.ItemuseSpyglassM2, Msg.ItemuseSpyglassM3, Msg.ItemuseSpyglassM4,
+        Msg.ItemuseSpyglassM5, Msg.ItemuseSpyglassM6, Msg.ItemuseSpyglassM7, Msg.ItemuseSpyglassM8,
+    ];
+
+    /// <summary>Look through a spyglass (Do_Use_Item IT_SPY_GLASS, CCharUse.cpp:1914):
+    /// the phases of both moons, and - on a ship - what can be seen from the deck.</summary>
+    private void UseSpyGlass(Item glass)
+    {
+        if (_character == null) return;
+        long minutes = _world.WorldClockMinutes;
+        SysMessage(ServerMessages.GetFormatted(Msg.ItemuseSpyglassTr,
+            ServerMessages.Get(SpyglassPhaseKeys[World.Sectors.Sector.GetMoonPhase(minutes, felucca: false)])));
+        SysMessage(ServerMessages.GetFormatted(Msg.ItemuseSpyglassFe,
+            ServerMessages.Get(SpyglassPhaseKeys[World.Sectors.Sector.GetMoonPhase(minutes, felucca: true)])));
+
+        if (_world.FindRegion(_character.Position) is { } region && region.IsFlag(RegionFlag.Ship))
+            ObjectMessage(_character, DescribeSpyglassView(_world, _character, glass));
+    }
+
+    private static string MapDirName(Point3D from, Point3D to) =>
+        ServerMessages.Get(from.X == to.X && from.Y == to.Y
+            ? "map_dir_8"
+            : "map_dir_" + ((int)from.GetDirectionTo(to) & 7));
+
+    private static bool IsWaterTerrain(ushort terrain) =>
+        terrain is 0x00A8 or 0x00A9 or 0x00AA or 0x00AB or 0x0136 or 0x0137;   // TERRAIN_WATER1-6
+
+    /// <summary>CItem::Use_SpyGlass (CItem.cpp:5127): nearest land when at sea, then
+    /// ships and floating things, then creatures, within a horizon widened by rain and
+    /// by darkness.</summary>
+    internal static string DescribeSpyglassView(GameWorld world, Character user, Item glass)
+    {
+        var pt = user.Position;
+        int radar = SphereNet.Game.Scripting.ScriptTouchAccess.Configuration.MapViewRadar;
+        if (radar <= 0) radar = 31;                        // UO_MAP_VIEW_RADAR
+        int sight = radar > 5 ? radar - 5 : 26;
+        var sector = world.GetSector(pt);
+        byte weather = sector?.Weather ?? World.Sectors.Sector.WeatherDry;
+        int light = sector?.Light ?? 0;
+        bool rain = weather == (byte)WeatherType.Rain;
+
+        double weatherSight = rain ? 0.25 * sight : 0.0;
+        double lightSight = (1.0 - light / 25.0) * sight * 0.25;
+        int visibility = (int)(sight + weatherSight + lightSight);
+
+        var result = new System.Text.StringBuilder();
+        var md = world.MapData;
+        if (md == null)
+            return "";
+        if (IsWaterTerrain(md.GetTerrainTile(pt.Map, pt.X, pt.Y).TileId))
+        {
+            // Look for land every second tile, for speed.
+            var (w, h) = md.GetMapSize(pt.Map);
+            Point3D? land = null;
+            for (int x = pt.X - visibility; x <= pt.X + visibility; x += 2)
+            {
+                for (int y = pt.Y - visibility; y <= pt.Y + visibility; y += 2)
+                {
+                    if (x < 0 || y < 0 || x >= w || y >= h)
+                        continue;
+                    if (IsWaterTerrain(md.GetTerrainTile(pt.Map, x, y).TileId))
+                        continue;
+                    var cur = new Point3D((short)x, (short)y, pt.Z, pt.Map);
+                    if (land == null || pt.GetDistanceTo(cur) < pt.GetDistanceTo(land.Value))
+                        land = cur;
+                }
+            }
+
+            if (land != null)
+                result.Append(ServerMessages.Get(Msg.UseSpyglassLand)).Append(' ')
+                    .Append(MapDirName(pt, land.Value)).Append(". ");
+            else if (light > 3)
+                result.Append(ServerMessages.Get(Msg.UseSpyglassDark));
+            else if (rain)
+                result.Append(ServerMessages.Get(Msg.UseSpyglassWeather));
+            else
+                result.Append(ServerMessages.Get(Msg.UseSpyglassNoLand));
+        }
+
+        // Interesting items - boats, flotsam - leaving out our own ship's parts.
+        Item? itemSighted = null, boatSighted = null;
+        int itemCount = 0, boatCount = 0;
+        foreach (var seen in world.GetItemsInRange(pt, visibility))
+        {
+            if (seen == glass)
+                continue;
+            int dist = pt.GetDistanceTo(seen.Position);
+            if (dist > visibility || dist <= 8)            // beyond the horizon, or fuzzy up close
+                continue;
+            if (seen.Link.IsValid && world.FindItem(seen.Link) is { } linked &&
+                Item.IsMultiItemType(linked.ItemType))
+                continue;
+
+            if (dist <= radar && seen.ItemType == ItemType.Ship)
+            {
+                boatCount++;
+                if (boatSighted == null || dist < pt.GetDistanceTo(boatSighted.Position))
+                    boatSighted = seen;
+            }
+            else
+            {
+                itemCount++;
+                if (itemSighted == null || dist < pt.GetDistanceTo(itemSighted.Position))
+                    itemSighted = seen;
+            }
+        }
+        if (boatSighted != null)
+        {
+            string dir = MapDirName(pt, boatSighted.Position);
+            result.Append(boatCount == 1
+                ? ServerMessages.GetFormatted("ship_seen_ship_single", boatSighted.Name, dir)
+                : ServerMessages.GetFormatted("ship_seen_ship_many", dir));
+        }
+        if (itemSighted != null)
+        {
+            int dist = pt.GetDistanceTo(itemSighted.Position);
+            string dir = MapDirName(pt, itemSighted.Position);
+            string name = Skills.Information.InfoSkillExtensions.GetNameFull(itemSighted, false);
+            if (itemCount == 1)
+                result.Append(dist > radar
+                    ? ServerMessages.GetFormatted("ship_seen_sth_dir", dir)
+                    : ServerMessages.GetFormatted("ship_seen_item_dir", name, dir));
+            else
+                result.Append(dist > radar
+                    ? ServerMessages.GetFormatted("ship_seen_item_dir_many", dir)
+                    : ServerMessages.GetFormatted("ship_seen_special_dir", name, dir));
+        }
+
+        // Creatures, but nobody aboard a ship.
+        Character? charSighted = null;
+        int charCount = 0;
+        foreach (var other in world.GetCharsInRange(pt, visibility))
+        {
+            if (other == user)
+                continue;
+            if (world.FindRegion(other.Position) is { } otherRegion && otherRegion.IsFlag(RegionFlag.Ship))
+                continue;
+            int dist = pt.GetDistanceTo(other.Position);
+            if (dist > visibility)
+                continue;
+            charCount++;
+            if (charSighted == null || dist < pt.GetDistanceTo(charSighted.Position))
+                charSighted = other;
+        }
+        if (charSighted != null)
+        {
+            string dir = MapDirName(pt, charSighted.Position);
+            result.Append(charCount == 1
+                ? ServerMessages.GetFormatted("ship_seen_creat_single", dir)
+                : ServerMessages.GetFormatted("ship_seen_creat_many", dir));
+        }
+        return result.ToString();
+    }
+
+    /// <summary>A step-activated switch the character walked onto. CheckLocationEffects
+    /// calls Use_Item directly (CCharAct.cpp:5028), so neither @DClick nor the reach
+    /// test is involved.</summary>
+    internal void UseSteppedSwitch(Item item) => UseSwitch(item);
+
     private static int GetVendorItemPrice(Character vendor, Item item) => GameClient.GetVendorItemPrice(vendor, item);
     private static int GetVendorItemSellPrice(Character vendor, Item item) => GameClient.GetVendorItemSellPrice(vendor, item);
 
-    public void HandleDoubleClick(uint uid)
+    public void HandleDoubleClick(uint uid, bool testTouch = true)
     {
         if (_character == null) return;
 
@@ -240,7 +425,9 @@ public sealed class ClientItemUseHandler
 
             // CAN_I_FORCEDC skips the reach test outright, priv level aside
             // (Cmd_Use_Item clears fTestTouch for it, CClientUse.cpp:31).
-            if (_character.PrivLevel < PrivLevel.GM &&
+            // An engine-made use with fTestTouch off skips it too (Use_Obj,
+            // CCharUse.cpp:1971 -> Event_DoubleClick).
+            if (testTouch && _character.PrivLevel < PrivLevel.GM &&
                 (CanFlagsOf(item) & Core.Enums.CanFlags.I_ForceDC) == 0)
             {
                 // Loose ground item: simple tile-distance reach. A contained item
@@ -681,17 +868,11 @@ public sealed class ClientItemUseHandler
                             break;
                     }
                 }
-                // Trapped container: fire trap on open, then disarm
-                if (item.TryGetTag("TRAP_DAMAGE", out string? trapDmgStr) &&
-                    int.TryParse(trapDmgStr, out int trapDmg) && trapDmg > 0)
-                {
-                    if (!CombatEngine.IsDamageImmune(_character))
-                    {
-                        _character.Hits -= (short)Math.Min(trapDmg, _character.Hits);
-                        SysMessage("You set off a trap!");
-                    }
-                    item.RemoveTag("TRAP_DAMAGE");
-                }
+                // No hard-coded container trap goes off here: upstream opens a
+                // container without looking for one (Cmd_Use_Item IT_CONTAINER, CClientUse.cpp:213),
+                // and Magic Trap leaves nothing native behind to spring
+                // (CItem::OnSpellEffect has no case for it, CItem.cpp:5663). A
+                // trapped chest is the script's @DClick.
                 SendOpenContainer(item);
                 break;
             }
@@ -826,6 +1007,8 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.Food:
             case ItemType.Fruit:
+                UseEat(item);
+                break;
             case ItemType.Drink:
                 // Source-X Use_Eat/Use_Drink refuse an item the user cannot move
                 // (CCharUse.cpp:927/992 CanMoveItem gate) BEFORE consuming it — so a
@@ -833,8 +1016,7 @@ public sealed class ClientItemUseHandler
                 // non-GM double-click. GM and movable pack items pass.
                 if (!ItemMoveRules.CanMove(_character, item, out _))
                 {
-                    SysMessage(ServerMessages.Get(
-                        item.ItemType == ItemType.Drink ? Msg.DrinkCantmove : Msg.FoodCantmove));
+                    SysMessage(ServerMessages.Get(Msg.DrinkCantmove));
                     break;
                 }
                 // One meal, one path: EatEngine carries the reference's @Eat
@@ -862,12 +1044,13 @@ public sealed class ClientItemUseHandler
             // forever; the move rule is what actually protects a placed trough.
             case ItemType.Grain:
             case ItemType.Grass:
-                if (!ItemMoveRules.CanMove(_character, item, out _))
-                {
-                    SysMessage(ServerMessages.Get(Msg.FoodCantmove));
-                    break;
-                }
-                EatOneUnit(item);
+            // Raw food and garbage go to the same Use_Eat (CCharUse.cpp:1846-1851):
+            // whether they can be eaten is the eater's FOODTYPE, not the item's type
+            // - a wolf eats raw meat, a goat eats garbage, a human refuses both.
+            case ItemType.FoodRaw:
+            case ItemType.MeatRaw:
+            case ItemType.Garbage:
+                UseEat(item);
                 break;
 
             case ItemType.WaterWash:
@@ -1157,7 +1340,7 @@ public sealed class ClientItemUseHandler
                 break;
             }
             case ItemType.SpyGlass:
-                SysMessage(ServerMessages.Get(Msg.ItemuseTelescope));
+                UseSpyGlass(item);
                 break;
             case ItemType.Map:
             case ItemType.MapBlank:
@@ -1548,23 +1731,7 @@ public sealed class ClientItemUseHandler
                 break;
             }
             case ItemType.Switch:
-                // Toggle the lever graphic (Source-X SetSwitchState): swap BaseId
-                // with the alternate held in MORE1 so the lever visibly flips.
-                if (item.More1 != 0)
-                {
-                    ushort altGfx = (ushort)item.More1;
-                    item.More1 = item.BaseId;
-                    item.BaseId = altGfx;
-                    BroadcastNearby?.Invoke(item.Position, UpdateRange,
-                        new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
-                            item.X, item.Y, item.Z, item.Hue), 0);
-                    _netState.Send(new PacketSound(0x0F, _character.X, _character.Y, _character.Z));
-                }
-
-                // Source-X follows the item's LINK chain after the use itself
-                // (Use_Item, CCharUse.cpp:1962) - a lever exists to work whatever it
-                // is wired to, and only the graphic was flipping.
-                FollowItemLinks(item);
+                UseSwitch(item);
                 // ARGN1 = fStanding (Source-X @Step contract): 1 — the char is
                 // standing at/using the item rather than walking onto it.
                 _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
@@ -1782,12 +1949,6 @@ public sealed class ClientItemUseHandler
                 SysMessage("You examine the rope.");
                 break;
 
-            // ---- food variants ----
-            case ItemType.FoodRaw:
-            case ItemType.MeatRaw:
-                SysMessage("This must be cooked first.");
-                break;
-
             // ---- comm crystal ----
             case ItemType.CommCrystal:
                 // Source-X CItemCommCrystal: double-clicking opens a target cursor;
@@ -1870,6 +2031,9 @@ public sealed class ClientItemUseHandler
             case ItemType.WeaponXBow:
             case ItemType.WeaponThrowing:
             case ItemType.WeaponWhip:
+            // A talisman is only worn, like the rest of the group
+            // (Do_Use_Item IT_TALISMAN -> ItemEquip, CCharUse.cpp:1897).
+            case ItemType.Talisman:
                 break;
 
             default:
@@ -2967,6 +3131,36 @@ public sealed class ClientItemUseHandler
     /// (CCharUse.cpp:889), so a full player loses nothing to a stray double-click.
     /// SphereNet ignored what the meal engine answered and took the unit regardless -
     /// deleting the last one outright.</summary>
+    private void UseEat(Item food)
+    {
+        if (_character == null) return;
+        // Use_Eat (CCharUse.cpp:919): refuse what the eater may not move, then a
+        // body that cannot eat at all, then food outside its FOODTYPE diet.
+        if (!ItemMoveRules.CanMove(_character, food, out _))
+        {
+            SysMessage(ServerMessages.Get(Msg.FoodCantmove));
+            return;
+        }
+        if (_character.MaxFood == 0)
+        {
+            SysMessage(ServerMessages.Get(Msg.FoodCanteat));
+            return;
+        }
+        if (!CanEatFood(_character, food))
+        {
+            SysMessage(ServerMessages.Get(Msg.FoodRcanteat));
+            return;
+        }
+        EatOneUnit(food);
+    }
+
+    /// <summary>Food_CanEat (CCharStatus.cpp:888): the eater's chardef FOODTYPE
+    /// decides. Without the diet hook wired (bare tests) the cooked classes a human
+    /// diet names are the answer, and raw food and garbage are refused.</summary>
+    internal static bool CanEatFood(Character eater, Item food) =>
+        Character.NpcCanEatFood?.Invoke(eater, food)
+            ?? food.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.Grass;
+
     private void EatOneUnit(Item food)
     {
         if (_character == null) return;

@@ -38,6 +38,12 @@ public sealed class MovementEngine
     /// Returns false if the character is barred from the ship occupying the tile.</summary>
     public Func<Objects.Characters.Character, Point3D, bool>? CanBoardShip { get; set; }
 
+    /// <summary>Source-X CChar::Use_Item for an item the character stepped onto (a
+    /// step-activated switch). Program.cs routes it through the mover's client so the
+    /// switch's LINK chain runs; returns false when nobody took it (no client), and the
+    /// engine then just flips the switch graphic (CItem::SetSwitchState).</summary>
+    public Func<Objects.Characters.Character, Objects.Items.Item, bool>? OnStepUseItem { get; set; }
+
     public static int WalkDelayFoot { get; set; } = 400;
     public static int WalkDelayMount { get; set; } = 200;
     public static int RunDelayFoot { get; set; } = 200;
@@ -609,6 +615,13 @@ public sealed class MovementEngine
                             else ch.Kill();
                         }
                     }
+                    break;
+                case ItemType.Switch:
+                    // A switch with m_itSwitch.m_wStep (MOREX) set works by being
+                    // walked onto: Use_Item on it (CheckLocationEffects,
+                    // CCharAct.cpp:5026; CItem.h:550). Only a double-click ran it.
+                    if (item.MoreP.X != 0 && OnStepUseItem?.Invoke(ch, item) != true)
+                        item.SetSwitchState();
                     break;
                 case ItemType.ShipPlank:
                 case ItemType.Rope:

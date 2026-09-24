@@ -39,10 +39,9 @@ public static class ActiveSkillEngine
         var ch = sink.Self;
         if (ch.IsInWarMode) return false;
 
-        // Source-X iterates equipped items for CAN_I_LIGHT. SphereNet does not
-        // model the can-flag yet; mirror the upstream gate via a tag the world
-        // can set (e.g. equipped torch/lantern emits LIGHT_CARRIED=1).
-        if (ch.TryGetTag("LIGHT_CARRIED", out string? lit) && lit == "1")
+        // Nothing worn on a visible layer may be a light (Skill_Hiding START,
+        // CCharSkill.cpp:2503-2514). The old LIGHT_CARRIED tag was set by nothing.
+        if (IsCarryingLight(ch, sink.World))
         {
             sink.SysMessage(ServerMessages.Get(Msg.HidingToolit));
             return false;
@@ -64,6 +63,31 @@ public static class ActiveSkillEngine
             // takes that char's name; it was printed here with a raw %s.
         }
         return success;
+    }
+
+    /// <summary>Is anything equipped on a visible layer CAN_I_LIGHT? The flag is the
+    /// item definition's CAN plus the tile data's light-source bit
+    /// (CItemBase::GetItemTiledataFlags, CItemBase.cpp:730), so a lit torch - whose
+    /// graphic is the lit one - counts and an unlit one does not.</summary>
+    internal static bool IsCarryingLight(Character ch, World.GameWorld? world)
+    {
+        for (var layer = Layer.None + 1; layer <= Layer.Horse; layer++)
+        {
+            var worn = ch.GetEquippedItem(layer);
+            if (worn == null || !Item.IsVisibleLayer(layer))
+                continue;
+            var def = Definitions.DefinitionLoader.GetItemDef(
+                Definitions.ItemDefHelper.ResolveInstanceDefIndex(worn));
+            ulong can = (ulong)(def?.Can ?? CanFlags.None);
+            var md = world?.MapData;
+            if (md != null &&
+                (md.GetItemTileData(worn.DispIdFull).Flags & SphereNet.MapData.Tiles.TileFlag.LightSource) != 0)
+                can |= (ulong)CanFlags.I_Light;
+            // CANMASK is XORed over the definition (GetCanFlags, CObjBase.h:153).
+            if (((can ^ worn.CanMask) & (ulong)CanFlags.I_Light) != 0)
+                return true;
+        }
+        return false;
     }
 
     // --------------------------------------------------------------- Stealth

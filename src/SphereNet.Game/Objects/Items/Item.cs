@@ -1096,6 +1096,20 @@ public class Item : ObjBase
         OnVisualUpdate?.Invoke(this);
     }
 
+    /// <summary>Flip a switch to its other state: the graphic trades places with the
+    /// one held in MORE1 (CItem::SetSwitchState, CItem.cpp:5452). Returns false when
+    /// MORE1 names no other state.</summary>
+    public bool SetSwitchState()
+    {
+        if (More1 == 0)
+            return false;
+        ushort next = (ushort)More1;
+        More1 = BaseId;
+        BaseId = next;
+        OnVisualUpdate?.Invoke(this);
+        return true;
+    }
+
     /// <summary>Come back out of the animation state SetAnim put us in.</summary>
     private void EndAnim()
     {

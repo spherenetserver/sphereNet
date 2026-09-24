@@ -1371,7 +1371,7 @@ public sealed class SpellEngine
                     // Fire the scriptable @SpellEffect first; only apply the
                     // hardcoded item-spell behavior when no script overrode it.
                     if (FireItemSpellEffect(caster, itemTarget, def) != TriggerResult.True)
-                        ApplyItemTargetSpell(itemTarget, def);
+                        ApplyItemTargetSpell(caster, itemTarget, def);
                 }
             }
         }
@@ -1406,11 +1406,24 @@ public sealed class SpellEngine
         return true;
     }
 
-    /// <summary>Hardcoded behavior for item-targeted spells (Magic Lock/Unlock,
-    /// Magic Trap/Untrap). Runs only when no @SpellEffect script overrode it.
-    /// (Telekinesis remains script-driven via @SpellEffect — its real effect is
-    /// a client-routed remote double-click.)</summary>
-    private static void ApplyItemTargetSpell(Item item, SpellDef def)
+    /// <summary>Source-X CChar::Use_Obj for a spell that acts as a double-click
+    /// (Telekinesis). Program.cs routes it through the caster's client with the
+    /// reach test off; unwired (headless) the spell does nothing further.</summary>
+    public Action<Character, Item>? OnUseObject { get; set; }
+
+    /// <summary>Source-X CChar::CheckCorpseCrime(pCorpse, fLooting=true): flag the
+    /// caster criminal (with witnesses) when reaching into this corpse is a crime.
+    /// Wired to DeathEngine.</summary>
+    public Action<Character, Item>? OnCorpseCrimeCheck { get; set; }
+
+    /// <summary>Hardcoded behavior for item-targeted spells. Runs only when no
+    /// @SpellEffect script overrode it.
+    ///
+    /// Magic Trap and Magic Untrap have no hard-coded effect upstream: Spell_CastDone
+    /// hands them to CItem::OnSpellEffect (CCharSpell.cpp:3117-3124), whose switch has
+    /// no case for either (CItem.cpp:5663), so what they do is the script's. SphereNet
+    /// wrote a TRAPPED tag that nothing ever read.</summary>
+    private void ApplyItemTargetSpell(Character caster, Item item, SpellDef def)
     {
         switch (def.Id)
         {
@@ -1422,14 +1435,30 @@ public sealed class SpellEngine
                 if (item.ItemType == ItemType.ContainerLocked) item.ItemType = ItemType.Container;
                 else if (item.ItemType == ItemType.DoorLocked) item.ItemType = ItemType.Door;
                 break;
-            case SpellType.MagicTrap:
-                item.SetTag("TRAPPED", "1");
-                break;
-            case SpellType.MagicUntrap:
-                item.RemoveTag("TRAPPED");
+            case SpellType.Telekinesis:
+                ApplyTelekinesis(caster, item);
                 break;
         }
     }
+
+    /// <summary>SPELL_Telekin (CCharSpell.cpp:3126): reaching into someone else's
+    /// corpse is the looting crime and reveals the caster; then the target is used
+    /// as a double-click without the touch test.</summary>
+    private void ApplyTelekinesis(Character caster, Item item)
+    {
+        if (item.GetTopLevelObj() is Item { ItemType: ItemType.Corpse } corpse && !IsCorpseOf(corpse, caster))
+        {
+            OnCorpseCrimeCheck?.Invoke(caster, corpse);
+            caster.ClearHiddenState();
+        }
+        OnUseObject?.Invoke(caster, item);
+    }
+
+    /// <summary>The corpse's owner link (m_uidLink) names this character.</summary>
+    private static bool IsCorpseOf(Item corpse, Character ch) =>
+        corpse.Link == ch.Uid ||
+        (corpse.TryGetTag("OWNER_UID", out string? owner) &&
+         uint.TryParse(owner, out uint ownerUid) && ownerUid == ch.Uid.Value);
 
     private TriggerResult FireItemSpellEffect(Character caster, Item item, SpellDef def)
     {

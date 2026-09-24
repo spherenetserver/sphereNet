@@ -2175,6 +2175,11 @@ public sealed class ClientWorldFeaturesHandler
                 case ItemType.PortLocked:
                     UsePortcullis(next);
                     break;
+                case ItemType.Switch:
+                    // A linked switch flips too (Do_Use_Item IT_SWITCH with fLink,
+                    // CCharUse.cpp:1763).
+                    next.SetSwitchState();
+                    break;
             }
 
             current = next;

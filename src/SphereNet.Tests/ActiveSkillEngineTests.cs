@@ -65,8 +65,17 @@ public class ActiveSkillEngineTests
     public void Hiding_LightCarried_RejectsWithToolitMessage()
     {
         var world = MakeWorld();
+        var map = new SphereNet.MapData.MapDataManager("");
+        map.SetSyntheticItemTile(0x0A12, new SphereNet.MapData.Tiles.ItemTileData
+        {
+            Flags = SphereNet.MapData.Tiles.TileFlag.LightSource,
+        });
+        world.MapData = map;
         var ch = MakeChar();
-        ch.SetTag("LIGHT_CARRIED", "1");
+        var torch = world.CreateItem();
+        torch.BaseId = 0x0A12;                          // a lit torch graphic
+        torch.ItemType = ItemType.LightLit;
+        ch.Equip(torch, Layer.TwoHanded);
         var sink = new RecordingActiveSink(ch, world);
 
         bool ok = ActiveSkillEngine.Hiding(sink);
@@ -74,6 +83,37 @@ public class ActiveSkillEngineTests
         Assert.False(ok);
         Assert.Single(sink.Log);
         Assert.Equal(ServerMessages.Get(Msg.HidingToolit), sink.Log[0].Text);
+    }
+
+    [Fact]
+    public void Hiding_UnlitTorchWorn_LitTorchPacked_IsNotBlocked()
+    {
+        // Only a light worn on a visible layer counts (CCharSkill.cpp:2503-2514):
+        // an unlit torch in hand and a lit one inside the pack both leave hiding open.
+        var world = MakeWorld();
+        var map = new SphereNet.MapData.MapDataManager("");
+        map.SetSyntheticItemTile(0x0A12, new SphereNet.MapData.Tiles.ItemTileData
+        {
+            Flags = SphereNet.MapData.Tiles.TileFlag.LightSource,
+        });
+        world.MapData = map;
+        var ch = MakeChar();
+        var unlit = world.CreateItem();
+        unlit.BaseId = 0x0F6B;
+        unlit.ItemType = ItemType.LightOut;
+        ch.Equip(unlit, Layer.TwoHanded);
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        ch.Equip(pack, Layer.Pack);
+        var lit = world.CreateItem();
+        lit.BaseId = 0x0A12;
+        lit.ItemType = ItemType.LightLit;
+        pack.AddItem(lit);
+
+        Assert.False(ActiveSkillEngine.IsCarryingLight(ch, world));
+        var sink = new RecordingActiveSink(ch, world);
+        ActiveSkillEngine.Hiding(sink);
+        Assert.DoesNotContain(sink.Log, l => l.Text == ServerMessages.Get(Msg.HidingToolit));
     }
 
     [Fact]

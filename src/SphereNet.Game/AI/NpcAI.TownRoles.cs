@@ -404,6 +404,10 @@ public sealed partial class NpcAI
             if (rid.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw) &&
                 resources!.ResolveDefName(itemDef.TypeRaw.Trim()) == rid)
                 return true;
+            // A typedef entry matches the item's live type (FindResourceMatch ->
+            // IsType, CItem.cpp:6072), so a TYPE set on the instance counts too.
+            if (rid.Type == ResType.TypeDef && rid.Index == (int)item.ItemType)
+                return true;
         }
         return !anyResolved && edibleClass;
     }

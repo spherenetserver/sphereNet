@@ -1,4 +1,5 @@
 using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
 
 namespace SphereNet.Game.Clients;
 
@@ -11,6 +12,14 @@ public sealed partial class GameClient
     private ClientItemUseHandler? _itemUse;
 
     public void HandleDoubleClick(uint uid) => ItemUse.HandleDoubleClick(uid);
+
+    /// <summary>Source-X CChar::Use_Obj(pObj, fTestTouch): a double-click the engine
+    /// makes on the player's behalf. With <paramref name="testTouch"/> false the reach
+    /// test is skipped (Telekinesis, CCharSpell.cpp:3135).</summary>
+    public void UseObject(uint uid, bool testTouch) => ItemUse.HandleDoubleClick(uid, testTouch);
+
+    /// <summary>Use a step-activated switch this player walked onto.</summary>
+    public void UseSteppedSwitch(Item item) => ItemUse.UseSteppedSwitch(item);
 
     public void OpenVendorBuy(Character vendor) => ItemUse.OpenVendorBuy(vendor);
 

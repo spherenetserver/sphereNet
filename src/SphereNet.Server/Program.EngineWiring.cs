@@ -374,6 +374,16 @@ public static partial class Program
                 return ship.CanBoard(mover.Uid);
             };
 
+            // Step-activated switch: Use_Item through the mover's own client so the
+            // switch's LINK chain runs (CheckLocationEffects, CCharAct.cpp:5026).
+            _movement.OnStepUseItem = (mover, item) =>
+            {
+                if (!TryGetClientFor(mover, out var c))
+                    return false;
+                c.UseSteppedSwitch(item);
+                return true;
+            };
+
             _movement.OnTeleport = (mover, dest, oldMap) =>
             {
                 if (TryGetClientFor(mover, out var c))
@@ -1180,6 +1190,18 @@ public static partial class Program
                 if (item == null || item.IsDeleted) return;
                 BroadcastNearby(item.Position, 18, new PacketDeleteObject(item.Uid.Value), 0);
                 _world.DeleteObject(item);
+            };
+            // Telekinesis: Use_Obj(pObj, fTestTouch=false) through the caster's client,
+            // after the corpse looting-crime check (CCharSpell.cpp:3126-3135).
+            _spellEngine.OnUseObject = (caster, item) =>
+            {
+                if (TryGetClientFor(caster, out var c))
+                    c.UseObject(item.Uid.Value, testTouch: false);
+            };
+            _spellEngine.OnCorpseCrimeCheck = (caster, corpse) =>
+            {
+                if (_deathEngine != null && _deathEngine.IsLootingCriminal(caster, corpse))
+                    _deathEngine.ReportCorpseCrime(caster, corpse);
             };
             _spellEngine.OnSpellInterrupt = (caster, _) =>
             {

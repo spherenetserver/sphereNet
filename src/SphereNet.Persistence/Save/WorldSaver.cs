@@ -818,6 +818,7 @@ public sealed class WorldSaver
         if (item.DefenseBaseRaw is > 0)
             w.WriteProperty("ARMOR", $"{item.DefenseLo},{item.DefenseHi}");
         if (item.MaxAmountOverride is int maxAmt) w.WriteProperty("MAXAMOUNT", maxAmt.ToString());
+        if (item.ModAr != 0) w.WriteProperty("MODAR", item.ModAr.ToString()); // CObjBase.cpp:2086
         if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
         if (item.CanMask != 0) w.WriteProperty("CANMASK", $"0{item.CanMask:X}");

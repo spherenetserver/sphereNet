@@ -60,16 +60,50 @@ public sealed partial class GameClient
     /// HUE_STONE to everyone.</summary>
     private (ushort Body, Color Hue) AdjustCharViewForViewer(Character ch)
     {
+        ushort body;
+        Color hue;
+        CharDef? def;
         if (_character != null && _character.IsStatFlag(StatFlag.Hallucinating))
         {
-            ushort body = ReferenceEquals(ch, _character)
+            bool self = ReferenceEquals(ch, _character);
+            body = self
                 ? ch.BodyId
                 : s_hallucinationBodies[Random.Shared.Next(s_hallucinationBodies.Length)];
-            return (body, new Color((ushort)Random.Shared.Next(2, 0x03EA))); // HUE_DYE_HIGH
+            hue = new Color((ushort)Random.Shared.Next(2, 0x03EA)); // HUE_DYE_HIGH
+            def = self ? DefinitionLoader.GetCharDef(ch.CharDefIndex) : DefinitionLoader.GetCharDefByBody(body);
         }
-        if (ch.IsStatFlag(StatFlag.Stone))
-            return (ch.BodyId, new Color(0x0482)); // HUE_STONE
-        return (ch.BodyId, ch.Hue);
+        else
+        {
+            body = ch.BodyId;
+            hue = ch.IsStatFlag(StatFlag.Stone) ? new Color(0x0482) : ch.Hue; // HUE_STONE
+            def = DefinitionLoader.GetCharDef(ch.CharDefIndex);
+        }
+
+        // A viewer whose resource display is below the CHARDEF's RESLEVEL sees the
+        // RESDISPDNID body in RESDISPDNHUE (a zero hue keeps the colour) - the last
+        // step of GetAdjustedCharID (CClientMsg.cpp:1143-1148).
+        if (def != null && def.ResLevel > 0 && _account != null && _account.ResDisp < def.ResLevel)
+        {
+            body = ResolveResDispDnBody(def);
+            if (def.ResDispDnHue != 0)
+                hue = new Color(def.ResDispDnHue);
+        }
+        return (body, hue);
+    }
+
+    /// <summary>RESDISPDNID as a body: the number written, or the CHARDEF it names;
+    /// CREID_MAN when unset (the CCharBase default, CCharBase.cpp:44).</summary>
+    private static ushort ResolveResDispDnBody(CharDef def)
+    {
+        if (def.ResDispDnId != 0)
+            return def.ResDispDnId;
+        if (!string.IsNullOrEmpty(def.ResDispDnIdRaw))
+        {
+            var rid = DefinitionLoader.StaticResources?.ResolveDefName(def.ResDispDnIdRaw.Trim());
+            if (rid is { IsValid: true } r && r.Index is > 0 and <= ushort.MaxValue)
+                return (ushort)r.Index;
+        }
+        return 0x0190;
     }
 
     /// <summary>The season this client was last told about, so the same one is not

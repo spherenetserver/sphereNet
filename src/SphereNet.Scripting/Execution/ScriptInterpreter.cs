@@ -512,7 +512,9 @@ public sealed class ScriptInterpreter
         // SERV.GARBAGE — force the maintenance/GC pass (console GARBAGE).
         if (cmd.Equals("SERV.GARBAGE", StringComparison.OrdinalIgnoreCase))
         {
-            ServerPropertyResolver?.Invoke("_GARBAGE=");
+            string gSrc = args?.Source != null && args.Source.TryGetProperty("UID", out string gsuid)
+                ? gsuid : "0";
+            ServerPropertyResolver?.Invoke($"_GARBAGE={gSrc}");
             return;
         }
 
@@ -528,11 +530,13 @@ public sealed class ScriptInterpreter
             return;
         }
 
-        // SERV.SHRINKMEM — Source-X SetProcessWorkingSetSize; here a managed
-        // compacting GC pass.
+        // SERV.SHRINKMEM — Source-X SV_SHRINKMEM: trims the working set with
+        // SetProcessWorkingSetSize on Windows, refused elsewhere (CServer.cpp:2213).
         if (cmd.Equals("SERV.SHRINKMEM", StringComparison.OrdinalIgnoreCase))
         {
-            ServerPropertyResolver?.Invoke("_SHRINKMEM=");
+            string sSrc = args?.Source != null && args.Source.TryGetProperty("UID", out string ssuid)
+                ? ssuid : "0";
+            ServerPropertyResolver?.Invoke($"_SHRINKMEM={sSrc}");
             return;
         }
 

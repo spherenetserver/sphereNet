@@ -109,6 +109,14 @@ internal static class InfoSkillExtensions
     /// </summary>
     public static int GetArmorDefense(this Item it)
     {
+        // Armor_GetDefense: m_defenseBase + m_ModAr, never below 0 (CItem.cpp:4901).
+        if (it.ModAr == 0)
+            return GetBaseArmorDefense(it);
+        return (int)Math.Max(0L, (long)GetBaseArmorDefense(it) + it.ModAr);
+    }
+
+    private static int GetBaseArmorDefense(Item it)
+    {
         // The item's own stamped rating first (Source-X m_defenseBase), then the tag
         // an older pack may have set by hand, then the definition.
         if (it.DefenseBaseRaw is > 0)
@@ -124,6 +132,14 @@ internal static class InfoSkillExtensions
 
     /// <summary>Attack rating used by ARMSLORE_DAM (CItem::Weapon_GetAttack).</summary>
     public static int GetWeaponAttack(this Item it)
+    {
+        // Weapon_GetAttack: m_attackBase + m_ModAr, never below 0 (CItem.cpp:4922).
+        if (it.ModAr == 0)
+            return GetBaseWeaponAttack(it);
+        return (int)Math.Max(0L, (long)GetBaseWeaponAttack(it) + it.ModAr);
+    }
+
+    private static int GetBaseWeaponAttack(Item it)
     {
         if (it.AttackBaseRaw is > 0)
             return it.AttackLo == it.AttackHi ? it.AttackLo : (it.AttackLo + it.AttackHi) / 2;

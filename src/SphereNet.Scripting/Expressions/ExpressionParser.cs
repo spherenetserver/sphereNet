@@ -7,7 +7,7 @@ namespace SphereNet.Scripting.Expressions;
 /// Evaluates arithmetic, comparison, logical, and bitwise expressions.
 /// Supports hex (0x), decimal, and variable references.
 /// </summary>
-public sealed class ExpressionParser
+public sealed partial class ExpressionParser
 {
     private int _resolveDepth;
     private const int MaxResolveDepth = 128; // Source-X _iGetVal_Reentrant cap
@@ -956,6 +956,10 @@ public sealed class ExpressionParser
         {
             return EvaluateQval(varExpr[5..]);
         }
+
+        // STRTOKEN / STRRANDRANGE / STRFIRSTCAP / LISTCOL (CScriptObj_functions.tbl).
+        if (TryResolveStringTableFunction(varExpr, out string tableFnResult))
+            return tableFnResult;
 
         // STRARG — extract first whitespace-delimited token from ARGS
         if (varExpr.StartsWith("STRARG ", StringComparison.OrdinalIgnoreCase))

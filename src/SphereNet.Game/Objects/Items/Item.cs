@@ -1471,6 +1471,7 @@ public class Item : ObjBase
         _usesRemaining = src._usesRemaining;
         // m_BaseDefs.Copy (CItem.cpp:4123).
         OwnedBy = src.OwnedBy;
+        ModAr = src.ModAr;
         OName = src.OName;
         _dispId = src._dispId;
         _tdata1 = src._tdata1;
@@ -1993,6 +1994,8 @@ public class Item : ObjBase
                 : ResolveDefinition()?.TagDefs.Get(upper) ?? "0";
             return true;
         }
+        if (TryGetBaseDefKey(upper, out value))
+            return true;
         if (SpellCastingProperties.Contains(upper))
         {
             value = TryGetTag(upper, out var castingValue) ? castingValue ?? "0" : "0";
@@ -2673,6 +2676,8 @@ public class Item : ObjBase
             SetTag(upper, value.Trim());
             return true;
         }
+        if (TrySetBaseDefKey(upper, value))
+            return true;
         if (SpellCastingProperties.Contains(upper))
         {
             SetTag(upper, value.Trim());
@@ -5482,6 +5487,99 @@ public class Item : ObjBase
         if (idef != null && !string.IsNullOrEmpty(idef.DefName))
             return idef.DefName;
         return $"0{BaseId:X}";
+    }
+
+    /// <summary>Source-X m_ModAr on the object base (CObjBase.h:88): a flat modifier added
+    /// to an armour piece's defense and to a weapon's attack (Armor_GetDefense /
+    /// Weapon_GetAttack, CItem.cpp:4901/4922). Script key MODAR, alias MODAC; saved as
+    /// MODAR when non-zero (CObjBase.cpp:2086).</summary>
+    public int ModAr { get; set; }
+
+    /// <summary>Item keys upstream keeps as plain base defs (CItem.cpp:2693-2735,
+    /// 3125-3165): written with SetDefStr / SetDefNum and read back with GetDefKey(key,
+    /// true), i.e. the item first and then its ITEMDEF. Nothing in the engine reads
+    /// them - they exist for scripts (item property lists, tooltips written in script).
+    /// Tag-backed here like the component properties, so they persist with the item.</summary>
+    private static readonly HashSet<string> BaseDefStringKeys = new(StringComparer.Ordinal)
+    {
+        "BONUSSKILL1", "BONUSSKILL2", "BONUSSKILL3", "BONUSSKILL4", "BONUSSKILL5",
+    };
+
+    private static readonly HashSet<string> BaseDefNumberKeys = new(StringComparer.Ordinal)
+    {
+        "BONUSSKILL1AMT", "BONUSSKILL2AMT", "BONUSSKILL3AMT", "BONUSSKILL4AMT",
+        "BONUSSKILL5AMT", "RARITY", "SELFREPAIR",
+    };
+
+    private bool TryGetBaseDefKey(string upper, out string value)
+    {
+        value = "";
+        switch (upper)
+        {
+            case "MODAR":
+            case "MODAC": // alias (CObjBase.cpp:1541)
+                value = ModAr.ToString();
+                return true;
+            case "DUPEITEM":
+                // IC_DUPEITEM (CItem.cpp:2855): the item's own id when it is shown as
+                // another graphic, else 0. Read-only - upstream has no write for it.
+                value = BaseId != DispIdFull ? $"0{BaseId:X}" : "0";
+                return true;
+        }
+
+        bool isString = BaseDefStringKeys.Contains(upper);
+        if (!isString && !BaseDefNumberKeys.Contains(upper))
+            return false;
+
+        string? raw = TryGetTag(upper, out string? own) && !string.IsNullOrEmpty(own)
+            ? own
+            : ResolveDefinition()?.TagDefs.Get(upper);
+        if (isString)
+            value = raw ?? "";
+        else
+            value = ParseBaseDefNumber(raw).ToString();
+        return true;
+    }
+
+    private bool TrySetBaseDefKey(string upper, string value)
+    {
+        if (upper is "MODAR" or "MODAC")
+        {
+            // OC_MODAR / OC_MODAC (CObjBase.cpp:1948): GetArgVal. The wearer's armour
+            // total is scanned live from worn items, so there is nothing to recompute.
+            ModAr = (int)ParseBaseDefNumber(value);
+            return true;
+        }
+
+        if (BaseDefStringKeys.Contains(upper))
+        {
+            // SetDefStr (CItem.cpp:3145): quotes stripped; an empty value clears it.
+            string sv = SphereNet.Scripting.Parsing.ScriptKey.StripQuotePair(value.Trim());
+            if (sv.Length == 0) RemoveTag(upper);
+            else SetTag(upper, sv);
+            return true;
+        }
+        if (BaseDefNumberKeys.Contains(upper))
+        {
+            // SetDefNum (CItem.cpp:3170): a zero clears the key, so the ITEMDEF's
+            // value shows through again.
+            long nv = ParseBaseDefNumber(value);
+            if (nv == 0) RemoveTag(upper);
+            else SetTag(upper, nv.ToString());
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>GetArgVal for these keys: a Sphere number or sum, where a decimal
+    /// point is a skill-style separator ("10.0" is 100, CExpression.cpp:745).</summary>
+    private static long ParseBaseDefNumber(string? raw)
+    {
+        string s = (raw ?? "").Trim();
+        if (s.Length == 0) return 0;
+        if (ScriptNumber.TryParseArgument(s, out long n)) return n;
+        if (Definitions.DefinitionLoader.TryGetDefNumber(s, out int dv)) return dv;
+        return SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(s);
     }
 
     private string FormatDispId()

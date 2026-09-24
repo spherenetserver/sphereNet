@@ -93,29 +93,22 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
     /// one is consumed and changes nothing. The assertions below fail when a name
     /// joins this set AND when one leaves it.
     ///
-    /// All thirteen are in the reference key tables, so each is a real difference
-    /// from the reference. They are listed rather than implemented because in THIS
-    /// engine there is nothing on the other side of them: no code reads the value,
-    /// and the packs that write them never read them back either (checked - OWNEDBY
-    /// and LOWERREQ are read once and twice respectively, the rest not at all).
+    /// The two left are refused on an INSTANCE by the reference too, so accepting them
+    /// here would be the difference. DUPEITEM is read-only on an item (CItem.cpp:2855
+    /// reads it, r_LoadVal has no case) - it is an ITEMDEF header key. RESDISPDNHUE is
+    /// a definition key (CBaseBaseDef, CBase.cpp:383): CObjBase lists the name but its
+    /// r_LoadVal has no case for it, so the @Create lines writing it onto a fresh item
+    /// fail there as they fail here. The definition value is what the client view
+    /// reads (GetAdjustedCharID, CClientMsg.cpp:1143).
     ///
-    /// Storing them would turn this list green and change nothing that happens in
-    /// the game - which is the exact shape of bug these sweeps exist to find, so
-    /// doing it to satisfy the sweep would be scoring our own exam. Each becomes
-    /// worth implementing the day something consumes it: BREATH when a creature
-    /// breathes, RARITY and SELFREPAIR and the BONUSSKILL pair when the item systems
-    /// that read them exist, MODAC when armour class has a modifier term, ONAME when a
-    /// renamed object must remember what it was.
-    ///
-    /// Contrast the six stat bonuses that came out of this same sweep and WERE
-    /// implemented: CombatEngine had been summing them off worn items all along, so
-    /// accepting the write completed a path that already existed.</summary>
+    /// The rest of what this list once held is accepted now: BREATH through its dotted
+    /// keys (the probe asks for BREATH.HUE, as the pack writes it), MODAC as the MODAR
+    /// alias, and BONUSSKILLn / BONUSSKILLnAMT / RARITY / SELFREPAIR as the plain base
+    /// defs they are upstream.</summary>
     private static readonly HashSet<string> KnownUnaccepted =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "BREATH", "BonusSkill1", "BonusSkill1Amt", "DUPEITEM",
-            "MODAC", "Rarity", "RESDISPDNHUE",
-            "SelfRepair",
+            "DUPEITEM", "RESDISPDNHUE",
         };
 
     // ID left on the same terms: an item re-bases onto another ITEMDEF, which is what
@@ -259,6 +252,7 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
         if (Gate.Missing(outp, "live script pack", files.Count == 0)) return;
 
         var seen = new Dictionary<string, (int Uses, string File)>(StringComparer.OrdinalIgnoreCase);
+        var dotted = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (string file in files)
         {
             string text;
@@ -300,6 +294,16 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
 
                 var prev = seen.TryGetValue(name, out var had) ? had : (Uses: 0, File: Path.GetFileName(file));
                 seen[name] = (prev.Uses + 1, prev.File);
+                // Keep the whole dotted key too: some families exist only in their
+                // dotted form - BREATH.HUE is a key, bare BREATH is refused upstream
+                // as well (CChar.cpp:3818) - so asking only for the head misreports
+                // them.
+                if (parts.Count > 1)
+                {
+                    if (!dotted.TryGetValue(name, out var keys))
+                        dotted[name] = keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    keys.Add(string.Join('.', parts));
+                }
             }
         }
 
@@ -327,6 +331,8 @@ public sealed class ScriptPackAssignedKeyCoverageTests(ITestOutputHelper outp)
             if (functions.Contains(name)) continue;
             if (NotProbeable.Contains(name)) continue;
             if (EngineAccepts(world, client, name)) continue;
+            if (dotted.TryGetValue(name, out var fullKeys) &&
+                fullKeys.Any(k => EngineAccepts(world, client, k))) continue;
             unaccepted.Add((name, info.Uses, info.File));
         }
 

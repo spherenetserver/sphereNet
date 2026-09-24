@@ -292,6 +292,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
              SphereNet.Scripting.Definitions.ValueCurve.Empty,
              SphereNet.Scripting.Definitions.ValueCurve.Empty];
         SphereNet.Scripting.Expressions.ExpressionParser.ObsceneChecker = null;
+        SphereNet.Scripting.Expressions.ExpressionParser.WebListIndex = 0;
         SphereNet.Core.Configuration.AccountNameValidator.ObsceneChecker = null;
         SphereNet.Game.Magic.SpellDef.RuneWordResolver = null;
         SphereNet.Game.Objects.ObjBase.DiagnosticLog = null;

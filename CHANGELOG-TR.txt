@@ -4,6 +4,59 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Ates ve buyu itemleri, pet release, virtual gold, enticement, giris denemeleri, trigger'lar, custom house
+------------------------------------------------------------------------
+DUZELTME - Shaft ve feather'a cift tiklamak fletching tool gibi Bowcraft
+           menusunu acar (Source-X CClientUse.cpp:160); ipucu yaziyordu.
+DUZELTME - TYPE'i ates ya da buyu olan item, ustune basani veya icinde
+           durani etkiler (CheckLocationEffects, CCharAct.cpp:4974): t_fire
+           isi seviyesinde (MOREY) Fire Field egrisiyle yakar, ucana yarim,
+           ates sesiyle; t_spell LINK adina MOREX buyusunu MOREY seviyesinde
+           uygular ve adim basina tek buyu sinirina sayilir. Sadece etiketli
+           buyu alanlari calisiyordu; fire pit, lav ve script alanlari
+           zararsizdi.
+DUZELTME - "release" PC_RELEASE / NPC_PetRelease'i izler: hedef imleci yok,
+           varsa script'in d_pet_release dialogu, @PetRelease (yeni; RETURN 1
+           peti tutar), cagrilmis yaratik ya da olu bonded pet sahipsiz
+           kalmak yerine kaybolma efektiyle silinir.
+YENI - FEATURE_TOL_VIRTUALGOLD (FeatureTOL bit 0x02): kendi bankasina
+       birakilan altin VIRTUALGOLD olur; vendor'lar ondan odenir ve ona oder;
+       status bar ve GOLD onu gosterir; trade penceresi her tarafin bakiyesini
+       gosterir ve gold/platinum alanini tamamlaninca taraflar arasinda
+       tasir (0x6F aksiyon 3/4). Teklif keseyle sinirlanir, degistirmek iki
+       onayi da geri alir. Bit kapaliyken hicbir sey degismez.
+DUZELTME - Enticement yaratigi ozana ceker (Skill_Enticement): ozanin
+           noktasina yurur, skill RANGE'inden uzaksa kosar; oyuncu ya da
+           savastaki yaratik cekilemez. Zorluk TAG.BARDING.DIFF'ten gelir.
+           Source-X'te olmayan bir savunma debuff'iydi.
+YENI - CLIENTLOGINMAXTRIES / CLIENTLOGINTEMPBAN (sphere.ini): ayni adresten
+       bir hesaba 15 saniyede bu kadar giris denemesi, adresi o hesaptan
+       verilen dakika kadar engeller (Source-X CheckPasswordTries).
+       Varsayilan kapali; yerel adresler muaf.
+YENI - Hic tetiklenmeyen karakter trigger'lari: @AfkMode, @charShove,
+       @DelMulti, @Falling, @FollowersUpdate, @HouseDesignCommitItem,
+       @PayGold (vendor alisi; ARGN1 fiyat olarak geri okunur), @SeeHidden ve
+       @ToggleFlying, her biri Source-X'in tetikledigi yerde.
+DUZELTME - @PersonalSpace yolu kesilen karakterde, SRC ilerleyen karakterle
+           calisir ve RETURN 1 ilerlemeyi engeller. Ilerleyen karakterde
+           calisiyor ve engelleyemiyordu.
+DUZELTME - Custom house tasarimi CItemMultiCustom'u izler:
+           - parca o karedeki kendi turundeki (zemin ya da degil) parcanin
+             yerine gecer, ustune yigilmaz;
+           - zemin seviyesinde tasarim alaninin bir sira guneyine parca
+             konabilir;
+           - merdiven, bulunulan katta acilan merdiven MULTI'sidir; bir
+             parcasini silmek tum merdiveni siler (merdiven kimligi tasarimin
+             besinci alaninda tutulur, eski tasarimlar aynen yuklenir);
+           - 1. kat topragi silinemez, silinen 1. kat zemini yerine toprak
+             birakir, zemin seviyesinde sadece guney kenari silinebilir;
+           - her duzenleme tasarim revizyonunu arttirir;
+           - parcanin geldigi karedeki kilitli itemler tasima sandigina gider;
+           - doors.txt, walls.txt, floors.txt, roof.txt, stairs.txt, misc.txt
+             ve teleprts.txt acilista MULFILES klasorunden okunur ve GM
+             olmayanin koyabilecegini sinirlar; yoksa sadece aralik kontrolu
+             kalir ve log bunu soyler.
+
 [2026-09-24] - Acilis engelleri: context menu, script donguleri, tick hatalari, denetim, giris kodlari
 ------------------------------------------------------------------------
 DUZELTME - Context menu (0xBF.0x14) istemcinin okudugu duzende yazilir:

@@ -52,6 +52,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.BackpackOverload = 40;
         SphereNet.Scripting.Execution.ScriptScope.DefaultMaxLoopIterations = 100000;
         SphereNet.Game.Diagnostics.TickFaults.Reset();
+        SphereNet.Game.Objects.Characters.Character.OnPetRelease = null;
+        SphereNet.Game.Trade.VirtualGold.Enabled = false;
+        SphereNet.Game.Clients.GameClient.ConfigureLoginTries(0, TimeSpan.Zero);
         SphereNet.Game.Objects.Items.Item.DragWeightMax = 300;
         SphereNet.Game.Movement.MovementEngine.StaminaLossAtWeight = 150;
         SphereNet.Game.Movement.MovementEngine.StaminaLossOverweight = 5;
@@ -181,6 +184,15 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnHealthBarStatusChanged = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptSpellEffect = null;
         SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = null;
+        SphereNet.Game.Objects.Characters.Character.OnCharShove = null;
+        SphereNet.Game.Objects.Characters.Character.OnAfkMode = null;
+        SphereNet.Game.Objects.Characters.Character.OnSeeHidden = null;
+        SphereNet.Game.Objects.Characters.Character.OnFollowersUpdate = null;
+        SphereNet.Game.Trade.VendorEngine.OnPayGold = null;
+        SphereNet.Game.Housing.HousingEngine.OnDelMulti = null;
+        SphereNet.Game.Housing.CustomHousingEngine.KeepCommitItem = null;
+        SphereNet.Game.Housing.CustomHousingEngine.BroadcastRemove = null;
+        SphereNet.Game.Housing.HouseDesignValidItems.ClearValidItems();
         SphereNet.Game.Objects.Characters.Character.OnEffectAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnRevealing = null;
         SphereNet.Game.Objects.Characters.Character.OnSpellEffectAdd = null;

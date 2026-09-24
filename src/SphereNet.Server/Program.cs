@@ -756,6 +756,16 @@ public static partial class Program
         }
         _log.LogInformation("TileData & multi data loaded from: {Path}", mulPath);
 
+        // The client's house-design lists (doors.txt, walls.txt, stairs.txt, ...):
+        // what a designing player may place (Source-X LoadValidItems).
+        int designFiles = SphereNet.Game.Housing.HouseDesignValidItems.LoadFromDirectory(mulPath);
+        if (designFiles > 0)
+            _log.LogInformation("House design lists: {Files} files, {Pieces} pieces", designFiles,
+                SphereNet.Game.Housing.HouseDesignValidItems.WhitelistCount);
+        else
+            _log.LogWarning("House design lists (doors.txt, walls.txt, floors.txt, stairs.txt, ...) were not " +
+                "found in {Path}; custom-house pieces are only range-checked. Copy them from the client folder.", mulPath);
+
         GameClient.ServerFeatureT2A = _config.FeatureT2A;
         GameClient.ServerFeatureLBR = _config.FeatureLBR;
         GameClient.ServerFeatureAOS = _config.FeatureAOS;
@@ -764,6 +774,10 @@ public static partial class Program
         GameClient.ServerFeatureKR = _config.FeatureKR;
         GameClient.ServerFeatureSA = _config.FeatureSA;
         GameClient.ServerFeatureTOL = _config.FeatureTOL;
+        GameClient.ConfigureLoginTries(_config.ClientLoginMaxTries,
+            TimeSpan.FromMinutes(_config.ClientLoginTempBanMinutes));
+        SphereNet.Game.Trade.VirtualGold.Enabled =
+            (_config.FeatureTOL & SphereNet.Game.Trade.VirtualGold.FeatureBit) != 0;
         GameClient.ServerFeatureExtra = _config.FeatureExtra;
         GameClient.ServerMaxCharsPerAccount = Math.Clamp(_config.MaxCharsPerAccount, 1, 7);
         GameClient.ServerMinCharDeleteDays = Math.Max(0, _config.MinCharDeleteTime);

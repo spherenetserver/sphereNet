@@ -84,3 +84,35 @@ public sealed class CharDeleteAndLoginCodeTests
             "banned" + suffix, "pw"));
     }
 }
+
+[Collection("DefinitionLoaderSerial")]
+public sealed class LoginTriesTempBanTests
+{
+    private static byte? Attempt(AccountManager accounts, GameWorld world, ILoggerFactory lf, int id)
+    {
+        var state = TestHarness.CreateActiveNetState(lf, id);
+        typeof(SphereNet.Network.State.NetState)
+            .GetProperty("RemoteEndPoint")!
+            .SetValue(state, new System.Net.IPEndPoint(System.Net.IPAddress.Parse("203.0.113.9"), 5000));
+        var client = new GameClient(state, world, accounts, lf.CreateLogger<GameClient>());
+        client.HandleLoginRequest("tries_acct", "wrong");
+        var denied = TestHarness.GetQueuedPackets(state).FirstOrDefault(p => p.Span[0] == 0x82);
+        return denied == null ? null : denied.Span[1];
+    }
+
+    /// <summary>CLIENTLOGINMAXTRIES=2: the third attempt within 15 s is refused with
+    /// "other" (upstream MaxPassTries) before the password is even looked at.</summary>
+    [Fact]
+    public void TheAttemptPastTheLimitIsTurnedAway()
+    {
+        using var lf = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(lf);
+        accounts.CreateAccount("tries_acct", "right");
+        GameClient.ConfigureLoginTries(2, TimeSpan.FromMinutes(3));
+
+        Assert.Equal((byte)3, Attempt(accounts, world, lf, 51001));
+        Assert.Equal((byte)3, Attempt(accounts, world, lf, 51002));
+        Assert.Equal((byte)4, Attempt(accounts, world, lf, 51003));
+    }
+}

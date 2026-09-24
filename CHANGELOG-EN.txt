@@ -4,6 +4,59 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Fire and spell items, pet release, virtual gold, enticement, login tries, triggers, custom houses
+------------------------------------------------------------------------
+FIX - Double-clicking a shaft or a feather opens the Bowcraft menu, as the
+      fletching tool does (upstream CClientUse.cpp:160); they printed a hint.
+FIX - An item that is a fire or a spell by TYPE hurts whoever steps into or
+      stands in it (CheckLocationEffects, CCharAct.cpp:4974): t_fire burns at
+      its heat level (MOREY) through the Fire Field effect curve, halved for a
+      flyer, with the fire noise; t_spell casts MOREX at level MOREY for its
+      LINK and counts toward the one-spell-per-step cap. Only spell-made
+      fields with tags did anything, so fire pits, lava and scripted fields
+      were harmless.
+FIX - "release" follows PC_RELEASE / NPC_PetRelease: no target cursor, the
+      script's d_pet_release dialog when one exists, @PetRelease (new; RETURN
+      1 keeps the pet), and a conjured creature or a dead bonded pet is taken
+      away with the vanish effect instead of staying in the world ownerless.
+NEW - FEATURE_TOL_VIRTUALGOLD (FeatureTOL bit 0x02): gold dropped in one's
+      own bank becomes VIRTUALGOLD; vendors are paid from it and pay into it;
+      the status bar and GOLD show it; the trade window shows each trader's
+      balance and moves the gold/platinum field between them on completion
+      (0x6F actions 3/4). The offer is capped to the purse, and changing it
+      withdraws both acceptances. With the bit off nothing changes.
+FIX - Enticement lures the creature to the bard (Skill_Enticement): it walks
+      to the bard's spot, running when further than the skill's RANGE; a
+      player or a creature at war cannot be lured. Difficulty comes from
+      TAG.BARDING.DIFF. It was a defence debuff upstream does not have.
+NEW - CLIENTLOGINMAXTRIES / CLIENTLOGINTEMPBAN (sphere.ini): that many login
+      attempts on one account from one address within 15 seconds ban the
+      address from it for the given minutes (upstream CheckPasswordTries).
+      Off by default; local addresses are exempt.
+NEW - Character triggers that were never raised: @AfkMode, @charShove,
+      @DelMulti, @Falling, @FollowersUpdate, @HouseDesignCommitItem,
+      @PayGold (vendor purchases; ARGN1 is read back as the price), @SeeHidden
+      and @ToggleFlying, each where upstream raises it.
+FIX - @PersonalSpace runs on the character walked into with the mover as SRC,
+      and RETURN 1 keeps the mover out. It ran on the mover and could not
+      refuse.
+FIX - Custom house design follows CItemMultiCustom:
+      - a piece replaces the piece of its own kind (floor or not) on that
+        square instead of stacking on it;
+      - a piece may go one row south of the design area at ground level;
+      - stairs are the staircase MULTI laid out at the current floor, and
+        erasing one piece removes the whole staircase (the staircase id is
+        kept in the design's fifth field, so older designs load unchanged);
+      - first-floor dirt cannot be removed, a removed first-floor floor tile
+        leaves dirt, and at ground level only the south edge can be erased;
+      - every edit moves the design revision;
+      - locked-down items on a square a piece now occupies go to the moving
+        crate;
+      - doors.txt, walls.txt, floors.txt, roof.txt, stairs.txt, misc.txt and
+        teleprts.txt are read from the MULFILES folder at startup and limit
+        what a non-GM may place; without them placement stays range-checked
+        and the log says so.
+
 [2026-09-24] - Launch blockers: context menus, script loops, tick faults, audit, login codes
 ------------------------------------------------------------------------
 FIX - Context menus (0xBF.0x14) are written in the layout the client reads:

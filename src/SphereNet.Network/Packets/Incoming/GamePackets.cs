@@ -404,6 +404,14 @@ public sealed class PacketSecureTrade : PacketHandler
     {
         byte action = buffer.ReadByte();
         uint sessionId = buffer.ReadUInt32();
+        if (action == 3)
+        {
+            // SECURE_TRADE_UPDATEGOLD (TOL): the gold and platinum this side offers.
+            uint gold = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
+            uint platinum = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
+            state.OnSecureTradeGold(sessionId, gold, platinum);
+            return;
+        }
         uint param = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
         state.OnSecureTrade(action, sessionId, param);
     }

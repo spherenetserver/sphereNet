@@ -188,10 +188,17 @@ public sealed class MovementEngine
                     diag = diag with { MobBlocked = true };
                     return false;
                 }
+                // @PersonalSpace on the one walked into, then @charShove on the
+                // mover (ShoveCharAtPosition, CCharAct.cpp:4640-4658); either
+                // RETURN 1 keeps the mover out.
+                if (Character.OnPersonalSpace?.Invoke(other, ch) == true ||
+                    Character.OnCharShove?.Invoke(ch, other) == true)
+                {
+                    diag = diag with { MobBlocked = true };
+                    return false;
+                }
                 // A living blocker we pushed past = a real shove.
                 shoved = true;
-                // @PersonalSpace (Source-X) — the mover stepped into another's tile.
-                Character.OnPersonalSpace?.Invoke(ch, other);
             }
         }
 
@@ -223,6 +230,15 @@ public sealed class MovementEngine
             int skillId = ch.ClearActiveSkillPending();
             if (skillId >= 0)
                 Character.ActiveSkillAborted?.Invoke(ch, skillId);
+        }
+
+        // @Falling: a step that drops ten or more (CanMoveWalkTo, CCharAct.cpp:4778).
+        // ARGN1..3 = where the character lands.
+        if (ch.Z - 10 >= target.Z && _triggerDispatcher != null &&
+            _triggerDispatcher.IsCharTriggerUsed(CharTrigger.Falling))
+        {
+            _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Falling,
+                new TriggerArgs { CharSrc = ch, N1 = target.X, N2 = target.Y, N3 = target.Z });
         }
 
         // Region scripts run centrally for walking and every teleport path.
@@ -567,7 +583,9 @@ public sealed class MovementEngine
             // re-freeze the victim at every damage tick with no way out. The cap
             // follows the RESULT, not the attempt - a field that landed nothing
             // leaves the next one its chance.
-            var touch = spellHit && item.TryGetTag("FIELD_SPELL", out _)
+            bool isSpellField = item.TryGetTag("FIELD_SPELL", out _) ||
+                (item.ItemType == ItemType.Spell && item.MoreP.X > 0);
+            var touch = spellHit && isSpellField
                 ? FieldTouchResult.Handled      // a spell field already went off here
                 : Character.FieldTouchHook?.Invoke(ch, item) ?? FieldTouchResult.NotHandled;
             if (touch == FieldTouchResult.SpellHit)

@@ -1515,7 +1515,9 @@ public sealed partial class GameClient
         // from a def drawn differently, was money the player had and could not see.
         // There were two copies of that count, which is how they came to disagree.
         int gold = (int)Math.Clamp(
-            SphereNet.Game.Trade.VendorEngine.CountGold(ch), 0, int.MaxValue);
+            SphereNet.Game.Trade.VirtualGold.Enabled
+                ? SphereNet.Game.Trade.VirtualGold.Get(ch)
+                : SphereNet.Game.Trade.VendorEngine.CountGold(ch), 0, int.MaxValue);
         return new StatusShape(
             ResolveStatusName(ch),
             (short)SphereNet.Game.Combat.CombatEngine.EffectiveStr(ch),
@@ -1574,7 +1576,9 @@ public sealed partial class GameClient
         var (mana, maxMana) = NormalizeStatusPair(ch.Mana, ch.MaxMana, ch.Int);
 
         int gold = (int)Math.Clamp(
-            SphereNet.Game.Trade.VendorEngine.CountGold(ch), 0, int.MaxValue);
+            SphereNet.Game.Trade.VirtualGold.Enabled
+                ? SphereNet.Game.Trade.VirtualGold.Get(ch)
+                : SphereNet.Game.Trade.VendorEngine.CountGold(ch), 0, int.MaxValue);
 
         ushort armor = (ushort)CombatEngine.CalcArmorDefense(ch);
         ushort weight = (ushort)Math.Clamp(ch.GetTotalWeight(), 0, ushort.MaxValue);

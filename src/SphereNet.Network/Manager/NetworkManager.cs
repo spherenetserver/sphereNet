@@ -958,7 +958,8 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, IReadOnlyList<uint>>? equipMacro = null,
         Action<NetState, IReadOnlyList<ushort>>? unequipMacro = null,
         Action<NetState, bool>? publicHouseContent = null,
-        Action<NetState, ushort, byte>? skillLock = null)
+        Action<NetState, ushort, byte>? skillLock = null,
+        Action<NetState, uint, uint, uint>? secureTradeGold = null)
     {
         foreach (var state in _states)
         {
@@ -997,6 +998,7 @@ public sealed class NetworkManager : IDisposable
             state.VendorBuyHandler = vendorBuy;
             state.VendorSellHandler = vendorSell;
             state.SecureTradeHandler = secureTrade;
+            state.SecureTradeGoldHandler = secureTradeGold;
             state.RenameHandler = rename;
             state.ProfileRequestHandler = profileRequest;
 

@@ -364,6 +364,13 @@ public static partial class Program
                     pc.NetState.Send(new PacketWorldItem(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
                     pc.NetState.Send(new PacketSecureTradeOpen(
                         initiator.Uid.Value, cont2.Uid.Value, cont1.Uid.Value, initiator.GetName()));
+                    if (SphereNet.Game.Trade.VirtualGold.Enabled && pc.NetState.SupportsNewSecureTrading)
+                    {
+                        var (lg, lp) = SphereNet.Game.Trade.VirtualGold.Split(
+                            SphereNet.Game.Trade.VirtualGold.Get(partner));
+                        pc.NetState.Send(new PacketSecureTradeGold(
+                            PacketSecureTradeGold.LedgerType, cont2.Uid.Value, lg, lp));
+                    }
                 }
             };
             client.SendTradeItemToPartner = (partner, item, container) =>
@@ -1295,6 +1302,12 @@ public static partial class Program
     {
         if (_clients.TryGetValue(state.Id, out var client))
             client.HandleSecureTrade(action, sessionId, param);
+    }
+
+    private static void OnSecureTradeGold(NetState state, uint sessionId, uint gold, uint platinum)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleSecureTradeGold(sessionId, gold, platinum);
     }
 
     private static void OnRename(NetState state, uint serial, string name)

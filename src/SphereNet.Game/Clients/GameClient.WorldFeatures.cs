@@ -32,6 +32,9 @@ public sealed partial class GameClient
     public void HandleSecureTrade(byte action, uint containerSerial, uint param) =>
         WorldFeatures.HandleSecureTrade(action, containerSerial, param);
 
+    public void HandleSecureTradeGold(uint containerSerial, uint gold, uint platinum) =>
+        WorldFeatures.HandleSecureTradeGold(containerSerial, gold, platinum);
+
     internal void AbortActiveTradeOnDisconnect() => WorldFeatures.AbortActiveTradeOnDisconnect();
 
     /// <summary>Cancel an open secure trade because this character died

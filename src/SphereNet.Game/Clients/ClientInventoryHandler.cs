@@ -1326,6 +1326,22 @@ public sealed class ClientInventoryHandler
                     }
                 }
 
+                // FEATURE_TOL_VIRTUALGOLD: gold put in one's own bank becomes virtual
+                // gold (Event_Item_Drop, CClientEvent.cpp:362) - credited, announced,
+                // and the coins are gone.
+                if (Trade.VirtualGold.Enabled && item.ItemType == ItemType.Gold &&
+                    IsInSelfBankBox(_character, container))
+                {
+                    int deposited = item.Amount;
+                    Trade.VirtualGold.Add(_character, deposited);
+                    SysMessage(ServerMessages.GetFormatted(Msg.BvboxDeposited, deposited));
+                    _netState.Send(new PacketSound(0x02E6, _character.X, _character.Y, _character.Z));
+                    _netState.Send(new PacketDropAck());
+                    _client.BroadcastDeleteObject(item.Uid.Value);
+                    _world.DeleteObject(item);
+                    return;
+                }
+
                 // When the "container" is actually a matching stackable pile, this
                 // drop is a MERGE, not an insert into a container. Source-X does not
                 // gate a pile merge by the destination's item-count / weight / nesting

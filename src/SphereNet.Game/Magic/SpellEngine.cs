@@ -2038,11 +2038,27 @@ public sealed class SpellEngine
     public FieldTouchResult ApplyFieldTouch(Character ch, Item field)
     {
         if (ch.IsDead) return FieldTouchResult.Handled;
+        // A spell-made field says what it is in its tags. An item that is a fire or a
+        // spell by TYPE - a fire pit, lava, a script's t_spell - says it the way
+        // upstream reads it (CheckLocationEffects, CCharAct.cpp:4974): IT_FIRE burns
+        // at its heat level (MOREY), IT_SPELL casts MOREX at level MOREY on behalf of
+        // its LINK. Only the tagged kind did anything, so fire pits and scripted
+        // fields were harmless to walk through.
+        int? spellLevel = null;
+        Character? caster = null;
         if (!field.TryGetTag("FIELD_SPELL", out string? fsStr) ||
             !int.TryParse(fsStr, out int fsId))
-            return FieldTouchResult.NotHandled;
+        {
+            if (field.ItemType == ItemType.Fire)
+                return ApplyHeat(ch, field);
+            if (field.ItemType != ItemType.Spell || field.MoreP.X <= 0)
+                return FieldTouchResult.NotHandled;
+            fsId = field.MoreP.X;
+            spellLevel = Math.Clamp((int)field.MoreP.Y, 0, 1000);
+            if (field.Link.IsValid)
+                caster = _world.FindChar(field.Link);
+        }
 
-        Character? caster = null;
         if (field.TryGetTag("FIELD_CASTER", out string? cStr) && uint.TryParse(cStr, out uint cuid))
             caster = _world.FindChar(new Serial(cuid));
 
@@ -2067,7 +2083,9 @@ public sealed class SpellEngine
                 if (CombatEngine.IsDamageImmune(ch)) return FieldTouchResult.Handled;
                 MarkFieldCrime(caster, ch);
                 int dmg = field.TryGetTag("FIELD_DAMAGE", out string? dStr) &&
-                          int.TryParse(dStr, out int d) ? d : 2;
+                          int.TryParse(dStr, out int d) ? d
+                    : spellLevel is int lvl ? GetSpellDef(SpellType.FireField)?.GetEffect(lvl) ?? 2
+                    : 2;
                 dmg = CombatEngine.ApplyElementalResist(ch, Math.Max(1, dmg), DamageType.Fire);
                 ch.Hits = (short)Math.Max(0, ch.Hits - dmg);
                 if (caster != null && caster != ch)
@@ -2091,8 +2109,9 @@ public sealed class SpellEngine
                 if (ch.IsStatFlag(StatFlag.Poisoned))
                     return FieldTouchResult.Handled;
                 MarkFieldCrime(caster, ch);
-                if (field.TryGetTag("FIELD_POISON_SKILL", out string? skillStr) &&
-                    int.TryParse(skillStr, out int fieldSkill))
+                int fieldSkill = spellLevel ?? 0;
+                if (spellLevel.HasValue || (field.TryGetTag("FIELD_POISON_SKILL", out string? skillStr) &&
+                    int.TryParse(skillStr, out fieldSkill)))
                 {
                     int fieldEffect = GetSpellDef(SpellType.PoisonField)?.GetEffect(fieldSkill) ?? fieldSkill;
                     if (caster != null && IsMagicFlag(MagicConfigFlags.OsiFormulas))
@@ -2132,6 +2151,36 @@ public sealed class SpellEngine
         }
     }
 
+
+    /// <summary>Upstream IT_FIRE on a location check (CCharAct.cpp:4974): the heat
+    /// level (MOREY, 0-1000) rolled between half and full, halved for a flyer, is the
+    /// skill a Fire Field effect is taken at - fire damage with no attacker, and the
+    /// fire noise when it hurts. Not a spell hit: it does not use up the one spell a
+    /// step may set off.</summary>
+    private FieldTouchResult ApplyHeat(Character ch, Item fire)
+    {
+        if (ch.IsStatFlag(StatFlag.Invul) || CombatEngine.IsDamageImmune(ch))
+            return FieldTouchResult.Handled;
+        int heat = Math.Clamp((int)fire.MoreP.Y, 0, 1000);
+        int level = heat / 2 + _rand.Next(heat - heat / 2 + 1);
+        if (ch.IsStatFlag(StatFlag.Fly))
+            level /= 2;
+        int dmg = GetSpellDef(SpellType.FireField)?.GetEffect(level) ?? 0;
+        if (dmg <= 0)
+            return FieldTouchResult.Handled;
+        dmg = CombatEngine.ApplyElementalResist(ch, dmg, DamageType.Fire);
+        if (dmg <= 0)
+            return FieldTouchResult.Handled;
+        ch.Hits = (short)Math.Max(0, ch.Hits - dmg);
+        OnPlaySound?.Invoke(ch.Position, 0x015F);
+        TryInterruptFromDamage(ch, dmg);
+        if (ch.Hits <= 0 && !ch.IsDead)
+        {
+            if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
+            else ch.Kill();
+        }
+        return FieldTouchResult.Handled;
+    }
 
     /// <summary>Build the summon a completed cast calls for, before any of its cost
     /// is taken. Returns null when it may not be summoned, having already said why.

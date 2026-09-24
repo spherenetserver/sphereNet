@@ -2425,6 +2425,8 @@ public static partial class Program
             if (_housingEngine.HouseCount > 0)
                 _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);
             _customHousing = new CustomHousingEngine(_world, _housingEngine);
+            CustomHousingEngine.BroadcastRemove = (uid, from) =>
+                BroadcastNearby(from, 18, new PacketDeleteObject(uid), 0);
             SphereNet.Game.Objects.Characters.Character.ResolveHouseDesignMulti =
                 ch => _customHousing.GetSessionMulti(ch.Uid);
             _chatEngine = new SphereNet.Game.Chat.ChatEngine("General");
@@ -3703,6 +3705,7 @@ public static partial class Program
                 vendorBuy: OnVendorBuy,
                 vendorSell: OnVendorSell,
                 secureTrade: OnSecureTrade,
+                secureTradeGold: OnSecureTradeGold,
                 rename: OnRename,
                 profileRequest: OnProfileRequest,
                 // Phase 1

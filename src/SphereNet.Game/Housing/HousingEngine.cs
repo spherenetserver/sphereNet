@@ -1241,6 +1241,10 @@ public sealed class HousingEngine
         return true;
     }
 
+    /// <summary>Source-X @DelMulti (CItemMulti.cpp:3677): fired on the owner when a
+    /// house leaves them, with the multi as ARGO1.</summary>
+    public static Action<Character, Item>? OnDelMulti { get; set; }
+
     /// <summary>Remove a house (redeed or demolish).</summary>
     public Item? RemoveHouse(Serial multiItemUid, Character requestor)
     {
@@ -1253,6 +1257,7 @@ public sealed class HousingEngine
 
         var position = house.MultiItem.Position;
         var owner = _world.FindChar(house.Owner);
+        if (owner != null) OnDelMulti?.Invoke(owner, house.MultiItem);
         RemoveStructureKeys(owner, house.MultiItem.Uid);
         var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
         if (owner != null && ownerMemory != null)
@@ -1279,6 +1284,7 @@ public sealed class HousingEngine
         if (!_houses.TryGetValue(multiItemUid, out var house))
             return null;
         var owner = _world.FindChar(house.Owner);
+        if (owner != null) OnDelMulti?.Invoke(owner, house.MultiItem);
         RemoveStructureKeys(owner, house.MultiItem.Uid);
         var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
         if (owner != null && ownerMemory != null)

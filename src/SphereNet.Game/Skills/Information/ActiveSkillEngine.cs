@@ -1401,15 +1401,19 @@ public static class ActiveSkillEngine
         return pacified > 0;
     }
 
-    // ----------------------------------------------------------- Discordance
+    // ----------------------------------------------------------- Enticement
 
-    /// <summary>Source-X CChar::Skill_Enticement (Discordance): debuffs a
-    /// creature's defenses for a short time via DISCORD_PCT/DISCORD_UNTIL tags
-    /// read by the combat armor calc (lazy expiry, no separate timer).</summary>
-    public static bool Discordance(IActiveSkillSink sink, Character? target)
+    /// <summary>Source-X CChar::Skill_Enticement (CCharSkill.cpp:1901): lure a
+    /// creature to the bard. The tune is played against TAG.BARDING.DIFF (divided by
+    /// 18, default 40) and needs an instrument; on success a player cannot be lured
+    /// and neither can a creature at war, and anything else walks to where the bard
+    /// stands - running when it is further than the skill's RANGE (default 3).
+    /// This used to be an invented defence debuff (DISCORD_PCT), which the
+    /// reference does not have; the lure did not exist.</summary>
+    public static bool Enticement(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
-        if (target == null || target.IsPlayer || target.IsDead || target.IsDeleted)
+        if (target == null || target.IsDead || target.IsDeleted)
             return false;
         if (!CanReachPoint(ch, target.Position, sink.World,
                 SkillEngine.GetUseRange(SkillType.Enticement, 8)))
@@ -1423,23 +1427,40 @@ public static class ActiveSkillEngine
             sink.SysMessage("You have no musical instrument.");
             return false;
         }
+
+        int baseDiff = target.TryGetTag("BARDING.DIFF", out string? diffRaw) &&
+                       int.TryParse(diffRaw, out int tagDiff) && tagDiff != 0
+            ? tagDiff / 18
+            : 40;
+        int difficulty = Random.Shared.Next(Math.Max(1, baseDiff));
+
         DamageGatherTool(sink, instrument);
-        bool playedDiscord = SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
-        PlayInstrument(sink, instrument, playedDiscord);
-        if (!playedDiscord)
+        bool played = SkillEngine.UseQuick(ch, SkillType.Musicianship, difficulty);
+        PlayInstrument(sink, instrument, played);
+        if (!played)
             return false;
-        if (!SkillEngine.UseQuick(ch, SkillType.Enticement, 50))
+        if (difficulty == 0)
+            difficulty = Random.Shared.Next(40);
+        if (!SkillEngine.UseQuick(ch, SkillType.Enticement, difficulty))
+            return false;
+
+        if (target.IsPlayer)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.PeacemakingDisobey));
+            sink.SysMessage(ServerMessages.Get(Msg.EnticementPlayer));
+            return false;
+        }
+        if (target.IsStatFlag(StatFlag.War))
+        {
+            sink.SysMessage($"{target.Name} {ServerMessages.Get(Msg.EnticementBattle)}.");
             return false;
         }
 
-        // Defense penalty scales with skill (up to ~28%), lasting 20s.
-        int pct = Math.Clamp(SkillEngine.GetEffect(SkillType.Enticement,
-            ch.GetSkill(SkillType.Enticement), ch.GetSkill(SkillType.Enticement) / 40), 1, 100);
-        target.SetTag("DISCORD_PCT", pct.ToString());
-        target.SetTag("DISCORD_UNTIL", (Environment.TickCount64 + 20_000).ToString());
-        sink.Emote("*plays discordant music*");
+        int maxRange = SkillEngine.GetUseRange(SkillType.Enticement, 3);
+        if (maxRange <= 0) maxRange = 3;
+        target.ActP = ch.Position;
+        target.Action = (SkillType)(target.Position.GetDistanceTo(ch.Position) > maxRange
+            ? NpcAction.RunTo : NpcAction.GoTo);
+        target.NextNpcActionTime = 0;
         return true;
     }
 

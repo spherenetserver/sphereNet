@@ -85,9 +85,7 @@ public sealed class ClientViewUpdater
                 return;
 
             bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-            bool canSeeHidden = me.AllShow ||
-                (me.PrivLevel >= Core.Enums.PrivLevel.Counsel &&
-                 me.PrivLevel >= ch.PrivLevel);
+            bool canSeeHidden = Character.CanSeeHidden(me, ch);
 
             if (isHidden && !canSeeHidden)
                 return;
@@ -206,9 +204,7 @@ public sealed class ClientViewUpdater
                 !me.IsDead;
             bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline && !ch.IsClientLingering;
             bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-            bool canSeeHidden = me.AllShow ||
-                (me.PrivLevel >= Core.Enums.PrivLevel.Counsel &&
-                 me.PrivLevel >= ch.PrivLevel);
+            bool canSeeHidden = Character.CanSeeHidden(me, ch);
             bool hiddenAsAllShow = isOfflinePlayer || (isHidden && canSeeHidden);
 
             if (bodyChanged || visChanged)
@@ -504,9 +500,7 @@ public sealed class ClientViewUpdater
         else if (wasInRange && nowInRange && View.KnownChars.Contains(uid))
         {
             bool isHiddenNow = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-            bool canSeeHidden = me.AllShow ||
-                (me.PrivLevel >= Core.Enums.PrivLevel.Counsel &&
-                 me.PrivLevel >= ch.PrivLevel);
+            bool canSeeHidden = Character.CanSeeHidden(me, ch);
             if (isHiddenNow && !canSeeHidden)
             {
                 RemoveKnownChar(uid, sendDelete: true);

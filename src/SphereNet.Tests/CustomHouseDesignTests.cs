@@ -165,22 +165,84 @@ public class CustomHouseDesignTests
     [Fact]
     public void Session_BuildCommit_PersistsDesignAndBumpsRevision()
     {
-        var (engine, ch, multi) = CreateSession();
+        // A staircase is a MULTI whose visible pieces are laid at the current floor
+        // plus their own offsets, one staircase id for all of them (AddStairs,
+        // CItemMultiCustom.cpp:596). Every edit moves the working revision, and the
+        // commit takes that design with its revision and adds one (:338, :425).
+        var world = CreateWorld();
+        var registry = new MultiRegistry();
+        var stair = new MultiDef { Id = 0x0709 };
+        stair.Components.Add(new MultiComponent { TileId = 0x0709, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        stair.Components.Add(new MultiComponent { TileId = 0x070A, DeltaX = 0, DeltaY = -1, DeltaZ = 5, Visible = true });
+        stair.Components.Add(new MultiComponent { TileId = 0x070B, DeltaX = 0, DeltaY = -2, DeltaZ = 10, Visible = false });
+        registry.Register(stair);
+        var engine = new CustomHousingEngine(world, new HousingEngine(world, registry));
+        var ch = world.CreateCharacter();
+        var multi = world.CreateItem();
+        engine.Begin(ch, multi);
 
         Assert.True(engine.Build(ch, 0x0064, 2, 3));      // story 1 → z 7
         engine.SetLevel(ch, 2);
         Assert.True(engine.Build(ch, 0x0066, 2, 3));      // story 2 → z 27
-        Assert.True(engine.Stairs(ch, 0x0709, -7, 5));    // ground → z 0
+        engine.SetLevel(ch, 1);
+        Assert.True(engine.Stairs(ch, 0x0709, -7, 5));    // story 1 → z 7, two visible pieces
 
         uint? revision = engine.Commit(ch);
-        Assert.Equal(2u, revision); // initial revision 1 + 1
+        Assert.Equal(6u, revision); // 1 + four edits (two builds, two stair pieces) + the commit
         Assert.Null(engine.GetSession(ch.Uid)); // session ended
 
         var committed = HouseDesign.LoadFromTags(multi);
-        Assert.Equal(2u, committed.Revision);
+        Assert.Equal(6u, committed.Revision);
         Assert.Contains(new HouseDesignTile(0x0064, 2, 3, 7), committed.Tiles);
         Assert.Contains(new HouseDesignTile(0x0066, 2, 3, 27), committed.Tiles);
-        Assert.Contains(new HouseDesignTile(0x0709, -7, 5, 0), committed.Tiles);
+        Assert.Contains(new HouseDesignTile(0x0709, -7, 5, 7, StairId: 1), committed.Tiles);
+        Assert.Contains(new HouseDesignTile(0x070A, -7, 4, 12, StairId: 1), committed.Tiles);
+        Assert.DoesNotContain(committed.Tiles, t => t.TileId == 0x070B);
+    }
+
+    [Fact]
+    public void ErasingOneStairPieceTakesTheWholeStaircase()
+    {
+        var world = CreateWorld();
+        var registry = new MultiRegistry();
+        var stair = new MultiDef { Id = 0x0709 };
+        stair.Components.Add(new MultiComponent { TileId = 0x0709, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        stair.Components.Add(new MultiComponent { TileId = 0x070A, DeltaX = 0, DeltaY = -1, DeltaZ = 5, Visible = true });
+        registry.Register(stair);
+        var engine = new CustomHousingEngine(world, new HousingEngine(world, registry));
+        var ch = world.CreateCharacter();
+        engine.Begin(ch, world.CreateItem());
+        Assert.True(engine.Build(ch, 0x0064, 2, 3));
+        Assert.True(engine.Stairs(ch, 0x0709, -7, 5));
+
+        Assert.True(engine.Erase(ch, 0x070A, -7, 4, 12));
+
+        var tiles = engine.GetSession(ch.Uid)!.Working.Tiles;
+        Assert.DoesNotContain(tiles, t => t.StairId != 0);
+        Assert.Contains(new HouseDesignTile(0x0064, 2, 3, 7), tiles);
+    }
+
+    [Fact]
+    public void ANewPieceReplacesThePieceOfItsKindOnThatSquare()
+    {
+        var (engine, ch, _) = CreateSession();
+        Assert.True(engine.Build(ch, 0x0064, 2, 3));
+        Assert.True(engine.Build(ch, 0x0066, 2, 3));
+
+        var tiles = engine.GetSession(ch.Uid)!.Working.Tiles;
+        Assert.Single(tiles);
+        Assert.Equal(0x0066, tiles[0].TileId);
+    }
+
+    [Fact]
+    public void AStairTagSurvivesTheSave()
+    {
+        var world = CreateWorld();
+        var multi = world.CreateItem();
+        var design = new HouseDesign();
+        design.Tiles.Add(new HouseDesignTile(0x0709, 1, 2, 7, StairId: 3));
+        design.SaveToTags(multi);
+        Assert.Equal(3, HouseDesign.LoadFromTags(multi).Tiles[0].StairId);
     }
 
     [Fact]

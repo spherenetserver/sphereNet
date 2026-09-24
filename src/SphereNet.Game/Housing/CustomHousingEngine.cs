@@ -121,33 +121,64 @@ public sealed class CustomHousingEngine
         return session;
     }
 
+    /// <summary>Source-X CItemMultiCustom::AddItem (CItemMultiCustom.cpp:438): at the
+    /// current floor's height, or at ground level one row south of the design area
+    /// (the front step).</summary>
     public bool Build(Character ch, ushort tileId, int x, int y)
     {
-        if (!TryGetAuthorizedSession(ch, out var session, out _) ||
-            !IsPlaceableTile(ch, tileId) ||
-            !FitsDesignArea(session, x, y, allowSouthEdge: false))
-            return false;
-        return AddTile(session, tileId, x, y, LevelToZ(session.Level));
-    }
-
-    /// <summary>Stairs are placed at ground level (Z=0) outside the plane grid.</summary>
-    public bool Stairs(Character ch, ushort tileId, int x, int y)
-    {
-        if (!TryGetAuthorizedSession(ch, out var session, out _) ||
+        if (!TryGetAuthorizedSession(ch, out var session, out var multi) ||
             !IsPlaceableTile(ch, tileId) ||
             !FitsDesignArea(session, x, y, allowSouthEdge: true))
             return false;
-        return AddTile(session, tileId, x, y, 0);
+        sbyte z = IsSouthOfDesignArea(session, y) ? (sbyte)0 : LevelToZ(session.Level);
+        return AddTile(session, multi, tileId, x, y, z, 0);
+    }
+
+    /// <summary>Source-X AddStairs (CItemMultiCustom.cpp:596): the id is a staircase
+    /// MULTI; each of its visible pieces is added at the current floor's height plus
+    /// its own offset, all tagged with one new staircase id so they come off together.
+    /// It was a single static tile at Z 0, so no staircase could be walked.</summary>
+    public bool Stairs(Character ch, ushort multiId, int x, int y)
+    {
+        if (!TryGetAuthorizedSession(ch, out var session, out var multi) ||
+            !HouseDesignValidItems.IsValidStairMulti(multiId, ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM) ||
+            !FitsDesignArea(session, x, y, allowSouthEdge: true))
+            return false;
+        var stairDef = _housing.MultiDefs.Get(multiId);
+        if (stairDef == null || stairDef.Components.Count == 0)
+            return false;
+
+        ushort stairId = 0;
+        foreach (var t in session.Working.Tiles)
+            if (t.StairId > stairId) stairId = t.StairId;
+        stairId++;
+
+        sbyte baseZ = LevelToZ(session.Level);
+        bool any = false;
+        foreach (var comp in stairDef.Components)
+        {
+            if (!comp.Visible) continue;
+            int px = x + comp.DeltaX, py = y + comp.DeltaY, pz = baseZ + comp.DeltaZ;
+            if (!FitsOffset(px, py) || pz is < sbyte.MinValue or > sbyte.MaxValue) continue;
+            any |= AddTile(session, multi, comp.TileId, px, py, (sbyte)pz, stairId);
+        }
+        return any;
     }
 
     public bool Roof(Character ch, ushort tileId, int x, int y, int z)
     {
-        if (!TryGetAuthorizedSession(ch, out var session, out _) ||
+        if (!TryGetAuthorizedSession(ch, out var session, out var multi) ||
             !IsPlaceableTile(ch, tileId) ||
             !FitsDesignArea(session, x, y, allowSouthEdge: false))
             return false;
-        return AddTile(session, tileId, x, y, (sbyte)Math.Clamp(z, sbyte.MinValue, sbyte.MaxValue));
+        return AddTile(session, multi, tileId, x, y, (sbyte)Math.Clamp(z, sbyte.MinValue, sbyte.MaxValue), 0);
     }
+
+    /// <summary>Source-X GetPlane (CItemMultiCustom.cpp:1878).</summary>
+    public static int GetPlane(int z) => z >= 67 ? 4 : z >= 47 ? 3 : z >= 27 ? 2 : z >= 7 ? 1 : 0;
+
+    /// <summary>ITEMID_DIRT_TILE: the ground a first-floor floor tile is replaced with.</summary>
+    public const ushort DirtTile = 0x31F4;
 
     /// <summary>Source-X CItemMultiCustom::IsValidItem gate — the designer may
     /// only place real static design pieces; GMs bypass the whitelist but not
@@ -156,19 +187,43 @@ public sealed class CustomHousingEngine
         HouseDesignValidItems.IsValidBuildTile(
             tileId, ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM);
 
+    /// <summary>Source-X CItemMultiCustom::RemoveItem (CItemMultiCustom.cpp:698) for a
+    /// designing client: the dirt of the first floor cannot be removed, at ground
+    /// level only the south edge (the stairs) can, a staircase piece takes its whole
+    /// staircase with it, and a first-floor floor tile leaves dirt behind.</summary>
     public bool Erase(Character ch, ushort tileId, int x, int y, int z)
     {
         if (!TryGetAuthorizedSession(ch, out var session, out _))
             return false;
+        int plane = GetPlane(z);
+        if (plane == 1 && tileId == DirtTile)
+            return false;
+        if (plane == 0 && !IsSouthOfDesignArea(session, y))
+            return false;
+
         var tiles = session.Working.Tiles;
         for (int i = tiles.Count - 1; i >= 0; i--)
         {
             var t = tiles[i];
-            if (t.TileId == tileId && t.X == x && t.Y == y && t.Z == z)
+            if (t.TileId != tileId || t.X != x || t.Y != y || t.Z != z)
+                continue;
+
+            var removed = new List<HouseDesignTile>();
+            if (t.StairId != 0)
             {
-                tiles.RemoveAt(i);
-                return true;
+                removed.AddRange(tiles.Where(o => o.StairId == t.StairId));
+                tiles.RemoveAll(o => o.StairId == t.StairId);
             }
+            else
+            {
+                removed.Add(t);
+                tiles.RemoveAt(i);
+            }
+            foreach (var r in removed)
+                if (r.TileId != DirtTile && IsFloorTile(r.TileId) && GetPlane(r.Z) == 1 && LevelToZ(1) == r.Z)
+                    tiles.Add(new HouseDesignTile(DirtTile, r.X, r.Y, r.Z));
+            session.Working.Revision++;
+            return true;
         }
         return false;
     }
@@ -182,7 +237,10 @@ public sealed class CustomHousingEngine
     public void Clear(Character ch)
     {
         if (TryGetAuthorizedSession(ch, out var session, out _))
+        {
             session.Working.Tiles.Clear();
+            session.Working.Revision++;
+        }
     }
 
     public void BackupDesign(Character ch)
@@ -252,10 +310,18 @@ public sealed class CustomHousingEngine
         return count;
     }
 
+    /// <summary>Source-X @HouseDesignCommitItem (CommitChanges, CItemMultiCustom.cpp:
+    /// 284-305): asked once per piece before the commit, with LOCAL.ID, P.X, P.Y,
+    /// P.Z and VISIBLE; an explicit RETURN 0 leaves the piece out.</summary>
+    public static Func<Character, Item, HouseDesignTile, bool>? KeepCommitItem { get; set; }
+
     public uint? Commit(Character ch)
     {
         if (!TryGetAuthorizedSession(ch, out var session, out var multi))
             return null;
+
+        if (KeepCommitItem != null)
+            session.Working.Tiles.RemoveAll(t => !KeepCommitItem(ch, multi, t));
 
         session.Working.Revision++;
         session.Working.SaveToTags(multi);
@@ -372,6 +438,24 @@ public sealed class CustomHousingEngine
         return true;
     }
 
+    private bool IsSouthOfDesignArea(HouseDesignSession session, int y)
+    {
+        var multi = _world.FindItem(session.HouseUid);
+        var def = multi != null ? _housing.MultiDefs.Get(multi.BaseId) : null;
+        return def != null && y > def.MaxY;
+    }
+
+    /// <summary>A floor tile: no height and the tile data's floor flag (UFLAG1_FLOOR).
+    /// Floors and everything else share a square - a wall stands on a floor - so each
+    /// only replaces its own kind.</summary>
+    private bool IsFloorTile(ushort tileId)
+    {
+        var md = _world.MapData;
+        if (md == null) return false;
+        var data = md.GetItemTileData(tileId);
+        return data.Height == 0 && (data.Flags & SphereNet.MapData.Tiles.TileFlag.Background) != 0;
+    }
+
     private bool FitsDesignArea(HouseDesignSession session, int x, int y, bool allowSouthEdge)
     {
         if (!FitsOffset(x, y)) return false;
@@ -388,16 +472,51 @@ public sealed class CustomHousingEngine
 
     private const int MaxDesignTiles = HouseDesign.MaxTiles;
 
-    private static bool AddTile(HouseDesignSession session, ushort tileId, int x, int y, sbyte z)
+    /// <summary>Source-X AddItem (CItemMultiCustom.cpp:525-594): a new piece replaces
+    /// whatever of its own kind (floor or not) already stands on that square at that
+    /// height - it used to stack on top - bumps the design revision, and moves the
+    /// house's locked-down items standing there into the moving crate.</summary>
+    private bool AddTile(HouseDesignSession session, Item multi, ushort tileId, int x, int y, sbyte z,
+        ushort stairId)
     {
-        // Replace an identical-position tile of the same graphic instead of
-        // stacking duplicates (repeated client clicks).
-        var tile = new HouseDesignTile(tileId, (sbyte)x, (sbyte)y, z);
-        if (session.Working.Tiles.Contains(tile))
-            return true;
-        if (session.Working.Tiles.Count >= MaxDesignTiles)
+        var tile = new HouseDesignTile(tileId, (sbyte)x, (sbyte)y, z, StairId: stairId);
+        var tiles = session.Working.Tiles;
+        bool isFloor = IsFloorTile(tileId);
+        tiles.RemoveAll(t => t.X == x && t.Y == y && t.Z == z && IsFloorTile(t.TileId) == isFloor);
+        if (tiles.Count >= MaxDesignTiles)
             return false;
-        session.Working.Tiles.Add(tile);
+        tiles.Add(tile);
+        session.Working.Revision++;
+        MoveLockdownsToCrate(multi, x, y, z);
         return true;
     }
+
+    /// <summary>Source-X GetLockdownsAt + UnlockItem into the moving crate: a locked-down
+    /// item on the square a piece now occupies, on the same floor (CalculateLevel,
+    /// CItemMultiCustom.cpp:1356). Upstream's secured-container pass walks the wrong
+    /// list and never moves anything, so secure containers are left where they are.</summary>
+    private void MoveLockdownsToCrate(Item multi, int x, int y, sbyte z)
+    {
+        var house = _housing.GetHouse(multi.Uid);
+        if (house == null || house.Lockdowns.Count == 0) return;
+        int wx = multi.X + x, wy = multi.Y + y;
+        int floor = CalculateLevel(multi, multi.Position.Z + z);
+        foreach (var uid in house.Lockdowns.ToArray())
+        {
+            var item = _world.FindItem(uid);
+            if (item == null || item.IsDeleted || item.X != wx || item.Y != wy) continue;
+            if (CalculateLevel(multi, item.Z) != floor) continue;
+            house.ReleaseLockdown(uid, house.Owner);
+            var crate = house.GetMovingCrate(create: true);
+            var from = item.Position;
+            if (crate == null || !crate.TryAddItem(item))
+                continue;
+            BroadcastRemove?.Invoke(item.Uid.Value, from);
+        }
+    }
+
+    private static int CalculateLevel(Item multi, int z) => (z - multi.Position.Z - 6) / 20;
+
+    /// <summary>Tell nearby clients an object left the world view.</summary>
+    public static Action<uint, Core.Types.Point3D>? BroadcastRemove { get; set; }
 }

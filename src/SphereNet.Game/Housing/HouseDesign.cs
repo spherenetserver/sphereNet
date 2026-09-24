@@ -68,7 +68,11 @@ public sealed class HouseDesign
                 dy is < sbyte.MinValue or > sbyte.MaxValue ||
                 dz is < sbyte.MinValue or > sbyte.MaxValue)
                 continue;
-            design.Tiles.Add(new HouseDesignTile((ushort)tileId, (sbyte)dx, (sbyte)dy, (sbyte)dz));
+            // The fifth field was always written as 0; it now carries the staircase
+            // a piece belongs to, so a design saved before reads as "no stairs".
+            ushort stairId = parts.Length >= 5 && ushort.TryParse(parts[4], out ushort sid) ? sid : (ushort)0;
+            design.Tiles.Add(new HouseDesignTile((ushort)tileId, (sbyte)dx, (sbyte)dy, (sbyte)dz,
+                StairId: stairId));
         }
         return design;
     }
@@ -87,7 +91,7 @@ public sealed class HouseDesign
         for (int i = 0; i < Tiles.Count; i++)
         {
             var t = Tiles[i];
-            multi.Tags.Set($"{TilePrefix}{i}", $"0x{t.TileId:X},{t.X},{t.Y},{t.Z},0");
+            multi.Tags.Set($"{TilePrefix}{i}", $"0x{t.TileId:X},{t.X},{t.Y},{t.Z},{t.StairId}");
         }
         multi.Tags.Set(RevisionTag, Revision.ToString());
     }

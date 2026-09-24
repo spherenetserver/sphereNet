@@ -786,7 +786,41 @@ public partial class Character : ObjBase
 
     /// <summary>Fired when a moving character shoves past another character's tile
     /// (Source-X @PersonalSpace). Args: mover, the character being pushed past.</summary>
-    public static Action<Character, Character>? OnPersonalSpace { get; set; }
+    /// <summary>Source-X @PersonalSpace (ShoveCharAtPosition, CCharAct.cpp:4640):
+    /// fired on the character being walked into, with the mover as SRC. True keeps
+    /// the mover out.</summary>
+    public static Func<Character, Character, bool>? OnPersonalSpace { get; set; }
+
+    /// <summary>Source-X @charShove (CCharAct.cpp:4653): fired on the mover, with the
+    /// character in the way as SRC. True keeps the mover out.</summary>
+    public static Func<Character, Character, bool>? OnCharShove { get; set; }
+
+    /// <summary>Source-X @AfkMode (CHV_AFK, CChar.cpp:4418): ARGN1 = currently AFK,
+    /// ARGN2 = the mode asked for; both are read back, and true cancels the switch.</summary>
+    public static Func<Character, bool, bool, (bool Cancel, bool Afk, bool Mode)>? OnAfkMode { get; set; }
+
+    /// <summary>Source-X @SeeHidden (CanSee, CCharStatus.cpp:1195): fired on the viewer
+    /// with the hidden player as SRC and ARGN1 = viewer's plevel &lt;= theirs. The
+    /// viewer sees them unless the script leaves ARGN1 at 1. Installed only when a
+    /// script hooks it - the view code asks this for every hidden character.</summary>
+    public static Func<Character, Character, long, long>? OnSeeHidden { get; set; }
+
+    /// <summary>Source-X @FollowersUpdate (FollowersUpdate, CCharUse.cpp:1245): fired on
+    /// the owner with the pet as SRC, ARGN1 = 0 adding / 1 removing, ARGN2 = slots.
+    /// True refuses an addition.</summary>
+    public static Func<Character, Character, bool, int, bool>? OnFollowersUpdate { get; set; }
+
+    /// <summary>Upstream CanSee for a hidden or invisible character: staff of a high
+    /// enough level see it, AllShow sees everything, and @SeeHidden decides for a
+    /// hidden player when a script hooks it.</summary>
+    public static bool CanSeeHidden(Character viewer, Character target)
+    {
+        if (viewer.AllShow)
+            return true;
+        if (target.PrivLevel <= PrivLevel.Player && OnSeeHidden != null)
+            return OnSeeHidden(viewer, target, viewer.PrivLevel <= target.PrivLevel ? 1 : 0) != 1;
+        return viewer.PrivLevel >= PrivLevel.Counsel && viewer.PrivLevel >= target.PrivLevel;
+    }
 
     /// <summary>Fired when a temporary spell effect/buff is applied to a character
     /// (Source-X @EffectAdd). Args: target, spell id. Installed only when hooked
@@ -832,6 +866,10 @@ public partial class Character : ObjBase
     /// (Source-X @PetDesert). Args: pet, owner (may be null). Return true to cancel
     /// the desertion — the pet keeps serving.</summary>
     public static Func<Character, Character?, bool>? OnPetDesert { get; set; }
+
+    /// <summary>Source-X @PetRelease (NPC_PetRelease, CCharNPCPet.cpp:870): fired on
+    /// the pet with its owner as SRC before it is let go. Return true to keep it.</summary>
+    public static Func<Character, Character, bool>? OnPetRelease { get; set; }
 
     /// <summary>Script NEWNPC verb (Source-X SSV_NEWNPC). Args: invoker,
     /// chardef name/id → the spawned NPC (null on unknown def). Wired to the
@@ -1884,7 +1922,16 @@ public partial class Character : ObjBase
             if (item.Position.X != X || item.Position.Y != Y) continue;
             // A field one storey below shares the X/Y but must not reach up.
             if (!item.IsWithinStepHeight(Z)) continue;
-            if (FieldTouchHook != null && item.TryGetTag("FIELD_SPELL", out _))
+            // A spell field by tag, or by type: a t_spell casts its MOREX (capped
+            // like any spell field) and a t_fire burns at its heat (not capped).
+            if (FieldTouchHook != null && item.ItemType == ItemType.Fire &&
+                !item.TryGetTag("FIELD_SPELL", out _))
+            {
+                FieldTouchHook(this, item);
+                continue;
+            }
+            if (FieldTouchHook != null && (item.TryGetTag("FIELD_SPELL", out _) ||
+                (item.ItemType == ItemType.Spell && item.MoreP.X > 0)))
             {
                 // Source-X caps a location check at one spell effect
                 // (CCharAct.cpp:4996). The cap follows the RESULT: a field that
@@ -2325,6 +2372,11 @@ public partial class Character : ObjBase
         {
             return false;
         }
+        if (owner != null && !HasOwner(owner.Uid) && FollowerCapApplies(owner) &&
+            OnFollowersUpdate?.Invoke(owner, this, true, ControlSlots) == true)
+        {
+            return false;
+        }
 
         // A REAL change of owner takes the old owner's relationships with it. Source-X
         // routes a transfer through NPC_PetSetOwner, which returns untouched when the
@@ -2394,6 +2446,10 @@ public partial class Character : ObjBase
 
     public void ClearOwnership(bool clearFriends = false)
     {
+        if (OnFollowersUpdate != null && !IsPlayer && OwnerSerial.IsValid &&
+            ResolveWorld?.Invoke()?.FindChar(OwnerSerial) is { } leavingOwner &&
+            FollowerCapApplies(leavingOwner))
+            OnFollowersUpdate(leavingOwner, this, false, ControlSlots);
         // A dismissed player vendor hands its takings and its bought stock back
         // first — while the owner is still known (Source-X NPC_PetClearOwners,
         // CCharNPCPet.cpp:562). Clearing the flags first would strand the goods.
@@ -4358,6 +4414,13 @@ public partial class Character : ObjBase
             }
             case "GOLD":
             {
+                // Under FEATURE_TOL_VIRTUALGOLD GOLD is the virtual purse
+                // (CChar.cpp:3331 falls through to VIRTUALGOLD).
+                if (SphereNet.Game.Trade.VirtualGold.Enabled)
+                {
+                    value = SphereNet.Game.Trade.VirtualGold.Get(this).ToString();
+                    return true;
+                }
                 int gold = 0;
                 var pack = Backpack;
                 if (pack != null)
@@ -5641,6 +5704,12 @@ public partial class Character : ObjBase
                 return true;
             case "GOLD":
             {
+                if (SphereNet.Game.Trade.VirtualGold.Enabled)
+                {
+                    if (long.TryParse(normalized, out long virtualVal))
+                        SphereNet.Game.Trade.VirtualGold.Set(this, virtualVal);
+                    return true;
+                }
                 if (int.TryParse(normalized, out int goldVal))
                 {
                     var pack = Backpack;
@@ -6393,7 +6462,15 @@ public partial class Character : ObjBase
                 bool force = args.Trim().Length > 0 &&
                     SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(args.Trim().AsSpan(), out long av) && av != 0;
                 bool newMode = args.Trim().Length > 0 ? force : !_isAfk;
-                if (newMode != _isAfk)
+                bool currentAfk = _isAfk;
+                if (OnAfkMode != null)
+                {
+                    var (cancel, afk, mode) = OnAfkMode(this, currentAfk, newMode);
+                    if (cancel) return true;
+                    currentAfk = afk;
+                    newMode = mode;
+                }
+                if (newMode != currentAfk)
                 {
                     _isAfk = newMode;
                     source.SysMessage(newMode ? "You are now AFK." : "You are no longer AFK.");

@@ -2552,6 +2552,39 @@ public sealed class PacketSecureTradeClose : PacketWriter
 }
 
 /// <summary>0x6F action 2 — Update acceptance status.</summary>
+/// <summary>0x6F actions 3 and 4 (TOL virtual gold, Source-X prepareUpdateGold /
+/// prepareUpdateLedger): 3 = the gold and platinum the OTHER side offers, 4 = how much
+/// this side holds. [type][container][gold][platinum][0].</summary>
+public sealed class PacketSecureTradeGold : PacketWriter
+{
+    public const byte OfferType = 3;
+    public const byte LedgerType = 4;
+    private readonly byte _type;
+    private readonly uint _containerSerial;
+    private readonly uint _gold;
+    private readonly uint _platinum;
+
+    public PacketSecureTradeGold(byte type, uint containerSerial, uint gold, uint platinum) : base(0x6F)
+    {
+        _type = type;
+        _containerSerial = containerSerial;
+        _gold = gold;
+        _platinum = platinum;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(17);
+        buf.WriteByte(_type);
+        buf.WriteUInt32(_containerSerial);
+        buf.WriteUInt32(_gold);
+        buf.WriteUInt32(_platinum);
+        buf.WriteByte(0);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 public sealed class PacketSecureTradeUpdate : PacketWriter
 {
     private readonly uint _containerSerial;

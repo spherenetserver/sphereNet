@@ -1759,7 +1759,6 @@ public sealed class ClientItemUseHandler
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
                     SpinMaterial(item, new Serial(serial)));
                 break;
-            case ItemType.Feather:
             case ItemType.Fur:
                 SysMessage("Use a spinning wheel to process this material.");
                 break;
@@ -1775,9 +1774,6 @@ public sealed class ClientItemUseHandler
             case ItemType.Log:
             case ItemType.Board:
                 SysMessage("Use a carpentry tool to craft with this.");
-                break;
-            case ItemType.Shaft:
-                SysMessage("Use fletching tools to craft with this.");
                 break;
             case ItemType.Bone:
                 SysMessage("You examine the bone.");
@@ -1840,8 +1836,12 @@ public sealed class ClientItemUseHandler
                 UsePortcullis(item);
                 break;
 
-            // ---- fletching tool ----
+            // ---- fletching tool and its materials ----
+            // Source-X opens the Bowcraft menu from the shaft and the feather as
+            // well as the tool (CClientUse.cpp:160); they printed a hint instead.
             case ItemType.Fletching:
+            case ItemType.Shaft:
+            case ItemType.Feather:
                 OpenCraftingGump(SkillType.Bowcraft);
                 break;
 
@@ -3876,7 +3876,7 @@ public sealed class ClientItemUseHandler
         // are vendor management verbs that act immediately (open a container or
         // dispense the purse), NOT target verbs — they must not raise a cursor.
         "attack" or "kill" or "guard" or "follow" or "go" or
-        "friend" or "unfriend" or "transfer" or "release" or
+        "friend" or "unfriend" or "transfer" or
         "price" => true,
         _ => false
     };
@@ -4093,15 +4093,59 @@ public sealed class ClientItemUseHandler
             case "friend":
             case "unfriend":
             case "transfer":
-            case "release":
             case "price":
                 EmitPetTargetPrompt(pet, verb);
+                return true;
+
+            case "release":
+                // Source-X PC_RELEASE (CCharNPCPet.cpp:233) takes no target: it opens
+                // the script's d_pet_release confirmation when there is one, and
+                // releases the pet on the spot when there is not. It opened a target
+                // cursor asking the owner to pick themselves.
+                if (!_client.OpenNamedDialog("d_pet_release", 0, pet))
+                    ReleasePet(pet, _character);
                 return true;
 
             default:
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
                 return false;
         }
+    }
+
+    /// <summary>Source-X NPC_PetRelease (CCharNPCPet.cpp:860). @PetRelease runs first
+    /// on the pet with the owner as SRC and may keep it (RETURN 1). A conjured
+    /// creature, or a bonded pet that is dead, is not set loose but taken away with
+    /// the teleport vanish; anything else loses its owners and friends and is left
+    /// standing. A released summon used to stay in the world as an ownerless NPC.</summary>
+    internal void ReleasePet(Character pet, Character owner)
+    {
+        if (!pet.HasOwner(owner.Uid))
+        {
+            SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
+            return;
+        }
+        if (Character.OnPetRelease?.Invoke(pet, owner) == true)
+            return;
+
+        if (pet.IsStatFlag(StatFlag.Conjured) || pet.IsSummoned || (pet.IsBonded && pet.IsDead))
+        {
+            var at = pet.Position;
+            BroadcastNearby?.Invoke(at, UpdateRange, new PacketEffect(2, 0, 0, 0x3728,
+                at.X, at.Y, (short)at.Z, at.X, at.Y, (short)at.Z, 10, 15, true, false), 0);
+            BroadcastNearby?.Invoke(at, UpdateRange, new PacketSound(0x01FE, at.X, at.Y, at.Z), 0);
+            pet.ClearOwnership(clearFriends: true);
+            BroadcastDeleteObject(pet.Uid.Value);
+            _world.DeleteObject(pet);
+            return;
+        }
+
+        pet.ClearOwnership(clearFriends: true);
+        pet.PetAIMode = PetAIMode.Stay;
+        pet.RemoveTag("ATTACK_TARGET");
+        pet.RemoveTag("GUARD_TARGET");
+        pet.RemoveTag("FOLLOW_TARGET");
+        pet.RemoveTag("GO_TARGET");
+        SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
     }
 
     /// <summary>
@@ -4296,21 +4340,6 @@ public sealed class ClientItemUseHandler
                         SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
                     }
                 }
-                break;
-
-            case "release":
-                if (obj is Character releaseOwner && pet.HasOwner(releaseOwner.Uid))
-                {
-                    pet.ClearOwnership(clearFriends: true);
-                    pet.PetAIMode = PetAIMode.Stay;
-                    pet.RemoveTag("ATTACK_TARGET");
-                    pet.RemoveTag("GUARD_TARGET");
-                    pet.RemoveTag("FOLLOW_TARGET");
-                    pet.RemoveTag("GO_TARGET");
-                    SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));
-                }
-                else
-                    SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
                 break;
 
             case "go":

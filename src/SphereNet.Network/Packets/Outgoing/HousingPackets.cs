@@ -6,7 +6,11 @@ namespace SphereNet.Network.Packets.Outgoing;
 /// Source-X component flag: fixture tiles (doors/containers) of a committed
 /// design are invisible — the real items materialized on commit replace them
 /// for rendering, walking and LOS.</summary>
-public readonly record struct HouseDesignTile(ushort TileId, sbyte X, sbyte Y, sbyte Z, bool Visible = true);
+/// <param name="StairId">Which staircase this piece belongs to (Source-X
+/// CMultiComponent::m_isStair); 0 = not a stair. Erasing one piece of a staircase
+/// takes the whole staircase with it.</param>
+public readonly record struct HouseDesignTile(ushort TileId, sbyte X, sbyte Y, sbyte Z, bool Visible = true,
+    ushort StairId = 0);
 
 /// <summary>0xBF sub 0x20 — switch the client's house-customization mode on
 /// (flag 0x04) or off (flag 0x05) for the given foundation serial. While on,

@@ -299,7 +299,7 @@ public sealed class SkillHandlers
                 return ActiveSkillEngine.Provocation(sink,
                     ch.ActPrv.IsValid ? _world.FindChar(ch.ActPrv) : null,
                     target as Character);
-            case SkillType.Enticement:       return ActiveSkillEngine.Discordance(sink, target as Character);
+            case SkillType.Enticement:       return ActiveSkillEngine.Enticement(sink, target as Character);
             default:
                 ch.Act = target?.Uid ?? Serial.Invalid;
                 if (point.HasValue) ch.ActP = point.Value;

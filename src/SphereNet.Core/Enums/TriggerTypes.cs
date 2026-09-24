@@ -156,6 +156,7 @@ public enum CharTrigger : short
     PartyRemove,
     PersonalSpace,
     PetDesert,
+    PetRelease,
     Profile,
     ReceiveItem,
     RegionEnter,
@@ -201,6 +202,17 @@ public enum CharTrigger : short
     TradeAccepted,
     TradeClose,
     TradeCreate,
+
+    // Source-X character triggers that live outside the alphabetical run above.
+    AfkMode,
+    charShove,
+    DelMulti,
+    Falling,
+    FollowersUpdate,
+    HouseDesignCommitItem,
+    PayGold,
+    SeeHidden,
+    ToggleFlying,
 
     // Mirrored item triggers on character (CTRIG_item*)
     itemAfterClick,

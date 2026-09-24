@@ -38,6 +38,35 @@ public sealed partial class GameClient
 {
     private static readonly LoginRateLimiter s_loginRateLimiter = new();
 
+    /// <summary>sphere.ini CLIENTLOGINMAXTRIES / CLIENTLOGINTEMPBAN (Source-X
+    /// CAccount::CheckPasswordTries, CAccount.cpp:844): this many login attempts on
+    /// one account from one address within 15 seconds bans that address from the
+    /// account for CLIENTLOGINTEMPBAN. Upstream starts the count at zero on the first
+    /// attempt, so the refusal comes on attempt N+1. 0 tries (the default) turns it off; a local
+    /// address is never counted. Every attempt counts, not only failed ones.</summary>
+    public static void ConfigureLoginTries(int maxTries, TimeSpan tempBan)
+    {
+        s_loginTries = maxTries > 0
+            ? new LoginRateLimiter(threshold: maxTries + 1, window: TimeSpan.FromSeconds(15),
+                baseDelay: tempBan, maxDelay: tempBan)
+            : null;
+    }
+
+    private static LoginRateLimiter? s_loginTries;
+
+    /// <summary>Count this attempt against CLIENTLOGINMAXTRIES and answer whether the
+    /// address is (now) banned from the account.</summary>
+    private bool ExceedsLoginTries(string account)
+    {
+        var limiter = s_loginTries;
+        if (limiter == null) return false;
+        var address = _netState.RemoteEndPoint?.Address;
+        if (address == null || System.Net.IPAddress.IsLoopback(address)) return false;
+        string key = LoginRateLimitKey(account);
+        if (limiter.IsLimited(key, out _)) return true;
+        return limiter.RegisterFailure(key) > TimeSpan.Zero;
+    }
+
     /// <summary>Source-X account tags that carry the detected client version
     /// from the login socket to the game socket (CClientLog.cpp:916). The login
     /// connection learns the version from the 0xEF seed; the game connection
@@ -89,6 +118,12 @@ public sealed partial class GameClient
     {
         if (IsLoginLimited(account))
             return;
+        if (ExceedsLoginTries(account))
+        {
+            _logger.LogWarning("[AUTH] '{Account}' exceeded password tries in time lapse", account);
+            DenyLogin(LoginDenyOther); // MaxPassTries -> Other
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {
@@ -126,6 +161,12 @@ public sealed partial class GameClient
     {
         if (IsLoginLimited(account))
             return;
+        if (ExceedsLoginTries(account))
+        {
+            _logger.LogWarning("[AUTH] '{Account}' exceeded password tries in time lapse", account);
+            DenyLogin(LoginDenyOther);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {

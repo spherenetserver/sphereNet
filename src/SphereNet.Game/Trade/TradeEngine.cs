@@ -34,6 +34,17 @@ public sealed class SecureTrade
     private bool _initiatorAccepted;
     private bool _partnerAccepted;
     private bool _isCompleted;
+    // Virtual gold each side has put in the window (TOL trade gold/platinum fields).
+    private long _initiatorGold;
+    private long _partnerGold;
+
+    public long GetGoldOffer(Character ch) => ch == _initiator ? _initiatorGold : _partnerGold;
+
+    public void SetGoldOffer(Character ch, long amount)
+    {
+        if (ch == _initiator) _initiatorGold = Math.Max(0, amount);
+        else if (ch == _partner) _partnerGold = Math.Max(0, amount);
+    }
 
     public Serial SessionId => _sessionId;
     public Character Initiator => _initiator;
@@ -121,6 +132,12 @@ public static class VendorEngine
 {
     /// <summary>Reference to the world for container lookups.</summary>
     public static GameWorld? World { get; set; }
+
+    /// <summary>Source-X ePayGold reasons (game_enums.h:9).</summary>
+    public const int PayGoldTrain = 0, PayGoldBuy = 1, PayGoldHire = 2;
+
+    /// <summary>@PayGold: (payer, payee, amount, reason) -> the amount to charge.</summary>
+    public static Func<Character, Character, long, int, long>? OnPayGold { get; set; }
 
     /// <summary>
     /// True when an NPC name carries a merchant role keyword. Legacy packs
@@ -229,13 +246,29 @@ public static class VendorEngine
         // character as a load-test bot.
         bool isBot = Diagnostics.BotEngine.IsLiveBotCharacter(player.Name);
         bool isOwner = vendor.HasOwner(player.Uid);
+        // @PayGold (CChar::PayGold, CCharAct.cpp:6082): the buyer's script may change
+        // what this purchase costs - ARGN1 is the price, ARGN2 the reason (1 = buy).
+        if (OnPayGold != null)
+            totalCost = Math.Max(0, OnPayGold(player, vendor, totalCost, PayGoldBuy));
+
         if (!isStaff && !isBot && !isOwner)
         {
-            long playerGold = CountGold(player);
-            if (playerGold < totalCost)
-                return -1;
+            // FEATURE_TOL_VIRTUALGOLD pays from the virtual purse (Event_VendorBuy,
+            // CClientEvent.cpp:1251 and :1398); otherwise from the coins carried.
+            if (VirtualGold.Enabled)
+            {
+                if (VirtualGold.Get(player) < totalCost)
+                    return -1;
+                VirtualGold.Set(player, VirtualGold.Get(player) - totalCost);
+            }
+            else
+            {
+                long playerGold = CountGold(player);
+                if (playerGold < totalCost)
+                    return -1;
 
-            RemoveGold(player, (int)totalCost);
+                RemoveGold(player, (int)totalCost);
+            }
         }
         else
         {
@@ -542,8 +575,13 @@ public static class VendorEngine
             // Debit the vendor's purse by what was actually paid out.
             SetVendorGold(vendor, purse - payout);
 
-            // Add gold to player (split into 60000-max piles)
-            GiveGoldToPack(player, (int)payout);
+            // Pay the seller: into the virtual purse under FEATURE_TOL_VIRTUALGOLD
+            // (Event_VendorSell, CClientEvent.cpp:1558), else as coins in the pack
+            // (split into 60000-max piles).
+            if (VirtualGold.Enabled)
+                VirtualGold.Add(player, payout);
+            else
+                GiveGoldToPack(player, (int)payout);
         }
 
         return (int)payout;

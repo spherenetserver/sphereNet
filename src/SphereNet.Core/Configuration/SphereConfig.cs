@@ -350,6 +350,13 @@ public sealed class SphereConfig
     /// logged (Source-X m_iCommandLog, default 0 = every command; -1 = none).</summary>
     public int CommandLog { get; set; }
 
+    /// <summary>sphere.ini CLIENTLOGINMAXTRIES: login attempts on one account from one
+    /// address within 15 s before a temporary ban (Source-X default 0 = off).</summary>
+    public int ClientLoginMaxTries { get; set; }
+
+    /// <summary>sphere.ini CLIENTLOGINTEMPBAN: that ban's length in minutes (default 3).</summary>
+    public int ClientLoginTempBanMinutes { get; set; } = 3;
+
     // ---- What carrying things costs while walking -----------------------
     //
     // BACKPACKOVERLOAD above lets a player exceed their own carry weight, and the
@@ -1038,6 +1045,8 @@ public sealed class SphereConfig
         BackpackOverload = ini.GetInt(section, "BackpackOverload", BackpackOverload);
         MaxLoopTimes = Math.Max(0, ini.GetInt(section, "MaxLoopTimes", MaxLoopTimes));
         CommandLog = ini.GetInt(section, "CommandLog", CommandLog);
+        ClientLoginMaxTries = Math.Max(0, ini.GetInt(section, "ClientLoginMaxTries", ClientLoginMaxTries));
+        ClientLoginTempBanMinutes = Math.Max(0, ini.GetInt(section, "ClientLoginTempBan", ClientLoginTempBanMinutes));
         StaminaLossAtWeight = ini.GetInt(section, "StaminaLossAtWeight", StaminaLossAtWeight);
         StaminaLossOverweight = ini.GetInt(section, "StaminaLossOverweight", StaminaLossOverweight);
         RunningPenalty = ini.GetInt(section, "RunningPenalty", RunningPenalty);

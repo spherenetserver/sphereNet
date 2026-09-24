@@ -34,7 +34,15 @@ public static partial class Program
         Character.OnSkillUseQuickDetailed = null;
         Character.OnNpcSeeNewPlayer = null;
         Character.OnPersonalSpace = null;
+        SphereNet.Game.Housing.CustomHousingEngine.KeepCommitItem = null;
+        Character.OnCharShove = null;
+        Character.OnAfkMode = null;
+        Character.OnSeeHidden = null;
+        Character.OnFollowersUpdate = null;
+        SphereNet.Game.Trade.VendorEngine.OnPayGold = null;
+        SphereNet.Game.Housing.HousingEngine.OnDelMulti = null;
         Character.OnPetDesert = null;
+        Character.OnPetRelease = null;
         Character.OnJailed = null;
         Character.OnEnvironChange = null;
         Character.OnRegenStat = null;
@@ -193,16 +201,78 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSeeNewPlayer,
                     new TriggerArgs { CharSrc = npc, O1 = player });
         }
-        // @PersonalSpace — fired on a shove; low frequency, no gate needed.
-        SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (mover, blocker) =>
-            _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,
-                new TriggerArgs { CharSrc = mover, O1 = blocker });
 
         // @PetDesert — fired on the pet when loyalty hits zero; RETURN 1 cancels
         // the desertion. O1 = owner (may be null if it could not be resolved).
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = (pet, owner) =>
             _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetDesert,
                 new TriggerArgs { CharSrc = pet, O1 = owner }) == TriggerResult.True;
+
+        // @PersonalSpace on the one walked into (SRC = mover), @charShove on the mover
+        // (SRC = the one in the way); RETURN 1 keeps the mover out.
+        SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (blocker, mover) =>
+            _triggerDispatcher.FireCharTrigger(blocker, CharTrigger.PersonalSpace,
+                new TriggerArgs { CharSrc = mover }) == TriggerResult.True;
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.charShove))
+            SphereNet.Game.Objects.Characters.Character.OnCharShove = (mover, blocker) =>
+                _triggerDispatcher.FireCharTrigger(mover, CharTrigger.charShove,
+                    new TriggerArgs { CharSrc = blocker }) == TriggerResult.True;
+
+        // @AfkMode — ARGN1 current, ARGN2 requested, both read back; RETURN 1 cancels.
+        SphereNet.Game.Objects.Characters.Character.OnAfkMode = (ch, afk, mode) =>
+        {
+            var afkArgs = new TriggerArgs { CharSrc = ch, N1 = afk ? 1 : 0, N2 = mode ? 1 : 0 };
+            bool cancel = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.AfkMode, afkArgs) == TriggerResult.True;
+            return (cancel, afkArgs.N1 > 0, afkArgs.N2 > 0);
+        };
+
+        // @SeeHidden — asked for every hidden character in view, so only when hooked.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SeeHidden))
+            SphereNet.Game.Objects.Characters.Character.OnSeeHidden = (viewer, hidden, n1) =>
+            {
+                var seeArgs = new TriggerArgs { CharSrc = hidden, N1 = n1 };
+                _triggerDispatcher.FireCharTrigger(viewer, CharTrigger.SeeHidden, seeArgs);
+                return seeArgs.N1;
+            };
+
+        // @FollowersUpdate — on the owner, SRC = the pet; RETURN 1 refuses an addition.
+        SphereNet.Game.Objects.Characters.Character.OnFollowersUpdate = (owner, pet, adding, slots) =>
+            _triggerDispatcher.FireCharTrigger(owner, CharTrigger.FollowersUpdate,
+                new TriggerArgs { CharSrc = pet, N1 = adding ? 0 : 1, N2 = Math.Abs(slots) }) == TriggerResult.True;
+
+        // @PayGold — on the payer, SRC = who is paid; ARGN1 (the amount) is read back.
+        SphereNet.Game.Trade.VendorEngine.OnPayGold = (payer, payee, amount, reason) =>
+        {
+            var payArgs = new TriggerArgs { CharSrc = payee, N1 = amount, N2 = reason };
+            _triggerDispatcher.FireCharTrigger(payer, CharTrigger.PayGold, payArgs);
+            return payArgs.N1;
+        };
+
+        // @HouseDesignCommitItem — per piece at commit; RETURN 0 leaves it out.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.HouseDesignCommitItem))
+            SphereNet.Game.Housing.CustomHousingEngine.KeepCommitItem = (ch, multi, tile) =>
+            {
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("ID", tile.TileId);
+                locals.SetInt("P.X", tile.X);
+                locals.SetInt("P.Y", tile.Y);
+                locals.SetInt("P.Z", tile.Z);
+                locals.SetInt("VISIBLE", tile.Visible ? 1 : 0);
+                var itemArgs = new TriggerArgs { CharSrc = ch, O1 = multi, Locals = locals };
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.HouseDesignCommitItem, itemArgs);
+                return itemArgs.ReturnNumber != 0;
+            };
+
+        // @DelMulti — on the owner a house leaves; ARGO1 = the multi, ARGN3 = 1 (owner).
+        SphereNet.Game.Housing.HousingEngine.OnDelMulti = (owner, multi) =>
+            _triggerDispatcher.FireCharTrigger(owner, CharTrigger.DelMulti,
+                new TriggerArgs { CharSrc = owner, O1 = multi, N1 = 1, N2 = 1, N3 = 1 });
+
+        // @PetRelease — fired on the pet with its owner as SRC before it is let go;
+        // RETURN 1 keeps it (NPC_PetRelease, CCharNPCPet.cpp:870).
+        SphereNet.Game.Objects.Characters.Character.OnPetRelease = (pet, owner) =>
+            _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetRelease,
+                new TriggerArgs { CharSrc = owner, O1 = owner }) == TriggerResult.True;
 
         // @Jail — fired on a character sent to jail. N1 = sentence minutes (0 = indefinite).
         SphereNet.Game.Objects.Characters.Character.OnJailed = (ch, minutes) =>

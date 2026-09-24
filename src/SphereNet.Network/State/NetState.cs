@@ -936,6 +936,8 @@ public sealed class NetState : IDisposable
     public Action<NetState, ushort>? ServerSelectHandler { get; set; }
     public Action<NetState, Core.Types.CharCreateInfo>? CharCreateHandler { get; set; }
     public Action<NetState, byte, uint, uint>? SecureTradeHandler { get; set; }
+    /// <summary>0x6F action 3: (container, gold, platinum) offered in a trade.</summary>
+    public Action<NetState, uint, uint, uint>? SecureTradeGoldHandler { get; set; }
     public Action<NetState, uint, string>? RenameHandler { get; set; }
 
     // Phase 1: Critical Stability
@@ -1102,6 +1104,9 @@ public sealed class NetState : IDisposable
 
     internal void OnSecureTrade(byte action, uint sessionId, uint param)
         => SecureTradeHandler?.Invoke(this, action, sessionId, param);
+
+    internal void OnSecureTradeGold(uint sessionId, uint gold, uint platinum)
+        => SecureTradeGoldHandler?.Invoke(this, sessionId, gold, platinum);
 
     internal void OnRename(uint serial, string name)
         => RenameHandler?.Invoke(this, serial, name);

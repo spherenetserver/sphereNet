@@ -818,6 +818,83 @@ public sealed class ClientWorldFeaturesHandler
         }
     }
 
+    /// <summary>0x6F action 3 - the gold and platinum this side puts in the window
+    /// (Source-X Trade_UpdateGold, CItemContainer.cpp:252). Only with
+    /// FEATURE_TOL_VIRTUALGOLD; without it the offer is always nothing, as upstream's
+    /// cap to the (then empty) virtual purse makes it. The offer is capped to what the
+    /// trader actually holds and shown to the partner. A changed offer also withdraws
+    /// both acceptances, so nobody can lower the gold after the other side agreed -
+    /// upstream leaves the check marks alone here, which lets exactly that happen.</summary>
+    public void HandleSecureTradeGold(uint containerSerial, uint gold, uint platinum)
+    {
+        if (_character == null || _tradeManager == null || !Trade.VirtualGold.Enabled) return;
+        var trade = _tradeManager.FindByContainer(containerSerial);
+        if (trade == null || !trade.IsParticipant(_character)) return;
+        if (trade.GetOwnContainer(_character).Uid.Value != containerSerial) return;
+
+        long offer = Math.Min(Trade.VirtualGold.Join(gold, platinum), Trade.VirtualGold.Get(_character));
+        if (offer == trade.GetGoldOffer(_character)) return;
+        trade.SetGoldOffer(_character, offer);
+
+        if (trade.InitiatorAccepted || trade.PartnerAccepted)
+        {
+            trade.ResetAcceptance();
+            SendTradeUpdateToBoth(trade);
+        }
+
+        var partner = trade.GetPartner(_character);
+        var (g, p) = Trade.VirtualGold.Split(offer);
+        Character.SendPacketToOwner?.Invoke(partner, new PacketSecureTradeGold(
+            PacketSecureTradeGold.OfferType, trade.GetOwnContainer(partner).Uid.Value, g, p));
+    }
+
+    /// <summary>Move the offered virtual gold between the traders on completion
+    /// (Trade_Status, CItemContainer.cpp:206-244), each offer re-capped to what its
+    /// trader still holds, with upstream's sent/received messages.</summary>
+    private void TransferTradeGold(SecureTrade trade)
+    {
+        var a = trade.Initiator;
+        var b = trade.Partner;
+        long fromA = Math.Min(trade.GetGoldOffer(a), Trade.VirtualGold.Get(a));
+        long fromB = Math.Min(trade.GetGoldOffer(b), Trade.VirtualGold.Get(b));
+        if (fromA == 0 && fromB == 0) return;
+
+        AnnounceTradeGold(a, b, fromA);
+        AnnounceTradeGold(b, a, fromB);
+        Trade.VirtualGold.Set(a, Trade.VirtualGold.Get(a) + fromB - fromA);
+        Trade.VirtualGold.Set(b, Trade.VirtualGold.Get(b) + fromA - fromB);
+    }
+
+    private void AnnounceTradeGold(Character sender, Character receiver, long amount)
+    {
+        if (amount <= 0) return;
+        var (gold, plat) = Trade.VirtualGold.Split(amount);
+        string sent, received;
+        if (plat != 0 && gold != 0)
+        {
+            sent = ServerMessages.GetFormatted(Msg.MsgTradeSentPlatGold, plat, gold, receiver.Name);
+            received = ServerMessages.GetFormatted(Msg.MsgTradeReceivedPlatGold, plat, gold, sender.Name);
+        }
+        else if (plat != 0)
+        {
+            sent = ServerMessages.GetFormatted(Msg.MsgTradeSentPlat, plat, receiver.Name);
+            received = ServerMessages.GetFormatted(Msg.MsgTradeReceivedPlat, plat, sender.Name);
+        }
+        else
+        {
+            sent = ServerMessages.GetFormatted(Msg.MsgTradeSentGold, gold, receiver.Name);
+            received = ServerMessages.GetFormatted(Msg.MsgTradeReceivedGold, gold, sender.Name);
+        }
+        TellTrader(sender, sent);
+        TellTrader(receiver, received);
+    }
+
+    private void TellTrader(Character ch, string text)
+    {
+        if (ch == _character) SysMessage(text);
+        else SendTradeMessageToPartner?.Invoke(ch, text);
+    }
+
     /// <summary>Cancel active trade on disconnect — return items, notify partner.</summary>
     internal void AbortActiveTradeOnDisconnect()
     {
@@ -954,6 +1031,13 @@ public sealed class ClientWorldFeaturesHandler
         _netState.Send(BuildWorldItemPacket(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
         _netState.Send(new PacketSecureTradeOpen(
             partner.Uid.Value, cont1.Uid.Value, cont2.Uid.Value, partner.GetName()));
+        // The window's ledger: how much this trader can offer (Cmd_SecureTrade,
+        // CClientUse.cpp:1428 - TOL virtual gold, new-secure-trade clients).
+        if (Trade.VirtualGold.Enabled && _netState.SupportsNewSecureTrading)
+        {
+            var (lg, lp) = Trade.VirtualGold.Split(Trade.VirtualGold.Get(_character));
+            _netState.Send(new PacketSecureTradeGold(PacketSecureTradeGold.LedgerType, cont1.Uid.Value, lg, lp));
+        }
 
         SendTradeToPartner?.Invoke(partner, _character, cont1, cont2);
 
@@ -1041,6 +1125,9 @@ public sealed class ClientWorldFeaturesHandler
         {
             return;
         }
+
+        if (Trade.VirtualGold.Enabled)
+            TransferTradeGold(trade);
 
         foreach (var item in cont1.Contents.ToList())
             TradeManager.ReturnItemToCharacter(_world, partner, item);
@@ -2740,6 +2827,10 @@ public sealed class ClientWorldFeaturesHandler
         if (_character == null || _character.IsDead || !_character.IsGargoyle)
             return;
         if ((Character.RacialFlags & (int)RacialFlags.GargoyleFly) == 0)
+            return;
+        // @ToggleFlying (receive.cpp:3352): RETURN 1 keeps the current state.
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.ToggleFlying,
+                new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
             return;
 
         bool flying = !_character.IsStatFlag(StatFlag.Hovering);

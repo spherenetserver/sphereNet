@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - World save donmasi kisaldi
+------------------------------------------------------------------------
+PERF - Save kopyasi her nesneyi string listesi yerine tek bir paketlenmis
+       byte dizisi olarak tutar. Birkac yuz bin nesnelik kopya, dunya
+       durdurulmusken milyonlarca kucuk string'i canli tutuyordu; kopya
+       sirasindaki her gen0/gen1 GC bunlari izleyip tasimak zorundaydi.
+       234.000 nesnelik dunyada kopyanin GC duraklamasi ~200 ms'den ~75 ms'ye,
+       kopyanin kendisi ~400 ms'den ~240 ms'ye indi. String'ler arka plan
+       yazicisinda yeniden kurulur; yazilan dosyalar degismedi.
+
 [2026-09-24] - Isik kaynaklari grafik degistirir ve kendi isik seklini yayar
 ------------------------------------------------------------------------
 DUZELTME - Isigi yakmak/sondurmek onu eslenik tanimina gecirir (Source-X

@@ -1574,12 +1574,156 @@ public sealed class WorldSaver
 
     internal sealed record WorldSaveSnapshot(IReadOnlyList<SaveRecord> Items, IReadOnlyList<SaveRecord> Characters);
 
-    internal sealed record SaveRecord(uint Uid, string Section, IReadOnlyList<(string Key, string Value)> Properties);
+    /// <summary>One captured object. The section and every property are packed into a
+    /// single byte array instead of being kept as a list of strings: the capture holds
+    /// the world still, and a snapshot of a few hundred thousand objects kept as
+    /// strings left millions of small objects alive through it, which every gen0/gen1
+    /// collection had to trace and copy - most of the capture's GC pause. One array
+    /// per record is one object to move. The strings are rebuilt on the writer thread,
+    /// where they die young.</summary>
+    internal sealed class SaveRecord
+    {
+        private readonly byte[] _packed;
+
+        internal SaveRecord(uint uid, byte[] packed)
+        {
+            Uid = uid;
+            _packed = packed;
+        }
+
+        public uint Uid { get; }
+
+        public string Section
+        {
+            get
+            {
+                int pos = 0;
+                return SaveRecordPacking.ReadString(_packed, ref pos);
+            }
+        }
+
+        public IEnumerable<(string Key, string Value)> Properties
+        {
+            get
+            {
+                int pos = 0;
+                SaveRecordPacking.ReadString(_packed, ref pos); // the section
+                while (pos < _packed.Length)
+                {
+                    string key = SaveRecordPacking.ReadKey(_packed, ref pos);
+                    string value = SaveRecordPacking.ReadString(_packed, ref pos);
+                    yield return (key, value);
+                }
+            }
+        }
+    }
+
+    /// <summary>The byte layout of a <see cref="SaveRecord"/>: the section as a
+    /// length-prefixed UTF-8 string, then per property a key and a value. A key is an
+    /// index into a process-wide key table - keys are a small vocabulary, the property
+    /// names plus the TAG/VAR names scripts use - so it decodes back to one shared
+    /// string; a key past the table's cap is written inline.</summary>
+    internal static class SaveRecordPacking
+    {
+        private const int InlineKey = 0;
+        private const int MaxKeys = 1 << 16;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> KeyIds = new(StringComparer.Ordinal);
+        private static readonly List<string> Keys = [""];
+        private static readonly object KeysLock = new();
+
+        private static int KeyId(string key)
+        {
+            if (KeyIds.TryGetValue(key, out int id))
+                return id;
+            lock (KeysLock)
+            {
+                if (KeyIds.TryGetValue(key, out id))
+                    return id;
+                if (Keys.Count >= MaxKeys)
+                    return InlineKey;
+                id = Keys.Count;
+                Keys.Add(key);
+                KeyIds[key] = id;
+                return id;
+            }
+        }
+
+        private static string KeyAt(int id)
+        {
+            lock (KeysLock)
+                return Keys[id];
+        }
+
+        internal static void WriteVarInt(ref byte[] buf, ref int len, int value)
+        {
+            uint v = (uint)value;
+            Ensure(ref buf, len + 5);
+            while (v >= 0x80)
+            {
+                buf[len++] = (byte)(v | 0x80);
+                v >>= 7;
+            }
+            buf[len++] = (byte)v;
+        }
+
+        internal static void WriteString(ref byte[] buf, ref int len, string value)
+        {
+            int n = System.Text.Encoding.UTF8.GetByteCount(value);
+            WriteVarInt(ref buf, ref len, n);
+            Ensure(ref buf, len + n);
+            len += System.Text.Encoding.UTF8.GetBytes(value, 0, value.Length, buf, len);
+        }
+
+        internal static void WriteKey(ref byte[] buf, ref int len, string key)
+        {
+            int id = KeyId(key);
+            WriteVarInt(ref buf, ref len, id);
+            if (id == InlineKey)
+                WriteString(ref buf, ref len, key);
+        }
+
+        private static int ReadVarInt(byte[] buf, ref int pos)
+        {
+            uint v = 0;
+            int shift = 0;
+            byte b;
+            do
+            {
+                b = buf[pos++];
+                v |= (uint)(b & 0x7F) << shift;
+                shift += 7;
+            } while ((b & 0x80) != 0);
+            return (int)v;
+        }
+
+        internal static string ReadString(byte[] buf, ref int pos)
+        {
+            int n = ReadVarInt(buf, ref pos);
+            string s = n == 0 ? string.Empty : System.Text.Encoding.UTF8.GetString(buf, pos, n);
+            pos += n;
+            return s;
+        }
+
+        internal static string ReadKey(byte[] buf, ref int pos)
+        {
+            int id = ReadVarInt(buf, ref pos);
+            return id == InlineKey ? ReadString(buf, ref pos) : KeyAt(id);
+        }
+
+        private static void Ensure(ref byte[] buf, int size)
+        {
+            if (size > buf.Length)
+                Array.Resize(ref buf, Math.Max(size, buf.Length * 2));
+        }
+    }
 
     private sealed class SnapshotSaveWriter : ISaveWriter
     {
-        private readonly List<(string Key, string Value)> _properties = [];
-        private string? _section;
+        // Reused for every object this thread captures; each record copies out
+        // exactly its own bytes.
+        private byte[] _buffer = new byte[1024];
+        private int _length;
+        private bool _hasSection;
         private bool _recordOpen;
 
         public long WrittenBytes { get; private set; }
@@ -1588,8 +1732,9 @@ public sealed class WorldSaver
         {
             if (_recordOpen)
                 EndRecord();
-            _section = section;
-            _properties.Clear();
+            _length = 0;
+            SaveRecordPacking.WriteString(ref _buffer, ref _length, section);
+            _hasSection = !string.IsNullOrEmpty(section);
             _recordOpen = true;
             WrittenBytes += section.Length;
         }
@@ -1598,7 +1743,8 @@ public sealed class WorldSaver
         {
             if (!_recordOpen)
                 throw new InvalidOperationException("WriteProperty called before BeginRecord");
-            _properties.Add((key, value));
+            SaveRecordPacking.WriteKey(ref _buffer, ref _length, key);
+            SaveRecordPacking.WriteString(ref _buffer, ref _length, value);
             WrittenBytes += key.Length + value.Length + 1;
         }
 
@@ -1617,16 +1763,16 @@ public sealed class WorldSaver
         }
 
         /// <summary>Take the record and leave the writer ready for the next object -
-        /// the properties are COPIED out because the list itself is reused. Handing
-        /// the live list over instead would give every record the same contents,
-        /// whichever object happened to be written last.</summary>
+        /// the bytes are COPIED out because the buffer itself is reused. Handing the
+        /// buffer over instead would give every record the same contents, whichever
+        /// object happened to be written last.</summary>
         public SaveRecord ToRecord(uint uid)
         {
-            if (string.IsNullOrEmpty(_section))
+            if (!_hasSection)
                 throw new InvalidOperationException("Snapshot record was not opened");
-            var record = new SaveRecord(uid, _section, _properties.ToArray());
-            _properties.Clear();
-            _section = null;
+            var record = new SaveRecord(uid, _buffer.AsSpan(0, _length).ToArray());
+            _length = 0;
+            _hasSection = false;
             _recordOpen = false;
             return record;
         }

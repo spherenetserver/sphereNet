@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Shorter world-save stall
+------------------------------------------------------------------------
+PERF - The save capture keeps each object as one packed byte array instead
+       of a list of strings. The snapshot of a few hundred thousand objects
+       left millions of small strings alive while the world was held still,
+       and every gen0/gen1 collection during the capture had to trace and
+       move them. On a 234,000-object world the capture's GC pause dropped
+       from about 200 ms to about 75 ms and the capture from about 400 ms to
+       about 240 ms. The strings are rebuilt on the background writer; the
+       files written are unchanged.
+
 [2026-09-24] - Light sources switch graphics and cast their own light shape
 ------------------------------------------------------------------------
 FIX - Lighting or dousing a light re-bases it onto its paired definition

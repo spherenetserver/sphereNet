@@ -15,8 +15,9 @@ public static partial class Program
         SpawnComponent.OnNpcScriptInit = npc =>
         {
             dispatcher.FireCharTrigger(npc, CharTrigger.Create, new TriggerArgs { CharSrc = npc });
+            // Source-X GetNPCBrainAuto (CCharNPC.cpp:272): the body decides.
             if (npc.NpcBrain == NpcBrainType.None)
-                npc.NpcBrain = NpcBrainType.Animal;
+                npc.NpcBrain = npc.GetNpcBrainAuto();
             dispatcher.FireCharTrigger(npc, CharTrigger.NPCRestock, new TriggerArgs { CharSrc = npc });
         };
         world.OnNpcSpawned = npc =>

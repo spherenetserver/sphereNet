@@ -297,6 +297,9 @@ public static partial class Program
                 if (obj is not SphereNet.Game.Objects.Characters.Character ch) continue;
                 if (ch.IsPlayer || ch.IsDeleted) continue;
                 if (ch.NpcBrain != SphereNet.Core.Enums.NpcBrainType.Vendor) continue;
+                // Never a player vendor: its stock is the owner's goods
+                // (NPC_Vendor_Restock returns for a pet, CCharNPCAct_Vendor.cpp:41).
+                if (VendorEngine.HasRealStock(ch)) continue;
                 _triggerDispatcher.FireCharTrigger(ch,
                     SphereNet.Core.Enums.CharTrigger.NPCRestock,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch });

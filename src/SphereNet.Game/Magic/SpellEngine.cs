@@ -2303,6 +2303,9 @@ public sealed class SpellEngine
         {
             creature.BodyId = bodyId;
             creature.BaseId = bodyId;
+            // CreateNPC runs NPC_LoadScript, which guesses the brain from the body
+            // before the chardef's NPC= applies (GetNPCBrainAuto, CCharNPC.cpp:272).
+            creature.NpcBrain = creature.GetNpcBrainAuto();
             creature.SetStatFlag(StatFlag.Conjured);
 
             // Source-X summons take the creature's own chardef (NPC_LoadScript

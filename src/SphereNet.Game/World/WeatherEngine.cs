@@ -1,11 +1,12 @@
 ﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Core.Configuration;
+using SphereNet.Game.World.Sectors;
 
 namespace SphereNet.Game.World;
 
 /// <summary>
-/// Weather type for regions. Maps to WEATHER_TYPE in Source-X.
+/// Weather type. Maps to WEATHER_TYPE in Source-X (sphereproto.h:514).
 /// </summary>
 public enum WeatherType : byte
 {
@@ -13,6 +14,8 @@ public enum WeatherType : byte
     Rain = 0x00,
     Storm = 0x01,
     Snow = 0x02,
+    /// <summary>WEATHER_CLOUDY: overcast, no precipitation (sphereproto.h:521).</summary>
+    Cloudy = 0x03,
 }
 
 /// <summary>
@@ -28,49 +31,43 @@ public enum SeasonType : byte
 }
 
 /// <summary>
-/// Weather and light engine. Manages weather effects per region,
-/// global season cycling, and dungeon light levels.
-/// Maps to CWorld::OnTick_Weather / CWorld::GetSeason in Source-X.
+/// Weather and season engine. Weather belongs to the SECTOR, as in Source-X
+/// (CSectorEnviron::m_Weather): the sector stores it, publishes a change to everyone
+/// standing in it (CSector::SetWeather) and recalculates it from its own RAINCHANCE /
+/// COLDCHANCE on its periodic tick (CSector::_OnTick, GetWeatherCalc). The global season
+/// cycles here too (CWorld::GetSeason).
 /// </summary>
 public sealed class WeatherEngine
 {
+    /// <summary>An awake sector ticks every 30 seconds (SECTOR_TICKING_PERIOD,
+    /// CSector.cpp:20).</summary>
+    public const long SectorTickPeriodMs = 30_000;
+
+    /// <summary>Temperature byte Source-X puts in every weather packet
+    /// (addWeather, CClientMsg.cpp:538).</summary>
+    public const byte PacketTemperature = 0x10;
+
     private readonly GameWorld _world;
     private readonly Random _rand = new();
 
-    // Region-specific weather state, keyed by the region's own identity. The visible
-    // NAME used to be the key, so two Britains on two facets shared one sky - and a
-    // rename silently orphaned a region's weather.
-    private readonly Dictionary<(byte Map, uint RegionUid), WeatherState> _regionWeather = [];
+    // Next due sector tick per sector. Entries are made for sectors a player has stood
+    // in; the set of sectors is fixed, so this never grows past the map.
+    private readonly Dictionary<Sector, long> _nextSectorTick = [];
 
-    // Reusable scratch set for OnTick's active-region pass; allocated
-    // once to avoid per-tick GC churn when 500+ players are online.
-    private readonly HashSet<Regions.Region> _activeRegionsScratch = [];
+    // Reusable scratch set for OnTick's active-sector pass; allocated once to avoid
+    // per-tick GC churn when 500+ players are online.
+    private readonly HashSet<Sector> _activeSectorsScratch = [];
 
     // Global season
     private SeasonType _currentSeason = SeasonType.Spring;
     private long _lastSeasonChangeTick;
     private SeasonMode _seasonMode = SeasonMode.Auto;
 
-    /// <summary>The sector climate covering a region: the chance of precipitation and,
-    /// given precipitation, the chance it falls as snow (Source-X RAINCHANCE /
-    /// COLDCHANCE).</summary>
-    public Func<Regions.Region, (int Rain, int Cold)?>? GetClimate { get; set; }
-
-    /// <summary>Source-X SetDefaultWeatherChance's mid-latitude values, used when no
-    /// sector answers for the region.</summary>
-    private const int DefaultRainChance = 15;
-    private const int DefaultColdChance = 5;
-
     /// <summary>Season change interval in milliseconds (default: 30 minutes).</summary>
     public int SeasonChangeInterval { get; set; } = 30 * 60 * 1000;
 
     public SeasonType CurrentSeason => _currentSeason;
     public SeasonMode CurrentSeasonMode => _seasonMode;
-
-    /// <summary>Fired when weather changes in a region. The REGION is passed, not its
-    /// name: the broadcast has to reach exactly the players in that region and no
-    /// same-named region on another map.</summary>
-    public Action<Regions.Region, WeatherType, byte, byte>? OnWeatherChanged { get; set; }
 
     public WeatherEngine(GameWorld world)
     {
@@ -96,42 +93,62 @@ public sealed class WeatherEngine
         return changed;
     }
 
-    /// <summary>
-    /// Get the current weather for a region. Returns (type, intensity, temp).
-    /// </summary>
     /// <summary>Is there no weather at all (ini NOWEATHER)? Upstream answers DRY for
     /// every sector when this is set and never rolls for precipitation
     /// (GetWeatherCalc, CSector.cpp:861); its own default is that there is none. The
     /// host sets it from the configuration.</summary>
     public static bool NoWeather { get; set; } = true;
 
-    public (WeatherType Type, byte Intensity, byte Temperature) GetWeatherForRegion(Regions.Region? region)
+    /// <summary>The weather at a point: the weather of the sector it lies in
+    /// (CSector::GetWeather), with the intensity and temperature Source-X puts in the
+    /// packet (addWeather, CClientMsg.cpp:538).
+    ///
+    /// NOWEATHER is deliberately NOT read here: upstream keeps whatever weather was SET
+    /// on a sector and answers with it; what the flag stops is the rolling of new
+    /// weather and the telling of clients (addWeather, CClientMsg.cpp:526). Hiding the
+    /// stored value here would have made a script's own weather unreadable.</summary>
+    public (WeatherType Type, byte Intensity, byte Temperature) GetWeatherAt(Point3D pt)
     {
-        // NOWEATHER is deliberately NOT read here: upstream keeps whatever weather was
-        // SET on a sector and answers with it (CSector::GetWeather); what the flag stops
-        // is the rolling of new weather and the telling of clients
-        // (GetWeatherCalc, CSector.cpp:861; addWeather, CClientMsg.cpp:526). Hiding the
-        // stored value here would have made a script's own weather unreadable.
-        if (region != null && _regionWeather.TryGetValue(KeyOf(region), out var state))
-            return (state.Type, state.Intensity, state.Temperature);
-        return (WeatherType.None, 0, 20);
+        var sector = _world.GetSector(pt);
+        var type = sector == null ? WeatherType.None : (WeatherType)sector.Weather;
+        return (type, PacketIntensity(type), PacketTemperature);
     }
 
-    private static (byte, uint) KeyOf(Regions.Region region) => (region.MapIndex, region.Uid);
+    /// <summary>Source-X sends a fresh g_Rand.GetVal2(10, 70) with every weather packet
+    /// (addWeather, CClientMsg.cpp:538). Dry weather carries none.</summary>
+    public static byte PacketIntensity(WeatherType type) =>
+        type == WeatherType.None ? (byte)0 : (byte)Random.Shared.Next(10, 71);
 
-    /// <summary>
-    /// Set weather for a specific region.
-    /// </summary>
-    public void SetRegionWeather(Regions.Region region, WeatherType type, byte intensity, byte temp)
+    /// <summary>Source-X CSector::GetWeatherCalc (CSector.cpp:856): no weather
+    /// underground or on a NOWEATHER shard; otherwise the sector's RAINCHANCE decides
+    /// precipitation, its COLDCHANCE whether that falls as snow, and a near miss on the
+    /// rain roll leaves it cloudy.</summary>
+    public WeatherType GetWeatherCalc(Sector sector)
     {
-        _regionWeather[KeyOf(region)] = new WeatherState
+        if (NoWeather || sector.IsDungeon?.Invoke() == true)
+            return WeatherType.None;
+
+        int rain = sector.RainChance;
+        int cold = sector.ColdChance;
+        int roll = _rand.Next(100);
+        if (roll < rain)
         {
-            Region = region,
-            Type = type,
-            Intensity = intensity,
-            Temperature = temp,
-            EndTick = Environment.TickCount64 + 300_000 // 5 min default duration
-        };
+            if (cold > 0 && _rand.Next(100) <= cold)
+                return WeatherType.Snow;
+            return WeatherType.Rain;
+        }
+        if (roll / 2 < rain)
+            return WeatherType.Cloudy;
+        return WeatherType.None;
+    }
+
+    /// <summary>The weather half of one sector tick (CSector::_OnTick,
+    /// CSector.cpp:1246): one time in thirty the weather is recalculated, and a change
+    /// is published by the sector.</summary>
+    internal void OnSectorTick(Sector sector)
+    {
+        if (_rand.Next(30) != 0) return; // change less often
+        sector.SetWeather((byte)GetWeatherCalc(sector));
     }
 
     /// <summary>
@@ -142,88 +159,30 @@ public sealed class WeatherEngine
     {
         long now = Environment.TickCount64;
 
-        // Expire region weather. The list is built only when something has actually
-        // expired: this runs ten times a second for the life of the shard, and on a
-        // shard with NOWEATHER (the shipped default) the dictionary is always empty, so
-        // an unconditional allocation here was pure per-tick garbage feeding the
-        // collector that later pauses a tick.
-        List<(byte, uint)>? expired = null;
-        foreach (var (key, state) in _regionWeather)
+        // The sectors players stand in are the awake ones worth ticking. Each one
+        // runs Source-X's sector tick every SECTOR_TICKING_PERIOD, and on it recalculates
+        // its weather one time in thirty (CSector::_OnTick, CSector.cpp:1247). The
+        // result is published by the sector itself (SetWeather), which is what tells
+        // the players standing there and fires @EnvironChange.
+        _activeSectorsScratch.Clear();
+        foreach (var player in _world.OnlinePlayerSet)
         {
-            if (now >= state.EndTick)
-                (expired ??= []).Add(key);
+            if (player.IsDeleted || !player.IsOnline) continue;
+            var sector = _world.GetSector(player.Position);
+            if (sector != null) _activeSectorsScratch.Add(sector);
         }
-        if (expired != null)
+        foreach (var sector in _activeSectorsScratch)
         {
-            foreach (var key in expired)
+            if (!_nextSectorTick.TryGetValue(sector, out long due))
             {
-                var state = _regionWeather[key];
-                _regionWeather.Remove(key);
-                if (state.Region != null)
-                    OnWeatherChanged?.Invoke(state.Region, WeatherType.None, 0, 20);
+                _nextSectorTick[sector] = now + SectorTickPeriodMs;
+                continue;
             }
+            if (now < due) continue;
+            _nextSectorTick[sector] = now + SectorTickPeriodMs;
+            OnSectorTick(sector);
         }
-
-        // Random weather generation — only for regions that actually
-        // have an online player in them. The old full _world.Regions
-        // scan burned measurable time on large shards where thousands
-        // of named regions exist (every named house, guild hall, tiny
-        // dungeon zone); weather in a region with zero players has no
-        // observer so rolling the dice there is pure waste.
-        // Nothing to roll for when the shard has no weather: upstream stops at
-        // GetWeatherCalc and never reaches the dice (CSector.cpp:861). The SEASON still
-        // turns below - that is the calendar, not the weather.
-        _activeRegionsScratch.Clear();
-        if (!NoWeather)
-        {
-            foreach (var player in _world.OnlinePlayers)
-            {
-                if (player.IsDeleted || !player.IsOnline) continue;
-                var region = _world.FindRegion(player.Position);
-                if (region != null) _activeRegionsScratch.Add(region);
-            }
-        }
-        foreach (var region in _activeRegionsScratch)
-        {
-            if (string.IsNullOrEmpty(region.Name)) continue;
-            if (_regionWeather.ContainsKey(KeyOf(region))) continue;
-            if (region.IsFlag(RegionFlag.Underground)) continue; // no weather underground
-
-            if (_rand.Next(1000) >= 5) continue; // 0.5% chance per tick
-
-            // The local climate decides, not a flat table. Source-X rolls the sector's
-            // own RAINCHANCE for precipitation and then its COLDCHANCE for snow
-            // (GetWeatherCalc, CSector.cpp:857); both properties were accepted and
-            // stored here and then never read, so a region prepared as rainless still
-            // rained and a cold coast never saw snow out of season.
-            var climate = GetClimate?.Invoke(region);
-            int rainChance = climate?.Rain ?? DefaultRainChance;
-            int coldChance = climate?.Cold ?? DefaultColdChance;
-
-            int roll = _rand.Next(100);
-            if (roll >= rainChance) continue;
-
-            byte temp = _currentSeason switch
-            {
-                SeasonType.Spring => 15,
-                SeasonType.Summer => 25,
-                SeasonType.Fall => 10,
-                SeasonType.Winter => 0,
-                _ => 20
-            };
-            WeatherType type;
-            if (coldChance > 0 && _rand.Next(100) <= coldChance)
-                type = WeatherType.Snow;
-            else if (temp <= 0)
-                type = WeatherType.Snow;
-            else
-                type = _rand.Next(100) < 20 ? WeatherType.Storm : WeatherType.Rain;
-            byte intensity = type == WeatherType.Storm
-                ? (byte)_rand.Next(50, 90)
-                : (byte)_rand.Next(10, 50);
-            SetRegionWeather(region, type, intensity, temp);
-            OnWeatherChanged?.Invoke(region, type, intensity, temp);
-        }
+        _activeSectorsScratch.Clear();
 
         if (_seasonMode != SeasonMode.Auto || SeasonChangeInterval <= 0)
             return false;
@@ -255,14 +214,5 @@ public sealed class WeatherEngine
             return musicId;
 
         return 0;
-    }
-
-    private class WeatherState
-    {
-        public Regions.Region? Region;
-        public WeatherType Type;
-        public byte Intensity;
-        public byte Temperature;
-        public long EndTick;
     }
 }

@@ -428,6 +428,10 @@ public sealed class GameWorld
     /// safe from a single tick-thread context.</summary>
     public IReadOnlyCollection<Objects.Characters.Character> OnlinePlayers => _onlinePlayers;
 
+    /// <summary>The same set as its concrete type, so a per-tick pass can enumerate it
+    /// without boxing an enumerator.</summary>
+    internal HashSet<Objects.Characters.Character> OnlinePlayerSet => _onlinePlayers;
+
     /// <summary>Line-of-sight check between two map positions. Returns true when
     /// terrain + impassable statics do not occlude the ray from 'from' to 'to'.
     /// Source-X equivalent: CWorldMap::CanSeeLOS.</summary>

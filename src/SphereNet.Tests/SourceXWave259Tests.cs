@@ -51,6 +51,9 @@ public sealed class SourceXWave259Tests
         Assert.True(revenant.IsSummoned);
         Assert.True(revenant.IsStatFlag(StatFlag.Conjured));
         Assert.Equal(enemy.Uid, revenant.FightTarget);
-        Assert.Equal(NpcBrainType.Monster, revenant.NpcBrain);
+        // No chardef in this bench: the brain is the body's guess (GetNPCBrainAuto,
+        // CCharStatus.cpp:563). The shipped c_revenant_summoned sets NPC=brain_monster
+        // in its own @Create.
+        Assert.Equal(Character.GetNpcBrainAuto(0x02EE), revenant.NpcBrain);
     }
 }

@@ -180,9 +180,25 @@ public sealed partial class NpcAI
         WanderHome(npc);
     }
 
+    /// <summary>Source-X CChar::NPC_LootMemory (CCharNPCAct.cpp:1574): remember an item
+    /// looked at and discarded (a MEMORY_SPEAK memory linked to it), for as long as
+    /// the item itself has left before it decays. A corpse the NPC remembers is not
+    /// looted again (NPC_LookAtItem, CCharNPCAct.cpp:974).</summary>
+    internal static Item NpcLootMemory(Character npc, Item item)
+    {
+        var mem = npc.Memory_AddObjTypes(item.Uid, MemoryType.Speak);
+        long now = Environment.TickCount64;
+        long deadline = item.Timeout > now ? item.Timeout
+            : item.DecayTime > now ? item.DecayTime : 0;
+        if (deadline > 0)
+            mem.SetTimeout(deadline); // forget about it once the item is gone
+        return mem;
+    }
+
     /// <summary>Looter NPCs walk to a nearby corpse with contents and take one
     /// item into their pack (Source-X NPC_Act_Looting). Empty corpses are
-    /// skipped, so no separate loot-memory is needed. Returns true if busy.</summary>
+    /// skipped, and so is a corpse the NPC remembers (NPC_LootMemory).
+    /// Returns true if busy.</summary>
     private bool TryLoot(Character npc)
     {
         if (npc.Backpack == null) return false;
@@ -199,6 +215,8 @@ public sealed partial class NpcAI
         foreach (var it in _world.GetItemsInRange(npc.Position, 4))
         {
             if (it.IsDeleted || it.ItemType != ItemType.Corpse || it.Contents.Count == 0) continue;
+            // Already looked at (Memory_FindObj, CCharNPCAct.cpp:974).
+            if (npc.Memory_FindObj(it.Uid) != null) continue;
             if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
             int d = npc.Position.GetDistanceTo(it.Position);
             if (d < best) { best = d; corpse = it; }
@@ -218,6 +236,13 @@ public sealed partial class NpcAI
         if (corpse.Contents.Count > 0)
         {
             var loot = corpse.Contents[_rand.Next(corpse.Contents.Count)];
+            // Out of reach for this creature: remember it and move on
+            // (CanMoveItem / CanCarry -> NPC_LootMemory, CCharNPCAct.cpp:1623).
+            if (!ItemMoveRules.CanMove(npc, loot, out _) || !npc.CanCarry(loot))
+            {
+                NpcLootMemory(npc, loot);
+                return true;
+            }
             int want = 100;
             if (OnNpcLookAtItem != null && !IsLookAtItemExcluded(loot))
             {

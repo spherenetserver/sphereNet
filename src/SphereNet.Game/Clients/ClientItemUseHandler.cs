@@ -4270,14 +4270,28 @@ public sealed class ClientItemUseHandler
             case "bought":
             case "samples":
             case "stock":
-                // Source-X opens the vendor's owner-managed BOUGHT/SAMPLES/STOCK
-                // container. SphereNet's vendor stock is template-driven (virtual,
-                // rebuilt on restock), not an owner-managed inventory, so there is
-                // nothing safe to hand out — report honestly instead of a bogus cursor.
-                NpcSpeech(pet, SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet)
-                    ? "I manage my own stock."
-                    : ServerMessages.Get(Msg.NpcPetConfused));
+            {
+                // Source-X PC_BOUGHT / PC_SAMPLES / PC_STOCK (CCharNPCPet.cpp:328-354):
+                // the vendor names the box and opens it for its owner - BOUGHT is
+                // LAYER_VENDOR_EXTRA (what it bought from players), SAMPLES is
+                // LAYER_VENDOR_BUYS, STOCK is LAYER_VENDOR_STOCK (what it sells).
+                if (!SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet))
+                {
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
+                    return true;
+                }
+                (Layer layer, string msg) = verb switch
+                {
+                    "bought" => (Layer.VendorExtra, Msg.NpcPetItemsBuy),
+                    "samples" => (Layer.VendorBuy, Msg.NpcPetItemsSample),
+                    _ => (Layer.VendorStock, Msg.NpcPetItemsSell),
+                };
+                NpcSpeech(pet, ServerMessages.Get(msg));
+                var box = SphereNet.Game.Trade.VendorEngine.GetVendorBox(pet, layer);
+                if (box != null)
+                    SendOpenContainer(box);
                 return true;
+            }
 
             case "attack":
             case "kill":
@@ -4810,8 +4824,11 @@ public sealed class ClientItemUseHandler
         // is silently dropped), so we MUST source / reference the
         // dedicated vendor stock container.
         var stockContainer = vendor.GetEquippedItem(Layer.VendorStock);
-        if (stockContainer == null ||
-            !_world.GetContainerContents(stockContainer.Uid).Any())
+        // A player vendor sells only what its owner stocked: Source-X never restocks
+        // a pet (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:41).
+        if (!VendorEngine.HasRealStock(vendor) &&
+            (stockContainer == null ||
+             !_world.GetContainerContents(stockContainer.Uid).Any()))
         {
             // Rebuild the virtual stock from the persisted SELL template
             // (the stock items themselves are not saved). Covers vendors

@@ -301,8 +301,10 @@ public sealed class SpawnComponent
             ch.Hits = 50; ch.Mana = 20; ch.Stam = 50;
         }
 
+        // No NPC= in the chardef: guess from the body, as NPC_LoadScript does before the
+        // definition's @Create runs (GetNPCBrainAuto, CCharNPC.cpp:272).
         if (ch.NpcBrain == NpcBrainType.None)
-            ch.NpcBrain = NpcBrainType.Monster;
+            ch.NpcBrain = ch.GetNpcBrainAuto();
 
         ch.SetStatFlag(StatFlag.Spawned);
 

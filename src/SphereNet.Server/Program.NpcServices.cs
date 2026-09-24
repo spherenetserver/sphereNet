@@ -507,7 +507,7 @@ public static partial class Program
 
     /// <summary>
     /// Source-X CClient::Event_TalkBroadcast region keyword check. Fires exactly
-    /// once per player utterance — currently handles "guards" / "help guards"
+    /// once per player utterance — currently handles the GUARD / GUARDS call
     /// inside REGION_FLAG_GUARDED zones. Future global keywords (e.g. "i resign
     /// from my guild" outside guild stones) hook in here too.
     /// </summary>
@@ -526,9 +526,10 @@ public static partial class Program
             text = rewritten;        // @Speech may have rewritten <ARGS>
         }
 
-        string lower = text.ToLowerInvariant();
-        bool calledGuards = lower.Contains("guards") || lower == "help" || lower.Contains("help guards");
-        if (!calledGuards) return (false, text);
+        // Source-X Event_Talk_Common (CClientEvent.cpp:1870): GUARD or GUARDS as a
+        // whole word. A substring test let "guardsman" call them, and "help" is not
+        // a guard call there at all.
+        if (!SpeechWords.IsGuardCall(text)) return (false, text);
 
         var region = _world.FindRegion(speaker.Position);
         if (region == null || !region.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded))
@@ -540,16 +541,10 @@ public static partial class Program
             return (false, text);
         }
 
+        // Calling the guards is silent in Source-X (CChar::CallGuards,
+        // CCharFight.cpp:178): no line says the area is quiet or that the guards
+        // are coming - the guard's own strike line is the answer.
         var hostiles = FindAllGuardTargets(speaker);
-
-        var gc = FindGameClient(speaker);
-        if (hostiles.Count == 0)
-        {
-            gc?.SysMessage("All looks quiet here.");
-            return (false, text);
-        }
-
-        int killCount = 0;
         foreach (var hostile in hostiles)
         {
             if (hostile.IsDeleted || hostile.IsDead) continue;
@@ -583,11 +578,9 @@ public static partial class Program
                     summonedGuard.FightTarget = Serial.Invalid;
                     summonedGuard.RemoveTag("GUARD_YELLED");
                 }
-                killCount++;
             }
         }
 
-        gc?.SysMessage(killCount > 0 ? "Guards strike down your attacker." : "The guards have been called.");
         return (false, text);
     }
 

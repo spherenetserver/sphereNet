@@ -2261,6 +2261,39 @@ public partial class Character : ObjBase
 
     public Serial OwnerSerial => ParseSerialTag("OWNER_UID", fallback: _npcMaster);
 
+    /// <summary>The brain an NPC gets when its script names none: Source-X
+    /// CChar::GetNPCBrainAuto guesses it from the body (CCharStatus.cpp:563).</summary>
+    public NpcBrainType GetNpcBrainAuto() => GetNpcBrainAuto(BodyId);
+
+    /// <summary>Source-X CChar::GetNPCBrainAuto (CCharStatus.cpp:563), by CREID.</summary>
+    public static NpcBrainType GetNpcBrainAuto(ushort body)
+    {
+        switch (body)
+        {
+            case 0x67:  // CREID_DRAGON_SERPENTINE
+            case 0x68:  // CREID_DRAGON_SKELETAL
+            case 0x31D: // CREID_REPTILE_LORD
+            case 0x31E: // CREID_WYRM_ANCIENT
+            case 0x31A: // CREID_SWAMP_DRAGON
+            case 0x31F: // CREID_SWAMP_DRAGON_AR
+                return NpcBrainType.Dragon;
+            case 0xA4:  // CREID_ENERGY_VORTEX
+            case 0x23E: // CREID_BLADE_SPIRIT
+                return NpcBrainType.Berserk;
+            case 0x05:  // CREID_EAGLE
+            case 0x06:  // CREID_BIRD
+            case 0x1D:  // CREID_GORILLA
+            case 0x34:  // CREID_SNAKE
+            case 0x51:  // CREID_BULL_FROG
+            case 0x97:  // CREID_DOLPHIN
+                return NpcBrainType.Animal;
+        }
+        if (body >= 0x2F0) return NpcBrainType.Monster; // CREID_IRON_GOLEM
+        if (body >= 0x190) return NpcBrainType.Human;   // CREID_MAN
+        if (body >= 0xC8) return NpcBrainType.Animal;   // CREID_HORSE_TAN
+        return NpcBrainType.Monster;
+    }
+
     public Serial ControllerSerial
     {
         get

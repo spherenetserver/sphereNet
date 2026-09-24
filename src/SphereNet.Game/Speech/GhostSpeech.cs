@@ -37,5 +37,16 @@ public static class GhostSpeech
     public static bool HearsGhostClearly(Character recipient) =>
         recipient.IsDead ||
         recipient.AllShow ||
-        recipient.PrivLevel >= PrivLevel.Counsel;
+        recipient.PrivLevel >= PrivLevel.Counsel ||
+        // CChar::CanUnderstandGhost (CCharStatus.cpp:89): a healer, a medium whose
+        // Spirit Speak base reaches MEDIUMCANHEARGHOSTS, an active Spirit Speak, or
+        // a HEARALL listener.
+        (!recipient.IsPlayer && recipient.NpcBrain == NpcBrainType.Healer) ||
+        recipient.GetSkill(SkillType.SpiritSpeak) >= MediumCanHearGhosts ||
+        recipient.IsStatFlag(StatFlag.SpiritSpeak) ||
+        recipient.HearAll;
+
+    /// <summary>sphere.ini MEDIUMCANHEARGHOSTS (Source-X m_iMediumCanHearGhosts,
+    /// default 1000): the Spirit Speak base at which the living understand ghosts.</summary>
+    public static int MediumCanHearGhosts { get; set; } = 1000;
 }

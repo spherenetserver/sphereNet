@@ -683,6 +683,10 @@ public sealed class ClientCombatHandler
         if ((TalkMode)type is TalkMode.Guild or TalkMode.Alliance)
             return;
 
+        // SUPPRESSCAPITALS runs after the @Speech trigger and the guild/alliance
+        // return, on the line about to be spoken (CClientEvent.cpp:2090).
+        clearText = SpeechEngine.ApplyCapitalsSuppression(clearText);
+
         // Broadcast speech to nearby clients
         int range = type switch
         {

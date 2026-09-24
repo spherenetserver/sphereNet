@@ -229,7 +229,8 @@ public sealed class ShipEngine
         _ships[multiItem.Uid] = ship;
         OnAddMulti?.Invoke(owner, multiItem, HousePriv.Owner);
         CreateShipRegion(ship);
-        if (needsKey)
+        // AUTOSHIPKEYS off: the ship runs on privilege alone (CItemMulti.cpp:410).
+        if (needsKey && AutoShipKeys)
         {
             CreateShipKey(owner, multiItem, toBank: false);
             CreateShipKey(owner, multiItem, toBank: true);
@@ -251,12 +252,18 @@ public sealed class ShipEngine
         return _ships.Values.Count(ship => accountCharacters.Contains(ship.Owner));
     }
 
+    /// <summary>sphere.ini AUTOSHIPKEYS (Source-X _fAutoShipKeys, default 1).</summary>
+    public bool AutoShipKeys { get; set; } = true;
+
     private void CreateShipKey(Character owner, Item multiItem, bool toBank)
     {
         var key = _world.CreateItem();
         key.BaseId = 0x100F;
         key.ItemType = ItemType.Key;
         key.Name = "a ship key";
+        // AUTONEWBIEKEYS (CItemMulti.cpp:1107).
+        if (Item.AutoNewbieKeys)
+            key.SetAttr(ObjAttributes.Newbie);
         key.SetTag("LINK", multiItem.Uid.Value.ToString());
         key.Link = multiItem.Uid;
         var destination = toBank ? owner.GetEquippedItem(Layer.BankBox) : owner.Backpack;

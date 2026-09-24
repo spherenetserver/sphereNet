@@ -41,6 +41,29 @@ public sealed class SpeechEngine
 {
     private readonly GameWorld _world;
 
+    /// <summary>sphere.ini SUPPRESSCAPITALS (Source-X m_fSuppressCapitals, default 0).</summary>
+    public static bool SuppressCapitals { get; set; }
+
+    /// <summary>Source-X Event_Talk / Event_TalkUNICODE (CClientEvent.cpp:2090,
+    /// :2173): with SUPPRESSCAPITALS on, a line longer than 5 characters that is more
+    /// than 75% A-Z capitals is lowercased, the first character excepted.</summary>
+    public static string ApplyCapitalsSuppression(string text)
+    {
+        if (!SuppressCapitals || text.Length <= 5)
+            return text;
+        int capitals = 0;
+        foreach (char c in text)
+            if (c >= 'A' && c <= 'Z')
+                capitals++;
+        if (capitals * 100 / text.Length <= 75)
+            return text;
+        var chars = text.ToCharArray();
+        for (int i = 1; i < chars.Length; i++)
+            if (chars[i] >= 'A' && chars[i] <= 'Z')
+                chars[i] = (char)(chars[i] + 0x20);
+        return new string(chars);
+    }
+
     /// <summary>Base hearing distances (in tiles) per mode. Config-driven (sphere.ini
     /// DistanceTalk / DistanceWhisper / DistanceYell); defaults match the old hardcodes.</summary>
     public int DistanceSay { get; set; } = 18;

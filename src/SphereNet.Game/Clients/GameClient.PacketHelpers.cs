@@ -1589,6 +1589,8 @@ public sealed partial class GameClient
         var weapon = ch.GetEquippedItem(Core.Enums.Layer.OneHanded) ?? ch.GetEquippedItem(Core.Enums.Layer.TwoHanded);
         var (dmgMin, dmgMax) = CombatEngine.CalcWeaponDamage(ch, weapon);
         ushort maxWeight = (ushort)Math.Clamp(ch.MaxWeight, 0, ushort.MaxValue);
+        bool showResists = DisplayElementalResistance ||
+            (Character.CombatFlags & (int)SphereNet.Game.Combat.CombatFlags.ElementalEngine) != 0;
 
         _netState.Send(new PacketStatusFull(
             ch.Uid.Value, statusName,
@@ -1602,10 +1604,12 @@ public sealed partial class GameClient
             statCap: statCap,
             followers: ch.CurFollower,
             maxFollowers: ch.MaxFollower,
-            resFire: (short)SphereNet.Game.Combat.CombatEngine.EffResFire(ch),
-            resCold: (short)SphereNet.Game.Combat.CombatEngine.EffResCold(ch),
-            resPoison: (short)SphereNet.Game.Combat.CombatEngine.EffResPoison(ch),
-            resEnergy: (short)SphereNet.Game.Combat.CombatEngine.EffResEnergy(ch),
+            // Resists are blanked unless the elemental engine is on or
+            // DISPLAYELEMENTALRESISTANCE asks for them (send.cpp:306).
+            resFire: showResists ? (short)SphereNet.Game.Combat.CombatEngine.EffResFire(ch) : (short)0,
+            resCold: showResists ? (short)SphereNet.Game.Combat.CombatEngine.EffResCold(ch) : (short)0,
+            resPoison: showResists ? (short)SphereNet.Game.Combat.CombatEngine.EffResPoison(ch) : (short)0,
+            resEnergy: showResists ? (short)SphereNet.Game.Combat.CombatEngine.EffResEnergy(ch) : (short)0,
             luck: (short)SphereNet.Game.Combat.CombatEngine.EffectiveLuck(ch),
             damageMin: (short)dmgMin,
             damageMax: (short)dmgMax,

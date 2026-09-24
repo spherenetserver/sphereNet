@@ -1367,14 +1367,14 @@ public static partial class Program
             // mantra's hue and font; 0 falls back to the caster defaults.
             _spellEngine.OnSpellWordsEx = (caster, words, wopHue, wopFont) =>
             {
-                ushort hue = wopHue != 0
-                    ? wopHue
-                    : caster.SpeechColor != 0 ? caster.SpeechColor : (ushort)0x03B2;
-                byte font = wopFont != 0 ? wopFont : (byte)3;
+                // Unset script values fall back to WOPCOLOR / WOPFONT / WOPTALKMODE
+                // (CCharSpell.cpp:3511-3526).
+                ushort hue = wopHue != 0 ? wopHue : SpellEngine.DefaultWopHue(caster);
+                byte font = wopFont != 0 ? wopFont : (byte)Math.Clamp(SpellEngine.WopFont, 0, byte.MaxValue);
                 var pkt = new PacketSpeechUnicodeOut(
                     caster.Uid.Value,
                     caster.BodyId,
-                    0x00,
+                    SpellEngine.EffectiveWopTalkMode,
                     hue,
                     font,
                     "TRK",
@@ -2429,7 +2429,10 @@ public static partial class Program
                 BroadcastNearby(from, 18, new PacketDeleteObject(uid), 0);
             SphereNet.Game.Objects.Characters.Character.ResolveHouseDesignMulti =
                 ch => _customHousing.GetSessionMulti(ch.Uid);
-            _chatEngine = new SphereNet.Game.Chat.ChatEngine("General");
+            // CHATSTATICCHANNELS: the channels that exist from startup and survive
+            // emptying (CServerConfig.cpp:5228).
+            _chatEngine = new SphereNet.Game.Chat.ChatEngine(
+                SphereNet.Game.Chat.ChatEngine.ParseStaticChannels(_config.ChatStaticChannels));
             // Committed custom-house designs become virtual walk geometry
             // (the tiles are not real items — clients render them from 0xD8).
             SphereNet.Game.Movement.WalkCheck.ResolveCustomDesign =
@@ -2440,6 +2443,7 @@ public static partial class Program
             {
                 MaxShipsPerPlayer = _config.MaxShipsPlayer,
                 MaxShipsPerAccount = _config.MaxShipsAccount,
+                AutoShipKeys = _config.AutoShipKeys,
             };
             _shipEngine.OnAddMulti = (owner, multi, privilege) =>
                 _triggerDispatcher.FireCharTrigger(owner, CharTrigger.AddMulti,
@@ -2913,9 +2917,14 @@ public static partial class Program
                     return null;
                 return SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
             };
-            SphereNet.Game.Objects.Characters.Character.OnExpLevelChanged = (ch, level) =>
-                _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.ExpLevelChange,
-                    new TriggerArgs { CharSrc = ch, N1 = level });
+            SphereNet.Game.Objects.Characters.Character.OnExpLevelChanged = (ch, levelDelta) =>
+            {
+                // ARGN1 = level delta; RETURN 1 cancels (CChar.cpp:5205-5213).
+                var args = new TriggerArgs { CharSrc = ch, N1 = levelDelta };
+                if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.ExpLevelChange, args) == TriggerResult.True)
+                    return null;
+                return SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+            };
 
             // @NPCLostTeleport — a severely lost NPC is about to teleport home;
             // RETURN 1 cancels (the NPC walks back instead).
@@ -3148,7 +3157,7 @@ public static partial class Program
                         continue;
                     }
                     if (c.Character.MapIndex == ch.MapIndex &&
-                        c.Character.Position.GetDistanceTo(ch.Position) <= range)
+                        c.Character.Position.GetDistSight(ch.Position) <= range)
                     {
                         c.NotifyCharacterAppear(ch);
                     }
@@ -3636,6 +3645,8 @@ public static partial class Program
             // Source-X region nesting: regions flagged INHERIT_PARENT_* pull their
             // containing region's flags/tags/events (one-time pass after all load).
             _world.ApplyRegionInheritance();
+            // AREAFLAGS: what every ROOMDEF inherits from its surrounding areas.
+            _world.ApplyRoomInheritance(_config.AreaFlags);
 
             // Load craft recipes — must come AFTER defLoader.LoadAll() so AllItemDefs is populated
             int recipeCount = _craftingEngine.LoadRecipesFromDefs(_resources);
@@ -3670,6 +3681,25 @@ public static partial class Program
             _network.FloodDetectionCount = _config.FloodDetectionCount;
             _network.FloodDetectionWindowMs = _config.FloodDetectionWindowMs;
             _network.ClientMaxIP = _config.ClientMaxIP;
+            _network.ConnectingMaxIP = _config.ConnectingMaxIP;
+            _network.MaxConnectRequestsPerIP = _config.MaxConnectRequestsPerIP;
+            _network.MaxPings = _config.MaxPings;
+            _network.NetHistoryTtlSeconds = _config.NetTTL;
+            _network.TimeoutIncompleteConnMs = _config.TimeoutIncompleteConnMs;
+            _network.CUOStatus = _config.CUOStatus;
+            _network.UOGStatus = _config.UOGStatus;
+            // CServer::GetStatusString 0x22 (UOG) / 0x25 (ConnectUO), CServer.cpp:659-678.
+            _network.StatusStringProvider = kind =>
+            {
+                int clients = _clients.Values.Count(c => c.IsPlaying);
+                long memK = GC.GetTotalMemory(false) / 1024;
+                return kind == 0x25
+                    ? $"SphereNet Items={_world.TotalItems}, Mobiles={_world.TotalChars}, Clients={clients}, Mem={memK}"
+                    : $"SphereNet, Name={_config.ServName}, Age={(int)(DateTime.UtcNow - _serverStartTime).TotalDays}, " +
+                      $"Clients={clients}, Items={_world.TotalItems}, Chars={_world.TotalChars}, Mem={memK}K\n";
+            };
+            // GUESTSMAX hands out a GUESTn account nobody is playing on.
+            GameClient.AccountInUse = acc => _clients.Values.Any(c => c.IsPlaying && c.Account == acc);
             _network.PacketScriptHook = HandlePacketScriptHook;
             _log.LogInformation("Crypto keys loaded: {Count}, UseCrypt={UC}, UseNoCrypt={UNC}",
                 _cryptConfig.Keys.Count, _config.UseCrypt, _config.UseNoCrypt);

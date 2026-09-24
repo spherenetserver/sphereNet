@@ -382,6 +382,10 @@ public sealed class GuildManager
     /// from the configuration.</summary>
     public static int DefaultMaxHouses { get; set; } = 1;
 
+    /// <summary>How many ships a guild may own when its stone does not say (Source-X
+    /// _iMaxShipsGuild, ini MAXSHIPSGUILD, default 1; CItemStone.cpp:23).</summary>
+    public static int DefaultMaxShips { get; set; } = 1;
+
     public GuildDef? GetGuild(Serial stoneUid) => _guilds.GetValueOrDefault(stoneUid);
     public int GuildCount => _guilds.Count;
 
@@ -469,6 +473,7 @@ public sealed class GuildManager
             Name = name,
             IsTownStone = isTownStone,
             MaxHouses = DefaultMaxHouses,
+            MaxShips = DefaultMaxShips,
         };
         var master = guild.AddRecruit(masterUid);
         master.Priv = GuildPriv.Master;
@@ -830,6 +835,7 @@ public sealed class GuildManager
             {
                 // What the stone does not say, the server's default says.
                 MaxHouses = DefaultMaxHouses,
+                MaxShips = DefaultMaxShips,
                 Name = safeName[..Math.Min(40, safeName.Length)],
                 // Town records stay in their own membership pool (tag first,
                 // stone item type as the legacy fallback).

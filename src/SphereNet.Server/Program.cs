@@ -260,6 +260,50 @@ public static partial class Program
     /// separately-running server so the load generator has its own process,
     /// thread pool and GC — removing the in-process CPU-contention artifact from
     /// soak measurements.</summary>
+    /// <summary>Source-X CServerConfig keys that land on engine statics (the network
+    /// and world ones are applied where those objects are built).</summary>
+    internal static void ApplySourceXIniKeys(SphereConfig cfg)
+    {
+        Character.CanSeeSamePLevel = cfg.CanSeeSamePLevel;
+        Character.StatsFlags = cfg.StatsFlags;
+        Character.ExperienceSystem = cfg.ExperienceSystem;
+        Character.ExperienceMode = cfg.ExperienceMode;
+        Character.ExperienceKoefPVP = cfg.ExperienceKoefPVP;
+        Character.ExperienceKoefPVM = cfg.ExperienceKoefPVM;
+        Character.LevelSystem = cfg.LevelSystem;
+        Character.LevelNextAt = cfg.LevelNextAt;
+        Character.LevelModeDouble = cfg.LevelMode != 0;
+        SphereNet.Game.Objects.Items.Item.AllowNewbTransfer = cfg.AllowNewbTransfer;
+        SphereNet.Game.Objects.Items.Item.AutoNewbieKeys = cfg.AutoNewbieKeys;
+        SphereNet.Game.Speech.GhostSpeech.MediumCanHearGhosts = cfg.MediumCanHearGhosts;
+        SphereNet.Game.Speech.SpeechEngine.SuppressCapitals = cfg.SuppressCapitals;
+        SphereNet.Game.Magic.SpellEngine.WopPlayer = cfg.WopPlayer;
+        SphereNet.Game.Magic.SpellEngine.WopStaff = cfg.WopStaff;
+        SphereNet.Game.Magic.SpellEngine.WopColor = cfg.WopColor;
+        SphereNet.Game.Magic.SpellEngine.WopFont = cfg.WopFont;
+        SphereNet.Game.Magic.SpellEngine.WopTalkMode = cfg.WopTalkMode;
+        SphereNet.Network.Packets.Outgoing.PacketContextMenu.EntryLimit = cfg.ContextMenuLimit;
+        SphereNet.Core.Types.Point3D.DistanceFormula = cfg.DistanceFormula;
+        SphereNet.Game.Movement.WalkCheck.MountHeight = cfg.MountHeight;
+        SphereNet.Game.World.Sectors.Sector.MaxCharComplexity = cfg.MaxCharComplexity;
+        SphereNet.Game.World.Sectors.Sector.MaxSectorComplexity = cfg.MaxSectorComplexity;
+        SphereNet.Game.Guild.GuildManager.DefaultMaxShips = cfg.MaxShipsGuild;
+        SphereNet.Scripting.Definitions.CharDef.DefaultEraLimitGear = cfg.EraLimitGear;
+        SphereNet.Scripting.Definitions.CharDef.DefaultEraLimitLoot = cfg.EraLimitLoot;
+        SphereNet.Scripting.Definitions.CharDef.DefaultEraLimitProps = cfg.EraLimitProps;
+        GameClient.DisplayElementalResistance = cfg.DisplayElementalResistance;
+        GameClient.AllowBuySellAgent = cfg.AllowBuySellAgent;
+        GameClient.TradeWindowSnooping = cfg.TradeWindowSnooping;
+        GameClient.CharTags = cfg.CharTags;
+        GameClient.VendorTradeTitle = cfg.VendorTradeTitle;
+        GameClient.VerboseItemBounce = cfg.VerboseItemBounce;
+        GameClient.GuestsMax = cfg.GuestsMax;
+        GameClient.ArriveDepartMsg = cfg.ArriveDepartMsg;
+        GameClient.ServerName = cfg.ServName;
+        GameClient.SetSextantZeroPoint(cfg.ZeroPoint);
+        SphereNet.Game.Accounts.AccountManager.DefaultPrivFlags = (uint)cfg.AutoPrivFlags;
+    }
+
     private static void RunBotRunner(string[] args)
     {
         string[] rest = args.SkipWhile(a => !a.Equals("--botrunner", StringComparison.OrdinalIgnoreCase))
@@ -914,6 +958,7 @@ public static partial class Program
         SphereNet.Game.World.WeatherEngine.NoWeather = _config.NoWeather;
         SphereNet.Game.Magic.SpellEngine.MaxPolyStats = _config.MaxPolyStats;
         SphereNet.Persistence.Load.WorldLoader.NpcSkillSave = _config.NpcSkillSave;
+        ApplySourceXIniKeys(_config);
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;
@@ -1126,6 +1171,11 @@ public static partial class Program
 
             // Initialize spawn components for IT_SPAWN_CHAR items
             InitializeSpawnItems();
+
+            // MAXSECTORCOMPLEXITY / MAXCOMPLEXITY: report crowded sectors after the
+            // load (CWorld.cpp:1481-1483).
+            SphereNet.Game.World.Sectors.Sector.ComplexityWarning = msg => _log.LogWarning("{Msg}", msg);
+            _world.CheckSectorComplexity();
 
             // Boot-time consistency canary: a single O(n) pass that flags the
             // "fine in .edit, broken on the client" inconsistencies (empty-looking

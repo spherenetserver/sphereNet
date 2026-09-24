@@ -220,8 +220,9 @@ public static partial class Program
                     PerformSave();
                 }
 
+                // TIMERCALLUNIT picks seconds over minutes (CWorld.cpp:1833).
                 if (_config.TimerCallMinutes > 0
-                    && now - _lastServerHookTimerMs >= _config.TimerCallMinutes * 60_000L)
+                    && now - _lastServerHookTimerMs >= _config.TimerCallPeriodMs)
                 {
                     _lastServerHookTimerMs = now;
                     _systemHooks.DispatchServer("timer", _serverHookContext);

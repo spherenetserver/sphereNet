@@ -1094,6 +1094,9 @@ public sealed class HousingEngine
         key.BaseId = 0x100F; // gold key
         key.ItemType = ItemType.Key;
         key.Name = "a house key";
+        // AUTONEWBIEKEYS (CItemMulti.cpp:1107).
+        if (Item.AutoNewbieKeys)
+            key.SetAttr(ObjAttributes.Newbie);
         key.SetTag("LINK", multiItem.Uid.Value.ToString());
         key.Link = multiItem.Uid;
 

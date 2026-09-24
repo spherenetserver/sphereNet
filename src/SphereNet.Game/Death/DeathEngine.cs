@@ -217,10 +217,13 @@ public sealed class DeathEngine
             {
                 ApplyKarmaFameChange(offender, victim, attackerCount);
 
-                // Experience award (Source-X ChangeExperience on kill): the
-                // victim's own EXP value is the prize, split across attackers.
-                if (!victim.IsPlayer && victim.Exp > 0)
-                    offender.ChangeExperience(victim.Exp / attackerCount);
+                // Experience award (Noto_Kill, CCharNotoriety.cpp:619-646): gated on
+                // EXPERIENCESYSTEM + EXP_MODE_RAISE_COMBAT, a tenth of the victim's
+                // experience split across the killers and scaled by
+                // EXPERIENCEKOEFPVP/PVM and the relative totals.
+                int expReward = Character.KillExperienceReward(offender, victim, attackerCount);
+                if (expReward != 0)
+                    offender.ChangeExperience(expReward);
             }
 
             // PvP murder tracking — Source-X Noto_Kill marks EVERY unprovoked

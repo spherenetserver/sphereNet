@@ -26,12 +26,35 @@ public readonly struct Point3D : IEquatable<Point3D>
     public Point3D WithZ(sbyte z) => new(X, Y, z, Map);
     public Point3D WithMap(byte map) => new(X, Y, Z, map);
 
+    /// <summary>sphere.ini DISTANCEFORMULA (Source-X m_iDistanceFormula, default 0):
+    /// 0 = the larger axis delta, 1 = rounded 2D euclidean, 2 = rounded 3D
+    /// euclidean (CPointBase::GetDistBase, CPointBase.cpp:142).</summary>
+    public static int DistanceFormula { get; set; }
+
+    /// <summary>CPointBase::GetDist: the game distance, under DISTANCEFORMULA.</summary>
     public int GetDistanceTo(Point3D other)
     {
         int dx = Math.Abs(X - other.X);
         int dy = Math.Abs(Y - other.Y);
-        return Math.Max(dx, dy);
+        switch (DistanceFormula)
+        {
+            case 1:
+                return (int)Math.Round(Math.Sqrt((double)dx * dx + (double)dy * dy), MidpointRounding.AwayFromZero);
+            case 2:
+            {
+                int dz = Z - other.Z;
+                return (int)Math.Round(Math.Sqrt((double)dx * dx + (double)dy * dy + (double)dz * dz),
+                    MidpointRounding.AwayFromZero);
+            }
+            default:
+                return Math.Max(dx, dy);
+        }
     }
+
+    /// <summary>CPointBase::GetDistSight: the square view distance, which
+    /// DISTANCEFORMULA does not change (CPointBase.cpp:207).</summary>
+    public int GetDistSight(Point3D other) =>
+        Math.Max(Math.Abs(X - other.X), Math.Abs(Y - other.Y));
 
     public Direction GetDirectionTo(Point3D other)
     {

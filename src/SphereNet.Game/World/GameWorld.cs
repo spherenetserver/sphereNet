@@ -638,6 +638,21 @@ public sealed class GameWorld
         return false;
     }
 
+    /// <summary>The post-load pass over every sector (CWorld.cpp:1481-1483): each one
+    /// past MAXSECTORCOMPLEXITY / MAXCOMPLEXITY is reported. Returns how many were.</summary>
+    public int CheckSectorComplexity()
+    {
+        int flagged = 0;
+        foreach (var grid in _sectors.Values)
+            foreach (var sector in grid)
+            {
+                if (sector == null) continue;
+                if (sector.CheckItemComplexity()) flagged++;
+                if (sector.CheckCharComplexity()) flagged++;
+            }
+        return flagged;
+    }
+
     /// <summary>A sector by its LINEAR index, the addressing scripts use.
     /// Source-X resolves it against that map's own sector data
     /// (CWorldMap::GetSectorByIndex, CWorldMap.cpp:229) - not against a fixed
@@ -1416,6 +1431,40 @@ public sealed class GameWorld
 
     public void AddRoom(Room room) => _rooms.Add(room);
 
+    /// <summary>sphere.ini AREAFLAGS (Source-X _uiAreaFlags, default
+    /// AREAF_RoomInheritsFlags): what every ROOMDEF takes from the areas around its
+    /// centre - 0x1 events, 0x2 flags, 0x4 tags - on top of the room's own
+    /// INHERIT_PARENT_* flags (CServerConfig.cpp:5113-5152). Run once after load.</summary>
+    public void ApplyRoomInheritance(int areaFlags)
+    {
+        foreach (var room in _rooms)
+        {
+            if (room.Rects.Count == 0) continue;
+            int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+            foreach (var r in room.Rects)
+            {
+                x1 = Math.Min(x1, r.X1); y1 = Math.Min(y1, r.Y1);
+                x2 = Math.Max(x2, r.X2); y2 = Math.Max(y2, r.Y2);
+            }
+            var center = new Point3D((short)((x1 + x2) / 2), (short)((y1 + y2) / 2), 0, room.MapIndex);
+            var roomFlags = room.Flags;
+            foreach (var area in _regions)
+            {
+                if (!area.Contains(center)) continue;
+                if ((areaFlags & 0x1) != 0 || (roomFlags & RegionFlag.InheritParentEvents) != 0)
+                    foreach (var ev in area.Events)
+                        if (!room.Events.Contains(ev))
+                            room.AddEvent(ev);
+                if ((areaFlags & 0x4) != 0 || (roomFlags & RegionFlag.InheritParentTags) != 0)
+                    foreach (var kv in area.TagEntries)
+                        if (!room.TryGetTag(kv.Key, out _))
+                            room.SetTag(kv.Key, kv.Value);
+                if ((areaFlags & 0x2) != 0 || (roomFlags & RegionFlag.InheritParentFlags) != 0)
+                    room.Flags |= area.Flags;
+            }
+        }
+    }
+
     public Room? FindRoom(Point3D pt)
     {
         foreach (var room in _rooms)
@@ -1534,6 +1583,8 @@ public sealed class GameWorld
         }
     }
 
+    /// <summary>The client-view walk: square sight distance, which DISTANCEFORMULA does
+    /// not bend (Source-X view searches use SetSearchSquare, CClientMsg.cpp:2064).</summary>
     public void VisitInRange(Point3D center, int range, Action<Character>? visitChar, Action<Item>? visitItem)
     {
         var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
@@ -1548,7 +1599,7 @@ public sealed class GameWorld
                 for (int i = chars.Count - 1; i >= 0; i--)
                 {
                     var ch = chars[i];
-                    if (!ch.IsDeleted && center.GetDistanceTo(ch.Position) <= range)
+                    if (!ch.IsDeleted && center.GetDistSight(ch.Position) <= range)
                         visitChar?.Invoke(ch);
                 }
 
@@ -1556,7 +1607,7 @@ public sealed class GameWorld
                 for (int i = items.Count - 1; i >= 0; i--)
                 {
                     var item = items[i];
-                    if (!item.IsDeleted && item.IsOnGround && center.GetDistanceTo(item.Position) <= range)
+                    if (!item.IsDeleted && item.IsOnGround && center.GetDistSight(item.Position) <= range)
                         visitItem?.Invoke(item);
                 }
             }

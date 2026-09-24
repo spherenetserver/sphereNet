@@ -156,6 +156,8 @@ public sealed class HostileConnectionTests
     {
         var (mgr, state) = Connection();
         state.IsSeeded = true;
+        // Identified as a login connection, so TIMEOUTINCOMPLETECONN does not apply.
+        state.ConnectionType = SphereNet.Core.Enums.ConnectType.Login;
         state.LastActivityTick = Environment.TickCount64 - 30_000;
 
         mgr.Tick();

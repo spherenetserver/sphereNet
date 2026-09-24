@@ -3948,11 +3948,14 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         for (int i = 0; i < 300; i++)
             entries[i] = ((ushort)i, (uint)(3000000 + i), (ushort)0);
 
+        // CONTEXTMENULIMIT (default 15) drops the entries past it (send.cpp:4152).
         var pkt = new SphereNet.Network.Packets.Outgoing.PacketContextMenu(0x12345678, entries);
-        var buf = pkt.Build();
-        var data = buf.Data;
         // opcode(1) + len(2) + sub(2) + subSub(2) + serial(4) = offset 11 → count byte
-        Assert.Equal(255, data[11]);
+        Assert.Equal(15, pkt.Build().Data[11]);
+
+        // A limit above the byte the count travels in still clamps to 255.
+        SphereNet.Network.Packets.Outgoing.PacketContextMenu.EntryLimit = 300;
+        Assert.Equal(255, pkt.Build().Data[11]);
     }
 
     [Fact]

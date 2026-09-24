@@ -228,6 +228,127 @@ public sealed class NetworkManager : IDisposable
     // replaces the full 1100-slot scan that ran on EVERY accept.
     private readonly Dictionary<System.Net.IPAddress, int> _ipTally = [];
 
+    // --- Source-X IP history (CIPHistoryManager / CNetworkManager::acceptNewConnection) ---
+
+    /// <summary>sphere.ini CONNECTINGMAXIP (m_iConnectingMaxIP, default 8): an IP with
+    /// more than this many connections not yet in the game is refused.</summary>
+    public int ConnectingMaxIP { get; set; } = 8;
+    /// <summary>sphere.ini MAXCONNECTREQUESTSPERIP (_iMaxConnectRequestsPerIP, default
+    /// 5): connection attempts an IP may make while its history lives; it does not
+    /// decay and is forgotten only when the history expires (NETTTL after the last
+    /// connection closed). 0 disables.</summary>
+    public int MaxConnectRequestsPerIP { get; set; } = 5;
+    /// <summary>sphere.ini MAXPINGS (m_iNetMaxPings, default 15): connection attempts
+    /// counted like pings, decaying one per max(30, NETTTL/5) seconds.</summary>
+    public int MaxPings { get; set; } = 15;
+    /// <summary>sphere.ini NETTTL (m_iNetHistoryTTLSeconds, default 300).</summary>
+    public int NetHistoryTtlSeconds { get; set; } = 300;
+    /// <summary>sphere.ini TIMEOUTINCOMPLETECONN (_iTimeoutIncompleteConnectionMs,
+    /// default 5000): a connection still unidentified after this long is closed
+    /// (CNetworkManager.cpp:431-448). 0 disables.</summary>
+    public int TimeoutIncompleteConnMs { get; set; } = 5000;
+    /// <summary>sphere.ini CUOSTATUS / UOGSTATUS (default 1): answer ConnectUO /
+    /// UOGateway status pings (CClientLog.cpp:618-671).</summary>
+    public bool CUOStatus { get; set; } = true;
+    public bool UOGStatus { get; set; } = true;
+    /// <summary>CServer::GetStatusString: 0x22 = the UOG line, 0x25 = the ConnectUO line.</summary>
+    public Func<byte, string>? StatusStringProvider { get; set; }
+
+    private sealed class IpHistory
+    {
+        public int Pings;
+        public int PingDecay = 30;
+        public int ConnectionRequests;
+        public int TtlSeconds;
+    }
+
+    private readonly Dictionary<IPAddress, IpHistory> _ipHistory = [];
+    private long _lastIpHistoryDecayMs;
+
+    /// <summary>The accept-time IP gate (CNetworkManager.cpp:136-179): counts the
+    /// attempt, then refuses on MAXPINGS, CONNECTINGMAXIP or MAXCONNECTREQUESTSPERIP.
+    /// Loopback is exempt - the host's own panel and bot harness connect from it, the
+    /// same exemption the login-tries counter has (CAccount.cpp:846).</summary>
+    public bool RejectByIpHistory(IPAddress address, out string reason)
+    {
+        reason = "";
+        if (IPAddress.IsLoopback(address))
+            return false;
+        if (!_ipHistory.TryGetValue(address, out var h))
+            _ipHistory[address] = h = new IpHistory();
+        if (h.TtlSeconds < NetHistoryTtlSeconds)
+            h.TtlSeconds = NetHistoryTtlSeconds;
+        h.ConnectionRequests++;
+
+        bool pingReject = h.Pings++ >= MaxPings;   // HistoryIP::checkPing
+        int pending = CountPendingConnections(address);
+        if (pingReject)
+            reason = $"MAXPINGS reached {h.Pings - 1}/{MaxPings}";
+        else if (ConnectingMaxIP > 0 && pending > ConnectingMaxIP)
+            reason = $"CONNECTINGMAXIP reached {pending}/{ConnectingMaxIP}";
+        else if (MaxConnectRequestsPerIP > 0 && h.ConnectionRequests >= MaxConnectRequestsPerIP)
+            reason = $"MaxConnectRequestsPerIP reached {h.ConnectionRequests}/{MaxConnectRequestsPerIP}";
+        return reason.Length > 0;
+    }
+
+    /// <summary>Connections from this address that have not reached the game server
+    /// yet (Source-X m_iPendingConnectionRequests).</summary>
+    private int CountPendingConnections(IPAddress address)
+    {
+        int n = 0;
+        foreach (var s in _states)
+            if (s.IsInUse && s.ConnectionType != ConnectType.Game &&
+                s.RemoteEndPoint?.Address is { } a && a.Equals(address))
+                n++;
+        return n;
+    }
+
+    /// <summary>IPHistoryManager::tick (CIPHistoryManager.cpp:70-107), once a second:
+    /// an address with nothing connected counts its TTL down and is forgotten below
+    /// zero; pings decay one step every max(30, NETTTL/5) seconds.</summary>
+    public void DecayIpHistory(long nowMs, bool force = false)
+    {
+        if (!force && nowMs - _lastIpHistoryDecayMs < 1000)
+            return;
+        _lastIpHistoryDecayMs = nowMs;
+        List<IPAddress>? expired = null;
+        foreach (var (ip, h) in _ipHistory)
+        {
+            if (_ipTally.GetValueOrDefault(ip) == 0 && --h.TtlSeconds < 0)
+                (expired ??= []).Add(ip);
+            if (h.Pings > 0 && --h.PingDecay < 0)
+            {
+                h.Pings--;
+                h.PingDecay = Math.Max(30, NetHistoryTtlSeconds / 5);
+            }
+        }
+        if (expired != null)
+            foreach (var ip in expired)
+                _ipHistory.Remove(ip);
+    }
+
+    /// <summary>ConnectUO / UOGateway status pings on a fresh connection
+    /// (CClient::OnRxPing, CClientLog.cpp:618-671). Answers (or, when the setting is
+    /// off, just refuses) and closes; true when the data was such a ping.</summary>
+    public bool TryAnswerStatusPing(NetState state, ReadOnlySpan<byte> data)
+    {
+        bool uog = data.Length == 1 && data[0] is 0xFF or 0x7F or 0x22;
+        bool cuo = data.Length == 4 && data[0] == 0xF1 && ((data[1] << 8) | data[2]) == 4 && data[3] == 0xFF;
+        if (!uog && !cuo)
+            return false;
+        bool allowed = uog ? UOGStatus : CUOStatus;
+        if (allowed && StatusStringProvider != null)
+        {
+            string text = StatusStringProvider(uog ? (byte)0x22 : (byte)0x25);
+            state.SendRaw(System.Text.Encoding.ASCII.GetBytes(text));
+        }
+        _logger.LogInformation("{Kind} status request from {EP}{Rejected}", uog ? "UOG" : "CUO",
+            state.RemoteEndPoint, allowed ? "" : " has been rejected");
+        state.ConsumeReceived(data.Length);
+        state.MarkClosing();
+        return true;
+    }
+
     internal void OnStateInit(System.Net.IPAddress? address)
     {
         if (address == null) return;
@@ -266,6 +387,14 @@ public sealed class NetworkManager : IDisposable
                     ConnectionAcceptFilter(filterEp.Address))
                 {
                     _logger.LogWarning("Connection from {IP} rejected by accept filter", filterEp.Address);
+                    clientSocket.Close();
+                    continue;
+                }
+
+                if (clientSocket.RemoteEndPoint is IPEndPoint histEp &&
+                    RejectByIpHistory(histEp.Address, out string histReason))
+                {
+                    _logger.LogWarning("Connection from {IP} rejected: {Reason}", histEp.Address, histReason);
                     clientSocket.Close();
                     continue;
                 }
@@ -363,6 +492,8 @@ public sealed class NetworkManager : IDisposable
         // Classic clients send 4 raw bytes. 7.0+ clients send packet 0xEF (21 bytes).
         if (!state.IsSeeded)
         {
+            if (TryAnswerStatusPing(state, data))
+                return;
             if (data[0] == 0xEF && data.Length >= 21)
             {
                 state.Seed = (uint)((data[1] << 24) | (data[2] << 16) | (data[3] << 8) | data[4]);
@@ -854,9 +985,21 @@ public sealed class NetworkManager : IDisposable
     public void Tick()
     {
         long now = Environment.TickCount64;
+        DecayIpHistory(now);
         foreach (var state in _states)
         {
             if (!state.IsInUse) continue;
+
+            // TIMEOUTINCOMPLETECONN: still unidentified (CONNECT_UNK) this long after
+            // connecting - closed (CNetworkManager.cpp:436-447).
+            if (!state.IsClosing && TimeoutIncompleteConnMs > 0 &&
+                state.ConnectionType == ConnectType.Unknown &&
+                (DateTime.UtcNow - state.ConnectTime).TotalMilliseconds > TimeoutIncompleteConnMs)
+            {
+                _logger.LogWarning("Force closing connection #{Id} from {EP}: timed out before completing login",
+                    state.Id, state.RemoteEndPoint);
+                state.MarkClosing();
+            }
 
             // Idle timeout — unauthenticated bağlantılar 15s, normal 2 dakika
             long timeout = state.IsSeeded ? IdleTimeoutMs : UnauthIdleTimeoutMs;

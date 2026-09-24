@@ -21,6 +21,8 @@ public sealed class TelnetConsole : IDisposable
     private readonly AdminCommandProcessor _processor;
     private readonly string _adminPassword;
     private bool _running;
+    private readonly bool _telnetLog;
+    private readonly int _commandLog;
 
     public TelnetConsole(GameWorld world, AccountManager accounts, SphereConfig config,
         Func<int> getActiveConnections, ILogger logger, ILoggerFactory loggerFactory,
@@ -28,6 +30,8 @@ public sealed class TelnetConsole : IDisposable
     {
         _logger = logger;
         _adminPassword = config.AdminPassword ?? "";
+        _telnetLog = config.TelnetLog;
+        _commandLog = config.CommandLog;
         _processor = new AdminCommandProcessor(world, accounts, config, getActiveConnections, loggerFactory, sharedBlockList);
     }
 
@@ -127,6 +131,11 @@ public sealed class TelnetConsole : IDisposable
 
         bool keepOpen = _processor.ProcessCommand(input, session.SendLine,
             $"telnet:{session.RemoteEndPoint}");
+
+        // TELNETLOG: a remote-admin command is logged when the session's plevel
+        // (the console is owner-level) reaches COMMANDLOG (CClientLog.cpp:428).
+        if (_telnetLog && (int)Core.Enums.PrivLevel.Owner >= _commandLog)
+            _logger.LogInformation("telnet:{EP} commands '{Command}'", session.RemoteEndPoint, input);
 
         if (!keepOpen)
         {

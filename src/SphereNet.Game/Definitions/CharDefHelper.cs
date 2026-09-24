@@ -277,9 +277,9 @@ public static class CharDefHelper
         if (def.ResPoisonMax != 0) ch.TrySetProperty("RESPOISONMAX", def.ResPoisonMax.ToString());
         if (def.ResEnergyMax != 0) ch.TrySetProperty("RESENERGYMAX", def.ResEnergyMax.ToString());
         if (def.ReflectPhysicalDam != 0) ch.SetTag("REFLECTPHYSICALDAM", def.ReflectPhysicalDam.ToString());
-        if (def.EraLimitGear != 0) ch.SetTag("ERALIMITGEAR", def.EraLimitGear.ToString());
-        if (def.EraLimitLoot != 0) ch.SetTag("ERALIMITLOOT", def.EraLimitLoot.ToString());
-        if (def.EraLimitProps != 0) ch.SetTag("ERALIMITPROPS", def.EraLimitProps.ToString());
+        if (def.HasEraLimitGear && def.EraLimitGear != 0) ch.SetTag("ERALIMITGEAR", def.EraLimitGear.ToString());
+        if (def.HasEraLimitLoot && def.EraLimitLoot != 0) ch.SetTag("ERALIMITLOOT", def.EraLimitLoot.ToString());
+        if (def.HasEraLimitProps && def.EraLimitProps != 0) ch.SetTag("ERALIMITPROPS", def.EraLimitProps.ToString());
         if (!string.IsNullOrWhiteSpace(def.FoodTypeRaw)) ch.SetTag("FOODTYPE", def.FoodTypeRaw);
 
         ApplyCombatProperties(ch, def);

@@ -206,7 +206,7 @@ public static class PaperdollText
 
     /// <summary>CChar::IsPlayableCharacter: human (incl. the GM robe body), elf or
     /// gargoyle, ghosts excluded.</summary>
-    private static bool IsPlayableBody(ushort body) => body is
+    internal static bool IsPlayableBody(ushort body) => body is
         0x0190 or 0x0191 or 0x03DB or 0x025D or 0x025E or 0x029A or 0x029B;
 
     /// <summary>CChar::Skill_GetBest(0): the highest base value among the defined

@@ -1271,6 +1271,15 @@ public class Item : ObjBase
     /// CServerConfig m_iMaxItemComplexity, ini MAXITEMCOMPLEXITY, default 25).</summary>
     public static int MaxItemComplexity { get; set; } = 25;
 
+    /// <summary>sphere.ini ALLOWNEWBTRANSFER (Source-X m_fAllowNewbTransfer, default 0):
+    /// items keep ATTR_NEWBIE when handed to an NPC, and an owner may take newbie
+    /// items back off their pet.</summary>
+    public static bool AllowNewbTransfer { get; set; }
+
+    /// <summary>sphere.ini AUTONEWBIEKEYS (Source-X m_fAutoNewbieKeys, default 1):
+    /// generated house and ship keys are ATTR_NEWBIE (CItemMulti.cpp:1107).</summary>
+    public static bool AutoNewbieKeys { get; set; } = true;
+
     /// <summary>Does an item dropped on the ground turn to its flipped graphic
     /// (ini FLIPDROPPEDITEMS, default true)? The host sets it from the
     /// configuration.</summary>

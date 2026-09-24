@@ -189,6 +189,11 @@ public sealed partial class NpcAI
         // dense combat (one per candidate would be O(crowd) raycasts per NPC).
         // Keep the top 3, then verify LOS lazily on those — so each NPC does at
         // most a few raycasts regardless of crowd size.
+        // A crowded sector (over half of MAXCOMPLEXITY) looks a quarter as far
+        // (NPC_LookAround, CCharNPCAct.cpp:1160).
+        if ((_world.GetSector(npc.Position)?.GetCharComplexity() ?? 0) > World.Sectors.Sector.MaxCharComplexity / 2)
+            sightRange /= 4;
+
         Character? t1 = null, t2 = null, t3 = null;
         int m1 = 0, m2 = 0, m3 = 0;
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))

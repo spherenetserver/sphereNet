@@ -28,6 +28,10 @@ public sealed class AccountManager
     /// (CAccount.cpp:593). Defaulting everyone to Guest put ordinary players a level
     /// below the one the whole command and script surface is written against.</summary>
     public Core.Enums.PrivLevel DefaultPrivLevel { get; set; } = Core.Enums.PrivLevel.Player;
+
+    /// <summary>sphere.ini AUTOPRIVFLAGS (Source-X m_iAutoPrivFlags, default 0): the
+    /// PRIV flag word every new account starts with (CAccount.cpp:598).</summary>
+    public static uint DefaultPrivFlags { get; set; }
     public event Action<Account>? AccountCreated;
     public event Action<Account>? AccountLogin;
     public event Action<Account>? AccountBlocked;
@@ -171,6 +175,7 @@ public sealed class AccountManager
                 : DefaultPrivLevel,
             UseMd5Passwords = Md5Passwords,
             MaxChars = DefaultMaxChars,
+            Priv = DefaultPrivFlags,
         };
         account.SetPassword(password);
         _accounts[name] = account;

@@ -540,6 +540,15 @@ public sealed class ClientWorldFeaturesHandler
             // (Source-X Skill_MakeItem_Success, CCharSkill.cpp:844).
             if (CraftingEngine.QualityMessageKey(actualQuality) is { } qualityMsg)
                 SysMessage(ServerMessages.Get(qualityMsg));
+
+            // EXP_MODE_RAISE_CRAFT (CCharSkill.cpp:849): one point per 100 gold of the
+            // piece's vendor value.
+            if (Character.ExperienceSystem && (Character.ExperienceMode & Character.ExpModeRaiseCraft) != 0)
+            {
+                int craftExp = Skills.Information.InfoSkillEngine.EstimateVendorPrice(result) / 100;
+                if (craftExp != 0)
+                    _character.ChangeExperience(craftExp);
+            }
         }
         else
             SysMessage(ServerMessages.Get("craft_fail"));
@@ -571,6 +580,14 @@ public sealed class ClientWorldFeaturesHandler
         if (flag == 0 || buyItems.Count == 0)
         {
             NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
+            return;
+        }
+
+        // ALLOWBUYSELLAGENT off: a purchase confirmed sooner than 3 ms per line
+        // after the list went out is an agent, and is refused (receive.cpp:763-772).
+        if (IsBuySellTooFast(buyItems.Count, 3))
+        {
+            SysMessage(ServerMessages.Get("npc_vendor_buyfast"));
             return;
         }
 
@@ -622,6 +639,16 @@ public sealed class ClientWorldFeaturesHandler
         SendCharacterStatus(_character);
     }
 
+    /// <summary>The BUYSELLTIME check: with ALLOWBUYSELLAGENT off, a confirmation that
+    /// arrives before <paramref name="msPerLine"/> per line has passed since the list
+    /// was sent is refused.</summary>
+    internal bool IsBuySellTooFast(int lines, int msPerLine)
+    {
+        if (GameClient.AllowBuySellAgent || _client.VendorListSentMs == 0)
+            return false;
+        return Environment.TickCount64 < _client.VendorListSentMs + (long)lines * msPerLine;
+    }
+
     /// <summary>Clear the shop display for this vendor (Source-X addVendorClose,
     /// CClientMsg.cpp:2386).</summary>
     private void CloseVendorWindow(Character vendor) =>
@@ -646,6 +673,13 @@ public sealed class ClientWorldFeaturesHandler
         if (sellItems.Count == 0)
         {
             NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
+            return;
+        }
+
+        // ALLOWBUYSELLAGENT off: 300 ms per line for a sale (receive.cpp:1906-1915).
+        if (IsBuySellTooFast(sellItems.Count, 300))
+        {
+            SysMessage(ServerMessages.Get("npc_vendor_sellfast"));
             return;
         }
 

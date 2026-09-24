@@ -2834,6 +2834,47 @@ public sealed class PacketOpenScroll : PacketWriter
     }
 }
 
+/// <summary>0xF9 global chat stanza (Source-X PacketGlobalChat, send.cpp:5536):
+/// [F9][unknown][action][stanza][XML wrapped in an ultima_stanza document, NUL].
+/// Upstream writes it with no length word, so neither does this.</summary>
+public sealed class PacketGlobalChatOut : PacketWriter
+{
+    public const byte ActionFriendToggle = 0x01;
+    public const byte ActionFriendRemove = 0x10;
+    public const byte ActionFriendAddTarg = 0x76;
+    public const byte ActionStatusToggle = 0x8A;
+    public const byte ActionConnect = 0xB9;
+    public const byte ActionMessageSend = 0xC6;
+
+    public const byte StanzaPresence = 0x0;
+    public const byte StanzaMessage = 0x1;
+    public const byte StanzaInfoQuery = 0x2;
+
+    private readonly byte _unknown;
+    private readonly byte _action;
+    private readonly byte _stanza;
+    private readonly string _xml;
+
+    public PacketGlobalChatOut(byte unknown, byte action, byte stanza, string xml) : base(0xF9)
+    {
+        _unknown = unknown;
+        _action = action;
+        _stanza = stanza;
+        _xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?><ultima_stanza>" +
+            (xml ?? "") + "</ultima_stanza>";
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(4 + _xml.Length + 1);
+        buf.WriteByte(_unknown);
+        buf.WriteByte(_action);
+        buf.WriteByte(_stanza);
+        buf.WriteAsciiNull(_xml);
+        return buf;
+    }
+}
+
 /// <summary>Show the dye vat hue-picker window (0x95, Source-X
 /// PacketShowDyeWindow). The client answers with the same opcode, handled by
 /// GameClient.HandleDyeResponse.</summary>

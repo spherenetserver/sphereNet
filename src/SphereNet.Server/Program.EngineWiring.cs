@@ -637,7 +637,7 @@ public static partial class Program
                     {
                         string crystalName = string.IsNullOrEmpty(dest.Name) ? "a communication crystal" : dest.Name;
                         BroadcastNearby(dest.Position, 12,
-                            new PacketSpeechUnicodeOut(dest.Uid.Value, 0, 0, 0x03B2, 3, "TRK",
+                            new PacketSpeechUnicodeOut(dest.Uid.Value, 0, 0, 0x03B2, 3, PacketSpeechUnicodeOut.SystemLanguage,
                                 crystalName, text), 0);
                     }
                 }
@@ -654,7 +654,7 @@ public static partial class Program
                     (byte)mode,
                     speaker.SpeechColor != 0 ? speaker.SpeechColor : (ushort)0x03B2,
                     3,
-                    "TRK",
+                    PacketSpeechUnicodeOut.SystemLanguage,
                     speaker.Name ?? "",
                     text));
             };
@@ -1312,7 +1312,7 @@ public static partial class Program
                 var pkt = new PacketSpeechUnicodeOut(
                     obj.Uid.Value, body,
                     0x06,               // TALKMODE_ITEM - text belonging to the object
-                    fmt.Hue, fmt.Font, "ENU",
+                    fmt.Hue, fmt.Font, PacketSpeechUnicodeOut.SystemLanguage,
                     speaker, fmt.Text);
 
                 if (recipient != null)
@@ -1332,7 +1332,7 @@ public static partial class Program
                 var pkt = new PacketSpeechUnicodeOut(
                     speaker.Uid.Value, speaker.BodyId,
                     0x02, // emote-style speech
-                    0x0022, 3, "ENU",
+                    0x0022, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     speaker.GetName(), text);
                 BroadcastNearby(speaker.Position, 18, pkt, 0);
             };
@@ -1377,7 +1377,7 @@ public static partial class Program
                     0x00,
                     hue,
                     font,
-                    "TRK",
+                    PacketSpeechUnicodeOut.SystemLanguage,
                     caster.Name ?? "",
                     words);
                 BroadcastNearby(caster.Position, 18, pkt, 0);
@@ -1900,10 +1900,10 @@ public static partial class Program
                 const ushort emoteHue = 0x0022;
                 var emote = CombatHelper.FormatAttackEmotes(attacker, target);
                 var emoteOthers = new PacketSpeechUnicodeOut(
-                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, "TRK",
+                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     emote.AttackerName, emote.OthersText);
                 var emoteVictim = new PacketSpeechUnicodeOut(
-                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, "TRK",
+                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     emote.AttackerName, emote.VictimText);
                 uint victimUid = target.Uid.Value;
                 ForEachClientInRange(attacker.Position, 18, 0,
@@ -2173,7 +2173,7 @@ public static partial class Program
                     string emote = $"*{item.GetName()} " +
                         $"{SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.ItemDmgDestroyed)}*";
                     var emotePkt = new PacketSpeechUnicodeOut(
-                        owner.Uid.Value, owner.BodyId, 2, 0x0022, 3, "TRK",
+                        owner.Uid.Value, owner.BodyId, 2, 0x0022, 3, PacketSpeechUnicodeOut.SystemLanguage,
                         owner.Name ?? "", emote);
                     BroadcastNearby(owner.Position, 18, emotePkt, 0);
                 }
@@ -2460,7 +2460,7 @@ public static partial class Program
                     0x06, // ASCII speech
                     0x0481, // grey hue
                     3, // small font
-                    "ENU",
+                    PacketSpeechUnicodeOut.SystemLanguage,
                     ship.MultiItem.Name ?? "Tillerman",
                     text);
                 BroadcastNearby(origin, 18, pkt, 0);
@@ -3744,6 +3744,16 @@ public static partial class Program
                 {
                     if (_clients.TryGetValue(state.Id, out var c))
                         c.HandleChatAction(cmd, text);
+                },
+                tipRequest: (state, tip) =>
+                {
+                    if (_clients.TryGetValue(state.Id, out var c))
+                        c.HandleTipRequest(tip);
+                },
+                globalChat: (state, action, xml) =>
+                {
+                    if (_clients.TryGetValue(state.Id, out var c))
+                        c.HandleGlobalChat(action, xml);
                 }
             );
 

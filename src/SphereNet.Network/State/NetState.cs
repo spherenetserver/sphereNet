@@ -1240,6 +1240,17 @@ public sealed class NetState : IDisposable
 
     internal void OnChatAction(ushort cmd, string text) => ChatActionHandler?.Invoke(this, cmd, text);
 
+    /// <summary>0xA7 tip window paging: the tip number to show (the argument of
+    /// Source-X CClient::Event_Tips).</summary>
+    public Action<NetState, ushort>? TipRequestHandler { get; set; }
+
+    internal void OnTipRequest(ushort tip) => TipRequestHandler?.Invoke(this, tip);
+
+    /// <summary>0xF9 global chat request: (action, XML body).</summary>
+    public Action<NetState, byte, string>? GlobalChatHandler { get; set; }
+
+    internal void OnGlobalChat(byte action, string xml) => GlobalChatHandler?.Invoke(this, action, xml);
+
     internal void OnGumpTextEntry(uint serial, ushort context, byte action, string text)
         => GumpTextEntryHandler?.Invoke(this, serial, context, action, text);
 

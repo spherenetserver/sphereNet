@@ -15,6 +15,7 @@ public static class ExtendedCommandRegistry
         0x0009, // wrestle disarm
         0x000A, // wrestle stun (paralyzing blow)
         0x000B, // chat/language button path
+        0x0010, // old-style tooltip request (pre-5.0.9 clients, Source-X PacketAosTooltipInfo)
         0x0013, // context menu request
         0x0015, // context menu response
         0x001A, // stat lock change

@@ -752,8 +752,11 @@ public sealed class ClientCombatHandler
         });
     }
 
+    /// <summary>A player's own words go out in the speaker's language: Source-X
+    /// Event_TalkUNICODE hands the account's m_lang to SpeakUTF8Ex
+    /// (CClientEvent.cpp:2194), which CWorldComm passes on to addBarkUNICODE.</summary>
     private PacketSpeechUnicodeOut MakeSpeechPacket(byte type, ushort hue, ushort font, string text) =>
-        new(_character!.Uid.Value, _character.BodyId, type, hue, font, "TRK", _character.Name, text);
+        new(_character!.Uid.Value, _character.BodyId, type, hue, font, _netState.ClientLanguage, _character.Name, text);
 
     // ==================== Combat ====================
 
@@ -1339,10 +1342,10 @@ public sealed class ClientCombatHandler
                 ushort emoteHue = SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Emote);
                 var emote = CombatHelper.FormatAttackEmotes(_character, target);
                 var emoteOthers = new PacketSpeechUnicodeOut(
-                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
+                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     emote.AttackerName, emote.OthersText);
                 var emoteVictim = new PacketSpeechUnicodeOut(
-                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
+                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     emote.AttackerName, emote.VictimText);
                 uint victimUid = target.Uid.Value;
                 ForEachClientInRange?.Invoke(_character.Position, UpdateRange, 0,
@@ -1579,7 +1582,7 @@ public sealed class ClientCombatHandler
                 if (target.DetailView && _character != null)
                     _client.SendToChar?.Invoke(target.Uid, new PacketSpeechUnicodeOut(
                         0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
-                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System",
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), PacketSpeechUnicodeOut.SystemLanguage, "System",
                         ServerMessages.GetFormatted(Msg.CombatMisso, _character.GetName())));
                 EmitMissSound(weapon);
             }

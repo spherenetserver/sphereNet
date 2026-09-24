@@ -273,6 +273,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Clients.GameClient.ServerMaxCharsPerAccount = 7;
         SphereNet.Game.Clients.GameClient.ServerAutoResDisp = true;
         SphereNet.Game.Clients.GameClient.ServerToolTipMode = 1;
+        SphereNet.Game.Clients.GameClient.ServerChatFlags = 0;
         SphereNet.Game.Clients.GameClient.ServerOptionFlags =
             SphereNet.Core.Enums.OptionFlags.FileCommands | SphereNet.Core.Enums.OptionFlags.Buffs;
         SphereNet.Network.Packets.Outgoing.PacketCharList.AosTooltipsEnabled = true;

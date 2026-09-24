@@ -309,7 +309,7 @@ public sealed class ClientScriptConsoleHandler
                     origin = item.Position;
                 }
                 var packet = new PacketSpeechUnicodeOut(serial, bodyId, speechType, hue, font,
-                    "TRK", target.GetName(), text);
+                    PacketSpeechUnicodeOut.SystemLanguage, target.GetName(), text);
                 _netState.Send(packet);
                 BroadcastNearby?.Invoke(origin, 18, packet, _character.Uid.Value);
             }
@@ -334,7 +334,7 @@ public sealed class ClientScriptConsoleHandler
             ushort font = TryParseScriptNumber(parts[2], out long f)
                 ? (ushort)Math.Clamp(f, ushort.MinValue, ushort.MaxValue)
                 : (ushort)3;
-            string lang = parts[3].Length > 0 ? parts[3] : "ENU";
+            string lang = parts[3]; // empty = no language (Source-X CLanguageID(""))
             string text = parts[4];
             if (text.Length == 0)
                 return true;
@@ -396,7 +396,7 @@ public sealed class ClientScriptConsoleHandler
                     origin = item.Position;
                 }
                 var packet = new PacketSpeechUnicodeOut(serial, bodyId, speechType, hue, font,
-                    "TRK", target.GetName(), text);
+                    PacketSpeechUnicodeOut.SystemLanguage, target.GetName(), text);
                 _netState.Send(packet);
                 BroadcastNearby?.Invoke(origin, 18, packet, _character.Uid.Value);
             }

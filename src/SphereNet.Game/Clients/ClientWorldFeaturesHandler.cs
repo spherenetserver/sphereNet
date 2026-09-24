@@ -2658,6 +2658,20 @@ public sealed class ClientWorldFeaturesHandler
             handler(this, data);
     }
 
+    /// <summary>0xBF 0x10 — tooltip request from clients older than 5.0.9 that show
+    /// tooltips. Source-X PacketAosTooltipInfo::onReceive (receive.cpp:2949) reads one
+    /// serial and answers with addAOSTooltip(object, requested) when the character can
+    /// see it - the non-shop branch of the 0xD6 request. SendAosTooltip carries the
+    /// same client-version / AOS-feature / can-see gates.</summary>
+    private void HandleExtendedOldTooltipRequest(byte[] data)
+    {
+        if (_character == null || data.Length < 4) return;
+        uint serial = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
+        var obj = _world.FindObject(new Serial(serial));
+        if (obj != null)
+            _client.SendAosTooltip(obj, requested: true);
+    }
+
     /// <summary>0xBF 0x33 — wheel-boat steering (Source-X PacketWheelBoatMove /
     /// SetPilot). Payload: serial(4), moving dir, facing dir, speed
     /// (0 = stop, 1 = one tile, 2+ = continuous). The steering char must be
@@ -2697,6 +2711,7 @@ public sealed class ClientWorldFeaturesHandler
                     client._netState.ClientLanguage = System.Text.Encoding.ASCII.GetString(data, 0, 3);
                 client.FireExtendedButtonTrigger(CharTrigger.UserChatButton, 0x000B);
             },
+            [0x0010] = static (client, data) => client.HandleExtendedOldTooltipRequest(data),
             [0x0013] = static (client, data) => client.HandleExtendedContextMenuRequest(data),
             [0x0015] = static (client, data) => client.HandleExtendedContextMenuResponse(data),
             [0x001A] = static (client, data) => client.HandleExtendedStatLock(data),
@@ -3197,7 +3212,7 @@ public sealed class ClientWorldFeaturesHandler
                     string declineNote = ServerMessages.GetFormatted("party_decline_1", _character.Name ?? "Someone");
                     SendToChar?.Invoke(new Serial(declineInviterUid),
                         new PacketSpeechUnicodeOut(0xFFFFFFFF, 0xFFFF, 6, SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System),
-                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), "TRK", "System", declineNote));
+                        SphereNet.Game.Messages.ServerMessages.FontOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.System), PacketSpeechUnicodeOut.SystemLanguage, "System", declineNote));
                 }
                 else if (declinedUid != 0)
                 {

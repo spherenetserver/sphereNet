@@ -1,5 +1,8 @@
+using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Chat;
+using SphereNet.Game.Definitions;
 using SphereNet.Network.Packets.Outgoing;
 
 namespace SphereNet.Game.Clients;
@@ -463,4 +466,128 @@ public sealed partial class GameClient
         }
         return (s.Trim(), string.IsNullOrEmpty(password) ? null : password);
     }
+
+    // ==================== Tips (0xA7 -> 0xA6) ====================
+
+    /// <summary>Source-X CClient::Event_Tips (CClientEvent.cpp:140): tip 0 means tip 1;
+    /// a missing [TIP n] falls back to [TIP 1], and nothing is sent when that is missing
+    /// too (or n was 1 already). The section lines go out as a type-0 (TIPS) scroll whose
+    /// context is n + 1 - the number the client sends back when paging.</summary>
+    public void HandleTipRequest(ushort tip)
+    {
+        if (tip == 0)
+            tip = 1;
+        var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+        if (resources == null)
+            return;
+
+        var link = resources.GetResource(ResType.Tip, tip);
+        if (link == null)
+        {
+            if (tip == 1)
+                return;
+            link = resources.GetResource(ResType.Tip, 1);
+            if (link == null)
+                return;
+            tip = 1;
+        }
+
+        // PacketOpenScroll (send.cpp:3244) writes every section line followed by CR.
+        var sb = new System.Text.StringBuilder();
+        if (link.StoredKeys != null)
+        {
+            foreach (var key in link.StoredKeys)
+                sb.Append(key.RawLine).Append('\r');
+        }
+        Send(new PacketOpenScroll(0, (uint)tip + 1, sb.ToString()));
+    }
+
+    // ==================== Global chat (0xF9) ====================
+
+    /// <summary>Source-X CHATF_GLOBALCHAT: the global chat system is on.</summary>
+    public const int ChatFlagGlobalChat = 0x10;
+
+    /// <summary>Source-X MINCLIVER_GLOBALCHAT (7.0.62.2) in this server's version
+    /// number format.</summary>
+    public const uint MinClientVersionGlobalChat = 70_062_002;
+
+    /// <summary>Source-X CGlobalChatChanMember: the Jabber id set at connect and the
+    /// online/offline status the client toggles.</summary>
+    internal string GlobalChatJid { get; private set; } = "";
+    internal bool GlobalChatVisible { get; private set; }
+
+    private bool CanSendGlobalChat =>
+        _character != null && _netState.ClientVersionNumber >= MinClientVersionGlobalChat;
+
+    /// <summary>0xF9 — Source-X PacketGlobalChatReq::onReceive (receive.cpp:4711).
+    /// Upstream marks the system INCOMPLETE: sending a message and removing a friend
+    /// do nothing, the friend-add target has no response handler
+    /// (CClient::Event_Target has no CLIMODE_TARG_GLOBALCHAT_ADD case), and only the
+    /// status toggle does real work.</summary>
+    public void HandleGlobalChat(byte action, string xml)
+    {
+        if ((ServerChatFlags & ChatFlagGlobalChat) == 0)
+        {
+            SysMessage("Global Chat is currently unavailable.");
+            return;
+        }
+
+        switch (action)
+        {
+            case PacketGlobalChatOut.ActionMessageSend:
+            case PacketGlobalChatOut.ActionFriendRemove:
+                return;
+            case PacketGlobalChatOut.ActionFriendAddTarg:
+                // addTarget(CLIMODE_TARG_GLOBALCHAT_ADD, prompt): the prompt as a system
+                // message, then an object cursor whose answer upstream ignores.
+                SysMessage("Target player to request as Global Chat friend.");
+                SetPendingTarget(static (_, _, _, _, _) => { }, 0);
+                return;
+            case PacketGlobalChatOut.ActionStatusToggle:
+                SendGlobalChatStatusToggle();
+                return;
+            default:
+                _logger.LogDebug("Unknown global chat action 0x{Action:X2}", action);
+                return;
+        }
+    }
+
+    /// <summary>Source-X CClient::addGlobalChatConnect (CClientMsg.cpp:2606), sent at
+    /// login when CHATF_GLOBALCHAT is on.</summary>
+    internal void SendGlobalChatConnect()
+    {
+        if (!CanSendGlobalChat)
+            return;
+        // Jabber id: CharName_CharUID@ServerID ("%.6s_%.7u@%.2hhu").
+        GlobalChatJid = FormatGlobalChatJid(_character!.Name ?? "", _character.Uid.Value);
+        string xml = $"<iq to=\"{GlobalChatJid}\" id=\"iq_{GlobalChatStamp()}\" type=\"6\" version=\"1\" jid=\"{GlobalChatJid}\" />";
+        GlobalChatVisible = false;
+        Send(new PacketGlobalChatOut(0, PacketGlobalChatOut.ActionConnect, PacketGlobalChatOut.StanzaInfoQuery, xml));
+        SysMessage("Global Chat is now connected.");
+    }
+
+    /// <summary>Source-X CClient::addGlobalChatStatusToggle (CClientMsg.cpp:2628).</summary>
+    internal void SendGlobalChatStatusToggle()
+    {
+        if (!CanSendGlobalChat)
+            return;
+        int show = GlobalChatVisible ? 0 : 1;
+        string name = _character!.Name ?? "";
+        if (name.Length > 6)
+            name = name[..6];
+        string xml = $"<presence from=\"{GlobalChatJid}\" id=\"pres_{GlobalChatStamp()}\" name=\"{name}\" show=\"{show}\" version=\"1\" />";
+        GlobalChatVisible = show != 0;
+        Send(new PacketGlobalChatOut(0, PacketGlobalChatOut.ActionConnect, PacketGlobalChatOut.StanzaPresence, xml));
+        SysMessage(show != 0 ? "Global Chat Online" : "Global Chat Offline");
+    }
+
+    internal static string FormatGlobalChatJid(string charName, uint uid)
+    {
+        string name = charName.Length > 6 ? charName[..6] : charName;
+        return $"{name}_{uid:D7}@00";
+    }
+
+    /// <summary>CSTime::GetCurrentTime().GetTime() printed with "%.10u".</summary>
+    private static string GlobalChatStamp() =>
+        ((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ToString("D10");
 }

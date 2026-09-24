@@ -209,6 +209,10 @@ public sealed class PacketSpeechUnicode : PacketHandler
         else
         {
             text = buffer.ReadUnicodeNullBE(256);
+            // Source-X CClient::Event_TalkUNICODE (CClientEvent.cpp:2140) stores the
+            // packet's language on the account (m_lang); the speech it relays is sent
+            // in that language.
+            state.ClientLanguage = Outgoing.PacketSpeechUnicodeOut.NormalizeLanguage(lang);
         }
 
         if (text.Length > 256) text = text[..256];
@@ -1023,6 +1027,55 @@ public sealed class PacketUltimaStoreButton : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         state.OnClientUiButton(0xFA);
+    }
+}
+
+/// <summary>0xA7 — tip/notice window paging: [u16 index][bool forward]. Source-X
+/// PacketTipReq::onReceive (receive.cpp:1983) steps the index the client shows one
+/// forward or back (plain word arithmetic, so 0 backwards wraps) and calls
+/// CClient::Event_Tips(index - 1).</summary>
+public sealed class PacketTipRequest : PacketHandler
+{
+    public PacketTipRequest() : base(0xA7, 4) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        ushort index = buffer.ReadUInt16();
+        bool forward = buffer.ReadBool();
+        if (forward)
+            index++;
+        else
+            index--;
+        state.OnTipRequest(unchecked((ushort)(index - 1)));
+    }
+}
+
+/// <summary>0xF9 — global chat request (7.0.62.2+). Source-X
+/// PacketGlobalChatReq::onReceive (receive.cpp:4711) reads a leading byte, the
+/// action, a stanza byte it skips and the XML body. Upstream's reader starts at the
+/// length word (its variable packets keep the length in the handler's buffer), so
+/// its first two reads land on that word; the length is already consumed here and
+/// the three bytes are read in the order upstream names them - the same field order
+/// upstream writes in its outgoing 0xF9 (PacketGlobalChat, send.cpp:5536).</summary>
+public sealed class PacketGlobalChatRequest : PacketHandler
+{
+    /// <summary>Source-X reads the XML into a MAX_TALK_BUFFER * 2 buffer.</summary>
+    private const int MaxXmlChars = 256 * 2 - 1;
+
+    public PacketGlobalChatRequest() : base(0xF9, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        byte action = 0;
+        string xml = "";
+        if (buffer.Remaining >= 3)
+        {
+            buffer.ReadByte();          // unknown
+            action = buffer.ReadByte();
+            buffer.ReadByte();          // stanza
+            xml = buffer.ReadAsciiNull(MaxXmlChars);
+        }
+        state.OnGlobalChat(action, xml);
     }
 }
 

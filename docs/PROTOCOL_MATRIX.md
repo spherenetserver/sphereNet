@@ -33,6 +33,7 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xBF` Extended command
 - `0xF0` New movement / extension request
 - `0xF8` Create character HS
+- `0x8D` Create character (KR / Enhanced Client; profession table as upstream)
 
 ## Optional Implemented
 - `0x3B` Vendor buy
@@ -65,6 +66,8 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xF4` Crash report (logs and fires @UserBugReport)
 - `0xFA` Ultima Store button (fires @UserUltimaStoreButton)
 - `0xFB` Show public house content toggle
+- `0xA7` Tip window paging (answered with a `[TIP n]` section as a `0xA6` scroll)
+- `0xF9` Global chat request (CHATFLAGS `0x10`; status toggle answered with `0xF9`)
 
 - `0x01` Disconnect notification (closes the session)
 - `0x2C` Death menu (request / resurrect / ghost)
@@ -95,6 +98,7 @@ Known incoming subcommands are centralized in `ExtendedCommandRegistry`.
 - `0x0005` Screen size
 - `0x0006` Party
 - `0x000B` Chat/language button path
+- `0x0010` Old-style tooltip request (clients before 5.0.9; same answer as `0xD6`)
 - `0x0013` Context menu request
 - `0x0015` Context menu response
 - `0x001A` Stat lock change

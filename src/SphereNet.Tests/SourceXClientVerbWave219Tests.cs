@@ -126,6 +126,27 @@ public class SourceXClientVerbWave219Tests
     }
 
     [Fact]
+    public void HelpMenuPage_QueuesEvenWhenPageCommandIsRedefined()
+    {
+        // The native help menu's page box. The reference distribution defines
+        // [FUNCTION Page] as its queue viewer; the box re-ran the text as PAGE, so
+        // the page opened the viewer and was never queued.
+        var (client, ch, commands) = CreateClient();
+        bool viewerOpened = false;
+        string? pageText = null;
+        commands.Register("PAGE", PrivLevel.Player, (_, _) => viewerOpened = true);
+        commands.OnPageReceived += (_, text) => pageText = text;
+
+        typeof(ClientDialogHandler)
+            .GetMethod("ShowHelpPageEntryDialog", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(client.Dialogs, null);
+        client.HandleGumpResponse(ch.Uid.Value, ch.Uid.Value, 1, [], [(1, "stuck in a wall")]);
+
+        Assert.Equal("stuck in a wall", pageText);
+        Assert.False(viewerOpened);
+    }
+
+    [Fact]
     public void GmPageWithoutAdd_OpensPromptInsteadOfQueueing()
     {
         var (client, ch, commands) = CreateClient();

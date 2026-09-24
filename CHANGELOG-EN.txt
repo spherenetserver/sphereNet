@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - GM body can ride; help-menu pages reach the queue
+------------------------------------------------------------------------
+FIX - The GM robe body (0x3DB, c_man_gm) is a human body, as upstream's
+      CCharBase::IsHumanID has it, so a GM in it can mount; every mount to
+      that body was refused.
+FIX - The built-in help menu's page box queues the page directly
+      (CommandHandler.SubmitPage). It re-ran the text as a PAGE command, which
+      the reference distribution defines as its queue viewer, so the page
+      opened an empty queue and was never queued.
+
 [2026-09-24] - Door facings, spawn distance and mixed spawners from the worldgen
 ------------------------------------------------------------------------
 FIX - An item made from a numbered itemdef shows that number. A DUPELIST

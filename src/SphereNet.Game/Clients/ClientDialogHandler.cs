@@ -364,8 +364,8 @@ public sealed class ClientDialogHandler
         SysMessage(ServerMessages.Get("msg_stuck_teleported"));
     }
 
-    /// <summary>Help-menu "Page": prompt for a message, then submit through
-    /// the same .PAGE command path (staff broadcast + recent-page log).</summary>
+    /// <summary>Help-menu "Page": prompt for a message, then queue it the way
+    /// .PAGE and GMPAGE ADD do (CommandHandler.SubmitPage).</summary>
     private void ShowHelpPageEntryDialog()
     {
         if (_character == null)
@@ -384,7 +384,10 @@ public sealed class ClientDialogHandler
             string text = textEntries.FirstOrDefault(t => t.Item1 == 1).Item2?.Trim() ?? "";
             if (text.Length == 0)
                 return;
-            _commands.TryExecute(_character, $"PAGE {text}");
+            // Queue it directly (Event_PromptResp_GMPage). Re-running the text as a
+            // PAGE command let a pack's own [FUNCTION Page] - a queue viewer in the
+            // reference distribution - take the call, so the page never queued.
+            _commands.SubmitPage(_character, text);
         });
     }
 

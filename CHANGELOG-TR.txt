@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - GM govdesi ata biner; help menusu page'i kuyruga ulasir
+------------------------------------------------------------------------
+DUZELTME - GM robe govdesi (0x3DB, c_man_gm) insan govdesidir; Source-X
+           CCharBase::IsHumanID'de oldugu gibi. Bu govdedeki GM ata binebilir;
+           once her binme reddediliyordu.
+DUZELTME - Yerlesik help menusunun page kutusu page'i dogrudan kuyruga
+           ekler (CommandHandler.SubmitPage). Metni PAGE komutu olarak yeniden
+           calistiriyordu; referans paket PAGE'i kuyruk goruntuleyici olarak
+           tanimladigi icin page bos kuyrugu aciyor, hic eklenmiyordu.
+
 [2026-09-24] - Worldgen: kapi yonleri, spawn mesafesi ve karisik spawner'lar
 ------------------------------------------------------------------------
 DUZELTME - Numarali itemdef'ten yapilan item o numarayi gosterir. DUPELIST

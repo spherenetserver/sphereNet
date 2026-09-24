@@ -1252,7 +1252,9 @@ public partial class Character : ObjBase
     public bool IsFemale => Definitions.DefinitionLoader.GetCharDef(CharDefIndex) is { } def
         ? (def.Can & CanFlags.C_Female) != 0
         : _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
-    public bool IsHuman => _bodyId is 0x0190 or 0x0191 or 0x0192 or 0x0193;
+    // CREID_EQUIP_GM_ROBE (0x3DB) is a human body upstream (CCharBase::IsHumanID), so
+    // a GM in c_man_gm can ride; leaving it out refused every mount to that body.
+    public bool IsHuman => _bodyId is 0x0190 or 0x0191 or 0x0192 or 0x0193 or 0x03DB;
     public bool IsGargoyle => _bodyId is 0x029A or 0x029B or 0x02B6 or 0x02B7;
 
     /// <summary>An ITEMDEF named by defname or by number, as a script writes it in a

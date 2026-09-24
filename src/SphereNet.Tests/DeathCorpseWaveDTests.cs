@@ -37,6 +37,8 @@ public class DeathCorpseWaveDTests
         victim.Exp = 100;
         victim.Fame = 1000;
         victim.Deaths = 0;
+        // The loss goes through ChangeExperience, which needs EXP_MODE_ALLOW_DOWN.
+        Character.ExperienceMode = Character.ExpModeAllowDown;
 
         engine.ProcessDeath(victim);
 

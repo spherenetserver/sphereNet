@@ -126,6 +126,9 @@ public sealed partial class GameClient
                         actual.Amount, actual.X, actual.Y,
                         pack.Uid.Value, actual.Hue,
                         _client.NetState.IsClientPost6017));
+                    // VERBOSEITEMBOUNCE: say where it went (CCharAct.cpp:3205).
+                    if (VerboseItemBounce)
+                        _client.SysMessage(ItemBounceMessage(actual.GetName(), onGround: false));
                     return;
                 }
                 // Pack is full (no room and nothing to stack onto): Source-X
@@ -135,6 +138,8 @@ public sealed partial class GameClient
             }
 
             _client.World.PlaceItemWithDecay(item, Self.Position);
+            // A bounce to the ground is always announced (CCharAct.cpp:3198-3199).
+            _client.SysMessage(ItemBounceMessage(item.GetName(), onGround: true));
         }
 
         public void OpenContainer(Item container) => _client.SendOpenContainer(container);

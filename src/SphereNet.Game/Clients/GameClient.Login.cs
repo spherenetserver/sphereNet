@@ -125,6 +125,24 @@ public sealed partial class GameClient
             return;
         }
 
+        if (IsGuestLoginName(account))
+        {
+            // Source-X CClient::Setup_ListReq guest path (CClientMsg.cpp:3198-3218):
+            // a "GUEST..." login takes the first free GUEST0..GUESTn-1 account
+            // (GUESTSMAX), created on demand, with no password check. None free, or
+            // GUESTSMAX 0, and it is refused (MaxGuests folds to Blocked).
+            var guest = AcquireGuestAccount(password);
+            if (guest == null || guest.IsBanned)
+            {
+                DenyLogin(LoginDenyBlocked);
+                return;
+            }
+            _account = guest;
+            RegisterLoginSuccess(account);
+            CompleteLoginRequest();
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {
             RegisterLoginFailure(account);
@@ -141,7 +159,12 @@ public sealed partial class GameClient
         }
 
         RegisterLoginSuccess(account);
-        _account.RecordLogin(_netState.RemoteEndPoint?.Address.ToString() ?? "");
+        CompleteLoginRequest();
+    }
+
+    private void CompleteLoginRequest()
+    {
+        _account!.RecordLogin(_netState.RemoteEndPoint?.Address.ToString() ?? "");
         // The login socket's 0xEF seed carries the version; hand it to the game
         // socket through the account, exactly like Source-X does before the
         // relay ("pass detected client version to the game server").
@@ -168,21 +191,35 @@ public sealed partial class GameClient
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
+        if (IsGuestLoginName(account))
         {
-            RegisterLoginFailure(account);
-            DenyLogin(LoginDenyBadPass);
-            return;
+            // The game socket repeats the guest pick (CClientMsg.cpp:3198).
+            var guest = AcquireGuestAccount(password);
+            if (guest == null || guest.IsBanned)
+            {
+                DenyLogin(LoginDenyBlocked);
+                return;
+            }
+            _account = guest;
         }
-
-        _logger.LogDebug("HandleGameLogin: account='{Account}' authId=0x{AuthId:X8}", account, authId);
-        _account = _accountManager.Authenticate(account, password, out var failure);
-        if (_account == null)
+        else
         {
-            _logger.LogDebug("HandleGameLogin: AUTH FAILED for '{Account}'", account);
-            RegisterLoginFailure(account);
-            DenyLogin(LoginDenyCode(failure));
-            return;
+            if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
+            {
+                RegisterLoginFailure(account);
+                DenyLogin(LoginDenyBadPass);
+                return;
+            }
+
+            _logger.LogDebug("HandleGameLogin: account='{Account}' authId=0x{AuthId:X8}", account, authId);
+            _account = _accountManager.Authenticate(account, password, out var failure);
+            if (_account == null)
+            {
+                _logger.LogDebug("HandleGameLogin: AUTH FAILED for '{Account}'", account);
+                RegisterLoginFailure(account);
+                DenyLogin(LoginDenyCode(failure));
+                return;
+            }
         }
 
         RegisterLoginSuccess(account);
@@ -199,6 +236,28 @@ public sealed partial class GameClient
         ResDisplayVersion resDisp = ResolveAccountResDisplay();
         int maxChars = GetEffectiveMaxChars();
         SendLoginCapabilities(resDisp, maxChars);
+    }
+
+    private static bool IsGuestLoginName(string? account) =>
+        account != null && account.StartsWith("GUEST", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The first GUESTn account (n below GUESTSMAX) no client is using,
+    /// created on demand; null when none is free. Guests skip the password check
+    /// (CClientMsg.cpp:3198-3218, :3246).</summary>
+    private Account? AcquireGuestAccount(string? password)
+    {
+        for (int i = 0; i < GuestsMax; i++)
+        {
+            string name = $"GUEST{i}";
+            var acc = _accountManager.FindAccount(name) ??
+                _accountManager.CreateAccount(name, string.IsNullOrEmpty(password) ? name : password);
+            if (acc == null)
+                continue;
+            if (AccountInUse?.Invoke(acc) == true)
+                continue;
+            return acc;
+        }
+        return null;
     }
 
     private ResDisplayVersion ResolveAccountResDisplay()
@@ -610,7 +669,48 @@ public sealed partial class GameClient
 
         _account?.RecordCharacterEnter();
         _sessionEnterUtc = DateTime.UtcNow;
+        bool wasOnline = _character?.IsOnline == true;
         EnterWorld();
+        if (!wasOnline && _character?.IsOnline == true)
+            Announce(true);
+    }
+
+    /// <summary>sphere.ini ARRIVEDEPARTMSG (Source-X m_iArriveDepartMsg, default 1).</summary>
+    public static int ArriveDepartMsg { get; set; } = 1;
+    /// <summary>Server name the notice falls back to outside any region (g_Serv.GetName()).</summary>
+    public static string ServerName { get; set; } = "SphereNet";
+
+    /// <summary>CClient::Announce (CClient.cpp:354): ARRIVEDEPARTMSG 1 tells everyone
+    /// a player "arrived in / departed from" the area; 2 announces only staff, with
+    /// their fame title. Clients below the announcer's plevel are not told.</summary>
+    internal void Announce(bool arrive)
+    {
+        if (_account == null || _character == null || !_character.IsPlayer)
+            return;
+        string? msg = BuildAnnounceMessage(arrive);
+        if (string.IsNullOrEmpty(msg) || ForEachPlayingClient == null)
+            return;
+        var myPriv = GetPrivLevel();
+        ForEachPlayingClient((_, other) =>
+        {
+            if (other != this && myPriv <= other.GetPrivLevel())
+                other.SysMessage(msg);
+        });
+    }
+
+    internal string? BuildAnnounceMessage(bool arrive)
+    {
+        if (_character == null)
+            return null;
+        if (ArriveDepartMsg == 2 && GetPrivLevel() > PrivLevel.Player)
+            return $"@231 STAFF: {PaperdollText.GetFameTitle(_character)}{_character.GetName()} logged {(arrive ? "in" : "out")}.";
+        if (ArriveDepartMsg == 1)
+        {
+            string where = _world.FindRegion(_character.Position)?.Name ?? ServerName;
+            return ServerMessages.GetFormatted("msg_arrdep_1", _character.GetName(),
+                ServerMessages.Get(arrive ? "msg_arrdep_2" : "msg_arrdep_3"), where);
+        }
+        return null;
     }
 
     private void ReturnToCharacterList()

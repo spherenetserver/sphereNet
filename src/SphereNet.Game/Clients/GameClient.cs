@@ -61,6 +61,56 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     /// Setup_Delete; Counsel+ accounts bypass). 0 disables the gate.</summary>
     public static int ServerMinCharDeleteDays { get; set; } = 7;
     public static bool ServerAutoResDisp { get; set; } = true;
+
+    /// <summary>sphere.ini DISPLAYELEMENTALRESISTANCE (Source-X, default 0): send the
+    /// elemental resists in the status packet even without COMBAT_ELEMENTAL_ENGINE.</summary>
+    public static bool DisplayElementalResistance { get; set; }
+    /// <summary>sphere.ini ALLOWBUYSELLAGENT (Source-X m_fAllowBuySellAgent, default 0):
+    /// when off, a buy/sell confirmed faster than the list could be read is refused
+    /// (receive.cpp:763/1906).</summary>
+    public static bool AllowBuySellAgent { get; set; }
+    /// <summary>sphere.ini TRADEWINDOWSNOOPING (Source-X m_iTradeWindowSnooping,
+    /// default 1): 0 opens a container inside a trade window without snooping
+    /// (Skill_Snoop_Check, CCharSkill.cpp:4064).</summary>
+    public static bool TradeWindowSnooping { get; set; } = true;
+    /// <summary>sphere.ini CHARTAGS (Source-X m_fCharTags, default 0).</summary>
+    public static bool CharTags { get; set; }
+    /// <summary>sphere.ini VENDORTRADETITLE (Source-X m_fVendorTradeTitle, default 1).</summary>
+    public static bool VendorTradeTitle { get; set; } = true;
+    /// <summary>sphere.ini VERBOSEITEMBOUNCE (Source-X m_iBounceMessage, default 0).</summary>
+    public static bool VerboseItemBounce { get; set; }
+
+    /// <summary>sphere.ini ZEROPOINT (Source-X m_sZeroPoint, default "1323,1624,0"):
+    /// the sextant origin.</summary>
+    public static int SextantZeroX { get; set; } = 1323;
+    public static int SextantZeroY { get; set; } = 1624;
+
+    /// <summary>Apply a ZEROPOINT value ("x,y[,z[,m]]"); a malformed one keeps the
+    /// current origin.</summary>
+    public static void SetSextantZeroPoint(string? value)
+    {
+        var parts = (value ?? "").Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length >= 2 && int.TryParse(parts[0], out int x) && int.TryParse(parts[1], out int y))
+        {
+            SextantZeroX = x;
+            SextantZeroY = y;
+        }
+    }
+
+    /// <summary>ItemBounce's closing line (CCharAct.cpp:3205): "You put the X in your
+    /// pack." / "... at your feet. It is too heavy."</summary>
+    public static string ItemBounceMessage(string itemName, bool onGround) =>
+        ServerMessages.GetFormatted("msg_itemplace", itemName,
+            ServerMessages.Get(onGround ? "msg_feet" : "msg_bounce_pack"));
+    /// <summary>sphere.ini GUESTSMAX (Source-X m_iGuestsMax, default 0): how many
+    /// GUESTn accounts a "GUEST" login may take (CClientMsg.cpp:3198).</summary>
+    public static int GuestsMax { get; set; }
+    /// <summary>Host hook: is some client currently logged in on this account.
+    /// Used to hand out a free guest slot.</summary>
+    public static Func<Account, bool>? AccountInUse { get; set; }
+    /// <summary>When the last vendor buy/sell list went to this client (Source-X
+    /// client TAG BUYSELLTIME), in Environment.TickCount64 ms; 0 = never.</summary>
+    public long VendorListSentMs { get; set; }
     public static int ServerToolTipMode { get; set; } = 1;
     /// <summary>sphere.ini CHATFLAGS (Source-X m_iChatFlags). Only the CHATF_GLOBALCHAT
     /// bit (0x10) is read here: it gates the 0xF9 global chat handler and the global
@@ -325,6 +375,8 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
 
             if (_account != null && _sessionEnterUtc is { } enteredUtc)
             {
+                // CClient.cpp:175 - the departure notice.
+                Announce(false);
                 _account.RecordLogout(DateTime.UtcNow - enteredUtc);
                 _sessionEnterUtc = null;
             }

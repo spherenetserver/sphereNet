@@ -1848,9 +1848,13 @@ public sealed class PacketContextMenu : PacketWriter
         _newFormat = newFormat;
     }
 
+    /// <summary>sphere.ini CONTEXTMENULIMIT (Source-X m_iContextMenuLimit, default 15):
+    /// entries past it are dropped (PacketDisplayPopup::addOption, send.cpp:4152).</summary>
+    public static int EntryLimit { get; set; } = 15;
+
     public override PacketBuffer Build()
     {
-        int count = Math.Min(_entries.Length, 255);
+        int count = Math.Min(_entries.Length, Math.Clamp(EntryLimit, 0, 255));
         var buf = CreateVariable(16 + count * 8);
         buf.WriteUInt16(0x14); // sub-command
         buf.WriteUInt16(_newFormat ? (ushort)2 : (ushort)1);

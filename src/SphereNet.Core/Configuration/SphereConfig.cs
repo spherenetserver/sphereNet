@@ -840,6 +840,111 @@ public sealed class SphereConfig
     public string AdminPassword { get; set; } = "1234";
     public int AdminPanelPort { get; set; } = 0; // 0 = ServPort + 3
 
+    // --- Source-X CServerConfig keys (defaults from CServerConfig.cpp ctor) ---
+
+    /// <summary>CANSEESAMEPLEVEL (m_iCanSeeSamePLevel, default 0): how staff see
+    /// hidden staff. 0 = equal-or-higher plevel sees, 1 = strictly higher sees,
+    /// 2..7 = that plevel and above sees everyone (CCharStatus.cpp:1212).</summary>
+    public int CanSeeSamePLevel { get; set; }
+    /// <summary>ALLOWNEWBTRANSFER (m_fAllowNewbTransfer, default 0).</summary>
+    public bool AllowNewbTransfer { get; set; }
+    /// <summary>ALLOWBUYSELLAGENT (m_fAllowBuySellAgent, default 0).</summary>
+    public bool AllowBuySellAgent { get; set; }
+    /// <summary>AREAFLAGS (_uiAreaFlags, default AREAF_RoomInheritsFlags = 0x2).</summary>
+    public int AreaFlags { get; set; } = 0x2;
+    /// <summary>ARRIVEDEPARTMSG (m_iArriveDepartMsg, default 1): 0 off, 1 players,
+    /// 2 staff only (CClient.cpp:363).</summary>
+    public int ArriveDepartMsg { get; set; } = 1;
+    /// <summary>AUTONEWBIEKEYS (m_fAutoNewbieKeys, default 1).</summary>
+    public bool AutoNewbieKeys { get; set; } = true;
+    /// <summary>AUTOPRIVFLAGS (m_iAutoPrivFlags, default 0): PRIV flags a new account starts with.</summary>
+    public int AutoPrivFlags { get; set; }
+    /// <summary>AUTOSHIPKEYS (_fAutoShipKeys, default 1).</summary>
+    public bool AutoShipKeys { get; set; } = true;
+    /// <summary>CHARTAGS (m_fCharTags, default 0): [npc]/[tame]/... on single click.</summary>
+    public bool CharTags { get; set; }
+    /// <summary>CHATSTATICCHANNELS (m_sChatStaticChannels).</summary>
+    public string ChatStaticChannels { get; set; } = "General, Help, Trade, Looking For Group";
+    /// <summary>CONNECTINGMAXIP (m_iConnectingMaxIP, default 8).</summary>
+    public int ConnectingMaxIP { get; set; } = 8;
+    /// <summary>CONTEXTMENULIMIT (m_iContextMenuLimit, default 15).</summary>
+    public int ContextMenuLimit { get; set; } = 15;
+    /// <summary>CUOSTATUS (m_fCUOStatus, default 1).</summary>
+    public bool CUOStatus { get; set; } = true;
+    /// <summary>UOGSTATUS (m_fUOGStatus, default 1).</summary>
+    public bool UOGStatus { get; set; } = true;
+    /// <summary>DISPLAYELEMENTALRESISTANCE (m_fDisplayElementalResistance, default 0).</summary>
+    public bool DisplayElementalResistance { get; set; }
+    /// <summary>DISTANCEFORMULA (m_iDistanceFormula, default 0 = no diagonal, no Z).</summary>
+    public int DistanceFormula { get; set; }
+    /// <summary>ERALIMITGEAR/LOOT/PROPS (default RDS_QTY-1 = 9, "latest").</summary>
+    public int EraLimitGear { get; set; } = 9;
+    public int EraLimitLoot { get; set; } = 9;
+    public int EraLimitProps { get; set; } = 9;
+    /// <summary>EXPERIENCESYSTEM (m_fExperienceSystem, default 0).</summary>
+    public bool ExperienceSystem { get; set; }
+    /// <summary>EXPERIENCEMODE (m_iExperienceMode, default 0).</summary>
+    public int ExperienceMode { get; set; }
+    /// <summary>EXPERIENCEKOEFPVP / PVM (default 100).</summary>
+    public int ExperienceKoefPVP { get; set; } = 100;
+    public int ExperienceKoefPVM { get; set; } = 100;
+    /// <summary>LEVELSYSTEM (m_fLevelSystem, default 0).</summary>
+    public bool LevelSystem { get; set; }
+    /// <summary>LEVELMODE (m_iLevelMode, default LEVEL_MODE_DOUBLE = 1).</summary>
+    public int LevelMode { get; set; } = 1;
+    /// <summary>LEVELNEXTAT (m_iLevelNextAt, default 0).</summary>
+    public int LevelNextAt { get; set; }
+    /// <summary>GUESTSMAX (m_iGuestsMax, default 0).</summary>
+    public int GuestsMax { get; set; }
+    /// <summary>MAXCOMPLEXITY (m_iMaxCharComplexity, default 32).</summary>
+    public int MaxCharComplexity { get; set; } = 32;
+    /// <summary>MAXSECTORCOMPLEXITY (m_iMaxSectorComplexity, default 1024).</summary>
+    public int MaxSectorComplexity { get; set; } = 1024;
+    /// <summary>MAXCONNECTREQUESTSPERIP (_iMaxConnectRequestsPerIP, default 5).</summary>
+    public int MaxConnectRequestsPerIP { get; set; } = 5;
+    /// <summary>MAXPINGS (m_iNetMaxPings, default 15).</summary>
+    public int MaxPings { get; set; } = 15;
+    /// <summary>MAXSHIPSGUILD (_iMaxShipsGuild, default 1).</summary>
+    public int MaxShipsGuild { get; set; } = 1;
+    /// <summary>MEDIUMCANHEARGHOSTS (m_iMediumCanHearGhosts, default 1000).</summary>
+    public int MediumCanHearGhosts { get; set; } = 1000;
+    /// <summary>MOUNTHEIGHT (m_iMountHeight, default 0).</summary>
+    public bool MountHeight { get; set; }
+    /// <summary>SPEECHOTHER (m_sSpeechOther). Upstream reads and keeps it but nothing
+    /// consults it (CServerConfig.h:436 "unused?").</summary>
+    public string SpeechOther { get; set; } = "";
+    /// <summary>STATSFLAGS (_uiStatFlag, default 0): STAT_FLAG_DENYMAX 0x1,
+    /// DENYMAXP 0x2 (players), DENYMAXN 0x4 (NPCs).</summary>
+    public int StatsFlags { get; set; }
+    /// <summary>SUPPRESSCAPITALS (m_fSuppressCapitals, default 0).</summary>
+    public bool SuppressCapitals { get; set; }
+    /// <summary>TELNETLOG (m_fTelnetLog, default 1).</summary>
+    public bool TelnetLog { get; set; } = true;
+    /// <summary>TIMEOUTINCOMPLETECONN (_iTimeoutIncompleteConnectionMs, default 5000 ms).</summary>
+    public int TimeoutIncompleteConnMs { get; set; } = 5000;
+    /// <summary>TIMERCALLUNIT (_iTimerCallUnit, default 0): 1 = TIMERCALL counts seconds.</summary>
+    public bool TimerCallUnit { get; set; }
+    /// <summary>Server-hook TIMERCALL period in milliseconds (CWorld.cpp:1833).</summary>
+    public long TimerCallPeriodMs => (long)TimerCallMinutes * (TimerCallUnit ? 1000L : 60_000L);
+    /// <summary>TRADEWINDOWSNOOPING (m_iTradeWindowSnooping, default 1).</summary>
+    public bool TradeWindowSnooping { get; set; } = true;
+    /// <summary>VENDORTRADETITLE (m_fVendorTradeTitle, default 1).</summary>
+    public bool VendorTradeTitle { get; set; } = true;
+    /// <summary>VERBOSEITEMBOUNCE (m_iBounceMessage, default 0).</summary>
+    public bool VerboseItemBounce { get; set; }
+    /// <summary>WOPCOLOR (m_iWordsOfPowerColor, default HUE_TEXT_DEF 0x3B2).</summary>
+    public int WopColor { get; set; } = 0x03B2;
+    /// <summary>WOPFONT (m_iWordsOfPowerFont, default FONT_NORMAL 3).</summary>
+    public int WopFont { get; set; } = 3;
+    /// <summary>WOPPLAYER (m_fWordsOfPowerPlayer, default 1).</summary>
+    public bool WopPlayer { get; set; } = true;
+    /// <summary>WOPSTAFF (m_fWordsOfPowerStaff, default 0).</summary>
+    public bool WopStaff { get; set; }
+    /// <summary>WOPTALKMODE (m_iWordsOfPowerTalkMode, default TALKMODE_SPELL 10).</summary>
+    public int WopTalkMode { get; set; } = 10;
+    /// <summary>ZEROPOINT (m_sZeroPoint, default "1323,1624,0"): sextant origin.</summary>
+    public string ZeroPoint { get; set; } = "1323,1624,0";
+
     /// <summary>Parse the SERVERLIST ini value: ';'-separated "name,ip,port" entries.
     /// Malformed entries are skipped. Clears any previously-parsed list first so a
     /// reload replaces rather than appends.</summary>
@@ -1213,7 +1318,82 @@ public sealed class SphereConfig
 
         SentryDsn = ini.GetValue(section, "SentryDsn") ?? SentryDsn;
 
+        LoadSourceXKeys(ini, section);
+
         LoadDbConnections(ini);
+    }
+
+    /// <summary>Source-X CServerConfig keys that have no older SphereNet spelling
+    /// (ELEM table, CServerConfig.cpp:760-1041).</summary>
+    private void LoadSourceXKeys(IniParser ini, string section)
+    {
+        CanSeeSamePLevel = ini.GetInt(section, "CanSeeSamePLevel", CanSeeSamePLevel);
+        AllowNewbTransfer = ini.GetBool(section, "AllowNewbTransfer", AllowNewbTransfer);
+        AllowBuySellAgent = ini.GetBool(section, "AllowBuySellAgent", AllowBuySellAgent);
+        AreaFlags = ini.GetFlags(section, "AreaFlags", AreaFlags);
+        ArriveDepartMsg = ini.GetInt(section, "ArriveDepartMsg", ArriveDepartMsg);
+        AutoNewbieKeys = ini.GetBool(section, "AutoNewbieKeys", AutoNewbieKeys);
+        AutoPrivFlags = ini.GetFlags(section, "AutoPrivFlags", AutoPrivFlags);
+        AutoShipKeys = ini.GetBool(section, "AutoShipKeys", AutoShipKeys);
+        CharTags = ini.GetBool(section, "CharTags", CharTags);
+        ChatStaticChannels = ini.GetValue(section, "ChatStaticChannels") ?? ChatStaticChannels;
+        ConnectingMaxIP = ini.GetInt(section, "ConnectingMaxIP", ConnectingMaxIP);
+        ContextMenuLimit = ini.GetInt(section, "ContextMenuLimit", ContextMenuLimit);
+        CUOStatus = ini.GetBool(section, "CUOStatus", CUOStatus);
+        UOGStatus = ini.GetBool(section, "UOGStatus", UOGStatus);
+        DisplayElementalResistance = ini.GetBool(section, "DisplayElementalResistance", DisplayElementalResistance);
+        DistanceFormula = ini.GetInt(section, "DistanceFormula", DistanceFormula);
+        EraLimitGear = GetIntOrHex(ini, section, "EraLimitGear", EraLimitGear);
+        EraLimitLoot = GetIntOrHex(ini, section, "EraLimitLoot", EraLimitLoot);
+        EraLimitProps = GetIntOrHex(ini, section, "EraLimitProps", EraLimitProps);
+        ExperienceSystem = ini.GetBool(section, "ExperienceSystem", ExperienceSystem);
+        ExperienceMode = ini.GetFlags(section, "ExperienceMode", ExperienceMode);
+        ExperienceKoefPVP = ini.GetInt(section, "ExperienceKoefPVP", ExperienceKoefPVP);
+        ExperienceKoefPVM = ini.GetInt(section, "ExperienceKoefPVM", ExperienceKoefPVM);
+        LevelSystem = ini.GetBool(section, "LevelSystem", LevelSystem);
+        LevelMode = ini.GetInt(section, "LevelMode", LevelMode);
+        LevelNextAt = Math.Max(0, ini.GetInt(section, "LevelNextAt", LevelNextAt));
+        GuestsMax = Math.Max(0, ini.GetInt(section, "GuestsMax", GuestsMax));
+        MaxCharComplexity = ini.GetInt(section, "MaxComplexity", MaxCharComplexity);
+        MaxSectorComplexity = ini.GetInt(section, "MaxSectorComplexity", MaxSectorComplexity);
+        MaxConnectRequestsPerIP = ini.GetInt(section, "MaxConnectRequestsPerIP", MaxConnectRequestsPerIP);
+        MaxPings = ini.GetInt(section, "MaxPings", MaxPings);
+        MaxShipsGuild = Math.Max(0, ini.GetInt(section, "MaxShipsGuild", MaxShipsGuild));
+        MediumCanHearGhosts = ini.GetInt(section, "MediumCanHearGhosts", MediumCanHearGhosts);
+        MountHeight = ini.GetBool(section, "MountHeight", MountHeight);
+        SpeechOther = ini.GetValue(section, "SpeechOther") ?? SpeechOther;
+        StatsFlags = ini.GetFlags(section, "StatsFlags", StatsFlags);
+        SuppressCapitals = ini.GetBool(section, "SuppressCapitals", SuppressCapitals);
+        TelnetLog = ini.GetBool(section, "TelnetLog", TelnetLog);
+        // The reference ini writes it as an expression ("5 * 1000").
+        TimeoutIncompleteConnMs = Math.Max(0, GetIntProduct(ini, section, "TimeoutIncompleteConn", TimeoutIncompleteConnMs));
+        TimerCallUnit = ini.GetBool(section, "TimerCallUnit", TimerCallUnit);
+        TradeWindowSnooping = ini.GetBool(section, "TradeWindowSnooping", TradeWindowSnooping);
+        VendorTradeTitle = ini.GetBool(section, "VendorTradeTitle", VendorTradeTitle);
+        VerboseItemBounce = ini.GetBool(section, "VerboseItemBounce", VerboseItemBounce);
+        WopColor = GetIntOrHex(ini, section, "WopColor", WopColor);
+        WopFont = GetIntOrHex(ini, section, "WopFont", WopFont);
+        WopPlayer = ini.GetBool(section, "WopPlayer", WopPlayer);
+        WopStaff = ini.GetBool(section, "WopStaff", WopStaff);
+        WopTalkMode = GetIntOrHex(ini, section, "WopTalkMode", WopTalkMode);
+        ZeroPoint = ini.GetValue(section, "ZeroPoint") ?? ZeroPoint;
+    }
+
+    /// <summary>An integer key written either as a number or as a product of numbers
+    /// ("5 * 1000"), the form the reference ini uses for its millisecond values.</summary>
+    private static int GetIntProduct(IniParser ini, string section, string key, int defaultValue)
+    {
+        string? raw = ini.GetValue(section, key);
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultValue;
+        long product = 1;
+        foreach (string term in raw.Split('*', StringSplitOptions.TrimEntries))
+        {
+            if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(term, out long v))
+                return defaultValue;
+            product *= v;
+        }
+        return (int)Math.Clamp(product, int.MinValue, int.MaxValue);
     }
 
     /// <param name="zeroMeansDefault">When true, a configured value of 0 falls back to

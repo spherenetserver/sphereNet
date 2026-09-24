@@ -857,7 +857,10 @@ public sealed class ClientItemUseHandler
                     }
                 }
                 // Snoop gate: opening another player's sub-container requires Snooping skill
-                if (_character.PrivLevel < PrivLevel.GM && item.ItemType == ItemType.Container)
+                // TRADEWINDOWSNOOPING 0: a container sitting in a trade window opens
+                // directly (Skill_Snoop_Check, CCharSkill.cpp:4062-4065).
+                if (_character.PrivLevel < PrivLevel.GM && item.ItemType == ItemType.Container &&
+                    (GameClient.TradeWindowSnooping || !IsItemInTrade(item)))
                 {
                     var containerOwner = ResolveContainerOwner(item);
                     if (containerOwner != null && containerOwner != _character && containerOwner.IsPlayer)
@@ -2362,6 +2365,22 @@ public sealed class ClientItemUseHandler
     }
 
     /// <summary>Find a key in the player's backpack that opens a locked container/door.</summary>
+    /// <summary>CItemContainer::IsItemInTrade (CItemContainer.cpp:118): this container
+    /// or one it sits in is a trade window.</summary>
+    internal bool IsItemInTrade(Item item, int maxDepth = 16)
+    {
+        var current = item;
+        for (int i = 0; i < maxDepth && current != null; i++)
+        {
+            if (current.ItemType == ItemType.EqTradeWindow)
+                return true;
+            if (!current.ContainedIn.IsValid)
+                return false;
+            current = _world.FindObject(current.ContainedIn) as Item;
+        }
+        return false;
+    }
+
     private Character? ResolveContainerOwner(Item item, int maxDepth = 16)
     {
         var current = item;
@@ -2441,10 +2460,12 @@ public sealed class ClientItemUseHandler
     }
 
     /// <summary>UO sextant math (Source-X Use_Sextant): degrees/minutes from
-    /// the world center 1323,1624 across the 5120x4096 wrap plane.</summary>
+    /// the ZEROPOINT origin (default 1323,1624; Calc_MaptoSextant,
+    /// CResourceCalc.cpp:504) across the 5120x4096 wrap plane.</summary>
     internal static string FormatSextant(Point3D p)
     {
-        const int xCenter = 1323, yCenter = 1624, xWidth = 5120, yHeight = 4096;
+        const int xWidth = 5120, yHeight = 4096;
+        int xCenter = GameClient.SextantZeroX, yCenter = GameClient.SextantZeroY;
         double absLong = (double)((p.X - xCenter) * 360) / xWidth;
         double absLat = (double)((p.Y - yCenter) * 360) / yHeight;
         if (absLong > 180.0) absLong = -180.0 + (absLong % 180.0);
@@ -4954,6 +4975,8 @@ public sealed class ClientItemUseHandler
         //     `World.Mobiles.Get(serial)`.
         _netState.Send(new PacketOpenContainer(vendor.Uid.Value, 0x0030,
             _netState.IsClientPost7090));
+        // BUYSELLTIME (CCharNPCAct.cpp:158): when the list went out.
+        _client.VendorListSentMs = Environment.TickCount64;
     }
 
     /// <summary>Send the sell list (items player can sell to this vendor) to the client.</summary>
@@ -5002,6 +5025,8 @@ public sealed class ClientItemUseHandler
         }
 
         _netState.Send(new PacketVendorSellList(vendor.Uid.Value, sellItems));
+        // BUYSELLTIME (CCharNPCAct.cpp:210).
+        _client.VendorListSentMs = Environment.TickCount64;
     }
 
     /// <summary>

@@ -70,9 +70,19 @@ public sealed class CharDef : BaseDef
     public ItemType FoodType { get; set; }
     public string FoodTypeRaw { get; set; } = "";
     public ushort BaseColor { get; set; }
-    public int EraLimitGear { get; set; }
-    public int EraLimitLoot { get; set; }
-    public int EraLimitProps { get; set; }
+    // ERALIMITGEAR/LOOT/PROPS: a chardef that does not set one takes the ini's
+    // (CCharBase.cpp:34-36; sphere.ini default RDS_QTY-1 = 9, "latest").
+    public static int DefaultEraLimitGear { get; set; } = 9;
+    public static int DefaultEraLimitLoot { get; set; } = 9;
+    public static int DefaultEraLimitProps { get; set; } = 9;
+    private int? _eraLimitGear, _eraLimitLoot, _eraLimitProps;
+    public int EraLimitGear { get => _eraLimitGear ?? DefaultEraLimitGear; set => _eraLimitGear = value; }
+    public int EraLimitLoot { get => _eraLimitLoot ?? DefaultEraLimitLoot; set => _eraLimitLoot = value; }
+    public int EraLimitProps { get => _eraLimitProps ?? DefaultEraLimitProps; set => _eraLimitProps = value; }
+    /// <summary>Whether the chardef itself set the value (not the ini default).</summary>
+    public bool HasEraLimitGear => _eraLimitGear.HasValue;
+    public bool HasEraLimitLoot => _eraLimitLoot.HasValue;
+    public bool HasEraLimitProps => _eraLimitProps.HasValue;
     public short ResPhysical { get; set; }
     public short ResFire { get; set; }
     public short ResCold { get; set; }

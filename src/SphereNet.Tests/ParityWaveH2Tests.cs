@@ -160,6 +160,8 @@ public class ParityWaveH2Tests
         var caster = world.CreateCharacter();
         caster.IsPlayer = true;
         caster.PrivLevel = PrivLevel.GM;
+        // A Counsel+ caster only speaks the words with WOPSTAFF (CCharSpell.cpp:3473).
+        SpellEngine.WopStaff = true;
         caster.MaxMana = caster.Mana = 100;
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 

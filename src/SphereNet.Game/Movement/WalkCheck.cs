@@ -44,6 +44,46 @@ public sealed class WalkCheck
     /// </summary>
     public static int MaxDescendZ { get; set; } = 25;
 
+    /// <summary>sphere.ini MOUNTHEIGHT (Source-X m_iMountHeight, default 0): a rider
+    /// (or a hovering gargoyle) is 4 taller (GetHeightMount, CChar.cpp:1498) and may
+    /// not step where that height reaches the ceiling (CanStandAt,
+    /// CCharStatus.cpp:1958: height + z &gt;= top fails). GM and AllMove pass.</summary>
+    public static bool MountHeight { get; set; }
+
+    /// <summary>The open space a rider needs above the floor: strictly more than
+    /// PLAYER_HEIGHT + 4.</summary>
+    internal const int MountedClearance = PersonHeight + 4 + 1;
+
+    internal static bool RiderNeedsHeadroom(Character mover) =>
+        MountHeight &&
+        (mover.IsMounted || mover.IsStatFlag(StatFlag.Hovering)) &&
+        mover.PrivLevel < PrivLevel.GM && !mover.AllMove;
+
+    /// <summary>CChar::IsVerticalSpace (CCharStatus.cpp:1785): is there room above
+    /// <paramref name="standZ"/> at (x, y) for this character plus
+    /// <paramref name="extra"/> (4 when about to mount)? True when no ceiling
+    /// blocks, or for GM / AllMove.</summary>
+    public bool HasVerticalSpace(Character mover, int mapId, int x, int y, int standZ, int extra)
+    {
+        if (mover.PrivLevel >= PrivLevel.GM || mover.AllMove)
+            return true;
+        var md = _world.MapData;
+        if (md == null)
+            return true;
+        var items = CollectItems(mapId, x, y);
+        var trace = new CheckTrace();
+        var list = BuildPathEntries(md, mapId, x, y, items, mover, ref trace);
+        int height = PersonHeight + (mover.IsMounted || mover.IsStatFlag(StatFlag.Hovering) ? 4 : 0);
+        foreach (var entry in list)
+        {
+            if ((entry.Flags & PathFlags.ImpSurf) == 0 || entry.Z <= standZ)
+                continue;
+            // list is sorted; the first blocking entry above is the ceiling.
+            return height + standZ + extra < entry.Z;
+        }
+        return true;
+    }
+
     /// <summary>
     /// Land-tile movement barrier rule: only WATER (Impassable + Wet) blocks a
     /// walking mover. Dry land — including steep "impassable"-flagged mountain
@@ -551,6 +591,8 @@ public sealed class WalkCheck
         list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
 
         int requiredHeight = (CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoBlockHeight) != 0 ? 0 : PersonHeight;
+        if (requiredHeight > 0 && RiderNeedsHeadroom(mover))
+            requiredHeight = MountedClearance;
         bool noIndoors = (CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoIndoors) != 0;
         int resultZ = -128;
         int minZ = preMinZ;

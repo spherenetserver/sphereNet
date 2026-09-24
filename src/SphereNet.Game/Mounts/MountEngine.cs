@@ -47,6 +47,14 @@ public sealed class MountEngine
         // or transfer a wild/foreign creature as a side effect.
         if (rider.PrivLevel < PrivLevel.GM && !npc.CanAcceptPetCommandFrom(rider, allowFriends: true))
             return false;
+        // MOUNTHEIGHT: no mounting under a ceiling too low for rider plus horse
+        // (Horse_Mount, CCharAct.cpp:3968-3975; IsVerticalSpace with fForceMount).
+        if (Movement.WalkCheck.MountHeight && _world.MapData != null &&
+            !_world.Standing.HasVerticalSpace(rider, rider.MapIndex, rider.X, rider.Y, rider.Z, 4))
+        {
+            Character.SendOwnerMessage?.Invoke(rider, Messages.ServerMessages.Get("msg_mount_ceiling"));
+            return false;
+        }
 
         ushort mountItemId = mountItemOverride != 0 ? mountItemOverride : GetMountItemId(npc.BodyId);
         if (mountItemId == 0)

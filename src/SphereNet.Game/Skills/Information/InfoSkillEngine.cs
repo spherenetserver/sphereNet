@@ -206,7 +206,7 @@ public static class InfoSkillEngine
         return iSkillLevel;
     }
 
-    private static int EstimateVendorPrice(Item it)
+    internal static int EstimateVendorPrice(Item it)
     {
         var def = Definitions.DefinitionLoader.GetItemDef(it.BaseId);
         if (def == null) return 0;

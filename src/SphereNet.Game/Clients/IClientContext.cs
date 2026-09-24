@@ -198,6 +198,8 @@ internal interface IClientContext : ITextConsole
 
     // --- gameplay bridges ---
     void OpenVendorBuy(Character vendor);
+    /// <summary>When the last vendor list went out (Source-X client TAG BUYSELLTIME).</summary>
+    long VendorListSentMs { get; set; }
     void OpenVendorSell(Character vendor);
     void HandleVendorInteraction(Character vendor);
     void HandleDoubleClick(uint uid);

@@ -53,6 +53,15 @@ public sealed class Sector : IScriptObj
     /// sleeping entirely.</summary>
     public static long SleepDelayMs { get; set; } = 10L * 60 * 1000;
 
+    /// <summary>sphere.ini MAXCOMPLEXITY (Source-X m_iMaxCharComplexity, default 32):
+    /// active characters a sector holds before it is "too complex".</summary>
+    public static int MaxCharComplexity { get; set; } = 32;
+    /// <summary>sphere.ini MAXSECTORCOMPLEXITY (Source-X m_iMaxSectorComplexity,
+    /// default 1024): ground items a sector holds before it is "too complex".</summary>
+    public static int MaxSectorComplexity { get; set; } = 1024;
+    /// <summary>Where the "Sector too complex!" warnings go (host log).</summary>
+    public static Action<string>? ComplexityWarning { get; set; }
+
     private static readonly byte[] TrammelPhaseBrightness = [0, 0, 1, 1, 2, 1, 1, 0];
     private static readonly byte[] FeluccaPhaseBrightness = [0, 1, 3, 4, 6, 4, 3, 1];
 
@@ -78,6 +87,38 @@ public sealed class Sector : IScriptObj
     public int ItemCount => _items.Count;
     public int ClientCount => _characters.Count(c => c.IsPlayer && c.IsOnline);
     public bool IsEmpty => _characters.Count == 0 && _items.Count == 0;
+
+    /// <summary>CSector::GetCharComplexity: the active characters - a logged-out
+    /// player standing in the world does not count (m_Chars_Active).</summary>
+    public int GetCharComplexity()
+    {
+        int n = 0;
+        foreach (var c in _characters)
+            if (!c.IsPlayer || c.IsOnline)
+                n++;
+        return n;
+    }
+
+    /// <summary>CSector::CheckItemComplexity (CSector.cpp:1423): warn and answer true
+    /// when the ground items pass MAXSECTORCOMPLEXITY.</summary>
+    public bool CheckItemComplexity()
+    {
+        int count = _items.Count;
+        if (count <= MaxSectorComplexity)
+            return false;
+        ComplexityWarning?.Invoke($"{count} items at {_x * SectorSize},{_y * SectorSize},0,{_mapIndex}. Sector too complex!");
+        return true;
+    }
+
+    /// <summary>CSector::CheckCharComplexity (CSector.cpp:1474).</summary>
+    public bool CheckCharComplexity()
+    {
+        int count = GetCharComplexity();
+        if (count <= MaxCharComplexity)
+            return false;
+        ComplexityWarning?.Invoke($"{count} chars at {_x * SectorSize},{_y * SectorSize},0,{_mapIndex}. Sector too complex!");
+        return true;
+    }
 
     /// <summary>Source-X WEATHER_DRY.</summary>
     public const byte WeatherDry = 0xFF;

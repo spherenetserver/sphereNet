@@ -251,6 +251,7 @@ public sealed class ClientInventoryHandler
             // A guilded player's overhead name carries the guild abbreviation
             // (e.g. "Lord Yunus [ABC]") when the member keeps it visible.
             label += GuildAbbrevSuffix(guildedCh);
+            label += CharNameSuffix(guildedCh, _character.AllShow || _character.DebugView);
         }
 
         _netState.Send(new PacketSpeechUnicodeOut(
@@ -276,6 +277,48 @@ public sealed class ClientInventoryHandler
     /// or empty when they are unguilded or have hidden their abbreviation.</summary>
     private string GuildAbbrevSuffix(Character ch) =>
         _client.GuildM?.GetAbbrevSuffix(ch.Uid) ?? "";
+
+    /// <summary>The rest of CClient::addCharName (CClientMsg.cpp:1373-1413): an NPC of
+    /// the human brain group gets its trade title with VENDORTRADETITLE, and with
+    /// CHARTAGS (or an AllShow/debug viewer) the state tags follow.</summary>
+    internal static string CharNameSuffix(Character ch, bool allShow)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!ch.IsPlayer && GameClient.VendorTradeTitle &&
+            ch.NpcBrain is >= NpcBrainType.Human and <= NpcBrainType.Stable)
+        {
+            string title = PaperdollText.GetTradeTitle(ch);
+            if (title.Length > 0)
+                sb.Append(' ').Append(title);
+        }
+        if (GameClient.CharTags || allShow)
+        {
+            if (!ch.IsPlayer)
+            {
+                if (PaperdollText.IsPlayableBody(ch.BodyId))
+                    sb.Append(ServerMessages.Get("charinfo_npc"));
+                if (ch.IsStatFlag(StatFlag.Conjured))
+                    sb.Append(ServerMessages.Get("charinfo_summoned"));
+                else if (ch.IsStatFlag(StatFlag.Pet))
+                    sb.Append(ServerMessages.Get(ch.IsBonded ? "charinfo_bonded" : "charinfo_tame"));
+            }
+            if (ch.IsStatFlag(StatFlag.Invul) && !ch.IsStatFlag(StatFlag.Incognito) && ch.PrivShow)
+                sb.Append(ServerMessages.Get("charinfo_invul"));
+            if (ch.IsStatFlag(StatFlag.Stone))
+                sb.Append(ServerMessages.Get("charinfo_stone"));
+            if (ch.IsStatFlag(StatFlag.Freeze))
+                sb.Append(ServerMessages.Get("charinfo_frozen"));
+            if (ch.IsStatFlag(StatFlag.Insubstantial | StatFlag.Invisible | StatFlag.Hidden))
+                sb.Append(ServerMessages.Get("charinfo_hidden"));
+            if (ch.IsStatFlag(StatFlag.Sleeping))
+                sb.Append(ServerMessages.Get("charinfo_sleeping"));
+            if (ch.IsStatFlag(StatFlag.Hallucinating))
+                sb.Append(ServerMessages.Get("charinfo_hallu"));
+            if (allShow && ch.IsStatFlag(StatFlag.Spawned))
+                sb.Append(ServerMessages.Get("charinfo_spawn"));
+        }
+        return sb.ToString();
+    }
 
     private bool IsInsideContainer(Item container, Serial parentUid, int maxDepth = 16)
     {
@@ -609,6 +652,11 @@ public sealed class ClientInventoryHandler
             return _character.PrivLevel > wearer.PrivLevel;
         if (!wearer.HasOwner(_character.Uid))
             return false;
+        // Newbie / blessed / cursed things on another creature stay there, even on
+        // one's own pet - unless ALLOWNEWBTRANSFER lets the owner take the newbie ones
+        // back (CCharStatus.cpp:1641-1664).
+        if (item.IsAttr(ObjAttributes.Newbie | ObjAttributes.Blessed2 | ObjAttributes.Cursed | ObjAttributes.Cursed2))
+            return item.IsAttr(ObjAttributes.Newbie) && Item.AllowNewbTransfer;
         // Equipped directly on the creature is the half the setting governs; anything
         // in its pack is the owner's to take either way.
         return item.ContainedIn != wearer.Uid || Character.CanUndressPets;
@@ -1706,6 +1754,15 @@ public sealed class ClientInventoryHandler
                     }
                     _netState.Send(new PacketDropAck());
                     return;
+                }
+
+                // Handed to an NPC, an item is no longer anyone's: ATTR_OWNED goes, and
+                // ATTR_NEWBIE with it unless ALLOWNEWBTRANSFER (CClientEvent.cpp:350-357).
+                if (!charTarget.IsPlayer)
+                {
+                    item.ClearAttr(ObjAttributes.Owned);
+                    if (!Item.AllowNewbTransfer)
+                        item.ClearAttr(ObjAttributes.Newbie);
                 }
 
                 // Source-X NPC_OnItemGive: @ReceiveItem fires FIRST — a

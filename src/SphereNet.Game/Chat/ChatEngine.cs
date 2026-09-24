@@ -113,6 +113,12 @@ public sealed class ChatEngine
             _channels[name] = new ChatChannel { Name = name, IsStatic = true };
     }
 
+    /// <summary>sphere.ini CHATSTATICCHANNELS: a comma-separated list, each name
+    /// trimmed (Str_ParseCmds, CServerConfig.cpp:5231; at most 32).</summary>
+    public static string[] ParseStaticChannels(string? csv) =>
+        (csv ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Take(32).ToArray();
+
     public IReadOnlyCollection<ChatChannel> Channels => _channels.Values;
 
     public ChatChannel? GetChannel(string name) => _channels.GetValueOrDefault(name);

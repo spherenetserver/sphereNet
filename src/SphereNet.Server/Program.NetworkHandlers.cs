@@ -479,7 +479,7 @@ public static partial class Program
             foreach (var ch in sector.OnlinePlayers)
             {
                 if (ch.Uid.Value == excludeUid) continue;
-                if (center.GetDistanceTo(ch.Position) > range) continue;
+                if (center.GetDistSight(ch.Position) > range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
                     recipients.Add(c);
             }
@@ -589,7 +589,7 @@ public static partial class Program
             foreach (var ch in sector.OnlinePlayers)
             {
                 if (ch.Uid.Value == excludeUid) continue;
-                if (center.GetDistanceTo(ch.Position) > range) continue;
+                if (center.GetDistSight(ch.Position) > range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
                     action(ch, c);
             }
@@ -636,7 +636,7 @@ public static partial class Program
             foreach (var ch in sector.OnlinePlayers)
             {
                 if (ch.Uid.Value == excludeUid) continue;
-                if (center.GetDistanceTo(ch.Position) > range) continue;
+                if (center.GetDistSight(ch.Position) > range) continue;
                 if (!_clientsByCharUid.TryGetValue(ch.Uid, out var c) || !c.IsPlaying) continue;
                 if (!c.HasKnownChar(movingUid))
                 {
@@ -680,7 +680,7 @@ public static partial class Program
             foreach (var other in sector.OnlinePlayers)
             {
                 if (other == ch) continue;
-                if (ch.Position.GetDistanceTo(other.Position) > Range) continue;
+                if (ch.Position.GetDistSight(other.Position) > Range) continue;
                 if (_clientsByCharUid.TryGetValue(other.Uid, out var c) && c.IsPlaying)
                     c.NotifyCharacterAppear(ch);
             }
@@ -779,7 +779,7 @@ public static partial class Program
             if (sector == null || sector.OnlinePlayers.Count == 0) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
-                if (pos.GetDistanceTo(ch.Position) > Range) continue;
+                if (pos.GetDistSight(ch.Position) > Range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
                     c.ViewNeedsRefresh = true;
             }
@@ -847,7 +847,7 @@ public static partial class Program
             if (sector == null) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
-                if (pos.GetDistanceTo(ch.Position) > Range) continue;
+                if (pos.GetDistSight(ch.Position) > Range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
                 {
                     c.ViewNeedsRefresh = true;

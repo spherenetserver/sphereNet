@@ -733,9 +733,10 @@ public partial class Character : ObjBase
     /// script-adjusted) delta to apply.</summary>
     public static Func<Character, int, int?>? OnExpChanging { get; set; }
 
-    /// <summary>Fired after a level threshold crossing changed the level
-    /// (Source-X @ExpLevelChange). Arg: the new level.</summary>
-    public static Action<Character, short>? OnExpLevelChanged { get; set; }
+    /// <summary>Fired before a level change is applied (Source-X @ExpLevelChange,
+    /// CChar.cpp:5205). Arg: the level delta (ARGN1). Return null to cancel, or the
+    /// (possibly script-adjusted) delta to apply.</summary>
+    public static Func<Character, int, int?>? OnExpLevelChanged { get; set; }
 
     /// <summary>Decision returned from the @MurderMark hook: the final kill count
     /// (null = block the mark + criminal flag entirely), and whether the kill also
@@ -819,8 +820,32 @@ public partial class Character : ObjBase
             return true;
         if (target.PrivLevel <= PrivLevel.Player && OnSeeHidden != null)
             return OnSeeHidden(viewer, target, viewer.PrivLevel <= target.PrivLevel ? 1 : 0) != 1;
-        return viewer.PrivLevel >= PrivLevel.Counsel && viewer.PrivLevel >= target.PrivLevel;
+        int me = (int)viewer.PrivLevel, them = (int)target.PrivLevel;
+        if (me < (int)PrivLevel.Counsel)
+            return false;
+        // CANSEESAMEPLEVEL (CCharStatus.cpp:1212-1236): 0 = equal-or-higher sees,
+        // 1 = only a strictly higher plevel sees, 2..7 = that plevel and above see all.
+        return CanSeeSamePLevel switch
+        {
+            0 => me >= them,
+            1 => me > them,
+            >= 2 and <= 7 => me >= CanSeeSamePLevel,
+            _ => true,
+        };
     }
+
+    /// <summary>sphere.ini CANSEESAMEPLEVEL (Source-X m_iCanSeeSamePLevel, default 0).</summary>
+    public static int CanSeeSamePLevel { get; set; }
+
+    /// <summary>sphere.ini STATSFLAGS (Source-X _uiStatFlag, default 0):
+    /// STAT_FLAG_DENYMAX 0x1 for everyone, DENYMAXP 0x2 players, DENYMAXN 0x4 NPCs.</summary>
+    public static int StatsFlags { get; set; }
+
+    /// <summary>Stat_SetMax (CCharStat.cpp:233): a denied MAXHITS/MAXMANA/MAXSTAM
+    /// write clears the override, so the pool follows its base stat again.</summary>
+    public bool IsStatMaxDenied =>
+        StatsFlags != 0 &&
+        ((StatsFlags & 0x1) != 0 || (IsPlayer && (StatsFlags & 0x2) != 0) || (!IsPlayer && (StatsFlags & 0x4) != 0));
 
     /// <summary>Fired when a temporary spell effect/buff is applied to a character
     /// (Source-X @EffectAdd). Args: target, spell id. Installed only when hooked
@@ -1541,58 +1566,167 @@ public partial class Character : ObjBase
     public int Exp { get => _exp; set => _exp = value; }
     public short Level { get => _level; set => _level = value; }
 
-    /// <summary>Experience needed for the first level (sphere.ini LEVELNEXTAT
-    /// equivalent). 0 disables the level system entirely.</summary>
-    public static int LevelNextAt { get; set; } = 1000;
-    /// <summary>When true each level step costs double the previous one
-    /// (Source-X LEVEL_MODE_DOUBLE); false = linear steps.</summary>
+    /// <summary>sphere.ini EXPERIENCESYSTEM (m_fExperienceSystem, default 0): kill
+    /// and craft rewards are only handed out while it is on.</summary>
+    public static bool ExperienceSystem { get; set; }
+    /// <summary>sphere.ini EXPERIENCEMODE (m_iExperienceMode, default 0). 0 freezes
+    /// experience entirely (CChar.cpp:5115).</summary>
+    public static int ExperienceMode { get; set; }
+    public const int ExpModeRaiseCombat = 0x01;  // EXP_MODE_RAISE_COMBAT
+    public const int ExpModeRaiseCraft = 0x02;   // EXP_MODE_RAISE_CRAFT
+    public const int ExpModeAllowDown = 0x04;    // EXP_MODE_ALLOW_DOWN
+    public const int ExpModeDownNoLevel = 0x08;  // EXP_MODE_DOWN_NOLEVEL
+    public const int ExpModeAutoSetExp = 0x10;   // EXP_MODE_AUTOSET_EXP
+    /// <summary>sphere.ini EXPERIENCEKOEFPVP / EXPERIENCEKOEFPVM (default 100): the
+    /// percentage of a kill's experience a player gets for a player / monster kill.</summary>
+    public static int ExperienceKoefPVP { get; set; } = 100;
+    public static int ExperienceKoefPVM { get; set; } = 100;
+    /// <summary>sphere.ini LEVELSYSTEM (m_fLevelSystem, default 0).</summary>
+    public static bool LevelSystem { get; set; }
+    /// <summary>sphere.ini LEVELNEXTAT (m_iLevelNextAt, default 0). Below 1 no level
+    /// is ever computed (Calc_ExpGet_Level refuses it, CChar.cpp:5084).</summary>
+    public static int LevelNextAt { get; set; }
+    /// <summary>sphere.ini LEVELMODE: true = LEVEL_MODE_DOUBLE (1, the default), false =
+    /// LEVEL_MODE_LINEAR (0).</summary>
     public static bool LevelModeDouble { get; set; } = true;
 
     /// <summary>
-    /// Change experience through the trigger pipeline (Source-X
-    /// CChar::ChangeExperience): @ExpChange may adjust or cancel the delta;
-    /// crossing a level threshold fires @ExpLevelChange with the new level.
+    /// Source-X CChar::ChangeExperience (CChar.cpp:5111): nothing moves while
+    /// EXPERIENCEMODE is 0; a loss needs EXP_MODE_ALLOW_DOWN and, with
+    /// EXP_MODE_DOWN_NOLEVEL, stops at the floor of the current level; @ExpChange may
+    /// rewrite or cancel the delta. With LEVELSYSTEM on, the level follows the new
+    /// total and @ExpLevelChange may rewrite or cancel the level delta. A zero delta
+    /// just re-syncs the level.
     /// </summary>
-    public void ChangeExperience(int delta)
+    public void ChangeExperience(int delta = 0)
     {
-        if (delta != 0 && OnExpChanging != null)
-        {
-            int? adjusted = OnExpChanging(this, delta);
-            if (adjusted == null)
-                return;
-            delta = adjusted.Value;
-        }
-        if (delta == 0)
+        if (ExperienceMode == 0)
             return;
 
-        _exp = (int)Math.Clamp((long)_exp + delta, 0, int.MaxValue);
-
-        short newLevel = ComputeLevel(_exp);
-        if (newLevel != _level)
+        if (delta != 0)
         {
-            _level = newLevel;
-            OnExpLevelChanged?.Invoke(this, newLevel);
+            if (delta < 0)
+            {
+                if ((ExperienceMode & ExpModeAllowDown) == 0)
+                    return;
+                if (LevelSystem && (ExperienceMode & ExpModeDownNoLevel) != 0)
+                {
+                    long floor = ExpForLevel(_level);
+                    if (delta + (long)_exp < floor)
+                        delta = (int)(floor - _exp);
+                }
+            }
+
+            if (OnExpChanging != null)
+            {
+                int? adjusted = OnExpChanging(this, delta);
+                if (adjusted == null)
+                    return;
+                delta = adjusted.Value;
+            }
+
+            _exp = (int)Math.Clamp((long)_exp + delta, 0, int.MaxValue);
+            if (delta != 0)
+                SendOwnerMessage?.Invoke(this, ExpChangeMessage(delta));
         }
+
+        if (!LevelSystem)
+            return;
+
+        int level = ComputeLevel(_exp);
+        if (level == _level)
+            return;
+        int levelDelta = level - _level;
+        if (OnExpLevelChanged != null)
+        {
+            int? adjusted = OnExpLevelChanged(this, levelDelta);
+            if (adjusted == null)
+                return;
+            levelDelta = adjusted.Value;
+        }
+        int newLevel = _level + levelDelta;
+        if (levelDelta < 0 && -levelDelta > _level)
+            newLevel = 0;
+        _level = (short)Math.Clamp(newLevel, 0, short.MaxValue);
+        SendOwnerMessage?.Invoke(this, ServerMessages.GetFormatted(
+            Math.Abs(levelDelta) == 1 ? "msg_exp_lvlchange_0" : "msg_exp_lvlchange_1",
+            ServerMessages.Get(levelDelta > 0 ? "msg_exp_lvlchange_gain" : "msg_exp_lvlchange_lost")));
     }
 
-    /// <summary>Level for a total experience value: linear steps of
-    /// <see cref="LevelNextAt"/>, or doubling steps in double mode.</summary>
-    public static short ComputeLevel(int exp)
+    /// <summary>The "You have gained some experience" line (CChar.cpp:5172-5194): the
+    /// size word is picked against LEVELNEXTAT (at least 1000) when levels are on.</summary>
+    private static string ExpChangeMessage(int delta)
     {
-        if (LevelNextAt <= 0)
+        long abs = Math.Abs((long)delta);
+        long max = LevelSystem && LevelNextAt != 0 ? Math.Max(LevelNextAt, 1000) : 1000;
+        int word = abs >= max ? 7
+            : abs >= max * 2 / 3 ? 6
+            : abs >= max / 2 ? 5
+            : abs >= max / 3 ? 4
+            : abs >= max / 5 ? 3
+            : abs >= max / 7 ? 2
+            : abs >= max / 14 ? 1 : 0;
+        return ServerMessages.GetFormatted("msg_exp_change_0",
+            ServerMessages.Get(delta > 0 ? "msg_exp_change_gain" : "msg_exp_change_lost"),
+            ServerMessages.Get($"msg_exp_change_{word + 1}"));
+    }
+
+    /// <summary>Calc_ExpGet_Exp (CChar.cpp:5062): the experience a level starts at.</summary>
+    public static long ExpForLevel(int level)
+    {
+        if (level <= 1)
             return 0;
-        short level = 0;
-        long threshold = 0, step = LevelNextAt;
-        while (level < short.MaxValue)
+        if (!LevelModeDouble)
+            return (long)(level - 1) * LevelNextAt;
+        long exp = 0;
+        for (int lev = 1; lev < level; ++lev)
+            exp += (long)LevelNextAt * (lev + 1);
+        return exp;
+    }
+
+    /// <summary>Calc_ExpGet_Level (CChar.cpp:5082): linear mode is one level per
+    /// LEVELNEXTAT starting at 1; double mode needs LEVELNEXTAT*(level+1) for each
+    /// step. LEVELNEXTAT below 1 yields 0.</summary>
+    public static int ComputeLevel(int exp)
+    {
+        if (LevelNextAt < 1)
+            return 0;
+        if (!LevelModeDouble)
+            return 1 + exp / LevelNextAt;
+        int level = 0;
+        long remaining = exp, nextReq = 0;
+        while (remaining >= nextReq && level < short.MaxValue)
         {
-            threshold += step;
-            if (exp < threshold || threshold > int.MaxValue)
-                break;
-            level++;
-            if (LevelModeDouble)
-                step *= 2;
+            remaining -= nextReq;
+            ++level;
+            nextReq = (long)LevelNextAt * (level + 1);
         }
         return level;
+    }
+
+    /// <summary>The kill reward (Noto_Kill, CCharNotoriety.cpp:619-646): a tenth of
+    /// the victim's experience split across the killers, scaled by the PvP / PvM
+    /// percentage and by how the two totals compare.</summary>
+    public static int KillExperienceReward(Character killer, Character victim, int totalKillers)
+    {
+        if (!ExperienceSystem || (ExperienceMode & ExpModeRaiseCombat) == 0)
+            return 0;
+        // No reward for a summoned victim (CCharNotoriety.cpp:611).
+        if (victim.IsStatFlag(StatFlag.Conjured))
+            return 0;
+        int change = victim._exp / 10 / Math.Max(1, totalKillers);
+        if (change != 0)
+            change = change * (killer.IsPlayer && victim.IsPlayer ? ExperienceKoefPVP : ExperienceKoefPVM) / 100;
+        if (change == 0)
+            return 0;
+        long mine = killer._exp, theirs = victim._exp;
+        if (mine * 4 < theirs) change *= 2;
+        else if (mine * 2 < theirs) change = change * 3 / 2;
+        else if (mine <= theirs) { }
+        else if (mine < theirs * 2) change /= 2;
+        else if (mine < theirs * 3) change /= 4;
+        else change /= 10;
+        return change;
     }
 
     // Player state
@@ -5436,14 +5570,14 @@ public partial class Character : ObjBase
             case "MANA": if (int.TryParse(normalized, out int mv)) SetManaRaw(mv); return true;
             case "STAM":
             case "STAMINA": if (int.TryParse(normalized, out int stv)) SetStamRaw(stv); return true;
-            case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = mhv; return true;
+            case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = IsStatMaxDenied ? Str : mhv; return true;
             // Signed: GetArgSVal is what reads it upstream (CChar.cpp:3662), so a
             // curse lowering a ceiling uses the same key as a blessing raising one.
             case "MODMAXHITS": if (short.TryParse(normalized, out short mmh)) ModMaxHits = mmh; return true;
             case "MODMAXMANA": if (short.TryParse(normalized, out short mmm)) ModMaxMana = mmm; return true;
             case "MODMAXSTAM": if (short.TryParse(normalized, out short mms)) ModMaxStam = mms; return true;
-            case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = mmv; return true;
-            case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = msv; return true;
+            case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = IsStatMaxDenied ? Int : mmv; return true;
+            case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = IsStatMaxDenied ? Dex : msv; return true;
             case "BLOODCOLOR":
                 // HUE_TYPE is a word: BLOODCOLOR=-1 is 0xFFFF, "no blood".
                 if (TryParseHexOrDecUshort(normalized, out ushort bcv)) _bloodHue = bcv;
@@ -5624,12 +5758,22 @@ public partial class Character : ObjBase
                     ClearStatFlag(StatFlag.Stone);
                 return true;
             case "EXP":
-                // Route through ChangeExperience so script writes fire
-                // @ExpChange/@ExpLevelChange like Source-X EXP assignment.
+                // Source-X CHC_EXP (CChar.cpp:4049): the value is stored as written,
+                // then a zero-delta ChangeExperience re-syncs the level.
                 if (int.TryParse(normalized, out int expv))
-                    ChangeExperience(expv - _exp);
+                {
+                    _exp = Math.Max(0, expv);
+                    ChangeExperience();
+                }
                 return true;
-            case "LEVEL": if (short.TryParse(normalized, out short lvv)) _level = lvv; return true;
+            case "LEVEL":
+                // CHC_LEVEL (CChar.cpp:4053): same store-then-sync.
+                if (short.TryParse(normalized, out short lvv))
+                {
+                    _level = lvv;
+                    ChangeExperience();
+                }
+                return true;
             case "DEATHS": if (short.TryParse(normalized, out short dthv)) _deaths = dthv; return true;
             case "HOMEDIST": if (short.TryParse(normalized, out short hdv)) _homeDist = hdv; return true;
             case "HOME":

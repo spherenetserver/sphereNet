@@ -158,6 +158,31 @@ public sealed class SpellEngine
     /// font (0 = default). Preferred over <see cref="OnSpellWords"/> when set.</summary>
     public Action<Character, string, ushort, byte>? OnSpellWordsEx { get; set; }
 
+    /// <summary>sphere.ini WOPPLAYER / WOPSTAFF (Source-X m_fWordsOfPowerPlayer,
+    /// default 1 / m_fWordsOfPowerStaff, default 0): whether a player / a Counsel+
+    /// caster speaks the power words.</summary>
+    public static bool WopPlayer { get; set; } = true;
+    public static bool WopStaff { get; set; }
+    /// <summary>sphere.ini WOPCOLOR (default HUE_TEXT_DEF 0x3B2; above 0 it wins over
+    /// the caster's speech hue), WOPFONT (default FONT_NORMAL 3) and WOPTALKMODE
+    /// (default TALKMODE_SPELL 10; out-of-range falls back to it), CCharSpell.cpp:3511-3526.</summary>
+    public static int WopColor { get; set; } = 0x03B2;
+    public static int WopFont { get; set; } = 3;
+    public static int WopTalkMode { get; set; } = 10;
+
+    /// <summary>The talk mode the power words go out in (CCharSpell.cpp:3513-3516):
+    /// WOPTALKMODE when it names a real mode (SAY..COMMAND exclusive), else SPELL.</summary>
+    public static byte EffectiveWopTalkMode =>
+        WopTalkMode is > 0 and < 0x0F ? (byte)WopTalkMode : (byte)10;
+
+    /// <summary>The hue the power words go out in when the script did not set
+    /// LOCAL.WOPColor: WOPCOLOR above 0, else the caster's own speech hue, else
+    /// HUE_TEXT_DEF (CCharSpell.cpp:3518-3525).</summary>
+    public static ushort DefaultWopHue(Character caster) =>
+        WopColor > 0 ? (ushort)WopColor
+        : caster.SpeechColor != 0 ? caster.SpeechColor
+        : (ushort)0x03B2;
+
     /// <summary>Callback fired when a CLIENTLESS caster's spell completes —
     /// the player completion path (TickSpellCast) sends its own bolt/impact
     /// effect, but NPC casts have no client and were entirely invisible.
@@ -763,14 +788,19 @@ public sealed class SpellEngine
             return null;
         }
         int difficulty = def.GetDifficulty() / 10;
+        // WOPSTAFF / WOPPLAYER pick whether the mantra is spoken at all; an
+        // insubstantial caster and a wand never speak it (CCharSpell.cpp:3473-3486).
+        bool speakWords = caster.PrivLevel >= PrivLevel.Counsel ? WopStaff : WopPlayer;
+        if (caster.IsStatFlag(StatFlag.Insubstantial))
+            speakWords = false;
         if (TryResolveCastSource(caster, out var kind, out _))
         {
-            if (kind == CastSourceKind.Wand) difficulty = 1;
+            if (kind == CastSourceKind.Wand) { difficulty = 1; speakWords = false; }
             else if (kind == CastSourceKind.Scroll) difficulty /= 2;
         }
         string words = def.GetPowerWords();
         var locals = new SphereNet.Scripting.Variables.VarMap();
-        locals.Set("WOP", words);
+        locals.Set("WOP", speakWords ? words : "");
         locals.SetInt("WOPColor", 0);
         locals.SetInt("WOPFont", 0);
         var args = new TriggerArgs { CharSrc = caster, N1 = (int)spell,

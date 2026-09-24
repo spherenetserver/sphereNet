@@ -45,6 +45,8 @@ public class Region : IScriptObj
     public string? Group { get => _group; set => _group = value; }
     public IReadOnlyList<RegionRect> Rects => _rects;
     public IReadOnlyList<ResourceId> Events => _events;
+    /// <summary>The region's TAG list, read-only (for room inheritance).</summary>
+    public IEnumerable<KeyValuePair<string, string>> TagEntries => _tags;
     public IReadOnlyList<ResourceId> RegionTypes => _regionTypes;
     public uint Uid => _uid;
     public string? DefName { get => _defName; set => _defName = value; }

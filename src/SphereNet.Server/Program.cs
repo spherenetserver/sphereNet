@@ -966,6 +966,7 @@ public static partial class Program
         };
         _saver.ResolveCharDefName = charDefIndex =>
             CharDefHelper.ResolveDefName(charDefIndex);
+        _saver.ResolveHeaderBaseId = defname => _loader?.ResolveItemDef?.Invoke(defname) ?? 0;
         _loader = new WorldLoader(_loggerFactory);
         _loader.ApplyCharDefFromName = (ch, defname) =>
             CharDefHelper.TryApplyDefName(ch, defname, _resources);

@@ -275,11 +275,8 @@ public static class TemplateEngine
         int idx = ResolveItemDefIndex(resources, defname);
         if (idx == 0) return 0;
         var idef = DefinitionLoader.GetItemDef(idx);
-        if (idef != null)
-        {
-            if (idef.DispIndex != 0) return idef.DispIndex;
-            if (idef.DupItemId != 0) return idef.DupItemId;
-        }
+        ushort graphic = ItemDefHelper.CreateGraphic(idef, idx);
+        if (graphic != 0) return graphic;
         // Plain numeric [ITEMDEF 0xNNNN] — index IS the graphic, but
         // only when it fits in 16 bits. String-hash indexes (>0xFFFF)
         // would otherwise truncate to garbage graphics (e.g. lava /

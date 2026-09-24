@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Worldgen: kapi yonleri, spawn mesafesi ve karisik spawner'lar
+------------------------------------------------------------------------
+DUZELTME - Numarali itemdef'ten yapilan item o numarayi gosterir. DUPELIST
+           uyesi - kapinin diger yonleri, [ITEMDEF 06a5] altindaki
+           06a7..06b3 - ana tanimi DUPEITEM'de tasir ve her uretici once onu
+           aliyordu; worldgen kapilarinin hepsi tek yone bakiyordu. Tek kural
+           (ItemDefHelper.CreateGraphic) artik NEWITEM, .ADD, NPC ekipmani,
+           vendor stogu ve template'lerde kullanilir. Baslik adi baska bir
+           grafige yuklenecekse save tam ID'yi yazar.
+DUZELTME - Canli spawner'a atanan MOREP, MOREX, MOREY ve MOREZ hemen
+           zamanlamasi ve spawn mesafesidir (CCSpawn ISPW_MOREP). "Once TYPE,
+           sonra MOREP" ile kurulan spawner yeniden baslatmaya kadar 0
+           mesafede kaliyordu; zindan yaratiklari spawner'in dibinde duruyordu.
+DUZELTME - Ciplak kaynak adi ya da ona cozulen [DEFNAME] takma adi ifadede
+           sifirdan farklidir (GetSingle -> ResourceGetID);
+           "giantserpent,gianttoad" tutan IF (<LOCAL.SPAWN_ARRAY>) yanlis
+           donuyor, karisik spawner'lar hedefsiz kaliyordu. STRARG ilk
+           argumani bosluk kadar virgulde de bitirir (CScriptObj.cpp:864).
+DUZELTME - RESOURCETYPE ve RESOURCEINDEX istemci olmayan baglamda da
+           (spawner @Timer) cevap verir; orada bos donuyor, worldgen her
+           liste uyesi icin "DOES NOT EXIST" yaziyordu.
+DUZELTME - RESPAWN spawner'i zamanlayici tetiklemesi gibi her dogum icin bir
+           @Timer ile doldurur; paketin @Timer'i her yaratigi secmeye devam
+           eder. Karisik spawner eskiden listenin yalnizca ilk yaratigiyla
+           doluyordu. RETURN 1 o dogumu atlar.
+
 [2026-09-24] - Spawn edilen yaratiklar yeniden spawner cevresine dagilir
 ------------------------------------------------------------------------
 DEGISIKLIK - NPC spawner her yaratigi MoveNear(gem, rand(MOREZ)+1) ile

@@ -78,6 +78,14 @@ public sealed class ExpressionParser
     /// </summary>
     public Func<string, string?>? FunctionResolver { get; set; }
 
+    /// <summary>Last resort for a bare identifier in a numeric context: the value of a
+    /// resource name (CExpression GetSingle -> ResourceGetID). Null when it names none.</summary>
+    public Func<string, long?>? ResourceValueResolver { get; set; }
+
+    /// <summary>RESOURCETYPE / RESOURCEINDEX for any context, not only a client's:
+    /// (argument, wantIndex) -> hex value. Spawner timers run with no client.</summary>
+    public Func<string, bool, string>? ResourceTypeIndexResolver { get; set; }
+
     /// <summary>
     /// Per-thread "where am I" label used by <see cref="ReportUnresolved"/> when
     /// the caller doesn't pass an explicit context. ScriptInterpreter / dialog
@@ -680,6 +688,11 @@ public sealed class ExpressionParser
             if (val.Length > 1 && val[0] == '0' &&
                 long.TryParse(val, System.Globalization.NumberStyles.HexNumber, null, out fv))
                 return fv;
+            // A resource name (or a [DEFNAME] alias of one) counts as its resource,
+            // not as 0: the worldgen tests IF (<LOCAL.SPAWN_ARRAY>) holding
+            // "giantserpent,gianttoad,..." and skipped every multi-creature spawner.
+            if (ReferenceEquals(callExpr, ident) && ResourceValueResolver?.Invoke(ident) is long rv)
+                return rv;
             _numericOk = false; // bareword resolved to a non-numeric string / was unresolved
             return 0;
         }
@@ -947,9 +960,15 @@ public sealed class ExpressionParser
         // STRARG — extract first whitespace-delimited token from ARGS
         if (varExpr.StartsWith("STRARG ", StringComparison.OrdinalIgnoreCase))
         {
+            // The first argument ends at whitespace OR a comma (CScriptObj.cpp:864), the
+            // same pair STREAT skips. Stopping at spaces only handed back the whole of
+            // "a,b,c" - the worldgen's multi-creature spawners took that as one name.
             string inner = ResolveAngleBrackets(varExpr[7..].Trim());
-            int sp = inner.IndexOf(' ');
-            return sp > 0 ? inner[..sp] : inner;
+            if (inner.StartsWith('"')) inner = inner[1..];
+            int end = 0;
+            while (end < inner.Length && !char.IsWhiteSpace(inner[end]) && inner[end] != ',')
+                end++;
+            return inner[..end];
         }
 
         // STRSUB — substring: <STRSUB start,length,string>. Source-X SSC_StrSub
@@ -1374,6 +1393,18 @@ public sealed class ExpressionParser
                 return rounded.ToString();
             }
             return "0";
+        }
+
+        // RESOURCETYPE / RESOURCEINDEX — also where no client is attached (a spawner's
+        // @Timer): the worldgen checks every spawn-list member with RESOURCEINDEX there
+        // and logged "DOES NOT EXIST" for each one when this answered nothing.
+        if (ResourceTypeIndexResolver != null &&
+            (varExpr.StartsWith("RESOURCETYPE ", StringComparison.OrdinalIgnoreCase) ||
+             varExpr.StartsWith("RESOURCEINDEX ", StringComparison.OrdinalIgnoreCase)))
+        {
+            int sp = varExpr.IndexOf(' ');
+            bool wantIndex = varExpr[..sp].Equals("RESOURCEINDEX", StringComparison.OrdinalIgnoreCase);
+            return ResourceTypeIndexResolver(ResolveAngleBrackets(varExpr[(sp + 1)..].Trim()), wantIndex);
         }
 
         // MD5HASH — compute MD5 hash of string

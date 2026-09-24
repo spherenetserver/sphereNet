@@ -8082,12 +8082,8 @@ public partial class Character : ObjBase
             if (rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef)
             {
                 var idef = Definitions.DefinitionLoader.GetItemDef(rid.Index);
-                if (idef != null)
-                {
-                    if (idef.DispIndex != 0) return idef.DispIndex;
-                    if (idef.DupItemId != 0) return idef.DupItemId;
-                }
-                if (rid.Index <= 0xFFFF) return (ushort)rid.Index;
+                ushort graphic = Definitions.ItemDefHelper.CreateGraphic(idef, rid.Index);
+                if (graphic != 0) return graphic;
             }
         }
 
@@ -8169,13 +8165,7 @@ public partial class Character : ObjBase
         // resource index for defname ITEMDEFs — see TemplateEngine.ResolveDispId
         // for the full rationale. (ushort)rid.Index used to truncate the
         // 32-bit hash and produced random graphics on equipment.
-        ushort dispId = 0;
-        if (idef != null)
-        {
-            if (idef.DispIndex != 0) dispId = idef.DispIndex;
-            else if (idef.DupItemId != 0) dispId = idef.DupItemId;
-        }
-        if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
+        ushort dispId = Definitions.ItemDefHelper.CreateGraphic(idef, rid.Index);
         if (dispId == 0) return;
         item.BaseId = dispId;
         Definitions.ItemDefHelper.ApplyInstanceMetadata(item, rid.Index,
@@ -8327,13 +8317,7 @@ public partial class Character : ObjBase
             if (!rid.IsValid || rid.Type != Core.Enums.ResType.ItemDef) continue;
 
             var idef = Definitions.DefinitionLoader.GetItemDef(rid.Index);
-            ushort dispId = 0;
-            if (idef != null)
-            {
-                if (idef.DispIndex != 0) dispId = idef.DispIndex;
-                else if (idef.DupItemId != 0) dispId = idef.DupItemId;
-            }
-            if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
+            ushort dispId = Definitions.ItemDefHelper.CreateGraphic(idef, rid.Index);
             if (dispId == 0) continue;
 
             // Wearable gear is equipped at spawn (combat / appearance) and

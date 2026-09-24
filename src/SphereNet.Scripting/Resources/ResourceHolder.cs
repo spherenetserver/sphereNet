@@ -1062,6 +1062,79 @@ public sealed class ResourceHolder
         return current.Length > 0 ? current : name.Trim();
     }
 
+    /// <summary>The number a bare resource name stands for in an expression. Upstream's
+    /// GetSingle falls back to ResourceGetID for an identifier nothing else resolved, so
+    /// <c>IF (c_orc)</c> or a [DEFNAME] alias of a resource is non-zero rather than 0.
+    /// Answers the resource index (what RESOURCEINDEX and a numeric MORE1 read give), or
+    /// null when the name is not a resource.</summary>
+    public long? ResolveResourceValue(string name)
+    {
+        string target = FollowResourceAlias(name);
+        var rid = ResolveDefName(target);
+        if (!rid.IsValid || rid.Type == Core.Enums.ResType.DefName || rid.Index == 0)
+            return null;
+        return rid.Index;
+    }
+
+    /// <summary>Map our internal <see cref="ResType"/> to the
+    /// Source-X RES_* numeric code (the RES_TYPE enum in CResourceID.h, mirrored by
+    /// the packs' [DEFNAME] RES_* constants), so that <c>&lt;RESOURCETYPE x&gt;</c>
+    /// compares equal to <c>&lt;def.res_chardef&gt;</c> (=7) and
+    /// <c>&lt;def.res_itemdef&gt;</c> (=15).</summary>
+    public static int SourceXResCode(ResType type) => type switch
+    {
+        ResType.Account => 1,
+        ResType.Area => 3,
+        ResType.Book => 5,
+        ResType.Champion => 6,
+        ResType.CharDef => 7,
+        ResType.Comment => 8,
+        ResType.DefName => 9,
+        ResType.Dialog => 10,
+        ResType.Events => 11,
+        ResType.Function => 13,
+        ResType.GamePage => 14,
+        ResType.ItemDef => 15,
+        ResType.Menu => 18,
+        ResType.Names => 20,
+        ResType.NewBie => 21,
+        ResType.Obscene => 23,
+        ResType.PlevelCfg => 24,
+        ResType.RegionResource => 25,
+        ResType.RegionType => 26,
+        ResType.ResourceList => 28,
+        ResType.RoomDef => 30,
+        ResType.Scroll => 32,
+        ResType.Sector => 33,
+        ResType.ServerConfig => 34,
+        ResType.SkillDef => 35,
+        ResType.SkillClass => 36,
+        ResType.SkillMenu => 37,
+        ResType.Spawn => 38,
+        ResType.Speech => 39,
+        ResType.SpellDef => 40,
+        ResType.Sphere => 41,
+        ResType.Template => 46,
+        ResType.Tip => 48,
+        ResType.TypeDef => 49,
+        ResType.WebPage => 52,
+        ResType.WorldChar => 54,
+        ResType.WorldItem => 55,
+        ResType.WorldScript => 57,
+        _ => 0, // Unknown / MultiDef / Stone — no Source-X RES_ comparison value
+    };
+
+    /// <summary>RESOURCETYPE / RESOURCEINDEX (CScriptObj.cpp:607-611): the argument is
+    /// evaluated - a [DEFNAME] alias answers for what it names - and the Source-X
+    /// RES_* code or the index comes back in hex; "0" when it names no resource.</summary>
+    public string ResolveResourceTypeOrIndex(string arg, bool wantIndex)
+    {
+        var rid = ResolveDefName(FollowResourceAlias(arg.Trim()));
+        if (!rid.IsValid)
+            return "0";
+        return wantIndex ? $"0{rid.Index:x}" : $"0{SourceXResCode(rid.Type):x}";
+    }
+
     private static string? PickBraceMember(string group, Func<int, int> roll)
     {
         int close = group.LastIndexOf('}');

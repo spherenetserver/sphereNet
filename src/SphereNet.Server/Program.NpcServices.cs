@@ -484,14 +484,7 @@ public static partial class Program
 
         var item = _world.CreateItem();
         var itemDef = DefinitionLoader.GetItemDef(rid.Index);
-        ushort dispId = 0;
-        if (itemDef != null)
-        {
-            if (itemDef.DispIndex != 0) dispId = itemDef.DispIndex;
-            else if (itemDef.DupItemId != 0) dispId = itemDef.DupItemId;
-        }
-        if (dispId == 0 && rid.Index <= 0xFFFF)
-            dispId = (ushort)rid.Index;
+        ushort dispId = SphereNet.Game.Definitions.ItemDefHelper.CreateGraphic(itemDef, rid.Index);
         if (dispId == 0)
         {
             _world.RemoveItem(item);
@@ -848,13 +841,7 @@ public static partial class Program
                 continue;
 
             var itemDef = DefinitionLoader.GetItemDef(rid.Index);
-            ushort dispId = 0;
-            if (itemDef != null)
-            {
-                if (itemDef.DispIndex != 0) dispId = itemDef.DispIndex;
-                else if (itemDef.DupItemId != 0) dispId = itemDef.DupItemId;
-            }
-            if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
+            ushort dispId = SphereNet.Game.Definitions.ItemDefHelper.CreateGraphic(itemDef, rid.Index);
             if (dispId == 0) continue;
 
             var item = _world.CreateItem();

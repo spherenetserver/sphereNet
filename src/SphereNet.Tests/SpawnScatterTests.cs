@@ -71,6 +71,56 @@ public sealed class SpawnScatterTests
     }
 
     [Fact]
+    public void MorePSetOnALiveSpawnerIsItsSpawnDistance()
+    {
+        // The worldgen sets MOREP after TYPE; only storing it left the spawn range 0
+        // and every creature beside the gem until the next restart.
+        var (_, stone) = Build(range: 0, count: 1);
+
+        Assert.True(stone.TrySetProperty("MOREP", "5,10,15"));
+        Assert.Equal(15, stone.SpawnChar!.SpawnRange);
+
+        Assert.True(stone.TrySetProperty("MOREZ", "30"));
+        Assert.Equal(30, stone.SpawnChar.SpawnRange);
+    }
+
+    [Fact]
+    public void AForcedFillRunsTheTimerTriggerBeforeEachChild()
+    {
+        var (_, stone) = Build(range: 3, count: 4);
+        int fired = 0;
+        var prev = Item.OnTimerExpired;
+        Item.OnTimerExpired = it => { if (it == stone) fired++; return SphereNet.Core.Enums.TriggerResult.Default; };
+        try
+        {
+            stone.SpawnChar!.RespawnNow();
+            Assert.Equal(4, stone.SpawnChar.CurrentCount);
+            Assert.Equal(4, fired);
+        }
+        finally
+        {
+            Item.OnTimerExpired = prev;
+        }
+    }
+
+    [Fact]
+    public void ATimerTriggerReturningOneStopsTheFill()
+    {
+        var (_, stone) = Build(range: 3, count: 4);
+        var prev = Item.OnTimerExpired;
+        Item.OnTimerExpired = _ => SphereNet.Core.Enums.TriggerResult.True;
+        try
+        {
+            stone.SpawnChar!.RespawnNow();
+            Assert.Equal(0, stone.SpawnChar.CurrentCount);
+        }
+        finally
+        {
+            Item.OnTimerExpired = prev;
+        }
+    }
+
+    [Fact]
     public void ZeroMoreZKeepsChildrenBesideTheGem()
     {
         var (world, stone) = Build(range: 0, count: 10);

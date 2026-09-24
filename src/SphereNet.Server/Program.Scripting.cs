@@ -1302,10 +1302,7 @@ public static partial class Program
             return FailedFactory();
 
         var def = DefinitionLoader.GetItemDef(rid.Index);
-        ushort dispId = def?.DispIndex ?? 0;
-        if (dispId == 0) dispId = def?.DupItemId ?? 0;
-        if (dispId == 0 && rid.Index is > 0 and <= ushort.MaxValue)
-            dispId = (ushort)rid.Index;
+        ushort dispId = ItemDefHelper.CreateGraphic(def, rid.Index);
         if (dispId == 0)
             return FailedFactory();
 

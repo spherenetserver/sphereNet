@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Door facings, spawn distance and mixed spawners from the worldgen
+------------------------------------------------------------------------
+FIX - An item made from a numbered itemdef shows that number. A DUPELIST
+      member - a door's other facings, 06a7..06b3 under [ITEMDEF 06a5] -
+      carries its base in DUPEITEM and every factory took that first, so all
+      worldgen doors faced one way. One rule (ItemDefHelper.CreateGraphic)
+      now serves NEWITEM, .ADD, NPC equipment, vendor stock and templates.
+      The save writes the exact ID when the header name would load another
+      graphic.
+FIX - MOREP, MOREX, MOREY and MOREZ set on a live spawner are its timing and
+      spawn distance at once (CCSpawn ISPW_MOREP). A spawner built as "TYPE,
+      then MOREP" kept distance 0 until a restart, so dungeon creatures stood
+      beside their gem.
+FIX - A bare resource name, or a [DEFNAME] alias of one, is non-zero in an
+      expression (GetSingle -> ResourceGetID); IF (<LOCAL.SPAWN_ARRAY>)
+      holding "giantserpent,gianttoad" was false and every multi-creature
+      spawner got no target. STRARG ends its first argument at a comma as
+      well as at whitespace (CScriptObj.cpp:864).
+FIX - RESOURCETYPE and RESOURCEINDEX answer where no client is attached (a
+      spawner's @Timer); they returned nothing there and the worldgen logged
+      "DOES NOT EXIST" for every spawn-list member.
+FIX - RESPAWN fills a spawner one child per @Timer, as a timer tick does,
+      so a pack's @Timer still picks each creature; a mixed spawner used to
+      fill with its list's first creature only. RETURN 1 skips the spawn.
+
 [2026-09-24] - Spawned creatures scatter around the spawner again
 ------------------------------------------------------------------------
 CHANGE - An NPC spawner places each creature MoveNear(gem, rand(MOREZ)+1),

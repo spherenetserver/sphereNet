@@ -11,6 +11,18 @@ namespace SphereNet.Game.Definitions;
 /// </summary>
 public static class ItemDefHelper
 {
+    /// <summary>The graphic an item made from itemdef <paramref name="index"/> shows: the
+    /// def's ID= graphic; else the index itself when it is a graphic - a numbered def,
+    /// including a DUPELIST member such as a door's other facings, is its own graphic
+    /// (upstream keeps a dupe's id); else, for a named def, its DUPEITEM master.
+    /// Preferring DUPEITEM made every door facing come out as the base facing.</summary>
+    public static ushort CreateGraphic(SphereNet.Scripting.Definitions.ItemDef? def, int index)
+    {
+        if (def != null && def.DispIndex != 0) return def.DispIndex;
+        if (index is > 0 and <= 0xFFFF) return (ushort)index;
+        return def?.DupItemId ?? 0;
+    }
+
     public static int ResolveInstanceDefIndex(Item item, ResourceHolder? resources = null)
     {
         if (item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&

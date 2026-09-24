@@ -58,6 +58,12 @@ public sealed class WorldSaver
     /// (e.g. 0x0E75 → "i_backpack"). Used for Source-X compatible section headers.</summary>
     public Func<ushort, string?>? ResolveItemDefName { get; set; }
 
+    /// <summary>The graphic a WORLDITEM header name loads back as (the loader's own
+    /// resolver). When it differs from the item's graphic - a DUPELIST member such as
+    /// the other facings of a door, saved under its base def's name - the save also
+    /// writes the exact ID, as upstream writes DISPID for such an item.</summary>
+    public Func<string, ushort>? ResolveHeaderBaseId { get; set; }
+
     /// <summary>Resolves a character CHARDEFINDEX to its script defname
     /// (e.g. hash → "c_man"). Used for Source-X compatible section headers.</summary>
     public Func<int, string?>? ResolveCharDefName { get; set; }
@@ -793,7 +799,9 @@ public sealed class WorldSaver
         w.BeginRecord(defname != null ? $"WORLDITEM {defname}" : "WORLDITEM");
         w.WriteProperty("SERIAL", $"0{item.Uid.Value:X8}");
         w.WriteProperty("UUID", item.Uuid.ToString("D"));
-        if (defname == null)
+        if (defname == null ||
+            (ResolveHeaderBaseId?.Invoke(defname) is ushort headerBase && headerBase != 0 &&
+             headerBase != item.BaseId))
             w.WriteProperty("ID", $"0{item.BaseId:X}");
         w.WriteProperty("NAME", item.Name);
         w.WriteProperty("P", item.Position.ToString());

@@ -569,7 +569,18 @@ public sealed class SpawnComponent
         if (_charDefId == 0 && _spawnGroup == null) return;
         int guard = 0;
         while (_spawnedUids.Count < _maxCount && guard++ < _maxCount + 8)
+        {
+            // Each child is what one timer tick would make (CCSpawn::OnTick: @Timer,
+            // then one child), so a pack's @Timer still chooses it - the worldgen's
+            // mixed spawners draw a random member of their list there. Filling
+            // without it made every child the list's first creature. RETURN 1 skips
+            // the spawn, as it does on a tick.
+            if (Item.OnTimerExpired?.Invoke(_spawnItem) == TriggerResult.True)
+                break;
+            if (_charDefId == 0 && _spawnGroup == null)
+                break;
             SpawnOne();
+        }
         if (_spawnedUids.Count >= _maxCount)
             PauseTimer();
         else

@@ -2897,20 +2897,28 @@ public class Item : ObjBase
                 if (ushort.TryParse(value, out ushort m2l))
                     _more2 = (_more2 & 0xFFFF0000) | m2l;
                 return true;
+            // On a live spawner MOREP/MOREX/MOREY/MOREZ are its TIMELO/TIMEHI/MAXDIST
+            // (CCSpawn::r_LoadVal ISPW_MOREP..). Only storing them left a spawner built
+            // as "TYPE, then MOREP" with no spawn distance until the next restart, so
+            // every creature was born beside the gem.
             case "MOREP":
                 if (Point3D.TryParse(value, out var mp)) _moreP = mp;
+                ApplyLiveSpawnMoreP();
                 return true;
             case "MOREX":
                 if (ScriptNumber.TryParseToken(value, out long mx) && mx is >= short.MinValue and <= short.MaxValue)
                     _moreP = new Point3D((short)mx, _moreP.Y, _moreP.Z, _moreP.Map);
+                ApplyLiveSpawnMoreP();
                 return true;
             case "MOREY":
                 if (ScriptNumber.TryParseToken(value, out long my) && my is >= short.MinValue and <= short.MaxValue)
                     _moreP = new Point3D(_moreP.X, (short)my, _moreP.Z, _moreP.Map);
+                ApplyLiveSpawnMoreP();
                 return true;
             case "MOREZ":
                 if (ScriptNumber.TryParseToken(value, out long mz) && mz is >= sbyte.MinValue and <= sbyte.MaxValue)
                     _moreP = new Point3D(_moreP.X, _moreP.Y, (sbyte)mz, _moreP.Map);
+                ApplyLiveSpawnMoreP();
                 return true;
             case "MOREM":
                 if (byte.TryParse(value, out byte mm)) _moreP = new Point3D(_moreP.X, _moreP.Y, _moreP.Z, mm);
@@ -5081,6 +5089,13 @@ public class Item : ObjBase
         }
         return ItemIdTrackWisp;
     }
+
+    private void ApplyLiveSpawnMoreP()
+    {
+        SpawnChar?.ApplyMoreP();
+        SpawnItem?.ApplyMoreP();
+    }
+
 
     /// <summary>Build the spawn component this item's TYPE calls for. The def table is
     /// only needed to resolve a NAMED spawn group or champion def; without one the

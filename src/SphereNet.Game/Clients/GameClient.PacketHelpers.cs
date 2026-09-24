@@ -2244,13 +2244,7 @@ public sealed partial class GameClient
             // see TemplateEngine.ResolveDispId. Truncating rid.Index
             // to ushort previously gave newbies random-tile clothing
             // (lava breastplates, window-shutter shirts).
-            ushort dispId = 0;
-            if (itemDef != null)
-            {
-                if (itemDef.DispIndex != 0) dispId = itemDef.DispIndex;
-                else if (itemDef.DupItemId != 0) dispId = itemDef.DupItemId;
-            }
-            if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
+            ushort dispId = SphereNet.Game.Definitions.ItemDefHelper.CreateGraphic(itemDef, rid.Index);
             if (dispId == 0) continue;
             item.BaseId = dispId;
             ItemDefHelper.ApplyInstanceMetadata(item, rid.Index,

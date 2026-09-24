@@ -2307,54 +2307,6 @@ public sealed class ClientScriptConsoleHandler
         return uint.TryParse(t, out value);
     }
 
-    /// <summary>Map our internal <see cref="SphereNet.Core.Enums.ResType"/> to the
-    /// Source-X RES_* numeric code (the RES_TYPE enum in CResourceID.h, mirrored by
-    /// the packs' [DEFNAME] RES_* constants), so that <c>&lt;RESOURCETYPE x&gt;</c>
-    /// compares equal to <c>&lt;def.res_chardef&gt;</c> (=7) and
-    /// <c>&lt;def.res_itemdef&gt;</c> (=15).</summary>
-    private static int SourceXResValue(SphereNet.Core.Enums.ResType type) => type switch
-    {
-        SphereNet.Core.Enums.ResType.Account => 1,
-        SphereNet.Core.Enums.ResType.Area => 3,
-        SphereNet.Core.Enums.ResType.Book => 5,
-        SphereNet.Core.Enums.ResType.Champion => 6,
-        SphereNet.Core.Enums.ResType.CharDef => 7,
-        SphereNet.Core.Enums.ResType.Comment => 8,
-        SphereNet.Core.Enums.ResType.DefName => 9,
-        SphereNet.Core.Enums.ResType.Dialog => 10,
-        SphereNet.Core.Enums.ResType.Events => 11,
-        SphereNet.Core.Enums.ResType.Function => 13,
-        SphereNet.Core.Enums.ResType.GamePage => 14,
-        SphereNet.Core.Enums.ResType.ItemDef => 15,
-        SphereNet.Core.Enums.ResType.Menu => 18,
-        SphereNet.Core.Enums.ResType.Names => 20,
-        SphereNet.Core.Enums.ResType.NewBie => 21,
-        SphereNet.Core.Enums.ResType.Obscene => 23,
-        SphereNet.Core.Enums.ResType.PlevelCfg => 24,
-        SphereNet.Core.Enums.ResType.RegionResource => 25,
-        SphereNet.Core.Enums.ResType.RegionType => 26,
-        SphereNet.Core.Enums.ResType.ResourceList => 28,
-        SphereNet.Core.Enums.ResType.RoomDef => 30,
-        SphereNet.Core.Enums.ResType.Scroll => 32,
-        SphereNet.Core.Enums.ResType.Sector => 33,
-        SphereNet.Core.Enums.ResType.ServerConfig => 34,
-        SphereNet.Core.Enums.ResType.SkillDef => 35,
-        SphereNet.Core.Enums.ResType.SkillClass => 36,
-        SphereNet.Core.Enums.ResType.SkillMenu => 37,
-        SphereNet.Core.Enums.ResType.Spawn => 38,
-        SphereNet.Core.Enums.ResType.Speech => 39,
-        SphereNet.Core.Enums.ResType.SpellDef => 40,
-        SphereNet.Core.Enums.ResType.Sphere => 41,
-        SphereNet.Core.Enums.ResType.Template => 46,
-        SphereNet.Core.Enums.ResType.Tip => 48,
-        SphereNet.Core.Enums.ResType.TypeDef => 49,
-        SphereNet.Core.Enums.ResType.WebPage => 52,
-        SphereNet.Core.Enums.ResType.WorldChar => 54,
-        SphereNet.Core.Enums.ResType.WorldItem => 55,
-        SphereNet.Core.Enums.ResType.WorldScript => 57,
-        _ => 0, // Unknown / MultiDef / Stone — no Source-X RES_ comparison value
-    };
-
     public bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value)
     {
         value = "";
@@ -2417,21 +2369,7 @@ public sealed class ClientScriptConsoleHandler
         {
             int sp = varName.IndexOf(' ');
             bool wantIndex = varName[..sp].Equals("RESOURCEINDEX", StringComparison.OrdinalIgnoreCase);
-            string arg = varName[(sp + 1)..].Trim();
-            // Upstream evaluates the argument (Exp_GetVal, CScriptObj.cpp:608), so a
-            // [DEFNAME] alias - "orc" -> {c_orc} in the worldgen tables - answers for
-            // the resource it names, and the result is written in hex.
-            var holder = _commands?.Resources;
-            var rid = holder?.ResolveDefName(holder.FollowResourceAlias(arg))
-                      ?? SphereNet.Core.Types.ResourceId.Invalid;
-            if (!rid.IsValid)
-            {
-                value = "0"; // RES_UNKNOWN / no index
-                return true;
-            }
-            value = wantIndex
-                ? $"0{rid.Index:x}"
-                : $"0{SourceXResValue(rid.Type):x}";
+            value = _commands?.Resources?.ResolveResourceTypeOrIndex(varName[(sp + 1)..], wantIndex) ?? "0";
             return true;
         }
         if (varName.StartsWith("ISDIALOGOPEN.", StringComparison.OrdinalIgnoreCase))

@@ -880,6 +880,7 @@ public static partial class Program
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = _config.FlipDroppedItems;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = _config.BackpackOverload;
         SphereNet.Scripting.Execution.ScriptScope.DefaultMaxLoopIterations = _config.MaxLoopTimes;
+        SphereNet.Game.Movement.MovementEngine.MaxShipPlankTeleport = _config.MaxShipPlankTeleport;
         SphereNet.Game.Diagnostics.TickFaults.Log = (message, ex) => _log.LogError(ex, "{Message}", message);
         // What a load costs: BACKPACKOVERLOAD lets a player go over their carry
         // weight, and these are what they pay for it on every committed step.

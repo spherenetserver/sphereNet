@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-24] - Spawns in cave void, .edit on spell effects, walking off a ship
+------------------------------------------------------------------------
+FIX - A spawned creature is only placed where it can stand (upstream MoveNear
+      asks CanMoveWalkTo of the child). The spot test was the cruder
+      IsPassable, which took a cave's black void tiles (land 0x1AE-0x1B5,
+      0x1DB - no tile flags at all) for open ground; creatures were born in
+      the void, out of reach and unable to walk out.
+FIX - .edit on a character opens the spell effects it wears. They have no
+      world uid (0), which counted as valid, so picking one answered "Object
+      not found: 0x00000000". A script dialog now holds its subject as an
+      object, so the property dialog and its buttons read and write the
+      effect itself rather than the GM.
+FIX - Stepping onto an open ship plank or a rope puts the character ashore:
+      the first spot along the facing it can stand on that is not a ship, up
+      to MAXSHIPPLANKTELEPORT tiles, never through a wall, with following pets
+      (upstream CheckLocationEffects -> MoveToValidSpot). Only double-clicking
+      the plank did anything, so the water to the quay could not be crossed.
+
 [2026-09-24] - Fire and spell items, pet release, virtual gold, enticement, login tries, triggers, custom houses
 ------------------------------------------------------------------------
 FIX - Double-clicking a shaft or a feather opens the Bowcraft menu, as the

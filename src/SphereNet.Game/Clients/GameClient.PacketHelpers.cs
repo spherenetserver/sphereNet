@@ -688,7 +688,7 @@ public sealed partial class GameClient
                     $"Memory: {targetName} [{item.GetMemoryTypes()}]"));
                 mems.Add(item);
             }
-            else if (!item.Uid.IsValid)
+            else if (!item.Uid.IsValid || item.Uid.Value == 0)
             {
                 // Spell-effect mirrors (CreateSpellEffect) live only in
                 // ch.Memories with no world UID — route them through the
@@ -775,7 +775,10 @@ public sealed partial class GameClient
         if (OpenNamedDialog(dialogId, page, obj))
             return;
 
-        SysMessage(ServerMessages.GetFormatted("gm_object_not_found", $"{obj.Uid.Value:X8}"));
+        // An object with no world uid (a worn spell effect) was already read out by
+        // the caller; "not found: 0x00000000" would only be wrong.
+        if (obj.Uid.Value != 0)
+            SysMessage(ServerMessages.GetFormatted("gm_object_not_found", $"{obj.Uid.Value:X8}"));
     }
 
     private static List<Item> CollectContainerChildren(ObjBase obj)

@@ -132,6 +132,19 @@ public sealed class ClientDialogHandler
     // <BODY> / <STR> etc. reflect the inspected target. Cleared after
     // render; callbacks that act on the target stash its UID locally.
     private Serial _dialogSubjectUid = Serial.Invalid;
+
+    /// <summary>The dialog's subject as an OBJECT. A spell effect a character wears is
+    /// not a world object (it has no uid the world can look up), so a dialog opened
+    /// on it - .edit on a spell effect - has to hold the object itself; looking it up
+    /// by uid found nothing and the dialog read, and wrote, the GM instead.</summary>
+    private ObjBase? _dialogSubjectObj;
+
+    private ObjBase? ResolveDialogSubject()
+    {
+        if (_dialogSubjectObj != null && !_dialogSubjectObj.IsDeleted)
+            return _dialogSubjectObj;
+        return _dialogSubjectUid.IsValid ? _world.FindObject(_dialogSubjectUid) : null;
+    }
     /// <summary>Cross-partial access to the dialog subject (ScriptConsole
     /// reads/clears it around script-driven dialog flows).</summary>
     internal Serial DialogSubjectUid
@@ -447,9 +460,11 @@ public sealed class ClientDialogHandler
         var textLines = _commands.Resources.GetDialogTextLines(dialogId);
 
         var prevSubject = _dialogSubjectUid;
+        var prevSubjectObj = _dialogSubjectObj;
         var parser = _triggerDispatcher?.Runner?.Interpreter.Expressions;
         var previousResponseResolver = parser?.DialogArgResolver;
         _dialogSubjectUid = subject?.Uid ?? Serial.Invalid;
+        _dialogSubjectObj = subject;
         // A dialog opened by a button has fresh setup args. The caller's
         // response accessor must not override ARGN or leak its input fields.
         if (parser != null) parser.DialogArgResolver = null;
@@ -461,6 +476,7 @@ public sealed class ClientDialogHandler
         {
             if (parser != null) parser.DialogArgResolver = previousResponseResolver;
             _dialogSubjectUid = prevSubject;
+            _dialogSubjectObj = prevSubjectObj;
         }
     }
 
@@ -474,7 +490,9 @@ public sealed class ClientDialogHandler
         {
             ["__ARGS"] = arguments ?? ""
         };
-        IScriptObj subject = subjectUid.IsValid ? _world.FindObject(subjectUid) ?? _character : _character;
+        var subjectObj = _dialogSubjectObj;
+        IScriptObj subject = (IScriptObj?)subjectObj ??
+            (subjectUid.IsValid ? _world.FindObject(subjectUid) ?? _character : _character);
         var layoutArgs = new ExecTriggerArgs(_character, requestedPage, 0, arguments ?? "")
         {
             Object1 = subject,
@@ -797,7 +815,9 @@ public sealed class ClientDialogHandler
             if (_character == null)
                 return;
             var prevSubject = _dialogSubjectUid;
+            var prevSubjectObj = _dialogSubjectObj;
             _dialogSubjectUid = subjectUid;
+            _dialogSubjectObj = subjectObj;
             try
             {
                 // Source-X ignores unmatched responses. Page buttons are handled
@@ -807,6 +827,7 @@ public sealed class ClientDialogHandler
             finally
             {
                 _dialogSubjectUid = prevSubject;
+                _dialogSubjectObj = prevSubjectObj;
             }
         });
 
@@ -877,9 +898,9 @@ public sealed class ClientDialogHandler
             // target = inspected object. This ensures TRYP/INPDLG/property
             // edits operate on the correct object.
             IScriptObj buttonTarget = _character;
-            if (_dialogSubjectUid.IsValid)
+            if (_dialogSubjectObj != null || _dialogSubjectUid.IsValid)
             {
-                var subj = _world.FindObject(_dialogSubjectUid);
+                var subj = ResolveDialogSubject();
                 if (subj == null || subj.IsDeleted)
                     return false;
                 buttonTarget = subj;
@@ -1476,9 +1497,9 @@ public sealed class ClientDialogHandler
                 // inside d_charprop1 refer to the inspected target,
                 // not the GM. Fall back to GM when subject misses so
                 // admin-style dialogs keep their existing behaviour.
-                if (_dialogSubjectUid.IsValid)
+                if (_dialogSubjectObj != null || _dialogSubjectUid.IsValid)
                 {
-                    var subj = _world.FindObject(_dialogSubjectUid);
+                    var subj = ResolveDialogSubject();
                     if (subj != null)
                     {
                         // Sphere <I.*> alias = the subject itself.

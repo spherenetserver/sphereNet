@@ -335,7 +335,7 @@ public sealed class SpawnComponent
         bool scriptPlaced = (ch.Position.X != posBefore.X || ch.Position.Y != posBefore.Y
             || ch.Position.Z != posBefore.Z || ch.Position.Map != posBefore.Map)
             && (ch.Position.X != 0 || ch.Position.Y != 0);
-        Point3D pos = scriptPlaced ? ch.Position : FindSpawnPosition(charDef);
+        Point3D pos = scriptPlaced ? ch.Position : FindSpawnPosition(ch, charDef);
         ch.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
         // Quota reached: the job IS finished, so the spawn point may sleep with its
         // sector again (CCSpawn::AddObj, CCSpawn.cpp:663-668). Counted with this one
@@ -366,7 +366,7 @@ public sealed class SpawnComponent
         return ch;
     }
 
-    private Point3D FindSpawnPosition(CharDef? charDef)
+    private Point3D FindSpawnPosition(Character child, CharDef? charDef)
     {
         var mapData = _world.MapData;
 
@@ -393,7 +393,16 @@ public sealed class SpawnComponent
             // a spawner near the map edge can roll negative coordinates.
             if (px < 0 || py < 0 || px >= mapW || py >= mapH)
                 continue;
-            sbyte pz = mapData.GetEffectiveZ(_spawnItem.MapIndex, px, py, _spawnItem.Z);
+            // Upstream asks CanMoveWalkTo of the child itself (CObjBase::MoveNear,
+            // CCSpawn.cpp:433), so a spot counts only when that creature can stand
+            // there. The cruder IsPassable took a cave's black void tiles - land
+            // with no flags at all - for open ground, and children were born in the
+            // void, where nothing can reach them and they cannot walk out.
+            var stand = _world.Standing.ResolveStandingSurface(child, _spawnItem.MapIndex, px, py,
+                _spawnItem.Z, Movement.WalkCheck.StandingPolicy.Settle);
+            if (!stand.Found || Math.Abs(stand.Z - _spawnItem.Z) > Movement.WalkCheck.PersonHeight)
+                continue;
+            sbyte pz = stand.Z;
             if (!mapData.IsPassable(_spawnItem.MapIndex, px, py, pz))
                 continue;
             var terrain = mapData.GetTerrainTile(_spawnItem.MapIndex, px, py);

@@ -59,6 +59,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Movement.MovementEngine.StaminaLossAtWeight = 150;
         SphereNet.Game.Movement.MovementEngine.StaminaLossOverweight = 5;
         SphereNet.Game.Movement.MovementEngine.RunningPenalty = 50;
+        SphereNet.Game.Movement.MovementEngine.MaxShipPlankTeleport = 18;
         SphereNet.Game.Movement.MovementEngine.RunningPenaltyOverweight = 100;
         SphereNet.Game.Movement.MovementEngine.ResetWeightLossRoll();
         SphereNet.Scripting.Definitions.CharDef.DefaultMoveRate = 100;

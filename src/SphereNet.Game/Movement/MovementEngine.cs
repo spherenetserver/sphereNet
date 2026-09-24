@@ -480,6 +480,60 @@ public sealed class MovementEngine
 
     /// <summary>Check step effects (traps, fields, region enter/leave). Returns false
     /// when the area's or room's @Step refused the step.</summary>
+    /// <summary>sphere.ini MAXSHIPPLANKTELEPORT: how far along the facing a plank looks
+    /// for the shore (Source-X m_iMaxShipPlankTeleport).</summary>
+    public static int MaxShipPlankTeleport { get; set; } = 18;
+
+    /// <summary>Source-X CChar::MoveToValidSpot (CCharAct.cpp:5369) from a ship: walk
+    /// <paramref name="dist"/> tiles along <paramref name="dir"/>, starting
+    /// <paramref name="distStart"/> out, skipping any ship; the first tile the character
+    /// can stand on at or below its own height plus a person's is the answer (water is
+    /// no surface to a character that cannot swim, so the resolver never offers it). A tile
+    /// that only offers something higher is a wall, and the search stops there rather
+    /// than passing through it.</summary>
+    internal bool MoveToValidSpot(Objects.Characters.Character ch, Direction dir, int dist, int distStart,
+        out Point3D spot)
+    {
+        spot = default;
+        GetDirectionDelta(dir, out short dx, out short dy);
+        int x = ch.X + dx * distStart, y = ch.Y + dy * distStart;
+        int startZ = ch.Z + WalkCheck.PersonHeight;
+        var ships = Objects.Items.Item.ResolveShipEngine?.Invoke();
+        var md = _world.MapData;
+        for (int i = 0; i < dist; i++, x += dx, y += dy)
+        {
+            if (md == null) break;
+            var (w, h) = md.GetMapSize(ch.MapIndex);
+            if (x < 0 || y < 0 || x >= w || y >= h) break;
+            var at = new Point3D((short)x, (short)y, (sbyte)Math.Clamp(startZ, sbyte.MinValue, sbyte.MaxValue), ch.MapIndex);
+            if (ships?.FindShipAt(at) != null)
+                continue;   // never onto another ship - it may be locked
+            var stand = _world.Standing.ResolveStandingSurface(ch, ch.MapIndex, x, y, startZ,
+                WalkCheck.StandingPolicy.Settle);
+            if (!stand.Found)
+                continue;
+            if (stand.Z > startZ)
+                break;      // a wall: do not pass through it
+            spot = new Point3D((short)x, (short)y, stand.Z, ch.MapIndex);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Spell_Teleport's fTakePets: the pets following their owner go too, or a
+    /// disembarking owner leaves them on the ship.</summary>
+    private void TakePetsAlong(Objects.Characters.Character owner, Point3D dest)
+    {
+        foreach (var pet in _world.GetCharsInRange(owner.Position, 12).ToList())
+        {
+            if (pet == owner || pet.IsPlayer || pet.IsDead || pet.IsStatFlag(StatFlag.Ridden)) continue;
+            if (!pet.HasOwner(owner.Uid) || pet.PetAIMode != PetAIMode.Follow) continue;
+            byte oldMap = pet.MapIndex;
+            _world.MoveCharacter(pet, dest);
+            OnTeleport?.Invoke(pet, dest, oldMap);
+        }
+    }
+
     private bool CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos, World.Regions.Region? previousRegion)
     {
         var pos = originalPos;
@@ -556,6 +610,28 @@ public sealed class MovementEngine
                         }
                     }
                     break;
+                case ItemType.ShipPlank:
+                case ItemType.Rope:
+                {
+                    // Walking onto an open plank (or a rope) puts you ashore:
+                    // upstream looks along the way you face for the first spot you
+                    // can stand on that is not a ship, up to MAXSHIPPLANKTELEPORT
+                    // tiles, and teleports you there (CheckLocationEffects,
+                    // CCharAct.cpp:5038 -> MoveToValidSpot :5369). Only double-
+                    // clicking the plank did anything, so the water between plank
+                    // and quay could not be crossed at all.
+                    if (ch.IsStatFlag(StatFlag.Hovering) || item.IsAttr(ObjAttributes.Static))
+                        break;
+                    if (MoveToValidSpot(ch, ch.Direction, MaxShipPlankTeleport, 1, out var ashore))
+                    {
+                        byte oldMap = ch.MapIndex;
+                        TakePetsAlong(ch, ashore);
+                        _world.MoveCharacter(ch, ashore);
+                        OnTeleport?.Invoke(ch, ashore, oldMap);
+                        pos = ch.Position;
+                    }
+                    break;
+                }
                 case ItemType.Telepad:
                 case ItemType.Moongate:
                 {

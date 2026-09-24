@@ -25,11 +25,12 @@ public sealed class SpawnScatterTests
         DEFNAME=c_scatter_probe
         ID=0x190
         NAME=scatter probe
+        CAN=0x04
 
         [EOF]
         """;
 
-    private static (GameWorld World, Item Stone) Build(int range, int count)
+    private static (GameWorld World, Item Stone) Build(int range, int count, ushort landTile = 3)
     {
         var lf = LoggerFactory.Create(_ => { });
         string file = Path.Combine(Path.GetTempPath(), $"sphnet_scatter_{Guid.NewGuid():N}.scp");
@@ -41,7 +42,7 @@ public sealed class SpawnScatterTests
         var world = new GameWorld(lf);
         world.InitMap(0, 256, 256);
         var map = new SphereNet.MapData.MapDataManager("");
-        map.AddSyntheticMap(0, 256, 256, landZ: 0, landTile: 3);
+        map.AddSyntheticMap(0, 256, 256, landZ: 0, landTile: landTile);
         world.MapData = map;
         ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;
@@ -68,6 +69,22 @@ public sealed class SpawnScatterTests
         Assert.Equal(20, spots.Count);
         Assert.All(spots, p => Assert.True(Math.Max(Math.Abs(p.X - 100), Math.Abs(p.Y - 100)) <= 5, $"{p} is outside MOREZ"));
         Assert.True(spots.Select(p => (p.X, p.Y)).Distinct().Count() > 1, "every child landed on one tile");
+    }
+
+    /// <summary>A cave's black void (land 0x1AE-0x1B5, 0x1DB) carries no tile flags,
+    /// so the old IsPassable test took it for open ground and children were born in
+    /// it, out of reach and unable to walk out. Upstream asks whether the child can
+    /// stand there (CanMoveWalkTo); on void nothing can, so it goes on the gem.</summary>
+    [Fact]
+    public void NoChildIsBornInTheVoid()
+    {
+        var (world, stone) = Build(range: 5, count: 10, landTile: 0x01AF);
+
+        stone.SpawnChar!.RespawnNow();
+
+        var spots = stone.SpawnChar.SpawnedUids.Select(u => world.FindChar(u)!.Position).ToList();
+        Assert.NotEmpty(spots);
+        Assert.All(spots, p => Assert.Equal((100, 100), (p.X, p.Y)));
     }
 
     [Fact]

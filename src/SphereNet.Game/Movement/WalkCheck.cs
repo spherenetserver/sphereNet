@@ -26,7 +26,7 @@ namespace SphereNet.Game.Movement;
 /// </summary>
 public sealed class WalkCheck
 {
-    private const int PersonHeight = 16;
+    internal const int PersonHeight = 16;
     private const int StepHeight = 2;
 
     private const TileFlag ImpassableSurface = TileFlag.Impassable | TileFlag.Surface;

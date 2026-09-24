@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-24] - Magara boslugunda spawn, buyu etkisinde .edit, gemiden inme
+------------------------------------------------------------------------
+DUZELTME - Spawn olan yaratik sadece durabilecegi yere konur (Source-X
+           MoveNear cocuga CanMoveWalkTo sorar). Nokta testi kaba IsPassable
+           idi; magaranin siyah bosluk karolarini (land 0x1AE-0x1B5, 0x1DB -
+           hic bayragi yok) acik zemin sayiyordu; yaratiklar boslukta doguyor,
+           ulasilamiyor ve cikamiyordu.
+DUZELTME - Karakterde .edit, uzerindeki buyu etkilerini acar. Dunya uid'leri
+           yok (0) ve 0 gecerli sayiliyordu; secince "Object not found:
+           0x00000000" geliyordu. Script dialogu konusunu artik nesne olarak
+           tutar; ozellik dialogu ve butonlari GM'i degil etkinin kendisini
+           okur ve yazar.
+DUZELTME - Acik gemi iskelesine ya da ipe basan karakter kiyiya iner: baktigi
+           yonde gemi olmayan, durabilecegi ilk nokta, MAXSHIPPLANKTELEPORT
+           kareye kadar, duvardan gecmeden, takip eden petlerle (Source-X
+           CheckLocationEffects -> MoveToValidSpot). Sadece cift tiklama
+           calisiyordu; iskeleden rihtima kadar su gecilemiyordu.
+
 [2026-09-24] - Ates ve buyu itemleri, pet release, virtual gold, enticement, giris denemeleri, trigger'lar, custom house
 ------------------------------------------------------------------------
 DUZELTME - Shaft ve feather'a cift tiklamak fletching tool gibi Bowcraft

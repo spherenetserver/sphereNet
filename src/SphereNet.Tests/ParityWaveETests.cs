@@ -25,6 +25,14 @@ public class ParityWaveETests
         public string GetName() => "test";
     }
 
+    private sealed class CharConsole(Character ch) : SphereNet.Core.Interfaces.ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
+        public void SysMessage(string text) { }
+        public string GetName() => ch.Name;
+        public SphereNet.Core.Interfaces.IScriptObj? GetSourceChar() => ch;
+    }
+
     private static GameWorld CreateWorld()
     {
         var world = new GameWorld(LoggerFactory.Create(_ => { }));
@@ -177,7 +185,9 @@ public class ParityWaveETests
         var sword = world.CreateItem();
         owner.Equip(sword, Layer.OneHanded);
 
-        Assert.True(sword.TryExecuteCommand("BOUNCE", "", NullConsole.Instance));
+        // BOUNCE is the SOURCE character's ItemBounce (CItem.cpp:3584), so the wearer
+        // issues it here.
+        Assert.True(sword.TryExecuteCommand("BOUNCE", "", new CharConsole(owner)));
         Assert.Equal(pack.Uid, sword.ContainedIn);
         Assert.False(sword.IsEquipped);
     }

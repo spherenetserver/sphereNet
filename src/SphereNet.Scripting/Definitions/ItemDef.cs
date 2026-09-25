@@ -134,9 +134,19 @@ public sealed class ItemDef : BaseDef
                 Skill = HasSkill ? sk : SkillType.None;
                 break;
             case "REQSTR": int.TryParse(value, out int rs); ReqStr = rs; break;
-            case "DYE": Dye = value != "0"; break;
-            case "FLIP": Flip = value != "0"; break;
-            case "REPAIR": Repair = value != "0"; break;
+            // The CAN_I_* flag keys (CItemBase.cpp:1560-1655): no argument sets the
+            // bit, otherwise a non-zero number sets it and zero clears it - on the
+            // definition's CAN mask, which is where an instance reads them back.
+            case "DYE": Dye = ApplyCanFlagKey(value, CanFlags.I_Dye); break;
+            case "FLIP": Flip = ApplyCanFlagKey(value, CanFlags.I_Flip); break;
+            case "REPAIR": Repair = ApplyCanFlagKey(value, CanFlags.I_Repair); break;
+            case "ENCHANT": ApplyCanFlagKey(value, CanFlags.I_Enchant); break;
+            case "EXCEPTIONAL": ApplyCanFlagKey(value, CanFlags.I_Exceptional); break;
+            case "IMBUE": ApplyCanFlagKey(value, CanFlags.I_Imbue); break;
+            case "REFORGE": ApplyCanFlagKey(value, CanFlags.I_Reforge); break;
+            case "RETAINCOLOR": ApplyCanFlagKey(value, CanFlags.I_RetainColor); break;
+            case "MAKERSMARK": ApplyCanFlagKey(value, CanFlags.I_MakersMark); break;
+            case "RECYCLE": ApplyCanFlagKey(value, CanFlags.I_Recycle); break;
             case "HITS":
             case "MAXHITS":
             case "HITSMAX":
@@ -144,7 +154,7 @@ public sealed class ItemDef : BaseDef
                 HitsMin = hmin;
                 HitsMax = hmax > 0 ? hmax : hmin;
                 break;
-            case "REPLICATE": Replicate = value != "0"; break;
+            case "REPLICATE": Replicate = ApplyCanFlagKey(value, CanFlags.I_Replicate); break;
             case "TWOHANDS": TwoHands = value != "0"; break;
             case "TDATA1":
                 if (!ParseHexOrDecUInt(value, out uint td1) && value.Length > 0 &&
@@ -213,6 +223,17 @@ public sealed class ItemDef : BaseDef
                 UnknownKeyDiagnostics.Record("ITEMDEF", key);
                 break;
         }
+    }
+
+    /// <summary>One CAN_I_* flag key: set or clear <paramref name="flag"/> on
+    /// <see cref="Can"/> and report whether it ended up set.</summary>
+    private bool ApplyCanFlagKey(string value, CanFlags flag)
+    {
+        string s = value.Trim();
+        bool on = s.Length == 0 ||
+            !SphereNet.Core.Types.ScriptNumber.TryParseArgument(s, out long n) || n != 0;
+        Can = on ? Can | flag : Can & ~flag;
+        return on;
     }
 
     private void ParseEventsList(string value)

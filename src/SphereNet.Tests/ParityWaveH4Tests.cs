@@ -96,7 +96,8 @@ public class ParityWaveH4Tests
         pouch.AddItem(stackB);
 
         // Consume 5: stack A (3) is eaten whole, stack B loses 2.
-        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "0EED, 5", new NullConsole()));
+        // A resource list entry: quantity then resource (CResourceQty.cpp:55).
+        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "5 0EED", new NullConsole()));
         Assert.True(stackA.IsDeleted);
         Assert.Equal(8, stackB.Amount);
     }

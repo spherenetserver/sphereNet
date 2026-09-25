@@ -239,11 +239,13 @@ public sealed class LivePackCreationTests(ITestOutputHelper outp) : IDisposable
                 book = worn;
         Assert.NotNull(book);
 
-        // Paralyze is spell 38, so its bit lives in the second word.
+        // Paralyze is spell 38: bit 37 (spell n at bit n-1, CItem.cpp:4485), so it lives
+        // in the second word.
         Assert.True(book!.TryGetProperty("MORE2", out string more2));
         uint high = Convert.ToUInt32(more2, 16);
         int paralyze = (int)SpellType.Paralyze;
-        outp.WriteLine($"c_icer spellbook MORE2=0x{high:X}, paralyze is bit {paralyze - 32}");
-        Assert.NotEqual(0u, high & (1u << (paralyze - 32)));
+        outp.WriteLine($"c_icer spellbook MORE2=0x{high:X}, paralyze is bit {paralyze - 33}");
+        Assert.NotEqual(0u, high & (1u << (paralyze - 33)));
+        Assert.True(book.ContainsSpell(paralyze));
     }
 }

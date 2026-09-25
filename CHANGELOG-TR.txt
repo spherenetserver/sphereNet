@@ -4,6 +4,57 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - NPC AI: Source-X paritesi ve NPCAIEXTRAS maskesi
+------------------------------------------------------------------------
+YENI - NPCAIEXTRAS (sphere.ini, NPC basina TAG.OVERRIDE.NPCAIEXT): Source-X'te
+       olmayan NPC davranislari icin bayrak maskesi. 0 (varsayilan) Source-X
+       AI'ini calistirir. Bitler: 01 SMARTCASTER, 02 LOWHPRETREAT, 04
+       ALLYRALLY, 08 SURROUNDFLANK, 010 FLEETACTICS, 020 HIDDENPURSUIT, 040
+       LOSRECOVERY, 080 DETECTHIDDEN, 0100 ANIMALBACKOFF, 0200 FIGHTRESCAN,
+       0400 HURTSLOWDOWN, 0800 PETKEEPPACE, 01000 RETURNHOME, 02000
+       BANDAGEHEAL, 04000 IDLEFLAVOR, 08000 COMBATEXTRAS. SphereNet'in
+       referansa ekledigi davranislar artik bu bitlerin arkasinda.
+DEGISIKLIK - Hedef ve roller Source-X'i izler:
+       - kotu karmali human, animal, healer ve vendor beyinleri canavar gibi
+         avlanir; canavar ancak karma 0'in altindaysa kotudur; tok ve kotu
+         olmayan canavar kasabali gibi davranir.
+       - guard'lar criminal ya da kotu karakterlere (canavarlar dahil)
+         saldirir, kasaba disinda laf atar, isinlanip normal vurusla oldurur
+         (yildirim yok), magery guard isinlanir; noktasi korunmayan guard eve
+         donerken silinir.
+       - healer hayaleti her modda gorur, menzil/red/diriltme satirlarini
+         soyler ve buyu etkisiyle diriltir; bagli petleri atlar.
+       - sucu goren kasabali guard cagirir ve kacar.
+       - healer, banker, vendor ve stable beyinleri restock yapar, kutularini
+         bosaltir.
+       - yalnizca NPC_AI_LOOTING'li canavar, korunmayan yerde yagmalar; baska
+         NPC yerden esya toplamaz, kimse canta yaratmaz.
+       - her beyin icin NPC_AI_FOOD / INTFOOD: yemek 10'un ve %40'in altinda.
+       - SPEECH script'leri yerlesik kelimelerden once calisir; uydurma cevaplar
+         (isimden beyin, healer "heal", Ingilizce banker satirlari) kalkti;
+         BUY / SELL dukkani acar.
+DEGISIKLIK - Savas ve buyu Source-X'i izler: buyu listesinde rastgele yuruyus
+       ve NPC_FightCast uygunlugu; buyuden once yer degistirme ve gorunur olma;
+       summon dusmanin yanina iner; uydurma lich buyu listesi yok; nefes
+       yalnizca Dragon beyni, firlatma tasinan THROWOBJ ister; en iyi silah
+       NPC_GetWeaponUseScore ile; @NPCActFight RETURN 0 ozel saldirilari
+       atlar; @NPCActCast REF1 hedef degistirir.
+DEGISIKLIK - Tick, hareket ve petler Source-X'i izler: adim gecikmesi yurume/
+       kosuya gore, OVERRIDE.MOVEDELAY/MOVERATE/MOVESTYLE okunur; bostaki NPC
+       (150-DEX)/4..(150-DEX)/2 onda birde tekrar tick'lenir; NPC_Act_Idle
+       katmani (ozel eylem, eve donus, saklanma, dolasma); @NPCActWander
+       ARGN1/ARGN2; yurunecek yer kontrolu (ag, ates, tuzak, kapi);
+       PERSISTENTPATH basarisiz GOTO'yu tekrar dener; konusma durumu (doner,
+       bekler, takip eder); pet takip mesafesi 1, koruma NPC_Act_Guard ile,
+       yemek ve kiralik ucreti REGEN3 yemek tick'inde; @NPCSeeNewPlayer SRC
+       oyuncudur; @NPCLookAtChar RETURN 1/0 referans gibi; @NPCSpecialAction
+       yalnizca bosta.
+DUZELTME - NPCNOCASTTILL sunucu saatinin onda biri olarak karsilastirilir;
+           script'in buyu engeli hic calismiyordu.
+DUZELTME - Anlik AI durumu (nefes/paralyze bekleme, kombo, detect-hidden
+           zamanlayicisi) save'e yazilan ve script'in gordugu TAG'ler yerine
+           bellekte tutulur.
+
 [2026-09-25] - Spawner'lar @Timer RETURN 0 ile silinmez; fonksiyon argumaninda <<X>>
 ------------------------------------------------------------------------
 DUZELTME - @Timer'i RETURN 0 ile biten spawner artik silinmez. Timer'i spawn

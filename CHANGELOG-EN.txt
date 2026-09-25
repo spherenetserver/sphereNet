@@ -4,6 +4,54 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - NPC AI: Source-X parity and the NPCAIEXTRAS mask
+------------------------------------------------------------------------
+NEW - NPCAIEXTRAS (sphere.ini, per NPC TAG.OVERRIDE.NPCAIEXT): a flag mask for
+      NPC behaviours Source-X does not have. 0 (default) runs the Source-X AI.
+      Bits: 01 SMARTCASTER, 02 LOWHPRETREAT, 04 ALLYRALLY, 08 SURROUNDFLANK,
+      010 FLEETACTICS, 020 HIDDENPURSUIT, 040 LOSRECOVERY, 080 DETECTHIDDEN,
+      0100 ANIMALBACKOFF, 0200 FIGHTRESCAN, 0400 HURTSLOWDOWN, 0800
+      PETKEEPPACE, 01000 RETURNHOME, 02000 BANDAGEHEAL, 04000 IDLEFLAVOR,
+      08000 COMBATEXTRAS. The behaviours SphereNet had added over the
+      reference now sit behind these bits.
+CHANGE - Targets and roles follow Source-X:
+      - evil-karma human, animal, healer and vendor brains hunt like monsters;
+        a monster is evil only at karma below 0; a fed, non-evil monster acts
+        like a townsman.
+      - guards attack criminal or evil characters (monsters included), jeer
+        outside town, kill by teleport and a normal swing (no lightning), and
+        magery guards teleport; a guard whose post is not guarded is removed
+        when it heads home.
+      - healers see ghosts in any mode, speak the range/refusal/resurrect
+        lines and resurrect through the spell effect; bonded pets are skipped.
+      - a townsman who sees a crime calls the guards and flees.
+      - healer, banker, vendor and stable brains restock and empty their boxes.
+      - only a monster with NPC_AI_LOOTING, outside guarded ground, loots; no
+        other NPC picks up ground items and none creates a backpack.
+      - NPC_AI_FOOD / INTFOOD for every brain: eat below 10 food and 40%.
+      - SPEECH scripts run before the built-in keywords; the invented
+        keyword answers (brain from name, healer "heal", English banker lines)
+        are gone; BUY / SELL open the shop.
+CHANGE - Combat and magic follow Source-X: a random walk through the spell
+      list with NPC_FightCast suitability; reposition and reveal before a
+      cast; summons land at the enemy; no invented lich spell list; breath
+      for the Dragon brain only and throwing needs a carried THROWOBJ; best
+      pack weapon by NPC_GetWeaponUseScore; @NPCActFight RETURN 0 skips the
+      specials; @NPCActCast REF1 retargets.
+CHANGE - Tick, movement and pets follow Source-X: step delay by walk/run with
+      OVERRIDE.MOVEDELAY/MOVERATE/MOVESTYLE; idle NPCs re-tick at
+      (150-DEX)/4..(150-DEX)/2 tenths; the NPC_Act_Idle layer (special action,
+      go home, hiding, wander); @NPCActWander ARGN1/ARGN2; walk-here checks
+      (webs, fire, traps, gates); PERSISTENTPATH retries a failed GOTO;
+      talk state (face, wait, follow); pet follow distance 1, guard per
+      NPC_Act_Guard, food and hireling wage on the REGEN3 food tick;
+      @NPCSeeNewPlayer SRC is the player; @NPCLookAtChar RETURN 1/0 as the
+      reference; @NPCSpecialAction only from the idle pass.
+FIX - NPCNOCASTTILL is compared in tenths of the server clock; script cast
+      throttles never blocked.
+FIX - Runtime AI state (breath/paralyze cooldowns, combo, detect-hidden timer)
+      is kept in memory instead of TAGs that were saved and script-visible.
+
 [2026-09-25] - Spawners survive @Timer RETURN 0; nested <<X>> in function arguments
 ------------------------------------------------------------------------
 FIX - A spawner whose @Timer ends in RETURN 0 is no longer deleted. The spawn

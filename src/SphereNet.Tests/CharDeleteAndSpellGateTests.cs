@@ -9,7 +9,7 @@ using SphereNet.Game.World;
 namespace SphereNet.Tests;
 
 /// <summary>
-/// C5: MinCharDeleteTime — a character younger than the configured day count
+/// C5: MinCharDeleteTime — a character younger than the configured age (seconds)
 /// cannot be deleted from char select (Source-X Setup_Delete, 0x85 reason 3);
 /// Counsel+ accounts and legacy pre-stamp characters bypass.
 /// D2: spells in the unimplemented-school id space with no behaviour at all
@@ -42,10 +42,10 @@ public sealed class CharDeleteAndSpellGateTests
     {
         using var loggerFactory = TestHarness.CreateLoggerFactory();
         var (client, state, _, ch, world) = MakeCharDeleteHarness(loggerFactory);
-        int saved = GameClient.ServerMinCharDeleteDays;
+        long saved = GameClient.ServerMinCharDeleteSeconds;
         try
         {
-            GameClient.ServerMinCharDeleteDays = 7;
+            GameClient.ServerMinCharDeleteSeconds = 7L * 24 * 60 * 60;
             ch.CreatedUtcSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 3600; // 1 hour old
 
             client.HandleCharDelete(0, "pw");
@@ -55,7 +55,7 @@ public sealed class CharDeleteAndSpellGateTests
             Assert.Contains(packets, p => p.Span[0] == 0x85 && p.Span[1] == 3);
             Assert.NotNull(world.FindChar(ch.Uid)); // still alive
         }
-        finally { GameClient.ServerMinCharDeleteDays = saved; }
+        finally { GameClient.ServerMinCharDeleteSeconds = saved; }
     }
 
     [Fact]
@@ -63,10 +63,10 @@ public sealed class CharDeleteAndSpellGateTests
     {
         using var loggerFactory = TestHarness.CreateLoggerFactory();
         var (client, state, _, ch, world) = MakeCharDeleteHarness(loggerFactory);
-        int saved = GameClient.ServerMinCharDeleteDays;
+        long saved = GameClient.ServerMinCharDeleteSeconds;
         try
         {
-            GameClient.ServerMinCharDeleteDays = 7;
+            GameClient.ServerMinCharDeleteSeconds = 7L * 24 * 60 * 60;
             // Legacy save: no creation stamp → treated as old enough.
             ch.CreatedUtcSeconds = 0;
 
@@ -78,7 +78,7 @@ public sealed class CharDeleteAndSpellGateTests
             Assert.DoesNotContain(packets, p => p.Span[0] == 0x85);
             Assert.Null(world.FindChar(ch.Uid));
         }
-        finally { GameClient.ServerMinCharDeleteDays = saved; }
+        finally { GameClient.ServerMinCharDeleteSeconds = saved; }
     }
 
     [Fact]

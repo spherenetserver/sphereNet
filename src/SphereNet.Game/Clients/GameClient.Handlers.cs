@@ -96,11 +96,11 @@ public sealed partial class GameClient
         // Source-X Setup_Delete (CClientMsg.cpp:2961): a character younger than
         // MINCHARDELETETIME cannot be deleted; Counsel+ accounts bypass.
         // CreatedUtcSeconds == 0 (legacy save, pre-stamp) counts as old.
-        if (ServerMinCharDeleteDays > 0 && ch.CreatedUtcSeconds > 0 &&
+        if (ServerMinCharDeleteSeconds > 0 && ch.CreatedUtcSeconds > 0 &&
             _account.PrivLevel < PrivLevel.Counsel)
         {
             long ageSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ch.CreatedUtcSeconds;
-            if (ageSeconds < ServerMinCharDeleteDays * 86400L)
+            if (ageSeconds < ServerMinCharDeleteSeconds)
             {
                 RefuseCharDelete(3, charIndex, ch); // not old enough
                 return;

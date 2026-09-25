@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - Source-X units for CRIMINALTIMER / MINCHARDELETETIME; legacy MORE1 durability
+------------------------------------------------------------------------
+CHANGE - CRIMINALTIMER is in minutes (default 3) and MINCHARDELETETIME in
+         seconds (default 7*24*60*60), as Source-X reads them; the product form
+         is evaluated. They were seconds and days, so a Source-X ini gave a
+         3-second criminal flag. Update an existing sphere.ini:
+         CRIMINALTIMER=180 -> 3, MINCHARDELETETIME=7 -> 7*24*60*60.
+FIX - Armor, shields, clothing, weapons and wands from a Source-X / classic
+      Sphere save get their durability from MORE1 (low word current, high word
+      maximum) on load; they arrived with none.
+
 [2026-09-25] - Script surface long tail: characters, items, objects, triggers, SERV
 ------------------------------------------------------------------------
 Characters

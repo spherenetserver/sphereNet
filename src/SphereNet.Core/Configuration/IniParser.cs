@@ -97,6 +97,29 @@ public sealed class IniParser
     }
 
     /// <summary>
+    /// A number the reference ini may write as a product of Sphere numbers, e.g.
+    /// <c>MinCharDeleteTime=7*24*60*60</c> (Source-X evaluates the line with
+    /// GetArgLLVal). Each term follows the leading-zero-is-hex rule. Anything else,
+    /// or a product that overflows an int, keeps the default.
+    /// </summary>
+    public int GetIntProduct(string section, string key, int defaultValue = 0)
+    {
+        string? val = GetValue(section, key);
+        if (string.IsNullOrWhiteSpace(val)) return defaultValue;
+
+        long acc = 1;
+        foreach (string term in val.Split('*', StringSplitOptions.TrimEntries))
+        {
+            if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(term, out long factor))
+                return defaultValue;
+            acc *= factor;
+            if (acc is > int.MaxValue or < int.MinValue)
+                return defaultValue;
+        }
+        return (int)acc;
+    }
+
+    /// <summary>
     /// A FLAG key, in the form the reference ini writes them:
     /// <c>RevealFlags=01|02|04|08|010|040|080|0200</c>.
     ///

@@ -113,9 +113,10 @@ public sealed class SphereConfig
     /// shard's plaintext account file.</summary>
     public bool Md5Passwords { get; set; } = true;
     public int MaxCharsPerAccount { get; set; } = 5;
-    /// <summary>Days a character must exist before it can be deleted from the
-    /// char-select screen (classic 7-day rule). 0 disables the gate.</summary>
-    public int MinCharDeleteTime { get; set; } = 7;
+    /// <summary>SECONDS a character must exist before it can be deleted from the
+    /// char-select screen, as Source-X reads MINCHARDELETETIME (CServerConfig.cpp:1355,
+    /// value * MSECS_PER_SEC; default 7 days). 0 disables the gate.</summary>
+    public int MinCharDeleteTime { get; set; } = 7 * 24 * 60 * 60;
 
     // Game Mechanics
     /// <summary>Real seconds per in-game minute. Default 20 matches the previous
@@ -218,7 +219,9 @@ public sealed class SphereConfig
     public int PacketDeathAnimation { get; set; } = 0;
 
     // Crime & Notoriety
-    public int CriminalTimer { get; set; } = 180;
+    /// <summary>MINUTES a character stays criminal, as Source-X reads CRIMINALTIMER
+    /// (CServerConfig.cpp:1274, value * 60 * MSECS_PER_SEC; default 3).</summary>
+    public int CriminalTimer { get; set; } = 3;
     public int MurderMinCount { get; set; } = 5;
     // Source-X PLAYEREVIL / PLAYERNEUTRAL (m_iPlayerKarmaEvil/-Neutral): karma
     // thresholds below which a player renders red / grey with zero murders.
@@ -1025,7 +1028,8 @@ public sealed class SphereConfig
         AccApp = ini.GetInt(section, "AccApp", AccApp);
         Md5Passwords = ini.GetBool(section, "Md5Passwords", Md5Passwords);
         MaxCharsPerAccount = ini.GetInt(section, "MaxCharsPerAccount", MaxCharsPerAccount);
-        MinCharDeleteTime = ini.GetInt(section, "MinCharDeleteTime", MinCharDeleteTime);
+        // The reference ini writes it as a product ("7*24*60*60"); GetArgLLVal evaluates it.
+        MinCharDeleteTime = ini.GetIntProduct(section, "MinCharDeleteTime", MinCharDeleteTime);
 
         GameMinuteLength = ini.GetInt(section, "GameMinuteLength", GameMinuteLength);
         TimerCallMinutes = Math.Max(0, ini.GetInt(section, "TimerCall", TimerCallMinutes));

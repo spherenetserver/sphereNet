@@ -719,9 +719,18 @@ public sealed class WorldLoader
         // resolved def now that all defs are loaded, so a legacy instance matches a
         // script-created one. Definitions must already be built (they are — the
         // caller loads them before the save). Does not change the save format.
+        // With the type known, a legacy armor/weapon's durability moves out of MORE1
+        // into the hits fields (see Item.MigrateLegacyMore1Hits).
+        int more1Hits = 0;
         foreach (var obj in world.GetAllObjects())
             if (obj is Item it && !it.IsDeleted)
+            {
                 it.MaterializeDefinitionType();
+                if (it.MigrateLegacyMore1Hits())
+                    more1Hits++;
+            }
+        if (more1Hits > 0)
+            _logger.LogInformation("Legacy durability: {Count} armor/weapon item(s) had their hits moved from MORE1", more1Hits);
 
         // The container reverse index is maintained incrementally by the
         // Item.ContainedIn setter, but only when Item.ResolveWorld is wired — and

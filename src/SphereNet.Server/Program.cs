@@ -826,7 +826,7 @@ public static partial class Program
             (_config.FeatureTOL & SphereNet.Game.Trade.VirtualGold.FeatureBit) != 0;
         GameClient.ServerFeatureExtra = _config.FeatureExtra;
         GameClient.ServerMaxCharsPerAccount = Math.Clamp(_config.MaxCharsPerAccount, 1, 7);
-        GameClient.ServerMinCharDeleteDays = Math.Max(0, _config.MinCharDeleteTime);
+        GameClient.ServerMinCharDeleteSeconds = Math.Max(0, _config.MinCharDeleteTime);
         GameClient.ServerAutoResDisp = _config.AutoResDisp;
         GameClient.ServerToolTipMode = _config.ToolTipMode;
         GameClient.ServerChatFlags = _config.ChatFlags;
@@ -844,7 +844,7 @@ public static partial class Program
         // MakeCriminal() / TickNotorietyDecay() use the configured values.
         Character.HitpointPercentOnRez     = _config.HitpointPercentOnRez;
         Character.PacketDeathAnimationEnabled = _config.PacketDeathAnimation != 0;
-        Character.CriminalTimerSeconds     = _config.CriminalTimer;
+        Character.CriminalTimerSeconds     = _config.CriminalTimer * 60; // ini is minutes
         Character.MurderMinCount           = _config.MurderMinCount;
         Character.MurderDecayTimeSeconds   = _config.MurderDecayTime;
         Character.PlayerKarmaEvil          = _config.PlayerKarmaEvil;

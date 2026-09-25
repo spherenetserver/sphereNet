@@ -56,10 +56,10 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
     public static int ServerFeatureTOL { get; set; } = 0x01;
     public static int ServerFeatureExtra { get; set; }
     public static int ServerMaxCharsPerAccount { get; set; } = 7;
-    /// <summary>sphere.ini MinCharDeleteTime in DAYS: a character younger than
+    /// <summary>sphere.ini MinCharDeleteTime in SECONDS: a character younger than
     /// this cannot be deleted from the char-select screen (Source-X
     /// Setup_Delete; Counsel+ accounts bypass). 0 disables the gate.</summary>
-    public static int ServerMinCharDeleteDays { get; set; } = 7;
+    public static long ServerMinCharDeleteSeconds { get; set; } = 7L * 24 * 60 * 60;
     public static bool ServerAutoResDisp { get; set; } = true;
 
     /// <summary>sphere.ini DISPLAYELEMENTALRESISTANCE (Source-X, default 0): send the

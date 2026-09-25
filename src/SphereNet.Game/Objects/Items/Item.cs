@@ -874,6 +874,30 @@ public class Item : ObjBase
         }
     }
 
+    /// <summary>
+    /// A Source-X / classic Sphere save keeps an armor's or weapon's durability in
+    /// MORE1: current hits in the low word, the repair ceiling in the high word
+    /// (CItem.h m_itArmor / m_itWeapon, IsTypeArmorWeapon). SphereNet keeps them in
+    /// their own fields, so on load such an item arrived with no durability at all.
+    /// Moves the two words across when the item has no hits of its own, then clears
+    /// MORE1, which held nothing else for these types. Returns whether it did.
+    /// </summary>
+    public bool MigrateLegacyMore1Hits()
+    {
+        if (_more1 == 0 || HitsCur != 0 || HitsMax != 0)
+            return false;
+        if (!(IsWeaponType || IsArmorComponentType ||
+              ItemType is ItemType.Wand or ItemType.Clothing))
+            return false;
+
+        int cur = (int)(_more1 & 0xFFFF);
+        int max = (int)(_more1 >> 16);
+        _hitsCur = cur;
+        _hitsMax = max == 0 ? cur : max; // IC_HITS: an unset maximum follows the hits
+        _more1 = 0;
+        return true;
+    }
+
     /// <summary>Mark location for recall runes (Source-X m_morep).</summary>
     public void SetRuneMark(Point3D mark)
     {

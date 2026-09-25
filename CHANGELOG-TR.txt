@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - CRIMINALTIMER / MINCHARDELETETIME icin Source-X birimleri; eski MORE1 dayanikliligi
+------------------------------------------------------------------------
+DEGISIKLIK - CRIMINALTIMER dakika (varsayilan 3), MINCHARDELETETIME saniye
+             (varsayilan 7*24*60*60), Source-X'in okudugu gibi; carpim bicimi
+             hesaplanir. Once saniye ve gundu, Source-X ini'si 3 saniyelik
+             criminal veriyordu. Mevcut sphere.ini guncellenmeli:
+             CRIMINALTIMER=180 -> 3, MINCHARDELETETIME=7 -> 7*24*60*60.
+DUZELTME - Source-X / klasik Sphere save'lerinden gelen zirh, kalkan, kiyafet,
+           silah ve asalar dayanikliligini yuklemede MORE1'den alir (alt word
+           mevcut, ust word max); hic dayaniklilik olmadan geliyorlardi.
+
 [2026-09-25] - Script yuzeyi uzun kuyrugu: karakter, item, nesne, trigger, SERV
 ------------------------------------------------------------------------
 Karakter

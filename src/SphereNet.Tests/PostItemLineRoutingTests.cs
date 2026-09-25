@@ -87,11 +87,12 @@ public sealed class PostItemLineRoutingTests : IDisposable
     /// words - 1..31 in MORE1, 32..63 in MORE2 (CItem::IsSpellInBook).</summary>
     private static bool BookHas(Item book, SpellType spell)
     {
-        int id = (int)spell;
-        string key = id < 32 ? "MORE1" : "MORE2";
+        // Spell n sits at bit n-1 of the magery book (AddSpellbookSpell, CItem.cpp:4485).
+        int bit = (int)spell - 1;
+        string key = bit < 32 ? "MORE1" : "MORE2";
         Assert.True(book.TryGetProperty(key, out string raw));
         uint bits = Convert.ToUInt32(raw, 16);
-        return (bits & (1u << (id < 32 ? id : id - 32))) != 0;
+        return (bits & (1u << (bit < 32 ? bit : bit - 32))) != 0;
     }
 
     private static Item BookOf(SphereNet.Game.Objects.Characters.Character ch)

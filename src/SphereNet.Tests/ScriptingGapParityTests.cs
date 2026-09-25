@@ -238,10 +238,11 @@ public sealed class ScriptingGapParityTests : IDisposable
         item.TryGetProperty("SELFREPAIR", out string sr);
         Assert.Equal(("Archery", "100", "1", "3"), (b1, a1, r1, sr));
 
-        // A zero clears the instance value, so the definition shows through again.
+        // A zero is STORED on the instance (SetDefNum(..., false), CItem.cpp:3170), so it
+        // overrides the definition rather than letting it show through again.
         item.TrySetProperty("RARITY", "0");
         item.TryGetProperty("RARITY", out string r2);
-        Assert.Equal("4", r2);
+        Assert.Equal("0", r2);
     }
 
     [Fact]

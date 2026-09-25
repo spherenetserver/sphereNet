@@ -288,6 +288,38 @@ public class Item : ObjBase
     /// TOPOBJ.&lt;verb&gt; dispatch.</summary>
     internal ObjBase? ResolveTopObject() => GetTopLevelObj();
 
+    /// <summary>The container ITEM this one sits in, or null when it lies loose or is
+    /// worn - upstream's IsItemInContainer (CItem.h).</summary>
+    internal Item? ResolveContainerItem()
+    {
+        if (!_containedIn.IsValid || IsEquipped) return null;
+        return ResolveWorld?.Invoke()?.FindObject(_containedIn) as Item;
+    }
+
+    /// <summary>Source-X CItem::GetTopContainer (CItem.cpp:4162): climb the
+    /// container chain while the parent is an ITEM, stopping below a character.
+    /// Null when this item is not inside a container at all.</summary>
+    internal Item? ResolveTopContainer()
+    {
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return null;
+        Item cur = this;
+        for (int depth = 0; depth < 64; depth++)
+        {
+            if (!cur._containedIn.IsValid) break;
+            if (world.FindObject(cur._containedIn) is not Item parent || ReferenceEquals(parent, cur))
+                break;
+            cur = parent;
+        }
+        return ReferenceEquals(cur, this) ? null : cur;
+    }
+
+    // Upstream's attribute bits for the three flag keys (CItem.h:136-139). Spelled as
+    // raw values because this engine's enum names differ at those positions.
+    private const uint AttrQuestItem = 0x80000;
+    private const uint AttrNoDrop = 0x200000;
+    private const uint AttrNoTrade = 0x400000;
+
     /// <summary>The raw instance type field, before the lazy def-resolution the
     /// <see cref="ItemType"/> getter applies. Diagnostics only: raw-<c>_type</c>
     /// readers (IsStaticBlock, spellbook/book/map/ship/multi/container checks) see
@@ -1520,6 +1552,9 @@ public class Item : ObjBase
             return _link.IsValid ? world?.FindObject(_link) : null;
         if (head.Equals("TOPOBJ", StringComparison.OrdinalIgnoreCase))
             return ResolveTopObject();
+        // ICR_TOPCONT (CItem.cpp:2616): the outermost container item.
+        if (head.Equals("TOPCONT", StringComparison.OrdinalIgnoreCase))
+            return ResolveTopContainer();
         return base.ResolveRefHead(head);
     }
 
@@ -1982,6 +2017,17 @@ public class Item : ObjBase
         if (TryGetStoneProperty(upper, out value))
             return true;
 
+        // ADDSPELL <spell> as a READ is "is this spell in the book" (IC_ADDSPELL,
+        // CItem.cpp:2759): the key head is matched on its first eight characters and
+        // the rest, past any separator, names the spell.
+        if (upper.Length > 8 && upper.StartsWith("ADDSPELL", StringComparison.Ordinal))
+        {
+            string spellArg = key[8..].TrimStart('.', ' ', '(', ',', '\t').TrimEnd(')');
+            int askedSpell = ResolveSpellArgument(spellArg);
+            value = askedSpell > 0 && ContainsSpell(askedSpell) ? "1" : "0";
+            return true;
+        }
+
         // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...) are
         // tag-backed like the SLAYER pair; ITEMDEF-level values live in the
         // def-tags and are read by the combat engine's fallback.
@@ -2055,7 +2101,12 @@ public class Item : ObjBase
                     : typeDef?.Type ?? ItemType.Normal);
                 return true;
             }
-            case "AMOUNT": value = _amount.ToString(); return true;
+            // On a spawner AMOUNT is the component's capacity (IC_AMOUNT, CItem.cpp:2764
+            // -> CCSpawn::GetAmount), whatever the item's own pile count says; a
+            // capacity raised through SPAWNMAX read back as the stale item field.
+            case "AMOUNT":
+                value = (SpawnChar?.MaxCount ?? SpawnItem?.MaxCount ?? _amount).ToString();
+                return true;
             case "MAXAMOUNT": value = MaxAmount.ToString(); return true; // 0 for non-stackable
             case "BASEWEIGHT": value = Weight.ToString(); return true; // Source-X m_weight: per-unit tenths of a stone
             case "CONT": value = _containedIn.IsValid ? $"0{_containedIn.Value:X}" : ""; return true;
@@ -2110,6 +2161,52 @@ public class Item : ObjBase
                 value = useDef != null ? $"0{(ushort)useDef.CanUse:X}" : "0";
                 return true;
             }
+            // IC_AC / IC_AR (CItem.cpp:2754): the armour's live defense - 0 for anything
+            // that is not armour (Armor_GetDefense, CItem.cpp:4898).
+            case "AC":
+            case "AR":
+                value = (IsTypeArmor(EffectiveType)
+                    ? Skills.Information.InfoSkillExtensions.GetArmorDefense(this)
+                    : 0).ToString();
+                return true;
+            // IC_REPAIRPERCENT -> Armor_GetRepairPercent (CItem.cpp:5766): 100 when the
+            // item has no maximum or is above it, else the current share of it.
+            case "REPAIRPERCENT":
+            {
+                int rpMax = HitsMax, rpCur = HitsCur;
+                value = (rpMax == 0 || rpMax < rpCur ? 100 : rpCur * 100 / rpMax).ToString();
+                return true;
+            }
+            // IC_NODROP / IC_NOTRADE / IC_QUESTITEM (CItem.cpp:2786-2794): the masked
+            // attribute bit itself, as a decimal number (0 when clear).
+            case "NODROP": value = ((uint)Attributes & AttrNoDrop).ToString(); return true;
+            case "NOTRADE": value = ((uint)Attributes & AttrNoTrade).ToString(); return true;
+            case "QUESTITEM": value = ((uint)Attributes & AttrQuestItem).ToString(); return true;
+            // IC_TOPCONT (CItem.cpp:2804 -> GetTopContainer, :4162): the outermost
+            // CONTAINER ITEM holding this one, stopping below a character; 0 when the
+            // item is not inside a container at all.
+            case "TOPCONT":
+            {
+                var topCont = ResolveTopContainer();
+                value = topCont != null ? $"0{topCont.Uid.Value:X}" : "0";
+                return true;
+            }
+            // IC_CONTGRID (CItem.cpp:2813): only an item that sits in a container has
+            // a grid slot; anything else does not answer the key.
+            case "CONTGRID":
+                if (ResolveContainerItem() == null) return false;
+                value = _containerGridIndex.ToString();
+                return true;
+            // IC_CONTP (CItem.cpp:2818): the point inside the container, "x,y".
+            case "CONTP":
+                if (ResolveContainerItem() == null) return false;
+                value = $"{Position.X},{Position.Y}";
+                return true;
+            case "LINK.ISVALID":
+                // IC_LINK "LINK.ISVALID" (CItem.cpp:2887): answered even when the link
+                // names nothing, which is exactly when a script asks.
+                value = _link.IsValid && ResolveWorld?.Invoke()?.FindObject(_link) is { IsDeleted: false } ? "1" : "0";
+                return true;
             case "RUNE_X": value = _moreP.X.ToString(); return true;
             case "RUNE_Y": value = _moreP.Y.ToString(); return true;
             case "RUNE_Z": value = _moreP.Z.ToString(); return true;
@@ -2124,8 +2221,18 @@ public class Item : ObjBase
             case "OWNEDBY": // Source-X IC_OWNEDBY: a base-def string, "" when unset
                 value = OwnedBy; return true;
             case "USESREMAINING":
-            case "USESCUR": value = _usesRemaining.ToString(); return true; // Source-X IC_USESCUR alias
-            case "USESMAX": value = (TryGetTag("USESMAX", out string? um) ? um : "0") ?? "0"; return true;
+            // IC_USESCUR / IC_USESMAX (CItem.cpp:2732): GetDefKey(key, true) - the
+            // item's own value, else its ITEMDEF's - as a decimal number.
+            case "USESCUR":
+                value = (_usesRemaining != 0
+                    ? _usesRemaining
+                    : ParseBaseDefNumber(ResolveDefinition()?.TagDefs.Get("USESCUR"))).ToString();
+                return true;
+            case "USESMAX":
+                value = ParseBaseDefNumber(TryGetTag("USESMAX", out string? um) && !string.IsNullOrEmpty(um)
+                    ? um
+                    : ResolveDefinition()?.TagDefs.Get("USESMAX")).ToString();
+                return true;
             case "DECAY":
             {
                 if (DecayTime <= 0) { value = "-1"; return true; }
@@ -2151,7 +2258,22 @@ public class Item : ObjBase
             // to the D-prefix decimal handler and resolved to 0.
             case "DISPID":
             case "ID": value = FormatDispId(); return true;
-            case "DISPIDDEC": value = BaseId.ToString(); return true;
+            // IC_DISPIDDEC (CItem.cpp:2830): the DISPLAY id in decimal, not the base -
+            // the same graphic DISPID names - and for coins the pile graphic the
+            // amount picks: the definition's id, +1 from two coins, +2 from six.
+            case "DISPIDDEC":
+            {
+                int dispDec = DispIdFull;
+                if (EffectiveType == ItemType.Coin)
+                {
+                    var coinDef = ResolveDefinition();
+                    dispDec = coinDef != null && coinDef.DispIndex != 0 ? coinDef.DispIndex : BaseId;
+                    if (_amount >= 2)
+                        dispDec += _amount < 6 ? 1 : 2;
+                }
+                value = dispDec.ToString();
+                return true;
+            }
             case "DIR":
             case "DIRECTION": value = Direction.ToString(); return true;
             case "TOPOBJ":
@@ -2576,14 +2698,44 @@ public class Item : ObjBase
                 case "DAM.LO": value = AttackLo.ToString(); return true;
                 case "DAM.HI": value = AttackHi.ToString(); return true;
                 case "SPEED": value = def.Speed.ToString(); return true;
-                case "SKILL": value = ((int)def.Skill).ToString(); return true;
+                // IBC_SKILL (CItemBase.cpp:1244): the declared skill, else the one the
+                // weapon type implies, else none.
+                case "SKILL":
+                    value = ((int)(def.Skill != SkillType.None ? def.Skill : WeaponTypeSkill(EffectiveType))).ToString();
+                    return true;
                 case "REQSTR": value = def.ReqStr.ToString(); return true;
                 case "RANGE": value = def.RangeMin == def.RangeMax ? def.RangeMin.ToString() : $"{def.RangeMin},{def.RangeMax}"; return true;
                 case "RANGEH": value = def.RangeMax.ToString(); return true;
                 case "RANGEL": value = def.RangeMin.ToString(); return true;
-                case "DYE": value = def.Dye ? "1" : "0"; return true;
-                case "FLIP": value = def.Flip ? "1" : "0"; return true;
-                case "REPAIR": value = def.Repair ? "1" : "0"; return true;
+                // The CAN_I_* flag keys read the masked bit of the definition's CAN
+                // (CItemBase.cpp:1208-1291): decimal for most, hex for FLIP / REPAIR /
+                // REPLICATE, as upstream formats each one.
+                case "DYE": value = ((uint)DefCanBit(def, CanFlags.I_Dye, def.Dye)).ToString(); return true;
+                case "FLIP": value = $"0{(uint)DefCanBit(def, CanFlags.I_Flip, def.Flip):X}"; return true;
+                case "REPAIR": value = $"0{(uint)DefCanBit(def, CanFlags.I_Repair, def.Repair):X}"; return true;
+                case "REPLICATE": value = $"0{(uint)DefCanBit(def, CanFlags.I_Replicate, def.Replicate):X}"; return true;
+                case "ENCHANT": value = ((uint)DefCanBit(def, CanFlags.I_Enchant)).ToString(); return true;
+                case "EXCEPTIONAL": value = ((uint)DefCanBit(def, CanFlags.I_Exceptional)).ToString(); return true;
+                case "IMBUE": value = ((uint)DefCanBit(def, CanFlags.I_Imbue)).ToString(); return true;
+                case "MAKERSMARK": value = ((uint)DefCanBit(def, CanFlags.I_MakersMark)).ToString(); return true;
+                case "RECYCLE": value = ((uint)DefCanBit(def, CanFlags.I_Recycle)).ToString(); return true;
+                case "REFORGE": value = ((uint)DefCanBit(def, CanFlags.I_Reforge)).ToString(); return true;
+                case "RETAINCOLOR": value = ((uint)DefCanBit(def, CanFlags.I_RetainColor)).ToString(); return true;
+                // The CBaseBaseDef string / number keys (CBase.cpp:122-134): "" or 0 when
+                // the definition does not set them, rather than an unknown key.
+                case "CATEGORY": case "DESCRIPTION": case "SUBSECTION":
+                case "ABILITYPRIMARY": case "ABILITYSECONDARY":
+                    value = def.TagDefs.Get(upper) ?? "";
+                    return true;
+                case "EXPANSION": case "VELOCITY": case "NAMELOC":
+                    value = ParseBaseDefNumber(def.TagDefs.Get(upper)).ToString();
+                    return true;
+                case "TFLAGS": value = $"0{def.TFlags:X}"; return true;                      // IBC_TFLAGS
+                case "RESMAKE": value = def.ResMake; return true;                             // IBC_RESMAKE
+                case "RESLEVEL": value = def.ResLevel.ToString(); return true;                // OBC_RESLEVEL
+                case "RESDISPDNHUE": value = $"0{def.ResDispDnHue:X}"; return true;         // OBC_RESDISPDNHUE
+                // IBC_DUPELIST (CItemBase.cpp:1190): the alternate graphics, "0id,0id".
+                case "DUPELIST": value = string.Join(",", def.DupeIds.Select(d => $"0{d:x}")); return true;
                 case "TWOHANDS": value = def.TwoHands ? "1" : "0"; return true;
                 case "ISARMOR": value = (DefenseLo > 0 || DefenseHi > 0) ? "1" : "0"; return true;
                 case "ISWEAPON": value = (AttackLo > 0 || AttackHi > 0) ? "1" : "0"; return true;
@@ -2619,6 +2771,16 @@ public class Item : ObjBase
             var contObj = ResolveWorld?.Invoke()?.FindObject(_containedIn);
             if (contObj != null)
                 return contObj.TryGetProperty(sub, out value);
+            value = "";
+            return true;
+        }
+        // TOPCONT.<prop> (IC_TOPCONT with a '.', CItem.cpp:2806): the same chained
+        // read on the outermost container item.
+        if (upper.StartsWith("TOPCONT.", StringComparison.Ordinal))
+        {
+            var topCont = ResolveTopContainer();
+            if (topCont != null)
+                return topCont.TryGetProperty(key["TOPCONT.".Length..], out value);
             value = "";
             return true;
         }
@@ -2757,7 +2919,12 @@ public class Item : ObjBase
                 // Per-item stack cap (Source-X SetMaxAmount). The getter gates on
                 // stackability, so a value on a non-stackable item is inert. A
                 // negative/blank value clears the override back to the global default.
-                if (ScriptNumber.TryParseToken(value, out long maxAmtRaw) && maxAmtRaw >= 0)
+                // A zero is a SetDefNum that DELETES the key (SetMaxAmount,
+                // CItem.cpp:2264 - fZero defaults to true), putting the item back on the
+                // global cap; it used to become a cap of zero. (Upstream also refuses the
+                // write on a non-stackable item; the getter already answers 0 for one, so
+                // the stored value stays inert either way.)
+                if (ScriptNumber.TryParseToken(value, out long maxAmtRaw) && maxAmtRaw > 0)
                     _maxAmountOverride = (int)Math.Min(maxAmtRaw, ushort.MaxValue);
                 else
                     _maxAmountOverride = null;
@@ -2820,13 +2987,35 @@ public class Item : ObjBase
             case "BASEWEIGHT":
                 // Source-X sets m_weight on the instance (per-unit tenths). A
                 // negative/blank value clears the override back to the def weight.
-                if (int.TryParse(value, out int bwv) && bwv >= 0) _weightOverride = bwv;
+                // GetArgWVal (CItem.cpp:3265): a Sphere number, so a hex or summed
+                // weight is honoured instead of clearing the override.
+                if (ScriptNumber.TryParseArgument(value, out long bwv) && bwv >= 0)
+                    _weightOverride = (int)Math.Min(bwv, ushort.MaxValue);
                 else _weightOverride = null;
                 return true;
-            case "HITS":
+            // HITPOINTS sets the current AND the maximum durability (IC_HITPOINTS,
+            // CItem.cpp:3343: m_wHitsCur = m_wHitsMax = value). Writing only the current
+            // half left every piece whose @Create rolled HITPOINTS with a maximum of 0 -
+            // which the wear code reads as "has no durability", so it never wore out and
+            // showed no condition. Upstream refuses the key on anything but armour and
+            // weapons because there the two words ARE MORE1; durability has its own
+            // storage here, so no other type's data can be overwritten by it.
             case "HITPOINTS":
+                if (ScriptNumber.TryParseToken(value, out long hp) && hp is >= int.MinValue and <= int.MaxValue)
+                {
+                    HitsCur = (int)hp;
+                    HitsMax = (int)hp;
+                }
+                return true;
+            // HITS sets the current value, and a maximum that was never set follows it
+            // (IC_HITS, CItem.cpp:3334).
+            case "HITS":
                 if (ScriptNumber.TryParseToken(value, out long hits) && hits is >= int.MinValue and <= int.MaxValue)
+                {
                     HitsCur = (int)hits;
+                    if (HitsMax == 0)
+                        HitsMax = HitsCur;
+                }
                 return true;
             case "MAXHITS":
             case "HITSMAX":
@@ -2909,20 +3098,24 @@ public class Item : ObjBase
             case "MOREB":
                 _moreB = ParseHexOrDecUInt(value);
                 return true;
+            // The half-word keys read a Sphere number (GetArgWVal, CItem.cpp:3414-3428),
+            // so "0100" is hex 0x100 and <eval> sums work; ushort.TryParse read the first
+            // as decimal 100 and refused the second outright. The value is truncated to a
+            // word the way the reference's cast truncates it.
             case "MORE1H":
-                if (ushort.TryParse(value, out ushort m1h))
+                if (TryParseWordArg(value, out ushort m1h))
                     _more1 = (_more1 & 0x0000FFFF) | ((uint)m1h << 16);
                 return true;
             case "MORE1L":
-                if (ushort.TryParse(value, out ushort m1l))
+                if (TryParseWordArg(value, out ushort m1l))
                     _more1 = (_more1 & 0xFFFF0000) | m1l;
                 return true;
             case "MORE2H":
-                if (ushort.TryParse(value, out ushort m2h))
+                if (TryParseWordArg(value, out ushort m2h))
                     _more2 = (_more2 & 0x0000FFFF) | ((uint)m2h << 16);
                 return true;
             case "MORE2L":
-                if (ushort.TryParse(value, out ushort m2l))
+                if (TryParseWordArg(value, out ushort m2l))
                     _more2 = (_more2 & 0xFFFF0000) | m2l;
                 return true;
             // On a live spawner MOREP/MOREX/MOREY/MOREZ are its TIMELO/TIMEHI/MAXDIST
@@ -2948,8 +3141,9 @@ public class Item : ObjBase
                     _moreP = new Point3D(_moreP.X, _moreP.Y, (sbyte)mz, _moreP.Map);
                 ApplyLiveSpawnMoreP();
                 return true;
-            case "MOREM":
-                if (byte.TryParse(value, out byte mm)) _moreP = new Point3D(_moreP.X, _moreP.Y, _moreP.Z, mm);
+            case "MOREM": // GetArgUCVal (CItem.cpp:3430)
+                if (ScriptNumber.TryParseArgument(value, out long mm))
+                    _moreP = new Point3D(_moreP.X, _moreP.Y, _moreP.Z, (byte)mm);
                 return true;
             case "LINK":
                 _link = new Serial(ParseHexOrDecUInt(value));
@@ -2973,11 +3167,24 @@ public class Item : ObjBase
                 return true;
             case "USESREMAINING":
             case "USESCUR":
-                if (ushort.TryParse(value, out ushort ur)) _usesRemaining = ur;
+                // SetDefNum(GetArgVal) (CItem.cpp:3162): a Sphere number, hex and sums
+                // included.
+                if (TryParseWordArg(value, out ushort ur)) _usesRemaining = ur;
                 return true;
             case "USESMAX":
-                SetTag("USESMAX", value);
+            {
+                // IC_USESMAX (CItem.cpp:3201): stored as a number, and an item that has
+                // no USESCUR of its own or from its ITEMDEF starts full - the charges
+                // counter follows the maximum it was just given.
+                long usesMax = ParseBaseDefNumber(value);
+                SetTag("USESMAX", usesMax.ToString());
+                if (_usesRemaining == 0 &&
+                    string.IsNullOrEmpty(ResolveDefinition()?.TagDefs.Get("USESCUR")))
+                {
+                    _usesRemaining = (ushort)Math.Clamp(usesMax, 0, ushort.MaxValue);
+                }
                 return true;
+            }
             case "DECAY":
                 // Only when DECAYMS has not already supplied the precise value: a save
                 // carries both, and the millisecond field is the accurate one.
@@ -3096,6 +3303,39 @@ public class Item : ObjBase
             case "CONTGRID":
                 if (byte.TryParse(value, out byte gv)) _containerGridIndex = gv;
                 return true;
+            // IC_CONTP as an assignment (CItem.cpp:3287): the same placement as the verb
+            // form, which is the only one that was understood.
+            case "CONTP":
+                return TrySetContainedPoint(value);
+            // IC_NODROP / IC_NOTRADE / IC_QUESTITEM (CItem.cpp:3174-3199): no argument
+            // sets the flag, otherwise a non-zero number sets it and zero clears it.
+            case "NODROP":
+            case "NOTRADE":
+            case "QUESTITEM":
+            {
+                uint flag = upper switch
+                {
+                    "NODROP" => AttrNoDrop,
+                    "NOTRADE" => AttrNoTrade,
+                    _ => AttrQuestItem,
+                };
+                bool on = string.IsNullOrWhiteSpace(value) || ParseBaseDefNumber(value) != 0;
+                Attributes = on
+                    ? (ObjAttributes)((uint)Attributes | flag)
+                    : (ObjAttributes)((uint)Attributes & ~flag);
+                return true;
+            }
+            // The door keys are SetDefNum'd numbers (CItem.cpp:3167-3170). DOOROPENID
+            // is the door's other graphic and has its own typed carrier; the sounds are
+            // read by the door itself (GetDoorSound).
+            case "DOOROPENID":
+            {
+                long doorId = ParseBaseDefNumber(value);
+                if (doorId == 0 && value.Any(char.IsLetter) && ResolveDefName != null)
+                    doorId = ResolveDefName(value.Trim());
+                DoorOpenId = (ushort)Math.Clamp(doorId, 0, ushort.MaxValue);
+                return true;
+            }
 
             // Sphere spawner properties — round-trip as TAGs and apply to the
             // active spawn component (char OR item) so the interval / scatter range
@@ -3493,6 +3733,7 @@ public class Item : ObjBase
         // Command first, property-set fallback; an invalid ref swallows the
         // line like Sphere does.
         if (upper.StartsWith("TOPOBJ.", StringComparison.Ordinal) ||
+            upper.StartsWith("TOPCONT.", StringComparison.Ordinal) ||
             upper.StartsWith("CONT.", StringComparison.Ordinal) ||
             upper.StartsWith("LINK.", StringComparison.Ordinal))
         {
@@ -3531,18 +3772,9 @@ public class Item : ObjBase
             // a no-op like the reference. GM item-creation scripts use it to
             // lay out contents (NEW.CONTP 44,121).
             case "CONTP":
-            {
                 if (!_containedIn.IsValid) return true;
-                var coords = args.Split([',', ' ', '\t'],
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (coords.Length >= 2 &&
-                    short.TryParse(coords[0], out short cpx) &&
-                    short.TryParse(coords[1], out short cpy))
-                {
-                    Position = new Point3D(cpx, cpy, Position.Z, Position.Map);
-                }
+                TrySetContainedPoint(args);
                 return true;
-            }
             // Clone this item (optionally <n> times) into the same location.
             case "DUPE":
             {
@@ -3618,8 +3850,10 @@ public class Item : ObjBase
             // the item is removed when the whole amount is used up.
             case "CONSUME":
             {
+                // The count is GetArgWVal (CItem.cpp:3597): a Sphere number, so "010" is
+                // sixteen and a sum works; int.TryParse read the first as ten.
                 int n = 1;
-                if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args.Trim(), out int reqN) && reqN > 0)
+                if (!string.IsNullOrWhiteSpace(args) && TryParseWordArg(args, out ushort reqN))
                     n = reqN;
                 if (n >= _amount)
                     RemoveFromWorld();
@@ -3632,48 +3866,78 @@ public class Item : ObjBase
             // container's contents, recursing into sub-containers.
             case "CONTCONSUME":
             {
-                var p = args.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (p.Length == 0) return true;
-
-                ushort wantedId = ResolveDefName?.Invoke(p[0]) ?? 0;
-                if (wantedId == 0)
+                // The argument is a whole resource LIST (CResourceQtyArray::Load,
+                // CResourceQty.cpp:181): comma-separated entries, each "qty name" or
+                // "name qty" or a bare name meaning one - "5 i_ingot_iron, i_log 3".
+                // Only a single "<id>, <n>" pair was read here, so the leading-quantity
+                // form - the one the packs' crafting code writes - consumed nothing,
+                // and every entry after the first was ignored. Only a container
+                // answers (CItem.cpp:3601).
+                if (!IsContainerItemType(EffectiveType)) return true;
+                foreach (var res in SphereNet.Scripting.Resources.ResourceQtyList.Parse(args))
                 {
-                    string idStr = p[0];
-                    if (idStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) idStr = idStr[2..];
-                    else if (idStr.StartsWith('0') && idStr.Length > 1) idStr = idStr[1..];
-                    ushort.TryParse(idStr, System.Globalization.NumberStyles.HexNumber, null, out wantedId);
+                    if (res.Quantity <= 0) continue;
+                    ItemType wantedType = res.Name.StartsWith("t_", StringComparison.OrdinalIgnoreCase)
+                        ? ParseItemType(res.Name)
+                        : ItemType.Invalid;
+                    ushort wantedId = 0;
+                    if (wantedType == ItemType.Invalid)
+                    {
+                        wantedId = ResolveDefName?.Invoke(res.Name) ?? 0;
+                        if (wantedId == 0 && ScriptNumber.TryParseToken(res.Name, out long idNum) &&
+                            idNum is > 0 and <= ushort.MaxValue)
+                            wantedId = (ushort)idNum;
+                        if (wantedId == 0) continue;
+                    }
+                    int need = (int)Math.Min(res.Quantity, int.MaxValue);
+                    ConsumeFromContents(this, wantedId, wantedType, ref need);
                 }
-                if (wantedId == 0) return true;
-
-                int need = p.Length > 1 && int.TryParse(p[1], out int n) && n > 0 ? n : 1;
-                ConsumeFromContents(this, wantedId, ref need);
                 return true;
             }
 
-            // Source-X CIV_BOUNCE: put the item back into its top-level
-            // owner's backpack (a loose ground item stays put).
+            // CIV_BOUNCE (CItem.cpp:3584): the SOURCE character's ItemBounce
+            // (CCharAct.cpp:3076) - into SRC's pack, or at SRC's feet when the pack
+            // cannot take it. It used to climb to the item's top-level owner instead,
+            // so the pack's commonest idiom, NEWITEM then NEW.BOUNCE, did nothing: a
+            // freshly made item has no owner to climb to and was left floating. No
+            // character source, no bounce.
             case "BOUNCE":
             {
+                var bouncer = ResolveSourceCharacter(source);
                 var world = ResolveWorld?.Invoke();
-                if (world == null) return true;
-                ObjBase cur = this;
-                for (int depth = 0; depth < 64; depth++)
+                if (bouncer == null || world == null) return false;
+                var pack = bouncer.Backpack;
+                if (pack != null && _containedIn == pack.Uid && !IsEquipped)
+                    return true;
+                // CChar::CanCarry (CCharStatus.cpp:264): a GM always can, and an item
+                // already worn or dragged adds no weight it is not already counting.
+                bool fits = bouncer.PrivLevel >= PrivLevel.GM ||
+                    (IsEquipped || EquipLayer == Layer.Dragging
+                        ? (long)bouncer.GetTotalWeightTenths() <= (long)Math.Max(0, bouncer.MaxWeight) * WeightUnits
+                        : bouncer.CanCarry(this));
+                bool toPack = pack != null && !ReferenceEquals(pack, this) && fits;
+                // Overweight: an item worn on a body layer stays worn rather than
+                // falling to the ground (CCharAct.cpp:3129).
+                if (!toPack && IsEquipped && EquipLayer > Layer.None && EquipLayer <= Layer.Legs)
+                    return false;
+
+                if (_containedIn.IsValid)
                 {
-                    if (cur is not Item ci || !ci.ContainedIn.IsValid) break;
-                    var parent = world.FindObject(ci.ContainedIn);
-                    if (parent == null) break;
-                    cur = parent;
+                    var parentObj = world.FindObject(_containedIn);
+                    if (IsEquipped && parentObj is Character wearer && wearer.GetEquippedItem(EquipLayer) == this)
+                        wearer.Unequip(EquipLayer);
+                    else if (parentObj is Item oldParent)
+                        oldParent.RemoveItem(this);
                 }
-                if (cur is Character owner && owner.Backpack != null && owner.Backpack != this)
+                else if (toPack)
                 {
-                    if (IsEquipped && ContainedIn == owner.Uid)
-                        owner.Unequip(EquipLayer);
-                    var oldParent = ContainedIn.IsValid ? world.FindObject(ContainedIn) as Item : null;
-                    oldParent?.RemoveItem(this);
-                    IsEquipped = false;
-                    if (!owner.Backpack.TryAddItem(this))
-                        world.PlaceItemWithDecay(this, owner.Position);
+                    world.HideFromSector(this);   // off the ground before it goes in
                 }
+                if (IsDeleted) return false;
+                IsEquipped = false;
+                if (toPack && pack!.TryAddItem(this))
+                    return true;
+                world.PlaceItemWithDecay(this, bouncer.Position);
                 return true;
             }
 
@@ -3734,12 +3998,20 @@ public class Item : ObjBase
 
             // Source-X CIV_DECAY: arm (or re-arm) the decay timer — args are
             // seconds; empty falls back to the shard default decay window.
+            // The argument is in TENTHS of a second (SetDecayTimeD, CItem.h:716 ->
+            // SetDecayTime, CItem.cpp:1478): 0 or none means the item's default decay
+            // when it lies loose and no decay at all when it is contained, and a
+            // negative value clears the decay. It was read as whole seconds, so
+            // "DECAY 600" rotted an item in ten minutes instead of one.
             case "DECAY":
             {
-                long decayMs = World.GameWorld.DefaultDecayTimeMs;
-                if (!string.IsNullOrWhiteSpace(args) && long.TryParse(args.Trim(), out long decSec) && decSec > 0)
-                    decayMs = decSec * 1000L;
-                AssignDecay(Environment.TickCount64 + decayMs);
+                long tenths = 0;
+                if (!string.IsNullOrWhiteSpace(args))
+                    ScriptNumber.TryParseArgument(args.Trim(), out tenths);
+                long decayMs = tenths * 100L;
+                if (decayMs == 0)
+                    decayMs = _containedIn.IsValid ? -1 : World.GameWorld.DefaultDecayTimeMs;
+                SetDecayTime(decayMs);
                 return true;
             }
             case "FIXWEIGHT":
@@ -4798,12 +5070,17 @@ public class Item : ObjBase
     /// <summary>Recursive stack consume by base id (Source-X ContentConsume):
     /// walks the container tree eating stacks until <paramref name="need"/>
     /// is satisfied.</summary>
-    private static void ConsumeFromContents(Item container, ushort wantedId, ref int need)
+    /// <param name="wantedType">A TYPEDEF resource matches by item type instead of
+    /// id (IsResourceMatch); <see cref="ItemType.Invalid"/> when matching by id.</param>
+    private static void ConsumeFromContents(Item container, ushort wantedId, ItemType wantedType, ref int need)
     {
         foreach (var child in container.Contents.ToArray())
         {
             if (need <= 0) return;
-            if (child.BaseId == wantedId)
+            bool match = wantedType != ItemType.Invalid
+                ? child.ItemType == wantedType
+                : child.BaseId == wantedId;
+            if (match)
             {
                 int take = Math.Min(need, child.Amount);
                 need -= take;
@@ -4814,7 +5091,7 @@ public class Item : ObjBase
             }
             else if (child.Contents.Count > 0)
             {
-                ConsumeFromContents(child, wantedId, ref need);
+                ConsumeFromContents(child, wantedId, wantedType, ref need);
             }
         }
     }
@@ -5526,12 +5803,30 @@ public class Item : ObjBase
     private static readonly HashSet<string> BaseDefStringKeys = new(StringComparer.Ordinal)
     {
         "BONUSSKILL1", "BONUSSKILL2", "BONUSSKILL3", "BONUSSKILL4", "BONUSSKILL5",
+        // The rest of the SetDefStr family (CItem.cpp:3121-3140). The three sound keys
+        // are the ones the engine itself plays (GetDropSound / GetPickupSound /
+        // GetEquipSound read the same tag, then the definition's).
+        "DROPSOUND", "PICKUPSOUND", "EQUIPSOUND", "ITEMSETNAME", "MATERIAL",
+        "NPCKILLER", "NPCPROTECTION", "OCOLOR", "SUMMONING", "BONUSCRAFTING",
+        "BONUSCRAFTINGEXCEP", "REMOVALTYPE",
     };
 
     private static readonly HashSet<string> BaseDefNumberKeys = new(StringComparer.Ordinal)
     {
         "BONUSSKILL1AMT", "BONUSSKILL2AMT", "BONUSSKILL3AMT", "BONUSSKILL4AMT",
         "BONUSSKILL5AMT", "RARITY", "SELFREPAIR",
+        // The rest of the SetDefNum family (CItem.cpp:3147-3170).
+        "DURABILITY", "ITEMSETAMTCUR", "ITEMSETAMTMAX", "ITEMSETCOLOR", "LIFESPAN",
+        "RECHARGE", "RECHARGEAMT", "RECHARGERATE", "BONUSCRAFTINGAMT",
+        "BONUSCRAFTINGEXCEPAMT", "NPCKILLERAMT", "NPCPROTECTIONAMT",
+        "DOORCLOSESOUND", "DOOROPENSOUND", "PORTCULISSOUND",
+    };
+
+    /// <summary>GetDefStr WITHOUT the definition fallback (IC_MAKERSNAME, CItem.cpp:2685):
+    /// the crafter's name belongs to the one item.</summary>
+    private static readonly HashSet<string> InstanceStringKeys = new(StringComparer.Ordinal)
+    {
+        "MAKERSNAME",
     };
 
     private bool TryGetBaseDefKey(string upper, out string value)
@@ -5548,6 +5843,16 @@ public class Item : ObjBase
                 // another graphic, else 0. Read-only - upstream has no write for it.
                 value = BaseId != DispIdFull ? $"0{BaseId:X}" : "0";
                 return true;
+            case "DOOROPENID":
+                // "hex number or 0 if not set" (CItem.cpp:2676).
+                value = DoorOpenId != 0 ? $"0{DoorOpenId:X}" : "0";
+                return true;
+        }
+
+        if (InstanceStringKeys.Contains(upper))
+        {
+            value = TryGetTag(upper, out string? ownStr) ? ownStr ?? "" : "";
+            return true;
         }
 
         bool isString = BaseDefStringKeys.Contains(upper);
@@ -5574,7 +5879,7 @@ public class Item : ObjBase
             return true;
         }
 
-        if (BaseDefStringKeys.Contains(upper))
+        if (BaseDefStringKeys.Contains(upper) || InstanceStringKeys.Contains(upper))
         {
             // SetDefStr (CItem.cpp:3145): quotes stripped; an empty value clears it.
             string sv = SphereNet.Scripting.Parsing.ScriptKey.StripQuotePair(value.Trim());
@@ -5584,14 +5889,59 @@ public class Item : ObjBase
         }
         if (BaseDefNumberKeys.Contains(upper))
         {
-            // SetDefNum (CItem.cpp:3170): a zero clears the key, so the ITEMDEF's
-            // value shows through again.
-            long nv = ParseBaseDefNumber(value);
-            if (nv == 0) RemoveTag(upper);
-            else SetTag(upper, nv.ToString());
+            // SetDefNum(key, GetArgVal(), false) (CItem.cpp:3170): the third argument
+            // is fDeleteZero=false, so a zero is STORED - it overrides the ITEMDEF's
+            // value instead of letting it show through again.
+            SetTag(upper, ParseBaseDefNumber(value).ToString());
             return true;
         }
         return false;
+    }
+
+    /// <summary>One CAN_I_* bit of the definition, or the legacy boolean that
+    /// carries the same flag.</summary>
+    private static CanFlags DefCanBit(SphereNet.Scripting.Definitions.ItemDef def, CanFlags flag, bool legacy = false) =>
+        (def.Can & flag) != 0 || legacy ? flag : CanFlags.None;
+
+    /// <summary>The skill a weapon type implies when its definition names none
+    /// (IBC_SKILL, CItemBase.cpp:1253-1279).</summary>
+    private static SkillType WeaponTypeSkill(ItemType type) => type switch
+    {
+        ItemType.WeaponMaceCrook or ItemType.WeaponMacePick or ItemType.WeaponMaceSmith or
+            ItemType.WeaponMaceStaff or ItemType.WeaponMaceSharp or ItemType.WeaponWhip
+            => SkillType.MaceFighting,
+        ItemType.WeaponSword or ItemType.WeaponAxe => SkillType.Swordsmanship,
+        ItemType.WeaponFence => SkillType.Fencing,
+        ItemType.WeaponBow or ItemType.WeaponXBow => SkillType.Archery,
+        ItemType.WeaponThrowing => SkillType.Throwing,
+        _ => SkillType.None,
+    };
+
+    /// <summary>A word-sized script argument (GetArgWVal): a Sphere number or sum,
+    /// truncated to 16 bits the way the reference's cast truncates it.</summary>
+    private static bool TryParseWordArg(string value, out ushort word)
+    {
+        word = 0;
+        if (!ScriptNumber.TryParseArgument(value.Trim(), out long n))
+            return false;
+        word = unchecked((ushort)n);
+        return true;
+    }
+
+    /// <summary>IC_CONTP (CItem.cpp:3287): "x,y" inside the container this item sits
+    /// in. Refused when it is not in a container item, as upstream refuses it.</summary>
+    private bool TrySetContainedPoint(string value)
+    {
+        if (ResolveContainerItem() == null)
+            return false;
+        var coords = value.Split([',', ' ', '\t'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (coords.Length < 2 ||
+            !ScriptNumber.TryParseArgument(coords[0], out long cpx) ||
+            !ScriptNumber.TryParseArgument(coords[1], out long cpy))
+            return false;
+        Position = new Point3D((short)cpx, (short)cpy, Position.Z, Position.Map);
+        return true;
     }
 
     /// <summary>GetArgVal for these keys: a Sphere number or sum, where a decimal
@@ -6468,20 +6818,29 @@ public class Item : ObjBase
     /// (ResGetIndex(s.GetArgVal()), CItem.cpp:3244) - which is how the packs write it:
     /// "ADDSPELL=s_paralyze", not a number. Only a number was accepted here, so every
     /// one of those lines added nothing.
+    ///
+    /// The spell lands where every reader of the book looks for it: spell n of a
+    /// book whose school starts at OFFSET sits at bit n-OFFSET-1 (AddSpellbookSpell,
+    /// CItem.cpp:4485), which is what TryLearnSpell writes and ContainsSpell, the cast
+    /// check and the book packet read. Writing spell n at bit n put every ADDSPELL'd
+    /// spell one slot too high - a book given Paralyze held Poison Field - and ignored
+    /// the school offset and whether the item was a spellbook at all.
     /// </summary>
-    public void AddSpellbookSpell(string value)
+    public bool AddSpellbookSpell(string value)
     {
-        int index;
-        if (int.TryParse(value.Trim(), out int numeric) && numeric is >= 0 and < 64)
-            index = numeric;
-        else if (SphereNet.Game.Magic.SpellNames.TryResolve(value, out var spell) &&
-                 (int)spell is >= 0 and < 64)
-            index = (int)spell;
-        else
-            return;
+        int spellId = ResolveSpellArgument(value);
+        return spellId > 0 && TryLearnSpell(spellId);
+    }
 
-        if (index < 32) _more1 |= 1u << index;
-        else _more2 |= 1u << (index - 32);
+    /// <summary>A spell as a script names it: a Sphere number or a SPELLDEF defname
+    /// (ResGetIndex(GetArgVal), CItem.cpp:3244). 0 when it names nothing.</summary>
+    private static int ResolveSpellArgument(string value)
+    {
+        string s = value.Trim();
+        if (s.Length == 0) return 0;
+        if (ScriptNumber.TryParseArgument(s, out long numeric))
+            return numeric is > 0 and <= int.MaxValue ? (int)numeric : 0;
+        return SphereNet.Game.Magic.SpellNames.TryResolve(s, out var spell) ? (int)spell : 0;
     }
 
 }

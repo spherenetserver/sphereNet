@@ -4,6 +4,78 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - Script surface long tail: characters, items, objects, triggers, SERV
+------------------------------------------------------------------------
+Characters
+FIX - GOLD= consumes or adds only the difference (extra goes to the bank box)
+      and refuses a negative total; it deleted all pack gold. GOLD counts all
+      carried gold including the bank box and nested bags; BANKBALANCE is the
+      bank box's gold.
+NEW - KARMA.<band> / FAME.<band> test the [KARMA]/[FAME] tables; SEX <m>/<f>
+      answers on a character.
+FIX - ACTION= reads Sphere numbers (a leading 0 is hex), so legacy saves'
+      ACTION=067 / 06d load as Wander / GoHome.
+FIX - MAXHITS/MAXMANA/MAXSTAM read base + modifiers + equipment; new
+      OMAXHITS/OMAXMANA/OMAXSTAM for the base. The save still writes the base.
+FIX - FACE <uid>, NEWGOLD, CRIMINAL [0], BOUNCE/DROP <uid>, ATTACK, GO <region>,
+      SKILLGAIN <name>, BARK (CHARDEF sounds), HUNGRY (message only),
+      EQUIPHALO (milliseconds), DISPIDDEC/ICON (tracking icon), ISONLINE for
+      NPCs, AC = AR, HEIGHT, SKILLBEST, ACTDIFF in tenths.
+
+Items
+FIX - HITPOINTS sets current and max hits; items whose @Create rolled
+      HITPOINTS had max 0 and never wore out.
+FIX - BOUNCE puts the item in the source character's pack, or at their feet
+      (NEWITEM + NEW.BOUNCE did nothing).
+FIX - ADDSPELL stores spell n at bit n-offset-1 like every other spellbook
+      path; it was one slot too high.
+FIX - CONTCONSUME reads a full resource list; DECAY takes tenths of a second.
+NEW - AC/AR, REPAIRPERCENT, NODROP/NOTRADE/QUESTITEM, TOPCONT, CONTGRID,
+      CONTP, LINK.ISVALID, DOOROPENID, the CAN flag keys, TFLAGS, RESMAKE,
+      DUPELIST and the remaining base-definition keys. Number keys accept hex
+      and sums; setting a key to 0 stores the 0.
+
+Objects, client, sector, party, FILE
+FIX - GM= toggles GM mode for GM and above; it wrote the privilege level, so a
+      counselor could make themselves GM.
+FIX - SAY/SAYU/EMOTE work on items and are heard nearby; SYSMESSAGE on another
+      character goes to that character's client.
+FIX - SECTOR ALLCHARS/ALLCHARSIDLE/ALLCLIENTS/ALLITEMS run the verb (they were
+      no-ops); COMPLEXITY counts active characters; LOCALTIME is the spoken
+      phrase; ISDARK no longer changes between reads.
+FIX - COLOR, ASC and HVAL read Sphere hex; FLOATVAL prints six decimals; FEVAL
+      and FHVAL take the leading integer of the text; ISBIT returns the masked
+      value; EXPLODE keeps empty tokens; a bare TIMERF STOP no longer clears
+      every timer.
+FIX - EFFECT, EFFECTLOCATION, DAMAGE, MOVE, NUDGEUP/DOWN, TRIGGER argument
+      forms, party TAG0/REMOVEMEMBER/SYSMESSAGE, FILE open modes and SEEK.
+
+Triggers
+FIX - RETURN 0 reaches the call sites that distinguish it: @Timer RETURN 0
+      deletes the item, @SkillWait RETURN 0 cancels the skill.
+FIX - @char*/@item* blocks in EVENTSPLAYER, EVENTSPET, TEVENTS and the CHARDEF
+      fire; mirrors Source-X does not have (e.g. @charHit) no longer fire.
+FIX - NPC @Create runs the CHARDEF block, then TEVENTS and EVENTSPET;
+      @NPCRestock and @CreateLoot read only the CHARDEF.
+FIX - @SkillUseQuick RETURN 1 means success; @Step RETURN 1 blocks the walk;
+      @EquipTest runs after the strength/layer check; @AfterClick,
+      @ContextMenuRequest, @SpellEffect, trade, party, notoriety and spawner
+      triggers get the reference SRC/ARGO/ARGN; @ClientTooltip_AfterDefault
+      is matched by its real name.
+FIX - Resurrection uses HITPOINTPERCENTONREZ (default 10%) instead of 50%; a
+      murder mark uses the configured criminal timer.
+
+SERV and expressions
+FIX - About 150 sphere.ini keys read back through SERV.<key>; TICKPERIOD is
+      ticks per second; HEARALL is the log-mask bit; CHATFLAGS/OPTIONFLAGS/
+      EXPERIMENTAL read hex; RTIME is culture-independent; RTICKS.FROMTIME is
+      local time.
+NEW - LASTNEWITEM/LASTNEWCHAR references, ROOM, SKILLCLASS, CLIENT.n, MULTIS,
+      TILEDATA.ITEM/TERRAIN.
+FIX - Float SIN/COS/TAN take degrees; STRMATCH supports [..] sets; STRINDEXOF,
+      MIN/MAX, SQRT, LOGARITHM, STRCMP, QVAL and ISNUMBER follow the reference
+      edge cases.
+
 [2026-09-25] - Panel dialog designer off the main loop
 ------------------------------------------------------------------------
 FIX - Opening the panel's gump designer no longer stalls the game. The dialog

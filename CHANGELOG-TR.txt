@@ -4,6 +4,79 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - Script yuzeyi uzun kuyrugu: karakter, item, nesne, trigger, SERV
+------------------------------------------------------------------------
+Karakter
+DUZELTME - GOLD= sadece farki harcar ya da ekler (fazlasi bankaya gider),
+           negatif toplami reddeder; tum canta altinini siliyordu. GOLD banka
+           ve ic cantalar dahil tum altini sayar; BANKBALANCE bankadaki altin.
+YENI - KARMA.<band> / FAME.<band> [KARMA]/[FAME] tablolarini sinar; SEX
+       <e>/<k> karakter uzerinde calisir.
+DUZELTME - ACTION= Sphere sayisi okur (bastaki 0 hex), eski save'lerdeki
+           ACTION=067 / 06d Wander / GoHome olarak yuklenir.
+DUZELTME - MAXHITS/MAXMANA/MAXSTAM taban + degistirici + ekipman; taban icin
+           yeni OMAXHITS/OMAXMANA/OMAXSTAM. Save yine tabani yazar.
+DUZELTME - FACE <uid>, NEWGOLD, CRIMINAL [0], BOUNCE/DROP <uid>, ATTACK,
+           GO <bolge>, SKILLGAIN <ad>, BARK (CHARDEF sesleri), HUNGRY (sadece
+           mesaj), EQUIPHALO (ms), DISPIDDEC/ICON, NPC ISONLINE, AC = AR,
+           HEIGHT, SKILLBEST, ACTDIFF onda bir.
+
+Item
+DUZELTME - HITPOINTS mevcut ve max dayanikliligi birlikte ayarlar; @Create'te
+           HITPOINTS alan itemlarin max'i 0'di ve hic yipranmiyordu.
+DUZELTME - BOUNCE itemi kaynak karakterin cantasina, sigmazsa ayagina koyar
+           (NEWITEM + NEW.BOUNCE hicbir sey yapmiyordu).
+DUZELTME - ADDSPELL buyu n'yi diger kitap yollari gibi n-offset-1 bitine yazar;
+           bir bit yukari yaziyordu.
+DUZELTME - CONTCONSUME tam kaynak listesi okur; DECAY saniyenin onda biri.
+YENI - AC/AR, REPAIRPERCENT, NODROP/NOTRADE/QUESTITEM, TOPCONT, CONTGRID,
+       CONTP, LINK.ISVALID, DOOROPENID, CAN bayrak anahtarlari, TFLAGS, RESMAKE,
+       DUPELIST ve kalan taban-tanim anahtarlari. Sayi anahtarlari hex ve
+       toplam kabul eder; 0 yazmak 0 saklar.
+
+Nesne, istemci, sektor, parti, FILE
+DUZELTME - GM= GM ve ustu icin GM modunu acar/kapatir; yetki seviyesini
+           yaziyordu, counselor kendini GM yapabiliyordu.
+DUZELTME - SAY/SAYU/EMOTE itemlarda calisir ve cevrede duyulur; baska
+           karakterdeki SYSMESSAGE o karakterin istemcisine gider.
+DUZELTME - SECTOR ALLCHARS/ALLCHARSIDLE/ALLCLIENTS/ALLITEMS verb'i calistirir
+           (bos islemdi); COMPLEXITY aktif karakterleri sayar; LOCALTIME sozlu
+           ifade; ISDARK okumalar arasinda degismez.
+DUZELTME - COLOR, ASC ve HVAL Sphere hex okur; FLOATVAL alti ondalik basar;
+           FEVAL ve FHVAL metnin bastaki tam sayisini alir; ISBIT maskeli
+           degeri dondurur; EXPLODE bos parcalari korur; tek basina TIMERF STOP
+           artik tum timer'lari silmez.
+DUZELTME - EFFECT, EFFECTLOCATION, DAMAGE, MOVE, NUDGEUP/DOWN, TRIGGER arguman
+           bicimleri, parti TAG0/REMOVEMEMBER/SYSMESSAGE, FILE acma modlari ve
+           SEEK.
+
+Trigger
+DUZELTME - RETURN 0 onu ayirt eden yerlere ulasir: @Timer RETURN 0 itemi
+           siler, @SkillWait RETURN 0 skill'i iptal eder.
+DUZELTME - EVENTSPLAYER, EVENTSPET, TEVENTS ve CHARDEF'teki @char*/@item*
+           bloklari calisir; Source-X'te olmayan aynalar (or. @charHit) artik
+           calismaz.
+DUZELTME - NPC @Create once CHARDEF blogunu, sonra TEVENTS ve EVENTSPET'i
+           calistirir; @NPCRestock ve @CreateLoot sadece CHARDEF'ten okunur.
+DUZELTME - @SkillUseQuick RETURN 1 basari demek; @Step RETURN 1 yurumeyi
+           engeller; @EquipTest guc/katman kontrolunden sonra calisir;
+           @AfterClick, @ContextMenuRequest, @SpellEffect, ticaret, parti,
+           notoriety ve spawner trigger'lari referans SRC/ARGO/ARGN alir;
+           @ClientTooltip_AfterDefault gercek adiyla eslesir.
+DUZELTME - Diriltme %50 yerine HITPOINTPERCENTONREZ (varsayilan %10)
+           kullanir; murder isareti ayarli criminal suresini kullanir.
+
+SERV ve ifadeler
+DUZELTME - Yaklasik 150 sphere.ini anahtari SERV.<anahtar> ile okunur;
+           TICKPERIOD saniyedeki tick; HEARALL log-maske biti; CHATFLAGS/
+           OPTIONFLAGS/EXPERIMENTAL hex; RTIME kulturden bagimsiz;
+           RTICKS.FROMTIME yerel saat.
+YENI - LASTNEWITEM/LASTNEWCHAR referans, ROOM, SKILLCLASS, CLIENT.n, MULTIS,
+       TILEDATA.ITEM/TERRAIN.
+DUZELTME - Float SIN/COS/TAN derece alir; STRMATCH [..] kumelerini destekler;
+           STRINDEXOF, MIN/MAX, SQRT, LOGARITHM, STRCMP, QVAL ve ISNUMBER
+           referans sinir durumlarini izler.
+
 [2026-09-25] - Panel dialog tasarimcisi ana donguden cikarildi
 ------------------------------------------------------------------------
 DUZELTME - Paneldeki gump tasarimcisini acmak artik oyunu takmaz. Dialog ad

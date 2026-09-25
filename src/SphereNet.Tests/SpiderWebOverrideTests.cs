@@ -15,22 +15,15 @@ namespace SphereNet.Tests;
 /// never read - which is why the shipped packs write both 0 and 1 and mean the same
 /// thing: the reference distribution puts it on ten creatures to give them webs, and
 /// the live pack puts it on a spider to take its webs away.
-///
-/// Nothing read the key at all. Webbing came from the body id and from this engine's
-/// own WEBTRAIL tag, so the ten creatures never webbed and the one spider never
-/// stopped.
 /// </summary>
 public sealed class SpiderWebOverrideTests
 {
     private const ushort GiantSpiderBody = 0x001C;
-    private const ushort WebTile = 0x10D5;
 
-    /// <summary>Run the trail step until the 1-in-4 roll lands.
-    ///
-    /// The roll uses Random.Shared and cannot be seeded, so the count is the
-    /// guarantee instead: 120 tries miss with probability (3/4)^120, which is about
-    /// one in 10^15. The NEGATIVE direction needs no such argument - a creature that
-    /// does not web returns before the roll is made, so it is decided, not sampled.</summary>
+    /// <summary>Run the idle special action once (NPC_Act_Idle's special-action
+    /// branch, CCharNPCAct.cpp:1995-2024) and see whether it laid a web: an IT_WEB
+    /// item, one of ITEMID_WEB1_1..4 (Action_StartSpecial, :97-104). The branch
+    /// itself is decided, not sampled - only the web graphic is random.</summary>
     private static bool LeavesAWebTrail(ushort bodyId, bool withOverride)
     {
         var world = TestHarness.CreateWorld();
@@ -45,12 +38,12 @@ public sealed class SpiderWebOverrideTests
         if (withOverride)
             npc.SetTag("OVERRIDE.SPIDERWEB", "0");   // the value is never read
 
-        var step = typeof(NpcAI).GetMethod("TryDropSpecialTrail",
+        var step = typeof(NpcAI).GetMethod("TryNpcSpecialAction",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
-        for (int i = 0; i < 120; i++)
-            step.Invoke(ai, [npc]);
+        step.Invoke(ai, [npc]);
 
-        return world.GetItemsInRange(npc.Position, 0).Any(it => it.BaseId == WebTile);
+        return world.GetItemsInRange(npc.Position, 0).Any(it =>
+            it.ItemType == SphereNet.Core.Enums.ItemType.Web && it.BaseId is >= 0x0EE3 and <= 0x0EE6);
     }
 
     /// <summary>The default: a giant spider webs, nothing else does.</summary>

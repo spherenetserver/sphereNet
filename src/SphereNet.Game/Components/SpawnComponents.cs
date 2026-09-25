@@ -309,12 +309,11 @@ public sealed class SpawnComponent
         ch.SetStatFlag(StatFlag.Spawned);
 
         ch.Home = new Point3D(_spawnItem.X, _spawnItem.Y, _spawnItem.Z, _spawnItem.MapIndex);
-        // Source-X CCSpawn::GenerateChar writes m_Home_Dist_Wander = _iMaxDist
-        // verbatim (CCSpawn.cpp:640) — a MOREZ=0 spawner leashes its child to
-        // the gem. Our wander code maps HomeDist<=0 to "unlimited" (the
-        // non-spawn default), which let fixed-point vendors stroll out of
-        // their building; clamp the explicit spawner leash to at least 1.
-        ch.HomeDist = (short)Math.Max(_spawnRange, 1);
+        // Source-X CCSpawn writes m_Home_Dist_Wander = _iMaxDist verbatim
+        // (CCSpawn.cpp:640), 0 included - the same value AddObj gives an adopted
+        // creature below. HOMEDIST 0 means no wander leash but a walk home that goes
+        // all the way (NPC_Act_Wander :1263, NPC_Act_GoHome :1541).
+        ch.HomeDist = (short)Math.Clamp(_spawnRange, 0, short.MaxValue);
         ch.SetTag("SPAWNITEM", $"0{_spawnItem.Uid.Value:x8}");
 
         // @Spawn — script can modify NPC, set its position, or abort

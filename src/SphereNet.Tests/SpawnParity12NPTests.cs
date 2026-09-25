@@ -170,6 +170,21 @@ public sealed class SpawnParity12NPTests
     }
 
     [Fact]
+    public void ARangeZeroSpawnerHandsItsCreatureHomeDistZero()
+    {
+        // CCSpawn writes m_Home_Dist_Wander = _iMaxDist verbatim (CCSpawn.cpp:640),
+        // the same value AddObj hands an adopted creature; 0 is not raised to 1.
+        var res = LoadResources();
+        var world = NewWorld();
+        var stone = Spawner(world, res, ItemType.SpawnChar, "c_other_np");
+        stone.SpawnChar!.SpawnRange = 0;
+        stone.SpawnChar.RespawnNow();
+        var beast = world.FindChar(stone.SpawnChar.SpawnedUids[0])!;
+
+        Assert.Equal(0, beast.HomeDist);
+    }
+
+    [Fact]
     public void AWildCreatureIsStillClearedByItsSpawner()
     {
         var res = LoadResources();

@@ -61,10 +61,9 @@ public sealed partial class NpcAI
 
     private const string FollowLastSeenTag = "FOLLOW_LAST_SEEN";
 
-    /// <summary>How close a follower tries to get by default. The reference's own
-    /// default is 1; SphereNet has always closed to two and that is what a pack
-    /// scripting nothing keeps.</summary>
-    private const int PetFollowDistance = 2;
+    /// <summary>How close a follower tries to get by default: Source-X NPC_Act_Follow's
+    /// maxDistance = 1 (CChar.h:1341). @NPCActFollow ARGN2 can change it.</summary>
+    private const int PetFollowDistance = 1;
 
     /// <summary>Pet follow gives up beyond this distance on the same map
     /// (reference parity: UO_MAP_VIEW_RADAR = 36); it resumes when the owner
@@ -76,9 +75,6 @@ public sealed partial class NpcAI
     /// 0 disables). A backstop, not a leash: the creature's own wander range has to be
     /// exceeded as well.</summary>
     public static int LostNpcTeleport { get; set; } = 50;
-
-    /// <summary>Default hireling pay interval (ms) when HIRE_PERIOD isn't set.</summary>
-    private const long DefaultHirePeriodMs = 30 * 60 * 1000; // 30 minutes
 
     private static bool IsValidPetEnemy(
         Character npc, Character master, Character? target, Character? protectedTarget = null) =>
@@ -112,50 +108,9 @@ public sealed partial class NpcAI
             return;
         }
 
-        // Hireling upkeep (Source-X NPC_CheckHirelingStatus): the day wage
-        // comes from the CHARDEF (HIREDAYWAGE; legacy HIRE_WAGE tag overrides)
-        // and drains the NPC's own PREPAID balance — funded when the player
-        // hands it gold (NPC_OnHirePay) — a period-fraction at a time. It
-        // never touches the master's live bank; on depletion it speaks the
-        // wage-cost/time-up messages and deserts.
-        uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
-        if (npc.TryGetTag("HIRE_WAGE", out string? wageStr) &&
-            uint.TryParse(wageStr, out uint tagWage) && tagWage > 0)
-            dayWage = tagWage;
-        if (dayWage > 0)
-        {
-            long nowMs = Environment.TickCount64;
-            long period = npc.TryGetTag("HIRE_PERIOD", out string? ps) &&
-                long.TryParse(ps, out long p) && p > 0
-                    ? Math.Clamp(p, 1_000, 30L * 24 * 60 * 60 * 1_000)
-                    : DefaultHirePeriodMs;
-            long nextPay = npc.TryGetTag("HIRE_NEXT_PAY", out string? np) &&
-                long.TryParse(np, out long n) ? n : 0;
-            if (nextPay == 0)
-                npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
-            else if (nowMs >= nextPay)
-            {
-                long periodWage = (long)Math.Clamp(
-                    (decimal)dayWage * period / 86_400_000m, 1m, long.MaxValue);
-                long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
-                    long.TryParse(bs, out long bal) ? bal : 0;
-                if (balance >= periodWage)
-                {
-                    npc.SetTag("HIRE_BALANCE", (balance - periodWage).ToString());
-                    npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
-                }
-                else
-                {
-                    OnNpcSay?.Invoke(npc, ServerMessages.GetFormatted(Msg.NpcPetWageCost, dayWage.ToString()));
-                    OnNpcSay?.Invoke(npc, ServerMessages.Get(Msg.NpcPetHireTimeup));
-                    npc.RemoveTag("HIRE_NEXT_PAY");
-                    npc.RemoveTag("HIRE_BALANCE");
-                    npc.ClearOwnership(clearFriends: true);
-                    npc.PetAIMode = PetAIMode.Stay;
-                    return;
-                }
-            }
-        }
+        // Hireling wages are charged on the food tick (Source-X OnTickFood ->
+        // NPC_CheckHirelingStatus, CCharAct.cpp:5755), inside
+        // Character.TickPetOwnershipTimers above.
 
         // Self-defense (Source-X Memory_FightStart): an attacked pet fights
         // back regardless of its order state. Follow/Come/Stay never read
@@ -253,7 +208,12 @@ public sealed partial class NpcAI
                 bool leashed = PetFollowMaxDistance > 0 && dist > PetFollowMaxDistance;
                 int keep = Math.Max(0, followArgs.MaxDistance);
                 if (dist > keep && !leashed)
-                    MoveToward(npc, followPoint.Value, run: dist > 3);
+                {
+                    // Runs in war mode or past three tiles (NPC_Act_Follow, :1440).
+                    MoveToward(npc, followPoint.Value, run: npc.IsStatFlag(StatFlag.War) || dist > 3);
+                    if (dist > keep + 2 && HasExtra(npc, NpcAiExtraFlags.PetKeepPace))
+                        KeepOwnerPace(npc, followTarget);
+                }
                 break;
             }
             case PetAIMode.Guard:
@@ -271,32 +231,18 @@ public sealed partial class NpcAI
                     }
                     npc.FightTarget = Serial.Invalid;
                 }
-                // Protect the selected guarded character, not always the owner.
-                if (guardTarget.FightTarget.IsValid)
+                // Source-X NPC_Act_Guard (CCharNPCAct.cpp:1291): attack what the
+                // guarded character is fighting when it can be seen, else follow it
+                // (to distance 1). Nothing scans for other attackers.
+                var guardFoe = guardTarget.FightTarget.IsValid ? _world.FindChar(guardTarget.FightTarget) : null;
+                if (IsValidPetEnemy(npc, master, guardFoe, guardTarget) &&
+                    CanSeeChar(npc, guardTarget) && _world.CanSeeLOS(npc.Position, guardTarget.Position))
                 {
-                    var masterTarget = _world.FindChar(guardTarget.FightTarget);
-                    if (IsValidPetEnemy(npc, master, masterTarget, guardTarget))
-                    {
-                        npc.FightTarget = masterTarget!.Uid;
-                        ActFight(npc, masterTarget, 50);
-                        return;
-                    }
+                    npc.FightTarget = guardFoe!.Uid;
+                    ActFight(npc, guardFoe, 50);
+                    return;
                 }
-                foreach (var ch in _world.GetCharsInRange(guardTarget.Position, 6))
-                {
-                    if (!IsValidPetEnemy(npc, master, ch, guardTarget)) continue;
-                    if (ch.FightTarget == guardTarget.Uid &&
-                        _world.CanSeeLOS(npc.Position, ch.Position))
-                    {
-                        npc.FightTarget = ch.Uid;
-                        ActFight(npc, ch, 50);
-                        return;
-                    }
-                }
-                int guardDist = npc.Position.GetDistanceTo(guardTarget.Position);
-                if (guardDist > 3 &&
-                    (PetFollowMaxDistance <= 0 || guardDist <= PetFollowMaxDistance))
-                    MoveToward(npc, guardTarget.Position, run: true);
+                ActFollow(npc, guardTarget);
                 break;
             }
             case PetAIMode.Attack:
@@ -318,16 +264,18 @@ public sealed partial class NpcAI
                 npc.FightTarget = Serial.Invalid;
                 npc.RemoveTag("ATTACK_TARGET");
                 PetAIMode revertMode = PetAIMode.Follow;
+                // byte, not int: Enum.IsDefined throws for a boxed Int32 on this
+                // byte-backed enum (see FinishGoOrder).
                 if (npc.TryGetTag("PREV_PET_MODE", out string? prevTag) &&
-                    int.TryParse(prevTag, out int prevVal) &&
+                    byte.TryParse(prevTag, out byte prevVal) &&
                     Enum.IsDefined(typeof(PetAIMode), prevVal) &&
                     (PetAIMode)prevVal != PetAIMode.Attack)
                     revertMode = (PetAIMode)prevVal;
                 npc.RemoveTag("PREV_PET_MODE");
                 npc.PetAIMode = revertMode;
                 int d = npc.Position.GetDistanceTo(master.Position);
-                if (d > 2 && (PetFollowMaxDistance <= 0 || d <= PetFollowMaxDistance))
-                    MoveToward(npc, master.Position, run: d > 3);
+                if (d > PetFollowDistance && (PetFollowMaxDistance <= 0 || d <= PetFollowMaxDistance))
+                    MoveToward(npc, master.Position, run: npc.IsStatFlag(StatFlag.War) || d > 3);
                 break;
             }
             case PetAIMode.Stay:
@@ -335,6 +283,17 @@ public sealed partial class NpcAI
                 // Stay in place
                 break;
         }
+    }
+
+    /// <summary>NPCAIEXTRAS PetKeepPace: a following pet that has fallen behind takes
+    /// its next step at its owner's pace - about 200 ms on foot, 100 ms mounted -
+    /// instead of its own DEX-driven delay.</summary>
+    private void KeepOwnerPace(Character npc, Character owner)
+    {
+        if (_stepDelayAppliedFor != npc.Uid.Value)
+            return;   // no step was taken
+        int pace = owner.IsMounted ? 100 : 200;
+        npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + pace);
     }
 
     private Character? ResolvePetTargetCharacter(Character npc, string tagName)

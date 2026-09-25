@@ -975,90 +975,59 @@ public sealed partial class NpcAI
         return SpellType.None;
     }
 
-    // Special-trail creatures (Source-X NPC Action_StartSpecial): the giant
-    // spider lays web on the ground, the fire elemental drops fire patches.
-    private const ushort GiantSpiderBody = 0x001C;
+    // Special creature actions (Source-X Action_StartSpecial, CCharNPCAct.cpp:65-134):
+    // the fire elemental lays a fire path, the giant spider (or whatever
+    // OVERRIDE.SPIDERWEB turns into one) a web. Started from the idle pass only
+    // (NPC_Act_Idle, :1987-2024), never on every tick.
+    private const ushort GiantSpiderBody = 0x001C;    // CREID_GIANT_SPIDER
 
-    private const ushort FireElementalBody = 0x000F;
+    private const ushort FireElementalBody = 0x000F;  // CREID_FIRE_ELEM
 
-    private const ushort DefaultWebId = 0x10D5;   // spider web tile
+    private const ushort FireEwId = 0x398C;           // ITEMID_FX_FIRE_F_EW
 
-    private const ushort DefaultFireId = 0x398C;  // fire column tile
+    private const ushort FireNsId = 0x3996;           // ITEMID_FX_FIRE_F_NS
 
-    // Below this value a trail tag is read as a bare on/off flag (e.g. "1"),
-    // not a graphic override; at or above it the value overrides the tile id.
-    private const ushort TrailIdOverrideFloor = 0x0100;
+    private const ushort WebFirstId = 0x0EE3;         // ITEMID_WEB1_1
 
-    /// <summary>Giant spiders web the ground and fire elementals leave fire
-    /// patches as they act (Source-X NPC Action_StartSpecial). Enabled by the
-    /// known giant-spider / fire-elemental body, or by a WEBTRAIL / FIRETRAIL
-    /// tag — whose value, when it looks like a tile id, overrides the graphic.
-    /// Fire patches carry FIELD_DAMAGE so a creature stepping on one is hurt
-    /// (the same field path the fire-field spell uses); webs are an atmospheric
-    /// obstacle. At most one drop per few ticks, never stacked on a tile.</summary>
-    private void TryDropSpecialTrail(Character npc)
+    private const ushort WebLastId = 0x0EE6;          // ITEMID_WEB1_4
+
+    /// <summary>Animation hook for the special action (ANIM_CAST_AREA), wired by the
+    /// server to the body-aware animation broadcast.</summary>
+    public Action<Character, AnimationType>? OnNpcAnimate { get; set; }
+
+    /// <summary>Source-X Action_StartSpecial. Fire: ITEMID_FX_FIRE_F_EW or _NS at
+    /// random, IT_FIRE carrying Fire Field at heat 100 + rand(500), linked to the
+    /// creature, gone after 10 ms + rand(50) s. Web: one of ITEMID_WEB1_1..4, IT_WEB,
+    /// gone after 10 ms + rand(170) s. Either costs 5 + rand(5) stamina, and the
+    /// creature plays the area-cast animation.</summary>
+    internal void ActStartSpecial(Character npc, bool fire)
     {
         if (npc.IsDead) return;
 
-        bool hasFireTag = npc.TryGetTag("FIRETRAIL", out string? fireTag);
-        bool hasWebTag = npc.TryGetTag("WEBTRAIL", out string? webTag);
-        bool fire = hasFireTag || npc.BodyId == FireElementalBody;
-
-        // OVERRIDE.SPIDERWEB INVERTS the body check rather than setting a flag: with
-        // the key present a creature that is NOT a giant spider webs, and without it
-        // only a giant spider does (CCharNPCAct.cpp:2007-2022). Its VALUE is never
-        // read, which is why the shipped pack writes both 0 and 1 and means the same
-        // thing by them - the reference distribution puts it on ten creatures to give
-        // them webs, and the live pack puts it on a spider to take its webs away.
-        // Nothing here read it at all: webbing came from the body id and from
-        // WEBTRAIL, which is this engine's own tile-id opt-in and stays.
-        bool isSpider = npc.BodyId == GiantSpiderBody;
-        bool webByOverride = npc.TryGetTag("OVERRIDE.SPIDERWEB", out _) ? !isSpider : isSpider;
-        bool web = !fire && (hasWebTag || webByOverride);
-        if (!fire && !web) return;
-
-        // ~1 in 4 acting ticks, and never two trails on the same tile.
-        if (_rand.Next(4) != 0) return;
-        foreach (var existing in _world.GetItemsInRange(npc.Position, 0))
-        {
-            if (!existing.IsDeleted && existing.TryGetTag("SPECIAL_TRAIL", out _))
-                return;
-        }
-
-        ushort itemId = fire ? DefaultFireId : DefaultWebId;
-        string? tagVal = fire ? fireTag : webTag;
-        if (!string.IsNullOrWhiteSpace(tagVal) && TryParseTileId(tagVal, out ushort overrideId)
-            && overrideId >= TrailIdOverrideFloor)
-            itemId = overrideId;
+        OnNpcAnimate?.Invoke(npc, AnimationType.CastArea);
 
         var item = _world.CreateItem();
-        item.BaseId = itemId;
-        item.SetTag("SPECIAL_TRAIL", "1");
-        long now = Environment.TickCount64;
+        int maxTimeoutS;
         if (fire)
         {
-            item.Name = "fire";
-            int dmg = Math.Clamp(npc.Str / 25, 2, 15);
-            item.SetTag("FIELD_DAMAGE", dmg.ToString());
-            item.SetDecayAt(now + 10_000);
+            item.BaseId = _rand.Next(2) != 0 ? FireEwId : FireNsId;
+            item.ItemType = ItemType.Fire;
+            item.MoreP = new Point3D((short)SpellType.FireField, (short)(100 + _rand.Next(500)), 1, npc.MapIndex);
+            item.Link = npc.Uid;
+            maxTimeoutS = 50;
         }
         else
         {
-            item.Name = "web";
-            item.SetDecayAt(now + 20_000);
+            item.BaseId = (ushort)_rand.Next(WebFirstId, WebLastId + 1);
+            item.ItemType = ItemType.Web;
+            maxTimeoutS = 170;
         }
+
+        item.SetDecayAt(Environment.TickCount64 + 10 + _rand.Next(maxTimeoutS) * 1000L);
         if (!_world.PlaceItem(item, npc.Position))
             _world.RemoveItem(item);
-    }
 
-    /// <summary>Parse a tile id written as hex (0x10D5) or decimal.</summary>
-    private static bool TryParseTileId(string s, out ushort id)
-    {
-        s = s.Trim();
-        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            return ushort.TryParse(s.AsSpan(2),
-                System.Globalization.NumberStyles.HexNumber, null, out id);
-        return ushort.TryParse(s, out id);
+        npc.Stam = (short)Math.Max(0, npc.Stam - (5 + _rand.Next(5)));
     }
 
     /// <summary>Dragon-family bodies (reference CREID list): dragon grey/red,

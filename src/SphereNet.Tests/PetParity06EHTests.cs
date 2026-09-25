@@ -218,7 +218,7 @@ public sealed class PetParity06EHTests
         pet.TryAssignOwnership(owner, owner);
 
         Assert.True(pet.TrySetProperty("FOOD", "60"));
-        pet.SetTag("PET_NEXT_LOYALTY_TICK", "1");
+        pet.SetNextFoodTick(1);
 
         pet.TickPetOwnershipTimers(1_000_000);
 

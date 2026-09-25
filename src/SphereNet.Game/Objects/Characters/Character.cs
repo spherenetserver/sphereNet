@@ -743,6 +743,9 @@ public partial class Character : ObjBase
     public static int RegenStamSeconds { get; set; } = 10;
     /// <summary>Global food decay: seconds per hunger point (Source-X REGEN3, default 60 min).</summary>
     public static int RegenFoodSeconds { get; set; } = 3600;
+    /// <summary>GAMEMINUTELENGTH in seconds (Source-X m_iGameMinuteLength, default 20);
+    /// the hireling wage per food tick is measured against it.</summary>
+    public static int GameMinuteLengthSeconds { get; set; } = 20;
 
     /// <summary>Refresh notoriety for nearby clients after memory changes (NotoSave_Update).</summary>
     public static Action<Character>? NotoSaveUpdate { get; set; }
@@ -3011,46 +3014,147 @@ public partial class Character : ObjBase
         if (IsSummoned)
             return false;
 
-        long nextTick = Tags.GetInt("PET_NEXT_LOYALTY_TICK", 0);
-        if (nextTick == 0)
+        // The loyalty clock this used to keep in a tag is gone; drop a leftover.
+        if (TryGetTag("PET_NEXT_LOYALTY_TICK", out _))
+            RemoveTag("PET_NEXT_LOYALTY_TICK");
+
+        // The food clock: Source-X Stats_Regen runs STAT_FOOD on the REGEN3 rate (or
+        // the character's REGENFOOD) and hands it to OnTickFood (CCharStat.cpp:501-579),
+        // @RegenStat included. A player's clock runs in OnTick; an NPC's runs here.
+        long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
+        if (foodRateMs < 0)
+            return false;
+        if (_nextFoodDecay == 0)
         {
-            SetTag("PET_NEXT_LOYALTY_TICK", (nowMs + 60_000).ToString());
+            _nextFoodDecay = nowMs + foodRateMs;
             return false;
         }
-
-        if (nowMs < nextTick)
+        if (nowMs < _nextFoodDecay)
             return false;
 
-        SetTag("PET_NEXT_LOYALTY_TICK", (nowMs + 60_000).ToString());
-        // Hirelings are paid in gold (handled by the AI wage tick), so hunger
-        // does not erode their loyalty.
-        bool isHireling = TryGetTag("HIRE_WAGE", out _);
-        if (!isHireling && _food > 0)
-            _food--;
-
-        var petOwner = OwnerSerial.IsValid ? ResolveCharByUid?.Invoke(OwnerSerial) : null;
-
-        // A berserk creature starves without deserting (CanDesertOwner).
-        if (_food == 0 && CanDesertOwner)
-        {
-            // @PetDesert (Source-X) — fires before the pet goes wild; a script may
-            // RETURN 1 to cancel the desertion and keep the pet serving.
-            if (OnPetDesert != null && OnPetDesert(this, petOwner))
-                return false;
-
-            // Warn the owner instead of letting the pet go feral silently.
-            if (petOwner != null)
-                SendOwnerMessage?.Invoke(petOwner, ServerMessages.GetFormatted("pet_gone_wild", Name));
-            ClearOwnership(clearFriends: false);
-            PetAIMode = PetAIMode.Stay;
-            return false;
-        }
-
-        // Escalating loyalty warnings as the pet grows hungry/unhappy.
-        if (petOwner != null && (_food == 15 || _food == 10 || _food == 5))
-            SendOwnerMessage?.Invoke(petOwner, ServerMessages.GetFormatted("pet_loyalty_low", Name));
-
+        _nextFoodDecay = nowMs + foodRateMs;
+        ApplyStatRegen(RegenStatFood, _regenValFood > 0 ? _regenValFood : 1, MaxFood, 0);
         return false;
+    }
+
+    /// <summary>Test seam: make the next food tick due at <paramref name="dueMs"/>.</summary>
+    internal void SetNextFoodTick(long dueMs) => _nextFoodDecay = dueMs;
+
+    /// <summary>Source-X OnTickFood for an NPC (CCharAct.cpp:5748-5793). Statues,
+    /// the dead, conjured and spawn-owned creatures and anything without a food
+    /// maximum do not hunger; a hireling pays its wage first (and may leave instead);
+    /// staff do not hunger. The food drops; at 40% or less, and only when
+    /// HITSHUNGERLOSS is set and the creature is awake, it "looks" hungry (the
+    /// DEFMSG food-level emote), and at zero it takes the hunger damage and a pet
+    /// deserts.</summary>
+    private void ApplyNpcFoodTick(int amount, int hungerLoss)
+    {
+        if ((Definitions.CharDefHelper.GetCanFlags(this) & CanFlags.C_Statue) != 0)
+            return;
+        bool pet = OwnerSerial.IsValid || IsStatFlag(StatFlag.Pet);
+        // A tamed creature has left its spawn in Source-X (the spawn link is dropped),
+        // so the spawned test applies to creatures nobody owns.
+        if (IsDead || IsStatFlag(StatFlag.Conjured) || IsStatFlag(StatFlag.Stone) ||
+            (!pet && IsStatFlag(StatFlag.Spawned)) || MaxFood == 0)
+            return;
+        if (pet && !CheckHirelingStatus())
+            return;
+        if (PrivLevel >= PrivLevel.GM)
+            return;
+
+        _food = (ushort)Math.Max(0, _food - amount);
+
+        int max = MaxFood;
+        int level = (_food * 100 + max / 2) / max;
+        if (level > 40)
+            return;
+        if (hungerLoss <= 0 || IsStatFlag(StatFlag.Sleeping))
+            return;
+
+        EmoteObject(ServerMessages.GetFormatted(Msg.MsgFoodLvlLooks, FoodLevelMessage(pet)));
+
+        if (level <= 0)
+        {
+            Hits = (short)Math.Max(0, Hits - hungerLoss);
+            if (Hits <= 0 && !IsDead)
+            {
+                Kill();
+                return;
+            }
+            if (pet)
+                PetDesert();
+        }
+    }
+
+    /// <summary>Source-X NPC_CheckHirelingStatus (CCharNPCPet.cpp:641-689), run on the
+    /// food tick. A creature hired for money (HIREDAYWAGE, or the legacy HIRE_WAGE
+    /// tag) pays wage * REGEN3 seconds / (24 * 60 * GAMEMINUTELENGTH in ms) per tick -
+    /// at least 1, the reference's own units - out of what it was paid in advance
+    /// (HIRE_BALANCE, Source-X's bank m_Check_Amount). When that no longer covers a
+    /// tick it states its wage and that its time is up, and deserts. True = happy.</summary>
+    private bool CheckHirelingStatus()
+    {
+        uint wage = Definitions.DefinitionLoader.GetCharDef(CharDefIndex)?.HireDayWage ?? 0;
+        if (TryGetTag("HIRE_WAGE", out string? wageTag) && uint.TryParse(wageTag, out uint tagWage) && tagWage > 0)
+            wage = tagWage;
+        long rateSec = RegenFoodSeconds;
+        if (wage == 0 || rateSec <= 0)
+            return true;
+
+        long divisor = 24L * 60 * Math.Max(1, GameMinuteLengthSeconds) * 1000;
+        long periodWage = ((long)wage * rateSec + divisor / 2) / divisor;
+        if (periodWage <= 0)
+            periodWage = 1;
+
+        long balance = TryGetTag("HIRE_BALANCE", out string? bs) && long.TryParse(bs, out long b) ? b : 0;
+        if (balance > periodWage)
+        {
+            SetTag("HIRE_BALANCE", (balance - periodWage).ToString());
+            return true;
+        }
+
+        BroadcastSpeech(0, unicode: false, ServerMessages.GetFormatted(Msg.NpcPetWageCost, wage.ToString()));
+        var owner = OwnerSerial.IsValid ? ResolveOwnerCharacter() : null;
+        if (owner != null)
+        {
+            BroadcastSpeech(0, unicode: false, ServerMessages.Get(Msg.NpcPetHireTimeup));
+            PetDesert();
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Source-X NPC_PetDesert (CCharNPCPet.cpp:898-925): a berserk creature
+    /// never deserts; otherwise @PetDesert runs with the owner as SRC (RETURN 1 keeps
+    /// the pet), an owner who cannot see the pet is told it deserted, the pet says it
+    /// decided it is its own master, and it is released (@PetRelease, which may
+    /// still keep it).</summary>
+    internal void PetDesert()
+    {
+        if (!CanDesertOwner)
+            return;
+        var owner = OwnerSerial.IsValid ? ResolveOwnerCharacter() : null;
+        if (owner == null)
+            return;
+        if (OnPetDesert != null && OnPetDesert(this, owner))
+            return;
+
+        bool ownerSees = owner.MapIndex == MapIndex && owner.Position.GetDistanceTo(Position) <= 18 &&
+            (!(IsStatFlag(StatFlag.Hidden) || IsStatFlag(StatFlag.Invisible)) || owner.PrivLevel >= PrivLevel.Counsel);
+        if (!ownerSees)
+            SendOwnerMessage?.Invoke(owner, ServerMessages.GetFormatted(Msg.NpcPetDeserted, GetName()));
+        BroadcastSpeech(0, unicode: false, ServerMessages.GetFormatted(Msg.NpcPetDecideMaster, GetName()));
+
+        // NPC_PetRelease (:860): @PetRelease may keep it.
+        if (OnPetRelease != null && OnPetRelease(this, owner))
+            return;
+        ClearOwnership(clearFriends: true);
+        PetAIMode = PetAIMode.Stay;
+        Action = SkillType.None;
+        RemoveTag("ATTACK_TARGET");
+        RemoveTag("GUARD_TARGET");
+        RemoveTag("FOLLOW_TARGET");
+        RemoveTag("GO_TARGET");
     }
 
     /// <summary>ISVALID plus the pack's pervasive ISVALIDE alias.</summary>
@@ -5672,7 +5776,11 @@ public partial class Character : ObjBase
     /// <summary>Food_GetLevelMessage(false, false) (CCharStatus.cpp:830): the food
     /// level as one of eight words, food * 8 / max food rounded, the last word for
     /// anything at the top.</summary>
-    public string FoodLevelMessage()
+    public string FoodLevelMessage() => FoodLevelMessage(pet: false);
+
+    /// <summary>Food_GetLevelMessage(fPet, false): a pet reads the msg_pet_happy_*
+    /// words (the reference's sm_szPetHunger table), anyone else msg_food_lvl_*.</summary>
+    public string FoodLevelMessage(bool pet)
     {
         int max = MaxFood;
         if (max <= 0)
@@ -5680,7 +5788,7 @@ public partial class Character : ObjBase
         long ab = (long)_food * 8;
         int index = (int)((ab + max / 2) / max);
         if (index > 7) index = 7;
-        return ServerMessages.Get($"msg_food_lvl_{index + 1}");
+        return ServerMessages.Get(pet ? $"msg_pet_happy_{index + 1}" : $"msg_food_lvl_{index + 1}");
     }
 
     /// <summary>ITEMID_TRACK_WISP (uofiles_enums_itemid.h:887): the tracking icon a
@@ -8923,6 +9031,12 @@ public partial class Character : ObjBase
     /// <paramref name="hungerLoss"/>.</summary>
     private void ApplyFoodDecay(int amount, int hungerLoss)
     {
+        if (!_isPlayer)
+        {
+            ApplyNpcFoodTick(amount, hungerLoss);
+            return;
+        }
+
         if (_food > 0)
             _food = (ushort)Math.Clamp(_food - amount, 0, ushort.MaxValue);
 

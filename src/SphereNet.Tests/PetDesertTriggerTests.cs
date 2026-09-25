@@ -6,11 +6,10 @@ using Xunit;
 
 namespace SphereNet.Tests;
 
-// Verifies the @PetDesert trigger. The pet loyalty loop already exists
-// (TickPetOwnershipTimers decays NpcFood, NpcAI.TryEatFood restores it); this
-// locks the desertion event: when loyalty hits zero the pet fires @PetDesert and
-// goes wild, and a script returning 1 cancels the desertion. The loyalty clock is
-// driven deterministically via the PET_NEXT_LOYALTY_TICK tag (no real waiting).
+// Verifies the @PetDesert trigger. The pet's food tick (TickPetOwnershipTimers ->
+// OnTickFood, CCharAct.cpp:5748) decays NpcFood; at zero, with HITSHUNGERLOSS set,
+// the pet fires @PetDesert and goes wild (NPC_PetDesert), and a script returning 1
+// cancels the desertion. The food clock is driven through SetNextFoodTick.
 // Character.OnPetDesert is nulled between tests by ResetEngineStatics.
 public class PetDesertTriggerTests
 {
@@ -26,8 +25,9 @@ public class PetDesertTriggerTests
     {
         var pet = world.CreateCharacter();
         pet.NpcMaster = owner.Uid;        // owned → loyalty timer runs
+        pet.MaxHits = 50; pet.Hits = 50;  // the hunger bite must not kill it
         pet.NpcFood = 1;                  // one decay tick from deserting
-        pet.SetTag("PET_NEXT_LOYALTY_TICK", "1"); // a due-in-the-past loyalty tick
+        pet.SetNextFoodTick(1);           // a due-in-the-past food tick
         world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
         return pet;
     }
@@ -42,6 +42,7 @@ public class PetDesertTriggerTests
         var pet = MakePet(world, owner);
 
         int fired = 0;
+        Character.HitsHungerLoss = 1;   // Source-X only bites (and deserts) with HITSHUNGERLOSS set
         Character.OnPetDesert = (_, _) => { fired++; return false; }; // don't cancel
 
         pet.TickPetOwnershipTimers(1_000_000); // NpcFood 1 -> 0 -> desert
@@ -60,6 +61,7 @@ public class PetDesertTriggerTests
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
         var pet = MakePet(world, owner);
 
+        Character.HitsHungerLoss = 1;
         Character.OnPetDesert = (_, _) => true; // cancel the desertion
 
         pet.TickPetOwnershipTimers(1_000_000);

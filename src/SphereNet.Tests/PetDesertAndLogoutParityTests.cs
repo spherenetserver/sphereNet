@@ -81,7 +81,7 @@ public sealed class PetDesertAndLogoutParityTests
         // the berserk creature starves, but it does not go wild.
         var (_, owner, pet) = Pet(NpcBrainType.Berserk);
         pet.Food = 1;
-        pet.SetTag("PET_NEXT_LOYALTY_TICK", "1");
+        pet.SetNextFoodTick(1);
 
         pet.TickPetOwnershipTimers(1_000_000);
 

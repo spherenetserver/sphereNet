@@ -273,7 +273,8 @@ public sealed class PetParity07LQTests
 
         Tick(ai, pet);
 
-        Assert.Equal(2, seen);
+        // NPC_Act_Follow's default maxDistance is 1 (CChar.h:1341).
+        Assert.Equal(1, seen);
     }
 
     // --- SX-07O: a GO order arrives, and restores what it saved -------------

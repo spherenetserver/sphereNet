@@ -905,6 +905,7 @@ public static partial class Program
         Character.RegenStamSeconds = _config.RegenStam;
         Character.RegenManaSeconds = _config.RegenMana;
         Character.RegenFoodSeconds = _config.RegenFood;
+        Character.GameMinuteLengthSeconds = _config.GameMinuteLength;
 
         // Config-driven fame/karma limits (were hardcoded in DeathEngine).
         SphereNet.Game.Death.DeathEngine.MaxFame = _config.MaxFame;

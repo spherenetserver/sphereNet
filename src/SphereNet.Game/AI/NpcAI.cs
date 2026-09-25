@@ -172,7 +172,9 @@ public sealed partial class NpcAI
         bool Handled, int Motivation, SkillType ForcedSkill, SpellType ForcedSpell,
         bool SkipHardcoded = false);
 
-    public Func<Character, bool>? OnNpcActWander { get; set; }
+    /// <summary>@NPCActWander (NPC_Act_Wander, CCharNPCAct.cpp:1269): ARGN1 = stop
+    /// wandering, ARGN2 = go home, both read back from the args; true = RETURN 1.</summary>
+    public Func<Character, WanderTriggerArgs, bool>? OnNpcActWander { get; set; }
 
     /// <summary>What a follow trigger answered, and what it left behind.
     ///
@@ -199,9 +201,8 @@ public sealed partial class NpcAI
         public bool Flee { get; set; }
         public bool MoveAway { get; set; }
 
-        /// <summary>How close the follower wants to be. Seeded with SphereNet's own
-        /// following distance rather than the reference's 1, so a pack that scripts
-        /// nothing keeps the behaviour it has today.</summary>
+        /// <summary>How close the follower wants to be (seeded with the reference's
+        /// 1, ARGN2).</summary>
         public int MaxDistance { get; set; }
     }
 
@@ -327,61 +328,51 @@ public sealed partial class NpcAI
         if (!npc.NpcMaster.IsValid && !_world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y))
         {
             npc.NextNpcActionTime = now + 30_000 + _rand.Next(0, 30_000);
+            // NPCAIEXTRAS ReturnHome: a creature parked far from home is put back.
+            if (HasExtra(npc, NpcAiExtraFlags.ReturnHome))
+                TryReturnHomeWhileParked(npc);
             return;
         }
 
-        // NPC tick cadence by role, scaled by CharDef.MoveRate.
-        // Source-X: MoveRate default=100 (normal speed). Higher = slower.
-        // Base delays: combat 400ms, idle wander 1000ms, service 3-5s.
-        bool isActive = npc.FightTarget.IsValid ||
-            (npc.NpcMaster.IsValid && npc.PetAIMode is PetAIMode.Attack
-                or PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard) ||
-            // A scripted RUNTO. The running bit itself goes nowhere - the Direction
-            // setter masks everything but the three facing bits - so in this engine
-            // the whole difference between running and walking IS the step cadence,
-            // and a RUNTO on the idle cadence would be indistinguishable from GOTO.
-            (NpcAction)npc.Action == NpcAction.RunTo;
-        bool isService = npc.NpcBrain is NpcBrainType.Vendor or NpcBrainType.Banker
-            or NpcBrainType.Stable or NpcBrainType.Healer;
+        // The timer the tick leaves behind. Source-X sets it in two places: a step
+        // sets the move delay (NPC_WalkToPoint, CCharNPCAct.cpp:610-693), and a tick
+        // that did not set one gets the non-move re-tick at the end of
+        // NPC_OnTickAction (:2385-2394). Seeding the re-tick first and letting a step
+        // or a "stand 1-2 s" overwrite it is the same thing in this engine's order.
+        npc.NextNpcActionTime = now + ComputeRetickDelayMs(npc);
+        var positionBefore = npc.Position;
+        _stepDelayAppliedFor = 0;
 
-        int moveRate = SphereNet.Scripting.Definitions.CharDef.DefaultMoveRate;
-        var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-        if (charDef != null && charDef.MoveRate > 0)
-            moveRate = charDef.MoveRate;
+        // A fight ends the idle activity the creature was in (Source-X starts a
+        // fight skill in the same slot NPCACT_WANDER / GO_HOME live in).
+        if (npc.FightTarget.IsValid)
+            _idleMode.Remove(npc.Uid.Value);
 
-        // Badly-hurt creatures act a little slower (ModernUO BadlyHurtMoveDelay) —
-        // natural "wounded" pacing plus a touch of CPU relief on big fights.
-        int hurtDelay = (npc.MaxHits > 0 && npc.Hits > 0 && npc.Hits < npc.MaxHits / 3)
-            ? (isActive ? 200 : 400)
-            : 0;
+        RunTickBody(npc);
 
-        // Source-X NPC move cadence (CCharNPCAct move-tick): the step delay
-        // scales with DEX and the creature's MoveRate, NOT a flat rate. Running
-        // (combat/chase) is ~250ms at high DEX up to ~1.6s at low DEX; walking
-        // (idle wander) is ~1s up to ~2.6s. A flat 400ms made ordinary (mid-DEX)
-        // creatures chase noticeably faster than Source-X. Pets run a little
-        // faster (DEX floored to 75). Clamped to [100ms, 5s] like Source-X.
-        if (isActive)
+        // A step the tick took through a path this file does not own (a flee or a
+        // back-off step) still gets the move delay rather than the non-move re-tick.
+        if (_stepDelayAppliedFor != npc.Uid.Value && !npc.IsDeleted &&
+            npc.MapIndex == positionBefore.Map &&
+            npc.Position.GetDistanceTo(positionBefore) == 1)
         {
-            int dex = npc.Dex;
-            if (npc.NpcMaster.IsValid && dex < 75) dex = 75; // pets run faster
-            int range = Math.Max(0, 100 - dex * moveRate / 100) / 5;
-            int delay = Math.Clamp(250 + _rand.Next(range + 1) * 100, 100, 5000);
-            npc.NextNpcActionTime = now + delay + hurtDelay;
-        }
-        else if (isService)
-            npc.NextNpcActionTime = now + 3000 + _rand.Next(0, 2000);
-        else
-        {
-            int range = Math.Max(0, 100 - npc.Dex * moveRate / 100) / 3;
-            int delay = Math.Clamp(1000 + _rand.Next(range + 1) * 100, 100, 5000);
-            npc.NextNpcActionTime = now + delay + hurtDelay;
+            ApplyStepDelay(npc, run: npc.IsStatFlag(StatFlag.War) || npc.FightTarget.IsValid);
         }
 
-        // Atmospheric special trail — giant spiders web the ground, fire
-        // elementals leave fire patches, as they move and fight.
-        TryDropSpecialTrail(npc);
+        // NPCAIEXTRAS HurtSlowdown: a badly hurt creature acts a little slower.
+        if (npc.MaxHits > 0 && npc.Hits > 0 && npc.Hits < npc.MaxHits / 3 &&
+            HasExtra(npc, NpcAiExtraFlags.HurtSlowdown))
+        {
+            npc.NextNpcActionTime += npc.FightTarget.IsValid ? 200 : 400;
+        }
+    }
 
+    /// <summary>The uid whose step already set the move delay this tick.</summary>
+    private uint _stepDelayAppliedFor;
+
+    /// <summary>Everything OnTickAction does after the cadence is seeded.</summary>
+    private void RunTickBody(Character npc)
+    {
         // An action a script started outranks the brain until it finishes, the way
         // upstream's action dispatcher runs before anything the brain would pick
         // (CCharNPCAct.cpp:2340). Pets included: RUNTO is told to one as often as to

@@ -116,6 +116,8 @@ public sealed class NpcCombatHomeBoundaryTests
             Assert.Equal(80, distance);
             return veto;
         };
+        // The leash is NPC_Act_GoHome's (CCharNPCAct.cpp:1547-1571): the NPC is heading home.
+        ai.SetIdleMode(npc, NpcAI.IdleMode.GoHome);
         Act(ai, "WanderHome", npc);
         Assert.Equal(expectedX, npc.X);
         Assert.Equal(expectedCalls, calls);
@@ -138,6 +140,7 @@ public sealed class NpcCombatHomeBoundaryTests
             Assert.Equal(short.MaxValue, distance);
             return veto;
         };
+        ai.SetIdleMode(npc, NpcAI.IdleMode.GoHome);
         Act(ai, "WanderHome", npc);
         Assert.Equal(expectedMap, npc.MapIndex);
         Assert.Equal(setting == 0 ? 0 : 1, calls);

@@ -39,7 +39,7 @@ public sealed class ServFunctionPrefixTests
     [InlineData("STRUPPER abc", "ABC")]
     [InlineData("STRLOWER ABC", "abc")]
     [InlineData("STRREVERSE abc", "cba")]
-    [InlineData("ASC A", "41")]
+    [InlineData("ASC A", "041")]
     [InlineData("EVAL 2+3", "5")]
     [InlineData("MAX 3,7", "7")]
     public void TheFunctionTableIsReachableThroughServ(string property, string expected)

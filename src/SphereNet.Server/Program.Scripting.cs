@@ -538,7 +538,9 @@ public static partial class Program
                 return file.ReadChar();
             case "READBYTE":
             {
-                int count = arg.Length > 0 && int.TryParse(arg, out int n) ? n : 1;
+                // A bare READBYTE is a count of 0, which is refused (CSFileObj.cpp:345).
+                int count = arg.Length > 0 && SphereNet.Core.Types.ScriptNumber.TryParseToken(arg, out long n)
+                    ? (int)Math.Clamp(n, int.MinValue, int.MaxValue) : 0;
                 return file.ReadBytes(count);
             }
             case "READLINE":
@@ -547,8 +549,8 @@ public static partial class Program
                 return file.ReadLine(line);
             }
             case "SEEK":
-                file.Seek(arg);
-                return file.Position.ToString();
+                // No argument is refused; otherwise the new position, 0 on failure.
+                return arg.Length == 0 ? "0" : file.Seek(arg).ToString();
             case "FILEEXIST":
                 return file.FileExistsRelative(arg) ? "1" : "0";
             case "FILELINES":
@@ -560,18 +562,19 @@ public static partial class Program
             case "WRITELINE":
                 return file.WriteLine(arg) ? "1" : "0";
             case "WRITECHR":
-                return arg.Length > 0 && int.TryParse(arg, out int chr) && file.WriteChr(chr) ? "1" : "0";
+                return arg.Length > 0 && SphereNet.Core.Types.ScriptNumber.TryParseToken(arg, out long chr) &&
+                       file.WriteChr(unchecked((int)chr)) ? "1" : "0";
             case "MODE.APPEND":
-                if (arg.Length > 0) { file.ModeAppend = arg != "0"; return "1"; }
+                if (arg.Length > 0) { file.ModeAppend = ScriptFileHandle.ParseModeValue(arg); return "1"; }
                 return file.ModeAppend ? "1" : "0";
             case "MODE.CREATE":
-                if (arg.Length > 0) { file.ModeCreate = arg != "0"; return "1"; }
+                if (arg.Length > 0) { file.ModeCreate = ScriptFileHandle.ParseModeValue(arg); return "1"; }
                 return file.ModeCreate ? "1" : "0";
             case "MODE.READFLAG":
-                if (arg.Length > 0) { file.ModeRead = arg != "0"; return "1"; }
+                if (arg.Length > 0) { file.ModeRead = ScriptFileHandle.ParseModeValue(arg); return "1"; }
                 return file.ModeRead ? "1" : "0";
             case "MODE.WRITEFLAG":
-                if (arg.Length > 0) { file.ModeWrite = arg != "0"; return "1"; }
+                if (arg.Length > 0) { file.ModeWrite = ScriptFileHandle.ParseModeValue(arg); return "1"; }
                 return file.ModeWrite ? "1" : "0";
             case "MODE.SETDEFAULT":
                 file.SetModeDefault();

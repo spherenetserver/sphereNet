@@ -3971,6 +3971,15 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         SphereNet.Network.Packets.PacketWriter? captured = null;
         Character.SendPacketToOwner = (c, pkt) => { if (c == ch) captured = pkt; };
+        // PARTY.x names the character's party (CPartyDef); without one there is
+        // nobody to message. "Hello World": the first word names no member, so the
+        // rest goes to every member (SysMessageAll, CParty.cpp:843).
+        var savedFinder = Character.ResolvePartyFinder;
+        var pm = new SphereNet.Game.Party.PartyManager();
+        pm.CreateParty(ch.Uid);
+        Character.ResolvePartyFinder = uid => pm.FindParty(uid);
+        var savedWorld = SphereNet.Game.Objects.ObjBase.ResolveWorld;
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => w;
 
         try
         {
@@ -3980,6 +3989,8 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         finally
         {
             Character.SendPacketToOwner = null;
+            Character.ResolvePartyFinder = savedFinder;
+            SphereNet.Game.Objects.ObjBase.ResolveWorld = savedWorld;
         }
     }
 

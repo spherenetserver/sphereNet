@@ -79,8 +79,9 @@ public class FunctionsPackParityTests
         Assert.Equal("A", parser.ResolveAngleBrackets("<CHR 65>"));
         Assert.Equal(" ", parser.ResolveAngleBrackets("<CHR 32>"));
         Assert.Equal("0", parser.ResolveAngleBrackets("<CHR 48>"));
-        // Round-trip with ASC (which emits hex): 0x41 = 65 = 'A'.
-        Assert.Equal("41", parser.ResolveAngleBrackets("<ASC A>"));
+        // Round-trip with ASC (which emits Sphere hex, CScriptObj.cpp:901): 041 = 65 = 'A'.
+        Assert.Equal("041", parser.ResolveAngleBrackets("<ASC A>"));
+        Assert.Equal("A", parser.ResolveAngleBrackets("<CHR 041>"));
     }
 
     [Fact]

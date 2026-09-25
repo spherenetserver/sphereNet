@@ -653,16 +653,7 @@ public sealed class Sector : IScriptObj
                 value = ClientCount.ToString();
                 return true;
             case "COMPLEXITY":
-                value = CharacterCount.ToString();
-                return true;
-            case "COMPLEXITY.HIGH":
-                value = CharacterCount < 5 ? "1" : "0";
-                return true;
-            case "COMPLEXITY.MEDIUM":
-                value = CharacterCount < 10 ? "1" : "0";
-                return true;
-            case "COMPLEXITY.LOW":
-                value = CharacterCount >= 10 ? "1" : "0";
+                value = CharComplexity.ToString();
                 return true;
             case "ITEMCOUNT":
                 value = ItemCount.ToString();
@@ -686,10 +677,17 @@ public sealed class Sector : IScriptObj
                 value = _isSleeping ? "1" : "0";
                 return true;
             case "CANSLEEP":
-                value = CanSleep(Environment.TickCount64) ? "1" : "0";
+                // Adjacent sectors are consulted only when asked for (CSector.cpp:109:
+                // CANSLEEP <fCheckAdjacents>, default 0).
+                value = CanSleep(Environment.TickCount64, checkAdjacents: false) ? "1" : "0";
+                return true;
+            case "CANSLEEP 1":
+            case "CANSLEEP.1":
+                value = CanSleep(Environment.TickCount64, checkAdjacents: true) ? "1" : "0";
                 return true;
             case "FLAGS":
-                value = ((uint)_flags).ToString();
+                // FormatHex (CSector.cpp:131).
+                value = $"0{(uint)_flags:X}";
                 return true;
             case "NOSLEEP":
                 value = _flags.HasFlag(SectorFlag.NoSleep) ? "1" : "0";
@@ -699,7 +697,10 @@ public sealed class Sector : IScriptObj
                 return true;
             case "ISDARK":
             {
-                value = (GetLightCalc() > 6) ? "1" : "0";
+                // IsDark() reads the STORED light (CSector.cpp:1402), not a fresh
+                // calculation - GetLightCalc rolls a random cloud penalty, so the
+                // answer could change from one read to the next.
+                value = (Light > 6) ? "1" : "0";
                 return true;
             }
             case "ISNIGHTTIME":
@@ -710,20 +711,7 @@ public sealed class Sector : IScriptObj
             }
             case "LOCALTIME":
             {
-                int localTime = GetLocalTime();
-                int hour = localTime / 60;
-                int minute = localTime % 60;
-                string period = hour switch
-                {
-                    >= 5 and < 7 => "dawn",
-                    >= 7 and < 12 => "morning",
-                    12 => "noon",
-                    >= 13 and < 17 => "afternoon",
-                    >= 17 and < 20 => "evening",
-                    >= 20 and < 22 => "dusk",
-                    _ => "night"
-                };
-                value = $"{hour:D2}:{minute:D2} ({period})";
+                value = GetTimeMinDesc(GetLocalTime());
                 return true;
             }
             case "LOCALTOD":
@@ -732,8 +720,74 @@ public sealed class Sector : IScriptObj
                 return true;
             }
             default:
+                // COMPLEXITY.<title>: 1 when the sector's complexity band carries that
+                // name, else 0 - any other suffix answers 0 rather than failing
+                // (CSector.cpp:122, sm_ComplexityTitles: HIGH < 5 <= MEDIUM < 10 <= LOW).
+                if (upper.StartsWith("COMPLEXITY.", StringComparison.Ordinal))
+                {
+                    int n = CharComplexity;
+                    string band = n < 5 ? "HIGH" : n < 10 ? "MEDIUM" : "LOW";
+                    value = upper["COMPLEXITY.".Length..].Trim() == band ? "1" : "0";
+                    return true;
+                }
                 return false;
         }
+    }
+
+    /// <summary>Source-X GetCharComplexity: the ACTIVE characters only
+    /// (m_Chars_Active). A logged-out player sits in m_Chars_Disconnect upstream and
+    /// does not make the speech in its sector any simpler.</summary>
+    public int CharComplexity
+    {
+        get
+        {
+            int n = 0;
+            foreach (var c in _characters)
+                if (!(c.IsPlayer && !c.IsOnline)) n++;
+            return n;
+        }
+    }
+
+    private static readonly string[] ClockHourKeys =
+    [
+        "clock_hour_zero", "clock_hour_one", "clock_hour_two", "clock_hour_three",
+        "clock_hour_four", "clock_hour_five", "clock_hour_six", "clock_hour_seven",
+        "clock_hour_eight", "clock_hour_nine", "clock_hour_ten", "clock_hour_eleven",
+        "clock_hour_twelve",
+    ];
+
+    /// <summary>Source-X CServerTime::GetTimeMinDesc (CServerTime.cpp:17): the local
+    /// time as a spoken phrase, "a quarter past three o'clock in the afternoon". From
+    /// the 45th minute on the hour rounds up ("a quarter till four"); midnight and
+    /// noon carry no tail. Every word comes from DEFMSG so a server can translate it.</summary>
+    public static string GetTimeMinDesc(int minutes)
+    {
+        int minute = minutes % 60;
+        int hour = (minutes / 60) % 24;
+        string minDif;
+        if (minute < 15) minDif = Messages.ServerMessages.Get("clock_quarter_first");
+        else if (minute < 30) minDif = Messages.ServerMessages.Get("clock_quarter_second");
+        else if (minute < 45) minDif = Messages.ServerMessages.Get("clock_quarter_third");
+        else
+        {
+            minDif = Messages.ServerMessages.Get("clock_quarter_fourth");
+            hour = (hour + 1) % 24;
+        }
+
+        string tail;
+        if (hour == 0 || hour == 12)
+            tail = "";
+        else if (hour > 12)
+        {
+            hour -= 12;
+            tail = hour < 6 ? Messages.ServerMessages.Get("clock_13_to_18")
+                : hour < 9 ? Messages.ServerMessages.Get("clock_18_to_21")
+                : Messages.ServerMessages.Get("clock_21_to_24");
+        }
+        else
+            tail = Messages.ServerMessages.Get("clock_24_to_12");
+
+        return $"{minDif} {Messages.ServerMessages.Get(ClockHourKeys[hour])} {tail}";
     }
 
     public bool TrySetProperty(string key, string val)
@@ -746,9 +800,15 @@ public sealed class Sector : IScriptObj
                 if (byte.TryParse(val, out byte w)) { SetWeather(w); return true; }
                 return false;
             case "SEASON":
+                // No argument means summer (CSector.cpp:320).
+                if (string.IsNullOrWhiteSpace(val)) { SetSeason(1); return true; }
                 if (byte.TryParse(val, out byte s)) { SetSeason(s); return true; }
                 return false;
             case "LIGHT":
+                // Refused unless AllowLightOverride is on; no argument clears the pin
+                // (CSector.cpp:311).
+                if (AllowLightOverride?.Invoke() == false) return true;
+                if (string.IsNullOrWhiteSpace(val)) { SetLight(-1); return true; }
                 if (int.TryParse(val, out int l)) { SetLight(l); return true; }
                 return false;
             case "RAINCHANCE":
@@ -800,18 +860,22 @@ public sealed class Sector : IScriptObj
             case "SNOW":
                 SetWeather((byte)WeatherType.Snow);
                 return true;
+            // Run the argument as a verb line on every character / item here, walking
+            // from the end the way upstream does so a verb that removes the object
+            // does not skip its neighbour (CSector.cpp:512-612). ALLCHARS walks the
+            // active characters, ALLCHARSIDLE the disconnected ones (m_Chars_Disconnect:
+            // logged-out players), ALLCLIENTS the active ones with a client.
             case "ALLCHARS":
-                // Execute command on all characters — handled by caller via iteration
-                return true;
+                return RunOnEach(_characters.Where(c => !(c.IsPlayer && !c.IsOnline)).ToList(), args, source);
             case "ALLCHARSIDLE":
-                // Execute command on all idle (offline) characters — handled by caller
-                return true;
+                return RunOnEach(_characters.Where(c => c.IsPlayer && !c.IsOnline).ToList(), args, source);
             case "ALLCLIENTS":
-                // Execute command on all connected players — handled by caller
-                return true;
+                return RunOnEach(_characters.Where(c => c.IsPlayer && c.IsOnline).ToList(), args, source);
             case "ALLITEMS":
-                // Execute command on all items — handled by caller
-                return true;
+                return RunOnEach(_items.ToList(), args, source);
+            case "LIGHT":
+                // Same rule as the property (CSector.cpp:381).
+                return TrySetProperty("LIGHT", args ?? "");
             case "RESPAWN":
                 for (int i = _characters.Count - 1; i >= 0; i--)
                 {
@@ -827,8 +891,25 @@ public sealed class Sector : IScriptObj
                 // Restock NPCs — trigger via callback
                 return true;
             default:
-                return false;
+                // CScriptObj::r_Verb's default is the property write (r_LoadVal), so
+                // "SECTOR.SEASON 3" or "SECTOR.RAINCHANCE 40" set the value.
+                return TrySetProperty(key, args ?? "");
         }
+    }
+
+    private static bool RunOnEach<T>(List<T> objects, string args, ITextConsole source) where T : ObjBase
+    {
+        SphereNet.Scripting.Parsing.ScriptCommandLine.Split(args ?? "", out string verb, out string verbArgs);
+        if (verb.Length == 0)
+            return false;
+        bool any = false;
+        for (int i = objects.Count - 1; i >= 0; i--)
+        {
+            var obj = objects[i];
+            if (obj.IsDeleted) continue;
+            any |= obj.ExecuteVerbLine(verb, verbArgs, source);
+        }
+        return any;
     }
 
     public TriggerResult OnTrigger(int triggerType, IScriptObj? source, ITriggerArgs? args)

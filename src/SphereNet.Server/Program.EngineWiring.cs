@@ -399,14 +399,11 @@ public static partial class Program
 
             // Script TRIGGER verb — fire arbitrary named triggers through the
             // dispatcher's by-name chain (Source-X CV_TRIGGER).
-            SphereNet.Game.Objects.ObjBase.OnScriptTrigger = (obj, trigName, console) =>
+            SphereNet.Game.Objects.ObjBase.OnScriptTrigger = (obj, trigName, console, targs) =>
             {
                 var src = (console as GameClient)?.Character ?? obj as Character;
-                var targs = new SphereNet.Game.Scripting.TriggerArgs
-                {
-                    CharSrc = src,
-                    ScriptConsole = console
-                };
+                targs.CharSrc = src;
+                targs.ScriptConsole = console;
                 if (obj is Character tch)
                     _triggerDispatcher.FireCharTriggerByName(tch, trigName, targs);
                 else if (obj is Item titem)
@@ -3118,6 +3115,14 @@ public static partial class Program
             {
                 target.MarkDirty(SphereNet.Core.Enums.DirtyFlag.StatFlags);
                 ForEachClientInRange(target.Position, 18, 0,
+                    (_, observerClient) => observerClient.SendAosTooltip(
+                        target, requested: false, invalidate: true));
+            };
+            // RESENDTOOLTIP on any object (OV_RESENDTOOLTIP, CObjBase.cpp:2539): an
+            // item is refreshed for everyone around its top-level object.
+            SphereNet.Game.Objects.ObjBase.ResendTooltipForObject = target =>
+            {
+                ForEachClientInRange(target.GetTopLevelPosition(), 18, 0,
                     (_, observerClient) => observerClient.SendAosTooltip(
                         target, requested: false, invalidate: true));
             };

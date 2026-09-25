@@ -1073,8 +1073,9 @@ public sealed class ClientScriptConsoleHandler
                     _scriptFile.WriteLine(args);
                     return true;
                 case "WRITECHR":
-                    if (int.TryParse(args, out int chrVal))
-                        _scriptFile.WriteChr(chrVal);
+                    // GetArgCVal: an expression, so 041 is hex 0x41 (CSFileObj.cpp:190).
+                    if (SphereNet.Core.Types.ScriptNumber.TryParseToken(args.Trim(), out long chrVal))
+                        _scriptFile.WriteChr(unchecked((int)chrVal));
                     return true;
                 case "FLUSH":
                     _scriptFile.Flush();
@@ -1084,17 +1085,19 @@ public sealed class ClientScriptConsoleHandler
                     // refuses to delete the currently-open file (Source-X).
                     _scriptFile.DeleteRelative(args);
                     return true;
+                // GetArgVal() != 0 (CSFileObj.cpp:128): a bare "File.Mode.Create"
+                // sets the flag OFF, as "00" or a zero expression does.
                 case "MODE.APPEND":
-                    _scriptFile.ModeAppend = args != "0";
+                    _scriptFile.ModeAppend = ScriptFileHandle.ParseModeValue(args);
                     return true;
                 case "MODE.CREATE":
-                    _scriptFile.ModeCreate = args != "0";
+                    _scriptFile.ModeCreate = ScriptFileHandle.ParseModeValue(args);
                     return true;
                 case "MODE.READFLAG":
-                    _scriptFile.ModeRead = args != "0";
+                    _scriptFile.ModeRead = ScriptFileHandle.ParseModeValue(args);
                     return true;
                 case "MODE.WRITEFLAG":
-                    _scriptFile.ModeWrite = args != "0";
+                    _scriptFile.ModeWrite = ScriptFileHandle.ParseModeValue(args);
                     return true;
                 case "MODE.SETDEFAULT":
                     _scriptFile.SetModeDefault();

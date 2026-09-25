@@ -118,7 +118,7 @@ public sealed class ItemCombatRatingTests : IDisposable
         Assert.Equal("20,30", Read(sword, "DAM"));
 
         Assert.True(sword.TrySetProperty("DAM", "7"));
-        Assert.Equal("7", Read(sword, "DAM"));      // no spread reads bare
+        Assert.Equal("7,7", Read(sword, "DAM"));    // an item always reads "lo,hi" (CObjBase.cpp:1095)
         Assert.Equal("7", Read(sword, "DAM.HI"));
     }
 
@@ -151,7 +151,7 @@ public sealed class ItemCombatRatingTests : IDisposable
         Assert.Equal(5, plate.GetArmorDefense());          // upstream averages the pair
 
         Assert.True(plate.TrySetProperty("ARMOR", "20,20"));
-        Assert.Equal("20", Read(plate, "ARMOR"));
+        Assert.Equal("20,20", Read(plate, "ARMOR"));
         Assert.Equal(20, plate.GetArmorDefense());
     }
 

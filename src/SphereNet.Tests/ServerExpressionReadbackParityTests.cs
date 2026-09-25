@@ -106,24 +106,25 @@ public sealed class ServerExpressionReadbackParityTests
 
     // --- float intrinsics ---
 
-    /// <summary>The float evaluator's trigonometry is in degrees (CFloatMath.cpp).</summary>
+    /// <summary>The float evaluator's trigonometry is in degrees (CFloatMath.cpp);
+    /// FLOATVAL prints six decimals.</summary>
     [Fact]
     public void FloatTrigonometryIsInDegrees()
     {
-        Assert.Equal("1", Float("SIN(90)"));
-        Assert.Equal("1", Float("COS(0)"));
-        Assert.Equal("45", Float("ARCTAN(1)"));
-        Assert.Equal("90", Float("ARCSIN(1)"));
+        Assert.Equal("1.000000", Float("SIN(90)"));
+        Assert.Equal("1.000000", Float("COS(0)"));
+        Assert.Equal("45.000000", Float("ARCTAN(1)"));
+        Assert.Equal("90.000000", Float("ARCSIN(1)"));
     }
 
     [Fact]
     public void FloatEdgeCasesFollowUpstream()
     {
-        Assert.Equal("0", Float("SQRT(-4)"));
-        Assert.Equal("0", Float("MAX(3)"));
-        Assert.Equal("3", Float("LOGARITHM(8,2)"));
+        Assert.Equal("0.000000", Float("SQRT(-4)"));
+        Assert.Equal("0.000000", Float("MAX(3)"));
+        Assert.Equal("3.000000", Float("LOGARITHM(8,2)"));
         Assert.StartsWith("4.6", Float("LOGARITHM(100,e)"));
-        Assert.Equal("0", Float("LOGARITHM(100,0)"));
+        Assert.Equal("0.000000", Float("LOGARITHM(100,0)"));
     }
 
     // --- SERV read-back ---

@@ -170,10 +170,11 @@ public sealed class SoundEffectDefnameTests : IDisposable
             ch.TryExecuteCommand("SYSMESSAGELOC", "0,1070821,Bob", new Console(), out _);
             Assert.Single(sent);
 
-            // A hue nothing defines still sends nothing, as before.
+            // A hue that does not start with a positive number is HUE_TEXT_DEF and the
+            // line still goes out (atoi(arg) > 0 test, CClient.cpp:1650).
             sent.Clear();
             ch.TryExecuteCommand("SYSMESSAGELOC", "no_such_hue,1070821,Bob", new Console(), out _);
-            Assert.Empty(sent);
+            Assert.Single(sent);
         }
         finally { Character.SendPacketToOwner = null; }
     }

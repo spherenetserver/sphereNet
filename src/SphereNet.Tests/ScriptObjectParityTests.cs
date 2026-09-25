@@ -257,7 +257,7 @@ public class ScriptObjectParityTests
         Assert.True(target.TryGetProperty("TAG.DLOCAL", out var dlocal));
         Assert.Equal("10", dlocal);
         Assert.True(target.TryGetProperty("TAG.FLOAT", out var flt));
-        Assert.Equal("1.5", flt);
+        Assert.Equal("1", flt);   // FEVAL = atoi of the text (CScriptObj.cpp:741)
         Assert.True(target.TryGetProperty("TAG.REFNAME", out var refName));
         Assert.Equal("Linked", refName);
         Assert.Equal($"_REF_EXEC=0{linked.Uid.Value:X}|TAG.MARK|ok", refExec);

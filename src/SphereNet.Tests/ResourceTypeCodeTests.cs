@@ -42,9 +42,9 @@ public sealed class ResourceTypeCodeTests
 
             // Written in hex, as upstream's FormatHex does.
             Assert.Equal("07", Read("RESOURCETYPE c_restype_probe"));
-            Assert.Equal("0f", Read("RESOURCETYPE i_restype_probe"));
+            Assert.Equal("0F", Read("RESOURCETYPE i_restype_probe"));   // uppercase, as FormatHex writes it
             Assert.Equal("026", Read("RESOURCETYPE sp_restype_probe"));
-            Assert.Equal("02e", Read("RESOURCETYPE tm_restype_probe"));
+            Assert.Equal("02E", Read("RESOURCETYPE tm_restype_probe"));
             Assert.Equal("0", Read("RESOURCETYPE no_such_resource"));
             // The argument is evaluated, so an alias answers for what it names.
             Assert.Equal("07", Read("RESOURCETYPE restype_alias"));

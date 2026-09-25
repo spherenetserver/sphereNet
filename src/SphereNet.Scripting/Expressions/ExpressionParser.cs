@@ -943,7 +943,8 @@ public sealed partial class ExpressionParser
         {
             string inner = varExpr[5..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return "0" + Evaluate(expanded.AsSpan()).ToString("X");
+            // FormatLLHex (CScriptObj.cpp:736): -1 is "0FFFFFFFF", 0 is "00".
+            return FormatSphereHex(Evaluate(expanded.AsSpan()));
         }
 
         // QVAL paren form — <QVAL(v1,v2,lt,eq,gt)> numeric 3-way compare.
@@ -1085,26 +1086,40 @@ public sealed partial class ExpressionParser
         if (varExpr.StartsWith("STRUPPER ", StringComparison.OrdinalIgnoreCase))
             return ResolveAngleBrackets(varExpr[9..].Trim()).ToUpperInvariant();
 
-        // ISNUM — returns 1 if arg is numeric. The space form of the ISNUMBER
-        // intrinsic is NOT taken here: it follows INTRINSIC_ISNUMBER further down
-        // (skip to the first digit, leading zero admits hex), which this
-        // long.TryParse test contradicted for "0ff" and "abc12".
+        // ISNUM (CScriptObj.cpp:781): skip leading whitespace and ONE minus sign, then
+        // the rest must be all digits - a leading zero admits a-f (IsStrNumeric).
+        // "+5", "0x10" and trailing blanks are not numbers. ISNUMBER is a different
+        // test (skip to the first digit) and is answered further down.
         if (varExpr.StartsWith("ISNUM ", StringComparison.OrdinalIgnoreCase))
         {
-            const int prefixLen = 6;
-            string inner = ResolveAngleBrackets(varExpr[prefixLen..].Trim());
-            if (inner.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                return long.TryParse(inner.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out _) ? "1" : "0";
-            return long.TryParse(inner, out _) ? "1" : "0";
+            string inner = ResolveAngleBrackets(varExpr[6..]).TrimStart();
+            if (inner.StartsWith('-')) inner = inner[1..];
+            if (inner.Length == 0) return "0";
+            bool hexOk = inner[0] == '0';
+            foreach (char c in inner)
+            {
+                if (char.IsAsciiDigit(c)) continue;
+                if (hexOk && char.ToLowerInvariant(c) is >= 'a' and <= 'f') continue;
+                return "0";
+            }
+            return "1";
         }
 
-        // ASC — convert string to hex ASCII codes (space-separated)
+        // ASC (CScriptObj.cpp:901): one Sphere-hex token per byte, space separated -
+        // "hello" is "068 065 06C 06C 06F", an empty string is "00". A leading quote
+        // is dropped and the next quote ends the text.
         if (varExpr.StartsWith("ASC ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ASC(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("ASC(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 3) : ResolveAngleBrackets(varExpr[4..].Trim());
-            return string.Join(" ", inner.Select(c => ((int)c).ToString("X2")));
+                ? ExtractFuncArg(varExpr, 3) : ResolveAngleBrackets(varExpr[4..].TrimStart());
+            if (inner.StartsWith('"')) inner = inner[1..];
+            int endQuote = inner.IndexOf('"');
+            if (endQuote >= 0) inner = inner[..endQuote];
+            if (inner.Length == 0) return "00";
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(inner);
+            // tchar is signed upstream: a byte above 0x7F formats as a negative char.
+            return string.Join(" ", bytes.Select(b => FormatSphereHex((sbyte)b)));
         }
 
         // CHR — inverse of ASC: byte VALUE -> the character (Source-X
@@ -1116,73 +1131,72 @@ public sealed partial class ExpressionParser
             string inner = varExpr.StartsWith("CHR(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 3) : ResolveAngleBrackets(varExpr[4..].Trim());
             long code = Evaluate(inner.AsSpan());
-            // Reject the UTF-16 surrogate range (0xD800..0xDFFF) and out-of-plane
-            // values: char.ConvertFromUtf32 throws on those, which would escape
-            // to the tick. Rune.IsValid is exactly that predicate.
-            return code is > 0 and <= 0x10FFFF && System.Text.Rune.IsValid((int)code)
-                ? char.ConvertFromUtf32((int)code) : "";
+            // Format("%c", Exp_GetSingle(...)) (CScriptObj.cpp:410): ONE byte, the value
+            // taken modulo 256; a zero byte ends the string, so it reads as nothing.
+            byte b = unchecked((byte)code);
+            return b == 0 ? "" : ((char)b).ToString();
         }
 
         // ASCPAD — convert string to hex ASCII codes, padded to fixed length
         if (varExpr.StartsWith("ASCPAD ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ASCPAD(", StringComparison.OrdinalIgnoreCase))
         {
-            var parts = SplitFuncArgsResolved(varExpr, 6, 2);
-            if (parts.Count == 2 && int.TryParse(parts[0], out int padCount))
+            // Str_ParseCmds(args, 2) with the default "=, \t" separators: the count,
+            // then EVERYTHING after it is the text (CScriptObj.cpp:918). The count is
+            // an expression; a negative one refuses. Each byte is Sphere hex ("068"),
+            // the padding "00".
+            string body = varExpr.StartsWith("ASCPAD(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..]);
+            string padRest = body.TrimStart();
+            if (!TryTakeCmdToken(ref padRest, out string padToken) || padRest.Length == 0)
+                return "";
+            long padCount = Evaluate(padToken.AsSpan());
+            if (padCount < 0)
+                return "";
+            // Clamp the pad count: an attacker-influenced value (e.g.
+            // int.MaxValue) would build a multi-GB string → OutOfMemory.
+            const int MaxAscPad = 4096;
+            if (padCount > MaxAscPad)
             {
-                // Clamp the pad count: an attacker-influenced value (e.g.
-                // int.MaxValue) would build a multi-GB string → OutOfMemory.
-                const int MaxAscPad = 4096;
-                if (padCount < 0) padCount = 0;
-                else if (padCount > MaxAscPad)
-                {
-                    DiagnosticLogger?.Invoke($"[script] ASCPAD count {padCount} exceeds max {MaxAscPad}; clamped");
-                    padCount = MaxAscPad;
-                }
-                string str = parts[1].Trim('"');
-                var sb = new System.Text.StringBuilder();
-                for (int idx = 0; idx < padCount; idx++)
-                {
-                    if (sb.Length > 0) sb.Append(' ');
-                    sb.Append(idx < str.Length ? ((int)str[idx]).ToString("X2") : "00");
-                }
-                return sb.ToString();
+                DiagnosticLogger?.Invoke($"[script] ASCPAD count {padCount} exceeds max {MaxAscPad}; clamped");
+                padCount = MaxAscPad;
             }
-            return "";
+            if (padCount == 0) padCount = 1;
+            string str = padRest.Trim();
+            if (str.StartsWith('"')) str = str[1..];
+            if (str.EndsWith('"')) str = str[..^1];
+            byte[] padBytes = System.Text.Encoding.UTF8.GetBytes(str);
+            var sb = new System.Text.StringBuilder();
+            for (int idx = 0; idx < padCount; idx++)
+            {
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(idx < padBytes.Length ? FormatSphereHex((sbyte)padBytes[idx]) : "00");
+            }
+            return sb.ToString();
         }
 
-        // BETWEEN2 — inverse proportional mapping: (iMax-iCurrent)*iAbsMax/(iMax-iMin)
-        if (varExpr.StartsWith("BETWEEN2 ", StringComparison.OrdinalIgnoreCase) ||
-            varExpr.StartsWith("BETWEEN2(", StringComparison.OrdinalIgnoreCase))
-        {
-            var parts = SplitFuncArgsResolved(varExpr, 8);
-            if (parts.Count >= 4)
-            {
-                long iMin = Evaluate(parts[0].AsSpan());
-                long iMax = Evaluate(parts[1].AsSpan());
-                long iCur = Evaluate(parts[2].AsSpan());
-                long iAbsMax = Evaluate(parts[3].AsSpan());
-                long range = iMax - iMin;
-                return range != 0 ? ((iMax - iCur) * iAbsMax / range).ToString() : "0";
-            }
-            return "0";
-        }
-
-        // BETWEEN — proportional mapping: (iCurrent-iMin)*iAbsMax/(iMax-iMin)
-        if (varExpr.StartsWith("BETWEEN ", StringComparison.OrdinalIgnoreCase) ||
+        // BETWEEN / BETWEEN2 min,max,cur,absmax (CScriptObj.cpp:700): scale cur out of
+        // absmax onto min..max - cur*(max-min)/absmax + min - clamped to min when
+        // min>=max, absmax<=0 or cur<=0, and to max when cur>=absmax. BETWEEN2 first
+        // turns cur into absmax-cur. Comma or whitespace separate the arguments.
+        bool between2 = varExpr.StartsWith("BETWEEN2 ", StringComparison.OrdinalIgnoreCase) ||
+                        varExpr.StartsWith("BETWEEN2(", StringComparison.OrdinalIgnoreCase);
+        if (between2 ||
+            varExpr.StartsWith("BETWEEN ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("BETWEEN(", StringComparison.OrdinalIgnoreCase))
         {
-            var parts = SplitFuncArgsResolved(varExpr, 7);
-            if (parts.Count >= 4)
-            {
-                long iMin = Evaluate(parts[0].AsSpan());
-                long iMax = Evaluate(parts[1].AsSpan());
-                long iCur = Evaluate(parts[2].AsSpan());
-                long iAbsMax = Evaluate(parts[3].AsSpan());
-                long range = iMax - iMin;
-                return range != 0 ? ((iCur - iMin) * iAbsMax / range).ToString() : "0";
-            }
-            return "0";
+            var parts = SplitFuncArgsResolved(varExpr, between2 ? 8 : 7);
+            if (parts.Count == 1)
+                parts = parts[0].Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries).ToList();
+            long Arg(int i) => i < parts.Count ? Evaluate(parts[i].AsSpan()) : 0;
+            long iMin = Arg(0), iMax = Arg(1), iCur = Arg(2), iAbsMax = Arg(3);
+            if (between2)
+                iCur = iAbsMax - iCur;
+            if (iMin >= iMax || iAbsMax <= 0 || iCur <= 0)
+                return iMin.ToString();
+            if (iCur >= iAbsMax)
+                return iMax.ToString();
+            return (iCur * (iMax - iMin) / iAbsMax + iMin).ToString();
         }
 
         // CHR — ASCII code to character
@@ -1234,8 +1248,10 @@ public sealed partial class ExpressionParser
             {
                 long val = Evaluate(parts[0].AsSpan());
                 int bit = (int)Evaluate(parts[1].AsSpan());
+                // The MASKED value, not a yes/no: ISBIT(8,3) is 8
+                // (FormatLLVal(val & (1ULL << bit)), CScriptObj.cpp:769).
                 if (bit is >= 0 and < 64)
-                    return (val & (1L << bit)) != 0 ? "1" : "0";
+                    return (val & (1L << bit)).ToString();
             }
             return "0";
         }
@@ -1325,45 +1341,53 @@ public sealed partial class ExpressionParser
         if (varExpr.StartsWith("EXPLODE ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("EXPLODE(", StringComparison.OrdinalIgnoreCase))
         {
-            var parts = SplitFuncArgsResolved(varExpr, 7, 2);
-            if (parts.Count == 2)
-            {
-                string separators = parts[0];
-                string str = parts[1].Trim('"');
-                var tokens = str.Split(separators.ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
-                return string.Join(",", tokens);
-            }
-            return parts.Count == 1 ? parts[0] : "";
+            // "seps,text" (CScriptObj.cpp:1053): the separators are the raw characters
+            // up to the first comma (at most 15), the rest is cut with Str_ParseCmds on
+            // them - empty tokens KEPT ("a;;b" -> "a,,b"), each trimmed, quotes and
+            // brackets respected and left in place. No separators leaves the text whole.
+            string body = varExpr.StartsWith("EXPLODE(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 7) : ResolveAngleBrackets(varExpr[8..]);
+            body = body.TrimStart();
+            int comma = body.IndexOf(',');
+            string separators = comma >= 0 ? body[..comma] : body;
+            if (separators.Length > 15) separators = separators[..15];
+            int textStart = separators.Length + 1;
+            if (textStart >= body.Length)
+                return "";
+            string text = body[textStart..];
+            return string.Join(",", ParseCmdsWithSeparators(text, separators, 255));
         }
 
-        // FEVAL — floating-point evaluation.
+        // FEVAL = FormatVal(atoi(text)), FHVAL = FormatHex(atoi(text)): a C atoi of the
+        // argument text, not an evaluation - "12.7" is 12 (CScriptObj.cpp:741-745).
         if (varExpr.StartsWith("FEVAL ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("FEVAL(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("FEVAL(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 5) : varExpr[6..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return FormatFloat(EvaluateFloat(expanded.AsSpan()));
+            return CAtoi(expanded).ToString(CultureInfo.InvariantCulture);
         }
 
-        // FHVAL — evaluate as float, then format the truncated integer as hex.
         if (varExpr.StartsWith("FHVAL ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("FHVAL(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("FHVAL(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 5) : varExpr[6..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return "0" + ((long)EvaluateFloat(expanded.AsSpan())).ToString("X");
+            return FormatSphereHex(CAtoi(expanded));
         }
 
-        // FLOATVAL — floating point math.
+        // FLOATVAL — floating point math, printed with "%f" (CFloatMath::FloatMath,
+        // CFloatMath.cpp:17): six decimals, "1.500000".
         if (varExpr.StartsWith("FLOATVAL ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("FLOATVAL(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("FLOATVAL(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 8) : varExpr[9..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return FormatFloat(EvaluateFloat(expanded.AsSpan()));
+            double fv = EvaluateFloat(expanded.AsSpan());
+            return double.IsFinite(fv) ? fv.ToString("F6", CultureInfo.InvariantCulture) : "0.000000";
         }
 
         // FVAL — format as x.x (divides by 10): <FVAL 125> = "12.5"
@@ -1374,7 +1398,9 @@ public sealed partial class ExpressionParser
                 ? ExtractFuncArg(varExpr, 4) : varExpr[5..].Trim();
             string expanded = ResolveAngleBrackets(inner);
             long val = Evaluate(expanded.AsSpan());
-            return $"{val / 10}.{Math.Abs(val % 10)}";
+            // The sign belongs to the whole value (CScriptObj.cpp:729): -5 is "-0.5".
+            long valAbs = Math.Abs(val);
+            return $"{(val < 0 ? "-" : "")}{valAbs / 10}.{valAbs % 10}";
         }
 
         // MULDIV — safe (num*mul)/div with 64-bit math
@@ -2432,6 +2458,91 @@ public sealed partial class ExpressionParser
     {
         if (!double.IsFinite(value)) return "0";
         return value.ToString("0.##########", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Sphere's hex text for a number (CSString::FormatLLHex ->
+    /// Str_FromLL_Fast base 16, sstring.cpp:487): a '0' prefix and uppercase
+    /// digits; zero is "00"; anything up to UINT32_MAX - negatives included - is
+    /// shown as a 32-bit two's-complement word, so -1 is "0FFFFFFFF".</summary>
+    internal static string FormatSphereHex(long value)
+    {
+        if (value == 0) return "00";
+        return value <= uint.MaxValue
+            ? "0" + unchecked((uint)value).ToString("X", CultureInfo.InvariantCulture)
+            : "0" + value.ToString("X", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>C atoi: skip leading whitespace, an optional sign, then decimal digits
+    /// only, stopping at the first other character; 32-bit. FEVAL/FHVAL use exactly
+    /// this, not an evaluation (CScriptObj.cpp:741-745).</summary>
+    private static int CAtoi(string text)
+    {
+        int i = 0;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+        bool neg = false;
+        if (i < text.Length && (text[i] == '-' || text[i] == '+')) { neg = text[i] == '-'; i++; }
+        long v = 0;
+        while (i < text.Length && char.IsAsciiDigit(text[i]))
+        {
+            v = v * 10 + (text[i] - '0');
+            if (v > int.MaxValue + 1L) v = int.MaxValue + 1L;
+            i++;
+        }
+        return unchecked((int)(neg ? -v : v));
+    }
+
+    /// <summary>Str_ParseCmds with a caller separator set (CExpression.cpp:137/284):
+    /// quote- and bracket-aware, EMPTY tokens kept ("a;;b" is three), each token
+    /// trimmed, a whitespace separator swallowing one following separator, at most
+    /// <paramref name="max"/> tokens.</summary>
+    private static List<string> ParseCmdsWithSeparators(string line, string seps, int max)
+    {
+        var result = new List<string>();
+        string s = line.TrimStart();
+        if (s.Length == 0) return result;
+        bool sepCurly = seps.IndexOfAny(['{', '}']) >= 0, sepSquare = seps.IndexOfAny(['[', ']']) >= 0,
+             sepRound = seps.IndexOfAny(['(', ')']) >= 0, sepAngle = seps.IndexOfAny(['<', '>']) >= 0;
+        int pos = 0;
+        while (result.Count < max)
+        {
+            bool quotes = false;
+            int curly = 0, square = 0, round = 0, angle = 0;
+            int start = pos;
+            int i = pos;
+            int cut = -1;
+            for (; i < s.Length; i++)
+            {
+                char ch = s[i];
+                if (ch == '"') { quotes = !quotes; continue; }
+                if (quotes) continue;
+                switch (ch)
+                {
+                    case '{': if (!sepCurly && square == 0 && round == 0 && angle == 0) curly++; break;
+                    case '[': if (!sepSquare && curly == 0 && round == 0 && angle == 0) square++; break;
+                    case '(': if (!sepRound && curly == 0 && square == 0 && angle == 0) round++; break;
+                    case '<': if (!sepAngle && curly == 0 && square == 0 && round == 0) angle++; break;
+                    case '}': if (!sepCurly && curly > 0) curly--; break;
+                    case ']': if (!sepSquare && square > 0) square--; break;
+                    case ')': if (!sepRound && round > 0) round--; break;
+                    case '>': if (!sepAngle && angle > 0) angle--; break;
+                }
+                if (curly <= 0 && square <= 0 && round <= 0 && seps.IndexOf(ch) >= 0) { cut = i; break; }
+            }
+            if (cut < 0)
+            {
+                result.Add(s[start..].Trim());
+                break;
+            }
+            result.Add(s[start..cut].Trim());
+            pos = cut + 1;
+            if (char.IsWhiteSpace(s[cut]))
+            {
+                while (pos < s.Length && char.IsWhiteSpace(s[pos])) pos++;
+                if (pos < s.Length && seps.IndexOf(s[pos]) >= 0) pos++;
+            }
+            while (pos < s.Length && char.IsWhiteSpace(s[pos])) pos++;
+        }
+        return result;
     }
 
     /// <summary>

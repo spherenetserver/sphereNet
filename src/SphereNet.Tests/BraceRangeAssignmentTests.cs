@@ -74,7 +74,7 @@ public sealed class BraceRangeAssignmentTests : IDisposable
         {
             Assert.True(it.TrySetProperty("COLOR", "{0481 0489}"));
             Assert.True(it.TryGetProperty("COLOR", out string got));
-            Assert.InRange(int.Parse(got), 0x481, 0x489);
+            Assert.InRange(Convert.ToInt32(got, 16), 0x481, 0x489);   // COLOR reads hex (CObjBase.cpp:1153)
         }
     }
 
@@ -181,7 +181,7 @@ public sealed class BraceRangeAssignmentTests : IDisposable
             hits.Add(int.Parse(h));
 
             Assert.True(it.TryGetProperty("COLOR", out string c));
-            Assert.InRange(int.Parse(c), 0x481, 0x489);
+            Assert.InRange(Convert.ToInt32(c, 16), 0x481, 0x489);
         }
         Assert.True(hits.Count > 1);
     }

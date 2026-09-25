@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.World;
@@ -6,11 +7,12 @@ using Xunit;
 
 namespace SphereNet.Tests;
 
-// Verifies the @NPCSeeNewPlayer first-sight memory (Character.SeeNewPlayer). An NPC
-// fires the trigger the first time it perceives a player and not again until the
-// per-player TTL lapses; NpcAI drives it from a gated, throttled range scan. The
-// clock is injected so the test is deterministic. Character.OnNpcSeeNewPlayer is
-// nulled between tests by ResetEngineStatics.
+// Verifies the @NPCSeeNewPlayer first contact (Character.SeeNewPlayer). Source-X
+// NPC_LookAtChar (CCharNPCAct.cpp:1042-1058) fires the trigger for a player the NPC
+// holds no MEMORY_SPEAK of and, unless the script returns 1, records that memory -
+// the same one a first spoken line leaves. Character.OnNpcSeeNewPlayer is nulled
+// between tests by ResetEngineStatics.
+[Collection("DefinitionLoaderSerial")]
 public class NpcSeeNewPlayerTriggerTests
 {
     private static (Character npc, Character player) Setup()
@@ -27,41 +29,56 @@ public class NpcSeeNewPlayerTriggerTests
     }
 
     [Fact]
-    public void SeeNewPlayer_FiresOnFirstSight_ThenNotUntilTtlLapses()
+    public void SeeNewPlayer_FiresOnce_AndRecordsASpeakMemory()
     {
         var (npc, player) = Setup();
         var sightings = new List<uint>();
-        Character.OnNpcSeeNewPlayer = (n, p) => { if (n == npc) sightings.Add(p.Uid.Value); };
+        Character.OnNpcSeeNewPlayer = (n, p) => { if (n == npc) sightings.Add(p.Uid.Value); return false; };
 
-        const long ttl = 60_000;
-
-        Assert.True(npc.SeeNewPlayer(player, 1_000_000, ttl));       // first sight → fire
+        Assert.True(npc.SeeNewPlayer(player));
         Assert.Equal([player.Uid.Value], sightings);
+        Assert.NotNull(npc.Memory_FindObjTypes(player.Uid, MemoryType.Speak));
 
-        // Continued sight refreshes the timer (so a player standing there is not
-        // re-greeted), hence no fire.
-        Assert.False(npc.SeeNewPlayer(player, 1_010_000, ttl));
+        // Remembered: no second greeting while the memory lasts.
+        Assert.False(npc.SeeNewPlayer(player));
         Assert.Single(sightings);
-
-        // The player leaves (no sightings) and returns > TTL after the last one.
-        Assert.True(npc.SeeNewPlayer(player, 1_010_000 + ttl + 1, ttl));
-        Assert.Equal(2, sightings.Count);
     }
 
     [Fact]
-    public void SeeNewPlayer_DistinctPlayersEachFireOnce()
+    public void SeeNewPlayer_Return1_LeavesThePlayerUnrecorded()
     {
         var (npc, player) = Setup();
-        var other = SphereNet.Game.Objects.ObjBase.ResolveWorld!().CreateCharacter();
-        other.IsPlayer = true;
-
         int fires = 0;
-        Character.OnNpcSeeNewPlayer = (_, _) => fires++;
+        Character.OnNpcSeeNewPlayer = (_, _) => { fires++; return true; };
 
-        npc.SeeNewPlayer(player, 1_000_000);
-        npc.SeeNewPlayer(other, 1_000_000);
-        npc.SeeNewPlayer(player, 1_000_500); // already seen → no fire
+        npc.SeeNewPlayer(player);
+        npc.SeeNewPlayer(player);
 
         Assert.Equal(2, fires);
+        Assert.Null(npc.Memory_FindObjTypes(player.Uid, MemoryType.Speak));
+    }
+
+    [Fact]
+    public void SeeNewPlayer_AfterTheFirstSpokenLine_DoesNotFire()
+    {
+        var (npc, player) = Setup();
+        int fires = 0;
+        Character.OnNpcSeeNewPlayer = (_, _) => { fires++; return false; };
+
+        // NPC_OnHear records MEMORY_SPEAK on the first line (CCharNPCAct.cpp:312).
+        npc.Memory_AddObjTypes(player.Uid, MemoryType.Speak);
+
+        Assert.False(npc.SeeNewPlayer(player));
+        Assert.Equal(0, fires);
+    }
+
+    [Fact]
+    public void SeeNewPlayer_Unhooked_RecordsNothing()
+    {
+        var (npc, player) = Setup();
+        Character.OnNpcSeeNewPlayer = null;
+
+        Assert.False(npc.SeeNewPlayer(player));
+        Assert.Null(npc.Memory_FindObjTypes(player.Uid, MemoryType.Speak));
     }
 }

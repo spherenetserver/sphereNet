@@ -54,6 +54,10 @@ public partial class Character : ObjBase
     public static Func<Character, Character?, bool, bool>? NpcShrink;
     public static Func<Character, Character?, bool>? NpcStablePetSelect;
     public static Func<Character, Character?, bool>? NpcStablePetRetrieve;
+    /// <summary>Bare BUY / SELL said to an NPC (NV_BUY / NV_SELL,
+    /// CCharNPCAct.cpp:147-211): open the shop list for the speaker. The bool is
+    /// true for BUY.</summary>
+    public static Func<Character, Character?, bool, bool>? NpcOpenShop;
 
     /// <summary>Script EQUIP verb (Source-X CHV_EQUIP ItemEquip): equip the
     /// item on this character at its definition layer AND fire @Equip. Wired
@@ -983,38 +987,24 @@ public partial class Character : ObjBase
     /// is writable through ARGN2.</summary>
     public static SkillUseQuickDetailedHook? OnSkillUseQuickDetailed { get; set; }
 
-    /// <summary>Fired when an NPC perceives a player it has not seen recently
-    /// (Source-X @NPCSeeNewPlayer). Args: the NPC, the newly-seen player. Installed
-    /// only when hooked (IsTrigUsed gate), so the perception scan is free otherwise.</summary>
-    public static Action<Character, Character>? OnNpcSeeNewPlayer { get; set; }
+    /// <summary>Fires @NPCSeeNewPlayer (SRC = the player). Args: the NPC, the
+    /// newly-seen player; returns true for RETURN 1. Installed only when hooked
+    /// (IsTrigUsed gate), so the perception scan is free otherwise.</summary>
+    public static Func<Character, Character, bool>? OnNpcSeeNewPlayer { get; set; }
 
-    // Per-NPC memory of recently-seen players (player uid -> last-seen tick) for
-    // @NPCSeeNewPlayer first-sight detection.
-    private Dictionary<uint, long>? _seenPlayers;
-
-    /// <summary>Record that this NPC perceives <paramref name="player"/> and fire
-    /// @NPCSeeNewPlayer (via <see cref="OnNpcSeeNewPlayer"/>) when it is a NEW
-    /// sighting — the player was not seen within the last <paramref name="ttlMs"/>.
-    /// Returns whether it was a new sighting.</summary>
-    public bool SeeNewPlayer(Character player, long nowMs, long ttlMs = 60_000)
+    /// <summary>Source-X NPC_LookAtChar first contact (CCharNPCAct.cpp:1042-1058):
+    /// a player this NPC holds no MEMORY_SPEAK of fires @NPCSeeNewPlayer, and
+    /// unless the script answers RETURN 1 the NPC records a MEMORY_SPEAK of them -
+    /// the same memory a first spoken line leaves (NPC_OnHear, :301-315), and one
+    /// that fades after five minutes like any NPC memory. With the trigger unused
+    /// nothing is recorded, as upstream. Returns whether the trigger fired.</summary>
+    public bool SeeNewPlayer(Character player)
     {
-        _seenPlayers ??= new();
-        uint uid = player.Uid.Value;
-        bool isNew = !_seenPlayers.TryGetValue(uid, out long last) || nowMs - last > ttlMs;
-        _seenPlayers[uid] = nowMs;
-        if (!isNew) return false;
-
-        // Prune stale entries opportunistically so the table can't grow unbounded.
-        if (_seenPlayers.Count > 32)
-        {
-            List<uint>? stale = null;
-            foreach (var kv in _seenPlayers)
-                if (nowMs - kv.Value > ttlMs) (stale ??= []).Add(kv.Key);
-            if (stale != null)
-                foreach (var k in stale) _seenPlayers.Remove(k);
-        }
-
-        OnNpcSeeNewPlayer?.Invoke(this, player);
+        var hook = OnNpcSeeNewPlayer;
+        if (hook == null || Memory_FindObjTypes(player.Uid, MemoryType.Speak) != null)
+            return false;
+        if (!hook(this, player))
+            Memory_AddObjTypes(player.Uid, MemoryType.Speak);
         return true;
     }
 
@@ -7403,7 +7393,13 @@ public partial class Character : ObjBase
             case "SELL":
             case "BUY":
             {
-                PopulateVendorStock(args.Trim(), buySide: key.Equals("BUY", StringComparison.OrdinalIgnoreCase));
+                bool buyVerb = key.Equals("BUY", StringComparison.OrdinalIgnoreCase);
+                // A bare BUY / SELL on an NPC is the shop verb (NV_BUY / NV_SELL,
+                // CCharNPCAct.cpp:147-211): open the buy or sell list for SRC. With
+                // an argument it names the stock template (@NPCRestock's SELL=/BUY=).
+                if (!IsPlayer && args.Trim().Length == 0)
+                    return NpcOpenShop?.Invoke(this, ResolveSourceCharacter(source), buyVerb) ?? true;
+                PopulateVendorStock(args.Trim(), buySide: buyVerb);
                 return true;
             }
             // --- The NPC action verb table (CCharNPC::sm_szVerbKeys,

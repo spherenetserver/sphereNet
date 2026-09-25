@@ -100,8 +100,10 @@ public class ParityWaveH5Tests
 
         var deer = world.CreateCharacter();
         deer.NpcBrain = NpcBrainType.Animal;
-        deer.SetTag("INTFOOD", "1");
-        deer.NpcFood = 10; // hungry
+        // NPC_AI_INTFOOD is an NPCAI flag (there is no INTFOOD tag in Source-X),
+        // and hunger means under 10 food at most 40% full (CCharNPCAct.cpp:1768-1771).
+        deer.SetTag("OVERRIDE.NPCAI", "0x0010");
+        deer.NpcFood = 9;
         deer.NextNpcActionTime = 0;
         world.PlaceCharacter(deer, new Point3D(100, 100, 0, 0));
 

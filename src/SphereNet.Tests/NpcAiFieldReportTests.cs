@@ -127,6 +127,7 @@ public class NpcAiFieldReportTests
         var skeleton = world.CreateCharacter();
         skeleton.Hits = skeleton.MaxHits = 50;
         skeleton.NpcBrain = NpcBrainType.Monster;
+        skeleton.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         skeleton.Int = 30;
         world.PlaceCharacter(skeleton, new Point3D(104, 100, 0, 0));
         world.OnTick(); // activate the sector

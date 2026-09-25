@@ -103,15 +103,26 @@ public sealed partial class NpcAI
         return (npc.Str - target.Str) + (myHpPct - targetHpPct) - (npc.Int / 16);
     }
 
+    /// <summary>The FIGHTMODE tag, lower-cased; empty when no script set one.
+    /// SphereNet-only and opt-in per NPC: Source-X has no such tag, so a pack that
+    /// never writes it runs the Source-X look-around unchanged.</summary>
+    private static string GetFightMode(Character npc) =>
+        npc.TryGetTag("FIGHTMODE", out string? mode) && !string.IsNullOrWhiteSpace(mode)
+            ? mode.Trim().ToLowerInvariant()
+            : string.Empty;
+
     /// <summary>Per-creature target-preference bias from the FIGHTMODE tag
     /// (Weakest/Strongest/Evil). Closest is the default (distance already drives
-    /// motivation), so no tag = unchanged behavior.</summary>
+    /// motivation), so no tag = unchanged behavior. The "aggressor" and "none"
+    /// modes filter candidates instead of biasing them (see
+    /// <see cref="FightModeAllows"/>).</summary>
     private static int FightModeBias(Character npc, Character target)
     {
-        if (!npc.TryGetTag("FIGHTMODE", out string? mode) || string.IsNullOrEmpty(mode))
+        string mode = GetFightMode(npc);
+        if (mode.Length == 0)
             return 0;
         int hpPct = target.MaxHits > 0 ? target.Hits * 100 / target.MaxHits : 100;
-        return mode.Trim().ToLowerInvariant() switch
+        return mode switch
         {
             "weakest"   => (100 - hpPct) / 2,                                      // favor low HP
             "strongest" => Math.Clamp((target.Str + target.GetSkill(SkillType.Tactics) / 10) / 20, 0, 40),
@@ -120,12 +131,34 @@ public sealed partial class NpcAI
         };
     }
 
+    /// <summary>Whether a FIGHTMODE lets this NPC pick <paramref name="target"/> by
+    /// itself. "none" never picks a target (it still fights back: an attack assigns
+    /// the fight target, which does not come through here); "aggressor" only picks
+    /// someone who is on its attacker list or who harmed it. Every other mode, and
+    /// no tag at all, allows everyone.</summary>
+    private static bool FightModeAllows(Character npc, string mode, Character target)
+    {
+        switch (mode)
+        {
+            case "none":
+                return false;
+            case "aggressor":
+                return npc.CombatState.IndexOfAttacker(target.Uid) >= 0 ||
+                       npc.Memory_FindObjTypes(target.Uid, MemoryType.HarmedBy) != null;
+            default:
+                return true;
+        }
+    }
+
     /// <summary>A target just hid/went invisible. Instead of dropping it
     /// instantly, move to its last known spot for a few ticks and try to Reveal
     /// it if the NPC can (ServUO mage reveal). Returns true while still pursuing,
     /// false to give up.</summary>
     private bool PursueHiddenTarget(Character npc, Character hidden)
     {
+        // Not a Source-X behaviour: NPCAIEXTRAS HIDDENPURSUIT only.
+        if (!HasExtra(npc, NpcAiExtraFlags.HiddenPursuit))
+            return false;
         int ticks = 5;
         if (npc.TryGetTag("HIDE_PURSUIT", out string? hp) && int.TryParse(hp, out int v))
             ticks = v;
@@ -184,6 +217,20 @@ public sealed partial class NpcAI
     /// </summary>
     private (Character? target, int motivation) FindBestTarget(Character npc, int sightRange)
     {
+        string fightMode = GetFightMode(npc);
+        if (fightMode == "none")
+            return (null, 0);
+
+        // NPC_LookAtCharMonster (CCharNPCAct.cpp:773): a monster that is not
+        // criminal-or-evil and is not hungry (food above 40%) looks at people the
+        // way a townsman does, instead of hunting them.
+        if (npc.NpcBrain is NpcBrainType.Monster or NpcBrainType.Dragon &&
+            !NotoIsCriminal(npc) && FoodLevelPercent(npc) > 40)
+        {
+            LookAroundTown(npc, asHuman: true);
+            return (null, 0);
+        }
+
         // Rank candidates by motivation WITHOUT line-of-sight first: LOS
         // raycasts against the real static map are the dominant cost under
         // dense combat (one per candidate would be O(crowd) raycasts per NPC).
@@ -199,6 +246,7 @@ public sealed partial class NpcAI
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
+            if (!FightModeAllows(npc, fightMode, ch)) continue;
             // Never cap by sector insertion order: a dense neutral/allied
             // crowd must not hide a valid enemy. Motivation is cheap; only the
             // best three candidates pay for LOS raycasts below.
@@ -219,12 +267,20 @@ public sealed partial class NpcAI
             }
         }
 
-        if (t1 != null && _world.CanSeeLOS(npc.Position, t1.Position) && OnNpcLookAtChar?.Invoke(npc, t1) != true)
-            return (t1, m1);
-        if (t2 != null && _world.CanSeeLOS(npc.Position, t2.Position) && OnNpcLookAtChar?.Invoke(npc, t2) != true)
-            return (t2, m2);
-        if (t3 != null && _world.CanSeeLOS(npc.Position, t3.Position) && OnNpcLookAtChar?.Invoke(npc, t3) != true)
-            return (t3, m3);
+        // @NPCLookAtChar (NPC_LookAtChar, CCharNPCAct.cpp:1019): RETURN 1 means the
+        // script took an action of its own - the look-around ends there and nobody
+        // is attacked; RETURN 0 passes over this character and the look goes on.
+        foreach (var (cand, mot) in new[] { (t1, m1), (t2, m2), (t3, m3) })
+        {
+            if (cand == null || !_world.CanSeeLOS(npc.Position, cand.Position))
+                continue;
+            var look = FireLookAtChar(npc, cand);
+            if (look == TriggerResult.True)
+                return (null, 0);
+            if (look == TriggerResult.False)
+                continue;
+            return (cand, mot);
+        }
 
         // The three strongest candidates may all be behind a wall. Do not let
         // that hide a weaker but visible hostile: fall back to a record-best
@@ -236,12 +292,17 @@ public sealed partial class NpcAI
         {
             if (ch == npc || ch == t1 || ch == t2 || ch == t3 || !IsAttackable(ch))
                 continue;
+            if (!FightModeAllows(npc, fightMode, ch))
+                continue;
             int motivation = GetAttackMotivation(npc, ch);
             if (motivation <= visibleMotivation)
                 continue;
             if (!_world.CanSeeLOS(npc.Position, ch.Position))
                 continue;
-            if (OnNpcLookAtChar?.Invoke(npc, ch) == true)
+            var look = FireLookAtChar(npc, ch);
+            if (look == TriggerResult.True)
+                return (null, 0);
+            if (look == TriggerResult.False)
                 continue;
             visibleFallback = ch;
             visibleMotivation = motivation;
@@ -360,7 +421,7 @@ public sealed partial class NpcAI
         var npcRegion = _world.FindRegion(npc.Position);
         bool guarded = npcRegion != null && npcRegion.IsFlag(RegionFlag.Guarded);
 
-        if (IsEvilForHostility(npc) && !guarded && target.IsPlayer)
+        if (NotoIsEvil(npc) && !guarded && target.IsPlayer)
         {
             // An evil creature hates every player outside guarded towns,
             // regardless of the player's karma.
@@ -381,7 +442,7 @@ public sealed partial class NpcAI
         {
             // Alignment: evil hates good karma, the virtuous hate the vile.
             int karmaTarg = target.Karma;
-            if (IsEvilForHostility(npc))
+            if (NotoIsEvil(npc))
             {
                 if (karmaTarg > 0)
                     hostility += karmaTarg / 1024;
@@ -428,20 +489,103 @@ public sealed partial class NpcAI
         return hostility;
     }
 
-    /// <summary>Source-X Noto_IsEvil for the hostility model. Monster/Dragon
-    /// use karma &lt;= 0 (instead of the reference's &lt; 0) so legacy chardefs
-    /// that omit KARMA keep their aggressive default.</summary>
-    private static bool IsEvilForHostility(Character npc)
+    /// <summary>Source-X CChar::Noto_IsEvil (CCharNotoriety.cpp:18). A guarded
+    /// RED zone turns it around (murderers are normal there, low karma is not);
+    /// elsewhere a murderer is evil, and otherwise the brain decides: monsters and
+    /// dragons below zero karma, berserkers always, animals at -800 or less, a
+    /// player under PLAYEREVIL, and any other NPC at -3000 or less. Monster brains
+    /// used to count ZERO karma as evil here too, which the reference does not.</summary>
+    public bool NotoIsEvil(Character ch)
     {
-        short karma = npc.Karma;
-        return npc.NpcBrain switch
+        short karma = ch.Karma;
+        // Every evil answer below needs negative karma, a murderer or a berserker,
+        // so anyone else is spared the region lookup (hot: town look-arounds).
+        if (karma >= 0 && !IsNotoMurderer(ch) &&
+            (ch.IsPlayer ? Character.PlayerKarmaEvil <= 0 : ch.NpcBrain != NpcBrainType.Berserk))
+            return false;
+        var area = _world.FindRegion(ch.Position);
+        if (area != null && area.IsGuarded &&
+            (area.IsFlag(RegionFlag.RedZone) || area.TryGetTag("RED", out _)))
         {
-            NpcBrainType.Monster or NpcBrainType.Dragon => karma <= 0,
-            NpcBrainType.Berserk => true,
-            NpcBrainType.Animal => karma <= -800,
-            _ => karma <= -3000,
-        };
+            if (IsNotoMurderer(ch))
+                return false;
+            return ch.IsPlayer ? karma < Character.PlayerKarmaEvil : karma < 0;
+        }
+
+        if (IsNotoMurderer(ch))
+            return true;
+        if (!ch.IsPlayer)
+        {
+            switch (ch.NpcBrain)
+            {
+                case NpcBrainType.Monster:
+                case NpcBrainType.Dragon:
+                    return karma < 0;
+                case NpcBrainType.Berserk:
+                    return true;
+                case NpcBrainType.Animal:
+                    return karma <= -800;
+            }
+            return karma <= -3000;
+        }
+        return karma < Character.PlayerKarmaEvil;
     }
+
+    /// <summary>Source-X Noto_IsMurderer (CCharNotoriety.cpp:12): players only.</summary>
+    private static bool IsNotoMurderer(Character ch) => ch.IsPlayer && ch.IsMurderer;
+
+    /// <summary>Source-X CChar::Noto_IsCriminal (CCharNotoriety.cpp:68): the
+    /// criminal flag, or evil.</summary>
+    internal bool NotoIsCriminal(Character ch) => HasCriminalFlag(ch) || NotoIsEvil(ch);
+
+    /// <summary>STATF_CRIMINAL as this engine keeps it (the flag, or the running
+    /// criminal timer behind it).</summary>
+    private static bool HasCriminalFlag(Character ch) =>
+        ch.IsStatFlag(StatFlag.Criminal) || ch.IsCriminal;
+
+    /// <summary>Source-X CChar::Noto_IsNeutral (CCharNotoriety.cpp:77).</summary>
+    internal static bool NotoIsNeutral(Character ch)
+    {
+        short karma = ch.Karma;
+        if (!ch.IsPlayer)
+        {
+            switch (ch.NpcBrain)
+            {
+                case NpcBrainType.Monster:
+                case NpcBrainType.Berserk:
+                    return karma <= 0;
+                case NpcBrainType.Animal:
+                    return karma <= 100;
+            }
+            return karma < 0;
+        }
+        return karma < Character.PlayerKarmaNeutral;
+    }
+
+    /// <summary>Source-X Food_GetLevelPercent (CCharStatus.cpp:821): food over the
+    /// food maximum, and a full 100 for a creature with no food maximum.</summary>
+    internal static int FoodLevelPercent(Character ch)
+    {
+        int max = ch.MaxFood;
+        return max <= 0 ? 100 : ch.Food * 100 / max;
+    }
+
+    /// <summary>Source-X NPC_CanSpeak (CCharNPCStatus.cpp:416): an NPC talks when it
+    /// has a SPEECH list of its own or its definition has one.</summary>
+    internal static bool NpcCanSpeak(Character npc)
+    {
+        if (npc.IsPlayer || npc.DSpeech.Count > 0)
+            return true;
+        var def = DefinitionLoader.GetCharDef(npc.CharDefIndex);
+        return def != null && def.SpeechResources.Count > 0;
+    }
+
+    /// <summary>Fire @NPCLookAtChar (NPC_LookAtChar, CCharNPCAct.cpp:1019): SRC is
+    /// the character looked at and there are no arguments. RETURN 1 = the script
+    /// took a new action (the look-around ends), RETURN 0 = pass over this
+    /// character, anything else = carry on with the native look.</summary>
+    private TriggerResult FireLookAtChar(Character npc, Character target) =>
+        OnNpcLookAtChar?.Invoke(npc, target) ?? TriggerResult.Default;
 
     /// <summary>Playable-character bodies (Source-X IsPlayableCharacter).</summary>
     internal static bool IsPlayableBody(ushort bodyId) => bodyId is

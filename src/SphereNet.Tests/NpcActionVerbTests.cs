@@ -354,4 +354,30 @@ public sealed class NpcActionVerbTests
         npc.TryExecuteCommand("SHRINK", "", console, out _);
         Assert.False(shrinkToPack);
     }
+
+    /// <summary>A bare BUY / SELL said to an NPC opens the shop for SRC (NV_BUY /
+    /// NV_SELL, CCharNPCAct.cpp:147-211) - the verbs a pack's "buy"/"sell" SPEECH
+    /// runs; with an argument they still name @NPCRestock's stock template.</summary>
+    [Fact]
+    public void BareBuyAndSellOpenTheShopForTheSpeaker()
+    {
+        var world = NewWorld();
+        var npc = NewNpc(world, new Point3D(100, 100, 0, 0));
+        npc.NpcBrain = NpcBrainType.Vendor;
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(101, 100, 0, 0));
+        var console = new Console { Source = player };
+        var opened = new List<(Character? Src, bool Buy)>();
+        Character.NpcOpenShop = (_, s, buy) => { opened.Add((s, buy)); return true; };
+
+        npc.TryExecuteCommand("BUY", "", console, out _);
+        npc.TryExecuteCommand("SELL", "", console, out _);
+        npc.TryExecuteCommand("SELL", "vendor_s_unknown", console, out _);
+
+        Assert.Equal(2, opened.Count);
+        Assert.Same(player, opened[0].Src);
+        Assert.True(opened[0].Buy);
+        Assert.False(opened[1].Buy);
+    }
 }

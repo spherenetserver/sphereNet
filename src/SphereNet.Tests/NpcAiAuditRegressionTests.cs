@@ -70,6 +70,7 @@ public sealed class NpcAiAuditRegressionTests
 
         var npc = world.CreateCharacter();
         npc.NpcBrain = NpcBrainType.Monster;
+        npc.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         npc.BodyId = 0x11;
         npc.Hits = npc.MaxHits = 100;
         world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
@@ -409,6 +410,12 @@ public sealed class NpcAiAuditRegressionTests
         guard.NpcBrain = NpcBrainType.Guard;
         guard.Home = new Point3D(200, 200, 0, 1);
         world.PlaceCharacter(guard, new Point3D(100, 100, 0, 0));
+        // NPC_Act_GoHome only teleports a guard to a post on guarded ground
+        // (CCharNPCAct.cpp:1512-1521).
+        var post = new SphereNet.Game.World.Regions.Region
+        { Name = "post", Flags = RegionFlag.Guarded, MapIndex = 1 };
+        post.AddRect(190, 190, 210, 210);
+        world.AddRegion(post);
 
         Invoke(ai, "ActGuard", guard);
 
@@ -416,8 +423,12 @@ public sealed class NpcAiAuditRegressionTests
         Assert.Equal(guard.Home, guard.Position);
     }
 
+    // Source-X keeps no "already reported" memory for a witness: NPC_LookAtCharHuman
+    // calls the guards one time in three (CCharNPCAct.cpp:819) and CallGuards'
+    // own 2.5 s spam check limits the rest. A witness that cannot speak (no
+    // SPEECH) never calls at all (NPC_CanSpeak).
     [Fact]
-    public void WitnessMemory_SuppressesRepeatedGuardCalls()
+    public void Witness_WithoutSpeech_NeverCallsTheGuards()
     {
         var world = CreateWorld();
         var region = new SphereNet.Game.World.Regions.Region
@@ -432,12 +443,11 @@ public sealed class NpcAiAuditRegressionTests
         criminal.Hits = criminal.MaxHits = 100;
         criminal.SetStatFlag(StatFlag.Criminal);
         world.PlaceCharacter(criminal, new Point3D(101, 100, 0, 0));
-        witness.Memory_AddObjTypes(criminal.Uid, MemoryType.SawCrime);
 
         int reports = 0;
-        ai.OnWitnessCrime = (_, _) => reports++;
-        for (int i = 0; i < 500; i++)
-            Invoke(ai, "CheckWitnessCrime", witness);
+        ai.OnWitnessCrime = (_, _) => { reports++; return true; };
+        for (int i = 0; i < 100; i++)
+            Invoke(ai, "LookAroundTown", witness, false);
 
         Assert.Equal(0, reports);
     }

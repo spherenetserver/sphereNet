@@ -62,7 +62,8 @@ public class NpcAiWaveN1Tests
 
         var deer = world.CreateCharacter();
         deer.NpcBrain = NpcBrainType.Animal;
-        deer.NpcFood = 10; // hungry
+        // Hungry: NPC_Food needs under 10 food and at most 40% (CCharNPCAct.cpp:2501-2504).
+        deer.NpcFood = 9;
         world.PlaceCharacter(deer, new Point3D(100, 100, 0, 0));
 
         var apple = world.CreateItem();
@@ -307,6 +308,7 @@ public class NpcAiWaveN1Tests
 
         var caster = world.CreateCharacter();
         caster.NpcBrain = NpcBrainType.Monster;
+        caster.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         caster.Hits = caster.MaxHits = 200;
         caster.Stam = caster.MaxStam = 100;
         caster.Mana = caster.MaxMana = 200;

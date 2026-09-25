@@ -336,15 +336,20 @@ public sealed class NpcWorldParityTests
         var said = new List<string>();
         ai.OnNpcSay = (_, text) => said.Add(text);
 
+        // The strike line belongs to the guard's look at a criminal on guarded
+        // ground (NPC_LookAtCharGuard, CCharNPCAct.cpp:751-754).
+        var region = new Region { Name = "town", Flags = RegionFlag.Guarded, MapIndex = 0 };
+        region.AddRect(0, 0, 6000, 4000);
+        world.AddRegion(region);
         var guard = world.CreateCharacter();
         guard.NpcBrain = NpcBrainType.Guard;
         world.PlaceCharacter(guard, new Point3D(100, 100, 0, 0));
         var target = world.CreateCharacter();
         target.IsPlayer = true;
+        target.SetStatFlag(StatFlag.Criminal);
         world.PlaceCharacter(target, new Point3D(105, 100, 0, 0));
 
-        typeof(NpcAI).GetMethod("GuardEngage", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(ai, [guard, target]);
+        Assert.True(ai.GuardLookAtChar(guard, target, fromTrigger: false));
 
         string[] strike =
         [
@@ -368,8 +373,13 @@ public sealed class NpcWorldParityTests
         var said = new List<string>();
         ai.OnNpcSay = (_, text) => said.Add(text);
 
+        // The line is spoken only by an NPC that can speak (NPC_CanSpeak: it has a
+        // SPEECH list) and only when a guard was actually called
+        // (CCharNPCAct.cpp:819-826).
+        ai.OnWitnessCrime = (_, _) => true;
         var townsman = world.CreateCharacter();
         townsman.NpcBrain = NpcBrainType.Human;
+        townsman.DSpeech.Add(new ResourceId(ResType.Speech, 1));
         world.PlaceCharacter(townsman, new Point3D(100, 100, 0, 0));
         var villain = world.CreateCharacter();
         villain.IsPlayer = true;
@@ -377,9 +387,9 @@ public sealed class NpcWorldParityTests
         if (criminal) villain.SetStatFlag(StatFlag.Criminal);
         else villain.Kills = 1000; // a murderer
 
-        var witness = typeof(NpcAI).GetMethod("CheckWitnessCrime", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var witness = typeof(NpcAI).GetMethod("LookAroundTown", BindingFlags.Instance | BindingFlags.NonPublic)!;
         for (int i = 0; i < 300 && said.Count == 0; i++)
-            witness.Invoke(ai, [townsman]); // a one-in-five look
+            witness.Invoke(ai, [townsman, false]); // a one-in-three look
 
         Assert.Equal(ServerMessages.Get(key), Assert.Single(said));
     }

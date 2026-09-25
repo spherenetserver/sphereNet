@@ -27,12 +27,14 @@ public class ParityWaveI1Tests
         {
             configField.SetValue(null, config);
 
+            // Upstream writes HEARALL as the LOGM_PLAYER_SPEAK bit's value and
+            // CHATFLAGS with FormatHex (CServerConfig.cpp RC_HEARALL / RC_CHATFLAGS).
             Assert.Equal("0", Resolve("HEARALL"));
-            Assert.Equal("16", Resolve("CHATFLAGS"));
+            Assert.Equal("010", Resolve("CHATFLAGS"));
             Assert.Equal("0", Resolve("GENERICSOUNDS"));
 
             Assert.Equal("1", Resolve("_HEARALL="));
-            Assert.Equal("1", Resolve("HEARALL"));
+            Assert.Equal("8192", Resolve("HEARALL"));
             Assert.True((config.LogMask & SphereConfig.LogMaskPlayerSpeak) != 0);
 
             Assert.Equal("0", Resolve("_HEARALL=0"));

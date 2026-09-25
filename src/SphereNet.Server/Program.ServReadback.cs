@@ -199,7 +199,7 @@ public static partial class Program
         ["TOOLTIPCACHE"] = c => I(c.ToolTipCache),
         ["TOOLTIPMODE"] = c => I(c.ToolTipMode),
         ["USECRYPT"] = c => B(c.UseCrypt),
-        ["USEHTTP"] = c => B(c.UseHttp),
+        ["USEHTTP"] = c => I(c.UseHttpMode),
         ["USEMAPDIFFS"] = c => B(c.UseMapDiffs),
         ["USENOCRYPT"] = c => B(c.UseNoCrypt),
         ["VENDORMARKUP"] = c => I(c.VendorMarkup),

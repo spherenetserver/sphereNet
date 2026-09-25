@@ -2095,7 +2095,10 @@ public static partial class Program
             _accounts.AccountsChanged += SaveAccountsToDisk;
 
             // Wire config values to engines
-            SkillEngine.SkillSumMaxOverride = _config.MaxBaseSkill > 0 ? _config.MaxBaseSkill : 7000;
+            // MAXBASESKILL is not a skill cap in Source-X (it bounds the random base
+            // skills of a new character); wiring it here capped every character without
+            // a SKILLCLASS SKILLSUMMAX at MAXBASESKILL - 120.0 with the shipped ini.
+            // The fallback stays the SkillClassDef default.
             _world.MapData = _mapData;
 
             // Wire combat weapon damage lookup from ItemDef definitions

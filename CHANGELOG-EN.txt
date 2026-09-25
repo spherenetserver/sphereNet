@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - sphere.ini keys read in their Source-X meaning
+------------------------------------------------------------------------
+FIX - MAXBASESKILL no longer caps skills. It was used as the total skill cap
+      of every character whose SKILLCLASS sets no SKILLSUMMAX, so the shipped
+      MAXBASESKILL=1200 held them at 120.0 total. In Source-X it bounds the
+      random start skills of a new character (default 200); it is now only
+      read back through SERV.
+FIX - COMBATARCHERYMOVEMENTDELAY is in tenths of a second (default 10 = 1 s)
+      as Source-X reads it; it was compared as milliseconds.
+FIX - USEHTTP is an integer (default 2) and any nonzero value serves the web
+      status; the reference value 2 turned it off.
+FIX - TICKPERIOD, when SERVERTICKMS is absent, is ticks per second (10 = a
+      100 ms tick), the unit SERV.TICKPERIOD reports; it was taken as ms.
+CHANGE - MD5PASSWORDS defaults to 0, as in Source-X. A shard whose account
+         file holds MD5 digests and has no MD5PASSWORDS line must add
+         MD5PASSWORDS=1.
+NEW - SENTRYDSN may be written without its scheme (key@host/project); https://
+      is added, since "//" starts an ini comment.
+
 [2026-09-25] - Complete bilingual reference sphere.ini; parry-era and REGEN3 ini forms
 ------------------------------------------------------------------------
 CHANGE - config/sphere.ini documents every key the server reads (124 added),

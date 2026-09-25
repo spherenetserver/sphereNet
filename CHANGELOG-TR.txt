@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - sphere.ini anahtarlari Source-X anlamlariyla
+------------------------------------------------------------------------
+DUZELTME - MAXBASESKILL artik skill sinirlamaz. SKILLCLASS'i SKILLSUMMAX
+           vermeyen her karakterin toplam skill tavani olarak kullaniliyordu;
+           gelen MAXBASESKILL=1200 onlari toplam 120.0'da tutuyordu. Source-X'te
+           yeni karakterin rastgele baslangic skill'lerinin ust siniridir
+           (varsayilan 200); artik sadece SERV ile okunur.
+DUZELTME - COMBATARCHERYMOVEMENTDELAY Source-X gibi saniyenin onda biri
+           (varsayilan 10 = 1 sn); milisaniye olarak karsilastiriliyordu.
+DUZELTME - USEHTTP tam sayidir (varsayilan 2), sifir disi her deger web
+           durumunu acar; referans deger 2 onu kapatiyordu.
+DUZELTME - SERVERTICKMS yokken TICKPERIOD saniyedeki tick sayisidir (10 = 100
+           ms tick), SERV.TICKPERIOD'un dondurdugu birim; ms sayiliyordu.
+DEGISIKLIK - MD5PASSWORDS varsayilani Source-X gibi 0. Hesap dosyasinda MD5
+             ozetleri olan ve MD5PASSWORDS satiri olmayan shard
+             MD5PASSWORDS=1 eklemeli.
+YENI - SENTRYDSN semasiz yazilabilir (key@host/proje); "//" ini yorumu
+       baslattigi icin https:// eklenir.
+
 [2026-09-25] - Eksiksiz iki dilli referans sphere.ini; parry-era ve REGEN3 ini bicimleri
 ------------------------------------------------------------------------
 DEGISIKLIK - config/sphere.ini sunucunun okudugu tum anahtarlari (124 eklendi)

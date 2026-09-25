@@ -257,14 +257,15 @@ public class ConfigRegressionTests
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_tick_{Guid.NewGuid():N}.ini");
         try
         {
-            // TICKPERIOD alias applies when ServerTickMs is absent.
-            File.WriteAllText(tmp, "[SPHERE]\nTICKPERIOD=200\n");
+            // TICKPERIOD applies when ServerTickMs is absent, as ticks per second
+            // (Source-X RC_TICKPERIOD): 5 -> a 200 ms tick.
+            File.WriteAllText(tmp, "[SPHERE]\nTICKPERIOD=5\n");
             var p1 = new IniParser(); p1.Load(tmp);
             var c1 = new SphereConfig(); c1.LoadFromIni(p1);
             Assert.Equal(200, c1.ServerTickMs);
 
             // ServerTickMs wins when both are present.
-            File.WriteAllText(tmp, "[SPHERE]\nTICKPERIOD=200\nServerTickMs=120\n");
+            File.WriteAllText(tmp, "[SPHERE]\nTICKPERIOD=5\nServerTickMs=120\n");
             var p2 = new IniParser(); p2.Load(tmp);
             var c2 = new SphereConfig(); c2.LoadFromIni(p2);
             Assert.Equal(120, c2.ServerTickMs);

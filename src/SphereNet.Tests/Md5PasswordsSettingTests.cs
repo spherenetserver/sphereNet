@@ -13,8 +13,7 @@ namespace SphereNet.Tests;
 ///
 /// Source-X CAccount::SetPassword branches on it - 1 stores an MD5 digest, 0 stores
 /// the password verbatim - and CheckPassword compares in the matching form. The
-/// default differs deliberately: Source-X defaults to 0, SphereNet to 1, because
-/// hashing is what SphereNet has always actually done.
+/// default is 0, as in Source-X.
 /// </summary>
 public sealed class Md5PasswordsSettingTests
 {
@@ -22,9 +21,10 @@ public sealed class Md5PasswordsSettingTests
         new(LoggerFactory.Create(b => { })) { Md5Passwords = md5 };
 
     [Fact]
-    public void TheDefaultKeepsHashingOn()
+    public void TheDefaultIsOff_AsInSourceX()
     {
-        Assert.True(new SphereConfig().Md5Passwords);
+        // m_fMd5Passwords = false (CServerConfig.cpp:67).
+        Assert.False(new SphereConfig().Md5Passwords);
     }
 
     [Fact]

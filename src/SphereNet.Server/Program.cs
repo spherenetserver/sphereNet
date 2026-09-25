@@ -880,7 +880,7 @@ public static partial class Program
         Character.RacialFlags              = _config.RacialFlags;
         Character.ArcheryMinDist           = _config.ArcheryMinDist;
         Character.ArcheryMaxDist           = _config.ArcheryMaxDist;
-        Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;
+        Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay * 100; // ini tenths -> ms
         Character.CombatMeleeMovementDelay  = _config.CombatMeleeMovementDelay;
         Character.MagicFlags = _config.MagicFlags;
         Character.EmoteFlags = _config.EmoteFlags;

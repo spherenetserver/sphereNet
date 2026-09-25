@@ -107,11 +107,10 @@ public sealed class SphereConfig
     // Accounts
     public int AccApp { get; set; } = 2;
     /// <summary>Source-X MD5PASSWORDS: 1 stores account passwords as an MD5 digest,
-    /// 0 stores them verbatim. Source-X defaults this to 0; SphereNet defaults it to
-    /// 1 because that is what it has always actually done — the setting used to be
-    /// read and then ignored. Set it to 0 only for byte-level parity with a classic
-    /// shard's plaintext account file.</summary>
-    public bool Md5Passwords { get; set; } = true;
+    /// 0 stores them verbatim. Off by default, as in Source-X (m_fMd5Passwords =
+    /// false, CServerConfig.cpp:67). A shard whose account file already holds
+    /// digests must set it to 1 explicitly.</summary>
+    public bool Md5Passwords { get; set; }
     public int MaxCharsPerAccount { get; set; } = 5;
     /// <summary>SECONDS a character must exist before it can be deleted from the
     /// char-select screen, as Source-X reads MINCHARDELETETIME (CServerConfig.cpp:1355,
@@ -162,7 +161,9 @@ public sealed class SphereConfig
         (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |
               SphereNet.Core.Enums.ParryEraFlags.ShieldBlock);
     public int SpeedScaleFactor { get; set; } = 15000;
-    public int CombatArcheryMovementDelay { get; set; }
+    /// <summary>COMBATARCHERYMOVEMENTDELAY in TENTHS of a second, as Source-X reads it
+    /// (CCharFight.cpp:1858, default 10 = 1s, CServerConfig.cpp:195).</summary>
+    public int CombatArcheryMovementDelay { get; set; } = 10;
     public int CombatMeleeMovementDelay { get; set; }
     public int ArcheryMinDist { get; set; } = 1;
     public int ArcheryMaxDist { get; set; } = 12;
@@ -289,7 +290,11 @@ public sealed class SphereConfig
     public int DeadCannotSeeLiving { get; set; }
 
     // Stats
-    public int MaxBaseSkill { get; set; } = 1200;
+    /// <summary>MAXBASESKILL (Source-X m_iMaxBaseSkill, default 200): the upper bound
+    /// of the random base value Source-X gives every skill of a new character before
+    /// the chosen ones are set (CChar.cpp:1765). It is not a skill cap. SphereNet
+    /// does not roll those values; the key is read for SERV.MAXBASESKILL.</summary>
+    public int MaxBaseSkill { get; set; } = 200;
     public int MaxFame { get; set; } = 10000;
     public int MaxKarma { get; set; } = 10000;
     public int MinKarma { get; set; } = -10000;
@@ -835,9 +840,11 @@ public sealed class SphereConfig
     public int DistanceYell { get; set; } = 48;
 
     // Web
-    /// <summary>Serve the web status / admin HTTP endpoint. Default on preserves the
-    /// previous unconditional behavior; UseHttp=0 disables it.</summary>
-    public bool UseHttp { get; set; } = true;
+    /// <summary>USEHTTP as Source-X keeps it: an integer, default 2, and any nonzero
+    /// value serves the web status / admin HTTP endpoint (CServerConfig.cpp:56/4762).
+    /// It was read as a boolean, so the reference value 2 turned the endpoint off.</summary>
+    public int UseHttpMode { get; set; } = 2;
+    public bool UseHttp => UseHttpMode != 0;
 
     // Admin Panel
     public string AdminPassword { get; set; } = "1234";
@@ -966,6 +973,14 @@ public sealed class SphereConfig
         }
     }
 
+    internal static string NormalizeSentryDsn(string value)
+    {
+        value = value.Trim();
+        if (value.Length == 0 || value.EndsWith(':'))
+            return "";
+        return value.Contains("://", StringComparison.Ordinal) ? value : "https://" + value;
+    }
+
     public void LoadFromIni(IniParser ini)
     {
         string section = "SPHERE";
@@ -1053,7 +1068,7 @@ public sealed class SphereConfig
         // ELEM_MASK_INT in Source-X: the reference ini writes "01|010".
         CombatParryingEra = ini.GetFlags(section, "CombatParryingEra", CombatParryingEra);
         SpeedScaleFactor = Math.Max(1, ini.GetInt(section, "SpeedScaleFactor", SpeedScaleFactor));
-        CombatArcheryMovementDelay = ini.GetInt(section, "CombatArcheryMovementDelay", CombatArcheryMovementDelay);
+        CombatArcheryMovementDelay = Math.Max(0, ini.GetInt(section, "CombatArcheryMovementDelay", CombatArcheryMovementDelay));
         CombatMeleeMovementDelay = ini.GetInt(section, "CombatMeleeMovementDelay", CombatMeleeMovementDelay);
         ArcheryMinDist = ini.GetInt(section, "ArcheryMinDist", ArcheryMinDist);
         ArcheryMaxDist = ini.GetInt(section, "ArcheryMaxDist", ArcheryMaxDist);
@@ -1282,10 +1297,16 @@ public sealed class SphereConfig
         MulticoreWorkerCount = ini.GetInt(section, "MulticoreWorkerCount", MulticoreWorkerCount);
         MulticorePhaseTimeoutMs = ini.GetInt(section, "MulticorePhaseTimeoutMs", MulticorePhaseTimeoutMs);
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
-        // ServerTickMs is canonical; TICKPERIOD is accepted as a legacy alias (the
-        // classic Sphere key) when ServerTickMs is absent.
+        // ServerTickMs is canonical. TICKPERIOD is accepted when ServerTickMs is absent,
+        // in the unit Source-X reports it in: ticks per SECOND (RC_TICKPERIOD answers
+        // TICKS_PER_SEC), so 10 means a 100 ms tick. It used to be taken as the tick
+        // length in ms, and TICKPERIOD=10 made a 20 ms tick.
+        int tickMsFromPeriod = ServerTickMs;
+        int ticksPerSec = ini.GetInt(section, "TICKPERIOD", 0);
+        if (ticksPerSec > 0)
+            tickMsFromPeriod = 1000 / ticksPerSec;
         ServerTickMs = Math.Clamp(
-            ini.GetInt(section, "ServerTickMs", ini.GetInt(section, "TICKPERIOD", ServerTickMs)),
+            ini.GetInt(section, "ServerTickMs", tickMsFromPeriod),
             20, 250);
         SlowTickWarnMs = Math.Max(0, ini.GetInt(section, "SlowTickWarnMs", SlowTickWarnMs));
         LoopStallWarnMs = Math.Max(0, ini.GetInt(section, "LoopStallWarnMs", LoopStallWarnMs));
@@ -1316,12 +1337,15 @@ public sealed class SphereConfig
         DistanceTalk = ini.GetInt(section, "DistanceTalk", DistanceTalk);
         DistanceYell = ini.GetInt(section, "DistanceYell", DistanceYell);
 
-        UseHttp = ini.GetBool(section, "UseHttp", UseHttp);
+        UseHttpMode = ini.GetInt(section, "UseHttp", UseHttpMode);
 
         AdminPassword = ini.GetValue(section, "AdminPassword") ?? AdminPassword;
         AdminPanelPort = ini.GetInt(section, "AdminPanelPort", AdminPanelPort);
 
-        SentryDsn = ini.GetValue(section, "SentryDsn") ?? SentryDsn;
+        // "//" starts a comment anywhere in an ini line (as in Source-X), so a DSN is
+        // written without its scheme ("key@o1.ingest.sentry.io/123"); https:// is
+        // put back here. A bare "https:" is what a DSN written with the scheme leaves.
+        SentryDsn = NormalizeSentryDsn(ini.GetValue(section, "SentryDsn") ?? SentryDsn);
 
         LoadSourceXKeys(ini, section);
 

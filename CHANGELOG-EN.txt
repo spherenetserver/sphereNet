@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - The dungeon black (TERRAIN_NULL) blocks movement
+------------------------------------------------------------------------
+FIX - Land tile 0x0244 (TERRAIN_NULL, the black between dungeon walls) blocks
+      movement, as Source-X gives it no surface. The walk check lets dry
+      Impassable land be walked (hillside slopes carry that bit), and the
+      black fell under that rule, so dungeon creatures wandered across it.
+      Statics laid over it are still walkable; the client never steps onto it.
+
 [2026-09-25] - INPDLG reaches worn memories and spell effects
 ------------------------------------------------------------------------
 FIX - An INPDLG prompt writes back into the object it was opened on. The reply

@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - Dungeon siyahi (TERRAIN_NULL) hareketi engeller
+------------------------------------------------------------------------
+DUZELTME - 0x0244 zemin tile'i (TERRAIN_NULL, dungeon duvarlari arasindaki
+           siyah) hareketi engeller; Source-X ona yuzey vermez. Yurume kontrolu
+           kuru Impassable zemini yurunebilir sayar (yamaclar bu biti tasir) ve
+           siyah da bu kurala takiliyordu, dungeon yaratiklari uzerinde
+           dolasiyordu. Ustune konmus statikler yine yurunur; istemci zaten oraya
+           adim atmaz.
+
 [2026-09-25] - INPDLG giyili memory ve buyu etkilerine ulasir
 ------------------------------------------------------------------------
 DUZELTME - INPDLG penceresi acildigi nesneye yazar. Yanit nesneyi dunya

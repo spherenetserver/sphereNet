@@ -101,6 +101,16 @@ public sealed class WalkCheck
     /// </summary>
     internal static bool LandBlocks(LandTileData landData) => landData.IsImpassable && landData.IsWet;
 
+    /// <summary>TERRAIN_NULL, the black void between dungeon walls. Source-X gives it
+    /// no surface at all - CAN_I_BLOCK (CWorldMap.cpp, TerrainEngine's legacy path) -
+    /// whereas the general rule above lets dry Impassable land be walked (hillside
+    /// slopes carry that bit too). Without this, dungeon creatures wandered across
+    /// the black.</summary>
+    internal const ushort TerrainNull = 0x0244;
+
+    internal static bool LandBlocks(ushort tileId, LandTileData landData) =>
+        tileId == TerrainNull || LandBlocks(landData);
+
     private readonly GameWorld _world;
 
     public WalkCheck(GameWorld world)
@@ -342,7 +352,7 @@ public sealed class WalkCheck
         if (!MapDataManager.IsLandIgnored(landTile.TileId))
         {
             var landData = md.GetLandTileData(landTile.TileId);
-            bool landBlocks = LandBlocks(landData);
+            bool landBlocks = LandBlocks(landTile.TileId, landData);
 
             if (!landBlocks)
             {
@@ -467,7 +477,7 @@ public sealed class WalkCheck
         bool hovers = (can & CanFlags.C_Hover) != 0 || mover.IsStatFlag(StatFlag.Hovering);
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
-        bool landBlocks = landData.IsWet ? !swims : !walks;
+        bool landBlocks = landTile.TileId == TerrainNull || (landData.IsWet ? !swims : !walks);
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
         md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTop);
@@ -783,7 +793,7 @@ public sealed class WalkCheck
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
         // Same land-barrier rule as Check() — see LandBlocks().
-        bool landBlocks = LandBlocks(landData);
+        bool landBlocks = LandBlocks(landTile.TileId, landData);
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
         md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTopAvg);

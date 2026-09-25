@@ -22,6 +22,17 @@ public class LandBlockRuleTests
         Assert.False(WalkCheck.LandBlocks(land));
     }
 
+    /// <summary>TERRAIN_NULL (0x0244), the black between dungeon walls, blocks even
+    /// though it is dry: Source-X gives it no surface (CAN_I_BLOCK), and the client
+    /// does not step onto it either. Dungeon creatures used to wander across it.</summary>
+    [Fact]
+    public void TerrainNull_Blocks_OtherDryImpassableLandDoesNot()
+    {
+        var land = new LandTileData { Flags = TileFlag.Impassable | TileFlag.Wall };
+        Assert.True(WalkCheck.LandBlocks(WalkCheck.TerrainNull, land));
+        Assert.False(WalkCheck.LandBlocks(0x0091, new LandTileData { Flags = TileFlag.Impassable }));
+    }
+
     [Fact]
     public void Water_ImpassableAndWet_Blocks()
     {

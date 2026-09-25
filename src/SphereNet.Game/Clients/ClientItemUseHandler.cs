@@ -1734,11 +1734,9 @@ public sealed class ClientItemUseHandler
                 break;
             }
             case ItemType.Switch:
+                // Using a switch only flips it (CCharUse.cpp:1763-1768); @Step belongs
+                // to walking onto an item and fires nowhere else (CCharAct.cpp:4953).
                 UseSwitch(item);
-                // ARGN1 = fStanding (Source-X @Step contract): 1 — the char is
-                // standing at/using the item rather than walking onto it.
-                _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = item, N1 = 1 });
                 break;
 
             // ---- beverages ----
@@ -1846,11 +1844,8 @@ public sealed class ClientItemUseHandler
                         _character.X, _character.Y, (short)_character.Z,
                         10, 30, true, false));
                 }
-                else
-                {
-                    _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, N1 = 1 });
-                }
+                // No destination: nothing happens. @Step is a walking trigger only
+                // (CCharAct.cpp:4953), never a double-click one.
                 break;
             }
 

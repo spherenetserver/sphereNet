@@ -217,6 +217,11 @@ public static class SkillEngine
     /// <param name="forceCheck">Roll even for a SCRIPTED skill. Upstream refuses those
     /// unless the caller insists (CCharSkill.cpp:553), which is what the fourth argument
     /// of the SKILLUSEQUICK property asks for.</param>
+    /// <summary>What a <see cref="Character.OnSkillUseQuickDetailed"/> hook returns for
+    /// a script's RETURN 1: the use succeeds and no experience is awarded. Any other
+    /// negative value is RETURN 0: it fails, again without experience.</summary>
+    public const int UseQuickHandledSuccess = -2;
+
     public static bool UseQuick(Character ch, SkillType skill, int difficulty,
         bool allowGain = true, bool useBellCurve = true, bool forceCheck = false)
     {
@@ -227,12 +232,13 @@ public static class SkillEngine
         bool success = CheckSuccess(ch, skill, difficulty, useBellCurve);
 
         // @SkillUseQuick (Source-X) — fires AFTER the roll with ARGN3 = result; a
-        // script may flip the result, or cancel the use entirely (RETURN 1) so no
-        // experience is gained.
+        // script may flip the result through ARGN3. RETURN 1 answers "success" and
+        // RETURN 0 "failure", both without experience (CCharSkill.cpp:566-579).
         if (Character.OnSkillUseQuickDetailed != null)
         {
             int outcome = Character.OnSkillUseQuickDetailed(ch, (int)skill, ref difficulty,
                 success ? 1 : 0);
+            if (outcome == UseQuickHandledSuccess) return true;
             if (outcome < 0) return false;
             success = outcome != 0;
         }

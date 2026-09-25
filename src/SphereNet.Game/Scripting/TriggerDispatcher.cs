@@ -91,6 +91,27 @@ public sealed class TriggerDispatcher
     private static readonly Dictionary<CharTrigger, string> CharMirrorNames =
         Enum.GetValues<CharTrigger>().Distinct().ToDictionary(t => t, t => "char" + GetCharTriggerName(t));
 
+    // The @char*/@item* mirrors upstream actually runs on the acting character: the
+    // mirror name is looked up in CChar::sm_szTrigName and only fires when it is a
+    // known character trigger (FindTableSorted(...) > XTRIG_UNKNOWN, CCharAct.cpp:5557
+    // and CItem.cpp:3762). Anything else - @charHit, @charDeath, @itemSpellEffect -
+    // has no entry there and never fires.
+    private static readonly HashSet<string> SourceMirrorNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "charAttack", "charClick", "charClientTooltip", "charClientTooltip_AfterDefault",
+        "charContextMenuRequest", "charContextMenuSelect", "charDClick", "charShove",
+        "charTradeAccepted",
+        "itemAfterClick", "itemBuy", "itemCarveCorpse", "itemClick", "itemClientTooltip",
+        "itemClientTooltip_AfterDefault", "itemContextMenuRequest", "itemContextMenuSelect",
+        "itemCreate", "itemDamage", "itemDClick", "itemDestroy", "itemDropOn_Char",
+        "itemDropOn_Ground", "itemDropOn_Item", "itemDropOn_Self", "itemDropOn_Trade",
+        "itemEquip", "itemEquipTest", "itemMemoryEquip", "itemPickup_Ground",
+        "itemPickup_Pack", "itemPickup_Self", "itemPickup_Stack", "itemRedeed",
+        "itemRegionEnter", "itemRegionLeave", "itemSell", "itemSmelt", "itemSpell",
+        "itemStep", "itemTargOn_Cancel", "itemTargOn_Char", "itemTargOn_Ground",
+        "itemTargOn_Item", "itemTimer", "itemToolTip", "itemUnequip",
+    };
+
     // Trigger names that have an f_onchar_<x>/f_onitem_<x> [FUNCTION] fallback.
     // Gates FireCharTriggerByName step 6 / FireItemTriggerByName step 7 so the
     // per-fire name concat + ToLowerInvariant + args wrapping only happens when
@@ -243,6 +264,17 @@ public sealed class TriggerDispatcher
         // routing can never reach across two of them.
         ch.ForgetLastCreatedItem();
 
+        // Three character triggers never go through CChar::OnTrigger upstream:
+        // @NPCRestock and @CreateLoot only read the CHARDEF's own block
+        // (ReadScriptReducedTrig, CCharNPCAct_Vendor.cpp:85, CCharAct.cpp:4405), and an
+        // NPC's @Create is split into the CHARDEF block (NPC_LoadScript,
+        // CCharNPC.cpp:279-287) followed by TEVENTS and EVENTSPET (NPC_CreateTrigger,
+        // CCharNPC.cpp:296-343) - no dynamic EVENTS, no @charCreate mirror.
+        if (trigger is CharTrigger.NPCRestock or CharTrigger.CreateLoot)
+            return FireCharDefBlock(ch, GetCharTriggerName(trigger), args, setAct: false);
+        if (trigger == CharTrigger.Create && !ch.IsPlayer)
+            return FireNpcCreate(ch, args);
+
         var result = FireCharTriggerByName(ch, GetCharTriggerName(trigger), args);
         if (result == TriggerResult.True)
             return result;
@@ -250,7 +282,16 @@ public sealed class TriggerDispatcher
         string? stage = GetSkillSectionStage(trigger);
         if (stage != null)
         {
+            // Skill_Wait and Skill_UseQuick act on the character trigger's RETURN 0 at
+            // once and never reach the [SKILL] stage (CCharSkill.cpp:566-570, 3990-3996).
+            if (result == TriggerResult.False &&
+                trigger is CharTrigger.SkillWait or CharTrigger.SkillUseQuick)
+                return result;
+            long? priorReturn = args.ReturnNumber;
+            args.ReturnNumber = null;
             var skillResult = FireSkillTrigger(SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1), stage, ch, args);
+            if (skillResult != TriggerResult.True)
+                skillResult = ChainOutcome(args, priorReturn);
             if (skillResult != TriggerResult.Default)
                 return skillResult;
         }
@@ -269,11 +310,74 @@ public sealed class TriggerDispatcher
         };
         if (spellStage != null && args.N1 > 0)
         {
+            long? priorReturn = args.ReturnNumber;
+            args.ReturnNumber = null;
             var spellResult = FireSpellTrigger((SphereNet.Core.Enums.SpellType)args.N1, spellStage, ch, args);
+            if (spellResult != TriggerResult.True)
+                spellResult = ChainOutcome(args, priorReturn);
             if (spellResult != TriggerResult.Default)
                 return spellResult;
         }
         return result;
+    }
+
+    /// <summary>Run only the CHARDEF's own ON=@<paramref name="trigName"/> block
+    /// (ReadScriptReducedTrig, CChar.cpp:1281-1292), with ACT pointed at the character
+    /// for the duration when <paramref name="setAct"/> is set (NPC_LoadScript,
+    /// CCharNPC.cpp:282-285). The f_onchar_ fallback still gets its turn.</summary>
+    private TriggerResult FireCharDefBlock(Character ch, string trigName, TriggerArgs args, bool setAct)
+    {
+        long? priorReturn = args.ReturnNumber;
+        args.ReturnNumber = null;
+        var result = TriggerResult.Default;
+        if (Resources != null && Runner != null &&
+            Resources.GetResource(ResType.CharDef, ch.CharDefIndex) is { } charDefLink)
+        {
+            var oldAct = ch.Act;
+            if (setAct) ch.Act = ch.Uid;
+            try { result = RunWrapped(charDefLink, trigName, ch, args); }
+            finally { if (setAct) ch.Act = oldAct; }
+        }
+        if (result != TriggerResult.True && RunCharFunctionFallback(ch, trigName, args) == TriggerResult.True)
+            result = TriggerResult.True;
+        return result == TriggerResult.True ? result : ChainOutcome(args, priorReturn);
+    }
+
+    /// <summary>An NPC's @Create: the CHARDEF block first (NPC_LoadScript), then the
+    /// chardef's TEVENTS and the configured EVENTSPET, each resource at most once, with
+    /// the NPC as SRC (NPC_CreateTrigger, CCharNPC.cpp:296-343). A RETURN 1 in the
+    /// CHARDEF block does not stop the second half - upstream runs them from separate
+    /// calls.</summary>
+    private TriggerResult FireNpcCreate(Character npc, TriggerArgs args)
+    {
+        FireCharDefBlock(npc, "Create", args, setAct: true);
+
+        long? priorReturn = args.ReturnNumber;
+        args.ReturnNumber = null;
+        if (Resources != null && Runner != null)
+        {
+            var executed = new HashSet<ResourceLink>();
+            var charDef = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
+            if (charDef != null)
+            {
+                foreach (var tevRid in charDef.Events)
+                {
+                    var tevLink = Resources.GetResource(tevRid);
+                    if (tevLink == null || !executed.Add(tevLink)) continue;
+                    if (RunWrapped(tevLink, "Create", npc, args) == TriggerResult.True)
+                        return TriggerResult.True;
+                }
+            }
+            if (_globalCharHandlers.TryGetValue("EVENTSPET.Create", out var handlers))
+            {
+                foreach (var handler in handlers)
+                    if (handler(npc, args) == TriggerResult.True)
+                        return TriggerResult.True;
+            }
+            if (RunResourceEventHandlers(GlobalPetEvents, "Create", npc, args, executed) == TriggerResult.True)
+                return TriggerResult.True;
+        }
+        return ChainOutcome(args, priorReturn);
     }
 
     /// <summary>Source-X SKTRIG_* stage name for a char-level skill trigger,
@@ -320,6 +424,8 @@ public sealed class TriggerDispatcher
         // the SOURCE, so upstream points that character's ACT at the character being
         // acted on for the duration and puts it back afterwards (CChar::OnTrigger,
         // CCharAct.cpp:5562-5565) - which is how a @charDClick block reads <ACT.NAME>.
+        long? priorReturn = args.ReturnNumber;
+        args.ReturnNumber = null;
         if (args.CharSrc != null && args.CharSrc != ch)
         {
             string crossTrigName = "char" + trigName;
@@ -332,6 +438,32 @@ public sealed class TriggerDispatcher
             }
         }
 
+        var chainResult = RunCharChain(ch, trigName, args);
+        return chainResult == TriggerResult.True ? chainResult : ChainOutcome(args, priorReturn);
+    }
+
+    /// <summary>What a chain that did not RETURN 1 hands its caller. Upstream returns
+    /// the TRIGRET of the last block that ran (CCharAct.cpp:5698, CItem.cpp:3889), and a
+    /// number of sites act on TRIGRET_RET_FALSE - RETURN 0 - as "handled, skip the
+    /// default" (the @Timer deletion at CItem.cpp:6416, @SkillWait at
+    /// CCharSkill.cpp:3994, @NPCActFollow at CCharNPCAct.cpp:1367, ...). The script
+    /// engine folds RETURN 0 into Default, so the chain reads it back from the last
+    /// block's evaluated RETURN instead. When nothing in this chain returned a number the
+    /// caller's earlier value is kept, as before.</summary>
+    private static TriggerResult ChainOutcome(TriggerArgs args, long? priorReturn)
+    {
+        if (args.ReturnNumber == 0)
+            return TriggerResult.False;
+        args.ReturnNumber ??= priorReturn;
+        return TriggerResult.Default;
+    }
+
+    /// <summary>Stages 2..6 of CChar::OnTrigger on <paramref name="ch"/>: EVENTS, NPC
+    /// TEVENTS, CHARDEF, EVENTSPET/EVENTSPLAYER, then the f_onchar_ fallback. Shared by a
+    /// direct fire and by the @char*/@item* mirror, which upstream runs as a full
+    /// OnTrigger on the acting character (CCharAct.cpp:5566, CItem.cpp:3771).</summary>
+    private TriggerResult RunCharChain(Character ch, string trigName, TriggerArgs args)
+    {
         // CChar::OnTrigger executes an event resource at most once across
         // dynamic EVENTS, NPC TEVENTS and configured global character events.
         var executedEvents = new HashSet<ResourceLink>();
@@ -387,6 +519,12 @@ public sealed class TriggerDispatcher
         if (globalEventResult == TriggerResult.True)
             return TriggerResult.True;
 
+        return RunCharFunctionFallback(ch, trigName, args);
+    }
+
+    /// <summary>The f_onchar_&lt;trigger&gt; [FUNCTION] fallback, when one exists.</summary>
+    private TriggerResult RunCharFunctionFallback(Character ch, string trigName, TriggerArgs args)
+    {
         if (Runner != null && (!_funcTriggerGateBuilt || _funcCharTriggers.Contains(trigName)))
         {
             string funcName = "f_onchar_" + trigName.ToLowerInvariant();
@@ -411,6 +549,26 @@ public sealed class TriggerDispatcher
         if (ScriptDebug)
             DebugLog?.Invoke($"[script_debug] ITRIG @{trigName} on item 0x{item.Uid.Value:X8} id=0x{item.BaseId:X4} src={args.CharSrc?.Name ?? "-"}");
 
+        long? priorReturn = args.ReturnNumber;
+        args.ReturnNumber = null;
+        var result = RunItemChain(item, trigName, args);
+        return result == TriggerResult.True ? result : ChainOutcome(args, priorReturn);
+    }
+
+    private TriggerResult RunItemChain(Item item, string trigName, TriggerArgs args)
+    {
+        // @Create runs the item definition's own block FIRST and then the usual chain;
+        // its answer does not stop the rest (CItem.cpp:3753-3755 jumps to
+        // from_itemdef_first, :3883-3885 jumps back to standard_order).
+        bool createFirst = trigName.Equals("Create", StringComparison.OrdinalIgnoreCase);
+        if (createFirst && Resources != null && Runner != null)
+        {
+            bool multi = item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
+                or Core.Enums.ItemType.Ship;
+            RunItemDefStage(item, multi, Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, Resources),
+                trigName, args);
+        }
+
         // 1. @Item* on source character
         if (args.CharSrc != null)
         {
@@ -419,7 +577,7 @@ public sealed class TriggerDispatcher
             // the old alias first without replacing the canonical trigger.
             if (trigName.Equals("Unequip", StringComparison.OrdinalIgnoreCase))
             {
-                var legacyResult = RunMirrorWithAct(args.CharSrc, item.Uid, "itemUnequipTest", args);
+                var legacyResult = RunMirrorWithAct(args.CharSrc, item.Uid, "itemUnequipTest", args, knownAlias: true);
                 if (legacyResult == TriggerResult.True)
                     return TriggerResult.True;
             }
@@ -559,36 +717,9 @@ public sealed class TriggerDispatcher
         }
 
         // 6. ITEMDEF own triggers: the multi's [MULTIDEF], the graphic's def and the
-        // named (scripted) def the instance was made from.
-        if (Resources != null && Runner != null)
-        {
-            if (isMulti)
-            {
-                var multiLink = Resources.GetResource(ResType.MultiDef, item.BaseId);
-                if (multiLink != null &&
-                    RunWrapped(multiLink, trigName, item, args) == TriggerResult.True)
-                    return TriggerResult.True;
-            }
-
-            var itemDefLink = Resources.GetResource(ResType.ItemDef, item.BaseId);
-            if (itemDefLink != null)
-            {
-                var result = RunWrapped(itemDefLink, trigName, item, args);
-                if (result == TriggerResult.True)
-                    return TriggerResult.True;
-            }
-
-            if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
-            {
-                var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
-                if (scriptLink != null)
-                {
-                    var result = RunWrapped(scriptLink, trigName, item, args);
-                    if (result == TriggerResult.True)
-                        return TriggerResult.True;
-                }
-            }
-        }
+        // named (scripted) def the instance was made from. @Create ran them first.
+        if (!createFirst && RunItemDefStage(item, isMulti, scriptDefIdx, trigName, args) == TriggerResult.True)
+            return TriggerResult.True;
 
         // 7. Global f_onitem_* function (parity with f_onchar_*)
         if (Runner != null && (!_funcTriggerGateBuilt || _funcItemTriggers.Contains(trigName)))
@@ -599,6 +730,34 @@ public sealed class TriggerDispatcher
                 return TriggerResult.True;
         }
 
+        return TriggerResult.Default;
+    }
+
+    /// <summary>The item definition's own ON=@ blocks: the multi's [MULTIDEF], the
+    /// graphic's [ITEMDEF] and the named def the instance was made from.</summary>
+    private TriggerResult RunItemDefStage(Item item, bool isMulti, int scriptDefIdx, string trigName, TriggerArgs args)
+    {
+        if (Resources == null || Runner == null)
+            return TriggerResult.Default;
+
+        if (isMulti)
+        {
+            var multiLink = Resources.GetResource(ResType.MultiDef, item.BaseId);
+            if (multiLink != null &&
+                RunWrapped(multiLink, trigName, item, args) == TriggerResult.True)
+                return TriggerResult.True;
+        }
+
+        var itemDefLink = Resources.GetResource(ResType.ItemDef, item.BaseId);
+        if (itemDefLink != null && RunWrapped(itemDefLink, trigName, item, args) == TriggerResult.True)
+            return TriggerResult.True;
+
+        if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
+        {
+            var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
+            if (scriptLink != null && RunWrapped(scriptLink, trigName, item, args) == TriggerResult.True)
+                return TriggerResult.True;
+        }
         return TriggerResult.Default;
     }
 
@@ -819,7 +978,9 @@ public sealed class TriggerDispatcher
     /// spell index and runs the body — mirroring the ITEMDEF/REGIONRESOURCE path.
     /// ARGN1/2/3 mutations are copied back so a script can override id/amount.
     /// </summary>
-    public TriggerResult FireSpellTrigger(SphereNet.Core.Enums.SpellType spell, string trigName, Character ch, TriggerArgs args)
+    /// <remarks>The stage runs on whatever the spell landed on - a character, or an
+    /// item for CItem::OnSpellEffect's [SPELL]@Effect (CItem.cpp:5618).</remarks>
+    public TriggerResult FireSpellTrigger(SphereNet.Core.Enums.SpellType spell, string trigName, IScriptObj target, TriggerArgs args)
     {
         if (Resources == null || Runner == null)
             return TriggerResult.Default;
@@ -828,7 +989,7 @@ public sealed class TriggerDispatcher
         if (link == null)
             return TriggerResult.Default;
 
-        return RunWrapped(link, trigName, ch, args);
+        return RunWrapped(link, trigName, target, args);
     }
 
     /// <summary>Register a global character event handler.</summary>
@@ -1094,13 +1255,24 @@ public sealed class TriggerDispatcher
     /// with its ACT pointed at the object the trigger is about, restoring the previous
     /// ACT afterwards whatever the script did with it (Source-X saves and restores
     /// m_Act_UID around the mirror call).</summary>
-    private TriggerResult RunMirrorWithAct(Character source, Serial actUid, string trigName, TriggerArgs args)
+    /// <remarks>The mirror is a full CChar::OnTrigger on the source - EVENTS, NPC
+    /// TEVENTS, CHARDEF and EVENTSPET/EVENTSPLAYER - not just its own EVENTS list, so an
+    /// @itemDClick in the configured player events fires too (CItem.cpp:3771). It only
+    /// runs for a name the character trigger table knows (<see cref="SourceMirrorNames"/>)
+    /// and, once the used-trigger cache is built, only when something hooks it
+    /// (IsTrigUsed, CCharAct.cpp:5558).</remarks>
+    private TriggerResult RunMirrorWithAct(Character source, Serial actUid, string trigName, TriggerArgs args,
+        bool knownAlias = false)
     {
+        if (!knownAlias && !SourceMirrorNames.Contains(trigName))
+            return TriggerResult.Default;
+        if (_funcTriggerGateBuilt && !_usedCharTriggers.Contains(trigName))
+            return TriggerResult.Default;
         var oldAct = source.Act;
         source.Act = actUid;
         try
         {
-            return RunObjectHandlers(source, trigName, args);
+            return RunCharChain(source, trigName, args);
         }
         finally
         {
@@ -1186,9 +1358,17 @@ public sealed class TriggerDispatcher
         args.N3 = wrapped.Number3;
         args.S1 = wrapped.ArgString; // ARGS the script rewrote (Source-X m_s1 readback)
         args.O1 = wrapped.Object1;
-        // The raw RETURN number, for the triggers whose contract is numeric.
-        if (wrapped.ReturnValue != null && long.TryParse(wrapped.ReturnValue, out long retNum))
+        // The raw RETURN number, for the triggers whose contract is numeric. Upstream's
+        // chain result is the value of the LAST block that actually ran (each stage
+        // assigns iRet, CCharAct.cpp:5602 / CItem.cpp:3796), so a block that ran to its
+        // end without RETURN clears an earlier block's number, and a block that does not
+        // hook this trigger leaves it alone.
+        if (wrapped.NumericReturnValue is long evaluated)
+            args.ReturnNumber = evaluated;
+        else if (wrapped.ReturnValue != null && long.TryParse(wrapped.ReturnValue, out long retNum))
             args.ReturnNumber = retNum;
+        else if (wrapped.ReturnValue == null && link.TryGetTriggerBody(trigName, out _))
+            args.ReturnNumber = null;
         return result;
     }
 
@@ -1272,7 +1452,7 @@ public sealed class TriggerDispatcher
         CharTrigger.CharTradeAccepted => "CharTradeAccepted",
         CharTrigger.Click => "Click",
         CharTrigger.ClientTooltip => "ClientTooltip",
-        CharTrigger.ClientTooltipAfterDefault => "ClientTooltipAfterDefault",
+        CharTrigger.ClientTooltipAfterDefault => "ClientTooltip_AfterDefault",
         CharTrigger.ContextMenuRequest => "ContextMenuRequest",
         CharTrigger.ContextMenuSelect => "ContextMenuSelect",
         CharTrigger.DClick => "DClick",
@@ -1459,7 +1639,7 @@ public sealed class TriggerDispatcher
         ItemTrigger.Tooltip => "ToolTip",
         ItemTrigger.AfterClick => "AfterClick",
         ItemTrigger.ClientTooltip => "ClientTooltip",
-        ItemTrigger.ClientTooltipAfterDefault => "ClientTooltipAfterDefault",
+        ItemTrigger.ClientTooltipAfterDefault => "ClientTooltip_AfterDefault",
         ItemTrigger.ContextMenuRequest => "ContextMenuRequest",
         ItemTrigger.ContextMenuSelect => "ContextMenuSelect",
         ItemTrigger.TargOnCancel => "TargOn_Cancel",

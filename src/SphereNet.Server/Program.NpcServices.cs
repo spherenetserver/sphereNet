@@ -912,10 +912,9 @@ public static partial class Program
             SphereNet.Core.Enums.MemoryType.Speak) == null;
         if (firstContact)
         {
-            npc.Memory_AddObjTypes(speaker.Uid, SphereNet.Core.Enums.MemoryType.Speak);
-            // Gate the greeting dispatch (and its arg alloc) on IsTrigUsed: skip it when
-            // no script hooks @NPCHearGreeting anywhere. The MEMORY_SPEAK record above is
-            // kept regardless so scripts that read it still see first-contact state.
+            // The greeting fires BEFORE MEMORY_SPEAK is recorded, and a RETURN 1 leaves
+            // it unrecorded, so the NPC greets this speaker again next time
+            // (CCharNPCAct.cpp:301-314). Gated on IsTrigUsed like upstream.
             if (_triggerDispatcher != null &&
                 _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCHearGreeting))
             {
@@ -927,6 +926,7 @@ public static partial class Program
                     return;
                 }
             }
+            npc.Memory_AddObjTypes(speaker.Uid, SphereNet.Core.Enums.MemoryType.Speak);
         }
 
         // Service-NPC well-known keywords (buy/sell/bank/balance/withdraw/

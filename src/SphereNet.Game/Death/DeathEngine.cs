@@ -245,11 +245,10 @@ public sealed class DeathEngine
                 $"'{victim.GetDisplayName()}' was killed by {(names.Length > 0 ? names : "accident")}.");
         }
 
-        // Source-X clears m_lastAttackers immediately after kill credit and
-        // the kill record are built. Player ghosts otherwise retained stale
-        // damage contributors until resurrection (and persisted them on save).
-        victim.ClearAttackers();
-
+        // Source-X clears m_lastAttackers once the corpse and its @DeathCorpse are done
+        // (CCharAct.cpp:4418), so @CreateLoot and @DeathCorpse still read ATTACKER.*.
+        // Player ghosts otherwise retained stale damage contributors until
+        // resurrection (and persisted them on save).
         int deathFlags = GetDeathFlags(victim);
 
         // Source-X CChar::Death player penalties (CCharAct.cpp:4443-4470):
@@ -278,13 +277,14 @@ public sealed class DeathEngine
         // no corpse — they simply vanish (DeleteObject refreshes nearby clients).
         // Source-X CChar::Death runs @CreateLoot once, immediately before
         // MakeCorpse. Running it during NPC initialization duplicated spawn
-        // loot and made death-time conditions observe a living creature.
-        if (!victim.IsSummoned)
-            TriggerDispatcher?.FireCharTrigger(victim, CharTrigger.CreateLoot,
-                new TriggerArgs { CharSrc = victim });
+        // loot and made death-time conditions observe a living creature. It runs for
+        // every death, summons included (CCharAct.cpp:4402-4406).
+        TriggerDispatcher?.FireCharTrigger(victim, CharTrigger.CreateLoot,
+            new TriggerArgs { CharSrc = victim });
 
         if (ShouldLeaveNoCorpse(victim, deathFlags))
         {
+            victim.ClearAttackers();
             // Source-X MakeCorpse: a summon that leaves no corpse bursts a
             // spell-fizzle effect instead of silently vanishing.
             if (victim.IsSummoned)
@@ -325,6 +325,7 @@ public sealed class DeathEngine
             CharSrc = victim,
             O1 = corpse
         });
+        victim.ClearAttackers();
 
         // Now that the corpse has snapshotted the original body, fire the
         // death callbacks so OnCharacterDeath / OnNpcKill can swap the
@@ -405,8 +406,10 @@ public sealed class DeathEngine
             if (decision.Count.HasValue)
             {
                 offender.Kills = (short)Math.Clamp(decision.Count.Value, 0, short.MaxValue);
+                // ARGN2 asks for Noto_Criminal (CCharNotoriety.cpp:600-601): the
+                // regular criminal flag, @Criminal and CRIMINALTIMER included.
                 if (decision.MakeCriminal)
-                    offender.SetCriminal(120_000); // 2 minutes criminal flag
+                    offender.MakeCriminal();
             }
         }
     }

@@ -207,11 +207,10 @@ public sealed class ClientTargetingHandler
 
             if (_character.TryGetTag("CAST_SPELL", out string? cancelledSpellStr))
             {
-                if (Enum.TryParse<SpellType>(cancelledSpellStr, out var cancelledSpell))
-                {
+                if (Enum.TryParse<SpellType>(cancelledSpellStr, out var cancelledSpell) &&
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
-                        new TriggerArgs { CharSrc = _character, N1 = (int)cancelledSpell });
-                }
+                        new TriggerArgs { CharSrc = _character, N1 = (int)cancelledSpell }) == TriggerResult.True)
+                    suppressCancelMessage = true;
                 _client.Spells?.CancelCast(_character);
                 _character.RemoveTag("CAST_SPELL");
                 // The cast never started — drop the wand/scroll source tags so they
@@ -219,7 +218,8 @@ public sealed class ClientTargetingHandler
                 _character.RemoveTag("WAND_UID");
                 _character.RemoveTag("SCROLL_UID");
             }
-            CancelPrecastTarget();
+            if (CancelPrecastTarget())
+                suppressCancelMessage = true;
             _character.RemoveTag("TARGP");
             _character.RemoveTag("TARG.X");
             _character.RemoveTag("TARG.Y");
@@ -229,11 +229,12 @@ public sealed class ClientTargetingHandler
 
             if (FirePendingItemTargetTrigger(pendingItemUid, ItemTrigger.TargOnCancel, Serial.Invalid, 0) == TriggerResult.True)
                 suppressCancelMessage = true;
-            if (pendingSkillTargetCancelId >= 0)
-            {
+            // @SkillTargetCancel / @SpellTargetCancel RETURN 1 keeps the "targeting
+            // cancelled" line off the screen too (CClientMsg.cpp:1686-1737).
+            if (pendingSkillTargetCancelId >= 0 &&
                 _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
-                    new TriggerArgs { CharSrc = _character, N1 = pendingSkillTargetCancelId });
-            }
+                    new TriggerArgs { CharSrc = _character, N1 = pendingSkillTargetCancelId }) == TriggerResult.True)
+                suppressCancelMessage = true;
 
             if (!suppressCancelMessage)
                 SysMessage(ServerMessages.Get("target_cancel_1"));
@@ -1055,16 +1056,19 @@ public sealed class ClientTargetingHandler
             : 0;
     }
 
-    private void CancelPrecastTarget()
+    /// <summary>Returns true when @SpellTargetCancel answered RETURN 1.</summary>
+    private bool CancelPrecastTarget()
     {
         // Precast cursors use a callback, not the legacy CAST_SPELL tag.
         if (_character != null && _character.CastSkillSucceeded && _character.CastTimerEnd == 0 &&
             _character.TryGetCastingSpell(out var spell))
         {
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
+            var result = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
                 new TriggerArgs { CharSrc = _character, N1 = (int)spell });
             _client.Spells?.CancelCast(_character);
+            return result == TriggerResult.True;
         }
+        return false;
     }
 
     /// <summary>Give up on a cursor whose deadline has passed (Source-X

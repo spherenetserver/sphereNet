@@ -545,20 +545,21 @@ public static partial class Program
             SphereNet.Game.Components.SpawnComponent.OnSpawnTrigger = (item, trigger, args) =>
             {
                 if (_triggerDispatcher == null) return TriggerResult.Default;
+                // Every spawner trigger runs with the server as SRC (OnTrigger(...,
+                // &g_Serv), CCSpawn.cpp:310/387/570/648). ARGO is the spawned object,
+                // except for @DelObj whose ARGO is the spawn point itself (:568).
                 var targs = new SphereNet.Game.Scripting.TriggerArgs();
-                if (args.SpawnedChar != null)
-                {
+                if (trigger == ItemTrigger.DelObj && args.SpawnPoint != null)
+                    targs.O1 = args.SpawnPoint;
+                else if (args.SpawnedChar != null)
                     targs.O1 = args.SpawnedChar;
-                    targs.CharSrc = args.SpawnedChar;
-                }
                 else if (args.SpawnedItem != null)
-                {
                     targs.O1 = args.SpawnedItem;
-                    targs.ItemSrc = args.SpawnedItem;
-                }
+                bool timerTrigger = trigger is ItemTrigger.AddObj or ItemTrigger.DelObj;
                 // Champion triggers carry explicit N1..N3 payloads (@Level,
-                // candle reasons); plain spawn triggers keep N1 = def index.
-                if (args.N1 != 0 || args.N2 != 0 || args.N3 != 0)
+                // candle reasons); plain spawn triggers keep N1 = def index. @AddObj
+                // and @DelObj always carry the timer seconds, a zero one included.
+                if (timerTrigger || args.N1 != 0 || args.N2 != 0 || args.N3 != 0)
                 {
                     targs.N1 = args.N1;
                     targs.N2 = args.N2;
@@ -577,7 +578,7 @@ public static partial class Program
                 // rebuilds the resource id from it (CCSpawn.cpp:310/387). The bridge
                 // sent the def index in N1 and never carried the answer back, so a
                 // handler that chose a different creature or item was ignored.
-                if (args.N1 == 0 && args.N2 == 0 && args.N3 == 0)
+                if (!timerTrigger && args.N1 == 0 && args.N2 == 0 && args.N3 == 0)
                     args.SpawnDefIndex = SphereNet.Core.Types.ScriptNumber.ToEngineInt(targs.N1);
                 args.N1 = targs.N1;
                 args.N2 = targs.N2;
@@ -1517,23 +1518,23 @@ public static partial class Program
             };
             Character.OnCriminalCheck = ch =>
             {
-                // ARGN1 = criminal-flag duration seconds (default); RETURN 1 cancels
-                // the flag, otherwise the (possibly script-overridden) ARGN1 sets
-                // how long the criminal flag lasts.
-                var args = new TriggerArgs { CharSrc = ch, N1 = Character.CriminalTimerSeconds };
-                if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Criminal, args) == TriggerResult.True)
-                    return null;
-                if (_world != null && _triggerDispatcher != null)
+                // Noto_Criminal (CCharNotoriety.cpp:389-431): ARGN1 = the criminal
+                // timer in MINUTES, read back; RETURN 1 keeps the flag off, and so does
+                // RETURN 0 (TRIGRET_RET_FALSE flags nothing). A timer of 0 creates no
+                // criminal effect at all. @Criminal fires nowhere else - the witnesses'
+                // @SeeCrime belongs to the crime-noticing path (OnNoticeCrime).
+                if (_triggerDispatcher == null)
+                    return Character.CriminalTimerSeconds;
+                var args = new TriggerArgs
                 {
-                    // Nearby NPCs/guards witness the crime (@SeeCrime, <src> = criminal).
-                    foreach (var witness in _world.GetCharsInRange(ch.Position, 12))
-                    {
-                        if (witness == ch || witness.IsPlayer || witness.IsDead) continue;
-                        _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeCrime,
-                            new TriggerArgs { CharSrc = ch });
-                    }
-                }
-                return SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+                    CharSrc = ch,
+                    N1 = Character.CriminalTimerSeconds / 60,
+                    N2 = 0,
+                };
+                var result = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Criminal, args);
+                if (result is TriggerResult.True or TriggerResult.False || args.N1 <= 0)
+                    return null;
+                return (int)Math.Min(int.MaxValue, args.N1 * 60);
             };
 
             // A witness who noticed a crime (CrimeWitnessService.CheckCrimeSeen)
@@ -1544,11 +1545,21 @@ public static partial class Program
             SphereNet.Game.Objects.Characters.CrimeWitnessService.OnCrimeNoticed =
                 (witness, criminal, mark, isSnoop) =>
                 {
-                    var trig = isSnoop ? CharTrigger.SeeSnoop : CharTrigger.SeeCrime;
+                    if (_triggerDispatcher == null)
+                        return false;
+                    // @SeeSnoop (CCharFight.cpp:141-151): ARGN1 = SKILL_SNOOPING, ARGO =
+                    // the mark, nothing read back; RETURN 1 makes this witness ignore it.
+                    if (isSnoop && _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeSnoop,
+                            new TriggerArgs { CharSrc = criminal, O1 = mark, N1 = (int)SkillType.Snooping })
+                            == TriggerResult.True)
+                        return null;
+                    // @SeeCrime runs on PLAYER witnesses only (OnNoticeCrime,
+                    // CCharFight.cpp:42-56): ARGN1 (seeded 0) read back as "call the
+                    // guards", ARGO = the mark. NPC witnesses act on their own.
+                    if (!witness.IsPlayer)
+                        return false;
                     var args = new TriggerArgs { CharSrc = criminal, O1 = mark, N1 = 0 };
-                    var result = _triggerDispatcher?.FireCharTrigger(witness, trig, args);
-                    if (isSnoop && result == TriggerResult.True)
-                        return null; // @SeeSnoop RETURN 1 — witness ignores it
+                    _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeCrime, args);
                     return args.N1 != 0;
                 };
             GameRegion.ClientCountProvider = regionObj =>
@@ -2204,7 +2215,9 @@ public static partial class Program
                 var args = new TriggerArgs
                 {
                     CharSrc = attacker,
-                    O1 = (Core.Interfaces.IScriptObj?)ctx.ParryItem ?? attacker,
+                    // ARGO is the parrying item, or nothing (Init(..., pItemHit),
+                    // CCharFight.cpp:2104).
+                    O1 = ctx.ParryItem,
                     ItemSrc = ctx.ParryItem,
                     N1 = ctx.ReductionPercent,
                     N2 = ctx.DamageType,
@@ -2892,16 +2905,18 @@ public static partial class Program
 
             // @FameChange / @KarmaChange — fired before a kill applies the delta.
             // N1 = proposed delta; a script may rewrite ARGN1 or RETURN 1 to cancel.
+            // ARGN2 is the value before the change (Init(change, old, 0, pNPC),
+            // CCharStat.cpp:677 / :715).
             SphereNet.Game.Objects.Characters.Character.OnFameChanging = (ch, delta) =>
             {
-                var args = new TriggerArgs { CharSrc = ch, N1 = delta };
+                var args = new TriggerArgs { CharSrc = ch, N1 = delta, N2 = ch.Fame };
                 if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.FameChange, args) == TriggerResult.True)
                     return null;
                 return SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
             };
             SphereNet.Game.Objects.Characters.Character.OnKarmaChanging = (ch, delta) =>
             {
-                var args = new TriggerArgs { CharSrc = ch, N1 = delta };
+                var args = new TriggerArgs { CharSrc = ch, N1 = delta, N2 = ch.Karma };
                 if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.KarmaChange, args) == TriggerResult.True)
                     return null;
                 return SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
@@ -2954,10 +2969,14 @@ public static partial class Program
                 // N1 = proposed murder count, N2 = make-criminal toggle (default 1).
                 // RETURN 1 blocks the mark + criminal flag; ARGN2=0 records the
                 // murder without arming the temporary criminal flag (Source-X).
-                var args = new TriggerArgs { CharSrc = killer, N1 = proposed, N2 = 1, O1 = victim };
-                if (_triggerDispatcher?.FireCharTrigger(killer, CharTrigger.MurderMark, args) == TriggerResult.True)
+                // Upstream ignores the RETURN value: ARGN3 >= 1 is what blocks the mark,
+                // and a negative ARGN1 is clamped to 0 (CCharNotoriety.cpp:586-606).
+                var args = new TriggerArgs { CharSrc = killer, N1 = proposed, N2 = 1, N3 = 0, O1 = victim };
+                _triggerDispatcher?.FireCharTrigger(killer, CharTrigger.MurderMark, args);
+                if (args.N3 >= 1)
                     return new SphereNet.Game.Objects.Characters.Character.MurderMarkDecision(null, false);
-                return new SphereNet.Game.Objects.Characters.Character.MurderMarkDecision(SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1), args.N2 != 0);
+                return new SphereNet.Game.Objects.Characters.Character.MurderMarkDecision(
+                    Math.Max(0, SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1)), args.N2 != 0);
             };
 
             // Combat (attacker) list lifecycle — @CombatAdd / @CombatDelete fire on
@@ -2970,10 +2989,13 @@ public static partial class Program
             // a script can weight an NPC's aggro before the row exists.
             SphereNet.Game.Objects.Characters.Character.OnCombatAdd = (self, attackerUid, ctx) =>
             {
+                // SRC is the character being added (OnTrigger(CTRIG_CombatAdd, args,
+                // pChar), CCharAttacker.cpp:42).
+                var added = _world?.FindChar(attackerUid);
                 var args = new TriggerArgs
                 {
-                    CharSrc = self,
-                    O1 = _world?.FindChar(attackerUid),
+                    CharSrc = added ?? self,
+                    O1 = added,
                     N1 = ctx.Threat,
                     N2 = ctx.Ignore ? 1 : 0,
                 };
@@ -3009,20 +3031,32 @@ public static partial class Program
                 self.FightTarget = target.Uid;
                 self.Memory_Fight_Start(target);
             };
+            // SRC is the character being removed (CCharAttacker.cpp:330).
             SphereNet.Game.Objects.Characters.Character.OnCombatDelete = (self, attackerUid) =>
+            {
+                var removed = _world?.FindChar(attackerUid);
                 _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatDelete,
-                    new TriggerArgs { CharSrc = self, O1 = _world?.FindChar(attackerUid) });
+                    new TriggerArgs { CharSrc = removed ?? self, O1 = removed });
+            };
             SphereNet.Game.Objects.Characters.Character.OnCombatEnd = self =>
                 _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatEnd,
                     new TriggerArgs { CharSrc = self });
 
             // @MurderDecay — one murder count aged off. N1 = new kill count;
             // ARGN2 (read back) overrides the seconds until the next decay.
+            // Upstream (CCharAct.cpp:4119-4133): ARGN1 = the new count, READ BACK (a
+            // negative one clamps to 0); ARGN2 = MURDERDECAYTIME in milliseconds, read
+            // back as the time to the next decay, below 1 meaning the default.
             SphereNet.Game.Objects.Characters.Character.OnMurderDecay = (self, newKills) =>
             {
-                var args = new TriggerArgs { CharSrc = self, N1 = newKills, N2 = 0 };
+                long defaultMs = SphereNet.Game.Objects.Characters.Character.MurderDecayTimeSeconds * 1000L;
+                var args = new TriggerArgs { CharSrc = self, N1 = newKills, N2 = defaultMs };
                 _triggerDispatcher?.FireCharTrigger(self, CharTrigger.MurderDecay, args);
-                return SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                if (args.N1 != newKills)
+                    self.Kills = (short)Math.Clamp(args.N1, 0, short.MaxValue);
+                if (args.N2 < 1 || args.N2 == defaultMs)
+                    return 0;
+                return (int)Math.Clamp((args.N2 + 999) / 1000, 1, int.MaxValue);
             };
 
             // Account resolution from character UID
@@ -3333,6 +3367,14 @@ public static partial class Program
                     layer = idef?.Layer ?? SphereNet.Core.Enums.Layer.None;
                 }
                 if (layer == SphereNet.Core.Enums.Layer.None || layer == 0)
+                    return false;
+                // CHV_EQUIP is ItemEquip (CChar.cpp:4551), so @EquipTest gets its veto
+                // here as on a client drop: RETURN 1, or a script that deleted the
+                // item, refuses the equip (CCharAct.cpp:3306-3331).
+                if (_triggerDispatcher != null &&
+                    (_triggerDispatcher.FireItemTrigger(item, ItemTrigger.EquipTest,
+                        new SphereNet.Game.Scripting.TriggerArgs { CharSrc = wearer, ItemSrc = item })
+                        == TriggerResult.True || item.IsDeleted))
                     return false;
                 if (!wearer.Equip(item, layer))
                     return false;

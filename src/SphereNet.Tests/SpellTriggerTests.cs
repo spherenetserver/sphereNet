@@ -146,9 +146,12 @@ public class SpellTriggerTests
             spellEffectCount++;
             Assert.Same(player, args.CharSrc);
             Assert.Same(rune, args.ItemSrc);
-            Assert.Same(player, args.O1);
+            // CItem::OnSpellEffect Init(spell, skill, 0, pSourceItem): ARGO is the
+            // wand/scroll the spell came from - none for a spell cast from the book -
+            // and ARGN2 the skill level (CItem.cpp:5601).
+            Assert.Null(args.O1);
             Assert.Equal((int)SpellType.Mark, args.N1);
-            Assert.Equal("Mark", args.S1);
+            Assert.True(args.N2 > 0);
             return TriggerResult.Default;
         });
 

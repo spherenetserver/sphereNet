@@ -1125,8 +1125,8 @@ public sealed class ClientWorldFeaturesHandler
 
         SendTradeCloseToPartner?.Invoke(partner, trade.GetPartnerContainer(_character).Uid.Value);
 
-        FireTradeTrigger(_character, CharTrigger.TradeClose, trade, partner);
-        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, _character);
+        FireTradeTrigger(_character, CharTrigger.TradeClose, trade, partner, src: _character);
+        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, _character, src: _character);
 
         trade.Cancel();
         _tradeManager.EndTrade(trade);
@@ -1174,8 +1174,8 @@ public sealed class ClientWorldFeaturesHandler
             trade.GetPartner(_character!),
             trade.GetPartnerContainer(_character!).Uid.Value);
 
-        FireTradeTrigger(initiator, CharTrigger.TradeClose, trade, partner);
-        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, initiator);
+        FireTradeTrigger(initiator, CharTrigger.TradeClose, trade, partner, src: _character);
+        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, initiator, src: _character);
 
         trade.Complete();
         _tradeManager!.EndTrade(trade);
@@ -1201,8 +1201,15 @@ public sealed class ClientWorldFeaturesHandler
         SendTradeUpdateToPartner?.Invoke(partner, trade);
     }
 
+    /// <remarks>Source-X argument contract per trigger:
+    /// @TradeAccepted - Init(self): ARGO is the character the trigger runs on, SRC the
+    /// partner, ARGN1/ARGN2 the received/given counts (CItemContainer.cpp:160-188).
+    /// @TradeClose - Init(self) as well, and SRC is the character whose window closed
+    /// for BOTH calls (CItemContainer.cpp:321-331); pass it as <paramref name="src"/>.
+    /// @TradeCreate - ARGO is the item that opened the trade, or nothing, and no ARGN
+    /// (CClientUse.cpp:1380-1383).</remarks>
     private TriggerResult FireTradeTrigger(Character target, CharTrigger trigger, SecureTrade trade,
-        Character other, Item? offeredItem = null)
+        Character other, Item? offeredItem = null, Character? src = null)
     {
         bool accepted = trigger == CharTrigger.TradeAccepted;
         // ARGN1 is the count of what THIS side receives and ARGN2 of what it gives;
@@ -1212,9 +1219,9 @@ public sealed class ClientWorldFeaturesHandler
         int outgoing = accepted ? BuildOfferedRefs(trade.GetOwnContainer(target)).Count : 0;
         return _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
         {
-            CharSrc = other,
-            O1 = (Core.Interfaces.IScriptObj?)offeredItem ?? other,
-            N1 = accepted ? incoming!.Count : (int)trade.SessionId.Value,
+            CharSrc = src ?? other,
+            O1 = trigger == CharTrigger.TradeCreate ? offeredItem : target,
+            N1 = accepted ? incoming!.Count : 0,
             N2 = outgoing,
             Refs = incoming
         }) ?? TriggerResult.Default;
@@ -1270,9 +1277,12 @@ public sealed class ClientWorldFeaturesHandler
         if (target != null)
         {
             string oldName = target.Name;
-            var result = _triggerDispatcher?.FireCharTrigger(target, CharTrigger.Rename, new TriggerArgs
+            // @Rename runs on the RENAMER with ARGO = the pet being renamed and ARGS = the
+            // new name (m_pChar->OnTrigger(CTRIG_Rename...), CClientEvent.cpp:2221-2227).
+            var result = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Rename, new TriggerArgs
             {
                 CharSrc = _character,
+                O1 = target,
                 S1 = trimmed
             });
             if (result == TriggerResult.True)
@@ -2555,8 +2565,9 @@ public sealed class ClientWorldFeaturesHandler
             : _pendingCraftRecipe != null ? (int)_pendingCraftSkill
             : Targets.SkillCancelId >= 0 ? Targets.SkillCancelId
             : menuSkill;
+        // Skill_Wait runs on every skill request, idle or not: ARGN2 is the active skill
+        // or SKILL_NONE (-1) (CClientEvent.cpp:612, CCharSkill.cpp:3984-3986).
         TriggerResult waitResult = TriggerResult.Default;
-        if (currentSkill >= 0)
         {
             var waitArgs = new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = currentSkill };
             waitResult = _triggerDispatcher?.FireCharTrigger(
@@ -2741,7 +2752,7 @@ public sealed class ClientWorldFeaturesHandler
         {
             [0x0005] = static (client, data) => client.HandleExtendedScreenSize(data),
             [0x0006] = static (client, data) => client.HandleExtendedParty(data),
-            [0x0007] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestArrowClick, 0x0007),
+            [0x0007] = static (client, data) => client.HandleQuestArrowClick(data),
             [0x0009] = static (client, _) => client.HandleWrestleSpecialMove(0x05), // Wrestle Disarm
             [0x000A] = static (client, _) => client.HandleWrestleSpecialMove(0x0B), // Wrestle Stun (Paralyzing Blow)
             [0x000B] = static (client, data) =>
@@ -2860,6 +2871,20 @@ public sealed class ClientWorldFeaturesHandler
                 HandleChatOpen();
                 break;
         }
+    }
+
+    /// <summary>0xBF 0x07 quest-arrow click (receive.cpp:2746-2770): @UserQuestArrowClick
+    /// with ARGN1 = 1 for a right click, 0 for a left one; RETURN 1 keeps the "Follow the
+    /// Arrow" line off the screen.</summary>
+    private void HandleQuestArrowClick(byte[] data)
+    {
+        if (_character == null)
+            return;
+        bool rightClick = data.Length > 0 && data[0] != 0;
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserQuestArrowClick,
+                new TriggerArgs { CharSrc = _character, N1 = rightClick ? 1 : 0 }) == TriggerResult.True)
+            return;
+        SysMessage(ServerMessages.Get(Msg.MsgFollowArrow));
     }
 
     private void FireExtendedButtonTrigger(CharTrigger trigger, ushort subCmd)
@@ -3059,8 +3084,9 @@ public sealed class ClientWorldFeaturesHandler
                         if (_triggerDispatcher?.FireCharTrigger(removedChar, CharTrigger.PartyRemove,
                                 new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
                             break;
+                        // @PartyLeave runs with the leaving member as SRC (CParty.cpp:323).
                         if (_triggerDispatcher?.FireCharTrigger(removedChar, CharTrigger.PartyLeave,
-                                new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
+                                new TriggerArgs { CharSrc = removedChar }) == TriggerResult.True)
                             break;
                     }
 
@@ -3346,8 +3372,13 @@ public sealed class ClientWorldFeaturesHandler
             // Nothing in the shipped packs returns TRUE here today - all 26 blocks
             // hang off items - so this changes no pack behaviour; it makes the return
             // value mean what a script writing one would expect.
-            bool scriptOwnsMenu =
-                FireContextMenuTrigger(ch, CharTrigger.ContextMenuRequest, 0) == TriggerResult.True;
+            //
+            // ARGN1 is 1 on this first call. A script that changes it asks for a second
+            // call, with ARGN1 = 2 and the same args, once the hardcoded entries are in
+            // (CClientEvent.cpp:2593-2595 and :2724-2728).
+            var requestArgs = new TriggerArgs { CharSrc = _character, N1 = 1 };
+            bool scriptOwnsMenu = _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.ContextMenuRequest,
+                requestArgs) == TriggerResult.True;
             if (!scriptOwnsMenu)
             {
                 entries.Add((1, 3006123, 0)); // Open Paperdoll
@@ -3377,11 +3408,18 @@ public sealed class ClientWorldFeaturesHandler
                 {
                     entries.Add((7, 3006112, 0)); // Dismount
                 }
+
+                if (requestArgs.N1 != 1 && _triggerDispatcher != null)
+                {
+                    requestArgs.N1 = 2;
+                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ContextMenuRequest, requestArgs);
+                }
             }
         }
         else if (item != null)
         {
-            FireContextMenuTrigger(item, ItemTrigger.ContextMenuRequest, 0);
+            // ARGN1 = 1 for an item's request as well (CClientEvent.cpp:2578).
+            FireContextMenuTrigger(item, ItemTrigger.ContextMenuRequest, 1);
         }
 
         entries.AddRange(scriptEntries);

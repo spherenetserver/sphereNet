@@ -33,7 +33,7 @@ public sealed class TooltipTriggerGateTests
         Assert.False(d.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault));
 
         d.RegisterItemEvent("EVENTSITEM", "ClientTooltip", (_, _) => TriggerResult.Default);
-        d.RegisterItemEvent("EVENTSITEM", "ClientTooltipAfterDefault", (_, _) => TriggerResult.Default);
+        d.RegisterItemEvent("EVENTSITEM", "ClientTooltip_AfterDefault", (_, _) => TriggerResult.Default);
         Assert.True(d.IsItemTriggerUsed(ItemTrigger.ClientTooltip));
         Assert.True(d.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault));
     }

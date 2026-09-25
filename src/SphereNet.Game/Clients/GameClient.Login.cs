@@ -964,8 +964,12 @@ public sealed partial class GameClient
         View.LastKnownPos.Clear();
         View.LastKnownItemState.Clear();
 
-        // Fire @LogIn trigger
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogIn, new TriggerArgs { CharSrc = _character });
+        // Fire @LogIn trigger: ARGN1 = no-messages, ARGN2 = quick login, both read back;
+        // either one set keeps the login greeting lines off (Setup_Start,
+        // CClientMsg.cpp:2819-2845).
+        var loginArgs = new TriggerArgs { CharSrc = _character, N1 = 0, N2 = 0 };
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogIn, loginArgs);
+        bool quietLogin = loginArgs.N1 != 0 || loginArgs.N2 != 0;
         _systemHooks?.DispatchClient("add", _character, _account);
 
         // Source-X CClient::Login: post LOGIN_PLAYER / LOGIN_PLAYERS so the new
@@ -973,7 +977,8 @@ public sealed partial class GameClient
         int otherPlayers = 0;
         foreach (var c in _world.OnlinePlayers)
             if (c != _character && c.IsPlayer && c.IsOnline) otherPlayers++;
-        if (otherPlayers == 1)
+        if (quietLogin) { }
+        else if (otherPlayers == 1)
             SysMessage(ServerMessages.Get(Msg.LoginPlayer));
         else if (otherPlayers > 1)
             SysMessage(ServerMessages.GetFormatted(Msg.LoginPlayers, otherPlayers));
@@ -983,7 +988,7 @@ public sealed partial class GameClient
         // is dropped (CClientMsg.cpp:2847/2873).
         if (_account != null)
         {
-            if (_account.Tags.Get("LastLogged") is { } lastLogged &&
+            if (!quietLogin && _account.Tags.Get("LastLogged") is { } lastLogged &&
                 !string.IsNullOrEmpty(lastLogged))
                 SysMessage(ServerMessages.GetFormatted(Msg.LoginLastlogged, lastLogged));
             _account.Tags.Remove("LastLogged");

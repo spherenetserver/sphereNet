@@ -1044,13 +1044,14 @@ public sealed class SphereConfig
         RegenHits = ini.GetInt(section, "Regen0", RegenHits);
         RegenMana = ini.GetInt(section, "Regen1", RegenMana);
         RegenStam = ini.GetInt(section, "Regen2", RegenStam);
-        RegenFood = ini.GetInt(section, "Regen3", RegenFood);
+        RegenFood = ini.GetIntProduct(section, "Regen3", RegenFood); // reference form: 60*60*24
 
         CombatFlags = ini.GetInt(section, "CombatFlags", CombatFlags);
         CombatDamageEra = ini.GetInt(section, "CombatDamageEra", CombatDamageEra);
         CombatHitChanceEra = ini.GetInt(section, "CombatHitChanceEra", CombatHitChanceEra);
         CombatSpeedEra = ini.GetInt(section, "CombatSpeedEra", CombatSpeedEra);
-        CombatParryingEra = ini.GetInt(section, "CombatParryingEra", CombatParryingEra);
+        // ELEM_MASK_INT in Source-X: the reference ini writes "01|010".
+        CombatParryingEra = ini.GetFlags(section, "CombatParryingEra", CombatParryingEra);
         SpeedScaleFactor = Math.Max(1, ini.GetInt(section, "SpeedScaleFactor", SpeedScaleFactor));
         CombatArcheryMovementDelay = ini.GetInt(section, "CombatArcheryMovementDelay", CombatArcheryMovementDelay);
         CombatMeleeMovementDelay = ini.GetInt(section, "CombatMeleeMovementDelay", CombatMeleeMovementDelay);

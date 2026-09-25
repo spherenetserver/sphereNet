@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - Complete bilingual reference sphere.ini; parry-era and REGEN3 ini forms
+------------------------------------------------------------------------
+CHANGE - config/sphere.ini documents every key the server reads (124 added),
+         in English and Turkish. Status tags, units and defaults were checked
+         against the code; wrong entries were corrected (REGEN0-2 are seconds
+         and REGEN1 is mana, REGEN2 stamina; SAVEPERIOD, BACKUPLEVELS,
+         GAMEMINUTELENGTH and other defaults). Database connections have a
+         commented [MYSQL]/[SQLITE] example.
+FIX - COMBATPARRYINGERA reads the flag form of the reference ini (01|010) and
+      REGEN3 reads a product (60*60*24); both fell back to the default. The
+      reference ini's COMBATPARRYINGERA=0 left no parry path open; it is now
+      the Source-X default 01|010.
+
 [2026-09-25] - Source-X units for CRIMINALTIMER / MINCHARDELETETIME; legacy MORE1 durability
 ------------------------------------------------------------------------
 CHANGE - CRIMINALTIMER is in minutes (default 3) and MINCHARDELETETIME in

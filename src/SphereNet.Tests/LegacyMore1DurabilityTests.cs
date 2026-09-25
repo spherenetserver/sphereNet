@@ -68,13 +68,15 @@ public sealed class LegacyMore1DurabilityTests
         var path = System.IO.Path.GetTempFileName();
         try
         {
-            System.IO.File.WriteAllText(path, "[SPHERE]\nMinCharDeleteTime=7*24*60*60\nCriminalTimer=3\n");
+            System.IO.File.WriteAllText(path, "[SPHERE]\nMinCharDeleteTime=7*24*60*60\nCriminalTimer=3\nCombatParryingEra=01|010\nRegen3=60*60*24\n");
             var parser = new IniParser();
             parser.Load(path);
             var cfg = new SphereConfig();
             cfg.LoadFromIni(parser);
             Assert.Equal(604800, cfg.MinCharDeleteTime);
             Assert.Equal(3, cfg.CriminalTimer);
+            Assert.Equal(0x11, cfg.CombatParryingEra);
+            Assert.Equal(86400, cfg.RegenFood);
         }
         finally { System.IO.File.Delete(path); }
     }

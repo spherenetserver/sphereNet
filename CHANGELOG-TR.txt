@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - Eksiksiz iki dilli referans sphere.ini; parry-era ve REGEN3 ini bicimleri
+------------------------------------------------------------------------
+DEGISIKLIK - config/sphere.ini sunucunun okudugu tum anahtarlari (124 eklendi)
+             Ingilizce ve Turkce anlatir. Durum etiketleri, birimler ve
+             varsayilanlar koda karsi kontrol edildi; yanlislar duzeltildi
+             (REGEN0-2 saniyedir, REGEN1 mana, REGEN2 stamina; SAVEPERIOD,
+             BACKUPLEVELS, GAMEMINUTELENGTH ve diger varsayilanlar). Veritabani
+             baglantilari icin yorumlu [MYSQL]/[SQLITE] ornegi var.
+DUZELTME - COMBATPARRYINGERA referans ini'nin bayrak bicimini (01|010), REGEN3
+           carpimi (60*60*24) okur; ikisi de varsayilana dusuyordu. Referans
+           ini'deki COMBATPARRYINGERA=0 hicbir parry yolunu acmiyordu; artik
+           Source-X varsayilani 01|010.
+
 [2026-09-25] - CRIMINALTIMER / MINCHARDELETETIME icin Source-X birimleri; eski MORE1 dayanikliligi
 ------------------------------------------------------------------------
 DEGISIKLIK - CRIMINALTIMER dakika (varsayilan 3), MINCHARDELETETIME saniye

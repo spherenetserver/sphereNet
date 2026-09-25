@@ -42,6 +42,17 @@ public sealed class DoubleBracketIndirectionTests
     public void TheIndexMayItselfBeABracket()
         => Assert.Equal("17", Table().EvaluateStr("<<SERV.SKILL.<IDX>.KEY>>"));
 
+    /// <summary>Nested inside a function argument, as the admin dialog writes the skill
+    /// column: <c>&lt;fval &lt;&lt;serv.skill.&lt;dLocal.x&gt;.key&gt;&gt;&gt;</c>. The
+    /// inner &lt;&lt; opens two brackets; counting one ended FVAL a '&gt;' early and
+    /// left it in the text ("42.1&gt;").</summary>
+    [Fact]
+    public void AnIndirectionInsideAFunctionClosesBothBrackets()
+    {
+        Assert.Equal("42.1", Table().ResolveAngleBrackets("<FVAL <<SERV.SKILL.0.KEY>>>"));
+        Assert.Equal("1.7", Table().ResolveAngleBrackets("<FVAL <<SERV.SKILL.<IDX>.KEY>>>"));
+    }
+
     /// <summary>A single bracket still means the plain read - the second pass must not
     /// happen on its own.</summary>
     [Fact]

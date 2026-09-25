@@ -819,8 +819,18 @@ public sealed partial class ExpressionParser
                 // identifier start (letter / '_') right after. "a < b"
                 // keeps '<' literal, "a<foo>b" opens a nested bracket.
                 char next = pos + 1 < text.Length ? text[pos + 1] : '\0';
+                char afterSecond = pos + 2 < text.Length ? text[pos + 2] : '\0';
                 if (next == '_' || char.IsLetter(next))
                     depth++;
+                else if (next == '<' && (afterSecond == '_' || char.IsLetter(afterSecond)))
+                {
+                    // A nested <<X>> indirection opens TWO brackets and closes two;
+                    // counting only the second let <fval <<serv.skill.0.key>>> end one
+                    // '>' early and left the last one in the text ("50.5>").
+                    depth += 2;
+                    pos += 2;
+                    continue;
+                }
                 // else: literal LT — pass through as content
             }
             else if (c == '>')

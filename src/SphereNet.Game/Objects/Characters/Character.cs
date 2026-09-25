@@ -5413,6 +5413,14 @@ public partial class Character : ObjBase
             value = GetSkill(readSkill).ToString();
             return true;
         }
+        // A key that starts with a digit is a skill NUMBER (FindSkillKey,
+        // CServerConfig.cpp:2353): <I.<LOCAL._FOR>> walks the skills by index.
+        if (upper.Length > 0 && char.IsAsciiDigit(upper[0]) &&
+            int.TryParse(upper, out int skillNum) && skillNum >= 0 && skillNum < (int)SkillType.Qty)
+        {
+            value = GetSkill((SkillType)skillNum).ToString();
+            return true;
+        }
 
         // Source-X CHC_ISSTUCK (IsStuck(true)): frozen/petrified counts as
         // stuck; otherwise stuck means no adjacent cardinal tile is passable.

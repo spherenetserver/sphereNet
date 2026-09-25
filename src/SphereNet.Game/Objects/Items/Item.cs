@@ -5068,6 +5068,14 @@ public class Item : ObjBase
         SpawnChar?.OnTick(now);
         SpawnItem?.OnTick(now);
 
+        // A spawner's component answers the expiry itself: CCSpawn::OnTickComponent
+        // sets the next check and returns CCRET_TRUE (CCSpawn.cpp:672), and _OnTick
+        // stops there (CItem.cpp:6231) - the default path below is never reached. A
+        // pack whose spawner @Timer ends in RETURN 0 (the worldgen spawners do) had
+        // every spawner, and all it had spawned, deleted the first time it fired.
+        if (SpawnChar != null || SpawnItem != null)
+            return true;
+
         // The default path, reached by everything the type switch above did not claim.
         // Here - and only here - an expired timer destroys the item, either because it
         // carries the decay attribute or because the script asked for it with a

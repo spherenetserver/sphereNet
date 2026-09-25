@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - Spawners survive @Timer RETURN 0; nested <<X>> in function arguments
+------------------------------------------------------------------------
+FIX - A spawner whose @Timer ends in RETURN 0 is no longer deleted. The spawn
+      component answers the expiry (CCSpawn::OnTickComponent returns
+      CCRET_TRUE), so the RETURN 0 deletion never reaches it. The worldgen
+      spawners end their @Timer that way: each one, with everything it had
+      spawned, was deleted the first time its timer fired.
+FIX - A <<X>> indirection inside a function argument closes both brackets:
+      <fval <<serv.skill.<dLocal.x>.key>>> printed "50.5>" in the admin
+      dialog's skill column.
+FIX - A character key that starts with a digit reads that skill number
+      (<I.<LOCAL._FOR>> in skill dialogs); it read nothing.
+
 [2026-09-25] - sphere.ini keys read in their Source-X meaning
 ------------------------------------------------------------------------
 FIX - MAXBASESKILL no longer caps skills. It was used as the total skill cap

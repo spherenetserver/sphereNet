@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - Spawner'lar @Timer RETURN 0 ile silinmez; fonksiyon argumaninda <<X>>
+------------------------------------------------------------------------
+DUZELTME - @Timer'i RETURN 0 ile biten spawner artik silinmez. Timer'i spawn
+           bileseni karsilar (CCSpawn::OnTickComponent CCRET_TRUE doner), RETURN
+           0 silmesi ona ulasmaz. Worldgen spawner'lari @Timer'i boyle bitirir:
+           her biri, dogurdugu her seyle birlikte, timer'i ilk atesledigi anda
+           siliniyordu.
+DUZELTME - Fonksiyon argumani icindeki <<X>> iki kademeli okuma iki
+           parantezi de kapatir: <fval <<serv.skill.<dLocal.x>.key>>> admin
+           dialog'unun skill sutununda "50.5>" basiyordu.
+DUZELTME - Rakamla baslayan karakter anahtari o numaradaki skill'i okur (skill
+           dialog'larindaki <I.<LOCAL._FOR>>); hicbir sey okumuyordu.
+
 [2026-09-25] - sphere.ini anahtarlari Source-X anlamlariyla
 ------------------------------------------------------------------------
 DUZELTME - MAXBASESKILL artik skill sinirlamaz. SKILLCLASS'i SKILLSUMMAX

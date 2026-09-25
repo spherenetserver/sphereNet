@@ -118,6 +118,33 @@ public sealed class TriggerLongTailParityTests
         Assert.False(item.OnTick());
     }
 
+    [Theory]
+    [InlineData(ItemType.SpawnChar)]
+    [InlineData(ItemType.SpawnItem)]
+    public void SpawnerTimer_Return0_KeepsTheSpawner(ItemType type)
+    {
+        // The spawn component answers the expiry (CCSpawn::OnTickComponent returns
+        // CCRET_TRUE, CItem.cpp:6231), so a spawner @Timer ending in RETURN 0 - as the
+        // worldgen spawners do - never reaches the default-path deletion.
+        var stack = Load("""
+            [EVENTS e_spawn_timer0]
+            ON=@Timer
+            RETURN 0
+            """);
+        var world = TestHarness.CreateWorld();
+        var spawner = world.CreateItem();
+        spawner.ItemType = type;
+        spawner.InitializeSpawnComponent(world, stack.Resources);
+        spawner.Events.Add(stack.Resources.ResolveDefName("e_spawn_timer0"));
+        world.PlaceItem(spawner, new Point3D(100, 100, 0, 0));
+        Item.OnTimerExpired = it => stack.Dispatcher.FireItemTrigger(it, ItemTrigger.Timer,
+            new GameArgs { ItemSrc = it });
+        spawner.SetTimeout(Environment.TickCount64 - 1);
+
+        Assert.True(spawner.OnTick());
+        Assert.False(spawner.IsDeleted);
+    }
+
     [Fact]
     public void BareReturn_CountsAsReturnZero()
     {

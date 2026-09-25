@@ -79,11 +79,14 @@ public sealed class SourceXWave264Tests
         ch.Hits = 120;
 
         // The effective read is inflated, but the base field (what the world save
-        // serializes) and the script property stay at the base value.
+        // serializes) stays at the base value. The script keys follow upstream:
+        // MAXHITS is Stat_GetMaxAdjusted, OMAXHITS the bare base (CChar.cpp:3186/3189).
         Assert.Equal(120, ch.MaxHits);
         Assert.Equal(100, ch.BaseMaxHits);
         Assert.True(ch.TryGetProperty("MAXHITS", out string v));
-        Assert.Equal("100", v);
+        Assert.Equal("120", v);
+        Assert.True(ch.TryGetProperty("OMAXHITS", out string o));
+        Assert.Equal("100", o);
     }
 
     [Fact]

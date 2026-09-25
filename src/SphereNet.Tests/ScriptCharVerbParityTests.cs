@@ -22,6 +22,8 @@ public class ScriptCharVerbParityTests
         public string GetName() => "test";
         public PrivLevel GetPrivLevel() => PrivLevel.Admin;
         public void SysMessage(string text) => Messages.Add(text);
+        public IScriptObj? Src;
+        public IScriptObj? GetSourceChar() => Src;
     }
 
     private static (GameWorld World, Character Ch) MakeWorldChar()
@@ -69,13 +71,24 @@ public class ScriptCharVerbParityTests
     public void Where_ReportsLocationToCaller()
     {
         var (_, ch) = MakeWorldChar();
-        var console = new Console();
+        var console = new Console { Src = ch };
 
         Assert.True(ch.TryExecuteCommand("WHERE", "", console));
 
+        // CHV_WHERE speaks in msg_where ("I am at %s.") with the point written the
+        // short way (CPointBase::WriteUsed drops a zero z and map 0).
         Assert.Single(console.Messages);
-        Assert.Contains("1000,1000,0", console.Messages[0]);
-        Assert.Contains("Griswold", console.Messages[0]);
+        Assert.Equal("I am at 1000,1000.", console.Messages[0]);
+    }
+
+    [Fact]
+    public void Where_WithoutSourceCharacter_SaysNothing()
+    {
+        var (_, ch) = MakeWorldChar();
+        var console = new Console();
+
+        Assert.True(ch.TryExecuteCommand("WHERE", "", console));
+        Assert.Empty(console.Messages);
     }
 
     [Fact]

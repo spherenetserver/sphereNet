@@ -63,6 +63,8 @@ public static partial class Program
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         int reloaded = _resources.Resync();
+        if (reloaded > 0)
+            InvalidateDialogIndex();
 
         if (reloaded == 0)
         {

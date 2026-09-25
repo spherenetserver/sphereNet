@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - Panel dialog designer off the main loop
+------------------------------------------------------------------------
+FIX - Opening the panel's gump designer no longer stalls the game. The dialog
+      name list re-parsed every script file on the main loop for each request
+      (~370 ms and a few hundred MB of garbage on a large pack). The pack is now
+      scanned once off the main loop into a name -> file table that a resync
+      clears; the section lookup reads only that file; gump art is read and
+      PNG-encoded on the panel thread.
+
 [2026-09-25] - Operations, network, scripting, NPC/world, items and sphere.ini parity
 ------------------------------------------------------------------------
 Operations

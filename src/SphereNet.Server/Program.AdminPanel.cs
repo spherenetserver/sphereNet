@@ -237,12 +237,12 @@ public static partial class Program
 
                 // A cached answer is served from the calling thread; only an id never
                 // asked before costs a main-loop decode, and each id does so once.
-                GetGumpPng = id => TryGetCachedGumpPng(id, out var cachedPng)
-                    ? cachedPng
-                    : InvokePanelOnMainLoop(() => GetGumpPngCached(id), "gump art"),
-                ListDialogNames = () => InvokePanelOnMainLoop<IReadOnlyList<string>>(
-                    () => ListAllDialogNames(), "dialog list"),
-                GetDialogSource = name => InvokePanelOnMainLoop(() => GetDialogSectionSource(name), "dialog source"),
+                // Mul read and PNG encode on the calling thread: the gump reader locks
+                // its own streams and the PNG cache has its own lock.
+                GetGumpPng = GetGumpPngCached,
+                // Off the main loop: the pack is read on this thread (see GetDialogFileIndex).
+                ListDialogNames = ListAllDialogNames,
+                GetDialogSource = GetDialogSectionSource,
 
                 // Paperdoll by serial: the world read happens on the main loop, the
                 // picture is drawn on the calling (panel / IPC) thread.
@@ -732,29 +732,78 @@ public static partial class Program
         return png;
     }
 
+    // The dialog designer's name list and section lookup. Both used to walk every
+    // script file on the main loop for each request - a full parse of the pack for
+    // the name list - which held every player for a third of a second and left a few
+    // hundred MB of garbage for the GC each time the page opened. Now the pack is
+    // scanned once, off the main loop, into name -> file; a resync that reloads a
+    // file drops the table. Only the file list itself is read on the main loop.
+    private static volatile Dictionary<string, string>? _dialogFileIndex;
+    private static readonly object _dialogFileIndexLock = new();
+
+    /// <summary>Forget the dialog table so the next designer request rescans the pack.</summary>
+    internal static void InvalidateDialogIndex() => _dialogFileIndex = null;
+
+    private static Dictionary<string, string> GetDialogFileIndex()
+    {
+        var index = _dialogFileIndex;
+        if (index != null)
+            return index;
+        lock (_dialogFileIndexLock)
+        {
+            index = _dialogFileIndex;
+            if (index != null)
+                return index;
+
+            string[] paths = _resources == null
+                ? []
+                : InvokePanelOnMainLoop(
+                    () => _resources.ScriptFiles.Select(f => f.FilePath).ToArray(), "script file list");
+
+            // First file wins, as the section lookup always returned the first file
+            // holding the name.
+            index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in paths)
+            {
+                try
+                {
+                    using var reader = new StreamReader(path);
+                    string? line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        string name = ParseDialogHeaderName(line);
+                        if (name.Length > 0)
+                            index.TryAdd(name, path);
+                    }
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            _dialogFileIndex = index;
+            return index;
+        }
+    }
+
+    /// <summary>The dialog name of a "[DIALOG name ...]" header line, or "" for any
+    /// other line.</summary>
+    private static string ParseDialogHeaderName(string line)
+    {
+        var span = line.AsSpan().TrimStart();
+        if (!span.StartsWith("[DIALOG ", StringComparison.OrdinalIgnoreCase))
+            return "";
+        int close = span.IndexOf(']');
+        if (close < 0)
+            return "";
+        var arg = span[8..close].Trim();
+        int space = arg.IndexOf(' ');
+        return (space < 0 ? arg : arg[..space]).Trim().ToString();
+    }
+
     /// <summary>All [DIALOG name] layout section names in the loaded packs
     /// (subsections like "name BUTTON"/"name TEXT" are folded into one entry).</summary>
     private static List<string> ListAllDialogNames()
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var result = new List<string>();
-        if (_resources == null) return result;
-        foreach (var script in _resources.ScriptFiles)
-        {
-            var file = script.Open();
-            try
-            {
-                foreach (var section in file.ReadAllSections())
-                {
-                    if (!section.Name.Equals("DIALOG", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    string name = section.Argument.Split(' ', 2)[0].Trim();
-                    if (name.Length > 0 && seen.Add(name))
-                        result.Add(name);
-                }
-            }
-            finally { script.Close(); }
-        }
+        var result = new List<string>(GetDialogFileIndex().Keys);
         result.Sort(StringComparer.OrdinalIgnoreCase);
         return result;
     }
@@ -764,39 +813,28 @@ public static partial class Program
     /// source file directly so comments and formatting survive.</summary>
     private static string? GetDialogSectionSource(string name)
     {
-        if (_resources == null || string.IsNullOrWhiteSpace(name)) return null;
+        if (string.IsNullOrWhiteSpace(name)
+            || !GetDialogFileIndex().TryGetValue(name.Trim(), out string? path))
+            return null;
+
+        string[] lines;
+        try { lines = File.ReadAllLines(path); }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+
         var sb = new System.Text.StringBuilder();
-        foreach (var script in _resources.ScriptFiles)
+        for (int i = 0; i < lines.Length; i++)
         {
-            string path = script.FilePath;
-            string[] lines;
-            try { lines = File.ReadAllLines(path); }
-            catch { continue; }
-
-            for (int i = 0; i < lines.Length; i++)
+            if (!ParseDialogHeaderName(lines[i]).Equals(name.Trim(), StringComparison.OrdinalIgnoreCase))
+                continue;
+            sb.AppendLine(lines[i].TrimEnd());
+            for (int j = i + 1; j < lines.Length; j++)
             {
-                string line = lines[i].TrimStart();
-                if (!line.StartsWith("[DIALOG ", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                string header = line.TrimEnd();
-                int close = header.IndexOf(']');
-                if (close < 0) continue;
-                string arg = header[8..close].Trim();
-                string first = arg.Split(' ', 2)[0].Trim();
-                if (!first.Equals(name, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                sb.AppendLine(lines[i].TrimEnd());
-                for (int j = i + 1; j < lines.Length; j++)
-                {
-                    if (lines[j].TrimStart().StartsWith('['))
-                        break;
-                    sb.AppendLine(lines[j].TrimEnd());
-                }
-                sb.AppendLine();
+                if (lines[j].TrimStart().StartsWith('['))
+                    break;
+                sb.AppendLine(lines[j].TrimEnd());
             }
-            if (sb.Length > 0)
-                return sb.ToString();
+            sb.AppendLine();
         }
         return sb.Length > 0 ? sb.ToString() : null;
     }

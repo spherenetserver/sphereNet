@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - Panel dialog tasarimcisi ana donguden cikarildi
+------------------------------------------------------------------------
+DUZELTME - Paneldeki gump tasarimcisini acmak artik oyunu takmaz. Dialog ad
+           listesi her istekte tum script dosyalarini ana dongude yeniden
+           ayristiriyordu (buyuk pakette ~370 ms ve yuzlerce MB cop). Paket artik
+           ana dongu disinda bir kez taranip ad -> dosya tablosuna alinir, resync
+           tabloyu temizler; bolum okuma sadece o dosyayi okur; gump resmi panel
+           thread'inde okunup PNG'ye cevrilir.
+
 [2026-09-25] - Operasyon, ag, script, NPC/dunya, item ve sphere.ini paritesi
 ------------------------------------------------------------------------
 Operasyon

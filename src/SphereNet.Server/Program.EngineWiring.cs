@@ -2037,6 +2037,7 @@ public static partial class Program
             };
             _npcAI.ResolveNpcSpellFlags = spell => _spellEngine.GetSpellDef(spell)?.Flags;
             _npcAI.ResolveNpcSpellLayer = spell => _spellEngine.GetSpellDef(spell)?.Layer ?? Layer.None;
+            _npcAI.ResolveNpcSpellMana = spell => _spellEngine.GetSpellDef(spell)?.ManaCost ?? -1;
             _npcAI.OnNpcTryStartSpellCast = (npc, target, spell) =>
             {
                 int castMs = _spellEngine.CastStart(npc, spell, target.Uid, target.Position);
@@ -2050,6 +2051,22 @@ public static partial class Program
             var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);
             _skillHandlers = new SkillHandlers(_world, gatheringEngine);
             Character.OnScriptSkillUse = (ch, skill) => _skillHandlers.UseSkill(ch, skill);
+            // NPCAIEXTRAS BandageHeal: an NPC's bandage runs the Healing skill with
+            // its triggers - @SkillStart (RETURN 1 refuses), the skill itself, then
+            // @SkillSuccess or @SkillFail.
+            _npcAI.OnNpcBandage = (npc, patient, bandage) =>
+            {
+                var startArgs = new TriggerArgs { CharSrc = npc, O1 = patient, N1 = (int)SkillType.Healing };
+                if (_triggerDispatcher?.FireCharTrigger(npc, CharTrigger.SkillStart, startArgs) == TriggerResult.True)
+                    return false;
+                npc.Act = patient.Uid;
+                bool healed = _skillHandlers.UseActiveSkill(
+                    new SphereNet.Game.AI.NpcAI.NpcSkillSink(npc, _world), SkillType.Healing, patient);
+                _triggerDispatcher?.FireCharTrigger(npc,
+                    healed ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
+                    new TriggerArgs { CharSrc = npc, O1 = patient, N1 = (int)SkillType.Healing });
+                return true;
+            };
             _craftingEngine = new CraftingEngine(_world);
             // NOTE: LoadRecipesFromDefs is called AFTER defLoader.LoadAll() populates
             // DefinitionLoader.AllItemDefs — see post-definition-load block below.

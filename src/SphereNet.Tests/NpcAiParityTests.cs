@@ -299,18 +299,21 @@ public class NpcAiParityTests
     }
 
     [Fact]
-    public void EnsureNpcSpellsFromBook_NoBookCasterBody_FallsBackToDefaults()
+    public void EnsureNpcSpellsFromBook_NoBookCasterBody_HasNoInventedSpells()
     {
+        // Source-X spells come from the SPELLS list or a spellbook only
+        // (NPC_GetAllSpellbookSpells, CCharNPCAct_Magic.cpp:100-144); a lich body
+        // with neither has no spells.
         var world = CreateWorld();
         var npc = world.CreateCharacter();
-        npc.BodyId = 0x0018; // lich body — default caster spell list
+        npc.BodyId = 0x0018; // lich body
         world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
         AddPack(world, npc);
 
         NpcAI.EnsureNpcSpellsFromBook(npc);
 
-        Assert.NotEmpty(npc.NpcSpells);
-        Assert.Contains(SpellType.EnergyBolt, npc.NpcSpells);
+        Assert.Empty(npc.NpcSpells);
+        Assert.False(npc.TryGetTag("SPELLS_LOADED", out _)); // the scan mark is not a saved TAG
     }
 
     // ---- @NPCActCast target redirect (Source-X REF1 / LOCAL.target) ----

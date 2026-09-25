@@ -2569,13 +2569,22 @@ public class Item : ObjBase
                 case "HEIGHT": value = def.Height.ToString(); return true;
                 // This item's own ratings, which start as the definition's and can be
                 // changed on the one item (CObjBase.cpp:1081/1855).
-                case "ARMOR": value = DefenseLo == DefenseHi ? DefenseLo.ToString() : $"{DefenseLo},{DefenseHi}"; return true;
+                // An item always answers "lo,hi", even when the two are equal
+                // (CObjBase.cpp:1077/1095 Format("%d,%d")); only a character's ARMOR
+                // is a single number.
+                case "ARMOR": value = $"{DefenseLo},{DefenseHi}"; return true;
                 case "ARMOR.LO": value = DefenseLo.ToString(); return true;
                 case "ARMOR.HI": value = DefenseHi.ToString(); return true;
-                case "DAM": value = AttackLo == AttackHi ? AttackLo.ToString() : $"{AttackLo},{AttackHi}"; return true;
+                case "DAM": value = $"{AttackLo},{AttackHi}"; return true;
                 case "DAM.LO": value = AttackLo.ToString(); return true;
                 case "DAM.HI": value = AttackHi.ToString(); return true;
-                case "SPEED": value = def.Speed.ToString(); return true;
+                // CItem::GetSpeed (CItem.cpp:748): TAG.OVERRIDE.SPEED wins over the
+                // definition's speed.
+                case "SPEED":
+                    value = TryGetTag("OVERRIDE.SPEED", out string? speedOverride) && !string.IsNullOrWhiteSpace(speedOverride)
+                        ? ((byte)EvalScriptLong(speedOverride)).ToString()
+                        : def.Speed.ToString();
+                    return true;
                 case "SKILL": value = ((int)def.Skill).ToString(); return true;
                 case "REQSTR": value = def.ReqStr.ToString(); return true;
                 case "RANGE": value = def.RangeMin == def.RangeMax ? def.RangeMin.ToString() : $"{def.RangeMin},{def.RangeMax}"; return true;
@@ -2585,8 +2594,6 @@ public class Item : ObjBase
                 case "FLIP": value = def.Flip ? "1" : "0"; return true;
                 case "REPAIR": value = def.Repair ? "1" : "0"; return true;
                 case "TWOHANDS": value = def.TwoHands ? "1" : "0"; return true;
-                case "ISARMOR": value = (DefenseLo > 0 || DefenseHi > 0) ? "1" : "0"; return true;
-                case "ISWEAPON": value = (AttackLo > 0 || AttackHi > 0) ? "1" : "0"; return true;
             }
             var extended = def.TagDefs.Get(upper);
             if (extended != null)
@@ -3755,20 +3762,6 @@ public class Item : ObjBase
 
             // Source-X CV_MOVE: shift the item by a (dx,dy,dz) tuple.
             // Args: "<dx>,<dy>[,<dz>]" or "<dx> <dy> [<dz>]".
-            case "MOVE":
-            {
-                var parts = args.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (parts.Length < 2) return true;
-                if (!short.TryParse(parts[0], out short dx) ||
-                    !short.TryParse(parts[1], out short dy))
-                    return true;
-                sbyte dz = 0;
-                if (parts.Length >= 3 && sbyte.TryParse(parts[2], out sbyte tz)) dz = tz;
-                var p = Position;
-                Position = new Point3D(
-                    (short)(p.X + dx), (short)(p.Y + dy), (sbyte)(p.Z + dz), p.Map);
-                return true;
-            }
             // Source-X CV_FLIP: rotate the item's facing if it has a
             // matching flipped graphic (def->Flip flag). For items
             // without a flip pair this is a no-op.

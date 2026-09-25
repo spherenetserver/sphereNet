@@ -26,6 +26,17 @@ public sealed class ScriptFileHandle : IDisposable
     private StreamWriter? _writer;
     private string _filePath = "";
     private string _resolvedPath = "";
+    /// <summary>Opened "a+": reads go anywhere, every write lands at the end.</summary>
+    private bool _appendWrites;
+
+    private void PrepareWrite()
+    {
+        if (_appendWrites && _stream != null && _stream.Position != _stream.Length)
+        {
+            _stream.Seek(0, SeekOrigin.End);
+            _reader?.DiscardBufferedData();
+        }
+    }
 
     // MODE flags — Source-X CSFileObj::SetDefaultMode: append + read + write.
     private bool _modeAppend = true;
@@ -51,15 +62,36 @@ public sealed class ScriptFileHandle : IDisposable
 
     // Source-X refuses MODE changes while a file is open (logs an error and
     // keeps the old value).
+    // Setting either APPEND or CREATE clears the other whatever the value
+    // (CSFileObj.cpp:128-137).
     public bool ModeAppend
     {
         get => _modeAppend;
-        set { if (GuardModeChange("MODE.APPEND")) { _modeAppend = value; if (value) _modeCreate = false; } }
+        set { if (GuardModeChange("MODE.APPEND")) { _modeAppend = value; _modeCreate = false; } }
     }
     public bool ModeCreate
     {
         get => _modeCreate;
-        set { if (GuardModeChange("MODE.CREATE")) { _modeCreate = value; if (value) _modeAppend = false; } }
+        set { if (GuardModeChange("MODE.CREATE")) { _modeCreate = value; _modeAppend = false; } }
+    }
+
+    /// <summary>A MODE.x value as upstream reads it: GetArgVal() != 0 - an empty
+    /// argument is 0, and "00" or an expression that is zero is off.</summary>
+    public static bool ParseModeValue(string? arg)
+    {
+        string t = (arg ?? "").Trim();
+        if (t.Length == 0) return false;
+        return Core.Types.ScriptNumber.TryParseToken(t, out long v) ? v != 0 : true;
+    }
+
+    /// <summary>Str_GetUnQuoted: one surrounding pair of double quotes is dropped
+    /// from a path argument (CSFileObj.cpp:261/274/322).</summary>
+    public static string UnquotePath(string? path)
+    {
+        string t = (path ?? "").Trim();
+        if (t.Length >= 2 && t[0] == '"' && t[^1] == '"') return t[1..^1];
+        if (t.Length >= 1 && t[0] == '"') return t[1..];
+        return t;
     }
     public bool ModeRead
     {
@@ -101,28 +133,33 @@ public sealed class ScriptFileHandle : IDisposable
             return false;
         }
 
+        path = UnquotePath(path);
         string? resolved = ResolveSafePath(_basePath, path);
         if (resolved == null)
             return false;
 
         try
         {
-            // Source-X FileOpen mode mapping: CREATE wins; otherwise
-            // (read && write) || append opens read-write; else single-flag.
+            // Source-X FileOpen mode mapping (CSFileObj.cpp:515) and the fopen mode
+            // each one becomes (CSFileText::_GetModeStr, CSFileText.cpp:293):
+            //   CREATE                        -> "w"   write-only, truncated
+            //   (read && write) || append     -> "a+b" read anywhere, EVERY write at the end
+            //   read                          -> "rb"
+            //   write                         -> "w"   write-only, truncated
             FileMode mode;
             FileAccess access;
-            bool seekEnd = false;
+            _appendWrites = false;
 
             if (_modeCreate)
             {
                 mode = FileMode.Create;
-                access = FileAccess.ReadWrite;
+                access = FileAccess.Write;
             }
             else if ((_modeRead && _modeWrite) || _modeAppend)
             {
                 mode = FileMode.OpenOrCreate;
                 access = FileAccess.ReadWrite;
-                seekEnd = _modeAppend;
+                _appendWrites = true;
             }
             else if (_modeRead)
             {
@@ -133,7 +170,7 @@ public sealed class ScriptFileHandle : IDisposable
             }
             else if (_modeWrite)
             {
-                mode = FileMode.OpenOrCreate;
+                mode = FileMode.Create;
                 access = FileAccess.Write;
             }
             else
@@ -152,13 +189,14 @@ public sealed class ScriptFileHandle : IDisposable
             _stream = new FileStream(resolved, mode, access, FileShare.ReadWrite);
             _filePath = path;
             _resolvedPath = resolved;
-            if (seekEnd)
-                _stream.Seek(0, SeekOrigin.End);
 
             if (access is FileAccess.Read or FileAccess.ReadWrite)
                 _reader = new StreamReader(_stream, leaveOpen: true);
+            // Flushed on every write: POSITION and LENGTH read the stream, and a
+            // stdio stream's ftell counts what is still buffered - a buffered writer
+            // made both lag behind what the script had written.
             if (access is FileAccess.Write or FileAccess.ReadWrite)
-                _writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = false };
+                _writer = new StreamWriter(_stream, new System.Text.UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
 
             return true;
         }
@@ -195,6 +233,7 @@ public sealed class ScriptFileHandle : IDisposable
             Diagnostic?.Invoke("FILE.WRITELINE refused: no file open for writing");
             return false;
         }
+        PrepareWrite();
         _writer.WriteLine(text);
         return true;
     }
@@ -206,18 +245,24 @@ public sealed class ScriptFileHandle : IDisposable
             Diagnostic?.Invoke("FILE.WRITE refused: no file open for writing");
             return false;
         }
+        PrepareWrite();
         _writer.Write(text);
         return true;
     }
 
+    /// <summary>WRITECHR: exactly ONE byte (Format("%c", GetArgCVal()),
+    /// CSFileObj.cpp:190) - a value above 127 is not re-encoded as UTF-8.</summary>
     public bool WriteChr(int asciiVal)
     {
-        if (_writer == null)
+        if (_writer == null || _stream == null)
         {
             Diagnostic?.Invoke("FILE.WRITECHR refused: no file open for writing");
             return false;
         }
-        _writer.Write((char)asciiVal);
+        _writer.Flush();
+        PrepareWrite();
+        _stream.WriteByte(unchecked((byte)asciiVal));
+        _stream.Flush();
         return true;
     }
 
@@ -286,8 +331,10 @@ public sealed class ScriptFileHandle : IDisposable
             Diagnostic?.Invoke("FILE.READCHAR refused: too near the end of file");
             return "";
         }
+        _reader?.DiscardBufferedData();
         int b = _stream.ReadByte();
-        return b < 0 ? "" : b.ToString();
+        // A signed char upstream: bytes above 127 read negative.
+        return b < 0 ? "" : ((sbyte)b).ToString();
     }
 
     /// <summary>Source-X READBYTE &lt;n&gt;: read n bytes at the current
@@ -308,33 +355,40 @@ public sealed class ScriptFileHandle : IDisposable
         return System.Text.Encoding.Latin1.GetString(buf, 0, read);
     }
 
-    public void Seek(string pos)
+    /// <summary>SEEK BEGIN | END | offset (CSFileObj.cpp:429 -> CSFileText::_Seek):
+    /// the new position, or 0 without moving when the offset is negative or the
+    /// seek fails. The offset is a Sphere number (leading zero = hex).</summary>
+    public long Seek(string pos)
     {
-        if (_stream == null) return;
-
-        if (pos.Equals("BEGIN", StringComparison.OrdinalIgnoreCase))
+        if (_stream == null) return 0;
+        pos = pos.Trim();
+        try
         {
-            _stream.Seek(0, SeekOrigin.Begin);
-            _reader?.DiscardBufferedData();
+            if (pos.StartsWith("BEGIN", StringComparison.OrdinalIgnoreCase))
+                _stream.Seek(0, SeekOrigin.Begin);
+            else if (pos.StartsWith("END", StringComparison.OrdinalIgnoreCase))
+                _stream.Seek(0, SeekOrigin.End);
+            else
+            {
+                if (!Core.Types.ScriptNumber.TryParseToken(pos, out long offset) || offset < 0)
+                    return 0;
+                _stream.Seek(offset, SeekOrigin.Begin);
+            }
         }
-        else if (pos.Equals("END", StringComparison.OrdinalIgnoreCase))
+        catch (IOException)
         {
-            _stream.Seek(0, SeekOrigin.End);
-            _reader?.DiscardBufferedData();
+            return 0;
         }
-        else if (long.TryParse(pos, out long offset))
-        {
-            _stream.Seek(offset, SeekOrigin.Begin);
-            _reader?.DiscardBufferedData();
-        }
+        _reader?.DiscardBufferedData();
+        return _stream.Position;
     }
 
     // --- Root-relative helpers (FILELINES/FILEEXIST/DELETEFILE resolve
     // against the sandbox root, one consistent base). ---
 
-    public bool FileExistsRelative(string path) => FileExists(_basePath, path);
+    public bool FileExistsRelative(string path) => FileExists(_basePath, UnquotePath(path));
 
-    public int GetFileLinesRelative(string path) => GetFileLines(_basePath, path);
+    public int GetFileLinesRelative(string path) => GetFileLines(_basePath, UnquotePath(path));
 
     /// <summary>Source-X DELETEFILE refuses to delete the currently-open file.</summary>
     public bool DeleteRelative(string path)

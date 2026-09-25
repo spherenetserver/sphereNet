@@ -129,7 +129,9 @@ public sealed class IntrinsicFunctionCoverageTests
     [InlineData("NAPIERPOW(0)", "1")]
     [InlineData("LOGARITHM(1000)", "3")]
     public void TheFloatEvaluatorAnswersThemToo(string call, string want)
-        => Assert.Equal(want, new ExpressionParser().EvaluateStr($"<FLOATVAL {call}>"));
+        // FLOATVAL prints with "%f" (CFloatMath.cpp:17), so 9 reads back as 9.000000.
+        => Assert.Equal(double.Parse(want, System.Globalization.CultureInfo.InvariantCulture).ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+            new ExpressionParser().EvaluateStr($"<FLOATVAL {call}>"));
 
     /// <summary>And it does not truncate, which is the whole reason the float form
     /// exists: SQRT(2) is 1 in the integer evaluator and 1.414... here.</summary>
@@ -156,11 +158,11 @@ public sealed class IntrinsicFunctionCoverageTests
     /// here.</summary>
     [Fact]
     public void AbsAnswersInAFloatExpressionToo()
-        => Assert.Equal("2.5", new ExpressionParser().EvaluateStr("<FLOATVAL ABS(-2.5)>"));
+        => Assert.Equal("2.500000", new ExpressionParser().EvaluateStr("<FLOATVAL ABS(-2.5)>"));
 
     /// <summary>A name that is not an intrinsic is still a variable, not a call - the
     /// float parser must not start swallowing parentheses after every identifier.</summary>
     [Fact]
     public void ANonIntrinsicNameIsStillAVariable()
-        => Assert.Equal("0", new ExpressionParser().EvaluateStr("<FLOATVAL NOTAREALINTRINSIC(2)>"));
+        => Assert.Equal("0.000000", new ExpressionParser().EvaluateStr("<FLOATVAL NOTAREALINTRINSIC(2)>"));
 }

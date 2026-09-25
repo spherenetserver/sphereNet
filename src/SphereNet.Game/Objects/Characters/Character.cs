@@ -1057,6 +1057,38 @@ public partial class Character : ObjBase
     // PRIV_PRIV_NOSHOW, which AUTOPRIVFLAGS (default 0) leaves clear, so staff
     // show their title (GM, Counselor...) until they turn it off.
     private bool _privShow = true;
+
+    /// <summary>GM mode switched OFF by the GM toggle (runtime only; the GM mode of
+    /// a GM-level character is on by default).</summary>
+    private bool _gmModeOff;
+
+    /// <summary>CAccount::TogPrivFlags (CAccount.cpp:745): no argument flips the
+    /// flag, an argument is evaluated and non-zero sets it.</summary>
+    private static bool TogglePrivFlag(bool current, string? arg) =>
+        string.IsNullOrWhiteSpace(arg) ? !current : EvalScriptLong(arg) != 0;
+
+    /// <summary>The hue of a SYSMESSAGELOC line: evaluated only when the text begins
+    /// with a positive number (atoi(arg) &gt; 0), otherwise HUE_TEXT_DEF
+    /// (CClient.cpp:1650).</summary>
+    private static ushort ClilocHue(string arg)
+    {
+        string t = arg.TrimStart();
+        int i = 0;
+        if (i < t.Length && (t[i] == '+' || t[i] == '-')) i++;
+        long lead = 0;
+        bool neg = t.StartsWith('-');
+        while (i < t.Length && char.IsAsciiDigit(t[i]) && lead < int.MaxValue) lead = lead * 10 + (t[i++] - '0');
+        if (neg || lead <= 0)
+            return 0x03B2;
+        return (ushort)EvalScriptLong(t);
+    }
+
+    /// <summary>Cliloc arguments from field <paramref name="from"/> on, TAB-joined,
+    /// with a NULL field sent as a blank (CClient.cpp:1658).</summary>
+    private static string JoinClilocArgs(string[] parts, int from) =>
+        parts.Length > from
+            ? string.Join('\t', parts[from..].Select(p => p.StartsWith("NULL", StringComparison.Ordinal) ? " " : p))
+            : "";
     private bool _isOnline; // Has active client connection
     private int _skillClass = 0;
 
@@ -4179,7 +4211,9 @@ public partial class Character : ObjBase
             // attack.
             case "NPC": value = ((int)_npcBrain).ToString(); return true;
             case "ISGM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
-            case "GM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
+            // The GM-MODE flag (IsPriv(PRIV_GM), CClient.cpp:704): on for a GM until
+            // the GM toggle turns it off.
+            case "GM": value = (PrivLevel >= PrivLevel.GM && !_gmModeOff) ? "1" : "0"; return true;
             case "INVUL": value = IsStatFlag(StatFlag.Invul) ? "1" : "0"; return true;
             case "ALLSHOW": value = _allShow ? "1" : "0"; return true;
             case "DEBUG": value = DebugView ? "1" : "0"; return true;
@@ -5715,32 +5749,39 @@ public partial class Character : ObjBase
             case "OBODY": if (ushort.TryParse(normalized, out ushort obv)) _oBody = obv; return true;
             case "OSKIN": if (ushort.TryParse(normalized, out ushort oskinv)) _oSkin = oskinv; return true;
             case "LUCK": if (short.TryParse(normalized, out short luckv)) _luck = luckv; return true;
+            // GM toggles the GM-MODE flag, never the privilege level, and only for a
+            // character that is at least a GM (CClient.cpp:836 CC_GM ->
+            // TogPrivFlags(PRIV_GM)). Writing the level here let a pack's staff event
+            // ("IF !(<SRC.ISGM>) SRC.GM=1") promote a counselor to GM and drop an
+            // admin or owner to exactly GM.
             case "GM":
-            {
-                bool isGm = normalized != "0" && !string.IsNullOrEmpty(normalized);
-                PrivLevel = isGm ? PrivLevel.GM : PrivLevel.Player;
+                if (PrivLevel >= PrivLevel.GM)
+                    _gmModeOff = !TogglePrivFlag(!_gmModeOff, normalized);
                 return true;
-            }
             case "INVUL":
                 if (normalized != "0" && !string.IsNullOrEmpty(normalized))
                     SetStatFlag(StatFlag.Invul);
                 else
                     ClearStatFlag(StatFlag.Invul);
                 return true;
+            // These are account privilege toggles upstream (TogPrivFlags,
+            // CAccount.cpp:745): an empty argument FLIPS the flag, anything else is
+            // evaluated (so "00" is off). PRIVSHOW needs counselor or better.
             case "ALLSHOW":
-                _allShow = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                _allShow = TogglePrivFlag(_allShow, normalized);
                 return true;
             case "DEBUG":
-                DebugView = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                DebugView = TogglePrivFlag(DebugView, normalized);
                 return true;
             case "HEARALL":
-                HearAll = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                HearAll = TogglePrivFlag(HearAll, normalized);
                 return true;
             case "DETAIL":
-                DetailView = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                DetailView = TogglePrivFlag(DetailView, normalized);
                 return true;
             case "PRIVSHOW":
-                _privShow = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                if (PrivLevel >= PrivLevel.Counsel)
+                    _privShow = TogglePrivFlag(_privShow, normalized);
                 return true;
             case "PRIVLEVEL":
             case "PLEVEL":
@@ -6252,6 +6293,20 @@ public partial class Character : ObjBase
         // Assumed owned until the shared fall-through at the bottom of
         // ObjBase.TryExecuteCommand says otherwise.
         nameOwned = true;
+        // A bare privilege toggle line ("DEBUG", "ALLSHOW") flips the flag: the
+        // client verb falls through to r_LoadVal with no argument, and TogPrivFlags
+        // toggles on an empty value (CClient.cpp:1723 -> CAccount.cpp:745).
+        if (string.IsNullOrWhiteSpace(args) &&
+            key.ToUpperInvariant() is "ALLSHOW" or "DEBUG" or "DETAIL" or "HEARALL" or "PRIVSHOW" or "GM")
+            return TrySetProperty(key, "");
+        // SYSMESSAGE on a character goes to THAT character's client (the client's
+        // verb table runs first, CChar.cpp:4392) and is eaten when it has none
+        // (CHV_SYSMESSAGE, CChar.cpp:4936) - not to whoever ran the line.
+        if (key.Equals("SYSMESSAGE", StringComparison.OrdinalIgnoreCase) && ResolveClientConsole != null)
+        {
+            ResolveClientConsole(this)?.SysMessage(args);
+            return true;
+        }
         if (key.StartsWith("ACT.", StringComparison.OrdinalIgnoreCase))
         {
             var actObject = ResolveRefHead("ACT");
@@ -6281,7 +6336,7 @@ public partial class Character : ObjBase
             return true;
         }
         if (key.Equals("EFFECT", StringComparison.OrdinalIgnoreCase))
-            return EmitScriptEffect(args);
+            return EmitScriptEffect(args, ResolveSourceCharacter(source));
         if (key.Equals("FACE", StringComparison.OrdinalIgnoreCase))
         {
             if (TryParseScriptByte(args, out byte dir))
@@ -6974,41 +7029,41 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            // SMSGL / SMSGLEX are the same verbs (CV_SMSGL / CV_SMSGLEX share the case,
+            // CClient.cpp:1643/1670).
+            case "SMSGL":
             case "SYSMESSAGELOC":
             {
-                // Source-X: SYSMESSAGELOC hue, cliloc_id, args
-                var parts = args.Split(',', 3, StringSplitOptions.TrimEntries);
-                if (parts.Length >= 2
-                    // The hue is a DEFNAME in 76 of the 93 calls across the packs:
-                    // "SYSMESSAGELOC color_text,1070821,<NAME>", where color_text is
-                    // -1, the cliloc default-colour sentinel. Parsing it as a number
-                    // failed, which took the whole condition down with it - so those
-                    // messages were not mis-coloured, they were never sent.
-                    && TryResolveScriptValue(parts[0], out int hueValue)
-                    && TryResolveScriptValue(parts[1], out int clilocValue))
+                // "hue,cliloc[,arg,arg...]" split on EVERY comma; the arguments are
+                // joined with TAB (the cliloc argument separator) and a NULL argument is
+                // a blank (CClient.cpp:1643-1668). The hue counts only when its text
+                // starts with a positive number (atoi > 0); a defname such as
+                // color_text or a -1 is HUE_TEXT_DEF.
+                var parts = args.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length >= 2 && TryResolveScriptValue(parts[1], out int clilocValue))
                 {
-                    ushort hue = (ushort)hueValue;
+                    ushort hue = ClilocHue(parts[0]);
                     uint cliloc = (uint)clilocValue;
-                    string argText = parts.Length >= 3 ? parts[2] : "";
+                    string argText = JoinClilocArgs(parts, 2);
                     SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketClilocMessage(
                         Serial.Invalid.Value, 0xFFFF, 6 /* system */, hue, 3, cliloc, "System", argText));
                 }
                 return true;
             }
+            case "SMSGLEX":
             case "SYSMESSAGELOCEX":
             {
-                // Source-X: hue,cliloc,affixFlags,affix,args...
+                // "hue,cliloc,affixFlags[,affix,args...]" - more than two arguments
+                // are enough; the flags are an expression (CClient.cpp:1670-1697).
                 var parts = args.Split(',', StringSplitOptions.TrimEntries);
-                if (parts.Length >= 4
-                    && TryResolveScriptValue(parts[0], out int hueValueEx)
+                if (parts.Length >= 3
                     && TryResolveScriptValue(parts[1], out int clilocValueEx))
                 {
-                    ushort hue = (ushort)hueValueEx;
+                    ushort hue = ClilocHue(parts[0]);
                     uint cliloc = (uint)clilocValueEx;
-                    int flags = parts.Length > 2 && int.TryParse(parts[2], out int parsedFlags)
-                        ? parsedFlags : 0;
-                    string affix = parts[3];
-                    string argText = parts.Length > 4 ? string.Join('\t', parts[4..]) : "";
+                    int flags = (int)EvalScriptLong(parts[2]);
+                    string affix = parts.Length > 3 ? parts[3] : "";
+                    string argText = JoinClilocArgs(parts, 4);
                     SendPacketToOwner?.Invoke(this,
                         new SphereNet.Network.Packets.Outgoing.PacketClilocMessageAffix(
                             Serial.Invalid.Value, 0xFFFF, 6, hue, 3, cliloc,
@@ -7018,21 +7073,22 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            case "SMSGU":
             case "SYSMESSAGEUA":
             {
-                // Source-X: SYSMESSAGEUA hue, font, mode, language, text.
-                // Route through the existing unicode speech packet with
-                // serial=0xFFFFFFFF (system origin).
+                // "hue, font, mode, language, text": five fields are required, but
+                // font and mode are IGNORED - the line always goes out in the normal
+                // font (CClient.cpp:1629-1641). Requiring them to be numbers dropped
+                // messages whose unused fields were left blank.
                 var parts = args.Split(',', 5, StringSplitOptions.TrimEntries);
-                if (parts.Length >= 5
-                    && TryParseScriptUShort(parts[0], out ushort hue)
-                    && TryParseScriptUShort(parts[1], out ushort font)
-                    && byte.TryParse(parts[2], out byte mode))
+                if (parts.Length < 5)
+                    return false;
                 {
+                    ushort hue = (ushort)EvalScriptLong(parts[0]);
                     string lang = parts[3];
                     string text = parts[4];
                     SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
-                        0xFFFFFFFF, 0xFFFF, mode, hue, font, lang, "System", text));
+                        0xFFFFFFFF, 0xFFFF, 6, hue, 3, lang, "System", text));
                 }
                 return true;
             }
@@ -7329,7 +7385,9 @@ public partial class Character : ObjBase
                 BroadcastSpeech(0, unicode: true, args);
                 return true;
             case "EMOTE":
-                BroadcastSpeech(2, unicode: false, args);
+                // Framed by the DEFMSG emote lines, "you" to the emoter's own client
+                // and "them" to everyone else (CObjBase::Emote, CObjBase.cpp:630).
+                EmoteObject(args);
                 return true;
             case "DCLICK":
             {
@@ -7401,24 +7459,6 @@ public partial class Character : ObjBase
                         _food = (ushort)Math.Min(60, hAmount);
                 }
                 MarkDirty(DirtyFlag.Stats);
-                return true;
-            }
-            case "NUDGEUP":
-            {
-                if (int.TryParse(args.Trim(), out int nup) && nup != 0)
-                {
-                    var pos = Position;
-                    Position = new Point3D(pos.X, pos.Y, (sbyte)Math.Clamp(pos.Z + nup, -128, 127), pos.Map);
-                }
-                return true;
-            }
-            case "NUDGEDOWN":
-            {
-                if (int.TryParse(args.Trim(), out int ndn) && ndn != 0)
-                {
-                    var pos = Position;
-                    Position = new Point3D(pos.X, pos.Y, (sbyte)Math.Clamp(pos.Z - ndn, -128, 127), pos.Map);
-                }
                 return true;
             }
             case "PRIVSET":
@@ -7900,24 +7940,23 @@ public partial class Character : ObjBase
             var uidPart = sub.Length > "ISSAMEPARTYOF".Length
                 ? sub["ISSAMEPARTYOF".Length..].TrimStart('.', ' ')
                 : "";
-            if (uint.TryParse(uidPart.TrimStart('0').TrimStart('x', 'X'),
-                System.Globalization.NumberStyles.HexNumber, null, out uint otherUid))
-            {
-                value = party?.IsMember(new Serial(otherUid)) == true ? "1" : "0";
-            }
-            else
-                value = "0";
+            // Exp_GetDWVal (CParty.cpp:663): hex with a leading zero, decimal,
+            // or an expression - not hex-only.
+            long otherUid = EvalScriptLong(uidPart);
+            value = otherUid > 0 && party?.IsMember(new Serial(unchecked((uint)otherUid))) == true ? "1" : "0";
             return true;
         }
 
-        // PARTY.TAG.key
-        if (sub.StartsWith("TAG.", StringComparison.Ordinal))
+        // PARTY.TAG.key / PARTY.TAG0.key - TAG0 answers "0" for an unset key
+        // (CParty.cpp:681 GetKeyStr(fZero)).
+        if (sub.StartsWith("TAG.", StringComparison.Ordinal) || sub.StartsWith("TAG0.", StringComparison.Ordinal))
         {
-            var tagKey = key["PARTY.TAG.".Length..]; // preserve original case
+            bool zero = sub.StartsWith("TAG0.", StringComparison.Ordinal);
+            var tagKey = key[(zero ? "PARTY.TAG0.".Length : "PARTY.TAG.".Length)..]; // preserve original case
             if (party != null && party.TryGetTag(tagKey, out string tagVal))
                 value = tagVal;
             else
-                value = "";
+                value = zero ? "0" : "";
             return true;
         }
 
@@ -7969,11 +8008,12 @@ public partial class Character : ObjBase
                 return true;
         }
 
-        // PARTY.TAG.key
-        if (sub.StartsWith("TAG.", StringComparison.Ordinal))
+        // PARTY.TAG.key / PARTY.TAG0.key (CParty.cpp:605) - TAG0 deletes on zero.
+        if (sub.StartsWith("TAG.", StringComparison.Ordinal) || sub.StartsWith("TAG0.", StringComparison.Ordinal))
         {
-            var tagKey = key["PARTY.TAG.".Length..];
-            if (string.IsNullOrEmpty(value))
+            bool zero = sub.StartsWith("TAG0.", StringComparison.Ordinal);
+            var tagKey = key[(zero ? "PARTY.TAG0.".Length : "PARTY.TAG.".Length)..];
+            if (string.IsNullOrEmpty(value) || (zero && value.Trim() == "0"))
                 party.RemoveTag(tagKey);
             else
                 party.SetTag(tagKey, value);
@@ -7981,6 +8021,20 @@ public partial class Character : ObjBase
         }
 
         return false;
+    }
+
+    /// <summary>Party member resolution for the verbs that take "@n" (member index)
+    /// or a uid (CParty.cpp:799/843): both evaluated as expressions.</summary>
+    private static Serial? ResolvePartyMemberToken(SphereNet.Game.Party.PartyDef party, string token)
+    {
+        token = token.Trim();
+        if (token.StartsWith('@'))
+        {
+            long idx = EvalScriptLong(token[1..]);
+            return idx >= 0 && idx < party.MemberCount ? party.Members[(int)idx] : null;
+        }
+        long uid = EvalScriptLong(token);
+        return uid > 0 ? new Serial(unchecked((uint)uid)) : null;
     }
 
     private bool TryExecutePartyCommand(string sub, string args, ITextConsole source)
@@ -8045,20 +8099,16 @@ public partial class Character : ObjBase
             }
             case "REMOVEMEMBER":
             {
+                // "@n" or a uid, both evaluated; the character must be a member of
+                // THIS party (RemoveMember -> IsInParty, CParty.cpp:296/799) - a uid
+                // from some other party is refused, not pulled out of that one.
                 if (pm == null) return true;
                 var party = pm.FindParty(Uid);
                 if (party == null) return true;
-                var arg = args.Trim();
-                if (arg.StartsWith('@') && int.TryParse(arg[1..], out int idx))
-                {
-                    if (idx >= 0 && idx < party.MemberCount)
-                        pm.Leave(party.Members[idx]);
-                }
-                else if (uint.TryParse(arg.TrimStart('0').TrimStart('x', 'X'),
-                    System.Globalization.NumberStyles.HexNumber, null, out uint removeUid))
-                {
-                    pm.Leave(new Serial(removeUid));
-                }
+                var removeUid = ResolvePartyMemberToken(party, args);
+                if (removeUid is not { } rm || !party.IsMember(rm))
+                    return false;
+                pm.Leave(rm);
                 return true;
             }
             case "SETMASTER":
@@ -8102,17 +8152,50 @@ public partial class Character : ObjBase
             }
             case "SYSMESSAGE":
             {
-                if (SendPacketToOwner != null && !string.IsNullOrEmpty(args))
+                // "<target> text" (CParty.cpp:843): the first word picks the member -
+                // "@n" by index, anything else read as a uid - and the rest goes to
+                // that member; when the word names no one the rest goes to EVERY
+                // member (SysMessageAll).
+                var sysParty = ResolvePartyFinder?.Invoke(Uid);
+                if (sysParty == null || SendPacketToOwner == null) return true;
+                string sysArg = args ?? "";
+                int sp = sysArg.IndexOf(' ');
+                string first = sp >= 0 ? sysArg[..sp] : sysArg;
+                string text = sp >= 0 ? sysArg[(sp + 1)..].TrimStart(' ', ',', '\t') : "";
+                if (first.StartsWith('@') && !first.StartsWith("@@"))
                 {
-                    SendPacketToOwner(this, new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
-                        0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut.SystemLanguage, "System", args));
+                    long idx = EvalScriptLong(first[1..]);
+                    if (idx < 0 || idx >= sysParty.MemberCount) return false;
                 }
+                var world = ResolveWorld?.Invoke();
+                var toMember = first.StartsWith("@@") ? null : ResolvePartyMemberToken(sysParty, first);
+                var toChar = toMember is { } tm ? world?.FindChar(tm) : null;
+                void SendSys(Character ch) => SendPacketToOwner?.Invoke(ch, new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
+                    0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut.SystemLanguage, "System", text));
+                if (text.Length == 0) return true;
+                if (toChar != null)
+                    SendSys(toChar);
+                else
+                    foreach (var memberUid in sysParty.Members.ToList())
+                        if (world?.FindChar(memberUid) is { } memberChar)
+                            SendSys(memberChar);
                 return true;
             }
             case "CLEARTAGS":
             {
+                // ClearKeys(mask) (CParty.cpp:783 -> CVarDefMap.cpp:621): no mask
+                // clears all, a mask deletes the keys that CONTAIN it.
                 var party = ResolvePartyFinder?.Invoke(Uid);
-                party?.ClearTags();
+                if (party == null) return true;
+                string mask = (args ?? "").Trim();
+                if (mask.Length == 0) { party.ClearTags(); return true; }
+                var doomed = new List<string>();
+                for (int i = 0; i < party.TagCount; i++)
+                {
+                    var (tk, _) = party.TagAt(i);
+                    if (tk.Contains(mask, StringComparison.OrdinalIgnoreCase)) doomed.Add(tk);
+                }
+                foreach (var tk in doomed) party.RemoveTag(tk);
                 return true;
             }
             case "CLEARCTAGS":
@@ -8128,11 +8211,43 @@ public partial class Character : ObjBase
             }
             case "TAGLIST":
             {
-                // Source-X CV_TAGLIST — dump this character's TAGs to the console.
-                foreach (var (k, v) in Tags.GetAll())
-                    source.SysMessage($"TAG.{k} = {v}");
+                // The PARTY's tags (CParty.cpp:894 m_TagDefs.DumpKeys(pSrc, "TAG.")),
+                // not the character's own.
+                var party = ResolvePartyFinder?.Invoke(Uid);
+                if (party == null) return true;
+                for (int i = 0; i < party.TagCount; i++)
+                {
+                    var (tk, tv) = party.TagAt(i);
+                    source.SysMessage($"TAG.{tk}={tv}");
+                }
                 return true;
             }
+        }
+
+        // PARTY.MASTER.<verb> / PARTY.MEMBER.n.<verb>: the heads resolve to the
+        // character and the verb runs there (CPartyDef::r_Verb -> r_GetRef, CParty.cpp:752).
+        if (sub.StartsWith("MASTER.", StringComparison.Ordinal) || sub.StartsWith("MEMBER.", StringComparison.Ordinal))
+        {
+            var refParty = ResolvePartyFinder?.Invoke(Uid);
+            if (refParty == null) return false;
+            Serial? who = null;
+            string verb;
+            if (sub.StartsWith("MASTER.", StringComparison.Ordinal))
+            {
+                who = refParty.Master;
+                verb = sub["MASTER.".Length..];
+            }
+            else
+            {
+                string rest = sub["MEMBER.".Length..];
+                int d = rest.IndexOf('.');
+                if (d <= 0) return false;
+                if (int.TryParse(rest[..d], out int mi) && mi >= 0 && mi < refParty.MemberCount)
+                    who = refParty.Members[mi];
+                verb = rest[(d + 1)..];
+            }
+            var whoChar = who is { } w ? ResolveWorld?.Invoke()?.FindChar(w) : null;
+            return whoChar != null && verb.Length > 0 && whoChar.ExecuteVerbLine(verb, args, source);
         }
         return false;
     }

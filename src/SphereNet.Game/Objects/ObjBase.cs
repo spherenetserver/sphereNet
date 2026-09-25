@@ -58,8 +58,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     /// <summary>Script TRIGGER verb (Source-X CV_TRIGGER): the host wires this
     /// to TriggerDispatcher.Fire*TriggerByName so scripts can fire arbitrary
-    /// named triggers on an object through the normal handler chain.</summary>
-    public static Action<ObjBase, string, ITextConsole>? OnScriptTrigger;
+    /// named triggers on an object through the normal handler chain. The last
+    /// argument carries the ARGN/ARGS/ARGO the verb's argument-type form filled in
+    /// (CObjBase::CallPersonalTrigger, CObjBase.cpp:3708); the host adds SRC.</summary>
+    public static Action<ObjBase, string, ITextConsole, Scripting.TriggerArgs>? OnScriptTrigger;
+
+    /// <summary>RESENDTOOLTIP for an object that is not a character (characters keep
+    /// their own hook): the host resends its property list to everyone near it.</summary>
+    public static Action<ObjBase>? ResendTooltipForObject;
 
     /// <summary>MESSAGE/MSG: put a line of text over THIS object. The third argument is
     /// who gets to see it - the character that issued the verb, or null for everyone
@@ -156,25 +162,51 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     protected bool EmitScriptSound(string args, int range = 18)
     {
         var parts = SplitScriptArgs(args);
-        if (parts.Length == 0 || !TryResolveScriptValue(parts[0], out int soundValue))
-            return true;
+        if (parts.Length == 0)
+            return false;   // no argument at all is a refusal (CObjBase.cpp:2590)
+        if (!TryResolveScriptValue(parts[0], out int soundValue) || soundValue <= 0)
+            return true;    // Sound() ignores id <= 0 (CClientMsg.cpp:635)
         ushort soundId = (ushort)soundValue;
 
         byte mode = parts.Length > 1 && TryResolveScriptValue(parts[1], out int parsedMode)
             ? (byte)parsedMode
             : (byte)1;
 
-        BroadcastNearby?.Invoke(Position, range, new PacketSound(soundId, X, Y, Z, mode), 0);
+        // Heard from the TOP-LEVEL object (addSound uses GetTopLevelObj()->GetTopPoint()):
+        // an item in a pack sounds where its carrier stands, not at its container-local
+        // coordinates on the far side of the map.
+        var at = GetTopLevelPosition();
+        BroadcastNearby?.Invoke(at, range, new PacketSound(soundId, at.X, at.Y, at.Z, mode), 0);
         return true;
     }
 
-    protected bool EmitScriptEffect(string args, int range = 18)
+    protected bool EmitScriptEffect(string args, int range = 18) => EmitScriptEffect(args, null, range);
+
+    /// <summary>EFFECT motion, id [, speed, loop, explode, hue, render, effectid,
+    /// explodeid, explodesound, effectuid, type] (OV_EFFECT, CObjBase.cpp:2279).
+    ///
+    /// The effect lands on THIS object; a bolt (motion 0) flies from SRC. A motion of
+    /// -1 swaps the roles - a bolt from this object to SRC. Positions are the top-level
+    /// ones on both ends (writeBasicEffect, send.cpp:1986), a bolt never loops, and a
+    /// screen fade (motion 4) goes only to this character's own client.</summary>
+    protected bool EmitScriptEffect(string args, ObjBase? sourceObj, int range = 18)
     {
         var parts = SplitScriptArgs(args);
-        if (parts.Length < 2
-            || !TryResolveScriptValue(parts[0], out int effectTypeValue)
+        if (parts.Length < 2)
+            return false;
+        if (!TryResolveScriptValue(parts[0], out int effectTypeValue)
             || !TryResolveScriptValue(parts[1], out int effectIdValue))
             return true;
+        ObjBase dest = this;
+        ObjBase? boltSource = sourceObj;
+        if (effectTypeValue == -1)
+        {
+            if (sourceObj == null)
+                return true;
+            effectTypeValue = 0;
+            dest = sourceObj;
+            boltSource = this;
+        }
         byte effectType = (byte)effectTypeValue;
         ushort effectId = (ushort)effectIdValue;
 
@@ -204,32 +236,58 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         // effect types keep it true.
         bool fixedDir = effectType != 0;
 
+        var dstTop = dest.GetTopLevelObj();
+        var dstPos = dstTop.Position;
+        Point3D srcPos = dstPos;
+        uint srcSerial, dstSerial;
+        if (effectType == 0)
+        {
+            var srcTop = (boltSource ?? dest).GetTopLevelObj();
+            srcPos = srcTop.Position;
+            srcSerial = srcTop.Uid.Value;
+            dstSerial = dstTop.Uid.Value;
+            duration = 0;   // "loop = 0; does not apply" for a bolt
+        }
+        else
+        {
+            srcSerial = dstTop.Uid.Value;
+            dstSerial = 0;
+        }
+
         PacketWriter packet;
         if (particleEffectId != 0 || explodeId != 0)
         {
             packet = new PacketEffectParticle(
-                effectType, Uid.Value, Uid.Value, effectId,
-                X, Y, Z, X, Y, Z,
+                effectType, srcSerial, dstSerial, effectId,
+                srcPos.X, srcPos.Y, srcPos.Z, dstPos.X, dstPos.Y, dstPos.Z,
                 speed, duration, fixedDir, explode,
                 hue, render, particleEffectId, explodeId, explodeSound, effectUid, particleType);
         }
         else if (hue != 0 || render != 0)
         {
             packet = new PacketEffectHued(
-                effectType, Uid.Value, Uid.Value, effectId,
-                X, Y, Z, X, Y, Z,
+                effectType, srcSerial, dstSerial, effectId,
+                srcPos.X, srcPos.Y, srcPos.Z, dstPos.X, dstPos.Y, dstPos.Z,
                 speed, duration, fixedDir, explode,
                 hue, render);
         }
         else
         {
             packet = new PacketEffect(
-                effectType, Uid.Value, Uid.Value, effectId,
-                X, Y, Z, X, Y, Z,
+                effectType, srcSerial, dstSerial, effectId,
+                srcPos.X, srcPos.Y, srcPos.Z, dstPos.X, dstPos.Y, dstPos.Z,
                 speed, duration, fixedDir, explode);
         }
 
-        BroadcastNearby?.Invoke(Position, range, packet, 0);
+        // EFFECT_FADE_SCREEN is for this character's own client only (CObjBase.cpp:564).
+        if (effectType == 4)
+        {
+            if (dest is Characters.Character fadeCh)
+                Characters.Character.SendPacketToOwner?.Invoke(fadeCh, packet);
+            return true;
+        }
+
+        BroadcastNearby?.Invoke(dstPos, range, packet, 0);
         return true;
     }
 
@@ -238,7 +296,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// hue, render, effectid, explodeid, explodesound, effectuid, type]".
     /// A motion of -1 with a source char means "bolt from the char to here";
     /// we normalize that to the moving-bolt effect type (0).</summary>
-    protected bool EmitScriptEffectLocation(string args, int range = 18)
+    protected bool EmitScriptEffectLocation(string args, ObjBase? sourceObj = null, int range = 18)
     {
         var parts = SplitScriptArgs(args);
         if (parts.Length < 5)
@@ -252,9 +310,20 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         sbyte dz = (sbyte)Num(parts[2]);
         long motionRaw = Num(parts[3]);
         byte effectType = motionRaw < 0 ? (byte)0 : (byte)motionRaw; // -1 → EFFECT_BOLT
-        ushort effectId = (ushort)Num(parts[4]);
+        // The id resolves like EFFECT's (ResGetIndex): an ITEMDEF name works too.
+        ushort effectId = TryResolveScriptValue(parts[4], out int resolvedId) ? (ushort)resolvedId : (ushort)0;
         if (effectId == 0)
             return true;
+
+        // writeBasicEffectLocation (send.cpp:2095): only a BOLT has a separate source
+        // point - SRC's top-level position; every other motion plays AT the target
+        // point, and neither end names an object. The source used to be this object's
+        // own coordinates, so a stationary effect drew on the object and not the spot.
+        Point3D srcPoint = new(dx, dy, dz, Position.Map);
+        if (effectType == 0 && sourceObj != null)
+            srcPoint = sourceObj.GetTopLevelPosition();
+        short sx = srcPoint.X, sy = srcPoint.Y;
+        sbyte sz = srcPoint.Z;
 
         byte speed = parts.Length > 5 ? (byte)Num(parts[5]) : (byte)5;
         byte duration = parts.Length > 6 ? (byte)Num(parts[6]) : (byte)1;
@@ -268,29 +337,31 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         byte particleType = parts.Length > 14 ? (byte)Num(parts[14]) : (byte)0;
 
         bool fixedDir = effectType != 0;
+        if (effectType == 0)
+            duration = 0;   // a bolt does not loop (send.cpp:2104)
 
         PacketWriter packet;
         if (particleEffectId != 0 || explodeId != 0)
         {
             packet = new PacketEffectParticle(
-                effectType, Uid.Value, 0, effectId,
-                X, Y, Z, dx, dy, dz,
+                effectType, 0, 0, effectId,
+                sx, sy, sz, dx, dy, dz,
                 speed, duration, fixedDir, explode,
                 hue, render, particleEffectId, explodeId, explodeSound, effectUid, particleType);
         }
         else if (hue != 0 || render != 0)
         {
             packet = new PacketEffectHued(
-                effectType, Uid.Value, 0, effectId,
-                X, Y, Z, dx, dy, dz,
+                effectType, 0, 0, effectId,
+                sx, sy, sz, dx, dy, dz,
                 speed, duration, fixedDir, explode,
                 hue, render);
         }
         else
         {
             packet = new PacketEffect(
-                effectType, Uid.Value, 0, effectId,
-                X, Y, Z, dx, dy, dz,
+                effectType, 0, 0, effectId,
+                sx, sy, sz, dx, dy, dz,
                 speed, duration, fixedDir, explode);
         }
 
@@ -732,7 +803,32 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             // (the correct token ISVALID is a genuine Source-X keyword).
             case "ISVALID":
             case "ISVALIDE": value = IsDeleted ? "0" : "1"; return true;
-            case "UID": value = $"0{_uid.Value:X}"; return true;
+            case "UID":
+            // OC_SERIAL is the same read as OC_UID on every object (CObjBase.cpp:1605);
+            // only characters answered it.
+            case "SERIAL": value = $"0{_uid.Value:X}"; return true;
+            // The object's OWN tick-sleep state (OC_ISSLEEPING, CObjBase.cpp:1427) -
+            // only the sector used to answer this name.
+            case "ISSLEEPING": value = IsSleeping ? "1" : "0"; return true;
+            // Client-session tag count; 0 for anything without an active client
+            // (OC_CTAGCOUNT, CObjBase.cpp:1162).
+            case "CTAGCOUNT":
+                value = this is Characters.Character ctCh && ctCh.IsOnline ? ctCh.CTags.Count.ToString() : "0";
+                return true;
+            // IsContainer (OC_ISCONT, CObjBase.cpp:1362): every character is a
+            // container (CChar derives CContainer); an item is when its type is.
+            case "ISCONT":
+                value = this is Characters.Character || (this is Items.Item contItem && contItem.IsContainerType) ? "1" : "0";
+                return true;
+            // WriteResourceRefList (OC_EVENTS, CObjBase.cpp:1289): the event names,
+            // comma separated. Only the write existed, so a read got nothing.
+            case "EVENTS":
+            {
+                List<ResourceId>? evList = this is Characters.Character evc ? evc.Events
+                    : this is Items.Item evi ? evi.Events : null;
+                value = evList == null ? "" : string.Join(",", evList.Where(r => r.IsValid).Select(ResolveResourceDefName));
+                return true;
+            }
             case "UUID": value = _uuid.ToString("D"); return true;
             // GetName(), not the raw field: upstream answers OC_NAME with the virtual
             // (CObjBase.cpp:1546), which falls back to the definition's name when the
@@ -757,7 +853,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "P.M":
             case "P.MAP": value = _position.Map.ToString(); return true;
             case "SEXTANTP": value = ComputeSextant(GetTopLevelPosition()); return true;
-            case "COLOR": value = _hue.Value.ToString(); return true;
+            // FormatHex(GetHue()) (CObjBase.cpp:1153): "0481", not 1153.
+            case "COLOR": value = $"0{_hue.Value:X}"; return true;
             case "ID": value = $"0{_baseId:X}"; return true;
             case "ATTR": value = ((uint)_attr).ToString(); return true;
             case "TAGCOUNT": value = _tags.Count.ToString(); return true;
@@ -823,9 +920,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                         if (field.Equals("KEY", StringComparison.OrdinalIgnoreCase))
                         { value = pair.Key; return true; }
                         if (field.Equals("VAL", StringComparison.OrdinalIgnoreCase) ||
-                            field.Equals("VALUE", StringComparison.OrdinalIgnoreCase) ||
-                            field.Length == 0)
+                            field.Equals("VALUE", StringComparison.OrdinalIgnoreCase))
                         { value = pair.Value ?? ""; return true; }
+                        // Bare TAGAT.n is "KEY=VAL" (CObjBase.cpp:1672).
+                        if (field.Length == 0)
+                        { value = $"{pair.Key}={pair.Value}"; return true; }
                     }
                     n++;
                 }
@@ -922,18 +1021,40 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
-        // ISTEVENT.defname / ISEVENT.defname
+        // ISEVENT.defname checks the object's own dynamic EVENTS; ISTEVENT.defname
+        // checks the DEFINITION's TEVENTS (Base_GetDef()->m_TEvents,
+        // CObjBase.cpp:1353) - the two used to be the same question.
         if (key.StartsWith("ISTEVENT.", StringComparison.OrdinalIgnoreCase) ||
             key.StartsWith("ISEVENT.", StringComparison.OrdinalIgnoreCase))
         {
             int dot = key.IndexOf('.');
             string evName = key[(dot + 1)..];
             var checkRid = ResourceId.FromString(evName, Core.Enums.ResType.Events);
+            bool typed = key.StartsWith("ISTEVENT.", StringComparison.OrdinalIgnoreCase);
             List<ResourceId>? events = null;
-            if (this is Characters.Character evCh) events = evCh.Events;
+            if (typed)
+                events = this switch
+                {
+                    Characters.Character tch => DefinitionLoader.GetCharDef(tch.CharDefIndex)?.Events,
+                    Items.Item tit => DefinitionLoader.GetItemDef(Definitions.ItemDefHelper.ResolveInstanceDefIndex(tit))?.Events,
+                    _ => null,
+                };
+            else if (this is Characters.Character evCh) events = evCh.Events;
             else if (this is Items.Item evIt) events = evIt.Events;
             value = events != null && events.Contains(checkRid) ? "1" : "0";
             return true;
+        }
+
+        // COMPLEXITY[.HIGH|.MEDIUM|.LOW] is the top-level object's SECTOR answering
+        // (CObjBase.cpp:1156 -> GetTopSector()->r_WriteVal). The shipped human speech
+        // asks <COMPLEXITY.HIGH> on the NPC itself thousands of times.
+        if (key.StartsWith("COMPLEXITY", StringComparison.OrdinalIgnoreCase) &&
+            (key.Length == 10 || key[10] == '.'))
+        {
+            var sector = ResolveWorld?.Invoke()?.GetSector(GetTopLevelPosition());
+            if (sector == null)
+                return false;
+            return sector.TryGetProperty(key, out value);
         }
 
         // ISDSPEECH.defname — membership in the char's dynamic SPEECH list.
@@ -1003,6 +1124,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// contained/equipped item — the position of the outermost container or
     /// wearer (Source-X GetTopLevelObj()->GetTopPoint()).</summary>
     public Point3D GetTopLevelPosition() => GetTopLevelObj().Position;
+
+    /// <summary>A resource reference as the script names it: its DEFNAME when the
+    /// resource has one, otherwise the id text (CResourceRef::GetName).</summary>
+    private static string ResolveResourceDefName(ResourceId rid)
+    {
+        string? name = DefinitionLoader.StaticResources?.GetResource(rid)?.DefName;
+        return string.IsNullOrWhiteSpace(name) ? rid.ToString() : name!;
+    }
 
     /// <summary>Sextant coordinate string for a map point (Source-X
     /// CServerConfig::Calc_MaptoSextant). Zero point 1323,1624; longitude uses
@@ -1145,10 +1274,16 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return false;   // no target: the caller decides, not this getter
 
         var world = ResolveWorld?.Invoke();
-        if (!uint.TryParse(rest.TrimStart('0').TrimStart('x', 'X'),
-                System.Globalization.NumberStyles.HexNumber, null, out uint uid))
-            return false;
-        var other = world?.FindObject(new Core.Types.Serial(uid));
+        // The uid is a Sphere number (Exp_GetVal): hex with a leading zero, decimal
+        // otherwise - every argument used to be read as hex.
+        // A bare hex spelling without the zero is still accepted when that is the
+        // only reading that names an object.
+        ObjBase? other = null;
+        if (ScriptNumber.TryParseToken(rest, out long uidValue) && uidValue > 0 && uidValue <= uint.MaxValue)
+            other = world?.FindObject(new Core.Types.Serial((uint)uidValue));
+        if (other == null && uint.TryParse(rest.TrimStart('0').TrimStart('x', 'X'),
+                System.Globalization.NumberStyles.HexNumber, null, out uint hexUid))
+            other = world?.FindObject(new Core.Types.Serial(hexUid));
         if (other == null)
             return false;
 
@@ -1219,12 +1354,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             }
         }
 
+        // SECTOR.<verb>: the sector is a reference head for verbs as well as reads
+        // (OBR_SECTOR, CObjBase.cpp:899) - "SECTOR.ALLCLIENTS SOUND x" runs on the
+        // sector this object's top level stands in.
+        if (trimmedKey.StartsWith("SECTOR.", StringComparison.OrdinalIgnoreCase) && trimmedKey.Length > 7)
+        {
+            var verbSector = ResolveWorld?.Invoke()?.GetSector(GetTopLevelPosition());
+            return verbSector != null && verbSector.TryExecuteCommand(trimmedKey[7..], args, source);
+        }
+
         // SFX is the legacy Sphere alias of SOUND (55i-era scripts use both).
         if (trimmedKey.Equals("SOUND", StringComparison.OrdinalIgnoreCase) ||
             trimmedKey.Equals("SFX", StringComparison.OrdinalIgnoreCase))
             return EmitScriptSound(args);
         if (trimmedKey.Equals("EFFECT", StringComparison.OrdinalIgnoreCase))
-            return EmitScriptEffect(args);
+            return EmitScriptEffect(args, ResolveSourceCharacter(source));
 
         switch (key.ToUpperInvariant())
         {
@@ -1292,8 +1436,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             {
                 string[] parts = SplitScriptArgs(args);
                 if (parts.Length == 0 ||
-                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long rawDamage) ||
-                    rawDamage <= 0)
+                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long rawDamage))
                     return false;
 
                 var damageType = Combat.DamageType.HitBlunt;
@@ -1301,11 +1444,19 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                     SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long rawType))
                     damageType = (Combat.DamageType)unchecked((ushort)rawType);
 
-                Characters.Character? damageSource = null;
-                if (parts.Length > 2 &&
-                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[2].AsSpan(), out long rawSource) &&
-                    rawSource > 0 && rawSource <= uint.MaxValue)
-                    damageSource = ResolveWorld?.Invoke()?.FindChar(new Serial((uint)rawSource));
+                // The damage source is SRC unless a third argument names another one;
+                // that uid may be any object and its TOP-LEVEL character is the source
+                // (CObjBase.cpp:2237-2243). Defaulting to nobody made every two-argument
+                // DAMAGE sourceless - no aggression, no kill credit.
+                Characters.Character? damageSource = ResolveSourceCharacter(source);
+                if (parts.Length > 2)
+                {
+                    damageSource = null;
+                    if (SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[2].AsSpan(), out long rawSource) &&
+                        rawSource > 0 && rawSource <= uint.MaxValue)
+                        damageSource = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)rawSource))
+                            ?.GetTopLevelObj() as Characters.Character;
+                }
 
                 static int Percent(string[] values, int index) =>
                     index < values.Length &&
@@ -1328,16 +1479,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 // scheduled (CObjBase.cpp:2762). They used to fall into the scheduler,
                 // which found no payload and returned quietly - so cancelling delayed
                 // work was accepted and did nothing, and the jobs ran anyway.
+                // Both are PREFIX matches (strnicmp, CObjBase.cpp:2762/2767). STOP skips
+                // five characters, so "STOP f_x" and "STOP,f_x" both name f_x; a STOP
+                // with no pattern matches nothing (Str_Match against "",
+                // CTimedFunctionHandler.cpp:46) rather than clearing every timer.
                 string timerFArg = args.Trim();
-                if (timerFArg.Equals("CLEAR", StringComparison.OrdinalIgnoreCase))
+                if (timerFArg.StartsWith("CLEAR", StringComparison.OrdinalIgnoreCase))
                 {
                     ClearTimerF(null);
                     return true;
                 }
-                if (timerFArg.StartsWith("STOP", StringComparison.OrdinalIgnoreCase) &&
-                    (timerFArg.Length == 4 || char.IsWhiteSpace(timerFArg[4])))
+                if (timerFArg.StartsWith("STOP", StringComparison.OrdinalIgnoreCase))
                 {
-                    ClearTimerF(timerFArg.Length > 4 ? timerFArg[4..].Trim() : null);
+                    string pattern = timerFArg.Length > 5 ? timerFArg[5..].Trim() : "";
+                    if (pattern.Length > 0)
+                        ClearTimerF(pattern);
                     return true;
                 }
                 ScheduleTimerF(timerFArg,
@@ -1358,8 +1514,56 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 OnObjectMessage?.Invoke(this, args, ResolveSourceCharacter(source));
                 return true;
 
+            // SAY / SAYU / EMOTE belong to every object (OV_SAY / OV_SAYU / OV_EMOTE,
+            // CObjBase.cpp:2354/2557/2562): overhead text heard by everyone near it.
+            // An item used to whisper the line privately to SRC instead.
             case "SAY":
+                BroadcastObjectSpeech(unicode: false, args);
+                return true;
+            case "SAYU":
+                BroadcastObjectSpeech(unicode: true, args);
+                return true;
             case "EMOTE":
+                EmoteObject(args);
+                return true;
+            // Moving is unrestricted and only for top-level objects (OV_MOVE,
+            // CObjBase.cpp:2434 + GetDeltaStr): "dx,dy[,dz]" or a direction word with
+            // a step count - "MOVE N 2". Characters had no MOVE at all, and an item
+            // understood numbers only.
+            case "MOVE":
+            {
+                if (!IsTopLevelObject)
+                    return true;
+                var movePoint = GetTopLevelPosition();
+                if (!TryApplyDeltaString(args, ref movePoint))
+                    return false;
+                TryMoveScriptObject(movePoint);
+                return true;
+            }
+            // NUDGEUP/NUDGEDOWN [n]: n defaults to 1 (OV_NUDGEUP/OV_NUDGEDOWN,
+            // CObjBase.cpp:2471); items too, top level only.
+            case "NUDGEUP":
+            case "NUDGEDOWN":
+            {
+                if (!IsTopLevelObject)
+                    return true;
+                int zdiff = (sbyte)EvalScriptLong(args);
+                if (zdiff == 0) zdiff = 1;
+                if (key.Equals("NUDGEDOWN", StringComparison.OrdinalIgnoreCase)) zdiff = -zdiff;
+                var np = Position;
+                TryMoveScriptObject(new Point3D(np.X, np.Y, (sbyte)Math.Clamp(np.Z + zdiff, sbyte.MinValue, sbyte.MaxValue), np.Map));
+                return true;
+            }
+            // Every object resends its tooltip (OV_RESENDTOOLTIP, CObjBase.cpp:2539);
+            // only characters had the verb, so LINK.RESENDTOOLTIP on an item fell
+            // through to a function lookup and nothing was refreshed.
+            case "RESENDTOOLTIP":
+                ResendTooltipForObject?.Invoke(this);
+                return true;
+            // Setting the uid is refused (OV_UID, CObjBase.cpp:2957).
+            case "UID":
+                source.SysMessage("Setting the UID this way is not allowed");
+                return false;
             case "SYSMESSAGE":
             case "SYSMESSAGEF":
             // Source-X SMSG family — localized-message aliases of SYSMESSAGE
@@ -1418,9 +1622,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             }
             case "TAGLIST":
             {
-                // List all tags on this object to the console
+                // CVarDefMap::DumpKeys (CVarDefMap.cpp:599): "TAG.key=val", to the
+                // server log with the "log" argument.
+                var tagSink = ResolveDumpSink(args, source);
                 foreach (var (k, v) in _tags.GetAll())
-                    source.SysMessage($"TAG.{k} = {v}");
+                    tagSink($"TAG.{k}={v}");
                 return true;
             }
             case "EVENTS":
@@ -1443,9 +1649,17 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             {
                 // Source-X CV_TRIGGER: fire @<name> on this object through the
                 // normal handler chain (EVENTS/TEVENTS/ITEMDEF/typedef).
-                string trigName = args.Trim().TrimStart('@');
-                if (trigName.Length > 0)
-                    OnScriptTrigger?.Invoke(this, trigName, source);
+                // "name[, argType, args]" (CallPersonalTrigger, CObjBase.cpp:3708): with
+                // exactly three comma fields the type picks what the third fills -
+                // 1 = ARGN1..3, 2 = ARGS, 3 = ARGO uid, 4 = "argo,n1,n2,n3,args".
+                string[] trig = args.Split(',', 3, StringSplitOptions.TrimEntries);
+                string trigName = trig[0].TrimStart('@');
+                if (trigName.Length == 0)
+                    return true;
+                var trigArgs = new Scripting.TriggerArgs();
+                if (trig.Length == 3)
+                    FillPersonalTriggerArgs(trigArgs, trig[1], trig[2]);
+                OnScriptTrigger?.Invoke(this, trigName, source, trigArgs);
                 return true;
             }
             case "REMOVE":
@@ -1527,7 +1741,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 // Visual effect — handled by the callback if set
                 return true;
             case "EFFECTLOCATION":
-                return EmitScriptEffectLocation(args);
+                return EmitScriptEffectLocation(args, ResolveSourceCharacter(source));
             // Source-X OV_GOAWAKE/OV_GOSLEEP — flip the object's tick-sleep
             // state (a sleeping object is skipped by the sector tick loops).
             case "GOAWAKE":
@@ -1573,7 +1787,10 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                         !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(args.AsSpan(), out long clickUid) ||
                         clickUid <= 0 || clickUid > uint.MaxValue)
                         return false;
-                    clickTarget = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)clickUid)) ?? this;
+                    // An unknown uid refuses (CObjBase.cpp:2988) rather than clicking self.
+                    var clicked = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)clickUid));
+                    if (clicked == null) return false;
+                    clickTarget = clicked;
                 }
                 return OnScriptSingleClick?.Invoke(clickTarget, source) == true;
             }
@@ -1698,6 +1915,177 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         return true;
     }
 
+    /// <summary>A verb argument evaluated the way Exp_GetVal reads one: a Sphere
+    /// number (leading zero = hex), a DEFNAME, or an expression. Empty or
+    /// unreadable is 0, as upstream's evaluator answers.</summary>
+    protected static long EvalScriptLong(string? text)
+    {
+        string t = (text ?? "").Trim();
+        if (t.Length == 0) return 0;
+        if (ScriptNumber.TryParseToken(t, out long direct)) return direct;
+        var parser = new SphereNet.Scripting.Expressions.ExpressionParser
+        {
+            VariableResolver = name => DefinitionLoader.StaticResources?.TryResolveDefNameValue(name, out var value) == true
+                ? value.ToString(CultureInfo.InvariantCulture) : null
+        };
+        return parser.TryEvaluate(t, out long v) ? v : 0;
+    }
+
+    /// <summary>The argument-type forms of the TRIGGER verb
+    /// (CObjBase::CallPersonalTrigger, CObjBase.cpp:3719-3775).</summary>
+    private static void FillPersonalTriggerArgs(Scripting.TriggerArgs targs, string typeText, string payload)
+    {
+        int.TryParse(typeText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int argType);
+        switch (argType)
+        {
+            case 1:
+            {
+                string[] n = payload.Split(',', StringSplitOptions.TrimEntries);
+                if (n.Length >= 1) targs.N1 = EvalScriptLong(n[0]);
+                if (n.Length >= 2) targs.N2 = EvalScriptLong(n[1]);
+                if (n.Length >= 3) targs.N3 = EvalScriptLong(n[2]);
+                break;
+            }
+            case 2:
+                targs.S1 = payload;
+                break;
+            case 3:
+                targs.O1 = ResolveWorld?.Invoke()?.FindObject(new Serial(unchecked((uint)EvalScriptLong(payload))));
+                break;
+            case 4:
+            {
+                string[] f = payload.Split(',', 5, StringSplitOptions.TrimEntries);
+                if (f.Length == 5) targs.S1 = f[4];
+                if (f.Length >= 4) targs.N3 = EvalScriptLong(f[3]);
+                if (f.Length >= 3) targs.N2 = EvalScriptLong(f[2]);
+                if (f.Length >= 2) targs.N1 = EvalScriptLong(f[1]);
+                if (f.Length >= 1 &&
+                    ResolveWorld?.Invoke()?.FindObject(new Serial(unchecked((uint)EvalScriptLong(f[0])))) is { } argo)
+                    targs.O1 = argo;
+                break;
+            }
+        }
+    }
+
+    /// <summary>Source-X GetDirStr (CObjBase.cpp:30): E, W, N/NE/NW, S/SE/SW or a
+    /// digit 0-7. Null when the word names no direction.</summary>
+    private static Direction? ParseDirectionWord(string word)
+    {
+        if (word.Length == 0) return null;
+        char c = char.ToUpperInvariant(word[0]);
+        char c2 = word.Length > 1 ? char.ToUpperInvariant(word[1]) : '\0';
+        return c switch
+        {
+            'E' => Direction.East,
+            'W' => Direction.West,
+            'N' => c2 == 'E' ? Direction.NorthEast : c2 == 'W' ? Direction.NorthWest : Direction.North,
+            'S' => c2 == 'E' ? Direction.SouthEast : c2 == 'W' ? Direction.SouthWest : Direction.South,
+            >= '0' and <= '7' => (Direction)(c - '0'),
+            _ => null,
+        };
+    }
+
+    /// <summary>Source-X GetDeltaStr (CObjBase.cpp:62): "dx,dy[,dz]" as numbers, or a
+    /// direction word with an optional step count (default 1) - "MOVE N 2".</summary>
+    private static bool TryApplyDeltaString(string args, ref Point3D point)
+    {
+        string[] parts = SplitScriptArgs(args);
+        if (parts.Length == 0) return false;
+        char head = char.ToUpperInvariant(parts[0][0]);
+        long second = parts.Length > 1 ? EvalScriptLong(parts[1]) : 0;
+        if (char.IsDigit(head) || head == '-')
+        {
+            int x = point.X + (short)EvalScriptLong(parts[0]);
+            int y = point.Y + (short)second;
+            int z = point.Z + (sbyte)(parts.Length > 2 ? EvalScriptLong(parts[2]) : 0);
+            point = new Point3D((short)x, (short)y, (sbyte)Math.Clamp(z, sbyte.MinValue, sbyte.MaxValue), point.Map);
+            return true;
+        }
+        if (second == 0) second = 1;
+        if (ParseDirectionWord(parts[0]) is not { } dir) return false;
+        var (dx, dy) = dir switch
+        {
+            Direction.North => (0, -1),
+            Direction.NorthEast => (1, -1),
+            Direction.East => (1, 0),
+            Direction.SouthEast => (1, 1),
+            Direction.South => (0, 1),
+            Direction.SouthWest => (-1, 1),
+            Direction.West => (-1, 0),
+            _ => (-1, -1),
+        };
+        point = new Point3D((short)(point.X + dx * second), (short)(point.Y + dy * second), point.Z, point.Map);
+        return true;
+    }
+
+    /// <summary>Is this object at the top of its hierarchy (not inside a container or
+    /// worn)? The MOVE and NUDGE verbs only act then (IsTopLevel).</summary>
+    private bool IsTopLevelObject => this is not Items.Item topItem || !topItem.ContainedIn.IsValid;
+
+    /// <summary>Overhead speech from any object (CObjBase::Speak / SpeakUTF8 ->
+    /// CWorld::Speak): heard by everyone near the TOP-LEVEL object, the
+    /// `@hue,font,unicode` prefix read as format. A character overrides this with its
+    /// own path; this is what an item says.</summary>
+    protected void BroadcastObjectSpeech(bool unicode, string rawArgs)
+    {
+        var fmt = Messages.SpeechPrefix.Parse(rawArgs?.Trim(), 0x03B2);
+        if (fmt.Drop || string.IsNullOrEmpty(fmt.Text)) return;
+        ushort body = this is Characters.Character sc ? sc.BodyId : (ushort)0;
+        PacketWriter pkt = unicode
+            ? new PacketSpeechUnicodeOut(Uid.Value, body, 0, fmt.Hue, fmt.Font,
+                PacketSpeechUnicodeOut.SystemLanguage, GetName(), fmt.Text)
+            : new PacketSpeechOut(Uid.Value, body, 0, fmt.Hue, fmt.Font, GetName(), fmt.Text);
+        BroadcastNearby?.Invoke(GetTopLevelPosition(), 18, pkt, 0);
+    }
+
+    /// <summary>Source-X CObjBase::Emote (CObjBase.cpp:630): the text is framed by the
+    /// DEFMSG emote lines - "*You see NAME text*" for onlookers and "*You text*" for
+    /// the one emoting; an item worn or carried by a character reads possessively
+    /// ("*You see OWNERs NAME text*" / "*Your NAME text*"); an item whose top level
+    /// is another item uses msg_emote_7 for everyone. Sent from the top-level object
+    /// in emote mode (UpdateObjMessage, TALKMODE_EMOTE, HUE_TEXT_DEF).</summary>
+    public void EmoteObject(string text)
+    {
+        var top = GetTopLevelObj();
+        string them, you;
+        if (top is Characters.Character)
+        {
+            if (!ReferenceEquals(top, this))
+            {
+                them = Messages.ServerMessages.GetFormatted("msg_emote_1", top.GetName(), GetName(), text);
+                you = Messages.ServerMessages.GetFormatted("msg_emote_2", GetName(), text);
+            }
+            else
+            {
+                them = Messages.ServerMessages.GetFormatted("msg_emote_5", GetName(), text);
+                you = Messages.ServerMessages.GetFormatted("msg_emote_6", text);
+            }
+        }
+        else
+        {
+            them = Messages.ServerMessages.GetFormatted("msg_emote_7", GetName(), text);
+            you = them;
+        }
+
+        const ushort hueTextDef = 0x03B2;
+        const byte talkModeEmote = 2;
+        ushort body = top is Characters.Character tc ? tc.BodyId : (ushort)0;
+        uint exclude = 0;
+        if (top is Characters.Character owner && Characters.Character.SendPacketToOwner != null)
+        {
+            Characters.Character.SendPacketToOwner(owner,
+                new PacketSpeechOut(top.Uid.Value, body, talkModeEmote, hueTextDef, 3, top.GetName(), you));
+            exclude = owner.Uid.Value;
+        }
+        // A character's speech goes out through the character broadcast hook, the
+        // one its SAY already uses; the two are wired to the same sender.
+        var broadcast = top is Characters.Character
+            ? Characters.Character.BroadcastNearby ?? BroadcastNearby
+            : BroadcastNearby;
+        broadcast?.Invoke(top.Position, 18,
+            new PacketSpeechOut(top.Uid.Value, body, talkModeEmote, hueTextDef, 3, top.GetName(), them), exclude);
+    }
+
     private static bool TryParseScriptPoint(string text, Point3D current, out Point3D point)
     {
         point = current;
@@ -1710,8 +2098,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             !short.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out short y))
             return false;
 
-        sbyte z = current.Z;
-        byte map = current.Map;
+        // A point written without its z or map has them as 0 (CPointBase::Read,
+        // CPointBase.cpp:977-979), the same as the P= property below - not the
+        // object's current z and map.
+        sbyte z = 0;
+        byte map = 0;
         if (parts.Length > 2 && parts[2].Length > 0 &&
             !sbyte.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out z))
             return false;
@@ -1765,7 +2156,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 if (IsChar && _name.Length > 0 && !_name.Equals(value, StringComparison.Ordinal))
                     OnNameChangeWarning?.Invoke(
                         $"0x{_uid.Value:X8} '{_name}' -> '{value}' via TrySetProperty");
+                // SetName + tooltip resend (CObjBase.cpp:1961): the change has to be
+                // published, which the dirty flag does - assigning the field alone left
+                // every client showing the old name until something else refreshed it.
+                bool renamed = !_name.Equals(value, StringComparison.Ordinal);
                 _name = value;
+                if (renamed)
+                    MarkDirty(DirtyFlag.Name);
                 return true;
             case "COLOR":
             case "HUE":
@@ -2044,13 +2441,20 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         // works without terrain data; only the terrain-flag search needs it).
         if (upper.StartsWith("ISNEARTYPE", StringComparison.Ordinal))
         {
-            // Format: ISNEARTYPE type,distance  or  ISNEARTYPE(type,distance)
-            var argStr = upper["ISNEARTYPE".Length..].Trim('(', ')', ' ');
+            // Format: ISNEARTYPE type,distance  or  ISNEARTYPE(type,distance).
+            // Both forms search from the TOP-LEVEL point (GetTopPoint,
+            // CObjBase.cpp:1365); the TOP suffix of ISNEARTYPETOP is not part of
+            // the type name, which is how it used to be read.
+            string rest = upper["ISNEARTYPE".Length..];
+            if (rest.StartsWith("TOP", StringComparison.Ordinal))
+                rest = rest[3..];
+            pos = areaPos;
+            var argStr = rest.Trim('(', ')', ' ', '.');
             var parts = argStr.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length >= 1)
             {
                 string typeName = parts[0];
-                int dist = parts.Length >= 2 && int.TryParse(parts[1], out int d) ? d : 0;
+                int dist = parts.Length >= 2 ? (int)Math.Clamp(EvalScriptLong(parts[1]), 0, short.MaxValue) : 0;
 
                 // Resolve type name to a terrain TileFlag (else it's an item IT_TYPE).
                 TileFlag flagToMatch = typeName switch
@@ -2119,6 +2523,27 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                             {
                                 found = true;
                                 break;
+                            }
+                        }
+
+                        // ...and the map STATICS by the type their ITEMDEF declares
+                        // (CWorldMap::IsItemTypeNear -> IsTypeNear_Top, CWorldMap.cpp:
+                        // 663-760): a forge or anvil built into the map is a static,
+                        // and the crafting checks that ask for t_forge / t_anvil next
+                        // to the smith never found one.
+                        var staticData = world.MapData;
+                        for (int dx = -dist; dx <= dist && !found && staticData != null; dx++)
+                        {
+                            for (int dy = -dist; dy <= dist && !found; dy++)
+                            {
+                                foreach (var s in staticData.GetStatics(pos.Map, pos.X + dx, pos.Y + dy))
+                                {
+                                    if (DefinitionLoader.GetItemDef(s.TileId)?.Type == itemType)
+                                    {
+                                        found = true;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }

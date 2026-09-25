@@ -1170,10 +1170,20 @@ public sealed class ResourceHolder
     /// RES_* code or the index comes back in hex; "0" when it names no resource.</summary>
     public string ResolveResourceTypeOrIndex(string arg, bool wantIndex)
     {
-        var rid = ResolveDefName(FollowResourceAlias(arg.Trim()));
+        string text = arg.Trim();
+        // A plain number is taken apart as a resource uid (ResGetIndex/ResGetType,
+        // CResourceID.h:116-121: index = low 20 bits, type = the next 8), which is how
+        // a spawn list's numeric member (<RESOURCEINDEX 0190>) answers its own id.
+        if (Core.Types.ScriptNumber.TryParseToken(text, out long num))
+        {
+            long part = wantIndex ? (num & 0xFFFFF) : ((num >> 20) & 0xFF);
+            return part == 0 ? "00" : $"0{part:X}";
+        }
+        var rid = ResolveDefName(FollowResourceAlias(text));
         if (!rid.IsValid)
             return "0";
-        return wantIndex ? $"0{rid.Index:x}" : $"0{SourceXResCode(rid.Type):x}";
+        // FormatHex: uppercase digits.
+        return wantIndex ? $"0{rid.Index:X}" : $"0{SourceXResCode(rid.Type):X}";
     }
 
     private static string? PickBraceMember(string group, Func<int, int> roll)

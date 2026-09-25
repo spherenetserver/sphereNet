@@ -53,9 +53,13 @@ public class ExpressionRegressionTests
     {
         var parser = new ExpressionParser();
 
-        Assert.Equal("1.5", parser.EvaluateStr("<FEVAL 1/2+1>"));
-        Assert.Equal("2.75", parser.EvaluateStr("<FLOATVAL (1.5+4)/2>"));
+        // FLOATVAL is the float evaluator printed with "%f" (CFloatMath.cpp:17);
+        // FEVAL / FHVAL are a plain C atoi of the text (CScriptObj.cpp:741-745) -
+        // they truncate what FLOATVAL produced, they do not evaluate.
+        Assert.Equal("1", parser.EvaluateStr("<FEVAL 1/2+1>"));
+        Assert.Equal("2.750000", parser.EvaluateStr("<FLOATVAL (1.5+4)/2>"));
         Assert.Equal("02", parser.EvaluateStr("<FHVAL 2.9>"));
+        Assert.Equal("2", parser.EvaluateStr("<FEVAL <FLOATVAL (1.5+4)/2>>"));
     }
 
     [Fact]
@@ -65,7 +69,8 @@ public class ExpressionRegressionTests
 
         Assert.Equal(10, parser.Evaluate("0A".AsSpan()));
         Assert.Equal("10", parser.EvaluateStr("<EVAL 0A>"));
-        Assert.Equal("10", parser.EvaluateStr("<FEVAL 0A>"));
+        // atoi stops at the first non-digit: FEVAL is not an evaluation.
+        Assert.Equal("0", parser.EvaluateStr("<FEVAL 0A>"));
     }
 
     [Fact]

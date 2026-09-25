@@ -98,10 +98,11 @@ public sealed class ExpressionHardeningTests
         var ex = Record.Exception(() => r = p.EvaluateStr("<ASCPAD 2147483647,x>"));
         Assert.Null(ex);
 
-        // Clamped to 4096 groups: first is 'x' (0x78), the rest padding "00".
+        // Clamped to 4096 groups: first is 'x' in Sphere hex (078), the rest
+        // padding "00" (CScriptObj.cpp:918 FormatLLHex).
         var groups = r.Split(' ');
         Assert.Equal(4096, groups.Length);
-        Assert.Equal("78", groups[0]);
+        Assert.Equal("078", groups[0]);
         Assert.Equal("00", groups[1]);
     }
 
@@ -112,21 +113,23 @@ public sealed class ExpressionHardeningTests
         Assert.Equal("", p.EvaluateStr("<ASCPAD -5,x>"));
     }
 
-    // ---- H3: CHR rejects surrogates, keeps valid code points ----
+    // ---- H3: CHR is ONE byte (Format("%c", ...), CScriptObj.cpp:410) ----
 
     [Fact]
     public void Chr_SurrogateCodePoints_ReturnEmpty_NoThrow()
     {
         var p = new ExpressionParser();
+        // 0xD800 truncates to a zero byte, which ends the string.
         Assert.Equal("", p.EvaluateStr("<CHR 0xd800>"));
-        Assert.Equal("", p.EvaluateStr("<CHR 0xdfff>"));
+        var ex = Record.Exception(() => p.EvaluateStr("<CHR 0xdfff>"));
+        Assert.Null(ex);
     }
 
     [Fact]
     public void Chr_ValidCodePoints_StillProduceCharacters()
     {
         var p = new ExpressionParser();
-        Assert.Equal("A", p.EvaluateStr("<CHR 65>"));                       // BMP
-        Assert.Equal(char.ConvertFromUtf32(0x1F600), p.EvaluateStr("<CHR 0x1F600>")); // supplementary
+        Assert.Equal("A", p.EvaluateStr("<CHR 65>"));
+        Assert.Equal("A", p.EvaluateStr("<CHR 0141>"));   // taken modulo 256
     }
 }

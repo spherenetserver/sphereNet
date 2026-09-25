@@ -84,7 +84,7 @@ public sealed class DialogPackParityTests
 
         // Chained read to the found item's property.
         Assert.True(ch.TryGetProperty("FINDLAYER.11.COLOR", out string color));
-        Assert.Equal(hair.Hue.Value.ToString(), color);
+        Assert.Equal($"0{hair.Hue.Value:X}", color);   // COLOR reads hex (CObjBase.cpp:1153)
 
         // Chained REMOVE strips it.
         Assert.True(ch.TryExecuteCommand("FINDLAYER.11.REMOVE", "", null!));

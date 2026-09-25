@@ -90,7 +90,7 @@ public sealed class ArithmeticAssignmentTests : IDisposable
         Assert.Equal(10, Convert.ToInt32(Read(it, "MORE2"), 16));
         Assert.Equal(7, Convert.ToInt32(Read(it, "MORE1"), 16));
         Assert.Equal("10", Read(it, "MOREY"));
-        Assert.Equal("17", Read(it, "COLOR"));
+        Assert.Equal("011", Read(it, "COLOR"));   // 17, read back as Sphere hex
         Assert.Equal("6", Read(it, "AMOUNT"));
     }
 

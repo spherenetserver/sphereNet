@@ -129,9 +129,20 @@ public class ParityWaveH3Tests
         var console = new CaptureConsole();
 
         Assert.True(ch.TryExecuteCommand("SMSG", "hello there", console));
-        Assert.True(ch.TryExecuteCommand("SMSGU", "unicode line", console));
-
         Assert.Contains("hello there", console.Lines);
-        Assert.Contains("unicode line", console.Lines);
+
+        // SMSGU is SYSMESSAGEUA (CClient.cpp:1629): "hue,font,mode,lang,text", sent to
+        // the character's own client; fewer than five fields is refused.
+        var sent = new System.Collections.Generic.List<SphereNet.Network.Packets.PacketWriter>();
+        var saved = SphereNet.Game.Objects.Characters.Character.SendPacketToOwner;
+        SphereNet.Game.Objects.Characters.Character.SendPacketToOwner = (_, p) => sent.Add(p);
+        try
+        {
+            Assert.False(ch.TryExecuteCommand("SMSGU", "unicode line", console));
+            Assert.Empty(sent);
+            Assert.True(ch.TryExecuteCommand("SMSGU", "0481,,,ENU,unicode line", console));
+            Assert.Single(sent);
+        }
+        finally { SphereNet.Game.Objects.Characters.Character.SendPacketToOwner = saved; }
     }
 }

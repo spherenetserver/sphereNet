@@ -495,6 +495,45 @@ public partial class Character : ObjBase
         _screenHeight = height;
     }
 
+    /// <summary>HEIGHT= on the instance (CChar::m_height, CChar.cpp:3917); 0 = none,
+    /// the definition decides. Persisted when set, as upstream writes it (r_Write).</summary>
+    private byte _height;
+    public byte HeightOverride { get => _height; set => _height = value; }
+
+    /// <summary>PLAYER_HEIGHT (uofiles_macros.h:36): the height when nothing else says.</summary>
+    public const int DefaultHeight = 16;
+
+    /// <summary>CChar::GetHeight (CChar.cpp:1509): the instance HEIGHT, else the
+    /// CHARDEF's, else a height_&lt;id&gt; DEFNAME (hex spelling first, then decimal),
+    /// else <see cref="DefaultHeight"/>.</summary>
+    public int GetHeight()
+    {
+        if (_height != 0)
+            return _height;
+        var def = DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex);
+        if (def != null && def.Height != 0)
+            return def.Height;
+        var resources = DefinitionLoader.StaticResources;
+        if (resources != null)
+        {
+            int dispId = def != null && def.DispIndex != 0 ? def.DispIndex : _bodyId;
+            if (resources.TryResolveDefNameValue($"height_0{dispId:X}", out long hexHeight) && (byte)hexHeight != 0)
+                return (byte)hexHeight;
+            if (resources.TryResolveDefNameValue($"height_{dispId}", out long decHeight) && (byte)decHeight != 0)
+                return (byte)decHeight;
+        }
+        return DefaultHeight;
+    }
+
+    /// <summary>The CHARDEF's own ARMOR (CCharBase::m_defense). The definition keeps
+    /// it as a range; upstream reads the key once into a single value, and the range's
+    /// middle is what the rest of this engine reads a creature's armour as.</summary>
+    private int CharDefArmor()
+    {
+        var def = DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex);
+        return def == null ? 0 : (def.DefenseMin + def.DefenseMax) / 2;
+    }
+
     // NPC state
     public const short UnlimitedHomeDistance = short.MaxValue;
     private short _homeDist = UnlimitedHomeDistance;
@@ -2017,6 +2056,22 @@ public partial class Character : ObjBase
         }
         SetStatFlag(StatFlag.Criminal);
         CombatState.SetCriminal(durationMs);
+    }
+
+    /// <summary>CHV_CRIMINAL (CChar.cpp:4503): an explicit 0 clears the criminal
+    /// state; no argument, or any other value, flags me criminal through the same
+    /// path a crime does (Noto_Criminal, so @Criminal runs).</summary>
+    private void ApplyCriminalVerb(string? args)
+    {
+        string a = (args ?? "").Trim();
+        if (a.Length > 0 && ScriptNumber.TryParseToken(a, out long v) && v == 0)
+        {
+            CombatState.SetCriminal(0);
+            ClearStatFlag(StatFlag.Criminal);
+            NotoSaveUpdate?.Invoke(this);
+            return;
+        }
+        MakeCriminal();
     }
 
     /// <summary>Called once per world tick. Clears expired criminal flag and
@@ -4112,17 +4167,76 @@ public partial class Character : ObjBase
 
         if (upper.StartsWith("STATPERCENT", StringComparison.Ordinal))
         {
-            // STATPERCENT.<stat> — current pool as a percentage of its adjusted max
-            // (Source-X GetStatPercent). Sphere maps STR→hits, DEX→stam, INT→mana.
-            string statKey = upper.Length > 11 ? upper[11..].TrimStart('.') : "STR";
-            (int cur, int max) = statKey switch
+            // STATPERCENT.<stat> — current pool as a percentage of its ADJUSTED max
+            // (GetStatPercent, CCharStatus.cpp:482: Stat_GetMaxAdjusted). Sphere maps
+            // STR→hits, DEX→stam, INT→mana; a key naming no stat is left unanswered
+            // (CChar.cpp:3254).
+            string statKey = upper.Length > 11 ? upper[11..].TrimStart('.').Trim() : "";
+            (int cur, int max, bool known) = statKey switch
             {
-                "STR" or "HITS" => (_hits, (int)_maxHits),
-                "DEX" or "STAM" => (_stam, (int)_maxStam),
-                "INT" or "MANA" => (_mana, (int)_maxMana),
-                _ => (0, 0),
+                "STR" or "HITS" => (_hits, (int)MaxHits, true),
+                "DEX" or "STAM" => (_stam, (int)MaxStam, true),
+                "INT" or "MANA" => (_mana, (int)MaxMana, true),
+                _ => (0, 0, false),
             };
+            if (!known)
+                return false;
             value = (max <= 0 ? 0 : (cur * 100 + max / 2) / max).ToString();
+            return true;
+        }
+
+        // FAME.<title> / KARMA.<title> (CChar.cpp:2603/2700): 1 when the character's
+        // fame or karma falls in the band the [FAME]/[KARMA] table names <title>, else 0.
+        if (upper.StartsWith("FAME.", StringComparison.Ordinal))
+        {
+            value = MatchesNotorietyBand(DefinitionLoader.StaticResources?.FameTitles,
+                Math.Min((int)_fame, SphereNet.Game.Death.DeathEngine.MaxFame), key[5..], allowNegative: false) ? "1" : "0";
+            return true;
+        }
+        if (upper.StartsWith("KARMA.", StringComparison.Ordinal))
+        {
+            value = MatchesNotorietyBand(DefinitionLoader.StaticResources?.KarmaTitles,
+                _karma, key[6..], allowNegative: true) ? "1" : "0";
+            return true;
+        }
+
+        // <SEX male/female> asked of a character (CChar.cpp:2690): the first word for
+        // a male, the second for a female, split on ':' ',' or '/'. The sex is the
+        // CHARDEF's (CCharBase::IsFemale). With no words upstream leaves the key
+        // unanswered; the bare form keeps answering 1/0, which the top-level
+        // <SEX a/b> expression form relies on.
+        if (upper.StartsWith("SEX", StringComparison.Ordinal) &&
+            (upper.Length == 3 || upper[3] is ' ' or '.' or '\t'))
+        {
+            string words = key[3..].TrimStart('.').Trim();
+            if (words.Length == 0)
+            {
+                value = IsFemale ? "1" : "0";
+                return true;
+            }
+            string[] pair = words.Split([':', ',', '/'], 2);
+            value = IsFemale ? (pair.Length > 1 ? pair[1].Trim() : "") : pair[0].Trim();
+            return true;
+        }
+
+        // TITLE with anything after it (CChar.cpp:3315) is the trade title the paperdoll
+        // shows - TITLE when set, else the one GetTradeTitle builds - where the bare key
+        // is the raw TITLE field.
+        if (upper.StartsWith("TITLE.", StringComparison.Ordinal))
+        {
+            value = SphereNet.Game.Clients.PaperdollText.GetTradeTitle(this);
+            return true;
+        }
+
+        // DIR <uid> (CChar.cpp:3109): the direction from me to that character; any
+        // other argument (or none) answers the way I face.
+        if (upper.StartsWith("DIR ", StringComparison.Ordinal) || upper.StartsWith("DIR.", StringComparison.Ordinal))
+        {
+            var toward = ParseSerial(key[4..].Trim()) is { IsValid: true } dirUid
+                ? ResolveWorld?.Invoke()?.FindChar(dirUid) : null;
+            value = toward != null
+                ? ((byte)Position.GetDirectionTo(toward.Position)).ToString()
+                : ((byte)_direction).ToString();
             return true;
         }
 
@@ -4155,14 +4269,20 @@ public partial class Character : ObjBase
             case "MANA": value = _mana.ToString(); return true;
             case "STAM":
             case "STAMINA": value = _stam.ToString(); return true; // Source-X CHC_STAMINA == CHC_STAM
-            case "MAXHITS": value = _maxHits.ToString(); return true;
-            // The modifier is its own key upstream (CChar.cpp:3204); MAXHITS keeps
-            // reporting the base, as it already did.
+            // MAXHITS/MAXMANA/MAXSTAM answer the adjusted ceiling - base plus modifier
+            // plus the suit (Stat_GetMaxAdjusted, CChar.cpp:3186-3200), the ceiling the
+            // pool is actually clamped to; the bare base is OMAXHITS/OMAXMANA/OMAXSTAM
+            // (Stat_GetMax, :3189). The save path writes BaseMax*, never these reads.
+            case "MAXHITS": value = MaxHits.ToString(); return true;
+            case "OMAXHITS": value = _maxHits.ToString(); return true;
+            // The modifier is its own key upstream (CChar.cpp:3204).
             case "MODMAXHITS": value = _modMaxHits.ToString(); return true;
             case "MODMAXMANA": value = _modMaxMana.ToString(); return true;
             case "MODMAXSTAM": value = _modMaxStam.ToString(); return true;
-            case "MAXMANA": value = _maxMana.ToString(); return true;
-            case "MAXSTAM": value = _maxStam.ToString(); return true;
+            case "MAXMANA": value = MaxMana.ToString(); return true;
+            case "OMAXMANA": value = _maxMana.ToString(); return true;
+            case "MAXSTAM": value = MaxStam.ToString(); return true;
+            case "OMAXSTAM": value = _maxStam.ToString(); return true;
             case "BLOODCOLOR": value = $"0{_bloodHue:X}"; return true; // Source-X FormatHex(_wBloodHue)
             case "FOLLOWERSLOTS": value = ControlSlots.ToString(); return true;
             case "BODY": value = FormatBodyProperty(); return true;
@@ -4211,6 +4331,7 @@ public partial class Character : ObjBase
                 return true;
             }
             case "FOOD": value = _food.ToString(); return true;
+            case "OFOOD": value = _food.ToString(); return true; // Stat_GetBase(STAT_FOOD), CChar.cpp:3177
 
             // The base-definition keys a character chains to. Upstream reads them off
             // the CCharBase behind the CChar (CCharBase::r_WriteVal), so <SOUNDDIE> or
@@ -4235,7 +4356,8 @@ public partial class Character : ObjBase
                 {
                     "ANIM" => $"0{baseDef.Anim:X}",
                     "HIREDAYWAGE" => baseDef.HireDayWage.ToString(),
-                    "ICON" => baseDef.Icon ?? "",
+                    // CBC_ICON answers the item id in hex (CCharBase.cpp:246).
+                    "ICON" => $"0{ResolveTrackIconId(baseDef):X}",
                     "MOVERATE" => baseDef.MoveRate.ToString(),
                     "RESLEVEL" => baseDef.ResLevel.ToString(),
                     "RESDISPDNHUE" => $"0{baseDef.ResDispDnHue:X}",
@@ -4478,7 +4600,8 @@ public partial class Character : ObjBase
                 value = $"{_actP.X},{_actP.Y},{_actP.Z},{_actP.Map}";
                 return true;
             case "ACTPRV": value = _actPrv == Serial.Invalid ? "0" : $"0{_actPrv.Value:X}"; return true;
-            case "ACTDIFF": value = _actDiff.ToString(); return true;
+            // CHC_ACTDIFF (CChar.cpp:3052): tenths on the way out, as on the way in.
+            case "ACTDIFF": value = (_actDiff >= 0 ? (long)_actDiff * 10 : _actDiff).ToString(); return true;
             // ACTIONEFFECT (Source-X CHC_ACTIONEFFECT, CChar.cpp:3084). The live
             // pack shows it in its player-info dialog and writes it back through an
             // INPDLG (dialogs/sphere_dialogs_prop.scp:603/1036); nothing answered.
@@ -4507,13 +4630,24 @@ public partial class Character : ObjBase
             case "FLEESTEPSMAX": value = FleeStepsMax.ToString(); return true;
             case "CREATETIME":
             case "CREATE": value = (_createTime / 1000).ToString(); return true;
-            case "ISONLINE": value = _isOnline ? "1" : "0"; return true;
+            // CHC_ISONLINE (CChar.cpp:2913): a player is online while a client is
+            // attached; an NPC is online unless it has been taken out of the world
+            // (IsDisconnected - here a ridden mount or a stabled pet, both parked
+            // under STATF_RIDDEN).
+            case "ISONLINE":
+                value = _isPlayer ? (_isOnline ? "1" : "0") : (IsStatFlag(StatFlag.Ridden) ? "0" : "1");
+                return true;
 
             // --- Calculated properties ---
             case "SERIAL": value = $"0{Uid.Value:X}"; return true;
             case "ISCHAR": value = "1"; return true;
             case "ISITEM": value = "0"; return true;
-            case "DISPIDDEC": value = _bodyId.ToString(); return true;
+            // DISPIDDEC is the CHARDEF's tracking ICON item, in decimal (CChar.cpp:2883
+            // m_trackID) - the tile a dialog draws for the creature with TILEPIC. It is
+            // not the body: a body id drawn as a tile is an unrelated item graphic.
+            case "DISPIDDEC":
+                value = ResolveTrackIconId(DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex)).ToString();
+                return true;
             case "BASEID": value = $"0{BaseId:X}"; return true;
             // The CHARDEF's own defname (CBaseBaseDef_props.tbl DEFNAME), asked of the
             // instance - the counterpart of the item read.
@@ -4521,36 +4655,25 @@ public partial class Character : ObjBase
                 value = DefinitionLoader.GetCharDef(CharDefIndex)?.DefName ?? "";
                 return true;
             case "DUID": value = Uid.Value.ToString(); return true;
-            case "HEIGHT":
-            {
-                var hdef = Definitions.DefinitionLoader.GetCharDef(_charDefIndex);
-                value = hdef != null && hdef.Height > 0 ? hdef.Height.ToString() : "10";
+            case "HEIGHT": value = GetHeight().ToString(); return true;
+            // NPC_IsVendor (CCharNPCAct_Vendor.cpp:21): the NPC's brain is one of the
+            // vendor set - healer, banker, vendor or stable (CCharNPC::IsVendor).
+            case "ISVENDOR":
+                value = !_isPlayer && SphereNet.Game.Trade.VendorEngine.IsVendorBrain(_npcBrain) ? "1" : "0";
                 return true;
-            }
-            case "ISVENDOR": value = _npcBrain == NpcBrainType.Vendor ? "1" : "0"; return true;
-            case "AC":
-            {
-                int ac = 0;
-                for (int i = 0; i < _equipment.Length; i++)
-                {
-                    var eq = _equipment[i];
-                    if (eq != null) ac += eq.Quality / 2;
-                }
-                value = ac.ToString();
-                return true;
-            }
             case "ARMOR":
             case "AR":
+            case "AC":
             case "ARMOR.LO":
             case "ARMOR.HI":
             case "AR.LO":
             case "AR.HI":
-                // Total worn armour rating (Source-X OC_ARMOR / CHC_AR). The LO/HI
-                // split is an ITEM's range: upstream checks IsChar FIRST and answers
-                // the total for a character whatever suffix followed
-                // (CObjBase.cpp:1051), so all four spellings agree here rather than
-                // inventing a character-side range that has no source.
-                value = Combat.CombatEngine.CalcArmorDefense(this).ToString();
+                // Total armour rating: the worn armour plus the CHARDEF's own ARMOR
+                // (CHC_AR/CHC_AC, CChar.cpp:2749: m_defense + pCharDef->m_defense). AC is
+                // the same key upstream. The LO/HI split is an ITEM's range: upstream
+                // checks IsChar FIRST and answers the total for a character whatever
+                // suffix followed (CObjBase.cpp:1051).
+                value = (Combat.CombatEngine.CalcArmorDefense(this) + CharDefArmor()).ToString();
                 return true;
             // Both in tenths of a stone, which is the unit the scripts are written in:
             // upstream answers WEIGHT with GetTotalWeight() and MAXWEIGHT with
@@ -4627,26 +4750,19 @@ public partial class Character : ObjBase
                     value = SphereNet.Game.Trade.VirtualGold.Get(this).ToString();
                     return true;
                 }
-                int gold = 0;
-                var pack = Backpack;
-                if (pack != null)
-                {
-                    foreach (var item in pack.Contents)
-                        if (item.BaseId == 0x0EED) gold += item.Amount;
-                }
-                value = gold.ToString();
+                // ContentCount(t_gold) over everything I carry (CChar.cpp:3333): the
+                // pack, the bank box and any other worn container, all the way down.
+                value = CountCarriedGold().ToString();
                 return true;
             }
             case "BANKBALANCE":
             {
-                value = TryGetTag("BANKBALANCE", out string? bb) ? (bb ?? "0") : "0";
-                return true;
-            }
-            case "SEX":
-            {
-                // Standard UO female bodies
-                bool female = _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
-                value = female ? "1" : "0";
+                // The gold in my bank box (CChar.cpp:2756). GetBank makes the box when
+                // there is none; only when even that fails is the key left unanswered.
+                var bank = GetBankSafe();
+                if (bank == null)
+                    return false;
+                value = CountGoldIn(bank).ToString();
                 return true;
             }
             case "GUILDABBREV":
@@ -5090,19 +5206,34 @@ public partial class Character : ObjBase
             }
         }
 
-        // SKILLBEST.n — nth highest skill
-        if (upper.StartsWith("SKILLBEST.", StringComparison.Ordinal))
+        // SKILLBEST[.n] (CChar.cpp:2677, Skill_GetBest CCharSkill.cpp:25): the skill
+        // holding rank n (0 = the best, the default) by base value. Every skill takes
+        // part, zero-valued ones included, and on a tie the later skill ranks higher;
+        // a rank past the skill count reads as rank 0.
+        if (upper == "SKILLBEST" || upper.StartsWith("SKILLBEST.", StringComparison.Ordinal))
         {
-            if (int.TryParse(upper.AsSpan("SKILLBEST.".Length), out int rank) && rank >= 0)
+            int rank = 0;
+            if (upper.Length > 10 && ScriptNumber.TryParseToken(upper[10..].Trim(), out long rankArg))
+                rank = rankArg < 0 || rankArg >= _skillValues.Length ? 0 : (int)rankArg;
+            var best = new int[rank + 1];
+            var bestVal = new int[rank + 1];
+            Array.Fill(best, 0);
+            for (int i = 0; i < _skillValues.Length; i++)
             {
-                var sorted = new List<(int Index, ushort Value)>();
-                for (int i = 0; i < _skillValues.Length; i++)
-                    if (_skillValues[i] > 0) sorted.Add((i, _skillValues[i]));
-                sorted.Sort((a, b) => b.Value.CompareTo(a.Value));
-                value = rank < sorted.Count ? sorted[rank].Index.ToString() : "-1";
-                return true;
+                int v = _skillValues[i];
+                for (int j = 0; j <= rank; j++)
+                {
+                    if (v >= bestVal[j])
+                    {
+                        Array.Copy(best, j, best, j + 1, rank - j);
+                        Array.Copy(bestVal, j, bestVal, j + 1, rank - j);
+                        best[j] = i;
+                        bestVal[j] = v;
+                        break;
+                    }
+                }
             }
-            value = "-1";
+            value = best[rank].ToString();
             return true;
         }
 
@@ -5330,6 +5461,198 @@ public partial class Character : ObjBase
         }
 
         return base.TryGetProperty(key, out value);
+    }
+
+    /// <summary>The FAME.x / KARMA.x band test (CChar.cpp:2614-2651 / 2710-2747). The
+    /// table's first line is the comma list of band floors, each following line names
+    /// one band; walking from the highest floor down, the first floor the value reaches
+    /// picks the band, and the answer is whether its name is the one asked for. No
+    /// table, or a value below every floor, answers false.</summary>
+    private static bool MatchesNotorietyBand(IReadOnlyList<string>? table, int value, string wanted,
+        bool allowNegative)
+    {
+        if (table == null || table.Count == 0)
+            return false;
+        string[] floors = table[0].Split(',');
+        for (int i = floors.Length - 1; i >= 0; i--)
+        {
+            string floor = floors[i].Trim();
+            // Upstream skips a floor that is not a number (karma floors may be negative).
+            if (!int.TryParse(floor, System.Globalization.NumberStyles.AllowLeadingSign,
+                    System.Globalization.CultureInfo.InvariantCulture, out int min) ||
+                (!allowNegative && floor.StartsWith('-')))
+                continue;
+            if (value >= min)
+                return i + 1 < table.Count &&
+                       string.Equals(table[i + 1].Trim(), wanted.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
+    }
+
+    // --- Gold carried (CContainer::ContentCount / ContentConsume with t_gold) ---
+    //
+    // Upstream counts gold over the character's whole content: every worn item, and
+    // every container among them all the way down - which takes in the pack AND the
+    // bank box - skipping only locked sub-containers (CContainer.cpp:385-414).
+
+    private static bool IsGoldPile(Item item) => SphereNet.Game.Trade.VendorEngine.IsGold(item);
+
+    private static long CountGoldIn(Item container)
+    {
+        long total = 0;
+        foreach (var child in container.Contents)
+        {
+            if (child.IsDeleted) continue;
+            if (IsGoldPile(child))
+                total += child.Amount;
+            if (child.ContentCount > 0 && child.ItemType != ItemType.ContainerLocked)
+                total += CountGoldIn(child);
+        }
+        return total;
+    }
+
+    /// <summary>The GOLD read (CChar.cpp:3333): ContentCount(t_gold) over what I wear.</summary>
+    public long CountCarriedGold()
+    {
+        long total = 0;
+        for (int i = 0; i < _equipment.Length; i++)
+        {
+            var worn = _equipment[i];
+            if (worn == null || worn.IsDeleted) continue;
+            if (IsGoldPile(worn))
+                total += worn.Amount;
+            if (worn.ContentCount > 0 && worn.ItemType != ItemType.ContainerLocked)
+                total += CountGoldIn(worn);
+        }
+        return total;
+    }
+
+    private static void ConsumeGoldIn(Item container, ref long want)
+    {
+        foreach (var child in container.Contents.ToArray())
+        {
+            if (want <= 0) return;
+            if (child.IsDeleted) continue;
+            if (IsGoldPile(child))
+            {
+                long take = Math.Min(want, child.Amount);
+                want -= take;
+                if (take >= child.Amount) child.RemoveFromWorld();
+                else child.Amount = (ushort)(child.Amount - take);
+                continue;
+            }
+            if (child.ContentCount > 0 && child.ItemType != ItemType.ContainerLocked)
+                ConsumeGoldIn(child, ref want);
+        }
+    }
+
+    /// <summary>ContentConsume(t_gold, amount) over what I wear, in layer order.</summary>
+    private void ConsumeCarriedGold(long amount)
+    {
+        for (int i = 0; i < _equipment.Length && amount > 0; i++)
+        {
+            var worn = _equipment[i];
+            if (worn == null || worn.IsDeleted || worn.ItemType == ItemType.ContainerLocked) continue;
+            ConsumeGoldIn(worn, ref amount);
+        }
+    }
+
+    /// <summary>AddGoldToPack (CCharAct.cpp:215): new gold piles of at most one full
+    /// stack each, capped at 25,000,000 per call, into <paramref name="container"/>.
+    /// <paramref name="forceNoStack"/> keeps each pile apart instead of merging it
+    /// into a pile already there.</summary>
+    private void AddGoldTo(Item container, long amount, bool forceNoStack)
+    {
+        var world = ResolveWorld?.Invoke();
+        if (world == null || amount <= 0) return;
+        amount = Math.Min(amount, SphereNet.Game.Trade.VendorEngine.MaxGoldPerGift);
+        while (amount > 0)
+        {
+            var gold = world.CreateItem();
+            gold.BaseId = 0x0EED;
+            gold.ItemType = ItemType.Gold;
+            gold.Name = "Gold";
+            int pile = (int)Math.Min(amount, gold.MaxAmount > 0 ? gold.MaxAmount : Math.Min(Item.ItemsMaxAmount, ushort.MaxValue));
+            gold.Amount = (ushort)pile;
+            amount -= pile;
+            Item? placed = forceNoStack
+                ? (container.TryAddItem(gold) ? gold : null)
+                : container.TryAddItemWithStack(gold);
+            if (placed == null)
+                world.PlaceItemWithDecay(gold, Position);
+            else if (!ReferenceEquals(placed, gold))
+                world.RemoveItem(gold);
+        }
+        MarkDirty(DirtyFlag.Stats);
+    }
+
+    /// <summary>GetBank (CCharStatus.cpp:124): my bank box, made and worn when I have
+    /// none - upstream's getter creates it, which is why BANKBALANCE and GOLD= always
+    /// find one.</summary>
+    private Item? GetBankSafe()
+    {
+        var bank = GetEquippedItem(Layer.BankBox);
+        if (bank != null && !bank.IsDeleted) return bank;
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return null;
+        bank = world.CreateItem();
+        bank.BaseId = 0x09AB;
+        bank.ItemType = ItemType.EqBankBox;
+        bank.Name = "Bank Box";
+        bank.SetAttr(ObjAttributes.Newbie | ObjAttributes.Move_Never);
+        if (!Equip(bank, Layer.BankBox))
+        {
+            world.RemoveItem(bank);
+            return null;
+        }
+        return bank;
+    }
+
+    /// <summary>GetPackSafe: my pack, made and worn when I have none.</summary>
+    private Item? GetPackSafe()
+    {
+        var pack = Backpack;
+        if (pack != null) return pack;
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return null;
+        pack = world.CreateItem();
+        pack.BaseId = 0x0E75;
+        pack.ItemType = ItemType.Container;
+        pack.Name = "Backpack";
+        if (!Equip(pack, Layer.Pack))
+        {
+            world.RemoveItem(pack);
+            return null;
+        }
+        return pack;
+    }
+
+    /// <summary>Food_GetLevelMessage(false, false) (CCharStatus.cpp:830): the food
+    /// level as one of eight words, food * 8 / max food rounded, the last word for
+    /// anything at the top.</summary>
+    public string FoodLevelMessage()
+    {
+        int max = MaxFood;
+        if (max <= 0)
+            return ServerMessages.Get(Msg.PetHappyUnaffected);
+        long ab = (long)_food * 8;
+        int index = (int)((ab + max / 2) / max);
+        if (index > 7) index = 7;
+        return ServerMessages.Get($"msg_food_lvl_{index + 1}");
+    }
+
+    /// <summary>ITEMID_TRACK_WISP (uofiles_enums_itemid.h:887): the tracking icon a
+    /// CHARDEF has until its ICON= names another (CCharBase.cpp:19).</summary>
+    private const int TrackWispItemId = 0x2100;
+
+    /// <summary>CCharBase::m_trackID: the CHARDEF's ICON resolved to an item id. ICON=
+    /// takes an item defname or number and refuses a multi id (CCharBase.cpp:394-398).</summary>
+    private static int ResolveTrackIconId(SphereNet.Scripting.Definitions.CharDef? def)
+    {
+        if (def == null || string.IsNullOrWhiteSpace(def.Icon))
+            return TrackWispItemId;
+        int id = ResolveItemDefId(def.Icon);
+        return id > 0 ? id : TrackWispItemId;
     }
 
     private static bool TryParseHexOrDecUshort(string val, out ushort result)
@@ -5608,19 +5931,30 @@ public partial class Character : ObjBase
                     return true;
                 return true;
             case "DIR":
-                if (byte.TryParse(normalized, out byte drv))
+                // CHC_DIR (CChar.cpp:3836): an out-of-range direction becomes SE.
+                if (long.TryParse(normalized, out long drv))
                 {
-                    Direction = (Direction)drv;
+                    Direction = drv is >= 0 and <= 7 ? (Direction)drv : Direction.SouthEast;
                     return true;
                 }
                 return false;
+            // SetFame / SetKarma clamp into [0, MaxFame] and [MinKarma, MaxKarma]
+            // (CCharStat.cpp:686/723), the same limits a kill's award obeys.
             case "FAME":
                 if (TryParseShortSingleOrRange(normalized, out short fv))
-                    _fame = fv;
+                    _fame = (short)Math.Clamp((int)fv, 0, SphereNet.Game.Death.DeathEngine.MaxFame);
                 return true;
             case "KARMA":
                 if (TryParseShortSingleOrRange(normalized, out short kv))
-                    _karma = kv;
+                    _karma = (short)Math.Clamp((int)kv, SphereNet.Game.Death.DeathEngine.MinKarma,
+                        SphereNet.Game.Death.DeathEngine.MaxKarma);
+                return true;
+            case "OMAXHITS": if (short.TryParse(normalized, out short omh)) MaxHits = IsStatMaxDenied ? Str : omh; return true;
+            case "OMAXMANA": if (short.TryParse(normalized, out short omm)) MaxMana = IsStatMaxDenied ? Int : omm; return true;
+            case "OMAXSTAM": if (short.TryParse(normalized, out short oms)) MaxStam = IsStatMaxDenied ? Dex : oms; return true;
+            case "HEIGHT":
+                // CHC_HEIGHT (CChar.cpp:3917): the instance height, height_t (a byte).
+                if (long.TryParse(normalized, out long hgt)) _height = unchecked((byte)hgt);
                 return true;
             case "NPC":
             case "NPCBRAIN":
@@ -5664,8 +5998,8 @@ public partial class Character : ObjBase
             }
             // KILLS handled below with POISONLEVEL
             case "CRIMINAL":
-                if (normalized == "1" || normalized.Equals("true", StringComparison.OrdinalIgnoreCase))
-                    SetCriminal();
+                // CHV_CRIMINAL is a verb upstream; "CRIMINAL=0" reaches it the same way.
+                ApplyCriminalVerb(normalized);
                 return true;
             case "FOOD":
                 // Clamp to the 0-60 range like the Food property setter, so the
@@ -5712,8 +6046,16 @@ public partial class Character : ObjBase
             case "MODAC": // alias of MODAR (CObjBase.cpp:1948)
                 if (short.TryParse(normalized, out short mav)) _modAr = mav; return true;
             case "MODMAXWEIGHT": if (short.TryParse(normalized, out short mmwv)) _modMaxWeight = mmwv; return true;
-            case "OBODY": if (ushort.TryParse(normalized, out ushort obv)) _oBody = obv; return true;
-            case "OSKIN": if (ushort.TryParse(normalized, out ushort oskinv)) _oSkin = oskinv; return true;
+            // CHC_OBODY takes a CHARDEF, by number or by defname (CChar.cpp:3983).
+            case "OBODY":
+            {
+                ushort obv = TryParseHexOrDecUshort(normalized.Trim(), out ushort obNum) ? obNum : ResolvePolyBody(normalized);
+                if (obv == 0) return false;
+                _oBody = obv;
+                return true;
+            }
+            // A hue is a Sphere number: a leading 0 means hex (GetArgWVal, CChar.cpp:3995).
+            case "OSKIN": if (TryParseHexOrDecUshort(normalized.Trim(), out ushort oskinv)) _oSkin = oskinv; return true;
             case "LUCK": if (short.TryParse(normalized, out short luckv)) _luck = luckv; return true;
             case "GM":
             {
@@ -5778,6 +6120,12 @@ public partial class Character : ObjBase
             case "HOMEDIST": if (short.TryParse(normalized, out short hdv)) _homeDist = hdv; return true;
             case "HOME":
             {
+                // CHC_HOME with no argument takes the spot I stand on (CChar.cpp:3921).
+                if (string.IsNullOrWhiteSpace(normalized))
+                {
+                    _home = Position;
+                    return true;
+                }
                 var hp = normalized.Split(',', StringSplitOptions.TrimEntries);
                 if (hp.Length >= 2 && short.TryParse(hp[0], out short hx) && short.TryParse(hp[1], out short hy))
                 {
@@ -5789,7 +6137,7 @@ public partial class Character : ObjBase
             }
             case "ACTPRI": if (short.TryParse(normalized, out short apv)) _actPri = apv; return true;
             case "SPEECHCOLOR":
-            case "SPEECHCOLOROVERRIDE": if (ushort.TryParse(normalized, out ushort scv)) _speechColor = scv; return true;
+            case "SPEECHCOLOROVERRIDE": if (TryParseHexOrDecUshort(normalized.Trim(), out ushort scv)) _speechColor = scv; return true;
             case "MAXFOLLOWER": if (byte.TryParse(normalized, out byte mfv)) _maxFollower = mfv; return true;
             case "CURFOLLOWER": if (byte.TryParse(normalized, out byte cfv)) _curFollower = cfv; return true;
             // Per-char regen rate overrides (Source-X CChar). Non-D stores seconds*1000,
@@ -5867,7 +6215,11 @@ public partial class Character : ObjBase
             case "EMOTEACT":
                 _emoteAct = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
-            case "FONT": if (byte.TryParse(normalized, out byte fontv)) _font = fontv; return true;
+            // CHC_FONT (CChar.cpp:3880): a font past FONT_QTY (10) falls back to normal (3).
+            case "FONT":
+                if (long.TryParse(normalized, out long fontv))
+                    _font = fontv is >= 0 and < 10 ? (byte)fontv : (byte)3;
+                return true;
             case "PROFILE": _profile = value; return true;
             case "PFLAG": if (uint.TryParse(normalized, out uint pfv)) _pFlag = pfv; return true;
             case "TITHING": if (int.TryParse(normalized, out int tithv)) _tithing = tithv; return true;
@@ -5887,6 +6239,12 @@ public partial class Character : ObjBase
             case "ACTARG3": if (int.TryParse(normalized, out int a3v)) _actArg3 = a3v; return true;
             case "ACTP":
             {
+                // CHC_ACTP with no argument takes the spot I stand on (CChar.cpp:3689).
+                if (string.IsNullOrWhiteSpace(normalized))
+                {
+                    _actP = Position;
+                    return true;
+                }
                 var ap = normalized.Split(',', StringSplitOptions.TrimEntries);
                 if (ap.Length >= 2 && short.TryParse(ap[0], out short ax) && short.TryParse(ap[1], out short ay))
                 {
@@ -5905,13 +6263,31 @@ public partial class Character : ObjBase
                     _actPrv = new Serial(aprvUid);
                 return true;
             }
-            case "ACTDIFF": if (int.TryParse(normalized, out int adv)) _actDiff = adv; return true;
+            // ACTDIFF is written and read in tenths of a skill point, and kept in whole
+            // points - the scale the skill roll uses (CChar.cpp:3697): a positive value
+            // is divided by ten, anything below -1 becomes -1 (a forced failure).
+            case "ACTDIFF":
+                if (ScriptNumber.TryParseToken(normalized.Trim(), out long adv))
+                    _actDiff = adv < -1 ? -1 : adv > 0 ? (int)Math.Min(adv / 10, int.MaxValue) : (int)adv;
+                return true;
+            // CHC_ACTIONEFFECT (CChar.cpp:3728): any negative value is -1.
             case "ACTIONEFFECT":
-                if (int.TryParse(normalized, out int aev)) ActionEffect = aev;
+                if (int.TryParse(normalized, out int aev)) ActionEffect = aev < 0 ? -1 : aev;
                 return true;
             case "ACTION":
-                if (int.TryParse(normalized, out int actv)) _action = (SkillType)actv;
+            {
+                // CHC_ACTION takes a skill KEY (FindSkillKey, CChar.cpp:3720): a skill
+                // name, or a Sphere number - where a leading 0 is hex. Classic saves
+                // store the NPC actions that way (ACTION=067 is 0x67, NPCACT_WANDER);
+                // reading it as decimal parked every such NPC on action 67, which is
+                // nothing at all.
+                string actText = normalized.Trim();
+                if (TryResolveSkillName(actText, out SkillType actSkill))
+                    _action = actSkill;
+                else if (ScriptNumber.TryParseToken(actText, out long actv) && actv is >= short.MinValue and <= short.MaxValue)
+                    _action = (SkillType)(int)actv;
                 return true;
+            }
             case "FIGHTTARGET":
             {
                 FightTarget = ParseSerial(normalized);
@@ -5944,18 +6320,25 @@ public partial class Character : ObjBase
                         SphereNet.Game.Trade.VirtualGold.Set(this, virtualVal);
                     return true;
                 }
-                if (int.TryParse(normalized, out int goldVal))
+                // CHC_GOLD (CChar.cpp:4057): the new total. Less than I carry consumes
+                // the difference; more adds the difference to my BANK BOX (upstream hands
+                // GetBank() to AddGoldToPack, and GetBank makes the box if need be). A negative
+                // total is refused. So SRC.GOLD -= 100 takes exactly 100.
+                if (!long.TryParse(normalized, out long goldVal) || goldVal < 0)
+                    return false;
+                goldVal = Math.Min(goldVal, int.MaxValue);
+                long carried = CountCarriedGold();
+                if (goldVal < carried)
                 {
-                    var pack = Backpack;
-                    if (pack != null)
-                    {
-                        // Remove existing gold
-                        foreach (var item in pack.Contents.ToList())
-                            if (item.BaseId == 0x0EED) item.RemoveFromWorld();
-                        // Setting gold is typically done via NEWGOLD command
-                        if (goldVal > 0)
-                            SetTag("PENDGOLD", goldVal.ToString());
-                    }
+                    ConsumeCarriedGold(carried - goldVal);
+                    MarkDirty(DirtyFlag.Stats);
+                }
+                else if (goldVal > carried)
+                {
+                    var bank = GetBankSafe();
+                    if (bank == null)
+                        return false;
+                    AddGoldTo(bank, goldVal - carried, forceNoStack: false);
                 }
                 return true;
             }
@@ -6284,15 +6667,21 @@ public partial class Character : ObjBase
             return EmitScriptEffect(args);
         if (key.Equals("FACE", StringComparison.OrdinalIgnoreCase))
         {
-            if (TryParseScriptByte(args, out byte dir))
-            {
-                var newDirection = (Direction)(dir & 0x07);
-                if (newDirection != _direction)
-                {
-                    _direction = newDirection;
-                    OnFacingChanged?.Invoke(this);
-                }
-            }
+            // CHV_FACE (CChar.cpp:4574) turns me TOWARD something: no argument faces
+            // the source character, a uid faces that object, anything else is read as
+            // a point. What it cannot resolve fails. (It is not a direction number.)
+            string faceArg = (args ?? "").Trim();
+            Point3D? toward = null;
+            if (faceArg.Length == 0)
+                toward = ResolveSourceCharacter(source)?.Position;
+            else if (ParseSerial(faceArg) is { IsValid: true } faceUid &&
+                     ResolveWorld?.Invoke()?.FindObject(faceUid) is { IsDeleted: false } faceObj)
+                toward = faceObj.GetTopLevelPosition();
+            else if (TryParseFacePoint(faceArg, out var facePt))
+                toward = facePt;
+            if (toward == null)
+                return false;
+            FaceToward(toward.Value);
             return true;
         }
 
@@ -6527,11 +6916,20 @@ public partial class Character : ObjBase
             case "ATTACK":
             case "KILLTARGET":
             {
-                // ATTACK <uid> — set this character's combat target.
+                // ATTACK <uid> is Fight_Attack (CChar.cpp:4471): a real engagement -
+                // the attacker list, the fight memory and the target - through the
+                // same path ATTACKER.ADD takes, not a bare target write.
                 if (!string.IsNullOrWhiteSpace(args))
                 {
                     var atkTarget = ParseSerial(args.Trim());
-                    if (atkTarget.IsValid)
+                    var atkChar = atkTarget.IsValid ? ResolveWorld?.Invoke()?.FindChar(atkTarget) : null;
+                    if (atkChar != null && atkChar != this && OnScriptAttackerAdd != null)
+                    {
+                        OnScriptAttackerAdd(this, atkChar);
+                        if (FightTarget == atkChar.Uid)
+                            SetStatFlag(StatFlag.War);
+                    }
+                    else if (atkTarget.IsValid)
                     {
                         FightTarget = atkTarget;
                         SetStatFlag(StatFlag.War);
@@ -6570,7 +6968,8 @@ public partial class Character : ObjBase
             }
             case "GO":
             {
-                // GO x,y,z,map
+                // GO <point> (CChar.cpp:4620): anything GetRegionPoint reads - x,y[,z,map]
+                // or the name of a region - then Spell_Teleport there.
                 var parts = args.Split(',', StringSplitOptions.TrimEntries);
                 if (parts.Length >= 2 &&
                     short.TryParse(parts[0], out short gx) &&
@@ -6579,8 +6978,14 @@ public partial class Character : ObjBase
                     sbyte gz = parts.Length > 2 && sbyte.TryParse(parts[2], out sbyte tz) ? tz : Z;
                     byte gm = parts.Length > 3 && byte.TryParse(parts[3], out byte tm) ? tm : MapIndex;
                     TeleportWithEffect(new Point3D(gx, gy, gz, gm));
+                    return true;
                 }
-                return true;
+                if (ResolveWorld?.Invoke() is { } goWorld && goWorld.TryGetRegionPoint(args, out var goPoint))
+                {
+                    TeleportWithEffect(goPoint);
+                    return true;
+                }
+                return false;
             }
             // Source-X GO* teleport variants — previously GM-speech-only, so
             // scripted <char>.GOUID/<char>.GOCHAR were silent no-ops.
@@ -6727,22 +7132,25 @@ public partial class Character : ObjBase
                 MarkDirty(DirtyFlag.Hue);
                 return true;
             }
-            case "FACE":
-            {
-                if (byte.TryParse(args, out byte dir))
-                    _direction = (Direction)(dir & 0x07);
-                return true;
-            }
             case "BOUNCE":
             {
-                // Source-X CChar::r_Verb BOUNCE: return the dragged item
-                // (DRAGGING tag, set by the pickup packet) to the backpack
-                // and cancel the client drag cursor. The host hook resolves
-                // the owning client for the packet work; headless fallback
-                // just re-packs the item silently.
+                // CHV_BOUNCE <uid> (CChar.cpp:4483) is ItemBounce: that item goes to my
+                // pack, or to my feet when it will not fit. With no uid, the item I am
+                // dragging goes back (the drag-cancel path).
+                if (!string.IsNullOrWhiteSpace(args))
+                {
+                    var bounceWorld = ResolveWorld?.Invoke();
+                    if (bounceWorld == null || !TryParseVerbUid(args, out uint bUid)) return false;
+                    var bounced = bounceWorld.FindItem(new Serial(bUid));
+                    if (bounced == null || bounced.IsDeleted) return false;
+                    return BounceItemToPack(bounced, bounceWorld);
+                }
                 OnDragRelease?.Invoke(this, false);
                 return true;
             }
+            case "CRIMINAL":
+                ApplyCriminalVerb(args);
+                return true;
             case "SOUND":
             {
                 // SOUND id[, mode]. Broadcasts 0x54 to nearby observers
@@ -6789,26 +7197,36 @@ public partial class Character : ObjBase
             // --- New commands ---
             case "ALLSKILLS":
             {
-                if (ushort.TryParse(args.Trim(), out ushort skillVal))
+                // CHV_ALLSKILLS (CChar.cpp:4447): every skill through Skill_SetBase, so
+                // each one runs @SkillChange like any other runtime set. The value is a
+                // Sphere number (GetArgUSVal): a leading 0 is hex.
+                if (ScriptNumber.TryParseToken(args.Trim(), out long allVal))
                 {
+                    ushort skillVal = unchecked((ushort)allVal);
                     for (int i = 0; i < _skillValues.Length; i++)
-                        _skillValues[i] = skillVal;
+                        SetSkillRuntime((SkillType)i, skillVal);
+                    MarkDirty(DirtyFlag.Stats);
                 }
                 return true;
             }
             case "SKILLGAIN":
             {
-                // Source-X: invokes the skill-gain check with a given
-                // difficulty. Args: "<skill_id>,<difficulty>" where
-                // difficulty is 0-100.
-                var parts = args.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2
-                    && int.TryParse(parts[0], out int skillId)
-                    && int.TryParse(parts[1], out int diff)
-                    && skillId >= 0 && skillId < (int)SkillType.Qty)
+                // CHV_SKILLGAIN <skill>[,<difficulty>] (CChar.cpp:4882): the skill is a
+                // skill KEY - a name or a number (FindSkillKey) - and an unknown one fails.
+                // A missing difficulty reads as 0.
+                string[] parts = SplitScriptArgs(args);
+                if (parts.Length == 0 || parts[0].Trim().Length == 0)
+                    return true;
+                string skillKey = parts[0].Trim();
+                SkillType gainSkill;
+                if (!TryResolveSkillName(skillKey, out gainSkill))
                 {
-                    Skills.SkillEngine.GainExperience(this, (SkillType)skillId, diff);
+                    if (!ScriptNumber.TryParseToken(skillKey, out long gid) || gid < 0 || gid >= (int)SkillType.Qty)
+                        return false;
+                    gainSkill = (SkillType)gid;
                 }
+                long diff = parts.Length > 1 && ScriptNumber.TryParseToken(parts[1].Trim(), out long d) ? d : 0;
+                Skills.SkillEngine.GainExperience(this, gainSkill, (int)Math.Clamp(diff, int.MinValue, int.MaxValue));
                 return true;
             }
             case "SELL":
@@ -7183,9 +7601,18 @@ public partial class Character : ObjBase
             }
             case "NEWGOLD":
             {
-                NewItemId = "i_gold";
-                if (int.TryParse(args.Trim(), out int goldAmt) && goldAmt > 0)
-                    SetTag("NEWITEM_AMOUNT", goldAmt.ToString());
+                // CHV_NEWGOLD <amount>[, <pile>] (CChar.cpp:4746): new gold into my pack.
+                // A pile argument of 1 stacks it onto gold already there; the default
+                // (and 0) makes a new pile. Zero or less is refused.
+                string[] gparts = SplitScriptArgs(args);
+                if (gparts.Length == 0 || !ScriptNumber.TryParseToken(gparts[0].Trim(), out long goldAmt) ||
+                    goldAmt <= 0)
+                    return false;
+                bool newPile = !(gparts.Length >= 2 &&
+                                 ScriptNumber.TryParseToken(gparts[1].Trim(), out long stackArg) && stackArg != 0);
+                var goldPack = GetPackSafe();
+                if (goldPack == null) return false;
+                AddGoldTo(goldPack, Math.Min(goldAmt, int.MaxValue), forceNoStack: newPile);
                 return true;
             }
             case "NEWLOOT":
@@ -7219,7 +7646,7 @@ public partial class Character : ObjBase
             case "EQUIPHALO":
             {
                 // Source-X CHV_EQUIPHALO: conjure a glowing light source into
-                // the off-hand (ITEMID_LIGHT_SRC); optional arg = seconds to last.
+                // the off-hand (ITEMID_LIGHT_SRC); optional arg = how long it lasts.
                 var haloWorld = Objects.ObjBase.ResolveWorld?.Invoke();
                 if (haloWorld == null) return true;
                 var halo = haloWorld.CreateItem();
@@ -7227,8 +7654,10 @@ public partial class Character : ObjBase
                 halo.ItemType = ItemType.LightLit;
                 halo.Name = "a glowing halo";
                 halo.SetAttr(ObjAttributes.Move_Never);
-                if (long.TryParse(args.Trim(), out long haloSec) && haloSec > 0)
-                    halo.SetTimeout(Environment.TickCount64 + haloSec * 1000L);
+                // The timer is in milliseconds: CTimedObject::SetTimeout(iDelayInMsecs)
+                // (CChar.cpp:4561, CTimedObject.cpp:92).
+                if (ScriptNumber.TryParseToken(args.Trim(), out long haloMs) && haloMs > 0)
+                    halo.SetTimeout(Environment.TickCount64 + haloMs);
                 Equip(halo, Layer.TwoHanded);
                 return true;
             }
@@ -7289,19 +7718,31 @@ public partial class Character : ObjBase
             }
             case "BARK":
             {
-                // Source-X CChar::SoundChar(CRESND_RAND) — emit the
-                // body's idle/death sound. We don't ship the per-body
-                // sound table yet, so synthesise a tile-relative sound
-                // from the body id (good enough to make the verb
-                // audible) and broadcast it.
-                ushort barkSnd = (ushort)(0x0001 + (BodyId & 0x00FF));
-                BroadcastNearby?.Invoke(Position, 18,
-                    new SphereNet.Network.Packets.Outgoing.PacketSound(barkSnd, X, Y, Z),
-                    0);
+                // CHV_BARK [<type>] is SoundChar (CChar.cpp:4480, CCharAct.cpp:2612): the
+                // creature's own sound for the action type - -1 random idle/notice (the
+                // default), 0 idle, 1 notice, 2 hit, 3 get-hit, 4 die - out of its
+                // CHARDEF. Any other type plays nothing.
+                long barkType = -1;
+                if (!string.IsNullOrWhiteSpace(args) &&
+                    !ScriptNumber.TryParseToken(args.Trim(), out barkType))
+                    barkType = -1;
+                if (barkType < -1 || barkType > (long)SphereNet.Game.AI.CreatureSoundType.Die)
+                    return true;
+                var soundType = barkType == -1
+                    ? (Random.Shared.Next(2) == 0 ? SphereNet.Game.AI.CreatureSoundType.Idle : SphereNet.Game.AI.CreatureSoundType.Notice)
+                    : (SphereNet.Game.AI.CreatureSoundType)barkType;
+                ushort barkSnd = CharacterSounds.Resolve(this, soundType,
+                    GetEquippedItem(Layer.OneHanded) ?? GetEquippedItem(Layer.TwoHanded));
+                if (barkSnd != 0)
+                    BroadcastNearby?.Invoke(Position, 18,
+                        new SphereNet.Network.Packets.Outgoing.PacketSound(barkSnd, X, Y, Z),
+                        0);
                 return true;
             }
             case "BOW":
             {
+                // CHV_BOW [<uid>] (CChar.cpp:4485): turn to that object first.
+                FaceUidArgument(args);
                 ushort bowAnim = Combat.BodyAnimTranslator.Generate(this, 32);
                 BroadcastNearby?.Invoke(Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, bowAnim),
@@ -7310,6 +7751,8 @@ public partial class Character : ObjBase
             }
             case "SALUTE":
             {
+                // CHV_SALUTE [<uid>] (CChar.cpp:4872): turn to that object first.
+                FaceUidArgument(args);
                 ushort saluteAnim = Combat.BodyAnimTranslator.Generate(this, 33);
                 BroadcastNearby?.Invoke(Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, saluteAnim),
@@ -7366,8 +7809,17 @@ public partial class Character : ObjBase
             }
             case "DROP":
             {
-                // Source-X CChar::r_Verb DROP: release the dragged item
-                // (DRAGGING tag) to the ground at the character's feet.
+                // CHV_DROP <uid> (CChar.cpp:4539) is ItemDrop at my feet. With no uid,
+                // the item I am dragging is released to the ground.
+                if (!string.IsNullOrWhiteSpace(args))
+                {
+                    var dropWorld = ResolveWorld?.Invoke();
+                    if (dropWorld == null || !TryParseVerbUid(args, out uint dUid)) return false;
+                    var dropped = dropWorld.FindItem(new Serial(dUid));
+                    if (dropped == null || dropped.IsDeleted) return false;
+                    DetachFromHolder(dropped, dropWorld);
+                    return dropWorld.PlaceItemWithDecay(dropped, Position);
+                }
                 OnDragRelease?.Invoke(this, true);
                 return true;
             }
@@ -7383,24 +7835,16 @@ public partial class Character : ObjBase
             }
             case "HUNGRY":
             {
-                // Source-X CChar::r_Verb HUNGRY [amount] — adjust food
-                // level. Positive arg = set, negative = decrement,
-                // omitted = single tick of hunger (matches the @Hunger
-                // trigger CONSUME path). Triggers a stat refresh so the
-                // client picks up the FOOD bar change.
-                string hraw = (args ?? "").Trim();
-                if (hraw.Length == 0)
-                {
-                    if (_food > 0) _food--;
-                }
-                else if (int.TryParse(hraw, out int hAmount))
-                {
-                    if (hAmount < 0)
-                        _food = (ushort)Math.Max(0, _food + hAmount);
-                    else
-                        _food = (ushort)Math.Min(60, hAmount);
-                }
-                MarkDirty(DirtyFlag.Stats);
+                // CHV_HUNGRY (CChar.cpp:4644) only REPORTS: "How hungry are we?" - the
+                // source is told my food level ("You are ..." about oneself, "<name>
+                // looks ..." about another). It never changed the food value.
+                var hungrySrc = ResolveSourceCharacter(source);
+                if (hungrySrc == null)
+                    return true;
+                string level = FoodLevelMessage();
+                source.SysMessage(ReferenceEquals(hungrySrc, this)
+                    ? ServerMessages.GetFormatted(Msg.MsgFoodLvlSelf, level)
+                    : ServerMessages.GetFormatted(Msg.MsgFoodLvlOther, GetName(), level));
                 return true;
             }
             case "NUDGEUP":
@@ -7548,12 +7992,21 @@ public partial class Character : ObjBase
             }
             case "WHERE":
             {
-                // Source-X CHV_WHERE: report my location to the caller.
+                // CHV_WHERE (CChar.cpp:4953): tell the source character where I am, in
+                // the reference's own words - msg_where_area / msg_where_room / msg_where
+                // with the point written the short way (CPointBase::WriteUsed).
+                if (ResolveSourceCharacter(source) == null)
+                    return true;
                 var world = Objects.ObjBase.ResolveWorld?.Invoke();
-                string regionName = world?.FindRegion(Position)?.Name ?? "";
-                source.SysMessage(regionName.Length > 0
-                    ? $"{Name} is in {regionName} at {X},{Y},{Z} (map {Position.Map})."
-                    : $"{Name} is at {X},{Y},{Z} (map {Position.Map}).");
+                var area = world?.FindRegion(Position);
+                var room = world?.FindRoom(Position);
+                string where = Position.Map != 0 ? $"{X},{Y},{Z},{Position.Map}"
+                    : Z != 0 ? $"{X},{Y},{Z}" : $"{X},{Y}";
+                source.SysMessage(area == null
+                    ? ServerMessages.GetFormatted(Msg.MsgWhere, where)
+                    : room == null
+                        ? ServerMessages.GetFormatted(Msg.MsgWhereArea, area.Name, where)
+                        : ServerMessages.GetFormatted(Msg.MsgWhereRoom, area.Name, room.Name, where));
                 return true;
             }
             case "CONTROL":
@@ -7586,6 +8039,42 @@ public partial class Character : ObjBase
         }
 
         return base.TryExecuteCommand(key, args, source, out nameOwned);
+    }
+
+    /// <summary>UpdateDir(point): turn to face a spot, telling observers only when the
+    /// facing actually changed.</summary>
+    private void FaceToward(Point3D target)
+    {
+        if (target.X == X && target.Y == Y)
+            return;
+        var dir = Position.GetDirectionTo(target);
+        if (dir == _direction)
+            return;
+        _direction = dir;
+        OnFacingChanged?.Invoke(this);
+    }
+
+    /// <summary>UpdateDir(ObjFindFromUID(arg)) for the verbs that take an optional
+    /// uid to turn to: nothing happens when there is no argument or no such object.</summary>
+    private void FaceUidArgument(string? args)
+    {
+        if (string.IsNullOrWhiteSpace(args)) return;
+        if (ParseSerial(args.Trim()) is { IsValid: true } uid &&
+            ResolveWorld?.Invoke()?.FindObject(uid) is { IsDeleted: false } obj)
+            FaceToward(obj.GetTopLevelPosition());
+    }
+
+    /// <summary>A point argument "x,y[,z[,map]]" (CPointMap::Read).</summary>
+    private bool TryParseFacePoint(string text, out Point3D point)
+    {
+        point = default;
+        var parts = text.Split([',', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2 || !short.TryParse(parts[0], out short px) || !short.TryParse(parts[1], out short py))
+            return false;
+        sbyte pz = parts.Length > 2 && sbyte.TryParse(parts[2], out sbyte tz) ? tz : Z;
+        byte pm = parts.Length > 3 && byte.TryParse(parts[3], out byte tm) ? tm : MapIndex;
+        point = new Point3D(px, py, pz, pm);
+        return true;
     }
 
     /// <summary>Parse a direction token — numeric 0-7 or a compass code
@@ -7647,6 +8136,18 @@ public partial class Character : ObjBase
     /// falling back to the ground at my feet — Source-X CChar::ItemBounce.</summary>
     private bool BounceItemToPack(Item item, World.GameWorld world)
     {
+        DetachFromHolder(item, world);
+
+        var pack = Backpack;
+        if (pack != null && !ReferenceEquals(pack, item) && pack.TryAddItem(item))
+            return true;
+        world.PlaceItemWithDecay(item, Position);
+        return true;
+    }
+
+    /// <summary>Take an item off whoever or whatever holds it, ready to be placed.</summary>
+    private void DetachFromHolder(Item item, World.GameWorld world)
+    {
         if (item.IsEquipped && item.ContainedIn == Uid)
         {
             Unequip(item.EquipLayer);
@@ -7661,12 +8162,6 @@ public partial class Character : ObjBase
             else
                 world.HideFromSector(item);
         }
-
-        var pack = Backpack;
-        if (pack != null && !ReferenceEquals(pack, item) && pack.TryAddItem(item))
-            return true;
-        world.PlaceItemWithDecay(item, Position);
-        return true;
     }
 
     /// <summary>Pending NEWITEM creation id (set by script NEWITEM command).</summary>

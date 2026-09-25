@@ -79,11 +79,12 @@ public sealed class CharBaseDefReadTests : IDisposable
     [Fact]
     public void ThePacingAndWageComeFromTheDefinition()
     {
-        var ch = FromDef("MOVERATE=40", "HIREDAYWAGE=70", "ICON=i_pet_horse_brown_dk");
+        var ch = FromDef("MOVERATE=40", "HIREDAYWAGE=70", "ICON=03fe");
 
         Assert.Equal("40", Read(ch, "MOVERATE"));
         Assert.Equal("70", Read(ch, "HIREDAYWAGE"));
-        Assert.Equal("i_pet_horse_brown_dk", Read(ch, "ICON"));
+        // CBC_ICON answers the resolved item id in hex (CCharBase.cpp:246).
+        Assert.Equal("03FE", Read(ch, "ICON"));
     }
 
     /// <summary>The era-display family, which the reference pack reads off a creature

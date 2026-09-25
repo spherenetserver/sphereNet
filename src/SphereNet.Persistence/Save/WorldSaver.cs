@@ -1099,7 +1099,10 @@ public sealed class WorldSaver
         if (ch.ActP.X != 0 || ch.ActP.Y != 0 || ch.ActP.Z != 0 || ch.ActP.Map != 0)
             w.WriteProperty("ACTP", $"{ch.ActP.X},{ch.ActP.Y},{ch.ActP.Z},{ch.ActP.Map}");
         if (ch.ActPrv.IsValid) w.WriteProperty("ACTPRV", $"0{ch.ActPrv.Value:X8}");
-        if (ch.ActDiff != 0) w.WriteProperty("ACTDIFF", ch.ActDiff.ToString());
+        // ACTDIFF is read back through the script key, which takes tenths.
+        if (ch.ActDiff != 0) w.WriteProperty("ACTDIFF", (ch.ActDiff > 0 ? (long)ch.ActDiff * 10 : ch.ActDiff).ToString());
+        // CChar::r_Write stores an instance HEIGHT when one was set.
+        if (ch.HeightOverride != 0) w.WriteProperty("HEIGHT", ch.HeightOverride.ToString());
         if (ch.FightTarget.IsValid) w.WriteProperty("FIGHTTARGET", $"0{ch.FightTarget.Value:X8}");
         if (!ch.IsPlayer && ch.PetAIMode != SphereNet.Core.Enums.PetAIMode.Follow)
             w.WriteProperty("PETAI", ((int)ch.PetAIMode).ToString());

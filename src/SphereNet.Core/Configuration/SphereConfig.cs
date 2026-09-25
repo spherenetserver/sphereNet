@@ -256,6 +256,9 @@ public sealed class SphereConfig
     // 0x0C41) so existing worlds don't lose pathfinding/threat behaviour. Set
     // NPCAI=0 in the .ini for exact bare-Source-X behaviour.
     public int NpcAi { get; set; } = 0x0C41;
+    /// <summary>NPCAIEXTRAS: optional NPC behaviours that Source-X does not have
+    /// (SphereNet.Game.AI.NpcAiExtraFlags). 0 = none, the Source-X AI.</summary>
+    public int NpcAiExtras { get; set; }
     // Self-heal threshold (% HP) handed to the @NPCActCast trigger as
     // LOCAL.HealThreshold. Source-X m_iNPCHealthreshold default 30.
     public int NpcHealThreshold { get; set; } = 30;
@@ -1122,6 +1125,7 @@ public sealed class SphereConfig
         AdvancedLos = ini.GetInt(section, "AdvancedLos", AdvancedLos);
         NpcAi = GetIntOrHex(ini, section, "NpcAi",
             GetIntOrHex(ini, section, "NPCAI", NpcAi));
+        NpcAiExtras = ini.GetFlags(section, "NpcAiExtras", NpcAiExtras);
         NpcHealThreshold = ini.GetInt(section, "NpcHealThreshold", ini.GetInt(section, "NPCHealthreshold", NpcHealThreshold));
         NpcWanderLookAroundChance = ini.GetInt(section, "NpcWanderLookAroundChance",
             ini.GetInt(section, "NPCWanderLookAroundChance", NpcWanderLookAroundChance));

@@ -34,6 +34,59 @@ public enum NpcAIFlags : uint
     Threat = 0x0800,
 }
 
+/// <summary>
+/// Optional NPC behaviours that Source-X does NOT have (sphere.ini NPCAIEXTRAS,
+/// per character TAG.OVERRIDE.NPCAIEXT). Every bit is off by default, so a bare
+/// config runs the Source-X AI; an operator turns on the extras they want. They are
+/// kept apart from the NPC_AI_* mask on purpose: scripts write raw NPCAI integers
+/// and Source-X owns that bit space.
+/// </summary>
+[Flags]
+public enum NpcAiExtraFlags : uint
+{
+    None = 0,
+    /// <summary>Spell choice by role (cure, heal, dispel, debuff, area, damage,
+    /// summon) from the NPC's spell list and spell flags, instead of Source-X's
+    /// random walk through the list.</summary>
+    SmartCaster = 0x0001,
+    /// <summary>A badly hurt melee NPC steps back out of reach.</summary>
+    LowHpRetreat = 0x0002,
+    /// <summary>Nearby NPCs of the same kind join a fight.</summary>
+    AllyRally = 0x0004,
+    /// <summary>Attackers spread around the target instead of queueing on one
+    /// tile.</summary>
+    SurroundFlank = 0x0008,
+    /// <summary>A fleeing NPC casts, heals itself or hides while it runs.</summary>
+    FleeTactics = 0x0010,
+    /// <summary>A target that hides is followed to its last position and
+    /// revealed.</summary>
+    HiddenPursuit = 0x0020,
+    /// <summary>When the target is out of sight the NPC switches to a visible foe
+    /// or blinks; after repeated failures it gives up.</summary>
+    LosRecovery = 0x0040,
+    /// <summary>Guards (and NPCs with Detect Hidden) search for hidden players.</summary>
+    DetectHidden = 0x0080,
+    /// <summary>Timid animals back away from anyone in war mode.</summary>
+    AnimalBackoff = 0x0100,
+    /// <summary>A fighting NPC occasionally re-scores its targets mid-fight.</summary>
+    FightRescan = 0x0200,
+    /// <summary>A badly hurt NPC moves more slowly.</summary>
+    HurtSlowdown = 0x0400,
+    /// <summary>A following pet matches its owner's pace (running / mounted).</summary>
+    PetKeepPace = 0x0800,
+    /// <summary>An NPC far from home is sent back (through @NPCLostTeleport) when
+    /// its sector sleeps or its walk home keeps failing.</summary>
+    ReturnHome = 0x1000,
+    /// <summary>An NPC with Healing and bandages treats itself (and a pet its
+    /// owner) through the normal Healing skill.</summary>
+    BandageHeal = 0x2000,
+    /// <summary>Cosmetic idle behaviour: fidget animations and similar.</summary>
+    IdleFlavor = 0x4000,
+    /// <summary>Other combat additions beyond Source-X (breath/throw rules wider
+    /// than the reference, cooldowns and the like).</summary>
+    CombatExtras = 0x8000,
+}
+
 /// <summary>Source-X CRESND_TYPE — creature sound categories.</summary>
 public enum CreatureSoundType : byte
 {
@@ -52,6 +105,10 @@ public sealed partial class NpcAI
 {
     public NpcAIFlags Flags { get; set; } =
         NpcAIFlags.Path | NpcAIFlags.Combat | NpcAIFlags.Threat | NpcAIFlags.PersistentPath;
+
+    /// <summary>Global NPCAIEXTRAS mask (see <see cref="NpcAiExtraFlags"/>); 0 = the
+    /// Source-X AI with none of the additions.</summary>
+    public NpcAiExtraFlags Extras { get; set; }
 
     public Action<Character>? OnNpcFacingChanged { get; set; }
 
@@ -189,6 +246,30 @@ public sealed partial class NpcAI
         // hardcoded. Seed the default flag set from config so every NPC inherits
         // it unless overridden per character via OVERRIDE.NPCAI.
         Flags = (NpcAIFlags)(uint)config.NpcAi;
+        Extras = (NpcAiExtraFlags)(uint)config.NpcAiExtras;
+    }
+
+    /// <summary>Whether an optional non-Source-X behaviour is on for this NPC:
+    /// TAG.OVERRIDE.NPCAIEXT (raw mask, hex or decimal) wins over the global
+    /// NPCAIEXTRAS, the same way OVERRIDE.NPCAI wins over NPCAI.</summary>
+    internal bool HasExtra(Character npc, NpcAiExtraFlags flag)
+    {
+        var mask = Extras;
+        if (npc.TryGetTag("OVERRIDE.NPCAIEXT", out string? raw) && TryParseMask(raw, out uint val))
+            mask = (NpcAiExtraFlags)val;
+        return (mask & flag) != 0;
+    }
+
+    private static bool TryParseMask(string? raw, out uint val)
+    {
+        val = 0;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        raw = raw.Trim();
+        if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return uint.TryParse(raw.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out val);
+        if (raw.Length > 1 && raw[0] == '0')
+            return uint.TryParse(raw, System.Globalization.NumberStyles.HexNumber, null, out val);
+        return uint.TryParse(raw, out val);
     }
 
     /// <summary>Effective NPC_AI_* flags for a single NPC. Source-X

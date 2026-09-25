@@ -153,6 +153,7 @@ public static partial class Program
         ["NOTOTIMEOUT"] = c => I(c.NotoTimeout),
         ["NOWEATHER"] = c => B(c.NoWeather),
         ["NPCAI"] = c => I(c.NpcAi),
+        ["NPCAIEXTRAS"] = c => I(c.NpcAiExtras),
         ["NPCCANFIZZLEONHIT"] = c => B(c.NpcCanFizzleOnHit),
         ["NPCDISTANCEHEAR"] = c => I(c.NpcDistanceHear),
         ["NPCHEALTHRESHOLD"] = c => I(c.NpcHealThreshold),

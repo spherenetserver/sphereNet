@@ -80,9 +80,13 @@ public static partial class Program
             "TIME" => ((_world?.GameClockMs ?? 0) / 100).ToString(),
             "TIMEHIRES" => (_world?.GameClockMs ?? 0).ToString(),
             "TIMEUP" => ((int)(DateTime.UtcNow - _serverStartTime).TotalSeconds).ToString(),
-            "RTIME" => DateTime.Now.ToString("ddd MMM dd HH:mm:ss yyyy"),
+            // CSTime::Format(nullptr) default "%Y/%m/%d %H:%M:%S" (CSTime.cpp:312),
+            // culture-independent - the host's culture leaked month names in.
+            "RTIME" => DateTime.Now.ToString("yyyy'/'MM'/'dd HH':'mm':'ss", System.Globalization.CultureInfo.InvariantCulture),
             "RTICKS" => DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
-            "TICKPERIOD" => _config.ServerTickMs.ToString(),
+            // RC_TICKPERIOD answers TICKS_PER_SEC - ticks per second, not the tick
+            // length in milliseconds (CServerConfig.cpp RC_TICKPERIOD).
+            "TICKPERIOD" => (1000 / Math.Max(1, _config?.ServerTickMs ?? 100)).ToString(),
 
             // --- Save ---
             "SAVECOUNT" => _saveCount.ToString(),
@@ -98,7 +102,9 @@ public static partial class Program
             "REGEN3" => (_config?.RegenFood ?? 3600).ToString(),
 
             // --- Misc ---
-            "HEARALL" => IsHearAllEnabled() ? "1" : "0",
+            // RC_HEARALL: FormatVal(GetLogMask() & LOGM_PLAYER_SPEAK) - the bit's
+            // value (8192) when on, not 1.
+            "HEARALL" => ((_config?.LogMask ?? 0) & SphereConfig.LogMaskPlayerSpeak).ToString(),
             "GMPAGES" => (_world?.GmPages.Count ?? 0).ToString(),
             // Source-X CServerConfig g_World.m_Stones.size() — the world's
             // stone objects (guild + town). Was stubbed "0", so the pack's
@@ -116,15 +122,16 @@ public static partial class Program
             "SEASONMODE" => (_weatherEngine?.CurrentSeasonMode ?? SeasonMode.Auto).ToString(),
             "FEATURETOL" => (_config?.FeatureTOL ?? 0).ToString(),
             "FEATURET2A" => (_config?.FeatureT2A ?? 0).ToString(),
-            "CHATFLAGS" => (_config?.ChatFlags ?? 0).ToString(),
+            // RC_CHATFLAGS / RC_OPTIONFLAGS / RC_EXPERIMENTAL are written FormatHex.
+            "CHATFLAGS" => Hx(_config?.ChatFlags ?? 0),
             "GENERICSOUNDS" => (_config?.GenericSounds == false ? "0" : "1"),
             "SERVIP" => _config?.ServIP ?? "0.0.0.0",
             "SCPFILES" => EnsureTrailingDirectorySeparator(
                 _resources?.ScpBaseDir ?? _config?.ScpFilesDir ?? "scripts/"),
             "COMBATFLAGS" => (_config?.CombatFlags ?? 0).ToString(),
             "MAGICFLAGS" => (_config?.MagicFlags ?? 0).ToString(),
-            "OPTIONFLAGS" => (_config?.OptionFlags ?? 0).ToString(),
-            "EXPERIMENTAL" => (_config?.Experimental ?? 0).ToString(),
+            "OPTIONFLAGS" => Hx(_config?.OptionFlags ?? 0),
+            "EXPERIMENTAL" => Hx(_config?.Experimental ?? 0),
             "DECAYTIMER" => (_config?.DecayTimer ?? 30).ToString(),
             "ARCHERYMINDIST" => (_config?.ArcheryMinDist ?? 1).ToString(),
             "ARCHERYMAXDIST" => (_config?.ArcheryMaxDist ?? 12).ToString(),
@@ -204,8 +211,14 @@ public static partial class Program
                 ResolveStoneList(ItemType.StoneTown, property[11..]),
 
             // --- Reference lookups via SERV.xxx ---
-            "LASTNEWITEM" => _world?.LastNewItem.Value.ToString() ?? "0",
-            "LASTNEWCHAR" => _world?.LastNewChar.Value.ToString() ?? "0",
+            // CWorld::r_GetRef (CWorld.cpp:1515): LASTNEWITEM / LASTNEWCHAR are object
+            // REFERENCES. Bare, they answer the uid in hex (0 when the object is gone),
+            // and a trailing .<key> is read off the object. The decimal uid written
+            // here before read back as a different number.
+            "LASTNEWITEM" => ResolveLastNewRef(_world?.LastNewItem, ""),
+            "LASTNEWCHAR" => ResolveLastNewRef(_world?.LastNewChar, ""),
+            _ when upper.StartsWith("LASTNEWITEM.") => ResolveLastNewRef(_world?.LastNewItem, property[12..]),
+            _ when upper.StartsWith("LASTNEWCHAR.") => ResolveLastNewRef(_world?.LastNewChar, property[12..]),
 
             // --- SERV.MAP* ---
             _ when upper.StartsWith("MAPLIST.") => ResolveMapListProperty(upper[8..]),
@@ -258,6 +271,7 @@ public static partial class Program
             // case-sensitive (%d day vs %M minute), and `upper` would fold
             // %d/%m/%y into %D/%M/%Y — the very mismatch this path fixes.
             _ when upper.StartsWith("RTIME.FORMAT") => ResolveRtimeFormat(property),
+            _ when upper.StartsWith("RTIME.GMTFORMAT") => ResolveRtimeFormat(property),
             _ when upper.StartsWith("RTICKS.FORMAT") => ResolveRticksFormat(property),
             _ when upper.StartsWith("RTICKS.FROMTIME") => ResolveRticksFromTime(upper),
 
@@ -385,7 +399,9 @@ public static partial class Program
 
             // Bare defname constants (e.g. statf_insubstantial) used by
             // script expressions without DEF./DEF0. prefix.
-            _ => ResolveDefConstant(upper) ?? ResolveServFunction(property)
+            // The remaining CServerConfig/CServerDef keys and reference forms come
+            // before the defname lookup, as g_Cfg.r_WriteVal does upstream.
+            _ => ResolveServReadback(property, upper) ?? ResolveDefConstant(upper) ?? ResolveServFunction(property)
         };
     }
 
@@ -2746,11 +2762,12 @@ public static partial class Program
     {
         // RTIME.FORMAT <format> — format current time
         // Property arrives as "RTIME.FORMAT <format>" or just "RTIME.FORMAT"
+        // RTIME.GMTFORMAT is the same over UTC (CServerConfig.cpp RC_RTIME ->
+        // CSTime::FormatGmt). An empty format gives the empty string strftime does.
+        bool gmt = property.StartsWith("RTIME.GMTFORMAT", StringComparison.OrdinalIgnoreCase);
         int spaceIdx = property.IndexOf(' ');
-        if (spaceIdx < 0)
-            return DateTime.Now.ToString("ddd MMM dd HH:mm:ss yyyy");
-        string fmt = property[(spaceIdx + 1)..].Trim();
-        return FormatStrftime(DateTime.Now, fmt);
+        string fmt = spaceIdx < 0 ? "" : property[(spaceIdx + 1)..].Trim();
+        return FormatStrftime(gmt ? DateTime.UtcNow : DateTime.Now, fmt);
     }
 
     /// <summary>Format a DateTime with a C strftime-style pattern, the way
@@ -2760,12 +2777,11 @@ public static partial class Program
     /// threw on %Y/%w, so every pack date/time function produced garbage.</summary>
     private static string FormatStrftime(DateTime dt, string strftimeFmt)
     {
+        // strftime copies text without a '%' through unchanged, and an empty format
+        // is an empty result (FormatDateTime, CSTime.cpp:271). Reading such text as
+        // a .NET pattern turned "hello" into hour digits.
         if (string.IsNullOrEmpty(strftimeFmt) || !strftimeFmt.Contains('%'))
-        {
-            // No POSIX tokens — treat as a .NET pattern (back-compat).
-            try { return dt.ToString(strftimeFmt); }
-            catch { return dt.ToString("ddd MMM dd HH:mm:ss yyyy"); }
-        }
+            return strftimeFmt ?? "";
 
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var sb = new System.Text.StringBuilder(strftimeFmt.Length + 16);
@@ -2807,16 +2823,30 @@ public static partial class Program
 
     private static string? ResolveRticksFormat(string property)
     {
-        // RTICKS.FORMAT <timestamp>,<format>
+        // RTICKS.FORMAT <timestamp>[,<format>] (CServerConfig.cpp RC_RTICKS):
+        // Str_ParseCmds with the default "=, \t" separators, the timestamp read with
+        // Exp_GetVal, and no format meaning CSTime::Format's default.
         var parts = property.Split(' ', 2);
         if (parts.Length < 2) return DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-        var args = parts[1].Split(',', 2);
-        if (args.Length < 2 || !long.TryParse(args[0].Trim(), out long ts))
-            return "0";
+        string rest = parts[1].Trim();
+        if (rest.Length == 0) return "0";
+        int sep = rest.IndexOfAny(['=', ',', ' ', '\t']);
+        string tsText = sep < 0 ? rest : rest[..sep];
+        string fmt = "%Y/%m/%d %H:%M:%S";
+        if (sep >= 0)
+        {
+            string tail = rest[(sep + 1)..].TrimStart(' ', '\t');
+            // Str_Parse: after a space separator, one further separator is skipped.
+            if (char.IsWhiteSpace(rest[sep]) && tail.Length > 0 && tail[0] is '=' or ',')
+                tail = tail[1..];
+            tail = tail.Trim();
+            if (tail.Length > 0) fmt = tail;
+        }
+        long ts = _servFunctionParser.Evaluate(tsText.AsSpan());
         try
         {
             var dt = DateTimeOffset.FromUnixTimeSeconds(ts).LocalDateTime;
-            return FormatStrftime(dt, args[1].Trim());
+            return FormatStrftime(dt, fmt);
         }
         catch { return "0"; }
     }
@@ -2824,22 +2854,26 @@ public static partial class Program
     private static string? ResolveRticksFromTime(string property)
     {
         // RTICKS.FROMTIME <year>,<month>,<day>,<hour>,<min>,<sec>
+        // Upstream (CServerConfig.cpp RC_RTICKS "FROMTIME"): exactly six values,
+        // each read with Exp_GetVal, turned into a time by CSTime(y,m,d,h,mi,s),
+        // which is mktime - LOCAL time, with out-of-range fields carried over
+        // (month 13 is January of the next year). Reading them as UTC broke the
+        // round trip through RTICKS.FORMAT, which formats in local time.
         var parts = property.Split(' ', 2);
         if (parts.Length < 2) return "0";
-        var args = parts[1].Split(',');
-        if (args.Length < 3) return "0";
+        var args = parts[1].Split([',', ' ', '\t', '='], StringSplitOptions.RemoveEmptyEntries);
+        if (args.Length != 6) return "0";
         try
         {
-            int year = int.Parse(args[0].Trim());
-            int month = int.Parse(args[1].Trim());
-            int day = int.Parse(args[2].Trim());
-            int hour = args.Length > 3 ? int.Parse(args[3].Trim()) : 0;
-            int min = args.Length > 4 ? int.Parse(args[4].Trim()) : 0;
-            int sec = args.Length > 5 ? int.Parse(args[5].Trim()) : 0;
-            var dt = new DateTimeOffset(year, month, day, hour, min, sec, TimeSpan.Zero);
-            return dt.ToUnixTimeSeconds().ToString();
+            var v = new long[6];
+            for (int i = 0; i < 6; i++)
+                v[i] = _servFunctionParser.Evaluate(args[i].AsSpan());
+            var local = new DateTime((int)v[0], 1, 1, 0, 0, 0, DateTimeKind.Local)
+                .AddMonths((int)v[1] - 1).AddDays(v[2] - 1)
+                .AddHours(v[3]).AddMinutes(v[4]).AddSeconds(v[5]);
+            return new DateTimeOffset(local).ToUnixTimeSeconds().ToString();
         }
-        catch { return "0"; }
+        catch { return "-1"; }
     }
 
     /// <summary>Resolve <c>SERV.MAP(x,y,z,m).Region.Name</c> and similar

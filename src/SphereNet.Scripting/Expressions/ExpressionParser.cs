@@ -949,7 +949,7 @@ public sealed partial class ExpressionParser
         // QVAL paren form — <QVAL(v1,v2,lt,eq,gt)> numeric 3-way compare.
         if (varExpr.StartsWith("QVAL(", StringComparison.OrdinalIgnoreCase))
         {
-            return EvaluateQval(ExtractFuncArg(varExpr, 4));
+            return EvaluateQval(ExtractFuncArg(varExpr, 4), intrinsicForm: true);
         }
         // QVAL — conditional: <QVAL condition?true_val:false_val>
         if (varExpr.StartsWith("QVAL ", StringComparison.OrdinalIgnoreCase))
@@ -1067,10 +1067,12 @@ public sealed partial class ExpressionParser
         if (varExpr.StartsWith("STRCMP(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRCMP ", StringComparison.OrdinalIgnoreCase))
         {
+            // INTRINSIC_STRCMP, CExpression.cpp:1133: a single argument compares
+            // unequal (1); no argument at all is the "missing arguments" 0.
             var parts = SplitFuncArgsResolved(varExpr, 6, 2);
             if (parts.Count == 2)
-                return string.Compare(parts[0], parts[1], StringComparison.Ordinal).ToString();
-            return "0";
+                return Math.Sign(string.CompareOrdinal(parts[0], parts[1])).ToString();
+            return parts.Count == 1 && parts[0].Length > 0 ? "1" : "0";
         }
 
         // STRLOWER / STRTOLOWER / STRUPPER / STRTOUPPER
@@ -1083,11 +1085,13 @@ public sealed partial class ExpressionParser
         if (varExpr.StartsWith("STRUPPER ", StringComparison.OrdinalIgnoreCase))
             return ResolveAngleBrackets(varExpr[9..].Trim()).ToUpperInvariant();
 
-        // ISNUMBER / ISNUM — returns 1 if arg is numeric
-        if (varExpr.StartsWith("ISNUMBER ", StringComparison.OrdinalIgnoreCase) ||
-            varExpr.StartsWith("ISNUM ", StringComparison.OrdinalIgnoreCase))
+        // ISNUM — returns 1 if arg is numeric. The space form of the ISNUMBER
+        // intrinsic is NOT taken here: it follows INTRINSIC_ISNUMBER further down
+        // (skip to the first digit, leading zero admits hex), which this
+        // long.TryParse test contradicted for "0ff" and "abc12".
+        if (varExpr.StartsWith("ISNUM ", StringComparison.OrdinalIgnoreCase))
         {
-            int prefixLen = varExpr.StartsWith("ISNUM ", StringComparison.OrdinalIgnoreCase) ? 6 : 9;
+            const int prefixLen = 6;
             string inner = ResolveAngleBrackets(varExpr[prefixLen..].Trim());
             if (inner.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                 return long.TryParse(inner.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out _) ? "1" : "0";
@@ -1498,16 +1502,19 @@ public sealed partial class ExpressionParser
         if (varExpr.StartsWith("MAX(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("MAX ", StringComparison.OrdinalIgnoreCase))
         {
+            // Fewer than two arguments answers 0, not the lone argument
+            // (INTRINSIC_MAX, CExpression.cpp:857: iCount < 2 -> iResult = 0).
             var a = SplitArgsTopLevel(ExtractFuncArg(varExpr, 3));
             if (a.Count >= 2) return Math.Max(Evaluate(a[0].AsSpan()), Evaluate(a[1].AsSpan())).ToString();
-            return a.Count == 1 ? Evaluate(a[0].AsSpan()).ToString() : "0";
+            return "0";
         }
         if (varExpr.StartsWith("MIN(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("MIN ", StringComparison.OrdinalIgnoreCase))
         {
+            // INTRINSIC_MIN, CExpression.cpp:869 - same two-argument rule as MAX.
             var a = SplitArgsTopLevel(ExtractFuncArg(varExpr, 3));
             if (a.Count >= 2) return Math.Min(Evaluate(a[0].AsSpan()), Evaluate(a[1].AsSpan())).ToString();
-            return a.Count == 1 ? Evaluate(a[0].AsSpan()).ToString() : "0";
+            return "0";
         }
 
         // SQRT — square root
@@ -1516,7 +1523,9 @@ public sealed partial class ExpressionParser
         {
             string inner = ExtractFuncArg(varExpr, 4);
             long val = Evaluate(inner.AsSpan());
-            return ((long)Math.Sqrt(val)).ToString();
+            // A negative argument takes the real part of the complex root, which
+            // is 0 (INTRINSIC_SQRT, CExpression.cpp:943 - std::complex sqrt).
+            return val < 0 ? "0" : ((long)Math.Sqrt(val)).ToString();
         }
 
         // ARCSIN / ARCCOS / ARCTAN — Source-X INTRINSIC_ARCSIN/ARCCOS/ARCTAN:
@@ -1616,14 +1625,18 @@ public sealed partial class ExpressionParser
             if (val <= 0) return "0";
             if (parts.Count == 2)
             {
-                string baseStr = parts[1].ToLowerInvariant();
-                double logBase = baseStr switch
-                {
-                    "e" => Math.E,
-                    "pi" => Math.PI,
-                    _ => double.TryParse(baseStr, out double b) ? b : 10.0
-                };
-                return ((long)Math.Log(val, logBase)).ToString();
+                // INTRINSIC_LOGARITHM, CExpression.cpp:881: "e" / "pi" name the base,
+                // anything else is read with GetVal - so a hex base (010 = 16), a
+                // defname or an expression all work - and a base <= 0 answers 0.
+                string baseStr = parts[1].Trim();
+                if (baseStr.Equals("e", StringComparison.OrdinalIgnoreCase))
+                    return ((long)Math.Log(val)).ToString();
+                if (baseStr.Equals("pi", StringComparison.OrdinalIgnoreCase))
+                    return ((long)(Math.Log(val) / Math.Log(Math.PI))).ToString();
+                long logBase = Evaluate(baseStr.AsSpan());
+                if (logBase <= 0)
+                    return "0";
+                return ((long)(Math.Log(val) / Math.Log(logBase))).ToString();
             }
             return ((long)Math.Log10(val)).ToString();
         }
@@ -1700,10 +1713,12 @@ public sealed partial class ExpressionParser
         if (varExpr.StartsWith("STRCMPI(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRCMPI ", StringComparison.OrdinalIgnoreCase))
         {
+            // INTRINSIC_STRCMPI, CExpression.cpp:1142 - strcmpi folds to LOWER case,
+            // so '_' (0x5F) sorts before 'a' where an upper-case fold put it after.
             var parts = SplitFuncArgsResolved(varExpr, 7, 2);
             if (parts.Count == 2)
-                return string.Compare(parts[0], parts[1], StringComparison.OrdinalIgnoreCase).ToString();
-            return "0";
+                return StrCmpI(parts[0], parts[1]).ToString();
+            return parts.Count == 1 && parts[0].Length > 0 ? "1" : "0";
         }
 
         // STRREPLACE — replace all literal matches: STRREPLACE(text, search, replacement)
@@ -1748,10 +1763,15 @@ public sealed partial class ExpressionParser
             {
                 string text = parts[0];
                 string search = parts[1];
-                int start = parts.Count > 2 && int.TryParse(parts[2], out int s) ? s : 0;
-                start = Math.Clamp(start, 0, text.Length);
-                // Source-X Str_IndexOf is case-SENSITIVE.
-                return text.IndexOf(search, start, StringComparison.Ordinal).ToString();
+                // The offset is read with GetVal (hex, defnames, arithmetic), and
+                // Str_IndexOf (sstring.cpp:1662) answers -1 for a negative offset, an
+                // offset at or past the end, a search longer than the text and an
+                // empty search - it never clamps.
+                long start = parts.Count > 2 ? Evaluate(parts[2].AsSpan()) : 0;
+                if (start < 0 || start >= text.Length || search.Length == 0 || search.Length > text.Length)
+                    return "-1";
+                // Case-SENSITIVE, as upstream.
+                return text.IndexOf(search, (int)start, StringComparison.Ordinal).ToString();
             }
             return "-1";
         }
@@ -1871,7 +1891,7 @@ public sealed partial class ExpressionParser
         return result ?? "";
     }
 
-    private string EvaluateQval(string expr)
+    private string EvaluateQval(string expr, bool intrinsicForm = false)
     {
         // Find '?' / ':' the way Source-X EvaluateConditionalQval_ParseArg
         // does — skipping <...> spans so a nested <QVAL a?b:c> inside the
@@ -1894,7 +1914,8 @@ public sealed partial class ExpressionParser
                         : (args.Count > 4 ? args[4] : "0"));
                 return ResolveAngleBrackets(pick.Trim());
             }
-            return "";
+            // INTRINSIC_QVAL, CExpression.cpp:1170: fewer than three arguments is 0.
+            return intrinsicForm ? "0" : "";
         }
 
         string condition = expr[..questionIdx].Trim();
@@ -1972,21 +1993,147 @@ public sealed partial class ExpressionParser
         return chance - mulDiv;
     }
 
+    /// <summary>STRMATCH's test: Str_Match (sstring.cpp:1750) == MATCH_VALID.</summary>
     private static bool WildcardMatch(string pattern, string input)
+        => StrMatch(pattern, 0, input, 0) == MatchResult.Valid;
+
+    private enum MatchResult { Invalid, Valid, End, Abort, Pattern, Literal, Range }
+
+    private static char CharAt(string s, int i) => i < s.Length ? s[i] : '\0';
+
+    /// <summary>ASCII-only lower fold, as the C-locale tolower upstream calls.</summary>
+    private static char LowerAscii(char c) => c is >= 'A' and <= 'Z' ? (char)(c + 32) : c;
+
+    /// <summary>strcmpi: compare after an ASCII lower-case fold, answering -1/0/1.</summary>
+    private static int StrCmpI(string a, string b)
     {
-        int p = 0, i = 0, starP = -1, starI = -1;
-        while (i < input.Length)
+        int n = Math.Min(a.Length, b.Length);
+        for (int i = 0; i < n; i++)
         {
-            if (p < pattern.Length && (pattern[p] == '?' || char.ToUpperInvariant(pattern[p]) == char.ToUpperInvariant(input[i])))
-            { p++; i++; }
-            else if (p < pattern.Length && pattern[p] == '*')
-            { starP = p++; starI = i; }
-            else if (starP >= 0)
-            { p = starP + 1; i = ++starI; }
-            else return false;
+            int d = LowerAscii(a[i]) - LowerAscii(b[i]);
+            if (d != 0) return Math.Sign(d);
         }
-        while (p < pattern.Length && pattern[p] == '*') p++;
-        return p == pattern.Length;
+        return Math.Sign(a.Length - b.Length);
+    }
+
+    /// <summary>
+    /// Port of Source-X Str_Match (sstring.cpp:1750): case-independent wildcard match
+    /// with '?' (one char), '*' (any run) and '[...]' sets - ranges "a-z", inversion
+    /// "[!...]" / "[^...]", and '\' escapes. Unlike a plain glob, an empty text only
+    /// matches a pattern that is exactly "*", and a malformed set fails the match.
+    /// </summary>
+    private static MatchResult StrMatch(string p, int pi, string t, int ti)
+    {
+        for (; pi < p.Length; ++pi, ++ti)
+        {
+            if (ti >= t.Length)
+                return (p[pi] == '*' && pi + 1 == p.Length) ? MatchResult.Valid : MatchResult.Abort;
+
+            switch (p[pi])
+            {
+                case '?':
+                    break;
+                case '*':
+                    return StrMatchAfterStar(p, pi, t, ti);
+                case '[':
+                {
+                    ++pi;
+                    bool invert = false;
+                    if (CharAt(p, pi) is '!' or '^')
+                    {
+                        invert = true;
+                        ++pi;
+                    }
+                    if (CharAt(p, pi) == ']')
+                        return MatchResult.Pattern;
+
+                    bool member = false;
+                    for (;;)
+                    {
+                        if (CharAt(p, pi) == ']')
+                            break;
+                        char rangeStart, rangeEnd;
+                        if (CharAt(p, pi) == '\\')
+                            rangeStart = rangeEnd = LowerAscii(CharAt(p, ++pi));
+                        else
+                            rangeStart = rangeEnd = LowerAscii(CharAt(p, pi));
+                        if (pi >= p.Length)
+                            return MatchResult.Pattern;
+
+                        if (CharAt(p, ++pi) == '-')
+                        {
+                            rangeEnd = LowerAscii(CharAt(p, ++pi));
+                            if (rangeEnd is '\0' or ']')
+                                return MatchResult.Pattern;
+                            if (rangeEnd == '\\')
+                            {
+                                rangeEnd = LowerAscii(CharAt(p, ++pi));
+                                if (rangeEnd == '\0')
+                                    return MatchResult.Pattern;
+                            }
+                            ++pi;
+                        }
+
+                        char chText = LowerAscii(t[ti]);
+                        if (rangeStart < rangeEnd
+                                ? chText >= rangeStart && chText <= rangeEnd
+                                : chText >= rangeEnd && chText <= rangeStart)
+                        {
+                            member = true;
+                            break;
+                        }
+                    }
+
+                    if ((invert && member) || !(invert || member))
+                        return MatchResult.Range;
+
+                    if (member)
+                    {
+                        while (CharAt(p, pi) != ']')
+                        {
+                            if (pi >= p.Length)
+                                return MatchResult.Pattern;
+                            if (p[pi] == '\\' && ++pi >= p.Length)
+                                return MatchResult.Pattern;
+                            ++pi;
+                        }
+                    }
+                    break;
+                }
+                default:
+                    if (LowerAscii(p[pi]) != LowerAscii(t[ti]))
+                        return MatchResult.Literal;
+                    break;
+            }
+        }
+        return ti < t.Length ? MatchResult.End : MatchResult.Valid;
+    }
+
+    private static MatchResult StrMatchAfterStar(string p, int pi, string t, int ti)
+    {
+        // Pass over the run of '?' and '*': each '?' consumes one text char.
+        for (; pi < p.Length && p[pi] is '?' or '*'; ++pi)
+        {
+            if (p[pi] == '?' && ti++ >= t.Length)
+                return MatchResult.Abort;
+        }
+        if (pi >= p.Length)
+            return MatchResult.Valid;
+
+        char nextp = LowerAscii(p[pi]);
+        MatchResult match = MatchResult.Invalid;
+        do
+        {
+            if (nextp == LowerAscii(CharAt(t, ti)) || nextp == '[')
+            {
+                match = StrMatch(p, pi, t, ti);
+                if (match == MatchResult.Valid)
+                    break;
+            }
+            if (ti++ >= t.Length)
+                return MatchResult.Abort;
+        } while (match != MatchResult.Abort && match != MatchResult.Pattern);
+        return match;
     }
 
     private static bool TrySafeRegexIsMatch(string input, string pattern, out bool isMatch)
@@ -2188,22 +2335,35 @@ public sealed partial class ExpressionParser
             // difference: every other function in a float expression works, and a
             // silent 0 from this one is a trap rather than a behaviour to match.
             case "ABS":       return Math.Abs(Arg(0));
-            case "SQRT":      return Math.Sqrt(Math.Abs(Arg(0)));
-            case "SIN":       return Math.Sin(Arg(0));
-            case "COS":       return Math.Cos(Arg(0));
-            case "TAN":       return Math.Tan(Arg(0));
-            case "ARCSIN":    return Math.Asin(Arg(0));
-            case "ARCCOS":    return Math.Acos(Arg(0));
-            case "ARCTAN":    return Math.Atan(Arg(0));
+            // A negative argument is the real part of the complex root: 0
+            // (CFloatMath.cpp INTRINSIC_SQRT, std::complex sqrt).
+            case "SQRT":      { double v = Arg(0); return v < 0 ? 0 : Math.Sqrt(v); }
+            // The float evaluator works in DEGREES, unlike the integer one:
+            // sin(x * M_PI / 180) in, asin(x) * 180 / M_PI out (CFloatMath.cpp
+            // INTRINSIC_SIN/COS/TAN/ARCSIN/ARCCOS/ARCTAN).
+            case "SIN":       return Math.Sin(Arg(0) * Math.PI / 180);
+            case "COS":       return Math.Cos(Arg(0) * Math.PI / 180);
+            case "TAN":       return Math.Tan(Arg(0) * Math.PI / 180);
+            case "ARCSIN":    return Math.Asin(Arg(0)) * 180 / Math.PI;
+            case "ARCCOS":    return Math.Acos(Arg(0)) * 180 / Math.PI;
+            case "ARCTAN":    return Math.Atan(Arg(0)) * 180 / Math.PI;
             case "NAPIERPOW": return Math.Exp(Arg(0));
-            case "MAX":       return Math.Max(Arg(0), Arg(1));
-            case "MIN":       return Math.Min(Arg(0), Arg(1));
+            // Fewer than two arguments is 0 (CFloatMath.cpp INTRINSIC_MAX/MIN).
+            case "MAX":       return SplitTopLevel(args).Count < 2 ? 0 : Math.Max(Arg(0), Arg(1));
+            case "MIN":       return SplitTopLevel(args).Count < 2 ? 0 : Math.Min(Arg(0), Arg(1));
             case "LOGARITHM":
             {
                 double v = Arg(0);
                 if (v <= 0) return 0;
                 var parts = SplitTopLevel(args);
-                return parts.Count >= 2 ? Math.Log(v, Arg(1)) : Math.Log10(v);
+                if (parts.Count < 2) return Math.Log10(v);
+                // "e" / "pi" name the base; a base <= 0 answers 0
+                // (CFloatMath.cpp INTRINSIC_LOGARITHM).
+                string baseTok = parts[1].Trim();
+                if (baseTok.Equals("e", StringComparison.OrdinalIgnoreCase)) return Math.Log(v);
+                if (baseTok.Equals("pi", StringComparison.OrdinalIgnoreCase)) return Math.Log(v) / Math.Log(Math.PI);
+                double b = Arg(1);
+                return b <= 0 ? 0 : Math.Log(v) / Math.Log(b);
             }
             default:
                 return ParseFloatLiteral(ResolveVariable($"{name}({args})") ?? "0");

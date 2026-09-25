@@ -4,6 +4,13 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-25] - INPDLG reaches worn memories and spell effects
+------------------------------------------------------------------------
+FIX - An INPDLG prompt writes back into the object it was opened on. The reply
+      looked the object up again by its world uid, which a memory or spell
+      effect worn on a character (i_rune_*) does not have, so .edit could show
+      a spell effect but not change its TIMER or other fields.
+
 [2026-09-25] - NPC AI: Source-X parity and the NPCAIEXTRAS mask
 ------------------------------------------------------------------------
 NEW - NPCAIEXTRAS (sphere.ini, per NPC TAG.OVERRIDE.NPCAIEXT): a flag mask for

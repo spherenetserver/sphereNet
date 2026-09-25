@@ -141,6 +141,20 @@ public sealed class ScriptResponseLifecycleTests
         Assert.Equal(expected, item.Name);
     }
 
+    /// <summary>A memory or spell effect worn on a character has no world uid; the
+    /// reply must still reach the object the prompt was opened on (.edit on an
+    /// i_rune_* effect, INPDLG TIMER).</summary>
+    [Fact]
+    public void InputReachesAnObjectWithoutAWorldUid()
+    {
+        using var f = new Fixture();
+        var loose = new SphereNet.Game.Objects.Items.Item { Name = "Original" };
+        Assert.Equal(0u, loose.Uid.Value);
+        f.Client.SendInputPromptGump(loose, "NAME", 20);
+        f.Client.HandleGumpTextEntry(0, f.InputContext, 1, "Edited");
+        Assert.Equal("Edited", loose.Name);
+    }
+
     [Fact]
     public void NewInputReplacesTheOldPendingInput()
     {

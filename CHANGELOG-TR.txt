@@ -4,6 +4,13 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-25] - INPDLG giyili memory ve buyu etkilerine ulasir
+------------------------------------------------------------------------
+DUZELTME - INPDLG penceresi acildigi nesneye yazar. Yanit nesneyi dunya
+           uid'iyle yeniden ariyordu; karakterde giyili memory ya da buyu etkisi
+           (i_rune_*) uid tasimadigi icin .edit etkiyi gosteriyor ama TIMER ve
+           diger alanlarini degistiremiyordu.
+
 [2026-09-25] - NPC AI: Source-X paritesi ve NPCAIEXTRAS maskesi
 ------------------------------------------------------------------------
 YENI - NPCAIEXTRAS (sphere.ini, NPC basina TAG.OVERRIDE.NPCAIEXT): Source-X'te

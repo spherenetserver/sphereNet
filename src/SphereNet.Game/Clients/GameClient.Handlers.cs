@@ -682,12 +682,13 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         var key = (serial, context);
-        if (!Dialogs.PendingInputDlg.TryGetValue(key, out var propName))
+        if (!Dialogs.PendingInputDlg.TryGetValue(key, out var pending))
         {
             _logger.LogDebug("[inpdlg] unexpected text input: serial=0x{S:X8} ctx=0x{C:X4}", serial, context);
             return;
         }
         Dialogs.PendingInputDlg.Remove(key);
+        string propName = pending.Prop;
 
         if (action != 1)
         {
@@ -695,8 +696,11 @@ public sealed partial class GameClient
             return;
         }
 
-        IScriptObj? target = _world.FindChar(new Serial(serial)) as IScriptObj
-            ?? _world.FindItem(new Serial(serial)) as IScriptObj;
+        // The prompt's own object: a world uid would miss a memory or spell effect
+        // worn on a character (no uid), and INPDLG TIMER on one then did nothing.
+        IScriptObj? target = pending.Target;
+        if (target is ObjBase { IsDeleted: true })
+            target = null;
         if (target == null)
         {
             _logger.LogDebug("[inpdlg] target serial 0x{S:X8} no longer exists", serial);
@@ -764,7 +768,7 @@ public sealed partial class GameClient
             Dialogs.NextInputDlgContext = 0x1000;
 
         Dialogs.PendingInputDlg.Clear();
-        Dialogs.PendingInputDlg[(targetSerial, context)] = propName;
+        Dialogs.PendingInputDlg[(targetSerial, context)] = (propName, target);
 
         string current = ".";
         if (target.TryGetProperty(propName, out var cur) && !string.IsNullOrEmpty(cur))

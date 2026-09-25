@@ -167,7 +167,9 @@ public sealed class ClientDialogHandler
     /// 0xAB packet; the matching 0xAC reply restores the property name
     /// to write the user-typed value into.
     /// </summary>
-    internal readonly Dictionary<(uint Serial, ushort Context), string> PendingInputDlg = new();
+    /// The object is kept too: a memory or spell effect worn on a character has no
+    /// world uid, so looking the reply's serial up again could never find it.
+    internal readonly Dictionary<(uint Serial, ushort Context), (string Prop, IScriptObj Target)> PendingInputDlg = new();
     /// <summary>Monotonic counter for fresh INPDLG <c>context</c> ids
     /// (Source-X uses CLIMODE constants, but we just need uniqueness per
     /// open prompt).</summary>

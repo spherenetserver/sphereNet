@@ -1902,7 +1902,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         world.OnTick();
 
         int lookCount = 0;
-        ai.OnNpcLookAtChar = (_, _) => { lookCount++; return true; };
+        ai.OnNpcLookAtChar = (_, _) => { lookCount++; return TriggerResult.True; };
         ai.OnTickAction(npc);
 
         Assert.True(lookCount > 0);
@@ -1910,7 +1910,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         npc.FightTarget = target.Uid;
         int fightCount = 0;
-        ai.OnNpcLookAtChar = (_, _) => false;
+        ai.OnNpcLookAtChar = (_, _) => TriggerResult.False;
         ai.OnNpcActFight = (_, _, _, _) => { fightCount++; return new NpcAI.NpcFightDecision(true, 0, SkillType.None, SpellType.None); };
         npc.NextNpcActionTime = 0;
         ai.OnTickAction(npc);
@@ -1927,6 +1927,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var lich = world.CreateCharacter();
         lich.Name = "a lich";
         lich.NpcBrain = NpcBrainType.Monster;
+        lich.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         lich.BodyId = 0x0018;
         lich.Int = 5;
         lich.Dex = 100;

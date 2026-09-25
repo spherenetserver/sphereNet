@@ -118,7 +118,6 @@ public static partial class Program
     private static bool TryDispatchServiceKeyword(Character speaker, Character npc, string text)
     {
         string lower = text.ToLowerInvariant();
-        string lowerName = (npc.Name ?? "").ToLowerInvariant();
         NpcBrainType brain = npc.NpcBrain;
 
         // Source-X NPC_OnTrainHear: "train [skill]" — a townsfolk NPC teaches
@@ -133,17 +132,11 @@ public static partial class Program
             return true;
         }
 
-        // Mirror the legacy widening: NPC=NPC_HUMAN service NPCs whose
-        // names carry the role keyword should still respond as the
-        // matching brain (banker / vendor / healer / stable).
-        if (brain is NpcBrainType.Human or NpcBrainType.None)
-        {
-            if (lowerName.Contains("banker")) brain = NpcBrainType.Banker;
-            else if (SphereNet.Game.Trade.VendorEngine.HasVendorNameKeyword(lowerName))
-                brain = NpcBrainType.Vendor;
-        }
-
-        if (brain == NpcBrainType.Vendor)
+        // The trade keywords belong to every NPC_IsVendor brain - healer, banker,
+        // vendor and stable master (CCharNPC::IsVendor, CCharNPC.cpp:251). The shop
+        // list opening IS the answer: NV_BUY / NV_SELL say nothing when they succeed
+        // (CCharNPCAct.cpp:147-211).
+        if (SphereNet.Game.Trade.VendorEngine.IsVendorBrain(brain))
         {
             if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
             {
@@ -152,8 +145,6 @@ public static partial class Program
                     "[svc_kw] VENDOR_BUY speaker={Speaker} npc={Npc} client={HasClient}",
                     speaker.Name, npc.Name, gc != null);
                 gc?.OpenVendorBuy(npc);
-                NpcSpeak(npc, SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorBuyfast)
-                    ?? "Take a look at my goods.");
                 return true;
             }
             if (HasWord(lower, "sell"))
@@ -163,70 +154,21 @@ public static partial class Program
                     "[svc_kw] VENDOR_SELL speaker={Speaker} npc={Npc} client={HasClient}",
                     speaker.Name, npc.Name, gc != null);
                 gc?.OpenVendorSell(npc);
-                NpcSpeak(npc, SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorSellfast)
-                    ?? "Show me what you have to sell.");
                 return true;
             }
         }
 
-        if (brain == NpcBrainType.Banker)
+        // A banker opens the bank box, as the BANKSELF verb a banker's SPEECH runs
+        // (spk_jobBANKER: ON=*Bank* ... SRC.BANKSELF). Balances, withdrawals and
+        // cheques are the pack's SPEECH business; the engine has no lines for them.
+        if (brain == NpcBrainType.Banker && HasWordPrefix(lower, "bank"))
         {
             int bankDist = Math.Max(Math.Abs(speaker.X - npc.X), Math.Abs(speaker.Y - npc.Y));
             if (bankDist > 3 || speaker.MapIndex != npc.MapIndex) return false;
-
-            int withdrawAmount = TryParseAmountAfter(lower, "withdraw");
-            int checkAmount = TryParseAmountAfter(lower, "check");
-            bool wantBank = HasWordPrefix(lower, "bank") || lower == "deposit"
-                            || lower.StartsWith("deposit ");
-
-            if (HasWord(lower, "balance"))
-            {
-                long banked = CountBankGold(speaker);
-                NpcSpeak(npc, $"Thou hast {banked} gold piece(s) in our care.");
-                return true;
-            }
-            if (withdrawAmount > 0)
-            {
-                long banked = CountBankGold(speaker);
-                if (banked < withdrawAmount)
-                {
-                    NpcSpeak(npc, $"You have only {banked} gold piece(s) in our care.");
-                    return true;
-                }
-                if (!DepositGoldToBackpack(speaker, withdrawAmount))
-                {
-                    NpcSpeak(npc, "Thy backpack cannot hold that withdrawal.");
-                    return true;
-                }
-                RemoveBankGold(speaker, withdrawAmount);
-                NpcSpeak(npc, $"Here are thy {withdrawAmount} gold piece(s).");
-                FindGameClient(speaker)?.OpenBankBox();
-                return true;
-            }
-            if (checkAmount > 0)
-            {
-                long banked = CountBankGold(speaker);
-                if (banked < checkAmount)
-                {
-                    NpcSpeak(npc, $"You have only {banked} gold piece(s) in our care.");
-                    return true;
-                }
-                if (!DepositBankCheckToBackpack(speaker, checkAmount))
-                {
-                    NpcSpeak(npc, "I am unable to issue a check for that amount right now.");
-                    return true;
-                }
-                RemoveBankGold(speaker, checkAmount);
-                NpcSpeak(npc, $"Here is thy check for {checkAmount} gold piece(s).");
-                return true;
-            }
-            if (wantBank)
-            {
-                _log.LogDebug("[svc_kw] BANK_OPEN speaker={Speaker} npc={Npc}",
-                    speaker.Name, npc.Name);
-                FindGameClient(speaker)?.OpenBankBox();
-                return true;
-            }
+            _log.LogDebug("[svc_kw] BANK_OPEN speaker={Speaker} npc={Npc}",
+                speaker.Name, npc.Name);
+            FindGameClient(speaker)?.OpenBankBox();
+            return true;
         }
 
         return false;
@@ -332,13 +274,6 @@ public static partial class Program
     }
 
     /// <summary>
-    /// Parse an integer amount that follows a keyword in a speech string,
-    /// e.g. TryParseAmountAfter("withdraw 100", "withdraw") returns 100.
-    /// Returns 0 when the keyword is missing, no amount follows, or the
-    /// amount is non-positive. Tolerant of extra whitespace and trailing
-    /// punctuation ("withdraw 100 gold").
-    /// </summary>
-    /// <summary>
     /// NPC training request (Source-X NPC_OnTrainHear). Recognise a skill name in
     /// the message, quote its price, and record a pending-training memory keyed by
     /// the student so a later gold hand-off (<see cref="TryPayForTraining"/>)
@@ -374,135 +309,6 @@ public static partial class Program
         }
         skill = default;
         return false;
-    }
-
-    private static int TryParseAmountAfter(string text, string keyword)
-    {
-        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(keyword)) return 0;
-        int idx = text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0) return 0;
-        // Whole-word only — "check" buried inside another word must not
-        // trigger a bank withdrawal (same substring hazard as HasWord).
-        if (idx > 0 && char.IsLetterOrDigit(text[idx - 1])) return 0;
-        if (idx + keyword.Length < text.Length && char.IsLetter(text[idx + keyword.Length])) return 0;
-        int cur = idx + keyword.Length;
-        while (cur < text.Length && !char.IsDigit(text[cur])) cur++;
-        int start = cur;
-        while (cur < text.Length && char.IsDigit(text[cur])) cur++;
-        if (cur == start) return 0;
-        if (!int.TryParse(text.AsSpan(start, cur - start), out int amount)) return 0;
-        return amount > 0 ? amount : 0;
-    }
-
-    /// <summary>Total gold (item type Gold or 0x0EED) inside a character's bank box.</summary>
-    private static long CountBankGold(Character ch)
-    {
-        var bank = ch.GetEquippedItem(SphereNet.Core.Enums.Layer.BankBox);
-        if (bank == null) return 0;
-        long total = 0;
-        foreach (var item in _world.GetContainerContents(bank.Uid))
-        {
-            if (item.ItemType == SphereNet.Core.Enums.ItemType.Gold || item.BaseId == 0x0EED)
-                total += item.Amount;
-        }
-        return total;
-    }
-
-    /// <summary>
-    /// Withdraw N gold from a character's bank box. Walks gold piles from
-    /// largest first (mirrors Source-X behaviour where the smallest number
-    /// of stacks is consumed). Caller must check CountBankGold first.
-    /// </summary>
-    private static void RemoveBankGold(Character ch, int amount)
-    {
-        var bank = ch.GetEquippedItem(SphereNet.Core.Enums.Layer.BankBox);
-        if (bank == null || amount <= 0) return;
-        int remaining = amount;
-        foreach (var item in _world.GetContainerContents(bank.Uid).ToList())
-        {
-            if (remaining <= 0) break;
-            if (item.ItemType != SphereNet.Core.Enums.ItemType.Gold && item.BaseId != 0x0EED)
-                continue;
-
-            if (item.Amount <= remaining)
-            {
-                remaining -= item.Amount;
-                _world.RemoveItem(item);
-            }
-            else
-            {
-                item.Amount -= (ushort)remaining;
-                remaining = 0;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Drop a fresh gold pile into a character's backpack. Splits into 60k
-    /// stacks (UO max amount per pile) so very large withdrawals still fit.
-    /// </summary>
-    private static bool DepositGoldToBackpack(Character ch, int amount)
-    {
-        var pack = ch.Backpack;
-        if (pack == null || amount <= 0) return false;
-        int neededStacks = (int)(((long)amount + 59_999) / 60_000);
-        if (pack.ContentCount > Item.MaxContainerItems - neededStacks)
-            return false;
-
-        var deposited = new List<Item>(neededStacks);
-        while (amount > 0)
-        {
-            ushort slice = (ushort)Math.Min(amount, 60000);
-            var gold = _world.CreateItem();
-            gold.BaseId = 0x0EED;
-            gold.Name = "Gold";
-            gold.ItemType = SphereNet.Core.Enums.ItemType.Gold;
-            gold.Amount = slice;
-            bool canCarry = ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM || ch.CanCarry(gold);
-            if (!canCarry || !pack.TryAddItem(gold))
-            {
-                _world.RemoveItem(gold);
-                foreach (var added in deposited)
-                    _world.RemoveItem(added);
-                return false;
-            }
-            deposited.Add(gold);
-            amount -= slice;
-        }
-        return true;
-    }
-
-    private static bool DepositBankCheckToBackpack(Character ch, int amount)
-    {
-        var pack = ch.Backpack;
-        if (pack == null || amount <= 0)
-            return false;
-
-        var rid = _resources.ResolveDefName("i_bankcheck");
-        if (!rid.IsValid || rid.Type != ResType.ItemDef)
-            return false;
-
-        var item = _world.CreateItem();
-        var itemDef = DefinitionLoader.GetItemDef(rid.Index);
-        ushort dispId = SphereNet.Game.Definitions.ItemDefHelper.CreateGraphic(itemDef, rid.Index);
-        if (dispId == 0)
-        {
-            _world.RemoveItem(item);
-            return false;
-        }
-
-        item.BaseId = dispId;
-        ItemDefHelper.ApplyInstanceMetadata(item, rid.Index, setDisplayId: false, setName: false);
-        item.Name = string.IsNullOrWhiteSpace(itemDef?.Name) ? $"Bank check ({amount})" : itemDef!.Name;
-        item.Price = amount;
-        item.SetTag("BANKCHECK_AMOUNT", amount.ToString());
-        bool canCarry = ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM || ch.CanCarry(item);
-        if (!canCarry || !pack.TryAddItem(item))
-        {
-            _world.RemoveItem(item);
-            return false;
-        }
-        return true;
     }
 
     /// <summary>
@@ -544,46 +350,16 @@ public static partial class Program
         // Calling the guards is silent in Source-X (CChar::CallGuards,
         // CCharFight.cpp:178): no line says the area is quiet or that the guards
         // are coming - the guard's own strike line is the answer.
-        var hostiles = FindAllGuardTargets(speaker);
-        foreach (var hostile in hostiles)
-        {
-            if (hostile.IsDeleted || hostile.IsDead) continue;
-
-            // @CallGuards (Source-X) — fired on the caller for each reported
-            // criminal/murderer (<argo> = the hostile). RETURN 1 cancels the guard
-            // response for that hostile.
-            if (_triggerDispatcher?.FireCharTrigger(speaker, CharTrigger.CallGuards,
-                    new TriggerArgs { CharSrc = speaker, O1 = hostile }) == TriggerResult.True)
-                continue;
-
-            // Alert existing patrol guards in range toward this hostile
-            _npcAI.AlertGuardsInRange(speaker.Position, hostile);
-
-            var summonedGuard = FindNearbyGuardResponder(speaker.Position) ?? SummonCityGuardNear(hostile, region.Name);
-            if (summonedGuard != null && !summonedGuard.IsDeleted)
-            {
-                summonedGuard.FightTarget = hostile.Uid;
-                if (summonedGuard.Position.GetDistanceTo(hostile.Position) > 1)
-                {
-                    _world.MoveCharacter(summonedGuard, hostile.Position);
-                    BroadcastCharacterAppear(summonedGuard);
-                }
-            }
-            if (_config.GuardsInstantKill)
-            {
-                BroadcastLightningStrike(hostile);
-                ProcessDeathWithEffects(hostile, summonedGuard);
-                if (summonedGuard != null)
-                {
-                    summonedGuard.FightTarget = Serial.Invalid;
-                    summonedGuard.RemoveTag("GUARD_YELLED");
-                }
-            }
-        }
+        foreach (var hostile in FindAllGuardTargets(speaker))
+            CallGuards(speaker, hostile);
 
         return (false, text);
     }
 
+    /// <summary>Source-X CChar::CallGuards() (CCharFight.cpp:177): everyone around
+    /// the caller that carries the criminal flag - or is evil, when
+    /// GUARDSONMURDERERS is on - and that the caller may disturb (staff may not be
+    /// reported).</summary>
     private static List<Character> FindAllGuardTargets(Character speaker)
     {
         var results = new List<Character>();
@@ -591,21 +367,70 @@ public static partial class Program
         {
             if (ch == speaker || ch.IsDead || ch.IsDeleted) continue;
             if (ch.PrivLevel >= PrivLevel.Counsel) continue;
-            if (ch.NpcBrain == NpcBrainType.Guard) continue;
-
-            if (ch.IsPlayer)
-            {
-                bool isCriminal = ch.IsCriminal || ch.IsStatFlag(StatFlag.Criminal);
-                bool isMurderer = _config.GuardsOnMurderers && ch.IsMurderer;
-                if (isCriminal || isMurderer) results.Add(ch);
-                continue;
-            }
-            if (ch.NpcMaster.IsValid) continue;
-
-            bool hostileNpc = ch.NpcBrain is NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon;
-            if (hostileNpc) results.Add(ch);
+            bool criminal = ch.IsCriminal || ch.IsStatFlag(StatFlag.Criminal);
+            if (criminal || (_config.GuardsOnMurderers && _npcAI.NotoIsEvil(ch)))
+                results.Add(ch);
         }
         return results;
+    }
+
+    /// <summary>Last CallGuards per caller (the _iTimeLastCallGuards spam check).</summary>
+    private static readonly Dictionary<uint, long> _lastCallGuards = [];
+
+    /// <summary>Source-X CChar::CallGuards(pCriminal) (CCharFight.cpp:215): nobody
+    /// dead, no statue and no GM, and only against someone standing on guarded
+    /// ground; at most once per 2.5 seconds per caller. A guard calling does the
+    /// work itself, anyone else gets the first guard in sight that is free or
+    /// already on this criminal; @CallGuards may refuse, and when no guard is at
+    /// hand a new one is summoned onto the criminal. The guard then looks at the
+    /// criminal as its own look-around would (NPC_LookAtCharGuard with
+    /// bFromTrigger). Returns whether a guard was called.</summary>
+    internal static bool CallGuards(Character caller, Character criminal)
+    {
+        if (_world == null || _npcAI == null || criminal == caller)
+            return false;
+        if (caller.IsDead || criminal.IsDead || criminal.IsDeleted ||
+            (CharDefHelper.GetCanFlags(criminal) & CanFlags.C_Statue) != 0 ||
+            criminal.PrivLevel >= PrivLevel.GM)
+            return false;
+        var criminalArea = _world.FindRegion(criminal.Position);
+        if (criminalArea == null || !criminalArea.IsGuarded)
+            return false;
+
+        long now = Environment.TickCount64;
+        if (_lastCallGuards.TryGetValue(caller.Uid.Value, out long last) && now - last <= 2500)
+            return false;
+        _lastCallGuards[caller.Uid.Value] = now;
+
+        Character? guard = null;
+        if (!caller.IsPlayer && caller.NpcBrain == NpcBrainType.Guard)
+            guard = caller;
+        else
+        {
+            foreach (var ch in _world.GetCharsInRange(caller.Position, 14))
+            {
+                if (ch.IsPlayer || ch.IsDead || ch.IsDeleted || ch.NpcBrain != NpcBrainType.Guard)
+                    continue;
+                if (ch.FightTarget == criminal.Uid || !ch.IsStatFlag(StatFlag.War))
+                {
+                    guard = ch;
+                    break;
+                }
+            }
+        }
+
+        // @CallGuards (Source-X) — fired on the caller for the reported criminal
+        // (<argo> = the criminal). RETURN 1 cancels the guard response.
+        if (_triggerDispatcher?.FireCharTrigger(caller, CharTrigger.CallGuards,
+                new TriggerArgs { CharSrc = caller, O1 = criminal }) == TriggerResult.True)
+            return false;
+
+        guard ??= SummonCityGuardNear(criminal, criminalArea.Name);
+        if (guard == null || guard.IsDeleted)
+            return false;
+
+        _npcAI.GuardLookAtChar(guard, criminal, fromTrigger: true);
+        return true;
     }
 
     private static void BroadcastLightningStrike(Character target)
@@ -707,26 +532,6 @@ public static partial class Program
                 return owner;
         }
         return offender;
-    }
-
-    private static Character? FindNearbyGuardResponder(Point3D center)
-    {
-        Character? nearest = null;
-        int bestDist = int.MaxValue;
-        foreach (var ch in _world.GetCharsInRange(center, 18))
-        {
-            if (ch.IsDeleted || ch.IsDead || ch.IsPlayer)
-                continue;
-            if (ch.NpcBrain != NpcBrainType.Guard)
-                continue;
-            int dist = ch.Position.GetDistanceTo(center);
-            if (dist < bestDist)
-            {
-                nearest = ch;
-                bestDist = dist;
-            }
-        }
-        return nearest;
     }
 
     private static Character? SummonCityGuardNear(Character hostile, string regionName)
@@ -929,20 +734,11 @@ public static partial class Program
             npc.Memory_AddObjTypes(speaker.Uid, SphereNet.Core.Enums.MemoryType.Speak);
         }
 
-        // Service-NPC well-known keywords (buy/sell/bank/balance/withdraw/
-        // heal/stable/...) are handled by the built-in dispatcher BEFORE
-        // the SPEECH script chain. Imported sphere packs ship TSPEECH=spk_jobSHOPKEEP
-        // / spk_jobBANKER bodies whose verbs (actserv.dialog, ...) aren't
-        // fully wired in our interpreter yet — letting the script "handle"
-        // those keywords would silently swallow the request and the
-        // vendor / bank window would never open. Pre-empting them here
-        // keeps service NPCs functional until SPEECH bodies execute end
-        // to end. Other speech (greetings, custom keywords) still flows
-        // through FireSpeechTrigger below.
-        if (TryDispatchServiceKeyword(speaker, npc, text))
-            return;
-
-        // Script-driven SPEECH triggers (from CHARDEF SPEECH/TSPEECH)
+        // Script-driven SPEECH triggers (from CHARDEF SPEECH/TSPEECH) come FIRST,
+        // as upstream runs them (NPC_OnHear, CCharNPCAct.cpp:317-359): a SPEECH
+        // block that answers the line owns it, service keywords included - the
+        // pack's own "buy"/"bank" blocks (their dead-player refusals and all) run
+        // their BUY / SELL / BANKSELF verbs themselves.
         var speechResult = _triggerDispatcher?.FireSpeechTrigger(npc, speaker, text,
             (int)mode, FindGameClient(speaker));
         if (speechResult == TriggerResult.True)
@@ -951,165 +747,28 @@ public static partial class Program
             return;
         }
 
-        // Built-in keyword responses. Legacy Sphere saves commonly set
-        // NPC=NPC_HUMAN on bankers/vendors/healers/stablemasters and
-        // defer the real behaviour to a TSPEECH script block. When that
-        // block isn't present on the shard, the service NPC becomes
-        // mute. We widen the brain match so a Human-brain NPC whose
-        // name contains the role keyword ("banker", "vendor"...) still
-        // responds. InferredRole below collapses brain + name into a
-        // single dispatch key.
+        // Upstream's one hard-coded reaction (:362-366): a healer, or anyone with
+        // 100.0 Spirit Speak, looks at the speaker - which is how a ghost asking a
+        // healer gets resurrected.
+        if ((npc.NpcBrain == NpcBrainType.Healer || npc.GetSkill(SkillType.SpiritSpeak) >= 1000) &&
+            _npcAI != null && _npcAI.LookAtChar(npc, speaker))
+            return;
+
+        // SphereNet's fallback for a service NPC whose pack attaches no SPEECH for
+        // these words: the trade, bank, training and stable keywords by BRAIN (the
+        // role is never guessed from the name), silent like the verbs they stand
+        // in for. Only reached when no SPEECH block took the line.
+        if (TryDispatchServiceKeyword(speaker, npc, text))
+            return;
+
         string? response = null;
-        string lowerName = (npc.Name ?? "").ToLowerInvariant();
-        NpcBrainType inferredBrain = npc.NpcBrain;
-        if (inferredBrain is NpcBrainType.Human or NpcBrainType.None)
-        {
-            if (lowerName.Contains("banker")) inferredBrain = NpcBrainType.Banker;
-            else if (lowerName.Contains("healer")) inferredBrain = NpcBrainType.Healer;
-            else if (lowerName.Contains("stable") || lowerName.Contains("stablemaster"))
-                inferredBrain = NpcBrainType.Stable;
-            else if (lowerName.Contains("guard")) inferredBrain = NpcBrainType.Guard;
-            else if (SphereNet.Game.Trade.VendorEngine.HasVendorNameKeyword(lowerName))
-                inferredBrain = NpcBrainType.Vendor;
-        }
-
-        // The trade keywords belong to every VENDOR brain, not just the one called
-        // Vendor. Upstream counts a HEALER, a BANKER, a VENDOR and a STABLE alike
-        // (CCharNPC::IsVendor, CCharNPC.cpp:253), and the shipped pack gives the animal
-        // trainer and the stablemaster brain=Stable - so they answered nothing when a
-        // customer said "buy" right next to them, while a shop down the street did.
-        //
-        // Handled ahead of the brain switch so each brain keeps its own extra keywords
-        // (a stablemaster still answers "stable", a banker "bank") without either
-        // having to repeat these.
-        if (SphereNet.Game.Trade.VendorEngine.IsVendorBrain(inferredBrain))
-        {
-            if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
-            {
-                var vgc = FindGameClient(speaker);
-                _log.LogDebug(
-                    "[vendor_speech] BUY speaker={Speaker} npc={Npc} brain={Brain} client={HasClient}",
-                    speaker.Name, npc.Name, npc.NpcBrain, vgc != null);
-                if (vgc != null)
-                    vgc.OpenVendorBuy(npc);
-                response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorBuyfast);
-                if (string.IsNullOrEmpty(response))
-                    response = "Take a look at my goods.";
-            }
-            if (HasWord(lower, "sell"))
-            {
-                var vgc = FindGameClient(speaker);
-                _log.LogDebug(
-                    "[vendor_speech] SELL speaker={Speaker} npc={Npc} brain={Brain} client={HasClient}",
-                    speaker.Name, npc.Name, npc.NpcBrain, vgc != null);
-                if (vgc != null)
-                    vgc.OpenVendorSell(npc);
-                response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorSellfast);
-                if (string.IsNullOrEmpty(response))
-                    response = "Show me what you have to sell.";
-            }
-        }
-
-        switch (inferredBrain)
+        switch (npc.NpcBrain)
         {
             case NpcBrainType.Vendor:
-                if (HasWord(lower, "train") || HasWord(lower, "teach"))
+                if (HasWord(lower, "teach"))
                 {
                     response = HandleTrainRequest(speaker, npc, lower);
                 }
-                break;
-
-            case NpcBrainType.Banker:
-                {
-                    // Source-X CCharNPC::OnTriggerSpeech banker brain handles
-                    // a small set of keywords:
-                    //   bank / deposit  -> open the bank box
-                    //   balance         -> report the gold currently banked
-                    //   withdraw N      -> move N gold from the bank into the
-                    //                      speaker's backpack
-                    //   check N         -> issue a bank check into the
-                    //                      speaker's backpack
-                    var gc = FindGameClient(speaker);
-                    int withdrawAmount = TryParseAmountAfter(lower, "withdraw");
-                    int checkAmount = TryParseAmountAfter(lower, "check");
-                    bool wantBank = HasWordPrefix(lower, "bank") || lower == "deposit" || lower.StartsWith("deposit ");
-
-                    if (HasWord(lower, "balance"))
-                    {
-                        long banked = CountBankGold(speaker);
-                        response = $"Thou hast {banked} gold piece(s) in our care.";
-                    }
-                    else if (withdrawAmount > 0)
-                    {
-                        long banked = CountBankGold(speaker);
-                        if (banked < withdrawAmount)
-                            response = $"You have only {banked} gold piece(s) in our care.";
-                        else
-                        {
-                            if (!DepositGoldToBackpack(speaker, withdrawAmount))
-                                response = "Thy backpack cannot hold that withdrawal.";
-                            else
-                            {
-                                RemoveBankGold(speaker, withdrawAmount);
-                                response = $"Here are thy {withdrawAmount} gold piece(s).";
-                                // Ensure the backpack-side delta is visible immediately.
-                                gc?.OpenBankBox();
-                            }
-                        }
-                    }
-                    else if (checkAmount > 0)
-                    {
-                        long banked = CountBankGold(speaker);
-                        if (banked < checkAmount)
-                            response = $"You have only {banked} gold piece(s) in our care.";
-                        else if (!DepositBankCheckToBackpack(speaker, checkAmount))
-                            response = "I am unable to issue a check for that amount right now.";
-                        else
-                        {
-                            RemoveBankGold(speaker, checkAmount);
-                            response = $"Here is thy check for {checkAmount} gold piece(s).";
-                            gc?.OpenBankBox();
-                        }
-                    }
-                    else if (wantBank)
-                    {
-                        gc?.OpenBankBox();
-                        response = "Here is your bank box.";
-                    }
-                }
-                break;
-
-            case NpcBrainType.Healer:
-                if (HasWord(lower, "heal") || HasWord(lower, "resurrect") || HasWord(lower, "cure"))
-                {
-                    // Check if speaker is dead → resurrect
-                    if (speaker.IsDead)
-                    {
-                        response = "Let me help you return to the living.";
-                        foreach (var c in _clients.Values)
-                        {
-                            if (c.Character == speaker)
-                            {
-                                c.OnResurrect();
-                                break;
-                            }
-                        }
-                    }
-                    else if (speaker.Hits < speaker.MaxHits)
-                    {
-                        speaker.Hits = speaker.MaxHits;
-                        response = "You look much better now.";
-                    }
-                    else
-                    {
-                        response = "You look healthy to me.";
-                    }
-                }
-                break;
-
-            case NpcBrainType.Guard:
-                if (HasWord(lower, "help") || HasWord(lower, "guards"))
-                    response = "I shall protect this area.";
                 break;
 
             case NpcBrainType.Stable:

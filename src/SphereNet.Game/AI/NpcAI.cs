@@ -160,7 +160,7 @@ public sealed partial class NpcAI
     /// LOCAL.skill + LOCAL.spell. Args: (npc, target, dist, motivation).</summary>
     public Func<Character, Character, int, int, NpcFightDecision>? OnNpcActFight { get; set; }
 
-    public Func<Character, Character, bool>? OnNpcLookAtChar { get; set; }
+    public Func<Character, Character, TriggerResult>? OnNpcLookAtChar { get; set; }
 
     /// <summary>Resolved @NPCActFight decision. <see cref="Handled"/> = RETURN 1
     /// (skip the engine's fight logic this tick). Otherwise <see cref="Motivation"/>
@@ -388,6 +388,8 @@ public sealed partial class NpcAI
         // a wild creature.
         if (RunScriptedAction(npc))
             return;
+
+        if (RunFoodAI(npc)) return; // NPC_AI_FOOD / NPC_AI_INTFOOD (NpcAI.TownRoles.cs)
 
         // Pet behavior — owned NPCs follow pet AI mode
         if (npc.NpcMaster.IsValid)
@@ -633,8 +635,6 @@ public sealed partial class NpcAI
     }
 
     public Action<Character, string>? OnNpcSay { get; set; }
-
-    public Action<Character>? OnGuardLightningStrike { get; set; }
 
     public Action<Character>? OnNpcTeleport { get; set; }
 

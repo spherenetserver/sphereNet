@@ -200,12 +200,14 @@ public static partial class Program
             };
         }
         // @NPCSeeNewPlayer — install only when hooked so the per-NPC perception
-        // scan is skipped entirely otherwise. O1 = the newly-seen player.
+        // scan is skipped entirely otherwise. SRC is the player, with no arguments
+        // (OnTrigger(CTRIG_NPCSeeNewPlayer, args, pChar), CCharNPCAct.cpp:1049);
+        // RETURN 1 leaves the player unrecorded.
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeNewPlayer))
         {
             SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = (npc, player) =>
                 _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSeeNewPlayer,
-                    new TriggerArgs { CharSrc = npc, O1 = player });
+                    new TriggerArgs { CharSrc = player }) == TriggerResult.True;
         }
 
         // @PetDesert — fired on the pet when loyalty hits zero; RETURN 1 cancels
@@ -343,9 +345,11 @@ public static partial class Program
         _npcAI.OnNpcAction = null;
         if (_triggerDispatcher == null) return;
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtChar))
+            // SRC is the character looked at and there are no arguments
+            // (CCharNPCAct.cpp:1021); the NPC AI reads RETURN 1 / RETURN 0 apart.
             _npcAI.OnNpcLookAtChar = (npc, target) =>
                 _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtChar,
-                    new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+                    new TriggerArgs { CharSrc = target });
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFight))
             _npcAI.OnNpcActFight = (npc, target, dist, motivation) =>
             {

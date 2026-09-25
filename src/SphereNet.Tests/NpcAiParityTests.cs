@@ -230,6 +230,7 @@ public class NpcAiParityTests
 
         var caster = world.CreateCharacter();
         caster.NpcBrain = NpcBrainType.Monster;
+        caster.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         caster.Hits = caster.MaxHits = 200;
         caster.Stam = caster.MaxStam = 100;
         caster.Mana = caster.MaxMana = 200;
@@ -272,6 +273,7 @@ public class NpcAiParityTests
 
         var caster = world.CreateCharacter();
         caster.NpcBrain = NpcBrainType.Monster;
+        caster.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         caster.Hits = caster.MaxHits = 200;
         caster.Stam = caster.MaxStam = 100;
         caster.Mana = caster.MaxMana = 200;
@@ -330,6 +332,7 @@ public class NpcAiParityTests
 
         var caster = world.CreateCharacter();
         caster.NpcBrain = NpcBrainType.Monster;
+        caster.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         caster.Hits = caster.MaxHits = 200; caster.Stam = caster.MaxStam = 100;
         caster.Mana = caster.MaxMana = 200; caster.Int = 50;
         caster.NpcSpellAdd(SpellType.EnergyBolt);
@@ -366,6 +369,7 @@ public class NpcAiParityTests
 
         var dragon = world.CreateCharacter();
         dragon.NpcBrain = NpcBrainType.Dragon;
+        dragon.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         dragon.Str = 200; dragon.Hits = dragon.MaxHits = 500;
         dragon.Stam = dragon.MaxStam = 100; // full stamina → breath is eligible
         world.PlaceCharacter(dragon, new Point3D(100, 100, 0, 0));
@@ -430,6 +434,7 @@ public class NpcAiParityTests
 
         var caster = world.CreateCharacter();
         caster.NpcBrain = NpcBrainType.Monster;
+        caster.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         caster.Hits = caster.MaxHits = 200; caster.Stam = caster.MaxStam = 100;
         caster.Mana = caster.MaxMana = 200; caster.Int = 50;
         var pack = world.CreateItem(); pack.ItemType = ItemType.Container; pack.BaseId = 0x0E75;

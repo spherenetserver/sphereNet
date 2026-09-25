@@ -38,7 +38,11 @@ public class NpcAiWaveA2Tests
         world.AddOnlinePlayer(observer);
         world.OnTick(); // activate the sector so masterless NPCs act
 
-        // Guard with a post, standing in unguarded wilderness.
+        // Guard with a post on guarded ground, standing in unguarded wilderness.
+        var town = new SphereNet.Game.World.Regions.Region
+        { Name = "town", Flags = RegionFlag.Guarded, MapIndex = 0 };
+        town.AddRect(150, 150, 250, 250);
+        world.AddRegion(town);
         var guard = world.CreateCharacter();
         guard.NpcBrain = NpcBrainType.Guard;
         guard.Hits = guard.MaxHits = 100;
@@ -49,14 +53,26 @@ public class NpcAiWaveA2Tests
         Assert.Equal(200, guard.X); // Source-X NPC_Act_GoHome teleport
         Assert.Equal(200, guard.Y);
 
-        // Guard with NO post despawns instead of wandering forever.
+        // A post OUTSIDE guarded ground is no guard post: the guard is removed
+        // (conjured + STR 0 upstream, CCharNPCAct.cpp:1524-1535).
+        var badPost = world.CreateCharacter();
+        badPost.NpcBrain = NpcBrainType.Guard;
+        badPost.Hits = badPost.MaxHits = 100;
+        badPost.Home = new Point3D(600, 600, 0, 0);
+        world.PlaceCharacter(badPost, new Point3D(400, 400, 0, 0));
+        badPost.NextNpcActionTime = 0;
+        ai.OnTickAction(badPost);
+        Assert.True(badPost.IsDeleted);
+
+        // A guard with NO home never starts NPCACT_GO_HOME (NPC_Act_Idle requires a
+        // valid home, :1979) and stays.
         var stray = world.CreateCharacter();
         stray.NpcBrain = NpcBrainType.Guard;
         stray.Hits = stray.MaxHits = 100;
         world.PlaceCharacter(stray, new Point3D(400, 400, 0, 0));
         stray.NextNpcActionTime = 0;
         ai.OnTickAction(stray);
-        Assert.True(stray.IsDeleted);
+        Assert.False(stray.IsDeleted);
     }
 
     [Fact]

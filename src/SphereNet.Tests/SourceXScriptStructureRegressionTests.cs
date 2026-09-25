@@ -264,6 +264,7 @@ public class SourceXScriptStructureRegressionTests
 
             [CHARDEF c_scavenge_probe]
             ID=0190
+            CAN=0200
             DESIRES=i_gold 100
             """);
         stack.Resources.LoadResourceFile(path);
@@ -272,6 +273,12 @@ public class SourceXScriptStructureRegressionTests
         var world = TestHarness.CreateWorld();
         Character npc = world.CreateCharacter();
         npc.CharDefIndex = stack.Resources.ResolveDefName("c_scavenge_probe").Index;
+        // @NPCSeeWantItem fires inside NPC_Act_Looting, which only a MONSTER brain
+        // with NPC_AI_LOOTING goes through (CCharNPCAct.cpp:1604-1635); the item
+        // look needs more than 10 INT (NPC_LookAround, :1189).
+        npc.NpcBrain = NpcBrainType.Monster;
+        npc.SetTag("OVERRIDE.NPCAI", "0x0100");
+        npc.Int = 50;
         world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
         Item gold = world.CreateItem();
         ItemDefHelper.ApplyInstanceMetadata(gold,

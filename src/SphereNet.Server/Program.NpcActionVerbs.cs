@@ -155,5 +155,20 @@ public static partial class Program
                 : "You have no stabled pets.");
             return true;
         };
+
+        // Bare BUY / SELL: open the shop list for the speaker (NV_BUY / NV_SELL,
+        // CCharNPCAct.cpp:147-211). Without a client there is nothing to open, and
+        // upstream answers false.
+        Character.NpcOpenShop = (npc, src, buy) =>
+        {
+            var client = src != null ? FindGameClient(src) : null;
+            if (client == null)
+                return false;
+            if (buy)
+                client.OpenVendorBuy(npc);
+            else
+                client.OpenVendorSell(npc);
+            return true;
+        };
     }
 }

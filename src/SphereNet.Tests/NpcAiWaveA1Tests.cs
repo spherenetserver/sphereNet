@@ -25,6 +25,7 @@ public class NpcAiWaveA1Tests
 
         var caster = world.CreateCharacter();
         caster.NpcBrain = NpcBrainType.Monster;
+        caster.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         caster.Hits = caster.MaxHits = 200;
         caster.Stam = caster.MaxStam = 100;
         caster.Mana = caster.MaxMana = 200;

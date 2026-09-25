@@ -145,6 +145,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.NpcShrink = null;
         SphereNet.Game.Objects.Characters.Character.NpcStablePetSelect = null;
         SphereNet.Game.Objects.Characters.Character.NpcStablePetRetrieve = null;
+        SphereNet.Game.Objects.Characters.Character.NpcOpenShop = null;
         // The spell-memory bridges: a test that wires one leaves every later test
         // reading its TIMER through that engine instance.
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;

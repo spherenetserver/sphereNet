@@ -195,19 +195,38 @@ public class NpcAiRound7Tests
         var served = new List<Character>();
         ai.OnHealerAction = (_, target, _) => served.Add(target);
 
-        // GOOD healer refuses the criminal ghost.
+        // NPC_LookAtCharHealer (CCharNPCAct.cpp:898-923): any healer without the
+        // criminal flag refuses a CRIMINAL ghost - good, neutral and evil alike.
+        foreach (short karma in new short[] { 5000, -1, -5000 })
+        {
+            healer.Karma = karma;
+            actHealer.Invoke(ai, [healer]);
+        }
+        Assert.Empty(served);
+
+        // A murderer's ghost (NOTO_EVIL): a good healer refuses it, a neutral
+        // (karma below zero) or evil healer serves it.
+        ghost.ClearStatFlag(StatFlag.Criminal);
+        ghost.CombatState.Forgive();
+        ghost.Kills = 1000;
         healer.Karma = 5000;
         actHealer.Invoke(ai, [healer]);
         Assert.Empty(served);
-
-        // EVIL healer serves it.
+        healer.Karma = -1;
+        actHealer.Invoke(ai, [healer]);
+        Assert.Contains(ghost, served);
+        served.Clear();
         healer.Karma = -5000;
         actHealer.Invoke(ai, [healer]);
         Assert.Contains(ghost, served);
 
-        // NEUTRAL healer (zero karma) serves everyone too.
+        // An innocent ghost: served by a good healer, refused by a neutral or evil one.
         served.Clear();
-        healer.Karma = 0;
+        ghost.Kills = 0;
+        healer.Karma = -1;
+        actHealer.Invoke(ai, [healer]);
+        Assert.Empty(served);
+        healer.Karma = 5000;
         actHealer.Invoke(ai, [healer]);
         Assert.Contains(ghost, served);
     }

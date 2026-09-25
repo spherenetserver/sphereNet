@@ -179,6 +179,7 @@ public class NpcSpecialAttackVisualTests : IDisposable
 
         var npc = world.CreateCharacter();
         npc.NpcBrain = NpcBrainType.Monster;
+        npc.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         npc.Str = npc.Dex = 100;
         npc.Stam = npc.MaxStam = 100;
         npc.Hits = npc.MaxHits = 100;

@@ -1731,9 +1731,30 @@ public static partial class Program
             {
                 NpcSpeak(npc, text);
             };
-            _npcAI.OnGuardLightningStrike = target =>
+            _npcAI.OnNpcEmote = (npc, text) =>
             {
-                BroadcastLightningStrike(target);
+                if (string.IsNullOrEmpty(text)) return;
+                var emote = new PacketSpeechUnicodeOut(
+                    npc.Uid.Value, npc.BodyId, 2, 0x03B2, 3,
+                    PacketSpeechUnicodeOut.SystemLanguage, npc.GetName(), text);
+                BroadcastNearby(npc.Position, 18, emote, 0);
+            };
+            _npcAI.OnNpcAnimate = (npc, anim) =>
+                SphereNet.Game.Clients.GameClient.PlayAnimation(
+                    npc, (ushort)anim, 18, BroadcastNearby, ForEachClientInRange);
+            _npcAI.OnNpcPlaySound = (npc, soundId) =>
+                BroadcastNearby(npc.Position, 18, new PacketSound(soundId, npc.X, npc.Y, npc.Z), 0);
+            _npcAI.OnNpcEat = (npc, food, qty) =>
+                SphereNet.Game.NPCs.EatEngine.Eat(npc, food, _triggerDispatcher, qty);
+            _npcAI.OnNpcLooted = (npc, item, fromCorpse) =>
+            {
+                // NPC_Act_Looting (CCharNPCAct.cpp:1637-1641): the rummage emote for a
+                // corpse, then ANIM_PILLAGE - which a monster body plays as its
+                // pillage action, the one GenerateAnimate also gives the area cast.
+                if (fromCorpse)
+                    _npcAI.OnNpcEmote?.Invoke(npc, ServerMessages.Get(Msg.LootRummage));
+                SphereNet.Game.Clients.GameClient.PlayAnimation(
+                    npc, (ushort)AnimationType.CastArea, 18, BroadcastNearby, ForEachClientInRange);
             };
             _npcAI.OnNpcTeleport = npc =>
             {
@@ -1951,40 +1972,22 @@ public static partial class Program
             };
             _npcAI.OnHealerAction = (healer, target, isResurrect) =>
             {
+                // NPC_LookAtCharHealer (CCharNPCAct.cpp:927-928): UpdateAnimate
+                // (ANIM_CAST_AREA), then the Resurrection spell effect at 1000 skill
+                // with the healer as its source - @SpellEffect on the ghost may
+                // refuse it, which leaves the ghost dead and the healer apologising.
                 SphereNet.Game.Clients.GameClient.PlayAnimation(
-                    healer, 16, 18,
-                    BroadcastNearby, ForEachClientInRange,
-                    frameCount: 4, repeatCount: 1, forward: false);
-                var sound = new PacketSound(isResurrect ? (ushort)0x0214 : (ushort)0x01F2,
-                    healer.X, healer.Y, healer.Z);
-                BroadcastNearby(healer.Position, 18, sound, 0);
-
+                    healer, (ushort)AnimationType.CastArea, 18,
+                    BroadcastNearby, ForEachClientInRange);
                 if (isResurrect && target.IsDead)
-                {
-                    if (_clientsByCharUid.TryGetValue(target.Uid, out var victimClient))
-                        victimClient.OnResurrect();
-                    else
-                        target.Resurrect();
-                }
-            };
-            _npcAI.OnHealerCure = (healer, target) =>
-            {
-                SphereNet.Game.Clients.GameClient.PlayAnimation(
-                    healer, 16, 18,
-                    BroadcastNearby, ForEachClientInRange,
-                    frameCount: 4, repeatCount: 1, forward: false);
-                var sound = new PacketSound(0x01E0, healer.X, healer.Y, healer.Z);
-                BroadcastNearby(healer.Position, 18, sound, 0);
+                    _spellEngine.ApplyDirectEffect(healer, target, SpellType.Resurrection, 1000);
             };
             _npcAI.OnVendorRestock = vendor =>
             {
                 _triggerDispatcher?.FireCharTrigger(vendor, CharTrigger.NPCRestock,
                     new TriggerArgs { CharSrc = vendor });
             };
-            _npcAI.OnWitnessCrime = (witness, criminal) =>
-            {
-                _npcAI.AlertGuardsInRange(witness.Position, criminal);
-            };
+            _npcAI.OnWitnessCrime = (witness, criminal) => CallGuards(witness, criminal);
             _npcAI.OnWakeNpc = WakeNpc;
             _npcAI.OnNpcSound = (npc, type) =>
             {

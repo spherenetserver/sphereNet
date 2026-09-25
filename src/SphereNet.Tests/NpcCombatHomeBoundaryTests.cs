@@ -21,6 +21,7 @@ public sealed class NpcCombatHomeBoundaryTests
         var npc = world.CreateCharacter();
         npc.BodyId = 0xcf;
         npc.NpcBrain = NpcBrainType.Monster;
+        npc.Karma = -1; // evil: a monster needs karma below zero (Noto_IsEvil, CCharNotoriety.cpp:53)
         npc.Str = 150; npc.Dex = 100; npc.Int = 10;
         npc.Hits = npc.MaxHits; npc.Stam = npc.MaxStam;
         npc.Home = new(20, 100, 0, 0);

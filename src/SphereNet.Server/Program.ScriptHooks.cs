@@ -360,13 +360,15 @@ public static partial class Program
                     N1 = dist, N2 = motivation, Locals = locals
                 };
                 var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight, args);
-                var forcedSkill = locals.Has("skill")
+                // RETURN 0 = fSkipHardcoded (CCharNPCAct_Fight.cpp:232-234): skip the
+                // breath/throw specials, keep flee/magery/melee. The forced
+                // LOCAL.skill / LOCAL.spell is read only when the trigger fell
+                // through (TRIGRET_RET_DEFAULT, :235-250).
+                bool skipHardcoded = res == TriggerResult.False;
+                var forcedSkill = !skipHardcoded && locals.Has("skill")
                     ? (SkillType)(int)locals.GetInt("skill") : SkillType.None;
-                var forcedSpell = locals.Has("spell")
+                var forcedSpell = !skipHardcoded && locals.Has("spell")
                     ? (SpellType)(int)locals.GetInt("spell") : SpellType.None;
-                // LOCAL.skiphardcoded = bypass the engine's breath/throw specials
-                // (Source-X fSkipHardcoded) while keeping flee/magery/melee.
-                bool skipHardcoded = locals.Has("skiphardcoded") && locals.GetInt("skiphardcoded") != 0;
                 return new NpcAI.NpcFightDecision(
                     res == TriggerResult.True, SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2), forcedSkill, forcedSpell, skipHardcoded);
             };
@@ -411,17 +413,19 @@ public static partial class Program
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActCast))
             _npcAI.OnNpcActCast = (npc, target, spell, wandUse) =>
             {
-                // Source-X NPC_FightMagery args: ARGN1=spell, ARGN2=wand-use,
-                // ARGO=target, LOCAL.HealThreshold seeded from config. RETURN 1
-                // aborts the cast and reverts to melee; otherwise ARGN1 carries
-                // the (possibly script-overridden) spell back (via RunWrapped),
-                // and LOCAL.target = a uid redirects the cast (Source-X REF1).
+                // Source-X NPC_FightMagery args (CCharNPCAct_Magic.cpp:223-242):
+                // ARGN1=spell, ARGN2=wand-use, ARGO=target, LOCAL.HealThreshold
+                // seeded from config and read back. RETURN 1 aborts the cast and
+                // reverts to melee; otherwise ARGN1 carries the (possibly
+                // script-overridden) spell back, and REF1 = a character redirects
+                // the cast and overrides the AI's own friend choice.
                 var locals = new SphereNet.Scripting.Variables.VarMap();
                 locals.SetInt("HealThreshold", _config.NpcHealThreshold);
+                var refs = new Dictionary<int, string>();
                 var args = new TriggerArgs
                 {
                     CharSrc = target, O1 = target, N1 = (int)spell,
-                    N2 = wandUse ? 1 : 0, Locals = locals
+                    N2 = wandUse ? 1 : 0, Locals = locals, Refs = refs
                 };
                 var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast, args);
                 if (res == TriggerResult.True)
@@ -429,13 +433,19 @@ public static partial class Program
                 var newSpell = (SpellType)args.N1;
                 if (newSpell == SpellType.None) newSpell = spell;
                 var newTarget = target;
-                if (locals.Has("target"))
+                bool retargeted = false;
+                if (refs.TryGetValue(1, out var ref1) && !string.IsNullOrWhiteSpace(ref1))
                 {
-                    var redirect = _world.FindChar(new Serial((uint)locals.GetInt("target")));
+                    var redirect = _world.FindChar(new Serial(SphereNet.Game.Objects.ObjBase.ParseHexOrDecUInt(ref1)));
                     if (redirect != null && !redirect.IsDeleted)
+                    {
                         newTarget = redirect;
+                        retargeted = true;
+                    }
                 }
-                return new NpcAI.NpcCastDecision(false, newSpell, newTarget);
+                int healThreshold = locals.Has("HealThreshold")
+                    ? (int)locals.GetInt("HealThreshold") : _config.NpcHealThreshold;
+                return new NpcAI.NpcCastDecision(false, newSpell, newTarget, retargeted, healThreshold);
             };
         bool npcLookAtItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem);
         bool npcSeeWantItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeWantItem);

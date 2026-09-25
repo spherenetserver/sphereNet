@@ -175,6 +175,7 @@ public sealed class NpcAiAuditRegressionTests
     {
         var world = CreateWorld();
         var ai = new NpcAI(world, new SphereConfig());
+        ai.Extras |= NpcAiExtraFlags.FleeTactics;
         var caster = world.CreateCharacter();
         caster.Int = 50;
         caster.Mana = caster.MaxMana = 100;
@@ -203,6 +204,7 @@ public sealed class NpcAiAuditRegressionTests
     {
         var world = CreateWorld();
         var ai = new NpcAI(world, new SphereConfig());
+        ai.Extras |= NpcAiExtraFlags.CombatExtras; // a THROWOBJ tag alone arms a thrower
         var thrower = world.CreateCharacter();
         thrower.NpcBrain = NpcBrainType.Monster;
         thrower.Dex = 100;
@@ -311,15 +313,17 @@ public sealed class NpcAiAuditRegressionTests
         };
         var caster = world.CreateCharacter();
         var target = world.CreateCharacter();
-        caster.SetTag("COMBO_STEP", "2");
-        caster.SetTag("COMBO_TARGET", target.Uid.Value.ToString());
+        // The combo state lives in memory (never a saved TAG).
+        var mem = Invoke(ai, "FightMemory", caster)!;
+        mem.GetType().GetField("ComboStep")!.SetValue(mem, 2);
+        mem.GetType().GetField("ComboTarget")!.SetValue(mem, target.Uid.Value);
 
         bool started = (bool)Invoke(
             ai, "CastViaTrigger", caster, target, SpellType.Fireball, true)!;
 
         Assert.False(started);
-        Assert.False(caster.TryGetTag("COMBO_STEP", out _));
-        Assert.False(caster.TryGetTag("COMBO_TARGET", out _));
+        Assert.Equal(0, (int)mem.GetType().GetField("ComboStep")!.GetValue(mem)!);
+        Assert.Equal(0u, (uint)mem.GetType().GetField("ComboTarget")!.GetValue(mem)!);
     }
 
     [Fact]

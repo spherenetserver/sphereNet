@@ -1919,7 +1919,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
     }
 
     [Fact]
-    public void NpcAI_LichBodyWithoutScriptSpellList_CastsFallbackSpell()
+    public void NpcAI_LichBodyWithoutScriptSpellList_CastsNothing()
     {
         var world = CreateWorld();
         var ai = new NpcAI(world, new SphereNet.Core.Configuration.SphereConfig());
@@ -1953,8 +1953,10 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             ai.OnTickAction(lich);
         }
 
-        Assert.NotEmpty(lich.NpcSpells);
-        Assert.NotEqual(SpellType.None, castSpell);
+        // No invented body-based spell list: Source-X spells come from the SPELLS
+        // list or a spellbook (CCharNPCAct_Magic.cpp:100-144).
+        Assert.Empty(lich.NpcSpells);
+        Assert.Equal(SpellType.None, castSpell);
     }
 
     [Fact]

@@ -65,10 +65,13 @@ public sealed partial class NpcAI
     {
         int sightRange = GetNpcSight(npc);
 
-        // Forced target override (bard provoke / scripted constant focus) takes
-        // priority over normal target selection.
-        if (TryForcedTarget(npc))
+        // Forced target override (PROVOKED_TARGET / CONSTANT_FOCUS tags): not a
+        // Source-X mechanism - no reference code or script pack sets or reads
+        // these - so only under NPCAIEXTRAS CombatExtras.
+        if (HasExtra(npc, NpcAiExtraFlags.CombatExtras) && TryForcedTarget(npc))
             return;
+
+        bool hiddenPursuit = HasExtra(npc, NpcAiExtraFlags.HiddenPursuit);
 
         // If we have an existing target, check if it's still valid
         if (npc.FightTarget.IsValid)
@@ -76,19 +79,26 @@ public sealed partial class NpcAI
             var current = _world.FindChar(npc.FightTarget);
             if (current != null && !current.IsDead && !current.IsDeleted && IsAttackable(current))
             {
-                // Remember where the target was while we can see it, and clear
-                // any hidden-pursuit state.
-                npc.SetTag("LAST_TGT_LOC", $"{current.X},{current.Y},{current.Z},{current.MapIndex}");
-                npc.RemoveTag("HIDE_PURSUIT");
+                // HiddenPursuit: remember where the target was while we can see
+                // it, and clear any hidden-pursuit state.
+                if (hiddenPursuit)
+                {
+                    npc.SetTag("LAST_TGT_LOC", $"{current.X},{current.Y},{current.Z},{current.MapIndex}");
+                    npc.RemoveTag("HIDE_PURSUIT");
+                }
 
                 int curMotivation = GetAttackMotivation(npc, current);
-                if (curMotivation > 0)
+                // Source-X NPC_Act_Fight keeps fighting at any motivation that is
+                // not negative (only iMotivation < 0 flees, CCharNPCAct_Fight.cpp:
+                // 259-278); a neutral score does not end an engaged fight.
+                if (curMotivation >= 0)
                 {
-                    // Mid-fight better-target rescan. Source-X keeps this
-                    // DISABLED ("probably unnecessary… breaks the @NPCActFight
-                    // trigger") — run it only under multi-attacker pressure,
-                    // where the THREAT/tank switch actually needs it.
-                    if (npc.Attackers.Count > 1 && _rand.Next(4) == 0)
+                    // Mid-fight better-target rescan (NPCAIEXTRAS FightRescan).
+                    // Source-X keeps this DISABLED ("probably unnecessary… breaks
+                    // the @NPCActFight trigger", CCharNPCAct_Fight.cpp:178-194);
+                    // with the extra it runs only under multi-attacker pressure.
+                    if (HasExtra(npc, NpcAiExtraFlags.FightRescan) &&
+                        npc.Attackers.Count > 1 && _rand.Next(4) == 0)
                     {
                         // Off the ATTACKER LIST, not a fresh look-around: this is the
                         // switch THREAT exists for, and a look-around scores by
@@ -107,21 +117,18 @@ public sealed partial class NpcAI
                     ActFight(npc, current, curMotivation);
                     return;
                 }
-                if (curMotivation < 0)
-                {
-                    // Negative motivation = fear: flee from the target instead of
-                    // silently dropping it (Source-X NPC_LookAtChar fear path).
-                    // ActFight routes motivation < 0 into ActFlee.
-                    ActFight(npc, current, curMotivation);
-                    return;
-                }
-                // motivation == 0: neutral — let go of the target.
+                // Negative motivation = fear: flee from the target instead of
+                // silently dropping it (Source-X NPC_LookAtChar fear path).
+                // ActFight routes motivation < 0 into ActFlee.
+                ActFight(npc, current, curMotivation);
+                return;
             }
-            else if (current != null && !current.IsDead && !current.IsDeleted &&
+            else if (hiddenPursuit && current != null && !current.IsDead && !current.IsDeleted &&
                      (current.IsStatFlag(StatFlag.Hidden) || current.IsStatFlag(StatFlag.Invisible)))
             {
-                // Target hid — don't give up instantly (ServUO reveal behavior):
-                // try to reveal it, or move to its last known spot for a few ticks.
+                // NPCAIEXTRAS HiddenPursuit (ServUO reveal behavior): a target that
+                // hid is not given up at once - the NPC tries to reveal it, or moves
+                // to its last known spot for a few ticks.
                 if (PursueHiddenTarget(npc, current))
                     return;
             }
@@ -131,23 +138,31 @@ public sealed partial class NpcAI
             if (fromList != null && fromList != current)
             {
                 npc.FightTarget = fromList.Uid;
-                npc.RemoveTag("HIDE_PURSUIT");
-                npc.RemoveTag("LAST_TGT_LOC");
+                if (hiddenPursuit)
+                {
+                    npc.RemoveTag("HIDE_PURSUIT");
+                    npc.RemoveTag("LAST_TGT_LOC");
+                }
                 npc.Memory_Fight_Start(fromList);
                 ActFight(npc, fromList, Math.Max(1, GetAttackMotivation(npc, fromList)));
                 return;
             }
 
             npc.FightTarget = Serial.Invalid;
-            npc.RemoveTag("HIDE_PURSUIT");
-            npc.RemoveTag("LAST_TGT_LOC");
+            if (hiddenPursuit)
+            {
+                npc.RemoveTag("HIDE_PURSUIT");
+                npc.RemoveTag("LAST_TGT_LOC");
+            }
         }
 
-        // No current target — scan for a new one, but throttle the full-range
-        // scan so idle NPCs don't sweep every tick (ModernUO ReacquireDelay).
-        // RecordAttack zeroes NextNpcReacquireTime so retaliation is immediate.
+        // No current target — scan for a new one. NPCAIEXTRAS FightRescan throttles
+        // the full-range scan so idle NPCs don't sweep every tick (ModernUO
+        // ReacquireDelay; RecordAttack zeroes NextNpcReacquireTime so retaliation
+        // is immediate). Source-X looks around on every idle tick (NPC_LookAround).
+        bool reacquireThrottle = HasExtra(npc, NpcAiExtraFlags.FightRescan);
         long nowReac = Environment.TickCount64;
-        if (nowReac >= npc.NextNpcReacquireTime)
+        if (!reacquireThrottle || nowReac >= npc.NextNpcReacquireTime)
         {
             var (bestTarget, bestMotivation) = FindBestTarget(npc, sightRange);
             if (bestTarget != null && bestMotivation > 0)
@@ -156,12 +171,14 @@ public sealed partial class NpcAI
                 npc.FightTarget = bestTarget.Uid;
                 npc.Memory_Fight_Start(bestTarget);
                 EmitSound(npc, CreatureSoundType.Notice);
-                NotifyNearbyAllies(npc, bestTarget);
+                if (HasExtra(npc, NpcAiExtraFlags.AllyRally))
+                    NotifyNearbyAllies(npc, bestTarget);
                 ActFight(npc, bestTarget, bestMotivation);
                 return;
             }
             // Nothing found — back off the next scan.
-            npc.NextNpcReacquireTime = nowReac + ReacquireDelayMs;
+            if (reacquireThrottle)
+                npc.NextNpcReacquireTime = nowReac + ReacquireDelayMs;
         }
 
         npc.FightTarget = Serial.Invalid;
@@ -307,8 +324,9 @@ public sealed partial class NpcAI
     }
 
     /// <summary>
-    /// Alert nearby same-type NPCs to join the fight. Source-X parity:
-    /// monsters of the same body type rally when one detects a threat.
+    /// NPCAIEXTRAS AllyRally: alert nearby NPCs of the same body to join the fight.
+    /// Source-X has no such rally - each NPC finds its own targets in
+    /// NPC_LookAround - so this runs only with the extra on.
     /// </summary>
     private void NotifyNearbyAllies(Character npc, Character target)
     {
@@ -357,10 +375,24 @@ public sealed partial class NpcAI
             return;
         }
 
-        // Source-X NPC_Act_Fight fSkipHardcoded: a script can keep the engine's
-        // flee/magery/melee but bypass the hardcoded breath/throw specials by
-        // setting LOCAL.SKIPHARDCODED=1 in @NPCActFight (distinct from RETURN 1,
-        // which suppresses the whole action).
+        ScrubLegacyFightTags(npc);
+
+        // An NPC already running away keeps running (Source-X NPCACT_FLEE is its own
+        // skill: while it runs, NPC_Act_Flee is ticked instead of NPC_Act_Fight,
+        // CCharNPCAct.cpp:1645-1662), so the step count really reaches its limit.
+        if (npc.FleeStepsCurrent > 0 && npc.FleeStepsCurrent < npc.FleeStepsMax &&
+            !npc.IsStatFlag(StatFlag.Pet))
+        {
+            if (!ActFlee(npc, target))
+                npc.FleeStepsCurrent = 0; // Skill_Start(SKILL_NONE)
+            return;
+        }
+        npc.FleeStepsCurrent = 0;
+
+        // @NPCActFight (CCharNPCAct_Fight.cpp:223-257): RETURN 1 = the script did the
+        // action; RETURN 0 = fSkipHardcoded - keep flee/magery/melee but skip the
+        // breath/throw specials; a fall-through may force a skill (LOCAL.skill /
+        // LOCAL.spell) and rewrites the distance and motivation (ARGN1 / ARGN2).
         bool skipHardcoded = false;
         if (OnNpcActFight != null)
         {
@@ -382,22 +414,23 @@ public sealed partial class NpcAI
             motivation = decision.Motivation; // ARGN2 readback (may flip to flee)
         }
 
-        // Source-X: flee when motivation < 0 (non-pets only)
+        // Source-X: flee when motivation < 0 (non-pets only). A flee that cannot even
+        // start - the enemy is out of sight, or already out of reach - leaves the
+        // fight: war mode off, the attacker forgotten, no target
+        // (CCharNPCAct_Fight.cpp:259-278).
         if (!npc.IsStatFlag(StatFlag.Pet) && motivation < 0)
         {
             npc.FleeStepsMax = 20; // Source-X CCharNPCAct.cpp:412 (m_atFlee.m_iStepsMax)
             npc.FleeStepsCurrent = 0;
-            ActFlee(npc, target);
+            if (!ActFlee(npc, target))
+            {
+                npc.FleeStepsCurrent = 0;
+                npc.ClearStatFlag(StatFlag.War);
+                npc.Attacker_Delete(target.Uid);
+                npc.FightTarget = Serial.Invalid;
+            }
             return;
         }
-
-        // Already fleeing? Continue.
-        if (npc.FleeStepsCurrent > 0 && npc.FleeStepsCurrent < npc.FleeStepsMax)
-        {
-            ActFlee(npc, target);
-            return;
-        }
-        npc.FleeStepsCurrent = 0;
 
         // Combat pursuit is relative to the target, not the spawn/home radius.
         // Source-X NPC_Act_Follow keeps HOMEDIST in idle/go-home behavior.
@@ -411,35 +444,21 @@ public sealed partial class NpcAI
         int dist = npc.Position.GetDistanceTo(target.Position);
         bool hasLOS = _world.CanSeeLOS(npc.Position, target.Position);
 
-        // No line of sight — pathfind around obstacles to reach target
+        // No line of sight: walk round to the target (NPC_Act_Follow's path search).
         if (!hasLOS && dist > 1)
         {
             if (!CanContinueCombatPursuit(npc, target)) return;
-            IncrementLosFailCount(npc);
-            int losFails = GetLosFailCount(npc);
-            // Stuck for a while — a caster that knows Teleport blinks toward the
-            // target instead of giving up (ModernUO OnFailedMove smart-AI).
-            if (losFails >= 8 && npc.NpcSpells.Contains(SpellType.Teleport)
-                && npc.Mana >= npc.Int / 4 && _rand.Next(3) == 0)
-            {
-                ClearLosFailCount(npc);
-                CastViaTrigger(npc, target, SpellType.Teleport);
+            if (HasExtra(npc, NpcAiExtraFlags.LosRecovery) && TryLosRecovery(npc, target))
                 return;
-            }
-            if (losFails > 15)
-            {
-                npc.FightTarget = Serial.Invalid;
-                ClearLosFailCount(npc);
-                return;
-            }
             MoveToward(npc, target.Position, run: true);
             return;
         }
         ClearLosFailCount(npc);
 
-        // HP-based tactical retreat: melee-only NPCs briefly disengage when
-        // critically wounded, then re-engage. Casters already kite via spells.
-        if (npc.NpcSpells.Count == 0 && npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 4
+        // NPCAIEXTRAS LowHpRetreat: a melee-only NPC briefly disengages when
+        // critically wounded, then re-engages.
+        if (HasExtra(npc, NpcAiExtraFlags.LowHpRetreat) &&
+            npc.NpcSpells.Count == 0 && npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 4
             && dist <= 1 && _rand.Next(3) == 0)
         {
             MoveAway(npc, target.Position);
@@ -447,93 +466,25 @@ public sealed partial class NpcAI
             return;
         }
 
+        // NPCAIEXTRAS BandageHeal: an NPC that knows Healing and carries bandages
+        // treats itself before anything else.
+        if (HasExtra(npc, NpcAiExtraFlags.BandageHeal) && TryBandage(npc, npc))
+            return;
+
         // Random idle combat sound (Source-X: Berserk or 1/6 chance)
         if (npc.NpcBrain == NpcBrainType.Berserk || _rand.Next(6) == 0)
             EmitSound(npc, CreatureSoundType.Idle);
 
-        // Dragon breath: fires for Dragon brain, dragon-family bodies, fire-immune
-        // monsters, or explicit BREATH.DAM tag. The body check matches the legacy
-        // body-derived creature type: script packs routinely keep
-        // BRAIN=brain_monster on dragons and still expect the breath attack.
-        bool canBreath = npc.NpcBrain == NpcBrainType.Dragon || IsDragonBody(npc.BodyId);
-        if (!canBreath)
-        {
-            canBreath = (CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0
-                        && npc.NpcBrain is NpcBrainType.Monster or NpcBrainType.Dragon or NpcBrainType.Berserk;
-        }
-        if (!canBreath)
-            canBreath = npc.TryGetTag("BREATH.DAM", out _);
+        bool combatExtras = HasExtra(npc, NpcAiExtraFlags.CombatExtras);
 
-        // Source-X NPC_Act_Fight gates breath/throw behind FULL stamina
-        // (Stat_GetVal(STAT_DEX) >= Stat_GetAdjusted(STAT_DEX)) so these
-        // specials fire on the opening exchange / after a rest, not every tick.
+        // Breath and throw need FULL stamina (Stat_GetVal(STAT_DEX) >=
+        // Stat_GetAdjusted(STAT_DEX), CCharNPCAct_Fight.cpp:282), so these specials
+        // fire on the opening exchange / after a rest, not every tick.
         bool fullStam = npc.MaxStam <= 0 || npc.Stam >= npc.MaxStam;
-        // Source-X: iDist >= 1 — no breath onto the overlapping tile.
-        if (!skipHardcoded && canBreath && dist >= 1 && dist <= 8 && fullStam && hasLOS)
-        {
-            long now = Environment.TickCount64;
-            long nextBreath = 0;
-            if (npc.TryGetTag("BREATH_CD", out string? cdStr))
-                long.TryParse(cdStr, out nextBreath);
-            if (now >= nextBreath)
-            {
-                int breathDmg = GetBreathDamage(npc);
-                if (breathDmg > 0)
-                {
-                    npc.Stam = (short)Math.Max(0, npc.Stam - 10);
-                    npc.SetTag("BREATH_CD", (now + 3000).ToString());
-                    OnNpcBreath?.Invoke(npc, target, breathDmg);
-                    return;
-                }
-            }
-        }
-
-        // Object throwing (Source-X NPCACT_THROWING, range 2-9, full stamina).
-        // Throwers are ogre/ettin/cyclops bodies (the hardcoded default rock
-        // throwers) or any creature carrying a THROWOBJ tag. A default rock
-        // thrower must actually have a throwable rock (ItemType.ARock) in its
-        // pack — Source-X ContentFind(IT_AROCK); a THROWOBJ-tagged creature
-        // throws on the tag alone (SphereNet flag semantics, THROWDAM/THROWRANGE).
-        bool throwObjTag = npc.TryGetTag("THROWOBJ", out _);
-        bool defaultThrower = !throwObjTag && IsRockThrowerBody(npc.BodyId) && HasThrowableRock(npc);
-        if (!skipHardcoded && dist >= 2 && fullStam && hasLOS && (throwObjTag || defaultThrower))
-        {
-            // Source-X Skill_Act_Throwing default damage (CCharSkill.cpp:3447).
-            int throwDmg = Math.Max(1, npc.Dex / 4 + _rand.Next(npc.Dex / 4 + 1));
-            int throwMin = 2, throwMax = 9;
-            if (npc.TryGetTag("THROWRANGE", out string? trStr) && !string.IsNullOrWhiteSpace(trStr))
-            {
-                var parts = trStr.Split(',', 2, StringSplitOptions.TrimEntries);
-                if (parts.Length == 2 && int.TryParse(parts[0], out int mn) && int.TryParse(parts[1], out int mx))
-                {
-                    throwMin = Math.Max(0, Math.Min(mn, mx));
-                    throwMax = Math.Max(throwMin, Math.Max(mn, mx));
-                }
-                else if (int.TryParse(parts[0], out int single))
-                    throwMax = Math.Max(throwMin, single);
-            }
-            if (npc.TryGetTag("THROWDAM", out string? tdStr) && !string.IsNullOrWhiteSpace(tdStr))
-            {
-                var parts = tdStr.Split(',', 2, StringSplitOptions.TrimEntries);
-                if (parts.Length == 2 && int.TryParse(parts[0], out int lo) && int.TryParse(parts[1], out int hi))
-                {
-                    int minDamage = Math.Max(0, Math.Min(lo, hi));
-                    int maxDamage = Math.Max(minDamage, Math.Max(lo, hi));
-                    throwDmg = minDamage == maxDamage
-                        ? minDamage
-                        : (int)_rand.NextInt64(minDamage, (long)maxDamage + 1);
-                }
-                else if (int.TryParse(parts[0], out int flat))
-                    throwDmg = Math.Max(0, flat);
-            }
-            if (dist >= throwMin && dist <= throwMax)
-            {
-                // Source-X: throwing spends 4 + rand(6) stamina (CCharSkill.cpp:3372).
-                npc.Stam = (short)Math.Max(0, npc.Stam - (4 + _rand.Next(6)));
-                OnNpcThrow?.Invoke(npc, target, throwDmg);
-                return;
-            }
-        }
+        if (!skipHardcoded && fullStam && TryBreath(npc, target, dist, hasLOS, combatExtras))
+            return;
+        if (!skipHardcoded && fullStam && TryThrow(npc, target, dist, hasLOS, combatExtras))
+            return;
 
         // NPC spellcasting — requires LOS for ranged spells
         if (hasLOS && TryNpcCastSpell(npc, target, dist))
@@ -553,26 +504,203 @@ public sealed partial class NpcAI
             return;
         }
 
+        bool surround = HasExtra(npc, NpcAiExtraFlags.SurroundFlank);
+
         // COMBAT_SWING_NORANGE: a swing may start even when out of range.
         if (dist <= range.Max || CombatHelper.SwingIgnoresStartRange())
         {
-            // Surround/flank sidesteps only happen on ticks where the swing
-            // did NOT fire (recoil window). Moving in the same tick as a
+            // NPCAIEXTRAS SurroundFlank: sidesteps only happen on ticks where the
+            // swing did NOT fire (recoil window). Moving in the same tick as a
             // fired swing makes the client cancel the attack animation —
             // the same move-pair conflict class as the pet GO/follow bug.
             bool swung = TrySwingAttack(npc, target);
-            if (!swung && dist <= 1 && _rand.Next(3) == 0)
+            if (surround && !swung && dist <= 1 && _rand.Next(3) == 0)
                 TrySurroundStep(npc, target);
         }
         else
         {
-            // When closing distance, approach from an open flank if possible
             if (!CanContinueCombatPursuit(npc, target)) return;
-            if (dist <= 3)
+            // NPCAIEXTRAS SurroundFlank: approach from an open flank.
+            if (surround && dist <= 3)
                 MoveTowardFlank(npc, target);
             else
                 MoveToward(npc, target.Position, run: true);
         }
+    }
+
+    /// <summary>NPCAIEXTRAS LosRecovery for a target out of sight: switch to a foe on
+    /// the attacker list that is in sight; else count the failure - a caster that
+    /// knows Teleport blinks toward the target once stuck for a while (ModernUO
+    /// OnFailedMove smart-AI), and after 15 failures the target is dropped. True =
+    /// this tick was spent.</summary>
+    private bool TryLosRecovery(Character npc, Character target)
+    {
+        var visible = FightFindBestTarget(npc, exclude: target);
+        if (visible != null && visible != target && !visible.IsDead &&
+            visible.MapIndex == npc.MapIndex && _world.CanSeeLOS(npc.Position, visible.Position))
+        {
+            ClearLosFailCount(npc);
+            npc.FightTarget = visible.Uid;
+            npc.Memory_Fight_Start(visible);
+            ActFight(npc, visible, Math.Max(1, GetAttackMotivation(npc, visible)));
+            return true;
+        }
+
+        IncrementLosFailCount(npc);
+        int losFails = GetLosFailCount(npc);
+        if (losFails >= 8 && npc.NpcSpells.Contains(SpellType.Teleport)
+            && npc.Mana >= npc.Int / 4 && _rand.Next(3) == 0)
+        {
+            ClearLosFailCount(npc);
+            CastViaTrigger(npc, target, SpellType.Teleport);
+            return true;
+        }
+        if (losFails > 15)
+        {
+            npc.FightTarget = Serial.Invalid;
+            ClearLosFailCount(npc);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>NPCACT_BREATH (CCharNPCAct_Fight.cpp:286-295): a DRAGON-brain NPC
+    /// breathes at a target 1 to 8 tiles away in sight, on full stamina; the breath
+    /// itself costs 10 stamina (Skill_Act_Breath, CCharSkill.cpp:3280). No
+    /// cooldown: the stamina gate is what spaces breaths out. NPCAIEXTRAS
+    /// CombatExtras widens who breathes - dragon-family bodies (packs that keep
+    /// brain_monster on dragons), fire-immune monsters, any BREATH.DAM tag - and
+    /// adds a three second cooldown.</summary>
+    private bool TryBreath(Character npc, Character target, int dist, bool hasLOS, bool combatExtras)
+    {
+        bool canBreath = npc.NpcBrain == NpcBrainType.Dragon;
+        if (!canBreath && combatExtras)
+        {
+            canBreath = IsDragonBody(npc.BodyId) ||
+                        ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0 &&
+                         npc.NpcBrain is NpcBrainType.Monster or NpcBrainType.Berserk) ||
+                        npc.TryGetTag("BREATH.DAM", out _);
+        }
+        // Source-X: iDist >= 1 — no breath onto the overlapping tile.
+        if (!canBreath || dist < 1 || dist > 8 || !hasLOS)
+            return false;
+
+        long now = Environment.TickCount64;
+        if (combatExtras && now < FightMemory(npc).BreathReadyAt)
+            return false;
+        int breathDmg = GetBreathDamage(npc);
+        if (breathDmg <= 0)
+            return false;
+        npc.Stam = (short)Math.Max(0, npc.Stam - 10);
+        if (combatExtras)
+            FightMemory(npc).BreathReadyAt = now + BreathCooldownMs;
+        OnNpcBreath?.Invoke(npc, target, breathDmg);
+        return true;
+    }
+
+    /// <summary>CombatExtras breath cooldown (the three seconds Skill_Act_Breath
+    /// spends in its start stage, CCharSkill.cpp:3284).</summary>
+    private const int BreathCooldownMs = 3000;
+
+    /// <summary>NPCACT_THROWING (CCharNPCAct_Fight.cpp:297-340): within THROWRANGE
+    /// (default 2-9) and in sight, an ogre/ettin/cyclops body or a creature with a
+    /// THROWOBJ throws - but only while it CARRIES the missile: an IT_AROCK for
+    /// the default throwers, an item of the THROWOBJ definition otherwise. Costs
+    /// 4 + rand(6) stamina (CCharSkill.cpp:3372). NPCAIEXTRAS CombatExtras keeps
+    /// the older wider rule: a THROWOBJ tag alone arms a thrower, and a plain rock
+    /// pile counts as a rock.</summary>
+    private bool TryThrow(Character npc, Character target, int dist, bool hasLOS, bool combatExtras)
+    {
+        if (dist < 2 || !hasLOS)
+            return false;
+        bool throwObjTag = npc.TryGetTag("THROWOBJ", out _);
+        bool armed = throwObjTag
+            ? combatExtras || CarriesThrowObj(npc)
+            : IsRockThrowerBody(npc.BodyId) && HasThrowableRock(npc, acceptPlainRock: combatExtras);
+        if (!armed)
+            return false;
+
+        // Source-X Skill_Act_Throwing default damage (CCharSkill.cpp:3447).
+        int throwDmg = Math.Max(1, npc.Dex / 4 + _rand.Next(npc.Dex / 4 + 1));
+        int throwMin = 2, throwMax = 9;
+        if (npc.TryGetTag("THROWRANGE", out string? trStr) && !string.IsNullOrWhiteSpace(trStr))
+        {
+            var parts = trStr.Split(',', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && int.TryParse(parts[0], out int mn) && int.TryParse(parts[1], out int mx))
+            {
+                throwMin = Math.Max(0, Math.Min(mn, mx));
+                throwMax = Math.Max(throwMin, Math.Max(mn, mx));
+            }
+            else if (int.TryParse(parts[0], out int single))
+                throwMax = Math.Max(throwMin, single);
+        }
+        if (npc.TryGetTag("THROWDAM", out string? tdStr) && !string.IsNullOrWhiteSpace(tdStr))
+        {
+            var parts = tdStr.Split(',', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && int.TryParse(parts[0], out int lo) && int.TryParse(parts[1], out int hi))
+            {
+                int minDamage = Math.Max(0, Math.Min(lo, hi));
+                int maxDamage = Math.Max(minDamage, Math.Max(lo, hi));
+                throwDmg = minDamage == maxDamage
+                    ? minDamage
+                    : (int)_rand.NextInt64(minDamage, (long)maxDamage + 1);
+            }
+            else if (int.TryParse(parts[0], out int flat))
+                throwDmg = Math.Max(0, flat);
+        }
+        if (dist < throwMin || dist > throwMax)
+            return false;
+        npc.Stam = (short)Math.Max(0, npc.Stam - (4 + _rand.Next(6)));
+        OnNpcThrow?.Invoke(npc, target, throwDmg);
+        return true;
+    }
+
+    /// <summary>Source-X NPC_GetWeaponUseScore (CCharNPCStatus.cpp:671-697): how good
+    /// this NPC would be with a weapon - its adjusted weapon skill plus fifty times
+    /// the damage roll (Fight_CalcDamage). A non-weapon, or one needing wrestling,
+    /// scores 0; <paramref name="weapon"/> null scores bare hands.</summary>
+    internal int GetWeaponUseScore(Character npc, Item? weapon)
+    {
+        SkillType skill;
+        if (weapon == null)
+        {
+            skill = SkillType.Wrestling;
+        }
+        else
+        {
+            if (!IsWeaponItemType(weapon.ItemType))
+                return 0;
+            skill = CombatEngine.GetWeaponSkill(npc, weapon);
+            if (skill == SkillType.Wrestling)
+                return 0;
+        }
+        var (lo, hi) = CombatEngine.CalcWeaponDamage(npc, weapon);
+        int dmg = hi > lo ? lo + _rand.Next(hi - lo + 1) : lo;
+        int skillLevel = SphereNet.Game.Skills.SkillEngine.GetAdjustedSkill(npc, skill);
+        return skillLevel + dmg * 50;
+    }
+
+    /// <summary>Source-X ItemEquipWeapon (CCharUse.cpp:2049-2077): the pack weapon
+    /// with the best <see cref="GetWeaponUseScore"/>, if it beats bare hands; null
+    /// when nothing does. Used by the NPC_AI_EXTRA war-mode equip pass.</summary>
+    internal Item? FindBestPackWeapon(Character npc)
+    {
+        var pack = npc.Backpack;
+        if (pack == null)
+            return null;
+        Item? best = null;
+        int bestScore = GetWeaponUseScore(npc, null);
+        foreach (var it in pack.Contents)
+        {
+            if (it.IsDeleted) continue;
+            int score = GetWeaponUseScore(npc, it);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = it;
+            }
+        }
+        return best;
     }
 
     private bool CanContinueCombatPursuit(Character npc, Character target)
@@ -588,8 +716,9 @@ public sealed partial class NpcAI
     }
 
     /// <summary>
-    /// Step to an open adjacent tile around the target to surround it.
-    /// Picks a random unoccupied neighbor of the target that is still in melee range.
+    /// NPCAIEXTRAS SurroundFlank: step to an open adjacent tile around the target
+    /// to surround it. Picks a random unoccupied, unreserved neighbour of the
+    /// target that is still in melee range and reserves it for this tick.
     /// </summary>
     private void TrySurroundStep(Character npc, Character target)
     {
@@ -618,7 +747,7 @@ public sealed partial class NpcAI
                 {
                     if (!ch.IsDead && ch != target) { occupied = true; break; }
                 }
-                if (!occupied)
+                if (!occupied && !IsTileReservedByOther(npc, tx, ty))
                     candidates[count++] = (tx, ty);
             }
         }
@@ -637,11 +766,13 @@ public sealed partial class NpcAI
         // walk-animate and snaps the NPC ("1-tile teleport" during combat
         // surround steps). The next swing re-faces the target via TrySwingAttack.
         npc.Direction = npc.Position.GetDirectionTo(pos);
+        ReserveTile(npc, pick.x, pick.y);
         _world.MoveCharacter(npc, pos);
     }
 
     /// <summary>
-    /// Move toward the target but prefer an unoccupied flank direction.
+    /// NPCAIEXTRAS SurroundFlank: move toward the target but prefer an unoccupied,
+    /// unreserved flank tile, reserving the one chosen.
     /// </summary>
     private void MoveTowardFlank(Character npc, Character target)
     {
@@ -666,8 +797,9 @@ public sealed partial class NpcAI
                     if (!ch.IsDead && ch != npc && ch != target) { occupied = true; break; }
                 }
 
-                if (!occupied)
+                if (!occupied && !IsTileReservedByOther(npc, adjX, adjY))
                 {
+                    ReserveTile(npc, adjX, adjY);
                     var approachPos = new Point3D(adjX, adjY, target.Z, target.MapIndex);
                     MoveToward(npc, approachPos, run: true);
                     return;
@@ -677,6 +809,32 @@ public sealed partial class NpcAI
 
         // All flanks occupied, just go direct
         MoveToward(npc, target.Position, run: true);
+    }
+
+    /// <summary>Tiles around a target that a SurroundFlank attacker has claimed for
+    /// the current tick (after ModernUO's per-tick move reservation), so two
+    /// attackers deciding in the same serial apply phase do not pick the same
+    /// tile. Keyed by map and position; an entry lives one tick window and is
+    /// never saved.</summary>
+    private readonly Dictionary<(byte Map, short X, short Y), (uint Npc, long Until)> _reservedTiles = [];
+
+    private const int TileReservationMs = 250;
+
+    private bool IsTileReservedByOther(Character npc, short x, short y)
+    {
+        return _reservedTiles.TryGetValue((npc.MapIndex, x, y), out var r) &&
+               r.Npc != npc.Uid.Value && r.Until > Environment.TickCount64;
+    }
+
+    private void ReserveTile(Character npc, short x, short y)
+    {
+        long now = Environment.TickCount64;
+        if (_reservedTiles.Count > 512)
+        {
+            foreach (var key in _reservedTiles.Where(kv => kv.Value.Until <= now).Select(kv => kv.Key).ToList())
+                _reservedTiles.Remove(key);
+        }
+        _reservedTiles[(npc.MapIndex, x, y)] = (npc.Uid.Value, now + TileReservationMs);
     }
 
     private readonly Dictionary<uint, int> _losFailCounts = [];
@@ -698,19 +856,41 @@ public sealed partial class NpcAI
         _losFailCounts.Remove(npc.Uid.Value);
     }
 
-    /// <summary>Source-X: NPC_Act_Flee — step-counted retreat with kiting spellcast.</summary>
-    private void ActFlee(Character npc, Character target)
+    /// <summary>Source-X NPC_Act_Flee (CCharNPCAct.cpp:1645-1662): a step-counted
+    /// retreat. False = the flee failed (NPC_Act_Follow(true, stepsMax) gave up):
+    /// the step limit was reached, the enemy is out of sight, it is already
+    /// stepsMax tiles away or past the radar (CCharNPCAct.cpp:1382-1420), or no
+    /// step away could be taken. NPCAIEXTRAS FleeTactics adds kiting casts, a
+    /// self-heal and a scout's vanish while running.</summary>
+    private bool ActFlee(Character npc, Character target)
     {
         npc.FleeStepsCurrent++;
         if (npc.FleeStepsCurrent >= npc.FleeStepsMax)
         {
             npc.FleeStepsCurrent = 0;
             npc.FightTarget = Serial.Invalid;
-            return;
+            return false;
         }
 
         int dist = npc.Position.GetDistanceTo(target.Position);
+        int radar = _config.MapViewRadar > 0 ? _config.MapViewRadar : Character.MapViewRadarTiles;
+        if (target.MapIndex != npc.MapIndex || !IsAttackable(target) ||
+            dist >= npc.FleeStepsMax || dist > radar)
+            return false;
 
+        if (HasExtra(npc, NpcAiExtraFlags.FleeTactics) && TryFleeTactics(npc, target, dist))
+            return true;
+
+        // Pathfinder-based escape: find a direction away from threat
+        return FleeAway(npc, target.Position);
+    }
+
+    /// <summary>NPCAIEXTRAS FleeTactics: a fleeing caster casts at its pursuer every
+    /// third step and heals itself every fourth; a creature that can hide vanishes
+    /// once it has some distance (ServUO OrcScout guerilla style), breaking the
+    /// pursuit. True = the step was spent.</summary>
+    private bool TryFleeTactics(Character npc, Character target, int dist)
+    {
         // Kiting: cast a spell while fleeing if mana allows (every 3rd step)
         if (npc.NpcSpells.Count > 0 && npc.Mana >= npc.Int / 3
             && dist >= 2 && dist <= 8
@@ -719,7 +899,7 @@ public sealed partial class NpcAI
         {
             var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
             if (spell != SpellType.None && CastViaTrigger(npc, castTarget, spell))
-                return;
+                return true;
         }
 
         // Self-heal while fleeing (every 4th step)
@@ -729,33 +909,32 @@ public sealed partial class NpcAI
             if (npc.NpcSpells.Contains(SpellType.GreaterHeal))
             {
                 if (CastViaTrigger(npc, npc, SpellType.GreaterHeal))
-                    return;
+                    return true;
             }
             else if (npc.NpcSpells.Contains(SpellType.Heal))
             {
                 if (CastViaTrigger(npc, npc, SpellType.Heal))
-                    return;
+                    return true;
             }
         }
 
-        // Scout retreat: a creature that can hide vanishes mid-flee once it has
-        // some distance, breaking pursuit (ServUO OrcScout guerilla style). The
-        // pursuer then loses LOS and falls into hidden-target pursuit.
+        // Scout retreat: vanish mid-flee once there is some distance. The pursuer
+        // then loses sight of it.
         if (dist >= 4 && !npc.IsStatFlag(StatFlag.Hidden)
             && npc.GetSkill(SkillType.Hiding) > 0 && _rand.Next(8) == 0)
         {
             npc.SetStatFlag(StatFlag.Hidden);
             npc.FleeStepsCurrent = 0;
             npc.FightTarget = Serial.Invalid;
-            return;
+            return true;
         }
-
-        // Pathfinder-based escape: find a direction away from threat
-        FleeAway(npc, target.Position);
+        return false;
     }
 
-    /// <summary>Honor a forced combat target: bard Provocation (PROVOKED_TARGET)
-    /// or a scripted ConstantFocus (CONSTANT_FOCUS). Returns true if engaged.</summary>
+    /// <summary>NPCAIEXTRAS CombatExtras forced combat target: TAG.PROVOKED_TARGET or
+    /// TAG.CONSTANT_FOCUS names a character to attack. Neither exists in Source-X
+    /// (its provocation starts the fight directly) nor in the script packs, so the
+    /// tags are read only with the extra on. Returns true if engaged.</summary>
     private static bool TryReadUidTag(Character npc, string name, out uint uid)
     {
         uid = 0;
@@ -792,7 +971,7 @@ public sealed partial class NpcAI
         return true;
     }
 
-    private void FleeAway(Character npc, Point3D threat)
+    private bool FleeAway(Character npc, Point3D threat)
     {
         // Run once there is room; walk while cornered (reference
         // NPC_Act_Follow flee path: NPC_WalkToPoint(iDist > 3)).
@@ -814,7 +993,7 @@ public sealed partial class NpcAI
                 var fleeDir = npc.Position.GetDirectionTo(newPos);
                 npc.Direction = run ? fleeDir | Direction.Running : fleeDir;
                 _world.MoveCharacter(npc, newPos);
-                return;
+                return true;
             }
         }
 
@@ -835,10 +1014,11 @@ public sealed partial class NpcAI
                     var altFleeDir = npc.Position.GetDirectionTo(altPos);
                     npc.Direction = run ? altFleeDir | Direction.Running : altFleeDir;
                     _world.MoveCharacter(npc, altPos);
-                    return;
+                    return true;
                 }
             }
         }
+        return false;
     }
 
     /// <summary>
@@ -1231,8 +1411,88 @@ public sealed partial class NpcAI
     internal static (int Min, int Max) GetFightRange(Character npc, Item? weapon)
     {
         var range = CombatHelper.GetWeaponRange(weapon);
+        // A ranged weapon whose ITEMDEF RANGE is the melee default 0,1 counts as
+        // "not set" and shoots to sphere.ini ARCHERYMAXDIST (NPC_FightArchery,
+        // CCharNPCAct_Fight.cpp:37-38).
+        if (weapon != null && CombatHelper.IsRangedWeapon(weapon) &&
+            CombatHelper.GetWeaponDef(weapon) is { RangeMin: 0, RangeMax: 1 })
+            range = (Math.Min(Character.ArcheryMinDist, Character.ArcheryMaxDist), Math.Max(1, Character.ArcheryMaxDist));
         int innate = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.RangeMax ?? 0;
         return innate > range.Max ? (range.Min, innate) : range;
+    }
+
+    /// <summary>Start the Healing skill for an NPC through the engine's skill path
+    /// (@SkillStart, the Healing skill with the bandage, @SkillSuccess / @SkillFail).
+    /// Args: healer, patient, bandage. False = the start was refused.</summary>
+    public Func<Character, Character, Item, bool>? OnNpcBandage { get; set; }
+
+    private readonly Dictionary<uint, long> _bandageBusyUntil = [];
+
+    /// <summary>NPCAIEXTRAS BandageHeal: an NPC with Healing and bandages in its pack
+    /// treats <paramref name="patient"/> (itself, or - for the pet code - its owner)
+    /// when it is under 78% hit points or poisoned, by starting the Healing skill
+    /// through <see cref="OnNpcBandage"/>. While a treatment runs (the skill's
+    /// DELAY) no new one starts. True = a treatment started and this tick is
+    /// spent.</summary>
+    internal bool TryBandage(Character healer, Character patient)
+    {
+        if (OnNpcBandage == null || healer.IsDead || patient.IsDead || patient.IsDeleted)
+            return false;
+        if (healer.GetSkill(SkillType.Healing) <= 0 || healer.IsCasting)
+            return false;
+        if (patient.MaxHits <= 0 || !(patient.IsPoisoned || patient.Hits * 100 < patient.MaxHits * 78))
+            return false;
+        if (patient != healer && (patient.MapIndex != healer.MapIndex ||
+                                  healer.Position.GetDistanceTo(patient.Position) > 2))
+            return false;
+        long now = Environment.TickCount64;
+        if (_bandageBusyUntil.TryGetValue(healer.Uid.Value, out long until) && now < until)
+            return false;
+        var pack = healer.Backpack;
+        var bandage = pack != null ? FindInContents(pack, it => it.ItemType == ItemType.Bandage, 2) : null;
+        if (bandage == null)
+            return false;
+        if (!OnNpcBandage(healer, patient, bandage))
+            return false;
+        int delay = SphereNet.Game.Skills.SkillEngine.GetSkillDelayMs(SkillType.Healing, healer.GetSkill(SkillType.Healing));
+        _bandageBusyUntil[healer.Uid.Value] = now + Math.Max(1000, delay);
+        return true;
+    }
+
+    /// <summary>The active-skill sink an NPC's skill runs through: pack lookups and
+    /// item use act on the world; messages meant for a player's screen go
+    /// nowhere.</summary>
+    public sealed class NpcSkillSink(Character self, GameWorld world) : SphereNet.Game.Skills.Information.IActiveSkillSink
+    {
+        public Character Self { get; } = self;
+        public GameWorld World { get; } = world;
+        public Random Random => Random.Shared;
+        public void SysMessage(string text) { }
+        public void ObjectMessage(SphereNet.Game.Objects.ObjBase target, string text) { }
+        public void Emote(string text) { }
+        public void Sound(ushort soundId) { }
+        public void Animation(ushort animId) { }
+
+        public Item? FindBackpackItem(ItemType type)
+        {
+            var pack = Self.Backpack;
+            return pack != null ? FindInContents(pack, it => it.ItemType == type, 32) : null;
+        }
+
+        public void ConsumeAmount(Item item, ushort amount = 1)
+        {
+            if (item.Amount > amount)
+                item.Amount = (ushort)(item.Amount - amount);
+            else
+                World.RemoveItem(item);
+        }
+
+        public void DeliverItem(Item item)
+        {
+            var pack = Self.Backpack;
+            if (pack == null || !pack.TryAddItem(item))
+                World.PlaceItemWithDecay(item, Self.Position);
+        }
     }
 
     private void MoveAway(Character npc, Point3D threat)

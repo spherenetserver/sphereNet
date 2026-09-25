@@ -235,7 +235,7 @@ public sealed partial class NpcAI
     /// RETURN 1 (revert to melee, no cast). Otherwise <see cref="Spell"/> /
     /// <see cref="Target"/> carry the spell and target to cast (script may have
     /// overridden them via ARGN1 / REF1).</summary>
-    public readonly record struct NpcCastDecision(bool Abort, SpellType Spell, Character? Target);
+    public readonly record struct NpcCastDecision(bool Abort, SpellType Spell, Character? Target, bool Retargeted = false, int HealThreshold = -1);
 
     public NpcAI(GameWorld world, SphereConfig config)
     {

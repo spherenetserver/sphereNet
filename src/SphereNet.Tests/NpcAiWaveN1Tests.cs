@@ -143,6 +143,9 @@ public class NpcAiWaveN1Tests
         guardsman.CharDefIndex = 0x0BBA; // CAN=0300 (equip + usehands)
         guardsman.Hits = guardsman.MaxHits = 100;
         guardsman.SetStatFlag(StatFlag.War);
+        // ItemEquipWeapon takes a weapon only when it scores above bare hands
+        // (NPC_GetWeaponUseScore: adjusted skill + 50 x damage).
+        guardsman.SetSkill(SkillType.Swordsmanship, 1000);
         world.PlaceCharacter(guardsman, new Point3D(100, 100, 0, 0));
 
         var pack = world.CreateItem();
@@ -220,6 +223,7 @@ public class NpcAiWaveN1Tests
         archer.CharDefIndex = 0x0BBA;
         archer.Hits = archer.MaxHits = 100;
         archer.SetStatFlag(StatFlag.War);
+        archer.SetSkill(SkillType.Archery, 1000); // see the weapon-score note above
         world.PlaceCharacter(archer, new Point3D(100, 100, 0, 0));
 
         var pack = world.CreateItem();

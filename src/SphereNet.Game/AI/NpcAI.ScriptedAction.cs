@@ -292,16 +292,6 @@ public sealed partial class NpcAI
     /// <summary>m_atTalk, runtime only.</summary>
     private readonly Dictionary<uint, TalkState> _talkState = [];
 
-    /// <summary>Source-X NPC_CanSpeak (CCharNPCStatus.cpp:416): the NPC has speech of
-    /// its own (DSPEECH) or its definition has some.</summary>
-    internal static bool NpcCanSpeak(Character npc)
-    {
-        if (npc.IsPlayer || npc.DSpeech.Count > 0)
-            return true;
-        var def = DefinitionLoader.GetCharDef(npc.CharDefIndex);
-        return def != null && def.SpeechResources.Count > 0;
-    }
-
     /// <summary>Source-X NPC_ActStart_SpeakTo (CCharNPCAct.cpp:243): the NPC is now
     /// talking to <paramref name="speaker"/> - it waits for twenty ticks, follows
     /// along when the speaker's fame is over 7000, faces them, and takes its next

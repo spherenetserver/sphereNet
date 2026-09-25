@@ -260,8 +260,9 @@ public sealed partial class NpcAI
         }
 
         LookAtNearbyItems(npc);
-        if (_rand.Next(100) < 10)
-            WanderHome(npc);
+        // Nothing to look at: the NPC_Act_Idle tail runs on every free tick; its own
+        // dice decide between standing, wandering and going home (:1974).
+        WanderHome(npc);
     }
 
     private static readonly string[] s_healerRefuseEvil =
@@ -474,8 +475,7 @@ public sealed partial class NpcAI
 
         if (_rand.Next(12) == 0)
             EmitSound(npc, CreatureSoundType.Idle);
-        if (_rand.Next(100) < 20)
-            WanderHome(npc);
+        WanderHome(npc); // NPC_Act_Idle tail every free tick (:1974)
     }
 
     /// <summary>Source-X Food_CanEat: when the chardef declares a FOODTYPE
@@ -739,8 +739,7 @@ public sealed partial class NpcAI
 
         LookAtNearbyItems(npc);
 
-        if (_rand.Next(100) < 10)
-            WanderHome(npc);
+        WanderHome(npc); // NPC_Act_Idle tail every free tick (:1974)
     }
 
     /// <summary>Source-X NPC_LookAround + NPC_LookAtChar (CCharNPCAct.cpp:1116,

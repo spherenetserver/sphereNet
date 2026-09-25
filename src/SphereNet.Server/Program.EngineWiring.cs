@@ -1739,9 +1739,6 @@ public static partial class Program
                     PacketSpeechUnicodeOut.SystemLanguage, npc.GetName(), text);
                 BroadcastNearby(npc.Position, 18, emote, 0);
             };
-            _npcAI.OnNpcAnimate = (npc, anim) =>
-                SphereNet.Game.Clients.GameClient.PlayAnimation(
-                    npc, (ushort)anim, 18, BroadcastNearby, ForEachClientInRange);
             _npcAI.OnNpcPlaySound = (npc, soundId) =>
                 BroadcastNearby(npc.Position, 18, new PacketSound(soundId, npc.X, npc.Y, npc.Z), 0);
             _npcAI.OnNpcEat = (npc, food, qty) =>
@@ -2009,12 +2006,8 @@ public static partial class Program
             };
             _npcAI.OnNpcBreath = (npc, target, damage) =>
             {
-                // @NPCSpecialAction (Source-X) — fires before a special attack.
-                // N1 = 1 (breath). RETURN 1 cancels the special (effect + damage).
-                if (_triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSpecialAction,
-                        new TriggerArgs { CharSrc = npc, O1 = target, N1 = 1 }) == TriggerResult.True)
-                    return;
-
+                // No @NPCSpecialAction here: Source-X fires it only from the idle pass
+                // (CCharNPCAct.cpp:1989), never before a breath.
                 FaceAndBroadcastToward(npc, target);
 
                 // Source-X Skill_Act_Breath (CCharSkill.cpp:3316-3344): sound 0x227,
@@ -2030,12 +2023,7 @@ public static partial class Program
             };
             _npcAI.OnNpcThrow = (npc, target, damage) =>
             {
-                // @NPCSpecialAction (Source-X) — N1 = 2 (thrown object).
-                // RETURN 1 cancels the special (effect + damage).
-                if (_triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSpecialAction,
-                        new TriggerArgs { CharSrc = npc, O1 = target, N1 = 2 }) == TriggerResult.True)
-                    return;
-
+                // No @NPCSpecialAction here either (idle pass only, CCharNPCAct.cpp:1989).
                 FaceAndBroadcastToward(npc, target);
 
                 // Source-X Skill_Act_Throwing (CCharSkill.cpp:3446-3475): the

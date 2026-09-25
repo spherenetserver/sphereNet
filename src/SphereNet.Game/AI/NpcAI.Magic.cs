@@ -991,10 +991,6 @@ public sealed partial class NpcAI
 
     private const ushort WebLastId = 0x0EE6;          // ITEMID_WEB1_4
 
-    /// <summary>Animation hook for the special action (ANIM_CAST_AREA), wired by the
-    /// server to the body-aware animation broadcast.</summary>
-    public Action<Character, AnimationType>? OnNpcAnimate { get; set; }
-
     /// <summary>Source-X Action_StartSpecial. Fire: ITEMID_FX_FIRE_F_EW or _NS at
     /// random, IT_FIRE carrying Fire Field at heat 100 + rand(500), linked to the
     /// creature, gone after 10 ms + rand(50) s. Web: one of ITEMID_WEB1_1..4, IT_WEB,

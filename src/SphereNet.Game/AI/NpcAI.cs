@@ -166,8 +166,9 @@ public sealed partial class NpcAI
     /// (skip the engine's fight logic this tick). Otherwise <see cref="Motivation"/>
     /// is the (possibly script-mutated) motivation, <see cref="ForcedSpell"/> /
     /// <see cref="ForcedSkill"/> carry a script-forced cast (LOCAL.spell / LOCAL.skill),
-    /// and <see cref="SkipHardcoded"/> (LOCAL.skiphardcoded) bypasses the engine's
-    /// hardcoded breath/throw specials while keeping its magery/melee.</summary>
+    /// and <see cref="SkipHardcoded"/> (the trigger's RETURN 0, CCharNPCAct_Fight.cpp:232)
+    /// bypasses the engine's hardcoded breath/throw specials while keeping its
+    /// magery/melee.</summary>
     public readonly record struct NpcFightDecision(
         bool Handled, int Motivation, SkillType ForcedSkill, SpellType ForcedSpell,
         bool SkipHardcoded = false);
@@ -472,7 +473,9 @@ public sealed partial class NpcAI
                          (hand2 != null && IsWeaponItemType(hand2.ItemType));
             if (!armed && pack != null)
             {
-                var weapon = FindInPack(pack, it => IsWeaponItemType(it.ItemType));
+                // ItemEquipWeapon (CCharUse.cpp:2049): the best-scoring weapon, not
+                // the first one in the pack.
+                var weapon = FindBestPackWeapon(npc);
                 if (weapon != null)
                 {
                     pack.RemoveItem(weapon);

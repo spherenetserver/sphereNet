@@ -184,8 +184,7 @@ public sealed partial class NpcAI
         npc.FightTarget = Serial.Invalid;
 
         // No enemy — looters scavenge nearby corpses (Source-X NPC_AI_LOOTING).
-        if ((GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting) || npc.TryGetTag("LOOTING", out _))
-            && TryLoot(npc))
+        if (GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting) && TryLoot(npc))
             return;
 
         // Idle monsters notice desirable ground items too (Source-X

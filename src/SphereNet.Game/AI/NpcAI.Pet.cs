@@ -108,6 +108,12 @@ public sealed partial class NpcAI
             return;
         }
 
+        // NPCAIEXTRAS BandageHeal: a pet (or hireling) with Healing and bandages
+        // treats its owner, then itself (not in Source-X; ModernUO HealOwner).
+        if (HasExtra(npc, NpcAiExtraFlags.BandageHeal) &&
+            (TryBandage(npc, master) || TryBandage(npc, npc)))
+            return;
+
         // Hireling wages are charged on the food tick (Source-X OnTickFood ->
         // NPC_CheckHirelingStatus, CCharAct.cpp:5755), inside
         // Character.TickPetOwnershipTimers above.

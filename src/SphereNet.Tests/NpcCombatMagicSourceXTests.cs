@@ -365,11 +365,13 @@ public sealed class NpcCombatMagicSourceXTests
         {
             var (world, ai, npc, enemy) = Duel(distance: 3);
             npc.BodyId = 0x11;
+            npc.Karma = -1; // an evil monster hunts (Noto_IsEvil, CCharNotoriety.cpp:53)
             enemy.IsOnline = true;
             world.AddOnlinePlayer(enemy);
             var ally = world.CreateCharacter();
             ally.NpcBrain = NpcBrainType.Monster;
             ally.BodyId = 0x11;
+            ally.Karma = -1;
             ally.Hits = ally.MaxHits = 100;
             world.PlaceCharacter(ally, new Point3D(99, 100, 0, 0));
             world.OnTick();
@@ -489,5 +491,37 @@ public sealed class NpcCombatMagicSourceXTests
 
         npc.Hits = 90; // above 78%, not poisoned: TryBandage declines
         Assert.False(ai.TryBandage(npc, npc));
+    }
+
+    [Fact]
+    public void BandageHeal_PetTreatsItsOwner()
+    {
+        var world = TestHarness.CreateWorld();
+        var ai = new NpcAI(world, new SphereConfig());
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;
+        owner.Hits = 40; owner.MaxHits = 100;
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+        var pet = world.CreateCharacter();
+        pet.NpcMaster = owner.Uid;
+        pet.Hits = pet.MaxHits = 50;
+        pet.PetAIMode = PetAIMode.Follow;
+        pet.SetSkill(SkillType.Healing, 800);
+        world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
+        var pack = AddPack(world, pet);
+        var bandage = world.CreateItem();
+        bandage.ItemType = ItemType.Bandage;
+        pack.AddItem(bandage);
+        Character? treated = null;
+        ai.OnNpcBandage = (_, patient, _) => { treated = patient; return true; };
+
+        pet.NextNpcActionTime = 0;
+        ai.OnTickAction(pet);
+        Assert.Null(treated); // off without its bit
+
+        ai.Extras |= NpcAiExtraFlags.BandageHeal;
+        pet.NextNpcActionTime = 0;
+        ai.OnTickAction(pet);
+        Assert.Same(owner, treated);
     }
 }

@@ -1254,7 +1254,7 @@ public sealed class SpellEngine
                 {
                     OnSysMessage?.Invoke(caster, "You must target a rune in your pack.");
                 }
-                else if (FireItemSpellEffect(caster, rune, def) == TriggerResult.True)
+                else if (FireItemSpellEffect(caster, rune, def, skillLevel, castSource) == TriggerResult.True)
                 {
                     // Script handled/cancelled the native mark.
                 }
@@ -1279,7 +1279,7 @@ public sealed class SpellEngine
             if (fieldItem != null && !fieldItem.IsDeleted &&
                 (fieldItem.TryGetTag("FIELD_DAMAGE", out _) || fieldItem.ItemType == ItemType.Spell))
             {
-                if (FireItemSpellEffect(caster, fieldItem, def) != TriggerResult.True)
+                if (FireItemSpellEffect(caster, fieldItem, def, skillLevel, castSource) != TriggerResult.True)
                     OnItemRemoved?.Invoke(fieldItem);
             }
             else
@@ -1368,7 +1368,7 @@ public sealed class SpellEngine
             var rune = _world?.FindItem(targetUid);
             if (rune != null && IsItemAccessible(caster, rune))
             {
-                if (FireItemSpellEffect(caster, rune, def) != TriggerResult.True)
+                if (!RuneTravelHandledByScript(caster, rune, def))
                     ApplyRuneTravelSpell(caster, rune, def);
             }
             else
@@ -1400,7 +1400,7 @@ public sealed class SpellEngine
                 {
                     // Fire the scriptable @SpellEffect first; only apply the
                     // hardcoded item-spell behavior when no script overrode it.
-                    if (FireItemSpellEffect(caster, itemTarget, def) != TriggerResult.True)
+                    if (FireItemSpellEffect(caster, itemTarget, def, skillLevel, castSource) != TriggerResult.True)
                         ApplyItemTargetSpell(caster, itemTarget, def);
                 }
             }
@@ -1490,19 +1490,52 @@ public sealed class SpellEngine
         (corpse.TryGetTag("OWNER_UID", out string? owner) &&
          uint.TryParse(owner, out uint ownerUid) && ownerUid == ch.Uid.Value);
 
-    private TriggerResult FireItemSpellEffect(Character caster, Item item, SpellDef def)
+    /// <summary>CItem::OnSpellEffect's script stages (CItem.cpp:5600-5631): the item's
+    /// @SpellEffect with ARGN1 = spell, ARGN2 = skill level and ARGO = the wand or
+    /// scroll the spell came from, then the [SPELL]'s own @Effect on the item with the
+    /// same args. RETURN 1 in either stops the built-in effect; RETURN 0 does too for a
+    /// SPELLFLAG_SCRIPTED spell. Returns <see cref="TriggerResult.True"/> when the
+    /// built-in effect must not run.</summary>
+    private TriggerResult FireItemSpellEffect(Character caster, Item item, SpellDef def,
+        int skillLevel = 0, Item? sourceItem = null)
     {
         if (TriggerDispatcher == null)
             return TriggerResult.Default;
 
-        return TriggerDispatcher.FireItemTrigger(item, ItemTrigger.SpellEffect, new TriggerArgs
+        var args = new TriggerArgs
         {
             CharSrc = caster,
             ItemSrc = item,
-            O1 = caster,
+            O1 = sourceItem is { IsDeleted: false } ? sourceItem : null,
             N1 = (int)def.Id,
-            S1 = def.Name,
-        });
+            N2 = skillLevel,
+        };
+        bool scripted = def.IsFlag(SpellFlag.Scripted);
+        var result = TriggerDispatcher.FireItemTrigger(item, ItemTrigger.SpellEffect, args);
+        if (result == TriggerResult.True || (result == TriggerResult.False && scripted))
+            return TriggerResult.True;
+
+        args.ReturnNumber = null;
+        var stage = TriggerDispatcher.FireSpellTrigger(def.Id, "Effect", item, args);
+        if (stage == TriggerResult.True || (args.ReturnNumber == 0 && scripted))
+            return TriggerResult.True;
+        return TriggerResult.Default;
+    }
+
+    /// <summary>The rune's @SpellEffect before a Recall or Gate Travel (Spell_Recall,
+    /// CCharSpell.cpp:380-387): only ARGN1 = the spell is set, and only RETURN 0 means
+    /// "handled, do not travel" - a RETURN 1 lets the spell go ahead.</summary>
+    private bool RuneTravelHandledByScript(Character caster, Item rune, SpellDef def)
+    {
+        if (TriggerDispatcher == null)
+            return false;
+        var args = new TriggerArgs
+        {
+            CharSrc = caster,
+            ItemSrc = rune,
+            N1 = def.Id == SpellType.GateTravel ? (int)SpellType.GateTravel : (int)SpellType.Recall,
+        };
+        return TriggerDispatcher.FireItemTrigger(rune, ItemTrigger.SpellEffect, args) == TriggerResult.False;
     }
 
     /// <summary>Return true if the caster's backpack holds at least the needed

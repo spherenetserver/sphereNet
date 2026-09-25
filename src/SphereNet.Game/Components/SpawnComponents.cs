@@ -514,8 +514,8 @@ public sealed class SpawnComponent
                 var ch = _world.FindChar(uid);
                 if (ch == null || ch.IsDeleted) continue;
                 ch.ClearStatFlag(StatFlag.Spawned);
-                OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
-                    new SpawnTriggerArgs { SpawnedChar = ch, SpawnDefIndex = ch.CharDefIndex });
+                // No @DelObj here: DelObj returns at once while the children are being
+                // killed (_fKillingChildren, CCSpawn.cpp:512).
                 if (!ch.IsDead)
                     ch.Kill();
                 _world.DeleteObject(ch);
@@ -1332,8 +1332,7 @@ public sealed class ItemSpawnComponent
         foreach (var uid in _spawnedUids.ToArray())
         {
             var item = _world.FindItem(uid);
-            SpawnComponent.OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
-                new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = _itemDefId });
+            // No @DelObj during the sweep (_fKillingChildren, CCSpawn.cpp:512).
             if (item == null || item.IsDeleted) continue;
             item.RemoveTag("SPAWN_POINT_UUID");
             _world.DeleteObject(item);

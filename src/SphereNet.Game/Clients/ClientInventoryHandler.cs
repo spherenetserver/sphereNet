@@ -208,8 +208,9 @@ public sealed class ClientInventoryHandler
                     _triggerDispatcher.FireCharTrigger(clickCh, CharTrigger.ToolTip,
                         new TriggerArgs { CharSrc = _character, ScriptConsole = _client }) == TriggerResult.True)
                     return;
+                // ARGO is the clicking client (CClientEvent.cpp:2424).
                 var result = _triggerDispatcher.FireCharTrigger(clickCh, CharTrigger.Click,
-                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client });
+                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client, O1 = _client as Core.Interfaces.IScriptObj });
                 if (result == TriggerResult.True)
                     return;
             }
@@ -220,7 +221,7 @@ public sealed class ClientInventoryHandler
                         new TriggerArgs { CharSrc = _character, ItemSrc = clickItem, ScriptConsole = _client }) == TriggerResult.True)
                     return;
                 var result = _triggerDispatcher.FireItemTrigger(clickItem, ItemTrigger.Click,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = clickItem, ScriptConsole = _client });
+                    new TriggerArgs { CharSrc = _character, ItemSrc = clickItem, ScriptConsole = _client, O1 = _client as Core.Interfaces.IScriptObj });
                 if (result == TriggerResult.True)
                     return;
             }
@@ -254,23 +255,44 @@ public sealed class ClientInventoryHandler
             label += CharNameSuffix(guildedCh, _character.AllShow || _character.DebugView);
         }
 
+        // @AfterClick runs BEFORE the name goes out (addItemName / addCharName,
+        // CClientMsg.cpp:1316-1333 and :1443-1460): LOCAL.ClickMsgText and
+        // LOCAL.ClickMsgHue carry the line and its hue and are read back, and RETURN 1
+        // sends no name at all.
+        if (_triggerDispatcher != null && obj is Character or Item)
+        {
+            var clickLocals = new SphereNet.Scripting.Variables.VarMap();
+            clickLocals.Set("ClickMsgText", label);
+            clickLocals.SetInt("ClickMsgHue", nameHue);
+            var afterArgs = new TriggerArgs
+            {
+                CharSrc = _character, ScriptConsole = _client, O1 = _client as Core.Interfaces.IScriptObj,
+                Locals = clickLocals,
+            };
+            TriggerResult afterResult;
+            if (obj is Character afterClickCh)
+            {
+                afterResult = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.AfterClick)
+                    ? _triggerDispatcher.FireCharTrigger(afterClickCh, CharTrigger.AfterClick, afterArgs)
+                    : TriggerResult.Default;
+            }
+            else
+            {
+                var afterClickItem = (Item)obj;
+                afterArgs.ItemSrc = afterClickItem;
+                afterResult = _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.AfterClick)
+                    ? _triggerDispatcher.FireItemTrigger(afterClickItem, ItemTrigger.AfterClick, afterArgs)
+                    : TriggerResult.Default;
+            }
+            if (afterResult == TriggerResult.True)
+                return;
+            label = clickLocals.Get("ClickMsgText") ?? label;
+            nameHue = (ushort)clickLocals.GetInt("ClickMsgHue", nameHue);
+        }
+
         _netState.Send(new PacketSpeechUnicodeOut(
             uid, (ushort)(obj is Character c ? c.BodyId : 0),
             6, nameHue, 3, PacketSpeechUnicodeOut.SystemLanguage, "", label));
-
-        if (_triggerDispatcher != null)
-        {
-            if (obj is Character afterClickCh)
-            {
-                _triggerDispatcher.FireCharTrigger(afterClickCh, CharTrigger.AfterClick,
-                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client });
-            }
-            else if (obj is Item afterClickItem)
-            {
-                _triggerDispatcher.FireItemTrigger(afterClickItem, ItemTrigger.AfterClick,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = afterClickItem, ScriptConsole = _client });
-            }
-        }
     }
 
     /// <summary>The " [ABBR]" suffix appended to a guilded player's overhead name,
@@ -1178,6 +1200,41 @@ public sealed class ClientInventoryHandler
         return true;
     }
 
+    /// <summary>
+    /// Fire @DropOn_Item on the dragged <paramref name="item"/> with ARGO = what it
+    /// was dropped on (Source-X Event_Item_Drop, CClientEvent.cpp:418-431). Returns
+    /// true when the drop is settled and the caller must stop: RETURN 1 bounces the
+    /// item only while it is still on the cursor (Event_Item_Drop_Fail,
+    /// CClientEvent.cpp:253), and a script that moved the item elsewhere ends the drop
+    /// there - upstream compares the container before and after and returns (:430).
+    /// </summary>
+    private bool FireDropOnItem(Item item, Item droppedOn)
+    {
+        if (_triggerDispatcher == null || _character == null) return false;
+        var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
+            new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = droppedOn });
+        if (item.IsDeleted)
+        {
+            _dragOrigin = null;
+            _netState.Send(new PacketDropAck());
+            return true;
+        }
+        bool stillDragged = item.ContainedIn == _character.Uid && !item.IsEquipped;
+        if (result == TriggerResult.True && stillDragged)
+        {
+            RestoreToOrigin(item);
+            _netState.Send(new PacketDropReject());
+            return true;
+        }
+        if (result == TriggerResult.True || !stillDragged)
+        {
+            _dragOrigin = null;
+            _netState.Send(new PacketDropAck());
+            return true;
+        }
+        return false;
+    }
+
     private void BroadcastDragAnimation(Item item, uint sourceSerial, Point3D sourcePos,
         uint targetSerial, Point3D targetPos, Point3D origin)
     {
@@ -1498,17 +1555,8 @@ public sealed class ClientInventoryHandler
                 }
 
                 // Fire @DropOn_Item
-                if (_triggerDispatcher != null)
-                {
-                    var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = dropOnTarget ?? container });
-                    if (result == TriggerResult.True)
-                    {
-                        RestoreToOrigin(item);
-                        _netState.Send(new PacketDropReject());
-                        return;
-                    }
-                }
+                if (FireDropOnItem(item, dropOnTarget ?? container))
+                    return;
                 // @DropOn_Self on the RECEIVER - the container, pile or item the drop
                 // landed on - with the dragged item as ARGO.
                 if (FireDropOnSelf(dropOnTarget ?? container, item))
@@ -1701,14 +1749,8 @@ public sealed class ClientInventoryHandler
                 var ownPack = _character.Backpack;
                 if (ownPack != null && _triggerDispatcher != null)
                 {
-                    var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = ownPack });
-                    if (result == TriggerResult.True)
-                    {
-                        RestoreToOrigin(item);
-                        _netState.Send(new PacketDropReject());
+                    if (FireDropOnItem(item, ownPack))
                         return;
-                    }
                     if (FireDropOnSelf(ownPack, item))
                         return;
                 }
@@ -1872,14 +1914,8 @@ public sealed class ClientInventoryHandler
         // its tile (CClientEvent.cpp:421-446, then :504).
         if (groundDropOnTarget != null && _triggerDispatcher != null)
         {
-            var onItem = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = groundDropOnTarget });
-            if (onItem == TriggerResult.True)
-            {
-                RestoreToOrigin(item);
-                _netState.Send(new PacketDropReject());
+            if (FireDropOnItem(item, groundDropOnTarget))
                 return;
-            }
             if (FireDropOnSelf(groundDropOnTarget, item))
                 return;
         }
@@ -2256,15 +2292,6 @@ public sealed class ClientInventoryHandler
         if (target != _character && _character.PrivLevel < PrivLevel.GM)
             return SettleEquipDrag(item, false);
 
-        // Fire @EquipTest — if script blocks, deny equip
-        if (_triggerDispatcher != null)
-        {
-            var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.EquipTest,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item });
-            if (result == TriggerResult.True)
-                return SettleEquipDrag(item, false);
-        }
-
         // Resolve the final hand before testing/bouncing occupants. Character.Equip
         // applies the same promotion; doing it only there bypassed client updates
         // for the item displaced from HAND2 (for example a held candle).
@@ -2280,6 +2307,22 @@ public sealed class ClientInventoryHandler
             if (equipDenial == Character.EquipDenial.TooWeak)
                 SysMessage("You are not strong enough to equip that.");
             return SettleEquipDrag(item, false);
+        }
+
+        // @EquipTest comes after the layer/strength gate (CanEquipLayer) and runs with
+        // the WEARER as SRC; RETURN 1, or a script that deleted the item, refuses the
+        // equip (CChar::ItemEquip, CCharAct.cpp:3298-3331).
+        if (_triggerDispatcher != null)
+        {
+            var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.EquipTest,
+                new TriggerArgs { CharSrc = target, ItemSrc = item });
+            if (item.IsDeleted)
+            {
+                SettleEquipDrag(item, true); // nothing left to bounce
+                return false;
+            }
+            if (result == TriggerResult.True)
+                return SettleEquipDrag(item, false);
         }
 
         // Spell interruption on equip change
@@ -2362,8 +2405,9 @@ public sealed class ClientInventoryHandler
         _netState.Send(wornPkt);
         BroadcastNearby?.Invoke(target.Position, UpdateRange, wornPkt, _character.Uid.Value);
 
+        // SRC is the wearer (OnTrigger(ITRIG_EQUIP, args, this), CCharAct.cpp:3346).
         _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Equip,
-            new TriggerArgs { CharSrc = _character, ItemSrc = item });
+            new TriggerArgs { CharSrc = target, ItemSrc = item });
 
         return SettleEquipDrag(item, true);
     }

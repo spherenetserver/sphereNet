@@ -62,9 +62,11 @@ public static partial class Program
         {
             SphereNet.Game.Objects.Characters.Character.OnNotoSend = (viewer, subject, noto) =>
             {
-                var args = new TriggerArgs { CharSrc = viewer, N1 = noto };
+                // ARGN1 starts as NOTO_INVALID (0); a script that leaves it there gets
+                // the computed notoriety (CCharNotoriety.cpp:120-131).
+                var args = new TriggerArgs { CharSrc = viewer, N1 = 0 };
                 _triggerDispatcher.FireCharTrigger(subject, CharTrigger.NotoSend, args);
-                return (byte)Math.Clamp(args.N1, 0, 255);
+                return args.N1 == 0 ? noto : (byte)Math.Clamp(args.N1, 0, 255);
             };
         }
         // <NOTOGETFLAG uid> script property → full Noto_GetFlag of the subject
@@ -189,8 +191,12 @@ public static partial class Program
                 var args = new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty, N3 = result };
                 var triggerResult = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick, args);
                 difficulty = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
-                if (triggerResult == TriggerResult.True) return -1;
-                return (int)Math.Clamp(args.N3, 0L, 1L);
+                // RETURN 1 = success, RETURN 0 = failure, both without experience;
+                // otherwise ARGN3 is the result (CCharSkill.cpp:566-579).
+                if (triggerResult == TriggerResult.True)
+                    return SphereNet.Game.Skills.SkillEngine.UseQuickHandledSuccess;
+                if (triggerResult == TriggerResult.False) return -1;
+                return args.N3 != 0 ? 1 : 0;
             };
         }
         // @NPCSeeNewPlayer — install only when hooked so the per-NPC perception
@@ -203,10 +209,11 @@ public static partial class Program
         }
 
         // @PetDesert — fired on the pet when loyalty hits zero; RETURN 1 cancels
-        // the desertion. O1 = owner (may be null if it could not be resolved).
+        // the desertion. SRC is the owner (OnTrigger(CTRIG_PetDesert, args, pCharOwn),
+        // CCharNPCPet.cpp:914); O1 = owner (may be null if it could not be resolved).
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = (pet, owner) =>
             _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetDesert,
-                new TriggerArgs { CharSrc = pet, O1 = owner }) == TriggerResult.True;
+                new TriggerArgs { CharSrc = owner ?? pet, O1 = owner }) == TriggerResult.True;
 
         // @PersonalSpace on the one walked into (SRC = mover), @charShove on the mover
         // (SRC = the one in the way); RETURN 1 keeps the mover out.

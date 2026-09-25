@@ -53,7 +53,7 @@ public sealed class CharTooltipAfterDefaultTests
     {
         var dispatcher = new TriggerDispatcher();
         int fired = 0;
-        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ClientTooltipAfterDefault",
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ClientTooltip_AfterDefault",
             (_, _) => { fired++; return TriggerResult.Default; });
 
         var b = Build(8951, dispatcher);
@@ -73,9 +73,9 @@ public sealed class CharTooltipAfterDefaultTests
     {
         var dispatcher = new TriggerDispatcher();
         int charFired = 0, itemFired = 0;
-        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ClientTooltipAfterDefault",
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ClientTooltip_AfterDefault",
             (_, _) => { charFired++; return TriggerResult.Default; });
-        dispatcher.RegisterItemEvent("EVENTSITEM", "ClientTooltipAfterDefault",
+        dispatcher.RegisterItemEvent("EVENTSITEM", "ClientTooltip_AfterDefault",
             (_, _) => { itemFired++; return TriggerResult.Default; });
 
         var b = Build(8952, dispatcher);

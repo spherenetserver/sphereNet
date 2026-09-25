@@ -53,7 +53,10 @@ public sealed class TriggerRunner
     {
         var result = _interpreter.Execute(body, target, source, args, scope);
         if (args is TriggerArgs ta)
+        {
             ta.ReturnValue = scope.ReturnValue;
+            ta.NumericReturnValue = scope.IsReturning ? scope.NumericReturnValue : null;
+        }
         return result;
     }
 

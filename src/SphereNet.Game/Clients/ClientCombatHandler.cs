@@ -327,11 +327,17 @@ public sealed class ClientCombatHandler
                     // Source-X @UserExWalkLimit — the client exceeded the walk
                     // rate (token bucket dry). IsTrigUsed-gated: rejects can
                     // storm during client-side speed bursts.
+                    // RETURN 1 lets the step through; anything else rejects it
+                    // (CClientEvent.cpp:809-812).
                     if (rejectReason == "walk_buffer" &&
-                        _triggerDispatcher?.IsCharTriggerUsed(CharTrigger.UserExWalkLimit) == true)
+                        _triggerDispatcher?.IsCharTriggerUsed(CharTrigger.UserExWalkLimit) == true &&
                         _triggerDispatcher.FireCharTrigger(_character, CharTrigger.UserExWalkLimit,
-                            new TriggerArgs { CharSrc = _character, ScriptConsole = _client });
+                            new TriggerArgs { CharSrc = _character, ScriptConsole = _client }) == TriggerResult.True)
+                        rejectReason = null;
+                }
 
+                if (rejectReason != null)
+                {
                     Throttle.ViolationCount++;
                     RejectMove(seq, now);
                     if (MoveViolationKickThreshold > 0 && Throttle.ViolationCount >= MoveViolationKickThreshold)
@@ -2072,28 +2078,29 @@ public sealed class ClientCombatHandler
 
         Item? ownCorpse = FindOwnCorpseNear(_character);
 
-        // @Resurrect — Source-X passes the character's own corpse (ARGO) and the
-        // post-rez hit% (ARGN1, default 50 = Resurrect()'s MaxHits/2). RETURN 1
-        // blocks the resurrection; otherwise a script may override the hit% via
-        // ARGN1 (read back through the char-trigger arg copy-back).
-        int rezHitPct = 50;
+        // @Resurrect — Source-X Spell_Resurrection (CCharSpell.cpp:449-462): ARGO is
+        // the character's own corpse and ARGN1 the hit POINTS it comes back with,
+        // MaxHits x HITPOINTPERCENTONREZ / 100, read back as the new hits (at least
+        // 1). RETURN 1 blocks the resurrection.
+        int rezHits = Math.Max(1, _character.MaxHits *
+            Math.Clamp(Character.HitpointPercentOnRez, 0, 100) / 100);
         if (_triggerDispatcher != null)
         {
             var rezArgs = new TriggerArgs
             {
                 CharSrc = _character,
                 O1 = ownCorpse,
-                N1 = rezHitPct,
+                N1 = rezHits,
             };
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Resurrect, rezArgs);
             if (result == TriggerResult.True)
                 return;
-            rezHitPct = SphereNet.Core.Types.ScriptNumber.ToEngineInt(rezArgs.N1);
+            rezHits = SphereNet.Core.Types.ScriptNumber.ToEngineInt(rezArgs.N1);
         }
 
         _character.Resurrect();
-        if (rezHitPct > 0 && _character.MaxHits > 0)
-            _character.Hits = (short)Math.Clamp(_character.MaxHits * rezHitPct / 100, 1, _character.MaxHits);
+        if (!_character.IsDead)
+            _character.Hits = (short)Math.Clamp(rezHits, 1, short.MaxValue);
 
         // The body the character had when they died, as upstream restores it. The
         // ghost -> human mapping below it is the fallback for a ghost that never
@@ -2280,9 +2287,16 @@ public sealed class ClientCombatHandler
         // @UserWarmode fires before the state flip so a script can abort
         // the toggle by returning 1. Matches Source-X @UserWarmode in
         // CClient::Event_WalkToggleWarmode.
-        var triggerArgs = new TriggerArgs { CharSrc = _character, N1 = warMode ? 1 : 0 };
+        // ARGN1 is the CURRENT war state, ARGN2 = 1 and ARGN3 = 0; an ARGN3 of 1 forces
+        // peace and 2 forces war (Event_CombatMode, CClientEvent.cpp:1009-1022).
+        var triggerArgs = new TriggerArgs
+        {
+            CharSrc = _character, N1 = _character.IsInWarMode ? 1 : 0, N2 = 1, N3 = 0,
+        };
         if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserWarmode, triggerArgs) == TriggerResult.True)
             return;
+        if (triggerArgs.N3 is 1 or 2)
+            warMode = triggerArgs.N3 == 2;
         SetWarMode(warMode, syncClients: true, preserveTarget: false);
         SysMessage(warMode ? ServerMessages.Get("combat_warmode_on") : ServerMessages.Get("combat_warmode_off"));
     }

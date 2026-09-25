@@ -943,14 +943,16 @@ public sealed class ClientSkillsHandler
             // section and allocates per object even when no script hooks it. When the
             // trigger is unused the fire is a no-op (it cannot add script properties), so
             // skipping it is behaviour-preserving — mirrors the gated single-click path.
+            // ARGO is the object the tooltip describes (m_pO1 = pObj,
+            // CClientMsg_AOSTooltip.cpp:101 / :123).
             TriggerResult triggerResult = obj switch
             {
                 Character ch when _triggerDispatcher.IsCharTriggerUsed(CharTrigger.ClientTooltip) =>
                     _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ClientTooltip,
-                        new TriggerArgs { CharSrc = _character, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
+                        new TriggerArgs { CharSrc = _character, O1 = ch, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
                 Item tooltipItem when _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltip) =>
                     _triggerDispatcher.FireItemTrigger(tooltipItem, ItemTrigger.ClientTooltip,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
+                        new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, O1 = tooltipItem, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
                 _ => TriggerResult.Default
             };
 
@@ -1046,7 +1048,7 @@ public sealed class ClientSkillsHandler
                 _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault))
             {
                 _triggerDispatcher.FireItemTrigger(afterItem, ItemTrigger.ClientTooltipAfterDefault,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = afterItem, ScriptConsole = _client, N1 = requested ? 1 : 0 });
+                    new TriggerArgs { CharSrc = _character, ItemSrc = afterItem, O1 = afterItem, ScriptConsole = _client, N1 = requested ? 1 : 0 });
             }
             else if (obj is Character afterChar &&
                      _triggerDispatcher.IsCharTriggerUsed(CharTrigger.ClientTooltipAfterDefault))
@@ -1176,8 +1178,14 @@ public sealed class ClientSkillsHandler
     public void HandlePartyLeave()
     {
         if (_character == null || _partyManager == null) return;
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.PartyLeave,
-            new TriggerArgs { CharSrc = _character });
+        // Leaving is RemoveMember(self, self): @PartyRemove and then @PartyLeave, each
+        // able to refuse with RETURN 1 (CParty.cpp:314-325).
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.PartyRemove,
+                new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
+            return;
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.PartyLeave,
+                new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
+            return;
         _partyManager.Leave(_character.Uid);
     }
 

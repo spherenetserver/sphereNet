@@ -3155,7 +3155,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         dispatcher.RegisterCharEvent("EVENTSPLAYER", "ContextMenuRequest", (_, args) =>
         {
             charRequestCount++;
-            Assert.Equal(0, args.N1);
+            Assert.Equal(1, args.N1); // m_iN1 = 1 on the request (CClientEvent.cpp:2593)
             return TriggerResult.Default;
         });
         dispatcher.RegisterCharEvent("EVENTSPLAYER", "ContextMenuSelect", (_, args) =>
@@ -3169,7 +3169,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             itemRequestCount++;
             Assert.Same(player, args.CharSrc);
             Assert.Same(item, args.ItemSrc);
-            Assert.Equal(0, args.N1);
+            Assert.Equal(1, args.N1); // CClientEvent.cpp:2578
             return TriggerResult.Default;
         });
         dispatcher.RegisterItemEvent("EVENTSITEM", "ContextMenuSelect", (_, args) =>
@@ -3240,7 +3240,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             Assert.Same(item, args.ItemSrc);
             return TriggerResult.Default;
         });
-        dispatcher.RegisterItemEvent("EVENTSITEM", "ClientTooltipAfterDefault", (_, args) =>
+        dispatcher.RegisterItemEvent("EVENTSITEM", "ClientTooltip_AfterDefault", (_, args) =>
         {
             afterCount++;
             Assert.Same(player, args.CharSrc);

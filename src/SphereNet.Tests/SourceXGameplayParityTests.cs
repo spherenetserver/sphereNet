@@ -133,7 +133,9 @@ public class SourceXGameplayParityTests
         client.HandleDoubleClick(spawner.Uid.Value);
         Assert.Equal(0, spawner.SpawnChar.CurrentCount);
         Assert.Null(world.FindChar(spawned));
-        Assert.Equal(1, delObjTriggers);
+        // KillChildren sets _fKillingChildren and DelObj returns at once, so the
+        // sweep fires no @DelObj (CCSpawn.cpp:512).
+        Assert.Equal(0, delObjTriggers);
     }
 
     [Fact]

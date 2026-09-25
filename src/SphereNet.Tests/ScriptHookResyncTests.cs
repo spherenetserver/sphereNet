@@ -170,7 +170,9 @@ public sealed class ScriptHookResyncTests : IDisposable
         else
         {
             int difficulty = 1;
-            Assert.Equal(-1, Character.OnSkillUseQuickDetailed!(_character, 0, ref difficulty, 1));
+            // RETURN 1 answers "success, no experience" (CCharSkill.cpp:578-579).
+            Assert.Equal(SkillEngine.UseQuickHandledSuccess,
+                Character.OnSkillUseQuickDetailed!(_character, 0, ref difficulty, 1));
         }
     }
 }

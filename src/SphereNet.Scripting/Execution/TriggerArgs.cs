@@ -54,6 +54,11 @@ public sealed class TriggerArgs : ITriggerArgs
     /// null when nothing returned.</summary>
     public string? ReturnValue { get; set; }
 
+    /// <summary>The evaluated number the block's <c>RETURN</c> produced (Source-X
+    /// TRIGRET_TYPE(s.GetArgVal()), CScriptObj.cpp:2572), or null when the block ran
+    /// to its end without a RETURN. A bare <c>RETURN</c> evaluates to 0.</summary>
+    public long? NumericReturnValue { get; set; }
+
     /// <summary>CALL semantics: the callee runs on the CALLER'S LOCAL pool.
     ///
     /// In Source-X the LOCAL pool lives on the args object (m_VarsLocal), so which

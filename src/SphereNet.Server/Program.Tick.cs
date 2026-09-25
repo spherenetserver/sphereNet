@@ -227,7 +227,9 @@ public static partial class Program
                     && now - _lastServerHookTimerMs >= _config.TimerCallPeriodMs)
                 {
                     _lastServerHookTimerMs = now;
-                    _systemHooks.DispatchServer("timer", _serverHookContext);
+                    // ARGN1 = the period in its configured unit (CWorld.cpp:1831-1832).
+                    _systemHooks.DispatchServer("timer", _serverHookContext,
+                        argn1: _config.TimerCallMinutes);
                 }
 
                 // Replay packet delivery runs every main-loop iteration

@@ -563,6 +563,7 @@ public sealed class MovementEngine
                 return false;
         }
 
+        bool stepCancel = false;
         foreach (var item in _world.GetItemsInRange(pos, 0))
         {
             // Source-X CheckLocation weeds out anything the character cannot
@@ -578,8 +579,13 @@ public sealed class MovementEngine
             // walking onto the item, not standing on it.
             var stepResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
                 new TriggerArgs { CharSrc = ch, ItemSrc = item, N1 = 0 });
+            // RETURN 1 also blocks the walk once every item has had its turn
+            // (fStepCancel, CCharAct.cpp:4955-4958 and :5057).
             if (stepResult == TriggerResult.True)
+            {
+                stepCancel = true;
                 continue;
+            }
 
             switch (item.ItemType)
             {
@@ -692,6 +698,9 @@ public sealed class MovementEngine
                 }
             }
         }
+
+        if (stepCancel)
+            return false;
 
         // Exit/Enter already ran in GameWorld.MoveCharacter, before SRC.REGION
         // changed, and the area's own @Step ran at the top. The character-side

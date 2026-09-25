@@ -64,7 +64,7 @@ public sealed class NpcPathPrestageTests
     }
 
     [Fact]
-    public void BuildDecision_OpenLine_DoesNotPrestage()
+    public void BuildDecision_OpenLine_StillRoutesWithoutAStoredRoute()
     {
         var (world, ai) = MakeWorld();
 
@@ -86,7 +86,9 @@ public sealed class NpcPathPrestageTests
         var decision = ai.BuildDecision(npc, Environment.TickCount64);
 
         Assert.NotNull(decision);
-        Assert.False(decision!.Value.PrestageRan); // direct step open → serial takes it
+        // Source-X NPC_Pathfinding searches whenever there is no stored route ("always search if this is a first step", CCharNPCAct.cpp:2448), straight line open or not.
+        Assert.True(decision!.Value.PrestageRan);
+        Assert.NotNull(decision.Value.PrestagedPath);
     }
 
     [Fact]

@@ -1773,6 +1773,15 @@ public static partial class Program
                 GameClient.BroadcastAnimation(npc, anim, 18,
                     BroadcastNearby, ForEachClientInRange);
             };
+            // Action_StartSpecial's UpdateAnimate(ANIM_CAST_AREA) (CCharNPCAct.cpp:77).
+            _npcAI.OnNpcAnimate = (npc, animation) =>
+            {
+                ushort anim = npc.IsMounted
+                    ? MapAnimToMounted((ushort)animation)
+                    : BodyAnimTranslator.Translate(npc.BodyId, (ushort)animation);
+                GameClient.BroadcastAnimation(npc, anim, 18,
+                    BroadcastNearby, ForEachClientInRange);
+            };
             // Source-X @HitTry/@HitCheck contract: the trigger runs on the
             // attacker but SRC = the victim and ARGO = the weapon.
             _npcAI.OnNpcHitTry = (attacker, target, weapon, argN1, animDelay) =>

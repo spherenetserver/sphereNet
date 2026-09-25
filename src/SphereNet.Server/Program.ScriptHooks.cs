@@ -336,6 +336,7 @@ public static partial class Program
         _npcAI.OnNpcLookAtChar = null;
         _npcAI.OnNpcActFight = null;
         _npcAI.OnNpcActWander = null;
+        _npcAI.OnNpcSpecialAction = null;
         _npcAI.OnNpcActFollow = null;
         _npcAI.OnNpcActCast = null;
         _npcAI.OnNpcLookAtItem = null;
@@ -371,8 +372,20 @@ public static partial class Program
                     res == TriggerResult.True, SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2), forcedSkill, forcedSpell, skipHardcoded);
             };
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActWander))
-            _npcAI.OnNpcActWander = npc =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander,
+            _npcAI.OnNpcActWander = (npc, wanderArgs) =>
+            {
+                // NPC_Act_Wander (CCharNPCAct.cpp:1269-1278): ARGN1 = stop wandering,
+                // ARGN2 = return home, read back when the trigger falls through.
+                var args = new TriggerArgs { CharSrc = npc, N1 = wanderArgs.Stop, N2 = wanderArgs.ReturnHome };
+                if (_triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander, args) == TriggerResult.True)
+                    return true;
+                wanderArgs.Stop = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+                wanderArgs.ReturnHome = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                return false;
+            };
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSpecialAction))
+            _npcAI.OnNpcSpecialAction = npc =>
+                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSpecialAction,
                     new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFollow))
             _npcAI.OnNpcActFollow = (npc, target, followArgs) =>

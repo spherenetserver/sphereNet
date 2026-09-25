@@ -166,11 +166,170 @@ public sealed partial class NpcAI
                 foreach (var uid in staleNotify)
                     _lastAttackNotify.Remove(uid);
         }
+
+        // Idle activity, walk-home failures and talk state: runtime-only per-uid
+        // entries that outlive the NPC they belong to unless swept here.
+        SweepGone(_idleMode);
+        SweepGone(_homeStepFailures);
+        SweepGone(_talkState);
+    }
+
+    private void SweepGone<T>(Dictionary<uint, T> map)
+    {
+        if (map.Count == 0) return;
+        List<uint>? gone = null;
+        foreach (var uid in map.Keys)
+        {
+            var obj = _world.FindObject(new Core.Types.Serial(uid));
+            if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                (gone ??= []).Add(uid);
+        }
+        if (gone != null)
+            foreach (var uid in gone)
+                map.Remove(uid);
     }
 
     /// <summary>Idle fidget animation hook — wired by the server to the
-    /// body-aware animation broadcast.</summary>
+    /// body-aware animation broadcast. Only used with NPCAIEXTRAS IdleFlavor.</summary>
     public Action<Character>? OnNpcFidget { get; set; }
+
+    // --- Cadence ---
+
+    /// <summary>The re-tick a tick leaves when it took no step.
+    ///
+    /// Source-X NPC_OnTickAction (CCharNPCAct.cpp:2385-2394): once the action timer
+    /// has expired and the NPC is not swinging, the next brain tick is
+    /// 1 + rand((150-DEX)/4 .. (150-DEX)/2) tenths of a second. A fighting creature
+    /// is re-ticked by its swing timer there; this engine has no such timer on the
+    /// NPC, so a fighter keeps the run-step pace it had, which is the pace the
+    /// reference's own chase steps run at.</summary>
+    internal int ComputeRetickDelayMs(Character npc)
+    {
+        bool fighting = npc.FightTarget.IsValid ||
+            (npc.NpcMaster.IsValid && npc.PetAIMode == PetAIMode.Attack);
+        if (fighting)
+        {
+            int dex = npc.Dex;
+            if (npc.NpcMaster.IsValid && dex < 75) dex = 75;
+            int moveRate = ResolveMoveRate(npc);
+            int range = Math.Max(0, 100 - dex * moveRate / 100) / 5;
+            return Math.Clamp(250 + _rand.Next(range + 1) * 100, 100, 5000);
+        }
+
+        int timeout = Math.Max(0, (150 - npc.Dex) / 2);
+        if (timeout > 1)
+            timeout = _rand.Next(timeout / 2, timeout + 1);   // GetVal2Fast is inclusive
+        return (1 + timeout) * 100;
+    }
+
+    /// <summary>CHARDEF MOVERATE (Source-X CCharBase::m_iMoveRate, from the ini
+    /// MOVERATE when the definition sets none).</summary>
+    private static int ResolveMoveRate(Character npc)
+    {
+        var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
+        return charDef != null && charDef.MoveRate > 0
+            ? charDef.MoveRate
+            : SphereNet.Scripting.Definitions.CharDef.DefaultMoveRate;
+    }
+
+    /// <summary>Read a numeric TAG the way Source-X GetKey/GetValNum reads a key:
+    /// present or not, and its value as hex (0x.. / leading 0) or decimal.</summary>
+    private static bool TryGetTagNum(Character npc, string key, out long value)
+    {
+        value = 0;
+        if (!npc.TryGetTag(key, out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return false;
+        raw = raw.Trim();
+        bool neg = raw.StartsWith('-');
+        if (neg) raw = raw[1..];
+        bool ok;
+        if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            ok = long.TryParse(raw.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out value);
+        else if (raw.Length > 1 && raw[0] == '0')
+            ok = long.TryParse(raw, System.Globalization.NumberStyles.HexNumber, null, out value);
+        else
+            ok = long.TryParse(raw, out value);
+        if (neg) value = -value;
+        return ok;
+    }
+
+    /// <summary>Source-X g_Rand.GetValFast(n): 0..n-1, and 0 for n &lt;= 0.</summary>
+    private static int RandVal(int n) => n <= 0 ? 0 : _rand.Next(n);
+
+    /// <summary>The delay after one NPC step - Source-X NPC_WalkToPoint "Speed
+    /// counting" (CCharNPCAct.cpp:610-693), chosen by whether THIS step runs.
+    ///
+    /// Old style (TAG.OVERRIDE.MOVESTYLE=1 or OF_NPCMovementOldStyle): 1/4 s plus
+    /// rand((100-DEX)/5) tenths running, 1 s plus rand((100-DEX)/3) tenths walking,
+    /// scaled by OVERRIDE.MOVERATE (else the CHARDEF MOVERATE) and not clamped.
+    /// New style: OVERRIDE.MOVEDELAY is the walking delay itself (halved running,
+    /// halved mounted, quartered running mounted); otherwise the DEX formula with the
+    /// move rate folded into DEX. The new style is clamped to 100 ms .. 5 s. A pet's
+    /// DEX counts as at least 75 when it runs.</summary>
+    internal int ComputeStepDelayMs(Character npc, bool run)
+    {
+        int dex = npc.Dex;
+        bool pet = npc.NpcMaster.IsValid || npc.IsStatFlag(StatFlag.Pet);
+        bool oldStyle = (TryGetTagNum(npc, "OVERRIDE.MOVESTYLE", out long style) && style == 1) ||
+            (((OptionFlags)(uint)_config.OptionFlags) & OptionFlags.NpcMovementOldStyle) != 0;
+
+        long tick;
+        if (oldStyle)
+        {
+            if (run)
+            {
+                if (pet && dex < 75) dex = 75;
+                tick = 250 + RandVal((100 - dex) / 5) * 100L;
+            }
+            else
+            {
+                tick = 1000 + RandVal((100 - dex) / 3) * 100L;
+            }
+
+            if (TryGetTagNum(npc, "OVERRIDE.MOVERATE", out long rate))
+                tick = tick * Math.Max(1, rate) / 100;
+            else
+                tick = tick * ResolveMoveRate(npc) / 100;
+            return (int)Math.Clamp(tick, 1, int.MaxValue);
+        }
+
+        if (TryGetTagNum(npc, "OVERRIDE.MOVEDELAY", out long moveDelay))
+        {
+            tick = moveDelay;
+            if (npc.IsStatFlag(StatFlag.OnHorse) || npc.IsStatFlag(StatFlag.Hovering))
+                tick /= run ? 4 : 2;
+            else if (run)
+                tick /= 2;
+        }
+        else
+        {
+            long rate = TryGetTagNum(npc, "OVERRIDE.MOVERATE", out long r) ? r : ResolveMoveRate(npc);
+            if (run)
+            {
+                if (pet && dex < 75) dex = 75;
+                tick = 250 + RandVal((int)(100 - dex * rate / 100) / 5) * 100L;
+            }
+            else
+            {
+                tick = 1000 + RandVal((int)(100 - dex * rate / 100) / 3) * 100L;
+            }
+        }
+
+        return (int)Math.Clamp(tick, 100, 5000);
+    }
+
+    /// <summary>Set the move delay after a step the NPC just took.</summary>
+    private void ApplyStepDelay(Character npc, bool run)
+    {
+        npc.NextNpcActionTime = Environment.TickCount64 + ComputeStepDelayMs(npc, run);
+        _stepDelayAppliedFor = npc.Uid.Value;
+    }
+
+    /// <summary>Whether a step may run. Source-X demotes a run to a walk when the
+    /// creature cannot run or fly, or has one stamina point or less
+    /// (NPC_WalkToPoint, CCharNPCAct.cpp:591).</summary>
+    private static bool CanRunNow(Character npc) =>
+        (CharDefHelper.GetCanFlags(npc) & (CanFlags.C_Run | CanFlags.C_Fly)) != 0 && npc.Stam > 1;
 
     /// <summary>Open an unlocked closed door for an NPC (state flip +
     /// observer broadcast — wired by the server). Returns true when the
@@ -218,6 +377,9 @@ public sealed partial class NpcAI
 
     private bool CanNpcEnterTile(Character npc, Point3D pos)
     {
+        if (!CheckWalkHere(npc, pos))
+            return false;
+
         var mapData = _world.MapData;
         if (mapData == null) return true;
 
@@ -227,23 +389,59 @@ public sealed partial class NpcAI
             if (!canSwim) return false;
         }
 
-        if (IsTileDangerous(npc, pos))
-            return false;
-
         return true;
     }
 
-    private bool IsTileDangerous(Character npc, Point3D pos)
+    /// <summary>Source-X NPC_CheckWalkHere (CCharNPCStatus.cpp:544): does the NPC
+    /// want to step here at all?
+    ///
+    /// A guard that is not at war keeps inside guarded ground unless
+    /// OF_GuardOutsideGuardedArea is set. On the tile, the first item within five Z
+    /// of the step that is one of these decides: a web stops everything but a giant
+    /// spider, fire stops everything that is not fire immune, and traps, moongates
+    /// and telepads stop everyone. A script-made field that only carries a flat
+    /// FIELD_DAMAGE counts as fire, as it burns like one in this engine.</summary>
+    internal bool CheckWalkHere(Character npc, Point3D pos)
     {
+        if (pos.X < 0 || pos.Y < 0)
+            return true;
+
+        if (npc.NpcBrain == NpcBrainType.Guard && !npc.IsStatFlag(StatFlag.War) &&
+            (((OptionFlags)(uint)_config.OptionFlags) & OptionFlags.GuardOutsideGuardedArea) == 0)
+        {
+            var here = _world.FindRegion(npc.Position);
+            if (here != null && here.IsGuarded)
+            {
+                var there = _world.FindRegion(pos);
+                if (there == null || !there.IsGuarded)
+                    return false;
+            }
+        }
+
         foreach (var item in _world.GetItemsInRange(pos, 0))
         {
-            if (!item.TryGetTag("FIELD_DAMAGE", out _))
+            if (item.IsDeleted || item.X != pos.X || item.Y != pos.Y)
                 continue;
-            bool fireImmune = (CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0;
-            if (!fireImmune)
-                return true;
+            int topZ = item.Z + Math.Max(0, (int)item.DefHeight);
+            if (Math.Abs(topZ - pos.Z) > 5)
+                continue;
+
+            switch (item.ItemType)
+            {
+                case ItemType.Web:
+                    return npc.BodyId == GiantSpiderBody;
+                case ItemType.Fire:
+                    return (CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0;
+                case ItemType.Trap:
+                case ItemType.TrapActive:
+                case ItemType.Moongate:
+                case ItemType.Telepad:
+                    return false;
+            }
+            if (item.TryGetTag("FIELD_DAMAGE", out _))
+                return (CharDefHelper.GetCanFlags(npc) & CanFlags.C_FireImmune) != 0;
         }
-        return false;
+        return true;
     }
 
     /// <summary>The part of the decision the shared walk check does NOT answer: whether
@@ -377,120 +575,379 @@ public sealed partial class NpcAI
     internal static bool SharesHeightWith(Character other, int standZ) =>
         Math.Abs(other.Z - standZ) <= 5;
 
-    private void Wander(Character npc)
+    // --- Idle: NPC_Act_Idle / NPC_Act_Wander / NPC_Act_GoHome ---
+
+    /// <summary>The idle activity an NPC is in - Source-X keeps it in the action slot
+    /// as NPCACT_WANDER / NPCACT_GO_HOME. Runtime state only.</summary>
+    internal enum IdleMode : byte
     {
-        if (!CanNpcMove(npc)) return;
-        if (OnNpcActWander?.Invoke(npc) == true)
+        None = 0,
+        Wander = 1,
+        GoHome = 2,
+    }
+
+    private readonly Dictionary<uint, IdleMode> _idleMode = [];
+
+    /// <summary>Failed steps on the way home, for NPCAIEXTRAS ReturnHome.</summary>
+    private readonly Dictionary<uint, int> _homeStepFailures = [];
+
+    /// <summary>How many blocked steps home NPCAIEXTRAS ReturnHome tolerates before it
+    /// puts the creature back.</summary>
+    internal const int ReturnHomeFailedSteps = 10;
+
+    /// <summary>Test seam: the idle activity an NPC is in.</summary>
+    internal IdleMode GetIdleMode(Character npc)
+    {
+        var act = (NpcAction)npc.Action;
+        if (act == NpcAction.Wander) return IdleMode.Wander;
+        if (act == NpcAction.GoHome) return IdleMode.GoHome;
+        return _idleMode.GetValueOrDefault(npc.Uid.Value);
+    }
+
+    internal void SetIdleMode(Character npc, IdleMode mode)
+    {
+        uint uid = npc.Uid.Value;
+        if (mode == IdleMode.None) _idleMode.Remove(uid);
+        else _idleMode[uid] = mode;
+        if (mode != IdleMode.GoHome) _homeStepFailures.Remove(uid);
+
+        // A script's ACTION=NPCACT_WANDER / NPCACT_GO_HOME ends with the activity.
+        var act = (NpcAction)npc.Action;
+        if ((act == NpcAction.Wander && mode != IdleMode.Wander) ||
+            (act == NpcAction.GoHome && mode != IdleMode.GoHome))
+            npc.Action = SkillType.None;
+    }
+
+    /// <summary>@NPCActWander arguments (CCharNPCAct.cpp:1269-1278): ARGN1 = stop
+    /// wandering, ARGN2 = return home, both seeded and read back.</summary>
+    public sealed class WanderTriggerArgs
+    {
+        public int Stop { get; set; }
+        public int ReturnHome { get; set; }
+    }
+
+    /// <summary>@NPCSpecialAction (NPC_Act_Idle, CCharNPCAct.cpp:1989): no
+    /// arguments; RETURN 1 skips the hardcoded special.</summary>
+    public Func<Character, bool>? OnNpcSpecialAction { get; set; }
+
+    /// <summary>What the brains call when they have nothing else to do.</summary>
+    private void Wander(Character npc) => ActIdle(npc);
+
+    /// <summary>Same entry as <see cref="Wander"/>; the home leash lives in the wander
+    /// step and in go-home, as in Source-X.</summary>
+    private void WanderHome(Character npc) => ActIdle(npc);
+
+    /// <summary>Run the idle activity the NPC is in, or pick a new one.</summary>
+    private void ActIdle(Character npc)
+    {
+        if (npc.IsDead || npc.IsDeleted)
             return;
 
-        // Idle fidget (reference parity: idle NPCs randomly play a fidget
-        // animation) — occasionally animate in place instead of stepping so
-        // standing NPCs look alive without extra packet pressure.
-        if (_rand.Next(8) == 0)
+        switch (GetIdleMode(npc))
+        {
+            case IdleMode.Wander:
+                ActWander(npc);
+                return;
+            case IdleMode.GoHome:
+                ActGoHome(npc);
+                return;
+        }
+
+        ActIdleChoose(npc);
+    }
+
+    /// <summary>The tail of Source-X NPC_Act_Idle (CCharNPCAct.cpp:1974-2057), what an
+    /// NPC does once it found nothing interesting: a guard off its guarded ground goes
+    /// home; at full stamina one time in three a creature takes its special action; one
+    /// time in fifteen it heads home; a hider hides now and then; a jumpy creature
+    /// (rand(100-DEX) &lt; 25) starts to wander; anything else stands still for one or
+    /// two seconds.</summary>
+    private void ActIdleChoose(Character npc)
+    {
+        // NPCAIEXTRAS IdleFlavor: the fidget animation (not in Source-X).
+        if (HasExtra(npc, NpcAiExtraFlags.IdleFlavor) && _rand.Next(8) == 0)
         {
             OnNpcFidget?.Invoke(npc);
             return;
         }
 
-        // Source-X NPC_Act_Wander: step in the CURRENT facing turned by only
-        // −1/0/+1 (m_dirFace persistence) — a gently curving "staggering
-        // walk". Independent random deltas made wanderers jitter in place.
-        var wanderDir = (Direction)((((int)npc.Direction & 0x07) + _rand.Next(-1, 2) + 8) % 8);
-        GetDirectionDelta(wanderDir, out short dx, out short dy);
-        npc.Direction = wanderDir;
+        bool hasHome = TryResolveHome(npc, out _, out _);
+        var region = _world.FindRegion(npc.Position);
+        bool guardedHere = region != null && region.IsGuarded;
 
-        short nx = (short)(npc.X + dx);
-        short ny = (short)(npc.Y + dy);
-        var mapData = _world.MapData;
-        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
-        if (Math.Abs(nz - npc.Z) > 12)
-            return;
-        var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
-        if (!CanNpcMoveTo(npc, newPos))
+        if ((((OptionFlags)(uint)_config.OptionFlags) & OptionFlags.GuardOutsideGuardedArea) == 0 &&
+            npc.NpcBrain == NpcBrainType.Guard && !guardedHere && hasHome)
         {
-            // Source-X NPC_LookAtItem rejects door use without CAN_C_USEHANDS.
-            if (OnNpcOpenDoor != null &&
-                (CharDefHelper.GetCanFlags(npc) & CanFlags.C_UseHands) != 0 && _rand.Next(2) == 0)
+            SetIdleMode(npc, IdleMode.GoHome);
+            return;
+        }
+
+        // Specific creature random actions (:1987): current stamina at least the DEX.
+        if (npc.Stam >= npc.Dex && _rand.Next(3) == 0 && TryNpcSpecialAction(npc))
+            return;
+
+        if (hasHome && _rand.Next(15) == 0)
+        {
+            SetIdleMode(npc, IdleMode.GoHome);
+            return;
+        }
+
+        int hiding = npc.GetSkill(SkillType.Hiding);
+        if (hiding > 30 && RandVal(15 - hiding / 100) == 0 && !guardedHere &&
+            !npc.IsStatFlag(StatFlag.Hidden))
+        {
+            Character.OnScriptSkillUse?.Invoke(npc, SkillType.Hiding);
+            return;
+        }
+
+        if (RandVal(100 - npc.Dex) < 25)
+        {
+            SetIdleMode(npc, IdleMode.Wander);
+            return;
+        }
+
+        // Just stand here for a bit (_SetTimeoutS(1 + rand(2))).
+        npc.NextNpcActionTime = Environment.TickCount64 + 1000L * (1 + _rand.Next(2));
+    }
+
+    /// <summary>The special-action half of NPC_Act_Idle (:1989-2024): @NPCSpecialAction
+    /// first (RETURN 1 skips the rest), then a fire elemental with no fire under it
+    /// lays fire, and a creature webs by the OVERRIDE.SPIDERWEB rule. True when the
+    /// idle pass ends here.</summary>
+    private bool TryNpcSpecialAction(Character npc)
+    {
+        if (OnNpcSpecialAction != null && OnNpcSpecialAction(npc))
+            return true;
+
+        if (npc.BodyId == FireElementalBody)
+        {
+            if (IsItemTypeAt(npc.Position, ItemType.Fire))
+                return false;
+            ActStartSpecial(npc, fire: true);
+            return true;
+        }
+
+        // OVERRIDE.SPIDERWEB inverts the body check: with the key present a creature
+        // that is NOT a giant spider webs, without it only a giant spider does. The
+        // value is never read.
+        bool isSpider = npc.BodyId == GiantSpiderBody;
+        bool webs = npc.TryGetTag("OVERRIDE.SPIDERWEB", out _) ? !isSpider : isSpider;
+        if (!webs)
+            return false;
+        ActStartSpecial(npc, fire: false);
+        return true;
+    }
+
+    private bool IsItemTypeAt(Point3D pos, ItemType type)
+    {
+        foreach (var item in _world.GetItemsInRange(pos, 0))
+        {
+            if (!item.IsDeleted && item.X == pos.X && item.Y == pos.Y && item.ItemType == type)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Source-X NPC_Act_Wander (CCharNPCAct.cpp:1224-1289).
+    ///
+    /// One roll decides it all: the creature stops wandering when
+    /// rand % (7 + stamina/30) is zero; the look-around chance is
+    /// OVERRIDE.LOOKAROUNDCHANCE (else NPCWANDERLOOKAROUNDCHANCE) raised to at least
+    /// 100, exactly as the reference writes maximum(chance, 100), so the look-around
+    /// branch never fires from a wander step there either. The step goes one tile along
+    /// the current facing turned by -1/0/+1; past HOMEDIST from home it asks to go
+    /// home instead. @NPCActWander sees both answers as ARGN1/ARGN2 and may change
+    /// them; RETURN 1 ends the step.</summary>
+    private void ActWander(Character npc)
+    {
+        if ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_NonMover) != 0)
+            return;
+
+        int roll = _rand.Next(100);
+        int stop = roll % (7 + Math.Max(0, (int)npc.Stam) / 30) == 0 ? 1 : 0;
+
+        long lookChance = TryGetTagNum(npc, "OVERRIDE.LOOKAROUNDCHANCE", out long lc)
+            ? lc : _config.NpcWanderLookAroundChance;
+        lookChance = Math.Max(lookChance, 100);
+        // roll >= lookChance is never true: roll is 0..99. The brains ran their own
+        // look-around before they came here.
+
+        int face = (int)npc.Direction & 0x07;
+        var dir = (Direction)((face + 1 - roll % 3 + 8) % 8);
+        GetDirectionDelta(dir, out short dx, out short dy);
+        var target = new Point3D((short)(npc.X + dx), (short)(npc.Y + dy), npc.Z, npc.MapIndex);
+
+        int returnHome = 0;
+        if (TryResolveHome(npc, out var home, out int homeDist) && homeDist != 0 &&
+            DistOrMax(target, home) > homeDist)
+            returnHome = 1;
+
+        if (OnNpcActWander != null)
+        {
+            var args = new WanderTriggerArgs { Stop = stop, ReturnHome = returnHome };
+            if (OnNpcActWander(npc, args))
+                return;
+            stop = args.Stop;
+            returnHome = args.ReturnHome;
+        }
+
+        if (stop != 0)
+        {
+            SetIdleMode(npc, IdleMode.None);
+            return;
+        }
+        if (returnHome != 0)
+        {
+            SetIdleMode(npc, IdleMode.GoHome);
+            return;
+        }
+
+        MoveToward(npc, target);
+    }
+
+    /// <summary>Source-X GetDist: another map (or no point) is INT16_MAX away.</summary>
+    private static int DistOrMax(Point3D a, Point3D b) =>
+        a.Map == b.Map ? a.GetDistanceTo(b) : short.MaxValue;
+
+    /// <summary>Source-X NPC_Act_GoHome (CCharNPCAct.cpp:1496-1572).
+    ///
+    /// A guard whose post is on guarded ground and who stands off it is teleported
+    /// home; a guard whose post is not guarded is removed unless
+    /// OF_GuardOutsideGuardedArea allows it. Anyone else walks home until closer than
+    /// HOMEDIST (a HOMEDIST of 0 walks all the way). LOSTNPCTELEPORT puts back a
+    /// creature farther than both it and HOMEDIST, @NPCLostTeleport (ARGN1 = the
+    /// distance) able to refuse.</summary>
+    private void ActGoHome(Character npc)
+    {
+        if (!TryResolveHome(npc, out var home, out int homeDist))
+        {
+            SetIdleMode(npc, IdleMode.None);
+            return;
+        }
+
+        if (npc.NpcBrain == NpcBrainType.Guard)
+        {
+            var homeRegion = _world.FindRegion(home);
+            if (homeRegion != null && homeRegion.IsGuarded)
             {
-                var door = FindClosedDoorAt(newPos);
-                if (door != null)
-                    OnNpcOpenDoor(npc, door);
+                var hereRegion = _world.FindRegion(npc.Position);
+                if (hereRegion == null || !hereRegion.IsGuarded)
+                {
+                    if (TeleportNpc(npc, home))
+                    {
+                        SetIdleMode(npc, IdleMode.None);
+                        return;
+                    }
+                }
             }
-            if (!CanNpcMoveTo(npc, newPos))
-                TryClearObstacle(npc, newPos);
-            if (!CanNpcMoveTo(npc, newPos))
+            else if ((((OptionFlags)(uint)_config.OptionFlags) & OptionFlags.GuardOutsideGuardedArea) == 0)
             {
-                TrySideStep(npc, wanderDir);
+                // "Guard has no guard post! Removing it." (:1526)
+                _world.DeleteObject(npc);
                 return;
             }
         }
 
-        // Face the step direction so the 0x77 move matches the tile delta and the
-        // client walk-animates instead of snapping the NPC.
-        npc.Direction = npc.Position.GetDirectionTo(newPos);
-        _world.MoveCharacter(npc, newPos);
+        int curDist = DistOrMax(npc.Position, home);
+        if (curDist < homeDist)
+        {
+            SetIdleMode(npc, IdleMode.None);
+            return;
+        }
+
+        if (LostNpcTeleport > 0 && curDist > LostNpcTeleport && curDist > homeDist &&
+            Character.OnNpcLostTeleport?.Invoke(npc, curDist) != true)
+        {
+            TeleportNpc(npc, home);
+        }
+
+        int result = MoveToward(npc, home);
+        if (result == 0)
+        {
+            SetIdleMode(npc, IdleMode.None);
+            return;
+        }
+
+        // NPCAIEXTRAS ReturnHome: a walk home that keeps failing ends in a teleport.
+        uint uid = npc.Uid.Value;
+        if (result == 2 && HasExtra(npc, NpcAiExtraFlags.ReturnHome))
+        {
+            int fails = _homeStepFailures.GetValueOrDefault(uid) + 1;
+            if (fails >= ReturnHomeFailedSteps)
+            {
+                _homeStepFailures.Remove(uid);
+                if (SendHome(npc, home, DistOrMax(npc.Position, home)))
+                    SetIdleMode(npc, IdleMode.None);
+            }
+            else
+            {
+                _homeStepFailures[uid] = fails;
+            }
+        }
+        else if (result == 1)
+        {
+            _homeStepFailures.Remove(uid);
+        }
+    }
+
+    private bool TeleportNpc(Character npc, Point3D dest)
+    {
+        if (dest.X < 0 || dest.Y < 0 || _world.GetSector(dest) == null)
+            return false;
+        if (!_world.MoveCharacter(npc, dest))
+            return false;
+        OnNpcTeleport?.Invoke(npc);
+        return true;
+    }
+
+    /// <summary>NPCAIEXTRAS ReturnHome: put the creature back at home, through
+    /// @NPCLostTeleport so a script can refuse (Character.OnNpcLostTeleport).</summary>
+    private bool SendHome(Character npc, Point3D home, int dist)
+    {
+        if (Character.OnNpcLostTeleport?.Invoke(npc, dist) == true)
+            return false;
+        if (!TeleportNpc(npc, home))
+            return false;
+        uint uid = npc.Uid.Value;
+        _idleMode.Remove(uid);
+        _homeStepFailures.Remove(uid);
+        return true;
+    }
+
+    /// <summary>NPCAIEXTRAS ReturnHome, the parked half: an NPC whose sector is
+    /// inactive, that is nobody's pet, has a home and stands more than HOMEDIST + 5
+    /// from it, is sent home.</summary>
+    private void TryReturnHomeWhileParked(Character npc)
+    {
+        if (npc.NpcMaster.IsValid || npc.OwnerSerial.IsValid)
+            return;
+        if (!TryResolveHome(npc, out var home, out int homeDist))
+            return;
+        int dist = DistOrMax(npc.Position, home);
+        if (dist <= homeDist + 5)
+            return;
+        SendHome(npc, home, dist);
     }
 
     /// <summary>Source-X NPC_WalkToPoint blocked-step fallback: every mover —
     /// regardless of INT or the PATH flag — gets a ~70% chance to sidestep by
-    /// turning ±1..±4 directions off the blocked heading and taking that tile.
-    /// Without it a dumb/pathless NPC froze facing the wall until the straight
-    /// line cleared on its own.</summary>
-    private bool TrySideStep(Character npc, Direction dir)
+    /// turning ±1..±4 directions off the blocked heading and taking that tile
+    /// (CCharNPCAct.cpp:497-519). The step it takes gets the move delay.</summary>
+    private bool TrySideStep(Character npc, Direction dir, bool run = false)
     {
         int roll = _rand.Next(100);
         if (roll < 30)
             return false;
         int diff = roll < 35 ? 4 : roll < 40 ? 3 : roll < 65 ? 2 : 1;
-        if (_rand.Next(2) == 0)
+        if ((roll & 1) != 0)
             diff = -diff;
         var sideDir = (Direction)((((int)dir & 0x07) + diff + 8) % 8);
-        GetDirectionDelta(sideDir, out short dx, out short dy);
-        short nx = (short)(npc.X + dx), ny = (short)(npc.Y + dy);
-        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
-        if (Math.Abs(nz - npc.Z) > 12)
+        if (!TryNpcStep(npc, sideDir, out var pos))
             return false;
-        var pos = new Point3D(nx, ny, nz, npc.MapIndex);
-        if (!CanNpcMoveTo(npc, pos))
-            return false;
-        npc.Direction = sideDir;
+        npc.Direction = run ? sideDir | Direction.Running : sideDir;
         _world.MoveCharacter(npc, pos);
+        ApplyStepDelay(npc, run);
         return true;
-    }
-
-    /// <summary>Wander with home range check. Source-X: m_Home_Dist_Wander.</summary>
-    private void WanderHome(Character npc)
-    {
-        if (!TryResolveHome(npc, out Point3D home, out int homeDist))
-        {
-            Wander(npc);
-            return;
-        }
-        if (_world.GetSector(home) == null) return;
-
-        // Chebyshev like Source-X GetDist — the old Manhattan sum over-counted
-        // diagonals, halving the effective HOMEDIST leash on the diagonal.
-        int curDist = npc.MapIndex == home.Map
-            ? npc.Position.GetDistanceTo(home)
-            : short.MaxValue;
-        if (curDist > homeDist)
-        {
-            // LOSTNPCTELEPORT — a creature that has wandered absurdly far is put back
-            // rather than asked to walk (CCharNPCAct.cpp:1547). It is a backstop, not a
-            // leash: the distance has to beat BOTH the global and the creature's own
-            // wander range, so a spawn with a wide roam is not dragged home by a narrow
-            // global setting. @NPCLostTeleport may veto it.
-            if (LostNpcTeleport > 0 && curDist > LostNpcTeleport)
-            {
-                if (Character.OnNpcLostTeleport?.Invoke(npc, curDist) != true &&
-                    _world.MoveCharacter(npc, home))
-                    return;
-            }
-
-            MoveToward(npc, home);
-            return;
-        }
-        Wander(npc);
     }
 
     /// <summary>Home from Character.Home field; legacy TAG.HOME_* fallback.</summary>
@@ -633,7 +1090,9 @@ public sealed partial class NpcAI
         // Source-X default m_Home_Dist_Wander = INT16_MAX ("as far as I
         // want") — a home point is only a leash when HOMEDIST is scripted.
         // The old default of 10 confined every homed spawn to a small box.
-        wanderDist = npc.HomeDist > 0 ? npc.HomeDist : short.MaxValue;
+        // An explicit 0 is kept as 0, as upstream keeps it: the wander step then has
+        // no leash (:1263) and a walk home goes all the way (:1541).
+        wanderDist = Math.Max(0, (int)npc.HomeDist);
         if (npc.Home.X != 0 || npc.Home.Y != 0)
         {
             home = npc.Home;
@@ -662,200 +1121,204 @@ public sealed partial class NpcAI
         return false;
     }
 
-    private void MoveToward(Character npc, Point3D target, bool run = false)
+    private void DropPath(uint uid)
     {
-        run = run && (CharDefHelper.GetCanFlags(npc) & (CanFlags.C_Run | CanFlags.C_Fly)) != 0 && npc.Stam > 1;
-        if (target.Map != npc.MapIndex || (target.X == npc.X && target.Y == npc.Y))
-            return;
+        _pathCache.Remove(uid);
+        _pathIndex.Remove(uid);
+        _pathTime.Remove(uid);
+    }
 
-        var dir = npc.Position.GetDirectionTo(target);
-        GetDirectionDelta(dir, out short dx, out short dy);
-        if (run)
-            dir |= Direction.Running;
+    /// <summary>Source-X NPC_WalkToPoint (CCharNPCAct.cpp:418-696): one step toward
+    /// <paramref name="target"/>. Returns 0 when already there (or a non-mover),
+    /// 1 when a step was taken - or, while a route is in use, when the NPC waits a
+    /// moment before trying again - and 2 when the step cannot be taken now.
+    ///
+    /// With NPC_AI_PATH and INT 30+ a stored route is walked first, even when the
+    /// straight line is open, and a route toward a point the target has since left
+    /// is searched again with a chance of INT/300 (NPC_Pathfinding, :2424/:2448);
+    /// otherwise the old route keeps being walked. A blocked step tries a door, a
+    /// movable obstacle, a fresh route (the search runs off the serial path for
+    /// chases, see TryPrestagePathfind, and here only once the step is blocked, under
+    /// the engine's per-NPC throttle), then the reference's side-step.</summary>
+    private int MoveToward(Character npc, Point3D target, bool run = false)
+    {
+        if ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_NonMover) != 0)
+            return 0;
+        if (target.Map != npc.MapIndex || (target.X == npc.X && target.Y == npc.Y))
+            return 0;
+        run = run && CanRunNow(npc);
 
         // Physically able to walk at all? Read at the step, not at the decision.
         if (!CanNpcMove(npc))
-            return;
+            return 2;
 
-        short nx = (short)(npc.X + dx);
-        short ny = (short)(npc.Y + dy);
-        var mapData = _world.MapData;
+        uint uid = npc.Uid.Value;
+        var npcFlags = GetNpcFlags(npc);
+        int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
+        bool smartPath = npcFlags.HasFlag(NpcAIFlags.Path) && effInt >= 30;
+        int targetDist = npc.Position.GetDistanceTo(target);
+        bool pathEligible = smartPath && targetDist >= NpcPathMinDist && targetDist < NpcPathMaxDist;
+
+        var dir = npc.Position.GetDirectionTo(target);
+        bool usePath = false;
+
+        if (smartPath)
+        {
+            if (_pathGoal.TryGetValue(uid, out var oldGoal) &&
+                (oldGoal.Map != target.Map || oldGoal.X != target.X || oldGoal.Y != target.Y))
+            {
+                if (!_pathCache.ContainsKey(uid))
+                {
+                    // Only a throttle / failed-search backoff toward an old point: a
+                    // destination that moved materially gets its search back at once
+                    // (the backoff stays for a target a step or two off, so an
+                    // unreachable chase cannot search every tick).
+                    if (oldGoal.Map != target.Map || oldGoal.GetDistanceTo(target) > 2)
+                    {
+                        _pathGoal.Remove(uid);
+                        _nextPathfindMs.Remove(uid);
+                    }
+                }
+                else if (pathEligible && _rand.Next(300) <= effInt)
+                {
+                    // A route toward somewhere else: search again with a chance of
+                    // INT/300, else keep walking the old one.
+                    DropPath(uid);
+                    _pathGoal.Remove(uid);
+                    _nextPathfindMs.Remove(uid);
+                }
+            }
+
+            if (_pathCache.TryGetValue(uid, out var cached) && cached.Count > 0)
+            {
+                int idx = _pathIndex.GetValueOrDefault(uid, 0);
+                if (idx < cached.Count && cached[idx].Map == npc.MapIndex &&
+                    npc.Position.GetDistanceTo(cached[idx]) == 1)
+                {
+                    // Head along the route and shift the step out (:474-485).
+                    dir = npc.Position.GetDirectionTo(cached[idx]);
+                    _pathIndex[uid] = idx + 1;
+                    usePath = true;
+                }
+                else
+                {
+                    // Exhausted, or the next step is no longer one tile away: the
+                    // stored route has become invalid (:464-470).
+                    DropPath(uid);
+                }
+            }
+        }
 
         // The tile the step aims at, for the door/obstacle lookups below; the height
         // the NPC would actually land on is settled by TryNpcStep.
-        var stepTile = new Point3D(nx, ny, npc.Z, npc.MapIndex);
+        GetDirectionDelta(dir, out short dx, out short dy);
+        var stepTile = new Point3D((short)(npc.X + dx), (short)(npc.Y + dy), npc.Z, npc.MapIndex);
 
-        bool directBlocked = !TryNpcStep(npc, dir, out var directPos);
+        bool blocked = !TryNpcStep(npc, dir, out var dest);
 
         // Reference parity (NPC door handling in the idle look-at path): a
         // blocked adjacent step may just be a closed door — try to open it
         // (50% per attempt, like the reference) and re-check the tile.
-        if (directBlocked && OnNpcOpenDoor != null &&
+        if (blocked && OnNpcOpenDoor != null &&
             (CharDefHelper.GetCanFlags(npc) & CanFlags.C_UseHands) != 0 && _rand.Next(2) == 0)
         {
             var door = FindClosedDoorAt(stepTile);
             if (door != null && OnNpcOpenDoor(npc, door))
-                directBlocked = !TryNpcStep(npc, dir, out directPos);
+                blocked = !TryNpcStep(npc, dir, out dest);
         }
 
-        if (directBlocked && TryClearObstacle(npc, stepTile))
-            directBlocked = !TryNpcStep(npc, dir, out directPos);
+        // NPC_AI_MOVEOBSTACLES (:525): shift a movable blocking item out of the way.
+        if (blocked && TryClearObstacle(npc, stepTile))
+            blocked = !TryNpcStep(npc, dir, out dest);
 
-        if (!directBlocked)
+        if (blocked && usePath)
         {
+            // The route's step is shut; the route is spent (:464 drops it next time).
+            DropPath(uid);
+        }
+
+        if (blocked && !usePath && pathEligible && !_pathCache.ContainsKey(uid))
+        {
+            // No route yet and the straight line is shut: search one now, under the
+            // per-NPC throttle, and take its first step.
+            var route = ComputeRouteSerial(npc, target, uid);
+            if (route != null && route.Count > 0 && route[0].Map == npc.MapIndex &&
+                npc.Position.GetDistanceTo(route[0]) == 1)
+            {
+                var routeDir = npc.Position.GetDirectionTo(route[0]);
+                if (TryNpcStep(npc, routeDir, out var routeDest))
+                {
+                    _pathIndex[uid] = 1;
+                    dir = routeDir;
+                    dest = routeDest;
+                    blocked = false;
+                    usePath = true;
+                }
+                else
+                {
+                    DropPath(uid);
+                }
+            }
+            else if (route != null)
+            {
+                usePath = true;   // a route exists: keep looking for a way (:503)
+            }
+        }
+
+        if (blocked)
+        {
+            if (TrySideStep(npc, dir, run))
+                return 1;
+
             npc.Direction = dir;
-            _world.MoveCharacter(npc, directPos);
-            _pathCache.Remove(npc.Uid.Value);
-            _pathIndex.Remove(npc.Uid.Value);
-            _pathTime.Remove(npc.Uid.Value);
-            _pathGoal.Remove(npc.Uid.Value);
-            _nextPathfindMs.Remove(npc.Uid.Value);
-            return;
-        }
-
-        var npcFlags = GetNpcFlags(npc);
-        if (!npcFlags.HasFlag(NpcAIFlags.Path))
-        {
-            if (!TrySideStep(npc, dir))
+            if (usePath || _pathCache.ContainsKey(uid))
             {
-                npc.Direction = dir;
-                // Source-X retries a blocked route in 0.5s instead of waiting
-                // out the full walk delay (up to 5s of standing still).
+                // Whilst pathfinding keep trying new ways: wait a moment (:505/:577).
                 npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + 500);
+                return 1;
             }
-            return;
+            return 2;
         }
 
-        // Source-X NPC_Pathfinding intelligence gate: a creature only routes
-        // with A* when it is smart enough (effective INT >= 30). NPC_AI_ALWAYSINT
-        // bypasses the check (treated as INT 300). A dumb creature just faces the
-        // target and takes the blocked-direct step on later ticks as the line
-        // opens — it never burns the A* node budget.
-        int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
-        if (effInt < 30)
+        npc.Direction = run ? dir | Direction.Running : dir;
+        _world.MoveCharacter(npc, dest);
+        ApplyStepDelay(npc, run);
+        if (!usePath)
         {
-            if (!TrySideStep(npc, dir))
-            {
-                npc.Direction = dir;
-                npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + 500);
-            }
-            return;
-        }
-
-        // Source-X distance eligibility (NPC_Pathfinding :2432/:2434): A* only
-        // routes to targets 2..13 tiles out. Farther ones take direct/side steps
-        // until in range — this alone removes the "chase across the map into a
-        // full node-budget burn" case; adjacent ones never need a route.
-        int targetDist = npc.Position.GetDistanceTo(target);
-        if (targetDist < NpcPathMinDist || targetDist >= NpcPathMaxDist)
-        {
-            if (!TrySideStep(npc, dir))
-            {
-                npc.Direction = dir;
-                npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + 500);
-            }
-            return;
-        }
-
-        // Direct path blocked — use A* pathfinding
-        uint uid = npc.Uid.Value;
-        if (_pathGoal.TryGetValue(uid, out Point3D oldGoal) &&
-            (oldGoal.Map != target.Map || oldGoal.GetDistanceTo(target) > 2))
-        {
-            _pathCache.Remove(uid);
-            _pathIndex.Remove(uid);
-            _pathTime.Remove(uid);
+            // Walking the straight line: nothing stored to keep, and the next blocked
+            // step may search at once.
+            DropPath(uid);
             _pathGoal.Remove(uid);
             _nextPathfindMs.Remove(uid);
         }
-        if (!npcFlags.HasFlag(NpcAIFlags.PersistentPath))
-        {
-            _pathCache.Remove(uid);
-            _pathIndex.Remove(uid);
-            _pathTime.Remove(uid);
-        }
-        if (!_pathCache.TryGetValue(uid, out var path) || path.Count == 0)
-        {
-            // Throttle full A* recomputes per NPC. In a churning crowd the
-            // cached step is blocked nearly every tick, which would otherwise
-            // force a fresh A* search every tick for every NPC. Between allowed
-            // recomputes just face the target and hold — a closer/unblocked NPC
-            // keeps the pressure on, and the path refreshes shortly after.
-            long nowMs = Environment.TickCount64;
-            if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && nowMs < nextPf)
-            {
-                npc.Direction = dir;
-                return;
-            }
+        return 1;
+    }
 
-            // Calculate new path
-            var npcCanFlags = CharDefHelper.GetCanFlags(npc);
-            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc,
-                NpcPathMaxNodes, NpcPathMaxDist);
-            if (path == null || path.Count == 0)
-            {
-                _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
-                _pathGoal[uid] = target;
-                npc.Direction = dir;
-                return;
-            }
-            _nextPathfindMs[uid] = nowMs + PathThrottleMs;
-            _pathCache[uid] = path;
-            _pathIndex[uid] = 0;
-            _pathTime[uid] = Environment.TickCount64;
+    /// <summary>Serial A* search toward <paramref name="target"/>, throttled per NPC
+    /// (a success allows the next one after PathThrottleMs, a failure backs off for
+    /// PathFailBackoffMs). Stores and returns the route; null when the throttle is
+    /// closed or the search failed.</summary>
+    private List<Point3D>? ComputeRouteSerial(Character npc, Point3D target, uint uid)
+    {
+        long nowMs = Environment.TickCount64;
+        if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && nowMs < nextPf)
+            return null;
+
+        var npcCanFlags = CharDefHelper.GetCanFlags(npc);
+        var path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc,
+            NpcPathMaxNodes, NpcPathMaxDist);
+        if (path == null || path.Count == 0)
+        {
+            _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
             _pathGoal[uid] = target;
+            return null;
         }
-
-        int idx = _pathIndex.GetValueOrDefault(uid, 0);
-        if (idx >= path.Count)
-        {
-            // Path exhausted — recalculate
-            _pathCache.Remove(uid);
-            _pathIndex.Remove(uid);
-            _pathTime.Remove(uid);
-            return;
-        }
-
-        var nextStep = path[idx];
-
-        // The step has to still be a STEP. Source-X drops a stored route whose next
-        // point is no longer one tile away (NPC_WalkToPoint, CCharNPCAct.cpp:463);
-        // SphereNet applied it regardless, so an NPC teleported elsewhere while a path
-        // was cached snapped back onto the old route - six tiles in a single move, with
-        // nothing walked in between.
-        if (nextStep.Map != npc.MapIndex || npc.Position.GetDistanceTo(nextStep) != 1)
-        {
-            _pathCache.Remove(uid);
-            _pathIndex.Remove(uid);
-            _pathTime.Remove(uid);
-            return;
-        }
-
-        // The search's Z is an approximation; the real landing surface is resolved
-        // here, at the step. Without a surface the step is refused and the route
-        // recomputed rather than committed at the guessed height.
-        // The route's own Z is the search's approximation; the step that gets applied
-        // is the one the walk check works out from where the NPC is standing now.
-        var pathDir = npc.Position.GetDirectionTo(nextStep);
-        if (!TryNpcStep(npc, pathDir, out var landing) ||
-            landing.X != nextStep.X || landing.Y != nextStep.Y)
-        {
-            // NPC_AI_MOVEOBSTACLES (Source-X NPC_WalkToPoint, CCharNPCAct.cpp:525):
-            // a hands-capable, smart-enough NPC shifts a movable blocking item
-            // onto its own tile before giving the path up.
-            TryClearObstacle(npc, nextStep);
-            _pathCache.Remove(uid);
-            _pathIndex.Remove(uid);
-            _pathTime.Remove(uid);
-            npc.Direction = pathDir;
-            return;
-        }
-
-        nextStep = landing;
-
-        npc.Direction = run ? pathDir | Direction.Running : pathDir;
-        _world.MoveCharacter(npc, nextStep);
-        _pathIndex[uid] = idx + 1;
+        _nextPathfindMs[uid] = nowMs + PathThrottleMs;
+        _pathCache[uid] = path;
+        _pathIndex[uid] = 0;
+        _pathTime[uid] = nowMs;
+        _pathGoal[uid] = target;
+        return path;
     }
 
     // --- N2: parallel-phase pathfind prestage ---
@@ -935,10 +1398,7 @@ public sealed partial class NpcAI
             return false;
 
         uint uid = npc.Uid.Value;
-        Point3D goal = target.Position;
-        if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0 &&
-            _pathGoal.TryGetValue(uid, out var cachedGoal) &&
-            cachedGoal.Map == goal.Map && cachedGoal.GetDistanceTo(goal) <= 2)
+        if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0)
             return false;
         if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && Environment.TickCount64 < nextPf)
             return false;
@@ -989,23 +1449,14 @@ public sealed partial class NpcAI
         if (effInt < 30)
             return (null, default, false, false);
 
-        // Direct step open → the serial side takes it without A*. (The serial
-        // path may additionally open a door / shift an obstacle first; if that
-        // frees the step, the seeded state is simply cleared by the direct-step
-        // branch, same as any other stale cache entry.)
-        var dir = npc.Position.GetDirectionTo(goal);
-        GetDirectionDelta(dir, out short dx, out short dy);
-        short nx = (short)(npc.X + dx), ny = (short)(npc.Y + dy);
-        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
-        if (Math.Abs(nz - npc.Z) <= 12 &&
-            CanNpcMoveTo(npc, new Point3D(nx, ny, nz, npc.MapIndex)))
-            return (null, default, false, false);
-
+        // Source-X routes whenever the NPC has no stored route (NPC_Pathfinding,
+        // CCharNPCAct.cpp:2448 - "always search if this is a first step"), whether
+        // or not the straight line happens to be open; the search runs here, off the
+        // serial path, under the per-tick budget.
         uint uid = npc.Uid.Value;
-        // A fresh cached path toward (about) this goal → serial reuses it as-is.
-        if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0 &&
-            _pathGoal.TryGetValue(uid, out var cachedGoal) &&
-            cachedGoal.Map == goal.Map && cachedGoal.GetDistanceTo(goal) <= 2)
+        // A stored route is the serial side's to keep or drop (the INT/300 re-search
+        // roll lives in MoveToward).
+        if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0)
             return (null, default, false, false);
         // Throttle/backoff window still closed → serial won't recompute either.
         if (_nextPathfindMs.TryGetValue(uid, out long nextPf) &&

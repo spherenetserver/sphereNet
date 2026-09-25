@@ -887,6 +887,10 @@ public static partial class Program
         if (!npc.FightTarget.IsValid && npc.Position != speaker.Position)
             npc.Direction = npc.Position.GetDirectionTo(speaker.Position);
 
+        // NPC talk state (NPC_OnHear, CCharNPCAct.cpp:279-298): a busy talker says
+        // the "interrupt" line to a new speaker.
+        _npcAI?.NpcHearBegin(npc, speaker);
+
         // Source-X global speech function hook — silent when missing. Many imported
         // script packs don't define it, so it is gated by HasFunction: when absent (the
         // common case) every nearby NPC on every spoken line skips building a TriggerArgs
@@ -948,6 +952,9 @@ public static partial class Program
         if (speechResult == TriggerResult.True)
         {
             _log.LogDebug("[npc_hear] {Npc} SPEECH trigger consumed text='{Text}'", npc.Name, text);
+            // A speech block answered: the speaker is the new talk partner
+            // (NPC_ActStart_SpeakTo, CCharNPCAct.cpp:332-336).
+            _npcAI?.NpcStartSpeakTo(npc, speaker);
             return;
         }
 
@@ -1168,8 +1175,11 @@ public static partial class Program
         // Fallback: fire @NPCHearUnknown if no built-in response
         if (response == null)
         {
-            _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearUnknown,
+            var unknownResult = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearUnknown,
                 new TriggerArgs { CharSrc = speaker, S1 = text });
+            // Not understood while talking: count it (NPC_OnHear, CCharNPCAct.cpp:369-385).
+            if (unknownResult != TriggerResult.True)
+                _npcAI?.NpcHearUnknown(npc, speaker);
             return;
         }
 

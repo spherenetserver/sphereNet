@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Resource bits expire and regrow; fishing/mining/lumberjacking follow Source-X
+------------------------------------------------------------------------
+FIX - REGION_FLAG_NODECAY no longer re-arms decay at tick time; it shapes only
+      the natural time of an item a player puts down (MoveToCheck). Inside a
+      no-decay region (docks, towns) every item with an explicit lifetime -
+      resource worldgem bits, corpses, blood, fields - lived for ever, so a
+      fished-out spot never regrew.
+FIX - TIMER/TIMERD/TIMERMS read the decay deadline when no script timer is set
+      (Source-X has one item timer). A worldgem bit read -1 while counting
+      down its REGEN lifetime.
+FIX - Worldgem bits are made as Source-X makes them: typed t_water/t_rock/
+      t_tree, MORE1 the REGIONRESOURCE, AMOUNT is the pool (scripts read and
+      set it through ARGO), no floor of 1 (mr_nothing yields an empty bit),
+      ATTR_DECAY for the REGEN lifetime; a tile holding another item type
+      makes no bit; the vein draw honours the reap item's SKILLMAKE, runs
+      @ResourceTest per vein and falls back to mr_nothing.
+FIX - Water, rock and tree are recognised by TYPE (items, static ITEMDEF
+      TYPE, TYPEDEF TERRAIN ranges; water by the top of the tile) instead of
+      tile names.
+FIX - Fishing/mining/lumberjacking messages and checks: *_1 when there is no
+      resource, *_2 when it is used up, *_CLOSE on the target tile, fishing
+      range 4, -1 target, fishing from a house or through a multi floor,
+      NOMINING on the miner's region, LOS only under ADVANCEDLOS; a failed
+      roll is silent (the script's @Fail speaks); invented success lines
+      removed. The fishing splash appears at the start as well as on every
+      stroke.
+FIX - The tool is the one that started the skill; lumberjacking accepts
+      axe, sword, fencing weapon and carpentry chop, a dagger hacks kindling,
+      and a blade on a tree starts lumberjacking.
+
 [2026-09-26] - Parity follow-up: timed NPC specials, grazing, jail, tithing, item damage
 ------------------------------------------------------------------------
 FIX - Recall into a region was refused everywhere a region existed: RECALLIN

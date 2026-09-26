@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Kaynak parcalari suresi dolunca yenilenir; balik/maden/odunculuk Source-X'i izler
+------------------------------------------------------------------------
+DUZELTME - REGION_FLAG_NODECAY artik tick sirasinda decay'i uzatmaz; yalnizca
+           oyuncunun yere biraktigi esyanin dogal suresini belirler
+           (MoveToCheck). No-decay bolgelerde (liman, sehir) acik sureli her
+           esya - kaynak worldgem parcasi, ceset, kan, alan buyusu - hic
+           silinmiyordu; tukenen balik noktasi bir daha yenilenmiyordu.
+DUZELTME - Script zamanlayicisi yokken TIMER/TIMERD/TIMERMS kalan decay
+           suresini okur (Source-X'te esyanin tek zamanlayicisi var).
+           Worldgem parcasi REGEN omrunu sayarken -1 gorunuyordu.
+DUZELTME - Worldgem parcalari Source-X gibi yaratilir: tipi t_water/t_rock/
+           t_tree, MORE1 REGIONRESOURCE, AMOUNT kaynak miktaridir (script'ler
+           ARGO uzerinden okur/yazar), en az 1 siniri yok (mr_nothing bos
+           parca verir), REGEN omru icin ATTR_DECAY; baska tipte esya duran
+           karede parca olusmaz; damar secimi reap esyasinin SKILLMAKE'ine
+           bakar, her damar icin @ResourceTest calisir, bir sey kalmazsa
+           mr_nothing.
+DUZELTME - Su, kaya ve agac tile adiyla degil TYPE ile taninir (esya, statik
+           ITEMDEF TYPE, TYPEDEF TERRAIN araliklari; su karenin ustunden).
+DUZELTME - Balik/maden/odunculuk mesaj ve kontrolleri: kaynak yoksa *_1,
+           tukenmisse *_2, hedef karede *_CLOSE, balik menzili 4, -1 hedef,
+           evden ya da multi zemininden balik tutma, NOMINING madencinin
+           bolgesinde, LOS yalnizca ADVANCEDLOS ile; basarisiz zar sessizdir
+           (script'in @Fail'i konusur); uydurma basari mesajlari kaldirildi.
+           Balik sicramasi her vurusun yaninda baslangicta da cikar.
+DUZELTME - Alet, skill'i baslatan esyadir; odunculuk balta, kilic, fence
+           silahi ve marangoz aletini kabul eder, hancer cira keser, agaca
+           bicakla tiklamak odunculugu baslatir.
+
 [2026-09-26] - Parite devami: zamanli NPC ozel hareketleri, otlanma, hapis, tithing, esya hasari
 ------------------------------------------------------------------------
 DUZELTME - Bolgeye recall, bolge tanimli her yerde reddediliyordu: RECALLIN

@@ -102,6 +102,12 @@ public class SkillDelayTests
         player.SetSkill(SkillType.Mining, 1000);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, player);
+        // Skill_Mining's START refuses without a tool (DEFMSG_MINING_TOOL,
+        // CCharSkill.cpp:1402-1407), so the miner holds a pick.
+        var pick = world.CreateItem();
+        pick.BaseId = 0x0E86;
+        pick.ItemType = ItemType.WeaponMacePick;
+        player.Equip(pick, Layer.OneHanded);
 
         var dispatcher = new TriggerDispatcher();
         int strokes = 0;

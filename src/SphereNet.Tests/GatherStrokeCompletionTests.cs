@@ -117,6 +117,20 @@ public class GatherStrokeCompletionTests
             DELAY=16
             FLAGS=skf_gather
             RANGE=2
+
+            [ITEMDEF 019b9]
+            DEFNAME=i_test_ore
+            NAME=test ore
+
+            [REGIONRESOURCE mr_test_ore]
+            DEFNAME=mr_test_ore
+            AMOUNT=10
+            REAP=019b9
+            REAPAMOUNT=1
+            SKILL=0.0
+
+            [REGIONTYPE r_test_rock t_rock]
+            RESOURCES=100.0 mr_test_ore
             """);
 
         var lf = LoggerFactory.Create(_ => { });
@@ -127,6 +141,13 @@ public class GatherStrokeCompletionTests
         player.IsPlayer = true;
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, player);
+        // Skill_Mining's START refuses with no tool (DEFMSG_MINING_TOOL) and with no
+        // rock resource at the tile (DEFMSG_MINING_1, CCharSkill.cpp:1402-1452), so the
+        // schedule under test needs both a pick and a t_rock resource.
+        var pick = world.CreateItem();
+        pick.BaseId = 0x0E86;
+        pick.ItemType = ItemType.WeaponMacePick;
+        player.Equip(pick, Layer.OneHanded);
 
         client.SetEngines(
             skillHandlers: new SkillHandlers(world, new GatheringEngine(world)),

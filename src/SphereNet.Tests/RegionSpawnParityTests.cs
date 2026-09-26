@@ -59,10 +59,32 @@ public class RegionSpawnParityTests
         Assert.False(world.PlaceItem(bad, new Point3D(30000, 30000, 0, 0))); // out of map bounds
     }
 
-    // ---- NODECAY region stops ground item decay ----
+    // ---- one item timer: TIMER reads the decay deadline (MoveToDecay -> SetTimeout) ----
 
     [Fact]
-    public void NoDecayRegion_GroundItemDoesNotDecay()
+    public void TimerReadsTheDecayDeadlineWhenNoScriptTimerIsSet()
+    {
+        var world = CreateWorld();
+        var bit = world.CreateItem();
+        bit.BaseId = 0x1EA7; // a worldgem bit counting down its REGEN lifetime
+        world.PlaceItem(bit, new Point3D(100, 100, 0, 0));
+        bit.SetDecayAt(Environment.TickCount64 + 60_000);
+
+        Assert.True(bit.TryGetProperty("TIMER", out string? secs));
+        Assert.InRange(int.Parse(secs!), 58, 60);
+        Assert.True(bit.TryGetProperty("TIMERD", out string? tenths));
+        Assert.InRange(int.Parse(tenths!), 580, 600);
+
+        bit.SetDecayAt(0);
+        bit.TryGetProperty("TIMER", out secs);
+        Assert.Equal("-1", secs);
+    }
+
+    // ---- NODECAY shapes the natural drop time only (MoveToCheck, CItem.cpp:1620);
+    //      an item already given a lifetime runs it out inside the region too ----
+
+    [Fact]
+    public void NoDecayRegion_DoesNotSaveAnItemWhoseLifetimeRanOut()
     {
         var world = CreateWorld();
         var region = new Region { Name = "vault", Flags = RegionFlag.NoDecay, MapIndex = 0 };
@@ -75,7 +97,7 @@ public class RegionSpawnParityTests
         inside.SetDecayAt(Environment.TickCount64 - 1); // already due
 
         inside.OnTick();
-        Assert.False(inside.IsDeleted); // re-armed, not decayed
+        Assert.True(inside.IsDeleted); // no tick-time protection upstream
 
         var outside = world.CreateItem();
         outside.BaseId = 0x1F03;

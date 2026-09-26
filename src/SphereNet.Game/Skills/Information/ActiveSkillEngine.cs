@@ -1131,116 +1131,191 @@ public static class ActiveSkillEngine
 
     // --------------------------------------------------------------- Mining
 
-    private const int FallbackResAmount = 20;
-    private const int FallbackRegenMs = 36_000_000;
-
+    /// <summary>Source-X CChar::Skill_Mining's SUCCESS stage (CCharSkill.cpp:1383-1481):
+    /// the checks every stage repeats, then Skill_NaturalResource_Create. A failed skill
+    /// check says nothing here - the pack's @Fail speaks for it.</summary>
     public static bool Mining(IActiveSkillSink sink, Point3D target, GatheringEngine? gatheringEngine, World.GameWorld world)
     {
         var ch = sink.Self;
-
-        int miningRange = SkillEngine.GetUseRange(SkillType.Mining, 2);
-        if (!CanReachPoint(ch, target, world, miningRange) ||
-            (ch.Position.GetDistanceTo(target) == 0 &&
-             !SkillEngine.HasFlag(SkillType.Mining, SkillFlag.NoMinDist)))
+        string? refusal = CheckGatherPreconditions(sink, SkillType.Mining, target, world, out _);
+        if (refusal != null)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.MiningReach));
-            return false;
-        }
-
-        // Source-X REGION_FLAG_NOMINING: mining is banned in this region.
-        var miningRegion = world.FindRegion(target);
-        if (miningRegion != null && miningRegion.IsFlag(RegionFlag.NoMining))
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Mining4));
-            return false;
-        }
-
-        if (!IsMinableTile(world, target))
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Mining4));
-            return false;
-        }
-
-        // Source-X requires a pickaxe to mine (wear: DamageGatherToolOnSuccess, run by the
-        // skill driver after @Success).
-        var pickaxe = FindGatherTool(sink, ItemType.WeaponMacePick);
-        if (pickaxe == null)
-        {
-            sink.SysMessage("You need a pickaxe to mine.");
+            sink.SysMessage(ServerMessages.Get(refusal));
             return false;
         }
         FaceSkillTarget(ch, target);
         // No sound or animation here: this is the SUCCESS stage, and upstream plays
         // both from Skill_Start and from every Skill_Stroke before it, never from the
-        // result (CCharSkill.cpp:4543-4555/3615-3618). Playing them again here made
-        // the last swing of every attempt land twice, and made a pack's SKF_NOSFX a
-        // dead letter for the final stroke.
+        // result (CCharSkill.cpp:4543-4555/3615-3618).
 
-        if (gatheringEngine != null)
-        {
-            var result = gatheringEngine.TryGatherForSink(ch, SkillType.Mining, target);
-            if (result.Handled)
-            {
-                if (result.Depleted)
-                {
-                    sink.SysMessage(ServerMessages.Get(Msg.Mining1));
-                    return false;
-                }
-                if (result.Success && result.Item != null)
-                {
-                    sink.SysMessage("You dig some ore and put it in your backpack.");
-                    sink.DeliverItem(result.Item);
-                    return true;
-                }
-                sink.SysMessage(ServerMessages.Get(Msg.Mining3));
-                return false;
-            }
-        }
-
-        // Nothing defined here means there is nothing here, and that is the whole
-        // answer: upstream's resource setup returns nothing and the attempt just fails
-        // (CCharSkill.cpp:1456). SphereNet invented an economy instead - a hardcoded
-        // ore, fish or log, a marker pool of its own and its own difficulty - a
-        // resource table the reference does not have and no script could reach or
-        // change. Measured before removing: the live pack defines REGIONTYPE
-        // t_rock/t_water/t_tree with RESOURCES, so the gathering engine answers every
-        // one of these and this branch never ran with a real pack loaded.
-        sink.SysMessage(ServerMessages.Get(Msg.Mining3));
-        return false;
+        var result = gatheringEngine?.TryGatherForSink(ch, SkillType.Mining, target) ?? default;
+        return FinishGather(sink, SkillType.Mining, result, dagger: false);
     }
 
-    private static bool IsMinableTile(World.GameWorld world, Point3D target)
+    /// <summary>What a gathering stage says before its resource check: the tool, the
+    /// -1 point, the region, the distance and the line of sight, in the order and with
+    /// the messages Skill_Mining (CCharSkill.cpp:1402-1446), Skill_Fishing (:1507-1545)
+    /// and Skill_Lumberjack (:1606-1644) use. Null when the stage may go on.</summary>
+    internal static string? CheckGatherPreconditions(IActiveSkillSink sink, SkillType skill,
+        Point3D target, World.GameWorld world, out Item? tool)
     {
-        var mapData = world.MapData;
-        if (mapData == null) return true;
-
-        // Check land tile name (rock, cave, mountain, ore)
-        var terrain = mapData.GetTerrainTile(target.Map, target.X, target.Y);
-        var landData = mapData.GetLandTileData(terrain.TileId);
-        if (!string.IsNullOrEmpty(landData.Name))
+        var ch = sink.Self;
+        tool = ResolveGatherTool(sink, skill);
+        switch (skill)
         {
-            string name = landData.Name;
-            if (name.Contains("rock", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("cave", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("mountain", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("ore", StringComparison.OrdinalIgnoreCase))
-                return true;
+            case SkillType.Mining:
+            {
+                if (tool == null)
+                    return Msg.MiningTool;
+                if (target.X < 0)
+                    return Msg.Mining4;
+                // The miner's own region, not the target's (GetRegion(), :1416).
+                if (world.FindRegion(ch.Position) is { } area && area.IsFlag(RegionFlag.NoMining))
+                    return Msg.Mining2;
+                return CheckGatherReach(ch, SkillType.Mining, target, world, 2, alwaysLos: true,
+                    Msg.MiningClose, Msg.MiningReach, Msg.MiningLos);
+            }
+            case SkillType.Fishing:
+            {
+                // Skill_Fishing checks no tool (:1483-1590): the pole is how the skill is
+                // reached, not something the stage asks for. SphereNet also offers the
+                // skill from the skill list, so a pole is still required there.
+                if (tool == null)
+                    return FishingPoleMissing;
+                if (target.X < 0)
+                    return Msg.Fishing4;
+                // In a house, but not on a ship (:1509-1514); never down through a
+                // multi's floor (:1515-1519).
+                var standingIn = FindMultiRegion(world, ch.Position);
+                if (standingIn != null && !standingIn.IsFlag(RegionFlag.Ship))
+                    return Msg.Fishing3;
+                if (FindMultiRegion(world, target) != null)
+                    return Msg.Fishing4;
+                return CheckGatherReach(ch, SkillType.Fishing, target, world, 4, alwaysLos: false,
+                    Msg.FishingClose, Msg.FishingReach, Msg.FishingLos);
+            }
+            case SkillType.Lumberjacking:
+            {
+                if (tool == null)
+                    return Msg.LumberjackingTool;
+                if (target.X < 0)
+                    return Msg.Lumberjacking6;
+                return CheckGatherReach(ch, SkillType.Lumberjacking, target, world, 2, alwaysLos: true,
+                    Msg.LumberjackingClose, Msg.LumberjackingReach, Msg.LumberjackingLos);
+            }
         }
+        return null;
+    }
 
-        // Check statics at target for minable rock walls
-        var statics = mapData.GetStatics(target.Map, target.X, target.Y);
-        foreach (var st in statics)
+    /// <summary>The message for a fishing attempt with no pole at all, reachable only
+    /// through SphereNet's skill-list path.</summary>
+    private const string FishingPoleMissing = "You need a fishing pole to fish.";
+
+    /// <summary>The gathering distance rules: under 1 tile refuses unless the skill
+    /// has SKF_NOMINDIST, beyond the [SKILL] RANGE (default 2 for mining and
+    /// lumberjacking, 4 for fishing) refuses, and the line of sight is asked -
+    /// always for mining and lumberjacking, for fishing only when ADVANCEDLOS covers
+    /// this kind of character, and then with LOS_FISHING (:1536-1544).</summary>
+    private static string? CheckGatherReach(Character ch, SkillType skill, Point3D target,
+        World.GameWorld world, int defaultRange, bool alwaysLos, string close, string reach, string los)
+    {
+        int range = SkillEngine.GetUseRange(skill, defaultRange);
+        int dist = target.Map != ch.MapIndex ? int.MaxValue : ch.Position.GetDistanceTo(target);
+        if (dist < 1 && !SkillEngine.HasFlag(skill, SkillFlag.NoMinDist))
+            return close;
+        if (dist > range)
+            return reach;
+        if (alwaysLos)
         {
-            var itemData = mapData.GetItemTileData(st.TileId);
-            if (string.IsNullOrEmpty(itemData.Name)) continue;
-            if ((itemData.IsWall || itemData.IsImpassable) &&
-                (itemData.Name.Contains("rock", StringComparison.OrdinalIgnoreCase) ||
-                 itemData.Name.Contains("cave", StringComparison.OrdinalIgnoreCase) ||
-                 itemData.Name.Contains("mountain", StringComparison.OrdinalIgnoreCase) ||
-                 itemData.Name.Contains("ore", StringComparison.OrdinalIgnoreCase)))
-                return true;
+            if (!world.CanSeeLOSFor(ch, ch.Position, target))
+                return los;
         }
+        else if ((world.AdvancedLos & (ch.IsPlayer ? 0x01 : 0x02)) != 0 &&
+                 !world.CanSeeLOS(ch.Position, target, LosFlags.Fishing))
+        {
+            return los;
+        }
+        return null;
+    }
 
+    /// <summary>A house or ship region at the point (Source-X REGION_TYPE_MULTI).</summary>
+    private static World.Regions.Region? FindMultiRegion(World.GameWorld world, Point3D pt)
+    {
+        foreach (var (region, _) in world.FindAllRegions(pt))
+        {
+            if (region.IsFlag(RegionFlag.House) || region.IsFlag(RegionFlag.Ship))
+                return region;
+        }
+        return null;
+    }
+
+    /// <summary>The tool a gathering stage works with: m_Act_Prv_UID, the pickaxe,
+    /// blade or pole whose target cursor started it (CClientTarg.cpp:1809/1890/2264).
+    /// A skill reached without one - SphereNet's skill-list path - takes the first
+    /// such tool in hand or pack.</summary>
+    private static Item? ResolveGatherTool(IActiveSkillSink sink, SkillType skill)
+    {
+        var ch = sink.Self;
+        ItemType[] types = skill switch
+        {
+            SkillType.Mining => [ItemType.WeaponMacePick],
+            SkillType.Fishing => [ItemType.FishPole],
+            SkillType.Lumberjacking => [ItemType.WeaponAxe, ItemType.WeaponSword, ItemType.WeaponFence,
+                ItemType.WeaponMaceSharp, ItemType.CarpentryChop],
+            _ => [],
+        };
+        if (ch.ActPrv.IsValid && sink.World.FindItem(ch.ActPrv) is { IsDeleted: false } used &&
+            Array.IndexOf(types, used.ItemType) >= 0)
+            return used;
+        return types.Length > 0 ? FindGatherTool(sink, types[0]) : null;
+    }
+
+    /// <summary>What the gathering SUCCESS stage says and does with the engine's
+    /// answer (Skill_Mining :1449-1481, Skill_Fishing :1548-1589, Skill_Lumberjack
+    /// :1647-1692): no bit is DEFMSG_*_1, an empty bit DEFMSG_*_2, a create that made
+    /// nothing is the stage's failure message, and a failed skill check is silent.
+    /// Mining and lumberjacking announce no catch; fishing names it.</summary>
+    private static bool FinishGather(IActiveSkillSink sink, SkillType skill, GatherResult result, bool dagger)
+    {
+        if (!result.Handled)
+        {
+            sink.SysMessage(ServerMessages.Get(skill switch
+            {
+                SkillType.Fishing => Msg.Fishing1,
+                SkillType.Lumberjacking => dagger ? Msg.Lumberjacking3 : Msg.Lumberjacking1,
+                _ => Msg.Mining1,
+            }));
+            return false;
+        }
+        if (result.Depleted)
+        {
+            sink.SysMessage(ServerMessages.Get(skill switch
+            {
+                SkillType.Fishing => Msg.Fishing2,
+                SkillType.Lumberjacking => dagger ? Msg.Lumberjacking4 : Msg.Lumberjacking2,
+                _ => Msg.Mining2,
+            }));
+            return false;
+        }
+        if (result.Success && result.Item != null)
+        {
+            if (skill == SkillType.Fishing)
+                // SysMessagef(DEFMSG_FISHING_SUCCESS, name) - CCharSkill.cpp:1581
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, result.Item.GetName()));
+            else if (dagger)
+                sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking5));   // :1674
+            sink.DeliverItem(result.Item);
+            return true;
+        }
+        if (result.CreateFailed)
+        {
+            sink.SysMessage(ServerMessages.Get(skill switch
+            {
+                SkillType.Fishing => Msg.Fishing2,             // :1578
+                SkillType.Lumberjacking => Msg.Lumberjacking2, // :1682
+                _ => Msg.Mining3,                              // :1471
+            }));
+        }
         return false;
     }
 
@@ -1306,183 +1381,44 @@ public static class ActiveSkillEngine
             Combat.CombatEngine.ApplyDirectItemDamage(tool, amount);
     }
 
-    /// <summary>True when the target tile is water (Source-X fishing terrain
-    /// check). Uses the tiledata wet flag, which is reliable, not a name match.
-    /// Permissive when no map data is loaded (bare test setups).</summary>
-    private static bool IsWaterTile(World.GameWorld world, Point3D target)
-    {
-        var mapData = world.MapData;
-        if (mapData == null) return true;
-
-        var terrain = mapData.GetTerrainTile(target.Map, target.X, target.Y);
-        if (mapData.GetLandTileData(terrain.TileId).IsWet) return true;
-
-        // Some deep-water is rendered through statics rather than the land tile.
-        foreach (var st in mapData.GetStatics(target.Map, target.X, target.Y))
-        {
-            if (mapData.GetItemTileData(st.TileId).IsWet) return true;
-        }
-        return false;
-    }
-
-    /// <summary>True when the target tile carries a tree (Source-X lumberjacking
-    /// terrain check). Trees are statics named tree/log; some forests also name
-    /// the land tile. Mirrors the IsMinableTile name-matching pattern. Permissive
-    /// when no map data is loaded (bare test setups).</summary>
-    private static bool IsTreeTile(World.GameWorld world, Point3D target)
-    {
-        var mapData = world.MapData;
-        if (mapData == null) return true;
-
-        foreach (var st in mapData.GetStatics(target.Map, target.X, target.Y))
-        {
-            var name = mapData.GetItemTileData(st.TileId).Name;
-            if (!string.IsNullOrEmpty(name) &&
-                (name.Contains("tree", StringComparison.OrdinalIgnoreCase) ||
-                 name.Contains("log", StringComparison.OrdinalIgnoreCase)))
-                return true;
-        }
-
-        var terrain = mapData.GetTerrainTile(target.Map, target.X, target.Y);
-        var land = mapData.GetLandTileData(terrain.TileId).Name;
-        return !string.IsNullOrEmpty(land) &&
-            (land.Contains("forest", StringComparison.OrdinalIgnoreCase) ||
-             land.Contains("tree", StringComparison.OrdinalIgnoreCase));
-    }
-
     // -------------------------------------------------------------- Fishing
 
+    /// <summary>Source-X CChar::Skill_Fishing's SUCCESS stage (CCharSkill.cpp:1483-1590).</summary>
     public static bool Fishing(IActiveSkillSink sink, Point3D target, GatheringEngine? gatheringEngine, World.GameWorld world)
     {
         var ch = sink.Self;
-
-        int fishingRange = SkillEngine.GetUseRange(SkillType.Fishing, 6);
-        if (!CanReachPoint(ch, target, world, fishingRange) ||
-            (ch.Position.GetDistanceTo(target) == 0 &&
-             !SkillEngine.HasFlag(SkillType.Fishing, SkillFlag.NoMinDist)))
+        string? refusal = CheckGatherPreconditions(sink, SkillType.Fishing, target, world, out _);
+        if (refusal != null)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.FishingReach));
-            return false;
-        }
-
-        // Source-X CWorldMap: fishing requires a water tile at the target.
-        if (!IsWaterTile(world, target))
-        {
-            sink.SysMessage("You can't fish there.");
-            return false;
-        }
-
-        // Source-X requires a fishing pole (wear: DamageGatherToolOnSuccess, after @Success).
-        var pole = FindGatherTool(sink, ItemType.FishPole);
-        if (pole == null)
-        {
-            sink.SysMessage("You need a fishing pole to fish.");
+            sink.SysMessage(ServerMessages.Get(refusal));
             return false;
         }
         FaceSkillTarget(ch, target);
-        // The cast's sound and animation come from the start and the strokes
-        // (SkillEngine.GetSkillAnim/GetSkillSound), not from the result - see Mining.
 
-        if (gatheringEngine != null)
-        {
-            var result = gatheringEngine.TryGatherForSink(ch, SkillType.Fishing, target);
-            if (result.Handled)
-            {
-                if (result.Depleted)
-                {
-                    sink.SysMessage(ServerMessages.Get(Msg.Fishing1));
-                    return false;
-                }
-                if (result.Success && result.Item != null)
-                {
-                    // Source-X SysMessagef(DEFMSG_FISHING_SUCCESS, name) — CCharSkill.cpp:1581
-                    sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, result.Item.GetName()));
-                    sink.DeliverItem(result.Item);
-                    return true;
-                }
-                sink.SysMessage(ServerMessages.Get(Msg.Fishing3));
-                return false;
-            }
-        }
-
-        // Nothing defined here means there is nothing here, and that is the whole
-        // answer: upstream's resource setup returns nothing and the attempt just fails
-        // (CCharSkill.cpp:1456). SphereNet invented an economy instead - a hardcoded
-        // ore, fish or log, a marker pool of its own and its own difficulty - a
-        // resource table the reference does not have and no script could reach or
-        // change. Measured before removing: the live pack defines REGIONTYPE
-        // t_rock/t_water/t_tree with RESOURCES, so the gathering engine answers every
-        // one of these and this branch never ran with a real pack loaded.
-        sink.SysMessage(ServerMessages.Get(Msg.Fishing3));
-        return false;
+        var result = gatheringEngine?.TryGatherForSink(ch, SkillType.Fishing, target) ?? default;
+        return FinishGather(sink, SkillType.Fishing, result, dagger: false);
     }
 
     // --------------------------------------------------------- Lumberjacking
 
+    /// <summary>Source-X CChar::Skill_Lumberjack's SUCCESS stage (CCharSkill.cpp:
+    /// 1592-1692). A fencing weapon (a dagger) hacks kindling instead: one
+    /// ITEMID_KINDLING1 and one unit off the bit (:1672-1678).</summary>
     public static bool Lumberjacking(IActiveSkillSink sink, Point3D target, GatheringEngine? gatheringEngine, World.GameWorld world)
     {
         var ch = sink.Self;
-
-        int lumberRange = SkillEngine.GetUseRange(SkillType.Lumberjacking, 2);
-        if (!CanReachPoint(ch, target, world, lumberRange) ||
-            (ch.Position.GetDistanceTo(target) == 0 &&
-             !SkillEngine.HasFlag(SkillType.Lumberjacking, SkillFlag.NoMinDist)))
+        string? refusal = CheckGatherPreconditions(sink, SkillType.Lumberjacking, target, world, out var tool);
+        if (refusal != null)
         {
-            sink.SysMessage(ServerMessages.Get(Msg.LumberjackingReach));
-            return false;
-        }
-
-        // Source-X CWorldMap: lumberjacking requires a tree at the target.
-        if (!IsTreeTile(world, target))
-        {
-            sink.SysMessage("There is no tree there to chop.");
-            return false;
-        }
-
-        // Source-X requires an axe to chop (wear: DamageGatherToolOnSuccess, after @Success).
-        var axe = FindGatherTool(sink, ItemType.WeaponAxe);
-        if (axe == null)
-        {
-            sink.SysMessage("You need an axe to chop wood.");
+            sink.SysMessage(ServerMessages.Get(refusal));
             return false;
         }
         FaceSkillTarget(ch, target);
-        // The chop's sound and animation come from the start and the strokes, not
-        // from the result - see Mining.
 
-        if (gatheringEngine != null)
-        {
-            var result = gatheringEngine.TryGatherForSink(ch, SkillType.Lumberjacking, target);
-            if (result.Handled)
-            {
-                if (result.Depleted)
-                {
-                    sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking1));
-                    return false;
-                }
-                if (result.Success && result.Item != null)
-                {
-                    sink.SysMessage("You put some logs in your backpack.");
-                    sink.DeliverItem(result.Item);
-                    return true;
-                }
-                sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking2));
-                return false;
-            }
-        }
-
-        // Nothing defined here means there is nothing here, and that is the whole
-        // answer: upstream's resource setup returns nothing and the attempt just fails
-        // (CCharSkill.cpp:1456). SphereNet invented an economy instead - a hardcoded
-        // ore, fish or log, a marker pool of its own and its own difficulty - a
-        // resource table the reference does not have and no script could reach or
-        // change. Measured before removing: the live pack defines REGIONTYPE
-        // t_rock/t_water/t_tree with RESOURCES, so the gathering engine answers every
-        // one of these and this branch never ran with a real pack loaded.
-        sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking2));
-        return false;
+        bool dagger = tool?.ItemType == ItemType.WeaponFence;
+        var result = gatheringEngine?.TryGatherForSink(ch, SkillType.Lumberjacking, target, kindling: dagger) ?? default;
+        return FinishGather(sink, SkillType.Lumberjacking, result, dagger);
     }
-
 
     /// <summary>Face the point the skill is working on.
     ///

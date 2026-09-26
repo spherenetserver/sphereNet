@@ -125,15 +125,38 @@ public sealed class GatherProbeBeforeSwingTests : IDisposable
     }
 
     [Fact]
-    public void ABarrenSpotAnswersNo()
+    public void ABarrenSpotWithAnAmountIsWorkedAndThenYieldsNothing()
     {
-        // REAP=0 is the pack's "nothing can be found here" node; it is bound to the
-        // tile for as long as the node lives, and no swing should be started on it.
+        // START asks only whether the bit exists and holds something
+        // (CCharSkill.cpp:1449-1459). A resource that reaps nothing is found out at
+        // SUCCESS, where Skill_NaturalResource_Create returns nullptr (:1011) and the
+        // stage fails with DEFMSG_MINING_3. This used to refuse at START, which
+        // upstream does only for a bit whose AMOUNT is zero - mr_nothing's case,
+        // covered by AResourceWithNoAmountLeavesAnEmptyBit.
         var (_, engine, miner) = Setup("0", amount: 5);
 
         var probe = engine.ProbeResource(miner, SkillType.Mining, Tile);
         _out.WriteLine($"barren -> handled={probe.Handled} success={probe.Success}");
         Assert.True(probe.Handled);
-        Assert.False(probe.Success);
+        Assert.True(probe.Success);
+
+        var swing = engine.TryGatherForSink(miner, SkillType.Mining, Tile);
+        Assert.True(swing.Handled);
+        Assert.False(swing.Success);
+        Assert.True(swing.CreateFailed);
+        Assert.Null(swing.Item);
+    }
+
+    [Fact]
+    public void AResourceWithNoAmountLeavesAnEmptyBit()
+    {
+        // mr_nothing defines no AMOUNT: the bit is made with a (word) zero - no floor
+        // at one (CWorldMap.cpp:132-146) - and START refuses it as spent
+        // (DEFMSG_MINING_2, CCharSkill.cpp:1454-1458) for as long as it lives.
+        var (_, engine, miner) = Setup("i_ore_iron", amount: 0);
+
+        var probe = engine.ProbeResource(miner, SkillType.Mining, Tile);
+        Assert.True(probe.Handled);
+        Assert.True(probe.Depleted);
     }
 }

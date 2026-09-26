@@ -2146,6 +2146,14 @@ public class Item : ObjBase
             // -> CCSpawn::GetAmount), whatever the item's own pile count says; a
             // capacity raised through SPAWNMAX read back as the stale item field.
             case "AMOUNT":
+                // A natural-resource bit's AMOUNT is what is left in it (Source-X keeps
+                // the pool in m_wAmount, CWorldMap.cpp:146; the pool lives in a tag here
+                // because the amount field cannot stand at zero).
+                if (Skills.GatheringEngine.IsResourceBit(this))
+                {
+                    value = Skills.GatheringEngine.GetResourceBitAmount(this).ToString();
+                    return true;
+                }
                 value = (SpawnChar?.MaxCount ?? SpawnItem?.MaxCount ?? _amount).ToString();
                 return true;
             case "MAXAMOUNT": value = MaxAmount.ToString(); return true; // 0 for non-stackable
@@ -2953,6 +2961,13 @@ public class Item : ObjBase
                 if (ScriptNumber.TryParseToken(value, out long amtRaw) &&
                     amtRaw >= 0 && amtRaw <= ushort.MaxValue)
                 {
+                    // ARGO.AMOUNT on a resource bit sets its pool, zero included - the
+                    // way @ResourceFound / @ResourceGather empty or resize a vein.
+                    if (Skills.GatheringEngine.IsResourceBit(this))
+                    {
+                        Skills.GatheringEngine.SetResourceBitAmount(this, (int)amtRaw);
+                        return true;
+                    }
                     ushort av = (ushort)amtRaw;
                     Amount = av;
                     // On a SPAWNER, AMOUNT is the capacity and upstream routes it to
@@ -4784,13 +4799,6 @@ public class Item : ObjBase
     /// <summary>True when this is a loose ground item sitting in a region flagged
     /// REGION_FLAG_NODECAY. Contained items decay with their container, so only
     /// top-level ground items are protected (Source-X CItem decay region check).</summary>
-    private bool IsInNoDecayRegion()
-    {
-        if (ContainedIn.IsValid) return false;
-        var region = ResolveWorld?.Invoke()?.FindRegion(Position);
-        return region != null && region.IsFlag(Core.Enums.RegionFlag.NoDecay);
-    }
-
     /// <summary>Real milliseconds per light-source burn tick (Source-X
     /// IT_LIGHT_LIT _SetTimeoutS(60): one charge every 60 seconds).</summary>
     public const long LightBurnTickMs = 60_000;
@@ -4962,12 +4970,13 @@ public class Item : ObjBase
         // item is a loose ground item in a NODECAY region (Source-X
         // REGION_FLAG_NODECAY: things on the ground don't decay here), in which
         // case re-arm the timer so it decays normally once it leaves the region.
+        // REGION_FLAG_NODECAY is applied when an item is PUT DOWN (MoveToCheck,
+        // CItem.cpp:1620 - the drop path does that), never at tick time. Re-arming
+        // every due item inside such a region kept anything with an explicit
+        // lifetime - resource worldgem bits, corpses, blood, fields - alive for
+        // ever there: a town dock's fishing bit never expired, so its pool never
+        // came back.
         bool decayDue = DecayTime > 0 && Environment.TickCount64 >= DecayTime;
-        if (decayDue && IsInNoDecayRegion())
-        {
-            AssignDecay(Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs);
-            decayDue = false;
-        }
 
         long timeout = Timeout;
         bool timerDue = timeout > 0 && Environment.TickCount64 >= timeout;

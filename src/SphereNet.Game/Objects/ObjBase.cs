@@ -888,7 +888,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                         return true;
                     }
                 }
+                // Source-X has one item timer and decay runs on it (MoveToDecay ->
+                // SetTimeout), so TIMER reads the decay deadline when no script
+                // timer is set. A resource worldgem bit read -1 here while it was
+                // counting down its REGEN lifetime.
                 long t = Timeout;
+                if (t <= 0 && this is Items.Item decaying && decaying.DecayTime > 0)
+                    t = decaying.DecayTime;
                 if (t <= 0) { value = "-1"; return true; }
                 long remaining = (t - Environment.TickCount64) / unitMs;
                 value = remaining > 0 ? remaining.ToString() : "0";

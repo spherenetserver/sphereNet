@@ -1198,8 +1198,13 @@ public sealed class ClientItemUseHandler
                         CutSeedFrom(seedSource);
                         return;
                     }
-                    // Axe at a tree/ground: start Lumberjacking at the spot.
-                    if (item.ItemType == ItemType.WeaponAxe && targetObj == null)
+                    // Axe at a tree/ground: start Lumberjacking at the spot. Any of these
+                    // blades pointed at a map tree starts it too - CanTouchStatic answers
+                    // IT_TREE / IT_FOLIAGE for the sword, fencing weapon, axe and war axe
+                    // alike (CClientTarg.cpp:1841-1894); a dagger then hacks kindling.
+                    if (targetObj == null &&
+                        (item.ItemType == ItemType.WeaponAxe ||
+                         DefinitionLoader.GetItemDef(gfx)?.Type is ItemType.Tree or ItemType.Foliage))
                     {
                         RouteSkillTarget(SkillType.Lumberjacking, targetSerial,
                             new Point3D(x, y, z, _character.MapIndex), item);

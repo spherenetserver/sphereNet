@@ -482,30 +482,67 @@ public sealed class ClientSkillsHandler
         RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null);
     }
 
-    /// <summary>False when a gathering skill's target tile has nothing worth swinging
-    /// at. Messages the reason and reports the failure, exactly as the real attempt
-    /// would - the point is to do it BEFORE any stroke is animated.</summary>
+    /// <summary>The START stage of a gathering skill (Skill_Mining :1402-1466,
+    /// Skill_Fishing :1498-1571, Skill_Lumberjack :1606-1669): the tool, the point,
+    /// the region, the reach and the line of sight, then CheckNaturalResource with
+    /// fTest - the tile must be rock, water or a tree, and its bit must hold
+    /// something. A refusal names the reason (DEFMSG_*_1 no resource here, DEFMSG_*_2
+    /// an empty one) and ends the skill with no @SkillFail - the stage answers
+    /// -SKTRIG_QTY and Skill_Start cleans up (CCharSkill.cpp:4499-4502). A fishing
+    /// start drops its splash at the spot (:1560-1566).</summary>
     private bool GatherNodeAnswers(SkillType skill, Point3D? point, int skillId)
     {
         if (_character == null)
             return true;
         if (!SkillEngine.HasFlag(skill, SkillFlag.Gather))
             return true;
-
-        var probe = _skillHandlers?.ProbeGatherNode(_character, skill, point ?? _character.Position);
-        if (probe is not { } result)
-            return true;
-        if (!result.Handled || (result.Success && !result.Depleted))
+        if (GatheringEngine.ResourceTypeFor(skill) == ItemType.Invalid)
             return true;
 
-        SysMessage(ServerMessages.Get(skill switch
+        var at = point ?? _character.Position;
+        var sink = new GameClient.InfoSkillSink(_client, _character);
+        string? refusal = Skills.Information.ActiveSkillEngine.CheckGatherPreconditions(
+            sink, skill, at, _world, out var tool);
+        if (refusal == null && _skillHandlers?.ProbeGatherNode(_character, skill, at) is { } result)
         {
-            SkillType.Fishing => result.Depleted ? Msg.Fishing3 : Msg.Fishing2,
-            SkillType.Lumberjacking => result.Depleted ? Msg.Lumberjacking3 : Msg.Lumberjacking2,
-            _ => result.Depleted ? Msg.Mining1 : Msg.Mining3,
-        }));
-        FireActiveSkillResult(skillId, false);
-        return false;
+            bool dagger = skill == SkillType.Lumberjacking && tool?.ItemType == ItemType.WeaponFence;
+            if (!result.Handled)
+                refusal = skill switch
+                {
+                    SkillType.Fishing => Msg.Fishing1,
+                    SkillType.Lumberjacking => dagger ? Msg.Lumberjacking3 : Msg.Lumberjacking1,
+                    _ => Msg.Mining1,
+                };
+            else if (result.Depleted)
+                refusal = skill switch
+                {
+                    SkillType.Fishing => Msg.Fishing2,
+                    SkillType.Lumberjacking => dagger ? Msg.Lumberjacking4 : Msg.Lumberjacking2,
+                    _ => Msg.Mining2,
+                };
+        }
+        if (refusal != null)
+        {
+            SysMessage(ServerMessages.Get(refusal));
+            return false;
+        }
+
+        if (skill == SkillType.Fishing)
+            DropFishingSplash(at);
+        return true;
+    }
+
+    /// <summary>The splash a fishing start and every fishing stroke leave at the
+    /// spot: CreateBase(ITEMID_FX_SPLASH), TYPE t_water_wash, MoveToDecay for one
+    /// second (CCharSkill.cpp:1560-1566, :3620-3628). MoveToDecay arms ATTR_DECAY; the
+    /// splash is not made immovable.</summary>
+    private void DropFishingSplash(Point3D at)
+    {
+        var splash = _world.CreateItem();
+        splash.BaseId = 0x352d;
+        splash.ItemType = ItemType.WaterWash;
+        splash.SetAttr(ObjAttributes.Decay);
+        _world.PlaceItemWithDecay(splash, at, 1000);
     }
 
     /// <summary>One stroke of the running skill - Source-X CChar::Skill_Stroke
@@ -588,18 +625,11 @@ public sealed class ClientSkillsHandler
         if (anim != 0)
             PlayAnimation(_character, (ushort)anim);
 
+        // Source-X Skill_Stroke: each fishing stroke drops the splash at the cast
+        // point (CCharSkill.cpp:3620-3628).
         if (skill == SkillType.Fishing &&
             _character.TryGetSkillPendingPoint(out Point3D splashAt))
-        {
-            // Source-X Skill_Stroke: each fishing stroke drops an
-            // ITEMID_FX_SPLASH water-wash item that decays after 1s at
-            // the cast point (CCharSkill.cpp:3620-3628).
-            var splash = _world.CreateItem();
-            splash.BaseId = 0x352d;
-            splash.ItemType = ItemType.WaterWash;
-            splash.SetAttr(ObjAttributes.Move_Never | ObjAttributes.Decay);
-            _world.PlaceItemWithDecay(splash, splashAt, 1000);
-        }
+            DropFishingSplash(splashAt);
 
         if (gather && _character.HasActiveSkillPending())
         {

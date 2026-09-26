@@ -129,6 +129,8 @@ public class CraftGatherParityTests
         bool ok = ActiveSkillEngine.Mining(sink, new Point3D(101, 100, 0, 0), null, world);
 
         Assert.False(ok);
-        Assert.Contains(sink.Log, e => e.Text.Contains("pickaxe", StringComparison.OrdinalIgnoreCase));
+        // DEFMSG_MINING_TOOL (CCharSkill.cpp:1405), not an invented sentence.
+        Assert.Contains(sink.Log, e => e.Text == SphereNet.Game.Messages.ServerMessages.Get(
+            SphereNet.Game.Messages.Msg.MiningTool));
     }
 }

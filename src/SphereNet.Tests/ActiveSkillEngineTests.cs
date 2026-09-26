@@ -275,17 +275,34 @@ public class ActiveSkillEngineTests
     }
 
     [Fact]
-    public void Taming_HumanTarget_RejectsWithCant()
+    public void Taming_ACreatureWithNoTamingSkill_CannotBeTamed()
+    {
+        // Source-X refuses !iTameBase with DEFMSG_TAMING_TAMED (CCharSkill.cpp:2325),
+        // whatever the brain: a monster the pack never made tameable stays wild.
+        var world = MakeWorld();
+        var ch = MakeChar();
+        var monster = MakeChar("daemon", player: false, brain: NpcBrainType.Monster);
+        var sink = new RecordingActiveSink(ch, world);
+
+        bool ok = ActiveSkillEngine.Taming(sink, monster);
+
+        Assert.False(ok);
+        Assert.Equal(ServerMessages.GetFormatted(Msg.TamingTamed, monster.Name), sink.Log[0].Text);
+        Assert.False(monster.IsStatFlag(StatFlag.Pet));
+    }
+
+    [Fact]
+    public void Taming_APlayableBodyCannotBeTamed_EvenWithTamingSkill()
     {
         var world = MakeWorld();
         var ch = MakeChar();
         var human = MakeChar("NPC", player: false, brain: NpcBrainType.Human);
+        human.BodyId = 0x0190;
+        human.SetSkill(SkillType.Taming, 100);
         var sink = new RecordingActiveSink(ch, world);
 
-        bool ok = ActiveSkillEngine.Taming(sink, human);
-
-        Assert.False(ok);
-        Assert.Equal(ServerMessages.Get(Msg.TamingCant), sink.Log[0].Text);
+        Assert.False(ActiveSkillEngine.Taming(sink, human));
+        Assert.Equal(ServerMessages.GetFormatted(Msg.TamingTamed, human.Name), sink.Log[0].Text);
     }
 
     [Fact]

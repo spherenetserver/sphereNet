@@ -731,14 +731,8 @@ public sealed class ClientWorldFeaturesHandler
     }
 
     /// <summary>Get the buy price for an item from vendor inventory. Uses TAG.PRICE or defaults.</summary>
-    internal static int GetVendorItemPrice(Character vendor, Item item)
-    {
-        if (item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int price))
-            return price;
-        if (item.Price > 0) return item.Price;
-        // Itemdef VALUE, like Source-X — never the art tile id.
-        return Math.Max(1, SphereNet.Game.Trade.VendorEngine.GetDefValue(item));
-    }
+    internal static int GetVendorItemPrice(Character vendor, Item item) =>
+        SphereNet.Game.Trade.VendorEngine.GetVendorSellToPlayerPrice(vendor, item);
 
     /// <summary>Get the sell price (what vendor pays the player) — same
     /// VENDORMARKUP math the server-side check uses, so the displayed list

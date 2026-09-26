@@ -2466,16 +2466,24 @@ public sealed class SpellEngine
             target.GetSkill(SkillType.MagicResistance),
             caster.GetSkill(SkillType.Magery),
             (int)def.Id);
-        return SkillEngine.UseQuick(target, SkillType.MagicResistance, chance) ? 25 : 0;
+        // A flat percent check, not the bell curve (Skill_UseQuick(..., true, false),
+        // CCharSpell.cpp:3659).
+        return SkillEngine.UseQuick(target, SkillType.MagicResistance, chance,
+            useBellCurve: false) ? 25 : 0;
     }
 
-    /// <summary>Reference resist-chance formula:
-    /// max(resist/50, resist - ((magery-200)/50 + (1 + spell/8) * 50)) / 30.</summary>
+    /// <summary>Source-X resist chance (CCharSpell.cpp:3650-3658), in percent:
+    /// resist = MR/10; max(resist/5, resist - ((magery-200)/50 + (1 + spell/8)*50)),
+    /// the second term floored at 0. The old form worked on the 0-1000 skill and
+    /// divided the result by 30, so a GM resister against a first-circle spell got
+    /// the wrong figure and then rolled it on the bell curve.</summary>
     internal static int CalcResistChance(int resistSkill, int casterMagery, int spellId)
     {
-        int first = resistSkill / 50;
-        int second = resistSkill - (((casterMagery - 200) / 50) + (1 + spellId / 8) * 50);
-        return Math.Max(first, second) / 30;
+        int resist = resistSkill / 10;
+        int first = resist / 5;
+        int threshold = ((casterMagery - 200) / 50) + (1 + spellId / 8) * 50;
+        int second = resist >= threshold ? resist - threshold : 0;
+        return Math.Max(first, second);
     }
 
     /// <summary>Get damage type for spell.</summary>
@@ -2495,7 +2503,13 @@ public sealed class SpellEngine
 
     private void ApplyBuff(Character caster, Character target, SpellDef def, int effect)
     {
-        short bonus = (short)Math.Max(1, effect / 5);
+        // The stat moves by the spell's EFFECT itself (Stat_AddMod(stat, +effect),
+        // Spell_Effect_Add); with MAGICF_OSIFORMULAS by 1 + EvalInt/100. A fifth of
+        // it was applied, so Strength EFFECT=5,20 gave +1..+4.
+        int buffValue = IsMagicFlag(MagicConfigFlags.OsiFormulas)
+            ? 1 + caster.GetSkill(SkillType.EvalInt) / 100
+            : effect;
+        short bonus = (short)Math.Clamp(buffValue, 0, short.MaxValue);
         switch (def.Id)
         {
             case SpellType.Strength:
@@ -2542,7 +2556,13 @@ public sealed class SpellEngine
 
     private void ApplyCurse(Character caster, Character target, SpellDef def, int effect)
     {
-        short penalty = (short)Math.Max(1, effect / 5);
+        // The EFFECT itself, or 8 + EvalInt/100 - the target's MR/100 with
+        // MAGICF_OSIFORMULAS (Spell_Effect_Add, CCharSpell.cpp:1478-1500). Each stat
+        // stops at 1 (_CheckLimitEffectStat).
+        int curseValue = IsMagicFlag(MagicConfigFlags.OsiFormulas)
+            ? 8 + caster.GetSkill(SkillType.EvalInt) / 100 - target.GetSkill(SkillType.MagicResistance) / 100
+            : effect;
+        short penalty = (short)Math.Clamp(curseValue, 0, short.MaxValue);
         switch (def.Id)
         {
             case SpellType.Weaken:
@@ -2574,9 +2594,11 @@ public sealed class SpellEngine
             case SpellType.Curse:
             case SpellType.MassCurse:
             {
-                short strP = (short)Math.Min(penalty, target.Str - 1);
-                short dexP = (short)Math.Min(penalty, target.Dex - 1);
-                short intP = (short)Math.Min(penalty, target.Int - 1);
+                // One value for all three stats: the limit check shrinks the shared
+                // effect so the lowest stat stays at 1.
+                short shared = (short)Math.Max(0, Math.Min(penalty,
+                    Math.Min(target.Str - 1, Math.Min(target.Dex - 1, target.Int - 1))));
+                short strP = shared, dexP = shared, intP = shared;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def,
                     Math.Max(0, Math.Max((int)strP, Math.Max((int)dexP, (int)intP))));
                 if (strP > 0) { eff.StrDelta = (short)-strP; target.Str -= strP; }

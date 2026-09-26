@@ -48,6 +48,23 @@ internal static class TestHarness
         SphereNet.Game.Definitions.DefinitionLoader.SetCharDef(index,
             new SphereNet.Scripting.Definitions.CharDef(ResourceId.Invalid));
 
+    /// <summary>Teach a vendor to buy an item: a sample in its BUYS box
+    /// (LAYER_VENDOR_BUYS), where Source-X keeps what a vendor purchases. A vendor
+    /// with no buy list buys nothing.</summary>
+    public static void GiveVendorBuySample(GameWorld world, Character vendor, ushort baseId)
+    {
+        var buys = vendor.GetEquippedItem(SphereNet.Core.Enums.Layer.VendorBuy);
+        if (buys == null)
+        {
+            buys = world.CreateItem();
+            buys.ItemType = SphereNet.Core.Enums.ItemType.Container;
+            vendor.Equip(buys, SphereNet.Core.Enums.Layer.VendorBuy);
+        }
+        var sample = world.CreateItem();
+        sample.BaseId = baseId;
+        buys.AddItem(sample);
+    }
+
     /// <summary>Seed every skill with the classic sphere_skills.scp ADV_RATE
     /// curve (2.5,50.0,200.0). Skill gain strictly follows the curve — no
     /// curve means no gain (Source-X GetChancePercent) — so any test that

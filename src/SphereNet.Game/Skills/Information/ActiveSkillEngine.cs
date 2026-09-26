@@ -705,7 +705,13 @@ public static class ActiveSkillEngine
 
     // --------------------------------------------------------------- Taming
 
-    /// <summary>Source-X CChar::Skill_Taming. Difficulty grows with target wildness.</summary>
+    /// <summary>Source-X CChar::Skill_Taming (CCharSkill.cpp:2270-2350).
+    ///
+    /// Whether a creature can be tamed is data: its own TAMING skill. One with none,
+    /// one that knows Animal Lore, or one wearing a playable body is refused - a GM
+    /// excepted. The difficulty is TAMING/10, plus 50 when the creature remembers the
+    /// tamer as a foe. A brain list and a hit-point fallback stood in for that, so
+    /// every monster the pack never made tameable could be taken as a pet.</summary>
     public static bool Taming(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
@@ -714,16 +720,20 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.TamingReach));
             return false;
         }
-        if (target.NpcBrain is NpcBrainType.Human or NpcBrainType.Guard or
-            NpcBrainType.Vendor or NpcBrainType.Banker or NpcBrainType.Stable or
-            NpcBrainType.Healer)
+        if (target == ch)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.TamingYmaster));
+            return false;
+        }
+        if (target.IsPlayer || target.IsDead)
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
             return false;
         }
-        if (target.IsDead)
+        if (!CanReachPoint(ch, target.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Taming, 10)))
         {
-            sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
+            sink.SysMessage(ServerMessages.Get(Msg.TamingLos));
             return false;
         }
 
@@ -731,30 +741,31 @@ public static class ActiveSkillEngine
         // (CChar::Skill_Taming, CCharSkill.cpp:2307) - the same UpdateDir the forge,
         // the campfire and the gathering stroke get.
         FaceSkillTarget(ch, target.Position);
-        if (target.IsStatFlag(StatFlag.Pet))
+
+        int tameBase = target.GetSkill(SkillType.Taming);
+        if (ch.PrivLevel < PrivLevel.GM)
         {
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, target.Name));
-            return false;
-        }
-        if (!CanReachPoint(ch, target.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Taming, 6)))
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.TamingLos));
-            return false;
+            if (target.IsStatFlag(StatFlag.Pet))
+            {
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, target.Name));
+                return false;
+            }
+            if (tameBase == 0 || target.GetSkill(SkillType.AnimalLore) > 0 ||
+                Combat.BodyAnimTranslator.IsPlayableBody(target.BodyId))
+            {
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTamed, target.Name));
+                return false;
+            }
         }
 
         // Source-X cycles through TAMING_1..4 emotes during the stage loop.
         string[] tries = { Msg.Taming1, Msg.Taming2, Msg.Taming3, Msg.Taming4 };
         sink.Emote(ServerMessages.GetFormatted(tries[sink.Random.Next(tries.Length)], target.Name));
 
-        // Difficulty approximated from the creature's hit points. CheckSuccess
-        // expects a 0-100 difficulty (it scales x10 internally vs the 0-1000
-        // skill value), so map HP onto 0-100 — using the raw HP here made high-HP
-        // creatures (dragons/bosses) mathematically un-tameable.
-        int tameRequirement = target.GetSkill(SkillType.Taming);
-        int diff = tameRequirement > 0
-            ? Math.Clamp(tameRequirement / 10, 1, 100)
-            : Math.Clamp(target.MaxHits / 10, 1, 100);
+        int diff = tameBase / 10;
+        if (target.Memory_FindObjTypes(ch.Uid, MemoryType.Fight | MemoryType.HarmedBy |
+                MemoryType.IrritatedBy | MemoryType.Aggreived) != null)
+            diff += 50; // "I've attacked it before?" (CCharSkill.cpp:2346)
         bool success = SkillEngine.UseQuick(ch, SkillType.Taming, diff);
         if (success)
         {

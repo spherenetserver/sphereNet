@@ -806,20 +806,30 @@ public sealed class MovementEngine
         return pack.TotalWeight;
     }
 
+    /// <summary>Source-X CChar::CheckRevealOnMove (CCharAct.cpp:4840-4856): every step
+    /// a hidden or invisible character takes spends its stealth budget - one, or two
+    /// when flying - and the character is revealed once it runs out. A plain Hiding
+    /// leaves no budget, so the first step reveals. This returned early whenever the
+    /// budget was 0, which let a hidden character walk anywhere unseen.</summary>
     private static void TickStealthStep(Objects.Characters.Character ch)
     {
-        if (ch.StepStealth <= 0)
+        if (!ch.IsStatFlag(StatFlag.Hidden) && !ch.IsStatFlag(StatFlag.Invisible))
+            return;
+        // Staff .INVIS sets Invisible here, where Source-X sets STATF_INSUBSTANTIAL
+        // (CHV_INVIS, CChar.cpp:4658) - a flag walking never touches. Keep that
+        // outcome: a counselor or above is not revealed by moving.
+        if (ch.PrivLevel >= PrivLevel.Counsel)
             return;
 
+        Character.OnStepStealth?.Invoke(ch);
+
         // A mounted sneak is given away by the horse when the shard says so
-        // (REVEALF_ONHORSE, CCharAct.cpp:4850) - checked BEFORE the step is counted,
-        // so being mounted ends the sneak at once rather than at the last step.
+        // (REVEALF_ONHORSE, CCharAct.cpp:4850).
         if (ch.IsStatFlag(StatFlag.OnHorse) && ch.ClearHiddenState(RevealFlags.OnHorse))
             return;
 
-        ch.StepStealth--;
-        Character.OnStepStealth?.Invoke(ch);
-
+        int spent = ch.IsStatFlag(StatFlag.Fly) || ch.IsStatFlag(StatFlag.Hovering) ? 2 : 1;
+        ch.StepStealth = (short)Math.Max(0, ch.StepStealth - spent);
         if (ch.StepStealth <= 0)
             ch.ClearHiddenState();
     }

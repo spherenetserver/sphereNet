@@ -148,7 +148,7 @@ public class ParityWaveBTests
     }
 
     [Fact]
-    public void CalcHitChance_FrozenTarget_NearCertainHit()
+    public void CalcHitChance_FrozenTarget_DrawsFromTen()
     {
         var world = CreateWorld();
         var attacker = world.CreateCharacter();
@@ -161,9 +161,10 @@ public class ParityWaveBTests
         target.SetStatFlag(StatFlag.Freeze);
         world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
 
-        // Deterministic: no random component left in the frozen branch.
+        // Source-X returns rand(10) for a sleeping/frozen target (CResourceCalc.cpp:153):
+        // the ceiling of the draw is 10, whatever the skills.
         for (int i = 0; i < 20; i++)
-            Assert.Equal(95, CombatEngine.CalcHitChance(attacker, target));
+            Assert.Equal(10, CombatEngine.CalcHitChance(attacker, target));
     }
 
     // <X.UID> script reads render as bare hex (no 0x prefix).

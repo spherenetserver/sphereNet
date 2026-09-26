@@ -532,7 +532,7 @@ public partial class Character : ObjBase
     /// <summary>The CHARDEF's own ARMOR (CCharBase::m_defense). The definition keeps
     /// it as a range; upstream reads the key once into a single value, and the range's
     /// middle is what the rest of this engine reads a creature's armour as.</summary>
-    private int CharDefArmor()
+    internal int CharDefArmor()
     {
         var def = DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex);
         return def == null ? 0 : (def.DefenseMin + def.DefenseMax) / 2;
@@ -8883,11 +8883,14 @@ public partial class Character : ObjBase
         // old shape and waits while the stat is full.
         var regenHook = OnRegenStat;
         long hitRateMs = ResolveRegenRateMs(_regenHitsRateMs, RegenHitsSeconds, 40000);
-        if (hitRateMs >= 0 && now >= _nextHitRegen && (_hits < _maxHits || regenHook != null) && Poison.Level == 0)
+        // Source-X Stats_Regen (CCharStat.cpp:493-534) has no hunger and no poison
+        // gate: a starving or poisoned character still regenerates. The +2 is the
+        // Tough racial trait, only under RACIALF_HUMAN_TOUGH - it was given to every
+        // human body, tripling their hit-point regeneration.
+        if (hitRateMs >= 0 && now >= _nextHitRegen && (_hits < _maxHits || regenHook != null))
         {
-            int regenAmount = _food > 0 ? (_regenValHits > 0 ? _regenValHits : 1) : 0;
-            // Source-X CCharStat::Stats_Regen: the human race regens +2 extra hp.
-            if (regenAmount > 0 && IsHuman)
+            int regenAmount = _regenValHits > 0 ? _regenValHits : 1;
+            if ((((Core.Enums.RacialFlags)RacialFlags) & Core.Enums.RacialFlags.HumanTough) != 0 && IsHuman)
                 regenAmount += 2;
             _nextHitRegen = now + hitRateMs;
             ApplyStatRegen(RegenStatHits, regenAmount, _maxHits, 0);

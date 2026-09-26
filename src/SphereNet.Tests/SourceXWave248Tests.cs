@@ -162,7 +162,8 @@ public sealed class SourceXWave248Tests
         garg.OnTick();
         Assert.Equal(55, garg.Hits); // 50 + 5
 
-        // Human still adds its +2 racial on top of the override.
+        // Human still adds its +2 racial (RACIALF_HUMAN_TOUGH) on top of the override.
+        Character.RacialFlags = (int)SphereNet.Core.Enums.RacialFlags.HumanTough;
         var human = MakeWounded(0x0190);
         human.TrySetProperty("REGENVALHITS", "5");
         human.OnTick();

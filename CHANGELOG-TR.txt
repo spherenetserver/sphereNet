@@ -4,6 +4,48 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Savas, buyu, taming, regen, hiding ve vendor fiyatlari Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Yakin dovus isabeti Skill_Fighting gibi duz yuzde zariyla atilir:
+           zorluk*10 >= rand(1000), GM her zaman isabet eder. Era 0'da zorluk
+           rand(iDiff) oldugundan usta bir savasci yaklasik iDiff/2 yuzde
+           isabet eder; bell curve neredeyse her vurusu isabet ettiriyordu.
+           Uyuyan hedef de donmus hedef gibi rand(10)'dan ceker; savunma DEX
+           yerine mevcut staminayi okur; era 1/2 sinirlari 5-95 yerine 0-100 /
+           2-100.
+DUZELTME - Yaratigin chardef ARMOR degeri yakin dovuste sayilir
+           (pCharDef->m_defense + m_defense). Yalnizca giyili zirh sayiliyordu,
+           script'li canavarlarin dogal zirhi yoktu.
+DUZELTME - STR/Tactics/Anatomy hasar bonusu oyuncunundur; NPC'ler yalnizca
+           COMBAT_NPC_BONUSDAMAGE ile alir. Canavarlar DAM'in ustune aliyordu.
+DUZELTME - Magic resist Source-X formulu: resist = MR/10, max(resist/5,
+           resist - ((magery-200)/50 + (1+spell/8)*50)), duz yuzde zariyla.
+DUZELTME - Stat buff ve curse'leri stat'i buyunun EFFECT degerinin kendisi
+           kadar oynatir (MAGICF_OSIFORMULAS ile 1+EvalInt/100, curse'te
+           8+EvalInt/100-MR/100); beste biri uygulaniyordu. Curse uc stat'i
+           her birini en az 1'de tutan ortak tek bir degerle dusurur.
+DUZELTME - Taming Skill_Taming'i izler: TAMING skill'i olmayan, Animal Lore'u
+           olan ya da oynanabilir bedendeki yaratik evcillestirilemez (GM
+           haric); zorluk TAMING/10, yaratik tamer'i dusman olarak hatirliyorsa
+           +50. Herhangi bir canavar HP'sine gore evcillestirilebiliyordu.
+           Varsayilan menzil 10.
+DUZELTME - HP ac ya da zehirliyken de yenilenir (Stats_Regen'de boyle bir
+           kilit yok); insan +2 bonusu RACIALF_HUMAN_TOUGH ister.
+DUZELTME - Sakli ya da gorunmez karakter her adimda stealth adimi harcar,
+           bitince gorunur olur; duz Hiding ilk adimda gorunur yapar. Hiding
+           sinirsiz gorunmez yuruyuse izin veriyordu. Source-X'in
+           STATF_INSUBSTANTIAL olarak tuttugu yetkili gorunmezligi yurumekle
+           acilmaz.
+DUZELTME - Vendor sattigi esyaya markup ekler: OVERRIDE.VALUE, yoksa PRICE,
+           yoksa yapim degeri, ustune markup; hicbiri fiyat vermezse 100000.
+           VALUE yoksa yapim degeri RESOURCES ve SKILLMAKE skill'lerinin
+           VALUES'undan hesaplanir (CalculateMakeValue). Sahipli vendor
+           markup'siz satar; VENDORMARKUP chardef'ten de okunur ve negatif
+           olabilir.
+DUZELTME - Vendor yalnizca BUY= listesindeki ya da BUYS kutusundaki
+           orneklerin adini verdigi esyalari alir; ikisi de yoksa hicbir sey
+           almaz. Her seyi aliyordu.
+
 [2026-09-26] - Linger kararini @LogOut verir; kopma satiri ne oldugunu soyler
 ------------------------------------------------------------------------
 DUZELTME - @LogOut link-dead kararindan once ARGN1 = linger suresi (saniye) ve

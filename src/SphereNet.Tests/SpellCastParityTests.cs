@@ -16,9 +16,12 @@ public class SpellCastParityTests
     [Fact]
     public void CalcResistChance_MatchesReferenceFormula()
     {
-        // max(resist/50, resist - ((magery-200)/50 + (1 + spell/8)*50)) / 30
-        Assert.Equal(29, SpellEngine.CalcResistChance(1000, 1000, 8));
-        Assert.Equal(19, SpellEngine.CalcResistChance(1000, 1000, 57)); // high circle: second term shrinks
+        // Source-X: resist = MR/10; max(resist/5, max(0, resist - ((magery-200)/50 + (1 + spell/8)*50)))
+        // resist 100: first = 20; second = 100 - (16 + 100) < 0 -> 0
+        Assert.Equal(20, SpellEngine.CalcResistChance(1000, 1000, 8));
+        Assert.Equal(20, SpellEngine.CalcResistChance(1000, 1000, 57));
+        // a caster with no magery: threshold (0-200)/50 + 50 = 46 -> 100 - 46 = 54
+        Assert.Equal(54, SpellEngine.CalcResistChance(1000, 0, 1));
         Assert.Equal(0, SpellEngine.CalcResistChance(0, 1000, 1));
     }
 

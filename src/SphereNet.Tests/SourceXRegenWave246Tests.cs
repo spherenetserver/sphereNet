@@ -40,6 +40,12 @@ public sealed class SourceXRegenWave246Tests
     [Fact]
     public void HitRegen_HumanGetsRacialBonus_GargoyleDoesNot()
     {
+        // The +2 is the Tough racial trait, RACIALF_HUMAN_TOUGH (CCharStat.cpp:520).
+        var plain = MakeWounded(0x0190);
+        plain.OnTick();
+        Assert.Equal(51, plain.Hits); // flag off: no racial bonus
+
+        Character.RacialFlags = (int)SphereNet.Core.Enums.RacialFlags.HumanTough;
         // A fresh character's next-regen timer starts at 0, so the first OnTick
         // applies one regen event.
         var human = MakeWounded(0x0190);

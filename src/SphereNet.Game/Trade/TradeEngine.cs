@@ -253,10 +253,7 @@ public static class VendorEngine
             // lookup by BaseId, which returns the first same-BaseId stock item's
             // price. With two same-id entries at different prices the server could
             // otherwise charge a different price than the client's selected row.
-            int serverPrice = (stockItem.TryGetTag("PRICE", out string? rowPrice)
-                    && int.TryParse(rowPrice, out int rp) && rp > 0)
-                ? rp
-                : stockItem.Price > 0 ? stockItem.Price : Math.Max(1, GetDefValue(stockItem));
+            int serverPrice = GetVendorSellToPlayerPrice(vendor, stockItem);
             if (serverPrice <= 0) return -1;
             totalCost += (long)serverPrice * entry.Amount;
             resolved.Add((stockItem, (int)entry.Amount, serverPrice));
@@ -544,7 +541,7 @@ public static class VendorEngine
             if (found.IsAttr(Core.Enums.ObjAttributes.Move_Never) ||
                 (found.ItemType == Core.Enums.ItemType.Container && found.Contents.Count > 0))
                 return 0;
-            if (buyFilter != null && !buyFilter.Contains(found.BaseId))
+            if (!buyFilter.Contains(found.BaseId))
                 return 0; // vendor does not buy this item type
 
             // A valueless item sells for nothing rather than blocking the whole
@@ -706,74 +703,31 @@ public static class VendorEngine
         }
     }
 
-    /// <summary>The set of item BaseIds a vendor will buy (Source-X NPC_FindVendableItem),
-    /// resolved from its VENDOR_BUY_LIST template, or null when the vendor has no buy
-    /// list — in which case it buys anything (the legacy behaviour is preserved). An
-    /// unresolvable template also yields null so selling is never silently broken.</summary>
-    public static HashSet<ushort>? GetVendorBuyFilter(Character vendor)
+    /// <summary>The item BaseIds a vendor will buy (Source-X NPC_FindVendableItem,
+    /// CCharNPCStatus.cpp:603): the entries of its BUY= template (VENDOR_BUY_LIST)
+    /// and the samples in its BUYS box (LAYER_VENDOR_BUYS), which is where upstream
+    /// keeps the list and where an owner places samples through the SAMPLES verb.
+    /// An empty set means the vendor buys nothing - with no list at all it used to
+    /// buy anything a player offered.</summary>
+    public static HashSet<ushort> GetVendorBuyFilter(Character vendor)
     {
-        if (!vendor.TryGetTag("VENDOR_BUY_LIST", out string? tpl) || string.IsNullOrWhiteSpace(tpl))
-            return null;
-
         var set = new HashSet<ushort>();
-        var resources = SphereNet.Game.Definitions.DefinitionLoader.StaticResources;
-        foreach (var (defName, _) in SphereNet.Game.Definitions.TemplateEngine.EnumerateSequential(tpl!))
+        if (vendor.TryGetTag("VENDOR_BUY_LIST", out string? tpl) && !string.IsNullOrWhiteSpace(tpl))
         {
-            ushort id = resources != null
-                ? SphereNet.Game.Definitions.TemplateEngine.ResolveDispId(resources, defName)
-                : (ushort)0;
-            if (id != 0) set.Add(id);
+            var resources = SphereNet.Game.Definitions.DefinitionLoader.StaticResources;
+            foreach (var (defName, _) in SphereNet.Game.Definitions.TemplateEngine.EnumerateSequential(tpl!))
+            {
+                ushort id = resources != null
+                    ? SphereNet.Game.Definitions.TemplateEngine.ResolveDispId(resources, defName)
+                    : (ushort)0;
+                if (id != 0) set.Add(id);
+            }
         }
-        // A configured but empty/malformed list means "buys nothing". Returning
-        // null here would turn a script typo into an unrestricted buy-anything vendor.
+        if (vendor.GetEquippedItem(Core.Enums.Layer.VendorBuy) is { } buys)
+            foreach (var sample in buys.Contents)
+                if (!sample.IsDeleted && sample.BaseId != 0)
+                    set.Add(sample.BaseId);
         return set;
-    }
-
-    /// <summary>Look up server-side price for an item. Checks vendor stock legacy PRICE tags, native PRICE, then itemdef VALUE.</summary>
-    internal static int GetServerBuyPrice(Character vendor, ushort itemId)
-    {
-        var stock = vendor.GetEquippedItem(Core.Enums.Layer.VendorStock);
-        if (stock != null)
-        {
-            foreach (var item in stock.Contents)
-            {
-                if (item.BaseId == itemId &&
-                    item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
-                    return Math.Max(1, p);
-                if (item.BaseId == itemId)
-                    return item.Price > 0 ? item.Price : Math.Max(1, GetDefValue(item));
-            }
-        }
-        var pack = vendor.Backpack;
-        if (pack != null)
-        {
-            foreach (var item in pack.Contents)
-            {
-                if (item.BaseId == itemId &&
-                    item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
-                    return Math.Max(1, p);
-                if (item.BaseId == itemId)
-                    return item.Price > 0 ? item.Price : Math.Max(1, GetDefValue(item));
-            }
-        }
-        // No explicit price — price from the itemdef VALUE like Source-X
-        // (CItemVendable::GetMakeValue). The old fallback derived the price
-        // from the ART TILE ID (/10 + 5), so high-graphic items cost a fortune.
-        return Math.Max(1, GetDefValue(itemId));
-    }
-
-    /// <summary>Itemdef VALUE midpoint — the Source-X vendor pricing base.
-    /// Returns 0 when the def declares no VALUE.</summary>
-    internal static int GetDefValue(Item item) =>
-        GetDefValue(Definitions.ItemDefHelper.ResolveInstanceDefIndex(item));
-
-    internal static int GetDefValue(int itemId)
-    {
-        var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(itemId);
-        if (idef == null) return 0;
-        return idef.ValueMin > 0 && idef.ValueMax > 0
-            ? (idef.ValueMin + idef.ValueMax) / 2
-            : Math.Max(idef.ValueMin, idef.ValueMax);
     }
 
     /// <summary>Default VENDORMARKUP percent (Source-X g_Cfg.m_iVendorMarkup).</summary>
@@ -789,13 +743,22 @@ public static class VendorEngine
     /// default. The markup is the vendor's profit margin percent.</summary>
     public static int GetVendorMarkup(Character vendor)
     {
+        // Source-X NPC_GetVendorMarkup (CCharNPCStatus.cpp:332): a hired/owned vendor
+        // sells at its owner's prices, no markup; then the vendor's tag, the
+        // region's, the chardef's, the ini default. The value is used as written
+        // (negative is a discount); GetVendorPrice floors the factor at -100.
+        if (vendor.IsStatFlag(Core.Enums.StatFlag.Pet))
+            return 0;
         if (vendor.TryGetTag("VENDORMARKUP", out string? v) && int.TryParse(v, out int mv))
-            return Math.Clamp(mv, 0, 99);
+            return mv;
         var region = World?.FindRegion(vendor.Position);
         if (region != null && region.TryGetTag("VENDORMARKUP", out string? rv) &&
             int.TryParse(rv, out int rmv))
-            return Math.Clamp(rmv, 0, 99);
-        return Math.Clamp(DefaultVendorMarkup, 0, 99);
+            return rmv;
+        var cdef = SphereNet.Game.Definitions.DefinitionLoader.GetCharDef(vendor.CharDefIndex);
+        if (cdef?.TagDefs.Get("VENDORMARKUP") is { } cv && int.TryParse(cv, out int cmv))
+            return cmv;
+        return DefaultVendorMarkup;
     }
 
     /// <summary>Server-side sell price: what the vendor pays the player for
@@ -828,15 +791,84 @@ public static class VendorEngine
     }
 
     /// <summary>Source-X CItemBase::GetMakeValue: the itemdef VALUE range read
-    /// linearly by the item's quality (0-100). 0 when the def declares no VALUE.</summary>
+    /// linearly by the item's quality (0-100).</summary>
     internal static int GetMakeValue(Item item)
     {
         var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(
             Definitions.ItemDefHelper.ResolveInstanceDefIndex(item));
-        if (idef == null) return 0;
-        int lo = idef.ValueMin, hi = Math.Max(idef.ValueMin, idef.ValueMax);
-        int quality = Math.Clamp((int)item.Quality, 0, 100);
-        return lo + (int)((long)(hi - lo) * quality / 100);
+        return idef == null ? 0 : GetMakeValue(idef, Math.Clamp((int)item.Quality, 0, 100), 0);
+    }
+
+    /// <summary>The value of a definition at a quality. With no VALUE the reference
+    /// works it out from what the item is made of (CalculateMakeValue at quality 0
+    /// and 100, then read linearly), so a craftable without a price is not free.</summary>
+    private static int GetMakeValue(SphereNet.Scripting.Definitions.ItemDef def, int quality, int depth)
+    {
+        int lo, hi;
+        if (def.ValueMin != 0 || def.ValueMax != 0)
+        {
+            lo = def.ValueMin;
+            hi = Math.Max(def.ValueMin, def.ValueMax);
+        }
+        else
+        {
+            lo = CalculateMakeValue(def, 0, depth);
+            hi = CalculateMakeValue(def, 100, depth);
+        }
+        return lo + (int)((long)(hi - lo) * Math.Clamp(quality, 0, 100) / 100);
+    }
+
+    /// <summary>Source-X CItemBase::CalculateMakeValue (CItemBase.cpp:943): the value of
+    /// each RESOURCES item times its amount, plus each SKILLMAKE skill's VALUES read at
+    /// the skill the recipe needs. Circular lists stop at 32 levels.</summary>
+    private static int CalculateMakeValue(SphereNet.Scripting.Definitions.ItemDef def, int quality, int depth)
+    {
+        if (depth > 32) return 0;
+        var resources = SphereNet.Game.Definitions.DefinitionLoader.StaticResources;
+        long value = 0;
+        if (resources != null)
+        {
+            foreach (var entry in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.ResourcesRaw))
+            {
+                var rid = resources.ResolveDefName(entry.Name);
+                if (!rid.IsValid || rid.Type != Core.Enums.ResType.ItemDef) continue;
+                var part = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(rid.Index);
+                if (part == null) continue;
+                value += (long)GetMakeValue(part, quality, depth + 1) * entry.Quantity;
+            }
+        }
+        foreach (var entry in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.SkillMakeRaw))
+        {
+            if (!SphereNet.Game.Definitions.DefinitionLoader.TryGetSkillIndexByName(entry.Name, out int skillIdx))
+                continue;
+            var skillDef = SphereNet.Game.Definitions.DefinitionLoader.GetSkillDef(skillIdx);
+            if (skillDef == null) continue;
+            int level = Math.Max(quality, (int)Math.Clamp(entry.Quantity, 0, int.MaxValue));
+            value += skillDef.ValueCurve.GetLinear(level);
+        }
+        return (int)Math.Clamp(value, 0, int.MaxValue);
+    }
+
+    /// <summary>What an NPC vendor asks a player for <paramref name="item"/>
+    /// (CItemVendable::GetVendorPrice with +markup, send.cpp:2308): OVERRIDE.VALUE,
+    /// else the item's PRICE, else its make value; the vendor's markup on top; and
+    /// 100000 when all of that comes to nothing. The markup was never added, and a
+    /// valueless item sold for 1 gold.</summary>
+    internal static int GetVendorSellToPlayerPrice(Character vendor, Item item)
+    {
+        long price = item.TryGetTag("OVERRIDE.VALUE", out string? ov) && long.TryParse(ov, out long ovv)
+            ? ovv
+            : 0;
+        if (price <= 0)
+            price = item.TryGetTag("PRICE", out string? ps) && long.TryParse(ps, out long pv) && pv > 0
+                ? pv
+                : item.Price;
+        if (price <= 0)
+            price = GetMakeValue(item);
+        price += IMulDivLL(price, Math.Max(GetVendorMarkup(vendor), -100), 100);
+        if (price <= 0)
+            price = 100000;
+        return (int)Math.Min(price, int.MaxValue);
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>

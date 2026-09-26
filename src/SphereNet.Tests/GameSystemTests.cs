@@ -3055,9 +3055,9 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             ]);
 
             // 3 x 10 and 2 x 7 — the line total, not 10 and 7.
-            Assert.Equal([30, 14], seenN2);
+            Assert.Equal([36, 16], seenN2); // 3 * 12 and 2 * 8: 10 and 7 with the 15% markup
             // Both lines still standing, so both see the full 44.
-            Assert.Equal([44L, 44L], seenTotalCost);
+            Assert.Equal([52L, 52L], seenTotalCost);
         }
         finally
         {
@@ -3122,7 +3122,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
             // Source-X subtracts a vetoed line so the next line sees what is still
             // being bought: 44 then 44-30=14.
-            Assert.Equal([44L, 14L], seenTotalCost);
+            Assert.Equal([52L, 16L], seenTotalCost);
             Assert.Equal(10, rowA.Amount);   // vetoed line untouched
             Assert.Equal(8, rowB.Amount);
         }

@@ -71,7 +71,7 @@ public sealed class SourceXWave247Tests
         // A fresh char's regen timer starts at 0, so the first OnTick normally regens.
         var control = MakeWounded(0x0190);
         control.OnTick();
-        Assert.Equal(53, control.Hits); // base 1 + human racial 2
+        Assert.Equal(51, control.Hits); // base 1 (no RACIALF_HUMAN_TOUGH)
 
         var disabled = MakeWounded(0x0190);
         disabled.TrySetProperty("REGENHITS", "-1"); // < 0 = never regen this stat

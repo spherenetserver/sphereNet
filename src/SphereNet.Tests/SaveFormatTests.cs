@@ -1080,7 +1080,7 @@ public class SaveFormatTests
 
             Assert.True(engine.CastStart(ch, SpellType.Bless, ch.Uid, ch.Position) >= 0);
             Assert.True(engine.CastDone(ch));
-            Assert.Equal(60, ch.Str);
+            Assert.Equal(100, ch.Str); // EFFECT 50 adds 50 (Stat_AddMod)
 
             engine.RevertAllForSave();
             try
@@ -1092,7 +1092,7 @@ public class SaveFormatTests
                 engine.ReapplyAllAfterSave();
             }
 
-            Assert.Equal(60, ch.Str);
+            Assert.Equal(100, ch.Str); // EFFECT 50 adds 50 (Stat_AddMod)
             string charSave = File.ReadAllText(Path.Combine(tmp, "spherechars.scp"));
             Assert.Contains("STR=50", charSave);
             Assert.Contains("SPELLEFFECT=1|17|", charSave);
@@ -1108,7 +1108,7 @@ public class SaveFormatTests
             var restoredEngine = new SpellEngine(dst, registry);
             Assert.Equal(1, restoredEngine.RestorePersistedEffectsFromWorld());
             Assert.Empty(reloaded.PendingSpellEffectRecords);
-            Assert.Equal(60, reloaded.Str);
+            Assert.Equal(100, reloaded.Str);
 
             restoredEngine.ProcessExpirations(Environment.TickCount64 + 120_000);
             Assert.Equal(50, reloaded.Str);

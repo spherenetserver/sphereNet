@@ -434,8 +434,8 @@ public class HousingEconomyTests
                 }
             };
 
-            Assert.Equal(50, VendorEngine.ProcessBuy(player, vendor, entries));
-            Assert.Equal(25, VendorEngine.CountGold(player));
+            Assert.Equal(58, VendorEngine.ProcessBuy(player, vendor, entries)); // 50 + 15% markup
+            Assert.Equal(17, VendorEngine.CountGold(player));
             Assert.Contains(pack.Contents, item => item.BaseId == 0x0F7A);
         }
         finally

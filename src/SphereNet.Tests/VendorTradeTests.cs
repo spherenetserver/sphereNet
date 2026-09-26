@@ -64,7 +64,7 @@ public class VendorTradeTests
         int cost = VendorEngine.ProcessBuy(player, vendor,
             [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 3, Price = 5 }]);
 
-        Assert.Equal(15, cost);            // 3 * 5
+        Assert.Equal(18, cost);            // 3 * (5 + 15% markup = 6)
         Assert.Equal(10 - 3, stockItem.Amount); // virtual stock decremented
     }
 
@@ -78,7 +78,7 @@ public class VendorTradeTests
         int cost = VendorEngine.ProcessBuy(player, vendor,
             [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 4, Price = 5 }]);
 
-        Assert.Equal(20, cost);
+        Assert.Equal(24, cost);            // 4 * (5 + 15% markup = 6)
         Assert.True(stockItem.IsDeleted); // fully bought out → entry removed
     }
 
@@ -116,18 +116,14 @@ public class VendorTradeTests
     }
 
     [Fact]
-    public void Vendor_Buy_NoPriceTag_UsesFallbackPrice()
+    public void Vendor_Buy_ItemWithNoPriceOrValue_Costs100000()
     {
+        // No PRICE, no VALUE, nothing to make it from: Source-X's last resort is
+        // 100000 (send.cpp:2318) - never a free or 1-gold item.
         var world = CreateWorld();
-        // No PRICE tag — server price must fall back instead of rejecting (price>0).
         var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 10, price: null);
-        var player = MakeBuyerWithGold(world, 100000);
 
-        int cost = VendorEngine.ProcessBuy(player, vendor,
-            [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 1, Price = 0 }]);
-
-        Assert.True(cost > 0);             // fallback (baseId/10+5) priced, not rejected
-        Assert.Equal(9, stockItem.Amount);
+        Assert.Equal(100000, VendorEngine.GetVendorSellToPlayerPrice(vendor, stockItem));
     }
 
     [Fact]
@@ -169,6 +165,7 @@ public class VendorTradeTests
         var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
         vendor.SetTag("VENDOR_GOLD", "1000"); // W-F: purse always tracked — fund it
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+        TestHarness.GiveVendorBuySample(world, vendor, 0x0E75);
 
         var seller = new Character { Name = "seller" };
         world.PlaceCharacter(seller, new Point3D(101, 100, 0, 0));

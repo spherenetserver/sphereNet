@@ -5022,7 +5022,7 @@ public sealed class ClientItemUseHandler
         {
             if (item.ItemType == ItemType.Gold) continue; // don't sell gold
             if (item.IsDeleted) continue;
-            if (buyFilter != null && !buyFilter.Contains(item.BaseId)) continue;
+            if (!buyFilter.Contains(item.BaseId)) continue;
 
             int price = GetVendorItemSellPrice(vendor, item);
             if (price <= 0) continue;

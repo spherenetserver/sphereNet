@@ -340,7 +340,7 @@ public static class CombatEngine
             case 1: // pre-AOS
             {
                 int chance = (attackSkill + 500) * 100 / Math.Max(1, (targetSkill + 500) * 2);
-                return Math.Clamp(chance, 5, 95);
+                return Math.Clamp(chance, 0, 100); // CResourceCalc.cpp:202
             }
             case 2: // AOS
             {
@@ -356,17 +356,15 @@ public static class CombatEngine
                 int atkCalc = (attackSkill / 10 + 20) * (100 + hci);
                 int defCalc = (targetSkill / 10 + 20) * (100 + dci);
                 int chance = atkCalc * 100 / Math.Max(1, defCalc * 2);
-                return Math.Clamp(chance, 5, 95);
+                return Math.Clamp(chance, 2, 100); // minimum 2% (CResourceCalc.cpp:226)
             }
             default: // Sphere custom (era 0) — Source-X Calc_CombatChanceToHit
             {
-                // Sleeping/frozen target: Source-X returns rand(10) as the skill-
-                // check DIFFICULTY (trivially easy → a near-certain hit). In this
-                // percent model that means a fixed high chance, not a random one —
-                // the old `rand(10)*10` averaged 45% and made paralyzed targets
-                // dodge more than half the swings.
-                if (target.IsStatFlag(StatFlag.Freeze))
-                    return 95;
+                // The value returned is the ceiling of the random draw Source-X makes
+                // (Calc_CombatChanceToHit returns rand(iDiff)). A sleeping or frozen
+                // target draws from rand(10) instead (CResourceCalc.cpp:153).
+                if (target.IsStatFlag(StatFlag.Sleeping) || target.IsStatFlag(StatFlag.Freeze))
+                    return 10;
 
                 int iSkillVal = attackSkill;
                 // Offence: weapon skill + tactics, averaged.
@@ -374,7 +372,9 @@ public static class CombatEngine
                 // Defence: target's tactics blended with their DEX (the key
                 // factor the old formula dropped entirely).
                 int iSkillDefend = tacticsDef;
-                int iStam = target.Dex;
+                // Stat_GetVal(STAT_DEX) is the CURRENT stamina, so a tired defender
+                // is easier to hit (CResourceCalc.cpp:175).
+                int iStam = target.Stam;
                 bool targetRanged = IsRangedSkill(GetWeaponSkill(target));
                 bool attackerRanged = IsRangedSkill(attackerWeaponSkill);
                 if (targetRanged && !attackerRanged)
@@ -525,6 +525,11 @@ public static class CombatEngine
                 dmgBonus = EffectiveStr(attacker) * 10 / 100;
                 break;
         }
+        // The whole bonus is a player's (or every NPC's under COMBAT_NPC_BONUSDAMAGE):
+        // Fight_CalcDamage wraps it in m_pPlayer || IsSetCombatFlags(...)
+        // (CCharFight.cpp:1235). Monsters got their STR percent on top of DAM.
+        if (!attacker.IsPlayer && (Character.CombatFlags & (int)CombatFlags.NpcBonusDamage) == 0)
+            dmgBonus = 0;
 
         // Definitions and callback-provided ranges are external input. Keep
         // arithmetic in 64-bit space and normalise reversed/negative ranges
@@ -1160,33 +1165,17 @@ public static class CombatEngine
         // distinguish it from a connecting hit that armor fully absorbs (which
         // returns 0 — Source-X still plays the hit sound/animation for that).
         //
-        // Era 0 is the Source-X two-stage roll: Calc_CombatChanceToHit returns
-        // a RANDOM difficulty 0..iDiff which then runs Skill_CheckSuccess on
-        // the attacker's weapon skill (bell curve). The drawn difficulty is
-        // m_Act_Difficulty — it also feeds the passive skill gain below. The
-        // old single percent-roll flattened the compounded variance.
-        int hitChance;
-        if (hitEra == 0)
-        {
-            // Frozen/sleeping target: the reference returns rand(10) — a
-            // trivially easy difficulty — instead of the computed iDiff.
-            int diffCap = target.IsStatFlag(StatFlag.Freeze)
-                ? 9
-                : CalcHitChanceCore(attacker, target, 0, GetWeaponSkill(attacker, weapon));
-            int actDifficulty = _rand.Next(diffCap + 1);
-            int effSkill = GetHitChanceSkill(attacker, GetWeaponSkill(attacker, weapon));
-            bool hitLanded = attacker.PrivLevel >= PrivLevel.GM ||
-                Skills.SkillEngine.CheckSuccessValue(effSkill, actDifficulty);
-            hitChance = actDifficulty; // m_Act_Difficulty for the gain rolls
-            if (!hitLanded)
-                return AttackMiss;
-        }
-        else
-        {
-            hitChance = CalcHitChanceCore(attacker, target, hitEra, GetWeaponSkill(attacker, weapon));
-            if (_rand.Next(100) >= hitChance)
-                return AttackMiss;
-        }
+        // Source-X Skill_Fighting's stroke (CCharSkill.cpp:3048): m_Act_Difficulty =
+        // Calc_CombatChanceToHit, then Skill_CheckSuccess(skill, difficulty, false) -
+        // a FLAT percent check, difficulty*10 >= rand(1000), with a GM always
+        // landing. In era 0 the difficulty is itself a draw, rand(iDiff) (0..iDiff-1).
+        // The bell curve used here instead let a skilled attacker land almost every
+        // swing, where the reference tops out near iDiff/2 percent.
+        int hitCap = CalcHitChanceCore(attacker, target, hitEra, GetWeaponSkill(attacker, weapon));
+        int hitChance = hitEra == 0 ? _rand.Next(hitCap) : hitCap; // m_Act_Difficulty, also fed to the gain rolls
+        bool hitLanded = attacker.PrivLevel >= PrivLevel.GM || hitChance * 10 >= _rand.Next(1000);
+        if (!hitLanded)
+            return AttackMiss;
 
         // Calculate raw damage
         var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
@@ -1280,7 +1269,10 @@ public static class CombatEngine
             // Source-X OnTakeDamage pre-AOS path: the WHOLE-BODY coverage-
             // weighted AR mitigates every hit; which worn piece takes the
             // durability wear is the @GetHit ItemDamageLayer roll below.
-            int armorRating = CalcArmorDefense(target);
+            // pCharDef->m_defense + m_defense (CCharFight.cpp:735): the creature's
+            // own ARMOR counts as well as what it wears. Only the worn part was
+            // read, so every scripted monster fought with no natural armour.
+            int armorRating = CalcArmorDefense(target) + target.CharDefArmor();
             int arMax = (int)Math.Min((long)armorRating * _rand.Next(7, 36) / 100, int.MaxValue);
             int arMin = arMax / 2;
             int defense = (int)_rand.NextInt64(arMin, (long)arMax + 1);

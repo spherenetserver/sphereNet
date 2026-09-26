@@ -152,11 +152,11 @@ public class VendorStableParityTests
         gold.BaseId = 0x0EED; gold.ItemType = ItemType.Gold; gold.Amount = 5000;
         pack.AddItem(gold);
 
-        // Buy the EXPENSIVE entry — the server must charge 999, not the cheap 10.
+        // Buy the EXPENSIVE entry — the server must charge 999 (+15% markup), not the cheap 10.
         int cost = VendorEngine.ProcessBuy(buyer, vendor,
             new[] { new TradeEntry { ItemUid = dear.Uid, ItemId = dear.BaseId, Amount = 1 } });
 
-        Assert.Equal(999, cost);
+        Assert.Equal(1149, cost); // 999 + IMulDivLL(999, 15, 100)
     }
 
     // ---- #10: stable snapshots the FULL skill (no 1000 clip = data loss) ----
@@ -270,7 +270,7 @@ public class VendorStableParityTests
 
         int cost = VendorEngine.ProcessBuy(buyer, vendor,
             new[] { new TradeEntry { ItemUid = entry.Uid, ItemId = entry.BaseId, Amount = 3 } });
-        Assert.Equal(30, cost);
+        Assert.Equal(36, cost); // 3 * (10 + 15% markup)
 
         // Each bought item is a full clone: it carries the per-instance tag, not
         // just id/hue/name (the old shallow copy silently dropped it). A
@@ -287,17 +287,20 @@ public class VendorStableParityTests
         });
     }
 
-    // ---- #1: a vendor with no BUY list buys anything (legacy behaviour kept) ----
+    // ---- #1: a vendor with no BUY list buys nothing (NPC_FindVendableItem) ----
 
     [Fact]
-    public void GetVendorBuyFilter_NoBuyList_ReturnsNull()
+    public void GetVendorBuyFilter_NoBuyList_BuysNothing_ButTakesItsSamples()
     {
         var world = CreateWorld();
         var vendor = world.CreateCharacter();
         vendor.NpcBrain = NpcBrainType.Vendor;
 
-        // No VENDOR_BUY_LIST tag -> null filter -> the vendor buys anything.
-        Assert.Null(VendorEngine.GetVendorBuyFilter(vendor));
+        Assert.Empty(VendorEngine.GetVendorBuyFilter(vendor));
+
+        // A sample in the BUYS box is what the vendor buys (LAYER_VENDOR_BUYS).
+        TestHarness.GiveVendorBuySample(world, vendor, 0x13B0);
+        Assert.Equal([(ushort)0x13B0], VendorEngine.GetVendorBuyFilter(vendor));
     }
 
     // ---- #2: opt-in vendor money pool — sell debits it, blocks when broke ----
@@ -311,6 +314,7 @@ public class VendorStableParityTests
         var vendor = world.CreateCharacter();
         vendor.NpcBrain = NpcBrainType.Vendor;
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+        TestHarness.GiveVendorBuySample(world, vendor, 0x13B0);
 
         var player = world.CreateCharacter();
         player.IsPlayer = true;
@@ -355,6 +359,7 @@ public class VendorStableParityTests
         var vendor = world.CreateCharacter();
         vendor.NpcBrain = NpcBrainType.Vendor;
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+        TestHarness.GiveVendorBuySample(world, vendor, 0x13B0);
 
         var player = world.CreateCharacter();
         player.IsPlayer = true;

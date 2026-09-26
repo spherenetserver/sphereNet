@@ -120,6 +120,7 @@ public sealed class SourceXWave263Tests
         // bonus percent (Source-X Fight_CalcDamage) — the base comes from the
         // weapon DAM, never from a Str-derived unarmed base.
         var (world, ch) = Make(str: 40);
+        ch.IsPlayer = true; // the STR bonus is a player's (Fight_CalcDamage, CCharFight.cpp:1235)
         var saved = CombatEngine.WeaponDefLookup;
         try
         {

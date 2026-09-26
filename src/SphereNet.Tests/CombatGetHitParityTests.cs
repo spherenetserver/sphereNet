@@ -218,6 +218,7 @@ public class CombatGetHitParityTests
             CombatEngine.BreakOnZeroHits = false;
 
             var attacker = MakeChar();
+            attacker.PrivLevel = SphereNet.Core.Enums.PrivLevel.GM; // a GM always lands (Skill_CheckSuccess)
             var target = MakeChar();
             var chest = new SphereNet.Game.Objects.Items.Item { HitsMax = 50, HitsCur = 50 };
             target.Equip(chest, Layer.Chest);

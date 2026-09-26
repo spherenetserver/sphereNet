@@ -131,10 +131,10 @@ public sealed class GeneralGameplayIntegrityTests
         var row = world.CreateItem(); row.BaseId = 0x0F52; row.Amount = 1; row.SetTag("PRICE", "10");
         stock.AddItem(row);
 
-        Assert.Equal(10, VendorEngine.ProcessBuy(buyer, vendor,
+        Assert.Equal(12, VendorEngine.ProcessBuy(buyer, vendor,   // 10 + 15% markup
             [new TradeEntry { ItemUid = row.Uid, Amount = 1 }]));
 
-        Assert.Equal(990, VendorEngine.CountGold(buyer));
+        Assert.Equal(988, VendorEngine.CountGold(buyer));
         Assert.Contains(world.GetItemsInRange(buyer.Position, 0),
             i => i.BaseId == 0x0F52 && !i.IsDeleted && !i.ContainedIn.IsValid);
     }

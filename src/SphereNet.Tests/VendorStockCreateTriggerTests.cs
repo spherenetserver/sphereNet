@@ -51,12 +51,12 @@ public sealed class VendorStockCreateTriggerTests
             var item = Assert.Single(vendor.GetEquippedItem(Layer.VendorStock)!.Contents);
             Assert.Equal(0, item.Price);
             Assert.False(item.TryGetTag("PRICE", out _));
-            Assert.Equal(3, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item));
+            Assert.Equal(3, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item)); // 3 + IMulDivLL(3, 15, 100) = 3
             var def = DefinitionLoader.GetItemDef(0x0F3F)!;
             def.ValueMin = def.ValueMax = 7;
-            Assert.Equal(7, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item));
+            Assert.Equal(8, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item)); // 7 + 15% markup
             item.Price = 11;
-            Assert.Equal(11, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item));
+            Assert.Equal(13, SphereNet.Game.Clients.ClientWorldFeaturesHandler.GetVendorItemPrice(vendor, item)); // 11 + 15% markup
         }
         finally { File.Delete(path); }
     }

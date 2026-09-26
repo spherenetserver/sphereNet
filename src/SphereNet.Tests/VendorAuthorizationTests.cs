@@ -116,9 +116,9 @@ public sealed class VendorAuthorizationTests
         var buyer = MakeBuyer(world, "Alice", 100);
         var (vendor, row) = MakeVendor(world, buyer.Position);
 
-        Assert.Equal(10, VendorEngine.ProcessBuy(buyer, vendor,
+        Assert.Equal(12, VendorEngine.ProcessBuy(buyer, vendor,   // 10 + 15% markup
             [new TradeEntry { ItemUid = row.Uid, Amount = 1 }]));
-        Assert.Equal(90, VendorEngine.CountGold(buyer));
+        Assert.Equal(88, VendorEngine.CountGold(buyer));
         Assert.Equal(4, row.Amount);
     }
 
@@ -163,8 +163,8 @@ public sealed class VendorAuthorizationTests
         var buyer = MakeBuyer(world, "SphereBotanist", 100);
         var (vendor, row) = MakeVendor(world, buyer.Position);
 
-        Assert.Equal(10, VendorEngine.ProcessBuy(buyer, vendor,
+        Assert.Equal(12, VendorEngine.ProcessBuy(buyer, vendor,   // 10 + 15% markup
             [new TradeEntry { ItemUid = row.Uid, Amount = 1 }]));
-        Assert.Equal(90, VendorEngine.CountGold(buyer));
+        Assert.Equal(88, VendorEngine.CountGold(buyer));
     }
 }

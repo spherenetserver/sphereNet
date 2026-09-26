@@ -94,6 +94,7 @@ public sealed class RevealAndStatRepairConfigTests
     public void PersonalSpaceIsInvertedToo()
     {
         var (world, ch) = Hidden();
+        ch.StepStealth = 5; // sneaking: the step itself does not reveal (CheckRevealOnMove)
         var engine = new MovementEngine(world);
 
         var blocker = world.CreateCharacter();

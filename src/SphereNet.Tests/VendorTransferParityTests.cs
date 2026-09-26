@@ -128,7 +128,7 @@ public sealed class VendorTransferParityTests
         var row = AddStockRow(world, stock, 0x0F52, 5, 10);   // dagger, not stackable
         Assert.False(row.IsStackable);
 
-        Assert.Equal(30, VendorEngine.ProcessBuy(buyer, vendor,
+        Assert.Equal(36, VendorEngine.ProcessBuy(buyer, vendor,           // 3 * (10 + 15% markup)
             [new TradeEntry { ItemUid = row.Uid, Amount = 3 }]));
 
         var delivered = buyer.Backpack!.Contents.Where(i => i.BaseId == 0x0F52).ToList();
@@ -148,7 +148,7 @@ public sealed class VendorTransferParityTests
         var row = AddStockRow(world, stock, 0x0F7A, 5, 10);   // reagent
         Assert.True(row.IsStackable);
 
-        Assert.Equal(30, VendorEngine.ProcessBuy(buyer, vendor,
+        Assert.Equal(36, VendorEngine.ProcessBuy(buyer, vendor,           // 3 * (10 + 15% markup)
             [new TradeEntry { ItemUid = row.Uid, Amount = 3 }]));
 
         var delivered = buyer.Backpack!.Contents.Where(i => i.BaseId == 0x0F7A).ToList();
@@ -220,7 +220,7 @@ public sealed class VendorTransferParityTests
         var (vendor, stock, _) = MakeVendor(world, buyer.Position);
         var row = AddStockRow(world, stock, 0x0F52, 1, 10);
 
-        Assert.Equal(10, VendorEngine.ProcessBuy(buyer, vendor,
+        Assert.Equal(12, VendorEngine.ProcessBuy(buyer, vendor,           // 10 + 15% markup
             [new TradeEntry { ItemUid = row.Uid, Amount = 1 }]));
 
         Assert.True(row.IsDeleted);
@@ -238,6 +238,7 @@ public sealed class VendorTransferParityTests
         var (vendor, stock, extra) = MakeVendor(world, seller.Position, owner);
         vendor.SetTag("VENDOR_GOLD", "1000");
         AddStockRow(world, stock, 0x0F52, 1, 10);   // vendor deals in this item
+        TestHarness.GiveVendorBuySample(world, vendor, 0x0F52);
 
         var goods = world.CreateItem();
         goods.BaseId = 0x0F52;
@@ -262,6 +263,7 @@ public sealed class VendorTransferParityTests
         var (vendor, stock, _) = MakeVendor(world, seller.Position);
         vendor.SetTag("VENDOR_GOLD", "1000");
         AddStockRow(world, stock, 0x0F52, 1, 10);
+        TestHarness.GiveVendorBuySample(world, vendor, 0x0F52);
 
         var goods = world.CreateItem();
         goods.BaseId = 0x0F52;

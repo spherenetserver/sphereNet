@@ -19,7 +19,7 @@ public sealed class SpellIdDispatchTests
     {
         var world = TestHarness.CreateWorld();
         var registry = new SpellRegistry();
-        registry.Register(new SpellDef { Id = spell, Flags = flags, DurationBase = 100 });
+        registry.Register(new SpellDef { Id = spell, Flags = flags, DurationBase = 100, EffectBase = 5, EffectScale = 20 });
         var engine = new SpellEngine(world, registry);
         var caster = world.CreateCharacter();
         caster.IsPlayer = true;

@@ -145,7 +145,7 @@ public class VendorPacketRoundtripTests
         new PacketVendorBuy().OnReceive(new PacketBuffer(bytes), state);
 
         Assert.Equal(10 - 3, stockItem.Amount);          // virtual stock decremented
-        Assert.Equal(1000 - 15, VendorEngine.CountGold(player)); // 3 * 5 charged
+        Assert.Equal(1000 - 18, VendorEngine.CountGold(player)); // 3 * (5 + 15% markup = 6) charged
         // A non-stackable multi-buy materialises as separate Amount=1 objects
         // (Source-X Event_VendorBuy, CClientEvent.cpp:1328).
         Assert.Equal(3, player.Backpack!.Contents.Count(
@@ -183,6 +183,7 @@ public class VendorPacketRoundtripTests
         vendor.NpcBrain = NpcBrainType.Vendor;
         vendor.SetTag("VENDOR_GOLD", "1000"); // funded purse — W-F: the pool is always tracked
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+        TestHarness.GiveVendorBuySample(world, vendor, 0x13B0);
         var player = MakePlayer(world, gold: 0);
 
         // Sellable item in the player's pack valued at 10. Source-X GetVendorPrice

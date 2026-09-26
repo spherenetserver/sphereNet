@@ -37,6 +37,9 @@ public sealed class SkillDef : ResourceLink
     /// <summary>PROMPT_CLILOC: cliloc id shown on the skill's target cursor (Source-X m_sTargetPromptCliloc).</summary>
     public string PromptCliloc { get; set; } = "";
     public int Values { get; set; }
+    /// <summary>VALUES as the curve upstream keeps (m_Values): the gold a skill adds
+    /// to an item made with it, read linearly by skill (CalculateMakeValue).</summary>
+    public ValueCurve ValueCurve { get; private set; } = ValueCurve.Empty;
 
     public SkillDef(ResourceId id) : base(id) { }
 
@@ -96,7 +99,10 @@ public sealed class SkillDef : ResourceLink
             case "PROMPT_MSG": PromptMsg = value; break;
             case "PROMPT_CLILOC": PromptCliloc = value; break;
             case "RANGE": Range = ValueCurve.ParseSphereNumber(value); break;
-            case "VALUES": Values = ValueCurve.ParseSphereNumber(value); break;
+            case "VALUES":
+                Values = ValueCurve.ParseSphereNumber(value);
+                ValueCurve = ValueCurve.Parse(value);
+                break;
         }
     }
 }

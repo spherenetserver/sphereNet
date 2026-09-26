@@ -145,6 +145,7 @@ public sealed class ChivalrySpellTests
                 Flags = SpellFlag.TargChar | SpellFlag.Good,
             });
 
+        target.Str = 100; target.Dex = 100; target.Int = 100; // room for the shared curse value
         short strBase = target.Str;
         engine.ApplyDirectEffect(caster, target, SpellType.Strength, 500);
         short strBuffed = target.Str;

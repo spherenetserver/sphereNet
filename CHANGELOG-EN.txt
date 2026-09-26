@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Combat, magic, taming, regen, hiding and vendor prices follow Source-X
+------------------------------------------------------------------------
+FIX - Melee hits roll a flat percent like Skill_Fighting: difficulty*10 >=
+      rand(1000), a GM always landing. In era 0 the difficulty is itself
+      rand(iDiff), so a skilled fighter lands about iDiff/2 percent; the bell
+      curve used to land nearly every swing. A sleeping target draws from
+      rand(10) as a frozen one does; the defence reads current stamina, not
+      DEX; era 1/2 chances clamp to 0-100 / 2-100 instead of 5-95.
+FIX - A creature's chardef ARMOR counts in melee (pCharDef->m_defense +
+      m_defense). Only worn armour did, so scripted monsters had none.
+FIX - The STR/Tactics/Anatomy damage bonus is a player's, or every NPC's under
+      COMBAT_NPC_BONUSDAMAGE. Monsters got it on top of their DAM.
+FIX - Magic resistance is Source-X's: resist = MR/10, max(resist/5,
+      resist - ((magery-200)/50 + (1+spell/8)*50)), rolled as a flat percent.
+FIX - Stat buffs and curses move stats by the spell EFFECT itself (with
+      MAGICF_OSIFORMULAS: 1+EvalInt/100, curses 8+EvalInt/100-MR/100); a fifth
+      was applied. Curse lowers all three stats by one shared value that keeps
+      each at least 1.
+FIX - Taming follows Skill_Taming: a creature with no TAMING skill, with
+      Animal Lore, or in a playable body cannot be tamed (a GM excepted), and
+      the difficulty is TAMING/10, +50 when the creature remembers the tamer
+      as a foe. Any monster could be tamed by its hit points. Default range 10.
+FIX - Hit points regenerate while hungry or poisoned (Stats_Regen has no such
+      gate); the +2 human bonus needs RACIALF_HUMAN_TOUGH.
+FIX - A hidden or invisible character spends its stealth steps on every move
+      and is revealed when they run out; a plain Hiding reveals on the first
+      step. Hiding allowed unlimited unseen walking. Staff invisibility, which
+      Source-X keeps as STATF_INSUBSTANTIAL, is not revealed by moving.
+FIX - Vendors add their markup to what they sell: OVERRIDE.VALUE, else PRICE,
+      else the make value, plus markup, and 100000 when nothing prices the
+      item. With no VALUE the make value is worked out from RESOURCES and the
+      SKILLMAKE skills' VALUES (CalculateMakeValue). An owned vendor sells
+      without markup; VENDORMARKUP is also read from the chardef and may be
+      negative.
+FIX - A vendor buys only what its BUY= list or the samples in its BUYS box
+      name; with neither it buys nothing. It used to buy anything.
+
 [2026-09-26] - @LogOut decides the linger; disconnects say what happened
 ------------------------------------------------------------------------
 FIX - @LogOut runs before the link-dead decision with ARGN1 = the linger time

@@ -41,6 +41,8 @@ public sealed class AdminCommandProcessor
     public event Action<int, string>? OnBotRequested;
     // Headless stress population (items, npcs): mirrors the in-game .STRESS.
     public event Action<int, int, bool>? OnStressRequested;
+    /// <summary>Runs a line this processor does not know as a server verb; null = not a verb.</summary>
+    public Func<string, string?>? ServerVerbFallback { get; set; }
 
     public AdminCommandProcessor(GameWorld world, AccountManager accounts,
         SphereConfig config, Func<int> getActiveConnections, ILoggerFactory loggerFactory,
@@ -307,7 +309,13 @@ public sealed class AdminCommandProcessor
                 return false;
 
             default:
-                output($"Unknown command: {cmd}");
+                // Source-X runs a console line as a server verb (CServer::OnConsoleCmd
+                // -> r_Verb), so SERV-only verbs such as SAVESTATICS work here too.
+                string? verbResult = ServerVerbFallback?.Invoke(input.Trim());
+                if (verbResult != null)
+                    output($"{cmd}: {verbResult}");
+                else
+                    output($"Unknown command: {cmd}");
                 break;
         }
 

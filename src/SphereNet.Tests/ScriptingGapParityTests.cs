@@ -348,6 +348,21 @@ public sealed class ScriptingGapParityTests : IDisposable
     }
 
     [Fact]
+    public void Console_UnknownLineRunsAsAServerVerb()
+    {
+        var proc = MakeProcessor();
+        var seen = new List<string>();
+        proc.ServerVerbFallback = line => { seen.Add(line); return line.StartsWith("SAVESTATICS") ? "42" : null; };
+
+        var lines = new List<string>();
+        proc.ProcessCommand("SAVESTATICS", lines.Add);
+        proc.ProcessCommand("NOSUCHVERB", lines.Add);
+
+        Assert.Equal(["SAVESTATICS", "NOSUCHVERB"], seen);
+        Assert.Equal(["SAVESTATICS: 42", "Unknown command: NOSUCHVERB"], lines);
+    }
+
+    [Fact]
     public void Console_ShrinkMem_AnswersUpstreamsLine()
     {
         var lines = new List<string>();

@@ -4,6 +4,13 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Dunya islemi komutlari sunucu konsolunda ve telnet'te
+------------------------------------------------------------------------
+DUZELTME - Sunucu konsolunda ya da telnet'te yazilan SAVESTATICS, EXPORT,
+           IMPORT, RESTORE ve LOAD "Unknown command" veriyordu; Source-X
+           konsol satirini sunucu komutu olarak calistirir. Artik ana dongude
+           calisir ve sonucunu yazar (oyun ici .serv hali zaten calisiyordu).
+
 [2026-09-26] - Yalnizca yorum iceren ITEMDEF bolumleri esyayi tanimlar
 ------------------------------------------------------------------------
 DUZELTME - Anahtari olmayan (yalnizca yorum iceren) [ITEMDEF n] bolumu artik

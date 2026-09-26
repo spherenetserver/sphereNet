@@ -4,6 +4,13 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - World-ops verbs on the server console and telnet
+------------------------------------------------------------------------
+FIX - SAVESTATICS, EXPORT, IMPORT, RESTORE and LOAD typed on the server
+      console or telnet answered "Unknown command"; Source-X runs a console
+      line as a server verb. They now run on the main loop and print their
+      result, as the in-game .serv form already did.
+
 [2026-09-26] - Comment-only ITEMDEF sections define their item
 ------------------------------------------------------------------------
 FIX - An [ITEMDEF n] section with no keys (only comments) now defines the

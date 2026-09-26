@@ -188,10 +188,7 @@ public static partial class Program
                 // World-ops (EXPORT/IMPORT/RESTORE/SAVESTATICS/LOAD) live in the
                 // script-side server resolver, not the console processor — route
                 // them there so .serv.export etc. work in-game too.
-                string upperCmd = cmd.TrimStart().ToUpperInvariant();
-                if (upperCmd.StartsWith("EXPORT") || upperCmd.StartsWith("IMPORT") ||
-                    upperCmd.StartsWith("RESTORE") || upperCmd.StartsWith("SAVESTATICS") ||
-                    upperCmd.StartsWith("LOAD"))
+                if (IsWorldOpsVerb(cmd))
                 {
                     Echo(ResolveServerProperty(cmd) ?? "(no result)");
                     return true;
@@ -199,6 +196,19 @@ public static partial class Program
                 _consoleProcessor.ProcessCommand(cmd, Echo);
                 return true;
             };
+
+            // The same world-ops verbs typed on the server console or telnet. They
+            // walk the world, so they run on the main loop.
+            Func<string, string?> worldOpsFallback = line =>
+            {
+                if (!IsWorldOpsVerb(line))
+                    return null;
+                try { return InvokePanelOnMainLoop(() => ResolveServerProperty(line) ?? "(no result)", line); }
+                catch (TimeoutException) { return "still running on the main loop; see the server log"; }
+                catch (InvalidOperationException ex) { return ex.Message; }
+            };
+            _consoleProcessor.ServerVerbFallback = worldOpsFallback;
+            _telnet.Processor.ServerVerbFallback = worldOpsFallback;
 
             // Audit logging for admin commands
             _telnet.Processor.OnCommandExecuted += (source, cmd) =>
@@ -497,6 +507,18 @@ public static partial class Program
     }
 
     // --- Console Commands ---
+
+    /// <summary>
+    /// World-ops verbs (EXPORT/IMPORT/RESTORE/SAVESTATICS/LOAD) live in the
+    /// script-side server resolver rather than the console processor.
+    /// </summary>
+    private static bool IsWorldOpsVerb(string cmd)
+    {
+        string upper = cmd.TrimStart().ToUpperInvariant();
+        return upper.StartsWith("EXPORT") || upper.StartsWith("IMPORT") ||
+               upper.StartsWith("RESTORE") || upper.StartsWith("SAVESTATICS") ||
+               upper.StartsWith("LOAD");
+    }
 
     /// <summary>
     /// Write a line to the console form (GUI) or stdout (headless).

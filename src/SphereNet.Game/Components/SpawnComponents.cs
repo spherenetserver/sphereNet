@@ -27,11 +27,12 @@ public sealed class SpawnComponent
     private int _charDefId;
     private SpawnGroupDef? _spawnGroup;
     private int _maxCount = 1;
+    // CCSpawn constructor defaults (CCSpawn.cpp:64-70): MAXDIST 15, TIMELO 15,
+    // TIMEHI 30 minutes. Only a TIMEHI of 0 or less turns the delay into a fresh
+    // random 1..30 minutes (:554).
     private int _spawnRange = 15;
-    // Source-X CCSpawn.cpp:554: with no MOREP timing the respawn delay is a
-    // fresh random 1..30 minutes each cycle (not a fixed 15/30 window).
-    private int _minDelaySec = 60;
-    private int _maxDelaySec = 1800;
+    private int _minDelaySec = 15 * 60;
+    private int _maxDelaySec = 30 * 60;
     private long _nextSpawnTick;
     private bool _stopped;
     private bool _killingChildren;
@@ -48,8 +49,6 @@ public sealed class SpawnComponent
     /// same sequence the GM .add path runs. Unwired (tests) skips cleanly.</summary>
     public static Action<Objects.Characters.Character>? OnNpcScriptInit;
 
-    private const int MaxSpawnLimit = 250;
-
     public int CurrentCount => _spawnedUids.Count;
 
     /// <summary>Source-X IT_SPAWN_CHAMPION: bypass the amount cap and never
@@ -59,11 +58,9 @@ public sealed class SpawnComponent
     public int MaxCount
     {
         get => _maxCount;
-        set
-        {
-            _maxCount = Math.Clamp(value, 1, MaxSpawnLimit);
-            _spawnItem.Amount = (ushort)_maxCount;
-        }
+        // CCSpawn::SetAmount (CCSpawn.cpp:123-127): the component's own word-sized
+        // count, no cap below it and nothing written back onto the item.
+        set => _maxCount = Math.Clamp(value, 0, ushort.MaxValue);
     }
     public int CharDefId { get => _charDefId; set => _charDefId = value; }
 
@@ -208,6 +205,17 @@ public sealed class SpawnComponent
             }
         }
 
+        // An id that names no CHARDEF becomes DEFAULTCHAR (SetID, CChar.cpp:1600-1611).
+        if (DefinitionLoader.GetCharDef(defIndex) == null)
+        {
+            int fallback = CharDefHelper.ResolveDefaultCharIndex(_resources);
+            if (fallback != 0)
+            {
+                defIndex = fallback;
+                bodyId = ResolveBodyForIndex(defIndex);
+            }
+        }
+
         var ch = _world.CreateCharacter();
         ch.BaseId = bodyId;
         ch.BodyId = bodyId;
@@ -255,22 +263,9 @@ public sealed class SpawnComponent
             if (charDef.NpcBrain != NpcBrainType.None)
                 ch.NpcBrain = charDef.NpcBrain;
 
-            if (charDef.MaxFoodExplicit || charDef.MaxFood > 0)
-            {
-                // The ceiling FIRST: the Food setter clamps to whatever MaxFood is at
-                // the time, so writing the value before the tag capped a MAXFOOD=100
-                // creature at the classic 60 and it spawned hungrier than its own
-                // definition allows. Source-X sets FOOD to Stat_GetMaxAdjusted after
-                // the definition is in place (CChar.cpp:321).
-                ch.SetTag("MAXFOOD", charDef.MaxFood.ToString());
-                ch.Food = charDef.MaxFood;
-            }
-            // The AI hunger counter is NpcFood (0-60), a SEPARATE meter from
-            // the Food stat above — seed it fed like pet adoption does. A
-            // fresh spawn used to start at 0 and read as starving: want 100
-            // on every edible and a constant ground-food hunt.
-            if (ch.NpcFood == 0)
-                ch.NpcFood = 50;
+            // A new creature starts full: FOOD = Stat_GetMaxAdjusted(STAT_FOOD), the
+            // definition's m_MaxFood (CChar.cpp:321) - zero for one that does not eat.
+            CharDefHelper.InitNpcFood(ch);
 
             CharDefHelper.ApplyCombatProperties(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionSkills(ch, charDef);
@@ -382,7 +377,8 @@ public sealed class SpawnComponent
         bool canSwim = charDef != null && (charDef.Can & CanFlags.C_Swim) != 0;
         var (mapW, mapH) = mapData.GetMapSize(_spawnItem.MapIndex);
 
-        for (int attempt = 0; attempt < 25; attempt++)
+        // Four MoveNear tries, then the gem itself (CCSpawn.cpp:433-449).
+        for (int attempt = 0; attempt < 4; attempt++)
         {
             int range = _spawnRange > 0 ? _rand.Next(_spawnRange) + 1 : 1;
             short dx = (short)_rand.Next(-range, range + 1);
@@ -401,7 +397,8 @@ public sealed class SpawnComponent
             // void, where nothing can reach them and they cannot walk out.
             var stand = _world.Standing.ResolveStandingSurface(child, _spawnItem.MapIndex, px, py,
                 _spawnItem.Z, Movement.WalkCheck.StandingPolicy.Settle);
-            if (!stand.Found || Math.Abs(stand.Z - _spawnItem.Z) > Movement.WalkCheck.PersonHeight)
+            // No height window: MoveNear asks only CanMoveWalkTo (CObjBase.cpp:797).
+            if (!stand.Found)
                 continue;
             sbyte pz = stand.Z;
             if (!mapData.IsPassable(_spawnItem.MapIndex, px, py, pz))
@@ -828,19 +825,26 @@ public sealed class SpawnComponent
     public void ApplyMoreP()
     {
         var mp = _spawnItem.MoreP;
+        // A spawner whose MOREP was never set keeps the constructor defaults - 15
+        // tiles, 15..30 minutes (CCSpawn.cpp:64-70). A MOREP that WAS set is taken
+        // verbatim (:1064-1082): MOREZ 0 is "next to the gem", and a TIMEHI of 0 is
+        // the random 1..30 minutes (:554).
+        if (mp.X == 0 && mp.Y == 0 && mp.Z == 0)
+            return;
         // Range first: SetDelay syncs MOREP back to the item, and doing that while the
         // range was still the old one overwrote the value being read.
         _spawnRange = Math.Max(0, (int)mp.Z);
-        if (mp.X > 0 || mp.Y > 0)
+        if (mp.Y > 0)
         {
             int minMin = Math.Max(1, (int)mp.X);
-            int maxMin = Math.Max(minMin, mp.Y > 0 ? (int)mp.Y : minMin);
+            int maxMin = Math.Max(minMin, (int)mp.Y);
             SetDelay(minMin, maxMin);
         }
-        // Source-X loads MOREZ verbatim into _iMaxDist — including 0, which
-        // makes children spawn adjacent to the gem (CCSpawn MoveNear dist 1).
-        // Keeping the 15-tile default whenever MOREZ was 0 scattered fresh
-        // GM-placed worldgems' children across the neighborhood.
+        else
+        {
+            _minDelaySec = 60;
+            _maxDelaySec = 30 * 60;
+        }
     }
 
     /// <summary>Reset the spawn timer using current delay values.</summary>
@@ -936,8 +940,6 @@ public sealed class ItemSpawnComponent
     private int _minDelaySec = 60;
     private int _maxDelaySec = 1800;
 
-    private const int MaxSpawnLimit = 250;
-
     public int ItemDefId { get => _itemDefId; set => _itemDefId = value; }
     public int CurrentCount
     {
@@ -950,11 +952,8 @@ public sealed class ItemSpawnComponent
     public int MaxCount
     {
         get => _maxCount;
-        set
-        {
-            _maxCount = Math.Clamp(value, 1, MaxSpawnLimit);
-            _spawnItem.Amount = (ushort)_maxCount;
-        }
+        // CCSpawn::SetAmount (CCSpawn.cpp:123-127): no cap, no write-back.
+        set => _maxCount = Math.Clamp(value, 0, ushort.MaxValue);
     }
     /// <summary>Source-X PILE: max items per spawn interval for stackable items.</summary>
     public int Pile { get => _pile; set => _pile = Math.Max(1, value); }
@@ -1357,13 +1356,15 @@ public sealed class ItemSpawnComponent
             return;
         }
 
-        _nextSpawnTick = Environment.TickCount64 + _rand.Next(5, 30) * 1000;
-        _spawnItem.SetTimeout(_nextSpawnTick);
+        // No invented 5-30 s first arm: upstream subscribes the component without
+        // touching the timer (CItem.cpp:3939) and the next check comes from the
+        // spawner's own TIMELO/TIMEHI window, as the char spawner does.
+        SetNextSpawnTime();
     }
 
     private void SetNextSpawnTime()
     {
-        _nextSpawnTick = Environment.TickCount64 + _rand.Next(_minDelaySec, _maxDelaySec + 1) * 1000;
+        _nextSpawnTick = Environment.TickCount64 + _rand.Next(_minDelaySec, _maxDelaySec + 1) * 1000L;
         _spawnItem.SetTimeout(_nextSpawnTick);
     }
 

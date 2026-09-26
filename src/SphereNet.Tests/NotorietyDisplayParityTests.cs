@@ -13,6 +13,7 @@ namespace SphereNet.Tests;
 //   personal-grey via aggressor memory, pet-inherits-owner colour, and the
 //   @Criminal duration override. ComputeNotoriety is per-viewer; these lock the
 //   viewer-relative colour byte (1=blue, 2=green, 4=grey).
+[Collection("DefinitionLoaderSerial")]
 public class NotorietyDisplayParityTests
 {
     private static GameWorld CreateWorld()
@@ -44,6 +45,11 @@ public class NotorietyDisplayParityTests
         // Combat order: aggressor records IAggressor(victim), victim records HarmedBy(aggressor).
         aggressor.Memory_Fight_Start(victim);
         victim.Memory_Fight_Start(aggressor);
+        // Personal grey is MEMORY_SAWCRIME | MEMORY_AGGREIVED (CCharNotoriety.cpp:265-271);
+        // HARMEDBY alone (the old SphereNet test) does not grey the aggressor.
+        Assert.Equal(1, GameClient.ComputeNotoriety(world, victim, aggressor));
+        // The blow lands: OnAttackedBy stamps AGGREIVED (CCharFight.cpp:347-358).
+        victim.OnAttackedBy(aggressor);
 
         Assert.Equal(4, GameClient.ComputeNotoriety(world, victim, aggressor));  // grey to the victim
         Assert.Equal(1, GameClient.ComputeNotoriety(world, aggressor, victim));  // innocent blue to the aggressor
@@ -92,7 +98,15 @@ public class NotorietyDisplayParityTests
         var pet = MakePet(world, 101, owner);
         var viewer = MakePlayer(world, 102);
 
+        // PETSINHERITNOTORIETY=0 (Source-X default): the pet keeps its own notoriety.
+        Assert.Equal(3, GameClient.ComputeNotoriety(world, viewer, pet));
+        // Bit 1 << (NOTO_CRIMINAL - 1) set: the pet shows its owner's grey
+        // (CCharNotoriety.cpp:185-200). The old test assumed unconditional inheritance.
+        Character.PetsInheritNotoriety = 1 << 3;
         Assert.Equal(4, GameClient.ComputeNotoriety(world, viewer, pet)); // inherits owner's grey
+        // A mask without the criminal bit does not inherit it.
+        Character.PetsInheritNotoriety = 1 << 0;
+        Assert.Equal(3, GameClient.ComputeNotoriety(world, viewer, pet));
     }
 
     [Fact]
@@ -103,6 +117,7 @@ public class NotorietyDisplayParityTests
         var pet = MakePet(world, 101, owner);
         var viewer = MakePlayer(world, 102);
 
+        Character.PetsInheritNotoriety = 1 << 0; // NOTO_GOOD bit
         Assert.Equal(1, GameClient.ComputeNotoriety(world, viewer, pet)); // inherits owner's innocent blue
     }
 

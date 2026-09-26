@@ -1045,6 +1045,22 @@ public class Item : ObjBase
             if (_weightOverride.HasValue)
                 return _weightOverride.Value;
 
+            // CItemBase::GetWeight (CItemBase.cpp:997-1003): an immovable definition
+            // weighs one stone.
+            int defWeight = DefinitionWeightRaw;
+            return defWeight == ushort.MaxValue ? WeightUnits : defWeight;
+        }
+    }
+
+    /// <summary>The definition's own m_weight in tenths of a stone, before the
+    /// immovable clamp: a script WEIGHT wins; otherwise tiledata weight * 10, with
+    /// tiledata 0xFF or a water tile giving UINT16_MAX (not movable) and tiledata 0
+    /// giving 0 (CItemBase.cpp:103-111). Only when no tiledata is loaded at all
+    /// (detached test worlds) does it fall back to 1.</summary>
+    internal int DefinitionWeightRaw
+    {
+        get
+        {
             var def = ResolveDefinition();
             if (def is { HasWeight: true })
                 return def.Weight;
@@ -1052,9 +1068,10 @@ public class Item : ObjBase
             var mapData = ResolveWorld?.Invoke()?.MapData;
             if (mapData != null)
             {
-                int tileWeight = mapData.GetItemTileData(BaseId).Weight;
-                if (tileWeight > 0 && tileWeight < 0xFF)
-                    return tileWeight * WeightUnits;
+                var tile = mapData.GetItemTileData(BaseId);
+                if (tile.Weight == 0xFF || tile.IsWet)
+                    return ushort.MaxValue;
+                return tile.Weight * WeightUnits;
             }
 
             return 1;
@@ -3687,7 +3704,12 @@ public class Item : ObjBase
             switch (upper)
             {
                 case "SPAWNMAX" or "AMOUNT":
-                    if (int.TryParse(value, out int sm)) SpawnChar.MaxCount = sm;
+                    if (int.TryParse(value, out int sm) && sm >= 0 && sm <= ushort.MaxValue)
+                    {
+                        // The item's AMOUNT is what a save carries for the capacity.
+                        Amount = (ushort)sm;
+                        SpawnChar.MaxCount = sm;
+                    }
                     return true;
                 case "SPAWNRANGE" or "MAXDIST":
                     if (int.TryParse(value, out int sr)) SpawnChar.SpawnRange = sr;
@@ -4773,21 +4795,51 @@ public class Item : ObjBase
     /// IT_LIGHT_LIT _SetTimeoutS(60): one charge every 60 seconds).</summary>
     public const long LightBurnTickMs = 60_000;
 
-    /// <summary>Source-X IT_LIGHT_LIT tick (CItem.cpp:6271): a lit light source
-    /// consumes one charge per minute; at zero it marks itself burned out
-    /// (LIGHT_BURNED, can never relight) and reverts to the doused type.
-    /// ATTR_MOVE_NEVER/STATIC lights burn forever — no charge, no re-arm.
-    /// The running countdown survives restarts via the persisted TIMER.</summary>
+    /// <summary>m_itLight.m_charges - MOREY, a word (CItem.h:344).</summary>
+    internal ushort LightCharges
+    {
+        get { MigrateLegacyLightTags(); return (ushort)_moreP.Y; }
+        set { MigrateLegacyLightTags(); _moreP = new Point3D(_moreP.X, unchecked((short)value), _moreP.Z, _moreP.Map); }
+    }
+
+    /// <summary>m_itLight.m_burned - MOREX, 1 = out of charges (CItem.h:343).</summary>
+    internal bool LightBurned
+    {
+        get { MigrateLegacyLightTags(); return _moreP.X != 0; }
+        set { MigrateLegacyLightTags(); _moreP = new Point3D((short)(value ? 1 : 0), _moreP.Y, _moreP.Z, _moreP.Map); }
+    }
+
+    /// <summary>Earlier SphereNet builds kept the light state in LIGHT_CHARGES /
+    /// LIGHT_BURNED tags; a save written then is moved onto MOREY / MOREX the first
+    /// time the light is touched, and the tags are dropped.</summary>
+    private void MigrateLegacyLightTags()
+    {
+        if (TryGetTag("LIGHT_CHARGES", out string? raw))
+        {
+            RemoveTag("LIGHT_CHARGES");
+            if (int.TryParse(raw, out int c))
+                _moreP = new Point3D(_moreP.X, unchecked((short)(ushort)Math.Clamp(c, 0, ushort.MaxValue)), _moreP.Z, _moreP.Map);
+        }
+        if (TryGetTag("LIGHT_BURNED", out _))
+        {
+            RemoveTag("LIGHT_BURNED");
+            _moreP = new Point3D(1, _moreP.Y, _moreP.Z, _moreP.Map);
+        }
+    }
+
+    /// <summary>Source-X IT_LIGHT_LIT tick (CItem.cpp:6271-6289): a lit light source
+    /// consumes one MOREY charge per minute; at zero it sets MOREX burned (can never
+    /// relight) and reverts to the doused type. ATTR_MOVE_NEVER/STATIC lights burn
+    /// forever - no charge, no re-arm. The running countdown survives restarts via
+    /// the persisted TIMER.</summary>
     private void OnLightBurnTick()
     {
         if (IsAttr(ObjAttributes.Move_Never) || IsAttr(ObjAttributes.Static))
             return;
 
-        int charges = 20;
-        if (TryGetTag("LIGHT_CHARGES", out string? raw) && int.TryParse(raw, out int parsed))
-            charges = parsed;
-        charges--;
-        SetTag("LIGHT_CHARGES", Math.Max(0, charges).ToString());
+        // A word, as upstream: decrementing an empty count wraps (CItem.cpp:6277).
+        ushort charges = unchecked((ushort)(LightCharges - 1));
+        LightCharges = charges;
 
         if (charges > 0)
         {
@@ -4795,7 +4847,7 @@ public class Item : ObjBase
             return;
         }
 
-        SetTag("LIGHT_BURNED", "1");
+        LightBurned = true;
         UseLight();
     }
 
@@ -4809,7 +4861,7 @@ public class Item : ObjBase
     {
         if (_type is not (ItemType.LightLit or ItemType.LightOut))
             return false;
-        bool burned = TryGetTag("LIGHT_BURNED", out _);
+        bool burned = LightBurned;
         if (_type == ItemType.LightOut &&
             (burned || (ContainedIn.IsValid && ResolveWorld?.Invoke()?.FindObject(ContainedIn) is Item)))
             return false;
@@ -4840,9 +4892,8 @@ public class Item : ObjBase
         {
             EmitScriptSound("0x0047");
             SetTimeout(Environment.TickCount64 + LightBurnTickMs);
-            if (!TryGetTag("LIGHT_CHARGES", out string? raw) ||
-                !int.TryParse(raw, out int charges) || charges == 0)
-                SetTag("LIGHT_CHARGES", "20");
+            if (LightCharges == 0)
+                LightCharges = 20; // CItem.cpp:5366-5367
         }
         else if (_type == ItemType.LightOut)
         {
@@ -4988,7 +5039,7 @@ public class Item : ObjBase
                 or ItemType.DoorLocked or ItemType.Portculis or ItemType.PortLocked
                 or ItemType.Crops or ItemType.Foliage or ItemType.LightLit
                 or ItemType.AnimActive or ItemType.BeeHive
-                || (_type == ItemType.EqMemoryObj && EquipLayer == Layer.FlagWool);
+                || (_type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed);
 
             // Source-X CItem::_OnTick trap state machine: an armed trap relaxes
             // to inactive, an inactive one either re-arms (MOREZ periodic) or
@@ -5032,6 +5083,10 @@ public class Item : ObjBase
                     break;
                 case ItemType.EqMemoryObj when EquipLayer == Layer.FlagWool:
                     RegrowWool();
+                    break;
+                case ItemType.EqMemoryObj when EquipLayer == Layer.FlagPotionUsed:
+                    // The potion cooldown marker simply expires (CCharUse.cpp:1066).
+                    Delete();
                     break;
                 case ItemType.BeeHive:
                     // Source-X CItem::_OnTick IT_BEE_HIVE (CItem.cpp:6380): the hive
@@ -5244,22 +5299,41 @@ public class Item : ObjBase
 
     // ---- Plant growth (Source-X CItemPlant.cpp) ----
 
-    /// <summary>Default plant growth interval. Source-X ties this to the lunar cycle
-    /// (GetNextNewMoon); SphereNet uses a fixed interval, overridable per-item via the
-    /// MORE1 respawn-seconds field (Source-X m_Respawn_Sec).</summary>
+    /// <summary>Fallback growth interval used only when no world (game clock) is
+    /// reachable, e.g. a detached item in a unit test. A live crop follows Source-X
+    /// GetDecayTime (CItem.cpp:1415-1423): MORE1 seconds, else the next new moon plus
+    /// rand(20) game minutes.</summary>
     public static long PlantGrowthDefaultMs = 10 * 60 * 1000; // 10 minutes
 
-    // HUE_RED_DARK — Source-X marks a regrowing (invisible) plot with this hue so
-    // staff can still see the plot while ordinary players cannot.
-    private const ushort PlantRegrowHue = 0x0021;
+    // HUE_RED_DARK (uofiles_enums.h:44) - Source-X marks a regrowing (invisible) plot
+    // with this hue so staff can still see the plot while ordinary players cannot.
+    internal const ushort PlantRegrowHue = 0x0020;
 
-    /// <summary>Re-arm the growth timer (Source-X Plant_SetTimer → GetDecayTime),
-    /// honoring a per-item MORE1 respawn-seconds override.</summary>
+    /// <summary>Source-X CItem::GetDecayTime for IT_CROPS / IT_FOLIAGE
+    /// (CItem.cpp:1415-1423): a MORE1 respawn-seconds override, else the time until
+    /// the next new moon (Trammel on map 1, Felucca elsewhere;
+    /// CWorldGameTime::GetNextNewMoon, CWorldGameTime.cpp:35-48) plus rand(20) game
+    /// minutes.</summary>
+    internal long PlantGrowthDelayMs()
+    {
+        if (More1 > 0)
+            return More1 * 1000L;
+        var world = ResolveWorld?.Invoke();
+        if (world == null)
+            return PlantGrowthDefaultMs;
+        long minuteMs = Math.Max(1, world.GameMinuteLengthMs);
+        long synodic = Position.Map == 1 ? 105 : 840; // TRAMMEL / FELUCCA_SYNODIC_PERIOD
+        long nowMs = world.GameClockMs;
+        long nextMonth = nowMs / minuteMs + synodic;
+        long newMoonMs = (nextMonth - nextMonth % synodic) * minuteMs;
+        long delayMs = newMoonMs - nowMs + Random.Shared.NextInt64(20) * minuteMs;
+        return Math.Max(1, delayMs);
+    }
+
+    /// <summary>Re-arm the growth timer (Source-X Plant_SetTimer -> GetDecayTime).</summary>
     private void PlantArmTimer()
     {
-        long ms = More1 > 0 ? More1 * 1000L : PlantGrowthDefaultMs;
-        if (ms <= 0) ms = PlantGrowthDefaultMs;
-        SetTimeout(Environment.TickCount64 + ms);
+        SetTimeout(Environment.TickCount64 + PlantGrowthDelayMs());
     }
 
     /// <summary>Arm a freshly placed crop/foliage so it begins growing (Source-X
@@ -5361,17 +5435,19 @@ public class Item : ObjBase
         }
 
         var def = DefinitionLoader.GetItemDef(BaseId);
-        ushort growId = PlantResolveChainId((uint)(def?.TData2 ?? 0), def?.TData2Name);
-        if (growId == 0)
+        uint growRaw = def?.TData2 ?? 0;
+        // Only TDATA2=-1 (resource index RES_INDEX_MASK) marks the stage that pops out
+        // a fruit and resets; TDATA2=0 is a ripe plant that just stays until it is
+        // reaped (CItemPlant.cpp:126-165).
+        if (string.IsNullOrEmpty(def?.TData2Name) && (growRaw & 0xFFFFF) == 0xFFFFF)
         {
-            // Fully mature → drop a fruit, then reset to the first stage (hidden regrow).
             PlantDropFruit();
             PlantCropReset();
+            return true;
         }
-        else
-        {
+        ushort growId = PlantResolveChainId(growRaw, def?.TData2Name);
+        if (growId != 0)
             PlantSetId(growId);
-        }
         return true;
     }
 
@@ -5399,6 +5475,15 @@ public class Item : ObjBase
         if (fruitId == 0) return;
         var world = ResolveWorld?.Invoke();
         if (world == null) return;
+        // Put a fruit on the ground only if no fruit / raw reagent already lies on
+        // this spot (CItemPlant.cpp:140-156).
+        var here = Position;
+        foreach (var other in world.GetItemsInRange(here, 0))
+        {
+            if (other == this || other.IsDeleted) continue;
+            if (other.Position.X != here.X || other.Position.Y != here.Y) continue;
+            if (other.ItemType is ItemType.Fruit or ItemType.ReagentRaw) return;
+        }
         var fruit = world.CreateItem();
         fruit.BaseId = fruitId;
         // The produce keeps the type its own definition gives it. Source-X builds it
@@ -5493,7 +5578,7 @@ public class Item : ObjBase
 
     /// <summary>The chardef's ICON as an item graphic (CBC_ICON -> m_trackID); a def
     /// made from another one (ID=c_other) inherits it (CCharBase::CopyBasic).</summary>
-    private static ushort ResolveCharTrackId(int charDefIndex)
+    internal static ushort ResolveCharTrackId(int charDefIndex)
     {
         var resources = Definitions.DefinitionLoader.StaticResources;
         var def = Definitions.DefinitionLoader.GetCharDef(charDefIndex);

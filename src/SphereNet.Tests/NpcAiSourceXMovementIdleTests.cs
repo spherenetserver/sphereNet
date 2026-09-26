@@ -563,6 +563,8 @@ public sealed class NpcAiSourceXMovementIdleTests
         var pet = world.CreateCharacter();
         pet.MaxHits = 50; pet.Hits = 50;
         pet.NpcBrain = NpcBrainType.Animal;
+        // An NPC with no food ceiling never hungers (m_MaxFood, CCharBase.cpp:26).
+        pet.SetTag("MAXFOOD", "60");
         world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
         pet.TryAssignOwnership(owner, owner);
         return (world, owner, pet);

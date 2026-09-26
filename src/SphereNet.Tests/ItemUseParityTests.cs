@@ -15,7 +15,7 @@ namespace SphereNet.Tests;
 public class ItemUseParityTests
 {
     [Fact]
-    public void WeaponDoubleClick_TargetWeapon_AppliesBackpackPoisonPotion()
+    public void WeaponDoubleClick_TargetWeapon_SmashesIt_DoesNotPoison()
     {
         var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
@@ -31,7 +31,7 @@ public class ItemUseParityTests
         pack.AddItem(blade);
         var poison = world.CreateItem();
         poison.ItemType = ItemType.Potion;
-        poison.Quality = 80;
+        poison.More2 = 80;   // m_itPotion.m_dwSkillQuality is MORE2 (Skill_Poisoning reads nothing else)
         poison.SetTag("POTION_SPELL", "Poison");
         pack.AddItem(poison);
 
@@ -41,10 +41,12 @@ public class ItemUseParityTests
         Assert.True(client.HasPendingTarget);
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, blade.Uid.Value, 0, 0, 0, 0);
 
-        // m_poison_skill lives in MOREZ as the potion strength / 10 (CCharSkill.cpp:2208).
-        Assert.Equal(8, blade.MoreP.Z);
-        Assert.False(blade.TryGetTag("POISON_SKILL", out _));
-        Assert.True(poison.IsDeleted);
+        // A blade on an item that is none of the special targets is the default
+        // smash, OnTakeDamage(1) (CClientTarg.cpp:1966-1983). It never started the
+        // Poisoning skill - that was an invented shortcut; poisoning starts from the
+        // Poisoning skill itself. Nothing is coated and the potion is not spent.
+        Assert.Equal(0, blade.MoreP.Z);
+        Assert.False(poison.IsDeleted);
         Assert.False(client.HasPendingTarget);
     }
 
@@ -232,7 +234,7 @@ public class ItemUseParityTests
     }
 
     [Fact]
-    public void WaterWashDoubleClick_RestoresFood_WithoutDeletingFixture()
+    public void WaterWashDoubleClick_FixedTrough_IsRefused_AndStays()
     {
         var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
@@ -240,15 +242,18 @@ public class ItemUseParityTests
         var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
         player.Food = 10;
 
-        // A placed water trough (Source-X Use_Drink) — must give the benefit but
-        // survive, not vanish like an eaten ration.
+        // IT_WATER_WASH is DRUNK through Use_Drink (CCharUse.cpp:1860-1868), which
+        // first refuses what cannot be moved (:992) - a placed trough is not drunk
+        // at all, and water is never food without OF_DrinkIsFood. The old
+        // expectation fed the player from the trough through the eating path.
         var trough = world.CreateItem();
         trough.ItemType = ItemType.WaterWash;
+        trough.SetAttr(ObjAttributes.Move_Never);
         world.PlaceItem(trough, new Point3D(101, 100, 0, 0));
 
         client.HandleDoubleClick(trough.Uid.Value);
 
-        Assert.True(player.Food > 10);       // drank from it
+        Assert.Equal(10, player.Food);       // nothing drunk
         Assert.False(trough.IsDeleted);      // the fixture stays
     }
 

@@ -122,6 +122,32 @@ public class CombatFlagParityTests
     }
 
     [Fact]
+    public void AttackingInnocent_WithNoWitness_IsNoGlobalCrime()
+    {
+        // CheckCrimeSeen skips the victim (the mark), so a fight started on a lone
+        // innocent is seen by nobody (CCharFight.cpp:117, 1474-1477).
+        var world = TestHarness.CreateWorld();
+        var lf = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(lf, world, new AccountManager(lf), 1321);
+        client.BroadcastNearby = (_, _, _, _) => { };
+        var attacker = world.CreateCharacter();
+        attacker.IsPlayer = true;
+        attacker.PrivLevel = PrivLevel.Player;
+        attacker.Str = attacker.Dex = 100;
+        attacker.SetStatFlag(StatFlag.War);
+        world.PlaceCharacter(attacker, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, attacker);
+        var victim = world.CreateCharacter();
+        victim.IsPlayer = true;
+        victim.Hits = victim.MaxHits = 100;
+        world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
+
+        client.HandleAttack(victim.Uid.Value);
+
+        Assert.False(attacker.IsCriminal);
+    }
+
+    [Fact]
     public void AttackingInnocentInWilderness_FlagsCriminalRegardlessOfRegion()
     {
         var oldEnabled = Character.AttackingIsACrimeEnabled;
@@ -152,13 +178,20 @@ public class CombatFlagParityTests
             victim.Hits = victim.MaxHits = 100;
             world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0)); // innocent blue, adjacent
 
+            // A bystander NPC that can speak. Source-X Fight_Attack only runs
+            // CheckCrimeSeen (CCharFight.cpp:1474-1477) - the attack is a crime as far
+            // as a witness sees it (the old test asserted a ServUO-style unconditional
+            // flag). A speaking NPC witness calls Noto_Criminal in ANY region
+            // (CCharFight.cpp:79-83); only the guard call needs a guarded area.
+            var bystander = world.CreateCharacter();
+            bystander.NpcBrain = NpcBrainType.Human;
+            bystander.DSpeech.Add(new ResourceId(ResType.Speech, 1));
+            world.PlaceCharacter(bystander, new Point3D(102, 100, 0, 0));
+
             Assert.False(attacker.IsCriminal);
 
             client.HandleAttack(victim.Uid.Value);
 
-            // ServUO Mobile.CriminalAction sets Criminal=true unconditionally; only the
-            // guard RESPONSE is region-gated. Attacking an innocent in the open (no
-            // guarded region) must still flag the attacker grey.
             Assert.True(attacker.IsCriminal);
         }
         finally

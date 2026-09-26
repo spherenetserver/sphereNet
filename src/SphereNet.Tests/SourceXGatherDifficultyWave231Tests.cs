@@ -83,6 +83,7 @@ public sealed class SourceXGatherDifficultyWave231Tests
             resources.LoadResourceFile(path);
             new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
             var world = TestHarness.CreateWorld();
+            TestHarness.AttachLoadedRegionTypes(world);
             var character = world.CreateCharacter();
             character.SetSkill(SkillType.Mining, 0);
             int seenDifficulty = -1;

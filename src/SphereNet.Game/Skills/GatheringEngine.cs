@@ -108,29 +108,31 @@ public sealed class GatheringEngine
         if (!_skillTypeFilters.TryGetValue(skill, out var typeFilter))
             return new GatherResult { Handled = false };
 
+        // Source-X CWorldMap::CheckNaturalResource (CWorldMap.cpp:83-111): the AREA
+        // at the tile answers, and only a region with no EVENTS/RESOURCES at all
+        // hands over to the map's background region (the one at 0,0). The region's
+        // links are then searched for the REGIONTYPE whose page is exactly this
+        // resource type (CRegionWorld::FindNaturalResource, CRegion.cpp:1077-1091) -
+        // no untyped REGIONTYPE stands in, and no table is borrowed from some other
+        // region of the world.
         RegionTypeDef? matchedType = null;
 
         var region = _world.FindRegion(target);
-        if (region != null && region.RegionTypes.Count > 0)
+        if (region != null && region.Events.Count == 0 && region.RegionTypes.Count == 0)
+            region = _world.FindRegion(new Point3D(0, 0, 0, target.Map));
+        if (region != null)
         {
             foreach (var rtRid in region.RegionTypes)
             {
                 var rtDef = DefinitionLoader.GetRegionTypeDef(rtRid.Index);
-                if (rtDef == null) continue;
-
-                if (rtDef.ItemTypeFilter != null &&
+                if (rtDef?.ItemTypeFilter != null &&
                     rtDef.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase))
                 {
                     matchedType = rtDef;
                     break;
                 }
-
-                if (rtDef.ItemTypeFilter == null && matchedType == null)
-                    matchedType = rtDef;
             }
         }
-
-        matchedType ??= DefinitionLoader.FindRegionTypeByFilter(typeFilter);
 
         if (matchedType == null || matchedType.Resources.Count == 0)
             return new GatherResult { Handled = false };

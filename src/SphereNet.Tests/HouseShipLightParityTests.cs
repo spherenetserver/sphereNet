@@ -63,23 +63,43 @@ public sealed class HouseShipLightParityTests
         torch.BaseId = 0x0A12;
         torch.ItemType = ItemType.LightLit;
         torch.SetTag("OVERRIDE_LIGHTID", "0x0F6B");
-        torch.SetTag("LIGHT_CHARGES", "2");
+        // m_itLight (CItem.h:343-344): charges are MOREY, burned is MOREX - they
+        // used to live in LIGHT_CHARGES / LIGHT_BURNED tags.
+        torch.MoreP = new Point3D(0, 2, 0, 0);
         world.PlaceItem(torch, new Point3D(100, 100, 0, 0));
 
         // First tick: one charge left, still lit, timer re-armed.
         torch.SetTimeout(Environment.TickCount64 - 1);
         torch.OnTick();
         Assert.Equal(ItemType.LightLit, torch.ItemType);
-        Assert.True(torch.TryGetTag("LIGHT_CHARGES", out string? c1) && c1 == "1");
+        Assert.Equal(1, torch.MoreP.Y);
         Assert.True(torch.Timeout > Environment.TickCount64);
 
-        // Second tick: burned out — doused, marked, timer cleared.
+        // Second tick: burned out - doused, marked, timer cleared.
         torch.SetTimeout(Environment.TickCount64 - 1);
         torch.OnTick();
         Assert.Equal(ItemType.LightOut, torch.ItemType);
         Assert.Equal((ushort)0x0F6B, torch.BaseId);
-        Assert.True(torch.TryGetTag("LIGHT_BURNED", out _));
+        Assert.Equal(1, torch.MoreP.X);
         Assert.Equal(0, torch.Timeout);
+    }
+
+    [Fact]
+    public void LitLight_LegacyChargeTags_MoveOntoMoreXY()
+    {
+        var world = TestHarness.CreateWorld();
+        var torch = world.CreateItem();
+        torch.BaseId = 0x0A12;
+        torch.ItemType = ItemType.LightLit;
+        torch.SetTag("OVERRIDE_LIGHTID", "0x0F6B");
+        torch.SetTag("LIGHT_CHARGES", "3");
+        world.PlaceItem(torch, new Point3D(100, 100, 0, 0));
+
+        torch.SetTimeout(Environment.TickCount64 - 1);
+        torch.OnTick();
+
+        Assert.Equal(2, torch.MoreP.Y);
+        Assert.False(torch.TryGetTag("LIGHT_CHARGES", out _));
     }
 
     [Fact]
@@ -89,13 +109,13 @@ public sealed class HouseShipLightParityTests
         var lamp = world.CreateItem();
         lamp.ItemType = ItemType.LightLit;
         lamp.SetAttr(ObjAttributes.Move_Never);
-        lamp.SetTag("LIGHT_CHARGES", "1");
+        lamp.MoreP = new Point3D(0, 1, 0, 0); // MOREY charges (CItem.h:344)
         world.PlaceItem(lamp, new Point3D(100, 100, 0, 0));
 
         lamp.SetTimeout(Environment.TickCount64 - 1);
         lamp.OnTick();
         Assert.Equal(ItemType.LightLit, lamp.ItemType);
-        Assert.True(lamp.TryGetTag("LIGHT_CHARGES", out string? c) && c == "1");
+        Assert.Equal(1, lamp.MoreP.Y);
     }
 
     [Fact]

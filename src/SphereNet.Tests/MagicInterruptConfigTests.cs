@@ -78,7 +78,9 @@ public sealed class MagicInterruptConfigTests
         var it = world.CreateItem();
         it.BaseId = 0x0E3C;
         it.ItemType = type;
-        it.More1 = complexity;
+        // m_dwLockComplexity is MORE2; MORE1 is the lock code (CItem.h:181-182).
+        // This used to write the complexity into MORE1.
+        it.More2 = complexity;
         world.PlaceItem(it, near.Position);
         return it;
     }

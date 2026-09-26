@@ -55,7 +55,7 @@ public sealed class LightPairToggleTests
         Assert.Equal((ushort)0x0B20, lamp.BaseId);
         Assert.Equal(ItemType.LightLit, lamp.ItemType);
         Assert.True(lamp.Timeout > Environment.TickCount64);
-        Assert.True(lamp.TryGetTag("LIGHT_CHARGES", out string? charges) && charges == "20");
+        Assert.Equal(20, lamp.MoreP.Y); // m_itLight.m_charges is MOREY (CItem.h:344)
     }
 
     [Fact]

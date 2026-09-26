@@ -147,12 +147,14 @@ public sealed class PetParity06NOTests
     public void AnInstanceCeilingMustBeSetBeforeTheValueItCaps()
     {
         // The ordering hazard on its own, with no definition to fall back on: writing
-        // the value first clamps it to the classic ceiling and the raise is lost.
+        // the value first clamps it to the ceiling in force - for an NPC with no
+        // definition that is 0, it does not eat (m_MaxFood, CCharBase.cpp:26; this
+        // used to be an invented classic 60) - and the raise is lost.
         var world = LoadWorld();
         var wrongOrder = world.CreateCharacter();
         wrongOrder.Food = 100;
         wrongOrder.SetTag("MAXFOOD", "100");
-        Assert.Equal(60, wrongOrder.Food);
+        Assert.Equal(0, wrongOrder.Food);
 
         var rightOrder = world.CreateCharacter();
         rightOrder.SetTag("MAXFOOD", "100");
@@ -161,15 +163,16 @@ public sealed class PetParity06NOTests
     }
 
     [Fact]
-    public void ADefinitionThatSaysNothingKeepsTheClassicCeiling()
+    public void ADefinitionThatSaysNothingNeverHungers()
     {
-        // "Nothing was said" is not "eats nothing" - the live pack's creatures mostly
-        // say nothing, and they must keep an appetite.
+        // A CHARDEF with neither MAXFOOD nor FOODTYPE has m_MaxFood 0 (CCharBase.cpp:26):
+        // the creature neither hungers (OnTickFood, CCharAct.cpp:5753) nor has room
+        // to eat (Use_Eat, CCharUse.cpp:934). This used to assert an invented 60.
         var world = LoadWorld();
         var ch = Spawn(world, 0x00E6);
 
-        Assert.Equal(60, ch.MaxFood);
-        Assert.True(EatEngine.Eat(ch, Ration(world), null, 1) > 0);
+        Assert.Equal(0, ch.MaxFood);
+        Assert.Equal(0, EatEngine.Eat(ch, Ration(world), null, 1));
     }
 
     [Fact]

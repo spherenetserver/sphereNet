@@ -30,7 +30,8 @@ public sealed class SourceXWave270Tests
 
     // Numeric TDATA chain (avoids needing the defname resolver):
     //   0c85 (stage 1) --TDATA2--> 3186 (stage 2, mature) --TDATA3--> 09d0 (fruit)
-    //   3186 --TDATA1--> 0c85 (reset target)
+    //   3186 --TDATA1--> 0c85 (reset target); 3186 has TDATA2=-1 (pops a fruit)
+    //   3187 has no TDATA2 (ripe; stays until reaped, CItemPlant.cpp:159)
     private static GameWorld LoadCropDefsAndWorld()
     {
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
@@ -42,6 +43,13 @@ public sealed class SourceXWave270Tests
 
             [ITEMDEF 03186]
             NAME=test crop stage 2
+            TYPE=t_crops
+            TDATA1=0c85
+            TDATA2=-1
+            TDATA3=09d0
+
+            [ITEMDEF 03187]
+            NAME=test ripe crop
             TYPE=t_crops
             TDATA1=0c85
             TDATA3=09d0
@@ -127,5 +135,54 @@ public sealed class SourceXWave270Tests
         crop.PlantOnTick();
 
         Assert.True(crop.IsDeleted);
+    }
+
+    [Fact]
+    public void PlantOnTick_RipeStageWithoutGrowTarget_Stays()
+    {
+        // TDATA2=0: Source-X only drops/resets on TDATA2=-1 (RES_INDEX_MASK);
+        // a zero grow id just re-arms the timer (CItemPlant.cpp:126-165).
+        var world = LoadCropDefsAndWorld();
+        var crop = PlaceCrop(world, 0x3187);
+
+        crop.PlantOnTick();
+
+        Assert.Equal((ushort)0x3187, crop.BaseId);
+        Assert.False(crop.IsAttr(ObjAttributes.Invis));
+        Assert.DoesNotContain(world.GetItemsInRange(crop.Position, 2), i => i.BaseId == 0x09D0);
+    }
+
+    [Fact]
+    public void PlantOnTick_FruitAlreadyOnSpot_NoSecondFruit()
+    {
+        var world = LoadCropDefsAndWorld();
+        var crop = PlaceCrop(world, 0x3186);
+        var existing = world.CreateItem();
+        existing.BaseId = 0x09D0;
+        existing.ItemType = ItemType.Fruit;
+        world.PlaceItem(existing, crop.Position);
+
+        crop.PlantOnTick();
+
+        Assert.Equal(1, world.GetItemsInRange(crop.Position, 2).Count(i => i.BaseId == 0x09D0));
+        Assert.Equal((ushort)0x0C85, crop.BaseId); // still resets
+        // HUE_RED_DARK is 0x0020 (uofiles_enums.h:44).
+        Assert.Equal((ushort)0x0020, crop.Hue.Value);
+    }
+
+    [Fact]
+    public void PlantGrowthDelay_FollowsNextNewMoonUnlessMore1()
+    {
+        var world = LoadCropDefsAndWorld();
+        world.GameMinuteLengthMs = 1000;
+        world.SetWorldClockMinutes(100);
+        var crop = PlaceCrop(world, 0x0C85); // map 0 -> Felucca period 840
+
+        long delay = crop.PlantGrowthDelayMs();
+        // Next new moon at minute 840 -> 740 minutes away, plus rand(20) minutes.
+        Assert.InRange(delay, 740_000, 759_000);
+
+        crop.More1 = 30;
+        Assert.Equal(30_000, crop.PlantGrowthDelayMs());
     }
 }

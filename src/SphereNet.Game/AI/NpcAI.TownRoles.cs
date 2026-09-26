@@ -112,10 +112,10 @@ public sealed partial class NpcAI
     {
         if (target == guard || target.IsDeleted)
             return false;
-        // (PRIV_JAILED is part of the reference's filter too; jail here is an
-        // account-side state the character does not carry.)
+        // PRIV_JAILED is part of the filter too (CCharNPCAct.cpp:705).
         bool unfit = target.IsStatFlag(StatFlag.Invul) || target.IsDead ||
-                     (CharDefHelper.GetCanFlags(target) & CanFlags.C_Statue) != 0;
+                     (CharDefHelper.GetCanFlags(target) & CanFlags.C_Statue) != 0 ||
+                     (target.IsPlayer && target.IsJailed);
         if ((unfit && !fromTrigger) || !NotoIsCriminal(target))
             return false;
 
@@ -472,29 +472,28 @@ public sealed partial class NpcAI
             return;
 
         LookAtNearbyItems(npc);
+        LookAroundIdleSound(npc);
 
-        if (_rand.Next(12) == 0)
-            EmitSound(npc, CreatureSoundType.Idle);
         WanderHome(npc); // NPC_Act_Idle tail every free tick (:1974)
     }
 
-    /// <summary>Source-X Food_CanEat: when the chardef declares a FOODTYPE
-    /// diet, only matching items are edible for this creature; without a
-    /// declared diet the generic edible classes qualify. Tokens are itemdefs
-    /// or t_* typedefs (optionally "qty name"); when NO token resolves (defs
-    /// not loaded — test environments) the generic classes are the fallback,
-    /// but a resolvable diet that matches nothing means "not my food".</summary>
-    public bool NpcCanEat(Character npc, Item item)
-    {
-        bool edibleClass = item.ItemType is ItemType.Food or ItemType.Fruit
-            or ItemType.Grain or ItemType.FoodRaw;
+    /// <summary>Source-X Food_CanEat (CCharStatus.cpp:888-907).</summary>
+    public bool NpcCanEat(Character npc, Item item) => NpcFoodQty(npc, item) > 0;
 
+    /// <summary>Source-X Food_CanEat (CCharStatus.cpp:888-907): the quantity of the
+    /// first FOODTYPE entry the item matches - how much the creature wants of it,
+    /// and how much it eats at a time (NPC_Food, CCharNPCAct.cpp:2516/:2540). A
+    /// creature with no FOODTYPE, or whose FOODTYPE matches nothing, eats nothing.
+    /// Entries are itemdefs or t_* typedefs, "qty name" or "name [qty]"; a bare
+    /// name counts 1 (CResourceQty::Load).</summary>
+    public int NpcFoodQty(Character npc, Item item)
+    {
         var def = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
         string? diet = def != null && !string.IsNullOrWhiteSpace(def.FoodTypeRaw)
             ? def.FoodTypeRaw
             : (npc.TryGetTag("FOODTYPE", out string? tagDiet) ? tagDiet : null);
         if (string.IsNullOrWhiteSpace(diet))
-            return edibleClass;
+            return 0;
 
         var resources = Definitions.DefinitionLoader.StaticResources;
         int itemDefIndex = resources != null
@@ -503,31 +502,55 @@ public sealed partial class NpcAI
         var itemDef = Definitions.DefinitionLoader.GetItemDef(itemDefIndex)
             ?? Definitions.DefinitionLoader.GetItemDef(item.BaseId);
 
-        bool anyResolved = false;
         foreach (var part in diet.Split(',',
             StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
             var tokens = part.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length == 0) continue;
-            string name = tokens.Length >= 2 && int.TryParse(tokens[0], out _)
-                ? tokens[1] : tokens[0];
+            string name;
+            int qty = 1;
+            if (tokens.Length >= 2 && int.TryParse(tokens[0], out int leadQty))
+            {
+                name = tokens[1];
+                qty = leadQty;
+            }
+            else
+            {
+                name = tokens[0];
+                if (tokens.Length >= 2 && int.TryParse(tokens[1], out int trailQty))
+                    qty = trailQty;
+            }
             var rid = resources?.ResolveDefName(name) ?? ResourceId.Invalid;
             if (!rid.IsValid)
+            {
+                // A t_* name with no [TYPEDEF] section behind it still names the
+                // built-in item type it spells (IT_FOOD for t_food).
+                if (TryParseItemTypeName(name, out var builtIn) && builtIn == item.ItemType)
+                    return Math.Max(0, qty);
                 continue;
-            anyResolved = true;
-            if (rid.Type == ResType.ItemDef &&
-                (rid.Index == itemDefIndex || rid.Index == item.BaseId ||
-                 Definitions.DefinitionLoader.GetItemDef(rid.Index)?.DispIndex == item.BaseId))
-                return true;
-            if (rid.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw) &&
-                resources!.ResolveDefName(itemDef.TypeRaw.Trim()) == rid)
-                return true;
-            // A typedef entry matches the item's live type (FindResourceMatch ->
-            // IsType, CItem.cpp:6072), so a TYPE set on the instance counts too.
-            if (rid.Type == ResType.TypeDef && rid.Index == (int)item.ItemType)
-                return true;
+            }
+            bool match =
+                (rid.Type == ResType.ItemDef &&
+                 (rid.Index == itemDefIndex || rid.Index == item.BaseId ||
+                  Definitions.DefinitionLoader.GetItemDef(rid.Index)?.DispIndex == item.BaseId)) ||
+                (rid.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw) &&
+                 resources!.ResolveDefName(itemDef.TypeRaw.Trim()) == rid) ||
+                // A typedef entry matches the item's live type (FindResourceMatch ->
+                // IsType, CItem.cpp:6072), so a TYPE set on the instance counts too.
+                (rid.Type == ResType.TypeDef && rid.Index == (int)item.ItemType);
+            if (match)
+                return Math.Max(0, qty);
         }
-        return !anyResolved && edibleClass;
+        return 0;
+    }
+
+    private static bool TryParseItemTypeName(string name, out ItemType type)
+    {
+        type = ItemType.Normal;
+        if (!name.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
+            return false;
+        string token = name[2..].Replace("_", "", StringComparison.Ordinal);
+        return Enum.TryParse(token, true, out type) && !int.TryParse(token, out _);
     }
 
     /// <summary>Whether the chardef's FOODTYPE names t_grass
@@ -555,6 +578,12 @@ public sealed partial class NpcAI
     /// returns the units eaten. Program.cs routes it through EatEngine with the
     /// trigger dispatcher so @Eat runs; unwired, EatEngine runs without it.</summary>
     public Func<Character, Item, int, int>? OnNpcEat { get; set; }
+
+    /// <summary>Callback: EatAnim's stat half (CCharAct.cpp:3455-3486) for a bite
+    /// that is not a food stack - grazed grass. Parameters: eater, the bite, the
+    /// food it restores. Program.cs routes it through EatEngine with the trigger
+    /// dispatcher so @Eat runs.</summary>
+    public Action<Character, Item, int>? OnNpcEatAnim { get; set; }
 
     /// <summary>Callback: an NPC emote line (Speak with TALKMODE_EMOTE).</summary>
     public Action<Character, string>? OnNpcEmote { get; set; }
@@ -634,9 +663,14 @@ public sealed partial class NpcAI
         {
             foreach (var it in pack.Contents)
             {
-                if (it.IsDeleted || it.ItemType != ItemType.Food || !NpcCanEat(npc, it))
+                if (it.IsDeleted || it.ItemType != ItemType.Food)
                     continue;
-                NpcEat(npc, it, 1);
+                // Use_EatQty(pFood, Food_CanEat(pFood)) - the FOODTYPE quantity
+                // (CCharNPCAct.cpp:2516-2519).
+                int packQty = NpcFoodQty(npc, it);
+                if (packQty <= 0)
+                    continue;
+                NpcEat(npc, it, packQty);
                 return true;
             }
         }
@@ -644,6 +678,7 @@ public sealed partial class NpcAI
         TryResolveHome(npc, out _, out int homeDist);
         int searchRange = Math.Min(ViewSight * (100 - level) / 100, homeDist);
         Item? meal = null;
+        int mealQty = 1;
         int best = int.MaxValue;
         foreach (var it in _world.GetItemsInRange(npc.Position, searchRange))
         {
@@ -654,17 +689,19 @@ public sealed partial class NpcAI
             if (intelligent ? (it.Z > npc.Z + 10 || it.Z < npc.Z - 1)
                             : (it.Z < npc.Z || it.Z > npc.Z + 8))
                 continue;
-            if (!NpcCanEat(npc, it)) continue;
+            int itQty = NpcFoodQty(npc, it);
+            if (itQty <= 0) continue;
             if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
             int d = npc.Position.GetDistanceTo(it.Position);
-            if (d < best) { best = d; meal = it; }
+            if (d < best) { best = d; meal = it; mealQty = itQty; }
         }
 
         if (meal != null)
         {
             if (best <= 1)
             {
-                NpcEat(npc, meal, 1);
+                // ConsumeAmount(Food_CanEat) - the FOODTYPE quantity (:2560).
+                NpcEat(npc, meal, mealQty);
                 return true;
             }
             // Only an NPC that is idle, wandering, walking or fleeing heads for it
@@ -710,8 +747,24 @@ public sealed partial class NpcAI
             !land.Name.Contains("grass", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        npc.Food = (ushort)Math.Min(npc.MaxFood, npc.Food + 15 / 10);
-        ShowNpcEating(npc, ServerMessages.Get(Msg.NpcEatGrass));
+        // The bite is the resource bit named DEFMSG_NPC_EAT_GRASS; EatAnim shows it
+        // and raises the stats through @Eat, food AND stamina (CCharNPCAct.cpp:2619-2622,
+        // CCharAct.cpp:3436-3486).
+        var bite = _world.CreateItem();
+        bite.ItemType = ItemType.Grass;
+        bite.Name = ServerMessages.Get(Msg.NpcEatGrass);
+        try
+        {
+            ShowNpcEating(npc, bite.GetName());
+            if (OnNpcEatAnim != null)
+                OnNpcEatAnim(npc, bite, 15 / 10);
+            else
+                NPCs.EatEngine.EatAnim(npc, bite, null, 15 / 10);
+        }
+        finally
+        {
+            _world.DeleteObject(bite);
+        }
         return true;
     }
 

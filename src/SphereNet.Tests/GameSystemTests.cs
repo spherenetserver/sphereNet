@@ -1260,7 +1260,7 @@ public class GameSystemTests
     }
 
     [Fact]
-    public void GameClient_HairDye_ChangesHairAndBeardHue()
+    public void GameClient_HairDye_OpensTheDialog_LeavesTheHueAlone()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
@@ -1287,8 +1287,11 @@ public class GameSystemTests
 
         client.HandleDoubleClick(dye.Uid.Value);
 
-        Assert.Equal((ushort)0x0455, hair.Hue.Value);
-        Assert.Equal((ushort)0x0455, beard.Hue.Value);
+        // Hair dye opens the d_hair_dye script dialog (CClientUse.cpp:521-530); the
+        // colour is chosen there. The engine used to recolour the hair itself with
+        // the dye's hue (or an invented 0x044E), which the reference never does.
+        Assert.Equal((ushort)0, hair.Hue.Value);
+        Assert.Equal((ushort)0, beard.Hue.Value);
     }
 
     [Fact]
@@ -1337,6 +1340,7 @@ public class GameSystemTests
 
         var pet = world.CreateCharacter();
         pet.Name = "Mare";
+        pet.SetTag("MAXFOOD", "60"); // an NPC with no ceiling holds no food (CCharBase.cpp:26)
         world.PlaceCharacter(pet, new Point3D(102, 100, 0, 0));
         Assert.True(pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: false));
         pet.AddFriend(friend);

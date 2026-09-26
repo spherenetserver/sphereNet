@@ -252,7 +252,7 @@ public class ConfigRegressionTests
         var d = new SphereConfig();
         Assert.True(d.UseHttp);                 // web status on by default (was unconditional)
         Assert.Equal(20, d.GameMinuteLength);   // 20 real s/game min (old world clock)
-        Assert.Equal(48, d.DistanceYell);       // matches the old hardcoded yell distance
+        Assert.Equal(31, d.DistanceYell);       // Source-X UO_MAP_VIEW_RADAR (CServerConfig.cpp:211); was an invented 48
 
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_tick_{Guid.NewGuid():N}.ini");
         try

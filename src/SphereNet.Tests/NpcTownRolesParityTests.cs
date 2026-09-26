@@ -555,6 +555,11 @@ public sealed class NpcTownRolesParityTests
         var ai = new NpcAI(world, new SphereConfig());
         var sheep = Npc(world, NpcBrainType.Animal, 100, 100, karma: 0);
         sheep.SetTag("OVERRIDE.NPCAI", "0x0010"); // NPC_AI_INTFOOD
+        // A creature eats only what its FOODTYPE names and hungers only with a food
+        // ceiling (Food_CanEat, CCharStatus.cpp:888; m_MaxFood, CCharBase.cpp:26) -
+        // a bare test creature has neither, so it is given both.
+        sheep.SetTag("MAXFOOD", "60");
+        sheep.SetTag("FOODTYPE", "t_food");
         var bread = world.CreateItem();
         bread.BaseId = 0x103B;
         bread.ItemType = ItemType.Food;
@@ -595,6 +600,11 @@ public sealed class NpcTownRolesParityTests
         var ai = new NpcAI(world, new SphereConfig());
         var cow = Npc(world, NpcBrainType.Animal, 100, 100);
         cow.SetTag("OVERRIDE.NPCAI", "0x0002"); // NPC_AI_FOOD
+        // A creature eats only what its FOODTYPE names and hungers only with a food
+        // ceiling (Food_CanEat, CCharStatus.cpp:888; m_MaxFood, CCharBase.cpp:26) -
+        // a bare test creature has neither, so it is given both.
+        cow.SetTag("MAXFOOD", "60");
+        cow.SetTag("FOODTYPE", "t_food");
         cow.Food = 0;
         var apple = world.CreateItem();
         apple.ItemType = ItemType.Food;

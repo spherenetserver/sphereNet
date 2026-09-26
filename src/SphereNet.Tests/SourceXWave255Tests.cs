@@ -51,7 +51,9 @@ public sealed class SourceXWave255Tests
     public void PainSpike_DealsFixedDirectDamageOverTenTicks_IgnoringResist()
     {
         var (_, engine, caster, target) = Setup(SpellType.PainSpike);
-        target.SetSkill(SkillType.MagicResistance, 0); // total = (1000-0)/100 + 18 = 28 -> 2/tick
+        // The player formula (CCharSpell.cpp:1308): (1000-0)/100 + 18 = 28 -> 2/tick.
+        target.IsPlayer = true;
+        target.SetSkill(SkillType.MagicResistance, 0);
         target.ResPhysical = 90;                        // direct damage must ignore this
 
         Assert.True(engine.CastStart(caster, SpellType.PainSpike, target.Uid, target.Position) >= 0);
@@ -66,6 +68,25 @@ public sealed class SourceXWave255Tests
         // Charges spent: further processing does nothing.
         engine.ProcessExpirations(t + 100_000);
         Assert.Equal(80, target.Hits);
+    }
+
+    [Fact]
+    public void PainSpike_AgainstAnNpcUsesTheNpcFormula()
+    {
+        // Source-X CCharSpell.cpp:1305-1306: an NPC victim takes (SS - MR)/10 + 30,
+        // so (1000-0)/10 + 30 = 130 -> 13 per tick over 10 ticks.
+        var (_, engine, caster, target) = Setup(SpellType.PainSpike);
+        target.SetSkill(SkillType.MagicResistance, 0);
+        target.MaxHits = 1000; target.Hits = 1000;
+
+        Assert.True(engine.CastStart(caster, SpellType.PainSpike, target.Uid, target.Position) >= 0);
+        Assert.True(engine.CastDone(caster));
+
+        long t = Environment.TickCount64;
+        for (int k = 1; k <= 10; k++)
+            engine.ProcessExpirations(t + k * 1000 + 100);
+
+        Assert.Equal(1000 - 130, target.Hits);
     }
 
     [Fact]
@@ -105,14 +126,16 @@ public sealed class SourceXWave255Tests
     }
 
     [Fact]
-    public void Strangle_FatigueIncreasesDamage()
+    public void Strangle_MultiplierReadsDexNotStamina()
     {
-        // Two identical victims; the fatigued one takes strictly more per the
-        // 3 - 2*curStam/maxStam multiplier (x1 at full stamina, up to x3 empty).
-        int DamageWithStamina(short stam)
+        // Source-X CCharSpell.cpp:1952 multiplies by 3 - (DEX base / DEX adjusted) * 2
+        // in integer arithmetic - DEX, not stamina (the old stamina curve was
+        // invented). Base == adjusted gives x1; a DEX bonus above base gives x3.
+        int Damage(short stam, short modDex)
         {
             var (world, engine, caster, target) = Setup(SpellType.Strangle);
             target.SetSkill(SkillType.MagicResistance, 0);
+            target.Dex = 50; target.ModDex = modDex;
             target.MaxStam = 100; target.Stam = stam;
             target.MaxHits = 1000; target.Hits = 1000;
             Assert.True(engine.CastStart(caster, SpellType.Strangle, target.Uid, target.Position) >= 0);
@@ -123,10 +146,12 @@ public sealed class SourceXWave255Tests
             return 1000 - target.Hits;
         }
 
-        // Full stamina -> multiplier 1; empty stamina -> multiplier 3. Averaged
-        // over 10 ticks the empty-stamina total is comfortably larger despite RNG.
-        int full = DamageWithStamina(100);
-        int empty = DamageWithStamina(0);
-        Assert.True(empty > full, $"empty-stamina Strangle ({empty}) should exceed full ({full})");
+        // Power 10: ten ticks of rand(8..11) each.
+        int fullStam = Damage(100, 0);
+        int emptyStam = Damage(0, 0);
+        Assert.InRange(fullStam, 80, 110);
+        Assert.InRange(emptyStam, 80, 110);   // stamina changes nothing
+        int boosted = Damage(100, 25);
+        Assert.InRange(boosted, 240, 330);    // x3
     }
 }

@@ -47,6 +47,11 @@ public partial class Character : ObjBase
     /// verb was said to and the character who said it, and answers whether the NPC
     /// owned the request - the same true/false upstream's handlers return.</summary>
     public static Func<Character, Character?, bool>? NpcHireQuote;
+
+    /// <summary>NPC_MEM_ACT_SPEAK_HIRE (CItem.h:55): the action a memory item keeps
+    /// in the low word of MORE1 (m_itEqMemory.m_Action) once an NPC has quoted its
+    /// wage to someone - their next gold is the hire.</summary>
+    public const uint NpcMemActSpeakHire = 2;
     public static Func<Character, Character?, string, bool>? NpcTrainOffer;
     /// <summary>SHRINK: the NPC becomes a figurine. The bool is upstream's
     /// "an argument was given", which bounces the figurine into the owner's pack
@@ -685,13 +690,15 @@ public partial class Character : ObjBase
     public static int PlayerKarmaEvil { get; set; } = -8000;
     /// <summary>Karma below which a player is grey. sphere.ini PLAYERNEUTRAL (Source-X m_iPlayerKarmaNeutral).</summary>
     public static int PlayerKarmaNeutral { get; set; } = -2000;
+    /// <summary>PETSINHERITNOTORIETY bit mask (Source-X m_iPetsInheritNotoriety,
+    /// CCharNotoriety.cpp:185-200): a pet shows its master's notoriety when the bit
+    /// 1 &lt;&lt; (noto - 1) is set. 0 = never.</summary>
+    public static int PetsInheritNotoriety { get; set; }
     /// <summary>Whether attacking an innocent turns the aggressor criminal. sphere.ini ATTACKINGISACRIME.</summary>
     public static bool AttackingIsACrimeEnabled { get; set; } = true;
     /// <summary>Whether beneficially helping a criminal flags the helper.
     /// sphere.ini HELPINGCRIMINALSISACRIME.</summary>
     public static bool HelpingCriminalsIsACrimeEnabled { get; set; }
-    /// <summary>Whether failed snooping flags the snooper criminal. sphere.ini SNOOPCRIMINAL.</summary>
-    public static bool SnoopCriminalEnabled { get; set; } = true;
     /// <summary>Whether spells must consume reagents from backpack. sphere.ini REAGENTSREQUIRED.</summary>
     public static bool ReagentsRequiredEnabled { get; set; } = true;
     /// <summary>Players must have the spell in an accessible spellbook to
@@ -835,12 +842,23 @@ public partial class Character : ObjBase
     /// (Source-X @PersonalSpace). Args: mover, the character being pushed past.</summary>
     /// <summary>Source-X @PersonalSpace (ShoveCharAtPosition, CCharAct.cpp:4640):
     /// fired on the character being walked into, with the mover as SRC. True keeps
-    /// the mover out.</summary>
-    public static Func<Character, Character, bool>? OnPersonalSpace { get; set; }
+    /// the mover out. ARGN1 (stamina the push costs) and ARGN3 (whether it needs full
+    /// stamina) are read back through <see cref="ShoveTriggerArgs"/> (:4641-4648).</summary>
+    public static Func<Character, Character, ShoveTriggerArgs, bool>? OnPersonalSpace { get; set; }
 
     /// <summary>Source-X @charShove (CCharAct.cpp:4653): fired on the mover, with the
-    /// character in the way as SRC. True keeps the mover out.</summary>
-    public static Func<Character, Character, bool>? OnCharShove { get; set; }
+    /// character in the way as SRC. True keeps the mover out; ARGN1 (the stamina
+    /// cost) is read back.</summary>
+    public static Func<Character, Character, ShoveTriggerArgs, bool>? OnCharShove { get; set; }
+
+    /// <summary>The read-back state of a shove (ShoveCharAtPosition, CCharAct.cpp:4605).</summary>
+    public sealed class ShoveTriggerArgs
+    {
+        public int StaminaRequired { get; set; }
+        public bool RequireFullStamina { get; set; }
+        /// <summary>A trigger answered RETURN 0: no push message (:4693).</summary>
+        public bool SuppressMessage { get; set; }
+    }
 
     /// <summary>Source-X @AfkMode (CHV_AFK, CChar.cpp:4418): ARGN1 = currently AFK,
     /// ARGN2 = the mode asked for; both are read back, and true cancels the switch.</summary>
@@ -1383,6 +1401,31 @@ public partial class Character : ObjBase
     // a GM in c_man_gm can ride; leaving it out refused every mount to that body.
     public bool IsHuman => _bodyId is 0x0190 or 0x0191 or 0x0192 or 0x0193 or 0x03DB;
     public bool IsGargoyle => _bodyId is 0x029A or 0x029B or 0x02B6 or 0x02B7;
+
+    /// <summary>The ghost body a player who had <paramref name="prevBody"/> turns into
+    /// (CChar::Death, CCharAct.cpp:4447-4469): gargoyle, elf or human ghost by the old
+    /// body, man or woman by that body's CHARDEF, resolved through the chardef defnames
+    /// c_garg_ghost_*, c_elf_ghost_*, c_ghost_*. A pack that does not define the name
+    /// gets the stock ghost graphic of that race and gender.</summary>
+    public static ushort ResolveGhostBody(ushort prevBody)
+    {
+        var prevDef = Definitions.DefinitionLoader.GetCharDef(prevBody);
+        bool female = prevDef != null
+            ? (prevDef.Can & CanFlags.C_Female) != 0
+            : prevBody is 0x0191 or 0x025E or 0x029B;
+        (string name, ushort stock) = prevBody switch
+        {
+            0x029A or 0x029B => female ? ("c_garg_ghost_woman", (ushort)0x02B7) : ("c_garg_ghost_man", (ushort)0x02B6),
+            0x025D or 0x025E => female ? ("c_elf_ghost_woman", (ushort)0x0260) : ("c_elf_ghost_man", (ushort)0x025F),
+            _ => female ? ("c_ghost_woman", (ushort)0x0193) : ("c_ghost_man", (ushort)0x0192),
+        };
+        int idx = Definitions.DefinitionLoader.ResolveCharDefIndexByName(name);
+        return idx > 0 && idx <= ushort.MaxValue ? (ushort)idx : stock;
+    }
+
+    /// <summary>The stock player ghost graphics (human, elf, gargoyle).</summary>
+    public static bool IsGhostBodyId(ushort body) =>
+        body is 0x0192 or 0x0193 or 0x025F or 0x0260 or 0x02B6 or 0x02B7;
 
     /// <summary>An ITEMDEF named by defname or by number, as a script writes it in a
     /// key like CANMAKE.i_dagger or CANMAKE.03f6 (upstream ResourceGetIndexType with
@@ -2068,8 +2111,11 @@ public partial class Character : ObjBase
     /// <summary>Mark this character criminal (gray) and arm the decay timer. Called
     /// by HandleAttack, snooping, theft, etc. Overwrites any existing timer (i.e.
     /// a fresh crime refreshes the countdown, matching Source-X behaviour).</summary>
-    public void MakeCriminal()
+    public void MakeCriminal(Character? viewer = null)
     {
+        // Noto_Criminal (CCharNotoriety.cpp:392-393): NPCs and GMs never go criminal.
+        if (!IsPlayer || PrivLevel >= PrivLevel.GM)
+            return;
         // @Criminal trigger — RETURN 1 (null) cancels the flag; a returned
         // duration (ARGN1) overrides the default criminal-timer seconds.
         long durationMs = CriminalTimerSeconds * 1000L;
@@ -2081,6 +2127,15 @@ public partial class Character : ObjBase
         }
         SetStatFlag(StatFlag.Criminal);
         CombatState.SetCriminal(durationMs);
+
+        // The viewer made me criminal to everyone, so its personal SAWCRIME of me
+        // is spent (CCharNotoriety.cpp:423-429).
+        if (viewer != null)
+        {
+            var saw = viewer.Memory_FindObjTypes(Uid, MemoryType.SawCrime);
+            if (saw != null)
+                viewer.Memory_ClearTypes(saw, MemoryType.SawCrime);
+        }
     }
 
     /// <summary>CHV_CRIMINAL (CChar.cpp:4503): an explicit 0 clears the criminal
@@ -2189,6 +2244,62 @@ public partial class Character : ObjBase
     /// <summary>Set criminal timer (duration in ms).</summary>
     public void SetCriminal(long durationMs = 120_000) => CombatState.SetCriminal(durationMs);
 
+    /// <summary>PRIV_JAILED (CAccount.h:29): the account's jail flag, which Source-X
+    /// keeps on the account (CChar::Jail, CCharAct.cpp:153-211). A character with no
+    /// resolvable account falls back to the JAIL_RELEASE sentence tag.</summary>
+    public bool IsJailed
+    {
+        get
+        {
+            var acct = ResolveAccountForChar?.Invoke(Uid);
+            if (acct?.Jail == true)
+                return true;
+            return TryGetTag("JAIL_RELEASE", out _);
+        }
+    }
+
+    /// <summary>Set or clear PRIV_JAILED on the account together with its JailCell
+    /// tag (CCharAct.cpp:168-175, 202-208), and the character-side sentence tags
+    /// (JAIL_CELL; JAIL_RELEASE = release time in UTC ticks, 0 = indefinite).</summary>
+    public void SetJailState(bool jailed, int cell = 0, long releaseUtcTicks = 0)
+    {
+        var acct = ResolveAccountForChar?.Invoke(Uid);
+        if (jailed)
+        {
+            if (acct != null)
+            {
+                acct.Jail = true;
+                acct.SetTag("JailCell", cell.ToString());
+            }
+            if (cell > 0) SetTag("JAIL_CELL", cell.ToString());
+            else RemoveTag("JAIL_CELL");
+            SetTag("JAIL_RELEASE", Math.Max(0, releaseUtcTicks).ToString());
+        }
+        else
+        {
+            if (acct != null)
+            {
+                acct.Jail = false;
+                acct.RemoveTag("JailCell");
+            }
+            RemoveTag("JAIL_CELL");
+            RemoveTag("JAIL_RELEASE");
+        }
+    }
+
+    /// <summary>The jail cell of the current sentence: the account's JailCell tag,
+    /// else the character's JAIL_CELL tag.</summary>
+    public int JailCell
+    {
+        get
+        {
+            var acct = ResolveAccountForChar?.Invoke(Uid);
+            if (acct != null && acct.TryGetTag("JailCell", out string ac) && int.TryParse(ac, out int a))
+                return a;
+            return TryGetTag("JAIL_CELL", out string? cc) && int.TryParse(cc, out int c) ? c : 0;
+        }
+    }
+
     /// <summary>True if this character is serving a timed jail sentence whose
     /// time has expired. The release time is stored in the JAIL_RELEASE tag as
     /// DateTime UTC ticks so it survives server reboots (0 = indefinite, no tag
@@ -2233,8 +2344,15 @@ public partial class Character : ObjBase
             if (def is { MaxFoodExplicit: true })
                 return def.MaxFood;
 
-            // Deliberate divergence, recorded: the reference would fall back to the
-            // definition's FOODTYPE-derived maximum here too. The live pack writes
+            // An NPC takes the definition's m_MaxFood as it stands: MAXFOOD, else the
+            // largest FOODTYPE quantity, else 0 - and 0 means it never hungers
+            // (Stat_GetMax, CCharStat.cpp:276; CCharBase.cpp:26/:139; OnTickFood,
+            // CCharAct.cpp:5753).
+            if (!IsPlayer)
+                return def?.MaxFood ?? 0;
+
+            // Deliberate divergence for PLAYERS, recorded: the reference would fall back
+            // to the definition's FOODTYPE-derived maximum here too. The live pack writes
             // bare FOODTYPE lists (FOODTYPE=t_food,t_drink,...), which derive 1, so
             // honouring that half would collapse every human's food pool to a single
             // point and take the whole player hunger model with it. Only an explicit
@@ -2894,11 +3012,40 @@ public partial class Character : ObjBase
             return true;
 
         var types = MemoryType.HarmedBy | MemoryType.IrritatedBy;
+        bool aggreived = false;
         if ((CombatFlags & (int)SphereNet.Game.Combat.CombatFlags.AttackNoAggreived) == 0 &&
             src.Memory_FindObjTypes(Uid, MemoryType.Aggreived) == null)
+        {
+            aggreived = true;
             types |= MemoryType.Aggreived;
+        }
         Memory_AddObjTypes(src.Uid, types);
         CombatState.AddAttacker(src.Uid);
+
+        // Harming someone innocent to you when they did not strike first is a crime
+        // (CCharFight.cpp:361-375): a player victim decides it (OnNoticeCrime - SAWCRIME
+        // and @SeeCrime), anyone else leaves it to the witnesses (CheckCrimeSeen).
+        if (aggreived)
+        {
+            var world = ResolveWorld?.Invoke();
+            if (world != null && Clients.GameClient.ComputeNotoriety(world, src, this) == 1) // NOTO_GOOD
+            {
+                if (IsPlayer)
+                {
+                    CrimeWitnessService.OnNoticeCrime(world, this, src, this);
+                    var srcOwner = !src.IsPlayer && src.OwnerSerial.IsValid ? world.FindChar(src.OwnerSerial) : null;
+                    if (srcOwner != null)
+                        CrimeWitnessService.OnNoticeCrime(world, this, srcOwner, this);
+                }
+                else
+                {
+                    var mark = OwnerSerial.IsValid ? world.FindChar(OwnerSerial) ?? this : this;
+                    SkillType active = Action; // Skill_GetActive()
+                    CrimeWitnessService.CheckCrimeSeen(world, src, mark,
+                        active is SkillType.None ? null : active, Random.Shared);
+                }
+            }
+        }
 
         if (!IsPlayer && !FightTarget.IsValid)
         {
@@ -3065,15 +3212,36 @@ public partial class Character : ObjBase
 
         if (level <= 0)
         {
-            Hits = (short)Math.Max(0, Hits - hungerLoss);
-            if (Hits <= 0 && !IsDead)
-            {
-                Kill();
+            ApplyHungerDamage(hungerLoss);
+            if (IsDead || IsDeleted)
                 return;
-            }
             if (pet)
                 PetDesert();
         }
+    }
+
+    /// <summary>The starvation bite (OnTickFood, CCharAct.cpp:5785-5787):
+    /// OnTakeDamage(HITSHUNGERLOSS, this, DAMAGE_FIXED) - the one damage path, so
+    /// @GetHit and the death handling see it - then SoundChar(CRESND_RAND).</summary>
+    private void ApplyHungerDamage(int hungerLoss)
+    {
+        int dealt = Combat.CombatEngine.ApplyScriptDamage(this, hungerLoss, Combat.DamageType.Fixed, this);
+        if (dealt > 0 && Combat.CombatEngine.OnDirectCharacterDamageApplied == null &&
+            Hits <= 0 && !IsDead)
+        {
+            if (OnLifecycleKill != null) OnLifecycleKill(this, this);
+            else Kill();
+        }
+        if (IsDead || IsDeleted)
+            return;
+        var soundType = Random.Shared.Next(2) == 0
+            ? SphereNet.Game.AI.CreatureSoundType.Idle
+            : SphereNet.Game.AI.CreatureSoundType.Notice;
+        ushort snd = CharacterSounds.Resolve(this, soundType,
+            GetEquippedItem(Layer.OneHanded) ?? GetEquippedItem(Layer.TwoHanded));
+        if (snd != 0)
+            BroadcastNearby?.Invoke(Position, 18,
+                new SphereNet.Network.Packets.Outgoing.PacketSound(snd, X, Y, Z), 0);
     }
 
     /// <summary>Source-X NPC_CheckHirelingStatus (CCharNPCPet.cpp:641-689), run on the
@@ -3702,7 +3870,18 @@ public partial class Character : ObjBase
 
     /// <summary>Maximum carry weight in whole stones (Source-X: Str*7/2 + 40 + mod).
     /// Uses effective STR so an equipped +STR suit raises the carry ceiling.</summary>
-    public int MaxWeight => (CombatEngine.EffectiveStr(this) * 7 / 2) + 40 + _modMaxWeight;
+    /// <summary>Calc_MaxCarryWeight (CResourceCalc.cpp:13-29), in stones: never below
+    /// 0, and +60 for a human under RACIALF_HUMAN_STRONGBACK (0x0001).</summary>
+    public int MaxWeight
+    {
+        get
+        {
+            int qty = Math.Max(0, (CombatEngine.EffectiveStr(this) * 35 / 10) + 40 + _modMaxWeight);
+            if ((RacialFlags & 0x0001) != 0 && IsHuman)
+                qty += 60;
+            return qty;
+        }
+    }
 
     /// <summary>True when this character can carry <paramref name="item"/>'s weight on
     /// top of what it already holds (Source-X CChar::CanCarry). Used to bounce a
@@ -6057,7 +6236,8 @@ public partial class Character : ObjBase
                     NotifyAppearanceChanged();
                     return true;
                 }
-                if (CharDefHelper.TryApplyDefName(this, normalized, DefinitionLoader.StaticResources))
+                // SetID (CChar.cpp:3815 -> :1596): definition + display only.
+                if (CharDefHelper.TrySetId(this, normalized, DefinitionLoader.StaticResources))
                     return true;
                 if (CharDefHelper.EnsureDisplayBody(this, DefinitionLoader.StaticResources))
                 {
@@ -6067,8 +6247,8 @@ public partial class Character : ObjBase
                 return false;
             case "CHARDEF":
             case "TYPEDEF":
-                if (CharDefHelper.TryApplyDefName(this, normalized, DefinitionLoader.StaticResources))
-                    return true;
+                // The same SetID as BODY=: a live character keeps its own state.
+                CharDefHelper.TrySetId(this, normalized, DefinitionLoader.StaticResources);
                 return true;
             case "DIR":
                 // CHC_DIR (CChar.cpp:3836): an out-of-range direction becomes SE.
@@ -8027,10 +8207,9 @@ public partial class Character : ObjBase
             {
                 RemoveTag("JAIL");
                 RemoveTag("JAIL_EXPIRE");
-                // Source-X CHV_FORGIVE releases from jail. Only trigger the real
-                // (speech-path) release when actually jailed, so .forgive on a free
-                // char never teleports them; the release hook unfreezes + teleports.
-                if (TryGetTag("JAIL_RELEASE", out _))
+                // Source-X CHV_FORGIVE -> Jail(false): clears PRIV_JAILED only
+                // (CCharAct.cpp:193-210); nobody is moved.
+                if (IsJailed)
                     OnJailReleaseRequested?.Invoke(this);
                 CombatState.Forgive();
                 return true;
@@ -8887,13 +9066,24 @@ public partial class Character : ObjBase
         // gate: a starving or poisoned character still regenerates. The +2 is the
         // Tough racial trait, only under RACIALF_HUMAN_TOUGH - it was given to every
         // human body, tripling their hit-point regeneration.
-        if (hitRateMs >= 0 && now >= _nextHitRegen && (_hits < _maxHits || regenHook != null))
+        // A stat above its limit decays by one per regeneration instead
+        // (iMod = -1, CCharStat.cpp:531-534).
+        // The limit is the ADJUSTED maximum (Stat_GetMaxAdjusted, :515), item and
+        // spell bonuses included. Upstream's regen clock restarts every time it comes
+        // due, full or not (:510).
+        if (hitRateMs >= 0 && now >= _nextHitRegen)
         {
-            int regenAmount = _regenValHits > 0 ? _regenValHits : 1;
-            if ((((Core.Enums.RacialFlags)RacialFlags) & Core.Enums.RacialFlags.HumanTough) != 0 && IsHuman)
-                regenAmount += 2;
             _nextHitRegen = now + hitRateMs;
-            ApplyStatRegen(RegenStatHits, regenAmount, _maxHits, 0);
+            int limit = MaxHits;
+            if (_hits != limit || regenHook != null)
+            {
+                int regenAmount = _regenValHits > 0 ? _regenValHits : 1;
+                if (_hits > limit)
+                    regenAmount = -1;
+                else if ((((Core.Enums.RacialFlags)RacialFlags) & Core.Enums.RacialFlags.HumanTough) != 0 && IsHuman)
+                    regenAmount += 2;
+                ApplyStatRegen(RegenStatHits, regenAmount, limit, 0);
+            }
         }
 
         // Mana regen: Source/Sphere REGEN1 (STAT_INT) interval. Source-X Stats_GetRegenVal
@@ -8902,15 +9092,20 @@ public partial class Character : ObjBase
         // regen 8-9 mana every 3s, matching or exceeding its spend, so its pool
         // never ran dry and it cast forever. Meditation is the way to regen faster.
         long manaRateMs = ResolveRegenRateMs(_regenManaRateMs, RegenManaSeconds, 20000);
-        if (manaRateMs >= 0 && now >= _nextManaRegen && (_mana < _maxMana || regenHook != null))
+        if (manaRateMs >= 0 && now >= _nextManaRegen)
         {
-            int regenAmount = _regenValMana > 0 ? _regenValMana : 1;
-            int focusGain = 0;
-            int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
-            if (_mana < _maxMana && focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
-                focusGain = focus / 200;
             _nextManaRegen = now + manaRateMs;
-            ApplyStatRegen(RegenStatMana, regenAmount, _maxMana, focusGain);
+            int limit = MaxMana;
+            if (_mana != limit || regenHook != null)
+            {
+                int regenAmount = _regenValMana > 0 ? _regenValMana : 1;
+                int focusGain = 0;
+                if (_mana > limit)
+                    regenAmount = -1;
+                else if (_mana < limit)
+                    focusGain = RollFocusGain(200);
+                ApplyStatRegen(RegenStatMana, regenAmount, limit, focusGain);
+            }
         }
 
         // Stam regen: Source-X Stats_GetRegenVal is a flat max(1, REGENVAL) per
@@ -8918,15 +9113,20 @@ public partial class Character : ObjBase
         // dex/30 and maxStam/20 fallbacks were invented and made big creatures
         // recover stamina many times faster than reference.
         long stamRateMs = ResolveRegenRateMs(_regenStamRateMs, RegenStamSeconds, 10000);
-        if (stamRateMs >= 0 && now >= _nextStamRegen && (_stam < _maxStam || regenHook != null))
+        if (stamRateMs >= 0 && now >= _nextStamRegen)
         {
-            int regenAmt = _regenValStam > 0 ? _regenValStam : 1;
-            int focusGain = 0;
-            int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
-            if (_stam < _maxStam && focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
-                focusGain = focus / 100;
             _nextStamRegen = now + stamRateMs;
-            ApplyStatRegen(RegenStatStam, regenAmt, _maxStam, focusGain);
+            int limit = MaxStam;
+            if (_stam != limit || regenHook != null)
+            {
+                int regenAmt = _regenValStam > 0 ? _regenValStam : 1;
+                int focusGain = 0;
+                if (_stam > limit)
+                    regenAmt = -1;
+                else if (_stam < limit)
+                    focusGain = RollFocusGain(100);
+                ApplyStatRegen(RegenStatStam, regenAmt, limit, focusGain);
+            }
         }
 
         // Hunger decay: Source-X m_iRegenRate[STAT_FOOD] = 60 minutes per point.
@@ -8953,9 +9153,10 @@ public partial class Character : ObjBase
         // Criminal timer expiry
         CombatState.ExpireCriminalTimer(now);
 
-        // Timed jail auto-release. Gated on Freeze so only jailed/frozen chars
-        // pay the tag lookup; the release hook clears Freeze so it fires once.
-        if (IsStatFlag(StatFlag.Freeze) && IsJailExpired())
+        // Opt-in timed jail release (a JAIL command given a duration). Source-X jail
+        // has no timer; the release hook only clears the jail flag, and removes the
+        // sentence tag so it fires once.
+        if (IsPlayer && IsJailExpired())
             OnJailReleaseRequested?.Invoke(this);
 
         // Memory item ticks
@@ -8965,6 +9166,20 @@ public partial class Character : ObjBase
     }
 
     private const int RegenStatHits = 0, RegenStatMana = 1, RegenStatStam = 2, RegenStatFood = 3;
+
+    /// <summary>Skill_Focus (CCharSkill.cpp:4354-4380): only under
+    /// FEATURE_AOS_UPDATE_B and while the pool is below its limit
+    /// (CCharStat.cpp:523-529) - a Focus roll at the character's own Focus/10,
+    /// worth Focus/<paramref name="divisor"/> on success.</summary>
+    private int RollFocusGain(int divisor)
+    {
+        if ((FeatureAOS & 0x02) == 0)
+            return 0;
+        int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
+        if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
+            return focus / divisor;
+        return 0;
+    }
 
     /// <summary>
     /// Apply one due regeneration of stat <paramref name="statId"/>, after @RegenStat
@@ -8990,8 +9205,10 @@ public partial class Character : ObjBase
             limit = ctx.StatLimit;
             focusGain = statId is RegenStatMana or RegenStatStam ? ctx.FocusValue : 0;
             hungerLoss = ctx.HitsHungerLoss;
+            // Upstream adds the Focus gain only in the @RegenStat branch
+            // (CCharStat.cpp:564-568); with no script hooked it is rolled but unused.
+            value += focusGain;
         }
-        value += focusGain;
         if (value == 0)
             return;
 
@@ -9015,13 +9232,22 @@ public partial class Character : ObjBase
         }
     }
 
-    /// <summary>Add a regeneration amount without passing the limit - and without
-    /// pulling a stat that already sits above it down to it.</summary>
+    /// <summary>UpdateStatVal (CCharAct.cpp:753-772): add the amount, never below 0;
+    /// the result is capped at the limit - unless OF_StatAllowValOverMax, where only
+    /// a gain is capped (so an over-limit pool decays one point a tick).</summary>
     private static short RegenClamp(short current, int value, int limit)
     {
-        int next = current + value;
-        if (value > 0)
-            next = Math.Min(next, Math.Max(limit, (int)current));
+        int next = Math.Max(0, current + value);
+        bool allowOverMax = (Clients.GameClient.ServerOptionFlags & Core.Enums.OptionFlags.StatAllowValueOverMax) != 0;
+        if (allowOverMax)
+        {
+            if (limit != 0 && value >= 0 && next >= limit)
+                next = limit;
+        }
+        else if (next >= limit)
+        {
+            next = limit;
+        }
         return (short)Math.Clamp(next, 0, short.MaxValue);
     }
 
@@ -9053,9 +9279,7 @@ public partial class Character : ObjBase
         if (hungerLoss > 0 && _food <= 0 && !IsDead &&
             PrivLevel < PrivLevel.GM && !IsStatFlag(StatFlag.Sleeping))
         {
-            Hits = (short)Math.Max(0, Hits - hungerLoss);
-            if (Hits <= 0)
-                Kill();
+            ApplyHungerDamage(hungerLoss);
         }
     }
 

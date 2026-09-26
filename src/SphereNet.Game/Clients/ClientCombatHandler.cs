@@ -865,32 +865,18 @@ public sealed class ClientCombatHandler
                 Send(new PacketAttackResponse(0));
                 return;
             }
-            // Source-X CCharFight: attacking is a crime only when the target is
-            // NOTO_GOOD (innocent blue) FROM THE ATTACKER'S OWN VIEW. GetNotoriety
-            // folds in the attacker's personal grey — a target they hold SawCrime
-            // or HarmedBy of (one who struck first, or whose crime they witnessed)
-            // is no longer innocent to them, so retaliating is self-defence, not a
-            // crime. A globally criminal/murderer/guild/party target is likewise
-            // not NOTO_GOOD. The aggressor↔victim IAggressor/HarmedBy memory is
-            // stamped by Memory_Fight_Start below regardless of region. Config
-            // gate: ATTACKINGISACRIME.
-            //
-            // The criminal FLAG itself is region-independent (ServUO
-            // Mobile.CriminalAction sets Criminal=true unconditionally; only the
-            // guard RESPONSE is gated on a guarded region, handled separately). A
-            // prior guarded-region gate here let a player attack an innocent in the
-            // wilderness with no grey flag, diverging from Source-X and from the
-            // harmful-spell path, which already flags everywhere.
-            // COMBAT_ATTACK_NOAGGREIVED (old sphere, Source-X OnAttackedBy
-            // CCharFight.cpp:349): skips the aggrieved bookkeeping entirely,
-            // so starting a fight never marks the attacker criminal here.
-            bool targetIsInnocent = GetNotoriety(target) == 1; // NOTO_GOOD
-            if (Character.AttackingIsACrimeEnabled && targetIsInnocent &&
-                !CombatHelper.IsCombatFlagSet(CombatFlags.AttackNoAggreived))
-            {
-                _character.MakeCriminal();
-            }
+        }
 
+        // Fight_Attack (CCharFight.cpp:1474-1477): starting a fight on someone who is
+        // NOTO_GOOD from the attacker's own view - and who holds no AGGREIVED/HARMEDBY
+        // of the attacker (it would be self-defence) - is a crime, but only as far as
+        // somebody sees it: the witnesses decide (CheckCrimeSeen, SKILL_NONE). The
+        // victim is the mark and never a witness; it judges the blow itself when hit
+        // (OnAttackedBy). Config gate: ATTACKINGISACRIME.
+        if (Character.AttackingIsACrimeEnabled && GetNotoriety(target) == 1 &&
+            target.Memory_FindObjTypes(_character.Uid, MemoryType.Aggreived | MemoryType.HarmedBy) == null)
+        {
+            CrimeWitnessService.CheckCrimeSeen(_world, _character, target, null, Random.Shared);
         }
 
         if (!_character.IsInWarMode)
@@ -1028,11 +1014,8 @@ public sealed class ClientCombatHandler
             _character.FightTarget = Serial.Invalid;
             return;
         }
-        if (_character.Stam <= 0)
-        {
-            _character.NextAttackTime = now + 500;
-            return;
-        }
+        // No stamina gate: Fight_CanHit / Fight_Hit never look at stamina
+        // (CCharFight.cpp:1681-1740), so an exhausted fighter still swings.
         // COMBAT_PARALYZE_CANSWING (old-sphere): a paralyzed (Freeze) attacker
         // can keep swinging; sleeping always blocks. Without the flag both
         // freeze and sleep stop the swing.
@@ -1813,7 +1796,8 @@ public sealed class ClientCombatHandler
         // as c_man, while the character's own BODY property still said otherwise.
         if (_character.OBody == 0)
             _character.OBody = _character.BodyId;
-        ushort ghostBody = deathSoundFemale ? (ushort)0x0193 : (ushort)0x0192;
+        // Ghost body by the pre-death body's race and gender (CCharAct.cpp:4447-4469).
+        ushort ghostBody = Character.ResolveGhostBody(_character.OBody);
         _character.BodyId = ghostBody;
         _character.OSkin = deathSkinHue;
         _character.Hue = Core.Types.Color.Default;
@@ -2111,6 +2095,10 @@ public sealed class ClientCombatHandler
             {
                 0x0193 => (ushort)0x0191,
                 0x0192 => (ushort)0x0190,
+                0x0260 => (ushort)0x025E,
+                0x025F => (ushort)0x025D,
+                0x02B7 => (ushort)0x029B,
+                0x02B6 => (ushort)0x029A,
                 _      => _spellEngine?.GetResurrectBody(_character) ?? _character.BodyId,
             };
         _character.BodyId = restoredBody;
@@ -2139,11 +2127,10 @@ public sealed class ClientCombatHandler
 
         bool corpseRestored = _deathEngine?.RestoreFromCorpse(_character) ?? false;
 
-        // Source-X Spell_Resurrection hands out a robe when no body covering came
-        // back (no corpse rejoined, or the corpse held no robe) so the player
-        // isn't resurrected naked. Done before BuildEquipmentList below so the
-        // robe rides the resurrection appearance broadcast.
-        _deathEngine?.EnsureResurrectionRobe(_character);
+        // Source-X Spell_Resurrection hands out a robe only when the corpse was
+        // not rejoined (CCharSpell.cpp:503-508). Done before BuildEquipmentList
+        // below so the robe rides the resurrection appearance broadcast.
+        _deathEngine?.EnsureResurrectionRobe(_character, corpseRestored);
 
         byte resFlags = BuildMobileFlags(_character);
         byte resNoto = GetNotoriety(_character);

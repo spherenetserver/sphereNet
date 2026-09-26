@@ -1,5 +1,6 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.World;
 using System.Text;
@@ -22,7 +23,6 @@ public sealed class StableEngine
 
     public const int MaxStabledPets = 5;
     public const int StableCost = 30; // gold per real-time day
-    public const int StableTargetRange = 12; // max owner→pet distance to stable
 
     /// <summary>How many pets a stablemaster will hold for an owner
     /// (Source-X NPC_StablePetSelect, CCharNPCAct_Vendor.cpp:118-163).
@@ -67,45 +67,53 @@ public sealed class StableEngine
     /// Stable a pet for the given owner. Removes pet from world.
     /// </summary>
     public bool StablePet(Character owner, Character pet, GameWorld world,
+        Character? stableMaster = null) =>
+        StablePetReason(owner, pet, world, stableMaster) == null;
+
+    /// <summary>Stable a pet, answering null on success or the DEFMSG key the
+    /// stablemaster says when it refuses - in the order OnTarg_Pet_Stable asks
+    /// (CClientTarg.cpp:1570-1612): not a pet at all, not in the stablemaster's
+    /// sight (no fixed distance), not the speaker's, conjured, carrying something.
+    /// The capacity (NPC_StablePetSelect, CCharNPCAct_Vendor.cpp:112-165) is
+    /// checked too, for callers that did not ask first.</summary>
+    public string? StablePetReason(Character owner, Character pet, GameWorld world,
         Character? stableMaster = null)
     {
-        if (pet.IsPlayer || !pet.HasOwner(owner.Uid))
-            return false;
-        // Source-X stable validation: a summoned/temporary creature can't be stabled,
-        // and the pet must be near the owner (the stablemaster only stables a pet the
-        // owner can reach — the target cursor enforces this for the player flow).
+        if (pet.IsPlayer || pet == stableMaster)
+            return Msg.NpcStablemasterTargFail;
+        if (stableMaster != null &&
+            (stableMaster.MapIndex != pet.MapIndex || !world.CanSeeLOS(stableMaster.Position, pet.Position)))
+            return Msg.NpcStablemasterTargLos;
+        if (!pet.HasOwner(owner.Uid))
+            return Msg.NpcStablemasterTargOwner;
         if (pet.IsSummoned)
-            return false;
-        if (owner.MapIndex != pet.MapIndex ||
-            owner.Position.GetDistanceTo(pet.Position) > StableTargetRange)
-            return false;
-        // Source-X CClientTarg.cpp: a pet carrying anything in its pack can't be
-        // stabled — the owner must empty it first, otherwise the carried items
-        // would be lost with the snapshot.
+            return Msg.NpcStablemasterTargSummon;
+        // A pet carrying anything in its pack can't be stabled: the owner must empty
+        // it first (CClientTarg.cpp:1601-1608).
         if (pet.Backpack is { ContentCount: > 0 })
-            return false;
+            return Msg.NpcStablemasterTargUnload;
 
         var list = GetOwnerStableList(owner);
 
         // The stable is a container, so it answers to the container item limit
         // first (Source-X NPC_StablePetSelect, CCharNPCAct_Vendor.cpp:112).
         if (list.Count >= world.MaxContainerItems)
-            return false;
+            return Msg.NpcStablemasterToomany;
 
         if (list.Count >= GetMaxStabledPets(owner, stableMaster))
-            return false;
+            return Msg.NpcStablemasterToomany;
 
         // Source-X CClientTarg stables by Make_Figurine: the creature is parked,
         // not destroyed, so the stable entry only has to remember which pet it is.
         // Rebuilding from a field list dropped every tag (BONDED included), the
         // follower-slot override and the live mana/stamina pools.
         if (!PetStorage.Park(pet, world))
-            return false;
+            return Msg.NpcStablemasterTargFail;
 
         list.Add(new StabledPet { Link = PetStorage.MakeLink(pet), Name = pet.Name ?? "" });
         PersistOwnerStableList(owner, list);
 
-        return true;
+        return null;
     }
 
     /// <summary>

@@ -13,6 +13,7 @@ namespace SphereNet.Tests;
 // timed release driven from Program); only the trigger was missing. @Jail now
 // fires on the jailed character with the sentence length. Character.OnJailed is
 // nulled between tests by ResetEngineStatics.
+[Collection("DefinitionLoaderSerial")]
 public class JailTriggerTests
 {
     private static GameWorld CreateWorld()
@@ -38,7 +39,7 @@ public class JailTriggerTests
     }
 
     [Fact]
-    public void Jail_TimedSentence_FiresWithMinutes_AndFreezesTarget()
+    public void Jail_TimedSentence_FiresWithMinutes_AndJailsWithoutFreezing()
     {
         var world = CreateWorld();
         var (cmds, gm, target) = Setup(world);
@@ -51,8 +52,33 @@ public class JailTriggerTests
 
         Assert.Same(target, jailed);
         Assert.Equal(5, minutes);
-        Assert.True(target.IsStatFlag(StatFlag.Freeze));
+        // Source-X CChar::Jail (CCharAct.cpp:166-191): PRIV_JAILED + teleport to the
+        // jail point, no Freeze (the old test asserted one).
+        Assert.False(target.IsStatFlag(StatFlag.Freeze));
+        Assert.True(target.IsJailed);
         Assert.True(target.TryGetTag("JAIL_RELEASE", out _));
+    }
+
+    [Fact]
+    public void Jail_SetsAccountPrivJailedAndJailCell_ForgiveClearsOnly()
+    {
+        var world = CreateWorld();
+        var (cmds, gm, target) = Setup(world);
+        var account = new SphereNet.Game.Accounts.Account { Name = "jailee" };
+        Character.ResolveAccountForChar = uid => uid == target.Uid ? account : null;
+
+        cmds.TryExecute(gm, $"JAIL {target.Uid.Value:X} 0 2");
+
+        Assert.True(account.Jail);
+        Assert.True(account.TryGetTag("JailCell", out string cell) && cell == "2");
+        var jailedAt = target.Position;
+
+        cmds.TryExecute(gm, $"FORGIVE {target.Uid.Value:X}");
+
+        Assert.False(account.Jail);
+        Assert.False(account.TryGetTag("JailCell", out _));
+        // Forgiving does not move the character (CCharAct.cpp:193-210).
+        Assert.Equal(jailedAt, target.Position);
     }
 
     [Fact]

@@ -495,7 +495,10 @@ public sealed partial class NpcAI
     /// dragons below zero karma, berserkers always, animals at -800 or less, a
     /// player under PLAYEREVIL, and any other NPC at -3000 or less. Monster brains
     /// used to count ZERO karma as evil here too, which the reference does not.</summary>
-    public bool NotoIsEvil(Character ch)
+    public bool NotoIsEvil(Character ch) => NotoIsEvil(ch, _world);
+
+    /// <summary>The same test for callers without an AI instance (the bard skills).</summary>
+    internal static bool NotoIsEvil(Character ch, World.GameWorld _world)
     {
         short karma = ch.Karma;
         // Every evil answer below needs negative karma, a murderer or a berserker,
@@ -567,7 +570,8 @@ public sealed partial class NpcAI
     internal static int FoodLevelPercent(Character ch)
     {
         int max = ch.MaxFood;
-        return max <= 0 ? 100 : ch.Food * 100 / max;
+        // IMulDiv rounds to nearest (Food_GetLevelPercent, CCharStatus.cpp:827).
+        return max <= 0 ? 100 : (ch.Food * 100 + max / 2) / max;
     }
 
     /// <summary>Source-X NPC_CanSpeak (CCharNPCStatus.cpp:416): an NPC talks when it
@@ -694,6 +698,16 @@ public sealed partial class NpcAI
     /// </summary>
     internal static int GetNpcSight(Character npc) =>
         npc.VisualRange > 0 ? npc.VisualRange : 18;
+
+    /// <summary>The end of NPC_LookAround (CCharNPCAct.cpp:1217-1218): a creature
+    /// that is not of a playable body makes its idle sound - always when berserk,
+    /// else one time in six. This is the only idle sound an NPC makes on its own.</summary>
+    private void LookAroundIdleSound(Character npc)
+    {
+        if (!IsPlayableBody(npc.BodyId) &&
+            (npc.NpcBrain == NpcBrainType.Berserk || _rand.Next(6) == 0))
+            EmitSound(npc, CreatureSoundType.Idle);
+    }
 
     /// <summary>Source-X: SoundChar — emit a creature sound via callback.</summary>
     private void EmitSound(Character npc, CreatureSoundType type)

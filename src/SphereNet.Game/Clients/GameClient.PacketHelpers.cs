@@ -2181,6 +2181,15 @@ public sealed partial class GameClient
 
     internal Character CreateNpcFromDef(int defIndexOrBaseId, string fallbackName)
     {
+        // An id that names no CHARDEF becomes DEFAULTCHAR, named by that definition
+        // (SetID, CChar.cpp:1600-1611; the name, :319).
+        if (DefinitionLoader.GetCharDef(defIndexOrBaseId) == null)
+        {
+            int fallback = SphereNet.Game.Definitions.CharDefHelper.ResolveDefaultCharIndex(_commands?.Resources);
+            if (fallback != 0)
+                defIndexOrBaseId = fallback;
+        }
+
         var npc = _world.CreateCharacter();
         ushort safeBaseId = (ushort)Math.Clamp(defIndexOrBaseId, 0, ushort.MaxValue);
         npc.BaseId = safeBaseId;
@@ -2231,6 +2240,7 @@ public sealed partial class GameClient
                 npc.Hue = new Color(hue);
 
             SphereNet.Game.Definitions.CharDefHelper.ApplyCombatProperties(npc, charDef);
+            SphereNet.Game.Definitions.CharDefHelper.InitNpcFood(npc);
 
             EquipNewbieItems(npc, charDef.NewbieItems, npcDeferLoot: true);
         }

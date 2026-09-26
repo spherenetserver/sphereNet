@@ -40,8 +40,32 @@ public static partial class Program
                 return false;
             }
 
-            // Already working for somebody - upstream answers "employed" whoever
-            // asks, including the owner (CCharNPCPet.cpp:805).
+            var mem = npc.Memory_FindObj(src.Uid);
+            if (mem != null)
+            {
+                // The master asking again: the next gold goes toward the hire, and
+                // the NPC says how long it is paid for (CCharNPCPet.cpp:790-796).
+                if ((mem.GetMemoryTypes() & (SphereNet.Core.Enums.MemoryType.IPet |
+                                             SphereNet.Core.Enums.MemoryType.Friend)) != 0)
+                {
+                    mem.More1 = (mem.More1 & 0xFFFF0000) | Character.NpcMemActSpeakHire;
+                    long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
+                        long.TryParse(bs, out long b) ? b : 0;
+                    NpcSpeak(npc, ServerMessages.GetFormatted(Msg.NpcPetHireTime,
+                        (balance / Math.Max(1, dayWage)).ToString()));
+                    return true;
+                }
+                // Nobody it fought, was harmed or irritated by (:797-801).
+                if ((mem.GetMemoryTypes() & (SphereNet.Core.Enums.MemoryType.Fight |
+                                             SphereNet.Core.Enums.MemoryType.HarmedBy |
+                                             SphereNet.Core.Enums.MemoryType.IrritatedBy)) != 0)
+                {
+                    NpcSpeak(npc, SafeMsg(Msg.NpcPetNotWork));
+                    return false;
+                }
+            }
+
+            // Already working for somebody else (CCharNPCPet.cpp:805).
             if (npc.ResolveOwnerCharacter() != null)
             {
                 NpcSpeak(npc, SafeMsg(Msg.NpcPetEmployed));
@@ -51,6 +75,9 @@ public static partial class Program
             NpcSpeak(npc, ServerMessages.GetFormatted(
                 Random.Shared.Next(2) == 0 ? Msg.NpcPetHireAmnt : Msg.NpcPetHireRate,
                 dayWage.ToString()));
+            // The next gold this speaker hands over is the hire (:816-818).
+            var hireMem = npc.Memory_AddObjTypes(src.Uid, SphereNet.Core.Enums.MemoryType.Speak);
+            hireMem.More1 = (hireMem.More1 & 0xFFFF0000) | Character.NpcMemActSpeakHire;
             return true;
         };
 
@@ -97,39 +124,31 @@ public static partial class Program
             if (src == null || _world == null)
                 return false;
 
-            // A client gets the target cursor upstream opens; without one - a
-            // delayed call, a console - fall back to the nearest owned pet so the
-            // verb still does its job server-side.
+            // NPC_StablePetSelect (CCharNPCAct_Vendor.cpp:100-170): only for a
+            // connected player; the stable must have room, then the target cursor.
             var client = FindGameClient(src);
-            if (client != null)
+            if (client == null)
+                return false;
+            int stabled = _stableEngine.GetStabledCount(src);
+            if (stabled >= _world.MaxContainerItems ||
+                stabled >= SphereNet.Game.NPCs.StableEngine.GetMaxStabledPets(src, npc))
             {
-                var master = npc;
-                client.SetPendingTarget((serial, _, _, _, _) =>
-                {
-                    var pet = _world.FindChar(new Serial(serial));
-                    NpcSpeak(master, pet != null && _stableEngine.StablePet(src, pet, _world, master)
-                        ? $"Your pet {pet.Name} has been stabled."
-                        : "You cannot stable that.");
-                });
-                NpcSpeak(npc, "Which pet wouldst thou stable?");
-                return true;
-            }
-
-            Character? nearest = null;
-            foreach (var ch in _world.GetCharsInRange(src.Position, 8))
-            {
-                if (!ch.IsPlayer && !ch.IsDead && ch.NpcMaster == src.Uid)
-                {
-                    nearest = ch;
-                    break;
-                }
-            }
-            if (nearest == null || !_stableEngine.StablePet(src, nearest, _world, npc))
-            {
-                NpcSpeak(npc, "I don't see any of your pets nearby.");
+                NpcSpeak(npc, SafeMsg(Msg.NpcStablemasterToomany));
                 return false;
             }
-            NpcSpeak(npc, $"Your pet {nearest.Name} has been stabled.");
+
+            var master = npc;
+            client.SetPendingTarget((serial, _, _, _, _) =>
+            {
+                // OnTarg_Pet_Stable (CClientTarg.cpp:1563-1627): every refusal has
+                // its own line, and a stabled pet is answered with the CLAIM line.
+                var pet = _world.FindChar(new Serial(serial));
+                string? refusal = pet == null
+                    ? Msg.NpcStablemasterTargFail
+                    : _stableEngine.StablePetReason(src, pet, _world, master);
+                NpcSpeak(master, SafeMsg(refusal ?? Msg.NpcStablemasterClaim));
+            });
+            client.SysMessage(SafeMsg(Msg.NpcStablemasterTarg));
             return true;
         };
 
@@ -140,19 +159,22 @@ public static partial class Program
             if (npc.NpcBrain != SphereNet.Core.Enums.NpcBrainType.Stable)
                 return false;
 
-            // Upstream hands back EVERY stabled pet, not one (CCharNPCAct_Vendor.cpp:190).
-            // Claiming index 0 repeatedly walks the list as it shrinks; the follower
-            // cap can stop it part way, which is what ends the loop.
+            // Upstream hands back EVERY stabled pet (CCharNPCAct_Vendor.cpp:190-207):
+            // no cap and no range. When one cannot follow (the follower cap), it says
+            // so by name and stops there.
             int claimed = 0;
-            while (_stableEngine.ClaimPet(src, 0, _world, src.Position) != null)
+            while (_stableEngine.GetStabledCount(src) > 0)
             {
-                if (++claimed >= SphereNet.Game.NPCs.StableEngine.MaxStabledPets)
-                    break;
+                string name = _stableEngine.GetStabledPetNames(src)[0];
+                if (_stableEngine.ClaimPet(src, 0, _world, src.Position) == null)
+                {
+                    NpcSpeak(npc, ServerMessages.GetFormatted(Msg.NpcStablemasterClaimFollower, name));
+                    return true;
+                }
+                claimed++;
             }
 
-            NpcSpeak(npc, claimed > 0
-                ? $"Here {(claimed == 1 ? "is thy pet" : $"are thy {claimed} pets")}."
-                : "You have no stabled pets.");
+            NpcSpeak(npc, SafeMsg(claimed > 0 ? Msg.NpcStablemasterClaim : Msg.NpcStablemasterClaimNopets));
             return true;
         };
 

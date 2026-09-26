@@ -215,7 +215,11 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnExpLevelChanged = null;
         SphereNet.Game.Objects.Characters.Character.OnMurderMark = null;
         SphereNet.Game.Objects.Characters.Character.OnCriminalCheck = null;
-        SphereNet.Game.Objects.Characters.CrimeWitnessService.OnCrimeNoticed = null;
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.OnSeeSnoop = null;
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.OnSeeCrime = null;
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.OnNpcCallGuards = null;
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.WitnessRange = 18;
+        SphereNet.Game.Objects.Characters.Character.PetsInheritNotoriety = 0;
         SphereNet.Game.Objects.Characters.CrimeWitnessService.SnoopCriminalChance = 100;
         SphereNet.Game.Objects.Characters.Character.OnCombatAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnAttackTrigger = null;
@@ -301,7 +305,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.FigurineDeletedHook = null;
         SphereNet.Game.Housing.House.OnRedeed = null;
         SphereNet.Game.Housing.HousingEngine.OnHouseCheck = null;
-        SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = 36;
+        SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = SphereNet.Game.AI.NpcAI.DefaultMapViewRadar;
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
         SphereNet.Game.Objects.Characters.Character.PacketDeathAnimationEnabled = false;
         SphereNet.Game.Clients.GameClient.ClientLingerSeconds = 60;
@@ -329,8 +333,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Skills.SkillEngine.OnStatDecrease = null;
         SphereNet.Game.Skills.SkillHandlers.OnCraftSkillUsed = null;
         SphereNet.Game.Skills.SkillHandlers.OnScriptedSkillUse = null;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled = false;
         SphereNet.Game.Skills.SkillEngine.SkillMaxOverrides.Clear();
-        SphereNet.Game.Skills.SkillEngine.SkillSumMaxOverride = 7000;
+        SphereNet.Game.Skills.SkillEngine.SkillSumMaxOverride = 10000;
         SphereNet.Game.Objects.Characters.Character.OnSkillChange = null;
         SphereNet.Game.Skills.SkillEngine.StatAdvCurves =
             [SphereNet.Scripting.Definitions.ValueCurve.Empty,

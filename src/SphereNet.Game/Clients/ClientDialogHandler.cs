@@ -354,7 +354,7 @@ public sealed class ClientDialogHandler
     {
         if (_character == null)
             return;
-        if (_character.TryGetTag("JAIL_RELEASE", out _))
+        if (_character.IsJailed)
         {
             SysMessage(ServerMessages.Get("msg_stuck_denied"));
             return;

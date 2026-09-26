@@ -1401,6 +1401,11 @@ public static class CombatEngine
         // STATF_INVUL bounces the blow (no Hits loss, no reflect).
         if (damage > 0 && !IsDamageImmune(target))
         {
+            // OnTakeDamage -> OnAttackedBy (CCharFight.cpp:684): the victim notes the
+            // attacker (HARMEDBY/AGGREIVED) and judges whether the blow is a crime.
+            if (attacker != target)
+                target.OnAttackedBy(attacker);
+
             // Necromancy Evil Omen (reference OnTakeDamage): the victim's next
             // harmful hit lands 25% harder, then the omen is spent.
             if (target.ConsumeEvilOmen())

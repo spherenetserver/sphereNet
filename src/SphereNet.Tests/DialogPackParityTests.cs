@@ -154,6 +154,7 @@ public sealed class DialogPackParityTests
     {
         var world = World();
         var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
 
         Assert.True(ch.TryGetProperty("VIRTUALGOLD", out string vg));
         Assert.Equal("0", vg);
@@ -161,10 +162,16 @@ public sealed class DialogPackParityTests
         Assert.True(ch.TryGetProperty("VIRTUALGOLD", out string vg2));
         Assert.Equal("500", vg2);
 
-        // No chardef behind this character and no instance MAXFOOD: the classic 60.
+        // No chardef behind this PLAYER and no instance MAXFOOD: the classic 60
+        // (a recorded divergence for players only).
         Assert.True(ch.TryGetProperty("MAXFOOD", out string mf));
         Assert.Equal(ch.MaxFood.ToString(), mf);
         Assert.Equal("60", mf);
+
+        // An NPC with no definition takes m_MaxFood 0 (CCharBase.cpp:26).
+        var npc = world.CreateCharacter();
+        Assert.True(npc.TryGetProperty("MAXFOOD", out string npcMf));
+        Assert.Equal("0", npcMf);
 
         // An instance MAXFOOD wins, and the read follows it.
         Assert.True(ch.TrySetProperty("MAXFOOD", "35"));

@@ -189,17 +189,10 @@ public sealed class CraftingEngine
         // Skill check
         bool success = SkillEngine.UseQuick(crafter, recipe.PrimarySkill, recipe.Difficulty);
 
-        // Tools wear from use (Source-X Skill_MakeItem): damage the crafting tool
-        // on each attempt, whether the craft succeeds or fails.
-        foreach (var toolType in recipe.RequiredToolTypes)
-        {
-            var tool = FindItemOfType(crafter, toolType);
-            if (tool != null)
-            {
-                SphereNet.Game.Combat.CombatEngine.DamageItem(tool);
-                break;
-            }
-        }
+        // No tool wear: Skill_MakeItem / Skill_MakeItem_Success never damage the
+        // crafting tool (CCharSkill.cpp:674-975); upstream's only tool wear is the
+        // EF_DamageTools gathering path (:3947-3961). The per-attempt damage here
+        // was invented.
 
         if (success)
         {

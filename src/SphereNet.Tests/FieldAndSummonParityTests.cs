@@ -69,7 +69,10 @@ public sealed class FieldAndSummonParityTests
         // A field is a spell manifestation, not lootable furniture.
         Assert.All(segments, s => Assert.True(s.IsAttr(ObjAttributes.Move_Never),
             "field segment can be picked up"));
-        Assert.All(segments, s => Assert.Equal(ItemType.Fire, s.ItemType));
+        // Every field segment is IT_SPELL carrying its spell (Spell_Field,
+        // CCharSpell.cpp:2312) - Fire Field included; its touch is the spell.
+        Assert.All(segments, s => Assert.Equal(ItemType.Spell, s.ItemType));
+        Assert.All(segments, s => Assert.Equal((short)SpellType.FireField, s.MoreP.X));
 
         // Touch burns (typed fire damage), instead of nothing/flat routing.
         var victim = world.CreateCharacter();

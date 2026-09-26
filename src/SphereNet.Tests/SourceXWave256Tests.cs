@@ -191,9 +191,11 @@ public sealed class SourceXWave256Tests
             var caster = world.CreateCharacter();
             caster.PrivLevel = PrivLevel.GM;
             caster.MaxMana = 100; caster.Mana = 100;
-            // OSI strength (magery + poisoning) / 2 = 900 -> greater (OSI 2, level 3).
-            caster.SetSkill(SkillType.Magery, 900);
-            caster.SetSkill(SkillType.Poisoning, 900);
+            // OSI strength (level + poisoning) / 2, where the level is the RANDOMIZED
+            // potency (CCharSpell.cpp:3631, :3910): magery 400 rolls 200..399, so
+            // (200..399 + 1550) / 2 = 875..974 -> always greater (OSI 2, level 3).
+            caster.SetSkill(SkillType.Magery, 400);
+            caster.SetSkill(SkillType.Poisoning, 1550);
             world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
             var victim = world.CreateCharacter();
             victim.MaxHits = 100; victim.Hits = 100;

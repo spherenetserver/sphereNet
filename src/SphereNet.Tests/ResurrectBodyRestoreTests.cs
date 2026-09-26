@@ -58,7 +58,9 @@ public sealed class ResurrectBodyRestoreTests
         client.OnCharacterDeath();
         _out.WriteLine($"died as {body:X4} -> ghost {player.BodyId:X4}, obody {player.OBody:X4}");
         Assert.True(player.IsDead);
-        Assert.True(player.BodyId is 0x0192 or 0x0193, $"ghost body was {player.BodyId:X4}");
+        // The ghost follows the race of the body (CCharAct.cpp:4447-4469): a gargoyle
+        // becomes a gargoyle ghost, everyone else here a human ghost.
+        Assert.Equal(Character.ResolveGhostBody(body), player.BodyId);
 
         client.OnResurrect();
 

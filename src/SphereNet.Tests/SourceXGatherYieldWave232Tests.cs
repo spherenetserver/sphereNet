@@ -99,6 +99,7 @@ public sealed class SourceXGatherYieldWave232Tests
             resources.LoadResourceFile(path);
             new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
             var world = TestHarness.CreateWorld();
+            TestHarness.AttachLoadedRegionTypes(world);
             var character = world.CreateCharacter();
             Character.OnSkillUseQuickDetailed =
                 (Character _, int _, ref int _, int _) => 1;

@@ -849,9 +849,14 @@ public static partial class Program
         Character.MurderDecayTimeSeconds   = _config.MurderDecayTime;
         Character.PlayerKarmaEvil          = _config.PlayerKarmaEvil;
         Character.PlayerKarmaNeutral       = _config.PlayerKarmaNeutral;
+        Character.PetsInheritNotoriety     = _config.PetsInheritNotoriety;
         Character.AttackingIsACrimeEnabled        = _config.AttackingIsACrime;
         Character.HelpingCriminalsIsACrimeEnabled = _config.HelpingCriminalsIsACrime;
-        Character.SnoopCriminalEnabled            = _config.SnoopCriminal;
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.SnoopCriminalChance = Math.Clamp(_config.SnoopCriminal, 0, 100);
+        // Witness search radius is the map view size (CCharFight.cpp:111).
+        SphereNet.Game.Objects.Characters.CrimeWitnessService.WitnessRange = _config.MapViewSize > 0 ? _config.MapViewSize : 18;
+        SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled =
+            (_config.Experimental & SphereNet.Game.Skills.Information.ActiveSkillEngine.EfDamageTools) != 0;
         Character.ReagentsRequiredEnabled  = _config.ReagentsRequired;
         Character.SpellbookRequiredEnabled = _config.SpellbookRequired;
         // Source-X CServerConfig RC_COMBATFLAGS normalize: PREHIT and
@@ -900,6 +905,10 @@ public static partial class Program
         Character.MapViewRadarTiles = _config.MapViewRadar > 0
             ? _config.MapViewRadar
             : _config.MapViewSize;
+        // The follow leash is g_Cfg.m_iMapViewRadar (CCharNPCAct.cpp:1401), default 31.
+        SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = _config.MapViewRadar > 0
+            ? _config.MapViewRadar
+            : SphereNet.Game.AI.NpcAI.DefaultMapViewRadar;
         Character.AttackerTimeoutSeconds = _config.AttackerTimeout;
         Character.RegenHitsSeconds = _config.RegenHits;
         Character.RegenStamSeconds = _config.RegenStam;

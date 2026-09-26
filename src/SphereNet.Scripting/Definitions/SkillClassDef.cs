@@ -12,11 +12,13 @@ namespace SphereNet.Scripting.Definitions;
 public sealed class SkillClassDef : ResourceLink
 {
     public string Name { get; set; } = "";
-    public int SkillSumMax { get; set; } = 7000; // 700.0
-    public int StatSumMax { get; set; } = 225;
-    public int StrMax { get; set; } = 125;
-    public int DexMax { get; set; } = 125;
-    public int IntMax { get; set; } = 125;
+    // CSkillClassDef::Init (CSkillClassDef.cpp:24-38): SKILLSUM 1000.0, STATSUM 300,
+    // every stat 100, every skill 100.0 - what a class that omits a key gets.
+    public int SkillSumMax { get; set; } = 10000; // 1000.0
+    public int StatSumMax { get; set; } = 300;
+    public int StrMax { get; set; } = 100;
+    public int DexMax { get; set; } = 100;
+    public int IntMax { get; set; } = 100;
 
     public Dictionary<SkillType, int> SkillCaps { get; } = [];
 
@@ -37,24 +39,24 @@ public sealed class SkillClassDef : ResourceLink
             case "SKILLSUMMAX":
             case "MAXSKILLS":
             case "MAXBASESKILL":
-                SkillSumMax = ParseSkillSumValue(value, 7000);
+                SkillSumMax = ParseSkillSumValue(value, 10000);
                 return;
             case "STATSUM":
             case "STATSUMMAX":
             case "MAXSTATS":
-                StatSumMax = ParseIntValue(value, 225);
+                StatSumMax = ParseIntValue(value, 300);
                 return;
             case "STR":
             case "MAXSTR":
-                StrMax = ParseIntValue(value, 125);
+                StrMax = ParseIntValue(value, 100);
                 return;
             case "DEX":
             case "MAXDEX":
-                DexMax = ParseIntValue(value, 125);
+                DexMax = ParseIntValue(value, 100);
                 return;
             case "INT":
             case "MAXINT":
-                IntMax = ParseIntValue(value, 125);
+                IntMax = ParseIntValue(value, 100);
                 return;
         }
 

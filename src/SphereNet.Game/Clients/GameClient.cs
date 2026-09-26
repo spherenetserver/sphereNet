@@ -339,8 +339,6 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
         {
             bool wasOnline = _character.IsOnline;
             long utcNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            bool campingSafe = _character.TryGetTag("CAMPING_SAFE_LOGOUT_UNTIL", out string? safeText) &&
-                long.TryParse(safeText, out long safeUntil) && utcNow <= safeUntil;
             // The AREA, and then the ROOM: upstream checks both and the room is the
             // only flag a room gets a say in (CanInstantLogOut, CClient.cpp:155-160).
             bool instantRegion =
@@ -348,7 +346,9 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
                 _world.FindRoom(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true;
             // Source-X CanInstantLogOut (CClient.cpp:139): anyone above a player
             // leaves at once, counselors included.
-            bool safeLogout = campingSafe || instantRegion || _character.PrivLevel > PrivLevel.Player;
+            // No camping exemption: CanInstantLogOut (CClient.cpp:138-161) knows only
+            // the region/room flag, privilege, death and LINGERTIME.
+            bool safeLogout = instantRegion || _character.PrivLevel > PrivLevel.Player;
             bool instaLogout = !wasOnline || safeLogout || _character.IsDead || ClientLingerSeconds <= 0;
             long lingerSeconds = ClientLingerSeconds;
 

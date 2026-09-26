@@ -52,7 +52,7 @@ public sealed class SphereConfig
     public int ClientMax { get; set; } = 256;
     public int ClientMaxIP { get; set; } = 16;
     public int ConnectingMax { get; set; } = 32;
-    public int ClientLinger { get; set; } = 60;
+    public int ClientLinger { get; set; } = 600; // Source-X 10 min (CServerConfig.cpp:109)
 
     // Paths
     public string ScpFilesDir { get; set; } = "scripts/";
@@ -69,7 +69,7 @@ public sealed class SphereConfig
     ];
 
     // World Save
-    public int SavePeriodMinutes { get; set; } = 15;
+    public int SavePeriodMinutes { get; set; } = 20; // CServerConfig.cpp:126
 
     /// <summary>Source-X FORCEGARBAGECOLLECT: run world integrity cleanup before
     /// each new save and before its timer starts. This is not .NET GC.</summary>
@@ -139,11 +139,11 @@ public sealed class SphereConfig
     public long SectorSleepMs => Math.Max(0, SectorSleep) * 60_000L;
     public int MapViewSize { get; set; } = 18;
     public int MaxShipPlankTeleport { get; set; } = 18;
-    public int MapViewSizeMax { get; set; } = 18;
+    public int MapViewSizeMax { get; set; } = 24; // UO_MAP_VIEW_SIZE_MAX (CServerConfig.cpp:222)
     /// <summary>Combat retreat distance (tiles). 0 = use MapViewSize. sphere.ini MAPVIEWRADAR.</summary>
-    public int MapViewRadar { get; set; }
+    public int MapViewRadar { get; set; } = 31; // UO_MAP_VIEW_RADAR (CServerConfig.cpp:223)
     /// <summary>Seconds before combat memory clears from inactivity. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
-    public int AttackerTimeout { get; set; }
+    public int AttackerTimeout { get; set; } = 30; // CServerConfig.cpp:230
 
     // Regen: SECONDS to recover one point (Source-X CServerConfig m_iRegenRate).
     // REGEN0=STAT_STR(hits), REGEN1=STAT_INT(mana), REGEN2=STAT_DEX(stam).
@@ -165,20 +165,20 @@ public sealed class SphereConfig
     /// (CCharFight.cpp:1858, default 10 = 1s, CServerConfig.cpp:195).</summary>
     public int CombatArcheryMovementDelay { get; set; } = 10;
     public int CombatMeleeMovementDelay { get; set; }
-    public int ArcheryMinDist { get; set; } = 1;
-    public int ArcheryMaxDist { get; set; } = 12;
+    public int ArcheryMinDist { get; set; } = 2; // CServerConfig.cpp:190
+    public int ArcheryMaxDist { get; set; } = 15; // CServerConfig.cpp:191
     public int MagicFlags { get; set; }
     /// <summary>EMOTEFLAGS (Source-X m_iEmoteFlags). 0x02 EMOTEF_POISON: the poison
     /// emote is shown only to the poisoned character.</summary>
     public int EmoteFlags { get; set; }
-    public bool ReagentsRequired { get; set; } = true;
+    public bool ReagentsRequired { get; set; } // false, CServerConfig.cpp:78
     public bool SpellbookRequired { get; set; } = true;
-    public bool EquippedCast { get; set; }
+    public bool EquippedCast { get; set; } = true; // CServerConfig.cpp:84
     public bool ReagentLossAbort { get; set; }
     public bool ReagentLossFail { get; set; }
     public bool ManaLossAbort { get; set; }
     public bool ManaLossFail { get; set; }
-    public int ManaLossPercent { get; set; } = 100;
+    public int ManaLossPercent { get; set; } = 50; // CServerConfig.cpp:73
     public int WalkBuffer { get; set; } = 75;
     public int WalkRegen { get; set; } = 25;
     // Movement Credit System (opt-in, disabled by default)
@@ -216,8 +216,8 @@ public sealed class SphereConfig
     /// <summary>Source-X PACKETDEATHANIMATION (m_iPacketDeathAnimation): send
     /// the 0x2C death-screen packet to a dying client. 0 disables it — the
     /// client receives the ghost redraw without the death-screen packet.
-    /// Defaults to 0 in SphereNet; set 1 for Source-X's default behavior.</summary>
-    public int PacketDeathAnimation { get; set; } = 0;
+    /// Defaults to 1, as in Source-X.</summary>
+    public int PacketDeathAnimation { get; set; } = 1; // true, CServerConfig.cpp:154
 
     // Crime & Notoriety
     /// <summary>MINUTES a character stays criminal, as Source-X reads CRIMINALTIMER
@@ -231,7 +231,7 @@ public sealed class SphereConfig
     public int MurderDecayTime { get; set; } = 28800;
     public bool LootingIsACrime { get; set; } = true;
     public bool AttackingIsACrime { get; set; } = true;
-    public bool HelpingCriminalsIsACrime { get; set; }
+    public bool HelpingCriminalsIsACrime { get; set; } = true; // CServerConfig.cpp:178
     /// <summary>How long a summoned guard stays, in MINUTES. Upstream reads the ini
     /// value as minutes (CServerConfig.cpp:1292 multiplies it by 60 * MSECS_PER_SEC)
     /// and writes it back the same way (:2128); the default is 3 (:173). This engine
@@ -240,10 +240,13 @@ public sealed class SphereConfig
     public int GuardLinger { get; set; } = 3;
     public bool GuardsInstantKill { get; set; } = true;
     public bool GuardsOnMurderers { get; set; } = true;
-    public bool SnoopCriminal { get; set; } = true;
+    /// <summary>SNOOPCRIMINAL: percent chance (0-100) a witnessed snoop counts as a
+    /// noticed crime (Source-X m_iSnoopCriminal, ELEM_INT, default 100,
+    /// CServerConfig.cpp:145; used at CCharFight.cpp:156).</summary>
+    public int SnoopCriminal { get; set; } = 100;
     public int NotoTimeout { get; set; } = 30;
     public bool MonsterFight { get; set; }
-    public bool MonsterFear { get; set; } = true;
+    public bool MonsterFear { get; set; } // false, CServerConfig.cpp:134
     /// <summary>NPCNOFAMETITLE: NPCs never get the Lord/Lady fame title
     /// (upstream CChar::Noto_GetFameTitle). Default off.</summary>
     public bool NpcNoFameTitle { get; set; }
@@ -705,7 +708,7 @@ public sealed class SphereConfig
     public bool AutoHouseKeys { get; set; } = true;
 
     // Tooltip
-    public int ToolTipMode { get; set; } = 0; // 0=off, 1=revision/request, 2=force full
+    public int ToolTipMode { get; set; } = 1; // 0=off, 1=revision/request, 2=force full; TOOLTIPMODE_SENDVERSION (CServerConfig.cpp:342)
     public int ToolTipCache { get; set; } = 30;
 
     // Experimental / Option flags
@@ -715,7 +718,7 @@ public sealed class SphereConfig
     public bool HasFileCommands => ((SphereNet.Core.Enums.OptionFlags)(uint)OptionFlags & SphereNet.Core.Enums.OptionFlags.FileCommands) != 0;
 
     // Network
-    public int MaxPacketsPerTick { get; set; } = 100;
+    public int MaxPacketsPerTick { get; set; } = 50; // CServerConfig.cpp:331
     public int FloodDetectionCount { get; set; } = 5;
     public int FloodDetectionWindowMs { get; set; } = 10_000;
     public int DeadSocketTime { get; set; } = 300;
@@ -840,7 +843,7 @@ public sealed class SphereConfig
     // Distance* overrides them.
     public int DistanceWhisper { get; set; } = 3;
     public int DistanceTalk { get; set; } = 18;
-    public int DistanceYell { get; set; } = 48;
+    public int DistanceYell { get; set; } = 31; // UO_MAP_VIEW_RADAR (CServerConfig.cpp:211)
 
     // Web
     /// <summary>USEHTTP as Source-X keeps it: an integer, default 2, and any nonzero
@@ -1117,7 +1120,16 @@ public sealed class SphereConfig
         GuardLinger = ini.GetInt(section, "GuardLinger", GuardLinger);
         GuardsInstantKill = ini.GetBool(section, "GuardsInstantKill", GuardsInstantKill);
         GuardsOnMurderers = ini.GetBool(section, "GuardsOnMurderers", GuardsOnMurderers);
-        SnoopCriminal = ini.GetBool(section, "SnoopCriminal", SnoopCriminal);
+        // Numeric percent like Source-X; a legacy "true"/"false" still reads as 100/0.
+        string? snoopRaw = ini.GetValue(section, "SnoopCriminal");
+        if (snoopRaw != null && (snoopRaw.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                                 snoopRaw.Equals("yes", StringComparison.OrdinalIgnoreCase)))
+            SnoopCriminal = 100;
+        else if (snoopRaw != null && (snoopRaw.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                                      snoopRaw.Equals("no", StringComparison.OrdinalIgnoreCase)))
+            SnoopCriminal = 0;
+        else
+            SnoopCriminal = ini.GetInt(section, "SnoopCriminal", SnoopCriminal);
         NotoTimeout = ini.GetInt(section, "NotoTimeout", NotoTimeout);
         MonsterFight = ini.GetBool(section, "MonsterFight", MonsterFight);
         MonsterFear = ini.GetBool(section, "MonsterFear", MonsterFear);

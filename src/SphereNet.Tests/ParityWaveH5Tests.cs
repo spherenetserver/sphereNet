@@ -100,6 +100,11 @@ public class ParityWaveH5Tests
 
         var deer = world.CreateCharacter();
         deer.NpcBrain = NpcBrainType.Animal;
+        // A creature eats only what its FOODTYPE names and hungers only with a food
+        // ceiling (Food_CanEat, CCharStatus.cpp:888; m_MaxFood, CCharBase.cpp:26) -
+        // a bare test creature has neither, so it is given both.
+        deer.SetTag("MAXFOOD", "60");
+        deer.SetTag("FOODTYPE", "t_fruit");
         // NPC_AI_INTFOOD is an NPCAI flag (there is no INTFOOD tag in Source-X),
         // and hunger means under 10 food at most 40% full (CCharNPCAct.cpp:1768-1771).
         deer.SetTag("OVERRIDE.NPCAI", "0x0010");

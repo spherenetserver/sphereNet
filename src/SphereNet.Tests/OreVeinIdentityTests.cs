@@ -124,6 +124,7 @@ public sealed class OreVeinIdentityTests : IDisposable
         new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
 
         var world = TestHarness.CreateWorld();
+        TestHarness.AttachLoadedRegionTypes(world);
         var miner = world.CreateCharacter();
         Character.OnSkillUseQuickDetailed = (Character _, int _, ref int _, int _) => 1;
         return new Rig(world, new GatheringEngine(world), miner);

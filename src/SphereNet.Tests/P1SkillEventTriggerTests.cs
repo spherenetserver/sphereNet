@@ -59,6 +59,7 @@ public class P1SkillEventTriggerTests
         var food = world.CreateItem();
         food.ItemType = ItemType.Food;
         food.Amount = 1;
+        food.MoreP = new Point3D(0, 0, 0, 10); // MOREM = m_foodval (CCharUse.cpp:880)
         player.Backpack!.AddItem(food);
 
         client.HandleDoubleClick(food.Uid.Value);

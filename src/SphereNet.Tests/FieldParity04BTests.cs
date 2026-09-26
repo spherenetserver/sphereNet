@@ -43,10 +43,14 @@ public sealed class FieldParity04BTests
         Item.ResolveWorld = () => world;
 
         var registry = new SpellRegistry();
+        // A field touch is OnSpellEffect at the field's level (CCharAct.cpp:5006),
+        // so the burn comes from the def's EFFECT curve - a flat 10 here - not from
+        // the old engine-only FIELD_DAMAGE tag.
         registry.Register(new SpellDef
         {
             Id = SpellType.FireField, Name = "Fire Field",
             Flags = SpellFlag.TargXYZ | SpellFlag.Harm | SpellFlag.Damage | SpellFlag.Field,
+            EffectBase = FireDamage, EffectScale = FireDamage,
         });
         registry.Register(new SpellDef
         {

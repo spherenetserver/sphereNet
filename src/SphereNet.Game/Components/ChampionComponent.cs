@@ -245,9 +245,11 @@ public sealed class ChampionComponent
         SpawnsNextRed = GetCandlesCount();
         SetLevel(1);
 
-        // Source-X fires @Start AFTER the state is armed; RET_TRUE only
-        // aborts the initial spawn burst.
-        if (FireTrigger(ItemTrigger.Start, new SpawnTriggerArgs { SpawnedChar = src }) == TriggerResult.True)
+        // Source-X fires @Start AFTER the state is armed, and only when a character
+        // started the event (CCChampion.cpp:171); RET_TRUE only aborts the initial
+        // spawn burst.
+        if (src != null &&
+            FireTrigger(ItemTrigger.Start, new SpawnTriggerArgs { SpawnedChar = src }) == TriggerResult.True)
         {
             SaveStateToTags();
             return;
@@ -383,6 +385,7 @@ public sealed class ChampionComponent
         if (npc == null)
             return;
 
+        AttachChampionEvent(npc);
         if (Level >= LevelMax)
             ChampionSummoned = npc.Uid;
         // Source-X updates the counters after ANY successful spawn, the boss included
@@ -402,7 +405,28 @@ public sealed class ChampionComponent
         if (!Active)
             return;
         _item.SpawnChar?.DelObj(victim.Uid);
+        DetachChampionEvent(victim);
         OnKill(victim.Uid);
+    }
+
+    /// <summary>CCChampion::AddObj (CCChampion.cpp:756-769): a wave member gets the
+    /// e_spawn_champion event when the script pack defines it.</summary>
+    private void AttachChampionEvent(Character npc)
+    {
+        var rid = _resources?.ResolveDefName("e_spawn_champion") ?? ResourceId.Invalid;
+        if (rid.IsValid && rid.Type == ResType.Events && !npc.Events.Contains(rid))
+            npc.Events.Add(rid);
+    }
+
+    /// <summary>CCChampion::DelObj (CCChampion.cpp:747): the member loses the
+    /// e_spawn_champion event as it leaves the champion.</summary>
+    private void DetachChampionEvent(Character? npc)
+    {
+        if (npc == null)
+            return;
+        var rid = _resources?.ResolveDefName("e_spawn_champion") ?? ResourceId.Invalid;
+        if (rid.IsValid)
+            npc.Events.Remove(rid);
     }
 
     /// <summary>Source-X CCChampion::OnKill.</summary>
@@ -521,6 +545,9 @@ public sealed class ChampionComponent
         // Once the boss is out the ring is finished (:443).
         if (Level >= LevelMax)
             return;
+
+        // Each red candle re-arms the white quota (CCChampion.cpp:446).
+        SpawnsNextWhite = SpawnsNextRed / (CandlesNextRed + 1);
 
         var candle = CreateCandle(RedOffsets[Math.Min(_redCandles.Count, RedOffsets.Length - 1)], red: true);
         if (candle == null)
@@ -937,10 +964,15 @@ public sealed class ChampionComponent
                 var uid = ParseSerial(args);
                 if (!uid.IsValid) return true;
                 if (verb.Equals("ADDOBJ", StringComparison.OrdinalIgnoreCase))
+                {
                     _item.SpawnChar?.RegisterExisting(uid);
+                    if (_world.FindChar(uid) is { } added)
+                        AttachChampionEvent(added);
+                }
                 else
                 {
                     _item.SpawnChar?.DelObj(uid);
+                    DetachChampionEvent(_world.FindChar(uid));
                     OnKill(uid); // Source-X DELOBJ counts as a kill
                 }
                 return true;

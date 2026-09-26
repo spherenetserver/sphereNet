@@ -645,34 +645,26 @@ public sealed class CommandHandler
     /// pair so script-defined functions still apply.
     /// </summary>
     /// <summary>Jail a character (the JAIL command's work, also used by the admin
-    /// panel): move it to the jail point of <paramref name="cell"/> (AREADEF region
-    /// "jail{cell}", or "jail" for cell 0, via world.GetJailPoint - Source-X's
-    /// GetRegionPoint), freeze it, and record the sentence. <paramref name="minutes"/>
-    /// 0 = indefinite; the release time is stored as UTC ticks so it survives a
-    /// reboot. Fires @Jail with N1 = minutes.</summary>
+    /// panel) as Source-X CChar::Jail does (CCharAct.cpp:153-191): set PRIV_JAILED and
+    /// the JailCell tag on the account, teleport to the region point "jail{cell}"
+    /// ("jail" for cell 0, via world.GetJailPoint) and tell the prisoner. No freeze -
+    /// the jail region confines, and PRIV_JAILED blocks recall/teleport out.
+    /// <paramref name="minutes"/> &gt; 0 is an opt-in SphereNet timed release (stored
+    /// as UTC ticks so it survives a reboot); 0 = until forgiven, like Source-X.
+    /// Fires @Jail with N1 = minutes.</summary>
     public void JailCharacter(GameWorld world, Character target, int minutes, int cell)
     {
-        if (cell > 0)
-            target.SetTag("JAIL_CELL", cell.ToString());
-        else
-            target.RemoveTag("JAIL_CELL");
+        int jailMinutes = Math.Max(0, minutes);
+        long releaseTime = jailMinutes > 0
+            ? DateTime.UtcNow.Ticks + jailMinutes * TimeSpan.TicksPerMinute
+            : 0;
+        target.SetJailState(true, Math.Max(0, cell), releaseTime);
 
         var jailPos = world.GetJailPoint(cell);
         var jailFrom = target.Position;
         if (world.MoveCharacter(target, jailPos))
             Character.OnTeleportEffect?.Invoke(target, jailFrom);
-        target.SetStatFlag(StatFlag.Freeze);
-
-        int jailMinutes = Math.Max(0, minutes);
-        if (jailMinutes > 0)
-        {
-            long releaseTime = DateTime.UtcNow.Ticks + jailMinutes * TimeSpan.TicksPerMinute;
-            target.SetTag("JAIL_RELEASE", releaseTime.ToString());
-        }
-        else
-        {
-            target.SetTag("JAIL_RELEASE", "0"); // indefinite
-        }
+        OnSysMessage?.Invoke(target, ServerMessages.Get(Msg.MsgJailed));
 
         // @Jail (Source-X) — fired on the jailed character. N1 = minutes
         // (0 = indefinite).
@@ -682,16 +674,15 @@ public sealed class CommandHandler
     }
 
     /// <summary>Release a jailed character (UNJAIL / FORGIVE / PARDON, and the admin
-    /// panel). Source-X CHV_FORGIVE clears PRIV_JAILED and the JailCell tag;
-    /// SphereNet additionally lifts the Freeze confinement and the timed-release tag,
-    /// then moves the character back out.</summary>
+    /// panel). Source-X CHV_FORGIVE (CCharAct.cpp:193-210) only clears PRIV_JAILED and
+    /// the JailCell tag and says so - the character is not moved. A Freeze left by
+    /// an older SphereNet jail (which froze prisoners) is lifted.</summary>
     public void ReleaseJailedCharacter(GameWorld world, Character target)
     {
-        target.ClearStatFlag(StatFlag.Freeze);
-        target.RemoveTag("JAIL_RELEASE");
-        target.RemoveTag("JAIL_CELL");
-        var spawnPos = new Point3D(1495, 1629, 10, 0);
-        world.MoveCharacter(target, spawnPos);
+        if (target.IsJailed)
+            target.ClearStatFlag(StatFlag.Freeze);
+        target.SetJailState(false);
+        OnSysMessage?.Invoke(target, ServerMessages.Get(Msg.MsgForgiven));
         OnCharacterResyncRequested?.Invoke(target);
     }
 
@@ -1554,8 +1545,10 @@ public sealed class CommandHandler
 
         Register("UNSTICK", PrivLevel.Counsel, (gm, _) =>
         {
-            // Teleport GM to default Britain bank location
-            var safePos = new Point3D(1495, 1629, 10, 0);
+            // Not a Source-X command. Go to the first [STARTS] point (what Source-X's
+            // "-1" region point resolves to, CServerConfig.cpp:2724-2745); the old
+            // Britain coordinate only when the pack defines no start at all.
+            var safePos = Resources?.Starts.FirstOrDefault()?.Point ?? new Point3D(1495, 1629, 10, 0);
             world.MoveCharacter(gm, safePos);
             OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_safe_teleport"));
         });

@@ -79,6 +79,7 @@ public sealed class ResourceAndReactiveTriggerTests
         dispatcher.BuildUsedTriggerCache();
 
         var world = TestHarness.CreateWorld();
+        TestHarness.AttachLoadedRegionTypes(world);
         var miner = world.CreateCharacter();
         miner.Events.Add(resources.ResolveDefName("e_found_watch"));
         Character.OnSkillUseQuickDetailed = (Character _, int _, ref int _, int _) => 1;

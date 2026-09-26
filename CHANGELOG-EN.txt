@@ -4,6 +4,75 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Source-X parity sweep: skills, magic, items, NPCs, characters
+------------------------------------------------------------------------
+FIX - Skills: Begging uses the target's INT and gives nothing; Stealing uses
+      Calc_StealingItem with no skill/10 weight cap; Snooping is all-or-
+      nothing with fail reveal and -4 karma; Lockpicking reads the lock
+      complexity (MORE2) and no longer breaks picks; RemoveTrap disarms for
+      5 minutes and a failure springs the trap; Stealth leaves its step
+      budget to the script; tools wear only on a gathering success under
+      EF_DamageTools, crafting tools never; Peacemaking/Provocation/
+      Musicianship follow the Source-X difficulties, radius and targets;
+      smelting needs the ingot's TDATA1 mining; kindling turns into the
+      campfire itself and bedrolls give no safe logout; gathering matches the
+      region type exactly; Poisoning rand(60) on the Source-X target types;
+      healing heals by the skill EFFECT and gives a bloody bandage only on
+      success; skill decay, skill-sum cap (players only) and war-mode hiding
+      follow Source-X. Dead invented skill handlers are removed.
+FIX - Magic: the EvalInt damage bonus only with MAGICF_OSIFORMULAS; Mind
+      Blast through the effect curve; per-spell area radius and LOCAL.
+      AreaRadius; fields 3x1 with FieldWidth/FieldGauge; no underground
+      spell block; Reactive Armor does not reflect spells; Protection does not
+      let archers move; SCRIPTED spells skip native effects (no native Poison
+      Strike/Wither); @SpellSuccess/@Success fire before the spell is paid
+      with its locals read back and @SpellFail sets the mana loss; Gate opens
+      two linked gates for DURATION; GetSpellDuration is ported (duration 0
+      = no timer); Mana Drain/Vampire, resist only on damage, mana cost on
+      fail/success, field touch running the spell, Incognito names from the
+      name pools, Pain Spike, Create Food from DEFFOOD, Dispel layers and the
+      spell damage types follow Source-X.
+FIX - Items: crops drop fruit only when TDATA2 is -1 and grow on the moon
+      cycle; food restores MOREM or weight/10; drinks, water and booze go
+      through @Drink without feeding (unless OF_DrinkIsFood); potion
+      cooldown TDATA2 (default 15 s); shearing gives 1 wool; a filleted fish
+      keeps its definition type; hair dye opens d_hair_dye; item stones read
+      MOREY amount; lights keep charges in MOREY/MOREX; a blade smashes
+      instead of poisoning or repairing (repair by smith hammer); forge,
+      spinning wheel, loom and anvil act as in Source-X; the clock shows game
+      time; tiledata weight 0 weighs 0; vendor purses restock to 10000; house
+      storage/vendor defaults 489/10; invented double-click messages removed.
+FIX - NPCs: summoned guards come from OVERRIDE.GUARDS / GUARDS, run the
+      normal creation and are not invulnerable; a red champion candle resets
+      the white quota; BODY=/CHARDEF= on a live character only changes its
+      id; the invented TryLoot and service-keyword fallback are removed
+      (@NPCHearUnknown fires); hiring by gold needs the hire talk; no SHRINK
+      pet verb; no FOODTYPE means no eating and a def with no food never
+      hungers; char spawners default to 15 tiles and 15-30 minutes with no
+      250 cap; a missing chardef uses DEFAULTCHAR; magery reach 10 and the
+      NoMagicDamage region gate; 0 stamina no longer blocks swings; breath
+      and thrown rocks use current hits/stamina; idle sounds only from
+      look-around; pet leash follows MAPVIEWRADAR; stable claim returns every
+      pet and checks line of sight.
+FIX - Characters: attacking or harming an innocent goes through the witness
+      check (a speaking NPC witness flags the criminal in any region, a
+      player witness sees grey) instead of an instant criminal flag; pets
+      inherit notoriety only under PETSINHERITNOTORIETY; 0 stamina stops
+      walking; running sets the running flag so its stamina penalty applies;
+      shoving follows ShoveCharAtPosition; jail sets the account jailed flag
+      and the jail region point with no freeze; ghost bodies follow race and
+      gender; healers/bankers are not forced invulnerable in notoriety;
+      personal grey uses SAWCRIME/AGGREIVED; skill class fallbacks 10000/300/
+      100 with OVERRIDE.STATCAP_n/STATSUM; karma for killing evil criminals;
+      SNOOPCRIMINAL is a percent; login does not refill mana/stamina; regen
+      decays a pool above its maximum; NPCs and GMs cannot become criminal.
+CHANGE - Config defaults now match the Source-X constructor for keys the ini
+      omits: ManaLossPercent 50, ReagentsRequired 0, MonsterFear 0,
+      ArcheryMin/MaxDist 2/15, EquippedCast 1, HelpingCriminalsIsACrime 1,
+      AttackerTimeout 30, MapViewRadar 31, MapViewSizeMax 24, DistanceYell 31,
+      PacketDeathAnimation 1, ToolTipMode 1, SavePeriod 20, ClientLinger 600,
+      MaxPacketsPerTick 50.
+
 [2026-09-26] - Combat, magic, taming, regen, hiding and vendor prices follow Source-X
 ------------------------------------------------------------------------
 FIX - Melee hits roll a flat percent like Skill_Fighting: difficulty*10 >=

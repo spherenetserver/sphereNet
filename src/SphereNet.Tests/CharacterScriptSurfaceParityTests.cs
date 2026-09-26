@@ -57,7 +57,8 @@ public sealed class CharacterScriptSurfaceParityTests : IDisposable
             "Wicked", "Belligerent", "Neutral", "Kindly", "Goodhearted", "",
             "[CHARDEF c_probe_woman]", "ID=0191", "NAME=probe woman", "CAN=MT_FEMALE",
             "ICON=020d2", "SOUNDIDLE=05a", "",
-            "[CHARDEF c_probe_man]", "ID=0190", "NAME=probe man", "",
+            // MAXFOOD: an NPC with no food ceiling never hungers (CCharBase.cpp:26).
+            "[CHARDEF c_probe_man]", "ID=0190", "NAME=probe man", "MAXFOOD=60", "",
             "[ITEMDEF 0eed]", "NAME=gold", "CAN=0100", "",   // CAN_I_PILE: gold stacks
         };
         lines.AddRange(extra);
@@ -427,7 +428,13 @@ public sealed class CharacterScriptSurfaceParityTests : IDisposable
     {
         // CHV_CRIMINAL (CChar.cpp:4503).
         LoadPack();
+        var npc = Make("c_probe_man");
+        // Noto_Criminal is a no-op for an NPC (CCharNotoriety.cpp:392-393).
+        Assert.True(npc.TryExecuteCommand("CRIMINAL", "", new Console()));
+        Assert.False(npc.IsCriminal);
+
         var ch = Make("c_probe_man");
+        ch.IsPlayer = true;
         Assert.True(ch.TryExecuteCommand("CRIMINAL", "", new Console()));
         Assert.True(ch.IsCriminal);
         Assert.True(ch.IsStatFlag(StatFlag.Criminal));

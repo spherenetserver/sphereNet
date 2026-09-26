@@ -183,16 +183,14 @@ public sealed partial class NpcAI
 
         npc.FightTarget = Serial.Invalid;
 
-        // No enemy — looters scavenge nearby corpses (Source-X NPC_AI_LOOTING).
-        if (GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting) && TryLoot(npc))
-            return;
-
         // Idle monsters notice desirable ground items too (Source-X
-        // NPC_LookAtItem runs for every brain, not just humans).
+        // NPC_LookAtItem runs for every brain, not just humans); a looting
+        // creature's corpse run is NPC_Act_Looting, started from there
+        // (CCharNPCAct.cpp:1188-1215), and the look-around ends with its idle
+        // sound (:1217-1218).
         LookAtNearbyItems(npc);
+        LookAroundIdleSound(npc);
 
-        if (_rand.Next(8) == 0)
-            EmitSound(npc, _rand.Next(2) == 0 ? CreatureSoundType.Idle : CreatureSoundType.Notice);
         WanderHome(npc);
     }
 
@@ -209,72 +207,6 @@ public sealed partial class NpcAI
         if (deadline > 0)
             mem.SetTimeout(deadline); // forget about it once the item is gone
         return mem;
-    }
-
-    /// <summary>Looter NPCs walk to a nearby corpse with contents and take one
-    /// item into their pack (Source-X NPC_Act_Looting). Empty corpses are
-    /// skipped, and so is a corpse the NPC remembers (NPC_LootMemory).
-    /// Returns true if busy.</summary>
-    private bool TryLoot(Character npc)
-    {
-        if (npc.Backpack == null) return false;
-        if (npc.Backpack.Contents.Count >= Item.MaxContainerItems) return false;
-        // Source-X looting guards: hands required, and never inside guarded
-        // or safe territory. (Summons leave no corpse in this engine, so the
-        // reference's summon-corpse exclusion has nothing to act on.)
-        var lootCan = CharDefHelper.GetCanFlags(npc);
-        if ((lootCan & CanFlags.C_UseHands) == 0) return false;
-        if (IsProtectedGround(npc.Position)) return false;
-
-        Item? corpse = null;
-        int best = int.MaxValue;
-        foreach (var it in _world.GetItemsInRange(npc.Position, 4))
-        {
-            if (it.IsDeleted || it.ItemType != ItemType.Corpse || it.Contents.Count == 0) continue;
-            // Already looked at (Memory_FindObj, CCharNPCAct.cpp:974).
-            if (npc.Memory_FindObj(it.Uid) != null) continue;
-            if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
-            int d = npc.Position.GetDistanceTo(it.Position);
-            if (d < best) { best = d; corpse = it; }
-        }
-        if (corpse == null) return false;
-
-        if (best > 1)
-        {
-            MoveToward(npc, corpse.Position);
-            return true;
-        }
-
-        // Adjacent — grab one random item. @NPCLookAtItem sees ARGN1=dist,
-        // ARGN2=want (seeded 100 — the engine already decided to loot; a
-        // script may lower it below the roll to skip, RETURN 1 to take over
-        // or RETURN 0 to leave the piece alone).
-        if (corpse.Contents.Count > 0)
-        {
-            var loot = corpse.Contents[_rand.Next(corpse.Contents.Count)];
-            // Out of reach for this creature: remember it and move on
-            // (CanMoveItem / CanCarry -> NPC_LootMemory, CCharNPCAct.cpp:1623).
-            if (!ItemMoveRules.CanMove(npc, loot, out _) || !npc.CanCarry(loot))
-            {
-                NpcLootMemory(npc, loot);
-                return true;
-            }
-            int want = 100;
-            if (OnNpcLookAtItem != null && !IsLookAtItemExcluded(loot))
-            {
-                var d = OnNpcLookAtItem(npc, loot, best, 100);
-                if (d.Handled || d.Ignore)
-                    return true;
-                want = d.Want;
-            }
-            if (want > _rand.Next(100))
-            {
-                corpse.RemoveItem(loot);
-                if (!npc.Backpack.TryAddItem(loot))
-                    corpse.TryAddItem(loot);
-            }
-        }
-        return true;
     }
 
     /// <summary>Berserk: attack nearest visible character (hostile to everyone).</summary>
@@ -317,8 +249,7 @@ public sealed partial class NpcAI
         }
 
         npc.FightTarget = Serial.Invalid;
-        if (_rand.Next(6) == 0)
-            EmitSound(npc, CreatureSoundType.Idle);
+        LookAroundIdleSound(npc);
         WanderHome(npc);
     }
 
@@ -470,9 +401,8 @@ public sealed partial class NpcAI
         if (HasExtra(npc, NpcAiExtraFlags.BandageHeal) && TryBandage(npc, npc))
             return;
 
-        // Random idle combat sound (Source-X: Berserk or 1/6 chance)
-        if (npc.NpcBrain == NpcBrainType.Berserk || _rand.Next(6) == 0)
-            EmitSound(npc, CreatureSoundType.Idle);
+        // No idle sound here: NPC_Act_Fight makes none - the idle sound is the
+        // look-around's (CCharNPCAct.cpp:1217-1218, LookAroundIdleSound).
 
         bool combatExtras = HasExtra(npc, NpcAiExtraFlags.CombatExtras);
 
@@ -493,14 +423,19 @@ public sealed partial class NpcAI
         var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         var range = GetFightRange(npc, weapon);
 
-        // Ranged kiting (Source-X NPC_FightArchery): when the target has closed
-        // inside the weapon's minimum range a ranged attacker cannot fire, so
-        // back off to reopen the gap (≈50%) instead of standing locked in melee.
-        if (range.Max > 1 && dist < range.Min)
+        // Ranged kiting (Source-X NPC_FightArchery, CCharNPCAct_Fight.cpp:17-58): only
+        // a ranged weapon, and only once the target is AT or inside the minimum
+        // distance (ARCHERYMINDIST when the weapon sets none) - then half the time
+        // back off, and either way hold rather than close in.
+        if (CombatHelper.IsRangedWeapon(weapon))
         {
-            if (_rand.Next(2) == 0)
-                MoveAway(npc, target.Position);
-            return;
+            int kiteMin = range.Min > 0 ? range.Min : Character.ArcheryMinDist;
+            if (dist <= kiteMin)
+            {
+                if (_rand.Next(2) == 0)
+                    MoveAway(npc, target.Position);
+                return;
+            }
         }
 
         bool surround = HasExtra(npc, NpcAiExtraFlags.SurroundFlank);
@@ -610,7 +545,7 @@ public sealed partial class NpcAI
     /// pile counts as a rock.</summary>
     private bool TryThrow(Character npc, Character target, int dist, bool hasLOS, bool combatExtras)
     {
-        if (dist < 2 || !hasLOS)
+        if (!hasLOS)
             return false;
         bool throwObjTag = npc.TryGetTag("THROWOBJ", out _);
         bool armed = throwObjTag
@@ -619,8 +554,16 @@ public sealed partial class NpcAI
         if (!armed)
             return false;
 
-        // Source-X Skill_Act_Throwing default damage (CCharSkill.cpp:3447).
-        int throwDmg = Math.Max(1, npc.Dex / 4 + _rand.Next(npc.Dex / 4 + 1));
+        // What flies and how hard (Skill_Act_Throwing, CCharSkill.cpp:3417-3462): the
+        // THROWOBJ item, else a boulder two times in three or a small rock; the
+        // default damage reads the CURRENT stamina (Stat_GetVal(STAT_DEX)) - a
+        // boulder or THROWOBJ stam/4 + rand(stam/4), a small rock 2 + rand(stam/4).
+        int stam = Math.Max(0, (int)npc.Stam);
+        ushort throwGfx = ResolveThrowGraphic(npc);
+        bool smallRock = !npc.TryGetTag("THROWOBJ", out _) && throwGfx >= 0x1363 && throwGfx <= 0x136C;
+        int throwDmg = smallRock
+            ? 2 + _rand.Next(Math.Max(1, stam / 4))
+            : stam / 4 + _rand.Next(Math.Max(1, stam / 4));
         int throwMin = 2, throwMax = 9;
         if (npc.TryGetTag("THROWRANGE", out string? trStr) && !string.IsNullOrWhiteSpace(trStr))
         {
@@ -631,7 +574,12 @@ public sealed partial class NpcAI
                 throwMax = Math.Max(throwMin, Math.Max(mn, mx));
             }
             else if (int.TryParse(parts[0], out int single))
-                throwMax = Math.Max(throwMin, single);
+            {
+                // A single value is the MAX; the min is then 0 (ConvertRangeStr,
+                // CBase.cpp:486-505).
+                throwMin = 0;
+                throwMax = Math.Max(0, single);
+            }
         }
         if (npc.TryGetTag("THROWDAM", out string? tdStr) && !string.IsNullOrWhiteSpace(tdStr))
         {
@@ -650,7 +598,35 @@ public sealed partial class NpcAI
         if (dist < throwMin || dist > throwMax)
             return false;
         npc.Stam = (short)Math.Max(0, npc.Stam - (4 + _rand.Next(6)));
-        OnNpcThrow?.Invoke(npc, target, throwDmg);
+
+        // THROWDAMTYPE sets the damage type and puts 100% on its first element
+        // (:3429-3443); without it the rock is blunt, thrown, physical.
+        var dmgType = DamageType.HitBlunt;
+        int phys = 100, fire = 0, cold = 0, poison = 0, energy = 0;
+        if (npc.TryGetTag("THROWDAMTYPE", out string? tdt) && !string.IsNullOrWhiteSpace(tdt))
+        {
+            dmgType = (DamageType)(ushort)ReadSpecialTagNumber(npc, "THROWDAMTYPE", resolveItemDef: false);
+            phys = 0;
+            if (dmgType.HasFlag(DamageType.Fire)) fire = 100;
+            else if (dmgType.HasFlag(DamageType.Cold)) cold = 100;
+            else if (dmgType.HasFlag(DamageType.Poison)) poison = 100;
+            else if (dmgType.HasFlag(DamageType.Energy)) energy = 100;
+            else phys = 100;
+        }
+
+        // The rock lands on the target unless the target is beyond the throwing
+        // range (UO_MAP_VIEW_SIGHT); then it falls that far along the line and hits
+        // only when a roll over the gap comes up 0 (:3413-3416, :3471-3472).
+        bool hit = true;
+        const int MaxThrowReach = 14;
+        if (dist > MaxThrowReach)
+            hit = _rand.Next(dist - MaxThrowReach) == 0;
+
+        if (OnNpcThrowShot != null)
+            OnNpcThrowShot(npc, target, new NpcThrowShot(hit ? throwDmg : 0, throwGfx, dmgType,
+                phys, fire, cold, poison, energy));
+        else
+            OnNpcThrow?.Invoke(npc, target, hit ? throwDmg : 0);
         return true;
     }
 
@@ -1056,6 +1032,15 @@ public sealed partial class NpcAI
     /// <summary>Callback: NPC throws object. Parameters: npc, target, damage.</summary>
     public Action<Character, Character, int>? OnNpcThrow { get; set; }
 
+    /// <summary>A thrown missile as Skill_Act_Throwing makes it: the damage (0 on a
+    /// miss), the graphic that flies, and the damage type with its element split.</summary>
+    public readonly record struct NpcThrowShot(int Damage, ushort Gfx, DamageType DamageType,
+        int Physical, int Fire, int Cold, int Poison, int Energy);
+
+    /// <summary>Callback: an NPC throws (preferred over <see cref="OnNpcThrow"/> when
+    /// set) - carries the missile the damage was rolled for.</summary>
+    public Action<Character, Character, NpcThrowShot>? OnNpcThrowShot { get; set; }
+
     /// <summary>What @HitTry answered for one swing (Source-X CCharFight.cpp:1927-
     /// 1948): RETURN 1 holds the swing; otherwise ARGN1, LOCAL.AnimDelay and
     /// LOCAL.Anim are read back (-1 Anim = the default swing animation).</summary>
@@ -1114,13 +1099,8 @@ public sealed partial class NpcAI
         if (npc.HasPendingHit)
             return false;
 
-        // Same gating Source-X applies to player attackers — see
-        // GameClient.TrySwingAt for rationale.
-        if (npc.Stam <= 0)
-        {
-            npc.NextAttackTime = now + 1000;
-            return false;
-        }
+        // No stamina gate: Fight_CanHit / Fight_Hit never look at stamina
+        // (CCharFight.cpp:1681-1740), so an exhausted creature still swings.
         // COMBAT_PARALYZE_CANSWING (old-sphere): a paralyzed (Freeze) attacker
         // can keep swinging; sleeping always blocks — on either side, since
         // Source-X Fight_CanHit (CCharFight.cpp:1697) answers SWINGING for
@@ -1188,8 +1168,6 @@ public sealed partial class NpcAI
 
         CombatHelper.RevealOnAttack(npc, PrivLevel.Player);
 
-        int stagger = (int)(npc.Uid.Value * 2654435761u % 200);
-
         // @HitTry (parity with the player path): Fight_SetDefaultSwingDelays gives
         // the recoil and animation delay, the script may rewrite both or hold the
         // swing (RETURN 1 -> WAR_SWING_READY, look again a tenth later).
@@ -1218,10 +1196,10 @@ public sealed partial class NpcAI
         // Two-phase swing (Source-X READY -> SWINGING): the swing animation goes out
         // now and the blow lands after the animation delay (a second by default)
         // from the NPC tick's pending-hit pump - inline below when there is no
-        // delay (PREHIT). The next swing follows the blow by the recoil; the
-        // per-NPC stagger only spreads the load of a crowd.
+        // delay (PREHIT). The next swing follows the blow by the recoil, and by
+        // nothing else: Source-X adds no per-creature stagger.
         int hitDelayMs = CombatHelper.GetSwingHitDelayMs(delays);
-        int cycleMs = hitDelayMs + delays.RecoilTenths * 100 + stagger;
+        int cycleMs = hitDelayMs + delays.RecoilTenths * 100;
         npc.BeginSwingWindup(now, hitDelayMs, cycleMs, target.Uid,
             now + Math.Max(cycleMs, swingDelayMs) * 2L,
             weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
@@ -1229,21 +1207,10 @@ public sealed partial class NpcAI
         OnNpcSwingStart?.Invoke(npc, target, weapon, animOverride,
             CombatHelper.GetSwingAnimDelay(delays));
 
-        // Source-style owner attribution: a commanded pet/summon attack on an
-        // innocent criminal-flags its player owner. Guard response is regional;
-        // the criminal flag itself is not.
-        if (npc.OwnerSerial.IsValid && target.IsPlayer && Character.AttackingIsACrimeEnabled)
-        {
-            var owner = npc.ResolveOwnerCharacter();
-            if (owner != null && owner.IsPlayer && !owner.IsDead)
-            {
-                bool targetInnocent = SphereNet.Game.Clients.GameClient.ComputeNotoriety(
-                    _world, owner, target) == 1;
-                if (targetInnocent &&
-                    !CombatHelper.IsCombatFlagSet(CombatFlags.AttackNoAggreived))
-                    owner.MakeCriminal();
-            }
-        }
+        // No owner criminal flag here: Source-X never flags the owner for its pet's
+        // attack directly (the owner branch of OnNoticeCrime is commented out,
+        // CCharFight.cpp:36-39). A player victim judges the owner when the blow
+        // lands (OnAttackedBy -> OnNoticeCrime(owner), CCharFight.cpp:364-366).
 
         if (now >= npc.SwingHitTime)
             ResolveNpcHit(npc, now);

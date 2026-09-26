@@ -81,6 +81,14 @@ public sealed class ClientInventoryHandler
     private bool TryApplyHirePayment(Character npc, Item gold)
     {
         if (_character == null) return false;
+
+        // Gold is hire money only after the hire talk: NPC_OnHireHear leaves an
+        // NPC_MEM_ACT_SPEAK_HIRE memory of the payer, and NPC_OnItemGive routes gold
+        // to NPC_OnHirePay only through it (CCharNPCAct.cpp:2078-2088).
+        var mem = npc.Memory_FindObj(_character.Uid);
+        if (mem == null || (mem.More1 & 0xFFFF) != Character.NpcMemActSpeakHire)
+            return false;
+
         uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
         if (dayWage == 0 && npc.TryGetTag("HIRE_WAGE", out string? w) &&
             uint.TryParse(w, out uint tagWage))
@@ -91,19 +99,37 @@ public sealed class ClientInventoryHandler
         var owner = npc.ResolveOwnerCharacter();
         if (owner != null && owner != _character)
         {
-            SysMessage(ServerMessages.Get(Msg.NpcPetNotForHire));
-            return true; // consumed the interaction, bounce handled below
+            _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetEmployed));
+            return false;
         }
 
         if (owner == null && gold.Amount < dayWage)
         {
-            SysMessage(ServerMessages.Get(Msg.NpcPetNotEnough));
+            _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetNotEnough));
             return false; // gift path may still bounce it back
+        }
+
+        // Someone the NPC fought, was harmed or irritated by does not get hired
+        // (CCharNPCPet.cpp:750-755).
+        if (owner == null &&
+            (mem.GetMemoryTypes() & (MemoryType.Fight | MemoryType.HarmedBy | MemoryType.IrritatedBy)) != 0)
+        {
+            _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetNotWork));
+            return false;
         }
 
         if (owner == null &&
             !npc.TryAssignOwnership(_character, _character, summoned: false, enforceFollowerCap: true))
             return false;
+
+        if (owner == null)
+        {
+            // Put the loot cash away and mark everything it carries ATTR_OWNED -
+            // a hireling does not give its gear away (CCharNPCPet.cpp:757-760).
+            MarkHirelingGearOwned(npc);
+        }
+        // The talk is settled (:765).
+        mem.More1 &= 0xFFFF0000;
 
         long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
             long.TryParse(bs, out long b) ? b : 0;
@@ -118,6 +144,33 @@ public sealed class ClientInventoryHandler
         SysMessage(ServerMessages.GetFormatted(Msg.NpcPetHireTime, daysPaid.ToString()));
         gold.RemoveFromWorld(); // consumed into the wage balance
         return true;
+    }
+
+    /// <summary>ContentConsume(IT_GOLD) + ContentAttrMod(ATTR_OWNED)
+    /// (CCharNPCPet.cpp:757-760): the new hireling's own coins go and everything it
+    /// wears or carries becomes owned.</summary>
+    private static void MarkHirelingGearOwned(Character npc)
+    {
+        var stack = new Stack<Item>();
+        for (int layer = 0; layer < (int)Layer.Qty; layer++)
+            if (npc.GetEquippedItem((Layer)layer) is { } worn)
+                stack.Push(worn);
+        var golds = new List<Item>();
+        while (stack.Count > 0)
+        {
+            var it = stack.Pop();
+            if (it.IsDeleted) continue;
+            if (VendorEngine.IsGold(it))
+            {
+                golds.Add(it);
+                continue;
+            }
+            it.SetAttr(ObjAttributes.Owned);
+            foreach (var inner in it.Contents)
+                stack.Push(inner);
+        }
+        foreach (var g in golds)
+            g.Delete();
     }
 
     private bool TryApplyTrainPayment(Character trainer, Item gold, string pending)
@@ -423,7 +476,8 @@ public sealed class ClientInventoryHandler
                 }
                 if (stock.TryAddItem(item))
                 {
-                    SysMessage("Your vendor adds the item to its stock.");
+                    // The vendor says it (DEFMSG_NPC_PET_SELL, CCharNPCAct.cpp:2113).
+                    _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetSell));
                     _netState.Send(new PacketDropAck());
                     return;
                 }
@@ -446,15 +500,20 @@ public sealed class ClientInventoryHandler
                 // scripted around feeding ever ran.
                 int eaten = SphereNet.Game.NPCs.EatEngine.Eat(
                     npc, item, _triggerDispatcher, item.Amount);
+                // The pet itself answers, when it can speak (NPC_OnItemGive,
+                // CCharNPCAct.cpp:2121-2131: DEFMSG_NPC_PET_FOOD_TY / _FOOD_NO).
+                bool petSpeaks = SphereNet.Game.AI.NpcAI.NpcCanSpeak(npc);
                 if (eaten <= 0)
                 {
-                    SysMessage("Your pet is not hungry.");
+                    if (petSpeaks)
+                        _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetFoodNo));
                     PlaceItemInPack(_character, item);
                     _netState.Send(new PacketDropAck());
                     return;
                 }
 
-                SysMessage("Your pet gratefully eats the food.");
+                if (petSpeaks)
+                    _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetFoodTy));
                 if (eaten >= item.Amount)
                 {
                     _world.RemoveItem(item);
@@ -469,7 +528,8 @@ public sealed class ClientInventoryHandler
             }
             if (!npc.CanCarry(item))
             {
-                SysMessage("Your pet is too weak to carry that.");
+                if (SphereNet.Game.AI.NpcAI.NpcCanSpeak(npc))
+                    _client.NpcSpeech(npc, ServerMessages.Get(Msg.NpcPetWeak)); // :2136
                 PlaceItemInPack(_character, item);
                 _netState.Send(new PacketDropAck());
                 return;

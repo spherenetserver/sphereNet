@@ -98,8 +98,11 @@ public sealed class SpellCoverageGuardrailTests
     // ---- the refusal costs nothing ---------------------------------------
 
     [Fact]
-    public void RefusingAnUnsupportedSpellTakesNoManaAndStartsNoCast()
+    public void AnInertSchoolSpellStillCastsLikeSourceX()
     {
+        // Source-X has no "not supported" refusal: Spell_CanCast
+        // (CCharSpell.cpp:2325) starts any defined, non-disabled spell. The old
+        // engine-only refusal here was removed, so the cast now starts.
         var world = TestHarness.CreateWorld();
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;
@@ -119,6 +122,7 @@ public sealed class SpellCoverageGuardrailTests
 
         var caster = world.CreateCharacter();
         caster.IsPlayer = true;
+        caster.PrivLevel = PrivLevel.GM;   // no spellbook/reagent gate in the way
         caster.MaxMana = 100;
         caster.Mana = 100;
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
@@ -131,10 +135,9 @@ public sealed class SpellCoverageGuardrailTests
 
             int result = engine.CastStart(caster, SpellType.Confidence, caster.Uid, caster.Position);
 
-            Assert.True(result < 0);              // refused
-            Assert.Equal(100, caster.Mana);       // and it cost nothing
-            Assert.False(caster.IsCasting);       // and started no cast
-            Assert.NotNull(said);                 // and said so
+            Assert.True(result > 0);              // the cast starts
+            Assert.True(caster.IsCasting);
+            Assert.Null(said);                    // with no refusal message
         }
         finally
         {

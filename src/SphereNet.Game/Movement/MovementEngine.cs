@@ -2,6 +2,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Magic;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Scripting;
 using SphereNet.Game.Skills;
@@ -144,14 +145,23 @@ public sealed class MovementEngine
         if (!gmMode && SpellEngine?.IsMovementFrozenByCast(ch) == true)
             return false;
 
-        // Overweight running prevention — can't run when carrying more than max weight
-        if (running && ch.IsPlayer && ch.GetTotalWeight() > ch.MaxWeight)
-            running = false;
+        // Out of stamina: a living character cannot take a step (CanMove,
+        // CCharAct.cpp:4586-4593). Running while overweight is NOT refused on its own
+        // (the old "can't run overweight" rule was invented): the load only costs
+        // stamina, and an empty stamina pool is what stops the walker. A character
+        // with no stamina pool at all (MaxStam 0 - no DEX, not a scripted character)
+        // is left alone.
+        if (!gmMode && ch.Stam <= 0 && ch.MaxStam > 0 && !ch.IsDead)
+        {
+            OnSysMessage?.Invoke(ch, ServerMessages.Get(
+                ch.GetTotalWeight() > ch.MaxWeight ? Msg.MsgFatigueWeight : Msg.MsgFatigue));
+            return false;
+        }
 
         var current = new Point3D(ch.X, ch.Y, ch.Z, ch.MapIndex);
 
         Point3D target;
-        bool shoved = false;
+        int shoveStam = 0;
         GetDirectionDelta(dir, out short dx, out short dy);
 
         // GM with AllMove, or an uninitialized world (no MapData — unit tests
@@ -182,29 +192,11 @@ public sealed class MovementEngine
 
             target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), (sbyte)newZ, ch.MapIndex);
 
-            // Blocking mobiles at destination — WalkCheck already covers
-            // ground-plane blockers; fall back to the existing shove rule for
-            // anything it doesn't cover (mounted riders, invisible staff, etc.).
-            foreach (var other in _world.GetCharsInRange(target, 0))
+            // Creature bumping (CanMoveWalkTo -> ShoveCharAtPosition, CCharAct.cpp:4763-4768).
+            if (!ShoveCharAtPosition(ch, target, pathFinding: false, out shoveStam))
             {
-                if (other == ch || other.IsDead) continue;
-                if (other.X != target.X || other.Y != target.Y) continue;
-                if (!CanShove(ch, other))
-                {
-                    diag = diag with { MobBlocked = true };
-                    return false;
-                }
-                // @PersonalSpace on the one walked into, then @charShove on the
-                // mover (ShoveCharAtPosition, CCharAct.cpp:4640-4658); either
-                // RETURN 1 keeps the mover out.
-                if (Character.OnPersonalSpace?.Invoke(other, ch) == true ||
-                    Character.OnCharShove?.Invoke(ch, other) == true)
-                {
-                    diag = diag with { MobBlocked = true };
-                    return false;
-                }
-                // A living blocker we pushed past = a real shove.
-                shoved = true;
+                diag = diag with { MobBlocked = true };
+                return false;
             }
         }
 
@@ -251,25 +243,23 @@ public sealed class MovementEngine
         var previousRegion = _world.FindRegion(ch.Position);
         if (!_world.MoveCharacter(ch, target)) return false;
 
-        // Shove cost — applied once here (not in the two shove predicates) so a
-        // player who pushes past a mobile spends 10 stamina and is revealed,
-        // exactly once, only when the move actually commits.
-        if (shoved && ch.PrivLevel < PrivLevel.Counsel && ch.MaxStam > 0)
-        {
-            ch.Stam = (short)Math.Max(0, ch.Stam - 10);
-            // Walking into somebody gives YOU away, and REVEALF_OSILIKEPERSONALSPACE
-            // is the flag that says not to - it is one of the three whose name means
-            // the opposite of its neighbours (CCharAct.cpp:4679).
-            ch.ClearHiddenState(RevealFlags.OsiLikePersonalSpace);
-        }
-
+        // What the shove and the load cost, charged together once the step commits
+        // (CanMoveWalkTo, CCharAct.cpp:4787-4829).
         // What the load costs. Walking on foot has no per-step cost of its own -
         // Event_Walk really does charge nothing - but CARRYING does, and the charge
         // lives one level down, in CanMoveWalkTo's committed branch
         // (CCharAct.cpp:4787-4829). Reading only Event_Walk is how this engine
         // concluded there was no cost at all and shipped BACKPACKOVERLOAD=40 with
         // nothing to pay for it.
-        ApplyWeightStaminaCost(ch);
+        ApplyWeightStaminaCost(ch, shoveStam);
+
+        // The running flag follows the run bit of each accepted step (Event_Walk,
+        // CClientEvent.cpp:904): the NEXT step's load cost and the stealth budget
+        // read it as STATF_FLY. (Gargoyle flight is STATF_HOVERING, not this flag.)
+        if (running)
+            ch.SetStatFlag(StatFlag.Fly);
+        else
+            ch.ClearStatFlag(StatFlag.Fly);
 
         TickStealthStep(ch);
 
@@ -307,14 +297,18 @@ public sealed class MovementEngine
     /// Upstream charges this inside the !fCheckOnly arm, after the step is decided, so
     /// a probe or a pathfinding look-ahead is free; a GM returns before reaching it.
     /// </summary>
-    private static void ApplyWeightStaminaCost(Objects.Characters.Character ch)
+    private static void ApplyWeightStaminaCost(Objects.Characters.Character ch, int shoveStam = 0)
     {
         if (ch.PrivLevel >= PrivLevel.GM || ch.MaxStam <= 0)
             return;
 
         int maxWeight = ch.MaxWeight;
         if (maxWeight <= 0)
+        {
+            if (shoveStam > 0)
+                ch.Stam = (short)Math.Max(0, ch.Stam - shoveStam);
             return;
+        }
 
         int weight = ch.GetTotalWeight();
         bool airborne = ch.IsStatFlag(StatFlag.Fly) || ch.IsStatFlag(StatFlag.Hovering);
@@ -323,14 +317,22 @@ public sealed class MovementEngine
         if (weight < maxWeight)
         {
             int loadPercent = weight * 100 / maxWeight;
+            // TAG.OVERRIDE.RUNNINGPENALTY replaces RUNNINGPENALTY (CCharAct.cpp:4797-4803).
+            bool hasRunOverride = TryGetOverride(ch, "OVERRIDE.RUNNINGPENALTY", out int runOverride);
             if (airborne)
-                loadPercent += RunningPenalty;
+                loadPercent += hasRunOverride ? runOverride : RunningPenalty;
 
             // The midpoint is the setting, the variance is upstream's fixed 10 - a
             // narrow curve, so the chance climbs steeply either side of it. At the
-            // default 150 an ordinary load never gets near paying.
-            int chance = Skills.SkillEngine.CalcSCurve(loadPercent - StaminaLossAtWeight, 10);
-            penalty = chance > WeightLossRoll(1000) ? 1 : 0;
+            // default 150 an ordinary load never gets near paying. Upstream also
+            // takes the midpoint from OVERRIDE.RUNNINGPENALTY when that tag is set
+            // (CCharAct.cpp:4805) - reproduced as written.
+            int chance = Skills.SkillEngine.CalcSCurve(
+                loadPercent - (hasRunOverride ? runOverride : StaminaLossAtWeight), 10);
+            penalty = 0;
+            if (chance > WeightLossRoll(1000))
+                penalty = TryGetOverride(ch, "OVERRIDE.STAMINAWALKINGPENALTY", out int walkPenalty)
+                    ? Math.Clamp(walkPenalty, 0, ushort.MaxValue) : 1;
         }
         else
         {
@@ -341,8 +343,18 @@ public sealed class MovementEngine
                 penalty += penalty * RunningPenaltyOverweight / 100;
         }
 
+        penalty += shoveStam;
         if (penalty > 0)
             ch.Stam = (short)Math.Max(0, ch.Stam - penalty);
+    }
+
+    private static bool TryGetOverride(Objects.Characters.Character ch, string tag, out int value)
+    {
+        value = 0;
+        if (!ch.TryGetTag(tag, out string? raw) || !ScriptNumber.TryParseToken(raw, out long v))
+            return false;
+        value = (int)Math.Clamp(v, int.MinValue, int.MaxValue);
+        return true;
     }
 
     /// <summary>
@@ -372,13 +384,7 @@ public sealed class MovementEngine
         // cannot run without terrain + statics.
         if (_world.MapData == null)
         {
-            foreach (var other in _world.GetCharsInRange(target, 0))
-            {
-                if (other == ch || other.IsDead) continue;
-                if (other.X != target.X || other.Y != target.Y) continue;
-                if (!CanShove(ch, other)) return false;
-            }
-            return true;
+            return ShoveCharAtPosition(ch, target, pathFinding: true, out _);
         }
 
         Direction d = (dx, dy) switch
@@ -398,47 +404,92 @@ public sealed class MovementEngine
         if (!_walkCheck.CheckMovement(ch, here, d, out _))
             return false;
 
-        foreach (var other in _world.GetCharsInRange(target, 0))
-        {
-            if (other == ch || other.IsDead) continue;
-            if (other.X != target.X || other.Y != target.Y) continue;
-            if (!CanShove(ch, other))
-                return false;
-        }
-
-        return true;
+        return ShoveCharAtPosition(ch, target, pathFinding: true, out _);
     }
 
     /// <summary>
-    /// Check if one character can push past another.
+    /// Source-X CChar::ShoveCharAtPosition (CCharAct.cpp:4605-4700): may
+    /// <paramref name="mover"/> stand on <paramref name="dst"/> with somebody there,
+    /// and what does pushing past cost. Only a GM is exempt (it never reaches the
+    /// check); a dead, sleeping or insubstantial mover walks through. Blockers more
+    /// than 5 Z away or insubstantial are ignored. A push costs 10 stamina and needs
+    /// full stamina, except past the dead or - unless REVEALF_OSILIKEPERSONALSPACE -
+    /// the hidden/invisible, which is free and gives the hidden one away.
+    /// @PersonalSpace (ARGN1 = stamina, ARGN3 = needs full stamina) and @charShove
+    /// (ARGN1) may change the cost or refuse; neither fires for a pathfinding probe.
     /// </summary>
-    private static bool CanShove(Objects.Characters.Character mover, Objects.Characters.Character blocker)
+    private bool ShoveCharAtPosition(Objects.Characters.Character mover, Point3D dst,
+        bool pathFinding, out int stamReq)
     {
-        if ((CharDefHelper.GetCanFlags(blocker) & CanFlags.C_Statue) != 0) return false;
-        // ServUO / RunUO Mobile.CheckShove parity.
-        if (mover.PrivLevel >= PrivLevel.Counsel) return true;
+        stamReq = 0;
+        if (mover.PrivLevel >= PrivLevel.GM)
+            return true; // CanMoveWalkTo returns for a GM before bumping (:4755)
+        if (mover.IsDead || mover.IsStatFlag(StatFlag.Sleeping) || mover.IsStatFlag(StatFlag.Insubstantial))
+            return true; // :4764
 
-        if (blocker.IsDead || mover.IsDead)
-            return true;
+        bool osiLike = (Character.ActiveRevealFlags & RevealFlags.OsiLikePersonalSpace) != 0;
+        foreach (var other in _world.GetCharsInRange(dst, 0))
+        {
+            if (other.X != dst.X || other.Y != dst.Y) continue;
+            if ((CharDefHelper.GetCanFlags(other) & CanFlags.C_Statue) != 0)
+                return false; // can't walk over a statue
+            if (other == mover || Math.Abs(other.Z - dst.Z) > 5 || other.IsStatFlag(StatFlag.Insubstantial))
+                continue;
+            // A dead NPC is a corpse upstream (it is deleted on death), never a blocker.
+            if (other.IsDead && !other.IsPlayer)
+                continue;
+            // One creature does not push past another unless NPCSHOVENPC or the
+            // mover's TAG.OVERRIDE.SHOVE says so (:4624).
+            if (!mover.IsPlayer && !other.IsPlayer && !NpcShoveNpc &&
+                !(mover.TryGetTag("OVERRIDE.SHOVE", out string? ovr) &&
+                  ScriptNumber.TryParseToken(ovr, out long o) && o != 0))
+                return false;
 
-        // One creature does not push past another (Source-X CCharAct.cpp:4624), unless
-        // the shard says they may or this one carries TAG.OVERRIDE.SHOVE. Players shove
-        // creatures; creatures hold each other up, which is what keeps a guard behind
-        // the crowd it is meant to be stuck behind. The check sits after the dead and
-        // staff cases so a corpse-walk still works.
-        if (!mover.IsPlayer && !blocker.IsPlayer && !NpcShoveNpc &&
-            !(mover.TryGetTag("OVERRIDE.SHOVE", out string? ovr) &&
-              SphereNet.Core.Types.ScriptNumber.TryParseToken(ovr, out long o) && o != 0))
-            return false;
+            bool concealed = other.IsStatFlag(StatFlag.Hidden) || other.IsStatFlag(StatFlag.Invisible);
+            int req = other.IsDead || (concealed && !osiLike) ? 0 : 10;
+            var args = new Character.ShoveTriggerArgs { StaminaRequired = req, RequireFullStamina = true };
+            if (!pathFinding)
+            {
+                if (Character.OnPersonalSpace?.Invoke(other, mover, args) == true)
+                    return false;
+                if (Character.OnCharShove?.Invoke(mover, other, args) == true)
+                    return false;
+            }
+            req = Math.Max(0, args.StaminaRequired);
 
-        if ((blocker.IsStatFlag(StatFlag.Hidden) || blocker.IsStatFlag(StatFlag.Invisible))
-            && blocker.PrivLevel >= PrivLevel.Counsel)
-            return true;
+            if (req > 0 && args.RequireFullStamina && mover.Stam < mover.MaxStam)
+                return false;
 
-        if (mover.Stam == mover.MaxStam && mover.MaxStam > 0)
-            return true;
-
-        return false;
+            if (mover.Stam < req)
+            {
+                if (!pathFinding)
+                    OnSysMessage?.Invoke(mover, ServerMessages.GetFormatted(Msg.MsgCantpush, other.GetName()));
+                return false;
+            }
+            if (!pathFinding)
+            {
+                string msg;
+                if (concealed)
+                {
+                    if (osiLike)
+                        msg = ServerMessages.Get(Msg.HidingStumbleOsilike);
+                    else
+                    {
+                        msg = ServerMessages.GetFormatted(Msg.HidingStumble, other.GetName());
+                        other.ClearHiddenState();
+                    }
+                }
+                else if (other.IsStatFlag(StatFlag.Sleeping))
+                    msg = ServerMessages.GetFormatted(Msg.MsgSteponBody, other.GetName());
+                else
+                    msg = ServerMessages.GetFormatted(Msg.MsgPush, other.GetName());
+                if (!args.SuppressMessage)
+                    OnSysMessage?.Invoke(mover, msg);
+            }
+            stamReq = req;
+            break;
+        }
+        return true;
     }
 
     /// <summary>

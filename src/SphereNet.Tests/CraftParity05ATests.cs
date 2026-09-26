@@ -259,8 +259,11 @@ public sealed class CraftParity05ATests
 
             Assert.NotNull(b.Engine.TryCraft(b.Crafter, b.Recipe));
 
+            // Neither wears, even with wear forced on: Skill_MakeItem never damages
+            // the crafting tool (CCharSkill.cpp:674-975). This used to expect the
+            // carried tool at 9.
             Assert.Equal(10, locked.HitsCur);
-            Assert.Equal(9, carried.HitsCur);
+            Assert.Equal(10, carried.HitsCur);
         });
     }
 
@@ -273,7 +276,8 @@ public sealed class CraftParity05ATests
             var nested = Tool(b.World, Bag(b.World, b.Pack, locked: false));
 
             Assert.NotNull(b.Engine.TryCraft(b.Crafter, b.Recipe));
-            Assert.Equal(9, nested.HitsCur);
+            // Usable - and unworn: crafting never damages its tool (CCharSkill.cpp:674-975).
+            Assert.Equal(10, nested.HitsCur);
         });
     }
 
@@ -303,7 +307,9 @@ public sealed class CraftParity05ATests
 
             Assert.NotNull(b.Engine.TryCraft(b.Crafter, b.Recipe));
 
-            Assert.Equal(9, held.HitsCur);
+            // No craft wear at all (CCharSkill.cpp:674-975); the held tool used to
+            // be expected at 9.
+            Assert.Equal(10, held.HitsCur);
             Assert.Equal(10, packed.HitsCur);
         });
     }

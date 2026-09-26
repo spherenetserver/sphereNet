@@ -37,7 +37,8 @@ public static class ActiveSkillEngine
     public static bool Hiding(IActiveSkillSink sink)
     {
         var ch = sink.Self;
-        if (ch.IsInWarMode) return false;
+        // No war-mode refusal: Skill_Hiding START checks only for a carried light
+        // (CCharSkill.cpp:2500-2516).
 
         // Nothing worn on a visible layer may be a light (Skill_Hiding START,
         // CCharSkill.cpp:2503-2514). The old LIGHT_CARRIED tag was set by nothing.
@@ -92,32 +93,15 @@ public static class ActiveSkillEngine
 
     // --------------------------------------------------------------- Stealth
 
-    /// <summary>Source-X stealth: must already be hidden; success grants StepStealth walk budget.</summary>
+    /// <summary>Source-X SKILL_STEALTH has no engine stage at all: Skill_Stage returns
+    /// 0 for every stage (CCharSkill.cpp:3671-3675), so the difficulty is 0 and the
+    /// engine sets nothing. The pack owns the rest - [SKILL 47] @PreStart refuses an
+    /// unhidden user, @Success sets STEPSTEALTH and @Fail REVEALs
+    /// (skills/skill47_stealth.scp); those fire from the [SKILL] section after this
+    /// result. The hidden gate, the step budget and the English lines this had were
+    /// invented.</summary>
     public static bool Stealth(IActiveSkillSink sink)
-    {
-        var ch = sink.Self;
-        if (ch.IsInWarMode) return false;
-        if (!ch.IsStatFlag(StatFlag.Hidden))
-        {
-            sink.SysMessage("You must be hidden to use stealth.");
-            return false;
-        }
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Stealth, sink.Random.Next(60, 90));
-        if (success)
-        {
-            ch.StepStealth = (short)Math.Clamp(Math.Max(1, ch.GetSkill(SkillType.Stealth) / 100), 1, 10);
-            ch.SetStatFlag(StatFlag.Hidden);
-            ch.ClearStatFlag(StatFlag.Invisible);
-            sink.SysMessage("You begin to move quietly.");
-        }
-        else
-        {
-            ch.ClearHiddenState();
-            sink.SysMessage("You fail to move quietly.");
-        }
-        return success;
-    }
+        => SkillEngine.UseQuick(sink.Self, SkillType.Stealth, 0);
 
     // ---------------------------------------------------------- DetectHidden
 
@@ -209,31 +193,22 @@ public static class ActiveSkillEngine
 
     // -------------------------------------------------------------- Begging
 
-    /// <summary>Source-X CChar::Skill_Begging. Targets human NPC; success grants 1-10 gold.</summary>
+    /// <summary>Source-X CChar::Skill_Begging (CCharSkill.cpp:2929-2962): any
+    /// character but the beggar may be targeted; the difficulty is the target's
+    /// adjusted INT (:2946) and SUCCESS does nothing (:2958 - "Not sure how to make
+    /// begging successful"). The human-brain gate and the 1-10 gold reward were
+    /// invented; a pack that wants a reward scripts it on @Success.</summary>
     public static bool Begging(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
-        if (target == null || target.IsDeleted || target.IsDead || target.IsPlayer ||
-            target.NpcBrain != NpcBrainType.Human ||
+        if (target == null || target == ch || target.IsDeleted ||
             !CanReachPoint(ch, target.Position, sink.World,
                 SkillEngine.GetUseRange(SkillType.Begging, 3)))
             return false;
 
         // Source-X SysMessagef(DEFMSG_BEGGING_START, pChar->GetName()) — CCharSkill.cpp:2944
         sink.SysMessage(ServerMessages.GetFormatted(Msg.BeggingStart, target.Name));
-        bool success = SkillEngine.UseQuick(ch, SkillType.Begging, 40);
-        if (success)
-        {
-            if (ch.Backpack == null)
-                return success;
-            int amount = sink.Random.Next(1, 11);
-            var gold = sink.World.CreateItem();
-            gold.BaseId = 0x0EED; gold.Name = "Gold";
-            gold.ItemType = ItemType.Gold;
-            gold.Amount = (ushort)amount;
-            sink.DeliverItem(gold);
-        }
-        return success;
+        return SkillEngine.UseQuick(ch, SkillType.Begging, Combat.CombatEngine.EffectiveInt(target));
     }
 
     // ------------------------------------------------------------- Stealing
@@ -253,7 +228,9 @@ public static class ActiveSkillEngine
             sink.SysMessage("That is too far away.");
             return false;
         }
-        if (target.GetWeight() > Math.Max(1, ch.GetSkill(SkillType.Stealing) / 10))
+        // Source-X gates on CanMoveItem and CanCarry only (CCharSkill.cpp:4264) - the
+        // item's weight is part of the difficulty, not a skill/10 stone cap.
+        if (!ItemMoveRules.CanMove(ch, target, out _) || !ch.CanCarry(target))
         {
             sink.SysMessage(ServerMessages.Get(Msg.StealingHeavy));
             return false;
@@ -273,7 +250,10 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.GetFormatted(Msg.StealingPickpocket, owner.Name));
         }
 
-        bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, sink.Random.Next(60));
+        // From a mark: Calc_StealingItem. Off the ground: 1 - "town stuff on the
+        // ground is too easy" (CCharSkill.cpp:4307/4314).
+        int stealDiff = owner != null ? CalcStealingItem(ch, target, owner, sink.Random) : 1;
+        bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, stealDiff);
 
         // No backpack = nowhere to stash the loot, so the theft can't succeed.
         // Without this the item silently vanished AND the thief could still be
@@ -321,6 +301,50 @@ public static class ActiveSkillEngine
         return success;
     }
 
+    /// <summary>Source-X CServerConfig::Calc_StealingItem (CResourceCalc.cpp:431-446,
+    /// the "Melt mod"): the mark's stealing/5 + rand(mark dex/2) + the item's weight
+    /// (IMulDiv(weight, 4, WEIGHT_UNITS)); an equipped item adds the mark's dex/2 and
+    /// int, a thief in war mode another rand(dex/2); the whole is halved.</summary>
+    internal static int CalcStealingItem(Character thief, Item item, Character mark, Random random)
+    {
+        int dexMark = Combat.CombatEngine.EffectiveDex(mark);
+        int skillMark = SkillEngine.GetAdjustedSkill(mark, SkillType.Stealing);
+        int diff = skillMark / 5 + RandVal(random, dexMark / 2) +
+            InfoSkillEngine.IMulDiv(item.TotalWeightTenths, 4, Item.WeightUnits);
+        if (item.IsEquipped)
+            diff += dexMark / 2 + Combat.CombatEngine.EffectiveInt(mark);
+        if (thief.IsStatFlag(StatFlag.War))
+            diff += RandVal(random, dexMark / 2);
+        return diff / 2;
+    }
+
+    /// <summary>CSRand::GetVal: 0..n-1, and 0 for anything below 2 (CSRand.cpp:40).</summary>
+    private static int RandVal(Random random, int n) => n < 2 ? 0 : random.Next(n);
+
+    /// <summary>Source-X CChar::Noto_Karma (CCharNotoriety.cpp:512) for a skill's
+    /// karma cost: scaled by Calc_KarmaScale (CResourceCalc.cpp:388 - a good
+    /// character loses twice as fast, gains half, and a gain under karma/64 is
+    /// nothing), bounded by the karma limits, then offered to @KarmaChange.</summary>
+    internal static void ApplySkillKarma(Character ch, int change)
+    {
+        int karma = ch.Karma;
+        if (karma > 0)
+            change = change < 0 ? change * 2 : change / 2;
+        if (change > 0 && change < karma / 64)
+            change = 0;
+        if (change > 0)
+            change = Math.Min(change, Death.DeathEngine.MaxKarma - karma);
+        else
+            change = Math.Max(change, Death.DeathEngine.MinKarma - karma);
+        if (Character.OnKarmaChanging != null)
+        {
+            int? adjusted = Character.OnKarmaChanging(ch, change);
+            if (adjusted == null) return;
+            change = adjusted.Value;
+        }
+        ch.Karma = (short)Math.Clamp(karma + change, Death.DeathEngine.MinKarma, Death.DeathEngine.MaxKarma);
+    }
+
     // -------------------------------------------------------------- Snooping
 
     /// <summary>Source-X CChar::Skill_Snooping. Always-on container; fail emits SNOOPING_FAILED + optional crim.</summary>
@@ -334,26 +358,41 @@ public static class ActiveSkillEngine
         }
 
         var ownerChar = ResolveItemOwner(container, sink.World);
-        if (!CanReachItem(ch, container, sink.World, SkillType.Snooping, 2))
+        // RANGE, or 1 when the skill names none (CCharSkill.cpp:4127-4139).
+        if (!CanReachItem(ch, container, sink.World, SkillType.Snooping, 1))
         {
-            sink.SysMessage("That is too far away.");
+            sink.SysMessage(ServerMessages.Get(Msg.SnoopingReach));
             return false;
         }
 
         sink.SysMessage(ServerMessages.Get(Msg.SnoopingAttempting));
-        bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, sink.Random.Next(50));
+        // All or nothing: 100 when the adjusted skill loses to rand(1000), else 0
+        // (CCharSkill.cpp:4157).
+        int snoopDiff = SkillEngine.GetAdjustedSkill(ch, SkillType.Snooping) < sink.Random.Next(1000)
+            ? 100 : 0;
+        bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, snoopDiff);
+
+        // Snooping into someone's pack costs karma win or lose (-4, :4162).
+        if (ownerChar != null && ownerChar != ch)
+            ApplySkillKarma(ch, -4);
+
         if (!success)
+        {
             sink.SysMessage(ServerMessages.Get(Msg.SnoopingFailed));
+            // A failed snoop gives the snooper away unless half the Hiding skill
+            // wins against rand(1000) (:4166-4168).
+            if (SkillEngine.GetAdjustedSkill(ch, SkillType.Hiding) / 2 < sink.Random.Next(1000))
+                ch.ClearHiddenState();
+        }
         else
             sink.OpenContainer(container);
 
         // Source-X CChar::Skill_Snooping: nearby witnesses may notice the snoop
-        // (perception contest + the snoop-criminal chance). @SeeSnoop fires, the
-        // witness remembers it (personal grey), and a guarded-area guard flags the
-        // snooper. Gated by the SnoopCriminal config toggle.
-        if (Character.SnoopCriminalEnabled)
-            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, ownerChar, SkillType.Snooping,
-                sink.Random, isSnoop: true);
+        // (perception contest). @SeeSnoop fires; SNOOPCRIMINAL is only the percent
+        // chance a noticed snoop counts as a crime (CCharFight.cpp:156) - the witness
+        // check itself always runs.
+        CrimeWitnessService.CheckCrimeSeen(sink.World, ch, ownerChar, SkillType.Snooping,
+            sink.Random, isSnoop: true);
 
         return success;
     }
@@ -412,12 +451,12 @@ public static class ActiveSkillEngine
         }
 
         // 3. Otherwise the lock's own complexity is the difficulty, on the 0-100 scale
-        //    the skill check wants (m_dwLockComplexity / 10). A lock that names no
-        //    complexity is trivial, which is what the old fixed Random.Next(60) was
-        //    standing in for on every lock in the world.
+        //    the skill check wants (m_dwLockComplexity / 10, CItem.cpp:5449). The
+        //    complexity is MORE2 - MORE1 is the lock code (CItem.h:181-182). A lock
+        //    that names no complexity is trivial.
         int difficulty = haveKey
             ? 0
-            : (int)Math.Clamp(lockedTarget.More1 / 10u, 0u, 100u);
+            : (int)Math.Clamp(lockedTarget.More2 / 10u, 0u, 100u);
 
         bool success = SkillEngine.UseQuick(ch, SkillType.Lockpicking, difficulty);
         if (success)
@@ -430,10 +469,9 @@ public static class ActiveSkillEngine
             // sound (CCharSkill.cpp:2413-2466, CItem.cpp:5378); the click this played
             // was not upstream's.
         }
-        else if (sink.Random.Next(3) == 0)
-        {
-            sink.ConsumeAmount(pick); // ~33% to break the pick on failure (Source-X).
-        }
+        // A failed pick is not consumed: upstream's FAIL only calls
+        // pPick->OnTakeDamage(1) (CCharSkill.cpp:2444-2448), which for IT_LOCKPICK
+        // does nothing beyond @Damage. The 1-in-3 break was invented.
         return success;
     }
 
@@ -448,14 +486,16 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsReach));
             return false;
         }
-        if (trap.ItemType is not (ItemType.Trap or ItemType.TrapActive))
+        // Only an armed, idle IT_TRAP can be worked on (CCharSkill.cpp:2902) - one
+        // already sprung (IT_TRAP_ACTIVE) or disarmed is not a target.
+        if (trap.ItemType != ItemType.Trap)
         {
             sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsWitem));
             return false;
         }
         if (!CanReachItem(ch, trap, sink.World, SkillType.RemoveTrap, 2))
         {
-            sink.SysMessage("That is too far away.");
+            sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsReach));
             return false;
         }
 
@@ -463,21 +503,19 @@ public static class ActiveSkillEngine
         bool success = SkillEngine.UseQuick(ch, SkillType.RemoveTrap, sink.Random.Next(95));
         if (success)
         {
-            trap.ItemType = ItemType.Trap; // disarm: clear active variant.
+            // Disabled, and it re-arms by itself five minutes later
+            // (SetTrapState(IT_TRAP_INACTIVE, ITEMID_NOTHING, 5*60), :2921).
+            trap.SetTrapState(ItemType.TrapInactive, 0, 5 * 60);
         }
-        else if (trap.ItemType == ItemType.TrapActive)
+        else
         {
-            // Source-X: a botched disarm springs the trap (Use_Item → Use_Trap).
-            // Damage is the trap's OWN damage field, default 2 (CItem.cpp:5507)
-            // — never an invented 5-19 roll.
-            int trapDmg = 2;
-            if (trap.TryGetTag("TRAP_DAMAGE", out string? tdStr) &&
-                int.TryParse(tdStr, out int td) && td > 0)
-                trapDmg = td;
-            else if (trap.MoreP.Z > 0)
-                trapDmg = trap.MoreP.Z;
-            ch.Hits = (short)Math.Max(0, ch.Hits - trapDmg);
-            sink.SysMessage(ServerMessages.Get("removetraps_fail"));
+            // A botched disarm sets it off: Use_Item on the trap (:2917), which
+            // is Use_Trap - arm the graphic, damage from the trap's own field
+            // (default 2) - taken through OnTakeDamage(HIT_BLUNT|GENERAL)
+            // (CCharUse.cpp:1753-1759, CItem.cpp:5493-5508).
+            int trapDmg = trap.UseTrap();
+            Combat.CombatEngine.ApplyScriptDamage(ch, trapDmg,
+                Combat.DamageType.HitBlunt | Combat.DamageType.General);
             if (ch.Hits <= 0 && !ch.IsDead)
             {
                 if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
@@ -514,13 +552,8 @@ public static class ActiveSkillEngine
 
         target ??= ch;
 
-        bool veterinary = healingSkill == SkillType.Veterinary;
-        if (veterinary && (target.IsPlayer || target.NpcBrain is not
-            (NpcBrainType.Animal or NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon)))
-        {
-            sink.SysMessage("You can only use veterinary care on animals.");
-            return false;
-        }
+        // Healing and Veterinary share Skill_Healing with no species gate between
+        // them (CCharSkill.cpp:3718-3720); the "animals only" refusal was invented.
 
         var bandage = sink.FindBackpackItem(ItemType.Bandage);
         if (bandage == null)
@@ -571,13 +604,17 @@ public static class ActiveSkillEngine
         // Skill_Stroke play none for it either (CCharSkill.cpp:2724-2886/4543). The
         // bow and cloth rustle this used to send on every bandage were invented.
         sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
-        // Used bandages become bloody bandages (Source-X parity).
-        var bloody = sink.World.CreateItem();
-        bloody.BaseId = 0x0E20; // bloody bandage
-        bloody.Name = "bloodied bandage";
-        sink.DeliverItem(bloody);
         if (!success)
             return false;
+
+        // Only a SUCCESSFUL bandage leaves a bloody one, made from its item
+        // definition - ITEMID_BANDAGES_BLOODY1 or 2 at random (CCharSkill.cpp:2846-2847).
+        var bloody = sink.World.CreateItem();
+        ushort bloodyId = sink.Random.Next(2) != 0 ? (ushort)0x0E20 : (ushort)0x0E22;
+        bloody.BaseId = bloodyId;
+        if (!Definitions.ItemDefHelper.ApplyInstanceMetadata(bloody, bloodyId))
+            bloody.ItemType = ItemType.BandageBlood;
+        sink.DeliverItem(bloody);
 
         ch.FlagForHelpingCriminalIfNeeded(target);
 
@@ -645,11 +682,14 @@ public static class ActiveSkillEngine
             return true;
         }
 
-        // Anatomy contributes to the amount healed (Source-X heal formula).
-        int heal = veterinary
-            ? ch.GetSkill(SkillType.Veterinary) / 40 + ch.GetSkill(SkillType.AnimalLore) / 80 + 3
-            : ch.GetSkill(SkillType.Healing) / 40 + ch.GetSkill(SkillType.Anatomy) / 80 + 3;
-        target.Hits = (short)Math.Min(target.MaxHits, target.Hits + heal);
+        // The amount healed is the skill's EFFECT curve at the adjusted skill
+        // (m_Act_Effect, set at Skill_Start, CCharSkill.cpp:4466-4471), 1 when the
+        // skill names no EFFECT (:2881-2884). Anatomy and Animal Lore play no part;
+        // the skill/40 + lore/80 + 3 formula was invented.
+        int heal = ch.ActionEffect >= 0
+            ? ch.ActionEffect
+            : SkillEngine.GetEffect(healingSkill, SkillEngine.GetAdjustedSkill(ch, healingSkill), 1);
+        target.Hits = (short)Math.Min(target.MaxHits, target.Hits + Math.Max(0, heal));
         return true;
     }
 
@@ -796,10 +836,12 @@ public static class ActiveSkillEngine
             sink.SysMessage($"{animal.Name} {ServerMessages.Get(Msg.HerdingPlayer)}");
             return false;
         }
+        // START refuses on line of sight to the animal and to the destination, with
+        // DEFMSG_MSG_MOUNT_DIST (CCharSkill.cpp:2551-2556).
         if (!CanReachPoint(ch, animal.Position, sink.World,
                 SkillEngine.GetUseRange(SkillType.Herding, 8)))
         {
-            sink.SysMessage("That creature is too far away.");
+            sink.SysMessage(ServerMessages.Get(Msg.MsgMountDist));
             return false;
         }
         // Upstream herds with the crook that started the skill, m_Act_Prv_UID
@@ -815,14 +857,20 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        if (!destination.HasValue || destination.Value.Map != ch.MapIndex ||
-            !CanReachPoint(ch, destination.Value, sink.World, 12))
+        // The destination needs to be a valid point in sight - no distance limit
+        // (:2551-2570). The crook takes no wear: only a SKF_GATHER success damages
+        // a tool (:3947-3961).
+        if (!destination.HasValue || destination.Value.Map != ch.MapIndex)
         {
-            sink.SysMessage("You cannot herd the animal there.");
+            sink.SysMessage(ServerMessages.Get(Msg.LocationInvalid));
+            return false;
+        }
+        if (!sink.World.CanSeeLOS(ch.Position, destination.Value))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.MsgMountDist));
             return false;
         }
 
-        DamageGatherTool(sink, crook);
         int diff = animal.Int / 2 + sink.Random.Next(Math.Max(1, animal.Int / 2));
         bool success = SkillEngine.UseQuick(ch, SkillType.Herding, diff);
         if (success)
@@ -850,8 +898,7 @@ public static class ActiveSkillEngine
         if (potion == null ||
             !CanReachItem(ch, potion, sink.World, SkillType.Poisoning, 2,
                 requirePossession: true) ||
-            !potion.TryGetTag("POTION_SPELL", out string? spell) ||
-            !string.Equals(spell, "Poison", StringComparison.OrdinalIgnoreCase))
+            !IsPoisonPotion(potion))
         {
             sink.SysMessage(ServerMessages.Get(Msg.PoisoningSelect1));
             return false;
@@ -863,14 +910,15 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        int diff = potion.Quality / 2;
-        bool success = SkillEngine.UseQuick(ch, SkillType.Poisoning, diff);
+        // Difficulty rand(60) (CCharSkill.cpp:2176) - not the potion's quality.
+        bool success = SkillEngine.UseQuick(ch, SkillType.Poisoning, sink.Random.Next(60));
         if (success)
         {
-            // Source-X Skill_Poisoning: m_poison_skill (MOREZ) = the potion's
-            // m_dwSkillQuality (MORE2) / 10. A bottle without one keeps its old reading.
-            int potionStrength = potion.More2 > 0 ? (int)Math.Min(potion.More2, 1000) : potion.Quality;
-            Combat.CombatEngine.SetWeaponPoisonSkill(weapon, potionStrength / 10);
+            if (!SkillEngine.HasFlag(SkillType.Poisoning, SkillFlag.NoSfx))
+                sink.Sound(0x247); // powdering (:2193)
+            // Source-X Skill_Poisoning: m_poison_skill (MOREZ) = (byte)(the potion's
+            // m_dwSkillQuality (MORE2) / 10), for food and blades alike (:2201/2207).
+            Combat.CombatEngine.SetWeaponPoisonSkill(weapon, (int)Math.Min(potion.More2 / 10u, 255u));
             sink.ConsumeAmount(potion);
             sink.SysMessage(ServerMessages.Get(Msg.PoisoningSuccess));
         }
@@ -1000,14 +1048,21 @@ public static class ActiveSkillEngine
         return Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
     }
 
-    private static int GetWeight(this Item it)
-    {
-        return Math.Max(1, it.TotalWeight);
-    }
+    /// <summary>A poison potion: IT_POTION whose m_itPotion.m_Type (MORE1) is
+    /// SPELL_Poison (CCharSkill.cpp:2185, CItem.h:279), or a bottle carrying the
+    /// older POTION_SPELL=Poison tag.</summary>
+    private static bool IsPoisonPotion(Item potion) =>
+        potion.ItemType == ItemType.Potion &&
+        (potion.More1 == (uint)SpellType.Poison ||
+         (potion.TryGetTag("POTION_SPELL", out string? spell) &&
+          string.Equals(spell, "Poison", StringComparison.OrdinalIgnoreCase)));
 
+    /// <summary>What Skill_Poisoning will coat (CCharSkill.cpp:2196-2209): fruit, food,
+    /// raw food and raw meat, and the sharp mace, sword and fencing weapons. An axe
+    /// is not on the list ("can't be used to chop trees").</summary>
     private static bool IsBladeOrFood(ItemType t) => t is
         ItemType.WeaponMaceSharp or ItemType.WeaponSword or ItemType.WeaponFence or
-        ItemType.WeaponAxe or ItemType.Food or ItemType.MeatRaw or ItemType.Fruit;
+        ItemType.Food or ItemType.FoodRaw or ItemType.MeatRaw or ItemType.Fruit;
 
     private static Character? ResolveItemOwner(Item it, World.GameWorld world, int maxDepth = 16)
     {
@@ -1054,7 +1109,7 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // Source-X requires a pickaxe to mine; it wears out with use.
+        // Source-X requires a pickaxe to mine (wear: DamageGatherToolOnSuccess).
         var pickaxe = FindGatherTool(sink, ItemType.WeaponMacePick);
         if (pickaxe == null)
         {
@@ -1067,7 +1122,6 @@ public static class ActiveSkillEngine
         // result (CCharSkill.cpp:4543-4555/3615-3618). Playing them again here made
         // the last swing of every attempt land twice, and made a pack's SKF_NOSFX a
         // dead letter for the final stroke.
-        DamageGatherTool(sink, pickaxe);
 
         if (gatheringEngine != null)
         {
@@ -1082,6 +1136,7 @@ public static class ActiveSkillEngine
                 if (result.Success && result.Item != null)
                 {
                     sink.SysMessage("You dig some ore and put it in your backpack.");
+                    DamageGatherToolOnSuccess(sink, SkillType.Mining);
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1148,23 +1203,34 @@ public static class ActiveSkillEngine
         return sink.FindBackpackItem(toolType);
     }
 
-    /// <summary>Wear a gathering tool on use. Decrements UsesRemaining when the
-    /// item tracks it; otherwise Source-X damages the tool's HITPOINTS
-    /// (CCharSkill.cpp:2447 OnTakeDamage(1)) — a tool whose def declares no
-    /// hitpoints never wears. The old invented 1/50 random break made every
-    /// untracked tool vanish after ~50 uses.</summary>
-    private static void DamageGatherTool(IActiveSkillSink sink, Item tool)
+    /// <summary>Source-X EF_DamageTools (CServerConfig.h:53, EXPERIMENTAL 0x2000).
+    /// Off by default, as upstream's is.</summary>
+    public const int EfDamageTools = 0x0002000;
+
+    /// <summary>Whether the shard's EXPERIMENTAL flags set EF_DamageTools. Fed from
+    /// sphere.ini at startup.</summary>
+    public static bool DamageToolsEnabled { get; set; }
+
+    /// <summary>Tool wear, the only way upstream has it (Skill_Stage SUCCESS,
+    /// CCharSkill.cpp:3931-3961): after a SUCCESSFUL use of a SKF_GATHER skill, and
+    /// only with EF_DamageTools, the weapon in hand (LAYER_HAND1, else HAND2) takes
+    /// ITEMDAMAGEAMOUNT (1, never more than its hit points) with ITEMDAMAGECHANCE
+    /// (25%). Wear on every attempt, on crooks and instruments, and a uses counter
+    /// were all invented.</summary>
+    private static void DamageGatherToolOnSuccess(IActiveSkillSink sink, SkillType skill)
     {
-        if (tool.UsesRemaining > 0)
-        {
-            tool.UsesRemaining--;
-            if (tool.UsesRemaining == 0)
-                sink.ConsumeAmount(tool);
-        }
-        else
-        {
-            SphereNet.Game.Combat.CombatEngine.ApplyDirectItemDamage(tool, 1);
-        }
+        if (!DamageToolsEnabled || !SkillEngine.HasFlag(skill, SkillFlag.Gather))
+            return;
+        var ch = sink.Self;
+        var tool = ch.GetEquippedItem(Layer.OneHanded);
+        if (tool == null || !ObjBase.IsTypeWeapon(tool.ItemType))
+            tool = ch.GetEquippedItem(Layer.TwoHanded);
+        if (tool == null || tool.IsDeleted || !ObjBase.IsTypeWeapon(tool.ItemType))
+            return;
+        if (sink.Random.Next(100) >= 25)
+            return;
+        int amount = Math.Max(Math.Min(1, tool.GetHitsCur()), 0);
+        Combat.CombatEngine.ApplyDirectItemDamage(tool, amount);
     }
 
     /// <summary>True when the target tile is water (Source-X fishing terrain
@@ -1233,7 +1299,7 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // Source-X requires a fishing pole; it wears out with use.
+        // Source-X requires a fishing pole (wear: DamageGatherToolOnSuccess).
         var pole = FindGatherTool(sink, ItemType.FishPole);
         if (pole == null)
         {
@@ -1243,7 +1309,6 @@ public static class ActiveSkillEngine
         FaceSkillTarget(ch, target);
         // The cast's sound and animation come from the start and the strokes
         // (SkillEngine.GetSkillAnim/GetSkillSound), not from the result - see Mining.
-        DamageGatherTool(sink, pole);
 
         if (gatheringEngine != null)
         {
@@ -1259,6 +1324,7 @@ public static class ActiveSkillEngine
                 {
                     // Source-X SysMessagef(DEFMSG_FISHING_SUCCESS, name) — CCharSkill.cpp:1581
                     sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, result.Item.GetName()));
+                    DamageGatherToolOnSuccess(sink, SkillType.Fishing);
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1301,7 +1367,7 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // Source-X requires an axe to chop; it wears out with use.
+        // Source-X requires an axe to chop (wear: DamageGatherToolOnSuccess).
         var axe = FindGatherTool(sink, ItemType.WeaponAxe);
         if (axe == null)
         {
@@ -1311,7 +1377,6 @@ public static class ActiveSkillEngine
         FaceSkillTarget(ch, target);
         // The chop's sound and animation come from the start and the strokes, not
         // from the result - see Mining.
-        DamageGatherTool(sink, axe);
 
         if (gatheringEngine != null)
         {
@@ -1326,6 +1391,7 @@ public static class ActiveSkillEngine
                 if (result.Success && result.Item != null)
                 {
                     sink.SysMessage("You put some logs in your backpack.");
+                    DamageGatherToolOnSuccess(sink, SkillType.Lumberjacking);
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1369,19 +1435,43 @@ public static class ActiveSkillEngine
 
     // ---------------------------------------------------------- Musicianship
 
-    /// <summary>Source-X CChar::Skill_Musicianship. Requires a musical instrument.</summary>
+    /// <summary>Source-X CChar::Skill_Musicianship (CCharSkill.cpp:1772-1790): START
+    /// plays the instrument against rand(90) through Use_PlayMusic, and what that
+    /// returns is the skill's difficulty. The fixed 40 was invented.</summary>
     public static bool Musicianship(IActiveSkillSink sink)
+    {
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, 90), musicianshipActive: true);
+        if (difficulty < 0)
+            return false;
+        return SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, difficulty);
+    }
+
+    /// <summary>Source-X CChar::Use_PlayMusic (CCharUse.cpp:707-738): find an
+    /// instrument (DEFMSG_MUSICANSHIP_NOTOOL and -2 without one), roll Musicianship
+    /// against <paramref name="difficulty"/> - gaining only when Musicianship is not
+    /// itself the skill being used, which instead takes the failure's experience
+    /// by hand - and play the instrument's good or poor tune. Returns the difficulty
+    /// on success, -1 (DEFMSG_MUSICANSHIP_POOR) on failure.</summary>
+    private static int UsePlayMusic(IActiveSkillSink sink, int difficulty, bool musicianshipActive)
     {
         var instrument = FindMusicalInstrument(sink);
         if (instrument == null)
         {
-            sink.SysMessage("You have no musical instrument.");
-            return false;
+            sink.SysMessage(ServerMessages.Get(Msg.MusicanshipNotool));
+            return -2;
         }
-        DamageGatherTool(sink, instrument);
-        bool played = SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, 40);
+
+        var ch = sink.Self;
+        bool played = SkillEngine.UseQuick(ch, SkillType.Musicianship, difficulty,
+            allowGain: !musicianshipActive);
         PlayInstrument(sink, instrument, played);
-        return played;
+        if (played)
+            return difficulty;
+
+        if (musicianshipActive)
+            SkillEngine.GainExperience(ch, SkillType.Musicianship, -difficulty);
+        sink.SysMessage(ServerMessages.Get(Msg.MusicanshipPoor));
+        return -1;
     }
 
     /// <summary>The instrument's own tune - Source-X Use_PlayMusic plays
@@ -1400,40 +1490,61 @@ public static class ActiveSkillEngine
 
     // ----------------------------------------------------------- Peacemaking
 
-    /// <summary>Source-X CChar::Skill_Peacemaking. Pacifies a creature.</summary>
+    /// <summary>Source-X CChar::Skill_Peacemaking (CCharSkill.cpp:1792-1899).
+    ///
+    /// START plays against rand(40) (no instrument aborts, a poor tune fails) and a
+    /// zero difficulty is re-rolled as rand(40). SUCCESS listens around the bard -
+    /// RANGE, or Peacemaking/100 + 2 tiles - and settles on the FIRST creature it
+    /// can see: one whose own Peacemaking (averaged with TAG.BARDING.DIFF) beats
+    /// the bard's ignores the song, one whose Provocation does disobeys it (and an
+    /// evil one turns on the bard), and anything else stops fighting. Nobody in
+    /// earshot is a failure. Calming every NPC in eight tiles was invented.</summary>
     public static bool Peacemaking(IActiveSkillSink sink, Character? target = null)
     {
         var ch = sink.Self;
-        var instrument = FindMusicalInstrument(sink);
-        if (instrument == null)
-        {
-            sink.SysMessage("You have no musical instrument.");
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, 40), musicianshipActive: false);
+        if (difficulty < 0)
             return false;
-        }
-        DamageGatherTool(sink, instrument);
-        bool playedPeace = SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
-        PlayInstrument(sink, instrument, playedPeace);
-        if (!playedPeace)
+        if (difficulty == 0)
+            difficulty = RandVal(sink.Random, 40);
+        if (!SkillEngine.UseQuick(ch, SkillType.Peacemaking, difficulty))
             return false;
 
-        sink.Emote(ServerMessages.Get(Msg.PeacemakingIgnore));
-        if (!SkillEngine.UseQuick(ch, SkillType.Peacemaking, 50))
+        int peace = SkillEngine.GetAdjustedSkill(ch, SkillType.Peacemaking);
+        int radius = SkillEngine.GetUseRange(SkillType.Peacemaking, peace / 100 + 2);
+        foreach (var creature in sink.World.GetCharsInRange(ch.Position, radius).ToList())
         {
-            sink.SysMessage(ServerMessages.Get(Msg.PeacemakingDisobey));
-            return false;
-        }
-
-        int radius = SkillEngine.GetUseRange(SkillType.Peacemaking, 8);
-        int pacified = 0;
-        foreach (var creature in sink.World.GetCharsInRange(ch.Position, radius))
-        {
-            if (creature == ch || creature.IsPlayer || creature.IsDead || creature.IsDeleted)
+            if (creature == ch || creature.IsDeleted || !CanSeeChar(sink.World, ch, creature))
                 continue;
-            creature.ClearStatFlag(StatFlag.War);
-            creature.FightTarget = Serial.Invalid;
-            pacified++;
+
+            int barding = BardingDiff(creature);
+            int peaceDiff = SkillEngine.GetAdjustedSkill(creature, SkillType.Peacemaking);
+            if (barding != 0)
+                peaceDiff = (peaceDiff + barding) / 2;
+
+            if (peaceDiff > peace)
+            {
+                sink.SysMessage($"{creature.Name} {ServerMessages.Get(Msg.PeacemakingIgnore)}.");
+            }
+            else
+            {
+                int provoDiff = SkillEngine.GetAdjustedSkill(creature, SkillType.Provocation);
+                if (barding != 0)
+                    provoDiff = (provoDiff + barding) / 2;
+                if (provoDiff > peace)
+                {
+                    sink.SysMessage($"{creature.Name} {ServerMessages.Get(Msg.PeacemakingDisobey)}.");
+                    if (AI.NpcAI.NotoIsEvil(creature, sink.World))
+                        FightAttack(creature, ch);
+                }
+                else
+                {
+                    FightClearAll(creature);
+                }
+            }
+            return true;
         }
-        return pacified > 0;
+        return false;
     }
 
     // ----------------------------------------------------------- Enticement
@@ -1456,26 +1567,13 @@ public static class ActiveSkillEngine
             sink.SysMessage("That creature is too far away.");
             return false;
         }
-        var instrument = FindMusicalInstrument(sink);
-        if (instrument == null)
-        {
-            sink.SysMessage("You have no musical instrument.");
-            return false;
-        }
 
-        int baseDiff = target.TryGetTag("BARDING.DIFF", out string? diffRaw) &&
-                       int.TryParse(diffRaw, out int tagDiff) && tagDiff != 0
-            ? tagDiff / 18
-            : 40;
-        int difficulty = Random.Shared.Next(Math.Max(1, baseDiff));
-
-        DamageGatherTool(sink, instrument);
-        bool played = SkillEngine.UseQuick(ch, SkillType.Musicianship, difficulty);
-        PlayInstrument(sink, instrument, played);
-        if (!played)
+        int baseDiff = BardingDiff(target) is var tagDiff && tagDiff != 0 ? tagDiff / 18 : 40;
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, baseDiff), musicianshipActive: false);
+        if (difficulty < 0)
             return false;
         if (difficulty == 0)
-            difficulty = Random.Shared.Next(40);
+            difficulty = RandVal(sink.Random, 40);
         if (!SkillEngine.UseQuick(ch, SkillType.Enticement, difficulty))
             return false;
 
@@ -1501,45 +1599,154 @@ public static class ActiveSkillEngine
 
     // ----------------------------------------------------------- Provocation
 
-    /// <summary>Source-X CChar::Skill_Provocation. Incites one creature against another.</summary>
+    /// <summary>Source-X CChar::Skill_Provocation (CCharSkill.cpp:1999-2157).
+    /// <paramref name="target"/> is the creature being provoked (m_Act_Prv_UID) and
+    /// <paramref name="provokeAgainst"/> the one it is turned on (m_Act_UID).
+    ///
+    /// Neither may be the bard, each other, dead, a pet, conjured, stone or
+    /// invulnerable (DEFMSG_PROVOCATION_UPSET), nor a player
+    /// (DEFMSG_PROVOCATION_PLAYER). START plays against the TARGET's
+    /// TAG.BARDING.DIFF/18 (default 40); a zero difficulty becomes the provoked
+    /// creature's INT, and one at least as good a provoker as the bard makes it 0.
+    /// FAIL turns the provoked creature on the bard. SUCCESS: a creature of karma
+    /// rand(1000..10000) or better refuses; the target is attacked by the bard's
+    /// doing; out of RANGE (default 14) the provoked evil turns on the bard; two of
+    /// the same ally group turn on the bard together (DEFMSG_PROVOCATION_KIND); a
+    /// good provoked creature is a crime and refuses; a good target is a crime but
+    /// the fight goes ahead.</summary>
     public static bool Provocation(IActiveSkillSink sink, Character? target,
         Character? provokeAgainst = null)
     {
         var ch = sink.Self;
-        if (target == null || target.IsPlayer || target.IsDead || target.IsDeleted)
-            return false;
-        if (!CanReachPoint(ch, target.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Provocation, 8)))
+        var prov = target;
+        var targ = provokeAgainst;
+        const StatFlag untouchable = StatFlag.Pet | StatFlag.Conjured | StatFlag.Stone |
+            StatFlag.Dead | StatFlag.Invul;
+        if (prov == null || targ == null || prov == ch || targ == ch || prov == targ ||
+            prov.IsDeleted || targ.IsDeleted || prov.IsDead || targ.IsDead ||
+            prov.IsStatFlag(untouchable) || targ.IsStatFlag(untouchable))
         {
-            sink.SysMessage("That creature is too far away.");
+            sink.SysMessage(ServerMessages.Get(Msg.ProvocationUpset));
             return false;
         }
-        var instrument = FindMusicalInstrument(sink);
-        if (instrument == null)
+        if (prov.IsPlayer || targ.IsPlayer)
         {
-            sink.SysMessage("You have no musical instrument.");
+            sink.SysMessage(ServerMessages.Get(Msg.ProvocationPlayer));
             return false;
         }
-        DamageGatherTool(sink, instrument);
-        bool playedProvoke = SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
-        PlayInstrument(sink, instrument, playedProvoke);
-        if (!playedProvoke)
+        if (!CanSeeChar(sink.World, ch, prov) || !CanSeeChar(sink.World, ch, targ))
             return false;
 
-        if (provokeAgainst == null || provokeAgainst == target || provokeAgainst == ch ||
-            provokeAgainst.IsDead || provokeAgainst.IsDeleted ||
-            !CanReachPoint(ch, provokeAgainst.Position, sink.World,
-                SkillEngine.GetUseRange(SkillType.Provocation, 8)))
+        // START (:2045-2090).
+        int baseDiff = BardingDiff(targ) is var tagDiff && tagDiff != 0 ? tagDiff / 18 : 40;
+        int difficulty = UsePlayMusic(sink, RandVal(sink.Random, baseDiff), musicianshipActive: false);
+        if (difficulty < -1)
             return false;
+        if (difficulty == 0)
+            difficulty = Combat.CombatEngine.EffectiveInt(prov);
+        if (SkillEngine.GetAdjustedSkill(prov, SkillType.Provocation) >=
+            SkillEngine.GetAdjustedSkill(ch, SkillType.Provocation))
+            difficulty = 0; // "cannot provoke more experienced provoker" (:2082)
+        bool isAlly = AI.NpcAI.GetAllyGroup(prov.BodyId) == AI.NpcAI.GetAllyGroup(targ.BodyId);
 
-        sink.Emote(ServerMessages.GetFormatted(Msg.ProvocationPlayer, target.Name));
-        if (!SkillEngine.UseQuick(ch, SkillType.Provocation, 60))
+        // A START that came back negative is bound to fail (Skill_Stroke :3928).
+        if (difficulty < 0 || !SkillEngine.UseQuick(ch, SkillType.Provocation, difficulty))
+        {
+            FightAttack(prov, ch); // FAIL (:2092-2096)
             return false;
+        }
 
-        target.FightTarget = provokeAgainst.Uid;
-        target.SetStatFlag(StatFlag.War);
-        sink.Emote(ServerMessages.GetFormatted(Msg.ProvocationUpset, provokeAgainst.Name));
+        // SUCCESS (:2098-2150).
+        if (prov.Karma >= RandVal2(sink.Random, 1000, 10000))
+        {
+            prov.EmoteObject(ServerMessages.Get(Msg.ProvocationEmote1));
+            return false;
+        }
+        prov.EmoteObject(ServerMessages.Get(Msg.ProvocationEmote2));
+
+        if (!targ.OnAttackedBy(ch))
+            return false;
+        prov.Memory_AddObjTypes(ch.Uid, MemoryType.Aggreived | MemoryType.IrritatedBy);
+
+        int maxRange = SkillEngine.GetUseRange(SkillType.Provocation, 14); // UO_MAP_VIEW_SIGHT
+        bool provEvil = AI.NpcAI.NotoIsEvil(prov, sink.World);
+        if (prov.Position.GetDistanceTo(targ.Position) > maxRange ||
+            prov.Position.GetDistanceTo(ch.Position) > maxRange)
+        {
+            if (provEvil)
+                FightAttack(prov, ch);
+            return false;
+        }
+
+        if (isAlly)
+        {
+            if (provEvil)
+            {
+                FightAttack(prov, ch);
+                FightAttack(targ, ch);
+            }
+            sink.SysMessage(ServerMessages.Get(Msg.ProvocationKind));
+            return false;
+        }
+
+        if (IsNotoGood(prov, ch))
+        {
+            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, null, sink.Random);
+            return false; // "can't provoke a good target!"
+        }
+        if (IsNotoGood(targ, ch))
+            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, null, sink.Random);
+
+        FightAttack(prov, targ);
         return true;
+    }
+
+    /// <summary>TAG.BARDING.DIFF, 0 when unset.</summary>
+    private static int BardingDiff(Character ch) =>
+        ch.TryGetTag("BARDING.DIFF", out string? raw) && int.TryParse(raw, out int v) ? v : 0;
+
+    /// <summary>CSRand::GetVal2: min..max inclusive (CSRand.cpp:47).</summary>
+    private static int RandVal2(Random random, int min, int max)
+    {
+        if (min > max) (min, max) = (max, min);
+        return random.Next(min, max + 1);
+    }
+
+    /// <summary>The bard seeing a creature: not hidden from them (a GM sees all)
+    /// and in line of sight.</summary>
+    private static bool CanSeeChar(GameWorld world, Character viewer, Character other)
+    {
+        if (other.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible) && viewer.PrivLevel < PrivLevel.GM)
+            return false;
+        return other.MapIndex == viewer.MapIndex && world.CanSeeLOS(viewer.Position, other.Position);
+    }
+
+    /// <summary>Noto_GetFlag(viewer) == NOTO_GOOD, through the notoriety resolver
+    /// the host wires; without one nothing reads as good.</summary>
+    private static bool IsNotoGood(Character subject, Character viewer) =>
+        Character.ResolveNotoFlag?.Invoke(subject, viewer) == 1;
+
+    /// <summary>Source-X CChar::Fight_Attack for a creature a bard turned: it goes on
+    /// the attacker list through @Attack and takes the target.</summary>
+    private static void FightAttack(Character attacker, Character victim)
+    {
+        if (attacker == victim || attacker.IsDead || victim.IsDead)
+            return;
+        if (!attacker.CombatState.BeginFightWith(victim, toldByMaster: false))
+            return;
+        attacker.FightTarget = victim.Uid;
+        attacker.SetStatFlag(StatFlag.War);
+        attacker.NextNpcActionTime = 0;
+        Character.WakeNpc?.Invoke(attacker);
+    }
+
+    /// <summary>Source-X CChar::Fight_ClearAll (CCharFight.cpp:1340): drop the fight
+    /// target and the attacker list, and leave war mode.</summary>
+    private static void FightClearAll(Character ch)
+    {
+        ch.FightTarget = Serial.Invalid;
+        ch.ClearAttackers();
+        ch.ClearStatFlag(StatFlag.War);
     }
 
     private static Item? FindMusicalInstrument(IActiveSkillSink sink)

@@ -95,6 +95,7 @@ public sealed class SkillAnimationTimingParityTests
 
         var lf = LoggerFactory.Create(_ => { });
         var world = TestHarness.CreateWorld();
+        TestHarness.AttachLoadedRegionTypes(world);
         var client = TestHarness.CreateClient(lf, world, new AccountManager(lf), 24_501);
         var miner = world.CreateCharacter();
         miner.IsPlayer = true;

@@ -576,11 +576,20 @@ public sealed partial class GameClient
                 // OF_PetBehaviorOwnerNeutral flag flips it to true notoriety).
                 if (subject.OwnerSerial == viewer.Uid)
                     return 3;
-                // Another player's pet inherits its master's notoriety.
-                var owner = world.FindChar(subject.OwnerSerial);
-                if (owner != null && !owner.IsDeleted && owner != subject &&
-                    (owner.IsPlayer || owner.TryGetTag("ACCOUNT", out _)))
-                    return ComputeNotorietyBase(world, viewer, owner);
+                // PETSINHERITNOTORIETY (CCharNotoriety.cpp:185-200): a pet shows its
+                // master's notoriety only when that notoriety's bit (1 << (noto-1))
+                // is set in the mask; 0 (the default) disables inheritance.
+                if (Character.PetsInheritNotoriety != 0)
+                {
+                    var owner = world.FindChar(subject.OwnerSerial);
+                    if (owner != null && !owner.IsDeleted && owner != subject && owner != viewer)
+                    {
+                        byte notoMaster = ComputeNotoriety(world, viewer, owner);
+                        int bit = notoMaster >= 1 ? 1 << (notoMaster - 1) : 0;
+                        if (bit != 0 && (Character.PetsInheritNotoriety & bit) == bit)
+                            return notoMaster;
+                    }
+                }
             }
 
             // Guild relations — same/ally → green, declared war → orange.
@@ -602,10 +611,11 @@ public sealed partial class GameClient
         if (IsNotoEvil(subject, targetRegion))
             return 6;
 
-        // Personal grey (MEMORY_SAWCRIME | MEMORY_AGGREIVED): grey to THIS
-        // viewer only — the victim/witness of an otherwise-blue aggressor.
-        if (!selfCheck && subject.IsPlayer &&
-            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.SawCrime | MemoryType.HarmedBy) != null)
+        // Personal grey (MEMORY_SAWCRIME | MEMORY_AGGREIVED, CCharNotoriety.cpp:265-271):
+        // grey to THIS viewer only — the victim/witness of an otherwise-blue
+        // aggressor, NPC or player alike.
+        if (!selfCheck &&
+            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.SawCrime | MemoryType.Aggreived) != null)
             return 4;
 
         if (subject.IsCriminal || subject.IsStatFlag(StatFlag.Criminal))
@@ -615,18 +625,8 @@ public sealed partial class GameClient
             (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1"))
             return 3;
 
-        if (!subjectIsPlayerChar)
-        {
-            // Non-evil, non-neutral NPC: Source-X resolves GOOD here; keep the
-            // SphereNet role colours for protected townsfolk (healer/banker
-            // render invul-yellow because their STATF_INVUL isn't modeled).
-            return subject.NpcBrain switch
-            {
-                NpcBrainType.Healer or NpcBrainType.Banker => 7,
-                _ => 1,
-            };
-        }
-
+        // NOTO_GOOD for everyone else. Healers and bankers are not special here:
+        // only STATF_INVUL gives NOTO_INVUL (CCharNotoriety.cpp:152-153, 281).
         return 1;
     }
 

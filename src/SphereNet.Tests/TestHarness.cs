@@ -150,4 +150,24 @@ internal static class TestHarness
             .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(client, value);
     }
+
+    /// <summary>Give map 0 an area covering the whole map that links every loaded
+    /// REGIONTYPE which has resources - what an [AREADEF] with RESOURCES=/EVENTS=
+    /// does in a real pack. Gathering reads only the region at the tile (Source-X
+    /// CWorldMap::CheckNaturalResource), so a bare test world has to say where its
+    /// resource tables apply.</summary>
+    public static void AttachLoadedRegionTypes(GameWorld world, byte map = 0)
+    {
+        var field = typeof(SphereNet.Game.Definitions.DefinitionLoader)
+            .GetField("_regionTypeDefs", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var defs = (System.Collections.IDictionary)field.GetValue(null)!;
+        var region = new SphereNet.Game.World.Regions.Region { Name = "test_resource_area", MapIndex = map };
+        region.AddRect(0, 0, 6143, 4095);
+        foreach (System.Collections.DictionaryEntry kv in defs)
+        {
+            if (kv.Value is SphereNet.Scripting.Definitions.RegionTypeDef { Resources.Count: > 0 })
+                region.AddRegionType(new ResourceId(SphereNet.Core.Enums.ResType.RegionType, (int)kv.Key));
+        }
+        world.AddRegion(region);
+    }
 }

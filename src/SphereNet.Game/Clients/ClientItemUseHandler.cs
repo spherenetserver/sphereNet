@@ -1013,24 +1013,11 @@ public sealed class ClientItemUseHandler
                 UseEat(item);
                 break;
             case ItemType.Drink:
-                // Source-X Use_Eat/Use_Drink refuse an item the user cannot move
-                // (CCharUse.cpp:927/992 CanMoveItem gate) BEFORE consuming it — so a
-                // placed Move_Never/locked food fixture is never destroyed by a
-                // non-GM double-click. GM and movable pack items pass.
-                if (!ItemMoveRules.CanMove(_character, item, out _))
-                {
-                    SysMessage(ServerMessages.Get(Msg.DrinkCantmove));
-                    break;
-                }
-                // One meal, one path: EatEngine carries the reference's @Eat
-                // contract - ARGN1 is a STAT LIMIT starting at zero rather than the
-                // hunger restored, the gains ride in LOCAL.Hits / Mana / Stam / Food
-                // with the item as the object argument, and all of them are read back
-                // (CCharAct.cpp:3456-3476). The old call passed N1=5, prepared no
-                // locals and then applied a flat five regardless, so a script that
-                // wrote those values changed nothing. RETURN 1 skips the gains but
-                // still costs the food, as Use_EatQty consumes either way (:913).
-                EatOneUnit(item);
+            case ItemType.WaterWash:
+                // IT_DRINK and IT_WATER_WASH are DRUNK, not eaten: Use_Drink
+                // (CCharUse.cpp:1860-1868) - no @Eat, no stamina, food only with
+                // OF_DrinkIsFood, @Drink and the TDATA1 empty container.
+                UsePotion(item);
                 break;
 
             // Source-X routes t_grain/t_grass through Use_Eat and t_water_wash
@@ -1056,22 +1043,6 @@ public sealed class ClientItemUseHandler
                 UseEat(item);
                 break;
 
-            case ItemType.WaterWash:
-                // Water is DRUNK in the reference (Use_Drink), which is a different
-                // contract; left on the old path until that is modelled.
-                SphereNet.Game.NPCs.EatEngine.Eat(_character, item, _triggerDispatcher, 1);
-                SysMessage(ServerMessages.Get("itemuse_eat_food"));
-                PlayAnimation(_character, (ushort)AnimationType.Eat);
-                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                    new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);
-                if (item.ContainedIn.IsValid && item.Amount > 1)
-                {
-                    item.Amount--;
-                    SendContainerItemPacket(new PacketContainerItem(
-                        item.Uid.Value, item.DispIdFull, 0, item.Amount, item.X, item.Y,
-                        item.ContainedIn.Value, item.Hue, _netState.IsClientPost6017));
-                }
-                break;
 
             case ItemType.Book:
             case ItemType.Message:
@@ -1153,7 +1124,9 @@ public sealed class ClientItemUseHandler
                     SysMessage(ServerMessages.Get(Msg.ItemuseDyeNohair));
                     break;
                 }
-                ApplyHairDye(item);
+                // The hue is picked in the script dialog d_hair_dye, with the dye as
+                // its object (CClientUse.cpp:521-530) - the engine colours nothing.
+                _client.OpenNamedDialog("d_hair_dye", 0, item);
                 break;
 
             case ItemType.Dye:
@@ -1179,8 +1152,23 @@ public sealed class ClientItemUseHandler
                     var targetSerial = new Serial(serial);
                     var targetObj = targetSerial.IsValid ? _world.FindObject(targetSerial) : null;
 
-                    // Source-X OnTarg_Use_Item sharp-weapon block: the classic
-                    // blade uses beyond poisoning/repair.
+                    // A smith's hammer has its own case, not the sharp-weapon block
+                    // (IT_WEAPON_MACE_SMITH, CClientTarg.cpp:1823-1836): ingots are
+                    // smithed, repairable armour is repaired (Use_Repair), anything
+                    // else does nothing. A staff has no targeted use at all.
+                    if (item.ItemType == ItemType.WeaponMaceSmith)
+                    {
+                        if (targetObj is Item ingot && ingot.ItemType == ItemType.Ingot)
+                            OpenCraftingGump(SkillType.Blacksmithing);
+                        else if (targetObj is Item armor && IsArmorRepairable(armor))
+                            Skills.Information.ActiveSkillEngine.RepairItem(
+                                new GameClient.InfoSkillSink(_client, _character), armor);
+                        return;
+                    }
+                    if (item.ItemType == ItemType.WeaponMaceStaff)
+                        return;
+
+                    // Source-X OnTarg_Use_Item sharp-weapon block (CClientTarg.cpp:1842-1984).
                     if (targetObj is Item corpse && corpse.ItemType == ItemType.Corpse)
                     {
                         CarveCorpseWithBlade(corpse, item);
@@ -1217,16 +1205,10 @@ public sealed class ClientItemUseHandler
                             new Point3D(x, y, z, _character.MapIndex), item);
                         return;
                     }
-                    if (targetObj is Item targetItem && IsWeaponItemType(targetItem.ItemType))
-                    {
-                        RouteSkillTarget(SkillType.Poisoning, targetSerial);
-                        return;
-                    }
-                    if (targetObj is Item repairItem && _character.GetSkill(SkillType.Tinkering) > 0)
-                    {
-                        var sink = new GameClient.InfoSkillSink(_client, _character);
-                        Skills.Information.ActiveSkillEngine.RepairItem(sink, repairItem);
-                    }
+                    // Anything else is smashed (default, CClientTarg.cpp:1966-1983): a
+                    // blade neither starts Poisoning on a weapon nor repairs.
+                    if (targetObj is Item smashed)
+                        SmashWithBlade(smashed);
                 });
                 break;
 
@@ -1300,48 +1282,13 @@ public sealed class ClientItemUseHandler
             }
 
             // ---- item stone (Source-X IT_ITEM_STONE dispenser) ----
-            // MORE1 = the item id given, MORE2 = charges (0 = infinite,
-            // 0xFFFF = exhausted/"dead"), MOREX = regen seconds between uses.
+            // m_itItemStone (CItem.h:499-505): MORE1 = the item or template given,
+            // MORE2 = price (unused by the dispenser), MOREX = regen seconds,
+            // MOREY = amount left (0 = infinite, 0xFFFF = none left).
+            // Do_Use_Item IT_ITEM_STONE, CCharUse.cpp:1593-1617.
             case ItemType.ItemStone:
-            {
-                if (item.More2 == ushort.MaxValue)
-                {
-                    SysMessage("It is dead.");
-                    break;
-                }
-                int regenSec = item.MoreP.X;
-                if (regenSec > 0)
-                {
-                    long now2 = Environment.TickCount64;
-                    if (item.Timeout > now2)
-                    {
-                        SysMessage($"The stone has not recharged yet ({(item.Timeout - now2) / 1000}s).");
-                        break;
-                    }
-                    item.SetTimeout(now2 + regenSec * 1000L);
-                }
-                if (item.More1 == 0) break;
-
-                var given = _world.CreateItem();
-                given.BaseId = (ushort)item.More1;
-                given.Amount = 1;
-                Item? delivered = null;
-                if (_character.Backpack != null &&
-                    (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(given)))
-                    delivered = _character.Backpack.TryAddItemWithStack(given);
-                if (delivered == null)
-                    _world.PlaceItemWithDecay(given, _character.Position);
-                else if (delivered != given)
-                    _world.RemoveItem(given);
-
-                if (item.More2 != 0)
-                {
-                    item.More2 -= 1;
-                    if (item.More2 == 0)
-                        item.More2 = ushort.MaxValue; // exhausted
-                }
+                UseItemStone(item);
                 break;
-            }
             case ItemType.SpyGlass:
                 UseSpyGlass(item);
                 break;
@@ -1356,6 +1303,17 @@ public sealed class ClientItemUseHandler
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleSmeltTarget(item, new Serial(serial)));
                 break;
             case ItemType.Forge:
+                // IT_FORGE asks for the ore to smelt (CClientUse.cpp:385-388) and the
+                // target is smelted at this forge (CClientTarg.cpp:1763-1765).
+                SysMessage(ServerMessages.Get(Msg.ItemuseForge));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                {
+                    if (_world.FindItem(new Serial(serial)) is { } ore)
+                        HandleSmeltTarget(ore, item.Uid);
+                    else
+                        SysMessage(ServerMessages.Get(Msg.MiningNotOre));
+                });
+                break;
             case ItemType.Ingot:
                 OpenCraftingGump(SkillType.Blacksmithing);
                 break;
@@ -1461,7 +1419,11 @@ public sealed class ClientItemUseHandler
                 }
                 break;
             case ItemType.Clock:
-                ObjectMessage(item, FormatLocalGameTime());
+                // The local game time of the user's sector (CClientUse.cpp:303-305),
+                // not the host's wall clock.
+                ObjectMessage(item, World.Sectors.Sector.GetTimeMinDesc(
+                    _world.GetSector(_character.Position)?.GetLocalTime()
+                        ?? (int)(_world.WorldClockMinutes % (24 * 60))));
                 break;
             case ItemType.AnimActive:
                 SysMessage(ServerMessages.Get("item_in_use"));
@@ -1747,18 +1709,9 @@ public sealed class ClientItemUseHandler
 
             // ---- beverages ----
             case ItemType.Booze:
-                // Source-X IT_BOOZE routes through Use_Drink: refuse an unmovable
-                // fixture (a placed keg/barrel) instead of destroying it.
-                if (!ItemMoveRules.CanMove(_character, item, out _))
-                {
-                    SysMessage(ServerMessages.Get(Msg.DrinkCantmove));
-                    break;
-                }
-                if (!DrinkBooze(item))
-                    break;
-                // Consume exactly one bottle (Use_Drink wConsume=1), never the whole
-                // stack — a single drink used to delete every ale in the pile.
-                ConsumeOneOnUse(item);
+                // Use_Drink (CCharUse.cpp:1864): @Drink, Liquor, one unit, the empty
+                // bottle. Booze feeds nobody.
+                UsePotion(item);
                 break;
 
             // ---- musical instruments ----
@@ -1880,23 +1833,35 @@ public sealed class ClientItemUseHandler
             case ItemType.Bedroll:
                 UseBedroll(item);
                 break;
-            case ItemType.Campfire:
-                SysMessage("The fire is warm.");
-                break;
 
             // ---- crafting stations (overridable via @DClick trigger) ----
             case ItemType.SpinWheel:
-                // Cosmetic spinning-wheel sound (Source-X plays a spin anim on
-                // dclick), then open the tailoring gump for actual crafting.
-                BroadcastNearby?.Invoke(item.Position, UpdateRange,
-                    new PacketSound(0x0055, item.X, item.Y, item.Z), 0);
-                OpenCraftingGump(SkillType.Tailoring);
+            {
+                // Just make it spin for two seconds (CCharUse.cpp:1630-1653).
+                ushort spinId = item.DispIdFull switch
+                {
+                    0x2DD9 => 0x2E3C, // ITEMID_SPININGWHEEL_ELVEN_S -> _ANIMATED
+                    0x2DDA => 0x2E3E, // ITEMID_SPININGWHEEL_ELVEN_E -> _ANIMATED
+                    _ => (ushort)(item.DispIdFull + 1),
+                };
+                item.SetAnim(spinId, 2000);
+                SysMessage(ServerMessages.Get(Msg.ItemuseSpinwheel));
                 break;
+            }
             case ItemType.Loom:
-                OpenCraftingGump(SkillType.Tailoring);
+                SysMessage(ServerMessages.Get(Msg.ItemuseLoom)); // CCharUse.cpp:1683-1690
                 break;
+            // An anvil, a campfire, fur, logs, boards, bones and rope have no
+            // double-click use upstream (neither Do_Use_Item nor OnDClick handles
+            // them): "can't think of a way to use that".
             case ItemType.Anvil:
-                OpenCraftingGump(SkillType.Blacksmithing);
+            case ItemType.Campfire:
+            case ItemType.Fur:
+            case ItemType.Log:
+            case ItemType.Board:
+            case ItemType.Bone:
+            case ItemType.Rope:
+                SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
                 break;
 
             // ---- crops / foliage harvesting ----
@@ -1910,14 +1875,14 @@ public sealed class ClientItemUseHandler
                 UseBeeHive(item);
                 break;
             case ItemType.Seed:
-                SysMessage("Select where to plant the seed.");
+                SysMessage(ServerMessages.GetFormatted(Msg.ItemusePitcherTarg, item.GetName())); // CClientUse.cpp:498-503
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) => PlantSeed(item, x, y, z));
                 break;
             case ItemType.Pitcher:
                 UsePotion(item);
                 break;
             case ItemType.PitcherEmpty:
-                SysMessage("Select a water source to fill the pitcher.");
+                SysMessage(ServerMessages.GetFormatted(Msg.ItemusePitcherTarg, item.GetName())); // CClientUse.cpp:498-503
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) => FillPitcher(item, serial, x, y));
                 break;
 
@@ -1930,9 +1895,6 @@ public sealed class ClientItemUseHandler
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
                     SpinMaterial(item, new Serial(serial)));
                 break;
-            case ItemType.Fur:
-                SysMessage("Use a spinning wheel to process this material.");
-                break;
             case ItemType.Thread:
             case ItemType.Yarn:
                 // Source-X IT_THREAD/IT_YARN: target a loom — the loom
@@ -1941,16 +1903,6 @@ public sealed class ClientItemUseHandler
                 SysMessage("Select the loom to weave this on.");
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
                     WeaveOnLoom(item, new Serial(serial)));
-                break;
-            case ItemType.Log:
-            case ItemType.Board:
-                SysMessage("Use a carpentry tool to craft with this.");
-                break;
-            case ItemType.Bone:
-                SysMessage("You examine the bone.");
-                break;
-            case ItemType.Rope:
-                SysMessage("You examine the rope.");
                 break;
 
             // ---- comm crystal ----
@@ -2252,23 +2204,23 @@ public sealed class ClientItemUseHandler
         switch (ResolveWaterTarget(targetSerial, x, y))
         {
             case WaterTarget.OutOfReach:
-                SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                SysMessage(ServerMessages.Get(Msg.ItemusePitcherReach));
                 return;
             case WaterTarget.NotWater:
-                SysMessage("That is not a water source.");
+                SysMessage(ServerMessages.Get(Msg.ItemusePitcherFill));
                 return;
         }
-        var def = DefinitionLoader.GetItemDef(pitcher.BaseId);
-        ushort fullId = def != null && def.TData1 != 0 ? (ushort)def.TData1 : (ushort)0x1F9D;
-        pitcher.BaseId = fullId;
-        pitcher.ItemType = ItemType.Pitcher;
+        // SetID(ITEMID_PITCHER_WATER) (CClientTarg.cpp:2349): always the water
+        // pitcher 0x0FF8, typed by its own definition (SetBase, CItem.cpp:2129).
+        const ushort PitcherWater = 0x0FF8;
+        pitcher.BaseId = PitcherWater;
+        pitcher.ItemType = DefinitionLoader.GetItemDef(PitcherWater)?.Type ?? ItemType.Pitcher;
         if (pitcher.ContainedIn.IsValid)
             SendContainerItemPacket(new PacketContainerItem(
                 pitcher.Uid.Value, pitcher.DispIdFull, 0, pitcher.Amount, pitcher.X, pitcher.Y,
                 pitcher.ContainedIn.Value, pitcher.Hue, _netState.IsClientPost6017));
         else
             SendWorldItem(pitcher);
-        SysMessage("You fill the pitcher with water.");
     }
 
     /// <summary>Plant a seed on the targeted ground (Source-X CChar::Use_Seed).
@@ -2288,7 +2240,7 @@ public sealed class ClientItemUseHandler
         // rock, water or a floor.
         if (_character.PrivLevel < PrivLevel.GM && !HasSoilAt(here.X, here.Y))
         {
-            SysMessage("You need to plant that in soil.");
+            SysMessage(ServerMessages.Get(Msg.MsgSeedTargsoil));
             return;
         }
 
@@ -2302,7 +2254,7 @@ public sealed class ClientItemUseHandler
         }
         if (cropId == 0)
         {
-            SysMessage("You cannot plant that here.");
+            SysMessage(ServerMessages.Get(Msg.MsgSeedNogood));
             return;
         }
 
@@ -2315,7 +2267,7 @@ public sealed class ClientItemUseHandler
         {
             if (there.ItemType is ItemType.Tree or ItemType.Foliage)
             {
-                SysMessage("There is already a tree here.");
+                SysMessage(ServerMessages.Get(Msg.MsgSeedAtree));
                 return;
             }
         }
@@ -2325,18 +2277,29 @@ public sealed class ClientItemUseHandler
                 _world.RemoveItem(there);
         }
 
+        // CreateScript(idReset): the plant keeps the type its definition gives it.
+        // A crop or foliage is reset into its hidden regrow stage; anything else just
+        // decays at ten times the item decay (Use_Seed, CCharUse.cpp:1519-1528).
         var crop = _world.CreateItem();
         crop.BaseId = cropId;
-        crop.ItemType = ItemType.Crops;
+        crop.ItemType = DefinitionLoader.GetItemDef(cropId)?.Type ?? ItemType.Crops;
         _world.PlaceItem(crop, new Point3D(x, y, z, _character.MapIndex));
-        crop.PlantStartGrowth(); // Source-X Use_Seed → the crop begins its growth chain
-        BroadcastNearby?.Invoke(crop.Position, UpdateRange,
+        if (crop.ItemType is ItemType.Crops or ItemType.Foliage)
+        {
+            crop.SetAttr(ObjAttributes.Move_Never);
+            crop.PlantCropReset();
+        }
+        else
+        {
+            crop.SetDecayTime(10 * GameWorld.DefaultDecayTimeMs);
+        }
+        if (!crop.IsAttr(ObjAttributes.Invis))
+            BroadcastNearby?.Invoke(crop.Position, UpdateRange,
             new PacketWorldItem(crop.Uid.Value, crop.DispIdFull, crop.Amount,
                 crop.X, crop.Y, crop.Z, crop.Hue), 0);
 
         if (seed.Amount > 1) seed.Amount--; else _world.RemoveItem(seed);
         PlayAnimation(_character, (ushort)AnimationType.Bow);
-        SysMessage("You plant the seed.");
     }
 
     // ---- helpers used by HandleItemUse target callbacks ----
@@ -2521,6 +2484,57 @@ public sealed class ClientItemUseHandler
         _skillHandlers?.UseActiveSkill(sink, skill, obj, point);
     }
 
+    /// <summary>CItem::Armor_IsRepairable (CItem.cpp:4842-4891): CAN_I_REPAIR, else
+    /// plate/chain/ring armour, shields, crossbows and every melee/throwing weapon;
+    /// cloth, leather, bone and wooden bows are not. (ATTR_CANNOTREPAIR is a 64-bit
+    /// attribute SphereNet does not carry.)</summary>
+    internal static bool IsArmorRepairable(Item item)
+    {
+        if ((CanFlagsOf(item) & Core.Enums.CanFlags.I_Repair) != 0)
+            return true;
+        return item.ItemType is ItemType.Shield or ItemType.Armor or ItemType.ArmorChain
+            or ItemType.ArmorRing or ItemType.WeaponXBow
+            or ItemType.WeaponMaceCrook or ItemType.WeaponMacePick or ItemType.WeaponMaceSmith
+            or ItemType.WeaponMaceStaff or ItemType.WeaponMaceSharp or ItemType.WeaponSword
+            or ItemType.WeaponFence or ItemType.WeaponAxe or ItemType.WeaponThrowing
+            or ItemType.WeaponWhip;
+    }
+
+    /// <summary>The sharp-weapon default (CClientTarg.cpp:1966-1983): refuse what
+    /// cannot be moved (itemuse_weapon_immune) or would be a theft (itemuse_steal),
+    /// else OnTakeDamage(1, user, DAMAGE_HIT_BLUNT). Ported part of OnTakeDamage
+    /// (CItem.cpp:5826-5905): @Damage may veto; an item with hit points loses one and
+    /// is destroyed when it is at its last.</summary>
+    private void SmashWithBlade(Item target)
+    {
+        if (_character == null) return;
+        if (!ItemMoveRules.CanMove(_character, target, out _))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseWeaponImmune));
+            return;
+        }
+        if (_character.PrivLevel < PrivLevel.GM &&
+            target.ResolveTopObject() is Character owner && !ReferenceEquals(owner, _character))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseSteal));
+            return;
+        }
+        if (CombatEngine.OnItemDamaged?.Invoke(target, 1, _character, DamageType.HitBlunt) == true ||
+            target.IsDeleted)
+            return;
+        int maxHits = target.HitsMax;
+        if (maxHits <= 0)
+            return;
+        int cur = target.HitsCur;
+        if (cur <= 1)
+        {
+            target.HitsCur = 0;
+            _client.TryDeleteItemFromClient(target);
+            return;
+        }
+        target.HitsCur = cur - 1;
+    }
+
     private static bool IsWeaponItemType(ItemType type) => type is
         ItemType.WeaponSword or ItemType.WeaponFence or ItemType.WeaponAxe or
         ItemType.WeaponMaceSharp or ItemType.WeaponMaceStaff or ItemType.WeaponMaceSmith or
@@ -2652,7 +2666,7 @@ public sealed class ClientItemUseHandler
         // itself in LOCAL.resource.0.ID / .amount - all of it read back afterwards.
         // SphereNet passed the ore COUNT as ARGN1, nothing else, and threw the args
         // away, so a script could veto a smelt but never steer it.
-        int miningSkill = _character.GetSkill(SkillType.Mining);
+        int miningSkill = SkillEngine.GetAdjustedSkill(_character, SkillType.Mining); // :1138
         bool skipSkillReq = false;
         if (_triggerDispatcher != null)
         {
@@ -2678,11 +2692,31 @@ public sealed class ClientItemUseHandler
             if (long.TryParse(locals.Get("resource.0.ID"), out long scriptedId) &&
                 scriptedId is > 0 and <= int.MaxValue)
                 ingotDefIndex = (int)scriptedId;
-            if (long.TryParse(locals.Get("resource.0.amount"), out long scriptedQty) && scriptedQty > 0)
+            if (long.TryParse(locals.Get("resource.0.amount"), out long scriptedQty) && scriptedQty >= 0)
                 perOre = (int)Math.Min(scriptedQty, ushort.MaxValue);
         }
 
-        if (!skipSkillReq && !SkillEngine.UseQuick(_character, SkillType.Mining, 30))
+        // The INGOT's definition sets the bar (m_ttIngot, CItemBase.h:153-156): TDATA1
+        // the least Mining that may smelt it - refused with DEFMSG_MINING_SKILL unless
+        // @Smelt's ARGN3 waived it - and TDATA2 the top of the range the difficulty is
+        // drawn from, (TDATA1 + rand(TDATA2 - TDATA1)) / 10. A resource amount of 0
+        // fails like a missed roll (CCharSkill.cpp:1231-1246). ARGN3 waives only the
+        // minimum; it used to skip the roll itself, which was a fixed 30.
+        var ingotDef = DefinitionLoader.GetItemDef(ingotDefIndex);
+        int skillMin = (int)Math.Min(ingotDef?.TData1 ?? 0u, int.MaxValue);
+        int skillMax = (int)Math.Min(ingotDef?.TData2 ?? 0u, int.MaxValue);
+        if (miningSkill < skillMin && !skipSkillReq)
+        {
+            string ingotName = !string.IsNullOrWhiteSpace(ingotDef?.Name)
+                ? DefinitionLoader.ResolveNames(ingotDef!.Name)
+                : ore.GetName();
+            SysMessage(ServerMessages.GetFormatted(Msg.MiningSkill, ingotName));
+            return;
+        }
+        int skillRange = skillMax - skillMin;
+        int smeltDifficulty = (skillMin + (skillRange < 2 ? 0 : Random.Shared.Next(skillRange))) / 10;
+
+        if (perOre == 0 || !SkillEngine.UseQuick(_character, SkillType.Mining, smeltDifficulty))
         {
             // A failed smelt costs part of the pile, not all of it: the reference
             // loses rand(amount/2)+1 (CCharSkill.cpp:1247). SphereNet deleted the
@@ -3086,10 +3120,10 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        // A bedroll graphic the reference does not know still camps, which is what
-        // SphereNet has always done here.
-        SysMessage("You lay out the bedroll.");
-        RouteSkillTarget(SkillType.Camping, bedroll.Uid);
+        // Any other graphic: Use_BedRoll returns false (CCharUse.cpp:1569) and the
+        // double-click ends in "can't think of a way to use that"
+        // (CClientUse.cpp:564-573). It does not start Camping.
+        SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
     }
 
     private void SetBedrollId(Item bedroll, ushort id)
@@ -3100,58 +3134,6 @@ public sealed class ClientItemUseHandler
             BroadcastNearby?.Invoke(bedroll.Position, UpdateRange,
                 new PacketWorldItem(bedroll.Uid.Value, bedroll.DispIdFull, bedroll.Amount,
                     bedroll.X, bedroll.Y, bedroll.Z, bedroll.Hue), 0);
-    }
-
-    /// <summary>Drink something alcoholic.
-    ///
-    /// Source-X runs its own @Drink hook first - ARGN1 the effect delay, ARGN2 how much
-    /// to consume, LOCAL.BottleId the empty it leaves, ARGO the drink - and reads them
-    /// back, with RETURN 1 stopping the drink entirely (Use_Drink, CCharUse.cpp:1003).
-    /// SphereNet fired @Eat instead, so nothing scripted for drinking could reach it.
-    /// The drink then makes the drinker DRUNK: a Liquor effect that strengthens and
-    /// lengthens if one is already running (:1031). SphereNet only fed the drinker and
-    /// said "hic".
-    ///
-    /// Returns whether the bottle should be consumed.</summary>
-    private bool DrinkBooze(Item drink)
-    {
-        if (_character == null) return false;
-
-        var def = DefinitionLoader.GetItemDef(drink.BaseId);
-        int delayTenths = (int)(def?.TData2 ?? 0);
-        if (delayTenths <= 0) delayTenths = 1500;       // the reference's booze default
-        int consume = 1;
-        ushort bottleId = ResolvePlantId(def?.TData1 ?? 0, def?.TData1Name);
-
-        if (_triggerDispatcher != null)
-        {
-            var locals = new SphereNet.Scripting.Variables.VarMap();
-            locals.SetInt("BottleId", bottleId);
-            var args = new TriggerArgs
-            {
-                CharSrc = _character,
-                ItemSrc = drink,
-                O1 = drink,
-                N1 = delayTenths,
-                N2 = consume,
-                Locals = locals,
-            };
-            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.Drink, args) == TriggerResult.True)
-                return false;
-
-            delayTenths = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1 > 0 ? args.N1 : 1);
-            consume = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
-        }
-
-        // Getting drunk is the drink's own doing, hook or no hook: a Liquor effect
-        // whose strength is rand(300)+10, which the reference lengthens and
-        // strengthens when the drinker already has one running (:1031).
-        _client.Spells?.ApplyDirectEffect(_character, _character,
-            SphereNet.Core.Enums.SpellType.Liquor, Random.Shared.Next(300) + 10);
-
-        _character.Food = (ushort)Math.Min(_character.Food + 2, 60);
-        SysMessage("*hic!*");
-        return consume > 0;
     }
 
     /// <summary>Eat one unit of something, and spend it only if it was actually
@@ -3523,6 +3505,68 @@ public sealed class ClientItemUseHandler
         death.CarveCorpse(_character, corpse, blade);
     }
 
+    /// <summary>Do_Use_Item IT_ITEM_STONE (CCharUse.cpp:1593-1617): dead at MOREY
+    /// 0xFFFF; with MOREX regen seconds a running timer refuses and an idle one is
+    /// armed; then CreateTemplate(MORE1) is bounced into the pack and a finite MOREY
+    /// counts down, turning 0xFFFF when spent.</summary>
+    private void UseItemStone(Item stone)
+    {
+        if (_character == null) return;
+        var more = stone.MoreP;
+        if ((ushort)more.Y == ushort.MaxValue)
+        {
+            SysMessage(ServerMessages.Get(Msg.MsgItIsDead));
+            return;
+        }
+        int regenSec = (ushort)more.X;
+        if (regenSec > 0)
+        {
+            long now = Environment.TickCount64;
+            if (stone.Timeout > now)
+            {
+                SysMessage(ServerMessages.GetFormatted(Msg.MsgStoneregTime,
+                    (stone.Timeout - now + 999) / 1000));
+                return;
+            }
+            stone.SetTimeout(now + regenSec * 1000L);
+        }
+
+        int defIndex = (int)stone.More1;
+        Item? given = null;
+        if (defIndex > 0)
+        {
+            if (DefinitionLoader.GetTemplateDef(defIndex) != null)
+            {
+                given = TemplateEngine.BuildTemplate(_world, defIndex);
+            }
+            else
+            {
+                given = _world.CreateItem();
+                if (!ItemDefHelper.ApplyInstanceMetadata(given, defIndex))
+                {
+                    if (defIndex <= ushort.MaxValue)
+                        given.BaseId = (ushort)defIndex;
+                    else
+                    {
+                        _world.RemoveItem(given);
+                        given = null;
+                    }
+                }
+            }
+        }
+        if (given != null)
+            PlaceItemInPack(_character, given);
+
+        ushort amount = (ushort)more.Y;
+        if (amount != 0)
+        {
+            amount--;
+            if (amount == 0)
+                amount = ushort.MaxValue;
+            stone.MoreP = new Point3D(more.X, unchecked((short)amount), more.Z, more.Map);
+        }
+    }
+
     /// <summary>Source-X blade-on-sheep (CREID_SHEEP 0x00CF → sheared 0x00DF):
     /// yields wool and swaps the body; regrowth stays with the NPC's own
     /// script/respawn cycle.</summary>
@@ -3542,9 +3586,12 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
             return;
         }
+        // One wool, CreateBase(ITEMID_WOOL) bounced to the pack (CClientTarg.cpp:1858-1860).
         var wool = _world.CreateItem();
-        wool.BaseId = 0x0DF8; // i_wool
-        wool.Amount = 2;
+        wool.BaseId = 0x0DF8; // ITEMID_WOOL
+        if (DefinitionLoader.GetItemDef(wool.BaseId) is { } woolDef)
+            wool.ItemType = woolDef.Type;
+        wool.Amount = 1;
         PlaceItemInPack(_character, wool);
         sheep.BodyId = 0x00DF; // sheared sheep
 
@@ -3559,8 +3606,6 @@ public sealed class ClientItemUseHandler
         regrow.SetAttr(ObjAttributes.Newbie | ObjAttributes.Move_Never);
         sheep.Equip(regrow, Layer.FlagWool);
         regrow.SetTimeout(Environment.TickCount64 + Item.WoolGrowthMs);
-
-        SysMessage("You shear the sheep and collect the wool.");
     }
 
     /// <summary>Source-X blade-on-dead-fish: fillet into raw fish steaks.</summary>
@@ -3583,7 +3628,11 @@ public sealed class ClientItemUseHandler
         // graphic, clears its hue and multiplies the amount by four. Making a new pile
         // in the pack moved someone else's fish into the cutter's own hands.
         fish.BaseId = 0x097A;   // ITEMID_FOOD_FISH_RAW
-        fish.ItemType = ItemType.Food;
+        // SetID takes the new definition's type (CItem::SetBase, CItem.cpp:2129):
+        // the pack's 097a is t_meat_raw, not cooked food. With no definition the
+        // reference's SetID fails and the type stays.
+        if (DefinitionLoader.GetItemDef(0x097A) is { } steakDef)
+            fish.ItemType = steakDef.Type;
         fish.Hue = new Core.Types.Color(0);
         fish.Amount = (ushort)Math.Min(ushort.MaxValue, Math.Max(1, (int)fish.Amount) * 4);
         Item.OnVisualUpdate?.Invoke(fish);
@@ -3591,7 +3640,6 @@ public sealed class ClientItemUseHandler
             SendContainerItemPacket(new PacketContainerItem(
                 fish.Uid.Value, fish.DispIdFull, 0, fish.Amount, fish.X, fish.Y,
                 fish.ContainedIn.Value, fish.Hue, _netState.IsClientPost6017));
-        SysMessage("You cut the fish into raw fish steaks.");
     }
 
     /// <summary>Source-X CanUse(item, fMoveOrConsume: true) (CCharStatus.cpp:1736):
@@ -3927,35 +3975,6 @@ public sealed class ClientItemUseHandler
         SysMessage("The item changes color.");
     }
 
-    private void ApplyHairDye(Item dye)
-    {
-        if (_character == null) return;
-        ushort hue = dye.Hue.Value != 0 ? dye.Hue.Value : (ushort)0x044E;
-        var hair = _character.GetEquippedItem(Layer.Hair);
-        var beard = _character.GetEquippedItem(Layer.FacialHair);
-        if (hair != null)
-        {
-            hair.Hue = new Core.Types.Color(hue);
-            // Hair/beard are always worn (Layer.Hair/FacialHair) — the ground
-            // view-delta never sees them, so broadcast the recolour explicitly
-            // or it stays the old colour for everyone until a resync.
-            Item.OnVisualUpdate?.Invoke(hair);
-        }
-        if (beard != null)
-        {
-            beard.Hue = new Core.Types.Color(hue);
-            Item.OnVisualUpdate?.Invoke(beard);
-        }
-        SysMessage("You dye your hair.");
-    }
-
-    /// <summary>Format a Source-X-style local game time string for IT_CLOCK.</summary>
-    private static string FormatLocalGameTime()
-    {
-        var now = DateTime.Now;
-        return $"It is {now.Hour:00}:{now.Minute:00}.";
-    }
-
     /// <summary>
     /// Source-X CChar::NPC_OnHearPetCmd parity. Recognises every PC_* verb
     /// from upstream (FOLLOW/GUARD/STAY/STOP/COME/ATTACK/KILL/FRIEND/UNFRIEND/
@@ -4011,9 +4030,9 @@ public sealed class ClientItemUseHandler
             _ => verb
         };
 
-        // Source-style shortcut: "all follow" behaves like "all follow me".
-        if (allMode && verb == "follow")
-            return "follow me";
+        // "all follow" is PC_FOLLOW like any other follow: it opens the target
+        // cursor for whom to follow (sm_Pet_table, CCharNPCPet.cpp:87-112) - only
+        // "follow me" names the speaker.
         return verb;
     }
 
@@ -4023,7 +4042,9 @@ public sealed class ClientItemUseHandler
         "drop" or "drop all" or "equip" or "status" or
         "attack" or "kill" or "guard" or "follow" or "go" or
         "friend" or "unfriend" or "transfer" or "release" or
-        "price" or "bought" or "samples" or "stock" or "cash" or "shrink" => true,
+        // No SHRINK: it is not a pet command (sm_Pet_table, CCharNPCPet.cpp:87-112),
+        // only the NPC verb a script or SPEECH block runs (NV_SHRINK).
+        "price" or "bought" or "samples" or "stock" or "cash" => true,
         _ => false
     };
 
@@ -4157,43 +4178,6 @@ public sealed class ClientItemUseHandler
                     new TriggerArgs { CharSrc = _character, O1 = _character });
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
                 return true;
-
-            case "shrink":
-            {
-                // Source-X pet shrink: pack the pet into a figurine the player can
-                // carry and later restore. The pet is removed from the world (its
-                // deletion broadcasts to observers); the figurine appears in the pack.
-                var pack = _character.Backpack;
-                if (pack == null)
-                {
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
-                    return true;
-                }
-                var figurine = _world.CreateItem();
-                figurine.BaseId = 0x2106; // statuette graphic
-                bool canPack = (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(figurine)) &&
-                    pack.TryAddItem(figurine);
-                if (!canPack)
-                {
-                    _world.RemoveItem(figurine);
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
-                    return true;
-                }
-                if (SphereNet.Game.NPCs.PetFigurine.Shrink(_character, pet, figurine, _world))
-                {
-                    SendContainerItemPacket(new PacketContainerItem(
-                        figurine.Uid.Value, figurine.DispIdFull, 0, figurine.Amount,
-                        figurine.X, figurine.Y, pack.Uid.Value, figurine.Hue,
-                        _netState.IsClientPost6017));
-                    SysMessage("Your pet has been packed into a figurine.");
-                }
-                else
-                {
-                    _world.RemoveItem(figurine);
-                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
-                }
-                return true;
-            }
 
             case "stay":
             case "stop":

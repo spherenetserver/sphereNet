@@ -46,7 +46,7 @@ public sealed class CharTriggerHookTests
         var mover = Player(world, 100, "mover");
         var blocker = Player(world, 101, "blocker");
         Character? on = null, src = null;
-        Character.OnPersonalSpace = (o, s) => { on = o; src = s; return true; };
+        Character.OnPersonalSpace = (o, s, _) => { on = o; src = s; return true; };
 
         bool moved = new MovementEngine(world).TryMove(mover, Direction.East, running: false, sequence: 1);
 
@@ -73,7 +73,7 @@ public sealed class CharTriggerHookTests
         var world = World();
         var mover = Player(world, 100, "mover");
         Player(world, 101, "blocker");
-        Character.OnCharShove = (_, _) => true;
+        Character.OnCharShove = (_, _, _) => true;
 
         Assert.False(new MovementEngine(world).TryMove(mover, Direction.East, running: false, sequence: 1));
     }

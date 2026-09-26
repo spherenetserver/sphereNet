@@ -147,24 +147,25 @@ public class CombatWaveC3FlagTests
             var world = TestHarness.CreateWorld();
             var accounts = new AccountManager(loggerFactory);
 
-            // With the flag: starting a fight against an innocent does NOT
-            // mark the attacker criminal (old sphere behaviour).
+            // COMBAT_ATTACK_NOAGGREIVED lives in OnAttackedBy only (CCharFight.cpp:347-375):
+            // with it the victim records no AGGREIVED and so never judges the blow a
+            // crime. (The old assertion - that starting the fight flags the attacker
+            // criminal without the flag - was ServUO-style; Source-X Fight_Attack only
+            // asks the witnesses, CCharFight.cpp:1474-1477.)
             Character.CombatFlags = (int)CombatFlags.AttackNoAggreived;
-            var clientA = TestHarness.CreateClient(loggerFactory, world, accounts, 1421);
             var attackerA = MakeChar(world, 100, 100);
-            TestHarness.AttachCharacter(clientA, attackerA);
             var victimA = MakeChar(world, 101, 100);
-            clientA.HandleAttack(victimA.Uid.Value);
-            Assert.False(attackerA.IsStatFlag(StatFlag.Criminal));
+            victimA.OnAttackedBy(attackerA);
+            Assert.Null(victimA.Memory_FindObjTypes(attackerA.Uid, MemoryType.Aggreived));
+            Assert.Null(victimA.Memory_FindObjTypes(attackerA.Uid, MemoryType.SawCrime));
 
-            // Control: without the flag the same attack flags criminal.
+            // Control: without the flag the victim is aggrieved and notices the crime.
             Character.CombatFlags = 0;
-            var clientB = TestHarness.CreateClient(loggerFactory, world, accounts, 1422);
             var attackerB = MakeChar(world, 100, 102);
-            TestHarness.AttachCharacter(clientB, attackerB);
             var victimB = MakeChar(world, 101, 102);
-            clientB.HandleAttack(victimB.Uid.Value);
-            Assert.True(attackerB.IsStatFlag(StatFlag.Criminal));
+            victimB.OnAttackedBy(attackerB);
+            Assert.NotNull(victimB.Memory_FindObjTypes(attackerB.Uid, MemoryType.Aggreived));
+            Assert.NotNull(victimB.Memory_FindObjTypes(attackerB.Uid, MemoryType.SawCrime));
         }
         finally
         {

@@ -287,7 +287,7 @@ public sealed class NpcWorldParityTests
         world.PlaceCharacter(bystander, new Point3D(102, 100, 0, 0));
 
         var witnesses = new List<Character>();
-        CrimeWitnessService.OnCrimeNoticed = (w, _, _, _) => { witnesses.Add(w); return false; };
+        CrimeWitnessService.OnSeeSnoop = (w, _, _) => { witnesses.Add(w); return false; };
         CrimeWitnessService.CheckCrimeSeen(world, thief, mark, null, new Random(1), isSnoop: true);
 
         Assert.Contains(bystander, witnesses);
@@ -319,9 +319,15 @@ public sealed class NpcWorldParityTests
         return (ai, npc, corpse, loot);
     }
 
-    private static bool TryLoot(NpcAI ai, Character npc) =>
-        (bool)typeof(NpcAI).GetMethod("TryLoot", BindingFlags.Instance | BindingFlags.NonPublic)!
+    // The engine's own corpse-looting shortcut was removed (it was not Source-X);
+    // looting now runs only through the look-around's item half and
+    // NPC_Act_Looting (CCharNPCAct.cpp:1188-1215, :1593), so the bench drives that.
+    private static bool TryLoot(NpcAI ai, Character npc)
+    {
+        npc.Int = 50; // NPC_LookAround looks at items only above 10 INT
+        return (bool)typeof(NpcAI).GetMethod("LookAtNearbyItems", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(ai, [npc])!;
+    }
 
     [Fact]
     public void AnUntakeablePieceIsRememberedForAsLongAsItLasts()

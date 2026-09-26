@@ -76,11 +76,13 @@ public class SkillEngineTests
     }
 
     [Fact]
-    public void GetSkillSumMax_DefaultIs7000()
+    public void GetSkillSumMax_DefaultIsSourceXClassDefault()
     {
+        // CSkillClassDef::Init SKILLSUM 1000.0 (CSkillClassDef.cpp:27); the old
+        // 7000 was an invented fallback.
         var ch = MakeChar();
         int max = SkillEngine.GetSkillSumMax(ch);
-        Assert.Equal(7000, max);
+        Assert.Equal(10000, max);
     }
 
     [Fact]

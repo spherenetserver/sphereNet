@@ -2371,110 +2371,161 @@ public sealed class ClientWorldFeaturesHandler
     internal static (ushort Anim, ushort Sound) GetCraftAnimAndSound(SkillType skill) =>
         (SkillEngine.GetSkillAnim(skill) ?? 0, SkillEngine.GetSkillSound(skill));
 
+    /// <summary>Source-X CChar::Use_Drink (CCharUse.cpp:983-1112), the one path for
+    /// IT_POTION, IT_DRINK, IT_PITCHER, IT_WATER_WASH and IT_BOOZE
+    /// (Do_Use_Item, :1860-1868).
+    ///
+    /// The drink is refused when it cannot be moved; @Drink sees the effect delay
+    /// (ARGN1: (TDATA2 ?: 1500 booze / 15 other) * 10 tenths), the amount to consume
+    /// (ARGN2) and LOCAL.BottleId (TDATA1), and RETURN 1 stops everything. Then booze
+    /// makes the drinker drunk, a potion conveys its MORE1 spell at MORE2 strength
+    /// behind the LAYER_FLAG_PotionUsed cooldown, and a plain drink feeds only with
+    /// OF_DrinkIsFood. There is no stamina gain and no @Eat. The consumed units go and
+    /// the TDATA1 empty container is bounced into the pack.</summary>
     internal void UsePotion(Item potion)
     {
         if (_character == null) return;
 
-        // Source-X routes IT_POTION/IT_PITCHER through Use_Drink, which refuses an
-        // item the user cannot move (a placed potion/pitcher fixture) before drinking
-        // it — otherwise a non-GM double-click would destroy the fixture.
         if (!ItemMoveRules.CanMove(_character, potion, out _))
         {
-            SysMessage(ServerMessages.Get("drink_cantmove"));
+            SysMessage(ServerMessages.Get(Msg.DrinkCantmove));
             return;
         }
 
-        long now = Environment.TickCount64;
-        if (now < _nextPotionTimeMs)
-        {
-            SysMessage("You must wait before using another potion.");
-            return;
-        }
-        _nextPotionTimeMs = now + 2000;
+        var drinkDef = DefinitionLoader.GetItemDef(potion.BaseId);
+        bool isBooze = potion.ItemType == ItemType.Booze;
+        ushort bottleId = Item.ResolveTDataId(drinkDef?.TData1 ?? 0, drinkDef?.TData1Name);
+        uint delaySeconds = drinkDef?.TData2 ?? 0;
+        long delayTenths = (delaySeconds != 0 ? delaySeconds : (isBooze ? 1500u : 15u)) * 10L;
+        int consume = 1;
+        int bottleAmount = consume;
 
-        // Source-X Use_Drink IT_POTION: the potion CONVEYS THE SPELL stored in
-        // MORE1 at strength MORE2 (m_itPotion.m_Type / m_dwSkillQuality),
-        // delivered through OnSpellEffect — no hardcoded potion families.
-        // Strength/agility therefore become TIMED spell effects (the old code
-        // did a permanent Str/Dex += 10), and a bottle with no resolvable
-        // effect is just a drink — the old "default to heal" made any tagless
-        // liquid (including a full water pitcher) a free heal potion.
-        if (ApplyPotionEffect(_character, potion))
+        if (_triggerDispatcher != null)
         {
-            // handled: the bottle named a spell and it has been delivered
-        }
-        else if (potion.ItemType == ItemType.Potion &&
-                 potion.TryGetTag("POTION_TYPE", out string? oldType) && oldType != null)
-        {
-            // Old-system bottles (pre spell-driven potions): keep the bounded
-            // restores; stat potions route through the timed spell above via
-            // ResolveDrinkSpell, so no permanent gain path remains.
-            switch (oldType.ToLowerInvariant())
+            var locals = new SphereNet.Scripting.Variables.VarMap();
+            locals.SetInt("BottleId", bottleId);
+            var args = new TriggerArgs
             {
-                case "refresh":
-                    _character.Stam = (short)Math.Min(_character.Stam + 25, _character.MaxStam);
-                    SysMessage(ServerMessages.GetFormatted("potion_stamina", 25));
-                    break;
-                case "totalrefresh":
-                    _character.Stam = _character.MaxStam;
-                    SysMessage(ServerMessages.GetFormatted("potion_stamina", 60));
-                    break;
-                default:
-                    SysMessage(ServerMessages.Get("potion_drink"));
-                    break;
-            }
+                CharSrc = _character,
+                ItemSrc = potion,
+                O1 = potion,
+                N1 = delayTenths,
+                N2 = consume,
+                Locals = locals,
+            };
+            var ret = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Drink, args);
+            bottleId = (ushort)locals.GetInt("BottleId");
+            delayTenths = args.N1 > 0 ? SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1) : 1;
+            consume = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+            bottleAmount = consume;
+            if (ret == TriggerResult.True)
+                return;
         }
-        else
+
+        if (consume > 0 && potion.Amount < consume)
         {
-            SysMessage(ServerMessages.Get("potion_drink"));
+            SysMessage(ServerMessages.GetFormatted(Msg.DrinkNotEnough, potion.GetName()));
+            return;
+        }
+
+        if (isBooze)
+        {
+            // Liquor at rand(300)+10 strength; a running one is strengthened (:1034-1053).
+            _client.Spells?.ApplyDirectEffect(_character, _character,
+                SphereNet.Core.Enums.SpellType.Liquor, Random.Shared.Next(300) + 10);
+        }
+        else if (potion.ItemType == ItemType.Potion)
+        {
+            // Time limit on using potions: the LAYER_FLAG_PotionUsed marker (:1057-1066).
+            if (HasPotionUsedMarker(_character))
+            {
+                SysMessage(ServerMessages.Get(Msg.DrinkPotionDelay));
+                return;
+            }
+            if (!ApplyPotionEffect(_character, potion))
+                SysMessage(ServerMessages.Get("potion_drink"));
+            AddPotionUsedMarker(_character, delayTenths);
+        }
+        else if (potion.ItemType == ItemType.Drink &&
+                 (GameClient.ServerOptionFlags & OptionFlags.DrinkIsFood) != 0)
+        {
+            // OF_DrinkIsFood (:1068-1087): MOREM, else the itemdef volume, at least 1.
+            if (_character.Food >= _character.MaxFood)
+            {
+                SysMessage(ServerMessages.Get(Msg.DrinkFull));
+                return;
+            }
+            int restore = SphereNet.Game.NPCs.EatEngine.RestorePerUnit(potion);
+            _character.Food = (ushort)Math.Min(_character.MaxFood, _character.Food + restore);
+            int coat = CombatEngine.GetWeaponPoisonSkill(potion);
+            if (coat > 0)
+                _character.SetPoison(coat * 10, 1 + coat / 50, _character);
         }
 
         PlayAnimation(_character, (ushort)AnimationType.Eat);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketSound(0x0031, _character.X, _character.Y, _character.Z), 0);
-
-        // Update stats
         SendCharacterStatus(_character);
 
-        // Consume exactly one potion. Source-X parity: @Destroy RETURN 1 keeps the
-        // bottle; a stack burns one unit, never the whole pile (one drink used to
-        // delete every potion in the stack).
-        var drinkContainer = potion.ContainedIn.IsValid ? _world.FindItem(potion.ContainedIn) : null;
-        var drinkPos = potion.Position;
-        var drinkDef = DefinitionLoader.GetItemDef(potion.BaseId);
-
-        if (potion.Amount > 1)
+        if (consume > 0)
         {
-            potion.Amount--;
-            if (potion.ContainedIn.IsValid)
-                SendContainerItemPacket(new PacketContainerItem(
-                    potion.Uid.Value, potion.DispIdFull, 0, potion.Amount, potion.X, potion.Y,
-                    potion.ContainedIn.Value, potion.Hue, _netState.IsClientPost6017));
-        }
-        else
-        {
-            _client.TryDeleteItemFromClient(potion);
-        }
-
-        // Source-X Use_Drink returns the empty container (m_ttDrink.m_ridEmpty,
-        // script TDATA1: i_bottle_empty for potions, the empty pitcher for a
-        // water pitcher) — previously the container simply vanished.
-        ushort emptyId = Item.ResolveTDataId(drinkDef?.TData1 ?? 0, drinkDef?.TData1Name);
-        if (emptyId != 0)
-        {
-            var empty = _world.CreateItem();
-            empty.BaseId = emptyId;
-            if (drinkContainer != null && drinkContainer.TryAddItem(empty))
+            if (potion.Amount > consume)
             {
-                SendContainerItemPacket(new PacketContainerItem(
-                    empty.Uid.Value, empty.DispIdFull, 0, empty.Amount, empty.X, empty.Y,
-                    drinkContainer.Uid.Value, empty.Hue, _netState.IsClientPost6017));
+                potion.Amount -= (ushort)consume;
+                if (potion.ContainedIn.IsValid)
+                    SendContainerItemPacket(new PacketContainerItem(
+                        potion.Uid.Value, potion.DispIdFull, 0, potion.Amount, potion.X, potion.Y,
+                        potion.ContainedIn.Value, potion.Hue, _netState.IsClientPost6017));
             }
             else
             {
-                _world.PlaceItemWithDecay(empty, drinkPos);
+                _client.TryDeleteItemFromClient(potion);
             }
         }
+
+        // Create the empty bottle (:1104-1111), bounced into the drinker's pack.
+        if (bottleId != 0 && bottleAmount > 0)
+        {
+            var empty = _world.CreateItem();
+            empty.BaseId = bottleId;
+            if (DefinitionLoader.GetItemDef(bottleId) is { } emptyDef)
+                empty.ItemType = emptyDef.Type;
+            empty.Amount = (ushort)Math.Clamp(bottleAmount, 1, ushort.MaxValue);
+            _client.PlaceItemInPack(_character, empty);
+        }
+    }
+
+    /// <summary>LAYER_FLAG_PotionUsed (uofiles_enums.h:613): the potion cooldown
+    /// marker a drinker wears. An expired one that its timer has not yet removed
+    /// counts as gone.</summary>
+    internal static bool HasPotionUsedMarker(Character ch)
+    {
+        var mem = ch.GetEquippedItem(Layer.FlagPotionUsed);
+        if (mem == null || mem.IsDeleted)
+            return false;
+        if (mem.Timeout > 0 && Environment.TickCount64 >= mem.Timeout)
+        {
+            mem.Delete();
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Spell_Effect_Create(SPELL_NONE, LAYER_FLAG_PotionUsed, .., dwDelay)
+    /// (CCharUse.cpp:1066): a timed marker, duration in tenths of a second.</summary>
+    internal static void AddPotionUsedMarker(Character ch, long delayTenths)
+    {
+        var world = SphereNet.Game.Objects.ObjBase.ResolveWorld?.Invoke();
+        if (world == null) return;
+        var mem = world.CreateItem();
+        mem.BaseId = 0x1F14; // the generic memory/rune graphic
+        mem.Name = "Potion Used";
+        mem.ItemType = ItemType.EqMemoryObj;
+        mem.SetAttr(ObjAttributes.Newbie | ObjAttributes.Move_Never);
+        if (!ch.Equip(mem, Layer.FlagPotionUsed))
+        {
+            world.DeleteObject(mem);
+            return;
+        }
+        mem.SetTimeout(Environment.TickCount64 + Math.Max(1, delayTenths) * 100);
     }
 
     /// <summary>Resolve the spell a drink conveys (Source-X m_itPotion.m_Type):
@@ -2496,9 +2547,8 @@ public sealed class ClientWorldFeaturesHandler
         if (spell == 0 || _client.Spells == null)
             return false;
 
-        int strength = (int)Math.Min(potion.More2, 2000);
-        if (strength <= 0)
-            strength = 500;     // a legacy bottle with no stored alchemy quality
+        // m_itPotion.m_dwSkillQuality is MORE2 exactly as stored (CCharUse.cpp:1060).
+        int strength = (int)Math.Clamp(potion.More2, 0, int.MaxValue);
         _client.Spells.ApplyDirectEffect(target, target, spell, strength);
         return true;
     }
@@ -2519,6 +2569,9 @@ public sealed class ClientWorldFeaturesHandler
                 "cure" => "s_cure",
                 "strength" => "s_strength",
                 "agility" => "s_agility",
+                // Legacy refresh bottles are the s_Refresh spell (SPELL_Refresh,
+                // uofiles_enums.h:890), total refresh at its higher MORE2.
+                "refresh" or "totalrefresh" => "s_refresh",
                 _ => null,
             };
         if (string.IsNullOrEmpty(name))
@@ -2787,7 +2840,6 @@ public sealed class ClientWorldFeaturesHandler
     }
 
     private long _lastContextMenuRequestMs;
-    private long _nextPotionTimeMs;
 
     private void HandleExtendedContextMenuRequest(byte[] data)
     {

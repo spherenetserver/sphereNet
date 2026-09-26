@@ -444,9 +444,9 @@ public sealed partial class NpcAI
     /// (NPC_AI_MOVEOBSTACLES) — broadcast the item's new position.</summary>
     public Action<Character, Item>? OnNpcMovedItem { get; set; }
 
-    /// <summary>Light levels at or above this read as "night" for the
-    /// NPC_AI_EXTRA light-source behavior.</summary>
-    private const byte NightLightLevel = 20;
+    /// <summary>CSector::IsDark (CSector.cpp:1402): a light level above 6 is dark
+    /// for the NPC_AI_EXTRA light-source behavior (CCharNPCAct.cpp:2721).</summary>
+    private const byte DarkLightLevel = 6;
 
     /// <summary>Source-X NPC_ExtraAI (CCharNPCAct.cpp:2670) — the NPC_AI_EXTRA
     /// pass for humanoid-brain NPCs: fire @NPCAction (RETURN 1 skips the pass),
@@ -499,7 +499,7 @@ public sealed partial class NpcAI
         }
 
         // Peace: carry a light source through the night, stow it by day.
-        bool dark = (GetLightLevel?.Invoke(npc.Position) ?? 0) >= NightLightLevel;
+        bool dark = (GetLightLevel?.Invoke(npc.Position) ?? 0) > DarkLightLevel;
         var held = npc.GetEquippedItem(Layer.TwoHanded);
         bool holdingLight = held != null &&
             held.ItemType is ItemType.LightLit or ItemType.LightOut;

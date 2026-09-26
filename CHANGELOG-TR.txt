@@ -4,6 +4,79 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Source-X parite taramasi: skill, buyu, esya, NPC, karakter
+------------------------------------------------------------------------
+DUZELTME - Skill'ler: Begging hedefin INT'ini kullanir ve odul vermez;
+           Stealing Calc_StealingItem ile, skill/10 agirlik siniri yok;
+           Snooping ya hep ya hic, basarisizlikta gorunur olma ve -4 karma;
+           Lockpicking kilit karmasikligini (MORE2) okur, maymuncuk kirmaz;
+           RemoveTrap 5 dakika etkisiz birakir, basarisizlikta tuzak calisir;
+           Stealth adim butcesini script'e birakir; aletler yalnizca
+           EF_DamageTools ile toplama basarisinda asinir, uretim aletleri hic;
+           Peacemaking/Provocation/Musicianship Source-X zorluk, yaricap ve
+           hedeflerini izler; eritme kulcenin TDATA1 mining'ini ister; cira
+           kendisi kamp atesine doner, bedroll guvenli cikis vermez; toplama
+           bolge tipini birebir eslestirir; Poisoning rand(60) ve Source-X
+           hedef tipleri; iyilestirme skill EFFECT'i kadar, kanli bandaj
+           yalnizca basarida; skill dususu, skill toplam siniri (yalnizca
+           oyuncu) ve war-mode'da hiding Source-X'i izler. Olu uydurma skill
+           handler'lari silindi.
+DUZELTME - Buyu: EvalInt hasar bonusu yalnizca MAGICF_OSIFORMULAS ile; Mind
+           Blast efekt egrisinden; buyu basina alan yaricapi ve
+           LOCAL.AreaRadius; alanlar 3x1, FieldWidth/FieldGauge; zindan buyu
+           yasagi yok; Reactive Armor buyu yansitmaz; Protection okcuya
+           yurume izni vermez; SCRIPTED buyuler motor efektini atlar (motor
+           Poison Strike/Wither yok); @SpellSuccess/@Success buyu odenmeden
+           once local'lariyla calisir, @SpellFail mana kaybini belirler; Gate
+           DURATION boyunca iki bagli kapi acar; GetSpellDuration portlandi
+           (sure 0 = zamanlayici yok); Mana Drain/Vampire, resist yalnizca
+           hasarda, basarisizlik/basari mana bedeli, alana basinca buyu
+           calismasi, isim havuzundan Incognito, Pain Spike, DEFFOOD'dan
+           Create Food, Dispel katmanlari ve hasar tipleri Source-X'i izler.
+DUZELTME - Esya: ekin yalnizca TDATA2 -1 iken meyve dusurur ve ay
+           dongusuyle buyur; yemek MOREM ya da agirlik/10 doyurur; icecek, su
+           ve icki @Drink uzerinden doyurmadan gecer (OF_DrinkIsFood haric);
+           iksir beklemesi TDATA2 (varsayilan 15 sn); kirkma 1 yun verir;
+           fileto balik tanim tipini korur; sac boyasi d_hair_dye acar; esya
+           tasi MOREY miktarini okur; isik sarji MOREY/MOREX'te; bicak
+           zehirlemek ya da tamir etmek yerine kirar (tamir demirci
+           cekiciyle); ocak, cikrik, dokuma tezgahi ve ors Source-X gibi
+           davranir; saat oyun zamanini gosterir; tiledata agirligi 0 olan 0
+           tartar; vendor kasasi 10000'e dolar; ev depo/vendor varsayilani
+           489/10; uydurma cift tik mesajlari kaldirildi.
+DUZELTME - NPC: cagrilan muhafiz OVERRIDE.GUARDS / GUARDS'tan gelir, normal
+           olusturmadan gecer, olumsuz degildir; kirmizi sampiyon mumu beyaz
+           kotayi sifirlar; canli karaktere BODY=/CHARDEF= yalnizca id'yi
+           degistirir; uydurma TryLoot ve servis anahtar kelime cevaplari
+           kaldirildi (@NPCHearUnknown calisir); altinla kiralama once hire
+           konusmasi ister; SHRINK pet komutu yok; FOODTYPE yoksa yemez,
+           yemek tanimi olmayan hic acikmaz; spawner varsayilani 15 kare ve
+           15-30 dk, 250 siniri yok; olmayan chardef DEFAULTCHAR kullanir;
+           magery menzili 10 ve NoMagicDamage bolge kontrolu; 0 stamina
+           vurusu engellemez; nefes ve atilan tas mevcut can/staminayi
+           kullanir; bosta sesler yalnizca etrafa bakarken; pet tasmasi
+           MAPVIEWRADAR'i izler; ahirdan tum petler alinir, gorus hatti
+           kontrol edilir.
+DUZELTME - Karakter: masum birine saldirmak aninda criminal yapmak yerine
+           tanik kontrolunden gecer (konusabilen NPC tanik her bolgede
+           criminal yapar, oyuncu tanik gri gorur); pet notoriety'yi yalnizca
+           PETSINHERITNOTORIETY ile alir; 0 stamina yurumeyi durdurur; kosma
+           kosu bayragini kurar, stamina cezasi islenir; itisme
+           ShoveCharAtPosition'i izler; hapis hesabin jailed bayragini ve
+           hapis bolge noktasini kullanir, dondurmaz; hayalet bedeni irk ve
+           cinsiyete gore; healer/banker notoriety'de zorla olumsuz degil;
+           kisisel gri SAWCRIME/AGGREIVED ile; skill class yedekleri 10000/
+           300/100, OVERRIDE.STATCAP_n/STATSUM; kotu criminal oldurmek karma
+           kazandirir; SNOOPCRIMINAL yuzdedir; giris mana/staminayi doldurmaz;
+           regen maksimumun ustundeki havuzu dusurur; NPC ve GM criminal
+           olamaz.
+DEGISIKLIK - Ini'de olmayan anahtarlar icin config varsayilanlari Source-X ile
+           ayni: ManaLossPercent 50, ReagentsRequired 0, MonsterFear 0,
+           ArcheryMin/MaxDist 2/15, EquippedCast 1, HelpingCriminalsIsACrime
+           1, AttackerTimeout 30, MapViewRadar 31, MapViewSizeMax 24,
+           DistanceYell 31, PacketDeathAnimation 1, ToolTipMode 1, SavePeriod
+           20, ClientLinger 600, MaxPacketsPerTick 50.
+
 [2026-09-26] - Savas, buyu, taming, regen, hiding ve vendor fiyatlari Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Yakin dovus isabeti Skill_Fighting gibi duz yuzde zariyla atilir:

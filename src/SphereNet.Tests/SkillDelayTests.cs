@@ -383,9 +383,12 @@ public class SkillDelayTests
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
         var engine = new SpellEngine(world, registry);
+        // The form is the menu pick (Source-X m_atMagery.m_uiSummonID); there is
+        // no random fallback body, so the test picks one (0x33 = 51).
+        caster.SetTag("POLY_SELECT", "51");
         Assert.True(engine.CastStart(caster, SpellType.Polymorph, caster.Uid, caster.Position) > 0);
         Assert.True(engine.CastDone(caster));
-        Assert.NotEqual(0x0190, caster.BodyId);
+        Assert.Equal(0x0033, caster.BodyId);
 
         engine.ProcessExpirations(Environment.TickCount64 + 60_000);
         Assert.Equal(0x0190, caster.BodyId);

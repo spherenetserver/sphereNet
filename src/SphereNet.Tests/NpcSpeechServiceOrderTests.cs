@@ -135,6 +135,26 @@ public sealed class NpcSpeechServiceOrderTests : IDisposable
         Assert.False((bool)call.Invoke(null, [witness, criminal])!);
     }
 
+    [Theory]
+    [InlineData(NpcBrainType.Vendor, "buy")]
+    [InlineData(NpcBrainType.Vendor, "sell")]
+    [InlineData(NpcBrainType.Vendor, "train magery")]
+    [InlineData(NpcBrainType.Banker, "bank")]
+    [InlineData(NpcBrainType.Stable, "stable")]
+    [InlineData(NpcBrainType.Stable, "claim")]
+    public void AServiceWordNoSpeechTook_IsUnknownSpeech(NpcBrainType brain, string line)
+    {
+        // NPC_OnHear (CCharNPCAct.cpp:317-385) has no engine keyword answers: the
+        // trade, bank, training and stable words belong to the pack's SPEECH blocks
+        // (BUY / SELL / BANKSELF / TRAIN / PETSTABLE / PETRETRIEVE). Unanswered, the
+        // line is @NPCHearUnknown.
+        var (npc, speaker) = Pair(brain, "servant");
+
+        Hear(speaker, npc, line);
+
+        Assert.True(npc.TryGetTag("UNKNOWN", out _));
+    }
+
     [Fact]
     public void AGuard_HasNoCannedAnswer()
     {

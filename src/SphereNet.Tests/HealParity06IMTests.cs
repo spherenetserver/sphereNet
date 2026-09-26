@@ -67,6 +67,7 @@ public sealed class HealParity06IMTests
         var pet = world.CreateCharacter();
         pet.BodyId = 0xC8;
         pet.NpcMaster = owner.Uid;
+        pet.SetTag("MAXFOOD", "60"); // an NPC with no ceiling has no room to eat (CCharBase.cpp:26)
         pet.NpcFood = 10;
         world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
         return (client, owner, pet);

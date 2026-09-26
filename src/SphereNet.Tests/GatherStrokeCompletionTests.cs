@@ -65,6 +65,7 @@ public class GatherStrokeCompletionTests
 
         var lf = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
+        TestHarness.AttachLoadedRegionTypes(world);
         var client = TestHarness.CreateClient(lf, world, new SphereNet.Game.Accounts.AccountManager(lf), 1501);
         var player = world.CreateCharacter();
         player.IsPlayer = true;
@@ -120,6 +121,7 @@ public class GatherStrokeCompletionTests
 
         var lf = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
+        TestHarness.AttachLoadedRegionTypes(world);
         var client = TestHarness.CreateClient(lf, world, new SphereNet.Game.Accounts.AccountManager(lf), 1502);
         var player = world.CreateCharacter();
         player.IsPlayer = true;

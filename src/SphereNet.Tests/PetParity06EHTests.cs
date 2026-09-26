@@ -62,6 +62,8 @@ public sealed class PetParity06EHTests
         var horse = world.CreateCharacter();
         horse.BodyId = 0xC8;
         horse.NpcMaster = owner.Uid;
+        // An NPC with no definition has no food ceiling (m_MaxFood, CCharBase.cpp:26).
+        horse.SetTag("MAXFOOD", "60");
         world.PlaceCharacter(horse, owner.Position);
         return horse;
     }
@@ -232,7 +234,10 @@ public sealed class PetParity06EHTests
         var world = CreateWorld();
         var pet = Horse(world, Player(world, 100));
 
-        Assert.Equal(60, pet.MaxFood);   // the classic default when unset
+        pet.RemoveTag("MAXFOOD");
+        // Unset on an NPC with no definition: m_MaxFood 0 (CCharBase.cpp:26) - this
+        // used to assert an invented classic 60.
+        Assert.Equal(0, pet.MaxFood);
 
         pet.SetTag("MAXFOOD", "25");
         pet.Food = 60;
@@ -267,6 +272,10 @@ public sealed class PetParity06EHTests
         var food = world.CreateItem();
         food.ItemType = ItemType.Food;
         food.Amount = amount;
+        // Ten a unit, carried where the reference reads it: MOREM, m_foodval
+        // (Use_EatQty, CCharUse.cpp:880). The flat ten these tests relied on was a
+        // SphereNet default the reference does not have.
+        food.MoreP = new Point3D(0, 0, 0, 10);
         owner.Backpack!.AddItem(food);
         return food;
     }

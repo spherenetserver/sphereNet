@@ -92,7 +92,10 @@ public sealed class TargetedUseParity08BTests
 
         Assert.False(fish.IsDeleted);              // the same object, converted
         Assert.Equal(0x097A, fish.BaseId);
-        Assert.Equal(ItemType.Food, fish.ItemType);
+        // The steak's type comes from its definition (SetID -> SetBase, CItem.cpp:2129;
+        // the pack's 097a is t_meat_raw). This bench loads no itemdef, so SetID keeps
+        // the type - it used to be forced to cooked Food.
+        Assert.Equal(ItemType.Fish, fish.ItemType);
         Assert.Equal(8, fish.Amount);              // four steaks per fish
     }
 
@@ -151,6 +154,8 @@ public sealed class TargetedUseParity08BTests
         UseOn(bench, Blade(bench), sheep.Uid.Value);
 
         Assert.Equal(0x00DF, sheep.BodyId);
+        // One wool per shearing (CClientTarg.cpp:1858), not two.
+        Assert.Equal(1, bench.Pack.Contents.Where(i => i.BaseId == 0x0DF8).Sum(i => i.Amount));
         var regrow = sheep.GetEquippedItem(Layer.FlagWool);
         Assert.NotNull(regrow);
         Assert.True(regrow!.Timeout > 0);

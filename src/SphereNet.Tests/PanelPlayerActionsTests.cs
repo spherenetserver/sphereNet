@@ -269,7 +269,7 @@ public sealed class PanelCharacterActionsTests
     }
 
     [Fact]
-    public void JailFreezesAndTagsAndUnjailReleases()
+    public void JailFlagsAndTagsAndUnjailReleases()
     {
         var (world, ch) = Setup();
         var commands = new CommandHandler();
@@ -277,11 +277,14 @@ public sealed class PanelCharacterActionsTests
 
         Assert.False(actions.Execute(ch.Uid.Value, new PlayerActionRequest("unjail")).Ok);
         Assert.True(actions.Execute(ch.Uid.Value, new PlayerActionRequest("jail", Minutes: 5)).Ok);
-        Assert.True(ch.IsStatFlag(StatFlag.Freeze));
+        // Source-X CChar::Jail (CCharAct.cpp:166-191) sets PRIV_JAILED and teleports;
+        // it never freezes the prisoner (the old test asserted a Freeze).
+        Assert.False(ch.IsStatFlag(StatFlag.Freeze));
+        Assert.True(ch.IsJailed);
         Assert.True(ch.TryGetTag("JAIL_RELEASE", out string? release) && long.Parse(release!) > DateTime.UtcNow.Ticks);
 
         Assert.True(actions.Execute(ch.Uid.Value, new PlayerActionRequest("unjail")).Ok);
-        Assert.False(ch.IsStatFlag(StatFlag.Freeze));
+        Assert.False(ch.IsJailed);
         Assert.False(ch.TryGetTag("JAIL_RELEASE", out _));
     }
 

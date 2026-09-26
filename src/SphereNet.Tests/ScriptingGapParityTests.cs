@@ -157,15 +157,19 @@ public sealed class ScriptingGapParityTests : IDisposable
     }
 
     [Fact]
-    public void Breath_ZeroDamageFallsBackToTheStrengthDefault()
+    public void Breath_ZeroDamageFallsBackToTheHitPointDefault()
     {
         var world = MakeWorld();
         var npc = world.CreateCharacter();
         npc.Str = 200;
+        npc.MaxHits = 200;
+        npc.Hits = 120;
         npc.TrySetProperty("BREATH.DAM", "0");
         var m = typeof(SphereNet.Game.AI.NpcAI).GetMethod("GetBreathDamage",
             BindingFlags.Static | BindingFlags.NonPublic)!;
-        Assert.Equal(200 * 5 / 100, (int)m.Invoke(null, [npc])!);
+        // 5% of the CURRENT hit points, Stat_GetVal(STAT_STR) (CCharSkill.cpp:3309) -
+        // this used to read the strength stat.
+        Assert.Equal(120 * 5 / 100, (int)m.Invoke(null, [npc])!);
         npc.TrySetProperty("BREATH.DAM", "40");
         Assert.Equal(40, (int)m.Invoke(null, [npc])!);
     }

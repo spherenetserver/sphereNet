@@ -126,6 +126,7 @@ public class NpcBehaviorTriggerTests
         var world = CreateWorld();
         var (client, giver, npc, item) = Setup(world);
         npc.SetTag("OWNER_UID", giver.Uid.Value.ToString());
+        npc.SetTag("MAXFOOD", "60"); // an NPC with no ceiling has no room to eat (CCharBase.cpp:26)
         npc.NpcFood = 10;
         item.ItemType = ItemType.Food;
         item.Amount = 1;

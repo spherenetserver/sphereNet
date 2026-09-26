@@ -65,10 +65,12 @@ public sealed partial class NpcAI
     /// maxDistance = 1 (CChar.h:1341). @NPCActFollow ARGN2 can change it.</summary>
     private const int PetFollowDistance = 1;
 
-    /// <summary>Pet follow gives up beyond this distance on the same map
-    /// (reference parity: UO_MAP_VIEW_RADAR = 36); it resumes when the owner
-    /// comes back in range. 0 disables the leash.</summary>
-    public static int PetFollowMaxDistance { get; set; } = 36;
+    /// <summary>Pet follow gives up beyond this distance on the same map: the
+    /// MAPVIEWRADAR setting, whose default is UO_MAP_VIEW_RADAR = 31
+    /// (NPC_Act_Follow, CCharNPCAct.cpp:1401; uofiles_macros.h:22). It resumes when
+    /// the owner comes back in range. 0 disables the leash.</summary>
+    public const int DefaultMapViewRadar = 31;
+    public static int PetFollowMaxDistance { get; set; } = DefaultMapViewRadar;
 
     /// <summary>LOSTNPCTELEPORT — how far an NPC may stray from home before it is put
     /// back rather than asked to walk (Source-X m_iLostNPCTeleport, default 50 tiles;

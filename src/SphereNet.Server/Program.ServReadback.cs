@@ -183,7 +183,7 @@ public static partial class Program
         ["SECTORSLEEP"] = c => I(c.SectorSleep),
         ["SECURE"] = c => B(c.Secure),
         ["SKILLPRACTICEMAX"] = c => I(c.SkillPracticeMax),
-        ["SNOOPCRIMINAL"] = c => B(c.SnoopCriminal),
+        ["SNOOPCRIMINAL"] = c => I(c.SnoopCriminal),
         ["SPEECHPET"] = c => c.SpeechPet,
         ["SPEECHSELF"] = c => c.SpeechSelf,
         ["SPEEDSCALEFACTOR"] = c => I(c.SpeedScaleFactor),

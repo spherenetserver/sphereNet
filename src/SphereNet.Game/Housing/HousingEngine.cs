@@ -185,9 +185,10 @@ public sealed class House
     private bool _redeeded;
     private readonly List<Serial> _vendors = [];
 
-    private int _baseStorage = 400;
+    // CItemBaseMulti defaults, the smallest 7x7 house (CItemBase.cpp:1902-1903).
+    private int _baseStorage = 489;
     private int _lockdownsPercent = 50;
-    private int _baseVendors;
+    private int _baseVendors = 10;
     private int _increasedStorage;
 
     // Decay tracking

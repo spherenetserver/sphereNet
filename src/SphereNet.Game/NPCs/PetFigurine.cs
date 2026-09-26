@@ -75,14 +75,19 @@ public static class PetFigurine
     /// <summary>Park the creature and stamp the figurine that refers to it.</summary>
     private static bool Store(Character pet, Item figurine, GameWorld world)
     {
-        string name = pet.Name ?? "";
+        string name = pet.GetName();
+        var hue = pet.Hue;
+        int defIndex = pet.CharDefIndex;
         if (!PetStorage.Park(pet, world))
             return false;
 
+        // Make_Figurine (CCharAct.cpp:3629-3635): the chardef's ICON as the graphic,
+        // the creature's own name and hue.
+        figurine.BaseId = Item.ResolveCharTrackId(defIndex);
         figurine.ItemType = ItemType.Figurine;
         figurine.SetTag(SnapshotTag, PetStorage.MakeLink(pet));
-        if (string.IsNullOrEmpty(figurine.Name))
-            figurine.Name = $"{name} (figurine)";
+        figurine.Name = name;
+        figurine.Hue = hue;
         return true;
     }
 

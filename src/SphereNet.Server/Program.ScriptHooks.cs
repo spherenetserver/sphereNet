@@ -219,13 +219,30 @@ public static partial class Program
 
         // @PersonalSpace on the one walked into (SRC = mover), @charShove on the mover
         // (SRC = the one in the way); RETURN 1 keeps the mover out.
-        SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (blocker, mover) =>
-            _triggerDispatcher.FireCharTrigger(blocker, CharTrigger.PersonalSpace,
-                new TriggerArgs { CharSrc = mover }) == TriggerResult.True;
+        // ARGN1 = stamina the push costs, ARGN3 = needs full stamina; both read back
+        // (ShoveCharAtPosition, CCharAct.cpp:4641-4658). RETURN 0 drops the push line.
+        SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (blocker, mover, shove) =>
+        {
+            var psArgs = new TriggerArgs { CharSrc = mover, N1 = shove.StaminaRequired, N3 = shove.RequireFullStamina ? 1 : 0 };
+            var r = _triggerDispatcher.FireCharTrigger(blocker, CharTrigger.PersonalSpace, psArgs);
+            if (r == TriggerResult.True)
+                return true;
+            shove.StaminaRequired = (int)psArgs.N1;
+            shove.RequireFullStamina = psArgs.N3 != 0;
+            shove.SuppressMessage = r == TriggerResult.False;
+            return false;
+        };
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.charShove))
-            SphereNet.Game.Objects.Characters.Character.OnCharShove = (mover, blocker) =>
-                _triggerDispatcher.FireCharTrigger(mover, CharTrigger.charShove,
-                    new TriggerArgs { CharSrc = blocker }) == TriggerResult.True;
+            SphereNet.Game.Objects.Characters.Character.OnCharShove = (mover, blocker, shove) =>
+            {
+                var csArgs = new TriggerArgs { CharSrc = blocker, N1 = shove.StaminaRequired };
+                var r = _triggerDispatcher.FireCharTrigger(mover, CharTrigger.charShove, csArgs);
+                if (r == TriggerResult.True)
+                    return true;
+                shove.StaminaRequired = (int)csArgs.N1;
+                shove.SuppressMessage = r == TriggerResult.False;
+                return false;
+            };
 
         // @AfkMode — ARGN1 current, ARGN2 requested, both read back; RETURN 1 cancels.
         SphereNet.Game.Objects.Characters.Character.OnAfkMode = (ch, afk, mode) =>

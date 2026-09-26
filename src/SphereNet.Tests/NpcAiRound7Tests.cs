@@ -157,6 +157,10 @@ public class NpcAiRound7Tests
         var ai = new NpcAI(world, new SphereConfig());
 
         var npc = world.CreateCharacter();
+        // An NPC eats only what FOODTYPE names and hungers only with a ceiling
+        // (Food_CanEat, CCharStatus.cpp:888; m_MaxFood, CCharBase.cpp:26).
+        npc.SetTag("MAXFOOD", "60");
+        npc.SetTag("FOODTYPE", "t_food");
         world.PlaceCharacter(npc, new Point3D(1000, 1000, 0, 0));
 
         var bread = world.CreateItem();

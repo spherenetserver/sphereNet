@@ -63,9 +63,12 @@ public sealed class CustomSphereSpellTests
         engine.ApplyDirectEffect(caster, victim, SpellType.Poison, 500);
 
         // Source-X keys the crime off SPELLFLAG_HARM (OnAttackedBy in
-        // OnSpellEffect); Damage||Curse alone let Poison casters stay blue.
-        Assert.True(caster.IsFlaggedAsCriminal,
-            "poisoning an innocent player did not flag the caster criminal");
+        // OnSpellEffect); Damage||Curse alone let Poison casters stay blue. A
+        // player victim notices the crime itself - SAWCRIME, personal grey - and
+        // the global flag needs a witness or @SeeCrime (CCharFight.cpp:361-366),
+        // so the caster is no longer flagged globally here.
+        Assert.NotNull(victim.Memory_FindObjTypes(caster.Uid, MemoryType.SawCrime));
+        Assert.False(caster.IsFlaggedAsCriminal);
         Assert.True(victim.IsPoisoned);
     }
 
@@ -332,14 +335,13 @@ public sealed class CustomSphereSpellTests
         });
         ushort originalBody = caster.BodyId;
 
+        // The body comes from the menu pick (Source-X m_atMagery.m_uiSummonID,
+        // CCharSpell.cpp:1083); the old random monster list was invented.
+        caster.SetTag("POLY_SELECT", "17"); // 0x11
         engine.ApplyDirectEffect(caster, caster, SpellType.MonsterForm, 500);
 
         Assert.NotEqual(originalBody, caster.BodyId);
-        Assert.Contains(caster.BodyId, new[]
-        {
-            (ushort)0x0002, (ushort)0x0004, (ushort)0x0011,
-            (ushort)0x0021, (ushort)0x0036,
-        });
+        Assert.Equal((ushort)0x0011, caster.BodyId);
         Assert.True(caster.IsStatFlag(StatFlag.Polymorph));
     }
 

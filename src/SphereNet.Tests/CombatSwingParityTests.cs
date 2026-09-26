@@ -251,13 +251,21 @@ public class CombatSwingParityTests
         world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
         TestHarness.AttachCharacter(clientB, victim);
 
-        // Aggressor strikes an innocent in a guarded region → flagged criminal,
-        // and the victim records HarmedBy(aggressor) via Memory_Fight_Start.
+        // A townsman who can speak watches. Source-X Fight_Attack asks the witnesses
+        // (CheckCrimeSeen, CCharFight.cpp:1474-1477) - the victim itself is the mark
+        // and never a witness - and a speaking NPC witness flags the aggressor
+        // (CCharFight.cpp:79-83).
+        var townsman = world.CreateCharacter();
+        townsman.NpcBrain = NpcBrainType.Human;
+        townsman.DSpeech.Add(new ResourceId(ResType.Speech, 1));
+        world.PlaceCharacter(townsman, new Point3D(102, 100, 0, 0));
+
+        // Aggressor strikes an innocent in a guarded region → flagged criminal.
         clientA.HandleAttack(victim.Uid.Value);
         Assert.True(attacker.IsStatFlag(StatFlag.Criminal));
 
-        // Victim retaliates — the aggressor is no longer NOTO_GOOD to them, so this
-        // is self-defence and must NOT flag the victim criminal.
+        // Victim retaliates — the aggressor is no longer NOTO_GOOD (criminal), so
+        // this is self-defence and must NOT flag the victim criminal.
         clientB.HandleAttack(attacker.Uid.Value);
         Assert.False(victim.IsStatFlag(StatFlag.Criminal));
     }

@@ -211,6 +211,7 @@ public static class CharDefHelper
             // stamina would swing at the slowest rate the formula allows.
             if (ch.Stam <= 0)
                 ch.Stam = ch.MaxStam;
+            InitNpcFood(ch);
         }
 
         if (def != null && !ch.IsPlayer)
@@ -227,6 +228,66 @@ public static class CharDefHelper
         if (refresh)
             ch.RefreshAppearance();
         return true;
+    }
+
+    /// <summary>BODY= / CHARDEF= on a character that already exists: Source-X
+    /// CChar::SetID (CChar.cpp:1596-1640) swaps the definition reference and the
+    /// display id and nothing else - the creature keeps its brain, skills, tags,
+    /// colour, resists and damage. Only a freshly created NPC takes the whole
+    /// definition (<see cref="TryApplyDefName"/>).</summary>
+    public static bool TrySetId(Character ch, string? defname, ResourceHolder? resources)
+    {
+        if (string.IsNullOrWhiteSpace(defname) || resources == null)
+            return false;
+
+        int defIndex = ResolveDefIndex(defname, resources);
+        if (defIndex == 0)
+            return false;
+
+        var def = DefinitionLoader.GetCharDef(defIndex);
+        ushort bodyId = def != null
+            ? ResolveBodyId(def, defIndex, resources)
+            : ResolveBodyId(defIndex, resources);
+        if (bodyId == 0)
+            return false;
+
+        ch.CharDefIndex = defIndex;
+        ch.SetTag("CHARDEF", defname.Trim());
+        ch.BodyId = bodyId;
+        ch.BaseId = bodyId;
+        // _iPrev_id is only seeded when it was never set (:1627).
+        if (ch.OBody == 0)
+            ch.OBody = bodyId;
+        ch.RefreshAppearance();
+        return true;
+    }
+
+    /// <summary>The chardef a creature falls back to when its own id names no
+    /// CHARDEF: the DEFAULTCHAR resource (Scripts-X defs.scp: c_man), else
+    /// CREID_MAN (CChar::SetID, CChar.cpp:1600-1611). 0 when neither is defined.</summary>
+    public static int ResolveDefaultCharIndex(ResourceHolder? resources)
+    {
+        resources ??= DefinitionLoader.StaticResources;
+        if (resources != null)
+        {
+            var rid = resources.ResolveDefName(resources.FollowResourceAlias("DEFAULTCHAR"));
+            if (rid.IsValid && rid.Type == ResType.CharDef && DefinitionLoader.GetCharDef(rid.Index) != null)
+                return rid.Index;
+            rid = resources.ResolveDefName("c_man");
+            if (rid.IsValid && rid.Type == ResType.CharDef && DefinitionLoader.GetCharDef(rid.Index) != null)
+                return rid.Index;
+        }
+        const int CreidMan = 0x0190;
+        return DefinitionLoader.GetCharDef(CreidMan) != null ? CreidMan : 0;
+    }
+
+    /// <summary>A freshly created NPC starts with a full stomach:
+    /// Stat_SetVal(STAT_FOOD, Stat_GetMaxAdjusted(STAT_FOOD)) (CChar.cpp:321), which
+    /// is the definition's m_MaxFood - 0 for a creature that does not eat.</summary>
+    public static void InitNpcFood(Character ch)
+    {
+        if (!ch.IsPlayer)
+            ch.Food = ch.MaxFood;
     }
 
     /// <summary>Roll a stat within its [min,max] range. Falls back to whichever

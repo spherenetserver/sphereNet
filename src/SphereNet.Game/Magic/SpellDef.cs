@@ -32,7 +32,10 @@ public sealed class SpellDef
     // names here are historical — Scale is the TOP value (endpoint at max
     // skill), NOT a delta added to Base. GetEffect / GetDuration interpolate
     // linearly between Base and Scale.
-    public int CastTimeBase { get; set; } = 15; // tenths of a second at 0 skill
+    // No CAST_TIME line is an empty curve, which Source-X reads as 0
+    // (CValueCurveDef::GetLinear, CValueDefs.cpp:107) - the cast then takes the
+    // one-tenth floor, not an invented 1.5 s.
+    public int CastTimeBase { get; set; } // tenths of a second at 0 skill
     public int CastTimeScale { get; set; }       // tenths at max skill (0 = constant)
     public int EffectBase { get; set; }
     public int EffectScale { get; set; }         // value at max skill (1000)
@@ -69,15 +72,25 @@ public sealed class SpellDef
     /// <summary>Effect strength at given skill level (0-1000). Linear
     /// interpolation between EffectBase (at 0) and EffectScale (at 1000).
     /// Matches Source-X CValueCurveDef::GetLinear for a 2-endpoint curve:
-    /// <c>base + (top - base) * skill / 1000</c>.</summary>
-    public int GetEffect(int skillLevel) =>
-        EffectBase + ((EffectScale - EffectBase) * skillLevel / 1000);
+    /// <c>base + (top - base) * skill / 1000</c>. A single-value curve
+    /// (no top, stored as 0) is a constant, as GetLinear returns m_aiValues[0]
+    /// for one value (CValueDefs.cpp:109) - the same reading GetCastTime and
+    /// GetInterruptChance already use.</summary>
+    public int GetEffect(int skillLevel)
+    {
+        int top = EffectScale != 0 ? EffectScale : EffectBase;
+        return EffectBase + ((top - EffectBase) * skillLevel / 1000);
+    }
 
     /// <summary>Duration in tenths of a second at given skill level
     /// (0-1000). Linear interpolation between DurationBase (at 0 skill)
-    /// and DurationScale (at max skill), matching Source-X convention.</summary>
-    public int GetDuration(int skillLevel) =>
-        DurationBase + ((DurationScale - DurationBase) * skillLevel / 1000);
+    /// and DurationScale (at max skill), matching Source-X convention; a
+    /// single value is constant (CValueDefs.cpp:109).</summary>
+    public int GetDuration(int skillLevel)
+    {
+        int top = DurationScale != 0 ? DurationScale : DurationBase;
+        return DurationBase + ((top - DurationBase) * skillLevel / 1000);
+    }
 
     /// <summary>Disturb chance (per-mille) at the given caster skill
     /// (reference m_Interrupt.GetLinear): single value = constant, "A,B"

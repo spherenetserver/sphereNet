@@ -31,15 +31,16 @@ public static class EatEngine
 {
     private static readonly Random Rng = new();
 
-    /// <summary>Hunger restored per unit eaten. Source-X reads m_itFood.m_foodval and
-    /// falls back to the itemdef's VOLUME (CCharUse.cpp:881); SphereNet has neither
-    /// field, so a script may set the FOODVAL tag and everything else keeps the ten
-    /// per unit the pet path already used. Never below one, as the reference floors
-    /// it (:887).</summary>
-    public static int RestorePerUnit(Item food) =>
-        food.TryGetTag("FOODVAL", out string? raw) && int.TryParse(raw, out int val) && val > 0
-            ? val
-            : 10;
+    /// <summary>Hunger restored per unit eaten (Use_EatQty, CCharUse.cpp:880-887):
+    /// the item's m_foodval (MOREM), else the itemdef's volume (definition weight in
+    /// tenths / WEIGHT_UNITS), never below one.</summary>
+    public static int RestorePerUnit(Item food)
+    {
+        int restore = food.MoreP.Map;
+        if (restore == 0)
+            restore = (ushort)food.DefinitionWeightRaw / Item.WeightUnits;
+        return Math.Max(1, restore);
+    }
 
     /// <summary>How many units of <paramref name="food"/> this eater actually wants.
     /// Zero when they are full, which the caller must treat as "nothing happened"
@@ -70,6 +71,12 @@ public static class EatEngine
         ApplyMeal(eater, food, triggers, Math.Max(1, RestorePerUnit(food)) * qty);
         return qty;
     }
+
+    /// <summary>EatAnim's stat half alone (CCharAct.cpp:3455-3486): @Eat with the
+    /// reference's arguments and the gains it leaves - for a bite that is not a
+    /// food stack, like grazed grass (EatAnim(pResBit, uiEaten / 10)).</summary>
+    public static void EatAnim(Character eater, Item bite, TriggerDispatcher? triggers, int foodGain) =>
+        ApplyMeal(eater, bite, triggers, foodGain);
 
     /// <summary>Poison the eater when the meal was poisoned. Source-X applies it in
     /// Use_EatQty BEFORE the meal itself (CCharUse.cpp:907), which is why it sits

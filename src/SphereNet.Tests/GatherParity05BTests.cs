@@ -109,6 +109,7 @@ public sealed class GatherParity05BTests
         var dispatcher = new TriggerDispatcher { Resources = resources, Runner = runner };
 
         var world = TestHarness.CreateWorld();
+        TestHarness.AttachLoadedRegionTypes(world);
         var miner = world.CreateCharacter();
         Character.OnSkillUseQuickDetailed = (Character _, int _, ref int _, int _) => 1;
 

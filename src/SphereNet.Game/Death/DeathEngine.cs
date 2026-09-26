@@ -215,7 +215,8 @@ public sealed class DeathEngine
             // blow taking all of it. Deduped, pets credited to their master.
             foreach (var offender in creditedOffenders)
             {
-                ApplyKarmaFameChange(offender, victim, attackerCount);
+                ApplyKarmaFameChange(offender, victim, attackerCount,
+                    SphereNet.Game.Clients.GameClient.ComputeNotoriety(_world, offender, victim));
 
                 // Experience award (Noto_Kill, CCharNotoriety.cpp:619-646): gated on
                 // EXPERIENCESYSTEM + EXP_MODE_RAISE_COMBAT, a tenth of the victim's
@@ -452,7 +453,8 @@ public sealed class DeathEngine
     /// <summary>Apply Karma/Fame changes when killer kills victim, divided by the
     /// total attacker count (Source-X Noto_Kill's iTotalKillers split):
     /// Calc_FameKill + Calc_KarmaKill + Calc_KarmaScale, each share /attackerCount.</summary>
-    private static void ApplyKarmaFameChange(Character killer, Character victim, int attackerCount)
+    private static void ApplyKarmaFameChange(Character killer, Character victim, int attackerCount,
+        byte notoThem = 1)
     {
         if (attackerCount < 1) attackerCount = 1;
 
@@ -464,13 +466,13 @@ public sealed class DeathEngine
         int fameGain = (victim.IsPlayer ? rawFame / 10 : rawFame / 200) / attackerCount;
         ApplyFame(killer, fameGain);
 
-        // Source-X Calc_KarmaKill: killing a criminal / red incurs NO karma change
-        // — the would-be loss is clamped to 0 and no positive karma is awarded.
-        if (victim.IsCriminal || victim.IsMurderer)
-            return;
-
-        // Source-X Calc_KarmaKill: karma change = negative of victim karma
+        // Source-X Calc_KarmaKill (CResourceCalc.cpp:353-384): the change is minus the
+        // victim's karma. When the victim was criminal or worse TO THE KILLER
+        // (NotoThem >= NOTO_CRIMINAL) only a LOSS is cancelled - killing an evil red
+        // still earns karma.
         int karmaChange = -victim.Karma;
+        if (notoThem >= 4 && karmaChange < 0) // NOTO_CRIMINAL
+            karmaChange = 0;
         if (victim.IsPlayer)
         {
             if (karmaChange < 0 && karmaChange > -5000)
@@ -526,15 +528,15 @@ public sealed class DeathEngine
         killer.Karma = (short)Math.Clamp(killer.Karma + delta, MinKarma, MaxKarma);
     }
 
-    /// <summary>Source-X Calc_KarmaScale: good chars lose karma 2x faster, gain 0.5x.</summary>
+    /// <summary>Source-X Calc_KarmaScale (CResourceCalc.cpp:387-407): a good
+    /// character loses karma twice as fast and gains it at half rate, and THEN a gain
+    /// below a 64th of the current karma is dropped.</summary>
     private static int ScaleKarma(short currentKarma, int change)
     {
         if (currentKarma > 0)
-        {
-            if (change < 0) return change * 2;        // losing karma: double penalty
-            if (change > 0 && change < currentKarma / 64) return 0; // diminishing returns
-            return change / 2;                         // gaining karma: halved
-        }
+            change = change < 0 ? change * 2 : change / 2;
+        if (change > 0 && change < currentKarma / 64)
+            return 0;
         return change;
     }
 
@@ -923,6 +925,8 @@ public sealed class DeathEngine
         shroud.SetAttr(ObjAttributes.Newbie);     // stays with the owner, never drops
         shroud.SetTag("DEATHSHROUD", "1");
         victim.Equip(shroud, Layer.Robe);
+        // CItem::CreateScript (CCharAct.cpp:4474): the ITEMDEF's @Create runs.
+        shroud.FireCreateTrigger();
         return shroud;
     }
 
@@ -940,27 +944,26 @@ public sealed class DeathEngine
     }
 
     /// <summary>
-    /// Grant a plain resurrection robe when the Robe layer is empty after corpse
-    /// restore, so the player isn't resurrected naked (Source-X Spell_Resurrection
-    /// hands out a robe when the corpse held no body covering). Returns the robe,
-    /// or null when one already covers the Robe layer.
+    /// Hand a resurrected player a plain robe (Source-X Spell_Resurrection,
+    /// CCharSpell.cpp:503-508): only when the corpse was NOT rejoined
+    /// (<paramref name="raisedCorpse"/>) and NORESROBE is off - a CreateBase robe named
+    /// DEFMSG_SPELL_RES_ROBENAME, with no newbie flag. Returns the robe, or null when
+    /// none was given (or the Robe layer is already covered).
     /// </summary>
-    public Item? EnsureResurrectionRobe(Character ch)
+    public Item? EnsureResurrectionRobe(Character ch, bool raisedCorpse = false)
     {
         // NORESROBE, not the death-shroud flag. Upstream keeps them apart
         // (CCharSpell.cpp:503 asks only m_fNoResRobe), and tying them together meant a
         // shard that wanted invisible ghosts also resurrected everyone naked.
-        if (NoResRobe) return null;
+        if (NoResRobe || raisedCorpse) return null;
         if (!ch.IsPlayer) return null;
         if (ch.GetEquippedItem(Layer.Robe) != null) return null;
 
         var robe = _world.CreateItem();
         robe.BaseId = ResurrectRobeId;
         robe.ItemType = ItemType.Clothing;
-        robe.Name = "robe";
+        robe.Name = ServerMessages.Get(Msg.SpellResRobename);
         robe.Hue = Color.Default;
-        robe.SetAttr(ObjAttributes.Newbie); // res robe stays with the owner
-        robe.SetTag("RESURRECTROBE", "1");
         ch.Equip(robe, Layer.Robe);
         return robe;
     }

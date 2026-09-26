@@ -131,12 +131,16 @@ public static class InfoSkillEngine
 
     /// <summary>
     /// Returns one of the MSG_PET_FOOD_* bands based on the character's current
-    /// food counter. Source-X CChar::Food_GetLevelMessage reads in 30-minute
-    /// intervals; we approximate with SphereNet's 0..60 Food range split into
-    /// 8 Source-X bands.
+    /// food counter: Source-X CChar::Food_GetLevelMessage (CCharStatus.cpp:830-884)
+    /// bands FOOD against the creature's own MAXFOOD, IMulDiv(food, 8, max), and a
+    /// creature with no food stat is "unaffected". A fixed /60 stood in for the max.
     /// </summary>
-    private static string GetFoodLevelMessage(Character ch, bool ownerOwned)
+    internal static string GetFoodLevelMessage(Character ch, bool ownerOwned)
     {
+        int max = ch.MaxFood;
+        if (max == 0)
+            return ServerMessages.Get(Msg.PetHappyUnaffected);
+
         // 8 bands (MSG_PET_FOOD_1..8 / MSG_FOOD_LVL_1..8 for free wildlife).
         string[] keys = ownerOwned
             ? new[]
@@ -150,7 +154,7 @@ public static class InfoSkillEngine
                 Msg.MsgFoodLvl5, Msg.MsgFoodLvl6, Msg.MsgFoodLvl7, Msg.MsgFoodLvl8,
             };
 
-        int idx = Math.Clamp(ch.Food * keys.Length / Math.Max(1, 60), 0, keys.Length - 1);
+        int idx = Math.Clamp(IMulDiv(ch.Food, 8, max), 0, keys.Length - 1);
         return ServerMessages.Get(keys[idx]);
     }
 
@@ -523,10 +527,12 @@ public static class InfoSkillEngine
         return ServerMessages.Get(bandKeys[idx]);
     }
 
-    /// <summary>Source-X IMulDiv: (a * b) / c with 64-bit intermediate.</summary>
-    private static int IMulDiv(int a, int b, int c)
+    /// <summary>Source-X IMulDiv (common.h:192): ((a*b) + c/2) / c - IsNegative(a*b) -
+    /// a ROUNDED division, not the truncating one this used to be.</summary>
+    internal static int IMulDiv(int a, int b, int c)
     {
         if (c == 0) return 0;
-        return (int)(((long)a * b) / c);
+        long ab = (long)a * b;
+        return (int)((ab + c / 2) / c - (ab < 0 ? 1 : 0));
     }
 }

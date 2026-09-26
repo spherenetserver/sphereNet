@@ -369,7 +369,7 @@ public class SkillAuditRegressionTests
     }
 
     [Fact]
-    public void CampingSafeLogout_SkipsLingerWhileUnsafeLogoutExpiresNormally()
+    public void CampingGivesNoSafeLogout_AndLingerExpiresNormally()
     {
         var world = CreateWorld();
         var loggerFactory = LoggerFactory.Create(_ => { });
@@ -414,27 +414,28 @@ public class SkillAuditRegressionTests
         Assert.DoesNotContain(unsafeChar, world.OnlinePlayers);
         Assert.DoesNotContain(unsafeChar, lingerSector.OnlinePlayers);
 
-        var safeChar = world.CreateCharacter();
-        safeChar.IsPlayer = true;
-        world.PlaceCharacter(safeChar, new Point3D(110, 100, 0, 0));
+        // A bedroll beside one's own campfire buys nothing: CanInstantLogOut
+        // (CClient.cpp:138-161) has no camping case, and Use_BedRoll only rolls the
+        // bedroll out or up (CCharUse.cpp:1534-1570). This half used to expect an
+        // instant logout from an invented CAMPING_SAFE_LOGOUT_UNTIL tag.
+        var camper = world.CreateCharacter();
+        camper.IsPlayer = true;
+        world.PlaceCharacter(camper, new Point3D(110, 100, 0, 0));
         var bedroll = world.CreateItem();
         bedroll.ItemType = ItemType.Bedroll;
-        safeChar.Act = bedroll.Uid;
+        camper.Act = bedroll.Uid;
         var campfire = world.CreateItem();
         campfire.ItemType = ItemType.Campfire;
-        campfire.SetTag("CAMPFIRE_OWNER_UUID", safeChar.Uuid.ToString("D"));
         world.PlaceItem(campfire, new Point3D(111, 100, 0, 0));
-        Assert.True(new SkillHandlers(world).UseSkill(safeChar, SkillType.Camping));
-        Assert.True(safeChar.TryGetTag("CAMPING_SAFE_LOGOUT_UNTIL", out string? safeUntilText) &&
-            long.TryParse(safeUntilText, out long safeUntil) &&
-            safeUntil > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        int safeDeletes = 0;
-        var safeClient = MakeClient(safeChar, 3103, () => safeDeletes++);
+        Assert.False(new SkillHandlers(world).UseSkill(camper, SkillType.Camping));
+        Assert.False(camper.TryGetTag("CAMPING_SAFE_LOGOUT_UNTIL", out _));
+        int camperDeletes = 0;
+        var camperClient = MakeClient(camper, 3103, () => camperDeletes++);
 
-        safeClient.OnDisconnect();
+        camperClient.OnDisconnect();
 
-        Assert.False(safeChar.IsClientLingering);
-        Assert.DoesNotContain(safeChar, world.OnlinePlayers);
-        Assert.Equal(1, safeDeletes);
+        Assert.True(camper.IsClientLingering);
+        Assert.Contains(camper, world.OnlinePlayers);
+        Assert.Equal(0, camperDeletes);
     }
 }

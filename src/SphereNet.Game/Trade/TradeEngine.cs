@@ -631,8 +631,19 @@ public static class VendorEngine
     // RestockGold at every restock, so a freshly opened vendor can buy. A
     // vendor with no VENDOR_GOLD tag simply has an empty purse until then. ----
 
-    /// <summary>Gold the vendor purse is topped up to at each restock.</summary>
-    public static int RestockGold { get; set; } = 2000;
+    /// <summary>Gold the vendor purse is topped up to at each restock when the
+    /// vendor names no amount of its own: m_Check_Restock defaults to 10000
+    /// (CItemContainer.cpp:1081-1084).</summary>
+    public static int RestockGold { get; set; } = 10000;
+
+    /// <summary>The restock target for this vendor: its bank box's MORE2
+    /// (m_itEqBankBox.m_Check_Restock, CItem.h:197) when set, else
+    /// <see cref="RestockGold"/>.</summary>
+    public static long RestockGoldFor(Character vendor)
+    {
+        var bank = vendor.GetEquippedItem(Core.Enums.Layer.BankBox);
+        return bank is { More2: > 0 } ? bank.More2 : RestockGold;
+    }
 
     /// <summary>Source-X always tracks vendor funds; kept for API compatibility.</summary>
     public static bool VendorTracksMoney(Character vendor) =>
@@ -998,8 +1009,9 @@ public static class VendorEngine
         // shopkeeper's infinite buy fund; an OWNED vendor (player/pet vendor)
         // must NOT be topped up, or dispensing its purse to the owner (CASH)
         // would be a free-gold faucet. Owned vendors keep only real earnings.
-        if (!vendor.OwnerSerial.IsValid && GetVendorGold(vendor) < RestockGold)
-            SetVendorGold(vendor, RestockGold);
+        long restockTo = RestockGoldFor(vendor);
+        if (!vendor.OwnerSerial.IsValid && GetVendorGold(vendor) < restockTo)
+            SetVendorGold(vendor, restockTo);
 
         // A player vendor's stock is its owner's goods; a pet is never restocked
         // (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:41).

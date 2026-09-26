@@ -673,7 +673,8 @@ public sealed class WalkCheck
             {
                 var mob = mobiles[i];
                 if (mob == mover) continue;
-                if ((mob.Z + 15) > newZ && (newZ + 15) > mob.Z && !CanMoveOver(mover, mob))
+                // ShoveCharAtPosition ignores anyone more than 5 Z away (CCharAct.cpp:4622).
+                if (Math.Abs(mob.Z - newZ) <= 5 && !CanMoveOver(mover, mob))
                     moveIsOk = false;
             }
         }
@@ -1003,33 +1004,41 @@ public sealed class WalkCheck
         var pivot = new Point3D((short)x, (short)y, 0, (byte)mapId);
         foreach (var ch in _world.GetCharsInRange(pivot, 0))
         {
-            if (ch == mover || ch.IsDeleted || ch.IsDead) continue;
+            // A dead player ghost stays in the list: it costs nothing to pass but
+            // it is still a mobile (CCharAct.cpp:4628); a dead NPC is a corpse.
+            if (ch == mover || ch.IsDeleted || (ch.IsDead && !ch.IsPlayer)) continue;
             if (ch.X != x || ch.Y != y) continue;
             list.Add(ch);
         }
         return list;
     }
 
+    /// <summary>The side-effect-free half of Source-X ShoveCharAtPosition
+    /// (CCharAct.cpp:4605-4665): may <paramref name="mover"/> push past
+    /// <paramref name="blocker"/>. MovementEngine re-runs the full check with the
+    /// @PersonalSpace/@charShove triggers, the messages and the stamina charge once
+    /// the step is taken. Only a GM is exempt; a dead, sleeping or insubstantial
+    /// mover and an insubstantial blocker pass; one creature does not push past
+    /// another (NPCSHOVENPC / TAG.OVERRIDE.SHOVE aside); a push costs 10 stamina and
+    /// needs full stamina, except past the dead or - unless
+    /// REVEALF_OSILIKEPERSONALSPACE - the hidden/invisible, which is free.</summary>
     private static bool CanMoveOver(Character mover, Character blocker)
     {
         if ((CharDefHelper.GetCanFlags(blocker) & CanFlags.C_Statue) != 0) return false;
-        // ServUO / RunUO-style shove rule (PURE predicate — no side effects):
-        // - staff can always move through mobiles
-        // - dead bodies / dead movers do not block
-        // - hidden staff do not block
-        // - players can shove only when at full stamina
-        // The stamina cost + reveal for a real shove is applied once by
-        // MovementEngine after the move commits; deducting it here as well made
-        // the subsequent MovementEngine.CanShove check fail (full-stam gate),
-        // so the player lost stamina yet never actually moved.
-        if (mover.PrivLevel >= PrivLevel.Counsel) return true;
-        if (blocker.IsDead) return true;
-        if (mover.IsDead) return true;
-        if ((blocker.IsStatFlag(StatFlag.Hidden) || blocker.IsStatFlag(StatFlag.Invisible))
-            && blocker.PrivLevel >= PrivLevel.Counsel)
+        if (mover.PrivLevel >= PrivLevel.GM) return true;
+        if (mover.IsDead || mover.IsStatFlag(StatFlag.Sleeping) || mover.IsStatFlag(StatFlag.Insubstantial))
             return true;
+        if (blocker.IsStatFlag(StatFlag.Insubstantial)) return true;
+        if (!mover.IsPlayer && !blocker.IsPlayer && !MovementEngine.NpcShoveNpc &&
+            !(mover.TryGetTag("OVERRIDE.SHOVE", out string? ovr) &&
+              ScriptNumber.TryParseToken(ovr, out long o) && o != 0))
+            return false;
 
-        return mover.Stam == mover.MaxStam && mover.MaxStam > 0;
+        bool osiLike = (Character.ActiveRevealFlags & RevealFlags.OsiLikePersonalSpace) != 0;
+        bool concealed = blocker.IsStatFlag(StatFlag.Hidden) || blocker.IsStatFlag(StatFlag.Invisible);
+        if (blocker.IsDead || (concealed && !osiLike))
+            return true; // free push
+        return mover.Stam >= mover.MaxStam && mover.Stam >= 10;
     }
 
     public static void Offset(Direction d, ref int x, ref int y)

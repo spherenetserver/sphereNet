@@ -90,7 +90,9 @@ public sealed class TypedFireAndSpellFieldTests
         var result = engine.ApplyFieldTouch(ch, field);
 
         Assert.Equal(FieldTouchResult.SpellHit, result);
-        Assert.Equal(86, ch.Hits);
+        // OnSpellEffect randomizes the level to 500..999 first (CCharSpell.cpp:3631),
+        // so the 4..14 curve burns 9..13.
+        Assert.InRange(100 - ch.Hits, 9, 13);
     }
 
     [Fact]

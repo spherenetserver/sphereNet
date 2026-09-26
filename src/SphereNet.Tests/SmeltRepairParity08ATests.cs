@@ -288,18 +288,62 @@ public sealed class SmeltRepairParity08ATests
     [Fact]
     public void AScriptMayWaiveTheSkillRequirement()
     {
+        // ARGN3 waives the ingot's minimum Mining (TDATA1) - and only that: the
+        // roll itself still happens (CCharSkill.cpp:1197/1231). This used to force the
+        // roll to fail and expect ingots anyway, as if ARGN3 skipped the roll.
         var triggers = new TriggerDispatcher();
         triggers.RegisterItemEvent("EVENTSITEM", "Smelt", (_, args) =>
         {
-            args.N3 = 1;                          // skip the minimum-skill roll
+            args.N3 = 1;                          // skip the minimum-skill requirement
             return TriggerResult.Default;
         });
         var bench = Setup(triggers);
-        SkillRolls((SkillType.Mining, false));
+        bench.Me.SetSkill(SkillType.Mining, 100);
+        DefineItem(IronIngot, d => { d.Type = ItemType.Ingot; d.TData1 = 650; d.TData2 = 1000; });
+        SkillRolls((SkillType.Mining, true));
         var (ore, forge) = Smeltable(bench, amount: 4);
 
         Smelt(bench, ore, forge);
 
+        Assert.NotNull(Ingots(bench, IronIngot));
+    }
+
+    [Fact]
+    public void TheIngotsMinimumMiningRefusesTheSmelt()
+    {
+        // iMiningSkill < m_ttIngot.m_iSkillMin -> DEFMSG_MINING_SKILL, nothing spent
+        // (CCharSkill.cpp:1231-1237).
+        var bench = Setup();
+        bench.Me.SetSkill(SkillType.Mining, 100);
+        DefineItem(IronIngot, d => { d.Type = ItemType.Ingot; d.TData1 = 650; d.TData2 = 1000; });
+        int rolls = 0;
+        Character.OnSkillUseQuick = (_, _, _, _) => { rolls++; return 1; };
+        var (ore, forge) = Smeltable(bench, amount: 4);
+
+        Smelt(bench, ore, forge);
+
+        Assert.Equal(0, rolls);
+        Assert.Equal(4, ore.Amount);
+        Assert.Null(Ingots(bench, IronIngot));
+    }
+
+    [Fact]
+    public void TheSmeltDifficultyIsDrawnFromTheIngotsRange()
+    {
+        // (TDATA1 + rand(TDATA2 - TDATA1)) / 10 (CCharSkill.cpp:1239-1242).
+        var bench = Setup();
+        DefineItem(IronIngot, d => { d.Type = ItemType.Ingot; d.TData1 = 650; d.TData2 = 1000; });
+        int difficulty = -1;
+        Character.OnSkillUseQuick = (_, skill, diff, _) =>
+        {
+            if (skill == (int)SkillType.Mining) difficulty = diff;
+            return 1;
+        };
+        var (ore, forge) = Smeltable(bench, amount: 4);
+
+        Smelt(bench, ore, forge);
+
+        Assert.InRange(difficulty, 65, 99);
         Assert.NotNull(Ingots(bench, IronIngot));
     }
 

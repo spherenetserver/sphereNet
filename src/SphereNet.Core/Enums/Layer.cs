@@ -49,5 +49,6 @@ public enum Layer : byte
     // byte means the same thing on both sides.
     FlagPoison = 42,    // LAYER_FLAG_Poison - the SPELL_Poison memory (CChar::SetPoison)
     FlagWool = 46,      // LAYER_FLAG_Wool - a shorn sheep's regrowing fleece
+    FlagPotionUsed = 50, // LAYER_FLAG_PotionUsed - the potion cooldown marker (CCharUse.cpp:1066)
     Qty
 }

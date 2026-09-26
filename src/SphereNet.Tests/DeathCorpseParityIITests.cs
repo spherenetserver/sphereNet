@@ -232,6 +232,20 @@ public class DeathCorpseParityIITests
 
         // Already covered → no duplicate robe.
         Assert.Null(death.EnsureResurrectionRobe(player));
+        // A plain CreateBase robe, not newbie (CCharSpell.cpp:505-507).
+        Assert.False(robe!.IsAttr(ObjAttributes.Newbie));
+    }
+
+    [Fact]
+    public void EnsureResurrectionRobe_NotGivenWhenTheCorpseWasRejoined()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+        var player = MakePlayer(world, 1105);
+
+        Assert.Null(death.EnsureResurrectionRobe(player, raisedCorpse: true));
+        Assert.Null(player.GetEquippedItem(Layer.Robe));
     }
 
     // ---- #5: bonded pet kept as a ghost (no server-side delete) ----

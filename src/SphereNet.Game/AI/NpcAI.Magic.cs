@@ -29,7 +29,9 @@ public sealed partial class NpcAI
             noCastUntil > _world.GameClockMs / 100)
             return false;
         var region = _world.FindRegion(npc.Position);
-        if (region != null && (region.NoMagic || region.IsFlag(RegionFlag.Safe)))
+        // REGION_ANTIMAGIC_DAMAGE | REGION_FLAG_SAFE (CCharNPCStatus.cpp:441) - an
+        // anti-magic-ALL area is not part of this gate.
+        if (region != null && (region.IsFlag(RegionFlag.NoMagicDamage) || region.IsFlag(RegionFlag.Safe)))
             return false;
         if (npc.Mana < 5)
             return false;
@@ -66,8 +68,9 @@ public sealed partial class NpcAI
         int mana = npc.Mana;
         int intStat = npc.Int;
 
-        // Source-X caps ALL magery (wand included) at ¾ of sight range.
-        if (dist > GetNpcSight(npc) * 3 / 4)
+        // Source-X caps ALL magery (wand included) at 3/4 of UO_MAP_VIEW_SIGHT, a
+        // fixed 10 tiles (CCharNPCAct_Magic.cpp:173) - not the creature's own sight.
+        if (dist > UoMapViewSight * 3 / 4)
             return false;
 
         // Source-X NPC_FightMagery: within striking distance a tactician
@@ -989,7 +992,10 @@ public sealed partial class NpcAI
         {
             item.BaseId = _rand.Next(2) != 0 ? FireEwId : FireNsId;
             item.ItemType = ItemType.Fire;
-            item.MoreP = new Point3D((short)SpellType.FireField, (short)(100 + _rand.Next(500)), 1, npc.MapIndex);
+            // m_itSpell: spell = MOREX, level = MOREY, charges = MORE2
+            // (CCharNPCAct.cpp:89-91; CItem.h:255-257).
+            item.MoreP = new Point3D((short)SpellType.FireField, (short)(100 + _rand.Next(500)), 0, npc.MapIndex);
+            item.More2 = 1;
             item.Link = npc.Uid;
             maxTimeoutS = 50;
         }
@@ -1078,14 +1084,16 @@ public sealed partial class NpcAI
     }
 
     /// <summary>Source-X Skill_Act_Breath: an explicit BREATH.DAM tag is used
-    /// UNCLAMPED (script authority); the STR*5/100 default clamps 1-65535.</summary>
+    /// UNCLAMPED (script authority); the default is 5% of the CURRENT hit points
+    /// (Stat_GetVal(STAT_STR), CCharSkill.cpp:3307-3313), clamped 1-65535 - a
+    /// wounded dragon breathes weaker.</summary>
     private static int GetBreathDamage(Character npc)
     {
         // A zero BREATH.DAM means "use the default" (if (!iDamage), CCharSkill.cpp:3307).
         long custom = ReadSpecialTagNumber(npc, "BREATH.DAM", resolveItemDef: false);
         if (custom != 0)
             return (int)Math.Clamp(custom, 1, int.MaxValue);
-        int dmg = npc.Str * 5 / 100;
+        int dmg = npc.Hits * 5 / 100;
         return Math.Clamp(dmg, 1, ushort.MaxValue);
     }
 

@@ -388,7 +388,7 @@ public class VendorStableParityTests
     // ---- #9: stable rejects summoned / out-of-range pets ----
 
     [Fact]
-    public void StablePet_RejectsSummonedAndDistantPets()
+    public void StablePet_RejectsSummonedPets_ButNotDistantOnes()
     {
         var world = CreateWorld();
         var stable = new StableEngine();
@@ -409,12 +409,14 @@ public class VendorStableParityTests
         Assert.True(summon.IsSummoned);
         Assert.False(stable.StablePet(owner, summon, world));
 
-        // Distant pet -> out of range, cannot be stabled.
+        // A distant pet stables too: OnTarg_Pet_Stable asks only the stablemaster's
+        // line of sight, never a distance (CClientTarg.cpp:1576-1580). This used to
+        // assert an invented 12-tile limit.
         var farPet = world.CreateCharacter();
         farPet.NpcBrain = NpcBrainType.Animal;
         farPet.TryAssignOwnership(owner, owner);
         world.PlaceCharacter(farPet, new Point3D(200, 200, 0, 0));
-        Assert.False(stable.StablePet(owner, farPet, world));
+        Assert.True(stable.StablePet(owner, farPet, world));
 
         // A nearby, non-summoned owned pet stables fine.
         var pet = world.CreateCharacter();

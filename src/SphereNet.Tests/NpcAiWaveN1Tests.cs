@@ -62,6 +62,11 @@ public class NpcAiWaveN1Tests
 
         var deer = world.CreateCharacter();
         deer.NpcBrain = NpcBrainType.Animal;
+        // A creature eats only what its FOODTYPE names and hungers only with a food
+        // ceiling (Food_CanEat, CCharStatus.cpp:888; m_MaxFood, CCharBase.cpp:26) -
+        // a bare test creature has neither, so it is given both.
+        deer.SetTag("MAXFOOD", "60");
+        deer.SetTag("FOODTYPE", "t_fruit");
         // Hungry: NPC_Food needs under 10 food and at most 40% (CCharNPCAct.cpp:2501-2504).
         deer.NpcFood = 9;
         world.PlaceCharacter(deer, new Point3D(100, 100, 0, 0));
@@ -198,8 +203,8 @@ public class NpcAiWaveN1Tests
         // D1 (Source-X Use_Light): lighting no longer spends a charge — charges
         // burn one-per-minute via the lit timer instead, so the fresh default
         // stays at 20 and the burn timer is armed.
-        Assert.True(torch.TryGetTag("LIGHT_CHARGES", out string? charges));
-        Assert.Equal("20", charges);
+        // The charges are m_itLight.m_charges, MOREY (CItem.h:344), not a tag.
+        Assert.Equal(20, torch.MoreP.Y);
         Assert.True(torch.Timeout > Environment.TickCount64);
 
         // Day: it goes back into the pack.

@@ -73,111 +73,6 @@ public static partial class Program
         catch { return string.Empty; }
     }
 
-    /// <summary>
-    /// Pre-empt service-NPC well-known keywords before the SPEECH script
-    /// chain runs. Returns true when a service action was dispatched
-    /// (vendor menu opened, bank box opened, withdrawal completed, ...);
-    /// false when the brain doesn't match or none of the keywords applied
-    /// — in which case OnNpcHearSpeech keeps walking the chain.
-    /// We also send the matching defmessage (NpcVendorBuyfast / "Here are
-    /// thy N gold piece(s)." / ...) so the NPC speaks the same line a
-    /// real Source-X server would.
-    /// </summary>
-    /// <summary>Whole-word keyword match. The old substring Contains() made
-    /// service NPCs react to unrelated chatter — Turkish "buyur"/"buyuk"/"buyu"
-    /// all contain "buy", "banka" contains "bank" — so vendors opened the buy
-    /// gump and barked on nearly every player-to-player sentence.</summary>
-    private static bool HasWord(string lowerText, string word)
-    {
-        int idx = 0;
-        while ((idx = lowerText.IndexOf(word, idx, StringComparison.Ordinal)) >= 0)
-        {
-            bool startOk = idx == 0 || !char.IsLetterOrDigit(lowerText[idx - 1]);
-            int end = idx + word.Length;
-            if (startOk && (end >= lowerText.Length || !char.IsLetterOrDigit(lowerText[end])))
-                return true;
-            idx = end;
-        }
-        return false;
-    }
-
-    /// <summary>Word starting with the keyword ("bank" also accepts
-    /// "banka"/"bankaya"/"banker" — common no-diacritics Turkish usage).</summary>
-    private static bool HasWordPrefix(string lowerText, string prefix)
-    {
-        int idx = 0;
-        while ((idx = lowerText.IndexOf(prefix, idx, StringComparison.Ordinal)) >= 0)
-        {
-            if (idx == 0 || !char.IsLetterOrDigit(lowerText[idx - 1]))
-                return true;
-            idx += prefix.Length;
-        }
-        return false;
-    }
-
-    private static bool TryDispatchServiceKeyword(Character speaker, Character npc, string text)
-    {
-        string lower = text.ToLowerInvariant();
-        NpcBrainType brain = npc.NpcBrain;
-
-        // Source-X NPC_OnTrainHear: "train [skill]" — a townsfolk NPC teaches
-        // the skills it masters. Bare "train" lists them; a named skill quotes
-        // the price and arms the gold-payment step (TRAIN_PENDING on the
-        // student, consumed by the drop-gold-on-NPC path).
-        if (lower.StartsWith("train") && speaker.IsPlayer &&
-            brain is NpcBrainType.Human or NpcBrainType.Vendor or NpcBrainType.Banker
-                or NpcBrainType.Stable or NpcBrainType.Healer or NpcBrainType.None &&
-            TryHandleTrainKeyword(speaker, npc, text))
-        {
-            return true;
-        }
-
-        // The trade keywords belong to every NPC_IsVendor brain - healer, banker,
-        // vendor and stable master (CCharNPC::IsVendor, CCharNPC.cpp:251). The shop
-        // list opening IS the answer: NV_BUY / NV_SELL say nothing when they succeed
-        // (CCharNPCAct.cpp:147-211).
-        if (SphereNet.Game.Trade.VendorEngine.IsVendorBrain(brain))
-        {
-            if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
-            {
-                var gc = FindGameClient(speaker);
-                _log.LogDebug(
-                    "[svc_kw] VENDOR_BUY speaker={Speaker} npc={Npc} client={HasClient}",
-                    speaker.Name, npc.Name, gc != null);
-                gc?.OpenVendorBuy(npc);
-                return true;
-            }
-            if (HasWord(lower, "sell"))
-            {
-                var gc = FindGameClient(speaker);
-                _log.LogDebug(
-                    "[svc_kw] VENDOR_SELL speaker={Speaker} npc={Npc} client={HasClient}",
-                    speaker.Name, npc.Name, gc != null);
-                gc?.OpenVendorSell(npc);
-                return true;
-            }
-        }
-
-        // A banker opens the bank box, as the BANKSELF verb a banker's SPEECH runs
-        // (spk_jobBANKER: ON=*Bank* ... SRC.BANKSELF). Balances, withdrawals and
-        // cheques are the pack's SPEECH business; the engine has no lines for them.
-        if (brain == NpcBrainType.Banker && HasWordPrefix(lower, "bank"))
-        {
-            int bankDist = Math.Max(Math.Abs(speaker.X - npc.X), Math.Abs(speaker.Y - npc.Y));
-            if (bankDist > 3 || speaker.MapIndex != npc.MapIndex) return false;
-            _log.LogDebug("[svc_kw] BANK_OPEN speaker={Speaker} npc={Npc}",
-                speaker.Name, npc.Name);
-            FindGameClient(speaker)?.OpenBankBox();
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Service NPC keyword response. We don't yet have a dedicated NPC
-    /// overhead-speech broadcast, so the line is delivered as a system
-    /// </summary>
     // Source-X sphere.ini TRAINSKILLPERCENT / TRAINSKILLMAX (defaults 30 / 420).
     // Single source of truth: VendorTrainingEngine, wired from config — this
     // keyword path and the paid-training flow must agree.
@@ -271,44 +166,6 @@ public static partial class Program
             npc.GetName(),
             line);
         BroadcastNearby(npc.Position, 14, speechPacket, 0);
-    }
-
-    /// <summary>
-    /// NPC training request (Source-X NPC_OnTrainHear). Recognise a skill name in
-    /// the message, quote its price, and record a pending-training memory keyed by
-    /// the student so a later gold hand-off (<see cref="TryPayForTraining"/>)
-    /// completes it. With no skill named, advertise that the NPC teaches.
-    /// </summary>
-    private static string HandleTrainRequest(Character speaker, Character npc, string lowerText)
-    {
-        if (!TryMatchSkill(lowerText, out var skill))
-            return "I can train thee — name the skill thou wishest to learn.";
-
-        int amount = SphereNet.Game.Trade.VendorTrainingEngine
-            .CalcTrainableAmount(npc, speaker, skill);
-        if (amount <= 0)
-            return $"I cannot teach thee more {skill}.";
-
-        int cost = SphereNet.Game.Trade.VendorTrainingEngine.TrainCost(npc, amount);
-        SphereNet.Game.Trade.VendorTrainingEngine.RememberOffer(npc, speaker, skill);
-        return $"To train {(amount / 10.0):0.0} points of {skill} will cost thee {cost} gold. " +
-               "Hand me the coin and I shall teach thee.";
-    }
-
-    /// <summary>Match the first base-skill whose enum name appears in the message.</summary>
-    private static bool TryMatchSkill(string lowerText, out SkillType skill)
-    {
-        for (int i = 0; i < SphereNet.Game.Skills.SkillEngine.BaseSkillCount; i++)
-        {
-            var candidate = (SkillType)i;
-            if (lowerText.Contains(candidate.ToString().ToLowerInvariant()))
-            {
-                skill = candidate;
-                return true;
-            }
-        }
-        skill = default;
-        return false;
     }
 
     /// <summary>
@@ -419,13 +276,22 @@ public static partial class Program
             }
         }
 
-        // @CallGuards (Source-X) — fired on the caller for the reported criminal
-        // (<argo> = the criminal). RETURN 1 cancels the guard response.
-        if (_triggerDispatcher?.FireCharTrigger(caller, CharTrigger.CallGuards,
-                new TriggerArgs { CharSrc = caller, O1 = criminal }) == TriggerResult.True)
-            return false;
+        // The guard kind: the area's OVERRIDE.GUARDS tag, else the GUARDS resource
+        // (Scripts-X defs.scp: { c_guard 1 c_guard_f 1 }) - CCharFight.cpp:252-253.
+        int guardDefIndex = ResolveGuardCharDef(criminalArea);
 
-        guard ??= SummonCityGuardNear(criminal, criminalArea.Name);
+        // @CallGuards: ARGN1 = the chardef that will be summoned, ARGN2 = 1 forces a
+        // new guard even when one is at hand, <argo> = the criminal; RETURN 1 refuses
+        // (CCharFight.cpp:254-269).
+        var cgArgs = new TriggerArgs { CharSrc = caller, O1 = criminal, N1 = guardDefIndex, N2 = 0 };
+        if (_triggerDispatcher?.FireCharTrigger(caller, CharTrigger.CallGuards, cgArgs) == TriggerResult.True)
+            return false;
+        if (cgArgs.N1 != guardDefIndex)
+            guardDefIndex = (int)cgArgs.N1;
+        if (cgArgs.N2 > 0)
+            guard = null;
+
+        guard ??= SummonCityGuardNear(criminal, criminalArea, guardDefIndex);
         if (guard == null || guard.IsDeleted)
             return false;
 
@@ -534,88 +400,77 @@ public static partial class Program
         return offender;
     }
 
-    private static Character? SummonCityGuardNear(Character hostile, string regionName)
+    /// <summary>The chardef a call for guards summons: the area's OVERRIDE.GUARDS
+    /// tag, else the GUARDS resource name, looked up as a CHARDEF
+    /// (g_Cfg.ResourceGetIDType, CCharFight.cpp:252-253). A [DEFNAME] alias is followed
+    /// and a brace group draws one member by weight. 0 when nothing resolves.</summary>
+    internal static int ResolveGuardCharDef(SphereNet.Game.World.Regions.Region? area)
     {
-        if (hostile.IsDeleted)
+        if (_resources == null)
+            return 0;
+        string name = "GUARDS";
+        if (area != null && area.TryGetTag("OVERRIDE.GUARDS", out string? overrideGuards) &&
+            !string.IsNullOrWhiteSpace(overrideGuards))
+            name = overrideGuards.Trim();
+        string target = _resources.FollowResourceAlias(name);
+        var rid = _resources.ResolveDefName(target);
+        if (rid.IsValid && rid.Type == ResType.CharDef)
+            return rid.Index;
+        int numeric = ValueCurve.ParseSphereNumber(target);
+        return numeric > 0 && _resources.GetResource(ResType.CharDef, numeric) != null ? numeric : 0;
+    }
+
+    /// <summary>Summon a new guard onto the criminal (CCharFight.cpp:271-282): the
+    /// ordinary NPC creation (CreateNPC), a RED area's guard gets the evil name hue,
+    /// and it lingers GUARDLINGER as a summoned creature before it goes. Nothing
+    /// else - no invulnerability, no forced stats, no made-up body or name: when the
+    /// chardef does not resolve, no guard comes.</summary>
+    private static Character? SummonCityGuardNear(Character hostile,
+        SphereNet.Game.World.Regions.Region area, int guardDefIndex)
+    {
+        if (hostile.IsDeleted || guardDefIndex <= 0)
             return null;
 
-        string defName = Random.Shared.Next(2) == 0 ? "C_GUARD" : "C_GUARD_F";
-        var rid = _resources.ResolveDefName(defName);
-        if (!rid.IsValid || rid.Type != ResType.CharDef)
+        var charDef = DefinitionLoader.GetCharDef(guardDefIndex);
+        var link = _resources.GetResource(ResType.CharDef, guardDefIndex);
+        string? defName = link?.DefName ?? link?.HeaderArgument;
+        if (string.IsNullOrWhiteSpace(defName))
         {
-            rid = _resources.ResolveDefName("C_GUARD");
-            if (!rid.IsValid || rid.Type != ResType.CharDef)
-            {
-                _log.LogWarning("[guard] CHARDEF C_GUARD / C_GUARD_F not found in scripts, cannot summon guard");
-                return null;
-            }
-        }
-
-        var charDef = DefinitionLoader.GetCharDef(rid.Index);
-        if (charDef == null)
-        {
-            _log.LogWarning("[guard] CharDef index 0x{Index:X} resolved but definition missing", rid.Index);
+            _log.LogWarning("[guard] guard CHARDEF 0x{Index:X} is not defined, cannot summon a guard", guardDefIndex);
             return null;
         }
 
         var guard = _world.CreateCharacter();
         guard.IsPlayer = false;
-        guard.CharDefIndex = rid.Index;
-
-        ushort bodyId = charDef.DispIndex;
-        if (bodyId == 0 && !string.IsNullOrWhiteSpace(charDef.DisplayIdRef))
+        if (!CharDefHelper.TryApplyDefName(guard, defName, _resources, stats: true, refresh: false, fireCreate: false))
         {
-            var bodyRid = _resources.ResolveDefName(charDef.DisplayIdRef.Trim());
-            if (bodyRid.IsValid)
-            {
-                var refDef = DefinitionLoader.GetCharDef(bodyRid.Index);
-                if (refDef?.DispIndex > 0)
-                    bodyId = refDef.DispIndex;
-                else if (bodyRid.Index >= 0 && bodyRid.Index <= ushort.MaxValue)
-                    bodyId = (ushort)bodyRid.Index;
-            }
+            _world.DeleteObject(guard);
+            return null;
         }
-        if (bodyId == 0) bodyId = 0x0190;
-        guard.BodyId = bodyId;
-        guard.BaseId = bodyId;
-
-        if (!string.IsNullOrWhiteSpace(charDef.Name))
-            guard.Name = DefinitionLoader.ResolveNames(charDef.Name);
-        else
-            guard.Name = string.IsNullOrWhiteSpace(regionName) ? "city guard" : $"{regionName} guard";
-
-        int strVal = charDef.StrMax > 0 ? charDef.StrMax : Math.Max(1, charDef.StrMin);
-        int dexVal = charDef.DexMax > 0 ? charDef.DexMax : Math.Max(1, charDef.DexMin);
-        int intVal = charDef.IntMax > 0 ? charDef.IntMax : Math.Max(1, charDef.IntMin);
-        guard.Str = (short)Math.Clamp(strVal, 1, short.MaxValue);
-        guard.Dex = (short)Math.Clamp(dexVal, 1, short.MaxValue);
-        guard.Int = (short)Math.Clamp(intVal, 1, short.MaxValue);
-        int hits = charDef.HitsMax > 0 ? charDef.HitsMax : Math.Max(1, strVal);
-        guard.MaxHits = (short)Math.Clamp(hits, 1, short.MaxValue);
+        if (charDef != null)
+        {
+            if (!string.IsNullOrWhiteSpace(charDef.Name))
+                guard.Name = DefinitionLoader.ResolveNames(charDef.Name);
+            EquipGuardNewbieItems(guard, charDef);
+        }
+        // NPC_LoadScript (CCharNPC.cpp:265-290): @Create, the body's own brain when
+        // the definition named none, then @NPCRestock; a new NPC stands at full pools.
+        _triggerDispatcher?.FireCharTrigger(guard, CharTrigger.Create, new TriggerArgs { CharSrc = guard });
+        if (guard.NpcBrain == NpcBrainType.None)
+            guard.NpcBrain = guard.GetNpcBrainAuto();
+        _triggerDispatcher?.FireCharTrigger(guard, CharTrigger.NPCRestock, new TriggerArgs { CharSrc = guard });
         guard.Hits = guard.MaxHits;
-        guard.MaxStam = guard.Dex;
-        guard.Stam = guard.Dex;
-        guard.MaxMana = guard.Int;
-        guard.Mana = guard.Int;
+        guard.Stam = guard.MaxStam;
+        guard.Mana = guard.MaxMana;
 
-        if (charDef.NpcBrain != NpcBrainType.None)
-            guard.NpcBrain = charDef.NpcBrain;
-        else
-            guard.NpcBrain = NpcBrainType.Guard;
+        // A RED area's guards carry the evil notoriety hue on their name (:276-277).
+        if (area.TryGetTag("RED", out string? red) && ValueCurve.ParseSphereNumber(red ?? "0") != 0)
+            guard.SetTag("NAME.HUE", $"0{_config.ColorNotoEvil:x}");
 
-        guard.SetStatFlag(StatFlag.Invul);
         guard.SetTag("IS_CITY_GUARD", "1");
         guard.SetTag("GUARD_SPAWNED_AT", Environment.TickCount64.ToString());
-        guard.FightTarget = hostile.Uid;
 
         _world.PlaceCharacter(guard, hostile.Position);
-
-        _triggerDispatcher?.FireCharTrigger(guard, CharTrigger.Create, new TriggerArgs { CharSrc = guard });
-
-        if (guard.NpcBrain == NpcBrainType.None)
-            guard.NpcBrain = NpcBrainType.Guard;
-
-        EquipGuardNewbieItems(guard, charDef);
 
         // GUARDLINGER is minutes, as upstream reads it (CServerConfig.cpp:1292).
         long lingerMs = Math.Max(1, _config.GuardLinger) * 60_000L;
@@ -675,7 +530,6 @@ public static partial class Program
 
     private static void OnNpcHearSpeech(Character speaker, Character npc, string text, TalkMode mode)
     {
-        string lower = text.ToLowerInvariant();
         _log.LogDebug(
             "[npc_hear] {Speaker} -> {Npc} brain={Brain} text='{Text}'",
             speaker.Name, npc.Name, npc.NpcBrain, text);
@@ -761,90 +615,14 @@ public static partial class Program
             _npcAI != null && _npcAI.LookAtChar(npc, speaker))
             return;
 
-        // SphereNet's fallback for a service NPC whose pack attaches no SPEECH for
-        // these words: the trade, bank, training and stable keywords by BRAIN (the
-        // role is never guessed from the name), silent like the verbs they stand
-        // in for. Only reached when no SPEECH block took the line.
-        if (TryDispatchServiceKeyword(speaker, npc, text))
-            return;
-
-        string? response = null;
-        switch (npc.NpcBrain)
-        {
-            case NpcBrainType.Vendor:
-                if (HasWord(lower, "teach"))
-                {
-                    response = HandleTrainRequest(speaker, npc, lower);
-                }
-                break;
-
-            case NpcBrainType.Stable:
-                if (HasWord(lower, "stable"))
-                {
-                    // Source-X stablemaster: ask the player to TARGET the pet to stable
-                    // (instead of auto-picking the nearest). The callback validates
-                    // ownership/summoned/distance via StableEngine.StablePet.
-                    var gc = FindGameClient(speaker);
-                    if (gc != null)
-                    {
-                        var stableNpc = npc;
-                        gc.SetPendingTarget((serial, x, y, z, gfx) =>
-                        {
-                            var pet = _world.FindChar(new Serial(serial));
-                            string reply = pet != null &&
-                                    _stableEngine.StablePet(speaker, pet, _world, stableNpc)
-                                ? $"Your pet {pet.Name} has been stabled."
-                                : "You cannot stable that.";
-                            var pkt = new PacketSpeechUnicodeOut(
-                                stableNpc.Uid.Value, stableNpc.BodyId, 0, 0x03B2, 3, PacketSpeechUnicodeOut.SystemLanguage,
-                                stableNpc.Name ?? "", reply);
-                            BroadcastNearby(stableNpc.Position, 18, pkt, 0);
-                        });
-                        response = "Which pet wouldst thou stable?";
-                    }
-                    else
-                    {
-                        // Headless / no client (e.g. a scripted call) — fall back to the
-                        // nearest owned pet so the flow still works server-side.
-                        Character? pet = null;
-                        foreach (var ch in _world.GetCharsInRange(speaker.Position, 8))
-                        {
-                            if (!ch.IsPlayer && !ch.IsDead && ch.NpcMaster == speaker.Uid)
-                            {
-                                pet = ch;
-                                break;
-                            }
-                        }
-                        response = pet != null && _stableEngine.StablePet(speaker, pet, _world, npc)
-                            ? $"Your pet {pet.Name} has been stabled."
-                            : "I don't see any of your pets nearby.";
-                    }
-                }
-                else if (HasWord(lower, "claim"))
-                {
-                    var claimed = _stableEngine.ClaimPet(speaker, 0, _world, speaker.Position);
-                    if (claimed != null)
-                        response = $"Here is your pet {claimed.Name}.";
-                    else
-                        response = "You have no stabled pets.";
-                }
-                break;
-        }
-
-        // Fallback: fire @NPCHearUnknown if no built-in response
-        if (response == null)
-        {
-            var unknownResult = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearUnknown,
-                new TriggerArgs { CharSrc = speaker, S1 = text });
-            // Not understood while talking: count it (NPC_OnHear, CCharNPCAct.cpp:369-385).
-            if (unknownResult != TriggerResult.True)
-                _npcAI?.NpcHearUnknown(npc, speaker);
-            return;
-        }
-
-        // Send NPC speech response to nearby clients
-        var speechPacket = new PacketSpeechUnicodeOut(
-            npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, PacketSpeechUnicodeOut.SystemLanguage, npc.GetName(), response);
-        BroadcastNearby(npc.Position, 18, speechPacket, 0);
+        // Nothing else: the NPC could not make the speaker out (CCharNPCAct.cpp:368-385).
+        // Source-X has no engine keyword answers here - buying, selling, the bank
+        // box, training and the stable are the pack's SPEECH blocks (BUY, SELL,
+        // BANKSELF, TRAIN, PETSTABLE, PETRETRIEVE), which ran above.
+        var unknownResult = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearUnknown,
+            new TriggerArgs { CharSrc = speaker, S1 = text });
+        // Not understood while talking: count it (NPC_OnHear, CCharNPCAct.cpp:369-385).
+        if (unknownResult != TriggerResult.True)
+            _npcAI?.NpcHearUnknown(npc, speaker);
     }
 }

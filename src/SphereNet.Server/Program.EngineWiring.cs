@@ -1208,30 +1208,12 @@ public static partial class Program
                 _triggerDispatcher?.FireCharTrigger(caster, CharTrigger.SpellInterrupt,
                     new TriggerArgs { CharSrc = caster });
             };
-            // Shared cast-resolution pipeline (Source-X Spell_CastDone). Fires the
-            // @SpellSuccess / @SpellFail char triggers AND the per-spell [SPELL]
-            // ON= block for EVERY caster — player, NPC, direct. @SpellEffect is
-            // NOT fired here: Source-X fires it on each AFFECTED char with the
-            // full LOCAL contract, which SpellEngine.ApplyCharEffect now does.
-            _spellEngine.OnCastResolved = (caster, spell, success) =>
-            {
-                if (_triggerDispatcher == null) return;
-                int spellId = (int)spell;
-                if (success)
-                {
-                    _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellSuccess,
-                        new TriggerArgs { CharSrc = caster, N1 = spellId });
-                    _triggerDispatcher.FireSpellTrigger(spell, "Success",
-                        caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
-                }
-                else
-                {
-                    _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellFail,
-                        new TriggerArgs { CharSrc = caster, N1 = spellId });
-                    _triggerDispatcher.FireSpellTrigger(spell, "Fail",
-                        caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
-                }
-            };
+            // @SpellSuccess / [SPELL] @Success and @SpellFail / [SPELL] @Fail are
+            // fired by SpellEngine itself at the points Source-X fires them - before
+            // the cast is paid for (Spell_CastDone, CCharSpell.cpp:2961-2971) and
+            // before a failed cast's mana loss (Spell_CastFail, :3348-3360) - so
+            // their RETURN 1 and LOCAL/ARGN2 changes take effect. Nothing to do here.
+            _spellEngine.OnCastResolved = null;
             // CANCAST.<spell> property backend: mana, primary-skill requirement
             // and region antimagic — the checks Spell_CanCast front-loads.
             // SKILLUSEQUICK.<skill>,<difficulty>[,...]: rolls, so it is wired to the
@@ -1498,15 +1480,19 @@ public static partial class Program
                     }
                 }
             };
+            // FORGIVE / an opt-in timed sentence running out: Source-X Jail(false)
+            // (CCharAct.cpp:193-210) clears PRIV_JAILED and JailCell and says so;
+            // the prisoner is not moved.
             Character.OnJailReleaseRequested = inmate =>
             {
-                inmate.ClearStatFlag(StatFlag.Freeze);
-                inmate.RemoveTag("JAIL_RELEASE");
-                inmate.RemoveTag("JAIL_CELL");
-                var spawnPos = new Point3D(1495, 1629, 10, 0);
-                _world.MoveCharacter(inmate, spawnPos);
+                inmate.ClearStatFlag(StatFlag.Freeze); // left by an older SphereNet jail
+                inmate.SetJailState(false);
                 if (_clientsByCharUid.TryGetValue(inmate.Uid, out var inmateClient))
+                {
+                    inmateClient.SysMessage(SphereNet.Game.Messages.ServerMessages.Get(
+                        SphereNet.Game.Messages.Msg.MsgForgiven));
                     inmateClient.Resync();
+                }
             };
             Character.OnHungerDecay = ch =>
             {
@@ -1534,30 +1520,35 @@ public static partial class Program
                 return (int)Math.Min(int.MaxValue, args.N1 * 60);
             };
 
-            // A witness who noticed a crime (CrimeWitnessService.CheckCrimeSeen)
-            // fires @SeeCrime — or @SeeSnoop for a snoop — on the witness, with
-            // <src> = the criminal and ARGO = the victim. @SeeSnoop RETURN 1 makes
-            // that witness ignore the snoop; ARGN1 on either asks the engine to
-            // flag the criminal globally (call guards) instead of personal grey.
-            SphereNet.Game.Objects.Characters.CrimeWitnessService.OnCrimeNoticed =
-                (witness, criminal, mark, isSnoop) =>
+            // A witness who noticed a crime (CrimeWitnessService.CheckCrimeSeen):
+            // @SeeSnoop (CCharFight.cpp:141-151) - ARGN1 = SKILL_SNOOPING, ARGO = the
+            // mark, RETURN 1 makes this witness ignore it.
+            SphereNet.Game.Objects.Characters.CrimeWitnessService.OnSeeSnoop =
+                (witness, criminal, mark) =>
+                    _triggerDispatcher != null &&
+                    _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeSnoop,
+                        new TriggerArgs { CharSrc = criminal, O1 = mark, N1 = (int)SkillType.Snooping })
+                    == TriggerResult.True;
+            // @SeeCrime on a PLAYER witness (OnNoticeCrime, CCharFight.cpp:45-53):
+            // ARGN1 (seeded 0) read back as "flag the criminal", ARGO = the mark.
+            SphereNet.Game.Objects.Characters.CrimeWitnessService.OnSeeCrime =
+                (witness, criminal, mark) =>
                 {
                     if (_triggerDispatcher == null)
-                        return false;
-                    // @SeeSnoop (CCharFight.cpp:141-151): ARGN1 = SKILL_SNOOPING, ARGO =
-                    // the mark, nothing read back; RETURN 1 makes this witness ignore it.
-                    if (isSnoop && _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeSnoop,
-                            new TriggerArgs { CharSrc = criminal, O1 = mark, N1 = (int)SkillType.Snooping })
-                            == TriggerResult.True)
-                        return null;
-                    // @SeeCrime runs on PLAYER witnesses only (OnNoticeCrime,
-                    // CCharFight.cpp:42-56): ARGN1 (seeded 0) read back as "call the
-                    // guards", ARGO = the mark. NPC witnesses act on their own.
-                    if (!witness.IsPlayer)
                         return false;
                     var args = new TriggerArgs { CharSrc = criminal, O1 = mark, N1 = 0 };
                     _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeCrime, args);
                     return args.N1 != 0;
+                };
+            // An NPC witness in a guarded area yells (unless it is a guard) and calls
+            // the guards (CCharFight.cpp:85-91).
+            SphereNet.Game.Objects.Characters.CrimeWitnessService.OnNpcCallGuards =
+                (witness, criminal) =>
+                {
+                    if (witness.NpcBrain != NpcBrainType.Guard)
+                        _npcAI?.OnNpcSay?.Invoke(witness,
+                            SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.NpcGenericCrim));
+                    CallGuards(witness, criminal);
                 };
             GameRegion.ClientCountProvider = regionObj =>
             {
@@ -1743,6 +1734,8 @@ public static partial class Program
                 BroadcastNearby(npc.Position, 18, new PacketSound(soundId, npc.X, npc.Y, npc.Z), 0);
             _npcAI.OnNpcEat = (npc, food, qty) =>
                 SphereNet.Game.NPCs.EatEngine.Eat(npc, food, _triggerDispatcher, qty);
+            _npcAI.OnNpcEatAnim = (npc, bite, foodGain) =>
+                SphereNet.Game.NPCs.EatEngine.EatAnim(npc, bite, _triggerDispatcher, foodGain);
             _npcAI.OnNpcLooted = (npc, item, fromCorpse) =>
             {
                 // NPC_Act_Looting (CCharNPCAct.cpp:1637-1641): the rummage emote for a
@@ -2034,6 +2027,17 @@ public static partial class Program
                 BroadcastNearby(npc.Position, 18, GameClient.BuildObjectEffect(
                     0, npc, target, throwGfx, 5, 1, false), 0);
                 ApplyNpcSpecialDamage(npc, target, damage, DamageType.HitBlunt, 100, 0, 0, 0, 0);
+            };
+            _npcAI.OnNpcThrowShot = (npc, target, shot) =>
+            {
+                FaceAndBroadcastToward(npc, target);
+                // Skill_Act_Throwing (CCharSkill.cpp:3464-3472): the missile flies as
+                // an EFFECT_BOLT; the blow, when it lands, goes through OnTakeDamage.
+                BroadcastNearby(npc.Position, 18, GameClient.BuildObjectEffect(
+                    0, npc, target, shot.Gfx, 5, 1, false), 0);
+                if (shot.Damage > 0)
+                    ApplyNpcSpecialDamage(npc, target, shot.Damage, shot.DamageType,
+                        shot.Physical, shot.Fire, shot.Cold, shot.Poison, shot.Energy);
             };
             _npcAI.ResolveNpcSpellFlags = spell => _spellEngine.GetSpellDef(spell)?.Flags;
             _npcAI.ResolveNpcSpellLayer = spell => _spellEngine.GetSpellDef(spell)?.Layer ?? Layer.None;

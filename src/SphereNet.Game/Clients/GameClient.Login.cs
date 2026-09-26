@@ -498,10 +498,14 @@ public sealed partial class GameClient
                 return;
             }
 
+            // ARGN3 (race) is read back from f_onchar_create_init (receive.cpp:219-220);
+            // ARGN2 (profession) is read back there too, but nothing here consumes it.
+            int race = (int)createHookArgs.Number3;
+
             if (info != null)
             {
                 // Body follows the chosen race (elf/gargoyle), not always human.
-                _character.BodyId = (info.Race, info.Female) switch
+                _character.BodyId = (race, info.Female) switch
                 {
                     (2, false) => (ushort)0x025D, (2, true) => (ushort)0x025E, // elf m/f
                     (3, false) => (ushort)0x029A, (3, true) => (ushort)0x029B, // gargoyle m/f
@@ -816,30 +820,21 @@ public sealed partial class GameClient
                 _character.PrivLevel = _account.PrivLevel;
             }
         }
-        if (_character.TryGetTag("JAIL_RELEASE", out string? jailTag))
+        // PRIV_JAILED on login re-runs Jail (CClientMsg.cpp:2868-2869): back to the
+        // jail cell's region point. No freeze - Source-X never freezes a prisoner. An
+        // opt-in timed sentence that ran out while offline is simply forgiven.
+        if (_character.IsJailed)
         {
             if (_character.IsJailExpired())
             {
-                // Sentence already served while logged out — release on login
-                // instead of re-applying an expired jail.
-                _character.RemoveTag("JAIL_RELEASE");
-                _character.ClearStatFlag(StatFlag.Freeze);
-                var spawnPos = new Point3D(1495, 1629, 10, 0);
-                _world.MoveCharacter(_character, spawnPos);
+                _character.SetJailState(false);
+                _character.ClearStatFlag(StatFlag.Freeze); // left by an older SphereNet jail
             }
             else
             {
-                // Still serving — re-confine to the correct numbered cell (Source-X
-                // re-runs Jail() on login via the JailCell account tag).
-                int cell = 0;
-                if (_character.TryGetTag("JAIL_CELL", out string? cellTag) && int.TryParse(cellTag, out int c))
-                    cell = c;
-                var jailPos = _world.GetJailPoint(cell);
+                var jailPos = _world.GetJailPoint(_character.JailCell);
                 if (_character.Position.X != jailPos.X || _character.Position.Y != jailPos.Y)
-                {
                     _world.MoveCharacter(_character, jailPos);
-                    _character.SetStatFlag(StatFlag.Freeze);
-                }
             }
         }
 
@@ -852,13 +847,12 @@ public sealed partial class GameClient
             _character.MaxMana = _character.Int;
         if (_character.MaxStam <= 0 && _character.Dex > 0)
             _character.MaxStam = _character.Dex;
-        // Ensure current stats are at least 1 for a living character
+        // A living character saved with no hit points would die on its first tick;
+        // keep that repair. Mana and stamina are NOT refilled: Source-X logs a
+        // character in with the pools it was saved with (a tired player stays tired,
+        // regen refills them), so a relog was a free full refill here.
         if (_character.Hits <= 0 && !_character.IsDead && _character.MaxHits > 0)
             _character.Hits = _character.MaxHits;
-        if (_character.Mana <= 0 && _character.MaxMana > 0)
-            _character.Mana = _character.MaxMana;
-        if (_character.Stam <= 0 && _character.MaxStam > 0)
-            _character.Stam = _character.MaxStam;
 
         // Sync _last* tracking fields so TickStatUpdate sends initial packets correctly
         _lastHits = _character.Hits;
@@ -1002,13 +996,18 @@ public sealed partial class GameClient
 
         if (_character.IsDead)
         {
-            bool isFemale = _character.BodyId == 0x0191 || _character.BodyId == 0x025E || _character.BodyId == 0x029B;
-            ushort ghostBody = isFemale ? (ushort)0x0193 : (ushort)0x0192;
-            if (_character.OSkin == 0 && _character.Hue.Value != 0 &&
-                _character.BodyId != 0x0192 && _character.BodyId != 0x0193)
+            // Ghost body by race and gender of the living body (CCharAct.cpp:4447-4469).
+            ushort prevBody = _character.OBody != 0 ? _character.OBody : _character.BodyId;
+            ushort ghostBody = Character.ResolveGhostBody(prevBody);
+            bool alreadyGhost = _character.BodyId == ghostBody || Character.IsGhostBodyId(_character.BodyId);
+            if (_character.OSkin == 0 && _character.Hue.Value != 0 && !alreadyGhost)
                 _character.OSkin = _character.Hue.Value;
-            if (_character.BodyId != 0x0192 && _character.BodyId != 0x0193)
+            if (!alreadyGhost)
+            {
+                if (_character.OBody == 0)
+                    _character.OBody = _character.BodyId;
                 _character.BodyId = ghostBody;
+            }
             _character.Hue = Core.Types.Color.Default;
             if (Character.PacketDeathAnimationEnabled)
                 _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));

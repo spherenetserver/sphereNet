@@ -23,15 +23,11 @@ public class SkillMagicPhase4Tests
     }
 
     [Fact]
-    public void ActiveSkillEngine_Stealth_SetsStepStealthBudget()
+    public void ActiveSkillEngine_Stealth_LeavesTheStepBudgetToTheScript()
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
-        // The success die in CheckSuccess rolls against Random.Shared, which is
-        // not seedable per-test, so a high skill alone still fails on the curve's
-        // tail ~2% of runs. This test only cares about the success-branch budget,
-        // so force a deterministic success via GM auto-pass; StepStealth still
-        // derives purely from the stored skill value (the step budget itself is capped).
+        // GM auto-pass makes the success deterministic.
         ch.PrivLevel = PrivLevel.GM;
         ch.SetSkill(SkillType.Stealth, 3000);
         ch.SetStatFlag(StatFlag.Hidden);
@@ -39,7 +35,10 @@ public class SkillMagicPhase4Tests
 
         var sink = new RecordingSkillSink(ch, world);
         Assert.True(ActiveSkillEngine.Stealth(sink));
-        Assert.Equal(10, ch.StepStealth);
+        // SKILL_STEALTH has no engine stage (CCharSkill.cpp:3674): the step budget is
+        // STEPSTEALTH, which the pack's [SKILL 47] @Success sets
+        // (skills/skill47_stealth.scp). This used to expect an engine-made 10.
+        Assert.Equal(0, ch.StepStealth);
         Assert.True(ch.IsStatFlag(StatFlag.Hidden));
         Assert.False(ch.IsStatFlag(StatFlag.Invisible));
     }
@@ -61,10 +60,13 @@ public class SkillMagicPhase4Tests
     }
 
     [Fact]
-    public void SpellEngine_GateBothSides_OpensReturnGate()
+    public void SpellEngine_GateTravel_AlwaysOpensTwoLinkedTelepads()
     {
+        // Spell_CreateGate (CCharSpell.cpp:250-339) always opens BOTH ends as linked
+        // IT_TELEPAD gates; the one-way moongate plus an opt-in return gate was
+        // invented.
         var world = CreateWorld();
-        Character.MagicFlags = (int)MagicConfigFlags.GateBothSides;
+        Character.MagicFlags = 0;
         try
         {
             var registry = new SpellRegistry();
@@ -89,13 +91,19 @@ public class SkillMagicPhase4Tests
             Assert.True(engine.CastStart(caster, SpellType.GateTravel, rune.Uid, rune.Position) > 0);
             Assert.True(engine.CastDone(caster));
 
-            int gateCount = 0;
+            Item? here = null, there = null;
             foreach (var item in world.GetItemsInRange(new Point3D(100, 100, 0, 0), 2))
-                if (item.ItemType == ItemType.Moongate) gateCount++;
+                if (item.ItemType == ItemType.Telepad) here = item;
             foreach (var item in world.GetItemsInRange(new Point3D(200, 210, 5, 0), 2))
-                if (item.ItemType == ItemType.Moongate) gateCount++;
+                if (item.ItemType == ItemType.Telepad) there = item;
 
-            Assert.Equal(2, gateCount);
+            Assert.NotNull(here);
+            Assert.NotNull(there);
+            Assert.Equal(there!.Uid, here!.Link);
+            Assert.Equal(here.Uid, there.Link);
+            Assert.Equal(200, here.MoreP.X);          // leads to the mark
+            Assert.Equal(100, there.MoreP.X);         // and back to the caster
+            Assert.True(here.IsAttr(ObjAttributes.Move_Never));
         }
         finally
         {
@@ -104,8 +112,10 @@ public class SkillMagicPhase4Tests
     }
 
     [Fact]
-    public void SpellEngine_OutdoorSpell_BlockedInUndergroundRegion()
+    public void SpellEngine_OutdoorSpell_IsNotBlockedUnderground()
     {
+        // Source-X has no outdoor-only spell list: REGION_FLAG_UNDERGROUND only sets
+        // STATF_INDOORS (CCharAct.cpp:4831). The old underground refusal was invented.
         var world = CreateWorld();
         var dungeon = new Region { Name = "dungeon_test" };
         dungeon.Flags = RegionFlag.Underground;
@@ -130,17 +140,7 @@ public class SkillMagicPhase4Tests
         world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
 
         var engine = new SpellEngine(world, registry);
-        Assert.Equal(-1, engine.CastStart(caster, SpellType.Flamestrike, target.Uid, target.Position));
-
-        Character.MagicFlags = (int)MagicConfigFlags.DungeonOutdoorSpells;
-        try
-        {
-            Assert.True(engine.CastStart(caster, SpellType.Flamestrike, target.Uid, target.Position) > 0);
-        }
-        finally
-        {
-            Character.MagicFlags = 0;
-        }
+        Assert.True(engine.CastStart(caster, SpellType.Flamestrike, target.Uid, target.Position) > 0);
     }
 
     [Fact]
@@ -167,6 +167,8 @@ public class SkillMagicPhase4Tests
             world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
             var engine = new SpellEngine(world, registry);
+            // The form is the menu pick (m_atMagery.m_uiSummonID) - no random body.
+            caster.SetTag("POLY_SELECT", "51");
             Assert.True(engine.CastStart(caster, SpellType.Polymorph, caster.Uid, caster.Position) > 0);
             Assert.True(engine.CastDone(caster));
             Assert.NotEqual(0x0190, caster.BodyId);

@@ -142,16 +142,20 @@ public class ParityWaveH1Tests
 
         var stone = world.CreateItem();
         stone.ItemType = ItemType.ItemStone;
+        // m_itItemStone (CItem.h:499-505): the amount left is MOREY, not MORE2
+        // (MORE2 is the price). The old test put the charges in MORE2.
         stone.More1 = 0x0F3F; // dispenses arrows
-        stone.More2 = 2;      // two charges
+        stone.More2 = 50;     // price - untouched by the dispenser
+        stone.MoreP = new Point3D(0, 2, 0, 0); // MOREY: two charges
         world.PlaceItem(stone, new Point3D(100, 100, 0, 0));
 
         client.HandleDoubleClick(stone.Uid.Value);
         Assert.Contains(pack.Contents, i => i.BaseId == 0x0F3F);
-        Assert.Equal(1u, stone.More2);
+        Assert.Equal(1, stone.MoreP.Y);
 
         client.HandleDoubleClick(stone.Uid.Value);
-        Assert.Equal((uint)ushort.MaxValue, stone.More2); // exhausted → "dead"
+        Assert.Equal(ushort.MaxValue, (ushort)stone.MoreP.Y); // exhausted -> "dead"
+        Assert.Equal(50u, stone.More2);
 
         int before = pack.Contents.Sum(i => i.BaseId == 0x0F3F ? (int)i.Amount : 0);
         client.HandleDoubleClick(stone.Uid.Value); // dead stone gives nothing

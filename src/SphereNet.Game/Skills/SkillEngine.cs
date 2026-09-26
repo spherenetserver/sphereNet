@@ -290,10 +290,9 @@ public static class SkillEngine
         // gain branch, not stat training (Source-X Skill_Experience).
         byte lockState = ch.GetSkillLock(skill);
 
-        // Check total skill cap
-        int totalSkill = GetSkillSum(ch);
-        int totalMax = GetSkillSumMax(ch);
-        if (totalSkill >= totalMax)
+        // Total skill cap - players only (Source-X Skill_Experience,
+        // CCharSkill.cpp:380-386: the sum check sits under IsPlayer()).
+        if (ch.IsPlayer && GetSkillSum(ch) >= GetSkillSumMax(ch))
             iDiff = 0; // at skill cap
 
         // Gain radius check (task too easy). Reference semantics: only
@@ -333,7 +332,7 @@ public static class SkillEngine
             // Slightly higher decay chance than gain chance (reference 3:4).
             if (roll * 3 <= chance * 4)
             {
-                TrySkillDecay(ch, skill);
+                TrySkillDecay(ch);
             }
 
             // Skill gain — only when lock state is Up (0) and not at the cap.
@@ -348,8 +347,9 @@ public static class SkillEngine
         TryStatGain(ch, skill);
     }
 
-    /// <summary>Configurable total skill cap, defaults to 7000 (700.0). Set from sphere.ini MAXBASESKILL.</summary>
-    public static int SkillSumMaxOverride { get; set; } = 7000;
+    /// <summary>Total skill cap when the character has no skill class: the
+    /// CSkillClassDef::Init default, 1000.0 (CSkillClassDef.cpp:27).</summary>
+    public static int SkillSumMaxOverride { get; set; } = 10000;
 
     /// <summary>Stat advance-rate curves from the script [ADVANCE] section
     /// (reference g_Cfg.m_StatAdv): index 0=Str, 1=Dex, 2=Int. Empty curves
@@ -466,26 +466,31 @@ public static class SkillEngine
         return chance - (int)((long)(chance / 2) * distance / variance);
     }
 
-    /// <summary>Decay one DOWN-locked skill by 0.1 (reference
-    /// Skill_Decrease): runs on the pre-gain decay roll regardless of the
-    /// total cap, opening room for the skill being trained.</summary>
-    private static void TrySkillDecay(Character ch, SkillType excludeSkill)
+    /// <summary>Decay one DOWN-locked skill by 0.1 (Source-X Skill_Decay,
+    /// CCharSkill.cpp:318-360): runs on the pre-gain decay roll regardless of the
+    /// total cap. The skill chosen is decided by the scan, not by chance: a
+    /// candidate is skipped only while the one already picked is HIGHER than it
+    /// (:334), so the highest non-zero DOWN-locked skill wins and a tie goes to the
+    /// later index. (The upstream comment says "prefer lesser skills"; the
+    /// comparison it guards does the opposite, and the code is what runs.)</summary>
+    internal static void TrySkillDecay(Character ch)
     {
-        int count = (int)SkillType.Qty;
-        int start = Random.Shared.Next(count);
-        for (int n = 0; n < count; n++)
+        SkillType pick = SkillType.None;
+        int pickLevel = 0;
+        for (int i = 0; i < (int)SkillType.Qty; i++)
         {
-            var sk = (SkillType)((start + n) % count);
-            if (sk == excludeSkill) continue;
-            if (ch.GetSkillLock(sk) != 1) continue;
+            var sk = (SkillType)i;
+            if (!IsValidBaseSkill(sk)) continue;
             int val = ch.GetSkill(sk);
-            if (val > 0)
-            {
-                ch.SetSkill(sk, (ushort)(val - 1));
-                OnSkillDecrease?.Invoke(ch, sk, val - 1);
-                return;
-            }
+            if (ch.GetSkillLock(sk) != 1 || val <= 0) continue;
+            if (pick != SkillType.None && pickLevel > val) continue;
+            pick = sk;
+            pickLevel = val;
         }
+        if (pick == SkillType.None)
+            return;
+        ch.SetSkill(pick, (ushort)(pickLevel - 1));
+        OnSkillDecrease?.Invoke(ch, pick, pickLevel - 1);
     }
 
     /// <summary>
@@ -620,14 +625,20 @@ public static class SkillEngine
         return 1000;
     }
 
+    /// <summary>Stat_GetSumLimit (CCharStat.cpp:477-491): TAG.OVERRIDE.STATSUM, else
+    /// the player's class STATSUM, else 300.</summary>
     private static int ResolveStatSumCap(Character ch)
     {
+        if (TryGetIntTag(ch, "OVERRIDE.STATSUM", out int tag))
+            return tag;
+        if (!ch.IsPlayer)
+            return 300;
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
-        return cls?.StatSumMax > 0 ? cls.StatSumMax : 225;
+        return cls?.StatSumMax > 0 ? cls.StatSumMax : 300;
     }
 
     /// <summary>The STR ceiling this character's class allows (SKILLCLASS STR/MAXSTR,
-    /// default 125). Exposed so the OVERSKILLMULTIPLY repair pass asks the same
+    /// default 100). Exposed so the OVERSKILLMULTIPLY repair pass asks the same
     /// question the rest of the stat system does.</summary>
     internal static int StatCapStr(Character ch) => ResolveStrCap(ch);
 
@@ -637,22 +648,31 @@ public static class SkillEngine
     /// <summary>The INT ceiling this character's class allows.</summary>
     internal static int StatCapInt(Character ch) => ResolveIntCap(ch);
 
-    private static int ResolveStrCap(Character ch)
+    private static int ResolveStrCap(Character ch) => ResolveStatCap(ch, 0);
+    private static int ResolveDexCap(Character ch) => ResolveStatCap(ch, 1);
+    private static int ResolveIntCap(Character ch) => ResolveStatCap(ch, 2);
+
+    /// <summary>Stat_GetLimit (CCharStat.cpp:438-475) without the lock clamp (the
+    /// gain path skips non-UP stats itself): TAG.OVERRIDE.STATCAP_n, else the
+    /// player's class stat max, else 100 - an NPC's limit is always 100.</summary>
+    private static int ResolveStatCap(Character ch, int statIdx)
     {
+        if (TryGetIntTag(ch, $"OVERRIDE.STATCAP_{statIdx}", out int tag))
+            return tag;
+        if (!ch.IsPlayer)
+            return 100;
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
-        return cls?.StrMax > 0 ? cls.StrMax : 125;
+        int max = statIdx switch { 0 => cls?.StrMax ?? 0, 1 => cls?.DexMax ?? 0, _ => cls?.IntMax ?? 0 };
+        return max > 0 ? max : 100;
     }
 
-    private static int ResolveDexCap(Character ch)
+    private static bool TryGetIntTag(Character ch, string tag, out int value)
     {
-        var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
-        return cls?.DexMax > 0 ? cls.DexMax : 125;
+        value = 0;
+        if (!ch.TryGetTag(tag, out string? raw) ||
+            !SphereNet.Core.Types.ScriptNumber.TryParseToken(raw, out long v))
+            return false;
+        value = (int)Math.Clamp(v, 0, int.MaxValue);
+        return true;
     }
-
-    private static int ResolveIntCap(Character ch)
-    {
-        var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
-        return cls?.IntMax > 0 ? cls.IntMax : 125;
-    }
-
 }

@@ -295,6 +295,9 @@ public sealed class WorldClockChampionParity12Tests
         ID=0x9B
         NAME=test boss
 
+        [EVENTS e_spawn_champion]
+        ON=@Create
+
         [CHAMPION champ_12]
         DEFNAME=champ_12
         NAME=Twelve
@@ -335,6 +338,62 @@ public sealed class WorldClockChampionParity12Tests
         altar.SetTag("MORE1_DEFNAME", defName);
         altar.InitializeSpawnComponent(world, resources);
         return (world, altar, altar.Champion!);
+    }
+
+    // ================================================================ champion start / candles / members
+
+    [Fact]
+    public void StartFiresTheStartTriggerOnlyForACharacter()
+    {
+        // CCChampion::Start (CCChampion.cpp:171): @Start runs only when a character
+        // started the event.
+        var resources = LoadResources();
+        var (world, _, champ) = CreateAltar(resources);
+        int starts = 0;
+        SpawnComponent.OnSpawnTrigger = (_, trig, _) =>
+        {
+            if (trig == ItemTrigger.Start) starts++;
+            return TriggerResult.Default;
+        };
+        try
+        {
+            champ.Start();
+            Assert.Equal(0, starts);
+            champ.Stop();
+
+            var gm = world.CreateCharacter();
+            gm.IsPlayer = true;
+            champ.Start(gm);
+            Assert.Equal(1, starts);
+        }
+        finally { SpawnComponent.OnSpawnTrigger = null; }
+    }
+
+    [Fact]
+    public void ARedCandleReArmsTheWhiteQuota()
+    {
+        // CCChampion::AddRedCandle (CCChampion.cpp:446).
+        var resources = LoadResources();
+        var (_, _, champ) = CreateAltar(resources);
+        champ.Start();
+        champ.SpawnsNextWhite = 0;
+
+        champ.AddRedCandle();
+
+        Assert.Equal(champ.SpawnsNextRed / 5, champ.SpawnsNextWhite);
+    }
+
+    [Fact]
+    public void AWaveMemberCarriesTheChampionEvent()
+    {
+        // CCChampion::AddObj (CCChampion.cpp:756-769).
+        var resources = LoadResources();
+        var (world, altar, champ) = CreateAltar(resources);
+        champ.Start();
+
+        var rid = resources.ResolveDefName("e_spawn_champion");
+        var member = altar.SpawnChar!.SpawnedUids.Select(world.FindChar).First(c => c != null)!;
+        Assert.Contains(rid, member.Events);
     }
 
     // ================================================================ 12C-3

@@ -25,6 +25,7 @@ public class PetDesertTriggerTests
     {
         var pet = world.CreateCharacter();
         pet.NpcMaster = owner.Uid;        // owned → loyalty timer runs
+        pet.SetTag("MAXFOOD", "60");      // an NPC with no ceiling never hungers (CCharBase.cpp:26)
         pet.MaxHits = 50; pet.Hits = 50;  // the hunger bite must not kill it
         pet.NpcFood = 1;                  // one decay tick from deserting
         pet.SetNextFoodTick(1);           // a due-in-the-past food tick

@@ -158,7 +158,7 @@ public class ActiveSkillEngineTests
     }
 
     [Fact]
-    public void Musicianship_WearsOutInstrumentOnUse()
+    public void Musicianship_DoesNotWearTheInstrument()
     {
         var world = MakeWorld();
         var ch = MakeChar();
@@ -169,9 +169,11 @@ public class ActiveSkillEngineTests
 
         Assert.True(ActiveSkillEngine.Musicianship(sink));
 
-        Assert.Single(sink.Consumed);
-        Assert.Same(instrument, sink.Consumed[0].Item);
-        Assert.Equal(0, instrument.UsesRemaining);
+        // Upstream wears a tool only on a SKF_GATHER success with EF_DamageTools
+        // (CCharSkill.cpp:3947-3961); Use_PlayMusic never touches the instrument.
+        // This used to expect the instrument consumed.
+        Assert.Empty(sink.Consumed);
+        Assert.Equal(1, instrument.UsesRemaining);
     }
 
     [Fact]

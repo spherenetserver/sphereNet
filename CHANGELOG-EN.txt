@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Comment-only ITEMDEF sections define their item
+------------------------------------------------------------------------
+FIX - An [ITEMDEF n] section with no keys (only comments) now defines the
+      item, as Source-X links a base to any ITEMDEF section it has. The
+      pack's [ITEMDEF 080] (the Wall of Stone piece) and [ITEMDEF 01ea8]
+      were treated as unscripted, so every saved one loaded as DEFAULTITEM
+      (gold coins).
+
 [2026-09-26] - Resource bits expire and regrow; fishing/mining/lumberjacking follow Source-X
 ------------------------------------------------------------------------
 FIX - REGION_FLAG_NODECAY no longer re-arms decay at tick time; it shapes only

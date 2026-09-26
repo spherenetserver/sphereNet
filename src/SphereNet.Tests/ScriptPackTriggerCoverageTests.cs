@@ -83,7 +83,15 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
             string full = ResolveRoot(root);
             if (!Directory.Exists(full)) continue;
             foreach (string f in Directory.EnumerateFiles(full, "*.scp", SearchOption.AllDirectories))
+            {
+                // A server root also holds world saves and account files, which are
+                // .scp too but not scripts ([WORLDITEM], [SAVEID], [SECTORS]...).
+                var parts = Path.GetRelativePath(full, f).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (parts.Any(p => p.Equals("save", StringComparison.OrdinalIgnoreCase) ||
+                                   p.Equals("accounts", StringComparison.OrdinalIgnoreCase)))
+                    continue;
                 yield return f;
+            }
         }
     }
 

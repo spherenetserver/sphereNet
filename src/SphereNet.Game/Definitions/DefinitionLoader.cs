@@ -659,6 +659,13 @@ public sealed class DefinitionLoader
         var keys = link.StoredKeys;
         if (keys == null || keys.Count == 0)
         {
+            // A section with nothing but comments still DEFINES the item: Source-X
+            // links a CItemBase to any [ITEMDEF n] it has a section for
+            // (CItemBase::FindItemBase, CItemBase.cpp:2242-2264) and only an id with
+            // no section at all is "UN-scripted". Counting it without registering it
+            // made the pack's bare [ITEMDEF 080] (the Wall of Stone piece) and
+            // [ITEMDEF 01ea8] unknown, so every saved one loaded as DEFAULTITEM gold.
+            target[link.Id.Index] = def;
             if (target == _itemDefs) ItemDefsLoaded++;
             return;
         }

@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Yalnizca yorum iceren ITEMDEF bolumleri esyayi tanimlar
+------------------------------------------------------------------------
+DUZELTME - Anahtari olmayan (yalnizca yorum iceren) [ITEMDEF n] bolumu artik
+           esyayi tanimlar; Source-X de bolumu olan her ITEMDEF'i taniyor.
+           Paketteki [ITEMDEF 080] (Wall of Stone parcasi) ve [ITEMDEF 01ea8]
+           tanimsiz sayiliyordu, kayitli her biri DEFAULTITEM (altin para)
+           olarak yukleniyordu.
+
 [2026-09-26] - Kaynak parcalari suresi dolunca yenilenir; balik/maden/odunculuk Source-X'i izler
 ------------------------------------------------------------------------
 DUZELTME - REGION_FLAG_NODECAY artik tick sirasinda decay'i uzatmaz; yalnizca

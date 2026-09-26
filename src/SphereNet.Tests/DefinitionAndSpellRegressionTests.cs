@@ -41,6 +41,23 @@ public class DefinitionAndSpellRegressionTests
     }
 
     [Fact]
+    public void AnItemDefSectionWithOnlyCommentsStillDefinesTheItem()
+    {
+        // Source-X links a CItemBase to any [ITEMDEF n] section (CItemBase.cpp:2242);
+        // Scripts-X ships [ITEMDEF 080] (Wall of Stone) with comments only.
+        var resources = LoadScript("""
+            [ITEMDEF 080]
+            //This is the hardcoded ITEMDEF used by Wall of Stone spell
+
+            [ITEMDEF 081]
+            DUPEITEM=080
+            """);
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
+
+        Assert.NotNull(DefinitionLoader.GetItemDef(0x80));
+    }
+
+    [Fact]
     public void DefinitionLoader_LoadsRegionDefinitionsAndHeaderFilter()
     {
         var resources = LoadScript("""

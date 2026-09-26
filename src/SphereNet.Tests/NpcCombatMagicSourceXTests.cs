@@ -327,16 +327,29 @@ public sealed class NpcCombatMagicSourceXTests
         var (world, ai, npc, enemy) = Duel(distance: 4);
         int throws = 0;
         ai.OnNpcThrow = (_, _, _) => throws++;
+        // The throw flies when Skill_Act_Throwing's three second wind-up ends, so
+        // each attempt steps the AI clock past it and fights again.
+        long clock = 1_000_000;
+        ai.NowMs = () => clock;
         npc.SetTag("THROWOBJ", "0x1363");
         var pack = AddPack(world, npc);
 
         Invoke(ai, "ActFight", npc, enemy, 100);
+        clock += NpcAI.SpecialWindupMs;
+        Invoke(ai, "ActFight", npc, enemy, 100);
         Assert.Equal(0, throws); // tag without the missile
+        Assert.Equal(NpcAI.NpcSpecialKind.None, ai.PendingSpecial(npc));
 
         var rock = world.CreateItem();
         rock.BaseId = 0x1363;
         pack.AddItem(rock);
         npc.Stam = npc.MaxStam;
+        npc.NextAttackTime = 0;
+        npc.ClearPendingHit();
+        Invoke(ai, "ActFight", npc, enemy, 100);
+        Assert.Equal(0, throws); // START: aimed, not thrown yet
+        Assert.Equal(NpcAI.NpcSpecialKind.Throw, ai.PendingSpecial(npc));
+        clock += NpcAI.SpecialWindupMs;
         Invoke(ai, "ActFight", npc, enemy, 100);
         Assert.Equal(1, throws);
     }

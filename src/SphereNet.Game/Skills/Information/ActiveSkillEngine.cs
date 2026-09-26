@@ -255,13 +255,12 @@ public static class ActiveSkillEngine
         int stealDiff = owner != null ? CalcStealingItem(ch, target, owner, sink.Random) : 1;
         bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, stealDiff);
 
-        // No backpack = nowhere to stash the loot, so the theft can't succeed.
-        // Without this the item silently vanished AND the thief could still be
-        // flagged criminal for a "successful" steal that moved nothing.
-        if (success && ch.Backpack == null)
-            success = false;
-
-        if (success)
+        // Deliver the goods (CCharSkill.cpp:4321-4331): on SUCCESS, and ALWAYS for an
+        // item taken off the ground - "stealing off the ground should always
+        // succeed, it's just a matter of getting caught" (:4311-4318). The item
+        // loses ATTR_OWNED ("Now it's mine") and goes into the thief's pack.
+        bool fromGround = owner == null;
+        if ((success || fromGround) && ch.Backpack != null)
         {
             Item? sourceContainer = null;
             if (target.ContainedIn.IsValid)
@@ -270,7 +269,8 @@ public static class ActiveSkillEngine
                 sourceContainer?.RemoveItem(target);
             }
 
-            var actual = ch.Backpack!.TryAddItemWithStack(target);
+            target.ClearAttr(ObjAttributes.Owned);
+            var actual = ch.Backpack.TryAddItemWithStack(target);
             if (actual == null)
             {
                 if (sourceContainer?.TryAddItem(target) != true)
@@ -282,6 +282,11 @@ public static class ActiveSkillEngine
                 sink.World.RemoveItem(target);
             }
         }
+        else if (success && ch.Backpack == null)
+        {
+            // No backpack = nowhere to stash the loot, so the theft can't succeed.
+            success = false;
+        }
 
         // A theft gives the thief away, and which outcome does it is the shard's
         // choice: REVEALF_STEALING_SUCCESS and REVEALF_STEALING_FAIL are separate
@@ -289,14 +294,19 @@ public static class ActiveSkillEngine
         // - getting away with it keeps you hidden.
         ch.ClearHiddenState(success ? RevealFlags.StealingSuccess : RevealFlags.StealingFail);
 
+        // "Too easy to be bad" (CCharSkill.cpp:4338): a zero-difficulty theft is
+        // never a crime.
+        if (stealDiff == 0)
+            return success;
+
         // Source-X CChar::Skill_Stealing: every nearby witness who wins the
-        // perception contest notices the theft — whether or not it succeeded —
+        // perception contest notices the theft - whether or not it succeeded -
         // and remembers it (personal grey via MEMORY_SAWCRIME); a guarded-area
-        // guard flags the thief globally. A theft no one sees has no consequence,
-        // replacing the old blind 50% MakeCriminal coin flip.
-        if (CrimeWitnessService.CheckCrimeSeen(sink.World, ch, owner, SkillType.Stealing, sink.Random)
-            && owner != null)
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.StealingMark, owner.Name));
+        // guard flags the thief globally. A theft someone saw costs Noto_Karma(-100)
+        // down to -1000 with the karma-change message (:4342-4343); one no one sees
+        // has no consequence.
+        if (CrimeWitnessService.CheckCrimeSeen(sink.World, ch, owner, SkillType.Stealing, sink.Random))
+            ApplySkillKarma(ch, -100, -1000, sink.SysMessage);
 
         return success;
     }
@@ -324,8 +334,13 @@ public static class ActiveSkillEngine
     /// <summary>Source-X CChar::Noto_Karma (CCharNotoriety.cpp:512) for a skill's
     /// karma cost: scaled by Calc_KarmaScale (CResourceCalc.cpp:388 - a good
     /// character loses twice as fast, gains half, and a gain under karma/64 is
-    /// nothing), bounded by the karma limits, then offered to @KarmaChange.</summary>
-    internal static void ApplySkillKarma(Character ch, int change)
+    /// nothing), bounded by the karma limits (a loss by <paramref name="bottom"/>,
+    /// MINKARMA when unset), then offered to @KarmaChange. The change actually
+    /// applied is reported through Noto_ChangeDeltaMsg (CCharNotoriety.cpp:547) to
+    /// <paramref name="message"/>. (The Noto_ChangeNewMsg title line that follows is
+    /// handed the CURRENT level, so upstream never prints it - :551/468.)</summary>
+    internal static void ApplySkillKarma(Character ch, int change, int bottom = int.MinValue,
+        Action<string>? message = null)
     {
         int karma = ch.Karma;
         if (karma > 0)
@@ -335,7 +350,15 @@ public static class ActiveSkillEngine
         if (change > 0)
             change = Math.Min(change, Death.DeathEngine.MaxKarma - karma);
         else
-            change = Math.Max(change, Death.DeathEngine.MinKarma - karma);
+        {
+            // Upstream sets the change to reach the bottom whenever it would pass it
+            // (CCharNotoriety.cpp:526-529) - literally, so a karma already under a
+            // custom bottom is raised to it.
+            if (bottom == int.MinValue)
+                bottom = Death.DeathEngine.MinKarma;
+            if (karma + change < bottom)
+                change = bottom - karma;
+        }
         if (Character.OnKarmaChanging != null)
         {
             int? adjusted = Character.OnKarmaChanging(ch, change);
@@ -343,6 +366,28 @@ public static class ActiveSkillEngine
             change = adjusted.Value;
         }
         ch.Karma = (short)Math.Clamp(karma + change, Death.DeathEngine.MinKarma, Death.DeathEngine.MaxKarma);
+        if (message != null && NotoChangeDeltaMessage(ch.Karma - karma, ServerMessages.Get(Msg.NotoKarma)) is { } text)
+            message(text);
+    }
+
+    /// <summary>The Noto_ChangeDeltaMsg degree words (CCharNotoriety.cpp:443-453).</summary>
+    private static readonly string[] NotoDegreeTable =
+    {
+        Msg.MsgNotoChange1, Msg.MsgNotoChange2, Msg.MsgNotoChange3, Msg.MsgNotoChange4,
+        Msg.MsgNotoChange5, Msg.MsgNotoChange6, Msg.MsgNotoChange7, Msg.MsgNotoChange8,
+    };
+
+    /// <summary>Source-X CChar::Noto_ChangeDeltaMsg (CCharNotoriety.cpp:434-463):
+    /// "You have gained/lost [degree] [karma]." with the degree
+    /// min(|delta| / (300/8), 7). Null for no change.</summary>
+    internal static string? NotoChangeDeltaMessage(int delta, string type)
+    {
+        if (delta == 0)
+            return null;
+        int degree = Math.Min(Math.Abs(delta) / (300 / 8), 7);
+        return ServerMessages.GetFormatted(Msg.MsgNotoChange0,
+            ServerMessages.Get(delta < 0 ? Msg.MsgNotoChangeLost : Msg.MsgNotoChangeGain),
+            ServerMessages.Get(NotoDegreeTable[degree]), type);
     }
 
     // -------------------------------------------------------------- Snooping
@@ -372,9 +417,10 @@ public static class ActiveSkillEngine
             ? 100 : 0;
         bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, snoopDiff);
 
-        // Snooping into someone's pack costs karma win or lose (-4, :4162).
+        // Snooping into someone's pack costs karma win or lose, with the karma-change
+        // message: Noto_Karma(-4, INT32_MIN, true) (CCharSkill.cpp:4162).
         if (ownerChar != null && ownerChar != ch)
-            ApplySkillKarma(ch, -4);
+            ApplySkillKarma(ch, -4, message: sink.SysMessage);
 
         if (!success)
         {
@@ -469,9 +515,15 @@ public static class ActiveSkillEngine
             // sound (CCharSkill.cpp:2413-2466, CItem.cpp:5378); the click this played
             // was not upstream's.
         }
-        // A failed pick is not consumed: upstream's FAIL only calls
-        // pPick->OnTakeDamage(1) (CCharSkill.cpp:2444-2448), which for IT_LOCKPICK
-        // does nothing beyond @Damage. The 1-in-3 break was invented.
+        else
+        {
+            // A failed pick is not consumed: upstream's FAIL only calls
+            // pPick->OnTakeDamage(1, this, DAMAGE_HIT_BLUNT) (CCharSkill.cpp:2444-2448),
+            // which for an IT_LOCKPICK - no armor/weapon hit points - does nothing
+            // beyond firing its @Damage (CItem.cpp:5826-5832). The 1-in-3 break was
+            // invented.
+            Combat.CombatEngine.OnItemDamaged?.Invoke(pick, 1, ch, Combat.DamageType.HitBlunt);
+        }
         return success;
     }
 
@@ -1109,7 +1161,8 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // Source-X requires a pickaxe to mine (wear: DamageGatherToolOnSuccess).
+        // Source-X requires a pickaxe to mine (wear: DamageGatherToolOnSuccess, run by the
+        // skill driver after @Success).
         var pickaxe = FindGatherTool(sink, ItemType.WeaponMacePick);
         if (pickaxe == null)
         {
@@ -1136,7 +1189,6 @@ public static class ActiveSkillEngine
                 if (result.Success && result.Item != null)
                 {
                     sink.SysMessage("You dig some ore and put it in your backpack.");
-                    DamageGatherToolOnSuccess(sink, SkillType.Mining);
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1211,26 +1263,47 @@ public static class ActiveSkillEngine
     /// sphere.ini at startup.</summary>
     public static bool DamageToolsEnabled { get; set; }
 
-    /// <summary>Tool wear, the only way upstream has it (Skill_Stage SUCCESS,
-    /// CCharSkill.cpp:3931-3961): after a SUCCESSFUL use of a SKF_GATHER skill, and
-    /// only with EF_DamageTools, the weapon in hand (LAYER_HAND1, else HAND2) takes
-    /// ITEMDAMAGEAMOUNT (1, never more than its hit points) with ITEMDAMAGECHANCE
-    /// (25%). Wear on every attempt, on crooks and instruments, and a uses counter
-    /// were all invented.</summary>
-    private static void DamageGatherToolOnSuccess(IActiveSkillSink sink, SkillType skill)
+    /// <summary>LOCAL.ITEMDAMAGECHANCE / LOCAL.ITEMDAMAGEAMOUNT seeded for
+    /// @SkillSuccess / @Success (CCharSkill.cpp:3931-3932: 25 and 1).</summary>
+    public const string ItemDamageChanceLocal = "ITEMDAMAGECHANCE";
+    public const string ItemDamageAmountLocal = "ITEMDAMAGEAMOUNT";
+
+    /// <summary>The locals Skill_Done hands @SkillSuccess and @Success
+    /// (CCharSkill.cpp:3930-3932), for a script to change before the tool wear.</summary>
+    public static SphereNet.Scripting.Variables.VarMap NewSkillSuccessLocals()
     {
-        if (!DamageToolsEnabled || !SkillEngine.HasFlag(skill, SkillFlag.Gather))
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt(ItemDamageChanceLocal, 25);
+        locals.SetInt(ItemDamageAmountLocal, 1);
+        return locals;
+    }
+
+    /// <summary>Tool wear, the only way upstream has it (Skill_Done,
+    /// CCharSkill.cpp:3945-3961): after @SkillSuccess / @Success of a SKF_GATHER
+    /// skill, and only with EF_DamageTools, the weapon in hand (LAYER_HAND1, else
+    /// HAND2) takes LOCAL.ITEMDAMAGEAMOUNT (bounded to 0..its hit points) with
+    /// LOCAL.ITEMDAMAGECHANCE percent (clamped 0-100), both read back from the
+    /// triggers (null locals = the seeded 25 / 1). Wear on every attempt, on crooks
+    /// and instruments, and a uses counter were all invented.</summary>
+    public static void DamageGatherToolOnSuccess(Character ch, SkillType skill,
+        SphereNet.Scripting.Variables.VarMap? locals, Random random)
+    {
+        long rawChance = locals?.GetInt(ItemDamageChanceLocal, 25) ?? 25;
+        int chance = (int)Math.Clamp(rawChance, 0L, 100L);
+        if (!DamageToolsEnabled || !SkillEngine.HasFlag(skill, SkillFlag.Gather) || chance <= 0)
             return;
-        var ch = sink.Self;
         var tool = ch.GetEquippedItem(Layer.OneHanded);
         if (tool == null || !ObjBase.IsTypeWeapon(tool.ItemType))
             tool = ch.GetEquippedItem(Layer.TwoHanded);
         if (tool == null || tool.IsDeleted || !ObjBase.IsTypeWeapon(tool.ItemType))
             return;
-        if (sink.Random.Next(100) >= 25)
+        if (random.Next(100) >= chance)
             return;
-        int amount = Math.Max(Math.Min(1, tool.GetHitsCur()), 0);
-        Combat.CombatEngine.ApplyDirectItemDamage(tool, amount);
+        long rawAmount = locals?.GetInt(ItemDamageAmountLocal, 1) ?? 1;
+        int amount = (int)Math.Max(Math.Min(rawAmount, tool.GetHitsCur()), 0L);
+        // OnTakeDamage(iAmount <= 0) does nothing (CItem.cpp:5805).
+        if (amount > 0)
+            Combat.CombatEngine.ApplyDirectItemDamage(tool, amount);
     }
 
     /// <summary>True when the target tile is water (Source-X fishing terrain
@@ -1299,7 +1372,7 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // Source-X requires a fishing pole (wear: DamageGatherToolOnSuccess).
+        // Source-X requires a fishing pole (wear: DamageGatherToolOnSuccess, after @Success).
         var pole = FindGatherTool(sink, ItemType.FishPole);
         if (pole == null)
         {
@@ -1324,7 +1397,6 @@ public static class ActiveSkillEngine
                 {
                     // Source-X SysMessagef(DEFMSG_FISHING_SUCCESS, name) — CCharSkill.cpp:1581
                     sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, result.Item.GetName()));
-                    DamageGatherToolOnSuccess(sink, SkillType.Fishing);
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1367,7 +1439,7 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        // Source-X requires an axe to chop (wear: DamageGatherToolOnSuccess).
+        // Source-X requires an axe to chop (wear: DamageGatherToolOnSuccess, after @Success).
         var axe = FindGatherTool(sink, ItemType.WeaponAxe);
         if (axe == null)
         {
@@ -1391,7 +1463,6 @@ public static class ActiveSkillEngine
                 if (result.Success && result.Item != null)
                 {
                     sink.SysMessage("You put some logs in your backpack.");
-                    DamageGatherToolOnSuccess(sink, SkillType.Lumberjacking);
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1689,13 +1760,18 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        if (IsNotoGood(prov, ch))
+        // A good provoked creature is a crime and refuses; a good target is a crime
+        // but the fight goes ahead. Both run CheckCrimeSeen(SKILL_PROVOCATION,
+        // nullptr, ...) (CCharSkill.cpp:2135-2144): no mark, and each witness rolls
+        // the non-thief perception chance for the skill (Calc_CrimeSeen,
+        // CResourceCalc.cpp:476) instead of noticing unconditionally.
+        if (IsNotoGood(sink.World, prov, ch))
         {
-            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, null, sink.Random);
+            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, SkillType.Provocation, sink.Random);
             return false; // "can't provoke a good target!"
         }
-        if (IsNotoGood(targ, ch))
-            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, null, sink.Random);
+        if (IsNotoGood(sink.World, targ, ch))
+            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, null, SkillType.Provocation, sink.Random);
 
         FightAttack(prov, targ);
         return true;
@@ -1721,10 +1797,10 @@ public static class ActiveSkillEngine
         return other.MapIndex == viewer.MapIndex && world.CanSeeLOS(viewer.Position, other.Position);
     }
 
-    /// <summary>Noto_GetFlag(viewer) == NOTO_GOOD, through the notoriety resolver
-    /// the host wires; without one nothing reads as good.</summary>
-    private static bool IsNotoGood(Character subject, Character viewer) =>
-        Character.ResolveNotoFlag?.Invoke(subject, viewer) == 1;
+    /// <summary>pSubject->Noto_GetFlag(pViewer) == NOTO_GOOD (CCharSkill.cpp:2135/2142),
+    /// through the engine's own notoriety computation.</summary>
+    private static bool IsNotoGood(GameWorld world, Character subject, Character viewer) =>
+        Clients.GameClient.ComputeNotoriety(world, viewer, subject) == 1;
 
     /// <summary>Source-X CChar::Fight_Attack for a creature a bard turned: it goes on
     /// the attacker list through @Attack and takes the target.</summary>
@@ -1790,8 +1866,10 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // ATTR_CANNOTREPAIR fails Armor_IsRepairable first (CItem.cpp:4851, Use_Repair
+        // CCharUse.cpp:748).
         var def = DefinitionLoader.GetItemDef(target.BaseId);
-        if (def != null && !def.Repair)
+        if (target.IsAttr(ObjAttributes.CannotRepair) || (def != null && !def.Repair))
         {
             sink.SysMessage(ServerMessages.Get(Msg.RepairNot));
             return false;

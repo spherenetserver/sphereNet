@@ -115,24 +115,7 @@ public sealed class GatheringEngine
         // resource type (CRegionWorld::FindNaturalResource, CRegion.cpp:1077-1091) -
         // no untyped REGIONTYPE stands in, and no table is borrowed from some other
         // region of the world.
-        RegionTypeDef? matchedType = null;
-
-        var region = _world.FindRegion(target);
-        if (region != null && region.Events.Count == 0 && region.RegionTypes.Count == 0)
-            region = _world.FindRegion(new Point3D(0, 0, 0, target.Map));
-        if (region != null)
-        {
-            foreach (var rtRid in region.RegionTypes)
-            {
-                var rtDef = DefinitionLoader.GetRegionTypeDef(rtRid.Index);
-                if (rtDef?.ItemTypeFilter != null &&
-                    rtDef.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase))
-                {
-                    matchedType = rtDef;
-                    break;
-                }
-            }
-        }
+        RegionTypeDef? matchedType = FindNaturalResourceType(target, typeFilter);
 
         if (matchedType == null || matchedType.Resources.Count == 0)
             return new GatherResult { Handled = false };
@@ -396,6 +379,81 @@ public sealed class GatheringEngine
         }
 
         return true;
+    }
+
+    /// <summary>The REGIONTYPE of the area at <paramref name="tile"/> whose page is
+    /// <paramref name="typeFilter"/> (CWorldMap::CheckNaturalResource ->
+    /// CRegionWorld::FindNaturalResource, CWorldMap.cpp:83-111, CRegion.cpp:
+    /// 1077-1091); an area with no EVENTS/RESOURCES hands over to the map's
+    /// background region at 0,0.</summary>
+    private RegionTypeDef? FindNaturalResourceType(Point3D tile, string typeFilter)
+    {
+        var region = _world.FindRegion(tile);
+        if (region != null && region.Events.Count == 0 && region.RegionTypes.Count == 0)
+            region = _world.FindRegion(new Point3D(0, 0, 0, tile.Map));
+        if (region == null)
+            return null;
+        foreach (var rtRid in region.RegionTypes)
+        {
+            var rtDef = DefinitionLoader.GetRegionTypeDef(rtRid.Index);
+            if (rtDef?.ItemTypeFilter != null &&
+                rtDef.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase))
+                return rtDef;
+        }
+        return null;
+    }
+
+    /// <summary>Source-X CWorldMap::CheckNaturalResource(pt, iType, fTest=false,
+    /// pCharSrc) (CWorldMap.cpp:26-172) for a resource no gathering skill owns -
+    /// the grass a grazing creature eats (IT_GRASS). The resource bit already at
+    /// the tile is handed back as it stands; otherwise one is made from the area's
+    /// REGIONTYPE for <paramref name="typeFilter"/> (r_default_grass t_grass ->
+    /// mr_grass in the packs): a hidden world-gem bit holding AMOUNT, decaying
+    /// after REGEN, announced through @RegionResourceFound / @ResourceFound. Null
+    /// when the area has no such resource, or when some other kind of item lies on
+    /// the tile (:88-97). The caller has already made sure the tile is of that
+    /// type (the fTest half).</summary>
+    public Item? CheckNaturalResource(Character? src, Point3D tile, string typeFilter, ItemType itemType)
+    {
+        lock (_world)
+        {
+            string tag = typeFilter.ToUpperInvariant();
+            var bit = FindMarker(tile, tag);
+            if (bit != null)
+                return bit;
+
+            var regionType = FindNaturalResourceType(tile, typeFilter);
+            if (regionType == null || regionType.Resources.Count == 0)
+                return null;
+            foreach (var item in _world.GetItemsInRange(tile, 0))
+            {
+                if (item.X == tile.X && item.Y == tile.Y && !item.IsDeleted && item.ItemType != itemType)
+                    return null;
+            }
+
+            var resDef = DefinitionLoader.GetRegionResourceDef(regionType.SelectRandomResource(Rng).Index);
+            if (resDef == null)
+                return null;
+            int amount = Math.Clamp(resDef.GetRandomAmount(Rng), 1, ushort.MaxValue);
+            bit = CreateMarker(tile, tag, amount, resDef);
+            bit.ItemType = itemType;
+            if (src != null)
+                FireResourceFound(src, resDef, bit);
+            return bit;
+        }
+    }
+
+    /// <summary>What is left in a natural-resource bit.</summary>
+    public static int NaturalResourceAmount(Item bit) => GetPool(bit);
+
+    /// <summary>CItem::ConsumeAmount on a resource bit: take up to
+    /// <paramref name="qty"/> and say how much was taken.</summary>
+    public static int ConsumeNaturalResource(Item bit, int qty)
+    {
+        int pool = GetPool(bit);
+        int taken = Math.Clamp(qty, 0, pool);
+        SetPool(bit, pool - taken);
+        return taken;
     }
 
     private Item? FindMarker(Point3D tile, string skillTag)

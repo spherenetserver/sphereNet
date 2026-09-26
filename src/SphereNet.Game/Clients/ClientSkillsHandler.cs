@@ -619,10 +619,24 @@ public sealed class ClientSkillsHandler
 
     private void FireActiveSkillResult(int skillId, bool ok)
     {
-        if (_triggerDispatcher == null || _character == null) return;
-        _triggerDispatcher.FireCharTrigger(_character,
-            ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
-            new TriggerArgs { CharSrc = _character, N1 = skillId });
+        if (_character == null) return;
+        if (!ok)
+        {
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillFail,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            return;
+        }
+
+        // Skill_Done (CCharSkill.cpp:3930-3961): @SkillSuccess / @Success get
+        // LOCAL.ITEMDAMAGECHANCE / ITEMDAMAGEAMOUNT, and the gathering tool wear runs
+        // AFTER them with whatever the script left there - RETURN 1 aborts it.
+        var locals = Skills.Information.ActiveSkillEngine.NewSkillSuccessLocals();
+        if (_triggerDispatcher != null &&
+            _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillSuccess,
+                new TriggerArgs { CharSrc = _character, N1 = skillId, Locals = locals }) == TriggerResult.True)
+            return;
+        Skills.Information.ActiveSkillEngine.DamageGatherToolOnSuccess(
+            _character, (SkillType)skillId, locals, Random.Shared);
     }
 
     private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid,

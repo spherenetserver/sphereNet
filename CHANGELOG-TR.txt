@@ -4,6 +4,47 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Parite devami: zamanli NPC ozel hareketleri, otlanma, hapis, tithing, esya hasari
+------------------------------------------------------------------------
+DUZELTME - Bolgeye recall, bolge tanimli her yerde reddediliyordu: RECALLIN
+           engel bayragini ters okuyordu. RECALLIN ve MARK artik Source-X gibi
+           REGION_ANTIMAGIC_RECALL_IN'i okur/degistirir (MARK ayni bayrak).
+           Motor uzerinden atilan Teleport buyusu de kimseyi tasimiyordu.
+DUZELTME - Ejderha nefesi ve atilan tas baslar, 3 saniye bekler, sonra
+           sonuclanir: nefes gorus hattini yeniden kontrol eder, tas hedefin
+           o anki yerine atilir ve 14 kareden otede kisa duser.
+DUZELTME - Otlanma hayvanin altinda cimen (t_grass zemin/statik/esya) ve
+           bolgenin cimen kaynagini ister, kaynagi tuketir; adinda "grass"
+           gecen tile artik yetmez.
+DUZELTME - Vurulan NPC zirhtan once tepki verir, mevcut dovusunu 10'da 9
+           surdurur, 10'uncuda degistirir; dovus baslatan NPC suc
+           kontrolunden gecer; kacarken 3-5 rastgele yon doner; NPC buyuleri
+           tasidigi tum buyu kitaplarini birlestirir, araligi olmayan kitap
+           bir sey eklemez.
+DUZELTME - Hirsizlik yerdeki esyayi zar tutmasa da verir, gorulen hirsizlik
+           karma kaybettirir; skill'lerden gelen karma degisimi mesaj verir;
+           basarisiz maymuncuk aletin @Damage'ini calistirir; Provocation
+           gercek notoriety ve suc kontrolunu kullanir; eritme gem verir ya
+           da kulce olmayan sonucu yakar; kamp atesi buyuk isik verir; toplama
+           aleti asinmasi @Success sonrasi LOCAL.ITEMDAMAGECHANCE/AMOUNT'u
+           okur.
+DUZELTME - Tithing bedeli olan buyulerde tithing puani alinir (@Select
+           LOCAL.TithingUse, basarisizlikta TithingLoss); @Success
+           LOCAL.FollowerSlotsOverride'i okur; basarisiz buyu @Fail'in
+           CreateObject1/EffectColor local'lariyla fizzle efekti ve sesi
+           verir; seviye 100 ve alti Dispel ile olum MOVE_NEVER efektleri
+           korur; hapisteki caster'in Recall ve Teleport'u hucreye iner, Gate
+           reddedilir.
+DUZELTME - Esya hasari CItem::OnTakeDamage'i izler: zirh ve silah her
+           darbede bir hit kaybeder ve sonuncusunda kirilir, SELFREPAIR, ok,
+           ag, patlayan iksir ve @Damage veto; ATTR 64 bit, ATTR_CANNOTREPAIR
+           tamiri engeller; @Drink RETURN 5/6 bos siseyi verir/vermez;
+           ENHANCEPOTIONS iksir gucunu artirir.
+DUZELTME - @Jailed hapis/affetmeden once calisir, RETURN 1 iptal eder; JAIL
+           komutu verilen hucreye hapseder; karakter olusturma ten, sac ve
+           sakal renklerini ve modellerini irka gore, gomlek/pantolon
+           rengini InitPlayer gibi sinirlar.
+
 [2026-09-26] - Source-X parite taramasi: skill, buyu, esya, NPC, karakter
 ------------------------------------------------------------------------
 DUZELTME - Skill'ler: Begging hedefin INT'ini kullanir ve odul vermez;

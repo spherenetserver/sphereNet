@@ -511,7 +511,9 @@ public sealed partial class GameClient
                     (3, false) => (ushort)0x029A, (3, true) => (ushort)0x029B, // gargoyle m/f
                     (_, false) => (ushort)0x0190, (_, true) => (ushort)0x0191, // human m/f
                 };
-                if (info.SkinHue != 0) _character.Hue = new Color(info.SkinHue);
+                // Source-X InitPlayer (CChar.cpp:1818-1859): the skin hue is forced into
+                // the race's range/table and always carries HUE_UNDERWEAR.
+                _character.Hue = new Color((ushort)(ValidateCreateSkinHue(race, info.SkinHue) | HueUnderwear));
 
                 // Source-X InitPlayer (CChar.cpp:1768-1796) validates what the client
                 // sent: each stat caps at 60, each skill at 50, and an over-budget
@@ -540,18 +542,25 @@ public sealed partial class GameClient
                 if (_character.Stam <= 0) _character.Stam = _character.MaxStam;
                 if (_character.Hits <= 0) _character.Hits = _character.MaxHits;
 
-                if (info.HairStyle != 0 && IsValidHairGraphic(info.HairStyle))
+                // Hair / beard (CChar.cpp:1861-2031): a graphic the race (and sex) may
+                // not wear is dropped, the hue is forced into the race's range/table,
+                // and the item is ATTR_NEWBIE|ATTR_MOVE_NEVER.
+                ushort hairId = ValidateCreateHairGraphic(race, info.Female, info.HairStyle);
+                if (hairId != 0)
                 {
                     var hair = _world.CreateItem();
-                    hair.BaseId = info.HairStyle;
-                    if (info.HairHue != 0) hair.Hue = new Color(info.HairHue);
+                    hair.BaseId = hairId;
+                    hair.Hue = new Color(ValidateCreateHairHue(race, info.HairHue));
+                    hair.SetAttr(ObjAttributes.Newbie | ObjAttributes.Move_Never);
                     _character.Equip(hair, Layer.Hair);
                 }
-                if (info.BeardStyle != 0 && !info.Female && IsValidBeardGraphic(info.BeardStyle))
+                ushort beardId = ValidateCreateBeardGraphic(race, info.Female, info.BeardStyle);
+                if (beardId != 0)
                 {
                     var beard = _world.CreateItem();
-                    beard.BaseId = info.BeardStyle;
-                    if (info.BeardHue != 0) beard.Hue = new Color(info.BeardHue);
+                    beard.BaseId = beardId;
+                    beard.Hue = new Color(ValidateCreateBeardHue(race, info.BeardHue));
+                    beard.SetAttr(ObjAttributes.Newbie | ObjAttributes.Move_Never);
                     _character.Equip(beard, Layer.FacialHair);
                 }
 
@@ -619,13 +628,14 @@ public sealed partial class GameClient
             EquipNewbieSkillKits(_character, info);
 
             // Tint the starter shirt/pants with the hues picked on the creation
-            // screen (the client sends them in the create packet).
+            // screen, clamped to HUE_BLUE_LOW..HUE_DYE_HIGH (CChar.cpp:2139-2156) -
+            // a hue of 0 therefore becomes HUE_BLUE_LOW, as upstream.
             if (info != null)
             {
-                if (info.ShirtHue != 0 && _character.GetEquippedItem(Layer.Shirt) is { } shirt)
-                    shirt.Hue = new Color(info.ShirtHue);
-                if (info.PantsHue != 0 && _character.GetEquippedItem(Layer.Pants) is { } pants)
-                    pants.Hue = new Color(info.PantsHue);
+                if (_character.GetEquippedItem(Layer.Shirt) is { } shirt)
+                    shirt.Hue = new Color(ClampCreateClothHue(info.ShirtHue));
+                if (_character.GetEquippedItem(Layer.Pants) is { } pants)
+                    pants.Hue = new Color(ClampCreateClothHue(info.PantsHue));
             }
 
             // Reference serv_triggers pipeline: every fresh player character
@@ -647,7 +657,10 @@ public sealed partial class GameClient
 
             // Enhanced Client creation (0x8D) names the shirt and the face itself;
             // Source-X PacketCreateNew::onReceive (receive.cpp:1660) creates both once
-            // the character exists and adds them to their layers.
+            // the character exists and adds them to their layers. That face replaces
+            // the one InitPlayer made (validated graphic, skin hue, CChar.cpp:2035-2055)
+            // on the same layer, so the worn face is the packet's own - which is why
+            // no race validation is applied to it here.
             if (info != null)
             {
                 if (info.ShirtId != 0)
@@ -1236,13 +1249,110 @@ public sealed partial class GameClient
         return result.Length == 0 ? "Unknown" : result;
     }
 
-    /// <summary>Valid human/elf/gargoyle hair graphic IDs.</summary>
-    private static bool IsValidHairGraphic(ushort id) =>
-        (id >= 0x203B && id <= 0x204A) || (id >= 0x2FBF && id <= 0x2FD1);
+    // --- Character-creation appearance validation: Source-X CChar::InitPlayer
+    // (CChar.cpp:1818-2156). Race ids are RACE_TYPE: 2 elf, 3 gargoyle; anything
+    // else is handled as human (the `default: case RACETYPE_HUMAN` arms). ---
 
-    /// <summary>Valid human/elf/gargoyle beard graphic IDs.</summary>
-    private static bool IsValidBeardGraphic(ushort id) =>
-        (id >= 0x203E && id <= 0x2041) || (id >= 0x204B && id <= 0x204D);
+    private const ushort HueUnderwear = 0x8000;                              // HUE_UNDERWEAR
+    private const ushort HueSkinLow = 0x03EA, HueSkinHigh = 0x0422;          // HUE_SKIN_LOW/HIGH
+    private const ushort HueGargSkinLow = 0x06DB, HueGargSkinHigh = 0x06F3;  // HUE_GARGSKIN_LOW/HIGH
+    private const ushort HueHairLow = 0x044E, HueHairHigh = 0x04AD;          // HUE_HAIR_LOW/HIGH
+    private const ushort HueBlueLow = 0x0002, HueDyeHigh = 0x03E9;           // HUE_BLUE_LOW / HUE_DYE_HIGH
+
+    // sm_ElfSkinHues (CChar.cpp:1832-1836)
+    private static readonly ushort[] ElfSkinHues =
+    [
+        0x0BF, 0x24D, 0x24E, 0x24F, 0x353, 0x361, 0x367, 0x374, 0x375, 0x376, 0x381, 0x382, 0x383, 0x384, 0x385, 0x389,
+        0x3DE, 0x3E5, 0x3E6, 0x3E8, 0x3E9, 0x430, 0x4A7, 0x4DE, 0x51D, 0x53F, 0x579, 0x76B, 0x76C, 0x76D, 0x835, 0x903,
+    ];
+
+    // sm_ElfHairHues (CChar.cpp:1913-1920)
+    private static readonly ushort[] ElfHairHues =
+    [
+        0x034, 0x035, 0x036, 0x037, 0x038, 0x039, 0x058, 0x08E, 0x08F, 0x090, 0x091, 0x092,
+        0x101, 0x159, 0x15A, 0x15B, 0x15C, 0x15D, 0x15E, 0x128, 0x12F, 0x1BD, 0x1E4, 0x1F3,
+        0x207, 0x211, 0x239, 0x251, 0x26C, 0x2C3, 0x2C9, 0x31D, 0x31E, 0x31F, 0x320, 0x321,
+        0x322, 0x323, 0x324, 0x325, 0x326, 0x369, 0x386, 0x387, 0x388, 0x389, 0x38A, 0x59D,
+        0x6B8, 0x725, 0x853,
+    ];
+
+    // sm_GargoyleHornHues / sm_GargoyleBeardHues (CChar.cpp:1938-1942, 2006-2010):
+    // the same table for horns and facial horns.
+    private static readonly ushort[] GargoyleHornHues =
+    [
+        0x709, 0x70B, 0x70D, 0x70F, 0x711, 0x763, 0x765, 0x768, 0x76B,
+        0x6F3, 0x6F1, 0x6EF, 0x6E4, 0x6E2, 0x6E0, 0x709, 0x70B, 0x70D,
+    ];
+
+    private static ushort HueFromTable(ushort[] table, ushort hue) =>
+        Array.IndexOf(table, hue) >= 0 ? hue : table[0];
+
+    /// <summary>Skin hue per race (CChar.cpp:1818-1858), without HUE_UNDERWEAR.</summary>
+    internal static ushort ValidateCreateSkinHue(int race, ushort hue) => race switch
+    {
+        2 => HueFromTable(ElfSkinHues, hue),
+        3 => Math.Clamp(hue, HueGargSkinLow, HueGargSkinHigh),
+        _ => Math.Clamp(hue, HueSkinLow, HueSkinHigh),
+    };
+
+    /// <summary>Hair graphic per race and sex (CChar.cpp:1861-1893); 0 = no hair.</summary>
+    internal static ushort ValidateCreateHairGraphic(int race, bool female, ushort id)
+    {
+        switch (race)
+        {
+            case 2: // elf: ITEMID_HAIR_ML_ELF..ML_MULLET, ML_FLOWER..ML_SPYKE
+                if (!((id >= 0x2FBF && id <= 0x2FC2) || (id >= 0x2FCC && id <= 0x2FD1)))
+                    return 0;
+                if ((female && (id == 0x2FCD || id == 0x2FBF)) || (!female && (id == 0x2FCC || id == 0x2FD0)))
+                    return 0;
+                return id;
+            case 3: // gargoyle horns (ITEMID_GARG_HORN_FEMALE_1..8 / GARG_HORN_1..8)
+                if (female)
+                    return id is 0x4261 or 0x4262 or (>= 0x4273 and <= 0x4275) or 0x42AA or 0x42AB or 0x42B1
+                        ? id : (ushort)0;
+                return id >= 0x4258 && id <= 0x425F ? id : (ushort)0;
+            default: // human: HAIR_SHORT..HAIR_PONYTAIL, HAIR_MOHAWK..HAIR_TOPKNOT
+                if (!((id >= 0x203B && id <= 0x203D) || (id >= 0x2044 && id <= 0x204A)))
+                    return 0;
+                if ((female && id == 0x2048) || (!female && id == 0x2046)) // RECEDING / BUNS
+                    return 0;
+                return id;
+        }
+    }
+
+    /// <summary>Hair hue per race (CChar.cpp:1900-1962).</summary>
+    internal static ushort ValidateCreateHairHue(int race, ushort hue) => race switch
+    {
+        2 => HueFromTable(ElfHairHues, hue),
+        3 => HueFromTable(GargoyleHornHues, hue),
+        _ => Math.Clamp(hue, HueHairLow, HueHairHigh),
+    };
+
+    /// <summary>Beard graphic per race (CChar.cpp:1964-1984): women and elves get
+    /// none; 0 = no beard.</summary>
+    internal static ushort ValidateCreateBeardGraphic(int race, bool female, ushort id)
+    {
+        if (female)
+            return 0;
+        return race switch
+        {
+            2 => 0,
+            3 => id >= 0x42AD && id <= 0x42B0 ? id : (ushort)0, // GARG_HORN_FACIAL_1..4
+            _ => (id >= 0x203E && id <= 0x2041) || (id >= 0x204B && id <= 0x204D) ? id : (ushort)0,
+        };
+    }
+
+    /// <summary>Beard hue per race (CChar.cpp:1995-2030): human clamps to the hair
+    /// range, gargoyle uses the horn table, anything else keeps the hue.</summary>
+    internal static ushort ValidateCreateBeardHue(int race, ushort hue) => race switch
+    {
+        3 => HueFromTable(GargoyleHornHues, hue),
+        2 => hue,
+        _ => Math.Clamp(hue, HueHairLow, HueHairHigh),
+    };
+
+    /// <summary>Shirt / pants hue (CChar.cpp:2139-2156).</summary>
+    internal static ushort ClampCreateClothHue(ushort hue) => Math.Clamp(hue, HueBlueLow, HueDyeHigh);
 
     /// <summary>CItem::CreateScript(id) + SetHue + CChar::LayerAdd for the items the
     /// 0x8D creation packet names. The layer comes from the item definition, then the

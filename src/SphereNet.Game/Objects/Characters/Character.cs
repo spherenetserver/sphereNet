@@ -969,9 +969,10 @@ public partial class Character : ObjBase
     /// instance. Kept as a hook to avoid making Character own world services.</summary>
     public static Func<Character, SkillType, bool>? OnScriptSkillUse { get; set; }
 
-    /// <summary>Fired when a character is sent to jail (Source-X @Jail). Args:
-    /// jailed character, sentence minutes (0 = indefinite).</summary>
-    public static Action<Character, int>? OnJailed { get; set; }
+    /// <summary>Source-X @Jailed, fired by <see cref="Jail"/> BEFORE anything changes
+    /// (CCharAct.cpp:157-164). Args: character, SRC, set (jail/forgive), cell,
+    /// SphereNet sentence minutes. Return true (RETURN 1) to cancel.</summary>
+    public static Func<Character, Character?, bool, int, int, bool>? OnJailed { get; set; }
 
     /// <summary>Fired when a memory item is equipped on a character (Source-X item
     /// @MemoryEquip). Arg: the memory item. Installed only when hooked (item
@@ -2312,6 +2313,42 @@ public partial class Character : ObjBase
         return DateTime.UtcNow.Ticks >= releaseUtcTicks;
     }
 
+    /// <summary>Source-X CChar::Jail (CCharAct.cpp:153-211). @Jailed fires FIRST
+    /// (ARGN1 = set, ARGN2 = cell; SphereNet adds ARGN3 = the opt-in sentence minutes)
+    /// and RETURN 1 cancels. Set: PRIV_JAILED + account JailCell tag, teleport to the
+    /// region point "jail{cell}" ("jail" for cell 0), msg_jailed. Clear (forgive): an
+    /// unjailed character is left alone (CCharAct.cpp:195-199), else the flag and the
+    /// JailCell tag are cleared and msg_forgiven is sent - nobody is moved.
+    /// <paramref name="minutes"/> &gt; 0 is SphereNet's opt-in timed release.
+    /// Returns false when the trigger cancelled or there was nothing to forgive.</summary>
+    public bool Jail(Character? src, bool set, int cell, int minutes = 0)
+    {
+        if (OnJailed?.Invoke(this, src, set, cell, Math.Max(0, minutes)) == true)
+            return false;
+
+        if (set)
+        {
+            int jailMinutes = Math.Max(0, minutes);
+            long releaseTime = jailMinutes > 0
+                ? DateTime.UtcNow.Ticks + jailMinutes * TimeSpan.TicksPerMinute
+                : 0;
+            // CCharAct.cpp:168-175 stores the cell as given; a negative cell still
+            // resolves to the plain "jail" point below.
+            SetJailState(true, Math.Max(0, cell), releaseTime);
+            if (ResolveWorld?.Invoke() is { } world)
+                TeleportWithEffect(world.GetJailPoint(cell)); // CCharAct.cpp:188
+            SendOwnerMessage?.Invoke(this, ServerMessages.Get(Msg.MsgJailed));
+            return true;
+        }
+
+        if (!IsJailed)
+            return false; // CCharAct.cpp:195-199
+        ClearStatFlag(StatFlag.Freeze); // left by an older SphereNet jail
+        SetJailState(false);
+        SendOwnerMessage?.Invoke(this, ServerMessages.Get(Msg.MsgForgiven));
+        return true;
+    }
+
     /// <summary>Process poison tick. Returns damage dealt, 0 if no tick.</summary>
     public int ProcessPoisonTick(long now) => Poison.ProcessTick(now);
 
@@ -3047,14 +3084,33 @@ public partial class Character : ObjBase
             }
         }
 
-        if (!IsPlayer && !FightTarget.IsValid)
-        {
-            FightTarget = src.Uid;
-            NextNpcActionTime = 0;
-            NextNpcReacquireTime = 0;
-            WakeNpc?.Invoke(this);
-        }
+        OnHarmedBy(src);
         return true;
+    }
+
+    /// <summary>Source-X CChar::OnHarmedBy (CCharFight.cpp:291-316), the NPC side:
+    /// a ridden mount does nothing; an NPC already fighting someone who still
+    /// exists stays on its target nine times in ten and turns on the new attacker
+    /// the tenth (g_Rand.Get16ValFast(10)); an NPC with no fight turns on it.
+    /// It used to switch only when it had no target at all. Players do not
+    /// auto-target here.</summary>
+    internal void OnHarmedBy(Character src)
+    {
+        if (IsPlayer || IsDead || src == this)
+            return;
+        if (IsStatFlag(StatFlag.Ridden)) // NPCACT_RIDDEN
+            return;
+        if (FightTarget.IsValid)
+        {
+            var current = ResolveWorld?.Invoke()?.FindChar(FightTarget);
+            bool fightActive = current == null ? ResolveWorld == null : !current.IsDeleted;
+            if (fightActive && Random.Shared.Next(10) != 0)
+                return;
+        }
+        FightTarget = src.Uid;
+        NextNpcActionTime = 0;
+        NextNpcReacquireTime = 0;
+        WakeNpc?.Invoke(this);
     }
 
     public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType, World.GameWorld? world = null)
@@ -8207,17 +8263,22 @@ public partial class Character : ObjBase
             {
                 RemoveTag("JAIL");
                 RemoveTag("JAIL_EXPIRE");
-                // Source-X CHV_FORGIVE -> Jail(false): clears PRIV_JAILED only
-                // (CCharAct.cpp:193-210); nobody is moved.
-                if (IsJailed)
-                    OnJailReleaseRequested?.Invoke(this);
+                // Source-X CHV_FORGIVE (CChar.cpp:4607-4609) -> Jail(pSrc, false, 0):
+                // @Jailed, then clears PRIV_JAILED only (CCharAct.cpp:193-210).
+                Jail(ResolveSourceCharacter(source), false, 0);
                 CombatState.Forgive();
                 return true;
             }
             case "JAIL":
             {
-                string cell = args.Trim();
-                SetTag("JAIL", string.IsNullOrEmpty(cell) ? "1" : cell);
+                // Source-X CHV_JAIL (CChar.cpp:4685-4687): Jail(pSrc, true, GetArgVal())
+                // - the argument is the jail cell number (0/empty = region "jail").
+                string cellArg = args.Trim();
+                int cell = 0;
+                if (cellArg.Length > 0 &&
+                    SphereNet.Core.Types.ScriptNumber.TryParseToken(cellArg, out long cellVal))
+                    cell = (int)cellVal;
+                Jail(ResolveSourceCharacter(source), true, cell);
                 return true;
             }
 

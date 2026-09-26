@@ -452,8 +452,16 @@ public sealed class CustomSphereSpellTests
         // Source-X refreshes the view the moment the effect lands.
         Assert.Equal(1, refreshes);
 
-        // First trip tick lands within 15-30 s.
+        // First trip tick lands within 15-30 s. The trip lasts rand(30) ticks
+        // (CCharSpell.cpp:4025) and a roll of 0 ends it without a sound (:1792), so
+        // a fresh cast is tried again until one trips; 20 zero rolls in a row
+        // would be a 1-in-30^20 event.
         engine.ProcessExpirations(Environment.TickCount64 + 31_000);
+        for (int attempt = 0; attempt < 20 && sounds.Count == 0; attempt++)
+        {
+            engine.ApplyDirectEffect(caster, caster, SpellType.Hallucination, 500);
+            engine.ProcessExpirations(Environment.TickCount64 + 31_000);
+        }
         Assert.NotEmpty(sounds);
         Assert.All(sounds, s => Assert.Contains(s, new[] { (ushort)0x0243, (ushort)0x0244 }));
         Assert.True(refreshes >= 2, "the trip tick did not refresh the view");

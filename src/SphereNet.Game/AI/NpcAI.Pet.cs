@@ -246,7 +246,10 @@ public sealed partial class NpcAI
                 if (IsValidPetEnemy(npc, master, guardFoe, guardTarget) &&
                     CanSeeChar(npc, guardTarget) && _world.CanSeeLOS(npc.Position, guardTarget.Position))
                 {
-                    npc.FightTarget = guardFoe!.Uid;
+                    bool newFight = npc.FightTarget != guardFoe!.Uid;
+                    npc.FightTarget = guardFoe.Uid;
+                    if (newFight)
+                        NpcAttackCrimeCheck(npc, guardFoe);
                     ActFight(npc, guardFoe, 50);
                     return;
                 }
@@ -262,7 +265,10 @@ public sealed partial class NpcAI
                     target = _world.FindChar(npc.FightTarget);
                 if (IsValidPetEnemy(npc, master, target))
                 {
-                    npc.FightTarget = target!.Uid;
+                    bool newFight = npc.FightTarget != target!.Uid;
+                    npc.FightTarget = target.Uid;
+                    if (newFight)
+                        NpcAttackCrimeCheck(npc, target);
                     int motivation = GetAttackMotivation(npc, target);
                     ActFight(npc, target, Math.Max(motivation, 50));
                     return;

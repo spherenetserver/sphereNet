@@ -2220,9 +2220,9 @@ public class Item : ObjBase
             }
             // IC_NODROP / IC_NOTRADE / IC_QUESTITEM (CItem.cpp:2786-2794): the masked
             // attribute bit itself, as a decimal number (0 when clear).
-            case "NODROP": value = ((uint)Attributes & AttrNoDrop).ToString(); return true;
-            case "NOTRADE": value = ((uint)Attributes & AttrNoTrade).ToString(); return true;
-            case "QUESTITEM": value = ((uint)Attributes & AttrQuestItem).ToString(); return true;
+            case "NODROP": value = ((ulong)Attributes & AttrNoDrop).ToString(); return true;
+            case "NOTRADE": value = ((ulong)Attributes & AttrNoTrade).ToString(); return true;
+            case "QUESTITEM": value = ((ulong)Attributes & AttrQuestItem).ToString(); return true;
             // IC_TOPCONT (CItem.cpp:2804 -> GetTopContainer, :4162): the outermost
             // CONTAINER ITEM holding this one, stopping below a character; 0 when the
             // item is not inside a container at all.
@@ -3369,8 +3369,8 @@ public class Item : ObjBase
                 };
                 bool on = string.IsNullOrWhiteSpace(value) || ParseBaseDefNumber(value) != 0;
                 Attributes = on
-                    ? (ObjAttributes)((uint)Attributes | flag)
-                    : (ObjAttributes)((uint)Attributes & ~flag);
+                    ? (ObjAttributes)((ulong)Attributes | flag)
+                    : (ObjAttributes)((ulong)Attributes & ~(ulong)flag);
                 return true;
             }
             // The door keys are SetDefNum'd numbers (CItem.cpp:3167-3170). DOOROPENID

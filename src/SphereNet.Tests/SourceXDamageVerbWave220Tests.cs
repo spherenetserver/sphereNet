@@ -93,15 +93,21 @@ public class SourceXDamageVerbWave220Tests
     {
         var world = CreateWorld();
         var item = world.CreateItem();
-        item.HitsMax = 10;
-        item.HitsCur = 10;
+        item.ItemType = SphereNet.Core.Enums.ItemType.Armor;
+        item.HitsMax = 3;
+        item.HitsCur = 3;
         world.PlaceItem(item, new Point3D(100, 100, 0, 0));
         Item? broken = null;
         CombatEngine.BreakOnZeroHits = true;
         CombatEngine.OnItemBroken = candidate => broken = candidate;
 
+        // CItem::OnTakeDamage wears armour ONE hit point per blow whatever the damage
+        // (--m_wHitsCur, CItem.cpp:5930) and destroys it when it is at its last
+        // (:5915-5925). This test used to expect the whole blow off the pool (10-4=6).
         Assert.True(item.TryExecuteCommand("DAMAGE", "4,0x1000", new Console()));
-        Assert.Equal(6, item.HitsCur);
+        Assert.Equal(2, item.HitsCur);
+        Assert.True(item.TryExecuteCommand("DAMAGE", "8,0x1000", new Console()));
+        Assert.Equal(1, item.HitsCur);
         Assert.Null(broken);
 
         Assert.True(item.TryExecuteCommand("DAMAGE", "8,0x1000", new Console()));

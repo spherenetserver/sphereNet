@@ -162,6 +162,44 @@ public sealed class SmeltRepairParity08ATests
     }
 
     [Fact]
+    public void AnOreThatYieldsAGemBouncesTheGemsWithoutASkillRoll()
+    {
+        // "Bounce the gems out of this" (Skill_Mining_Smelt, CCharSkill.cpp:1209-1219):
+        // an IT_GEM resource skips the minimum and the Mining roll, comes out as
+        // amount-per-ore x ore, and the ore is consumed (:1279).
+        const ushort GemId = 0x6010;
+        SkillRolls((SkillType.Mining, false));  // a roll would fail - there is none
+        var bench = Setup();
+        bench.Me.SetSkill(SkillType.Mining, 0);
+        DefineItem(GemId, d => { d.Type = ItemType.Gem; d.TData1 = 900; d.TData2 = 1000; });
+        var (ore, forge) = Smeltable(bench, amount: 5, ingot: GemId);
+
+        Smelt(bench, ore, forge);
+
+        var gem = Ingots(bench, GemId);
+        Assert.NotNull(gem);
+        Assert.Equal(5, gem!.Amount);
+        Assert.True(ore.IsDeleted || ore.Amount == 0);
+    }
+
+    [Fact]
+    public void AResourceThatIsNeitherIngotNorGemBurnsTheOre()
+    {
+        // Anything else says DEFMSG_MINING_CONSUMED, and the loop falls through to
+        // the ore's ConsumeAmount (CCharSkill.cpp:1203-1207/1279).
+        const ushort OddId = 0x6011;
+        SkillRolls((SkillType.Mining, true));
+        var bench = Setup();
+        DefineItem(OddId, d => { d.Type = ItemType.Armor; });
+        var (ore, forge) = Smeltable(bench, amount: 3, ingot: OddId);
+
+        Smelt(bench, ore, forge);
+
+        Assert.Null(Ingots(bench, OddId));
+        Assert.True(ore.IsDeleted || ore.Amount == 0);
+    }
+
+    [Fact]
     public void AColourVariantOreSmeltsIntoItsOwnIngotNotIrons()
     {
         // The shape every Sphere pack uses: coloured ores are NAMED defs that draw

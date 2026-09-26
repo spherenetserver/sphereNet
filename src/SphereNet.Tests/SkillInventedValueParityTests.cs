@@ -212,7 +212,129 @@ public sealed class SkillInventedValueParityTests : IDisposable
         Assert.Equal(expected, ch.Karma);
     }
 
+    [Fact]
+    public void SnoopingKarmaLossSaysSo()
+    {
+        // Noto_Karma(-4, INT32_MIN, true) -> Noto_ChangeDeltaMsg: "You have lost a
+        // bit of karma." for the -8 a good character takes (CCharNotoriety.cpp:547,
+        // 455: 8 / (300/8) = degree 0).
+        var world = TestHarness.CreateWorld();
+        var snoop = Place(world);
+        snoop.Karma = 100;
+        var mark = Place(world, 101, 100);
+        var markPack = Pack(world, mark);
+        Rolls(_ => 1);
+        var sink = new Sink(snoop, world);
+
+        ActiveSkillEngine.Snooping(sink, markPack);
+
+        Assert.Equal(92, snoop.Karma);
+        Assert.Contains(ServerMessages.GetFormatted(Msg.MsgNotoChange0,
+            ServerMessages.Get(Msg.MsgNotoChangeLost), ServerMessages.Get(Msg.MsgNotoChange1),
+            ServerMessages.Get(Msg.NotoKarma)), sink.Messages);
+    }
+
+    [Theory]
+    [InlineData(-8, "msg_noto_change_1")]
+    [InlineData(-37, "msg_noto_change_2")]
+    [InlineData(-200, "msg_noto_change_6")]
+    [InlineData(5000, "msg_noto_change_8")]
+    public void NotoChangeDegreeIsDeltaOverThirtySeven(int delta, string degreeKey)
+    {
+        string expected = ServerMessages.GetFormatted(Msg.MsgNotoChange0,
+            ServerMessages.Get(delta < 0 ? Msg.MsgNotoChangeLost : Msg.MsgNotoChangeGain),
+            ServerMessages.Get(degreeKey), "karma");
+        Assert.Equal(expected, ActiveSkillEngine.NotoChangeDeltaMessage(delta, "karma"));
+        Assert.Null(ActiveSkillEngine.NotoChangeDeltaMessage(0, "karma"));
+    }
+
+    [Theory]
+    [InlineData(-500, -600)]
+    [InlineData(-950, -1000)]   // stopped at the -1000 floor
+    [InlineData(-5000, -1000)]  // upstream sets the change to reach the floor, literally (:526-529)
+    [InlineData(100, -100)]     // a good character loses double
+    public void StealingKarmaFloorIsMinusOneThousand(short karma, short expected)
+    {
+        // Noto_Karma(-100, -1000, true) (CCharSkill.cpp:4343) - scaled by
+        // Calc_KarmaScale only for a positive karma.
+        var ch = new Character { Karma = karma };
+        ActiveSkillEngine.ApplySkillKarma(ch, -100, -1000);
+        Assert.Equal(expected, ch.Karma);
+    }
+
+    [Fact]
+    public void AGroundItemIsTakenEvenWhenTheStealingRollFails()
+    {
+        // Skill_Stealing: "stealing off the ground should always succeed, it's just a
+        // matter of getting caught" - with no mark the goods are delivered on FAIL as
+        // well, and lose ATTR_OWNED (CCharSkill.cpp:4311-4331).
+        var world = TestHarness.CreateWorld();
+        var thief = Place(world);
+        var pack = Pack(world, thief);
+        thief.Backpack = pack;
+        var loot = world.CreateItem();
+        loot.SetAttr(ObjAttributes.Owned);
+        world.PlaceItem(loot, new Point3D(101, 100, 0, 0));
+        var rolls = Rolls(_ => 0);
+        var sink = new Sink(thief, world);
+
+        Assert.False(ActiveSkillEngine.Stealing(sink, loot));
+
+        Assert.Equal((SkillType.Stealing, 1), rolls.Single());
+        Assert.Equal(pack.Uid, loot.ContainedIn);
+        Assert.False(loot.IsAttr(ObjAttributes.Owned));
+    }
+
+    [Fact]
+    public void AFailedTheftFromAMarkLeavesTheItemWithTheMark()
+    {
+        var world = TestHarness.CreateWorld();
+        var thief = Place(world);
+        thief.Backpack = Pack(world, thief);
+        var mark = Place(world, 101, 100);
+        var markPack = Pack(world, mark);
+        var loot = world.CreateItem();
+        markPack.AddItem(loot);
+        Rolls(_ => 0);
+
+        Assert.False(ActiveSkillEngine.Stealing(new Sink(thief, world), loot));
+        Assert.Equal(markPack.Uid, loot.ContainedIn);
+    }
+
     // --------------------------------------------------------- Lockpicking
+
+    [Fact]
+    public void AFailedPickFiresItsDamageTrigger()
+    {
+        // FAIL: pPick->OnTakeDamage(1, this, DAMAGE_HIT_BLUNT) (CCharSkill.cpp:2447);
+        // for an IT_LOCKPICK that is only its @Damage (CItem.cpp:5826-5832).
+        var world = TestHarness.CreateWorld();
+        var picker = Place(world);
+        var chest = world.CreateItem();
+        chest.ItemType = ItemType.ContainerLocked;
+        chest.More2 = 500;
+        world.PlaceItem(chest, new Point3D(101, 100, 0, 0));
+        var pick = world.CreateItem();
+        pick.ItemType = ItemType.Lockpick;
+        var damaged = new List<(Item Item, int Dmg, Character? Src, SphereNet.Game.Combat.DamageType Type)>();
+        SphereNet.Game.Combat.CombatEngine.OnItemDamaged = (item, dmg, src, type) =>
+        {
+            damaged.Add((item, dmg, src, type));
+            return false;
+        };
+        var sink = new Sink(picker, world);
+        sink.Pack[ItemType.Lockpick] = pick;
+
+        Rolls(_ => 0);
+        Assert.False(ActiveSkillEngine.Lockpicking(sink, chest));
+        Assert.Equal((pick, 1, (Character?)picker, SphereNet.Game.Combat.DamageType.HitBlunt), damaged.Single());
+        Assert.False(pick.IsDeleted);
+
+        damaged.Clear();
+        Rolls(_ => 1);
+        Assert.True(ActiveSkillEngine.Lockpicking(sink, chest));
+        Assert.Empty(damaged);
+    }
 
     [Fact]
     public void LockComplexityIsMore2AndAFailedPickIsNotSpent()
@@ -516,6 +638,39 @@ public sealed class SkillInventedValueParityTests : IDisposable
         Assert.Equal(bard.Uid, a.FightTarget);
     }
 
+    [Fact]
+    public void ProvokingAGoodCreatureIsACrimeReadOffTheRealNotoriety()
+    {
+        // SUCCESS: pCharProv->Noto_GetFlag(this) == NOTO_GOOD ->
+        // CheckCrimeSeen(SKILL_PROVOCATION, nullptr, pCharProv) and the provocation
+        // is refused (CCharSkill.cpp:2135-2139). The notoriety is the engine's own -
+        // no host resolver is wired here - and a witness who sees it remembers the
+        // crime (OnNoticeCrime -> MEMORY_SAWCRIME).
+        Assert.Null(Character.ResolveNotoFlag);
+        var world = TestHarness.CreateWorld();
+        var bard = Place(world);
+        var good = Place(world, 101, 100, player: false);   // human NPC, karma 0: NOTO_GOOD
+        good.NpcBrain = NpcBrainType.Human;
+        good.BodyId = 0x0190;
+        var evil = Place(world, 102, 100, player: false);
+        evil.NpcBrain = NpcBrainType.Monster;
+        evil.BodyId = 0x0001;
+        evil.Karma = -100;
+        var witness = Place(world, 100, 101, player: false);
+        witness.NpcBrain = NpcBrainType.Human;
+        witness.Dex = 100; witness.Int = 100;               // 400 + 200*50: always sees
+        var lute = world.CreateItem();
+        lute.ItemType = ItemType.Musical;
+        Rolls(_ => 1);
+        var sink = new Sink(bard, world);
+        sink.Pack[ItemType.Musical] = lute;
+
+        Assert.False(ActiveSkillEngine.Provocation(sink, good, evil));
+
+        Assert.NotNull(witness.Memory_FindObjTypes(bard.Uid, MemoryType.SawCrime));
+        Assert.NotEqual(evil.Uid, good.FightTarget);
+    }
+
     // ----------------------------------------------------------- Skill gain
 
     [Fact]
@@ -666,17 +821,73 @@ public sealed class SkillInventedValueParityTests : IDisposable
         miner.Equip(pick, Layer.OneHanded);
         var rock = new Point3D(101, 100, 0, 0);
 
+        // The wear is not part of the SUCCESS stage itself: Skill_Done runs it after
+        // @SkillSuccess / @Success (CCharSkill.cpp:3945-3961), so the skill driver
+        // calls DamageGatherToolOnSuccess once the triggers are done. Mining alone
+        // (what this test used to count on) never wears the tool.
+        ActiveSkillEngine.DamageToolsEnabled = true;
         for (int i = 0; i < 20; i++)
         {
             var s = new Sink(miner, rig.World, i);
             Assert.True(ActiveSkillEngine.Mining(s, rock, rig.Engine, rig.World), string.Join("|", s.Messages));
         }
+        Assert.Equal(50, pick.HitsCur);
+
+        ActiveSkillEngine.DamageToolsEnabled = false;
+        for (int i = 0; i < 20; i++)
+            ActiveSkillEngine.DamageGatherToolOnSuccess(miner, SkillType.Mining,
+                ActiveSkillEngine.NewSkillSuccessLocals(), new Random(i));
         Assert.Equal(50, pick.HitsCur);                // EF_DamageTools off
 
         ActiveSkillEngine.DamageToolsEnabled = true;
         for (int i = 0; i < 20; i++)
-            ActiveSkillEngine.Mining(new Sink(miner, rig.World, i), rock, rig.Engine, rig.World);
+            ActiveSkillEngine.DamageGatherToolOnSuccess(miner, SkillType.Mining,
+                ActiveSkillEngine.NewSkillSuccessLocals(), new Random(i));
         Assert.InRange(pick.HitsCur, 30, 49);          // some swings, never more than 1 each
+    }
+
+    [Fact]
+    public void GatherToolWearReadsTheSuccessLocals()
+    {
+        // Skill_Done seeds LOCAL.ITEMDAMAGECHANCE=25 / ITEMDAMAGEAMOUNT=1 for
+        // @SkillSuccess / @Success and reads them back for the wear: the chance
+        // clamped 0-100, the amount bounded to the tool's hit points
+        // (CCharSkill.cpp:3930-3961).
+        var world = TestHarness.CreateWorld();
+        var mining = new SphereNet.Scripting.Definitions.SkillDef(ResourceId.Invalid);
+        mining.LoadFromKey("FLAGS", "skf_gather");
+        DefinitionLoader.SetSkillDef((int)SkillType.Mining, mining);
+        ActiveSkillEngine.DamageToolsEnabled = true;
+        var miner = Place(world);
+        var pick = world.CreateItem();
+        pick.ItemType = ItemType.WeaponMacePick;
+        pick.HitsCur = pick.HitsMax = 50;
+        miner.Equip(pick, Layer.OneHanded);
+
+        var seeded = ActiveSkillEngine.NewSkillSuccessLocals();
+        Assert.Equal(25, seeded.GetInt("ITEMDAMAGECHANCE"));
+        Assert.Equal(1, seeded.GetInt("ITEMDAMAGEAMOUNT"));
+
+        var never = ActiveSkillEngine.NewSkillSuccessLocals();
+        never.SetInt("ITEMDAMAGECHANCE", 0);
+        for (int i = 0; i < 20; i++)
+            ActiveSkillEngine.DamageGatherToolOnSuccess(miner, SkillType.Mining, never, new Random(i));
+        Assert.Equal(50, pick.HitsCur);
+
+        var always = ActiveSkillEngine.NewSkillSuccessLocals();
+        always.SetInt("ITEMDAMAGECHANCE", 500);        // clamped to 100
+        always.SetInt("ITEMDAMAGEAMOUNT", 7);
+        ActiveSkillEngine.DamageGatherToolOnSuccess(miner, SkillType.Mining, always, new Random(1));
+        // The amount is handed to CItem::OnTakeDamage, which takes ONE hit point from
+        // a weapon per call whatever the amount (--m_wHitsCur, CItem.cpp:5931); the
+        // amount only has to be above 0 (:5805).
+        Assert.Equal(49, pick.HitsCur);
+
+        var none = ActiveSkillEngine.NewSkillSuccessLocals();
+        none.SetInt("ITEMDAMAGECHANCE", 100);
+        none.SetInt("ITEMDAMAGEAMOUNT", 0);
+        ActiveSkillEngine.DamageGatherToolOnSuccess(miner, SkillType.Mining, none, new Random(1));
+        Assert.Equal(49, pick.HitsCur);
     }
 
     // -------------------------------------------------------------- Camping
@@ -701,6 +912,7 @@ public sealed class SkillInventedValueParityTests : IDisposable
 
         Assert.InRange(rolls.Single().Diff, 0, 29);
         Assert.Equal(0x0DE3, kindling.BaseId);
+        Assert.Equal(1, kindling.MoreP.Z);             // m_itLight.m_pattern = LIGHT_LARGE (:291)
         Assert.Equal(1, kindling.Amount);
         Assert.True(kindling.IsAttr(ObjAttributes.Move_Never));
         Assert.False(kindling.IsDeleted);

@@ -176,7 +176,8 @@ internal sealed class PanelCharacterActions
                 if (_commands == null)
                     return PlayerActionResult.Fail("Jail is not available.");
                 int minutes = Math.Max(0, req.Minutes ?? 0);
-                _commands.JailCharacter(_world, ch, minutes, 0);
+                if (!_commands.JailCharacter(_world, ch, minutes, 0))
+                    return PlayerActionResult.Fail($"Jailing {name} was cancelled by a script.");
                 return PlayerActionResult.Done(minutes > 0
                     ? $"{name} jailed for {minutes} minute(s)."
                     : $"{name} jailed indefinitely.");
@@ -186,7 +187,8 @@ internal sealed class PanelCharacterActions
                     return PlayerActionResult.Fail("Jail is not available.");
                 if (!ch.TryGetTag("JAIL_RELEASE", out _))
                     return PlayerActionResult.Fail($"{name} is not jailed.");
-                _commands.ReleaseJailedCharacter(_world, ch);
+                if (!_commands.ReleaseJailedCharacter(_world, ch))
+                    return PlayerActionResult.Fail($"Releasing {name} was cancelled by a script.");
                 return PlayerActionResult.Done($"{name} released from jail.");
 
             default:

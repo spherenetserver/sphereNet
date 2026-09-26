@@ -2486,10 +2486,12 @@ public sealed class ClientItemUseHandler
 
     /// <summary>CItem::Armor_IsRepairable (CItem.cpp:4842-4891): CAN_I_REPAIR, else
     /// plate/chain/ring armour, shields, crossbows and every melee/throwing weapon;
-    /// cloth, leather, bone and wooden bows are not. (ATTR_CANNOTREPAIR is a 64-bit
-    /// attribute SphereNet does not carry.)</summary>
+    /// cloth, leather, bone and wooden bows are not; ATTR_CANNOTREPAIR refuses first
+    /// (CItem.cpp:4851).</summary>
     internal static bool IsArmorRepairable(Item item)
     {
+        if (item.IsAttr(Core.Enums.ObjAttributes.CannotRepair))
+            return false;
         if ((CanFlagsOf(item) & Core.Enums.CanFlags.I_Repair) != 0)
             return true;
         return item.ItemType is ItemType.Shield or ItemType.Armor or ItemType.ArmorChain
@@ -2502,9 +2504,8 @@ public sealed class ClientItemUseHandler
 
     /// <summary>The sharp-weapon default (CClientTarg.cpp:1966-1983): refuse what
     /// cannot be moved (itemuse_weapon_immune) or would be a theft (itemuse_steal),
-    /// else OnTakeDamage(1, user, DAMAGE_HIT_BLUNT). Ported part of OnTakeDamage
-    /// (CItem.cpp:5826-5905): @Damage may veto; an item with hit points loses one and
-    /// is destroyed when it is at its last.</summary>
+    /// else OnTakeDamage(1, user, DAMAGE_HIT_BLUNT) (CItem.cpp:5792-5987, see
+    /// ItemDamageEngine).</summary>
     private void SmashWithBlade(Item target)
     {
         if (_character == null) return;
@@ -2519,20 +2520,7 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get(Msg.ItemuseSteal));
             return;
         }
-        if (CombatEngine.OnItemDamaged?.Invoke(target, 1, _character, DamageType.HitBlunt) == true ||
-            target.IsDeleted)
-            return;
-        int maxHits = target.HitsMax;
-        if (maxHits <= 0)
-            return;
-        int cur = target.HitsCur;
-        if (cur <= 1)
-        {
-            target.HitsCur = 0;
-            _client.TryDeleteItemFromClient(target);
-            return;
-        }
-        target.HitsCur = cur - 1;
+        ItemDamageEngine.OnTakeDamage(target, 1, _character, DamageType.HitBlunt);
     }
 
     private static bool IsWeaponItemType(ItemType type) => type is
@@ -2696,13 +2684,45 @@ public sealed class ClientItemUseHandler
                 perOre = (int)Math.Min(scriptedQty, ushort.MaxValue);
         }
 
+        var ingotDef = DefinitionLoader.GetItemDef(ingotDefIndex);
+
+        // What the resource IS decides what happens (CCharSkill.cpp:1195-1216). Only an
+        // ingot or a gem is a smelting result; anything else says
+        // DEFMSG_MINING_CONSUMED and the ore still burns away entirely at the end
+        // (:1279). A definition with no TYPE of its own keeps the ingot path.
+        var resourceType = ingotDef?.Type ?? ItemType.Normal;
+        if (ingotDef != null && resourceType is not (ItemType.Ingot or ItemType.Gem or ItemType.Normal))
+        {
+            SysMessage(ServerMessages.Get(Msg.MiningConsumed));
+            ConsumeOreStack(ore);
+            return;
+        }
+        if (resourceType == ItemType.Gem)
+        {
+            // "Bounce the gems out of this" (:1209-1219): no skill minimum, no roll -
+            // amount-per-ore x ore of the gem, handed over, and the ore is consumed.
+            int gemAmount = oreQty * perOre;
+            ConsumeOreStack(ore);
+            var gem = _world.CreateItem();
+            if (!ItemDefHelper.ApplyInstanceMetadata(gem, ingotDefIndex))
+            {
+                if (ingotDefIndex is > 0 and <= ushort.MaxValue)
+                    gem.BaseId = (ushort)ingotDefIndex;
+                gem.FireCreateTrigger();
+            }
+            if (gem.IsDeleted)
+                return;
+            gem.Amount = (ushort)Math.Clamp(gemAmount, 1, ushort.MaxValue);
+            BounceSmeltResult(gem);
+            return;
+        }
+
         // The INGOT's definition sets the bar (m_ttIngot, CItemBase.h:153-156): TDATA1
         // the least Mining that may smelt it - refused with DEFMSG_MINING_SKILL unless
         // @Smelt's ARGN3 waived it - and TDATA2 the top of the range the difficulty is
         // drawn from, (TDATA1 + rand(TDATA2 - TDATA1)) / 10. A resource amount of 0
         // fails like a missed roll (CCharSkill.cpp:1231-1246). ARGN3 waives only the
         // minimum; it used to skip the roll itself, which was a fixed 30.
-        var ingotDef = DefinitionLoader.GetItemDef(ingotDefIndex);
         int skillMin = (int)Math.Min(ingotDef?.TData1 ?? 0u, int.MaxValue);
         int skillMax = (int)Math.Min(ingotDef?.TData2 ?? 0u, int.MaxValue);
         if (miningSkill < skillMin && !skipSkillReq)
@@ -2754,13 +2774,20 @@ public sealed class ClientItemUseHandler
         if (ingot.ItemType == ItemType.Normal)
             ingot.ItemType = ItemType.Ingot;
         ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
+        BounceSmeltResult(ingot);
+    }
 
+    /// <summary>ItemBounce for a smelting result (CCharSkill.cpp:1216/1283): into
+    /// the pack when it can be carried, else at the smelter's feet.</summary>
+    private void BounceSmeltResult(Item result)
+    {
+        if (_character == null) return;
         var pack = _character.Backpack;
-        if (pack != null && (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(ingot)))
+        if (pack != null && (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(result)))
         {
-            var actual = pack.TryAddItemWithStack(ingot);
-            if (actual != null && actual != ingot)
-                _world.RemoveItem(ingot);
+            var actual = pack.TryAddItemWithStack(result);
+            if (actual != null && actual != result)
+                _world.RemoveItem(result);
 
             if (actual != null)
             {
@@ -2773,7 +2800,7 @@ public sealed class ClientItemUseHandler
             }
         }
 
-        _world.PlaceItemWithDecay(ingot, _character.Position);
+        _world.PlaceItemWithDecay(result, _character.Position);
     }
 
 

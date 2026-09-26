@@ -198,6 +198,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CombatEngine.OnItemDamaged = null;
         SphereNet.Game.Combat.CombatEngine.OnItemBroken = null;
         SphereNet.Game.Combat.CombatEngine.BreakOnZeroHits = true;
+        SphereNet.Game.Combat.ItemDamageEngine.RandVal = SphereNet.Game.Combat.ItemDamageEngine.DefaultRand;
         SphereNet.Game.Combat.CombatEngine.DefaultHits = 50;
         SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
         SphereNet.Game.Combat.CombatEngine.OnParrySucceeded = null;

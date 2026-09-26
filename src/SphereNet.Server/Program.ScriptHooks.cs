@@ -300,10 +300,14 @@ public static partial class Program
             _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetRelease,
                 new TriggerArgs { CharSrc = owner, O1 = owner }) == TriggerResult.True;
 
-        // @Jail — fired on a character sent to jail. N1 = sentence minutes (0 = indefinite).
-        SphereNet.Game.Objects.Characters.Character.OnJailed = (ch, minutes) =>
+        // @Jailed — CChar::Jail fires it before jailing or forgiving
+        // (CCharAct.cpp:157-164: Init(fSet, iCell, 0)): ARGN1 = 1 jail / 0 forgive,
+        // ARGN2 = cell; ARGN3 = SphereNet's opt-in sentence minutes (0 upstream).
+        // RETURN 1 cancels.
+        SphereNet.Game.Objects.Characters.Character.OnJailed = (ch, src, set, cell, minutes) =>
             _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Jail,
-                new TriggerArgs { CharSrc = ch, N1 = minutes });
+                new TriggerArgs { CharSrc = src ?? ch, N1 = set ? 1 : 0, N2 = cell, N3 = minutes })
+                == TriggerResult.True;
 
         // @EnvironChange — fired when a character's perceived light level changes
         // (surface/dungeon boundary). N1 = new light level. Only fires on an

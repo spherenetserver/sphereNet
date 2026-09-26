@@ -4,7 +4,7 @@ namespace SphereNet.Core.Enums;
 /// Object attribute flags. Maps to ATTR_* in Source-X.
 /// </summary>
 [Flags]
-public enum ObjAttributes : uint
+public enum ObjAttributes : ulong
 {
     None = 0,
     Identified = 0x0001,
@@ -30,5 +30,8 @@ public enum ObjAttributes : uint
     LockedDown = 0x100000,
     Nodropt = 0x200000,
     NotRading = 0x400000,
-    CanUseParalyzed = 0x80000000
+    CanUseParalyzed = 0x80000000,
+    /// <summary>ATTR_CANNOTREPAIR (CItem.h:151): no repair, no fortify. Source-X's
+    /// attribute word is 64-bit (uint64 m_Attr, CItem.h:106).</summary>
+    CannotRepair = 0x400000000000,
 }

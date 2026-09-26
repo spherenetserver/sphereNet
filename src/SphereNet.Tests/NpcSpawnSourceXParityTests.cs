@@ -360,8 +360,14 @@ public sealed class NpcSpawnSourceXParityTests : IDisposable
 
         int throws = 0;
         ai.OnNpcThrow = (_, _, _) => throws++;
-        typeof(NpcAI).GetMethod("ActFight", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(ai, [thrower, target, 100]);
+        long clock = 1_000_000;
+        ai.NowMs = () => clock;
+        var actFight = typeof(NpcAI).GetMethod("ActFight", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        actFight.Invoke(ai, [thrower, target, 100]);
+        Assert.Equal(NpcAI.NpcSpecialKind.Throw, ai.PendingSpecial(thrower)); // started at distance 1
+        // It flies when Skill_Act_Throwing's three second wind-up ends.
+        clock += NpcAI.SpecialWindupMs;
+        actFight.Invoke(ai, [thrower, target, 100]);
 
         Assert.Equal(1, throws);
     }

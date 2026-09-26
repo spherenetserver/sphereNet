@@ -222,6 +222,10 @@ public sealed class NpcAiAuditRegressionTests
 
         int? thrownDamage = null;
         ai.OnNpcThrow = (_, _, damage) => thrownDamage = damage;
+        long clock = 1_000_000;
+        ai.NowMs = () => clock;
+        Invoke(ai, "ActFight", thrower, target, 100);
+        clock += NpcAI.SpecialWindupMs; // the missile flies when the wind-up ends
         Invoke(ai, "ActFight", thrower, target, 100);
 
         Assert.InRange(thrownDamage ?? -1, 10, 20);

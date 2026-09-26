@@ -191,13 +191,22 @@ public sealed class ItemsEconomySourceXParityTests
     {
         var bench = Setup();
         var blade = InPack(bench, ItemType.WeaponSword);
+        // Only the armour/weapon family wears (IsTypeArmorWeapon, CItem.cpp:5807/5910);
+        // a plain item has no hits to lose and OnTakeDamage does nothing to it (:5985).
+        // This test used a plain chair and expected it destroyed.
+        var shield = InPack(bench, ItemType.Shield);
+        shield.HitsMax = 5;
+        shield.HitsCur = 1;
         var chair = InPack(bench, ItemType.Normal);
         chair.HitsMax = 5;
         chair.HitsCur = 1;
 
-        UseOn(bench, blade, chair.Uid.Value);
+        UseOn(bench, blade, shield.Uid.Value);
+        Assert.True(shield.IsDeleted);
 
-        Assert.True(chair.IsDeleted);
+        UseOn(bench, blade, chair.Uid.Value);
+        Assert.False(chair.IsDeleted);
+        Assert.Equal(1, chair.HitsCur);
     }
 
     [Fact]

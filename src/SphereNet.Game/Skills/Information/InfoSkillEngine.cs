@@ -316,8 +316,8 @@ public static class InfoSkillEngine
 
         // Repairable flag -- Source-X toggles based on ITEMDEF REPAIR.
         var def = Definitions.DefinitionLoader.GetItemDef(target.BaseId);
-        if (def != null && !def.Repair)
-            body += ServerMessages.Get(Msg.ItemRepair);
+        if (target.IsAttr(ObjAttributes.CannotRepair) || (def != null && !def.Repair))
+            body += ServerMessages.Get(Msg.ItemRepair); // ATTR_CANNOTREPAIR: CItem.cpp:4851
 
         // Weapon poison level.
         if (fWeapon)

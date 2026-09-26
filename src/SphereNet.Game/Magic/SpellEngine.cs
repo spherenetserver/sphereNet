@@ -298,7 +298,24 @@ public sealed class SpellEngine
         /// The native part was already undone once when the verdict came in, so a
         /// later removal or save/reload must not undo or redo it again.</summary>
         public bool NativeSuppressed { get; set; }
+
+        /// <summary>ATTR_MOVE_NEVER on the spell memory: a dispel of level 100 or
+        /// less leaves the effect alone (Spell_Dispel, CCharSpell.cpp:90). The worn
+        /// memory's own attribute is the live answer - a script sets it there - and
+        /// this carries it through a save, where the memory is rebuilt.</summary>
+        public bool MoveNever { get; set; }
     }
+
+    /// <summary>Whether a dispel of <paramref name="level"/> (0-150) spares this
+    /// effect: Spell_Dispel keeps every ATTR_MOVE_NEVER memory unless the level is
+    /// above 100 (CCharSpell.cpp:90) - which only a GM's Dispel reaches (:3949).</summary>
+    private static bool SurvivesDispel(ActiveSpellEffect eff, int level) =>
+        level <= 100 && IsMoveNever(eff);
+
+    private static bool IsMoveNever(ActiveSpellEffect eff) =>
+        eff.Memory is { IsDeleted: false } mem
+            ? mem.IsAttr(ObjAttributes.Move_Never)
+            : eff.MoveNever;
 
     /// <summary>Effects created by the current application pass whose [SPELL]
     /// @EffectAdd stage has not run yet; settled once the native code has
@@ -544,14 +561,24 @@ public sealed class SpellEngine
     private void ApplyCastResourceLoss(Character caster, SpellDef def, bool wand, bool scroll,
         bool fizzle, bool abort)
     {
-        int manaLoss = 0;
+        int manaLoss = 0, tithingLoss = 0;
         bool lossEnabled = abort ? Character.ManaLossAbort : Character.ManaLossFail;
+        bool reagentLossEnabled = abort ? Character.ReagentLossAbort : Character.ReagentLossFail;
         if (fizzle || abort)
         {
             if (lossEnabled)
                 manaLoss = SpellManaCost(caster, def, wand, scroll) * Character.ManaLossPercent / 100;
+            // Tithing is lost on the reagent-loss switch, not the mana one (:3327-3341).
+            if (reagentLossEnabled)
+                tithingLoss = SpellTithingCost(caster, def, wand, scroll);
         }
 
+        // The fail effect: ITEMID_FX_SPELL_FAIL, which the stages may replace
+        // (LOCAL.CreateObject1, 0 = none) and hue (LOCAL.EffectColor /
+        // LOCAL.EffectRender) - Spell_CastFail, CCharSpell.cpp:3343-3368.
+        const ushort SpellFailEffect = 0x3735; // ITEMID_FX_SPELL_FAIL
+        ushort failEffect = SpellFailEffect;
+        uint effectColor = 0, effectRender = 0;
         if (TriggerDispatcher != null)
         {
             var failArgs = new TriggerArgs
@@ -561,12 +588,32 @@ public sealed class SpellEngine
                 N2 = manaLoss,
                 Locals = new SphereNet.Scripting.Variables.VarMap(),
             };
+            failArgs.Locals.SetInt("CreateObject1", SpellFailEffect);
+            failArgs.Locals.SetInt("TithingLoss", tithingLoss);
             if (TriggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellFail, failArgs) == TriggerResult.True)
                 return;
             if (TriggerDispatcher.FireSpellTrigger(def.Id, "Fail", caster, failArgs) == TriggerResult.True)
                 return;
             manaLoss = (int)Math.Clamp(failArgs.N2, 0, ushort.MaxValue);   // :3360
+            tithingLoss = (ushort)failArgs.Locals.GetInt("TithingLoss", 0); // :3361
+            effectColor = (uint)failArgs.Locals.GetInt("EffectColor", 0);
+            effectRender = (uint)failArgs.Locals.GetInt("EffectRender", 0);
+            failEffect = (ushort)(failArgs.Locals.GetInt("CreateObject1", 0) & 0xFFFF);
         }
+
+        // Effect(EFFECT_OBJ, iT1, this, 1, 30, ...) then Sound(SOUND_SPELL_FIZZLE).
+        if (failEffect != 0)
+        {
+            SphereNet.Network.Packets.PacketWriter fx = effectColor != 0 || effectRender != 0
+                ? new SphereNet.Network.Packets.Outgoing.PacketEffectHued(3, caster.Uid.Value, caster.Uid.Value,
+                    failEffect, caster.X, caster.Y, caster.Z, caster.X, caster.Y, caster.Z,
+                    1, 30, false, false, effectColor, effectRender)
+                : new SphereNet.Network.Packets.Outgoing.PacketEffect(3, caster.Uid.Value, caster.Uid.Value,
+                    failEffect, caster.X, caster.Y, caster.Z, caster.X, caster.Y, caster.Z,
+                    1, 30, false, false);
+            Character.BroadcastNearby?.Invoke(caster.Position, 18, fx, 0);
+        }
+        OnPlaySound?.Invoke(caster.Position, 0x5C); // SOUND_SPELL_FIZZLE
 
         if (caster.PrivLevel >= PrivLevel.GM)
             return;
@@ -583,6 +630,10 @@ public sealed class SpellEngine
 
         if (lossEnabled && manaLoss > 0)
             caster.Mana = (short)Math.Max(0, caster.Mana - manaLoss);
+
+        // Tithing lost with the reagents (:3381-3386, :3399-3404).
+        if (reagentLossEnabled && tithingLoss > 0)
+            caster.Tithing -= tithingLoss;
 
         if (takeReagents)
             ConsumeReagents(caster, def);
@@ -896,6 +947,11 @@ public sealed class SpellEngine
         // wand, NPC, console). RETURN 1 cancels the selection before any
         // resource is committed. Packs use this for form toggles (Reaper
         // Form / Stone Form re-cast while polymorphed).
+        // LOCAL.TithingUse carries Calc_SpellTithingCost into the stage and is read
+        // back as the cast's tithing bill (CCharSpell.cpp:2365-2373, :2406).
+        TryResolveCastSource(caster, out var selectSourceKind, out _);
+        int tithingUse = SpellTithingCost(caster, def,
+            selectSourceKind == CastSourceKind.Wand, selectSourceKind == CastSourceKind.Scroll);
         if (TriggerDispatcher != null)
         {
             var selectArgs = new TriggerArgs
@@ -903,10 +959,13 @@ public sealed class SpellEngine
                 CharSrc = caster,
                 N1 = (int)spell,
                 N2 = EffectiveManaCost(caster, def),
+                Locals = new SphereNet.Scripting.Variables.VarMap(),
             };
+            selectArgs.Locals.SetInt("TithingUse", tithingUse);
             if (TriggerDispatcher.FireSpellTrigger(spell, "Select", caster, selectArgs)
                 == TriggerResult.True)
                 return -1;
+            tithingUse = (ushort)selectArgs.Locals.GetInt("TithingUse", 0);
         }
         // The caster's own area gets the reference's single anti-magic question
         // (Spell_CanCast's fCheckAntiMagic, CCharSpell.cpp:2519). Only NoMagic and
@@ -967,6 +1026,14 @@ public sealed class SpellEngine
             return -1;
         }
 
+        // Tithing points, checked right after the reagents (Spell_CanCast,
+        // CCharSpell.cpp:2501-2509) and owed by the same raw player cast.
+        if (caster.IsPlayer && caster.PrivLevel < PrivLevel.GM && caster.Tithing < tithingUse)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNotithing, tithingUse));
+            return -1;
+        }
+
         // Spellbook requirement (reference Spell_CanCast): a player casting
         // from memory must have the spell in an accessible spellbook; scroll
         // and wand casts bypass the book. All schools use their definition
@@ -985,6 +1052,7 @@ public sealed class SpellEngine
         // Store cast state on character
         caster.BeginCast(spell, targetUid, targetPos);
         caster.CastDifficulty = preparation.Difficulty;
+        caster.CastTithingUse = tithingUse;
         caster.CastAborted = ch => FireCastSkillTrigger(ch, spell, CharTrigger.SkillAbort);
 
         if (!targetPos.Equals(caster.Position))
@@ -1234,7 +1302,7 @@ public sealed class SpellEngine
         if (def.IsFlag(SpellFlag.Summon))
         {
             summoned = PrepareSummon(caster, targetPos, def, spell, skillVal, stage.CreateObject1,
-                stage.DurationTenths);
+                stage.DurationTenths, stage.FollowerSlotsOverride);
             if (summoned == null)
                 return FailCastAtCompletion(caster, null);
         }
@@ -1269,6 +1337,23 @@ public sealed class SpellEngine
             DiscardSummon(summoned);
             SendMissingReagentMessage(caster, def);
             return false;
+        }
+
+        // Tithing points: checked and spent after the reagents (Spell_CanCast
+        // fTest=false from Spell_CastDone, CCharSpell.cpp:2501-2513, :3010), at the
+        // bill the @Select stage settled on when the cast began.
+        if (caster.IsPlayer && caster.PrivLevel < PrivLevel.GM)
+        {
+            int tithingUse = caster.CastTithingUse ??
+                SpellTithingCost(caster, def, castWithWand, castFromScroll);
+            if (caster.Tithing < tithingUse)
+            {
+                DiscardSummon(summoned);
+                OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNotithing, tithingUse));
+                return false;
+            }
+            if (tithingUse > 0)
+                caster.Tithing -= tithingUse;
         }
 
         caster.Mana -= (short)manaCost;
@@ -1501,8 +1586,19 @@ public sealed class SpellEngine
         }
         else
         {
-            // Self-buff or ground target
-            ApplyCharEffect(caster, caster, def, skillLevel, stage.DurationTenths);
+            // Self-buff or ground target. The cast state - its target point
+            // included - is already cleared, so the point Teleport aims at is
+            // handed down here (Source-X keeps it in m_Act_p, CCharSpell.cpp:3140).
+            var prevTargetPos = _effectTargetPos;
+            _effectTargetPos = targetPos;
+            try
+            {
+                ApplyCharEffect(caster, caster, def, skillLevel, stage.DurationTenths);
+            }
+            finally
+            {
+                _effectTargetPos = prevTargetPos;
+            }
         }
 
         // NPC casters have no client-side completion path (the player's
@@ -1521,7 +1617,8 @@ public sealed class SpellEngine
     /// <summary>What @SpellSuccess / [SPELL] @Success left behind for the rest of
     /// Spell_CastDone (CCharSpell.cpp:2973-2990). Zero means "not set".</summary>
     private sealed record SpellSuccessStage(int SkillLevel, int DurationTenths, int AreaRadius,
-        int FieldWidth, int FieldGauge, ushort CreateObject1, ushort CreateObject2, ushort EffectColor);
+        int FieldWidth, int FieldGauge, ushort CreateObject1, ushort CreateObject2, ushort EffectColor,
+        int FollowerSlotsOverride = -1);
 
     /// <summary>Fire @SpellSuccess then [SPELL] @Success with Spell_CastDone's
     /// arguments (CCharSpell.cpp:2928-2971): ARGN1 = spell, ARGN2 = skill level,
@@ -1580,7 +1677,12 @@ public sealed class SpellEngine
             (int)Math.Clamp(locals.GetInt("FieldWidth", 0), 0, 255),
             (int)Math.Clamp(locals.GetInt("FieldGauge", 0), 0, 255),
             obj1, obj2,
-            (ushort)Math.Clamp(locals.GetInt("EffectColor", 0), 0, ushort.MaxValue));
+            (ushort)Math.Clamp(locals.GetInt("EffectColor", 0), 0, ushort.MaxValue),
+            // LOCAL.FollowerSlotsOverride, narrowed to a short; -1 = the creature's
+            // own FOLLOWERSLOTS (CCharSpell.cpp:2994-3001).
+            def.IsFlag(SpellFlag.Summon)
+                ? unchecked((short)locals.GetInt("FollowerSlotsOverride", -1))
+                : -1);
     }
 
     /// <summary>Source-X CChar::Use_Obj for a spell that acts as a double-click
@@ -1712,6 +1814,16 @@ public sealed class SpellEngine
     private bool RollsFreeReagents(Character caster) =>
         _rand.Next(100) < GetCastingPropertyValue(
             caster, SpellCastingProperties.LowerReagentCost);
+
+    /// <summary>Calc_SpellTithingCost (CResourceCalc.cpp:581-598): the spell's
+    /// TITHINGUSE, owed only by a player casting from their own power while
+    /// REAGENTSREQUIRED is on, and waived outright on a LOWERREAGENTCOST roll.</summary>
+    private int SpellTithingCost(Character caster, SpellDef def, bool wand, bool scroll)
+    {
+        if (!Character.ReagentsRequiredEnabled || !caster.IsPlayer || wand || scroll)
+            return 0;
+        return RollsFreeReagents(caster) ? 0 : def.TithingCost;
+    }
 
     private bool HasRequiredReagents(Character caster, SpellDef def)
     {
@@ -1850,6 +1962,10 @@ public sealed class SpellEngine
     /// <summary>The iSkillLevel of the effect being applied (Source-X OnSpellEffect's
     /// argument): the caster's skill, or a potion's quality. Cure and poison read it.</summary>
     private int _effectSkillLevel;
+
+    /// <summary>The ground point of the cast being resolved (Source-X m_Act_p),
+    /// or null outside CastDone.</summary>
+    private Point3D? _effectTargetPos;
 
     /// <summary>The port of CChar::OnSpellEffect (CCharSpell.cpp:3606). Returns false
     /// when the spell did not take (dead target, a trigger refused it, reflected
@@ -2460,7 +2576,8 @@ public sealed class SpellEngine
     /// Source-X orders it this way deliberately: Spell_Summon_Try runs at
     /// CCharSpell.cpp:3002 and the consumption only at :3010.</summary>
     private Character? PrepareSummon(Character caster, Point3D targetPos, SpellDef def,
-        SpellType spell, int skillLevel, ushort createObject1 = 0, int durationTenths = 0)
+        SpellType spell, int skillLevel, ushort createObject1 = 0, int durationTenths = 0,
+        int followerSlotsOverride = -1)
     {
         // sm_summon menu pick stashed on the caster (Source-X
         // m_atMagery.m_uiSummonID): the COMPLETED cast conveys the chosen
@@ -2497,7 +2614,8 @@ public sealed class SpellEngine
         // CCharSpell.cpp:2552, fed from :2987).
         if (createObject1 != 0)
             summonBody = createObject1;
-        return SummonCreature(caster, targetPos, def, skillLevel, summonBody, summonSel, durationTenths);
+        return SummonCreature(caster, targetPos, def, skillLevel, summonBody, summonSel, durationTenths,
+            followerSlotsOverride);
     }
 
     /// <summary>Take back a summon whose cast could not be paid for after all - the
@@ -2511,7 +2629,8 @@ public sealed class SpellEngine
 
     /// <summary>Summon a creature at target location.</summary>
     private Character? SummonCreature(Character caster, Point3D pos, SpellDef def, int skillLevel,
-        ushort bodyId = 0, string? defName = null, int durationTenths = 0)
+        ushort bodyId = 0, string? defName = null, int durationTenths = 0,
+        int followerSlotsOverride = -1)
     {
         // MAGICF_SUMMONWALKCHECK (Source-X CCharSpell.cpp:2646): the creature has
         // to be able to STAND where it is called. Without it a summon lands inside
@@ -2593,6 +2712,14 @@ public sealed class SpellEngine
 
         // The cast's iDuration (GetSpellDuration, then @Success LOCAL.Duration).
         int duration = durationTenths > 0 ? durationTenths : GetSpellDuration(def, skillLevel, caster, caster);
+        // @Success LOCAL.FollowerSlotsOverride: the slots the summon is weighed and
+        // counted at instead of its own GetFollowerSlots() (Spell_Summon_Try,
+        // CCharSpell.cpp:2662). The owner's follower total is a live scan of each
+        // pet's slots here, so the override is carried on the summon itself for as
+        // long as it serves, rather than added once to a stored counter.
+        if (followerSlotsOverride >= 0)
+            creature.TrySetProperty("FOLLOWERSLOTS",
+                followerSlotsOverride.ToString(CultureInfo.InvariantCulture));
         if (!creature.TryAssignOwnership(caster, caster, summoned: true, enforceFollowerCap: true))
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.PetslotsTrySummon));
@@ -2829,17 +2956,15 @@ public sealed class SpellEngine
             return;
         }
 
-        // PRIV_JAILED: must be forgiven to leave the jail area (Spell_Teleport /
-        // Spell_CreateGate, CCharSpell.cpp:146-158, 265-273).
-        if (caster.PrivLevel < Core.Enums.PrivLevel.GM && caster.IsJailed)
+        // PRIV_JAILED and Gate Travel: Spell_CreateGate refuses a jailed caster
+        // outright, wherever the rune points (CCharSpell.cpp:265-276). Recall goes
+        // through Spell_Teleport, which instead sends the prisoner back to the
+        // cell - see RedirectJailedTravel below.
+        if (def.Id == SpellType.GateTravel &&
+            caster.PrivLevel < Core.Enums.PrivLevel.GM && caster.IsJailed)
         {
-            var jail = _world.FindRegionByName("jail");
-            if (jail == null || !jail.Contains(dest))
-            {
-                OnSysMessage?.Invoke(caster, ServerMessages.Get(
-                    _rand.Next(2) == 0 ? Msg.SpellTeleJailed1 : Msg.SpellTeleJailed2));
-                return;
-            }
+            SendJailedTravelMessage(caster);
+            return;
         }
 
         if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
@@ -2907,6 +3032,10 @@ public sealed class SpellEngine
 
         if (def.Id == SpellType.Recall)
         {
+            // Spell_Teleport's PRIV_JAILED check runs after its anti-magic checks
+            // (CCharSpell.cpp:146-174), so it comes last here too.
+            if (!RedirectJailedTravel(caster, ref dest))
+                return;
             byte oldMap = caster.MapIndex;
             if (_world.MoveCharacter(caster, dest))
                 OnSpellTeleport?.Invoke(caster, dest, oldMap);
@@ -2914,6 +3043,34 @@ public sealed class SpellEngine
         }
 
         CreateGate(caster, def, dest);
+    }
+
+    private void SendJailedTravelMessage(Character caster) =>
+        OnSysMessage?.Invoke(caster, ServerMessages.Get(
+            _rand.Next(2) == 0 ? Msg.SpellTeleJailed1 : Msg.SpellTeleJailed2));
+
+    /// <summary>The PRIV_JAILED part of Spell_Teleport (CCharSpell.cpp:146-174): a
+    /// jailed non-GM whose destination lies outside the "jail" region is told so and
+    /// sent to the anchor of the jail region instead - "jail{JailCell}" when the
+    /// account names a cell, else "jail". The move is NOT refused. Returns false only
+    /// when that jail region does not exist, where Source-X ends up with an invalid
+    /// point (InitPoint) and moves nowhere.</summary>
+    private bool RedirectJailedTravel(Character caster, ref Point3D dest)
+    {
+        if (caster.PrivLevel >= Core.Enums.PrivLevel.GM || !caster.IsJailed)
+            return true;
+        var jail = _world.FindRegionByName("jail");
+        if (jail != null && jail.Contains(dest))
+            return true;
+
+        SendJailedTravelMessage(caster);
+        int cell = caster.JailCell;
+        if (cell != 0)
+            jail = _world.FindRegionByName($"jail{cell}");
+        if (jail?.RepresentativePoint is not { } cellPoint)
+            return false;
+        dest = cellPoint;
+        return true;
     }
 
     /// <summary>The port of Spell_CreateGate (CCharSpell.cpp:250-339): always two
@@ -3110,7 +3267,7 @@ public sealed class SpellEngine
         {
             case SpellType.Teleport:
             {
-                var dest = caster.CastTargetPos;
+                var dest = _effectTargetPos ?? caster.CastTargetPos;
                 if (dest.X == 0 && dest.Y == 0) break;
                 // Validate the destination like Recall/Gate do: off-map or an
                 // impassable tile (wall/water/blocking static) would strand the
@@ -3142,6 +3299,10 @@ public sealed class SpellEngine
                         break;
                     }
                 }
+                // PRIV_JAILED: Spell_Teleport sends a prisoner back to the cell
+                // (CCharSpell.cpp:146-174; the spell calls it at :3140).
+                if (!RedirectJailedTravel(caster, ref dest))
+                    break;
                 byte oldMap = caster.MapIndex;
                 if (_world.MoveCharacter(caster, dest))
                     OnSpellTeleport?.Invoke(caster, dest, oldMap);
@@ -3205,9 +3366,15 @@ public sealed class SpellEngine
                 // Spell_Dispel (CCharSpell.cpp:79-104) deletes only the memories on
                 // LAYER_SPELL_STATS..LAYER_SPELL_Summon - poison, drunkenness,
                 // hallucination, mana drain and the necromancy layers stay.
-                RemoveMatchingEffects(eff => eff.Target == target && IsDispelLayerSpell(eff.Spell));
+                // The level is 150 from a GM and 50 otherwise (CCharSpell.cpp:3949);
+                // at 100 or below a MOVE_NEVER memory stays (:90).
+            {
+                int dispelLevel = caster.PrivLevel >= PrivLevel.GM ? 150 : 50;
+                RemoveMatchingEffects(eff => eff.Target == target && IsDispelLayerSpell(eff.Spell) &&
+                    !SurvivesDispel(eff, dispelLevel));
                 DispelConjured(caster, target);
                 break;
+            }
             case SpellType.Resurrection:
                 if (target.IsDead)
                 {
@@ -4410,7 +4577,9 @@ public sealed class SpellEngine
 
     public void StripDispellableEffects(Character target)
     {
-        RemoveMatchingEffects(eff => eff.Target == target);
+        // Death runs Spell_Dispel(100) (CCharAct.cpp:4397), which spares
+        // ATTR_MOVE_NEVER memories (CCharSpell.cpp:90).
+        RemoveMatchingEffects(eff => eff.Target == target && !SurvivesDispel(eff, 100));
     }
 
     /// <summary>Create a periodic damage-over-time effect (reference
@@ -4962,6 +5131,8 @@ public sealed class SpellEngine
             // LINK is left unattributed (Serial.Invalid), like a Source-X memory
             // whose source logged out.
             AttachSpellMemory(null, eff, GetSpellDef(eff.Spell));
+            if (eff.MoveNever)
+                eff.Memory?.SetAttr(ObjAttributes.Move_Never);
             count++;
         }
         ch.ClearPendingSpellEffectRecords();
@@ -4993,14 +5164,16 @@ public sealed class SpellEngine
             eff.MeditationDelta.ToString(CultureInfo.InvariantCulture),
             eff.BuffMagnitude.ToString(CultureInfo.InvariantCulture),
             string.Join(',', eff.OldSkinHue, eff.NewSkinHue, eff.OldHairHue,
-                eff.NewHairHue, eff.OldBeardHue, eff.NewBeardHue));
+                eff.NewHairHue, eff.OldBeardHue, eff.NewBeardHue),
+            // 22nd field: ATTR_MOVE_NEVER on the memory. Optional on read.
+            IsMoveNever(eff) ? "1" : "0");
     }
 
     private static bool TryDeserializeEffect(Character target, string record, long now, out ActiveSpellEffect eff)
     {
         eff = null!;
         var parts = record.Split('|');
-        if (parts.Length is not (16 or 17 or 18 or 19 or 20 or 21))
+        if (parts.Length is not (16 or 17 or 18 or 19 or 20 or 21 or 22))
             return false;
 
         if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
@@ -5096,6 +5269,8 @@ public sealed class SpellEngine
             OldSkinHue = hues[0], NewSkinHue = hues[1],
             OldHairHue = hues[2], NewHairHue = hues[3],
             OldBeardHue = hues[4], NewBeardHue = hues[5],
+            // ATTR_MOVE_NEVER on the memory; absent in records written before it.
+            MoveNever = parts.Length >= 22 && parts[21] == "1",
         };
         return true;
     }

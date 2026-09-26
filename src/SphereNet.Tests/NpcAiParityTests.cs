@@ -396,12 +396,17 @@ public class NpcAiParityTests
         var (_, ai, dragon) = MakeBreathingDragon(hookSkip: false);
         bool breathed = false;
         ai.OnNpcBreath = (_, _, _) => breathed = true;
+        // The breath resolves when its three second wind-up ends (Skill_Act_Breath
+        // START -> SUCCESS), so each tick steps the AI clock past it.
+        long clock = 1_000_000;
+        ai.NowMs = () => clock;
 
         for (int i = 0; i < 30 && !breathed; i++)
         {
             dragon.NextNpcActionTime = 0; dragon.NextAttackTime = 0;
             dragon.Stam = dragon.MaxStam;
             ai.OnTickAction(dragon);
+            clock += NpcAI.SpecialWindupMs;
         }
 
         Assert.True(breathed); // control: the breath WOULD fire by default
@@ -413,12 +418,15 @@ public class NpcAiParityTests
         var (_, ai, dragon) = MakeBreathingDragon(hookSkip: true);
         bool breathed = false;
         ai.OnNpcBreath = (_, _, _) => breathed = true;
+        long clock = 1_000_000;
+        ai.NowMs = () => clock; // step past any wind-up, as the control test does
 
         for (int i = 0; i < 30; i++)
         {
             dragon.NextNpcActionTime = 0; dragon.NextAttackTime = 0;
             dragon.Stam = dragon.MaxStam;
             ai.OnTickAction(dragon);
+            clock += NpcAI.SpecialWindupMs;
         }
 
         Assert.False(breathed); // LOCAL.skiphardcoded bypassed the breath special

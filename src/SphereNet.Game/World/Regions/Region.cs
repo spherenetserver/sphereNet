@@ -226,8 +226,11 @@ public class Region : IScriptObj
             case "NOBUILD": value = GetFlagBool(RegionFlag.NoBuild) ? "1" : "0"; return true;
             case "MAGIC": value = GetFlagBool(RegionFlag.NoMagic) ? "0" : "1"; return true;
             case "NOMAGIC": value = GetFlagBool(RegionFlag.NoMagic) ? "1" : "0"; return true;
-            case "RECALLIN": value = GetFlagBool(RegionFlag.Recall) ? "1" : "0"; return true;
-            case "MARK": value = GetFlagBool(RegionFlag.Mark) ? "1" : "0"; return true;
+            // RECALLIN reads "may recall in": !REGION_ANTIMAGIC_RECALL_IN (CRegion.cpp:368-370).
+            // MARK is RECALLIN under another name upstream: both read and toggle
+            // REGION_ANTIMAGIC_RECALL_IN (CRegion.cpp:367-369, :567-569).
+            case "RECALLIN":
+            case "MARK": value = GetFlagBool(RegionFlag.Recall) ? "0" : "1"; return true;
             case "SAFE": value = GetFlagBool(RegionFlag.Safe) ? "1" : "0"; return true;
             case "UNDERGROUND": value = GetFlagBool(RegionFlag.Underground) ? "1" : "0"; return true;
         }
@@ -334,8 +337,14 @@ public class Region : IScriptObj
                 else
                     _flags |= RegionFlag.NoMagic;
                 return true;
-            case "RECALLIN": SetFlagBool(RegionFlag.Recall, val); return true;
-            case "MARK": SetFlagBool(RegionFlag.Mark, val); return true;
+            case "RECALLIN":
+            case "MARK":
+                // RECALLIN=0 raises REGION_ANTIMAGIC_RECALL_IN (CRegion.cpp:568-570).
+                if (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase))
+                    _flags &= ~RegionFlag.Recall;
+                else
+                    _flags |= RegionFlag.Recall;
+                return true;
             case "SAFE": SetFlagBool(RegionFlag.Safe, val); return true;
             case "UNDERGROUND": SetFlagBool(RegionFlag.Underground, val); return true;
             case "FLAGS":

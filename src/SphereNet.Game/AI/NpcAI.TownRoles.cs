@@ -724,49 +724,157 @@ public sealed partial class NpcAI
         bool searchGrass = animal ||
             (!intelligent && food == 0 && !animal && npc.NpcBrain is not
                 (NpcBrainType.Monster or NpcBrainType.Dragon or NpcBrainType.Berserk));
-        return searchGrass && TryGraze(npc);
+        return searchGrass && TryGraze(npc, intelligent);
     }
 
-    /// <summary>Grazing (CCharNPCAct.cpp:2610-2630): a creature whose FOODTYPE takes
-    /// t_grass eats the grass it stands on. Source-X finds the grass through the
-    /// region's natural resources; SphereNet has no grass resource bits, so the
-    /// land tile under the creature has to be a grass tile. The bite is 15 of the
-    /// resource, a tenth of it food (EatAnim(pResBit, uiEaten / 10)).</summary>
-    private bool TryGraze(Character npc)
+    /// <summary>The engine that owns natural-resource bits (the host wires the
+    /// shared one, so @ResourceFound runs; unwired, a private one is used).</summary>
+    public SphereNet.Game.Skills.GatheringEngine? Gathering
+    {
+        get => _gathering ??= new SphereNet.Game.Skills.GatheringEngine(_world);
+        set => _gathering = value;
+    }
+    private SphereNet.Game.Skills.GatheringEngine? _gathering;
+
+    /// <summary>Grazing (NPC_Food, CCharNPCAct.cpp:2610-2627; NPC_Act_Food,
+    /// :1910-1929): a creature whose FOODTYPE takes t_grass eats grass where it
+    /// stands. The grass is found the Source-X way, CheckNaturalResource(ptMe,
+    /// IT_GRASS, fTest=true): the top of the tile has to be of type t_grass (a
+    /// t_grass item or static, or a land tile listed in [TYPEDEF t_grass]
+    /// TERRAIN=), and the area's REGIONTYPE for t_grass (r_default_grass ->
+    /// mr_grass in the packs) supplies a resource bit with an AMOUNT that grazing
+    /// wears down - so an area with no grass resource feeds nothing and a grazed
+    /// spot runs out. It used to take any land tile whose tiledata name contained
+    /// "grass". A bite takes 15 of the bit (10 for NPC_AI_INTFOOD), a tenth of it
+    /// food (EatAnim(pResBit, uiEaten / 10)); the bit is named DEFMSG_NPC_EAT_GRASS,
+    /// tagged NOSAVE and given ten more minutes. Walking to grass elsewhere
+    /// (FindTypeNear_Top) is not done here.</summary>
+    private bool TryGraze(Character npc, bool intelligent = false)
     {
         if (!DietAcceptsGrass(npc))
             return false;
-        var mapData = _world.MapData;
-        if (mapData == null)
+        var here = npc.Position;
+        if (!IsTypeOnTop(here, ItemType.Grass))
             return false;
-        var cell = mapData.GetTerrainTile(npc.MapIndex, npc.X, npc.Y);
-        if (cell.Z != npc.Z)
-            return false;
-        var land = mapData.GetLandTileData(cell.TileId);
-        if (string.IsNullOrEmpty(land.Name) ||
-            !land.Name.Contains("grass", StringComparison.OrdinalIgnoreCase))
+        var bit = Gathering?.CheckNaturalResource(npc, here, "t_grass", ItemType.Grass);
+        if (bit == null || bit.IsDeleted ||
+            SphereNet.Game.Skills.GatheringEngine.NaturalResourceAmount(bit) <= 0 || bit.Z != npc.Z)
             return false;
 
-        // The bite is the resource bit named DEFMSG_NPC_EAT_GRASS; EatAnim shows it
-        // and raises the stats through @Eat, food AND stamina (CCharNPCAct.cpp:2619-2622,
-        // CCharAct.cpp:3436-3486).
-        var bite = _world.CreateItem();
-        bite.ItemType = ItemType.Grass;
-        bite.Name = ServerMessages.Get(Msg.NpcEatGrass);
-        try
-        {
-            ShowNpcEating(npc, bite.GetName());
-            if (OnNpcEatAnim != null)
-                OnNpcEatAnim(npc, bite, 15 / 10);
-            else
-                NPCs.EatEngine.EatAnim(npc, bite, null, 15 / 10);
-        }
-        finally
-        {
-            _world.DeleteObject(bite);
-        }
+        int eaten = SphereNet.Game.Skills.GatheringEngine.ConsumeNaturalResource(bit, intelligent ? 10 : 15);
+        bit.Name = ServerMessages.Get(Msg.NpcEatGrass);
+        ShowNpcEating(npc, bit.GetName());
+        if (OnNpcEatAnim != null)
+            OnNpcEatAnim(npc, bit, eaten / 10);
+        else
+            NPCs.EatEngine.EatAnim(npc, bit, null, eaten / 10);
+        bit.SetTag("NOSAVE", "1");
+        bit.SetDecayAt(Environment.TickCount64 + 10 * 60 * 1000); // SetTimeoutS(60*10)
+        if (intelligent)
+            npc.NextNpcActionTime = Environment.TickCount64 + 5000; // NPCACT_FOOD, _SetTimeoutS(5)
         return true;
     }
+
+    /// <summary>Source-X CWorldMap::IsTypeNear_Top(pt, type, 0) (CWorldMap.cpp:
+    /// 340-632) at one tile: of the dynamic items, the statics and the land there
+    /// that sit within 8 Z of the point, the highest top has to be of the type - an
+    /// item by its TYPE, a static by its ITEMDEF TYPE, the land by the TYPEDEF
+    /// whose TERRAIN= ranges list the land tile id. On equal heights the typed
+    /// element wins.</summary>
+    internal bool IsTypeOnTop(Point3D pt, ItemType type)
+    {
+        const int ResourceZCheck = 8;
+        var mapData = _world.MapData;
+        int bestZ = int.MinValue;      // the highest top of any kind
+        int bestTypedZ = int.MinValue; // the highest top that is of the type
+
+        void Consider(int topZ, int zForCheck, bool typed)
+        {
+            if (Math.Abs(zForCheck - pt.Z) > ResourceZCheck)
+                return;
+            if (topZ > bestZ) bestZ = topZ;
+            if (typed && topZ > bestTypedZ) bestTypedZ = topZ;
+        }
+
+        foreach (var item in _world.GetItemsInRange(pt, 0))
+        {
+            if (item.IsDeleted || !item.IsOnGround || item.X != pt.X || item.Y != pt.Y)
+                continue;
+            int height = mapData?.GetItemTileData(item.DispIdFull).Height ?? 0;
+            int top = Math.Min(item.Z + height, 127);
+            Consider(top, top, item.ItemType == type);
+        }
+        if (mapData != null)
+        {
+            foreach (var s in mapData.GetStatics(pt.Map, pt.X, pt.Y))
+            {
+                int top = Math.Min(s.Z + mapData.GetItemTileData(s.TileId).Height, 127);
+                Consider(top, s.Z, DefinitionLoader.GetItemDef(s.TileId)?.Type == type);
+            }
+            var cell = mapData.GetTerrainTile(pt.Map, pt.X, pt.Y);
+            Consider(cell.Z, cell.Z, TerrainIsType(cell.TileId, type));
+        }
+        return bestTypedZ != int.MinValue && bestTypedZ >= bestZ;
+    }
+
+    /// <summary>Source-X CWorldMap::GetTerrainItemType: the [TYPEDEF] whose
+    /// TERRAIN=lo hi lines (CItemTypeDef::r_LoadVal, CItemTypeDef.cpp:21-70) take
+    /// in this land tile id. Read from the loaded script pack, cached per pack.</summary>
+    private bool TerrainIsType(int landTileId, ItemType type)
+    {
+        var resources = DefinitionLoader.StaticResources;
+        if (resources == null)
+            return false;
+        if (!ReferenceEquals(_terrainTypesFor, resources))
+        {
+            _terrainTypes.Clear();
+            _terrainTypesFor = resources;
+        }
+        if (!_terrainTypes.TryGetValue(type, out var ranges))
+        {
+            ranges = [];
+            var link = resources.GetResource(ResType.TypeDef, (int)type);
+            if (link == null)
+            {
+                // [TYPEDEF t_grass] read before the [TYPEDEFS] line naming t_grass 97
+                // was filed under its name: find it by what that name means now.
+                foreach (var candidate in resources.GetAllResources())
+                {
+                    if (candidate.Id.Type != ResType.TypeDef || string.IsNullOrEmpty(candidate.DefName))
+                        continue;
+                    var named = resources.ResolveDefName(candidate.DefName);
+                    if (named.Type == ResType.TypeDef && named.Index == (int)type)
+                    {
+                        link = candidate;
+                        break;
+                    }
+                }
+            }
+            if (link?.StoredKeys != null)
+            {
+                foreach (var key in link.StoredKeys)
+                {
+                    if (!key.Key.StartsWith("TERRAIN", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var parts = key.Arg.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 0 || !ScriptNumber.TryParseToken(parts[0], out long lo) || lo < 0)
+                        continue;
+                    long hi = lo;
+                    if (parts.Length > 1 && (!ScriptNumber.TryParseToken(parts[1], out hi) || hi < 0))
+                        continue;
+                    ranges.Add(((int)Math.Min(lo, hi), (int)Math.Max(lo, hi)));
+                }
+            }
+            _terrainTypes[type] = ranges;
+        }
+        foreach (var (lo, hi) in ranges)
+            if (landTileId >= lo && landTileId <= hi)
+                return true;
+        return false;
+    }
+
+    private object? _terrainTypesFor;
+    private readonly Dictionary<ItemType, List<(int Lo, int Hi)>> _terrainTypes = [];
 
     /// <summary>Callback: an NPC saw a crime and calls the guards (Source-X
     /// CallGuards, CCharFight.cpp:215). Parameters: witness, criminal. Returns

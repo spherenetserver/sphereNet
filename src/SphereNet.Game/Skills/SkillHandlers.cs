@@ -462,6 +462,9 @@ public sealed class SkillHandlers
             : ItemType.Campfire;
         kindling.SetAttr(ObjAttributes.Move_Never | ObjAttributes.CanDecay);
         kindling.Amount = 1;
+        // m_itLight.m_pattern = LIGHT_LARGE (CCharUse.cpp:291): the light pattern is
+        // MOREZ (CItem.h:345), which is what a lit item sends as its light shape.
+        kindling.MoreP = new Point3D(kindling.MoreP.X, kindling.MoreP.Y, 1, kindling.MoreP.Map);
         kindling.SetDecayAt(Environment.TickCount64 + burnSeconds * 1000L);
         Item.OnVisualUpdate?.Invoke(kindling);
         var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(0x0226,

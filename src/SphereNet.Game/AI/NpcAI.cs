@@ -374,6 +374,14 @@ public sealed partial class NpcAI
     /// <summary>Everything OnTickAction does after the cadence is seeded.</summary>
     private void RunTickBody(Character npc)
     {
+        // A breath or throw started last tick runs as the NPC's skill: nothing else
+        // happens until its timer ends and the success stage resolves it
+        // (Skill_Act_Breath / Skill_Act_Throwing, CCharSkill.cpp:3279-3308,
+        // :3368-3475).
+        if (TickPendingSpecial(npc))
+            return;
+
+
         // An action a script started outranks the brain until it finishes, the way
         // upstream's action dispatcher runs before anything the brain would pick
         // (CCharNPCAct.cpp:2340). Pets included: RUNTO is told to one as often as to

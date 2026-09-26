@@ -645,45 +645,31 @@ public sealed class CommandHandler
     /// pair so script-defined functions still apply.
     /// </summary>
     /// <summary>Jail a character (the JAIL command's work, also used by the admin
-    /// panel) as Source-X CChar::Jail does (CCharAct.cpp:153-191): set PRIV_JAILED and
-    /// the JailCell tag on the account, teleport to the region point "jail{cell}"
-    /// ("jail" for cell 0, via world.GetJailPoint) and tell the prisoner. No freeze -
-    /// the jail region confines, and PRIV_JAILED blocks recall/teleport out.
-    /// <paramref name="minutes"/> &gt; 0 is an opt-in SphereNet timed release (stored
-    /// as UTC ticks so it survives a reboot); 0 = until forgiven, like Source-X.
-    /// Fires @Jail with N1 = minutes.</summary>
-    public void JailCharacter(GameWorld world, Character target, int minutes, int cell)
+    /// panel) through Source-X CChar::Jail (CCharAct.cpp:153-191, see
+    /// <see cref="Character.Jail"/>): @Jailed first (RETURN 1 cancels), then
+    /// PRIV_JAILED + the account JailCell tag, teleport to the region point
+    /// "jail{cell}" and msg_jailed. No freeze - the jail region confines, and
+    /// PRIV_JAILED blocks recall/teleport out. <paramref name="minutes"/> &gt; 0 is an
+    /// opt-in SphereNet timed release; 0 = until forgiven, like Source-X.
+    /// Returns false when a script cancelled.</summary>
+    public bool JailCharacter(GameWorld world, Character target, int minutes, int cell, Character? src = null)
     {
-        int jailMinutes = Math.Max(0, minutes);
-        long releaseTime = jailMinutes > 0
-            ? DateTime.UtcNow.Ticks + jailMinutes * TimeSpan.TicksPerMinute
-            : 0;
-        target.SetJailState(true, Math.Max(0, cell), releaseTime);
-
-        var jailPos = world.GetJailPoint(cell);
-        var jailFrom = target.Position;
-        if (world.MoveCharacter(target, jailPos))
-            Character.OnTeleportEffect?.Invoke(target, jailFrom);
-        OnSysMessage?.Invoke(target, ServerMessages.Get(Msg.MsgJailed));
-
-        // @Jail (Source-X) — fired on the jailed character. N1 = minutes
-        // (0 = indefinite).
-        Character.OnJailed?.Invoke(target, jailMinutes);
-
+        if (!target.Jail(src, true, cell, minutes))
+            return false;
         OnCharacterResyncRequested?.Invoke(target);
+        return true;
     }
 
     /// <summary>Release a jailed character (UNJAIL / FORGIVE / PARDON, and the admin
-    /// panel). Source-X CHV_FORGIVE (CCharAct.cpp:193-210) only clears PRIV_JAILED and
-    /// the JailCell tag and says so - the character is not moved. A Freeze left by
-    /// an older SphereNet jail (which froze prisoners) is lifted.</summary>
-    public void ReleaseJailedCharacter(GameWorld world, Character target)
+    /// panel) through Source-X Jail(false) (CCharAct.cpp:193-210): @Jailed first, then
+    /// PRIV_JAILED and the JailCell tag are cleared with msg_forgiven - the character
+    /// is not moved. Returns false when a script cancelled or nobody was jailed.</summary>
+    public bool ReleaseJailedCharacter(GameWorld world, Character target, Character? src = null)
     {
-        if (target.IsJailed)
-            target.ClearStatFlag(StatFlag.Freeze);
-        target.SetJailState(false);
-        OnSysMessage?.Invoke(target, ServerMessages.Get(Msg.MsgForgiven));
+        if (!target.Jail(src, false, 0))
+            return false;
         OnCharacterResyncRequested?.Invoke(target);
+        return true;
     }
 
     public bool ExecuteVerbForTarget(Character gm, string verb, string args, IScriptObj target)
@@ -1518,7 +1504,8 @@ public sealed class CommandHandler
                         cell = c;
                     int jailMinutes = parts.Length > 1 && int.TryParse(parts[1], out int minutes) && minutes > 0
                         ? minutes : 0;
-                    JailCharacter(world, target, jailMinutes, cell);
+                    if (!JailCharacter(world, target, jailMinutes, cell, gm))
+                        return; // @Jailed RETURN 1
                     OnSysMessage?.Invoke(gm, jailMinutes > 0
                         ? ServerMessages.GetFormatted("gm_jailed_timed", target.Name, jailMinutes)
                         : ServerMessages.GetFormatted("gm_jailed_indef", target.Name));
@@ -1534,7 +1521,8 @@ public sealed class CommandHandler
             var target = world.FindChar(new Core.Types.Serial(uid));
             if (target == null)
                 return;
-            ReleaseJailedCharacter(world, target);
+            if (!ReleaseJailedCharacter(world, target, gm))
+                return;
             OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_released", target.Name));
         }
 

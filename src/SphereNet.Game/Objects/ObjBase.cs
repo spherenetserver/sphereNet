@@ -856,7 +856,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             // FormatHex(GetHue()) (CObjBase.cpp:1153): "0481", not 1153.
             case "COLOR": value = $"0{_hue.Value:X}"; return true;
             case "ID": value = $"0{_baseId:X}"; return true;
-            case "ATTR": value = ((uint)_attr).ToString(); return true;
+            case "ATTR": value = ((ulong)_attr).ToString(); return true;
             case "TAGCOUNT": value = _tags.Count.ToString(); return true;
             // The same clock in three units (OC_TIMER / OC_TIMERD / OC_TIMERMS,
             // CObjBase.cpp:1570-1578 -> _GetTimerSAdjusted / _GetTimerDAdjusted /
@@ -2742,6 +2742,20 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         return 0;
     }
 
+    /// <summary>A 64-bit attribute number: 0-prefixed or 0x hex, else decimal; a
+    /// negative decimal (an expression that set the top bit) keeps its bit pattern.</summary>
+    private static ulong ParseAttrNumber(string token)
+    {
+        var s = token.Trim();
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return ulong.TryParse(s.AsSpan(2), NumberStyles.HexNumber, null, out ulong h) ? h : 0;
+        if (s.Length > 1 && s[0] == '0')
+            return ulong.TryParse(s, NumberStyles.HexNumber, null, out ulong h) ? h : 0;
+        if (ulong.TryParse(s, out ulong d)) return d;
+        if (long.TryParse(s, out long neg)) return unchecked((ulong)neg);
+        return 0;
+    }
+
     private static ObjAttributes ParseObjAttributes(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -2755,7 +2769,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             if (token.Length == 0)
                 continue;
 
-            uint numeric = ParseHexOrDecUInt(token);
+            // The attribute word is 64-bit upstream (uint64 m_Attr, CItem.h:106), so a
+            // high bit such as ATTR_CANNOTREPAIR (0400000000000) must survive the parse.
+            ulong numeric = ParseAttrNumber(token);
             if (numeric != 0 || token == "0")
             {
                 result |= (ObjAttributes)numeric;

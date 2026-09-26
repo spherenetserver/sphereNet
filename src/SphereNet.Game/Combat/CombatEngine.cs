@@ -862,8 +862,9 @@ public static class CombatEngine
         int damage = Math.Clamp(rawDamage, 0, short.MaxValue);
         if (damage <= 0) return 0;
 
+        // An item's DAMAGE is CItem::OnTakeDamage with SRC and the type (CObjBase.cpp:2259-2264).
         if (target is Item item)
-            return ApplyDirectItemDamage(item, damage);
+            return ItemDamageEngine.OnTakeDamage(item, damage, source, damageType);
         if (target is not Character character || character.IsDeleted || character.IsDead)
             return 0;
         if (IsDamageImmune(character, damageType))
@@ -928,26 +929,10 @@ public static class CombatEngine
         return damage;
     }
 
-    internal static int ApplyDirectItemDamage(Item item, int damage)
-    {
-        if (item.IsDeleted || OnItemDamaged?.Invoke(item, damage, null, 0) == true)
-            return 0;
-
-        // Source-X: an item whose def gives it no HITPOINTS has no durability
-        // to damage — inventing (and persisting!) a synthetic pool here turned
-        // an unbreakable item into a breakable one on the first scripted hit.
-        int maxHits = item.GetHitsMax();
-        if (maxHits <= 0)
-            return 0;
-        int before = item.GetHitsCur();
-        if (before <= 0)
-            return 0;
-        int dealt = Math.Min(before, damage);
-        item.HitsCur = Math.Max(0, before - damage);
-        if (item.HitsCur <= 0 && BreakOnZeroHits)
-            OnItemBroken?.Invoke(item);
-        return dealt;
-    }
+    /// <summary>A sourceless DAMAGE_GOD blow to an item (the gathering tool's wear,
+    /// CCharSkill.cpp:3960): CItem::OnTakeDamage through <see cref="ItemDamageEngine"/>.</summary>
+    internal static int ApplyDirectItemDamage(Item item, int damage) =>
+        ItemDamageEngine.OnTakeDamage(item, damage, null, DamageType.God);
 
     /// <summary>Apply an explicit physical/fire/cold/poison/energy percentage
     /// split. Missing percentage is physical; totals above 100 are normalized
@@ -1258,6 +1243,15 @@ public static class CombatEngine
                 damage -= damage * reductionPercent / 100;
         }
 
+        // OnTakeDamage -> OnAttackedBy (CCharFight.cpp:684) runs BEFORE the armour
+        // (:717-760) and before @GetHit: a blow that lands is noticed - HARMEDBY /
+        // AGGREIVED memory, the crime judgement, the victim's retaliation - even
+        // when armour then absorbs all of it. Only the invulnerable bounce comes
+        // first (:642-647). It used to wait for damage left over after armour, so
+        // a well-armoured NPC ignored whoever was hitting it.
+        if (attacker != target && !IsDamageImmune(target))
+            target.OnAttackedBy(attacker);
+
         // Armor reduction
         if (flags.HasFlag(CombatFlags.ElementalEngine))
         {
@@ -1401,10 +1395,7 @@ public static class CombatEngine
         // STATF_INVUL bounces the blow (no Hits loss, no reflect).
         if (damage > 0 && !IsDamageImmune(target))
         {
-            // OnTakeDamage -> OnAttackedBy (CCharFight.cpp:684): the victim notes the
-            // attacker (HARMEDBY/AGGREIVED) and judges whether the blow is a crime.
-            if (attacker != target)
-                target.OnAttackedBy(attacker);
+            // (OnAttackedBy already ran, before the armour - see above.)
 
             // Necromancy Evil Omen (reference OnTakeDamage): the victim's next
             // harmful hit lands 25% harder, then the omen is spent.

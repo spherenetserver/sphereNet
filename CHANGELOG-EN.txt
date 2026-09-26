@@ -4,6 +4,44 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Parity follow-up: timed NPC specials, grazing, jail, tithing, item damage
+------------------------------------------------------------------------
+FIX - Recall into a region was refused everywhere a region existed: RECALLIN
+      read the block flag the wrong way round. RECALLIN and MARK now read
+      and toggle REGION_ANTIMAGIC_RECALL_IN as in Source-X (MARK is the same
+      flag). The Teleport spell cast through the engine also moved no one.
+FIX - Dragon breath and thrown rocks start, wait 3 seconds and then resolve:
+      breath re-checks line of sight, a rock is aimed where the target now
+      stands and falls short past 14 tiles.
+FIX - Grazing needs grass under the animal (t_grass terrain/statics/items)
+      and the region's grass resource, and wears the resource down; a tile
+      name containing "grass" is no longer enough.
+FIX - A struck NPC reacts before armour, keeps its current fight 9 times in
+      10 and switches on the 10th; an NPC starting a fight runs the crime
+      check; fleeing turns 3-5 random directions; NPC spells merge every
+      carried spellbook, and a book with no range adds nothing.
+FIX - Stealing hands over a ground item even when the roll fails and a seen
+      theft costs karma; karma changes from skills send the gained/lost
+      message; a failed lockpick fires the pick's @Damage; Provocation uses
+      the real notoriety and crime checks; smelting yields gems or burns
+      non-ingot results; a campfire lights large; gathering tool wear reads
+      LOCAL.ITEMDAMAGECHANCE/AMOUNT after @Success.
+FIX - Tithing points are charged for spells that cost them (@Select
+      LOCAL.TithingUse, TithingLoss on failure); @Success reads
+      LOCAL.FollowerSlotsOverride; a failed cast plays the fizzle effect and
+      sound with @Fail's CreateObject1/EffectColor locals; Dispel at level
+      100 or below and death keep MOVE_NEVER effects; a jailed caster's
+      Recall and Teleport land in the jail cell and Gate is refused.
+FIX - Item damage follows CItem::OnTakeDamage: armour and weapons lose one
+      hit per blow and break at the last, SELFREPAIR, arrows, webs, explosion
+      potions and the @Damage veto; ATTR is 64-bit and ATTR_CANNOTREPAIR
+      blocks repair; @Drink RETURN 5/6 keep or drop the empty bottle;
+      ENHANCEPOTIONS raises potion strength.
+FIX - @Jailed fires before jailing or forgiving and RETURN 1 cancels; the
+      JAIL verb jails into the given cell; character creation clamps skin,
+      hair and beard hues and styles per race and shirt/pants hues as
+      InitPlayer does.
+
 [2026-09-26] - Source-X parity sweep: skills, magic, items, NPCs, characters
 ------------------------------------------------------------------------
 FIX - Skills: Begging uses the target's INT and gives nothing; Stealing uses

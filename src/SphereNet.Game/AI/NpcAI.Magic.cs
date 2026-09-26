@@ -53,12 +53,10 @@ public sealed partial class NpcAI
         if (!NpcFightMayCast(npc))
             return false;
 
-        if (npc.NpcSpells.Count == 0)
-        {
-            // No scripted spell list — derive one from a carried/equipped
-            // spellbook (Source-X NPC_GetAllSpellbookSpells). Tried once per NPC.
-            EnsureNpcSpellsFromBook(npc);
-        }
+        // Spells of every carried/worn spellbook merge into the list, a scripted
+        // SPELLS list included (Source-X NPC_GetAllSpellbookSpells,
+        // CCharNPCAct_Magic.cpp:100-125). Done once per NPC.
+        EnsureNpcSpellsFromBook(npc);
         // A wand in the first hand that is really a charged magic wand
         // (CCharNPCAct_Magic.cpp:161-168).
         Item? wand = FindNpcWand(npc);
@@ -540,6 +538,10 @@ public sealed partial class NpcAI
         public int ComboStep;
         public uint ComboTarget;
         public long BreathReadyAt;
+        /// <summary>A breath / throw between its START and SUCCESS stages, and
+        /// when it resolves (see NpcAI.Combat TickPendingSpecial).</summary>
+        public NpcSpecialKind PendingSpecial;
+        public long PendingSpecialAt;
     }
 
     private readonly Dictionary<uint, NpcFightMemory> _fightMemory = [];
@@ -832,36 +834,48 @@ public sealed partial class NpcAI
         return best;
     }
 
-    /// <summary>Populate an NPC's spell list from any carried/equipped spellbook
-    /// (Source-X NPC_AddSpellsFromBook). The book's itemdef carries the spell
-    /// range: TDATA3 = first-spell offset, TDATA4 = max spells. Spell (offset+1+i)
-    /// is present when bit i is set in the book's More1:More2 mask (bits 0-31 in
-    /// More1, 32-63 in More2 — Source-X CItem::IsSpellInBook). This covers
-    /// necro/chivalry/mysticism/spellweaving books, not just the classic 64-bit
-    /// magery book. Tried once per NPC; the "already tried" mark is kept in
-    /// memory (it used to be TAG.SPELLS_LOADED, which a save carried along).
-    /// There is no body-based default list: Source-X spells come from the SPELLS
-    /// list or a book only (CCharNPCAct_Magic.cpp:100-144).</summary>
+    /// <summary>Source-X NPC_GetAllSpellbookSpells (CCharNPCAct_Magic.cpp:100-125):
+    /// EVERY spellbook the NPC wears (any layer) and every one in the top level of
+    /// its pack adds its spells to the NPC's list - merged, not only the first
+    /// book, and on top of a scripted SPELLS list. Each book reads its own window
+    /// (<see cref="AddNpcSpellsFromBook"/>). Source-X runs this once when the NPC
+    /// is loaded (CChar.cpp:4362); here it runs once, the first time the NPC
+    /// considers magery, and the "already done" mark is kept in memory (it used
+    /// to be TAG.SPELLS_LOADED, which a save carried along). There is no
+    /// body-based default list.</summary>
     internal static void EnsureNpcSpellsFromBook(Character npc)
     {
         if (_spellbookScanned.TryGetValue(npc, out _)) return;
         _spellbookScanned.AddOrUpdate(npc, _spellbookScannedMark);
 
-        Item? book = FindSpellbook(npc);
-        if (book != null)
+        // Worn books first (the loop walks every equipped item), then the top
+        // level of the pack.
+        for (int layer = 0; layer < (int)Layer.Qty; layer++)
         {
-            var def = DefinitionLoader.GetItemDef(book.BaseId);
-            // TDATA3/TDATA4 define the book's spell window. Undefined (0 max) →
-            // fall back to the classic magery book (offset 0, 64 spells).
-            int offset = (int)(def?.TData3 ?? 0);
-            int maxSpells = (int)(def?.TData4 ?? 0);
-            if (maxSpells <= 0) { offset = 0; maxSpells = 64; }
-
-            ulong bits = ((ulong)book.More2 << 32) | book.More1;
-            for (int i = 0; i < maxSpells && i < 64; i++)
-                if ((bits & (1UL << i)) != 0)
-                    npc.NpcSpellAdd((SpellType)(offset + 1 + i));
+            var worn = npc.GetEquippedItem((Layer)layer);
+            if (worn != null && !worn.IsDeleted && worn != npc.Backpack && IsSpellbookType(worn.ItemType))
+                AddNpcSpellsFromBook(npc, worn);
         }
+        var pack = npc.Backpack;
+        if (pack != null)
+            foreach (var it in pack.Contents)
+                if (!it.IsDeleted && IsSpellbookType(it.ItemType))
+                    AddNpcSpellsFromBook(npc, it);
+    }
+
+    /// <summary>Source-X NPC_AddSpellsFromBook (CCharNPCAct_Magic.cpp:127-144):
+    /// spells TDATA3+1 .. TDATA3+TDATA4 that are set in the book's More1:More2
+    /// mask (CItem::IsSpellInBook, 64 bits at most). A book whose def says
+    /// TDATA4=0 adds nothing - it used to be read as a 64-spell magery book. (A
+    /// definitionless item keeps the 64-spell mask, as
+    /// <see cref="Item.SpellbookSpellCount"/> does everywhere.)</summary>
+    private static void AddNpcSpellsFromBook(Character npc, Item book)
+    {
+        int offset = book.SpellbookOffset;
+        long maxSpells = Math.Min(64u, book.SpellbookSpellCount);
+        for (long i = offset + 1; i <= offset + maxSpells; i++)
+            if (book.ContainsSpell((int)i))
+                npc.NpcSpellAdd((SpellType)i);
     }
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Character, object> _spellbookScanned = new();
@@ -873,19 +887,6 @@ public sealed partial class NpcAI
         ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala or
         ItemType.SpellbookExtra or ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
         ItemType.SpellbookArcanist or ItemType.SpellbookMystic or ItemType.SpellbookMastery;
-
-    private static Item? FindSpellbook(Character npc)
-    {
-        var held = npc.GetEquippedItem(Layer.OneHanded);
-        if (held != null && IsSpellbookType(held.ItemType)) return held;
-        held = npc.GetEquippedItem(Layer.TwoHanded);
-        if (held != null && IsSpellbookType(held.ItemType)) return held;
-        var pack = npc.Backpack;
-        if (pack != null)
-            foreach (var it in pack.Contents)
-                if (!it.IsDeleted && IsSpellbookType(it.ItemType)) return it;
-        return null;
-    }
 
     /// <summary>An equipped wand (IT_WAND) that can still cast: it carries ATTR_MAGIC
     /// and has charges left in MORE2 (Source-X NPC_FightMagery,

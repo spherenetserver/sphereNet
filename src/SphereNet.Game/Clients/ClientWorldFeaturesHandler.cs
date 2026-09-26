@@ -2418,7 +2418,15 @@ public sealed class ClientWorldFeaturesHandler
             delayTenths = args.N1 > 0 ? SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1) : 1;
             consume = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
             bottleAmount = consume;
-            if (ret == TriggerResult.True)
+            // Source-X reads the raw TRIGRET number (CCharUse.cpp:1017-1022): RETURN 1
+            // stops, RETURN 5 (TRIGRET_ELSEIF) still consumes ARGN2 but hands back ONE
+            // empty bottle, RETURN 6 (TRIGRET_RET_HALFBAKED) hands back none.
+            long drinkReturn = args.ReturnNumber ?? (ret == TriggerResult.True ? 1L : 0L);
+            if (drinkReturn == DrinkReturnElseIf)
+                bottleAmount = 1;
+            else if (drinkReturn == DrinkReturnHalfBaked)
+                bottleAmount = 0;
+            else if (ret == TriggerResult.True)
                 return;
         }
 
@@ -2493,6 +2501,11 @@ public sealed class ClientWorldFeaturesHandler
         }
     }
 
+    /// <summary>TRIGRET_ELSEIF / TRIGRET_RET_HALFBAKED (CScriptObj.h:34-47): the enum
+    /// positions a script's RETURN names, which Use_Drink reads as bottle counts.</summary>
+    internal const long DrinkReturnElseIf = 5;
+    internal const long DrinkReturnHalfBaked = 6;
+
     /// <summary>LAYER_FLAG_PotionUsed (uofiles_enums.h:613): the potion cooldown
     /// marker a drinker wears. An expired one that its timer has not yet removed
     /// counts as gone.</summary>
@@ -2547,10 +2560,20 @@ public sealed class ClientWorldFeaturesHandler
         if (spell == 0 || _client.Spells == null)
             return false;
 
-        // m_itPotion.m_dwSkillQuality is MORE2 exactly as stored (CCharUse.cpp:1060).
-        int strength = (int)Math.Clamp(potion.More2, 0, int.MaxValue);
-        _client.Spells.ApplyDirectEffect(target, target, spell, strength);
+        _client.Spells.ApplyDirectEffect(target, target, spell, PotionStrength(target, potion));
         return true;
+    }
+
+    /// <summary>m_itPotion.m_dwSkillQuality - MORE2 exactly as stored - raised by the
+    /// drinker's ENHANCEPOTIONS percent (CCharUse.cpp:1060-1063). Upstream keeps the
+    /// equipment share folded into the char prop; here it is summed on read.</summary>
+    internal static int PotionStrength(Character drinker, Item potion)
+    {
+        int strength = (int)Math.Clamp(potion.More2, 0, int.MaxValue);
+        int enhance = CombatEngine.GetEquipmentPropertyValue(drinker, "ENHANCEPOTIONS");
+        if (enhance != 0)
+            strength += SphereNet.Game.Skills.Information.InfoSkillEngine.IMulDiv(strength, enhance, 100);
+        return strength;
     }
 
     private SpellType ResolveDrinkSpell(Item potion)

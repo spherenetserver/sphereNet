@@ -2053,6 +2053,8 @@ public static partial class Program
             };
             _npcAI.OnNpcTickSpellCast = npc => _spellEngine.TickCastTimer(npc);
             var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);
+            // Grazing reads and wears the same natural-resource bits (IT_GRASS).
+            _npcAI.Gathering = gatheringEngine;
             _skillHandlers = new SkillHandlers(_world, gatheringEngine);
             Character.OnScriptSkillUse = (ch, skill) => _skillHandlers.UseSkill(ch, skill);
             // NPCAIEXTRAS BandageHeal: an NPC's bandage runs the Healing skill with

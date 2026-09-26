@@ -38,6 +38,7 @@ public sealed partial class NpcAI
             if (replacement != null && replacement != target)
             {
                 npc.FightTarget = replacement.Uid;
+                NpcAttackCrimeCheck(npc, replacement);
                 npc.Memory_Fight_Start(replacement);
                 ActFight(npc, replacement, Math.Max(1, GetAttackMotivation(npc, replacement)));
                 return true;
@@ -108,6 +109,7 @@ public sealed partial class NpcAI
                         if (betterTarget != null && !betterTarget.IsDeleted && betterTarget != current)
                         {
                             npc.FightTarget = betterTarget.Uid;
+                            NpcAttackCrimeCheck(npc, betterTarget);
                             npc.Memory_Fight_Start(betterTarget);
                             current = betterTarget;
                             curMotivation = Math.Max(1, GetAttackMotivation(npc, betterTarget));
@@ -143,6 +145,7 @@ public sealed partial class NpcAI
                     npc.RemoveTag("HIDE_PURSUIT");
                     npc.RemoveTag("LAST_TGT_LOC");
                 }
+                NpcAttackCrimeCheck(npc, fromList);
                 npc.Memory_Fight_Start(fromList);
                 ActFight(npc, fromList, Math.Max(1, GetAttackMotivation(npc, fromList)));
                 return;
@@ -169,6 +172,7 @@ public sealed partial class NpcAI
             {
                 npc.NextNpcReacquireTime = 0;
                 npc.FightTarget = bestTarget.Uid;
+                NpcAttackCrimeCheck(npc, bestTarget);
                 npc.Memory_Fight_Start(bestTarget);
                 EmitSound(npc, CreatureSoundType.Notice);
                 if (HasExtra(npc, NpcAiExtraFlags.AllyRally))
@@ -243,6 +247,7 @@ public sealed partial class NpcAI
         if (nearest != null)
         {
             npc.FightTarget = nearest.Uid;
+            NpcAttackCrimeCheck(npc, nearest);
             npc.Memory_Fight_Start(nearest);
             ActFight(npc, nearest, 100);
             return;
@@ -304,6 +309,10 @@ public sealed partial class NpcAI
                 MoveToward(npc, target.Position, run: true);
             return;
         }
+
+        // A breath or throw in its wind-up is the NPC's action until it resolves.
+        if (TickPendingSpecial(npc))
+            return;
 
         ScrubLegacyFightTags(npc);
 
@@ -462,6 +471,25 @@ public sealed partial class NpcAI
         }
     }
 
+    /// <summary>Source-X Fight_Attack's crime check (CCharFight.cpp:1474-1477), run
+    /// for an NPC the same as for a player (the player side is in the client
+    /// combat handler): starting a fight on someone who is NOTO_GOOD from the
+    /// attacker's own view, and who holds no AGGREIVED/HARMEDBY memory of the
+    /// attacker (that would be self-defence), is a crime as far as witnesses see
+    /// it (CheckCrimeSeen, SKILL_NONE, the target as the mark). ATTACKINGISACRIME
+    /// gates it. Callers run it only when the fight target is new (Fight_Attack
+    /// returns early for the target it already fights, :1464-1467).</summary>
+    internal void NpcAttackCrimeCheck(Character npc, Character target)
+    {
+        if (!Character.AttackingIsACrimeEnabled || npc.IsPlayer || target == npc)
+            return;
+        if (SphereNet.Game.Clients.GameClient.ComputeNotoriety(_world, npc, target) != 1) // NOTO_GOOD
+            return;
+        if (target.Memory_FindObjTypes(npc.Uid, MemoryType.Aggreived | MemoryType.HarmedBy) != null)
+            return;
+        CrimeWitnessService.CheckCrimeSeen(_world, npc, target, null, Random.Shared);
+    }
+
     /// <summary>NPCAIEXTRAS LosRecovery for a target out of sight: switch to a foe on
     /// the attacker list that is in sight; else count the failure - a caster that
     /// knows Teleport blinks toward the target once stuck for a while (ModernUO
@@ -475,6 +503,7 @@ public sealed partial class NpcAI
         {
             ClearLosFailCount(npc);
             npc.FightTarget = visible.Uid;
+            NpcAttackCrimeCheck(npc, visible);
             npc.Memory_Fight_Start(visible);
             ActFight(npc, visible, Math.Max(1, GetAttackMotivation(npc, visible)));
             return true;
@@ -499,12 +528,14 @@ public sealed partial class NpcAI
     }
 
     /// <summary>NPCACT_BREATH (CCharNPCAct_Fight.cpp:286-295): a DRAGON-brain NPC
-    /// breathes at a target 1 to 8 tiles away in sight, on full stamina; the breath
-    /// itself costs 10 stamina (Skill_Act_Breath, CCharSkill.cpp:3280). No
+    /// breathes at a target 1 to 8 tiles away in sight, on full stamina. This is
+    /// only the START stage of Skill_Act_Breath (CCharSkill.cpp:3279-3286): face
+    /// the target, spend 10 stamina, stomp, and wait three seconds; the breath
+    /// itself is the success stage, <see cref="ResolvePendingBreath"/>. No
     /// cooldown: the stamina gate is what spaces breaths out. NPCAIEXTRAS
     /// CombatExtras widens who breathes - dragon-family bodies (packs that keep
     /// brain_monster on dragons), fire-immune monsters, any BREATH.DAM tag - and
-    /// adds a three second cooldown.</summary>
+    /// adds a three second cooldown after each breath.</summary>
     private bool TryBreath(Character npc, Character target, int dist, bool hasLOS, bool combatExtras)
     {
         bool canBreath = npc.NpcBrain == NpcBrainType.Dragon;
@@ -519,30 +550,118 @@ public sealed partial class NpcAI
         if (!canBreath || dist < 1 || dist > 8 || !hasLOS)
             return false;
 
-        long now = Environment.TickCount64;
+        long now = NowMs();
         if (combatExtras && now < FightMemory(npc).BreathReadyAt)
             return false;
-        int breathDmg = GetBreathDamage(npc);
-        if (breathDmg <= 0)
-            return false;
-        npc.Stam = (short)Math.Max(0, npc.Stam - 10);
-        if (combatExtras)
-            FightMemory(npc).BreathReadyAt = now + BreathCooldownMs;
-        OnNpcBreath?.Invoke(npc, target, breathDmg);
+        npc.Stam = (short)Math.Max(0, npc.Stam - 10); // UpdateStatVal(STAT_DEX, -10)
+        // UpdateAnimate(ANIM_MON_Stomp): the value 0x0C, which the animation
+        // generator reads as ANIM_ATTACK_2H_BASH (CCharAct.cpp:797-802).
+        StartPendingSpecial(npc, target, NpcSpecialKind.Breath, AnimationType.Attack2HBash, now);
         return true;
     }
 
-    /// <summary>CombatExtras breath cooldown (the three seconds Skill_Act_Breath
-    /// spends in its start stage, CCharSkill.cpp:3284).</summary>
+    /// <summary>CombatExtras breath cooldown, counted from the breath itself.</summary>
     private const int BreathCooldownMs = 3000;
+
+    /// <summary>The wind-up of a breath or throw: Skill_Act_* START sets a 3000 ms
+    /// timeout (_SetTimeout(3000), CCharSkill.cpp:3284/:3375).</summary>
+    internal const int SpecialWindupMs = 3000;
+
+    /// <summary>A breath or throw between its START and SUCCESS stages.</summary>
+    internal enum NpcSpecialKind : byte { None = 0, Breath = 1, Throw = 2 }
+
+    /// <summary>Clock for the breath / throw wind-up. Tests replace it to step past
+    /// the three seconds without waiting.</summary>
+    internal Func<long> NowMs { get; set; } = static () => Environment.TickCount64;
+
+    /// <summary>What is pending on this NPC, if anything (runtime only).</summary>
+    internal NpcSpecialKind PendingSpecial(Character npc) =>
+        _fightMemory.TryGetValue(npc.Uid.Value, out var mem) ? mem.PendingSpecial : NpcSpecialKind.None;
+
+    /// <summary>The START stage both specials share (CCharSkill.cpp:3272-3285,
+    /// :3363-3376): the fight target is the one they are aimed at (m_Fight_Targ_UID
+    /// is read again when they resolve), the NPC turns to it unless
+    /// COMBAT_NODIRCHANGE, animates, and its next action waits for the timer.</summary>
+    private void StartPendingSpecial(Character npc, Character target, NpcSpecialKind kind,
+        AnimationType anim, long now)
+    {
+        npc.FightTarget = target.Uid;
+        if (!CombatHelper.IsCombatFlagSet(CombatFlags.NoDirChange))
+        {
+            var dir = npc.Position.GetDirectionTo(target.Position);
+            if (dir != npc.Direction)
+            {
+                npc.Direction = dir;
+                OnNpcFacingChanged?.Invoke(npc);
+            }
+        }
+        OnNpcAnimate?.Invoke(npc, anim);
+        var mem = FightMemory(npc);
+        mem.PendingSpecial = kind;
+        mem.PendingSpecialAt = now + SpecialWindupMs;
+        npc.NextNpcActionTime = mem.PendingSpecialAt;
+    }
+
+    /// <summary>Drive a pending breath / throw. False = none pending. True = the
+    /// NPC's action this tick is the special: still winding up, or it just
+    /// resolved (or was dropped because its target is gone, -SKTRIG_QTY).</summary>
+    private bool TickPendingSpecial(Character npc)
+    {
+        if (!_fightMemory.TryGetValue(npc.Uid.Value, out var mem) ||
+            mem.PendingSpecial == NpcSpecialKind.None)
+            return false;
+        long now = NowMs();
+        if (now < mem.PendingSpecialAt)
+        {
+            npc.NextNpcActionTime = Math.Max(npc.NextNpcActionTime, mem.PendingSpecialAt);
+            return true;
+        }
+        var kind = mem.PendingSpecial;
+        mem.PendingSpecial = NpcSpecialKind.None;
+
+        // m_Fight_Targ_UID.CharFind() == nullptr -> -SKTRIG_QTY (:3269-3270, :3359-3360).
+        var target = npc.FightTarget.IsValid ? _world.FindChar(npc.FightTarget) : null;
+        if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != npc.MapIndex)
+            return true;
+        if (!CombatHelper.IsCombatFlagSet(CombatFlags.NoDirChange))
+        {
+            var dir = npc.Position.GetDirectionTo(target.Position);
+            if (dir != npc.Direction)
+            {
+                npc.Direction = dir;
+                OnNpcFacingChanged?.Invoke(npc);
+            }
+        }
+        if (kind == NpcSpecialKind.Breath)
+            ResolvePendingBreath(npc, target, mem, now);
+        else
+            ResolvePendingThrow(npc, target);
+        return true;
+    }
+
+    /// <summary>Skill_Act_Breath SUCCESS (CCharSkill.cpp:3288-3346): the target
+    /// must STILL be in sight (CanSeeLOS, else the breath fizzles); the damage is
+    /// read now - BREATH.DAM or 5% of the current hit points - and lands wherever
+    /// the target has got to.</summary>
+    private void ResolvePendingBreath(Character npc, Character target, NpcFightMemory mem, long now)
+    {
+        if (!_world.CanSeeLOS(npc.Position, target.Position))
+            return;
+        int breathDmg = GetBreathDamage(npc);
+        if (HasExtra(npc, NpcAiExtraFlags.CombatExtras))
+            mem.BreathReadyAt = now + BreathCooldownMs;
+        OnNpcBreath?.Invoke(npc, target, breathDmg);
+    }
 
     /// <summary>NPCACT_THROWING (CCharNPCAct_Fight.cpp:297-340): within THROWRANGE
     /// (default 2-9) and in sight, an ogre/ettin/cyclops body or a creature with a
     /// THROWOBJ throws - but only while it CARRIES the missile: an IT_AROCK for
-    /// the default throwers, an item of the THROWOBJ definition otherwise. Costs
-    /// 4 + rand(6) stamina (CCharSkill.cpp:3372). NPCAIEXTRAS CombatExtras keeps
-    /// the older wider rule: a THROWOBJ tag alone arms a thrower, and a plain rock
-    /// pile counts as a rock.</summary>
+    /// the default throwers, an item of the THROWOBJ definition otherwise. This is
+    /// the START stage of Skill_Act_Throwing (CCharSkill.cpp:3368-3376): face the
+    /// target, spend 4 + rand(6) stamina, animate and wait three seconds; the
+    /// missile flies in <see cref="ResolvePendingThrow"/>. NPCAIEXTRAS
+    /// CombatExtras keeps the older wider rule: a THROWOBJ tag alone arms a
+    /// thrower, and a plain rock pile counts as a rock.</summary>
     private bool TryThrow(Character npc, Character target, int dist, bool hasLOS, bool combatExtras)
     {
         if (!hasLOS)
@@ -554,16 +673,6 @@ public sealed partial class NpcAI
         if (!armed)
             return false;
 
-        // What flies and how hard (Skill_Act_Throwing, CCharSkill.cpp:3417-3462): the
-        // THROWOBJ item, else a boulder two times in three or a small rock; the
-        // default damage reads the CURRENT stamina (Stat_GetVal(STAT_DEX)) - a
-        // boulder or THROWOBJ stam/4 + rand(stam/4), a small rock 2 + rand(stam/4).
-        int stam = Math.Max(0, (int)npc.Stam);
-        ushort throwGfx = ResolveThrowGraphic(npc);
-        bool smallRock = !npc.TryGetTag("THROWOBJ", out _) && throwGfx >= 0x1363 && throwGfx <= 0x136C;
-        int throwDmg = smallRock
-            ? 2 + _rand.Next(Math.Max(1, stam / 4))
-            : stam / 4 + _rand.Next(Math.Max(1, stam / 4));
         int throwMin = 2, throwMax = 9;
         if (npc.TryGetTag("THROWRANGE", out string? trStr) && !string.IsNullOrWhiteSpace(trStr))
         {
@@ -581,6 +690,32 @@ public sealed partial class NpcAI
                 throwMax = Math.Max(0, single);
             }
         }
+        if (dist < throwMin || dist > throwMax)
+            return false;
+        npc.Stam = (short)Math.Max(0, npc.Stam - (4 + _rand.Next(6)));
+        // UpdateAnimate(ANIM_THROW): a plain monster body plays its first attack
+        // and a humanoid ANIM_ATTACK_1H_BASH (CCharAct.cpp:2087-2112, :2241).
+        StartPendingSpecial(npc, target, NpcSpecialKind.Throw, AnimationType.Attack1HBash, NowMs());
+        return true;
+    }
+
+    /// <summary>Skill_Act_Throwing SUCCESS (CCharSkill.cpp:3378-3475). What flies
+    /// and how hard is decided now: the THROWOBJ item, else a boulder two times in
+    /// three or a small rock; the default damage reads the CURRENT stamina, after
+    /// the start stage spent some (Stat_GetVal(STAT_DEX)) - a boulder or THROWOBJ
+    /// stam/4 + rand(stam/4), a small rock 2 + rand(stam/4) - unless THROWDAM
+    /// names it. There is no second sight check. The missile is aimed at where the
+    /// target stands NOW; only a target beyond the throwing range
+    /// (UO_MAP_VIEW_SIGHT) makes it fall short along the line, and it then hits
+    /// only when a roll over the gap comes up 0 (:3413-3416, :3471-3472).</summary>
+    private void ResolvePendingThrow(Character npc, Character target)
+    {
+        int stam = Math.Max(0, (int)npc.Stam);
+        ushort throwGfx = ResolveThrowGraphic(npc);
+        bool smallRock = !npc.TryGetTag("THROWOBJ", out _) && throwGfx >= 0x1363 && throwGfx <= 0x136C;
+        int throwDmg = smallRock
+            ? 2 + _rand.Next(Math.Max(1, stam / 4))
+            : stam / 4 + _rand.Next(Math.Max(1, stam / 4));
         if (npc.TryGetTag("THROWDAM", out string? tdStr) && !string.IsNullOrWhiteSpace(tdStr))
         {
             var parts = tdStr.Split(',', 2, StringSplitOptions.TrimEntries);
@@ -595,9 +730,6 @@ public sealed partial class NpcAI
             else if (int.TryParse(parts[0], out int flat))
                 throwDmg = Math.Max(0, flat);
         }
-        if (dist < throwMin || dist > throwMax)
-            return false;
-        npc.Stam = (short)Math.Max(0, npc.Stam - (4 + _rand.Next(6)));
 
         // THROWDAMTYPE sets the damage type and puts 100% on its first element
         // (:3429-3443); without it the rock is blunt, thrown, physical.
@@ -614,11 +746,9 @@ public sealed partial class NpcAI
             else phys = 100;
         }
 
-        // The rock lands on the target unless the target is beyond the throwing
-        // range (UO_MAP_VIEW_SIGHT); then it falls that far along the line and hits
-        // only when a roll over the gap comes up 0 (:3413-3416, :3471-3472).
         bool hit = true;
         const int MaxThrowReach = 14;
+        int dist = npc.Position.GetDistanceTo(target.Position);
         if (dist > MaxThrowReach)
             hit = _rand.Next(dist - MaxThrowReach) == 0;
 
@@ -627,7 +757,6 @@ public sealed partial class NpcAI
                 phys, fire, cold, poison, energy));
         else
             OnNpcThrow?.Invoke(npc, target, hit ? throwDmg : 0);
-        return true;
     }
 
     /// <summary>Source-X NPC_GetWeaponUseScore (CCharNPCStatus.cpp:671-697): how good
@@ -946,54 +1075,22 @@ public sealed partial class NpcAI
         return true;
     }
 
+    /// <summary>The flee step of Source-X NPC_Act_Follow (CCharNPCAct.cpp:1427-1435):
+    /// aim one tile off in a direction turned 3, 4 or 5 steps from the enemy - the
+    /// opposite heading or one of its two neighbours, picked at random each step
+    /// (GetDirTurn(dir, 4 + 1 - GetValFast(3))) - and walk there through
+    /// NPC_WalkToPoint, running once there are more than 3 tiles between them. A
+    /// blocked step takes the walker's own fallback (door, obstacle, side-step).
+    /// False = the step failed (NPC_WalkToPoint returned 2).</summary>
     private bool FleeAway(Character npc, Point3D threat)
     {
-        // Run once there is room; walk while cornered (reference
-        // NPC_Act_Follow flee path: NPC_WalkToPoint(iDist > 3)).
         bool run = npc.Position.GetDistanceTo(threat) > 3;
-        // Try the direct opposite direction first
-        var dir = npc.Position.GetDirectionTo(threat);
-        GetDirectionDelta(dir, out short dx, out short dy);
-
-        short nx = (short)(npc.X - dx);
-        short ny = (short)(npc.Y - dy);
-        var mapData = _world.MapData;
-        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
-
-        if (Math.Abs(nz - npc.Z) <= 12)
-        {
-            var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
-            if (CanNpcMoveTo(npc, newPos))
-            {
-                var fleeDir = npc.Position.GetDirectionTo(newPos);
-                npc.Direction = run ? fleeDir | Direction.Running : fleeDir;
-                _world.MoveCharacter(npc, newPos);
-                return true;
-            }
-        }
-
-        // Direct blocked — try two diagonal alternatives
-        for (int rot = 1; rot <= 2; rot++)
-        {
-            foreach (int sign in new[] { 1, -1 })
-            {
-                int altDir = (((int)dir & 0x07) + sign * rot) & 0x07;
-                GetDirectionDelta((Direction)altDir, out short adx, out short ady);
-                short ax = (short)(npc.X - adx);
-                short ay = (short)(npc.Y - ady);
-                sbyte az = ResolveNpcStepZ(npc, ax, ay);
-                if (Math.Abs(az - npc.Z) > 12) continue;
-                var altPos = new Point3D(ax, ay, az, npc.MapIndex);
-                if (CanNpcMoveTo(npc, altPos))
-                {
-                    var altFleeDir = npc.Position.GetDirectionTo(altPos);
-                    npc.Direction = run ? altFleeDir | Direction.Running : altFleeDir;
-                    _world.MoveCharacter(npc, altPos);
-                    return true;
-                }
-            }
-        }
-        return false;
+        var toEnemy = npc.Position.GetDirectionTo(threat);
+        int turn = 4 + 1 - _rand.Next(3);
+        var fleeDir = (Direction)((((int)toEnemy & 0x07) + turn) & 0x07);
+        GetDirectionDelta(fleeDir, out short dx, out short dy);
+        var goal = new Point3D((short)(npc.X + dx), (short)(npc.Y + dy), npc.Z, npc.MapIndex);
+        return MoveToward(npc, goal, run) < 2;
     }
 
     /// <summary>
@@ -1344,14 +1441,9 @@ public sealed partial class NpcAI
             // target's get-hit vocalization are both emitted by the OnNpcAttack
             // hit feedback, so they cover creature and player targets uniformly.
 
-            // Retaliation: NPC targets that aren't already fighting back
-            // acquire the attacker as their fight target (Source-X parity).
-            if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
-            {
-                target.FightTarget = npc.Uid;
-                target.NextNpcActionTime = 0;
-                OnWakeNpc?.Invoke(target);
-            }
+            // Retaliation is not decided here: ResolveAttack already ran the
+            // victim's OnAttackedBy -> OnHarmedBy before the armour
+            // (CCharFight.cpp:684, :291-316), whatever damage survived it.
 
             // The death cry is SoundChar(CRESND_DIE) inside CChar::Death
             // (CCharAct.cpp:4392), played by the death engine for every death.

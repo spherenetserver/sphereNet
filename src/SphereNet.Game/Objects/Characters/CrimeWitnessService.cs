@@ -127,13 +127,8 @@ public static class CrimeWitnessService
         else
         {
             witness.Memory_AddObjTypes(criminal.Uid, MemoryType.SawCrime);
-            // The victim retaliates (OnHarmedBy).
-            if (!witness.FightTarget.IsValid && !witness.IsDead)
-            {
-                witness.FightTarget = criminal.Uid;
-                witness.NextNpcActionTime = 0;
-                Character.WakeNpc?.Invoke(witness);
-            }
+            // The victim retaliates (OnHarmedBy, CCharFight.cpp:77).
+            witness.OnHarmedBy(criminal);
         }
 
         if (!AI.NpcAI.NpcCanSpeak(witness))

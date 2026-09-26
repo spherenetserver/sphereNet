@@ -346,8 +346,26 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             bool instantRegion =
                 _world.FindRegion(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true ||
                 _world.FindRoom(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true;
-            bool safeLogout = campingSafe || instantRegion || _character.PrivLevel >= PrivLevel.GM;
-            bool linger = wasOnline && !safeLogout && !_character.IsDead && ClientLingerSeconds > 0;
+            // Source-X CanInstantLogOut (CClient.cpp:139): anyone above a player
+            // leaves at once, counselors included.
+            bool safeLogout = campingSafe || instantRegion || _character.PrivLevel > PrivLevel.Player;
+            bool instaLogout = !wasOnline || safeLogout || _character.IsDead || ClientLingerSeconds <= 0;
+            long lingerSeconds = ClientLingerSeconds;
+
+            // @LogOut runs before the decision, with ARGN1 = the linger time and
+            // ARGN2 = instant logout, and a script may change either
+            // (CClient::CharDisconnect, CClient.cpp:192-201). It ran last with no
+            // arguments, after the character had already been kept or removed.
+            if (wasOnline && _triggerDispatcher != null)
+            {
+                var logoutArgs = new TriggerArgs { CharSrc = _character, N1 = lingerSeconds, N2 = instaLogout ? 1 : 0 };
+                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.LogOut, logoutArgs);
+                lingerSeconds = logoutArgs.N1;
+                instaLogout = logoutArgs.N2 != 0;
+            }
+            if (lingerSeconds <= 0)
+                instaLogout = true;
+            bool linger = !instaLogout;
 
             _logger.LogInformation("[LOGOUT] '{Name}' pos: {X},{Y},{Z} map={Map}",
                 _character.Name, _character.X, _character.Y, _character.Z, _character.Position.Map);
@@ -388,7 +406,7 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             EngineTags.StripEphemeral(_character);
             if (linger)
                 _character.SetTag("CLIENT_LINGER_UNTIL",
-                    (utcNow + (long)ClientLingerSeconds * 1000L).ToString());
+                    (utcNow + Math.Min(lingerSeconds, int.MaxValue / 1000) * 1000L).ToString());
 
             Targets.Callback = null;
             Targets.CursorActive = false;
@@ -426,8 +444,6 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             View.LastKnownPos.Clear();
             View.LastKnownItemState.Clear();
             _paperdollThrottle.Clear();
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogOut,
-                new TriggerArgs { CharSrc = _character });
             _logger.LogInformation("Client '{Name}' disconnected", _character.Name);
             _character = null;
         }

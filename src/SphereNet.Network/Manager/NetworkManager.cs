@@ -469,7 +469,7 @@ public sealed class NetworkManager : IDisposable
                 int read = state.Receive();
                 if (read < 0)
                 {
-                    _logger.LogInformation("Connection #{Id} lost", state.Id);
+                    _logger.LogInformation("Connection #{Id} lost; {Traffic}", state.Id, state.DescribeRecentTraffic());
                     state.MarkClosing();
                     continue;
                 }

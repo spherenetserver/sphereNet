@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - @LogOut decides the linger; disconnects say what happened
+------------------------------------------------------------------------
+FIX - @LogOut runs before the link-dead decision with ARGN1 = the linger time
+      (seconds) and ARGN2 = instant logout, and both are read back, as in
+      Source-X CharDisconnect. It ran last with no arguments, after the
+      character had already been kept or removed.
+FIX - Counselors log out at once like every privilege above player
+      (CanInstantLogOut); only GMs and above did.
+FIX - A client that closes its connection is noticed on the receive side.
+      The close used to surface only on the next send, logged as a
+      ConnectionReset that looked like a network drop.
+NEW - The disconnect log line reports the milliseconds since the client last
+      sent anything and the last 16 packets sent to it (opcode x length), to
+      tell a network drop from a client that stopped on a packet.
+
 [2026-09-26] - Scrolls, wands, figurines and id-dispatched spells work
 ------------------------------------------------------------------------
 FIX - Scrolls and wands use the Source-X layout: the spell is MOREX, the

@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Linger kararini @LogOut verir; kopma satiri ne oldugunu soyler
+------------------------------------------------------------------------
+DUZELTME - @LogOut link-dead kararindan once ARGN1 = linger suresi (saniye) ve
+           ARGN2 = aninda cikis ile calisir, ikisi de geri okunur (Source-X
+           CharDisconnect). Karakter tutulduktan/cikarildiktan sonra en sonda
+           ve argumansiz calisiyordu.
+DUZELTME - Counselor da player ustu her yetki gibi aninda cikar
+           (CanInstantLogOut); yalnizca GM ve ustu cikiyordu.
+DUZELTME - Baglantisini kapatan istemci alma tarafinda fark edilir. Kapanma
+           ancak bir sonraki gonderimde ag kopmasina benzeyen bir
+           ConnectionReset olarak loglaniyordu.
+YENI - Kopma satiri istemcinin son veri gonderiminden bu yana gecen
+       milisaniyeyi ve ona gonderilen son 16 paketi (opcode x uzunluk)
+       yazar; ag kopmasi ile bir pakette takilan istemciyi ayirt etmek icin.
+
 [2026-09-26] - Parsomen, asa, figurin ve numarayla secilen buyuler calisir
 ------------------------------------------------------------------------
 DUZELTME - Parsomen ve asalar Source-X duzenini kullanir: buyu MOREX, buyu

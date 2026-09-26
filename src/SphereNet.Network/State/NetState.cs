@@ -129,6 +129,49 @@ public sealed class NetState : IDisposable
     public bool IsClosing { get; private set; }
     public DateTime ConnectTime { get; private set; }
     public long LastActivityTick { get; set; }
+
+    /// <summary>When bytes last arrived FROM the client. <see cref="LastActivityTick"/>
+    /// moves on sends too, so it cannot tell a silent client from a busy server.</summary>
+    public long LastReceiveTick { get; private set; }
+
+    // The last outgoing packets (opcode, length), for the disconnect line: whether
+    // the client went quiet long before the drop or was receiving right up to it -
+    // and what it was sent last - tells a network drop from a client that choked on
+    // a packet. A ring, written under _sendLock.
+    private const int RecentOutCapacity = 16;
+    private readonly (byte Op, int Len)[] _recentOut = new (byte, int)[RecentOutCapacity];
+    private int _recentOutCount;
+
+    private void RecordOutgoing(PacketBuffer packet)
+    {
+        if (packet.Length <= 0) return;
+        _recentOut[_recentOutCount % RecentOutCapacity] = (packet.Data[0], packet.Length);
+        _recentOutCount++;
+    }
+
+    /// <summary>"Nms since last receive; last sent 0x1Ax19 0x11x43 ..." for a
+    /// disconnect log line, oldest packet first.</summary>
+    public string DescribeRecentTraffic()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(LastReceiveTick > 0
+            ? $"{Environment.TickCount64 - LastReceiveTick}ms since last receive"
+            : "nothing received");
+        lock (_sendLock)
+        {
+            int n = Math.Min(_recentOutCount, RecentOutCapacity);
+            if (n > 0)
+            {
+                sb.Append("; last sent");
+                for (int i = _recentOutCount - n; i < _recentOutCount; i++)
+                {
+                    var (op, len) = _recentOut[i % RecentOutCapacity];
+                    sb.Append($" 0x{op:X2}x{len}");
+                }
+            }
+        }
+        return sb.ToString();
+    }
     public uint Seed { get; set; }
     public bool IsSeeded { get; set; }
 
@@ -375,7 +418,13 @@ public sealed class NetState : IDisposable
         try
         {
             if (!_socket.Connected) return -1;
-            if (_socket.Available <= 0) return 0;
+            if (_socket.Available <= 0)
+            {
+                // Readable with nothing to read is the peer's FIN: the client closed
+                // the connection. Without this the close only surfaced on our next
+                // send, logged as a ConnectionReset that looked like a network drop.
+                return _socket.Poll(0, SelectMode.SelectRead) && _socket.Available <= 0 ? -1 : 0;
+            }
 
             int space = _recvBuffer.Length - _recvLength;
             if (space <= 0)
@@ -390,6 +439,7 @@ public sealed class NetState : IDisposable
 
             _recvLength += read;
             LastActivityTick = Environment.TickCount64;
+            LastReceiveTick = LastActivityTick;
             return read;
         }
         catch (SocketException ex)
@@ -583,6 +633,7 @@ public sealed class NetState : IDisposable
                 return;
             }
             _queues[(int)priority].Enqueue(packet);
+            RecordOutgoing(packet);
         }
     }
 
@@ -627,6 +678,7 @@ public sealed class NetState : IDisposable
                 ? PacketPriorityClassifier.Classify(packet.Data[0])
                 : PacketPriority.Normal;
             _queues[(int)priority].Enqueue(packet);
+            RecordOutgoing(packet);
         }
     }
 
@@ -867,7 +919,8 @@ public sealed class NetState : IDisposable
             {
                 if (IsExpectedDisconnect(ex.SocketErrorCode))
                 {
-                    _logger.LogInformation("Client {Remote} disconnected ({Reason}).", RemoteEndPoint, ex.SocketErrorCode);
+                    _logger.LogInformation("Client {Remote} disconnected ({Reason}); {Traffic}.",
+                        RemoteEndPoint, ex.SocketErrorCode, DescribeRecentTraffic());
                 }
                 else
                 {

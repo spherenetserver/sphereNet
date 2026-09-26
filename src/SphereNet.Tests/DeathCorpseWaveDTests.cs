@@ -87,7 +87,9 @@ public class DeathCorpseWaveDTests
     public void CarvingAnInnocentPlayersCorpse_FlagsTheCarverCriminal()
     {
         var (world, engine) = Setup();
+        TestHarness.SeedCharDef(); // an untyped corpse cannot be carved
         var victim = MakePlayer(world);
+        victim.BodyId = 0x0190;
         var corpse = engine.ProcessDeath(victim);
         Assert.NotNull(corpse);
 

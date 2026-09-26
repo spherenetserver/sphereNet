@@ -95,6 +95,8 @@ public sealed class ItemTargetDispatcherTests
         var corpse = world.CreateItem();
         corpse.BaseId = 0x2006;
         corpse.ItemType = ItemType.Corpse;
+        corpse.SetTag("CORPSE_CHARDEF", "400"); // a human corpse (0x190)
+        TestHarness.SeedCharDef();
         world.PlaceItem(corpse, new Point3D(100, 101, 0, 0));
 
         client.HandleDoubleClick(sword.Uid.Value);

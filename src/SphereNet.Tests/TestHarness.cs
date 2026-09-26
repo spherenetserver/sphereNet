@@ -41,6 +41,13 @@ internal static class TestHarness
         return world;
     }
 
+    /// <summary>Register a bare chardef (default: the human 0x190). A corpse is
+    /// typed by its creature's chardef the way Source-X types it by _iPrev_id, and
+    /// an untyped corpse cannot be carved at all.</summary>
+    public static void SeedCharDef(int index = 0x0190) =>
+        SphereNet.Game.Definitions.DefinitionLoader.SetCharDef(index,
+            new SphereNet.Scripting.Definitions.CharDef(ResourceId.Invalid));
+
     /// <summary>Seed every skill with the classic sphere_skills.scp ADV_RATE
     /// curve (2.5,50.0,200.0). Skill gain strictly follows the curve — no
     /// curve means no gain (Source-X GetChancePercent) — so any test that

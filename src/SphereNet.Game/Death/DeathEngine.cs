@@ -548,6 +548,13 @@ public sealed class DeathEngine
         corpse.Name = ServerMessages.GetFormatted(Msg.CorpseName, "corpse", victimName);
         corpse.SetTag("CORPSE_NAME", victimName);
         corpse.ItemType = ItemType.Corpse;
+        // Source-X MakeCorpse: m_itCorpse.m_BaseID = _iPrev_id — the creature TYPE
+        // the corpse came from, which carving reads its RESOURCES from. The owner
+        // cannot stand in for it later: a resurrected player may have changed
+        // body, and an NPC's mobile is deleted with its death.
+        int corpseDefIndex = ResolveCorpseCharDefIndex(victim);
+        if (corpseDefIndex != 0)
+            corpse.SetTag("CORPSE_CHARDEF", corpseDefIndex.ToString());
         corpse.Hue = victim.Hue;
         corpse.Direction = (byte)((byte)victim.Direction & 0x07); // facing snapshot for carve/forensics
         corpse.SetAttr(ObjAttributes.Move_Never); // a corpse can't be dragged, only looted (Source-X)
@@ -575,6 +582,20 @@ public sealed class DeathEngine
 
         _world.PlaceItem(corpse, victim.Position);
         return corpse;
+    }
+
+    /// <summary>The chardef a corpse is typed by (Source-X _iPrev_id): the
+    /// character's own definition, else the one its original (pre-polymorph)
+    /// body belongs to. 0 when neither resolves.</summary>
+    private static int ResolveCorpseCharDefIndex(Character victim)
+    {
+        int own = victim.CharDefIndex;
+        if (own != 0 && Definitions.DefinitionLoader.GetCharDef(own) != null)
+            return own;
+        ushort body = victim.OBody != 0 ? victim.OBody : victim.BodyId;
+        if (Definitions.DefinitionLoader.GetCharDef(body) != null)
+            return body;
+        return Definitions.DefinitionLoader.GetCharDefByBody(body)?.Id.Index ?? 0;
     }
 
     /// <summary>
@@ -1034,113 +1055,188 @@ public sealed class DeathEngine
     }
 
     /// <summary>
-    /// Carve a corpse (for hides, meat, etc.).
-    /// Maps to @CarveCorpse trigger in Source-X.
+    /// Carve a corpse with a blade (Source-X CChar::Use_CarveCorpse).
+    ///
+    /// The parts come from the RESOURCES of the creature type the corpse was made
+    /// from. @CarveCorpse sees them as LOCAL.resource.N.ID / .amount (ARGN1 = the
+    /// count, ARGO = the carving item), may rewrite them, and RETURN 1 cancels the
+    /// carve. A player's parts fall to the ground renamed "&lt;part&gt; of &lt;victim&gt;"
+    /// and the corpse turns to bones at once; a creature's parts go into its
+    /// corpse. A corpse with no type or already carved yields nothing.
     /// </summary>
-    public List<Item> CarveCorpse(Character carver, Item corpse)
+    public List<Item> CarveCorpse(Character carver, Item corpse, Item? carvingItem = null)
     {
         var results = new List<Item>();
         if (corpse.ItemType != ItemType.Corpse) return results;
+
+        var charDef = ResolveCorpseCharDef(corpse);
         // Once per corpse (Source-X m_carved). Forensics reads CORPSE_CARVED, so
         // use that tag name here too (the old "CARVED" tag was never read back).
-        if (corpse.TryGetTag("CORPSE_CARVED", out _) || corpse.TryGetTag("CARVED", out _))
+        if (charDef == null || corpse.TryGetTag("CORPSE_CARVED", out _) || corpse.TryGetTag("CARVED", out _))
+        {
+            SendCarveMessage(carver, Msg.CarveCorpseNothing);
             return results;
+        }
+
+        Character? owner = ResolveCorpseOwner(corpse);
+        var pos = corpse.GetTopLevelObj().Position;
+
+        PlayCarveAnimation(carver);
+        if (corpse.TryGetTag("BLOOD", out string? bloodTag) && long.TryParse(bloodTag, out long bloodOn) && bloodOn != 0)
+            SpillCarveBlood(charDef, pos);
+
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        int total = charDef.CarveResources.Count;
+        var args = new TriggerArgs
+        {
+            CharSrc = carver,
+            ItemSrc = corpse,
+            N1 = total,
+            O1 = carvingItem,
+            Locals = new SphereNet.Scripting.Variables.VarMap()
+        };
+        for (int i = 0; i < total; i++)
+        {
+            var (_, amount, defName) = charDef.CarveResources[i];
+            int defIndex = resources != null ? Definitions.TemplateEngine.ResolveItemDefIndex(resources, defName) : 0;
+            if (defIndex == 0)
+                continue; // not an ITEMDEF (Source-X skips non-RES_ITEMDEF rows)
+            args.Locals.SetInt($"resource.{i}.ID", defIndex);
+            args.Locals.SetInt($"resource.{i}.amount", amount);
+        }
+
+        if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, args) == TriggerResult.True)
+            return results;
+
+        bool playerCorpse = owner?.IsPlayer ?? false;
+        string victimName = owner?.GetDisplayName()
+            ?? (corpse.TryGetTag("CORPSE_NAME", out string? vn) ? vn ?? "" : "");
+
+        for (int i = 0; i < total; i++)
+        {
+            int defIndex = ReadCarvedItemIndex(args.Locals, $"resource.{i}.ID", resources);
+            if (defIndex == 0)
+                break; // ITEMID_NOTHING ends the list
+            int qty = (int)Math.Clamp(args.Locals.GetInt($"resource.{i}.amount"), 0, ushort.MaxValue);
+
+            var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
+            ushort dispId = Definitions.ItemDefHelper.CreateGraphic(idef, defIndex);
+            if (dispId == 0)
+                continue;
+
+            var part = _world.CreateItem();
+            part.BaseId = dispId;
+            Definitions.ItemDefHelper.ApplyInstanceMetadata(part, defIndex,
+                setDisplayId: false, setName: false);
+            if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
+                part.Name = idef.Name;
+            results.Add(part);
+
+            switch (part.ItemType)
+            {
+                case ItemType.Food:
+                case ItemType.FoodRaw:
+                case ItemType.MeatRaw:
+                    SendCarveMessage(carver, Msg.CarveCorpseMeat);
+                    break;
+                case ItemType.Hide:
+                    SendCarveMessage(carver, Msg.CarveCorpseHides);
+                    // RACIALF_HUMAN_WORKHORSE: humans find 10% more hides.
+                    if ((((RacialFlags)Character.RacialFlags) & RacialFlags.HumanWorkhorse) != 0 && carver.IsHuman)
+                        qty = qty * 110 / 100;
+                    break;
+                case ItemType.Feather:
+                    SendCarveMessage(carver, Msg.CarveCorpseFeathers);
+                    break;
+                case ItemType.Wool:
+                    SendCarveMessage(carver, Msg.CarveCorpseWool);
+                    break;
+            }
+
+            if (qty > 1)
+                part.Amount = (ushort)Math.Min(qty, ushort.MaxValue);
+
+            if (playerCorpse)
+            {
+                part.Name = ServerMessages.GetFormatted(Msg.CorpseName, part.GetName(), victimName);
+                part.Link = owner!.Uid;
+                _world.PlaceItemWithDecay(part, pos);
+                continue;
+            }
+            AddToCorpseOrGround(corpse, part);
+        }
+
+        if (results.Count == 0)
+            SendCarveMessage(carver, Msg.CarveCorpseNothing);
 
         // Source-X CheckCorpseCrime(fLooting=false): carving an innocent
         // player's corpse is as criminal as looting it, witnesses and all.
         if (IsLootingCriminal(carver, corpse))
             ReportCorpseCrime(carver, corpse);
 
-        if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, new TriggerArgs
-        {
-            CharSrc = carver,
-            ItemSrc = corpse
-        }) == TriggerResult.True)
-            return results;
-
-        // Reference Use_CarveCorpse: the parts come from the victim chardef's
-        // RESOURCES list. Player-corpse parts are renamed "<part> of <victim>"
-        // and fall to the ground with a decay timer; creature parts go into
-        // the corpse container.
-        Character? owner = null;
-        if (corpse.TryGetTag("OWNER_UID", out string? ownerUidStr2) && uint.TryParse(ownerUidStr2, out uint carveOwnerUid))
-            owner = _world.FindChar(new Serial(carveOwnerUid));
-        var charDef = owner != null
-            ? Definitions.DefinitionLoader.GetCharDef(owner.CharDefIndex)
-            : Definitions.DefinitionLoader.GetCharDef(corpse.Amount);
-        bool playerCorpse = owner?.IsPlayer ?? false;
-        string victimName = corpse.TryGetTag("CORPSE_NAME", out string? vn) && !string.IsNullOrWhiteSpace(vn)
-            ? vn!
-            : owner?.GetDisplayName() ?? "";
-
-        var resources = Definitions.DefinitionLoader.StaticResources;
-        if (charDef != null && resources != null && charDef.CarveResources.Count > 0)
-        {
-            foreach (var (rid, amount, defName) in charDef.CarveResources)
-            {
-                int defIndex = Definitions.TemplateEngine.ResolveItemDefIndex(resources, defName);
-                if (defIndex == 0) continue;
-                ushort dispId = Definitions.TemplateEngine.ResolveDispId(resources, defName);
-                if (dispId == 0) continue;
-
-                var part = _world.CreateItem();
-                part.BaseId = dispId;
-                var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
-                Definitions.ItemDefHelper.ApplyInstanceMetadata(part, defIndex,
-                    setDisplayId: false, setName: false);
-                if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
-                    part.Name = idef.Name;
-                if (amount > 1)
-                    part.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
-
-                if (playerCorpse)
-                {
-                    if (!string.IsNullOrEmpty(victimName))
-                        part.Name = ServerMessages.GetFormatted(Msg.CorpseName, part.GetName(), victimName);
-                    _world.PlaceItemWithDecay(part, corpse.Position);
-                }
-                else
-                {
-                    AddToCorpseOrGround(corpse, part);
-                }
-                results.Add(part);
-            }
-        }
-
-        if (results.Count == 0)
-        {
-            // Def carries no RESOURCES — keep the legacy random rolls so plain
-            // creatures still yield something to the carver.
-            if (Random.Shared.Next(100) < 70)
-            {
-                var hides = _world.CreateItem();
-                hides.BaseId = 0x1079; // hides
-                hides.Name = "hides";
-                hides.Amount = (ushort)Random.Shared.Next(1, 4);
-                AddToPackOrGround(carver, hides);
-                results.Add(hides);
-            }
-
-            var meat = _world.CreateItem();
-            meat.BaseId = 0x09F1; // raw ribs
-            meat.Name = "raw ribs";
-            meat.Amount = (ushort)Random.Shared.Next(1, 3);
-            AddToPackOrGround(carver, meat);
-            results.Add(meat);
-
-            if (Random.Shared.Next(100) < 20)
-            {
-                var bones = _world.CreateItem();
-                bones.BaseId = 0x0ECA; // bone pile
-                bones.Name = "bones";
-                bones.Amount = 1;
-                AddToPackOrGround(carver, bones);
-                results.Add(bones);
-            }
-        }
-
         corpse.SetTag("CORPSE_CARVED", "1");
+        corpse.SetTag("KILLER_UID", carver.Uid.Value.ToString());   // m_uidKiller = carver
+        corpse.SetTag("KILLER_UUID", carver.Uuid.ToString("D"));
+
+        // A carved player corpse turns to bones right away (SetTimeout(0)).
+        if (playerCorpse)
+            corpse.SetDecayAt(Environment.TickCount64);
         return results;
+    }
+
+    /// <summary>The creature type a corpse carves as: the chardef stamped at
+    /// death, else (corpses made before that stamp existed) the owner's
+    /// definition or the corpse body.</summary>
+    private SphereNet.Scripting.Definitions.CharDef? ResolveCorpseCharDef(Item corpse)
+    {
+        if (corpse.TryGetTag("CORPSE_CHARDEF", out string? idx) && int.TryParse(idx, out int defIndex))
+            return Definitions.DefinitionLoader.GetCharDef(defIndex);
+        var owner = ResolveCorpseOwner(corpse);
+        if (owner != null)
+        {
+            int ownerDef = ResolveCorpseCharDefIndex(owner);
+            if (ownerDef != 0)
+                return Definitions.DefinitionLoader.GetCharDef(ownerDef);
+        }
+        return Definitions.DefinitionLoader.GetCharDef(corpse.Amount)
+            ?? Definitions.DefinitionLoader.GetCharDefByBody(corpse.Amount);
+    }
+
+    /// <summary>LOCAL.resource.N.ID read back as an item definition (Source-X
+    /// GetKeyNum + ResGetIndex): a number, or a defname a script wrote.</summary>
+    private static int ReadCarvedItemIndex(SphereNet.Scripting.Variables.VarMap locals, string key,
+        SphereNet.Scripting.Resources.ResourceHolder? resources)
+    {
+        if (!locals.Has(key))
+            return 0;
+        if (locals.IsInteger(key))
+            return (int)locals.GetInt(key);
+        long n = locals.GetInt(key, long.MinValue);
+        if (n != long.MinValue)
+            return (int)n;
+        string? text = locals.Get(key);
+        return resources != null && !string.IsNullOrWhiteSpace(text)
+            ? Definitions.TemplateEngine.ResolveItemDefIndex(resources, text)
+            : 0;
+    }
+
+    private static void SendCarveMessage(Character carver, string msgKey) =>
+        Objects.ObjBase.ResolveClientConsole?.Invoke(carver)?.SysMessage(ServerMessages.Get(msgKey));
+
+    /// <summary>UpdateAnimate(ANIM_BOW) for the carver, through the one animation
+    /// door (body/mount translation and the per-viewer packet).</summary>
+    private static void PlayCarveAnimation(Character carver) =>
+        Clients.GameClient.PlayAnimation(carver, (ushort)AnimationType.Bow, 18,
+            Character.BroadcastNearby, forEachClientInRange: null);
+
+    /// <summary>A corpse flagged TAG.BLOOD leaves a pool (ITEMID_BLOOD4) in the
+    /// creature's blood hue for five seconds.</summary>
+    private void SpillCarveBlood(SphereNet.Scripting.Definitions.CharDef charDef, Point3D pos)
+    {
+        var blood = _world.CreateItem();
+        blood.BaseId = 0x122D; // ITEMID_BLOOD4
+        blood.Hue = new Color(unchecked((ushort)charDef.BloodColor));
+        _world.PlaceItemWithDecay(blood, pos, 5000);
     }
 
     private void AddToPackOrGround(Character ch, Item item)
@@ -1154,6 +1250,8 @@ public sealed class DeathEngine
     {
         if (!corpse.TryAddItem(item))
             _world.PlaceItemWithDecay(item, corpse.Position);
+        else
+            Item.OnVisualUpdate?.Invoke(item); // redraw it in any open corpse gump
     }
 
     // Corpse decay is now driven by the per-item Item.DecayTime /

@@ -1173,7 +1173,12 @@ public sealed partial class GameClient
         }
 
         var owner = top.ContainedIn.IsValid ? _world.FindChar(top.ContainedIn) : null;
-        if (owner != _character)
+        // Someone else's container - a corpse or chest on the ground - is redrawn
+        // for every viewer who has it open (Source-X CItem::Update sends to all who
+        // can see it). Carving into an open corpse otherwise left its gump stale
+        // until it was reopened.
+        if (owner != _character &&
+            !OpenedContainers.IsOpen(parentItem, parentItem.ResolveTopObject(), owner != null))
             return;
 
         var add = new PacketContainerItem(

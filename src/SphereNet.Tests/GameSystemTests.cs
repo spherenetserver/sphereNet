@@ -598,6 +598,8 @@ public class GameSystemTests
         var corpse = world.CreateItem();
         corpse.ItemType = ItemType.Corpse;
         corpse.Name = "corpse";
+        corpse.SetTag("CORPSE_CHARDEF", "400"); // a human corpse (0x190)
+        TestHarness.SeedCharDef();
         world.PlaceItem(corpse, carver.Position);
 
         var dispatcher = new TriggerDispatcher();

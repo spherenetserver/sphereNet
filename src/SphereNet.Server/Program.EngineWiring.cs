@@ -2722,19 +2722,23 @@ public static partial class Program
                 if (isPlayerCorpse && ownerClient?.NetState.SupportsMapWaypoints == true)
                     ownerClient.Send(new PacketWaypointRemove(corpse.Uid.Value));
 
-                // Source-X CItem two-stage player-corpse decay: on the FIRST decay a
-                // player corpse with loot turns into a bones pile its owner can no
-                // longer rejoin, keeping its contents for a second decay window —
-                // it does NOT scatter the loot yet. (NPC corpses and the bones'
+                // Source-X CItem two-stage player-corpse decay (CItem.cpp:6249): on
+                // the FIRST decay a player corpse turns into a skeleton its owner can
+                // no longer rejoin or be wronged through, keeping its contents for a
+                // second decay window — it does NOT scatter the loot yet. Carving a
+                // player corpse fires this at once. (NPC corpses and the bones'
                 // second decay fall through to the scatter/delete below.)
-                if (isPlayerCorpse && !staged && corpse.Contents.Count > 0)
+                if (isPlayerCorpse && !staged)
                 {
-                    corpse.BaseId = 0x0ECA;       // bone pile graphic
+                    corpse.BaseId = (ushort)Random.Shared.Next(0x0ECA, 0x0ED3); // ITEMID_SKELETON_1..9
+                    corpse.Hue = default;
                     corpse.Name = "bones";
                     corpse.SetTag("NOREJOIN", "1");
+                    corpse.SetTag("CORPSE_CARVED", "1"); // the corpse can't be carved anymore
                     corpse.RemoveTag("OWNER_UID"); // cut the owner link (no rejoin)
                     corpse.RemoveTag("OWNER_UUID");
                     corpse.SetDecayAt(Environment.TickCount64 + GameWorld.DefaultDecayTimeMs);
+                    SphereNet.Game.Objects.Items.Item.OnVisualUpdate?.Invoke(corpse);
                     return false; // keep — staged to bones
                 }
 

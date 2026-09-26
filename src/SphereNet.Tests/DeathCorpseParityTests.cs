@@ -100,6 +100,7 @@ public class DeathCorpseParityTests
         var world = CreateWorld();
         ClearNotoHooks();
         var death = new DeathEngine(world);
+        TestHarness.SeedCharDef(); // an untyped corpse cannot be carved
 
         var victim = MakePlayer(world, 100);
         var corpse = death.ProcessDeath(victim);

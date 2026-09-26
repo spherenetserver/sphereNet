@@ -112,6 +112,10 @@ public sealed class DefinitionLoader
     /// ADV_RATE curves — skill gain follows the curve strictly (no curve = no
     /// gain, Source-X GetChancePercent), so gain tests must provide one.</summary>
     public static void SetSkillDef(int skillIndex, SkillDef def) => _skillDefs[skillIndex] = def;
+
+    /// <summary>Register a char def directly (test harnesses): a corpse is typed by
+    /// its chardef, so death tests that carve need one to exist.</summary>
+    public static void SetCharDef(int index, CharDef def) => _charDefs[index] = def;
     public static SkillDef? GetSkillDef(string? name) =>
         TryGetSkillIndexByName(name, out int index) ? GetSkillDef(index) : null;
 

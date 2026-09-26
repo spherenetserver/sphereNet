@@ -72,6 +72,7 @@ public class ParityWaveH11Tests
         victim.IsPlayer = true; // keep the char (an NPC is deleted with its death)
         victim.BodyId = 0xD8;   // cow — carvable meat/hides
         victim.CharDefIndex = 0xD8;
+        TestHarness.SeedCharDef(0xD8); // the corpse is typed by the cow's chardef
         victim.MaxHits = victim.Hits = 10;
         world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
 

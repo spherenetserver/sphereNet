@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Ceset kesme Source-X Use_CarveCorpse ile ayni calisir
+------------------------------------------------------------------------
+DUZELTME - Ceset olum aninda yaratigin chardef'iyle tiplenir (Source-X
+           m_itCorpse.m_BaseID = _iPrev_id) ve kesme RESOURCES'i bu tipten
+           okur. Onceden sahibin o anki chardef'inden okunuyordu; oyuncunun
+           kendi chardef'i olmadigi icin oyuncu cesedi uydurma loot'a dusuyor,
+           beden degistiren dirilmis oyuncu da yeni bedeniyle kesiliyordu.
+DUZELTME - Chardef'i olmayan ceset hicbir sey vermez ("carve_corpse_nothing").
+           Kesene verilen rastgele deri / cig kaburga / kemik kaldirildi.
+DUZELTME - Kesilen oyuncu cesedi hemen kemige doner (SetTimeout(0)); parcalar
+           once bozulana kadar saglam cesedin yaninda duruyordu. Kemik asamasi
+           artik bos olsun olmasin her oyuncu cesedinde calisir, rastgele
+           ITEMID_SKELETON_1..9 grafigi ve varsayilan renk kullanir, kesilemez.
+DUZELTME - Yaratik cesedine kesilen parcalar acik gump'ta gorunur. Yerdeki
+           container sadece sahibine yeniden ciziliyordu; yerdeki ceset, sandik
+           ya da canta sunucu tarafi eklemeyi ancak yeniden acilinca gosteriyordu.
+YENI - @CarveCorpse: ARGN1 = kaynak sayisi, ARGO = kesen esya ve
+       LOCAL.resource.N.ID / LOCAL.resource.N.amount; trigger sonrasi geri
+       okunur (ID 0 listeyi bitirir). Kesen egilir, TAG.BLOOD yaratigin
+       BLOODCOLOR'unda kan birakir, her parca kendi carve_corpse_meat / hides /
+       feathers / wool mesajini gonderir.
+YENI - Oyuncu cesedi parcalari kurbana baglanir, ceset keseni katil olarak
+       kaydeder, RACIALF_HUMAN_WORKHORSE insan kesenlere +%10 deri verir.
+
 [2026-09-25] - Dungeon siyahi (TERRAIN_NULL) hareketi engeller
 ------------------------------------------------------------------------
 DUZELTME - 0x0244 zemin tile'i (TERRAIN_NULL, dungeon duvarlari arasindaki

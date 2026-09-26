@@ -1183,7 +1183,7 @@ public sealed class ClientItemUseHandler
                     // blade uses beyond poisoning/repair.
                     if (targetObj is Item corpse && corpse.ItemType == ItemType.Corpse)
                     {
-                        CarveCorpseWithBlade(corpse);
+                        CarveCorpseWithBlade(corpse, item);
                         return;
                     }
                     // A shorn sheep is answered too - the reference tells the player
@@ -3495,7 +3495,7 @@ public sealed class ClientItemUseHandler
                 fruit.ContainedIn.Value, fruit.Hue, _netState.IsClientPost6017));
     }
 
-    private void CarveCorpseWithBlade(Item corpse)
+    private void CarveCorpseWithBlade(Item corpse, Item blade)
     {
         if (_character == null) return;
         if (_character.PrivLevel < PrivLevel.GM && !CanReachTargetItem(corpse))
@@ -3505,10 +3505,8 @@ public sealed class ClientItemUseHandler
         }
         var death = _client.DeathEng;
         if (death == null) return;
-        var parts = death.CarveCorpse(_character, corpse);
-        SysMessage(parts.Count > 0
-            ? "You carve the corpse."
-            : "There is nothing left to carve.");
+        // The engine speaks for itself (carve_corpse_* per part, or _nothing).
+        death.CarveCorpse(_character, corpse, blade);
     }
 
     /// <summary>Source-X blade-on-sheep (CREID_SHEEP 0x00CF → sheared 0x00DF):

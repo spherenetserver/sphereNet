@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Corpse carving follows Source-X Use_CarveCorpse
+------------------------------------------------------------------------
+FIX - A corpse is typed at death by its creature's chardef (Source-X
+      m_itCorpse.m_BaseID = _iPrev_id) and carving reads RESOURCES from that
+      type. It was read from the owner's current chardef, which a player does
+      not carry, so a player corpse fell back to invented loot, and a
+      resurrected player who changed body carved as the new body.
+FIX - A corpse with no chardef yields nothing ("carve_corpse_nothing"). The
+      random hides / raw ribs / bones handed to the carver are gone.
+FIX - A carved player corpse turns to bones at once (SetTimeout(0)); its parts
+      used to lie next to the intact corpse until it decayed. The bones stage
+      now runs for every player corpse, empty or not, uses a random
+      ITEMID_SKELETON_1..9 graphic with the default hue, and cannot be carved.
+FIX - Parts carved into a creature corpse appear in its open gump. A container
+      on the ground was only redrawn for its owner, so any corpse, chest or
+      bag on the ground showed a server-side add only after reopening.
+NEW - @CarveCorpse gets ARGN1 = the resource count, ARGO = the carving item and
+      LOCAL.resource.N.ID / LOCAL.resource.N.amount, read back after the
+      trigger (an ID of 0 ends the list). The carver bows, TAG.BLOOD spills
+      a pool in the creature's BLOODCOLOR, and each part sends its own
+      carve_corpse_meat / hides / feathers / wool message.
+NEW - Player-corpse parts link to the victim, the corpse records the carver as
+      its killer, and RACIALF_HUMAN_WORKHORSE gives human carvers +10% hides.
+
 [2026-09-25] - The dungeon black (TERRAIN_NULL) blocks movement
 ------------------------------------------------------------------------
 FIX - Land tile 0x0244 (TERRAIN_NULL, the black between dungeon walls) blocks

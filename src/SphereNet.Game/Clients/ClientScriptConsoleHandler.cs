@@ -907,10 +907,10 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper == "CARVECORPSE")
         {
-            // Source-X CIV_CARVECORPSE: SRC carves this corpse (meat/hides/
-            // feathers per the dead creature's body).
+            // Source-X CIV_CARVECORPSE: SRC carves this corpse (the parts its
+            // creature type's RESOURCES name).
             if (target is Item corpse && corpse.ItemType == ItemType.Corpse && _character != null)
-                _client.DeathEng?.CarveCorpse(_character, corpse);
+                _client.DeathEng?.CarveCorpse(_character, corpse, corpse); // Use_CarveCorpse(this, this)
             return true;
         }
 

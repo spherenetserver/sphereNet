@@ -42,6 +42,8 @@ public sealed class CorpseCrimeWitnessParityTests
         corpse.ItemType = ItemType.Corpse;
         corpse.BaseId = 0x2006;
         corpse.SetTag("OWNER_UID", owner.Uid.Value.ToString());
+        corpse.SetTag("CORPSE_CHARDEF", "400"); // a human corpse (0x190)
+        TestHarness.SeedCharDef();
         world.PlaceItem(corpse, new Point3D(100, 100, 0, 0));
 
         return (world, deaths, owner, corpse);

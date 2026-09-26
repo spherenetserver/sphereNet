@@ -1510,8 +1510,13 @@ public sealed class HousingEngine
 
     // --- Decay System ---
 
-    /// <summary>Decay stage interval in ms (default: 24 hours real time).</summary>
-    public long DecayStageIntervalMs { get; set; } = 24L * 60 * 60 * 1000;
+    /// <summary>Decay stage interval in ms; 0 (the default) turns house decay off.
+    ///
+    /// Source-X has no house decay: the multi's timer is never armed
+    /// ("// ??? SetTimeout( GetDecayTime()); house decay ?", CItemMulti.cpp:389).
+    /// A 24-hour default here wore every house down and redeeded it after six
+    /// days without its owner, legacy imports included.</summary>
+    public long DecayStageIntervalMs { get; set; }
 
     /// <summary>
     /// Tick house decay. Called periodically from game loop.

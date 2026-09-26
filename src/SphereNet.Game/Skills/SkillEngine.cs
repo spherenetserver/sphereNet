@@ -539,11 +539,16 @@ public static class SkillEngine
             {
                 if (chance > _rand.Next(1000))
                 {
+                    // Stat_SetBase moves only the base; a max pool that follows its
+                    // stat moves with it inside the setter, an explicit one stays
+                    // (CCharStat.cpp:339-436). Bumping MaxHits here as well counted
+                    // the gain twice and wrote the effective (item/mod-inflated)
+                    // ceiling back into the saved base.
                     switch (statIdx)
                     {
-                        case 0: ch.Str++; ch.MaxHits++; OnStatGain?.Invoke(ch, 0, ch.Str); break;
-                        case 1: ch.Dex++; ch.MaxStam++; OnStatGain?.Invoke(ch, 1, ch.Dex); break;
-                        case 2: ch.Int++; ch.MaxMana++; OnStatGain?.Invoke(ch, 2, ch.Int); break;
+                        case 0: ch.Str++; OnStatGain?.Invoke(ch, 0, ch.Str); break;
+                        case 1: ch.Dex++; OnStatGain?.Invoke(ch, 1, ch.Dex); break;
+                        case 2: ch.Int++; OnStatGain?.Invoke(ch, 2, ch.Int); break;
                     }
                     break; // one stat gain per skill use (reference)
                 }
@@ -593,9 +598,9 @@ public static class SkillEngine
 
         switch (minStat)
         {
-            case 0: ch.Str--; ch.MaxHits = (short)Math.Max(1, ch.MaxHits - 1); OnStatDecrease?.Invoke(ch, 0, ch.Str); break;
-            case 1: ch.Dex--; ch.MaxStam = (short)Math.Max(1, ch.MaxStam - 1); OnStatDecrease?.Invoke(ch, 1, ch.Dex); break;
-            case 2: ch.Int--; ch.MaxMana = (short)Math.Max(1, ch.MaxMana - 1); OnStatDecrease?.Invoke(ch, 2, ch.Int); break;
+            case 0: ch.Str--; OnStatDecrease?.Invoke(ch, 0, ch.Str); break;
+            case 1: ch.Dex--; OnStatDecrease?.Invoke(ch, 1, ch.Dex); break;
+            case 2: ch.Int--; OnStatDecrease?.Invoke(ch, 2, ch.Int); break;
         }
         return true;
     }

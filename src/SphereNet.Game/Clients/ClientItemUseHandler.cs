@@ -4315,7 +4315,17 @@ public sealed class ClientItemUseHandler
             case "friend":
             case "unfriend":
             case "transfer":
+                EmitPetTargetPrompt(pet, verb);
+                return true;
+
             case "price":
+                // Source-X PC_PRICE (CCharNPCPet.cpp:335): a vendor verb - any other
+                // pet does not understand it.
+                if (!SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet))
+                {
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
+                    return true;
+                }
                 EmitPetTargetPrompt(pet, verb);
                 return true;
 
@@ -4575,10 +4585,15 @@ public sealed class ClientItemUseHandler
                 break;
 
             case "price":
-                if (obj is Item priced)
-                {
+                // Source-X NPC_SetVendorPrice (CCharNPCPet.cpp:823): only an item the
+                // vendor itself holds for sale - inside one of its boxes, not worn -
+                // takes a price. Pricing anything else let a player tag an item in
+                // their own pack and sell it to an NPC vendor for that price.
+                if (obj is Item priced && SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet) &&
+                    ReferenceEquals(priced.ResolveTopObject(), pet) && priced.ContainedIn != pet.Uid)
                     SendInputPromptGump(priced, "PRICE", 9);
-                }
+                else
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetInvOnly));
                 break;
         }
     }

@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Close value exploits and stop house collapse
+------------------------------------------------------------------------
+FIX - Selling to a vendor values the item by OVERRIDE.VALUE, else its itemdef
+      VALUE read by quality, never by a PRICE set on the item (Source-X
+      GetVendorPrice ignores m_price when selling). A player could price an
+      item in their own pack and sell it to any NPC vendor at that figure.
+      The payout is value - value*markup/100 with Source-X rounding; a
+      valueless item sells for 0 instead of blocking the whole sale.
+FIX - The PRICE pet command is refused by non-vendor pets and only takes an
+      item held in one of the vendor's own boxes (NPC_SetVendorPrice).
+FIX - Houses no longer decay. Source-X never arms a timer on a multi; the
+      24-hour stage default wore every house down and redeeded it after six
+      days without its owner. DecayStageIntervalMs now defaults to 0 (off).
+FIX - Character creation validates the client's stats and skills like
+      Source-X InitPlayer: each stat caps at 60 and each skill at 50; with
+      four skills a stat sum over 90 becomes 30/30/30 and a skill sum over 120
+      drops the fourth skill to 1 (three skills: 80 -> 26/26/26, 100). A
+      crafted packet could start a character at 120.0 in one skill.
+FIX - A stat gain or loss no longer moves MaxHits/MaxStam/MaxMana a second
+      time. The stat setter already carries a max that follows its stat, and
+      the extra step wrote the effective (MODMAX- and item-inflated) ceiling
+      into the saved base, so max hits drifted up on every gain.
+
 [2026-09-26] - Corpse carving follows Source-X Use_CarveCorpse
 ------------------------------------------------------------------------
 FIX - A corpse is typed at death by its creature's chardef (Source-X

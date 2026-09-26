@@ -2941,6 +2941,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             sellItem.BaseId = 0x0F7B;
             sellItem.Name = "Blood Moss";
             sellItem.Amount = 1;
+            sellItem.SetTag("OVERRIDE.VALUE", "8"); // a sale is valued by VALUE, not the stock PRICE
             pack.AddItem(sellItem);
 
             var dispatcher = new TriggerDispatcher();

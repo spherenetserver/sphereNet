@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Deger istismarlari kapandi, evler cokmez
+------------------------------------------------------------------------
+DUZELTME - Vendor'a satista esya OVERRIDE.VALUE ile, yoksa itemdef VALUE'sunun
+           kaliteye gore degeriyle fiyatlanir; esyaya yazilmis PRICE asla
+           okunmaz (Source-X satista m_price'i yok sayar). Oyuncu kendi
+           cantasindaki esyaya fiyat yazip herhangi bir NPC vendor'a o fiyattan
+           satabiliyordu. Odeme deger - deger*markup/100 (Source-X yuvarlamasi);
+           degersiz esya tum satisi engellemek yerine 0'a satilir.
+DUZELTME - PRICE pet komutunu vendor olmayan pet reddeder; yalnizca vendor'in
+           kendi kutularindaki esyaya fiyat verilir (NPC_SetVendorPrice).
+DUZELTME - Evler artik curumez. Source-X multi'ye hic zamanlayici kurmaz; 24
+           saatlik asama varsayilani her evi yipratip sahibi 6 gun gelmezse
+           deed'e ceviriyordu. DecayStageIntervalMs varsayilani 0 (kapali).
+DUZELTME - Karakter olusturma istemcinin stat ve skill'lerini Source-X
+           InitPlayer gibi dogrular: stat basina 60, skill basina 50; dort
+           skill'de stat toplami 90'i asarsa 30/30/30, skill toplami 120'yi
+           asarsa dorduncu skill 1 olur (uc skill: 80 -> 26/26/26, 100).
+           Degistirilmis paketle tek skill'de 120.0 ile baslanabiliyordu.
+DUZELTME - Stat artisi/dususu MaxHits/MaxStam/MaxMana'yi ikinci kez
+           oynatmaz. Stat setter'i stat'i izleyen max'i zaten tasiyor; fazladan
+           adim etkin (MODMAX ve esya bonuslu) tavani kayitli tabana yaziyordu,
+           max hits her artista kaliciyordu.
+
 [2026-09-26] - Ceset kesme Source-X Use_CarveCorpse ile ayni calisir
 ------------------------------------------------------------------------
 DUZELTME - Ceset olum aninda yaratigin chardef'iyle tiplenir (Source-X

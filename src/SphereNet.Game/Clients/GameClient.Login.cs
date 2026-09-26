@@ -509,12 +509,26 @@ public sealed partial class GameClient
                 };
                 if (info.SkinHue != 0) _character.Hue = new Color(info.SkinHue);
 
-                int str = Math.Clamp((int)info.Str, 10, 60);
-                int dex = Math.Clamp((int)info.Dex, 10, 60);
-                int intl = Math.Clamp((int)info.Int, 10, 60);
-                int total = str + dex + intl;
-                if (total > 80) { double s = 80.0 / total; str = (int)(str * s); dex = (int)(dex * s); intl = 80 - str - dex; }
-                str = Math.Max(10, str); dex = Math.Max(10, dex); intl = Math.Max(10, intl);
+                // Source-X InitPlayer (CChar.cpp:1768-1796) validates what the client
+                // sent: each stat caps at 60, each skill at 50, and an over-budget
+                // total is flattened - with four skills (0xF8/0x8D) a stat sum over
+                // 90 becomes 30/30/30 and a skill sum over 120 drops the fourth skill
+                // to 1; with three (0x00) the limits are 80 (26/26/26) and 100. The
+                // skills were only scaled to a total, so a crafted packet naming one
+                // skill at 120 created a character with 120.0 in it.
+                var skills = info.Skills;
+                bool fourSkills = skills.Length >= 4;
+                int str = Math.Min((int)info.Str, 60);
+                int dex = Math.Min((int)info.Dex, 60);
+                int intl = Math.Min((int)info.Int, 60);
+                var skillVals = new int[skills.Length];
+                for (int i = 0; i < skills.Length; i++)
+                    skillVals[i] = Math.Min((int)skills[i].Value, 50);
+                if (str + dex + intl > (fourSkills ? 90 : 80))
+                    str = dex = intl = fourSkills ? 30 : 26;
+                int lastSkill = fourSkills ? 3 : 2;
+                if (skillVals.Length > lastSkill && skillVals.Sum() > (fourSkills ? 120 : 100))
+                    skillVals[lastSkill] = 1;
                 _character.Str = (short)str; _character.Dex = (short)dex; _character.Int = (short)intl;
                 // Seed the pools the setters only cap: swing speed reads current
                 // stamina in eras 1-4 (Source-X Stat_GetVal(STAT_DEX)), so a fresh
@@ -537,19 +551,11 @@ public sealed partial class GameClient
                     _character.Equip(beard, Layer.FacialHair);
                 }
 
-                // Enforce total skill points cap (UO standard: 120 for new characters)
-                const int MaxTotalSkillPoints = 120;
-                int totalSkill = 0;
-                foreach (var (_, sv) in info.Skills)
-                    totalSkill += sv;
-                double skillScale = totalSkill > MaxTotalSkillPoints ? (double)MaxTotalSkillPoints / totalSkill : 1.0;
-                foreach (var (id, val) in info.Skills)
+                for (int i = 0; i < skills.Length; i++)
                 {
-                    if (id >= 0 && id < SkillEngine.BaseSkillCount && val > 0)
-                    {
-                        int scaled = skillScale < 1.0 ? (int)(val * skillScale) : val;
-                        _character.SetSkill((SkillType)id, (ushort)(scaled * 10));
-                    }
+                    int id = skills[i].Id;
+                    if (id < SkillEngine.BaseSkillCount && skillVals[i] > 0)
+                        _character.SetSkill((SkillType)id, (ushort)(skillVals[i] * 10));
                 }
                 // Diagnostic: what the client actually sent for the creation
                 // skills. If these are all value=0 (or empty) the chosen skills

@@ -241,6 +241,7 @@ public sealed class VendorTransferParityTests
 
         var goods = world.CreateItem();
         goods.BaseId = 0x0F52;
+        goods.SetTag("OVERRIDE.VALUE", "10");
         Assert.True(seller.Backpack!.TryAddItem(goods));
         var goodsUid = goods.Uid;
 
@@ -264,6 +265,7 @@ public sealed class VendorTransferParityTests
 
         var goods = world.CreateItem();
         goods.BaseId = 0x0F52;
+        goods.SetTag("OVERRIDE.VALUE", "10");
         Assert.True(seller.Backpack!.TryAddItem(goods));
 
         Assert.True(VendorEngine.ProcessSell(seller, vendor,

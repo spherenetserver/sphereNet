@@ -179,7 +179,7 @@ public class VendorTradeTests
         var emptyBag = world.CreateItem();
         emptyBag.ItemType = ItemType.Container;
         emptyBag.BaseId = 0x0E75;
-        emptyBag.SetTag("PRICE", "10");
+        emptyBag.SetTag("OVERRIDE.VALUE", "10"); // a sale is valued by VALUE, never the item's PRICE
         pack.AddItem(emptyBag);
 
         int paid = VendorEngine.ProcessSell(seller, vendor,

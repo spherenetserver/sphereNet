@@ -185,12 +185,12 @@ public class VendorPacketRoundtripTests
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
         var player = MakePlayer(world, gold: 0);
 
-        // Sellable item in the player's pack, PRICE 10 (the marked-up buy price).
-        // W-F markup math (default 15%): payout each = 10*(100-15)/(100+15) = 7.
+        // Sellable item in the player's pack valued at 10. Source-X GetVendorPrice
+        // with -15% markup: 10 + IMulDivLL(10, -15, 100) = 10 - 2 = 8 each.
         var sellItem = world.CreateItem();
         sellItem.BaseId = 0x13B0;
         sellItem.Amount = 2;
-        sellItem.SetTag("PRICE", "10");
+        sellItem.SetTag("OVERRIDE.VALUE", "10");
         player.Backpack!.AddItem(sellItem);
 
         var state = WireClient(world, accounts, lf, player);
@@ -199,6 +199,6 @@ public class VendorPacketRoundtripTests
         new PacketVendorSell().OnReceive(new PacketBuffer(bytes), state);
 
         Assert.True(sellItem.IsDeleted);                  // whole stack sold
-        Assert.Equal(14, VendorEngine.CountGold(player)); // 2 * 7 paid out
+        Assert.Equal(16, VendorEngine.CountGold(player)); // 2 * 8 paid out
     }
 }

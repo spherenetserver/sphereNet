@@ -317,23 +317,23 @@ public class VendorStableParityTests
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         var pack = AddPack(world, player);
 
-        // PRICE 100 is the marked-up buy price; with the default 15% markup the
-        // vendor pays 100*(100-15)/(100+15) = 73 each; 2 -> 146 total (W-F).
+        // Valued at 100; with the default 15% markup the vendor pays
+        // 100 + IMulDivLL(100, -15, 100) = 85 each; 2 -> 170 total.
         var item = world.CreateItem();
-        item.BaseId = 0x13B0; item.Amount = 2; item.SetTag("PRICE", "100");
+        item.BaseId = 0x13B0; item.Amount = 2; item.SetTag("OVERRIDE.VALUE", "100");
         pack.AddItem(item);
 
         // Vendor can afford it: sale succeeds and the pool is debited.
         vendor.SetTag("VENDOR_GOLD", "1000");
         int paid = VendorEngine.ProcessSell(player, vendor,
             new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 2 } });
-        Assert.Equal(146, paid);
-        Assert.Equal(854, VendorEngine.GetVendorGold(vendor));
+        Assert.Equal(170, paid);
+        Assert.Equal(830, VendorEngine.GetVendorGold(vendor));
 
         // Now broke: a sale it cannot afford is skipped (shortfall), pool and
         // items untouched.
         var item2 = world.CreateItem();
-        item2.BaseId = 0x13B0; item2.Amount = 2; item2.SetTag("PRICE", "100");
+        item2.BaseId = 0x13B0; item2.Amount = 2; item2.SetTag("OVERRIDE.VALUE", "100");
         pack.AddItem(item2);
         vendor.SetTag("VENDOR_GOLD", "30");
         int paid2 = VendorEngine.ProcessSell(player, vendor,
@@ -361,7 +361,7 @@ public class VendorStableParityTests
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         var pack = AddPack(world, player);
         var item = world.CreateItem();
-        item.BaseId = 0x13B0; item.Amount = 1; item.SetTag("PRICE", "100");
+        item.BaseId = 0x13B0; item.Amount = 1; item.SetTag("OVERRIDE.VALUE", "100");
         pack.AddItem(item);
 
         int paid = VendorEngine.ProcessSell(player, vendor,
@@ -376,7 +376,7 @@ public class VendorStableParityTests
 
         int paid2 = VendorEngine.ProcessSell(player, vendor,
             new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 1 } });
-        Assert.Equal(73, paid2); // 100*(100-15)/(100+15) with the default markup
+        Assert.Equal(85, paid2); // 100 + IMulDivLL(100, -15, 100) with the default markup
         Assert.True(item.IsDeleted);
     }
 

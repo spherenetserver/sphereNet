@@ -547,8 +547,9 @@ public static class VendorEngine
             if (buyFilter != null && !buyFilter.Contains(found.BaseId))
                 return 0; // vendor does not buy this item type
 
+            // A valueless item sells for nothing rather than blocking the whole
+            // sale (the reference pays GetVendorPrice as it comes, 0 included).
             int serverPrice = GetServerSellPrice(vendor, found);
-            if (serverPrice <= 0) return 0;
             totalValue += (long)serverPrice * entry.Amount;
             if (totalValue > int.MaxValue)
                 return 0;
@@ -797,18 +798,45 @@ public static class VendorEngine
         return Math.Clamp(DefaultVendorMarkup, 0, 99);
     }
 
-    /// <summary>Server-side sell price (what the vendor pays the player).
-    /// The stock PRICE is the buy (marked-up) price, so the payout works the
-    /// markup out of it twice: base = price/(1+m), payout = base*(1-m) —
-    /// Source-X GetVendorPrice with iConvertFactor = -markup. The old fixed
-    /// buy/2 ignored VENDORMARKUP entirely.</summary>
+    /// <summary>Server-side sell price: what the vendor pays the player for
+    /// <paramref name="item"/> (Source-X CItemVendable::GetVendorPrice with
+    /// forselling set and iConvertFactor = -markup, CClientEvent.cpp:1456).
+    ///
+    /// The value is OVERRIDE.VALUE, else the itemdef VALUE scaled by quality. The
+    /// item's own PRICE is never read when selling - "When selling an item, you
+    /// never check the price to avoid exploit" (CItemVendable.cpp:195): a player
+    /// could price anything in their pack and sell it at that figure. The payout
+    /// is then value - value*markup/100.</summary>
     internal static int GetServerSellPrice(Character vendor, Item item)
     {
-        int buyPrice = item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p)
-            ? Math.Max(1, p)
-            : item.Price > 0 ? item.Price : Math.Max(1, GetServerBuyPrice(vendor, item.BaseId));
+        long value = item.TryGetTag("OVERRIDE.VALUE", out string? ov) && long.TryParse(ov, out long ovv)
+            ? ovv
+            : 0;
+        if (value <= 0)
+            value = GetMakeValue(item);
         int markup = GetVendorMarkup(vendor);
-        return Math.Max(1, buyPrice * (100 - markup) / (100 + markup));
+        value += IMulDivLL(value, Math.Max(-markup, -100), 100);
+        return (int)Math.Clamp(value, 0, int.MaxValue);
+    }
+
+    /// <summary>Source-X IMulDivLL (common.h:207): a*b/c rounded half up, one lower
+    /// again when a*b is negative.</summary>
+    private static long IMulDivLL(long a, long b, long c)
+    {
+        long ab = a * b;
+        return ((ab + c / 2) / c) - (ab < 0 ? 1 : 0);
+    }
+
+    /// <summary>Source-X CItemBase::GetMakeValue: the itemdef VALUE range read
+    /// linearly by the item's quality (0-100). 0 when the def declares no VALUE.</summary>
+    internal static int GetMakeValue(Item item)
+    {
+        var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(
+            Definitions.ItemDefHelper.ResolveInstanceDefIndex(item));
+        if (idef == null) return 0;
+        int lo = idef.ValueMin, hi = Math.Max(idef.ValueMin, idef.ValueMax);
+        int quality = Math.Clamp((int)item.Quality, 0, 100);
+        return lo + (int)((long)(hi - lo) * quality / 100);
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>

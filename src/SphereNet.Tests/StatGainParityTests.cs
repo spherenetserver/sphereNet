@@ -73,6 +73,24 @@ public class StatGainParityTests
         Assert.Equal(30, ch.Int);
     }
 
+    [Fact]
+    public void StatGain_MovesTheMaxPoolOnce_AndKeepsModifiersOutOfTheBase()
+    {
+        // Stat_SetBase moves only the base; the max pool that follows STR moves
+        // with it. The gain used to bump MaxHits a second time and, through the
+        // effective-value setter, write MODMAXHITS into the saved base.
+        LoadDefinitions(TrainingDefs);
+        var ch = CreatePlayer();
+        ch.ModMaxHits = 20;
+        ch.SetSkill(SkillType.Swordsmanship, 200);
+
+        SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
+
+        Assert.Equal(51, ch.Str);
+        Assert.Equal(51, ch.BaseMaxHits);  // follows STR by exactly one
+        Assert.Equal(71, ch.MaxHits);      // the modifier stays on top, not in the base
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]

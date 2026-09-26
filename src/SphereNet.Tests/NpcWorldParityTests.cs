@@ -116,6 +116,52 @@ public sealed class NpcWorldParityTests
     }
 
     [Fact]
+    public void PriceIsAVendorVerb_ANonVendorPetDoesNotOfferATarget()
+    {
+        var b = OwnedVendor();
+        b.Vendor.NpcBrain = NpcBrainType.Animal;
+
+        PetCommand(b.Client, "bob price");
+
+        Assert.Equal(0u, b.Client.ActiveTargetCursorId);
+    }
+
+    [Fact]
+    public void PriceOnlyTakesAnItemTheVendorHoldsForSale()
+    {
+        // Source-X NPC_SetVendorPrice (CCharNPCPet.cpp:823): the item must sit in one
+        // of the vendor's boxes. Pricing an item in the owner's own pack was the
+        // first half of a gold-minting sale.
+        var b = OwnedVendor();
+        var old = VendorEngine.World;
+        VendorEngine.World = b.World;
+        try
+        {
+            var pack = b.World.CreateItem();
+            pack.BaseId = 0x0E75;
+            pack.ItemType = ItemType.Container;
+            b.Owner.Equip(pack, Layer.Pack);
+            var mine = b.World.CreateItem();
+            mine.BaseId = 0x0F0E;
+            pack.AddItem(mine);
+
+            PetCommand(b.Client, "bob price");
+            b.Client.HandleTargetResponse(0, b.Client.ActiveTargetCursorId, mine.Uid.Value, 0, 0, 0, 0);
+            Assert.Empty(b.Client.Dialogs.PendingInputDlg);
+
+            var stock = VendorEngine.GetVendorBox(b.Vendor, Layer.VendorStock)!;
+            var forSale = b.World.CreateItem();
+            forSale.BaseId = 0x0F0E;
+            stock.AddItem(forSale);
+
+            PetCommand(b.Client, "bob price");
+            b.Client.HandleTargetResponse(0, b.Client.ActiveTargetCursorId, forSale.Uid.Value, 0, 0, 0, 0);
+            Assert.Contains(b.Client.Dialogs.PendingInputDlg.Keys, k => k.Item1 == forSale.Uid.Value);
+        }
+        finally { VendorEngine.World = old; }
+    }
+
+    [Fact]
     public void APlayerVendorsStockSurvivesASaveWhileATemplateVendorsDoesNot()
     {
         string dir = Path.Combine(Path.GetTempPath(), $"sphnet_pvstock_{Guid.NewGuid():N}");

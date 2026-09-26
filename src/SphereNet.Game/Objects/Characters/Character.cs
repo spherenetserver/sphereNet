@@ -1531,7 +1531,7 @@ public partial class Character : ObjBase
         var def = DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex);
         if (def != null && !string.IsNullOrWhiteSpace(def.Name))
         {
-            string fromDef = DefinitionLoader.ResolveNames(def.Name).Trim();
+            string fromDef = DefinitionLoader.ResolveNamePool(def.Name).Trim();
             if (!string.IsNullOrEmpty(fromDef))
                 return fromDef;
         }

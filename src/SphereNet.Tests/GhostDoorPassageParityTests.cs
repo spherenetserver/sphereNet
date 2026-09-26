@@ -23,7 +23,7 @@ namespace SphereNet.Tests;
 /// room whose door had swung shut stayed shut in - and this engine closes doors on
 /// its own after 20 seconds.
 /// </summary>
-[Collection("VendorStateSerial")]
+[Collection("DefinitionLoaderSerial")]
 public sealed class GhostDoorPassageParityTests
 {
     private const ushort DoorTile = 0x0675;   // synthetic Impassable door
@@ -37,6 +37,7 @@ public sealed class GhostDoorPassageParityTests
         { Flags = TileFlag.Impassable | TileFlag.Door, Height = 20 });
         map.SetSyntheticItemTile(WallTile, new ItemTileData
         { Flags = TileFlag.Impassable, Height = 20 });
+        TestHarness.SeedItemDefs(DoorTile, WallTile);
 
         var world = new GameWorld(LoggerFactory.Create(_ => { }));
         world.InitMap(0, 256, 256);
@@ -97,9 +98,12 @@ public sealed class GhostDoorPassageParityTests
     public void AGhostWalksThroughAClosedDoorItem()
     {
         var (world, walker, _) = Setup();
+        // A door item blocks by the flags of the art it shows - its definition's CAN,
+        // from the tiledata's door bit - not by the instance's TYPE (GetHeightPoint
+        // reads FindItemBase(GetDispID()), CWorldMap.cpp:1438).
         var door = world.CreateItem();
-        door.BaseId = WallTile;              // plain impassable art...
-        door.ItemType = ItemType.DoorLocked; // ...it is the TYPE that makes it a door
+        door.BaseId = DoorTile;
+        door.ItemType = ItemType.DoorLocked;
         door.SetAttr(ObjAttributes.Move_Never);
         world.PlaceItem(door, new Point3D(50, 49, 0, 0));
 

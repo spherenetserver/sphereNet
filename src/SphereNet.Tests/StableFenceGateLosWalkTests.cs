@@ -203,6 +203,7 @@ public sealed class StableFenceGateLosWalkTests
         world.MapData = md;
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;
+        TestHarness.SeedAllItemDefs();
         return world;
     }
 

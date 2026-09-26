@@ -161,13 +161,17 @@ public class NpcCanAuditProbeTests
         });
     });
 
+    // Source-X never lifts a tile's BLOCK for a hoverer: CanStandAt only ADDS a block
+    // for a hover tile when the walker cannot hover (CCharStatus.cpp:1891), and an
+    // impassable tile is CAN_I_BLOCK either way (GetItemHeightFlags).
     [Theory]
     [InlineData("04", false)]
-    [InlineData("084", true)]
-    public void HoverSurfaceRequiresHoverCapability(string can, bool allowed) => WithCan(can, (w,n,ai) =>
+    [InlineData("084", false)]
+    public void AnImpassableHoverTileBlocksHoverersToo(string can, bool allowed) => WithCan(can, (w,n,ai) =>
     {
         w.MapData!.SetSyntheticItemTile(0x1000, new SphereNet.MapData.Tiles.ItemTileData
             { Flags = SphereNet.MapData.Tiles.TileFlag.HoverOver | SphereNet.MapData.Tiles.TileFlag.Impassable, Height = 1 });
+        TestHarness.SeedItemDefs(0x1000);
         w.MapData.AddSyntheticStatic(0, 101, 100, 0x1000, 0);
         Assert.Equal(allowed, w.Standing.CheckMovement(n, n.Position, Direction.East, out _));
     });

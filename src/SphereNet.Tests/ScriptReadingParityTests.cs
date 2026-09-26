@@ -455,6 +455,24 @@ public class ScriptReadingParityTests
     }
 
     [Fact]
+    public void ANamePoolGivesThePickedNameAlone()
+    {
+        // CObjBase::SetNamePool: "#pool the mage" is the pick and nothing else - the
+        // trade part is the trade title's, which the click adds after the name.
+        var resources = LoadScript("""
+            [NAMES names_pool_test]
+            1
+            Devin
+
+            [EOF]
+            """);
+
+        Assert.Equal("Devin", resources.ResolveNamePool("#names_pool_test the mage"));
+        Assert.Equal("names_missing", resources.ResolveNamePool("#names_missing the mage"));
+        Assert.Equal("Bob the smith", resources.ResolveNamePool("Bob the smith"));
+    }
+
+    [Fact]
     public void RawSections_PreserveCommaLines()
     {
         var resources = LoadScript("""

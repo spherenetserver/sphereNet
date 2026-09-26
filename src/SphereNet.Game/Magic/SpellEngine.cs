@@ -2681,7 +2681,7 @@ public sealed class SpellEngine
             {
                 creature.CharDefIndex = bodyId;
                 if (!string.IsNullOrWhiteSpace(cdef.Name))
-                    creature.Name = Definitions.DefinitionLoader.ResolveNames(cdef.Name);
+                    creature.Name = Definitions.DefinitionLoader.ResolveNamePool(cdef.Name);
                 if (cdef.NpcBrain != NpcBrainType.None)
                     creature.NpcBrain = cdef.NpcBrain;
                 Definitions.CharDefHelper.AfterApplyDefName?.Invoke(creature); // chardef @Create

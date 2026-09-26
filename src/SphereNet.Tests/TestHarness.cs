@@ -48,6 +48,25 @@ internal static class TestHarness
         SphereNet.Game.Definitions.DefinitionLoader.SetCharDef(index,
             new SphereNet.Scripting.Definitions.CharDef(ResourceId.Invalid));
 
+    /// <summary>Give art ids a bare ITEMDEF, as every pack does for the tiles it uses.
+    /// The walk check reads a tile's CAN and height from its definition and treats an
+    /// id with none as heightless (Source-X GetHeightPoint, CWorldMap.cpp:1316).</summary>
+    public static void SeedItemDefs(params int[] ids)
+    {
+        foreach (int id in ids)
+            SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(id,
+                new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { DispIndex = (ushort)id });
+    }
+
+    /// <summary>A bare ITEMDEF for every art id, standing in for a full script pack
+    /// when a test walks real map data.</summary>
+    public static void SeedAllItemDefs()
+    {
+        for (int id = 1; id <= 0xFFFF; id++)
+            SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(id,
+                new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { DispIndex = (ushort)id });
+    }
+
     /// <summary>Teach a vendor to buy an item: a sample in its BUYS box
     /// (LAYER_VENDOR_BUYS), where Source-X keeps what a vendor purchases. A vendor
     /// with no buy list buys nothing.</summary>

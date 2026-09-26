@@ -2213,7 +2213,7 @@ public sealed partial class GameClient
             // hijacks @Create or brain selection.
             npc.BaseId = resolvedBody;
             if (!string.IsNullOrWhiteSpace(charDef.Name))
-                npc.Name = DefinitionLoader.ResolveNames(charDef.Name);
+                npc.Name = DefinitionLoader.ResolveNamePool(charDef.Name);
 
             int strVal = charDef.StrMax > 0 ? charDef.StrMax : Math.Max(1, charDef.StrMin);
             int dexVal = charDef.DexMax > 0 ? charDef.DexMax : Math.Max(1, charDef.DexMin);

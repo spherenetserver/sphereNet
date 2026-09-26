@@ -4,6 +4,40 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-27] - Inip cikma Source-X'i izler; NPC adlarinda meslek kismi yok
+------------------------------------------------------------------------
+DEGISIKLIK - Oyuncu ve NPC adimi Source-X yurume kuraliyla karar verilir:
+           CheckValidMove -> CanStandAt, GetHeightPoint ve CheckTile_Item /
+           CheckTile_Terrain. Tabani z + climb + 3 icindeki esyanin ustune
+           (merdivende yarim yukseklik fazlasi), z + climb + boy icindeki
+           araziye cikilir, inis siniri yoktur; climb merdivenin yarim
+           yuksekligidir; tavan boy kadar (arazide yarisi) bosluk ister; arazi
+           Z'si GetMapMeterAdjusted. Tile yurume bayraklari ve yukseklik
+           grafigin ITEMDEF'inden gelir (CAN= tiledata bayraklarini ezer,
+           HEIGHT=), DUPEITEM grafigi kendi tiledata'sindan, ITEMDEF'siz grafik
+           tiledata'dan yukseksiz. NPC yol aramasi ve NPC adimi Z'yi ayni
+           kuraldan alir (12'lik tirmanma siniri kalkti); oturma (giris, binek,
+           isinlanma, GM yurumesi) ayni yercekimini kullanir. Magara boslugu
+           (0x1AE-0x1B5, 0x1DB) zemin sayilmamaya devam eder.
+DUZELTME - Isim havuzundan gelen NPC adi yalnizca secilen addir (SetNamePool):
+           "#NAMES_HUMANMALE the mage" adda " the mage"i tutuyordu, tiklama
+           meslek unvanini tekrar ekliyordu ("Devin the mage the mage").
+           Karakterde script NAME= de havuzdan gecer.
+DUZELTME - Istemcinin gorus sinirinda sildigi nesne ancak iyice uzaklasip
+           donunce geri geliyordu: gorus kontrolu tick basina calistigindan iki
+           tick arasinda menzilden cikip geri donen adim nesneyi burada bilinir,
+           istemcide silinmis birakiyordu (carpilan ama gorunmeyen kapi). Her
+           adim artik menzil disina dusurdugunu unutur (Source-X addPlayerSee
+           gibi adim basina), sonraki gorus kontrolu yeniden gonderir.
+
+[2026-09-27] - Bir adim her yukseklikten inebilir
+------------------------------------------------------------------------
+DUZELTME - Yurume kontrolu 25 Z'den fazla inen adimi reddediyordu. Source-X
+           karakteri altindaki en yuksek zemine oturtur (CheckValidMove ->
+           CanStandAt), istemcinin CalculateNewZ'sinde de inis siniri yok;
+           oyuncu NPC'lerin yurudugu bir kenardan ya da dik yamactan
+           inemiyordu. Sinir kaldirildi.
+
 [2026-09-26] - Yere konmamis nesneler kaydedilmez, toplanir
 ------------------------------------------------------------------------
 DUZELTME - Script'in yaratip hic yere koymadigi esya her save'den once ve

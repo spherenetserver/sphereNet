@@ -49,6 +49,7 @@ public sealed class NpcStepParity07HKTests
         { Flags = TileFlag.Impassable, Height = 20 });
         map.SetSyntheticItemTile(SlabTile, new ItemTileData
         { Flags = TileFlag.Impassable, Height = 2 });
+        TestHarness.SeedItemDefs(FloorTile, BlockTile, SlabTile);
 
         var world = new GameWorld(LoggerFactory.Create(_ => { }));
         world.InitMap(0, 256, 256);

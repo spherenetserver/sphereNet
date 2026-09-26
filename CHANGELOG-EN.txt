@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-27] - Walking up and down follows Source-X; NPC names without the trade part
+------------------------------------------------------------------------
+CHANGE - A step is decided by Source-X's walk rule for players and NPCs alike:
+      CheckValidMove -> CanStandAt over GetHeightPoint and the blocking state's
+      CheckTile_Item / CheckTile_Terrain. An item is stepped onto when its base
+      is within z + climb + 3 (half its height more for stairs), terrain within
+      z + climb + the walker's height, and a step may drop any height; the
+      climb height is the stairs' half height; a ceiling needs the walker's
+      height (half over terrain); terrain Z is GetMapMeterAdjusted. Tile walk
+      flags and heights come from the art's ITEMDEF (CAN= replaces the tiledata
+      flags, HEIGHT=), a DUPEITEM art from its own tiledata, an art with no
+      ITEMDEF from its tiledata with no height. NPC route searches and NPC
+      steps take their Z from the same rule (the 12-unit climb limits are
+      gone), and seating (login, mount, teleport, GM walk) uses the same
+      gravity. The cave void (0x1AE-0x1B5, 0x1DB) is still no floor.
+FIX - NPC names from a name pool are the picked name alone (SetNamePool):
+      "#NAMES_HUMANMALE the mage" kept " the mage" in the name, and the click
+      added the trade title again ("Devin the mage the mage"). Script NAME=
+      on a character goes through the pool too.
+FIX - An object the client dropped at the edge of its view range came back
+      only after walking well away: the view check ran once a tick, so a step
+      out of range and straight back between two ticks left it known here and
+      gone on the client (a door you could bump into but not see). Each step
+      now forgets what it put out of range, as Source-X decides per step from
+      the point it left (addPlayerSee), and the next view check sends it again.
+
+[2026-09-27] - A step may drop any height
+------------------------------------------------------------------------
+FIX - The walk check refused a step that dropped more than 25 Z. Source-X
+      seats the mover on the highest surface below it (CheckValidMove ->
+      CanStandAt) and the client's CalculateNewZ has no descent limit either,
+      so a player could not step off a ledge or down a steep slope that NPCs
+      walked. The cap is removed.
+
 [2026-09-26] - Unplaced objects are collected, not saved
 ------------------------------------------------------------------------
 FIX - An item a script created and never placed is deleted before each save

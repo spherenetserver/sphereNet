@@ -112,7 +112,7 @@ public sealed class ItemDef : BaseDef
             case "VALUE": (ValueMin, ValueMax) = ParseRange(value); break;
             case "DAM": (AttackMin, AttackMax) = ParseRange(value); break;
             case "ARMOR": (DefenseMin, DefenseMax) = ParseRange(value); break;
-            case "CAN": Can = (CanFlags)ParseFlags(value); break;
+            case "CAN": Can = (CanFlags)ParseFlags(value); HasCanKey = true; break;
             case "CANUSE": CanUse = (CanEquipFlags)ParseFlags(value); break;
             case "HEIGHT": byte.TryParse(value, out byte h); Height = h; break;
             case "DUPEITEM": ParseHexOrDec(value, out ushort dup); DupItemId = dup; break;
@@ -224,6 +224,11 @@ public sealed class ItemDef : BaseDef
                 break;
         }
     }
+
+    /// <summary>A CAN= line was read. It REPLACES the flags the definition took from
+    /// the tiledata (OBC_CAN, CBase.cpp:363), so the walk check reads its movement
+    /// bits instead of the tiledata's.</summary>
+    public bool HasCanKey { get; set; }
 
     /// <summary>One CAN_I_* flag key: set or clear <paramref name="flag"/> on
     /// <see cref="Can"/> and report whether it ended up set.</summary>

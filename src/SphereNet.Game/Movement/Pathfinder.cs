@@ -116,14 +116,29 @@ public sealed class Pathfinder
                     // per-tile world/multi scan would be far too hot here, and
                     // the route Z is only a heuristic; the ACTUAL landing Z of
                     // every executed step resolves through WalkCheck.
-                    sbyte nz = _world.MapData?.GetEffectiveZ(mapIndex, nx, ny, current.Z) ?? current.Z;
+                    sbyte nz;
+                    if (self != null && _world.MapData != null)
+                    {
+                        // A creature's route follows the walk rule itself - CPathFinder
+                        // asks CanMoveWalkTo with fPathFinding for every cell
+                        // (CPathFinder.cpp:235) - so it climbs and drops exactly as
+                        // far as the step will, and lands where the step lands.
+                        var stepDir = DirectionOf(dx, dy);
+                        if (!_world.Standing.CheckPathStep(self, mapIndex, current.X, current.Y,
+                                current.Z, stepDir, out int stepZ))
+                            continue;
+                        nz = (sbyte)stepZ;
+                    }
+                    else
+                    {
+                        nz = _world.MapData?.GetEffectiveZ(mapIndex, nx, ny, current.Z) ?? current.Z;
+                        // Climb limit for a search with no walker to ask.
+                        if (Math.Abs(nz - current.Z) > MaxClimb)
+                            continue;
+                    }
                     long neighborKey = PackKey(nx, ny, nz);
 
                     if (closedSet.Contains(neighborKey))
-                        continue;
-
-                    // Climb limit: avoid jumping onto rooftops / off cliffs.
-                    if (Math.Abs(nz - current.Z) > MaxClimb)
                         continue;
 
                     var neighborPos = new Point3D(nx, ny, nz, mapIndex);
@@ -172,12 +187,7 @@ public sealed class Pathfinder
         if (mapData != null)
         {
             if (self != null)
-            {
-                var standing = _world.Standing.ResolveStandingSurface(self, pos.Map, pos.X, pos.Y, pos.Z,
-                    Definitions.CharDefHelper.CanPassWalls(self)
-                        ? WalkCheck.StandingPolicy.IgnoreCollision : WalkCheck.StandingPolicy.Settle);
-                return standing.Found && Math.Abs(standing.Z - pos.Z) <= MaxClimb;
-            }
+                return true;    // the walk rule already placed this node
             if (!mapData.IsPassable(pos.Map, pos.X, pos.Y, pos.Z))
                 return false;
 
@@ -190,6 +200,18 @@ public sealed class Pathfinder
 
         return true;
     }
+
+    private static Direction DirectionOf(int dx, int dy) => (dx, dy) switch
+    {
+        (0, -1) => Direction.North,
+        (1, -1) => Direction.NorthEast,
+        (1, 0) => Direction.East,
+        (1, 1) => Direction.SouthEast,
+        (0, 1) => Direction.South,
+        (-1, 1) => Direction.SouthWest,
+        (-1, 0) => Direction.West,
+        _ => Direction.NorthWest,
+    };
 
     private static int Heuristic(Point3D a, Point3D b)
     {

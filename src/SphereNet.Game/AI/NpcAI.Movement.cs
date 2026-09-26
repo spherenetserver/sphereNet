@@ -480,7 +480,10 @@ public sealed partial class NpcAI
         return true;
     }
 
-    private bool CanNpcMoveTo(Character npc, Point3D pos, bool checkChars = true)
+    /// <summary>May the NPC move to <paramref name="pos"/>? A one-tile step is decided
+    /// by the walk check, which also says the height the NPC lands at - written back
+    /// into <paramref name="pos"/> (CanMoveWalkTo fills ptDst.m_z, CCharAct.cpp:4747).</summary>
+    private bool CanNpcMoveTo(Character npc, ref Point3D pos, bool checkChars = true)
     {
         if (!CanNpcMove(npc)) return false;
         if (!CanNpcOccupy(npc, pos, checkChars))
@@ -500,7 +503,8 @@ public sealed partial class NpcAI
                 // through stable fences - and cut diagonally between two of them,
                 // since the corner rule lives in the walk check as well (:1991).
                 int stepDx = pos.X - npc.X, stepDy = pos.Y - npc.Y;
-                if (pos.Map == npc.MapIndex && Math.Max(Math.Abs(stepDx), Math.Abs(stepDy)) == 1)
+                bool oneStep = pos.Map == npc.MapIndex && Math.Max(Math.Abs(stepDx), Math.Abs(stepDy)) == 1;
+                if (oneStep)
                 {
                     var stepDir = (stepDx, stepDy) switch
                     {
@@ -513,13 +517,16 @@ public sealed partial class NpcAI
                         (-1, 0) => Direction.West,
                         _ => Direction.NorthWest,
                     };
-                    if (!_world.Standing.CheckMovement(npc, npc.Position, stepDir, out _))
+                    if (!_world.Standing.CheckMovement(npc, npc.Position, stepDir, out int stepZ))
                         return false;
+                    pos = new Point3D(pos.X, pos.Y, (sbyte)stepZ, pos.Map);
                 }
-
-                var stand = _world.Standing.ResolveStandingSurface(npc, pos.Map, pos.X, pos.Y, pos.Z,
-                    WalkCheck.StandingPolicy.Settle);
-                if (!stand.Found || stand.Z != pos.Z) return false;
+                else
+                {
+                    var stand = _world.Standing.ResolveStandingSurface(npc, pos.Map, pos.X, pos.Y, pos.Z,
+                        WalkCheck.StandingPolicy.Settle);
+                    if (!stand.Found || stand.Z != pos.Z) return false;
+                }
             }
 
             foreach (var item in _world.GetItemsInRange(pos, 0))
@@ -1056,7 +1063,7 @@ public sealed partial class NpcAI
 
     private bool CanNpcStepTo(Character npc, Direction dir, Point3D dest)
     {
-        if (!CanNpcMoveTo(npc, dest))
+        if (!CanNpcMoveTo(npc, ref dest))
             return false;
 
         var plain = dir & ~Direction.Running;
@@ -1078,7 +1085,7 @@ public sealed partial class NpcAI
             // Counting them here would stop a creature walking diagonally past anyone
             // standing beside it.
             var sidePos = new Point3D(sx, sy, ResolveNpcStepZ(npc, sx, sy), npc.MapIndex);
-            if (!CanNpcMoveTo(npc, sidePos, checkChars: false))
+            if (!CanNpcMoveTo(npc, ref sidePos, checkChars: false))
                 return false;
         }
 

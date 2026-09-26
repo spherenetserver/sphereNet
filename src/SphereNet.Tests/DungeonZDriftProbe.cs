@@ -18,6 +18,7 @@ namespace SphereNet.Tests;
 /// floor at the drift tile, so no path can accumulate a different Z than the
 /// one the client renders. Skips cleanly when the real mul data is absent.
 /// </summary>
+[Collection("DefinitionLoaderSerial")]
 public sealed class DungeonZDriftProbe
 {
     private readonly ITestOutputHelper _out;
@@ -54,6 +55,7 @@ public sealed class DungeonZDriftProbe
         world.InitMap(0, 7168, 4096);
         world.MapData = map;
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        TestHarness.SeedAllItemDefs();
         return (world, new WalkCheck(world), map);
     }
 

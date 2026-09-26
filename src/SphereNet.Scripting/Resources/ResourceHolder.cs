@@ -898,6 +898,22 @@ public sealed class ResourceHolder
         return names[_rng.Next(names.Count)];
     }
 
+    /// <summary>Source-X CObjBase::SetNamePool (CObjBase.cpp:431): a name that
+    /// starts with '#' is a pick from that [NAMES] pool and NOTHING else - the words
+    /// after the pool name ("#NAMES_HUMANMALE the mage") are the CHARDEF's trade
+    /// part, which the trade title shows on its own. A missing pool leaves its
+    /// bare name. Any other name is kept as written.</summary>
+    public string ResolveNamePool(string input)
+    {
+        if (string.IsNullOrEmpty(input) || input[0] != '#')
+            return input;
+        int end = 1;
+        while (end < input.Length && !char.IsWhiteSpace(input[end]) && input[end] != ',')
+            end++;
+        string pool = input[1..end];
+        return GetRandomName(pool) ?? pool;
+    }
+
     /// <summary>
     /// Resolve #NAMES_xxx placeholders in a string.
     /// e.g. "#NAMES_HUMANMALE the Banker" → "Aaron the Banker"

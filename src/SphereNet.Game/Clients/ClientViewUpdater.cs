@@ -316,6 +316,53 @@ public sealed class ClientViewUpdater
         }
     }
 
+    /// <summary>Run after every accepted step. The client drops a ground object the
+    /// moment it is farther than its view range from where the client thinks it is
+    /// (ClassicUO World.Update, item.Distance &gt; ClientViewRange) and tells no one.
+    /// The view delta runs once a tick, so a step out of range and straight back
+    /// between two ticks left the object known here and gone there - never sent again
+    /// until the player walked far enough for the delta to see it leave. Source-X
+    /// decides per step, from the point the step left (addPlayerSee(ptOld),
+    /// CClientMsg.cpp:1949): whatever was out of view from there and is in view now is
+    /// sent. Forgetting what fell out of range at this step gives the same result:
+    /// the next delta finds it new again once it is back in range.</summary>
+    internal static void ForgetBeyondRange(ClientViewCache view, GameWorld world, Character me, int range)
+    {
+        List<uint>? gone = null;
+        foreach (var (uid, st) in view.LastKnownItemState)
+        {
+            if (Math.Max(Math.Abs(st.X - me.X), Math.Abs(st.Y - me.Y)) <= range)
+                continue;
+            // A multi is dropped by the client by its footprint, not its centre.
+            if (world.FindItem(new Serial(uid)) is { } item && Item.IsMultiItemType(item.ItemType))
+                continue;
+            (gone ??= []).Add(uid);
+        }
+        if (gone != null)
+        {
+            foreach (uint uid in gone)
+            {
+                view.KnownItems.Remove(uid);
+                view.LastKnownItemState.Remove(uid);
+            }
+            gone.Clear();
+        }
+
+        foreach (var (uid, st) in view.LastKnownPos)
+        {
+            if (Math.Max(Math.Abs(st.X - me.X), Math.Abs(st.Y - me.Y)) > range)
+                (gone ??= []).Add(uid);
+        }
+        if (gone != null)
+        {
+            foreach (uint uid in gone)
+            {
+                view.KnownChars.Remove(uid);
+                view.LastKnownPos.Remove(uid);
+            }
+        }
+    }
+
     public void SyncOpenMapStaticDoors()
     {
         var me = _client.Character;

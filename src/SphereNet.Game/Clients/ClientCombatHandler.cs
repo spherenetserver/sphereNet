@@ -375,6 +375,7 @@ public sealed class ClientCombatHandler
 
         if (moved)
         {
+            ClientViewUpdater.ForgetBeyondRange(_client.View, _world, _character, _netState.ViewRange);
             _character.LastMoveTick = now;
             int moveDelay = GetMoveDelay(running);
             if (!MovementCreditEnabled && _character.PrivLevel < PrivLevel.GM && Throttle.WalkTokens > 0)

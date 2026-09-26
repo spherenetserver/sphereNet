@@ -12,17 +12,11 @@ using SphereNet.Network.Packets.Outgoing;
 namespace SphereNet.Game.Movement;
 
 /// <summary>
-/// Per-step walk validator. For a given character and direction, walks the
-/// full surface stack at both the start and target tiles — terrain, static
-/// tiles, in-world items — and picks the single walkable Z that a 16-tall
-/// character can stand on without head-butting anything above. Replaces an
-/// earlier single-Z IsPassable + fixed MaxClimbHeight check that did not
-/// model stair / slope / bridge / multi-surface cases.
-///
-/// Algorithm structure is modelled on the open-source reference
-/// implementation in ServUO's MovementImpl (with credit to its authors);
-/// the C# here is an independent reimplementation against our own map-data
-/// readers and game objects.
+/// Per-step walk validator. A step is decided by Source-X's rule
+/// (<see cref="SourceXWalk"/>: CheckValidMove / CanStandAt / GetHeightPoint);
+/// the standing-surface resolver used to seat a character (login, mount,
+/// teleport) keeps its sorted geometry list, whose structure was modelled on
+/// ServUO's MovementImpl (with credit to its authors).
 /// </summary>
 public sealed class WalkCheck
 {
@@ -30,19 +24,6 @@ public sealed class WalkCheck
     private const int StepHeight = 2;
 
     private const TileFlag ImpassableSurface = TileFlag.Impassable | TileFlag.Surface;
-
-    /// <summary>
-    /// Maximum Z a mover may DROP in a single step. ClassicUO's CalculateNewZ
-    /// has NO descent limit, so for client-driven moves this cap can only
-    /// CREATE desyncs: it gates steps the client already predicted and walked,
-    /// and every rejection rubber-bands the player back ("mine ramp threw me
-    /// to the top" — cave-floor ramps step down 24 units in one tile, and the
-    /// matching ascent IS accepted by the maxZ window, so the old cap of 11
-    /// made the ramp one-way). Kept, generously sized, as an extreme-fall
-    /// guard so chasing NPCs don't pour off true cliff faces; anything a
-    /// mover can climb up must pass back down through it.
-    /// </summary>
-    public static int MaxDescendZ { get; set; } = 25;
 
     /// <summary>sphere.ini MOUNTHEIGHT (Source-X m_iMountHeight, default 0): a rider
     /// (or a hovering gargoyle) is 4 taller (GetHeightMount, CChar.cpp:1498) and may
@@ -113,9 +94,12 @@ public sealed class WalkCheck
 
     private readonly GameWorld _world;
 
+    private readonly SourceXWalk _sourceX;
+
     public WalkCheck(GameWorld world)
     {
         _world = world;
+        _sourceX = new SourceXWalk(world);
     }
 
     /// <summary>Diagnostic result from <see cref="CheckMovementDetailed"/>,
@@ -175,9 +159,7 @@ public sealed class WalkCheck
 
     /// <summary>Entry point. Returns true if <paramref name="mover"/> can step
     /// in direction <paramref name="d"/> from <paramref name="loc"/>, and sets
-    /// <paramref name="newZ"/> to the Z the mover should land on. Matches
-    /// ServUO MovementImpl.CheckMovement semantics including diagonal
-    /// double-edge check.</summary>
+    /// <paramref name="newZ"/> to the Z the mover should land on.</summary>
     public bool CheckMovement(Character mover, Point3D loc, Direction d, out int newZ)
     {
         return CheckMovementDetailed(mover, loc, d, out newZ, out _);
@@ -227,19 +209,10 @@ public sealed class WalkCheck
             xLeft >= mapW || yLeft >= mapH || xRight >= mapW || yRight >= mapH))
             return false;
 
-        var itemsStart = CollectItems(mapId, xStart, yStart);
-        var itemsForward = CollectItems(mapId, xForward, yForward);
-        var itemsLeft = checkDiagonals ? CollectItems(mapId, xLeft, yLeft) : null;
-        var itemsRight = checkDiagonals ? CollectItems(mapId, xRight, yRight) : null;
-
         var mobsForward = CollectMobiles(mapId, xForward, yForward, mover);
 
-        GetStartZ(mover, md, mapId, xStart, yStart, loc.Z, itemsStart, out int startZ, out int startTop);
-
-        // Pre-capture raw tile inventory at the forward tile for diagnostics
-        // — total statics, count of impassable ones, and a compact dump of
-        // every static's (id,z,h,flags). This lets the reject log show what
-        // is actually on the tile beyond the Surface-only candidate count.
+        // Raw tile inventory at the forward tile, for the reject log: every
+        // static's (id, z, height, flags, name) and every character on it.
         int fwdImpassable = 0;
         int fwdStaticCount = 0;
         var dump = new System.Text.StringBuilder();
@@ -249,9 +222,6 @@ public sealed class WalkCheck
             var sd = md.GetItemTileData(s.TileId);
             if (sd.IsImpassable) fwdImpassable++;
             if (dump.Length > 0) dump.Append(',');
-            // Flag değerini ve ilk 12 karakter adı da yaz — böylece tile'ın
-            // gerçekten ne olduğunu (dekoratif mi, yüzey mi, yanlış flag'li
-            // mi) ayırt edebiliriz.
             string nm = sd.Name ?? "";
             if (nm.Length > 12) nm = nm.Substring(0, 12);
             dump.Append($"0x{s.TileId:X}@{s.Z}h{sd.Height}f0x{(ulong)sd.Flags:X}'{nm}'");
@@ -266,66 +236,64 @@ public sealed class WalkCheck
             mobDump.Append($"0x{mob.Uid.Value:X} z={mob.Z} dead={mob.IsDead} player={mob.IsPlayer} war={mob.IsInWarMode} '{nm}'");
         }
 
-        CalculateMinMaxZ(md, mapId, xStart, yStart, loc.Z, (int)d, itemsStart,
-            out int fwdMinZ, out int fwdMaxZ);
-
-        var fwdTrace = new CheckTrace();
-        bool forwardOk = Check(mover, md, mapId, xForward, yForward, startTop, startZ, loc.Z,
-            fwdMinZ, fwdMaxZ, itemsForward, mobsForward, (int)d, out newZ, ref fwdTrace);
+        // Source-X CChar::CheckValidMove (CCharStatus.cpp:1978): a diagonal step first
+        // needs both orthogonal neighbours of the starting point, then the
+        // destination; each is CanStandAt from the mover's own height and climb.
+        int climb = _sourceX.ClimbHeightAt(mover, mapId, xStart, yStart, loc.Z);
+        bool forwardOk = _sourceX.CanStandAt(mover, mapId, xForward, yForward, loc.Z, climb,
+            pathFinding: false, out newZ, out string fwdReason);
         int forwardNewZ = newZ;
-        bool moveOk = forwardOk;
-        bool mobBlocked = false;
-
-        // If the forward tile alone passed the surface check but a mob
-        // blocker flipped it to false, we know that was the cause.
-        if (!forwardOk && mobsForward.Count > 0)
-        {
-            var noMobTrace = new CheckTrace();
-            bool surfaceWithoutMob = Check(mover, md, mapId, xForward, yForward, startTop, startZ,
-                loc.Z, fwdMinZ, fwdMaxZ, itemsForward, null, (int)d, out _, ref noMobTrace);
-            if (surfaceWithoutMob) mobBlocked = true;
-        }
 
         bool leftOk = false, rightOk = false;
-        if (moveOk && checkDiagonals)
+        if (checkDiagonals)
         {
-            // ServUO rule: players (non-staff) need BOTH diagonal edges clear;
-            // mobs / staff need only ONE. We apply the stricter rule to
-            // everyone below GM so corners cannot be cut through walls.
-            bool bothRequired = mover.PrivLevel < PrivLevel.GM;
+            leftOk = _sourceX.CanStandAt(mover, mapId, xLeft, yLeft, loc.Z, climb, false, out _, out _);
+            rightOk = _sourceX.CanStandAt(mover, mapId, xRight, yRight, loc.Z, climb, false, out _, out _);
+        }
+        bool moveOk = forwardOk && (!checkDiagonals || (leftOk && rightOk));
 
-            int leftDir = ((int)d - 1) & 0x7;
-            int rightDir = ((int)d + 1) & 0x7;
-            CalculateMinMaxZ(md, mapId, xStart, yStart, loc.Z, leftDir, itemsStart,
-                out int leftMinZ, out int leftMaxZ);
-            CalculateMinMaxZ(md, mapId, xStart, yStart, loc.Z, rightDir, itemsStart,
-                out int rightMinZ, out int rightMaxZ);
-
-            var leftTrace = new CheckTrace();
-            var rightTrace = new CheckTrace();
-            leftOk = Check(mover, md, mapId, xLeft, yLeft, startTop, startZ, loc.Z,
-                leftMinZ, leftMaxZ, itemsLeft!, null, leftDir, out _, ref leftTrace);
-            rightOk = Check(mover, md, mapId, xRight, yRight, startTop, startZ, loc.Z,
-                rightMinZ, rightMaxZ, itemsRight!, null, rightDir, out _, ref rightTrace);
-
-            moveOk = bothRequired ? (leftOk && rightOk) : (leftOk || rightOk);
+        // Characters on the destination (ShoveCharAtPosition ignores anyone more than
+        // 5 Z away, CCharAct.cpp:4622).
+        bool mobBlocked = false;
+        if (moveOk)
+        {
+            foreach (var mob in mobsForward)
+            {
+                if (Math.Abs(mob.Z - newZ) <= 5 && !CanMoveOver(mover, mob))
+                {
+                    mobBlocked = true;
+                    moveOk = false;
+                    break;
+                }
+            }
         }
 
-        if (!moveOk) newZ = startZ;
+        if (!moveOk) newZ = loc.Z;
 
-        diag = new Diagnostic(startZ, startTop, forwardOk, forwardNewZ,
+        diag = new Diagnostic(loc.Z, loc.Z, forwardOk, forwardNewZ,
             checkDiagonals, leftOk, rightOk, mobBlocked,
-            fwdTrace.LandZ, fwdTrace.LandCenter, fwdTrace.LandTop,
-            fwdTrace.LandBlocks, fwdTrace.ConsiderLand,
-            fwdTrace.SurfaceCandidates, fwdTrace.ItemSurfaceCandidates,
-            fwdTrace.LastReason,
+            fwdLandTile.Z, fwdLandTile.Z, fwdLandTile.Z,
+            false, true, 0, 0,
+            fwdReason,
             fwdStaticCount, fwdImpassable, fwdLandTile.TileId, dump.ToString(),
             mobsForward.Count, mobDump.ToString());
         return moveOk;
     }
 
-    /// <summary>Per-tile trace captured during <see cref="Check"/> so the walk
-    /// diagnostic can report why the forward tile rejected every candidate.</summary>
+    /// <summary>Source-X CChar::CheckValidMove with fPathFinding for one step of a
+    /// route search: no diagonal side test and no characters. Returns the height the
+    /// mover would stand at.</summary>
+    public bool CheckPathStep(Character mover, int mapId, int fromX, int fromY, int fromZ,
+        Direction d, out int newZ)
+    {
+        newZ = fromZ;
+        if (_world.MapData == null)
+            return false;
+        return _sourceX.CheckValidMove(mover, mapId, fromX, fromY, fromZ, d, pathFinding: true,
+            out newZ, out _);
+    }
+
+    /// <summary>Surface counters collected while building a tile's geometry list.</summary>
     private struct CheckTrace
     {
         public int LandZ, LandCenter, LandTop;
@@ -336,114 +304,9 @@ public sealed class WalkCheck
     }
 
     // -----------------------------------------------------------------
-    //  CalculateMinMaxZ — ClassicUO-style pre-filter that establishes a
-    //  vertical [minZ, maxZ+2] window from the SOURCE tile. Surfaces on
-    //  the TARGET tile must be reachable within this window.
-    // -----------------------------------------------------------------
-
-    private void CalculateMinMaxZ(MapDataManager md, int mapId,
-        int srcX, int srcY, int currentZ, int direction, List<Item> sourceItems,
-        out int minZ, out int maxZ)
-    {
-        minZ = -128;
-        maxZ = currentZ;
-
-        var landTile = md.GetTerrainTile(mapId, srcX, srcY);
-        if (!MapDataManager.IsLandIgnored(landTile.TileId))
-        {
-            var landData = md.GetLandTileData(landTile.TileId);
-            bool landBlocks = LandBlocks(landTile.TileId, landData);
-
-            if (!landBlocks)
-            {
-                int zNW = landTile.Z;
-                md.GetAverageZ(mapId, srcX, srcY, out int landLow, out int landAvg, out int landHigh);
-                bool isStretched = (landLow != landHigh);
-
-                if (isStretched && landAvg <= currentZ)
-                {
-                    int dirZ = md.GetDirectionalLandZ(mapId, srcX, srcY, direction);
-                    if (minZ < dirZ) minZ = dirZ;
-                    if (maxZ < dirZ) maxZ = dirZ;
-                }
-                else if (!isStretched)
-                {
-                    if (landAvg <= currentZ && minZ < landAvg)
-                        minZ = landAvg;
-                    if (currentZ == landAvg)
-                    {
-                        if (maxZ < landAvg) maxZ = landAvg;
-                        if (minZ > landLow) minZ = landLow;
-                    }
-                }
-            }
-        }
-
-        var statics = md.GetStaticBlock(mapId, srcX, srcY, out int offX, out int offY);
-        for (int i = 0; i < statics.Length; i++)
-        {
-            var s = statics[i];
-            if (s.XOffset != offX || s.YOffset != offY) continue;
-            var data = md.GetItemTileData(s.TileId);
-
-            bool isDoorOpen = (data.Flags & TileFlag.Door) != 0 &&
-                _world.IsMapStaticDoorOpen((byte)mapId, (short)srcX, (short)srcY, s.Z);
-            bool effectiveImp = data.IsImpassable && !isDoorOpen;
-
-            bool isImpOrSurf = effectiveImp || data.IsSurface;
-            bool isBridge = !effectiveImp && data.IsBridge;
-
-            int tileZ = s.Z;
-            int avgZ = tileZ + (data.IsBridge ? data.Height / 2 : data.Height);
-
-            if (isImpOrSurf && avgZ <= currentZ && minZ < avgZ)
-                minZ = avgZ;
-
-            if (isBridge && currentZ == avgZ)
-            {
-                int top = tileZ + data.Height;
-                if (maxZ < top) maxZ = top;
-                if (minZ > tileZ) minZ = tileZ;
-            }
-        }
-
-        for (int i = 0; i < sourceItems.Count; i++)
-        {
-            var item = sourceItems[i];
-            var data = md.GetItemTileData(item.BaseId);
-            if (!ShouldTreatAsMovementGeometry(item, data)) continue;
-
-            bool isImpOrSurf = data.IsImpassable || data.IsSurface;
-            bool isBridge = !data.IsImpassable && data.IsBridge;
-
-            int itemZ = item.Z;
-            int avgZ = itemZ + (data.IsBridge ? data.Height / 2 : data.Height);
-
-            if (isImpOrSurf && avgZ <= currentZ && minZ < avgZ)
-                minZ = avgZ;
-
-            if (isBridge && currentZ == avgZ)
-            {
-                int top = itemZ + data.Height;
-                if (maxZ < top) maxZ = top;
-                if (minZ > itemZ) minZ = itemZ;
-            }
-        }
-
-        maxZ += 2;
-    }
-
-    // -----------------------------------------------------------------
-    //  Per-tile check — ClassicUO sorted-list algorithm (CalculateNewZ)
-    //
-    //  Builds a unified list of all geometry (land, statics, items),
-    //  sorts by Z, and walks upward looking for headroom gaps ≥ 16
-    //  between a blocker and the surfaces below it. Picks the surface
-    //  closest to the mover's current Z. A sentinel at Z=128 ensures
-    //  the topmost surface is always evaluated.
-    //
-    //  This replaces the earlier per-candidate IsOk approach to
-    //  guarantee Z parity with the ClassicUO client.
+    //  Tile geometry list (land, statics, items) sorted by Z - used by the
+    //  standing-surface resolver and the headroom check. A walking step is
+    //  decided by SourceXWalk instead.
     // -----------------------------------------------------------------
 
     [Flags]
@@ -590,98 +453,6 @@ public sealed class WalkCheck
         return list;
     }
 
-    private bool Check(Character mover, MapDataManager md, int mapId, int x, int y,
-        int startTop, int startZ, int moverZ, int preMinZ, int preMaxZ,
-        List<Item> items, List<Character>? mobiles, int direction, out int newZ,
-        ref CheckTrace trace)
-    {
-        newZ = 0;
-
-        var list = BuildPathEntries(md, mapId, x, y, items, mover, ref trace);
-        list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
-
-        int requiredHeight = (CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoBlockHeight) != 0 ? 0 : PersonHeight;
-        if (requiredHeight > 0 && RiderNeedsHeadroom(mover))
-            requiredHeight = MountedClearance;
-        bool noIndoors = (CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoIndoors) != 0;
-        int resultZ = -128;
-        int minZ = preMinZ;
-        int currentZ = -128;
-        int bestDelta = 1_000_000;
-
-        int z = moverZ;
-        if (z < minZ) z = minZ;
-
-        for (int i = 0; i < list.Count; i++)
-        {
-            var obj = list[i];
-            if ((obj.Flags & PathFlags.ImpSurf) == 0) continue;
-
-            int objZ = obj.Z;
-
-            if (objZ - minZ >= requiredHeight)
-            {
-                for (int j = i - 1; j >= 0; j--)
-                {
-                    var cand = list[j];
-                    if ((cand.Flags & (PathFlags.Surface | PathFlags.Bridge)) == 0)
-                        continue;
-
-                    int candAvg = cand.AverageZ;
-                    if (candAvg < currentZ) continue;
-                    if (objZ - candAvg < requiredHeight || (noIndoors && obj.Z != 128)) continue;
-
-                    bool maxOk = ((cand.Flags & PathFlags.Surface) != 0 && candAvg <= preMaxZ)
-                              || ((cand.Flags & PathFlags.Bridge) != 0 && cand.Z <= preMaxZ);
-                    if (!maxOk) continue;
-
-                    int delta = Math.Abs(z - candAvg);
-                    if (delta < bestDelta)
-                    {
-                        bestDelta = delta;
-                        resultZ = candAvg;
-                    }
-                }
-            }
-
-            int avgZ2 = obj.AverageZ;
-            if (minZ < avgZ2) minZ = avgZ2;
-            if (currentZ < avgZ2) currentZ = avgZ2;
-        }
-
-        bool moveIsOk = resultZ != -128;
-
-        // Reject a single-step drop steeper than MaxDescendZ (cliff edge). The
-        // client blocks these locally; matching it here stops the mover at the
-        // top instead of teleporting down onto the cliff/beach centre Z.
-        if (moveIsOk && moverZ - resultZ > MaxDescendZ)
-        {
-            trace.LastReason = $"descent_too_steep drop={moverZ - resultZ} ourZ={resultZ}";
-            moveIsOk = false;
-        }
-
-        if (moveIsOk)
-        {
-            newZ = resultZ;
-            trace.LastReason = $"accepted ourZ={resultZ}";
-        }
-
-        // --- Mobile blocking ---
-        if (moveIsOk && mobiles != null)
-        {
-            for (int i = 0; moveIsOk && i < mobiles.Count; i++)
-            {
-                var mob = mobiles[i];
-                if (mob == mover) continue;
-                // ShoveCharAtPosition ignores anyone more than 5 Z away (CCharAct.cpp:4622).
-                if (Math.Abs(mob.Z - newZ) <= 5 && !CanMoveOver(mover, mob))
-                    moveIsOk = false;
-            }
-        }
-
-        return moveIsOk;
-    }
-
     // -----------------------------------------------------------------
     //  ResolveStandingSurface — the shared character surface resolver
     //  (audit design). Every path that SEATS a character (login, mount,
@@ -694,27 +465,20 @@ public sealed class WalkCheck
 
     public enum StandingPolicy
     {
-        /// <summary>GM / AllMove / pass-walls step: collision rejects are
-        /// bypassed but surface collection and Z selection are NOT — the
-        /// mover still follows the ground. Prefers a surface with headroom
-        /// near the reference Z; inside solid geometry (walking through a
-        /// wall) it falls back to the nearest surface ignoring headroom.</summary>
+        /// <summary>GM / AllMove / pass-walls step: nothing blocks, but the mover
+        /// still follows the ground - the highest surface within reach.</summary>
         IgnoreCollision,
 
-        /// <summary>Seat a character at a coordinate whose Z must be
-        /// re-derived (login, mount, dismount, teleport): no step window,
-        /// no descent cap — picks the standable surface WITH headroom
-        /// closest to the reference Z, so a two-story house seats the
-        /// character on the correct floor.</summary>
+        /// <summary>Seat a character at a coordinate whose Z must be re-derived
+        /// (login, mount, dismount, teleport): the highest standable surface
+        /// within reach of the reference Z, however far below it.</summary>
         Settle,
     }
 
     public readonly record struct StandingResult(bool Found, sbyte Z, bool HasHeadroom);
 
-    /// <summary>Resolve the surface a character should stand on at (x, y),
-    /// choosing the candidate nearest to <paramref name="referenceZ"/> from
-    /// the SAME geometry inventory the walk path uses (land average, statics,
-    /// dynamic items, multi/ship components, custom-house tiles).</summary>
+    /// <summary>Resolve the surface a character should stand on at (x, y) from
+    /// <paramref name="referenceZ"/>, by the rule a walking step uses.</summary>
     public StandingResult ResolveStandingSurface(Character mover, int mapId, int x, int y,
         int referenceZ, StandingPolicy policy)
     {
@@ -725,137 +489,11 @@ public sealed class WalkCheck
         if (x < 0 || y < 0 || x >= mapW || y >= mapH)
             return new StandingResult(false, (sbyte)referenceZ, true);
 
-        var items = CollectItems(mapId, x, y);
-        var trace = new CheckTrace();
-        var list = BuildPathEntries(md, mapId, x, y, items, mover, ref trace);
-        // Sentinel so the topmost surface always gets a headroom verdict.
-        list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
-
-        int bestZ = 0, bestDelta = int.MaxValue;
-        bool bestFound = false;
-        int openZ = 0, openDelta = int.MaxValue;
-        bool openFound = false;
-
-        for (int i = 0; i < list.Count; i++)
-        {
-            var cand = list[i];
-            if ((cand.Flags & (PathFlags.Surface | PathFlags.Bridge)) == 0)
-                continue;
-
-            int standZ = cand.AverageZ;
-
-            // Headroom: the first blocking entry above the standing level
-            // must leave a full person height of open space.
-            bool hasHeadroom = true;
-            for (int j = 0; j < list.Count; j++)
-            {
-                var above = list[j];
-                if ((above.Flags & PathFlags.ImpSurf) == 0) continue;
-                if (above.Z <= standZ) continue;
-                if (((CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoIndoors) != 0 && above.Z != 128) ||
-                    ((CharDefHelper.GetCanFlags(mover) & CanFlags.C_NoBlockHeight) == 0 && above.Z - standZ < PersonHeight))
-                    hasHeadroom = false;
-                break; // list is sorted — the first entry above decides
-            }
-
-            int delta = Math.Abs(referenceZ - standZ);
-            if (hasHeadroom && delta < bestDelta)
-            {
-                bestDelta = delta;
-                bestZ = standZ;
-                bestFound = true;
-            }
-            if (delta < openDelta)
-            {
-                openDelta = delta;
-                openZ = standZ;
-                openFound = true;
-            }
-        }
-
-        if (bestFound)
-            return new StandingResult(true, (sbyte)Math.Clamp(bestZ, -128, 127), true);
-
-        // No candidate with headroom: the bypass policy still follows the
-        // nearest surface (a GM inside a wall keeps ground contact); a
-        // Settle caller gets Found=false and keeps its stored Z.
-        if (policy == StandingPolicy.IgnoreCollision && openFound)
-            return new StandingResult(true, (sbyte)Math.Clamp(openZ, -128, 127), false);
-
-        return new StandingResult(false, (sbyte)referenceZ, false);
-    }
-
-    /// <summary>Source tile Z baseline — what does "standing here" mean? Walks
-    /// the surface stack at <paramref name="loc"/> and picks the highest
-    /// surface that the mover's feet rest on.</summary>
-    private void GetStartZ(Character mover, MapDataManager md, int mapId,
-        int x, int y, int locZ, List<Item> itemList, out int zLow, out int zTop)
-    {
-        var landTile = md.GetTerrainTile(mapId, x, y);
-        var landData = md.GetLandTileData(landTile.TileId);
-        // Same land-barrier rule as Check() — see LandBlocks().
-        bool landBlocks = LandBlocks(landTile.TileId, landData);
-        bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
-
-        md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTopAvg);
-
-        int zCenter = 0;
-        zLow = 0;
-        zTop = 0;
-        bool isSet = false;
-
-        if (considerLand && !landBlocks && locZ >= landCenter)
-        {
-            zLow = landZ;
-            zCenter = landCenter;
-            if (!isSet || landTopAvg > zTop) zTop = landTopAvg;
-            isSet = true;
-        }
-
-        var staticTiles = md.GetStaticBlock(mapId, x, y, out int staticOffX, out int staticOffY);
-        for (int i = 0; i < staticTiles.Length; i++)
-        {
-            var tile = staticTiles[i];
-            if (tile.XOffset != staticOffX || tile.YOffset != staticOffY)
-                continue;
-            var id = md.GetItemTileData(tile.TileId);
-            int calcTop = tile.Z + id.CalcHeight;
-
-            if ((!isSet || calcTop >= zCenter) && id.IsSurface && locZ >= calcTop)
-            {
-                zLow = tile.Z;
-                zCenter = calcTop;
-                int top = tile.Z + id.Height;
-                if (!isSet || top > zTop) zTop = top;
-                isSet = true;
-            }
-        }
-
-        for (int i = 0; i < itemList.Count; i++)
-        {
-            var item = itemList[i];
-            var id = md.GetItemTileData(item.BaseId);
-            if (!ShouldTreatAsMovementGeometry(item, id)) continue;
-            int calcTop = item.Z + id.CalcHeight;
-
-            if ((!isSet || calcTop >= zCenter) && id.IsSurface && locZ >= calcTop)
-            {
-                zLow = item.Z;
-                zCenter = calcTop;
-                int top = item.Z + id.Height;
-                if (!isSet || top > zTop) zTop = top;
-                isSet = true;
-            }
-        }
-
-        if (!isSet)
-        {
-            zLow = zTop = locZ;
-        }
-        else if (locZ > zTop)
-        {
-            zTop = locZ;
-        }
+        // The same Source-X gravity a step uses (SourceXWalk), so a seated Z and a
+        // walked Z cannot disagree.
+        var (found, z, headroom) = _sourceX.Seat(mover, mapId, x, y, referenceZ,
+            policy == StandingPolicy.IgnoreCollision);
+        return new StandingResult(found, (sbyte)Math.Clamp(z, -128, 127), headroom);
     }
 
     /// <summary>A door, by item type or by tiledata flag — what CAN_I_DOOR marks

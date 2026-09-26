@@ -20,7 +20,7 @@ namespace SphereNet.Tests;
 /// two stories at the same X/Y, low ceilings, impassable+surface
 /// furniture, and committed custom-house design tiles.
 /// </summary>
-[Collection("VendorStateSerial")]
+[Collection("DefinitionLoaderSerial")]
 public sealed class StandingSurfaceSyntheticTests
 {
     private const ushort FloorTile = 0x0500;   // synthetic Surface, h=0
@@ -40,6 +40,7 @@ public sealed class StandingSurfaceSyntheticTests
         map.SetSyntheticItemTile(CounterTile, new ItemTileData
         { Flags = TileFlag.Impassable | TileFlag.Surface, Height = 6 });
         map.SetSyntheticItemTile(AddonTile, new ItemTileData { Flags = TileFlag.Surface, Height = 2 });
+        TestHarness.SeedItemDefs(FloorTile, DeckTile, CeilingTile, CounterTile, AddonTile);
         map.SetSyntheticLandTile(WaterLand, new LandTileData
         { Flags = TileFlag.Impassable | TileFlag.Wet, Name = "water" });
 
@@ -115,7 +116,7 @@ public sealed class StandingSurfaceSyntheticTests
     }
 
     [Fact]
-    public void ShipDeck_SettleSeatsOnDeck_NeverInTheWater()
+    public void ShipDeck_SettleSeatsOnDeck_NotFromBelowIt()
     {
         var (world, walker, map) = Setup();
         var mover = Mover(world);
@@ -141,12 +142,11 @@ public sealed class StandingSurfaceSyntheticTests
         Assert.True(deck.Found, "no deck surface found over water");
         Assert.Equal(1, deck.Z); // multi Z -2 + deck offset 3
 
-        // Even a riverbed reference may never seat IN the water: the wet
-        // land is not a candidate, the deck is the nearest surface.
+        // From the riverbed the deck is out of reach (its base is above z + 3) and
+        // the water is no floor for a walker: Source-X finds nowhere to stand.
         var below = walker.ResolveStandingSurface(mover, 1, 100, 100, -5,
             WalkCheck.StandingPolicy.Settle);
-        Assert.True(below.Found);
-        Assert.Equal(1, below.Z);
+        Assert.False(below.Found);
     }
 
     [Fact]

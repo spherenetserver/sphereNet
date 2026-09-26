@@ -236,10 +236,7 @@ public sealed class SpawnComponent
 
             if (!string.IsNullOrWhiteSpace(charDef.Name))
             {
-                if (charDef.Name.Contains("#NAMES_", StringComparison.OrdinalIgnoreCase))
-                    ch.Name = DefinitionLoader.ResolveNames(charDef.Name);
-                else
-                    ch.Name = charDef.Name;
+                ch.Name = DefinitionLoader.ResolveNamePool(charDef.Name);
             }
             else
                 ch.Name = $"Spawn_{bodyId:X}";

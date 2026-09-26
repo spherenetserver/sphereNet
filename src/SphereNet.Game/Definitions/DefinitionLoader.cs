@@ -116,6 +116,7 @@ public sealed class DefinitionLoader
     /// <summary>Register a char def directly (test harnesses): a corpse is typed by
     /// its chardef, so death tests that carve need one to exist.</summary>
     public static void SetCharDef(int index, CharDef def) => _charDefs[index] = def;
+    public static void SetItemDef(int index, ItemDef def) => _itemDefs[index] = def;
     public static SkillDef? GetSkillDef(string? name) =>
         TryGetSkillIndexByName(name, out int index) ? GetSkillDef(index) : null;
 
@@ -169,6 +170,11 @@ public sealed class DefinitionLoader
         var rid = _resourcesStatic.ResolveDefName(defname.Trim());
         return rid.IsValid && rid.Type == ResType.CharDef ? rid.Index : 0;
     }
+
+    /// <summary>A character's name from a '#' name pool (CObjBase::SetNamePool): the
+    /// picked name alone.</summary>
+    public static string ResolveNamePool(string input) =>
+        _resourcesStatic?.ResolveNamePool(input) ?? input;
 
     /// <summary>Resolve #NAMES_xxx placeholders in a string using loaded [NAMES] resources.</summary>
     public static string ResolveNames(string input) =>

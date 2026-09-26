@@ -860,10 +860,9 @@ public sealed partial class NpcAI
 
         var pick = candidates[_rand.Next(count)];
         var mapData = _world.MapData;
-        sbyte nz = ResolveNpcStepZ(npc, pick.x, pick.y);
-        if (Math.Abs(nz - npc.Z) > 12) return;
-        var pos = new Point3D(pick.x, pick.y, nz, npc.MapIndex);
-        if (!CanNpcMoveTo(npc, pos)) return;
+        // The walk check decides how far up or down the step may go and where it lands.
+        var pos = new Point3D(pick.x, pick.y, ResolveNpcStepZ(npc, pick.x, pick.y), npc.MapIndex);
+        if (!CanNpcMoveTo(npc, ref pos)) return;
 
         // Face the step direction before moving. The 0x77 move packet carries this
         // direction; if it doesn't match the actual tile delta the client can't
@@ -1561,11 +1560,8 @@ public sealed partial class NpcAI
         short nx = (short)(npc.X - dx);
         short ny = (short)(npc.Y - dy);
         var mapData = _world.MapData;
-        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
-        if (Math.Abs(nz - npc.Z) > 12)
-            return;
-        var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
-        if (!CanNpcMoveTo(npc, newPos))
+        var newPos = new Point3D(nx, ny, ResolveNpcStepZ(npc, nx, ny), npc.MapIndex);
+        if (!CanNpcMoveTo(npc, ref newPos))
             return;
 
         npc.Direction = npc.Position.GetDirectionTo(newPos);

@@ -29,6 +29,7 @@ public class SyntheticMapZRuleTests
         { Flags = TileFlag.Surface, Height = 20, Name = "ledge" });
         map.SetSyntheticItemTile(WallTile, new ItemTileData
         { Flags = TileFlag.Impassable, Height = 20, Name = "wall" });
+        TestHarness.SeedItemDefs(StepTile, LedgeTile, WallTile);
 
         var world = new GameWorld(LoggerFactory.Create(_ => { }));
         world.InitMap(0, 512, 512);
@@ -63,16 +64,30 @@ public class SyntheticMapZRuleTests
     }
 
     [Fact]
-    public void TallLedge_IsRejected_ButDescentWithinLimitIsAllowed()
+    public void APlatformWhoseBaseIsUnderfootIsSteppedOnto_AndSteppedOffAgain()
     {
         var (world, walk, ch) = Setup();
-        // A 20-high flat-top platform directly north — no stairs, no climb.
+        // A 20-high flat-top platform directly north. Its base is within
+        // z + climb + 3, so Source-X takes its top as the floor (CheckTile_Item,
+        // CServerMap.cpp:223) and nothing blocks a platform.
         Md(world).AddSyntheticStatic(0, 100, 100, LedgeTile, 0);
-        bool ok = walk.CheckMovementDetailed(ch, ch.Position, Core.Enums.Direction.North, out int z, out _);
-        Assert.False(ok && z >= 20); // may not pop onto the ledge top
+        Assert.True(walk.CheckMovementDetailed(ch, ch.Position, Core.Enums.Direction.North, out int z, out _));
+        Assert.Equal(20, z);
 
-        // Standing ON the ledge, stepping off (drop 20 ≤ MaxDescendZ 25) is fine.
+        // Standing ON the ledge, stepping off is fine.
         world.MoveCharacter(ch, new Point3D(100, 100, 20, 0));
+        Assert.True(walk.CheckMovementDetailed(ch, ch.Position, Core.Enums.Direction.North, out int zDown, out _));
+        Assert.True(zDown <= 0);
+    }
+
+    [Fact]
+    public void AStepMayDropAnyHeight()
+    {
+        // Source-X has no descent cap (CheckValidMove seats the mover on the highest
+        // surface below it) and neither does the client; a 60-unit drop is one step.
+        var (world, walk, ch) = Setup();
+        Md(world).AddSyntheticStatic(0, 100, 100, LedgeTile, 40);
+        world.MoveCharacter(ch, new Point3D(100, 100, 60, 0));
         Assert.True(walk.CheckMovementDetailed(ch, ch.Position, Core.Enums.Direction.North, out int zDown, out _));
         Assert.True(zDown <= 0);
     }

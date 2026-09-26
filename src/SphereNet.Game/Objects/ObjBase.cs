@@ -2159,6 +2159,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         switch (key.ToUpperInvariant())
         {
             case "NAME":
+                // CChar::SetName goes through the name pool (CChar.cpp:1482).
+                if (IsChar && value.StartsWith('#'))
+                    value = Definitions.DefinitionLoader.ResolveNamePool(value);
                 if (IsChar && _name.Length > 0 && !_name.Equals(value, StringComparison.Ordinal))
                     OnNameChangeWarning?.Invoke(
                         $"0x{_uid.Value:X8} '{_name}' -> '{value}' via TrySetProperty");

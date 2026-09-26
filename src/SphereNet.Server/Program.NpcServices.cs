@@ -450,7 +450,7 @@ public static partial class Program
         if (charDef != null)
         {
             if (!string.IsNullOrWhiteSpace(charDef.Name))
-                guard.Name = DefinitionLoader.ResolveNames(charDef.Name);
+                guard.Name = DefinitionLoader.ResolveNamePool(charDef.Name);
             EquipGuardNewbieItems(guard, charDef);
         }
         // NPC_LoadScript (CCharNPC.cpp:265-290): @Create, the body's own brain when

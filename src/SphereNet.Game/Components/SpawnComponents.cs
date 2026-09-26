@@ -132,7 +132,9 @@ public sealed class SpawnComponent
         // A spawner has to be standing in the world. Upstream leaves GenerateChar
         // immediately when the point is not top level (CCSpawn.cpp:383), because the
         // position it would spawn around is a container slot, not a map coordinate.
-        if (!_spawnItem.IsOnGround)
+        // A spawner that was never placed (NEW.P on a map not in use) is not top
+        // level either; its default 0,0,0,0 is no place to spawn around.
+        if (!_world.IsItemTopLevel(_spawnItem))
             return;
 
         int defIndex = _charDefId;
@@ -1006,7 +1008,7 @@ public sealed class ItemSpawnComponent
     private void SpawnOneItem()
     {
         // Same top-level rule as the char side (GenerateItem, CCSpawn.cpp:299).
-        if (!_spawnItem.IsOnGround)
+        if (!_world.IsItemTopLevel(_spawnItem))
             return;
 
         int defIndex = _itemDefId;

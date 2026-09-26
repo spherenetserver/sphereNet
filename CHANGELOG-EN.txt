@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Unplaced objects are collected, not saved
+------------------------------------------------------------------------
+FIX - An item a script created and never placed is deleted before each save
+      and on GARBAGE ("GC: n unplaced objects!"), as Source-X
+      GarbageCollection_NewObjs does. The worldgen gives each spawner
+      NEW.P=x,y,z,<facet>; for a facet whose map the server does not run the
+      point is refused, the item stayed at its default 0,0,0,0, was saved
+      there and loaded back as a live spawner in the corner of map 0 - 2164
+      spawners and 6930 NPCs in one sector. Records the save holds are kept.
+FIX - A spawner spawns only while it lies in a sector (Source-X IsTopLevel);
+      one with no container but never placed made creatures at 0,0.
+
 [2026-09-26] - World-ops verbs on the server console and telnet
 ------------------------------------------------------------------------
 FIX - SAVESTATICS, EXPORT, IMPORT, RESTORE and LOAD typed on the server

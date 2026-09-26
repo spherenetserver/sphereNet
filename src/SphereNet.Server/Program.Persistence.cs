@@ -488,6 +488,11 @@ public static partial class Program
     // changes, and only after the in-flight-save guard. Never force .NET GC here.
     private static Stopwatch BeginWorldSave(GameWorld world, bool forceGarbageCollect, Microsoft.Extensions.Logging.ILogger log)
     {
+        // Objects created and never placed are deleted, not saved (Source-X
+        // CWorld::SaveStage stage -1 -> GarbageCollection_NewObjs). Written out they
+        // came back at 0,0 on map 0 - a spawner a script could not place turned into
+        // a live spawner at the map corner.
+        world.CollectUnplacedNewItems();
         if (forceGarbageCollect)
         {
             var cleanup = Stopwatch.StartNew();

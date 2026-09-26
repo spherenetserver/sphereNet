@@ -1175,6 +1175,9 @@ public static partial class Program
         if (Directory.Exists(savePath))
         {
             var (items, chars) = _loader.Load(_world, savePath, _accounts);
+            // What the save held is kept even when it could not be placed; only
+            // objects created from now on are collected when left unplaced.
+            _world.ForgetUnplacedNewItems();
             _log.LogInformation("World loaded: {Items} items, {Chars} chars", items, chars);
             VerifyAccountGenerationAgainstWorld();
 

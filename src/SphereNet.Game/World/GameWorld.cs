@@ -67,6 +67,12 @@ public sealed class GameWorld
     // external sector.RemoveItem) are pruned lazily by the IsOnGround re-check.
     private readonly HashSet<Item> _groundItems = [];
     private readonly List<Item> _groundPrune = [];
+    // Items created since the world finished loading that have not yet been put
+    // anywhere - Source-X's m_ObjNew list (CWorld.cpp:409). A script that makes an
+    // item and then fails to place it (NEW.P on a map the server does not run)
+    // leaves it here, and CollectUnplacedNewItems deletes it as upstream's
+    // GarbageCollection_NewObjs does.
+    private readonly HashSet<Item> _unplacedNewItems = new(ReferenceEqualityComparer.Instance);
 
     private long _tickCount;
     private int _totalChars;
@@ -731,10 +737,52 @@ public sealed class GameWorld
         _objects[uid.Value] = item;
         _uuidIndex[item.Uuid] = item;
         _totalItems++;
+        _unplacedNewItems.Add(item);
         LastNewItem = uid;
         LastNewObject = uid;
         ObjectCreated?.Invoke(item);
         return item;
+    }
+
+    /// <summary>Is the item in the world - lying in a sector, or held by a container
+    /// or a character? Source-X CObjBase::IsTopLevel / IsItemInContainer; an item
+    /// that was created and never placed is neither.</summary>
+    public bool IsItemPlaced(Item item)
+        => !item.IsDeleted && (item.ContainedIn.IsValid || _groundItems.Contains(item));
+
+    /// <summary>Is the item lying in a sector (Source-X CObjBase::IsTopLevel)?</summary>
+    public bool IsItemTopLevel(Item item)
+        => !item.IsDeleted && !item.ContainedIn.IsValid && _groundItems.Contains(item);
+
+    /// <summary>Everything the save loaded has been placed or deliberately kept;
+    /// only objects created from here on are tracked as possibly unplaced.</summary>
+    public void ForgetUnplacedNewItems() => _unplacedNewItems.Clear();
+
+    /// <summary>Source-X CWorldThread::GarbageCollection_NewObjs (CWorld.cpp:543):
+    /// objects created and never placed are deleted, not saved. Runs before every
+    /// world save and on GARBAGE. Returns how many were deleted.</summary>
+    public int CollectUnplacedNewItems()
+    {
+        if (_unplacedNewItems.Count == 0)
+            return 0;
+
+        var lost = new List<Item>();
+        foreach (var item in _unplacedNewItems)
+        {
+            if (!IsItemPlaced(item))
+                lost.Add(item);
+        }
+        _unplacedNewItems.Clear();
+        if (lost.Count == 0)
+            return 0;
+
+        _logger.LogError("GC: {Count} unplaced objects!", lost.Count);
+        foreach (var item in lost)
+        {
+            _logger.LogDebug("GC: deleting unplaced item 0x{Uid:X} id=0x{Id:X}", item.Uid.Value, item.BaseId);
+            TryDeleteObject(item, force: true);
+        }
+        return lost.Count;
     }
 
     public Character CreateCharacter()
@@ -884,6 +932,7 @@ public sealed class GameWorld
         {
             _groundItems.Remove(removedItem);
             _multiItems.Remove(removedItem);
+            _unplacedNewItems.Remove(removedItem);
         }
         _objectsWithTimerF.Remove(obj);
         // Only drop the UUID index entry if it actually points at THIS object.
@@ -1050,6 +1099,7 @@ public sealed class GameWorld
         // Sole sector.AddItem choke point — index every on-ground item so the decay
         // catch-up can sweep this set instead of the full object dictionary.
         _groundItems.Add(item);
+        _unplacedNewItems.Remove(item);
         // Multi index upkeep: walk geometry iterates GroundMultis with cheap
         // bounds checks instead of a per-step 32-tile spatial scan (the cost
         // that dominated the live apply phase). The ItemType getter resolves
@@ -2548,6 +2598,8 @@ public sealed class GameWorld
     public (int Checked, int Fixed, int Deleted) GarbageCollection(Action<string>? log = null)
     {
         int checkedCount = 0, fixedCount = 0, deletedCount = 0;
+        // GarbageCollection_UIDs starts and ends with GarbageCollection_NewObjs.
+        deletedCount += CollectUnplacedNewItems();
 
         foreach (var obj in GetAllObjects())
         {

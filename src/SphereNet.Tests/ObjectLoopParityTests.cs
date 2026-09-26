@@ -194,6 +194,8 @@ public sealed class ObjectLoopParityTests
     public void GarbageCounterAndLogDoNotClaimVetoedDeletion()
     {
         var world = TestHarness.CreateWorld(); var item = world.CreateItem(); item.BaseId = 0;
+        // Placed: an unplaced one is collected outright (GarbageCollection_NewObjs).
+        world.PlaceItem(item, new Point3D(100, 100, 0, 0));
         world.ItemDeleteAllowed = _ => false;
         var messages = new List<string>(); var stats = world.GarbageCollection(messages.Add);
         Assert.Equal(0, stats.Deleted); Assert.False(item.IsDeleted);

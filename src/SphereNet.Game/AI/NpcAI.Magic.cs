@@ -134,7 +134,7 @@ public sealed partial class NpcAI
             SpellType spell;
             if (wandUse)
             {
-                spell = (SpellType)wand!.More1;
+                spell = SphereNet.Game.Magic.SpellEngine.MagicItemSpell(wand!);
                 wandUse = false;
             }
             else
@@ -579,7 +579,7 @@ public sealed partial class NpcAI
     {
         if (wand != null && _rand.Next(2) == 0)
         {
-            var wandSpell = (SpellType)wand.More1;
+            var wandSpell = SphereNet.Game.Magic.SpellEngine.MagicItemSpell(wand);
             var wandTarget = target;
             if (!FireNpcActCast(npc, ref wandTarget, ref wandSpell, wandUse: true))
                 return false;
@@ -884,42 +884,23 @@ public sealed partial class NpcAI
         return null;
     }
 
-    /// <summary>An equipped wand (IT_WAND) that can still cast — it holds a spell in
-    /// More1, carries ATTR_MAGIC (Source-X NPC_FightMagery requires it,
-    /// CCharNPCAct_Magic.cpp:166) and is not out of charges. A wand with no
-    /// CHARGES tag stays infinite (matching the player double-click wand path
-    /// and the mortechUO imports, which carry no charge tag).</summary>
+    /// <summary>An equipped wand (IT_WAND) that can still cast: it carries ATTR_MAGIC
+    /// and has charges left in MORE2 (Source-X NPC_FightMagery,
+    /// CCharNPCAct_Magic.cpp:166). Its spell is MOREX.</summary>
     internal static Item? FindNpcWand(Character npc)
     {
         // Source-X only inspects LAYER_HAND1 (a HAND2-held wand is ignored).
         var held = npc.GetEquippedItem(Layer.OneHanded);
-        if (held == null || held.ItemType != ItemType.Wand || held.More1 == 0)
+        if (held == null || held.ItemType != ItemType.Wand || SphereNet.Game.Magic.SpellEngine.MagicItemSpell(held) == SpellType.None)
             return null;
         if (!held.Attributes.HasFlag(ObjAttributes.Magic))
             return null;
-        if (held.TryGetTag("CHARGES", out string? ch) && int.TryParse(ch, out int charges) && charges <= 0)
+        if (!SphereNet.Game.Magic.SpellEngine.WandHasCharge(held))
             return null;
         return held;
     }
 
-    /// <summary>Decrement a wand's CHARGES after a cast; at zero, clear its spell and
-    /// the tag (mirrors ClientItemUseHandler's player wand path). A wand with no
-    /// CHARGES tag is infinite and is left untouched.</summary>
-    private static void ConsumeWandCharge(Item wand)
-    {
-        if (!wand.TryGetTag("CHARGES", out string? ch) || !int.TryParse(ch, out int charges))
-            return;
-        charges--;
-        if (charges <= 0)
-        {
-            wand.More1 = 0;
-            wand.RemoveTag("CHARGES");
-        }
-        else
-        {
-            wand.SetTag("CHARGES", charges.ToString());
-        }
-    }
+    private static void ConsumeWandCharge(Item wand) => SphereNet.Game.Magic.SpellEngine.ConsumeWandCharge(wand);
 
     /// <summary>SmartCaster spell combo (in memory, see <see cref="NpcFightMemory"/>):
     /// step 0 may start a combo (Paralyze) when mana is high and the target is

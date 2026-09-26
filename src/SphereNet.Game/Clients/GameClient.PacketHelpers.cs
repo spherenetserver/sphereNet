@@ -2163,9 +2163,21 @@ public sealed partial class GameClient
         return npc;
     }
 
-    /// <summary>IClientContext surface for CreateNpcFromDef.</summary>
-    public Character CreateNpcFromDefinition(int defIndex, string fallbackName) =>
-        CreateNpcFromDef(defIndex, fallbackName);
+    /// <summary>Source-X CChar::CreateNPC for engine callers: the chardef is applied,
+    /// its @Create runs (NPC_LoadScript, CCharNPC.cpp:30-37), the brain is finalised
+    /// with @NPCRestock, and the pools start full. The NPC is not placed. Stopping at
+    /// the bare def left anything a pack sets in @Create - STR, the NPC= brain -
+    /// unset, so a figurine-born pet came out with 1 hit point and no brain.</summary>
+    public Character CreateNpcFromDefinition(int defIndex, string fallbackName)
+    {
+        var npc = CreateNpcFromDef(defIndex, fallbackName);
+        _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.Create, new TriggerArgs { CharSrc = npc });
+        FinalizeNpcBrain(npc);
+        npc.Hits = npc.MaxHits;
+        npc.Stam = npc.MaxStam;
+        npc.Mana = npc.MaxMana;
+        return npc;
+    }
 
     internal Character CreateNpcFromDef(int defIndexOrBaseId, string fallbackName)
     {

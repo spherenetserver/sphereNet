@@ -69,8 +69,8 @@ public class SpellCastSourceTests
 
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
-        wand.More1 = (uint)SpellType.Strength;
-        wand.SetTag("CHARGES", "3");
+        wand.MoreP = new Point3D((short)SpellType.Strength, 0, 0, 0); // MOREX = the spell
+        wand.More2 = 3;                                            // MORE2 = charges
 
         Assert.True(caster.Backpack!.TryAddItem(wand));
         caster.SetTag("WAND_UID", wand.Uid.Value.ToString());
@@ -78,8 +78,7 @@ public class SpellCastSourceTests
 
         Assert.True(engine.CastDone(caster));
 
-        Assert.True(wand.TryGetTag("CHARGES", out string? ch));
-        Assert.Equal("2", ch);                              // exactly one charge spent
+        Assert.Equal(2u, wand.More2);                       // exactly one charge spent
         Assert.False(caster.TryGetTag("WAND_UID", out _));  // source tag cleared
     }
 
@@ -93,8 +92,8 @@ public class SpellCastSourceTests
 
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
-        wand.More1 = (uint)SpellType.Strength;
-        wand.SetTag("CHARGES", "3");
+        wand.MoreP = new Point3D((short)SpellType.Strength, 0, 0, 0); // MOREX = the spell
+        wand.More2 = 3;                                            // MORE2 = charges
 
         Assert.True(caster.Backpack!.TryAddItem(wand));
         caster.SetTag("WAND_UID", wand.Uid.Value.ToString());
@@ -104,8 +103,7 @@ public class SpellCastSourceTests
         // (walking does not interrupt a cast - see IsMovementFrozenByCast).
         Assert.True(engine.TryInterruptFromDamage(caster, 10));
 
-        Assert.True(wand.TryGetTag("CHARGES", out string? ch));
-        Assert.Equal("3", ch);                              // untouched — bug fix
+        Assert.Equal(3u, wand.More2);                       // untouched — bug fix
         Assert.False(caster.TryGetTag("WAND_UID", out _));  // tag cleared, no leak
     }
 

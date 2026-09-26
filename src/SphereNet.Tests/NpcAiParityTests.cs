@@ -445,9 +445,9 @@ public class NpcAiParityTests
         // A charged MAGIC wand and NO spellbook — the NPC casts purely from
         // the wand (Source-X NPC_FightMagery requires ATTR_MAGIC on it).
         var wand = world.CreateItem();
-        wand.ItemType = ItemType.Wand; wand.More1 = (uint)SpellType.Fireball;
+        wand.ItemType = ItemType.Wand; wand.MoreP = new Point3D((short)SpellType.Fireball, 0, 0, 0);
         wand.Attributes |= ObjAttributes.Magic;
-        wand.SetTag("CHARGES", "3");
+        wand.More2 = 3; // MORE2 = charges (m_spellcharges)
         caster.Equip(wand, Layer.OneHanded);
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
@@ -468,6 +468,6 @@ public class NpcAiParityTests
         }
 
         Assert.Equal(SpellType.Fireball, castSpell); // cast the wand's stored spell
-        Assert.True(wand.TryGetTag("CHARGES", out var c) && int.Parse(c!) == 2); // one charge spent
+        Assert.Equal(2u, wand.More2); // one charge spent
     }
 }

@@ -286,7 +286,7 @@ public class NpcAiWaveN1Tests
         var mage = world.CreateCharacter();
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
-        wand.More1 = (uint)SpellType.Fireball;
+        wand.MoreP = new Point3D((short)SpellType.Fireball, 0, 0, 0); wand.More2 = 5;
         mage.Equip(wand, Layer.OneHanded);
 
         // Source-X NPC_FightMagery requires ATTR_MAGIC on the wand.
@@ -323,9 +323,9 @@ public class NpcAiWaveN1Tests
         // cast path is the wand one (@NPCActCast must see ARGN2 = 1).
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
-        wand.More1 = (uint)SpellType.Fireball;
+        wand.MoreP = new Point3D((short)SpellType.Fireball, 0, 0, 0); wand.More2 = 5;
         wand.Attributes |= ObjAttributes.Magic;
-        wand.SetTag("CHARGES", "50");
+        wand.More2 = 50;
         caster.Equip(wand, Layer.OneHanded);
 
         var victim = world.CreateCharacter();

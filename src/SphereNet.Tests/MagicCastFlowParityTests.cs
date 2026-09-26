@@ -136,7 +136,7 @@ public sealed class MagicCastFlowParityTests
         caster.Equip(pack, Layer.Pack);
         var scroll = world.CreateItem();
         scroll.ItemType = ItemType.Scroll;
-        scroll.More1 = (uint)SpellType.Heal;
+        scroll.MoreP = new Point3D((short)SpellType.Heal, 0, 0, 0); // MOREX = the spell
         Assert.True(pack.TryAddItem(scroll));
         caster.SetTag("SCROLL_UID", scroll.Uid.Value.ToString());
 

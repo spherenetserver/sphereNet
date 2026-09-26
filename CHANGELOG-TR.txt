@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-26] - Parsomen, asa, figurin ve numarayla secilen buyuler calisir
+------------------------------------------------------------------------
+DUZELTME - Parsomen ve asalar Source-X duzenini kullanir: buyu MOREX, buyu
+           seviyesi MOREY, asa sarji MORE2 (255 sinirsiz, 0 bos). MORE1 ve
+           TAG.CHARGES'tan okunuyordu; paketteki her parsomen kullanilamiyor,
+           asalar hic calismiyordu. Buyu icin ATTR_MAGIC gerekir; esyayla
+           yapilan buyu caster'in skill'iyle degil esyanin MOREY degeriyle
+           (yoksa rastgele 0-499) guclenir. NPC asalari da ayni alanlari okur.
+DUZELTME - MOREX/MOREY/MOREZ kaynak defname'i (MOREX=s_clumsy = buyu 1) ve
+           ondalik degeri (MOREY=50.0 = 500) Source-X GetArgVal gibi kabul
+           eder. Ikisi de alani 0 birakiyordu.
+DUZELTME - Figurin yaratigini tam NPC olusturma akisiyla yaratir: chardef
+           @Create calisir, beyin @NPCRestock ile tamamlanir, can/mana/stamina
+           dolu baslar; yaratik figurinin adini ve rengini alir. Satin alinan
+           pet 1 can, beyinsiz ve hex isimle cikiyordu.
+DUZELTME - Stat buff ve curse'leri SPELLFLAG_BLESS/CURSE'e gore degil, Source-X
+           OnSpellEffect gibi buyu numarasina gore secilir. Clumsy (pakette
+           curse bayragi yok) ve Magic Reflection (bless bayrakli) hicbir sey
+           yapmiyordu.
+
 [2026-09-26] - Deger istismarlari kapandi, evler cokmez
 ------------------------------------------------------------------------
 DUZELTME - Vendor'a satista esya OVERRIDE.VALUE ile, yoksa itemdef VALUE'sunun

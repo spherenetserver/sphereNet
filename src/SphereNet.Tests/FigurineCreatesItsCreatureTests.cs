@@ -98,6 +98,55 @@ public sealed class FigurineCreatesItsCreatureTests : IDisposable
         Assert.True(fig.IsDeleted, "the figurine is consumed by the double-click");
     }
 
+    /// <summary>Source-X CreateNPC runs the chardef's @Create (NPC_LoadScript), and
+    /// the creature takes the figurine's name and hue (CCharUse.cpp:1168-1175). The
+    /// pack sets STR and the brain inside @Create, so skipping it made a 1-HP,
+    /// brainless pet named after its hex id.</summary>
+    [Fact]
+    public void TheCreatureRunsItsCreateTrigger_AndWearsTheFigurinesNameAndHue()
+    {
+        Directory.CreateDirectory(_dir);
+        string file = Path.Combine(_dir, "g.scp");
+        File.WriteAllLines(file, [
+            "[CHARDEF 00c8]", "DEFNAME=c_horse", "NAME=a horse",
+            "ON=@Create", "STR=90", "NPC=1", "",
+            "[ITEMDEF 020e1]", "DEFNAME=i_pet_horse", "NAME=horse",
+            "TYPE=t_figurine", "TDATA3=c_horse",
+        ]);
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        stack.Resources.ScpBaseDir = _dir;
+        stack.Resources.LoadResourceFile(file);
+        ScriptTestBootstrap.LoadDefinitions(stack.Resources);
+        var world = TestHarness.CreateWorld();
+        ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        var client = TestHarness.CreateClient(stack.LoggerFactory, world, new AccountManager(stack.LoggerFactory), 8812);
+        client.SetEngines(triggerDispatcher: stack.Dispatcher);
+        var me = world.CreateCharacter();
+        me.IsPlayer = true; me.Str = 100; me.Dex = 100; me.Int = 100;
+        world.PlaceCharacter(me, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, me);
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        me.Equip(pack, Layer.Pack);
+
+        var fig = world.CreateItem();
+        Assert.True(ItemDefHelper.ApplyInstanceMetadata(fig, 0x20E1));
+        fig.Name = "Shadowmere";
+        fig.Hue = new Color(0x0455);
+        Assert.True(pack.TryAddItem(fig));
+
+        client.HandleDoubleClick(fig.Uid.Value);
+
+        var pet = world.GetCharsInRange(me.Position, 3).FirstOrDefault(c => !c.IsPlayer);
+        Assert.NotNull(pet);
+        Assert.Equal(90, pet!.Str);
+        Assert.Equal(90, pet.Hits);                       // pools start full
+        Assert.Equal(NpcBrainType.Animal, pet.NpcBrain);
+        Assert.Equal("Shadowmere", pet.Name);
+        Assert.Equal(0x0455, pet.Hue.Value);
+    }
+
     /// <summary>MORE1 names the creature directly, and wins over the definition.</summary>
     [Fact]
     public void More1NamesTheCreature()

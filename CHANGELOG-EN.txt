@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-26] - Scrolls, wands, figurines and id-dispatched spells work
+------------------------------------------------------------------------
+FIX - Scrolls and wands use the Source-X layout: the spell is MOREX, the
+      spell level MOREY and a wand's charges MORE2 (255 unlimited, 0 empty).
+      They were read from MORE1 and TAG.CHARGES, so every pack scroll said
+      nothing could be cast and pack wands never worked. Casting needs
+      ATTR_MAGIC; an item cast is as strong as its MOREY (random 0-499 when
+      unset), not the caster's skill. NPC wands read the same fields.
+FIX - MOREX/MOREY/MOREZ accept a resource defname (MOREX=s_clumsy is spell 1)
+      and a fixed-point decimal (MOREY=50.0 is 500), as Source-X GetArgVal
+      does. Both used to leave the field at 0.
+FIX - A figurine creates its creature through the full NPC creation: the
+      chardef @Create runs, the brain is finalised with @NPCRestock and the
+      pools start full; the creature takes the figurine's name and hue. A
+      bought pet used to come out with 1 hit point, no brain and a hex name.
+FIX - Stat buffs and curses are chosen by spell id, as Source-X OnSpellEffect
+      does, not by SPELLFLAG_BLESS/CURSE. Clumsy (no curse flag in the pack)
+      and Magic Reflection (flagged bless) did nothing.
+
 [2026-09-26] - Close value exploits and stop house collapse
 ------------------------------------------------------------------------
 FIX - Selling to a vendor values the item by OVERRIDE.VALUE, else its itemdef

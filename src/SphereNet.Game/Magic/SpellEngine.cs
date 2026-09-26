@@ -469,21 +469,27 @@ public sealed class SpellEngine
         }
     }
 
-    /// <summary>Decrement a wand's CHARGES tag; depleting it clears the bound spell
-    /// (More1). A wand with no CHARGES tag is treated as unlimited.</summary>
-    private static void ConsumeWandCharge(Item wand)
+    /// <summary>The spell a wand or scroll casts: MOREX (Source-X m_itWeapon.m_spell,
+    /// CItem.h:222).</summary>
+    internal static SpellType MagicItemSpell(Item item) => (SpellType)item.MoreP.X;
+
+    /// <summary>Whether a wand can still cast: MORE2 holds its charges (m_spellcharges,
+    /// CItem.h:221) and 0 means empty (CCharSpell.cpp:2436).</summary>
+    internal static bool WandHasCharge(Item wand) => wand.More2 > 0;
+
+    /// <summary>Spend one wand charge (CCharSpell.cpp:2442): 255 is unlimited, and an
+    /// emptied wand keeps its spell - it is simply out of charges.</summary>
+    internal static void ConsumeWandCharge(Item wand)
     {
-        if (!wand.TryGetTag("CHARGES", out string? ch) || !int.TryParse(ch, out int charges))
+        if (wand.More2 == 0 || wand.More2 == 255)
             return;
-        charges--;
-        if (charges <= 0)
-        {
-            wand.More1 = 0;
-            wand.RemoveTag("CHARGES");
-        }
-        else
-            wand.SetTag("CHARGES", charges.ToString());
+        wand.More2--;
     }
+
+    /// <summary>The strength a wand or scroll casts at: its MOREY spell level, or a
+    /// random 0-499 when it has none (Spell_CastDone, CCharSpell.cpp:2893-2903).</summary>
+    private static int MagicItemSkillLevel(Item item) =>
+        item.MoreP.Y > 0 ? item.MoreP.Y : Random.Shared.Next(500);
 
     /// <summary>Drop the cast-source tags WITHOUT consuming — used when a cast is
     /// interrupted / aborted so a half-started wand or scroll cast does not leak its
@@ -1242,7 +1248,13 @@ public sealed class SpellEngine
         // Clear cast state
         ClearCastState(caster);
 
-        int skillLevel = skillVal;
+        // An item cast is as strong as the item, not the caster (CCharSpell.cpp:2893).
+        Item? levelSource = castSource;
+        if (levelSource == null && sourceKind == CastSourceKind.Wand)
+            levelSource = caster.GetEquippedItem(Layer.OneHanded) is { ItemType: ItemType.Wand } held ? held : null;
+        int skillLevel = sourceKind != CastSourceKind.Self && levelSource != null
+            ? MagicItemSkillLevel(levelSource)
+            : skillVal;
 
         // Mark targets an item (rune), not a character
         if (spell == SpellType.Mark)
@@ -1977,12 +1989,15 @@ public sealed class SpellEngine
             caster.FlagForHelpingCriminalIfNeeded(target);
             target.Hits = (short)Math.Min(target.Hits + effect, target.MaxHits);
         }
-        // Buff/debuff
-        else if (def.IsFlag(SpellFlag.Bless))
+        // Buffs and curses by spell id, as Source-X OnSpellEffect switches on the
+        // spell (CCharSpell.cpp:3874). Keying them on SPELLFLAG_BLESS/CURSE lost
+        // whatever the pack flags differently: Clumsy carries no curse flag and did
+        // nothing, Magic Reflection carries bless and died in the buff switch.
+        else if (IsNativeBuff(def.Id))
         {
             ApplyBuff(caster, target, def, effect);
         }
-        else if (def.IsFlag(SpellFlag.Curse))
+        else if (IsNativeCurse(def.Id))
         {
             ApplyCurse(caster, target, def, effect);
         }
@@ -1992,6 +2007,14 @@ public sealed class SpellEngine
             ApplySpecificSpell(caster, target, def, effect);
         }
     }
+
+    private static bool IsNativeBuff(SpellType id) => id is
+        SpellType.Strength or SpellType.Agility or SpellType.Cunning or SpellType.Bless or
+        SpellType.Protection or SpellType.ArchProtection;
+
+    private static bool IsNativeCurse(SpellType id) => id is
+        SpellType.Weaken or SpellType.Clumsy or SpellType.Feeblemind or
+        SpellType.Curse or SpellType.MassCurse;
 
     /// <summary>Apply area effect. Maps to SPELLFLAG_AREA logic.</summary>
     private void ApplyAreaEffect(Character caster, Point3D center, SpellDef def, int skillLevel)

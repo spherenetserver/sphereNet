@@ -1509,30 +1509,36 @@ public sealed class ClientItemUseHandler
 
             // ---- spell tools (Source-X routes via CClient::Cmd_Skill_Magery) ----
             case ItemType.Wand:
-                if (item.More1 > 0)
-                {
-                    // Tag the source wand so the engine deducts a charge only when the
-                    // cast actually succeeds (SpellEngine.CastDone) — deducting here,
-                    // before the cast resolves, lost the charge on any fizzle /
-                    // interrupt / target-cancel.
-                    _character.SetTag("WAND_UID", item.Uid.Value.ToString());
-                    HandleCastSpell((SpellType)item.More1, 0);
-                }
-                else
-                    SysMessage("This wand has no charges.");
-                break;
             case ItemType.Scroll:
-                if (item.More1 > 0)
+            {
+                // Source-X IT_WAND / IT_SCROLL (CClientUse.cpp:352): the spell is MOREX,
+                // and Spell_CanCast (CCharSpell.cpp:2408-2445) wants ATTR_MAGIC and, for
+                // a wand, charges in MORE2 - checked before its GM shortcut for the
+                // attribute, after it for the charges.
+                var itemSpell = SphereNet.Game.Magic.SpellEngine.MagicItemSpell(item);
+                if (itemSpell == SpellType.None || (_client.Spells != null && _client.Spells.GetSpellDef(itemSpell) == null))
                 {
-                    var scrollSpell = (SpellType)item.More1;
-                    _character.SetTag("SCROLL_UID", item.Uid.Value.ToString());
-                    HandleCastSpell(scrollSpell, 0);
+                    SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
+                    break;
                 }
-                else
+                if (!item.IsAttr(ObjAttributes.Magic))
                 {
-                    SysMessage("The scroll is blank.");
+                    SysMessage(ServerMessages.Get(Msg.SpellEnchantLack));
+                    break;
                 }
+                bool isWand = item.ItemType == ItemType.Wand;
+                if (isWand && _character.PrivLevel < PrivLevel.GM &&
+                    !SphereNet.Game.Magic.SpellEngine.WandHasCharge(item))
+                {
+                    SysMessage(ServerMessages.Get(Msg.SpellWandNocharge));
+                    break;
+                }
+                // The engine spends the charge / scroll only once the cast succeeds
+                // (SpellEngine.CastDone), so a fizzle or a cancelled target costs nothing.
+                _character.SetTag(isWand ? "WAND_UID" : "SCROLL_UID", item.Uid.Value.ToString());
+                HandleCastSpell(itemSpell, 0);
                 break;
+            }
 
             // ---- crystal ball / cannon ----
             case ItemType.CrystalBall:
@@ -2769,6 +2775,14 @@ public sealed class ClientItemUseHandler
         var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:X}");
         if (pet == null)
             return false;
+        // The creature takes the figurine's name and, when it has one, its hue
+        // (CCharUse.cpp:1169-1175).
+        pet.Name = figurine.GetName();
+        if (figurine.Hue.Value != 0)
+        {
+            pet.OSkin = figurine.Hue.Value;
+            pet.Hue = figurine.Hue;
+        }
 
         if (!pet.TryAssignOwnership(_character, _character, summoned: false,
                                     enforceFollowerCap: true))

@@ -3158,17 +3158,17 @@ public class Item : ObjBase
                 ApplyLiveSpawnMoreP();
                 return true;
             case "MOREX":
-                if (ScriptNumber.TryParseToken(value, out long mx) && mx is >= short.MinValue and <= short.MaxValue)
+                if (TryParseMoreNumber(value, out long mx) && mx is >= short.MinValue and <= short.MaxValue)
                     _moreP = new Point3D((short)mx, _moreP.Y, _moreP.Z, _moreP.Map);
                 ApplyLiveSpawnMoreP();
                 return true;
             case "MOREY":
-                if (ScriptNumber.TryParseToken(value, out long my) && my is >= short.MinValue and <= short.MaxValue)
+                if (TryParseMoreNumber(value, out long my) && my is >= short.MinValue and <= short.MaxValue)
                     _moreP = new Point3D(_moreP.X, (short)my, _moreP.Z, _moreP.Map);
                 ApplyLiveSpawnMoreP();
                 return true;
             case "MOREZ":
-                if (ScriptNumber.TryParseToken(value, out long mz) && mz is >= sbyte.MinValue and <= sbyte.MaxValue)
+                if (TryParseMoreNumber(value, out long mz) && mz is >= sbyte.MinValue and <= sbyte.MaxValue)
                     _moreP = new Point3D(_moreP.X, _moreP.Y, (sbyte)mz, _moreP.Map);
                 ApplyLiveSpawnMoreP();
                 return true;
@@ -5282,6 +5282,37 @@ public class Item : ObjBase
         if (!string.IsNullOrEmpty(tdataName) && ResolveDefName != null)
             return ResolveDefName(tdataName);
         return 0;
+    }
+
+    /// <summary>MOREX / MOREY / MOREZ read the way Source-X reads them (GetArgVal ->
+    /// Exp_GetVal): a Sphere number, a fixed-point decimal ("50.0" is 500), or a
+    /// resource defname, which stands for its index - a scroll's MOREX=s_clumsy is
+    /// spell 1. Only the number form was read, so every pack scroll and wand that
+    /// names its spell kept MOREX 0, and a wand's MOREY=50.0 kept level 0.</summary>
+    private static bool TryParseMoreNumber(string value, out long result)
+    {
+        string v = value.Trim();
+        if (ScriptNumber.TryParseToken(v, out result))
+            return true;
+        int dot = v.IndexOf('.');
+        if (dot > 0 && long.TryParse(v[..dot], out long whole) &&
+            dot + 1 < v.Length && char.IsDigit(v[dot + 1]))
+        {
+            result = whole * 10 + (whole < 0 ? -(v[dot + 1] - '0') : v[dot + 1] - '0');
+            return true;
+        }
+        if (v.Length > 0 && (char.IsLetter(v[0]) || v[0] == '_') &&
+            Definitions.DefinitionLoader.StaticResources is { } res)
+        {
+            var rid = res.ResolveDefName(v);
+            if (rid.IsValid)
+            {
+                result = rid.Index;
+                return true;
+            }
+        }
+        result = 0;
+        return false;
     }
 
     /// <summary>Sphere numeric parse that also accepts the script fixed-point

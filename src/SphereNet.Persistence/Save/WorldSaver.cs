@@ -19,6 +19,9 @@ namespace SphereNet.Persistence.Save;
 /// </summary>
 public sealed class WorldSaver
 {
+    /// <summary>RDS_KR in RESDISPLAY_VERSION (game_enums.h:22).</summary>
+    private const int KrResDisp = 6;
+
     private readonly ILogger<WorldSaver> _logger;
     private int _saveIndex;
 
@@ -863,6 +866,9 @@ public sealed class WorldSaver
         // def: KEY="value" (CVarDefMap.cpp:708).
         if (item.OwnedBy.Length > 0) w.WriteProperty("OWNEDBY", $"\"{item.OwnedBy}\"");
         if (item.OName.Length > 0) w.WriteProperty("ONAME", $"\"{item.OName}\"");
+        // Numeric base defs go out bare and in hex (CVarDefMap.cpp:706 / :45).
+        foreach (var (recipeKey, recipeVal) in item.RecipeDefs)
+            w.WriteProperty(recipeKey, SphereNet.Game.Objects.ObjBase.FormatDefHex(recipeVal));
         if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining.ToString());
         if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:X}");
         if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
@@ -999,6 +1005,8 @@ public sealed class WorldSaver
         w.WriteProperty("BODY", $"0{ch.BodyId:X}");
         if (ch.CanMask != 0) w.WriteProperty("CANMASK", $"0{ch.CanMask:X}");
         if (ch.OName.Length > 0) w.WriteProperty("ONAME", $"\"{ch.OName}\"");
+        foreach (var (recipeKey, recipeVal) in ch.RecipeDefs)
+            w.WriteProperty(recipeKey, SphereNet.Game.Objects.ObjBase.FormatDefHex(recipeVal));
         // Full-width chardef hash (24-bit). Without this, NPCs reload with
         // CharDefIndex=0 → trigger / brain lookups fall back to BaseId
         // (the truncated body id) and re-introduce the c_alchemist→c_man
@@ -1139,6 +1147,13 @@ public sealed class WorldSaver
         if (ch.AttackBaseRaw is > 0) w.WriteProperty("DAM", $"{ch.AttackLo},{ch.AttackHi}");
 
         if (ch.IsPlayer) w.WriteProperty("ISPLAYER", "1");
+        // CChar::r_Write (CChar.cpp:4149) / CCharPlayer::r_WriteChar (CCharPlayer.cpp:562-566):
+        // written only when set; the toolbar only for an account that shows KR or later.
+        if (ch.EmoteColorOverride != 0) w.WriteProperty("EMOTECOLOROVERRIDE", ch.EmoteColorOverride.ToString());
+        if (ch.IsPlayer && ch.RefuseGlobalChatRequests) w.WriteProperty("REFUSEGLOBALCHATREQUESTS", "1");
+        if (ch.IsPlayer && ch.KrToolbarStatus &&
+            (Character.ResolveAccountForChar?.Invoke(ch.Uid)?.ResDisp ?? 0) >= KrResDisp)
+            w.WriteProperty("KRTOOLBARSTATUS", "1");
 
         long chTimeout = ch.Timeout;
         if (chTimeout > 0)

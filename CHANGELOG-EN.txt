@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-27] - Script keyword long tail closed against the Source-X tables
+------------------------------------------------------------------------
+ADD - NPC: NEEDNAME, SPELLADD, VENDCAP (bank box MORE2), VENDGOLD (vendor
+      purse); a player reads them as 0.
+ADD - Player: GETHOUSEPOS / GETSHIPPOS <uid>, HOUSEMULTICOUNT /
+      SHIPMULTICOUNT (live sum of each owned multi's MULTICOUNT),
+      KRTOOLBARSTATUS (0xEA to Kingdom Reborn clients, sent at login),
+      REFUSEGLOBALCHATREQUESTS; both flags are saved when on.
+ADD - Character: DAMADJUSTED[.LO|.HI], FIGHTRANGE, EMOTECOLOROVERRIDE (saved;
+      also colours the "is attacking" line); client LASTEVENT; party
+      SPEECHFILTER (a [FUNCTION] run on every party message, RETURN 1 drops
+      it).
+ADD - Object: the RECIPE* keys (saved bare, copied by DUPE), PROPSAT /
+      PROPSCOUNT, CLILOC.n / CLILOCCOUNT, TEXTF, CANSEELOSFLAG; ITEMDEF
+      ALTERITEM.
+ADD - Script functions RESDEF / RESDEF0 (the resource uid), BCRYPTHASH /
+      BCRYPTVALIDATE, SYSCMD / SYSSPAWN (only with the OF_FileCommands ini
+      option, as in Source-X).
+CHANGE - The walk check lets a GM through everything only while GM mode is on
+      (IsPriv(PRIV_GM)); with .GM off a GM walks as a player.
+CHANGE - Door opening and closing is logged at Debug level ("[door] ...
+      opened by ..."), naming who moved it and where the leaf went.
+
 [2026-09-27] - Walking up and down follows Source-X; NPC names without the trade part
 ------------------------------------------------------------------------
 CHANGE - A step is decided by Source-X's walk rule for players and NPCs alike:

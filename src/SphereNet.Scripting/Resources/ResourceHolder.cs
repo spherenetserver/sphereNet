@@ -1181,6 +1181,23 @@ public sealed class ResourceHolder
         _ => 0, // Unknown / MultiDef / Stone — no Source-X RES_ comparison value
     };
 
+    /// <summary>RESDEF / RESDEF0 (CScriptObj.cpp:683-695): the value a resource's
+    /// DEFNAME registered in m_VarResDefs - its private resource uid,
+    /// UID_F_RESOURCE | (RES_TYPE &lt;&lt; 20) | index (CResourceDef.cpp:43-71,
+    /// CResourceID.cpp:21). [DEFNAME] constants live in m_VarDefs, not there, so they
+    /// answer null, as does a name no resource registered.</summary>
+    public long? ResolveResourceDefUid(string name)
+    {
+        var rid = ResolveDefName(name.Trim());
+        if (!rid.IsValid || rid.Type == ResType.DefName)
+            return null;
+        // A [MULTIDEF] is an item definition upstream (RES_ITEMDEF).
+        int code = rid.Type == ResType.MultiDef ? SourceXResCode(ResType.ItemDef) : SourceXResCode(rid.Type);
+        if (code == 0)
+            return null;
+        return 0x80000000L | ((long)code << 20) | (rid.Index & 0xFFFFFL);
+    }
+
     /// <summary>RESOURCETYPE / RESOURCEINDEX (CScriptObj.cpp:607-611): the argument is
     /// evaluated - a [DEFNAME] alias answers for what it names - and the Source-X
     /// RES_* code or the index comes back in hex; "0" when it names no resource.</summary>

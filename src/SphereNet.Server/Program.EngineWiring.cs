@@ -1758,6 +1758,8 @@ public static partial class Program
             {
                 if (!DoorHelper.TryOpenDoorState(door))
                     return false;
+                _log.LogDebug("[door] 0x{Door:X} opened by NPC 0x{Npc:X} '{Name}' -> {Pos} art 0x{Art:X}",
+                    door.Uid.Value, npc.Uid.Value, npc.Name, door.Position, door.DispIdFull);
                 BroadcastNearby(door.Position, 18,
                     new PacketSound(0x00EA, door.X, door.Y, door.Z), 0);
                 BroadcastNearby(door.Position, 18,
@@ -1951,8 +1953,10 @@ public static partial class Program
                 // "*X is attacking you!*" variant.
                 const ushort emoteHue = 0x0022;
                 var emote = CombatHelper.FormatAttackEmotes(attacker, target);
+                // EMOTECOLOROVERRIDE colours the bystanders' line (CCharAttacker.cpp:68).
                 var emoteOthers = new PacketSpeechUnicodeOut(
-                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
+                    attacker.Uid.Value, attacker.BodyId, 2,
+                    attacker.EmoteColorOverride != 0 ? attacker.EmoteColorOverride : emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     emote.AttackerName, emote.OthersText);
                 var emoteVictim = new PacketSpeechUnicodeOut(
                     attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
@@ -3267,6 +3271,22 @@ public static partial class Program
                     _ => SphereNet.Game.Objects.Characters.Character.ClientType.ClassicWindows,
                 };
                 return ((int)c.NetState.ClientVersionNumber, ct);
+            };
+            // LASTEVENT (CC_LASTEVENT): when the client last sent anything.
+            SphereNet.Game.Objects.Characters.Character.ResolveClientLastEventTick = ch =>
+                TryGetClientFor(ch, out var c) ? c.NetState.LastReceiveTick : 0;
+            // KRTOOLBARSTATUS= (CClient::addKRToolbar): 0xEA, KR clients only.
+            SphereNet.Game.Objects.Characters.Character.SendKrToolbarStatus = (ch, enable) =>
+            {
+                if (TryGetClientFor(ch, out var c))
+                    c.SendKrToolbar(enable);
+            };
+            // PARTY.SPEECHFILTER= accepts only a loaded [FUNCTION] (CParty.cpp:596).
+            SphereNet.Game.Party.PartyDef.FunctionExists = name =>
+            {
+                var rid = _resources.ResolveDefName(name);
+                return rid.IsValid && rid.Type == SphereNet.Core.Enums.ResType.Function &&
+                    _resources.GetResource(rid) != null;
             };
 
             SphereNet.Game.Objects.Characters.Character.FollowUid = (gm, uid) =>

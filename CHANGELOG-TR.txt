@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-27] - Script anahtar sozcuk uzun kuyrugu Source-X tablolarina gore kapatildi
+------------------------------------------------------------------------
+EKLEME - NPC: NEEDNAME, SPELLADD, VENDCAP (banka kutusu MORE2), VENDGOLD
+           (vendor kesesi); oyuncuda 0 okunur.
+EKLEME - Oyuncu: GETHOUSEPOS / GETSHIPPOS <uid>, HOUSEMULTICOUNT /
+           SHIPMULTICOUNT (sahip olunan her multi'nin MULTICOUNT toplami,
+           canli), KRTOOLBARSTATUS (Kingdom Reborn istemcisine 0xEA,
+           giriste de gonderilir), REFUSEGLOBALCHATREQUESTS; iki bayrak
+           acikken kaydedilir.
+EKLEME - Karakter: DAMADJUSTED[.LO|.HI], FIGHTRANGE, EMOTECOLOROVERRIDE
+           (kaydedilir; "saldiriyor" satirini da renklendirir); istemci
+           LASTEVENT; parti SPEECHFILTER (her parti mesajinda calisan
+           [FUNCTION], RETURN 1 mesaji dusurur).
+EKLEME - Nesne: RECIPE* anahtarlari (duz kaydedilir, DUPE kopyalar), PROPSAT
+           / PROPSCOUNT, CLILOC.n / CLILOCCOUNT, TEXTF, CANSEELOSFLAG;
+           ITEMDEF ALTERITEM.
+EKLEME - Script fonksiyonlari RESDEF / RESDEF0 (kaynak uid'i), BCRYPTHASH /
+           BCRYPTVALIDATE, SYSCMD / SYSSPAWN (Source-X gibi yalnizca
+           OF_FileCommands ini secenegiyle).
+DEGISIKLIK - Yurume kontrolu GM'yi yalnizca GM modu acikken her seyden
+           gecirir (IsPriv(PRIV_GM)); .GM kapaliyken GM oyuncu gibi yurur.
+DEGISIKLIK - Kapi acilip kapanmasi Debug seviyesinde loglanir ("[door] ...
+           opened by ..."): kimin actigi ve kanadin nereye gittigi yazar.
+
 [2026-09-27] - Inip cikma Source-X'i izler; NPC adlarinda meslek kismi yok
 ------------------------------------------------------------------------
 DEGISIKLIK - Oyuncu ve NPC adimi Source-X yurume kuraliyla karar verilir:

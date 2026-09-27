@@ -653,7 +653,7 @@ public static class VendorEngine
         vendor.TryGetTag("VENDOR_GOLD", out string? s) && long.TryParse(s, out long g)
             ? Math.Max(0, g) : 0;
 
-    private static void SetVendorGold(Character vendor, long amount) =>
+    internal static void SetVendorGold(Character vendor, long amount) =>
         vendor.SetTag("VENDOR_GOLD", Math.Max(0, amount).ToString());
 
     /// <summary>Source-X NPC_VendorGetChkVerb PC_CASH: hand the whole vendor purse

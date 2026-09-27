@@ -1335,8 +1335,11 @@ public sealed class ClientCombatHandler
                 // VICTIM's name and broadcast it to everyone.
                 ushort emoteHue = SphereNet.Game.Messages.ServerMessages.HueOf(SphereNet.Game.Messages.ServerMessages.TalkDefault.Emote);
                 var emote = CombatHelper.FormatAttackEmotes(_character, target);
+                // EMOTECOLOROVERRIDE colours the line the bystanders see
+                // (Attacker_Add, CCharAttacker.cpp:68); the victim's line keeps its hue.
                 var emoteOthers = new PacketSpeechUnicodeOut(
-                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
+                    _character.Uid.Value, _character.BodyId, 2,
+                    _character.EmoteColorOverride != 0 ? _character.EmoteColorOverride : emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,
                     emote.AttackerName, emote.OthersText);
                 var emoteVictim = new PacketSpeechUnicodeOut(
                     _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, PacketSpeechUnicodeOut.SystemLanguage,

@@ -184,6 +184,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Objects.Characters.Character.ResolveClientVersionText = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveClientLastEventTick = null;
+        SphereNet.Game.Objects.Characters.Character.SendKrToolbarStatus = null;
+        SphereNet.Game.Party.PartyDef.FunctionExists = null;
         SphereNet.Game.Definitions.CharDefHelper.AfterApplyDefName = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;
@@ -344,6 +347,12 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
              SphereNet.Scripting.Definitions.ValueCurve.Empty];
         SphereNet.Scripting.Expressions.ExpressionParser.ObsceneChecker = null;
         SphereNet.Scripting.Expressions.ExpressionParser.WebListIndex = 0;
+        SphereNet.Scripting.Expressions.ExpressionParser.BCryptHasher = null;
+        SphereNet.Scripting.Expressions.ExpressionParser.BCryptValidator = null;
+        SphereNet.Scripting.Expressions.ExpressionParser.FileCommandsEnabled = null;
+        SphereNet.Scripting.Expressions.ExpressionParser.SystemProcessDiagnostic = null;
+        SphereNet.Scripting.Expressions.ExpressionParser.SystemProcessLauncher =
+            SphereNet.Scripting.Expressions.ExpressionParser.DefaultSystemProcessLauncher;
         SphereNet.Core.Configuration.AccountNameValidator.ObsceneChecker = null;
         SphereNet.Game.Magic.SpellDef.RuneWordResolver = null;
         SphereNet.Game.Objects.ObjBase.DiagnosticLog = null;

@@ -129,9 +129,12 @@ These are **not** in-game `.` commands. They are handled by `AdminCommandProcess
 | `BROADCAST` | `<message>` | Message all players. |
 | `WHO` | — | Online connection count. |
 | `LOG` | `<message>` | Write a line to the server log. |
-| `RESPAWN` | — | Respawn all NPCs. |
+| `RESPAWN` | — | Top every spawner up to its maximum; nothing is deleted. |
+| `RESPAWN FULL` | — | Delete every spawner's children, refill each spawner fresh, then sweep spawned creatures and items whose spawner no longer exists. Runs in ~25 ms slices per tick; the log reports `[respawn_full] reset N spawners, swept M orphaned spawn children`. In game: `.serv.respawn full`. |
 | `RESTOCK` | — | Restock all vendors. |
-| `GARBAGE` | — | Force garbage collection. |
+| `GARBAGE` | — | World integrity sweep (Source-X FixWeirdness), deletion of objects created but never placed, then a .NET GC. Refused while a save is running. |
+| `SAVESTATICS` | `[file]` | Write every `ATTR_STATIC` item to the statics file (default `spherestatics.scp`). |
+| `EXPORT` / `IMPORT` / `RESTORE` / `LOAD` | see Source-X `SERV.*` | World-ops verbs. Any line the console does not know is tried as one of these server verbs, as Source-X runs a console line as a server verb. |
 | `BLOCKIP` / `UNBLOCKIP` / `LISTBLOCKED` | `<ip>` | Manage blocked IP addresses. |
 | `QUIT` / `EXIT` | — | Close the Telnet session. |
 | `ACCOUNT` | — | List all accounts. |

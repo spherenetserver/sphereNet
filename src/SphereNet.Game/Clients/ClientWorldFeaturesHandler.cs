@@ -2298,6 +2298,9 @@ public sealed class ClientWorldFeaturesHandler
 
         // Source-X _SetTimeoutS(20): an opened door swings shut on its own.
         door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + 20_000);
+        Character.Diagnostic?.Invoke(
+            $"[door] 0x{door.Uid.Value:X} {(isOpen ? "closed" : "opened")} by 0x{_character.Uid.Value:X} " +
+            $"'{_character.Name}' -> {door.Position} art 0x{door.DispIdFull:X}");
 
         // Play door sound and broadcast updated item to nearby clients
         // The pair was hard-coded here, so DOOROPENSOUND/DOORCLOSESOUND were read by
@@ -3084,6 +3087,25 @@ public sealed class ClientWorldFeaturesHandler
     /// Handle party sub-commands (0xBF sub 0x0006).
     /// Sub-types: 1=Add, 2=Remove, 3=PrivateMsg, 4=PublicMsg, 6=SetLoot, 8=Accept, 9=Decline.
     /// </summary>
+    /// <summary>CPartyDef::MessageEvent's SPEECHFILTER step (CParty.cpp:252): the
+    /// party's filter function runs with ARGN1 = sender uid, ARGN2 = recipient uid
+    /// (0 for the whole party) and ARGS = the text, under the server as SRC; RETURN 1
+    /// drops the message. True = dropped.</summary>
+    internal bool PartySpeechFiltered(PartyDef party, uint dstUid, string text)
+    {
+        var runner = _triggerDispatcher?.Runner;
+        if (_character == null || string.IsNullOrEmpty(party.SpeechFilter) || runner == null)
+            return false;
+        var args = new ExecTriggerArgs
+        {
+            Number1 = _character.Uid.Value,
+            Number2 = dstUid,
+            ArgString = text,
+        };
+        return runner.TryRunFunction(party.SpeechFilter, _character, null, args, out var result) &&
+               result == TriggerResult.True;
+    }
+
     private void HandlePartyCommand(byte[] data)
     {
         if (_character == null || _partyManager == null) return;
@@ -3235,6 +3257,8 @@ public sealed class ClientWorldFeaturesHandler
                             SysMessage(ServerMessages.Get("party_join_failed"));
                             break;
                         }
+                        if (PartySpeechFiltered(party, pmTargetUid, pmMsg))
+                            break;
                         SendToChar?.Invoke(targetUid,
                             new PacketPartyMessage(_character.Uid.Value, pmMsg, isPrivate: true));
                         SysMessage(ServerMessages.GetFormatted("party_msg", $"{pmTargetUid:X}", pmMsg));
@@ -3248,7 +3272,7 @@ public sealed class ClientWorldFeaturesHandler
                     string msg = System.Text.Encoding.BigEndianUnicode.GetString(data, 1, data.Length - 1).TrimEnd('\0');
                     if (string.IsNullOrWhiteSpace(msg)) break;
                     var party = _partyManager.FindParty(_character.Uid);
-                    if (party != null)
+                    if (party != null && !PartySpeechFiltered(party, 0, msg))
                     {
                         var chatPacket = new PacketPartyMessage(_character.Uid.Value, msg);
                         foreach (var memberUid in party.Members)

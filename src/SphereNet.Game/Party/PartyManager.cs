@@ -22,6 +22,31 @@ public sealed class PartyDef
     public int MemberCount => _members.Count;
     public bool IsFull => _members.Count >= MaxPartySize;
 
+    /// <summary>SPEECHFILTER (CPartyDef::m_pSpeechFunction, CParty.cpp:588): the
+    /// [FUNCTION] every party message is run through before it is sent; empty = none.
+    /// RETURN 1 from it drops the message (MessageEvent, CParty.cpp:252).</summary>
+    public string SpeechFilter { get; private set; } = "";
+
+    /// <summary>Whether a [FUNCTION] of that name is loaded. Wired to the script
+    /// resources in Program.cs; null in a headless world, where no function exists.</summary>
+    public static Func<string, bool>? FunctionExists { get; set; }
+
+    /// <summary>Set or clear the speech filter. An empty argument clears it; a name
+    /// that is no loaded [FUNCTION] is refused and the old filter kept.</summary>
+    public bool SetSpeechFilter(string? functionName)
+    {
+        string name = (functionName ?? "").Trim();
+        if (name.Length == 0)
+        {
+            SpeechFilter = "";
+            return true;
+        }
+        if (FunctionExists?.Invoke(name) != true)
+            return false;
+        SpeechFilter = name;
+        return true;
+    }
+
     /// <summary>Create a new party with the given master.</summary>
     public PartyDef(Serial master)
     {

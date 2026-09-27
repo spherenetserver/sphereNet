@@ -956,6 +956,7 @@ public sealed partial class GameClient
 
         _netState.Send(new PacketLoginComplete());
         SendSpeedMode();
+        SendKrToolbar(_character.KrToolbarStatus); // addPlayerStart, CClientMsg.cpp:1511
         _spellEngine?.ResendBuffs(_character);
         // Source-X CClient::addPlayerStart (CClientMsg.cpp:1514): with CHATF_GLOBALCHAT
         // on, connect to global chat and toggle the status straight to online.
@@ -1447,6 +1448,15 @@ public sealed partial class GameClient
 
         if (entries.Count > 0)
             EquipNewbieItems(ch, entries);
+    }
+
+    /// <summary>CClient::addKRToolbar (CClientMsg.cpp:2735): PacketToggleHotbar 0xEA
+    /// with a 16-bit on/off, sent to a Kingdom Reborn client only.</summary>
+    public void SendKrToolbar(bool enable)
+    {
+        if (!_netState.IsKingdomRebornClient)
+            return;
+        _netState.SendRaw([0xEA, 0x00, (byte)(enable ? 1 : 0)]);
     }
 
     // ==================== Movement ====================

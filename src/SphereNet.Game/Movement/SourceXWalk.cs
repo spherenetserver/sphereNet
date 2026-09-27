@@ -379,7 +379,7 @@ internal sealed class SourceXWalk
     /// <summary>CChar::GetCanMoveFlags (CCharStatus.cpp:733).</summary>
     internal static uint GetCanMoveFlags(Character ch)
     {
-        if (ch.PrivLevel >= PrivLevel.GM || ch.AllMove)
+        if (ch.IsGmMode || ch.AllMove)
             return Everything;
         uint can = (uint)CharDefHelper.GetCanFlags(ch);
         if (ch.IsDead)
@@ -558,7 +558,7 @@ internal sealed class SourceXWalk
         }
 
         if (ch.IsMounted && height + z >= block.Top.Z && WalkCheck.MountHeight &&
-            ch.PrivLevel < PrivLevel.GM && !ch.AllMove)
+            !ch.IsGmMode && !ch.AllMove)
         {
             reason = "mount_ceiling";
             return false;

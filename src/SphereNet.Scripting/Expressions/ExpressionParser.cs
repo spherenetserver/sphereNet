@@ -1451,8 +1451,12 @@ public sealed partial class ExpressionParser
             return ResourceTypeIndexResolver(ResolveAngleBrackets(varExpr[(sp + 1)..].Trim()), wantIndex);
         }
 
+        // RESDEF/RESDEF0, BCRYPTHASH/BCRYPTVALIDATE, SYSCMD/SYSSPAWN.
+        if (TryResolveSystemFunction(varExpr, out string systemFnResult))
+            return systemFnResult;
+
         // MD5HASH — compute MD5 hash of string
-        if (varExpr.StartsWith("MD5HASH ", StringComparison.OrdinalIgnoreCase) ||
+        if (varExpr.StartsWith("MD5HASH ",StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("MD5HASH(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("MD5HASH(", StringComparison.OrdinalIgnoreCase)

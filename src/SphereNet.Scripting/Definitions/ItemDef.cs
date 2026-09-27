@@ -187,6 +187,16 @@ public sealed class ItemDef : BaseDef
             // Source-X CCPropsItemEquippable SLAYER_GROUP/SLAYER_SPECIES (the
             // Slayer system's item side) — stored as def-tags; the combat
             // engine reads them with an instance-tag-first fallback.
+            // IBC_ALTERITEM (CItemBase.cpp:1422): a plain SetDefStr on the definition,
+            // quotes dropped, an empty value removing it. Nothing in the engine
+            // reads it; scripts read it back through the item (GetDefStr).
+            case "ALTERITEM":
+            {
+                string alter = Parsing.ScriptKey.StripQuotePair(value.Trim());
+                if (alter.Length == 0) TagDefs.Remove("ALTERITEM");
+                else TagDefs.Set("ALTERITEM", alter);
+                break;
+            }
             case "SLAYER_GROUP":
             case "SLAYER_SPECIES":
                 TagDefs.Set(key, value.Trim());

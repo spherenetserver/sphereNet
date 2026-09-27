@@ -31,6 +31,7 @@ public sealed class TriggerRunner
         _logger = logger;
         _interpreter.Expressions.ResourceValueResolver = resources.ResolveResourceValue;
         _interpreter.Expressions.ResourceTypeIndexResolver = resources.ResolveResourceTypeOrIndex;
+        _interpreter.Expressions.ResourceDefResolver = resources.ResolveResourceDefUid;
     }
 
     /// <summary>Underlying interpreter — exposed so callers can swap in

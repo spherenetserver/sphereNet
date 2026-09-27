@@ -169,6 +169,12 @@ public partial class Character : ObjBase
     /// <summary>Resolve ship multi UIDs owned by a character. Wired by the
     /// server against ShipEngine for SHIPS and SHIP.N script tokens.</summary>
     public static Func<Serial, IReadOnlyList<Serial>>? ResolveShipUidsByOwner;
+    /// <summary>When the character's client last sent anything (Environment.TickCount64),
+    /// 0 when no client is attached. Backs LASTEVENT; wired in Program.cs.</summary>
+    public static Func<Character, long>? ResolveClientLastEventTick;
+    /// <summary>Send the KR toolbar toggle (0xEA) to the character's client when it is
+    /// a Kingdom Reborn one (CClient::addKRToolbar). Wired in Program.cs.</summary>
+    public static Action<Character, bool>? SendKrToolbarStatus;
 
     // Static delegate used by script verbs that need to emit a packet
     // directly to the owning client (ADDBUFF / REMOVEBUFF / SYSMESSAGELOC
@@ -551,6 +557,12 @@ public partial class Character : ObjBase
     // Source-X SPEECHCOLOROVERRIDE semantics: 0 = no override, speech goes out
     // with HUE_TEXT_DEF (0x03B2). A non-zero value colors this char's speech.
     private ushort _speechColor;
+    // Source-X m_EmoteHueOverride (EMOTECOLOROVERRIDE): 0 = none; else the hue this
+    // character's emotes go out in.
+    private ushort _emoteColorOverride;
+    // CCharPlayer m_fKrToolbarEnabled / m_fRefuseGlobalChatRequests.
+    private bool _krToolbarStatus;
+    private bool _refuseGlobalChatRequests;
 
     // Followers
     private byte _maxFollower = 5;
@@ -1112,6 +1124,9 @@ public partial class Character : ObjBase
     /// <summary>GM mode switched OFF by the GM toggle (runtime only; the GM mode of
     /// a GM-level character is on by default).</summary>
     private bool _gmModeOff;
+
+    /// <summary>IsPriv(PRIV_GM): a GM-level character with GM mode switched on.</summary>
+    public bool IsGmMode => PrivLevel >= PrivLevel.GM && !_gmModeOff;
 
     /// <summary>CAccount::TogPrivFlags (CAccount.cpp:745): no argument flips the
     /// flag, an argument is evaluated and non-zero sets it.</summary>
@@ -1849,6 +1864,9 @@ public partial class Character : ObjBase
     public Point3D Home { get => _home; set => _home = value; }
     public short ActPri { get => _actPri; set => _actPri = value; }
     public ushort SpeechColor { get => _speechColor; set => _speechColor = value; }
+    public ushort EmoteColorOverride { get => _emoteColorOverride; set => _emoteColorOverride = value; }
+    public bool KrToolbarStatus { get => _krToolbarStatus; set => _krToolbarStatus = value; }
+    public bool RefuseGlobalChatRequests { get => _refuseGlobalChatRequests; set => _refuseGlobalChatRequests = value; }
 
     // Followers
     public byte MaxFollower { get => _maxFollower; set => _maxFollower = value; }
@@ -3627,6 +3645,7 @@ public partial class Character : ObjBase
 
         // EVENTS is behaviour, not decoration: a copy without them stops reacting.
         copy.OName = OName;   // m_BaseDefs.Copy (CObjBase.cpp:3680)
+        copy.CopyRecipeDefsFrom(this);
         copy.Events.Clear();
         copy.Events.AddRange(Events);
 
@@ -4435,6 +4454,50 @@ public partial class Character : ObjBase
             return true;
         }
 
+        // GETHOUSEPOS <uid> / GETSHIPPOS <uid> (CCharPlayer.cpp:309/:328): the slot the
+        // multi holds in my list - the same list HOUSE.n / SHIP.n index - or -1.
+        if (upper.StartsWith("GETHOUSEPOS", StringComparison.Ordinal) ||
+            upper.StartsWith("GETSHIPPOS", StringComparison.Ordinal))
+        {
+            bool house = upper[3] == 'H';
+            int headLen = house ? "GETHOUSEPOS".Length : "GETSHIPPOS".Length;
+            if (upper.Length == headLen || !char.IsLetterOrDigit(upper[headLen]))
+            {
+                if (!_isPlayer)
+                {
+                    value = "0"; // a player key asked of an NPC (CCharNPC.cpp:206)
+                    return true;
+                }
+                long multiUid = EvalScriptLong(key[headLen..].TrimStart('.', ' ', '\t'));
+                var owned = (house ? ResolveHouseUidsByOwner : ResolveShipUidsByOwner)?.Invoke(Uid) ?? [];
+                int pos = -1;
+                for (int i = 0; i < owned.Count; i++)
+                {
+                    if (owned[i].Value == unchecked((uint)multiUid)) { pos = i; break; }
+                }
+                value = pos.ToString();
+                return true;
+            }
+        }
+
+        // DAMADJUSTED[.LO|.HI] (CChar.cpp:3093): Fight_CalcDamage(weapon, fNoRandom)
+        // - the swing's damage range with the stat/skill bonus applied, no roll.
+        if (upper.StartsWith("DAMADJUSTED", StringComparison.Ordinal) &&
+            (upper.Length == 11 || upper[11] == '.'))
+        {
+            var (dmgLo, dmgHi) = CombatEngine.CalcWeaponDamage(this, FightWeapon(), CombatDamageEra);
+            string sub = upper.Length > 12 ? upper[12..].Trim() : "";
+            if (upper.Length == 11)
+                value = $"{dmgLo},{dmgHi}";
+            else if (sub.StartsWith("LO", StringComparison.Ordinal))
+                value = dmgLo.ToString();
+            else if (sub.StartsWith("HI", StringComparison.Ordinal))
+                value = dmgHi.ToString();
+            else
+                value = "";
+            return true;
+        }
+
         // <FindLayer(N)> → UID of item equipped on layer N, or 0.
         // <FindLayer(N).property> → property on that item.
         if (upper.StartsWith("FINDLAYER(", StringComparison.Ordinal))
@@ -4843,6 +4906,53 @@ public partial class Character : ObjBase
                 value = (ResolveShipUidsByOwner?.Invoke(Uid).Count ?? 0).ToString();
                 return true;
             }
+            // The weight my owned multis carry against the house/ship limit
+            // (CCharPlayer.cpp:303/:320, CMultiStorage _iHousesTotal/_iShipsTotal): each
+            // owned multi adds its definition's MULTICOUNT, 1 when the def names none
+            // (CItemBase.cpp:1905). Summed live from the same owned list HOUSES reads.
+            case "HOUSEMULTICOUNT":
+            case "SHIPMULTICOUNT":
+                value = !_isPlayer ? "0"
+                    : SumMultiCount(upper == "HOUSEMULTICOUNT" ? ResolveHouseUidsByOwner : ResolveShipUidsByOwner).ToString();
+                return true;
+            // Read-only reach (CChar.cpp:2597): Fight_CalcRange = the larger of my own
+            // RANGEH (the chardef's) and the weapon's, which is 1 when it names none.
+            case "FIGHTRANGE":
+                value = FightCalcRange().ToString();
+                return true;
+            case "EMOTECOLOROVERRIDE": value = _emoteColorOverride.ToString(); return true;
+            case "KRTOOLBARSTATUS": value = _isPlayer && _krToolbarStatus ? "1" : "0"; return true;
+            case "REFUSEGLOBALCHATREQUESTS": value = _isPlayer && _refuseGlobalChatRequests ? "1" : "0"; return true;
+            // CC_LASTEVENT (CClient.cpp:710): the world time the client last sent
+            // anything, on the SERV.TIMEHIRES clock like LASTEVENTWALK.
+            case "LASTEVENT":
+            {
+                long lastRecv = ResolveClientLastEventTick?.Invoke(this) ?? 0;
+                if (lastRecv <= 0)
+                {
+                    value = "0";
+                    return true;
+                }
+                long clock = ResolveWorld?.Invoke()?.GameClockMs ?? 0;
+                value = Math.Max(0, clock - Math.Max(0, Environment.TickCount64 - lastRecv)).ToString();
+                return true;
+            }
+            // CNC_NEEDNAME (CCharNPC.cpp:181): the singular name of what NEED asks for.
+            case "NEEDNAME":
+                value = _isPlayer ? "0" : NeedNameSingle();
+                return true;
+            // CNC_VENDCAP / CNC_VENDGOLD (CCharNPC.cpp:191/:198): the bank box's restock
+            // ceiling (m_Check_Restock) and the vendor purse (m_Check_Amount).
+            case "VENDCAP":
+            {
+                if (_isPlayer) { value = "0"; return true; }
+                var bank = GetBankSafe();
+                value = bank != null ? ((int)bank.More2).ToString() : "";
+                return true;
+            }
+            case "VENDGOLD":
+                value = _isPlayer ? "0" : SphereNet.Game.Trade.VendorEngine.GetVendorGold(this).ToString();
+                return true;
             // The tags hold the area a region crossing is leaving until its @Exit and
             // @Enter have run. They are only written by a crossing, so a character
             // placed straight into an area - login, world load, a spawn - had none,
@@ -5145,6 +5255,17 @@ public partial class Character : ObjBase
                 value = CombatState.Attackers.Count.ToString();
                 return true;
             }
+        }
+
+        // CANSEELOSFLAG <flags>[,<uid>|<x,y[,z[,m]]>] (OC_CANSEELOSFLAG,
+        // CObjBase.cpp:1109-1150): CANSEELOS with LOS flags up front. A target of two
+        // or more coordinates is a point (GetRegionPoint needs at least x,y), a single
+        // number a UID; the ray runs from this character, bounded by its view range.
+        if (upper.StartsWith("CANSEELOSFLAG", StringComparison.Ordinal) &&
+            (upper.Length == 13 || !char.IsLetterOrDigit(upper[13])))
+        {
+            value = CanSeeLosFlagRead(key[13..].TrimStart('.', ' ', '\t'));
+            return true;
         }
 
         // CANSEELOS / CANSEE — accept either a '.' or whitespace before the uid
@@ -5834,6 +5955,57 @@ public partial class Character : ObjBase
         return base.TryGetProperty(key, out value);
     }
 
+    /// <summary>Source-X LOS_FISHING (CChar.h:436), the one CANSEELOSFLAG bit the LOS
+    /// walk models; the others have no effect here.</summary>
+    private const int LosFlagFishingBit = 0x0800;
+
+    /// <summary>OC_CANSEELOSFLAG body: "flags[,target]". Exp_GetWVal takes the flags,
+    /// SKIP_ARGSEP one separator, and what is left is the target. Without a target
+    /// upstream measures from the script's SRC to this object; a property read here
+    /// carries no source, so that form answers 0 like the plain CANSEELOS read.</summary>
+    private string CanSeeLosFlagRead(string args)
+    {
+        int flags = 0;
+        string rest = args.Trim();
+        if (rest.Length > 0)
+        {
+            int sep = rest.IndexOfAny([',', ' ', '\t']);
+            string flagText = sep >= 0 ? rest[..sep] : rest;
+            if (ScriptNumber.TryParseArgument(flagText, out long f))
+                flags = (ushort)f;
+            rest = sep >= 0 ? rest[(sep + 1)..].Trim() : "";
+        }
+        if (rest.Length == 0)
+            return "0";
+
+        var world = ResolveWorld?.Invoke();
+        if (world == null)
+            return "0";
+
+        Point3D target;
+        if (Point3D.SplitComponents(rest).Length >= 2 && Point3D.TryParse(rest, out var pt))
+        {
+            target = pt;
+        }
+        else
+        {
+            var obj = world.FindObject(ParseSerial(rest));
+            if (obj == null)
+                return "0";
+            target = obj.GetTopLevelPosition();
+        }
+
+        if (target.Map != Position.Map)
+            return "0";
+        int range = _visualRange > 0 ? _visualRange : 18;
+        if (Position.GetDistanceTo(target) > range)
+            return "0";
+        bool los = (flags & LosFlagFishingBit) != 0
+            ? world.CanSeeLOS(Position, target, LosFlags.Fishing)
+            : world.CanSeeLOS(Position, target);
+        return los ? "1" : "0";
+    }
+
     /// <summary>The FAME.x / KARMA.x band test (CChar.cpp:2614-2651 / 2710-2747). The
     /// table's first line is the comma list of band floors, each following line names
     /// one band; walking from the highest floor down, the first floor the value reaches
@@ -6039,6 +6211,86 @@ public partial class Character : ObjBase
         if (val.StartsWith('0') && val.Length > 1 && !val.Contains('.'))
             return ushort.TryParse(val.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out result);
         return ushort.TryParse(val, out result);
+    }
+
+    /// <summary>The sum of MULTICOUNT over the multis I own (CMultiStorage
+    /// _iHousesTotal / _iShipsTotal): each multi weighs what its definition names,
+    /// 1 when it names nothing (CItemBase.cpp:1905), 0 not counting at all.</summary>
+    private int SumMultiCount(Func<Serial, IReadOnlyList<Serial>>? resolver)
+    {
+        var owned = resolver?.Invoke(Uid);
+        if (owned == null || owned.Count == 0)
+            return 0;
+        var world = ResolveWorld?.Invoke();
+        int total = 0;
+        foreach (var uid in owned)
+        {
+            var multi = world?.FindItem(uid);
+            var def = multi == null ? null
+                : DefinitionLoader.GetMultiItemDef(multi.BaseId) ?? DefinitionLoader.GetItemDef(multi.BaseId);
+            string? raw = def?.TagDefs.Get("MULTICOUNT");
+            total += string.IsNullOrWhiteSpace(raw) ? 1 : (byte)EvalScriptLong(raw);
+        }
+        return (short)total; // Format16Val of an int16 running total
+    }
+
+    /// <summary>The weapon I fight with (m_uidWeapon): a weapon-typed item in either
+    /// hand (LayerAdd sets it only for IsTypeWeapon, CCharAct.cpp:310), else none.</summary>
+    private Item? FightWeapon()
+    {
+        var one = GetEquippedItem(Layer.OneHanded);
+        if (one != null && IsTypeWeapon(one.ItemType))
+            return one;
+        var two = GetEquippedItem(Layer.TwoHanded);
+        return two != null && IsTypeWeapon(two.ItemType) ? two : null;
+    }
+
+    /// <summary>Fight_CalcRange (CCharFight.cpp:1646): max(my RANGEH, the weapon's
+    /// RANGEH). My own is the CHARDEF's (GetRangeH, :1120); a weapon naming no RANGE
+    /// reaches 1 (CCPropsItemWeapon.cpp:84), and bare hands add nothing.</summary>
+    internal int FightCalcRange()
+    {
+        int charRange = DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex)?.RangeMax ?? 0;
+        var weapon = FightWeapon();
+        int weaponRange = 0;
+        if (weapon != null)
+        {
+            int defHi = DefinitionLoader.GetItemDef(weapon.BaseId)?.RangeMax ?? 0;
+            weaponRange = Math.Max(1, defHi);
+        }
+        return Math.Max(charRange, weaponRange);
+    }
+
+    /// <summary>CResourceQty::WriteNameSingle over NEED (CResourceQty.cpp:35): an
+    /// item's singular name, any other resource's own name, -1 when NEED names
+    /// nothing resolvable (the rid left at UID_UNUSED).</summary>
+    private string NeedNameSingle()
+    {
+        if (!TryGetTag("NEED", out string? need) || string.IsNullOrWhiteSpace(need))
+            return "-1";
+        // CResourceQty::Load: "Qty Name" or "Name Qty"; the name starts at the first
+        // alphabetic token.
+        string name = "";
+        foreach (string tok in need.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (char.IsLetter(tok[0]) || tok[0] == '_')
+            {
+                name = tok;
+                break;
+            }
+        }
+        if (name.Length == 0)
+            return "-1";
+        var resources = DefinitionLoader.StaticResources;
+        if (resources == null)
+            return name;
+        var rid = resources.ResolveDefName(name);
+        if (!rid.IsValid)
+            return "-1";
+        if (rid.Type == ResType.ItemDef &&
+            DefinitionLoader.GetItemDef(rid.Index) is { } itemDef && !string.IsNullOrEmpty(itemDef.Name))
+            return SphereNet.Scripting.Definitions.ItemDef.Pluralize(itemDef.Name, false);
+        return name;
     }
 
     private static bool TryResolveOwnedObjectToken(string upperKey, string prefix, Serial ownerUid,
@@ -6359,6 +6611,65 @@ public partial class Character : ObjBase
                 if (TryParseSpellTypeValue(normalized, out var spell))
                     NpcSpellAdd(spell);
                 return true;
+            // --- CCharNPC keys (CCharNPC.cpp:98-129). A player swallows them unset
+            // (CCharPlayer::r_LoadVal's default, CCharPlayer.cpp:521). ---
+            // SPELLADD=<spell>[,<spell>...]: every listed spell into the NPC's book;
+            // an empty list is refused.
+            case "SPELLADD":
+            {
+                var spells = value.Split(['=', ',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+                if (spells.Length == 0)
+                    return false;
+                if (_isPlayer)
+                    return true;
+                foreach (string sp in spells)
+                {
+                    if (TryParseSpellTypeValue(sp, out var addSpell))
+                        NpcSpellAdd(addSpell);
+                    else if (ScriptNumber.TryParseArgument(sp, out long spellNum) &&
+                             spellNum > 0 && spellNum <= ushort.MaxValue &&
+                             Enum.IsDefined((SpellType)(ushort)spellNum))
+                        NpcSpellAdd((SpellType)(ushort)spellNum);
+                }
+                return true;
+            }
+            // NEEDNAME loads the same resource NEED does.
+            case "NEEDNAME":
+                if (!_isPlayer)
+                    SetTag("NEED", value);
+                return true;
+            case "VENDCAP":
+            {
+                if (_isPlayer) return true;
+                var capBank = GetBankSafe();
+                if (capBank != null)
+                    capBank.More2 = unchecked((uint)(int)EvalScriptLong(normalized));
+                return true;
+            }
+            case "VENDGOLD":
+                if (!_isPlayer)
+                    SphereNet.Game.Trade.VendorEngine.SetVendorGold(this, (int)EvalScriptLong(normalized));
+                return true;
+            // --- CCharPlayer keys (CCharPlayer.cpp:462/:482). An NPC has no player
+            // part and answers them 0; the value is still taken here because a legacy
+            // save only marks a character as a player after its keys have loaded. ---
+            case "KRTOOLBARSTATUS":
+                _krToolbarStatus = EvalScriptLong(normalized) != 0;
+                if (_isPlayer)
+                    SendKrToolbarStatus?.Invoke(this, _krToolbarStatus);
+                return true;
+            case "REFUSEGLOBALCHATREQUESTS":
+                _refuseGlobalChatRequests = EvalScriptLong(normalized) != 0;
+                return true;
+            case "EMOTECOLOROVERRIDE": // CChar.cpp:3890, GetArgWVal
+                _emoteColorOverride = unchecked((ushort)EvalScriptLong(normalized));
+                return true;
+            // Read-only upstream: no r_LoadVal case answers them.
+            case "FIGHTRANGE":
+            case "HOUSEMULTICOUNT":
+            case "SHIPMULTICOUNT":
+            case "LASTEVENT":
+                return false;
             case "SKILLCLASS":
                 if (string.IsNullOrWhiteSpace(normalized))
                     _skillClass = 0;
@@ -8745,6 +9056,9 @@ public partial class Character : ObjBase
             case "TAGCOUNT":
                 value = party?.TagCount.ToString() ?? "0";
                 return true;
+            case "SPEECHFILTER": // CParty.cpp:674
+                value = party?.SpeechFilter ?? "";
+                return true;
         }
 
         // PARTY.MASTER.<sub> — forward to the party master as a reference
@@ -8848,6 +9162,8 @@ public partial class Character : ObjBase
             case "LOOT":
                 party.SetLootFlag(Uid, value != "0" && !string.IsNullOrEmpty(value));
                 return true;
+            case "SPEECHFILTER": // CParty.cpp:588
+                return party.SetSpeechFilter(value);
             case "MASTER":
                 if (uint.TryParse(value.TrimStart('0').TrimStart('x', 'X'),
                     System.Globalization.NumberStyles.HexNumber, null, out uint masterUid))

@@ -15,7 +15,7 @@ namespace SphereNet.Game.Objects;
 /// Base class for all world objects (items and characters).
 /// Maps directly to CObjBase in Source-X.
 /// </summary>
-public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
+public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
 {
     public IReadOnlyList<IScriptObj> QueryScriptObjects(string query, string args, ITriggerArgs? triggerArgs) =>
         ResolveWorld?.Invoke() is { } world
@@ -788,6 +788,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             value = OName;
             return true;
         }
+        if (TryGetObjectBaseDefKey(key, key.ToUpperInvariant(), out value))
+            return true;
         value = "";
         if (TryGetTimerFProperty(key.ToUpperInvariant(), out value))
             return true;
@@ -2148,6 +2150,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             OName = SphereNet.Scripting.Parsing.ScriptKey.StripQuotePair(value.Trim());
             return true;
         }
+        if (TrySetObjectBaseDefKey(key.ToUpperInvariant(), value))
+            return true;
         if (key.Equals("CANMASK", StringComparison.OrdinalIgnoreCase))
         {
             if (ScriptNumber.TryParseToken(value.Trim(), out long mask))

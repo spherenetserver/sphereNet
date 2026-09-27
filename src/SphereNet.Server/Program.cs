@@ -706,6 +706,13 @@ public static partial class Program
 
             // ISOBSCENE intrinsic → [OBSCENE] word list (Source-X g_Cfg.IsObscene)
             SphereNet.Scripting.Expressions.ExpressionParser.ObsceneChecker = _resources.IsObscene;
+            // BCRYPTHASH / BCRYPTVALIDATE (Source-X CBCrypt).
+            SphereNet.Scripting.Expressions.ExpressionParser.BCryptHasher = SphereNet.Network.Encryption.ScriptBCrypt.Hash;
+            SphereNet.Scripting.Expressions.ExpressionParser.BCryptValidator = SphereNet.Network.Encryption.ScriptBCrypt.Validate;
+            // SYSCMD / SYSSPAWN run only while OptionFlags has OF_FileCommands (read live,
+            // so an ini resync that clears the flag closes them again).
+            SphereNet.Scripting.Expressions.ExpressionParser.FileCommandsEnabled = () => _config.HasFileCommands;
+            SphereNet.Scripting.Expressions.ExpressionParser.SystemProcessDiagnostic = msg => _log.LogDebug("[syscmd] {Message}", msg);
             // Source-X CAccount::NameStrip runs the same [OBSCENE] list over a new
             // account name before the account is allowed to exist.
             SphereNet.Core.Configuration.AccountNameValidator.ObsceneChecker = _resources.IsObscene;

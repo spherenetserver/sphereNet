@@ -1569,6 +1569,7 @@ public class Item : ObjBase
         OwnedBy = src.OwnedBy;
         ModAr = src.ModAr;
         OName = src.OName;
+        CopyRecipeDefsFrom(src);
         _dispId = src._dispId;
         _tdata1 = src._tdata1;
         _tdata2 = src._tdata2;
@@ -2105,6 +2106,10 @@ public class Item : ObjBase
             return true;
         }
         if (TryGetBaseDefKey(upper, out value))
+            return true;
+        // RECIPE* / PROPSAT / CLILOC / TEXTF are CObjBase keys, answered before the
+        // ITEMDEF fallback below can hand back a same-named definition tag.
+        if (TryGetObjectBaseDefKey(key, upper, out value))
             return true;
         if (SpellCastingProperties.Contains(upper))
         {
@@ -2783,6 +2788,8 @@ public class Item : ObjBase
                 // the definition does not set them, rather than an unknown key.
                 case "CATEGORY": case "DESCRIPTION": case "SUBSECTION":
                 case "ABILITYPRIMARY": case "ABILITYSECONDARY":
+                // IBC_ALTERITEM (CItemBase.cpp:1091): GetDefStr, "" when unset.
+                case "ALTERITEM":
                     value = def.TagDefs.Get(upper) ?? "";
                     return true;
                 case "EXPANSION": case "VELOCITY": case "NAMELOC":
@@ -2918,6 +2925,8 @@ public class Item : ObjBase
             return true;
         }
         if (TrySetBaseDefKey(upper, value))
+            return true;
+        if (TrySetObjectBaseDefKey(upper, value))
             return true;
         if (SpellCastingProperties.Contains(upper))
         {
@@ -5278,6 +5287,8 @@ public class Item : ObjBase
         // Odd (open) slot → GetDoorShift returns the closing shift.
         World.DoorHelper.MoveDoorLeaf(this, doorDir);
         SetTimeout(0);
+        Characters.Character.Diagnostic?.Invoke(
+            $"[door] 0x{Uid.Value:X} closed by its timer -> {Position} art 0x{DispIdFull:X}");
         EmitScriptSound("0x00F1");
         MarkDirty((DirtyFlag)0xFFFFFFFF);
         OnVisualUpdate?.Invoke(this);
@@ -6046,6 +6057,24 @@ public class Item : ObjBase
             return true;
         }
         return false;
+    }
+
+    /// <summary>The item's own base defs for PROPSAT / PROPSCOUNT: the object-level
+    /// ones plus OWNEDBY (IC_OWNEDBY, SetDefStr) and the SetDefStr / SetDefNum keys
+    /// this item carries (they are stored as same-named tags here).</summary>
+    protected override void CollectBaseDefs(List<KeyValuePair<string, string>> sink)
+    {
+        base.CollectBaseDefs(sink);
+        if (OwnedBy.Length > 0)
+            sink.Add(new("OWNEDBY", OwnedBy));
+        foreach (var (k, v) in Tags.GetAll())
+        {
+            string upper = k.ToUpperInvariant();
+            if (BaseDefStringKeys.Contains(upper) || InstanceStringKeys.Contains(upper))
+                sink.Add(new(upper, v ?? ""));
+            else if (BaseDefNumberKeys.Contains(upper))
+                sink.Add(new(upper, FormatDefHex(ParseBaseDefNumber(v))));
+        }
     }
 
     /// <summary>One CAN_I_* bit of the definition, or the legacy boolean that

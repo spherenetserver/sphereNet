@@ -178,6 +178,31 @@ Rather than resending visible objects in full each tick, every object carries a
 are sent. View computation (`BuildViewDelta`) runs in the parallel phase; the
 packet I/O (`ApplyViewDelta`) runs in the serial phase, keeping it multicore-safe.
 
+The client drops a ground object on its own the moment it is farther than its
+view range, and tells the server nothing. Because the delta runs once a tick, a
+step out of range and straight back inside one tick would leave an object known
+here and gone there. So every accepted step also forgets the known objects it put
+out of range (`ClientViewUpdater.ForgetBeyondRange`); the next delta finds them
+new again once they are back in view - the same result Source-X gets by deciding
+per step from the point the step left (`addPlayerSee(ptOld)`). Multis are exempt:
+the client drops them by footprint, not by centre.
+
+## Walking: height rule
+
+A step - player or NPC - is decided by a port of Source-X's walk rule
+(`Movement/SourceXWalk.cs`: `CheckValidMove` -> `CanStandAt` over
+`GetHeightPoint` and the blocking state's `CheckTile_Item` /
+`CheckTile_Terrain`). An item is stepped onto when its base is within
+`z + climb + 3` (half its height more for stairs), terrain within
+`z + climb + height`, and a step may drop any distance: the highest surface in
+reach is the floor. A tile's walk flags and height come from its art's `ITEMDEF`
+(`CAN=` replaces the tiledata flags, `HEIGHT=`); a `DUPEITEM` art uses its own
+tiledata; an art with no `ITEMDEF` takes every tiledata flag and no height. NPC
+route searches, NPC steps and the standing-surface resolver (login, mount,
+teleport, GM walk) all use the same rule, so a walked Z and a seated Z cannot
+disagree. The cave void land tiles (`0x1AE`-`0x1B5`, `0x1DB`) are the one
+deliberate departure: they are no floor, as the client treats them.
+
 ---
 
 ## Scheduling: the NPC timer wheel
@@ -264,6 +289,11 @@ The world saves through `SphereNet.Persistence`:
   `2–16` (parallel hash shards by `UID % N`) for concurrent I/O.
 - **Multi-database** — multiple named MySQL connections, each with its own host,
   threading mode, and timeouts; scripts switch with `db.select <name>`.
+- **Unplaced objects are not saved** — an item created after the world load
+  and never put in a sector or a container (a script's `NEW.P` on a map the
+  server does not run) is deleted before each save and on `GARBAGE`, as Source-X
+  `GarbageCollection_NewObjs` does. Records the save itself held are kept even
+  when they cannot be placed.
 
 Maps are loaded via `MemoryMappedFile`, letting the OS manage page residency
 instead of loading every map fully into RAM.

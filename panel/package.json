@@ -17,7 +17,7 @@
     "axios": "^1.20.0",
     "bootstrap-icons": "^1.13.1",
     "lucide-vue-next": "^0.468.0",
-    "pinia": "^2.3.0",
+    "pinia": "^4.0.3",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },

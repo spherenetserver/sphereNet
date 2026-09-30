@@ -90,6 +90,9 @@ public static partial class Program
             // --- 9. Main Game Loop ---
             _running = true;
             StartFreezeMonitor(_config.FreezeRestartTime);
+            // The loop's short sleeps (TickSleepMode 1 and 3) need a 1 ms timer on
+            // Windows, and a hidden server must not be throttled (see the class).
+            _log.LogInformation("Scheduling: {Result}", HostTimerResolution.Enable());
             var sw = Stopwatch.StartNew();
             int TickIntervalMs = _config.ServerTickMs; // default 100 (10 ticks/s, Source-X MSECS_PER_TICK); ini: ServerTickMs
             const int MaxCatchUpTicksPerLoop = 4;
@@ -317,6 +320,7 @@ public static partial class Program
 
             // --- 10. Shutdown ---
             _log.LogInformation("Shutting down...");
+            HostTimerResolution.Disable();
             try { _systemHooks.DispatchServer("exit", _serverHookContext); }
             catch (Exception ex) { _log.LogError(ex, "Exit hook dispatch failed"); }
 

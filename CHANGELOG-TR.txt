@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-30] - Windows'ta milisaniyelik uyku
+------------------------------------------------------------------------
+DEGISIKLIK - Windows'ta sunucu 1 ms sistem zamanlayicisi ister
+           (timeBeginPeriod) ve guc kisitlamasindan cikar (EcoQoS ve gizli
+           pencere zamanlayici kurali); kapanista birakir. TickSleepMode 1 ve
+           3'un kisa uykulari artik 15,6 ms'lik zamanlayici adimi yerine yaklasik
+           1-2 ms surer, sunucu penceresi kucultulmus ya da gizliyken de.
+           Acilis logu neyin uygulandigini yazar ("Scheduling: ...").
+
 [2026-09-30] - Bellek referanslari, FINDLAYER argumanlari ve kapi cizimi Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - MEMORYFINDTYPE.<bayrak> argumani Source-X gibi degerlendirir:

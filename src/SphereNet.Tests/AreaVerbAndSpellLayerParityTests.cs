@@ -1,6 +1,7 @@
 using System.Linq;
 using Microsoft.Extensions.Logging.Abstractions;
 using SphereNet.Core.Enums;
+using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.Clients;
@@ -237,5 +238,115 @@ public sealed class AreaVerbAndSpellLayerParityTests
         engine.ProcessExpirations(System.Environment.TickCount64 + 10_000_000);
         Assert.DoesNotContain(gm.Memories, m => m.ItemType == ItemType.Spell);
         Assert.True(mem.IsDeleted);
+    }
+
+    private sealed class GmConsole : ITextConsole
+    {
+        public void SysMessage(string text) { }
+        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
+        public string GetName() => "console";
+        public IScriptObj? GetSourceChar() => null;
+    }
+
+    /// <summary>Program.EngineWiring's memory-to-effect bridges.</summary>
+    private static void WireBridges(SpellEngine engine)
+    {
+        Character.SpellMemoryEffectRemover = engine.RemoveEffectByMemory;
+        Character.SpellMemoryEffectRemaining = engine.GetEffectRemainingMsByMemory;
+        Character.SpellMemoryEffectRetimer = engine.TryRetimeEffectByMemory;
+    }
+
+    [Theory]
+    [InlineData("FINDLAYER(32).REMOVE")]
+    [InlineData("FINDLAYER.32.REMOVE")]
+    public void FindLayerRemove_EndsTheSpellEffect_InBothForms(string verb)
+    {
+        Character.MagicFlags = 0;
+        var (w, gm) = CreateWorld();
+        var engine = Engine(w, StatDef(SpellType.Strength));
+        WireBridges(engine);
+        engine.ApplyDirectEffect(gm, gm, SpellType.Strength, 500);
+        var mem = gm.FindLayer(SpellLayers.Stats)!;
+
+        Assert.True(gm.TryGetProperty("FINDLAYER.32", out var dotted));
+        Assert.Equal($"0{mem.Uid.Value:X}", dotted);
+        Assert.True(gm.TryExecuteCommand(verb, "", new GmConsole()));
+
+        Assert.Equal(100, gm.Str);
+        Assert.Null(w.FindObject(mem.Uid));
+    }
+
+    [Fact]
+    public void FindLayerVerb_OnAnEmptyLayer_IsNotASilentSuccess()
+    {
+        var (_, gm) = CreateWorld();
+
+        Assert.False(gm.TryExecuteCommand("FINDLAYER(32).REMOVE", "", new GmConsole()));
+        Assert.False(gm.TryExecuteCommand("FINDLAYER.32.REMOVE", "", new GmConsole()));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TimerOnASpellMemory_RetimesTheEffect_AsPropertyAndAsCommand(bool asCommand)
+    {
+        Character.MagicFlags = 0;
+        var (w, gm) = CreateWorld();
+        var engine = Engine(w, StatDef(SpellType.Strength));
+        WireBridges(engine);
+        engine.ApplyDirectEffect(gm, gm, SpellType.Strength, 500);
+        var mem = gm.FindLayer(SpellLayers.Stats)!;
+
+        if (asCommand) Assert.True(mem.TryExecuteCommand("TIMER", "1", new GmConsole()));
+        else Assert.True(mem.TrySetProperty("TIMER", "1"));
+        engine.ProcessExpirations(System.Environment.TickCount64 + 2_000);
+
+        Assert.Equal(100, gm.Str);
+    }
+
+    [Fact]
+    public void RecastOnAPermanentMemory_OnlyRemovesIt()
+    {
+        Character.MagicFlags = 0;
+        var (w, gm) = CreateWorld();
+        var engine = Engine(w, StatDef(SpellType.Strength), StatDef(SpellType.Agility));
+        WireBridges(engine);
+        engine.ApplyDirectEffect(gm, gm, SpellType.Strength, 500);
+        Assert.True(gm.FindLayer(SpellLayers.Stats)!.TrySetProperty("TIMER", "-1"));
+
+        // Another spell on the same layer switches the permanent one off and
+        // applies nothing of its own (Spell_Effect_Create returns nullptr).
+        engine.ApplyDirectEffect(gm, gm, SpellType.Agility, 500);
+
+        Assert.Equal(100, gm.Str);
+        Assert.Equal(100, gm.Dex);
+        Assert.DoesNotContain(gm.Memories, m => m.ItemType == ItemType.Spell);
+    }
+
+    [Theory]
+    [InlineData(34, true)]
+    [InlineData(41, true)]   // LAYER_SPELL_Summon is the top of the range
+    [InlineData(42, false)]
+    [InlineData(65, false)]
+    public void Dispel_RemovesGenericLayerMemories_OnlyOnTheSpellLayers(int layer, bool removed)
+    {
+        var (w, gm) = CreateWorld();
+        var target = w.CreateCharacter();
+        target.Str = target.Dex = target.Int = 100;
+        w.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
+        var engine = Engine(w,
+            new SpellDef
+            {
+                Id = SpellType.Attunement, Name = "Attunement",
+                Flags = SpellFlag.Bless | SpellFlag.TargChar,
+                Layer = (Layer)layer, DurationBase = 600, EffectBase = 10,
+            },
+            new SpellDef { Id = SpellType.Dispel, Name = "Dispel", Flags = SpellFlag.TargChar });
+        engine.ApplyDirectEffect(gm, target, SpellType.Attunement, 500);
+        Assert.NotNull(target.FindLayer((Layer)layer));
+
+        engine.ApplyDirectEffect(gm, target, SpellType.Dispel, 500);
+
+        Assert.Equal(!removed, target.FindLayer((Layer)layer) != null);
     }
 }

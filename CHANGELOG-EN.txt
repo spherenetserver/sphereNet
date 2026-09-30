@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-30] - Spell memory access paths, permanent effects and Dispel follow Source-X
+------------------------------------------------------------------------
+FIX - FINDLAYER.n, FINDLAYER.n.<verb> and FINDLAYER(n).<verb> resolve spell
+      memories like FINDLAYER(n) (CChar::LayerFind): FINDLAYER.32 reads the
+      memory's UID and .REMOVE ends the effect. A verb on an empty layer
+      fails as an undefined keyword instead of reporting success.
+FIX - TIMER written as a property on a spell memory re-times the effect, the
+      same as the TIMER command (TIMER=-1 makes it permanent).
+FIX - A spell memory with no timer (TIMER=-1, or a spell with no duration)
+      lasts until cast again: a cast on its layer only removes it and applies
+      nothing of its own (Spell_Effect_Create), before the STACKSTATS rule.
+FIX - Dispel removes the effects whose memory sits on layers 32-41, by layer
+      rather than by a fixed spell list, so spells equipped through their
+      LAYER value are dispelled too.
+CHANGE - CI publishes the data-gate report (which data-dependent tests found
+      their data) to the job summary and as an artifact.
+
 [2026-09-30] - Area verbs, spell memory layers, item property tooltips
 ------------------------------------------------------------------------
 FIX - NUKE, NUKECHAR and NUDGE keep their argument from every entry point

@@ -3298,6 +3298,13 @@ public class Item : ObjBase
                 // ground items still rot on their saved schedule.
                 if (long.TryParse(value, out long timerSec))
                 {
+                    // On a spell-effect memory the effect's expiry is the timer: the
+                    // spell engine retires it, not this item's timeout (the TIMER
+                    // command takes the same bridge in ObjBase).
+                    if (ItemType == ItemType.Spell &&
+                        Characters.Character.SpellMemoryEffectRetimer is { } retime &&
+                        retime(this, timerSec < 0 ? -1 : timerSec * 1000))
+                        return true;
                     if (timerSec < 0)
                     {
                         // The off switch turns off the WHOLE clock. Decay is the same

@@ -314,8 +314,15 @@ public sealed class CustomSphereSpellTests
         engine.ProcessExpirations(Environment.TickCount64 + 30L * 60 * 1000);
         Assert.Equal((ushort)0x00E6, caster.BodyId);
 
-        // Re-cast to Stone Form replaces the poly layer (0x2C1), and its
-        // timed duration reverts to the original body.
+        // Reaper Form has no timer, so a cast on its layer (LAYER_SPELL_Polymorph)
+        // only switches it off and applies nothing (Spell_Effect_Create returns
+        // nullptr, CCharSpell.cpp:2065-2071).
+        engine.ApplyDirectEffect(caster, caster, SpellType.StoneForm, 500);
+        Assert.Equal(originalBody, caster.BodyId);
+        Assert.False(caster.IsStatFlag(StatFlag.Polymorph));
+
+        // The next cast takes the free layer (0x2C1), and its timed duration
+        // reverts to the original body.
         engine.ApplyDirectEffect(caster, caster, SpellType.StoneForm, 500);
         Assert.Equal((ushort)0x02C1, caster.BodyId);
         engine.ProcessExpirations(Environment.TickCount64 + 30L * 60 * 1000);

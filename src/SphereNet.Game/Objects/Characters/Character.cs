@@ -2992,6 +2992,9 @@ public partial class Character : ObjBase
     /// <summary>Source-X CChar::LayerFind: the item worn on <paramref name="layer"/>.
     /// Layers past LAYER_DRAGGING hold spell memories, which live in the memory
     /// list rather than the equipment slots, so they are searched there too.</summary>
+    private Item? FindLayerIndex(int layer) =>
+        layer is >= 0 and <= byte.MaxValue ? FindLayer((Layer)layer) : null;
+
     public Item? FindLayer(Layer layer)
     {
         var worn = GetEquippedItem(layer);
@@ -4525,7 +4528,7 @@ public partial class Character : ObjBase
                 string layerStr = upper.Substring(10, closeParen - 10);
                 if (int.TryParse(layerStr, out int layerNum))
                 {
-                    var worn = layerNum is >= 0 and <= byte.MaxValue ? FindLayer((Layer)layerNum) : null;
+                    var worn = FindLayerIndex(layerNum);
                     if (worn == null) { value = "0"; return true; }
                     string tail = upper[(closeParen + 1)..];
                     if (string.IsNullOrEmpty(tail))
@@ -5534,7 +5537,7 @@ public partial class Character : ObjBase
             string tail = dotIdx < 0 ? "" : rest[(dotIdx + 1)..];
             if (TryResolveLayerToken(layerToken, out int layerIdx))
             {
-                var worn = GetEquippedItem((Layer)layerIdx);
+                var worn = FindLayerIndex(layerIdx);
                 if (worn == null) { value = "0"; return true; }
                 if (tail.Length == 0) { value = $"0{worn.Uid.Value:X}"; return true; }
                 return worn.TryGetProperty(tail, out value);
@@ -7461,8 +7464,10 @@ public partial class Character : ObjBase
                 string tail = chain[(chainDot + 1)..].Trim();
                 if (TryResolveLayerToken(chain[..chainDot], out int layerNum) && tail.Length > 0)
                 {
-                    var worn = GetEquippedItem((Layer)layerNum);
-                    if (worn == null || worn.IsDeleted) return true;
+                    // Source-X r_Verb: a ref that resolves to nothing is an
+                    // undefined keyword, not a silent success.
+                    var worn = FindLayerIndex(layerNum);
+                    if (worn == null || worn.IsDeleted) return false;
                     if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
                     {
                         worn.RemoveFromWorld();
@@ -7489,8 +7494,8 @@ public partial class Character : ObjBase
                 string tail = key[(closeParen + 1)..].TrimStart('.');
                 if (int.TryParse(layerStr, out int layerNum) && tail.Length > 0)
                 {
-                    var worn = GetEquippedItem((Layer)layerNum);
-                    if (worn == null || worn.IsDeleted) return true;
+                    var worn = FindLayerIndex(layerNum);
+                    if (worn == null || worn.IsDeleted) return false;
                     if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
                     {
                         worn.RemoveFromWorld();

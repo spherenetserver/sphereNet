@@ -2824,24 +2824,28 @@ public sealed class SpellEngine
             case SpellType.Strength:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.StrDelta = bonus; target.Str += bonus;
                 break;
             }
             case SpellType.Agility:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.DexDelta = bonus; target.Dex += bonus;
                 break;
             }
             case SpellType.Cunning:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.IntDelta = bonus; target.Int += bonus;
                 break;
             }
             case SpellType.Bless:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.StrDelta = bonus; eff.DexDelta = bonus; eff.IntDelta = bonus;
                 target.Str += bonus; target.Dex += bonus; target.Int += bonus;
                 break;
@@ -2858,6 +2862,7 @@ public sealed class SpellEngine
         // Protection only adds its level to AR (CalcArmorDefense, CCharFight.cpp:553)
         // - it does not set STATF_ARCHERCANMOVE.
         var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+        if (eff == null) return; // a permanent ward was toggled off
         eff.ArmorDelta = Math.Max(0, effect);
         target.ProtectionArmor = (int)Math.Min(
             int.MaxValue, (long)target.ProtectionArmor + eff.ArmorDelta);
@@ -2879,6 +2884,7 @@ public sealed class SpellEngine
                 short actual = (short)Math.Min(penalty, target.Str - 1);
                 if (actual <= 0) break;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, actual);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.StrDelta = (short)-actual; target.Str -= actual;
                 break;
             }
@@ -2887,6 +2893,7 @@ public sealed class SpellEngine
                 short actual = (short)Math.Min(penalty, target.Dex - 1);
                 if (actual <= 0) break;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, actual);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.DexDelta = (short)-actual; target.Dex -= actual;
                 break;
             }
@@ -2895,6 +2902,7 @@ public sealed class SpellEngine
                 short actual = (short)Math.Min(penalty, target.Int - 1);
                 if (actual <= 0) break;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, actual);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.IntDelta = (short)-actual; target.Int -= actual;
                 break;
             }
@@ -2910,6 +2918,7 @@ public sealed class SpellEngine
                 short strP = shared, dexP = shared, intP = shared;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def,
                     Math.Max(0, Math.Max((int)strP, Math.Max((int)dexP, (int)intP))));
+                if (eff == null) break; // a permanent effect was toggled off
                 if (strP > 0) { eff.StrDelta = (short)-strP; target.Str -= strP; }
                 if (dexP > 0) { eff.DexDelta = (short)-dexP; target.Dex -= dexP; }
                 if (intP > 0) { eff.IntDelta = (short)-intP; target.Int -= intP; }
@@ -3366,6 +3375,7 @@ public sealed class SpellEngine
             case SpellType.ParalyzeField:   // same LAYER_SPELL_Paralyze effect (:3974-3979)
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Freeze;
                 target.SetStatFlag(StatFlag.Freeze);
                 break;
@@ -3373,6 +3383,7 @@ public sealed class SpellEngine
             case SpellType.Invisibility:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Invisible;
                 target.SetStatFlag(StatFlag.Invisible);
                 break;
@@ -3389,7 +3400,7 @@ public sealed class SpellEngine
                 // at 100 or below a MOVE_NEVER memory stays (:90).
             {
                 int dispelLevel = caster.PrivLevel >= PrivLevel.GM ? 150 : 50;
-                RemoveMatchingEffects(eff => eff.Target == target && IsDispelLayerSpell(eff.Spell) &&
+                RemoveMatchingEffects(eff => eff.Target == target && IsDispelLayer(EffectLayer(eff)) &&
                     !SurvivesDispel(eff, dispelLevel));
                 DispelConjured(caster, target);
                 break;
@@ -3424,6 +3435,7 @@ public sealed class SpellEngine
                 // expiration timer below; when the timer fires, LightLevel
                 // reverts to its pre-cast value and the stat flag is cleared.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.NightSight;
                 eff.OldLightLevel = target.LightLevel;
                 eff.NewLightLevel = 30;
@@ -3436,6 +3448,7 @@ public sealed class SpellEngine
             case SpellType.ReactiveArmor:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Reactive;
                 target.SetStatFlag(StatFlag.Reactive);
                 // How much comes back is the SPELL DEFINITION's business, not the
@@ -3459,6 +3472,7 @@ public sealed class SpellEngine
             case SpellType.Incognito:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Incognito;
                 // LAYER_SPELL_Incognito (CCharSpell.cpp:1155-1195): a random name
                 // from the race's [NAMES] list, a random skin hue for a playable
@@ -3501,6 +3515,7 @@ public sealed class SpellEngine
             case SpellType.MagicReflect:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Reflection;
                 target.SetStatFlag(StatFlag.Reflection);
                 break;
@@ -3508,6 +3523,7 @@ public sealed class SpellEngine
             case SpellType.HorrificBeast:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Polymorph;
                 target.HorrificBeastActive = true;
                 target.SetStatFlag(StatFlag.Polymorph);
@@ -3519,6 +3535,7 @@ public sealed class SpellEngine
                 // LAYER_SPELL_Polymorph form. While active, damaging hits drain
                 // the target's mana (see CombatEngine.ApplyAosOnHitEffects).
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Polymorph;
                 target.WraithFormActive = true;
                 target.SetStatFlag(StatFlag.Polymorph);
@@ -3529,6 +3546,7 @@ public sealed class SpellEngine
                 // Necromancy Lich Form (reference SPELL_Lich_Form): a
                 // LAYER_SPELL_Polymorph form that shifts elemental resists.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Polymorph;
                 target.LichFormActive = true;
                 target.SetStatFlag(StatFlag.Polymorph);
@@ -3541,6 +3559,7 @@ public sealed class SpellEngine
                 // a form that leeches life on every hit (see ApplyAosOnHitEffects)
                 // and lowers fire resist.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Polymorph;
                 target.VampiricEmbraceActive = true;
                 target.SetStatFlag(StatFlag.Polymorph);
@@ -3553,6 +3572,7 @@ public sealed class SpellEngine
                 // m_spelllevel (EFFECT curve, 10-15) that is added to the wielded
                 // weapon's HITLEECHLIFE percent on hit.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 int level = Math.Clamp(effect, 1, 100);
                 eff.CurseWeaponLevel = level;
                 target.CurseWeaponLevel = level;
@@ -3562,7 +3582,7 @@ public sealed class SpellEngine
             {
                 // Necromancy Corpse Skin (reference SPELL_Corpse_Skin): fire/poison
                 // resist down, cold/physical resist up, for a Spirit-Speak duration.
-                ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (ScheduleEffectExpiry(caster, target, def.Id, def) == null) break;
                 ApplyCorpseSkinResists(target, +1);
                 break;
             }
@@ -3570,7 +3590,7 @@ public sealed class SpellEngine
             {
                 // Necromancy Mind Rot (reference SPELL_Mind_Rot): raises the
                 // target's spell mana cost while active.
-                ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (ScheduleEffectExpiry(caster, target, def.Id, def) == null) break;
                 target.MindRotActive = true;
                 break;
             }
@@ -3584,6 +3604,7 @@ public sealed class SpellEngine
                 int mr = target.GetSkill(SkillType.MagicResistance);
                 int level = target.IsPlayer ? (ss - mr) / 100 + 18 : (ss - mr) / 10 + 30;
                 var eff = SetupDot(caster, target, def, charges: 10, intervalMs: 1000);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.DotDamagePerTick = Math.Max(0, level) / 10;
                 eff.DotDamageType = DamageType.Physical;
                 eff.DotDirect = true;
@@ -3596,6 +3617,7 @@ public sealed class SpellEngine
                 // tick lands after 5 seconds.
                 int power = Math.Max(4, caster.GetSkill(SkillType.SpiritSpeak) / 100);
                 var eff = SetupDot(caster, target, def, charges: power, intervalMs: 5000);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.DotPower = power;
                 eff.DotDamageType = DamageType.Poison;
                 break;
@@ -3610,6 +3632,7 @@ public sealed class SpellEngine
                 // zeroes the reflect via the (100 - level) term itself.
                 int level = caster.GetSkill(SkillType.MagicResistance) * 10 / 20 + 10;
                 var eff = ScheduleEffectExpiry(caster, caster, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.BloodOathEnemy = target.Uid;
                 eff.BloodOathLevel = level;
                 caster.BloodOathEnemy = target.Uid;
@@ -3680,6 +3703,7 @@ public sealed class SpellEngine
                 // effect is reverted inside ScheduleEffectExpiry — a re-cast
                 // must never record the current form as the restore body.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 if (target.OBody == 0)
                     target.OBody = target.BodyId;
                 eff.AppliedFlag = StatFlag.Polymorph;
@@ -3712,6 +3736,7 @@ public sealed class SpellEngine
                 // reverted a previous poly-layer effect — otherwise a re-cast
                 // records the CURRENT form as the body to restore.
                 var formEff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (formEff == null) break; // a permanent effect was toggled off
                 if (target.OBody == 0)
                     target.OBody = target.BodyId;
                 // The pack ships Reaper Form with DURATION=0.0: a 0-duration
@@ -3739,6 +3764,7 @@ public sealed class SpellEngine
                     : effect;
                 drain = Math.Clamp(drain, 0, Math.Max(0, (int)target.Mana));
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def, drain);
+                if (eff == null) break; // a permanent effect was toggled off
                 target.Mana = (short)(target.Mana - drain);
                 eff.BuffMagnitude = drain;
                 break;
@@ -3793,6 +3819,7 @@ public sealed class SpellEngine
                 // duration (classic -20 defense while the fury lasts).
                 caster.Stam = caster.MaxStam;
                 var fury = ScheduleEffectExpiry(caster, caster, def.Id, def);
+                if (fury == null) break; // a permanent effect was toggled off
                 fury.ArmorDelta = -20;
                 caster.ProtectionArmor += fury.ArmorDelta;
                 break;
@@ -3858,6 +3885,7 @@ public sealed class SpellEngine
                 int durTenths = def.GetDuration(caster.GetSkill(def.GetPrimarySkill()));
                 int charges = Math.Clamp(durTenths / 20, 5, 15); // one tick / 2s
                 var hot = SetupDot(caster, target, def, charges, 2000);
+                if (hot == null) break; // a permanent effect was toggled off
                 hot.DotDamagePerTick = -Math.Max(5, effect / 3);
                 hot.DotDirect = true;
                 break;
@@ -3870,6 +3898,7 @@ public sealed class SpellEngine
                 // Pack layer is layer_spell_night_sight: a timed personal
                 // light boost exactly like Night Sight.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.NightSight;
                 eff.OldLightLevel = target.LightLevel;
                 eff.NewLightLevel = 30;
@@ -3882,6 +3911,7 @@ public sealed class SpellEngine
             case SpellType.Hallucination:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Hallucinating;
                 target.SetStatFlag(StatFlag.Hallucinating);
                 // Periodic trip sounds every 15-30 s (Source-X
@@ -3904,6 +3934,7 @@ public sealed class SpellEngine
                 // Source-X: STATF_STONE for the duration — immobile and
                 // untargetable.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.AppliedFlag = StatFlag.Stone;
                 target.SetStatFlag(StatFlag.Stone);
                 break;
@@ -3969,6 +4000,7 @@ public sealed class SpellEngine
                 // Source-X SPELL_Trance: a timed Meditation skill bonus.
                 // The EFFECT itself (Skill_AddBase +m_spelllevel, :1722-1726).
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.MeditationDelta = Math.Max(0, effect);
                 target.SetSkill(SkillType.Meditation, (ushort)Math.Min(ushort.MaxValue,
                     target.GetSkill(SkillType.Meditation) + eff.MeditationDelta));
@@ -3981,6 +4013,7 @@ public sealed class SpellEngine
                 // Source-X routes these to the Protection ward layer: a timed
                 // AR bonus for the spell's duration.
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.ArmorDelta = Math.Max(0, effect);
                 target.ProtectionArmor = (int)Math.Min(
                     int.MaxValue, (long)target.ProtectionArmor + eff.ArmorDelta);
@@ -3993,6 +4026,7 @@ public sealed class SpellEngine
                 int durTenths = EffectDurationTenths(caster, target, def);
                 int charges = Math.Max(1, durTenths / 20);                    // :4105-4110
                 var hot = SetupDot(caster, target, def, charges, 2000);
+                if (hot == null) break; // a permanent effect was toggled off
                 hot.DotDamagePerTick = -Math.Max(1, effect);
                 hot.DotDirect = true;
                 break;
@@ -4018,6 +4052,7 @@ public sealed class SpellEngine
                 RemoveMatchingEffects(e => e.Target == target && e.Spell != def.Id &&
                     e.Spell is SpellType.Ale or SpellType.Wine or SpellType.Liquor);
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (eff == null) break; // a permanent effect was toggled off
                 eff.DotCharges = carried + 10;
                 eff.DotTotalCharges = eff.DotCharges;
                 eff.DotIntervalMs = 5000;
@@ -4461,7 +4496,7 @@ public sealed class SpellEngine
         mem.Delete();
     }
 
-    private ActiveSpellEffect ScheduleEffectExpiry(Character caster, Character target,
+    private ActiveSpellEffect? ScheduleEffectExpiry(Character caster, Character target,
         SpellType spell, SpellDef def, int buffMagnitude = 0)
     {
         // Duration 0 means no timer: the effect lasts until it is removed
@@ -4488,6 +4523,18 @@ public sealed class SpellEngine
                 (layer != Layer.Special && existing.Layer == layer);
             if (!sameSlot)
                 continue;
+            // A memory with no timer (TIMER=-1, or a spell with no duration) lasts
+            // until cast again: casting on its layer only removes it and creates
+            // nothing (CCharSpell.cpp:2065-2071) - checked before STACKSTATS.
+            if (existing.ExpireTick == long.MaxValue)
+            {
+                _activeEffects.RemoveAt(i);
+                RevertDeltas(existing);
+                NotifySpellBuff(target, existing.Spell, false);
+                Character.OnSpellEffectRemove?.Invoke(target, (int)existing.Spell);
+                FireSpellSectionStage(existing.Spell, "EffectRemove", target);
+                return null;
+            }
             if (layer == SpellLayers.Stats && existing.Spell != spell &&
                 IsMagicFlag(MagicConfigFlags.StackStats))
                 continue;
@@ -4592,26 +4639,18 @@ public sealed class SpellEngine
         }
     }
 
-    /// <summary>Spells whose memory sits on LAYER_SPELL_STATS (32) through
-    /// LAYER_SPELL_Polymorph (40) - the layers Spell_Dispel clears
-    /// (CCharSpell.cpp:97, uofiles_enums.h:594-603). The summon layer is the
-    /// conjured creature itself, handled by DispelConjured.</summary>
-    private static bool IsDispelLayerSpell(SpellType s) => s is
-        // LAYER_SPELL_STATS
-        SpellType.Clumsy or SpellType.Feeblemind or SpellType.Weaken or SpellType.Curse or
-        SpellType.Agility or SpellType.Cunning or SpellType.Strength or SpellType.Bless or
-        SpellType.MassCurse or SpellType.Trance or SpellType.Regenerate or
-        // Reactive / Night Sight / Protection / Incognito / Magic Reflect
-        SpellType.ReactiveArmor or SpellType.NightSight or
-        SpellType.Protection or SpellType.ArchProtection or SpellType.Shield or
-        SpellType.Steelskin or SpellType.Stoneskin or
-        SpellType.Incognito or SpellType.MagicReflect or
-        // Paralyze / Invis / Polymorph
-        SpellType.Paralyze or SpellType.ParalyzeField or SpellType.Stone or SpellType.ParticleForm or
-        SpellType.Invisibility or
-        SpellType.Polymorph or SpellType.HorrificBeast or SpellType.WraithForm or
-        SpellType.LichForm or SpellType.VampiricEmbrace or SpellType.ReaperForm or
-        SpellType.StoneForm or SpellType.Chameleon or SpellType.BeastForm or SpellType.MonsterForm;
+    /// <summary>Spell_Dispel clears the memories worn on LAYER_SPELL_STATS (32)
+    /// through LAYER_SPELL_Summon (41) (CCharSpell.cpp:97) - by the memory's
+    /// layer, not by spell, so a spell equipped through its LAYER value (the
+    /// generic fallback) is covered too. A conjured creature itself is banished
+    /// separately by DispelConjured.</summary>
+    private static bool IsDispelLayer(Layer layer) =>
+        layer >= SpellLayers.Stats && layer <= SpellLayers.Summon;
+
+    /// <summary>The layer an effect's memory is on; effects added without a
+    /// memory resolve it from the spell the same way.</summary>
+    private Layer EffectLayer(ActiveSpellEffect eff) =>
+        eff.Layer != Layer.Special ? eff.Layer : SpellLayers.ForSpell(eff.Spell, GetSpellDef(eff.Spell));
 
     private static bool IsCurseSpell(SpellType s) => s is
         SpellType.Clumsy or SpellType.Feeblemind or SpellType.Weaken or
@@ -4637,10 +4676,11 @@ public sealed class SpellEngine
     /// SPELLFLAG_TICK spell memories). Reuses ScheduleEffectExpiry for re-cast
     /// dedup/refresh, then arms the tick fields; the expiry is pushed past the
     /// DOT's own lifetime so the tick pass — not the expiry pass — retires it.</summary>
-    private ActiveSpellEffect SetupDot(Character caster, Character target, SpellDef def,
+    private ActiveSpellEffect? SetupDot(Character caster, Character target, SpellDef def,
         int charges, int intervalMs)
     {
         var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+        if (eff == null) return null;
         eff.DotCharges = Math.Max(1, charges);
         eff.DotTotalCharges = eff.DotCharges;
         eff.DotIntervalMs = Math.Max(1, intervalMs);

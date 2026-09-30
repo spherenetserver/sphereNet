@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-30] - Buyu bellegi erisim yollari, kalici etkiler ve Dispel Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - FINDLAYER.n, FINDLAYER.n.<fiil> ve FINDLAYER(n).<fiil> buyu
+           belleklerini FINDLAYER(n) gibi bulur (CChar::LayerFind):
+           FINDLAYER.32 bellegin UID'sini okur, .REMOVE etkiyi bitirir. Bos
+           katmana verilen fiil basari bildirmez, tanimsiz anahtar olarak
+           basarisiz olur.
+DUZELTME - Buyu belleginde ozellik olarak yazilan TIMER, TIMER komutu gibi
+           etkinin suresini degistirir (TIMER=-1 kalici yapar).
+DUZELTME - Zamanlayicisi olmayan buyu bellegi (TIMER=-1 veya suresiz buyu)
+           tekrar buyu yapilana kadar surer: o katmana yapilan buyu yalnizca
+           onu kaldirir ve kendi etkisini uygulamaz (Spell_Effect_Create);
+           STACKSTATS kuralindan once gelir.
+DUZELTME - Dispel, bellegi 32-41 katmanlarinda olan etkileri sabit buyu
+           listesiyle degil katmana gore kaldirir; LAYER degeriyle takilan
+           buyuler de dispel edilir.
+DEGISIKLIK - CI, veri-kapisi raporunu (hangi veriye bagli testin veriyi
+           buldugu) is ozetine ve artefakt olarak yayimlar.
+
 [2026-09-30] - Alan fiilleri, buyu bellegi katmanlari, esya ozellik tooltip'i
 ------------------------------------------------------------------------
 DUZELTME - NUKE, NUKECHAR ve NUDGE argumanini her giris yolunda korur

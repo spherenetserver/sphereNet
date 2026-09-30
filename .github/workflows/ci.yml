@@ -78,6 +78,26 @@ jobs:
       - name: Test
         run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Debug --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory TestResults --verbosity normal
 
+      # Which data-dependent tests found their data and which returned early:
+      # a green run alone does not say how many of them actually measured.
+      - name: Publish data-gate report
+        if: always()
+        shell: pwsh
+        run: |
+          $report = "src/SphereNet.Tests/TestResults/data-gates.md"
+          if (Test-Path $report) { Get-Content $report | Add-Content $env:GITHUB_STEP_SUMMARY }
+          else { "No data-gate report was written." | Add-Content $env:GITHUB_STEP_SUMMARY }
+
+      - name: Upload data-gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-gates
+          path: |
+            src/SphereNet.Tests/TestResults/data-gates.md
+            src/SphereNet.Tests/TestResults/data-gates.csv
+          if-no-files-found: warn
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

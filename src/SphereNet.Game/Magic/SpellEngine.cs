@@ -767,13 +767,14 @@ public sealed class SpellEngine
         }
     }
 
-    public bool TryInterruptFromDamage(Character caster, int damage)
+    public bool TryInterruptFromDamage(Character caster, int damage, bool breakParalyze = true)
     {
         // Source-X CChar::OnTakeDamage: taking damage removes paralyze (the
         // LAYER_SPELL_Paralyze memory is deleted) unless DAMAGE_NOUNPARALYZE.
-        // Every damage path — melee, NPC swing, spell — routes through this
-        // method, so the break lives beside the other on-damage disturbs.
-        if (damage > 0 && caster.IsStatFlag(StatFlag.Freeze))
+        // The shared damage entry (CombatEngine.ApplyCharacterDamage) does that
+        // itself with the blow's flags; its callers pass breakParalyze: false. The
+        // damage sites that still write hit points directly keep the break here.
+        if (breakParalyze && damage > 0 && caster.IsStatFlag(StatFlag.Freeze))
             BreakParalyze(caster);
 
         if (!caster.IsCasting)
@@ -2078,6 +2079,8 @@ public sealed class SpellEngine
         // right after with the same shared args, as in the reference.
         int level = potency;
         bool scripted = def.IsFlag(SpellFlag.Scripted);
+        // LOCAL.DamageType: 0 leaves the spell's own default (CCharSpell.cpp:3734, :3826).
+        var scriptDamageType = DamageType.None;
         if (TriggerDispatcher != null)
         {
             var fxLocals = new SphereNet.Scripting.Variables.VarMap();
@@ -2113,6 +2116,7 @@ public sealed class SpellEngine
             effect = (int)fxLocals.GetInt("Effect", effect);
             resistPct = (int)fxLocals.GetInt("Resist", resistPct);
             durationTenths = (int)Math.Clamp(fxLocals.GetInt("Duration", durationTenths), 0, int.MaxValue);
+            scriptDamageType = (DamageType)unchecked((uint)fxLocals.GetInt("DamageType"));
         }
 
         // A SCRIPTED spell does nothing native on a character (:3814).
@@ -2125,7 +2129,7 @@ public sealed class SpellEngine
         _effectDurationTenths = durationTenths;
         try
         {
-            ApplyCharEffectResolved(caster, target, def, effect, resistPct);
+            ApplyCharEffectResolved(caster, target, def, effect, resistPct, scriptDamageType);
         }
         finally
         {
@@ -2202,7 +2206,8 @@ public sealed class SpellEngine
     /// <summary>Post-trigger application: resist subtraction + the per-flag
     /// dispatch. Split out so the @SpellEffect duration override is scoped
     /// with try/finally around every ScheduleEffectExpiry call.</summary>
-    private void ApplyCharEffectResolved(Character caster, Character target, SpellDef def, int effect, int resistPct)
+    private void ApplyCharEffectResolved(Character caster, Character target, SpellDef def, int effect, int resistPct,
+        DamageType scriptDamageType = DamageType.None)
     {
         // Sphere custom spells (1000+) with a native char handler dispatch by
         // id FIRST: their pack defs carry marker flags only — Hallucination
@@ -2224,36 +2229,32 @@ public sealed class SpellEngine
             // drain's effect is untouched by it.
             if (resistPct > 0)
                 effect = Math.Max(0, effect - effect * resistPct / 100);
-            var dmgType = GetSpellDamageType(def.Id);
-            int damage = Math.Max(0, effect);
-            // Apply elemental resist
-            if (!IsMagicFlag(MagicConfigFlags.IgnoreArmor))
-                damage = CombatEngine.ApplyElementalResist(target, damage, dmgType);
+            var dmgType = scriptDamageType != DamageType.None
+                ? scriptDamageType
+                : GetSpellDamageType(def.Id);
+            // The elemental split follows the type (:3857-3868): one element at 100%,
+            // anything else physical.
+            int splitPhysical = 0, splitFire = 0, splitCold = 0, splitPoison = 0, splitEnergy = 0;
+            if ((dmgType & DamageType.Fire) != 0) splitFire = 100;
+            else if ((dmgType & DamageType.Cold) != 0) splitCold = 100;
+            else if ((dmgType & DamageType.Poison) != 0) splitPoison = 100;
+            else if ((dmgType & DamageType.Energy) != 0) splitEnergy = 100;
+            else splitPhysical = 100;
 
-            // COMBAT_SLAYER on the magic path (Source-X OnTakeDamage with
-            // DAMAGE_MAGIC, CCharFight.cpp:824): the slayer source is the
-            // equipped spellbook, else the wielded weapon; the talisman
-            // fallback lives inside ApplySlayerDamage.
-            if (damage > 0 && (Character.CombatFlags & (int)Combat.CombatFlags.Slayer) != 0)
+            // The spell's damage goes through the victim's damage entry (:3870), like a
+            // swing or a script DAMAGE: protection, aggression, armour (the elemental
+            // split, or pre-AOS armour halved against magic; MAGICF_IGNOREAR skips it),
+            // @GetHit - whose RETURN 1 refuses the damage - unparalyze and
+            // COMBAT_SLAYER from the spellbook. No Reactive Armour: that answers
+            // physical blows only.
+            int damage = CombatEngine.ApplyCharacterDamage(target, Math.Max(0, effect), caster, dmgType,
+                splitPhysical, splitFire, splitCold, splitPoison, splitEnergy,
+                spell: (int)def.Id, feedback: DamageFeedback.Caller);
+
+            if (damage > 0)
             {
-                var oneHand = caster.GetEquippedItem(Layer.OneHanded);
-                var twoHand = caster.GetEquippedItem(Layer.TwoHanded);
-                var slayerSource = oneHand?.ItemType == ItemType.Spellbook ? oneHand
-                    : twoHand?.ItemType == ItemType.Spellbook ? twoHand
-                    : oneHand ?? twoHand;
-                damage = CombatEngine.ApplySlayerDamage(caster, target, damage, slayerSource);
-            }
-
-            if (damage > 0 && !CombatEngine.IsDamageImmune(target))
-            {
-                target.Hits -= (short)Math.Min(damage, short.MaxValue);
-                target.RecordAttack(caster.Uid, damage);
-
-                // No Reactive Armor bounce here: Source-X reflects only physical
-                // blows from within two tiles (OnTakeDamage, CCharFight.cpp:946-1000),
-                // never spell damage.
-
-                TryInterruptFromDamage(target, damage);
+                if ((dmgType & DamageType.NoDisturb) == 0)
+                    TryInterruptFromDamage(target, damage, breakParalyze: false);
 
                 // Victim feedback: spell damage used to apply silently — no
                 // 0x0B damage number, no health-bar update — while the melee
@@ -2801,13 +2802,14 @@ public sealed class SpellEngine
     {
         SpellType.MagicArrow or SpellType.Fireball or SpellType.FireField or
         SpellType.Explosion or SpellType.Flamestrike or SpellType.MeteorSwarm or
-        SpellType.FireBolt => DamageType.Fire,
+        SpellType.FireBolt => DamageType.Magic | DamageType.Fire | DamageType.NoReveal,
 
-        SpellType.Harm or SpellType.MindBlast => DamageType.Cold,
+        SpellType.Harm or SpellType.MindBlast => DamageType.Magic | DamageType.Cold | DamageType.NoReveal,
 
-        SpellType.Lightning or SpellType.EnergyBolt or SpellType.ChainLightning => DamageType.Energy,
+        SpellType.Lightning or SpellType.EnergyBolt or SpellType.ChainLightning =>
+            DamageType.Magic | DamageType.Energy | DamageType.NoReveal,
 
-        _ => DamageType.Physical,
+        _ => DamageType.Magic | DamageType.General | DamageType.NoReveal,
     };
 
     private void ApplyBuff(Character caster, Character target, SpellDef def, int effect)

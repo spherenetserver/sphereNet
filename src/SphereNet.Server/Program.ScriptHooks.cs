@@ -24,6 +24,7 @@ public static partial class Program
     private static void RefreshCharacterScriptHooks()
     {
         Character.OnNotoSend = null;
+        Character.OnCriminalCheck = null;
         Character.OnEffectAdd = null;
         Character.OnRevealing = null;
         Character.OnSpellEffectAdd = null;
@@ -58,15 +59,36 @@ public static partial class Program
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.ArrowQuestAdd) ||
             _triggerDispatcher.IsCharTriggerUsed(CharTrigger.ArrowQuestClose))
             Character.OnArrowQuest = _triggerDispatcher.FireArrowQuest;
+        // @Criminal - Noto_Criminal (CCharNotoriety.cpp:389-431), IsTrigUsed-gated:
+        // ARGN1 = the criminal timer in MINUTES (read back), ARGN2 = whether a
+        // SAWCRIME led here, ARGO = the viewer. RETURN 1 keeps the flag off and the
+        // viewer's SAWCRIME memory; RETURN 0 keeps the flag off but still spends it.
+        if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.Criminal))
+        {
+            Character.OnCriminalCheck = (ch, viewer, fromSawCrime) =>
+            {
+                var args = new TriggerArgs
+                {
+                    CharSrc = ch,
+                    N1 = Character.CriminalTimerSeconds / 60,
+                    N2 = fromSawCrime ? 1 : 0,
+                    O1 = viewer,
+                };
+                var result = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Criminal, args);
+                return Character.CriminalDecisionFromTrigger(result, args.N1);
+            };
+        }
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NotoSend))
         {
-            SphereNet.Game.Objects.Characters.Character.OnNotoSend = (viewer, subject, noto) =>
+            SphereNet.Game.Objects.Characters.Character.OnNotoSend = (viewer, subject) =>
             {
-                // ARGN1 starts as NOTO_INVALID (0); a script that leaves it there gets
-                // the computed notoriety (CCharNotoriety.cpp:120-131).
-                var args = new TriggerArgs { CharSrc = viewer, N1 = 0 };
+                // ARGN1 (notoriety) and ARGN2 (display colour) start as NOTO_INVALID
+                // (0); a script that leaves one there gets the computed notoriety, and
+                // a colour left at 0 follows the notoriety (CCharNotoriety.cpp:118-131).
+                var args = new TriggerArgs { CharSrc = viewer, N1 = 0, N2 = 0 };
                 _triggerDispatcher.FireCharTrigger(subject, CharTrigger.NotoSend, args);
-                return args.N1 == 0 ? noto : (byte)Math.Clamp(args.N1, 0, 255);
+                return new Character.NotorietyResult(
+                    (byte)Math.Clamp(args.N1, 0, 255), (byte)Math.Clamp(args.N2, 0, 255));
             };
         }
         // <NOTOGETFLAG uid> script property → full Noto_GetFlag of the subject

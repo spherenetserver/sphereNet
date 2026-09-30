@@ -178,16 +178,44 @@ public sealed class NpcCombatMagicSourceXTests
         Assert.False(caster.IsStatFlag(StatFlag.Hidden)); // Reveal(), CCharNPCAct_Magic.cpp:263
     }
 
+    /// <summary>A random source whose Next(max) answers from a callback, so a test
+    /// can pin the reference's chance branches.</summary>
+    private sealed class PinnedRandom(Func<int, int> next) : Random
+    {
+        public override int Next(int maxValue) => maxValue <= 1 ? 0 : next(maxValue);
+        public override int Next(int minValue, int maxValue) =>
+            maxValue - minValue <= 1 ? minValue : minValue + next(maxValue - minValue);
+        public override int Next() => next(int.MaxValue);
+    }
+
     [Fact]
     public void Default_ACasterTooCloseStepsBackBeforeCasting()
     {
         // With mana to spare a caster nearer than 4 tiles moves to keep 5
-        // (NPC_Act_Follow(false, 5, true), CCharNPCAct_Magic.cpp:255-259).
+        // (NPC_Act_Follow(false, 5, true), CCharNPCAct_Magic.cpp:255-259) - except
+        // when the 1-in-2*INT roll (Calc_GetRandVal(Stat_GetAdjusted(STAT_INT) << 1)
+        // == 0, :254) sends it in instead. Every roll answers its maximum here, so
+        // that exception never fires and the mana-chance roll never backs off.
+        NpcAI.RandomOverride = new PinnedRandom(max => max - 1);
         var (_, ai, caster, enemy) = Duel(distance: 2);
         caster.NpcSpellAdd(SpellType.MagicArrow);
         int before = caster.Position.GetDistanceTo(enemy.Position);
         Assert.Equal(SpellType.MagicArrow, CastOnce(ai, caster, enemy).Spell);
-        Assert.True(caster.Position.GetDistanceTo(enemy.Position) >= before);
+        Assert.True(caster.Position.GetDistanceTo(enemy.Position) > before);
+    }
+
+    [Fact]
+    public void Default_TheOneIn2IntRollSendsTheCasterIn()
+    {
+        // The same caster when the 1-in-2*INT roll comes up 0 (CCharNPCAct_Magic.cpp:
+        // 254-262): it follows the target in (NPC_Act_Follow(false, 1, false))
+        // instead of stepping back. INT 100 -> the roll is Calc_GetRandVal(200).
+        NpcAI.RandomOverride = new PinnedRandom(max => max == 200 ? 0 : max - 1);
+        var (_, ai, caster, enemy) = Duel(distance: 3);
+        caster.NpcSpellAdd(SpellType.MagicArrow);
+        int before = caster.Position.GetDistanceTo(enemy.Position);
+        Assert.Equal(SpellType.MagicArrow, CastOnce(ai, caster, enemy).Spell);
+        Assert.True(caster.Position.GetDistanceTo(enemy.Position) < before);
     }
 
     [Fact]

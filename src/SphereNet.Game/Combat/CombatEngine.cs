@@ -46,26 +46,40 @@ public enum SwingState
 }
 
 /// <summary>
-/// Damage type flags. Maps to DAMAGE_TYPE in Source-X.
+/// Damage type flags: Source-X DAMAGE_TYPE, a 32-bit mask whose values are the
+/// ones scripts write (game_macros.h:55-74). Every script-facing surface — the
+/// DAMAGE verb, ARGN2 of @Hit/@GetHit/@HitParry/@HitCheck, LOCAL.DamageType,
+/// OVERRIDE.DAMAGETYPE, BREATH.DAMTYPE, THROWDAMTYPE — carries these numbers
+/// unconverted, so the enum values must stay identical to the reference.
+/// The type is never persisted.
 /// </summary>
 [Flags]
-public enum DamageType : ushort
+public enum DamageType : uint
 {
-    General = 0x00,
-    Physical = 0x01,
-    Magic = 0x02,
-    Poison = 0x04,
-    Fire = 0x08,
-    Cold = 0x10,
-    Energy = 0x20,
-    HitBlunt = 0x40,
-    HitPierce = 0x80,
-    HitSlash = 0x100,
-    God = 0x200,
-    NoReveal = 0x400,
-    NoUnparalyze = 0x800,
-    Fixed = 0x1000,
-    NoDisturb = 0x2000,   // DAMAGE_NODISTURB: the victim is not disturbed (no spell interrupt)
+    None = 0,
+    God = 0x0001,           // DAMAGE_GOD: nothing can block this
+    HitBlunt = 0x0002,      // DAMAGE_HIT_BLUNT
+    Magic = 0x0004,         // DAMAGE_MAGIC
+    Poison = 0x0008,        // DAMAGE_POISON
+    Fire = 0x0010,          // DAMAGE_FIRE
+    Energy = 0x0020,        // DAMAGE_ENERGY
+    General = 0x0080,       // DAMAGE_GENERAL: all-over damage
+    Acidic = 0x0100,        // DAMAGE_ACIDIC
+    Cold = 0x0200,          // DAMAGE_COLD
+    HitSlash = 0x0400,      // DAMAGE_HIT_SLASH
+    HitPierce = 0x0800,     // DAMAGE_HIT_PIERCE
+    NoDisturb = 0x2000,     // DAMAGE_NODISTURB: the victim is not disturbed (no spell interrupt)
+    NoReveal = 0x4000,      // DAMAGE_NOREVEAL: the attacker is not revealed
+    NoUnparalyze = 0x8000,  // DAMAGE_NOUNPARALYZE: the victim stays paralyzed
+    Fixed = 0x10000,        // DAMAGE_FIXED: already final, no armor/resist
+    Breath = 0x20000,       // DAMAGE_BREATH
+    Thrown = 0x40000,       // DAMAGE_THROWN
+    Reactive = 0x80000,     // DAMAGE_REACTIVE: a reflected blow, never reflected again
+
+    /// <summary>Engine shorthand for a plain physical blow. The reference has no
+    /// separate physical bit: a physical blow is HIT_BLUNT (the HITAREAPHYSICAL
+    /// splash passes DAMAGE_HIT_BLUNT, CCharFight.cpp:2327).</summary>
+    Physical = HitBlunt,
 }
 
 public enum ArmorHitRegion
@@ -80,11 +94,12 @@ public enum ArmorHitRegion
 }
 
 /// <summary>
-/// On-hit trigger context threaded through <see cref="CombatEngine.OnHitDamage"/>
-/// (the Source-X CChar::OnTakeDamage @GetHit block, CCharFight.cpp:750). The
-/// engine seeds the armor-damage roll and the elemental split; the hook exposes
-/// them to scripts as LOCAL.* and writes script changes back before the engine
-/// rolls the durability wear.
+/// The attacker side of a connecting swing, threaded through
+/// <see cref="CombatEngine.OnHitDamage"/>: the attacker's @Hit and then the weapon's
+/// @Hit (Source-X Fight_Hit, CCharFight.cpp:2178-2195). Both see the RAW blow -
+/// before the victim's armour - and may rewrite its damage (ARGN1) and type (ARGN2).
+/// The victim's @GetHit is a later stage of the shared damage entry
+/// (<see cref="GetHitContext"/>); the armor-damage roll below only seeds it.
 /// </summary>
 public sealed class HitDamageContext
 {
@@ -93,17 +108,19 @@ public sealed class HitDamageContext
     public Item? Weapon { get; init; }
     public int Damage { get; set; }
 
-    /// <summary>Layer whose worn item takes the item @GetHit trigger and the
-    /// durability wear (LOCAL.ItemDamageLayer, script-writable).</summary>
+    /// <summary>ARGN2 of the @Hit stage: the blow's damage type, seeded from the
+    /// weapon (Fight_GetWeaponDamType) and carried on to the victim's damage entry.</summary>
+    public DamageType DamageType { get; set; }
+
+    /// <summary>Seed for the victim's LOCAL.ItemDamageLayer (the worn piece that
+    /// takes the item @GetHit and the durability wear).</summary>
     public Layer ItemDamageLayer { get; set; }
 
-    /// <summary>% chance the ItemDamageLayer item takes durability wear
-    /// (LOCAL.ItemDamageChance, script-writable; Source-X seeds 25).</summary>
+    /// <summary>Seed for the victim's @GetHit LOCAL.ItemDamageChance (Source-X 25).</summary>
     public int ItemDamageChance { get; set; } = 25;
 
-    /// <summary>Set by the hook when a trigger RETURNed 1: the hit is fully
-    /// cancelled and skips the armor durability roll (Source-X returns 0
-    /// before it).</summary>
+    /// <summary>Set by the hook when a @Hit trigger RETURNed 1: the swing does no
+    /// damage and nothing after it runs (Source-X returns WAR_SWING_EQUIPPING).</summary>
     public bool Cancelled { get; set; }
 
     /// <summary>% chance the attacker's weapon takes durability wear on a hit
@@ -135,32 +152,52 @@ public sealed class HitDamageContext
     /// script owns the ammo's fate, so the caller must neither consume the
     /// stack nor run the stick-in-body economy (Source-X pAmmo = nullptr).</summary>
     public bool ArrowHandled { get; set; }
+}
 
-    /// <summary>COMBAT_ELEMENTAL_ENGINE active — the DamagePercent* split below
-    /// is exposed to @GetHit as read-only locals.</summary>
+/// <summary>The victim-side @GetHit stage of <see cref="CombatEngine.ApplyCharacterDamage"/>
+/// (Source-X CChar::OnTakeDamage, CCharFight.cpp:750-788): the char @GetHit and then
+/// the item @GetHit on the worn piece at LOCAL.ItemDamageLayer, both seeing the damage
+/// AFTER armour/resist. ARGN1 (damage) and ARGN2 (type) are written back; the damage
+/// is final from here on and is not reduced again. Shared by every character-damage
+/// source: a swing, the DAMAGE verb, a spell and a reflected blow.</summary>
+public sealed class GetHitContext
+{
+    public required Character Target { get; init; }
+    /// <summary>SRC of the trigger: the damage source, or the victim itself when the
+    /// damage has nobody behind it (Source-X pSrc = this).</summary>
+    public required Character Source { get; init; }
+    public int Damage { get; set; }
+    public DamageType DamageType { get; set; }
+    /// <summary>LOCAL.Spell (0 when the damage is not a spell's).</summary>
+    public int Spell { get; init; }
+
+    /// <summary>LOCAL.ItemDamageLayer - the worn piece that takes the item @GetHit and
+    /// the durability wear; script-writable in the char @GetHit.</summary>
+    public Layer ItemDamageLayer { get; set; }
+    /// <summary>LOCAL.ItemDamageChance (script-writable; Source-X seeds 25).</summary>
+    public int ItemDamageChance { get; set; } = 25;
+
+    /// <summary>COMBAT_ELEMENTAL_ENGINE active: the DamagePercent* split below is
+    /// exposed as read-only locals.</summary>
     public bool Elemental { get; init; }
     public int DamPercentPhysical { get; init; }
     public int DamPercentFire { get; init; }
     public int DamPercentCold { get; init; }
     public int DamPercentPoison { get; init; }
     public int DamPercentEnergy { get; init; }
+
+    /// <summary>A trigger RETURNed 1: no damage, and nothing after the stage runs.</summary>
+    public bool Cancelled { get; set; }
 }
 
-/// <summary>Source-X CObjBase DAMAGE verb context. Unlike a weapon hit this
-/// fires only the target-side @GetHit chain; there is no attacker @Hit or
-/// weapon/item-on-hit stage.</summary>
-public sealed class DirectDamageContext
+/// <summary>Who handles the feedback (damage number, health bar, blood, spell
+/// disturb, death) of a <see cref="CombatEngine.ApplyCharacterDamage"/> call.</summary>
+public enum DamageFeedback
 {
-    public required Character Target { get; init; }
-    public Character? Source { get; init; }
-    public int Damage { get; set; }
-    public DamageType DamageType { get; init; }
-    public int PhysicalPercent { get; set; }
-    public int FirePercent { get; set; }
-    public int ColdPercent { get; set; }
-    public int PoisonPercent { get; set; }
-    public int EnergyPercent { get; set; }
-    public bool Cancelled { get; set; }
+    /// <summary>The host's <see cref="CombatEngine.OnDirectCharacterDamageApplied"/>.</summary>
+    Host,
+    /// <summary>The caller does it itself (the swing and spell paths).</summary>
+    Caller,
 }
 
 /// <summary>
@@ -248,21 +285,23 @@ public static class CombatEngine
     public static Action<Character>? OnParrySucceeded;
 
     /// <summary>
-    /// On-hit damage pipeline. Fires the @Hit / @GetHit char triggers and the
-    /// weapon/armor item triggers on a connecting hit — after armor/parry have
-    /// resolved a number, but BEFORE it is applied to HP — and returns the final
-    /// damage. A script may raise, lower or fully cancel it (return &lt;= 0 or
-    /// set <see cref="HitDamageContext.Cancelled"/>). Wired in the engine so
-    /// the player and NPC swing paths share one trigger pipeline.
+    /// The attacker side of a connecting swing: the attacker's @Hit and the weapon's
+    /// @Hit, on the RAW blow (after parry, before the victim's armour), returning the
+    /// damage the scripts left (ARGN1) and writing their ARGN2 back into
+    /// <see cref="HitDamageContext.DamageType"/>. RETURN 1 sets
+    /// <see cref="HitDamageContext.Cancelled"/>. Shared by the player and NPC swings.
     /// </summary>
     public static Func<HitDamageContext, int>? OnHitDamage;
 
-    /// <summary>Target-side @GetHit bridge for the DAMAGE verb. Returns the
-    /// script-adjusted raw damage; setting Cancelled suppresses application.</summary>
-    public static Func<DirectDamageContext, int>? OnDirectDamage;
+    /// <summary>The victim's @GetHit stage of the shared character-damage entry: char
+    /// @GetHit, then item @GetHit on the worn piece at LOCAL.ItemDamageLayer. Returns
+    /// the script-final damage (not reduced again); ARGN2 and the armor-damage locals
+    /// are written back into the context, RETURN 1 sets Cancelled.</summary>
+    public static Func<GetHitContext, int>? OnGetHit;
 
-    /// <summary>Host feedback after direct character damage is applied:
-    /// interrupt casting, broadcast damage/health and run the death engine.</summary>
+    /// <summary>Host feedback after character damage that the caller does not handle
+    /// itself (<see cref="DamageFeedback.Host"/>) is applied: interrupt casting,
+    /// broadcast damage/health and run the death engine.</summary>
     public static Action<Character, Character?, int, DamageType>? OnDirectCharacterDamageApplied;
 
     /// <summary>Leech feedback on an AOS on-hit drain (Source-X sound 0x44D
@@ -300,6 +339,9 @@ public static class CombatEngine
         /// <summary>LOCAL.Sound / LOCAL.EffectID.</summary>
         public ushort Sound { get; set; }
         public ushort EffectId { get; set; }
+        /// <summary>LOCAL.DamageType - the type the bounce reaches the attacker with
+        /// (Source-X seeds DAMAGE_FIXED|DAMAGE_REACTIVE, CCharFight.cpp:963).</summary>
+        public DamageType DamageType { get; set; } = DamageType.Fixed | DamageType.Reactive;
     }
 
     /// <summary>@HitReactive bridge: the host fires the trigger and copies the script's
@@ -704,43 +746,271 @@ public static class CombatEngine
             ApplyDurabilityLoss(item);
     }
 
-    /// <summary>Source-X CChar::OnTakeDamage (CCharFight.cpp) bounces every blow —
-    /// returning 0 damage — while the target carries STATF_INVUL, unless the strike
-    /// is flagged DAMAGE_GOD. SphereNet has no single damage choke-point, so each
-    /// damage site (melee, spells, script DAMAGE, traps, fields) consults this guard.</summary>
+    /// <summary>The bounce at the top of Source-X CChar::OnTakeDamage (CCharFight.cpp:
+    /// 640-650): a blow without DAMAGE_GOD does nothing to an invulnerable or petrified
+    /// character, nor fire to a fire-immune one. The shared character-damage entry
+    /// (<see cref="ApplyCharacterDamage"/>) applies it; the damage sites that still
+    /// write hit points themselves (fields, traps, splashes) consult it directly.</summary>
     public static bool IsDamageImmune(Character target, DamageType type = DamageType.Physical)
         => !type.HasFlag(DamageType.God) &&
-           (target.IsStatFlag(StatFlag.Invul) ||
+           (target.IsStatFlag(StatFlag.Invul) || target.IsStatFlag(StatFlag.Stone) ||
             (type.HasFlag(DamageType.Fire) && (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(target) & CanFlags.C_FireImmune) != 0));
 
-    /// <summary>
-    /// Apply damage that a defender bounces back at its attacker — Blood Oath,
-    /// Reactive Armor, REFLECTPHYSICALDAM.
-    ///
-    /// Source-X sends reflected damage back through the SAME entry as any other
-    /// blow: OnTakeDamage(dam, src, DAMAGE_FIXED | DAMAGE_REACTIVE)
-    /// (CCharFight.cpp:1021), whose first act is to bounce everything without
-    /// DAMAGE_GOD off an invulnerable target (:642). Recursion is prevented by the
-    /// DAMAGE_REACTIVE flag (:1015), NOT by the damage being "fixed" — SphereNet's
-    /// three reflect branches wrote attacker.Hits directly on the belief that fixed
-    /// damage cannot recurse, and so skipped the immunity gate entirely: a character
-    /// that cannot be harmed still lost hit points to its own victim.
-    ///
-    /// Reflected damage is never itself reflected, which is what the direct write
-    /// bought and what this reproduces without giving up the guard.
-    /// </summary>
-    /// <returns>The damage actually dealt; 0 when the recipient is immune.</returns>
-    public static int ApplyReflectedDamage(Character recipient, Character from, int damage)
+    /// <summary>The region half of the OnTakeDamage bounce (CCharFight.cpp:656-676): a
+    /// SAFE region protects everybody; a NO_PVP region protects a player from another
+    /// player and from a pet whose top owner is a player. <paramref name="source"/> is
+    /// the victim itself for sourceless damage, as the reference's pSrc = this is.</summary>
+    public static bool IsRegionProtected(Character target, Character source)
     {
-        if (damage <= 0) return 0;
-        if (recipient.IsDeleted || recipient.IsDead) return 0;
-        if (IsDamageImmune(recipient)) return 0;
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        var region = world?.FindRegion(target.Position);
+        if (region == null)
+            return false;
+        if (region.IsFlag(RegionFlag.Safe))
+            return true;
+        if (!region.IsFlag(RegionFlag.NoPvP) || !target.IsPlayer)
+            return false;
+        if (source.IsPlayer)
+            return true;
+        var owner = ResolvePetOwnerRecursive(world!, source);
+        return owner != null && owner.IsPlayer;
+    }
 
-        recipient.Hits -= (short)Math.Min(damage, short.MaxValue);
-        // Credit it so a reflect kill attributes to the defender (murder count,
-        // karma/fame, loot rights).
-        recipient.RecordAttack(from.Uid, damage);
+    /// <summary>NPC_PetGetOwnerRecursive: the top of a pet's ownership chain (a pet
+    /// owned by a pet owned by a player resolves to the player).</summary>
+    private static Character? ResolvePetOwnerRecursive(World.GameWorld world, Character pet)
+    {
+        Character? owner = null;
+        var current = pet;
+        for (int depth = 0; depth < 16 && !current.IsPlayer && current.OwnerSerial.IsValid; depth++)
+        {
+            var next = world.FindChar(current.OwnerSerial);
+            if (next == null || next == current)
+                break;
+            owner = next;
+            current = next;
+        }
+        return owner;
+    }
+
+    private static bool IsSpellScripted(SpellType spell) =>
+        Character.ResolveSpellDef?.Invoke(spell)?.IsFlag(SpellFlag.Scripted) == true;
+
+    /// <summary>
+    /// The one character-damage entry: Source-X CChar::OnTakeDamage (CCharFight.cpp:
+    /// 633-1062). A swing (after its @Hit stage), the DAMAGE verb, a damaging spell
+    /// (after @SpellEffect) and every reflected blow come through here, so they share
+    /// one order:
+    /// <list type="number">
+    /// <item>the protection gates - invulnerable/stone, fire immunity, SAFE and NO_PVP
+    /// regions - none of which stop DAMAGE_GOD;</item>
+    /// <item>OnAttackedBy (aggressor memory, crime, retaliation) and the reveal of the
+    /// attacker unless DAMAGE_NOREVEAL;</item>
+    /// <item>Evil Omen (+25%) and Blood Oath (+10%, and the bonded attacker takes
+    /// (100 - level)% of that raised RAW blow back as MAGIC|FIXED damage);</item>
+    /// <item>armour: COMBAT_ELEMENTAL_ENGINE's resist split, else the pre-AOS armour
+    /// roll (halved against magic) - skipped for DAMAGE_GOD and DAMAGE_FIXED;</item>
+    /// <item>the victim's @GetHit and the worn piece's item @GetHit, which see the
+    /// REDUCED damage and whose ARGN1/ARGN2 are final (never reduced again);</item>
+    /// <item>armour wear, unparalyze (unless DAMAGE_NOUNPARALYZE), COMBAT_SLAYER;</item>
+    /// <item>the attacker list, then Reactive Armour and REFLECTPHYSICALDAM for a
+    /// physical blow - the bounce comes back through this same entry flagged
+    /// DAMAGE_REACTIVE, so it is protected, triggers @GetHit and never bounces again;</item>
+    /// <item>the hit points.</item>
+    /// </list>
+    /// <paramref name="damageType"/> uses the Source-X DAMAGE_* numbering. Returns the
+    /// damage taken off the hit points (0 when none).
+    /// </summary>
+    public static int ApplyCharacterDamage(
+        Character target,
+        int damage,
+        Character? source,
+        DamageType damageType,
+        int physicalPercent = 0,
+        int firePercent = 0,
+        int coldPercent = 0,
+        int poisonPercent = 0,
+        int energyPercent = 0,
+        int spell = 0,
+        DamageFeedback feedback = DamageFeedback.Host,
+        CombatFlags? combatFlags = null,
+        HitDamageContext? swing = null)
+    {
+        if (target.IsDeleted || target.IsDead)
+            return 0;
+        // A blow with nobody behind it is the victim's own (pSrc = this, :636).
+        var src = source != null && !source.IsDeleted ? source : target;
+        var type = damageType;
+        var flags = combatFlags ?? (CombatFlags)Character.CombatFlags;
+
+        // Protection gates (:640-677).
+        if ((type & DamageType.God) == 0 &&
+            (IsDamageImmune(target, type) || IsRegionProtected(target, src)))
+            return 0;
+
+        // OnAttackedBy (:681): a stone victim ignores it (even DAMAGE_GOD), and the
+        // attacker is revealed unless the blow carries DAMAGE_NOREVEAL.
+        if (src != target)
+        {
+            if (target.IsStatFlag(StatFlag.Stone))
+                return 0;
+            if ((type & DamageType.NoReveal) == 0)
+                src.ClearHiddenState();
+            if (!target.OnAttackedBy(src))
+                return 0;
+        }
+
+        // Necromancy cursed effects (:684-703), on the RAW blow.
+        if (!IsSpellScripted(SpellType.EvilOmen) && target.ConsumeEvilOmen())
+            damage += damage / 4;
+        // Blood Oath: the bond links the victim to the attacker. A FIXED blow is
+        // already a reflection and must not come back again (:697).
+        if (src != target && target.BloodOathEnemy == src.Uid && target.BloodOathLevel > 0 &&
+            (type & DamageType.Fixed) == 0 && !IsSpellScripted(SpellType.BloodOath))
+        {
+            damage += damage / 10;
+            ApplyCharacterDamage(src, damage * (100 - target.BloodOathLevel) / 100, target,
+                DamageType.Magic | DamageType.Fixed, spell: (int)SpellType.BloodOath);
+            if (target.IsDeleted || target.IsDead)
+                return 0;
+        }
+
+        // MAGICF_IGNOREAR bypasses defence completely (:710).
+        if ((type & DamageType.Magic) != 0 &&
+            (Character.MagicFlags & (int)MagicConfigFlags.IgnoreArmor) != 0)
+            type |= DamageType.Fixed;
+
+        // Armour (:713-747): the elemental split or the pre-AOS roll - one choice,
+        // made here for every kind of damage.
+        bool elemental = flags.HasFlag(CombatFlags.ElementalEngine);
+        if ((type & (DamageType.God | DamageType.Fixed)) == 0)
+        {
+            if (elemental)
+            {
+                if (physicalPercent == 0)
+                    physicalPercent = 100 - (firePercent + coldPercent + poisonPercent + energyPercent);
+                damage = ApplyDamageSplitResist(target, damage,
+                    physicalPercent, firePercent, coldPercent, poisonPercent, energyPercent);
+            }
+            else
+            {
+                damage = ApplyPreAosArmor(target, damage, type);
+            }
+        }
+
+        // @GetHit, then the worn piece's item @GetHit (:749-788). Their ARGN1 is the
+        // final damage: it is not reduced a second time.
+        var getHit = new GetHitContext
+        {
+            Target = target,
+            Source = src,
+            Damage = damage,
+            DamageType = type,
+            Spell = spell,
+            ItemDamageLayer = swing?.ItemDamageLayer ?? ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],
+            ItemDamageChance = swing?.ItemDamageChance ?? Math.Clamp(DurabilityLossChance, 0, 100),
+            Elemental = elemental,
+            DamPercentPhysical = physicalPercent,
+            DamPercentFire = firePercent,
+            DamPercentCold = coldPercent,
+            DamPercentPoison = poisonPercent,
+            DamPercentEnergy = energyPercent,
+        };
+        if (OnGetHit != null)
+        {
+            damage = OnGetHit(getHit);
+            if (getHit.Cancelled)
+                return 0;
+            type = getHit.DamageType;
+        }
+        damage = Math.Clamp(damage, short.MinValue, short.MaxValue);
+
+        // The worn piece at the script-final ItemDamageLayer takes the wear
+        // ItemDamageChance% of the time (:790-793); a non-humanoid wears nothing.
+        if (DurabilityEnabled &&
+            (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(target) & CanFlags.C_NonHumanoid) == 0 &&
+            _rand.Next(100) < Math.Clamp(getHit.ItemDamageChance, 0, 100))
+        {
+            var itemHit = target.GetEquippedItem(getHit.ItemDamageLayer);
+            if (itemHit != null)
+                ApplyDurabilityLoss(itemHit, rollConfiguredChance: false,
+                    source: src, triggerDamage: damage, damageType: type);
+        }
+
+        // Unparalyze (:797-818): any blow without DAMAGE_NOUNPARALYZE ends a paralysis
+        // (the spell's own NOUNPARALYZE flag keeps the paralyze memory) and a freeze.
+        if ((type & DamageType.NoUnparalyze) == 0)
+        {
+            var spellDef = spell != 0 ? Character.ResolveSpellDef?.Invoke((SpellType)spell) : null;
+            if (spellDef == null || !spellDef.IsFlag(SpellFlag.NoUnparalyze))
+                Character.BreakParalyzeHook?.Invoke(target);
+            if (target.IsStatFlag(StatFlag.Freeze))
+                target.ClearStatFlag(StatFlag.Freeze);
+        }
+
+        // COMBAT_SLAYER (:820-877): the swing's weapon, or for magic the spellbook.
+        if (flags.HasFlag(CombatFlags.Slayer))
+            damage = ApplySlayerDamage(src, target, damage, ResolveSlayerSource(src, type, swing));
+
+        if (src != target)
+        {
+            // The attacker list (:913-940) records the blow before any bounce.
+            target.RecordAttack(src.Uid, Math.Max(0, damage));
+
+            // A physical blow of some sort (:943-1026).
+            if (IsReflectableBlow(src, target, type))
+            {
+                if ((type & (DamageType.God | DamageType.Reactive)) == 0)
+                    ApplyReactiveArmor(src, target, ref damage, physicalPercent, firePercent,
+                        coldPercent, poisonPercent, energyPercent);
+                if ((type & DamageType.Reactive) == 0)
+                {
+                    int reflectPct = Math.Min(GetOnHitPropertyValue(target, null, "REFLECTPHYSICALDAM"), 250);
+                    if (reflectPct != 0)
+                        ApplyCharacterDamage(src, damage * reflectPct / 100, target,
+                            DamageType.Fixed | DamageType.Reactive, physicalPercent, firePercent,
+                            coldPercent, poisonPercent, energyPercent);
+                }
+                if (target.IsDeleted || target.IsDead)
+                    return 0;
+            }
+        }
+
+        if (damage <= 0)
+            return 0;
+
+        target.Hits -= (short)Math.Min(damage, short.MaxValue);
+        if (feedback == DamageFeedback.Host)
+            OnDirectCharacterDamageApplied?.Invoke(target, source, damage, type);
         return damage;
+    }
+
+    /// <summary>Pre-AOS armour (CCharFight.cpp:733-746): the creature's own ARMOR plus
+    /// the coverage-weighted worn armour, rolled between half of and a 7-35% share of
+    /// it, halved against magic.</summary>
+    private static int ApplyPreAosArmor(Character target, int damage, DamageType type)
+    {
+        int armorRating = CalcArmorDefense(target) + target.CharDefArmor();
+        int arMax = (int)Math.Min((long)armorRating * _rand.Next(7, 36) / 100, int.MaxValue);
+        int arMin = arMax / 2;
+        int defense = (int)_rand.NextInt64(arMin, (long)arMax + 1);
+        if ((type & DamageType.Magic) != 0)
+            defense /= 2;
+        return Math.Max(0, damage - defense);
+    }
+
+    /// <summary>The item COMBAT_SLAYER reads (CCharFight.cpp:822-832): for magic the
+    /// equipped spellbook, else - and failing that - the wielded weapon.</summary>
+    private static Item? ResolveSlayerSource(Character src, DamageType type, HitDamageContext? swing)
+    {
+        var oneHand = src.GetEquippedItem(Layer.OneHanded);
+        var twoHand = src.GetEquippedItem(Layer.TwoHanded);
+        if ((type & DamageType.Magic) != 0)
+        {
+            if (oneHand?.ItemType == ItemType.Spellbook) return oneHand;
+            if (twoHand?.ItemType == ItemType.Spellbook) return twoHand;
+        }
+        return swing != null ? swing.Weapon : oneHand ?? twoHand;
     }
 
     /// <summary>Is this the kind of blow the reflect family answers?
@@ -754,10 +1024,11 @@ public static class CombatEngine
         attacker != null && attacker != target && !attacker.IsDead && !attacker.IsDeleted &&
         (damageType & (DamageType.HitBlunt | DamageType.HitPierce | DamageType.HitSlash)) != 0;
 
-    /// <summary>Reactive Armour: take the bounce out of the blow, send it back, and
-    /// show it. Runs BEFORE the blow lands, because the reference subtracts it from
-    /// the damage first (CCharFight.cpp:993).</summary>
-    public static void ApplyReactiveArmor(Character attacker, Character target, ref int damage)
+    /// <summary>Reactive Armour: take the bounce out of the blow, send it back through
+    /// the damage entry with the @HitReactive LOCAL.DamageType (FIXED|REACTIVE by
+    /// default, so it cannot bounce again), and show it (CCharFight.cpp:950-1006).</summary>
+    private static void ApplyReactiveArmor(Character attacker, Character target, ref int damage,
+        int physicalPercent, int firePercent, int coldPercent, int poisonPercent, int energyPercent)
     {
         var reactive = PrepareReactiveArmor(attacker, target, ref damage);
         if (reactive == null)
@@ -765,36 +1036,13 @@ public static class CombatEngine
 
         // Deliberately NOT gated on what is left of the blow: the bounce is the
         // reactive spell's own event, and a wearer who absorbed the whole blow still
-        // sends it back. Gating it on the remainder meant a full absorb reflected
-        // nothing.
+        // sends it back.
         if (reactive.Reflect > 0)
-            ApplyReflectedDamage(attacker, target, reactive.Reflect);
+            ApplyCharacterDamage(attacker, reactive.Reflect, target, reactive.DamageType,
+                physicalPercent, firePercent, coldPercent, poisonPercent, energyPercent,
+                spell: (int)SpellType.ReactiveArmor);
         if (reactive.Sound != 0 || reactive.EffectId != 0)
             OnReactiveArmorFeedback?.Invoke(target, attacker, reactive.Sound, reactive.EffectId);
-    }
-
-    /// <summary>The two reflects that answer a blow that has already landed.
-    ///
-    /// Necromancy Blood Oath (reference OnTakeDamage): a bonded victim struck by its
-    /// linked enemy suffers an extra 10% and reflects (100 - level)% back as fixed
-    /// damage. AOS REFLECTPHYSICALDAM (CCharFight.cpp:1013): the defender's suit
-    /// bounces a percentage back, capped at 250%. Neither recurses - the reflect is
-    /// applied directly rather than routed back through the damage path.</summary>
-    public static void ApplyBloodOathAndSuitReflect(Character attacker, Character target, int damage)
-    {
-        if (attacker == target || attacker.IsDead || attacker.IsDeleted)
-            return;
-
-        if (target.BloodOathEnemy == attacker.Uid && target.BloodOathLevel > 0)
-        {
-            int extra = damage / 10;
-            if (extra > 0)
-                target.Hits -= (short)Math.Min(extra, short.MaxValue);
-            ApplyReflectedDamage(attacker, target, damage * (100 - target.BloodOathLevel) / 100);
-        }
-
-        int reflectPct = Math.Min(GetOnHitPropertyValue(target, null, "REFLECTPHYSICALDAM"), 250);
-        ApplyReflectedDamage(attacker, target, damage * reflectPct / 100);
     }
 
     /// <summary>Work out what Reactive Armour takes out of a blow and what it sends
@@ -804,16 +1052,11 @@ public static class CombatEngine
     /// happens: the defender wears the flag, the blow is neither divine nor itself a
     /// bounce, the attacker is within two tiles, and a reactive memory is actually worn.
     /// The percentage comes from that memory, not from the engine. The blow is then
-    /// REDUCED by the bounce and the attacker takes it - SphereNet only ever did the
-    /// second half, so the spell hurt the attacker without sparing its wearer.
+    /// REDUCED by the bounce and the attacker takes it.
     ///
     /// A zero percentage is a real answer, not a missing one: a definition with no
     /// EFFECT reflects nothing, and the trigger still runs so a script can supply the
-    /// numbers itself.
-    ///
-    /// Reflected damage cannot bounce again: <see cref="ApplyReflectedDamage"/> writes
-    /// the hit points directly rather than coming back through this path, which is the
-    /// reference's DAMAGE_REACTIVE guard by another route.</summary>
+    /// numbers itself.</summary>
     private static ReactiveArmorContext? PrepareReactiveArmor(
         Character attacker, Character target, ref int damage)
     {
@@ -845,9 +1088,10 @@ public static class CombatEngine
         return ctx;
     }
 
-    /// <summary>Apply the Source-X CObjBase DAMAGE verb to a character or item.
-    /// Character damage honors @GetHit and elemental resists; item damage uses
-    /// the existing @Damage cancellation and durability-break callbacks.</summary>
+    /// <summary>The Source-X CObjBase DAMAGE verb (CObjBase.cpp:2230-2266) on a
+    /// character or an item. A character goes through the shared damage entry
+    /// (<see cref="ApplyCharacterDamage"/>); an item through CItem::OnTakeDamage.
+    /// <paramref name="damageType"/> is the script's number, Source-X DAMAGE_*.</summary>
     public static int ApplyScriptDamage(
         ObjBase target,
         int rawDamage,
@@ -860,73 +1104,14 @@ public static class CombatEngine
         int energyPercent = 0)
     {
         int damage = Math.Clamp(rawDamage, 0, short.MaxValue);
-        if (damage <= 0) return 0;
 
         // An item's DAMAGE is CItem::OnTakeDamage with SRC and the type (CObjBase.cpp:2259-2264).
         if (target is Item item)
-            return ItemDamageEngine.OnTakeDamage(item, damage, source, damageType);
-        if (target is not Character character || character.IsDeleted || character.IsDead)
+            return damage > 0 ? ItemDamageEngine.OnTakeDamage(item, damage, source, damageType) : 0;
+        if (target is not Character character)
             return 0;
-        if (IsDamageImmune(character, damageType))
-            return 0;
-
-        var context = new DirectDamageContext
-        {
-            Target = character,
-            Source = source,
-            Damage = damage,
-            DamageType = damageType,
-            PhysicalPercent = physicalPercent,
-            FirePercent = firePercent,
-            ColdPercent = coldPercent,
-            PoisonPercent = poisonPercent,
-            EnergyPercent = energyPercent
-        };
-        if (OnDirectDamage != null)
-            damage = Math.Clamp(OnDirectDamage(context), 0, short.MaxValue);
-        if (context.Cancelled || damage <= 0)
-            return 0;
-
-        if (!damageType.HasFlag(DamageType.Fixed) && !damageType.HasFlag(DamageType.God))
-        {
-            int splitTotal = context.PhysicalPercent + context.FirePercent + context.ColdPercent +
-                context.PoisonPercent + context.EnergyPercent;
-            damage = splitTotal > 0
-                ? ApplyDamageSplitResist(character, damage,
-                    context.PhysicalPercent, context.FirePercent, context.ColdPercent,
-                    context.PoisonPercent, context.EnergyPercent)
-                : ApplyElementalResist(character, damage, damageType);
-        }
-        damage = Math.Clamp(damage, 0, short.MaxValue);
-        if (damage <= 0) return 0;
-
-        // The reflect family answers a scripted blow too. The reference has ONE damage
-        // entry - CChar::OnTakeDamage - and the DAMAGE verb calls it directly
-        // (CObjBase.cpp:2249), so Reactive Armour, Blood Oath and REFLECTPHYSICALDAM
-        // are as much a part of `<SRC.DAMAGE 40>` as of a swing. SphereNet grew a
-        // second entry for scripted damage and the family stayed behind on the melee
-        // one, so a shard that dealt its damage from script - the usual way a custom
-        // attack, a trap with a culprit or an arena is written - got none of it.
-        //
-        // Only for a blow with somebody behind it: the reference gates the family on a
-        // physical damage type and a source that is not the victim, which is why a
-        // fireball or an unattributed field bounces off nothing.
-        bool reflectable = IsReflectableBlow(source, character, damageType);
-        if (reflectable)
-        {
-            ApplyReactiveArmor(source!, character, ref damage);
-            damage = Math.Clamp(damage, 0, short.MaxValue);
-            if (damage <= 0)
-                return 0;
-        }
-
-        character.Hits -= (short)damage;
-        if (source != null && source != character)
-            character.RecordAttack(source.Uid, damage);
-        if (reflectable)
-            ApplyBloodOathAndSuitReflect(source!, character, damage);
-        OnDirectCharacterDamageApplied?.Invoke(character, source, damage, damageType);
-        return damage;
+        return ApplyCharacterDamage(character, damage, source, damageType,
+            physicalPercent, firePercent, coldPercent, poisonPercent, energyPercent);
     }
 
     /// <summary>A sourceless DAMAGE_GOD blow to an item (the gathering tool's wear,
@@ -934,34 +1119,20 @@ public static class CombatEngine
     internal static int ApplyDirectItemDamage(Item item, int damage) =>
         ItemDamageEngine.OnTakeDamage(item, damage, null, DamageType.God);
 
-    /// <summary>Apply an explicit physical/fire/cold/poison/energy percentage
-    /// split. Missing percentage is physical; totals above 100 are normalized
-    /// so malformed scripts cannot amplify the raw damage.</summary>
+    /// <summary>COMBAT_ELEMENTAL_ENGINE resist (CCharFight.cpp:717-730): each share
+    /// of the blow is cut by the matching effective resist. The caller fills an unset
+    /// physical share with what the elemental shares leave of 100, as the reference
+    /// does; the shares are not otherwise normalised.</summary>
     public static int ApplyDamageSplitResist(Character target, int damage,
         int physicalPercent, int firePercent, int coldPercent,
         int poisonPercent, int energyPercent)
     {
-        if (damage <= 0) return 0;
-        int phys = Math.Clamp(physicalPercent, 0, 100);
-        int fire = Math.Clamp(firePercent, 0, 100);
-        int cold = Math.Clamp(coldPercent, 0, 100);
-        int poison = Math.Clamp(poisonPercent, 0, 100);
-        int energy = Math.Clamp(energyPercent, 0, 100);
-        int total = phys + fire + cold + poison + energy;
-        if (total <= 0) return damage;
-        if (total < 100)
-        {
-            phys += 100 - total;
-            total = 100;
-        }
-
-        long resisted = 0;
-        resisted += (long)phys * (100 - EffResPhysical(target));
-        resisted += (long)fire * (100 - EffResFire(target));
-        resisted += (long)cold * (100 - EffResCold(target));
-        resisted += (long)poison * (100 - EffResPoison(target));
-        resisted += (long)energy * (100 - EffResEnergy(target));
-        return (int)Math.Clamp((long)damage * resisted / (total * 100L), 0, damage);
+        long total = (long)damage * physicalPercent * (100 - EffResPhysical(target));
+        total += (long)damage * firePercent * (100 - EffResFire(target));
+        total += (long)damage * coldPercent * (100 - EffResCold(target));
+        total += (long)damage * poisonPercent * (100 - EffResPoison(target));
+        total += (long)damage * energyPercent * (100 - EffResEnergy(target));
+        return (int)Math.Clamp(total / 10_000, 0L, short.MaxValue);
     }
 
     /// <summary>
@@ -1181,11 +1352,10 @@ public static class CombatEngine
 
         // Parry check — Source-X Calc_CombatChanceToParry, selected by the
         // COMBATPARRYINGERA mask (legacy or Samurai Empire/Bushido formula).
-        // Upstream skips the whole block for a DAMAGE_GOD blow (CCharFight.cpp:2083).
-        // There is nothing to skip here: a weapon swing carries no damage-type flags
-        // through this path at all (see the note on the @HitCheck ARGN2 read-back),
-        // and the God-flagged sources are the script DAMAGE verb and the spell
-        // engine, neither of which comes through the parry check.
+        // Upstream skips the whole block for a DAMAGE_GOD blow (CCharFight.cpp:2083),
+        // the type being the weapon's (OVERRIDE.DAMAGETYPE) or @HitCheck's ARGN2.
+        // Neither reaches this point yet: the swing's type is only read below, for
+        // the @Hit stage, and @HitCheck's ARGN2 is not carried into the swing.
         int parryChance = CalculateParryChance(target, out Item? parryItem);
         var parrySkill = SkillType.Parrying;
 
@@ -1243,48 +1413,13 @@ public static class CombatEngine
                 damage -= damage * reductionPercent / 100;
         }
 
-        // OnTakeDamage -> OnAttackedBy (CCharFight.cpp:684) runs BEFORE the armour
-        // (:717-760) and before @GetHit: a blow that lands is noticed - HARMEDBY /
-        // AGGREIVED memory, the crime judgement, the victim's retaliation - even
-        // when armour then absorbs all of it. Only the invulnerable bounce comes
-        // first (:642-647). It used to wait for damage left over after armour, so
-        // a well-armoured NPC ignored whoever was hitting it.
-        if (attacker != target && !IsDamageImmune(target))
-            target.OnAttackedBy(attacker);
-
-        // Armor reduction
-        if (flags.HasFlag(CombatFlags.ElementalEngine))
-        {
-            // Split damage by attacker's elemental percentages, apply per-element resist
-            damage = ApplyElementalDamageSplit(attacker, target, damage, weapon);
-        }
-        else
-        {
-            // Source-X OnTakeDamage pre-AOS path: the WHOLE-BODY coverage-
-            // weighted AR mitigates every hit; which worn piece takes the
-            // durability wear is the @GetHit ItemDamageLayer roll below.
-            // pCharDef->m_defense + m_defense (CCharFight.cpp:735): the creature's
-            // own ARMOR counts as well as what it wears. Only the worn part was
-            // read, so every scripted monster fought with no natural armour.
-            int armorRating = CalcArmorDefense(target) + target.CharDefArmor();
-            int arMax = (int)Math.Min((long)armorRating * _rand.Next(7, 36) / 100, int.MaxValue);
-            int arMin = arMax / 2;
-            int defense = (int)_rand.NextInt64(arMin, (long)arMax + 1);
-            damage -= defense;
-        }
-
         damage = Math.Max(0, damage);
 
-        // On-hit damage triggers (@Hit / @GetHit and the weapon/armor item
-        // hooks) run here — after armor/parry resolved a number, but BEFORE it
-        // is applied to HP — so a script may raise, lower or fully cancel the
-        // damage. Source-X fires these around damage application; centralizing
-        // them in one hook means the player and NPC swing paths share a single
-        // pipeline. The context carries the Source-X @GetHit armor-damage roll
-        // (LOCAL.ItemDamageLayer / ItemDamageChance) and the elemental split
-        // (LOCAL.DamagePercent*) for the hook to expose to scripts.
-        bool elemental = flags.HasFlag(CombatFlags.ElementalEngine);
-        var split = elemental ? GetElementalSplit(attacker) : default;
+        // The attacker side of the blow (Source-X Fight_Hit, CCharFight.cpp:2143-2195):
+        // the attacker's @Hit, then the weapon's @Hit, on the RAW damage - before the
+        // victim's armour, which belongs to the victim's own damage entry below. Both
+        // may rewrite the damage (ARGN1) and its type (ARGN2); RETURN 1 drops the blow.
+        // The victim's @GetHit armor-damage roll is seeded here and handed on.
         int weaponPoison = weapon != null ? GetWeaponPoisonSkill(weapon) : 0;
         int poisonDose = weaponPoison > 0 ? _rand.Next(weaponPoison) : 0;
         var hitCtx = new HitDamageContext
@@ -1293,51 +1428,24 @@ public static class CombatEngine
             Target = target,
             Weapon = weapon,
             Damage = damage,
+            DamageType = GetWeaponDamageType(weapon),
             PoisonDose = poisonDose,
             PoisonReductionAmount = weapon != null ? poisonDose / 2 : 1,
             ItemDamageLayer = ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],
             ItemDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
             WeaponDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
             AmmoUid = ammoUid,
-            Elemental = elemental,
-            DamPercentPhysical = split.Phys,
-            DamPercentFire = split.Fire,
-            DamPercentCold = split.Cold,
-            DamPercentPoison = split.Poison,
-            DamPercentEnergy = split.Energy,
         };
         if (OnHitDamage != null)
             damage = Math.Clamp(OnHitDamage(hitCtx), 0, short.MaxValue);
         ammoHandled = hitCtx.ArrowHandled || hitCtx.Cancelled;
 
-        // RETURN 1 is a full cancellation, irrespective of a buggy/custom
-        // hook returning a positive number. Source-X exits before durability,
-        // poison, procs, HP and skill gain; it also leaves ranged ammo alone.
+        // RETURN 1 in the @Hit chain drops the blow before poison, wear, damage,
+        // procs and skill gain (Source-X returns WAR_SWING_EQUIPPING); it also leaves
+        // ranged ammo alone.
         if (hitCtx.Cancelled)
             return 0;
-
-        // Source-X OnTakeDamage tail of the @GetHit block: the (script-final)
-        // ItemDamageLayer item wears ItemDamageChance% of the time — in BOTH
-        // armor modes, so elemental combat wears armor too. A RETURN 1 anywhere
-        // in the chain (Cancelled) returned before this roll in Source-X.
-        if (!hitCtx.Cancelled && DurabilityEnabled &&
-            (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(target) & CanFlags.C_NonHumanoid) == 0 &&
-            _rand.Next(100) < Math.Clamp(hitCtx.ItemDamageChance, 0, 100))
-        {
-            var itemHit = target.GetEquippedItem(hitCtx.ItemDamageLayer);
-            // Source-X pItemHit->OnTakeDamage(iDmg, pSrc, uType) (CCharFight.cpp:792):
-            // the armour's @Damage sees the attacker as SRC and the blow as ARGN1.
-            if (itemHit != null)
-                ApplyDurabilityLoss(itemHit, rollConfiguredChance: false,
-                    source: attacker, triggerDamage: damage, damageType: GetWeaponDamageType(weapon));
-        }
-
-        // COMBAT_SLAYER (Source-X OnTakeDamage, CCharFight.cpp:821): the
-        // weapon's (or talisman's) SLAYER vs the victim's FACTION scales the
-        // damage after the trigger chain has settled it.
-        if (damage > 0 && flags.HasFlag(CombatFlags.Slayer))
-            damage = ApplySlayerDamage(attacker, target, damage, weapon);
-        damage = Math.Clamp(damage, 0, short.MaxValue);
+        var damageType = hitCtx.DamageType;
 
         // Poisoned weapon / venomous creature (Source-X CCharFight.cpp:2224-2254). The
         // weapon's poison is its MOREZ (m_itWeapon.m_poison_skill, 0-100); a hit
@@ -1379,48 +1487,24 @@ public static class CombatEngine
             ApplyDurabilityLoss(weapon, rollConfiguredChance: false,
                 source: target, triggerDamage: damage, damageType: GetWeaponDamageType(weapon));
 
-        // Reactive Armour bounces part of the blow back and takes that part OUT of
-        // the blow: the reference subtracts it from iDmg before the hit points come
-        // off and only then hits the attacker (CCharFight.cpp:993-999). SphereNet
-        // reflected but never reduced, so the spell cost the attacker some damage
-        // without ever sparing the wearer any.
-        // A swing is a physical blow by definition, so the type gate the reference
-        // applies to the reflect family is already satisfied here.
-        ApplyReactiveArmor(attacker, target, ref damage);
-
-        // Apply damage — do NOT call Kill() here; the caller handles death
-        // via DeathEngine.ProcessDeath which creates the corpse, drops loot,
-        // and sends the delete packet. Calling Kill() early makes
-        // ProcessDeath bail out ("already dead") leaving a ghost NPC.
-        // STATF_INVUL bounces the blow (no Hits loss, no reflect).
-        if (damage > 0 && !IsDamageImmune(target))
-        {
-            // (OnAttackedBy already ran, before the armour - see above.)
-
-            // Necromancy Evil Omen (reference OnTakeDamage): the victim's next
-            // harmful hit lands 25% harder, then the omen is spent.
-            if (target.ConsumeEvilOmen())
-                damage = (int)Math.Min((long)damage + damage / 4, short.MaxValue);
-
-            target.Hits -= (short)Math.Min(damage, short.MaxValue);
-            target.RecordAttack(attacker.Uid, damage);
-
-            ApplyBloodOathAndSuitReflect(attacker, target, damage);
-        }
+        // The victim's damage entry (CCharFight.cpp:2259): protection, OnAttackedBy,
+        // armour, @GetHit on the reduced blow, armour wear, slayer, the reflect family
+        // and the hit points - the same entry a script DAMAGE and a spell use. The
+        // elemental split is the attacker's DAM* shares. Do NOT call Kill() here; the
+        // caller handles death via DeathEngine.ProcessDeath.
+        int dealt = ApplyCharacterDamage(target, damage, attacker, damageType,
+            attacker.DamPhysical, attacker.DamFire, attacker.DamCold,
+            attacker.DamPoison, attacker.DamEnergy,
+            feedback: DamageFeedback.Caller, combatFlags: flags, swing: hitCtx);
 
         // AOS on-hit properties: leeches, mana drain, hit-area splashes and on-hit
         // spell procs.
         //
         // Source-X Fight_Hit applies the weapon's own damage FIRST
         // (OnTakeDamage, CCharFight.cpp:2259) and only then runs the procs
-        // (:2270-2361). Running them first meant a proc that killed the target
-        // aborted the strike before its damage ever landed and before RecordAttack
-        // ran for it - so the kill, the murder count and the loot rights went to the
-        // proc rather than to the blow that was actually swung.
-        //
-        // Deliberately OUTSIDE the immunity block above: Source-X gates the procs on
-        // `iDmg > 0` and discards OnTakeDamage's return, so they fire even when the
-        // target bounced the blow. Moving this inside would be a new deviation.
+        // (:2270-2361), on its own iDmg - the post-@Hit blow, which OnTakeDamage
+        // took by value, so neither the victim's armour nor its @GetHit changes it and
+        // the procs fire even when the victim bounced the blow.
         if (damage > 0)
             ApplyAosOnHitEffects(attacker, target, damage, weapon, flags);
 
@@ -1451,7 +1535,7 @@ public static class CombatEngine
             }
         }
 
-        return damage;
+        return dealt;
     }
 
     private static void ApplyDurabilityLoss(Item item, bool rollConfiguredChance = true,
@@ -1576,7 +1660,7 @@ public static class CombatEngine
         if (!string.IsNullOrWhiteSpace(overrideRaw))
         {
             uint numeric = Objects.ObjBase.ParseHexOrDecUInt(overrideRaw);
-            return (DamageType)(ushort)Math.Min(numeric, ushort.MaxValue);
+            return (DamageType)numeric;
         }
 
         return weapon.ItemType switch

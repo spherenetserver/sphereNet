@@ -196,7 +196,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
         SphereNet.Game.Combat.CombatEngine.OnReactiveArmorTrigger = null;
         SphereNet.Game.Combat.CombatEngine.OnReactiveArmorFeedback = null;
-        SphereNet.Game.Combat.CombatEngine.OnDirectDamage = null;
+        SphereNet.Game.Combat.CombatEngine.OnGetHit = null;
         SphereNet.Game.Combat.CombatEngine.OnDirectCharacterDamageApplied = null;
         SphereNet.Game.Combat.CombatEngine.OnItemDamaged = null;
         SphereNet.Game.Combat.CombatEngine.OnItemBroken = null;
@@ -233,6 +233,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnMurderDecay = null;
         SphereNet.Game.Objects.Characters.Character.OnNotoSend = null;
         SphereNet.Game.Objects.Characters.Character.ResolveNotoFlag = null;
+        SphereNet.Game.AI.NpcAI.RandomOverride = null;
         SphereNet.Game.Objects.Characters.Character.OnHealthBarStatusChanged = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptSpellEffect = null;
         SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = null;

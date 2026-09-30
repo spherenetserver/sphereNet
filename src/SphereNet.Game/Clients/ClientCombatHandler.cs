@@ -874,7 +874,7 @@ public sealed class ClientCombatHandler
         // somebody sees it: the witnesses decide (CheckCrimeSeen, SKILL_NONE). The
         // victim is the mark and never a witness; it judges the blow itself when hit
         // (OnAttackedBy). Config gate: ATTACKINGISACRIME.
-        if (Character.AttackingIsACrimeEnabled && GetNotoriety(target) == 1 &&
+        if (Character.AttackingIsACrimeEnabled && _client.GetLogicalNotoriety(target) == 1 &&
             target.Memory_FindObjTypes(_character.Uid, MemoryType.Aggreived | MemoryType.HarmedBy) == null)
         {
             CrimeWitnessService.CheckCrimeSeen(_world, _character, target, null, Random.Shared);
@@ -1350,7 +1350,7 @@ public sealed class ClientCombatHandler
                         obsCh.Uid.Value == victimUid ? emoteVictim : emoteOthers));
             }
 
-            _spellEngine?.TryInterruptFromDamage(target, damage);
+            _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
             if (target.HasActiveSkillPending())
             {
                 int abortedSkill = target.ClearActiveSkillPending();

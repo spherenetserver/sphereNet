@@ -4,6 +4,49 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Hasar girisi, hasar bayraklari, murder, oduller ve notoriety Source-X'e uyar
+------------------------------------------------------------------------
+DEGISIKLIK - Hasar turu bayraklari Source-X DAMAGE_TYPE sayilarini ve 32 biti
+           kullanir (GOD 01, HIT_BLUNT 02, MAGIC 04, POISON 08, FIRE 010,
+           ENERGY 020, COLD 0200, HIT_SLASH 0400, HIT_PIERCE 0800, NOREVEAL
+           04000, NOUNPARALYZE 08000, FIXED 010000, BREATH, THROWN, REACTIVE).
+           DAMAGE fiili, @Hit/@GetHit ARGN2, OVERRIDE.DAMAGETYPE,
+           BREATH.DAMTYPE, THROWDAMTYPE ve LOCAL.DamageType bu sayilari okur;
+           eski SphereNet numaralariyla yazilmis degerler artik baska anlama
+           gelir.
+DEGISIKLIK - Yakin dovus, script DAMAGE, buyu hasari ve yansitilan hasar tek
+           bir karakter hasari girisini Source-X OnTakeDamage sirasiyla
+           paylasir: Invul/Stone, ates bagisikligi, Safe ve NoPvP bolgeleri
+           (GOD asar), saldirgani acigi cikarma ve saldirgan bellegi, Evil
+           Omen ve Blood Oath, COMBAT_ELEMENTAL_ENGINE'e gore zirh (kapaliyken
+           pre-AOS zirh), azaltilmis hasarla @GetHit (yeniden azaltilmaz),
+           zirh asinmasi, NOUNPARALYZE yoksa paraliz cozulmesi, saldirgan
+           listesi, reaktif zirh, can.
+DUZELTME - @Hit (once saldirgan, sonra silah) ham hasari gorur; ARGN1 ve ARGN2
+           her @Hit ve @GetHit asamasindan sonra geri okunur.
+DUZELTME - Buyu hasari @GetHit'ten gecer (RETURN 1 iptal eder), Source-X
+           varsayilan turleriyle; buyunun LOCAL.DamageType'i bunlari ezer.
+DUZELTME - Blood Oath ham hasara %10 ekler ve yansimayi bu miktardan hesaplar;
+           yansiyan hasar FIXED olarak hasar girisinden doner ve tekrar
+           sekemez.
+DUZELTME - Murder, katilin kurbani gordugu notoriety'ye gore verilir
+           (guild-same altinda, katil GM modunda degil), NPC kurbanlarda da ve
+           conjured istisnasindan once; petin oldurmesi sahibine murder
+           yazmaz. Ayni guild ve conjured kurban fame, karma ve deneyim
+           vermez.
+DUZELTME - Saldirgan threat degeri her vurusla birikir (yeni kayit @CombatAdd
+           agirligi arti hasarla baslar).
+EKLEME - OPTIONFLAGS PetBehaviorOwnerNeutral ve EnableGuildAlignNotoriety
+           calisir; guild alignment ve town savaslari notoriety'ye katilir;
+           petin sahibi sahip zinciri boyunca cozulur; NOTO.PERMAGREY ve
+           OVERRIDE.NOTO her sayiyi kabul eder.
+DUZELTME - @NotoSend ARGN1'i (notoriety, davranisi belirler) ve ARGN2'yi
+           (renk, istemciye gider) ayri tutar.
+DUZELTME - @Criminal ARGN2 (SAWCRIME'dan mi) ve ARGO (gorgu tanigi) alir;
+           RETURN 1 tanigin SAWCRIME bellegini korur, RETURN 0 temizler; 0
+           dakikalik criminal suresi bayrak koymaz. Bayrak tam CRIMINALTIMER
+           surer.
+
 [2026-09-30] - Windows'ta milisaniyelik uyku
 ------------------------------------------------------------------------
 DEGISIKLIK - Windows'ta sunucu 1 ms sistem zamanlayicisi ister

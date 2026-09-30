@@ -56,6 +56,7 @@ public sealed class ScriptHookResyncTests : IDisposable
 
     [Theory]
     [InlineData("NotoSend", typeof(Character), "OnNotoSend")]
+    [InlineData("Criminal", typeof(Character), "OnCriminalCheck")]
     [InlineData("EffectAdd", typeof(Character), "OnEffectAdd")]
     [InlineData("Reveal", typeof(Character), "OnRevealing")]
     [InlineData("SpellEffectAdd", typeof(Character), "OnSpellEffectAdd")]
@@ -152,6 +153,58 @@ public sealed class ScriptHookResyncTests : IDisposable
 
         Reload("[EVENTS e_probe]\n");
         Assert.Null(CharacterPoisonState.OnSpellEffectAdd);
+    }
+
+    private (SphereNet.Game.World.GameWorld World, Character Viewer) PlaceWithViewer()
+    {
+        var world = (SphereNet.Game.World.GameWorld)typeof(SphereNet.Server.Program)
+            .GetField("_world", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        _character.IsPlayer = true;
+        world.PlaceCharacter(_character, new SphereNet.Core.Types.Point3D(100, 100, 0, 0));
+        var viewer = world.CreateCharacter();
+        viewer.IsPlayer = true;
+        world.PlaceCharacter(viewer, new SphereNet.Core.Types.Point3D(101, 100, 0, 0));
+        return (world, viewer);
+    }
+
+    // @NotoSend through the server hook: ARGN1 is the logical notoriety and ARGN2 the
+    // colour the packets carry (CCharNotoriety.cpp:118-131, send.cpp:2404).
+    [Fact]
+    public void NotoSendScriptKeepsNotorietyAndColourApart()
+    {
+        var (world, viewer) = PlaceWithViewer();
+        Reload("[EVENTS e_probe]\nON=@NotoSend\nARGN1=1\nARGN2=6\n");
+        _character.Events.Add(_stack.Resources.ResolveDefName("e_probe"));
+
+        Assert.Equal(1, SphereNet.Game.Clients.GameClient.ComputeNotoriety(world, viewer, _character));
+        Assert.Equal(6, SphereNet.Game.Clients.GameClient.ComputeNotorietyColor(world, viewer, _character));
+    }
+
+    // @Criminal through the server hook (CCharNotoriety.cpp:396-431): ARGN2 = from
+    // SAWCRIME, ARGO = the viewer; RETURN 0 raises no flag but spends the viewer's
+    // SAWCRIME; RETURN 1 raises no flag and keeps it.
+    [Theory]
+    [InlineData("RETURN 0", false, false)]
+    [InlineData("RETURN 1", false, true)]
+    [InlineData("ARGN1=0", false, false)]
+    [InlineData("ARGN1=2", true, false)]
+    public void CriminalScriptOutcomes(string body, bool flagged, bool memoryKept)
+    {
+        var (_, viewer) = PlaceWithViewer();
+        viewer.Memory_AddObjTypes(_character.Uid, MemoryType.SawCrime);
+        Reload($"[EVENTS e_probe]\nON=@Criminal\nTAG.SEEN_N2=<ARGN2>\nTAG.SEEN_O=<ARGO.UID>\n{body}\n");
+        _character.Events.Add(_stack.Resources.ResolveDefName("e_probe"));
+
+        _character.MakeCriminal(viewer, fromSawCrime: true);
+
+        Assert.Equal(flagged, _character.IsStatFlag(StatFlag.Criminal));
+        Assert.Equal(memoryKept, viewer.Memory_FindObjTypes(_character.Uid, MemoryType.SawCrime) != null);
+        Assert.True(_character.TryGetTag("SEEN_N2", out var n2) && n2 == "1");
+        Assert.True(_character.TryGetTag("SEEN_O", out var o) &&
+            SphereNet.Core.Types.ScriptNumber.TryParseToken(o!, out long uid) && (uint)uid == viewer.Uid.Value);
+        if (flagged)
+            Assert.InRange(_character.CriminalTimerRemainingSeconds, 100, 120);
     }
 
     [Theory]

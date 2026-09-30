@@ -178,24 +178,31 @@ public sealed class CharacterCombatState
                 if (ignored && Character.OnHitIgnored != null && Character.OnHitIgnored(_owner, attackerUid))
                     ignored = false; // script un-ignored the attacker
                 int total = (int)Math.Min((long)_attackers[i].TotalDamage + damage, int.MaxValue);
+                // OnTakeDamage grows amountDone AND threat by the damage for an entry
+                // already on the list (CCharFight.cpp:923-927) - so a threat a script
+                // set with ATTACKER.n.THREAT keeps rising with every further blow.
+                int threat = (int)Math.Clamp((long)_attackers[i].Threat + damage, int.MinValue, int.MaxValue);
                 // Insertion order is STABLE (Source-X Attacker_Add only ever appends).
                 // It has to be: ATTACKER.n is the handle a script holds between two
                 // lines, and moving the entry that just took a hit to the end renumbered
                 // every other one under it. ATTACKER.LAST is resolved from the last-hit
                 // stamp instead (CChar.cpp:2463 walks the list looking for it).
-                _attackers[i] = new AttackerRecord(attackerUid, total, now, ignored,
-                    _attackers[i].Threat);
+                _attackers[i] = new AttackerRecord(attackerUid, total, now, ignored, threat);
                 return;
             }
         }
         // First blow from someone not yet on the list: the same add the engagement
-        // path takes, so @CombatAdd fires exactly once per participant and can veto
-        // or reweight it here too.
+        // path takes (Attacker_Add, CCharAttacker.cpp:36-55 - reached in Source-X
+        // through OnAttackedBy before the damage lands), so @CombatAdd fires exactly
+        // once per participant and can veto or reweight it here too. The add's
+        // threat weight (0 on a player's own list) then grows by this blow's damage,
+        // as every blow does (CCharFight.cpp:923-938).
         var ctx = new CombatAddContext();
         if (Character.OnCombatAdd != null && !Character.OnCombatAdd(_owner, attackerUid, ctx))
             return;
+        int baseThreat = _owner.IsPlayer ? 0 : ctx.Threat;
         _attackers.Add(new AttackerRecord(attackerUid, Math.Min(damage, int.MaxValue), now,
-            ctx.Ignore, _owner.IsPlayer ? 0 : ctx.Threat));
+            ctx.Ignore, (int)Math.Clamp((long)baseThreat + damage, int.MinValue, int.MaxValue)));
     }
 
     /// <summary>Set/clear the ATTACKER.n.IGNORE flag for an attacker already

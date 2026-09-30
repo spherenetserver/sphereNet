@@ -58,9 +58,11 @@ public sealed class SourceXWave256Tests
 
             int dmg = CombatEngine.ResolveAttack(attacker, target, sword);
 
-            Assert.Equal(10, dmg);
-            Assert.Equal(89, target.Hits);   // 100 - 10 hit - 1 (extra 10/10)
-            Assert.Equal(95, attacker.Hits); // 100 - 5 reflect (10 * (100-50)/100)
+            // The oath raises the raw blow to 11 before armour (CCharFight.cpp:699), and
+            // OnTakeDamage reports what came off the hit points.
+            Assert.Equal(11, dmg);
+            Assert.Equal(89, target.Hits);   // 100 - 11
+            Assert.Equal(95, attacker.Hits); // 100 - 5 reflect (11 * (100-50)/100)
         }
         finally
         {

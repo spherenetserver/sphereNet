@@ -737,7 +737,7 @@ public sealed partial class NpcAI
         int phys = 100, fire = 0, cold = 0, poison = 0, energy = 0;
         if (npc.TryGetTag("THROWDAMTYPE", out string? tdt) && !string.IsNullOrWhiteSpace(tdt))
         {
-            dmgType = (DamageType)(ushort)ReadSpecialTagNumber(npc, "THROWDAMTYPE", resolveItemDef: false);
+            dmgType = (DamageType)(uint)ReadSpecialTagNumber(npc, "THROWDAMTYPE", resolveItemDef: false);
             phys = 0;
             if (dmgType.HasFlag(DamageType.Fire)) fire = 100;
             else if (dmgType.HasFlag(DamageType.Cold)) cold = 100;

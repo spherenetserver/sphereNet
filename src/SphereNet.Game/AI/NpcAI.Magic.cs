@@ -1110,7 +1110,7 @@ public sealed partial class NpcAI
         if (gfx == 0) gfx = 0x36D4;
         byte motion = (byte)ReadSpecialTagNumber(npc, "BREATH.TYPE", resolveItemDef: false);
         ushort hue = (ushort)ReadSpecialTagNumber(npc, "BREATH.HUE", resolveItemDef: false);
-        var type = (DamageType)(ushort)ReadSpecialTagNumber(npc, "BREATH.DAMTYPE", resolveItemDef: false);
+        var type = (DamageType)(uint)ReadSpecialTagNumber(npc, "BREATH.DAMTYPE", resolveItemDef: false);
         if (type == 0) type = DamageType.Fire;
         int phys = 0, fire = 0, cold = 0, poison = 0, energy = 0;
         if (type.HasFlag(DamageType.Fire)) fire = 100;

@@ -148,6 +148,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.ObjectMessage(ObjBase target, string text) => ObjectMessage(target, text);
     void IClientContext.SendCharacterStatus(Character ch, bool includeExtendedStats) => SendCharacterStatus(ch, includeExtendedStats);
     byte IClientContext.GetNotoriety(Character ch) => GetNotoriety(ch);
+    byte IClientContext.GetLogicalNotoriety(Character ch) => GetLogicalNotoriety(ch);
     void IClientContext.Resync() => Resync();
     void IClientContext.BroadcastDrawObject(Character ch) => BroadcastDrawObject(ch);
     void IClientContext.BroadcastDeleteObject(uint uid) => BroadcastDeleteObject(uid);

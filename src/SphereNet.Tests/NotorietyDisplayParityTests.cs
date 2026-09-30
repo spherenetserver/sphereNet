@@ -129,7 +129,7 @@ public class NotorietyDisplayParityTests
         var world = CreateWorld();
         var ch = MakePlayer(world, 100);
 
-        Character.OnCriminalCheck = _ => 60; // 60s, overriding the 180s default
+        Character.OnCriminalCheck = (_, _, _) => new Character.CriminalDecision(true, 60_000, true); // 60s, overriding the 180s default
 
         ch.MakeCriminal();
 
@@ -144,7 +144,7 @@ public class NotorietyDisplayParityTests
         var world = CreateWorld();
         var ch = MakePlayer(world, 100);
 
-        Character.OnCriminalCheck = _ => null; // cancel the crime
+        Character.OnCriminalCheck = (_, _, _) => new Character.CriminalDecision(false, 0, false); // cancel the crime (RETURN 1)
 
         ch.MakeCriminal();
 

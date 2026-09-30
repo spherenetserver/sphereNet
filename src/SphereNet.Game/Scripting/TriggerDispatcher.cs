@@ -138,30 +138,25 @@ public sealed class TriggerDispatcher
     public Action<string>? DebugLog { get; set; }
 
     /// <summary>
-    /// Full on-hit trigger pipeline for a connecting swing (Source-X
-    /// CChar::Fight_Hit @Hit + CChar::OnTakeDamage @GetHit block,
-    /// CCharFight.cpp:750). Fires, in order: attacker @Hit, defender @GetHit
-    /// (with the LOCAL.ItemDamageLayer / ItemDamageChance armor-damage roll and
-    /// the LOCAL.DamagePercent* elemental split), weapon item @Hit, and item
-    /// @GetHit on the worn piece at the script-final ItemDamageLayer. ARGN1
-    /// (damage) threads through every stage; RETURN 1 anywhere cancels the hit
-    /// (ctx.Cancelled) and returns 0. Script writes to the armor-damage locals
-    /// copy back into ctx for CombatEngine's durability roll.
+    /// The attacker side of a connecting swing (Source-X CChar::Fight_Hit,
+    /// CCharFight.cpp:2143-2195): the attacker's @Hit, then the weapon's @Hit, both
+    /// on the RAW blow - the victim's armour and @GetHit come later, in the shared
+    /// character-damage entry (<see cref="RunGetHitTriggers"/>). ARGN1 (damage) and
+    /// ARGN2 (damage type) are read back after each stage and carried on; RETURN 1
+    /// anywhere cancels the blow (ctx.Cancelled) and returns 0. The weapon @Hit
+    /// shares the @Hit args and locals, as upstream's single pScriptArgs does.
     /// </summary>
     public int RunHitDamageTriggers(Combat.HitDamageContext ctx)
     {
         var attacker = ctx.Attacker;
         var target = ctx.Target;
         var weapon = ctx.Weapon;
-        int dmg = ctx.Damage;
-        int dmgType = (int)Combat.CombatEngine.GetWeaponDamageType(weapon);
 
         // Source-X @Hit (Fight_Hit Init(iDmg, iDmgType, 0, pWeapon)): SRC = the
-        // victim, ARGO = the weapon, ARGN1 = damage (writable), ARGN2 = type.
-        // LOCAL.ItemDamageChance gates the weapon's durability wear and
+        // victim, ARGO = the weapon, ARGN1 = damage (writable), ARGN2 = type
+        // (writable). LOCAL.ItemDamageChance gates the weapon's durability wear and
         // LOCAL.ItemPoisonReductionChance/Amount the poison-charge spend
-        // (CCharFight.cpp:2148); the weapon item @Hit below shares the SAME
-        // locals pool, matching Source-X's shared pScriptArgs.
+        // (CCharFight.cpp:2148).
         var hitLocals = new SphereNet.Scripting.Variables.VarMap();
         hitLocals.SetInt("ItemDamageChance", ctx.WeaponDamageChance);
         hitLocals.SetInt("ItemPoisonReductionChance", ctx.PoisonReductionChance);
@@ -170,53 +165,36 @@ public sealed class TriggerDispatcher
         // write LOCAL.ArrowHandled=1 to take the ammo over (CCharFight:2158).
         if (ctx.AmmoUid != 0)
             hitLocals.SetInt("Arrow", ctx.AmmoUid);
-        var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType, Locals = hitLocals };
+        var hitArgs = new TriggerArgs
+        {
+            CharSrc = target, O1 = weapon, ItemSrc = weapon,
+            N1 = ctx.Damage, N2 = (long)ctx.DamageType, Locals = hitLocals
+        };
         if (FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
         {
             ctx.Cancelled = true;
             return 0;
         }
-        dmg = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, hitArgs.N1));
-
-        // Source-X @GetHit: SRC = the attacker, ARGN1 = damage (writable),
-        // ARGN2 = damage type. LOCAL.ItemDamageLayer picks which worn piece
-        // takes the item @GetHit and the durability wear (script-writable),
-        // LOCAL.ItemDamageChance the wear chance; the elemental split is
-        // exposed as LOCAL.DamagePercent*.
-        var getHitLocals = new SphereNet.Scripting.Variables.VarMap();
-        getHitLocals.SetInt("ItemDamageLayer", (int)ctx.ItemDamageLayer);
-        getHitLocals.SetInt("ItemDamageChance", ctx.ItemDamageChance);
-        if (ctx.Elemental)
-        {
-            getHitLocals.SetInt("DamagePercentPhysical", ctx.DamPercentPhysical);
-            getHitLocals.SetInt("DamagePercentFire", ctx.DamPercentFire);
-            getHitLocals.SetInt("DamagePercentCold", ctx.DamPercentCold);
-            getHitLocals.SetInt("DamagePercentPoison", ctx.DamPercentPoison);
-            getHitLocals.SetInt("DamagePercentEnergy", ctx.DamPercentEnergy);
-        }
-        var getHitArgs = new TriggerArgs { CharSrc = attacker, N1 = dmg, N2 = dmgType, Locals = getHitLocals };
-        if (FireCharTrigger(target, CharTrigger.GetHit, getHitArgs) == TriggerResult.True)
-        {
-            ctx.Cancelled = true;
-            return 0;
-        }
-        dmg = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, getHitArgs.N1));
-        // The char @GetHit script may redirect the armor-damage roll.
-        ctx.ItemDamageLayer = (Layer)getHitLocals.GetInt("ItemDamageLayer");
+        ctx.Damage = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, hitArgs.N1));
+        ctx.DamageType = ReadDamageType(hitArgs.N2);
 
         if (weapon != null)
         {
             // Source-X weapon @Hit: m_pO1 = the attacker, OnTrigger(ITRIG_Hit, args,
             // pCharTarg) — SRC = the victim, ARGO = the wielder (CCharFight.cpp:
-            // 2185-2187). With the two swapped a weapon's "SRC.EFFECT" drew on the
-            // wielder instead of the one it struck.
-            var wArgs = new TriggerArgs { CharSrc = target, ItemSrc = weapon, O1 = attacker, N1 = dmg, N2 = dmgType, Locals = hitLocals };
+            // 2185-2192).
+            var wArgs = new TriggerArgs
+            {
+                CharSrc = target, ItemSrc = weapon, O1 = attacker,
+                N1 = ctx.Damage, N2 = (long)ctx.DamageType, Locals = hitLocals
+            };
             if (FireItemTrigger(weapon, ItemTrigger.Hit, wArgs) == TriggerResult.True)
             {
                 ctx.Cancelled = true;
                 return 0;
             }
-            dmg = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, wArgs.N1));
+            ctx.Damage = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, wArgs.N1));
+            ctx.DamageType = ReadDamageType(wArgs.N2);
         }
         // Script-final weapon wear / poison-spend knobs back into the context
         // for CombatEngine's post-trigger rolls; ArrowHandled hands the ammo
@@ -226,24 +204,74 @@ public sealed class TriggerDispatcher
         ctx.PoisonReductionAmount = (int)hitLocals.GetInt("ItemPoisonReductionAmount");
         ctx.ArrowHandled = hitLocals.GetInt("ArrowHandled") != 0;
 
-        // Item @GetHit on the worn piece at the (script-final) layer — Source-X
-        // fires it with the SAME args/locals ("ItemDamageLayer" is read-only
-        // from here on, but the item script may still adjust ItemDamageChance).
+        return ctx.Damage;
+    }
+
+    /// <summary>
+    /// The victim's @GetHit stage of the shared character-damage entry (Source-X
+    /// CChar::OnTakeDamage, CCharFight.cpp:749-788), for a swing, a script DAMAGE,
+    /// a spell and a reflected blow alike. The char @GetHit gets SRC = the damage
+    /// source, ARGN1 = the damage AFTER armour/resist, ARGN2 = the type, and
+    /// LOCAL.ItemDamageLayer / ItemDamageChance / Spell (plus the DamagePercent* split
+    /// under the elemental engine). Then the item @GetHit fires on the worn piece at
+    /// the script-final ItemDamageLayer with the same args and ARGO = the victim.
+    /// ARGN1/ARGN2 are read back after each stage and are final; RETURN 1 cancels.
+    /// </summary>
+    public int RunGetHitTriggers(Combat.GetHitContext ctx)
+    {
+        var target = ctx.Target;
+        var getHitLocals = new SphereNet.Scripting.Variables.VarMap();
+        getHitLocals.SetInt("ItemDamageLayer", (int)ctx.ItemDamageLayer);
+        getHitLocals.SetInt("ItemDamageChance", ctx.ItemDamageChance);
+        getHitLocals.SetInt("Spell", ctx.Spell);
+        if (ctx.Elemental)
+        {
+            getHitLocals.SetInt("DamagePercentPhysical", ctx.DamPercentPhysical);
+            getHitLocals.SetInt("DamagePercentFire", ctx.DamPercentFire);
+            getHitLocals.SetInt("DamagePercentCold", ctx.DamPercentCold);
+            getHitLocals.SetInt("DamagePercentPoison", ctx.DamPercentPoison);
+            getHitLocals.SetInt("DamagePercentEnergy", ctx.DamPercentEnergy);
+        }
+        var getHitArgs = new TriggerArgs
+        {
+            CharSrc = ctx.Source, N1 = ctx.Damage, N2 = (long)ctx.DamageType, Locals = getHitLocals
+        };
+        if (FireCharTrigger(target, CharTrigger.GetHit, getHitArgs) == TriggerResult.True)
+        {
+            ctx.Cancelled = true;
+            return 0;
+        }
+        ctx.Damage = SphereNet.Core.Types.ScriptNumber.ToEngineInt(getHitArgs.N1);
+        ctx.DamageType = ReadDamageType(getHitArgs.N2);
+        // The char @GetHit may redirect the armor-damage roll; from here on
+        // "ItemDamageLayer" is read-only (the item script may still move the chance).
+        ctx.ItemDamageLayer = (Layer)getHitLocals.GetInt("ItemDamageLayer");
+
         var armorHit = target.GetEquippedItem(ctx.ItemDamageLayer);
         if (armorHit != null)
         {
-            var aArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = armorHit, O1 = target, N1 = dmg, N2 = dmgType, Locals = getHitLocals };
+            var aArgs = new TriggerArgs
+            {
+                CharSrc = ctx.Source, ItemSrc = armorHit, O1 = target,
+                N1 = ctx.Damage, N2 = (long)ctx.DamageType, Locals = getHitLocals
+            };
             if (FireItemTrigger(armorHit, ItemTrigger.GetHit, aArgs) == TriggerResult.True)
             {
                 ctx.Cancelled = true;
                 return 0;
             }
-            dmg = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, aArgs.N1));
+            ctx.Damage = SphereNet.Core.Types.ScriptNumber.ToEngineInt(aArgs.N1);
+            ctx.DamageType = ReadDamageType(aArgs.N2);
         }
         ctx.ItemDamageChance = (int)getHitLocals.GetInt("ItemDamageChance");
 
-        return dmg;
+        return ctx.Damage;
     }
+
+    /// <summary>ARGN2 of the damage triggers is a Source-X DAMAGE_TYPE, a 32-bit mask
+    /// (DAMAGE_FIXED is 0x10000): keep the low 32 bits of whatever the script wrote.</summary>
+    private static Combat.DamageType ReadDamageType(long raw) =>
+        (Combat.DamageType)unchecked((uint)raw);
 
     /// <summary>
     /// Fire a character trigger. Maps to CChar::OnTrigger. For the Skill*

@@ -1499,26 +1499,8 @@ public static partial class Program
                 _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Hunger,
                     new TriggerArgs { CharSrc = ch });
             };
-            Character.OnCriminalCheck = ch =>
-            {
-                // Noto_Criminal (CCharNotoriety.cpp:389-431): ARGN1 = the criminal
-                // timer in MINUTES, read back; RETURN 1 keeps the flag off, and so does
-                // RETURN 0 (TRIGRET_RET_FALSE flags nothing). A timer of 0 creates no
-                // criminal effect at all. @Criminal fires nowhere else - the witnesses'
-                // @SeeCrime belongs to the crime-noticing path (OnNoticeCrime).
-                if (_triggerDispatcher == null)
-                    return Character.CriminalTimerSeconds;
-                var args = new TriggerArgs
-                {
-                    CharSrc = ch,
-                    N1 = Character.CriminalTimerSeconds / 60,
-                    N2 = 0,
-                };
-                var result = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Criminal, args);
-                if (result is TriggerResult.True or TriggerResult.False || args.N1 <= 0)
-                    return null;
-                return (int)Math.Min(int.MaxValue, args.N1 * 60);
-            };
+            // @Criminal (Character.OnCriminalCheck) is installed with the other
+            // IsTrigUsed-gated hooks in RefreshCharacterScriptHooks.
 
             // A witness who noticed a crime (CrimeWitnessService.CheckCrimeSeen):
             // @SeeSnoop (CCharFight.cpp:141-151) - ARGN1 = SKILL_SNOOPING, ARGO = the
@@ -1910,7 +1892,7 @@ public static partial class Program
 
                 if (damage > 0)
                 {
-                    _spellEngine?.TryInterruptFromDamage(target, damage);
+                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
                     if (target.HasActiveSkillPending())
                     {
                         int abortedSkill = target.ClearActiveSkillPending();
@@ -2267,52 +2249,25 @@ public static partial class Program
             CombatEngine.OnParrySucceeded = defender =>
                 GameClient.BroadcastParryEffect(defender, BroadcastNearby);
 
-            // Shared on-hit damage pipeline for both the player and NPC swing
-            // paths. Fires @Hit / @GetHit and the weapon/armor item hooks after
-            // armor/parry but before HP is applied, threading the running damage
-            // through ARGN1 so a script can raise, lower or cancel it (RETURN 1).
-            // The pipeline itself lives in TriggerDispatcher.RunHitDamageTriggers
-            // (Source-X @GetHit armor-damage locals + item @GetHit on the rolled
-            // LOCAL.ItemDamageLayer piece).
+            // The attacker side of a swing, shared by the player and NPC paths: the
+            // attacker's @Hit and the weapon's @Hit on the raw blow, reading ARGN1/ARGN2
+            // back (TriggerDispatcher.RunHitDamageTriggers).
             CombatEngine.OnHitDamage = ctx =>
                 _triggerDispatcher?.RunHitDamageTriggers(ctx) ?? ctx.Damage;
 
-            // CObjBase DAMAGE is not a weapon swing: fire only the victim's
-            // @GetHit stage, then let CombatEngine apply split/resist and HP.
-            CombatEngine.OnDirectDamage = ctx =>
-            {
-                var locals = new SphereNet.Scripting.Variables.VarMap();
-                locals.SetInt("DamagePercentPhysical", ctx.PhysicalPercent);
-                locals.SetInt("DamagePercentFire", ctx.FirePercent);
-                locals.SetInt("DamagePercentCold", ctx.ColdPercent);
-                locals.SetInt("DamagePercentPoison", ctx.PoisonPercent);
-                locals.SetInt("DamagePercentEnergy", ctx.EnergyPercent);
-                var triggerArgs = new TriggerArgs
-                {
-                    CharSrc = ctx.Source,
-                    N1 = ctx.Damage,
-                    N2 = (int)ctx.DamageType,
-                    Locals = locals
-                };
-                if (_triggerDispatcher?.FireCharTrigger(
-                        ctx.Target, CharTrigger.GetHit, triggerArgs) == TriggerResult.True)
-                {
-                    ctx.Cancelled = true;
-                    return 0;
-                }
-                ctx.PhysicalPercent = (int)locals.GetInt("DamagePercentPhysical");
-                ctx.FirePercent = (int)locals.GetInt("DamagePercentFire");
-                ctx.ColdPercent = (int)locals.GetInt("DamagePercentCold");
-                ctx.PoisonPercent = (int)locals.GetInt("DamagePercentPoison");
-                ctx.EnergyPercent = (int)locals.GetInt("DamagePercentEnergy");
-                return SphereNet.Core.Types.ScriptNumber.ToEngineInt(triggerArgs.N1);
-            };
+            // The victim's @GetHit stage of the shared character-damage entry (a swing,
+            // a script DAMAGE, a spell and a reflected blow): char @GetHit, then item
+            // @GetHit on the LOCAL.ItemDamageLayer piece, on the damage after armour.
+            CombatEngine.OnGetHit = ctx =>
+                _triggerDispatcher?.RunGetHitTriggers(ctx) ?? ctx.Damage;
 
             CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage, damageType) =>
             {
-                // DAMAGE_NODISTURB (a poison tick): the victim keeps casting.
+                // DAMAGE_NODISTURB (a poison tick): the victim keeps casting. The
+                // unparalyze already ran inside the damage entry, gated on its own
+                // DAMAGE_NOUNPARALYZE flag.
                 if (!damageType.HasFlag(DamageType.NoDisturb))
-                    _spellEngine?.TryInterruptFromDamage(target, damage);
+                    _spellEngine?.TryInterruptFromDamage(target, damage, breakParalyze: false);
                 BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
@@ -2349,7 +2304,7 @@ public static partial class Program
                 locals.SetInt("Damage", ctx.Bounce);
                 locals.SetInt("ReflectDamage", ctx.Reflect);
                 locals.SetInt("ReduceDamage", ctx.Reduce);
-                locals.SetInt("DamageType", (int)(DamageType.Fixed));
+                locals.SetInt("DamageType", (long)ctx.DamageType);
                 _triggerDispatcher.FireCharTrigger(ctx.Defender, CharTrigger.HitReactive,
                     new TriggerArgs { CharSrc = ctx.Attacker, Locals = locals });
 
@@ -2358,6 +2313,7 @@ public static partial class Program
                 ctx.Bounce = (int)Math.Clamp(locals.GetInt("Damage"), int.MinValue, int.MaxValue);
                 ctx.Reflect = (int)Math.Clamp(locals.GetInt("ReflectDamage"), int.MinValue, int.MaxValue);
                 ctx.Reduce = (int)Math.Clamp(locals.GetInt("ReduceDamage"), int.MinValue, int.MaxValue);
+                ctx.DamageType = (DamageType)unchecked((uint)locals.GetInt("DamageType"));
             };
 
             // The bounce is felt at the attacker: the sound plays there and the effect
@@ -2907,7 +2863,7 @@ public static partial class Program
                 if (ch == null || _world == null) return;
                 ForEachClientInRange(ch.Position, 18, 0, (observerCh, observerClient) =>
                 {
-                    byte noto = GameClient.ComputeNotoriety(_world, observerCh, ch);
+                    byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, ch);
                     byte dir = (byte)((byte)ch.Direction & 0x07);
                     byte flags = 0;
                     if (ch.IsInWarMode) flags |= 0x40;
@@ -3986,7 +3942,7 @@ public static partial class Program
 
         ForEachClientInRange(actor.Position, range, 0, (observerCh, observerClient) =>
         {
-            byte noto = GameClient.ComputeNotoriety(_world, observerCh, actor);
+            byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, actor);
             observerClient.Send(new PacketMobileMoving(
                 actor.Uid.Value, actor.BodyId,
                 actor.X, actor.Y, actor.Z, dirByte,

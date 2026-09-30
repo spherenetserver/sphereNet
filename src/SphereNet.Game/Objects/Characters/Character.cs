@@ -92,11 +92,32 @@ public partial class Character : ObjBase
     /// <summary>Fired each time hunger decays so scripts can react via the
     /// @Hunger trigger.</summary>
     public static Action<Character>? OnHungerDecay;
-    /// <summary>Fires the @Criminal trigger before a character is flagged
-    /// criminal. Returns null to cancel the flag (RETURN 1 / script forgave the
-    /// crime), or the criminal-flag duration in seconds (ARGN1; 0 = engine
-    /// default CriminalTimerSeconds).</summary>
-    public static Func<Character, int?>? OnCriminalCheck;
+    /// <summary>What Noto_Criminal does after @Criminal (CCharNotoriety.cpp:406-431),
+    /// kept as three separate outcomes: whether the criminal flag is raised, for how
+    /// long, and whether the viewer's SAWCRIME memory of me is spent.</summary>
+    public readonly record struct CriminalDecision(bool FlagCriminal, long DurationMs, bool ClearSawCrime);
+
+    /// <summary>Fires @Criminal before a character is flagged criminal (Source-X
+    /// Noto_Criminal, CCharNotoriety.cpp:396-404). Args: the criminal, the viewer
+    /// (ARGO), whether it comes from a SAWCRIME (ARGN2). Installed only while a script
+    /// hooks @Criminal; null runs the default (flag for CRIMINALTIMER, clear the memory).</summary>
+    public static Func<Character, Character?, bool, CriminalDecision>? OnCriminalCheck { get; set; }
+
+    /// <summary>Map the @Criminal return and its read-back ARGN1 (minutes) onto
+    /// Noto_Criminal's outcomes (CCharNotoriety.cpp:406-431): RETURN 1 keeps the flag
+    /// off AND keeps the viewer's SAWCRIME memory; RETURN 0 keeps the flag off but
+    /// still spends that memory; anything else flags for ARGN1 minutes (no criminal
+    /// effect at all when that is 0) and spends the memory.</summary>
+    public static CriminalDecision CriminalDecisionFromTrigger(TriggerResult result, long argn1Minutes)
+    {
+        if (result == TriggerResult.True)
+            return new CriminalDecision(false, 0, false);
+        if (result == TriggerResult.False)
+            return new CriminalDecision(false, 0, true);
+        long ms = argn1Minutes <= 0 ? 0
+            : argn1Minutes >= long.MaxValue / 60_000 ? long.MaxValue : argn1Minutes * 60_000;
+        return new CriminalDecision(ms > 0, ms, true);
+    }
 
     /// <summary>CANCAST.&lt;spell&gt; property backend (Source-X CHC_CANCAST):
     /// wired to a SpellEngine check (mana, skill req, region antimagic).</summary>
@@ -778,11 +799,19 @@ public partial class Character : ObjBase
     /// NEXT decay (ARGN2 readback; 0 = engine default MurderDecayTimeSeconds).</summary>
     public static Func<Character, int, int>? OnMurderDecay { get; set; }
 
-    /// <summary>Overrides the notoriety byte a viewer sees of a subject
-    /// (Source-X @NotoSend). Args: viewer, subject, computed noto. Returns the
-    /// final noto. Installed ONLY when @NotoSend is actually hooked (IsTrigUsed
+    /// <summary>A notoriety decision as Source-X Noto_GetFlag keeps it
+    /// (CCharNotoriety.cpp:99-134, NotoSaves value/color): the LOGICAL notoriety
+    /// behaviour reads, and the display COLOUR the client packets carry. Equal unless
+    /// @NotoSend set a separate ARGN2.</summary>
+    public readonly record struct NotorietyResult(byte Notoriety, byte Color);
+
+    /// <summary>Source-X @NotoSend (CCharNotoriety.cpp:118-124): fired on the subject
+    /// with the viewer as SRC before the notoriety is computed. Args: viewer, subject.
+    /// Returns the script's ARGN1 (notoriety) and ARGN2 (colour); 0 in either means
+    /// NOTO_INVALID - the notoriety falls back to the computed one and the colour to
+    /// the notoriety. Installed ONLY when @NotoSend is actually hooked (IsTrigUsed
     /// gate), so the hot ComputeNotoriety path pays just a null check otherwise.</summary>
-    public static Func<Character, Character, byte, byte>? OnNotoSend { get; set; }
+    public static Func<Character, Character, NotorietyResult>? OnNotoSend { get; set; }
 
     /// <summary>Resolve my full notoriety flag as seen by a viewer — Source-X
     /// Noto_GetFlag, used by the &lt;NOTOGETFLAG uid&gt; script property. Args:
@@ -2070,25 +2099,30 @@ public partial class Character : ObjBase
     /// <summary>Mark this character criminal (gray) and arm the decay timer. Called
     /// by HandleAttack, snooping, theft, etc. Overwrites any existing timer (i.e.
     /// a fresh crime refreshes the countdown, matching Source-X behaviour).</summary>
-    public void MakeCriminal(Character? viewer = null)
+    public void MakeCriminal(Character? viewer = null, bool fromSawCrime = false)
     {
         // Noto_Criminal (CCharNotoriety.cpp:392-393): NPCs and GMs never go criminal.
         if (!IsPlayer || PrivLevel >= PrivLevel.GM)
             return;
-        // @Criminal trigger — RETURN 1 (null) cancels the flag; a returned
-        // duration (ARGN1) overrides the default criminal-timer seconds.
-        long durationMs = CriminalTimerSeconds * 1000L;
-        if (OnCriminalCheck != null)
+        // @Criminal (CCharNotoriety.cpp:396-404): ARGN1 = CRIMINALTIMER in minutes,
+        // ARGN2 = from a SAWCRIME, ARGO = the viewer; the outcome says flag / how
+        // long / whether the viewer's SAWCRIME is spent.
+        long defaultMs = CriminalTimerSeconds * 1000L;
+        var decision = OnCriminalCheck != null
+            ? OnCriminalCheck(this, viewer, fromSawCrime)
+            : new CriminalDecision(defaultMs > 0, defaultMs, true);
+        // "if (decay) Spell_Effect_Create(...LAYER_FLAG_Criminal...)": a zero timer
+        // raises no criminal effect at all.
+        if (decision.FlagCriminal && decision.DurationMs > 0)
         {
-            int? decision = OnCriminalCheck(this);
-            if (decision == null) return;
-            if (decision.Value > 0) durationMs = decision.Value * 1000L;
+            SetStatFlag(StatFlag.Criminal);
+            CombatState.SetCriminal(decision.DurationMs);
         }
-        SetStatFlag(StatFlag.Criminal);
-        CombatState.SetCriminal(durationMs);
+        if (!decision.ClearSawCrime)
+            return;
 
         // The viewer made me criminal to everyone, so its personal SAWCRIME of me
-        // is spent (CCharNotoriety.cpp:423-429).
+        // is spent (CCharNotoriety.cpp:423-429) - on every outcome but RETURN 1.
         if (viewer != null)
         {
             var saw = viewer.Memory_FindObjTypes(Uid, MemoryType.SawCrime);

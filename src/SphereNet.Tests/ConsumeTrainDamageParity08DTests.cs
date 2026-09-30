@@ -279,7 +279,7 @@ public sealed class ConsumeTrainDamageParity08DTests
     public void AScriptMayRefuseTrapDamage()
     {
         var bench = Setup();
-        CombatEngine.OnDirectDamage = ctx => { ctx.Cancelled = true; return 0; };
+        CombatEngine.OnGetHit = ctx => { ctx.Cancelled = true; return 0; };
 
         var trap = bench.World.CreateItem();
         trap.ItemType = ItemType.Trap;

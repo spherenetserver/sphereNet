@@ -117,7 +117,10 @@ internal interface IClientContext : ITextConsole
     void NpcSpeech(Character npc, string text);
     void ObjectMessage(ObjBase target, string text);
     void SendCharacterStatus(Character ch, bool includeExtendedStats = true);
+    /// <summary>Display-colour notoriety (the packet byte).</summary>
     byte GetNotoriety(Character ch);
+    /// <summary>Logical notoriety (behaviour decisions).</summary>
+    byte GetLogicalNotoriety(Character ch);
     void Resync();
     void BroadcastDrawObject(Character ch);
     void BroadcastDeleteObject(uint uid);

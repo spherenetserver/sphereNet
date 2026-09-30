@@ -1450,7 +1450,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                 var damageType = Combat.DamageType.HitBlunt;
                 if (parts.Length > 1 &&
                     SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long rawType))
-                    damageType = (Combat.DamageType)unchecked((ushort)rawType);
+                    damageType = (Combat.DamageType)unchecked((uint)rawType);
 
                 // The damage source is SRC unless a third argument names another one;
                 // that uid may be any object and its TOP-LEVEL character is the source

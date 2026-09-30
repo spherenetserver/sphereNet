@@ -106,8 +106,11 @@ public class NotorietyParityTests
 
         var killer = MakePlayer(world, 100);
         var victim = MakePlayer(world, 101);
-        // The victim struck first: the killer (defender) holds a HarmedBy memory.
-        killer.Memory_AddObjTypes(victim.Uid, MemoryType.HarmedBy);
+        // The victim struck first: OnAttackedBy leaves the killer (defender) a
+        // HARMEDBY|AGGREIVED memory of it (CCharFight.cpp:329-360), and AGGREIVED
+        // makes the victim criminal to the killer (Noto_CalcFlag :265-271), so the
+        // kill is not a murder (Noto_Kill's NotoThem < NOTO_GUILD_SAME, :575).
+        killer.Memory_AddObjTypes(victim.Uid, MemoryType.HarmedBy | MemoryType.Aggreived);
 
         death.ProcessDeath(victim, killer);
 

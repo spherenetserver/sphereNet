@@ -284,9 +284,10 @@ public sealed class ObjectScriptSurfaceParityTests : IDisposable
         victim.Hits = 100;
         var attacker = Npc(world, 101);
         Character? seen = null;
-        SphereNet.Game.Combat.CombatEngine.OnDirectDamage = ctx => { seen = ctx.Source; return ctx.Damage; };
+        SphereNet.Game.Combat.CombatEngine.OnGetHit = ctx => { seen = ctx.Source; return ctx.Damage; };
 
-        Assert.True(victim.TryExecuteCommand("DAMAGE", "5,1", new ProbeConsole(attacker)));
+        // 02 = DAMAGE_HIT_BLUNT (Source-X numbering; 1 would be DAMAGE_GOD).
+        Assert.True(victim.TryExecuteCommand("DAMAGE", "5,02", new ProbeConsole(attacker)));
         Assert.Same(attacker, seen);
     }
 

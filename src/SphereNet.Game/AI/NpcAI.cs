@@ -143,7 +143,12 @@ public sealed partial class NpcAI
 
     private readonly SphereConfig _config;
 
-    private static Random _rand => Random.Shared;
+    private static Random _rand => RandomOverride ?? Random.Shared;
+
+    /// <summary>Test seam: a fixed random source for the AI's dice (null = the shared
+    /// generator). Lets a test pin a branch the reference takes by chance, such as
+    /// the 1-in-2*INT approach before a cast.</summary>
+    internal static Random? RandomOverride { get; set; }
 
     // Last fight target each NPC announced via OnNpcAttackNotify. Mirrors the
     // player path's per-session notify latch: the "*X is attacking Y!*" emote

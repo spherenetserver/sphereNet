@@ -64,8 +64,11 @@ public sealed class ScriptedDamageReflectTests
 
         // The bonded victim takes the blow plus a tenth of it...
         Assert.Equal(156, defender.Hits);
-        // ...and sends back (100 - level)%.
-        Assert.Equal(76, attacker.Hits);
+        // ...and sends back (100 - level)% of that RAISED raw blow: Source-X adds the
+        // tenth first and reflects iDmg * (100 - level) / 100 afterwards
+        // (CCharFight.cpp:697-701), so 44 * 60 / 100 = 26. This used to expect 24,
+        // the reflection of the un-raised 40.
+        Assert.Equal(74, attacker.Hits);
     }
 
     [Fact]

@@ -469,7 +469,7 @@ public class NpcSpecialAttackVisualTests : IDisposable
 
         npc.SetTag("BREATH.ANIM", "0379f");
         npc.SetTag("BREATH.HUE", "0480");
-        npc.SetTag("BREATH.DAMTYPE", "016"); // DAMAGE_COLD 0x10
+        npc.SetTag("BREATH.DAMTYPE", "0200"); // DAMAGE_COLD 0x200 (game_macros.h:63)
         d = NpcAI.ResolveBreath(npc);
         Assert.Equal((ushort)0x379F, d.Gfx);
         Assert.Equal((ushort)0x480, d.Hue);

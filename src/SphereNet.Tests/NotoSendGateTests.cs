@@ -80,7 +80,7 @@ public class NotoSendGateTests
     public void ComputeNotoriety_NotoSendHook_OverridesResult()
     {
         var (world, viewer, subject) = MakeViewerAndSubject();
-        Character.OnNotoSend = (_, _, _) => 6; // force "murderer" red regardless of base
+        Character.OnNotoSend = (_, _) => new Character.NotorietyResult(6, 0); // ARGN1=6: force "murderer" red regardless of base
 
         Assert.Equal(6, GameClient.ComputeNotoriety(world, viewer, subject));
     }

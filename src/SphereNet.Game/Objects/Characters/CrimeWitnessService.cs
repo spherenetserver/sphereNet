@@ -113,7 +113,7 @@ public static class CrimeWitnessService
             bool makeCriminal = OnSeeCrime?.Invoke(witness, criminal, mark) ?? false;
             witness.Memory_AddObjTypes(criminal.Uid, MemoryType.SawCrime);
             if (makeCriminal)
-                criminal.MakeCriminal(mark);
+                criminal.MakeCriminal(mark, fromSawCrime: true); // CCharFight.cpp:57
             return;
         }
 

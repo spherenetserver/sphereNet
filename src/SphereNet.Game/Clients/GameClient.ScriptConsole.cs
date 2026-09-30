@@ -518,18 +518,43 @@ public sealed partial class GameClient
     /// 7=yellow/invul. Returning 1 for everyone (as we did until now)
     /// rendered every mobile in neutral grey. Source-X:
     /// CChar::Noto_GetFlag / Noto_CalcFlag in CCharNotoriety.cpp.</summary>
-    /// <summary>Compute notoriety byte for <paramref name="subject"/> as seen by
-    /// <paramref name="viewer"/>. Used by per-observer combat/move broadcasts.</summary>
-    public static byte ComputeNotoriety(GameWorld? world, Character? viewer, Character subject)
+    /// <summary>Compute the LOGICAL notoriety of <paramref name="subject"/> as seen by
+    /// <paramref name="viewer"/> - the value behaviour decisions use (murder, crime,
+    /// karma, NPC targeting). Source-X Noto_GetFlag(..., fOnlyColor=false).</summary>
+    public static byte ComputeNotoriety(GameWorld? world, Character? viewer, Character subject) =>
+        ComputeNotorietyResult(world, viewer, subject).Notoriety;
+
+    /// <summary>The DISPLAY colour notoriety of <paramref name="subject"/> as seen by
+    /// <paramref name="viewer"/> - the byte the client packets carry. Source-X sends
+    /// Noto_GetFlag(..., fOnlyColor=true) (send.cpp:2404), which is the @NotoSend
+    /// ARGN2 colour when a script set one and the logical notoriety otherwise.</summary>
+    public static byte ComputeNotorietyColor(GameWorld? world, Character? viewer, Character subject) =>
+        ComputeNotorietyResult(world, viewer, subject).Color;
+
+    /// <summary>Both notoriety results (Source-X Noto_GetFlag, CCharNotoriety.cpp:99-134).
+    /// @NotoSend runs first with ARGN1/ARGN2 at NOTO_INVALID (0); a script value of 0
+    /// falls back to the computed notoriety (Noto_CalcFlag), and a colour of 0 falls
+    /// back to the notoriety. <paramref name="allowIncog"/>/<paramref name="allowInvul"/>
+    /// are Noto_CalcFlag's fAllowIncog/fAllowInvul: the display paths leave both on,
+    /// Noto_Kill turns both off (CCharNotoriety.cpp:560).</summary>
+    public static Character.NotorietyResult ComputeNotorietyResult(GameWorld? world, Character? viewer,
+        Character subject, bool allowIncog = true, bool allowInvul = true)
     {
-        byte noto = ComputeNotorietyBase(world, viewer, subject);
         // @NotoSend override gate. The hook is non-null only when a script hooks
         // @NotoSend (TriggerDispatcher.IsCharTriggerUsed), so this hot per-observer
         // path costs just a null check when nothing hooks it.
         var hook = Character.OnNotoSend;
         if (hook != null && viewer != null)
-            noto = hook(viewer, subject, noto);
-        return noto;
+        {
+            var scripted = hook(viewer, subject);
+            byte noto = scripted.Notoriety != 0
+                ? scripted.Notoriety
+                : ComputeNotorietyBase(world, viewer, subject, allowIncog, allowInvul);
+            byte color = scripted.Color != 0 ? scripted.Color : noto;
+            return new Character.NotorietyResult(noto, color);
+        }
+        byte computed = ComputeNotorietyBase(world, viewer, subject, allowIncog, allowInvul);
+        return new Character.NotorietyResult(computed, computed);
     }
 
     // Source-X Noto_CalcFlag decision order (CCharNotoriety.cpp): OVERRIDE.NOTO →
@@ -537,21 +562,23 @@ public sealed partial class GameClient
     // same/ally/war] → evil → viewer-memory grey → criminal → neutral/permagrey →
     // good. Party/guild come BEFORE criminal/murderer: a same-party or same-guild
     // murderer renders GREEN to his fellows.
-    private static byte ComputeNotorietyBase(GameWorld? world, Character? viewer, Character subject)
+    private static byte ComputeNotorietyBase(GameWorld? world, Character? viewer, Character subject,
+        bool allowIncog = true, bool allowInvul = true)
     {
-        // TAG.OVERRIDE.NOTO on the subject wins over every computed branch.
+        // TAG.OVERRIDE.NOTO on the subject wins over every computed branch
+        // (GetKeyNum: a Sphere number, so "02" is 2).
         if (subject.TryGetTag("OVERRIDE.NOTO", out string? notoOverride) &&
-            byte.TryParse(notoOverride, out byte forced) && forced >= 1 && forced <= 7)
-            return forced;
+            ScriptNumber.TryParseToken(notoOverride, out long forced) && forced >= 1 && forced <= 7)
+            return (byte)forced;
 
         if (viewer == null)
             return 3;
 
         // Incognito checked BEFORE invul (an incognito+invul char shows neutral).
-        if (subject.IsStatFlag(StatFlag.Incognito))
+        if (allowIncog && subject.IsStatFlag(StatFlag.Incognito))
             return 3;
 
-        if (subject.IsStatFlag(StatFlag.Invul))
+        if (allowInvul && subject.IsStatFlag(StatFlag.Invul))
             return 7;
 
         var targetRegion = world?.FindRegion(subject.Position);
@@ -572,19 +599,22 @@ public sealed partial class GameClient
 
             if (!subjectIsPlayerChar && subject.OwnerSerial.IsValid && world != null)
             {
-                // Your own pet renders NEUTRAL by default in Source-X (the
-                // OF_PetBehaviorOwnerNeutral flag flips it to true notoriety).
-                if (subject.OwnerSerial == viewer.Uid)
+                // Your own pet renders NEUTRAL unless OF_PetBehaviorOwnerNeutral is
+                // set, in which case the normal calculation continues and the owner
+                // sees the pet's true notoriety (CCharNotoriety.cpp:176-178).
+                if (subject.OwnerSerial == viewer.Uid &&
+                    (ServerOptionFlags & OptionFlags.PetBehaviorOwnerNeutral) == 0)
                     return 3;
-                // PETSINHERITNOTORIETY (CCharNotoriety.cpp:185-200): a pet shows its
-                // master's notoriety only when that notoriety's bit (1 << (noto-1))
-                // is set in the mask; 0 (the default) disables inheritance.
+                // PETSINHERITNOTORIETY (CCharNotoriety.cpp:180-195): a pet shows its
+                // PRIMARY master's notoriety (NPC_PetGetOwnerRecursive - the owner of
+                // the owner...) only when that notoriety's bit (1 << (noto-1)) is set
+                // in the mask; 0 (the default) disables inheritance.
                 if (Character.PetsInheritNotoriety != 0)
                 {
-                    var owner = world.FindChar(subject.OwnerSerial);
-                    if (owner != null && !owner.IsDeleted && owner != subject && owner != viewer)
+                    var owner = ResolvePrimaryOwner(world, subject);
+                    if (owner != null && owner != subject && owner != viewer)
                     {
-                        byte notoMaster = ComputeNotoriety(world, viewer, owner);
+                        byte notoMaster = ComputeNotorietyResult(world, viewer, owner, allowIncog, allowInvul).Notoriety;
                         int bit = notoMaster >= 1 ? 1 << (notoMaster - 1) : 0;
                         if (bit != 0 && (Character.PetsInheritNotoriety & bit) == bit)
                             return notoMaster;
@@ -592,19 +622,9 @@ public sealed partial class GameClient
                 }
             }
 
-            // Guild relations — same/ally → green, declared war → orange.
-            var guildMgr = Character.ResolveGuildManager?.Invoke(viewer.Uid);
-            if (guildMgr != null)
-            {
-                var myGuild = guildMgr.FindGuildFor(viewer.Uid);
-                var theirGuild = guildMgr.FindGuildFor(subject.Uid);
-                if (myGuild != null && theirGuild != null)
-                {
-                    if (myGuild == theirGuild) return 2;
-                    if (myGuild.IsAlliedWith(theirGuild.StoneUid)) return 2;
-                    if (myGuild.IsAtWarWith(theirGuild.StoneUid)) return 5;
-                }
-            }
+            byte guildNoto = ComputeGuildNotoriety(viewer, subject);
+            if (guildNoto != 0)
+                return guildNoto;
         }
 
         // skip_guilds:
@@ -621,13 +641,103 @@ public sealed partial class GameClient
         if (subject.IsCriminal || subject.IsStatFlag(StatFlag.Criminal))
             return 4;
 
+        // NOTO.PERMAGREY is read with GetKeyNum (CCharNotoriety.cpp:276): any non-zero
+        // Sphere number counts, so "02" or "0x1" is permanently grey too.
         if (IsNotoNeutral(subject) ||
-            (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1"))
+            (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) &&
+             ScriptNumber.TryParseToken(pg, out long permaGrey) && permaGrey != 0))
             return 3;
 
         // NOTO_GOOD for everyone else. Healers and bankers are not special here:
         // only STATF_INVUL gives NOTO_INVUL (CCharNotoriety.cpp:152-153, 281).
         return 1;
+    }
+
+    /// <summary>Source-X NPC_PetGetOwnerRecursive (CCharNPCStatus.cpp:487): walk
+    /// owner → owner's owner while the owner is itself an NPC, capped at 16 hops
+    /// against circular ownership (null then). Null when the subject has no owner.</summary>
+    private static Character? ResolvePrimaryOwner(GameWorld world, Character pet)
+    {
+        Character? primary = null;
+        Character current = pet;
+        for (int hops = 0; ; hops++)
+        {
+            if (!current.OwnerSerial.IsValid)
+                break;
+            var next = world.FindChar(current.OwnerSerial);
+            if (next == null || next.IsDeleted)
+                break;
+            if (hops > 16)
+                return null;
+            primary = next;
+            if (next.IsPlayer || next.TryGetTag("ACCOUNT", out _))
+                break;
+            current = next;
+        }
+        return primary;
+    }
+
+    /// <summary>The guild/town block of Source-X Noto_CalcFlag
+    /// (CCharNotoriety.cpp:201-252), from the SUBJECT's stones' point of view:
+    /// same guild or allied → NOTO_GUILD_SAME; mutual war → NOTO_GUILD_WAR; two
+    /// aligned guilds of different alignment → NOTO_GUILD_WAR, of the same alignment
+    /// → NOTO_GUILD_SAME only with OF_EnableGuildAlignNotoriety; then the town wars
+    /// (my guild vs their town, my town vs their guild, my town vs their town).
+    /// 0 = no guild/town relation decides it (fall through to skip_guilds).</summary>
+    private static byte ComputeGuildNotoriety(Character viewer, Character subject)
+    {
+        var guildMgr = Character.ResolveGuildManager?.Invoke(viewer.Uid);
+        if (guildMgr == null)
+            return 0;
+
+        // Guild_Find: the stone a membership record (candidate included) ties me to;
+        // IsPrivMember: a full member or the master.
+        var myTown = guildMgr.FindGuildRecordFor(subject.Uid, townStones: true);
+        var myGuild = guildMgr.FindGuildRecordFor(subject.Uid, townStones: false);
+        if (myTown == null && myGuild == null)
+            return 0;
+
+        var viewerTown = guildMgr.FindGuildRecordFor(viewer.Uid, townStones: true);
+        var viewerGuild = guildMgr.FindGuildRecordFor(viewer.Uid, townStones: false);
+        if (viewerTown == null && viewerGuild == null)
+            return 0;
+
+        bool myGuildMember = myGuild != null && myGuild.IsMember(subject.Uid);
+        bool viewerGuildMember = viewerGuild != null && viewerGuild.IsMember(viewer.Uid);
+
+        if (myGuildMember && viewerGuildMember)
+        {
+            if (viewerGuild == myGuild)
+                return 2;
+
+            // Standard relationships first (Noto_GetWarStatus: war before alliance).
+            if (myGuild!.IsAtWarWith(viewerGuild!.StoneUid))
+                return 5;
+            if (myGuild.IsAlliedWith(viewerGuild.StoneUid))
+                return 2;
+
+            // Guild alignment: two aligned (non-standard) guilds.
+            if (myGuild.Align != GuildAlign.Standard && viewerGuild.Align != GuildAlign.Standard)
+            {
+                if ((ServerOptionFlags & OptionFlags.EnableGuildAlignNotoriety) != 0 &&
+                    myGuild.Align == viewerGuild.Align)
+                    return 2;
+                if (myGuild.Align != viewerGuild.Align)
+                    return 5;
+            }
+        }
+
+        // Town wars / town vs guild wars.
+        if (myGuildMember && viewerTown != null && myGuild!.IsAtWarWith(viewerTown.StoneUid))
+            return 5;
+        if (myTown != null && myTown.IsMember(subject.Uid))
+        {
+            if (viewerGuildMember && myTown.IsAtWarWith(viewerGuild!.StoneUid))
+                return 5;
+            if (viewerTown != null && myTown.IsAtWarWith(viewerTown.StoneUid))
+                return 5;
+        }
+        return 0;
     }
 
     /// <summary>Source-X CChar::Noto_IsEvil — murderer, karma-evil player
@@ -690,7 +800,14 @@ public sealed partial class GameClient
         return karma < 0;
     }
 
-    internal byte GetNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
+    /// <summary>The notoriety byte this client's packets carry for <paramref name="ch"/>:
+    /// the display colour (Source-X send.cpp:2404 sends Noto_GetFlag(..., fOnlyColor=true)).
+    /// Behaviour checks use <see cref="GetLogicalNotoriety"/>.</summary>
+    internal byte GetNotoriety(Character ch) => ComputeNotorietyColor(_world, _character, ch);
+
+    /// <summary>The logical notoriety of <paramref name="ch"/> to this client's
+    /// character - what crime/murder/targeting decisions read.</summary>
+    internal byte GetLogicalNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
 
     // ==================== ITextConsole ====================
 

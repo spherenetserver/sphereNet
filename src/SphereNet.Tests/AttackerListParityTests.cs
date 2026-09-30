@@ -178,13 +178,14 @@ public sealed class AttackerListParityTests
     public void AThreatWriteIsRefusedOnAPlayer()
     {
         // Threat exists to steer an NPC's choice of target, so the reference
-        // returns before writing one on a player (CCharAttacker.cpp:205).
+        // returns before writing one on a player (CCharAttacker.cpp:205). The blow
+        // itself still grew the row by its damage (CCharFight.cpp:923-938).
         var world = CreateWorld();
         var player = MakeChar(world, 100, player: true);
         player.RecordAttack(MakeChar(world, 101).Uid, 5);
 
         Assert.False(player.TrySetProperty("ATTACKER.0.THREAT", "900"));
-        Assert.Equal("0", Get(player, "ATTACKER.0.THREAT"));
+        Assert.Equal("5", Get(player, "ATTACKER.0.THREAT"));
     }
 
     // ---- the list's shape --------------------------------------------------

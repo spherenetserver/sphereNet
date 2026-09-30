@@ -54,7 +54,7 @@ public sealed class CombatParity03ATests
         var defender = MakeChar(world, 101, 100);
         attacker.SetStatFlag(StatFlag.Invul);
 
-        Assert.Equal(0, CombatEngine.ApplyReflectedDamage(attacker, defender, 20));
+        Assert.Equal(0, CombatEngine.ApplyCharacterDamage(attacker, 20, defender, DamageType.Fixed | DamageType.Reactive));
         Assert.Equal(100, attacker.Hits);
     }
 
@@ -65,7 +65,7 @@ public sealed class CombatParity03ATests
         var attacker = MakeChar(world, 100, 100);
         var defender = MakeChar(world, 101, 100);
 
-        Assert.Equal(20, CombatEngine.ApplyReflectedDamage(attacker, defender, 20));
+        Assert.Equal(20, CombatEngine.ApplyCharacterDamage(attacker, 20, defender, DamageType.Fixed | DamageType.Reactive));
         Assert.Equal(80, attacker.Hits);
         // Credited so a reflect kill attributes to the defender.
         Assert.Contains(attacker.Attackers, a => a.Uid == defender.Uid);
@@ -79,7 +79,7 @@ public sealed class CombatParity03ATests
         var defender = MakeChar(world, 101, 100);
         attacker.SetStatFlag(StatFlag.Dead);
 
-        Assert.Equal(0, CombatEngine.ApplyReflectedDamage(attacker, defender, 20));
+        Assert.Equal(0, CombatEngine.ApplyCharacterDamage(attacker, 20, defender, DamageType.Fixed | DamageType.Reactive));
         Assert.Equal(100, attacker.Hits);
     }
 

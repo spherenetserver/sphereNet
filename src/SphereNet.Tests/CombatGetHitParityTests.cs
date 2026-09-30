@@ -55,14 +55,14 @@ public class CombatGetHitParityTests
             chest.Events.Add(stack.Resources.ResolveDefName("e_armor_gethit_probe"));
             target.Equip(chest, Layer.Chest);
 
-            var ctx = new HitDamageContext
+            var ctx = new GetHitContext
             {
-                Attacker = attacker,
+                Source = attacker,
                 Target = target,
                 Damage = 10,
                 ItemDamageLayer = Layer.Helm,
             };
-            int dmg = stack.Dispatcher.RunHitDamageTriggers(ctx);
+            int dmg = stack.Dispatcher.RunGetHitTriggers(ctx);
 
             // The char @GetHit saw the engine-seeded roll...
             Assert.True(target.TryGetTag("SEENLAYER", out var l) && l == ((int)Layer.Helm).ToString());
@@ -105,9 +105,9 @@ public class CombatGetHitParityTests
             world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
             target.Events.Add(stack.Resources.ResolveDefName("e_gethit_elem_probe"));
 
-            var ctx = new HitDamageContext
+            var ctx = new GetHitContext
             {
-                Attacker = attacker,
+                Source = attacker,
                 Target = target,
                 Damage = 10,
                 ItemDamageLayer = Layer.Helm,
@@ -115,7 +115,7 @@ public class CombatGetHitParityTests
                 DamPercentPhysical = 75,
                 DamPercentFire = 25,
             };
-            stack.Dispatcher.RunHitDamageTriggers(ctx);
+            stack.Dispatcher.RunGetHitTriggers(ctx);
 
             Assert.True(target.TryGetTag("PCTPHYS", out var p) && p == "75");
             Assert.True(target.TryGetTag("PCTFIRE", out var f) && f == "25");
@@ -147,14 +147,14 @@ public class CombatGetHitParityTests
             world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
             target.Events.Add(stack.Resources.ResolveDefName("e_gethit_veto"));
 
-            var ctx = new HitDamageContext
+            var ctx = new GetHitContext
             {
-                Attacker = attacker,
+                Source = attacker,
                 Target = target,
                 Damage = 10,
                 ItemDamageLayer = Layer.Helm,
             };
-            int dmg = stack.Dispatcher.RunHitDamageTriggers(ctx);
+            int dmg = stack.Dispatcher.RunGetHitTriggers(ctx);
 
             // RETURN 1 cancels the hit; Cancelled makes CombatEngine skip the
             // durability roll too (Source-X returns 0 before it).

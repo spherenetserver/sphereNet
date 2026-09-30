@@ -284,7 +284,7 @@ internal sealed class PanelCharacterActions
             .ToList();
 
         // Seen from itself, as the paperdoll colours it for its own player.
-        byte noto = GameClient.ComputeNotoriety(_world, ch, ch);
+        byte noto = GameClient.ComputeNotorietyColor(_world, ch, ch);
         var pos = ch.Position;
 
         return new PlayerDetail(

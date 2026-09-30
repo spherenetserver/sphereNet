@@ -482,12 +482,11 @@ public class GameSystemTests
     }
 
     [Fact]
-    public void Npc_Threat_IsAStoredValue_NotDamageDealt()
+    public void Npc_Threat_GrowsWithDamage_AndAScriptWriteOnlySticksOnAnNpc()
     {
-        // Threat is a number a script (or a master's order) writes, not something
-        // the engine derives from damage taken: the reference stores it on the
-        // attacker row and never computes it (CCharAttacker.cpp:202). Damage alone
-        // therefore leaves it at zero, and the write only sticks on an NPC.
+        // OnTakeDamage grows the attacker row's threat by every blow, exactly as it
+        // grows amountDone (CCharFight.cpp:923-938); a script (or a master's order)
+        // can rewrite it, but only on an NPC (Attacker_SetThreat, CCharAttacker.cpp:205).
         var world = CreateWorld();
         var npc = world.CreateCharacter();
         var heavy = world.CreateCharacter();
@@ -496,8 +495,8 @@ public class GameSystemTests
         npc.RecordAttack(heavy.Uid, 100);
         npc.RecordAttack(light.Uid, 10);
 
-        Assert.Equal(0, npc.CombatState.GetAttackerThreat(0));
-        Assert.Equal(0, npc.CombatState.GetAttackerThreat(1));
+        Assert.Equal(100, npc.CombatState.GetAttackerThreat(0));
+        Assert.Equal(10, npc.CombatState.GetAttackerThreat(1));
 
         Assert.True(npc.CombatState.SetAttackerThreat(1, 250));
         Assert.Equal(250, npc.CombatState.GetAttackerThreat(1));
@@ -506,11 +505,14 @@ public class GameSystemTests
         // Off the end of the list reports -1, the way the reference does.
         Assert.Equal(-1, npc.CombatState.GetAttackerThreat(9));
 
+        // A player's own list: the add starts at 0 (CCharAttacker.cpp:53) and the
+        // blow still adds its damage (the OnTakeDamage increment has no player gate),
+        // but a script write is refused.
         var player = world.CreateCharacter();
         player.IsPlayer = true;
         player.RecordAttack(heavy.Uid, 5);
         Assert.False(player.CombatState.SetAttackerThreat(0, 500));
-        Assert.Equal(0, player.CombatState.GetAttackerThreat(0));
+        Assert.Equal(5, player.CombatState.GetAttackerThreat(0));
     }
 
     [Fact]

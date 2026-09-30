@@ -152,6 +152,24 @@ public sealed class DeathEngine
             }
         }
 
+        // "What was their noto to me?" (Noto_Kill, CCharNotoriety.cpp:560): each
+        // killer's view of the victim decides murder and the reward gates. Taken
+        // now, while the victim is still alive and flagged as it was when it died -
+        // Kill(), the dispel and the corpse all come later, exactly as in Source-X
+        // where Noto_Kill runs inside the attacker loop before any of them. Incognito
+        // and invul are not honoured here (Noto_GetFlag(this, false) → fInvul=false).
+        // A master credited for a pet's blows is not a murderer through the pet: in
+        // Source-X the pet itself is the attacker-list entry and an NPC killer never
+        // takes the murder branch (:570-574). Only a killer who struck personally can.
+        var killerViews = new List<(Character Killer, byte NotoThem, bool StruckPersonally)>(creditedOffenders.Count);
+        foreach (var offender in creditedOffenders)
+        {
+            bool personal = offender == killer || victim.Attackers.Any(r =>
+                r.Uid == offender.Uid && r.TotalDamage > 0);
+            killerViews.Add((offender, SphereNet.Game.Clients.GameClient.ComputeNotorietyResult(
+                _world, offender, victim, allowIncog: false, allowInvul: false).Notoriety, personal));
+        }
+
         // Sleeping is cleared by Kill() below (Source-X clears it before
         // MakeCorpse too) — capture it first for the corpse forensics stamp.
         bool wasSleeping = victim.IsStatFlag(StatFlag.Sleeping);
@@ -213,10 +231,18 @@ public sealed class DeathEngine
             // fame/karma/experience reward by the attacker count (Noto_Kill's
             // iTotalKillers), so a group splits the spoils instead of the final
             // blow taking all of it. Deduped, pets credited to their master.
-            foreach (var offender in creditedOffenders)
+            // Noto_Kill per killer (CCharNotoriety.cpp:555-647): the murder decision
+            // first, then the reward block - which a same-guild view or a CONJURED
+            // victim skips entirely (fame, karma AND experience, :611-613).
+            foreach (var (offender, notoThem, struckPersonally) in killerViews)
             {
-                ApplyKarmaFameChange(offender, victim, attackerCount,
-                    SphereNet.Game.Clients.GameClient.ComputeNotoriety(_world, offender, victim));
+                if (struckPersonally)
+                    MarkMurder(offender, victim, notoThem);
+
+                if (notoThem == 2 || victim.IsStatFlag(StatFlag.Conjured)) // NOTO_GUILD_SAME
+                    continue;
+
+                ApplyKarmaFameChange(offender, victim, attackerCount, notoThem);
 
                 // Experience award (Noto_Kill, CCharNotoriety.cpp:619-646): gated on
                 // EXPERIENCESYSTEM + EXP_MODE_RAISE_COMBAT, a tenth of the victim's
@@ -226,11 +252,6 @@ public sealed class DeathEngine
                 if (expReward != 0)
                     offender.ChangeExperience(expReward);
             }
-
-            // PvP murder tracking — Source-X Noto_Kill marks EVERY unprovoked
-            // attacker of an innocent, not just the final-blow killer, so ganking
-            // an innocent flags the whole group.
-            MarkMurderers(victim, creditedOffenders);
         }
 
         // Source-X kill record (CCharAct.cpp:4357-4389): "'<victim>' was
@@ -377,41 +398,33 @@ public sealed class DeathEngine
         return false;
     }
 
-    /// <summary>Whether killer→victim is an unprovoked kill of an innocent, the
-    /// only case Source-X Noto_Kill counts as murder (NotoThem &lt; NOTO_GUILD_SAME).
-    /// False when the victim is a criminal/murderer (red or grey), or aggressed the
-    /// killer first — in which case the killer holds a HarmedBy memory of the victim
-    /// (Memory_Fight_Start tags the defender HarmedBy and the aggressor IAggressor).</summary>
     /// <summary>
-    /// Mark a murder against every attacker of an innocent player victim — the
-    /// final-blow killer plus everyone in the victim's attacker log — instead of
-    /// just the killer (Source-X Noto_Kill loops the damage list). Each offender
-    /// is resolved pet→master, deduped, and gated through @MurderMark (which can
-    /// adjust the count, suppress the criminal flag, or block the mark).
+    /// Source-X Noto_Kill's murder branch (CCharNotoriety.cpp:575-608), for one
+    /// credited killer: a PLAYER killer whose view of the victim was below
+    /// NOTO_GUILD_SAME (innocent blue, or NOTO_INVALID) commits a murder unless GM
+    /// mode is on (IsPriv(PRIV_GM)). The victim's kind does not matter - an innocent
+    /// NPC, a summon included, is a murder too; the view decides, so a grey (criminal,
+    /// aggressor, karma-neutral), red, guild-war, same-guild or party victim is not.
+    /// @MurderMark can adjust the count, suppress the criminal flag, or block the mark.
     /// </summary>
-    private void MarkMurderers(Character victim, IEnumerable<Character> offenders)
+    private static void MarkMurder(Character offender, Character victim, byte notoThem)
     {
-        if (!victim.IsPlayer) return;
+        if (offender == victim || !offender.IsPlayer)
+            return;
+        if (notoThem >= 2 || offender.IsGmMode) // NOTO_GUILD_SAME
+            return;
 
-        var marked = new HashSet<uint>();
-        foreach (var offender in offenders)
+        int proposed = offender.Kills + 1;
+        var decision = Character.OnMurderMark == null
+            ? new Character.MurderMarkDecision(proposed, true)
+            : Character.OnMurderMark(offender, victim, proposed);
+        if (decision.Count.HasValue)
         {
-            if (!offender.IsPlayer) continue;
-            if (!marked.Add(offender.Uid.Value)) continue;
-            if (!IsUnprovokedInnocentKill(offender, victim)) continue;
-
-            int proposed = offender.Kills + 1;
-            var decision = Character.OnMurderMark == null
-                ? new Character.MurderMarkDecision(proposed, true)
-                : Character.OnMurderMark(offender, victim, proposed);
-            if (decision.Count.HasValue)
-            {
-                offender.Kills = (short)Math.Clamp(decision.Count.Value, 0, short.MaxValue);
-                // ARGN2 asks for Noto_Criminal (CCharNotoriety.cpp:600-601): the
-                // regular criminal flag, @Criminal and CRIMINALTIMER included.
-                if (decision.MakeCriminal)
-                    offender.MakeCriminal();
-            }
+            offender.Kills = (short)Math.Clamp(decision.Count.Value, 0, short.MaxValue);
+            // ARGN2 asks for Noto_Criminal (CCharNotoriety.cpp:600-601): the
+            // regular criminal flag, @Criminal and CRIMINALTIMER included.
+            if (decision.MakeCriminal)
+                offender.MakeCriminal();
         }
     }
 
@@ -438,16 +451,6 @@ public sealed class DeathEngine
             }
             yield return attacker;
         }
-    }
-
-    private static bool IsUnprovokedInnocentKill(Character killer, Character victim)
-    {
-        if (victim.IsCriminal || victim.IsMurderer || victim.IsStatFlag(StatFlag.Criminal))
-            return false;
-        var killerMemOfVictim = killer.Memory_FindObj(victim.Uid);
-        if (killerMemOfVictim != null && killerMemOfVictim.IsMemoryTypes(MemoryType.HarmedBy))
-            return false; // victim struck first — self-defence, not murder
-        return true;
     }
 
     /// <summary>Apply Karma/Fame changes when killer kills victim, divided by the

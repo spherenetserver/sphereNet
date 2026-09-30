@@ -4,6 +4,45 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Damage entry, damage flags, murder, rewards and notoriety follow Source-X
+------------------------------------------------------------------------
+CHANGE - Damage type flags use the Source-X DAMAGE_TYPE numbers and 32 bits
+      (GOD 01, HIT_BLUNT 02, MAGIC 04, POISON 08, FIRE 010, ENERGY 020,
+      COLD 0200, HIT_SLASH 0400, HIT_PIERCE 0800, NOREVEAL 04000,
+      NOUNPARALYZE 08000, FIXED 010000, BREATH, THROWN, REACTIVE). The DAMAGE
+      verb, ARGN2 of @Hit/@GetHit, OVERRIDE.DAMAGETYPE, BREATH.DAMTYPE,
+      THROWDAMTYPE and LOCAL.DamageType read these numbers; values written for
+      the old SphereNet numbering mean something else now.
+CHANGE - Melee, script DAMAGE, spell damage and reflected damage share one
+      character-damage entry in Source-X OnTakeDamage order: Invul/Stone,
+      fire immunity, Safe and NoPvP regions (GOD bypasses), attacker reveal
+      and aggressor memory, Evil Omen and Blood Oath, armour chosen by
+      COMBAT_ELEMENTAL_ENGINE (pre-AOS armour when it is off), @GetHit on the
+      reduced damage (not reduced again), armour wear, unparalyze unless
+      NOUNPARALYZE, attacker list, reactive armour, hit points.
+FIX - @Hit (attacker, then weapon) sees the raw damage; ARGN1 and ARGN2 are
+      read back after every @Hit and @GetHit stage.
+FIX - Spell damage goes through @GetHit (RETURN 1 cancels it) with the
+      Source-X default types; the spell's LOCAL.DamageType overrides them.
+FIX - Blood Oath adds 10% to the raw damage and reflects from that amount;
+      reflected damage returns through the damage entry as FIXED and cannot
+      bounce again.
+FIX - Murder is decided from the killer's notoriety view of the victim
+      (below guild-same, killer not in GM mode), for NPC victims too, and
+      before the conjured exception; a pet's kill is not its master's murder.
+      Same-guild and conjured victims give no fame, karma or experience.
+FIX - Attacker threat grows with every blow (a new entry starts at the
+      @CombatAdd weight plus the damage).
+ADD - OPTIONFLAGS PetBehaviorOwnerNeutral and EnableGuildAlignNotoriety take
+      effect; guild alignment and town wars count in notoriety; a pet's owner
+      is resolved through owner chains; NOTO.PERMAGREY and OVERRIDE.NOTO
+      accept any number.
+FIX - @NotoSend keeps ARGN1 (notoriety, used by behaviour) and ARGN2 (colour,
+      sent to clients) apart.
+FIX - @Criminal gets ARGN2 (from a SAWCRIME) and ARGO (the viewer); RETURN 1
+      keeps the viewer's SAWCRIME memory, RETURN 0 clears it; a 0-minute
+      criminal timer raises no flag. The flag lasts CRIMINALTIMER exactly.
+
 [2026-09-30] - Millisecond sleeps on Windows
 ------------------------------------------------------------------------
 CHANGE - On Windows the server requests a 1 ms system timer (timeBeginPeriod)

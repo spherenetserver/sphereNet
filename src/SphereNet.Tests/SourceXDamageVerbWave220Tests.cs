@@ -41,6 +41,8 @@ public class SourceXDamageVerbWave220Tests
     [Fact]
     public void DamageVerb_AppliesExplicitElementalSplitAndCreditsSource()
     {
+        // The split is COMBAT_ELEMENTAL_ENGINE's resist (CCharFight.cpp:717-730).
+        Character.CombatFlags = (int)CombatFlags.ElementalEngine;
         var world = CreateWorld();
         var source = CreateCharacter(world, 100);
         var target = CreateCharacter(world, 101);
@@ -54,14 +56,22 @@ public class SourceXDamageVerbWave220Tests
             appliedSource = src;
         };
 
+        // 0x12 = DAMAGE_HIT_BLUNT|DAMAGE_FIRE (game_macros.h:56,60). This test used to
+        // send 0x9 as "physical+fire", but in the reference numbering 0x9 is
+        // DAMAGE_GOD|DAMAGE_POISON, which skips armour altogether (below).
         string sourceUid = "0" + source.Uid.Value.ToString("X");
         Assert.True(target.TryExecuteCommand(
-            "DAMAGE", $"20,0x9,{sourceUid},50,50,0,0,0", new Console()));
+            "DAMAGE", $"20,0x12,{sourceUid},50,50,0,0,0", new Console()));
 
         Assert.Equal((short)85, target.Hits);
         Assert.Equal(15, applied);
         Assert.Same(source, appliedSource);
         Assert.Contains(target.Attackers, record => record.Uid == source.Uid && record.TotalDamage == 15);
+
+        // DAMAGE_GOD (0x1) in 0x9: no armour calculation (CCharFight.cpp:716).
+        Assert.True(target.TryExecuteCommand(
+            "DAMAGE", $"20,0x9,{sourceUid},50,50,0,0,0", new Console()));
+        Assert.Equal((short)65, target.Hits);
     }
 
     [Fact]
@@ -69,23 +79,28 @@ public class SourceXDamageVerbWave220Tests
     {
         var world = CreateWorld();
         var target = CreateCharacter(world, 100);
-        CombatEngine.OnDirectDamage = ctx =>
+        int seen = -1;
+        CombatEngine.OnGetHit = ctx =>
         {
-            ctx.FirePercent = 100;
+            seen = ctx.Damage;
             return 10;
         };
         target.ResFire = 50;
 
-        Assert.True(target.TryExecuteCommand("DAMAGE", "40,0x8", new Console()));
-        Assert.Equal((short)95, target.Hits);
+        // @GetHit's ARGN1 is final: Source-X applies it without a second armour pass
+        // (CCharFight.cpp:773 onwards). This test used to expect the 10 cut again by
+        // the fire resist (5). 010 = DAMAGE_FIRE; pre-AOS armour of 0 leaves 40.
+        Assert.True(target.TryExecuteCommand("DAMAGE", "40,010", new Console()));
+        Assert.Equal(40, seen);
+        Assert.Equal((short)90, target.Hits);
 
-        CombatEngine.OnDirectDamage = ctx =>
+        CombatEngine.OnGetHit = ctx =>
         {
             ctx.Cancelled = true;
             return 0;
         };
-        Assert.True(target.TryExecuteCommand("DAMAGE", "40,0x8", new Console()));
-        Assert.Equal((short)95, target.Hits);
+        Assert.True(target.TryExecuteCommand("DAMAGE", "40,010", new Console()));
+        Assert.Equal((short)90, target.Hits);
     }
 
     [Fact]

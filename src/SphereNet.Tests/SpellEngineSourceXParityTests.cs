@@ -503,6 +503,8 @@ public sealed class SpellEngineSourceXParityTests
         var (_, engine, caster, target) = Setup(
             Flat(SpellType.MagicArrow, SpellFlag.TargChar | SpellFlag.Harm | SpellFlag.Damage, effect: 20));
         target.ResFire = 50;
+        // The fire resist is the elemental engine's armour (CCharFight.cpp:717).
+        Character.CombatFlags = (int)SphereNet.Game.Combat.CombatFlags.ElementalEngine;
 
         engine.ApplyDirectEffect(caster, target, SpellType.MagicArrow, 500);
 

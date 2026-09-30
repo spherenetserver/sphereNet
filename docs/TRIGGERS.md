@@ -32,8 +32,8 @@ Every character and item trigger has a real fire site; `TriggerCoverageGuardrail
 | `@CombatStart` | Combat begins after an attack passes | attacker | attacker | target | – | – | cancels combat |
 | `@HitTry` | Each swing attempt (before the swing) | attacker | victim | weapon | N1=swing delay (1/10s, writable); `LOCAL.Anim`/`LOCAL.AnimDelay` override the swing animation | – | cancels the swing |
 | `@HitCheck` | Swing start, BEFORE range/LoS validation | attacker | victim | weapon | N1=war swing state, N2=damage type; `LOCAL.Recoil_NoRange` (seeded from SWING_NORANGE, writable — drives the per-swing range-ignore + windup window) | – | forces a miss (fires `@HitMiss`) |
-| `@Hit` | A connecting hit, before HP applies | attacker | victim | weapon | N1=damage (writable), N2=damage type; `LOCAL.ItemDamageChance` (weapon wear %, seed 25), `LOCAL.ItemPoisonReductionChance/Amount` (poison charge spend) — shared with the weapon item `@Hit` | – | cancels the hit (0 damage) |
-| `@GetHit` | When a hit is taken, before HP applies | victim | attacker | – | N1=damage (writable), N2=damage type; `LOCAL.ItemDamageLayer` (random armor layer, writable — the item `@GetHit` + durability wear target), `LOCAL.ItemDamageChance` (seed 25), `LOCAL.DamagePercent*` (elemental split, read-only) | – | cancels the hit + skips the armor wear |
+| `@Hit` | A connecting hit, on the raw blow before the victim's armour (then the weapon item `@Hit`) | attacker | victim | weapon | N1=damage (writable), N2=damage type (Source-X `DAMAGE_*` number, writable, carried to `@GetHit`); `LOCAL.ItemDamageChance` (weapon wear %, seed 25), `LOCAL.ItemPoisonReductionChance/Amount` (poison charge spend) — shared with the weapon item `@Hit` | – | cancels the hit (0 damage) |
+| `@GetHit` | Any damage taken (swing, script `DAMAGE`, spell, reflected blow), after armour/resist and before HP applies; the written N1 is final | victim | damage source (the victim itself when there is none) | – | N1=damage (writable), N2=damage type (writable; decides GOD/FIXED/NOUNPARALYZE after it); `LOCAL.Spell`, `LOCAL.ItemDamageLayer` (random armor layer, writable — the item `@GetHit` + durability wear target), `LOCAL.ItemDamageChance` (seed 25), `LOCAL.DamagePercent*` (elemental split, read-only) | – | cancels the hit + skips the armor wear |
 | `@HitMiss` | A resolved miss or a `@HitCheck` block | attacker | victim | weapon | `LOCAL.Arrow` = the live pack ammo stack UID (ranged); `LOCAL.ArrowHandled=1` hands the ammo's fate to the script | – | skips the ammo economy (nothing consumed/dropped) |
 | `@HitParry` | Defender blocks with shield/weapon | defender | attacker | attacker | N1=damage allowed through (0=full block, writable for a partial block) | – | ignored |
 | `@HitIgnore` | An attacker marked with `ATTACKER.n.IGNORE=1` lands a hit | victim | victim | attacker | – | – | clears the ignore flag |
@@ -183,7 +183,7 @@ Notes:
 | `@DropOn_Ground` | Dropped on the ground | item | dropper | – | – | – | cancels the drop |
 | `@DropOn_Trade` | Dropped into a trade window | item | dropper | trade partner | N1=session id | – | cancels the drop |
 | `@Hit` | Weapon lands a hit | weapon | attacker | target char | N1=damage | – | ignored |
-| `@GetHit` | Shield/armor takes a hit | shield | attacker | – | N1=damage | – | ignored |
+| `@GetHit` | The worn piece at the victim's `LOCAL.ItemDamageLayer` takes a hit (after the char `@GetHit`) | armour | damage source | victim | N1=damage (writable), N2=damage type (writable) | – | cancels the damage |
 | `@Damage` | Item loses durability | item | (not set) | – | N1=durability lost | – | cancels the durability loss |
 | `@Dye` | Dye applied (dye reply / dye vat) | item | dyer | dye vat (vat path) | N1=hue | – | cancels the dye |
 | `@SpellEffect` | Item-targeted spell effect resolves | item | caster | caster | N1=spell id | S1=spell name | cancels native item spell effect |

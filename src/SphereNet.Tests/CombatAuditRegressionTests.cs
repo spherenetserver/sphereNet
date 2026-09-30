@@ -508,7 +508,12 @@ public class CombatAuditRegressionTests
         var weapon = new Item { ItemType = ItemType.WeaponSword };
         weapon.SetTag("OVERRIDE.DAMAGETYPE", "0x28");
 
-        Assert.Equal(DamageType.Fire | DamageType.Energy,
+        // The tag is a Source-X DAMAGE_TYPE: 0x28 = DAMAGE_POISON|DAMAGE_ENERGY
+        // (game_macros.h:59-61), and a 32-bit one - 0x10030 keeps DAMAGE_FIXED.
+        Assert.Equal(DamageType.Poison | DamageType.Energy,
+            CombatEngine.GetWeaponDamageType(weapon));
+        weapon.SetTag("OVERRIDE.DAMAGETYPE", "0x10030");
+        Assert.Equal(DamageType.Fixed | DamageType.Fire | DamageType.Energy,
             CombatEngine.GetWeaponDamageType(weapon));
     }
 

@@ -12,6 +12,10 @@ public sealed class SourceXMagicFlagsWave225Tests
     {
         var (engine, caster, target) = CreateDamageStack();
         target.ResFire = 100;
+        // Resistances are COMBAT_ELEMENTAL_ENGINE's armour; without it the reference
+        // uses pre-AOS armour instead (OnTakeDamage, CCharFight.cpp:713-747).
+        SphereNet.Game.Objects.Characters.Character.CombatFlags =
+            (int)SphereNet.Game.Combat.CombatFlags.ElementalEngine;
 
         engine.ApplyScriptSpellEffect(caster, target, SpellType.Fireball, 1000);
         Assert.Equal(200, target.Hits);

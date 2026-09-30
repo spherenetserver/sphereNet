@@ -335,4 +335,28 @@ public sealed class DoorParity07Tests
 
         Assert.Equal((ushort)0x108D, lever.DispIdFull);
     }
+
+    /// <summary>A door that swings is redrawn through the per-viewer update, the
+    /// same path the view refresh and the auto-close use, so everyone gets their own
+    /// packet (MOVABLE flag, light) instead of one bare 0x1A broadcast.</summary>
+    [Fact]
+    public void AnOpenedDoorIsRedrawnThroughThePerViewerUpdate()
+    {
+        var world = CreateWorld();
+        var (client, _) = Bench(world);
+        var door = Door(world);
+        var redrawn = new List<Item>();
+        var saved = Item.OnVisualUpdate;
+        Item.OnVisualUpdate = redrawn.Add;
+        try
+        {
+            client.HandleDoubleClick(door.Uid.Value);
+        }
+        finally
+        {
+            Item.OnVisualUpdate = saved;
+        }
+
+        Assert.Contains(door, redrawn);
+    }
 }

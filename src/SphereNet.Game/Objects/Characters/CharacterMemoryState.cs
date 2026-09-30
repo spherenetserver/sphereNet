@@ -67,6 +67,7 @@ public sealed class CharacterMemoryState
         };
         mem.Link = uid;
         mem.SetAttr(ObjAttributes.Newbie);
+        mem.IsSavedWithOwner = true;
         mem.IsEquipped = true;
         mem.EquipLayer = Layer.Special;
         mem.ContainedIn = _owner.Uid;
@@ -103,6 +104,7 @@ public sealed class CharacterMemoryState
         mem.BaseId = graphic != 0 ? graphic : (ushort)0x2053; // ITEMID_RHAND_POINT_NW fallback
         mem.Name = string.IsNullOrEmpty(name) ? "spell effect" : name;
         mem.IsSpellEffectMirror = true;
+        mem.IsSavedWithOwner = true;
         mem.MoreP = new Point3D((short)spellId, (short)level, 0, 0); // MOREX = spell, MOREY = strength
         mem.Link = source;
         mem.SetAttr(ObjAttributes.Newbie | ObjAttributes.Magic); // ATTR_NEWBIE|ATTR_MAGIC (dispellable)
@@ -197,9 +199,24 @@ public sealed class CharacterMemoryState
         }
     }
 
+    /// <summary>Drop a memory. One a script was handed has a UID, and leaves the
+    /// world with it (deleting a memory item is how Source-X forgets).</summary>
     public void Delete(Item mem)
     {
         _memories.Remove(mem);
+        if (mem.IsDeleted)
+            return;
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        if (world != null && world.IsRegistered(mem))
+            world.DeleteObject(mem);
+    }
+
+    /// <summary>The memory as a script sees it: a registered item with its own UID
+    /// (Source-X Memory_FindTypes / Memory_FindObj return the CItemMemory itself).</summary>
+    public Item Expose(Item mem)
+    {
+        Objects.ObjBase.ResolveWorld?.Invoke()?.RegisterDetachedItem(mem);
+        return mem;
     }
 
     public bool UpdateFlags(Item mem)
@@ -252,7 +269,7 @@ public sealed class CharacterMemoryState
             {
                 mem.SetTimeout(0);
                 if (!OnMemoryTick(mem))
-                    _memories.RemoveAt(i);
+                    Delete(mem);
             }
         }
     }

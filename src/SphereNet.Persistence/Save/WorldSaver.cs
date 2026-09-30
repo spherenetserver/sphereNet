@@ -270,7 +270,7 @@ public sealed class WorldSaver
             int count = 0;
             foreach (var obj in objects)
             {
-                if (obj is Item item && !item.IsDeleted && !item.IsSpellEffectMirror) { WriteItem(writer, item, now); count++; }
+                if (obj is Item item && !item.IsDeleted && !item.IsSavedWithOwner) { WriteItem(writer, item, now); count++; }
                 else if (obj is Character ch && !ch.IsDeleted) { WriteChar(writer, ch, now); count++; }
             }
             return count;
@@ -434,8 +434,8 @@ public sealed class WorldSaver
                 {
                     if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
                         return writer;
-                    // A spell memory is rebuilt from its effect's SPELLEFFECT record.
-                    if (item.IsSpellEffectMirror)
+                    // A memory is rebuilt from its owner's MEMORY= / SPELLEFFECT= record.
+                    if (item.IsSavedWithOwner)
                         return writer;
                     if (IsInsideVendorStock(item.Uid.Value, vendorStock, parentOf))
                         return writer; // virtual vendor stock (or nested inside it) — never persisted

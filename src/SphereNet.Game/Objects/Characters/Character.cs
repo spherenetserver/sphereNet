@@ -329,66 +329,6 @@ public partial class Character : ObjBase
         Controller,
     }
 
-    private sealed class ScriptMemoryEntry(Character subject, Character? link, string memoryType) : IScriptObj
-    {
-        public string GetName() => memoryType;
-
-        public bool TryGetProperty(string key, out string value)
-        {
-            value = "";
-            string upper = key.ToUpperInvariant();
-            if (upper is "ISVALID" or "ISVALIDE")
-            {
-                value = link != null ? "1" : "0";
-                return true;
-            }
-
-            if (upper == "TYPE")
-            {
-                value = memoryType;
-                return true;
-            }
-
-            if (upper == "UID")
-            {
-                value = link != null ? $"0{link.Uid.Value:X8}" : "0";
-                return true;
-            }
-
-            if (upper == "LINK")
-            {
-                value = link != null ? $"0{link.Uid.Value:X8}" : "0";
-                return true;
-            }
-
-            if (upper.StartsWith("LINK.", StringComparison.Ordinal))
-            {
-                if (link == null)
-                {
-                    value = "";
-                    return true;
-                }
-
-                return link.TryGetProperty(key["LINK.".Length..], out value);
-            }
-
-            if (upper == "OWNER")
-            {
-                value = $"0{subject.Uid.Value:X8}";
-                return true;
-            }
-
-            if (upper.StartsWith("OWNER.", StringComparison.Ordinal))
-                return subject.TryGetProperty(key["OWNER.".Length..], out value);
-
-            return false;
-        }
-
-        public bool TryExecuteCommand(string key, string args, ITextConsole source) => false;
-        public bool TrySetProperty(string key, string value) => false;
-        public TriggerResult OnTrigger(int triggerType, IScriptObj? source, ITriggerArgs? args) => TriggerResult.Default;
-    }
-
     private bool _isDeleted;
     private bool _isPlayer;
 
@@ -3044,13 +2984,17 @@ public partial class Character : ObjBase
     }
 
     /// <summary>Resolve a FINDLAYER layer argument to a layer index. Accepts a
-    /// plain number or a layer DEFNAME (layer_hair, layer_beard, ...), mirroring
-    /// Source-X's expression-evaluated layer arg.</summary>
+    /// number or a layer DEFNAME (layer_hair, layer_beard, ...), mirroring
+    /// Source-X's expression-evaluated layer arg (Exp_GetSingle): a leading 0 makes
+    /// the number hex, so 020 is layer 32.</summary>
     private static bool TryResolveLayerToken(string token, out int layerIdx)
     {
         token = token.Trim();
-        if (int.TryParse(token, out layerIdx))
+        if (SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(token, out long number))
+        {
+            layerIdx = (int)number;
             return true;
+        }
         if (DefinitionLoader.StaticResources?.TryResolveDefNameValue(token, out long defVal) == true)
         {
             layerIdx = (int)defVal;
@@ -3151,51 +3095,104 @@ public partial class Character : ObjBase
         WakeNpc?.Invoke(this);
     }
 
+    /// <summary>FORCHARMEMORYTYPE: every memory carrying any of the flags, as the
+    /// memory items themselves (registered, so each has its own UID).</summary>
     public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType, World.GameWorld? world = null)
     {
-        string normalized = NormalizeMemoryType(rawType);
         var result = new List<IScriptObj>();
-
-        MemoryType? filter = normalized switch
+        if (!TryResolveMemoryTypeArg(rawType, out var flags))
+            return result;
+        for (int i = 0; i < MemoryState.Items.Count; i++)
         {
-            "MEMORY_IPET" or "MEMORY_OWNER" => MemoryType.IPet,
-            "MEMORY_FRIEND" => MemoryType.Friend,
-            "MEMORY_FIGHT" => MemoryType.Fight,
-            "MEMORY_GUARD" => MemoryType.Guard,
-            "MEMORY_GUILD" => MemoryType.Guild,
-            "MEMORY_TOWN" => MemoryType.Town,
-            "MEMORY_SAWCRIME" => MemoryType.SawCrime,
-            "MEMORY_IAGGRESSOR" => MemoryType.IAggressor,
-            "MEMORY_HARMEDBY" => MemoryType.HarmedBy,
-            "MEMORY_AGGREIVED" => MemoryType.Aggreived,
-            "MEMORY_SPEAK" => MemoryType.Speak,
-            "MEMORY_ISPAWNED" => MemoryType.ISpawned,
-            "MEMORY_FOLLOW" => MemoryType.Follow,
-            "MEMORY_IRRITATEDBY" => MemoryType.IrritatedBy,
-            _ => null
-        };
-
-        if (filter.HasValue)
-        {
-            var resolveWorld = world ?? ResolveWorld?.Invoke();
-            for (int i = 0; i < MemoryState.Items.Count; i++)
-            {
-                var memory = MemoryState.Items[i];
-                if (!memory.IsMemoryTypes(filter.Value))
-                    continue;
-
-                var link = resolveWorld?.FindChar(memory.Link);
-                result.Add(link != null ? new ScriptMemoryEntry(this, link, normalized) : memory);
-            }
+            var memory = MemoryState.Items[i];
+            if (memory.IsMemoryTypes(flags))
+                result.Add(memory);
         }
-
+        foreach (var obj in result)
+            MemoryState.Expose((Item)obj);
         return result;
     }
 
-    public IScriptObj? FindMemoryEntry(string rawType)
+    public IScriptObj? FindMemoryEntry(string rawType) => FindMemoryByTypeArg(rawType);
+
+    /// <summary>Source-X Memory_FindTypes((word)Exp_GetSingle(arg)): the first memory
+    /// carrying any of the flags.</summary>
+    public Item? FindMemoryByTypeArg(string arg)
     {
-        var list = GetMemoryEntriesByType(rawType);
-        return list.Count > 0 ? list[0] : null;
+        if (!TryResolveMemoryTypeArg(arg, out var flags))
+            return null;
+        var memory = Memory_FindTypes(flags);
+        return memory == null ? null : MemoryState.Expose(memory);
+    }
+
+    /// <summary>Source-X Memory_FindObj((CUID)Exp_GetSingle(arg)): the memory of that
+    /// object.</summary>
+    public Item? FindMemoryByUidArg(string arg)
+    {
+        long uid;
+        if (!SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(arg, out uid))
+        {
+            if (DefinitionLoader.StaticResources?.TryResolveDefNameValue(arg.Trim(), out long defVal) != true)
+                return null;
+            uid = defVal;
+        }
+        var memory = Memory_FindObj(new Serial((uint)uid));
+        return memory == null ? null : MemoryState.Expose(memory);
+    }
+
+    /// <summary>A memory-type argument as Source-X evaluates it: a number (a leading
+    /// 0 makes it hex, so 02 is MEMORY_IPET and 0400 MEMORY_GUILD), a memory name,
+    /// or any defname the scripts give a value.</summary>
+    private static bool TryResolveMemoryTypeArg(string arg, out MemoryType flags)
+    {
+        flags = MemoryType.None;
+        arg = arg.Trim();
+        if (SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(arg, out long n))
+        {
+            flags = (MemoryType)(ushort)n;
+            return flags != MemoryType.None;
+        }
+        if (TryParseMemoryTypeName(arg, out flags))
+            return true;
+        if (DefinitionLoader.StaticResources?.TryResolveDefNameValue(arg, out long defVal) == true)
+        {
+            flags = (MemoryType)(ushort)defVal;
+            return flags != MemoryType.None;
+        }
+        return false;
+    }
+
+    /// <summary>MEMORYFINDTYPE.memory_guild for a member whose membership has no
+    /// memory item: the guild stone answers as the LINK, from its own position.</summary>
+    private bool TryGetGuildMemoryFallback(string sub, out string value)
+    {
+        value = "";
+        var gm = ResolveGuildManager?.Invoke(Uid);
+        var guild = gm?.FindGuildFor(Uid);
+        if (guild == null)
+            return false;
+        if (sub.Length == 0 || IsValidQueryToken(sub))
+        {
+            value = sub.Length == 0 ? $"0{guild.StoneUid.Value:X8}" : "1";
+            return true;
+        }
+        if (!sub.StartsWith("LINK", StringComparison.OrdinalIgnoreCase))
+            return false;
+        string linkSub = sub.Length > 4 && sub[4] == '.' ? sub[5..] : "";
+        if (linkSub.Length == 0)
+        {
+            value = $"0{guild.StoneUid.Value:X8}";
+            return true;
+        }
+        var stone = ResolveWorld?.Invoke()?.FindObject(guild.StoneUid);
+        if (stone != null)
+            return stone.TryGetProperty(linkSub, out value);
+        if (linkSub.Equals("NAME", StringComparison.OrdinalIgnoreCase))
+        {
+            value = guild.Name ?? "";
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Re-base a loaded summon's expiry onto the clock this process is
@@ -4392,79 +4389,44 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // <MemoryFindType.<def>[.isValid|.Link[.<prop>]]> — Source-X
-        // memory inspection. We only have a partial memory engine so we
-        // synthesize the two cases the admin dialogs care about:
-        //   memory_guild → resolve the player's guild from GuildManager
-        // and pretend the guild stone is the linked object. Everything
-        // else returns "0"/empty so the dialog renders the "no value"
-        // path instead of a literal "<MemoryFindType...>".
-        if (upper.StartsWith("MEMORYFINDTYPE.", StringComparison.Ordinal))
+        // MEMORYFINDTYPE.<flags> / MEMORYFIND.<uid> (CChar::r_GetRef CHR_MEMORYFINDTYPE /
+        // CHR_MEMORYFIND): the argument is an expression - a number, where a leading 0
+        // is hex, or a defname such as memory_guild - and the ref is the memory ITEM,
+        // so .UID, .COLOR (the memory flags), .LINK and every item key are its own.
+        if (upper.StartsWith("MEMORYFINDTYPE.", StringComparison.Ordinal) ||
+            upper.StartsWith("MEMORYFIND.", StringComparison.Ordinal))
         {
-            string rest = upper["MEMORYFINDTYPE.".Length..];
+            bool byType = upper.StartsWith("MEMORYFINDTYPE.", StringComparison.Ordinal);
+            string rest = key[(byType ? "MEMORYFINDTYPE." : "MEMORYFIND.").Length..];
             int dot1 = rest.IndexOf('.');
-            string memType = dot1 < 0 ? rest : rest[..dot1];
+            string arg = dot1 < 0 ? rest : rest[..dot1];
             string sub = dot1 < 0 ? "" : rest[(dot1 + 1)..];
 
-            if (memType.Equals("MEMORY_GUILD", StringComparison.OrdinalIgnoreCase))
-            {
-                var gm = ResolveGuildManager?.Invoke(Uid);
-                var guild = gm?.FindGuildFor(Uid);
-                if (guild == null)
-                {
-                    if (IsValidQueryToken(sub))
-                    { value = "0"; return true; }
-                    value = "0";
-                    return true;
-                }
-
-                if (sub.Length == 0)
-                {
-                    value = $"0{guild.StoneUid.Value:X8}";
-                    return true;
-                }
-                if (IsValidQueryToken(sub))
-                { value = "1"; return true; }
-                if (sub.StartsWith("LINK", StringComparison.OrdinalIgnoreCase))
-                {
-                    string linkSub = sub.Length > 4 && sub[4] == '.' ? sub[5..] : "";
-                    if (linkSub.Length == 0)
-                    {
-                        value = $"0{guild.StoneUid.Value:X8}";
-                        return true;
-                    }
-                    if (linkSub.Equals("NAME", StringComparison.OrdinalIgnoreCase))
-                    { value = guild.Name ?? ""; return true; }
-                    if (linkSub.Equals("P", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Guild stone position not modelled; fall back
-                        // to the master's location so "Go <...Link.P>"
-                        // still goes somewhere sensible (admin dialog
-                        // row 688).
-                        var masterMember = guild.GetMaster();
-                        var master = masterMember != null
-                            ? ResolveCharByUid?.Invoke(masterMember.CharUid) : null;
-                        value = master != null ? master.Position.ToString() : Position.ToString();
-                        return true;
-                    }
-                }
-            }
-
-            var memory = FindMemoryEntry(memType);
+            var memory = byType ? FindMemoryByTypeArg(arg) : FindMemoryByUidArg(arg);
             if (memory != null)
             {
                 if (sub.Length == 0)
-                    return memory.TryGetProperty("LINK", out value);
+                {
+                    value = $"0{memory.Uid.Value:X8}";
+                    return true;
+                }
                 if (IsValidQueryToken(sub))
-                { value = "1"; return true; }
+                {
+                    value = "1";
+                    return true;
+                }
                 return memory.TryGetProperty(sub, out value);
             }
 
-            // Unknown memory or sub: return false-y so callers using
-            // `<isEmpty ...>` or `If <...isValid>` take the empty branch.
-            if (IsValidQueryToken(sub))
-            { value = "0"; return true; }
-            value = "";
+            // A guild or town membership without its memory item (guild data older
+            // than the memory stamp): answer from the guild record, the stone standing
+            // in for the memory's LINK.
+            if (byType && TryResolveMemoryTypeArg(arg, out var guildFlags) &&
+                (guildFlags & (MemoryType.Guild | MemoryType.Town)) != 0 &&
+                TryGetGuildMemoryFallback(sub, out value))
+                return true;
+
+            value = IsValidQueryToken(sub) || sub.Length == 0 ? "0" : "";
             return true;
         }
 
@@ -4526,7 +4488,7 @@ public partial class Character : ObjBase
             if (closeParen > 10)
             {
                 string layerStr = upper.Substring(10, closeParen - 10);
-                if (int.TryParse(layerStr, out int layerNum))
+                if (TryResolveLayerToken(layerStr, out int layerNum))
                 {
                     var worn = FindLayerIndex(layerNum);
                     if (worn == null) { value = "0"; return true; }
@@ -5741,25 +5703,14 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // MEMORY.xxx / MEMORYFIND.xxx (ownership-aware)
-        if (upper.StartsWith("MEMORY.", StringComparison.Ordinal) ||
-            upper.StartsWith("MEMORYFIND.", StringComparison.Ordinal))
+        // MEMORY.xxx (ownership-aware)
+        if (upper.StartsWith("MEMORY.", StringComparison.Ordinal))
         {
-            if (upper.StartsWith("MEMORYFIND.", StringComparison.Ordinal))
+            string memPart = upper["MEMORY.".Length..];
+            if (TryParseMemoryTypeName(memPart, out MemoryType mt))
             {
-                string memType = key["MEMORYFIND.".Length..];
-                var entry = FindMemoryEntry(memType);
-                if (entry != null && entry.TryGetProperty("LINK", out value))
-                    return true;
-            }
-            else
-            {
-                string memPart = upper["MEMORY.".Length..];
-                if (TryParseMemoryTypeName(memPart, out MemoryType mt))
-                {
-                    value = Memory_FindTypes(mt) != null ? "1" : "0";
-                    return true;
-                }
+                value = Memory_FindTypes(mt) != null ? "1" : "0";
+                return true;
             }
 
             value = TryGetTag(key, out string? mv) ? (mv ?? "0") : "0";
@@ -7480,6 +7431,38 @@ public partial class Character : ObjBase
             }
         }
 
+        // MEMORYFINDTYPE.<flags>.<verb> / MEMORYFIND.<uid>.<verb>: the verb runs on the
+        // memory item (r_Verb through the CHR_MEMORYFIND* ref). A ref that finds no
+        // memory is an undefined keyword, as in r_Verb.
+        if (key.StartsWith("MEMORYFINDTYPE.", StringComparison.OrdinalIgnoreCase) ||
+            key.StartsWith("MEMORYFIND.", StringComparison.OrdinalIgnoreCase))
+        {
+            bool byType = key.StartsWith("MEMORYFINDTYPE.", StringComparison.OrdinalIgnoreCase);
+            string chain = key[(byType ? "MEMORYFINDTYPE." : "MEMORYFIND.").Length..];
+            int chainDot = chain.IndexOf('.');
+            if (chainDot > 0)
+            {
+                string tail = chain[(chainDot + 1)..].Trim();
+                var memory = byType ? FindMemoryByTypeArg(chain[..chainDot]) : FindMemoryByUidArg(chain[..chainDot]);
+                if (memory == null || tail.Length == 0)
+                    return false;
+                if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Removing a memory clears what it stood for (the pet flag with the
+                    // last IPET memory, Memory_UpdateClearTypes); a spell memory ends
+                    // its effect as it leaves the world.
+                    if (memory.ItemType == ItemType.EqMemoryObj)
+                        MemoryState.ClearTypes(memory, memory.GetMemoryTypes());
+                    else
+                        MemoryState.Delete(memory);
+                    return true;
+                }
+                if (memory.TryExecuteCommand(tail, args, source))
+                    return true;
+                return args.Length > 0 && memory.TrySetProperty(tail, args);
+            }
+        }
+
         // Source-X chained method dispatch on the equipped-layer slot:
         //   Src.FindLayer(21).Empty   → empty the worn pack
         //   Src.FindLayer(11).Remove  → strip the worn helmet
@@ -7492,7 +7475,7 @@ public partial class Character : ObjBase
             {
                 string layerStr = key.Substring(10, closeParen - 10);
                 string tail = key[(closeParen + 1)..].TrimStart('.');
-                if (int.TryParse(layerStr, out int layerNum) && tail.Length > 0)
+                if (TryResolveLayerToken(layerStr, out int layerNum) && tail.Length > 0)
                 {
                     var worn = FindLayerIndex(layerNum);
                     if (worn == null || worn.IsDeleted) return false;

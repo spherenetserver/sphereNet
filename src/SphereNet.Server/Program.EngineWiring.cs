@@ -1760,11 +1760,10 @@ public static partial class Program
                     return false;
                 _log.LogDebug("[door] 0x{Door:X} opened by NPC 0x{Npc:X} '{Name}' -> {Pos} art 0x{Art:X}",
                     door.Uid.Value, npc.Uid.Value, npc.Name, door.Position, door.DispIdFull);
+                // The same DOOROPENSOUND and per-viewer redraw as a player's open.
                 BroadcastNearby(door.Position, 18,
-                    new PacketSound(0x00EA, door.X, door.Y, door.Z), 0);
-                BroadcastNearby(door.Position, 18,
-                    new PacketWorldItem(door.Uid.Value, door.DispIdFull, door.Amount,
-                        door.X, door.Y, door.Z, door.Hue), 0);
+                    new PacketSound(door.GetDoorSound(opening: true), door.X, door.Y, door.Z), 0);
+                Item.OnVisualUpdate?.Invoke(door);
                 return true;
             };
             // NPC_AI_EXTRA night detection is wired AFTER WeatherEngine is constructed

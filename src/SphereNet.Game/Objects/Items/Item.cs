@@ -460,6 +460,11 @@ public class Item : ObjBase
     /// for an active effect. The effect's SPELLEFFECT record is what persists and
     /// rebuilds the memory on load, so the item itself is never written to a save.</summary>
     public bool IsSpellEffectMirror { get; internal set; }
+
+    /// <summary>Runtime-only: a memory held in a character's memory list. Its
+    /// owner's record (MEMORY= / SPELLEFFECT=) is what persists and rebuilds it, so
+    /// the item itself is never written to a save.</summary>
+    public bool IsSavedWithOwner { get; internal set; }
     public byte Direction { get; set; }
 
     /// <summary>The wearable layer this item equips on: its explicit

@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-30] - Memory refs, FINDLAYER arguments and door redraws follow Source-X
+------------------------------------------------------------------------
+FIX - MEMORYFINDTYPE.<flags> evaluates its argument like Source-X: a leading
+      0 makes it hex (02 = MEMORY_IPET, 0400 = MEMORY_GUILD), a defname gives
+      its value. MEMORYFIND.<uid> finds the memory of that object; it used to
+      treat the argument as a memory type.
+CHANGE - A memory ref (MEMORYFINDTYPE, MEMORYFIND, FORCHARMEMORYTYPE) is the
+      memory item itself with its own UID: .UID is the memory's, .COLOR its
+      flags, .LINK the linked character or item. The memory gets its UID the
+      first time a script is handed it and is still saved only through its
+      owner's MEMORY= record. MEMORYFINDTYPE.x.<verb> runs on the memory;
+      .REMOVE forgets it (the last pet memory clears the pet flag).
+FIX - MEMORYFINDTYPE.memory_guild.LINK.P is the guild stone's position; it
+      returned the guild master's.
+FIX - FINDLAYER arguments are expressions: FINDLAYER(020) and FINDLAYER.020
+      are layer 32, not 20, and the paren form accepts a layer defname
+      (FINDLAYER(layer_cape)).
+FIX - A door opened by a player or an NPC is redrawn for each viewer with
+      their own packet (0xF3 or 0x1A, the MOVABLE flag, the light) instead of
+      one bare 0x1A broadcast that disagreed with the next view refresh. An
+      NPC opening a door plays the door's DOOROPENSOUND.
+
 [2026-09-30] - Spell memory access paths, permanent effects and Dispel follow Source-X
 ------------------------------------------------------------------------
 FIX - FINDLAYER.n, FINDLAYER.n.<verb> and FINDLAYER(n).<verb> resolve spell

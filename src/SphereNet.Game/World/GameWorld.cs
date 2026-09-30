@@ -744,6 +744,33 @@ public sealed class GameWorld
         return item;
     }
 
+    /// <summary>Give an item that was built outside the world - a character memory -
+    /// its own UID, so a script can address it the way Source-X addresses every
+    /// memory item. Registration is deferred to the first time a script is handed the
+    /// memory: a save load creates memories from MEMORY= records while the saved
+    /// objects are still being registered, and handing out a fresh UID then could
+    /// take one a later saved object needs. No-op when the item already has one.</summary>
+    public void RegisterDetachedItem(Item item)
+    {
+        if (item.IsDeleted)
+            return;
+        if (item.Uid.IsValid && _objects.TryGetValue(item.Uid.Value, out var existing) &&
+            ReferenceEquals(existing, item))
+            return;
+        var uid = _uidTable.AllocateItem();
+        item.SetUid(uid);
+        item.SetDirtyNotify(NotifyDirty);
+        _objects[uid.Value] = item;
+        _uuidIndex[item.Uuid] = item;
+        _totalItems++;
+        ObjectCreated?.Invoke(item);
+    }
+
+    /// <summary>Is <paramref name="item"/> the object registered under its UID?</summary>
+    public bool IsRegistered(Item item) =>
+        item.Uid.IsValid && _objects.TryGetValue(item.Uid.Value, out var existing) &&
+        ReferenceEquals(existing, item);
+
     /// <summary>Is the item in the world - lying in a sector, or held by a container
     /// or a character? Source-X CObjBase::IsTopLevel / IsItemInContainer; an item
     /// that was created and never placed is neither.</summary>
@@ -2622,7 +2649,7 @@ public sealed class GameWorld
 
             // Engine-state items (spell/fight memories and other Special-layer
             // equips) are managed by their subsystems.
-            if (item.ItemType == SphereNet.Core.Enums.ItemType.EqMemoryObj || item.IsSpellEffectMirror ||
+            if (item.ItemType == SphereNet.Core.Enums.ItemType.EqMemoryObj || item.IsSavedWithOwner ||
                 (item.IsEquipped && item.EquipLayer == SphereNet.Core.Enums.Layer.Special))
                 continue;
 

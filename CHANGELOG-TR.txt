@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-30] - Bellek referanslari, FINDLAYER argumanlari ve kapi cizimi Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - MEMORYFINDTYPE.<bayrak> argumani Source-X gibi degerlendirir:
+           bastaki 0 hex yapar (02 = MEMORY_IPET, 0400 = MEMORY_GUILD),
+           defname kendi degerini verir. MEMORYFIND.<uid> o nesnenin
+           bellegini bulur; eskiden argumani bellek turu saniyordu.
+DEGISIKLIK - Bellek referansi (MEMORYFINDTYPE, MEMORYFIND, FORCHARMEMORYTYPE)
+           kendi UID'si olan bellek esyasinin kendisidir: .UID bellegin,
+           .COLOR bayraklari, .LINK bagli karakter ya da esyadir. Bellek UID'sini
+           bir script'e ilk verildiginde alir ve yine yalnizca sahibinin
+           MEMORY= kaydiyla saklanir. MEMORYFINDTYPE.x.<fiil> bellekte calisir;
+           .REMOVE bellegi unutur (son pet bellegi pet bayragini kaldirir).
+DUZELTME - MEMORYFINDTYPE.memory_guild.LINK.P guild tasinin konumunu verir;
+           guild liderinin konumunu donduruyordu.
+DUZELTME - FINDLAYER argumanlari ifadedir: FINDLAYER(020) ve FINDLAYER.020
+           katman 32'dir, 20 degil; parantezli bicim katman defname'i kabul
+           eder (FINDLAYER(layer_cape)).
+DUZELTME - Oyuncunun ya da NPC'nin actigi kapi her izleyiciye kendi paketiyle
+           (0xF3 veya 0x1A, MOVABLE bayragi, isik) yeniden cizilir; bir sonraki
+           gorus yenilemesiyle celisen tek bir ciplak 0x1A yayini yerine. NPC
+           kapi acarken kapinin DOOROPENSOUND sesini calar.
+
 [2026-09-30] - Buyu bellegi erisim yollari, kalici etkiler ve Dispel Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - FINDLAYER.n, FINDLAYER.n.<fiil> ve FINDLAYER(n).<fiil> buyu

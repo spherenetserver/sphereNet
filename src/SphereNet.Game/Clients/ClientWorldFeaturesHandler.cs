@@ -2309,13 +2309,21 @@ public sealed class ClientWorldFeaturesHandler
         var soundPacket = new PacketSound(soundId, door.X, door.Y, door.Z);
         BroadcastNearby?.Invoke(door.Position, UpdateRange, soundPacket, 0);
 
-        _netState.Send(BuildWorldItemPacket(
-            door.Uid.Value, door.DispIdFull, door.Amount,
-            door.X, door.Y, door.Z, door.Hue));
-        var doorBroadcast = new PacketWorldItem(
-            door.Uid.Value, door.DispIdFull, door.Amount,
-            door.X, door.Y, door.Z, door.Hue);
-        BroadcastNearby?.Invoke(door.Position, UpdateRange, doorBroadcast, _character.Uid.Value);
+        SendDoorUpdate(door);
+    }
+
+    /// <summary>Redraw a door that just swung for everyone who can see it, each
+    /// with their own packet (0xF3 or 0x1A, the viewer's MOVABLE flag and the
+    /// tile's light). A bare 0x1A broadcast carried none of that, so the opener's
+    /// copy disagreed with the view refresh that followed a moment later.</summary>
+    private void SendDoorUpdate(Item door)
+    {
+        if (Item.OnVisualUpdate is { } redraw)
+        {
+            redraw(door);
+            return;
+        }
+        _client.SendWorldItem(door);
     }
 
     /// <summary>The custom half of Source-X Use_DoorNew (CItem.cpp:4633): swap to the
@@ -2356,12 +2364,7 @@ public sealed class ClientWorldFeaturesHandler
         ushort soundId = (ushort)(isOpen ? 0x00F1 : 0x00EA);
         BroadcastNearby?.Invoke(door.Position, UpdateRange,
             new PacketSound(soundId, door.X, door.Y, door.Z), 0);
-        _netState.Send(BuildWorldItemPacket(
-            door.Uid.Value, door.DispIdFull, door.Amount,
-            door.X, door.Y, door.Z, door.Hue));
-        BroadcastNearby?.Invoke(door.Position, UpdateRange,
-            new PacketWorldItem(door.Uid.Value, door.DispIdFull, door.Amount,
-                door.X, door.Y, door.Z, door.Hue), _character!.Uid.Value);
+        SendDoorUpdate(door);
     }
 
     /// <summary>A craft stroke's animation and sound: Source-X Skill_GetAnim and

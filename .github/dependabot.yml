@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Panel (Vue/Vite) packages. CI blocks on high-severity advisories in the
+  # runtime dependencies (npm audit --omit=dev), so updates arrive as PRs
+  # before a newly published advisory turns a push red.
+  - package-ecosystem: "npm"
+    directory: "/panel"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      panel-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

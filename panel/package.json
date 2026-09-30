@@ -14,7 +14,7 @@
   "dependencies": {
     "@microsoft/signalr": "^8.0.7",
     "@tanstack/vue-query": "^5.62.7",
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "bootstrap-icons": "^1.13.1",
     "lucide-vue-next": "^0.468.0",
     "pinia": "^2.3.0",

@@ -38,6 +38,11 @@ FIX - DEPLOY.md and the MD5PASSWORDS note said MD5PASSWORDS=0 moves away from
 FIX - Tests that locate repository data walk up to the solution file instead
       of a fixed number of parent folders, so they also find it from a
       bin/<Configuration> output; a missing tracked fixture fails the test.
+FIX - Built-in tooltip lines sent their arguments with a leading tab, which
+      left the first value empty on the client (weapon damage/speed, armour,
+      durability, container). A "lo,hi" DAM / DURABILITY tag is split into
+      the two values; the container line 1050044 carries count and weight as
+      in Source-X (it carried a fixed 125), and a 1-stone weight uses 1072788.
 CHANGE - The nightly benchmark artifact says measured=false instead of
       reporting zeros; no load run exists in that workflow.
 

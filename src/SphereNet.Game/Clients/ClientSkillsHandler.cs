@@ -74,6 +74,11 @@ public sealed class ClientSkillsHandler
     private Item? GetTopContainer(Item item) => _client.GetTopContainer(item);
     private static uint StableStringHash(string s) => GameClient.StableStringHash(s);
 
+    /// <summary>A "lo,hi" / "cur max" tag value as tab-separated cliloc arguments
+    /// (Source-X FormatArgs "%d\t%d"): one per ~n_val~, no leading tab.</summary>
+    internal static string ClilocArgs(string value) =>
+        string.Join('\t', value.Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries));
+
 
     /// <summary>
     /// Fires trigger chain (PreStart/Start/Stroke) for the information skill,
@@ -1037,9 +1042,9 @@ public sealed class ClientSkillsHandler
                 case ItemType.WeaponWhip:
                     // Weapon damage - try reading from tags or CombatEngine lookup
                     if (item.TryGetTag("DAM", out string? damStr) && damStr != null)
-                        propList.Add((1061168, $"\t{damStr}")); // weapon damage cliloc
+                        propList.Add((1061168, ClilocArgs(damStr))); // weapon damage ~1_val~ - ~2_val~
                     if (item.TryGetTag("SPEED", out string? speedStr) && speedStr != null)
-                        propList.Add((1061167, $"\t{speedStr}")); // weapon speed cliloc
+                        propList.Add((1061167, speedStr.Trim())); // weapon speed ~1_val~
                     break;
 
                 case ItemType.Armor:
@@ -1049,15 +1054,18 @@ public sealed class ClientSkillsHandler
                 case ItemType.ArmorRing:
                 case ItemType.Shield:
                     if (item.TryGetTag("ARMOR", out string? armorStr) && armorStr != null)
-                        propList.Add((1060448, $"\t{armorStr}")); // physical resist
+                        propList.Add((1060448, armorStr.Trim())); // physical resist ~1_val~%
                     if (item.TryGetTag("DURABILITY", out string? durStr) && durStr != null)
-                        propList.Add((1060639, $"\t{durStr}")); // durability
+                        propList.Add((1060639, ClilocArgs(durStr))); // durability ~1_val~ / ~2_val~
                     break;
 
                 case ItemType.Container:
                 case ItemType.ContainerLocked:
-                    propList.Add((1050044, $"\t{item.ContentCount}\t125")); // items/max items
-                    propList.Add((1072789, $"\t{item.TotalWeight}")); // weight
+                    // Source-X CClientMsg_AOSTooltip: 1050044 "~1_COUNT~ items,
+                    // ~2_WEIGHT~ stones" takes count and weight, no leading tab
+                    // (a leading tab makes the first argument empty on the client).
+                    propList.Add((1050044, $"{item.ContentCount}\t{item.TotalWeight}"));
+                    propList.Add((item.TotalWeight == 1 ? 1072788u : 1072789u, $"{item.TotalWeight}")); // Weight: ~1_WEIGHT~ stone(s)
                     break;
 
                 case ItemType.CommCrystal:

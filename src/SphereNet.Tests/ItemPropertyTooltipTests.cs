@@ -231,4 +231,29 @@ public sealed class ItemPropertyTooltipTests : IDisposable
         Assert.True(item.TrySetProperty("RESFIRE", "5"));
         Assert.True((item.ConsumeDirty() & DirtyFlag.Properties) != 0);
     }
+
+    /// <summary>The per-type lines carry their arguments tab-separated with no
+    /// leading tab (Source-X FormatArgs "%d\t%d"); a leading tab left the first
+    /// ~1_val~ empty on the client.</summary>
+    [Fact]
+    public void WeaponDamageAndSpeedArgumentsHaveNoLeadingTab()
+    {
+        var props = Build(i => { i.SetTag("DAM", "3,15"); i.SetTag("SPEED", "40"); });
+
+        Assert.Contains((1061168u, "3\t15"), props);
+        Assert.Contains((1061167u, "40"), props);
+    }
+
+    /// <summary>1050044 is "~1_COUNT~ items, ~2_WEIGHT~ stones": count then weight.</summary>
+    [Fact]
+    public void ContainerContentsLineIsCountThenWeight()
+    {
+        var props = Build(_ => { }, ItemType.Container);
+
+        var contents = Assert.Single(props, p => p.Cliloc == 1050044);
+        var parts = contents.Args.Split('\t');
+        Assert.Equal(2, parts.Length);
+        Assert.Equal("0", parts[0]);
+        Assert.DoesNotContain(props, p => p.Args.StartsWith('\t'));
+    }
 }

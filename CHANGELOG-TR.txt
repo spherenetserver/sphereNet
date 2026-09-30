@@ -39,6 +39,12 @@ DUZELTME - DEPLOY.md ve MD5PASSWORDS notu MD5PASSWORDS=0'in MD5'ten
 DUZELTME - Depo verisini arayan testler sabit sayida ust klasor yerine
            solution dosyasina kadar cikar; bin/<Configuration> ciktisindan da
            bulur. Depoda izlenen fixture eksikse test basarisiz olur.
+DUZELTME - Yerlesik tooltip satirlari argumanlari basta bir sekmeyle
+           gonderiyordu; istemcide ilk deger bos kaliyordu (silah hasari/hizi,
+           zirh, dayaniklilik, container). "lo,hi" bicimli DAM / DURABILITY
+           etiketi iki degere bolunur; container satiri 1050044 Source-X gibi
+           adet ve agirlik tasir (sabit 125 tasiyordu), 1 taslik agirlik
+           1072788 kullanir.
 DEGISIKLIK - Gecelik benchmark artefakti sifirlar yerine measured=false
            yazar; o is akisinda yuk kosusu yoktur.
 

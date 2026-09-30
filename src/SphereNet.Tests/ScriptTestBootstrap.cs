@@ -16,12 +16,9 @@ internal static class ScriptTestBootstrap
         if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
             return Path.GetFullPath(configured);
 
-        string bundled = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-            "..", "..", "..", "..", "oldSphere", "Scripts-X-main"));
-        if (Directory.Exists(bundled))
-            return bundled;
-
-        return null;
+        // oldSphere/ is gitignored reference data: absent in CI, so null (skip).
+        string? bundled = TestRepo.Optional("oldSphere/Scripts-X-main");
+        return bundled != null && Directory.Exists(bundled) ? bundled : null;
     }
 
     public static IReadOnlyList<string> GetScriptFiles(string rootPath, ScriptPackProfile profile)

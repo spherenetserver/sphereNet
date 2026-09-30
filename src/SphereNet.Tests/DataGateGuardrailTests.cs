@@ -117,7 +117,8 @@ public sealed class DataGateGuardrailTests
             "reference tables",
             "reference tables + live pack",
             "reference tables + modern pack",
-            "script pack fixtures",
+            // No "script pack fixtures": tests/fixtures is tracked, so those tests
+            // resolve it through TestRepo.Tracked and fail when it is missing.
             "table export",
         ], used.ToArray());
     }

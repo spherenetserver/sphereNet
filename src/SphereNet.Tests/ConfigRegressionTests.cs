@@ -458,9 +458,8 @@ public class ConfigRegressionTests
         // ("[UYGULANMADI]"). The moment a key IS read, its placeholder becomes live: a
         // TELEPORTEFFECTSTAFF=0 turns the effect off, a MAXHOUSESGUILD=0 lets a guild
         // own nothing. This holds the shipped file to what it says it does.
-        string? repoIni = FindRepoFile("config/sphere.ini");
-        // Not running from the repo tree.
-        if (Gate.MissingValue(_out, "config/sphere.ini", repoIni)) return;
+        // Checked into the repository: missing means broken, not skipped.
+        string repoIni = TestRepo.Tracked("config/sphere.ini");
 
         var ini = new SphereNet.Core.Configuration.IniParser();
         ini.Load(repoIni);
@@ -480,17 +479,5 @@ public class ConfigRegressionTests
         // This pack's own choices, deliberately not the reference defaults.
         Assert.False(config.NoWeather);
         Assert.Equal(100, config.NpcSkillSave);
-    }
-
-    private static string? FindRepoFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            string candidate = Path.Combine(dir.FullName, relative);
-            if (File.Exists(candidate)) return candidate;
-            dir = dir.Parent;
-        }
-        return null;
     }
 }

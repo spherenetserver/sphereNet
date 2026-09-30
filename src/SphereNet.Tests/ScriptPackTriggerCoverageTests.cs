@@ -69,11 +69,7 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
     private static string ResolveRoot(string root)
     {
         if (Path.IsPathRooted(root)) return root;
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "oldSphere")))
-            dir = dir.Parent;
-        return dir == null ? Path.GetFullPath(root)
-            : Path.GetFullPath(Path.Combine(dir.FullName, root));
+        return TestRepo.Optional(root) ?? TestRepo.PathOf(root);
     }
 
     private static IEnumerable<string> PackFiles()

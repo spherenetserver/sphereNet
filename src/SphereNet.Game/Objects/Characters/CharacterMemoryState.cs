@@ -82,27 +82,32 @@ public sealed class CharacterMemoryState
 
     /// <summary>Create the equipped IT_SPELL memory item that represents an
     /// active spell effect, mirroring Source-X CChar::Spell_Effect_Create: the
-    /// graphic is the spell's RUNE_ITEM (fallback 0x2053), it sits on the hidden
-    /// LAYER_SPECIAL (never sent to the client), and it carries the spell id in
-    /// MOREX, the effect strength in MOREY and the caster in LINK. It has NO
-    /// MemoryType flags, so the MEMORY save loop skips it (the effect persists via
-    /// its SPELLEFFECT record, not as a memory), and its timeout is permanent so
-    /// the memory sweep never retires it — expiry is driven solely by the spell
-    /// engine, which deletes the item when the effect ends. Visible to GM .edit
-    /// because the char-edit view enumerates ch.Memories.</summary>
-    public Item CreateSpellEffect(int spellId, ushort graphic, int level, Serial source, string name)
+    /// graphic is the spell's RUNE_ITEM (fallback 0x2053), it sits on the spell's
+    /// own hidden layer (LAYER_SPELL_STATS and up, never sent to the client), and
+    /// it carries the spell id in MOREX, the effect strength in MOREY and the
+    /// caster in LINK. With a world it is a registered object, so its UID
+    /// resolves like the reference's (FINDLAYER, UID.x.REMOVE); without one
+    /// (bare unit tests) it stays an unregistered item. It has NO
+    /// MemoryType flags, so the MEMORY save loop skips it, and it is marked
+    /// <see cref="Item.IsSpellEffectMirror"/> so the item save skips it too: the
+    /// effect persists via its SPELLEFFECT record, which rebuilds the memory on
+    /// load. Its timeout is permanent so the memory sweep never retires it -
+    /// expiry is driven solely by the spell engine, which deletes the item when
+    /// the effect ends. Visible to GM .edit because the char-edit view
+    /// enumerates ch.Memories.</summary>
+    public Item CreateSpellEffect(int spellId, ushort graphic, int level, Serial source, string name,
+        Layer layer = Layer.Special, World.GameWorld? world = null)
     {
-        var mem = new Item
-        {
-            ItemType = ItemType.Spell,
-            BaseId = graphic != 0 ? graphic : (ushort)0x2053, // ITEMID_RHAND_POINT_NW fallback
-            Name = string.IsNullOrEmpty(name) ? "spell effect" : name,
-        };
+        var mem = world != null ? world.CreateItem() : new Item();
+        mem.ItemType = ItemType.Spell;
+        mem.BaseId = graphic != 0 ? graphic : (ushort)0x2053; // ITEMID_RHAND_POINT_NW fallback
+        mem.Name = string.IsNullOrEmpty(name) ? "spell effect" : name;
+        mem.IsSpellEffectMirror = true;
         mem.MoreP = new Point3D((short)spellId, (short)level, 0, 0); // MOREX = spell, MOREY = strength
         mem.Link = source;
         mem.SetAttr(ObjAttributes.Newbie | ObjAttributes.Magic); // ATTR_NEWBIE|ATTR_MAGIC (dispellable)
         mem.IsEquipped = true;
-        mem.EquipLayer = Layer.Special;
+        mem.EquipLayer = layer;
         mem.ContainedIn = _owner.Uid;
         mem.SetTimeout(-1); // permanent from the memory sweep's view; engine owns expiry
 

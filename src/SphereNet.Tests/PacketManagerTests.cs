@@ -349,16 +349,5 @@ public class PacketManagerTests
     }
 
     private static string FindRepoFile(params string[] parts)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null)
-        {
-            string candidate = Path.Combine(new[] { dir.FullName }.Concat(parts).ToArray());
-            if (File.Exists(candidate))
-                return candidate;
-            dir = dir.Parent;
-        }
-
-        throw new FileNotFoundException(string.Join(Path.DirectorySeparatorChar, parts));
-    }
+        => TestRepo.Tracked(Path.Combine(parts));
 }

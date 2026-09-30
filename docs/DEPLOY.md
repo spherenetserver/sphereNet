@@ -48,8 +48,11 @@ control plane, not as a public gameplay endpoint.
 - Set a non-empty `AdminPassword` before enabling telnet or panel access.
 - Keep `DefaultCommandLevel=0` for public shards — auto-created accounts must not
   receive elevated command access.
-- Keep `Md5Passwords=0` for new deployments. MD5 is accepted only for legacy
-  compatibility and should be migrated away from.
+- Know what `Md5Passwords` stores (it is the Source-X setting and neither value
+  is strong storage): `Md5Passwords=0` (the default) keeps account passwords
+  **in plain text**, `Md5Passwords=1` keeps an **unsalted MD5** digest. A shard
+  whose account file already holds MD5 digests must keep `1`. Either way, protect
+  the account file and its backups like a password store.
 - Keep telnet, web status, panel, and IPC bound to localhost unless protected by
   a trusted reverse proxy; use TLS at the proxy when exposing the panel.
 - Treat named pipe IPC and headless stdin as local-admin surfaces; do not expose

@@ -1072,6 +1072,12 @@ public sealed class ClientSkillsHandler
                 }
             }
 
+            // The component-property lines (luck, stat bonuses, resists, hit effects,
+            // ...) follow the per-type defaults, as upstream appends them right after
+            // AOSTooltip_addDefaultItemData (CClientMsg_AOSTooltip.cpp:118).
+            ItemPropertyTooltip.Append(item, propList,
+                elementalEngine: (Character.CombatFlags & (int)CombatFlags.ElementalEngine) != 0,
+                displayElementalResistance: GameClient.DisplayElementalResistance);
         }
 
         // @ClientTooltip_AfterDefault runs whatever the first trigger returned -

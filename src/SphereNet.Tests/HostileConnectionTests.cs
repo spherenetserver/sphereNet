@@ -214,9 +214,7 @@ public sealed class HostileConnectionTests
     [Fact]
     public void TheShippedConfigDoesNotDisableThem()
     {
-        string ini = Path.Combine(FindRepoRoot(), "config", "sphere.ini");
-        if (Gate.Missing(null, "config/sphere.ini", !File.Exists(ini)))
-            return;
+        string ini = TestRepo.Tracked("config/sphere.ini");
 
         foreach (string line in File.ReadAllLines(ini))
         {
@@ -235,14 +233,6 @@ public sealed class HostileConnectionTests
         }
     }
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
-            dir = dir.Parent;
-        Assert.NotNull(dir);
-        return dir!.FullName;
-    }
 
     /// <summary>A real player running flat out is nowhere near the quota.
     ///

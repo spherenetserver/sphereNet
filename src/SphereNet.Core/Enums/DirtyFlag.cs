@@ -23,4 +23,7 @@ public enum DirtyFlag : uint
     Container  = 512,
     /// <summary>Reserved for future use. Currently no code sets this flag.</summary>
     Deleted    = 1024,
+    /// <summary>A property shown on the object's AOS tooltip changed (upstream
+    /// CObjBase::UpdatePropertyFlag): nearby clients get the rebuilt property list.</summary>
+    Properties = 2048,
 }

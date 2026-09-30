@@ -148,11 +148,7 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     private static string ResolveRoot(string root)
     {
         if (Path.IsPathRooted(root)) return root;
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "oldSphere")))
-            dir = dir.Parent;
-        return dir == null ? Path.GetFullPath(root)
-            : Path.GetFullPath(Path.Combine(dir.FullName, root));
+        return TestRepo.Optional(root) ?? TestRepo.PathOf(root);
     }
 
     private static List<string> PackFiles(ITestOutputHelper? log = null)
@@ -356,15 +352,6 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
         return false;
     }
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
-            dir = dir.Parent;
-        Assert.NotNull(dir);
-        return dir!.FullName;
-    }
-
     /// <summary>
     /// Nothing on the known-unanswered list is a name Source-X answers.
     ///
@@ -383,11 +370,11 @@ public sealed class ScriptPackMemberCoverageTests(ITestOutputHelper outp)
     [Fact]
     public void NothingOnTheUnansweredListIsAThingSourceXAnswers()
     {
-        string reference = Path.Combine(FindRepoRoot(), "oldSphere", "Source-X-full", "src");
+        string? reference = TestRepo.Optional("oldSphere/Source-X-full/src");
         // Through the gate, not a bare early return: a test that quietly returns when
         // its data is absent is reported as Passed, which is the thing the gate exists
         // to stop.
-        if (Gate.Missing(outp, "Source-X reference tree", !Directory.Exists(reference)))
+        if (Gate.MissingValue(outp, "Source-X reference tree", reference))
             return;
 
         var sources = Directory.EnumerateFiles(reference, "*.*", SearchOption.AllDirectories)

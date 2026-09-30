@@ -213,7 +213,8 @@ internal interface IClientContext : ITextConsole
     void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind);
     void BeginTargetedSkill(SkillType skill, int skillId, Core.Types.Serial targetUid);
     void BeginXVerbTarget(string verb, string args);
-    void BeginAreaTarget(string verb, int range, string verbArgs = "");
+    void BeginAreaTarget(string verb, string verbArgs = "");
+    void RequestAreaSecondCorner();
     void ResendCharacterList();
     void ApplyNewbieSection(Objects.Characters.Character ch, string sectionName);
     void SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback = null, bool unicode = false);
@@ -266,6 +267,6 @@ internal interface IClientContext : ITextConsole
         Triggers.FireItemTrigger(target, ItemTrigger.Destroy, new TriggerArgs()) != TriggerResult.True);
     Item? DuplicateItem(Item src);
     void SpawnCageAround(Point3D centre);
-    int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "");
+    int ExecuteAreaVerb(string verb, Point3D first, Point3D second, string verbArgs = "");
     Character? ResolvePickedChar(uint uid);
 }

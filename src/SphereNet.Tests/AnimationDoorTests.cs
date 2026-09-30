@@ -125,7 +125,7 @@ public sealed class AnimationDoorTests
         // The guardrail: every animation has to come through the door, or the two
         // corrections above are silently skipped again. The only places allowed to
         // construct the packet are the two dispatchers in GameClient.PacketHelpers.
-        string root = FindRepoRoot();
+        string root = TestRepo.Root;
         var offenders = new List<string>();
         foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs",
                      SearchOption.AllDirectories))
@@ -147,14 +147,5 @@ public sealed class AnimationDoorTests
 
         _out.WriteLine(offenders.Count == 0 ? "no raw call sites" : string.Join(", ", offenders));
         Assert.Empty(offenders);
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
-            dir = dir.Parent;
-        Assert.NotNull(dir);
-        return dir!.FullName;
     }
 }

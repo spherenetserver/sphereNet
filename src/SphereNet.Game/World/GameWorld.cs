@@ -899,6 +899,14 @@ public sealed class GameWorld
                         PlaceItem(equipped, owner.Position);
                 }
             }
+            // Registered memories (spell-effect items) go with their wearer.
+            foreach (var mem in owner.Memories.ToArray())
+            {
+                if (mem.IsDeleted || !_objects.TryGetValue(mem.Uid.Value, out var memObj) ||
+                    !ReferenceEquals(memObj, mem))
+                    continue;
+                TryDeleteObject(mem, force: true, notify: notify);
+            }
         }
 
         if (obj is Item delItem && delItem.ContainedIn.IsValid)
@@ -915,7 +923,12 @@ public sealed class GameWorld
                 // back the deleted pack.
                 else if (parentObj is Character parentChar && delItem.IsEquipped)
                 {
-                    parentChar.Unequip(delItem.EquipLayer);
+                    // A memory (spell effect, fight memory) is held in the memory
+                    // list, not a layer slot; only clear the slot that holds THIS item.
+                    if (ReferenceEquals(parentChar.GetEquippedItem(delItem.EquipLayer), delItem))
+                        parentChar.Unequip(delItem.EquipLayer);
+                    else
+                        parentChar.Memory_Delete(delItem);
                     parentChar.ClearBackpackReference(delItem);
                 }
             }
@@ -2609,7 +2622,7 @@ public sealed class GameWorld
 
             // Engine-state items (spell/fight memories and other Special-layer
             // equips) are managed by their subsystems.
-            if (item.ItemType == SphereNet.Core.Enums.ItemType.EqMemoryObj ||
+            if (item.ItemType == SphereNet.Core.Enums.ItemType.EqMemoryObj || item.IsSpellEffectMirror ||
                 (item.IsEquipped && item.EquipLayer == SphereNet.Core.Enums.Layer.Special))
                 continue;
 

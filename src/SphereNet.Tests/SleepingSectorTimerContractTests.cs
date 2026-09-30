@@ -421,14 +421,11 @@ public sealed class SleepingSectorTimerContractTests : IDisposable
     [Fact]
     public void TheDocumentedDelaysAreTheEnginesOwnNumbers()
     {
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root != null && !Directory.Exists(Path.Combine(root.FullName, "docs")))
-            root = root.Parent;
-        // Reuses the suite's existing gate vocabulary: this test reads the engine's
-        // own source files for the constants it pins.
-        if (Gate.MissingValue(_out, "engine source", root)) return;
+        // Reads tracked engine source and docs: TestRepo.Root throws rather than
+        // letting the test pass having read nothing.
+        var root = new DirectoryInfo(TestRepo.Root);
 
-        string doc = File.ReadAllText(Path.Combine(root!.FullName, "docs", "ARCHITECTURE.md"));
+        string doc = File.ReadAllText(Path.Combine(root.FullName, "docs", "ARCHITECTURE.md"));
         string world = File.ReadAllText(Path.Combine(root.FullName, "src",
             "SphereNet.Game", "World", "GameWorld.cs"));
         string tick = File.ReadAllText(Path.Combine(root.FullName, "src",

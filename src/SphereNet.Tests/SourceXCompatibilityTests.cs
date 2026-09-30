@@ -45,9 +45,8 @@ public sealed class SourceXCompatibilityTests
     [Fact]
     public void SourceXPack_ManifestSelectsExactlyTheDeclaredFiles()
     {
-        string pack = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-            "..", "..", "..", "..", "oldSphere", "Scripts-X-main"));
-        if (Gate.Missing(_out, "live script pack", !Directory.Exists(pack))) return;
+        string? pack = TestRepo.Optional("oldSphere/Scripts-X-main");
+        if (Gate.MissingValue(_out, "live script pack", pack)) return;
 
         var files = ScriptResourceManifest.Resolve(pack);
 
@@ -60,9 +59,8 @@ public sealed class SourceXCompatibilityTests
     [Fact]
     public void SourceXPack_AllDeclaredFilesParseAndDefinitionsLoad()
     {
-        string pack = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-            "..", "..", "..", "..", "oldSphere", "Scripts-X-main"));
-        if (Gate.Missing(_out, "live script pack", !Directory.Exists(pack))) return;
+        string? pack = TestRepo.Optional("oldSphere/Scripts-X-main");
+        if (Gate.MissingValue(_out, "live script pack", pack)) return;
 
         var resources = CreateResources(pack);
         var files = ScriptResourceManifest.Resolve(pack);

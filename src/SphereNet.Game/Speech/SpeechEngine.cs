@@ -519,7 +519,7 @@ public sealed class CommandHandler
     /// <c>.NUDGE</c> open a single-tile target cursor; the picked point
     /// is then expanded into an area and the verb runs on every object
     /// in that area. Args: <c>(gm, verb, range)</c>.</summary>
-    public event Action<Character, string, int>? OnAreaTargetRequested;
+    public event Action<Character, string, string>? OnAreaTargetRequested;
     /// <summary>Source-X parity: <c>.SUMMONTO</c> opens a target cursor
     /// then teleports the picked character to the GM. Args: <c>(gm)</c>.</summary>
     public event Action<Character>? OnSummonToTargetRequested;
@@ -1792,29 +1792,25 @@ public sealed class CommandHandler
         // are area-target or single-target operations; the heavy lifting
         // happens in GameClient via the matching event below.
 
-        // .NUKE [range] — area item delete. Source-X CV_NUKE.
+        // .NUKE [verb line] — delete the items in a two-corner area, or run
+        // the verb line on each of them. Source-X CV_NUKE keeps the raw
+        // argument (m_Targ_Text) for OnTarg_Tile.
         Register("NUKE", PrivLevel.Counsel, (gm, args) =>
-        {
-            int range = TryParseAreaRange(args, defaultRange: 4);
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_nuke_select"));
-            OnAreaTargetRequested?.Invoke(gm, "NUKE", range);
-        });
+            OnAreaTargetRequested?.Invoke(gm, "NUKE", args.Trim()));
 
-        // .NUKECHAR [range] — area mobile delete (NPCs only by default).
+        // .NUKECHAR [verb line] — same for NPCs (players are never touched).
         Register("NUKECHAR", PrivLevel.Counsel, (gm, args) =>
-        {
-            int range = TryParseAreaRange(args, defaultRange: 4);
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_nuke_select"));
-            OnAreaTargetRequested?.Invoke(gm, "NUKECHAR", range);
-        });
+            OnAreaTargetRequested?.Invoke(gm, "NUKECHAR", args.Trim()));
 
-        // .NUDGE — area shift. Single-pick variant: shifts each object
-        // in range by the GM's last TARGP delta (kept simple for now).
+        // .NUDGE dx dy dz — shift the items and characters of an area.
         Register("NUDGE", PrivLevel.Counsel, (gm, args) =>
         {
-            int range = TryParseAreaRange(args, defaultRange: 2);
-            OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_nudge_select"));
-            OnAreaTargetRequested?.Invoke(gm, "NUDGE", range);
+            if (string.IsNullOrWhiteSpace(args))
+            {
+                OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_nudge_usage"));
+                return;
+            }
+            OnAreaTargetRequested?.Invoke(gm, "NUDGE", args.Trim());
         });
 
         // .ANIM <id> — play animation on self. Source-X CV_ANIM.
@@ -2014,14 +2010,6 @@ public sealed class CommandHandler
         {
             OnMacroRequested?.Invoke(ch, args);
         });
-    }
-
-    private static int TryParseAreaRange(string args, int defaultRange)
-    {
-        if (string.IsNullOrWhiteSpace(args)) return defaultRange;
-        if (int.TryParse(args.Trim(), out int n) && n > 0 && n <= 32)
-            return n;
-        return defaultRange;
     }
 
     private bool ExecuteShowCommand(Character gm, string args, uint? forcedTargetSerial)

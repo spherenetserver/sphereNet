@@ -279,13 +279,11 @@ public sealed partial class GameClient
         SendTargetRequest(1);
     }
 
-    /// <summary>Source-X CV_NUKE / CV_NUKECHAR / CV_NUDGE: open a
-    /// ground-target cursor and treat the picked tile as the centre of
-    /// an axis-aligned area of half-extent <paramref name="range"/>.
-    /// We deviate from Source-X (which prompts for two corner tiles —
-    /// see CClient_functions.tbl 'NUKE'); a single pick + fixed range
-    /// keeps the wire round-trip lean and is enough for GM cleanup.</summary>
-    public void BeginAreaTarget(string verb, int range, string verbArgs = "")
+    /// <summary>Source-X CV_NUKE / CV_NUKECHAR / CV_NUDGE (CClient.cpp):
+    /// keep the raw argument and open a tile cursor for the first corner of
+    /// the area. The target handler asks for the opposite corner
+    /// (OnTarg_Tile); nothing is applied until both corners are known.</summary>
+    public void BeginAreaTarget(string verb, string verbArgs = "")
     {
         if (_character == null) return;
         if (Targets.CursorActive) return;
@@ -293,10 +291,25 @@ public sealed partial class GameClient
 
         ClearPendingTargetState();
         Targets.AreaVerb = verb.Trim().ToUpperInvariant();
-        Targets.AreaRange = Math.Clamp(range, 1, 32);
+        Targets.AreaFirst = null;
         Targets.AreaVerbArgs = verbArgs?.Trim() ?? "";
+        SysMessage(ServerMessages.Get(Targets.AreaVerb switch
+        {
+            "NUDGE" => "gm_nudge_select",
+            "NUKECHAR" => "gm_nukechar_select",
+            _ => "gm_nuke_select",
+        }));
         Targets.CursorActive = true;
         // type=1 (ground allowed), so the GM can pick an empty tile.
+        SendTargetRequest(1);
+    }
+
+    /// <summary>Re-arm the tile cursor for the opposite corner of a pending
+    /// area verb (OnTarg_Tile re-issues CLIMODE_TARG_TILE).</summary>
+    internal void RequestAreaSecondCorner()
+    {
+        SysMessage(ServerMessages.Get(Targets.AreaVerb == "NUDGE" ? "gm_nudge_second" : "gm_nuke_second"));
+        Targets.CursorActive = true;
         SendTargetRequest(1);
     }
 
@@ -658,7 +671,8 @@ public sealed partial class GameClient
         Targets.XVerb = null;
         Targets.XVerbArgs = "";
         Targets.AreaVerb = null;
-        Targets.AreaRange = 0;
+        Targets.AreaFirst = null;
+        Targets.AreaVerbArgs = "";
         Targets.Control = false;
         Targets.Dupe = false;
         Targets.Heal = false;
@@ -1752,12 +1766,18 @@ public sealed partial class GameClient
     }
 
     /// <summary>Source-X CV_NUKE / CV_NUKECHAR / CV_NUDGE area
-    /// implementation. Iterates the world sectors around
-    /// <paramref name="centre"/> at <paramref name="range"/> tiles and
-    /// applies the verb. Returns the number of objects affected.</summary>
-    internal int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "")
+    /// implementation (CClientTarg.cpp OnTarg_Tile). The two corners span a
+    /// rectangle that, like CRect::IsInside2d, includes its left/top edge and
+    /// excludes its right/bottom edge. Returns the number of objects
+    /// affected.</summary>
+    internal int ExecuteAreaVerb(string verb, Point3D first, Point3D second, string verbArgs = "")
     {
         if (_character == null) return 0;
+        int left = Math.Min(first.X, second.X), right = Math.Max(first.X, second.X);
+        int top = Math.Min(first.Y, second.Y), bottom = Math.Max(first.Y, second.Y);
+        var centre = new Point3D((short)((left + right) / 2), (short)((top + bottom) / 2), second.Z, second.Map);
+        int radius = Math.Max(1 + (right - left) / 2, 1 + (bottom - top) / 2);
+        bool Inside(Point3D p) => p.X >= left && p.X < right && p.Y >= top && p.Y < bottom;
         int affected = 0;
         switch (verb)
         {
@@ -1766,14 +1786,14 @@ public sealed partial class GameClient
                 // Snapshot first — DeleteObject mutates the sector lists.
                 // Source-X: an argument is a verb line to run on each item
                 // instead of deleting it.
-                var items = _world.GetItemsInRange(centre, range).ToList();
+                var items = _world.GetItemsInRange(centre, radius).Where(i => Inside(i.Position)).ToList();
                 foreach (var item in items)
                 {
                     if (item.IsEquipped) continue;          // GM gear safe
                     if (item.ContainedIn.IsValid) continue; // bag contents safe
                     if (verbArgs.Length > 0)
                     {
-                        RunVerbLineOn(item, verbArgs);
+                        if (!RunVerbLineOn(item, verbArgs)) continue;
                         affected++;
                         continue;
                     }
@@ -1785,14 +1805,14 @@ public sealed partial class GameClient
             }
             case "NUKECHAR":
             {
-                var chars = _world.GetCharsInRange(centre, range).ToList();
+                var chars = _world.GetCharsInRange(centre, radius).Where(c => Inside(c.Position)).ToList();
                 foreach (var ch in chars)
                 {
                     if (ch == _character) continue;
                     if (ch.IsPlayer) continue;              // never auto-purge real players
                     if (verbArgs.Length > 0)
                     {
-                        RunVerbLineOn(ch, verbArgs);
+                        if (!RunVerbLineOn(ch, verbArgs)) continue;
                         affected++;
                         continue;
                     }
@@ -1804,22 +1824,14 @@ public sealed partial class GameClient
             }
             case "NUDGE":
             {
-                // Source-X NUDGE takes "dx dy dz" arguments; the TAG-based
-                // displacement remains the fallback for the GM command form.
-                int dx = TryGetIntTag("NUDGE.DX", 0);
-                int dy = TryGetIntTag("NUDGE.DY", 0);
-                int dz = TryGetIntTag("NUDGE.DZ", 1);
-                if (verbArgs.Length > 0)
+                // Source-X NUDGE "dx dy dz"; a missing value shifts by 0.
+                var np2 = verbArgs.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
+                int dx = np2.Length > 0 && int.TryParse(np2[0], out int ndx) ? ndx : 0;
+                int dy = np2.Length > 1 && int.TryParse(np2[1], out int ndy) ? ndy : 0;
+                int dz = np2.Length > 2 && int.TryParse(np2[2], out int ndz) ? ndz : 0;
+                foreach (var item in _world.GetItemsInRange(centre, radius).Where(i => Inside(i.Position)).ToList())
                 {
-                    var np2 = verbArgs.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
-                    if (np2.Length > 0 && int.TryParse(np2[0], out int ndx)) dx = ndx;
-                    if (np2.Length > 1 && int.TryParse(np2[1], out int ndy)) dy = ndy;
-                    dz = np2.Length > 2 && int.TryParse(np2[2], out int ndz) ? ndz : 0;
-                }
-                if (dx == 0 && dy == 0 && dz == 0) dz = 1;
-                foreach (var item in _world.GetItemsInRange(centre, range).ToList())
-                {
-                    if (item.ContainedIn.IsValid) continue;
+                    if (item.ContainedIn.IsValid || item.IsEquipped) continue;
                     var p = item.Position;
                     var np = new Point3D(
                         (short)(p.X + dx),
@@ -1833,6 +1845,18 @@ public sealed partial class GameClient
                             item.X, item.Y, item.Z, item.Hue), 0);
                     affected++;
                 }
+                // Source-X moves the characters inside the rectangle as well.
+                foreach (var ch in _world.GetCharsInRange(centre, radius).Where(c => Inside(c.Position)).ToList())
+                {
+                    var p = ch.Position;
+                    _world.MoveCharacter(ch, new Point3D(
+                        (short)(p.X + dx),
+                        (short)(p.Y + dy),
+                        (sbyte)(p.Z + dz),
+                        p.Map));
+                    BroadcastDrawObject(ch);
+                    affected++;
+                }
                 break;
             }
         }
@@ -1840,23 +1864,15 @@ public sealed partial class GameClient
     }
 
     /// <summary>Run a "VERB [args]" line against an object (NUKE/NUKECHAR verb
-    /// payload — Source-X builds a CScript and calls r_Verb).</summary>
-    private void RunVerbLineOn(ObjBase obj, string line)
+    /// payload — Source-X builds a CScript and calls r_Verb). False when the
+    /// object does not know the verb (Source-X then leaves it uncounted).</summary>
+    private bool RunVerbLineOn(ObjBase obj, string line)
     {
         int sp = line.IndexOfAny([' ', '\t', '=']);
         string verb = sp < 0 ? line : line[..sp];
         string verbArg = sp < 0 ? "" : line[(sp + 1)..].Trim();
-        if (verb.Length == 0) return;
-        if (!obj.TrySetProperty(verb, verbArg))
-            obj.TryExecuteCommand(verb, verbArg, this);
-    }
-
-    private int TryGetIntTag(string key, int defaultValue)
-    {
-        if (_character != null && _character.TryGetTag(key, out string? v) &&
-            int.TryParse(v, out int n))
-            return n;
-        return defaultValue;
+        if (verb.Length == 0) return false;
+        return obj.TrySetProperty(verb, verbArg) || obj.TryExecuteCommand(verb, verbArg, this);
     }
 
     /// <summary>Source-X CV_DUPE: clones an item next to the original.

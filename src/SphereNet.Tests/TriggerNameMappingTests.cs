@@ -38,12 +38,8 @@ public sealed class TriggerNameMappingTests
 
     private static string? RepoFile(string relative)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
-            dir = dir.Parent;
-        if (dir == null) return null;
-        string p = Path.Combine(dir.FullName, relative);
-        return File.Exists(p) ? p : null;
+        // Tracked in the repository: TestRepo.Tracked throws when it is missing.
+        return TestRepo.Tracked(relative);
     }
 
     /// <summary>Reference trigger names with the table that owns each, from the

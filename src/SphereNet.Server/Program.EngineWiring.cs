@@ -903,10 +903,10 @@ public static partial class Program
                 }
             };
             // Phase C: NUKE / NUKECHAR / NUDGE area-target verbs.
-            _commands.OnAreaTargetRequested += (gm, verb, range) =>
+            _commands.OnAreaTargetRequested += (gm, verb, verbArgs) =>
             {
                 foreach (var c in _clients.Values)
-                    if (c.Character == gm) { c.BeginAreaTarget(verb, range); break; }
+                    if (c.Character == gm) { c.BeginAreaTarget(verb, verbArgs); break; }
             };
             _commands.OnSummonToTargetRequested += gm =>
             {

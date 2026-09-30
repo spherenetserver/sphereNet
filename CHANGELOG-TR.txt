@@ -4,6 +4,44 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-09-30] - Alan fiilleri, buyu bellegi katmanlari, esya ozellik tooltip'i
+------------------------------------------------------------------------
+DUZELTME - NUKE, NUKECHAR ve NUDGE argumanini her giris yolunda korur
+           (konusma komutu, script, istemci verb). "NUKE COLOR 0455" esyalari
+           silmek yerine boyar, "NUDGE 1 2 3" tam 1,2,3 kaydirir; argumansiz
+           NUDGE kullanim satirini yazar ve imlec acmaz.
+DEGISIKLIK - NUKE / NUKECHAR / NUDGE alani Source-X OnTarg_Tile gibi iki kose
+           ile secilir: ilk secim hicbir sey degistirmez, ayni nokta iki kez
+           secilirse tekrar sorulur; dikdortgen sol/ust kenari icerir, sag/alt
+           kenari icermez. NUDGE alandaki karakterleri de tasir. Nesnenin
+           tanimadigi fiil satiri onu sayima katmaz.
+DEGISIKLIK - Aktif buyunun bellek esyasi UID'li kayitli bir nesnedir ve
+           Source-X buyu katmaninda durur (stat buyuleri LAYER_SPELL_STATS=32,
+           Night Sight 34, Protection 35, Polymorph ailesi 40, ...); boylece
+           FINDLAYER(n), <UID.x.*> ve UID.x.REMOVE ona ulasir. Hangi yoldan
+           silinirse silinsin etki biter. Save'e yazilmaz; SPELLEFFECT kaydi
+           yuklemede yeniden kurar.
+DUZELTME - Ayni buyu katmanindaki etkiler birbirinin yerine gecer
+           (Spell_Effect_Create): MAGICF_STACKSTATS kapaliyken ikinci, farkli
+           bir stat buyusu (Strength, Agility, Cunning, Bless, Curse, Clumsy,
+           Weaken, Feeblemind, ...) ilkini kaldirir; aciksa ust uste biner ve
+           yalnizca ayni buyu yenilenir.
+EKLEME - Kendi yerel etkisi olmayan ama LAYER'i 32 veya ustu olan buyu o
+           katmanda sureli bellek takar (Source-X OnSpellEffect default);
+           @EffectAdd / @EffectRemove, buff ikonu ve sure dolumu calisir.
+EKLEME - Yerlesik esya tooltip'i esyanin kendi ozellik degerlerini listeler
+           (LUCK, REGENHITS, RES*, DAM*, HIT*, BONUS*, FASTERCASTING, ...);
+           cliloc, sira ve kosullar Source-X ile aynidir; sifir degerler
+           atlanir, elemental satirlar COMBAT_ELEMENTAL_ENGINE'e baglidir.
+           Boyle bir ozellik degisince tooltip yenilenir.
+DUZELTME - DEPLOY.md ve MD5PASSWORDS notu MD5PASSWORDS=0'in MD5'ten
+           uzaklastigini soyluyordu; duz metin saklar, 1 ise tuzsuz MD5 ozeti.
+DUZELTME - Depo verisini arayan testler sabit sayida ust klasor yerine
+           solution dosyasina kadar cikar; bin/<Configuration> ciktisindan da
+           bulur. Depoda izlenen fixture eksikse test basarisiz olur.
+DEGISIKLIK - Gecelik benchmark artefakti sifirlar yerine measured=false
+           yazar; o is akisinda yuk kosusu yoktur.
+
 [2026-09-27] - Script anahtar sozcuk uzun kuyrugu Source-X tablolarina gore kapatildi
 ------------------------------------------------------------------------
 EKLEME - NPC: NEEDNAME, SPELLADD, VENDCAP (banka kutusu MORE2), VENDGOLD

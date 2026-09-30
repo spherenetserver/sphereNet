@@ -1576,14 +1576,19 @@ public sealed class ClientScriptConsoleHandler
 
             case "NUDGE":
                 // Source-X CV_NUDGE dx dy dz over a marked area.
-                _client.BeginAreaTarget("NUDGE", 8, args);
+                if (string.IsNullOrWhiteSpace(args))
+                {
+                    SysMessage(ServerMessages.Get("gm_nudge_usage"));
+                    return true;
+                }
+                _client.BeginAreaTarget("NUDGE", args);
                 return true;
             case "NUKE":
                 // Optional arg = verb line applied instead of deleting.
-                _client.BeginAreaTarget("NUKE", 8, args);
+                _client.BeginAreaTarget("NUKE", args);
                 return true;
             case "NUKECHAR":
-                _client.BeginAreaTarget("NUKECHAR", 8, args);
+                _client.BeginAreaTarget("NUKECHAR", args);
                 return true;
 
             case "REPAIR":

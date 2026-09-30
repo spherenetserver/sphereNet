@@ -322,11 +322,7 @@ public sealed class ObjectCreationContractTests
 
     private static string ReadRepoFile(string relative)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
-            dir = dir.Parent;
-        if (dir == null) return "";
-        string path = Path.Combine(dir.FullName, relative);
-        return File.Exists(path) ? File.ReadAllText(path) : "";
+        // Tracked source: a missing file fails the test instead of reading as "".
+        return File.ReadAllText(TestRepo.Tracked(relative));
     }
 }

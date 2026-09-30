@@ -64,10 +64,7 @@ public sealed class CultureInvariantMatchingTests
     {
         // The guardrail: a new IgnoreCase regex without CultureInvariant is the same
         // bug waiting on whichever keyword happens to contain an I.
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
-            dir = dir.Parent;
-        if (Gate.MissingValue(null, "engine source", dir?.FullName)) return;
+        var dir = new DirectoryInfo(TestRepo.Root);
 
         var offenders = new List<string>();
         foreach (string file in Directory.EnumerateFiles(

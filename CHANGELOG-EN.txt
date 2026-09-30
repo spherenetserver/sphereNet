@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-30] - Area verbs, spell memory layers, item property tooltips
+------------------------------------------------------------------------
+FIX - NUKE, NUKECHAR and NUDGE keep their argument from every entry point
+      (speech command, script, client verb). "NUKE COLOR 0455" recolours the
+      items instead of deleting them, "NUDGE 1 2 3" shifts by exactly 1,2,3;
+      NUDGE with no argument prints its usage and opens no cursor.
+CHANGE - The area of NUKE / NUKECHAR / NUDGE is picked as two corners, as in
+      Source-X OnTarg_Tile: the first pick changes nothing, picking the same
+      point twice asks again, and the rectangle includes its left/top edge and
+      excludes its right/bottom edge. NUDGE moves the characters in the area
+      too. A verb line that an object does not know leaves it uncounted.
+CHANGE - An active spell's memory item is a registered object with a UID and
+      sits on the Source-X spell layer (LAYER_SPELL_STATS=32 for the stat
+      spells, 34 Night Sight, 35 Protection, 40 Polymorph family, ...), so
+      FINDLAYER(n), <UID.x.*> and UID.x.REMOVE reach it. Deleting it by any
+      route ends the effect. It is not written to the save; the SPELLEFFECT
+      record rebuilds it on load.
+FIX - Effects on the same spell layer replace each other (Spell_Effect_Create):
+      with MAGICF_STACKSTATS off a second, different stat spell (Strength,
+      Agility, Cunning, Bless, Curse, Clumsy, Weaken, Feeblemind, ...) removes
+      the first; with it on they stack and only the same spell refreshes.
+ADD - A spell with no native effect of its own but a LAYER of 32 or above
+      equips a timed memory on that layer (Source-X OnSpellEffect default), with
+      @EffectAdd / @EffectRemove, the buff icon and expiry.
+ADD - Built-in item tooltips list the item's own property values (LUCK,
+      REGENHITS, RES*, DAM*, HIT*, BONUS*, FASTERCASTING, ...) with the
+      Source-X clilocs, order and conditions; zero values are skipped and the
+      elemental lines follow COMBAT_ELEMENTAL_ENGINE. Changing such a property
+      refreshes the tooltip.
+FIX - DEPLOY.md and the MD5PASSWORDS note said MD5PASSWORDS=0 moves away from
+      MD5; it stores plaintext, and 1 stores an unsalted MD5 digest.
+FIX - Tests that locate repository data walk up to the solution file instead
+      of a fixed number of parent folders, so they also find it from a
+      bin/<Configuration> output; a missing tracked fixture fails the test.
+CHANGE - The nightly benchmark artifact says measured=false instead of
+      reporting zeros; no load run exists in that workflow.
+
 [2026-09-27] - Script keyword long tail closed against the Source-X tables
 ------------------------------------------------------------------------
 ADD - NPC: NEEDNAME, SPELLADD, VENDCAP (bank box MORE2), VENDGOLD (vendor

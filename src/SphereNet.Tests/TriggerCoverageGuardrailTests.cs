@@ -22,13 +22,11 @@ namespace SphereNet.Tests;
 // The not-fired set is recomputed from source on every run and asserted against
 // the documented constant: wiring a backlog trigger (or adding a brand-new enum
 // value) shifts the computed set and fails this test until the backlog is
-// updated, forcing the change to be acknowledged. Source is located via
-// CallerFilePath (compile-time path; build and test share a machine in CI).
+// updated, forcing the change to be acknowledged. Source is located through
+// TestRepo (walks up to the solution file).
 public class TriggerCoverageGuardrailTests
 {
-    private static string SrcRoot([CallerFilePath] string thisFile = "")
-        // src/SphereNet.Tests/<file>.cs -> src
-        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, ".."));
+    private static string SrcRoot() => TestRepo.Tracked("src");
 
     private static readonly Regex NameMapArm = new("=>\\s*\"", RegexOptions.Compiled);
 

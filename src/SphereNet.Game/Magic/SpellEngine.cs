@@ -26,6 +26,18 @@ public sealed class SpellEngine
     {
         _world = world;
         _spells = spells;
+        _world.ObjectDeleting += OnWorldObjectDeleting;
+    }
+
+    /// <summary>A spell memory deleted from outside the engine (a script's
+    /// UID.x.REMOVE, a GM remove, the wearer's deletion) ends its effect, as
+    /// deleting the IT_SPELL item runs Spell_Effect_Remove in Source-X. The
+    /// memory is dropped from the wearer's list before the revert, so the
+    /// engine's own delete of it does not come back here.</summary>
+    private void OnWorldObjectDeleting(Objects.ObjBase obj)
+    {
+        if (obj is Item { IsSpellEffectMirror: true } mem)
+            RemoveEffectByMemory(mem);
     }
 
     /// <summary>Callback to play a sound at a location.</summary>
@@ -291,6 +303,11 @@ public sealed class SpellEngine
         // item on the target, created on apply and deleted on every removal.
         // Null for effects that predate the memory (defensive) or fail to create.
         public Item? Memory { get; set; }
+
+        /// <summary>The layer the spell memory is equipped on
+        /// (<see cref="SpellLayers.ForSpell"/>); effects on the same layer replace
+        /// each other (Spell_Effect_Create).</summary>
+        public Layer Layer { get; set; } = Layer.Special;
 
         /// <summary>The [SPELL] @EffectAdd stage answered RETURN 0: the memory stays
         /// worn but the engine's own effect is not applied (Source-X
@@ -3214,7 +3231,9 @@ public sealed class SpellEngine
         // carrying just those would still no-op after burning resources.
         (def.Flags & (SpellFlag.Damage | SpellFlag.Heal | SpellFlag.Bless |
                       SpellFlag.Curse | SpellFlag.Field | SpellFlag.Summon |
-                      SpellFlag.Area)) != 0;
+                      SpellFlag.Area)) != 0 ||
+        // A spell LAYER equips a timed memory through the generic fallback.
+        def.Layer >= SpellLayers.Stats;
 
     /// <summary>School spells with a native SphereNet handler (dispatched in
     /// ApplySpecificSpell / the travel route) — always castable.</summary>
@@ -4010,6 +4029,14 @@ public sealed class SpellEngine
                 OnSysMessage?.Invoke(target, "*hic*");
                 break;
             }
+            default:
+                // Source-X OnSpellEffect default (CCharSpell.cpp:4148-4151): a spell
+                // with no case of its own still equips a timed spell memory when its
+                // LAYER is a spell layer (LAYER_SPELL_STATS or above), so @EffectAdd,
+                // @EffectRemove, the buff icon and the expiry all run for it.
+                if (def.Layer >= SpellLayers.Stats)
+                    ScheduleEffectExpiry(caster, target, def.Id, def, Math.Max(0, effect));
+                break;
         }
     }
 
@@ -4325,15 +4352,17 @@ public sealed class SpellEngine
     /// the item is hidden from the client and shows up under GM .edit. The
     /// engine's active-effect list stays the authority for expiry, so the memory
     /// is a faithful mirror that is deleted whenever the effect is removed.</summary>
-    private static void AttachSpellMemory(Character? caster, ActiveSpellEffect eff, SpellDef? def)
+    private void AttachSpellMemory(Character? caster, ActiveSpellEffect eff, SpellDef? def)
     {
         ushort graphic = def?.RuneItemId ?? 0;
         Serial source = caster != null ? caster.Uid : Serial.Invalid;
+        eff.Layer = SpellLayers.ForSpell(eff.Spell, def);
         // MOREY carries the effect magnitude, matching Source-X
         // m_itSpell.m_spelllevel — the value resendBuffs reads back to fill the
         // buff tooltip, and what a script reading the memory's MOREY expects.
         eff.Memory = eff.Target.Memory_CreateSpellEffect(
-            (int)eff.Spell, graphic, eff.BuffMagnitude, source, eff.Spell.ToString());
+            (int)eff.Spell, graphic, eff.BuffMagnitude, source, eff.Spell.ToString(),
+            eff.Layer, _world);
     }
 
     /// <summary>Remove the active effect represented by this IT_SPELL memory
@@ -4414,12 +4443,20 @@ public sealed class SpellEngine
     /// IT_SPELL item, which unequips and runs Spell_Effect_Remove). Idempotent:
     /// a no-op when the effect never had a memory, so it is safe to call at every
     /// active-effect removal site.</summary>
-    private static void DetachSpellMemory(ActiveSpellEffect eff)
+    private void DetachSpellMemory(ActiveSpellEffect eff)
     {
         var mem = eff.Memory;
         if (mem == null) return;
         eff.Memory = null;
         eff.Target.Memory_Delete(mem);
+        if (!mem.IsDeleted && _world.FindObject(mem.Uid) is Item registered && ReferenceEquals(registered, mem))
+        {
+            // A registered memory leaves through the world, which drops its
+            // container-index entry and frees the UID. Already out of the memory
+            // list and effect list, so OnWorldObjectDeleting finds nothing to undo.
+            _world.DeleteObject(mem);
+            return;
+        }
         mem.ContainedIn = Serial.Invalid; // drop the owner-keyed container-index entry
         mem.Delete();
     }
@@ -4437,21 +4474,35 @@ public sealed class SpellEngine
 
         // Refresh on re-cast — revert the previous delta first so the new
         // cast stacks cleanly onto the base value, not on top of the old buff.
+        // Spell_Effect_Create (CCharSpell.cpp:2058-2079): an effect already on the
+        // same layer is replaced, except that a different stat spell stays when
+        // MAGICF_STACKSTATS is set and a pending Explosion timer is kept. Effects
+        // with no spell layer of their own only replace the same spell.
+        var layer = SpellLayers.ForSpell(spell, def);
         for (int i = 0; i < _activeEffects.Count; i++)
         {
             var existing = _activeEffects[i];
-            if (existing.Target == target &&
-                (existing.Spell == spell ||
-                 (IsProtectionSpell(existing.Spell) && IsProtectionSpell(spell)) ||
-                 (IsPolymorphLayerSpell(existing.Spell) && IsPolymorphLayerSpell(spell))))
+            if (existing.Target != target)
+                continue;
+            bool sameSlot = existing.Spell == spell ||
+                (layer != Layer.Special && existing.Layer == layer);
+            if (!sameSlot)
+                continue;
+            if (layer == SpellLayers.Stats && existing.Spell != spell &&
+                IsMagicFlag(MagicConfigFlags.StackStats))
+                continue;
+            if (spell == SpellType.Explosion && layer == SpellLayers.Explosion)
+                continue;
             {
-                RevertDeltas(existing); // also detaches the old spell-memory item
+                // Out of the list before the memory goes, so the world-delete
+                // bridge does not try to remove it a second time.
                 _activeEffects.RemoveAt(i);
-                NotifySpellBuff(target, spell, false);
+                RevertDeltas(existing); // also detaches the old spell-memory item
+                NotifySpellBuff(target, existing.Spell, false);
                 // Source-X re-equips the spell memory on refresh: the old
                 // effect's removal is observable before the new add.
-                Character.OnSpellEffectRemove?.Invoke(target, (int)spell);
-                FireSpellSectionStage(spell, "EffectRemove", target);
+                Character.OnSpellEffectRemove?.Invoke(target, (int)existing.Spell);
+                FireSpellSectionStage(existing.Spell, "EffectRemove", target);
                 break;
             }
         }

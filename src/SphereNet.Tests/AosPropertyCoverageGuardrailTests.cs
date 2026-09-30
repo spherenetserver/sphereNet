@@ -35,12 +35,7 @@ public sealed class AosPropertyCoverageGuardrailTests
     private const string ModernPack = @"oldSphere\Scripts-X-main";
 
     private static string RepoPath(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "oldSphere")))
-            dir = dir.Parent;
-        return dir == null ? relative : Path.Combine(dir.FullName, relative);
-    }
+        => TestRepo.Optional(relative) ?? TestRepo.PathOf(relative);
 
     /// <summary>Expansion order, oldest first. A name can appear on more than one
     /// component class with different tags - NIGHTSIGHT is PRET2A on one and AOS on

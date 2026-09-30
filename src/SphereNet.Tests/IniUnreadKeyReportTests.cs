@@ -102,12 +102,8 @@ public sealed class IniUnreadKeyReportTests : IDisposable
     [Fact]
     public void TheRealConfigLeavesOnlyKeysItDocumentsAsUnsupported()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
-            dir = dir.Parent;
-        string? repoIni = dir == null ? null : Path.Combine(dir.FullName, "config", "sphere.ini");
-        if (Gate.MissingValue(_out, "config/sphere.ini", repoIni)) return;
-        if (Gate.Missing(_out, "config/sphere.ini", !File.Exists(repoIni))) return;
+        // Checked into the repository: missing means broken, not skipped.
+        string repoIni = TestRepo.Tracked("config/sphere.ini");
 
         var ini = new IniParser();
         ini.Load(repoIni);

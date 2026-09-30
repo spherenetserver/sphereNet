@@ -455,6 +455,11 @@ public class Item : ObjBase
     }
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
+
+    /// <summary>Runtime-only: this is the IT_SPELL memory the spell engine equips
+    /// for an active effect. The effect's SPELLEFFECT record is what persists and
+    /// rebuilds the memory on load, so the item itself is never written to a save.</summary>
+    public bool IsSpellEffectMirror { get; internal set; }
     public byte Direction { get; set; }
 
     /// <summary>The wearable layer this item equips on: its explicit
@@ -2868,6 +2873,20 @@ public class Item : ObjBase
         return base.TryGetProperty(key, out value);
     }
 
+    /// <summary>Store a tag-backed component property (LUCK, RESFIRE, HITLEECHLIFE, ...)
+    /// and, when the stored value actually changed, flag the object so its tooltip is
+    /// rebuilt for the clients around it - upstream's property setters end in
+    /// UpdatePropertyFlag (CCPropsItemEquippable.cpp:160). Without it a changed value
+    /// kept showing the old property list until the tooltip cache expired.</summary>
+    private void SetTooltipPropertyTag(string upper, string value)
+    {
+        string stored = value.Trim();
+        if (TryGetTag(upper, out string? previous) && previous == stored)
+            return;
+        SetTag(upper, stored);
+        MarkDirty(DirtyFlag.Properties);
+    }
+
     public override bool TrySetProperty(string key, string value)
     {
         // "{lo hi}" is a range and "{a w b w}" a weighted pick, wherever a value is
@@ -2906,22 +2925,22 @@ public class Item : ObjBase
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
         if (AosEquipProperties.Contains(upper))
         {
-            SetTag(upper, value.Trim());
+            SetTooltipPropertyTag(upper, value);
             return true;
         }
         if (EquipmentStatBonuses.Contains(upper))
         {
-            SetTag(upper, value.Trim());
+            SetTooltipPropertyTag(upper, value);
             return true;
         }
         if (AosOnHitProperties.Contains(upper))
         {
-            SetTag(upper, value.Trim());
+            SetTooltipPropertyTag(upper, value);
             return true;
         }
         if (ComponentProperties.IsItemProperty(upper))
         {
-            SetTag(upper, value.Trim());
+            SetTooltipPropertyTag(upper, value);
             return true;
         }
         if (TrySetBaseDefKey(upper, value))
@@ -2930,12 +2949,12 @@ public class Item : ObjBase
             return true;
         if (SpellCastingProperties.Contains(upper))
         {
-            SetTag(upper, value.Trim());
+            SetTooltipPropertyTag(upper, value);
             return true;
         }
         if (upper == CombatSpeedProperties.IncreaseSwingSpeed)
         {
-            SetTag(upper, value.Trim());
+            SetTooltipPropertyTag(upper, value);
             return true;
         }
 

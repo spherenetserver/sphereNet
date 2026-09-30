@@ -40,18 +40,14 @@ public sealed class SourceXTableInventoryGuardrailTests
 
     private static DirectoryInfo? RepoRoot()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
-            dir = dir.Parent;
-        return dir;
+        return new DirectoryInfo(TestRepo.Root);
     }
 
     private static string? ReferenceRoot()
     {
-        var root = RepoRoot();
-        if (root == null) return null;
-        string src = Path.Combine(root.FullName, "oldSphere", "Source-X-full", "src");
-        return Directory.Exists(src) ? src : null;
+        // oldSphere/ is gitignored reference data: null (gated skip) when absent.
+        string? src = TestRepo.Optional("oldSphere/Source-X-full/src");
+        return src != null && Directory.Exists(src) ? src : null;
     }
 
     // ADD(ENUM,"KEY") / MSG(ENUM,"KEY") / ADDPROP(ENUM,"KEY",ERA). The third field
@@ -198,8 +194,8 @@ public sealed class SourceXTableInventoryGuardrailTests
 
     private static string? ExportPath()
     {
-        var root = RepoRoot();
-        return root == null ? null : Path.Combine(root.FullName, "docs", "data", "sourcex_tables.csv");
+        // Checked into the repository: missing means broken, not skipped.
+        return TestRepo.Tracked("docs/data/sourcex_tables.csv");
     }
 
     [Fact]

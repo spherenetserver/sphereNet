@@ -455,7 +455,9 @@ public static partial class ServerMessages
         Def("gm_nukechar_done", "NUKECHAR: removed %s mobiles in area.");
         Def("gm_nudge_select", "Select first corner of NUDGE area.");
         Def("gm_nudge_second", "Select opposite corner of NUDGE area.");
-        Def("gm_nudge_dxdydz", "Enter NUDGE delta as 'dx dy dz' (then re-issue .NUDGE).");
+        Def("gm_nukechar_select", "Select first corner of NUKECHAR area.");
+        Def("gm_nudge_usage", "Usage: NUDGE dx dy dz");
+        Def("gm_area_same_point", "That's the same point.");
         Def("gm_nudge_done", "NUDGE: shifted %s objects.");
 
         // ===== CChar tool verbs =====

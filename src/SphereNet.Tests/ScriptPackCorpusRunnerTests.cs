@@ -17,9 +17,8 @@ public class ScriptPackCorpusRunnerTests
     [Fact]
     public void GoldenScriptFixtures_RunTriggerCorpus()
     {
-        string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string fixtureDir = Path.Combine(root, "tests", "fixtures", "scripts");
-        if (Gate.Missing(_out, "script pack fixtures", !Directory.Exists(fixtureDir))) return;
+        // Checked into the repository: a missing fixture fails, it does not skip.
+        string fixtureDir = TestRepo.Tracked("tests/fixtures/scripts");
         var files = Directory.GetFiles(fixtureDir, "*.scp", SearchOption.TopDirectoryOnly);
 
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
@@ -82,9 +81,8 @@ public class ScriptPackCorpusRunnerTests
     [Fact]
     public void GoldenScriptFixtures_GlobalFunctionSweepReportsHandledFunctions()
     {
-        string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string fixtureDir = Path.Combine(root, "tests", "fixtures", "scripts");
-        if (Gate.Missing(_out, "script pack fixtures", !Directory.Exists(fixtureDir))) return;
+        // Checked into the repository: a missing fixture fails, it does not skip.
+        string fixtureDir = TestRepo.Tracked("tests/fixtures/scripts");
         var files = Directory.GetFiles(fixtureDir, "*.scp", SearchOption.TopDirectoryOnly);
 
         var stack = ScriptTestBootstrap.CreateRuntimeStack();

@@ -2985,8 +2985,25 @@ public partial class Character : ObjBase
 
     /// <summary>Create the IT_SPELL memory item for an active spell effect
     /// (Source-X Spell_Effect_Create). See <see cref="CharacterMemoryState.CreateSpellEffect"/>.</summary>
-    public Item Memory_CreateSpellEffect(int spellId, ushort graphic, int level, Serial source, string name)
-        => MemoryState.CreateSpellEffect(spellId, graphic, level, source, name);
+    public Item Memory_CreateSpellEffect(int spellId, ushort graphic, int level, Serial source, string name,
+        Layer layer = Layer.Special, World.GameWorld? world = null)
+        => MemoryState.CreateSpellEffect(spellId, graphic, level, source, name, layer, world);
+
+    /// <summary>Source-X CChar::LayerFind: the item worn on <paramref name="layer"/>.
+    /// Layers past LAYER_DRAGGING hold spell memories, which live in the memory
+    /// list rather than the equipment slots, so they are searched there too.</summary>
+    public Item? FindLayer(Layer layer)
+    {
+        var worn = GetEquippedItem(layer);
+        if (worn != null || layer <= Layer.Dragging)
+            return worn;
+        foreach (var mem in Memories)
+        {
+            if (!mem.IsDeleted && mem.EquipLayer == layer)
+                return mem;
+        }
+        return null;
+    }
 
     public Item Memory_AddObjTypes(Serial uid, MemoryType flags) => MemoryState.AddObjTypes(uid, flags);
 
@@ -4508,7 +4525,7 @@ public partial class Character : ObjBase
                 string layerStr = upper.Substring(10, closeParen - 10);
                 if (int.TryParse(layerStr, out int layerNum))
                 {
-                    var worn = GetEquippedItem((Layer)layerNum);
+                    var worn = layerNum is >= 0 and <= byte.MaxValue ? FindLayer((Layer)layerNum) : null;
                     if (worn == null) { value = "0"; return true; }
                     string tail = upper[(closeParen + 1)..];
                     if (string.IsNullOrEmpty(tail))

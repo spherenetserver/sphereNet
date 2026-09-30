@@ -20,7 +20,7 @@ When a trigger runs, the script body executes **on the object the trigger belong
 
 > Source of truth: `TriggerDispatcher.cs` (`WrapArgs`, name maps), `TriggerTypes.cs` (enums), and every `FireCharTrigger` / `FireItemTrigger` call site. Only triggers with a real fire site are listed; enum-only triggers are in the last section.
 
-Current guardrail snapshot (2026-07-18): the only character trigger defined but not fired is `UserVirtue` (the virtue-gump select path / Event_VirtueSelect; SphereNet has no virtue gump yet). `NPCSeeWantItem` is now wired and fires from the NPC ground-item scan. The item-trigger backlog is empty. This is locked by `TriggerCoverageGuardrailTests`.
+Every character and item trigger has a real fire site; `TriggerCoverageGuardrailTests` recomputes that from the engine source on every run.
 
 ---
 
@@ -93,7 +93,7 @@ Current guardrail snapshot (2026-07-18): the only character trigger defined but 
 | `@UserChatButton` | 0xBF 0x000B chat button | player | player | – | N1=0x000B | – | ignored |
 | `@UserGuildButton` | 0xBF 0x0028 guild button | player | player | – | N1=0x0028 | – | ignored |
 | `@UserQuestButton` | 0xBF 0x0032 quest button | player | player | – | N1=0x0032 | – | ignored |
-| `@UserVirtueInvoke` | 0xBF 0x002C virtue invoke | player | player | – | N1=0x002C, N2=virtue id | – | ignored |
+| `@UserVirtueInvoke` | Virtue hotkey: 0x12 text command, ext-type 0xF4 (EXTCMD_INVOKE_VIRTUE) | player | player | – | N1=virtue id (1=Honor, 2=Sacrifice, 3=Valor) | – | ignored |
 | `@Rename` | GM rename request | target char | renamer | – | – | S1=new name | cancels the rename |
 | `@RegionEnter` | Entering a new region | the char | (not set) | – | – | S1=region name | ignored |
 | `@RegionLeave` | Leaving a region | the char | (not set) | – | – | S1=old region name | ignored |
@@ -141,7 +141,7 @@ Current guardrail snapshot (2026-07-18): the only character trigger defined but 
 | `@NPCSpecialAction` | NPC special action such as breath/throw is about to run | NPC | target | target | – | – | cancels special action |
 | `@NPCLostTeleport` | Severely lost NPC is about to teleport home | NPC | NPC | – | – | – | cancels teleport |
 | `@CallGuards` | Guard keyword reports a hostile/criminal | speaker | speaker | hostile | – | – | cancels reporting that hostile |
-| `@UserVirtue` | Virtue button path | player | player | – | N1=subcommand/virtue id | – | ignored |
+| `@UserVirtue` | Client virtue gump (0x1CD) button, own UID only | player | player | viewed char (switch 0 on button 1, else self) | N1=button id | – | ignored |
 | `@UserKRToolbar` | KR toolbar extended command | player | player | – | N1=0x24 | – | ignored |
 | `@UserQuestArrowClick` | Quest arrow click extended command | player | player | – | N1=0x07 | – | ignored |
 | `@UserBugReport` | Crash/bug report packet | player | player | – | N1=0x00F4 | – | ignored |
@@ -239,11 +239,7 @@ These exist in `TriggerTypes.cs` (and have name mappings) but have **no** litera
 
 Each trigger carries a wiring priority by shard impact (P0 highest). The buckets are encoded in `TriggerCoverageGuardrailTests` and partition the backlog exactly.
 
-**Character (1)**
-
-- **P0/P1:** none currently documented as unfired.
-- **P2:** `UserVirtue` (the virtue-gump select path, Source-X Event_VirtueSelect / 0xB1 dialog) is not fired — SphereNet has no virtue gump yet. Distinct from `UserVirtueInvoke` (the 0x12/0xF4 hotkey), which IS fired.
-  - `NPCSeeWantItem` is now wired and fires from the NPC ground-item scan (previously deferred).
+**Character (0):** all character triggers have a real fire site.
 
 **Item (0):** all item triggers have a real fire site.
 

@@ -92,11 +92,11 @@ Bir davranışı ararken önce partial'daki delegasyona, oradan handler sınıf�
 
 1.  **Protocol Matrix:** `docs/PROTOCOL_MATRIX.md` içindeki "Deferred" veya
     listelenmemiş opcode'lar üzerinde çalışabilirsiniz.
-2.  **Parity Matrix:** `docs/PARITY.md` içindeki "Partial" veya "Open" alanlar
-    önceliklidir; ertelenen kuyruk aynı dosyanın "Open threads" bölümünde.
-3.  **Sessiz stub'lar:** `docs/STUB_INVENTORY_TR.md` — tanımlı görünüp no-op olan yüzeyler.
-4.  **TODO Yorumları:** Kod içinde `// TODO:` araması.
-5.  **Testler:** SphereNet test güdümlüdür; yeni özellik = `src/SphereNet.Tests/`
+2.  **Source-X referansı:** eksik davranış için `oldSphere/Source-X-full/src`
+    ile karşılaştırın; neyin değiştiği `CHANGELOG-EN.txt` / `CHANGELOG-TR.txt`
+    içinde. Ayrı bir parite/ilerleme belgesi tutulmaz (bkz. `CLAUDE.md`).
+3.  **TODO Yorumları:** Kod içinde `// TODO:` araması.
+4.  **Testler:** SphereNet test güdümlüdür; yeni özellik = `src/SphereNet.Tests/`
     altında test. Örnek desenler: `GameSystemTests`, `TriggerCoverageGuardrailTests`,
     `ScriptObjectParityTests`.
 

@@ -19,12 +19,7 @@ public sealed class FishPoleResolveProbe
     public void FishingPole_And_FlipVariant_ResolveToFishPole()
     {
         // In-repo reference pack.
-        string[] roots =
-        {
-            Path.Combine(FindRepo(), "oldSphere", "Scripts-X-main"),
-        };
-        string? scripts = null;
-        foreach (var r in roots) if (Directory.Exists(r)) { scripts = r; break; }
+        string? scripts = TestRepo.Optional("oldSphere/Scripts-X-main");
         if (Gate.MissingValue(_out, "live script pack", scripts)) return;
 
         var lf = LoggerFactory.Create(_ => { });
@@ -50,13 +45,5 @@ public sealed class FishPoleResolveProbe
             Assert.NotNull(d);
             Assert.Equal(ItemType.FishPole, d!.Type);
         }
-    }
-
-    private static string FindRepo()
-    {
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "SphereNet.slnx")))
-            dir = dir.Parent;
-        return dir?.FullName ?? Directory.GetCurrentDirectory();
     }
 }

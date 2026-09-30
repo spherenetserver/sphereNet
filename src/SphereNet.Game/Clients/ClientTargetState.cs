@@ -58,10 +58,11 @@ public sealed class ClientTargetState
     /// args applied to the picked object.</summary>
     public string? XVerb;
     public string XVerbArgs = "";
-    /// <summary>NUKE/NUKECHAR/NUDGE area verbs; <see cref="AreaRange"/> is
-    /// the half-extent around the picked tile.</summary>
+    /// <summary>NUKE/NUKECHAR/NUDGE area verbs (Source-X m_tmTile). The area
+    /// is a rectangle picked as two corners; <see cref="AreaFirst"/> holds the
+    /// first corner until the second pick arrives.</summary>
     public string? AreaVerb;
-    public int AreaRange;
+    public Point3D? AreaFirst;
     /// <summary>Optional payload for the area verb (Source-X: NUKE takes a
     /// verb line to run instead of deleting, NUDGE takes "dx dy dz").</summary>
     public string AreaVerbArgs = "";
@@ -101,7 +102,7 @@ public sealed class ClientTargetState
         XVerb = null;
         XVerbArgs = "";
         AreaVerb = null;
-        AreaRange = 0;
+        AreaFirst = null;
         AreaVerbArgs = "";
         Control = false;
         Dupe = false;

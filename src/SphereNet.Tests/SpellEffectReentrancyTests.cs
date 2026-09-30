@@ -74,9 +74,11 @@ public sealed class SpellEffectReentrancyTests
     public void ProcessExpirations_RemovalCallbackKillsTargetAndClearsRest_CompletesSafely()
     {
         var (_, engine, caster, target) = Setup();
+        // Three different spell layers: stat spells share LAYER_SPELL_STATS and
+        // would replace each other (Spell_Effect_Create).
         AddEffect(engine, caster, target, SpellType.Clumsy, 5);
-        AddEffect(engine, caster, target, SpellType.Weaken, 5);
-        AddEffect(engine, caster, target, SpellType.Feeblemind, 5);
+        AddEffect(engine, caster, target, SpellType.NightSight, 5);
+        AddEffect(engine, caster, target, SpellType.ReactiveArmor, 5);
         Assert.Equal(3, EffectCount(engine));
         Assert.Equal(65, target.Str); // 50 base + 3x5
 
@@ -112,9 +114,11 @@ public sealed class SpellEffectReentrancyTests
     public void ClearAllEffectsOnDeath_ReentrantCallbackStripsRest_CompletesSafely()
     {
         var (_, engine, caster, target) = Setup();
+        // Three different spell layers: stat spells share LAYER_SPELL_STATS and
+        // would replace each other (Spell_Effect_Create).
         AddEffect(engine, caster, target, SpellType.Clumsy, 5);
-        AddEffect(engine, caster, target, SpellType.Weaken, 5);
-        AddEffect(engine, caster, target, SpellType.Feeblemind, 5);
+        AddEffect(engine, caster, target, SpellType.NightSight, 5);
+        AddEffect(engine, caster, target, SpellType.ReactiveArmor, 5);
 
         int removed = 0;
         bool cascaded = false;
@@ -148,7 +152,7 @@ public sealed class SpellEffectReentrancyTests
         var (_, engine, caster, target) = Setup();
         AddEffect(engine, caster, target, SpellType.Invisibility, 0);
         AddEffect(engine, caster, target, SpellType.Strength, 5);
-        AddEffect(engine, caster, target, SpellType.Agility, 5);
+        AddEffect(engine, caster, target, SpellType.NightSight, 5);
         Assert.Equal(3, EffectCount(engine));
 
         bool cascaded = false;
@@ -180,7 +184,7 @@ public sealed class SpellEffectReentrancyTests
         // Baseline: the snapshot rewrite must not regress the ordinary path.
         var (_, engine, caster, target) = Setup();
         AddEffect(engine, caster, target, SpellType.Clumsy, 5);
-        AddEffect(engine, caster, target, SpellType.Weaken, 5);
+        AddEffect(engine, caster, target, SpellType.NightSight, 5);
 
         int removed = 0;
         Character.OnSpellEffectRemove = (_, _) => removed++;

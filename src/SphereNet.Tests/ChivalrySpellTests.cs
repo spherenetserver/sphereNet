@@ -133,8 +133,8 @@ public sealed class ChivalrySpellTests
             },
             new SpellDef
             {
-                Id = SpellType.Strength,
-                Name = "Strength",
+                Id = SpellType.Protection,
+                Name = "Protection",
                 Flags = SpellFlag.TargChar | SpellFlag.Good | SpellFlag.Bless,
                 EffectBase = 50, EffectScale = 50, DurationBase = 600,
             },
@@ -145,18 +145,20 @@ public sealed class ChivalrySpellTests
                 Flags = SpellFlag.TargChar | SpellFlag.Good,
             });
 
+        // The buff is on its own layer: a Strength buff would share
+        // LAYER_SPELL_STATS with the curse, which then replaces it.
         target.Str = 100; target.Dex = 100; target.Int = 100; // room for the shared curse value
         short strBase = target.Str;
-        engine.ApplyDirectEffect(caster, target, SpellType.Strength, 500);
-        short strBuffed = target.Str;
-        Assert.True(strBuffed > strBase);
+        engine.ApplyDirectEffect(caster, target, SpellType.Protection, 500);
+        int armorBuffed = target.ProtectionArmor;
+        Assert.True(armorBuffed > 0);
         engine.ApplyDirectEffect(caster, target, SpellType.Curse, 500);
-        short strCursed = target.Str;
-        Assert.True(strCursed < strBuffed);
+        Assert.True(target.Str < strBase);
 
         engine.ApplyDirectEffect(caster, target, SpellType.RemoveCurse, 500);
 
-        // The curse's stat penalty is reverted, the Strength buff remains.
-        Assert.Equal(strBuffed, target.Str);
+        // The curse's stat penalty is reverted, the Protection buff remains.
+        Assert.Equal(strBase, target.Str);
+        Assert.Equal(armorBuffed, target.ProtectionArmor);
     }
 }

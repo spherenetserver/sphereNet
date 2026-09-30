@@ -17,7 +17,7 @@ namespace SphereNet.Tests;
 /// value does not matter, so nobody looks at it again. This checks the claim mechanically
 /// against the code, so the notes cannot drift back.
 /// </summary>
-public sealed class IniNoteAccuracyTests(ITestOutputHelper outp)
+public sealed class IniNoteAccuracyTests
 {
     /// <summary>Phrases the file uses to say "this value is read but does nothing".</summary>
     private static readonly string[] InertClaims =
@@ -25,22 +25,11 @@ public sealed class IniNoteAccuracyTests(ITestOutputHelper outp)
         "yapm\u0131yor", "uygulam\u0131yor", "etkilemiyor",
     ];
 
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
-            dir = dir.Parent;
-        Assert.NotNull(dir);
-        return dir!.FullName;
-    }
-
     [Fact]
     public void NoSettingIsDocumentedAsInertWhileTheEngineUsesIt()
     {
-        string root = RepoRoot();
-        string ini = Path.Combine(root, "config", "sphere.ini");
-        if (Gate.Missing(outp, "config/sphere.ini", !File.Exists(ini)))
-            return;
+        string root = TestRepo.Root;
+        string ini = TestRepo.Tracked("config/sphere.ini");
 
         var props = typeof(SphereConfig).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)

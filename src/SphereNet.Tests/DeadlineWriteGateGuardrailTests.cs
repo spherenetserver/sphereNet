@@ -36,10 +36,7 @@ public sealed class DeadlineWriteGateGuardrailTests
 
     private static DirectoryInfo? RepoRoot()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "src")))
-            dir = dir.Parent;
-        return dir;
+        return new DirectoryInfo(TestRepo.Root);
     }
 
     /// <summary>The line with its trailing comment removed: a sentence ABOUT the

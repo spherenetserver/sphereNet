@@ -81,7 +81,7 @@ public sealed class ClientTargetingHandler
     private Item? DuplicateItem(Item src) => _client.DuplicateItem(src);
     private void OpenForeignBank(Character victim) => _client.OpenForeignBank(victim);
     private void SpawnCageAround(Point3D centre) => _client.SpawnCageAround(centre);
-    private int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "") => _client.ExecuteAreaVerb(verb, centre, range, verbArgs);
+    private int ExecuteAreaVerb(string verb, Point3D first, Point3D second, string verbArgs = "") => _client.ExecuteAreaVerb(verb, first, second, verbArgs);
     private void HandleCastSpell(SpellType spell, uint targetUid) => _client.HandleCastSpell(spell, targetUid);
     private bool TryMountCharacter(Character mount) => _client.TryMountCharacter(mount);
     private bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value) => _client.TryResolveScriptVariable(varName, target, triggerArgs, out value);
@@ -185,7 +185,8 @@ public sealed class ClientTargetingHandler
             Targets.XVerb = null;
             Targets.XVerbArgs = "";
             Targets.AreaVerb = null;
-            Targets.AreaRange = 0;
+            Targets.AreaFirst = null;
+            Targets.AreaVerbArgs = "";
             Targets.Control = false;
             Targets.Dupe = false;
             Targets.Heal = false;
@@ -467,28 +468,40 @@ public sealed class ClientTargetingHandler
         // ---- Phase C: NUKE / NUKECHAR / NUDGE area handlers ----
         if (!string.IsNullOrEmpty(Targets.AreaVerb))
         {
-            string areaVerb = Targets.AreaVerb!;
-            int areaRange = Targets.AreaRange;
-            string areaVerbArgs = Targets.AreaVerbArgs;
-            Targets.AreaVerb = null;
-            Targets.AreaRange = 0;
-            Targets.AreaVerbArgs = "";
-
-            // Resolve the centre. If the GM clicked on an object use its
-            // position so NUDGE/NUKE applied to a chest also covers the
-            // surrounding tiles, mirroring Source-X's box centre behaviour.
-            Point3D centre;
+            // Source-X OnTarg_Tile: the first pick only records a corner and
+            // re-arms the cursor; the second pick spans the rectangle.
+            Point3D pt = new(x, y, z, _character.MapIndex);
             if (serial != 0 && serial != 0xFFFFFFFF)
             {
                 var picked = _world.FindObject(new Serial(serial));
-                centre = picked?.Position ?? new Point3D(x, y, z, _character.MapIndex);
-            }
-            else
-            {
-                centre = new Point3D(x, y, z, _character.MapIndex);
+                if (picked is Item pickedItem && (pickedItem.ContainedIn.IsValid || pickedItem.IsEquipped))
+                {
+                    ClearPendingTargetState();   // not a top-level object
+                    return;
+                }
+                if (picked != null) pt = picked.Position;
             }
 
-            int affected = ExecuteAreaVerb(areaVerb, centre, areaRange, areaVerbArgs);
+            if (Targets.AreaFirst is not Point3D first)
+            {
+                Targets.AreaFirst = pt;
+                _client.RequestAreaSecondCorner();
+                return;
+            }
+            if (first.X == pt.X && first.Y == pt.Y && first.Z == pt.Z && first.Map == pt.Map)
+            {
+                SysMessage(ServerMessages.Get("gm_area_same_point"));
+                _client.RequestAreaSecondCorner();
+                return;
+            }
+
+            string areaVerb = Targets.AreaVerb!;
+            string areaVerbArgs = Targets.AreaVerbArgs;
+            Targets.AreaVerb = null;
+            Targets.AreaFirst = null;
+            Targets.AreaVerbArgs = "";
+
+            int affected = ExecuteAreaVerb(areaVerb, first, pt, areaVerbArgs);
             switch (areaVerb)
             {
                 case "NUKE":

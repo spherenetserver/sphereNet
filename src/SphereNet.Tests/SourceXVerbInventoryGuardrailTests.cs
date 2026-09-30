@@ -10,8 +10,11 @@ public class SourceXVerbInventoryGuardrailTests
     private readonly ITestOutputHelper _out;
     public SourceXVerbInventoryGuardrailTests(ITestOutputHelper output) => _out = output;
 
-    private static string RepoRoot([CallerFilePath] string thisFile = "")
-        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
+    private static string RepoRoot() => TestRepo.Root;
+
+    // oldSphere/ is gitignored reference data; callers gate on its existence.
+    private static string OldSphereRoot()
+        => TestRepo.Optional("oldSphere") ?? TestRepo.PathOf("oldSphere");
 
     private static readonly Regex TableVerb = new(@"ADD\([^,]+,\s*""([^""]+)""\)", RegexOptions.Compiled);
 
@@ -183,11 +186,11 @@ public class SourceXVerbInventoryGuardrailTests
     public void DeadTableEntries_AreStillDeadUpstream()
     {
         if (Gate.Missing(_out, "Source-X reference tree",
-            !Directory.Exists(Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables")))) return;
+            !Directory.Exists(Path.Combine(OldSphereRoot(), "Source-X-full", "src", "tables")))) return;
 
         foreach (var (surface, (relativePath, prefix)) in UpstreamDispatchSources)
         {
-            string path = Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src",
+            string path = Path.Combine(OldSphereRoot(), "Source-X-full", "src",
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
             var handled = new HashSet<string>(
                 Regex.Matches(File.ReadAllText(path), @"case\s+" + prefix + @"([A-Z0-9_]+)\s*:")
@@ -217,7 +220,7 @@ public class SourceXVerbInventoryGuardrailTests
         // The Source-X reference tree lives only on dev machines (oldSphere/
         // is gitignored) — on CI this guardrail has nothing to diff against
         // and was the single red step in every GitHub Actions run.
-        if (Gate.Missing(_out, "Source-X reference tree", !Directory.Exists(Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables")))) return;
+        if (Gate.Missing(_out, "Source-X reference tree", !Directory.Exists(Path.Combine(OldSphereRoot(), "Source-X-full", "src", "tables")))) return;
 
         foreach (var (surface, expected) in ExpectedSourceXVerbs)
         {
@@ -278,7 +281,7 @@ public class SourceXVerbInventoryGuardrailTests
 
     private static List<string> ReadFunctionTable(string fileName)
     {
-        string path = Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables", fileName);
+        string path = Path.Combine(OldSphereRoot(), "Source-X-full", "src", "tables", fileName);
         return File.ReadLines(path)
             .Select(line => TableVerb.Match(line))
             .Where(match => match.Success)
@@ -288,7 +291,7 @@ public class SourceXVerbInventoryGuardrailTests
 
     private static List<string> ReadServerVerbs()
     {
-        string path = Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "game", "CServer.cpp");
+        string path = Path.Combine(OldSphereRoot(), "Source-X-full", "src", "game", "CServer.cpp");
         var verbs = new List<string>();
         bool inTable = false;
         foreach (string line in File.ReadLines(path))

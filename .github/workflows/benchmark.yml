@@ -28,33 +28,23 @@ jobs:
       - name: Run benchmark-safe tests
         run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Release --no-build --no-restore --filter "RuntimePerformancePressureTests|SaveFormatTests" --verbosity normal
 
-      - name: Write baseline artifact placeholder
+      - name: Write benchmark artifact (no load measurement)
         shell: pwsh
         run: |
+          # This job only runs the benchmark-safe smoke tests. It does not start a
+          # server or drive bots, so there is no tick, GC or duration data to report:
+          # the artifact says so instead of carrying zeros that read as a baseline.
           New-Item -ItemType Directory -Force artifacts | Out-Null
-          $artifact = @{
+          $artifact = [ordered]@{
             commit = "${{ github.sha }}"
             scenario = "benchmark-smoke"
-            durationSeconds = 0
+            measured = $false
+            reason = "smoke tests only; no server load run in this workflow"
             hardware = "github-actions-windows-latest"
-            tick = @{
-              avgMs = 0
-              maxMs = 0
-              p50Ms = 0
-              p95Ms = 0
-              p99Ms = 0
-            }
-            runtime = @{
-              multicoreEnabled = $false
-              slowTickCount = 0
-              worstPhase = ""
-            }
-            gc = @{
-              gen0 = 0
-              gen1 = 0
-              gen2 = 0
-              managedHeapMB = 0
-            }
+            durationSeconds = $null
+            tick = $null
+            runtime = $null
+            gc = $null
           }
           $artifact | ConvertTo-Json -Depth 8 | Set-Content artifacts/benchmark-smoke.json
 

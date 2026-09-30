@@ -58,12 +58,14 @@ public sealed class SpellEffectMemoryItemTests
         var mem = SpellMemory(caster);
         Assert.NotNull(mem);
         // Source-X layout: rune graphic, IT_SPELL, MOREX = spell, LINK = caster,
-        // hidden LAYER_SPECIAL, and NO MemoryType flag (so it is not persisted as
-        // a MEMORY record — the SPELLEFFECT record is the persistence source).
+        // the hidden LAYER_SPELL_Night_Sight, and NO MemoryType flag (so it is not
+        // persisted as a MEMORY record — the SPELLEFFECT record is the persistence
+        // source).
         Assert.Equal(NightSightRune, mem!.BaseId);
         Assert.Equal((int)SpellType.NightSight, mem.MoreP.X);
         Assert.Equal(caster.Uid, mem.Link);
-        Assert.Equal(Layer.Special, mem.EquipLayer);
+        Assert.Equal(SpellLayers.NightSight, mem.EquipLayer);
+        Assert.True(mem.IsSpellEffectMirror);
         Assert.Equal(MemoryType.None, mem.GetMemoryTypes());
     }
 

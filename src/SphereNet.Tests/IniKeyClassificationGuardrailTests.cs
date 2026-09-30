@@ -30,18 +30,13 @@ public sealed class IniKeyClassificationGuardrailTests
 
     private static DirectoryInfo? RepoRoot()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
-            dir = dir.Parent;
-        return dir;
+        return new DirectoryInfo(TestRepo.Root);
     }
 
     private static string? ReadRepo(string relative)
     {
-        var root = RepoRoot();
-        if (root == null) return null;
-        string path = Path.Combine(root.FullName, relative);
-        return File.Exists(path) ? File.ReadAllText(path) : null;
+        // Tracked in the repository: TestRepo.Tracked throws when it is missing.
+        return File.ReadAllText(TestRepo.Tracked(relative));
     }
 
     private static readonly string[] WorkingMarkers =

@@ -174,6 +174,9 @@ public class CombatEngineTests
         try
         {
             var attacker = MakeChar();
+            // Guaranteed hit: unarmed at Wrestling 0 lands about 2% of swings, so
+            // 200 tries missed every time in a few percent of runs.
+            attacker.PrivLevel = PrivLevel.GM;
             var target = MakeChar();
             target.SetSkill(SkillType.Parrying, 0); // no parry interference
 

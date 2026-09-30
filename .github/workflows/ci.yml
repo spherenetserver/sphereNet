@@ -47,9 +47,12 @@ jobs:
         working-directory: panel
         run: npm run test
 
-      # Blocking: only what actually ships in the panel bundle.
-      - name: Audit panel runtime dependencies
+      # Report only: an advisory published after a commit would otherwise turn an
+      # unrelated push red. The blocking runtime audit runs nightly in
+      # dependency-audit.yml.
+      - name: Audit panel runtime dependencies (report only)
         working-directory: panel
+        continue-on-error: true
         run: npm audit --audit-level=high --omit=dev
 
       # Informational: build-time tooling (vite/vue-tsc/eslint/vitest). Advisories here

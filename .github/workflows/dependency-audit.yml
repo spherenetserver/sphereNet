@@ -1,0 +1,30 @@
+name: Nightly Dependency Audit
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  panel-runtime-audit:
+    name: Panel runtime dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+
+      # Blocking: only what actually ships in the panel bundle. A failure here
+      # means a high-severity advisory is open against a runtime dependency;
+      # GitHub notifies the user who last changed the schedule of a failed run.
+      - name: Audit panel runtime dependencies
+        working-directory: panel
+        run: npm audit --audit-level=high --omit=dev

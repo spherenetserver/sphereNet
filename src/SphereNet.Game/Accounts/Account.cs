@@ -191,7 +191,8 @@ public sealed class Account : IScriptObj
         // TAG.name
         if (upper.StartsWith("TAG.", StringComparison.Ordinal))
         {
-            _tags.Set(key[4..], value);
+            // CAccount::r_LoadVal AC_TAG (CAccount.cpp:1492): SetStr with the quote flag.
+            _tags.SetStr(key[4..], SphereNet.Scripting.Execution.ScriptArgQuoting.IsQuoted(value), value);
             return true;
         }
 

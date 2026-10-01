@@ -1493,7 +1493,7 @@ public sealed class WorldLoader
                 if (key.Equals("ACCOUNT", StringComparison.OrdinalIgnoreCase) ||
                     key.Equals("TAG.ACCOUNT", StringComparison.OrdinalIgnoreCase))
                 {
-                    accountName = val;
+                    accountName = SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _);
                     if (!key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
                         ch.SetTag("ACCOUNT", val);
                     continue;
@@ -1609,8 +1609,32 @@ public sealed class WorldLoader
         value = negative ? -value : value;
         return (int)Math.Clamp(value, int.MinValue, int.MaxValue);
     }
+    /// <summary>A TAG line of an object record (CObjBase::r_LoadVal, CObjBase.cpp:1788):
+    /// the value is stored as text, its quote pair stripped and remembered so the
+    /// string var is written back quoted. It goes straight to the tag store - through
+    /// the object's property setter a brace or decimal value was rolled or scaled.
+    /// A REGION.TAG line loses only its quotes; the region keeps plain text.</summary>
+    private static bool TryLoadTagLine(ObjBase obj, string key, ref string val)
+    {
+        if (key.StartsWith("REGION.TAG.", StringComparison.OrdinalIgnoreCase))
+        {
+            val = SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _);
+            return false;
+        }
+        bool zero = key.StartsWith("TAG0.", StringComparison.OrdinalIgnoreCase);
+        if (!zero && !key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
+            return false;
+        string tagKey = key[(zero ? 5 : 4)..];
+        if (tagKey.Length == 0 || EngineTags.IsEphemeral(tagKey))
+            return true;
+        obj.LoadTag(tagKey, val);
+        return true;
+    }
+
     private void ApplyItemProperty(Item item, string key, string val)
     {
+        if (TryLoadTagLine(item, key, ref val))
+            return;
         switch (key.ToUpperInvariant())
         {
             case "ID":
@@ -1661,6 +1685,8 @@ public sealed class WorldLoader
 
     private void ApplyCharProperty(Character ch, string key, string val)
     {
+        if (TryLoadTagLine(ch, key, ref val))
+            return;
         string upper = key.ToUpperInvariant();
         switch (upper)
         {
@@ -1848,7 +1874,9 @@ public sealed class WorldLoader
             {
                 while (reader.NextProperty(out string key, out string val))
                 {
-                    world.SetGlobalVar(key, val);
+                    // [GLOBALS] lines are CServerConfig GLOBALS keys: SetStr with the quote
+                    // flag (CServerConfig.cpp:4098) - GetArgStr strips the quote pair.
+                    world.SetGlobalVar(key, SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _));
                     globals++;
                 }
             }
@@ -1859,7 +1887,7 @@ public sealed class WorldLoader
                 while (reader.NextProperty(out string key, out string val))
                 {
                     if (key.Equals("ELEM", StringComparison.OrdinalIgnoreCase))
-                        list.Add(val);
+                        list.Add(SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _)); // CListDefCont::r_LoadVal GetArgStr
                 }
                 lists++;
             }
@@ -1970,7 +1998,8 @@ public sealed class WorldLoader
                 string scriptName = section[12..].Trim();
                 while (reader.NextProperty(out string key, out string val))
                 {
-                    world.SetGlobalVar($"SCRIPT.{scriptName}.{key}", val);
+                    world.SetGlobalVar($"SCRIPT.{scriptName}.{key}",
+                        SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _));
                 }
             }
             else if (upper == "SPHERE")

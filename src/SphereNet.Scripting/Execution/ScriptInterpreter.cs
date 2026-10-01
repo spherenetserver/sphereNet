@@ -214,7 +214,10 @@ public sealed class ScriptInterpreter
         // Source-X reads verb/property values via GetArgStr, which strips a
         // surrounding quote pair — TAG.X="a b" stores a b, SYSMESSAGE="msg"
         // speaks without the quotes. Values not starting with '"' pass through.
-        resolvedArg = ScriptKey.StripQuotePair(resolvedArg);
+        resolvedArg = Variables.VarMap.UnquoteSaveValue(resolvedArg, out bool argQuoted);
+        // The quote decides whether a TAG/VAR is a string or a number var
+        // (CVarDefMap::SetStr fQuoted); setters read it through ScriptArgQuoting.
+        using var quotedScope = ScriptArgQuoting.Enter(argQuoted ? resolvedArg : null);
         // Resolve <…> inside the command key itself. Sphere scripts commonly
         // build tag names dynamically: "Src.CTag0.C<dIdx>=value" — without
         // this pass the literal "<dIdx>" ends up in the key and the setter

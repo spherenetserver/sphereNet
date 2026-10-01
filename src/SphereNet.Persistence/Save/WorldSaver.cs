@@ -968,7 +968,7 @@ public sealed class WorldSaver
             foreach (var (key, val) in item.Tags.GetAll())
             {
                 if (key.StartsWith("REGION.TAG.", StringComparison.OrdinalIgnoreCase))
-                    w.WriteProperty(key.ToUpperInvariant(), val);
+                    w.WriteProperty(key.ToUpperInvariant(), item.Tags.GetSaveText(key)!);
             }
 
             foreach (var key in MultiRecordKeys)
@@ -1037,7 +1037,8 @@ public sealed class WorldSaver
                 // reads them again (SHL_REGION, CItemMulti.cpp:3011).
                 || upper.StartsWith("REGION.TAG.", StringComparison.Ordinal))
             {
-                w.WriteProperty(upper, val);
+                w.WriteProperty(upper, upper.StartsWith("REGION.TAG.", StringComparison.Ordinal)
+                    ? item.Tags.GetSaveText(key)! : val);
             }
             else if (upper is "ADDCOMP" or "SECURE" or "LOCKITEM")
             {
@@ -1046,7 +1047,9 @@ public sealed class WorldSaver
             }
             else
             {
-                w.WriteProperty("TAG." + key, val);
+                // CObjBase::r_Write -> m_TagDefs.r_WritePrefix(s, "TAG") (CObjBase.cpp:2094):
+                // a number var bare, a string var quoted.
+                w.WriteProperty("TAG." + key, item.Tags.GetSaveText(key)!);
             }
         }
 
@@ -1370,7 +1373,8 @@ public sealed class WorldSaver
                 w.WriteProperty(upper, val);
                 continue;
             }
-            w.WriteProperty("TAG." + key, val);
+            // r_WritePrefix(s, "TAG"): a number var bare, a string var quoted.
+            w.WriteProperty("TAG." + key, ch.Tags.GetSaveText(key)!);
         }
 
         w.EndRecord();
@@ -1434,7 +1438,7 @@ public sealed class WorldSaver
             {
                 w.BeginRecord("GLOBALS");
                 foreach (var (key, val) in globals)
-                    w.WriteProperty(key, val);
+                    w.WriteProperty(key, SphereNet.Scripting.Variables.VarMap.FormatAutoSaveValue(val));
             }
 
             // LISTs
@@ -1443,7 +1447,7 @@ public sealed class WorldSaver
                 if (list.Count == 0) continue;
                 w.BeginRecord($"LIST {name}");
                 foreach (var elem in list)
-                    w.WriteProperty("ELEM", elem);
+                    w.WriteProperty("ELEM", SphereNet.Scripting.Variables.VarMap.FormatAutoSaveValue(elem));
             }
 
             // GM page queue (help requests). Source-X CGMPage::r_Write persists

@@ -434,8 +434,10 @@ public static class AccountPersistence
         if (acc.Guest) w.WriteProperty("GUEST", "1");
         if (acc.Jail) w.WriteProperty("JAIL", "1");
 
+        // CAccount::r_Write -> m_TagDefs.r_WritePrefix(s, "TAG") (CAccount.cpp:1613):
+        // a number var bare, a string var quoted.
         foreach (var tag in acc.Tags.GetAll())
-            w.WriteProperty("TAG." + tag.Key, tag.Value);
+            w.WriteProperty("TAG." + tag.Key, acc.Tags.GetSaveText(tag.Key)!);
 
         w.EndRecord();
     }
@@ -505,7 +507,14 @@ public static class AccountPersistence
             default:
                 if (upper.StartsWith("TAG.", StringComparison.Ordinal) && upper.Length > 4)
                 {
-                    acc.SetTag(upper[4..], val);
+                    // AC_TAG: GetArgStr strips the quote pair, and a quoted value is a
+                    // string var. An unquoted one keeps its text exactly as written, so
+                    // it goes back out the same. The key keeps its written case.
+                    string text = SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out bool quoted);
+                    if (quoted)
+                        acc.Tags.SetStr(key[4..], true, text);
+                    else
+                        acc.Tags.Set(key[4..], text);
                 }
                 else if (upper == "CHARUID")
                 {

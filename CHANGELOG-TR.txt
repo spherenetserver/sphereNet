@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - TAG/VAR kayit degerleri Source-X gibi tirnaklanir
+------------------------------------------------------------------------
+DUZELTME - TAG/VAR kayit degerleri Source-X CVarDefMap::r_WritePrefix ile ayni:
+           sayi degiskeni tirnaksiz (Sphere hex), metin degiskeni tirnakli
+           yazilir; tirnakli degerler tirnaksiz metin olarak yuklenir,
+           TAG.X="5" / TAG.X="" metin kalir, TAG0 sifiri siler. Nesne, hesap,
+           bolge, GLOBALS ve LIST satirlari; eski tirnaksiz kayitlar yuklenmeye
+           devam eder.
+
 [2026-10-01] - Ev, gemi, lonca ve parti yasam donguleri Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Ozel evler: yeni temel ve Clear komutu temelin gorunur multi

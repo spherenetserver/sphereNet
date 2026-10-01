@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - TAG/VAR save values are quoted as Source-X writes them
+------------------------------------------------------------------------
+FIX - TAG/VAR save values follow Source-X CVarDefMap::r_WritePrefix: a number
+      var is written bare (Sphere hex), a string var quoted; quoted save values
+      load back unquoted as strings, TAG.X="5" / TAG.X="" stay string vars and
+      TAG0 drops a zero. Covers object, account, region, GLOBALS and LIST lines;
+      older unquoted saves still load.
+
 [2026-10-01] - Housing, ship, guild and party lifecycles follow Source-X
 ------------------------------------------------------------------------
 FIX - Custom houses: a new foundation and the Clear command start from the

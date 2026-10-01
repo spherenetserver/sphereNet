@@ -696,6 +696,31 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <summary>Set a tag value on this object.</summary>
     public virtual void SetTag(string key, string value) => _tags.Set(key, value);
 
+    /// <summary>A TAG assignment from a script or a save line, decided as Source-X
+    /// <c>CVarDefMap::SetStr</c> decides it (string or number var, a quoted empty
+    /// value kept, TAG0 zero dropped). The value still goes through
+    /// <see cref="SetTag"/>, so keys a subclass routes elsewhere keep working.</summary>
+    public void SetTagStr(string key, bool quoted, string value, bool deleteZero = false)
+    {
+        SetTag(key, value);
+        _tags.ApplySetStrForm(key, quoted, value, deleteZero);
+    }
+
+    /// <summary>A TAG line read from a save: the value's quote pair is stripped
+    /// (GetArgStr) and remembered, so a string var goes back out quoted.</summary>
+    public void LoadTag(string key, string rawValue)
+    {
+        string value = VarMap.UnquoteSaveValue(rawValue, out bool quoted);
+        if (!quoted && value.Length == 0)
+        {
+            RemoveTag(key);
+            return;
+        }
+        SetTag(key, value);
+        if (quoted)
+            _tags.ApplySetStrForm(key, true, value);
+    }
+
     /// <summary>Get a tag value, returning true if found.</summary>
     public bool TryGetTag(string key, out string? value)
     {
@@ -2265,7 +2290,12 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             string tagKey = dotIdx >= 0 ? key[(dotIdx + 1)..] : "";
             if (EngineTags.IsEphemeral(tagKey))
                 return true;
-            SetTag(tagKey, value);
+            // CObjBase::r_LoadVal TAG (CObjBase.cpp:1788): SetStr(key, fQuoted, arg,
+            // fZero) - the quote makes a string var, an unquoted simple number a
+            // number var, and TAG0 drops a zero.
+            bool zero = key[dotIdx - 1] == '0';
+            SetTagStr(tagKey, SphereNet.Scripting.Execution.ScriptArgQuoting.IsQuoted(value), value,
+                deleteZero: zero);
             return true;
         }
         if (key.StartsWith("CTAG.", StringComparison.OrdinalIgnoreCase) ||

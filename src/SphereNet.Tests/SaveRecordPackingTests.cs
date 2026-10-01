@@ -40,9 +40,9 @@ public sealed class SaveRecordPackingTests : IDisposable
 
         string text = File.ReadAllText(Path.Combine(_dir, "sphereworld.scp"));
         Assert.Contains("NAME=Çiğdem'in şişesi ✓", text);
-        Assert.Contains("TAG.FORMULA=a=b=c", text);
+        Assert.Contains("TAG.FORMULA=\"a=b=c\"", text);
         Assert.Contains("P=100,200,5", text);
-        Assert.Contains($"TAG.K299={new string('x', 299)}", text);
+        Assert.Contains($"TAG.K299=\"{new string('x', 299)}\"", text);
         Assert.Contains("[WORLDITEM", text);
     }
 }

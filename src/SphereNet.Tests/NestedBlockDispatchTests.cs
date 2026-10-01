@@ -38,7 +38,8 @@ public sealed class NestedBlockDispatchTests
 
         var item = new Item();
         var r = stack.Interpreter.Execute(body, item, null, new TriggerArgs(), new ScriptScope());
-        item.TryGetProperty("TAG.X", out string v);
+        // The stored text (a script read would show a number var in Sphere hex).
+        string v = item.Tags.Get("X") ?? "0";
         return (r, v);
     }
 

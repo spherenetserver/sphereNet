@@ -89,7 +89,7 @@ public class ParityWaveCTests
             Assert.Equal(caster.Uid.Value, ParseUid(src!));
             Assert.True(target.TryGetTag("GOTN1", out var n1) && n1 == ((int)SpellType.Heal).ToString());
             // LOCAL.Effect was seeded with the computed potency (a positive heal).
-            Assert.True(target.TryGetTag("GOTEFFECT", out var eff) && long.Parse(eff!) > 0);
+            Assert.True(target.TryGetTag("GOTEFFECT", out var eff) && TagValueTestExtensions.SphereNum(eff) > 0);
             // ...and the heal itself applied.
             Assert.True(target.Hits > 50);
         }

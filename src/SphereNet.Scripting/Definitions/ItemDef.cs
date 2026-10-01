@@ -100,6 +100,18 @@ public sealed class ItemDef : BaseDef
     /// <summary>
     /// Load properties from script key-value pairs.
     /// </summary>
+    /// <summary>A definition's TAG.x / TAG0.x line (CBaseBaseDef::r_LoadVal,
+    /// CBase.cpp:293): the key without its prefix, the value read with GetArgStr's
+    /// quote flag into <c>CVarDefMap::SetStr</c> - a quoted value a string var, an
+    /// unquoted simple number a number var - and fZero always false ("don't change
+    /// fZero to true! it would break some scripts!").</summary>
+    internal static void LoadDefinitionTag(Variables.VarMap tags, string key, string value)
+    {
+        string tagKey = key[(key[3] == '0' ? 5 : 4)..];
+        string tagValue = Variables.VarMap.UnquoteSaveValue(value.Trim(), out bool quoted);
+        tags.SetStr(tagKey, quoted, tagValue);
+    }
+
     public void LoadFromKey(string key, string value)
     {
         switch (key.ToUpperInvariant())
@@ -222,9 +234,12 @@ public sealed class ItemDef : BaseDef
                 TagDefs.Set(CombatSpeedProperties.IncreaseSwingSpeed, value.Trim());
                 break;
             default:
-                if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
+                if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase) ||
+                    key.StartsWith("TAG0.", StringComparison.OrdinalIgnoreCase))
                 {
-                    TagDefs.Set(key[4..], value);
+                    // CBaseBaseDef::r_LoadVal TAG/TAG0 (CBase.cpp:293): SetStr with the
+                    // quote flag and fZero always false.
+                    LoadDefinitionTag(TagDefs, key, value);
                     break;
                 }
                 // Previously dropped with zero visibility — count it so a

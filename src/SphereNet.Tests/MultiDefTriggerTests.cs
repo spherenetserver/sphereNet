@@ -74,7 +74,7 @@ public sealed class MultiDefTriggerTests : IDisposable
         var result = dispatcher.FireItemTrigger(multi, ItemTrigger.DClick, new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(multi.TryGetProperty("TAG.MULTI_DCLICK", out string val));
+        string val = multi.TagValue("MULTI_DCLICK");
         Assert.Equal("1", val);
     }
 
@@ -98,7 +98,7 @@ public sealed class MultiDefTriggerTests : IDisposable
         var result = dispatcher.FireItemTrigger(multi, ItemTrigger.DClick, new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(multi.TryGetProperty("TAG.FORGE_USED", out string val));
+        string val = multi.TagValue("FORGE_USED");
         Assert.Equal("1", val);
     }
 

@@ -165,6 +165,7 @@ public static partial class Program
             "CONTEXTMENULIMIT" => (_config?.ContextMenuLimit ?? 0).ToString(),
             "CUOSTATUS" => B(_config?.CUOStatus),
             "UOGSTATUS" => B(_config?.UOGStatus),
+            "DECIMALVARIABLES" => B(_config?.DecimalVariables),
             "DISPLAYELEMENTALRESISTANCE" => B(_config?.DisplayElementalResistance),
             "DISTANCEFORMULA" => (_config?.DistanceFormula ?? 0).ToString(),
             "ERALIMITGEAR" => (_config?.EraLimitGear ?? 0).ToString(),
@@ -282,8 +283,8 @@ public static partial class Program
                 property.EndsWith(")") ? property[12..^1] : property[12..]),
 
             // --- Global variables: VAR.name / VAR0.name ---
-            _ when upper.StartsWith("VAR0.") => _world?.GetGlobalVar0(property[5..]) ?? "0",
-            _ when upper.StartsWith("VAR.") => _world?.GetGlobalVar(property[4..]) ?? "",
+            _ when upper.StartsWith("VAR0.") => _world?.GetGlobalVarText(property[5..], zero: true) ?? "0",
+            _ when upper.StartsWith("VAR.") => _world?.GetGlobalVarText(property[4..], zero: false) ?? "",
 
             // --- OBJ / OBJ.property — global object reference ---
             "OBJ" => _world?.ObjReference.Value != 0 ? $"0{_world!.ObjReference.Value:X}" : "0",
@@ -311,7 +312,8 @@ public static partial class Program
 
             // --- Commands (write operations, prefixed with _SET_/_CLEARVARS/_NEWDUPE) ---
             _ when upper.StartsWith("_SET_LIST.") => HandleSetGlobalList(property[10..]),
-            _ when upper.StartsWith("_SET_VAR.") => HandleSetGlobalVar(property[9..]),
+            _ when upper.StartsWith("_SET_VAR.") => HandleSetGlobalVar(property[9..], deleteZero: false),
+            _ when upper.StartsWith("_SET_VAR0.") => HandleSetGlobalVar(property[10..], deleteZero: true),
             _ when upper.StartsWith("_SET_OBJ=") => HandleSetObj(property[9..]),
             _ when upper.StartsWith("_SET_OBJ.") => HandleSetObjProperty(property[9..]),
             _ when upper.StartsWith("_SET_NEW=") => HandleSetNew(property[9..]),
@@ -799,7 +801,7 @@ public static partial class Program
             // in the definition's tags, and a script reading one back gets what the
             // pack wrote instead of an empty string. The parser stores a TAG. key
             // WITHOUT its prefix (CharDef.cs:331), so a TAG.<name> read strips it.
-            _ => def.TagDefs.Get(StripTagPrefix(field)) ?? ""
+            _ => def.TagDefs.GetValStr(StripTagPrefix(field)) ?? ""
         };
     }
 
@@ -895,7 +897,7 @@ public static partial class Program
                 ? $"0{def.ResDispDnId:X}" : def.ResDispDnIdRaw,
             "BASEID" => $"0{def.DispIndex:X}",
             "DUPELIST" => def.DupeList ?? "",
-            _ => def.TagDefs.Get(StripTagPrefix(field)) ?? ""
+            _ => def.TagDefs.GetValStr(StripTagPrefix(field)) ?? ""
         };
     }
 
@@ -1209,14 +1211,20 @@ public static partial class Program
         return null;
     }
 
-    private static string? HandleSetGlobalVar(string assignment)
+    private static string? HandleSetGlobalVar(string assignment, bool deleteZero)
     {
-        // Format: name=value
+        // Format: name=value. CScriptObj::r_LoadVal SSC_VAR/SSC_VAR0
+        // (CScriptObj.cpp:351): SetStr(name, fQuoted, GetArgStr, fZero). The quote
+        // flag of the line comes through ScriptArgQuoting; a quoted value keeps its
+        // inner spaces, and only the syntax around an unquoted one is trimmed.
         int eq = assignment.IndexOf('=');
         if (eq <= 0) return "";
         string name = assignment[..eq].Trim();
-        string value = assignment[(eq + 1)..].Trim();
-        _world?.SetGlobalVar(name, value);
+        string value = assignment[(eq + 1)..];
+        bool quoted = SphereNet.Scripting.Execution.ScriptArgQuoting.IsQuoted(value);
+        if (!quoted)
+            value = value.Trim();
+        _world?.SetGlobalVarStr(name, quoted, value, deleteZero);
         return "";
     }
 
@@ -2381,7 +2389,7 @@ public static partial class Program
     {
         if (_world == null) return 0;
         int n = 0;
-        foreach (var kv in _world.GetAllGlobalVars())
+        foreach (var kv in _world.GetAllGlobalVarsText())
         {
             if (prefix != null && !kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;

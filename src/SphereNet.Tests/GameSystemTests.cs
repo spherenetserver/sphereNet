@@ -903,7 +903,7 @@ public class GameSystemTests
 
         var result = interpreter.Execute(lines, target, new TestConsole(), args, scope);
         Assert.Equal(TriggerResult.Default, result);
-        Assert.True(target.TryGetProperty("TAG.RESULT", out var value));
+        string value = target.TagValue("RESULT");
         Assert.Equal("alpha", value);
     }
 
@@ -936,10 +936,10 @@ public class GameSystemTests
 
         Assert.True(handled);
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(target.TryGetProperty("TAG.RESULT", out var localResult));
-        Assert.Equal("1", localResult);
-        Assert.True(target.TryGetProperty("TAG.FUNC_ARG0", out var arg0));
-        Assert.True(target.TryGetProperty("TAG.FUNC_ARG1", out var arg1));
+        string localResult = target.TagValue("RESULT");
+        Assert.Equal("01", localResult);   // copied from <LOCAL.RESULT>, a number var read in Sphere hex
+        string arg0 = target.TagValue("FUNC_ARG0");
+        string arg1 = target.TagValue("FUNC_ARG1");
         Assert.Equal("HelpPage", arg0);
         Assert.Equal("50", arg1);
     }
@@ -1449,9 +1449,9 @@ public class GameSystemTests
             "ENDFOR");
 
         interpreter.Execute(lines, target, console, args, scope);
-        Assert.True(c1.TryGetProperty("TAG.VISITED", out var v1));
+        string v1 = c1.TagValue("VISITED");
         Assert.Equal("1", v1);
-        Assert.True(c2.TryGetProperty("TAG.VISITED", out var v2));
+        string v2 = c2.TagValue("VISITED");
         Assert.Equal("1", v2);
     }
 
@@ -1725,7 +1725,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         uint gumpId = gmClient.Gumps.OpenScriptDialogs["d_admin_target_smoke"];
         gmClient.HandleGumpResponse(target.Uid.Value, gumpId, 1, [], []);
 
-        Assert.True(target.TryGetProperty("TAG.DIALOG_SUBJECT_TOUCHED", out var touched));
+        string touched = target.TagValue("DIALOG_SUBJECT_TOUCHED");
         Assert.Equal("1", touched);
     }
 
@@ -1833,9 +1833,9 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         mover.TryMove(ch, Direction.East, running: false, sequence: 0);
 
-        Assert.True(ch.TryGetProperty("TAG.REGION_LEAVE", out var leaveVal));
+        string leaveVal = ch.TagValue("REGION_LEAVE");
         Assert.Equal("1", leaveVal);
-        Assert.True(ch.TryGetProperty("TAG.REGION_ENTER", out var enterVal));
+        string enterVal = ch.TagValue("REGION_ENTER");
         Assert.Equal("1", enterVal);
         File.Delete(tempFile);
     }
@@ -1858,7 +1858,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var result = dispatcher.FireCharTrigger(ch, CharTrigger.Attack, new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(ch.TryGetProperty("TAG.GLOBAL_ATTACK", out var value));
+        string value = ch.TagValue("GLOBAL_ATTACK");
         Assert.Equal("1", value);
     }
 
@@ -1887,7 +1887,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var result = dispatcher.FireItemTrigger(item, ItemTrigger.DClick, new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(item.TryGetProperty("TAG.TYPEDEF_DCLICK", out var value));
+        string value = item.TagValue("TYPEDEF_DCLICK");
         Assert.Equal("1", value);
     }
 
@@ -2047,8 +2047,8 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         hooks.DispatchObject("create", obj);
 
         Assert.True(handled);
-        Assert.True(serverObj.TryGetProperty("TAG.SERVER_HOOK", out var sv) && sv == "1");
-        Assert.True(obj.TryGetProperty("TAG.OBJ_CREATED", out var ov) && ov == "1");
+        Assert.True(serverObj.TagValue("SERVER_HOOK") is string sv && sv == "1");
+        Assert.True(obj.TagValue("OBJ_CREATED") is string ov && ov == "1");
     }
 
     [Fact]
@@ -2168,7 +2168,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var activeChar = client.Character!;
         Assert.True(client.TryExecuteScriptCommand(activeChar, "DIALOG", "testdlg", null));
         client.HandleGumpResponse(activeChar.Uid.Value, client.Gumps.OpenScriptDialogs["testdlg"], 1, [], []);
-        Assert.True(activeChar.TryGetProperty("TAG.DIALOG_CLOSED", out var closedVal));
+        string closedVal = activeChar.TagValue("DIALOG_CLOSED");
         Assert.Equal("1", closedVal);
     }
 
@@ -3380,7 +3380,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, targetItem.Uid.Value, 10, 11, 12, 0);
 
         Assert.Equal(0, targetItemCount);
-        Assert.True(player.TryGetProperty("TAG.NEVER_RUN", out var ran) && ran == "1");
+        Assert.True(player.TagValue("NEVER_RUN") is string ran && ran == "1");
     }
 
     [Fact]

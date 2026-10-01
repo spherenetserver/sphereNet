@@ -47,7 +47,7 @@ public sealed class ServFunctionFallbackTests : IDisposable
         var item = new Item();
         stack.Interpreter.Execute(body, item, null, new SphereNet.Scripting.Execution.TriggerArgs(),
             new SphereNet.Scripting.Execution.ScriptScope());
-        return item.TryGetProperty("TAG.OUT", out string v) ? v : "<unset>";
+        return item.TagValue("OUT") is string v ? v : "<unset>";
     }
 
     /// <summary>The pack's own spelling: a function whose section name carries the

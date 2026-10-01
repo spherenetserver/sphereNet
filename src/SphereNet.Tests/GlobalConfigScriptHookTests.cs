@@ -59,9 +59,9 @@ public class GlobalConfigScriptHookTests
         dispatcher.FireCharTrigger(player, CharTrigger.Mount, new GameTriggerArgs { CharSrc = player });
         dispatcher.FireItemTrigger(item, ItemTrigger.DClick, new GameTriggerArgs { CharSrc = player, ItemSrc = item });
 
-        Assert.True(player.TryGetProperty("TAG.GLOBAL_PLAYER", out var playerValue));
+        string playerValue = player.TagValue("GLOBAL_PLAYER");
         Assert.Equal("1", playerValue);
-        Assert.True(item.TryGetProperty("TAG.GLOBAL_ITEM", out var itemValue));
+        string itemValue = item.TagValue("GLOBAL_ITEM");
         Assert.Equal("1", itemValue);
     }
 
@@ -90,9 +90,9 @@ public class GlobalConfigScriptHookTests
 
         Assert.Equal(TriggerResult.True, selfResult);
         Assert.Equal(TriggerResult.True, petResult);
-        Assert.True(player.TryGetProperty("TAG.SPEECH_SELF", out var selfValue));
+        string selfValue = player.TagValue("SPEECH_SELF");
         Assert.Equal("1", selfValue);
-        Assert.True(pet.TryGetProperty("TAG.SPEECH_PET", out var petValue));
+        string petValue = pet.TagValue("SPEECH_PET");
         Assert.Equal("1", petValue);
     }
 
@@ -116,7 +116,7 @@ public class GlobalConfigScriptHookTests
         var result = dispatcher.FireSpeechSelfTrigger(player, "hello there", 0);
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(player.TryGetProperty("TAG.SPEECH_MATCHED", out var matched));
+        string matched = player.TagValue("SPEECH_MATCHED");
         Assert.Equal("1", matched);
         Assert.False(player.TryGetTag("SPEECH_WRONG_BLOCK", out _));
     }
@@ -144,9 +144,9 @@ public class GlobalConfigScriptHookTests
         var result = dispatcher.FireSpeechSelfTrigger(player, "hello there", 0);
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(player.TryGetProperty("TAG.FIRST_BLOCK", out var first));
+        string first = player.TagValue("FIRST_BLOCK");
         Assert.Equal("1", first);
-        Assert.True(player.TryGetProperty("TAG.SECOND_BLOCK", out var second));
+        string second = player.TagValue("SECOND_BLOCK");
         Assert.Equal("1", second);
     }
 }

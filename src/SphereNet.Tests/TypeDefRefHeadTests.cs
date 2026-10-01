@@ -65,7 +65,7 @@ public sealed class TypeDefRefHeadTests : IDisposable
         stack.Interpreter.ServerPropertyResolver = p => (string?)resolve.Invoke(null, [p]);
         stack.Interpreter.Execute([new ScriptKey("TAG.OUT", expr)], target, null,
             new TriggerArgs(), new ScriptScope());
-        target.TryGetProperty("TAG.OUT", out string v);
+        string v = target.TagValue("OUT");
         return v;
     }
 

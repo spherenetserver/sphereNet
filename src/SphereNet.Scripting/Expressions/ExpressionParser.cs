@@ -1693,22 +1693,24 @@ public sealed partial class ExpressionParser
         // R — the CLASSIC Sphere short random: <R1059,1101> inclusive range,
         // <R20> = [0,20). The live packs use this form everywhere (the flash
         // robe's DORAND color table, <R1,<ARRAYCOUNT ...>> picks); only the
-        // long RAND form was implemented. Guarded to R-followed-by-a-digit so
-        // RAND/RANDBELL and real defnames never match.
+        // long RAND form was implemented. Guarded, as CScriptObj.cpp:563 is, to R
+        // followed by a digit or '-' (<R-7,-7>), so RAND/RANDBELL and real
+        // defnames never match; a bare <R> is the 0..999 fallback further down.
         if (varExpr.Length > 1 && (varExpr[0] == 'R' || varExpr[0] == 'r') &&
-            char.IsDigit(varExpr[1]))
+            (char.IsAsciiDigit(varExpr[1]) || varExpr[1] == '-'))
         {
             var shortParts = varExpr[1..].Split(',', 2);
             long shortMin = Evaluate(ResolveAngleBrackets(shortParts[0].Trim()).AsSpan());
+            long shortMax;
             if (shortParts.Length == 2)
+                shortMax = Evaluate(ResolveAngleBrackets(shortParts[1].Trim()).AsSpan());
+            else
             {
-                long shortMax = Evaluate(ResolveAngleBrackets(shortParts[1].Trim()).AsSpan());
-                if (shortMax < shortMin) (shortMin, shortMax) = (shortMax, shortMin);
-                return (shortMax == long.MaxValue
-                    ? Random.Shared.NextInt64(shortMin, shortMax)
-                    : Random.Shared.NextInt64(shortMin, shortMax + 1)).ToString();
+                // <R15> is rand(15): the range 0..14.
+                shortMax = shortMin - 1;
+                shortMin = 0;
             }
-            return shortMin > 0 ? Random.Shared.NextInt64(shortMin).ToString() : "0";
+            return ShortRandom(shortMin, shortMax);
         }
 
         // RAND — random: RAND(max) or RAND(min,max)
@@ -1909,34 +1911,43 @@ public sealed partial class ExpressionParser
             return val ?? "0";
         }
 
-        // R — random: <R max> returns random 0..max-1. Sphere also accepts the
-        // no-space form <Rmax> (e.g. <R999>); 'R' followed by a digit is the
-        // random form, while 'R' followed by a letter (REF, REGION, ...) is not.
-        if (varExpr.Length > 1 && (varExpr[0] == 'R' || varExpr[0] == 'r') &&
-            (varExpr[1] == ' ' || varExpr[1] == '\t' || char.IsDigit(varExpr[1])))
-        {
-            string inner = ResolveAngleBrackets(varExpr[1..].Trim());
-            if (int.TryParse(inner, out int rMax) && rMax > 0)
-                return Random.Shared.Next(rMax).ToString();
-            return "0";
-        }
+        // No spaced <R 15> form: CScriptObj.cpp:565 sends anything after the R
+        // that is neither a digit nor '-' to badcmd, so it stays unresolved.
 
         // Try variable resolver
         string expanded2 = ResolveAngleBrackets(varExpr);
         string? result = VariableResolver?.Invoke(expanded2);
         if (result == null)
             result = FunctionResolver?.Invoke(expanded2);
+        // A bare <R> is reached only when nothing else answered the name
+        // (CScriptObj::r_WriteVal's last resort, CScriptObj.cpp:563): min 1000
+        // with no max becomes the range 0..999.
+        if (result == null && expanded2.Length == 1 && (expanded2[0] == 'R' || expanded2[0] == 'r'))
+            result = ShortRandom(0, 999);
         if (result == null)
             ReportUnresolved(expanded2);
         return result ?? "";
     }
 
+    /// <summary>The short &lt;R&gt; result (CScriptObj.cpp:583): min when
+    /// min &gt;= max - no swap on this path - otherwise GetLLVal2(min, max),
+    /// the inclusive range.</summary>
+    private static string ShortRandom(long min, long max)
+    {
+        if (min >= max)
+            return min.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        long value = max == long.MaxValue
+            ? Random.Shared.NextInt64(min, max)
+            : Random.Shared.NextInt64(min, max + 1);
+        return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private string EvaluateQval(string expr, bool intrinsicForm = false)
     {
         // Find '?' / ':' the way Source-X EvaluateConditionalQval_ParseArg
-        // does — skipping <...> spans so a nested <QVAL a?b:c> inside the
-        // condition or branches doesn't donate its separators.
-        int questionIdx = IndexOfOutsideAngles(expr, '?');
+        // does — stepping over a nested <QVAL a?b:c> and ignoring separators
+        // inside quotes or ( ) { } [ ] (Str_Parse).
+        int questionIdx = FindQvalSeparator(expr, '?');
         if (questionIdx < 0)
         {
             // Source-X numeric 3-way form: QVAL v1,v2,lt,eq,gt
@@ -1961,7 +1972,7 @@ public sealed partial class ExpressionParser
         string condition = expr[..questionIdx].Trim();
         string rest = expr[(questionIdx + 1)..];
 
-        int colonIdx = IndexOfOutsideAngles(rest, ':');
+        int colonIdx = FindQvalSeparator(rest, ':');
         string trueVal, falseVal;
         if (colonIdx >= 0)
         {
@@ -1980,25 +1991,161 @@ public sealed partial class ExpressionParser
             : ResolveAngleBrackets(falseVal);
     }
 
-    /// <summary>First index of <paramref name="target"/> outside any
-    /// &lt;...&gt; span (letter/'_'-opened, same disambiguation as the
-    /// bracket walker). -1 when not found.</summary>
-    private static int IndexOfOutsideAngles(string s, char target)
+    /// <summary>Source-X IsWhitespace (CExpression.h:23): isspace plus 0xA0.</summary>
+    private static bool IsSphereWhitespace(char c) =>
+        c is ' ' or '\t' or '\n' or '\v' or '\f' or '\r' or ' ';
+
+    /// <summary>Index of the QVAL separator <paramref name="sep"/> in
+    /// <paramref name="s"/>, -1 when there is none. A port of
+    /// EvaluateConditionalQval_ParseArg (CExpression.cpp:2311): a nested
+    /// &lt;QVAL ...&gt; that opens before the first separator is stepped over
+    /// whole, then Str_Parse (CExpression.cpp:137) finds the separator from
+    /// there, ignoring one inside "quotes" or inside ( ), { } or [ ]. Other
+    /// &lt;...&gt; spans do not hide a separator, exactly as upstream.</summary>
+    private static int FindQvalSeparator(string s, char sep)
     {
-        int depth = 0;
-        for (int i = 0; i < s.Length; i++)
+        int src = 0;
+        int bracketPos = -1, sepPos = -1;
+        for (int line = 0; line < s.Length;)
         {
-            char c = s[i];
-            if (c == '<')
+            char ch = s[line];
+            if (ch != '<' && ch != sep)
             {
-                char nxt = i + 1 < s.Length ? s[i + 1] : '\0';
-                if (nxt == '_' || char.IsLetter(nxt)) depth++;
+                line++;
                 continue;
             }
-            if (c == '>' && depth > 0) { depth--; continue; }
-            if (depth == 0 && c == target) return i;
+
+            if (ch == '<' && bracketPos < 0)
+            {
+                int test = line + 1;
+                while (test < s.Length && IsSphereWhitespace(s[test]))
+                    test++;
+                if (test + 4 <= s.Length &&
+                    string.Compare(s, test, "QVAL", 0, 4, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    bracketPos = line;
+                    line = test + 3;
+                }
+            }
+            else if (ch == sep && sepPos < 0)
+            {
+                sepPos = line;
+            }
+
+            if (bracketPos < 0 || sepPos < 0)
+            {
+                line++;
+                continue;
+            }
+
+            if (sepPos < bracketPos)
+            {
+                // The separator comes before the nested QVAL.
+                src = sepPos;
+                break;
+            }
+
+            // A nested QVAL: skip it, or we would catch its separator.
+            int after = SkipEnclosedAngularBrackets(s, bracketPos);
+            if (after <= line)
+                line++;
+            else
+                src = line = after;
+            bracketPos = sepPos = -1;
+        }
+
+        return StrParseSeparatorIndex(s, src, sep);
+    }
+
+    /// <summary>The separator search of Str_Parse (CExpression.cpp:137) for a
+    /// single non-bracket separator: quotes toggle, and ( ), { }, [ ] nest
+    /// (each only while no other bracket kind is open); &lt; &gt; are counted
+    /// for that gating but do not hide a separator.</summary>
+    private static int StrParseSeparatorIndex(string s, int start, char sep)
+    {
+        int i = start;
+        while (i < s.Length && IsSphereWhitespace(s[i]))
+            i++;
+
+        bool quotes = false;
+        int curly = 0, square = 0, round = 0, angle = 0;
+        for (; i < s.Length; i++)
+        {
+            char ch = s[i];
+            if (ch == '"')
+            {
+                quotes = !quotes;
+                continue;
+            }
+            if (quotes)
+                continue;
+
+            switch (ch)
+            {
+                case '{': if (square == 0 && round == 0 && angle == 0) curly++; break;
+                case '[': if (curly == 0 && round == 0 && angle == 0) square++; break;
+                case '(': if (curly == 0 && square == 0 && angle == 0) round++; break;
+                case '<': if (curly == 0 && square == 0 && round == 0) angle++; break;
+                case '}': if (curly != 0) curly--; break;
+                case ']': if (square != 0) square--; break;
+                case ')': if (round != 0) round--; break;
+                case '>': if (angle != 0) angle--; break;
+            }
+
+            if (curly <= 0 && square <= 0 && round <= 0 && ch == sep)
+                return i;
         }
         return -1;
+    }
+
+    /// <summary>Str_SkipEnclosedAngularBrackets (sstring.cpp:1437): the index
+    /// just past the &lt;...&gt; statement opening at <paramref name="start"/>,
+    /// ignoring angles inside ( ) and the &lt;&lt; / &gt;&gt; operators; the
+    /// start itself when the statement never closes.</summary>
+    private static int SkipEnclosedAngularBrackets(string s, int start)
+    {
+        bool openedOne = false;
+        int openAngular = 0, openRound = 0;
+        for (int t = start; t < s.Length; t++)
+        {
+            char ch = s[t];
+            if (IsSphereWhitespace(ch))
+                continue;
+            if (ch == '(')
+                openRound++;
+            else if (ch == ')')
+                openRound--;
+            else if (openRound == 0)
+            {
+                if (ch == '<')
+                {
+                    bool op = t + 2 < s.Length && s[t + 1] == '<' && IsSphereWhitespace(s[t + 2]);
+                    if (!op)
+                    {
+                        openedOne = true;
+                        openAngular++;
+                    }
+                    else
+                        t += 2;
+                }
+                else if (ch == '>')
+                {
+                    bool op = false;
+                    if (t + 2 < s.Length && s[t + 1] == '>' && IsSphereWhitespace(s[t + 2]) &&
+                        (t == start || (openAngular > 0 && IsSphereWhitespace(s[t - 1]))))
+                        op = true;
+                    if (!op)
+                    {
+                        openAngular--;
+                        if (openedOne && openAngular == 0)
+                            return t + 1;
+                    }
+                    else
+                        t += 2;
+                }
+            }
+        }
+        return start;
     }
 
     private string EvaluateStrMatch(string expr)

@@ -80,8 +80,10 @@ public class ExpressionRegressionTests
         for (int i = 0; i < 50; i++)
         {
             Assert.InRange(int.Parse(parser.EvaluateStr("<R5>")), 0, 4);   // no-space form
-            Assert.InRange(int.Parse(parser.EvaluateStr("<R 5>")), 0, 4);  // spaced form still works
         }
+        // CScriptObj.cpp:565: a space after the R is badcmd - the name stays unresolved.
+        Assert.Equal("", parser.EvaluateStr("<R 5>"));
+        Assert.Equal("", parser.EvaluateStr("<R\t5>"));
     }
 
     [Fact]

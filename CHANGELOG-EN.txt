@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Script variables, blocks and expressions follow Source-X
+------------------------------------------------------------------------
+FIX - A quoted TAG/VAR/LOCAL/CTAG value is text: TAG.DATE="2026-10-01" no longer
+      becomes 2015, and NAME="1+2" keeps its text whether written bare or through
+      SRC., REFn., UID.x., NEW. or ARGO.
+FIX - TAG reads fall back to the ITEMDEF/CHARDEF TAG map; a missing TAG reads ""
+      and TAG0 "0" (CTAG/CTAG0 and account TAG/TAG0 likewise); a quoted empty
+      object TAG does not fall back.
+FIX - LOCAL, VAR/VAR0 and CTAG/CTAG0 follow CVarDefMap::SetStr: a quoted "" or
+      "0" is kept, an unquoted empty value deletes, VAR0/CTAG0 drop a zero
+      number, and quoted VAR text keeps its inner spaces.
+CHANGE - An unquoted simple number is a number var at runtime and reads back in
+      Sphere hex (TAG.TEN=10 reads 0A, VAR.X=5+3 reads 08), the same before and
+      after a save; new sphere.ini DECIMALVARIABLES=1 shows and saves them in
+      decimal (default 0, as Source-X).
+FIX - Script block terminators follow Source-X: END, ENDDO, ENDFOR, ENDIF,
+      ENDRAND, ENDSWITCH and ENDWHILE are interchangeable and close any open
+      block; FOR/WHILE closed by END no longer run the next line inside the loop;
+      a terminator that closes nothing ends the script. The panel script
+      validator uses the same rules.
+FIX - DOSWITCH/DORAND select a logical statement instead of a physical line: an
+      option is one line or a whole BEGIN/IF/loop/nested block, DORAND N picks
+      among the first N options, an out-of-range DOSWITCH index runs nothing.
+FIX - QVAL finds its '?' and ':' separators as Source-X does (quotes and
+      brackets no longer split it); the short random form accepts negative
+      ranges (<R-7,-7> gives -7), min >= max answers min, a bare <R> is 0..999,
+      and the spaced <R 15> form is not a random number.
+
 [2026-10-01] - Crash-consistent saves, account recovery and TAG number reads
 ------------------------------------------------------------------------
 FIX - World save: a stamped world/char/data file (and every binary save file)

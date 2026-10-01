@@ -202,10 +202,7 @@ public static partial class Program
                 // ARGN2 is read back as the level too (Source-X CCharSpell.cpp:2011
                 // iLevel = m_iN2) - a script caps a lethal poison with ARGN2=3.
                 ctx.Strength = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
-                if (double.TryParse(locals.Get("DELAY"),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        out double delaySec) && delaySec > 0)
+                if (locals.TryGetDouble("DELAY", out double delaySec) && delaySec > 0)
                     ctx.DelayMs = (int)(delaySec * 1000);
                 return true;
             };

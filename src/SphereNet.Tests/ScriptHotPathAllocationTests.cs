@@ -84,8 +84,8 @@ public sealed class ScriptHotPathAllocationTests(ITestOutputHelper output)
         // interpreter fields that the push/pop pair saves and restores. If a nested
         // frame failed to restore its caller's context, the line AFTER the nested
         // call would resolve against the callee's object instead of its own.
-        Assert.True(item.TryGetProperty("TAG.seen", out string seen));
-        Assert.True(item.TryGetProperty("TAG.mine", out string mine));
+        string seen = item.TagValue("seen");
+        string mine = item.TagValue("mine");
         output.WriteLine($"inner saw '{seen}', the caller then saw '{mine}'");
         Assert.Equal("outer", mine);
     }
@@ -140,9 +140,9 @@ public sealed class ScriptHotPathAllocationTests(ITestOutputHelper output)
         // The body is no longer copied into a fresh array per iteration; it is a
         // window onto the cached trigger body. Off-by-one in the window's start or
         // count would run the ENDFOR, or drop the first line of the body.
-        Assert.True(item.TryGetProperty("TAG.total", out string total));
+        string total = item.TagValue("total");
         output.WriteLine($"FOR 1 4 summed to {total}");
-        Assert.Equal("10", total);
+        Assert.Equal("0A", total);   // <LOCAL.total> is a number var: Sphere hex
     }
 
     // ------------------------------------------------------ radius query shape

@@ -193,7 +193,7 @@ public sealed class TemplateRecipeParity13FTests : IDisposable
         var child = Assert.Single(box.Contents);
         Assert.Equal("Gift recipe", child.Name);
         Assert.Equal(0x456, child.Hue.Value);
-        Assert.True(child.TryGetProperty("TAG.RECIPE", out string tag));
+        string tag = child.TagValue("RECIPE");
         Assert.Equal("37", tag);
 
         // ...and the child's settings did not leak back onto the box.

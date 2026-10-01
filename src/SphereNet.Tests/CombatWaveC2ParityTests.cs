@@ -78,7 +78,7 @@ public class CombatWaveC2ParityTests
             // waits for reach, the SWING_NORANGE semantics per-swing).
             client.TickCombat();
 
-            Assert.True(attacker.TryGetTag("GOTNR", out var nr) && nr == "0"); // seeded from the (off) flag
+            Assert.True(attacker.TryGetTag("GOTNR", out var nr) && TagValueTestExtensions.SphereNum(nr) == 0); // seeded from the (off) flag
             Assert.True(attacker.HasPendingHit);
         }
         finally
@@ -185,7 +185,7 @@ public class CombatWaveC2ParityTests
             Assert.True(attacker.TryGetTag("GOTARROW", out var got));
             // LOCAL.Arrow carried the LIVE pack stack's UID (Source-X pAmmo),
             // not the old constant 1.
-            Assert.Equal(arrows.Uid.Value.ToString(), got);
+            Assert.Equal((long)arrows.Uid.Value, TagValueTestExtensions.SphereNum(got));   // copied from <LOCAL.Arrow>, Sphere hex
         }
         finally
         {
@@ -228,7 +228,7 @@ public class CombatWaveC2ParityTests
 
             // The poison delivered but the script's 0% reduction chance kept
             // every charge (default engine behavior spends 1 per delivery).
-            Assert.True(attacker.TryGetTag("SEENCHANCE", out var c) && c == "100"); // Source-X seed
+            Assert.True(attacker.TryGetTag("SEENCHANCE", out var c) && TagValueTestExtensions.SphereNum(c) == 100); // Source-X seed
             Assert.True(target.IsPoisoned);
             Assert.True(sword.TryGetTag("POISON_CHARGES", out var charges) && charges == "5");
         }

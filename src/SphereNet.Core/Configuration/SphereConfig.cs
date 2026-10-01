@@ -912,6 +912,9 @@ public sealed class SphereConfig
     public bool CUOStatus { get; set; } = true;
     /// <summary>UOGSTATUS (m_fUOGStatus, default 1).</summary>
     public bool UOGStatus { get; set; } = true;
+    /// <summary>DECIMALVARIABLES (m_fDecimalVariables, default 0, CServerConfig.cpp:68):
+    /// a number TAG/VAR/LOCAL/CTAG reads back and saves in decimal instead of Sphere hex.</summary>
+    public bool DecimalVariables { get; set; }
     /// <summary>DISPLAYELEMENTALRESISTANCE (m_fDisplayElementalResistance, default 0).</summary>
     public bool DisplayElementalResistance { get; set; }
     /// <summary>DISTANCEFORMULA (m_iDistanceFormula, default 0 = no diagonal, no Z).</summary>
@@ -1455,6 +1458,7 @@ public sealed class SphereConfig
         ContextMenuLimit = ini.GetInt(section, "ContextMenuLimit", ContextMenuLimit);
         CUOStatus = ini.GetBool(section, "CUOStatus", CUOStatus);
         UOGStatus = ini.GetBool(section, "UOGStatus", UOGStatus);
+        DecimalVariables = ini.GetBool(section, "DecimalVariables", DecimalVariables);
         DisplayElementalResistance = ini.GetBool(section, "DisplayElementalResistance", DisplayElementalResistance);
         DistanceFormula = ini.GetInt(section, "DistanceFormula", DistanceFormula);
         EraLimitGear = GetIntOrHex(ini, section, "EraLimitGear", EraLimitGear);

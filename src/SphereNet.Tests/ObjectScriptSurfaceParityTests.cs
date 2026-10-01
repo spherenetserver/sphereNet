@@ -143,15 +143,15 @@ public sealed class ObjectScriptSurfaceParityTests : IDisposable
         var console = new ProbeConsole();
 
         Assert.True(npc.TryExecuteCommand("SECTOR.ALLITEMS", "TAG.MARK 7", console));
-        Assert.Equal("7", Read(a, "TAG.MARK"));
-        Assert.Equal("7", Read(b, "TAG.MARK"));
+        Assert.Equal("07", Read(a, "TAG.MARK"));   // a number var reads in Sphere hex
+        Assert.Equal("07", Read(b, "TAG.MARK"));
 
         Assert.True(npc.TryExecuteCommand("SECTOR.ALLCHARS", "TAG.ACTIVE 1", console));
-        Assert.Equal("1", Read(npc, "TAG.ACTIVE"));
+        Assert.Equal("01", Read(npc, "TAG.ACTIVE"));
         Assert.False(offline.TryGetTag("ACTIVE", out _));
 
         Assert.True(npc.TryExecuteCommand("SECTOR.ALLCHARSIDLE", "TAG.IDLE 1", console));
-        Assert.Equal("1", Read(offline, "TAG.IDLE"));
+        Assert.Equal("01", Read(offline, "TAG.IDLE"));
         Assert.False(npc.TryGetTag("IDLE", out _));
     }
 

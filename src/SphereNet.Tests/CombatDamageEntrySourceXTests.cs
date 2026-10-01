@@ -457,7 +457,7 @@ public sealed class CombatDamageEntrySourceXTests
             engine.ApplyScriptSpellEffect(caster, target, SpellType.Fireball, 1000);
 
             Assert.True(target.TryGetTag("SPELLGETHIT", out var seen) && seen == "40");
-            Assert.True(target.TryGetTag("SPELLNUM", out var num) && num == ((int)SpellType.Fireball).ToString());
+            Assert.True(target.TryGetTag("SPELLNUM", out var num) && TagValueTestExtensions.SphereNum(num) == (int)SpellType.Fireball);
             Assert.Equal(160, target.Hits);
         }
         finally

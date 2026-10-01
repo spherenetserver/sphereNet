@@ -546,7 +546,7 @@ public sealed class SpawnLifecycleOrderTests
             Assert.Null(atSpawnGeneral);
             Assert.Null(atAddObjGeneral);
             Assert.Equal("1", npc.Tags.Get("GENERAL"));
-            Assert.Equal("1", npc.Tags.Get("GENERAL_SAW_RESTOCK"));
+            Assert.Equal("01", npc.Tags.Get("GENERAL_SAW_RESTOCK"));   // <TAG0.RESTOCKED> reads in Sphere hex
             // Each block exactly once.
             Assert.Equal("1", npc.Tags.Get("EARLY_COUNT"));
             Assert.Equal("1", npc.Tags.Get("RESTOCK_COUNT"));

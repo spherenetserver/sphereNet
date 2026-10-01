@@ -201,12 +201,12 @@ public class ScriptObjectParityTests
         interpreter.Execute(lines, lever, null, args, scope);
 
         // <LINK> reflects the lever's actual link, not the ACT object.
-        Assert.True(lever.TryGetProperty("TAG.LINKUID", out var linkUid));
+        string linkUid = lever.TagValue("LINKUID");
         Assert.Equal($"0{door.Uid.Value:X}", linkUid);
-        Assert.True(lever.TryGetProperty("TAG.LINKNAME", out var linkName));
+        string linkName = lever.TagValue("LINKNAME");
         Assert.Equal("oak door", linkName);
         // ACT is a character reference; this lever has no ACT target.
-        Assert.True(lever.TryGetProperty("TAG.ACTNAME", out var actName));
+        string actName = lever.TagValue("ACTNAME");
         Assert.Equal("0", actName);
     }
 
@@ -252,13 +252,13 @@ public class ScriptObjectParityTests
 
         interpreter.Execute(lines, target, null, null, scope);
 
-        Assert.True(target.TryGetProperty("TAG.LOCAL", out var local));
+        string local = target.TagValue("LOCAL");
         Assert.Equal("alpha", local);
-        Assert.True(target.TryGetProperty("TAG.DLOCAL", out var dlocal));
+        string dlocal = target.TagValue("DLOCAL");
         Assert.Equal("10", dlocal);
-        Assert.True(target.TryGetProperty("TAG.FLOAT", out var flt));
+        string flt = target.TagValue("FLOAT");
         Assert.Equal("1", flt);   // FEVAL = atoi of the text (CScriptObj.cpp:741)
-        Assert.True(target.TryGetProperty("TAG.REFNAME", out var refName));
+        string refName = target.TagValue("REFNAME");
         Assert.Equal("Linked", refName);
         Assert.Equal($"_REF_EXEC=0{linked.Uid.Value:X}|TAG.MARK|ok", refExec);
     }
@@ -299,9 +299,9 @@ public class ScriptObjectParityTests
 
         interpreter.Execute(lines, target, null, null, new ScriptScope());
 
-        Assert.True(target.TryGetProperty("TAG.SERVER", out var serverName));
+        string serverName = target.TagValue("SERVER");
         Assert.Equal("SphereNet", serverName);
-        Assert.True(target.TryGetProperty("TAG.UIDNAME", out var uidName));
+        string uidName = target.TagValue("UIDNAME");
         Assert.Equal("Linked", uidName);
     }
 
@@ -325,11 +325,11 @@ public class ScriptObjectParityTests
 
         interpreter.Execute(lines, target, null, null, new ScriptScope());
 
-        Assert.True(target.TryGetProperty("TAG.HIDE", out var hide));
+        string hide = target.TagValue("HIDE");
         Assert.Equal("1", hide);
-        Assert.True(target.TryGetProperty("TAG.REF", out var refType));
+        string refType = target.TagValue("REF");
         Assert.Equal("01", refType);
-        Assert.True(target.TryGetProperty("TAG.TEXT", out var text));
+        string text = target.TagValue("TEXT");
         Assert.Equal("Invulnerability", text);
     }
 
@@ -406,7 +406,7 @@ public class ScriptObjectParityTests
         interpreter.Execute(lines, player, null, args, new ScriptScope());
 
         Assert.True(gm.TryGetProperty("CTAG0.Dialog.Admin.Clients", out var count));
-        Assert.Equal("1", count);
+        Assert.Equal("01", count);   // a number var reads in Sphere hex (DECIMALVARIABLES=0)
         Assert.True(player.TryGetProperty("UID", out var playerUid));
         Assert.True(gm.TryGetProperty("CTAG0.Dialog.Admin.C1", out var listedUid));
         Assert.Equal(playerUid, listedUid);

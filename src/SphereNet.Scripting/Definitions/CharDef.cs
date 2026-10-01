@@ -356,9 +356,11 @@ public sealed class CharDef : BaseDef
                     SkillRanges[skill] = ParseSkillRange(value);
                     break;
                 }
-                if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
+                if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase) ||
+                    key.StartsWith("TAG0.", StringComparison.OrdinalIgnoreCase))
                 {
-                    TagDefs.Set(key[4..], value);
+                    // CBaseBaseDef::r_LoadVal TAG/TAG0 (CBase.cpp:293).
+                    ItemDef.LoadDefinitionTag(TagDefs, key, value);
                     break;
                 }
                 // Previously dropped with zero visibility — count it so a

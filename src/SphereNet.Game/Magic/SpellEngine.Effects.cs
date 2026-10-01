@@ -1040,8 +1040,7 @@ public sealed partial class SpellEngine
         ctx.Damage = (int)locals.GetInt("Effect", ctx.Damage);
         ctx.Charges = (int)locals.GetInt("Charges", ctx.Charges);
         ctx.DamageType = (int)locals.GetInt("DamageType", ctx.DamageType);
-        if (double.TryParse(locals.Get("Delay"), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double delaySec) && delaySec >= 0)
+        if (locals.TryGetDouble("Delay", out double delaySec) && delaySec >= 0)
             ctx.DelayMs = (int)Math.Min(int.MaxValue, delaySec * 1000);
         return true;
     }

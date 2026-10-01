@@ -1454,7 +1454,7 @@ public sealed class ClientDialogHandler
                 {
                     int dot = upper.IndexOf('.');
                     string tagKey = upper[(dot + 1)..];
-                    string? tagVal = _character?.CTags.Get(tagKey);
+                    string? tagVal = _character?.CTags.GetValStr(tagKey);
                     if (string.IsNullOrEmpty(tagVal) && tagKey.Equals("ACCOUNTLANG", StringComparison.OrdinalIgnoreCase))
                     {
                         string fallbackLang = GetEffectiveAccountLang();

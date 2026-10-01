@@ -54,8 +54,8 @@ public sealed class CallAndTryInBlockTests : IDisposable
 
         var item = new Item();
         stack.Interpreter.Execute(body, item, null, new TriggerArgs(), new ScriptScope());
-        item.TryGetProperty("TAG.X", out string v);
-        return v;
+        // The stored text (a script read would show a number var in Sphere hex).
+        return item.Tags.Get("X") ?? "0";
     }
 
     /// <summary>Top level and inside an IF have to agree.</summary>

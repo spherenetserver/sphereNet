@@ -57,7 +57,7 @@ public sealed class DialogPrebuttonParityTests
             }
             Assert.False(subject.TryGetTag("UNREACHABLE", out _));
             Assert.Equal(runs, subject.TryGetTag("BUTTON", out var value));
-            if (runs) Assert.Equal("42", value);
+            if (runs) Assert.Equal("02A", value);   // <LOCAL.probe> reads in Sphere hex
             Assert.Equal(runs, player.TryGetTag("BUTTON", out _));
         }
         finally { File.Delete(path); }

@@ -99,8 +99,8 @@ public sealed class ScriptCallParity13ATests
         Assert.Equal(text, args.ArgString); Assert.Equal(n1, args.Number1);
         Assert.Equal(n2, args.Number2); Assert.Equal(n3, args.Number3); Assert.Null(args.Object1);
         Assert.Same(item, args.Source);
-        item.TryGetProperty("TAG.keep", out var keep); Assert.Equal("42", keep);
-        item.TryGetProperty("TAG.ref", out var reference); Assert.Equal($"0{item.Uid.Value:X}", reference);
+        string keep = item.TagValue("keep"); Assert.Equal("02A", keep);   // <LOCAL.keep>, read in Sphere hex
+        string reference = item.TagValue("ref"); Assert.Equal($"0{item.Uid.Value:X}", reference);
         Assert.Equal(text.Length == 0 ? Array.Empty<string>() : text.Split(','), args.GetArgv());
     }
 
@@ -135,7 +135,7 @@ public sealed class ScriptCallParity13ATests
         var world = TestHarness.CreateWorld(); var item = GroundItem(world);
         var args = new TriggerArgs { Source = item, Object1 = item, Number1 = 1, Number2 = 2, Number3 = 3, ArgString = "old" };
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
-        item.TryGetProperty("TAG.child", out var child); Assert.Equal("17,18,19,0", child);
+        string child = item.TagValue("child"); Assert.Equal("17,18,19,0", child);
         Assert.Equal(restored ? "old" : "17,18,19", args.ArgString);
         Assert.Equal(restored ? 1 : 17, args.Number1);
         Assert.Equal(restored ? 2 : 18, args.Number2);
@@ -161,10 +161,10 @@ public sealed class ScriptCallParity13ATests
         var world = TestHarness.CreateWorld(); var item = GroundItem(world);
         var args = new TriggerArgs { ArgString = "\"original,field\",second" };
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
-        item.TryGetProperty("TAG.child_count", out var count); Assert.Equal("2", count);
-        item.TryGetProperty("TAG.child_first", out var child); Assert.Equal("a,b", child);
-        item.TryGetProperty("TAG.before", out var before); Assert.Equal("original,field", before);
-        item.TryGetProperty("TAG.after", out var after); Assert.Equal(before, after);
+        string count = item.TagValue("child_count"); Assert.Equal("2", count);
+        string child = item.TagValue("child_first"); Assert.Equal("a,b", child);
+        string before = item.TagValue("before"); Assert.Equal("original,field", before);
+        string after = item.TagValue("after"); Assert.Equal(before, after);
         Assert.Equal(new[] { "original,field", "second" }, args.GetArgv());
     }
 
@@ -184,11 +184,11 @@ public sealed class ScriptCallParity13ATests
         var item = GroundItem(TestHarness.CreateWorld());
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, new TriggerArgs(), out _));
         item.TryGetProperty("UID", out string uid);
-        item.TryGetProperty("TAG.SEENREF", out string seenRef);
-        item.TryGetProperty("TAG.SEENFLOAT", out string seenFloat);
-        item.TryGetProperty("TAG.AFTERREF", out string afterRef);
-        item.TryGetProperty("TAG.AFTERFLOAT", out string afterFloat);
-        item.TryGetProperty("TAG.AFTERLOCAL", out string afterLocal);
+        string seenRef = item.TagValue("SEENREF");
+        string seenFloat = item.TagValue("SEENFLOAT");
+        string afterRef = item.TagValue("AFTERREF");
+        string afterFloat = item.TagValue("AFTERFLOAT");
+        string afterLocal = item.TagValue("AFTERLOCAL");
         Assert.Equal(shared ? uid : "0", seenRef);
         Assert.Equal(shared ? "1.5" : "0.0", seenFloat);
         Assert.Equal(shared ? "0" : uid, afterRef);
@@ -212,9 +212,9 @@ public sealed class ScriptCallParity13ATests
         Assert.True(h.Runner.TryRunFunction("f_parent", item, new AdminConsole(source), args, out _));
         argObject.TryGetProperty("UID", out string objectUid);
         source.TryGetProperty("UID", out string sourceUid);
-        item.TryGetProperty("TAG.CHILDARGO", out string childArgo);
-        item.TryGetProperty("TAG.CHILDSRC", out string childSrc);
-        item.TryGetProperty("TAG.AFTERARGO", out string afterArgo);
+        string childArgo = item.TagValue("CHILDARGO");
+        string childSrc = item.TagValue("CHILDSRC");
+        string afterArgo = item.TagValue("AFTERARGO");
         Assert.Equal(keepsArgo ? objectUid : "0", childArgo);
         Assert.Equal(objectUid, afterArgo);
         Assert.Equal(sourceUid, childSrc);
@@ -238,9 +238,9 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
 
-        Assert.True(item.TryGetProperty("TAG.N1", out string n1));
+        string n1 = item.TagValue("N1");
         Assert.Equal("37", n1);                     // not the caller's 17
-        Assert.True(item.TryGetProperty("TAG.ARGS", out string a));
+        string a = item.TagValue("ARGS");
         Assert.Equal("37", a);
     }
 
@@ -258,9 +258,9 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
 
-        Assert.True(item.TryGetProperty("TAG.N1", out string n1));
+        string n1 = item.TagValue("N1");
         Assert.Equal("17", n1);
-        Assert.True(item.TryGetProperty("TAG.ARGS", out string a));
+        string a = item.TagValue("ARGS");
         Assert.Equal("old", a);                     // ARGS survives, it is not cleared
     }
 
@@ -278,9 +278,9 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
 
-        Assert.True(item.TryGetProperty("TAG.AFTER", out string after));
+        string after = item.TagValue("AFTER");
         Assert.Equal("17", after);
-        Assert.True(item.TryGetProperty("TAG.AFTERARGS", out string afterArgs));
+        string afterArgs = item.TagValue("AFTERARGS");
         Assert.Equal("old", afterArgs);
         Assert.Equal(17L, args.Number1);            // ...on the args object itself too
         Assert.Equal("old", args.ArgString);
@@ -299,7 +299,7 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, args, out _));
 
-        Assert.True(item.TryGetProperty("TAG.N1", out string n1));
+        string n1 = item.TagValue("N1");
         Assert.Equal("37", n1);
     }
 
@@ -333,9 +333,9 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null, new TriggerArgs(), out _));
 
-        Assert.True(expected.TryGetProperty("TAG.MARK", out string mark));
+        string mark = expected.TagValue("MARK");
         Assert.Equal("37", mark);
-        Assert.False(item.TryGetProperty("TAG.MARK", out string own) && own == "37");
+        Assert.False(item.TagValue("MARK") is string own && own == "37");
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public sealed class ScriptCallParity13ATests
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null,
             new TriggerArgs { Source = player }, out _));
 
-        Assert.True(player.TryGetProperty("TAG.MARK", out string mark));
+        string mark = player.TagValue("MARK");
         Assert.Equal("1", mark);
     }
 
@@ -370,7 +370,7 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, new AdminConsole(), new TriggerArgs(), out _));
 
-        Assert.True(item.TryGetProperty("TAG.FLAG", out string flag));
+        string flag = item.TagValue("FLAG");
         Assert.Equal("1", flag);
     }
 
@@ -386,7 +386,7 @@ public sealed class ScriptCallParity13ATests
 
         Assert.True(h.Runner.TryRunFunction("f_parent", item, new AdminConsole(), new TriggerArgs(), out _));
 
-        Assert.True(item.TryGetProperty("TAG.MARK", out string mark));
+        string mark = item.TagValue("MARK");
         Assert.Equal("1", mark);
     }
 
@@ -422,7 +422,7 @@ public sealed class ScriptCallParity13ATests
         Assert.True(h.Runner.TryRunFunction("f_parent", item, null,
             new TriggerArgs { Number1 = 17 }, out _));
 
-        Assert.True(item.TryGetProperty("TAG.RESULT", out string result));
+        string result = item.TagValue("RESULT");
         Assert.Equal(expected, result);
     }
 }

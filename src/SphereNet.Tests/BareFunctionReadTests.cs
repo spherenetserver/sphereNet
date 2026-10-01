@@ -85,16 +85,16 @@ public sealed class BareFunctionReadTests : IDisposable
         item.Execute([new ScriptKey("TAG.OUT", expr)], b.Ch, null,
             new TriggerArgs { Source = src },
             new ScriptScope());
-        b.Ch.TryGetProperty("TAG.OUT", out string v);
-        return v;
+        return b.Ch.Tags.Get("OUT") ?? "0";
     }
 
     private static string Read(Bench b, string expr)
     {
         b.Stack.Interpreter.Execute([new ScriptKey("TAG.OUT", expr)], b.Ch, null,
             new TriggerArgs(), new ScriptScope());
-        b.Ch.TryGetProperty("TAG.OUT", out string v);
-        return v;
+        // The text the expression produced, as stored: a script read of the TAG
+        // would show a number var in Sphere hex (DECIMALVARIABLES=0).
+        return b.Ch.Tags.Get("OUT") ?? "0";
     }
 
     private static readonly string[] IsHuman =

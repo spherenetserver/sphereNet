@@ -163,7 +163,7 @@ public class DeferredParityTests
         var result = dispatcher.FireItemTrigger(item, ItemTrigger.DClick, new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(item.TryGetProperty("TAG.GLOBAL_DCLICK", out var val));
+        string val = item.TagValue("GLOBAL_DCLICK");
         Assert.Equal("1", val);
     }
 

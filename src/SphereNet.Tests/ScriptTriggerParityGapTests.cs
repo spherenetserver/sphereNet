@@ -344,9 +344,10 @@ public sealed class ScriptTriggerParityGapTests
 
         Assert.Equal(15, ch.Hits);   // the script's LOCAL.Value, not the base 1
         Assert.Equal(10, ch.Mana);   // RETURN 1 skipped mana
-        Assert.True(ch.TryGetTag("SEEN0", out _));
-        Assert.True(ch.TryGetTag("SEEN1", out _));
-        Assert.True(ch.TryGetTag("SEEN2", out _));   // full stamina still comes due
+        // <LOCAL.StatID> is a number var and reads in Sphere hex, so the key is SEEN00.
+        Assert.True(ch.TryGetTag("SEEN00", out _));
+        Assert.True(ch.TryGetTag("SEEN01", out _));
+        Assert.True(ch.TryGetTag("SEEN02", out _));   // full stamina still comes due
     }
 
     // ---------------------------------------------------------------- @ArrowQuest_*

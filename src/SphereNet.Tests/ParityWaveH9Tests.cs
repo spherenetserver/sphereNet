@@ -139,11 +139,11 @@ public class ParityWaveH9Tests
         var lines = new[] { new ScriptKey("TAG.MINE", "<ISMYPET>") };
 
         interpreter.Execute(lines, pet, null, new TriggerArgs { Source = owner }, new ScriptScope());
-        Assert.True(pet.TryGetProperty("TAG.MINE", out var mine));
+        string mine = pet.TagValue("MINE");
         Assert.Equal("1", mine);
 
         interpreter.Execute(lines, pet, null, new TriggerArgs { Source = stranger }, new ScriptScope());
-        Assert.True(pet.TryGetProperty("TAG.MINE", out var notMine));
+        string notMine = pet.TagValue("MINE");
         Assert.Equal("0", notMine);
     }
 }

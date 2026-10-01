@@ -203,9 +203,9 @@ public sealed class HouseDesignCommitTriggerParityTests
             Assert.True(owner.TryGetTag("SEEN_NEW", out string? seenNew));
             Assert.Equal("1", seenNew);
             Assert.True(owner.TryGetTag("SEEN_MAXZ", out string? seenMaxZ));
-            Assert.Equal("7", seenMaxZ);
+            Assert.Equal("07", seenMaxZ);   // <LOCAL.MAXZ> reads in Sphere hex
             Assert.True(owner.TryGetTag("SEEN_FIXNEW", out string? seenFix));
-            Assert.Equal("0", seenFix);
+            Assert.Equal("00", seenFix);   // <LOCAL.FIXTURES.NEW> reads in Sphere hex
 
             // And the refusal held: nothing was committed, the session is still open.
             Assert.Empty(custom.GetCommittedTiles(multi));

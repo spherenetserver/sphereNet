@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
+using SphereNet.Core.Types;
 using SphereNet.Scripting.Expressions;
 using SphereNet.Scripting.Parsing;
 
@@ -137,75 +138,80 @@ public sealed class ScriptInterpreter
                 ? _expr.PushSourceLabel(FormatSourceLabel(key, scope))
                 : default;
 
-            string cmd = key.KeyUpper;
+            // A block body is handed in without its terminator, so a terminator seen
+            // here is one that closes nothing. Source-X ends the section run on it
+            // (CScriptObj::OnTriggerRun returns TRIGRET_ENDIF / TRIGRET_ELSE), which
+            // stops the trigger or function there; it used to be stepped over and the
+            // lines after it ran.
+            if (GetBlockTerminator(key.KeyUpper) != ScriptBlockTerminator.None)
+                break;
 
-            // LOCAL./ARGN/ARGS/REFn/FLOAT assignments — shared with the block
-            // executors (IF/DORAND/DOSWITCH bodies dispatch single lines and
-            // must hit the same handlers; LOCAL sets inside IF blocks used to
-            // fall through to a no-op and silently vanish).
-            if (TryExecuteAssignmentLine(key, cmd, target, source, args, scope))
-            {
-                i++;
-                continue;
-            }
-
-            // CALL and the TRY family are single statements, not blocks, and they are
-            // dispatched from the same place wherever they appear.
-            if (TryExecuteControlStatement(key, cmd, target, source, args, scope, ref result))
-            {
-                i++;
-                continue;
-            }
-
-            if (TryExecuteBlockStatement(lines, cmd, ref i, target, source, args, scope, ref result))
-            {
-                if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing) break;
-                continue;
-            }
-
-            switch (cmd)
-            {
-                case "BREAK":
-                    if (scope.LoopDepth > 0)
-                    {
-                        scope.IsBreaking = true;
-                        i = lines.Count;
-                    }
-                    break;
-
-                case "CONTINUE":
-                    if (scope.LoopDepth > 0)
-                    {
-                        scope.IsContinuing = true;
-                        i = lines.Count;
-                    }
-                    break;
-
-                case "RETURN":
-                    result = ApplyReturn(key, target, source, args, scope);
-                    i = lines.Count;
-                    break;
-
-
-                // These are block terminators — skip if encountered at top level
-                case "ENDIF":
-                case "ENDFOR":
-                case "ENDWHILE":
-                case "END":
-                case "ENDDO":
-                    i++;
-                    break;
-
-                default:
-                {
-                    ExecuteLine(key, target, source, args, scope);
-                    i++;
-                    break;
-                }
-            }
+            ExecuteStatement(lines, ref i, target, source, args, scope, ref result);
+            if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing)
+                break;
         }
 
         return result;
+    }
+
+    /// <summary>Run the ONE statement at <paramref name="i"/> and leave
+    /// <paramref name="i"/> on the statement after it. A block-opening statement
+    /// (IF, BEGIN, DORAND, DOSWITCH, a loop) is one statement spanning its whole
+    /// block, so this is also Source-X's TRIGRUN_SINGLE_TRUE: the option a DORAND or
+    /// DOSWITCH picks runs through here. Every executor - the top level, an IF branch
+    /// and a DORAND/DOSWITCH option - dispatches through this one method.</summary>
+    private void ExecuteStatement(IReadOnlyList<ScriptKey> lines, ref int i, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope scope, ref TriggerResult result)
+    {
+        var key = lines[i];
+        string cmd = key.KeyUpper;
+
+        // LOCAL./ARGN/ARGS/REFn/FLOAT assignments — shared with the block
+        // executors (IF/DORAND/DOSWITCH bodies dispatch single lines and
+        // must hit the same handlers; LOCAL sets inside IF blocks used to
+        // fall through to a no-op and silently vanish).
+        if (TryExecuteAssignmentLine(key, cmd, target, source, args, scope))
+        {
+            i++;
+            return;
+        }
+
+        // CALL and the TRY family are single statements, not blocks, and they are
+        // dispatched from the same place wherever they appear.
+        if (TryExecuteControlStatement(key, cmd, target, source, args, scope, ref result))
+        {
+            i++;
+            return;
+        }
+
+        if (TryExecuteBlockStatement(lines, cmd, ref i, target, source, args, scope, ref result))
+            return;
+
+        switch (cmd)
+        {
+            // BREAK and CONTINUE are loop control; "IF <cond> BREAK ENDIF" is how a
+            // loop is exited conditionally. Outside a loop they do nothing.
+            case "BREAK":
+                if (scope.LoopDepth > 0)
+                    scope.IsBreaking = true;
+                break;
+
+            case "CONTINUE":
+                if (scope.LoopDepth > 0)
+                    scope.IsContinuing = true;
+                break;
+
+            // RETURN inside any block - an IF veto, a DOSWITCH lookup table of
+            // RETURNs - ends the script with its value.
+            case "RETURN":
+                result = ApplyReturn(key, target, source, args, scope);
+                break;
+
+            default:
+                ExecuteLine(key, target, source, args, scope);
+                break;
+        }
+        i++;
     }
 
     private void ExecuteLine(ScriptKey key, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
@@ -243,7 +249,7 @@ public sealed class ScriptInterpreter
             if (args?.Object1 is { } argumentObject)
             {
                 string argumentKey = cmd[5..];
-                if (!key.HasArg || !argumentObject.TrySetProperty(argumentKey, resolvedArg))
+                if (!key.HasArg || !argumentObject.TrySetProperty(argumentKey, AssignmentValue(argumentKey, resolvedArg)))
                     ExecuteVerbLine(argumentKey, resolvedArg, argumentObject, source, args, scope);
             }
             return;
@@ -256,7 +262,7 @@ public sealed class ScriptInterpreter
             IScriptObj? srcObj = args?.Source;
             if (srcObj != null)
             {
-                if (key.HasArg && srcObj.TrySetProperty(subCmd, EvalNumericArg(resolvedArg)))
+                if (key.HasArg && srcObj.TrySetProperty(subCmd, AssignmentValue(subCmd, resolvedArg)))
                 {
                     if (_expr.DebugUnresolved)
                         _logger.LogDebug("[script_exec] handled via src setprop '{Cmd}'", subCmd);
@@ -314,6 +320,13 @@ public sealed class ScriptInterpreter
                 string subCmd = cmd[(firstDot + 1)..];
                 if (!string.IsNullOrEmpty(uidTok) && !string.IsNullOrEmpty(subCmd))
                 {
+                    // A property assignment takes the same value as every other path
+                    // (AssignmentValue): the host bridge below only carries the raw
+                    // text, so a quoted NAME and an arithmetic MORE1 were set
+                    // differently through UID.x than through SRC or a bare line.
+                    if (key.HasArg && ResolveObjectRef?.Invoke(target, $"UID.{uidTok}") is { } uidObject &&
+                        uidObject.TrySetProperty(subCmd, AssignmentValue(subCmd, resolvedArg)))
+                        return;
                     if (args?.Source != null && args.Source.TryGetProperty("UID", out string srcUid) &&
                         !string.IsNullOrWhiteSpace(srcUid))
                     {
@@ -334,7 +347,12 @@ public sealed class ScriptInterpreter
         {
             int dot = cmd.IndexOf('.');
             string varName = cmd[(dot + 1)..];
-            ServerPropertyResolver?.Invoke($"_SET_VAR.{varName}={resolvedArg}");
+            // CScriptObj::r_LoadVal SSC_VAR/SSC_VAR0 (CScriptObj.cpp:351): SetStr with
+            // the quote flag, fZero for VAR0 only. The value crosses the bridge as it
+            // was written (the host reads its quote flag through ScriptArgQuoting),
+            // and VAR0 keeps its own command so a zero can delete.
+            string bridge = dot == 4 ? "_SET_VAR0." : "_SET_VAR.";
+            ServerPropertyResolver?.Invoke($"{bridge}{varName}={resolvedArg}");
             return;
         }
 
@@ -379,7 +397,7 @@ public sealed class ScriptInterpreter
             ResolveObjectRef?.Invoke(target, "NEW") is { } newObject)
         {
             string newKey = cmd[4..];
-            if (!key.HasArg || !newObject.TrySetProperty(newKey, resolvedArg))
+            if (!key.HasArg || !newObject.TrySetProperty(newKey, AssignmentValue(newKey, resolvedArg)))
                 ExecuteVerbLine(newKey, resolvedArg, newObject, source, args, scope);
             return;
         }
@@ -685,7 +703,7 @@ public sealed class ScriptInterpreter
         if (TryPreferredFunction(cmd, resolvedArg, target, source, args, scope))
             return;
 
-        if (key.HasArg && target.TrySetProperty(cmd, EvalNumericArg(cmd, resolvedArg)))
+        if (key.HasArg && target.TrySetProperty(cmd, AssignmentValue(cmd, resolvedArg)))
         {
             if (_expr.DebugUnresolved)
                 _logger.LogDebug("[script_exec] handled via setprop '{Cmd}'", cmd);
@@ -768,13 +786,21 @@ public sealed class ScriptInterpreter
             if (eqIdx > 0)
             {
                 string varName = localExpr[..eqIdx].Trim();
-                // Source-X CScriptTriggerArgs::r_LoadVal reads the value with
-                // GetArgStr (CScriptTriggerArgs.cpp:246): a leading quote and the
+                // Source-X CScriptTriggerArgs::r_Verb LOCAL (CScriptTriggerArgs.cpp:242)
+                // reads the value with GetArgStr(&fQuoted): a leading quote and the
                 // LAST quote are the script's, not the value's. Keeping them put
                 // LOCAL.Data = "{...}" into an SQL insert as "\"{...}\"" - a JSON
                 // string, not an object - and every json_extract over the table failed.
-                string varVal = ScriptKey.StripQuotePair(localExpr[(eqIdx + 1)..].Trim());
-                scope.LocalVars.Set(varName, varVal);
+                // The quote flag goes to CVarDefMap::SetStr (fZero false): a quoted
+                // value - "" and "0" included - is a string var, an unquoted simple
+                // number a number var, an unquoted empty value deletes.
+                string varVal = Variables.VarMap.UnquoteSaveValue(localExpr[(eqIdx + 1)..].Trim(), out bool quoted);
+                scope.LocalVars.SetStr(varName, quoted, varVal);
+            }
+            else if (localExpr.Trim().Length > 0)
+            {
+                // "LOCAL.x" with no value at all: SetStr of an unquoted empty value.
+                scope.LocalVars.Remove(localExpr.Trim());
             }
             return true;
         }
@@ -836,10 +862,15 @@ public sealed class ScriptInterpreter
             {
                 string refUid = scope.GetRef(refIdx2);
                 string subCmd = cmd[(dotIdx + 1)..];
-                string resolvedVal = ResolveArgs(key.Arg, target, source, args, scope);
+                // GetArgStr, with its quote flag, as every other assignment path reads
+                // it (ExecuteLine): the quote pair is the script's, and a quoted value
+                // is text (AssignmentValue).
+                string resolvedVal = Variables.VarMap.UnquoteSaveValue(
+                    ResolveArgs(key.Arg, target, source, args, scope), out bool refQuoted);
+                using var refQuotedScope = ScriptArgQuoting.Enter(refQuoted ? resolvedVal : null);
                 if (ResolveObjectRef?.Invoke(target, $"UID.{refUid}") is { } referencedObject)
                 {
-                    if (!key.HasArg || !referencedObject.TrySetProperty(subCmd, resolvedVal))
+                    if (!key.HasArg || !referencedObject.TrySetProperty(subCmd, AssignmentValue(subCmd, resolvedVal)))
                         ExecuteVerbLine(subCmd, resolvedVal, referencedObject, source, args, scope);
                 }
                 else
@@ -1095,7 +1126,9 @@ public sealed class ScriptInterpreter
         {
             string cmd = lines[i].KeyUpper;
 
-            if (cmd == "ENDIF")
+            // Any of the seven END keywords closes the IF (Source-X returns
+            // TRIGRET_ENDIF for all of them), not only ENDIF.
+            if (GetBlockTerminator(cmd) == ScriptBlockTerminator.End)
             {
                 i++;
                 break;
@@ -1128,62 +1161,10 @@ public sealed class ScriptInterpreter
 
             if (condResult)
             {
-                // Every block kind, through the one dispatcher Execute uses. This used
-                // to be a partial copy with IF, FOR and WHILE in it; the rest fell to
-                // ExecuteLine below and their block structure was simply ignored.
-                if (TryExecuteBlockStatement(lines, cmd, ref i, target, source, args, scope, ref result))
-                {
-                    if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing)
-                        return lines.Count;
-                    continue;
-                }
-
-                if (TryExecuteControlStatement(lines[i], cmd, target, source, args, scope, ref result))
-                {
-                    i++;
-                    continue;
-                }
-
-                switch (cmd)
-                {
-                    // The out-parameter used to keep the Default it was initialised
-                    // with, so a RETURN 1 inside an IF stopped the block and then
-                    // reported nothing - and "IF <condition> ... RETURN 1 ... ENDIF" is
-                    // how every conditional veto in every pack is written, from
-                    // @EquipTest to @DClick to @Buy. Loops were never affected: they
-                    // run their body through Execute, which maps it.
-                    case "RETURN":
-                        result = ApplyReturn(lines[i], target, source, args, scope);
-                        return lines.Count;
-                    // BREAK and CONTINUE are loop control, and "IF <cond> BREAK ENDIF"
-                    // is how a loop is exited conditionally - there is no other way to
-                    // write it. Neither had a case here, so both fell to ExecuteLine,
-                    // which does not know them: the loop ran to its end every time, and
-                    // a search loop kept going past the match it had already found.
-                    case "BREAK":
-                        if (scope.LoopDepth > 0)
-                        {
-                            scope.IsBreaking = true;
-                            return lines.Count;
-                        }
-                        i++;
-                        break;
-
-                    case "CONTINUE":
-                        if (scope.LoopDepth > 0)
-                        {
-                            scope.IsContinuing = true;
-                            return lines.Count;
-                        }
-                        i++;
-                        break;
-
-                    default:
-                        if (!TryExecuteAssignmentLine(lines[i], cmd, target, source, args, scope))
-                            ExecuteLine(lines[i], target, source, args, scope);
-                        i++;
-                        break;
-                }
+                // Every statement kind, through the one dispatcher Execute uses - this
+                // used to be a partial copy, and the kinds it did not name lost their
+                // block structure or their RETURN value.
+                ExecuteStatement(lines, ref i, target, source, args, scope, ref result);
 
                 // A nested block may have set any of the three; leaving the IF is the
                 // only way they reach the loop that has to act on them.
@@ -1192,8 +1173,8 @@ public sealed class ScriptInterpreter
             }
             else
             {
-                // Skip nested blocks
-                i = SkipBlock(lines, i, cmd);
+                // Untaken branch: step over one whole statement, nested blocks included.
+                i = SkipStatement(lines, i);
             }
         }
 
@@ -1235,7 +1216,7 @@ public sealed class ScriptInterpreter
         }
 
         int bodyStart = i;
-        int bodyEnd = FindBlockEnd(lines, bodyStart, "ENDFOR");
+        int bodyEnd = FindSectionEnd(lines, bodyStart);
 
         scope.LoopDepth++;
         var forBody = GetSubList(lines, bodyStart, bodyEnd);
@@ -1256,7 +1237,7 @@ public sealed class ScriptInterpreter
         }
         scope.LoopDepth--;
 
-        return bodyEnd + 1;
+        return BlockExit(lines, bodyEnd);
     }
 
     /// <summary>Split a FOR argument list on spaces/commas, respecting &lt;...&gt;
@@ -1311,7 +1292,7 @@ public sealed class ScriptInterpreter
         i++;
 
         int bodyStart = i;
-        int bodyEnd = FindBlockEnd(lines, bodyStart, "ENDWHILE");
+        int bodyEnd = FindSectionEnd(lines, bodyStart);
 
         scope.LoopDepth++;
         var whileBody = GetSubList(lines, bodyStart, bodyEnd);
@@ -1333,79 +1314,73 @@ public sealed class ScriptInterpreter
         }
         scope.LoopDepth--;
 
-        return bodyEnd + 1;
+        return BlockExit(lines, bodyEnd);
     }
 
     private int ExecuteDoRand(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
     {
-        result = TriggerResult.Default;
-        int i = startIdx + 1;
-
-        // Collect lines until ENDDO
-        var options = new List<int>();
-        while (i < lines.Count && !lines[i].Key.Equals("ENDDO", StringComparison.OrdinalIgnoreCase))
-        {
-            options.Add(i);
-            i++;
-        }
-
-        if (options.Count > 0)
-        {
-            int pick = Random.Shared.Next(options.Count);
-            var picked = lines[options[pick]];
-            // The picked line can be a RETURN, and a lookup table written as a DOSWITCH
-            // of RETURNs is the ordinary way to write one. ExecuteLine does not know
-            // RETURN, so the value went nowhere and the function returned blank.
-            string pickedCmd = picked.KeyUpper;
-            if (pickedCmd == "RETURN")
-                result = ApplyReturn(picked, target, source, args, scope);
-            else if (!TryExecuteAssignmentLine(picked, pickedCmd, target, source, args, scope) &&
-                     !TryExecuteControlStatement(picked, pickedCmd, target, source, args, scope, ref result))
-                ExecuteLine(picked, target, source, args, scope);
-        }
-
-        return i < lines.Count ? i + 1 : i;
+        // Source-X: iVal = g_Rand.GetLLVal(<arg>) - a value in [0, arg), or 0 when the
+        // argument is below 2. The option count is the SCRIPT's argument, not the
+        // number of lines: "DORAND 1" over two lines always runs the first.
+        string countStr = ResolveArgs(lines[startIdx].Arg, target, source, args, scope);
+        long count = EvaluateWithResolver(countStr, target, source, args, scope);
+        long pick = count < 2 ? 0 : Random.Shared.NextInt64(count);
+        return ExecuteOneOption(lines, startIdx + 1, pick, target, source, args, scope, out result);
     }
 
     private int ExecuteDoSwitch(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
     {
-        result = TriggerResult.Default;
         string indexStr = ResolveArgs(lines[startIdx].Arg, target, source, args, scope);
-        int switchIdx = (int)EvaluateWithResolver(indexStr, target, source, args, scope);
-        int i = startIdx + 1;
+        long switchIdx = EvaluateWithResolver(indexStr, target, source, args, scope);
+        return ExecuteOneOption(lines, startIdx + 1, switchIdx, target, source, args, scope, out result);
+    }
 
-        int lineIdx = 0;
-        while (i < lines.Count && !lines[i].Key.Equals("ENDDO", StringComparison.OrdinalIgnoreCase))
+    /// <summary>The DORAND/DOSWITCH body (Source-X CScriptObj.cpp:2548): walk the
+    /// options counting the index down, run the option at which it reaches exactly 0
+    /// (TRIGRUN_SINGLE_TRUE) and skip every other one (TRIGRUN_SINGLE_FALSE), until a
+    /// terminator ends the block. An option is one STATEMENT, so a BEGIN..END, an
+    /// IF..ENDIF, a loop or a nested DORAND/DOSWITCH is one option however many lines
+    /// it spans - this used to count physical lines. An index past the last option, or
+    /// negative, never reaches 0 and runs nothing.</summary>
+    private int ExecuteOneOption(IReadOnlyList<ScriptKey> lines, int i, long index, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
+    {
+        result = TriggerResult.Default;
+        for (long remaining = index; ; remaining--)
         {
-            if (lineIdx == switchIdx)
+            if (i >= lines.Count)
+                return lines.Count;
+
+            switch (GetBlockTerminator(lines[i].KeyUpper))
             {
-                string pickedCmd = lines[i].KeyUpper;
-                if (pickedCmd == "RETURN")
-                    result = ApplyReturn(lines[i], target, source, args, scope);
-                else if (!TryExecuteAssignmentLine(lines[i], pickedCmd, target, source, args, scope) &&
-                         !TryExecuteControlStatement(lines[i], pickedCmd, target, source, args, scope, ref result))
-                    ExecuteLine(lines[i], target, source, args, scope);
-                break;
+                case ScriptBlockTerminator.End:
+                    return i + 1;
+                case ScriptBlockTerminator.Else:
+                    return i; // belongs to an enclosing IF (Source-X hands TRIGRET_ELSE up)
             }
-            lineIdx++;
-            i++;
+
+            if (remaining == 0)
+            {
+                ExecuteStatement(lines, ref i, target, source, args, scope, ref result);
+                if (scope.IsReturning || scope.IsBreaking || scope.IsContinuing)
+                    return lines.Count;
+            }
+            else
+            {
+                i = SkipStatement(lines, i);
+            }
         }
-
-        while (i < lines.Count && !lines[i].Key.Equals("ENDDO", StringComparison.OrdinalIgnoreCase))
-            i++;
-
-        return i < lines.Count ? i + 1 : i;
     }
 
     private int ExecuteBegin(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
     {
         int i = startIdx + 1;
-        int bodyEnd = FindBlockEnd(lines, i, "END");
+        int bodyEnd = FindSectionEnd(lines, i);
         result = Execute(GetSubList(lines, i, bodyEnd), target, source, args, scope);
-        return bodyEnd + 1;
+        return BlockExit(lines, bodyEnd);
     }
 
     private int ExecuteForObjects(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
@@ -1416,12 +1391,12 @@ public sealed class ScriptInterpreter
         string queryArg = ResolveArgs(lines[startIdx].Arg, target, source, args, scope);
 
         int i = startIdx + 1;
-        int bodyEnd = FindBlockEnd(lines, i, "ENDFOR");
+        int bodyEnd = FindSectionEnd(lines, i);
 
         var body = GetSubList(lines, i, bodyEnd);
         var objects = console.QueryScriptObjects(queryKind, target, queryArg, args);
         if (objects.Count == 0)
-            return bodyEnd + 1;
+            return BlockExit(lines, bodyEnd);
 
         // Source-X changes the default object, retaining the original trigger arguments.
         int iterations = 0;
@@ -1440,7 +1415,7 @@ public sealed class ScriptInterpreter
         }
         finally { scope.LoopDepth--; }
 
-        return bodyEnd + 1;
+        return BlockExit(lines, bodyEnd);
     }
 
     /// <summary>Build a human-readable "file(line) [trigger]" tag for the
@@ -1721,7 +1696,7 @@ public sealed class ScriptInterpreter
         }
 
         if (verbArgs.Length > 0)
-            target.TrySetProperty(verb, EvalNumericArg(verb, verbArgs));
+            target.TrySetProperty(verb, AssignmentValue(verb, verbArgs));
     }
 
     /// <summary>
@@ -1754,6 +1729,27 @@ public sealed class ScriptInterpreter
     [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(arg))]
     private string? EvalNumericArg(string key, string? arg) =>
         NonNumericKeys.Contains(key) ? arg : EvalNumericArg(arg);
+
+    /// <summary>The value a property assignment hands its setter, the same for every
+    /// path a line can take - bare, SRC., REFn., UID.x., NEW., ARGO. and a verb line
+    /// falling through to r_LoadVal. A quoted value is text (GetArgStr's fQuoted): it
+    /// is never evaluated, so SRC.NAME="1+2" names the character "1+2" exactly as
+    /// NAME="1+2" does. The variable stores (TAG, CTAG, VAR) decide number-or-string
+    /// themselves the CVarDefMap::SetStr way, so they receive the value as written.
+    /// Anything else gets the arithmetic evaluation of <see cref="EvalNumericArg(string?)"/>.</summary>
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(arg))]
+    private string? AssignmentValue(string key, string? arg)
+    {
+        if (arg == null || ScriptArgQuoting.IsQuoted(arg) || IsVariableStoreKey(key))
+            return arg;
+        return EvalNumericArg(key, arg);
+    }
+
+    private static bool IsVariableStoreKey(string key) =>
+        key.StartsWith("TAG", StringComparison.OrdinalIgnoreCase) && key.Length > 3 && (key[3] == '.' || key[3] == '0') ||
+        key.StartsWith("DTAG", StringComparison.OrdinalIgnoreCase) && key.Length > 4 && (key[4] == '.' || key[4] == '0') ||
+        key.StartsWith("CTAG", StringComparison.OrdinalIgnoreCase) && key.Length > 4 && (key[4] == '.' || key[4] == '0') ||
+        key.StartsWith("DCTAG", StringComparison.OrdinalIgnoreCase) && key.Length > 5 && (key[5] == '.' || key[5] == '0');
 
     private static readonly HashSet<string> NonNumericKeys =
         new(StringComparer.OrdinalIgnoreCase) { "P", "POS", "NAME", "EVENTS", "TEVENTS", "ARGS" };
@@ -1971,18 +1967,20 @@ public sealed class ScriptInterpreter
         // DLOCAL shares storage with LOCAL; the "d" prefix only signals
         // the reader wants a decimal interpretation (our numeric coercion
         // handles that uniformly on the consumer side).
+        // CScriptTriggerArgs::r_WriteVal LOCAL: GetKeyStr(key, true) - a number var
+        // in the DECIMALVARIABLES format, "0" when the key is missing.
         if (varName.StartsWith("LOCAL.", StringComparison.OrdinalIgnoreCase))
         {
             string localName = varName[6..];
             if (scope != null)
-                return scope.LocalVars.Get(localName) ?? "0";
+                return scope.LocalVars.GetKeyStr(localName, zero: true);
             return "0";
         }
         if (varName.StartsWith("DLOCAL.", StringComparison.OrdinalIgnoreCase))
         {
             string localName = varName[7..];
             if (scope != null)
-                return scope.LocalVars.Get(localName) ?? "0";
+                return scope.LocalVars.GetKeyStr(localName, zero: true);
             return "0";
         }
 
@@ -2322,112 +2320,37 @@ public sealed class ScriptInterpreter
         scope.LocalVars.Set(varName, varVal);
     }
 
-    private static int FindBlockEnd(IReadOnlyList<ScriptKey> lines, int start, string endKeyword)
-    {
-        int depth = 1;
+    // ---- Block structure ----
+    //
+    // One definition, SphereNet.Core.Types.ScriptBlockSyntax, shared with the panel's
+    // script validator: Source-X (CScriptObj.cpp:2393) ends a section on ANY of END,
+    // ENDDO, ENDFOR, ENDIF, ENDRAND, ENDSWITCH, ENDWHILE, and on ELSE / ELIF / ELSEIF;
+    // nesting is counted by block openers, never by pairing names. Matching the exact
+    // keyword used to let "FOR..END" swallow the line after the loop and leave
+    // "DOSWITCH..ENDSWITCH" without an end at all.
 
-        for (int i = start; i < lines.Count; i++)
-        {
-            string cmd = lines[i].KeyUpper;
+    private static ScriptBlockTerminator GetBlockTerminator(string cmd) =>
+        ScriptBlockSyntax.GetTerminator(cmd);
 
-            bool isOpener = endKeyword switch
-            {
-                "ENDFOR" => cmd == "FOR" || IsForVariant(cmd),
-                "ENDWHILE" => cmd == "WHILE",
-                "END" => cmd == "BEGIN",
-                "ENDDO" => cmd is "DORAND" or "DOSWITCH",
-                _ => false
-            };
+    private static readonly Func<ScriptKey, string> KeyOf = static k => k.KeyUpper;
 
-            if (isOpener)
-                depth++;
-            if (cmd == endKeyword)
-            {
-                depth--;
-                if (depth == 0) return i;
-            }
-        }
-        return lines.Count;
-    }
+    /// <summary>Index of the terminator that ends the section starting at
+    /// <paramref name="start"/>, or lines.Count when the section is never closed.</summary>
+    private static int FindSectionEnd(IReadOnlyList<ScriptKey> lines, int start) =>
+        ScriptBlockSyntax.FindSectionEnd(lines, start, KeyOf);
 
-    private static int SkipBlock(IReadOnlyList<ScriptKey> lines, int idx, string cmd)
-    {
-        if (IsForVariant(cmd))
-            cmd = "FOR";
+    /// <summary>Index after the one statement at <paramref name="idx"/>, without
+    /// running it (Source-X TRIGRUN_SINGLE_FALSE).</summary>
+    private static int SkipStatement(IReadOnlyList<ScriptKey> lines, int idx) =>
+        ScriptBlockSyntax.SkipStatement(lines, idx, KeyOf);
 
-        switch (cmd)
-        {
-            case "IF":
-            {
-                int depth = 1;
-                idx++;
-                while (idx < lines.Count && depth > 0)
-                {
-                    string c = lines[idx].KeyUpper;
-                    if (c == "IF") depth++;
-                    if (c == "ENDIF") depth--;
-                    if (depth > 0) idx++;
-                }
-                return idx + 1;
-            }
-            case "FOR":
-            {
-                int depth = 1;
-                idx++;
-                while (idx < lines.Count && depth > 0)
-                {
-                    string c = lines[idx].KeyUpper;
-                    if (c == "FOR" || IsForVariant(c))
-                        depth++;
-                    if (c == "ENDFOR") depth--;
-                    if (depth > 0) idx++;
-                }
-                return idx + 1;
-            }
-            case "WHILE":
-            {
-                int depth = 1;
-                idx++;
-                while (idx < lines.Count && depth > 0)
-                {
-                    string c = lines[idx].KeyUpper;
-                    if (c == "WHILE") depth++;
-                    if (c == "ENDWHILE") depth--;
-                    if (depth > 0) idx++;
-                }
-                return idx + 1;
-            }
-            case "DORAND":
-            case "DOSWITCH":
-            {
-                int depth = 1;
-                idx++;
-                while (idx < lines.Count && depth > 0)
-                {
-                    string c = lines[idx].KeyUpper;
-                    if (c == "DORAND" || c == "DOSWITCH") depth++;
-                    if (c == "ENDDO") depth--;
-                    if (depth > 0) idx++;
-                }
-                return idx + 1;
-            }
-            case "BEGIN":
-            {
-                int depth = 1;
-                idx++;
-                while (idx < lines.Count && depth > 0)
-                {
-                    string c = lines[idx].KeyUpper;
-                    if (c == "BEGIN") depth++;
-                    if (c == "END") depth--;
-                    if (depth > 0) idx++;
-                }
-                return idx + 1;
-            }
-            default:
-                return idx + 1;
-        }
-    }
+    /// <summary>Where execution resumes after a non-IF block whose section ended at
+    /// <paramref name="end"/>: past an END-family terminator, but ON an ELSE / ELSEIF,
+    /// which Source-X hands up to the enclosing IF as TRIGRET_ELSE / TRIGRET_ELSEIF.</summary>
+    private static int BlockExit(IReadOnlyList<ScriptKey> lines, int end) =>
+        end < lines.Count && GetBlockTerminator(lines[end].KeyUpper) == ScriptBlockTerminator.End
+            ? end + 1
+            : end;
 
     /// <summary>The loops that walk objects rather than a number range. Every one of
     /// them opens a block that ENDFOR closes, so the dispatcher, the block-end search
@@ -2435,10 +2358,7 @@ public sealed class ScriptInterpreter
     /// FORCHARLAYER and FORCHARMEMORYTYPE were dispatched but absent from the other
     /// two, so an ENDFOR belonging to one of them closed the loop AROUND it. The outer
     /// loop's body ended early and its tail ran once, outside the loop.</summary>
-    private static bool IsForVariant(string cmd) =>
-        cmd is "FORPLAYERS" or "FORCHARS" or "FORITEMS" or "FORCLIENTS"
-            or "FOROBJS" or "FORINSTANCES" or "FORCONT" or "FORCONTID" or "FORCONTTYPE"
-        or "FORCHARLAYER" or "FORCHARMEMORYTYPE" or "FORTIMERF";
+    private static bool IsForVariant(string cmd) => ScriptBlockSyntax.IsObjectLoop(cmd);
 
     private static IReadOnlyList<ScriptKey> GetSubList(IReadOnlyList<ScriptKey> lines, int start, int end)
     {

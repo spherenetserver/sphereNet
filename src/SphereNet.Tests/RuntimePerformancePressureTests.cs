@@ -52,10 +52,10 @@ public class RuntimePerformancePressureTests
 
         interpreter.Execute(lines, target, null, args, scope);
 
-        Assert.True(target.TryGetProperty("TAG.COUNT", out string count));
-        Assert.True(target.TryGetProperty("TAG.X", out string x));
-        Assert.True(target.TryGetProperty("TAG.NEWCOUNT", out string newCount));
-        Assert.True(target.TryGetProperty("TAG.NEWX", out string newX));
+        string count = target.TagValue("COUNT");
+        string x = target.TagValue("X");
+        string newCount = target.TagValue("NEWCOUNT");
+        string newX = target.TagValue("NEWX");
         Assert.Equal("2", count);
         Assert.Equal("10", x);
         Assert.Equal("2", newCount);

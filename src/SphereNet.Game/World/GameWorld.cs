@@ -94,7 +94,8 @@ public sealed class GameWorld
     public Func<bool>? AllowLightOverride { get; set; }
 
     // --- Global script variables (VAR/VAR0 system) ---
-    private readonly Dictionary<string, string> _globalVars = new(StringComparer.OrdinalIgnoreCase);
+    // A CVarDefMap (Source-X g_ExprGlobals m_VarGlobals): string and number vars.
+    private readonly SphereNet.Scripting.Variables.VarMap _globalVars = new();
     private readonly Dictionary<string, List<string>> _globalLists = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Global OBJ reference UID for script cross-references.</summary>
@@ -3079,45 +3080,51 @@ public sealed class GameWorld
 
     // ==================== Global Variables (VAR/VAR0) ====================
 
-    /// <summary>Get a global variable value. Returns null if not set.</summary>
+    /// <summary>Get a global variable value (the engine's text). Returns null if not set.</summary>
     public string? GetGlobalVar(string name) =>
-        _globalVars.GetValueOrDefault(name);
+        _globalVars.Get(name);
 
     /// <summary>Get a global variable value. Returns "0" if not set (VAR0 behavior).</summary>
     public string GetGlobalVar0(string name) =>
-        _globalVars.GetValueOrDefault(name) ?? "0";
+        _globalVars.Get(name) ?? "0";
 
-    /// <summary>Set a global variable. Empty/null value removes it.</summary>
-    public void SetGlobalVar(string name, string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-            _globalVars.Remove(name);
-        else
-            _globalVars[name] = value;
-    }
+    /// <summary>What a script's &lt;VAR.name&gt; / &lt;VAR0.name&gt; reads
+    /// (CScriptObj::r_WriteVal SSC_VAR, CScriptObj.cpp:649): a number var in the
+    /// DECIMALVARIABLES format, a string var as stored, "" for a missing key and "0"
+    /// for VAR0's.</summary>
+    public string GetGlobalVarText(string name, bool zero) =>
+        _globalVars.GetKeyStr(name, zero);
+
+    /// <summary>Set a global variable from engine code. Empty/null value removes it.</summary>
+    public void SetGlobalVar(string name, string? value) =>
+        _globalVars.Set(name, value ?? "");
+
+    /// <summary>A script's VAR.name=value / VAR0.name=value (CScriptObj::r_LoadVal
+    /// SSC_VAR, CScriptObj.cpp:351): CVarDefMap::SetStr with the quote flag, fZero
+    /// for VAR0.</summary>
+    public void SetGlobalVarStr(string name, bool quoted, string value, bool deleteZero) =>
+        _globalVars.SetStr(name, quoted, value, deleteZero);
+
+    /// <summary>A [GLOBALS] save line: the quote pair stripped the GetArgStr way and
+    /// the value stored as a string or number var (CServerConfig.cpp:4098 SetStr).</summary>
+    public void LoadGlobalVar(string name, string rawValue) =>
+        _globalVars.LoadValue(name, rawValue);
+
+    /// <summary>A global variable as the world save writes it (r_WritePrefix).</summary>
+    public string? GetGlobalVarSaveText(string name) => _globalVars.GetSaveText(name);
 
     /// <summary>Clear all global variables, optionally filtered by prefix.</summary>
-    public int ClearGlobalVars(string? prefix = null)
-    {
-        if (string.IsNullOrEmpty(prefix))
-        {
-            int count = _globalVars.Count;
-            _globalVars.Clear();
-            return count;
-        }
-        var toRemove = _globalVars.Keys
-            .Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        foreach (var k in toRemove)
-            _globalVars.Remove(k);
-        return toRemove.Count;
-    }
+    public int ClearGlobalVars(string? prefix = null) =>
+        _globalVars.RemoveByPrefix(prefix ?? "");
 
     /// <summary>Get all global variable names for listing.</summary>
-    public IEnumerable<string> GetGlobalVarNames() => _globalVars.Keys;
+    public IEnumerable<string> GetGlobalVarNames() => _globalVars.GetAll().Select(kv => kv.Key);
 
-    /// <summary>Get all global variables as key-value pairs (for save).</summary>
-    public IEnumerable<KeyValuePair<string, string>> GetAllGlobalVars() => _globalVars;
+    /// <summary>Get all global variables as key-value pairs (the engine's text).</summary>
+    public IEnumerable<KeyValuePair<string, string>> GetAllGlobalVars() => _globalVars.GetAll();
+
+    /// <summary>All global variables as a script reads them (VARLIST).</summary>
+    public IEnumerable<KeyValuePair<string, string>> GetAllGlobalVarsText() => _globalVars.GetAllValStr();
 
     // ==================== GM Page Queue ====================
     // Player help/GM pages. Source-X keeps these in g_World.m_GMPages and writes

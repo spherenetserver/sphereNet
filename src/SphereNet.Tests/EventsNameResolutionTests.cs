@@ -83,7 +83,7 @@ public sealed class EventsNameResolutionTests : IDisposable
             new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(item.TryGetProperty("TAG.PROBE", out string v));
+        string v = item.TagValue("PROBE");
         Assert.Equal("1", v);
     }
 
@@ -126,7 +126,7 @@ public sealed class EventsNameResolutionTests : IDisposable
             new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(item.TryGetProperty("TAG.PROBE", out string v));
+        string v = item.TagValue("PROBE");
         Assert.Equal("1", v);
     }
 
@@ -150,7 +150,7 @@ public sealed class EventsNameResolutionTests : IDisposable
             new SphereNet.Game.Scripting.TriggerArgs());
 
         Assert.Equal(TriggerResult.True, result);
-        Assert.True(item.TryGetProperty("TAG.PROBE_EV", out string v));
+        string v = item.TagValue("PROBE_EV");
         Assert.Equal("1", v);
     }
 
@@ -196,7 +196,7 @@ public sealed class EventsNameResolutionTests : IDisposable
         dispatcher.FireRegionEvents(region, "Enter", ch,
             new SphereNet.Game.Scripting.TriggerArgs());
 
-        Assert.True(region.TryGetProperty("TAG.ENTERED", out string v));
+        Assert.True(region.TryGetProperty("TAG.ENTERED", out var v));
         Assert.Equal("1", v);
     }
 }

@@ -10055,12 +10055,16 @@ public partial class Character : ObjBase
         if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:X}");
     }
 
+    /// <summary>The CHARDEF's TAG map, behind the character's own (Base_GetDef()->m_TagDefs).</summary>
+    protected override SphereNet.Scripting.Variables.VarMap? DefinitionTags =>
+        Definitions.DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex)?.TagDefs;
+
     protected override void DumpBaseTags(Action<string> sink)
     {
         var def = Definitions.DefinitionLoader.GetCharDef(
             _charDefIndex != 0 ? _charDefIndex : CharDefIndex);
         if (def == null) return;
-        foreach (var (k, v) in def.TagDefs.GetAll())
+        foreach (var (k, v) in def.TagDefs.GetAllValStr())
             sink($"{k}={v}");
     }
 

@@ -572,7 +572,7 @@ public sealed class CustomHouseLifecycleParityTests
 
             // foundation (2) + the wall; the door was removed before the counting.
             Assert.Equal("3", owner.Tags.Get("SEEN_NEW"));
-            Assert.Equal("7", owner.Tags.Get("SEEN_MAXZ"));
+            Assert.Equal("07", owner.Tags.Get("SEEN_MAXZ"));   // <LOCAL.MAXZ> reads in Sphere hex
             Assert.DoesNotContain(env.Custom.GetCommittedTiles(multi), t => t.TileId == DoorTile);
             Assert.Equal(0, env.Custom.CountFixtures(env.Custom.GetCommittedDesign(multi)));
         }

@@ -65,8 +65,8 @@ public class CombatGetHitParityTests
             int dmg = stack.Dispatcher.RunGetHitTriggers(ctx);
 
             // The char @GetHit saw the engine-seeded roll...
-            Assert.True(target.TryGetTag("SEENLAYER", out var l) && l == ((int)Layer.Helm).ToString());
-            Assert.True(target.TryGetTag("SEENCHANCE", out var c) && c == "25");
+            Assert.True(target.TryGetTag("SEENLAYER", out var l) && TagValueTestExtensions.SphereNum(l) == (int)Layer.Helm);
+            Assert.True(target.TryGetTag("SEENCHANCE", out var c) && TagValueTestExtensions.SphereNum(c) == 25);
             // ...its layer redirect routed the item @GetHit onto the chest piece
             // (previously only a Layer.TwoHanded shield ever got item @GetHit)...
             Assert.True(chest.TryGetTag("ARMORHIT", out var a) && a == "10");
@@ -117,8 +117,8 @@ public class CombatGetHitParityTests
             };
             stack.Dispatcher.RunGetHitTriggers(ctx);
 
-            Assert.True(target.TryGetTag("PCTPHYS", out var p) && p == "75");
-            Assert.True(target.TryGetTag("PCTFIRE", out var f) && f == "25");
+            Assert.True(target.TryGetTag("PCTPHYS", out var p) && TagValueTestExtensions.SphereNum(p) == 75);
+            Assert.True(target.TryGetTag("PCTFIRE", out var f) && TagValueTestExtensions.SphereNum(f) == 25);
         }
         finally
         {

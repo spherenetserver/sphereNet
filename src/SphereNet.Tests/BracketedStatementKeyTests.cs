@@ -37,8 +37,8 @@ public sealed class BracketedStatementKeyTests
 
         var item = new Item();
         stack.Interpreter.Execute(body, item, null, new TriggerArgs(), new ScriptScope());
-        item.TryGetProperty(readBack, out string v);
-        return v;
+        // The stored text (a script read would show a number var in Sphere hex).
+        return item.Tags.Get(readBack[4..]) ?? "0";
     }
 
     /// <summary>The plain form: the key names itself through another tag.</summary>

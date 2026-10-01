@@ -53,7 +53,41 @@ public sealed class PanelHardeningUnitTests
         var result = PanelHost.ValidateScriptContent("[FUNCTION f_a]\nIF 1\n[FUNCTION f_b]\nENDIF\n");
         Assert.False(result.Ok);
         Assert.Contains(result.Errors, e => e.StartsWith("Line 2: IF block is not closed"));
-        Assert.Contains(result.Errors, e => e.StartsWith("Line 4: END block without IF"));
+        Assert.Contains(result.Errors, e => e.StartsWith("Line 4: ENDIF closes no open block"));
+    }
+
+    /// <summary>The validator uses the interpreter's block rules (Source-X): every END
+    /// keyword closes whatever block is open, so these all run on the server and must
+    /// not be refused here.</summary>
+    [Theory]
+    [InlineData("DOSWITCH 1\n  SAY a\n  SAY b\nENDSWITCH")]
+    [InlineData("DORAND 2\n  SAY a\n  SAY b\nENDRAND")]
+    [InlineData("FOR 3\n  SAY a\nEND")]
+    [InlineData("WHILE (<LOCAL.X> < 2)\n  LOCAL.X += 1\nEND")]
+    [InlineData("IF (1)\n  SAY a\nELIF (2)\n  SAY b\nELSE\n  SAY c\nEND")]
+    [InlineData("BEGIN\n  SAY a\nENDDO")]
+    [InlineData("FOR 2\n  IF (1)\n    DOSWITCH 0\n      BEGIN\n        SAY a\n      ENDRAND\n    ENDSWITCH\n  END\nENDDO")]
+    public void InterchangeableTerminatorsAreValid(string body)
+    {
+        var result = PanelHost.ValidateScriptContent($"[FUNCTION f_test]\n{body}\nSAY after\n");
+        Assert.True(result.Ok, string.Join("; ", result.Errors));
+    }
+
+    [Fact]
+    public void BlockErrorsFollowTheInterpreterRules()
+    {
+        // ENDIF closes the FOR (inner block first), leaving the IF open.
+        var unclosed = PanelHost.ValidateScriptContent("[FUNCTION f_a]\nIF 1\nFOR 2\nSAY a\nENDIF\n");
+        Assert.False(unclosed.Ok);
+        Assert.Equal(["Line 2: IF block is not closed"], unclosed.Errors);
+
+        // A stray ELSE / extra END closes nothing.
+        var stray = PanelHost.ValidateScriptContent("[FUNCTION f_a]\nIF 1\nSAY a\nENDIF\nENDSWITCH\nELSE\n");
+        Assert.Equal(["Line 5: ENDSWITCH closes no open block", "Line 6: ELSE closes no open block"], stray.Errors);
+
+        // An ELSE ends a non-IF block that was never closed.
+        var elseInBegin = PanelHost.ValidateScriptContent("[FUNCTION f_a]\nIF 1\nBEGIN\nSAY a\nELSE\nSAY b\nENDIF\n");
+        Assert.Contains(elseInBegin.Errors, e => e.StartsWith("Line 5: ELSE ends the BEGIN block opened at line 3"));
     }
 
     // --- Proxy awareness ---------------------------------------------------

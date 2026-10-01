@@ -1354,7 +1354,7 @@ public sealed class ClientScriptConsoleHandler
             case "CTAGLIST":
             {
                 bool toLog = args.TrimStart().StartsWith("log", StringComparison.OrdinalIgnoreCase);
-                foreach (var (tagKey, tagValue) in _character.CTags.GetAll())
+                foreach (var (tagKey, tagValue) in _character.CTags.GetAllValStr())
                 {
                     string line = $"CTAG.{tagKey}={tagValue}";
                     if (toLog)
@@ -2632,7 +2632,7 @@ public sealed class ClientScriptConsoleHandler
             if (dot > 0)
             {
                 string tagName = varName[(dot + 1)..].Trim().Trim(',', ';');
-                string? tagVal = _character.CTags.Get(tagName);
+                string? tagVal = _character.CTags.GetValStr(tagName);
                 if (tagVal != null)
                 {
                     value = tagVal;

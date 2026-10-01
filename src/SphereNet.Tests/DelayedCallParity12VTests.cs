@@ -308,9 +308,9 @@ public sealed class DelayedCallParity12VTests
 
             NewDispatcher(runner).Run(item, "f_payload", "37");
 
-            Assert.True(item.TryGetProperty("TAG.SEEN_ARGS", out string seenArgs));
+            string seenArgs = item.TagValue("SEEN_ARGS");
             Assert.Equal("37", seenArgs);
-            Assert.True(item.TryGetProperty("TAG.SEEN_N1", out string seenN1));
+            string seenN1 = item.TagValue("SEEN_N1");
             Assert.Equal("37", seenN1);
         }
         finally { File.Delete(scp); }
@@ -340,7 +340,7 @@ public sealed class DelayedCallParity12VTests
             NewDispatcher(runner).Run(item, "REMOVE", "");
 
             Assert.True(item.IsDeleted);                                  // the engine verb ran
-            Assert.False(item.TryGetProperty("TAG.SHADOWED", out string s) && s == "1");
+            Assert.False(item.TagValue("SHADOWED") is string s && s == "1");
         }
         finally { File.Delete(scp); }
     }
@@ -366,7 +366,7 @@ public sealed class DelayedCallParity12VTests
 
             NewDispatcher(runner).Run(item, "f_only", "");
 
-            Assert.True(item.TryGetProperty("TAG.RAN", out string ran));
+            string ran = item.TagValue("RAN");
             Assert.Equal("1", ran);
         }
         finally { File.Delete(scp); }

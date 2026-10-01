@@ -123,9 +123,9 @@ public class SpellEffectTickBridgeTests
             var result = dispatcher.FireCharTrigger(victim, CharTrigger.SpellEffectTick, args);
 
             Assert.NotEqual(TriggerResult.True, result);
-            Assert.True(victim.TryGetProperty("TAG.SEEN_EFFECT", out var seenEffect));
+            string seenEffect = victim.TagValue("SEEN_EFFECT");
             Assert.Equal("7", seenEffect);                  // seeded value visible to the script
-            Assert.True(victim.TryGetProperty("TAG.SEEN_MOREY", out var seenMorey));
+            string seenMorey = victim.TagValue("SEEN_MOREY");
             Assert.Equal("300", seenMorey);                 // ARGO shim memory read
             Assert.Equal(3, locals.GetInt("EFFECT"));       // script write visible to the engine
         }

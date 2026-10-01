@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Script degiskenleri, bloklar ve ifadeler Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Tirnakli TAG/VAR/LOCAL/CTAG degeri metindir: TAG.DATE="2026-10-01"
+           artik 2015 olmuyor; NAME="1+2" ister dogrudan ister SRC., REFn.,
+           UID.x., NEW. veya ARGO. uzerinden yazilsin metnini koruyor.
+DUZELTME - TAG okumasi ITEMDEF/CHARDEF TAG haritasina dusuyor; eksik TAG "" ve
+           TAG0 "0" donuyor (CTAG/CTAG0 ve hesap TAG/TAG0 de ayni); tirnakli bos
+           nesne TAG'i tanima dusmuyor.
+DUZELTME - LOCAL, VAR/VAR0 ve CTAG/CTAG0 CVarDefMap::SetStr kurallarina uyuyor:
+           tirnakli "" veya "0" korunur, tirnaksiz bos deger siler, VAR0/CTAG0
+           sifir sayiyi siler, tirnakli VAR metni ic bosluklarini korur.
+DEGISIKLIK - Tirnaksiz basit sayi calisma aninda sayi degiskenidir ve Sphere hex
+           okunur (TAG.TEN=10 -> 0A, VAR.X=5+3 -> 08), kayit oncesi ve sonrasi
+           ayni; yeni sphere.ini DECIMALVARIABLES=1 bunlari ondalik gosterip
+           kaydeder (varsayilan 0, Source-X gibi).
+DUZELTME - Script blok kapanislari Source-X ile ayni: END, ENDDO, ENDFOR, ENDIF,
+           ENDRAND, ENDSWITCH ve ENDWHILE birbirinin yerine gecer ve acik blogu
+           kapatir; END ile kapanan FOR/WHILE sonraki satiri dongu icinde
+           calistirmaz; hicbir blogu kapatmayan kapanis scripti bitirir. Panel
+           script dogrulayicisi ayni kurallari kullanir.
+DUZELTME - DOSWITCH/DORAND fiziksel satir yerine mantiksal ifade secer: secenek
+           tek satir ya da butun bir BEGIN/IF/dongu/ic blok; DORAND N ilk N
+           secenekten secer, aralik disi DOSWITCH indeksi bir sey calistirmaz.
+DUZELTME - QVAL '?' ve ':' ayiricilarini Source-X gibi bulur (tirnak ve
+           parantez icindekiler bolmez); kisa rastgele bicim negatif araligi
+           kabul eder (<R-7,-7> -7), min >= max ise min doner, yalin <R> 0..999,
+           bosluklu <R 15> rastgele sayi degildir.
+
 [2026-10-01] - Kesintiye dayanikli kayit, hesap kurtarma ve TAG sayi okumasi
 ------------------------------------------------------------------------
 DUZELTME - Dunya kaydi: damgali world/char/data dosyasi (ve her binary kayit

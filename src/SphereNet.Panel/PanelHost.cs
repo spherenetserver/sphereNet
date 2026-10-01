@@ -10,6 +10,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Security;
+using SphereNet.Core.Types;
 using SphereNet.Panel.Auth;
 using SphereNet.Panel.Hubs;
 using SphereNet.Panel.Logging;
@@ -1597,17 +1598,6 @@ public sealed class PanelHost : IDisposable
             path.Replace('/', Path.DirectorySeparatorChar), out fullPath, out error);
     }
 
-    /// <summary>The loops that walk objects instead of a number range. Each opens a
-    /// block ENDFOR closes - the same list the interpreter dispatches
-    /// (ScriptInterpreter.IsForVariant), or a pack that saves and runs fine is
-    /// refused here with "END block without FOR".</summary>
-    private static readonly HashSet<string> ForVariants = new(StringComparer.Ordinal)
-    {
-        "FOR", "FORPLAYERS", "FORCHARS", "FORITEMS", "FORCLIENTS", "FOROBJS",
-        "FORINSTANCES", "FORCONT", "FORCONTID", "FORCONTTYPE", "FORCHARLAYER",
-        "FORCHARMEMORYTYPE", "FORTIMERF",
-    };
-
     /// <summary>Sections whose body is text, not script: a line there that happens
     /// to start with "If" or "For" is prose and opens nothing.</summary>
     private static bool IsTextSection(string header)
@@ -1632,20 +1622,52 @@ public sealed class PanelHost : IDisposable
         return trimmed[..n].ToUpperInvariant();
     }
 
+    private static readonly Func<(string Key, int Line), string> SectionKeyOf = static l => l.Key;
+
+    /// <summary>Check block structure with the interpreter's own rules
+    /// (ScriptBlockSyntax, Source-X CScriptObj::OnTriggerRun): any of END, ENDDO,
+    /// ENDFOR, ENDIF, ENDRAND, ENDSWITCH, ENDWHILE closes whatever block is open,
+    /// ELSE / ELIF / ELSEIF split an IF, and nesting is counted by the block openers.
+    /// Pairing keyword names here used to refuse a valid "DOSWITCH..ENDSWITCH" or
+    /// "FOR..END" that the server runs.</summary>
     internal static ScriptValidationResult ValidateScriptContent(string content)
     {
         var errors = new List<string>();
-        var stack = new Stack<(string Token, int Line)>();
+        var section = new List<(string Key, int Line)>();
         string[] lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         bool textSection = false;
+
+        void OnBlock(int open, int end)
+        {
+            var opener = section[open];
+            if (end >= section.Count)
+            {
+                errors.Add($"Line {opener.Line}: {opener.Key} block is not closed");
+                return;
+            }
+            var closer = section[end];
+            if (opener.Key != "IF" && ScriptBlockSyntax.GetTerminator(closer.Key) == ScriptBlockTerminator.Else)
+                errors.Add($"Line {closer.Line}: {closer.Key} ends the {opener.Key} block opened at line {opener.Line}");
+        }
 
         void CloseSection()
         {
             // Blocks never span sections: report what this one left open here, so
             // the error points at the right section instead of the end of the file.
-            foreach (var item in stack)
-                errors.Add($"Line {item.Line}: {item.Token} block is not closed");
-            stack.Clear();
+            int i = 0;
+            while (i < section.Count)
+            {
+                var line = section[i];
+                if (ScriptBlockSyntax.GetTerminator(line.Key) != ScriptBlockTerminator.None)
+                {
+                    // Source-X ends the trigger on it; nothing after it would run.
+                    errors.Add($"Line {line.Line}: {line.Key} closes no open block");
+                    i++;
+                    continue;
+                }
+                i = ScriptBlockSyntax.SkipStatement(section, i, SectionKeyOf, OnBlock);
+            }
+            section.Clear();
         }
 
         for (int i = 0; i < lines.Length; i++)
@@ -1669,57 +1691,11 @@ public sealed class PanelHost : IDisposable
             if (textSection)
                 continue;
 
-            string upper = LeadingKeyword(trimmed);
-            if (ForVariants.Contains(upper))
-            {
-                stack.Push(("FOR", i + 1));
-                continue;
-            }
-            switch (upper)
-            {
-                case "IF":
-                case "WHILE":
-                case "DORAND":
-                case "DOSWITCH":
-                case "BEGIN":
-                    stack.Push((upper, i + 1));
-                    break;
-                case "ENDIF":
-                    PopExpected(stack, "IF", i + 1, errors);
-                    break;
-                case "ENDFOR":
-                    PopExpected(stack, "FOR", i + 1, errors);
-                    break;
-                case "ENDWHILE":
-                    PopExpected(stack, "WHILE", i + 1, errors);
-                    break;
-                case "ENDDO":
-                    if (stack.Count == 0 || (stack.Peek().Token != "DORAND" && stack.Peek().Token != "DOSWITCH"))
-                        errors.Add($"Line {i + 1}: ENDDO without DORAND/DOSWITCH");
-                    else
-                        stack.Pop();
-                    break;
-                case "END":
-                    PopExpected(stack, "BEGIN", i + 1, errors);
-                    break;
-            }
+            section.Add((LeadingKeyword(trimmed), i + 1));
         }
 
         CloseSection();
         return new ScriptValidationResult(errors.Count == 0, errors.ToArray());
-    }
-
-    private static void PopExpected(Stack<(string Token, int Line)> stack, string expected, int line, List<string> errors)
-    {
-        if (stack.Count == 0)
-        {
-            errors.Add($"Line {line}: END block without {expected}");
-            return;
-        }
-
-        var top = stack.Pop();
-        if (top.Token != expected)
-            errors.Add($"Line {line}: expected END for {top.Token} opened at line {top.Line}, got {expected}");
     }
 
     /// <summary>

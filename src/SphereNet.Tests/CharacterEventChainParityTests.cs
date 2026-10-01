@@ -41,7 +41,7 @@ public sealed class CharacterEventChainParityTests
         for (int count = 1; count <= 2; count++)
         {
             stack.Dispatcher.FireCharTriggerByName(ch, "Probe", new GameArgs());
-            ch.TryGetProperty("TAG.count", out var value);
+            string value = ch.TagValue("count");
             Assert.Equal(count.ToString(), value);
         }
     }
@@ -68,8 +68,8 @@ public sealed class CharacterEventChainParityTests
         ch.CharDefIndex = 0x190;
         ch.IsPlayer = player;
         stack.Dispatcher.FireCharTriggerByName(ch, "Probe", new GameArgs());
-        ch.TryGetProperty("TAG0.type", out var type);
-        ch.TryGetProperty("TAG0.body", out var body);
+        string type = ch.TagValue("type");
+        string body = ch.TagValue("body");
         Assert.Equal(player ? "0" : "1", type);
         Assert.Equal(player ? "0" : "1", body);
     }
@@ -96,9 +96,9 @@ public sealed class CharacterEventChainParityTests
         foreach (string name in new[] { "e_first", "e_second", "e_last" })
             ch.Events.Add(stack.Resources.ResolveDefName(name));
         stack.Dispatcher.FireCharTriggerByName(ch, "Probe", new GameArgs());
-        ch.TryGetProperty("TAG.count", out var count);
-        ch.TryGetProperty("TAG0.removed", out var removed);
-        ch.TryGetProperty("TAG.last", out var last);
+        string count = ch.TagValue("count");
+        string removed = ch.TagValue("removed");
+        string last = ch.TagValue("last");
         Assert.Equal("1", count);
         Assert.Equal("0", removed);
         Assert.Equal("1", last);

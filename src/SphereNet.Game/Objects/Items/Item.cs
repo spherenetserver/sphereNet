@@ -179,6 +179,9 @@ public class Item : ObjBase
     private SphereNet.Scripting.Definitions.ItemDef? ResolveDefinition() =>
         DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(this));
 
+    /// <summary>The ITEMDEF's TAG map, behind the item's own (Base_GetDef()->m_TagDefs).</summary>
+    protected override SphereNet.Scripting.Variables.VarMap? DefinitionTags => ResolveDefinition()?.TagDefs;
+
     /// <summary>The type this item ACTUALLY is, for the property surface: the instance
     /// override when it has one, otherwise the type its definition declares.
     ///
@@ -212,7 +215,7 @@ public class Item : ObjBase
     {
         var def = ResolveDefinition();
         if (def == null) return;
-        foreach (var (k, v) in def.TagDefs.GetAll())
+        foreach (var (k, v) in def.TagDefs.GetAllValStr())
             sink($"{k}={v}");
     }
 

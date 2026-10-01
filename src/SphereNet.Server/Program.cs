@@ -277,6 +277,7 @@ public static partial class Program
         SphereNet.Game.Objects.Items.Item.AutoNewbieKeys = cfg.AutoNewbieKeys;
         SphereNet.Game.Speech.GhostSpeech.MediumCanHearGhosts = cfg.MediumCanHearGhosts;
         SphereNet.Game.Speech.SpeechEngine.SuppressCapitals = cfg.SuppressCapitals;
+        SphereNet.Scripting.Variables.VarMap.DecimalVariables = cfg.DecimalVariables;
         SphereNet.Game.Magic.SpellEngine.WopPlayer = cfg.WopPlayer;
         SphereNet.Game.Magic.SpellEngine.WopStaff = cfg.WopStaff;
         SphereNet.Game.Magic.SpellEngine.WopColor = cfg.WopColor;

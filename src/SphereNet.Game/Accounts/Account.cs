@@ -134,10 +134,16 @@ public sealed class Account : IScriptObj
         value = "";
         var upper = key.ToUpperInvariant();
 
-        // TAG.name
+        // TAG.name / TAG0.name - CAccount::r_WriteVal AC_TAG (CAccount.cpp:1345):
+        // GetKeyStr(key, fZero), a number var in the DECIMALVARIABLES format.
         if (upper.StartsWith("TAG.", StringComparison.Ordinal))
         {
-            value = _tags.Get(key[4..]) ?? "0";
+            value = _tags.GetKeyStr(key[4..], zero: false);
+            return true;
+        }
+        if (upper.StartsWith("TAG0.", StringComparison.Ordinal))
+        {
+            value = _tags.GetKeyStr(key[5..], zero: true);
             return true;
         }
 
@@ -193,6 +199,12 @@ public sealed class Account : IScriptObj
         {
             // CAccount::r_LoadVal AC_TAG (CAccount.cpp:1492): SetStr with the quote flag.
             _tags.SetStr(key[4..], SphereNet.Scripting.Execution.ScriptArgQuoting.IsQuoted(value), value);
+            return true;
+        }
+        if (upper.StartsWith("TAG0.", StringComparison.Ordinal))
+        {
+            _tags.SetStr(key[5..], SphereNet.Scripting.Execution.ScriptArgQuoting.IsQuoted(value), value,
+                deleteZero: true);
             return true;
         }
 

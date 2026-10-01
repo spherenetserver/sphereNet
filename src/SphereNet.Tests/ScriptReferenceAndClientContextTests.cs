@@ -108,7 +108,7 @@ public sealed class ScriptReferenceAndClientContextTests : IDisposable
         var lines = new List<ScriptKey>(before ?? []) { new("TAG.OUT", expr) };
         b.Stack.Interpreter.Execute(lines, b.Player, b.Client,
             args ?? new TriggerArgs { Source = b.Player }, new ScriptScope());
-        b.Player.TryGetProperty("TAG.OUT", out string v);
+        string v = b.Player.TagValue("OUT");
         return v;
     }
 
@@ -161,7 +161,7 @@ public sealed class ScriptReferenceAndClientContextTests : IDisposable
 
         b.Stack.Interpreter.Execute([new ScriptKey("TAG.OUT", "<TOPOBJ.f_isdeath>")], inPack, b.Client,
             new TriggerArgs { Source = b.Player }, new ScriptScope());
-        inPack.TryGetProperty("TAG.OUT", out string v);
+        string v = inPack.TagValue("OUT");
         Assert.Equal("1", v);
     }
 

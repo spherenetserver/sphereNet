@@ -141,7 +141,7 @@ public sealed class DelayedCallParity12XYTests
 
         NewDispatcher().Run(item, "TAG.FLAG", "after");
 
-        Assert.True(item.TryGetProperty("TAG.FLAG", out string flag));
+        string flag = item.TagValue("FLAG");
         Assert.Equal("after", flag);
     }
 
@@ -248,7 +248,7 @@ public sealed class DelayedCallParity12XYTests
 
             NewDispatcher(runner).Run(item, "f_capture", "0A,2,3");
 
-            Assert.True(item.TryGetProperty("TAG.N1", out string n1));
+            string n1 = item.TagValue("N1");
             Assert.Equal("10", n1);
         }
         finally { File.Delete(scp); }
@@ -344,7 +344,7 @@ public sealed class DelayedCallParity12XYTests
             // owns the name, refuses, and that is the end of the line.
             NewDispatcher(runner).Run(item, "UNEQUIP", "");
 
-            Assert.False(item.TryGetProperty("TAG.SHADOW", out string s) && s == "1");
+            Assert.False(item.TagValue("SHADOW") is string s && s == "1");
         }
         finally { File.Delete(scp); }
     }
@@ -359,7 +359,7 @@ public sealed class DelayedCallParity12XYTests
             var item = GroundItem(world);
 
             NewDispatcher(runner).Run(item, "f_only", "");
-            Assert.True(item.TryGetProperty("TAG.RAN", out string ran) && ran == "1");
+            Assert.True(item.TagValue("RAN") is string ran && ran == "1");
 
             // ...and a name neither owns still lands on the property.
             NewDispatcher(runner).Run(item, "NAME", "renamed");
@@ -405,10 +405,10 @@ public sealed class DelayedCallParity12XYTests
 
             item.TryExecuteCommand($"{head}.f_mark", "37", new AdminConsole());
 
-            Assert.True(expected.TryGetProperty("TAG.MARK", out string mark));
+            string mark = expected.TagValue("MARK");
             Assert.Equal("37", mark);
             // ...and not on the item that carried the line.
-            Assert.False(item.TryGetProperty("TAG.MARK", out string own) && own == "37");
+            Assert.False(item.TagValue("MARK") is string own && own == "37");
         }
         finally
         {

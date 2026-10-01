@@ -106,7 +106,7 @@ public sealed class ScriptResponseLifecycleTests
         Assert.False(item.TryGetTag("CHOICE", out _));
         f.Client.HandleMenuChoice(f.Player.Uid.Value, id, (ushort)choice, 0);
         Assert.True(item.TryGetTag(choice == 0 ? "CANCEL" : "CHOICE", out var value));
-        Assert.Equal(choice == 0 ? "1" : "7", value);
+        Assert.Equal(choice == 0 ? "1" : "07", value);   // <LOCAL.N> reads in Sphere hex
         Assert.False(item.TryGetTag("BAD", out _));
         Assert.False(f.Player.TryGetTag("CHOICE", out _));
     }

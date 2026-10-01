@@ -106,7 +106,7 @@ public sealed class ObjectLoopParityTests
         var runner = new TriggerRunner(interpreter, resources, logs.CreateLogger<TriggerRunner>());
         if (delayed) new DelayedCallDispatcher(() => runner, null, new Console()).Run(ch, "f_scan", "");
         else Assert.True(runner.TryRunFunction("f_scan", ch, null, new TriggerArgs(), out _));
-        Assert.True(nearby.TryGetProperty("TAG.visited", out var value)); Assert.Equal("1", value);
+        string value = nearby.TagValue("visited"); Assert.Equal("1", value);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class ObjectLoopParityTests
             new ScriptKey("IF", "1"), new ScriptKey("FORTIMERF", "f_job=7"),
             new ScriptKey("TAG.visits", "<EVAL <TAG0.visits>+1>"),
             new ScriptKey("ENDFOR", ""), new ScriptKey("ENDIF", "")], first, null, new TriggerArgs(), new ScriptScope());
-        first.TryGetProperty("TAG.visits", out var a); second.TryGetProperty("TAG.visits", out var b);
+        string a = first.TagValue("visits"); string b = second.TagValue("visits");
         Assert.Equal("1", a); Assert.Equal("2", b);
     }
 
@@ -186,8 +186,8 @@ public sealed class ObjectLoopParityTests
             new ScriptKey("ARGO.TAG.visits", "<EVAL <ARGO.TAG0.visits>+1>"),
             new ScriptKey("BREAK", ""), new ScriptKey("ENDFOR", "")], owner, null, args, new ScriptScope());
         Assert.Same(argument, args.Object1);
-        argument.TryGetProperty("TAG.visits", out var visits); Assert.Equal("1", visits);
-        owner.TryGetProperty("TAG0.visits", out var untouched); Assert.Equal("0", untouched);
+        string visits = argument.TagValue("visits"); Assert.Equal("1", visits);
+        string untouched = owner.TagValue("visits"); Assert.Equal("0", untouched);
     }
 
     [Fact]
@@ -219,8 +219,8 @@ public sealed class ObjectLoopParityTests
         var interpreter = new ScriptInterpreter(new ExpressionParser(), logs.CreateLogger<ScriptInterpreter>());
         interpreter.Execute([new ScriptKey("TAG.has_client", "<ARGO>"), new ScriptKey("TAG.client_version", "<ARGO.CLIENTVERSION>"),
             new ScriptKey("ARGO.CTAG.delete_seen", "1")], ch, new Console(), new TriggerArgs(ch) { Object1 = client }, new ScriptScope());
-        ch.TryGetProperty("TAG.client_version", out var observed); Assert.Equal(version, observed);
-        ch.TryGetProperty("TAG.has_client", out var hasClient); Assert.Equal("1", hasClient);
+        string observed = ch.TagValue("client_version"); Assert.Equal(version, observed);
+        string hasClient = ch.TagValue("has_client"); Assert.Equal("1", hasClient);
         Assert.Equal("1", ch.CTags.Get("delete_seen"));
     }
 

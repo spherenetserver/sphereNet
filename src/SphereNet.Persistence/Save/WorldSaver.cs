@@ -1664,7 +1664,8 @@ public sealed class WorldSaver
             {
                 w.BeginRecord("GLOBALS");
                 foreach (var (key, val) in globals)
-                    w.WriteProperty(key, SphereNet.Scripting.Variables.VarMap.FormatAutoSaveValue(val));
+                    w.WriteProperty(key, world.GetGlobalVarSaveText(key)
+                        ?? SphereNet.Scripting.Variables.VarMap.FormatAutoSaveValue(val));
             }
 
             // LISTs

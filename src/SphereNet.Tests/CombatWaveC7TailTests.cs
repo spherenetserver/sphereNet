@@ -50,7 +50,7 @@ public class CombatWaveC7TailTests
             stack.Dispatcher.RunHitDamageTriggers(ctx);
 
             Assert.True(attacker.TryGetTag("GOTARROW", out var got));
-            Assert.Equal(0x40001234u.ToString(), got);
+            Assert.Equal(0x40001234L, TagValueTestExtensions.SphereNum(got));   // copied from <LOCAL.Arrow>, Sphere hex
             Assert.True(ctx.ArrowHandled);
         }
         finally

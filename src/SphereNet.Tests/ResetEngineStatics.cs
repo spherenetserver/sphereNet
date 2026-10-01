@@ -64,6 +64,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.AutoNewbieKeys = true;
         SphereNet.Game.Speech.GhostSpeech.MediumCanHearGhosts = 1000;
         SphereNet.Game.Speech.SpeechEngine.SuppressCapitals = false;
+        // DECIMALVARIABLES: number vars read in Sphere hex by default.
+        SphereNet.Scripting.Variables.VarMap.DecimalVariables = false;
         SphereNet.Game.Magic.SpellEngine.WopPlayer = true;
         SphereNet.Game.Magic.SpellEngine.WopStaff = false;
         SphereNet.Game.Magic.SpellEngine.WopColor = 0x03B2;
@@ -172,6 +174,28 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.CombatHitChanceEra = 0;
         SphereNet.Game.Objects.Characters.Character.EquippedCastEnabled = false;
         SphereNet.Game.Objects.Characters.Character.ReagentsRequiredEnabled = true;
+        // Cast abort/fail resource loss (MANALOSSABORT, MANALOSSFAIL, MANALOSSPERCENT,
+        // REAGENTLOSSABORT, REAGENTLOSSFAIL). A test that turned abort loss on made
+        // a later SpellSelect refusal charge 40% of the mana it should have kept.
+        SphereNet.Game.Objects.Characters.Character.ManaLossAbort = false;
+        SphereNet.Game.Objects.Characters.Character.ManaLossFail = false;
+        SphereNet.Game.Objects.Characters.Character.ManaLossPercent = 100;
+        SphereNet.Game.Objects.Characters.Character.ReagentLossAbort = false;
+        SphereNet.Game.Objects.Characters.Character.ReagentLossFail = false;
+        // Remaining sphere.ini combat/crime knobs and hooks tests assign.
+        SphereNet.Game.Objects.Characters.Character.ArcheryMinDist = 1;
+        SphereNet.Game.Objects.Characters.Character.ArcheryMaxDist = 12;
+        SphereNet.Game.Objects.Characters.Character.CombatArcheryMovementDelay = 0;
+        SphereNet.Game.Objects.Characters.Character.AttackingIsACrimeEnabled = true;
+        SphereNet.Game.Objects.Characters.Character.HelpingCriminalsIsACrimeEnabled = false;
+        SphereNet.Game.Objects.Characters.Character.CriminalTimerSeconds = 180;
+        SphereNet.Game.Objects.Characters.Character.HitpointPercentOnRez = 10;
+        SphereNet.Game.Objects.Characters.Character.MapViewRadarTiles = 18;
+        SphereNet.Game.Objects.Characters.Character.NotoSaveUpdate = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveCharByUid = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveClientInfo = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveHouseUidsByOwner = null;
+        SphereNet.Game.Objects.Characters.Character.ResolveShipUidsByOwner = null;
         SphereNet.Game.Combat.CombatEngine.WeaponDefLookup = null;
         SphereNet.Game.Combat.CombatEngine.DurabilityEnabled = false;
         SphereNet.Game.Combat.CombatEngine.DurabilityLossChance = 25;

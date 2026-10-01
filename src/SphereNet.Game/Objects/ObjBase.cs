@@ -702,9 +702,22 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <see cref="SetTag"/>, so keys a subclass routes elsewhere keep working.</summary>
     public void SetTagStr(string key, bool quoted, string value, bool deleteZero = false)
     {
+        // An unquoted simple number is a number var holding its VALUE ("5+3" is 8):
+        // the setter is handed the decimal, so a subclass routing the key (STATLOCK,
+        // RUNE_X) parses a plain number.
+        if (!quoted && VarMap.TryEvaluateSimpleNumber(value, out long number))
+        {
+            SetTag(key, number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _tags.ApplySetStrForm(key, false, value, deleteZero);
+            return;
+        }
         SetTag(key, value);
         _tags.ApplySetStrForm(key, quoted, value, deleteZero);
     }
+
+    /// <summary>The creating definition's TAG map (ITEMDEF/CHARDEF), which a TAG read
+    /// falls back to when the object has no key of its own (CObjBase.cpp:1553).</summary>
+    protected virtual VarMap? DefinitionTags => null;
 
     /// <summary>A TAG line read from a save: the value's quote pair is stripped
     /// (GetArgStr) and remembered, so a string var goes back out quoted; an
@@ -931,7 +944,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             if (int.TryParse(idxStr, out int idx) && idx >= 0)
             {
                 int n = 0;
-                foreach (var pair in _tags.GetAll())
+                foreach (var pair in _tags.GetAllValStr())
                 {
                     if (n == idx)
                     {
@@ -958,7 +971,12 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         {
             int dotIdx = key.IndexOf('.');
             string tagKey = dotIdx >= 0 ? key[(dotIdx + 1)..] : "";
-            value = _tags.Get(tagKey) ?? "0";
+            // CObjBase::r_WriteVal OC_TAG (CObjBase.cpp:1553): the object's own key
+            // (a quoted empty one included), else the definition's, else "" - "0"
+            // for TAG0 (CVarDefCont::GetValStrZeroed). A number var reads in the
+            // DECIMALVARIABLES format.
+            bool zero = dotIdx > 0 && key[dotIdx - 1] == '0';
+            value = _tags.GetValStr(tagKey) ?? DefinitionTags?.GetValStr(tagKey) ?? (zero ? "0" : "");
             return true;
         }
         if (key.StartsWith("CTAG.", StringComparison.OrdinalIgnoreCase) ||
@@ -970,8 +988,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             string tagKey = dotIdx >= 0 ? key[(dotIdx + 1)..] : "";
             // Source-X: CTag lives on CClient, not CChar. Read from the
             // character's client-session storage; anything else (items,
-            // offline characters) has no CTag, return "0".
-            value = (this is Characters.Character ch ? ch.CTags.Get(tagKey) : null) ?? "0";
+            // offline characters) has no CTag. A missing key reads "" for CTAG and
+            // "0" for CTAG0 (CClient::r_WriteVal -> GetKeyStr(key, fZero)).
+            bool zero = dotIdx > 0 && key[dotIdx - 1] == '0';
+            value = (this is Characters.Character ch ? ch.CTags.GetValStr(tagKey) : null) ?? (zero ? "0" : "");
             return true;
         }
 
@@ -1643,7 +1663,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                 // CVarDefMap::DumpKeys (CVarDefMap.cpp:599): "TAG.key=val", to the
                 // server log with the "log" argument.
                 var tagSink = ResolveDumpSink(args, source);
-                foreach (var (k, v) in _tags.GetAll())
+                foreach (var (k, v) in _tags.GetAllValStr())
                     tagSink($"TAG.{k}={v}");
                 return true;
             }
@@ -2306,8 +2326,13 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         {
             int dotIdx = key.IndexOf('.');
             string tagKey = dotIdx >= 0 ? key[(dotIdx + 1)..] : "";
+            // CClient::r_LoadVal CTAG (CClient.cpp:795): SetStr(key, fQuoted, arg,
+            // fZero) - a quoted value (empty or "0" included) is kept, an unquoted
+            // empty one deletes, CTAG0 drops a zero number.
+            bool zero = dotIdx > 0 && key[dotIdx - 1] == '0';
             if (this is Characters.Character ch)
-                ch.CTags.Set(tagKey, value);
+                ch.CTags.SetStr(tagKey, SphereNet.Scripting.Execution.ScriptArgQuoting.IsQuoted(value), value,
+                    deleteZero: zero);
             // Silently no-op for non-character objects (items, etc.) —
             // CTAG only makes sense on an online character's client.
             return true;

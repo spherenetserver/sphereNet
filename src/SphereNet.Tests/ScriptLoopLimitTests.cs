@@ -26,8 +26,8 @@ public sealed class ScriptLoopLimitTests
         }
         var item = new Item();
         stack.Interpreter.Execute(body, item, null, new TriggerArgs(), new ScriptScope());
-        item.TryGetProperty("TAG.X", out string v);
-        return v;
+        // The stored text (a script read would show a number var in Sphere hex).
+        return item.Tags.Get("X") ?? "0";
     }
 
     [Fact]
@@ -47,6 +47,7 @@ public sealed class ScriptLoopLimitTests
 
     [Fact]
     public void WhileNumbersItsPassesFromZero() =>
-        Assert.Equal(":0,1,2,", Run("TAG.X=:", "TAG.N=0", "WHILE (<eval <tag.n>> < 3)",
+        // LOCAL._WHILE is a number var: each pass reads in Sphere hex.
+        Assert.Equal(":00,01,02,", Run("TAG.X=:", "TAG.N=0", "WHILE (<eval <tag.n>> < 3)",
             "TAG.X=<tag.x><local._while>,", "TAG.N=<eval <tag.n>+1>", "ENDWHILE"));
 }

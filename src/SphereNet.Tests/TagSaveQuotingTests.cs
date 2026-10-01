@@ -113,14 +113,15 @@ public sealed class TagSaveQuotingTests : IDisposable
     }
 
     [Fact]
-    public void AScriptReadsTheTextItWroteUntilTheSave()
+    public void AScriptReadsANumberVarInSphereHexAndAStringVarAsWritten()
     {
         var world = MakeWorld();
         var item = world.CreateItem();
         RunScript(item, ("TAG.Num", "10"), ("TAG.QuotedNum", "\"5\""), ("TAG.Empty", "\"\""));
 
+        // CVarDefContNum::GetValStr with DECIMALVARIABLES=0.
         Assert.True(item.TryGetProperty("TAG.Num", out string num));
-        Assert.Equal("10", num);
+        Assert.Equal("0A", num);
         Assert.True(item.TryGetProperty("TAG.QuotedNum", out string q));
         Assert.Equal("5", q);
         Assert.True(item.Tags.Has("Empty"));
@@ -354,19 +355,23 @@ public sealed class TagSaveQuotingTests : IDisposable
     // ---- the decision itself --------------------------------------------------
 
     [Theory]
-    [InlineData(false, "5", "05")]
-    [InlineData(false, "1+2", "03")]          // IsSimpleNumberString: evaluated
-    [InlineData(false, "1.5", "\"1.5\"")]     // '.' is not a math separator
-    [InlineData(false, "0ab", "0AB")]
-    [InlineData(false, "1 2 3", "\"1 2 3\"")]
-    [InlineData(true, "5", "\"5\"")]
-    [InlineData(true, "", "\"\"")]
-    public void SetStrDecidesLikeSourceX(bool quoted, string value, string expected)
+    [InlineData(false, "5", "05", "5", "05")]
+    [InlineData(false, "1+2", "03", "3", "03")]          // IsSimpleNumberString: evaluated
+    [InlineData(false, "1.5", "\"1.5\"", "1.5", "1.5")]  // '.' is not a math separator
+    [InlineData(false, "0ab", "0AB", "0ab", "0AB")]
+    [InlineData(false, "1 2 3", "\"1 2 3\"", "1 2 3", "1 2 3")]
+    [InlineData(true, "5", "\"5\"", "5", "5")]
+    [InlineData(true, "1+2", "\"1+2\"", "1+2", "1+2")] // quoted: text, never evaluated
+    [InlineData(true, "", "\"\"", "", "")]
+    public void SetStrDecidesLikeSourceX(bool quoted, string value, string expected, string engineText, string scriptText)
     {
         var map = new VarMap();
         map.SetStr("K", quoted, value);
         Assert.Equal(expected, map.GetSaveText("K"));
-        Assert.Equal(value, map.Get("K"));
+        // The engine sees the literal it was given (or the value of arithmetic); a
+        // script read is CVarDefCont::GetValStr - Sphere hex for a number var.
+        Assert.Equal(engineText, map.Get("K"));
+        Assert.Equal(scriptText, map.GetValStr("K"));
     }
 
     [Theory]

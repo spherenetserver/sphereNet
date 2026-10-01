@@ -59,7 +59,7 @@ public sealed class ScriptChainBoundaryTests
         var args = new GameArgs { O1 = subject };
         Fire(stack, subject, args);
         void Tag(string key, string expected) { subject.TryGetProperty("TAG." + key, out var value); Assert.Equal(expected, value); }
-        Tag("local", "42"); Tag("float", "1.25"); Tag("ref", $"0{subject.Uid.Value:X}"); Tag("argo", "0"); Tag("n", "7");
+        Tag("local", "02A"); Tag("float", "1.25");   // <LOCAL.marker> reads in Sphere hex Tag("ref", $"0{subject.Uid.Value:X}"); Tag("argo", "0"); Tag("n", "7");
         Assert.Null(args.O1);
     }
 
@@ -91,10 +91,10 @@ public sealed class ScriptChainBoundaryTests
         var first = stack.Resources.ResolveDefName("e_first");
         events.Add(first); events.Add(stack.Resources.ResolveDefName("e_second"));
         Fire(stack, subject, new GameArgs());
-        subject.TryGetProperty("TAG.first", out var count); Assert.Equal("1", count);
-        subject.TryGetProperty("TAG.second", out var second); Assert.Equal("1", second);
+        string count = subject.TagValue("first"); Assert.Equal("1", count);
+        string second = subject.TagValue("second"); Assert.Equal("1", second);
         if (removeSelf) Assert.DoesNotContain(first, events);
-        else { subject.TryGetProperty("TAG.added", out var added); Assert.Equal("1", added); }
+        else { string added = subject.TagValue("added"); Assert.Equal("1", added); }
     }
 
     [Theory]
@@ -140,7 +140,7 @@ public sealed class ScriptChainBoundaryTests
         var events = subject is Character ch ? ch.Events : ((Item)subject).Events;
         events.Add(stack.Resources.ResolveDefName("e_first")); events.Add(stack.Resources.ResolveDefName("e_second"));
         Fire(stack, subject, new GameArgs());
-        subject.TryGetProperty("TAG0.removed_ran", out var removed); Assert.Equal("0", removed);
+        string removed = subject.TagValue("removed_ran"); Assert.Equal("0", removed);
         Assert.Single(events);
     }
 

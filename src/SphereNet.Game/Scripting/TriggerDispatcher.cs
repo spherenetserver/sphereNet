@@ -1341,7 +1341,8 @@ public sealed class TriggerDispatcher
         // Check TAG.EVENT_<trigName> override first
         if (obj.TryGetProperty(EventTagKey(trigName), out string value))
         {
-            if (value == "1")
+            // A script's TAG.EVENT_x=1 is a number var and reads back "01".
+            if (SphereNet.Core.Types.ScriptNumber.TryParseToken(value, out long eventFlag) && eventFlag == 1)
                 return TriggerResult.True;
         }
 

@@ -122,7 +122,7 @@ public sealed class SystemsPackParityTests
 
         var hit = dispatcher.FireSpeechTrigger(hearer, speaker, "hail there", 0);
         Assert.Equal(TriggerResult.True, hit);
-        Assert.True(hearer.TryGetProperty("TAG.HEARD_TOWN", out string heard));
+        string heard = hearer.TagValue("HEARD_TOWN");
         Assert.Equal("1", heard);
     }
 
@@ -133,7 +133,7 @@ public sealed class SystemsPackParityTests
         var ch = world.CreateCharacter();
 
         Assert.True(ch.TrySetProperty("TARGPRV", "3"));
-        Assert.True(ch.TryGetProperty("TAG.TARGPRV", out string stored));
+        string stored = ch.TagValue("TARGPRV");
         Assert.Equal("3", stored);
     }
 }

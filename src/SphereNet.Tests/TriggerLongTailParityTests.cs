@@ -273,7 +273,8 @@ public sealed class TriggerLongTailParityTests
         item.BaseId = 0x0F0E;
         stack.Dispatcher.FireItemTrigger(item, ItemTrigger.Create, new GameArgs { ItemSrc = item });
         Assert.True(item.TryGetTag("order", out var order));
-        Assert.Equal("0dt", order);
+        // "0d" is a Sphere hex number (13): a number var, read back "0D".
+        Assert.Equal("0Dt", order);
     }
 
     [Fact]
@@ -303,7 +304,8 @@ public sealed class TriggerLongTailParityTests
         stack.Dispatcher.FireCharTrigger(npc, CharTrigger.Create, new GameArgs { CharSrc = npc });
 
         Assert.True(npc.TryGetTag("order", out var order));
-        Assert.Equal("0ct", order);
+        // "0c" is a Sphere hex number (12): a number var, read back "0C".
+        Assert.Equal("0Ct", order);
         Assert.False(npc.TryGetTag("dynamic", out _));
     }
 

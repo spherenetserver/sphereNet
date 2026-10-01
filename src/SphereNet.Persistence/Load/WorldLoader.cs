@@ -1980,7 +1980,7 @@ public sealed class WorldLoader
                 {
                     // [GLOBALS] lines are CServerConfig GLOBALS keys: SetStr with the quote
                     // flag (CServerConfig.cpp:4098) - GetArgStr strips the quote pair.
-                    world.SetGlobalVar(key, SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out _));
+                    world.LoadGlobalVar(key, val);
                     globals++;
                 }
             }

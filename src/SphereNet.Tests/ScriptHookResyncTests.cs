@@ -94,7 +94,7 @@ public sealed class ScriptHookResyncTests : IDisposable
         Assert.True(_npc.OnNpcActWander!(_character, new NpcAI.WanderTriggerArgs()));
         Reload("[EVENTS e_probe]\nON=@NPCActWander\nTAG.visited=2\nRETURN 0\n");
         Assert.False(_npc.OnNpcActWander!(_character, new NpcAI.WanderTriggerArgs()));
-        _character.TryGetProperty("TAG.visited", out var value);
+        string value = _character.TagValue("visited");
         Assert.Equal("2", value);
         Reload("[EVENTS e_probe]\n");
         Assert.Null(_npc.OnNpcActWander);

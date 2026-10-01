@@ -40,7 +40,7 @@ public class RuntimeStateParityTests
 
         Assert.Equal(2, ch.GetStatLock(0));
         Assert.True(ch.TryGetProperty("TAG.STATLOCK.0", out string tagValue));
-        Assert.Equal("0", tagValue);
+        Assert.Equal("", tagValue);   // no such tag: a missing TAG reads "" (GetValStrZeroed)
         Assert.False(ch.TryGetTag("STATLOCK.0", out _));
     }
 

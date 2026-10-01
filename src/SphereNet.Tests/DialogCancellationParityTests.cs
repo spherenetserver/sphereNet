@@ -50,9 +50,10 @@ public sealed class DialogCancellationParityTests
             client.SetEngines(commands: new CommandHandler { Resources = stack.Resources },
                 triggerDispatcher: interpreter ? stack.Dispatcher : null);
             Assert.Equal(result != 1, client.TryExecuteScriptCommand(player, "SDIALOG", name, null));
-            Assert.True(player.TryGetProperty("CTAG.BEFORE", out var before));
+            // The stored value (a script read shows the number var as "01").
+            string? before = player.CTags.Get("BEFORE");
             Assert.Equal("1", before);
-            player.TryGetProperty("CTAG.AFTER", out var after);
+            string? after = player.CTags.Get("AFTER");
             Assert.NotEqual("1", after);
             Assert.Equal(result != 1, client.IsScriptDialogOpen(name));
             Assert.Equal(result == 1 ? 0 : 1, TestHarness.GetQueuedPackets(client.NetState).Count(p => p.Span[0] is 0xDD or 0xB0));

@@ -9215,7 +9215,9 @@ public partial class Character : ObjBase
 
         var gm = ResolveGuildManager?.Invoke(Uid);
         if (gm == null) return false;
-        var guild = gm.FindGuildRecordFor(Uid);
+        // The GUILD record first: a town citizenship held alongside must not answer
+        // for it. The stone's MEMBERFROMUID reference names either record exactly.
+        var guild = gm.FindGuildRecordFor(Uid, townStones: false) ?? gm.FindGuildRecordFor(Uid, townStones: true);
         if (guild == null) { value = "0"; return true; }
         var member = guild.FindMember(Uid);
         if (member == null) { value = "0"; return true; }
@@ -9278,7 +9280,7 @@ public partial class Character : ObjBase
 
         var gm = ResolveGuildManager?.Invoke(Uid);
         if (gm == null) return false;
-        var guild = gm.FindGuildRecordFor(Uid);
+        var guild = gm.FindGuildRecordFor(Uid, townStones: false) ?? gm.FindGuildRecordFor(Uid, townStones: true);
         if (guild == null) return false;
         var member = guild.FindMember(Uid);
         if (member == null) return false;
@@ -9289,11 +9291,9 @@ public partial class Character : ObjBase
                 if (int.TryParse(value, out int ag)) member.AccountGold = ag;
                 return true;
             case "LOYALTO":
-                if (value == "0" || string.IsNullOrEmpty(value))
-                    member.LoyalTo = Serial.Invalid;
-                else if (uint.TryParse(value.TrimStart('0').TrimStart('x', 'X'),
-                    System.Globalization.NumberStyles.HexNumber, null, out uint loyalUid))
-                    member.LoyalTo = new Serial(loyalUid);
+                // The same vote as the stone's MEMBER.n.LOYALTO (CStoneMember::SetLoyalTo):
+                // validated, 0 / unknown = self, and a valid vote holds the election.
+                Guild.StoneMemberRef.ApplyLoyalTo(guild, member, value);
                 return true;
             case "PRIV":
                 if (byte.TryParse(value, out byte pv)) member.Priv = (Guild.GuildPriv)pv;
@@ -9479,6 +9479,11 @@ public partial class Character : ObjBase
         return uid > 0 ? new Serial(unchecked((uint)uid)) : null;
     }
 
+    /// <summary>The party operations' I/O for a script verb: the server's wiring, or
+    /// in a headless world the owner hooks without a trigger chain.</summary>
+    private static Party.PartyIo? PartyIoFor(Party.PartyManager pm) =>
+        pm.DefaultIo ?? (ResolveWorld?.Invoke() is { } world ? Party.PartyIo.ForWorld(world, null) : null);
+
     private bool TryExecutePartyCommand(string sub, string args, ITextConsole source)
     {
         var pm = ResolvePartyManager?.Invoke();
@@ -9487,71 +9492,65 @@ public partial class Character : ObjBase
         {
             case "CREATE":
             {
-                // Source-X CParty PDV_CREATE — ensure this char has a party (as
-                // master). The party-invite flow calls PARTY.CREATE <flag>,<uid>;
-                // any token resolving to a real char is added as a member (the
-                // leading flag resolves to no char and is skipped).
+                // CClient::r_GetRef PARTY.CREATE <flag>,<uid>... (CClient.cpp:574): only
+                // for a character without a party; each listed character with an active
+                // client is force-added through AcceptEvent with this character as the
+                // inviter, the flag choosing whether the join messages are sent. The
+                // party exists only once somebody has joined it.
                 if (pm == null) return true;
-                var party = pm.FindParty(Uid) ?? pm.CreateParty(Uid);
-                var world = ResolveWorld?.Invoke();
-                foreach (var tok in args.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                if (pm.FindParty(Uid) != null) return false;
+                var io = PartyIoFor(pm);
+                if (io == null) return true;
+                var tokens = args.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                bool sendMessages = tokens.Length > 0 && EvalScriptLong(tokens[0]) != 0;
+                for (int i = 1; i < tokens.Length && i <= 10; i++)
                 {
-                    if (uint.TryParse(tok.TrimStart('0').TrimStart('x', 'X'),
-                            System.Globalization.NumberStyles.HexNumber, null, out uint memUid) &&
-                        memUid != Uid.Value && world?.FindChar(new Serial(memUid)) != null)
-                    {
-                        party.AddMember(new Serial(memUid));
-                    }
+                    long memUid = EvalScriptLong(tokens[i]);
+                    if (memUid <= 0 || io.FindChar(new Serial(unchecked((uint)memUid))) is not { } member ||
+                        !io.IsClientActive(member))
+                        continue;
+                    pm.AcceptEvent(member, Uid, forced: true, io, sendMessages);
                 }
-                return true;
+                return pm.FindParty(Uid) != null;
             }
             case "ADDMEMBER":
-            {
-                // Both script commands resolve the uid to a real character first
-                // (CParty.cpp:767 -> CharFind), and the ordinary add refuses someone who
-                // already belongs to a party, as AcceptEvent does (:443). Without either
-                // check the same uid could sit in two member lists at once, and a uid
-                // that belongs to nobody could take up a place.
-                if (pm == null) return true;
-                if (uint.TryParse(args.Trim().TrimStart('0').TrimStart('x', 'X'),
-                    System.Globalization.NumberStyles.HexNumber, null, out uint targetUid))
-                {
-                    var target = new Serial(targetUid);
-                    if (ResolveWorld?.Invoke()?.FindChar(target) == null)
-                        return true;
-                    if (pm.FindParty(target) != null)
-                        return true;    // already in a party of their own
-                    var party = pm.FindParty(Uid) ?? pm.CreateParty(Uid);
-                    party.AddMember(target);
-                }
-                return true;
-            }
             case "ADDMEMBERFORCED":
             {
+                // PDV_ADDMEMBER / PDV_ADDMEMBERFORCED (CParty.cpp:766): the uid must be
+                // a character not already in this party. The ordinary add writes the
+                // master's invitation record and goes through the same AcceptEvent a
+                // client's accept does (both clients active, the master still seeing
+                // them, @PartyAdd, leader and size limits); the forced add skips only
+                // the record, the sight check and the leader rule.
                 if (pm == null) return true;
-                if (uint.TryParse(args.Trim().TrimStart('0').TrimStart('x', 'X'),
-                    System.Globalization.NumberStyles.HexNumber, null, out uint targetUid))
-                {
-                    var target = new Serial(targetUid);
-                    if (ResolveWorld?.Invoke()?.FindChar(target) == null)
-                        return true;
-                    pm.ForceAddMember(Uid, target);
-                }
-                return true;
+                var party = pm.FindParty(Uid);
+                if (party == null) return true;
+                var io = PartyIoFor(pm);
+                if (io == null) return true;
+                bool forced = sub == "ADDMEMBERFORCED";
+                long addUid = EvalScriptLong(args);
+                var target = addUid > 0 ? io.FindChar(new Serial(unchecked((uint)addUid))) : null;
+                if (target == null || party.IsMember(target.Uid))
+                    return false;
+                var master = io.FindChar(party.Master);
+                if (master != null && !forced)
+                    master.SetTag(Party.PartyManager.LastInviteTag, target.Uid.Value.ToString());
+                return pm.AcceptEvent(target, party.Master, forced, io);
             }
             case "REMOVEMEMBER":
             {
-                // "@n" or a uid, both evaluated; the character must be a member of
-                // THIS party (RemoveMember -> IsInParty, CParty.cpp:296/799) - a uid
-                // from some other party is refused, not pulled out of that one.
+                // "@n" or a uid, both evaluated; RemoveMember(uid, master) with fDisband
+                // at its default (CParty.cpp:799, CParty.h:94): removing the master
+                // disbands the party, and a uid outside THIS party is refused.
                 if (pm == null) return true;
                 var party = pm.FindParty(Uid);
                 if (party == null) return true;
                 var removeUid = ResolvePartyMemberToken(party, args);
                 if (removeUid is not { } rm || !party.IsMember(rm))
                     return false;
-                pm.Leave(rm);
-                return true;
+                var io = PartyIoFor(pm);
+                if (io == null) return true;
+                return pm.RemoveMember(party, rm, party.Master, io);
             }
             case "SETMASTER":
             {
@@ -9587,10 +9586,14 @@ public partial class Character : ObjBase
             }
             case "DISBAND":
             {
+                // PDV_DISBAND -> Disband(GetMaster()) (CParty.cpp:791): the master's
+                // @PartyDisband may refuse, then every member gets @PartyRemove ARGN1=1.
                 if (pm == null) return true;
                 var party = pm.FindParty(Uid);
-                if (party != null) pm.Disband(party.Master);
-                return true;
+                if (party == null) return true;
+                var io = PartyIoFor(pm);
+                if (io == null) return true;
+                return pm.Disband(party, party.Master, io);
             }
             case "SYSMESSAGE":
             {

@@ -584,6 +584,15 @@ public static partial class Program
             };
 
             _partyManager = new PartyManager();
+            // Script party verbs (PARTY.ADDMEMBER/REMOVEMEMBER/DISBAND/CREATE) share the
+            // client paths' membership operations, triggers and packets.
+            _partyManager.DefaultIo = PartyIo.ForWorld(_world, _triggerDispatcher);
+            // CClient::addReSync after each party remove packet (CParty.cpp:170).
+            PartyIo.ResyncCharacter = ch =>
+            {
+                if (TryGetClientFor(ch, out var c))
+                    c.Resync();
+            };
             _guildManager = new GuildManager();
             _guildManager.DeserializeFromWorld(_world);
             if (_guildManager.GuildCount > 0)
@@ -2399,7 +2408,8 @@ public static partial class Program
             {
                 MaxHousesPerPlayer = _config.MaxHousesPlayer,
                 MaxHousesPerAccount = _config.MaxHousesAccount,
-                AutoHouseKeys = _config.AutoHouseKeys
+                AutoHouseKeys = _config.AutoHouseKeys,
+                Guilds = _guildManager,
             };
             _housingEngine.OnAddMulti = (owner, multi, privilege) =>
                 _triggerDispatcher.FireCharTrigger(owner, CharTrigger.AddMulti,
@@ -2412,8 +2422,14 @@ public static partial class Program
             if (_housingEngine.HouseCount > 0)
                 _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);
             _customHousing = new CustomHousingEngine(_world, _housingEngine);
+            CustomHousingEngine.Active = _customHousing;
             CustomHousingEngine.BroadcastRemove = (uid, from) =>
                 BroadcastNearby(from, 18, new PacketDeleteObject(uid), 0);
+            // Every commit - designer or script COMMIT - tells nearby clients the new
+            // revision; they re-query the design (0xBF 0x1E) when it is not theirs.
+            _customHousing.DesignCommitted = (multi, revision) =>
+                BroadcastNearby(multi.Position, 24,
+                    new SphereNet.Network.Packets.Outgoing.PacketHouseDesignVersion(multi.Uid.Value, revision), 0);
             SphereNet.Game.Objects.Characters.Character.ResolveHouseDesignMulti =
                 ch => _customHousing.GetSessionMulti(ch.Uid);
             // CHATSTATICCHANNELS: the channels that exist from startup and survive
@@ -2431,6 +2447,7 @@ public static partial class Program
                 MaxShipsPerPlayer = _config.MaxShipsPlayer,
                 MaxShipsPerAccount = _config.MaxShipsAccount,
                 AutoShipKeys = _config.AutoShipKeys,
+                Guilds = _guildManager,
             };
             _shipEngine.OnAddMulti = (owner, multi, privilege) =>
                 _triggerDispatcher.FireCharTrigger(owner, CharTrigger.AddMulti,
@@ -2499,6 +2516,18 @@ public static partial class Program
                         (_, viewer) => viewer.UpdateKnownCharPosition(passenger));
                 }
             };
+            // Crossing the map edge (OF_MapBoundarySailing): everyone aboard gets a full
+            // view rebuild (MoveDelta fUpdateViewFull, CCMultiMovable.cpp:400) and the
+            // observers left at the old position re-evaluate theirs, dropping the hull.
+            _shipEngine.OnShipCrossedMapBoundary = (ship, oldAnchor) =>
+            {
+                foreach (var carried in _shipEngine.ListShipObjects(ship))
+                    if (carried is SphereNet.Game.Objects.Characters.Character passenger &&
+                        TryGetClientFor(passenger, out var aboard))
+                        aboard.ViewNeedsRefresh = true;
+                ForEachClientInRange(oldAnchor, 18, 0, (_, viewer) => viewer.ViewNeedsRefresh = true);
+                ForEachClientInRange(ship.MultiItem.Position, 18, 0, (_, viewer) => viewer.ViewNeedsRefresh = true);
+            };
             // @Ship_Move belongs to the movement COMMAND, not to each tile of it, and
             // it carries the direction in ARGN1 and whether the ship has stopped in
             // ARGN2 (CCMultiMovable.cpp:863).
@@ -2563,10 +2592,13 @@ public static partial class Program
                 };
             }
 
-            // @Redeed (Source-X) — a house collapsed/redeeded into a deed item.
-            SphereNet.Game.Housing.House.OnRedeed = deed =>
-                _triggerDispatcher?.FireItemTrigger(deed, ItemTrigger.Redeed,
-                    new TriggerArgs { ItemSrc = deed });
+            // @Redeed on the HOUSE multi, as on ships (CItemMulti::Redeed,
+            // CItemMulti.cpp:1225): SRC the redeeming character, ARGO1 the deed,
+            // ARGN1 its id, ARGN2/ARGN3 the transfer and bank choices read back.
+            SphereNet.Game.Housing.House.OnRedeed = (multi, args) =>
+                _triggerDispatcher?.IsItemTriggerUsed(ItemTrigger.Redeed) == true
+                    ? _triggerDispatcher.FireItemTrigger(multi, ItemTrigger.Redeed, args)
+                    : null;
             // @HouseCheck — a script may veto house placement (RETURN 1) after the
             // engine's NoBuild / footprint / terrain checks pass; ARGN1/2/3 = x/y/z.
             SphereNet.Game.Housing.HousingEngine.OnHouseCheck = (placer, pos) =>
@@ -2598,7 +2630,10 @@ public static partial class Program
             // Wire Item static delegates for ship resolution
             SphereNet.Game.Objects.Items.Item.ResolveShip = uid => _shipEngine.GetShip(uid);
             SphereNet.Game.Objects.Items.Item.ResolveHouse = uid => _housingEngine?.GetHouse(uid);
-            SphereNet.Game.Objects.Items.Item.RedeedHouse = uid => _housingEngine?.RedeedFromScript(uid);
+            SphereNet.Game.Objects.Items.Item.ResolveMultiRegion = uid =>
+                _housingEngine?.FindMultiRegion(uid) ?? _shipEngine?.FindShipRegion(uid);
+            SphereNet.Game.Objects.Items.Item.RedeedHouse = (uid, show, bank, source) =>
+                _housingEngine?.RedeedFromScript(uid, show, bank, source);
             SphereNet.Game.Objects.Items.Item.RedeedShip = (uid, show, bank, source) =>
                 _shipEngine?.RedeedFromScript(uid, show, bank, source);
             // Script NEWNPC: route through the invoker's client spawn pipeline
@@ -3055,6 +3090,10 @@ public static partial class Program
                 return null;
             };
             SphereNet.Game.Objects.Items.Item.ResolveGuild = uid => _guildManager.GetGuild(uid);
+            // Stone war/alliance questions consult f_stonesys_internal_isatwarwith /
+            // _isalliedwith first (CItemStone.cpp:1338/1374).
+            SphereNet.Game.Guild.GuildDef.RelationScriptQuery =
+                SphereNet.Game.Guild.GuildManager.CreateRelationScriptQuery(() => _world, _triggerRunner);
             SphereNet.Game.Objects.Items.Item.ResolveGuildManager = () => _guildManager;
             SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = uid => _world.FindChar(uid);
             SphereNet.Game.Objects.Items.Item.ExecuteGuildMemberCommand = (_, memberUid, command) =>

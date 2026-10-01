@@ -15,6 +15,8 @@ public class Region : IScriptObj
     private string _name = "";
     private ResourceId _resourceId;
     private RegionFlag _flags;
+    private RegionFlag _inheritedFlags;
+    private readonly Dictionary<ResourceId, string> _eventNames = [];
     private readonly List<RegionRect> _rects = [];
     private string? _group;
     private byte _mapIndex;
@@ -40,7 +42,40 @@ public class Region : IScriptObj
 
     public string Name { get => _name; set => _name = value; }
     public ResourceId ResourceId { get => _resourceId; set => _resourceId = value; }
-    public RegionFlag Flags { get => _flags; set => _flags = value; }
+    /// <summary>The region's effective flags. Setting them replaces everything,
+    /// inherited bits included: what is set is the region's own.</summary>
+    public RegionFlag Flags
+    {
+        get => _flags;
+        set { _flags = value; _inheritedFlags = RegionFlag.None; }
+    }
+
+    /// <summary>The flags this region holds itself - its effective flags without the
+    /// ones <see cref="InheritFromParent"/> took over from the region around it. This is
+    /// what a structure writes as its REGION.FLAGS (CRegion::r_WriteBody,
+    /// CRegion.cpp:623): the land's flags belong to the land, and a stored copy of
+    /// them would outlive any change to it.</summary>
+    public RegionFlag OwnFlags => _flags & ~_inheritedFlags;
+
+    /// <summary>Raise flags as the region's own (a record's REGION.FLAGS on load).</summary>
+    public void AddFlags(RegionFlag flags)
+    {
+        _flags |= flags;
+        _inheritedFlags &= ~flags;
+    }
+
+    /// <summary>A REGION.FLAGS write to a structure's live region: the value replaces
+    /// the region's own flags, except that the ship bit stays what it was
+    /// (CRegion::r_LoadVal RC_FLAGS, CRegion.cpp:548). The engine's inherit marker is
+    /// kept, and the flags inherited from the land stay inherited.</summary>
+    public void LoadFlagsValue(RegionFlag value)
+    {
+        var own = (value & ~RegionFlag.Ship)
+                  | (OwnFlags & (RegionFlag.Ship | RegionFlag.InheritParentFlags));
+        _inheritedFlags &= ~own;
+        _flags = own | _inheritedFlags;
+    }
+
     public byte MapIndex { get => _mapIndex; set => _mapIndex = value; }
     public string? Group { get => _group; set => _group = value; }
     public IReadOnlyList<RegionRect> Rects => _rects;
@@ -74,7 +109,11 @@ public class Region : IScriptObj
     }
 
     public void AddEvent(ResourceId rid) => _events.Add(rid);
-    public void RemoveEvent(ResourceId rid) => _events.Remove(rid);
+    public void RemoveEvent(ResourceId rid)
+    {
+        _events.Remove(rid);
+        _eventNames.Remove(rid);
+    }
 
     /// <summary>Apply a REGION.EVENTS tag value — a comma-separated list of event
     /// defnames, each optionally '+'-prefixed — to this region's event list,
@@ -89,11 +128,54 @@ public class Region : IScriptObj
         {
             string name = raw.TrimStart('+');
             if (name.Length == 0) continue;
-            var rid = Definitions.DefinitionLoader.ResolveEventName(name);
-            if (!_events.Contains(rid))
-                _events.Add(rid);
+            AddNamedEvent(name);
         }
     }
+
+    /// <summary>An EVENTS line given to the region: each entry is added, a '-' entry
+    /// is taken out and "-0" / "-*" clears the list (CResourceRefArray::r_LoadVal,
+    /// CResourceRef.cpp). The names are remembered so the list can be written back
+    /// under them.</summary>
+    public void LoadEventsValue(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return;
+        foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (raw.StartsWith('-'))
+            {
+                string removed = raw[1..].Trim();
+                if (removed.Length == 0) continue;
+                if (removed[0] is '0' or '*')
+                {
+                    _events.Clear();
+                    _eventNames.Clear();
+                    continue;
+                }
+                var rid = Definitions.DefinitionLoader.ResolveEventName(removed);
+                _events.Remove(rid);
+                _eventNames.Remove(rid);
+                continue;
+            }
+            string name = raw.TrimStart('+').Trim();
+            if (name.Length > 0)
+                AddNamedEvent(name);
+        }
+    }
+
+    private void AddNamedEvent(string name)
+    {
+        var rid = Definitions.DefinitionLoader.ResolveEventName(name);
+        if (!_events.Contains(rid))
+            _events.Add(rid);
+        _eventNames.TryAdd(rid, name);
+    }
+
+    /// <summary>The name an event of this region is written under: the name it was
+    /// given by, else the defname of the resource it resolves to.</summary>
+    public string? EventName(ResourceId rid) =>
+        _eventNames.TryGetValue(rid, out var name)
+            ? name
+            : Definitions.DefinitionLoader.ResolveResourceDefName(rid);
 
     public void AddRegionType(ResourceId rid) => _regionTypes.Add(rid);
     public void RemoveRegionType(ResourceId rid) => _regionTypes.Remove(rid);
@@ -122,7 +204,9 @@ public class Region : IScriptObj
         {
             const RegionFlag inheritBits = RegionFlag.InheritParentFlags
                 | RegionFlag.InheritParentTags | RegionFlag.InheritParentEvents;
-            _flags |= parent._flags & ~inheritBits;
+            var taken = parent._flags & ~inheritBits & ~_flags;
+            _flags |= taken;
+            _inheritedFlags |= taken;
         }
         if (IsFlag(RegionFlag.InheritParentTags))
             foreach (var kv in parent._tags)
@@ -184,6 +268,7 @@ public class Region : IScriptObj
 
     private void SetFlagBool(RegionFlag flag, string val)
     {
+        _inheritedFlags &= ~flag; // an explicit setting is the region's own
         if (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase))
             _flags |= flag;
         else
@@ -332,6 +417,7 @@ public class Region : IScriptObj
             case "NOMAGIC": SetFlagBool(RegionFlag.NoMagic, val); return true;
             case "MAGIC":
                 // MAGIC=1 means NoMagic OFF, MAGIC=0 means NoMagic ON
+                _inheritedFlags &= ~RegionFlag.NoMagic;
                 if (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase))
                     _flags &= ~RegionFlag.NoMagic;
                 else
@@ -340,6 +426,7 @@ public class Region : IScriptObj
             case "RECALLIN":
             case "MARK":
                 // RECALLIN=0 raises REGION_ANTIMAGIC_RECALL_IN (CRegion.cpp:568-570).
+                _inheritedFlags &= ~RegionFlag.Recall;
                 if (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase))
                     _flags &= ~RegionFlag.Recall;
                 else
@@ -349,7 +436,7 @@ public class Region : IScriptObj
             case "UNDERGROUND": SetFlagBool(RegionFlag.Underground, val); return true;
             case "FLAGS":
                 if (uint.TryParse(val, out uint flagsVal))
-                    _flags = (RegionFlag)flagsVal;
+                    Flags = (RegionFlag)flagsVal;
                 return true;
         }
 
@@ -386,14 +473,11 @@ public class Region : IScriptObj
         {
             if (val.StartsWith('+'))
             {
-                var rid = Definitions.DefinitionLoader.ResolveEventName(val[1..]);
-                if (!_events.Contains(rid))
-                    _events.Add(rid);
+                AddNamedEvent(val[1..]);
             }
             else if (val.StartsWith('-'))
             {
-                var rid = Definitions.DefinitionLoader.ResolveEventName(val[1..]);
-                _events.Remove(rid);
+                RemoveEvent(Definitions.DefinitionLoader.ResolveEventName(val[1..]));
             }
             return true;
         }

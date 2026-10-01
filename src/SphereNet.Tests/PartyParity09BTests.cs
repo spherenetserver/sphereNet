@@ -48,6 +48,7 @@ public sealed class PartyParity09BTests
             ch = world.CreateCharacter();
             ch.IsPlayer = true;
             ch.Name = name;
+            ch.IsOnline = true;     // CChar::IsClientActive
             world.PlaceCharacter(ch, new Point3D(x, 100, 0, 0));
             TestHarness.AttachCharacter(client, ch);
             client.SendToChar = (_, _) => { };
@@ -67,8 +68,13 @@ public sealed class PartyParity09BTests
         (byte)(uid.Value >> 8), (byte)uid.Value,
     ];
 
-    private static void Invite(GameClient inviter, Character target) =>
+    // PARTY_LASTINVITETIME holds the next invitation back for 2-5 seconds
+    // (CClientTarg.cpp:2461); the bench clock is moved past it before each one.
+    private static void Invite(GameClient inviter, Character target)
+    {
+        inviter.World.SetGameClockMs(inviter.World.GameClockMs + 6000);
         inviter.HandlePartyInvite(target.Uid.Value);
+    }
 
     private static void Accept(GameClient who, Serial inviter) =>
         who.HandleExtendedCommand(PartySub, WithUid(8, inviter));
@@ -81,16 +87,18 @@ public sealed class PartyParity09BTests
 
     // --- 09B-1: the answer names its invitation --------------------------
 
+    // The record is the INVITER's (PARTY_LASTINVITE, CParty.cpp:454): two inviters
+    // asking the same guest each hold their own, so either answer is good.
     [Fact]
-    public void AnswerToAStaleInvitationJoinsNobody()
+    public void EachInviterHoldsTheirOwnInvitation()
     {
         var bench = Setup();
         Invite(bench.AliceClient, bench.Bob);
-        Invite(bench.CarolClient, bench.Bob);   // the pending one is Carol's now
+        Invite(bench.CarolClient, bench.Bob);
 
         Accept(bench.BobClient, bench.Alice.Uid);
 
-        Assert.Null(bench.Parties.FindParty(bench.Bob.Uid));
+        Assert.Equal(bench.Alice.Uid, bench.Parties.FindParty(bench.Bob.Uid)?.Master);
     }
 
     [Fact]
@@ -143,7 +151,7 @@ public sealed class PartyParity09BTests
 
         Invite(bench.AliceClient, bench.Bob);
 
-        Assert.False(bench.Bob.TryGetTag("PARTY_INVITE_FROM", out _));
+        Assert.False(bench.Alice.TryGetTag(PartyManager.LastInviteTag, out _));
     }
 
     [Fact]
@@ -154,7 +162,7 @@ public sealed class PartyParity09BTests
 
         bench.AliceClient.HandleExtendedCommand(PartySub, WithUid(1, bench.Bob.Uid));
 
-        Assert.False(bench.Bob.TryGetTag("PARTY_INVITE_FROM", out _));
+        Assert.False(bench.Alice.TryGetTag(PartyManager.LastInviteTag, out _));
     }
 
     // --- 09B-4: @PartyAdd runs on the join -------------------------------

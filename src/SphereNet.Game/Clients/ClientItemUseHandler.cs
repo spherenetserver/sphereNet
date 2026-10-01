@@ -971,7 +971,7 @@ public sealed class ClientItemUseHandler
                 ToggleDoor(item);
                 break;
             case ItemType.DoorLocked:
-                SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+                UseLockedDoor(item);
                 break;
 
             case ItemType.Trap:
@@ -2004,7 +2004,7 @@ public sealed class ClientItemUseHandler
                 if (DoorHelper.IsDoorItem(item, _world.MapData))
                 {
                     if (item.ItemType == ItemType.DoorLocked)
-                        SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+                        UseLockedDoor(item);
                     else
                         ToggleDoor(item);
                     break;
@@ -2467,6 +2467,23 @@ public sealed class ClientItemUseHandler
     /// character, so the use-a-key path and the lockpicking path cannot disagree about
     /// which key fits (Source-X CChar::ContentFindKeyFor).</summary>
     private Item? FindBackpackKeyFor(Item locked) => _character?.FindKeyFor(locked);
+
+    /// <summary>Source-X Use_Item IT_DOOR_LOCKED (CCharUse.cpp:1783): a carried key
+    /// for the door opens it like any door; without one the user is told it is
+    /// locked and only a GM goes through anyway. Every locked door used to refuse,
+    /// key or not, so a house door (made locked by OnComponentCreate) shut its own
+    /// owner out.</summary>
+    private void UseLockedDoor(Item door)
+    {
+        if (_character == null) return;
+        if (FindBackpackKeyFor(door) == null)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+            if (_character.PrivLevel < PrivLevel.GM)
+                return;
+        }
+        ToggleDoor(door);
+    }
 
     /// <summary>Re-enter the active-skill pipeline with a pre-resolved Serial target.</summary>
     private void RouteSkillTarget(SkillType skill, Serial target, Point3D? point = null, Item? tool = null)

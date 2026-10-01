@@ -268,6 +268,21 @@ public sealed class TriggerRunner
         return TryExecuteFunction(funcName, target, source, args, callerScope, out result, out _);
     }
 
+    /// <summary>Run a function and hand back the NUMBER its RETURN carried, or null
+    /// when it ran to the end without one. Source-X r_Call reports the TRIGRET value
+    /// itself, and hooks such as f_stonesys_internal_isatwarwith tell RETURN 0,
+    /// RETURN 1 and "anything else" apart - which the TriggerResult cannot, since every
+    /// non-zero RETURN reads as True there. False only when no such function exists.</summary>
+    public bool TryRunFunctionNumeric(
+        string funcName,
+        IScriptObj target,
+        ITextConsole? source,
+        ITriggerArgs? args,
+        out long? numericReturn)
+    {
+        return TryExecuteFunction(funcName, target, source, args, null, out _, out _, out numericReturn);
+    }
+
     /// <summary>True when a script function with this defname (or its <c>f_</c>-prefixed
     /// form) is registered. Lets hot callers skip building trigger args for a global hook
     /// that most script packs never define (e.g. per-NPC f_onchar_speech on every spoken
@@ -335,10 +350,22 @@ public sealed class TriggerRunner
         ITriggerArgs? args,
         ScriptScope? callerScope,
         out TriggerResult result,
-        out string? returnValue)
+        out string? returnValue) =>
+        TryExecuteFunction(funcName, target, source, args, callerScope, out result, out returnValue, out _);
+
+    private bool TryExecuteFunction(
+        string funcName,
+        IScriptObj target,
+        ITextConsole? source,
+        ITriggerArgs? args,
+        ScriptScope? callerScope,
+        out TriggerResult result,
+        out string? returnValue,
+        out long? numericReturn)
     {
         result = TriggerResult.Default;
         returnValue = null;
+        numericReturn = null;
 
         // Resolve function by defname (registered during script loading)
         var rid = _resources.ResolveDefName(funcName);
@@ -416,6 +443,7 @@ public sealed class TriggerRunner
             };
         result = _interpreter.Execute(functionLines, target, source, args, scope);
         returnValue = scope.ReturnValue;
+        numericReturn = scope.IsReturning ? scope.NumericReturnValue : null;
         return true;
     }
 

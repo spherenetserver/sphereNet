@@ -4,6 +4,76 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Housing, ship, guild and party lifecycles follow Source-X
+------------------------------------------------------------------------
+FIX - Custom houses: a new foundation and the Clear command start from the
+      foundation's visible multi pieces (ResetStructure); roof pieces need the
+      roof tile flag and a -3..12 offset in steps of 3 added to the designer's
+      floor height.
+FIX - Custom house design sessions live on the building: Begin moves the
+      designer to the centre (+7), hides them, drops loose items from their
+      view and advances the working revision; level switching moves the
+      designer and is capped at 3/4 levels by foundation size; disconnect and a
+      GM taking over end the session centrally; commit keeps design mode.
+FIX - @HouseDesignBegin N2/N3 are read back (secure/lockdown transfer, eject);
+      @HouseDesignExit RETURN 1 reopens design mode on a normal exit, ARGN1
+      marks a forced exit that cannot be vetoed. @HouseDesignCommitItem filters
+      pieces before counts, fixtures and MAXZ are taken for @HouseDesignCommit.
+FIX - Custom house commit creates door and telepad fixtures from their item
+      definitions; doors start locked with t_house_component/ei_house_door,
+      telepads pair by graphic; a locked door opens for a matching key holder.
+FIX - DESIGNER, REVISION, COMPONENTS, FIXTURES and DESIGN.n read the live design;
+      ADDITEM/ADDMULTI/CLEAR/RESET/REVERT/REMOVEITEM/COMMIT/CUSTOMIZE/
+      ENDCUSTOMIZE run through the design engine. Erasing a piece matches its
+      floor plane, removes every matching piece and leaves dirt only where
+      Source-X does.
+FIX - Writing OWNER on a house runs the shared SetOwner operation (keys, guard
+      memory, @DelMulti/@AddMulti); TransferHouse uses the same path.
+FIX - House redeed follows CItemMulti::Redeed: @Redeed fires on the multi with
+      SRC, ARGO1=deed, ARGN1=deed id and writable ARGN2/ARGN3; items go to the
+      moving crate only when the trigger asks, RETURN 1 drops only the deed.
+      Deleting a house outside a redeed only forgets its moving crate.
+FIX - Classic Source-X house records restore into live houses (OWNER, HOUSETYPE,
+      GUILD, MOVINGCRATE, storage keys, ADD* lists, LOCKITEM, SECURE, custom
+      COMP/REVISION); every multi is a house record, owned or not.
+CHANGE - Houses, ships and guild/town stones are saved in the Source-X record
+      shape: CItemMulti keys (OWNER, GUILD, HOUSETYPE, one ADD*/LOCKITEM/SECURE
+      line per uid, storage keys only when set), custom designs as COMP/REVISION,
+      ships with HATCH/PLANK and MORE2/MOREP state, stones as NAME, ALIGN,
+      ABBREV, CHARTER, WEBPAGE and MEMBER lines. Older HOUSE.*, SHIP.*, GUILD.*
+      and TAG.DESIGN_n records still load.
+FIX - Guild links follow CItemMulti::SetGuild: a multi leaves its guild's list
+      when redeeded, collapsed or deleted, a removed guild unlinks its multis,
+      and the GUILD key links ships as well as houses.
+FIX - Stone MEMBER.n / MEMBERFROMUID.uid return that stone's membership record
+      (LOYALTO/PRIV/GUILDTITLE/ACCOUNTGOLD act on it, other keys reach the
+      character, a bare reference reads 1). LOYALTO validates the vote and
+      recounts the election.
+FIX - Script RESIGN, the gump Leave and Dismiss share one removal path: election
+      recount with no pre-election promotion, forced peace when no full member
+      is left, the stone's memory type cleared from the character. Deleting or
+      disbanding a stone clears that memory type from every member.
+FIX - Disband clears GUILD.HOUSES / GUILD.SHIPS; guild names are no longer cut to
+      40 characters at load. Stone war/alliance queries consult
+      f_stonesys_internal_isatwarwith / f_stonesys_internal_isalliedwith.
+FIX - Party invitations are recorded on the inviter (PARTY_LASTINVITE); a new
+      invitation replaces the previous one, re-inviting within 2-5 s is refused,
+      the invented 120 s expiry is gone. Accepting needs an active client on
+      both sides.
+FIX - A leader's disband runs @PartyDisband on the leader, then @PartyRemove with
+      ARGN1=1 on every member. PARTY.ADDMEMBER/ADDMEMBERFORCED/REMOVEMEMBER/
+      DISBAND/CREATE, the context menu and disconnect use the same membership
+      code as the client protocol; REMOVEMEMBER of the leader disbands. Party
+      packets reach only active clients and every remove is followed by a resync.
+FIX - Multi-tile ship orders are checked ahead and applied as one move (one
+      region check, one broadcast). OptionFlags.MapBoundarySailing wraps a ship
+      to the opposite map edge, one axis per step, with components and
+      passengers.
+CHANGE - Guild and town stones always write ALIGN, even without a guild record.
+      Houses and ships save the live state of their region (REGION.FLAGS,
+      REGION.EVENTS, REGION.TAG.<name>) without inherited flags and load it
+      back into the region; script REGION.* writes on a multi reach its region.
+
 [2026-10-01] - Spell effects follow the Source-X memory-item model
 ------------------------------------------------------------------------
 CHANGE - An active spell effect IS its worn IT_SPELL memory item: spell in

@@ -532,10 +532,15 @@ public sealed class SaveRoundTripParityTests : IDisposable
         // A save that lost everything would also be a fixed point, so first check that
         // the translations ARE in it - one line per thing translated on the way in.
         string written = string.Concat(Directory.EnumerateFiles(first, "*.scp").Select(File.ReadAllText));
-        Assert.Contains("GUILD.MEMBERS", written);         // the classic stone's roster
-        Assert.Contains("GUILD.ABBREV", written);
-        Assert.Contains("SHIP.HOLD", written);             // the ship's hold uid
-        Assert.Contains("SHIP.PLANKS", written);
+        // ...and that they go back out the way Source-X writes them.
+        Assert.Contains("MEMBER=0f9e6,Lord,2,0f9e6,1,0,50", written);   // the classic stone's roster
+        Assert.Contains("ABBREV=RT", written);
+        Assert.Contains("ALIGN=1", written);
+        Assert.Contains("CHARTER0=We stand together", written);
+        Assert.DoesNotContain("TAG.GUILD.", written);
+        Assert.Contains("HATCH=04000203", written);        // the ship's hold uid
+        Assert.Contains("PLANK=04000202", written);
+        Assert.DoesNotContain("TAG.SHIP.", written);
         Assert.Contains("REGION.TAG.OWNER", written, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("KILLS=5", written);               // the murder count
         Assert.Contains("Spellweaving=1000", written);     // the pack calls it Sailormanship

@@ -951,11 +951,78 @@ public sealed class WorldSaver
 
         item.MigrateRuneFromTags();
 
+        // A structure's own keys go out the way Source-X writes them, in its order and
+        // one uid per line (CItemMulti::r_Write, CItemMulti.cpp:2558).
+        bool structure = item.ItemType is SphereNet.Core.Enums.ItemType.Multi
+            or SphereNet.Core.Enums.ItemType.MultiCustom or SphereNet.Core.Enums.ItemType.Ship;
+        if (structure)
+        {
+            // The structure's region first, as CRegion::r_WriteBody writes it with the
+            // "REGION." prefix (CItemMulti.cpp:2564 / CRegion.cpp:623): FLAGS, EVENTS,
+            // then one REGION.TAG.<name> line per tag. The housing and ship engines put
+            // the LIVE region's state on the item before a save.
+            if (item.TryGetTag("REGION.FLAGS", out string? regionFlags) && !string.IsNullOrEmpty(regionFlags))
+                w.WriteProperty("REGION.FLAGS", regionFlags);
+            if (item.TryGetTag("REGION.EVENTS", out string? regionEvents) && !string.IsNullOrEmpty(regionEvents))
+                w.WriteProperty("REGION.EVENTS", regionEvents);
+            foreach (var (key, val) in item.Tags.GetAll())
+            {
+                if (key.StartsWith("REGION.TAG.", StringComparison.OrdinalIgnoreCase))
+                    w.WriteProperty(key.ToUpperInvariant(), val);
+            }
+
+            foreach (var key in MultiRecordKeys)
+            {
+                if (!item.TryGetTag(key, out string? value) || string.IsNullOrEmpty(value))
+                    continue;
+                if (MultiListKeys.Contains(key))
+                {
+                    foreach (var entry in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        w.WriteProperty(key, entry);
+                }
+                else
+                    w.WriteProperty(key, value);
+            }
+        }
+
+        // A guild or town stone's record goes out as CItemStone::r_Write writes it
+        // (ALIGN, ABBREV, CHARTERn, WEBPAGE, MEMBER lines); the engine's own guild tags
+        // are not written on top.
+        bool stoneRecord = false;
+        if (item.ItemType is SphereNet.Core.Enums.ItemType.StoneGuild or SphereNet.Core.Enums.ItemType.StoneTown)
+        {
+            var record = SphereNet.Game.Guild.GuildManager.BuildSourceXStoneRecord(item);
+            stoneRecord = record.Count > 0;
+            foreach (var (key, value) in record)
+                w.WriteProperty(key, value);
+        }
+
+        // A customizable house's committed design goes out the way Source-X writes
+        // it: one COMP=id,dx,dy,dz,stairId line per piece and REVISION
+        // (CItemMultiCustom::r_Write, CItemMultiCustom.cpp:1704). The engine keeps the
+        // design as DESIGN_n tags; those tags are not written on top.
+        bool customDesign = item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom;
+        if (customDesign)
+        {
+            var design = SphereNet.Game.Housing.HouseDesign.LoadFromTags(item);
+            foreach (var tile in design.Tiles)
+                w.WriteProperty("COMP", $"{tile.TileId},{tile.X},{tile.Y},{tile.Z},{tile.StairId}");
+            if (item.TryGetTag(SphereNet.Game.Housing.HouseDesign.RevisionTag, out _) && design.Revision != 0)
+                w.WriteProperty("REVISION", design.Revision.ToString());
+        }
+
         foreach (var (key, val) in item.Tags.GetAll())
         {
             string upper = key.ToUpperInvariant();
             if (upper == "ADDOBJ")
                 continue; // already written from SpawnComponent above
+            if (customDesign && IsDesignTag(key))
+                continue; // written as COMP / REVISION above
+            if (structure && (MultiRecordKeySet.Contains(upper) || upper is "REGION.FLAGS" or "REGION.EVENTS"
+                              || upper.StartsWith("REGION.TAG.", StringComparison.Ordinal)))
+                continue; // written in the structure block above
+            if (stoneRecord && SphereNet.Game.Guild.GuildManager.IsRecordTag(key))
+                continue; // written as the CItemStone record above
             if (EngineTags.IsEphemeral(key))
                 continue;
             if (upper is "HITS" or "HITSMAX" or "MAXHITS")
@@ -986,6 +1053,30 @@ public sealed class WorldSaver
         w.EndRecord();
     }
 
+    /// <summary>CItemMulti::r_Write's keys, in its order.</summary>
+    private static readonly string[] MultiRecordKeys =
+    [
+        "GUILD", "OWNER", "HOUSETYPE", "ADDCOOWNER", "ADDFRIEND", "ADDACCESS", "ADDBAN",
+        "ADDCOMP", "SECURE", "LOCKITEM", "LOCKDOWNSPERCENT", "MOVINGCRATE", "ADDVENDOR",
+        "BASEVENDORS", "BASESTORAGE", "INCREASEDSTORAGE",
+        // CItemShip::r_Write adds these after the CItemMulti keys (CItemShip.cpp:118).
+        "HATCH", "PLANK",
+    ];
+    private static readonly HashSet<string> MultiRecordKeySet = new(MultiRecordKeys, StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> MultiListKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ADDCOOWNER", "ADDFRIEND", "ADDACCESS", "ADDBAN", "ADDCOMP", "SECURE", "LOCKITEM", "ADDVENDOR", "PLANK",
+    };
+
+    /// <summary>The tags the engine keeps a custom house's committed design in:
+    /// DESIGN_REVISION and DESIGN_&lt;n&gt;.</summary>
+    private static bool IsDesignTag(string key)
+    {
+        if (key.Equals(SphereNet.Game.Housing.HouseDesign.RevisionTag, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return key.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase) &&
+               int.TryParse(key.AsSpan("DESIGN_".Length), out int index) && index >= 0;
+    }
     private void WriteChar(ISaveWriter w, Character ch, long now)
     {
         EngineTags.StripEphemeral(ch);

@@ -319,17 +319,12 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
         if (party == null)
             return;
 
-        var membersBefore = party.Members.ToList();
-        _partyManager.Leave(_character.Uid);
-
-        uint[] remaining = party.Members.Select(m => m.Value).ToArray();
-        foreach (var uid in membersBefore)
-        {
-            if (uid == _character.Uid)
-                continue;
-            SendToChar?.Invoke(uid, new PacketPartyRemoveMember(_character.Uid.Value, remaining));
-            SendToChar?.Invoke(uid, new PacketWaypointRemove(_character.Uid.Value));
-        }
+        // CChar::ClientDetach (CChar.cpp:544): RemoveMember(me, me, fDisband=false) -
+        // the ordinary removal with its triggers, the leader handing over to the
+        // next member instead of disbanding.
+        _partyManager.RemoveMember(party, _character.Uid, _character.Uid,
+            Party.PartyIo.ForClient(_world, _triggerDispatcher, SendToChar, _character, SysMessage),
+            disband: false);
     }
 
     /// <summary>Called when the network connection is closed. Marks character as offline.</summary>
@@ -351,6 +346,11 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             bool safeLogout = instantRegion || _character.PrivLevel > PrivLevel.Player;
             bool instaLogout = !wasOnline || safeLogout || _character.IsDead || ClientLingerSeconds <= 0;
             long lingerSeconds = ClientLingerSeconds;
+
+            // A designer leaving ends design mode, forced - no @HouseDesignExit veto can
+            // keep a session open for a client that is gone (CClient::CharDisconnect,
+            // CClient.cpp:190, before @LogOut).
+            _customHousing?.End(_character, forced: true);
 
             // @LogOut runs before the decision, with ARGN1 = the linger time and
             // ARGN2 = instant logout, and a script may change either

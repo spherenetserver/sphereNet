@@ -4,6 +4,7 @@ using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
 using SphereNet.Game.World.Regions;
+using SphereNet.Game.Scripting;
 using SphereNet.MapData;
 using SphereNet.Scripting.Resources;
 
@@ -498,6 +499,12 @@ public sealed class House
     /// other than a redeed. A locked-down item is NOT MOVABLE (ObjAttributes
     /// LockedDown fails Item.IsMovable), so one left behind by a deleted house is
     /// stuck in the world for good, still linked to a multi that is gone.</summary>
+    /// <summary>Drop every entry of the lockdown list without touching the items -
+    /// what Source-X's TransferSecuredToMovingCrate / TransferLockdownsToMovingCrate
+    /// do to _lLockDowns (CItemMulti.cpp:1468/1494), used by the custom-house
+    /// design begin.</summary>
+    internal void ForgetAllLockdowns() => _lockdowns.Clear();
+
     public void ReleaseAllHoldings()
     {
         var world = Objects.ObjBase.ResolveWorld?.Invoke();
@@ -519,34 +526,6 @@ public sealed class House
         }
         _lockdowns.Clear();
         _secureContainers.Clear();
-    }
-
-    /// <summary>Hand the moving crate over to the owner (Source-X
-    /// TransferMovingCrateToBank, CItemMulti.cpp:1522). An EMPTY crate is deleted
-    /// rather than delivered — the reference will not put an empty box in someone's
-    /// bank (:1539). With no owner or no bank to reach, a crate that holds
-    /// something lands on the ground rather than nowhere.</summary>
-    public void TransferMovingCrateToOwner()
-    {
-        var crate = ResolveMovingCrate();
-        if (crate == null)
-            return;
-
-        MovingCrate = Serial.Invalid;
-        crate.Link = Serial.Invalid;
-        var world = Objects.ObjBase.ResolveWorld?.Invoke();
-
-        if (crate.Contents.Count == 0)
-        {
-            crate.Delete();
-            return;
-        }
-
-        world?.HideFromSector(crate);   // it was sitting at house Z - 20
-        var owner = _owner.IsValid ? world?.FindChar(_owner) : null;
-        var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
-        if (bank == null || !bank.TryAddItem(crate))
-            world?.PlaceItemWithDecay(crate, _multiItem.Position);
     }
 
     /// <summary>Restore a persisted lockdown/secure on world load WITHOUT the priv
@@ -594,156 +573,223 @@ public sealed class House
         _decayStage = HouseDecayStage.LikeNew;
     }
 
-    /// <summary>Fired when a house is converted back to a deed (Source-X @Redeed).
-    /// Arg: the freshly-created deed item.</summary>
-    public static Action<Item>? OnRedeed { get; set; }
+    /// <summary>Source-X @Redeed (CItemMulti::Redeed, CItemMulti.cpp:1195), fired on
+    /// the MULTI while it is still standing: SRC is the redeeming character, ARGO1 the
+    /// new deed, ARGN1 the deed's id, ARGN2 starts at 1 (move everything to the moving
+    /// crate) and ARGN3 at the caller's move-to-bank choice; both are read back.
+    /// RETURN 1 suppresses the deed; the teardown happens anyway. Null (or a null
+    /// result) means no script uses the trigger - and then, as upstream, nothing is
+    /// moved to a crate at all.</summary>
+    public static Func<Item, TriggerArgs, TriggerResult?>? OnRedeed { get; set; }
 
-    /// <summary>Transfer ownership (deed back). Preserves multi UUID in deed tag.</summary>
-    public Item? Redeed(GameWorld world)
+    /// <summary>The housing engine this house is registered with, when it is. Lets the
+    /// item-level script keys (OWNER, GUILD) reach the shared ownership operations.</summary>
+    internal HousingEngine? Engine { get; set; }
+
+    /// <summary>Convenience: redeed with no SRC, no message, deed to the pack.</summary>
+    public Item? Redeed(GameWorld world) => Redeed(world, source: null, moveToBank: false);
+
+    /// <summary>Source-X CItemMulti::Redeed(fDisplayMsg, fMoveToBank, uidRedeedingChar),
+    /// CItemMulti.cpp:1195, step for step. Returns the deed that was handed out, or
+    /// null when the house was already redeeded, @Redeed suppressed the deed, or
+    /// there was no player to hand it to - in which case, as upstream, the multi is
+    /// left standing (stripped of its components) and can be redeeded again.</summary>
+    public Item? Redeed(GameWorld world, Character? source, bool moveToBank)
     {
-        if (_redeeded) return null;
-        _redeeded = true;
+        if (_redeeded) return null;   // GetKeyNum("REMOVED")
+
         var deed = world.CreateItem();
         deed.BaseId = 0x14F0; // ITEMID_DEED1
         deed.ItemType = ItemType.Deed;
-        deed.More1 = _multiItem.BaseId;
-        deed.Hue = _multiItem.Hue;
-        if (_multiItem.IsAttr(ObjAttributes.Magic))
-            deed.SetAttr(ObjAttributes.Magic);
         if (_multiItem.ItemType == ItemType.MultiCustom)
             deed.SetTag("CUSTOMHOUSE", "1");
         deed.Name = _multiItem.Name + " deed";
         deed.SetTag("HOUSE_MULTI_UUID", _multiItem.Uuid.ToString("D"));
         deed.SetTag("HOUSE_MULTI_BASEID", _multiItem.BaseId.ToString());
-        // @Redeed (Source-X) — the house is now a deed item.
-        OnRedeed?.Invoke(deed);
 
-        // Remove all component items (the structure itself)
-        foreach (var compUid in _components)
+        var args = new TriggerArgs
+        {
+            ItemSrc = _multiItem, CharSrc = source, O1 = deed,
+            N1 = deed.BaseId, N2 = 1, N3 = moveToBank ? 1 : 0,
+        };
+        bool transferAll = false;
+        TriggerResult? result = OnRedeed?.Invoke(_multiItem, args);
+        if (result.HasValue)
+        {
+            if (args.N2 == 0)
+                moveToBank = false;
+            else
+            {
+                transferAll = true;
+                moveToBank = args.N3 != 0;
+            }
+        }
+
+        RemoveAllComponents(world);
+        if (transferAll)
+            TransferAllItemsToMovingCrate(world);
+
+        var owner = _owner.IsValid ? world.FindChar(_owner) : null;
+        if ((source == null || !source.IsPlayer) && (owner == null || !owner.IsPlayer))
+        {
+            // No player to redeed to: upstream returns here, before the deed is placed
+            // and before the multi is deleted (CItemMulti.cpp:1254).
+            world.RemoveItem(deed);
+            return null;
+        }
+
+        if (moveToBank)
+            TransferMovingCrateToBank(world);
+
+        if (result == TriggerResult.True || deed.IsDeleted)
+        {
+            if (!deed.IsDeleted) world.RemoveItem(deed);
+            deed = null;
+        }
+        if (deed != null)
+        {
+            deed.Hue = _multiItem.Hue;
+            deed.More1 = _multiItem.BaseId;          // m_itDeed.m_Type
+            if (_multiItem.IsAttr(ObjAttributes.Magic))
+                deed.SetAttr(ObjAttributes.Magic);
+            var recipient = owner ?? source!;
+            if (moveToBank)
+            {
+                var bank = recipient.GetEquippedItem(Layer.BankBox) ?? recipient.Backpack;
+                if (bank == null || !bank.TryAddItem(deed))
+                    world.PlaceItemWithDecay(deed, recipient.Position);
+            }
+            else if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
+            {
+                world.PlaceItemWithDecay(deed, recipient.Position);   // ItemBounce
+            }
+        }
+
+        _redeeded = true;   // SetKeyNum("REMOVED", 1)
+        // Delete(): the destructor lets go of whatever is still locked down or
+        // secured, in place, and forgets the moving crate - it does not move it
+        // (CItemMulti.cpp:88-128). The engine's deletion handler does the rest.
+        ReleaseAllHoldings();
+        _movingCrate = Serial.Invalid;
+        world.RemoveItem(_multiItem);
+        return deed;
+    }
+
+    /// <summary>Source-X RemoveAllComponents: the structure's own items go.</summary>
+    private void RemoveAllComponents(GameWorld world)
+    {
+        foreach (var compUid in _components.ToList())
         {
             var item = world.FindItem(compUid);
-            if (item != null)
+            if (item != null && !item.IsDeleted)
                 world.RemoveItem(item);
         }
         _components.Clear();
+    }
 
-        // Source-X collapse: locked-down / secured PLAYER items are NOT structure
-        // components (must not be deleted) and must NOT be scattered on the ground
-        // to decay individually (item loss). They go into a MOVING CRATE — each
-        // item is reparented into the crate (a secured container moves whole), and
-        // the crate is delivered to the owner's bank box when reachable, otherwise
-        // dropped on the house tile. Reparenting (not copying) means no dupe.
-        var protectedUids = _lockdowns.Concat(_secureContainers).ToList();
+    /// <summary>Source-X TransferAllItemsToMovingCrate(TRANSFER_ALL), CItemMulti.cpp:
+    /// 1351: the lockdowns, the secured containers and every other item standing in
+    /// the house region (but the guild stone, the multi, its crate and its components)
+    /// go into the moving crate, which sits at house Z - 20. An empty crate is deleted.
+    /// The client cannot show more than MaxContainerItems in one container, so what
+    /// does not fit goes into a further crate beside the first.</summary>
+    private void TransferAllItemsToMovingCrate(GameWorld world)
+    {
+        var crate = GetMovingCrate(create: true);
+        if (crate == null) return;
+        var crates = new List<Item> { crate };
 
-        // Source-X TransferAllItemsToMovingCrate(TRANSFER_ALL): LOOSE items left
-        // inside the house footprint also go to the crate — previously they were
-        // orphaned on the ground (lost their house link, decayed away).
+        void Put(Item item)
+        {
+            if (item.IsDeleted) return;
+            if (crates[^1].TryAddItem(item)) { item.ClearDecay(); return; }
+            var extra = world.CreateItem();
+            extra.BaseId = MovingCrateId;
+            extra.ItemType = ItemType.Container;
+            extra.Name = "a moving crate";
+            world.PlaceItem(extra, crate.Position);
+            crates.Add(extra);
+            _overflowCrates.Add(extra);
+            if (extra.TryAddItem(item)) item.ClearDecay();
+        }
+
+        // TransferLockdownsToMovingCrate / TransferSecuredToMovingCrate.
+        foreach (var (uids, attr, marker) in new (List<Serial>, ObjAttributes, string)[]
+        {
+            (_lockdowns.ToList(), ObjAttributes.LockedDown, LockdownEvent),
+            (_secureContainers.ToList(), ObjAttributes.Secure, SecureEvent),
+        })
+        {
+            foreach (var uid in uids)
+            {
+                if (world.FindItem(uid) is not { IsDeleted: false } item) continue;
+                RemoveMarkerEvent(item, marker);
+                Put(item);
+                item.ClearAttr(attr);
+                item.Link = Serial.Invalid;
+            }
+        }
+        _lockdowns.Clear();
+        _secureContainers.Clear();
+
+        // Everything else standing in this house's region.
         var footprint = _regionUid != 0 ? world.FindRegionByUid(_regionUid) : null;
         if (footprint != null)
         {
-            var protectedSet = new HashSet<Serial>(protectedUids);
+            var found = new HashSet<Item>();
             foreach (var rect in footprint.Rects)
             {
                 int range = Math.Max(rect.X2 - rect.X1, rect.Y2 - rect.Y1) / 2 + 1;
                 var center = new Point3D(
                     (short)((rect.X1 + rect.X2) / 2), (short)((rect.Y1 + rect.Y2) / 2),
                     _multiItem.Z, _multiItem.MapIndex);
-                foreach (var loose in world.GetItemsInRange(center, range).ToList())
+                foreach (var loose in world.GetItemsInRange(center, range))
                 {
                     if (loose.IsDeleted || !loose.IsOnGround) continue;
-                    if (loose == _multiItem || _components.Contains(loose.Uid)) continue;
-                    if (loose.IsAttr(Core.Enums.ObjAttributes.Static) ||
-                        loose.IsAttr(Core.Enums.ObjAttributes.Move_Never)) continue;
                     if (!footprint.Contains(loose.Position)) continue;
-                    protectedSet.Add(loose.Uid);
+                    if (loose.ItemType == ItemType.StoneGuild) continue;
+                    if (loose == _multiItem || crates.Contains(loose) || _components.Contains(loose.Uid)) continue;
+                    if (loose.IsAttr(ObjAttributes.Static)) continue;   // map statics are not world items upstream
+                    found.Add(loose);
                 }
             }
-            protectedUids = protectedSet.ToList();
+            foreach (var loose in found)
+                Put(loose);
         }
 
-        var protectedItems = new List<Item>();
-        foreach (var protUid in protectedUids)
+        if (crate.Contents.Count == 0)
         {
-            var item = world.FindItem(protUid);
-            if (item == null || item.IsDeleted) continue;
-            item.ClearAttr(Core.Enums.ObjAttributes.LockedDown | Core.Enums.ObjAttributes.Secure);
-            if (item.Link == _multiItem.Uid)
-                item.Link = Serial.Invalid;
-            // Detach from its current container or ground sector, then place it
-            // in the crate (a fresh slot). Contents of a secured container ride
-            // along inside it.
-            if (item.ContainedIn.IsValid)
-                world.FindItem(item.ContainedIn)?.RemoveItem(item);
-            else
-                world.HideFromSector(item);
-            item.ClearDecay(); // protected inside the crate
-            protectedItems.Add(item);
+            _movingCrate = Serial.Invalid;
+            world.RemoveItem(crate);
         }
-
-        // Source-X TransferAllItemsToMovingCrate asks GetMovingCrate(true), so the
-        // crate the house was ALREADY carrying is the one that receives the goods.
-        // It is taken off the house here whether or not there is anything to put in
-        // it — a crate with goods already inside must not be left buried under a
-        // house that no longer exists.
-        var crates = new List<Item>();
-        if (GetMovingCrate(create: false) is { } standingCrate)
-        {
-            MovingCrate = Serial.Invalid;
-            standingCrate.Link = Serial.Invalid;
-            world.HideFromSector(standingCrate);   // it was sitting at house Z - 20
-            crates.Add(standingCrate);
-        }
-
-        while (protectedItems.Count > 0)
-        {
-            Item crate;
-            if (crates.Count > 0 && crates[^1].Contents.Count < Item.MaxContainerItems)
-            {
-                crate = crates[^1];
-            }
-            else
-            {
-                crate = world.CreateItem();
-                crate.BaseId = MovingCrateId;
-                crate.ItemType = Core.Enums.ItemType.Container;
-                crate.Name = "a moving crate";
-                crates.Add(crate);
-            }
-            while (protectedItems.Count > 0 && crate.Contents.Count < Item.MaxContainerItems)
-            {
-                var item = protectedItems[^1];
-                protectedItems.RemoveAt(protectedItems.Count - 1);
-                item.Position = new Point3D(0, 0, 0, crate.MapIndex);
-                crate.TryAddItem(item);
-            }
-        }
-
-        if (crates.Count > 0)
-        {
-            var owner = _owner.IsValid ? world.FindChar(_owner) : null;
-            var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
-            foreach (var crate in crates)
-            {
-                // Source-X TransferMovingCrateToBank deletes an empty crate rather
-                // than delivering it (CItemMulti.cpp:1539) — a house that was
-                // carrying an untouched crate must not post an empty box to the bank.
-                if (crate.Contents.Count == 0)
-                {
-                    world.RemoveItem(crate);
-                    continue;
-                }
-                if (bank == null || !bank.TryAddItem(crate))
-                    world.PlaceItemWithDecay(crate, _multiItem.Position);
-            }
-        }
-        _lockdowns.Clear();
-        _secureContainers.Clear();
-
-        // Remove the multi item itself
-        world.RemoveItem(_multiItem);
-
-        return deed;
     }
+
+    /// <summary>Source-X TransferMovingCrateToBank (CItemMulti.cpp:1522): a crate
+    /// holding something goes into the owner's bank; an empty one is deleted. Without
+    /// an owner nothing happens.</summary>
+    private void TransferMovingCrateToBank(GameWorld world)
+    {
+        var crate = ResolveMovingCrate();
+        var owner = _owner.IsValid ? world.FindChar(_owner) : null;
+        if (crate == null || owner == null)
+            return;
+        if (crate.Contents.Count == 0)
+        {
+            _movingCrate = Serial.Invalid;
+            world.RemoveItem(crate);
+            return;
+        }
+        var bank = owner.GetEquippedItem(Layer.BankBox);
+        if (bank == null)
+            return;
+        bank.TryAddItem(crate);
+        // Overflow crates made beside it travel with it.
+        foreach (var extra in _overflowCrates)
+            if (!extra.IsDeleted) bank.TryAddItem(extra);
+        _overflowCrates.Clear();
+    }
+
+    private readonly List<Item> _overflowCrates = [];
 }
 
 /// <summary>
@@ -912,16 +958,30 @@ public sealed class HousingEngine
     private void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
     {
         if (obj is not Item it) return;
+
+        // A stone that dies takes its structure storage with it, and that storage
+        // runs SetGuild(0) on every multi it lists (CMultiStorage destructor,
+        // CItemMulti.cpp:3520).
+        if (it.ItemType is ItemType.StoneGuild or ItemType.StoneTown && _guilds?.GetGuild(it.Uid) is { } dyingGuild)
+            OnGuildRemoved(dyingGuild);
+
         if (!_houses.TryGetValue(it.Uid, out var house) || !ReferenceEquals(house.MultiItem, it))
             return;
         _houses.Remove(it.Uid);
-        // A house that stops existing by any route other than a redeed still owes
-        // the world what it was holding. A locked-down item is not movable, so one
-        // left behind is stuck in place for good, linked to a multi that is gone;
-        // and the moving crate would stay buried at house Z - 20 with its contents.
+        house.Engine = null;
+        // The multi destructor's SetGuild(0) (CItemMulti.cpp:56): its own guild's
+        // storage loses it.
+        UnlinkGuild(house);
+        // The multi destructor lets go of what it had locked down and secured, in
+        // place (UnlockAllItems / Release, CItemMulti.cpp:88-107), and only FORGETS
+        // its moving crate (SetMovingCrate(CUID()), :124): the crate stays where it
+        // stands with whatever is in it.
         house.ReleaseAllHoldings();
-        house.TransferMovingCrateToOwner();
+        house.MovingCrate = Serial.Invalid;
         var owner = house.Owner.IsValid ? _world.FindChar(house.Owner) : null;
+        // CItemMulti::Delete hands the multi back out of the owner's storage, which
+        // runs @DelMulti (CItemMulti.cpp:146).
+        if (owner is { IsPlayer: true }) OnDelMulti?.Invoke(owner, it);
         RemoveStructureKeys(owner, it.Uid);
         var ownerMemory = owner?.Memory_FindObjTypes(it.Uid, MemoryType.Guard);
         if (owner != null && ownerMemory != null)
@@ -951,6 +1011,7 @@ public sealed class HousingEngine
         var house = CreateHouseFromTags(multiItem);
         if (house == null) return null;
         _houses[multiItem.Uid] = house;
+        house.Engine = this;
         CreateHouseRegion(house);
         return house;
     }
@@ -1030,9 +1091,9 @@ public sealed class HousingEngine
 
         if (customFoundation)
         {
-            // Empty committed design at revision 1 — clients that query the
-            // design (0xBF 0x1E) get a valid, empty 0xD8 stream.
-            multiItem.Tags.Set(HouseDesign.RevisionTag, "1");
+            // Source-X CItemMultiCustom constructor: ResetStructure + CommitChanges,
+            // so the committed design starts as the foundation's visible pieces.
+            CustomHousingEngine.InitializeFoundationDesign(multiItem, def, _world.MapData);
         }
         else
         {
@@ -1067,6 +1128,7 @@ public sealed class HousingEngine
         }
 
         _houses[multiItem.Uid] = house;
+        house.Engine = this;
         OnAddMulti?.Invoke(owner, multiItem, HousePriv.Owner);
         CreateHouseRegion(house);
         owner.Memory_AddObjTypes(multiItem.Uid, MemoryType.Guard);
@@ -1125,18 +1187,96 @@ public sealed class HousingEngine
         if (MaxHousesPerAccount >= 0 && accountCount >= MaxHousesPerAccount)
             return false;
 
-        var oldOwner = _world.FindChar(house.Owner);
-        RemoveStructureKeys(oldOwner, house.MultiItem.Uid);
-        var oldMemory = oldOwner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
-        if (oldOwner != null && oldMemory != null)
-            oldOwner.Memory_ClearTypes(oldMemory, MemoryType.Guard);
-
-        house.TransferOwnership(newOwner.Uid);
-        OnAddMulti?.Invoke(newOwner, house.MultiItem, HousePriv.Owner);
-        newOwner.Memory_AddObjTypes(house.MultiItem.Uid, MemoryType.Guard);
+        SetOwner(house, newOwner.Uid);
         CreateHouseKey(newOwner, house.MultiItem, toBank: false);
         CreateHouseKey(newOwner, house.MultiItem, toBank: true);
         return true;
+    }
+
+    /// <summary>Source-X CItemMulti::SetOwner (CItemMulti.cpp:651) - the operation
+    /// the multi's OWNER key runs. The old owner loses the structure (@DelMulti, its
+    /// keys and the guard memory); the new owner is struck from every other list of
+    /// the house (RevokePrivs) and gains it (@AddMulti, guard memory). No caps and no
+    /// privilege check: this is server authority, as upstream. No key is minted
+    /// either - upstream's SetOwner does not, scripts use ADDKEY. An invalid uid just
+    /// clears the owner. Capacity follows by itself: the per-player and per-account
+    /// counts are read from the owners in the registry.</summary>
+    public bool SetOwner(House house, Serial newOwnerUid)
+    {
+        if (!_houses.TryGetValue(house.MultiItem.Uid, out var registered) || registered != house)
+            return false;
+        if (newOwnerUid == house.Owner)
+            return true;
+
+        var multi = house.MultiItem;
+        var oldOwner = house.Owner.IsValid ? _world.FindChar(house.Owner) : null;
+        house.Owner = Serial.Invalid;
+        if (oldOwner != null)
+        {
+            OnDelMulti?.Invoke(oldOwner, multi);
+            RemoveStructureKeys(oldOwner, multi.Uid);
+            var oldMemory = oldOwner.Memory_FindObjTypes(multi.Uid, MemoryType.Guard);
+            if (oldMemory != null)
+                oldOwner.Memory_ClearTypes(oldMemory, MemoryType.Guard);
+        }
+        if (!newOwnerUid.IsValid)
+            return true;
+
+        house.TransferOwnership(newOwnerUid);
+        var newOwner = _world.FindChar(newOwnerUid);
+        if (newOwner != null)
+        {
+            OnAddMulti?.Invoke(newOwner, multi, HousePriv.Owner);
+            newOwner.Memory_AddObjTypes(multi.Uid, MemoryType.Guard);
+        }
+        return true;
+    }
+
+    /// <summary>The guild/town records structures are listed in (Source-X CItemStone
+    /// multi storage). Set by the host; null leaves guild links out of it.</summary>
+    public Guild.GuildManager? Guilds
+    {
+        get => _guilds;
+        set
+        {
+            if (_guilds != null) _guilds.GuildRemoved -= OnGuildRemoved;
+            _guilds = value;
+            if (_guilds != null) _guilds.GuildRemoved += OnGuildRemoved;
+        }
+    }
+    private Guild.GuildManager? _guilds;
+
+    /// <summary>Source-X CItemMulti::SetGuild (CItemMulti.cpp:711): the old stone's
+    /// storage loses the multi, the new one gains it. An invalid uid just clears it.
+    /// Only a guild stone can be named (SHL_GUILD, CItemMulti.cpp:3105).</summary>
+    public bool SetGuild(House house, Serial stoneUid)
+    {
+        if (stoneUid.IsValid && _world.FindItem(stoneUid) is not { ItemType: ItemType.StoneGuild })
+            return false;
+        UnlinkGuild(house);
+        if (!stoneUid.IsValid)
+            return true;
+        house.GuildStone = stoneUid;
+        _guilds?.GetGuild(stoneUid)?.AddHouse(house.MultiItem.Uid);
+        return true;
+    }
+
+    private void UnlinkGuild(House house)
+    {
+        var old = house.GuildStone;
+        house.GuildStone = Serial.Invalid;
+        if (old.IsValid)
+            _guilds?.GetGuild(old)?.DelMulti(house.MultiItem.Uid);
+    }
+
+    /// <summary>A guild record went away (disband, or its stone was deleted). Its
+    /// storage runs SetGuild(0) on every house it lists (CMultiStorage destructor,
+    /// CItemMulti.cpp:3533).</summary>
+    private void OnGuildRemoved(Guild.GuildDef guild)
+    {
+        foreach (var uid in guild.Houses.ToList())
+            if (_houses.GetValueOrDefault(uid) is { } house)
+                UnlinkGuild(house);
     }
 
     private void RemoveStructureKeys(Character? owner, Serial structureUid)
@@ -1259,46 +1399,36 @@ public sealed class HousingEngine
             requestor.PrivLevel < PrivLevel.GM)
             return null;
 
-        var position = house.MultiItem.Position;
-        var owner = _world.FindChar(house.Owner);
-        if (owner != null) OnDelMulti?.Invoke(owner, house.MultiItem);
-        RemoveStructureKeys(owner, house.MultiItem.Uid);
-        var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
-        if (owner != null && ownerMemory != null)
-            owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
-        RemoveHouseRegion(house);
-        _houses.Remove(multiItemUid); // before Redeed: it deletes the multi item, and the ObjectDeleting handler must see no entry
-        var deed = house.Redeed(_world);
-        if (deed != null)
-        {
-            var recipient = owner ?? requestor;
-            if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
-                _world.PlaceItemWithDecay(deed, position);
-            else
-                OnDeedDelivered?.Invoke(recipient, deed);
-        }
-        return deed;
+        return RedeedCore(house, requestor, moveToBank: false);
     }
 
     /// <summary>Script/verb-driven redeed (server authority — no priv gate):
     /// the FULL teardown, so the registry entry and the dynamic house region
-    /// never leak (the REDEED verb previously called house.Redeed directly).</summary>
-    public Item? RedeedFromScript(Serial multiItemUid)
+    /// never leak. Source-X REDEED showMsg,moveToBank (CItemMulti.cpp:2388): SRC
+    /// redeems, the owner (or SRC when there is none) receives the deed.</summary>
+    public Item? RedeedFromScript(Serial multiItemUid, bool displayMessage = false,
+        bool moveToBank = false, Character? source = null)
     {
         if (!_houses.TryGetValue(multiItemUid, out var house))
             return null;
-        var owner = _world.FindChar(house.Owner);
-        if (owner != null) OnDelMulti?.Invoke(owner, house.MultiItem);
-        RemoveStructureKeys(owner, house.MultiItem.Uid);
-        var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
-        if (owner != null && ownerMemory != null)
-            owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
-        RemoveHouseRegion(house);
-        _houses.Remove(multiItemUid); // before Redeed: it deletes the multi item, and the ObjectDeleting handler must see no entry
-        var deed = house.Redeed(_world);
-        return deed;
+        return RedeedCore(house, source, moveToBank);
     }
 
+    /// <summary>The one redeed every route takes (client demolish, script REDEED,
+    /// collapse): Source-X CItemMulti::Redeed (CItemMulti.cpp:1195) on the standing
+    /// house. Its final Delete() reaches this engine's deletion handler, which does
+    /// what upstream's Delete and destructor do - @DelMulti on the owner, keys, guard
+    /// memory, SetGuild(0), the region.</summary>
+    private Item? RedeedCore(House house, Character? source, bool moveToBank)
+    {
+        var deed = house.Redeed(_world, source, moveToBank);
+        if (deed == null)
+            return null;
+        var recipient = (house.Owner.IsValid ? _world.FindChar(house.Owner) : null) ?? source;
+        if (recipient?.Backpack != null && deed.ContainedIn == recipient.Backpack.Uid)
+            OnDeedDelivered?.Invoke(recipient, deed);
+        return deed;
+    }
     /// <summary>Find the house that contains the given position.</summary>
     public House? FindHouseAt(Point3D pos)
     {
@@ -1400,36 +1530,22 @@ public sealed class HousingEngine
         region.AddRect(x1, y1, x2, y2);
         if (parent != null)
             region.InheritFromParent(parent);
-        // Apply the multi's REGION.EVENTS tag so the house region's @Enter/@Step
-        // scripts fire (the tag round-trips on the item but was never realized).
-        if (mi.TryGetTag("REGION.EVENTS", out string? regionEvents))
-            region.AddEventsFromTag(regionEvents);
-        // A classic record carries the region's own flags too, and they are the
-        // structure's, not the definition's default (REGION.FLAGS, SHL_REGION,
-        // CItemMulti.cpp:3011).
-        if (mi.TryGetTag("REGION.FLAGS", out string? regionFlags) &&
-            SphereNet.Core.Types.ScriptNumber.TryParseToken(regionFlags, out long flagBits) &&
-            flagBits > 0)
-            region.Flags |= (RegionFlag)flagBits;
-        ApplyRegionTags(mi, region);
+        // The record's REGION.EVENTS / REGION.FLAGS / REGION.TAG.<name> lines are the
+        // structure's own region state (SHL_REGION, CItemMulti.cpp:3011): its
+        // @Enter/@Step scripts, its flags and the tags a script inside reads.
+        MultiRegionRecord.Apply(mi, region);
 
         _world.AddRegion(region);
         return region;
     }
 
-    /// <summary>Put the multi's stored REGION.TAG.&lt;name&gt; lines on the region it
-    /// realizes. A classic save writes them on the multi and upstream hands them
-    /// straight to the region (SHL_REGION, CItemMulti.cpp:3011), which is where a
-    /// script standing inside the structure reads them from - a house's TAG.owner, for
-    /// one. Keeping them only on the item left the live region blank.</summary>
-    private static void ApplyRegionTags(SphereNet.Game.Objects.Items.Item mi,
-        SphereNet.Game.World.Regions.Region region)
+    /// <summary>The live region of a structure this engine realized - a house's, or
+    /// that of a multi with no house record - or null.</summary>
+    public Region? FindMultiRegion(Serial multiUid)
     {
-        foreach (var (key, val) in mi.Tags.GetAll())
-        {
-            if (key.StartsWith("REGION.TAG.", StringComparison.OrdinalIgnoreCase))
-                region.SetTag(key["REGION.TAG.".Length..], val);
-        }
+        uint regionUid = _houses.TryGetValue(multiUid, out var house) ? house.RegionUid
+            : _multiRegions.TryGetValue(multiUid, out uint loose) ? loose : 0;
+        return regionUid != 0 ? _world.FindRegionByUid(regionUid) : null;
     }
 
 
@@ -1554,21 +1670,7 @@ public sealed class HousingEngine
 
         // Remove collapsed houses
         foreach (var house in collapsed)
-        {
-            var owner = _world.FindChar(house.Owner);
-            RemoveStructureKeys(owner, house.MultiItem.Uid);
-            var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
-            if (owner != null && ownerMemory != null)
-                owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
-            RemoveHouseRegion(house);
-            _houses.Remove(house.MultiItem.Uid); // before Redeed: it deletes the multi item, and the ObjectDeleting handler must see no entry
-            var deed = house.Redeed(_world);
-            if (deed != null && house.Owner.IsValid)
-            {
-                if (owner?.Backpack == null || !owner.Backpack.TryAddItem(deed))
-                    _world.PlaceItem(deed, house.MultiItem.Position);
-            }
-        }
+            RedeedCore(house, source: null, moveToBank: false);
 
         return collapsed;
     }
@@ -1591,87 +1693,89 @@ public sealed class HousingEngine
 
     // --- Save/Load via item TAGs ---
 
+    /// <summary>The native per-house tags older SphereNet saves carry. They are still
+    /// read on load; the next save replaces them with the Source-X keys.</summary>
+    private static readonly string[] LegacyHouseTags =
+    [
+        "HOUSE.OWNER", "HOUSE.OWNER_UUID", "HOUSE.TYPE", "HOUSE.STORAGE", "HOUSE.BASEVENDORS",
+        "HOUSE.INCREASEDSTORAGE", "HOUSE.LOCKDOWNSPERCENT", "HOUSE.GUILD", "HOUSE.MOVINGCRATE",
+        "HOUSE.COOWNERS", "HOUSE.FRIENDS", "HOUSE.BANS", "HOUSE.ACCESS", "HOUSE.VENDORS",
+        "HOUSE.LOCKDOWNS", "HOUSE.SECURE", "HOUSE.COMPONENTS",
+    ];
+
     /// <summary>
-    /// Serialize house metadata to the multi item's TAGs for persistence.
-    /// Called before world save.
+    /// Put each house's state on its multi item in the shape Source-X writes it
+    /// (CItemMulti::r_Write, CItemMulti.cpp:2558): GUILD, OWNER, HOUSETYPE, one
+    /// ADDCOOWNER / ADDFRIEND / ADDACCESS / ADDBAN / ADDCOMP / SECURE / LOCKITEM /
+    /// ADDVENDOR line per uid, LOCKDOWNSPERCENT, MOVINGCRATE, BASEVENDORS, BASESTORAGE,
+    /// INCREASEDSTORAGE - each only when set, as upstream. The world saver writes these
+    /// keys out under their own names. Called before world save.
     /// </summary>
     public void SerializeAllToTags()
     {
-        foreach (var (uid, house) in _houses)
+        static string Hex(Serial s) => $"0{s.Value:x}";
+        static void SetOrRemove(Item item, string key, string? value)
+        {
+            if (value != null) item.SetTag(key, value);
+            else item.RemoveTag(key);
+        }
+        static string? List(IEnumerable<Serial> uids)
+        {
+            var parts = uids.Where(u => u.NamesAnObject).Select(Hex).ToList();
+            return parts.Count > 0 ? string.Join(",", parts) : null;
+        }
+
+        foreach (var (_, house) in _houses)
         {
             var item = house.MultiItem;
-            item.SetTag("HOUSE.OWNER", $"0{house.Owner.Value:X}");
-            var ownerObj = _world.FindObject(house.Owner);
-            if (ownerObj != null)
-                item.SetTag("HOUSE.OWNER_UUID", ownerObj.Uuid.ToString("D"));
-            else
-                item.RemoveTag("HOUSE.OWNER_UUID");
-            item.SetTag("HOUSE.TYPE", ((byte)house.Type).ToString());
-            item.SetTag("HOUSE.STORAGE", house.BaseStorage.ToString());
-            // Written only when set, so an untouched house adds no new tags and
-            // an older save keeps loading exactly as before.
-            if (house.BaseVendors > 0)
-                item.SetTag("HOUSE.BASEVENDORS", house.BaseVendors.ToString());
-            else
-                item.RemoveTag("HOUSE.BASEVENDORS");
-            if (house.IncreasedStorage > 0)
-                item.SetTag("HOUSE.INCREASEDSTORAGE", house.IncreasedStorage.ToString());
-            else
-                item.RemoveTag("HOUSE.INCREASEDSTORAGE");
-            if (house.LockdownsPercent != 50)
-                item.SetTag("HOUSE.LOCKDOWNSPERCENT", house.LockdownsPercent.ToString());
-            else
-                item.RemoveTag("HOUSE.LOCKDOWNSPERCENT");
-            if (house.GuildStone.IsValid)
-                item.SetTag("HOUSE.GUILD", $"0{house.GuildStone.Value:X}");
-            else
-                item.RemoveTag("HOUSE.GUILD");
-            // Source-X writes MOVINGCRATE only when the house has one
-            // (CItemMulti.cpp:2666) — a crate outlives a restart, and the goods in
-            // it are the owner's.
-            if (house.ResolveMovingCrate() is { } savedCrate)
-                item.SetTag("HOUSE.MOVINGCRATE", $"0{savedCrate.Uid.Value:X}");
-            else
-                item.RemoveTag("HOUSE.MOVINGCRATE");
-            item.SetTag("HOUSE.DECAY_STAGE", ((byte)house.DecayStage).ToString());
-            long elapsed = Environment.TickCount64 - house.LastRefreshTick;
-            item.SetTag("HOUSE.DECAY_ELAPSED", Math.Max(0, elapsed).ToString());
+            foreach (var legacy in LegacyHouseTags)
+                item.RemoveTag(legacy);
 
-            if (house.CoOwners.Count > 0)
-                item.SetTag("HOUSE.COOWNERS", string.Join(",", house.CoOwners.Select(s => $"0{s.Value:X}")));
+            SetOrRemove(item, "GUILD", house.GuildStone.NamesAnObject ? Hex(house.GuildStone) : null);
+            SetOrRemove(item, "OWNER", house.Owner.NamesAnObject ? Hex(house.Owner) : null);
+            SetOrRemove(item, "HOUSETYPE", house.Type != HouseType.Private ? $"0{(byte)house.Type:x}" : null);
+            SetOrRemove(item, "ADDCOOWNER", List(house.CoOwners));
+            SetOrRemove(item, "ADDFRIEND", List(house.Friends));
+            SetOrRemove(item, "ADDACCESS", List(house.AccessList));
+            SetOrRemove(item, "ADDBAN", List(house.Bans));
+            SetOrRemove(item, "ADDCOMP", List(house.Components));
+            SetOrRemove(item, "SECURE", List(house.SecureContainers));
+            SetOrRemove(item, "LOCKITEM", List(house.Lockdowns));
+            SetOrRemove(item, "LOCKDOWNSPERCENT", house.LockdownsPercent != 0 ? house.LockdownsPercent.ToString() : null);
+            SetOrRemove(item, "MOVINGCRATE", house.ResolveMovingCrate() is { } crate ? Hex(crate.Uid) : null);
+            SetOrRemove(item, "ADDVENDOR", List(house.Vendors));
+            SetOrRemove(item, "BASEVENDORS", house.BaseVendors != 0 ? house.BaseVendors.ToString() : null);
+            SetOrRemove(item, "BASESTORAGE", house.BaseStorage != 0 ? house.BaseStorage.ToString() : null);
+            SetOrRemove(item, "INCREASEDSTORAGE", house.IncreasedStorage != 0 ? house.IncreasedStorage.ToString() : null);
+
+            // House decay is a SphereNet option Source-X does not have (its multis
+            // never decay, CItemMulti.cpp:389). Only a shard that turned it on keeps
+            // its decay clock, as ordinary tags.
+            if (DecayStageIntervalMs > 0)
+            {
+                item.SetTag("HOUSE.DECAY_STAGE", ((byte)house.DecayStage).ToString());
+                long elapsed = Environment.TickCount64 - house.LastRefreshTick;
+                item.SetTag("HOUSE.DECAY_ELAPSED", Math.Max(0, elapsed).ToString());
+            }
             else
-                item.RemoveTag("HOUSE.COOWNERS");
-            if (house.Friends.Count > 0)
-                item.SetTag("HOUSE.FRIENDS", string.Join(",", house.Friends.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.FRIENDS");
-            if (house.Bans.Count > 0)
-                item.SetTag("HOUSE.BANS", string.Join(",", house.Bans.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.BANS");
-            if (house.AccessList.Count > 0)
-                item.SetTag("HOUSE.ACCESS", string.Join(",", house.AccessList.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.ACCESS");
-            if (house.Vendors.Count > 0)
-                item.SetTag("HOUSE.VENDORS", string.Join(",", house.Vendors.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.VENDORS");
-            if (house.Lockdowns.Count > 0)
-                item.SetTag("HOUSE.LOCKDOWNS", string.Join(",", house.Lockdowns.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.LOCKDOWNS");
-            if (house.SecureContainers.Count > 0)
-                item.SetTag("HOUSE.SECURE", string.Join(",", house.SecureContainers.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.SECURE");
-            if (house.Components.Count > 0)
-                item.SetTag("HOUSE.COMPONENTS", string.Join(",", house.Components.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("HOUSE.COMPONENTS");
+            {
+                item.RemoveTag("HOUSE.DECAY_STAGE");
+                item.RemoveTag("HOUSE.DECAY_ELAPSED");
+            }
+
+            // The LIVE region goes into the record (CItemMulti::r_Write ->
+            // CRegion::r_WriteBody), not whatever the item happened to carry.
+            if (FindMultiRegion(item.Uid) is { } region)
+                MultiRegionRecord.Store(item, region);
+        }
+
+        // A structure with no house record has a region of its own all the same.
+        foreach (var (multiUid, regionUid) in _multiRegions)
+        {
+            if (_world.FindItem(multiUid) is { } loose && _world.FindRegionByUid(regionUid) is { } looseRegion)
+                MultiRegionRecord.Store(loose, looseRegion);
         }
     }
-
     /// <summary>
     /// Rebuild house instances from multi items after world load.
     /// Scans all items of type Multi and reads their HOUSE.* TAGs.
@@ -1707,6 +1811,7 @@ public sealed class HousingEngine
             }
 
             _houses[item.Uid] = house;
+            house.Engine = this;
             CreateHouseRegion(house);
         }
     }
@@ -1716,30 +1821,52 @@ public sealed class HousingEngine
     /// of the old one.</summary>
     private readonly Dictionary<Serial, uint> _multiRegions = [];
 
+    /// <summary>Rebuild a house from its multi item. Every multi is a house, owned or
+    /// not, as every Source-X multi is a CItemMulti. The keys are the ones Source-X
+    /// writes (CItemMulti::r_Write, CItemMulti.cpp:2558) - kept by the item loader as
+    /// tags of the same name - with the native HOUSE.* tags of older SphereNet saves
+    /// read where those are missing. A value the record does not carry comes from the
+    /// definition, as upstream's constructor takes it (CItemMulti.cpp:38).</summary>
     private House? CreateHouseFromTags(Item item)
     {
-        if (!item.TryGetTag("HOUSE.OWNER", out string? ownerStr)) return null;
-        uint ownerVal = ParseHexSerial(ownerStr);
-        if (ownerVal == 0) return null;
+        uint ownerVal = 0;
+        if (item.TryGetTag("OWNER", out string? ownerStr) || item.TryGetTag("HOUSE.OWNER", out ownerStr))
+            ownerVal = ParseHexSerial(ownerStr);
+        var ownerUid = new Serial(ownerVal);
+        var house = new House(item) { Owner = ownerUid.NamesAnObject ? ownerUid : Serial.Invalid };
+        var def = _multiDefs.Get(item.BaseId);
 
-        var house = new House(item) { Owner = new Serial(ownerVal) };
-        if (item.TryGetTag("HOUSE.TYPE", out string? typeStr) && byte.TryParse(typeStr, out byte ht) &&
-            Enum.IsDefined(typeof(HouseType), ht))
+        if (TryTagInt(item, "HOUSETYPE", "HOUSE.TYPE", out int ht) && ht is >= 0 and <= byte.MaxValue &&
+            Enum.IsDefined(typeof(HouseType), (byte)ht))
             house.Type = (HouseType)ht;
-        if (item.TryGetTag("HOUSE.STORAGE", out string? storStr) && int.TryParse(storStr, out int stor) && stor > 0)
+
+        if (TryTagInt(item, "BASESTORAGE", "HOUSE.STORAGE", out int stor) && stor >= 0)
             house.BaseStorage = stor;
-        if (item.TryGetTag("HOUSE.BASEVENDORS", out string? bvStr) && int.TryParse(bvStr, out int bv))
+        else if (def is { BaseStorage: > 0 })
+            house.BaseStorage = def.BaseStorage;
+        if (TryTagInt(item, "BASEVENDORS", "HOUSE.BASEVENDORS", out int bv) && bv >= 0)
             house.BaseVendors = bv;
-        if (item.TryGetTag("HOUSE.INCREASEDSTORAGE", out string? incStr) && int.TryParse(incStr, out int inc))
+        else if (def is { BaseVendors: > 0 })
+            house.BaseVendors = def.BaseVendors;
+        if (TryTagInt(item, "INCREASEDSTORAGE", "HOUSE.INCREASEDSTORAGE", out int inc))
             house.IncreasedStorage = inc;
-        if (item.TryGetTag("HOUSE.LOCKDOWNSPERCENT", out string? lpStr) && int.TryParse(lpStr, out int lp))
+        if (TryTagInt(item, "LOCKDOWNSPERCENT", "HOUSE.LOCKDOWNSPERCENT", out int lp))
             house.LockdownsPercent = lp;
-        if (item.TryGetTag("HOUSE.GUILD", out string? guildStr))
-            house.GuildStone = new Serial(ParseHexSerial(guildStr));
+        RestoreGuildLink(item, house);
+
         // The crate item is an ordinary world item and loads on its own; the house
         // just re-adopts it. ResolveMovingCrate drops the link if the item is gone,
         // so a crate that was emptied and deleted does not come back as a ghost uid.
-        if (item.TryGetTag("HOUSE.MOVINGCRATE", out string? crateStr))
+        if (item.TryGetTag("MOVINGCRATE", out string? classicCrate))
+        {
+            // SHL_MOVINGCRATE (CItemMulti.cpp:3029): 1 means "make one".
+            uint crateUid = ParseHexSerial(classicCrate);
+            if (crateUid == 1)
+                house.GetMovingCrate(create: true);
+            else if (crateUid != 0 && _world.FindItem(new Serial(crateUid)) is { IsDeleted: false } crate)
+                house.AssignMovingCrate(crate);
+        }
+        else if (item.TryGetTag("HOUSE.MOVINGCRATE", out string? crateStr))
             house.MovingCrate = new Serial(ParseHexSerial(crateStr));
         if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && byte.TryParse(dsStr, out byte ds) &&
             ds <= (byte)HouseDecayStage.InDangerOfCollapsing)
@@ -1747,28 +1874,45 @@ public sealed class HousingEngine
         if (item.TryGetTag("HOUSE.DECAY_ELAPSED", out string? elStr) && long.TryParse(elStr, out long el) && el > 0)
             house.LastRefreshTick = Environment.TickCount64 - el;
 
+        // Native lists first, then the classic one-uid-per-line keys
+        // (ADDCOOWNER / ADDFRIEND / ... , CItemMulti.cpp:2580-2682).
         ParseSerialList(item, "HOUSE.COOWNERS", uid => house.AddCoOwner(uid));
+        ParseSerialList(item, "ADDCOOWNER", uid => house.AddCoOwner(uid));
         ParseSerialList(item, "HOUSE.FRIENDS", uid => house.AddFriend(uid));
+        ParseSerialList(item, "ADDFRIEND", uid => house.AddFriend(uid));
         ParseSerialList(item, "HOUSE.ACCESS", uid => house.AddAccess(uid));
+        ParseSerialList(item, "ADDACCESS", uid => house.AddAccess(uid));
         ParseSerialList(item, "HOUSE.VENDORS", uid => house.AddVendor(uid));
+        ParseSerialList(item, "ADDVENDOR", uid => house.AddVendor(uid));
         ParseSerialList(item, "HOUSE.BANS", uid => house.AddBan(uid));
-        ParseSerialList(item, "HOUSE.LOCKDOWNS", uid =>
+        ParseSerialList(item, "ADDBAN", uid => house.AddBan(uid));
+
+        void RestoreLockdown(Serial uid, bool classic)
         {
             var locked = _world.FindItem(uid);
             if (locked == null || locked.IsDeleted) return;
+            // SHL_LOCKITEM takes anything but a container (CItemMulti.cpp:3190).
+            if (classic && locked.ItemType is ItemType.Container or ItemType.ContainerLocked) return;
             house.LockdownForLoad(uid);
             locked.SetAttr(ObjAttributes.LockedDown);
             locked.Link = item.Uid;
-        });
-        ParseSerialList(item, "HOUSE.SECURE", uid =>
+        }
+        void RestoreSecure(Serial uid, bool classic)
         {
             var secure = _world.FindItem(uid);
             if (secure == null || secure.IsDeleted) return;
+            // SHL_SECURE takes containers only (CItemMulti.cpp:3202).
+            if (classic && secure.ItemType is not (ItemType.Container or ItemType.ContainerLocked)) return;
             house.SecureForLoad(uid);
             secure.SetAttr(ObjAttributes.Secure);
             secure.Link = item.Uid;
-        });
-        ParseSerialList(item, "HOUSE.COMPONENTS", uid =>
+        }
+        ParseSerialList(item, "HOUSE.LOCKDOWNS", uid => RestoreLockdown(uid, classic: false));
+        ParseSerialList(item, "LOCKITEM", uid => RestoreLockdown(uid, classic: true));
+        ParseSerialList(item, "HOUSE.SECURE", uid => RestoreSecure(uid, classic: false));
+        ParseSerialList(item, "SECURE", uid => RestoreSecure(uid, classic: true));
+
+        void RestoreComponent(Serial uid)
         {
             var component = _world.FindItem(uid);
             if (component == null) return;
@@ -1778,8 +1922,83 @@ public sealed class HousingEngine
             if (component.ItemType == ItemType.SignGump && !item.Link.IsValid)
                 item.Link = component.Uid;
             house.AddComponent(uid);
-        });
+        }
+        ParseSerialList(item, "HOUSE.COMPONENTS", RestoreComponent);
+        ParseSerialList(item, "ADDCOMP", RestoreComponent);
+
+        AdoptClassicFixtures(item, house);
+
         return house;
+    }
+
+    /// <summary>HOUSE.GUILD (native) or GUILD (classic, CItemMulti.cpp:2566). The
+    /// classic key only names a guild stone (SHL_GUILD, :3105). With the guild
+    /// records available the link is made from both ends, and a link to a guild that
+    /// no longer exists is dropped rather than restored.</summary>
+    private void RestoreGuildLink(Item item, House house)
+    {
+        bool classic = true;
+        if (!item.TryGetTag("GUILD", out string? guildStr))
+        {
+            if (!item.TryGetTag("HOUSE.GUILD", out guildStr))
+                return;
+            classic = false;
+        }
+        var stone = new Serial(ParseHexSerial(guildStr));
+        if (!stone.NamesAnObject)
+            return;
+        if (classic && _world.FindItem(stone) is not { IsDeleted: false, ItemType: ItemType.StoneGuild })
+            return;
+        if (_guilds != null)
+        {
+            var guild = _guilds.GetGuild(stone);
+            if (guild == null)
+                return;
+            guild.AddHouse(item.Uid);
+        }
+        house.GuildStone = stone;
+    }
+
+    /// <summary>A classic custom house lists the doors and teleporters its commit
+    /// made as ordinary components, each tagged FIXTURE=&lt;multi uid&gt;
+    /// (CommitChanges, CItemMultiCustom.cpp:382). The custom-house engine tracks
+    /// them in COMMIT_FIXTURES - the list it hides from the rendered design and
+    /// replaces on the next commit - so they are adopted into it here, or the next
+    /// commit would stand a second door beside every old one.</summary>
+    private void AdoptClassicFixtures(Item multi, House house)
+    {
+        const string FixturesTag = "COMMIT_FIXTURES";
+        if (multi.ItemType != ItemType.MultiCustom || multi.TryGetTag(FixturesTag, out _))
+            return;
+        var fixtures = new List<string>();
+        foreach (var uid in house.Components)
+        {
+            if (_world.FindItem(uid) is not { } comp ||
+                !comp.TryGetTag("FIXTURE", out string? owner) ||
+                ParseHexSerial(owner) != multi.Uid.Value)
+                continue;
+            fixtures.Add(uid.Value.ToString());
+        }
+        if (fixtures.Count > 0)
+            multi.SetTag(FixturesTag, string.Join(',', fixtures));
+    }
+
+    /// <summary>Read a native tag, else its classic counterpart, as a Sphere number.</summary>
+    private static bool TryTagInt(Item item, string nativeKey, string classicKey, out int value)
+    {
+        value = 0;
+        if (!item.TryGetTag(nativeKey, out string? raw) && !item.TryGetTag(classicKey, out raw))
+            return false;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+        if (int.TryParse(raw.Trim(), out value))
+            return true;
+        if (ScriptNumber.TryParseToken(raw.Trim(), out long parsed) && parsed is >= int.MinValue and <= int.MaxValue)
+        {
+            value = (int)parsed;
+            return true;
+        }
+        return false;
     }
 
     private static uint ParseHexSerial(string? str)

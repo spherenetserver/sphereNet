@@ -79,29 +79,31 @@ public sealed class HouseDesignCommitTriggerParityTests
     }
 
     [Fact]
-    public void TheRevisionIsTheOneTheCommitWillLand()
+    public void TheRevisionIsTheWorkingOneAndTheCommitLandsOnePastIt()
     {
+        // ARGN3 = m_designWorking.m_iRevision (:320); the committed design then
+        // takes that revision and moves one past it (:338/:425).
         var (engine, ch, _) = CreateSession();
         Assert.True(engine.Build(ch, 0x0064, 2, 3));
 
         uint announced = engine.PreviewCommit(ch)!.Value.Revision;
         uint landed = engine.Commit(ch)!.Value;
 
-        Assert.Equal(landed, announced);
+        Assert.Equal(announced + 1, landed);
     }
 
     [Fact]
     public void AnUnchangedDesignIsNotACommit()
     {
         // Source-X returns early on an equal revision (:277) - nobody is charged
-        // for pressing the button twice on the same design.
-        var (engine, ch, multi) = CreateSession();
+        // for pressing the button twice on the same design. The session stays
+        // open after a commit, and the second press finds nothing to commit.
+        var (engine, ch, _) = CreateSession();
         Assert.True(engine.Build(ch, 0x0064, 2, 3));
         Assert.NotNull(engine.Commit(ch));
 
-        engine.Begin(ch, multi);                     // reopened, nothing edited
-
         Assert.Null(engine.PreviewCommit(ch));
+        Assert.Null(engine.Commit(ch));
     }
 
     [Fact]
@@ -263,7 +265,8 @@ public sealed class HouseDesignCommitTriggerParityTests
 
             Assert.True(owner.TryGetTag("SAW", out string? saw) && saw == "1");
             Assert.Single(custom.GetCommittedTiles(multi));
-            Assert.Null(custom.GetSession(owner.Uid));   // committing ends the session
+            // Committing does not end design mode (Source-X CommitChanges).
+            Assert.NotNull(custom.GetSession(owner.Uid));
         }
         finally
         {

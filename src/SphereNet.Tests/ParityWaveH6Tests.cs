@@ -81,7 +81,8 @@ public class ParityWaveH6Tests
         var fixtures = world.GetItemsInRange(new Point3D(1502, 1503, 0, 0), 0)
             .Where(i => i.BaseId == 0x06A5).ToList();
         var door = Assert.Single(fixtures);
-        Assert.Equal(ItemType.Door, door.ItemType);
+        // OnComponentCreate (CItemMulti.cpp:3468) makes a house door start locked.
+        Assert.Equal(ItemType.DoorLocked, door.ItemType);
         Assert.Equal(multi.Uid, door.Link);
         Assert.DoesNotContain(world.GetItemsInRange(new Point3D(1501, 1501, 0, 0), 0),
             i => i.BaseId == 0x0064);

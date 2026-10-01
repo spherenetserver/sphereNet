@@ -131,7 +131,8 @@ public class Sphere56TSaveCompatTests
         // has to be a region - with the flags, events and tags its own record carries.
         Assert.NotNull(castle);
         Assert.Equal(SphereNet.Core.Enums.ItemType.Multi, castle!.ItemType);
-        Assert.Equal(0, housing.HouseCount);
+        // Every multi is a CItemMulti upstream, owned or not.
+        Assert.NotNull(housing.GetHouse(castle.Uid));
 
         var castleRegion = world.FindRegion(castle.Position);
         Assert.NotNull(castleRegion);

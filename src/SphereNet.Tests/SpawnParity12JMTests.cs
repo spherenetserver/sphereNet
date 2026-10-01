@@ -419,11 +419,19 @@ public sealed class SpawnParity12JMTests
         var house = world.CreateItem();
         house.ItemType = ItemType.MultiCustom;
         world.PlaceItem(house, new Point3D(100, 100, 0, 0));
-        house.SetTag("DESIGN_1", "something");
+        house.SetTag("DESIGN_1", "0x64,1,1,7,0");
+        var custom = new SphereNet.Game.Housing.CustomHousingEngine(world,
+            new SphereNet.Game.Housing.HousingEngine(world, new SphereNet.Game.Housing.MultiRegistry()));
+        SphereNet.Game.Housing.CustomHousingEngine.Active = custom;
 
         Assert.True(house.TryExecuteCommand("RESET", "", null!));
 
+        // RESET is ResetStructure: the WORKING design goes back to the foundation
+        // (none on this bare multi); the committed design changes on COMMIT.
+        Assert.Empty(custom.GetDesignState(house).Working.Tiles);
+        Assert.True(house.TryExecuteCommand("COMMIT", "", null!));
         Assert.Null(house.Tags.Get("DESIGN_1"));
+        Assert.Null(house.Tags.Get("DESIGN_0"));
     }
 
     // ================================================================ 12M-3

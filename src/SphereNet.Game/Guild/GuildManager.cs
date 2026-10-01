@@ -170,24 +170,15 @@ public sealed class GuildDef
         return true;
     }
 
-    /// <summary>Remove a member from the guild. If the master is removed, promotes next member.</summary>
+    /// <summary>Take a record off the stone. Nobody is promoted here: Source-X's record
+    /// destructor only holds an election (CStoneMember.cpp:420 -> ElectMaster), and an
+    /// election that ties leaves the guild without a master. Callers that remove a
+    /// member go through <see cref="GuildManager.MemberLeft"/>, which runs it.</summary>
     public bool RemoveMember(Serial charUid)
     {
         var member = FindMember(charUid);
         if (member == null) return false;
-        bool wasMaster = member.Priv == GuildPriv.Master;
         _members.Remove(member);
-        if (wasMaster && _members.Count > 0)
-        {
-            // Promote a real person — a full Member first, otherwise a waiting
-            // candidate. Never fall back to _members[0]: that could be an
-            // Enemy/Ally relationship record (Priv 100/101), which must not
-            // become guild master. If no human remains, the guild is left
-            // masterless and is reaped by the disband path.
-            var next = _members.FirstOrDefault(m => m.Priv == GuildPriv.Member);
-            if (next != null)
-                next.Priv = GuildPriv.Master;
-        }
         return true;
     }
 
@@ -239,32 +230,85 @@ public sealed class GuildDef
         return member;
     }
 
-    /// <summary>Elect master based on LoyalTo votes.</summary>
+    /// <summary>Elect master based on LoyalTo votes (Source-X CItemStone::ElectMaster,
+    /// CItemStone.cpp:1135).
+    ///
+    /// Every full member casts one vote. A vote for somebody who still holds a record
+    /// on this stone counts for them; any other vote is turned into a vote for the
+    /// voter (SetLoyalTo(nullptr) stores the voter's own uid). Only a full member can
+    /// win, and a tie leaves the current master in place.</summary>
     public void ElectMaster()
     {
-        // Count votes: each member's LoyalTo counts as a vote for that character
         var eligible = _members
             .Where(m => m.Priv is GuildPriv.Member or GuildPriv.Master)
             .ToList();
         if (eligible.Count == 0) return;
-        var eligibleUids = eligible.Select(m => m.CharUid).ToHashSet();
+
         var votes = new Dictionary<Serial, int>();
         foreach (var m in eligible)
         {
-            var target = m.LoyalTo.IsValid && eligibleUids.Contains(m.LoyalTo)
-                ? m.LoyalTo
-                : m.CharUid;
-            if (target == m.CharUid && m.LoyalTo != target)
-                m.LoyalTo = Serial.Invalid;
-            votes[target] = votes.GetValueOrDefault(target) + 1;
+            if (m.LoyalTo.IsValid && FindMember(m.LoyalTo) != null)
+            {
+                votes[m.LoyalTo] = votes.GetValueOrDefault(m.LoyalTo) + 1;
+                continue;
+            }
+            // Not a valid vote: it becomes a vote for the voter.
+            m.LoyalTo = m.CharUid;
+            votes[m.CharUid] = votes.GetValueOrDefault(m.CharUid) + 1;
         }
-        if (votes.Count == 0) return;
 
-        // Only members can become master — filter out non-member votes
-        int highest = votes.Values.Max();
-        var winners = votes.Where(kv => kv.Value == highest).Select(kv => kv.Key).ToList();
-        if (winners.Count == 1)
-            SetMaster(winners[0]);
+        GuildMember? highest = null;
+        bool tie = false;
+        foreach (var m in eligible)
+        {
+            if (highest == null)
+            {
+                highest = m;
+                continue;
+            }
+            int mine = votes.GetValueOrDefault(m.CharUid);
+            int best = votes.GetValueOrDefault(highest.CharUid);
+            if (mine == best)
+                tie = true;
+            if (mine > best)
+            {
+                tie = false;
+                highest = m;
+            }
+        }
+        if (!tie && highest != null)
+            SetMaster(highest.CharUid);
+    }
+
+    /// <summary>Cast <paramref name="voter"/>'s vote (Source-X CStoneMember::SetLoyalTo,
+    /// CStoneMember.cpp:453). The vote is reset to the voter first; an invalid target
+    /// (no such character) leaves it there and holds no election. A candidate may not
+    /// vote, and only a full member of THIS stone can be voted for - both are refused
+    /// with the message the reference speaks to the voter. A valid vote recounts the
+    /// election immediately.</summary>
+    public bool SetLoyalTo(GuildMember voter, Serial targetChar, out string? refusal)
+    {
+        refusal = null;
+        voter.LoyalTo = voter.CharUid;   // set to self for default
+        if (!targetChar.IsValid)
+            return true;
+
+        if (voter.Priv is not (GuildPriv.Member or GuildPriv.Master))
+        {
+            refusal = "Candidates aren't elligible to vote.";
+            return false;
+        }
+
+        var target = FindMember(targetChar);
+        if (target == null || target.Priv is not (GuildPriv.Member or GuildPriv.Master))
+        {
+            refusal = "Can only vote for full members.";
+            return false;
+        }
+
+        voter.LoyalTo = targetChar;
+        ElectMaster();
+        return true;
     }
 
     // --- Relations (War / Alliance) ---
@@ -303,8 +347,21 @@ public sealed class GuildDef
         }
     }
 
-    public bool IsAtWarWith(Serial otherGuildStone) =>
-        _relations.TryGetValue(otherGuildStone, out var rel) && rel.IsEnemy;
+    /// <summary>Script override for the two relation questions, asked on this stone
+    /// (Source-X CItemStone::IsAtWarWith / IsAlliedWith, CItemStone.cpp:1338/1374,
+    /// which r_Call f_stonesys_internal_isatwarwith / _isalliedwith with ARGO = the
+    /// other stone). Arguments: this stone, the other stone, true for war / false for
+    /// alliance. The answer is the function's verdict - true or false for RETURN 1 or
+    /// RETURN 0 - or null when there is no such function or it returned anything
+    /// else, in which case the declared flags decide. The host wires it.</summary>
+    public static Func<Serial, Serial, bool, bool?>? RelationScriptQuery { get; set; }
+
+    public bool IsAtWarWith(Serial otherGuildStone)
+    {
+        if (RelationScriptQuery?.Invoke(_stoneUid, otherGuildStone, true) is bool verdict)
+            return verdict;
+        return _relations.TryGetValue(otherGuildStone, out var rel) && rel.IsEnemy;
+    }
 
     public IEnumerable<Serial> Wars =>
         _relations.Where(kv => kv.Value.WeDeclaredWar).Select(kv => kv.Key);
@@ -324,8 +381,12 @@ public sealed class GuildDef
         }
     }
 
-    public bool IsAlliedWith(Serial otherGuildStone) =>
-        _relations.TryGetValue(otherGuildStone, out var rel) && rel.IsAlly;
+    public bool IsAlliedWith(Serial otherGuildStone)
+    {
+        if (RelationScriptQuery?.Invoke(_stoneUid, otherGuildStone, false) is bool verdict)
+            return verdict;
+        return _relations.TryGetValue(otherGuildStone, out var rel) && rel.IsAlly;
+    }
 
     public IEnumerable<Serial> Allies =>
         _relations.Where(kv => kv.Value.WeDeclaredAlliance).Select(kv => kv.Key);
@@ -483,31 +544,148 @@ public sealed class GuildManager
 
     public void RemoveGuild(Serial stoneUid) => RemoveGuild(stoneUid, null);
 
+    /// <summary>A guild/town record was removed (disband or stone deletion). Arg: the
+    /// removed record, whose house/ship lists the structure engines unlink.</summary>
+    public event Action<GuildDef>? GuildRemoved;
+
     /// <summary>Take a guild out of the world. When the stone survives, the tags that
     /// would rebuild the guild on the next load go with it: a disbanded guild that left
     /// its GUILD.NAME / GUILD.MEMBERS behind came back at the next world load, with its
     /// old master and membership intact.</summary>
     public void RemoveGuild(Serial stoneUid, World.GameWorld? world)
     {
-        if (!_guilds.Remove(stoneUid)) return;
+        if (!_guilds.Remove(stoneUid, out var removed)) return;
+        // The record's structure storage goes with it, and that storage unlinks
+        // every multi it held (CMultiStorage destructor, CItemMulti.cpp:3520).
+        GuildRemoved?.Invoke(removed);
         foreach (var guild in _guilds.Values)
             guild.RemoveRelation(stoneUid);
+
+        // Every member record going with the stone makes its character forget the
+        // stone (CStoneMember destructor, CStoneMember.cpp:422).
+        foreach (var member in removed.Members.ToArray())
+            ForgetStone(removed, member.CharUid, world);
 
         if (world?.FindItem(stoneUid) is { } stone)
             ClearGuildTags(stone);
     }
 
+    /// <summary>A character whose record on a stone has gone forgets it (Source-X
+    /// CStoneMember destructor, CStoneMember.cpp:422): CChar::Memory_ClearTypes of the
+    /// stone's memory type - MEMORY_TOWN for a town stone, MEMORY_GUILD for a guild
+    /// stone (CItemStone::GetMemoryType, by the stone's item type) - taken off EVERY
+    /// memory carrying it, not only the one linked to this stone. Leaving a guild
+    /// therefore never touches MEMORY_TOWN, and leaving a town never MEMORY_GUILD.</summary>
+    internal static void ForgetStone(GuildDef stone, Serial charUid, World.GameWorld? world)
+    {
+        if (world?.FindChar(charUid) is not { } ch)
+            return;
+        bool town = world.FindItem(stone.StoneUid) is { } item
+            ? item.ItemType == Core.Enums.ItemType.StoneTown
+            : stone.IsTownStone;
+        ch.Memory_ClearAllTypes(town ? Core.Enums.MemoryType.Town : Core.Enums.MemoryType.Guild);
+    }
+
+    // Everything a guild keeps on its stone, cleared together when the guild goes:
+    // a key left out here survives the disband as stale guild metadata.
     private static readonly string[] GuildTagKeys =
     [
         "GUILD.NAME", "GUILD.ABBREV", "GUILD.ISTOWN", "GUILD.WEB", "GUILD.CHARTER",
         "GUILD.ALIGN", "GUILD.MAXHOUSES", "GUILD.MAXSHIPS", "GUILD.MEMBERS",
-        "GUILD.RELATIONS", "GUILD.WARS", "GUILD.ALLIES",
+        "GUILD.RELATIONS", "GUILD.WARS", "GUILD.ALLIES", "GUILD.HOUSES", "GUILD.SHIPS",
     ];
 
     private static void ClearGuildTags(Objects.Items.Item stone)
     {
         foreach (var key in GuildTagKeys)
             stone.RemoveTag(key);
+    }
+
+    /// <summary>Is this one of the tags the engine keeps a guild record in? The
+    /// world saver writes the record in the Source-X shape instead
+    /// (<see cref="BuildSourceXStoneRecord"/>) and leaves these tags out.</summary>
+    public static bool IsRecordTag(string key) =>
+        Array.Exists(GuildTagKeys, k => k.Equals(key, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The lines Source-X writes for a guild or town stone after the item's
+    /// own keys (CItemStone::r_Write, CItemStone.cpp:124): ALIGN, ABBREV, CHARTER&lt;n&gt;,
+    /// WEBPAGE and one MEMBER line per record, "uid,title,priv,loyaluid,val1,val2,
+    /// accountgold". A member's val1 is its abbreviation switch; a war (priv 100) or
+    /// alliance (priv 101) record carries THEIR declaration in val1 and OURS in val2.
+    /// The guild's name is the stone's own NAME, and its houses and ships are not
+    /// written at all - each multi names its guild itself (CMultiStorage::r_Write is
+    /// empty, CItemMulti.cpp:3783). Built from the guild tags SerializeAllToTags
+    /// leaves on the stone. ALIGN is written for EVERY stone, guild record or not, as
+    /// upstream writes it unconditionally (a stone without one is STANDARD, 0).</summary>
+    public static List<(string Key, string Value)> BuildSourceXStoneRecord(Objects.Items.Item stone)
+    {
+        var lines = new List<(string, string)>();
+        string align = stone.TryGetTag("GUILD.ALIGN", out string? a) && !string.IsNullOrWhiteSpace(a) ? a.Trim() : "0";
+        lines.Add(("ALIGN", align));
+        if (stone.TryGetTag("GUILD.ABBREV", out string? abbrev) && !string.IsNullOrEmpty(abbrev))
+            lines.Add(("ABBREV", abbrev));
+        if (stone.TryGetTag("GUILD.CHARTER", out string? charter) && !string.IsNullOrEmpty(charter))
+            lines.Add(("CHARTER0", charter));
+        if (stone.TryGetTag("GUILD.WEB", out string? web) && !string.IsNullOrEmpty(web))
+            lines.Add(("WEBPAGE", web));
+
+        static string Hex(uint v) => $"0{v:x}";
+
+        if (stone.TryGetTag("GUILD.MEMBERS", out string? members) && !string.IsNullOrEmpty(members))
+        {
+            foreach (var part in members.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                // uid:priv:title:accountgold:loyalto:showabbrev
+                var segs = part.Split(':', 6);
+                uint uid = ParseHexSerial(segs[0]);
+                if (uid == 0 || uid == Serial.ClearValue) continue;
+                string priv = segs.Length > 1 && int.TryParse(segs[1], out int p) ? p.ToString() : "0";
+                string title = segs.Length > 2 ? UnescapeField(segs[2]) : "";
+                string gold = segs.Length > 3 && int.TryParse(segs[3], out int g) ? g.ToString() : "0";
+                uint loyal = segs.Length > 4 ? ParseHexSerial(segs[4]) : 0;
+                if (loyal == Serial.ClearValue) loyal = 0;   // "myself" is the clear uid upstream
+                string abbrevOn = segs.Length > 5 && segs[5] != "0" ? "1" : "0";
+                lines.Add(("MEMBER", $"{Hex(uid)},{title},{priv},{Hex(loyal)},{abbrevOn},0,{gold}"));
+            }
+        }
+
+        void Relation(uint other, bool war, bool theyDeclared, bool weDeclared)
+        {
+            lines.Add(("MEMBER",
+                $"{Hex(other)},,{(war ? (int)GuildPriv.Enemy : (int)GuildPriv.Ally)},{Hex(0)}," +
+                $"{(theyDeclared ? 1 : 0)},{(weDeclared ? 1 : 0)},0"));
+        }
+
+        if (stone.TryGetTag("GUILD.RELATIONS", out string? relations) && !string.IsNullOrEmpty(relations))
+        {
+            foreach (var part in relations.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                // uid:wewar:theywar:weally:theyally
+                var r = part.Split(':', 5);
+                if (r.Length < 5) continue;
+                uint other = ParseHexSerial(r[0]);
+                if (other == 0) continue;
+                bool weWar = r[1] == "1", theyWar = r[2] == "1", weAlly = r[3] == "1", theyAlly = r[4] == "1";
+                // Upstream keeps one record per other stone, either a war or an alliance.
+                if (weWar || theyWar)
+                    Relation(other, war: true, theyWar, weWar);
+                else if (weAlly || theyAlly)
+                    Relation(other, war: false, theyAlly, weAlly);
+            }
+        }
+        else
+        {
+            foreach (var key in new[] { "GUILD.WARS", "GUILD.ALLIES" })
+            {
+                if (!stone.TryGetTag(key, out string? list) || string.IsNullOrEmpty(list)) continue;
+                foreach (var part in list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    uint other = ParseHexSerial(part);
+                    if (other != 0) Relation(other, war: key == "GUILD.WARS", false, true);
+                }
+            }
+        }
+        return lines;
     }
 
     /// <summary>A member has left a guild.
@@ -520,8 +698,13 @@ public sealed class GuildManager
     ///
     /// When the last FULL member goes, the guild is at war with nobody: the reference
     /// forces peace on a stone with no members (CItemStone.cpp:1226 -> WeDeclarePeace,
-    /// :1494), on both sides of every declaration.</summary>
-    public bool MemberLeft(GuildDef guild, Serial charUid)
+    /// :1494), on both sides of every declaration.
+    ///
+    /// This is the ONE way a member leaves: the stone's gump, the script RESIGN verb
+    /// and anything else go through here, so the recount, the forced peace and the
+    /// character forgetting the stone (CStoneMember.cpp:422) happen alike. The memory
+    /// step needs the world; without one only the records change.</summary>
+    public bool MemberLeft(GuildDef guild, Serial charUid, World.GameWorld? world = null)
     {
         if (!guild.RemoveMember(charUid))
             return false;
@@ -530,6 +713,8 @@ public sealed class GuildManager
 
         if (guild.GetMemberCount((int)GuildPriv.Member) + guild.GetMemberCount((int)GuildPriv.Master) == 0)
             ClearRelationsBothWays(guild);
+
+        ForgetStone(guild, charUid, world);
         return true;
     }
 
@@ -549,12 +734,16 @@ public sealed class GuildManager
     /// Source-X ties the membership records to the stone's own lifetime (CItemStone
     /// destructor, CItemStone.cpp:30). SphereNet keeps the guild in a manager beside
     /// the world, so deleting the stone left a guild nobody could reach still answering
-    /// membership questions.</summary>
-    public void OnStoneDeleted(Serial stoneUid)
+    /// membership questions.
+    ///
+    /// With the world given, the members also forget the stone: each record's
+    /// destructor clears the stone's memory type on its character
+    /// (CStoneMember.cpp:422), so "no GUILD" and "no MEMORY_GUILD" agree afterwards.</summary>
+    public void OnStoneDeleted(Serial stoneUid, World.GameWorld? world = null)
     {
         if (_guilds.TryGetValue(stoneUid, out var guild))
             ClearRelationsBothWays(guild);
-        RemoveGuild(stoneUid);
+        RemoveGuild(stoneUid, world);
     }
 
     public bool DeclareWar(Serial fromStoneUid, Serial toStoneUid)
@@ -598,6 +787,40 @@ public sealed class GuildManager
     }
 
     public IEnumerable<GuildDef> GetAllGuilds() => _guilds.Values;
+
+    /// <summary>Script function names Source-X asks before answering the two
+    /// relation questions (CItemStone.cpp:1349 / :1386).</summary>
+    public const string IsAtWarWithFunction = "f_stonesys_internal_isatwarwith";
+    public const string IsAlliedWithFunction = "f_stonesys_internal_isalliedwith";
+
+    /// <summary>The <see cref="GuildDef.RelationScriptQuery"/> the host installs: run the
+    /// relation function ON this stone with ARGO = the other stone and the server as
+    /// SRC (r_Call(..., pScriptArgs, &amp;g_Serv, ...)). RETURN 0 / RETURN 1 decide;
+    /// no function, no RETURN, any other number, or a stone that is not in the world
+    /// fall back to the declared flags.</summary>
+    public static Func<Serial, Serial, bool, bool?> CreateRelationScriptQuery(
+        Func<World.GameWorld?> world, global::SphereNet.Scripting.Execution.TriggerRunner runner)
+    {
+        return (stoneUid, otherUid, war) =>
+        {
+            string function = war ? IsAtWarWithFunction : IsAlliedWithFunction;
+            if (!runner.HasFunction(function))
+                return null;
+            var w = world();
+            if (w?.FindItem(stoneUid) is not { } stone || w.FindItem(otherUid) is not { } other)
+                return null;
+            var args = new global::SphereNet.Scripting.Execution.TriggerArgs { Object1 = other };
+            if (!runner.TryRunFunctionNumeric(function, stone,
+                    Core.Interfaces.ScriptServerConsole.Instance, args, out long? verdict))
+                return null;
+            return verdict switch
+            {
+                0 => false,
+                1 => true,
+                _ => null,
+            };
+        };
+    }
 
     // A member title is free text and the record uses ':' and ',' as separators, so
     // both are escaped. The escape CHARACTER has to be escaped as well, or a title that
@@ -733,6 +956,10 @@ public sealed class GuildManager
             var stone = world.FindItem(stoneUid);
             if (stone == null) continue;
 
+            // Upstream the guild's name IS the stone's name (CItemStone::GetName);
+            // that is the only place a Source-X record carries it.
+            if (!string.IsNullOrEmpty(guild.Name) && stone.Name != guild.Name)
+                stone.Name = guild.Name;
             stone.SetTag("GUILD.NAME", guild.Name);
             stone.SetTag("GUILD.ABBREV", guild.Abbreviation);
             if (guild.IsTownStone)
@@ -823,20 +1050,23 @@ public sealed class GuildManager
                 // whatever the stone is called (CItemStone::GetName). Its roster is
                 // what says it is a guild at all.
                 if (item.ItemType is not (Core.Enums.ItemType.StoneGuild or Core.Enums.ItemType.StoneTown) ||
-                    !item.TryGetTag("GUILD.MEMBERS", out _))
+                    (!item.TryGetTag("GUILD.MEMBERS", out _) && !item.TryGetTag("GUILD.ALIGN", out _)))
                     continue;
                 guildName = item.Name;
                 if (string.IsNullOrWhiteSpace(guildName))
                     continue;
             }
 
-            var safeName = guildName.Trim();
             var guild = new GuildDef(item.Uid)
             {
                 // What the stone does not say, the server's default says.
                 MaxHouses = DefaultMaxHouses,
                 MaxShips = DefaultMaxShips,
-                Name = safeName[..Math.Min(40, safeName.Length)],
+                // The name comes back as it was saved. Cutting it to forty characters
+                // here shortened a name the write side had accepted and stored in full
+                // (upstream's only bound is the item-name size, 256); a length limit
+                // belongs where the name is set.
+                Name = guildName.Trim(),
                 // Town records stay in their own membership pool (tag first,
                 // stone item type as the legacy fallback).
                 IsTownStone = item.TryGetTag("GUILD.ISTOWN", out _) ||

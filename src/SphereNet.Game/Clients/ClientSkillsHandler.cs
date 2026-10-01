@@ -1214,38 +1214,23 @@ public sealed class ClientSkillsHandler
     public void HandlePartyInvite(uint targetUid)
     {
         if (_character == null || _partyManager == null) return;
-        var target = _world.FindChar(new Serial(targetUid));
-        if (target == null || !target.IsPlayer || target == _character || target.IsDeleted) return;
-        var party = _partyManager.FindParty(_character.Uid);
-        if (party != null && (party.Master != _character.Uid || party.IsFull)) return;
-        if (_partyManager.FindParty(target.Uid) != null) return;
-        // The same preference the protocol path honours: a player who has turned
-        // invitations off is not asked (Source-X CClientTarg.cpp:2455).
-        if (target.TryGetTag("PARTY_AUTODECLINEINVITE", out string? autoDecline) &&
-            long.TryParse(autoDecline, out long declines) && declines != 0)
-            return;
-        if (_triggerDispatcher?.FireCharTrigger(target, CharTrigger.PartyInvite,
-            new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
-            return;
-        target.SetTag("PARTY_INVITE_FROM", _character.Uid.Value.ToString());
-        target.SetTag("PARTY_INVITE_TIME", Environment.TickCount64.ToString());
-        SendToChar?.Invoke(target.Uid, new PacketPartyInvitation(_character.Uid.Value));
-        SysMessage(ServerMessages.GetFormatted("party_invite", target.Name));
+        // The same invitation the protocol path sends (CClient::OnTarg_Party_Add,
+        // CClientTarg.cpp:2398).
+        _partyManager.Invite(_character, _world.FindChar(new Serial(targetUid)), PartyIoForClient());
     }
 
     public void HandlePartyLeave()
     {
         if (_character == null || _partyManager == null) return;
-        // Leaving is RemoveMember(self, self): @PartyRemove and then @PartyLeave, each
-        // able to refuse with RETURN 1 (CParty.cpp:314-325).
-        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.PartyRemove,
-                new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
-            return;
-        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.PartyLeave,
-                new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
-            return;
-        _partyManager.Leave(_character.Uid);
+        // Leaving is RemoveMember(self, self) with fDisband at its default
+        // (CParty.cpp:296): @PartyRemove and then @PartyLeave, each able to refuse.
+        var party = _partyManager.FindParty(_character.Uid);
+        if (party != null)
+            _partyManager.RemoveMember(party, _character.Uid, _character.Uid, PartyIoForClient());
     }
+
+    private PartyIo PartyIoForClient() =>
+        PartyIo.ForClient(_world, _triggerDispatcher, SendToChar, _character, SysMessage);
 
     // ==================== Client Version ====================
 

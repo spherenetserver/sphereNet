@@ -4,6 +4,86 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Ev, gemi, lonca ve parti yasam donguleri Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Ozel evler: yeni temel ve Clear komutu temelin gorunur multi
+           parcalariyla baslar (ResetStructure); cati parcasi roof tile
+           bayragi ve 3'un katlari olarak -3..12 ofset ister, ofset
+           tasarimcinin katina eklenir.
+DUZELTME - Ozel ev tasarim oturumu binada tutulur: baslangic tasarimciyi
+           merkeze (+7) tasir, gizler, serbest esyalari gorunumunden kaldirir
+           ve working revizyonunu ilerletir; kat degisimi tasarimciyi tasir ve
+           temel boyutuna gore 3/4 katla sinirlanir; baglanti kopmasi ve GM
+           devralmasi oturumu merkezi olarak kapatir; commit tasarim modunu
+           kapatmaz.
+DUZELTME - @HouseDesignBegin N2/N3 geri okunur (secure/lockdown tasima, eject);
+           @HouseDesignExit RETURN 1 normal cikista tasarim modunu yeniden
+           acar, ARGN1 veto edilemeyen zorunlu cikisi belirtir.
+           @HouseDesignCommitItem parcalari @HouseDesignCommit sayimlarindan
+           once filtreler.
+DUZELTME - Ozel ev commit'i kapi ve telepad fixture'larini itemdef uzerinden
+           olusturur; kapilar t_house_component/ei_house_door ile kilitli
+           baslar, telepad'ler grafige gore eslesir; kilitli kapi uygun anahtar
+           sahibine acilir.
+DUZELTME - DESIGNER, REVISION, COMPONENTS, FIXTURES ve DESIGN.n canli tasarimi
+           okur; ADDITEM/ADDMULTI/CLEAR/RESET/REVERT/REMOVEITEM/COMMIT/
+           CUSTOMIZE/ENDCUSTOMIZE tasarim motorundan gecer. Parca silme kat
+           duzlemine gore eslesir, eslesen tum parcalari kaldirir ve topragi
+           yalnizca Source-X'in biraktigi yerde birakir.
+DUZELTME - Evde OWNER yazmak ortak SetOwner islemini calistirir (anahtar, guard
+           memory, @DelMulti/@AddMulti); TransferHouse ayni yolu kullanir.
+DUZELTME - Ev redeed'i CItemMulti::Redeed'i izler: @Redeed multi uzerinde SRC,
+           ARGO1=deed, ARGN1=deed id ve yazilabilir ARGN2/ARGN3 ile calisir;
+           esyalar ancak tetikleyici isterse tasima sandigina gider, RETURN 1
+           sadece deed'i siler. Redeed disinda silinen ev tasima sandigini
+           sadece unutur.
+DUZELTME - Klasik Source-X ev kayitlari canli eve donusur (OWNER, HOUSETYPE,
+           GUILD, MOVINGCRATE, depolama anahtarlari, ADD* listeleri, LOCKITEM,
+           SECURE, ozel COMP/REVISION); sahipli ya da sahipsiz her multi ev
+           kaydidir.
+DEGISIKLIK - Ev, gemi ve lonca/kasaba taslari Source-X kayit bicimiyle
+           kaydedilir: CItemMulti anahtarlari (OWNER, GUILD, HOUSETYPE, uid
+           basina bir ADD*/LOCKITEM/SECURE satiri, depolama anahtarlari sadece
+           ayarliysa), ozel tasarim COMP/REVISION, gemiler HATCH/PLANK ve
+           MORE2/MOREP durumu, taslar NAME, ALIGN, ABBREV, CHARTER, WEBPAGE ve
+           MEMBER satirlari. Eski HOUSE.*, SHIP.*, GUILD.* ve TAG.DESIGN_n
+           kayitlari yuklenmeye devam eder.
+DUZELTME - Lonca baglantilari CItemMulti::SetGuild'i izler: multi redeed, cokme
+           veya silmede loncasinin listesinden cikar, kaldirilan lonca
+           multi'lerinin baglantisini temizler, GUILD anahtari gemileri de
+           baglar.
+DUZELTME - Tas MEMBER.n / MEMBERFROMUID.uid o tasin uyelik kaydini dondurur
+           (LOYALTO/PRIV/GUILDTITLE/ACCOUNTGOLD kayitta calisir, diger
+           anahtarlar karaktere gider, ciplak referans 1 okunur). LOYALTO oyu
+           dogrular ve secimi yeniden sayar.
+DUZELTME - Script RESIGN, gump Leave ve Dismiss tek cikarma yolunu kullanir:
+           secim oncesi terfi olmadan yeniden sayim, tam uye kalmazsa zorunlu
+           baris, karakterden tasin hafiza turu silinir. Tas silinince veya
+           dagitilinca bu hafiza turu tum uyelerden silinir.
+DUZELTME - Dagitma GUILD.HOUSES / GUILD.SHIPS'i temizler; lonca adi yuklemede
+           artik 40 karaktere kesilmez. Tas savas/ittifak sorgulari
+           f_stonesys_internal_isatwarwith / f_stonesys_internal_isalliedwith
+           fonksiyonlarina danisir.
+DUZELTME - Parti davet kaydi davet edende tutulur (PARTY_LASTINVITE); yeni davet
+           oncekini gecersiz kilar, 2-5 sn icinde tekrar davet reddedilir,
+           uydurma 120 sn davet suresi kaldirildi. Kabul icin iki tarafin da
+           aktif istemcisi olmali.
+DUZELTME - Liderin dagitmasi @PartyDisband'i liderde, ardindan her uyede
+           ARGN1=1 ile @PartyRemove'u calistirir. PARTY.ADDMEMBER/
+           ADDMEMBERFORCED/REMOVEMEMBER/DISBAND/CREATE, baglam menusu ve baglanti
+           kopmasi istemci protokoluyle ayni uyelik kodunu kullanir; liderin
+           REMOVEMEMBER ile cikarilmasi partiyi dagitir. Parti paketleri sadece
+           aktif istemcilere gider ve her cikarmadan sonra resync gonderilir.
+DUZELTME - Cok kareli gemi hareketi ilerideki kareleri kontrol edip tek hareket
+           olarak uygulanir (tek region kontrolu, tek yayin).
+           OptionFlags.MapBoundarySailing gemiyi bilesen ve yolculariyla karsi
+           harita kenarina sarar (adim basina tek eksen).
+DEGISIKLIK - Lonca ve kasaba taslari lonca kaydi olmasa da ALIGN yazar. Ev ve
+           gemiler bolgelerinin canli durumunu (REGION.FLAGS, REGION.EVENTS,
+           REGION.TAG.<ad>) miras flag'ler olmadan kaydeder ve yuklemede
+           bolgeye geri verir; multi uzerindeki script REGION.* yazimlari
+           bolgeye ulasir.
+
 [2026-10-01] - Buyu etkileri Source-X memory esyasi modeline uyar
 ------------------------------------------------------------------------
 DEGISIKLIK - Aktif buyu etkisi, giyili IT_SPELL memory esyasinin kendisidir:

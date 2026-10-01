@@ -83,6 +83,11 @@ public sealed class PartyGuildParity09CDTests
         Character.ResolvePartyManager = () => parties;
         var alice = Player(world, 100);
         var bob = Player(world, 101);
+        var dave = Player(world, 102);
+        // PARTY.* is the party's own verb table (CPartyDef::r_Verb): Alice must lead a
+        // party, and both clients must be active (AcceptEvent, CParty.cpp:449).
+        foreach (var ch in new[] { alice, bob, dave }) ch.IsOnline = true;
+        parties.AcceptInvite(alice.Uid, dave.Uid);
 
         Assert.True(alice.TryExecuteCommand("PARTY.ADDMEMBER", $"0{bob.Uid.Value:X}", null!));
 
@@ -125,6 +130,8 @@ public sealed class PartyGuildParity09CDTests
         client.SetEngines(partyManager: parties);
 
         var stayer = Player(world, 101);
+        // Party packets reach active clients only (SendMemberMsg, CParty.cpp:165).
+        stayer.IsOnline = true;
         parties.AcceptInvite(stayer.Uid, leaver.Uid);
 
         client.OnDisconnect();

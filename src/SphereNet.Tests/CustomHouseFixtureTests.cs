@@ -63,7 +63,8 @@ public sealed class CustomHouseFixtureTests
         var fixtures = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>()
             .Where(i => i.BaseId == DoorTile && !i.IsDeleted).ToList();
         var door = Assert.Single(fixtures);
-        Assert.Equal(ItemType.Door, door.ItemType);
+        // OnComponentCreate (CItemMulti.cpp:3468) makes a house door start locked.
+        Assert.Equal(ItemType.DoorLocked, door.ItemType);
         Assert.True(door.TryGetTag("FIXTURE", out string? owner));
         Assert.Equal(multi.Uid.Value.ToString(), owner);
         Assert.Equal(102, door.X); // multi 100 + offset 2

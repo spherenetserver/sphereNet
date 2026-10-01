@@ -152,7 +152,7 @@ public sealed class PartyDef
 /// <summary>
 /// Manages all active parties on the server.
 /// </summary>
-public sealed class PartyManager
+public sealed partial class PartyManager
 {
     private readonly List<PartyDef> _parties = [];
 
@@ -161,8 +161,16 @@ public sealed class PartyManager
     public IReadOnlyList<PartyDef> Parties => _parties;
 
     /// <summary>Find the party a character belongs to.</summary>
-    public PartyDef? FindParty(Serial charUid) =>
-        _parties.FirstOrDefault(p => p.IsMember(charUid));
+    public PartyDef? FindParty(Serial charUid)
+    {
+        if (_partyPointer.TryGetValue(charUid, out var pointed))
+        {
+            if (pointed.IsMember(charUid) && _parties.Contains(pointed))
+                return pointed;
+            _partyPointer.Remove(charUid);
+        }
+        return _parties.FirstOrDefault(p => p.IsMember(charUid));
+    }
 
     /// <summary>Create a new party with the given master.</summary>
     public PartyDef CreateParty(Serial masterUid)

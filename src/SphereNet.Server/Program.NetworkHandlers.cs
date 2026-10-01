@@ -113,7 +113,7 @@ public static partial class Program
             // connected the world's deletion to the separate guild manager here, so a
             // deleted stone left a guild nobody could reach still answering membership
             // questions - and still at war.
-            _guildManager?.OnStoneDeleted(obj.Uid);
+            _guildManager?.OnStoneDeleted(obj.Uid, _world);
             // A champion altar takes its candles with it however it dies - .nuke, a
             // script REMOVE, a stop - because upstream clears them from the component's
             // destructor (CCChampion.cpp:92). Only the STOP path used to clean up, so

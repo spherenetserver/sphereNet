@@ -387,10 +387,11 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         Assert.True(hull.TrySetProperty("PLANK", $"0{plankA.Uid.Value:X}"));
         Assert.True(hull.TrySetProperty("PLANK", $"0{plankB.Uid.Value:X}"));
 
-        Assert.True(hull.TryGetTag("SHIP.HOLD", out string? storedHold));
-        Assert.Equal($"0{hold.Uid.Value:X}", storedHold);
-        Assert.True(hull.TryGetTag("SHIP.PLANKS", out string? storedPlanks));
-        Assert.Equal($"0{plankA.Uid.Value:X},0{plankB.Uid.Value:X}", storedPlanks);
+        // Kept under the keys' own names, which is how they are written back.
+        Assert.True(hull.TryGetTag("HATCH", out string? storedHold));
+        Assert.Equal($"0{hold.Uid.Value:x}", storedHold);
+        Assert.True(hull.TryGetTag("PLANK", out string? storedPlanks));
+        Assert.Equal($"0{plankA.Uid.Value:x},0{plankB.Uid.Value:x}", storedPlanks);
     }
 
     [Fact]
@@ -405,7 +406,7 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         // (CUID::IsValidUID, CUID.cpp:32).
         Assert.True(hull.TrySetProperty("HATCH", "04fffffff"));
 
-        Assert.False(hull.TryGetTag("SHIP.HOLD", out _));
+        Assert.False(hull.TryGetTag("HATCH", out _));
     }
 
     [Theory]
@@ -643,7 +644,9 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         var housing = new SphereNet.Game.Housing.HousingEngine(world, RegistryWithFootprint(0x7E));
         housing.DeserializeFromWorld();
 
-        Assert.Equal(0, housing.HouseCount);          // no owner: no house record
+        // Every multi is a CItemMulti upstream, owned or not: an ownerless house record.
+        Assert.Equal(1, housing.HouseCount);
+        Assert.False(housing.GetHouse(multi.Uid)!.Owner.IsValid);
         var region = world.FindRegion(multi.Position);
         Assert.NotNull(region);
         Assert.Equal("Lonely keep", region!.Name);

@@ -41,9 +41,14 @@ public sealed class ShipEngine
     private void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
     {
         if (obj is not Item it) return;
+        // A dying stone's storage runs SetGuild(0) on the ships it lists
+        // (CMultiStorage destructor, CItemMulti.cpp:3539).
+        if (it.ItemType is ItemType.StoneGuild or ItemType.StoneTown && _guilds?.GetGuild(it.Uid) is { } dyingGuild)
+            OnGuildRemoved(dyingGuild);
         if (!_ships.TryGetValue(it.Uid, out var ship) || !ReferenceEquals(ship.MultiItem, it))
             return;
         _ships.Remove(it.Uid);
+        UnlinkGuild(ship);   // the multi destructor's SetGuild(0), CItemMulti.cpp:56
         var owner = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
         RemoveShipKeys(owner, it.Uid);
         foreach (var compUid in ship.Components)
@@ -57,6 +62,52 @@ public sealed class ShipEngine
 
     public Ship? GetShip(Serial multiItemUid) =>
         _ships.GetValueOrDefault(multiItemUid);
+
+    /// <summary>The guild/town records structures are listed in (Source-X CItemStone
+    /// multi storage). Set by the host; null leaves guild links out of it.</summary>
+    public Guild.GuildManager? Guilds
+    {
+        get => _guilds;
+        set
+        {
+            if (_guilds != null) _guilds.GuildRemoved -= OnGuildRemoved;
+            _guilds = value;
+            if (_guilds != null) _guilds.GuildRemoved += OnGuildRemoved;
+        }
+    }
+    private Guild.GuildManager? _guilds;
+
+    /// <summary>Source-X CItemMulti::SetGuild (CItemMulti.cpp:711) for a ship: the old
+    /// stone's storage loses it, the new one gains it as a ship. Only a guild stone
+    /// can be named (SHL_GUILD, :3105); an invalid uid just clears it.</summary>
+    public bool SetGuild(Ship ship, Serial stoneUid)
+    {
+        if (stoneUid.IsValid && _world.FindItem(stoneUid) is not { ItemType: ItemType.StoneGuild })
+            return false;
+        UnlinkGuild(ship);
+        if (!stoneUid.IsValid)
+            return true;
+        ship.GuildStone = stoneUid;
+        _guilds?.GetGuild(stoneUid)?.AddShip(ship.MultiItem.Uid);
+        return true;
+    }
+
+    private void UnlinkGuild(Ship ship)
+    {
+        var old = ship.GuildStone;
+        ship.GuildStone = Serial.Invalid;
+        if (old.IsValid)
+            _guilds?.GetGuild(old)?.DelMulti(ship.MultiItem.Uid);
+    }
+
+    /// <summary>A guild record went away: its storage runs SetGuild(0) on every ship
+    /// it lists (CMultiStorage destructor, CItemMulti.cpp:3539).</summary>
+    private void OnGuildRemoved(Guild.GuildDef guild)
+    {
+        foreach (var uid in guild.Ships.ToList())
+            if (_ships.GetValueOrDefault(uid) is { } ship)
+                UnlinkGuild(ship);
+    }
 
     public int ShipCount => _ships.Count;
     public IEnumerable<Ship> AllShips => _ships.Values;
@@ -77,9 +128,17 @@ public sealed class ShipEngine
     /// so a blocked ship reports nothing at all.</summary>
     public Action<Ship, int>? OnShipMoveCommand { get; set; }
 
-    /// <summary>The hull changed position - one call per step, for the movement packet
-    /// the client needs. This is NOT the script's movement event.</summary>
+    /// <summary>The hull changed position - one call per MoveDelta (a whole sailing
+    /// order is applied as one delta), for the movement packet the client needs. This
+    /// is NOT the script's movement event.</summary>
     public Action<Ship>? OnShipMoved { get; set; }
+
+    /// <summary>A sailing order carried the hull across the map edge to the opposite
+    /// side (OF_MapBoundarySailing): the ship and where its anchor stood before. The
+    /// reference rebuilds the whole view of everyone aboard instead of the smooth-move
+    /// delta (MoveDelta fUpdateViewFull, CCMultiMovable.cpp:400), and the observers at
+    /// the old position lose it.</summary>
+    public Action<Ship, Point3D>? OnShipCrossedMapBoundary { get; set; }
 
     /// <summary>Called when a ship stops (Source-X @ShipStop fire site).</summary>
     public Action<Ship>? OnShipStopped { get; set; }
@@ -499,6 +558,7 @@ public sealed class ShipEngine
         ship.Pilot = Serial.Invalid;
 
         RemoveShipRegion(ship);
+        UnlinkGuild(ship);   // the multi destructor's SetGuild(0), CItemMulti.cpp:56
         _ships.Remove(multiItemUid); // before RemoveItem: the ObjectDeleting handler must see no entry
         _world.RemoveItem(ship.MultiItem);
         if (result == TriggerResult.True || deed.IsDeleted)
@@ -647,27 +707,79 @@ public sealed class ShipEngine
         // (CCMultiMovable.cpp:852-860): the edge of the world is turbulent water,
         // anything else is something in the way. Both lines existed here as unused
         // message keys — a ship simply went quiet and the crew was left guessing.
-        bool stopped = false, turbulent = false;
+        bool stopped = false, turbulent = false, mapBoundary = false;
+
+        // The whole order is checked tile by tile ahead of the hull and then applied
+        // as ONE delta (CCMultiMovable.cpp:686-847): one MoveDelta, one region check
+        // and one movement broadcast per command, however many tiles it covers.
+        var origin = ship.MultiItem.Position;
+        int totalDx = 0, totalDy = 0;
+        var def = _multiDefs.Get(ship.MultiItem.BaseId);
+        var (mapW, mapH) = _mapData?.GetMapSize(ship.MultiItem.MapIndex) ?? (7168, 4096);
+        bool wrapEdges = def != null &&
+            SphereNet.Game.Clients.GameClient.ServerOptionFlags.HasFlag(OptionFlags.MapBoundarySailing);
         for (int i = 0; i < distance; i++)
         {
-            short newX = (short)(ship.MultiItem.X + dx);
-            short newY = (short)(ship.MultiItem.Y + dy);
-
-            if (IsOffMap(ship, newX, newY))
+            int newX = origin.X + totalDx + dx;
+            int newY = origin.Y + totalDy + dy;
+            if (wrapEdges)
+            {
+                // OF_MapBoundarySailing (CCMultiMovable.cpp:691-731): a hull whose
+                // leading edge crosses the map edge comes out at the opposite edge. One
+                // axis per step, in upstream's order (west, north, east, south); the
+                // trailing corner it measures from is the one the order started at.
+                if (newX + def!.MinX < 0)
+                {
+                    int wrap = mapW - (origin.X + def.MaxX);
+                    totalDx += wrap; newX += wrap; mapBoundary = true;
+                }
+                else if (newY + def.MinY < 0)
+                {
+                    int wrap = mapH - (origin.Y + def.MaxY);
+                    totalDy += wrap; newY += wrap; mapBoundary = true;
+                }
+                else if (newX + def.MaxX >= mapW)
+                {
+                    int wrap = origin.X + def.MinX + 1;
+                    totalDx -= wrap; newX -= wrap; mapBoundary = true;
+                }
+                else if (newY + def.MaxY >= mapH)
+                {
+                    int wrap = origin.Y + def.MinY + 1;
+                    totalDy -= wrap; newY -= wrap; mapBoundary = true;
+                }
+            }
+            else if (newX is < short.MinValue or > short.MaxValue ||
+                     newY is < short.MinValue or > short.MaxValue ||
+                     IsOffMap(ship, (short)newX, (short)newY))
             {
                 stopped = true;
                 turbulent = true;
                 break;
             }
 
-            // Leading-edge water check in the move direction (Source-X)
-            if (!CanMoveShipTo(ship, newX, newY, dx, dy))
+            // Leading-edge water check in the move direction (Source-X). A corner
+            // whose second axis is still off the map stops here, as upstream's
+            // CanMoveTo on an invalid point does - and, as upstream, a wrap already
+            // added to the delta in this step is kept.
+            if (newX is < short.MinValue or > short.MaxValue ||
+                newY is < short.MinValue or > short.MaxValue ||
+                !CanMoveShipTo(ship, (short)newX, (short)newY, dx, dy))
             {
                 stopped = true;
                 break;
             }
 
-            MoveDelta(ship, dx, dy, 0);
+            totalDx += dx;
+            totalDy += dy;
+        }
+
+        if (totalDx != 0 || totalDy != 0)
+        {
+            // Upstream does not act on MoveDelta's answer (:846): a region veto keeps
+            // the whole order where it is, and the command still completes.
+            if (MoveDelta(ship, (short)totalDx, (short)totalDy, 0) && mapBoundary)
+                OnShipCrossedMapBoundary?.Invoke(ship, origin);
         }
 
         if (stopped)
@@ -1400,19 +1512,28 @@ public sealed class ShipEngine
             deckChars.Any(ch => !CanTranslate(ch.Position)) || deckItems.Any(item => !CanTranslate(item.Position)))
             return false;
 
+        // An object whose new point is outside the map stays where it is: upstream
+        // logs "out of bounds" and skips it (MoveDelta, CCMultiMovable.cpp:309).
+        var (mapW, mapH) = _mapData?.GetMapSize(destination.Map) ?? (7168, 4096);
+        bool IsValidPoint(Point3D p) =>
+            p.X >= 0 && p.X < mapW && p.Y >= 0 && p.Y < mapH &&
+            p.Z > -UoSizeZ && p.Z < UoSizeZ;
+        Point3D Shifted(Point3D p) => new(
+            (short)(p.X + dx), (short)(p.Y + dy), (sbyte)(p.Z + dz), destination.Map);
+
         // Move multi item
         var mi = ship.MultiItem;
-        _world.PlaceItem(mi, destination);
+        if (IsValidPoint(destination))
+            _world.PlaceItem(mi, destination);
 
         // Move components
         foreach (var uid in ship.Components)
         {
             var item = _world.FindItem(uid);
             if (item == null) continue;
-            var p = item.Position;
-            _world.PlaceItem(item, new Point3D(
-                (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), destination.Map));
+            var to = Shifted(item.Position);
+            if (IsValidPoint(to))
+                _world.PlaceItem(item, to);
         }
 
         // Move deck characters. The ship's region moves WITH them, so suppress
@@ -1420,20 +1541,18 @@ public sealed class ShipEngine
         // travels with the hull.
         foreach (var ch in deckChars)
         {
-            var p = ch.Position;
-            _world.MoveCharacter(ch, new Point3D(
-                (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), destination.Map), fireRegionEvents: false);
+            var to = Shifted(ch.Position);
+            if (IsValidPoint(to))
+                _world.MoveCharacter(ch, to, fireRegionEvents: false);
         }
 
         // Move loose items on deck (not in containers, not components)
         foreach (var item in deckItems)
         {
             if (ship.Components.Contains(item.Uid)) continue;
-            var p = item.Position;
-            _world.PlaceItem(item, new Point3D(
-                (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), destination.Map));
+            var to = Shifted(item.Position);
+            if (IsValidPoint(to))
+                _world.PlaceItem(item, to);
         }
 
         // Re-position the ship's region to follow the hull to its new footprint.
@@ -1520,30 +1639,22 @@ public sealed class ShipEngine
         region.AddRect(
             (short)(mi.X + def.MinX), (short)(mi.Y + def.MinY),
             (short)(mi.X + def.MaxX), (short)(mi.Y + def.MaxY));
-        // Apply the multi's REGION.EVENTS tag so the ship region's @Enter/@Step
-        // scripts fire (the tag round-trips on the item but was never realized).
-        if (mi.TryGetTag("REGION.EVENTS", out string? regionEvents))
-            region.AddEventsFromTag(regionEvents);
-        ApplyRegionTags(mi, region);
         _world.AddRegion(region);
         ship.RegionUid = region.Uid;
         UpdateShipRegion(ship); // set P + inherit from current surroundings
+        // The record's REGION.EVENTS / REGION.FLAGS / REGION.TAG.<name> lines are the
+        // hull's own region state (SHL_REGION, CItemMulti.cpp:3011). They go on after
+        // the realization, as upstream reads them into a region already realized; a
+        // move realizes it afresh and starts the flags over from the definition
+        // (CCMultiMovable.cpp:601 -> MultiRealizeRegion).
+        MultiRegionRecord.Apply(mi, region);
     }
 
-    /// <summary>Put the multi's stored REGION.TAG.&lt;name&gt; lines on the region it
-    /// realizes. A classic save writes them on the multi and upstream hands them
-    /// straight to the region (SHL_REGION, CItemMulti.cpp:3011), which is where a
-    /// script standing inside the structure reads them from - a house's TAG.owner, for
-    /// one. Keeping them only on the item left the live region blank.</summary>
-    private static void ApplyRegionTags(SphereNet.Game.Objects.Items.Item mi,
-        SphereNet.Game.World.Regions.Region region)
-    {
-        foreach (var (key, val) in mi.Tags.GetAll())
-        {
-            if (key.StartsWith("REGION.TAG.", StringComparison.OrdinalIgnoreCase))
-                region.SetTag(key["REGION.TAG.".Length..], val);
-        }
-    }
+    /// <summary>The live region of a ship, or null.</summary>
+    public Region? FindShipRegion(Serial multiUid) =>
+        _ships.TryGetValue(multiUid, out var ship) && ship.RegionUid != 0
+            ? _world.FindRegionByUid(ship.RegionUid)
+            : null;
 
 
     /// <summary>Re-position the ship region to the current hull footprint and
@@ -1659,42 +1770,75 @@ public sealed class ShipEngine
     // Save/Load (TAG-based, House pattern)
     // =====================================================================
 
-    /// <summary>Serialize all ship metadata to item TAGs for persistence.</summary>
+    /// <summary>The SHIP.* tags older SphereNet saves carry. Still read on load; the
+    /// next save replaces them with the Source-X record.</summary>
+    private static readonly string[] LegacyShipTags =
+    [
+        "SHIP.OWNER", "SHIP.OWNER_UUID", "SHIP.ANCHORED", "SHIP.DIRFACE", "SHIP.DIRMOVE",
+        "SHIP.SPEEDPERIOD", "SHIP.SPEEDTILES", "SHIP.SPEEDMODE", "SHIP.PILOT",
+        "SHIP.COMPONENTS", "SHIP.BANS", "SHIP.HOLD", "SHIP.PLANKS",
+    ];
+
+    /// <summary>
+    /// Put each ship's state on its hull in the shape Source-X writes it. A ship is a
+    /// CItemMulti (CItemMulti::r_Write, CItemMulti.cpp:2558: GUILD, OWNER, one ADDBAN /
+    /// ADDCOMP line per uid, LOCKDOWNSPERCENT, BASEVENDORS, BASESTORAGE) followed by
+    /// CItemShip::r_Write's HATCH and PLANK lines (CItemShip.cpp:118). Its movement
+    /// state is not a key of its own: it lives in the item's MORE2 (movement type,
+    /// anchor, move direction, facing - m_itShip, CItem.h:438) and the pilot uid in
+    /// MOREP, which CItem::r_Write writes for every item. Speed is never saved; it
+    /// comes from the definition.
+    /// </summary>
     public void SerializeAllToTags()
     {
+        static string Hex(Serial s) => $"0{s.Value:x}";
+        static void SetOrRemove(Item item, string key, string? value)
+        {
+            if (value != null) item.SetTag(key, value);
+            else item.RemoveTag(key);
+        }
+        static string? List(IEnumerable<Serial> uids)
+        {
+            var parts = uids.Where(u => u.NamesAnObject).Select(Hex).ToList();
+            return parts.Count > 0 ? string.Join(",", parts) : null;
+        }
+
         foreach (var (_, ship) in _ships)
         {
             var item = ship.MultiItem;
-            item.SetTag("SHIP.OWNER", $"0{ship.Owner.Value:X}");
-            var ownerObj = _world.FindObject(ship.Owner);
-            if (ownerObj != null)
-                item.SetTag("SHIP.OWNER_UUID", ownerObj.Uuid.ToString("D"));
-            else
-                item.RemoveTag("SHIP.OWNER_UUID");
-            item.SetTag("SHIP.ANCHORED", ship.Anchored ? "1" : "0");
-            item.SetTag("SHIP.DIRFACE", ((byte)ship.DirFace).ToString());
-            item.SetTag("SHIP.DIRMOVE", ((byte)ship.DirMove).ToString());
-            item.SetTag("SHIP.SPEEDPERIOD", ship.SpeedPeriod.ToString());
-            item.SetTag("SHIP.SPEEDTILES", ship.SpeedTiles.ToString());
-            item.SetTag("SHIP.SPEEDMODE", ((byte)ship.SpeedMode).ToString());
+            foreach (var legacy in LegacyShipTags)
+                item.RemoveTag(legacy);
 
-            if (ship.Pilot.IsValid)
-                item.SetTag("SHIP.PILOT", $"0{ship.Pilot.Value:X}");
-            else
-                item.RemoveTag("SHIP.PILOT");
+            var def = _multiDefs.Get(item.BaseId);
+            SetOrRemove(item, "GUILD", ship.GuildStone.NamesAnObject ? Hex(ship.GuildStone) : null);
+            SetOrRemove(item, "OWNER", ship.Owner.NamesAnObject ? Hex(ship.Owner) : null);
+            SetOrRemove(item, "ADDBAN", List(ship.Bans));
+            SetOrRemove(item, "ADDCOMP", List(ship.Components));
+            // CItemMulti's constructor gives every multi, ships included, the
+            // definition's storage budgets (CItemMulti.cpp:38), and r_Write writes them.
+            item.SetTag("LOCKDOWNSPERCENT", "50");
+            item.SetTag("BASEVENDORS", (def is { BaseVendors: > 0 } ? def.BaseVendors : 10).ToString());
+            item.SetTag("BASESTORAGE", (def is { BaseStorage: > 0 } ? def.BaseStorage : 489).ToString());
+            var hold = ship.GetHold(_world);
+            SetOrRemove(item, "HATCH", hold != null ? Hex(hold.Uid) : null);
+            var planks = new List<Serial>();
+            for (int i = 0; i < ship.GetPlankCount(_world); i++)
+                if (ship.GetPlank(i, _world) is { } plank) planks.Add(plank.Uid);
+            SetOrRemove(item, "PLANK", List(planks));
 
-            if (ship.Components.Count > 0)
-                item.SetTag("SHIP.COMPONENTS", string.Join(",", ship.Components.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("SHIP.COMPONENTS");
+            item.More2 = (uint)(byte)ship.MovementType
+                | (uint)(ship.Anchored ? 1 : 0) << 8
+                | (uint)((byte)ship.DirMove & 0x07) << 16
+                | (uint)((byte)ship.DirFace & 0x07) << 24;
+            uint pilot = ship.Pilot.IsValid ? ship.Pilot.Value : 0;
+            item.MoreP = new Point3D(unchecked((short)(pilot & 0xFFFF)), unchecked((short)(pilot >> 16)), 0, 0);
 
-            if (ship.Bans.Count > 0)
-                item.SetTag("SHIP.BANS", string.Join(",", ship.Bans.Select(s => $"0{s.Value:X}")));
-            else
-                item.RemoveTag("SHIP.BANS");
+            // The LIVE region goes into the record (CItemMulti::r_Write ->
+            // CRegion::r_WriteBody), not whatever the hull happened to carry.
+            if (FindShipRegion(item.Uid) is { } region)
+                MultiRegionRecord.Store(item, region);
         }
     }
-
     /// <summary>
     /// Rebuild ship instances from IT_SHIP items after world load.
     /// </summary>
@@ -1739,15 +1883,25 @@ public sealed class ShipEngine
             // CItemShip from the type and leaves m_uidOwner empty when nobody owns it
             // (a guard ship, a scripted decoration). Requiring one kept every ownerless
             // hull out of the engine as well - all eight of them in the 56T dump.
-            if (!item.TryGetTag("SHIP.OWNER", out string? ownerStr))
-                item.TryGetTag("OWNER", out ownerStr);
-            uint ownerVal = ParseHexSerial(ownerStr);
+            if (!item.TryGetTag("OWNER", out string? ownerStr))
+                item.TryGetTag("SHIP.OWNER", out ownerStr);
+            var ownerUid = new Serial(ParseHexSerial(ownerStr));
 
             var ship = new Ship(item)
             {
-                Owner = ownerVal != 0 ? new Serial(ownerVal) : Serial.Invalid,
+                Owner = ownerUid.NamesAnObject ? ownerUid : Serial.Invalid,
             };
 
+            // Older SphereNet saves carry SHIP.* tags; a Source-X record keeps the
+            // anchor and the directions in MORE2 (m_itShip, CItem.h:438).
+            bool legacyState = item.TryGetTag("SHIP.DIRFACE", out _);
+            if (!legacyState)
+            {
+                uint more2 = item.More2;
+                ship.Anchored = ((more2 >> 8) & 0xFF) != 0;
+                ship.DirMove = (Direction)((more2 >> 16) & 0x07);
+                ship.DirFace = Normalize4Dir((Direction)((more2 >> 24) & 0x07));
+            }
             if (item.TryGetTag("SHIP.ANCHORED", out string? ancStr))
                 ship.Anchored = ancStr == "1";
             if (item.TryGetTag("SHIP.DIRFACE", out string? dirStr) && byte.TryParse(dirStr, out byte df))
@@ -1768,10 +1922,19 @@ public sealed class ShipEngine
                 ship.SpeedMode = (ShipSpeedMode)sm;
             if (item.TryGetTag("SHIP.PILOT", out string? pilotStr))
                 ship.Pilot = new Serial(ParseHexSerial(pilotStr));
-
-            // Rebuild component list and categorize
-            if (item.TryGetTag("SHIP.COMPONENTS", out string? compStr) && !string.IsNullOrWhiteSpace(compStr))
+            else if (item.MoreP is { X: not 0 } or { Y: not 0 })
             {
+                // m_itShip.m_Pilot shares the MOREP field (CItem.h:446).
+                uint pilotUid = (ushort)item.MoreP.X | (uint)(ushort)item.MoreP.Y << 16;
+                ship.Pilot = new Serial(pilotUid);
+            }
+
+            // Rebuild component list and categorize: the Source-X ADDCOMP lines, or
+            // the SHIP.COMPONENTS tag of an older SphereNet save.
+            foreach (var compKey in new[] { "ADDCOMP", "SHIP.COMPONENTS" })
+            {
+                if (!item.TryGetTag(compKey, out string? compStr) || string.IsNullOrWhiteSpace(compStr))
+                    continue;
                 foreach (var part in compStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 {
                     uint val = ParseHexSerial(part);
@@ -1792,13 +1955,32 @@ public sealed class ShipEngine
             // AddComponent categorises them by type.
             RegisterNamedComponent(ship, item, "SHIP.HOLD");
             RegisterNamedComponent(ship, item, "SHIP.PLANKS");
+            RegisterNamedComponent(ship, item, "HATCH");
+            RegisterNamedComponent(ship, item, "PLANK");
 
-            if (item.TryGetTag("SHIP.BANS", out string? bansStr) && !string.IsNullOrWhiteSpace(bansStr))
+            foreach (var banKey in new[] { "ADDBAN", "SHIP.BANS" })
             {
+                if (!item.TryGetTag(banKey, out string? bansStr) || string.IsNullOrWhiteSpace(bansStr))
+                    continue;
                 foreach (var part in bansStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 {
                     uint val = ParseHexSerial(part);
                     if (val != 0) ship.AddBan(new Serial(val));
+                }
+            }
+
+            // SHL_GUILD (CItemMulti.cpp:3092): names a guild stone; SetGuild puts the
+            // ship in that stone's storage.
+            if (item.TryGetTag("GUILD", out string? guildStr) &&
+                new Serial(ParseHexSerial(guildStr)) is { NamesAnObject: true } stone &&
+                _world.FindItem(stone) is { IsDeleted: false, ItemType: ItemType.StoneGuild })
+            {
+                if (_guilds == null)
+                    ship.GuildStone = stone;
+                else if (_guilds.GetGuild(stone) is { } guild)
+                {
+                    ship.GuildStone = stone;
+                    guild.AddShip(item.Uid);
                 }
             }
 

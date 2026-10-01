@@ -253,15 +253,20 @@ public sealed class GeneralGameplayIntegrityTests
         var target = CreatePlayer(world, 101, 100);
         TestHarness.AttachCharacter(client, inviter);
         var triggers = new TriggerDispatcher();
-        triggers.RegisterCharEvent("EVENTSPLAYER", "PartyInvite", (_, _) => TriggerResult.True);
+        int asked = 0;
+        triggers.RegisterCharEvent("EVENTSPLAYER", "PartyInvite", (_, _) => { asked++; return TriggerResult.True; });
+        inviter.IsOnline = true;
+        target.IsOnline = true;
         client.SetEngines(partyManager: new PartyManager(), triggerDispatcher: triggers);
         uint uid = target.Uid.Value;
 
         client.HandleExtendedCommand(0x0006,
             [1, (byte)(uid >> 24), (byte)(uid >> 16), (byte)(uid >> 8), (byte)uid]);
 
-        Assert.False(target.TryGetTag("PARTY_INVITE_FROM", out _));
-        Assert.False(target.TryGetTag("PARTY_INVITE_TIME", out _));
+        // The invitation record is the inviter's (CClientTarg.cpp:2481).
+        Assert.Equal(1, asked);
+        Assert.False(inviter.TryGetTag(PartyManager.LastInviteTag, out _));
+        Assert.False(inviter.TryGetTag(PartyManager.LastInviteTimeTag, out _));
     }
 
     [Fact]

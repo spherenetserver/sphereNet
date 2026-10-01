@@ -109,7 +109,11 @@ public class PetPartyTriggerTests
         byte[] data = [2, (byte)(u >> 24), (byte)(u >> 16), (byte)(u >> 8), (byte)u];
         client.HandleExtendedCommand(0x0006, data);
 
+        // Source-X detaches the member first and only then asks the master whether the
+        // party (now of one) may disband (RemoveMember -> Disband, CParty.cpp:357-361):
+        // the refusal keeps the master's party, not the member who already left.
         Assert.NotNull(pm.FindParty(master.Uid));
-        Assert.True(pm.FindParty(master.Uid)!.IsMember(member.Uid));
+        Assert.False(pm.FindParty(master.Uid)!.IsMember(member.Uid));
+        Assert.Equal(1, pm.FindParty(master.Uid)!.MemberCount);
     }
 }

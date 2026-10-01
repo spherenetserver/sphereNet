@@ -124,6 +124,7 @@ public class HousingEconomyTests
         };
 
         var owner = world.CreateCharacter();
+        owner.IsPlayer = true;   // upstream redeeds only to a player
         var wornMulti = world.CreateItem();
         wornMulti.ItemType = ItemType.Multi;
         wornMulti.SetTag("HOUSE.OWNER", FormatSerial(owner.Uid));
@@ -466,6 +467,7 @@ public class HousingEconomyTests
         var engine = new HousingEngine(world, new MultiRegistry());
 
         var owner = world.CreateCharacter();
+        owner.IsPlayer = true;   // upstream redeeds only to a player
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
         var bank = world.CreateItem();
         bank.ItemType = ItemType.Container; bank.BaseId = 0x0E75;
@@ -484,6 +486,8 @@ public class HousingEconomyTests
         world.PlaceItem(locked, new Point3D(101, 100, 0, 0));
         Assert.True(house!.Lockdown(locked.Uid, owner.Uid));
 
+        // Source-X transfers only when @Redeed is used (ARGN2=1 default, ARGN3=1 bank).
+        House.OnRedeed = (_, args) => { args.N3 = 1; return TriggerResult.Default; };
         house.Redeed(world);
 
         // The item survived (not dropped to decay) and is inside a moving crate
@@ -540,6 +544,7 @@ public class HousingEconomyTests
         var engine = new HousingEngine(world, registry) { MaxHousesPerPlayer = -1, MaxHousesPerAccount = -1 };
 
         var owner = world.CreateCharacter();
+        owner.IsPlayer = true;   // upstream redeeds only to a player
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
 
         var house = engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0));
@@ -572,6 +577,7 @@ public class HousingEconomyTests
         var engine = new HousingEngine(world, registry) { MaxHousesPerPlayer = -1, MaxHousesPerAccount = -1 };
 
         var owner = world.CreateCharacter();
+        owner.IsPlayer = true;   // upstream redeeds only to a player
         world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
 
         var house = engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0));

@@ -104,6 +104,9 @@ public class ParityWaveGTests
         vase.Name = "a vase";
         world.PlaceItem(vase, new Point3D(1500, 1499, 0, 0));
 
+        // Source-X only transfers when @Redeed is used: ARGN2=1 (default) moves
+        // everything to the crate, ARGN3=1 sends it to the bank (CItemMulti.cpp:1230).
+        House.OnRedeed = (_, args) => { args.N3 = 1; return TriggerResult.Default; };
         var deed = house.Redeed(world);
         Assert.NotNull(deed);
 

@@ -1069,6 +1069,7 @@ public sealed class WorldLoader
             bool hasUuid = false;
             bool hasId = false;
             bool skipItem = false;
+            var classicDesign = new ClassicDesignState();
             while (reader.NextProperty(out string key, out string val))
             {
                 string upper = key.ToUpperInvariant();
@@ -1129,6 +1130,14 @@ public sealed class WorldLoader
                     continue;
                 if (upper == "ID")
                     hasId = true;
+                // A customizable house's committed design, as Source-X writes it
+                // (CItemMultiCustom::r_Write / r_LoadVal, CItemMultiCustom.cpp:1704/
+                // 1840): COMP=id,dx,dy,dz,stairId per piece, then REVISION. They are
+                // load-time keys only (IsLoadingGeneric), so they are taken here and
+                // turned into the DESIGN_n / DESIGN_REVISION record the engine reads.
+                if (item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom &&
+                    TryApplyClassicDesignKey(item, upper, val, classicDesign))
+                    continue;
                 ApplyItemProperty(item, key, val);
             }
             if (skipItem)
@@ -1533,6 +1542,73 @@ public sealed class WorldLoader
         return count;
     }
 
+    /// <summary>The design a customizable house's record is building while it loads:
+    /// upstream's working copy (m_designWorking) and the revision of the committed one
+    /// (m_designMain), CItemMultiCustom.cpp:1840.</summary>
+    private sealed class ClassicDesignState
+    {
+        public readonly List<string> Working = [];
+        public long MainRevision;
+    }
+
+    /// <summary>COMP / REVISION on a customizable house, exactly as Source-X loads them
+    /// (CItemMultiCustom::r_LoadVal, CItemMultiCustom.cpp:1840):
+    /// <list type="bullet">
+    /// <item>COMP must carry exactly five numbers (read with atoi) or the key is
+    /// refused; a piece whose id has no scripted ITEMDEF is dropped
+    /// (AddItem -> FindItemBase, :451).</item>
+    /// <item>The pieces go into the WORKING design. REVISION sets the working
+    /// revision and commits: unless it equals the committed revision, the working
+    /// design - revision included - becomes the committed one (CommitChanges, :277/338).
+    /// Pieces never followed by a REVISION are not committed.</item>
+    /// </list></summary>
+    private static bool TryApplyClassicDesignKey(Item item, string upperKey, string val, ClassicDesignState state)
+    {
+        if (upperKey == "COMP")
+        {
+            var parts = val.Split(',');
+            if (parts.Length != 5)
+                return false;
+            int id = Atoi(parts[0]);
+            if (id <= 0 || id > ushort.MaxValue ||
+                SphereNet.Game.Definitions.DefinitionLoader.GetItemDef((ushort)id) == null)
+                return true;   // "Unscripted item being added to building" - skipped
+            state.Working.Add(
+                $"0x{id:X},{(short)Atoi(parts[1])},{(short)Atoi(parts[2])},{(sbyte)Atoi(parts[3])},{(ushort)Atoi(parts[4])}");
+            return true;
+        }
+        if (upperKey == "REVISION")
+        {
+            long revision = ScriptNumber.TryParseToken(val.Trim(), out long r) ? r : 0;
+            if (revision == state.MainRevision)
+                return true;   // CommitChanges: nothing new to commit
+            foreach (var (key, _) in item.Tags.GetAll().ToArray())
+            {
+                if (key.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase))
+                    item.Tags.Remove(key);
+            }
+            for (int i = 0; i < state.Working.Count; i++)
+                item.SetTag($"DESIGN_{i}", state.Working[i]);
+            item.SetTag(SphereNet.Game.Housing.HouseDesign.RevisionTag, ((uint)revision).ToString());
+            state.MainRevision = revision;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>C atoi: optional sign and leading decimal digits; anything else 0.</summary>
+    private static int Atoi(string text)
+    {
+        var s = text.AsSpan().TrimStart();
+        int i = 0;
+        bool negative = false;
+        if (i < s.Length && (s[i] == '-' || s[i] == '+')) { negative = s[i] == '-'; i++; }
+        long value = 0;
+        while (i < s.Length && char.IsAsciiDigit(s[i]) && value < int.MaxValue)
+            value = value * 10 + (s[i++] - '0');
+        value = negative ? -value : value;
+        return (int)Math.Clamp(value, int.MinValue, int.MaxValue);
+    }
     private void ApplyItemProperty(Item item, string key, string val)
     {
         switch (key.ToUpperInvariant())

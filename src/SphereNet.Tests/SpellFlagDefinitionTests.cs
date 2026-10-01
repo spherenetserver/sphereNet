@@ -62,7 +62,8 @@ public sealed class SpellFlagDefinitionTests
         caster.MaxHits = 100;
         caster.Hits = 40;
         new SpellEngine(world, registry).ApplyDirectEffect(caster, caster, SpellType.Heal, 1000);
-        Assert.InRange(caster.Hits, (short)52, (short)59);
+        // potency 500..999 on 5..20 with IMulDiv rounding (half up) -> 12..20.
+        Assert.InRange(caster.Hits, (short)52, (short)60);
     }
 
     [Fact]

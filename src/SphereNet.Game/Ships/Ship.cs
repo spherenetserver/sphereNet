@@ -42,6 +42,10 @@ public sealed class Ship
 
     public Item MultiItem => _multiItem;
     public Serial Owner { get => _owner; set => _owner = value; }
+
+    /// <summary>The guild stone the ship belongs to (Source-X CItemMulti _uidGuild,
+    /// shared by houses and ships). Invalid when none.</summary>
+    public Serial GuildStone { get; set; } = Serial.Invalid;
     public Serial Pilot { get => _pilot; set => _pilot = value; }
     public bool Anchored { get => _anchored; set => _anchored = value; }
     public Direction DirFace { get => _dirFace; set => _dirFace = value; }

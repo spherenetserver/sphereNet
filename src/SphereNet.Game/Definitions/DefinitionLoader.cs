@@ -1262,6 +1262,15 @@ public sealed class DefinitionLoader
         return ResourceId.FromEventName(text);
     }
 
+    /// <summary>The defname a loaded resource answers to, or null when the id names no
+    /// loaded resource. The reverse of <see cref="ResolveEventName"/>, used to write an
+    /// event list back out by name.</summary>
+    public static string? ResolveResourceDefName(ResourceId rid)
+    {
+        var name = _resourcesStatic?.GetResource(rid)?.DefName;
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
     private void ResolveEventReferences()
     {
         foreach (var def in _itemDefs.Values) ResolveEventRefsOn(def);

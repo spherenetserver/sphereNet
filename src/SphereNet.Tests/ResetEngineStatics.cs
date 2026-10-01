@@ -187,6 +187,10 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Party.PartyDef.FunctionExists = null;
         SphereNet.Game.Definitions.CharDefHelper.AfterApplyDefName = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
+        SphereNet.Game.Objects.Characters.Character.ResolvePartyFinder = null;
+        SphereNet.Game.Objects.Characters.Character.SendPacketToOwner = null;
+        SphereNet.Game.Objects.Characters.Character.SendOwnerMessage = null;
+        SphereNet.Game.Party.PartyIo.ResyncCharacter = null;
         SphereNet.Game.Objects.Characters.Character.NpcWantThisItem = null;
         SphereNet.Game.Objects.Characters.Character.NpcCanEatFood = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
@@ -242,6 +246,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Housing.HousingEngine.OnDelMulti = null;
         SphereNet.Game.Housing.CustomHousingEngine.KeepCommitItem = null;
         SphereNet.Game.Housing.CustomHousingEngine.BroadcastRemove = null;
+        SphereNet.Game.Housing.CustomHousingEngine.Active = null;
         SphereNet.Game.Housing.HouseDesignValidItems.ClearValidItems();
         SphereNet.Game.Objects.Characters.Character.OnEffectAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnRevealing = null;
@@ -265,10 +270,12 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = null;
         SphereNet.Game.Objects.Items.Item.OnTimerExpired = null;
         SphereNet.Game.Objects.Items.Item.ResolveHouse = null;
+        SphereNet.Game.Objects.Items.Item.ResolveMultiRegion = null;
         SphereNet.Game.Objects.Items.Item.ResolveShipEngine = null;
         SphereNet.Game.Objects.Items.Item.ResolveMultiDefId = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuild = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuildManager = null;
+        SphereNet.Game.Guild.GuildDef.RelationScriptQuery = null;
         SphereNet.Game.Objects.Characters.Character.ResolveGuildManager = null;
         SphereNet.Game.Clients.PaperdollText.NpcNoFameTitle = false;
         SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = null;

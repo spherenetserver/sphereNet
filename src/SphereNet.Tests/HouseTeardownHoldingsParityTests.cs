@@ -17,9 +17,9 @@ namespace SphereNet.Tests;
 /// A locked-down item is NOT MOVABLE here - ObjAttributes.LockedDown fails
 /// Item.IsMovableType - so one left behind by a deleted house is stuck in the world for
 /// good, still linked to a multi that is gone. Source-X lets go of them
-/// (UnlockAllItems, CItemMulti.cpp:1804) and hands the moving crate over
-/// (TransferMovingCrateToBank, :1522), which also DELETES the crate when it is empty
-/// rather than posting an empty box to someone's bank (:1539).
+/// (UnlockAllItems, CItemMulti.cpp:1804). A redeed hands the moving crate over when its
+/// script asks for the bank (TransferMovingCrateToBank, :1522), and deletes it when it is
+/// empty (:1539); a plain deletion only forgets it (:124).
 /// </summary>
 [Collection("DefinitionLoaderSerial")]
 public sealed class HouseTeardownHoldingsParityTests
@@ -106,55 +106,39 @@ public sealed class HouseTeardownHoldingsParityTests
     }
 
     [Fact]
-    public void DeletingAHouseHandsTheLoadedCrateToTheOwnersBank()
+    public void DeletingAHouseOnlyForgetsItsLoadedCrate()
     {
+        // The multi destructor runs SetMovingCrate(CUID()) (CItemMulti.cpp:124): the
+        // crate is forgotten, not delivered - it stays where it stood with its goods.
         var (world, _, multi, house, owner) = Setup();
         var crate = house.GetMovingCrate(create: true)!;
         var goods = world.CreateItem();
         goods.BaseId = 0x0F51;
         Assert.True(crate.TryAddItem(goods));
-
-        world.RemoveItem(multi);
-        multi.Delete();
-
-        Assert.False(crate.IsDeleted);
-        Assert.Contains(crate, Bank(owner).Contents);
-        Assert.Contains(goods, crate.Contents);
-    }
-
-    [Fact]
-    public void AnEmptyCrateIsNotPostedToTheBank()
-    {
-        // Source-X deletes it instead (CItemMulti.cpp:1539).
-        var (world, _, multi, house, owner) = Setup();
-        var crate = house.GetMovingCrate(create: true)!;
-
-        world.RemoveItem(multi);
-        multi.Delete();
-
-        Assert.True(crate.IsDeleted);
-        Assert.Empty(Bank(owner).Contents);
-    }
-
-    [Fact]
-    public void WithNoBankTheLoadedCrateLandsOnTheGroundRatherThanNowhere()
-    {
-        var (world, _, multi, house, owner) = Setup();
-        var bank = Bank(owner);
-        owner.Unequip(Layer.BankBox);
-        world.RemoveItem(bank);
-
-        var crate = house.GetMovingCrate(create: true)!;
-        var goods = world.CreateItem();
-        goods.BaseId = 0x0F51;
-        Assert.True(crate.TryAddItem(goods));
+        var crateSpot = crate.Position;
 
         world.RemoveItem(multi);
         multi.Delete();
 
         Assert.False(crate.IsDeleted);
         Assert.False(crate.ContainedIn.IsValid);
+        Assert.Equal(crateSpot, crate.Position);
         Assert.Contains(goods, crate.Contents);
+        Assert.DoesNotContain(crate, Bank(owner).Contents);
+        Assert.False(house.MovingCrate.IsValid);
+    }
+
+    [Fact]
+    public void DeletingAHouseLeavesAnEmptyCrateWhereItStood()
+    {
+        var (world, _, multi, house, owner) = Setup();
+        var crate = house.GetMovingCrate(create: true)!;
+
+        world.RemoveItem(multi);
+        multi.Delete();
+
+        Assert.False(crate.IsDeleted);
+        Assert.Empty(Bank(owner).Contents);
     }
 
     // ---- redeeding ------------------------------------------------------
@@ -164,6 +148,9 @@ public sealed class HouseTeardownHoldingsParityTests
     {
         var (world, houses, multi, house, owner) = Setup();
         var crate = house.GetMovingCrate(create: true)!;
+        // A housing script on @Redeed asks for the bank (ARGN3); upstream transfers
+        // nothing without one (CItemMulti.cpp:1230).
+        House.OnRedeed = (_, args) => { args.N3 = 1; return TriggerResult.Default; };
 
         Assert.NotNull(houses.RedeedFromScript(multi.Uid));
 
@@ -178,32 +165,12 @@ public sealed class HouseTeardownHoldingsParityTests
         var crate = house.GetMovingCrate(create: true)!;
         var rug = Rug(world);
         Assert.True(house.Lockdown(rug.Uid, owner.Uid));
+        House.OnRedeed = (_, args) => { args.N3 = 1; return TriggerResult.Default; };
 
         Assert.NotNull(houses.RedeedFromScript(multi.Uid));
 
         Assert.False(crate.IsDeleted);
         Assert.Contains(rug, crate.Contents);
         Assert.Contains(crate, Bank(owner).Contents);
-    }
-
-    // ---- one parent -----------------------------------------------------
-
-    [Fact]
-    public void ADeliveredCrateHasExactlyOneParent()
-    {
-        // The crate lived on the ground at house Z - 20; once it is in the bank it
-        // must not still be a world item at that spot.
-        var (world, _, multi, house, owner) = Setup();
-        var crate = house.GetMovingCrate(create: true)!;
-        var goods = world.CreateItem();
-        goods.BaseId = 0x0F51;
-        Assert.True(crate.TryAddItem(goods));
-        var crateSpot = crate.Position;
-
-        world.RemoveItem(multi);
-        multi.Delete();
-
-        Assert.Equal(Bank(owner).Uid, crate.ContainedIn);
-        Assert.DoesNotContain(world.GetItemsInRange(crateSpot, 0), i => i == crate);
     }
 }

@@ -8,7 +8,7 @@ using SphereNet.Network.Packets.Outgoing;
 
 namespace SphereNet.Game.Clients;
 
-public sealed partial class GameClient
+public sealed partial class GameClient : IHouseDesignClient
 {
     /// <summary>
     /// Enter house-customization mode on this client: start a design session
@@ -30,22 +30,83 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HouseDesignBegin,
-                new TriggerArgs
-                {
-                    CharSrc = _character, O1 = multi, N1 = 1, N2 = 0, N3 = 2,
-                    ScriptConsole = this
-                }) == TriggerResult.True)
-            return;
+        // The whole lifecycle - @HouseDesignBegin and its N1/N2/N3, ending a
+        // previous designer, moving and hiding this one - lives in the engine
+        // (Source-X CItemMultiCustom::BeginCustomize).
+        _customHousing.Begin(_character, multi, this);
+    }
 
-        var session = _customHousing.Begin(_character, multi);
-        Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin: true));
-        SendHouseDesign(multi, session.Working);
+    // ---- IHouseDesignClient: the engine's handle on this designer ----
+
+    void IHouseDesignClient.SendHouseCustomizationMode(Item multi, bool begin) =>
+        Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin));
+
+    void IHouseDesignClient.SendWorkingHouseDesign(Item multi, HouseDesign design) =>
+        SendHouseDesign(multi, design);
+
+    void IHouseDesignClient.SendCommittedHouseDesign(Item multi) => SendCommittedDesign(multi);
+
+    void IHouseDesignClient.SendDesignerRemoveObject(Item item) =>
+        _netState.Send(new PacketDeleteObject(item.Uid.Value));
+
+    void IHouseDesignClient.SendDesignerMoved()
+    {
+        if (_character != null)
+            SendSelfRedraw();
+    }
+
+    HouseDesignBeginResult? IHouseDesignClient.FireHouseDesignBegin(Item multi, long n1, long n2, long n3)
+    {
+        // Source-X runs the trigger - and acts on its N1/N2/N3 - only when a
+        // script hooks it (IsTrigUsed(TRIGGER_HOUSEDESIGNBEGIN), :118).
+        if (_character == null || _triggerDispatcher == null ||
+            !_triggerDispatcher.IsTriggerNameUsed("HouseDesignBegin"))
+            return null;
+        var args = new TriggerArgs
+        {
+            CharSrc = _character, O1 = multi, N1 = n1, N2 = n2, N3 = n3,
+            ScriptConsole = this
+        };
+        bool cancel = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HouseDesignBegin, args)
+            == TriggerResult.True;
+        return new HouseDesignBeginResult(cancel, args.N1, args.N2, args.N3);
+    }
+
+    bool IHouseDesignClient.FireHouseDesignExit(Item multi, bool forced) =>
+        _character != null && _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HouseDesignExit,
+            new TriggerArgs
+            {
+                CharSrc = _character, O1 = multi, N1 = forced ? 1 : 0, ScriptConsole = this
+            }) == TriggerResult.True;
+
+    bool IHouseDesignClient.FireHouseDesignCommit(Item multi, CustomHousingEngine.CommitPreview pv)
+    {
+        if (_character == null || _triggerDispatcher == null)
+            return false;
+        // The reference pack prices the build from ARGN1/ARGN2 - (new - old) * 500
+        // gold - and RETURNs 1 when the owner cannot afford it (Scripts-X
+        // house_typedefs.scp:603-615). The counts come off the working design after
+        // the per-piece filter (CommitChanges:272-327).
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("FIXTURES.OLD", pv.OldFixtures);
+        locals.SetInt("FIXTURES.NEW", pv.NewFixtures);
+        locals.SetInt("MAXZ", pv.MaxZ);
+        var commitArgs = new TriggerArgs
+        {
+            CharSrc = _character,
+            O1 = multi,
+            N1 = pv.OldTiles,
+            N2 = pv.NewTiles,
+            N3 = pv.Revision,
+            Locals = locals,
+            ScriptConsole = this,
+        };
+        return _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HouseDesignCommit, commitArgs)
+            == TriggerResult.True;
     }
 
     /// <summary>0xBF sub 0x1E — client requests the design of a house whose
-    /// revision it doesn't have cached. Always answered from the committed
-    /// design (DESIGN_n tags), never from someone's working session.</summary>
+    /// revision it doesn't have cached.</summary>
     internal void HandleQueryDesignDetails(byte[] data)
     {
         if (data.Length < 4)
@@ -54,6 +115,14 @@ public sealed partial class GameClient
         var multi = _world.FindItem(new Serial(serial));
         if (multi == null)
             return;
+        // SendStructureTo: the architect gets the working design, everyone else
+        // the committed one (CItemMultiCustom.cpp:871).
+        if (_character != null && _customHousing?.GetSession(_character.Uid) is { } session &&
+            session.HouseUid == multi.Uid)
+        {
+            SendHouseDesign(multi, session.Working);
+            return;
+        }
         SendCommittedDesign(multi);
     }
 
@@ -208,6 +277,7 @@ public sealed partial class GameClient
             }
             case EncodedCommandRegistry.Clear:
                 _customHousing.Clear(_character);
+                SendHouseDesign(multi, _customHousing.GetSession(_character.Uid)!.Working);
                 break;
             case EncodedCommandRegistry.Backup:
                 _customHousing.BackupDesign(_character);
@@ -225,63 +295,21 @@ public sealed partial class GameClient
                 break;
             case EncodedCommandRegistry.Commit:
             {
-                // @HouseDesignCommit fires BEFORE the commit and can refuse it
-                // (Source-X CommitChanges:314-327). The reference pack prices the
-                // build from ARGN1/ARGN2 — (new tiles - old tiles) * 500 gold — and
-                // RETURNs 1 when the owner cannot afford it
-                // (Scripts-X house_typedefs.scp:603-615).
-                //
-                // This used to fire AFTER the commit with ARGN1 = the revision and
-                // nothing else, so that pack read a revision as an "old tile count",
-                // charged from garbage, and its refusal was ignored: the design
-                // committed anyway and the owner was usually PAID for it.
-                var preview = _customHousing.PreviewCommit(_character);
-                if (preview is { } pv)
-                {
-                    var locals = new SphereNet.Scripting.Variables.VarMap();
-                    locals.SetInt("FIXTURES.OLD", pv.OldFixtures);
-                    locals.SetInt("FIXTURES.NEW", pv.NewFixtures);
-                    locals.SetInt("MAXZ", pv.MaxZ);
-                    var commitArgs = new TriggerArgs
-                    {
-                        CharSrc = _character,
-                        O1 = multi,
-                        N1 = pv.OldTiles,
-                        N2 = pv.NewTiles,
-                        N3 = pv.Revision,
-                        Locals = locals,
-                    };
-                    if (_triggerDispatcher?.FireCharTrigger(_character,
-                            CharTrigger.HouseDesignCommit, commitArgs) == TriggerResult.True)
-                    {
-                        // Refused: the working design is untouched and the session
-                        // stays open, so the owner can change it and try again.
-                        break;
-                    }
-                }
-
-                uint? revision = _customHousing.Commit(_character);
-                if (revision == null)
-                    break;
-                Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin: false));
-                SendCommittedDesign(multi);
-                // Observers re-query (0xBF 0x1E) on revision mismatch and get
-                // the committed design through HandleQueryDesignDetails.
-                BroadcastNearby?.Invoke(multi.Position, 24,
-                    new PacketHouseDesignVersion(multi.Uid.Value, revision.Value), _character.Uid.Value);
+                // Source-X CommitChanges: the per-piece @HouseDesignCommitItem filter,
+                // then @HouseDesignCommit (which may refuse) on what is left, then the
+                // commit itself. Design mode stays on (the reference does not end it);
+                // observers are told the new revision through the engine's
+                // DesignCommitted hook.
+                _customHousing.Commit(_character, this);
                 break;
             }
             case EncodedCommandRegistry.Close:
             case EncodedCommandRegistry.Action:
             case EncodedCommandRegistry.Action2:
-            {
-                _customHousing.End(_character);
-                Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin: false));
-                SendCommittedDesign(multi);
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HouseDesignExit,
-                    new TriggerArgs { CharSrc = _character, O1 = multi });
+                // Source-X EndCustomize(false): @HouseDesignExit RETURN 1 keeps the
+                // designer in design mode.
+                _customHousing.End(_character, forced: false);
                 break;
-            }
         }
     }
 

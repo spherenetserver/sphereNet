@@ -115,14 +115,19 @@ public class ShipRedeedTriggerTests
         var multi = world.CreateItem();
         multi.Name = "small house";
         world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
-        var house = new House(multi);
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;   // upstream redeeds only to a player
+        var house = new House(multi) { Owner = owner.Uid };
 
-        Item? redeededDeed = null;
-        House.OnRedeed = d => redeededDeed = d;
+        // Source-X fires @Redeed on the multi, with the deed as ARGO1.
+        Item? firedOn = null;
+        object? redeededDeed = null;
+        House.OnRedeed = (m, args) => { firedOn = m; redeededDeed = args.O1; return TriggerResult.Default; };
 
         var deed = house.Redeed(world);
 
         Assert.NotNull(deed);
+        Assert.Same(multi, firedOn);
         Assert.Same(deed, redeededDeed);
     }
 }

@@ -22,10 +22,17 @@ public class Item : ObjBase
     public static Func<Serial, Ships.Ship?>? ResolveShip;
     public static Func<Serial, House?>? ResolveHouse;
 
+    /// <summary>The live region a structure (house or ship) has realized, or null.
+    /// A REGION.&lt;key&gt; write on the multi reaches that region, as upstream hands it
+    /// straight to the multi's region (SHL_REGION, CItemMulti.cpp:3011).</summary>
+    public static Func<Serial, World.Regions.Region?>? ResolveMultiRegion;
+
     /// <summary>Engine-routed REDEED (HousingEngine full teardown): removes
     /// the registry entry and the dynamic house region too. A direct
-    /// house.Redeed left a ghost region and a stale house-count slot.</summary>
-    public static Func<Serial, Item?>? RedeedHouse;
+    /// house.Redeed left a ghost region and a stale house-count slot.
+    /// Args: multi uid, show message, move to bank, redeeming character (SRC).
+    /// The engine delivers the deed itself.</summary>
+    public static Func<Serial, bool, bool, Character?, Item?>? RedeedHouse;
 
     /// <summary>Ship-engine REDEED (dry-dock: cargo crate + full teardown,
     /// deed delivered to the owner). Ships had no in-game decommission path.</summary>
@@ -2645,80 +2652,20 @@ public class Item : ObjBase
         if (TryGetGuildRelationProperty(upper, out value))
             return true;
 
-        // Customizable multi: DESIGNER reference
-        // Customizable multi references & properties
+        // Customizable multi properties (Source-X CItemMultiCustom::r_WriteVal,
+        // CItemMultiCustom.cpp:1756): COMPONENTS / DESIGN[.n.KEY] / DESIGNER /
+        // FIXTURES / REVISION read the committed design and the live session.
         if (_type == ItemType.MultiCustom)
         {
-            if (upper == "DESIGNER")
-            {
-                value = Tags.Get("HOUSE_DESIGNER") ?? "0";
+            if (Housing.CustomHousingEngine.TryGetScriptProperty(this, upper, out value))
                 return true;
-            }
             if (upper == "EDITAREA")
             {
                 value = Tags.Get("HOUSE_EDITAREA") ?? "0,0,0,0";
                 return true;
             }
-            if (upper == "FIXTURES")
-            {
-                // Count design components marked as fixtures (5th field = 1)
-                int fc = 0;
-                foreach (var (k, v) in Tags.GetAll())
-                {
-                    if (k.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var p = v.Split(',');
-                        if (p.Length > 4 && p[4] == "1") fc++;
-                    }
-                }
-                value = fc.ToString();
-                return true;
-            }
-            if (upper == "REVISION")
-            {
-                value = Tags.Get("HOUSE_REVISION") ?? "0";
-                return true;
-            }
-            if (upper == "COMPONENTS")
-            {
-                // Source-X: count of design components currently in
-                // the house design (not the static ITEMDEF component
-                // list — that is COMP).
-                int cc = 0;
-                foreach (var (k, _) in Tags.GetAll())
-                    if (k.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase))
-                        cc++;
-                value = cc.ToString();
-                return true;
-            }
-            // DESIGN.n.KEY — get property from nth design component
             if (upper.StartsWith("DESIGN.", StringComparison.Ordinal))
-            {
-                // Format: DESIGN.n.ID / DESIGN.n.DX / DESIGN.n.DY / DESIGN.n.DZ / DESIGN.n.D / DESIGN.n.FIXTURE
-                var rest = upper[7..]; // "n.KEY"
-                int dot2 = rest.IndexOf('.');
-                if (dot2 > 0 && int.TryParse(rest[..dot2], out int di))
-                {
-                    string subKey = rest[(dot2 + 1)..];
-                    // Design components stored as TAG: DESIGN_n = "id,dx,dy,dz,fixture"
-                    string? compData = Tags.Get($"DESIGN_{di}");
-                    if (!string.IsNullOrEmpty(compData))
-                    {
-                        var parts = compData.Split(',');
-                        value = subKey switch
-                        {
-                            "ID" => parts.Length > 0 ? parts[0] : "0",
-                            "DX" => parts.Length > 1 ? parts[1] : "0",
-                            "DY" => parts.Length > 2 ? parts[2] : "0",
-                            "DZ" => parts.Length > 3 ? parts[3] : "0",
-                            "D" => parts.Length > 3 ? $"{(parts.Length > 1 ? parts[1] : "0")},{(parts.Length > 2 ? parts[2] : "0")},{parts[3]}" : "0,0,0",
-                            "FIXTURE" => parts.Length > 4 ? parts[4] : "0",
-                            _ => "0"
-                        };
-                    }
-                }
-                return true;
-            }
+                return false;
         }
 
         // Faz 4: Multi properties
@@ -2914,6 +2861,14 @@ public class Item : ObjBase
             return;
         SetTag(upper, stored);
         MarkDirty(DirtyFlag.Properties);
+    }
+
+    /// <summary>A uid a multi key names, or Invalid when it names nothing (0, or a
+    /// classic cleared value - CUID::IsValidUID).</summary>
+    private static Serial AsMultiUid(string value)
+    {
+        var uid = new Serial(ParseHexOrDecUInt(value.Trim()));
+        return uid.NamesAnObject ? uid : Serial.Invalid;
     }
 
     public override bool TrySetProperty(string key, string value)
@@ -3523,8 +3478,26 @@ public class Item : ObjBase
             }
             // Multi/housing properties — round-trip as TAGs
             case "REGION.FLAGS": case "REGION.EVENTS":
+            {
+                // A structure whose region is up takes the line into the region
+                // (RC_FLAGS / RC_EVENTS, CRegion.cpp:544-550); the item's copy then
+                // reads what the region holds. Before the region is realized - a world
+                // load - the line is kept for the realization.
+                if (ResolveMultiRegion?.Invoke(Uid) is { } liveRegion)
+                {
+                    if (upper == "REGION.FLAGS")
+                    {
+                        if (ScriptNumber.TryParseToken(value, out long flagBits))
+                            liveRegion.LoadFlagsValue((Core.Enums.RegionFlag)(uint)flagBits);
+                    }
+                    else
+                        liveRegion.LoadEventsValue(value);
+                    World.Regions.MultiRegionRecord.Store(this, liveRegion);
+                    return true;
+                }
                 SetTag(upper, value);
                 return true;
+            }
             // HOUSETYPE reaches the LIVE house (SHL_HOUSETYPE, CItemMulti.cpp:3024).
             // The tag is still written so a template applied before the house is
             // registered keeps working, as with the storage keys below.
@@ -3546,6 +3519,12 @@ public class Item : ObjBase
             // SAVE.* tag. The tag is kept on the item, which is what survives a save,
             // and the region realization puts it on the live region.
             case var regionTag when regionTag.StartsWith("REGION.TAG.", StringComparison.Ordinal):
+                if (ResolveMultiRegion?.Invoke(Uid) is { } tagRegion)
+                {
+                    tagRegion.TrySetProperty(regionTag["REGION.".Length..], value);
+                    World.Regions.MultiRegionRecord.Store(this, tagRegion);
+                    return true;
+                }
                 SetTag(regionTag, value);
                 return true;
             // A classic ship names its hold and its planks in its own record, and
@@ -3561,8 +3540,10 @@ public class Item : ObjBase
             case "HATCH":
             {
                 var hold = new Serial(ParseHexOrDecUInt(value));
+                // Kept under the key's own name: the ship restore reads it, and the
+                // world saver writes it back as Source-X does (CItemShip::r_Write).
                 if (hold.NamesAnObject)
-                    SetTag("SHIP.HOLD", $"0{hold.Value:X}");
+                    SetTag("HATCH", $"0{hold.Value:x}");
                 return true;
             }
             case "PLANK":
@@ -3570,14 +3551,18 @@ public class Item : ObjBase
                 var plank = new Serial(ParseHexOrDecUInt(value));
                 if (plank.NamesAnObject)
                 {
-                    string existing = TryGetTag("SHIP.PLANKS", out string? had) ? had ?? "" : "";
-                    SetTag("SHIP.PLANKS",
-                        existing.Length == 0 ? $"0{plank.Value:X}" : $"{existing},0{plank.Value:X}");
+                    string existing = TryGetTag("PLANK", out string? had) ? had ?? "" : "";
+                    SetTag("PLANK",
+                        existing.Length == 0 ? $"0{plank.Value:x}" : $"{existing},0{plank.Value:x}");
                 }
                 return true;
             }
+            // While no guild record exists yet - a world load - a stone's own keys are
+            // kept for the guild restore. A live guild takes ALIGN / ABBREV / WEBPAGE
+            // through its own setters below.
             case "ALIGN" or "ABBREV" or "WEBPAGE" or "MEMBER"
-                when EffectiveType is ItemType.StoneGuild or ItemType.StoneTown:
+                when EffectiveType is ItemType.StoneGuild or ItemType.StoneTown &&
+                     (upper == "MEMBER" || ResolveGuild?.Invoke(Uid) == null):
                 return Guild.GuildManager.TryApplyClassicStoneKey(this, upper, value);
             case var charterKey when charterKey.StartsWith("CHARTER", StringComparison.Ordinal)
                 && EffectiveType is ItemType.StoneGuild or ItemType.StoneTown:
@@ -3589,6 +3574,16 @@ public class Item : ObjBase
             // inside the structure reads.
             case "OWNER":
             {
+                // A registered HOUSE takes the write through the shared ownership
+                // operation (SHL_OWNER -> SetOwner, CItemMulti.cpp:3068/651): the old
+                // owner loses keys, guard memory and the structure, the new one is
+                // struck from the other lists and gains it. Writing only the tag left
+                // the running house with its old owner.
+                if (ResolveHouse?.Invoke(Uid) is { Engine: { } houseEngine } ownedHouse)
+                {
+                    houseEngine.SetOwner(ownedHouse, AsMultiUid(value));
+                    return true;
+                }
                 SetTag(upper, value);
                 // A ship that is ALREADY running keeps its owner in the engine, and
                 // that is what the redeed and the helm ask (Source-X routes the OWNER
@@ -3652,11 +3647,77 @@ public class Item : ObjBase
                 }
                 return true;
             }
-            // Multi-valued housing properties — accumulate comma-separated
+            // Multi-valued housing properties. A classic record writes one uid per
+            // line (CItemMulti::r_Write, CItemMulti.cpp:2580-2682); while no house is
+            // registered yet - the whole of a world load - they accumulate,
+            // comma-separated, and the housing restore reads them. A registered
+            // house takes them live (CItemMulti::r_LoadVal, :3126-3212).
             case "ADDCOMP": case "SECURE": case "LOCKITEM":
+            case "ADDCOOWNER": case "ADDFRIEND": case "ADDBAN": case "ADDACCESS": case "ADDVENDOR":
             {
+                var listHouse = ResolveHouse?.Invoke(Uid);
+                if (listHouse != null)
+                {
+                    var subject = AsMultiUid(value);
+                    if (!subject.IsValid)
+                        return true;
+                    switch (upper)
+                    {
+                        case "ADDCOOWNER": listHouse.AddCoOwner(subject); break;
+                        case "ADDFRIEND": listHouse.AddFriend(subject); break;
+                        case "ADDBAN": listHouse.AddBan(subject); break;
+                        case "ADDACCESS": listHouse.AddAccess(subject); break;
+                        case "ADDVENDOR": listHouse.AddVendor(subject); break;
+                        case "LOCKITEM": listHouse.Lockdown(subject, listHouse.Owner); break;
+                        case "SECURE": listHouse.SecureContainer(subject, listHouse.Owner); break;
+                        case "ADDCOMP":
+                            if (ResolveWorld?.Invoke()?.FindItem(subject) is { } comp)
+                            {
+                                comp.Link = Uid;
+                                listHouse.AddComponent(subject);
+                            }
+                            break;
+                    }
+                    return true;
+                }
+                // A running ship keeps its ban list and components in the ship engine.
+                if (EffectiveType == ItemType.Ship && ResolveShip?.Invoke(Uid) is { } listShip &&
+                    upper is "ADDBAN" or "ADDCOMP")
+                {
+                    var shipSubject = AsMultiUid(value);
+                    if (shipSubject.IsValid)
+                    {
+                        if (upper == "ADDBAN")
+                            listShip.AddBan(shipSubject);
+                        else if (ResolveWorld?.Invoke()?.FindItem(shipSubject) is { } shipComp)
+                        {
+                            shipComp.Link = Uid;
+                            listShip.AddComponent(shipComp);
+                        }
+                    }
+                    return true;
+                }
+                // The permission lists are a multi's own keys; on anything else they
+                // keep falling through to the verb paths as before.
+                if (upper is "ADDCOOWNER" or "ADDFRIEND" or "ADDBAN" or "ADDACCESS" or "ADDVENDOR" &&
+                    EffectiveType is not (ItemType.Multi or ItemType.MultiCustom or ItemType.Ship))
+                    break;
                 string? existing = Tags.Get(upper);
                 SetTag(upper, string.IsNullOrEmpty(existing) ? value : $"{existing},{value}");
+                return true;
+            }
+            // SHL_GUILD (CItemMulti.cpp:3092): the guild stone a house belongs to. A
+            // registered house links through the shared operation, which also keeps
+            // the guild's own structure list in step; before registration (a load)
+            // the key waits as a tag for the housing restore.
+            case "GUILD" when EffectiveType is ItemType.Multi or ItemType.MultiCustom or ItemType.Ship:
+            {
+                if (ResolveHouse?.Invoke(Uid) is { Engine: { } guildEngine } guildHouse)
+                    return guildEngine.SetGuild(guildHouse, AsMultiUid(value));
+                if (EffectiveType == ItemType.Ship && ResolveShip?.Invoke(Uid) is { } guildShip &&
+                    ResolveShipEngine?.Invoke() is { } shipEngine)
+                    return shipEngine.SetGuild(guildShip, AsMultiUid(value));
+                SetTag(upper, value.Trim());
                 return true;
             }
         }
@@ -3840,6 +3901,12 @@ public class Item : ObjBase
             }
         }
 
+        // MEMBER.n.key=value / MEMBERFROMUID.uid.key=value: the membership record's
+        // own keys load on the record, anything else on the member's character. A
+        // reference naming nobody swallows the line, as upstream's bad link does.
+        if (TryParseStoneMemberRef(key, out var memberRef, out string memberKey) && memberKey.Length > 0)
+            return memberRef == null || memberRef.TrySetProperty(memberKey, value);
+
         // Guild stone properties: ABBREV, ALIGN, MASTERUID
         if (TrySetGuildStoneProperty(key.ToUpperInvariant(), value))
             return true;
@@ -3882,6 +3949,16 @@ public class Item : ObjBase
             // the reference resolved, the function never ran, and the line returned
             // true so nothing upstream retried it.
             refObj.ExecuteVerbLine(chainTail, args, source);
+            return true;
+        }
+
+        // MEMBER.n.<line> / MEMBERFROMUID.uid.<line> on a stone: the rest of the line
+        // is a verb on the membership record (CStoneMember::r_Verb), which loads its
+        // own keys and hands everything else to the member's character.
+        if (TryParseStoneMemberRef(key, out var stoneMemberRef, out string stoneMemberLine) &&
+            stoneMemberLine.Length > 0)
+        {
+            stoneMemberRef?.TryExecuteCommand(stoneMemberLine, args, source, out _);
             return true;
         }
 
@@ -4176,121 +4253,42 @@ public class Item : ObjBase
                 OnScriptDClick?.Invoke(this, source);
                 return true;
 
-            // Custom multi design commands
+            // Custom multi design commands (Source-X CItemMultiCustom::r_Verb,
+            // CItemMultiCustom.cpp:1570). They go through the design engine, so the
+            // working design, the committed-design cache, the fixtures and the
+            // observers' revision all move together; on anything else they are
+            // swallowed as before.
             case "ADDITEM":
-            {
-                if (_type == ItemType.MultiCustom)
-                {
-                    // ADDITEM item_id, dx, dy, dz
-                    var parts = args.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (parts.Length >= 4)
-                    {
-                        int designCount = CountTagsWithPrefix("DESIGN_");
-                        Tags.Set($"DESIGN_{designCount}", $"{parts[0]},{parts[1]},{parts[2]},{parts[3]},0");
-                    }
-                }
-                return true;
-            }
             case "ADDMULTI":
-            {
-                if (_type == ItemType.MultiCustom)
-                {
-                    // ADDMULTI multi_id, dx, dy, dz
-                    var parts = args.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (parts.Length >= 4)
-                    {
-                        int designCount = CountTagsWithPrefix("DESIGN_");
-                        Tags.Set($"DESIGN_{designCount}", $"{parts[0]},{parts[1]},{parts[2]},{parts[3]},1");
-                    }
-                }
-                return true;
-            }
             case "CLEAR":
-            {
-                if (_type == ItemType.MultiCustom)
-                {
-                    foreach (var (k, _) in Tags.GetAll().ToArray())
-                    {
-                        if (k.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase))
-                            Tags.Remove(k);
-                    }
-                }
-                return true;
-            }
             case "COMMIT":
-            {
-                // Commit design changes — actual multi rebuild handled at engine level
-                if (_type == ItemType.MultiCustom)
-                {
-                    Tags.Set("HOUSE_DESIGN_COMMITTED", "1");
-                    int rev = int.TryParse(Tags.Get("HOUSE_REVISION") ?? "0", out int r) ? r : 0;
-                    Tags.Set("HOUSE_REVISION", (rev + 1).ToString());
-                }
-                return true;
-            }
             case "CUSTOMIZE":
-            {
-                if (_type == ItemType.MultiCustom)
-                {
-                    string uid = args.Trim();
-                    if (uid.Length > 0)
-                        Tags.Set("HOUSE_DESIGNER", uid);
-                }
-                return true;
-            }
+            case "CONTINUECUSTOMIZE":
             case "ENDCUSTOMIZE":
-            {
-                if (_type == ItemType.MultiCustom)
-                    Tags.Remove("HOUSE_DESIGNER");
-                return true;
-            }
             case "REMOVEITEM":
-            {
-                if (_type == ItemType.MultiCustom)
-                {
-                    // REMOVEITEM item_id, dx, dy, dz — find and remove matching design entry
-                    var parts = args.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (parts.Length >= 4)
-                    {
-                        string target = $"{parts[0]},{parts[1]},{parts[2]},{parts[3]}";
-                        foreach (var (k, v) in Tags.GetAll().ToArray())
-                        {
-                            if (k.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase) &&
-                                v.StartsWith(target, StringComparison.OrdinalIgnoreCase))
-                            {
-                                Tags.Remove(k);
-                                break;
-                            }
-                        }
-                    }
-                }
-                return true;
-            }
-            // RESET on a CUSTOM HOUSE clears its design. On anything else it belongs
-            // to the spawn verb table further down (r_Verb, CCSpawn.cpp:1251), which
-            // this case used to swallow: it returned true for every item type, so a
-            // spawner's RESET reported success and left every creature standing.
-            case "RESET" when _type == ItemType.MultiCustom:
-            {
-                // Reset design to foundation — clear all design entries
-                foreach (var (k, _) in Tags.GetAll().ToArray())
-                {
-                    if (k.StartsWith("DESIGN_", StringComparison.OrdinalIgnoreCase))
-                        Tags.Remove(k);
-                }
-                int rev = int.TryParse(Tags.Get("HOUSE_REVISION") ?? "0", out int r) ? r : 0;
-                Tags.Set("HOUSE_REVISION", (rev + 1).ToString());
-                return true;
-            }
             case "REVERT":
             {
-                // Undo changes since last commit — clear uncommitted flag
                 if (_type == ItemType.MultiCustom)
-                    Tags.Remove("HOUSE_DESIGN_COMMITTED");
+                    Housing.CustomHousingEngine.Active?.ExecuteScriptVerb(this, key, args,
+                        ResolveSourceCharacter(source));
                 return true;
             }
+            // RESET on a CUSTOM HOUSE resets its design to the foundation. On anything
+            // else it belongs to the spawn verb table further down (r_Verb,
+            // CCSpawn.cpp:1251), which this case used to swallow: it returned true for
+            // every item type, so a spawner's RESET reported success and left every
+            // creature standing.
+            case "RESET" when _type == ItemType.MultiCustom:
+                Housing.CustomHousingEngine.Active?.ExecuteScriptVerb(this, key, args,
+                    ResolveSourceCharacter(source));
+                return true;
             case "RESYNC":
             {
+                if (_type == ItemType.MultiCustom && Housing.CustomHousingEngine.Active is { } customEngine)
+                {
+                    customEngine.ExecuteScriptVerb(this, key, args, ResolveSourceCharacter(source));
+                    return true;
+                }
                 MarkDirty(DirtyFlag.Position | DirtyFlag.Body | DirtyFlag.Hue | DirtyFlag.Name | DirtyFlag.Amount | DirtyFlag.Container);
                 return true;
             }
@@ -4355,21 +4353,25 @@ public class Item : ObjBase
                 string keyUpper = key.ToUpperInvariant();
                 if (keyUpper == "REDEED")
                 {
+                    // Source-X REDEED showMsg,moveToBank (CItemMulti.cpp:2388): SRC
+                    // redeems, else the owner; with neither the multi is simply
+                    // deleted. The redeed runs @Redeed on this multi and hands out
+                    // the deed itself.
                     var world = ResolveWorld?.Invoke();
-                    if (world != null)
+                    var flags = args.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
+                    bool HouseFlag(int at) => at < flags.Length &&
+                        ScriptNumber.TryParseToken(flags[at], out long n) && n != 0;
+                    var redeemer = ResolveSourceCharacter(source) ??
+                        (house.Owner.IsValid ? world?.FindChar(house.Owner) : null);
+                    if (redeemer == null)
                     {
-                        var deed = RedeedHouse != null ? RedeedHouse(Uid) : house.Redeed(world);
-                        if (deed != null)
-                        {
-                            var owner = house.Owner.IsValid ? world.FindChar(house.Owner) : null;
-                            bool delivered = owner?.Backpack != null &&
-                                (owner.PrivLevel >= PrivLevel.GM || owner.CanCarry(deed)) &&
-                                owner.Backpack.TryAddItem(deed);
-                            if (!delivered)
-                                world.PlaceItemWithDecay(deed, Position);
-                        }
+                        if (world != null) world.RemoveItem(this);
+                        else Delete();
                     }
-                    return true;
+                    else if (RedeedHouse != null)
+                        RedeedHouse(Uid, HouseFlag(0), HouseFlag(1), redeemer);
+                    else if (world != null)
+                        house.Redeed(world, redeemer, HouseFlag(1));                    return true;
                 }
 
                 uint argUid = ParseHexOrDecUInt(args.Trim());
@@ -4647,19 +4649,35 @@ public class Item : ObjBase
             }
             case "RESIGN":
             {
+                // ISV_RESIGN (CItemStone.cpp:962): with an argument, that character's
+                // record goes; without one, SRC's own. Deleting the record is the same
+                // departure as the stone gump's Leave (CStoneMember destructor: the
+                // election recount, forced peace once no full member is left, and the
+                // character forgetting the stone), so both go through MemberLeft.
                 var guild = ResolveGuild?.Invoke(Uid);
-                if (guild != null)
+                if (guild == null)
+                    return true;
+                Serial who;
+                if (args.Trim().Length > 0)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0)
-                    {
-                        guild.RemoveMember(new Serial(uid));
-                        // Source-X clears the stone memory on resign, else a
-                        // stale town/guild memory blocks re-recruit elsewhere.
-                        var resigned = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
-                        var stoneMem = resigned?.Memory_FindObj(Uid);
-                        if (stoneMem != null) resigned!.Memory_Delete(stoneMem);
-                    }
+                    var named = uid != 0 ? ResolveWorld?.Invoke()?.FindChar(new Serial(uid)) : null;
+                    if (named == null)
+                        return true;
+                    who = named.Uid;
+                }
+                else if (source.GetSourceChar() is Characters.Character self)
+                    who = self.Uid;
+                else
+                    return true;
+
+                var manager = ResolveGuildManager?.Invoke();
+                if (manager != null)
+                    manager.MemberLeft(guild, who, ResolveWorld?.Invoke());
+                else if (guild.RemoveMember(who))
+                {
+                    guild.ElectMaster();
+                    Guild.GuildManager.ForgetStone(guild, who, ResolveWorld?.Invoke());
                 }
                 return true;
             }
@@ -6863,36 +6881,68 @@ public class Item : ObjBase
         return false;
     }
 
+    /// <summary>Split a MEMBER.n[.key] / MEMBERFROMUID.uid[.key] reference on a stone
+    /// (Source-X CItemStone::r_GetRef, CItemStone.cpp:214). False when the key is not
+    /// one; otherwise <paramref name="memberRef"/> is the membership record it names
+    /// (null when it names none) and <paramref name="rest"/> what follows it.</summary>
+    private bool TryParseStoneMemberRef(string key, out Guild.StoneMemberRef? memberRef, out string rest)
+    {
+        memberRef = null;
+        rest = "";
+        bool byUid;
+        if (key.StartsWith("MEMBERFROMUID.", StringComparison.OrdinalIgnoreCase))
+            byUid = true;
+        else if (key.StartsWith("MEMBER.", StringComparison.OrdinalIgnoreCase))
+            byUid = false;
+        else
+            return false;
+
+        string body = key[(byUid ? 14 : 7)..];
+        int dot = body.IndexOf('.');
+        string token = (dot < 0 ? body : body[..dot]).Trim();
+        if (!IsScriptNumber(token))
+            return false;   // MEMBER.COUNT and other named keys are not references
+        rest = dot < 0 ? "" : body[(dot + 1)..];
+
+        var guild = ResolveGuild?.Invoke(Uid);
+        if (guild == null)
+            return true;
+        uint number = ParseHexOrDecUInt(token);
+        memberRef = byUid
+            ? (number != 0 ? Guild.StoneMemberRef.ByCharacter(guild, new Serial(number)) : null)
+            : Guild.StoneMemberRef.ByIndex(guild, (int)Math.Min(number, int.MaxValue));
+        return true;
+    }
+
+    /// <summary>A plain script number: decimal digits, or hex with a leading 0 / 0x.</summary>
+    private static bool IsScriptNumber(string token)
+    {
+        if (token.Length == 0)
+            return false;
+        if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return token.Length > 2 && token.AsSpan(2).IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
+        if (token[0] == '0')
+            return token.AsSpan().IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
+        return token.AsSpan().IndexOfAnyExcept("0123456789") < 0;
+    }
+
     private bool TryGetGuildStoneReference(string upper, out string value)
     {
         value = "";
 
-        // MEMBER.n — nth member character UID (zero-based)
-        if (upper.StartsWith("MEMBER.", StringComparison.Ordinal) &&
-            !upper.StartsWith("MEMBERFROMUID.", StringComparison.Ordinal))
+        // MEMBER.n[.key] / MEMBERFROMUID.uid[.key] — a membership record. With a key
+        // it answers for the record (LOYALTO, PRIV, GUILDTITLE ...) and otherwise for
+        // the member's character. Bare, it is "just testing the ref": a record is not
+        // a world object, so upstream answers 1 (CScriptObj::r_WriteVal,
+        // CScriptObj.cpp:500-514); <MEMBER.n.UID> is how a script gets the uid.
+        if (TryParseStoneMemberRef(upper, out var memberRef, out string memberKey))
         {
-            var guild = ResolveGuild?.Invoke(Uid);
-            if (guild == null) { value = "0"; return true; }
-            if (int.TryParse(upper[7..], out int idx) && idx >= 0 && idx < guild.MemberCount)
-                value = $"0{guild.Members[idx].CharUid.Value:X}";
-            else
+            if (memberRef == null)
                 value = "0";
-            return true;
-        }
-
-        // MEMBERFROMUID.character_uid — member by character UID
-        if (upper.StartsWith("MEMBERFROMUID.", StringComparison.Ordinal))
-        {
-            var guild = ResolveGuild?.Invoke(Uid);
-            if (guild == null) { value = "0"; return true; }
-            uint uid = ParseHexOrDecUInt(upper[14..]);
-            if (uid != 0)
-            {
-                var member = guild.FindMember(new Serial(uid));
-                value = member != null ? $"0{member.CharUid.Value:X}" : "0";
-            }
-            else
-                value = "0";
+            else if (memberKey.Length == 0)
+                value = "1";
+            else if (!memberRef.TryGetProperty(memberKey, out value))
+                value = "";
             return true;
         }
 

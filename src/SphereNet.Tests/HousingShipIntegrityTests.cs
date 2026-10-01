@@ -204,7 +204,11 @@ public sealed class HousingShipIntegrityTests
         var house = engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0))!;
         house.AddAccess(access.Uid);
         house.AddVendor(vendor.Uid);
-        house.GuildStone = new Serial(0x40001234);
+        // A GUILD key names a guild stone (SHL_GUILD, CItemMulti.cpp:3105).
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(stone, new Point3D(190, 190, 0, 0));
+        house.GuildStone = stone.Uid;
         var locked = world.CreateItem();
         world.PlaceItem(locked, new Point3D(200, 200, 0, 0));
         var secure = world.CreateItem();
@@ -223,7 +227,7 @@ public sealed class HousingShipIntegrityTests
 
         Assert.Contains(access.Uid, loaded.AccessList);
         Assert.Contains(vendor.Uid, loaded.Vendors);
-        Assert.Equal(new Serial(0x40001234), loaded.GuildStone);
+        Assert.Equal(stone.Uid, loaded.GuildStone);
         Assert.True(locked.IsAttr(ObjAttributes.LockedDown));
         Assert.True(secure.IsAttr(ObjAttributes.Secure));
         Assert.Equal(house.MultiItem.Uid, locked.Link);

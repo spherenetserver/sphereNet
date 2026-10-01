@@ -188,8 +188,11 @@ public class CustomHouseDesignTests
         Assert.True(engine.Stairs(ch, 0x0709, -7, 5));    // story 1 → z 7, two visible pieces
 
         uint? revision = engine.Commit(ch);
-        Assert.Equal(6u, revision); // 1 + four edits (two builds, two stair pieces) + the commit
-        Assert.Null(engine.GetSession(ch.Uid)); // session ended
+        // 0 (never committed) + 1 for entering design mode + four edits (two builds,
+        // two stair pieces) + the commit.
+        Assert.Equal(6u, revision);
+        // Committing does not end design mode (CommitChanges never calls EndCustomize).
+        Assert.NotNull(engine.GetSession(ch.Uid));
 
         var committed = HouseDesign.LoadFromTags(multi);
         Assert.Equal(6u, committed.Revision);
@@ -300,7 +303,7 @@ public class CustomHouseDesignTests
 
         engine.Begin(ch, multi);
         engine.Build(ch, 0x0066, 5, 5);
-        engine.Clear(ch);
+        engine.Clear(ch); // back to the foundation - this bare multi has none
         Assert.Empty(engine.GetSession(ch.Uid)!.Working.Tiles);
 
         engine.Revert(ch);
@@ -368,8 +371,11 @@ public class CustomHouseDesignTests
         // tiles stay virtual, no component items are created.
         int itemsAfter = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>().Count();
         Assert.Equal(itemsBefore + 3, itemsAfter);
+        // ResetStructure + CommitChanges: a committed design exists from the start
+        // (only the definition's visible pieces go in - this one has none).
         Assert.True(multi.TryGetTag(HouseDesign.RevisionTag, out string? rev));
-        Assert.Equal("1", rev);
+        Assert.Equal("2", rev);
+        Assert.Empty(HouseDesign.LoadFromTags(multi).Tiles);
 
         // Regular placement of the same def DOES materialize components.
         var owner2 = world.CreateCharacter();

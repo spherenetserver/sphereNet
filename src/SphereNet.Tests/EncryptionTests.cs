@@ -296,6 +296,16 @@ public class EncryptionTests
         Assert.Equal(plain, decoded);
         Assert.Equal(encType, state.EncType);
         Assert.Equal(clientVersion, state.RelayClientVersion);
+
+        // Source-X CCrypto::Encrypt MD5s replies only for ENC_TFISH; the Blowfish-era
+        // clients read the server in the clear.
+        byte[] reply = [0x1B, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03];
+        byte[] sent = (byte[])reply.Clone();
+        state.Encrypt(sent, 0, sent.Length);
+        if (encType == EncryptionType.Twofish)
+            Assert.NotEqual(reply, sent);
+        else
+            Assert.Equal(reply, sent);
     }
 
     [Fact]
@@ -357,22 +367,16 @@ public class EncryptionTests
         var login = new LoginEncryption(0, key1, key2, maskLo: 0, maskHi: 0);
         login.Decrypt(encrypted, 0, encrypted.Length);
 
+        // Game layer from the client encryptor copy, not from the server classes.
         uint derivedSeed = DeriveRelaySeed(authId, key1, key2);
-        switch (encType)
+        return encType switch
         {
-            case EncryptionType.Blowfish:
-                new BlowfishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
-                break;
-            case EncryptionType.Twofish:
-                new TwofishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
-                break;
-            case EncryptionType.BlowfishTwofish:
-                new BlowfishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
-                new TwofishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
-                break;
-        }
-
-        return encrypted;
+            EncryptionType.Blowfish => SphereNet.Tests.ReferenceClientCrypto.ReferenceClient.Blowfish(encrypted),
+            EncryptionType.Twofish => SphereNet.Tests.ReferenceClientCrypto.ReferenceClient.TwofishEncrypt(
+                SphereNet.Tests.ReferenceClientCrypto.ReferenceClient.Twofish(derivedSeed), encrypted),
+            EncryptionType.BlowfishTwofish => SphereNet.Tests.ReferenceClientCrypto.ReferenceClient.BlowfishTwofish(derivedSeed, encrypted),
+            _ => encrypted,
+        };
     }
 
     private static uint DeriveRelaySeed(uint authId, uint key1, uint key2)

@@ -68,6 +68,8 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xFB` Show public house content toggle
 - `0xA7` Tip window paging (answered with a `[TIP n]` section as a `0xA6` scroll)
 - `0xF9` Global chat request (CHATFLAGS `0x10`; status toggle answered with `0xF9`)
+- `0xEB` KR toolbar use (11 bytes; @UserKRToolbar, then spell / skill / object use /
+  virtue as upstream's `Event_UseToolbar`)
 
 - `0x01` Disconnect notification (closes the session)
 - `0x2C` Death menu (request / resurrect / ghost)
@@ -80,8 +82,18 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xD1` Logout request
 - `0xD4` New book header (AOS+ variable-length format)
 
+## Consumed Without Effect
+Upstream registers these only to consume them (`PacketUnknown`, or a handler that just
+skips its fields), so they are framed and dropped without reaching the unknown path:
+
+- `0x3F` UltimaLive static update (upstream dumps it to the debug log)
+- `0x69` Options
+- `0xA6` Scroll closed (fixed 5 bytes client to server)
+- `0xD0` Config file
+- `0xE8` Remove UI highlight (13 bytes)
+
 ## Known Ignored
-Nothing. Every opcode this server registers reaches a handler that acts on it; an
+Nothing. Every other opcode this server registers reaches a handler that acts on it; an
 opcode it does not register is not listed here, it simply falls to the unknown path
 below. The list that used to sit here named eight opcodes that all had working
 handlers, which is the failure this section is now shaped to avoid: if an opcode is
@@ -90,7 +102,16 @@ exactly that.
 
 ## Unknown / Drop
 Unknown opcodes are routed to the network unknown-packet path and must not crash the
-server. Variable-length packets with invalid lengths are rejected by `NetworkManager`.
+server. Variable-length packets with invalid lengths - including a declared length
+shorter than the 3-byte header - are rejected by `NetworkManager`.
+
+## Script Packet Filters
+`PACKETx=function` and `OUTPACKETx=function` in `sphere.ini` (x decimal, 0..254) run a
+script function for every incoming / outgoing packet with that opcode, registered or
+not, before the server handles or sends it. The function runs on the server object
+with ARGN1 = opcode, ARGS = client address, ARGO = the client, and LOCAL.CONNECTIONTYPE,
+LOCAL.NUM, LOCAL.STR, LOCAL.ACCOUNT, LOCAL.CHAR and LOCAL.0..n (every byte). `RETURN 1`
+drops the packet.
 
 ## 0xBF Extended Subcommands
 Known incoming subcommands are centralized in `ExtendedCommandRegistry`.

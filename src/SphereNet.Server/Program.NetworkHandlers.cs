@@ -166,27 +166,57 @@ public static partial class Program
         _systemHooks.DispatchClient("quotaexceed", src, client.Character, processed.ToString(), processed);
     }
 
-    private static bool HandlePacketScriptHook(NetState state, byte opcode, byte[] packet)
+    /// <summary>Install the PACKETx / OUTPACKETx filters sphere.ini names. Nothing is
+    /// installed for a direction no key hooks, and the gates let the network layer skip
+    /// every opcode without a function before it copies a byte.</summary>
+    private static void InstallPacketScriptFilters(NetworkManager network, SphereConfig config)
     {
-        if (opcode != 0x03 && opcode != 0xAD && opcode != 0x6C && opcode != 0x72 && opcode != 0x22)
+        var inNames = config.PacketFilters;
+        var outNames = config.OutPacketFilters;
+        if (inNames.Any(n => n != null))
+        {
+            network.PacketScriptHookGate = op => op < inNames.Length && inNames[op] != null;
+            network.PacketScriptHook = HandlePacketScriptHook;
+        }
+        if (outNames.Any(n => n != null))
+        {
+            network.OutPacketScriptHookGate = op => op < outNames.Length && outNames[op] != null;
+            network.OutPacketScriptHook = HandleOutPacketScriptHook;
+        }
+    }
+
+    /// <summary>PACKETx= (Source-X CClient::xPacketFilter, called for handled and
+    /// unhandled packets alike, CNetworkInput.cpp:367/387). RETURN 1 consumes the
+    /// packet: the server does not handle it at all - war mode included.</summary>
+    private static bool HandlePacketScriptHook(NetState state, byte opcode, byte[] packet) =>
+        RunPacketFilter(_config.PacketFilters, state, opcode, packet);
+
+    /// <summary>OUTPACKETx= (Source-X CClient::xOutPacketFilter, CNetworkOutput.cpp:406).
+    /// RETURN 1 keeps the packet from being sent to this client.</summary>
+    private static bool HandleOutPacketScriptHook(NetState state, byte[] packet) =>
+        packet.Length > 0 && RunPacketFilter(_config.OutPacketFilters, state, packet[0], packet);
+
+    private static bool RunPacketFilter(string?[] names, NetState state, byte opcode, byte[] packet)
+    {
+        string? function = opcode < names.Length ? names[opcode] : null;
+        if (function == null)
             return false;
 
-        if (!_clients.TryGetValue(state.Id, out var client))
+        _clients.TryGetValue(state.Id, out var client);
+        string? account = client?.Account?.Name;
+        uint? charUid = client?.Character?.Uid.Value;
+        string peer = state.RemoteEndPoint?.Address.ToString() ?? "";
+        try
+        {
+            return _systemHooks.RunPacketFilter(function, _serverHookContext, client, packet,
+                peer, (int)state.ConnectionType, account, charUid);
+        }
+        catch (Exception ex)
+        {
+            // Upstream runs the call inside EXC_TRY and lets the packet through.
+            _log.LogError(ex, "Packet filter {Function} threw for 0x{Op:X2} on #{Id}", function, opcode, state.Id);
             return false;
-
-        IScriptObj? src = client.Character ?? (IScriptObj?)client.Account;
-        if (src == null)
-            return false;
-
-        string payloadHex = Convert.ToHexString(packet);
-        bool handled = _systemHooks.DispatchPacket(opcode, src, client.Character, payloadHex);
-
-        // Keep script hook visibility for war/peace packets, but do not allow
-        // script short-circuit to block core war mode state changes.
-        if (opcode == 0x72)
-            return false;
-
-        return handled;
+        }
     }
 
     private static string? ResolveDefMessage(string key)

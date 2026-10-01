@@ -84,6 +84,9 @@ public sealed partial class GameClient
 
     public void HandleCrashReport() => WorldFeatures.HandleCrashReport();
 
+    /// <summary>0xEB KR toolbar use (Source-X CClient::Event_UseToolbar).</summary>
+    public void HandleUseToolbar(byte type, uint argument) => WorldFeatures.HandleUseToolbar(type, argument);
+
     /// <summary>Advance the pending multi-stroke craft (tick pump).</summary>
     internal void TickPendingCraft() => WorldFeatures.TickPendingCraft();
     public void CancelPendingCraftOnInterrupt() => WorldFeatures.CancelPendingCraftOnInterrupt();

@@ -399,25 +399,54 @@ public sealed class PacketVendorSell : PacketHandler
     }
 }
 
-/// <summary>0x6F — Secure trade response.</summary>
+/// <summary>0x6F — Secure trade response.
+///
+/// The body each action needs is checked before anything is handed on. A frame that
+/// stops short is dropped, not read as zeros: a gold update (action 3) cut after its
+/// container serial used to arrive as an explicit 0/0 offer and reset the window's
+/// acceptance. An explicitly sent 0/0 still applies.
+///
+/// Layouts, as ClassicUO writes them (Send_TradeResponse / Send_TradeUpdateGold):
+///   1 close  [action][serial]
+///   2 check  [action][serial][u32 state]
+///   3 gold   [action][serial][u32 gold][u32 platinum]
+/// Source-X reads an extra check word before the gold pair (receive.cpp:1128-1154),
+/// which no client writes; the client's layout is the one honoured here.</summary>
 public sealed class PacketSecureTrade : PacketHandler
 {
     public PacketSecureTrade() : base(0x6F, 0) { }
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
+        if (buffer.Remaining < 5)
+            return;
         byte action = buffer.ReadByte();
         uint sessionId = buffer.ReadUInt32();
-        if (action == 3)
+        switch (action)
         {
-            // SECURE_TRADE_UPDATEGOLD (TOL): the gold and platinum this side offers.
-            uint gold = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
-            uint platinum = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
-            state.OnSecureTradeGold(sessionId, gold, platinum);
-            return;
+            case 3:
+            {
+                // SECURE_TRADE_UPDATEGOLD (TOL): the gold and platinum this side offers.
+                if (buffer.Remaining < 8)
+                    return;
+                uint gold = buffer.ReadUInt32();
+                uint platinum = buffer.ReadUInt32();
+                state.OnSecureTradeGold(sessionId, gold, platinum);
+                return;
+            }
+            case 2:
+                // SECURE_TRADE_CHANGE: the check-mark state is the whole point.
+                if (buffer.Remaining < 4)
+                    return;
+                state.OnSecureTrade(action, sessionId, buffer.ReadUInt32());
+                return;
+            default:
+                // Close (and anything else) carries no required field past the
+                // serial; ClassicUO's close has none at all.
+                uint param = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
+                state.OnSecureTrade(action, sessionId, param);
+                return;
         }
-        uint param = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
-        state.OnSecureTrade(action, sessionId, param);
     }
 }
 
@@ -1099,5 +1128,46 @@ public sealed class PacketDisconnect : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         state.MarkClosing();
+    }
+}
+
+
+/// <summary>A standard opcode upstream registers as PacketUnknown or as a handler that
+/// only skips its fields: the client sends it in ordinary play and it means nothing to
+/// the server. Registering it keeps it off the unknown-packet path (and its log line)
+/// exactly as upstream's registry does.
+///   0x3F UltimaLive static update - PacketStaticUpdate dumps the body to the debug log
+///        and does nothing else (receive.cpp:824);
+///   0x69 Options                  - PacketUnknown() (CPacketManager.cpp:54);
+///   0xA6 Scroll closed            - PacketUnknown(5) (CPacketManager.cpp:74);
+///   0xD0 Config file              - PacketUnknown() (CPacketManager.cpp:89);
+///   0xE8 Remove UI highlight      - PacketRemoveUIHighlight skips its 12 bytes
+///        (receive.cpp:4328).</summary>
+public sealed class PacketConsumedNoOp : PacketHandler
+{
+    public PacketConsumedNoOp(byte packetId, int expectedLength) : base(packetId, expectedLength) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+    }
+}
+
+/// <summary>0xEB — Use hotbar (KR/EC toolbar). 11 bytes:
+/// [u16 1][u16 6][byte type][byte 0][u32 argument] (PacketUseHotbar::onReceive,
+/// receive.cpp:4357). The game layer runs CClient::Event_UseToolbar with it.</summary>
+public sealed class PacketUseHotbar : PacketHandler
+{
+    public PacketUseHotbar() : base(0xEB, 11) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        if (buffer.Remaining < 10)
+            return;
+        buffer.ReadUInt16(); // 1
+        buffer.ReadUInt16(); // 6
+        byte type = buffer.ReadByte();
+        buffer.ReadByte();   // 0
+        uint argument = buffer.ReadUInt32();
+        state.OnUseToolbar(type, argument);
     }
 }

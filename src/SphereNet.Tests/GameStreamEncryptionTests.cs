@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using SphereNet.Network.Encryption;
+using SphereNet.Tests.ReferenceClientCrypto;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -10,15 +11,14 @@ namespace SphereNet.Tests;
 /// The game-stream ciphers, per encryption type (parity matrix: relay/game crypto).
 ///
 /// The existing encryption tests cover the block ciphers and the login crypt. The game
-/// stream is a different thing built on top of them: a 256-byte keystream table,
-/// re-encrypted whenever it runs out, XORed into the bytes as they arrive. What had no
-/// vectors at all was the per-type behaviour a relayed client actually gets -
-/// ENC_BFISH for 2.0.x, ENC_TFISH for 6.0.x+, and ENC_BTFISH for the era in between,
-/// where both are applied.
+/// stream is a different thing built on top of them, and differs per type:
+/// ENC_TFISH (3.0.0+) XORs a 256-byte table that is re-encrypted whenever it runs out;
+/// ENC_BFISH (1.26-2.0.0) is 8-byte ciphertext feedback over fixed key schedules that
+/// switch every 21036 bytes; ENC_BTFISH (2.0.0x-2.0.3) applies both.
 ///
-/// The keystream is a XOR, so encrypting and decrypting are the same operation on a
-/// fresh instance: these tests play the client with one instance and the server with
-/// another, which is exactly how the two ends stay in step.
+/// The client side of every Blowfish vector comes from the client encryptor copy in
+/// ReferenceClientCrypto/, never from the server class, so a server cipher that only
+/// agrees with itself fails (byte-equality vectors: LegacyClientCryptoVectorTests).
 /// </summary>
 public sealed class GameStreamEncryptionTests
 {
@@ -38,20 +38,18 @@ public sealed class GameStreamEncryptionTests
     // ---- one cipher at a time --------------------------------------------
 
     [Theory]
-    [InlineData(16)]
-    [InlineData(255)]
-    [InlineData(256)]        // exactly the table
-    [InlineData(257)]        // one byte past it, so the table is re-encrypted
-    [InlineData(1000)]       // several refreshes
-    public void ABlowfishStreamComesBackAsItself(int length)
+    [InlineData(8)]          // exactly one feedback block
+    [InlineData(65)]         // a game login
+    [InlineData(256)]
+    [InlineData(1000)]
+    [InlineData(21037)]      // one byte past the key-schedule switch
+    public void ABlowfishStreamFromTheClientDecryptsExactly(int length)
     {
         byte[] plain = Payload(length);
-        byte[] wire = (byte[])plain.Clone();
-
-        new BlowfishGameEncryption(Seed).Decrypt(wire, 0, wire.Length);   // the client
+        byte[] wire = ReferenceClient.Blowfish(plain);                   // the client
         Assert.NotEqual(plain, wire);
 
-        new BlowfishGameEncryption(Seed).Decrypt(wire, 0, wire.Length);   // the server
+        new BlowfishGameEncryption().Decrypt(wire, 0, wire.Length);      // the server
         Assert.Equal(plain, wire);
     }
 
@@ -75,36 +73,31 @@ public sealed class GameStreamEncryptionTests
     // ---- both, and in which order ----------------------------------------
 
     [Fact]
-    public void ABlowfishTwofishStreamComesBackAndTheOrderTurnsOutNotToDecideThat()
+    public void ABlowfishTwofishStreamComesBackOnlyInTheServerOrder()
     {
         byte[] plain = Payload(300);
 
         // The client applies Blowfish and then Twofish; the server undoes Twofish and
-        // then Blowfish (CryptoState.Decrypt, EncryptionType.BlowfishTwofish).
-        byte[] wire = (byte[])plain.Clone();
-        new BlowfishGameEncryption(Seed).Decrypt(wire, 0, wire.Length);
-        new TwofishGameEncryption(Seed).Decrypt(wire, 0, wire.Length);
+        // then Blowfish (Source-X CCrypto::Decrypt; CryptoState.Decrypt for
+        // EncryptionType.BlowfishTwofish).
+        byte[] wire = ReferenceClient.BlowfishTwofish(Seed, plain);
         Assert.NotEqual(plain, wire);
 
         byte[] asTheServerDoesIt = (byte[])wire.Clone();
         new TwofishGameEncryption(Seed).Decrypt(asTheServerDoesIt, 0, asTheServerDoesIt.Length);
-        new BlowfishGameEncryption(Seed).Decrypt(asTheServerDoesIt, 0, asTheServerDoesIt.Length);
+        new BlowfishGameEncryption().Decrypt(asTheServerDoesIt, 0, asTheServerDoesIt.Length);
         Assert.Equal(plain, asTheServerDoesIt);
 
-        // And the other way round gives the same bytes, which is worth stating rather
-        // than assuming otherwise: both layers are a XOR against a keystream that
-        // depends only on the seed and how many bytes have gone through, so applying
-        // them in either order XORs the same two keystreams into the same buffer. The
-        // engine keeps upstream's order because it is upstream's order - not because
-        // the result would be wrong without it. Anything added here that is NOT a pure
-        // XOR would change that, which is the reason to pin it now.
+        // The order is not cosmetic: the Blowfish layer feeds its own ciphertext back
+        // into the next block, so it has to see exactly the bytes the client's Blowfish
+        // produced - with the Twofish layer still on them, it reads garbage.
         byte[] theOtherWayRound = (byte[])wire.Clone();
-        new BlowfishGameEncryption(Seed).Decrypt(theOtherWayRound, 0, theOtherWayRound.Length);
+        new BlowfishGameEncryption().Decrypt(theOtherWayRound, 0, theOtherWayRound.Length);
         new TwofishGameEncryption(Seed).Decrypt(theOtherWayRound, 0, theOtherWayRound.Length);
 
         _out.WriteLine($"server order restores {asTheServerDoesIt.SequenceEqual(plain)}, " +
                        $"reversed restores {theOtherWayRound.SequenceEqual(plain)}");
-        Assert.Equal(plain, theOtherWayRound);
+        Assert.NotEqual(plain, theOtherWayRound);
     }
 
     // ---- what a socket actually does --------------------------------------
@@ -140,7 +133,7 @@ public sealed class GameStreamEncryptionTests
     /// <summary>1 = Blowfish, 2 = Twofish, 3 = the MD5 outgoing stream.</summary>
     private static IStream Stream(int cipher) => cipher switch
     {
-        1 => new BlowfishStream(new BlowfishGameEncryption(Seed)),
+        1 => new BlowfishStream(new BlowfishGameEncryption()),
         2 => new TwofishStream(new TwofishGameEncryption(Seed)),
         _ => new Md5Stream(new TwofishGameEncryption(Seed).Md5Digest),
     };
@@ -168,13 +161,8 @@ public sealed class GameStreamEncryptionTests
     [Fact]
     public void ADifferentSeedIsADifferentKeystream()
     {
-        byte[] a = Payload(64);
-        byte[] b = (byte[])a.Clone();
-
-        new BlowfishGameEncryption(Seed).Decrypt(a, 0, a.Length);
-        new BlowfishGameEncryption(Seed + 1).Decrypt(b, 0, b.Length);
-        Assert.NotEqual(a, b);
-
+        // Twofish is keyed by the seed. Blowfish is not: its key schedules and start
+        // register are fixed client tables (Source-X InitBlowFish takes no seed).
         byte[] c = Payload(64);
         byte[] d = (byte[])c.Clone();
         new TwofishGameEncryption(Seed).Decrypt(c, 0, c.Length);

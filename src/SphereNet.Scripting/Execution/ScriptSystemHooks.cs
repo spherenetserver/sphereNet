@@ -172,6 +172,45 @@ public sealed class ScriptSystemHooks
     public bool DispatchItem(string hookSuffix, IScriptObj itemObj, IScriptObj? source = null, string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0)
         => Dispatch($"f_onitem_{hookSuffix}", source ?? itemObj, itemObj, args, argn1, argn2, argn3);
 
-    public bool DispatchPacket(byte opcode, IScriptObj source, IScriptObj? argo = null, string args = "")
-        => Dispatch($"f_packet_0x{opcode:X2}", source, argo, args, opcode);
+    /// <summary>Source-X SCRIPT_MAX_LINE_LEN, the cap on LOCAL.STR.</summary>
+    private const int ScriptMaxLineLen = 4096;
+
+    /// <summary>Run a PACKETx / OUTPACKETx filter function the way Source-X
+    /// CClient::xPacketFilter / xOutPacketFilter do (CClientEvent.cpp:3151-3248): on
+    /// the server object (it is both the default object and SRC), with
+    /// ARGN1 = the opcode, ARGS = the client's address, ARGO = the client, and in
+    /// LOCAL: CONNECTIONTYPE, NUM (packet length), STR (the bytes as text, up to the
+    /// first zero), ACCOUNT and CHAR when logged in, and 0..NUM-1 holding every byte.
+    /// True when the function exists and returned 1, which drops the packet.</summary>
+    public bool RunPacketFilter(string functionName, IScriptObj server, IScriptObj? client,
+        ReadOnlySpan<byte> packet, string peer, int connectionType, string? account, uint? charUid)
+    {
+        if (packet.Length == 0 || string.IsNullOrEmpty(functionName))
+            return false;
+
+        var locals = new Variables.VarMap();
+        locals.SetInt("CONNECTIONTYPE", connectionType);
+        locals.SetInt("NUM", packet.Length);
+        var text = packet[..Math.Min(packet.Length, ScriptMaxLineLen)];
+        int zero = text.IndexOf((byte)0);
+        if (zero >= 0)
+            text = text[..zero];
+        locals.SetStr("STR", true, System.Text.Encoding.Latin1.GetString(text));
+        if (account != null)
+        {
+            locals.SetStr("ACCOUNT", false, account);
+            if (charUid is uint uid)
+                locals.SetInt("CHAR", uid);
+        }
+        for (int i = 0; i < packet.Length; i++)
+            locals.SetInt(i.ToString(System.Globalization.CultureInfo.InvariantCulture), packet[i]);
+
+        var args = new TriggerArgs(server, packet[0], 0, peer)
+        {
+            Object1 = client,
+            SharedLocals = locals
+        };
+        return _runner.TryRunFunction(functionName, server, server as ITextConsole, args, out var result)
+            && result == Core.Enums.TriggerResult.True;
+    }
 }

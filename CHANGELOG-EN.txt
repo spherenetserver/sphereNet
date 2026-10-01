@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Network input, encryption and packet filters
+------------------------------------------------------------------------
+FIX - Security: login diagnostics and packet dumps no longer contain account
+      passwords; the password field of 0x80/0x91/0x83 is masked in debug and
+      detection-failure dumps, plaintext or encrypted.
+FIX - Network input: packets left buffered by the per-pass quota or by a
+      faulting handler are processed without waiting for new socket data.
+FIX - Encryption detection: bytes arriving in the same read as the first
+      encrypted login / game login are decrypted instead of treated as
+      plaintext; a game login whose first TCP chunk is 62-64 bytes is waited for
+      instead of disconnected.
+FIX - The 15 s partial-packet deadline is enforced while the socket is silent
+      and starts with only 1-2 header bytes; a length-prefixed packet declaring
+      less than its header is rejected.
+FIX - A reused connection slot no longer inherits client type, language, relay
+      client version, exception/flood counters or RTT diagnostics.
+FIX - FLOODDETECTIONCOUNT=0 disables flood disconnects; unencrypted clients are
+      accepted only with USENOCRYPT=1 (also with an empty key list), with a
+      startup warning for an empty key list; relay keys expire after 60 s on
+      read and the cache is bounded.
+FIX - Legacy Blowfish game encryption (ENC_BFISH / ENC_BTFISH) matches the client
+      (Source-X key schedules, 8-byte feedback, 21036-byte table switch); direct
+      game logins try Blowfish, Blowfish+Twofish and Twofish in Source-X order;
+      only Twofish replies are MD5-encrypted; 1.25.36 login uses its own formula.
+FIX - 0xA6 is framed as 5 bytes and 0xEB as 11; 0x3F, 0x69, 0xA6, 0xD0, 0xE8 are
+      consumed as Source-X does; 0xEB KR toolbar fires @UserKRToolbar and casts,
+      uses the skill, double-clicks or selects the virtue as Event_UseToolbar.
+CHANGE - Script packet filters follow Source-X: PACKETx= / OUTPACKETx= in
+      sphere.ini run the function for every incoming / outgoing packet of that
+      opcode with ARGN1, ARGS, ARGO and LOCAL.NUM/STR/ACCOUNT/CHAR/0..n; RETURN 1
+      drops the packet. The old f_packet_0xNN hook is removed.
+FIX - Secure trade (0x6F) validates each action's body; a gold update with a
+      missing gold/platinum body is ignored instead of applied as 0/0.
+
 [2026-10-01] - Deadline queues, view delta allocation and tick telemetry
 ------------------------------------------------------------------------
 FIX - Item timer and decay queues keep one entry per item: re-arming moves the

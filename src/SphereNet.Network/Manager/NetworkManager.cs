@@ -66,7 +66,42 @@ public sealed class NetworkManager : IDisposable
     public int FloodDetectionCount { get; set; } = 5;
     public int FloodDetectionWindowMs { get; set; } = 10_000;
     public int ClientMaxIP { get; set; } = 16;
+    /// <summary>Incoming script packet filter (Source-X CClient::xPacketFilter): handed
+    /// every framed packet, registered opcode or not; returning true consumes it with no
+    /// further handling.</summary>
     public Func<NetState, byte, byte[], bool>? PacketScriptHook { get; set; }
+
+    /// <summary>Which opcodes have a filter function at all (PACKETx= in sphere.ini).
+    /// Null means every opcode. Checked before the packet is copied, so a shard that
+    /// hooks nothing pays nothing per packet.</summary>
+    public Func<byte, bool>? PacketScriptHookGate { get; set; }
+
+    /// <summary>Outgoing script packet filter (Source-X CClient::xOutPacketFilter),
+    /// installed on every connection.</summary>
+    public Func<NetState, byte[], bool>? OutPacketScriptHook
+    {
+        get => _outPacketScriptHook;
+        set
+        {
+            _outPacketScriptHook = value;
+            foreach (var state in _states)
+                state.OutPacketScriptHook = value;
+        }
+    }
+    private Func<NetState, byte[], bool>? _outPacketScriptHook;
+
+    /// <summary>Which opcodes have an outgoing filter function (OUTPACKETx=).</summary>
+    public Func<byte, bool>? OutPacketScriptHookGate
+    {
+        get => _outPacketScriptHookGate;
+        set
+        {
+            _outPacketScriptHookGate = value;
+            foreach (var state in _states)
+                state.OutPacketScriptHookGate = value;
+        }
+    }
+    private Func<byte, bool>? _outPacketScriptHookGate;
     public Func<System.Net.IPAddress, bool>? ConnectionAcceptFilter { get; set; }
 
     /// <summary>Fired when a connection is about to be cleaned up (before Clear).</summary>
@@ -184,6 +219,15 @@ public sealed class NetworkManager : IDisposable
         // chat request (0xF9, Source-X PacketGlobalChatReq).
         _packetManager.Register(new PacketTipRequest());
         _packetManager.Register(new PacketGlobalChatRequest());
+        // The rest of upstream's standard registry: the KR toolbar (0xEB ->
+        // Event_UseToolbar) and five opcodes it registers only to consume them
+        // (PacketUnknown / field-skipping handlers), so they never reach the unknown path.
+        _packetManager.Register(new PacketUseHotbar());
+        _packetManager.Register(new PacketConsumedNoOp(0x3F, 0));  // UltimaLive static update
+        _packetManager.Register(new PacketConsumedNoOp(0x69, 0));  // options
+        _packetManager.Register(new PacketConsumedNoOp(0xA6, 5));  // scroll closed
+        _packetManager.Register(new PacketConsumedNoOp(0xD0, 0));  // config file
+        _packetManager.Register(new PacketConsumedNoOp(0xE8, 13)); // remove UI highlight
     }
 
     /// <summary>Initialize the listen socket.</summary>
@@ -474,7 +518,15 @@ public sealed class NetworkManager : IDisposable
                     continue;
                 }
 
-                if (read == 0) continue;
+                // Nothing new from the socket is not the same as nothing to do: the
+                // previous pass may have stopped at the packet quota or after a
+                // faulting handler with whole packets still buffered. Those are
+                // processed now, under this pass's quota, as Source-X keeps
+                // processing an existing raw buffer when no new raw packet arrived
+                // (CNetworkInput.cpp:156-176). A buffer that ends in a partial
+                // packet, or a connection still waiting to complete its seed or
+                // encryption detection, does need new bytes; its deadline is Tick's.
+                if (read == 0 && !HasBufferedPackets(state)) continue;
 
                 ProcessInput(state);
             }
@@ -487,6 +539,16 @@ public sealed class NetworkManager : IDisposable
             }
         }
     }
+
+    /// <summary>Whether the connection holds received bytes that can be processed
+    /// without new socket data: whole packets left by the per-pass quota or by a
+    /// faulting handler. A connection waiting on a partial packet, its seed or its
+    /// encryption detection cannot make progress without more bytes.</summary>
+    private static bool HasBufferedPackets(NetState state) =>
+        state.ReceivedData.Length > 0 &&
+        state.IsSeeded &&
+        state.Crypto.IsInitialized &&
+        state.PendingPacketStartTick == 0;
 
     private void ProcessInput(NetState state)
     {
@@ -573,7 +635,10 @@ public sealed class NetworkManager : IDisposable
                     state.PacketFloodWindowStart = now;
                 }
                 state.PacketFloodCount++;
-                if (state.PacketFloodCount >= FloodDetectionCount)
+                // FLOODDETECTIONCOUNT=0 is "flood detection off" (sphere.ini, startup
+                // warning): the quota above still limits each pass, but exceeding it
+                // never disconnects.
+                if (FloodDetectionCount > 0 && state.PacketFloodCount >= FloodDetectionCount)
                 {
                     _logger.LogWarning("Packet flood detected for #{Id}, dropping connection", state.Id);
                     state.MarkClosing();
@@ -591,7 +656,13 @@ public sealed class NetworkManager : IDisposable
 
             if (hasLengthField)
             {
-                if (data.Length - consumed < 3) break;
+                if (data.Length - consumed < 3)
+                {
+                    // The length field itself has not arrived: still a partial packet,
+                    // and its deadline starts now, not when the header completes.
+                    MarkOrDropPartialPacket(state, opcode, 0);
+                    break;
+                }
                 packetLen = (data[consumed + 1] << 8) | data[consumed + 2];
                 if (opcode == 0xBE && TryGetLegacyAssistPacketLength(data[consumed..], state, packetLen, out int legacyLen))
                 {
@@ -600,6 +671,13 @@ public sealed class NetworkManager : IDisposable
                     legacyAssistPacket = true;
                 }
             }
+
+            // A length-prefixed frame can never be shorter than its own 3-byte header.
+            // Accepting 1 or 2 "consumed" part of the header and parsed the rest of it as
+            // the next packet. Upstream's checkLength treats it as incomplete and waits
+            // forever (packet.cpp:1175); the frame is rejected here instead.
+            if (hasLengthField && packetLen is > 0 and < 3)
+                packetLen = 0;
 
             if (packetLen <= 0 || packetLen > MaxPacketSize)
             {
@@ -615,7 +693,10 @@ public sealed class NetworkManager : IDisposable
 
                 state.ClearPendingPacket();
 
-            if (opcode == 0x73 && packetLen == 2 && PacketScriptHook == null)
+            bool scriptFiltered = PacketScriptHook != null &&
+                (PacketScriptHookGate == null || PacketScriptHookGate(opcode));
+
+            if (opcode == 0x73 && packetLen == 2 && !scriptFiltered)
             {
                 state.OnPingReceived(data[consumed + 1]);
                 consumed += packetLen;
@@ -623,24 +704,27 @@ public sealed class NetworkManager : IDisposable
                 continue;
             }
 
+            // Source-X runs the script filter for every framed packet, whether a handler
+            // is registered for it or not (CNetworkInput.cpp:367 and :387); RETURN 1 skips
+            // it with no core handling. Upstream skips the whole rest of the buffer for an
+            // unregistered opcode since it cannot size it; the frame is known here, so only
+            // the packet itself is consumed.
+            if (scriptFiltered &&
+                InvokePacketScriptHook(state, opcode, data.Slice(consumed, packetLen).ToArray()))
+            {
+                packetsProcessed++;
+                consumed += packetLen;
+                continue;
+            }
+
             var handler = _packetManager.GetHandler(opcode);
             if (handler != null)
             {
-                if (PacketScriptHook != null || ShouldLogPacketDebug(opcode))
+                if (ShouldLogPacketDebug(opcode))
                 {
-                    var rawPacket = data.Slice(consumed, packetLen).ToArray();
-                    if (InvokePacketScriptHook(state, opcode, rawPacket))
-                    {
-                        packetsProcessed++;
-                        consumed += packetLen;
-                        continue;
-                    }
-                    if (ShouldLogPacketDebug(opcode))
-                    {
-                        _logger.LogDebug("RECV #{Id} 0x{Op:X2} ({Name}) len={Len} data=[{Data}]",
-                            state.Id, opcode, handler.GetType().Name,
-                            packetLen, FormatHex(rawPacket, 32));
-                    }
+                    _logger.LogDebug("RECV #{Id} 0x{Op:X2} ({Name}) len={Len} data=[{Data}]",
+                        state.Id, opcode, handler.GetType().Name,
+                        packetLen, FormatHex(data.Slice(consumed, packetLen), 32));
                 }
 
                 int payloadOffset = hasLengthField && !legacyAssistPacket ? 3 : 1;
@@ -812,7 +896,10 @@ public sealed class NetworkManager : IDisposable
     private bool TryInitCrypto(NetState state, ReadOnlySpan<byte> data)
     {
         var config = CryptConfig ?? new CryptConfig();
-        bool allowNoCrypt = UseNoCrypt || !UseCrypt || config.Keys.Count == 0;
+        // Source-X CClient::xCanEncLogin (CClientLog.cpp:1015): an unencrypted client is
+        // accepted only by USENOCRYPT. An empty or missing key list does not widen that;
+        // it is reported at startup (GetCryptPolicyWarnings) instead.
+        bool allowNoCrypt = UseNoCrypt;
 
         if (data.Length < 62)
         {
@@ -876,12 +963,55 @@ public sealed class NetworkManager : IDisposable
             }
         }
 
+        // 62-64 bytes can be the start of a 65-byte game login, which no candidate
+        // above could test yet. That is not a failed detection: wait for the rest
+        // (the partial-packet deadline and TIMEOUTINCOMPLETECONN still bound it).
+        if (data.Length < 65 && CouldBeGameLoginStart(state, data, config, allowNoCrypt))
+        {
+            MarkOrDropPartialPacket(state, 0x80, 65);
+            return false;
+        }
+
+        // The dump is masked where a password would sit: these bytes may be plaintext,
+        // and if they are not, the login cipher is keyed by public keys plus the seed
+        // printed on the same line.
         _logger.LogWarning(
             "Failed to detect encryption for #{Id}: seed=0x{Seed:X8}, first=0x{B:X2}, len={Len}, useCrypt={UseCrypt}, useNoCrypt={UseNoCrypt}, keys={Keys}, attempts='{Attempts}', diag=\"{Diag}\", raw=[{Raw}]",
             state.Id, state.Seed, data[0], data.Length, UseCrypt, allowNoCrypt, config.Keys.Count,
-            attempts.Trim(), diagnostics, FormatHex(data[..Math.Min(data.Length, 96)], 96));
+            attempts.Trim(), diagnostics,
+            PacketLogRedaction.FormatLoginCandidate(data, 96, GetCryptoCandidateOffsets(data)));
         state.MarkClosing();
         return false;
+    }
+
+    /// <summary>Whether a 62-64 byte first chunk that no login candidate accepted can
+    /// still be the beginning of a game login (0x91): plaintext when unencrypted
+    /// clients are allowed, or the prefix of a game-login cipher stream.</summary>
+    private bool CouldBeGameLoginStart(NetState state, ReadOnlySpan<byte> data, CryptConfig config, bool allowNoCrypt)
+    {
+        if (allowNoCrypt && data[0] == 0x91)
+            return true;
+        if (!UseCrypt)
+            return false;
+        foreach (uint seedCandidate in GetCryptoSeedCandidates(state.Seed))
+            if (CryptoState.IsGameLoginPrefix(seedCandidate, data, config))
+                return true;
+        return false;
+    }
+
+    /// <summary>Startup warnings for an encryption policy under which fewer clients
+    /// can log in than the settings suggest, or none at all.</summary>
+    public IReadOnlyList<string> GetCryptPolicyWarnings()
+    {
+        var warnings = new List<string>();
+        int keys = CryptConfig?.Keys.Count ?? 0;
+        if (UseCrypt && keys == 0)
+            warnings.Add(UseNoCrypt
+                ? "UseCrypt=1 but no encryption keys are loaded (sphereCrypt.ini missing, empty or unparsable): clients that need a key cannot log in; unencrypted clients are accepted because UseNoCrypt=1"
+                : "UseCrypt=1 but no encryption keys are loaded (sphereCrypt.ini missing, empty or unparsable) and UseNoCrypt=0: clients that need a key cannot log in and unencrypted clients are refused");
+        if (!UseCrypt && !UseNoCrypt)
+            warnings.Add("UseCrypt=0 and UseNoCrypt=0: no client can log in");
+        return warnings;
     }
 
     private static int[] GetCryptoCandidateOffsets(ReadOnlySpan<byte> data)
@@ -914,14 +1044,19 @@ public sealed class NetworkManager : IDisposable
         decoded.CopyTo(newData, 0);
         if (original.Length > offset + packetLength)
             original[(offset + packetLength)..].CopyTo(newData.AsSpan(decoded.Length));
-        ReplaceReceivedData(state, newData);
+        ReplaceReceivedData(state, newData, decoded.Length);
     }
 
-    private static void ReplaceReceivedData(NetState state, byte[] newData)
+    /// <summary>Put the detected first packet (already decrypted) back in front of
+    /// whatever arrived with it. Only the first <paramref name="decryptedLength"/>
+    /// bytes are plaintext: the rest is still ciphertext and is decrypted next by the
+    /// cipher that just decoded the first packet, exactly as if it had arrived in a
+    /// later read.</summary>
+    private static void ReplaceReceivedData(NetState state, byte[] newData, int decryptedLength)
     {
         state.ConsumeReceived(state.ReceivedData.Length);
         state.InjectReceived(newData);
-        state.UndecryptedOffset = newData.Length;
+        state.UndecryptedOffset = decryptedLength;
     }
 
     /// <summary>
@@ -991,6 +1126,7 @@ public sealed class NetworkManager : IDisposable
     {
         long now = Environment.TickCount64;
         DecayIpHistory(now);
+        CryptoState.PurgeExpiredRelayKeys(now);
         foreach (var state in _states)
         {
             if (!state.IsInUse) continue;
@@ -1003,6 +1139,18 @@ public sealed class NetworkManager : IDisposable
             {
                 _logger.LogWarning("Force closing connection #{Id} from {EP}: timed out before completing login",
                     state.Id, state.RemoteEndPoint);
+                state.MarkClosing();
+            }
+
+            // A partial packet that has not completed within its deadline. Checked
+            // here, not only when bytes arrive, so a client that sends part of a
+            // packet and then goes silent is still dropped.
+            if (!state.IsClosing && state.PendingPacketStartTick > 0 &&
+                now - state.PendingPacketStartTick > PartialPacketTimeoutMs)
+            {
+                _logger.LogWarning(
+                    "Partial packet timeout for #{Id}: opcode=0x{Op:X2}, expected={Len}, buffered={Buffered}",
+                    state.Id, state.PendingPacketOpcode, state.PendingPacketLength, state.ReceivedData.Length);
                 state.MarkClosing();
             }
 
@@ -1109,7 +1257,8 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, ushort, byte>? skillLock = null,
         Action<NetState, uint, uint, uint>? secureTradeGold = null,
         Action<NetState, ushort>? tipRequest = null,
-        Action<NetState, byte, string>? globalChat = null)
+        Action<NetState, byte, string>? globalChat = null,
+        Action<NetState, byte, uint>? useToolbar = null)
     {
         foreach (var state in _states)
         {
@@ -1143,6 +1292,7 @@ public sealed class NetworkManager : IDisposable
             state.ChatActionHandler = chatAction;
             state.TipRequestHandler = tipRequest;
             state.GlobalChatHandler = globalChat;
+            state.UseToolbarHandler = useToolbar;
             state.ResyncRequestHandler = resyncRequest;
             state.LogoutRequestHandler = logoutRequest;
             state.HelpRequestHandler = helpRequest;
@@ -1194,16 +1344,8 @@ public sealed class NetworkManager : IDisposable
     private bool ShouldLogPacketDebug(byte opcode) =>
         State.PacketDebugFilter.ShouldLog(DebugPackets, DebugPacketOpcodeFilter, opcode);
 
-    private static string FormatHex(ReadOnlySpan<byte> data, int maxBytes)
-    {
-        int len = Math.Min(data.Length, maxBytes);
-        var sb = new System.Text.StringBuilder(len * 3);
-        for (int i = 0; i < len; i++)
-        {
-            if (i > 0) sb.Append(' ');
-            sb.Append(data[i].ToString("X2"));
-        }
-        if (data.Length > maxBytes) sb.Append(" ...");
-        return sb.ToString();
-    }
+    /// <summary>Hex of a packet for the log, with the password field of a login or
+    /// character-delete packet masked.</summary>
+    private static string FormatHex(ReadOnlySpan<byte> data, int maxBytes) =>
+        PacketLogRedaction.FormatPacket(data, maxBytes);
 }

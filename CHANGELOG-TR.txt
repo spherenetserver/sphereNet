@@ -4,6 +4,39 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Ag girisi, sifreleme ve paket filtreleri
+------------------------------------------------------------------------
+DUZELTME - Guvenlik: giris tanilamasi ve paket dokumleri artik hesap parolasi
+           icermiyor; 0x80/0x91/0x83 parola alani debug ve tespit-hatasi
+           dokumlerinde, sifreli ya da sifresiz, maskeleniyor.
+DUZELTME - Ag girisi: tur kotasi veya hata veren handler yuzunden tamponda kalan
+           paketler yeni soket verisi beklenmeden isleniyor.
+DUZELTME - Sifreleme tespiti: ilk sifreli login / oyun girisiyle ayni okumada
+           gelen baytlar duz metin sayilmak yerine cozuluyor; ilk TCP parcasi
+           62-64 bayt olan oyun girisi baglanti kapatilmak yerine bekleniyor.
+DUZELTME - 15 sn kismi paket suresi soket sessizken de uygulanir ve 1-2 baslik
+           baytinda baslar; basligindan kisa uzunluk bildiren paket reddedilir.
+DUZELTME - Yeniden kullanilan baglanti yuvasi onceki istemcinin turunu, dilini,
+           relay surumunu, hata/flood sayaclarini ve RTT tanilamasini tasimiyor.
+DUZELTME - FLOODDETECTIONCOUNT=0 flood nedeniyle baglanti kesmeyi kapatir;
+           sifresiz istemci yalnizca USENOCRYPT=1 iken kabul edilir (anahtar
+           listesi bos olsa da), bos anahtar listesi acilista uyari verir; relay
+           anahtarlari okumada 60 sn sonra gecersiz olur, onbellek sinirlidir.
+DUZELTME - Eski Blowfish oyun sifrelemesi (ENC_BFISH / ENC_BTFISH) istemciyle
+           ayni (Source-X anahtar tablolari, 8 bayt geri besleme, 21036 baytta
+           tablo degisimi); dogrudan oyun girisi Source-X sirasiyla Blowfish,
+           Blowfish+Twofish ve Twofish dener; MD5 yalnizca Twofish yanitlarinda;
+           1.25.36 girisi kendi formulunu kullanir.
+DUZELTME - 0xA6 5 bayt, 0xEB 11 bayt cerceveleniyor; 0x3F, 0x69, 0xA6, 0xD0, 0xE8
+           Source-X gibi tuketiliyor; 0xEB KR toolbar @UserKRToolbar tetikler ve
+           Event_UseToolbar gibi buyu, skill, cift tiklama veya virtue yapar.
+DEGISIKLIK - Script paket filtreleri Source-X gibi: sphere.ini PACKETx= /
+           OUTPACKETx= o opcode'un her gelen / giden paketi icin fonksiyonu ARGN1,
+           ARGS, ARGO ve LOCAL.NUM/STR/ACCOUNT/CHAR/0..n ile calistirir; RETURN 1
+           paketi dusurur. Eski f_packet_0xNN kancasi kaldirildi.
+DUZELTME - Secure trade (0x6F) her eylemin govdesini denetler; gold/platinum
+           govdesi eksik altin guncellemesi 0/0 gibi uygulanmaz, yok sayilir.
+
 [2026-10-01] - Deadline kuyruklari, gorunurluk tahsisi ve tick telemetrisi
 ------------------------------------------------------------------------
 DUZELTME - Esya timer ve decay kuyruklari her esya icin tek kayit tutar: yeniden

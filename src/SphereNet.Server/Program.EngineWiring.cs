@@ -3782,9 +3782,11 @@ public static partial class Program
             };
             // GUESTSMAX hands out a GUESTn account nobody is playing on.
             GameClient.AccountInUse = acc => _clients.Values.Any(c => c.IsPlaying && c.Account == acc);
-            _network.PacketScriptHook = HandlePacketScriptHook;
+            InstallPacketScriptFilters(_network, _config);
             _log.LogInformation("Crypto keys loaded: {Count}, UseCrypt={UC}, UseNoCrypt={UNC}",
                 _cryptConfig.Keys.Count, _config.UseCrypt, _config.UseNoCrypt);
+            foreach (string warning in _network.GetCryptPolicyWarnings())
+                _log.LogWarning("Encryption policy: {Warning}", warning);
             _network.SetHandlers(
                 loginRequest: OnLoginRequest,
                 gameLogin: OnGameLogin,
@@ -3866,6 +3868,11 @@ public static partial class Program
                 {
                     if (_clients.TryGetValue(state.Id, out var c))
                         c.HandleGlobalChat(action, xml);
+                },
+                useToolbar: (state, type, argument) =>
+                {
+                    if (_clients.TryGetValue(state.Id, out var c))
+                        c.HandleUseToolbar(type, argument);
                 }
             );
 

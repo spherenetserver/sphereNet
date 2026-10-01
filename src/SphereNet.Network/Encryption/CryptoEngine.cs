@@ -53,6 +53,23 @@ public sealed class LoginEncryption
     {
         uint oldLo = _maskLo;
         uint oldHi = _maskHi;
+        if (_mode == LoginEncryptionMode.Special12536)
+        {
+            // Source-X CCryptoLogin.cpp, dwCliVer == 1253600 ("special multi key").
+            // A shift count of 32 or more yields 0, as Source-X spells out.
+            uint shiftHi = (5 * oldHi * oldHi) & 0xFF;
+            _maskHi = (shiftHi >= 32 ? 0u : _masterHi >> (int)shiftHi)
+                + (oldHi * _masterHi)
+                + (oldLo * oldLo * 0x35CE9581u)
+                + 0x07AFCC37u;
+            uint shiftLo = (3 * oldLo * oldLo) & 0xFF;
+            _maskLo = (shiftLo >= 32 ? 0u : _masterLo >> (int)shiftLo)
+                + (oldLo * _masterLo)
+                - (_maskHi * _maskHi * 0x4C3A1353u)
+                + 0x16EF783Fu;
+            return;
+        }
+
         _maskLo = ((oldLo >> 1) | (oldHi << 31)) ^ _masterLo;
         uint nextHi = ((oldHi >> 1) | (oldLo << 31)) ^ _masterHi;
         _maskHi = _mode == LoginEncryptionMode.Old
@@ -60,14 +77,27 @@ public sealed class LoginEncryption
             : ((nextHi >> 1) | (oldLo << 31)) ^ _masterHi;
     }
 
+    /// <summary>
+    /// The rotation Source-X CCrypto::DecryptLogin picks for a client version:
+    /// 1.25.37+ standard, exactly 1.25.36 the special multi key, older the old rotation.
+    /// </summary>
+    public static LoginEncryptionMode ModeForClientVersion(uint clientVersion) =>
+        clientVersion >= 1253700u ? LoginEncryptionMode.Standard
+        : clientVersion == 1253600u ? LoginEncryptionMode.Special12536
+        : LoginEncryptionMode.Old;
+
     public uint CurrentMaskLo => _maskLo;
     public uint CurrentMaskHi => _maskHi;
 }
 
 public enum LoginEncryptionMode
 {
+    /// <summary>Double high-mask rotation (client 1.25.37 and later).</summary>
     Standard,
-    Old
+    /// <summary>Single rotation (client 1.25.35 and earlier).</summary>
+    Old,
+    /// <summary>Multiply/shift update used only by client 1.25.36.</summary>
+    Special12536
 }
 
 /// <summary>
@@ -80,7 +110,7 @@ public sealed class BlowfishEncryption
     private readonly uint[] _pArray = new uint[18];
     private readonly uint[,] _sBox = new uint[4, 256];
 
-    private static readonly uint[] InitP =
+    internal static readonly uint[] InitP =
     {
         0x243F6A88, 0x85A308D3, 0x13198A2E, 0x03707344,
         0xA4093822, 0x299F31D0, 0x082EFA98, 0xEC4E6C89,
@@ -90,7 +120,7 @@ public sealed class BlowfishEncryption
     };
 
     #region S-Box Constants
-    private static readonly uint[] S0 =
+    internal static readonly uint[] S0 =
     {
         0xD1310BA6, 0x98DFB5AC, 0x2FFD72DB, 0xD01ADFB7, 0xB8E1AFED, 0x6A267E96, 0xBA7C9045, 0xF12C7F99,
         0x24A19947, 0xB3916CF7, 0x0801F2E2, 0x858EFC16, 0x636920D8, 0x71574E69, 0xA458FEA3, 0xF4933D7E,
@@ -126,7 +156,7 @@ public sealed class BlowfishEncryption
         0xB6636521, 0xE7B9F9B6, 0xFF34052E, 0xC5855664, 0x53B02D5D, 0xA99F8FA1, 0x08BA4799, 0x6E85076A
     };
 
-    private static readonly uint[] S1 =
+    internal static readonly uint[] S1 =
     {
         0x4B7A70E9, 0xB5B32944, 0xDB75092E, 0xC4192623, 0xAD6EA6B0, 0x49A7DF7D, 0x9CEE60B8, 0x8FEDB266,
         0xECAA8C71, 0x699A17FF, 0x5664526C, 0xC2B19EE1, 0x193602A5, 0x75094C29, 0xA0591340, 0xE4183A3E,
@@ -162,7 +192,7 @@ public sealed class BlowfishEncryption
         0xC5C43465, 0x713E38D8, 0x3D28F89E, 0xF16DFF20, 0x153E21E7, 0x8FB03D4A, 0xE6E39F2B, 0xDB83ADF7
     };
 
-    private static readonly uint[] S2 =
+    internal static readonly uint[] S2 =
     {
         0xE93D5A68, 0x948140F7, 0xF64C261C, 0x94692934, 0x411520F7, 0x7602D4F7, 0xBCF46B2E, 0xD4A20068,
         0xD4082471, 0x3320F46A, 0x43B7D4B7, 0x500061AF, 0x1E39F62E, 0x97244546, 0x14214F74, 0xBF8B8840,
@@ -198,7 +228,7 @@ public sealed class BlowfishEncryption
         0x6FD5C7E7, 0x56E14EC4, 0x362ABFCE, 0xDDC6C837, 0xD79A3234, 0x92638212, 0x670EFA8E, 0x406000E0
     };
 
-    private static readonly uint[] S3 =
+    internal static readonly uint[] S3 =
     {
         0x3A39CE37, 0xD3FAF5CF, 0xABC27737, 0x5AC52D1B, 0x5CB0679E, 0x4FA33742, 0xD3822740, 0x99BC9BBE,
         0xD5118E9D, 0xBF0F7315, 0xD62D1C7E, 0xC700C47B, 0xB78C1B6B, 0x21A19045, 0xB26EB1BE, 0x6A366EB4,
@@ -357,57 +387,249 @@ public sealed class BlowfishEncryption
 }
 
 /// <summary>
-/// Blowfish-based game stream cipher for UO 2.0.x clients (ENC_BFISH / ENC_BTFISH).
-/// Port of Source-X CCrypto::InitBlowFish + DecryptBlowFish.
-/// Same table-XOR stream pattern as TwofishGameEncryption but using Blowfish ECB
-/// for the table encryption step.
+/// Blowfish game stream for UO 1.26.x - 2.0.3 clients (ENC_BFISH, and the Blowfish
+/// half of ENC_BTFISH). Exact port of Source-X CCrypto::InitTables / PrepareKey /
+/// InitSeed / InitBlowFish / DecryptBlowFish / DecryptBFByte (CCryptoBlowFish.cpp).
+///
+/// The cipher does not depend on the connection seed: 25 fixed key schedules are
+/// built from the client's key table, and the stream is 8-byte ciphertext feedback -
+/// each 8-byte register is Blowfish-encrypted with the current schedule and XORed
+/// into the next 8 bytes, and the received ciphertext bytes become the next register.
+/// After every 21036 bytes the client moves to another schedule
+/// ((table + 3) % 11) and reloads the register from the second seed table.
 /// </summary>
 public sealed class BlowfishGameEncryption
 {
-    private const int TableSize = 256;
+    private const int GameKeyCount = 25;      // CRYPT_GAMEKEY_COUNT
+    private const int GameKeyLength = 6;      // CRYPT_GAMEKEY_LENGTH
+    private const int GameSeedLength = 8;     // CRYPT_GAMESEED_LENGTH
+    private const int GameTableStart = 1;     // CRYPT_GAMETABLE_START
+    private const int GameTableStep = 3;      // CRYPT_GAMETABLE_STEP
+    private const int GameTableModulo = 11;   // CRYPT_GAMETABLE_MODULO
+    /// <summary>Bytes after which the stream switches key schedule (CRYPT_GAMETABLE_TRIGGER).</summary>
+    public const int GameTableTrigger = 21036;
 
-    private readonly BlowfishEncryption _cipher;
-    private readonly byte[] _table = new byte[TableSize];
-    private int _position;
+    private const int CodingLength = 18 + 1024;
 
-    public BlowfishGameEncryption(uint seed)
+    // Source-X s_kKeyTable[CRYPT_GAMEKEY_COUNT][CRYPT_GAMEKEY_LENGTH] (CCryptoBlowFish.cpp).
+    private static readonly byte[] KeyTable =
+    [
+        0x91, 0x3C, 0x2B, 0x0F, 0x44, 0xC6,
+        0x0C, 0x96, 0xD2, 0x40, 0x93, 0x21,
+        0xF2, 0x12, 0xA5, 0xAA, 0xDA, 0xE9,
+        0x9A, 0xD4, 0xF7, 0x14, 0x97, 0xD0,
+        0xFC, 0xC9, 0xC7, 0xD6, 0xA8, 0xA3,
+        0x7B, 0x67, 0x36, 0x9B, 0x0B, 0x1A,
+        0x03, 0xAC, 0xF9, 0x02, 0xAE, 0x2D,
+        0x01, 0x77, 0x79, 0x6B, 0x0C, 0x67,
+        0xA4, 0xB4, 0x1E, 0xD7, 0xAA, 0x51,
+        0xD6, 0xE1, 0xBC, 0x27, 0x15, 0x25,
+        0x17, 0x17, 0x47, 0x65, 0x40, 0x8B,
+        0xB8, 0x19, 0xDB, 0x4E, 0x17, 0x74,
+        0xAA, 0x63, 0xAC, 0x37, 0xA0, 0x8F,
+        0x77, 0xCD, 0x5D, 0x23, 0xEF, 0xB7,
+        0x13, 0x2B, 0x83, 0xBF, 0x0F, 0x8C,
+        0xB1, 0x0B, 0xC8, 0x6F, 0x39, 0x4D,
+        0xA1, 0xA5, 0xFA, 0x2B, 0xC6, 0xE2,
+        0x9C, 0x29, 0xCC, 0x26, 0xE9, 0x2D,
+        0xCD, 0x6F, 0xD2, 0xCA, 0xBE, 0x47,
+        0x9B, 0x21, 0xAE, 0x3E, 0x31, 0x69,
+        0xE7, 0x0B, 0xE6, 0x6F, 0xCF, 0x91,
+        0x88, 0x59, 0xAF, 0x90, 0xC5, 0x2D,
+        0xAE, 0xD2, 0x52, 0xB5, 0x28, 0x98,
+        0x3B, 0x7F, 0x65, 0xED, 0x5E, 0x93,
+        0x30, 0xBF, 0x0A, 0x34, 0xDB, 0x3D,
+    ];
+
+    // Source-X sm_kSeedTable[2][CRYPT_GAMEKEY_COUNT][2][CRYPT_GAMESEED_LENGTH]: only the first
+    // 8-byte half of each pair is ever read (InitSeed uses [iTable][m_gameTable][0]),
+    // so this keeps [2][CRYPT_GAMEKEY_COUNT][CRYPT_GAMESEED_LENGTH].
+    private static readonly byte[] SeedTable =
+    [
+        0x9E, 0xEC, 0x5B, 0x3C, 0x8F, 0xA8, 0x8C, 0x55,
+        0xF8, 0xC4, 0xD8, 0x72, 0x54, 0xFC, 0xF9, 0xDE,
+        0x89, 0x9F, 0x5C, 0x53, 0x06, 0x7F, 0x44, 0x38,
+        0x29, 0x78, 0x5A, 0xF0, 0xAB, 0x00, 0x7F, 0x91,
+        0x8D, 0x46, 0xA9, 0xBB, 0x52, 0x1B, 0x41, 0xDF,
+        0x91, 0x4B, 0x8A, 0x80, 0xF5, 0xCF, 0xBB, 0x3C,
+        0xD5, 0x8C, 0x01, 0xC0, 0xFD, 0x1E, 0xAA, 0x57,
+        0x55, 0x9F, 0xD1, 0x5B, 0xFB, 0x70, 0xC0, 0x77,
+        0x80, 0x9D, 0x16, 0x54, 0x6B, 0x7C, 0x5F, 0xAD,
+        0x24, 0xA7, 0x75, 0xBF, 0x4D, 0x7E, 0x70, 0x0C,
+        0x99, 0x22, 0xF6, 0x89, 0x10, 0xE6, 0x72, 0x23,
+        0xDF, 0xFF, 0xBB, 0x11, 0x6B, 0x75, 0xF0, 0x29,
+        0x4C, 0x06, 0xDA, 0x55, 0x4E, 0x50, 0x1B, 0x7A,
+        0x00, 0x26, 0x75, 0x25, 0xCD, 0x95, 0x15, 0x0F,
+        0x0C, 0x8E, 0x86, 0x1E, 0x3F, 0xCB, 0x8B, 0xD1,
+        0x1E, 0x65, 0x5F, 0xA4, 0x55, 0xEB, 0xEC, 0xCF,
+        0x0E, 0x2D, 0x18, 0xE1, 0x55, 0x05, 0x04, 0xBF,
+        0xF2, 0x06, 0x56, 0x54, 0x4D, 0xFB, 0x96, 0x54,
+        0x5E, 0x02, 0x37, 0x17, 0x7B, 0x64, 0xE6, 0xA2,
+        0x60, 0xDD, 0x4C, 0xE0, 0xA1, 0xDC, 0xBA, 0x6C,
+        0xAE, 0x5C, 0xBE, 0x9D, 0x84, 0x6F, 0xCB, 0x51,
+        0xB0, 0x5D, 0xCB, 0x8D, 0x69, 0x1C, 0xDE, 0x29,
+        0x08, 0x32, 0x8B, 0xA2, 0x1E, 0x12, 0xC9, 0xB9,
+        0xA5, 0x3B, 0xE4, 0x64, 0x2F, 0x45, 0x33, 0xA2,
+        0xB0, 0x82, 0xB7, 0x33, 0xD2, 0x6F, 0xC0, 0x00,
+
+        0xD2, 0xB7, 0xF6, 0x9C, 0xCF, 0x06, 0xE8, 0xC1,
+        0xE8, 0x8C, 0x2A, 0x97, 0xD1, 0xD2, 0xA6, 0x76,
+        0x24, 0x62, 0x40, 0x0B, 0x21, 0xC6, 0x07, 0x89,
+        0xDF, 0x2B, 0x56, 0xC9, 0xB3, 0x72, 0x35, 0x8D,
+        0x1C, 0x87, 0x6C, 0xB1, 0xD4, 0x1B, 0xA2, 0xB2,
+        0x17, 0x83, 0x1C, 0x68, 0xB3, 0xD6, 0x65, 0x2D,
+        0xCE, 0x91, 0xB9, 0x8A, 0x61, 0x20, 0xB1, 0xF9,
+        0x5B, 0xD2, 0x4A, 0xFD, 0x44, 0xB7, 0xDF, 0x1F,
+        0x35, 0x6C, 0xBD, 0xFF, 0x62, 0x53, 0x77, 0x44,
+        0xB5, 0x27, 0x0D, 0xD2, 0x23, 0xBE, 0x40, 0xB3,
+        0xB3, 0xB4, 0xB6, 0xD5, 0xB6, 0xA7, 0x66, 0x6E,
+        0x49, 0xD7, 0x93, 0x34, 0x90, 0x1A, 0xAD, 0x2C,
+        0x82, 0xFB, 0x86, 0xEC, 0xA8, 0x76, 0x55, 0x98,
+        0x0B, 0xA5, 0x72, 0x17, 0xCB, 0x18, 0xAE, 0x03,
+        0x3F, 0x0A, 0x06, 0x82, 0x09, 0xC9, 0x76, 0xF2,
+        0xF1, 0x34, 0x64, 0x94, 0xDC, 0x90, 0x58, 0x5D,
+        0xC0, 0xD2, 0xE1, 0x42, 0xEC, 0x04, 0x69, 0xA8,
+        0x50, 0x73, 0xEC, 0x1E, 0x4D, 0xD0, 0x80, 0x51,
+        0x70, 0xC9, 0xE4, 0x78, 0x8F, 0x6B, 0x2C, 0x27,
+        0x00, 0xC7, 0x09, 0xCD, 0xF6, 0x2D, 0x2D, 0x31,
+        0xE7, 0xE8, 0x76, 0xC4, 0x50, 0x4F, 0x08, 0x5B,
+        0x2F, 0xD4, 0x67, 0xB9, 0x24, 0x0C, 0xBB, 0x14,
+        0x2D, 0x53, 0xDC, 0x91, 0x83, 0xF2, 0x0C, 0x12,
+        0xE3, 0x2C, 0xA2, 0x54, 0xCD, 0x51, 0xAF, 0xE5,
+        0x6E, 0x26, 0x01, 0xE9, 0xDB, 0x50, 0x13, 0xEA,
+    ];
+
+    /// <summary>Source-X s_dwCodingData: per key index, 18 P entries then 4x256 S entries.</summary>
+    private static readonly uint[][] CodingData = BuildCodingData();
+
+    // Source-X CCryptoKey union: u_cKey[8] over u_iKey[2] (little-endian dwords).
+    private uint _key0;
+    private uint _key1;
+    private int _gameTable;
+    private int _blockPos;
+    private int _streamPos;
+
+    public BlowfishGameEncryption()
     {
-        byte[] key =
-        [
-            (byte)(seed >> 24), (byte)(seed >> 16),
-            (byte)(seed >> 8), (byte)seed,
-            (byte)(seed >> 24), (byte)(seed >> 16),
-            (byte)(seed >> 8), (byte)seed
-        ];
-
-        _cipher = new BlowfishEncryption(key);
-
-        for (int i = 0; i < TableSize; i++)
-            _table[i] = (byte)i;
-
-        EncryptTable();
-        _position = 0;
+        // InitBlowFish
+        _gameTable = GameTableStart;
+        InitSeed(0);
     }
 
-    private void EncryptTable()
+    private static uint[][] BuildCodingData()
     {
-        byte[] tmp = new byte[TableSize];
-        Buffer.BlockCopy(_table, 0, tmp, 0, TableSize);
-        _cipher.Encrypt(tmp, 0, TableSize);
-        Buffer.BlockCopy(tmp, 0, _table, 0, TableSize);
+        // InitTables
+        uint[] initData = new uint[CodingLength];
+        Array.Copy(BlowfishEncryption.InitP, 0, initData, 0, 18);
+        Array.Copy(BlowfishEncryption.S0, 0, initData, 18, 256);
+        Array.Copy(BlowfishEncryption.S1, 0, initData, 18 + 256, 256);
+        Array.Copy(BlowfishEncryption.S2, 0, initData, 18 + 512, 256);
+        Array.Copy(BlowfishEncryption.S3, 0, initData, 18 + 768, 256);
+
+        var tables = new uint[GameKeyCount][];
+        Span<uint> code = stackalloc uint[3];
+        for (int i = 0; i < GameKeyCount; i++)
+        {
+            uint[] coding = (uint[])initData.Clone();
+            int k = i * GameKeyLength;
+            code[0] = ((uint)KeyTable[k + 0] << 24) + ((uint)KeyTable[k + 1] << 16) + ((uint)KeyTable[k + 2] << 8) + KeyTable[k + 3];
+            code[1] = ((uint)KeyTable[k + 4] << 24) + ((uint)KeyTable[k + 5] << 16) + ((uint)KeyTable[k + 0] << 8) + KeyTable[k + 1];
+            code[2] = ((uint)KeyTable[k + 2] << 24) + ((uint)KeyTable[k + 3] << 16) + ((uint)KeyTable[k + 4] << 8) + KeyTable[k + 5];
+
+            for (int j = 0; j < 18; j++)
+                coding[j] ^= code[j % 3];
+
+            // The schedule is filled while it is being used (Source-X writes straight
+            // into s_dwCodingData[i] between PrepareKey calls).
+            uint key0 = 0, key1 = 0;
+            for (int j = 0; j < 0x412; j += 2)
+            {
+                PrepareKey(coding, ref key0, ref key1);
+                coding[j + 0] = key1;
+                coding[j + 1] = key0;
+            }
+
+            tables[i] = coding;
+        }
+        return tables;
     }
 
+    /// <summary>Source-X CCrypto::PrepareKey: one Blowfish encryption of the 8-byte register.</summary>
+    private static void PrepareKey(uint[] codes, ref uint key0, ref uint key1)
+    {
+        unchecked
+        {
+            key1 ^= codes[0];
+            for (int i = 0; i < 8; i++)
+            {
+                // u_cKey[7..4] are the bytes of u_iKey[1] high to low, u_cKey[3..0] those of u_iKey[0].
+                key0 ^= codes[i * 2 + 1] ^ (((codes[18 + (int)(key1 >> 24)] + codes[18 + (int)((key1 >> 16) & 0xFF) + 0x100])
+                    ^ codes[18 + (int)((key1 >> 8) & 0xFF) + 0x200]) + codes[18 + (int)(key1 & 0xFF) + 0x300]);
+                key1 ^= codes[i * 2 + 2] ^ (((codes[18 + (int)(key0 >> 24)] + codes[18 + (int)((key0 >> 16) & 0xFF) + 0x100])
+                    ^ codes[18 + (int)((key0 >> 8) & 0xFF) + 0x200]) + codes[18 + (int)(key0 & 0xFF) + 0x300]);
+            }
+            key0 ^= codes[17];
+
+            (key0, key1) = (key1, key0);
+        }
+    }
+
+    /// <summary>Source-X CCrypto::InitSeed: load the register from seed table <paramref name="iTable"/>.</summary>
+    private void InitSeed(int iTable)
+    {
+        // for (i = 7; i >= 0; --i) u_cKey[i] = *pKey++;  -> seed byte 0 is u_cKey[7].
+        int s = (iTable * GameKeyCount + _gameTable) * GameSeedLength;
+        _key1 = ((uint)SeedTable[s + 0] << 24) | ((uint)SeedTable[s + 1] << 16) | ((uint)SeedTable[s + 2] << 8) | SeedTable[s + 3];
+        _key0 = ((uint)SeedTable[s + 4] << 24) | ((uint)SeedTable[s + 5] << 16) | ((uint)SeedTable[s + 6] << 8) | SeedTable[s + 7];
+        _blockPos = 0;
+        _streamPos = 0;
+    }
+
+    /// <summary>Decrypt in place; reads may split the stream anywhere (Source-X DecryptBlowFish).</summary>
     public void Decrypt(byte[] data, int offset, int length)
     {
+        while (_streamPos + length > GameTableTrigger)
+        {
+            int lenOld = GameTableTrigger - _streamPos;
+            DecryptBytes(data, offset, lenOld);
+
+            _gameTable = (_gameTable + GameTableStep) % GameTableModulo;
+            InitSeed(1);
+
+            offset += lenOld;
+            length -= lenOld;
+        }
+
+        DecryptBytes(data, offset, length);
+    }
+
+    private void DecryptBytes(byte[] data, int offset, int length)
+    {
+        uint[] codes = CodingData[_gameTable];
         for (int i = 0; i < length; i++)
         {
-            if (_position >= TableSize)
+            // DecryptBFByte
+            if (_blockPos == 0)
             {
-                EncryptTable();
-                _position = 0;
+                PrepareKey(codes, ref _key0, ref _key1);
+                _blockPos = 8;
             }
-            data[offset + i] ^= _table[_position++];
+            --_blockPos;
+
+            byte enc = data[offset + i];
+            int shift = (_blockPos & 3) * 8;
+            if (_blockPos >= 4)
+            {
+                data[offset + i] = (byte)(enc ^ (byte)(_key1 >> shift));
+                _key1 = (_key1 & ~(0xFFu << shift)) | ((uint)enc << shift);
+            }
+            else
+            {
+                data[offset + i] = (byte)(enc ^ (byte)(_key0 >> shift));
+                _key0 = (_key0 & ~(0xFFu << shift)) | ((uint)enc << shift);
+            }
         }
+        _streamPos += length;
     }
 }
 

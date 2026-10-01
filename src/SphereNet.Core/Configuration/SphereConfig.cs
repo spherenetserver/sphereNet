@@ -1389,8 +1389,52 @@ public sealed class SphereConfig
         SentryDsn = NormalizeSentryDsn(ini.GetValue(section, "SentryDsn") ?? SentryDsn);
 
         LoadSourceXKeys(ini, section);
+        LoadPacketFilters(ini, section);
 
         LoadDbConnections(ini);
+    }
+
+    /// <summary>PACKETx=function: the script function run for each incoming packet with
+    /// opcode x (decimal, 0..254), before the server handles it; RETURN 1 drops it
+    /// (Source-X CServerConfig::r_LoadVal, CServerConfig.cpp:1148-1163, and
+    /// CClient::xPacketFilter). Null where nothing is hooked.</summary>
+    public string?[] PacketFilters { get; } = new string?[255];
+
+    /// <summary>OUTPACKETx=function: the same for outgoing packets
+    /// (CServerConfig.cpp:1166-1181, CClient::xOutPacketFilter).</summary>
+    public string?[] OutPacketFilters { get; } = new string?[255];
+
+    private void LoadPacketFilters(IniParser ini, string section)
+    {
+        if (!ini.Sections.TryGetValue(section, out var keys))
+            return;
+        foreach (string key in keys.Keys.ToArray())
+        {
+            string?[] table;
+            string digits;
+            if (key.StartsWith("OUTPACKET", StringComparison.OrdinalIgnoreCase))
+            {
+                table = OutPacketFilters;
+                digits = key[9..];
+            }
+            else if (key.StartsWith("PACKET", StringComparison.OrdinalIgnoreCase))
+            {
+                table = PacketFilters;
+                digits = key[6..];
+            }
+            else
+                continue;
+
+            // Upstream reads the index with atoi, so it is decimal; the index range and
+            // the 30-character name limit are its own (m_PacketFilter[255][32]).
+            if (digits.Length == 0 || !digits.All(char.IsAsciiDigit) ||
+                !int.TryParse(digits, out int index) || index is < 0 or >= 255)
+                continue;
+            string? name = ini.GetValue(section, key)?.Trim();
+            if (string.IsNullOrEmpty(name) || name.Length >= 31)
+                continue;
+            table[index] = name;
+        }
     }
 
     /// <summary>Source-X CServerConfig keys that have no older SphereNet spelling

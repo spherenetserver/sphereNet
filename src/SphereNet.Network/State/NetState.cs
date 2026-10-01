@@ -359,6 +359,35 @@ public sealed class NetState : IDisposable
         UndecryptedOffset = 0;
         _loggedUnknownOpcodes?.Clear();
         ClearPendingPacket();
+
+        // Everything the previous client of this slot told us or cost us. Source-X
+        // clears the whole state before init (CNetState::clear, CNetState.cpp:144:
+        // client type, client version, packet exception count); a slot handed to a new
+        // classic client must not still say "enhanced client", carry the old
+        // language, or start on someone else's fault and flood budget.
+        ClientTypeFlag = 0;
+        ClientExpansion = Expansion.None;
+        ClientLanguage = "ENU";
+        ClientVersion = "";
+        AssistVersion = 0;
+        ScreenWidth = 0;
+        ScreenHeight = 0;
+        ViewRange = DefaultViewRange;
+        HuffmanReceiveEnabled = false;
+        PacketDebugClassifier = null;   // belonged to the previous client's GameClient
+        PacketExceptionCount = 0;
+        PacketFloodCount = 0;
+        PacketFloodWindowStart = 0;
+        _rttPingSeq = 0;
+        _rttPingSentTick = 0;
+        _rttMs = -1;
+        _rttLastPingSentTick = 0;
+        LastReceiveTick = 0;
+        lock (_sendLock)
+        {
+            _recentOutCount = 0;
+            Array.Clear(_recentOut);
+        }
     }
 
     /// <summary>
@@ -616,10 +645,53 @@ public sealed class NetState : IDisposable
         return true;
     }
 
+    /// <summary>Outgoing script packet filter (Source-X CClient::xOutPacketFilter, run
+    /// from CNetworkOutput::sendPacketData, CNetworkOutput.cpp:406): handed the whole
+    /// packet; returning true drops it for this connection.</summary>
+    public Func<NetState, byte[], bool>? OutPacketScriptHook { get; set; }
+
+    /// <summary>Which opcodes have an outgoing filter function at all (OUTPACKETx= in
+    /// sphere.ini). Checked before anything is copied, so a shard that hooks nothing pays
+    /// one null test per packet.</summary>
+    public Func<byte, bool>? OutPacketScriptHookGate { get; set; }
+
+    // A filter that sends a packet of the opcode it filters (ARGO.SENDPACKET from inside
+    // the function) would otherwise re-enter itself without end on this thread. Upstream
+    // never recurses because it filters at flush time; here the nested send goes out
+    // unfiltered.
+    [ThreadStatic] private static int t_outFilterDepth;
+
+    /// <summary>True when the outgoing filter says drop this packet.</summary>
+    private bool OutFilterDrops(PacketBuffer packet)
+    {
+        var hook = OutPacketScriptHook;
+        if (hook == null || packet.Length == 0 || t_outFilterDepth > 0)
+            return false;
+        byte opcode = packet.Data[0];
+        if (OutPacketScriptHookGate is { } gate && !gate(opcode))
+            return false;
+        t_outFilterDepth++;
+        try
+        {
+            return hook(this, packet.Span.ToArray());
+        }
+        catch (Exception ex)
+        {
+            // Upstream wraps the call in EXC_TRY and sends the packet anyway.
+            _logger.LogError(ex, "Outgoing packet filter threw for 0x{Op:X2} on #{Id}", opcode, Id);
+            return false;
+        }
+        finally
+        {
+            t_outFilterDepth--;
+        }
+    }
+
     private void EnqueueAt(PacketBuffer packet, PacketPriority priority)
     {
         if (DropOversize(packet)) return;
         if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
+        if (OutPacketScriptHook != null && OutFilterDrops(packet)) { packet.ReturnToPool(); return; }
         LastActivityTick = Environment.TickCount64;
 
         lock (_sendLock)
@@ -645,6 +717,7 @@ public sealed class NetState : IDisposable
     {
         if (DropOversize(packet)) return;
         if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
+        if (OutPacketScriptHook != null && OutFilterDrops(packet)) { packet.ReturnToPool(); return; }
         LastActivityTick = Environment.TickCount64;
 
         lock (_sendLock)
@@ -935,8 +1008,13 @@ public sealed class NetState : IDisposable
 
     public void MarkPendingPacket(byte opcode, int length, long now)
     {
-        if (PendingPacketStartTick > 0 && PendingPacketOpcode == opcode && PendingPacketLength == length)
+        // The same packet still waiting at the head of the buffer keeps its deadline,
+        // also when its header has completed since (length 0 = length not known yet).
+        if (PendingPacketStartTick > 0 && PendingPacketOpcode == opcode)
+        {
+            PendingPacketLength = length;
             return;
+        }
 
         PendingPacketOpcode = opcode;
         PendingPacketLength = length;
@@ -1280,6 +1358,12 @@ public sealed class NetState : IDisposable
 
     /// <summary>0xF4 crash report — lets the game layer fire @UserBugReport.</summary>
     public Action<NetState>? CrashReportHandler { get; set; }
+
+    /// <summary>0xEB KR toolbar use: (type, argument), the arguments of Source-X
+    /// CClient::Event_UseToolbar.</summary>
+    public Action<NetState, byte, uint>? UseToolbarHandler { get; set; }
+
+    internal void OnUseToolbar(byte type, uint argument) => UseToolbarHandler?.Invoke(this, type, argument);
 
     /// <summary>Stateless client UI button packets (0xFA Ultima Store,
     /// 0xB5 chat window). Arg: the packet opcode.</summary>

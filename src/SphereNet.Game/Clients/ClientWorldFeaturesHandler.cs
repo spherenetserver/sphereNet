@@ -3209,6 +3209,58 @@ public sealed class ClientWorldFeaturesHandler
             _client.HandleCastSpell((SpellType)spellId, 0);
     }
 
+    /// <summary>0xEB KR/EC toolbar use - Source-X CClient::Event_UseToolbar
+    /// (CClientEvent.cpp:2937). @UserKRToolbar runs first with ARGN1 = the slot type and
+    /// ARGN2 = its argument; RETURN 1 stops the action. Then: 1 casts the spell (KR
+    /// clients only reach Spellweaving, so higher ids are ignored), 2 (combat ability)
+    /// does nothing, 3 uses the skill, 4 double-clicks the object as a macro would, 5
+    /// selects the virtue (@UserVirtue on the player, as Event_VirtueSelect).</summary>
+    public void HandleUseToolbar(byte type, uint argument)
+    {
+        if (_character == null)
+            return;
+
+        if (_triggerDispatcher != null &&
+            _triggerDispatcher.FireCharTrigger(_character, CharTrigger.UserKRToolbar,
+                new TriggerArgs { CharSrc = _character, N1 = type, N2 = argument, N3 = 0 }) == TriggerResult.True)
+            return;
+
+        switch (type)
+        {
+            case 0x01: // spell
+                if (argument > 0 && argument <= (uint)SpellType.ArcaneEmpowerment)
+                    _client.HandleCastSpell((SpellType)argument, 0);
+                break;
+            case 0x02: // combat ability: nothing upstream either
+                break;
+            case 0x03: // skill
+                if (argument <= int.MaxValue)
+                    HandleUseSkill((int)argument);
+                break;
+            case 0x04: // item
+                UseToolbarObject(argument);
+                break;
+            case 0x05: // virtue
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtue,
+                    new TriggerArgs { CharSrc = _character, O1 = _character, N1 = argument });
+                break;
+        }
+    }
+
+    /// <summary>Event_DoubleClick(uid, fMacro: true, fTestTouch: true): the macro form
+    /// never mounts or dismounts, it opens the paperdoll for a character - the same
+    /// thing the client's own macro double-click (high bit set) asks for. A uid that
+    /// already carries the high bit is a resource uid upstream and finds nothing.</summary>
+    private void UseToolbarObject(uint uid)
+    {
+        if ((uid & 0x80000000) != 0)
+            return;
+        if (_world.FindChar(new Serial(uid)) != null)
+            _client.HandleDoubleClick(uid | 0x80000000);
+        else
+            _client.HandleDoubleClick(uid);
+    }
+
     /// <summary>0xF4 crash report → @UserBugReport.</summary>
     public void HandleCrashReport() =>
         FireExtendedButtonTrigger(CharTrigger.UserBugReport, 0x00F4);

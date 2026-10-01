@@ -106,6 +106,9 @@ public static class PacketDefinitions
         _lengths[0x89] = 0;     // variable (Corpse Equip)
         _lengths[0x8B] = 0;     // variable
         _lengths[0x8C] = 0x0B;  // Relay Server
+        // Source-X frames 0x8D as a fixed 146 (PacketCreateNew : PacketCreate(146)) yet
+        // skips a length word while parsing it; the client really does send the word,
+        // so reading it here frames every well-formed 146-byte packet the same way.
         _lengths[0x8D] = 0;     // variable (Create New)
         _lengths[0x90] = 0x13;  // Map Detail
         _lengths[0x91] = 0x41;  // 65 - Game Server Login
@@ -124,7 +127,11 @@ public static class PacketDefinitions
         _lengths[0xA3] = 0x09;  // Stat Update (stam)
         _lengths[0xA4] = 0x95;  // 149 - System Info
         _lengths[0xA5] = 0;     // variable (Web Link)
-        _lengths[0xA6] = 0;     // variable (Scroll)
+        // 0xA6 is variable server->client (the tip/scroll window) but the client's
+        // "scroll closed" reply is a fixed 5 bytes: Source-X registers it as
+        // PacketUnknown(5) (CPacketManager.cpp:74). Framed as variable, its second and
+        // third bytes were read as a length and the packet behind it was lost.
+        _lengths[0xA6] = 0x05;  // Scroll closed (client->server)
         _lengths[0xA7] = 0x04;  // Tip/Notice Request (client->server, fixed): word index + bool forward (Source-X PacketTipReq : Packet(4))
         _lengths[0xA8] = 0;     // variable (Server List)
         _lengths[0xA9] = 0;     // variable (Char List)
@@ -158,6 +165,9 @@ public static class PacketDefinitions
         _lengths[0xCB] = 0x01;
         _lengths[0xCC] = 0;     // variable (Cliloc Affix)
         _lengths[0xD0] = 0;     // variable (Config File)
+        // Source-X expects 1 byte (PacketLogout : Packet(1)), but ClassicUO sends the
+        // logout notification as 2 (0xD1 0x00, PacketsTable 0x0002); framing it as 1
+        // would turn that trailing zero into a 104-byte 0x00 character-create frame.
         _lengths[0xD1] = 0x02;  // Logout Status
         _lengths[0xD2] = 0x19;
         _lengths[0xD3] = 0;     // variable
@@ -182,7 +192,7 @@ public static class PacketDefinitions
         _lengths[0xE8] = 0x0D;  // Highlight UI Remove
         _lengths[0xE9] = 0;     // variable
         _lengths[0xEA] = 0;     // variable
-        _lengths[0xEB] = 0;     // variable (Use Hotbar)
+        _lengths[0xEB] = 0x0B;  // 11 - Use Hotbar (KR toolbar; Source-X PacketUseHotbar : Packet(11))
         _lengths[0xEC] = 0;     // variable (Equip Macro)
         _lengths[0xED] = 0;     // variable (Unequip Macro)
         _lengths[0xEF] = 0x15;  // 21 - KR/EC Login Seed

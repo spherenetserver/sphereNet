@@ -20,11 +20,10 @@ namespace SphereNet.Tests;
 ///   0xF1 the time sync question, answered immediately with 0xF2 carrying the current
 ///        time three times over (send.cpp:5223).
 ///
-/// Of the rest, 0x3F (UltimaLive static update) and 0xE8 (remove UI highlight) are
-/// no-ops upstream too - one dumps a debug line with its body commented out, the other
-/// only skips its fields - so registering them would add nothing. 0x8D, 0xA7 and 0xF9
-/// (KR character creation, tip-of-the-day, global chat) are covered by
-/// EnhancedClientPacketTests; 0xEB (hotbar) is not covered here.
+/// The rest - 0x3F, 0x69, 0xA6, 0xD0 and 0xE8, which upstream registers only to
+/// consume them, and 0xEB (KR toolbar) - are covered by PacketFramingFilterTests. 0x8D,
+/// 0xA7 and 0xF9 (KR character creation, tip-of-the-day, global chat) are covered by
+/// EnhancedClientPacketTests.
 /// </summary>
 public sealed class StandardPacketRegistrationTests
 {

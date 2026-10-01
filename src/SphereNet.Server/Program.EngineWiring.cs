@@ -1828,7 +1828,8 @@ public static partial class Program
                 return new SphereNet.Game.AI.NpcAI.NpcHitCheckOutcome(
                     retNum, res == TriggerResult.True,
                     SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1),
-                    locals.GetInt("Recoil_NoRange") != 0);
+                    locals.GetInt("Recoil_NoRange") != 0,
+                    (DamageType)(uint)args.N2);
             };
             _npcAI.OnNpcAttack = (attacker, target, weapon, damage, ammoUid) =>
             {
@@ -2345,51 +2346,46 @@ public static partial class Program
             // through their own resists — skipping the two principals, the
             // attacker's pets and the dead. Per-element impact sound at the
             // epicenter (0x10E/0x11D/0xFC/0x205/0x1F1).
+            // HITAREA* splash: Source-X OnTakeDamageInflictArea (CCharFight.cpp:1066-1106).
+            // Every char around the struck one that the attacker may legally hit
+            // takes the blow through the normal damage entry - its own protections,
+            // @GetHit, aggressor memory and death - with a sparkle in the element's
+            // hue, and one sound if anyone was hit.
             CombatEngine.OnHitAreaDamage = (attacker, epicenter, dmg, dmgType) =>
             {
                 if (dmg <= 0) return;
-                bool hitAny = false;
-                foreach (var ch in _world.GetCharsInRange(epicenter.Position, 5))
+                int range = (Character.FeatureAOS & 0x08) != 0 ? 10 : 5;   // FEATURE_AOS_DAMAGE
+                (int phys, int fire, int cold, int pois, int ener, ushort hue, ushort sound) = dmgType switch
                 {
-                    if (ch == attacker || ch == epicenter || ch.IsDead) continue;
-                    if (ch.OwnerSerial == attacker.Uid) continue;
-                    if (!_world.CanSeeLOS(attacker.Position, ch.Position)) continue;
+                    DamageType.Fire => (0, 100, 0, 0, 0, (ushort)0x488, (ushort)0x011D),
+                    DamageType.Cold => (0, 0, 100, 0, 0, (ushort)0x834, (ushort)0x00FC),
+                    DamageType.Poison => (0, 0, 0, 100, 0, (ushort)0x48E, (ushort)0x0205),
+                    DamageType.Energy => (0, 0, 0, 0, 100, (ushort)0x078, (ushort)0x01F1),
+                    _ => (100, 0, 0, 0, 0, (ushort)0x032, (ushort)0x010E),
+                };
+                bool hitAny = false;
+                foreach (var ch in _world.GetCharsInRange(epicenter.Position, range).ToList())
+                {
+                    if (ch == attacker || ch == epicenter || ch.IsDead || ch.IsDeleted) continue;
+                    if (CombatHelper.IsInvalidSwingParticipant(ch, asTarget: true)) continue;
+                    // My own pet that no client drives (NPC_IsOwnedBy, :1089).
+                    if (!ch.IsPlayer && ch.OwnerSerial == attacker.Uid) continue;
+                    // Someone I may not legally attack (same guild, party, ...) (:1091).
+                    if (GameClient.ComputeNotoriety(_world, attacker, ch) == 1) continue;
+                    if (!_world.CanSeeLOS(ch.Position, attacker.Position)) continue;
 
-                    int dealt = CombatEngine.ApplyElementalResist(ch, dmg, dmgType);
-                    if (dealt <= 0) continue;
-                    ch.Hits -= (short)Math.Min(dealt, short.MaxValue);
-                    ch.RecordAttack(attacker.Uid, dealt);
-                    hitAny = true;
-
-                    // Source-X sparkle (ITEMID_FX_SPARKLE_2 = 0x3779) on each
-                    // splashed victim.
-                    BroadcastNearby(ch.Position, 18, new PacketEffect(
-                        3, ch.Uid.Value, ch.Uid.Value, 0x3779,
+                    CombatEngine.ApplyCharacterDamage(ch, dmg, attacker, dmgType,
+                        phys, fire, cold, pois, ener);
+                    BroadcastNearby(ch.Position, 18, new PacketEffectHued(
+                        3, ch.Uid.Value, epicenter.Uid.Value, 0x3779,
                         ch.X, ch.Y, ch.Z, ch.X, ch.Y, ch.Z,
-                        1, 15, false, false), 0);
-
-                    if (!ch.IsPlayer && !ch.IsDead && !ch.FightTarget.IsValid)
-                    {
-                        ch.FightTarget = attacker.Uid;
-                        ch.NextNpcActionTime = 0;
-                    }
-                    if (ch.Hits <= 0 && !ch.IsDead)
-                        ProcessDeathWithEffects(ch, attacker);
+                        1, 15, false, false, hue, 0), 0);
+                    hitAny = true;
                 }
 
                 if (hitAny)
-                {
-                    ushort sound = dmgType switch
-                    {
-                        DamageType.Fire => 0x011D,
-                        DamageType.Cold => 0x00FC,
-                        DamageType.Poison => 0x0205,
-                        DamageType.Energy => 0x01F1,
-                        _ => 0x010E,
-                    };
                     BroadcastNearby(epicenter.Position, 18,
                         new PacketSound(sound, epicenter.X, epicenter.Y, epicenter.Z), 0);
-                }
             };
 
             // Housing — load multi definitions from multi.mul

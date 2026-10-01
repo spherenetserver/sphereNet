@@ -1727,6 +1727,19 @@ public sealed class ClientItemUseHandler
             // ---- figurine (pet shrink/unshrink) ----
             case ItemType.Figurine:
             {
+                // A figurine LINKed to its owner is refused to anyone else (staff
+                // excepted) before anything is created or woken - Use_Figurine runs
+                // this check first, for every kind of figurine (CCharUse.cpp:1123).
+                // It used to sit below the native branch, so a shrunk pet's locked
+                // figurine handed the pet to whoever double-clicked it. A copied or
+                // borrowed figurine must not transfer somebody else's pet.
+                if (item.Link.IsValid && item.Link.IsChar && item.Link != _character.Uid &&
+                    _character.PrivLevel < PrivLevel.GM)
+                {
+                    SysMessage(ServerMessages.Get(Msg.MsgFigurineNotyours));
+                    break;
+                }
+
                 // Snapshot figurine (Source-X pet shrink/restore): recreate the stored
                 // pet beside the player and consume the figurine.
                 if (SphereNet.Game.NPCs.PetFigurine.IsPetFigurine(item))
@@ -1742,16 +1755,6 @@ public sealed class ClientItemUseHandler
                     {
                         SysMessage("You have too many followers to restore that now.");
                     }
-                    break;
-                }
-
-                // Legacy Source-X figurines store the pet in MORE1 and the
-                // figurine owner in LINK. A copied/borrowed figurine must not
-                // transfer somebody else's pet to the user.
-                if (item.Link.IsValid && item.Link != _character.Uid &&
-                    _character.PrivLevel < PrivLevel.GM)
-                {
-                    SysMessage(ServerMessages.Get(Msg.MsgFigurineNotyours));
                     break;
                 }
 
@@ -4035,9 +4038,12 @@ public sealed class ClientItemUseHandler
         if (lower.StartsWith("all ", StringComparison.Ordinal))
         {
             string verb = NormalizePetVerb(lower[4..], allMode: true);
-            if (!IsPetCommandVerb(verb))
+            string allArgs = "";
+            if (!IsPetCommandVerb(verb) && !TrySplitPriceArgs(verb, out verb, out allArgs))
                 return false;
-            return DispatchAllPets(verb);
+            _petCommandArgs = allArgs;
+            try { return DispatchAllPets(verb); }
+            finally { _petCommandArgs = ""; }
         }
 
         // "<petname> <verb>" path -- longest-match verb.
@@ -4045,9 +4051,63 @@ public sealed class ClientItemUseHandler
         if (spaceIdx <= 0) return false;
         string name = lower[..spaceIdx];
         string rest = NormalizePetVerb(lower[(spaceIdx + 1)..], allMode: false);
-        if (!IsPetCommandVerb(rest))
+        string args = "";
+        if (!IsPetCommandVerb(rest) && !TrySplitPriceArgs(rest, out rest, out args))
             return false;
-        return DispatchNamedPet(name, rest);
+        _petCommandArgs = args;
+        try { return DispatchNamedPet(name, rest); }
+        finally { _petCommandArgs = ""; }
+    }
+
+    /// <summary>The text that followed the verb in the pet command being handled
+    /// (Source-X m_Targ_Text, CCharNPCPet.cpp:367). Set only for the duration of
+    /// TryHandlePetCommand; a target prompt captures it.</summary>
+    private string _petCommandArgs = "";
+
+    /// <summary>The captured command text while a pet target callback runs
+    /// (handed to NPC_OnHearPetCmdTarg as pszArgs).</summary>
+    private string _petTargetArgs = "";
+
+    /// <summary>Run a pet target callback with the command text it was opened with.</summary>
+    private void ApplyPetTargetWithArgs(Character pet, string verb, Serial uid, short x, short y, sbyte z,
+        string args)
+    {
+        _petTargetArgs = args;
+        try { ApplyPetTarget(pet, verb, uid, x, y, z); }
+        finally { _petTargetArgs = ""; }
+    }
+
+    /// <summary>PRICE is the one pet verb that carries an argument. Source-X matches
+    /// the whole phrase against sm_Pet_table first and, failing that, accepts anything
+    /// that merely BEGINS with "PRICE" as PC_PRICE (strnicmp(.., 5),
+    /// CCharNPCPet.cpp:120); what follows the verb is kept as the target's text
+    /// (:362-367) so "price 100" prices the picked item without a further prompt
+    /// (:537-538).</summary>
+    private static bool TrySplitPriceArgs(string phrase, out string verb, out string args)
+    {
+        if (phrase.StartsWith("price", StringComparison.Ordinal))
+        {
+            verb = "price";
+            args = phrase[5..].Trim();
+            return true;
+        }
+        verb = phrase;
+        args = "";
+        return false;
+    }
+
+    /// <summary>The leading decimal digits of a spoken price, read as atoi does
+    /// (CCharNPCPet.cpp:538): "100gp" is 100. Clamped to int range.</summary>
+    internal static int ParseLeadingPrice(string text)
+    {
+        long value = 0;
+        foreach (char c in text)
+        {
+            if (!char.IsAsciiDigit(c))
+                break;
+            value = Math.Min(int.MaxValue, value * 10 + (c - '0'));
+        }
+        return (int)value;
     }
 
     private static string NormalizePetVerb(string rawVerb, bool allMode)
@@ -4091,6 +4151,22 @@ public sealed class ClientItemUseHandler
     /// arm.</summary>
     private static bool IsFriendPermittedPetVerb(string verb) =>
         verb is "follow" or "stay" or "stop";
+
+    /// <summary>The orders a dead bonded pet ignores: PC_GUARD, PC_GUARD_ME,
+    /// PC_ATTACK, PC_KILL, PC_TRANSFER, PC_DROP and PC_DROP_ALL
+    /// (CCharNPCPet.cpp:158, :432). Everything else - follow, stay, come, go,
+    /// release and the rest - it still takes.</summary>
+    private static bool IsDeadPetRefusedVerb(string verb) =>
+        verb is "guard" or "guard me" or "attack" or "kill" or "transfer" or
+            "drop" or "drop all";
+
+    /// <summary>Whether a pet listens to <paramref name="speaker"/> at all. A dead
+    /// creature listens only while it is a bonded ghost still in the world
+    /// (CCharNPCPet.cpp:156), and a berserk one listens to staff alone
+    /// (CCharNPCPet.cpp:85).</summary>
+    private static bool PetListensTo(Character pet, Character speaker) =>
+        (!pet.IsDead || pet.IsBonded) &&
+        (pet.NpcBrain != NpcBrainType.Berserk || speaker.PrivLevel >= PrivLevel.GM);
 
     /// <summary>A new order supersedes whatever the pet was told last. Source-X starts
     /// a fresh NPC action per command - NPCACT_FOLLOW_TARG for come/follow me
@@ -4177,16 +4253,11 @@ public sealed class ClientItemUseHandler
             return true;
         }
 
-        // Source-X: dead bonded pets accept only passive commands
-        if (pet.IsDead)
-        {
-            bool allowed = verb is "follow me" or "come" or "stay" or "stop" or "follow";
-            if (!allowed)
-            {
-                NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
-                return true;
-            }
-        }
+        // A dead bonded pet is still in the world and still hears its owner; it only
+        // ignores the orders a ghost cannot carry out (CCharNPCPet.cpp:154-160). The
+        // command counts as heard, so nothing is said.
+        if (pet.IsDead && IsDeadPetRefusedVerb(verb))
+            return true;
 
         switch (verb)
         {
@@ -4417,6 +4488,7 @@ public sealed class ClientItemUseHandler
     /// </summary>
     private void EmitPetTargetPrompt(Character pet, string verb)
     {
+        string args = _petCommandArgs;
         string promptKey = verb switch
         {
             "attack" or "kill" => Msg.NpcPetTargAtt,
@@ -4431,12 +4503,13 @@ public sealed class ClientItemUseHandler
         };
         SysMessage(ServerMessages.Get(promptKey));
         SetPendingTarget(
-            (serial, x, y, z, gfx) => ApplyPetTarget(pet, verb, new Serial(serial), x, y, z),
+            (serial, x, y, z, gfx) => ApplyPetTargetWithArgs(pet, verb, new Serial(serial), x, y, z, args),
             cursorType: verb == "go" ? (byte)1 : (byte)0);
     }
 
     private void EmitPetTargetPrompt(IReadOnlyList<Character> pets, string verb)
     {
+        string args = _petCommandArgs;
         if (pets.Count == 0)
             return;
 
@@ -4462,13 +4535,14 @@ public sealed class ClientItemUseHandler
                     var pet = _world.FindChar(petUid);
                     // Re-checked at the click, not just when the cursor opened:
                     // ownership or friendship can be revoked while it is up.
-                    if (pet == null || pet.IsDeleted || pet.IsDead || _character == null ||
+                    if (pet == null || pet.IsDeleted || _character == null ||
+                        (pet.IsDead && !pet.IsBonded) ||
                         !pet.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)))
                     {
                         continue;
                     }
 
-                    ApplyPetTarget(pet, verb, new Serial(serial), x, y, z);
+                    ApplyPetTargetWithArgs(pet, verb, new Serial(serial), x, y, z, args);
                 }
             },
             cursorType: verb == "go" ? (byte)1 : (byte)0);
@@ -4478,11 +4552,20 @@ public sealed class ClientItemUseHandler
     private void ApplyPetTarget(Character pet, string verb, Serial uid, short x, short y, sbyte z)
     {
         if (_character == null) return;
+        // Berserk creatures take no targeted order either, unless from staff that
+        // outranks them (NPC_OnHearPetCmdTarg, CCharNPCPet.cpp:391).
+        if (pet.NpcBrain == NpcBrainType.Berserk &&
+            !(_character.PrivLevel >= PrivLevel.GM && _character.PrivLevel > pet.PrivLevel))
+            return;
         if (!pet.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)))
         {
             SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
             return;
         }
+        // A dead bonded pet hears its orders but ignores the ones it cannot carry
+        // out as a ghost (:428-434).
+        if (pet.IsDead && IsDeadPetRefusedVerb(verb))
+            return;
 
         var obj = uid.IsValid ? _world.FindObject(uid) : null;
 
@@ -4495,6 +4578,18 @@ public sealed class ClientItemUseHandler
                     !victim.IsStatFlag(StatFlag.Ridden) &&
                     victim != _character && victim.Uid != pet.NpcMaster)
                 {
+                    // The victim learns who gave the order before the pet moves:
+                    // OnAttackedBy(owner, fCommandPet=true) records the owner as the
+                    // aggressor (HARMEDBY / IRRITATEDBY / AGGREIVED, attacker list,
+                    // crime), and a victim that refuses it - STONE, dead - is not
+                    // attacked at all and the pet keeps its previous order
+                    // (CCharNPCPet.cpp:447).
+                    if (!victim.OnAttackedBy(_character, commandPet: true))
+                    {
+                        SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
+                        break;
+                    }
+
                     // Clear the previous order FIRST. Superseding drops
                     // PREV_PET_MODE along with the stale GO it belonged to, so writing
                     // the fallback before it destroyed the very value the attack path
@@ -4621,7 +4716,20 @@ public sealed class ClientItemUseHandler
                 // their own pack and sell it to an NPC vendor for that price.
                 if (obj is Item priced && SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet) &&
                     ReferenceEquals(priced.ResolveTopObject(), pet) && priced.ContainedIn != pet.Uid)
-                    SendInputPromptGump(priced, "PRICE", 9);
+                {
+                    // "price 100": a price named with the command is set on the spot
+                    // (IsDigit(pszArgs[0]) -> NPC_SetVendorPrice(atoi), CCharNPCPet.cpp:537;
+                    // the vendor announces it, :852-856). Anything else asks for it.
+                    string args = _petTargetArgs;
+                    if (args.Length > 0 && char.IsAsciiDigit(args[0]))
+                    {
+                        int price = ParseLeadingPrice(args);
+                        NpcSpeech(pet, ServerMessages.GetFormatted(Msg.NpcVendorSetprice1, priced.GetName(), price));
+                        priced.Price = price;
+                    }
+                    else
+                        SendInputPromptGump(priced, "PRICE", 9);
+                }
                 else
                     NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetInvOnly));
                 break;
@@ -4814,8 +4922,8 @@ public sealed class ClientItemUseHandler
         return _world.GetCharsInRange(_character.Position, 12)
             .Where(p =>
                 !p.IsPlayer &&
-                !p.IsDead &&
                 !p.IsDeleted &&
+                PetListensTo(p, _character) &&
                 !p.IsStatFlag(StatFlag.Ridden) &&
                 p.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)) &&
                 (string.IsNullOrEmpty(namePrefix) ||

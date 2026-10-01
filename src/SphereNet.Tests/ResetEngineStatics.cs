@@ -332,6 +332,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Network.Packets.Outgoing.PacketCharList.AosTooltipsEnabled = true;
         SphereNet.Game.Components.SpawnComponent.OnSpawnTrigger = null;
         SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = null;
+        SphereNet.Game.Components.SpawnComponent.OnNpcCreateTrigger = null;
         SphereNet.Game.Death.DeathEngine.EnableDeathShroud = true;
         SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck = null;
         SphereNet.Game.Skills.SkillEngine.OnSkillDecrease = null;

@@ -273,15 +273,22 @@ public sealed partial class NpcAI
         }
 
         if (flee)
-        {
-            var toward = (int)npc.Position.GetDirectionTo(point) & 0x07;
-            var away = (Direction)((toward + 4 + 1 - RandVal(3) + 8) % 8);
-            GetDirectionDelta(away, out short dx, out short dy);
-            var awayPoint = new Point3D((short)(npc.X + dx), (short)(npc.Y + dy), npc.Z, npc.MapIndex);
-            return MoveToward(npc, awayPoint, run: dist > 3) < 2;
-        }
+            return StepAwayFrom(npc, point, dist);
 
         return MoveToward(npc, point, run: npc.IsStatFlag(StatFlag.War) || dist > 3) < 2;
+    }
+
+    /// <summary>NPC_Act_Follow's flee step (CCharNPCAct.cpp:1429-1437): one step
+    /// roughly opposite <paramref name="point"/> - the reverse direction turned by
+    /// -1, 0 or +1 - running when farther than three tiles. False when the step
+    /// failed.</summary>
+    private bool StepAwayFrom(Character npc, Point3D point, int dist)
+    {
+        var toward = (int)npc.Position.GetDirectionTo(point) & 0x07;
+        var away = (Direction)((toward + 4 + 1 - RandVal(3) + 8) % 8);
+        GetDirectionDelta(away, out short dx, out short dy);
+        var awayPoint = new Point3D((short)(npc.X + dx), (short)(npc.Y + dy), npc.Z, npc.MapIndex);
+        return MoveToward(npc, awayPoint, run: dist > 3) < 2;
     }
 
     // --- Talk: NPC_ActStart_SpeakTo / NPC_Act_Talk / NPC_OnHear ---

@@ -2017,6 +2017,7 @@ public sealed class SpellEngine
         if (harmful && caster != target && !target.OnAttackedBy(caster))
             return false;
 
+        bool reflected = false;
         if (harmful && caster != target && target.IsStatFlag(StatFlag.Reflection))
         {
             ConsumeMagicReflection(target);
@@ -2042,6 +2043,7 @@ public sealed class SpellEngine
                 // with itself as SRC. Keeping caster unchanged preserves
                 // Source-X damage attribution and prevents a second reflect.
                 target = caster;
+                reflected = true;
             }
         }
 
@@ -2125,8 +2127,10 @@ public sealed class SpellEngine
 
         int prevSkillLevel = _effectSkillLevel;
         int? prevDuration = _effectDurationTenths;
+        bool prevReflected = _effectReflected;
         _effectSkillLevel = level;
         _effectDurationTenths = durationTenths;
+        _effectReflected = reflected;
         try
         {
             ApplyCharEffectResolved(caster, target, def, effect, resistPct, scriptDamageType);
@@ -2135,6 +2139,7 @@ public sealed class SpellEngine
         {
             _effectDurationTenths = prevDuration;
             _effectSkillLevel = prevSkillLevel;
+            _effectReflected = prevReflected;
         }
         SettlePendingEffectAdds();
         return true;
@@ -2232,6 +2237,10 @@ public sealed class SpellEngine
             var dmgType = scriptDamageType != DamageType.None
                 ? scriptDamageType
                 : GetSpellDamageType(def.Id);
+            // A spell reflected back onto its own caster does not break that
+            // caster's next cast (DAMAGE_NODISTURB, CCharSpell.cpp:3750-3755).
+            if (_effectReflected && target == caster)
+                dmgType |= DamageType.NoDisturb;
             // The elemental split follows the type (:3857-3868): one element at 100%,
             // anything else physical.
             int splitPhysical = 0, splitFire = 0, splitCold = 0, splitPoison = 0, splitEnergy = 0;
@@ -2574,10 +2583,13 @@ public sealed class SpellEngine
         int dmg = GetSpellDef(SpellType.FireField)?.GetEffect(level) ?? 0;
         if (dmg <= 0)
             return FieldTouchResult.Handled;
-        dmg = CombatEngine.ApplyElementalResist(ch, dmg, DamageType.Fire);
+        // OnTakeDamage(effect, nullptr, DAMAGE_FIRE|DAMAGE_GENERAL, 0,100,0,0,0)
+        // (CCharAct.cpp:4981): the field's fire goes through the damage entry.
+        dmg = CombatEngine.ApplyCharacterDamage(ch, dmg, null,
+            DamageType.Fire | DamageType.General, 0, 100, 0, 0, 0,
+            spell: (int)SpellType.FireField, feedback: DamageFeedback.Caller);
         if (dmg <= 0)
             return FieldTouchResult.Handled;
-        ch.Hits = (short)Math.Max(0, ch.Hits - dmg);
         OnPlaySound?.Invoke(ch.Position, 0x015F);
         TryInterruptFromDamage(ch, dmg);
         if (ch.Hits <= 0 && !ch.IsDead)
@@ -4256,6 +4268,10 @@ public sealed class SpellEngine
     /// @SpellEffect's LOCAL.Duration; null outside an ApplyCharEffect dispatch.</summary>
     private int? _effectDurationTenths;
 
+    /// <summary>The effect being applied is a Magic Reflect bounce onto its caster
+    /// (Source-X OnSpellEffect's fReflecting).</summary>
+    private bool _effectReflected;
+
     /// <summary>The duration an effect created right now lasts, in tenths.</summary>
     private int EffectDurationTenths(Character caster, Character target, SpellDef def) =>
         _effectDurationTenths ?? GetSpellDuration(def, caster.GetSkill(def.GetPrimarySkill()), caster, target);
@@ -4751,16 +4767,20 @@ public sealed class SpellEngine
         if (damage == 0)
             return;
 
-        if (!eff.DotDirect)
-            damage = CombatEngine.ApplyElementalResist(victim, damage, eff.DotDamageType);
-        damage = Math.Max(1, damage);
-
-        if (CombatEngine.IsDamageImmune(victim))
+        // Spell_Equip_OnTick hands the tick to OnTakeDamage with the linked char as
+        // the source and the element split taken from the type (CCharSpell.cpp:
+        // 2005-2025). A direct tick (fixed amount) carries DAMAGE_FIXED.
+        var source = eff.DotSource.IsValid ? Character.ResolveCharByUid?.Invoke(eff.DotSource) : null;
+        var type = eff.DotDamageType | (eff.DotDirect ? DamageType.Fixed : 0);
+        damage = CombatEngine.ApplyCharacterDamage(victim, damage, source, type,
+            (type & (DamageType.HitBlunt | DamageType.HitPierce | DamageType.HitSlash)) != 0 ? 100 : 0,
+            (type & DamageType.Fire) != 0 ? 100 : 0,
+            (type & DamageType.Cold) != 0 ? 100 : 0,
+            (type & DamageType.Poison) != 0 ? 100 : 0,
+            (type & DamageType.Energy) != 0 ? 100 : 0,
+            spell: (int)eff.Spell, feedback: DamageFeedback.Caller);
+        if (damage <= 0)
             return;
-
-        victim.Hits = (short)Math.Max(0, victim.Hits - damage);
-        if (eff.DotSource.IsValid)
-            victim.RecordAttack(eff.DotSource, damage);
         TryInterruptFromDamage(victim, damage);
 
         Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, damage, 0);

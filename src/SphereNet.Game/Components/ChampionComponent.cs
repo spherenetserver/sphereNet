@@ -965,8 +965,13 @@ public sealed class ChampionComponent
                 if (!uid.IsValid) return true;
                 if (verb.Equals("ADDOBJ", StringComparison.OrdinalIgnoreCase))
                 {
-                    _item.SpawnChar?.RegisterExisting(uid);
-                    if (_world.FindChar(uid) is { } added)
+                    // The champion's ADDOBJ verb only hands the character the
+                    // e_spawn_champion event (ICHMPV_ADDOBJ -> CCChampion::AddObj,
+                    // CCChampion.cpp:1138/756). It never enrolls anything in the spawn
+                    // list - membership comes from GenerateChar's own AddObj, which takes
+                    // NPCs only (CCSpawn.cpp:609). Enrolling the uid unchecked put a
+                    // player on the list, and the next STOP deleted that player.
+                    if (_world.FindChar(uid) is { IsDeleted: false } added)
                         AttachChampionEvent(added);
                 }
                 else

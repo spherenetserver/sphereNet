@@ -1159,7 +1159,8 @@ public sealed partial class NpcAI
     /// per-swing Recoil_NoRange. The reference's contract is numeric
     /// (CCharFight.cpp:1770-1779), so a plain true/false cannot carry it.</summary>
     public readonly record struct NpcHitCheckOutcome(
-        long Return, bool Vetoed, int SwingState, bool SwingNoRange);
+        long Return, bool Vetoed, int SwingState, bool SwingNoRange,
+        DamageType? DamageType = null);
 
     /// <summary>@HitCheck hook fired before range/LoS validation, on the same
     /// contract the player path uses — a script must not see one meaning of
@@ -1222,6 +1223,7 @@ public sealed partial class NpcAI
         Item? weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         var effectiveRange = GetFightRange(npc, weapon);
         bool swingNoRange = CombatHelper.SwingIgnoresStartRange();
+        DamageType? swingDamageType = null;
         int swingDelayMs = SphereNet.Game.Clients.GameClient.GetSwingDelayMs(npc, weapon);
 
         if (OnNpcHitCheck != null)
@@ -1245,6 +1247,7 @@ public sealed partial class NpcAI
             }
 
             swingNoRange = hitCheck.SwingNoRange;
+            swingDamageType = hitCheck.DamageType;
             if (Enum.IsDefined(typeof(SwingState), hitCheck.SwingState))
                 npc.SetCombatSwingState((SwingState)hitCheck.SwingState);
         }
@@ -1299,7 +1302,7 @@ public sealed partial class NpcAI
         npc.BeginSwingWindup(now, hitDelayMs, cycleMs, target.Uid,
             now + Math.Max(cycleMs, swingDelayMs) * 2L,
             weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
-            effectiveRange.Min, effectiveRange.Max);
+            effectiveRange.Min, effectiveRange.Max, swingDamageType);
         OnNpcSwingStart?.Invoke(npc, target, weapon, animOverride,
             CombatHelper.GetSwingAnimDelay(delays));
 
@@ -1378,6 +1381,7 @@ public sealed partial class NpcAI
         Serial committedWeaponUid = npc.PendingHitWeapon;
         bool weaponCaptured = npc.PendingHitWeaponCaptured;
         bool swingNoRange = npc.PendingHitSwingNoRange;
+        var swingDamageType = npc.PendingHitDamageType;
         (int Min, int Max)? committedRange =
             npc.PendingHitRangeMin >= 0 && npc.PendingHitRangeMax >= 0
                 ? (npc.PendingHitRangeMin, npc.PendingHitRangeMax)
@@ -1422,7 +1426,7 @@ public sealed partial class NpcAI
         short hpBefore = npc.Hits;
         int damage = CombatEngine.ResolveAttack(
             npc, target, weapon, CombatHelper.ActiveCombatFlags,
-            -1, -1, ammoStack?.Uid.Value ?? 0, out bool ammoHandled);
+            -1, -1, ammoStack?.Uid.Value ?? 0, out bool ammoHandled, swingDamageType);
         OnNpcAttack?.Invoke(npc, target, weapon, damage, ammoStack?.Uid.Value ?? 0);
 
         // NPCs remain lenient when templates omit ammo, but a stocked archer

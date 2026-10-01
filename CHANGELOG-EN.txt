@@ -4,6 +4,56 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Spawn, champion, pet and vendor behaviour follow Source-X
+------------------------------------------------------------------------
+FIX - A champion's ADDOBJ <uid> only attaches the champion event to that
+      character; it no longer enrolls it in the spawn list, so STOP cannot
+      delete a player or an outside NPC. A champion altar inside a container
+      spawns nothing (every creature spawn path checks the spawner is top
+      level).
+CHANGE - Spawned NPC scripts run in Source-X order: the CHARDEF's own @Create
+      and @NPCRestock, then @Spawn, placement, @AddObj, then the TEVENTS /
+      EVENTSPET @Create chain. @AddObj sees the count without the new object,
+      and its ARGN1 timer is no longer overwritten.
+FIX - <COUNT> (and PILE) on a spawner returns its member count; an item
+      spawner in a sleeping sector refills after losing a child.
+FIX - A figurine LINKed to another character refuses anyone but its owner (GMs
+      excepted) before the pet is restored.
+FIX - A pet attack/kill order records the owner as the victim's aggressor and
+      is refused against a dead or STONE target; a STONE character refuses any
+      attack.
+FIX - Transferring a pet clears the old owner's IPET memory and all FRIEND
+      memories; releasing clears FRIEND memories. A figurine or stable restore
+      refused by @FollowersUpdate keeps the item and the pet parked.
+FIX - @NPCActFollow Flee and MoveAway results are applied to pets. A dead bonded
+      pet takes the passive orders (follow, come, stay, stop, go...) and keeps
+      following. A berserk pet ignores non-GM commands.
+FIX - A player vendor changing owner gives its stock, bought goods and purse
+      to the previous owner's bank; an owned vendor is INVUL and starts with an
+      empty purse.
+FIX - Unowned, unspawned NPCs lose food on their own tick like any other NPC.
+FIX - "<vendor> price 100" followed by a stock item sets that price at once;
+      "<vendor> price" still asks for it.
+
+[2026-10-01] - Remaining damage-entry gaps closed against Source-X
+------------------------------------------------------------------------
+FIX - @HitCheck's ARGN2 is the swing's damage type through its parry and @Hit
+      stages, for players and NPCs; a DAMAGE_GOD swing skips the parry roll and
+      @HitParry entirely, and @HitParry's ARGN2 is read back.
+CHANGE - Evil Omen and Blood Oath (on blows and on poison) only work with
+      FEATURE_AOS_UPDATE_B (FEATUREAOS 02), as in Source-X; a scripted Evil
+      Omen no longer raises poison either.
+FIX - HITAREA* splash follows OnTakeDamageInflictArea: range 5 (10 with
+      FEATURE_AOS_DAMAGE), only targets the attacker may legally hit (not an
+      innocent, not the attacker's own uncontrolled pet, line of sight from
+      the target), damage through the normal damage entry, a sparkle in the
+      element's hue.
+FIX - Traps, FIELD_DAMAGE items, fire fields and damage-over-time ticks go
+      through the damage entry: protections, armour, @GetHit and aggressor
+      memory apply to them.
+FIX - A spell reflected back onto its caster carries DAMAGE_NODISTURB and does
+      not interrupt the caster's next cast.
+
 [2026-10-01] - Damage entry, damage flags, murder, rewards and notoriety follow Source-X
 ------------------------------------------------------------------------
 CHANGE - Damage type flags use the Source-X DAMAGE_TYPE numbers and 32 bits

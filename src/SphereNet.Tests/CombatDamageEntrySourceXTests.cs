@@ -471,6 +471,8 @@ public sealed class CombatDamageEntrySourceXTests
     [Fact]
     public void BloodOathReflectsTheRaisedRawBlowBeforeTheVictimsArmour()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         // 40 raw, 50% physical resist, oath level 50 (CCharFight.cpp:697-701): the blow
         // becomes 44; the attacker takes 44 * (100 - 50) / 100 = 22 as MAGIC|FIXED; the
         // victim takes 44 cut to 22 by its resist.
@@ -491,6 +493,8 @@ public sealed class CombatDamageEntrySourceXTests
     [Fact]
     public void BloodOathAnswersAnyNonFixedBlowButNotAFixedOne()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         // The only type gate is DAMAGE_FIXED (a reflection already), CCharFight.cpp:697.
         var world = TestHarness.CreateWorld();
         var attacker = Place(world, 100, player: true);
@@ -508,6 +512,8 @@ public sealed class CombatDamageEntrySourceXTests
     [Fact]
     public void TheBloodOathReflectionRunsTheAttackersGetHit()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         // The reflection is pSrc->OnTakeDamage (CCharFight.cpp:701): the attacker's own
         // @GetHit sees it and may refuse it.
         var world = TestHarness.CreateWorld();
@@ -530,5 +536,80 @@ public sealed class CombatDamageEntrySourceXTests
         Assert.Equal(DamageType.Magic | DamageType.Fixed, seenType);
         Assert.Equal(100, attacker.Hits);
         Assert.Equal(156, defender.Hits);
+    }
+
+    /// <summary>Evil Omen and Blood Oath only work with FEATURE_AOS_UPDATE_B
+    /// (CCharFight.cpp:688): without it the blow is plain and the curses stay.</summary>
+    [Fact]
+    public void WithoutAosUpdateB_EvilOmenAndBloodOathDoNothing()
+    {
+        Character.FeatureAOS = 0;
+        var world = TestHarness.CreateWorld();
+        var attacker = Place(world, 100, player: true);
+        var defender = Place(world, 101, hits: 200);
+        defender.BloodOathEnemy = attacker.Uid;
+        defender.BloodOathLevel = 50;
+        defender.EvilOmenActive = true;
+        defender.EvilOmenExpireTick = Environment.TickCount64 + 60_000;
+
+        Assert.Equal(40, CombatEngine.ApplyScriptDamage(defender, 40, DamageType.Fixed | DamageType.Magic, attacker));
+        Assert.Equal(100, attacker.Hits);       // no Blood Oath reflection
+        Assert.True(defender.EvilOmenActive);   // the omen was not spent
+    }
+
+    /// <summary>A DAMAGE_GOD swing skips the whole parry block - roll and @HitParry
+    /// (CCharFight.cpp:2083) - and the swing's type is the one @HitCheck left.</summary>
+    [Fact]
+    public void AGodSwing_SkipsTheParryStage_AndTheSwingTypeReachesIt()
+    {
+        var world = TestHarness.CreateWorld();
+        var attacker = Place(world, 100, player: true);
+        attacker.PrivLevel = PrivLevel.GM;      // guaranteed hit
+        var defender = Place(world, 101, hits: 200);
+        var parryTypes = new List<DamageType>();
+        CombatEngine.OnHitParry = (_, _, ctx) =>
+        {
+            parryTypes.Add((DamageType)(uint)ctx.DamageType);
+            return true;
+        };
+
+        CombatEngine.ResolveAttack(attacker, defender, null, CombatFlags.None, -1, -1, 0,
+            out _, DamageType.God);
+        Assert.Empty(parryTypes);
+
+        CombatEngine.ResolveAttack(attacker, defender, null, CombatFlags.None, -1, -1, 0,
+            out _, DamageType.HitSlash);
+        Assert.Equal([DamageType.HitSlash], parryTypes);
+    }
+
+    /// <summary>A spell bounced back onto its caster by Magic Reflect carries
+    /// DAMAGE_NODISTURB, so it does not break the caster's own next cast
+    /// (CCharSpell.cpp:3750-3755); the same spell on its target does not.</summary>
+    [Fact]
+    public void AReflectedSpell_HitsItsCasterWithNoDisturb()
+    {
+        var world = TestHarness.CreateWorld();
+        var caster = Place(world, 100, hits: 200, player: true);
+        var victim = Place(world, 101, hits: 200, player: true);
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.MagicArrow, Name = "Magic Arrow",
+            Flags = SpellFlag.TargChar | SpellFlag.Harm | SpellFlag.Damage,
+            EffectBase = 10, EffectScale = 10,
+        });
+        var engine = new SpellEngine(world, registry);
+        var hits = new List<(Character Target, DamageType Type)>();
+        CombatEngine.OnGetHit = ctx => { hits.Add((ctx.Target, ctx.DamageType)); return ctx.Damage; };
+
+        victim.SetStatFlag(StatFlag.Reflection);
+        engine.ApplyDirectEffect(caster, victim, SpellType.MagicArrow, 500);
+        engine.ApplyDirectEffect(caster, victim, SpellType.MagicArrow, 500);
+
+        Assert.Equal(2, hits.Count);
+        Assert.Same(caster, hits[0].Target);
+        Assert.NotEqual(DamageType.None, hits[0].Type & DamageType.NoDisturb);
+        Assert.Same(victim, hits[1].Target);
+        Assert.Equal(DamageType.None, hits[1].Type & DamageType.NoDisturb);
     }
 }

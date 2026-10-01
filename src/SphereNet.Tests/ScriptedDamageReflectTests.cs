@@ -55,6 +55,8 @@ public sealed class ScriptedDamageReflectTests
     [Fact]
     public void BloodOathAnswersAScriptedBlow()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         var world = TestHarness.CreateWorld();
         var (attacker, defender) = Fighters(world);
         defender.BloodOathEnemy = attacker.Uid;

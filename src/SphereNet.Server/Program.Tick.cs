@@ -806,7 +806,7 @@ public static partial class Program
 
     /// <inheritdoc cref="ShouldStayScheduled(Character)"/>
     internal static bool ShouldStayScheduled(GameWorld world, Character npc)
-        => !npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
+        => (!npc.IsDead || npc.ActsWhileDead) && !npc.IsDeleted && !npc.IsPlayer &&
            // A ridden creature is carried, and the position it still reports is the spot
            // it was mounted at - upstream makes it a disconnected object that ticks off
            // the world's own list rather than a sector (Horse_Mount: STATF_RIDDEN +
@@ -1159,7 +1159,7 @@ public static partial class Program
 
     private static void WakeNpc(Character npc, long extraDelayMs)
     {
-        if (npc.IsPlayer || npc.IsDeleted || npc.IsDead) return;
+        if (npc.IsPlayer || npc.IsDeleted || (npc.IsDead && !npc.ActsWhileDead)) return;
         npc.NextNpcActionTime = 0;
         _npcTimerWheel?.Remove(npc);
         _npcTimerWheel?.Schedule(npc, Environment.TickCount64 + 100 + extraDelayMs);
@@ -1184,7 +1184,7 @@ public static partial class Program
         {
             foreach (var ch in sector.Characters)
             {
-                if (ch.IsPlayer || ch.IsDeleted || ch.IsDead) continue;
+                if (ch.IsPlayer || ch.IsDeleted || (ch.IsDead && !ch.ActsWhileDead)) continue;
                 // uid-derived offset (stable, no RNG — RNG would break tick determinism).
                 ch.NextNpcActionTime = 0;
                 wheel.Remove(ch);

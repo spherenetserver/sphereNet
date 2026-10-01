@@ -379,7 +379,31 @@ public sealed class TriggerDispatcher
     private TriggerResult FireNpcCreate(Character npc, TriggerArgs args)
     {
         FireCharDefBlock(npc, "Create", args, setAct: true);
+        return FireNpcCreateEvents(npc, args);
+    }
 
+    /// <summary>The first half of an NPC's script start, NPC_LoadScript(fRestock)
+    /// (CCharNPC.cpp:265-292): the CHARDEF's own @Create block with ACT on the NPC,
+    /// then - when restocking - its own @NPCRestock block. A spawner runs this before
+    /// @Spawn and before placing the creature (CCSpawn.cpp:415).</summary>
+    public void FireNpcLoadScript(Character npc, bool restock)
+    {
+        Diagnostics.LoadProfile.CountTrigger();
+        npc.ForgetLastCreatedItem();
+        FireCharDefBlock(npc, "Create", new TriggerArgs { CharSrc = npc }, setAct: true);
+        if (restock)
+            FireCharTrigger(npc, CharTrigger.NPCRestock, new TriggerArgs { CharSrc = npc });
+    }
+
+    /// <summary>The second half, NPC_CreateTrigger (CCharNPC.cpp:296-343): @Create
+    /// through the chardef's TEVENTS and the configured EVENTSPET, each resource at
+    /// most once. A spawner runs it after the creature is placed and attached
+    /// (CCSpawn.cpp:465).</summary>
+    public TriggerResult FireNpcCreateEvents(Character npc) =>
+        FireNpcCreateEvents(npc, new TriggerArgs { CharSrc = npc });
+
+    private TriggerResult FireNpcCreateEvents(Character npc, TriggerArgs args)
+    {
         long? priorReturn = args.ReturnNumber;
         args.ReturnNumber = null;
         if (Resources != null && Runner != null)

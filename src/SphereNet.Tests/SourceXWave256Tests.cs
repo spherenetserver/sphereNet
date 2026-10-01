@@ -45,6 +45,8 @@ public sealed class SourceXWave256Tests
     [Fact]
     public void BloodOath_ReflectsLinkedEnemysBlow()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         var savedLookup = CombatEngine.WeaponDefLookup;
         var savedHook = CombatEngine.OnHitDamage;
         try
@@ -134,6 +136,8 @@ public sealed class SourceXWave256Tests
     [Fact]
     public void EvilOmen_AmplifiesNextMeleeHitByaQuarter_ThenConsumed()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         var savedLookup = CombatEngine.WeaponDefLookup;
         var savedHook = CombatEngine.OnHitDamage;
         try
@@ -176,6 +180,8 @@ public sealed class SourceXWave256Tests
     [Fact]
     public void EvilOmen_PoisonSpellLandsOneLevelHigher()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         var world = TestHarness.CreateWorld();
         var registry = new SpellRegistry();
         registry.Register(new SpellDef

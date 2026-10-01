@@ -2487,6 +2487,10 @@ public partial class Character : ObjBase
     public int PendingHitRangeMax { get; private set; } = -1;
     /// <summary>Latest tick a SWING_NORANGE hit may keep waiting for reach/LoS.</summary>
     public long PendingHitDeadline { get; set; }
+    /// <summary>The swing's damage type as @HitCheck left it (ARGN2), or null for
+    /// the weapon's own. Source-X carries iDmgType from @HitCheck into the parry
+    /// and @Hit stages of the same swing (CCharFight.cpp:1776, 2083).</summary>
+    public Combat.DamageType? PendingHitDamageType { get; private set; }
     public bool HasPendingHit => PendingHitTarget.IsValid;
 
     /// <summary>Start a swing's windup: arm the pending hit at <paramref name="hitDelayMs"/>
@@ -2495,8 +2499,9 @@ public partial class Character : ObjBase
     /// (atomic) — identical to the old <see cref="BeginSwingRecoil"/> path.</summary>
     public void BeginSwingWindup(long nowMs, int hitDelayMs, int recoilMs, Serial targetUid,
         long deadlineMs, Serial? weaponUid = null, bool swingNoRange = false,
-        int rangeMin = -1, int rangeMax = -1)
+        int rangeMin = -1, int rangeMax = -1, Combat.DamageType? damageType = null)
     {
+        PendingHitDamageType = damageType;
         SwingHitTime = nowMs + Math.Max(hitDelayMs, 0);
         PendingHitTarget = targetUid;
         PendingHitWeaponCaptured = weaponUid.HasValue;
@@ -2517,6 +2522,7 @@ public partial class Character : ObjBase
         PendingHitSwingNoRange = false;
         PendingHitRangeMin = -1;
         PendingHitRangeMax = -1;
+        PendingHitDamageType = null;
         SwingHitTime = 0;
         PendingHitDeadline = 0;
     }
@@ -2704,6 +2710,13 @@ public partial class Character : ObjBase
         set { if (value) SetTag("BONDED", "1"); else RemoveTag("BONDED"); MarkDirty(DirtyFlag.StatFlags); }
     }
 
+    /// <summary>A bonded pet's ghost: dead, yet still in the world and still acting on
+    /// its orders. Source-X runs a dead NPC's action tick like any other
+    /// (CCharAct.cpp:5948-5952) and a bonded pet stays placed after death
+    /// (CCharNPCPet.cpp:156), so such a ghost follows, comes and stays when told.
+    /// Every other dead creature does nothing.</summary>
+    public bool ActsWhileDead => !IsPlayer && IsDead && IsBonded && NpcMaster.IsValid;
+
     public long BondingStartTick
     {
         get => TryGetTag("BONDING_START", out string? v) && long.TryParse(v, out long t) ? t : 0;
@@ -2786,7 +2799,22 @@ public partial class Character : ObjBase
         if (ownerUid.IsValid && _npcMaster.IsValid && _npcMaster != ownerUid)
         {
             ClearFriends();
+            // The previous owner's MEMORY_IPET goes too (Memory_ClearTypes(MEMORY_IPET|
+            // MEMORY_FRIEND), :559); the new owner's is added below. Only the IPET bit
+            // is cleared, so any other memory of that character the pet holds stays.
+            Memory_ClearAllTypes(MemoryType.IPet);
             IsBonded = false;
+        }
+
+        // A vendor changing hands: NPC_PetClearOwners hands the previous owner the purse
+        // and every vendor-layer box's contents (CCharNPCPet.cpp:562-584) before
+        // NPC_PetSetOwner empties the purse and makes the vendor invulnerable for the
+        // new one (:622-628). Only on a genuine change that passed the cap check above.
+        if (!_isPlayer && ownerUid.IsValid && _npcMaster != ownerUid &&
+            Trade.VendorEngine.IsVendorLike(this))
+        {
+            var previousOwner = _npcMaster.IsValid ? ResolveWorld?.Invoke()?.FindChar(_npcMaster) : null;
+            Trade.VendorEngine.ChangeVendorOwner(this, previousOwner);
         }
 
         // A creature that becomes somebody's pet stops being a spawn child: upstream
@@ -2824,9 +2852,14 @@ public partial class Character : ObjBase
         return true;
     }
 
-    /// <summary>Drop every FRIEND_ link this creature carries.</summary>
+    /// <summary>Drop every FRIEND_ link this creature carries, and the MEMORY_FRIEND
+    /// memories that mirror them - NPC_PetClearOwners clears the memory type itself
+    /// (CCharNPCPet.cpp:559), and a script reading MEMORYFINDTYPE still saw the old
+    /// friends after the tags were gone.</summary>
     private void ClearFriends()
     {
+        Memory_ClearAllTypes(MemoryType.Friend);
+
         var toRemove = new List<string>();
         foreach (var kvp in Tags.GetAll())
         {
@@ -3054,12 +3087,16 @@ public partial class Character : ObjBase
     /// turns on them. Upstream runs this for every harmful spell that lands, damage
     /// or not (CCharSpell.cpp:3777); SphereNet only noted an attacker when a spell
     /// did damage, so a Clumsy or Curse on a grey NPC went unanswered and even a
-    /// Magic Arrow left it standing.</summary>
-    public bool OnAttackedBy(Character? src)
+    /// Magic Arrow left it standing.
+    ///
+    /// A dead or STONE victim refuses (:337). <paramref name="commandPet"/> is the
+    /// reference's fCommandPet: <paramref name="src"/> ordered a pet to attack, so the
+    /// aggression is recorded against the owner but nobody auto-retaliates (:377).</summary>
+    public bool OnAttackedBy(Character? src, bool commandPet = false)
     {
         if (src == null || src == this)
             return true;
-        if (IsDead || IsDeleted)
+        if (IsDead || IsDeleted || IsStatFlag(StatFlag.Stone))
             return false;
         if (IsInWarMode && FightTarget == src.Uid)
             return true;
@@ -3100,7 +3137,8 @@ public partial class Character : ObjBase
             }
         }
 
-        OnHarmedBy(src);
+        if (!commandPet)
+            OnHarmedBy(src);
         return true;
     }
 
@@ -3280,23 +3318,33 @@ public partial class Character : ObjBase
         if (TryGetTag("PET_NEXT_LOYALTY_TICK", out _))
             RemoveTag("PET_NEXT_LOYALTY_TICK");
 
-        // The food clock: Source-X Stats_Regen runs STAT_FOOD on the REGEN3 rate (or
-        // the character's REGENFOOD) and hands it to OnTickFood (CCharStat.cpp:501-579),
-        // @RegenStat included. A player's clock runs in OnTick; an NPC's runs here.
+        TickNpcFoodClock(nowMs);
+        return false;
+    }
+
+    /// <summary>The NPC food clock: Source-X Stats_Regen runs STAT_FOOD on the REGEN3
+    /// rate (or the character's REGENFOOD) and hands it to OnTickFood
+    /// (CCharStat.cpp:501-579), @RegenStat included. A player's clock runs in OnTick.
+    /// An owned pet's runs from <see cref="TickPetOwnershipTimers"/>; every other NPC's
+    /// runs from OnTick - Stats_Regen is called from CChar::_OnTick for EVERY
+    /// character (CCharAct.cpp:6031), owned or not, and OnTickFood's own guards
+    /// (dead/conjured/spawned/stone/statue/no MAXFOOD, CCharAct.cpp:5751-5754) decide
+    /// who actually hungers. The first call arms the clock.</summary>
+    private void TickNpcFoodClock(long nowMs)
+    {
         long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
         if (foodRateMs < 0)
-            return false;
+            return;
         if (_nextFoodDecay == 0)
         {
             _nextFoodDecay = nowMs + foodRateMs;
-            return false;
+            return;
         }
         if (nowMs < _nextFoodDecay)
-            return false;
+            return;
 
         _nextFoodDecay = nowMs + foodRateMs;
         ApplyStatRegen(RegenStatFood, _regenValFood > 0 ? _regenValFood : 1, MaxFood, 0);
-        return false;
     }
 
     /// <summary>Test seam: make the next food tick due at <paramref name="dueMs"/>.</summary>
@@ -9552,6 +9600,14 @@ public partial class Character : ObjBase
         {
             _nextFoodDecay = now + foodRateMs;
             ApplyStatRegen(RegenStatFood, _regenValFood > 0 ? _regenValFood : 1, MaxFood, 0);
+        }
+        // An NPC nobody owns or summoned: TickPetOwnershipTimers returns before its food
+        // clock for these, so without this a wild NPC never got hungry (Source-X runs
+        // Stats_Regen for every character, CCharAct.cpp:6031). Exactly the complement of
+        // that method's early return, so no NPC decays twice.
+        else if (!_isPlayer && !OwnerSerial.IsValid && !IsSummoned)
+        {
+            TickNpcFoodClock(now);
         }
 
         // Poison ticks on its memory item's own timer; the character tick only turns a

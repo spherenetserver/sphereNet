@@ -1064,6 +1064,7 @@ public sealed class ClientCombatHandler
         // `argn1 SWING_READY / return 1` to mean "hold, not yet" and would have had
         // every one of those holds rendered as a swing and a miss.
         bool swingNoRange = CombatHelper.SwingIgnoresStartRange();
+        DamageType? swingDamageType = null;
         if (_triggerDispatcher != null)
         {
             var hitCheckLocals = new SphereNet.Scripting.Variables.VarMap();
@@ -1101,6 +1102,8 @@ public sealed class ClientCombatHandler
             // hardcoded path carries on from them.
             ApplyScriptedSwingState((int)hitCheckArgs.N1, now, swingDelayMs, adopt: false);
             swingNoRange = hitCheckLocals.GetInt("Recoil_NoRange") != 0;
+            // ARGN2 is this swing's damage type from here on (CCharFight.cpp:1776).
+            swingDamageType = (DamageType)(uint)hitCheckArgs.N2;
         }
 
         var prep = CombatHelper.ValidateSwingPrep(
@@ -1199,7 +1202,7 @@ public sealed class ClientCombatHandler
         _character.BeginSwingWindup(now, hitDelayMs, cycleMs, target.Uid,
             now + Math.Max(cycleMs, swingDelayMs) * 2L,
             weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
-            committedRange.Min, committedRange.Max);
+            committedRange.Min, committedRange.Max, swingDamageType);
 
         // @HitTry LOCAL.Anim overrides the swing animation (Source-X reads it back
         // after the trigger); the 0x6E delay byte is the animation delay in seconds.
@@ -1228,6 +1231,7 @@ public sealed class ClientCombatHandler
         Serial committedWeaponUid = _character.PendingHitWeapon;
         bool weaponCaptured = _character.PendingHitWeaponCaptured;
         bool swingNoRange = _character.PendingHitSwingNoRange;
+        var swingDamageType = _character.PendingHitDamageType;
         (int Min, int Max)? committedRange =
             _character.PendingHitRangeMin >= 0 && _character.PendingHitRangeMax >= 0
                 ? (_character.PendingHitRangeMin, _character.PendingHitRangeMax)
@@ -1307,7 +1311,8 @@ public sealed class ClientCombatHandler
             CombatHelper.ActiveCombatFlags,
             -1, -1,
             ammoStack?.Uid.Value ?? 0,
-            out bool ammoHandled);
+            out bool ammoHandled,
+            swingDamageType);
 
         // A landed swing — damaging or fully absorbed — spends the ammo. A
         // @Hit-chain LOCAL.ArrowHandled=1 hands the ammo to the script instead

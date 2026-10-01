@@ -480,14 +480,14 @@ public sealed class SpawnParity12NPTests
         Point3D seenPos = default;
         bool seenSpawned = false;
         int seenCount = -1;
-        SpawnComponent.OnNpcScriptInit = ch =>
+        SpawnComponent.OnNpcCreateTrigger = ch =>
         {
             seenPos = ch.Position;
             seenSpawned = ch.IsStatFlag(StatFlag.Spawned);
             seenCount = stone.SpawnChar!.CurrentCount;
         };
         try { stone.SpawnChar!.RespawnNow(); }
-        finally { SpawnComponent.OnNpcScriptInit = null; }
+        finally { SpawnComponent.OnNpcCreateTrigger = null; }
 
         Assert.Equal(100, seenPos.X);
         Assert.True(seenSpawned);

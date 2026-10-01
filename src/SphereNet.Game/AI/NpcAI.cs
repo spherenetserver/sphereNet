@@ -309,7 +309,10 @@ public sealed partial class NpcAI
     /// </summary>
     public void OnTickAction(Character npc)
     {
-        if (npc.IsPlayer || npc.IsDead || npc.IsDeleted || npc.IsStatFlag(StatFlag.Ridden)) return;
+        if (npc.IsPlayer || npc.IsDeleted || npc.IsStatFlag(StatFlag.Ridden)) return;
+        // The dead do not act - except a bonded pet's ghost, which stays in the world
+        // and keeps following its orders (see ActDeadBondedPet).
+        if (npc.IsDead && !npc.ActsWhileDead) return;
         if ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_Statue) != 0) return;
 
         long now = Environment.TickCount64;
@@ -379,6 +382,12 @@ public sealed partial class NpcAI
     /// <summary>Everything OnTickAction does after the cadence is seeded.</summary>
     private void RunTickBody(Character npc)
     {
+        if (npc.IsDead)
+        {
+            ActDeadBondedPet(npc);
+            return;
+        }
+
         // A breath or throw started last tick runs as the NPC's skill: nothing else
         // happens until its timer ends and the success stage resolves it
         // (Skill_Act_Breath / Skill_Act_Throwing, CCharSkill.cpp:3279-3308,
@@ -579,7 +588,8 @@ public sealed partial class NpcAI
     /// </summary>
     public NpcDecision? BuildDecision(Character npc, long nowTick)
     {
-        if (npc.IsPlayer || npc.IsDead || npc.IsDeleted || npc.IsStatFlag(StatFlag.Ridden))
+        if (npc.IsPlayer || (npc.IsDead && !npc.ActsWhileDead) || npc.IsDeleted ||
+            npc.IsStatFlag(StatFlag.Ridden))
             return null;
         if (nowTick < npc.NextNpcActionTime)
             return null;
@@ -617,7 +627,7 @@ public sealed partial class NpcAI
     public void ApplyDecision(NpcDecision decision)
     {
         var npc = _world.FindChar(new Serial(decision.NpcUid));
-        if (npc == null || npc.IsDeleted || npc.IsDead || npc.IsPlayer)
+        if (npc == null || npc.IsDeleted || (npc.IsDead && !npc.ActsWhileDead) || npc.IsPlayer)
             return;
 
         switch (decision.Type)

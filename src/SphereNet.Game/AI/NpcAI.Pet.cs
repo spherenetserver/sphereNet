@@ -141,89 +141,8 @@ public sealed partial class NpcAI
         {
             case PetAIMode.Follow:
             case PetAIMode.Come:
-            {
-                // "all go" — an explicit GO order overrides following entirely
-                // (Source-X NPCACT_GOTO): the pet walks to the ordered spot and
-                // stays there instead of returning to the owner. Running the
-                // follow step and the GO step in the same tick made the two
-                // moves cancel out, so the pet oscillated between the owner
-                // and the goal without ever arriving.
-                if (npc.TryGetTag("GO_TARGET", out string? goTag) &&
-                    TryParsePoint(goTag, out Point3D goPos))
-                {
-                    if (npc.MapIndex != goPos.Map)
-                    {
-                        // Pet AI must not teleport between facets. Travel
-                        // systems may transfer followers explicitly; a stale
-                        // cross-map GO order is simply completed here.
-                        FinishGoOrder(npc);
-                        break;
-                    }
-                    // Walk onto the tile itself. Source-X keeps stepping until there
-                    // is no direction left to take (NPC_WalkToPoint, CCharNPCAct.cpp:437)
-                    // - being one tile short is not arrival, and treating it as such
-                    // meant a GO to an adjacent tile never moved the pet at all.
-                    int goDist = npc.Position.GetDistanceTo(goPos);
-                    if (goDist == 0)
-                    {
-                        FinishGoOrder(npc);
-                        break;
-                    }
-
-                    var beforeGoStep = npc.Position;
-                    MoveToward(npc, goPos, run: goDist > 3);
-
-                    // The last tile can simply be unreachable - occupied, blocked or
-                    // walled off. Standing beside it and getting nowhere ends the
-                    // order rather than retrying it forever.
-                    if (goDist == 1 && npc.Position == beforeGoStep)
-                        FinishGoOrder(npc);
-                    break;
-                }
-
-                Character followTarget = ResolvePetTargetCharacter(npc, "FOLLOW_TARGET") ?? master;
-
-                // Source-X @NPCActFollow: RETURN 1 gives up following entirely,
-                // RETURN 0 means the script handled this call, and falling through
-                // carries on with the arguments the script may have rewritten.
-                var followArgs = new FollowTriggerArgs { MaxDistance = PetFollowDistance };
-                if (OnNpcActFollow != null)
-                {
-                    var followed = OnNpcActFollow(npc, followTarget, followArgs);
-                    if (followed == FollowTriggerResult.GiveUp)
-                    {
-                        npc.PetAIMode = PetAIMode.Stay;
-                        break;
-                    }
-                    if (followed == FollowTriggerResult.Handled)
-                        break;
-                }
-                if (npc.MapIndex != followTarget.MapIndex)
-                {
-                    break;
-                }
-                // Source-X only takes the follow point from a target it can SEE
-                // (NPC_Act_Follow, CCharNPCAct.cpp:1386; CanSee, CCharStatus.cpp:1189).
-                // SphereNet read the position unconditionally, so a pet tracked an
-                // owner who had just hidden - across the map, to wherever they went.
-                // A hidden target leaves the last place it WAS seen standing, which is
-                // what the pet walks to.
-                var followPoint = ResolveFollowPoint(npc, followTarget);
-                if (followPoint == null)
-                    break;
-
-                int dist = npc.Position.GetDistanceTo(followPoint.Value);
-                bool leashed = PetFollowMaxDistance > 0 && dist > PetFollowMaxDistance;
-                int keep = Math.Max(0, followArgs.MaxDistance);
-                if (dist > keep && !leashed)
-                {
-                    // Runs in war mode or past three tiles (NPC_Act_Follow, :1440).
-                    MoveToward(npc, followPoint.Value, run: npc.IsStatFlag(StatFlag.War) || dist > 3);
-                    if (dist > keep + 2 && HasExtra(npc, NpcAiExtraFlags.PetKeepPace))
-                        KeepOwnerPace(npc, followTarget);
-                }
+                ActPetFollow(npc, master);
                 break;
-            }
             case PetAIMode.Guard:
             {
                 Character guardTarget = ResolvePetTargetCharacter(npc, "GUARD_TARGET") ?? master;
@@ -297,6 +216,137 @@ public sealed partial class NpcAI
                 // Stay in place
                 break;
         }
+    }
+
+    /// <summary>A pet under a Follow or Come order: an outstanding GO order first,
+    /// otherwise NPC_Act_Follow on the follow target (or the master).</summary>
+    private void ActPetFollow(Character npc, Character master)
+    {
+        // "all go" — an explicit GO order overrides following entirely
+        // (Source-X NPCACT_GOTO): the pet walks to the ordered spot and
+        // stays there instead of returning to the owner. Running the
+        // follow step and the GO step in the same tick made the two
+        // moves cancel out, so the pet oscillated between the owner
+        // and the goal without ever arriving.
+        if (npc.TryGetTag("GO_TARGET", out string? goTag) &&
+            TryParsePoint(goTag, out Point3D goPos))
+        {
+            if (npc.MapIndex != goPos.Map)
+            {
+                // Pet AI must not teleport between facets. Travel
+                // systems may transfer followers explicitly; a stale
+                // cross-map GO order is simply completed here.
+                FinishGoOrder(npc);
+                return;
+            }
+            // Walk onto the tile itself. Source-X keeps stepping until there
+            // is no direction left to take (NPC_WalkToPoint, CCharNPCAct.cpp:437)
+            // - being one tile short is not arrival, and treating it as such
+            // meant a GO to an adjacent tile never moved the pet at all.
+            int goDist = npc.Position.GetDistanceTo(goPos);
+            if (goDist == 0)
+            {
+                FinishGoOrder(npc);
+                return;
+            }
+
+            var beforeGoStep = npc.Position;
+            MoveToward(npc, goPos, run: goDist > 3);
+
+            // The last tile can simply be unreachable - occupied, blocked or
+            // walled off. Standing beside it and getting nowhere ends the
+            // order rather than retrying it forever.
+            if (goDist == 1 && npc.Position == beforeGoStep)
+                FinishGoOrder(npc);
+            return;
+        }
+
+        Character followTarget = ResolvePetTargetCharacter(npc, "FOLLOW_TARGET") ?? master;
+
+        // Source-X @NPCActFollow: RETURN 1 gives up following entirely,
+        // RETURN 0 means the script handled this call, and falling through
+        // carries on with the arguments the script may have rewritten - all three
+        // of them, flee, distance and move-away (CCharNPCAct.cpp:1377-1379). Only
+        // the distance used to be read back here, so a script that turned the
+        // follow into a retreat had no effect on a pet.
+        var followArgs = new FollowTriggerArgs { MaxDistance = PetFollowDistance };
+        if (OnNpcActFollow != null)
+        {
+            var followed = OnNpcActFollow(npc, followTarget, followArgs);
+            if (followed == FollowTriggerResult.GiveUp)
+            {
+                npc.PetAIMode = PetAIMode.Stay;
+                return;
+            }
+            if (followed == FollowTriggerResult.Handled)
+                return;
+        }
+        bool flee = followArgs.Flee;
+        bool moveAway = followArgs.MoveAway;
+        if (npc.MapIndex != followTarget.MapIndex)
+            return;
+
+        // Source-X only takes the follow point from a target it can SEE
+        // (NPC_Act_Follow, CCharNPCAct.cpp:1386; CanSee, CCharStatus.cpp:1189).
+        // SphereNet read the position unconditionally, so a pet tracked an
+        // owner who had just hidden - across the map, to wherever they went.
+        // A hidden target leaves the last place it WAS seen standing, which is
+        // what the pet walks to. A fleeing creature that loses sight of what it
+        // flees stops there (:1392).
+        if (flee && !CanSeeChar(npc, followTarget))
+            return;
+        var followPoint = ResolveFollowPoint(npc, followTarget);
+        if (followPoint == null)
+            return;
+
+        int dist = npc.Position.GetDistanceTo(followPoint.Value);
+        if (PetFollowMaxDistance > 0 && dist > PetFollowMaxDistance)
+            return;     // leashed: resumes once back in range
+        int keep = Math.Max(0, followArgs.MaxDistance);
+
+        // The distance decision of NPC_Act_Follow (:1406-1426): move-away flees while
+        // closer than the distance, a flee stops once it is that far, and an ordinary
+        // follow is content within it.
+        if (moveAway)
+        {
+            if (dist < keep)
+                flee = true;
+        }
+        else if (flee)
+        {
+            if (dist >= keep)
+                return;
+        }
+        else if (dist <= keep)
+        {
+            return;
+        }
+
+        if (flee)
+        {
+            StepAwayFrom(npc, followPoint.Value, dist);
+            return;
+        }
+
+        // Runs in war mode or past three tiles (NPC_Act_Follow, :1440).
+        MoveToward(npc, followPoint.Value, run: npc.IsStatFlag(StatFlag.War) || dist > 3);
+        if (dist > keep + 2 && HasExtra(npc, NpcAiExtraFlags.PetKeepPace))
+            KeepOwnerPace(npc, followTarget);
+    }
+
+    /// <summary>A dead bonded pet's tick. Source-X keeps running the action tick of a
+    /// dead NPC (CCharAct.cpp:5948-5952; only food and the extra pass are skipped), and
+    /// a bonded ghost stays in the world with its orders - so it still follows, comes,
+    /// goes and stays when told. It fights nothing: the orders that would make it
+    /// (guard, attack) are the ones it refuses while dead (CCharNPCPet.cpp:158).</summary>
+    private void ActDeadBondedPet(Character npc)
+    {
+        npc.FightTarget = Serial.Invalid;
+        var master = npc.ResolveControllerCharacter() ?? npc.ResolveOwnerCharacter();
+        if (master == null)
+            return;
+        if (npc.PetAIMode is PetAIMode.Follow or PetAIMode.Come)
+            ActPetFollow(npc, master);
     }
 
     /// <summary>NPCAIEXTRAS PetKeepPace: a following pet that has fallen behind takes

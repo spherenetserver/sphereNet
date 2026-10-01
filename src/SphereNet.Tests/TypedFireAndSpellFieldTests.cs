@@ -104,4 +104,26 @@ public sealed class TypedFireAndSpellFieldTests
         engine.ApplyFieldTouch(ch, Place(world, ItemType.Fire, new Point3D(0, 1000, 0, 0)));
         Assert.Equal(100, ch.Hits);
     }
+
+    /// <summary>The burn is OnTakeDamage(dmg, nullptr, DAMAGE_FIRE|DAMAGE_GENERAL)
+    /// (CCharAct.cpp:4981): it goes through @GetHit, whose RETURN 1 refuses it.</summary>
+    [Fact]
+    public void TheBurnGoesThroughGetHit()
+    {
+        var (world, engine) = Setup();
+        var ch = Victim(world);
+        var hot = Place(world, ItemType.Fire, new Point3D(0, 1000, 0, 0));
+        var seen = SphereNet.Game.Combat.DamageType.None;
+        SphereNet.Game.Combat.CombatEngine.OnGetHit = ctx =>
+        {
+            seen = ctx.DamageType;
+            ctx.Cancelled = true;
+            return 0;
+        };
+
+        engine.ApplyFieldTouch(ch, hot);
+
+        Assert.Equal(SphereNet.Game.Combat.DamageType.Fire | SphereNet.Game.Combat.DamageType.General, seen);
+        Assert.Equal(100, ch.Hits);
+    }
 }

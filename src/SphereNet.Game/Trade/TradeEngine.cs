@@ -444,6 +444,21 @@ public static class VendorEngine
         vendor.ClearStatFlag(Core.Enums.StatFlag.Invul);
     }
 
+    /// <summary>A vendor is being given to a new owner (Source-X NPC_PetSetOwner,
+    /// CCharNPCPet.cpp:601). The previous owner, when there is one, first gets the
+    /// purse and the goods back exactly as on a release (NPC_PetClearOwners, :562-584);
+    /// then the purse is emptied - a wild vendor's restock cash is not the new
+    /// owner's - and the vendor becomes invulnerable (:622-628). Must run while the
+    /// vendor still records the previous owner, so its STOCK box counts as real goods.</summary>
+    public static void ChangeVendorOwner(Character vendor, Character? previousOwner)
+    {
+        if (previousOwner != null && !previousOwner.IsDeleted)
+            ReturnHoldingsToOwner(vendor, previousOwner);
+        if (GetVendorGold(vendor) > 0)
+            SetVendorGold(vendor, 0);
+        vendor.SetStatFlag(Core.Enums.StatFlag.Invul);
+    }
+
     /// <summary>Deliver gold into a chosen container (the reference hands the
     /// owner's BANK to AddGoldToPack when a vendor is dismissed), falling back to
     /// the pack when there is none.</summary>

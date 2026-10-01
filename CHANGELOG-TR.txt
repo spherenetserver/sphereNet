@@ -4,6 +4,58 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Spawn, champion, pet ve vendor davranisi Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Champion'in ADDOBJ <uid> fiili o karaktere yalnizca champion
+           olayini ekler; spawn listesine almaz, boylece STOP bir oyuncuyu ya
+           da disaridan bir NPC'yi silemez. Bir kabin icindeki champion altari
+           hicbir sey uretmez (her yaratik uretim yolu spawner'in ust seviyede
+           oldugunu denetler).
+DEGISIKLIK - Spawn edilen NPC script'leri Source-X sirasiyla calisir: CHARDEF'in
+           kendi @Create ve @NPCRestock'u, sonra @Spawn, yerlestirme, @AddObj,
+           ardindan TEVENTS / EVENTSPET @Create zinciri. @AddObj yeni nesneyi
+           saymadan gorur ve ARGN1 zamanlayicisi artik ezilmez.
+DUZELTME - Spawner'da <COUNT> (ve PILE) uye sayisini dondurur; uyuyan
+           sektordeki esya spawner'i bir cocugunu kaybedince yeniden doldurur.
+DUZELTME - Baska bir karaktere LINK'li figurine, pet geri cikarilmadan once
+           sahibi disindakileri reddeder (GM haric).
+DUZELTME - Pet saldiri/oldur emri sahibi kurbanin saldirgani olarak kaydeder ve
+           olu ya da STONE hedefe reddedilir; STONE karakter her saldiriyi
+           reddeder.
+DUZELTME - Pet devri eski sahibin IPET bellegini ve tum FRIEND belleklerini
+           temizler; serbest birakma FRIEND belleklerini temizler.
+           @FollowersUpdate'in reddettigi figurine ya da ahir geri alimi esyayi
+           ve peti park halinde korur.
+DUZELTME - @NPCActFollow Flee ve MoveAway sonuclari petlere uygulanir. Olu
+           bonded pet pasif emirleri (follow, come, stay, stop, go...) alir ve
+           takip etmeye devam eder. Berserk pet GM olmayanin emirlerini dinlemez.
+DUZELTME - Sahibi degisen oyuncu vendor'u mallarini, satin aldigi esyalari ve
+           kasasini onceki sahibin bankasina verir; sahipli vendor INVUL olur ve
+           bos kasayla baslar.
+DUZELTME - Sahipsiz ve spawn'dan gelmeyen NPC'ler de kendi tick'lerinde aclik
+           kaybeder.
+DUZELTME - "<vendor> price 100" ardindan stok esyasi secilince fiyat hemen
+           ayarlanir; "<vendor> price" yine fiyat sorar.
+
+[2026-10-01] - Hasar girisindeki kalan bosluklar Source-X'e gore kapatildi
+------------------------------------------------------------------------
+DUZELTME - @HitCheck ARGN2'si, oyuncu ve NPC icin, vurusun parry ve @Hit
+           asamalarindaki hasar turudur; DAMAGE_GOD vurus parry zarini ve
+           @HitParry'yi tamamen atlar, @HitParry ARGN2'si geri okunur.
+DEGISIKLIK - Evil Omen ve Blood Oath (vuruslarda ve zehirde) Source-X gibi
+           yalnizca FEATURE_AOS_UPDATE_B (FEATUREAOS 02) ile calisir; script'li
+           Evil Omen artik zehri de yukseltmez.
+DUZELTME - HITAREA* sicramasi OnTakeDamageInflictArea'ya uyar: menzil 5
+           (FEATURE_AOS_DAMAGE ile 10), yalnizca saldirganin mesru vurabilecegi
+           hedefler (masum degil, saldirganin kendi kontrolsuz peti degil,
+           hedeften gorus hatti), hasar normal hasar girisinden, elementin
+           renginde parilti.
+DUZELTME - Tuzaklar, FIELD_DAMAGE esyalari, ates alanlari ve sureli hasar
+           tikleri hasar girisinden gecer: korumalar, zirh, @GetHit ve
+           saldirgan bellegi onlara da uygulanir.
+DUZELTME - Buyucusune geri yansiyan buyu DAMAGE_NODISTURB tasir ve buyucunun
+           sonraki buyusunu bozmaz.
+
 [2026-10-01] - Hasar girisi, hasar bayraklari, murder, oduller ve notoriety Source-X'e uyar
 ------------------------------------------------------------------------
 DEGISIKLIK - Hasar turu bayraklari Source-X DAMAGE_TYPE sayilarini ve 32 biti

@@ -12,14 +12,19 @@ public static partial class Program
     {
         // SpawnComponent calls both hooks in order. Only the first owns script
         // initialization; the completion hook must not generate equipment again.
+        // Source-X splits a spawned NPC's script start in two (CCSpawn::GenerateChar):
+        // NPC_LoadScript(true) - the CHARDEF's own @Create, then @NPCRestock - before
+        // @Spawn and placement (CCSpawn.cpp:415), and NPC_CreateTrigger - the
+        // TEVENTS/EVENTSPET @Create chain - once the creature is placed and attached
+        // (CCSpawn.cpp:465).
         SpawnComponent.OnNpcScriptInit = npc =>
         {
-            dispatcher.FireCharTrigger(npc, CharTrigger.Create, new TriggerArgs { CharSrc = npc });
             // Source-X GetNPCBrainAuto (CCharNPC.cpp:272): the body decides.
             if (npc.NpcBrain == NpcBrainType.None)
                 npc.NpcBrain = npc.GetNpcBrainAuto();
-            dispatcher.FireCharTrigger(npc, CharTrigger.NPCRestock, new TriggerArgs { CharSrc = npc });
+            dispatcher.FireNpcLoadScript(npc, restock: true);
         };
+        SpawnComponent.OnNpcCreateTrigger = npc => dispatcher.FireNpcCreateEvents(npc);
         world.OnNpcSpawned = npc =>
         {
             var def = DefinitionLoader.GetCharDef(npc.CharDefIndex);

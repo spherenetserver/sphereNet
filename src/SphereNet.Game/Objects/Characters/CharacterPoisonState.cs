@@ -170,8 +170,12 @@ public sealed class CharacterPoisonState
             mem.MoreP = new Point3D(mem.MoreP.X, (short)level, mem.MoreP.Z, mem.MoreP.Map);
             mem.More2 = level switch { 4 => 8, 3 => 6, 2 => 6, 1 => 3, _ => 3 };
 
-            // Evil Omen: the next poison lands one level higher.
-            if (_owner.ConsumeEvilOmen())
+            // Evil Omen: the next poison lands one level higher - only with
+            // FEATURE_AOS_UPDATE_B and a native (unscripted) Evil Omen
+            // (CCharAct.cpp:4237-4245).
+            if ((Character.FeatureAOS & Combat.CombatEngine.FeatureAosUpdateB) != 0 &&
+                Character.ResolveSpellDef?.Invoke(SpellType.EvilOmen)?.IsFlag(SpellFlag.Scripted) != true &&
+                _owner.ConsumeEvilOmen())
                 mem.MoreP = new Point3D(mem.MoreP.X, (short)(level + 1), mem.MoreP.Z, mem.MoreP.Map);
         }
 

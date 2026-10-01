@@ -50,8 +50,8 @@ public static class PetStorage
     /// <summary>
     /// Bring a parked pet back to <paramref name="pos"/> for <paramref name="owner"/>.
     /// Fails - leaving the pet parked and the caller's stable entry/figurine intact -
-    /// when the pet is gone, the owner is at their follower cap, or the tile refuses
-    /// the placement.
+    /// when the pet is gone, the owner is at their follower cap, the tile refuses
+    /// the placement, or the ownership hand-over is refused.
     /// </summary>
     public static bool Unpark(Character pet, Character owner, GameWorld world, Point3D pos)
     {
@@ -76,7 +76,17 @@ public static class PetStorage
             return false;
         }
 
-        pet.TryAssignOwnership(owner, owner, summoned: false);
+        // The hand-over can still be refused (a @FollowersUpdate veto for a new
+        // owner). A refused restore is a failed one: put the creature straight back
+        // so the caller keeps its figurine/stable entry and the pet stays parked with
+        // the owner it had, rather than reporting success for a pet left standing in
+        // the world under its old owner.
+        if (!pet.TryAssignOwnership(owner, owner, summoned: false))
+        {
+            pet.SetStatFlag(StatFlag.Ridden);
+            world.HideFromSector(pet);
+            return false;
+        }
         owner.InvalidateFollowerCount();
 
         // A pet that spent the night in a stable should not act on a target it was

@@ -120,6 +120,8 @@ public sealed class PoisonMemoryParityTests
     [Fact]
     public void EvilOmenAddsALevelAndIsSpent()
     {
+        // Evil Omen and Blood Oath need FEATURE_AOS_UPDATE_B (CCharFight.cpp:688).
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = SphereNet.Game.Combat.CombatEngine.FeatureAosUpdateB;
         var (_, victim, poisoner) = Setup(osi: true);
         victim.EvilOmenActive = true;
         victim.EvilOmenExpireTick = Environment.TickCount64 + 60_000;

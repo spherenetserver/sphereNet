@@ -793,6 +793,10 @@ public static class CombatEngine
         return owner;
     }
 
+    /// <summary>FEATURE_AOS_UPDATE_B in FEATUREAOS: the AOS necromancy curses and
+    /// Focus regeneration (Source-X game_enums.h).</summary>
+    public const int FeatureAosUpdateB = 0x02;
+
     private static bool IsSpellScripted(SpellType spell) =>
         Character.ResolveSpellDef?.Invoke(spell)?.IsFlag(SpellFlag.Scripted) == true;
 
@@ -860,12 +864,14 @@ public static class CombatEngine
                 return 0;
         }
 
-        // Necromancy cursed effects (:684-703), on the RAW blow.
-        if (!IsSpellScripted(SpellType.EvilOmen) && target.ConsumeEvilOmen())
+        // Necromancy cursed effects (:684-703), on the RAW blow - only with
+        // FEATURE_AOS_UPDATE_B (:688).
+        bool aosUpdateB = (Character.FeatureAOS & FeatureAosUpdateB) != 0;
+        if (aosUpdateB && !IsSpellScripted(SpellType.EvilOmen) && target.ConsumeEvilOmen())
             damage += damage / 4;
         // Blood Oath: the bond links the victim to the attacker. A FIXED blow is
         // already a reflection and must not come back again (:697).
-        if (src != target && target.BloodOathEnemy == src.Uid && target.BloodOathLevel > 0 &&
+        if (aosUpdateB && src != target && target.BloodOathEnemy == src.Uid && target.BloodOathLevel > 0 &&
             (type & DamageType.Fixed) == 0 && !IsSpellScripted(SpellType.BloodOath))
         {
             damage += damage / 10;
@@ -1306,7 +1312,8 @@ public static class CombatEngine
         int hitEra,
         int damageEra,
         uint ammoUid,
-        out bool ammoHandled)
+        out bool ammoHandled,
+        DamageType? swingDamageType = null)
     {
         ammoHandled = false;
         if (hitEra < 0) hitEra = Character.CombatHitChanceEra;
@@ -1350,67 +1357,74 @@ public static class CombatEngine
                 damage += damage * di / 100;
         }
 
+        // The swing's damage type: @HitCheck's ARGN2 when the caller carried it,
+        // else the weapon's own (OVERRIDE.DAMAGETYPE). It runs through the parry
+        // and @Hit stages below (CCharFight.cpp:1759-1776, 2083, 2116).
+        var swingType = swingDamageType ?? GetWeaponDamageType(weapon);
+
         // Parry check — Source-X Calc_CombatChanceToParry, selected by the
         // COMBATPARRYINGERA mask (legacy or Samurai Empire/Bushido formula).
-        // Upstream skips the whole block for a DAMAGE_GOD blow (CCharFight.cpp:2083),
-        // the type being the weapon's (OVERRIDE.DAMAGETYPE) or @HitCheck's ARGN2.
-        // Neither reaches this point yet: the swing's type is only read below, for
-        // the @Hit stage, and @HitCheck's ARGN2 is not carried into the swing.
-        int parryChance = CalculateParryChance(target, out Item? parryItem);
-        var parrySkill = SkillType.Parrying;
-
-        // Default reduction is a full block, unless the Parrying skill's own
-        // EFFECT curve says otherwise (CCharFight.cpp:2091) — the pack decides
-        // how much a parry takes off, not the engine.
-        int reductionPercent = 100;
-        var parrySkillDef = Definitions.DefinitionLoader.GetSkillDef((int)parrySkill);
-        if (parrySkillDef is { Effect.IsEmpty: false })
-            reductionPercent = parrySkillDef.Effect.GetLinear(target.GetSkill(parrySkill));
-
-        // The trigger fires whether or not the engine would have rolled: its
-        // LOCAL.ParryChance is writable, so a script can parry where the engine
-        // would not (and refuse where it would). Firing it only after a SUCCESSFUL
-        // roll — as this used to — puts both of those out of reach.
-        if (OnHitParry != null)
+        // Upstream skips the whole block - roll and @HitParry - for a DAMAGE_GOD
+        // blow (CCharFight.cpp:2083).
+        if ((swingType & DamageType.God) == 0)
         {
-            var parryCtx = new HitParryContext
+            int parryChance = CalculateParryChance(target, out Item? parryItem);
+            var parrySkill = SkillType.Parrying;
+
+            // Default reduction is a full block, unless the Parrying skill's own
+            // EFFECT curve says otherwise (CCharFight.cpp:2091) — the pack decides
+            // how much a parry takes off, not the engine.
+            int reductionPercent = 100;
+            var parrySkillDef = Definitions.DefinitionLoader.GetSkillDef((int)parrySkill);
+            if (parrySkillDef is { Effect.IsEmpty: false })
+                reductionPercent = parrySkillDef.Effect.GetLinear(target.GetSkill(parrySkill));
+
+            // The trigger fires whether or not the engine would have rolled: its
+            // LOCAL.ParryChance is writable, so a script can parry where the engine
+            // would not (and refuse where it would). Firing it only after a SUCCESSFUL
+            // roll — as this used to — puts both of those out of reach.
+            if (OnHitParry != null)
             {
-                ReductionPercent = reductionPercent,
-                DamageType = (int)GetWeaponDamageType(weapon),
-                ParryChance = parryChance,
-                ParrySkillId = (int)parrySkill,
-                ItemParryDamageChance = 100,
-                Damage = damage,
-                ParryItem = parryItem,
-            };
-            if (!OnHitParry(target, attacker, parryCtx))
-                return AttackParried;   // RETURN 1: the blow is dropped whole
+                var parryCtx = new HitParryContext
+                {
+                    ReductionPercent = reductionPercent,
+                    DamageType = (int)swingType,
+                    ParryChance = parryChance,
+                    ParrySkillId = (int)parrySkill,
+                    ItemParryDamageChance = 100,
+                    Damage = damage,
+                    ParryItem = parryItem,
+                };
+                if (!OnHitParry(target, attacker, parryCtx))
+                    return AttackParried;   // RETURN 1: the blow is dropped whole
 
-            reductionPercent = parryCtx.ReductionPercent;
-            parryChance = parryCtx.ParryChance;
-            damage = parryCtx.Damage;
-            // SkillType is backed by a short, so the id has to be narrowed before
-            // it can be asked about - Enum.IsDefined throws on a mismatched width.
-            if (parryCtx.ParrySkillId is >= short.MinValue and <= short.MaxValue &&
-                Enum.IsDefined(typeof(SkillType), (short)parryCtx.ParrySkillId))
-                parrySkill = (SkillType)parryCtx.ParrySkillId;
+                reductionPercent = parryCtx.ReductionPercent;
+                parryChance = parryCtx.ParryChance;
+                damage = parryCtx.Damage;
+                swingType = (DamageType)(uint)parryCtx.DamageType;   // ARGN2 (:2116)
+                // SkillType is backed by a short, so the id has to be narrowed before
+                // it can be asked about - Enum.IsDefined throws on a mismatched width.
+                if (parryCtx.ParrySkillId is >= short.MinValue and <= short.MaxValue &&
+                    Enum.IsDefined(typeof(SkillType), (short)parryCtx.ParrySkillId))
+                    parrySkill = (SkillType)parryCtx.ParrySkillId;
 
-            if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
-                    parryItem, parryCtx.ItemParryDamageChance))
+                if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
+                        parryItem, parryCtx.ItemParryDamageChance))
+                {
+                    if (reductionPercent >= 100)
+                        return AttackParried;
+                    if (reductionPercent > 0)
+                        damage -= damage * reductionPercent / 100;
+                }
+            }
+            else if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
+                         parryItem, itemDamageChance: 100))
             {
                 if (reductionPercent >= 100)
                     return AttackParried;
                 if (reductionPercent > 0)
                     damage -= damage * reductionPercent / 100;
             }
-        }
-        else if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
-                     parryItem, itemDamageChance: 100))
-        {
-            if (reductionPercent >= 100)
-                return AttackParried;
-            if (reductionPercent > 0)
-                damage -= damage * reductionPercent / 100;
         }
 
         damage = Math.Max(0, damage);
@@ -1428,7 +1442,7 @@ public static class CombatEngine
             Target = target,
             Weapon = weapon,
             Damage = damage,
-            DamageType = GetWeaponDamageType(weapon),
+            DamageType = swingType,
             PoisonDose = poisonDose,
             PoisonReductionAmount = weapon != null ? poisonDose / 2 : 1,
             ItemDamageLayer = ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],

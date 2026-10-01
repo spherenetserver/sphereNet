@@ -43,11 +43,16 @@ public sealed class SpawnComponent
     /// Fires @PreSpawn, @Spawn, @AddObj, @DelObj on the spawn item.</summary>
     public static Func<Item, ItemTrigger, SpawnTriggerArgs, TriggerResult>? OnSpawnTrigger;
 
-    /// <summary>Chardef script init for a freshly spawned NPC — the host wires
-    /// this to fire @Create and @NPCRestock through the trigger
-    /// dispatcher (Source-X CreateNPC → NPC_LoadScript(fRestock=true)), the
-    /// same sequence the GM .add path runs. Unwired (tests) skips cleanly.</summary>
+    /// <summary>Chardef script init for a freshly spawned NPC: the CHARDEF's own
+    /// @Create block, then its @NPCRestock (Source-X NPC_LoadScript(fRestock=true),
+    /// CCharNPC.cpp:265). Runs before @Spawn and before the creature is placed
+    /// (CCSpawn.cpp:415). Unwired (tests) skips cleanly.</summary>
     public static Action<Objects.Characters.Character>? OnNpcScriptInit;
+
+    /// <summary>The general @Create chain - the chardef's TEVENTS and the configured
+    /// EVENTSPET (Source-X NPC_CreateTrigger, CCharNPC.cpp:296) - run once the
+    /// creature is placed and attached to the spawner (CCSpawn.cpp:465).</summary>
+    public static Action<Objects.Characters.Character>? OnNpcCreateTrigger;
 
     public int CurrentCount => _spawnedUids.Count;
 
@@ -117,15 +122,13 @@ public sealed class SpawnComponent
             return;
         }
 
+        // The next check is scheduled BEFORE the child is made (OnTickComponent,
+        // CCSpawn.cpp:690), so what the spawn itself decides comes last: the last slot
+        // parks the timer and @AddObj may restate it (AddObj, :643-655). Re-arming
+        // after the spawn threw the script's answer away.
+        SetNextSpawnTime();
         SpawnOne();
-
-        if (!IsChampion && _spawnedUids.Count >= _maxCount)
-            PauseTimer();
-        else
-            SetNextSpawnTime();
     }
-
-    private Character? pendingScriptInit;
 
     private void SpawnOne()
     {
@@ -193,6 +196,13 @@ public sealed class SpawnComponent
 
     private Objects.Characters.Character? SpawnResolved(int defIndex, ushort bodyId)
     {
+        // Every way of generating a creature passes the same position gate - the
+        // forced chardef a champion asks for included: GenerateChar(rid) itself leaves
+        // at once for a spawn point that is not top level (CCSpawn.cpp:383), before
+        // @PreSpawn. An altar in a bag has no map position to spawn around.
+        if (!_world.IsItemTopLevel(_spawnItem))
+            return null;
+
         // @PreSpawn — script can override spawn ID or abort (return TRUE)
         if (OnSpawnTrigger != null)
         {
@@ -225,6 +235,7 @@ public sealed class SpawnComponent
         ch.IsPlayer = false;
 
         var charDef = DefinitionLoader.GetCharDef(defIndex);
+        bool hasDefinition = false;
         if (charDef != null)
         {
             if (charDef.DispIndex > 0)
@@ -270,21 +281,15 @@ public sealed class SpawnComponent
             CharDefHelper.ApplyNpcDefinitionSkills(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionTags(ch, charDef);
 
-            // Chardef SCRIPT init (Source-X CreateNPC → NPC_LoadScript(true):
-            // @Create, then @NPCRestock). The static field application above
-            // only covers parsed K/V lines — the pack's monster GEAR
-            // (ITEMNEWBIE) and backpack LOOT (ITEM=) live in ON=@NPCRestock
-            // script bodies, and only the GM .add path used to run them:
-            // every gem-spawned monster had an empty pack and dropped
-            // nothing. Wired by the host to the trigger dispatcher.
-            // Deferred: this runs the CHARDEF's own @Create/@NPCRestock AND the
-            // general EVENTSPET @Create chain, and upstream splits those - the
-            // definition's own script runs early (NPC_LoadScript, CCharNPC.cpp:265)
-            // while the general Create chain runs AFTER the creature is placed and
-            // attached to the spawner (NPC_CreateTrigger, :296, called from
-            // GenerateChar, CCSpawn.cpp:466). Running it here showed a script an
-            // unplaced creature at 0,0 that belonged to no spawner yet.
-            pendingScriptInit = ch;
+            // Chardef SCRIPT init runs in two halves, as upstream splits it. The
+            // static field application above only covers parsed K/V lines - the
+            // pack's monster GEAR (ITEMNEWBIE) and backpack LOOT (ITEM=) live in
+            // ON=@NPCRestock script bodies. The definition's own @Create and
+            // @NPCRestock run first, below, before @Spawn (NPC_LoadScript(true),
+            // CCSpawn.cpp:415 -> CCharNPC.cpp:265-292); the general TEVENTS/EVENTSPET
+            // @Create chain runs only once the creature is placed and attached
+            // (NPC_CreateTrigger, CCSpawn.cpp:465).
+            hasDefinition = true;
         }
         else
         {
@@ -299,6 +304,12 @@ public sealed class SpawnComponent
         // definition's @Create runs (GetNPCBrainAuto, CCharNPC.cpp:272).
         if (ch.NpcBrain == NpcBrainType.None)
             ch.NpcBrain = ch.GetNpcBrainAuto();
+
+        // NPC_LoadScript(true): the definition's own @Create, then its @NPCRestock -
+        // before the spawned flag, @Spawn and placement (CCSpawn.cpp:415-416), so the
+        // @Spawn script already sees the creature's gear, stats and tags.
+        if (hasDefinition)
+            OnNpcScriptInit?.Invoke(ch);
 
         ch.SetStatFlag(StatFlag.Spawned);
 
@@ -344,18 +355,22 @@ public sealed class SpawnComponent
             _world.DeleteObject(ch);
             return null;
         }
-        _spawnedUids.Add(ch.Uid);
-        // The last slot parks the timer before @AddObj can restate it (:643/:648).
-        if (!IsChampion && _spawnedUids.Count >= _maxCount)
+        // The last slot parks the timer before @AddObj can restate it (:643/:648),
+        // counted with this one included because it is not in the list yet.
+        if (!IsChampion && _spawnedUids.Count + 1 >= _maxCount)
             PauseTimer();
 
-        // @AddObj — notify script that NPC was registered
+        // @AddObj runs BEFORE the uid joins the list (AddObj, CCSpawn.cpp:648 then
+        // :661): the trigger sees the membership as it stood without this creature.
         FireAddObj(ch);
+        // A creature the trigger destroyed is not enrolled as a dead member.
+        if (!ch.IsDeleted && !_spawnedUids.Contains(ch.Uid))
+            _spawnedUids.Add(ch.Uid);
 
         // Now that the creature stands in the world and belongs to this spawner, the
-        // general Create chain can read both.
-        if (pendingScriptInit != null)
-            OnNpcScriptInit?.Invoke(pendingScriptInit);
+        // general Create chain can read both (NPC_CreateTrigger, CCSpawn.cpp:465).
+        if (hasDefinition && !ch.IsDeleted)
+            OnNpcCreateTrigger?.Invoke(ch);
 
         _world.OnNpcSpawned?.Invoke(ch);
         return ch;
@@ -574,6 +589,7 @@ public sealed class SpawnComponent
         CleanupDead();
         if (_charDefId == 0 && _spawnGroup == null) return;
         int guard = 0;
+        bool spawnedAny = false;
         while (_spawnedUids.Count < _maxCount && guard++ < _maxCount + 8)
         {
             // Each child is what one timer tick would make (CCSpawn::OnTick: @Timer,
@@ -585,12 +601,20 @@ public sealed class SpawnComponent
                 break;
             if (_charDefId == 0 && _spawnGroup == null)
                 break;
-            SpawnOne();
-        }
-        if (_spawnedUids.Count >= _maxCount)
-            PauseTimer();
-        else
+            // As on a tick: the default schedule first, then whatever the spawn
+            // itself decides - the last slot parks it and @AddObj may restate it
+            // (CCSpawn.cpp:690, :643-655).
             SetNextSpawnTime();
+            SpawnOne();
+            spawnedAny = true;
+        }
+        if (!spawnedAny)
+        {
+            if (_spawnedUids.Count >= _maxCount)
+                PauseTimer();
+            else
+                SetNextSpawnTime();
+        }
     }
 
     /// <summary>Source-X START verb: resume spawning.</summary>
@@ -749,7 +773,6 @@ public sealed class SpawnComponent
         // One owner: release it from whoever had it before.
         ReleaseFromPreviousSpawner?.Invoke(ch, _spawnItem);
 
-        _spawnedUids.Add(uid);
         ch.SetStatFlag(StatFlag.Spawned);
         ch.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
         ch.SetTag("SPAWNITEM", $"0{_spawnItem.Uid.Value:X}");
@@ -760,10 +783,15 @@ public sealed class SpawnComponent
         ch.HomeDist = (short)Math.Clamp(_spawnRange, 0, short.MaxValue);
 
         // The last slot parks the timer, and it happens BEFORE the trigger so a script
-        // that wants a different interval can still say so (:643).
-        if (!IsChampion && _spawnedUids.Count >= _maxCount)
+        // that wants a different interval can still say so (:643). The uid joins the
+        // list only after @AddObj (:661), so the count here includes it by hand.
+        if (!IsChampion && _spawnedUids.Count + 1 >= _maxCount)
             PauseTimer();
         FireAddObj(ch);
+        if (!ch.IsDeleted && !_spawnedUids.Contains(uid))
+            _spawnedUids.Add(uid);
+        if (!IsChampion && _spawnedUids.Count >= _maxCount)
+            _spawnItem.SetNoSleepOverride(false);
         return true;
     }
 
@@ -1165,13 +1193,26 @@ public sealed class ItemSpawnComponent
     /// pause on the last slot and the trigger's timer answer are applied once.</summary>
     private void RegisterGenerated(Item item)
     {
-        _spawnedUids.Add(item.Uid);
-        if (_spawnedUids.Count >= _maxCount)
+        // Same order as AddObj upstream: park on the last slot (counting this one by
+        // hand), run @AddObj, and only then enroll the uid (CCSpawn.cpp:643/648/661).
+        if (_spawnedUids.Count + 1 >= _maxCount)
         {
             _nextSpawnTick = -1;
             _spawnItem.SetTimeout(-1);
         }
         FireAddObj(item);
+        Enroll(item);
+    }
+
+    /// <summary>Put a member on the list after its @AddObj ran, and let the spawn
+    /// point sleep with its sector again once the quota is full (CCSpawn.cpp:661-668).
+    /// An item the trigger destroyed is not enrolled.</summary>
+    private void Enroll(Item item)
+    {
+        if (!item.IsDeleted && !_spawnedUids.Contains(item.Uid))
+            _spawnedUids.Add(item.Uid);
+        if (_spawnedUids.Count >= _maxCount)
+            _spawnItem.SetNoSleepOverride(false);
     }
 
     /// <summary>Apply the seconds a spawn trigger asked for; -1 pauses.</summary>
@@ -1214,16 +1255,17 @@ public sealed class ItemSpawnComponent
 
         SpawnComponent.ReleaseFromPreviousSpawner?.Invoke(item, _spawnItem);
 
-        _spawnedUids.Add(uid);
         item.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
         // Last slot parks the timer before the trigger runs, so a script may still
-        // choose its own interval (CCSpawn.cpp:643/648).
-        if (_spawnedUids.Count >= _maxCount)
+        // choose its own interval (CCSpawn.cpp:643/648); the uid joins the list after
+        // the trigger (:661).
+        if (_spawnedUids.Count + 1 >= _maxCount)
         {
             _nextSpawnTick = -1;
             _spawnItem.SetTimeout(-1);
         }
         FireAddObj(item);
+        Enroll(item);
         return true;
     }
 
@@ -1304,6 +1346,11 @@ public sealed class ItemSpawnComponent
         var item = _world.FindItem(uid);
         item?.RemoveTag("SPAWN_POINT_UUID");
 
+        // "Avoid the spawn point to sleep until job is finish" (CCSpawn.cpp:535) - for
+        // an item spawner as much as a char one; upstream has one DelObj for both.
+        // Without it the re-armed deadline sat in a sleeping sector and never ran.
+        _spawnItem.SetNoSleepOverride(true);
+
         // Losing a member re-opens the schedule (CCSpawn.cpp:551) - do that BEFORE the
         // trigger, so the seconds it is shown are the ones it can then override.
         if (!_stopped && _spawnedUids.Count < _maxCount && _nextSpawnTick <= 0)
@@ -1326,6 +1373,9 @@ public sealed class ItemSpawnComponent
 
     public void KillAll()
     {
+        // KillChildren keeps the spawn point awake: it owes its whole quota again
+        // (CCSpawn.cpp:718).
+        _spawnItem.SetNoSleepOverride(true);
         foreach (var uid in _spawnedUids.ToArray())
         {
             var item = _world.FindItem(uid);

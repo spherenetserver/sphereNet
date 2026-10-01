@@ -452,6 +452,15 @@ public class Item : ObjBase
         // want, and CLEAR when it already agrees.
         if (fromDef == on) CanMask &= ~(ulong)CanFlags.O_NoSleep;
         else CanMask |= (ulong)CanFlags.O_NoSleep;
+        // A spawn point already parked asleep has to rejoin the ticking list, or the
+        // deadline it is about to be given is refused at the door
+        // (CObjBase::_TickableStateOverride is what keeps it there upstream).
+        if (on && IsSleeping)
+        {
+            GoAwake();
+            if (Timeout > 0)
+                SetTimeout(Timeout);
+        }
     }
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
@@ -2363,7 +2372,14 @@ public class Item : ObjBase
             }
 
             // Faz 2: Container properties
-            case "COUNT": value = _contents.Count.ToString(); return true;
+            // A spawn point answers COUNT with its live member count: the spawn
+            // component is asked before the item's own keys (CItem::r_WriteVal ->
+            // CEntity::r_WriteVal, CItem.cpp:2659; ISPW_COUNT, CCSpawn.cpp:857).
+            case "COUNT":
+                value = (SpawnChar != null ? SpawnChar.CurrentCount
+                    : SpawnItem != null ? SpawnItem.CurrentCount
+                    : _contents.Count).ToString();
+                return true;
             case "FCOUNT": value = GetDeepContentCount().ToString(); return true;
             case "EMPTY": value = _contents.Count == 0 ? "1" : "0"; return true;
 
@@ -2576,7 +2592,9 @@ public class Item : ObjBase
                     value = SpawnChar.SpawnRange.ToString();
                     return true;
                 case "PILE":
-                    value = "0";
+                    // On a creature spawner PILE/MORE2 reads the current member count
+                    // (ISPW_PILE, CCSpawn.cpp:883-886).
+                    value = SpawnChar.CurrentCount.ToString();
                     return true;
                 case "TIMELO":
                     value = Tags.Get("TIMELO") ?? "15";

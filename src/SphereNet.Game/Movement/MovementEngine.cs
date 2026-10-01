@@ -82,6 +82,24 @@ public sealed class MovementEngine
 
     private static int DefaultWeightLossRoll(int max) => Random.Shared.Next(max);
 
+    /// <summary>Damage from something stepped on, with no attacker: through the
+    /// shared character-damage entry, like Source-X's OnTakeDamage(..., nullptr, ...).
+    /// The host's damage feedback runs the death; without a host (bare engine use)
+    /// the character is killed here.</summary>
+    private static void ApplyStepDamage(Objects.Characters.Character ch, int damage, Combat.DamageType type)
+    {
+        if (damage <= 0 || ch.IsDead)
+            return;
+        Combat.CombatEngine.ApplyCharacterDamage(ch, damage, null, type);
+        if (ch.Hits <= 0 && !ch.IsDead && Combat.CombatEngine.OnDirectCharacterDamageApplied == null)
+        {
+            if (Objects.Characters.Character.OnLifecycleKill != null)
+                Objects.Characters.Character.OnLifecycleKill(ch, null);
+            else
+                ch.Kill();
+        }
+    }
+
     /// <summary>Put the die back (test teardown).</summary>
     public static void ResetWeightLossRoll() => WeightLossRoll = DefaultWeightLossRoll;
 
@@ -661,17 +679,11 @@ public sealed class MovementEngine
                 case ItemType.Trap:
                 case ItemType.TrapActive:
                     // Source-X CCharAct CheckLocation: stepping springs the trap —
-                    // Use_Trap() arms it and yields the MORE2 base damage.
-                    int trapDamage = item.UseTrap();
-                    if (!Combat.CombatEngine.IsDamageImmune(ch))
-                    {
-                        ch.Hits -= (short)Math.Min(trapDamage, ch.Hits);
-                        if (ch.Hits <= 0 && !ch.IsDead)
-                        {
-                            if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
-                            else ch.Kill();
-                        }
-                    }
+                    // Use_Trap() arms it and yields the MORE2 base damage, taken as
+                    // OnTakeDamage(dmg, nullptr, DAMAGE_HIT_BLUNT|DAMAGE_GENERAL)
+                    // (CCharAct.cpp:5017): protections, @GetHit and armour apply.
+                    ApplyStepDamage(ch, item.UseTrap(),
+                        Combat.DamageType.HitBlunt | Combat.DamageType.General);
                     break;
                 case ItemType.Switch:
                     // A switch with m_itSwitch.m_wStep (MOREX) set works by being
@@ -738,16 +750,9 @@ public sealed class MovementEngine
                 spellHit = true;
 
             if (touch == FieldTouchResult.NotHandled &&
-                item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg) &&
-                !Combat.CombatEngine.IsDamageImmune(ch))
-            {
-                ch.Hits -= (short)Math.Min(fieldDmg, ch.Hits);
-                if (ch.Hits <= 0 && !ch.IsDead)
-                {
-                    if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
-                    else ch.Kill();
-                }
-            }
+                item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg))
+                ApplyStepDamage(ch, fieldDmg,
+                    Combat.DamageType.HitBlunt | Combat.DamageType.General);
         }
 
         if (stepCancel)

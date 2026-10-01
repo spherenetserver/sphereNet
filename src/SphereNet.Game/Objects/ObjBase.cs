@@ -2340,6 +2340,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         // time-sorted ticking list does (CWorldTicker).
         if (timeoutMs > 0 && this is Items.Item timedItem)
             ResolveWorld?.Invoke()?.TrackItemTimer(timedItem, timeoutMs);
+        // A cleared timer leaves the queue (CWorldTicker::DelTimedObject) instead of
+        // waiting there as a dead entry until its old deadline.
+        else if (timeoutMs <= 0 && this is Items.Item clearedItem)
+            clearedItem.TimerQueueSlot.Owner?.Remove(clearedItem);
     }
 
     /// <summary>Re-register an armed timer after the object has MOVED off the ground.

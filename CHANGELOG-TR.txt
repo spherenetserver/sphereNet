@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Deadline kuyruklari, gorunurluk tahsisi ve tick telemetrisi
+------------------------------------------------------------------------
+DUZELTME - Esya timer ve decay kuyruklari her esya icin tek kayit tutar: yeniden
+           kurma kaydi tasir, ayni deadline tekrar yazilinca bir sey degismez,
+           temizleme veya silme kaydi kaldirir (Source-X
+           CWorldTicker::AddTimedObject/DelTimedObject). Decay toplama ayni
+           esyayi defalarca dondurmez.
+PERFORMANS - Timer ve decay bosaltma callback butcesinden ayri olarak tick basina
+           incelenen toplam kaydi sinirlar (8192 / 4096); kalan kayitlar
+           kuyrukta bekler, hicbir callback kaybolmaz. Bir esyanin 100.000 kez
+           yeniden kurulmasi artik 100.001 degil tek kayit birakir.
+PERFORMANS - Gorunurluk delta hesabi her yenilemede yeni koleksiyon ayirmak
+           yerine istemci basina tekrar kullanilan bir scratch delta kullanir;
+           600 nesnelik sabit kalabalikta yenilenen istemci basina ~64 KB'den 0
+           byte'a indi. Uygulanmayi bekleyen delta tekrar kullanilmaz.
+DEGISIKLIK - Multicore faz zaman asimi isbirliklidir ve guvenli sinirlarda
+           kontrol edilir (sektorler ve dunya tick fazlari arasinda, NPC
+           kararlari uygulanmadan ve gorus hesabindan once); iptal edilen tick
+           orada durur, yarim durum birakmaz, sonraki tick toparlanir.
+DUZELTME - Bot senaryolari senaryo baslangici ile bitisi arasinda kaydedilen
+           tick'ler uzerinden performans kapisiyla degerlendirilir; veri yok veya
+           yetersizse "yetersiz veri" bildirilir, gecti sayilmaz;
+           MaxMoveRejectRate kontrol edilir.
+DUZELTME - Tick histogrami araligin ustundeki ornekleri son bucket'a katlamak
+           yerine tasma olarak bildirir (alt sinir ve gozlenen maksimum);
+           slow_tick baskin fazi yalnizca birbirini kapsamayan yaprak fazlari
+           karsilastirir.
+DEGISIKLIK - Kayit yakalama ve hesap hazirlama sureleri ile NPC batch
+           due/ertelenen sayilari, en eski bekleme ve eylem gecikmesi p95/p99
+           loglanir ve runtime metriklerinde gorunur. Yeni sphere.ini anahtarlari
+           MaxNpcsPerTick (500) ve NpcPathPrestagePerTick (2).
+DEGISIKLIK - Multicore belgeleri duzeltildi: sektor tick'leri seri calisir, README
+           performans olcumleri tarihsel olarak isaretlendi, NETWORKTHREADS'in ag
+           isci thread'i kurmadigi belgelendi.
+
 [2026-10-01] - Uretim, kaynak, eritme ve vendor ekonomisi Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Uretim asamalari Skill_MakeItem'i izler: basari zari skill

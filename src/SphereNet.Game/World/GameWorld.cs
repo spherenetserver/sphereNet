@@ -961,6 +961,10 @@ public sealed class GameWorld
             _groundItems.Remove(removedItem);
             _multiItems.Remove(removedItem);
             _unplacedNewItems.Remove(removedItem);
+            // CWorldTicker::DelTimedObject: a deleted object leaves the ticking list
+            // now, not when its old deadline surfaces.
+            _timerDue.Remove(removedItem);
+            _decayDue.Remove(removedItem);
         }
         _objectsWithTimerF.Remove(obj);
         // Only drop the UUID index entry if it actually points at THIS object.
@@ -1880,29 +1884,46 @@ public sealed class GameWorld
     // Every ARMED item timer, in due order. Worn, contained and lying on the floor
     // alike: the sector tick used to be the mechanism for ground items, calling
     // OnTick on every item of every awake sector ten times a second whether or not
-    // the item had anything to do. Entries carry the deadline they were made with,
-    // so a re-armed or cleared timer leaves a stale entry that is recognised and
-    // dropped when it surfaces - the queue never has to find and remove anything.
-    // Drained in the serial phase, because @Timer bodies mutate the world.
-    private readonly PriorityQueue<Item, long> _timerDue = new();
-    // SetTimeout and container moves may register the same deadline repeatedly.
-    // Keep one entry per item/deadline, matching Source-X's unique timed-object list.
-    private readonly HashSet<(Item Item, long Deadline)> _timerRegistrations = [];
+    // the item had anything to do. One entry per item, as upstream's ticking list
+    // (CWorldTicker::AddTimedObject erases the previous entry before inserting the
+    // new timeout): a re-arm moves the entry, a clear or delete removes it, the same
+    // deadline written again changes nothing. Drained in the serial phase, because
+    // @Timer bodies mutate the world.
+    private readonly ItemDeadlineQueue _timerDue = new(decay: false);
     private long _lastTimerAuditTick;
+    private long _timerStaleDropped;
+    private long _timerInspectionCapHits;
 
-    /// <summary>How many armed item timers are waiting (stale entries included).</summary>
+    /// <summary>How many armed item timers are waiting - one entry per item.</summary>
     internal int TimerQueueCount => _timerDue.Count;
+
+    /// <summary>True when the timer queue holds <paramref name="item"/> under
+    /// exactly <paramref name="deadline"/>.</summary>
+    internal bool TimerQueueContains(Item item, long deadline) =>
+        _timerDue.TryGetDeadline(item, out long queued) && queued == deadline;
+
+    /// <summary>Queue entries the timer drain took out without running, cumulative
+    /// (item deleted / timer cleared / re-armed behind the queue's back). Should stay
+    /// near zero now that the queue keeps one entry per item; growth means some door
+    /// changes timers without telling the queue.</summary>
+    internal long TimerQueueStaleDropped => _timerStaleDropped;
+
+    /// <summary>Ticks whose timer drain stopped on <see cref="MaxItemTimerInspectionsPerTick"/>.</summary>
+    internal long TimerQueueInspectionCapHits => _timerInspectionCapHits;
 
     internal void TrackItemTimer(Item item, long deadlineMs)
     {
-        // Upstream refuses the same registration: CTimedObject::_SetTimeout hands the
-        // object to CWorldTicker::AddTimedObject, which only inserts it when
-        // _TickableStateBase() holds — false for a sleeping object. The deadline is
-        // still stored on the object, and _GoAwake re-adds it from there.
+        // Upstream: CTimedObject::_SetTimeout hands the object to
+        // CWorldTicker::AddTimedObject, which first erases any entry the object
+        // already has and then only inserts it when _TickableStateBase() holds —
+        // false for a sleeping object. The deadline is still stored on the object,
+        // and _GoAwake re-adds it from there.
         if (item.IsSleeping)
+        {
+            _timerDue.Remove(item);
             return;
-        if (_timerRegistrations.Add((item, deadlineMs)))
-            _timerDue.Enqueue(item, deadlineMs);
+        }
+        _timerDue.Set(item, deadlineMs);
     }
 
     /// <summary>An armed timer whose ground sector is asleep must not run its
@@ -1976,6 +1997,13 @@ public sealed class GameWorld
     /// instead of one. The decay queue is bounded for the same reason.</summary>
     internal int MaxItemTimersPerTick { get; set; } = 2000;
 
+    /// <summary>How many queue entries one tick's timer drain may look at, run or
+    /// not. <see cref="MaxItemTimersPerTick"/> only counts timers that are selected to
+    /// run, so without this a drain over entries that turn out to be dead (deleted
+    /// items, cleared timers) had no bound at all. Whatever is left stays queued and
+    /// is the front of the next tick.</summary>
+    internal int MaxItemTimerInspectionsPerTick { get; set; } = 8192;
+
     private void TickItemTimers(long nowMs)
     {
         // SELECT first, then run - the shape upstream uses (CWorldTicker::
@@ -1985,16 +2013,33 @@ public sealed class GameWorld
         // one tick. Selecting first means a timer re-armed during the callback is
         // next tick's work, which is also what a tick-start timestamp implies.
         _timerDueBuffer.Clear();
+        int inspected = 0;
         while (_timerDueBuffer.Count < MaxItemTimersPerTick &&
                _timerDue.TryPeek(out _, out long due) && due <= nowMs)
         {
+            if (inspected >= MaxItemTimerInspectionsPerTick)
+            {
+                _timerInspectionCapHits++;
+                break;
+            }
             if (!_timerDue.TryDequeue(out var item, out long deadline) || item == null)
                 break;
-            _timerRegistrations.Remove((item, deadline));
+            inspected++;
             if (item.IsDeleted || item.Timeout <= 0)
+            {
+                _timerStaleDropped++;
                 continue;
+            }
             if (item.Timeout != deadline)
-                continue;               // re-armed or cleared: a later entry owns it
+            {
+                // The timer moved without reaching the registration door. Its entry
+                // is the only one the item has, so re-file it under the real
+                // deadline rather than lose the callback; if that is already due it
+                // comes round again in this drain.
+                _timerStaleDropped++;
+                TrackItemTimer(item, item.Timeout);
+                continue;
+            }
             if (ShouldSleepInsteadOfFiring(item))
             {
                 // Keeps its deadline. WakeSleepingItemTimers re-registers it with
@@ -2042,18 +2087,14 @@ public sealed class GameWorld
             return 0;
         _lastTimerAuditTick = now;
 
-        var queued = new HashSet<Item>();
-        foreach (var (item, _) in _timerDue.UnorderedItems)
-            queued.Add(item);
-
         int missing = 0;
         foreach (var obj in _objects.Values)
         {
             // A sleeping item is absent from the queue on purpose (its sector is
             // down); re-queueing it here would undo the sleep every audit interval
             // and report the engine losing timers it has not lost.
-            if (obj is not Item it || it.IsDeleted || it.IsSleeping ||
-                it.Timeout <= 0 || queued.Contains(it))
+            if (obj is not Item it || it.IsDeleted || it.IsSleeping || it.Timeout <= 0 ||
+                (_timerDue.TryGetDeadline(it, out long queuedAt) && queuedAt == it.Timeout))
                 continue;
             TrackItemTimer(it, it.Timeout);
             missing++;
@@ -2386,9 +2427,22 @@ public sealed class GameWorld
     /// evaluation runs on a worker thread, so the shared evaluator stays single-use.
     /// </para>
     /// <para>
-    /// The workerCount / cancellationToken parameters are retained for the caller's
-    /// contract and a future compute/apply decomposition that could re-parallelize a
-    /// mutation-free subset; they are not used to parallelize sector ticks today.
+    /// The workerCount parameter is retained for the caller's contract and a future
+    /// compute/apply decomposition that could re-parallelize a mutation-free subset;
+    /// it is not used to parallelize sector ticks today.
+    /// </para>
+    /// <para>
+    /// <b>Cancellation is cooperative.</b> <paramref name="cancellationToken"/> is
+    /// checked only at safe boundaries: before each sector's tick and before each of
+    /// the later phases (notoriety decay, lingers, maintenance, TIMERF, item timers).
+    /// When it is cancelled the method RETURNS at the next boundary (it does not
+    /// throw); the caller decides what an abandoned tick means. A sector tick, a
+    /// TIMERF callback or an item @Timer that is already running is never
+    /// interrupted, so the method can overrun the caller's timeout by that work's
+    /// length. Every boundary lies between complete units of work, so no sector or
+    /// callback is left half applied; what was skipped is still due and runs on the
+    /// next tick (item timers and TIMERF entries stay queued; character ticks in a
+    /// skipped sector run against the clock on the next pass).
     /// </para>
     /// </summary>
     public void OnTickParallel(int workerCount = 0, CancellationToken cancellationToken = default)
@@ -2406,8 +2460,12 @@ public sealed class GameWorld
         // Sector ticks mutate shared world state (spawns, deaths, @Timer scripts)
         // and are therefore serialized — see the method contract above.
         foreach (var sector in sectors)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
             sector.OnTick(currentTime);
+        }
 
+        if (cancellationToken.IsCancellationRequested) return;
         // Notoriety decay for online players — must match single-threaded OnTick behavior.
         // Without this, murder counts (_kills) never decay in multicore mode.
         foreach (var player in _onlinePlayers)
@@ -2420,12 +2478,15 @@ public sealed class GameWorld
 
         // Recycle the uids of deleted objects on the old maintenance cadence.
         probe.Mark("sectors");
+        if (cancellationToken.IsCancellationRequested) return;
         TickSleepingMaintenance(currentTime);
         probe.Mark("maintenance");
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
+        if (cancellationToken.IsCancellationRequested) return;
         TickTimerF(currentTime);
         probe.Mark("timerf");
+        if (cancellationToken.IsCancellationRequested) return;
         TickItemTimers(currentTime);
         probe.Mark("item_timers");
         probe.Report(_logger, ref _lastWorldTickDetailMs);
@@ -2743,8 +2804,8 @@ public sealed class GameWorld
                 // yet, and an unreachable world there means the deadline is set and the
                 // registration silently skipped - which the decay audit then reported as
                 // "deadlines set without reaching the registration door", a dozen items
-                // at a time, on a shard that had just started. Duplicates are free: the
-                // queue carries the deadline an entry was made with.
+                // at a time, on a shard that had just started. Registering twice is
+                // free: the queue keeps one entry per item.
                 long armedAt = Environment.TickCount64 + DefaultDecayTimeMs;
                 item.SetDecayAt(armedAt);
                 TrackDecay(item, armedAt);
@@ -2844,36 +2905,61 @@ public sealed class GameWorld
     /// lazily here. Serial-phase only: the caller must not add/remove world objects until the
     /// collection pass returns.
     /// </summary>
-    /// <summary>Armed decay deadlines, in due order. Entries carry the deadline they
-    /// were made with, so a re-armed or cleared item simply leaves a stale entry
-    /// behind and the stale entry is dropped when it surfaces — the queue never needs
-    /// to find and remove anything.</summary>
-    private readonly PriorityQueue<Item, long> _decayDue = new();
+    /// <summary>Armed decay deadlines, in due order, one entry per item: re-arming
+    /// moves the entry, writing the same deadline again is a no-op and disarming or
+    /// deleting removes it (see <see cref="ItemDeadlineQueue"/>).</summary>
+    private readonly ItemDeadlineQueue _decayDue = new(decay: true);
 
-    /// <summary>How many decay deadlines are waiting (stale entries included).</summary>
+    /// <summary>How many decay deadlines are waiting - one entry per item.</summary>
     internal int DecayQueueCount => _decayDue.Count;
 
     private long _lastDecayAuditTick;
+    private long _decayStaleDropped;
+    private long _decayInspectionCapHits;
+
+    /// <summary>Decay entries a collection took out without returning the item,
+    /// cumulative (deleted, left the ground, disarmed or re-armed behind the queue's
+    /// back).</summary>
+    internal long DecayQueueStaleDropped => _decayStaleDropped;
+
+    /// <summary>Collections that stopped on <see cref="MaxDecayInspectionsPerCall"/>.</summary>
+    internal long DecayQueueInspectionCapHits => _decayInspectionCapHits;
+
+    /// <summary>How many queue entries one <see cref="CollectDueDecay"/> call may look
+    /// at, returned or not. Its <c>max</c> only counts returned items; this bounds the
+    /// rest of the work. Uninspected entries stay queued for the next call.</summary>
+    internal int MaxDecayInspectionsPerCall { get; set; } = 4096;
 
     /// <summary>Register an armed decay deadline. Called from Item's decay door.</summary>
-    internal void TrackDecay(Item item, long deadlineMs) => _decayDue.Enqueue(item, deadlineMs);
+    internal void TrackDecay(Item item, long deadlineMs) => _decayDue.Set(item, deadlineMs);
 
     /// <summary>Take the items whose decay is due, in deadline order.
     ///
-    /// <paramref name="max"/> bounds the work of one call; with the queue the rest are
-    /// simply the front of the next call rather than another full scan of the world.
-    /// An entry is skipped when the item is gone, no longer on the ground, or carries
-    /// a different deadline than the entry was made with (it was re-armed or
-    /// cleared).</summary>
+    /// <paramref name="max"/> bounds the items returned by one call and
+    /// <see cref="MaxDecayInspectionsPerCall"/> the entries looked at; with the queue
+    /// the rest are simply the front of the next call rather than another full scan
+    /// of the world. Each item has one entry, so one call returns an item at most
+    /// once. An entry is skipped when the item is gone, no longer on the ground, or
+    /// disarmed.</summary>
     public void CollectDueDecay(long now, int max, List<Item> buffer)
     {
+        int inspected = 0;
         while (buffer.Count < max &&
                _decayDue.TryPeek(out _, out long due) && due <= now)
         {
+            if (inspected >= MaxDecayInspectionsPerCall)
+            {
+                _decayInspectionCapHits++;
+                break;
+            }
             if (!_decayDue.TryDequeue(out var item, out long deadline) || item == null)
                 break;
+            inspected++;
             if (item.IsDeleted)
+            {
+                _decayStaleDropped++;
                 continue;
+            }
             if (!item.IsOnGround)
             {
                 // It left the ground between arming and coming due - picked up, put in
@@ -2886,10 +2972,19 @@ public sealed class GameWorld
                 // dropping it again, for as long as the item existed.
                 if (item.DecayTime == deadline)
                     item.ClearDecay();
+                _decayStaleDropped++;
                 continue;
             }
             if (item.DecayTime != deadline)
-                continue;               // re-armed or cleared: a later entry owns it
+            {
+                // Disarmed, or moved without reaching the registration door. The
+                // entry was the item's only one: re-file a live deadline instead of
+                // losing it (an already-due one comes round again in this call).
+                _decayStaleDropped++;
+                if (item.DecayTime > 0)
+                    _decayDue.Set(item, item.DecayTime);
+                continue;
+            }
             buffer.Add(item);
         }
     }
@@ -2910,10 +3005,6 @@ public sealed class GameWorld
             return 0;
         _lastDecayAuditTick = now;
 
-        var queued = new HashSet<Item>();
-        foreach (var (item, _) in _decayDue.UnorderedItems)
-            queued.Add(item);
-
         int missing = 0;
         // Naming them is the point. "N items were unqueued" has been true for weeks
         // without ever saying WHICH door skipped registration, and the candidates
@@ -2925,7 +3016,8 @@ public sealed class GameWorld
         System.Text.StringBuilder? detail = null;
         foreach (var it in _groundItems)
         {
-            if (it.IsDeleted || it.DecayTime <= 0 || queued.Contains(it))
+            if (it.IsDeleted || it.DecayTime <= 0 ||
+                (_decayDue.TryGetDeadline(it, out long queuedAt) && queuedAt == it.DecayTime))
                 continue;
             if (missing < DecayAuditDetailCap)
             {
@@ -2942,7 +3034,7 @@ public sealed class GameWorld
                       .Append(" at=").Append(it.X).Append(',').Append(it.Y)
                       .Append(',').Append(it.Z).Append(',').Append(it.MapIndex);
             }
-            _decayDue.Enqueue(it, it.DecayTime);
+            _decayDue.Set(it, it.DecayTime);
             missing++;
         }
 

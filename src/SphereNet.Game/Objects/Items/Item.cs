@@ -773,6 +773,12 @@ public class Item : ObjBase
     /// the cheap half of that change and stands on its own.</summary>
     public long DecayTime { get; private set; }
 
+    /// <summary>Where this item's single entry sits in the world's decay queue and
+    /// item-timer queue (<see cref="World.ItemDeadlineQueue"/>); owned by those
+    /// queues.</summary>
+    internal World.ItemDeadlineQueue.Slot DecayQueueSlot;
+    internal World.ItemDeadlineQueue.Slot TimerQueueSlot;
+
     /// <summary>Arm decay at an ABSOLUTE deadline (an
     /// <c>Environment.TickCount64</c> value). Negative or zero disarms it.</summary>
     public void SetDecayAt(long deadlineMs) => AssignDecay(deadlineMs > 0 ? deadlineMs : 0);
@@ -789,15 +795,19 @@ public class Item : ObjBase
     /// world every five seconds: measured at 300,000 items it took 11 ms to find
     /// nothing at all, on the server thread, twelve times a minute.
     ///
-    /// Registration is unconditional and duplicates are fine: the queue carries the
-    /// deadline an entry was made with, and an entry whose deadline no longer matches
-    /// the item is dropped when it surfaces. That is what makes re-arming free and
-    /// cancelling not need a removal.</summary>
+    /// The queue holds at most one entry per item (upstream's
+    /// CWorldTicker::AddTimedObject erases the old entry before inserting the new
+    /// one): re-arming moves the entry, writing the same deadline again is a no-op,
+    /// and disarming removes it, so a deadline written a thousand times can neither
+    /// pile up in memory nor come back a thousand times from one collection.</summary>
     private void AssignDecay(long deadlineMs)
     {
         DecayTime = deadlineMs;
         if (deadlineMs <= 0)
+        {
+            DecayQueueSlot.Owner?.Remove(this);
             return;
+        }
 
         var world = ResolveWorld?.Invoke();
         if (world != null)

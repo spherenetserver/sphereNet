@@ -28,7 +28,7 @@ Capabilities the classic engine does not have:
 |---|---|
 | **4 save formats + live switching** | `Text` (100%) / `TextGz` (~15%) / `Binary` (~50%) / `BinaryGz` (~8–10%); `.SAVEFORMAT BinaryGz 4` migrates format + shard count at runtime; `SAVESHARDS=2–16` writes parallel hash shards; `SAVEBACKGROUND=1` moves the write off the main loop |
 | **Multi-database MySQL** | Several named `[MYSQL <name>]` connections at once; scripts switch with `db.select <name>` |
-| **Multicore tick pipeline** | Snapshot/Build phases run parallel, Apply stays serial & deterministic; auto-fallback to single-thread on error |
+| **Multicore tick pipeline** | NPC decision prestage and client view-delta build run on worker threads; sector ticks, script callbacks and Apply stay serial & deterministic; auto-fallback to single-thread on error or (cooperative) phase timeout |
 | **Sector sleeping** | Only sectors near online players tick — a 30k-NPC idle world costs 0.1 ms. What sleeps is character work (AI, regen, poison); item deadlines are exact wherever the item lies, from world-level due queues ([contract](docs/ARCHITECTURE.md#sectors-and-sector-sleeping)) |
 | **Delta views** | Field-level change tracking (`DirtyFlag`) sends only what changed, not full object resends |
 | **Memory-mapped maps** | The OS pages MUL files on demand (~200 MB saved vs full RAM load) |
@@ -39,7 +39,7 @@ Capabilities the classic engine does not have:
 
 ## Performance
 
-Measured **2026-07-20 on the current build** with the in-tree harness (real TCP bot clients, full production script pack) on a modest **5-vCPU VM, 12 GB RAM**. Tick = 100 ms (10/s, Source-X parity); bots run in-process, so numbers are pessimistic.
+Historical measurement: taken **2026-07-20 on the build of that date** with the in-tree harness (real TCP bot clients, full production script pack) on a modest **5-vCPU VM, 12 GB RAM**. Tick = 100 ms (10/s, Source-X parity); bots run in-process, so numbers are pessimistic. The engine has changed since; these figures have not been re-measured on the current build and should be read as that build's results, not as a guarantee for this one.
 
 | Scenario | Avg tick | p95 | Budget |
 |---|---|---|---|

@@ -7,7 +7,17 @@ using SphereNet.Network.Packets.Outgoing;
 namespace SphereNet.Game.Clients;
 
 /// <summary>Readonly visibility delta produced by the (parallelizable) build
-/// phase and consumed by the single-threaded apply phase.</summary>
+/// phase and consumed by the single-threaded apply phase.
+///
+/// Ownership: <see cref="ClientViewUpdater.BuildViewDelta"/> hands out the
+/// client's own scratch delta, whose collections keep their capacity from one
+/// refresh to the next (multicore audit M09: a fresh delta per build was ~64-86 KB
+/// for a client in a 600-object crowd). The scratch is RENTED from the build until
+/// <see cref="ClientViewUpdater.ApplyViewDelta"/> consumes it, or until the caller
+/// abandons it with <see cref="Release"/>. A build that finds the scratch still
+/// rented - a delta built but not yet applied - gets a freshly allocated delta
+/// instead, so a pending delta is never overwritten. A delta's contents are valid
+/// until the owning client's next build.</summary>
 public sealed class ClientViewDelta
 {
     public HashSet<uint> CurrentChars { get; } = [];
@@ -16,6 +26,31 @@ public sealed class ClientViewDelta
     public List<Character> UpdatedChars { get; } = [];
     public List<(Item Item, bool HiddenAsAllShow)> NewItems { get; } = [];
     public List<Item> UpdatedItems { get; } = [];
+
+    /// <summary>Build-side scratch: ground items counted per tile for the 80-item cap.</summary>
+    internal Dictionary<Point3D, int> ItemTileCounts { get; } = [];
+    /// <summary>Apply-side scratch: known uids that left the view this refresh.</summary>
+    internal List<uint> StaleUids { get; } = [];
+
+    /// <summary>True while this delta is a client's scratch between build and apply.</summary>
+    internal bool IsRented { get; set; }
+
+    /// <summary>Give up a delta that will not be applied (an abandoned tick), so the
+    /// owning client's next build may reuse its collections. Idempotent, and a no-op
+    /// on a delta that is not a client's scratch.</summary>
+    public void Release() => IsRented = false;
+
+    internal void Reset()
+    {
+        CurrentChars.Clear();
+        CurrentItems.Clear();
+        NewChars.Clear();
+        UpdatedChars.Clear();
+        NewItems.Clear();
+        UpdatedItems.Clear();
+        ItemTileCounts.Clear();
+        StaleUids.Clear();
+    }
 }
 
 /// <summary>
@@ -34,9 +69,21 @@ public sealed class ClientViewUpdater
 
     private readonly IClientContext _client;
 
+    // The client's reusable delta (see ClientViewDelta's ownership notes) and the
+    // visitor delegates bound once per client, with the per-build state they read.
+    // A client is built by one worker at a time, so these are never shared.
+    private readonly ClientViewDelta _scratch = new();
+    private readonly Action<Character> _visitChar;
+    private readonly Action<Item> _visitItem;
+    private Character? _buildMe;
+    private ClientViewDelta? _buildDelta;
+    private bool _buildCanSeeInvisItems;
+
     internal ClientViewUpdater(IClientContext client)
     {
         _client = client;
+        _visitChar = VisitBuildChar;
+        _visitItem = VisitBuildItem;
     }
 
     private ClientViewCache View => _client.View;
@@ -68,50 +115,91 @@ public sealed class ClientViewUpdater
 
         int range = _client.NetState.ViewRange;
         var center = me.Position;
-        var delta = new ClientViewDelta();
 
-        Dictionary<Point3D, int>? itemTileCounts = null;
-
-        WorldRef.VisitInRange(center, range, ch =>
+        // Reuse the client's scratch unless a delta built from it is still waiting
+        // to be applied; overwriting that one would change what its apply sends.
+        ClientViewDelta delta;
+        if (_scratch.IsRented)
         {
-            if (ch == me || !IsCharVisible(me, ch)) return;
-
-            uint uid = ch.Uid.Value;
-            delta.CurrentChars.Add(uid);
-
-            bool hiddenAsAllShow = DrawsGreyed(ch);
-            if (!View.KnownChars.Contains(uid))
-                delta.NewChars.Add((ch, hiddenAsAllShow));
-            else
-                delta.UpdatedChars.Add(ch);
-        },
-        item =>
+            delta = new ClientViewDelta();
+        }
+        else
         {
-            if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) return;
-            bool isInvis = item.IsAttr(Core.Enums.ObjAttributes.Invis);
-            // Invisible items (spawn worldgems, triggers, etc.) render for AllShow;
-            // GM+ staff also see them dimmed without toggling AllShow, so a GM can
-            // audit spawners on sight.
-            bool canSeeInvisItems = me.AllShow || me.PrivLevel >= Core.Enums.PrivLevel.GM;
-            if (isInvis && !canSeeInvisItems)
-                return;
+            delta = _scratch;
+            delta.Reset();
+            delta.IsRented = true;
+        }
 
-            itemTileCounts ??= [];
-            var tile = new Point3D(item.X, item.Y, item.Z, item.MapIndex);
-            int tileCount = itemTileCounts.GetValueOrDefault(tile);
-            if (tileCount >= MaxItemsPerViewTile)
-                return;
-            itemTileCounts[tile] = tileCount + 1;
-
-            uint uid = item.Uid.Value;
-            delta.CurrentItems.Add(uid);
-            if (!View.KnownItems.Contains(uid))
-                delta.NewItems.Add((item, isInvis && canSeeInvisItems));
-            else
-                delta.UpdatedItems.Add(item);
-        });
+        // Saved and restored so a build nested inside a visibility check (none is
+        // known today) cannot leave the outer build reading the inner one's state.
+        var prevMe = _buildMe;
+        var prevDelta = _buildDelta;
+        bool prevCanSee = _buildCanSeeInvisItems;
+        _buildMe = me;
+        _buildDelta = delta;
+        // Invisible items (spawn worldgems, triggers, etc.) render for AllShow;
+        // GM+ staff also see them dimmed without toggling AllShow, so a GM can
+        // audit spawners on sight.
+        _buildCanSeeInvisItems = me.AllShow || me.PrivLevel >= Core.Enums.PrivLevel.GM;
+        try
+        {
+            WorldRef.VisitInRange(center, range, _visitChar, _visitItem);
+        }
+        catch
+        {
+            // The half-built delta is never returned; free the scratch.
+            if (ReferenceEquals(delta, _scratch))
+                delta.IsRented = false;
+            throw;
+        }
+        finally
+        {
+            _buildMe = prevMe;
+            _buildDelta = prevDelta;
+            _buildCanSeeInvisItems = prevCanSee;
+        }
 
         return delta;
+    }
+
+    private void VisitBuildChar(Character ch)
+    {
+        var me = _buildMe!;
+        var delta = _buildDelta!;
+        if (ch == me || !IsCharVisible(me, ch)) return;
+
+        uint uid = ch.Uid.Value;
+        delta.CurrentChars.Add(uid);
+
+        bool hiddenAsAllShow = DrawsGreyed(ch);
+        if (!View.KnownChars.Contains(uid))
+            delta.NewChars.Add((ch, hiddenAsAllShow));
+        else
+            delta.UpdatedChars.Add(ch);
+    }
+
+    private void VisitBuildItem(Item item)
+    {
+        var delta = _buildDelta!;
+        if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) return;
+        bool isInvis = item.IsAttr(Core.Enums.ObjAttributes.Invis);
+        bool canSeeInvisItems = _buildCanSeeInvisItems;
+        if (isInvis && !canSeeInvisItems)
+            return;
+
+        var itemTileCounts = delta.ItemTileCounts;
+        var tile = new Point3D(item.X, item.Y, item.Z, item.MapIndex);
+        int tileCount = itemTileCounts.GetValueOrDefault(tile);
+        if (tileCount >= MaxItemsPerViewTile)
+            return;
+        itemTileCounts[tile] = tileCount + 1;
+
+        uint uid = item.Uid.Value;
+        delta.CurrentItems.Add(uid);
+        if (!View.KnownItems.Contains(uid))
+            delta.NewItems.Add((item, isInvis && canSeeInvisItems));
+        else
+            delta.UpdatedItems.Add(item);
     }
 
     /// <summary>
@@ -119,6 +207,21 @@ public sealed class ClientViewUpdater
     /// Must run on single-thread apply phase.
     /// </summary>
     public void ApplyViewDelta(ClientViewDelta delta)
+    {
+        try
+        {
+            ApplyViewDeltaCore(delta);
+        }
+        finally
+        {
+            // Consumed (or failed - the next refresh rebuilds it either way): the
+            // client's scratch is free for its next build.
+            if (ReferenceEquals(delta, _scratch))
+                delta.IsRented = false;
+        }
+    }
+
+    private void ApplyViewDeltaCore(ClientViewDelta delta)
     {
         var me = _client.Character;
         if (me == null || !_client.IsPlaying) return;
@@ -234,7 +337,8 @@ public sealed class ClientViewUpdater
             }
         }
 
-        var staleChars = new List<uint>();
+        var staleChars = delta.StaleUids;
+        staleChars.Clear();
         foreach (uint uid in View.KnownChars)
         {
             if (!delta.CurrentChars.Contains(uid))
@@ -251,7 +355,8 @@ public sealed class ClientViewUpdater
             // OPL lives on the object with a pure TTL (Source-X model).
         }
 
-        var staleItems = new List<uint>();
+        var staleItems = delta.StaleUids;
+        staleItems.Clear();
         foreach (uint uid in View.KnownItems)
         {
             if (delta.CurrentItems.Contains(uid))
@@ -279,6 +384,7 @@ public sealed class ClientViewUpdater
             View.LastKnownItemState.Remove(uid);
             // Tooltip caches kept across view-exit — see the stale-chars loop.
         }
+        staleItems.Clear();
     }
 
     /// <summary>Run after every accepted step. The client drops a ground object the

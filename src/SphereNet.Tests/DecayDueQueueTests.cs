@@ -21,9 +21,8 @@ namespace SphereNet.Tests;
 /// walk, not a requirement — with a queue the check runs every tick and costs
 /// nothing when nothing is due.
 ///
-/// The queue carries the deadline each entry was made with. That is what makes
-/// re-arming free (push a new entry, the old one is dropped when it surfaces) and
-/// cancelling not need a removal at all.
+/// The queue holds one entry per item: re-arming moves it, cancelling and deleting
+/// remove it, the same deadline written again changes nothing.
 /// </summary>
 [Collection("DefinitionLoaderSerial")]
 public sealed class DecayDueQueueTests
@@ -99,20 +98,16 @@ public sealed class DecayDueQueueTests
         Setup();
         var item = Ground(1, 100);
 
-        // Push the deadline out. The queue still holds the first entry - nothing
-        // removes it - so the stale entry has to be recognised when it surfaces,
-        // which is the whole reason entries carry their deadline.
+        // Push the deadline out. The item's one entry moves with it (upstream's
+        // AddTimedObject erases the old entry first) - no dead weight is left behind.
         item.SetDecayAt(Environment.TickCount64 + 500_000);
-        Assert.Equal(2, _world.DecayQueueCount);   // both entries; one is already dead weight
+        Assert.Equal(1, _world.DecayQueueCount);
 
         var due = Due(Environment.TickCount64 + 1000);
 
-        // Collecting consumes the stale entry on the way past, so the count has to be
-        // read BEFORE the drain - reading it after measures the cleanup, not the
-        // duplicate.
         _out.WriteLine($"after the drain: queue={_world.DecayQueueCount}, collected {due.Count}");
         Assert.Empty(due);
-        Assert.Equal(1, _world.DecayQueueCount);   // only the live entry is left
+        Assert.Equal(1, _world.DecayQueueCount);   // the live entry is still waiting
     }
 
     [Fact]
@@ -123,7 +118,8 @@ public sealed class DecayDueQueueTests
         item.ClearDecay();
 
         Assert.Empty(Due(Environment.TickCount64 + 1000));
-        _out.WriteLine("cleared decay leaves a stale entry behind and collects nothing");
+        Assert.Equal(0, _world.DecayQueueCount);
+        _out.WriteLine("cleared decay removes its entry and collects nothing");
     }
 
     [Fact]

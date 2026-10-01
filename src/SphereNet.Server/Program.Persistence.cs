@@ -340,7 +340,18 @@ public static partial class Program
                 ClientStateMs = _telemetryClientStateUs / 1000.0,
                 NpcApplyMs = _telemetryNpcApplyUs / 1000.0,
                 ViewBuildMs = _telemetryViewBuildUs / 1000.0
-            }
+            },
+            // Main-loop share of the last save (see RecordSaveMainThreadTelemetry).
+            Save = new
+            {
+                Background = _saveTelemetryBackground,
+                PrepMs = _saveTelemetryPrepMs,
+                CaptureMs = _saveTelemetryCaptureMs,
+                AccountStageMs = _saveTelemetryAccountStageMs,
+                MainThreadMs = _saveTelemetryMainThreadMs,
+                MaxMainThreadMs = _saveTelemetryMaxMainThreadMs,
+            },
+            NpcBudget = GetNpcBudgetMetrics(),
         };
     }
 
@@ -390,7 +401,13 @@ public static partial class Program
                 // live objects — and the expensive shard/encode/write phase moves
                 // to a worker. Completion side effects run back on the main loop
                 // via CompleteBackgroundSave (polled next to the auto-save timer).
+                // Prepare and the account staging both run on the main loop and
+                // the loop waits for them: they are timed separately so the stall a
+                // background save still causes is visible in the log and in the
+                // runtime metrics (Save.CaptureMs / AccountStageMs / MainThreadMs).
+                long captureStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 var prepared = _saver.Prepare(_world);
+                long captureEnd = System.Diagnostics.Stopwatch.GetTimestamp();
                 // The accounts are rendered HERE, next to the world walk, so the file
                 // describes the same instant the snapshot does - but it is not
                 // published until the world write commits. It used to be written
@@ -399,6 +416,12 @@ public static partial class Program
                 // lost save keeps its slot, and the world has never heard of it
                 // (review work item D01).
                 StageAccounts(prepared.Generation);
+                RecordSaveMainThreadTelemetry(
+                    background: true,
+                    prepMs: prepSecs * 1000.0,
+                    captureMs: System.Diagnostics.Stopwatch.GetElapsedTime(captureStart, captureEnd).TotalMilliseconds,
+                    accountStageMs: System.Diagnostics.Stopwatch.GetElapsedTime(captureEnd).TotalMilliseconds,
+                    mainThreadMs: sw.Elapsed.TotalMilliseconds);
                 _backgroundSaveGeneration = prepared.Generation;
                 // Dedicated BELOW-NORMAL thread, and shard writes stay sequential
                 // on it (SequentialShardWrites): a pool Task at normal priority
@@ -421,8 +444,10 @@ public static partial class Program
                 writer.Start();
                 _backgroundSaveTask = completion.Task;
                 _backgroundSaveStopwatch = sw;
-                _log.LogInformation("World snapshot captured in {Secs:F2}s; writing in background...",
-                    sw.Elapsed.TotalSeconds);
+                _log.LogInformation(
+                    "World snapshot captured in {Secs:F2}s (main loop: prep={PrepMs:F1}ms capture={CaptureMs:F1}ms accounts_stage={AcctMs:F1}ms); writing in background...",
+                    sw.Elapsed.TotalSeconds, _saveTelemetryPrepMs, _saveTelemetryCaptureMs,
+                    _saveTelemetryAccountStageMs);
                 return; // completion handled by CompleteBackgroundSave
             }
 
@@ -451,6 +476,14 @@ public static partial class Program
                 "Save phases: prep={Prep:F2}s world={World:F2}s tail={Tail:F2}s accounts={Acct:F2}s",
                 prepSecs, worldSecs, preAccounts - prepSecs - worldSecs,
                 sw.Elapsed.TotalSeconds - preAccounts);
+            // Synchronous mode: the whole save is main-loop time; capture is inside
+            // the world phase and not separable here.
+            RecordSaveMainThreadTelemetry(
+                background: false,
+                prepMs: prepSecs * 1000.0,
+                captureMs: worldSecs * 1000.0,
+                accountStageMs: (sw.Elapsed.TotalSeconds - preAccounts) * 1000.0,
+                mainThreadMs: sw.Elapsed.TotalMilliseconds);
             // Broadcast success only when the world write actually committed. A
             // failed write (record encode/IO error) left the previous save intact;
             // report the failure instead of a false "save complete".
@@ -488,6 +521,29 @@ public static partial class Program
         }
         // loop_stall still measures the entire main-loop job, including cleanup.
         return Stopwatch.StartNew();
+    }
+
+    // Main-loop save cost of the most recent save (telemetry only). In background
+    // mode capture = WorldSaver.Prepare and accounts_stage = StageAccounts; in
+    // synchronous mode capture is the whole world write and accounts_stage the
+    // account write, both of which also run on the main loop.
+    private static bool _saveTelemetryBackground;
+    private static double _saveTelemetryPrepMs;
+    private static double _saveTelemetryCaptureMs;
+    private static double _saveTelemetryAccountStageMs;
+    private static double _saveTelemetryMainThreadMs;
+    private static double _saveTelemetryMaxMainThreadMs;
+
+    private static void RecordSaveMainThreadTelemetry(bool background, double prepMs,
+        double captureMs, double accountStageMs, double mainThreadMs)
+    {
+        _saveTelemetryBackground = background;
+        _saveTelemetryPrepMs = prepMs;
+        _saveTelemetryCaptureMs = captureMs;
+        _saveTelemetryAccountStageMs = accountStageMs;
+        _saveTelemetryMainThreadMs = mainThreadMs;
+        if (mainThreadMs > _saveTelemetryMaxMainThreadMs)
+            _saveTelemetryMaxMainThreadMs = mainThreadMs;
     }
 
     private static Task<bool>? _backgroundSaveTask;

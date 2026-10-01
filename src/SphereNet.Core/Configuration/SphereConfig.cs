@@ -731,21 +731,44 @@ public sealed class SphereConfig
     /// <summary>sphere.ini USEMAPDIFFS (Source-X m_fUseMapDiffs, default off): read the
     /// mapdif/stadif patch files over the maps.</summary>
     public bool UseMapDiffs { get; set; }
-    /// <summary>Accepted for sphere.ini compat, deliberately a NO-OP: SphereNet
-    /// runs the network on the main loop with non-blocking sockets + per-pass
-    /// budgets (see NetworkManager.MaxAcceptsPerPass) instead of Source-X's
-    /// thread pool. USEASYNCNETWORK is likewise not modeled.</summary>
+    /// <summary>sphere.ini NETWORKTHREADS. Read and reported back through
+    /// SERV.NETWORKTHREADS for sphere.ini compat, but NOT used to create network
+    /// workers: unlike Source-X (which starts NETWORKTHREADS network threads),
+    /// SphereNet accepts, receives and dispatches input on the main loop with
+    /// non-blocking sockets + per-pass budgets (see NetworkManager.MaxAcceptsPerPass).
+    /// The only network parallelism is the output flush
+    /// (NetworkManager.ProcessAllOutput), which goes parallel across
+    /// Environment.ProcessorCount once 128 or more connections are active,
+    /// independent of this value. USEASYNCNETWORK is likewise not modeled.</summary>
     public int NetworkThreads { get; set; }
     public int NetTTL { get; set; } = 300;
-    
-    // Multicore pipeline (determinism-first). Always on — the sector
-    // tick is trivially parallel and Program.cs falls back to single
-    // thread on any failure, so there is no configuration surface for
-    // it. Tuning knobs (WorkerCount, PhaseTimeoutMs) stay.
+
+    // Multicore pipeline (determinism-first). Always on; Program.cs falls back
+    // to single-thread mode for a cooldown on any failure or phase timeout, so
+    // there is no on/off switch. The sector tick itself is NOT parallel: sector
+    // ticks mutate shared world state (spawns, deaths, @Timer scripts) and run
+    // serially (GameWorld.OnTickParallel). What runs on workers is the NPC
+    // decision prestage (NpcAI.BuildDecision) and the client view-delta build.
+    // Tuning knobs (WorkerCount, PhaseTimeoutMs) stay.
     public bool MulticoreDeterminismDebug { get; set; }
     public string MulticoreDeterminismExpectedHash { get; set; } = "";
     public int MulticoreWorkerCount { get; set; } = 0; // 0 => auto
+    // Cooperative: the token is checked at safe boundaries (between sectors,
+    // between world-tick phases, before NPC apply, before the view build). Work
+    // already running (one sector's tick, an A* search, a script callback) is
+    // not interrupted, so a tick can overrun this value by that work's length.
     public int MulticorePhaseTimeoutMs { get; set; } = 5000;
+
+    // Per-tick NPC AI budget (ini key: MaxNpcsPerTick). Due NPCs beyond it are
+    // deferred to the next tick; the [npc_budget] stats line reports how many
+    // were deferred and how late actions ran. Clamped to >= 1.
+    public int MaxNpcsPerTick { get; set; } = 500;
+
+    // Prestage A* searches accepted per tick (ini key: NpcPathPrestagePerTick).
+    // Over-budget chasers take a short path defer and are rotated in on later
+    // ticks. Field-tuned to 2; raise only with measurements that support it.
+    // Clamped to >= 0.
+    public int NpcPathPrestagePerTick { get; set; } = 2;
 
     // World-loop tick interval in milliseconds (ini key: ServerTickMs).
     // 100 = 10 ticks/s (default), matching Source-X exactly: TICKS_PER_SEC=10 =>
@@ -1312,6 +1335,8 @@ public sealed class SphereConfig
         MulticoreDeterminismExpectedHash = ini.GetValue(section, "MulticoreDeterminismExpectedHash") ?? MulticoreDeterminismExpectedHash;
         MulticoreWorkerCount = ini.GetInt(section, "MulticoreWorkerCount", MulticoreWorkerCount);
         MulticorePhaseTimeoutMs = ini.GetInt(section, "MulticorePhaseTimeoutMs", MulticorePhaseTimeoutMs);
+        MaxNpcsPerTick = Math.Max(1, ini.GetInt(section, "MaxNpcsPerTick", MaxNpcsPerTick));
+        NpcPathPrestagePerTick = Math.Max(0, ini.GetInt(section, "NpcPathPrestagePerTick", NpcPathPrestagePerTick));
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
         // ServerTickMs is canonical. TICKPERIOD is accepted when ServerTickMs is absent,
         // in the unit Source-X reports it in: ticks per SECOND (RC_TICKPERIOD answers

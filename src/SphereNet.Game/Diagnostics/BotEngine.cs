@@ -61,6 +61,62 @@ public sealed class BotEngine : IDisposable
     private int _scenarioBotCount;
     public BotScenarioReport? LastScenarioReport { get; private set; }
     public IBotScenario? ActiveScenario => _activeScenario;
+
+    /// <summary>Thresholds the finished scenario is judged against.</summary>
+    public BotPerformanceGate ScenarioGate { get; set; } = new();
+
+    // Server tick samples bounded to the scenario window: created at scenario start,
+    // fed by RecordServerTickSample while it runs, frozen at finish. The server-wide
+    // histogram covers the whole uptime and cannot answer "how did the ticks look
+    // while this scenario ran".
+    private readonly object _scenarioTickLock = new();
+    private TickHistogram? _scenarioTicks;
+
+    /// <summary>Record one server tick duration into the running scenario's window.
+    /// A no-op when no scenario is measuring, so ticks before start and after finish
+    /// never reach the gate. Called from the server loop when the bots run in-process;
+    /// a scenario driven against a remote server records nothing and its tick checks
+    /// report "not measured".</summary>
+    public void RecordServerTickSample(int elapsedMs)
+    {
+        if (_scenarioTicks == null) return;
+        lock (_scenarioTickLock)
+            _scenarioTicks?.Record(elapsedMs);
+    }
+
+    /// <summary>Open the scenario measurement window.</summary>
+    internal void BeginScenarioWindow(IBotScenario scenario, int botCount)
+    {
+        lock (_scenarioTickLock)
+            _scenarioTicks = new TickHistogram(2000, 1);
+        _activeScenario = scenario;
+        _scenarioBotCount = botCount;
+        _scenarioStartMs = Environment.TickCount64;
+    }
+
+    /// <summary>Close the window and take its samples; later ticks are ignored.</summary>
+    private TickHistogram? EndScenarioWindow()
+    {
+        lock (_scenarioTickLock)
+        {
+            var ticks = _scenarioTicks;
+            _scenarioTicks = null;
+            return ticks;
+        }
+    }
+
+    /// <summary>Move requests and server rejects summed over the scenario's bots.
+    /// The scenario starts from a fresh bot set, so these are scenario totals.</summary>
+    public (int Requests, int Rejects) GetMoveTotals()
+    {
+        int requests = 0, rejects = 0;
+        foreach (var bot in _bots.Values)
+        {
+            requests += bot.World.TotalMoveRequests;
+            rejects += bot.World.TotalMoveRejects;
+        }
+        return (requests, rejects);
+    }
     public bool IsScenarioRunning => _activeScenario != null && _scenarioCts != null && !_scenarioCts.IsCancellationRequested;
 
     public static readonly IBotScenario[] AvailableScenarios =
@@ -363,14 +419,12 @@ public sealed class BotEngine : IDisposable
 
         StopAllBots();
 
-        _activeScenario = scenario;
         _scenarioCts = new CancellationTokenSource();
         int botCount = botCountOverride ?? scenario.DefaultBotCount;
         int durationMin = durationOverride ?? scenario.DefaultDurationMinutes;
 
         _spawnCity = scenario.SpawnCity;
-        _scenarioBotCount = botCount;
-        _scenarioStartMs = Environment.TickCount64;
+        BeginScenarioWindow(scenario, botCount);
 
         _logger.LogInformation("[BOT] Starting scenario '{Name}': {Count} bots, {Duration} min, {City}",
             scenario.Name, botCount, durationMin, scenario.SpawnCity);
@@ -428,27 +482,30 @@ public sealed class BotEngine : IDisposable
         FinishScenario();
     }
 
-    private void FinishScenario()
+    internal void FinishScenario()
     {
-        if (_activeScenario == null) return;
+        // Both the duration timer and StopScenario reach here; only one may report.
+        var scenario = Interlocked.Exchange(ref _activeScenario, null);
+        if (scenario == null) return;
 
         var elapsed = TimeSpan.FromMilliseconds(Environment.TickCount64 - _scenarioStartMs);
+        var ticks = EndScenarioWindow();
         LastScenarioReport = BotScenarioReport.Generate(
-            _activeScenario.Name, this, elapsed, _scenarioBotCount);
+            scenario.Name, this, elapsed, _scenarioBotCount, ticks, ScenarioGate);
 
-        _logger.LogInformation("[BOT] Scenario '{Name}' finished. Duration={Duration:F1}min Passed={Passed} " +
-            "Active={Active}/{Total} Disconnects={Disc} Anomalies={Anom}",
-            LastScenarioReport.ScenarioName, elapsed.TotalMinutes, LastScenarioReport.Passed,
+        _logger.LogInformation("[BOT] Scenario '{Name}' finished. Duration={Duration:F1}min Gate={Status} " +
+            "Active={Active}/{Total} Disconnects={Disc} Anomalies={Anom} Moves={Rejects}/{Moves} Ticks={Ticks}",
+            LastScenarioReport.ScenarioName, elapsed.TotalMinutes, LastScenarioReport.Status,
             LastScenarioReport.ActiveAtEnd, LastScenarioReport.TotalBots,
-            LastScenarioReport.Disconnects, LastScenarioReport.AnomalyCount);
+            LastScenarioReport.Disconnects, LastScenarioReport.AnomalyCount,
+            LastScenarioReport.TotalMoveRejects, LastScenarioReport.TotalMoveRequests,
+            LastScenarioReport.TickSamples);
 
         if (LastScenarioReport.FailReasons.Count > 0)
         {
             foreach (var reason in LastScenarioReport.FailReasons)
-                _logger.LogWarning("[BOT] FAIL: {Reason}", reason);
+                _logger.LogWarning("[BOT] GATE {Reason}", reason);
         }
-
-        _activeScenario = null;
     }
 
     private static IBotBehavior? CreateRoleBehavior(BotBehavior behavior, int seed)

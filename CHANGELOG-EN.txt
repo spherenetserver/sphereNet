@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Deadline queues, view delta allocation and tick telemetry
+------------------------------------------------------------------------
+FIX - Item timer and decay queues keep one entry per item: re-arming moves the
+      entry, the same deadline written again is a no-op, clearing or deleting
+      removes it (Source-X CWorldTicker::AddTimedObject/DelTimedObject). A decay
+      collection can no longer return the same item many times.
+PERF - Timer and decay drains bound the total queue entries inspected per tick
+      (8192 / 4096) separately from the callback budget; leftover entries stay
+      queued and no callback is lost. 100,000 re-arms of one item now leave one
+      entry instead of 100,001.
+PERF - View delta build reuses a per-client scratch delta instead of allocating
+      new collections per refresh; a steady 600-object crowd drops from ~64 KB
+      to 0 bytes per refreshed client. A delta pending apply is never reused.
+CHANGE - The multicore phase timeout is cooperative and checked at safe
+      boundaries (between sectors and world-tick phases, before NPC decisions are
+      applied, before the view build); a cancelled tick stops there without
+      half-applied state and the next tick recovers.
+FIX - Bot scenarios are judged by the performance gate on ticks recorded between
+      scenario start and finish; missing or too little data reports
+      "insufficient data" instead of passing; MaxMoveRejectRate is checked.
+FIX - The tick histogram reports samples above its range as overflow (lower
+      bound plus observed max) instead of folding them into the last bucket; the
+      slow_tick dominant phase compares only non-overlapping leaf phases.
+CHANGE - Save capture and account staging times, and NPC batch due/deferred
+      counts, oldest wait and action lateness p95/p99, are logged and exposed in
+      runtime metrics. New sphere.ini keys MaxNpcsPerTick (500) and
+      NpcPathPrestagePerTick (2).
+CHANGE - Multicore docs corrected: sector ticks run serially, README performance
+      figures are marked historical, NETWORKTHREADS documented as not creating
+      network workers.
+
 [2026-10-01] - Crafting, resources, smelting and vendor economy follow Source-X
 ------------------------------------------------------------------------
 FIX - Crafting stages follow Skill_MakeItem: the success roll is made at skill

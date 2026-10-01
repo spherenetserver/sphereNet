@@ -525,6 +525,8 @@ public static partial class Program
             if (totalUs > _telemetryMaxTickUs)
                 _telemetryMaxTickUs = totalUs;
             TickHistogram.Record((int)(totalUs / 1000));
+            // In-process bot scenario: its gate judges only the ticks of its own window.
+            _botEngine?.RecordServerTickSample((int)(totalUs / 1000));
 
             long nowMs = Environment.TickCount64;
             long slowTickThresholdUs = _config.SlowTickWarnMs * 1000L;
@@ -624,6 +626,9 @@ public static partial class Program
                 _gcWindowStartShed = shedNow;
                 _gcWindowInit = true;
 
+                // NPC budget for the same window: due/deferred, oldest wait, lateness.
+                LogAndResetNpcBudgetWindow();
+
                 _tickStatsCount = 0;
                 _loopIterationCount = 0;
                 _lastTickStatsLogMs = nowMs;
@@ -631,24 +636,48 @@ public static partial class Program
         }
     }
 
-    private static string GetDominantTickPhase()
+    private static string GetDominantTickPhase() => PickDominantTickPhase(
+        _telemetrySnapshotUs, _telemetryWorldTickUs, _telemetryComputeUs,
+        _telemetryNpcBuildUs, _telemetryClientStateUs, _telemetryNpcApplyUs,
+        _telemetryViewBuildUs, _telemetryApplyUs, _telemetryPostApplyUs, _telemetryFlushUs);
+
+    /// <summary>Name the most expensive phase of a tick.
+    ///
+    /// Only leaf phases compete. "snapshot" contains world_tick and "compute"
+    /// contains npc_build / client_state / npc_apply / view_build, so putting a
+    /// group next to its own children let the group win every compute-heavy tick
+    /// (a group can never be shorter than any of its parts) and the summary said
+    /// "compute" where the detail line showed npc_build doing the work. Each group
+    /// is replaced by its residual - the time it measured that none of its children
+    /// account for - so npc_build=9ms in compute=12ms names npc_build, and a compute
+    /// whose time sits outside the measured children names "compute_other".</summary>
+    internal static string PickDominantTickPhase(
+        long snapshotUs, long worldTickUs, long computeUs,
+        long npcBuildUs, long clientStateUs, long npcApplyUs, long viewBuildUs,
+        long applyUs, long postApplyUs, long flushUs)
     {
-        var phases = new[]
-        {
-            ("world_tick", _telemetryWorldTickUs),
-            // Residual of the pre-compute group after the parallel sector tick:
+        long computeChildren = npcBuildUs + clientStateUs + npcApplyUs + viewBuildUs;
+        Span<(string Name, long Us)> phases =
+        [
+            ("world_tick", worldTickUs),
+            // Residual of the pre-compute group after the sector tick:
             // spell expiry + sector wake + wheel advance + client snapshot.
-            ("snapshot", Math.Max(0, _telemetrySnapshotUs - _telemetryWorldTickUs)),
-            ("post_apply", _telemetryPostApplyUs),
-            ("compute", _telemetryComputeUs),
-            ("npc_build", _telemetryNpcBuildUs),
-            ("client_state", _telemetryClientStateUs),
-            ("npc_apply", _telemetryNpcApplyUs),
-            ("view_build", _telemetryViewBuildUs),
-            ("apply", _telemetryApplyUs),
-            ("flush", _telemetryFlushUs),
-        };
-        return phases.OrderByDescending(p => p.Item2).First().Item1;
+            ("snapshot", Math.Max(0, snapshotUs - worldTickUs)),
+            ("npc_build", npcBuildUs),
+            ("client_state", clientStateUs),
+            ("npc_apply", npcApplyUs),
+            ("view_build", viewBuildUs),
+            // Compute time no child phase measured (sorting, list resets, gaps).
+            ("compute_other", Math.Max(0, computeUs - computeChildren)),
+            ("apply", applyUs),
+            ("post_apply", postApplyUs),
+            ("flush", flushUs),
+        ];
+        int best = 0;
+        for (int i = 1; i < phases.Length; i++)
+            if (phases[i].Us > phases[best].Us)
+                best = i;
+        return phases[best].Name;
     }
 
     private static void RecordTickTelemetry(long totalUs)
@@ -795,7 +824,55 @@ public static partial class Program
     // running BuildDecision for all of them at once stalls the tick for
     // seconds. Process at most this many per tick and defer the overflow to the
     // next tick. No effect on normal loads where the due count is below it.
-    private const int MaxNpcsPerTick = 500;
+    // sphere.ini MaxNpcsPerTick (default 500).
+    internal const int DefaultMaxNpcsPerTick = 500;
+    private static int MaxNpcsPerTick => Math.Max(1, _config?.MaxNpcsPerTick ?? DefaultMaxNpcsPerTick);
+
+    // Prestage A* acceptances per tick, sphere.ini NpcPathPrestagePerTick (default 2).
+    internal const int DefaultNpcPathPrestagePerTick = 2;
+    private static int NpcPathPrestagePerTick =>
+        Math.Max(0, _config?.NpcPathPrestagePerTick ?? DefaultNpcPathPrestagePerTick);
+
+    // Due / deferred / oldest-wait / lateness for the NPC budget, reported on the
+    // 30 s [npc_budget] line and in the runtime metrics, then reset with the window.
+    internal static readonly SphereNet.Game.Diagnostics.NpcBudgetTelemetry NpcBudgetStats = new();
+
+    private static object GetNpcBudgetMetrics()
+    {
+        var s = NpcBudgetStats;
+        var p95 = s.LatenessP95;
+        var p99 = s.LatenessP99;
+        return new
+        {
+            Limit = MaxNpcsPerTick,
+            PathPrestagePerTick = NpcPathPrestagePerTick,
+            WindowTicks = s.Ticks,
+            Due = s.Due,
+            Deferred = s.Deferred,
+            MaxDuePerTick = s.MaxDuePerTick,
+            MaxDeferredPerTick = s.MaxDeferredPerTick,
+            OldestWaitMs = s.OldestWaitMs,
+            LatenessSamples = s.LatenessSamples,
+            LatenessP95Ms = p95.ValueMs,
+            LatenessP95Overflow = p95.IsOverflow,
+            LatenessP99Ms = p99.ValueMs,
+            LatenessP99Overflow = p99.IsOverflow,
+            LatenessMaxMs = s.LatenessMaxMs,
+        };
+    }
+
+    private static void LogAndResetNpcBudgetWindow()
+    {
+        var s = NpcBudgetStats;
+        if (s.Ticks > 0)
+        {
+            _log.LogDebug(
+                "[npc_budget] ticks={Ticks} limit={Limit} due={Due} deferred={Deferred} max_due={MaxDue} max_deferred={MaxDeferred} oldest_wait={OldestMs}ms late_p95={P95} late_p99={P99} late_max={LateMax}ms",
+                s.Ticks, MaxNpcsPerTick, s.Due, s.Deferred, s.MaxDuePerTick, s.MaxDeferredPerTick,
+                s.OldestWaitMs, s.LatenessP95, s.LatenessP99, s.LatenessMaxMs);
+        }
+        s.Reset();
+    }
 
     /// <summary>Does this NPC belong in the wheel after it has acted? Dead, deleted and
     /// sleeping-sector creatures leave it; a pet follows its master wherever that is.
@@ -855,12 +932,15 @@ public static partial class Program
 
     private static void ApplyNpcTickBudget(SphereNet.Game.Scheduling.TimerWheel? wheel, List<Character> due)
     {
-        if (wheel == null || due.Count <= MaxNpcsPerTick) return;
+        if (wheel == null) return;
+        int limit = MaxNpcsPerTick;
         long deferAt = Environment.TickCount64;
-        for (int i = MaxNpcsPerTick; i < due.Count; i++)
+        NpcBudgetStats.RecordBatch(due, limit, deferAt);
+        if (due.Count <= limit) return;
+        for (int i = limit; i < due.Count; i++)
             wheel.Schedule(due[i], deferAt);
         // Removing the tail truncates the count without shifting elements.
-        due.RemoveRange(MaxNpcsPerTick, due.Count - MaxNpcsPerTick);
+        due.RemoveRange(limit, due.Count - limit);
     }
 
     /// <summary>
@@ -902,12 +982,29 @@ public static partial class Program
         int workerCount = _config.MulticoreWorkerCount > 0
             ? _config.MulticoreWorkerCount
             : Math.Max(1, Environment.ProcessorCount - 1);
+        // The phase timeout is COOPERATIVE, not a hard runtime limit. The token is
+        // checked only at safe boundaries - between sectors and world-tick phases
+        // inside OnTickParallel, before the NPC wheel is advanced, before NPC
+        // decisions are applied, and before the view build - and Parallel.ForEach
+        // stops starting new iterations. Work already running (one sector's tick, an
+        // A* search, a script callback, one client's view delta) is never cut off, so
+        // a tick can overrun the timeout by that work's length. A boundary that sees
+        // the cancellation throws OperationCanceledException; RunServerTick abandons
+        // the rest of the tick (no replay), recovers the NPCs it took from the wheel
+        // and falls back to single-thread mode until the cooldown expires. Nothing
+        // applied before the boundary is rolled back and nothing after it is half
+        // applied: each boundary sits between complete units of work.
         int timeoutMs = Math.Max(100, _config.MulticorePhaseTimeoutMs);
         using var cts = new CancellationTokenSource(timeoutMs);
+        var token = cts.Token;
 
         long p0 = Stopwatch.GetTimestamp();
-        _world.OnTickParallel(workerCount, cts.Token);
+        _world.OnTickParallel(workerCount, token);
         _telemetryWorldTickUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
+        // Boundary: the world tick may have returned early on cancellation; nothing of
+        // the NPC phase has started, so abandoning here consumes no NPCs.
+        _multicoreConsumedNpcs = null;
+        token.ThrowIfCancellationRequested();
         _spellEngine.ProcessExpirations(Environment.TickCount64);
 
         // Wake NPCs in sectors that just became active (player entered area)
@@ -945,7 +1042,8 @@ public static partial class Program
         // order, rather than by whichever worker reaches the counter first — the losers
         // take a 150ms path defer, which is state, so racing for it made the same tick
         // produce different worlds (review finding B5).
-        _npcAI.BeginTickPathfindBudget(2, npcSnapshot, _tickCounter);
+        // The acceptance count is sphere.ini NpcPathPrestagePerTick (default 2).
+        _npcAI.BeginTickPathfindBudget(NpcPathPrestagePerTick, npcSnapshot, _tickCounter);
         if (npcSnapshot.Count >= ParallelComputeMinBatch)
         {
             var po = new ParallelOptions
@@ -982,6 +1080,9 @@ public static partial class Program
             }
         }
         _telemetryNpcBuildUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1);
+        // Boundary: decisions are built but none applied; the serial small-batch build
+        // above does not check the token per NPC, so this is where it is honoured.
+        token.ThrowIfCancellationRequested();
 
         long p1b = Stopwatch.GetTimestamp();
         long rttNow = Environment.TickCount64;
@@ -1028,6 +1129,11 @@ public static partial class Program
         _telemetryNpcApplyDirtyCount = dirtyObjects.Count;
         _telemetryNpcApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1c);
 
+        // Boundary: NPC decisions are fully applied. Abandoning here leaves every
+        // client's ViewNeedsRefresh armed (only a sent delta clears it), so the next
+        // tick builds those views.
+        token.ThrowIfCancellationRequested();
+
         // View delta: only for clients flagged ViewNeedsRefresh (moved or
         // had nearby objects change). Most clients are idle and skip entirely.
         long p1d = Stopwatch.GetTimestamp();
@@ -1043,6 +1149,11 @@ public static partial class Program
         }
 
         var clientDeltas = _reusableClientDeltas;
+        // A delta left here by an abandoned tick was never applied, so its client's
+        // scratch is still rented; free it (a no-op for applied ones) before dropping.
+        foreach (var leftover in clientDeltas.Values) leftover.Release();
+        if (!_reusableViewDeltaConcurrent.IsEmpty)
+            foreach (var kv in _reusableViewDeltaConcurrent) kv.Value.Release();
         clientDeltas.Clear();
         if (refreshClients.Count >= ParallelComputeMinBatch)
         {

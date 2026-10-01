@@ -1901,6 +1901,14 @@ public sealed class WorldLoader
                     }
                     break;
                 }
+                // OWNER on a character is a runtime verb (CHV_OWNER), not a stored key,
+                // and running it here would make the OWNER this creature's pet. A record
+                // that carries one names its owner, so it loads as the raw owner key.
+                if (upper == "OWNER")
+                {
+                    ch.TrySetProperty("OWNER_UID", val);
+                    break;
+                }
                 if (upper == "ATTACKER")
                 {
                     var parts = val.Split(',');

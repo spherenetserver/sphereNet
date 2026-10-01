@@ -111,20 +111,24 @@ public sealed class CharTriggerHookTests
     }
 
     [Fact]
-    public void FollowersUpdateCanRefuseANewPet()
+    public void FollowersUpdateFiresButCannotRefuseANewPet()
     {
+        // NPC_PetSetOwner ignores FollowersUpdate's result (CCharNPCPet.cpp:633): the
+        // trigger is told about the new pet, and its RETURN 1 does not undo it.
         var world = World();
         var owner = Player(world, 100, "owner");
         var pet = world.CreateCharacter();
         world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
-        Character.OnFollowersUpdate = (_, _, adding, _) => adding;
+        int calls = 0;
+        Character.OnFollowersUpdate = (_, _, adding, _) => { calls++; return adding; };
         var saved = SphereNet.Game.Clients.GameClient.ServerOptionFlags;
         try
         {
             // Upstream raises it only with OF_PetSlots on (CCharUse.cpp:1236).
             SphereNet.Game.Clients.GameClient.ServerOptionFlags |= OptionFlags.PetSlots;
-            Assert.False(pet.TryAssignOwnership(owner));
-            Assert.False(pet.HasOwner(owner.Uid));
+            Assert.True(pet.TryAssignOwnership(owner));
+            Assert.True(pet.HasOwner(owner.Uid));
+            Assert.Equal(1, calls);
         }
         finally { SphereNet.Game.Clients.GameClient.ServerOptionFlags = saved; }
     }

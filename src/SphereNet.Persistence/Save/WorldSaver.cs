@@ -1164,15 +1164,17 @@ public sealed class WorldSaver
         // spawner produces (r_Write, CCSpawn.cpp:1094). Only the char list was written,
         // so an item spawner came back under quota and topped itself up again on every
         // single restart.
+        // A save is not a removal: upstream skips a uid whose object no longer exists
+        // and changes nothing else (CCSpawn.cpp:1132). Sweeping the list here ran
+        // @DelObj scripts in the middle of a save and moved the spawner's timer.
         if (item.SpawnChar != null)
         {
-            item.SpawnChar.CleanupDead();
-            foreach (var uid in item.SpawnChar.SpawnedUids)
+            foreach (var uid in item.SpawnChar.ExistingMemberUids())
                 w.WriteProperty("ADDOBJ", $"0{uid.Value:x}");
         }
         else if (item.SpawnItem != null)
         {
-            foreach (var uid in item.SpawnItem.SpawnedUids)
+            foreach (var uid in item.SpawnItem.ExistingMemberUids())
                 w.WriteProperty("ADDOBJ", $"0{uid.Value:x}");
         }
 

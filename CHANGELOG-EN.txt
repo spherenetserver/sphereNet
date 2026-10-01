@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Pet ownership verb, NPC restock and spawn cleanup follow Source-X
+------------------------------------------------------------------------
+FIX - The runtime OWNER verb on a character follows Source-X CHV_OWNER: with an
+      argument the argument creature becomes the pet of the character the line
+      runs on; without one the character becomes SRC's pet. It previously wrote
+      the raw owner field on the runner, turning a player into its own pet's
+      pet. OWNER_UID and NPCMASTER remain the raw load keys; a stray OWNER key in
+      a character record still loads as the raw owner.
+FIX - Pet ownership assignment refuses a player target and a creature named as
+      its own owner (NPC_PetSetOwner); MAKEMYPET no longer sets the Pet flag on a
+      refused assignment. A pet changing owners fires @FollowersUpdate removal on
+      the previous owner before the addition on the new owner; as in Source-X
+      NPC_PetSetOwner, a RETURN 1 there no longer stops a transfer or a figurine
+      restore.
+FIX - Vendor, banker, healer and stable NPCs check their periodic restock once at
+      the end of every action tick, so a running scripted action no longer
+      postpones it; region RESTOCKVENDORS is a Sphere number in tenths of a
+      second and a present 0 means no delay; stablemaster TAG.MAXPLAYERPETS is
+      evaluated as GetKeyNum ("5+5" is 10).
+FIX - A dead bonded pet runs its action dispatch: scripted GOTO/RUNTO/WALK/RUN,
+      FLEE and FOLLOW_TARG are carried out, while GUARD_TARG only follows because
+      a dead NPC cannot attack.
+FIX - A spawn member found dead, deleted or missing by the spawner sweep leaves
+      through the same DelObj lifecycle as any other member (count reduced,
+      NOSLEEP set, timer prepared before @DelObj, its ARGN1 answer final); item
+      spawners likewise. World save no longer sweeps spawn members or fires
+      @DelObj; like Source-X it only omits ADDOBJ for objects that no longer exist.
+
 [2026-10-01] - Script variables, blocks and expressions follow Source-X
 ------------------------------------------------------------------------
 FIX - A quoted TAG/VAR/LOCAL/CTAG value is text: TAG.DATE="2026-10-01" no longer

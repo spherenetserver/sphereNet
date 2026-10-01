@@ -4,6 +4,35 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Pet sahiplik komutu, NPC restock ve spawn temizligi Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Karakter uzerindeki OWNER komutu Source-X CHV_OWNER gibi calisir:
+           arguman verilirse argumandaki yaratik komutun calistigi karakterin peti
+           olur; arguman yoksa karakter SRC'nin peti olur. Onceden calistiranin ham
+           sahip alanini yaziyor, oyuncuyu kendi petinin peti yapiyordu. OWNER_UID
+           ve NPCMASTER ham yukleme anahtari olarak kalir; karakter kaydindaki
+           OWNER anahtari yine ham sahip olarak yuklenir.
+DUZELTME - Pet sahiplik atamasi oyuncu hedefi ve kendini sahip gosteren yaratigi
+           reddeder (NPC_PetSetOwner); MAKEMYPET reddedilen atamada Pet bayragi
+           vermez. Sahip degistiren pet icin @FollowersUpdate once eski sahipte
+           cikarma, sonra yeni sahipte ekleme olarak tetiklenir; Source-X
+           NPC_PetSetOwner gibi oradaki RETURN 1 artik devri veya figurine geri
+           cikarmayi durdurmaz.
+DUZELTME - Vendor, banker, healer ve stable NPC'leri periyodik restock'u her eylem
+           tikinin sonunda bir kez kontrol eder; calisan script eylemi artik
+           geciktirmez; bolge RESTOCKVENDORS saniyenin onda biri biriminde Sphere
+           sayisidir ve var olan 0 gecikmesiz demektir; ahir ustasinin
+           TAG.MAXPLAYERPETS degeri GetKeyNum gibi hesaplanir ("5+5" = 10).
+DUZELTME - Olu bonded pet eylem dagitimini calistirir: script GOTO/RUNTO/WALK/RUN,
+           FLEE ve FOLLOW_TARG yurutulur; olu NPC saldiramadigi icin GUARD_TARG
+           yalnizca takip eder.
+DUZELTME - Spawner taramasinin olu, silinmis veya kayip buldugu uye diger uyelerle
+           ayni DelObj yasam dongusunden cikar (sayi azalir, NOSLEEP acilir, timer
+           @DelObj'dan once hazirlanir, ARGN1 cevabi son karardir); item
+           spawner'lar da ayni. Dunya kaydi artik spawn uyelerini temizlemez ve
+           @DelObj calistirmaz; Source-X gibi yalnizca var olmayan nesneler icin
+           ADDOBJ yazmaz.
+
 [2026-10-01] - Script degiskenleri, bloklar ve ifadeler Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Tirnakli TAG/VAR/LOCAL/CTAG degeri metindir: TAG.DATE="2026-10-01"

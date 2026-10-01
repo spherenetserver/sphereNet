@@ -243,8 +243,6 @@ public sealed partial class NpcAI
     /// CCharNPCAct.cpp:1092), otherwise behaves as a townsman.</summary>
     private void ActHealer(Character npc)
     {
-        TryVendorRestock(npc);
-
         if (TryFightAssignedTarget(npc))
             return;
 
@@ -340,6 +338,23 @@ public sealed partial class NpcAI
 
     private const int VendorRestockIntervalMs = 10 * 60 * 1000; // 10 minutes
 
+    /// <summary>Bound on a RestockVendors value so the tenths-to-ms product cannot
+    /// overflow; far beyond any delay a shard could mean.</summary>
+    private const long MaxRestockTenths = long.MaxValue / 1000;
+
+    /// <summary>Source-X <c>CVarDefCont::GetValNum</c> of a stored text: a Sphere
+    /// number (a leading 0 is hex) or a simple arithmetic expression evaluated as
+    /// <c>Exp_Get64Val</c> does, and 0 for anything else.</summary>
+    private static long GetValNum(string? text)
+    {
+        if (ScriptNumber.TryParseLong(text, out long value))
+            return value;
+        string trimmed = (text ?? "").Trim();
+        return trimmed.Length > 0 &&
+               SphereNet.Scripting.Variables.VarMap.TryEvaluateSimpleNumber(trimmed, out value)
+            ? value : 0;
+    }
+
     /// <summary>The vendor layers NPC_Vendor_Restock empties before a restock
     /// (CChar::sm_VendorLayers, CCharNPCAct_Vendor.cpp:15).</summary>
     private static readonly Layer[] s_vendorLayers =
@@ -360,10 +375,13 @@ public sealed partial class NpcAI
             return;
 
         var vendorRegion = _world.FindRegion(npc.Position);
+        // A present RestockVendors tag is GetValNum * MSECS_PER_TENTH
+        // (CCharNPCAct_Vendor.cpp:52-54): any value it holds, 0 included, replaces
+        // the default - a zero delay restocks on every tick - and only a missing tag
+        // keeps the ten minutes.
         long intervalMs = VendorRestockIntervalMs;
-        if (vendorRegion != null && vendorRegion.TryGetTag("RESTOCKVENDORS", out string? rv) && rv != null &&
-            ScriptNumber.TryParseLong(rv, out long tenths) && tenths > 0)
-            intervalMs = Math.Clamp(tenths, 1, 365L * 24 * 60 * 60 * 10) * 100;
+        if (vendorRegion != null && vendorRegion.TryGetTag("RESTOCKVENDORS", out string? rv))
+            intervalMs = Math.Clamp(GetValNum(rv), -MaxRestockTenths, MaxRestockTenths) * 100;
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (npc.TryGetTag("RESTOCK_TIME", out string? rtStr) && ScriptNumber.TryParseLong(rtStr, out long lastRestock)
@@ -385,12 +403,11 @@ public sealed partial class NpcAI
         npc.SetTag("RESTOCK_TIME", now.ToString());
     }
 
-    /// <summary>Vendor/Banker/Stable: stay near home, barely move, periodic
-    /// restock. Defends itself when attacked.</summary>
+    /// <summary>Vendor/Banker/Stable: stay near home, barely move. Defends itself
+    /// when attacked. (The periodic restock runs at the end of every tick, see
+    /// OnTickAction.)</summary>
     private void ActVendor(Character npc)
     {
-        TryVendorRestock(npc);
-
         if (TryFightAssignedTarget(npc))
             return;
 

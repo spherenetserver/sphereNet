@@ -359,6 +359,13 @@ public sealed partial class NpcAI
 
         RunTickBody(npc);
 
+        // The tail of NPC_OnTickAction (CCharNPCAct.cpp:2396): every NPC_IsVendor
+        // brain checks its periodic restock once per tick, whatever action the tick
+        // ran - a scripted RUNTO, a fight or the brain's own idle alike. Inside the
+        // brain methods it was skipped by every early return before them.
+        if (!npc.IsDeleted)
+            TryVendorRestock(npc);
+
         // A step the tick took through a path this file does not own (a flee or a
         // back-off step) still gets the move delay rather than the non-move re-tick.
         if (_stepDelayAppliedFor != npc.Uid.Value && !npc.IsDeleted &&
@@ -384,6 +391,16 @@ public sealed partial class NpcAI
     {
         if (npc.IsDead)
         {
+            // Source-X runs the whole action dispatch for a dead NPC
+            // (CCharAct.cpp:5944); STATF_DEAD only skips food and the extra pass
+            // (:5946-5957). So a bonded ghost carries out the action a script gave it
+            // - GOTO/RUNTO/WALK/RUN, FLEE, FOLLOW_TARG (CCharNPCAct.cpp:2371) - ahead
+            // of its pet order, the same order a living pet keeps. What it cannot do
+            // is fight: Fight_Attack refuses a dead attacker (CCharFight.cpp:1403), so
+            // GUARD_TARG falls back to following (NPC_Act_Guard, :1291-1309).
+            npc.FightTarget = Serial.Invalid;
+            if (RunScriptedAction(npc))
+                return;
             ActDeadBondedPet(npc);
             return;
         }

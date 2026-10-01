@@ -334,14 +334,15 @@ public sealed partial class NpcAI
             KeepOwnerPace(npc, followTarget);
     }
 
-    /// <summary>A dead bonded pet's tick. Source-X keeps running the action tick of a
-    /// dead NPC (CCharAct.cpp:5948-5952; only food and the extra pass are skipped), and
-    /// a bonded ghost stays in the world with its orders - so it still follows, comes,
-    /// goes and stays when told. It fights nothing: the orders that would make it
-    /// (guard, attack) are the ones it refuses while dead (CCharNPCPet.cpp:158).</summary>
+    /// <summary>A dead bonded pet's order, once no scripted action is running (the
+    /// dead tick runs those first, see RunTickBody). Source-X keeps running the action
+    /// tick of a dead NPC (CCharAct.cpp:5948-5952; only food and the extra pass are
+    /// skipped), and a bonded ghost stays in the world with its orders - so it still
+    /// follows, comes, goes and stays when told. It fights nothing: the orders that
+    /// would make it (guard, attack) are the ones it refuses while dead
+    /// (CCharNPCPet.cpp:158).</summary>
     private void ActDeadBondedPet(Character npc)
     {
-        npc.FightTarget = Serial.Invalid;
         var master = npc.ResolveControllerCharacter() ?? npc.ResolveOwnerCharacter();
         if (master == null)
             return;

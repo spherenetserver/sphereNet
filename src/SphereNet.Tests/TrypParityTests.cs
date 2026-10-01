@@ -254,7 +254,8 @@ public sealed class TrypParityTests
         player.PrivLevel = PrivLevel.Player;
         world.PlaceCharacter(player, new Point3D(100, 100));
         var pet = world.CreateCharacter();
-        if (owned) pet.TrySetProperty("OWNER", $"0{player.Uid.Value:X}");
+        // The raw owner key: on a character OWNER is the CHV_OWNER verb, not a setter.
+        if (owned) pet.TrySetProperty("OWNER_UID", $"0{player.Uid.Value:X}");
         world.PlaceCharacter(pet, new Point3D(101, 100));
         var container = world.CreateItem();
         container.ItemType = ItemType.ContainerLocked;

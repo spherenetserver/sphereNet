@@ -95,17 +95,13 @@ public sealed class SpawnComponent
     {
         if (_stopped) return;
 
-        int prevCount = _spawnedUids.Count;
+        // A member lost here leaves through DelObj, which re-arms a parked timer before
+        // @DelObj and then applies the script's answer (CCSpawn.cpp:551/571). Nothing
+        // may re-arm it again afterwards, or a script that parked the spawner from
+        // @DelObj would be overridden.
         CleanupDead();
 
-        // NPC died → re-enable timer if it was paused at max
-        if (_spawnedUids.Count < prevCount && _spawnedUids.Count < _maxCount)
-        {
-            if (_nextSpawnTick < 0)
-                SetNextSpawnTime();
-        }
-
-        if (_nextSpawnTick < 0) return; // paused at max count
+        if (_nextSpawnTick < 0) return; // paused at max count, or parked by a script
         if (currentTick < _nextSpawnTick) return;
         // Source-X IT_SPAWN_CHAMPION: a champion spawner ignores the amount
         // cap and never pauses its timer — the wave keeps coming.
@@ -441,39 +437,60 @@ public sealed class SpawnComponent
         return _rand.Next(min, max + 1);
     }
 
+    /// <summary>Release every member that is dead, deleted or no longer in the world.
+    ///
+    /// The members are decided FIRST and each then leaves through <see cref="DelObj"/>,
+    /// the one removal upstream has (CCSpawn::DelObj, CCSpawn.cpp:509): NOSLEEP, the
+    /// re-armed timer and the uid leaving the list all happen before @DelObj, and the
+    /// script's ARGN1 is the last word on the timer. Firing @DelObj from inside the
+    /// list-removal predicate showed the script the member still counted and a parked
+    /// -1, left NOSLEEP off, and re-armed a timer the script had just parked. Walking a
+    /// snapshot also lets a @DelObj script release other members itself: DelObj skips
+    /// a uid that is no longer on the list.</summary>
     public void CleanupDead()
     {
         if (_killingChildren) return;
-        int before = _spawnedUids.Count;
-        _spawnedUids.RemoveAll(uid =>
+        List<Serial>? lost = null;
+        foreach (var uid in _spawnedUids)
         {
             var ch = _world.FindChar(uid);
             if (ch == null || ch.IsDeleted || ch.IsDead)
-            {
-                if (ch != null)
-                    FireDelObj(ch);
-                return true;
-            }
-            return false;
-        });
-        // Losing a member re-opens the schedule, wherever the loss is noticed. Upstream
-        // does the removal and the timer together in DelObj (CCSpawn.cpp:509); here the
-        // save path calls this instead, and a spawner whose only creature died during a
-        // world save was left empty AND parked, so no ordinary tick ever restarted it.
-        if (!_stopped && _spawnedUids.Count < before &&
-            _spawnedUids.Count < _maxCount && _nextSpawnTick < 0)
-            SetNextSpawnTime();
+                (lost ??= []).Add(uid);
+        }
+        if (lost == null) return;
+        foreach (var uid in lost)
+            DelObj(uid);
     }
 
-    private void FireDelObj(Character ch)
+    /// <summary>Members whose object still exists, for the save file. Upstream's
+    /// r_Write only skips a uid that no longer resolves (CCSpawn.cpp:1132); a save is
+    /// not a removal, so it fires no @DelObj and leaves the member list and the timer
+    /// alone.</summary>
+    public IEnumerable<Serial> ExistingMemberUids()
+    {
+        foreach (var uid in _spawnedUids)
+        {
+            var ch = _world.FindChar(uid);
+            if (ch != null && !ch.IsDeleted)
+                yield return uid;
+        }
+    }
+
+    private void FireDelObj(Character? ch)
     {
         if (_killingChildren) return;
-        ch.ClearStatFlag(StatFlag.Spawned);
-        // The link has to go with the membership, or a script asking the creature which
-        // spawner owns it still gets the old one (DelObj -> SetSpawn(nullptr),
-        // CCSpawn.cpp:542; the SPAWNITEM read answers 0 with no link, CObjBase.cpp:1608).
-        ch.RemoveTag("SPAWN_POINT_UUID");
-        ch.RemoveTag("SPAWNITEM");
+        // Only an object that is still there is unlinked (CCSpawn.cpp:539); the trigger
+        // runs either way (:565).
+        if (ch != null && !ch.IsDeleted)
+        {
+            ch.ClearStatFlag(StatFlag.Spawned);
+            // The link has to go with the membership, or a script asking the creature
+            // which spawner owns it still gets the old one (DelObj -> SetSpawn(nullptr),
+            // CCSpawn.cpp:542; the SPAWNITEM read answers 0 with no link,
+            // CObjBase.cpp:1608).
+            ch.RemoveTag("SPAWN_POINT_UUID");
+            ch.RemoveTag("SPAWNITEM");
+        }
         if (OnSpawnTrigger == null) return;
 
         // @DelObj is about the SPAWNER: O1 is the spawn point and ARGN1 the remaining
@@ -568,9 +585,9 @@ public sealed class SpawnComponent
         if (_spawnedUids.Count < _maxCount && _nextSpawnTick < 0 && !_stopped)
             SetNextSpawnTime();
 
-        var ch = _world.FindChar(uid);
-        if (ch != null && !ch.IsDeleted)
-            FireDelObj(ch);
+        // @DelObj runs whether or not the object is still there (CCSpawn.cpp:565): a
+        // member found deleted or missing is announced like any other.
+        FireDelObj(_world.FindChar(uid));
     }
 
     /// <summary>Source-X RESET verb: kill all + immediate respawn.</summary>
@@ -1417,16 +1434,33 @@ public sealed class ItemSpawnComponent
         _spawnItem.SetTimeout(_nextSpawnTick);
     }
 
-    private void CleanupDeleted()
+    /// <summary>Members whose item still exists, for the save file (r_Write,
+    /// CCSpawn.cpp:1132) - a save fires nothing and changes nothing.</summary>
+    public IEnumerable<Serial> ExistingMemberUids()
     {
-        _spawnedUids.RemoveAll(uid =>
+        foreach (var uid in _spawnedUids)
         {
             var item = _world.FindItem(uid);
-            bool deleted = item == null || item.IsDeleted;
-            if (deleted)
-                SpawnComponent.OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
-                    new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = _itemDefId });
-            return deleted;
-        });
+            if (item != null && !item.IsDeleted)
+                yield return uid;
+        }
+    }
+
+    /// <summary>Release every member whose item is gone, each through
+    /// <see cref="DelObj"/> - the same removal, timer preparation, NOSLEEP and
+    /// @DelObj answer as any other loss (CCSpawn.cpp:509). The members are decided
+    /// first, so a @DelObj script may change the list without breaking the sweep.</summary>
+    private void CleanupDeleted()
+    {
+        List<Serial>? lost = null;
+        foreach (var uid in _spawnedUids)
+        {
+            var item = _world.FindItem(uid);
+            if (item == null || item.IsDeleted)
+                (lost ??= []).Add(uid);
+        }
+        if (lost == null) return;
+        foreach (var uid in lost)
+            DelObj(uid);
     }
 }

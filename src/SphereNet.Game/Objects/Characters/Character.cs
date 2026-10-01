@@ -2957,16 +2957,36 @@ public partial class Character : ObjBase
         Serial ownerUid = owner?.Uid ?? Serial.Invalid;
         Serial controllerUid = controller?.Uid ?? ownerUid;
 
+        // NPC_PetSetOwner's preconditions (CCharNPCPet.cpp:606): a player is never
+        // anybody's pet, and nothing is its own owner. Refused before any state moves,
+        // so the caller never sees a half-made pet.
+        if (owner != null && (IsPlayer || owner == this))
+            return false;
+
         if (enforceFollowerCap && owner != null && FollowerCapApplies(owner) &&
             !HasOwner(owner.Uid) &&
             owner.CurFollower + ControlSlots > owner.MaxFollower)
         {
             return false;
         }
-        if (owner != null && !HasOwner(owner.Uid) && FollowerCapApplies(owner) &&
-            OnFollowersUpdate?.Invoke(owner, this, true, ControlSlots) == true)
+        if (owner != null && !HasOwner(owner.Uid))
         {
-            return false;
+            // A transfer clears the previous owner first - NPC_PetClearOwners runs
+            // FollowersUpdate(-slots) on the OLD owner (CCharNPCPet.cpp:594) - and only
+            // then adds to the new one (:630), so @FollowersUpdate sees the removal
+            // before the addition. NPC_PetSetOwner ignores both results: a script's
+            // RETURN 1 there does not stop the transfer (callers that may refuse ask
+            // FollowersUpdate with fCheckOnly first, which fires no trigger).
+            Serial previousUid = OwnerSerial;
+            if (OnFollowersUpdate != null && previousUid.IsValid &&
+                ResolveWorld?.Invoke()?.FindChar(previousUid) is { } prev && prev != owner &&
+                FollowerCapApplies(prev))
+            {
+                OnFollowersUpdate(prev, this, false, ControlSlots);
+            }
+
+            if (FollowerCapApplies(owner))
+                OnFollowersUpdate?.Invoke(owner, this, true, ControlSlots);
         }
 
         // A REAL change of owner takes the old owner's relationships with it. Source-X
@@ -7058,7 +7078,11 @@ public partial class Character : ObjBase
             case "REGENVALMANA": if (ushort.TryParse(normalized, out ushort rvm)) _regenValMana = rvm; return true;
             case "REGENVALSTAM": if (ushort.TryParse(normalized, out ushort rvs)) _regenValStam = rvs; return true;
             case "REGENVALFOOD": if (ushort.TryParse(normalized, out ushort rvf)) _regenValFood = rvf; return true;
-            case "OWNER":
+            // The raw owner keys of the load path. OWNER is not one of them: on a
+            // character it is the CHV_OWNER verb (TryExecuteCommand), which runs the
+            // other way round - "player.OWNER=<pet>" makes the PET the player's.
+            // Source-X's CChar::r_LoadVal has no OWNER key; WorldLoader maps a stray
+            // OWNER= in a character record onto OWNER_UID.
             case "OWNER_UID":
             case "NPCMASTER":
             {
@@ -8526,12 +8550,29 @@ public partial class Character : ObjBase
                 var newOwner = ownerUid.IsValid
                     ? petWorld?.FindObject(ownerUid) as Character
                     : null;
+                // The shared operation sets the Pet flag itself, and only once the
+                // assignment is accepted (a player or the creature itself is refused).
                 if (newOwner != null)
-                {
-                    SetStatFlag(StatFlag.Pet);
                     TryAssignOwnership(newOwner, newOwner, summoned: false,
                         enforceFollowerCap: false);
+                return true;
+            }
+            case "OWNER":
+            {
+                // Source-X CHV_OWNER (CChar.cpp:4791). Without an argument THIS becomes
+                // SRC's pet (NPC_PetSetOwner(pCharSrc)); with one, the ARGUMENT character
+                // becomes MY pet (pChar->NPC_PetSetOwner(this)). The read (<OWNER>) and
+                // the raw OWNER_UID/NPCMASTER load keys are separate paths.
+                if (string.IsNullOrWhiteSpace(args))
+                {
+                    var src = ResolveSourceCharacter(source);
+                    if (src != null)
+                        TryAssignOwnership(src, src, summoned: false, enforceFollowerCap: false);
+                    return true;
                 }
+                Serial petUid = ParseSerial(args.Trim());
+                if (petUid.IsValid && ResolveWorld?.Invoke()?.FindChar(petUid) is { } newPet)
+                    newPet.TryAssignOwnership(this, this, summoned: false, enforceFollowerCap: false);
                 return true;
             }
             case "NEWGOLD":

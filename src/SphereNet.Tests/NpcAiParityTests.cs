@@ -51,9 +51,11 @@ public class NpcAiParityTests
         int restocks = 0;
         ai.OnVendorRestock = _ => restocks++;
 
-        var actVendor = typeof(NpcAI).GetMethod("ActVendor",
+        // The restock check closes every NPC tick (NPC_OnTickAction tail,
+        // CCharNPCAct.cpp:2396); call it directly.
+        var restock = typeof(NpcAI).GetMethod("TryVendorRestock",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
-        actVendor.Invoke(ai, [vendor]);
+        restock.Invoke(ai, [vendor]);
 
         Assert.Equal(1, restocks);
         Assert.True(vendor.TryGetTag("RESTOCK_TIME", out string? value));

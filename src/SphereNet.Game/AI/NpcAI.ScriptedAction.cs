@@ -186,7 +186,9 @@ public sealed partial class NpcAI
     /// is fighting, else follow it.</summary>
     private void ActGuardTarget(Character npc, Character guarded, Character? master = null)
     {
-        if (guarded.MapIndex == npc.MapIndex && CanSeeChar(npc, guarded) &&
+        // A dead guardian (a bonded ghost) cannot attack - Fight_Attack refuses a
+        // dead attacker (CCharFight.cpp:1403) - so it only follows.
+        if (!npc.IsDead && guarded.MapIndex == npc.MapIndex && CanSeeChar(npc, guarded) &&
             _world.CanSeeLOSFor(npc, guarded, LosFlags.NbWindows) && guarded.FightTarget.IsValid)
         {
             var foe = _world.FindChar(guarded.FightTarget);

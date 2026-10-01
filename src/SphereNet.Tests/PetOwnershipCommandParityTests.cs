@@ -162,21 +162,20 @@ public sealed class PetOwnershipCommandParityTests
     // --- restore refused by the ownership hand-over ---------------------------
 
     [Fact]
-    public void ARestoreWhoseOwnershipIsVetoedKeepsTheFigurineAndThePetParked()
+    public void AFollowersUpdateReturnOneDoesNotStopARestore()
     {
-        var (b, pet, figurine, shrinker) = LockedFigurine(lockToShrinker: false);
+        // Use_Figurine asks FollowersUpdate with fCheckOnly (no trigger,
+        // CCharUse.cpp:1133) and NPC_PetSetOwner ignores the trigger's result
+        // (CCharNPCPet.cpp:633), so a script's RETURN 1 cannot keep the pet parked.
+        var (b, pet, figurine, _) = LockedFigurine(lockToShrinker: false);
         GameClient.ServerOptionFlags |= OptionFlags.PetSlots;
-        // @FollowersUpdate RETURN 1 for the new owner (Program.ScriptHooks wiring).
         Character.OnFollowersUpdate = (owner, _, adding, _) => adding && owner == b.Owner;
 
         var restored = PetFigurine.Restore(b.Owner, figurine, b.World, b.Owner.Position);
 
-        Assert.Null(restored);
-        Assert.False(figurine.IsDeleted);
-        Assert.True(PetFigurine.IsPetFigurine(figurine));
-        Assert.True(pet.HasOwner(shrinker.Uid));
-        Assert.True(PetStorage.IsParked(pet));
-        Assert.DoesNotContain(pet, b.World.GetCharsInRange(b.Owner.Position, 3));
+        Assert.NotNull(restored);
+        Assert.True(pet.HasOwner(b.Owner.Uid));
+        Assert.False(PetStorage.IsParked(pet));
     }
 
     // --- the attack order (CCharNPCPet.cpp:442-450) ---------------------------

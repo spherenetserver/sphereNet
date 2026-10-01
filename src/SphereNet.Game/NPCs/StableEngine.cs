@@ -38,10 +38,16 @@ public sealed class StableEngine
     /// 100.0 or above then adds (skill - 90.0) / 1.0 slots of its own.</summary>
     public static int GetMaxStabledPets(Character owner, Character? stableMaster = null)
     {
-        if (stableMaster != null &&
-            stableMaster.TryGetTag("MAXPLAYERPETS", out string? tag) &&
-            ScriptNumber.TryParseInt(tag, out int max) && max > 0)
-            return max;
+        // std::max(0, (int)m_TagDefs.GetKeyNum("MAXPLAYERPETS")) (:124): the tag's
+        // VALUE - a number var's number, a string var's text evaluated the way
+        // Exp_Get64Val evaluates it ("010" is 16, "5+5" is 10) - and zero or less
+        // means no override.
+        if (stableMaster != null)
+        {
+            int max = unchecked((int)stableMaster.Tags.GetInt("MAXPLAYERPETS"));
+            if (max > 0)
+                return max;
+        }
 
         // Tenths of a percent, as Skill_GetAdjusted returns them.
         int taming = owner.GetSkill(SkillType.Taming);

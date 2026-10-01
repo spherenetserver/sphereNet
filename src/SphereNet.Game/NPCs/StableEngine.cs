@@ -40,7 +40,7 @@ public sealed class StableEngine
     {
         if (stableMaster != null &&
             stableMaster.TryGetTag("MAXPLAYERPETS", out string? tag) &&
-            int.TryParse(tag, out int max) && max > 0)
+            ScriptNumber.TryParseInt(tag, out int max) && max > 0)
             return max;
 
         // Tenths of a percent, as Skill_GetAdjusted returns them.

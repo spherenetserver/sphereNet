@@ -108,7 +108,7 @@ public sealed class MountEngine
         if (mountNpc == null && rider.TryGetTag("MOUNT_NPC_BODY", out string? bodyStr) &&
             !string.IsNullOrWhiteSpace(bodyStr))
         {
-            _ = ushort.TryParse(bodyStr, out taggedBodyId);
+            _ = ScriptNumber.TryParseUShort(bodyStr, out taggedBodyId);
         }
 
         ushort expectedMountItemId = mountNpc != null
@@ -166,7 +166,7 @@ public sealed class MountEngine
         ushort hue = mountNpc?.Hue.Value ?? (ushort)0;
         if (hue == 0 && rider.TryGetTag("MOUNT_NPC_HUE", out string? hueStr) &&
             !string.IsNullOrWhiteSpace(hueStr))
-            _ = ushort.TryParse(hueStr, out hue);
+            _ = ScriptNumber.TryParseUShort(hueStr, out hue);
 
         var newMountItem = _world.CreateItem();
         newMountItem.BaseId = mountItemId;
@@ -208,7 +208,7 @@ public sealed class MountEngine
             return Usable(_world.FindByUuid(npcUuid) as Character);
 
         if (rider.TryGetTag("MOUNT_NPC_SERIAL", out string? serialStr) &&
-            uint.TryParse(serialStr, out uint npcSerial) && npcSerial != 0)
+            ScriptNumber.TryParseUInt(serialStr, out uint npcSerial) && npcSerial != 0)
             return Usable(_world.FindChar(new Serial(npcSerial)));
 
         return null;

@@ -811,7 +811,7 @@ public sealed class ClientItemUseHandler
         // Bank check redeem (Source-X): double-clicking a check converts it to gold
         // in the container it sits in (bank box or backpack) and consumes the check.
         if (item.TryGetTag("BANKCHECK_AMOUNT", out string? checkStr) &&
-            int.TryParse(checkStr, out int checkAmount) && checkAmount > 0)
+            ScriptNumber.TryParseInt(checkStr, out int checkAmount) && checkAmount > 0)
         {
             RedeemBankCheck(item, checkAmount);
             return;
@@ -2392,10 +2392,10 @@ public sealed class ClientItemUseHandler
         if (_netState.SupportsNewMapDisplay)
         {
             if (item.TryGetTag("OVERRIDE.MAPWIDTH", out string? ow) &&
-                ushort.TryParse(ow, out ushort owv) && owv > 0)
+                ScriptNumber.TryParseUShort(ow, out ushort owv) && owv > 0)
                 width = owv;
             if (item.TryGetTag("OVERRIDE.MAPHEIGHT", out string? oh) &&
-                ushort.TryParse(oh, out ushort ohv) && ohv > 0)
+                ScriptNumber.TryParseUShort(oh, out ushort ohv) && ohv > 0)
                 height = ohv;
             // MOREM is the facet the map depicts (addDrawMap, CClientMsg.cpp:2499);
             // without it two maps of the same coordinates on different worlds reached
@@ -2880,7 +2880,7 @@ public sealed class ClientItemUseHandler
     /// definition it was built from, not only the graphic it draws as.</summary>
     private static int SmeltIdentity(Item item) =>
         item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
-        int.TryParse(scriptDef, out int idx) && idx != 0
+        ScriptNumber.TryParseInt(scriptDef, out int idx) && idx != 0
             ? idx
             : item.BaseId;
 
@@ -3181,7 +3181,7 @@ public sealed class ClientItemUseHandler
     private static SphereNet.Scripting.Definitions.ItemDef? ResolveOwnItemDef(Item item)
     {
         if (item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
-            int.TryParse(scriptDef, out int idx) && idx != 0)
+            ScriptNumber.TryParseInt(scriptDef, out int idx) && idx != 0)
         {
             var own = DefinitionLoader.GetItemDef(idx);
             if (own != null)
@@ -4199,7 +4199,7 @@ public sealed class ClientItemUseHandler
         if (vat.Hue.Value != 0)
             return vat.Hue.Value;
         return vat.TryGetTag("DYE_HUE", out string? hueText) &&
-               ushort.TryParse(hueText, out ushort legacy) ? legacy : (ushort)0;
+               ScriptNumber.TryParseUShort(hueText, out ushort legacy) ? legacy : (ushort)0;
     }
 
     /// <summary>Whether this target may be dyed at all. Source-X requires the actor

@@ -1089,7 +1089,7 @@ public static class ActiveSkillEngine
                 Guid.TryParse(uuidStr, out Guid uuid) && uuid == ghost.Uuid)
                 return item;
             if (item.TryGetTag("OWNER_UID", out string? uidStr) &&
-                uint.TryParse(uidStr, out uint ownerUid) && ownerUid == ghost.Uid.Value)
+                ScriptNumber.TryParseUInt(uidStr, out uint ownerUid) && ownerUid == ghost.Uid.Value)
                 return item;
         }
         return null;
@@ -1715,7 +1715,7 @@ public static class ActiveSkillEngine
 
     /// <summary>TAG.BARDING.DIFF, 0 when unset.</summary>
     private static int BardingDiff(Character ch) =>
-        ch.TryGetTag("BARDING.DIFF", out string? raw) && int.TryParse(raw, out int v) ? v : 0;
+        ch.TryGetTag("BARDING.DIFF", out string? raw) && ScriptNumber.TryParseInt(raw, out int v) ? v : 0;
 
     /// <summary>CSRand::GetVal2: min..max inclusive (CSRand.cpp:47).</summary>
     private static int RandVal2(Random random, int min, int max)

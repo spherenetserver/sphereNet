@@ -1,5 +1,6 @@
 using SphereNet.Game.Objects.Items;
 using SphereNet.Network.Packets.Outgoing;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Housing;
 
@@ -35,7 +36,7 @@ public sealed class HouseDesign
     public static HouseDesign LoadFromTags(Item multi)
     {
         var design = new HouseDesign();
-        if (multi.TryGetTag(RevisionTag, out string? revStr) && uint.TryParse(revStr, out uint rev))
+        if (multi.TryGetTag(RevisionTag, out string? revStr) && ScriptNumber.TryParseUInt(revStr, out uint rev))
             design.Revision = rev;
 
         var entries = multi.Tags.GetAll()

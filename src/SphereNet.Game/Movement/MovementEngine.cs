@@ -790,7 +790,7 @@ public sealed class MovementEngine
                 spellHit = true;
 
             if (touch == FieldTouchResult.NotHandled &&
-                item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg))
+                item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && ScriptNumber.TryParseInt(fdStr, out int fieldDmg))
                 ApplyStepDamage(ch, fieldDmg,
                     Combat.DamageType.HitBlunt | Combat.DamageType.General);
         }
@@ -817,7 +817,7 @@ public sealed class MovementEngine
         if (prevRoomUid != newRoomUid)
         {
             // Exit old room
-            if (!string.IsNullOrEmpty(prevRoomUid) && uint.TryParse(prevRoomUid, out uint oldRoomId))
+            if (!string.IsNullOrEmpty(prevRoomUid) && ScriptNumber.TryParseUInt(prevRoomUid, out uint oldRoomId))
             {
                 var oldRoom = _world.FindRoomByUid(oldRoomId);
                 if (oldRoom != null && _triggerDispatcher != null)

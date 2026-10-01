@@ -3,6 +3,7 @@ using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Diagnostics;
 
@@ -122,7 +123,7 @@ public static class WorldInvariantAuditor
         // The lift/drop path parks the dragged item on the character until it
         // lands somewhere, so it is legitimately in neither collection.
         if (ch.TryGetTag("DRAGGING", out string? dragged) &&
-            uint.TryParse(dragged, out uint draggedUid))
+            ScriptNumber.TryParseUInt(dragged, out uint draggedUid))
             legitimate.Add(draggedUid);
 
         foreach (var child in world.GetContainerContents(ch.Uid))

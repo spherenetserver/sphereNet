@@ -3,6 +3,7 @@ using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Skills.Information;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Combat;
 
@@ -730,9 +731,9 @@ public static class CombatEngine
     /// Discordance skill — lazy expiry, no separate timer.</summary>
     private static int GetActiveDiscordPct(Character ch)
     {
-        if (!ch.TryGetTag("DISCORD_PCT", out string? p) || !int.TryParse(p, out int pct) || pct <= 0)
+        if (!ch.TryGetTag("DISCORD_PCT", out string? p) || !ScriptNumber.TryParseInt(p, out int pct) || pct <= 0)
             return 0;
-        if (ch.TryGetTag("DISCORD_UNTIL", out string? u) && long.TryParse(u, out long until) &&
+        if (ch.TryGetTag("DISCORD_UNTIL", out string? u) && ScriptNumber.TryParseLong(u, out long until) &&
             Environment.TickCount64 > until)
             return 0;
         return Math.Clamp(pct, 0, 100);
@@ -1149,7 +1150,7 @@ public static class CombatEngine
     /// <summary>Attacker's Damage Increase % (Source-X INCREASEDAM), from the
     /// INCREASEDAM tag. 0 when absent or unparseable.</summary>
     private static int GetDamageIncrease(Character ch) =>
-        ch.TryGetTag("INCREASEDAM", out string? s) && int.TryParse(s, out int v) ? v : 0;
+        ch.TryGetTag("INCREASEDAM", out string? s) && ScriptNumber.TryParseInt(s, out int v) ? v : 0;
 
     /// <summary>Source-X Fight_CalcDamage additive Damage Increase modifiers.
     /// The configured INCREASEDAM value is capped first; racial/form bonuses
@@ -1694,7 +1695,7 @@ public static class CombatEngine
     {
         if (item.MoreP.Z > 0)
             return item.MoreP.Z;
-        return item.TryGetTag("POISON_SKILL", out string? legacy) && int.TryParse(legacy, out int q) && q > 0
+        return item.TryGetTag("POISON_SKILL", out string? legacy) && ScriptNumber.TryParseInt(legacy, out int q) && q > 0
             ? Math.Clamp(q / 10, 0, 100)
             : 0;
     }
@@ -1889,7 +1890,7 @@ public static class CombatEngine
     public static int GetOnHitPropertyValue(Character attacker, Item? weapon, string prop)
     {
         long total = 0;
-        if (attacker.TryGetTag(prop, out var raw) && int.TryParse(raw, out int own))
+        if (attacker.TryGetTag(prop, out var raw) && ScriptNumber.TryParseInt(raw, out int own))
             total += own;
         if (weapon != null)
             total += GetItemNumProperty(weapon, prop);
@@ -1916,10 +1917,10 @@ public static class CombatEngine
 
     private static int GetItemNumProperty(Item item, string prop)
     {
-        if (item.TryGetTag(prop, out var raw) && int.TryParse(raw, out int v))
+        if (item.TryGetTag(prop, out var raw) && ScriptNumber.TryParseInt(raw, out int v))
             return v;
         var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
-        if (def != null && int.TryParse(def.TagDefs.Get(prop), out int dv))
+        if (def != null && ScriptNumber.TryParseInt(def.TagDefs.Get(prop), out int dv))
             return dv;
         return 0;
     }

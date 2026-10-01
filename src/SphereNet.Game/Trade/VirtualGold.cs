@@ -1,4 +1,5 @@
 using SphereNet.Game.Objects.Characters;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Trade;
 
@@ -21,7 +22,7 @@ public static class VirtualGold
     public static bool Enabled { get; set; }
 
     public static long Get(Character ch) =>
-        ch.TryGetTag("VIRTUALGOLD", out string? raw) && long.TryParse(raw, out long v) ? v : 0;
+        ch.TryGetTag("VIRTUALGOLD", out string? raw) && ScriptNumber.TryParseLong(raw, out long v) ? v : 0;
 
     public static void Set(Character ch, long amount)
     {

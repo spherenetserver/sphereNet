@@ -1948,7 +1948,7 @@ public sealed class ClientCombatHandler
             {
                 if (item.ItemType != ItemType.Corpse) continue;
                 if (!item.TryGetTag("OWNER_UID", out string? ownerStr)) continue;
-                if (!uint.TryParse(ownerStr, out uint ownerUid)) continue;
+                if (!ScriptNumber.TryParseUInt(ownerStr, out uint ownerUid)) continue;
                 if (ownerUid != victimUid) continue;
                 corpseSerial = item.Uid.Value;
                 break;
@@ -2109,7 +2109,7 @@ public sealed class ClientCombatHandler
         {
             if (it.ItemType != ItemType.Corpse) continue;
             if ((it.TryGetTag("OWNER_UUID", out string? u) && Guid.TryParse(u, out var g) && g == ch.Uuid) ||
-                (it.TryGetTag("OWNER_UID", out string? o) && uint.TryParse(o, out uint ou) && ou == ch.Uid.Value))
+                (it.TryGetTag("OWNER_UID", out string? o) && ScriptNumber.TryParseUInt(o, out uint ou) && ou == ch.Uid.Value))
                 return it;
         }
         return null;

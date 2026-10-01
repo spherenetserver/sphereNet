@@ -42,8 +42,11 @@ public sealed class VarMap
         public static StoredValue FromString(string value) => new(VarValueKind.String, value, 0);
         public static StoredValue FromInteger(long value) => new(VarValueKind.Integer, null, value);
 
+        /// <summary>A number var read from a save keeps the literal it was written
+        /// as in <see cref="Text"/>, so a script reads back the same text; one set
+        /// by engine code has none and reads as decimal.</summary>
         public string AsString() => Kind == VarValueKind.Integer
-            ? Integer.ToString(CultureInfo.InvariantCulture)
+            ? Text ?? Integer.ToString(CultureInfo.InvariantCulture)
             : Text ?? string.Empty;
     }
 
@@ -65,12 +68,15 @@ public sealed class VarMap
             return value.Integer;
 
         string text = value.Text ?? string.Empty;
-        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long result))
-            return result;
-        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
-            long.TryParse(text.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result))
-            return result;
-        return defaultValue;
+        // A script's unquoted number (TAG.X=0A) is a Source-X number var: its text
+        // is Sphere hex or arithmetic, which a plain integer parse misreads.
+        if (value.Form == VarSaveForm.Number && TryEvaluateNumber(text, out long number))
+            return number;
+        // Otherwise the Sphere token rule: a leading '0' is hex ("02A" from a save),
+        // anything else decimal.
+        return SphereNet.Core.Types.ScriptNumber.TryParseToken(text, out long result)
+            ? result
+            : defaultValue;
     }
 
     public void Set(string key, string value)
@@ -132,6 +138,37 @@ public sealed class VarMap
             _vars[key] = num with { Form = VarSaveForm.Number };
     }
 
+    /// <summary>A TAG value read back from a save line, after the owner stored its
+    /// text through its own setter. Source-X <c>CObjBase::r_LoadVal</c> hands the
+    /// line to <c>CVarDefMap::SetStr(key, fQuoted, arg, fZero)</c> (CObjBase.cpp:1788,
+    /// CVarDefMap.cpp:467): a quoted value stays a string var; an unquoted one that
+    /// IsSimpleNumberString accepts becomes a number var, removed when
+    /// <paramref name="deleteZero"/> (TAG0) is set and it is zero. The number var
+    /// keeps the literal it was written as, so a script reads the same text and the
+    /// next save writes the same line. Does nothing when the entry no longer holds
+    /// this text (a subclass routed the key elsewhere).</summary>
+    public void ApplyLoadedForm(string key, bool quoted, string value, bool deleteZero = false)
+    {
+        if (quoted)
+        {
+            ApplySetStrForm(key, true, value);
+            return;
+        }
+        if (!_vars.TryGetValue(key, out var stored) || stored.Kind != VarValueKind.String ||
+            !string.Equals(stored.Text, value, StringComparison.Ordinal))
+            return;
+        if (!ExpressionParser.IsSimpleNumberString(value) || !TryEvaluateNumber(value, out long number))
+            return;
+        if (deleteZero && number == 0)
+        {
+            _vars.Remove(key);
+            return;
+        }
+        // Arithmetic ("1+2") is stored as its value, as SetNum stores it; a literal
+        // keeps its spelling ("0A", "123", "0400ABCD").
+        _vars[key] = new StoredValue(VarValueKind.Integer, IsPlainNumberLiteral(value) ? value : null, number);
+    }
+
     /// <summary>Read a save line's value the way Source-X <c>CScriptKey::GetArgStr</c>
     /// does (CScript.cpp:61): a value opening with a quote loses it and is cut at its
     /// LAST quote, and only a value that has that closing quote counts as quoted.</summary>
@@ -163,7 +200,13 @@ public sealed class VarMap
     private static string FormatSaveValue(StoredValue value)
     {
         if (value.Kind == VarValueKind.Integer)
-            return ExpressionParser.FormatSphereHex(value.Integer);
+        {
+            // A number var loaded from a save goes back out as the literal it was
+            // read from: the same number on the same line.
+            return value.Text != null && IsPlainNumberLiteral(value.Text)
+                ? value.Text
+                : ExpressionParser.FormatSphereHex(value.Integer);
+        }
         string text = value.Text ?? string.Empty;
         return value.Form switch
         {
@@ -197,6 +240,21 @@ public sealed class VarMap
     /// <summary>Exp_Get64Val of a value IsSimpleNumberString accepted: digits, Sphere
     /// hex and arithmetic only, so no resolver is involved.</summary>
     private static long EvaluateNumber(string text) => new ExpressionParser().Evaluate(text);
+
+    private static bool TryEvaluateNumber(string text, out long number)
+    {
+        try
+        {
+            number = EvaluateNumber(text);
+            return true;
+        }
+        catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentException
+                                       or InvalidOperationException or DivideByZeroException)
+        {
+            number = 0;
+            return false;
+        }
+    }
 
     public bool Has(string key) => _vars.ContainsKey(key);
 

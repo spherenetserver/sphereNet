@@ -26,7 +26,8 @@ public sealed class SourceXVarMapWave223Tests
 
         Assert.False(vars.IsInteger("Padded"));
         Assert.Equal("00042", vars.Get("Padded"));
-        Assert.Equal(42, vars.GetInt("Padded"));
+        // CVarDefContStr::GetValNum is Exp_Get64Val: a leading 0 makes it Sphere hex.
+        Assert.Equal(0x42, vars.GetInt("Padded"));
     }
 
     [Fact]

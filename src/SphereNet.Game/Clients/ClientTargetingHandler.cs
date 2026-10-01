@@ -394,7 +394,7 @@ public sealed class ClientTargetingHandler
             {
                 var corpse = _world.FindItem(new Serial(serial));
                 if (corpse != null && corpse.TryGetTag("OWNER_UID", out string? ownerStr) &&
-                    uint.TryParse(ownerStr, out uint ownerUid))
+                    ScriptNumber.TryParseUInt(ownerStr, out uint ownerUid))
                 {
                     victim = _world.FindChar(new Serial(ownerUid));
                 }
@@ -1061,7 +1061,7 @@ public sealed class ClientTargetingHandler
 
         int seconds = SpellTimeoutSeconds;
         if (_character != null && _character.TryGetTag("SPELLTIMEOUT", out string? own) &&
-            int.TryParse(own, out int ownSeconds))
+            ScriptNumber.TryParseInt(own, out int ownSeconds))
             seconds = ownSeconds;
 
         Targets.TimeoutAtMs = seconds > 0

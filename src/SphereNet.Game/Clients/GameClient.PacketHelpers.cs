@@ -1112,7 +1112,7 @@ public sealed partial class GameClient
         // custom house has nothing in it, not how it is told to keep drawing the
         // multi it already has.
         if (!item.TryGetTag(HouseDesign.RevisionTag, out string? revStr) ||
-            !uint.TryParse(revStr, out uint revision))
+            !ScriptNumber.TryParseUInt(revStr, out uint revision))
             return;
         _netState.Send(new PacketHouseDesignVersion(item.Uid.Value, revision));
     }
@@ -1760,7 +1760,7 @@ public sealed partial class GameClient
         if (ch != null) return ch;
         var corpse = _world.FindItem(new Serial(uid));
         if (corpse != null && corpse.TryGetTag("OWNER_UID", out string? ownerStr) &&
-            uint.TryParse(ownerStr, out uint ownerUid))
+            ScriptNumber.TryParseUInt(ownerStr, out uint ownerUid))
             return _world.FindChar(new Serial(ownerUid));
         return null;
     }

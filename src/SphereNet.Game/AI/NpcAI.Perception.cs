@@ -160,7 +160,7 @@ public sealed partial class NpcAI
         if (!HasExtra(npc, NpcAiExtraFlags.HiddenPursuit))
             return false;
         int ticks = 5;
-        if (npc.TryGetTag("HIDE_PURSUIT", out string? hp) && int.TryParse(hp, out int v))
+        if (npc.TryGetTag("HIDE_PURSUIT", out string? hp) && ScriptNumber.TryParseInt(hp, out int v))
             ticks = v;
         if (ticks <= 0) return false;
         npc.SetTag("HIDE_PURSUIT", (ticks - 1).ToString());

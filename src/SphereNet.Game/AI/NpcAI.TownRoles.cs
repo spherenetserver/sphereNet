@@ -362,11 +362,11 @@ public sealed partial class NpcAI
         var vendorRegion = _world.FindRegion(npc.Position);
         long intervalMs = VendorRestockIntervalMs;
         if (vendorRegion != null && vendorRegion.TryGetTag("RESTOCKVENDORS", out string? rv) && rv != null &&
-            long.TryParse(rv, out long tenths) && tenths > 0)
+            ScriptNumber.TryParseLong(rv, out long tenths) && tenths > 0)
             intervalMs = Math.Clamp(tenths, 1, 365L * 24 * 60 * 60 * 10) * 100;
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        if (npc.TryGetTag("RESTOCK_TIME", out string? rtStr) && long.TryParse(rtStr, out long lastRestock)
+        if (npc.TryGetTag("RESTOCK_TIME", out string? rtStr) && ScriptNumber.TryParseLong(rtStr, out long lastRestock)
             && lastRestock > now - intervalMs)
             return;
         if (npc.TryGetTag("NORESTOCK", out _) ||

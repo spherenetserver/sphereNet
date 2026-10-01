@@ -2700,7 +2700,7 @@ public static partial class Program
                 bool isPlayerCorpse = false;
                 GameClient? ownerClient = null;
                 if (corpse.TryGetTag("OWNER_UID", out string? ownerStr) &&
-                    uint.TryParse(ownerStr, out uint ownerUid))
+                    ScriptNumber.TryParseUInt(ownerStr, out uint ownerUid))
                 {
                     var owner = _world.FindChar(new Serial(ownerUid));
                     if (owner != null && owner.IsPlayer)
@@ -3445,7 +3445,7 @@ public static partial class Program
                     return;
                 }
                 if (!ch.TryGetTag("DRAGGING", out string? dragSer) ||
-                    !uint.TryParse(dragSer, out uint dragUid))
+                    !ScriptNumber.TryParseUInt(dragSer, out uint dragUid))
                     return;
                 ch.RemoveTag("DRAGGING");
                 var dragged = _world.FindItem(new Core.Types.Serial(dragUid));

@@ -137,7 +137,7 @@ public sealed class CustomHousingEngine
     {
         uint revision = 0;
         if (multi.TryGetTag(HouseDesign.RevisionTag, out string? revStr))
-            uint.TryParse(revStr, out revision);
+            ScriptNumber.TryParseUInt(revStr, out revision);
         return revision;
     }
 

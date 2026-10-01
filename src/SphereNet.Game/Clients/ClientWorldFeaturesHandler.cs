@@ -1290,7 +1290,7 @@ public sealed class ClientWorldFeaturesHandler
             _character.Position.GetDistanceTo(partner.Position) > 3)
         { SysMessage("That person is too far away."); return false; }
         if (partner.TryGetTag("REFUSETRADES", out string? refuse) &&
-            (!int.TryParse(refuse, out int refuseValue) || refuseValue != 0))
+            (!ScriptNumber.TryParseInt(refuse, out int refuseValue) || refuseValue != 0))
         { SysMessage($"{partner.Name} is refusing trade requests."); return false; }
 
         var existing = _tradeManager.FindTradeFor(_character);
@@ -2050,7 +2050,7 @@ public sealed class ClientWorldFeaturesHandler
         if (house == null && signOrMulti.Link.IsValid)
             house = _housingEngine.GetHouse(signOrMulti.Link);
         if (house == null && signOrMulti.TryGetTag("HOUSE_UID", out string? houseUidStr) &&
-            uint.TryParse(houseUidStr, out uint houseUid))
+            ScriptNumber.TryParseUInt(houseUidStr, out uint houseUid))
         {
             house = _housingEngine.GetHouse(new Serial(houseUid));
         }
@@ -2452,7 +2452,7 @@ public sealed class ClientWorldFeaturesHandler
 
         // PORTCULISSOUND overrides the default (:4602).
         ushort sound = gate.TryGetTag("PORTCULISSOUND", out string? raw) &&
-            ushort.TryParse(raw, out ushort custom) && custom != 0 ? custom : (ushort)0x021D;
+            ScriptNumber.TryParseUShort(raw, out ushort custom) && custom != 0 ? custom : (ushort)0x021D;
         BroadcastNearby?.Invoke(gate.Position, UpdateRange,
             new PacketSound(sound, gate.X, gate.Y, gate.Z), 0);
         BroadcastNearby?.Invoke(gate.Position, UpdateRange,
@@ -2916,7 +2916,7 @@ public sealed class ClientWorldFeaturesHandler
             return;
 
         int menuSkill = _character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
-            int.TryParse(menuSkillText, out int parsedMenuSkill) ? parsedMenuSkill : -1;
+            ScriptNumber.TryParseInt(menuSkillText, out int parsedMenuSkill) ? parsedMenuSkill : -1;
         int currentSkill = _character.HasActiveSkillPending()
             ? _character.SkillPendingId
             : _pendingCraftRecipe != null ? (int)_pendingCraftSkill

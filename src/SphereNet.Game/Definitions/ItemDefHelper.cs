@@ -1,6 +1,7 @@
 using SphereNet.Core.Enums;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Scripting.Resources;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Definitions;
 
@@ -26,7 +27,7 @@ public static class ItemDefHelper
     public static int ResolveInstanceDefIndex(Item item, ResourceHolder? resources = null)
     {
         if (item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
-            int.TryParse(scriptDef, out int scriptIndex) && scriptIndex != 0)
+            ScriptNumber.TryParseInt(scriptDef, out int scriptIndex) && scriptIndex != 0)
             return scriptIndex;
 
         resources ??= DefinitionLoader.StaticResources;

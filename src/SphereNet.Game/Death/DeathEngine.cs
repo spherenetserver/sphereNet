@@ -385,11 +385,7 @@ public sealed class DeathEngine
     {
         if (!victim.TryGetTag("DEATHFLAGS", out string? df) || string.IsNullOrWhiteSpace(df))
             return 0;
-        df = df.Trim();
-        bool ok = df.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            ? int.TryParse(df.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out int v)
-            : int.TryParse(df, out v);
-        return ok ? v : 0;
+        return ScriptNumber.TryParseInt(df, out int v) ? v : 0;
     }
 
     /// <summary>Source-X MakeCorpse: no corpse for DEATH_NOCORPSE (0x02), or for a
@@ -622,7 +618,7 @@ public sealed class DeathEngine
     private Item? TakeDraggedItem(Character victim)
     {
         if (!victim.TryGetTag("DRAGGING", out string? raw) ||
-            !uint.TryParse(raw, out uint uid) || uid == 0)
+            !ScriptNumber.TryParseUInt(raw, out uint uid) || uid == 0)
             return null;
 
         victim.RemoveTag("DRAGGING");
@@ -814,7 +810,7 @@ public sealed class DeathEngine
                 (item.TryGetTag("OWNER_UUID", out string? uuidStr) &&
                  Guid.TryParse(uuidStr, out Guid uuid) && uuid == resurrected.Uuid) ||
                 (item.TryGetTag("OWNER_UID", out string? ownerStr) &&
-                 uint.TryParse(ownerStr, out uint ownerUid) && ownerUid == resurrected.Uid.Value);
+                 ScriptNumber.TryParseUInt(ownerStr, out uint ownerUid) && ownerUid == resurrected.Uid.Value);
             if (!owned) continue;
 
             corpse = item;
@@ -842,7 +838,7 @@ public sealed class DeathEngine
 
             Layer? targetLayer = null;
             if (item.TryGetTag("EQUIPLAYER", out string? layerStr) &&
-                byte.TryParse(layerStr, out byte layerByte))
+                ScriptNumber.TryParseByte(layerStr, out byte layerByte))
             {
                 targetLayer = (Layer)layerByte;
                 item.RemoveTag("EQUIPLAYER");
@@ -992,7 +988,7 @@ public sealed class DeathEngine
             return false;
 
         if (corpse.TryGetTag("OWNER_UID", out string? ownerStr) &&
-            uint.TryParse(ownerStr, out uint ownerUid) &&
+            ScriptNumber.TryParseUInt(ownerStr, out uint ownerUid) &&
             ownerUid == looter.Uid.Value)
             return false;
 
@@ -1002,7 +998,7 @@ public sealed class DeathEngine
         // owner), so monster corpses are free to loot; only a corpse whose owner is
         // a still-present, innocent player makes looting criminal.
         if (!corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) ||
-            !uint.TryParse(ownerUidStr, out uint ownerUid2))
+            !ScriptNumber.TryParseUInt(ownerUidStr, out uint ownerUid2))
             return false;
 
         var ownerSerial = new Serial(ownerUid2);
@@ -1041,7 +1037,7 @@ public sealed class DeathEngine
     public Character? ResolveCorpseOwner(Item corpse)
     {
         if (!corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) ||
-            !uint.TryParse(ownerUidStr, out uint ownerUid))
+            !ScriptNumber.TryParseUInt(ownerUidStr, out uint ownerUid))
             return null;
         var owner = _world.FindChar(new Serial(ownerUid));
         return owner is { IsDeleted: false } ? owner : null;
@@ -1093,7 +1089,7 @@ public sealed class DeathEngine
         var pos = corpse.GetTopLevelObj().Position;
 
         PlayCarveAnimation(carver);
-        if (corpse.TryGetTag("BLOOD", out string? bloodTag) && long.TryParse(bloodTag, out long bloodOn) && bloodOn != 0)
+        if (corpse.TryGetTag("BLOOD", out string? bloodTag) && ScriptNumber.TryParseLong(bloodTag, out long bloodOn) && bloodOn != 0)
             SpillCarveBlood(charDef, pos);
 
         var resources = Definitions.DefinitionLoader.StaticResources;
@@ -1200,7 +1196,7 @@ public sealed class DeathEngine
     /// definition or the corpse body.</summary>
     private SphereNet.Scripting.Definitions.CharDef? ResolveCorpseCharDef(Item corpse)
     {
-        if (corpse.TryGetTag("CORPSE_CHARDEF", out string? idx) && int.TryParse(idx, out int defIndex))
+        if (corpse.TryGetTag("CORPSE_CHARDEF", out string? idx) && ScriptNumber.TryParseInt(idx, out int defIndex))
             return Definitions.DefinitionLoader.GetCharDef(defIndex);
         var owner = ResolveCorpseOwner(corpse);
         if (owner != null)

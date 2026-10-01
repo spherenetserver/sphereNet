@@ -381,7 +381,7 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
                 _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
                     new TriggerArgs { CharSrc = _character, N1 = Targets.SkillCancelId });
             if (_character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
-                int.TryParse(menuSkillText, out int menuSkill))
+                ScriptNumber.TryParseInt(menuSkillText, out int menuSkill))
                 _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
                     new TriggerArgs { CharSrc = _character, N1 = menuSkill });
 

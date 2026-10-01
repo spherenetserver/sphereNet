@@ -210,7 +210,7 @@ public sealed class WeatherEngine
         if (region == null) return 0;
 
         // Check region TAG for music
-        if (region.TryGetTag("MUSIC", out string? musicStr) && ushort.TryParse(musicStr, out ushort musicId))
+        if (region.TryGetTag("MUSIC", out string? musicStr) && ScriptNumber.TryParseUShort(musicStr, out ushort musicId))
             return musicId;
 
         return 0;

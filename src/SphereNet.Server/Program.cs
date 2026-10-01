@@ -1032,9 +1032,10 @@ public static partial class Program
         // Accounts load before the world (the world load links characters into their
         // slots), so the generation the file names is kept until the world is up and
         // the two can be compared.
-        _loadedAccountGeneration = SphereNet.Persistence.Accounts.AccountPersistence
-            .LoadSnapshot(_accounts, accountsDir, _loggerFactory.CreateLogger("AccountPersistence"))
-            .Generation;
+        SphereNet.Persistence.Accounts.AccountPersistence.RemoveAbandonedStagingFiles(
+            accountsDir, _loggerFactory.CreateLogger("AccountPersistence"));
+        _loadedAccounts = SphereNet.Persistence.Accounts.AccountPersistence
+            .LoadSnapshot(_accounts, accountsDir, _loggerFactory.CreateLogger("AccountPersistence"));
 
         // --- 7. Persistence ---
         _saver = new WorldSaver(_loggerFactory)
@@ -1191,6 +1192,9 @@ public static partial class Program
         string savePath = ResolvePath(basePath, _config.WorldSaveDir);
         if (Directory.Exists(savePath))
         {
+            // A world recovered from a backup generation gets the account slots of that
+            // generation, before the load links its characters into them.
+            _loader.GenerationSelected = ReconcileAccountsWithWorldGeneration;
             var (items, chars) = _loader.Load(_world, savePath, _accounts);
             // What the save held is kept even when it could not be placed; only
             // objects created from now on are collected when left unplaced.

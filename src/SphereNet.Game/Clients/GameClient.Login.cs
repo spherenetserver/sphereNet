@@ -102,8 +102,7 @@ public sealed partial class GameClient
         foreach (string tag in new[] { ClientVersionTag, ReportedClientVersionTag })
         {
             if (_account.TryGetTag(tag, out string raw) &&
-                uint.TryParse(raw, System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out uint parsed))
+                SphereNet.Core.Types.ScriptNumber.TryParseUInt(raw, out uint parsed))
                 best = Math.Max(best, parsed);
         }
         if (best == 0)

@@ -1120,19 +1120,19 @@ public sealed partial class NpcAI
         }
 
         if (npc.TryGetTag("HOME_X", out string? hx) && npc.TryGetTag("HOME_Y", out string? hy) &&
-            short.TryParse(hx, out short homeX) && short.TryParse(hy, out short homeY))
+            ScriptNumber.TryParseShort(hx, out short homeX) && ScriptNumber.TryParseShort(hy, out short homeY))
         {
             sbyte homeZ = npc.Z;
             if (npc.TryGetTag("HOME_Z", out string? hz) &&
-                sbyte.TryParse(hz, out sbyte parsedZ))
+                ScriptNumber.TryParseSByte(hz, out sbyte parsedZ))
                 homeZ = parsedZ;
             byte homeMap = npc.MapIndex;
             if (npc.TryGetTag("HOME_MAP", out string? hm) &&
-                byte.TryParse(hm, out byte parsedMap))
+                ScriptNumber.TryParseByte(hm, out byte parsedMap))
                 homeMap = parsedMap;
             home = new Point3D(homeX, homeY, homeZ, homeMap);
             if (npc.TryGetTag("HOME_DIST", out string? hdStr) &&
-                int.TryParse(hdStr, out int hd) && hd > 0)
+                ScriptNumber.TryParseInt(hdStr, out int hd) && hd > 0)
                 wanderDist = Math.Clamp(hd, 1, short.MaxValue);
             return true;
         }

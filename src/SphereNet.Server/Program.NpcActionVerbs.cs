@@ -30,7 +30,7 @@ public static partial class Program
 
             uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
             if (dayWage == 0 && npc.TryGetTag("HIRE_WAGE", out string? wageTag) &&
-                uint.TryParse(wageTag, out uint taggedWage))
+                ScriptNumber.TryParseUInt(wageTag, out uint taggedWage))
             {
                 dayWage = taggedWage;
             }
@@ -50,7 +50,7 @@ public static partial class Program
                 {
                     mem.More1 = (mem.More1 & 0xFFFF0000) | Character.NpcMemActSpeakHire;
                     long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
-                        long.TryParse(bs, out long b) ? b : 0;
+                        ScriptNumber.TryParseLong(bs, out long b) ? b : 0;
                     NpcSpeak(npc, ServerMessages.GetFormatted(Msg.NpcPetHireTime,
                         (balance / Math.Max(1, dayWage)).ToString()));
                     return true;

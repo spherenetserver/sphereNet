@@ -1135,7 +1135,7 @@ public static class VendorEngine
         vendor.RemoveTag(LegacyVendorGoldTag);
         if (vendor.IsPlayer)
             return true;
-        long tagged = long.TryParse(raw, out long t) ? Math.Max(0, t) : 0;
+        long tagged = ScriptNumber.TryParseLong(raw, out long t) ? Math.Max(0, t) : 0;
         var bank = vendor.GetBankBoxSafe();
         if (bank == null)
             return true;
@@ -1225,11 +1225,11 @@ public static class VendorEngine
         // (negative is a discount); GetVendorPrice floors the factor at -100.
         if (vendor.IsStatFlag(Core.Enums.StatFlag.Pet))
             return 0;
-        if (vendor.TryGetTag("VENDORMARKUP", out string? v) && int.TryParse(v, out int mv))
+        if (vendor.TryGetTag("VENDORMARKUP", out string? v) && ScriptNumber.TryParseInt(v, out int mv))
             return mv;
         var region = World?.FindRegion(vendor.Position);
         if (region != null && region.TryGetTag("VENDORMARKUP", out string? rv) &&
-            int.TryParse(rv, out int rmv))
+            ScriptNumber.TryParseInt(rv, out int rmv))
             return rmv;
         var cdef = SphereNet.Game.Definitions.DefinitionLoader.GetCharDef(vendor.CharDefIndex);
         if (cdef?.TagDefs.Get("VENDORMARKUP") is { } cv && int.TryParse(cv, out int cmv))
@@ -1296,7 +1296,7 @@ public static class VendorEngine
         if (TryGetOverrideValue(item, out long ov))
             price = ov;
         else if (!forSelling)
-            price = item.TryGetTag("PRICE", out string? ps) && long.TryParse(ps, out long pv) && pv > 0
+            price = item.TryGetTag("PRICE", out string? ps) && ScriptNumber.TryParseLong(ps, out long pv) && pv > 0
                 ? pv
                 : item.Price;
 
@@ -1610,7 +1610,7 @@ public static class VendorEngine
     /// <summary>Check if vendor needs restocking (based on RESTOCK_TIME tag).</summary>
     public static bool NeedsRestock(Character vendor, int intervalMs = DefaultRestockInterval)
     {
-        if (!vendor.TryGetTag("RESTOCK_TIME", out string? timeStr) || !long.TryParse(timeStr, out long lastRestock))
+        if (!vendor.TryGetTag("RESTOCK_TIME", out string? timeStr) || !ScriptNumber.TryParseLong(timeStr, out long lastRestock))
             return true;
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - lastRestock >= intervalMs;
     }

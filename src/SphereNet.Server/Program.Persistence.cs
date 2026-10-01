@@ -68,48 +68,112 @@ public static partial class Program
     private static SphereNet.Persistence.Accounts.AccountPersistence.StagedAccountSnapshot? _stagedAccounts;
     private static string? _stagedAccountsError;
 
-    /// <summary>The generation the account file names, read at boot. Null when the
-    /// file carries no stamp (a classic account file, or one written by an older
-    /// build).</summary>
-    private static long? _loadedAccountGeneration;
+    /// <summary>What the boot-time account load found: the generation the account file
+    /// names (null for a classic file or one written by an older build) and any
+    /// mismatch an earlier boot left unresolved.</summary>
+    private static SphereNet.Persistence.Accounts.AccountPersistence.AccountLoadResult _loadedAccounts;
+
+    /// <summary>What reconciling the accounts with the world generation that loaded
+    /// did, or null when the world load never chose a generation.</summary>
+    private static SphereNet.Persistence.Accounts.AccountPersistence.AccountReconcileResult? _accountReconcile;
+
+    /// <summary>The account generation of a world/account mismatch that is still
+    /// open. Every account save carries it in the file, so a later boot reports it
+    /// again instead of the next save quietly stamping both sides alike.</summary>
+    private static long? _unresolvedAccountGeneration;
 
     private static string AccountDirPath()
         => ResolvePath(AppDomain.CurrentDomain.BaseDirectory, _config.AccountDir);
+
+    /// <summary>WorldLoader.GenerationSelected: the world is about to materialise
+    /// <paramref name="worldGeneration"/>. When that is not the generation the account
+    /// file names - a world recovered from a .bakN - take the character slots from the
+    /// account snapshot of the same generation, which the account backup chain keeps
+    /// (AccountPersistence.ReconcileWithWorldGeneration documents what is restored and
+    /// what keeps its newest value).</summary>
+    private static void ReconcileAccountsWithWorldGeneration(long? worldGeneration)
+    {
+        _accountReconcile = SphereNet.Persistence.Accounts.AccountPersistence.ReconcileWithWorldGeneration(
+            _accounts, AccountDirPath(), _loadedAccounts, worldGeneration,
+            _loggerFactory.CreateLogger("AccountPersistence"));
+    }
 
     /// <summary>Do the world on disk and the account file on disk come from the same
     /// save? They must, because the world holds the characters the account slots name.
     ///
     /// They can disagree in one direction that matters. Recovery loads the newest
     /// generation it can read, so a world whose current files are unreadable comes
-    /// back from a .bakN while the account file - a single file, published separately
-    /// and never rotated - stays at the newest generation. Every character created
-    /// since that backup then has a slot in an account and no character in the world.
-    /// That is not repaired here: it is named, at boot, in the log, because the repair
-    /// (which of the two to roll back) is the operator's call and the audit below
-    /// lists exactly which accounts are affected.</summary>
+    /// back from a .bakN while the account file stays at the newest generation. The
+    /// account file keeps a backup chain of its own, one entry per world generation,
+    /// and the world load has already switched the character slots to the snapshot of
+    /// its generation (<see cref="ReconcileAccountsWithWorldGeneration"/>). When no
+    /// such snapshot exists the mismatch is left open: it is named here at every boot,
+    /// carried in the account file by every save, and closed only once no account slot
+    /// names a character this world does not hold.</summary>
     private static void VerifyAccountGenerationAgainstWorld()
     {
         long? worldGen = _loader.LoadedGeneration;
         _worldGeneration = worldGen ?? 0;
+        _unresolvedAccountGeneration = _loadedAccounts.UnresolvedGeneration;
 
-        if (worldGen == null || _loadedAccountGeneration == null)
+        var outcome = _accountReconcile?.Outcome
+            ?? SphereNet.Persistence.Accounts.AccountPersistence.AccountReconcileOutcome.NotNeeded;
+        if (outcome == SphereNet.Persistence.Accounts.AccountPersistence.AccountReconcileOutcome.NoSnapshot)
         {
-            // One of the two is unstamped: a classic Sphere save, a legacy account
-            // file, or a directory written before the stamp existed. Nothing can be
-            // concluded, and refusing to boot over it would lock out every shard
-            // upgrading from an older build.
+            _unresolvedAccountGeneration = _loadedAccounts.Generation;
+            _log.LogError(
+                "The account file was written for save generation {AccountGen} but the world that loaded is " +
+                "generation {WorldGen}, and no account snapshot of that generation exists to restore. " +
+                "Character slots may name characters this world does not hold; see the world audit below. " +
+                "The pre-recovery account file is kept as {Preserved}.",
+                _loadedAccounts.Generation, worldGen,
+                _accountReconcile?.PreservedPath ?? "(not copied)");
+        }
+
+        if (_unresolvedAccountGeneration == null) return;
+
+        int dangling = CountAccountSlotsOutsideWorld();
+        if (dangling == 0)
+        {
+            _log.LogInformation(
+                "The world/account generation mismatch from account generation {AccountGen} is resolved: every " +
+                "account slot names a character this world holds", _unresolvedAccountGeneration);
+            _unresolvedAccountGeneration = null;
             return;
         }
 
-        if (_loadedAccountGeneration == worldGen) return;
-
         _log.LogError(
-            "The account file was written for save generation {AccountGen} but the world that loaded is " +
-            "generation {WorldGen}. The two are from different saves - typically a world recovered from a " +
-            "backup while the account file stayed at the newest save. Character slots may name characters " +
-            "this world does not hold; see the world audit below. The next save republishes both as one " +
-            "generation, which makes the mismatch permanent, so resolve it before saving.",
-            _loadedAccountGeneration, worldGen);
+            "World/account generation mismatch from account generation {AccountGen} is UNRESOLVED: {Count} " +
+            "account slot(s) name characters this world does not hold. Saves keep the mismatch recorded in the " +
+            "account file until every such slot is cleared (for example CHARUIDn=0 in {ChangesFile}) or the " +
+            "matching world generation is restored.",
+            _unresolvedAccountGeneration, dangling,
+            SphereNet.Persistence.Accounts.AccountPersistence.ChangesFileName);
+    }
+
+    private static int CountAccountSlotsOutsideWorld()
+    {
+        int dangling = 0;
+        foreach (var acc in _accounts.GetAllAccounts())
+        {
+            for (int i = 0; i < 7; i++)
+            {
+                var uid = acc.GetCharSlot(i);
+                if (uid.IsValid && _world.FindChar(uid) == null)
+                    dangling++;
+            }
+        }
+        return dangling;
+    }
+
+    /// <summary>Every world save names a mismatch that is still open, so it does not
+    /// vanish from the log after the boot that found it.</summary>
+    private static void WarnUnresolvedAccountGeneration()
+    {
+        if (_unresolvedAccountGeneration != null)
+            _log.LogError(
+                "World/account generation mismatch from account generation {AccountGen} is still unresolved; " +
+                "this save keeps it recorded in the account file", _unresolvedAccountGeneration);
     }
 
     /// <summary>Account file write outside a world save - a password, a ban, a new
@@ -132,7 +196,8 @@ public static partial class Program
         {
             SphereNet.Persistence.Accounts.AccountPersistence.Save(
                 _accounts, AccountDirPath(), _saver.Format,
-                _loggerFactory.CreateLogger("AccountPersistence"), generation);
+                _loggerFactory.CreateLogger("AccountPersistence"), generation,
+                _saver.BackupLevels, _unresolvedAccountGeneration);
             return null;
         }
         catch (Exception ex)
@@ -151,9 +216,11 @@ public static partial class Program
         _stagedAccountsError = null;
         try
         {
+            WarnUnresolvedAccountGeneration();
             _stagedAccounts = SphereNet.Persistence.Accounts.AccountPersistence.Stage(
                 _accounts, AccountDirPath(), _saver.Format,
-                _loggerFactory.CreateLogger("AccountPersistence"), generation);
+                _loggerFactory.CreateLogger("AccountPersistence"), generation,
+                _saver.BackupLevels, _unresolvedAccountGeneration);
         }
         catch (Exception ex)
         {
@@ -163,7 +230,10 @@ public static partial class Program
     }
 
     /// <summary>Publish the staged account file. Returns the failure message, or null
-    /// when there was nothing staged or it landed.</summary>
+    /// when there was nothing staged or it landed. Runs on the main loop: an account
+    /// save published since the snapshot was staged makes it older than the file on
+    /// disk, and the commit then re-renders it from the live accounts under the same
+    /// generation, so no account change saved in between is undone.</summary>
     private static string? PublishStagedAccounts()
     {
         var staged = _stagedAccounts;
@@ -467,6 +537,7 @@ public static partial class Program
             if (worldOk)
             {
                 _worldGeneration = _saver.LastGeneration;
+                WarnUnresolvedAccountGeneration();
                 accountError = TrySaveAccounts(_worldGeneration);
             }
             // Phase breakdown so a slow sync save names its own cost
@@ -614,10 +685,23 @@ public static partial class Program
         // here, so one call covers synchronous and background alike.
         SphereNet.Game.Diagnostics.LoadProfile.CountSave(sw.ElapsedMilliseconds);
         RecordSaveOutcome(sw, ok: true);
-        _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
-        BroadcastToAllPlayers(
-            ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),
-            SaveHue);
+        // The world landed but its .bak1 did not: say so instead of "Save complete",
+        // so a shard does not run on without a backup unnoticed.
+        string? backupError = _saver.LastBackupError;
+        if (backupError != null)
+        {
+            _log.LogError("World saved, but its backup could not be written: {Error}", backupError);
+            BroadcastToAllPlayers(
+                ServerMessages.GetFormatted("worldsave_backup_failed", backupError),
+                SaveHue);
+        }
+        else
+        {
+            _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
+            BroadcastToAllPlayers(
+                ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),
+                SaveHue);
+        }
         _systemHooks.DispatchServer("save_finished", _serverHookContext,
             sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
     }

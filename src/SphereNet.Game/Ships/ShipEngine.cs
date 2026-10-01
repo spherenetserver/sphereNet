@@ -1904,20 +1904,20 @@ public sealed class ShipEngine
             }
             if (item.TryGetTag("SHIP.ANCHORED", out string? ancStr))
                 ship.Anchored = ancStr == "1";
-            if (item.TryGetTag("SHIP.DIRFACE", out string? dirStr) && byte.TryParse(dirStr, out byte df))
+            if (item.TryGetTag("SHIP.DIRFACE", out string? dirStr) && ScriptNumber.TryParseByte(dirStr, out byte df))
                 ship.DirFace = Normalize4Dir((Direction)(df & 0x07));
-            if (item.TryGetTag("SHIP.DIRMOVE", out string? moveStr) && byte.TryParse(moveStr, out byte dm))
+            if (item.TryGetTag("SHIP.DIRMOVE", out string? moveStr) && ScriptNumber.TryParseByte(moveStr, out byte dm))
                 ship.DirMove = (Direction)(dm & 0x07);
-            if (item.TryGetTag("SHIP.SPEEDPERIOD", out string? spStr) && ushort.TryParse(spStr, out ushort sp))
+            if (item.TryGetTag("SHIP.SPEEDPERIOD", out string? spStr) && ScriptNumber.TryParseUShort(spStr, out ushort sp))
                 ship.SpeedPeriod = Math.Max((ushort)1, sp);
-            if (item.TryGetTag("SHIP.SPEEDTILES", out string? stStr) && byte.TryParse(stStr, out byte st))
+            if (item.TryGetTag("SHIP.SPEEDTILES", out string? stStr) && ScriptNumber.TryParseByte(stStr, out byte st))
                 ship.SpeedTiles = Math.Clamp(st, (byte)1, (byte)16);
             // The ship class's script SHIPSPEED is authoritative (Source-X derives
             // the speed from the base def on load), so it overrides any stale saved
             // period — existing ships pick up the current script speed. Ships whose
             // def has no SHIPSPEED keep the value restored above.
             ApplyDefSpeed(ship, _multiDefs.Get(item.BaseId));
-            if (item.TryGetTag("SHIP.SPEEDMODE", out string? smStr) && byte.TryParse(smStr, out byte sm) &&
+            if (item.TryGetTag("SHIP.SPEEDMODE", out string? smStr) && ScriptNumber.TryParseByte(smStr, out byte sm) &&
                 sm is >= (byte)ShipSpeedMode.OneTile and <= (byte)ShipSpeedMode.Fast)
                 ship.SpeedMode = (ShipSpeedMode)sm;
             if (item.TryGetTag("SHIP.PILOT", out string? pilotStr))

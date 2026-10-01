@@ -707,8 +707,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     }
 
     /// <summary>A TAG line read from a save: the value's quote pair is stripped
-    /// (GetArgStr) and remembered, so a string var goes back out quoted.</summary>
-    public void LoadTag(string key, string rawValue)
+    /// (GetArgStr) and remembered, so a string var goes back out quoted; an
+    /// unquoted simple number loads as a number var, and a TAG0 line drops a zero
+    /// (CObjBase::r_LoadVal -> CVarDefMap::SetStr, CObjBase.cpp:1788).</summary>
+    public void LoadTag(string key, string rawValue, bool deleteZero = false)
     {
         string value = VarMap.UnquoteSaveValue(rawValue, out bool quoted);
         if (!quoted && value.Length == 0)
@@ -717,8 +719,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             return;
         }
         SetTag(key, value);
-        if (quoted)
-            _tags.ApplySetStrForm(key, true, value);
+        _tags.ApplyLoadedForm(key, quoted, value, deleteZero);
     }
 
     /// <summary>Get a tag value, returning true if found.</summary>

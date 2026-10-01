@@ -480,7 +480,7 @@ public sealed class ClientScriptConsoleHandler
             var polyChar = _character;
             if (polyChar != null &&
                 polyChar.TryGetTag("CAST_MENU_SPELL", out string? pendingPoly) &&
-                int.TryParse(pendingPoly, out int pendingPolyId) &&
+                ScriptNumber.TryParseInt(pendingPoly, out int pendingPolyId) &&
                 (SpellType)pendingPolyId is SpellType.Polymorph or SpellType.Chameleon
                     or SpellType.BeastForm or SpellType.MonsterForm)
             {

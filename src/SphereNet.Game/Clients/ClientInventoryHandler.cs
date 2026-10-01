@@ -91,7 +91,7 @@ public sealed class ClientInventoryHandler
 
         uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
         if (dayWage == 0 && npc.TryGetTag("HIRE_WAGE", out string? w) &&
-            uint.TryParse(w, out uint tagWage))
+            ScriptNumber.TryParseUInt(w, out uint tagWage))
             dayWage = tagWage;
         if (dayWage == 0)
             return false;
@@ -132,7 +132,7 @@ public sealed class ClientInventoryHandler
         mem.More1 &= 0xFFFF0000;
 
         long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
-            long.TryParse(bs, out long b) ? b : 0;
+            ScriptNumber.TryParseLong(bs, out long b) ? b : 0;
         balance += gold.Amount;
         npc.SetTag("HIRE_BALANCE", balance.ToString());
         if (owner == null)
@@ -1141,7 +1141,7 @@ public sealed class ClientInventoryHandler
     {
         if (_character == null) return true;
         if (!_character.TryGetTag("DRAGGING", out string? raw) ||
-            !uint.TryParse(raw, out uint heldUid) || heldUid == 0)
+            !ScriptNumber.TryParseUInt(raw, out uint heldUid) || heldUid == 0)
             return true;
 
         // Same item twice: Source-X ItemPickup returns early rather than restarting
@@ -1552,7 +1552,7 @@ public sealed class ClientInventoryHandler
                     // small pouch, a quest box, a vendor crate) overrides the
                     // global default for THIS container.
                     if (container.TryGetTag("OVERRIDE.MAXITEMS", out string? maxItemsRaw) &&
-                        int.TryParse(maxItemsRaw, out int overrideMax) && overrideMax >= 0)
+                        ScriptNumber.TryParseInt(maxItemsRaw, out int overrideMax) && overrideMax >= 0)
                         maxItems = overrideMax;
                     // Source-X CItemContainer::CanContainerHold adds the INCOMING
                     // container's children to the bank's own count
@@ -2158,7 +2158,7 @@ public sealed class ClientInventoryHandler
         if (_character == null)
             return false;
         if (!_character.TryGetTag("DRAGGING", out string? dragSer) ||
-            !uint.TryParse(dragSer, out uint dragUid))
+            !ScriptNumber.TryParseUInt(dragSer, out uint dragUid))
             return false;
 
         _character.RemoveTag("DRAGGING");
@@ -2299,7 +2299,7 @@ public sealed class ClientInventoryHandler
             return equipped;
 
         bool wasDragged = _character.TryGetTag("DRAGGING", out string? raw) &&
-                          uint.TryParse(raw, out uint heldUid) && heldUid == item.Uid.Value;
+                          ScriptNumber.TryParseUInt(raw, out uint heldUid) && heldUid == item.Uid.Value;
         if (wasDragged)
             _character.RemoveTag("DRAGGING");
 

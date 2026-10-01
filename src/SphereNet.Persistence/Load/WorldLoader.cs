@@ -30,6 +30,13 @@ public sealed class WorldLoader
     /// the world - the account snapshot - can be checked against it.</summary>
     public long? LoadedGeneration { get; private set; }
 
+    /// <summary>Called once the load has chosen the generation it will materialise -
+    /// the current one or a <c>.bakN</c> - and before any of it is materialised, with
+    /// that generation's token (null when unstamped). Files kept beside the world, the
+    /// account file above all, use it to switch to their snapshot of the same
+    /// generation before the world links characters into account slots.</summary>
+    public Action<long?>? GenerationSelected { get; set; }
+
     /// <summary>Resolves a Sphere defname to a base graphic/body ID.
     /// Returns 0 when the defname is unknown.</summary>
     public Func<string, ushort>? ResolveItemDef { get; set; }
@@ -231,7 +238,7 @@ public sealed class WorldLoader
     /// level N = the aligned <c>.bakN</c> rotation of every logical file).</summary>
     private readonly record struct GenerationPaths(
         List<string> ItemPaths, List<string> CharPaths, List<string> StaticPaths,
-        List<string> MultiPaths, List<string> DataPaths, bool Incomplete)
+        List<string> MultiPaths, List<string> DataPaths, bool Incomplete, bool SizeMismatch)
     {
         public bool IsEmpty => ItemPaths.Count == 0 && CharPaths.Count == 0 &&
             StaticPaths.Count == 0 && MultiPaths.Count == 0 && DataPaths.Count == 0;
@@ -269,14 +276,13 @@ public sealed class WorldLoader
             var gen = ResolveGeneration(savePath, level);
             if (gen.IsEmpty)
             {
-                // A missing generation. Keep probing past a missing CURRENT save so
-                // a surviving .bakN is still recovered instead of silently booting a
-                // blank world — the previous behaviour returned a fresh world here
-                // even when good backups sat on disk. Backups rotate contiguously
-                // from .bak1, so once a backup level is missing nothing older remains.
-                if (level == 0)
-                    continue;
-                break;
+                // A missing generation. Keep probing past it - past a missing current
+                // save AND past a missing backup level. Backups are not guaranteed to
+                // be contiguous: an operator moves .bak1 aside, a backup copy fails and
+                // is withdrawn, a rotation is interrupted. Stopping at the first gap
+                // made every older backup invisible and booted a blank world (or
+                // refused to boot) while a whole generation sat on disk.
+                continue;
             }
             anyGenerationExisted = true;
 
@@ -309,13 +315,48 @@ public sealed class WorldLoader
                 continue;
             }
 
-            var (ok, badFile) = ValidateGeneration(gen);
+            var (ok, badFile, stamped) = ValidateGeneration(gen);
             if (!ok)
             {
                 _logger.LogError(
                     "Save generation {Which} is unreadable (bad file: {File}); falling back to the previous generation",
                     level == 0 ? "current" : $".bak{level}", badFile);
                 continue;
+            }
+
+            // A generation this engine wrote always has all three families: the world,
+            // the characters and the server data are written on every save, as empty
+            // files when there is nothing in them. One that has lost a whole family is
+            // not a smaller world but a partial one - a deleted file, or a backup level
+            // that only part of a generation reached - and loading it boots a world
+            // without its items, or without its characters. Only enforced when the
+            // world/char files carry this engine's [SAVEID] stamp: a classic save may
+            // keep items and characters in one file, with no server data beside it.
+            if (stamped)
+            {
+                // A shard that is not the size its (version 2) manifest recorded is not
+                // the shard that manifest published - cut short, or swapped for another.
+                if (gen.SizeMismatch)
+                {
+                    _logger.LogError(
+                        "Save generation {Which} has a shard whose size differs from the size its manifest recorded; " +
+                        "falling back to the previous generation",
+                        level == 0 ? "current" : $".bak{level}");
+                    continue;
+                }
+
+                string? missing = gen.ItemPaths.Count == 0 ? "sphereworld"
+                    : gen.CharPaths.Count == 0 ? "spherechars"
+                    : gen.DataPaths.Count == 0 ? "spheredata"
+                    : null;
+                if (missing != null)
+                {
+                    _logger.LogError(
+                        "Save generation {Which} is missing its {Family} file(s) — refusing to load a partial " +
+                        "generation; falling back to the previous generation",
+                        level == 0 ? "current" : $".bak{level}", missing);
+                    continue;
+                }
             }
 
             // Cross-file consistency: each file individually validated, but a torn
@@ -341,6 +382,7 @@ public sealed class WorldLoader
             // so the boot check can tell a world that was rolled back to an older
             // generation from one that matches the accounts on disk (D01).
             LoadedGeneration = stampToken;
+            GenerationSelected?.Invoke(stampToken);
             return Materialize(world, gen, accounts);
         }
 
@@ -361,35 +403,66 @@ public sealed class WorldLoader
 
     private GenerationPaths ResolveGeneration(string savePath, int bakLevel)
     {
-        var items = ResolveSaveFiles(savePath, "sphereworld", bakLevel, out bool incItems);
-        var chars = ResolveSaveFiles(savePath, "spherechars", bakLevel, out bool incChars);
-        var statics = ResolveSaveFiles(savePath, "spherestatics", bakLevel, out bool incStatics);
-        var multis = ResolveSaveFiles(savePath, "spheremultis", bakLevel, out bool incMultis);
-        var data = ResolveSaveFiles(savePath, "spheredata", bakLevel, out bool incData);
+        var items = ResolveSaveFiles(savePath, "sphereworld", bakLevel, out bool incItems, out bool sizeItems);
+        var chars = ResolveSaveFiles(savePath, "spherechars", bakLevel, out bool incChars, out bool sizeChars);
+        var statics = ResolveSaveFiles(savePath, "spherestatics", bakLevel, out bool incStatics, out bool sizeStatics);
+        var multis = ResolveSaveFiles(savePath, "spheremultis", bakLevel, out bool incMultis, out bool sizeMultis);
+        var data = ResolveSaveFiles(savePath, "spheredata", bakLevel, out bool incData, out bool sizeData);
         return new GenerationPaths(items, chars, statics, multis, data,
-            incItems || incChars || incStatics || incMultis || incData);
+            incItems || incChars || incStatics || incMultis || incData,
+            sizeItems || sizeChars || sizeStatics || sizeMultis || sizeData);
     }
 
     /// <summary>Read every file of a generation end-to-end, without materializing
     /// anything, so corruption (bad gzip, truncation, misaligned binary records)
-    /// is detected before a single object is created. Returns the first bad file.</summary>
-    private (bool Ok, string? BadFile) ValidateGeneration(GenerationPaths gen)
+    /// is detected before a single object is created. Returns the first bad file, and
+    /// whether the world/char files carry this engine's [SAVEID] stamp.
+    ///
+    /// A file this engine wrote must also END properly: <c>[EOF]</c> as its last
+    /// section, or the binary terminator. A file cut off exactly between two records
+    /// otherwise parses as a shorter, perfectly valid one, and the world loads with
+    /// every object after the cut missing. Source-X holds every world file to this
+    /// (CWorld::LoadFile, "No [EOF] marker ... is corrupt"). Here it is required of a
+    /// binary file (only this engine writes those), of a world/char file carrying a
+    /// [SAVEID] record and of server data carrying SAVEGENERATION - files this engine
+    /// has always closed with the marker. A classic text save without either keeps
+    /// loading exactly as it did: the generic reader still accepts a missing [EOF].</summary>
+    private (bool Ok, string? BadFile, bool Stamped) ValidateGeneration(GenerationPaths gen)
     {
+        var shardFiles = new HashSet<string>(gen.ItemPaths.Concat(gen.CharPaths), StringComparer.OrdinalIgnoreCase);
+        bool anyShardStamped = false;
         foreach (string path in gen.AllFiles)
         {
             try
             {
+                bool stamped = false;
                 using var reader = SaveIO.OpenReader(path);
-                while (reader.NextRecord(out _))
-                    while (reader.NextProperty(out _, out _)) { }
+                while (reader.NextRecord(out string section))
+                {
+                    if (section.Equals(SaveIO.SaveIdSection, StringComparison.OrdinalIgnoreCase))
+                        stamped = true;
+                    bool serverSection = section.Equals(SaveIO.ServerDataSection, StringComparison.OrdinalIgnoreCase);
+                    while (reader.NextProperty(out string key, out _))
+                    {
+                        if (serverSection && key.Equals(SaveIO.SaveGenerationProperty, StringComparison.OrdinalIgnoreCase))
+                            stamped = true;
+                    }
+                }
+
+                if ((stamped || SaveIO.IsBinaryPath(path)) && !reader.EndMarkerSeen)
+                    throw new InvalidDataException(
+                        "file ends without its end marker ([EOF] / binary terminator) - it was cut off after a record");
+
+                if (stamped && shardFiles.Contains(path))
+                    anyShardStamped = true;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Save file failed integrity validation: {Path}", Path.GetFileName(path));
-                return (false, Path.GetFileName(path));
+                return (false, Path.GetFileName(path), anyShardStamped);
             }
         }
-        return (true, null);
+        return (true, null, anyShardStamped);
     }
 
     /// <summary>Read a single stamp property from the first record of a save file
@@ -957,9 +1030,11 @@ public sealed class WorldLoader
     /// (e.g. "sphereworld") at a backup level (0 = current, N = the aligned
     /// <c>.bakN</c> rotation). Priority: manifest → format probes. Returns an
     /// empty list if nothing exists at that level.</summary>
-    private List<string> ResolveSaveFiles(string savePath, string baseName, int bakLevel, out bool incomplete)
+    private List<string> ResolveSaveFiles(string savePath, string baseName, int bakLevel, out bool incomplete,
+        out bool sizeMismatch)
     {
         incomplete = false;
+        sizeMismatch = false;
         string suffix = bakLevel == 0 ? "" : $".bak{bakLevel}";
 
         string manifestPath = ShardManifest.PathFor(savePath, baseName) + suffix;
@@ -973,7 +1048,26 @@ public sealed class WorldLoader
                 // backup level the on-disk file carries the same .bakN suffix as
                 // the manifest, since every file rotates together.
                 string full = Path.Combine(savePath, name + suffix);
-                if (File.Exists(full)) list.Add(full);
+                if (File.Exists(full))
+                {
+                    list.Add(full);
+                    // A version-2 manifest records each shard's exact published size; a
+                    // shard of any other size is not the one this manifest published. An
+                    // older manifest measured the file it was replacing, so its sizes
+                    // describe the previous generation and are not held against this one.
+                    // Reported, not decided here: Load enforces it only for a generation
+                    // whose files carry this engine's stamp.
+                    if (manifest.SizesAreExact && manifest.FileSizes.TryGetValue(name, out long expected))
+                    {
+                        long actual = new FileInfo(full).Length;
+                        if (actual != expected)
+                        {
+                            sizeMismatch = true;
+                            _logger.LogWarning("Manifest {Base} ({Which}) records {File} as {Expected} bytes but it is {Actual}",
+                                baseName, bakLevel == 0 ? "current" : $".bak{bakLevel}", name, expected, actual);
+                        }
+                    }
+                }
                 else
                 {
                     // A manifest shard that is not on disk means this generation is
@@ -1160,7 +1254,7 @@ public sealed class WorldLoader
                 string definition = item.Tags.Get("ITEMDEF") ?? "";
                 if (string.IsNullOrEmpty(definition)) definition = defname ?? $"0{item.BaseId:X}";
                 int index = ResolveItemDefFullIndex?.Invoke(definition) ?? 0;
-                if (int.TryParse(item.Tags.Get("SCRIPTDEF"), out int pinnedIndex) && pinnedIndex > 0)
+                if (ScriptNumber.TryParseInt(item.Tags.Get("SCRIPTDEF"), out int pinnedIndex) && pinnedIndex > 0)
                     index = pinnedIndex;
                 if (index == 0 && ScriptNumber.TryParseToken(definition, out long raw) && raw is >= 0 and <= int.MaxValue)
                     index = (int)raw;
@@ -1637,7 +1731,7 @@ public sealed class WorldLoader
         string tagKey = key[(zero ? 5 : 4)..];
         if (tagKey.Length == 0 || EngineTags.IsEphemeral(tagKey))
             return true;
-        obj.LoadTag(tagKey, val);
+        obj.LoadTag(tagKey, val, deleteZero: zero);
         return true;
     }
 

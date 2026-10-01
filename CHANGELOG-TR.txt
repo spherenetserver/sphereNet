@@ -4,6 +4,39 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Kesintiye dayanikli kayit, hesap kurtarma ve TAG sayi okumasi
+------------------------------------------------------------------------
+DUZELTME - Dunya kaydi: damgali world/char/data dosyasi (ve her binary kayit
+           dosyasi) [EOF] / binary sonlandirici ile bitmeli; iki kayit arasinda
+           kesilmis dosya reddedilir ve onceki generation yuklenir (Source-X
+           CWorld::LoadFile gibi). Damgasiz klasik kayitlar [EOF] olmadan da
+           yuklenir.
+DUZELTME - sphereworld, spherechars veya spheredata dosyasi eksik damgali
+           generation esyasiz/karaktersiz dunya olarak yuklenmez, reddedilir;
+           shard manifesti (VERSION=2) gercek shard boyutlarini yazar ve
+           dogrular; yedek aramasi eksik bir .bakN seviyesinde durmaz.
+DUZELTME - Kayit yayinlama kesintiye dayanikli: yeni dosya yayinlanmadan once
+           onceki generation'in tamami .bak1'e kopyalanip diske flush edilir,
+           yedek zincirleri birlikte kayar, spheredata en son yayinlanir; her
+           adimdaki kesinti tam eski ya da tam yeni generation birakir.
+DUZELTME - Yedek kopyalama/rotasyon hatalari dosya adiyla loglanir ve "Save
+           complete" yerine duyurulur; kismi yedek silinir ve hic yuklenmez.
+DUZELTME - Hesap kayit islemleri kendi gecici dosyasini kullanir ve sirayla
+           yayinlanir; arka plan dunya kaydi sirasinda kaydedilen hesap
+           degisikligi artik kaybolmaz ve yayinlama hata vermez.
+DUZELTME - Hesap dosyalari dunya generation'i basina bir .bakN zinciri tutar;
+           dunya yedekten yuklenince karakter slotlari o generation'in
+           hesaplarina doner, parola, yetki, ban ve TAG en yeni degerini korur;
+           onceki hesap dosyasi saklanir, cozulmeyen uyumsuzluk her acilista ve
+           kayitta bildirilir.
+DUZELTME - Motorun TAG/VAR sayi okumalari Sphere kuralini izler (basta 0 hex):
+           "02A" olarak kaydedilen ya da Source-X'in yazdigi "0123" sayi
+           yeniden yuklemeden sonra 0 veya onluk 123 okunmaz. Yuklenen tirnaksiz
+           sayi TAG'i yeniden sayi degiskenidir, TAG0 yuklemede sifiri siler.
+DUZELTME - Metin kayitlari cok satirli degerlerin sondaki boslugunu korur;
+           metin okuyucusu icin fazla uzun deger, yuklenemeyen kayit uretmek
+           yerine kaydi basarisiz kilar.
+
 [2026-10-01] - Ag girisi, sifreleme ve paket filtreleri
 ------------------------------------------------------------------------
 DUZELTME - Guvenlik: giris tanilamasi ve paket dokumleri artik hesap parolasi

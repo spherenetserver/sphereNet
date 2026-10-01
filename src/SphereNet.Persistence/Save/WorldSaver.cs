@@ -155,6 +155,7 @@ public sealed class WorldSaver
         _logger.LogInformation("World save #{Index} starting (format={Format}, shards={Shards})...",
             prepared.SaveIndex, Format, ShardCount);
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        LastBackupError = null;
         try
         {
             Directory.CreateDirectory(savePath);
@@ -165,21 +166,20 @@ public sealed class WorldSaver
             // which the catch below and the next save clean up.
             var itemPending = WriteShardsToTmp(prepared, prepared.Snapshot.Items, savePath, "sphereworld", isItems: true, out int itemCount);
             var charPending = WriteShardsToTmp(prepared, prepared.Snapshot.Characters, savePath, "spherechars", isItems: false, out int charCount);
-            WriteServerDataToTmp(savePath, prepared.ServerData);
+            var dataPending = WriteServerDataToTmp(savePath, prepared.ServerData);
 
-            // Phase 2 — commit all three back-to-back. Previously each logical file
-            // was committed before the next was even written, so a crash mid-save
-            // could publish a new-generation sphereworld next to an old-generation
-            // spherechars (a mixed, internally inconsistent world that the loader
-            // silently degrades into dangling CONT/EQUIP data loss). Deferring every
-            // rename until all writes finish shrinks that window from the whole
-            // multi-second write of the later files to just these adjacent renames.
-            CommitShards(itemPending, savePath);
-            CommitShards(charPending, savePath);
-            CommitServerData(savePath);
+            // Phase 2 — publish the three as one generation: the whole previous
+            // generation is copied to .bak1 before the first new file is promoted,
+            // so an interruption at any point leaves either the old generation or
+            // the new one loadable in full. See PublishGeneration.
+            PublishGeneration(savePath, [itemPending, charPending, dataPending]);
 
             _logger.LogInformation("World save #{Index} complete: {Items} items, {Chars} chars in {Elapsed}s",
                 prepared.SaveIndex, itemCount, charCount, sw.Elapsed.TotalSeconds.ToString("F1"));
+            if (LastBackupError != null)
+                _logger.LogError(
+                    "World save #{Index} was published, but the previous generation was NOT fully backed up: {Error}",
+                    prepared.SaveIndex, LastBackupError);
             return true;
         }
         catch (Exception ex)
@@ -526,7 +526,7 @@ public sealed class WorldSaver
         return false;
     }
 
-    /// <summary>What <see cref="CommitShards"/> needs to atomically publish a
+    /// <summary>What <see cref="PublishGeneration"/> needs to publish a
     /// logical save whose shards (and manifest) have already been written to their
     /// <c>.tmp</c> siblings. Produced by <see cref="WriteShardsToTmp"/>.</summary>
     private readonly record struct PendingShardCommit(
@@ -538,7 +538,7 @@ public sealed class WorldSaver
     /// <summary>Phase 1 of a logical save: write every shard (and, when there is
     /// more than one, the manifest) to its <c>.tmp</c> sibling WITHOUT touching any
     /// live file. Returns the record count via <paramref name="totalCount"/> and the
-    /// handle <see cref="CommitShards"/> uses to publish the result. Splitting write
+    /// handle <see cref="PublishGeneration"/> uses to publish the result. Splitting write
     /// from commit lets <see cref="WritePrepared"/> stage sphereworld, spherechars
     /// and spheredata to .tmp before committing any of them, so a crash between
     /// writes can never leave a new-generation file beside an old-generation one.</summary>
@@ -622,7 +622,7 @@ public sealed class WorldSaver
 
         // Manifest (written only when >1 file exists — small worlds stay a single
         // {base}{ext} file, matching classic Sphere layout) goes to .tmp here in the
-        // write phase; CommitShards publishes it alongside the shards.
+        // write phase; PublishGeneration publishes it after the shards.
         string manifestPath = ShardManifest.PathFor(savePath, baseName);
         bool writeManifest = outputFiles.Count > 1;
         if (writeManifest)
@@ -633,28 +633,265 @@ public sealed class WorldSaver
                 ShardCount = outputFiles.Count,
                 Files = outputFiles,
             };
+            // The sizes of the shards this manifest publishes - the staged .tmp files,
+            // closed by now - not of whatever still holds the live names. Measuring
+            // the live names recorded the previous generation's sizes (or 0 on a first
+            // save), which is why the loader could never use them.
+            foreach (string f in outputFiles)
+                manifest.FileSizes[f] = new FileInfo(Path.Combine(savePath, f + ".tmp")).Length;
             manifest.Save(manifestPath + ".tmp");
         }
 
         return new PendingShardCommit(baseName, outputFiles, writeManifest, manifestPath);
     }
 
-    /// <summary>Phase 2 of a logical save: publish shards already staged to .tmp by
-    /// rotating each live file to .bak and renaming its .tmp into place, committing
-    /// (or clearing) the manifest, then pruning stale siblings. Runs only after
-    /// EVERY logical file of the save has been written, so the window in which the
-    /// on-disk set is internally inconsistent is just these adjacent renames.</summary>
-    private void CommitShards(PendingShardCommit pending, string savePath)
+    /// <summary>What went wrong backing up the previous generation in the most recent
+    /// <see cref="WritePrepared"/>, naming every file that failed; null when the backup
+    /// was complete (or none was configured). The new generation is still published
+    /// when this is set - <see cref="WritePrepared"/> returns true because the world
+    /// IS on disk - but the operator has lost the rollback point they configured, and
+    /// a save that says only "complete" hid that. A partial backup is removed rather
+    /// than left at <c>.bak1</c>, so it can never be loaded as a generation.</summary>
+    public string? LastBackupError { get; private set; }
+
+    /// <summary>Test seam: invoked after every publish step that changes a live or a
+    /// backup file, with a short name for the step. The crash drills throw from it to
+    /// leave the directory exactly as an interruption at that point would.</summary>
+    internal Action<string>? PublishStepHook { get; set; }
+
+    private void Step(string name) => PublishStepHook?.Invoke(name);
+
+    /// <summary>
+    /// Phase 2 of a save: publish every family already staged to <c>.tmp</c> as ONE
+    /// generation.
+    ///
+    /// Each file used to be rotated and promoted on its own, world first: an
+    /// interruption after the first promotion left a <c>.bak1</c> holding the old
+    /// world file and nothing else, and that half generation loaded as a world with
+    /// no characters. The order now is:
+    /// <list type="number">
+    /// <item>every staged file is flushed to disk;</item>
+    /// <item>every backup chain of every family shifts one level, in lockstep - the
+    /// chains of names this save will not write too, so the levels stay aligned
+    /// across a format or shard-layout change;</item>
+    /// <item>the WHOLE previous generation is copied (and flushed) to <c>.bak1</c>;</item>
+    /// <item>only then are new files promoted, family by family, each family's shards
+    /// before its manifest, and superseded names of that family removed; server data
+    /// goes last, and since every file carries the generation stamp the new generation
+    /// is not loadable until that final rename - it is the commit point.</item>
+    /// </list>
+    /// An interruption before step 4 leaves the live generation untouched; during
+    /// step 4 the live files disagree on their stamps and the loader takes the
+    /// complete <c>.bak1</c>. With backups switched off the copy is still made, as a
+    /// temporary safety net, and deleted once the publish is through.
+    /// </summary>
+    private void PublishGeneration(string savePath, IReadOnlyList<PendingShardCommit> families)
     {
-        foreach (string name in pending.OutputFiles)
-            CommitFile(Path.Combine(savePath, name));
+        int levels = Math.Clamp(BackupLevels, 0, 32);
 
-        if (pending.WriteManifest)
-            CommitFile(pending.ManifestPath);
-        else if (File.Exists(pending.ManifestPath))
-            File.Delete(pending.ManifestPath);
+        // 1. The new bytes reach the disk before any name points at them.
+        foreach (var family in families)
+        {
+            foreach (string name in family.OutputFiles)
+                SaveIO.FlushToDisk(Path.Combine(savePath, name + ".tmp"));
+            if (family.WriteManifest)
+                SaveIO.FlushToDisk(family.ManifestPath + ".tmp");
+        }
 
-        RemoveStaleSiblings(savePath, pending.BaseName, pending.OutputFiles);
+        // 2. Shift every chain one level. The previous generation is what is live now.
+        var backupErrors = new List<string>();
+        var oldLive = new List<string>[families.Count];
+        for (int i = 0; i < families.Count; i++)
+        {
+            var family = families[i];
+            oldLive[i] = LiveSaveNames(savePath, family.BaseName);
+            var chain = new SortedSet<string>(oldLive[i], StringComparer.OrdinalIgnoreCase);
+            foreach (string name in family.OutputFiles) chain.Add(name);
+            if (family.WriteManifest) chain.Add(Path.GetFileName(family.ManifestPath));
+            foreach (string name in BackupChainNames(savePath, family.BaseName)) chain.Add(name);
+            foreach (string name in chain)
+                ShiftBackupChain(Path.Combine(savePath, name), levels, backupErrors);
+            Step($"rotate {family.BaseName}");
+        }
+
+        // 3. The whole previous generation to .bak1, before anything is promoted.
+        var copied = new List<string>();
+        bool copyFailed = false;
+        for (int i = 0; i < families.Count; i++)
+        {
+            foreach (string name in oldLive[i])
+            {
+                string live = Path.Combine(savePath, name);
+                string bak = live + ".bak1";
+                try
+                {
+                    SaveIO.CopyDurable(live, bak);
+                    copied.Add(bak);
+                }
+                catch (Exception ex)
+                {
+                    copyFailed = true;
+                    backupErrors.Add($"{name} -> {name}.bak1: {ex.Message}");
+                    _logger.LogError(ex, "Could not back up {File} to {Backup}; the previous generation will not be kept",
+                        name, name + ".bak1");
+                }
+                Step($"backup {name}");
+            }
+        }
+        if (copyFailed)
+        {
+            // Part of a generation is not a generation. Take it away so nothing - the
+            // loader, an operator restoring by hand - can mistake it for one.
+            foreach (string bak in copied)
+            {
+                try { File.Delete(bak); }
+                catch (Exception ex) { backupErrors.Add($"could not remove partial backup {Path.GetFileName(bak)}: {ex.Message}"); }
+            }
+            copied.Clear();
+            Step("drop partial backup");
+        }
+
+        // 4. Promote, family by family; server data last (the commit point).
+        for (int i = 0; i < families.Count; i++)
+        {
+            var family = families[i];
+            foreach (string name in family.OutputFiles)
+            {
+                string live = Path.Combine(savePath, name);
+                File.Move(live + ".tmp", live, overwrite: true);
+                Step($"promote {name}");
+            }
+
+            if (family.WriteManifest)
+            {
+                File.Move(family.ManifestPath + ".tmp", family.ManifestPath, overwrite: true);
+                Step($"promote {Path.GetFileName(family.ManifestPath)}");
+            }
+            else if (File.Exists(family.ManifestPath))
+            {
+                File.Delete(family.ManifestPath);
+                Step($"remove {Path.GetFileName(family.ManifestPath)}");
+            }
+
+            // Names the previous generation used and this one does not: an old format
+            // or an old shard. They are in .bak1 already; left live they would shadow
+            // the new files (the loader probes the binary extensions first).
+            var keep = new HashSet<string>(family.OutputFiles, StringComparer.OrdinalIgnoreCase)
+            {
+                Path.GetFileName(family.ManifestPath),
+            };
+            foreach (string name in oldLive[i])
+            {
+                if (keep.Contains(name)) continue;
+                try { File.Delete(Path.Combine(savePath, name)); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Could not remove superseded save file {File}", name); }
+                Step($"remove {name}");
+            }
+        }
+
+        // 5. Backups off: the copy was only a safety net for the publish window.
+        if (levels == 0)
+        {
+            foreach (string bak in copied)
+            {
+                try { File.Delete(bak); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Could not remove temporary pre-publish copy {File}", bak); }
+            }
+            if (copied.Count > 0) Step("drop temporary copy");
+            if (backupErrors.Count > 0)
+                _logger.LogWarning("Temporary pre-publish copy of the previous generation was incomplete: {Errors}",
+                    string.Join("; ", backupErrors));
+            return;
+        }
+
+        if (backupErrors.Count > 0)
+            LastBackupError = string.Join("; ", backupErrors);
+    }
+
+    /// <summary>A save file of <paramref name="baseName"/>'s family: a single-file name
+    /// in any format, a shard fragment, or the family's manifest.</summary>
+    private static bool IsSaveFileName(string name, string baseName)
+    {
+        if (name.Equals(baseName + ".manifest", StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (string ext in new[] { ".scp", ".scp.gz", ".sbin", ".sbin.gz" })
+            if (name.Equals(baseName + ext, StringComparison.OrdinalIgnoreCase)) return true;
+        return IsShardFragment(name, baseName);
+    }
+
+    /// <summary>The family's files under their live names right now.</summary>
+    private static List<string> LiveSaveNames(string savePath, string baseName)
+    {
+        var names = new List<string>();
+        foreach (string file in Directory.GetFiles(savePath, baseName + ".*"))
+        {
+            string name = Path.GetFileName(file);
+            if (IsSaveFileName(name, baseName)) names.Add(name);
+        }
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    /// <summary>Every family name that has a numbered backup on disk, whether or not
+    /// the name is live. Shifting these too keeps level N meaning the same save for
+    /// every file after a format or shard-layout change.</summary>
+    private static IEnumerable<string> BackupChainNames(string savePath, string baseName)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string file in Directory.GetFiles(savePath, baseName + ".*"))
+        {
+            string name = Path.GetFileName(file);
+            int bak = name.LastIndexOf(".bak", StringComparison.OrdinalIgnoreCase);
+            if (bak <= 0 || bak + 4 >= name.Length) continue;
+            bool digits = true;
+            for (int i = bak + 4; i < name.Length; i++)
+                if (!char.IsDigit(name[i])) { digits = false; break; }
+            if (!digits) continue;
+            string logical = name[..bak];
+            if (IsSaveFileName(logical, baseName)) names.Add(logical);
+        }
+        return names;
+    }
+
+    /// <summary>Move <c>{path}.bakN</c> to <c>.bakN+1</c> for every level, dropping the
+    /// oldest; with backups off, remove every numbered backup. Failures are collected
+    /// rather than swallowed.</summary>
+    private static void ShiftBackupChain(string path, int levels, List<string> errors)
+    {
+        string name = Path.GetFileName(path);
+        if (levels <= 0)
+        {
+            for (int i = 1; i <= 32; i++)
+            {
+                string stale = $"{path}.bak{i}";
+                if (!File.Exists(stale)) continue;
+                try { File.Delete(stale); }
+                catch (Exception ex) { errors.Add($"could not remove {name}.bak{i}: {ex.Message}"); }
+            }
+        }
+        else
+        {
+            string oldest = $"{path}.bak{levels}";
+            if (File.Exists(oldest))
+            {
+                try { File.Delete(oldest); }
+                catch (Exception ex) { errors.Add($"could not remove {name}.bak{levels}: {ex.Message}"); }
+            }
+            for (int i = levels - 1; i >= 1; i--)
+            {
+                string src = $"{path}.bak{i}";
+                if (!File.Exists(src)) continue;
+                try { File.Move(src, $"{path}.bak{i + 1}", overwrite: true); }
+                catch (Exception ex) { errors.Add($"could not move {name}.bak{i} to .bak{i + 1}: {ex.Message}"); }
+            }
+        }
+
+        // An unnumbered .bak is a leftover of an older rotation scheme.
+        string plain = path + ".bak";
+        if (File.Exists(plain))
+        {
+            try { File.Delete(plain); }
+            catch (Exception ex) { errors.Add($"could not remove {name}.bak: {ex.Message}"); }
+        }
     }
 
     private static List<SaveRecord>[] PartitionRecordsByShard(IEnumerable<SaveRecord> records, int shards)
@@ -1361,7 +1598,7 @@ public sealed class WorldSaver
                 // (_GetTimerAdjusted -> TIMERMS, CObjBase.cpp:2081) and rebuilds the
                 // deadline against the load time (:2037), which is also how the
                 // POISON record above already survives a restart.
-                long remaining = long.TryParse(val, out long expireTick)
+                long remaining = SphereNet.Core.Types.ScriptNumber.TryParseLong(val, out long expireTick)
                     ? Math.Max(0, expireTick - Environment.TickCount64)
                     : 0;
                 w.WriteProperty("TAG.SUMMON_EXPIRE_REMAINING", remaining.ToString());
@@ -1380,28 +1617,17 @@ public sealed class WorldSaver
         w.EndRecord();
     }
 
-    private void SaveServerData(string savePath, GameWorld world)
-        => WriteServerData(savePath, BuildServerData(world));
-
-    /// <summary>Write the pre-rendered spheredata content with the usual
-    /// tmp + rotate + commit dance. Prepared-data only — any thread.</summary>
-    private void WriteServerData(string savePath, string content)
+    /// <summary>Phase 1 for spheredata: stage the content to its .tmp sibling only.
+    /// It is published as a one-file family with no manifest, and last of the three:
+    /// see <see cref="PublishGeneration"/>.</summary>
+    private static PendingShardCommit WriteServerDataToTmp(string savePath, string content)
     {
-        WriteServerDataToTmp(savePath, content);
-        CommitServerData(savePath);
+        const string baseName = "spheredata";
+        string fileName = baseName + ".scp";
+        File.WriteAllText(Path.Combine(savePath, fileName) + ".tmp", content);
+        return new PendingShardCommit(baseName, [fileName], WriteManifest: false,
+            ShardManifest.PathFor(savePath, baseName));
     }
-
-    /// <summary>Phase 1 for spheredata: stage the content to its .tmp sibling only.</summary>
-    private static void WriteServerDataToTmp(string savePath, string content)
-    {
-        string tmpPath = Path.Combine(savePath, "spheredata.scp") + ".tmp";
-        File.WriteAllText(tmpPath, content);
-    }
-
-    /// <summary>Phase 2 for spheredata: rotate the live file to .bak and rename its
-    /// staged .tmp into place.</summary>
-    private void CommitServerData(string savePath)
-        => CommitFile(Path.Combine(savePath, "spheredata.scp"));
 
     /// <summary>Render the spheredata.scp payload from live world state
     /// (globals, lists, GM pages, doors, sector env). MAIN-THREAD only.
@@ -1520,88 +1746,22 @@ public sealed class WorldSaver
         return System.Text.Encoding.UTF8.GetString(bytes, offset, bytes.Length - offset);
     }
 
-    /// <summary>Atomic commit: rotate existing final to .bak1..N, then .tmp → final.</summary>
-    private void CommitFile(string finalPath)
-    {
-        string tmpPath = finalPath + ".tmp";
-        if (!File.Exists(tmpPath)) return;
-
-        RotateBackups(finalPath);
-
-        File.Move(tmpPath, finalPath, overwrite: true);
-    }
-
+    /// <summary>Rotate a single standalone file's backup chain and keep the current
+    /// file as <c>.bak1</c> (the statics export). World saves rotate whole generations
+    /// in <see cref="PublishGeneration"/> instead. Failures are logged, not swallowed.</summary>
     private void RotateBackups(string finalPath)
     {
         int levels = Math.Clamp(BackupLevels, 0, 32);
-        if (levels <= 0)
+        var errors = new List<string>();
+        ShiftBackupChain(finalPath, levels, errors);
+        if (levels > 0 && File.Exists(finalPath))
         {
-            for (int i = 1; i <= 32; i++)
-            {
-                string staleGeneration = $"{finalPath}.bak{i}";
-                if (File.Exists(staleGeneration))
-                {
-                    try { File.Delete(staleGeneration); } catch { /* best effort */ }
-                }
-            }
-            return;
+            try { SaveIO.CopyDurable(finalPath, $"{finalPath}.bak1"); }
+            catch (Exception ex) { errors.Add($"{Path.GetFileName(finalPath)} -> .bak1: {ex.Message}"); }
         }
-
-        string oldest = $"{finalPath}.bak{levels}";
-        if (File.Exists(oldest))
-        {
-            try { File.Delete(oldest); } catch { /* best effort */ }
-        }
-
-        for (int i = levels - 1; i >= 1; i--)
-        {
-            string src = $"{finalPath}.bak{i}";
-            if (!File.Exists(src)) continue;
-            string dst = $"{finalPath}.bak{i + 1}";
-            try { File.Move(src, dst, overwrite: true); } catch { /* best effort */ }
-        }
-
-        string stale = finalPath + ".bak";
-        if (File.Exists(stale))
-        {
-            try { File.Delete(stale); } catch { /* best effort */ }
-        }
-
-        if (File.Exists(finalPath))
-        {
-            try { File.Copy(finalPath, $"{finalPath}.bak1", overwrite: true); } catch { /* best effort */ }
-        }
-    }
-
-    /// <summary>
-    /// Move a superseded live save file into its own <c>.bakN</c> chain rather than
-    /// deleting it. Returns false when it could not be preserved, so the caller falls
-    /// back to removing it.
-    ///
-    /// The chain is keyed by the file's OWN name, which is the point: after a format
-    /// change the new generation's backups live under the new extension and the old
-    /// generation's under the old one, and the loader probes both.
-    /// </summary>
-    private bool RetireSupersededFile(string livePath)
-    {
-        try
-        {
-            RotateBackups(livePath);              // shift this name's own .bakN chain
-            string bak1 = livePath + ".bak1";
-            // RotateBackups already copied the live file to .bak1; the copy is the
-            // preserved generation, so the live file itself can go.
-            if (!File.Exists(bak1))
-                return false;
-            File.Delete(livePath);
-            _logger.LogInformation(
-                "Save format changed: kept the previous generation as {Backup}", Path.GetFileName(bak1));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not retire superseded save {File}", livePath);
-            return false;
-        }
+        if (errors.Count > 0)
+            _logger.LogError("Backup rotation of {File} failed: {Errors}",
+                Path.GetFileName(finalPath), string.Join("; ", errors));
     }
 
     private void CleanupTmpFiles(string savePath)
@@ -1615,62 +1775,6 @@ public sealed class WorldSaver
             }
         }
         catch { /* directory may not exist */ }
-    }
-
-    /// <summary>Delete files that match the save base but are NOT in the
-    /// current output list — prevents orphaned old-format/old-shard files
-    /// from shadowing the live snapshot.</summary>
-    private void RemoveStaleSiblings(string savePath, string baseName, IEnumerable<string> keepNames)
-    {
-        var keep = new HashSet<string>(keepNames, StringComparer.OrdinalIgnoreCase);
-        // Known save extensions including .bak from prior commits.
-        string[] patterns =
-        {
-            $"{baseName}.scp", $"{baseName}.scp.gz", $"{baseName}.sbin", $"{baseName}.sbin.gz",
-        };
-        foreach (string p in patterns)
-        {
-            string full = Path.Combine(savePath, p);
-            if (File.Exists(full) && !keep.Contains(p))
-            {
-                // A live save file of this base under ANOTHER extension is the
-                // previous generation, not litter: this save changed SAVEFORMAT and
-                // wrote its world under a new name. Backups rotate by file name, so
-                // nothing rotated it - deleting it here left the shard with no
-                // recoverable previous generation at all, which is what turned a
-                // corrupt migrated save into a permanently empty world (review
-                // finding B1). Retire it into its own backup chain instead.
-                if (BackupLevels > 0 && RetireSupersededFile(full))
-                    continue;
-
-                try { File.Delete(full); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Could not remove stale save {File}", full); }
-            }
-        }
-        // Shard fragments {base}.{N}.{ext} + any leftover .bak sidecars.
-        foreach (string file in Directory.GetFiles(savePath, baseName + ".*"))
-        {
-            string name = Path.GetFileName(file);
-            if (keep.Contains(name)) continue;
-            if (name.Equals(baseName + ".manifest", StringComparison.OrdinalIgnoreCase)) continue;
-            if (name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
-
-            // Plain .bak leftovers from older runs always go. Numbered
-            // .bakN files belong to BackupLevels rotation.
-            if (name.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
-            {
-                try { File.Delete(file); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Could not remove stale backup {File}", file); }
-                continue;
-            }
-
-            // Only touch things that look like shard fragments.
-            if (IsShardFragment(name, baseName))
-            {
-                try { File.Delete(file); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Could not remove stale shard {File}", file); }
-            }
-        }
     }
 
     private static bool IsShardFragment(string fileName, string baseName)

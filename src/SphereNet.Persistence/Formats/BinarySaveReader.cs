@@ -13,6 +13,10 @@ public sealed class BinarySaveReader : ISaveReader
     private readonly Stream _stream;
     private readonly bool _ownsStream;
     private uint _remainingProps;
+    private bool _endMarkerSeen;
+
+    /// <inheritdoc/>
+    public bool EndMarkerSeen => _endMarkerSeen;
 
     public BinarySaveReader(Stream stream, bool ownsStream = true)
     {
@@ -41,7 +45,9 @@ public sealed class BinarySaveReader : ISaveReader
         int sectionLen = _stream.ReadByte();
         if (sectionLen <= 0)
         {
-            // Either EOF (<0) or terminator sentinel (0).
+            // Either EOF (<0) or terminator sentinel (0). Only the sentinel is a
+            // proper end: physical EOF without it is a file cut off after a record.
+            _endMarkerSeen = sectionLen == 0;
             section = string.Empty;
             return false;
         }

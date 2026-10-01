@@ -1868,10 +1868,10 @@ public sealed class HousingEngine
         }
         else if (item.TryGetTag("HOUSE.MOVINGCRATE", out string? crateStr))
             house.MovingCrate = new Serial(ParseHexSerial(crateStr));
-        if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && byte.TryParse(dsStr, out byte ds) &&
+        if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && ScriptNumber.TryParseByte(dsStr, out byte ds) &&
             ds <= (byte)HouseDecayStage.InDangerOfCollapsing)
             house.DecayStage = (HouseDecayStage)ds;
-        if (item.TryGetTag("HOUSE.DECAY_ELAPSED", out string? elStr) && long.TryParse(elStr, out long el) && el > 0)
+        if (item.TryGetTag("HOUSE.DECAY_ELAPSED", out string? elStr) && ScriptNumber.TryParseLong(elStr, out long el) && el > 0)
             house.LastRefreshTick = Environment.TickCount64 - el;
 
         // Native lists first, then the classic one-uid-per-line keys
@@ -1989,16 +1989,7 @@ public sealed class HousingEngine
         value = 0;
         if (!item.TryGetTag(nativeKey, out string? raw) && !item.TryGetTag(classicKey, out raw))
             return false;
-        if (string.IsNullOrWhiteSpace(raw))
-            return false;
-        if (int.TryParse(raw.Trim(), out value))
-            return true;
-        if (ScriptNumber.TryParseToken(raw.Trim(), out long parsed) && parsed is >= int.MinValue and <= int.MaxValue)
-        {
-            value = (int)parsed;
-            return true;
-        }
-        return false;
+        return ScriptNumber.TryParseInt(raw, out value);
     }
 
     private static uint ParseHexSerial(string? str)

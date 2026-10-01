@@ -62,6 +62,13 @@ public sealed class TextSaveWriter : ISaveWriter
         // rather than silently dropping everything after the first break, encode
         // it losslessly so it round-trips through TextSaveReader. See EncodeValue.
         value = EncodeValue(value);
+        // The reader refuses a physical line longer than MaxLineLength as
+        // corruption, so a save holding one would publish fine and then not load.
+        // Fail the save here instead - never cut the value short.
+        long lineLength = (long)key.Length + 1 + value.Length;
+        if (lineLength > TextSaveReader.MaxLineLength)
+            throw new InvalidDataException(
+                $"Save line for '{key}' is {lineLength} characters encoded, over the {TextSaveReader.MaxLineLength}-character line limit of the text save reader.");
         _writer.Write(key);
         _writer.Write('=');
         _writer.WriteLine(value);

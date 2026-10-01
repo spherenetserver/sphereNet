@@ -131,6 +131,27 @@ public static class SaveIO
         return path;
     }
 
+    /// <summary>Force a closed file's contents out of the OS cache onto the disk
+    /// (FlushFileBuffers / fsync). A rename that publishes a file is only as durable
+    /// as the bytes behind it: without this a power cut shortly after a "complete"
+    /// save can leave the new name pointing at data that never reached the disk.</summary>
+    public static void FlushToDisk(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read);
+        fs.Flush(flushToDisk: true);
+    }
+
+    /// <summary>Copy a file and flush the copy to disk before returning.</summary>
+    public static void CopyDurable(string source, string destination)
+    {
+        File.Copy(source, destination, overwrite: true);
+        FlushToDisk(destination);
+    }
+
+    /// <summary>True for the binary tag-stream formats, which only this engine writes
+    /// and which always end with a terminator.</summary>
+    public static bool IsBinaryPath(string path) => IsBinary(FormatFromPath(path));
+
     private static bool IsGzip(SaveFormat f) => f == SaveFormat.TextGz || f == SaveFormat.BinaryGz;
     private static bool IsBinary(SaveFormat f) => f == SaveFormat.Binary || f == SaveFormat.BinaryGz;
 }

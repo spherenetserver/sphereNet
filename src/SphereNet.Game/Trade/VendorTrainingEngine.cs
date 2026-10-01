@@ -2,6 +2,7 @@
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Skills;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Trade;
 
@@ -151,7 +152,7 @@ public static class VendorTrainingEngine
     public static SkillType? TryPay(Character trainer, Character student, Item gold)
     {
         string tag = PendingTag(student);
-        if (!trainer.TryGetTag(tag, out string? skillStr) || !int.TryParse(skillStr, out int skillId))
+        if (!trainer.TryGetTag(tag, out string? skillStr) || !ScriptNumber.TryParseInt(skillStr, out int skillId))
             return null;
 
         var skill = (SkillType)skillId;

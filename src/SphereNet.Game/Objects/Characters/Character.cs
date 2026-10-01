@@ -1241,7 +1241,7 @@ public partial class Character : ObjBase
     /// world for the configured client-linger period.</summary>
     public bool IsClientLingering =>
         TryGetTag("CLIENT_LINGER_UNTIL", out string? value) &&
-        long.TryParse(value, out _);
+        ScriptNumber.TryParseLong(value, out _);
     public int SkillClass { get => _skillClass; set => _skillClass = Math.Max(0, value); }
     public string Title { get => _title; set => _title = value ?? ""; }
 
@@ -2368,12 +2368,12 @@ public partial class Character : ObjBase
                 continue;
             }
             if (!item.TryGetTag("FIELD_DAMAGE", out string? fdStr) ||
-                !int.TryParse(fdStr, out int dmg) || dmg <= 0)
+                !ScriptNumber.TryParseInt(fdStr, out int dmg) || dmg <= 0)
                 continue;
 
             Character? caster = null;
             if (item.TryGetTag("FIELD_CASTER", out string? cStr) &&
-                uint.TryParse(cStr, out uint cuid))
+                ScriptNumber.TryParseUInt(cStr, out uint cuid))
                 caster = ResolveCharByUid?.Invoke(new Serial(cuid));
 
             Hits = (short)Math.Max(0, Hits - dmg);
@@ -2450,9 +2450,9 @@ public partial class Character : ObjBase
         get
         {
             var acct = ResolveAccountForChar?.Invoke(Uid);
-            if (acct != null && acct.TryGetTag("JailCell", out string ac) && int.TryParse(ac, out int a))
+            if (acct != null && acct.TryGetTag("JailCell", out string ac) && ScriptNumber.TryParseInt(ac, out int a))
                 return a;
-            return TryGetTag("JAIL_CELL", out string? cc) && int.TryParse(cc, out int c) ? c : 0;
+            return TryGetTag("JAIL_CELL", out string? cc) && ScriptNumber.TryParseInt(cc, out int c) ? c : 0;
         }
     }
 
@@ -2463,7 +2463,7 @@ public partial class Character : ObjBase
     public bool IsJailExpired()
     {
         if (!TryGetTag("JAIL_RELEASE", out string? tag)) return false;
-        if (!long.TryParse(tag, out long releaseUtcTicks)) return false;
+        if (!ScriptNumber.TryParseLong(tag, out long releaseUtcTicks)) return false;
         if (releaseUtcTicks <= 0) return false; // indefinite
         return DateTime.UtcNow.Ticks >= releaseUtcTicks;
     }
@@ -2525,7 +2525,7 @@ public partial class Character : ObjBase
             // the definition whenever the instance maximum is below 1
             // (Stat_GetMax, CCharStat.cpp:276).
             if (TryGetTag("MAXFOOD", out string? raw) &&
-                ushort.TryParse(raw, out ushort instanceMax) && instanceMax > 0)
+                ScriptNumber.TryParseUShort(raw, out ushort instanceMax) && instanceMax > 0)
                 return instanceMax;
 
             // A definition that wrote MAXFOOD is taken at its word, ZERO INCLUDED - a
@@ -2903,7 +2903,7 @@ public partial class Character : ObjBase
 
     public long BondingStartTick
     {
-        get => TryGetTag("BONDING_START", out string? v) && long.TryParse(v, out long t) ? t : 0;
+        get => TryGetTag("BONDING_START", out string? v) && ScriptNumber.TryParseLong(v, out long t) ? t : 0;
         set { if (value > 0) SetTag("BONDING_START", value.ToString()); else RemoveTag("BONDING_START"); }
     }
 
@@ -3468,7 +3468,7 @@ public partial class Character : ObjBase
         if (TryGetTag("SUMMON_EXPIRE_REMAINING", out string? remainingRaw))
         {
             RemoveTag("SUMMON_EXPIRE_REMAINING");
-            long remaining = long.TryParse(remainingRaw, out long r) ? Math.Max(0, r) : 0;
+            long remaining = ScriptNumber.TryParseLong(remainingRaw, out long r) ? Math.Max(0, r) : 0;
             SetTag("SUMMON_EXPIRE_TICK", (Environment.TickCount64 + remaining).ToString());
             return;
         }
@@ -3479,7 +3479,7 @@ public partial class Character : ObjBase
         // Legacy record: rebuild from the duration, or expire at the next tick when
         // even that is missing rather than leave the summon unbounded.
         long duration = TryGetTag("SUMMON_DURATION", out string? durRaw) &&
-            long.TryParse(durRaw, out long d) && d > 0 ? d * 100L : 0;
+            ScriptNumber.TryParseLong(durRaw, out long d) && d > 0 ? d * 100L : 0;
         SetTag("SUMMON_EXPIRE_TICK", (Environment.TickCount64 + duration).ToString());
     }
 
@@ -3489,7 +3489,7 @@ public partial class Character : ObjBase
             return false;
 
         if (TryGetTag("SUMMON_EXPIRE_TICK", out string? expireRaw) &&
-            long.TryParse(expireRaw, out long expireTick) &&
+            ScriptNumber.TryParseLong(expireRaw, out long expireTick) &&
             expireTick > 0 && nowMs >= expireTick)
         {
             return true;
@@ -3610,7 +3610,7 @@ public partial class Character : ObjBase
     private bool CheckHirelingStatus()
     {
         uint wage = Definitions.DefinitionLoader.GetCharDef(CharDefIndex)?.HireDayWage ?? 0;
-        if (TryGetTag("HIRE_WAGE", out string? wageTag) && uint.TryParse(wageTag, out uint tagWage) && tagWage > 0)
+        if (TryGetTag("HIRE_WAGE", out string? wageTag) && ScriptNumber.TryParseUInt(wageTag, out uint tagWage) && tagWage > 0)
             wage = tagWage;
         long rateSec = RegenFoodSeconds;
         if (wage == 0 || rateSec <= 0)
@@ -3621,7 +3621,7 @@ public partial class Character : ObjBase
         if (periodWage <= 0)
             periodWage = 1;
 
-        long balance = TryGetTag("HIRE_BALANCE", out string? bs) && long.TryParse(bs, out long b) ? b : 0;
+        long balance = TryGetTag("HIRE_BALANCE", out string? bs) && ScriptNumber.TryParseLong(bs, out long b) ? b : 0;
         if (balance > periodWage)
         {
             SetTag("HIRE_BALANCE", (balance - periodWage).ToString());
@@ -9644,7 +9644,7 @@ public partial class Character : ObjBase
 
         if (IsStatFlag(StatFlag.SpiritSpeak) &&
             TryGetTag("SPIRITSPEAK_UNTIL", out string? spiritUntilText) &&
-            long.TryParse(spiritUntilText, out long spiritUntil) &&
+            ScriptNumber.TryParseLong(spiritUntilText, out long spiritUntil) &&
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= spiritUntil)
         {
             ClearStatFlag(StatFlag.SpiritSpeak);

@@ -1085,7 +1085,7 @@ public sealed class GuildManager
             if (item.TryGetTag("GUILD.WEB", out string? web))
                 guild.WebUrl = web ?? "";
             if (item.TryGetTag("GUILD.ALIGN", out string? alignStr) &&
-                byte.TryParse(alignStr, out byte alignVal) &&
+                ScriptNumber.TryParseByte(alignStr, out byte alignVal) &&
                 Enum.IsDefined((GuildAlign)alignVal))
                 guild.Align = (GuildAlign)alignVal;
 
@@ -1100,10 +1100,10 @@ public sealed class GuildManager
                 if (world.FindItem(uid) != null) guild.AddShip(uid);
             });
             if (item.TryGetTag("GUILD.MAXHOUSES", out string? maxHousesStr) &&
-                int.TryParse(maxHousesStr, out int maxHouses) && maxHouses > 0)
+                ScriptNumber.TryParseInt(maxHousesStr, out int maxHouses) && maxHouses > 0)
                 guild.MaxHouses = maxHouses;
             if (item.TryGetTag("GUILD.MAXSHIPS", out string? maxShipsStr) &&
-                int.TryParse(maxShipsStr, out int maxShips) && maxShips > 0)
+                ScriptNumber.TryParseInt(maxShipsStr, out int maxShips) && maxShips > 0)
                 guild.MaxShips = maxShips;
 
             // Parse members

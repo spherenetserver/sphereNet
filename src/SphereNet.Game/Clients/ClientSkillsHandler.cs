@@ -818,7 +818,7 @@ public sealed class ClientSkillsHandler
         {
             if (_character == null) return;
             if (!_character.TryGetTag("SKILL_MENU_PENDING", out string? pendingText) ||
-                !int.TryParse(pendingText, out int pendingId) || pendingId != skillId)
+                !ScriptNumber.TryParseInt(pendingText, out int pendingId) || pendingId != skillId)
                 return;
             _character.RemoveTag("SKILL_MENU_PENDING");
             if (buttonId == 0)
@@ -885,14 +885,14 @@ public sealed class ClientSkillsHandler
     private void TickTrackingArrow()
     {
         if (_character == null || !_character.TryGetTag("TRACKING_TARGET", out string? uidText) ||
-            !uint.TryParse(uidText, out uint uid))
+            !ScriptNumber.TryParseUInt(uidText, out uint uid))
             return;
         long now = Environment.TickCount64;
         if (_character.TryGetTag("TRACKING_ARROW_NEXT", out string? nextText) &&
-            long.TryParse(nextText, out long next) && now < next)
+            ScriptNumber.TryParseLong(nextText, out long next) && now < next)
             return;
         bool expired = !_character.TryGetTag("TRACKING_UNTIL", out string? untilText) ||
-            !long.TryParse(untilText, out long until) || now >= until;
+            !ScriptNumber.TryParseLong(untilText, out long until) || now >= until;
         var target = expired ? null : _world.FindChar(new Serial(uid));
         if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex)
         {

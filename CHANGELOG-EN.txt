@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Crash-consistent saves, account recovery and TAG number reads
+------------------------------------------------------------------------
+FIX - World save: a stamped world/char/data file (and every binary save file)
+      must end with its [EOF] / binary terminator; a file cut off between two
+      records is rejected and the previous generation loads, as Source-X
+      CWorld::LoadFile does. Classic unstamped saves still load without [EOF].
+FIX - A stamped generation missing its sphereworld, spherechars or spheredata
+      file is rejected instead of loading as a world without items or
+      characters; shard manifests (VERSION=2) record and verify the real shard
+      sizes; backup search continues past a missing .bakN level.
+FIX - Save publish is crash-consistent: the whole previous generation is copied
+      to .bak1 and flushed to disk before any new file is promoted, backup
+      chains shift together and spheredata is promoted last; an interruption at
+      any step leaves the old or the new generation loadable in full.
+FIX - Backup copy/rotation failures are logged with file names and announced
+      instead of "Save complete"; a partial backup is removed and never loaded.
+FIX - Account save transactions use their own staging file and are published in
+      order, so an account change saved during a background world write is no
+      longer lost and the publish no longer fails.
+FIX - Account files keep a .bakN chain per world generation; when the world loads
+      from a backup, character slots return to that generation's accounts while
+      passwords, privileges, bans and TAGs keep their newest values; the previous
+      account file is preserved, and an unresolved mismatch is reported at every
+      boot and save.
+FIX - Engine reads of TAG/VAR numbers follow the Sphere rule (leading 0 is hex):
+      a number saved as "02A", or a Source-X "0123", no longer reads back as 0 or
+      decimal 123 after a reload. A loaded unquoted number TAG is a number var
+      again and TAG0 drops a zero on load.
+FIX - Text saves keep trailing whitespace of multi-line values, and a value too
+      long for the text reader fails the save instead of producing a save that
+      cannot be loaded.
+
 [2026-10-01] - Network input, encryption and packet filters
 ------------------------------------------------------------------------
 FIX - Security: login diagnostics and packet dumps no longer contain account

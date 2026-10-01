@@ -358,7 +358,7 @@ public static partial class Program
                 {
                     bool petAggressingSpeaker = ch.FightTarget == speaker.Uid;
                     if (!petAggressingSpeaker && ch.TryGetTag("ATTACK_TARGET", out string? attackUid) &&
-                        uint.TryParse(attackUid, out uint auid))
+                        ScriptNumber.TryParseUInt(attackUid, out uint auid))
                     {
                         petAggressingSpeaker = auid == speaker.Uid.Value;
                     }

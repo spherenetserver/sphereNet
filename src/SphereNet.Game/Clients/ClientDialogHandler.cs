@@ -1246,7 +1246,7 @@ public sealed class ClientDialogHandler
         {
             if (obj is SphereNet.Game.Objects.Items.Item it && !it.IsDeleted &&
                 (it.BaseId == rid.Index ||
-                 (it.TryGetTag("SCRIPTDEF", out string? sd) && int.TryParse(sd, out int sdi) && sdi == rid.Index)))
+                 (it.TryGetTag("SCRIPTDEF", out string? sd) && ScriptNumber.TryParseInt(sd, out int sdi) && sdi == rid.Index)))
                 count++;
         }
         return count;

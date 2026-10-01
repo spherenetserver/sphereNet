@@ -399,7 +399,7 @@ public static class SkillEngine
         // Source-X Skill_GetSumMax: a per-character OVERRIDE.SKILLSUM tag wins
         // over the class def and the global override.
         if (ch.TryGetTag("OVERRIDE.SKILLSUM", out string? sumStr) &&
-            int.TryParse(sumStr, out int sumTag) && sumTag > 0)
+            ScriptNumber.TryParseInt(sumStr, out int sumTag) && sumTag > 0)
             return sumTag;
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
         return cls?.SkillSumMax > 0 ? cls.SkillSumMax : SkillSumMaxOverride;
@@ -436,7 +436,7 @@ public static class SkillEngine
     /// <c>SkillMod&lt;n&gt;</c> key (n = skill index), a signed effective-skill
     /// bonus maintained by equip/unequip scripts. Absent/unparseable → 0.</summary>
     public static int GetSkillModBonus(Character ch, SkillType skill) =>
-        ch.TryGetTag($"SkillMod{(int)skill}", out string? s) && int.TryParse(s, out int v) ? v : 0;
+        ch.TryGetTag($"SkillMod{(int)skill}", out string? s) && ScriptNumber.TryParseInt(s, out int v) ? v : 0;
 
     /// <summary>
     /// S-curve for bell-curve success checks. Exact port of the reference
@@ -616,7 +616,7 @@ public static class SkillEngine
         // Source-X Skill_GetMax: a per-character OVERRIDE.SKILLCAP_<n> tag wins
         // over the class def and the global override.
         if (ch.TryGetTag($"OVERRIDE.SKILLCAP_{(int)skill}", out string? capStr) &&
-            int.TryParse(capStr, out int capTag) && capTag > 0)
+            ScriptNumber.TryParseInt(capStr, out int capTag) && capTag > 0)
             return capTag;
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
         if (cls != null && cls.SkillCaps.TryGetValue(skill, out int classCap) && classCap > 0)

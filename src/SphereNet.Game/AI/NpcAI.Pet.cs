@@ -26,7 +26,7 @@ public sealed partial class NpcAI
         // real command - which does record the previous mode - therefore blew up here,
         // leaving the pet stuck in Come with its GO_TARGET already deleted.
         if (npc.TryGetTag("PREV_PET_MODE", out string? prev) &&
-            byte.TryParse(prev, out byte prevMode) &&
+            ScriptNumber.TryParseByte(prev, out byte prevMode) &&
             Enum.IsDefined(typeof(PetAIMode), prevMode))
         {
             npc.PetAIMode = (PetAIMode)prevMode;
@@ -200,7 +200,7 @@ public sealed partial class NpcAI
                 // byte, not int: Enum.IsDefined throws for a boxed Int32 on this
                 // byte-backed enum (see FinishGoOrder).
                 if (npc.TryGetTag("PREV_PET_MODE", out string? prevTag) &&
-                    byte.TryParse(prevTag, out byte prevVal) &&
+                    ScriptNumber.TryParseByte(prevTag, out byte prevVal) &&
                     Enum.IsDefined(typeof(PetAIMode), prevVal) &&
                     (PetAIMode)prevVal != PetAIMode.Attack)
                     revertMode = (PetAIMode)prevVal;

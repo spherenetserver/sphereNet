@@ -587,7 +587,7 @@ public class Item : ObjBase
     {
         get
         {
-            if (TryGetTag("OVERRIDE.REQSTR", out string? raw) && int.TryParse(raw, out int v))
+            if (TryGetTag("OVERRIDE.REQSTR", out string? raw) && ScriptNumber.TryParseInt(raw, out int v))
                 return v;
             return ResolveDefinition()?.ReqStr ?? 0;
         }
@@ -899,17 +899,17 @@ public class Item : ObjBase
     /// <summary>One-time import from legacy TAG.HITS / TAG.HITSMAX saves.</summary>
     public void MigrateHitsFromTags()
     {
-        if (_hitsCur == 0 && TryGetTag("HITS", out string? hc) && int.TryParse(hc, out int c) && c > 0)
+        if (_hitsCur == 0 && TryGetTag("HITS", out string? hc) && ScriptNumber.TryParseInt(hc, out int c) && c > 0)
         {
             _hitsCur = c;
             RemoveTag("HITS");
         }
-        if (_hitsMax == 0 && TryGetTag("HITSMAX", out string? hm) && int.TryParse(hm, out int m) && m > 0)
+        if (_hitsMax == 0 && TryGetTag("HITSMAX", out string? hm) && ScriptNumber.TryParseInt(hm, out int m) && m > 0)
         {
             _hitsMax = m;
             RemoveTag("HITSMAX");
         }
-        else if (_hitsMax == 0 && TryGetTag("MAXHITS", out string? mh) && int.TryParse(mh, out int mx) && mx > 0)
+        else if (_hitsMax == 0 && TryGetTag("MAXHITS", out string? mh) && ScriptNumber.TryParseInt(mh, out int mx) && mx > 0)
         {
             _hitsMax = mx;
             RemoveTag("MAXHITS");
@@ -951,15 +951,15 @@ public class Item : ObjBase
     public void MigrateRuneFromTags()
     {
         if (!TryGetTag("RUNE_X", out string? rx) || !TryGetTag("RUNE_Y", out string? ry) ||
-            !short.TryParse(rx, out short x) || !short.TryParse(ry, out short y))
+            !ScriptNumber.TryParseShort(rx, out short x) || !ScriptNumber.TryParseShort(ry, out short y))
             return;
 
         sbyte z = 0;
         byte map = 0;
         if (TryGetTag("RUNE_Z", out string? rz))
-            sbyte.TryParse(rz, out z);
+            ScriptNumber.TryParseSByte(rz, out z);
         if (TryGetTag("RUNE_MAP", out string? rm))
-            byte.TryParse(rm, out map);
+            ScriptNumber.TryParseByte(rm, out map);
 
         _moreP = new Point3D(x, y, z, map);
         ClearRuneTags();
@@ -1045,10 +1045,10 @@ public class Item : ObjBase
         get
         {
             if (TryGetTag("OVERRIDE.SPEED", out string? instanceOverride) &&
-                int.TryParse(instanceOverride, out int instanceSpeed))
+                ScriptNumber.TryParseInt(instanceOverride, out int instanceSpeed))
                 return Math.Clamp(instanceSpeed, 0, byte.MaxValue);
             var def = ResolveDefinition();
-            if (def != null && int.TryParse(def.TagDefs.Get("OVERRIDE.SPEED"), out int defSpeed))
+            if (def != null && ScriptNumber.TryParseInt(def.TagDefs.Get("OVERRIDE.SPEED"), out int defSpeed))
                 return Math.Clamp(defSpeed, 0, byte.MaxValue);
             return def?.Speed ?? 0;
         }
@@ -1438,7 +1438,7 @@ public class Item : ObjBase
     {
         uint code = key.Link.IsValid ? key.Link.Value : 0;
         if (code == 0 && key.TryGetTag("LINK", out string? lk))
-            uint.TryParse(lk, out code);
+            ScriptNumber.TryParseUInt(lk, out code);
         if (code == 0) return false;
 
         if (code == locked.Uid.Value) return true;
@@ -3460,8 +3460,8 @@ public class Item : ObjBase
                 }
                 else if (upper is "TIMELO" or "TIMEHI")
                 {
-                    int spLo = int.TryParse(Tags.Get("TIMELO"), out int l) ? l : 15;
-                    int spHi = int.TryParse(Tags.Get("TIMEHI"), out int h) ? h : 30;
+                    int spLo = ScriptNumber.TryParseInt(Tags.Get("TIMELO"), out int l) ? l : 15;
+                    int spHi = ScriptNumber.TryParseInt(Tags.Get("TIMEHI"), out int h) ? h : 30;
                     SpawnChar?.SetDelay(spLo, spHi);
                     SpawnItem?.SetDelay(spLo, spHi);
                 }
@@ -4909,7 +4909,7 @@ public class Item : ObjBase
         if (TryGetTag("LIGHT_CHARGES", out string? raw))
         {
             RemoveTag("LIGHT_CHARGES");
-            if (int.TryParse(raw, out int c))
+            if (ScriptNumber.TryParseInt(raw, out int c))
                 _moreP = new Point3D(_moreP.X, unchecked((short)(ushort)Math.Clamp(c, 0, ushort.MaxValue)), _moreP.Z, _moreP.Map);
         }
         if (TryGetTag("LIGHT_BURNED", out _))
@@ -5790,7 +5790,7 @@ public class Item : ObjBase
             // seven tiles quietly kept the engine defaults.
             SpawnItem.ApplyMoreP();
             ApplySpawnFieldTags(SpawnItem.SetDelay, v => SpawnItem.SpawnRange = v);
-            if (int.TryParse(Tags.Get("PILE"), out int loadedPile) && loadedPile > 0)
+            if (ScriptNumber.TryParseInt(Tags.Get("PILE"), out int loadedPile) && loadedPile > 0)
                 SpawnItem.Pile = loadedPile;
             // A spawner that was stopped stays stopped across a restart: upstream keeps
             // it off by having no timer at all, and this initialisation would otherwise
@@ -5819,15 +5819,15 @@ public class Item : ObjBase
     /// values plainly in the file.</summary>
     private void ApplySpawnFieldTags(Action<int, int> setDelay, Action<int> setRange)
     {
-        bool haveLo = int.TryParse(Tags.Get("TIMELO"), out int lo);
-        bool haveHi = int.TryParse(Tags.Get("TIMEHI"), out int hi);
+        bool haveLo = ScriptNumber.TryParseInt(Tags.Get("TIMELO"), out int lo);
+        bool haveHi = ScriptNumber.TryParseInt(Tags.Get("TIMEHI"), out int hi);
         if (haveLo || haveHi)
         {
             int min = haveLo && lo > 0 ? lo : 1;
             int max = haveHi && hi > 0 ? hi : min;
             setDelay(min, Math.Max(min, max));
         }
-        if (int.TryParse(Tags.Get("MAXDIST"), out int md) && md >= 0)
+        if (ScriptNumber.TryParseInt(Tags.Get("MAXDIST"), out int md) && md >= 0)
             setRange(md);
     }
 

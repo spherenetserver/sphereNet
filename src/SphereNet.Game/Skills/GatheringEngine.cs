@@ -53,7 +53,7 @@ public sealed class GatheringEngine
     private const string TagResourceId = "RES_ID";
 
     internal static int GetPool(Item marker) =>
-        marker.TryGetTag(TagPool, out string? p) && int.TryParse(p, out int v) ? v : 0;
+        marker.TryGetTag(TagPool, out string? p) && ScriptNumber.TryParseInt(p, out int v) ? v : 0;
 
     private static void SetPool(Item marker, int value) =>
         marker.SetTag(TagPool, Math.Clamp(value, 0, ushort.MaxValue).ToString());
@@ -282,7 +282,7 @@ public sealed class GatheringEngine
             if (byMore != null)
                 return byMore;
         }
-        if (bit.TryGetTag(TagResourceId, out string? ridStr) && int.TryParse(ridStr, out int ridIdx))
+        if (bit.TryGetTag(TagResourceId, out string? ridStr) && ScriptNumber.TryParseInt(ridStr, out int ridIdx))
             return DefinitionLoader.GetRegionResourceDef(ridIdx);
         return null;
     }

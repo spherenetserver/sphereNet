@@ -18,7 +18,7 @@ public static class AccountPersistence
     private const string BaseName = "sphereaccu";
 
     /// <summary>An account file that has been written but not published: it sits in
-    /// its <c>.tmp</c> sibling and becomes the live snapshot only when
+    /// a staging file of its own and becomes the live snapshot only when
     /// <see cref="Commit"/> runs.
     ///
     /// Rendering and publishing are separate steps because the accounts and the world
@@ -26,22 +26,39 @@ public static class AccountPersistence
     /// still being encoded on the writer thread, so a world write that then failed
     /// published the NEW accounts beside the PREVIOUS world: a character created in
     /// the save that was lost keeps its slot in an account whose character the world
-    /// has never heard of (review work item D01).</summary>
+    /// has never heard of (review work item D01).
+    ///
+    /// Each staged snapshot is its own transaction. Its staging file name is unique,
+    /// so an ordinary account save that runs while a world write is still in flight
+    /// cannot consume it, and discarding one transaction cannot delete another's file.
+    /// It also remembers its place in the order of stages: a snapshot rendered before
+    /// another one was published is older than the file on disk, and publishing it
+    /// as rendered would put back account state that was already replaced.</summary>
     public sealed class StagedAccountSnapshot
     {
         internal StagedAccountSnapshot(string dir, string tmpPath, string finalPath,
-            SaveFormat fmt, int count, int skipped)
+            SaveFormat fmt, int count, int skipped, AccountManager accounts, long generation,
+            int backupLevels, long? unresolvedGeneration, long sequence, ChangesFileStamp changesStamp)
         {
             Dir = dir; TmpPath = tmpPath; FinalPath = finalPath;
             Format = fmt; Count = count; Skipped = skipped;
+            Accounts = accounts; Generation = generation; BackupLevels = backupLevels;
+            UnresolvedGeneration = unresolvedGeneration; Sequence = sequence; ChangesStamp = changesStamp;
         }
 
         internal string Dir { get; }
         internal string TmpPath { get; }
         internal SaveFormat Format { get; }
+        internal AccountManager Accounts { get; }
+        internal int BackupLevels { get; }
+        internal long? UnresolvedGeneration { get; }
+        internal long Sequence { get; }
+        internal ChangesFileStamp ChangesStamp { get; }
 
         /// <summary>Where the snapshot lands when it is published.</summary>
         public string FinalPath { get; }
+        /// <summary>The world generation stamped into the file (0 = unstamped).</summary>
+        public long Generation { get; }
         /// <summary>Accounts written into the staged file.</summary>
         public int Count { get; }
         /// <summary>Accounts left out because their name cannot be written back.</summary>
@@ -50,7 +67,31 @@ public static class AccountPersistence
 
     /// <summary>What a load found: the accounts, and the world generation the file
     /// says it belongs to (null for a file written without a stamp).</summary>
-    public readonly record struct AccountLoadResult(int Count, long? Generation, string? Path);
+    public readonly record struct AccountLoadResult(int Count, long? Generation, string? Path)
+    {
+        /// <summary>The account generation of a world/account mismatch that has not been
+        /// resolved yet, carried forward by every save until it is (null when none).</summary>
+        public long? UnresolvedGeneration { get; init; }
+    }
+
+    /// <summary>SAVEID property naming an unresolved world/account mismatch: the
+    /// generation the account file had when a world from another generation loaded
+    /// beside it and no account snapshot of the world's generation existed.</summary>
+    public const string UnresolvedGenerationProperty = "UNRESOLVEDGEN";
+
+    /// <summary>Order of stages across the process, and per directory the newest stage
+    /// that has been published. A stage older than what was published is re-rendered
+    /// before it is published.</summary>
+    private static long s_stageSequence;
+    private static readonly object s_commitGate = new();
+    private static readonly Dictionary<string, long> s_lastPublished = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Marker of the staging file name. Deliberately NOT <c>.tmp</c>: the
+    /// world writer sweeps every <c>*.tmp</c> of its directory when a write fails, and
+    /// the account directory may be the world directory.</summary>
+    private const string StagingMarker = ".stage-";
+
+    internal readonly record struct ChangesFileStamp(bool Exists, long Length, DateTime WrittenUtc);
 
     /// <summary>Write every account into <c>sphereaccu.{ext}</c> and publish it.
     /// Stale files in the other formats are removed so changing SaveFormat doesn't
@@ -58,28 +99,35 @@ public static class AccountPersistence
     /// <param name="generation">The world generation these accounts belong to, stamped
     /// into the file so a later boot can tell whether the world beside it is the same
     /// save. 0 leaves the file unstamped.</param>
+    /// <param name="backupLevels">How many previous generations of the account file to
+    /// keep as <c>.bakN</c> (the world's BackupLevels). 0 keeps none.</param>
+    /// <param name="unresolvedGeneration">An unresolved world/account mismatch to carry
+    /// in the file (see <see cref="UnresolvedGenerationProperty"/>).</param>
     public static int Save(AccountManager accounts, string dir, SaveFormat fmt, ILogger? log = null,
-        long generation = 0)
-        => Commit(Stage(accounts, dir, fmt, log, generation), log);
+        long generation = 0, int backupLevels = 0, long? unresolvedGeneration = null)
+        => Commit(Stage(accounts, dir, fmt, log, generation, backupLevels, unresolvedGeneration), log);
 
-    /// <summary>Phase 1: render the account file to its <c>.tmp</c> sibling. Reads live
-    /// account state, so main-thread only; touches no live file.</summary>
+    /// <summary>Phase 1: render the account file to a staging file of its own. Reads
+    /// live account state, so main-thread only; touches no live file.</summary>
     public static StagedAccountSnapshot Stage(AccountManager accounts, string dir, SaveFormat fmt,
-        ILogger? log = null, long generation = 0)
+        ILogger? log = null, long generation = 0, int backupLevels = 0, long? unresolvedGeneration = null)
     {
         Directory.CreateDirectory(dir);
 
         // Source-X Account_SaveAll "looks for changes FIRST" (CAccount.cpp:133): what
         // an administrator typed into sphereacct.scp is folded in before the write.
         ApplyChangesFile(accounts, dir, log);
+        var changesStamp = StampChangesFile(dir);
 
         string ext = SaveIO.ExtensionFor(fmt);
         string finalPath = Path.Combine(dir, BaseName + ext);
-        string tmpPath = finalPath + ".tmp";
+        long sequence = Interlocked.Increment(ref s_stageSequence);
+        string tmpPath = $"{finalPath}{StagingMarker}{sequence}-{Guid.NewGuid():N}";
 
         int count = 0, skipped = 0;
-        using (var w = SaveIO.OpenWriter(tmpPath, fmt))
+        try
         {
+            using var w = SaveIO.OpenWriter(tmpPath, fmt);
             w.WriteHeaderComment("SphereNet Account File");
             w.WriteHeaderComment($"Saved at {DateTime.UtcNow:u}");
 
@@ -87,10 +135,13 @@ public static class AccountPersistence
             // notice that the world had been rolled back to an older generation while
             // the accounts stayed ahead was a player reporting a character that no
             // longer exists.
-            if (generation != 0)
+            if (generation != 0 || unresolvedGeneration != null)
             {
                 w.BeginRecord(SaveIO.SaveIdSection);
-                w.WriteProperty(SaveIO.GenerationProperty, generation.ToString());
+                if (generation != 0)
+                    w.WriteProperty(SaveIO.GenerationProperty, generation.ToString());
+                if (unresolvedGeneration != null)
+                    w.WriteProperty(UnresolvedGenerationProperty, unresolvedGeneration.Value.ToString());
                 w.EndRecord();
             }
 
@@ -113,19 +164,95 @@ public static class AccountPersistence
                 count++;
             }
         }
+        catch
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* best effort */ }
+            throw;
+        }
 
-        return new StagedAccountSnapshot(dir, tmpPath, finalPath, fmt, count, skipped);
+        return new StagedAccountSnapshot(dir, tmpPath, finalPath, fmt, count, skipped, accounts,
+            generation, backupLevels, unresolvedGeneration, sequence, changesStamp);
     }
 
-    /// <summary>Phase 2: publish a staged snapshot - promote the <c>.tmp</c>, name it
-    /// in the manifest and drop the files it supersedes. Safe on any thread.</summary>
+    /// <summary>Phase 2: publish a staged snapshot - promote its staging file, name it
+    /// in the manifest, keep the generation it supersedes as a backup and drop the
+    /// files it supersedes.
+    ///
+    /// Publishes are serialised. A snapshot that is no longer the newest account state
+    /// on disk - another snapshot staged after it was published first, the changes file
+    /// was edited, or its staging file is gone - is re-rendered from the account state
+    /// it was staged from, under the same generation, before it is published: the
+    /// generation it was staged for is still the world it belongs to, and the account
+    /// changes saved in between are newer than it. Re-rendering reads live account
+    /// state, so call this on the thread that owns the accounts whenever ordinary
+    /// account saves can interleave with a staged one.</summary>
     public static int Commit(StagedAccountSnapshot staged, ILogger? log = null)
+    {
+        lock (s_commitGate)
+        {
+            string key = Path.GetFullPath(staged.Dir);
+            if (IsSuperseded(staged, key, out string why))
+            {
+                log?.LogInformation(
+                    "Staged account snapshot for generation {Generation} is older than the account state on disk ({Why}); " +
+                    "re-rendering it from the current accounts before publishing", staged.Generation, why);
+                Discard(staged, log);
+                staged = Stage(staged.Accounts, staged.Dir, staged.Format, log, staged.Generation,
+                    staged.BackupLevels, staged.UnresolvedGeneration);
+            }
+
+            int published = Publish(staged, log);
+            s_lastPublished[key] = staged.Sequence;
+            return published;
+        }
+    }
+
+    private static bool IsSuperseded(StagedAccountSnapshot staged, string key, out string why)
+    {
+        if (s_lastPublished.TryGetValue(key, out long last) && last > staged.Sequence)
+        {
+            why = "a later account save was published first";
+            return true;
+        }
+        if (!File.Exists(staged.TmpPath))
+        {
+            why = "its staging file is gone";
+            return true;
+        }
+        if (StampChangesFile(staged.Dir) != staged.ChangesStamp)
+        {
+            why = $"{ChangesFileName} changed since it was staged";
+            return true;
+        }
+        why = string.Empty;
+        return false;
+    }
+
+    private static int Publish(StagedAccountSnapshot staged, ILogger? log)
     {
         string dir = staged.Dir, finalPath = staged.FinalPath;
         int count = staged.Count, skipped = staged.Skipped;
         SaveFormat fmt = staged.Format;
+        int levels = Math.Clamp(staged.BackupLevels, 0, 32);
 
-        // Atomic promote: .tmp → final (overwrite).
+        // Source-X writes sphereaccu through the same backup rotation as the world
+        // (CAccounts::Account_SaveAll -> CWorld::OpenScriptBackup), so a world that
+        // recovers from a backup has the account file of that save beside it. Here
+        // the chain advances once per world generation: ordinary account saves inside
+        // one generation overwrite the live file, and the first save of a new
+        // generation moves the previous one to .bak1. A backup therefore always holds
+        // the last account state of its generation, and it is found by its stamp.
+        string? live = ActiveSnapshotPath(dir);
+        long? liveGeneration = live != null ? ReadGenerationStamp(live) : null;
+        long? newGeneration = staged.Generation != 0 ? staged.Generation : null;
+        bool newGenerationStarts = live != null && liveGeneration != newGeneration;
+        if (levels > 0 && newGenerationStarts &&
+            live!.Equals(finalPath, StringComparison.OrdinalIgnoreCase))
+        {
+            RotateBackups(finalPath, levels, log);
+        }
+
+        // Atomic promote: staging file → final (overwrite).
         File.Move(staged.TmpPath, finalPath, overwrite: true);
 
         // Name the active snapshot before removing anything. If the process dies
@@ -136,7 +263,9 @@ public static class AccountPersistence
 
         // Drop stale files in other formats so the directory shows only one
         // canonical account snapshot. Also cleans up any ancient .bak left
-        // by pre-refactor code.
+        // by pre-refactor code. A superseded live file of another format (SaveFormat
+        // changed) that holds the previous generation is kept in its own backup chain
+        // instead of being deleted.
         string[] knownExts = { ".scp", ".scp.gz", ".sbin", ".sbin.gz" };
         var staleLeftBehind = new List<string>();
         foreach (string otherExt in knownExts)
@@ -144,11 +273,17 @@ public static class AccountPersistence
             string candidate = Path.Combine(dir, BaseName + otherExt);
             if (!candidate.Equals(finalPath, StringComparison.OrdinalIgnoreCase) && File.Exists(candidate))
             {
-                try { File.Delete(candidate); }
-                catch (Exception ex)
+                bool retired = levels > 0 && newGenerationStarts &&
+                    candidate.Equals(live, StringComparison.OrdinalIgnoreCase) &&
+                    RetireToBackup(candidate, levels, log);
+                if (!retired)
                 {
-                    log?.LogWarning(ex, "Could not remove stale account file {File}", candidate);
-                    staleLeftBehind.Add(candidate);
+                    try { File.Delete(candidate); }
+                    catch (Exception ex)
+                    {
+                        log?.LogWarning(ex, "Could not remove stale account file {File}", candidate);
+                        staleLeftBehind.Add(candidate);
+                    }
                 }
             }
 
@@ -180,6 +315,293 @@ public static class AccountPersistence
             log?.LogWarning("{Skipped} account(s) skipped on save: unwritable name", skipped);
         log?.LogInformation("Saved {Count} accounts to {Path}", count, finalPath);
         return count;
+    }
+
+    /// <summary>Shift <c>path.bak1..N</c> up one level and copy the live file into
+    /// <c>.bak1</c>. The live file itself stays until the new one replaces it.</summary>
+    private static void RotateBackups(string path, int levels, ILogger? log)
+    {
+        try
+        {
+            ShiftBackupChain(path, levels);
+            File.Copy(path, path + ".bak1", overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning(ex, "Could not keep the previous account generation as a backup of {File}", path);
+        }
+    }
+
+    /// <summary>Move a superseded live file of another format into its own chain.
+    /// Returns false when it could not be preserved, so the caller removes it.</summary>
+    private static bool RetireToBackup(string path, int levels, ILogger? log)
+    {
+        try
+        {
+            ShiftBackupChain(path, levels);
+            File.Move(path, path + ".bak1", overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning(ex, "Could not keep the superseded account file {File} as a backup", path);
+            return false;
+        }
+    }
+
+    private static void ShiftBackupChain(string path, int levels)
+    {
+        string oldest = $"{path}.bak{levels}";
+        if (File.Exists(oldest)) File.Delete(oldest);
+        for (int i = levels - 1; i >= 1; i--)
+        {
+            string src = $"{path}.bak{i}";
+            if (File.Exists(src)) File.Move(src, $"{path}.bak{i + 1}", overwrite: true);
+        }
+    }
+
+    /// <summary>The live account file: the manifest target, or the first known
+    /// extension present. Null when there is none.</summary>
+    private static string? ActiveSnapshotPath(string dir)
+    {
+        string? active = ReadManifestTarget(dir);
+        if (active != null)
+        {
+            string path = Path.Combine(dir, active);
+            if (File.Exists(path)) return path;
+        }
+        foreach (string ext in new[] { ".sbin.gz", ".sbin", ".scp.gz", ".scp" })
+        {
+            string path = Path.Combine(dir, BaseName + ext);
+            if (File.Exists(path)) return path;
+        }
+        return null;
+    }
+
+    /// <summary>The world generation an account file names, or null when it carries
+    /// no stamp or cannot be read. Reads only the leading SAVEID record.</summary>
+    public static long? ReadGenerationStamp(string path)
+    {
+        try
+        {
+            using var reader = SaveIO.OpenReader(path);
+            if (!reader.NextRecord(out string section) ||
+                !section.Equals(SaveIO.SaveIdSection, StringComparison.OrdinalIgnoreCase))
+                return null;
+            long? generation = null;
+            while (reader.NextProperty(out string key, out string value))
+            {
+                if (key.Equals(SaveIO.GenerationProperty, StringComparison.OrdinalIgnoreCase) &&
+                    long.TryParse(value, out long gen))
+                    generation = gen;
+            }
+            return generation;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The account file - live or a <c>.bakN</c> of any format - stamped with
+    /// <paramref name="generation"/>, newest first; null when none is.</summary>
+    public static string? FindSnapshotForGeneration(string dir, long generation)
+    {
+        var candidates = new List<string>();
+        string? live = ActiveSnapshotPath(dir);
+        if (live != null) candidates.Add(live);
+        string[] exts = { ".sbin.gz", ".sbin", ".scp.gz", ".scp" };
+        foreach (string ext in exts)
+        {
+            string path = Path.Combine(dir, BaseName + ext);
+            if (File.Exists(path) && !candidates.Contains(path, StringComparer.OrdinalIgnoreCase))
+                candidates.Add(path);
+        }
+        // Probe past a lowered BackupLevels, as the world loader does.
+        for (int level = 1; level <= 32; level++)
+        {
+            foreach (string ext in exts)
+            {
+                string path = Path.Combine(dir, $"{BaseName}{ext}.bak{level}");
+                if (File.Exists(path)) candidates.Add(path);
+            }
+        }
+        foreach (string path in candidates)
+        {
+            if (ReadGenerationStamp(path) == generation)
+                return path;
+        }
+        return null;
+    }
+
+    /// <summary>Remove staging files that no transaction will ever publish - left by a
+    /// process that stopped between staging and publishing. Boot-time only.</summary>
+    public static int RemoveAbandonedStagingFiles(string dir, ILogger? log = null)
+    {
+        int removed = 0;
+        if (!Directory.Exists(dir)) return 0;
+        foreach (string file in Directory.GetFiles(dir, BaseName + ".*" + StagingMarker + "*"))
+        {
+            try { File.Delete(file); removed++; }
+            catch (Exception ex) { log?.LogWarning(ex, "Could not remove abandoned account staging file {File}", file); }
+        }
+        return removed;
+    }
+
+    private static ChangesFileStamp StampChangesFile(string dir)
+    {
+        var info = new FileInfo(Path.Combine(dir, ChangesFileName));
+        return info.Exists
+            ? new ChangesFileStamp(true, info.Length, info.LastWriteTimeUtc)
+            : new ChangesFileStamp(false, 0, default);
+    }
+
+    // ---- world rollback ----------------------------------------------------
+
+    /// <summary>What <see cref="ReconcileWithWorldGeneration"/> did.</summary>
+    public enum AccountReconcileOutcome
+    {
+        /// <summary>The account file and the world are the same generation, or one of
+        /// them is unstamped and nothing can be concluded.</summary>
+        NotNeeded,
+        /// <summary>The account snapshot of the world's generation was found and the
+        /// world-linked account state was taken from it.</summary>
+        Restored,
+        /// <summary>No account snapshot of the world's generation exists. The accounts
+        /// are left as loaded and the mismatch stays open.</summary>
+        NoSnapshot,
+    }
+
+    public sealed record AccountReconcileResult(
+        AccountReconcileOutcome Outcome,
+        long? AccountGeneration,
+        long? WorldGeneration,
+        string? SnapshotPath,
+        string? PreservedPath,
+        int SlotsChanged,
+        IReadOnlyList<string> AccountsCreatedSince,
+        IReadOnlyList<string> AccountsDeletedSince,
+        IReadOnlyList<string> AccountsWithNewerTags);
+
+    /// <summary>Bring the loaded accounts back to the world generation that is about
+    /// to be materialised, when the world comes from another generation than the
+    /// account file (a world recovered from a backup). Call it after the account file
+    /// is loaded and before the world links its characters into account slots.
+    ///
+    /// The policy splits the account by what it points at:
+    /// <list type="bullet">
+    /// <item>Character slots and LASTCHARUID name world objects, so they are taken from
+    /// the account snapshot of the world's own generation. An account that did not
+    /// exist in that generation keeps no slot: every character it made is in the lost
+    /// world. The world then links its own characters on top, as on every boot.</item>
+    /// <item>Everything else - password, privilege level, PRIV flags, ban, jail, connect
+    /// records, TAGs - keeps its newest value. Those are account decisions, mostly an
+    /// administrator's, and they cannot contradict the world; rolling a password or a
+    /// ban back would undo a security change. Accounts created since are kept, accounts
+    /// deleted since stay deleted. TAGs are kept but every account whose TAGs differ
+    /// from the generation snapshot is named, because a script may have recorded
+    /// something there that only the lost world explains.</item>
+    /// </list>
+    /// The pre-recovery account file is copied aside (never rotated or deleted) so the
+    /// operator can still choose the other side. Without a snapshot of the world's
+    /// generation nothing is changed and the outcome says so.</summary>
+    public static AccountReconcileResult ReconcileWithWorldGeneration(AccountManager accounts, string dir,
+        AccountLoadResult loaded, long? worldGeneration, ILogger? log = null)
+    {
+        var none = Array.Empty<string>();
+        if (worldGeneration == null || loaded.Generation == null || loaded.Generation == worldGeneration)
+            return new AccountReconcileResult(AccountReconcileOutcome.NotNeeded, loaded.Generation,
+                worldGeneration, null, null, 0, none, none, none);
+
+        string? preserved = PreserveSnapshot(loaded.Path, loaded.Generation.Value, log);
+        string? snapshotPath = FindSnapshotForGeneration(dir, worldGeneration.Value);
+        if (snapshotPath == null)
+        {
+            log?.LogError(
+                "No account snapshot of world generation {WorldGen} exists (the account file is generation " +
+                "{AccountGen}); the accounts are left as loaded. The pre-recovery account file is kept as {Preserved}.",
+                worldGeneration, loaded.Generation, preserved ?? "(could not be copied)");
+            return new AccountReconcileResult(AccountReconcileOutcome.NoSnapshot, loaded.Generation,
+                worldGeneration, null, preserved, 0, none, none, none);
+        }
+
+        var then = new AccountManager(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance)
+        {
+            Md5Passwords = accounts.Md5Passwords,
+        };
+        LoadFile(then, snapshotPath, null);
+
+        int slotsChanged = 0;
+        var created = new List<string>();
+        var newerTags = new List<string>();
+        foreach (var acc in accounts.GetAllAccounts())
+        {
+            var old = then.FindAccount(acc.Name);
+            if (old == null) created.Add(acc.Name);
+            for (int i = 0; i < 7; i++)
+            {
+                var slot = old?.GetCharSlot(i) ?? Serial.Invalid;
+                if (acc.GetCharSlot(i) != slot)
+                {
+                    acc.SetCharSlot(i, slot);
+                    slotsChanged++;
+                }
+            }
+            acc.LastCharUid = old?.LastCharUid ?? Serial.Invalid;
+            if (old != null && !SameTags(acc, old))
+                newerTags.Add(acc.Name);
+        }
+        var deleted = then.GetAllAccounts()
+            .Where(a => accounts.FindAccount(a.Name) == null)
+            .Select(a => a.Name)
+            .ToList();
+
+        log?.LogWarning(
+            "The world loaded generation {WorldGen} while the account file is generation {AccountGen}. Character " +
+            "slots were restored from {Snapshot} ({Slots} slot change(s)); passwords, privileges, bans and other " +
+            "account fields keep their newest values. Accounts created since: {Created}. Accounts deleted since: " +
+            "{Deleted}. Accounts whose TAGs differ from that generation (kept as newest, review them): {Tags}. " +
+            "The pre-recovery account file is kept as {Preserved}.",
+            worldGeneration, loaded.Generation, snapshotPath, slotsChanged,
+            created.Count == 0 ? "none" : string.Join(", ", created),
+            deleted.Count == 0 ? "none" : string.Join(", ", deleted),
+            newerTags.Count == 0 ? "none" : string.Join(", ", newerTags),
+            preserved ?? "(could not be copied)");
+
+        return new AccountReconcileResult(AccountReconcileOutcome.Restored, loaded.Generation, worldGeneration,
+            snapshotPath, preserved, slotsChanged, created, deleted, newerTags);
+    }
+
+    private static bool SameTags(Account a, Account b)
+    {
+        var left = a.Tags.GetAll().ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+        var right = b.Tags.GetAll().ToList();
+        if (left.Count != right.Count) return false;
+        foreach (var kv in right)
+        {
+            if (!left.TryGetValue(kv.Key, out string? v) || v != kv.Value) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Copy the account file that loaded to
+    /// <c>sphereaccu.preserved-{generation}{ext}</c>, outside every rotation, unless a
+    /// copy of that generation is already there. Returns its path, or null.</summary>
+    private static string? PreserveSnapshot(string? path, long generation, ILogger? log)
+    {
+        if (path == null || !File.Exists(path)) return null;
+        string ext = SaveIO.ExtensionFor(SaveIO.FormatFromPath(path));
+        string target = Path.Combine(Path.GetDirectoryName(path)!, $"{BaseName}.preserved-{generation}{ext}");
+        try
+        {
+            if (!File.Exists(target)) File.Copy(path, target);
+            return target;
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning(ex, "Could not keep a copy of the account file {File}", path);
+            return null;
+        }
     }
 
     /// <summary>Source-X's hand-edit file (SPHERE_FILE "acct"). The main file is written
@@ -239,7 +661,8 @@ public static class AccountPersistence
     }
 
     /// <summary>Throw away a staged snapshot that will never be published - the world
-    /// write it belonged to failed. Leaves the live account file untouched.</summary>
+    /// write it belonged to failed. Leaves the live account file untouched, and removes
+    /// only this transaction's own staging file.</summary>
     public static void Discard(StagedAccountSnapshot staged, ILogger? log = null)
     {
         try
@@ -347,7 +770,7 @@ public static class AccountPersistence
     private static AccountLoadResult LoadFile(AccountManager accounts, string path, ILogger? log)
     {
         int count = 0;
-        long? generation = null;
+        long? generation = null, unresolved = null;
         using var reader = SaveIO.OpenReader(path);
 
         while (reader.NextRecord(out string section))
@@ -361,6 +784,9 @@ public static class AccountPersistence
                     if (stampKey.Equals(SaveIO.GenerationProperty, StringComparison.OrdinalIgnoreCase) &&
                         long.TryParse(stampVal, out long gen))
                         generation = gen;
+                    else if (stampKey.Equals(UnresolvedGenerationProperty, StringComparison.OrdinalIgnoreCase) &&
+                        long.TryParse(stampVal, out long ugen))
+                        unresolved = ugen;
                 }
                 continue;
             }
@@ -385,7 +811,7 @@ public static class AccountPersistence
         }
 
         log?.LogInformation("Loaded {Count} accounts from {Path}", count, path);
-        return new AccountLoadResult(count, generation, path);
+        return new AccountLoadResult(count, generation, path) { UnresolvedGeneration = unresolved };
     }
 
     private static string? ExtractAccountName(string section)
@@ -508,13 +934,19 @@ public static class AccountPersistence
                 if (upper.StartsWith("TAG.", StringComparison.Ordinal) && upper.Length > 4)
                 {
                     // AC_TAG: GetArgStr strips the quote pair, and a quoted value is a
-                    // string var. An unquoted one keeps its text exactly as written, so
-                    // it goes back out the same. The key keeps its written case.
+                    // string var. An unquoted simple number is a number var that keeps
+                    // its text exactly as written, so it goes back out the same. The
+                    // key keeps its written case.
                     string text = SphereNet.Scripting.Variables.VarMap.UnquoteSaveValue(val, out bool quoted);
                     if (quoted)
+                    {
                         acc.Tags.SetStr(key[4..], true, text);
+                    }
                     else
+                    {
                         acc.Tags.Set(key[4..], text);
+                        acc.Tags.ApplyLoadedForm(key[4..], false, text);
+                    }
                 }
                 else if (upper == "CHARUID")
                 {

@@ -67,8 +67,10 @@ public sealed class TextSaveReader : ISaveReader
                 if (name.Equals("EOF", StringComparison.OrdinalIgnoreCase))
                 {
                     _inRecord = false;
+                    _endMarkerSeen = true;
                     continue;
                 }
+                _endMarkerSeen = false;
                 section = name;
                 _inRecord = true;
                 return true;
@@ -99,6 +101,7 @@ public sealed class TextSaveReader : ISaveReader
             {
                 _inRecord = false;
                 _pendingSection = trimmed[1..^1];
+                _endMarkerSeen = _pendingSection.Equals("EOF", StringComparison.OrdinalIgnoreCase);
                 key = value = string.Empty;
                 return false;
             }
@@ -107,7 +110,7 @@ public sealed class TextSaveReader : ISaveReader
             if (eq <= 0) continue;
 
             key = trimmed[..eq].Trim();
-            value = DecodeValue(trimmed[(eq + 1)..].Trim());
+            value = ReadValue(line, trimmed, eq);
             return true;
         }
 
@@ -148,6 +151,23 @@ public sealed class TextSaveReader : ISaveReader
     }
 
     /// <summary>
+    /// The value of a <c>KEY=VALUE</c> line. A classic value is trimmed on both
+    /// sides, as Source-X reads it (a quoted TAG keeps its inner whitespace inside
+    /// the quotes). A <see cref="TextSaveWriter.MultilineSentinel"/> value is this
+    /// engine's own lossless encoding: the writer puts nothing after it, so its
+    /// tail is taken as written - trimming it dropped a trailing space or tab of
+    /// the original text.
+    /// </summary>
+    private static string ReadValue(string line, string trimmed, int eq)
+    {
+        string value = trimmed[(eq + 1)..].TrimStart();
+        if (value.Length == 0 || value[0] != TextSaveWriter.MultilineSentinel)
+            return value.TrimEnd();
+        int sentinel = line.IndexOf(TextSaveWriter.MultilineSentinel, line.IndexOf('='));
+        return DecodeValue(line[sentinel..]);
+    }
+
+    /// <summary>
     /// Reverses <c>TextSaveWriter</c>'s multi-line encoding. A value that does not
     /// begin with <see cref="TextSaveWriter.MultilineSentinel"/> — every value a
     /// classic Sphere/Source-X save produces — is returned verbatim.
@@ -184,6 +204,14 @@ public sealed class TextSaveReader : ISaveReader
     // [SECTION] before reporting end-of-record. Stashed here so the next
     // NextRecord returns it without re-reading the stream.
     private string? _pendingSection;
+
+    // Whether the most recent section header was [EOF]. A later header clears it, so
+    // at end of stream it reads true only when [EOF] was the file's last section -
+    // the one valid way for a world file to end (Source-X CWorld::LoadFile).
+    private bool _endMarkerSeen;
+
+    /// <inheritdoc/>
+    public bool EndMarkerSeen => _endMarkerSeen;
 
     public void Dispose() => _reader.Dispose();
 }

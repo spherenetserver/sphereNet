@@ -278,7 +278,7 @@ public sealed partial class GameClient
         // straight out of the resource with no MAX_BOOK_PAGES clamp (send.cpp:2901).
         // The 256 ceiling here is not parity, it is the E1 anti-hang guard on a
         // hand-edited count.
-        if (book.TryGetTag("BOOK_PAGES", out string? ps) && int.TryParse(ps, out int pc))
+        if (book.TryGetTag("BOOK_PAGES", out string? ps) && ScriptNumber.TryParseInt(ps, out int pc))
             pageCount = Math.Clamp(pc, 0, DeclaredPageHardCap);
 
         _netState.Send(new PacketBookHeaderOut(

@@ -3,6 +3,7 @@ using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Skills.Information;
 
@@ -121,7 +122,7 @@ internal static class InfoSkillExtensions
         // an older pack may have set by hand, then the definition.
         if (it.DefenseBaseRaw is > 0)
             return it.DefenseLo == it.DefenseHi ? it.DefenseLo : (it.DefenseLo + it.DefenseHi) / 2;
-        if (it.TryGetTag("ARMOR", out string? tag) && int.TryParse(tag, out int v))
+        if (it.TryGetTag("ARMOR", out string? tag) && ScriptNumber.TryParseInt(tag, out int v))
             return v;
         var def = DefinitionLoader.GetItemDef(it.BaseId);
         if (def == null) return 0;
@@ -143,7 +144,7 @@ internal static class InfoSkillExtensions
     {
         if (it.AttackBaseRaw is > 0)
             return it.AttackLo == it.AttackHi ? it.AttackLo : (it.AttackLo + it.AttackHi) / 2;
-        if (it.TryGetTag("DAM", out string? tag) && int.TryParse(tag, out int v))
+        if (it.TryGetTag("DAM", out string? tag) && ScriptNumber.TryParseInt(tag, out int v))
             return v;
         var def = DefinitionLoader.GetItemDef(it.BaseId);
         if (def == null) return 0;

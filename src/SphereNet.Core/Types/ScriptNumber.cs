@@ -46,6 +46,84 @@ public static class ScriptNumber
         return true;
     }
 
+    // ---- typed reads of a stored TAG/VAR value ---------------------------------
+    //
+    // A number var is saved the Source-X way, in Sphere hex (CVarDefContNum::GetValStr:
+    // 42 -> "02A", -1 -> "0FFFFFFFF"), and a load keeps that text. Any engine read of
+    // a tag as a number therefore goes through TryParseToken's rule - a leading '0'
+    // is hex, anything else decimal - and these narrow the result to the field's
+    // type. A plain decimal int.TryParse fails on "02A" and silently falls back to a
+    // default, and it reads a Source-X "0123" (0x123) as 123.
+
+    /// <summary>A stored number as a 32-bit signed value. Source-X numbers are
+    /// 32-bit, so a value up to 0xFFFFFFFF wraps the way the reference reads it:
+    /// "0FFFFFFFF" is -1. Anything wider than 32 bits is refused.</summary>
+    public static bool TryParseInt(string? text, out int value)
+    {
+        value = 0;
+        if (!TryParseToken(text, out long v) || v < int.MinValue || v > uint.MaxValue)
+            return false;
+        value = unchecked((int)v);
+        return true;
+    }
+
+    /// <summary>A stored number as a 64-bit value; the same as
+    /// <see cref="TryParseToken"/>. "0FFFFFFFF" is 4294967295 here.</summary>
+    public static bool TryParseLong(string? text, out long value) => TryParseToken(text, out value);
+
+    /// <summary>A stored number as an unsigned 32-bit value (a UID, a mask):
+    /// 0 .. 0xFFFFFFFF, a negative value refused.</summary>
+    public static bool TryParseUInt(string? text, out uint value)
+    {
+        value = 0;
+        if (!TryParseToken(text, out long v) || v < 0 || v > uint.MaxValue)
+            return false;
+        value = (uint)v;
+        return true;
+    }
+
+    /// <summary>A stored number as a 16-bit signed value. Read as a 32-bit number
+    /// first, so a negative value saved as "0FFFFFFFB" is -5; out of range refused.</summary>
+    public static bool TryParseShort(string? text, out short value)
+    {
+        value = 0;
+        if (!TryParseInt(text, out int v) || v < short.MinValue || v > short.MaxValue)
+            return false;
+        value = (short)v;
+        return true;
+    }
+
+    /// <summary>A stored number as a 16-bit unsigned value; out of range refused.</summary>
+    public static bool TryParseUShort(string? text, out ushort value)
+    {
+        value = 0;
+        if (!TryParseToken(text, out long v) || v < 0 || v > ushort.MaxValue)
+            return false;
+        value = (ushort)v;
+        return true;
+    }
+
+    /// <summary>A stored number as an 8-bit unsigned value; out of range refused.</summary>
+    public static bool TryParseByte(string? text, out byte value)
+    {
+        value = 0;
+        if (!TryParseToken(text, out long v) || v < 0 || v > byte.MaxValue)
+            return false;
+        value = (byte)v;
+        return true;
+    }
+
+    /// <summary>A stored number as an 8-bit signed value (a Z). Read as a 32-bit
+    /// number first, so "0FFFFFFFB" is -5; out of range refused.</summary>
+    public static bool TryParseSByte(string? text, out sbyte value)
+    {
+        value = 0;
+        if (!TryParseInt(text, out int v) || v < sbyte.MinValue || v > sbyte.MaxValue)
+            return false;
+        value = (sbyte)v;
+        return true;
+    }
+
     /// <summary>Read the EXPRESSION a command line starts with, and say how much of
     /// the line it used. Source-X reads a delay with Exp_Get64Val, which consumes the
     /// whole expression - parentheses, multiplication and the spaces around an

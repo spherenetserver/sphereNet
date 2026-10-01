@@ -86,7 +86,7 @@ public sealed class SkillHandlers
     {
         Serial killerUid = ResolveKillerUid(corpse);
         Character? killer = killerUid.IsValid ? _world.FindChar(killerUid) : null;
-        long secs = corpse.TryGetTag("DEATH_TIME", out string? ds) && long.TryParse(ds, out long dt)
+        long secs = corpse.TryGetTag("DEATH_TIME", out string? ds) && ScriptNumber.TryParseLong(ds, out long dt)
             ? Math.Max(0, (Environment.TickCount64 - dt) / 1000)
             : 0;
         bool sleeping = corpse.TryGetTag("CORPSE_SLEEPING", out string? sv) && sv == "1";
@@ -133,12 +133,9 @@ public sealed class SkillHandlers
         if ((corpse.TryGetTag("KILLER_UID", out string? kv) ||
              corpse.TryGetTag("CORPSE_KILLER", out kv)) && !string.IsNullOrEmpty(kv))
         {
-            if (kv.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
-                uint.TryParse(kv[2..], System.Globalization.NumberStyles.HexNumber, null, out uint hx))
-                return new Serial(hx);
-            if (uint.TryParse(kv, out uint dec))
-                return new Serial(dec);
-            if (uint.TryParse(kv, System.Globalization.NumberStyles.HexNumber, null, out hx))
+            if (ScriptNumber.TryParseUInt(kv, out uint uid))
+                return new Serial(uid);
+            if (uint.TryParse(kv, System.Globalization.NumberStyles.HexNumber, null, out uint hx))
                 return new Serial(hx);
         }
         return Serial.Zero;
@@ -242,7 +239,7 @@ public sealed class SkillHandlers
     {
         if (target is Character c) return c;
         if (target is Item corpse && corpse.ItemType == ItemType.Corpse &&
-            corpse.TryGetTag("OWNER_UID", out string? o) && uint.TryParse(o, out uint uid))
+            corpse.TryGetTag("OWNER_UID", out string? o) && ScriptNumber.TryParseUInt(o, out uint uid))
         {
             var owner = _world.FindChar(new Serial(uid));
             if (owner != null && owner.IsDead && !owner.IsDeleted)

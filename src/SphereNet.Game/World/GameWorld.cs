@@ -2499,7 +2499,7 @@ public sealed class GameWorld
         {
             if (player.IsOnline ||
                 !player.TryGetTag("CLIENT_LINGER_UNTIL", out string? untilText) ||
-                !long.TryParse(untilText, out long until) || now < until)
+                !ScriptNumber.TryParseLong(untilText, out long until) || now < until)
                 continue;
 
             player.RemoveTag("CLIENT_LINGER_UNTIL");

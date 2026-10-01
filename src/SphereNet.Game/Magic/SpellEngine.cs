@@ -289,7 +289,7 @@ public sealed partial class SpellEngine
     }
 
     private static bool TryParseInteger(string? raw, out int value) =>
-        int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        ScriptNumber.TryParseInt(raw, out value);
 
     /// <summary>
     /// Advance an in-progress cast timer. Returns true while still casting.
@@ -1739,7 +1739,7 @@ public sealed partial class SpellEngine
     private static bool IsCorpseOf(Item corpse, Character ch) =>
         corpse.Link == ch.Uid ||
         (corpse.TryGetTag("OWNER_UID", out string? owner) &&
-         uint.TryParse(owner, out uint ownerUid) && ownerUid == ch.Uid.Value);
+         ScriptNumber.TryParseUInt(owner, out uint ownerUid) && ownerUid == ch.Uid.Value);
 
     /// <summary>CItem::OnSpellEffect's script stages (CItem.cpp:5600-5631): the item's
     /// @SpellEffect with ARGN1 = spell, ARGN2 = skill level and ARGO = the wand or
@@ -2441,7 +2441,7 @@ public sealed partial class SpellEngine
         int? spellLevel = null;
         Character? caster = null;
         if (!field.TryGetTag("FIELD_SPELL", out string? fsStr) ||
-            !int.TryParse(fsStr, out int fsId))
+            !ScriptNumber.TryParseInt(fsStr, out int fsId))
         {
             if (field.ItemType == ItemType.Fire)
                 return ApplyHeat(ch, field);
@@ -2453,7 +2453,7 @@ public sealed partial class SpellEngine
                 caster = _world.FindChar(field.Link);
         }
 
-        if (field.TryGetTag("FIELD_CASTER", out string? cStr) && uint.TryParse(cStr, out uint cuid))
+        if (field.TryGetTag("FIELD_CASTER", out string? cStr) && ScriptNumber.TryParseUInt(cStr, out uint cuid))
             caster = _world.FindChar(new Serial(cuid));
 
         var spellType = (SpellType)fsId;
@@ -2479,7 +2479,7 @@ public sealed partial class SpellEngine
         // current skill for a field that recorded none.
         int level = spellLevel
             ?? (field.MoreP.X == fsId ? Math.Clamp((int)field.MoreP.Y, 0, 1000)
-            : field.TryGetTag("FIELD_POISON_SKILL", out string? skillStr) && int.TryParse(skillStr, out int tagged)
+            : field.TryGetTag("FIELD_POISON_SKILL", out string? skillStr) && ScriptNumber.TryParseInt(skillStr, out int tagged)
                 ? tagged
                 : caster?.GetSkill(def.GetPrimarySkill()) ?? 0);
 

@@ -187,13 +187,13 @@ public static partial class Program
                 string? timeHi = item.Tags.Get("TIMEHI");
                 if (timeLo != null || timeHi != null)
                 {
-                    int.TryParse(timeLo ?? "15", out int lo);
-                    int.TryParse(timeHi ?? "30", out int hi);
+                    ScriptNumber.TryParseInt(timeLo ?? "15", out int lo);
+                    ScriptNumber.TryParseInt(timeHi ?? "30", out int hi);
                     item.SpawnChar.SetDelay(lo, hi);
                 }
 
                 string? maxDist = item.Tags.Get("MAXDIST");
-                if (maxDist != null && int.TryParse(maxDist, out int dist))
+                if (maxDist != null && ScriptNumber.TryParseInt(maxDist, out int dist))
                     item.SpawnChar.SpawnRange = dist;
 
                 // The ADDOBJ lines are MEMBERS, never slots. Upstream keeps the two

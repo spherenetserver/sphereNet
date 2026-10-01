@@ -497,6 +497,7 @@ public static partial class ServerMessages
         // describes that: "complete" hides a real loss, "FAILED" sends an operator
         // looking for a world that is in fact on disk.
         Def("worldsave_partial", "World saved, but the ACCOUNT file did not: %s");
+        Def("worldsave_backup_failed", "World saved, but its BACKUP could not be written: %s");
 
         // ===== DB Commands =====
         Def("db_connect_fail", "DB.CONNECT failed: %s");

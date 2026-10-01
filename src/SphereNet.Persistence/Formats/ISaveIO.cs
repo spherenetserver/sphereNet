@@ -47,4 +47,12 @@ public interface ISaveReader : IDisposable
     /// <summary>Read the next property of the current record. Returns false
     /// when the record has no more properties (caller should loop NextRecord).</summary>
     bool NextProperty(out string key, out string value);
+
+    /// <summary>True when the last thing read was the format's explicit end marker:
+    /// <c>[EOF]</c> as the final section of a text file, the zero-length terminator
+    /// of a binary one. Only meaningful once <see cref="NextRecord"/> has returned
+    /// false. A file cut exactly between two records parses as a shorter valid file;
+    /// this is what tells the two apart (Source-X CWorld::LoadFile rejects a world
+    /// file without its [EOF]).</summary>
+    bool EndMarkerSeen { get; }
 }

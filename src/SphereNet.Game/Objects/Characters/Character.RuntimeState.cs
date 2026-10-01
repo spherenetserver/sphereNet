@@ -63,7 +63,7 @@ public partial class Character
     {
         for (int i = 0; i < _statLocks.Length; i++)
         {
-            if (!TryGetTag($"STATLOCK.{i}", out string? val) || !byte.TryParse(val, out byte sl))
+            if (!TryGetTag($"STATLOCK.{i}", out string? val) || !ScriptNumber.TryParseByte(val, out byte sl))
                 continue;
             _statLocks[i] = sl;
             RemoveTag($"STATLOCK.{i}");

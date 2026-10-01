@@ -49,6 +49,7 @@ public class SkillMagicPhase4Tests
         var world = CreateWorld();
         var move = new MovementEngine(world);
         var ch = world.CreateCharacter();
+        ch.MaxStam = 100; ch.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
         ch.SetStatFlag(StatFlag.Hidden);
         ch.SetStatFlag(StatFlag.Invisible);
         ch.StepStealth = 1;

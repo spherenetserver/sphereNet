@@ -82,7 +82,7 @@ public sealed class StableEngine
         if (pet.IsPlayer || pet == stableMaster)
             return Msg.NpcStablemasterTargFail;
         if (stableMaster != null &&
-            (stableMaster.MapIndex != pet.MapIndex || !world.CanSeeLOS(stableMaster.Position, pet.Position)))
+            (stableMaster.MapIndex != pet.MapIndex || !world.CanSeeLOSFor(stableMaster, pet)))
             return Msg.NpcStablemasterTargLos;
         if (!pet.HasOwner(owner.Uid))
             return Msg.NpcStablemasterTargOwner;

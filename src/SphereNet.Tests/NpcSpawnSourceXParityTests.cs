@@ -470,10 +470,17 @@ public sealed class NpcSpawnSourceXParityTests : IDisposable
         _world.PlaceCharacter(stray, new Point3D(102, 100, 0, 0));
         var pet = _world.CreateCharacter();
         pet.Name = "Far";
-        _world.PlaceCharacter(pet, new Point3D(125, 100, 0, 0)); // well past 12 tiles
+        _world.PlaceCharacter(pet, new Point3D(118, 100, 0, 0)); // well past 12 tiles
         Assert.True(pet.TryAssignOwnership(owner, owner));
+        // CanSeeLOS(pCharPet) reaches as far as the PET's visual range (18,
+        // CCharLOS.cpp:684-687): 24 tiles off is out of the master's sight.
+        var beyond = _world.CreateCharacter();
+        _world.PlaceCharacter(beyond, new Point3D(125, 100, 0, 0));
+        Assert.True(beyond.TryAssignOwnership(owner, owner));
         var stable = new StableEngine();
 
+        Assert.Equal(SphereNet.Game.Messages.Msg.NpcStablemasterTargLos,
+            stable.StablePetReason(owner, beyond, _world, master));
         Assert.Equal(SphereNet.Game.Messages.Msg.NpcStablemasterTargOwner,
             stable.StablePetReason(owner, stray, _world, master));
         Assert.Null(stable.StablePetReason(owner, pet, _world, master));

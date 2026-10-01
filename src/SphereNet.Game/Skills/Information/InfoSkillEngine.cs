@@ -483,7 +483,7 @@ public static class InfoSkillEngine
         int dist = Math.Max(dx, dy);
         if (dist > 3) return false;
         var world = Objects.ObjBase.ResolveWorld?.Invoke();
-        return world == null || world.CanSeeLOS(self.Position,
+        return world == null || world.CanSeeLOSFor(self, self.Position,
             new Point3D((short)tx, (short)ty, (sbyte)tz, map));
     }
 

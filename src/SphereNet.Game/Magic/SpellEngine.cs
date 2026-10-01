@@ -1247,7 +1247,13 @@ public sealed class SpellEngine
              def.IsFlag(SpellFlag.Summon)))
         {
             int losDist = Math.Max(Math.Abs(caster.X - targetPos.X), Math.Abs(caster.Y - targetPos.Y));
-            if (losDist > 0 && !_world.CanSeeLOS(caster.Position, targetPos))
+            // Spell_TargCheck casts through windows (LOS_NB_WINDOWS): at the object,
+            // or at the point within the caster's view range (CCharSpell.cpp:2764/2787).
+            var losObject = targetUid.IsValid ? _world.FindObject(targetUid) : null;
+            bool inSight = losObject != null && losObject.GetTopLevelObj().MapIndex == caster.MapIndex
+                ? _world.CanSeeLOSFor(caster, losObject, LosFlags.NbWindows)
+                : _world.CanSeeLOSFor(caster, caster.Position, targetPos, LosFlags.NbWindows, caster.VisualRange);
+            if (losDist > 0 && !inSight)
                 return FailCastAtCompletion(caster, "Target not in line of sight.");
         }
 

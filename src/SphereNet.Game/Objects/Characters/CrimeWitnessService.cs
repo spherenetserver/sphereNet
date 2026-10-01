@@ -65,7 +65,7 @@ public static class CrimeWitnessService
                 continue;
             if (witness.PrivLevel >= PrivLevel.GM)
                 continue;
-            if (!world.CanSeeLOS(witness.Position, criminal.Position))
+            if (!world.CanSeeLOSFor(witness, criminal, Core.Enums.LosFlags.NbWindows))
                 continue;
             if (!CalcCrimeSeen(criminal, witness, skillToSee, rng))
                 continue;

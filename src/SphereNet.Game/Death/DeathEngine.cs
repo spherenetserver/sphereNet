@@ -803,7 +803,7 @@ public sealed class DeathEngine
             // can no longer rejoin), in line of sight, and owned by this character.
             if (item.ContainedIn.IsValid) continue;
             if (item.TryGetTag("NOREJOIN", out _)) continue;
-            if (!_world.CanSeeLOS(resurrected.Position, item.Position)) continue;
+            if (!_world.CanSeeLOSFor(resurrected, item)) continue;
 
             bool owned =
                 (item.TryGetTag("OWNER_UUID", out string? uuidStr) &&

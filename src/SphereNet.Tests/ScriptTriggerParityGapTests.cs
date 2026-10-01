@@ -240,6 +240,7 @@ public sealed class ScriptTriggerParityGapTests
         world.AddRegion(to);
         var walker = world.CreateCharacter();
         walker.IsPlayer = true;
+        walker.MaxStam = 100; walker.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
         world.PlaceCharacter(walker, new Point3D(100, 100, 0, 0));
         return (new MovementEngine(world, stack.Dispatcher), walker, from, to, world);
     }

@@ -235,7 +235,7 @@ public sealed partial class NpcAI
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
-            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+            if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows)) continue;
             int dist = npc.Position.GetDistanceTo(ch.Position);
             if (dist < nearestDist)
             {
@@ -381,7 +381,7 @@ public sealed partial class NpcAI
         }
 
         int dist = npc.Position.GetDistanceTo(target.Position);
-        bool hasLOS = _world.CanSeeLOS(npc.Position, target.Position);
+        bool hasLOS = _world.CanSeeLOSFor(npc, target);
 
         // No line of sight: walk round to the target (NPC_Act_Follow's path search).
         if (!hasLOS && dist > 1)
@@ -499,7 +499,7 @@ public sealed partial class NpcAI
     {
         var visible = FightFindBestTarget(npc, exclude: target);
         if (visible != null && visible != target && !visible.IsDead &&
-            visible.MapIndex == npc.MapIndex && _world.CanSeeLOS(npc.Position, visible.Position))
+            visible.MapIndex == npc.MapIndex && _world.CanSeeLOSFor(npc, visible))
         {
             ClearLosFailCount(npc);
             npc.FightTarget = visible.Uid;
@@ -645,7 +645,7 @@ public sealed partial class NpcAI
     /// the target has got to.</summary>
     private void ResolvePendingBreath(Character npc, Character target, NpcFightMemory mem, long now)
     {
-        if (!_world.CanSeeLOS(npc.Position, target.Position))
+        if (!_world.CanSeeLOSFor(npc, target, LosFlags.NbWindows))
             return;
         int breathDmg = GetBreathDamage(npc);
         if (HasExtra(npc, NpcAiExtraFlags.CombatExtras))
@@ -998,7 +998,7 @@ public sealed partial class NpcAI
         if (npc.NpcSpells.Count > 0 && npc.Mana >= npc.Int / 3
             && dist >= 2 && dist <= 8
             && npc.FleeStepsCurrent % 3 == 0
-            && _world.CanSeeLOS(npc.Position, target.Position))
+            && _world.CanSeeLOSFor(npc, target, LosFlags.NbWindows))
         {
             var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
             if (spell != SpellType.None && CastViaTrigger(npc, castTarget, spell))
@@ -1253,7 +1253,7 @@ public sealed partial class NpcAI
         }
 
         var prep = CombatHelper.ValidateSwingPrep(
-            _world, npc, target, weapon, PrivLevel.Player, now, (a, b) => _world.CanSeeLOSFor(npc, a, b),
+            _world, npc, target, weapon, PrivLevel.Player, now, canSeeLos: null,
             ignoreRangeLos: swingNoRange, effectiveRange: effectiveRange);
         switch (prep.Result)
         {
@@ -1396,7 +1396,7 @@ public sealed partial class NpcAI
         }
 
         switch (CombatHelper.EvaluateHitTime(_world, npc, target, weapon,
-            PrivLevel.Player, now, npc.PendingHitDeadline, (a, b) => _world.CanSeeLOSFor(npc, a, b),
+            PrivLevel.Player, now, npc.PendingHitDeadline, canSeeLos: null,
             swingNoRange, committedRange))
         {
             case CombatHelper.HitTimeDecision.Wait:

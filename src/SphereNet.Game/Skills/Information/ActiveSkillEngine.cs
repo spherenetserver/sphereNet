@@ -722,7 +722,7 @@ public static class ActiveSkillEngine
                     sink.SysMessage(ServerMessages.Get(Msg.HealingResToofar));
                     return false;
                 }
-                if (!sink.World.CanSeeLOS(ch.Position, corpsePos))
+                if (!sink.World.CanSeeLOSFor(ch, ch.Position, corpsePos))
                 {
                     sink.SysMessage(ServerMessages.Get(Msg.HealingResLos));
                     return false;
@@ -773,7 +773,7 @@ public static class ActiveSkillEngine
                 sink.SysMessage(ServerMessages.Get(Msg.HealingResToofar));
                 return false;
             }
-            if (!sink.World.CanSeeLOS(ghost.Position, corpsePos))
+            if (!sink.World.CanSeeLOSFor(ghost, ghost.Position, corpsePos))
             {
                 sink.SysMessage(ServerMessages.Get(Msg.HealingResLos));
                 return false;
@@ -917,7 +917,7 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.LocationInvalid));
             return false;
         }
-        if (!sink.World.CanSeeLOS(ch.Position, destination.Value))
+        if (!sink.World.CanSeeLOSFor(ch, ch.Position, destination.Value))
         {
             sink.SysMessage(ServerMessages.Get(Msg.MsgMountDist));
             return false;
@@ -1033,7 +1033,7 @@ public static class ActiveSkillEngine
     {
         if (point.Map != ch.MapIndex || ch.Position.GetDistanceTo(point) > range)
             return false;
-        return !requireLos || world.CanSeeLOS(ch.Position, point);
+        return !requireLos || world.CanSeeLOSFor(ch, ch.Position, point);
     }
 
     private static bool TryResolveItemTop(Item item, GameWorld world,
@@ -1230,8 +1230,8 @@ public static class ActiveSkillEngine
             if (!world.CanSeeLOSFor(ch, ch.Position, target))
                 return los;
         }
-        else if ((world.AdvancedLos & (ch.IsPlayer ? 0x01 : 0x02)) != 0 &&
-                 !world.CanSeeLOS(ch.Position, target, LosFlags.Fishing))
+        else if (world.UsesAdvancedLos(ch) &&
+                 !world.CanSeeLOSFor(ch, ch.Position, target, LosFlags.Fishing, range))
         {
             return los;
         }
@@ -1730,7 +1730,7 @@ public static class ActiveSkillEngine
     {
         if (other.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible) && viewer.PrivLevel < PrivLevel.GM)
             return false;
-        return other.MapIndex == viewer.MapIndex && world.CanSeeLOS(viewer.Position, other.Position);
+        return other.MapIndex == viewer.MapIndex && world.CanSeeLOSFor(viewer, other);
     }
 
     /// <summary>pSubject->Noto_GetFlag(pViewer) == NOTO_GOOD (CCharSkill.cpp:2135/2142),

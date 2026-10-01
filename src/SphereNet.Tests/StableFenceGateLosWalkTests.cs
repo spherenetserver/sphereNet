@@ -126,8 +126,14 @@ public sealed class StableFenceGateLosWalkTests
         var (world, _) = MakeSyntheticWorld();
         PlaceGate(world, GateClosed, 101, 100);
         world.AdvancedLos = 0x03;
-        // CanSeeLOS_New casts at eye height; an 11-high gate stays under it.
-        Assert.True(world.CanSeeLOS(new Point3D(100, 100, 0, 0), new Point3D(102, 100, 0, 0)));
+        var viewer = MakeFighter(world, 100, 100);
+        var other = MakeFighter(world, 102, 100, player: false);
+        // CanSeeLOS_New runs from eye to eye for a character target (CCharLOS.cpp:
+        // 132, 681): both at z15, an 11-high gate stays under the ray.
+        Assert.True(world.CanSeeLOSFor(viewer, other));
+        // Aimed at the ground behind the gate the ray descends from z15 to z0 and
+        // crosses the gate tile at z11, inside its 0..11 span (CCharLOS.cpp:514-521).
+        Assert.False(world.CanSeeLOSFor(viewer, viewer.Position, new Point3D(102, 100, 0, 0)));
     }
 
     [Fact]

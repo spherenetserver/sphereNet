@@ -261,6 +261,7 @@ public sealed class StandingSurfaceSyntheticTests
         var player = world.CreateCharacter();
         player.IsPlayer = true;
         player.BodyId = 0x0190;
+        player.MaxStam = 100; player.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
         world.PlaceCharacter(player, new Point3D(41, 40, 20, 0));
         TestHarness.AttachCharacter(client, player);
 

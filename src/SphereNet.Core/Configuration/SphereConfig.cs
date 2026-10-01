@@ -1580,7 +1580,7 @@ public sealed class SphereConfig
             int mapId = parts.Length > 4 ? LeadingInt(parts[4]) : -1;
 
             var (defX, defY) = DefaultMapSize(mapFile);
-            var def = new MapDefinition { MaxX = defX, MaxY = defY, SectorSize = 64, MapReadId = mapFile, MapSendId = i };
+            var def = new MapDefinition { MapIndex = i, MaxX = defX, MaxY = defY, SectorSize = 64, MapReadId = mapFile, MapSendId = i };
             if (maxX != 0)
             {
                 if (maxX < 8 || maxX % 8 != 0) _mapWarnings.Add($"MAP{i}: X coord must be multiple of 8 ({maxX} is invalid, {def.MaxX} is still effective)");
@@ -1668,7 +1668,14 @@ public sealed class MapDefinition
     public int MaxX { get; set; }
     public int MaxY { get; set; }
     public int SectorSize { get; set; } = 64;
+    /// <summary>The world (logical) map number: the n of MAPn. Points, saves,
+    /// sectors and every map-data lookup use it (Source-X CPointMap::m_map).</summary>
+    public int MapIndex { get; set; }
+    /// <summary>The data-file number (map{n}.mul / statics{n}.mul / staidx{n}.mul):
+    /// MAPn's fourth field (Source-X CUOMapList::GetMapFileNum).</summary>
     public int MapReadId { get; set; }
+    /// <summary>The map number told to the client (0xBF/0x08): MAPn's fifth field,
+    /// n when absent (Source-X CUOMapList::GetMapID).</summary>
     public int MapSendId { get; set; }
 
     public int SectorCountX => MaxX / SectorSize;

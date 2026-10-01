@@ -827,7 +827,7 @@ public sealed partial class NpcAI
             if (ch.MapIndex != npc.MapIndex) continue;
             int d = npc.Position.GetDistanceTo(ch.Position);
             if (d > UoMapViewSight || d >= bestDist) continue;
-            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+            if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows)) continue;
             best = ch;
             bestDist = d;
         }

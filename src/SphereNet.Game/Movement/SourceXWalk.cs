@@ -174,7 +174,7 @@ internal sealed class SourceXWalk
     }
 
     /// <summary>CItemBase::IsID_Chair (CItemBase.cpp:553).</summary>
-    private static readonly HashSet<int> ChairIds =
+    internal static readonly HashSet<int> ChairIds =
     [
         0x0459, 0x045a, 0x045b, 0x045c, 0x0b2c, 0x0b2d, 0x0b2e, 0x0b2f, 0x0b30, 0x0b31,
         0x0b32, 0x0b33, 0x0b4e, 0x0b4f, 0x0b50, 0x0b51, 0x0b52, 0x0b53, 0x0b54, 0x0b55,
@@ -416,10 +416,19 @@ internal sealed class SourceXWalk
     /// standing at height <paramref name="z"/> with <paramref name="climb"/> of climb,
     /// stand on (x, y), and at what height? Characters are not considered here.</summary>
     public bool CanStandAt(Character ch, int mapId, int x, int y, int z, int climb,
-        bool pathFinding, out int newZ, out string reason)
+        bool pathFinding, out int newZ, out string reason) =>
+        CanStandAt(ch, mapId, x, y, z, climb, pathFinding, out newZ, out reason, out _);
+
+    /// <summary>As above, also handing back the flags of the tile stood on - what
+    /// CheckValidMove returns in uiBlockFlags (blockingState.m_Bottom.m_uiBlockFlags,
+    /// CCharStatus.cpp:2052): a step whose floor carries CAN_I_ROOF puts the walker
+    /// indoors (CCharAct.cpp:4831).</summary>
+    public bool CanStandAt(Character ch, int mapId, int x, int y, int z, int climb,
+        bool pathFinding, out int newZ, out string reason, out uint bottomFlags)
     {
         newZ = z;
         reason = "";
+        bottomFlags = 0;
         var md = _world.MapData;
         if (md == null)
             return false;
@@ -443,6 +452,7 @@ internal sealed class SourceXWalk
 
         uint canFlags = (uint)CharDefHelper.GetCanFlags(ch);
         uint pointFlags = block.Bottom.Flags;
+        bottomFlags = block.Bottom.Flags;
         uint blockedBy = 0;
 
         if (block.Top.Flags != 0)
@@ -595,6 +605,55 @@ internal sealed class SourceXWalk
 
         bool ok = CanStandAt(ch, mapId, x, y, referenceZ, 0, pathFinding: true, out int z, out _);
         return ok ? (true, z, true) : (false, referenceZ, false);
+    }
+
+    /// <summary>CAN_I_ROOF on a tile's flags (the bottom flags handed back by
+    /// <see cref="CanStandAt(Character,int,int,int,int,int,bool,out int,out string,out uint)"/>).</summary>
+    internal static bool IsRoofFloor(uint bottomFlags) => (bottomFlags & Roof) != 0;
+
+    /// <summary>The flags of the floor <paramref name="ch"/> would stand on at
+    /// (x, y) from height <paramref name="z"/>, with nothing blocking - the
+    /// collision-free step's half of CheckValidMove's uiBlockFlags.</summary>
+    internal uint FloorFlagsAt(Character ch, int mapId, int x, int y, int z)
+    {
+        var md = _world.MapData;
+        if (md == null)
+            return 0;
+        var (w, h) = md.GetMapSize(mapId);
+        if (x < 0 || y < 0 || x >= w || y >= h)
+            return 0;
+        int height = WalkHeight(ch);
+        var block = new BlockingState(Everything, z, z + height, z + 3);
+        GetHeightPoint(md, mapId, x, y, block);
+        return block.Bottom.Flags;
+    }
+
+    /// <summary>CChar::IsVerticalSpace (CCharStatus.cpp:1785-1802): is there room
+    /// above (x, y, z) for this character at its mounted height (GetHeightMount:
+    /// HEIGHT, plus 4 when riding or hovering), plus another 4 when
+    /// <paramref name="forceMount"/> asks about getting onto a mount? A GM in GM
+    /// mode or an ALLMOVE character always has room; so does a point off the map.
+    /// The ceiling is the blocking state's top, reached from the walker's own
+    /// climb (m_zClimbHeight).</summary>
+    public bool IsVerticalSpace(Character ch, int mapId, int x, int y, int z, bool forceMount)
+    {
+        if (ch.IsGmMode || ch.AllMove)
+            return true;
+        var md = _world.MapData;
+        if (md == null)
+            return true;
+        var (w, h) = md.GetMapSize(mapId);
+        if (x < 0 || y < 0 || x >= w || y >= h)
+            return true;
+
+        uint flags = GetCanMoveFlags(ch);
+        if ((flags & CWalk) != 0)
+            flags |= Climb;
+        int heightMount = ch.GetHeight() + (ch.IsMounted || ch.IsStatFlag(StatFlag.Hovering) ? 4 : 0);
+        int climb = ClimbHeightAt(ch, ch.MapIndex, ch.X, ch.Y, ch.Z);
+        var block = new BlockingState(flags, z, z + climb + heightMount, z + climb + 2);
+        GetHeightPoint(md, mapId, x, y, block);
+        return heightMount + z + (forceMount ? 4 : 0) < block.Top.Z;
     }
 
     /// <summary>CChar::CheckValidMove (CCharStatus.cpp:1978) for a step in

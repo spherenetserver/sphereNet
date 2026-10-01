@@ -54,5 +54,17 @@ public sealed class MovementQueueProcessor
         return false;
     }
 
+    /// <summary>The direction byte of the step at the head of the queue, left in place.</summary>
+    public bool TryPeek(out byte dir)
+    {
+        if (_queue.TryPeek(out var move))
+        {
+            dir = move.Direction;
+            return true;
+        }
+        dir = 0;
+        return false;
+    }
+
     public void Clear() => _queue.Clear();
 }

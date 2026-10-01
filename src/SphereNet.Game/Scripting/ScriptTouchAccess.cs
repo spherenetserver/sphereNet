@@ -102,7 +102,8 @@ public static class ScriptTouchAccess
                 (!other.IsPlayer || other.IsOnline || other.IsClientLingering || source.AllShow) &&
                 (!other.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible | StatFlag.Insubstantial) ||
                  source.AllShow || source.PrivLevel >= PrivLevel.Counsel && source.PrivLevel >= other.PrivLevel));
-        return (ignoreLos || visible && world.CanSeeLOS(source.Position, top.Position)) &&
+        // What I carry needs no line of sight to myself (CCharStatus.cpp:1400-1412).
+        return (ignoreLos || visible && (top == source || world.CanSeeLOSFor(source, top))) &&
             (ignoreDistance || distance <= 2);
     }
 

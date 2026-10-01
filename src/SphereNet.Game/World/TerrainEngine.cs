@@ -15,14 +15,6 @@ public sealed class TerrainEngine
     /// <summary>Max climb height per step (Source-X default).</summary>
     private const int MaxClimb = 18;
 
-    /// <summary>Default character height for LOS checks.</summary>
-    private const int PersonHeight = 16;
-
-    /// <summary>Host bridge: does a dynamic (in-world) item occlude the ray at
-    /// this cell/height? (Source-X CanSeeLOS_New LOS_NB_DYNAMIC block — the MUL
-    /// static path can't see live items, so the world supplies them.)</summary>
-    public Func<byte, short, short, int, bool>? DynamicOccluderAt { get; set; }
-
     public TerrainEngine(MapData.MapDataManager? mapData)
     {
         _mapData = mapData;
@@ -64,54 +56,8 @@ public sealed class TerrainEngine
         return true;
     }
 
-    /// <summary>
-    /// Check line of sight between two points (Source-X CanSeeLOS_New): a
-    /// Bresenham ray blocked by terrain, statics, dynamic in-world items and
-    /// multi/custom-house geometry. <paramref name="flags"/> selects LOS_FISHING
-    /// (the ray must run over water past two tiles).
-    /// </summary>
-    public bool CanSeeLOS(Point3D from, Point3D to, Core.Enums.LosFlags flags = Core.Enums.LosFlags.None)
-    {
-        if (_mapData == null) return true;
-        if (from.Map != to.Map) return false;
-
-        int dx = Math.Abs(to.X - from.X);
-        int dy = Math.Abs(to.Y - from.Y);
-        int steps = Math.Max(dx, dy);
-        if (steps == 0) return true;
-
-        float stepX = (float)(to.X - from.X) / steps;
-        float stepY = (float)(to.Y - from.Y) / steps;
-
-        // LOS height: eye level (Z + PersonHeight)
-        float fromEye = from.Z + PersonHeight;
-        float toEye = to.Z + PersonHeight;
-        float stepZ = (toEye - fromEye) / steps;
-
-        float cx = from.X, cy = from.Y, cz = fromEye;
-
-        for (int i = 1; i < steps; i++)
-        {
-            cx += stepX;
-            cy += stepY;
-            cz += stepZ;
-
-            short checkX = (short)Math.Round(cx);
-            short checkY = (short)Math.Round(cy);
-            int checkZ = (int)Math.Round(cz);
-
-            if (HasLosOccluder(from.Map, checkX, checkY, checkZ))
-                return false;
-
-            // LOS_FISHING: two or more tiles out, the ray must stay over water.
-            if ((flags & Core.Enums.LosFlags.Fishing) != 0 &&
-                from.GetDistanceTo(new Point3D(checkX, checkY, (sbyte)0, from.Map)) >= 2 &&
-                !IsWaterCell(from.Map, checkX, checkY))
-                return false;
-        }
-
-        return true;
-    }
+    // The ADVANCEDLOS eye-height ray (CChar::CanSeeLOS_New) needs the world's
+    // items, multis and regions as well as the map files: AdvancedLineOfSight.
 
     // =====================================================================
     // Legacy line of sight - Source-X CChar::CanSeeLOS with ADVANCEDLOS
@@ -395,13 +341,13 @@ public sealed class TerrainEngine
     /// positions (GetTopPoint), not eye heights.</summary>
     public bool CanSeeLOSLegacy(Point3D from, Point3D to, int maxDist = int.MaxValue)
     {
-        if (_mapData == null) return true;
         if (from.Map != to.Map) return false;
 
         int sx = from.X, sy = from.Y, sz = from.Z;
         int dist = Math.Max(Math.Abs(to.X - sx), Math.Abs(to.Y - sy));
         if (dist > maxDist)
             return false;
+        if (_mapData == null) return true;
 
         int distTry = 0;
         while (--dist >= 0)
@@ -434,60 +380,5 @@ public sealed class TerrainEngine
         }
 
         return Math.Abs(sz - to.Z) < 20;
-    }
-
-    private bool IsWaterCell(byte mapId, short x, short y)
-    {
-        if (_mapData == null) return true;
-        var land = _mapData.GetLandTileData(_mapData.GetTerrainTile(mapId, x, y).TileId);
-        return land.IsWet;
-    }
-
-    private bool HasLosOccluder(byte mapId, short x, short y, int rayZ)
-    {
-        if (_mapData == null)
-            return false;
-
-        var terrain = _mapData.GetTerrainTile(mapId, x, y);
-        if (terrain.Z > rayZ)
-            return true;
-
-        var staticBlock = _mapData.GetStaticBlock(mapId, x, y, out int offX, out int offY);
-        foreach (var s in staticBlock)
-        {
-            if (s.XOffset != offX || s.YOffset != offY)
-                continue;
-
-            var data = _mapData.GetItemTileData(s.TileId);
-            if (!GraphicBlocksLos(s.TileId, data))
-                continue;
-
-            int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
-            int bottomZ = s.Z;
-            int topZ = bottomZ + height;
-            if (rayZ >= bottomZ && rayZ <= topZ)
-                return true;
-        }
-
-        // Dynamic in-world items + multi/custom-house geometry
-        // (Source-X LOS_NB_DYNAMIC / LOS_NB_MULTI passes).
-        if (DynamicOccluderAt?.Invoke(mapId, x, y, rayZ) == true)
-            return true;
-
-        return false;
-    }
-
-    /// <summary>Whether a tile graphic occludes the ray. Wall/impassable/roof/
-    /// no-shoot statics block, as do items flagged CAN_I_BLOCKLOS_HEIGHT; windows
-    /// stay see-through (Source-X UFLAG2_WINDOW under the LOS_NB_WINDOWS default
-    /// used for archery/magery). Shared by the static, dynamic and multi paths.</summary>
-    public static bool GraphicBlocksLos(ushort tileId, in ItemTileData data)
-    {
-        if ((data.Flags & TileFlag.Window) != 0)
-            return false;
-        if (data.IsWall || data.IsImpassable || data.IsRoof || (data.Flags & TileFlag.NoShoot) != 0)
-            return true;
-        var def = Definitions.DefinitionLoader.GetItemDef(tileId);
-        return def != null && (def.Can & Core.Enums.CanFlags.I_BlockLOSHeight) != 0;
     }
 }

@@ -926,7 +926,7 @@ public sealed partial class GameClient
             (byte)_character.Direction, mapW, mapH
         ));
 
-        _netState.Send(new PacketMapChange((byte)_character.MapIndex));
+        _netState.Send(new PacketMapChange(_world.GetClientMapId(_character.MapIndex)));
         _netState.Send(new PacketMapPatches()); // no map diffs — all zeros
 
         SendCharacterStatus(_character);
@@ -1184,7 +1184,7 @@ public sealed partial class GameClient
     public void HandleMapChanged()
     {
         if (_character == null || !IsPlaying) return;
-        _netState.Send(new PacketMapChange((byte)_character.MapIndex));
+        _netState.Send(new PacketMapChange(_world.GetClientMapId(_character.MapIndex)));
         Resync();
     }
 

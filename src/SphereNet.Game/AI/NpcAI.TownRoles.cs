@@ -457,7 +457,7 @@ public sealed partial class NpcAI
             {
                 if (ch == npc || ch.IsDead || ch.IsDeleted || !IsAttackable(ch)) continue;
                 if (!ch.IsStatFlag(StatFlag.War) && ch.FightTarget != npc.Uid) continue;
-                if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+                if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows)) continue;
                 int d = npc.Position.GetDistanceTo(ch.Position);
                 if (d < nearest) { nearest = d; threat = ch; }
             }
@@ -691,7 +691,7 @@ public sealed partial class NpcAI
                 continue;
             int itQty = NpcFoodQty(npc, it);
             if (itQty <= 0) continue;
-            if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
+            if (!_world.CanSeeLOSFor(npc, it)) continue;
             int d = npc.Position.GetDistanceTo(it.Position);
             if (d < best) { best = d; meal = it; mealQty = itQty; }
         }
@@ -842,7 +842,7 @@ public sealed partial class NpcAI
             // would ignore anyway.
             if (!hooked && !MightInterest(npc, ch, healer, guard))
                 continue;
-            if (!_world.CanSeeLOS(npc.Position, ch.Position))
+            if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows))
                 continue;
 
             if (LookAtCharBrain(npc, ch, asHuman))
@@ -887,7 +887,7 @@ public sealed partial class NpcAI
             return false;
         if (ch.IsDead && npc.NpcBrain != NpcBrainType.Healer)
             return false; // CanSee: only a healer sees a ghost (CCharStatus.cpp:1184)
-        if (!_world.CanSeeLOS(npc.Position, ch.Position))
+        if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows))
             return false;
         return LookAtCharBrain(npc, ch, asHuman: false);
     }
@@ -954,7 +954,7 @@ public sealed partial class NpcAI
         {
             if (!ch.IsPlayer || ch.IsDeleted) continue;
             if (ch.IsDead && npc.NpcBrain != NpcBrainType.Healer) continue;
-            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+            if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows)) continue;
             npc.SeeNewPlayer(ch); // fires @NPCSeeNewPlayer on a first sighting
         }
     }
@@ -990,7 +990,7 @@ public sealed partial class NpcAI
         {
             if (item.IsDeleted || item.ContainedIn.IsValid) continue;
             // No coveting through walls (Source-X CanSee in NPC_LookAtItem).
-            if (!_world.CanSeeLOS(npc.Position, item.Position)) continue;
+            if (!_world.CanSeeLOSFor(npc, item)) continue;
             int dist = npc.Position.GetDistanceTo(item.Position);
             int want = GetWantScore(npc, item);
             if (OnNpcLookAtItem != null && !IsLookAtItemExcluded(item))

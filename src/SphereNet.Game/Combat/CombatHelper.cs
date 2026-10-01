@@ -230,7 +230,8 @@ public static class CombatHelper
 
                 // Fight_CanHit checks LoS with bCombatCheck set (CCharFight.cpp:1720),
                 // which withdraws the GM pass: staff do not swing through walls either.
-                canSeeLos ??= (a, b) => world.CanSeeLOSFor(attacker, a, b);
+                // A ranged swing looks past windows (LOS_NB_WINDOWS, CCharFight.cpp:1719).
+                canSeeLos ??= (_, _) => world.CanSeeLOSFor(attacker, target, LosFlags.NbWindows);
                 if (!canSeeLos(attacker.Position, target.Position))
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
             }
@@ -261,7 +262,7 @@ public static class CombatHelper
 
                 // Fight_CanHit checks LoS with bCombatCheck set (CCharFight.cpp:1720),
                 // which withdraws the GM pass: staff do not swing through walls either.
-                canSeeLos ??= (a, b) => world.CanSeeLOSFor(attacker, a, b);
+                canSeeLos ??= (_, _) => world.CanSeeLOSFor(attacker, target);
                 if (!canSeeLos(attacker.Position, target.Position))
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
             }
@@ -407,7 +408,8 @@ public static class CombatHelper
         if (dist < min || dist > max)
             return false;
         // Combat LoS binds staff too (bCombatCheck, CCharLOS.cpp:25).
-        canSeeLos ??= (a, b) => world.CanSeeLOSFor(attacker, a, b);
+        canSeeLos ??= (_, _) => world.CanSeeLOSFor(attacker, target,
+            IsRangedWeapon(weapon) ? LosFlags.NbWindows : LosFlags.None);
         if (!canSeeLos(attacker.Position, target.Position)) return false;
         return true;
     }

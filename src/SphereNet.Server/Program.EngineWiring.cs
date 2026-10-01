@@ -2372,7 +2372,7 @@ public static partial class Program
                     if (!ch.IsPlayer && ch.OwnerSerial == attacker.Uid) continue;
                     // Someone I may not legally attack (same guild, party, ...) (:1091).
                     if (GameClient.ComputeNotoriety(_world, attacker, ch) == 1) continue;
-                    if (!_world.CanSeeLOS(ch.Position, attacker.Position)) continue;
+                    if (!_world.CanSeeLOSFor(ch, attacker)) continue;
 
                     CombatEngine.ApplyCharacterDamage(ch, dmg, attacker, dmgType,
                         phys, fire, cold, pois, ener);

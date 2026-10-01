@@ -221,7 +221,7 @@ public static class ItemDamageEngine
         {
             foreach (var ch in world.GetCharsInRange(point, 2).ToList())
             {
-                if (ch.IsDeleted || ch.IsDead || !world.CanSeeLOS(ch.Position, point))
+                if (ch.IsDeleted || ch.IsDead || !world.CanSeeLOSFor(ch, ch.Position, point))
                     continue;
                 CombatEngine.ApplyScriptDamage(ch, damage, flags, source, 0, 100, 0, 0, 0);
             }

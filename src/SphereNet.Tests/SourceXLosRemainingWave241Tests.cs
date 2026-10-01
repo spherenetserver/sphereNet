@@ -13,8 +13,8 @@ namespace SphereNet.Tests;
 
 /// <summary>
 /// Remaining Source-X CanSeeLOS_New passes: LOS_NB_MULTI (placed house/ship walls
-/// and committed custom-house design tiles occlude sight) and LOS_FISHING (the ray
-/// must stay over water once it is two or more tiles from the caster).
+/// and committed custom-house design tiles occlude sight) and LOS_FISHING (two or
+/// more tiles from the caster the terrain must be water or untyped).
 /// </summary>
 public sealed class SourceXLosRemainingWave241Tests
 {
@@ -59,17 +59,23 @@ public sealed class SourceXLosRemainingWave241Tests
     }
 
     [Fact]
-    public void CanSeeLOS_Fishing_RequiresWaterPathBeyondTwoTiles()
+    public void CanSeeLOS_Fishing_WaterAndUntypedTerrainAreFishable()
     {
         var from = new Point3D(100, 100, 0, 0);
         var to = new Point3D(106, 100, 0, 0);
 
         var water = MakeFishingWorld(wet: true);
+        water.AdvancedLos = 0x03;
         Assert.True(water.CanSeeLOS(from, to, LosFlags.Fishing)); // all water → clear
 
+        // The fishing terrain test is by TYPE, not by the tiledata wet flag: a land
+        // tile no [TYPEDEF] TERRAIN= claims is IT_NORMAL (CWorldMap.cpp:209-215) and
+        // IT_NORMAL is fishable like IT_WATER (CCharLOS.cpp:275). A typed non-water
+        // tile blocking is SourceXAdvancedLosRayTests' fishing case.
         var land = MakeFishingWorld(wet: false);
-        Assert.False(land.CanSeeLOS(from, to, LosFlags.Fishing)); // land past 2 tiles → blocked
-        Assert.True(land.CanSeeLOS(from, to));                    // without the flag, flat land is fine
+        land.AdvancedLos = 0x03;
+        Assert.True(land.CanSeeLOS(from, to, LosFlags.Fishing));
+        Assert.True(land.CanSeeLOS(from, to));
     }
 
     private static GameWorld MakeFishingWorld(bool wet)

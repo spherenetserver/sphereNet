@@ -208,7 +208,6 @@ public sealed class GameWorld
     /// <summary>Lazy terrain helper (LOS, ground height). Uses current MapData.</summary>
     public TerrainEngine Terrain => _terrain ??= new TerrainEngine(MapData)
     {
-        DynamicOccluderAt = HasDynamicLosOccluder,
         LegacyDynamicTiles = FeedLegacyDynamicTiles,
         StaticDoorOpen = IsMapStaticDoorOpen,
     };
@@ -315,85 +314,6 @@ public sealed class GameWorld
                (door.TryGetTag("DOOR_OPEN", out string? open) && open == "1");
     }
 
-    /// <summary>Does a dynamic (in-world) item or multi/custom-house wall at this
-    /// cell occlude a LOS ray at the given height? (Source-X CanSeeLOS_New
-    /// LOS_NB_DYNAMIC + LOS_NB_MULTI passes.) Statics from the MUL files are
-    /// handled by the terrain engine; this covers items placed at runtime and the
-    /// virtual walls of placed houses/ships, which are neither real items nor MUL
-    /// statics.</summary>
-    private bool HasDynamicLosOccluder(byte mapId, short x, short y, int rayZ)
-    {
-        if (MapData == null) return false;
-        var cell = new Core.Types.Point3D(x, y,
-            (sbyte)Math.Clamp(rayZ, sbyte.MinValue, sbyte.MaxValue), mapId);
-
-        // Real placed items sitting on this cell.
-        foreach (var item in GetItemsInRange(cell, 0))
-        {
-            if (item.X != x || item.Y != y || item.MapIndex != mapId)
-                continue;
-            var data = MapData.GetItemTileData(item.BaseId);
-            if (!TerrainEngine.GraphicBlocksLos(item.BaseId, data))
-                continue;
-            int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
-            if (rayZ >= item.Z && rayZ <= item.Z + height)
-                return true;
-        }
-
-        return HasMultiLosOccluder(mapId, x, y, rayZ);
-    }
-
-    /// <summary>Virtual multi geometry (placed house/ship components and committed
-    /// custom-house design tiles) occluding the ray — mirrors the walk-geometry
-    /// scan in WalkCheck. These walls are rendered client-side, not stored as
-    /// items/statics, so LOS must synthesize them the same way.</summary>
-    private bool HasMultiLosOccluder(byte mapId, short x, short y, int rayZ)
-    {
-        var pivot = new Core.Types.Point3D(x, y, (sbyte)0, mapId);
-        foreach (var multi in GetItemsInRange(pivot, 32))
-        {
-            if (multi.IsDeleted || multi.IsEquipped || !multi.IsOnGround)
-                continue;
-            if (multi.ItemType is not (Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
-                or Core.Enums.ItemType.MultiAddon or Core.Enums.ItemType.Ship))
-                continue;
-
-            var def = MapData!.GetMulti(multi.BaseId);
-            if (def != null)
-            {
-                foreach (var comp in def.Components)
-                {
-                    if (!comp.IsVisible) continue;
-                    if (multi.X + comp.XOffset != x || multi.Y + comp.YOffset != y) continue;
-                    if (MultiTileBlocksLos(comp.TileId, multi.Z + comp.ZOffset, rayZ))
-                        return true;
-                }
-            }
-
-            if (multi.ItemType == Core.Enums.ItemType.MultiCustom &&
-                Movement.WalkCheck.ResolveCustomDesign != null)
-            {
-                foreach (var tile in Movement.WalkCheck.ResolveCustomDesign(multi))
-                {
-                    if (!tile.Visible) continue; // materialized fixture — the real item occludes
-                    if (multi.X + tile.X != x || multi.Y + tile.Y != y) continue;
-                    if (MultiTileBlocksLos(tile.TileId, multi.Z + tile.Z, rayZ))
-                        return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private bool MultiTileBlocksLos(ushort tileId, int baseZ, int rayZ)
-    {
-        var data = MapData!.GetItemTileData(tileId);
-        if (!TerrainEngine.GraphicBlocksLos(tileId, data))
-            return false;
-        int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
-        return rayZ >= baseZ && rayZ <= baseZ + height;
-    }
-
     /// <summary>Max items allowed in a regular container (backpack, chest).
     /// sphere.ini CONTAINERMAXITEMS; Source-X default MAX_ITEMS_CONT = 255.</summary>
     public int MaxContainerItems { get; set; } = 255;
@@ -438,27 +358,84 @@ public sealed class GameWorld
     /// without boxing an enumerator.</summary>
     internal HashSet<Objects.Characters.Character> OnlinePlayerSet => _onlinePlayers;
 
-    /// <summary>Line-of-sight check between two map positions. Returns true when
-    /// terrain + impassable statics do not occlude the ray from 'from' to 'to'.
-    /// Source-X equivalent: CWorldMap::CanSeeLOS.</summary>
-    public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to)
-        => AdvancedLos != 0 ? Terrain.CanSeeLOS(from, to) : Terrain.CanSeeLOSLegacy(from, to);
+    private AdvancedLineOfSight? _advancedLosRay;
+    private AdvancedLineOfSight AdvancedLosRay => _advancedLosRay ??= new AdvancedLineOfSight(this);
 
-    /// <summary>Line of sight as a specific viewer sees it: the ADVANCEDLOS bit
-    /// for the viewer's kind (player 0x01, NPC 0x02) picks the eye-height ray,
-    /// otherwise the legacy walk (Source-X CChar::CanSeeLOS, CCharLOS.cpp:17/675).</summary>
-    public bool CanSeeLOSFor(Objects.Characters.Character viewer,
-        Core.Types.Point3D from, Core.Types.Point3D to)
-    {
-        int bit = viewer.IsPlayer ? 0x01 : 0x02;
-        return (AdvancedLos & bit) != 0
-            ? Terrain.CanSeeLOS(from, to)
+    /// <summary>UO_MAP_VIEW_SIZE_DEFAULT: how far an item is seen
+    /// (CObjBaseTemplate::GetVisualRange) - the reach of a LOS check aimed at one.</summary>
+    private const int ItemVisualRange = 18;
+
+    /// <summary>Line of sight between two map positions on no particular
+    /// character's behalf: the legacy walk, or - with any ADVANCEDLOS bit set - the
+    /// eye-height ray from a body of the default height (PLAYER_HEIGHT). A check made
+    /// for a character goes through <see cref="CanSeeLOSFor(Objects.Characters.Character, Core.Types.Point3D, Core.Types.Point3D, Core.Enums.LosFlags, int, bool)"/>
+    /// so its own ADVANCEDLOS bit and eye height decide.</summary>
+    public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to)
+        => CanSeeLOS(from, to, Core.Enums.LosFlags.None);
+
+    /// <summary>As <see cref="CanSeeLOS(Core.Types.Point3D, Core.Types.Point3D)"/>,
+    /// with Source-X LOS flags. The flags shape only the eye-height ray; the legacy
+    /// walk ignores them (CCharLOS.cpp:12-96).</summary>
+    public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to, Core.Enums.LosFlags flags)
+        => AdvancedLos != 0
+            ? AdvancedLosRay.Check(null, from, Objects.Characters.Character.DefaultHeight - 1, to, int.MaxValue, flags)
             : Terrain.CanSeeLOSLegacy(from, to);
+
+    /// <summary>Whether <paramref name="viewer"/> takes the eye-height ray: the
+    /// ADVANCEDLOS bit of its kind, 0x01 players / 0x02 NPCs (CCharLOS.cpp:17, 675).</summary>
+    public bool UsesAdvancedLos(Objects.Characters.Character viewer)
+        => (AdvancedLos & (viewer.IsPlayer ? 0x01 : 0x02)) != 0;
+
+    /// <summary>CChar::GetHeightMount(true) (CChar.cpp:1498): the body height, 4 more
+    /// mounted or hovering, less one for the eyes.</summary>
+    public static int GetLosEyeHeight(Objects.Characters.Character ch)
+    {
+        int height = ch.GetHeight();
+        if (ch.IsMounted || ch.IsStatFlag(Core.Enums.StatFlag.Hovering))
+            height += 4;
+        return height - 1;
     }
 
-    /// <summary>Line-of-sight with Source-X LOS flags (e.g. LosFlags.Fishing).</summary>
-    public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to, Core.Enums.LosFlags flags)
-        => Terrain.CanSeeLOS(from, to, flags);
+    /// <summary>Line of sight as <paramref name="viewer"/> sees a map point -
+    /// Source-X CChar::CanSeeLOS(pt, pBlock, iMaxDist, flags) (CCharLOS.cpp:12/112).
+    /// <paramref name="from"/> is the viewer's feet. The viewer's ADVANCEDLOS bit
+    /// picks the eye-height ray (from its own eye height to the point's Z) or the
+    /// legacy walk; <paramref name="maxDist"/> bounds both, square distance for the
+    /// walk and the rounded straight-line distance for the ray.
+    /// <paramref name="allowGmPass"/> is upstream's !bCombatCheck: an active GM then
+    /// sees through everything (CCharLOS.cpp:25/117). Combat never passes it.</summary>
+    public bool CanSeeLOSFor(Objects.Characters.Character viewer,
+        Core.Types.Point3D from, Core.Types.Point3D to,
+        Core.Enums.LosFlags flags = Core.Enums.LosFlags.None, int maxDist = int.MaxValue,
+        bool allowGmPass = false)
+    {
+        if (allowGmPass && viewer.IsGmMode)
+            return true;
+        return UsesAdvancedLos(viewer)
+            ? AdvancedLosRay.Check(viewer, from, GetLosEyeHeight(viewer), to, maxDist, flags)
+            : Terrain.CanSeeLOSLegacy(from, to, maxDist);
+    }
+
+    /// <summary>Line of sight as <paramref name="viewer"/> sees an object - Source-X
+    /// CChar::CanSeeLOS(pObj, flags, bCombatCheck) (CCharLOS.cpp:663-688), less its
+    /// opening CanSee visibility test, which the callers make themselves. The object
+    /// is taken at its top-level position and reached as far as ITS visual range; the
+    /// ray aims at a character's eyes, the walk at its feet.</summary>
+    public bool CanSeeLOSFor(Objects.Characters.Character viewer, Objects.ObjBase target,
+        Core.Enums.LosFlags flags = Core.Enums.LosFlags.None, bool allowGmPass = false)
+    {
+        var top = target.GetTopLevelObj();
+        var pt = top.Position;
+        int range = top is Objects.Characters.Character tc ? tc.VisualRange : ItemVisualRange;
+        if (allowGmPass && viewer.IsGmMode)
+            return true;
+        if (!UsesAdvancedLos(viewer))
+            return Terrain.CanSeeLOSLegacy(viewer.Position, pt, range);
+        if (top is Objects.Characters.Character targetChar)
+            pt = new Core.Types.Point3D(pt.X, pt.Y,
+                (sbyte)Math.Min(pt.Z + GetLosEyeHeight(targetChar), 127), pt.Map);
+        return AdvancedLosRay.Check(viewer, viewer.Position, GetLosEyeHeight(viewer), pt, range, flags);
+    }
 
     public long TickCount => _tickCount;
     public int TotalObjects => _objects.Count;
@@ -562,6 +539,17 @@ public sealed class GameWorld
     /// Initialize the sector grid for a map.
     /// Must be called for each map before objects can be placed.
     /// </summary>
+    /// <summary>World map number → the map number the client is told (sphere.ini
+    /// MAPn's fifth field; Source-X CUOMapList::GetMapID, sent by addMapChange,
+    /// CClientMsg.cpp:2119). Unlisted maps are told their own number.</summary>
+    private readonly Dictionary<int, byte> _clientMapIds = [];
+
+    /// <summary>Record the client map number of world map <paramref name="mapId"/>.</summary>
+    public void SetClientMapId(int mapId, int clientMapId) => _clientMapIds[mapId] = (byte)clientMapId;
+
+    /// <summary>The map number the client is told for world map <paramref name="mapId"/>.</summary>
+    public byte GetClientMapId(int mapId) => _clientMapIds.TryGetValue(mapId, out byte id) ? id : (byte)mapId;
+
     public void InitMap(int mapId, int width, int height)
     {
         _mapDefs[mapId] = (width, height);
@@ -1794,7 +1782,19 @@ public sealed class GameWorld
                     if (i >= chars.Count) continue;
                     var ch = chars[i];
                     if (ch.IsDeleted || pos.GetDistanceTo(ch.Position) > 0) continue;
-                    if (ch == self || ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
+                    if (self != null)
+                    {
+                        // A walker's route asks what its step will: CPathFinder::FillMap
+                        // fills each cell through CanMoveWalkTo(..., fCheckChars, fCheckOnly,
+                        // fPathFinding) (CPathFinder.cpp:235), whose ShoveCharAtPosition
+                        // lets the walker push past someone it has the stamina for. Only
+                        // the ones it could not push block the route.
+                        if (ch == self || (ch.IsDead && !ch.IsPlayer)) continue;
+                        if (!AI.NpcAI.SharesHeightWith(ch, pos.Z)) continue;
+                        if (Movement.WalkCheck.CanMoveOver(self, ch)) continue;
+                        return true;
+                    }
+                    if (ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
                         continue;
                     // GetDistanceTo is an X/Y distance, so this had found everyone in
                     // the whole vertical column. The search has to agree with the step

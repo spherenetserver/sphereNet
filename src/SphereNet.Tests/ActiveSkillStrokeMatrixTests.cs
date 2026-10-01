@@ -60,6 +60,7 @@ public class ActiveSkillStrokeMatrixTests
         var client = TestHarness.CreateClient(lf, world, new SphereNet.Game.Accounts.AccountManager(lf), 1401);
         var player = world.CreateCharacter();
         player.IsPlayer = true;
+        player.MaxStam = 100; player.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
         player.SetSkill(SkillType.Hiding, 2000);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, player);

@@ -350,8 +350,7 @@ public sealed class SpeechEngine
                 // audible through walls).
                 if (!IgnoreHearLineOfSight &&
                     !CarriesAHearThroughWallsWord(text) &&
-                    !_world.CanSeeLOS(speaker.GetTopLevelPosition(),
-                                      listener.GetTopLevelPosition()))
+                    !_world.CanSeeLOSFor(speaker, listener))
                     continue;
 
                 ConsiderNpcListener(speaker, listener, lowerForPick, ref chosen, ref chosenDist,

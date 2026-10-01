@@ -22,6 +22,9 @@ public class MovementTests
         var accounts = new AccountManager(loggerFactory);
         var client = new GameClient(state, world, accounts, loggerFactory.CreateLogger<GameClient>());
         client.SetEngines(movement: new MovementEngine(world));
+        // A walker needs stamina: CanMove refuses a living character at 0
+        // (CCharAct.cpp:4586) - a bare test character has none.
+        if (ch.MaxStam <= 0) { ch.MaxStam = 100; ch.Stam = 100; }
         TestHarness.AttachCharacter(client, ch);
         return client;
     }
@@ -417,7 +420,8 @@ public class MovementTests
         var oldRegen = GameClient.WalkRegenPerSecond;
         try
         {
-            GameClient.MoveClock = () => 1_000;
+            long now = 1_000;
+            GameClient.MoveClock = () => now;
             GameClient.MoveToleranceMs = 0;
             GameClient.WalkBufferMax = 100;
             GameClient.WalkRegenPerSecond = 100;
@@ -435,6 +439,15 @@ public class MovementTests
                 new SphereNet.Network.State.MovementStep((byte)Direction.East, 1, 0, 0),
                 new SphereNet.Network.State.MovementStep((byte)Direction.East, 2, 0, 0)
             ]);
+
+            // Only the first step is due now (receive.cpp:4524 walks each through the
+            // real-clock Event_Walk); the other two wait, they are not refused.
+            Assert.Equal(1001, ch.X);
+            for (int t = 0; t < 1_000; t += 10)
+            {
+                now += 10;
+                client.TickMovementQueue(now);
+            }
 
             Assert.Equal(1003, ch.X);
             Assert.Equal(3, state.WalkSequence);
@@ -702,7 +715,15 @@ public class MovementTests
                             new SphereNet.Network.State.MovementStep((byte)steps[6], (byte)seq++, 0, 0),
                             new SphereNet.Network.State.MovementStep((byte)steps[7], (byte)seq++, 0, 0)
                         ]);
-                        now += MovementEngine.GetMoveDelay(false, true) * steps.Length;
+                        // A batch earns no time of its own: what the server clock does
+                        // not yet allow waits in the queue, and the main loop drains it
+                        // as real time passes (Program.Tick -> TickMovementQueue).
+                        int span = MovementEngine.GetMoveDelay(false, true) * steps.Length;
+                        for (int t = 0; t < span; t += 10)
+                        {
+                            now += 10;
+                            client.TickMovementQueue(now);
+                        }
                     }
                     else
                     {

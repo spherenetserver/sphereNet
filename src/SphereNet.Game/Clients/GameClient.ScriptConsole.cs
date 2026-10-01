@@ -425,15 +425,17 @@ public sealed partial class GameClient
             ForEachClientInRange.Invoke(_character.Position, UpdateRange, selfUid,
                 (observerCh, observerClient) =>
                 {
-                    bool isStaff = observerCh.AllShow ||
-                        observerCh.PrivLevel >= Core.Enums.PrivLevel.Counsel;
-                    if (isStaff)
+                    // An observer that could see the ghost either way (staff, or
+                    // a @SeeHidden script) only needs the state update; the shared
+                    // view rule decides it, as the delta would on its next pass.
+                    bool seesNow = ClientViewUpdater.IsCharVisible(observerCh, _character);
+                    if (seesNow && observerClient.HasKnownChar(_character.Uid.Value))
                     {
                         observerClient.Send(mobileMoving);
                         return;
                     }
 
-                    if (warMode)
+                    if (seesNow)
                     {
                         // Manifest: spawn ghost as translucent grey on this
                         // plain observer's client and start tracking it so

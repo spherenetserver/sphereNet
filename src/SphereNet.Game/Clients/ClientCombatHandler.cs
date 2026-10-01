@@ -143,7 +143,6 @@ public sealed class ClientCombatHandler
     private ClientMovementThrottle? _throttle;
 
     private long _moveRejectResyncUntil;
-    private long? _movementBatchNow;
 
     // Credit-based movement state (active only when MovementCreditEnabled=true)
     private int _movementCreditMs;
@@ -151,30 +150,52 @@ public sealed class ClientCombatHandler
     private Movement.MovementHistory? _movementHistory;
     private Movement.SpeedHackDetector? _speedHackDetector;
 
+    /// <summary>0xF0 movement batch. Source-X runs each step through the ordinary
+    /// Event_Walk and its real-clock fastwalk check (receive.cpp:4524 ->
+    /// CClientEvent.cpp:906); a batch earns no time of its own. Every step therefore
+    /// meets the same server-time budget as an 0x02 step: one that the budget allows
+    /// right now is walked at once, the rest wait in the movement queue and are
+    /// drained by <see cref="TickMovementQueue"/> as real time passes - never
+    /// rejected merely for arriving together. (The batch used to advance a private
+    /// clock by one step delay per accepted step, so ten steps in one packet moved
+    /// the character ten tiles at once.) A step the walk itself refuses still ends
+    /// the batch, as upstream's loop breaks on the first failed Event_Walk.</summary>
     public void HandleMovementBatch(IReadOnlyList<SphereNet.Network.State.MovementStep> steps)
     {
         if (_character == null || steps.Count == 0)
             return;
 
-        long baseNow = MoveClock();
-        long virtualNow = baseNow;
+        long now = MoveClock();
+        _netState.LastActivityTick = now;
+        var queue = Throttle.Queue ??= new Movement.MovementQueueProcessor(MovementQueueCapacity);
         for (int i = 0; i < steps.Count; i++)
         {
-            _movementBatchNow = virtualNow;
             var step = steps[i];
-            bool accepted = HandleMove(step.Direction, step.Sequence, step.FastWalkKey);
-            if (!accepted)
+            bool budgetAllowsNow = queue.Count == 0 &&
+                !(Throttle.NextMoveTime > 0 && now < Throttle.NextMoveTime);
+            if (budgetAllowsNow)
             {
-                _logger.LogWarning("[move_batch_stop] char={Char} step={Step}/{Total} seq={Seq} dir=0x{Dir:X2} mode={Mode} pos={X},{Y},{Z}",
+                int queuedBefore = queue.Count;
+                if (HandleMove(step.Direction, step.Sequence, step.FastWalkKey))
+                    continue;
+                if (queue.Count > queuedBefore)
+                    continue;   // deferred by the credit budget, already queued in order
+                _logger.LogDebug("[move_batch_stop] char={Char} step={Step}/{Total} seq={Seq} dir=0x{Dir:X2} mode={Mode} pos={X},{Y},{Z}",
                     _character.Name, i + 1, steps.Count, step.Sequence, step.Direction, step.Mode,
                     _character.X, _character.Y, _character.Z);
-                break;
+                queue.Clear();
+                return;
             }
 
-            bool running = (step.Direction & 0x80) != 0;
-            virtualNow += GetMoveDelay(running);
+            if (!queue.Enqueue(step.Direction, step.Sequence, step.FastWalkKey, now))
+            {
+                // More steps waiting than the queue holds: the same overflow an 0x02
+                // flood meets (QueueMoveRequest).
+                RejectMove(step.Sequence, now);
+                queue.Clear();
+                return;
+            }
         }
-        _movementBatchNow = null;
     }
 
     public void QueueMoveRequest(byte dir, byte seq, uint fastWalkKey)
@@ -238,12 +259,12 @@ public sealed class ClientCombatHandler
         var direction = (Direction)(dir & 0x07);
         bool running = (dir & 0x80) != 0;
 
-        long now = _movementBatchNow ?? MoveClock();
+        long now = MoveClock();
         _netState.LastActivityTick = now;
 
         if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
         {
-            // Silently drop — no 0x21 echo (see HandleMovementBatch for why):
+            // Silently drop — no 0x21 echo (see QueueMoveRequest for why):
             // echoing a reject per buffered step causes a feedback storm.
             _netState.WalkSequence = 0;
             return false;
@@ -269,6 +290,15 @@ public sealed class ClientCombatHandler
             return false;
         }
 
+        // Source-X Event_Walk (CClientEvent.cpp:864-869): the direction is the low
+        // nibble (the run bit 0x80 aside) and must name one of the eight
+        // directions; 8..15 is refused, not folded onto 0..7.
+        if ((dir & 0x0F) >= 8)
+        {
+            RejectMove(seq, now);
+            return false;
+        }
+
         // Fast-walk replay check intentionally dropped: the server never ships
         // the 6-key stack via 0xBF sub 0x01 to the client, so modern clients
         // either send key=0 (skipped by the !=0 guard) or emit locally-generated
@@ -289,8 +319,9 @@ public sealed class ClientCombatHandler
             return true;
         }
 
-        // Fastwalk throttle: reject if moving too fast.
-        if (_character.PrivLevel < PrivLevel.GM)
+        // Fastwalk throttle: reject if moving too fast. Only GM mode is exempt
+        // (Event_Walk: !m_pChar->IsPriv(PRIV_GM), CClientEvent.cpp:907).
+        if (!_character.IsGmMode)
         {
             int moveDelay = GetMoveDelay(running);
 
@@ -378,7 +409,7 @@ public sealed class ClientCombatHandler
             ClientViewUpdater.ForgetBeyondRange(_client.View, _world, _character, _netState.ViewRange);
             _character.LastMoveTick = now;
             int moveDelay = GetMoveDelay(running);
-            if (!MovementCreditEnabled && _character.PrivLevel < PrivLevel.GM && Throttle.WalkTokens > 0)
+            if (!MovementCreditEnabled && !_character.IsGmMode && Throttle.WalkTokens > 0)
                 Throttle.WalkTokens--;
             // Source-X parity: pace the next allowed walk to (delay - 30ms) so
             // client ping / server-tick jitter doesn't false-throttle a step
@@ -588,6 +619,24 @@ public sealed class ClientCombatHandler
 
         if (Throttle.NextMoveTime > 0 && nowMs < Throttle.NextMoveTime)
             return;
+
+        // Under the credit budget a step that cannot be paid for yet stays at the
+        // head of the queue: taking it out and letting HandleMove queue it again
+        // would put it BEHIND the steps that followed it, and the next one out
+        // would then fail the sequence check.
+        if (MovementCreditEnabled && _character != null && !_character.IsGmMode &&
+            Throttle.Queue.TryPeek(out byte headDir))
+        {
+            bool headIsTurn = ((byte)_character.Direction & 0x07) != (headDir & 0x07);
+            if (!headIsTurn)
+            {
+                EnsureCreditState();
+                MovementCreditSystem.RefillCredit(ref _movementCreditMs, ref _movementCreditLastTick,
+                    MovementCreditMaxMs, nowMs);
+                if (_movementCreditMs < GetMoveDelay((headDir & 0x80) != 0))
+                    return;
+            }
+        }
 
         if (Throttle.Queue.TryDequeue(out byte qDir, out byte qSeq, out uint qKey))
         {
@@ -1107,7 +1156,7 @@ public sealed class ClientCombatHandler
         }
 
         var prep = CombatHelper.ValidateSwingPrep(
-            _world, _character, target, weapon, _character.PrivLevel, now, (a, b) => _world.CanSeeLOSFor(_character, a, b),
+            _world, _character, target, weapon, _character.PrivLevel, now, canSeeLos: null,
             ignoreRangeLos: swingNoRange);
         switch (prep.Result)
         {
@@ -1246,7 +1295,7 @@ public sealed class ClientCombatHandler
         }
 
         switch (CombatHelper.EvaluateHitTime(_world, _character, target, weapon,
-            _character.PrivLevel, now, _character.PendingHitDeadline, (a, b) => _world.CanSeeLOSFor(_character, a, b),
+            _character.PrivLevel, now, _character.PendingHitDeadline, canSeeLos: null,
             swingNoRange, committedRange))
         {
             case CombatHelper.HitTimeDecision.Wait:
@@ -1929,8 +1978,9 @@ public sealed class ClientCombatHandler
         ForEachClientInRange?.Invoke(_character.Position, UpdateRange, victimUid,
             (observerCh, observerClient) =>
             {
-                bool canSeeGhost = observerCh.AllShow ||
-                    observerCh.PrivLevel >= Core.Enums.PrivLevel.Counsel;
+                // The fresh ghost is insubstantial; whoever the shared view rule
+                // still lets see it keeps it on screen (Source-X CChar::CanSee).
+                bool canSeeGhost = ClientViewUpdater.IsCharVisible(observerCh, _character);
                 if (canSeeGhost)
                 {
                     // Staff path: send 0x78 ghost draw directly on the

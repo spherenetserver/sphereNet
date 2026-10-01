@@ -163,7 +163,7 @@ public sealed partial class NpcAI
                 // (to distance 1). Nothing scans for other attackers.
                 var guardFoe = guardTarget.FightTarget.IsValid ? _world.FindChar(guardTarget.FightTarget) : null;
                 if (IsValidPetEnemy(npc, master, guardFoe, guardTarget) &&
-                    CanSeeChar(npc, guardTarget) && _world.CanSeeLOS(npc.Position, guardTarget.Position))
+                    CanSeeChar(npc, guardTarget) && _world.CanSeeLOSFor(npc, guardTarget, LosFlags.NbWindows))
                 {
                     bool newFight = npc.FightTarget != guardFoe!.Uid;
                     npc.FightTarget = guardFoe.Uid;

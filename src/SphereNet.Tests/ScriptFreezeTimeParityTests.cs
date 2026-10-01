@@ -65,6 +65,7 @@ public sealed class ScriptFreezeTimeParityTests
             var caster = world.CreateCharacter(); caster.IsPlayer = true; caster.PrivLevel = PrivLevel.GM;
             world.PlaceCharacter(caster, new Point3D(100, 100));
             caster.MaxMana = caster.Mana = 100;
+            caster.MaxStam = 100; caster.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
             Character.MagicFlags = 0;
             var spells = new SpellRegistry();
             spells.Register(new SpellDef { Id = SpellType.Heal, ManaCost = 0, CastTimeBase = 50, Flags = SpellFlag.Heal });

@@ -66,7 +66,7 @@ public sealed partial class NpcAI
             int dist = npc.Position.GetDistanceTo(candidate.Position);
             if (ranged && (dist < _config.ArcheryMinDist || dist > _config.ArcheryMaxDist))
                 continue;
-            if (!_world.CanSeeLOS(npc.Position, candidate.Position))
+            if (!_world.CanSeeLOSFor(npc, candidate))
                 continue;
 
             int threat = rec.Threat;
@@ -272,7 +272,7 @@ public sealed partial class NpcAI
         // is attacked; RETURN 0 passes over this character and the look goes on.
         foreach (var (cand, mot) in new[] { (t1, m1), (t2, m2), (t3, m3) })
         {
-            if (cand == null || !_world.CanSeeLOS(npc.Position, cand.Position))
+            if (cand == null || !_world.CanSeeLOSFor(npc, cand, LosFlags.NbWindows))
                 continue;
             var look = FireLookAtChar(npc, cand);
             if (look == TriggerResult.True)
@@ -297,7 +297,7 @@ public sealed partial class NpcAI
             int motivation = GetAttackMotivation(npc, ch);
             if (motivation <= visibleMotivation)
                 continue;
-            if (!_world.CanSeeLOS(npc.Position, ch.Position))
+            if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows))
                 continue;
             var look = FireLookAtChar(npc, ch);
             if (look == TriggerResult.True)

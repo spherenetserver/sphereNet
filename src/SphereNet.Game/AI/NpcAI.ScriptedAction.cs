@@ -187,7 +187,7 @@ public sealed partial class NpcAI
     private void ActGuardTarget(Character npc, Character guarded, Character? master = null)
     {
         if (guarded.MapIndex == npc.MapIndex && CanSeeChar(npc, guarded) &&
-            _world.CanSeeLOS(npc.Position, guarded.Position) && guarded.FightTarget.IsValid)
+            _world.CanSeeLOSFor(npc, guarded, LosFlags.NbWindows) && guarded.FightTarget.IsValid)
         {
             var foe = _world.FindChar(guarded.FightTarget);
             if (foe != null && foe != npc && !foe.IsDead && !foe.IsDeleted &&

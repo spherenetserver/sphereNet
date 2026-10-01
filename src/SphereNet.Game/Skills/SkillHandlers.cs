@@ -125,7 +125,7 @@ public sealed class SkillHandlers
     resolved:
         int range = SkillEngine.GetUseRange(skill, 3);
         return position.Map == ch.MapIndex && ch.Position.GetDistanceTo(position) <= range &&
-            _world.CanSeeLOS(ch.Position, position);
+            _world.CanSeeLOSFor(ch, ch.Position, position);
     }
 
     private static Serial ResolveKillerUid(Item corpse)

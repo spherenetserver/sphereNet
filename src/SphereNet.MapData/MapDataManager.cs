@@ -137,30 +137,68 @@ public sealed class MapDataManager : IDisposable
     /// <summary>How many terrain / static blocks the patch files replaced per map.</summary>
     public event Action<int, int, int>? OnMapDiffsLoaded;
 
-    public void InitMap(int mapId, int width, int height)
-    {
-        string mapPath = Path.Combine(_mulPath, $"map{mapId}.mul");
-        string idxPath = Path.Combine(_mulPath, $"staidx{mapId}.mul");
-        string statPath = Path.Combine(_mulPath, $"statics{mapId}.mul");
+    /// <summary>Load a map whose world (logical) number and data-file number are the
+    /// same - the plain MAPn=...,n case.</summary>
+    public void InitMap(int mapId, int width, int height) => InitMap(mapId, mapId, width, height);
 
+    /// <summary>The data-file number each world map reads (sphere.ini MAPn's fourth
+    /// field). Source-X keeps the two apart and resolves the file on every read
+    /// (CUOMapList::GetMapFileNum, used by CServerMapBlock and CServerStaticsBlock,
+    /// CServerMap.cpp:372/:451/:471); the world, its points and every terrain, statics
+    /// and diff lookup speak the world number.</summary>
+    private readonly Dictionary<int, int> _mapFileOf = [];
+
+    /// <summary>Readers already opened, by (file, width, height): two facets reading
+    /// one file with the same geometry share them rather than open it twice.</summary>
+    private readonly Dictionary<(int File, int W, int H), (MapReader? Mul, UopMapReader? Uop, StaticReader Statics)>
+        _openedFiles = [];
+
+    /// <summary>The data-file number behind a world map (the world number itself
+    /// when the map was never remapped).</summary>
+    public int GetMapFileNum(int mapId) => _mapFileOf.TryGetValue(mapId, out int f) ? f : mapId;
+
+    /// <summary>Load world map <paramref name="mapId"/> from the map/staidx/statics
+    /// (and, with USEMAPDIFFS, mapdif/stadif) files numbered
+    /// <paramref name="fileId"/>. Every later lookup is made with the world number;
+    /// the readers are filed under it, so a facet redirected to another file (or two
+    /// facets on one file) sees that file's terrain and statics. The block layout
+    /// follows the world map's own height, as Source-X's block index does
+    /// (bx * GetMapSizeY(m_map) / 8 + by, CServerMap.cpp:445).</summary>
+    public void InitMap(int mapId, int fileId, int width, int height)
+    {
+        if (_openedFiles.TryGetValue((fileId, width, height), out var opened))
+        {
+            if (opened.Mul != null) _mapReaders[mapId] = opened.Mul;
+            if (opened.Uop != null) _uopMapReaders[mapId] = opened.Uop;
+            _staticReaders[mapId] = opened.Statics;
+            _mapFileOf[mapId] = fileId;
+            return;
+        }
+
+        string mapPath = Path.Combine(_mulPath, $"map{fileId}.mul");
+        string idxPath = Path.Combine(_mulPath, $"staidx{fileId}.mul");
+        string statPath = Path.Combine(_mulPath, $"statics{fileId}.mul");
+
+        MapReader? mulReader = null;
+        UopMapReader? uopReader = null;
         // Required: terrain — prefer UOP (modern client) over MUL (legacy).
         // Without this, GetTerrainTile returns default (tile 0) everywhere.
-        string? uopPath = FindUopMap(mapId);
+        string? uopPath = FindUopMap(fileId);
         if (uopPath != null)
         {
-            _uopMapReaders[mapId] = new UopMapReader(uopPath, width, height);
+            uopReader = new UopMapReader(uopPath, width, height);
             NotifyMapFileLoaded(mapId, uopPath);
         }
         else if (File.Exists(mapPath))
         {
-            _mapReaders[mapId] = new MapReader(mapPath, width, height);
+            mulReader = new MapReader(mapPath, width, height);
             NotifyMapFileLoaded(mapId, mapPath);
         }
         else
         {
             throw new FileNotFoundException(
-                $"Required UO terrain file missing for map {mapId}: " +
-                $"neither map{mapId}LegacyMUL.uop / map{mapId}xLegacyMUL.uop " +
+                $"Required UO terrain file missing for map {mapId} (file {fileId}): " +
+                $"neither map{fileId}LegacyMUL.uop / map{fileId}xLegacyMUL.uop " +
                 $"nor {mapPath} found in {_mulPath}. Copy from your UO client install.",
                 mapPath);
         }
@@ -168,25 +206,37 @@ public sealed class MapDataManager : IDisposable
         // Required: staidxN.mul + staticsN.mul — without these, walk collision
         // against walls/buildings/trees is disabled (GetStatics returns empty).
         if (!File.Exists(idxPath) || !File.Exists(statPath))
+        {
+            mulReader?.Dispose();
+            uopReader?.Dispose();
             throw new FileNotFoundException(
-                $"Required UO static files missing for map {mapId}: " +
-                $"staidx{mapId}.mul and/or statics{mapId}.mul in {_mulPath}. " +
+                $"Required UO static files missing for map {mapId} (file {fileId}): " +
+                $"staidx{fileId}.mul and/or statics{fileId}.mul in {_mulPath}. " +
                 "Without these, players can walk through walls. " +
                 "Copy from your UO client install.",
                 File.Exists(idxPath) ? statPath : idxPath);
-        _staticReaders[mapId] = new StaticReader(idxPath, statPath, width, height);
+        }
+        var staticReader = new StaticReader(idxPath, statPath, width, height);
         NotifyMapFileLoaded(mapId, idxPath);
         NotifyMapFileLoaded(mapId, statPath);
 
+        // The patch files belong to the data file, like the block they patch
+        // (GetAtBlock(uiBlockIndex, GetMapFileNum(m_map)), CServerMap.cpp:451).
         if (UseMapDiffs)
         {
-            var terrain = MapDiffReader.LoadTerrain(_mulPath, mapId);
-            var statics = MapDiffReader.LoadStatics(_mulPath, mapId);
-            if (_mapReaders.TryGetValue(mapId, out var mul)) mul.Diff = terrain;
-            if (_uopMapReaders.TryGetValue(mapId, out var uop)) uop.Diff = terrain;
-            _staticReaders[mapId].ApplyDiff(statics);
+            var terrain = MapDiffReader.LoadTerrain(_mulPath, fileId);
+            var statics = MapDiffReader.LoadStatics(_mulPath, fileId);
+            if (mulReader != null) mulReader.Diff = terrain;
+            if (uopReader != null) uopReader.Diff = terrain;
+            staticReader.ApplyDiff(statics);
             OnMapDiffsLoaded?.Invoke(mapId, terrain.Count, statics.Count);
         }
+
+        if (mulReader != null) _mapReaders[mapId] = mulReader;
+        if (uopReader != null) _uopMapReaders[mapId] = uopReader;
+        _staticReaders[mapId] = staticReader;
+        _mapFileOf[mapId] = fileId;
+        _openedFiles[(fileId, width, height)] = (mulReader, uopReader, staticReader);
     }
 
     private void NotifyMapFileLoaded(int mapId, string path)
@@ -600,8 +650,9 @@ public sealed class MapDataManager : IDisposable
         _tileData?.Dispose();
         _multiReader?.Dispose();
         _gumpArt?.Dispose();
-        foreach (var r in _mapReaders.Values) r.Dispose();
-        foreach (var r in _uopMapReaders.Values) r.Dispose();
-        foreach (var r in _staticReaders.Values) r.Dispose();
+        // Facets sharing a data file share its readers: dispose each once.
+        foreach (var r in _mapReaders.Values.Distinct()) r.Dispose();
+        foreach (var r in _uopMapReaders.Values.Distinct()) r.Dispose();
+        foreach (var r in _staticReaders.Values.Distinct()) r.Dispose();
     }
 }

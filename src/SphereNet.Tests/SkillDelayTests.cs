@@ -216,6 +216,7 @@ public class SkillDelayTests
             var world = CreateWorld();
             var player = world.CreateCharacter();
             player.IsPlayer = true;
+            player.MaxStam = 100; player.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
             world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
             player.BeginSkillPending((int)SkillType.Hiding, Environment.TickCount64 + 10_000,
                 Environment.TickCount64 + 1_000, Serial.Invalid, null);
@@ -245,6 +246,7 @@ public class SkillDelayTests
         var world = CreateWorld();
         var player = world.CreateCharacter();
         player.IsPlayer = true;
+        player.MaxStam = 100; player.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         player.BeginSkillPending((int)SkillType.Hiding, Environment.TickCount64 + 10_000,
             Environment.TickCount64 + 1_000, Serial.Invalid, null);

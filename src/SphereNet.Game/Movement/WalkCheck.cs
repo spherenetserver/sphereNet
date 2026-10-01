@@ -13,17 +13,13 @@ namespace SphereNet.Game.Movement;
 
 /// <summary>
 /// Per-step walk validator. A step is decided by Source-X's rule
-/// (<see cref="SourceXWalk"/>: CheckValidMove / CanStandAt / GetHeightPoint);
-/// the standing-surface resolver used to seat a character (login, mount,
-/// teleport) keeps its sorted geometry list, whose structure was modelled on
-/// ServUO's MovementImpl (with credit to its authors).
+/// (<see cref="SourceXWalk"/>: CheckValidMove / CanStandAt / GetHeightPoint),
+/// and so are the standing-surface resolver used to seat a character (login,
+/// mount, teleport) and the headroom check (IsVerticalSpace).
 /// </summary>
 public sealed class WalkCheck
 {
     internal const int PersonHeight = 16;
-    private const int StepHeight = 2;
-
-    private const TileFlag ImpassableSurface = TileFlag.Impassable | TileFlag.Surface;
 
     /// <summary>sphere.ini MOUNTHEIGHT (Source-X m_iMountHeight, default 0): a rider
     /// (or a hovering gargoyle) is 4 taller (GetHeightMount, CChar.cpp:1498) and may
@@ -41,29 +37,19 @@ public sealed class WalkCheck
         mover.PrivLevel < PrivLevel.GM && !mover.AllMove;
 
     /// <summary>CChar::IsVerticalSpace (CCharStatus.cpp:1785): is there room above
-    /// <paramref name="standZ"/> at (x, y) for this character plus
-    /// <paramref name="extra"/> (4 when about to mount)? True when no ceiling
-    /// blocks, or for GM / AllMove.</summary>
-    public bool HasVerticalSpace(Character mover, int mapId, int x, int y, int standZ, int extra)
-    {
-        if (mover.PrivLevel >= PrivLevel.GM || mover.AllMove)
-            return true;
-        var md = _world.MapData;
-        if (md == null)
-            return true;
-        var items = CollectItems(mapId, x, y);
-        var trace = new CheckTrace();
-        var list = BuildPathEntries(md, mapId, x, y, items, mover, ref trace);
-        int height = PersonHeight + (mover.IsMounted || mover.IsStatFlag(StatFlag.Hovering) ? 4 : 0);
-        foreach (var entry in list)
-        {
-            if ((entry.Flags & PathFlags.ImpSurf) == 0 || entry.Z <= standZ)
-                continue;
-            // list is sorted; the first blocking entry above is the ceiling.
-            return height + standZ + extra < entry.Z;
-        }
-        return true;
-    }
+    /// <paramref name="standZ"/> at (x, y) for this character - its own HEIGHT, 4 more
+    /// when riding or hovering - and, with a non-zero <paramref name="extra"/>, the 4
+    /// of a mount about to be climbed onto (fForceMount)? True when no ceiling
+    /// blocks, or for a GM in GM mode / ALLMOVE. The ceiling comes from the same
+    /// blocking-state geometry a step uses, so a script HEIGHT is honoured (it was a
+    /// fixed 16 here).</summary>
+    public bool HasVerticalSpace(Character mover, int mapId, int x, int y, int standZ, int extra) =>
+        _sourceX.IsVerticalSpace(mover, mapId, x, y, standZ, forceMount: extra != 0);
+
+    /// <summary>The floor flags under a collision-free step (GM ALLMOVE / PASSWALLS)
+    /// - see <see cref="SourceXWalk.FloorFlagsAt"/>.</summary>
+    internal bool StandsOnRoof(Character mover, int mapId, int x, int y, int z) =>
+        SourceXWalk.IsRoofFloor(_sourceX.FloorFlagsAt(mover, mapId, x, y, z));
 
     /// <summary>
     /// Land-tile movement barrier rule: only WATER (Impassable + Wet) blocks a
@@ -122,7 +108,12 @@ public sealed class WalkCheck
         // counters are 0 to see what IS there (walls, decorative, etc.).
         int FwdStaticTotal, int FwdImpassableCount, ushort FwdLandTileId,
         string FwdStaticDump,
-        int FwdMobileCount, string FwdMobileDump);
+        int FwdMobileCount, string FwdMobileDump)
+    {
+        /// <summary>The accepted destination's floor carries CAN_I_ROOF - what
+        /// CanMoveWalkTo turns into STATF_INDOORS (CCharAct.cpp:4831).</summary>
+        public bool ForwardOnRoof { get; init; }
+    }
 
     /// <summary>The refusal trace, as lines a staff member can read.
     ///
@@ -169,6 +160,16 @@ public sealed class WalkCheck
     /// <see cref="Diagnostic"/> breakdown of which stage accepted/rejected the
     /// step. Intended for walk-reject telemetry.</summary>
     public bool CheckMovementDetailed(Character mover, Point3D loc, Direction d,
+        out int newZ, out Diagnostic diag) =>
+        CheckMovementDetailed(mover, loc, d, checkChars: true, out newZ, out diag);
+
+    /// <summary>As above. With <paramref name="checkChars"/> false the characters on
+    /// the destination are left to the caller: a real walking step runs Source-X's
+    /// ShoveCharAtPosition itself, AFTER CheckValidMove, so @PersonalSpace and
+    /// @charShove get to change the cost and the full-stamina rule before either is
+    /// judged (CanMoveWalkTo, CCharAct.cpp:4763-4768 -> :4641-4668). Judging the
+    /// default rule here first refused the step before the scripts ever ran.</summary>
+    public bool CheckMovementDetailed(Character mover, Point3D loc, Direction d, bool checkChars,
         out int newZ, out Diagnostic diag)
     {
         newZ = loc.Z;
@@ -177,7 +178,7 @@ public sealed class WalkCheck
         if (md == null) return false;
 
         var can = CharDefHelper.GetCanFlags(mover);
-        if (mover.PrivLevel < PrivLevel.GM && ((can & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0 ||
+        if (!mover.IsGmMode && ((can & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0 ||
             ((can & (CanFlags.C_Walk | CanFlags.C_Swim | CanFlags.C_Fly | CanFlags.C_Hover | CanFlags.C_PassWalls)) == 0 &&
              !mover.IsStatFlag(StatFlag.Hovering))))
             return false;
@@ -241,7 +242,7 @@ public sealed class WalkCheck
         // destination; each is CanStandAt from the mover's own height and climb.
         int climb = _sourceX.ClimbHeightAt(mover, mapId, xStart, yStart, loc.Z);
         bool forwardOk = _sourceX.CanStandAt(mover, mapId, xForward, yForward, loc.Z, climb,
-            pathFinding: false, out newZ, out string fwdReason);
+            pathFinding: false, out newZ, out string fwdReason, out uint fwdFloorFlags);
         int forwardNewZ = newZ;
 
         bool leftOk = false, rightOk = false;
@@ -255,7 +256,7 @@ public sealed class WalkCheck
         // Characters on the destination (ShoveCharAtPosition ignores anyone more than
         // 5 Z away, CCharAct.cpp:4622).
         bool mobBlocked = false;
-        if (moveOk)
+        if (moveOk && checkChars)
         {
             foreach (var mob in mobsForward)
             {
@@ -276,7 +277,10 @@ public sealed class WalkCheck
             false, true, 0, 0,
             fwdReason,
             fwdStaticCount, fwdImpassable, fwdLandTile.TileId, dump.ToString(),
-            mobsForward.Count, mobDump.ToString());
+            mobsForward.Count, mobDump.ToString())
+        {
+            ForwardOnRoof = moveOk && SourceXWalk.IsRoofFloor(fwdFloorFlags),
+        };
         return moveOk;
     }
 
@@ -291,166 +295,6 @@ public sealed class WalkCheck
             return false;
         return _sourceX.CheckValidMove(mover, mapId, fromX, fromY, fromZ, d, pathFinding: true,
             out newZ, out _);
-    }
-
-    /// <summary>Surface counters collected while building a tile's geometry list.</summary>
-    private struct CheckTrace
-    {
-        public int LandZ, LandCenter, LandTop;
-        public bool LandBlocks, ConsiderLand;
-        public int SurfaceCandidates;       // static tiles with Surface flag
-        public int ItemSurfaceCandidates;   // in-world items with Surface flag
-        public string LastReason;
-    }
-
-    // -----------------------------------------------------------------
-    //  Tile geometry list (land, statics, items) sorted by Z - used by the
-    //  standing-surface resolver and the headroom check. A walking step is
-    //  decided by SourceXWalk instead.
-    // -----------------------------------------------------------------
-
-    [Flags]
-    private enum PathFlags : byte
-    {
-        None = 0,
-        ImpSurf = 1,
-        Surface = 2,
-        Bridge  = 4,
-    }
-
-    private readonly record struct PathEntry(PathFlags Flags, int Z, int AverageZ, int Height) : IComparable<PathEntry>
-    {
-        public int CompareTo(PathEntry other) => Z.CompareTo(other.Z);
-    }
-
-    [ThreadStatic] private static List<PathEntry>? t_pathList;
-
-    /// <summary>Collect every piece of standing/blocking geometry at a tile
-    /// into a sorted PathEntry list — land, statics (open doors passable),
-    /// dynamic items and virtual multi/custom-house components. This is THE
-    /// surface inventory both the walk path and the standing-surface
-    /// resolver select from; the trace counters feed the reject log.</summary>
-    private List<PathEntry> BuildPathEntries(MapDataManager md, int mapId, int x, int y,
-        List<Item> items, Character mover, ref CheckTrace trace)
-    {
-        var can = CharDefHelper.GetCanFlags(mover);
-        bool ghost = CharDefHelper.CanPassDoors(mover);
-        bool swims = (can & CanFlags.C_Swim) != 0;
-        bool walks = (can & CanFlags.C_Walk) != 0;
-        bool hovers = (can & CanFlags.C_Hover) != 0 || mover.IsStatFlag(StatFlag.Hovering);
-        var landTile = md.GetTerrainTile(mapId, x, y);
-        var landData = md.GetLandTileData(landTile.TileId);
-        bool landBlocks = landTile.TileId == TerrainNull || (landData.IsWet ? !swims : !walks);
-        bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
-
-        md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTop);
-        var staticBlock = md.GetStaticBlock(mapId, x, y, out int staticOffX, out int staticOffY);
-
-        trace.LandZ = landZ;
-        trace.LandCenter = landCenter;
-        trace.LandTop = landTop;
-        trace.LandBlocks = landBlocks;
-        trace.ConsiderLand = considerLand;
-        trace.LastReason = "no_candidates";
-
-        var list = t_pathList ??= new List<PathEntry>(32);
-        list.Clear();
-
-        // --- Land tile → PathEntry ---
-        // Dry land is always a walkable Surface/Bridge here even when the tiledata
-        // carries the Impassable bit: many sloped "dirt"/hillside land tiles (e.g.
-        // 0x91, 0x93) are Impassable-flagged yet the client (and RunUO/ServUO)
-        // walk them as terrain. Only WATER (Impassable+Wet, via landBlocks) is a
-        // true barrier. Treating Impassable land as a non-surface blocked those
-        // slopes server-side while the client walked them — a reject/rubber-band
-        // on every hillside step. See LandBlocks().
-        if (considerLand && !landBlocks)
-        {
-            list.Add(new PathEntry(
-                PathFlags.ImpSurf | PathFlags.Surface | PathFlags.Bridge,
-                landZ, landCenter, landCenter - landZ));
-        }
-
-        // --- Static tiles → PathEntries ---
-        for (int i = 0; i < staticBlock.Length; i++)
-        {
-            var tile = staticBlock[i];
-            if (tile.XOffset != staticOffX || tile.YOffset != staticOffY)
-                continue;
-            var data = md.GetItemTileData(tile.TileId);
-
-            // A ghost is not stopped by a door. Source-X gives every DEAD char
-            // CAN_C_GHOST (CCharStatus.cpp:739) and that clears CAN_I_BLOCK off a
-            // door tile (CChar.cpp:760) — only a door, walls still need
-            // CAN_C_PASSWALLS. Treating it as an open door is the same geometry.
-            bool isDoorOpen = (data.Flags & TileFlag.Door) != 0 &&
-                (ghost || _world.IsMapStaticDoorOpen((byte)mapId, (short)x, (short)y, tile.Z));
-            bool water = (data.Flags & TileFlag.Wet) != 0;
-            bool surface = water ? swims : data.IsSurface && walks;
-            bool effectiveImpassable = (data.IsImpassable && !(water && swims)) && !isDoorOpen;
-            if ((data.Flags & TileFlag.HoverOver) != 0)
-            {
-                effectiveImpassable = !hovers;
-                surface = hovers;
-            }
-
-            PathFlags pf = PathFlags.None;
-            if (effectiveImpassable || surface || data.IsRoof)
-                pf |= PathFlags.ImpSurf;
-            if (!effectiveImpassable)
-            {
-                if (surface) pf |= PathFlags.Surface;
-                if (data.IsBridge && walks) pf |= PathFlags.Bridge;
-            }
-            if (pf == PathFlags.None) continue;
-
-            int tileZ = tile.Z;
-            int h = data.Height;
-            int avgZ = tileZ + (data.IsBridge ? h / 2 : h);
-            list.Add(new PathEntry(pf, tileZ, avgZ, h));
-
-            if ((pf & PathFlags.Surface) != 0)
-                trace.SurfaceCandidates++;
-        }
-
-        // --- In-world items → PathEntries ---
-        for (int i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            var data = md.GetItemTileData(item.BaseId);
-            if (!ShouldTreatAsMovementGeometry(item, data)) continue;
-
-            // Same ghost rule as the static tiles above, for door ITEMS.
-            bool water = (data.Flags & TileFlag.Wet) != 0;
-            bool surface = water ? swims : data.IsSurface && walks;
-            bool impassable = data.IsImpassable && !(water && swims) && !(ghost && IsDoorGeometry(item, data));
-            if ((data.Flags & TileFlag.HoverOver) != 0)
-            {
-                impassable = !hovers;
-                surface = hovers;
-            }
-
-            PathFlags pf = PathFlags.None;
-            if (impassable || surface || data.IsRoof)
-                pf |= PathFlags.ImpSurf;
-            if (!impassable)
-            {
-                if (surface) pf |= PathFlags.Surface;
-                if (data.IsBridge && walks) pf |= PathFlags.Bridge;
-            }
-            if (pf == PathFlags.None) continue;
-
-            int itemZ = item.Z;
-            int h = data.Height;
-            int avgZ = itemZ + (data.IsBridge ? h / 2 : h);
-            list.Add(new PathEntry(pf, itemZ, avgZ, h));
-
-            if ((pf & PathFlags.Surface) != 0)
-                trace.ItemSurfaceCandidates++;
-        }
-
-        list.Sort();
-        return list;
     }
 
     // -----------------------------------------------------------------
@@ -496,145 +340,14 @@ public sealed class WalkCheck
         return new StandingResult(found, (sbyte)Math.Clamp(z, -128, 127), headroom);
     }
 
-    /// <summary>A door, by item type or by tiledata flag — what CAN_I_DOOR marks
-    /// in Source-X. Only these let a ghost through; a wall does not.</summary>
-    private static bool IsDoorGeometry(Item item, ItemTileData data) =>
-        item.ItemType is ItemType.Door or ItemType.DoorLocked
-        || (data.Flags & TileFlag.Door) != 0;
-
-    private static bool ShouldTreatAsMovementGeometry(Item item, ItemTileData data)
-    {
-        // Only treat world items as movement geometry when they are meaningful
-        // obstacles/floors. Small loose drops like reagents, weapons, bags,
-        // etc. should not become collision just because tiledata carries a
-        // Surface bit, while bulky/anchored objects still should.
-        if (item.ItemType == ItemType.Corpse) return false;
-        if (item.IsStaticBlock) return true;
-        // Virtual multi/ship/custom-house components (AddVirtualGeometry
-        // stamps them MultiAddon) are structural by definition — the loose-
-        // item height filter below silently dropped every flat house-floor
-        // tile (Surface, height 0) from the walk geometry, which the
-        // synthetic standing-surface matrix exposed.
-        if (item.ItemType == ItemType.MultiAddon) return true;
-        if (item.IsAttr(ObjAttributes.Static)
-            || item.IsAttr(ObjAttributes.Move_Never)
-            || item.IsAttr(ObjAttributes.LockedDown))
-            return true;
-        if (data.IsBridge) return true;
-
-        // Loose items that are low enough to step over should not affect
-        // movement. Keep explicit impassables blocking even when movable.
-        if (!data.IsImpassable && data.CalcHeight <= StepHeight)
-            return false;
-
-        return true;
-    }
-
     // -----------------------------------------------------------------
     //  Helpers — tile / mobile collection and direction offsets.
     // -----------------------------------------------------------------
-
-    /// <summary>Items placed on the ground at exactly (x, y) on mover's map.
-    /// Filters out contained/equipped items since those are not walk-relevant.</summary>
-    private List<Item> CollectItems(int mapId, int x, int y)
-    {
-        var list = new List<Item>();
-        var pivot = new Point3D((short)x, (short)y, 0, (byte)mapId);
-        foreach (var item in _world.GetItemsInRange(pivot, 0))
-        {
-            if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) continue;
-            if (item.X != x || item.Y != y) continue;
-            list.Add(item);
-        }
-        AddVirtualMultiComponents(mapId, x, y, list);
-        return list;
-    }
 
     /// <summary>Resolves the committed custom-house design tiles for a
     /// MultiCustom item — wired by the host to CustomHousingEngine's cached
     /// design lookup. Unset → custom designs contribute no walk geometry.</summary>
     public static Func<Item, IReadOnlyList<HouseDesignTile>>? ResolveCustomDesign;
-
-    private void AddVirtualMultiComponents(int mapId, int x, int y, List<Item> list)
-    {
-        var md = _world.MapData;
-        if (md == null)
-            return;
-
-        // The world's multi index instead of a 32-tile spatial range query:
-        // this runs on EVERY walk/standing check (players, NPC steps, seat
-        // paths), and the per-step sector scan dominated the live server's
-        // apply phase. A shard has few multis — a bounds check over the
-        // short list is orders of magnitude cheaper, and an empty list
-        // (open wilderness) costs nothing.
-        var multis = _world.GroundMultis;
-        for (int m = 0; m < multis.Count; m++)
-        {
-            var multi = multis[m];
-            if (multi.IsDeleted || multi.IsEquipped || !multi.IsOnGround)
-                continue;
-            if (multi.MapIndex != mapId)
-                continue;
-            if (Math.Abs(multi.X - x) > 32 || Math.Abs(multi.Y - y) > 32)
-                continue;
-
-            var def = md.GetMulti(multi.BaseId);
-            if (def != null)
-            {
-                foreach (var comp in def.Components)
-                {
-                    if (!comp.IsVisible)
-                        continue;
-
-                    int compX = multi.X + comp.XOffset;
-                    int compY = multi.Y + comp.YOffset;
-                    if (compX != x || compY != y)
-                        continue;
-
-                    AddVirtualGeometry(md, list, comp.TileId, x, y,
-                        (sbyte)(multi.Z + comp.ZOffset), (byte)mapId);
-                }
-            }
-
-            // Committed custom-house design tiles (DESIGN_n) are not real
-            // items (the client renders them from the 0xD8 stream), so they
-            // become walk geometry the same virtual way as multi components.
-            if (multi.ItemType == ItemType.MultiCustom && ResolveCustomDesign != null)
-            {
-                foreach (var tile in ResolveCustomDesign(multi))
-                {
-                    // Invisible tiles are commit-materialized fixtures (doors)
-                    // that already exist as real items — the design copy must
-                    // not add a second, never-opening collision box.
-                    if (!tile.Visible)
-                        continue;
-                    if (multi.X + tile.X != x || multi.Y + tile.Y != y)
-                        continue;
-
-                    AddVirtualGeometry(md, list, tile.TileId, x, y,
-                        (sbyte)(multi.Z + tile.Z), (byte)mapId);
-                }
-            }
-        }
-    }
-
-    private static void AddVirtualGeometry(MapData.MapDataManager md, List<Item> list,
-        ushort tileId, int x, int y, sbyte z, byte mapId)
-    {
-        var data = md.GetItemTileData(tileId);
-        if (!ShouldTreatAsVirtualMultiGeometry(data))
-            return;
-
-        list.Add(new Item
-        {
-            BaseId = tileId,
-            ItemType = ItemType.MultiAddon,
-            Position = new Point3D((short)x, (short)y, z, mapId)
-        });
-    }
-
-    private static bool ShouldTreatAsVirtualMultiGeometry(ItemTileData data) =>
-        data.IsSurface || data.IsBridge || data.IsImpassable;
 
     private List<Character> CollectMobiles(int mapId, int x, int y, Character mover)
     {
@@ -660,10 +373,10 @@ public sealed class WalkCheck
     /// another (NPCSHOVENPC / TAG.OVERRIDE.SHOVE aside); a push costs 10 stamina and
     /// needs full stamina, except past the dead or - unless
     /// REVEALF_OSILIKEPERSONALSPACE - the hidden/invisible, which is free.</summary>
-    private static bool CanMoveOver(Character mover, Character blocker)
+    internal static bool CanMoveOver(Character mover, Character blocker)
     {
         if ((CharDefHelper.GetCanFlags(blocker) & CanFlags.C_Statue) != 0) return false;
-        if (mover.PrivLevel >= PrivLevel.GM) return true;
+        if (mover.IsGmMode) return true;
         if (mover.IsDead || mover.IsStatFlag(StatFlag.Sleeping) || mover.IsStatFlag(StatFlag.Insubstantial))
             return true;
         if (blocker.IsStatFlag(StatFlag.Insubstantial)) return true;

@@ -84,6 +84,7 @@ public sealed class SpellCostAndFreezeParityTests : IDisposable
         // assignment would have left the mana at zero.
         caster.MaxMana = 100; caster.Mana = 100;
         caster.MaxHits = 100; caster.Hits = 100;
+        caster.MaxStam = 100; caster.Stam = 100; // a walker needs stamina: CanMove refuses a living char at 0 (CCharAct.cpp:4586)
         caster.SetSkill(SkillType.Magery, 2000);
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 

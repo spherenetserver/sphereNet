@@ -1046,11 +1046,24 @@ public sealed partial class NpcAI
 
         if (_world.MapData != null)
         {
+            // The walk check has already judged the characters on the tile by the
+            // shove rule (may this creature push past them?), as Source-X's NPC step
+            // does through CanMoveWalkTo -> ShoveCharAtPosition (CCharNPCAct.cpp:493,
+            // CCharAct.cpp:4763). The route search plans through the same people
+            // (GameWorld.IsPathTileBlockedByObject), so the step must agree with it
+            // rather than refuse every occupied tile outright.
             if (!_world.Standing.CheckMovement(npc, npc.Position, plain, out int landZ))
                 return false;
 
             dest = new Point3D(nx, ny, (sbyte)landZ, npc.MapIndex);
-            return CanNpcOccupy(npc, dest);
+            if (!CanNpcOccupy(npc, dest, checkChars: false))
+                return false;
+            if (!MovementEngine.ShoveCharAtPosition(_world, npc, dest, pathFinding: true, null, out int pushStam))
+                return false;
+            // The push is paid for (UpdateStatVal(STAT_DEX, -uiStamReq), :4829).
+            if (pushStam > 0 && !npc.IsGmMode)
+                npc.Stam = (short)Math.Max(0, npc.Stam - pushStam);
+            return true;
         }
 
         sbyte fallbackZ = ResolveNpcStepZ(npc, nx, ny);

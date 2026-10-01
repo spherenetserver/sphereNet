@@ -2584,7 +2584,7 @@ public sealed class ClientItemUseHandler
                 if (_character.PrivLevel >= PrivLevel.GM) return true;
                 return (ignoreDist ||
                         _character.Position.GetDistanceTo(wearer.Position) <= 3) &&
-                    (ignoreLos || _world.CanSeeLOS(_character.Position, wearer.Position));
+                    (ignoreLos || _world.CanSeeLOSFor(_character, wearer));
             }
         }
 
@@ -2601,7 +2601,7 @@ public sealed class ClientItemUseHandler
             reach = 2;
         }
         return (ignoreDist || distance <= reach) &&
-            (ignoreLos || _world.CanSeeLOS(_character.Position, point));
+            (ignoreLos || _world.CanSeeLOSFor(_character, _character.Position, point));
     }
 
     private void DetachFromItemSpawner(Item item)

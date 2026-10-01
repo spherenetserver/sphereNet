@@ -137,8 +137,10 @@ public sealed class MovementEngine
         diag = default;
         // Source-X CanMove (CCharAct.cpp:4571): a character in GM mode skips the
         // whole freeze test - FREEZE, STONE, NoMoveTill and freeze-on-cast alike -
-        // so a staff member is never rooted by a script's freeze.
-        bool gmMode = ch.PrivLevel >= PrivLevel.GM;
+        // so a staff member is never rooted by a script's freeze. GM mode is
+        // IsPriv(PRIV_GM): a GM-level character that switched it off (GM=0) is
+        // held like anybody else.
+        bool gmMode = ch.IsGmMode;
         // Source-X OnFreezeCheck: NoMoveTill is a world-clock deadline in tenths.
         // Expiration does not delete the script-owned tag.
         if (!gmMode && ch.TryGetTag("NOMOVETILL", out string? noMoveText) &&
@@ -163,13 +165,19 @@ public sealed class MovementEngine
         if (!gmMode && SpellEngine?.IsMovementFrozenByCast(ch) == true)
             return false;
 
+        // SPEEDMODE 4 roots a player (OnFreezeCheck, CCharAct.cpp:4535-4536: "speed
+        // mode '4' prevents movement"). The client is only told the mode; the
+        // server has to hold the step itself.
+        if (!gmMode && ch.IsPlayer && (ch.SpeedMode & 0x04) != 0)
+            return false;
+
         // Out of stamina: a living character cannot take a step (CanMove,
-        // CCharAct.cpp:4586-4593). Running while overweight is NOT refused on its own
-        // (the old "can't run overweight" rule was invented): the load only costs
-        // stamina, and an empty stamina pool is what stops the walker. A character
-        // with no stamina pool at all (MaxStam 0 - no DEX, not a scripted character)
-        // is left alone.
-        if (!gmMode && ch.Stam <= 0 && ch.MaxStam > 0 && !ch.IsDead)
+        // CCharAct.cpp:4586-4593 - Stat_GetVal(STAT_DEX) <= 0 && !STATF_DEAD).
+        // Running while overweight is NOT refused on its own (the old "can't run
+        // overweight" rule was invented): the load only costs stamina, and an empty
+        // stamina pool is what stops the walker. An empty MAXSTAM is no exemption:
+        // upstream looks at the current value only.
+        if (!gmMode && ch.Stam <= 0 && !ch.IsDead)
         {
             OnSysMessage?.Invoke(ch, ServerMessages.Get(
                 ch.GetTotalWeight() > ch.MaxWeight ? Msg.MsgFatigueWeight : Msg.MsgFatigue));
@@ -188,6 +196,7 @@ public sealed class MovementEngine
         // a GM cross a dungeon at a stale height (the client computes its own
         // walk Z, so the drift stayed invisible until a self-redraw snapped
         // the char upward: the 5146,993 report, stored Z=10 over a floor at 1).
+        bool onRoof;
         if ((ch.PrivLevel >= PrivLevel.GM && ch.AllMove) || CharDefHelper.CanPassWalls(ch) || _world.MapData == null)
         {
             // The bypass skips collision ONLY — surface collection and Z
@@ -202,20 +211,28 @@ public sealed class MovementEngine
             // char crashes the map readers on the next query.
             if (_world.GetSector(target) == null)
                 return false;
+            onRoof = !gmMode && _world.MapData != null &&
+                _walkCheck.StandsOnRoof(ch, ch.MapIndex, target.X, target.Y, ch.Z);
         }
         else
         {
-            if (!_walkCheck.CheckMovementDetailed(ch, current, dir, out int newZ, out diag))
+            // Characters on the destination are judged below, by the full shove
+            // check with its triggers, not by the walk check's default rule.
+            if (!_walkCheck.CheckMovementDetailed(ch, current, dir, checkChars: false, out int newZ, out diag))
                 return false;
 
             target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), (sbyte)newZ, ch.MapIndex);
+            onRoof = diag.ForwardOnRoof;
+        }
 
-            // Creature bumping (CanMoveWalkTo -> ShoveCharAtPosition, CCharAct.cpp:4763-4768).
-            if (!ShoveCharAtPosition(ch, target, pathFinding: false, out shoveStam))
-            {
-                diag = diag with { MobBlocked = true };
-                return false;
-            }
+        // Creature bumping (CanMoveWalkTo -> ShoveCharAtPosition, CCharAct.cpp:4763-4768).
+        // Only GM mode returns before it (:4755): PASSWALLS walks through walls, not
+        // through people, so a pass-walls walker still pushes and still meets
+        // @PersonalSpace / @charShove.
+        if (!ShoveCharAtPosition(ch, target, pathFinding: false, out shoveStam))
+        {
+            diag = diag with { MobBlocked = true };
+            return false;
         }
 
         if (CanEnterHouse != null && !CanEnterHouse(ch, target))
@@ -271,6 +288,21 @@ public sealed class MovementEngine
         // nothing to pay for it.
         ApplyWeightStaminaCost(ch, shoveStam);
 
+        // STATF_INDOORS follows every committed step: under a roof (the floor stood
+        // on carries CAN_I_ROOF) or in an UNDERGROUND area it is set, anywhere else
+        // it is cleared (CanMoveWalkTo, CCharAct.cpp:4831 - pArea is the destination's
+        // room/multi/area). GM mode returns before this upstream (:4755).
+        if (!gmMode)
+        {
+            bool underground = _world.FindRoom(target) is { } stepRoom
+                ? stepRoom.IsFlag(RegionFlag.Underground)
+                : _world.FindRegion(target)?.IsFlag(RegionFlag.Underground) == true;
+            if (onRoof || underground)
+                ch.SetStatFlag(StatFlag.InDoors);
+            else
+                ch.ClearStatFlag(StatFlag.InDoors);
+        }
+
         // The running flag follows the run bit of each accepted step (Event_Walk,
         // CClientEvent.cpp:904): the NEXT step's load cost and the stealth budget
         // read it as STATF_FLY. (Gargoyle flight is STATF_HOVERING, not this flag.)
@@ -317,7 +349,7 @@ public sealed class MovementEngine
     /// </summary>
     private static void ApplyWeightStaminaCost(Objects.Characters.Character ch, int shoveStam = 0)
     {
-        if (ch.PrivLevel >= PrivLevel.GM || ch.MaxStam <= 0)
+        if (ch.IsGmMode || ch.MaxStam <= 0)
             return;
 
         int maxWeight = ch.MaxWeight;
@@ -385,8 +417,6 @@ public sealed class MovementEngine
     {
         if (ch.PrivLevel >= PrivLevel.GM && ch.AllMove)
             return true;
-        if (CharDefHelper.CanPassWalls(ch))
-            return true;
 
         if (target.X < 0 || target.Y < 0)
             return false;
@@ -396,6 +426,10 @@ public sealed class MovementEngine
         int dy = target.Y - ch.Y;
         if (dx < -1 || dx > 1 || dy < -1 || dy > 1 || (dx == 0 && dy == 0))
             return false;
+
+        // PASSWALLS ignores walls, not the people standing in the way.
+        if (CharDefHelper.CanPassWalls(ch))
+            return ShoveCharAtPosition(ch, target, pathFinding: true, out _);
 
         // In-memory / unit-test fixtures without loaded map data — accept any
         // adjacent tile so long as no character blocks it. The ServUO algorithm
@@ -437,16 +471,22 @@ public sealed class MovementEngine
     /// (ARGN1) may change the cost or refuse; neither fires for a pathfinding probe.
     /// </summary>
     private bool ShoveCharAtPosition(Objects.Characters.Character mover, Point3D dst,
-        bool pathFinding, out int stamReq)
+        bool pathFinding, out int stamReq) =>
+        ShoveCharAtPosition(_world, mover, dst, pathFinding, OnSysMessage, out stamReq);
+
+    /// <summary>The shove check itself, shared by a player's step and a creature's
+    /// (Source-X routes both through CanMoveWalkTo -> ShoveCharAtPosition).</summary>
+    internal static bool ShoveCharAtPosition(World.GameWorld world, Objects.Characters.Character mover,
+        Point3D dst, bool pathFinding, Action<Objects.Characters.Character, string>? sysMessage, out int stamReq)
     {
         stamReq = 0;
-        if (mover.PrivLevel >= PrivLevel.GM)
+        if (mover.IsGmMode)
             return true; // CanMoveWalkTo returns for a GM before bumping (:4755)
         if (mover.IsDead || mover.IsStatFlag(StatFlag.Sleeping) || mover.IsStatFlag(StatFlag.Insubstantial))
             return true; // :4764
 
         bool osiLike = (Character.ActiveRevealFlags & RevealFlags.OsiLikePersonalSpace) != 0;
-        foreach (var other in _world.GetCharsInRange(dst, 0))
+        foreach (var other in world.GetCharsInRange(dst, 0))
         {
             if (other.X != dst.X || other.Y != dst.Y) continue;
             if ((CharDefHelper.GetCanFlags(other) & CanFlags.C_Statue) != 0)
@@ -481,7 +521,7 @@ public sealed class MovementEngine
             if (mover.Stam < req)
             {
                 if (!pathFinding)
-                    OnSysMessage?.Invoke(mover, ServerMessages.GetFormatted(Msg.MsgCantpush, other.GetName()));
+                    sysMessage?.Invoke(mover, ServerMessages.GetFormatted(Msg.MsgCantpush, other.GetName()));
                 return false;
             }
             if (!pathFinding)
@@ -502,7 +542,7 @@ public sealed class MovementEngine
                 else
                     msg = ServerMessages.GetFormatted(Msg.MsgPush, other.GetName());
                 if (!args.SuppressMessage)
-                    OnSysMessage?.Invoke(mover, msg);
+                    sysMessage?.Invoke(mover, msg);
             }
             stamReq = req;
             break;

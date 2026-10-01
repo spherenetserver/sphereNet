@@ -74,46 +74,12 @@ public sealed class ClientViewUpdater
 
         WorldRef.VisitInRange(center, range, ch =>
         {
-            if (ch == me || ch.IsDeleted) return;
-            // A mount is drawn as part of its rider, so it is kept out of everyone's
-            // view - except a viewer in DEBUG, which is exactly what upstream's
-            // !IsPriv(PRIV_DEBUG) guard on the same filter is for (CClient.cpp:421).
-            if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden) && !me.DebugView) return;
-
-            bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline && !ch.IsClientLingering;
-            if (isOfflinePlayer && !me.AllShow)
-                return;
-
-            bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-            bool canSeeHidden = Character.CanSeeHidden(me, ch);
-
-            if (isHidden && !canSeeHidden)
-                return;
-
-            // Source-X: the manifest state IS STATF_INSUBSTANTIAL (war toggle
-            // flips it; scripts may set/clear it too). War mode kept as a
-            // fallback for ghosts saved before the flag existed.
-            bool ghostManifested = ch.IsDead &&
-                (!ch.IsStatFlag(Core.Enums.StatFlag.Insubstantial) || ch.IsInWarMode);
-            if (ch.IsDead && !me.IsDead && !ghostManifested)
-            {
-                bool canSeeGhosts = me.AllShow ||
-                    me.PrivLevel >= Core.Enums.PrivLevel.Counsel ||
-                    me.IsStatFlag(Core.Enums.StatFlag.SpiritSpeak);
-                if (!canSeeGhosts)
-                    return;
-            }
-
-            // The mirror rule (sphere.ini DEADCANNOTSEELIVING): a ghost loses
-            // sight of ordinary living NPCs, keeping its own pets and healers.
-            // AllShow still overrides, as it does for every other view gate.
-            if (me.IsDead && !me.AllShow && !me.CanSeeAsDead(ch))
-                return;
+            if (ch == me || !IsCharVisible(me, ch)) return;
 
             uint uid = ch.Uid.Value;
             delta.CurrentChars.Add(uid);
 
-            bool hiddenAsAllShow = isOfflinePlayer || (isHidden && canSeeHidden);
+            bool hiddenAsAllShow = DrawsGreyed(ch);
             if (!View.KnownChars.Contains(uid))
                 delta.NewChars.Add((ch, hiddenAsAllShow));
             else
@@ -202,10 +168,9 @@ public sealed class ClientViewUpdater
                 !me.AllShow &&
                 me.PrivLevel < Core.Enums.PrivLevel.Counsel &&
                 !me.IsDead;
-            bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline && !ch.IsClientLingering;
-            bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-            bool canSeeHidden = Character.CanSeeHidden(me, ch);
-            bool hiddenAsAllShow = isOfflinePlayer || (isHidden && canSeeHidden);
+            // Already on screen, so the shared visibility rule let it through; the
+            // greyed draw follows from its state alone.
+            bool hiddenAsAllShow = DrawsGreyed(ch);
 
             if (bodyChanged || visChanged)
             {
@@ -491,25 +456,23 @@ public sealed class ClientViewUpdater
         if (ch.Position.Map != me.Position.Map) return;
         if (!InRange(me.Position, ch.Position, _client.NetState.ViewRange)) return;
 
-        // === Source-X ghost visibility (mirror of BuildViewDelta filter) ===
-        // A dead/ghost character is invisible to LIVING observers unless
-        // the observer is staff (Counsel+) or has AllShow toggled, OR the
-        // ghost has manifested (war mode).
+        // The same permission rule the view delta applies (Source-X CChar::CanSee):
+        // whatever is sent here must be what the next delta keeps, or it is drawn
+        // now and deleted a tick later - or held back now and drawn a tick later.
+        if (!IsCharVisible(me, ch))
+            return;
+
         bool isStaffViewer = me.AllShow ||
             me.PrivLevel >= Core.Enums.PrivLevel.Counsel;
         bool ghostManifested = ch.IsDead && ch.IsInWarMode;
 
-        if (ch.IsDead && !me.IsDead && !ghostManifested && !isStaffViewer)
-            return;
-
-        bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-        if (isHidden && !isStaffViewer)
-            return;
-
         uint uid = ch.Uid.Value;
-        // Manifested ghost renders translucent grey (hue 0x4001) for plain
-        // observers; staff already see ghosts in their normal hue (HUE_DEFAULT).
-        if (ghostManifested && !isStaffViewer && !me.IsDead)
+        // Draw it the way the delta would: greyed when hidden/offline; a
+        // manifested ghost translucent grey (hue 0x4001) for plain observers,
+        // while staff see ghosts in their normal hue (HUE_DEFAULT).
+        if (DrawsGreyed(ch))
+            _client.SendDrawObjectHidden(ch);
+        else if (ghostManifested && !isStaffViewer && !me.IsDead)
             _client.SendDrawObjectWithHue(ch, 0x4001);
         else
             _client.SendDrawObject(ch);
@@ -546,9 +509,7 @@ public sealed class ClientViewUpdater
         }
         else if (wasInRange && nowInRange && View.KnownChars.Contains(uid))
         {
-            bool isHiddenNow = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
-            bool canSeeHidden = Character.CanSeeHidden(me, ch);
-            if (isHiddenNow && !canSeeHidden)
+            if (!IsCharVisible(me, ch))
             {
                 RemoveKnownChar(uid, sendDelete: true);
                 return;
@@ -559,7 +520,10 @@ public sealed class ClientViewUpdater
                 bool posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;
                 if (!posChanged) return;
             }
-            _client.SendUpdateMobile(ch);
+            if (DrawsGreyed(ch))
+                _client.SendUpdateMobileHidden(ch);
+            else
+                _client.SendUpdateMobile(ch);
             View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
         }
         else if (nowInRange)
@@ -598,6 +562,24 @@ public sealed class ClientViewUpdater
         else if (nowInRange && !View.KnownChars.Contains(uid))
             NotifyCharacterAppear(ch);
     }
+
+    /// <summary>The one viewer/mobile visibility rule shared by the view delta, the
+    /// appear notification and the move notifications. Range is the caller's. A
+    /// mount is drawn as part of its rider, so it is kept out of everyone's view -
+    /// except a viewer in DEBUG, which is what upstream's !IsPriv(PRIV_DEBUG) guard on
+    /// the same filter is for (CClient.cpp:421). The rest is Source-X CChar::CanSee
+    /// (CCharStatus.cpp:1167-1257), see <see cref="Character.CanSeeCharacter"/>.</summary>
+    internal static bool IsCharVisible(Character me, Character ch)
+    {
+        if (ch.IsDeleted) return false;
+        if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden) && !me.DebugView) return false;
+        return me.CanSeeCharacter(ch);
+    }
+
+    /// <summary>A mobile the viewer is allowed to see but which is hidden, invisible
+    /// or logged out is drawn greyed (the 0x80 mobile flag).</summary>
+    private static bool DrawsGreyed(Character ch) =>
+        ch.IsLoggedOut || ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
 
     private static bool InRange(Point3D a, Point3D b, int range)
     {

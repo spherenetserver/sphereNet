@@ -4,6 +4,44 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Hareket, harita remap, gorunurluk ve gorus hatti Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - MAPn=maxx,maxy,sector,dosya,istemciid dunya haritasini, veri
+           dosyasini ve istemci haritasini ayri tutar: zemin, static ve diff'ler
+           adi verilen dosyadan okunur, istemciye istemci id'si gider. Iki facet
+           ayni dosyayi paylasabilir.
+DUZELTME - 0xF0 toplu hareket, sunucunun beklemedigi sureyi artik saymaz:
+           fazla adimlar normal hareket kuyruguna girer ve gercek adim hiziyla
+           islenir. ClassicUO (0x02) yuruyusu degismedi.
+DUZELTME - SPEEDMODE 4 oyuncuyu yerinde tutar; hareketteki GM muafiyetleri
+           (freeze, stamina, itme, hiz siniri) GM modunun acik olmasini ister;
+           staminasi 0 olan yasayan karakter MAXSTAM 0 olsa da yuruyemez; 8-15
+           yon degerleri reddedilir.
+DUZELTME - @PersonalSpace / @charShove stamina kuralindan once calisir ve
+           ARGN1 / ARGN3 itmeye karar verir; PASSWALLS yuruyen yine iter ve
+           @charShove tetikler. Tam staminali NPC'ler oyuncunun uzerinden rota
+           cizer ve iterek gecer.
+DUZELTME - Binek tavan kontrolu karakterin HEIGHT degerini kullanir; FLAGS
+           INDOORS yururken cati / yeralti durumunu izler; ISVERTICALSPACE
+           (noktali veya noktasiz) script'te calisir.
+DEGISIKLIK - Tek bir gorunurluk kurali (Source-X CanSee) view delta'yi, gorunme
+           bildirimini ve hareket guncellemelerini yonetir. ALLSHOW yetki
+           seviyesine uyar; GM modundaki GM, ALLSHOW kapaliyken cevrimdisi
+           oyunculari (gri) gorur; INSUBSTANTIAL karakterler ve gorunmeyen
+           hayaletler gizli sayilir (SpiritSpeak artik gostermez). CANSEE <uid>
+           duvara degil gorunurluge bakar.
+DEGISIKLIK - Gelismis LOS (ADVANCEDLOS) Source-X'e uyar: izleyicinin goz
+           yuksekliginden (beden, binek) hedefin Z'sine 3B isin; platformlar,
+           CAN BLOCKLOS / BLOCKLOS_HEIGHT, ITEMDEF HEIGHT ve gosterilen DISPID
+           engeller; pencereler Source-X'in LOS_NB_WINDOWS verdigi yerler
+           disinda (menzilli vurus, buyu, suc tanigi, NPC gorusu) engeller.
+           ADVANCEDLOS oyuncu / NPC biti her karakter kontrolunde izleyiciye
+           gore secilir.
+DUZELTME - CANSEELOSFLAG 13 Source-X LOS bayraginin hepsine uyar; CANSEELOS
+           nokta, bolge adi ya da UID alir, gorus menziliyle sinirlidir ve aktif
+           GM duvarin arkasini gorur (yalnizca script okumalari). LOS_FISHING su
+           ve tursuz (IT_NORMAL) zemini kabul eder, eski LOS'ta yok sayilir.
+
 [2026-10-01] - Spawn, champion, pet ve vendor davranisi Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Champion'in ADDOBJ <uid> fiili o karaktere yalnizca champion

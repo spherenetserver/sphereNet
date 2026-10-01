@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Movement, map remap, visibility and line of sight follow Source-X
+------------------------------------------------------------------------
+FIX - MAPn=maxx,maxy,sector,file,clientid keeps the world map, the data file
+      and the client map apart: terrain, statics and diffs are read from the
+      named file, and clients are sent the client id. Two facets may share a
+      file.
+FIX - 0xF0 batched movement no longer credits time the server has not waited:
+      extra steps queue behind the normal movement queue and run at the real
+      step cadence. ClassicUO (0x02) walking is unchanged.
+FIX - SPEEDMODE 4 roots a player; GM exemptions in movement (freeze, stamina,
+      shove, throttle) need GM mode on; a living character at 0 stamina cannot
+      walk even with MAXSTAM 0; direction bytes 8-15 are rejected.
+FIX - @PersonalSpace / @charShove run before the stamina rule and their ARGN1 /
+      ARGN3 decide the push; PASSWALLS walkers still push and fire @charShove.
+      NPCs path through and push past players at full stamina.
+FIX - Mount headroom uses the character's HEIGHT; FLAGS INDOORS follows the
+      roof / underground state as you walk; ISVERTICALSPACE (with or without a
+      point) works in scripts.
+CHANGE - One visibility rule (Source-X CanSee) drives the view delta, the
+      appear notification and movement updates. ALLSHOW respects plevel; a GM
+      in GM mode sees logged-out players (greyed) with ALLSHOW off; INSUBSTANTIAL
+      characters and unmanifested ghosts are concealed like hidden ones
+      (SpiritSpeak no longer shows them). CANSEE <uid> answers visibility, not
+      walls.
+CHANGE - Advanced LOS (ADVANCEDLOS) follows Source-X: a 3D ray from the
+      viewer's eye height (body, mount) to the target's Z, platforms, CAN
+      BLOCKLOS / BLOCKLOS_HEIGHT, ITEMDEF HEIGHT and the displayed DISPID
+      occlude; windows block except where Source-X passes LOS_NB_WINDOWS
+      (ranged swings, spells, crime witnesses, NPC sight). The player / NPC
+      ADVANCEDLOS bit is chosen per viewer on every character check.
+FIX - CANSEELOSFLAG honours all 13 Source-X LOS flags; CANSEELOS accepts a
+      point, a region name or a UID, is bounded by the visual range and lets an
+      active GM see through walls (script reads only). LOS_FISHING accepts water
+      and untyped (IT_NORMAL) terrain and is ignored in legacy LOS.
+
 [2026-10-01] - Spawn, champion, pet and vendor behaviour follow Source-X
 ------------------------------------------------------------------------
 FIX - A champion's ADDOBJ <uid> only attaches the champion event to that

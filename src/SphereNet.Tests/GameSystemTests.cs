@@ -208,6 +208,9 @@ public class GameSystemTests
         player.Hue = new Color(0x03EA);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         AttachCharacter(client, player);
+        // The dying player is connected (login sets IsOnline); a logged-out body is
+        // seen only in GM mode, which a counselor does not have (CCharStatus.cpp:1253).
+        player.IsOnline = true;
         var staff = world.CreateCharacter();
         staff.IsPlayer = true;
         staff.PrivLevel = PrivLevel.Counsel;

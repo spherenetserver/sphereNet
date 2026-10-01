@@ -992,16 +992,20 @@ public static partial class Program
         PacketCharList.AosTooltipsEnabled = _config.ToolTipMode != 0;
         foreach (var mapDef in _config.Maps)
         {
-            _world.InitMap(mapDef.MapSendId, mapDef.MaxX, mapDef.MaxY);
+            // Three numbers, as Source-X keeps them (CUOMapList): the world map is
+            // the n of MAPn - points, saves and every map-data lookup use it; the
+            // data files are MapReadId (map/statics/staidx/mapdif number); the
+            // client is told MapSendId. The map-data readers are filed under the
+            // world number so a remapped facet reads its own file everywhere.
+            _world.InitMap(mapDef.MapIndex, mapDef.MaxX, mapDef.MaxY);
+            _world.SetClientMapId(mapDef.MapIndex, mapDef.MapSendId);
             try
             {
-                // Read the MUL data by MapReadId (which map*.mul group to load); the
-                // world/client id is MapSendId. They differ only when a shard remaps.
-                _mapData.InitMap(mapDef.MapReadId, mapDef.MaxX, mapDef.MaxY);
+                _mapData.InitMap(mapDef.MapIndex, mapDef.MapReadId, mapDef.MaxX, mapDef.MaxY);
             }
             catch (FileNotFoundException ex)
             {
-                _log.LogCritical("Map {Id} data missing: {Message}", mapDef.MapSendId, ex.Message);
+                _log.LogCritical("Map {Id} data missing: {Message}", mapDef.MapIndex, ex.Message);
                 throw;
             }
         }

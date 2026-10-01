@@ -116,6 +116,69 @@ public static class NaturalResourceTiles
         return false;
     }
 
+    private static object? _terrainTableFor;
+    private static ItemType[]? _terrainTable;
+
+    /// <summary>Source-X CWorldMap::GetTerrainItemType (CWorldMap.cpp:204-221): the
+    /// TYPE whose [TYPEDEF] TERRAIN= ranges claim this land tile id, IT_NORMAL when
+    /// none does (or no script pack is loaded). Upstream fills one id -> type table
+    /// as the TERRAIN lines load (CItemTypeDef.cpp:65), so a later claim replaces an
+    /// earlier one; the table here is built once per loaded pack and then read
+    /// without locking or allocating.</summary>
+    public static ItemType TerrainItemType(int landTileId)
+    {
+        var resources = DefinitionLoader.StaticResources;
+        if (resources == null || landTileId < 0)
+            return ItemType.Normal;
+
+        var table = Volatile.Read(ref _terrainTable);
+        if (table == null || !ReferenceEquals(Volatile.Read(ref _terrainTableFor), resources))
+        {
+            lock (_cacheLock)
+            {
+                if (_terrainTable == null || !ReferenceEquals(_terrainTableFor, resources))
+                {
+                    _terrainTable = BuildTerrainTable(resources);
+                    Volatile.Write(ref _terrainTableFor, resources);
+                }
+                table = _terrainTable;
+            }
+        }
+        return landTileId < table.Length ? table[landTileId] : ItemType.Normal;
+    }
+
+    private static ItemType[] BuildTerrainTable(SphereNet.Scripting.Resources.ResourceHolder resources)
+    {
+        var table = new ItemType[0x4000]; // land tile ids; default IT_NORMAL (0)
+        foreach (var candidate in resources.GetAllResources())
+        {
+            if (candidate.Id.Type != ResType.TypeDef || candidate.StoredKeys == null)
+                continue;
+            int typeIndex = candidate.Id.Index;
+            if (!string.IsNullOrEmpty(candidate.DefName))
+            {
+                var named = resources.ResolveDefName(candidate.DefName);
+                if (named.Type == ResType.TypeDef)
+                    typeIndex = named.Index;
+            }
+            foreach (var key in candidate.StoredKeys)
+            {
+                if (!key.Key.StartsWith("TERRAIN", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var parts = key.Arg.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0 || !ScriptNumber.TryParseToken(parts[0], out long lo) || lo < 0)
+                    continue;
+                long hi = lo;
+                if (parts.Length > 1 && (!ScriptNumber.TryParseToken(parts[1], out hi) || hi < 0))
+                    continue;
+                long from = Math.Min(lo, hi), to = Math.Min(Math.Max(lo, hi), table.Length - 1);
+                for (long id = from; id <= to; id++)
+                    table[id] = (ItemType)typeIndex;
+            }
+        }
+        return table;
+    }
+
     private static List<(int Lo, int Hi)> LoadTerrainRanges(
         SphereNet.Scripting.Resources.ResourceHolder resources, ItemType type)
     {

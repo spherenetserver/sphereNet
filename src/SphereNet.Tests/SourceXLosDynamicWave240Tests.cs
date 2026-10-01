@@ -8,8 +8,9 @@ namespace SphereNet.Tests;
 
 /// <summary>
 /// Source-X CanSeeLOS_New LOS_NB_DYNAMIC pass: an item placed in the world at
-/// runtime occludes line of sight the same way a MUL static does, while a
-/// window graphic stays see-through (LOS_NB_WINDOWS default).
+/// runtime occludes line of sight the same way a MUL static does; a window
+/// graphic occludes too unless the check passes LOS_NB_WINDOWS (CCharLOS.cpp:506).
+/// The fixtures turn ADVANCEDLOS on so the eye-height ray is what is measured.
 /// </summary>
 public sealed class SourceXLosDynamicWave240Tests
 {
@@ -23,18 +24,19 @@ public sealed class SourceXLosDynamicWave240Tests
         md.SetSyntheticItemTile(WallGraphic, new ItemTileData
         { Flags = TileFlag.Wall | TileFlag.Impassable, Height = 20, Name = "wall" });
         md.SetSyntheticItemTile(WindowGraphic, new ItemTileData
-        { Flags = TileFlag.Wall | TileFlag.Window, Height = 20, Name = "window" });
+        { Flags = TileFlag.Wall | TileFlag.Window | TileFlag.Impassable, Height = 20, Name = "window" });
 
         var world = new GameWorld(NullLoggerFactory.Instance);
         world.InitMap(0, 512, 512);
         world.MapData = md;
+        world.AdvancedLos = 0x03;
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = () => world;
         return world;
     }
 
     [Fact]
-    public void CanSeeLOS_DynamicWallItem_BlocksRay_WindowDoesNot()
+    public void CanSeeLOS_DynamicWallItem_BlocksRay_WindowOnlyWithoutNbWindows()
     {
         var world = MakeWorld();
         var from = new Point3D(100, 100, 0, 0);
@@ -49,9 +51,10 @@ public sealed class SourceXLosDynamicWave240Tests
         world.PlaceItem(blocker, new Point3D(103, 100, 0, 0));
         Assert.False(world.CanSeeLOS(from, to));
 
-        // The same tile with a window graphic is see-through again.
+        // A window graphic blocks as well, unless the check looks past windows.
         blocker.BaseId = WindowGraphic;
-        Assert.True(world.CanSeeLOS(from, to));
+        Assert.False(world.CanSeeLOS(from, to));
+        Assert.True(world.CanSeeLOS(from, to, SphereNet.Core.Enums.LosFlags.NbWindows));
     }
 
     [Fact]

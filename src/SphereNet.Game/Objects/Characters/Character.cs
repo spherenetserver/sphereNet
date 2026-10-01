@@ -642,7 +642,8 @@ public partial class Character : ObjBase
     public bool CanSeeAsDead(Character target)
     {
         int mode = DeadCannotSeeLiving;
-        if (mode == 0 || target.IsDead || PrivLevel >= PrivLevel.GM)
+        // !IsPriv(PRIV_GM): GM mode, not merely a GM plevel (CCharStatus.cpp:1008).
+        if (mode == 0 || target.IsDead || (_isPlayer && IsGmMode))
             return true;
 
         if (target.IsPlayer)
@@ -857,12 +858,20 @@ public partial class Character : ObjBase
     public static Func<Character, Character, bool, int, bool>? OnFollowersUpdate { get; set; }
 
     /// <summary>Upstream CanSee for a hidden or invisible character: staff of a high
-    /// enough level see it, AllShow sees everything, and @SeeHidden decides for a
-    /// hidden player when a script hooks it.</summary>
+    /// enough level see it, AllShow sees every character of the viewer's plevel or
+    /// below (CCharStatus.cpp:1180 - ALLSHOW never reaches up the privilege line),
+    /// and @SeeHidden decides for a hidden player when a script hooks it.</summary>
     public static bool CanSeeHidden(Character viewer, Character target)
     {
         if (viewer.AllShow)
-            return true;
+            return viewer.PrivLevel >= target.PrivLevel;
+        return CanSeeConcealed(viewer, target);
+    }
+
+    /// <summary>The concealed-character branch of CChar::CanSee (CCharStatus.cpp:1189-1238),
+    /// without the ALLSHOW shortcut that precedes it.</summary>
+    private static bool CanSeeConcealed(Character viewer, Character target)
+    {
         if (target.PrivLevel <= PrivLevel.Player && OnSeeHidden != null)
             return OnSeeHidden(viewer, target, viewer.PrivLevel <= target.PrivLevel ? 1 : 0) != 1;
         int me = (int)viewer.PrivLevel, them = (int)target.PrivLevel;
@@ -881,6 +890,112 @@ public partial class Character : ObjBase
 
     /// <summary>sphere.ini CANSEESAMEPLEVEL (Source-X m_iCanSeeSamePLevel, default 0).</summary>
     public static int CanSeeSamePLevel { get; set; }
+
+    /// <summary>Upstream IsDisconnected for a character: a player body left in the world
+    /// once its client has gone and the linger period is over.</summary>
+    public bool IsLoggedOut => _isPlayer && !_isOnline && !IsClientLingering;
+
+    /// <summary>STATF_INVISIBLE | STATF_INSUBSTANTIAL | STATF_HIDDEN, the states CanSee
+    /// treats as concealment (CCharStatus.cpp:1189). A dead character in war mode is a
+    /// manifested ghost even if INSUBSTANTIAL is still set: the war toggle clears it
+    /// (CClientEvent.cpp:1028), and ghosts saved before the flag was kept carry it.</summary>
+    public bool IsConcealed =>
+        IsStatFlag(StatFlag.Hidden | StatFlag.Invisible) ||
+        (IsStatFlag(StatFlag.Insubstantial) && !(IsDead && IsInWarMode));
+
+    /// <summary>CChar::CanSee for a character target (CCharStatus.cpp:1167-1257) without
+    /// the visual-range test, which each caller applies with its own range. This is
+    /// the one permission rule the view delta, the appear/move notifications and the
+    /// CANSEE script property share:
+    /// ALLSHOW sees every character of its own plevel or below and nothing above it;
+    /// an NPC sees a dead character only if it is a healer; a concealed character
+    /// goes through @SeeHidden / staff plevel / CANSEESAMEPLEVEL; a ghost loses
+    /// living NPCs under DEADCANNOTSEELIVING; a logged-out player is seen only by a
+    /// character in GM mode (or with ALLSHOW).</summary>
+    public bool CanSeeCharacter(Character target)
+    {
+        if (ReferenceEquals(target, this))
+            return true;
+
+        if (AllShow)
+            return PrivLevel >= target.PrivLevel;
+
+        if (!_isPlayer && target.IsDead)
+        {
+            if (NpcBrain != NpcBrainType.Healer)
+                return false;
+        }
+        else if (target.IsConcealed)
+        {
+            // @SeeHidden answers outright for a concealed player (:1193-1201).
+            if (target.PrivLevel <= PrivLevel.Player && OnSeeHidden != null)
+                return OnSeeHidden(this, target, PrivLevel <= target.PrivLevel ? 1 : 0) != 1;
+            if (!CanSeeConcealed(this, target))
+                return false;
+        }
+
+        if (IsDead && !CanSeeAsDead(target))
+            return false;
+
+        // Only GM mode (or ALLSHOW, above) sees a disconnected character (:1243-1254).
+        if (target.IsLoggedOut && !(_isPlayer && IsGmMode))
+            return false;
+
+        return true;
+    }
+
+    /// <summary>CChar::CanSee (CCharStatus.cpp:1074-1260) - the CANSEE script
+    /// property. Permission (hidden, invisible, plevel, dead, disconnected, invisible
+    /// items, containers) and the viewer's visual range; walls are not considered,
+    /// that is CANSEELOS.</summary>
+    public bool CanSee(ObjBase? obj) => CanSee(obj, 0);
+
+    private bool CanSee(ObjBase? obj, int depth)
+    {
+        if (obj == null || obj.IsDeleted || IsLoggedOut || depth > 64)
+            return false;
+
+        int range = _visualRange > 0 ? _visualRange : 18;
+        var top = obj.GetTopLevelObj();
+        var at = top.Position;
+        bool inRange = at.Map == Position.Map && Position.GetDistSight(at) <= range;
+
+        if (obj is Item item)
+        {
+            if (!CanSeeItem(item) || !inRange)
+                return false;
+            // A contained or worn item is seen when its container is (:1117-1158).
+            if (item.ContainedIn.IsValid)
+            {
+                var cont = ResolveWorld?.Invoke()?.FindObject(item.ContainedIn);
+                return cont != null && !ReferenceEquals(cont, item) && CanSee(cont, depth + 1);
+            }
+            return true;
+        }
+
+        if (obj is not Character ch)
+            return false;
+        if (ReferenceEquals(ch, this))
+            return true;
+        if (!inRange)
+            return false;
+        // A ridden mount is out of the world (IsDisconnected): only ALLSHOW reaches it.
+        if (ch.IsStatFlag(StatFlag.Ridden))
+            return AllShow && PrivLevel >= ch.PrivLevel;
+        return CanSeeCharacter(ch);
+    }
+
+    /// <summary>CChar::CanSeeItem (CCharStatus.cpp:1265): an ATTR_INVIS item is seen
+    /// in GM mode, or by a character its SeenBy_0&lt;uid&gt; tag names.</summary>
+    private bool CanSeeItem(Item item)
+    {
+        if (!item.IsAttr(ObjAttributes.Invis))
+            return true;
+        if (_isPlayer && IsGmMode)
+            return true;
+        return item.TryGetTag($"SeenBy_0{Uid.Value:x}", out string? seen) &&
+               !string.IsNullOrWhiteSpace(seen) && EvalScriptLong(seen) != 0;
+    }
 
     /// <summary>sphere.ini STATSFLAGS (Source-X _uiStatFlag, default 0):
     /// STAT_FLAG_DENYMAX 0x1 for everyone, DENYMAXP 0x2 players, DENYMAXN 0x4 NPCs.</summary>
@@ -4544,6 +4659,26 @@ public partial class Character : ObjBase
             }
         }
 
+        // ISVERTICALSPACE [<point>] (CHC_ISVERTICALSPACE, CChar.cpp:2934-2950): is
+        // there room above the point - my own position when none is given - for me
+        // at my mounted height (IsVerticalSpace(pt, false)). A point GetRegionPoint
+        // cannot read is an error, not an answer.
+        if (upper.StartsWith("ISVERTICALSPACE", StringComparison.Ordinal) &&
+            (upper.Length == 15 || !char.IsLetterOrDigit(upper[15])))
+        {
+            var vsWorld = ResolveWorld?.Invoke();
+            string vsArg = key[15..].Trim().TrimStart('.').Trim();
+            Point3D vsPoint = Position;
+            if (vsArg.Length > 0 && (vsWorld == null || !vsWorld.TryGetRegionPoint(vsArg, out vsPoint)))
+            {
+                value = "";
+                return false;
+            }
+            value = vsWorld == null || vsWorld.Standing.HasVerticalSpace(this, vsPoint.Map,
+                vsPoint.X, vsPoint.Y, vsPoint.Z, 0) ? "1" : "0";
+            return true;
+        }
+
         // DAMADJUSTED[.LO|.HI] (CChar.cpp:3093): Fight_CalcDamage(weapon, fNoRandom)
         // - the swing's damage range with the stat/skill bonus applied, no roll.
         if (upper.StartsWith("DAMADJUSTED", StringComparison.Ordinal) &&
@@ -5321,59 +5456,35 @@ public partial class Character : ObjBase
             }
         }
 
-        // CANSEELOSFLAG <flags>[,<uid>|<x,y[,z[,m]]>] (OC_CANSEELOSFLAG,
-        // CObjBase.cpp:1109-1150): CANSEELOS with LOS flags up front. A target of two
-        // or more coordinates is a point (GetRegionPoint needs at least x,y), a single
-        // number a UID; the ray runs from this character, bounded by its view range.
+        // CANSEELOSFLAG <flags>[,<uid>|<x,y[,z[,m]]>] and CANSEELOS [<uid>|<x,y[,z[,m]]>]
+        // (OC_CANSEELOSFLAG / OC_CANSEELOS, CObjBase.cpp:1109-1150). A target of two
+        // or more coordinates (or a region name) is a point, a single number a UID;
+        // the LOS runs from this character, bounded by its view range.
         if (upper.StartsWith("CANSEELOSFLAG", StringComparison.Ordinal) &&
             (upper.Length == 13 || !char.IsLetterOrDigit(upper[13])))
         {
-            value = CanSeeLosFlagRead(key[13..].TrimStart('.', ' ', '\t'));
+            value = CanSeeLosRead(key[13..].TrimStart('.', ' ', '\t'), withFlags: true);
+            return true;
+        }
+        if (upper.StartsWith("CANSEELOS", StringComparison.Ordinal) &&
+            (upper.Length == 9 || !char.IsLetterOrDigit(upper[9])))
+        {
+            value = CanSeeLosRead(key[9..].TrimStart('.', ' ', '\t'), withFlags: false);
             return true;
         }
 
-        // CANSEELOS / CANSEE — accept either a '.' or whitespace before the uid
-        // argument (Source-X CObjBase OC_CANSEELOS/OC_CANSEE: SKIP_SEPARATORS +
-        // GETNONWHITESPACE, so <SRC.CANSEELOS <uid>> and CANSEELOS.<uid> both work).
+        // CANSEE <uid> (OC_CANSEE, CObjBase.cpp:1107-1145): this character's
+        // CanSee(obj) - hidden/invisible, plevel, dead, disconnected, containers and
+        // visual range, never walls (that is CANSEELOS). '.' or whitespace may
+        // separate the uid (SKIP_SEPARATORS + GETNONWHITESPACE).
+        if (upper.StartsWith("CANSEE", StringComparison.Ordinal) &&
+            (upper.Length == 6 || !char.IsLetterOrDigit(upper[6])))
         {
-            string? canSeeArg = null;
-            bool canSeeLosMode = false;
-            if (upper.StartsWith("CANSEELOS", StringComparison.Ordinal) &&
-                (upper.Length == 9 || !char.IsLetterOrDigit(upper[9])))
-            {
-                canSeeLosMode = true;
-                canSeeArg = upper.Length > 9 ? key[9..].TrimStart('.', ' ', '\t') : "";
-            }
-            else if (upper.StartsWith("CANSEE", StringComparison.Ordinal) &&
-                     (upper.Length == 6 || !char.IsLetterOrDigit(upper[6])))
-            {
-                canSeeArg = upper.Length > 6 ? key[6..].TrimStart('.', ' ', '\t') : "";
-            }
-            if (canSeeArg != null)
-            {
-                var world = ResolveWorld?.Invoke();
-                var serial = ParseSerial(canSeeArg);
-                if (world != null && serial.IsValid)
-                {
-                    var target = world.FindObject(serial);
-                    if (target != null)
-                    {
-                        bool los = world.CanSeeLOS(Position, target.Position);
-                        if (canSeeLosMode)
-                        {
-                            value = los ? "1" : "0";
-                        }
-                        else
-                        {
-                            int dist = Position.GetDistanceTo(target.Position);
-                            value = (los && dist <= (_visualRange > 0 ? _visualRange : 18)) ? "1" : "0";
-                        }
-                        return true;
-                    }
-                }
-                value = "0";
-                return true;
-            }
+            string arg = upper.Length > 6 ? key[6..].TrimStart('.', ' ', '\t') : "";
+            var serial = ParseSerial(arg);
+            var target = serial.IsValid ? ResolveWorld?.Invoke()?.FindObject(serial) : null;
+            value = CanSee(target) ? "1" : "0";
+            return true;
         }
 
         // NOTOGETFLAG <uid> [allowIncog] [allowInvul] — my notoriety flag as
@@ -6008,24 +6119,26 @@ public partial class Character : ObjBase
         return base.TryGetProperty(key, out value);
     }
 
-    /// <summary>Source-X LOS_FISHING (CChar.h:436), the one CANSEELOSFLAG bit the LOS
-    /// walk models; the others have no effect here.</summary>
-    private const int LosFlagFishingBit = 0x0800;
-
-    /// <summary>OC_CANSEELOSFLAG body: "flags[,target]". Exp_GetWVal takes the flags,
-    /// SKIP_ARGSEP one separator, and what is left is the target. Without a target
-    /// upstream measures from the script's SRC to this object; a property read here
-    /// carries no source, so that form answers 0 like the plain CANSEELOS read.</summary>
-    private string CanSeeLosFlagRead(string args)
+    /// <summary>OC_CANSEELOS / OC_CANSEELOSFLAG body (CObjBase.cpp:1109-1150):
+    /// "[flags,]target". For the FLAG form Exp_GetWVal takes the flags and SKIP_ARGSEP
+    /// one separator; what is left is the target. GetRegionPoint reads it first - two
+    /// or more coordinates, or a region's name - and only when that gives no point is
+    /// it a UID, whose top point is then the target (a character's feet, not its eyes).
+    /// The check is CanSeeLOS(pt, nullptr, GetVisualRange(), flags) of this character:
+    /// its own ADVANCEDLOS bit, its own view range, and - not being a combat check -
+    /// the active GM's pass through walls. Without a target upstream measures from the
+    /// script's SRC to this object; a property read here carries no source, so that
+    /// form answers 0.</summary>
+    private string CanSeeLosRead(string args, bool withFlags)
     {
-        int flags = 0;
+        var flags = LosFlags.None;
         string rest = args.Trim();
-        if (rest.Length > 0)
+        if (withFlags && rest.Length > 0)
         {
             int sep = rest.IndexOfAny([',', ' ', '\t']);
             string flagText = sep >= 0 ? rest[..sep] : rest;
             if (ScriptNumber.TryParseArgument(flagText, out long f))
-                flags = (ushort)f;
+                flags = (LosFlags)(ushort)f;
             rest = sep >= 0 ? rest[(sep + 1)..].Trim() : "";
         }
         if (rest.Length == 0)
@@ -6036,7 +6149,7 @@ public partial class Character : ObjBase
             return "0";
 
         Point3D target;
-        if (Point3D.SplitComponents(rest).Length >= 2 && Point3D.TryParse(rest, out var pt))
+        if (TryScriptRegionPoint(world, rest, out var pt))
         {
             target = pt;
         }
@@ -6050,13 +6163,26 @@ public partial class Character : ObjBase
 
         if (target.Map != Position.Map)
             return "0";
-        int range = _visualRange > 0 ? _visualRange : 18;
-        if (Position.GetDistanceTo(target) > range)
-            return "0";
-        bool los = (flags & LosFlagFishingBit) != 0
-            ? world.CanSeeLOS(Position, target, LosFlags.Fishing)
-            : world.CanSeeLOS(Position, target);
+        bool los = world.CanSeeLOSFor(this, Position, target, flags, VisualRange, allowGmPass: true);
         return los ? "1" : "0";
+    }
+
+    /// <summary>CServerConfig::GetRegionPoint (CServerConfig.cpp:2719-2766) for a LOS
+    /// target: text opening with a digit or '-' is a point when it carries at least
+    /// x,y; anything else names a region, whose point it is.</summary>
+    private static bool TryScriptRegionPoint(World.GameWorld world, string text, out Point3D pt)
+    {
+        pt = default;
+        if (text.Length == 0)
+            return false;
+        if (char.IsDigit(text[0]) || text[0] == '-')
+            return Point3D.SplitComponents(text).Length >= 2 && Point3D.TryParse(text, out pt);
+        var region = world.FindRegionByName(text);
+        var p = region?.P ?? region?.RepresentativePoint;
+        if (p == null)
+            return false;
+        pt = p.Value;
+        return true;
     }
 
     /// <summary>The FAME.x / KARMA.x band test (CChar.cpp:2614-2651 / 2710-2747). The

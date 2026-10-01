@@ -671,6 +671,36 @@ public sealed class SkillInventedValueParityTests : IDisposable
         Assert.NotEqual(evil.Uid, good.FightTarget);
     }
 
+    [Fact]
+    public void ASuccessfulProvocationDoesNotTurnTheTargetOnTheBard()
+    {
+        // SUCCESS: pCharTarg->OnAttackedBy(this, true) (CCharSkill.cpp:2104). The
+        // fCommandPet=true skips OnHarmedBy (CCharFight.cpp:377): the target records
+        // the bard as its aggressor but does not auto-defend against him; the
+        // provoked creature is set on it instead.
+        var world = TestHarness.CreateWorld();
+        var bard = Place(world);
+        var prov = Place(world, 101, 100, player: false);
+        prov.NpcBrain = NpcBrainType.Monster;
+        prov.BodyId = 0x0001;
+        prov.Karma = -100;
+        var targ = Place(world, 102, 100, player: false);
+        targ.NpcBrain = NpcBrainType.Monster;
+        targ.BodyId = 0x00C9;
+        targ.Karma = -100;
+        var lute = world.CreateItem();
+        lute.ItemType = ItemType.Musical;
+        Rolls(_ => 1);
+        var sink = new Sink(bard, world);
+        sink.Pack[ItemType.Musical] = lute;
+
+        Assert.True(ActiveSkillEngine.Provocation(sink, prov, targ));
+
+        Assert.Equal(targ.Uid, prov.FightTarget);
+        Assert.True(targ.Attacker_GetIndex(bard.Uid) >= 0);
+        Assert.NotEqual(bard.Uid, targ.FightTarget);
+    }
+
     // ----------------------------------------------------------- Skill gain
 
     [Fact]

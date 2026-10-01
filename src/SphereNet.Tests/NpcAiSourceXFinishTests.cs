@@ -272,6 +272,7 @@ public sealed class NpcAiSourceXFinishTests : IDisposable
         world.PlaceCharacter(pet, new Point3D(100, 100, 0, 0));
         var victim = world.CreateCharacter();
         victim.IsPlayer = true;
+        victim.IsOnline = true; // an active client decides the crime itself
         victim.Hits = victim.MaxHits = 50;
         world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
         int ownerNoticed = 0, petNoticed = 0;
@@ -291,6 +292,7 @@ public sealed class NpcAiSourceXFinishTests : IDisposable
         // back are self-defence and nobody's crime.
         var victim2 = world.CreateCharacter();
         victim2.IsPlayer = true;
+        victim2.IsOnline = true;
         victim2.Hits = victim2.MaxHits = 50;
         world.PlaceCharacter(victim2, new Point3D(100, 101, 0, 0));
         pet.OnAttackedBy(victim2);

@@ -1070,6 +1070,9 @@ public static partial class Program
                 }
 
                 BroadcastLightningStrike(victim);
+                // CHV_KILL is OnTakeDamage(10000, pSrc, DAMAGE_GOD) (CChar.cpp:4691):
+                // the blow lands on the attacker list, where kill credit is read.
+                victim.RecordAttack(gm.Uid, 10000);
                 ProcessDeathWithEffects(victim, gm);
                 if (_clientsByCharUid.TryGetValue(gm.Uid, out var gmClient3))
                     gmClient3.SysMessage($"Killed '{victim.Name}'.");
@@ -1429,7 +1432,9 @@ public static partial class Program
             {
                 _log.LogDebug("[death_path] spell-damage victim=0x{V:X} killer=0x{K:X}",
                     victim.Uid.Value, killer?.Uid.Value ?? 0);
-                var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
+                // The striker itself, never its owner: @Kill and the kill credit belong
+                // to the attacker-list entry (Source-X CCharAct.cpp:4358-4371).
+                var effectiveKiller = killer;
 
                 // @Kill/@Death are fired inside ProcessDeath so RETURN 1 can skip
                 // killer credit / cancel the death (a still-living victim after the
@@ -1449,7 +1454,9 @@ public static partial class Program
                 _log.LogDebug("[death_path] lifecycle victim=0x{V:X} killer=0x{K:X}",
                     victim.Uid.Value, killer?.Uid.Value ?? 0);
 
-                var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
+                // The striker itself, never its owner: @Kill and the kill credit belong
+                // to the attacker-list entry (Source-X CCharAct.cpp:4358-4371).
+                var effectiveKiller = killer;
 
                 // @Kill/@Death are fired inside ProcessDeath so RETURN 1 can skip
                 // killer credit / cancel the death (a still-living victim after the
@@ -3568,7 +3575,7 @@ public static partial class Program
             victim.Uid.Value, victim.Name, killer?.Uid.Value ?? 0);
 
         var actualKiller = killer != null && ReferenceEquals(killer, victim) ? null : killer;
-        var effectiveKiller = actualKiller != null ? ResolveEffectiveOffender(actualKiller) : null;
+        var effectiveKiller = actualKiller; // the striker itself, never its owner
 
         // @Kill/@Death fire inside ProcessDeath; RETURN 1 can skip killer credit
         // or cancel the death (a still-living victim after the call = vetoed).
@@ -3762,6 +3769,8 @@ public static partial class Program
             _network.SlowPacketWarnMs = _config.SlowPacketWarnMs;
             _network.FloodDetectionCount = _config.FloodDetectionCount;
             _network.FloodDetectionWindowMs = _config.FloodDetectionWindowMs;
+            _network.MaxSizeClientOut = _config.MaxSizeClientOut;
+            _network.MaxSizeClientIn = _config.MaxSizeClientIn;
             _network.ClientMaxIP = _config.ClientMaxIP;
             _network.ConnectingMaxIP = _config.ConnectingMaxIP;
             _network.MaxConnectRequestsPerIP = _config.MaxConnectRequestsPerIP;
@@ -3887,7 +3896,7 @@ public static partial class Program
                     (int)Math.Clamp(currentMs - previousMs, 0, int.MaxValue), unchecked((int)currentMs));
             };
             _network.OnUnknownPacket += OnUnknownPacket;
-            _network.OnPacketQuotaExceeded += OnPacketQuotaExceeded;
+            _network.ByteQuotaExceeded = OnByteQuotaExceeded;
 
             if (!_network.Start("0.0.0.0", _config.ServPort))
             {

@@ -256,6 +256,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnCombatDelete = null;
         SphereNet.Game.Objects.Characters.Character.OnCombatEnd = null;
         SphereNet.Game.Objects.Characters.Character.OnMurderDecay = null;
+        // MURDERDECAYTIME / MURDERMINCOUNT sphere.ini defaults.
+        SphereNet.Game.Objects.Characters.Character.MurderDecayTimeSeconds = 28800;
+        SphereNet.Game.Objects.Characters.Character.MurderMinCount = 5;
         SphereNet.Game.Objects.Characters.Character.OnNotoSend = null;
         SphereNet.Game.Objects.Characters.Character.ResolveNotoFlag = null;
         SphereNet.Game.AI.NpcAI.RandomOverride = null;

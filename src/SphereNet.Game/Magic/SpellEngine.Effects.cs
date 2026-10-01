@@ -1226,6 +1226,13 @@ public sealed partial class SpellEngine
             Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Hidden, false, 0, null);
             Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Hidden, true, 0, null);
         }
+        // The stuck hold's paralyze icon with its remaining time (CClientMsg.cpp:50-55).
+        if (ch.GetEquippedItem(Layer.FlagStuck) is { IsDeleted: false } stuck)
+        {
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Paralyze, false, 0, null);
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Paralyze, true,
+                Character.StuckBuffSeconds(stuck), null);
+        }
         if (ch.IsStatFlag(StatFlag.Meditation))
         {
             Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.ActiveMeditation, false, 0, null);

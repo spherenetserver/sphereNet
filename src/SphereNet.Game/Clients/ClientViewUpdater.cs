@@ -679,6 +679,11 @@ public sealed class ClientViewUpdater
     {
         if (ch.IsDeleted) return false;
         if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden) && !me.DebugView) return false;
+        // A disconnected character sits in the sector's m_Chars_Disconnect list, which
+        // the view's CWorldSearch walks only with ALLSHOW (CWorldSearch.cpp:271, set
+        // from PRIV_ALLSHOW in CClientMsg.cpp:331). CanSee's GM-mode rule (the CANSEE
+        // read) never reaches it in the view without ALLSHOW.
+        if (ch.IsLoggedOut && !me.AllShow) return false;
         return me.CanSeeCharacter(ch);
     }
 

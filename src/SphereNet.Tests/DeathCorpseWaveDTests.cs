@@ -215,6 +215,7 @@ public class DeathCorpseWaveDTests
         killer.Name = "Slayer";
         var victim = MakePlayer(world);
         victim.Name = "Victim";
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         engine.ProcessDeath(victim, killer);
         Assert.NotNull(message);
         Assert.Contains("'Slayer'", message);

@@ -58,6 +58,7 @@ public class DeathTriggerTests
         Character.OnKarmaChanging = (_, d) => { karmaDelta = d; return d; };
         Character.OnMurderMark = (_, v, n) => { murderProposed = n; murderVictim = v; return new Character.MurderMarkDecision(n, true); };
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         // Fame: innocent player victim grants fame/10 = 100, applied from 0.
@@ -87,6 +88,7 @@ public class DeathTriggerTests
 
         Character.OnMurderMark = (_, _, _) => new Character.MurderMarkDecision(null, false); // block the mark
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Kills);
@@ -103,6 +105,7 @@ public class DeathTriggerTests
 
         Character.OnKarmaChanging = (_, _) => null; // cancel karma only
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Karma);   // karma change cancelled
@@ -119,6 +122,7 @@ public class DeathTriggerTests
 
         Character.OnMurderMark = (_, _, proposed) => new Character.MurderMarkDecision(proposed + 4, true); // script rewrites count
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(5, killer.Kills); // 1 proposed + 4 adjustment

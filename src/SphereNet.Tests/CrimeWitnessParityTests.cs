@@ -193,12 +193,13 @@ public class CrimeWitnessParityTests
     [Fact]
     public void AttackingInnocentPlayer_VictimRecordsCrime_NoGlobalFlagWithoutWitness()
     {
-        // OnAttackedBy (CCharFight.cpp:361-366): a player victim notices the crime
-        // itself - SAWCRIME (personal grey) - but the attacker is not flagged
-        // globally unless @SeeCrime asks for it.
+        // OnAttackedBy (CCharFight.cpp:361-366): a player victim with an active client
+        // notices the crime itself - SAWCRIME (personal grey) - but the attacker is
+        // not flagged globally unless @SeeCrime asks for it.
         var world = CreateWorld();
         var attacker = MakePlayer(world, 100);
         var victim = MakePlayer(world, 101);
+        victim.IsOnline = true;
 
         victim.OnAttackedBy(attacker);
 
@@ -252,6 +253,7 @@ public class CrimeWitnessParityTests
         var victim = MakePlayer(world, 100); victim.Fame = 1000; victim.Karma = 1000;
         var killer = MakePlayer(world, 101); killer.Fame = 0;
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(100, killer.Fame); // 1000/10, single attacker
@@ -266,6 +268,7 @@ public class CrimeWitnessParityTests
         victim.SetCriminal(120_000); // arm the criminal timer → IsCriminal
         var killer = MakePlayer(world, 101); killer.Karma = 0;
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         // Source-X Calc_KarmaKill (CResourceCalc.cpp:358-363) only cancels a LOSS
@@ -283,6 +286,7 @@ public class CrimeWitnessParityTests
         victim.SetCriminal(120_000);
         var killer = MakePlayer(world, 101); killer.Karma = 0;
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Karma); // the -300 loss is clamped to 0
@@ -299,6 +303,7 @@ public class CrimeWitnessParityTests
         var victim = MakePlayer(world, 100); victim.Karma = -1500;
         var killer = MakePlayer(world, 101); killer.Karma = 6400;
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(6400, killer.Karma);

@@ -507,8 +507,7 @@ public sealed partial class NpcAI
             (ch.IsPlayer ? Character.PlayerKarmaEvil <= 0 : ch.NpcBrain != NpcBrainType.Berserk))
             return false;
         var area = _world.FindRegion(ch.Position);
-        if (area != null && area.IsGuarded &&
-            (area.IsFlag(RegionFlag.RedZone) || area.TryGetTag("RED", out _)))
+        if (area != null && area.IsGuardedRed)
         {
             if (IsNotoMurderer(ch))
                 return false;

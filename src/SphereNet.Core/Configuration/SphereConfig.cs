@@ -721,6 +721,16 @@ public sealed class SphereConfig
     public int MaxPacketsPerTick { get; set; } = 50; // CServerConfig.cpp:331
     public int FloodDetectionCount { get; set; } = 5;
     public int FloodDetectionWindowMs { get; set; } = 10_000;
+
+    /// <summary>MAXSIZECLIENTOUT: bytes the server may send one client within a
+    /// 10-second check period before f_onclient_exceed_network_quota runs with
+    /// ARGN1=1. 0 disables. CServerConfig.cpp:336.</summary>
+    public long MaxSizeClientOut { get; set; } = 80_000;
+
+    /// <summary>MAXSIZECLIENTIN: bytes the server may receive from one client within
+    /// a 10-second check period before f_onclient_exceed_network_quota runs with
+    /// ARGN1=2. 0 disables. CServerConfig.cpp:337.</summary>
+    public long MaxSizeClientIn { get; set; } = 10_000;
     public int DeadSocketTime { get; set; } = 300;
     public int FreezeRestartTime { get; set; } = 60;
 
@@ -1328,6 +1338,8 @@ public sealed class SphereConfig
         MaxPacketsPerTick = ini.GetInt(section, "MaxPacketsPerTick", MaxPacketsPerTick);
         FloodDetectionCount = ini.GetInt(section, "FloodDetectionCount", FloodDetectionCount);
         FloodDetectionWindowMs = ini.GetInt(section, "FloodDetectionWindowMs", FloodDetectionWindowMs);
+        MaxSizeClientOut = GetInt64(ini, section, "MaxSizeClientOut", MaxSizeClientOut);
+        MaxSizeClientIn = GetInt64(ini, section, "MaxSizeClientIn", MaxSizeClientIn);
         DeadSocketTime = ini.GetInt(section, "DeadSocketTime", DeadSocketTime);
         FreezeRestartTime = ini.GetInt(section, "FreezeRestartTime", FreezeRestartTime);
         Secure = ini.GetBool(section, "Secure", Secure);
@@ -1512,6 +1524,16 @@ public sealed class SphereConfig
             product *= v;
         }
         return (int)Math.Clamp(product, int.MinValue, int.MaxValue);
+    }
+
+    /// <summary>A 64-bit key (Source-X ELEM_INT64), read as a Sphere number: a
+    /// leading zero means hexadecimal.</summary>
+    private static long GetInt64(IniParser ini, string section, string key, long defaultValue)
+    {
+        string? raw = ini.GetValue(section, key);
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultValue;
+        return SphereNet.Core.Types.ScriptNumber.TryParseToken(raw.Trim(), out long v) ? v : defaultValue;
     }
 
     /// <param name="zeroMeansDefault">When true, a configured value of 0 falls back to

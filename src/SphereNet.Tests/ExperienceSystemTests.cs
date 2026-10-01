@@ -213,6 +213,7 @@ public class ExperienceSystemTests
         npc.Exp = 750;
         npc.MaxHits = 50; npc.Hits = 50;
 
+        npc.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(npc, killer);
 
         // 750/10 = 75, killer below a quarter of the victim: doubled.

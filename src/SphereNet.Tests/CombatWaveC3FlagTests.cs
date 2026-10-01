@@ -155,6 +155,7 @@ public class CombatWaveC3FlagTests
             Character.CombatFlags = (int)CombatFlags.AttackNoAggreived;
             var attackerA = MakeChar(world, 100, 100);
             var victimA = MakeChar(world, 101, 100);
+            victimA.IsOnline = true; // an active client decides the crime itself
             victimA.OnAttackedBy(attackerA);
             Assert.Null(victimA.Memory_FindObjTypes(attackerA.Uid, MemoryType.Aggreived));
             Assert.Null(victimA.Memory_FindObjTypes(attackerA.Uid, MemoryType.SawCrime));
@@ -163,6 +164,7 @@ public class CombatWaveC3FlagTests
             Character.CombatFlags = 0;
             var attackerB = MakeChar(world, 100, 102);
             var victimB = MakeChar(world, 101, 102);
+            victimB.IsOnline = true;
             victimB.OnAttackedBy(attackerB);
             Assert.NotNull(victimB.Memory_FindObjTypes(attackerB.Uid, MemoryType.Aggreived));
             Assert.NotNull(victimB.Memory_FindObjTypes(attackerB.Uid, MemoryType.SawCrime));

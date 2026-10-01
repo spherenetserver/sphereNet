@@ -187,6 +187,22 @@ public sealed class NetState : IDisposable
     public int PacketFloodCount { get; set; }
     public long PacketFloodWindowStart { get; set; }
 
+    // Bytes moved since the last 10-second legitimacy check (Source-X CNetState
+    // _iInByteCounter / _iOutByteCounter, CNetState.h:85). In counts what the socket
+    // delivered (CNetworkInput.cpp:101), out what the socket accepted
+    // (CNetworkOutput.cpp:354) - wire bytes, after compression and encryption.
+    private long _inByteCounter;
+    private long _outByteCounter;
+    public long InByteCounter => Interlocked.Read(ref _inByteCounter);
+    public long OutByteCounter => Interlocked.Read(ref _outByteCounter);
+    public void AddInBytes(long count) => Interlocked.Add(ref _inByteCounter, count);
+    public void AddOutBytes(long count) => Interlocked.Add(ref _outByteCounter, count);
+    public void ResetByteCounters()
+    {
+        Interlocked.Exchange(ref _inByteCounter, 0);
+        Interlocked.Exchange(ref _outByteCounter, 0);
+    }
+
     /// <summary>How many times a handler has thrown on this connection. Upstream keeps
     /// the same per-connection tally and only kicks the client once it passes ten
     /// (m_packetExceptions, CNetworkInput.cpp:420) - one fault is logged and the session
@@ -378,6 +394,7 @@ public sealed class NetState : IDisposable
         PacketExceptionCount = 0;
         PacketFloodCount = 0;
         PacketFloodWindowStart = 0;
+        ResetByteCounters();
         _rttPingSeq = 0;
         _rttPingSentTick = 0;
         _rttMs = -1;
@@ -467,6 +484,7 @@ public sealed class NetState : IDisposable
             if (read <= 0) return -1;
 
             _recvLength += read;
+            AddInBytes(read);
             LastActivityTick = Environment.TickCount64;
             LastReceiveTick = LastActivityTick;
             return read;
@@ -896,7 +914,7 @@ public sealed class NetState : IDisposable
                         {
                             int sent = _socket.Send(buf, _outStart, _outEnd - _outStart,
                                 SocketFlags.None, out SocketError serr);
-                            if (sent > 0) _outStart += sent;
+                            if (sent > 0) { _outStart += sent; AddOutBytes(sent); }
                             if (serr == SocketError.WouldBlock) break;       // kernel buffer full — retry next flush
                             if (serr != SocketError.Success) throw new SocketException((int)serr);
                             if (sent == 0) break;
@@ -919,7 +937,7 @@ public sealed class NetState : IDisposable
                     {
                         // Blocking fallback (toggle off): send the whole buffer.
                         if (_outEnd > _outStart)
-                            _socket.Send(buf, _outStart, _outEnd - _outStart, SocketFlags.None);
+                            AddOutBytes(_socket.Send(buf, _outStart, _outEnd - _outStart, SocketFlags.None));
                         _outStart = 0;
                         _outEnd = 0;
                     }
@@ -960,7 +978,7 @@ public sealed class NetState : IDisposable
                     {
                         int sent = _socket.Send(buf, _outStart, _outEnd - _outStart,
                             SocketFlags.None, out SocketError serr);
-                        if (sent > 0) _outStart += sent;
+                        if (sent > 0) { _outStart += sent; AddOutBytes(sent); }
                         if (serr == SocketError.WouldBlock) break;
                         if (serr != SocketError.Success) throw new SocketException((int)serr);
                         if (sent == 0) break;
@@ -983,7 +1001,7 @@ public sealed class NetState : IDisposable
                     PacketBuffer? packet;
                     while ((packet = DequeueNextLocked()) != null)
                     {
-                        _socket.Send(packet.Data, 0, packet.Length, SocketFlags.None);
+                        AddOutBytes(_socket.Send(packet.Data, 0, packet.Length, SocketFlags.None));
                         packet.ReturnToPool();
                     }
                 }

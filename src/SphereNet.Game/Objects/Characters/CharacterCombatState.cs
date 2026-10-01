@@ -1,5 +1,6 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Objects.Items;
 
 namespace SphereNet.Game.Objects.Characters;
 
@@ -56,9 +57,21 @@ public sealed class CharacterCombatState
     // order is preserved so ATTACKER.LAST reads the most-recent hit.
     private readonly List<AttackerRecord> _attackers = new();
 
-    private long _criminalTimer;       // TickCount64 when criminal flag expires (0 = not criminal)
-    private short _kills;              // murder count
-    private long _nextMurderDecayTick; // next TickCount64 at which one kill will decay
+    private short _kills;              // murder count (Source-X CCharPlayer::m_wMurders)
+
+    // A criminal timer / murder countdown read from a save written before these were
+    // worn memories (CRIMINALTIMER= / MURDERDECAY= on the character, in seconds). Made
+    // into its memory once the world is loaded (FixNotorietyAfterLoad) or on the
+    // character's next tick - creating an item while a save is still being read could
+    // take a uid a later record owns.
+    private int _pendingCriminalSeconds;
+    private int _pendingMurderDecaySeconds;
+
+    /// <summary>The names Spell_Effect_Create gives the two notoriety memories
+    /// (CCharSpell.cpp:2089/:2093).</summary>
+    public const string CriminalMemoryName = "Criminal Timer";
+    public const string MurderMemoryName = "Murder Decay";
+    private const ushort FallbackMemoryId = 0x2053; // ITEMID_RHAND_POINT_NW
 
     public CharacterCombatState(Character owner)
     {
@@ -66,91 +79,330 @@ public sealed class CharacterCombatState
     }
 
     // --- Notoriety counters ---
+    //
+    // Source-X keeps both notoriety clocks as worn IT_SPELL memories made by
+    // Spell_Effect_Create: the "Criminal Timer" on LAYER_FLAG_Criminal (43), whose
+    // presence IS STATF_CRIMINAL (LayerAdd sets the flag, OnRemoveObj clears it,
+    // CCharAct.cpp:347/:455), and the "Murder Decay" on LAYER_FLAG_Murders (52), whose
+    // timeout ages one murder off (OnTickEquip, CCharAct.cpp:4113). They are ordinary
+    // equipped items here too - saved, loaded and ticked as such - so a Source-X save
+    // carrying them loads into working clocks and SphereNet writes them the same way.
 
     public short Kills { get => _kills; set => _kills = (short)Math.Max(0, (int)value); }
 
-    public bool IsCriminal => _criminalTimer > 0 && Environment.TickCount64 < _criminalTimer;
+    /// <summary>The worn "Criminal Timer" memory, if any.</summary>
+    public Item? CriminalMemory => Worn(Layer.FlagCriminal);
+
+    /// <summary>The worn "Murder Decay" memory, if any.</summary>
+    public Item? MurderMemory => Worn(Layer.FlagMurders);
+
+    private Item? Worn(Layer layer)
+    {
+        var item = _owner.GetEquippedItem(layer);
+        return item != null && !item.IsDeleted ? item : null;
+    }
+
+    public bool IsCriminal => CriminalMemory != null || _pendingCriminalSeconds > 0;
 
     // Source-X Noto_IsMurderer: murders must EXCEED the threshold (m_wMurders >
     // m_iMurderMinCount), so with the default 5 the red title appears on the 6th
     // kill, not the 5th. Using >= flagged red one kill too early.
     public bool IsMurderer => _kills > Character.MurderMinCount;
 
+    /// <summary>A legacy CRIMINALTIMER= value not yet made into its memory (the saver
+    /// writes it back only in that state; a worn memory saves itself).</summary>
+    public int PendingCriminalSeconds => _pendingCriminalSeconds;
+
+    /// <summary>A legacy MURDERDECAY= value not yet made into its memory.</summary>
+    public int PendingMurderDecaySeconds => _pendingMurderDecaySeconds;
+
+    /// <summary>Seconds left on the criminal memory (its TIMER).</summary>
     public int CriminalTimerRemainingSeconds
     {
         get
         {
-            if (_criminalTimer <= 0) return 0;
-            long remain = _criminalTimer - Environment.TickCount64;
-            return remain > 0 ? (int)Math.Min(remain / 1000, int.MaxValue) : 0;
+            var mem = CriminalMemory;
+            return mem != null ? RemainingSeconds(mem) : _pendingCriminalSeconds;
         }
-        set => _criminalTimer = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
+        set
+        {
+            var mem = CriminalMemory;
+            if (value <= 0)
+            {
+                _pendingCriminalSeconds = 0;
+                RemoveMemory(mem);
+            }
+            else if (mem != null)
+            {
+                mem.SetTimeout(Environment.TickCount64 + value * 1000L);
+            }
+            else
+            {
+                _pendingCriminalSeconds = value;
+            }
+        }
     }
 
-    /// <summary>Seconds until the next murder count decays off. Persisted so a
-    /// murderer's kills keep ageing across save/load instead of restarting the
-    /// full decay window every reload (Source-X stores the decay timer).</summary>
+    /// <summary>Seconds until the next murder count decays off: the murder memory's
+    /// TIMER, or - while its owner is offline and the clock is stopped - the balance
+    /// it keeps in MORE1 (m_itEqMurderCount.m_dwDecayBalance).</summary>
     public int MurderDecayRemainingSeconds
     {
         get
         {
-            if (_nextMurderDecayTick <= 0) return 0;
-            long remain = _nextMurderDecayTick - Environment.TickCount64;
-            return remain > 0 ? (int)Math.Min(remain / 1000, int.MaxValue) : 0;
+            var mem = MurderMemory;
+            return mem != null ? RemainingSeconds(mem) : _pendingMurderDecaySeconds;
         }
-        set => _nextMurderDecayTick = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
+        set
+        {
+            var mem = MurderMemory;
+            if (value <= 0)
+            {
+                _pendingMurderDecaySeconds = 0;
+                RemoveMemory(mem);
+            }
+            else if (mem != null)
+            {
+                if (ClockStopped(mem))
+                    mem.More1 = (uint)value;
+                else
+                    mem.SetTimeout(Environment.TickCount64 + value * 1000L);
+            }
+            else
+            {
+                _pendingMurderDecaySeconds = value;
+            }
+        }
     }
 
-    /// <summary>Arm/refresh the criminal timer (duration in ms).</summary>
-    public void SetCriminal(long durationMs) =>
-        _criminalTimer = durationMs > 0
-            ? Environment.TickCount64 + Math.Min(durationMs, long.MaxValue - Environment.TickCount64)
-            : 0;
+    /// <summary>A memory whose timer is not set (no TIMER in the save, or stopped at
+    /// logout) - upstream's "timeout -1".</summary>
+    private static bool ClockStopped(Item mem) => mem.Timeout <= 0;
 
-    /// <summary>FORGIVE verb: clear the murder count and the criminal timer.</summary>
+    private static int RemainingSeconds(Item mem)
+    {
+        if (ClockStopped(mem))
+            return mem.EquipLayer == Layer.FlagMurders ? (int)Math.Min(mem.More1, int.MaxValue) : 0;
+        long remain = mem.Timeout - Environment.TickCount64;
+        return remain > 0 ? (int)Math.Min(remain / 1000, int.MaxValue) : 0;
+    }
+
+    /// <summary>Arm/refresh the criminal memory (duration in ms) - the
+    /// Spell_Effect_Create(SPELL_NONE, LAYER_FLAG_Criminal, ...) of Noto_Criminal
+    /// (CCharNotoriety.cpp:420). Zero or less removes it.</summary>
+    public void SetCriminal(long durationMs)
+    {
+        _pendingCriminalSeconds = 0;
+        if (durationMs <= 0)
+        {
+            RemoveMemory(CriminalMemory);
+            return;
+        }
+        CreateFlagMemory(Layer.FlagCriminal, CriminalMemoryName, durationMs);
+    }
+
+    /// <summary>Source-X CChar::Noto_Murder (CCharNotoriety.cpp:379-387): the
+    /// "Murderer!" notice once the count is past MURDERMINCOUNT, and - while a player
+    /// has murders - the murder memory (re)made with the full MURDERDECAYTIME.
+    /// Spell_Effect_Create deletes the previous one first, so every call restarts the
+    /// countdown. Run after a murder mark and when a player enters the world without
+    /// a murder memory.</summary>
+    public void NotoMurder()
+    {
+        if (IsMurderer)
+            Character.SendOwnerMessage?.Invoke(_owner,
+                SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.MsgMurderer));
+        if (_owner.IsPlayer && _kills > 0)
+        {
+            _pendingMurderDecaySeconds = 0;
+            CreateFlagMemory(Layer.FlagMurders, MurderMemoryName, Character.MurderDecayTimeSeconds * 1000L);
+        }
+    }
+
+    /// <summary>The murder-memory half of CClient::Announce (CClient.cpp:388-401):
+    /// entering the world restarts a murder memory's clock from the balance it kept
+    /// (SetTimeoutS(MORE1)) or, with none, runs Noto_Murder; leaving stores the time
+    /// left in MORE1 and stops the clock (TIMER -1), so murders age by time online.</summary>
+    public void OnClientAnnounce(bool arrive)
+    {
+        MaterializePending();
+        var mem = MurderMemory;
+        if (mem != null)
+        {
+            if (arrive)
+            {
+                mem.SetTimeout(Environment.TickCount64 + (long)mem.More1 * 1000L);
+            }
+            else if (!ClockStopped(mem))
+            {
+                mem.More1 = (uint)RemainingSeconds(mem);
+                mem.SetTimeout(-1);
+            }
+        }
+        else if (arrive)
+        {
+            NotoMurder();
+        }
+    }
+
+    /// <summary>Spell_Effect_Create(SPELL_NONE, layer, GetSpellEffect(SPELL_NONE, 0),
+    /// duration) (CCharSpell.cpp:2040-2113) for the two notoriety layers: drop what is
+    /// on the layer (a TIMER=-1 one is only removed - casting again toggles it off),
+    /// make the IT_SPELL memory and wear it with the duration as its timer.</summary>
+    private Item? CreateFlagMemory(Layer layer, string name, long durationMs,
+        SphereNet.Game.World.GameWorld? world = null)
+    {
+        world ??= ObjBase.ResolveWorld?.Invoke();
+        if (world == null)
+            return null;
+
+        var prev = Worn(layer);
+        if (prev != null)
+        {
+            bool toggle = ClockStopped(prev);
+            world.DeleteObject(prev);
+            if (toggle)
+                return null;
+        }
+
+        // The duration travels in tenths of a second (iDurationInTenths).
+        long tenthsMs = Math.Max(0, durationMs) / 100 * 100;
+        var def = Character.ResolveSpellDef?.Invoke(SpellType.None);
+        var mem = world.CreateItem();
+        mem.BaseId = def?.RuneItemId is > 0 ? def.RuneItemId : FallbackMemoryId;
+        mem.Name = name;
+        mem.SetAttr(def != null ? ObjAttributes.Newbie | ObjAttributes.Magic : ObjAttributes.Newbie);
+        mem.ItemType = ItemType.Spell;
+        mem.MoreP = Point3D.Zero; // MOREX = SPELL_NONE, MOREY = GetSpellEffect(SPELL_NONE, 0) = 0
+        mem.More2 = 1;            // m_spellcharges
+        world.LastNewObject = mem.Uid;
+        if (!_owner.Equip(mem, layer))
+        {
+            world.DeleteObject(mem);
+            return null;
+        }
+        mem.SetTimeout(Environment.TickCount64 + tenthsMs);
+        return mem;
+    }
+
+    private void RemoveMemory(Item? mem)
+    {
+        if (mem == null || mem.IsDeleted)
+            return;
+        var world = ObjBase.ResolveWorld?.Invoke();
+        if (world != null)
+            world.DeleteObject(mem);
+        else
+            _owner.Unequip(mem.EquipLayer);
+    }
+
+    /// <summary>FORGIVE verb: clear the murder count and the criminal state.</summary>
     public void Forgive()
     {
         _kills = 0;
-        _criminalTimer = 0;
+        _pendingCriminalSeconds = 0;
+        _pendingMurderDecaySeconds = 0;
+        RemoveMemory(MurderMemory);
+        RemoveMemory(CriminalMemory);
     }
 
-    /// <summary>Clear the criminal timer when expired (per-tick check that
-    /// does not touch the stat flag — TickNotorietyDecay handles that).</summary>
-    public void ExpireCriminalTimer(long nowMs)
+    /// <summary>Make a legacy CRIMINALTIMER= / MURDERDECAY= value into its memory. A
+    /// worn memory wins over a legacy value; a murder countdown needs murders, and a
+    /// player who is not in the world gets it with the clock stopped and the balance
+    /// in MORE1, as CClient::Announce(false) leaves it.</summary>
+    public void MaterializePending(SphereNet.Game.World.GameWorld? world = null)
     {
-        if (_criminalTimer > 0 && nowMs >= _criminalTimer)
-            _criminalTimer = 0;
-    }
-
-    /// <summary>Called once per world tick. Clears the expired criminal flag
-    /// and decays one kill every MurderDecayTimeSeconds of online time.</summary>
-    public void TickNotorietyDecay(long nowMs)
-    {
-        if (_criminalTimer > 0 && nowMs >= _criminalTimer)
+        if (_pendingCriminalSeconds > 0)
         {
-            _criminalTimer = 0;
-            if (_owner.IsStatFlag(StatFlag.Criminal))
-                _owner.ClearStatFlag(StatFlag.Criminal);
+            int seconds = _pendingCriminalSeconds;
+            _pendingCriminalSeconds = 0;
+            if (CriminalMemory == null)
+                CreateFlagMemory(Layer.FlagCriminal, CriminalMemoryName, seconds * 1000L, world);
         }
-
-        if (_kills > 0 && Character.MurderDecayTimeSeconds > 0)
+        if (_pendingMurderDecaySeconds > 0)
         {
-            if (_nextMurderDecayTick == 0)
-                _nextMurderDecayTick = nowMs + Character.MurderDecayTimeSeconds * 1000L;
-            else if (nowMs >= _nextMurderDecayTick)
+            int seconds = _pendingMurderDecaySeconds;
+            _pendingMurderDecaySeconds = 0;
+            if (MurderMemory == null && _owner.IsPlayer && _kills > 0)
             {
-                _kills--;
-                // @MurderDecay may override the seconds until the next decay (ARGN2);
-                // 0 / no handler falls back to the configured default interval.
-                int nextOverride = Character.OnMurderDecay?.Invoke(_owner, _kills) ?? 0;
-                long interval = nextOverride > 0 ? nextOverride : Character.MurderDecayTimeSeconds;
-                _nextMurderDecayTick = nowMs + interval * 1000L;
+                var mem = CreateFlagMemory(Layer.FlagMurders, MurderMemoryName, seconds * 1000L, world);
+                if (mem != null && !_owner.IsOnline)
+                {
+                    mem.More1 = (uint)seconds;
+                    mem.SetTimeout(-1);
+                }
             }
         }
-        else
+    }
+
+    /// <summary>The load-time repair upstream runs on every object (FixWeirdness):
+    /// legacy timers become memories, a murder memory on a character with no murders
+    /// is deleted (CItem.cpp:1214, 0x2235), and STATF_CRIMINAL without a criminal
+    /// memory is cleared (CChar.cpp:974-979).</summary>
+    public void FixNotorietyAfterLoad(SphereNet.Game.World.GameWorld world)
+    {
+        MaterializePending(world);
+        var murders = MurderMemory;
+        if (murders != null && (!_owner.IsPlayer || _kills <= 0))
+            world.DeleteObject(murders);
+        if (_owner.IsStatFlag(StatFlag.Criminal) && CriminalMemory == null)
+            _owner.ClearStatFlag(StatFlag.Criminal);
+    }
+
+    /// <summary>Character tick: run a criminal/murder memory that has come due.</summary>
+    public void ExpireCriminalTimer(long nowMs) => TickNotorietyDecay(nowMs);
+
+    /// <summary>Run the notoriety memories that have come due by <paramref name="nowMs"/>
+    /// (the worn items also tick on their own timers through Item.OnTick; this is the
+    /// same step for a caller driving the clock), after making any legacy value into
+    /// its memory.</summary>
+    public void TickNotorietyDecay(long nowMs)
+    {
+        MaterializePending();
+        var criminal = CriminalMemory;
+        if (criminal != null && criminal.Timeout > 0 && nowMs >= criminal.Timeout)
+            EquipTick(criminal, nowMs);
+        var murders = MurderMemory;
+        if (murders != null && murders.Timeout > 0 && nowMs >= murders.Timeout)
+            EquipTick(murders, nowMs);
+    }
+
+    /// <summary>A notoriety memory's timer came due (CChar::OnTickEquip).
+    ///
+    /// LAYER_FLAG_Murders (CCharAct.cpp:4113-4134): one murder ages off - @MurderDecay
+    /// with ARGN1 = the new count and ARGN2 = the time to the next decay, both read
+    /// back - and the memory goes when the count reaches 0, else waits ARGN2 again.
+    ///
+    /// LAYER_FLAG_Criminal has no case there: it falls to Spell_Equip_OnTick, which for
+    /// SPELL_NONE (no tick flag) answers "kill the spell" - the memory is deleted and
+    /// its removal clears STATF_CRIMINAL.</summary>
+    public void EquipTick(Item mem, long nowMs)
+    {
+        if (mem.IsDeleted)
+            return;
+        mem.SetTimeout(0);
+        if (mem.EquipLayer == Layer.FlagMurders)
         {
-            _nextMurderDecayTick = 0;
+            if (!_owner.IsPlayer || _kills <= 0)
+            {
+                RemoveMemory(mem);
+                return;
+            }
+            _kills--;
+            // @MurderDecay may rewrite the count (the hook writes Kills back) and the
+            // seconds to the next decay (0 = MURDERDECAYTIME).
+            int nextOverride = Character.OnMurderDecay?.Invoke(_owner, _kills) ?? 0;
+            Character.NotoSaveUpdate?.Invoke(_owner);
+            if (_kills == 0)
+            {
+                RemoveMemory(mem);
+                return;
+            }
+            long intervalMs = nextOverride > 0 ? nextOverride * 1000L : Character.MurderDecayTimeSeconds * 1000L;
+            mem.SetTimeout(nowMs + Math.Max(0, intervalMs));
+            return;
         }
+        RemoveMemory(mem);
     }
 
     // --- Attacker log ---

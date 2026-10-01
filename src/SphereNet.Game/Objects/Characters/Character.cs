@@ -3295,13 +3295,19 @@ public partial class Character : ObjBase
     ///
     /// A dead or STONE victim refuses (:337). <paramref name="commandPet"/> is the
     /// reference's fCommandPet: <paramref name="src"/> ordered a pet to attack, so the
-    /// aggression is recorded against the owner but nobody auto-retaliates (:377).</summary>
-    public bool OnAttackedBy(Character? src, bool commandPet = false)
+    /// aggression is recorded against the owner but nobody auto-retaliates (:377).
+    /// <paramref name="shouldReveal"/> is fShouldReveal (CChar.h:1393, default true):
+    /// the attacker is revealed (:341) before the early return for a victim already
+    /// fighting them (:344). A harmful field spell passes false (CCharSpell.cpp:3777),
+    /// the damage entry passes !DAMAGE_NOREVEAL (CCharFight.cpp:684).</summary>
+    public bool OnAttackedBy(Character? src, bool commandPet = false, bool shouldReveal = true)
     {
         if (src == null || src == this)
             return true;
         if (IsDead || IsDeleted || IsStatFlag(StatFlag.Stone))
             return false;
+        if (shouldReveal)
+            src.ClearHiddenState();
         if (IsInWarMode && FightTarget == src.Uid)
             return true;
 
@@ -3317,14 +3323,16 @@ public partial class Character : ObjBase
         CombatState.AddAttacker(src.Uid);
 
         // Harming someone innocent to you when they did not strike first is a crime
-        // (CCharFight.cpp:361-375): a player victim decides it (OnNoticeCrime - SAWCRIME
-        // and @SeeCrime), anyone else leaves it to the witnesses (CheckCrimeSeen).
+        // (CCharFight.cpp:361-375): a victim with an active client decides it
+        // (OnNoticeCrime - SAWCRIME and @SeeCrime); anyone else - an NPC, or a
+        // disconnected player still lingering in the world - leaves it to the
+        // witnesses (CheckCrimeSeen), who flag the attacker and call the guards.
         if (aggreived)
         {
             var world = ResolveWorld?.Invoke();
             if (world != null && Clients.GameClient.ComputeNotoriety(world, src, this) == 1) // NOTO_GOOD
             {
-                if (IsPlayer)
+                if (IsOnline) // IsClientActive()
                 {
                     CrimeWitnessService.OnNoticeCrime(world, this, src, this);
                     var srcOwner = !src.IsPlayer && src.OwnerSerial.IsValid ? world.FindChar(src.OwnerSerial) : null;
@@ -3333,7 +3341,9 @@ public partial class Character : ObjBase
                 }
                 else
                 {
-                    var mark = OwnerSerial.IsValid ? world.FindChar(OwnerSerial) ?? this : this;
+                    // A pet's crime is against its owner - none when the owner is gone
+                    // (IsStatFlag(STATF_PET) ? NPC_PetGetOwner() : this).
+                    var mark = OwnerSerial.IsValid ? world.FindChar(OwnerSerial) : this;
                     SkillType active = Action; // Skill_GetActive()
                     CrimeWitnessService.CheckCrimeSeen(world, src, mark,
                         active is SkillType.None ? null : active, Random.Shared);
@@ -3344,6 +3354,35 @@ public partial class Character : ObjBase
         if (!commandPet)
             OnHarmedBy(src);
         return true;
+    }
+
+    /// <summary>Source-X CChar::NPC_PetGetOwnerRecursive (CCharNPCStatus.cpp:487): the
+    /// primary owner - the owner of the owner of my owner and so on. The walk stops at
+    /// the first player, or at an owner that has no owner (which is then the answer,
+    /// NPC or not). The reference counts only the NPC links it walked past and gives up
+    /// once that count exceeds 16 while another owner is still found, so a player at
+    /// the top of a chain is reached through up to 17 links, an 18th link is "too many
+    /// owners" (null), and circular ownership ends there too. Null when I have no owner
+    /// and for a player (the reference only asks it of an NPC).</summary>
+    public Character? PetGetOwnerRecursive(World.GameWorld world)
+    {
+        if (IsPlayer)
+            return null;
+        Character? owner = null;
+        Character current = this;
+        int walked = 0;
+        while (current.OwnerSerial.IsValid &&
+               world.FindChar(current.OwnerSerial) is { IsDeleted: false } next)
+        {
+            if (walked > 16)
+                return null; // too many owners (circular ownership?)
+            owner = next;
+            if (next.IsPlayer)
+                break;
+            walked++;
+            current = next;
+        }
+        return owner;
     }
 
     /// <summary>Source-X CChar::OnHarmedBy (CCharFight.cpp:291-316), the NPC side:
@@ -4079,12 +4118,36 @@ public partial class Character : ObjBase
         // Spell_Effect_Add for the poison memory (CCharSpell.cpp:1134).
         if (layer == Layer.FlagPoison)
             Poison.OnEffectAdded();
+        // LayerAdd LAYER_FLAG_Stuck (CCharAct.cpp:358-362): the hold freezes its
+        // wearer and shows the paralyze icon for what is left of its timer.
+        if (layer == Layer.FlagStuck)
+        {
+            SetStatFlag(StatFlag.Freeze);
+            OnClientBuffChanged?.Invoke(this, BuffIcon.Paralyze, true, StuckBuffSeconds(item), null);
+        }
+        // LayerAdd, LAYER_FLAG_Criminal (CCharAct.cpp:347-354): the worn criminal
+        // memory IS the criminal flag - on a load too.
+        if (layer == Layer.FlagCriminal)
+        {
+            SetStatFlag(StatFlag.Criminal);
+            NotoSaveUpdate?.Invoke(this);
+        }
         // Track the last weapon wielded for the EquipLastWeapon client macro
         // (Source-X CChar::m_uidWeaponLast, set on equip, CCharAct.cpp:314).
         if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && item.IsWeaponType)
             _lastWeaponUid = item.Uid;
         MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
         return true;
+    }
+
+    /// <summary>(word)GetTimerSAdjusted() of a stuck hold (CTimedObject.cpp:158): whole
+    /// seconds left, 0 once due, and (word)-1 for an item with no timer.</summary>
+    internal static ushort StuckBuffSeconds(Item stuck)
+    {
+        if (stuck.Timeout <= 0)
+            return ushort.MaxValue;
+        long diff = stuck.Timeout - Environment.TickCount64;
+        return diff < 0 ? (ushort)0 : unchecked((ushort)(diff / 1000));
     }
 
     /// <summary>Reason an equip was denied (Source-X CChar::CanEquipLayer).</summary>
@@ -4179,6 +4242,20 @@ public partial class Character : ObjBase
         // memory leaves the layer, the poison leaves with it.
         if (layer == Layer.FlagPoison)
             Poison.OnEffectRemoved();
+        // OnRemoveObj LAYER_FLAG_Stuck (CCharAct.cpp:466-474): the hold lets go -
+        // freeze off and the paralyze icon gone, however the item left the layer.
+        if (layer == Layer.FlagStuck)
+        {
+            ClearStatFlag(StatFlag.Freeze);
+            OnClientBuffChanged?.Invoke(this, BuffIcon.Paralyze, false, 0, null);
+        }
+        // OnRemoveObj, LAYER_FLAG_Criminal (CCharAct.cpp:455-461): the criminal
+        // flag leaves with its memory.
+        if (layer == Layer.FlagCriminal)
+        {
+            ClearStatFlag(StatFlag.Criminal);
+            NotoSaveUpdate?.Invoke(this);
+        }
         MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
 
         // Source-X Stat_AddMaxMod on unequip clamps the current pool down to the

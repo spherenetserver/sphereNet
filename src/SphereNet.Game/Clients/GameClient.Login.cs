@@ -814,6 +814,9 @@ public sealed partial class GameClient
         _character.MigrateStatLockFromTags();
         _character.IsOnline = true;
         _world.AddOnlinePlayer(_character); // activates tick for this player's sectors
+        // CClient::Announce(true) (CClient.cpp:388-401): the murder memory's clock
+        // restarts from the balance it kept, or Noto_Murder makes one.
+        _character.CombatState.OnClientAnnounce(arrive: true);
         OnCharacterOnline?.Invoke(_character, this);
         // Ensure character is in correct sector (may have been removed or stale after save/load)
         _world.PlaceCharacter(_character, _character.Position);

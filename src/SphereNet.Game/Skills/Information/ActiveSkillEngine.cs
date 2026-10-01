@@ -1671,7 +1671,9 @@ public static class ActiveSkillEngine
         }
         prov.EmoteObject(ServerMessages.Get(Msg.ProvocationEmote2));
 
-        if (!targ.OnAttackedBy(ch))
+        // "He realizes that you are the real bad guy as well" (:2104): recorded as an
+        // ordered attack (fCommandPet), so the target does not turn on the bard.
+        if (!targ.OnAttackedBy(ch, commandPet: true))
             return false;
         prov.Memory_AddObjTypes(ch.Uid, MemoryType.Aggreived | MemoryType.IrritatedBy);
 

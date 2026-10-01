@@ -433,6 +433,9 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
             Targets.SummonCage = false;
 
             _character.IsOnline = false;
+            // CClient::Announce(false) (CClient.cpp:388-397): the murder memory keeps
+            // the time it has left and its clock stops while the player is away.
+            _character.CombatState.OnClientAnnounce(arrive: false);
             _character.CTags.RemoveByPrefix("");
             OnCharacterOffline?.Invoke(_character);
             if (!linger)

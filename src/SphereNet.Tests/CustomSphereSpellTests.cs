@@ -58,6 +58,7 @@ public sealed class CustomSphereSpellTests
 
         var victim = world.CreateCharacter();
         victim.IsPlayer = true;
+        victim.IsOnline = true; // an active client decides the crime itself
         world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
 
         Assert.False(caster.IsFlaggedAsCriminal);

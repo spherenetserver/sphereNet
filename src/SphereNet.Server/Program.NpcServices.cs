@@ -389,17 +389,6 @@ public static partial class Program
         return bestPlayer ?? bestNpc;
     }
 
-    private static Character ResolveEffectiveOffender(Character offender)
-    {
-        if (offender.NpcMaster.IsValid)
-        {
-            var owner = _world.FindChar(offender.NpcMaster);
-            if (owner != null && !owner.IsDeleted)
-                return owner;
-        }
-        return offender;
-    }
-
     /// <summary>The chardef a call for guards summons: the area's OVERRIDE.GUARDS
     /// tag, else the GUARDS resource name, looked up as a CHARDEF
     /// (g_Cfg.ResourceGetIDType, CCharFight.cpp:252-253). A [DEFNAME] alias is followed

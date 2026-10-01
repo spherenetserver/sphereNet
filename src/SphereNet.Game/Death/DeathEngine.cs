@@ -90,30 +90,22 @@ public sealed class DeathEngine
         if (victim.IsStatFlag(StatFlag.Invul))
             return null;
 
+        // The killer argument names who struck the final blow; it is what @Death sees
+        // as ARGO (a SphereNet extension), what OnDeath reports and what the callers
+        // clear the fight of. Kill CREDIT does not come from it: Source-X credits the
+        // victim's attacker list (below). A death that arrives without a final-blow
+        // argument (delayed poison/effects) reports its strongest damaging attacker.
         Character? effectiveKiller = killer;
-        if (killer != null && killer.NpcMaster.IsValid)
-        {
-            var master = _world.FindChar(killer.NpcMaster);
-            if (master != null && !master.IsDeleted)
-                effectiveKiller = master;
-        }
         if (effectiveKiller == null)
         {
-            // Some death sources arrive without a final-blow argument even
-            // though damage attribution is present (delayed poison/effects).
-            // Source-X still credits m_lastAttackers; choose the strongest
-            // valid contributor as the representative killer, while the
-            // normal offender loop below continues to credit every attacker.
             foreach (var rec in victim.Attackers
-                .Where(r => !r.Ignored && r.TotalDamage > 0)
+                .Where(r => r.TotalDamage > 0)
                 .OrderByDescending(r => r.TotalDamage))
             {
                 var candidate = _world.FindChar(rec.Uid);
                 if (candidate == null || candidate.IsDeleted) continue;
-                effectiveKiller = candidate.ResolveOwnerCharacter() ?? candidate;
-                if (!effectiveKiller.IsDeleted)
-                    break;
-                effectiveKiller = null;
+                effectiveKiller = candidate;
+                break;
             }
         }
 
@@ -128,51 +120,66 @@ public sealed class DeathEngine
                 new TriggerArgs { CharSrc = victim, O1 = effectiveKiller }) == TriggerResult.True)
             return null;
 
-        var creditedOffenders = new List<Character>();
-        int attackerCount = 1;
-        if (effectiveKiller != null)
-        {
-            var offenders = new List<Character>();
-            var creditedUids = new HashSet<uint>();
-            foreach (var offender in EnumerateOffenders(victim, effectiveKiller))
-                if (creditedUids.Add(offender.Uid.Value))
-                    offenders.Add(offender);
-            attackerCount = Math.Max(1, offenders.Count);
-
-            foreach (var offender in offenders)
-            {
-                if (TriggerDispatcher?.FireCharTrigger(offender, CharTrigger.Kill,
-                        new TriggerArgs
-                        {
-                            CharSrc = offender,
-                            O1 = victim,
-                            N1 = victim.Attackers.Count
-                        }) != TriggerResult.True)
-                    creditedOffenders.Add(offender);
-            }
-        }
-
-        // "What was their noto to me?" (Noto_Kill, CCharNotoriety.cpp:560): each
-        // killer's view of the victim decides murder and the reward gates. Taken
-        // now, while the victim is still alive and flagged as it was when it died -
-        // Kill(), the dispel and the corpse all come later, exactly as in Source-X
-        // where Noto_Kill runs inside the attacker loop before any of them. Incognito
-        // and invul are not honoured here (Noto_GetFlag(this, false) → fInvul=false).
-        // A master credited for a pet's blows is not a murderer through the pet: in
-        // Source-X the pet itself is the attacker-list entry and an NPC killer never
-        // takes the murder branch (:570-574). Only a killer who struck personally can.
-        var killerViews = new List<(Character Killer, byte NotoThem, bool StruckPersonally)>(creditedOffenders.Count);
-        foreach (var offender in creditedOffenders)
-        {
-            bool personal = offender == killer || victim.Attackers.Any(r =>
-                r.Uid == offender.Uid && r.TotalDamage > 0);
-            killerViews.Add((offender, SphereNet.Game.Clients.GameClient.ComputeNotorietyResult(
-                _world, offender, victim, allowIncog: false, allowInvul: false).Notoriety, personal));
-        }
-
         // Sleeping is cleared by Kill() below (Source-X clears it before
         // MakeCorpse too) — capture it first for the corpse forensics stamp.
         bool wasSleeping = victim.IsStatFlag(StatFlag.Sleeping);
+
+        // Source-X CChar::Death walks the victim's contents before crediting anyone
+        // (CCharAct.cpp:4335-4350): an open trade window is deleted - its items go back
+        // to the pack and so reach the corpse with the rest of the loot, and the
+        // partner keeps no stale window - and the FIGHT / HARMEDBY memories are
+        // cleared, so the ghost holds no grudges (and no self-defence rights) from the
+        // fight that killed it. Only the IT_EQ_MEMORY_OBJ memories: a worn spell
+        // memory carries no memory types, and clearing "the rest" of nothing would
+        // delete it.
+        CancelTradesHook?.Invoke(victim);
+        foreach (var mem in new List<Item>(victim.Memories))
+            if (mem.ItemType == ItemType.EqMemoryObj)
+                victim.Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.HarmedBy);
+
+        // Give credit for the kill to my attacker(s) (CCharAct.cpp:4352-4378): every
+        // entry of the attacker list, in list order, whose character still exists and
+        // who dealt damage (amountDone > 0) - an ATTACKER.n.IGNORE entry included, the
+        // reference does not look at it here. Each one gets @Kill (ARGN1 = the attacker
+        // count, ARGO = the victim, SRC = itself); RETURN 1 skips it, otherwise its
+        // Noto_Kill runs right there, before the next entry's @Kill. Both take
+        // GetAttackersCount() - the size of the WHOLE list, so a row that never dealt
+        // damage earns nothing yet still dilutes everyone else's share. A pet is
+        // credited as itself, never as its owner.
+        var creditedOffenders = new List<Character>();
+        for (int i = 0; i < victim.Attackers.Count; i++)
+        {
+            var rec = victim.Attackers[i];
+            if (rec.TotalDamage <= 0)
+                continue;
+            var offender = _world.FindChar(rec.Uid);
+            if (offender == null || offender.IsDeleted)
+                continue;
+
+            if (TriggerDispatcher?.FireCharTrigger(offender, CharTrigger.Kill,
+                    new TriggerArgs
+                    {
+                        CharSrc = offender,
+                        O1 = victim,
+                        N1 = victim.Attackers.Count
+                    }) == TriggerResult.True)
+                continue;
+
+            NotoKill(offender, victim, Math.Max(1, victim.Attackers.Count));
+            creditedOffenders.Add(offender);
+        }
+
+        // Source-X kill record (CCharAct.cpp:4380-4389): "'<victim>' was
+        // killed by 'A', 'B'." — logged for player deaths and echoed to the
+        // victim's party (an unattributed death reads "accident").
+        if (KillMessageHook != null && victim.IsPlayer)
+        {
+            string names = creditedOffenders.Count == 0
+                ? ""
+                : string.Join(", ", creditedOffenders.Select(o => $"'{o.GetDisplayName()}'"));
+            KillMessageHook(victim,
+                $"'{victim.GetDisplayName()}' was killed by {(names.Length > 0 ? names : "accident")}.");
+        }
 
         // Champion wave credit — Source-X routes this through the spawn
         // back-link at object destroy (CObjBase dtor → CCChampion::DelObj);
@@ -206,71 +213,12 @@ public sealed class DeathEngine
         // memory on you goes, good and bad alike.
         DispelEffectsHook?.Invoke(victim);
 
-        // Source-X CChar::Death deletes any open trade window before the
-        // corpse forms; the trade items return to the pack and so reach the
-        // corpse with the rest of the loot.
-        CancelTradesHook?.Invoke(victim);
-
-        // Source-X CChar::Death clears the victim's FIGHT / HARMEDBY
-        // memories — the ghost holds no grudges (and no self-defence
-        // rights) from the fight that killed it.
-        // Only the IT_EQ_MEMORY_OBJ memories: a worn spell memory carries no memory
-        // types, and clearing "the rest" of nothing would delete it - ending an
-        // effect the dispel above deliberately left on (MOVE_NEVER, the necromancy
-        // and flag layers).
-        foreach (var mem in new List<Item>(victim.Memories))
-            if (mem.ItemType == ItemType.EqMemoryObj)
-                victim.Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.HarmedBy);
-
         // Source-X CChar::Death order: the rider leaves the saddle before the
         // corpse is made — otherwise the mount-layer item is snapshotted into
         // the death state and the client keeps drawing a mounted body under
         // the ghost.
         if (victim.IsMounted)
             DismountHook?.Invoke(victim);
-
-        // Karma/Fame/murder credit — skipped when @Kill returned 1.
-        if (effectiveKiller != null)
-        {
-            // Source-X CChar::Death credits EVERY damaging attacker and divides the
-            // fame/karma/experience reward by the attacker count (Noto_Kill's
-            // iTotalKillers), so a group splits the spoils instead of the final
-            // blow taking all of it. Deduped, pets credited to their master.
-            // Noto_Kill per killer (CCharNotoriety.cpp:555-647): the murder decision
-            // first, then the reward block - which a same-guild view or a CONJURED
-            // victim skips entirely (fame, karma AND experience, :611-613).
-            foreach (var (offender, notoThem, struckPersonally) in killerViews)
-            {
-                if (struckPersonally)
-                    MarkMurder(offender, victim, notoThem);
-
-                if (notoThem == 2 || victim.IsStatFlag(StatFlag.Conjured)) // NOTO_GUILD_SAME
-                    continue;
-
-                ApplyKarmaFameChange(offender, victim, attackerCount, notoThem);
-
-                // Experience award (Noto_Kill, CCharNotoriety.cpp:619-646): gated on
-                // EXPERIENCESYSTEM + EXP_MODE_RAISE_COMBAT, a tenth of the victim's
-                // experience split across the killers and scaled by
-                // EXPERIENCEKOEFPVP/PVM and the relative totals.
-                int expReward = Character.KillExperienceReward(offender, victim, attackerCount);
-                if (expReward != 0)
-                    offender.ChangeExperience(expReward);
-            }
-        }
-
-        // Source-X kill record (CCharAct.cpp:4357-4389): "'<victim>' was
-        // killed by 'A', 'B'." — logged for player deaths and echoed to the
-        // victim's party (an unattributed death reads "accident").
-        if (KillMessageHook != null && victim.IsPlayer)
-        {
-            string names = creditedOffenders.Count == 0
-                ? ""
-                : string.Join(", ", creditedOffenders
-                    .Select(o => $"'{o.GetDisplayName()}'").Distinct());
-            KillMessageHook(victim,
-                $"'{victim.GetDisplayName()}' was killed by {(names.Length > 0 ? names : "accident")}.");
-        }
 
         // Source-X clears m_lastAttackers once the corpse and its @DeathCorpse are done
         // (CCharAct.cpp:4418), so @CreateLoot and @DeathCorpse still read ATTACKER.*.
@@ -312,9 +260,10 @@ public sealed class DeathEngine
         if (ShouldLeaveNoCorpse(victim, deathFlags))
         {
             victim.ClearAttackers();
-            // Source-X MakeCorpse: a summon that leaves no corpse bursts a
-            // spell-fizzle effect instead of silently vanishing.
-            if (victim.IsSummoned)
+            // Source-X MakeCorpse: a conjured creature that leaves no corpse bursts
+            // a spell-fizzle effect instead of silently vanishing; DEATH_NOCORPSE
+            // returns before that effect.
+            if ((deathFlags & 0x02) == 0)
                 ConjuredVanishEffectHook?.Invoke(victim);
             if (!victim.IsPlayer && !victim.IsBonded)
             {
@@ -341,6 +290,7 @@ public sealed class DeathEngine
                 DropLootToCorpse(victim, corpse);
             else
                 DropNpcLootToCorpse(victim, corpse);
+            DeleteFlagLayersOnDeath(victim);
         }
 
         // @DeathCorpse — fired on the victim once the corpse exists and the
@@ -378,6 +328,42 @@ public sealed class DeathEngine
         return corpse;
     }
 
+    /// <summary>LAYER_FLAG_Stuck (uofiles_enums.h:614).</summary>
+    private const Layer FlagStuckLayer = (Layer)51;
+
+    /// <summary>The flag layers UnEquipAllItems deletes from a dead character
+    /// (CCharAct.cpp:613-621): poison, hallucination, potion, drunk, stuck and the
+    /// potion cooldown. Every other flag layer - the criminal and murder memories
+    /// among them - is not a visible layer, so it stays where it is (:644-647).</summary>
+    private static readonly Layer[] DeathDeletedFlagLayers =
+    [
+        Layer.FlagPoison,
+        SphereNet.Game.Magic.SpellLayers.FlagHallucination,
+        SphereNet.Game.Magic.SpellLayers.FlagPotion,
+        SphereNet.Game.Magic.SpellLayers.FlagDrunk,
+        FlagStuckLayer,
+        Layer.FlagPotionUsed,
+    ];
+
+    /// <summary>The flag-layer half of UnEquipAllItems, which a death reaches through
+    /// MakeCorpse -> DropAll when a corpse is made and DEATH_NOLOOTDROP is not set
+    /// (CItemCorpse.cpp:218-219, CCharAct.cpp:584): each of
+    /// <see cref="DeathDeletedFlagLayers"/> is deleted while STATF_DEAD is set,
+    /// whether it is an equipped slot item or a spell memory on that layer.</summary>
+    private void DeleteFlagLayersOnDeath(Character victim)
+    {
+        if (!victim.IsStatFlag(StatFlag.Dead))
+            return;
+        foreach (var layer in DeathDeletedFlagLayers)
+        {
+            var worn = victim.GetEquippedItem(layer);
+            if (worn != null && !worn.IsDeleted)
+                _world.DeleteObject(worn);
+            foreach (var mem in victim.Memories.Where(m => !m.IsDeleted && m.EquipLayer == layer).ToList())
+                _world.DeleteObject(mem);
+        }
+    }
+
     /// <summary>Source-X DEATHFLAGS (CChar.h): a per-character bitmask controlling
     /// corpse/loot/fame behaviour on death. Parsed from the DEATHFLAGS tag (hex or
     /// decimal). 0 when unset.</summary>
@@ -389,30 +375,80 @@ public sealed class DeathEngine
     }
 
     /// <summary>Source-X MakeCorpse: no corpse for DEATH_NOCORPSE (0x02), or for a
-    /// summoned creature unless DEATH_NOCONJUREDEFFECT (0x08) / DEATH_HASCORPSE
-    /// (0x10) is set. Players always leave a corpse.</summary>
+    /// conjured creature (STATF_CONJURED - a summon, or an NPC a guard killed)
+    /// unless DEATH_NOCONJUREDEFFECT (0x08) / DEATH_HASCORPSE (0x10) is set.
+    /// Players always leave a corpse.</summary>
     private static bool ShouldLeaveNoCorpse(Character victim, int deathFlags)
     {
         if (victim.IsPlayer) return false;
         if ((deathFlags & 0x02) != 0) return true;
-        if (victim.IsSummoned && (deathFlags & (0x08 | 0x10)) == 0) return true;
+        if ((victim.IsSummoned || victim.IsStatFlag(StatFlag.Conjured)) &&
+            (deathFlags & (0x08 | 0x10)) == 0)
+            return true;
         return false;
     }
 
     /// <summary>
-    /// Source-X Noto_Kill's murder branch (CCharNotoriety.cpp:575-608), for one
-    /// credited killer: a PLAYER killer whose view of the victim was below
-    /// NOTO_GUILD_SAME (innocent blue, or NOTO_INVALID) commits a murder unless GM
-    /// mode is on (IsPriv(PRIV_GM)). The victim's kind does not matter - an innocent
-    /// NPC, a summon included, is a murder too; the view decides, so a grey (criminal,
-    /// aggressor, karma-neutral), red, guild-war, same-guild or party victim is not.
-    /// @MurderMark can adjust the count, suppress the criminal flag, or block the mark.
+    /// Source-X CChar::Noto_Kill (CCharNotoriety.cpp:555-647) for one credited killer.
+    ///
+    /// "What was their noto to me?" (:560) - the killer's view of the victim, taken now,
+    /// while the victim is still alive and flagged as it was when it died; incognito and
+    /// invul are not honoured (Noto_GetFlag(this, false)). Then:
+    /// <list type="bullet">
+    /// <item>an NPC killer of an NPC that is a guard conjures the victim and takes
+    /// nothing (:568-574) - every later killer meets the CONJURED gate too, and
+    /// MakeCorpse leaves no corpse unless DEATHFLAGS asks for one;</item>
+    /// <item>a non-NPC killer whose view was below NOTO_GUILD_SAME commits a murder
+    /// (the murder branch, :575-608);</item>
+    /// <item>the reward - fame, karma and experience, each divided by
+    /// <paramref name="totalKillers"/> - unless the view was NOTO_GUILD_SAME or the
+    /// victim is CONJURED (:611-646).</item>
+    /// </list>
     /// </summary>
-    private static void MarkMurder(Character offender, Character victim, byte notoThem)
+    private void NotoKill(Character killer, Character victim, int totalKillers)
     {
-        if (offender == victim || !offender.IsPlayer)
+        if (killer == victim)
             return;
-        if (notoThem >= 2 || offender.IsGmMode) // NOTO_GUILD_SAME
+        byte notoThem = SphereNet.Game.Clients.GameClient.ComputeNotorietyResult(
+            _world, killer, victim, allowIncog: false, allowInvul: false).Notoriety;
+
+        if (!killer.IsPlayer)
+        {
+            if (!victim.IsPlayer && killer.NpcBrain == NpcBrainType.Guard)
+            {
+                victim.SetStatFlag(StatFlag.Conjured);
+                return;
+            }
+        }
+        else if (notoThem < 2) // NOTO_GUILD_SAME
+        {
+            MarkMurder(killer, victim);
+        }
+
+        if (notoThem == 2 || victim.IsStatFlag(StatFlag.Conjured))
+            return;
+
+        ApplyKarmaFameChange(killer, victim, totalKillers, notoThem);
+
+        // Experience award (:619-646): gated on EXPERIENCESYSTEM +
+        // EXP_MODE_RAISE_COMBAT, a tenth of the victim's experience split across the
+        // killers and scaled by EXPERIENCEKOEFPVP/PVM and the relative totals.
+        int expReward = Character.KillExperienceReward(killer, victim, totalKillers);
+        if (expReward != 0)
+            killer.ChangeExperience(expReward);
+    }
+
+    /// <summary>
+    /// Noto_Kill's murder branch (CCharNotoriety.cpp:575-608): a player killer whose
+    /// view of the victim was below NOTO_GUILD_SAME (innocent blue, or NOTO_INVALID)
+    /// commits a murder unless GM mode is on (IsPriv(PRIV_GM)). The victim's kind does
+    /// not matter - an innocent NPC, a summon included, is a murder too. @MurderMark can
+    /// adjust the count (ARGN1), suppress the criminal flag (ARGN2) or block the mark
+    /// (ARGN3); a mark that is not blocked runs Noto_Murder whatever ARGN2 said.
+    /// </summary>
+    private static void MarkMurder(Character offender, Character victim)
+    {
+        if (offender.IsGmMode)
             return;
 
         int proposed = offender.Kills + 1;
@@ -422,36 +458,15 @@ public sealed class DeathEngine
         if (decision.Count.HasValue)
         {
             offender.Kills = (short)Math.Clamp(decision.Count.Value, 0, short.MaxValue);
-            // ARGN2 asks for Noto_Criminal (CCharNotoriety.cpp:600-601): the
-            // regular criminal flag, @Criminal and CRIMINALTIMER included.
+            // ARGN2 asks for Noto_Criminal (:600-601): the regular criminal flag,
+            // @Criminal and CRIMINALTIMER included.
             if (decision.MakeCriminal)
                 offender.MakeCriminal();
+            offender.CombatState.NotoMurder();
         }
-    }
-
-    /// <summary>The final-blow killer first, then every logged attacker that
-    /// actually DEALT DAMAGE, each resolved to its effective offender (a pet's hits
-    /// credit its master). Ignored attackers (ATTACKER.n.IGNORE) are skipped.
-    ///
-    /// The damage gate is the reference's (CCharAct.cpp:4361 credits a row only
-    /// while <c>amountDone &gt; 0</c>) and it is load-bearing now that the list also
-    /// holds characters this one merely ENGAGED: without it, swinging once and
-    /// missing would earn a share of the kill.</summary>
-    private IEnumerable<Character> EnumerateOffenders(Character victim, Character effectiveKiller)
-    {
-        yield return effectiveKiller;
-        foreach (var rec in victim.Attackers)
-        {
-            if (rec.Ignored || rec.TotalDamage <= 0) continue;
-            var attacker = _world.FindChar(rec.Uid);
-            if (attacker == null || attacker.IsDeleted) continue;
-            if (attacker.NpcMaster.IsValid)
-            {
-                var master = _world.FindChar(attacker.NpcMaster);
-                if (master != null && !master.IsDeleted) { yield return master; continue; }
-            }
-            yield return attacker;
-        }
+        // NotoSave_Update (:605): the murder branch refreshes the killer's
+        // notoriety for viewers even when @MurderMark blocked the mark.
+        Character.NotoSaveUpdate?.Invoke(offender);
     }
 
     /// <summary>Apply Karma/Fame changes when killer kills victim, divided by the

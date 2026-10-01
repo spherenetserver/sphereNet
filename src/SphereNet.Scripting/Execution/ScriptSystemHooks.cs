@@ -17,8 +17,7 @@ public sealed class ScriptSystemHooks
     };
     private static readonly Dictionary<string, string[]> ClientHookAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["unkdata"] = ["unknown_client_data"],
-        ["quotaexceed"] = ["exceed_network_quota"]
+        ["unkdata"] = ["unknown_client_data"]
     };
 
     public ScriptSystemHooks(TriggerRunner runner)
@@ -172,6 +171,35 @@ public sealed class ScriptSystemHooks
     public bool DispatchItem(string hookSuffix, IScriptObj itemObj, IScriptObj? source = null, string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0)
         => Dispatch($"f_onitem_{hookSuffix}", source ?? itemObj, itemObj, args, argn1, argn2, argn3);
 
+    /// <summary>Source-X CClient::Event_ExceededNetworkQuota (CClientEvent.cpp:819-842):
+    /// <c>f_onclient_exceed_network_quota</c> runs on the server object with SRC = the
+    /// client, ARGN1 = 1 (output) / 2 (input), ARGN2 = the bytes moved in the check
+    /// period, ARGN3 = the quota, LOCAL.ACCOUNT = the account name ("NA" without one)
+    /// and LOCAL.IP = the peer address. RETURN 0 keeps the client and logs, RETURN 1
+    /// keeps it silently; anything else - no RETURN, another value, no such function -
+    /// is the default: disconnect and log.</summary>
+    public NetworkQuotaVerdict RunNetworkQuotaHook(IScriptObj server, IScriptObj? client,
+        ITextConsole? console, byte type, long bytes, long quota, string account, string ip)
+    {
+        var locals = new Variables.VarMap();
+        locals.SetStr("ACCOUNT", false, account);
+        locals.SetStr("IP", false, ip);
+        var args = new TriggerArgs(client, type, bytes, "")
+        {
+            Number3 = quota,
+            SharedLocals = locals
+        };
+        if (!_runner.TryRunFunctionNumeric("f_onclient_exceed_network_quota", server, console, args,
+                out long? ret))
+            return NetworkQuotaVerdict.Default;
+        return ret switch
+        {
+            0 => NetworkQuotaVerdict.Log,
+            1 => NetworkQuotaVerdict.Ignore,
+            _ => NetworkQuotaVerdict.Default
+        };
+    }
+
     /// <summary>Source-X SCRIPT_MAX_LINE_LEN, the cap on LOCAL.STR.</summary>
     private const int ScriptMaxLineLen = 4096;
 
@@ -213,4 +241,15 @@ public sealed class ScriptSystemHooks
         return _runner.TryRunFunction(functionName, server, server as ITextConsole, args, out var result)
             && result == Core.Enums.TriggerResult.True;
     }
+}
+
+/// <summary>What <c>f_onclient_exceed_network_quota</c> decided.</summary>
+public enum NetworkQuotaVerdict
+{
+    /// <summary>No RETURN 0/1: disconnect the client and log.</summary>
+    Default,
+    /// <summary>RETURN 0: keep the client, log.</summary>
+    Log,
+    /// <summary>RETURN 1: keep the client, no log.</summary>
+    Ignore
 }

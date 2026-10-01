@@ -26,6 +26,7 @@ public class NotorietyDecayTriggerTests
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
         ch.Kills = 3;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
@@ -33,17 +34,20 @@ public class NotorietyDecayTriggerTests
         Character.OnMurderDecay = (self, newKills) => { if (self == ch) decays.Add(newKills); return 0; };
 
         long decayMs = Character.MurderDecayTimeSeconds * 1000L;
-        const long t0 = 1_000_000;
+        long t0 = Environment.TickCount64;
 
-        ch.TickNotorietyDecay(t0);              // arms the decay timer, no decrement yet
+        // Noto_Murder wears the "Murder Decay" memory with the full window.
+        ch.CombatState.NotoMurder();
+        Assert.NotNull(ch.GetEquippedItem(SphereNet.Core.Enums.Layer.FlagMurders));
+        ch.TickNotorietyDecay(t0);              // not due yet
         Assert.Empty(decays);
         Assert.Equal(3, ch.Kills);
 
-        ch.TickNotorietyDecay(t0 + decayMs + 1); // one kill ages off
+        ch.TickNotorietyDecay(t0 + decayMs + 1_000); // one kill ages off
         Assert.Equal([2], decays);
         Assert.Equal(2, ch.Kills);
 
-        ch.TickNotorietyDecay(t0 + 2 * decayMs + 2); // next one ages off
+        ch.TickNotorietyDecay(t0 + 2 * decayMs + 2_000); // next one ages off
         Assert.Equal([2, 1], decays);
         Assert.Equal(1, ch.Kills);
     }

@@ -65,6 +65,22 @@ public sealed class NetworkManager : IDisposable
     public int MaxPacketsPerTick { get; set; } = 100;
     public int FloodDetectionCount { get; set; } = 5;
     public int FloodDetectionWindowMs { get; set; } = 10_000;
+
+    /// <summary>Source-X kiStateDataCheckPeriodMilli (CNetworkThread.cpp:135).</summary>
+    public const int ByteQuotaCheckPeriodMs = 10_000;
+
+    /// <summary>MAXSIZECLIENTOUT: bytes sent to one client per check period; 0 = off.</summary>
+    public long MaxSizeClientOut { get; set; }
+
+    /// <summary>MAXSIZECLIENTIN: bytes received from one client per check period; 0 = off.</summary>
+    public long MaxSizeClientIn { get; set; }
+
+    /// <summary>A connection exceeded its byte quota: (state, type 1 = output /
+    /// 2 = input, bytes, quota). Returns whether to log it (Source-X
+    /// CClient::Event_ExceededNetworkQuota), or null when no client is attached, in
+    /// which case the connection is closed.</summary>
+    public Func<NetState, byte, long, long, bool?>? ByteQuotaExceeded { get; set; }
+    private long _lastByteQuotaCheck;
     public int ClientMaxIP { get; set; } = 16;
     /// <summary>Incoming script packet filter (Source-X CClient::xPacketFilter): handed
     /// every framed packet, registered opcode or not; returning true consumes it with no
@@ -1125,6 +1141,7 @@ public sealed class NetworkManager : IDisposable
     public void Tick()
     {
         long now = Environment.TickCount64;
+        CheckByteQuotas(now);
         DecayIpHistory(now);
         CryptoState.PurgeExpiredRelayKeys(now);
         foreach (var state in _states)
@@ -1172,6 +1189,72 @@ public sealed class NetworkManager : IDisposable
                 OnStateCleared(state.RemoteEndPoint?.Address);
                 state.Clear();
             }
+        }
+    }
+
+    /// <summary>Source-X CNetworkThread::tick's legitimacy check (CNetworkThread.cpp:
+    /// 135-189): once the check period has passed, every connection whose out-byte
+    /// counter is over <see cref="MaxSizeClientOut"/> (type 1) - or else whose in-byte
+    /// counter is over <see cref="MaxSizeClientIn"/> (type 2) - is handed to
+    /// <see cref="ByteQuotaExceeded"/>, and every connection's counters restart from
+    /// zero. A connection with no client behind it (the handler returns null, or no
+    /// handler is installed) is closed. This is independent of the per-pass packet
+    /// quota (<see cref="MaxPacketsPerTick"/>), which only throttles.</summary>
+    public void CheckByteQuotas(long now)
+    {
+        if (now - _lastByteQuotaCheck <= ByteQuotaCheckPeriodMs)
+            return;
+        _lastByteQuotaCheck = now;
+
+        long maxOut = MaxSizeClientOut, maxIn = MaxSizeClientIn;
+        foreach (var state in _states)
+        {
+            if (!state.IsInUse)
+                continue;
+            if (!state.IsClosing && (maxOut != 0 || maxIn != 0))
+            {
+                byte type = 0;
+                long bytes = 0, quota = 0;
+                long outBytes = state.OutByteCounter, inBytes = state.InByteCounter;
+                if (maxOut != 0 && outBytes > maxOut)
+                {
+                    type = 1;
+                    bytes = outBytes;
+                    quota = maxOut;
+                }
+                else if (maxIn != 0 && inBytes > maxIn)
+                {
+                    type = 2;
+                    bytes = inBytes;
+                    quota = maxIn;
+                }
+
+                if (type != 0)
+                {
+                    bool? log = null;
+                    try
+                    {
+                        log = ByteQuotaExceeded?.Invoke(state, type, bytes, quota);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Network quota handler threw for #{Id}", state.Id);
+                        log = true;
+                    }
+                    if (log == null)
+                        state.MarkClosing();
+
+                    if (log != false)
+                    {
+                        string account = string.IsNullOrEmpty(state.AccountName) ? "NA" : state.AccountName;
+                        _logger.LogWarning(
+                            "NetState id {Id} (IP: {IP}, Account: {Account}) exceeded its {Dir} quota ({Bytes}/{Quota}).",
+                            state.Id, state.RemoteEndPoint?.Address, account,
+                            type == 2 ? "input" : "output", bytes, quota);
+                    }
+                }
+            }
+            state.ResetByteCounters();
         }
     }
 

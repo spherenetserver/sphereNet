@@ -413,7 +413,7 @@ public class CombatAuditRegressionTests
             var attacker = MakeCharacter(world, 100, 100);
             attacker.PrivLevel = PrivLevel.GM;
             var target = MakeCharacter(world, 101, 100);
-            var chest = new Item { HitsMax = 50, HitsCur = 50 };
+            var chest = new Item { ItemType = ItemType.Armor, HitsMax = 50, HitsCur = 50 };
             target.Equip(chest, Layer.Chest);
             CombatEngine.OnHitDamage = ctx =>
             {

@@ -773,25 +773,9 @@ public static class CombatEngine
             return false;
         if (source.IsPlayer)
             return true;
-        var owner = ResolvePetOwnerRecursive(world!, source);
+        // A pet attacking a player: its PRIMARY owner (NPC_PetGetOwnerRecursive, :674).
+        var owner = source.PetGetOwnerRecursive(world!);
         return owner != null && owner.IsPlayer;
-    }
-
-    /// <summary>NPC_PetGetOwnerRecursive: the top of a pet's ownership chain (a pet
-    /// owned by a pet owned by a player resolves to the player).</summary>
-    private static Character? ResolvePetOwnerRecursive(World.GameWorld world, Character pet)
-    {
-        Character? owner = null;
-        var current = pet;
-        for (int depth = 0; depth < 16 && !current.IsPlayer && current.OwnerSerial.IsValid; depth++)
-        {
-            var next = world.FindChar(current.OwnerSerial);
-            if (next == null || next == current)
-                break;
-            owner = next;
-            current = next;
-        }
-        return owner;
     }
 
     /// <summary>FEATURE_AOS_UPDATE_B in FEATUREAOS: the AOS necromancy curses and
@@ -853,15 +837,13 @@ public static class CombatEngine
             (IsDamageImmune(target, type) || IsRegionProtected(target, src)))
             return 0;
 
-        // OnAttackedBy (:681): a stone victim ignores it (even DAMAGE_GOD), and the
-        // attacker is revealed unless the blow carries DAMAGE_NOREVEAL.
+        // OnAttackedBy (:684): a stone victim ignores it (even DAMAGE_GOD), and the
+        // attacker is revealed there unless the blow carries DAMAGE_NOREVEAL.
         if (src != target)
         {
             if (target.IsStatFlag(StatFlag.Stone))
                 return 0;
-            if ((type & DamageType.NoReveal) == 0)
-                src.ClearHiddenState();
-            if (!target.OnAttackedBy(src))
+            if (!target.OnAttackedBy(src, shouldReveal: (type & DamageType.NoReveal) == 0))
                 return 0;
         }
 
@@ -933,24 +915,28 @@ public static class CombatEngine
         damage = Math.Clamp(damage, short.MinValue, short.MaxValue);
 
         // The worn piece at the script-final ItemDamageLayer takes the wear
-        // ItemDamageChance% of the time (:790-793); a non-humanoid wears nothing.
+        // ItemDamageChance% of the time (:790-793) through the shared item-damage
+        // entry (pItemHit->OnTakeDamage: SELFREPAIR, @Damage, wear); a non-humanoid
+        // wears nothing.
         if (DurabilityEnabled &&
             (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(target) & CanFlags.C_NonHumanoid) == 0 &&
             _rand.Next(100) < Math.Clamp(getHit.ItemDamageChance, 0, 100))
         {
             var itemHit = target.GetEquippedItem(getHit.ItemDamageLayer);
             if (itemHit != null)
-                ApplyDurabilityLoss(itemHit, rollConfiguredChance: false,
-                    source: src, triggerDamage: damage, damageType: type);
+                ItemDamageEngine.OnTakeDamage(itemHit, damage, src, type);
         }
 
         // Unparalyze (:797-818): any blow without DAMAGE_NOUNPARALYZE ends a paralysis
-        // (the spell's own NOUNPARALYZE flag keeps the paralyze memory) and a freeze.
+        // (the spell's own NOUNPARALYZE flag keeps the paralyze memory), deletes the
+        // LAYER_FLAG_Stuck item (a web's hold, whatever the spell says) and a freeze.
         if ((type & DamageType.NoUnparalyze) == 0)
         {
             var spellDef = spell != 0 ? Character.ResolveSpellDef?.Invoke((SpellType)spell) : null;
             if (spellDef == null || !spellDef.IsFlag(SpellFlag.NoUnparalyze))
                 Character.BreakParalyzeHook?.Invoke(target);
+            if (target.GetEquippedItem(Layer.FlagStuck) is { IsDeleted: false } stuck)
+                stuck.Delete();
             if (target.IsStatFlag(StatFlag.Freeze))
                 target.ClearStatFlag(StatFlag.Freeze);
         }
@@ -1181,7 +1167,7 @@ public static class CombatEngine
     /// (CCharFight.cpp:2133), which this engine never did, so a shield parried
     /// forever for free.</summary>
     private static bool RollParry(Character defender, Character attacker, int chance,
-        SkillType parrySkill, Item? parryItem, int itemDamageChance)
+        SkillType parrySkill, Item? parryItem, int itemDamageChance, DamageType swingType)
     {
         if (defender.IsPlayer)
             Skills.SkillEngine.GainExperience(defender, parrySkill, chance);
@@ -1195,14 +1181,12 @@ public static class CombatEngine
         if (defender.IsPlayer && seWeaponParry)
             Skills.SkillEngine.GainExperience(defender, SkillType.Bushido, chance);
 
-        // The reference damages the parrying item for 1 outright
-        // (pItemHit->OnTakeDamage, CCharFight.cpp:2133) - the only roll in front of
-        // it is LOCAL.ItemParryDamageChance, so the global durability chance must
-        // not be rolled a second time here.
+        // The reference damages the parrying item for 1 of the swing's type
+        // (pItemHit->OnTakeDamage(1, this, iDmgType), CCharFight.cpp:2133) - the only
+        // roll in front of it is LOCAL.ItemParryDamageChance, so the global
+        // durability chance must not be rolled a second time here.
         if (parryItem != null && DurabilityEnabled && itemDamageChance > _rand.Next(100))
-            ApplyDurabilityLoss(parryItem, rollConfiguredChance: false,
-                source: attacker, triggerDamage: 1, damageType: GetWeaponDamageType(
-                    attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded)));
+            ItemDamageEngine.OnTakeDamage(parryItem, 1, attacker, swingType);
 
         OnParrySucceeded?.Invoke(defender);
         return true;
@@ -1410,7 +1394,7 @@ public static class CombatEngine
                     parrySkill = (SkillType)parryCtx.ParrySkillId;
 
                 if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
-                        parryItem, parryCtx.ItemParryDamageChance))
+                        parryItem, parryCtx.ItemParryDamageChance, swingType))
                 {
                     if (reductionPercent >= 100)
                         return AttackParried;
@@ -1419,7 +1403,7 @@ public static class CombatEngine
                 }
             }
             else if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
-                         parryItem, itemDamageChance: 100))
+                         parryItem, itemDamageChance: 100, swingType))
             {
                 if (reductionPercent >= 100)
                     return AttackParried;
@@ -1494,13 +1478,14 @@ public static class CombatEngine
         // WeaponDamageChance% of the time (script-writable, seeded 25), via
         // pWeapon->OnTakeDamage(iDmg, pCharTarg) (CCharFight.cpp:2240-2243) — BEFORE
         // the victim's own OnTakeDamage and whatever the victim's immunity does to
-        // the blow. Its @Damage runs with SRC = the struck character and ARGN1 = the
-        // blow, which is what a weapon's "ON=@DAMAGE SRC.EFFECT ..." relies on to
-        // draw on the victim (the pack's exploding-bomb bow).
-        if (DurabilityEnabled && weapon != null && damage > 0 &&
+        // the blow. It is the shared item-damage entry (SELFREPAIR, then @Damage,
+        // then one point of wear); its @Damage runs with SRC = the struck character,
+        // ARGN1 = the blow and ARGN2 = the call's default DAMAGE_HIT_BLUNT (CItem.h:889),
+        // which is what a weapon's "ON=@DAMAGE SRC.EFFECT ..." relies on to draw on
+        // the victim (the pack's exploding-bomb bow).
+        if (DurabilityEnabled && weapon != null &&
             _rand.Next(100) < Math.Clamp(hitCtx.WeaponDamageChance, 0, 100))
-            ApplyDurabilityLoss(weapon, rollConfiguredChance: false,
-                source: target, triggerDamage: damage, damageType: GetWeaponDamageType(weapon));
+            ItemDamageEngine.OnTakeDamage(weapon, damage, target, DamageType.HitBlunt);
 
         // The victim's damage entry (CCharFight.cpp:2259): protection, OnAttackedBy,
         // armour, @GetHit on the reduced blow, armour wear, slayer, the reflect family

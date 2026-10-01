@@ -308,13 +308,14 @@ public sealed class CharacterCanSeeParityTests
         Assert.Equal("1", Read(counsel, $"CANSEE 0{player.Uid.Value:X}"));
     }
 
-    // ---- #22: GM mode sees a logged-out player ------------------------------
+    // ---- a logged-out player reaches the view only with ALLSHOW ---------------
 
     [Fact]
-    public void AnActiveGmSeesAnOfflinePlayerWithoutAllShow()
+    public void OnlyAllShowBringsAnOfflinePlayerIntoTheView()
     {
-        // Audit case view_gm_sees_offline_player: only ALLSHOW let a disconnected
-        // player through. Source-X: !IsPriv(PRIV_GM) -> false (CCharStatus.cpp:1253).
+        // The view's CWorldSearch walks the sector's m_Chars_Disconnect list only with
+        // ALLSHOW (CWorldSearch.cpp:271, CClientMsg.cpp:331); GM mode alone (the CANSEE
+        // rule, CCharStatus.cpp:1253) never reaches it.
         var f = NewFixture();
         var gm = f.Player(100, PrivLevel.GM);
         var plain = f.Player(101);
@@ -322,14 +323,14 @@ public sealed class CharacterCanSeeParityTests
         var gmClient = f.Client(gm);
         var plainClient = f.Client(plain);
 
-        Assert.True(InDelta(gmClient, offline));
-        Assert.True(AfterAppear(gmClient, offline));
+        Assert.False(InDelta(gmClient, offline));
+        Assert.False(AfterAppear(gmClient, offline));
         Assert.False(InDelta(plainClient, offline));
         Assert.False(AfterAppear(plainClient, offline));
 
-        // GM mode switched off: back to an ordinary viewer.
-        Assert.True(gm.TrySetProperty("GM", "0"));
-        Assert.False(InDelta(gmClient, offline));
+        gm.AllShow = true;
+        Assert.True(InDelta(gmClient, offline));
+        Assert.True(AfterAppear(gmClient, offline));
     }
 
     [Fact]
@@ -339,6 +340,7 @@ public sealed class CharacterCanSeeParityTests
         // 0x80 greyed flag; the appear path draws it the same way.
         var f = NewFixture();
         var gm = f.Player(100, PrivLevel.GM);
+        gm.AllShow = true;
         var offline = f.Player(103, online: false);
         var client = f.Client(gm);
 

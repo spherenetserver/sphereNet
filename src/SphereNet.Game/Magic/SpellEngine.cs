@@ -1773,6 +1773,147 @@ public sealed partial class SpellEngine
         return TriggerResult.Default;
     }
 
+    /// <summary>CItem::OnSpellEffect (CItem.cpp:5590-5764) as a field lays it on the
+    /// items of its tile (CCharSpell.cpp:2299): @SpellEffect and the spell's @Effect
+    /// with their ARGN1/ARGN2 readback, the wand recharge, the caster's anti-magic
+    /// area, the per-spell cases a field can reach, a HARM spell's one point of item
+    /// damage and the spell's FX. Returns false when the spell did not take.
+    /// Magic Lock, Unlock and Mark are targeted at one item and resolved by their own
+    /// cast branches; only a script rewriting ARGN1 could bring them here, and then
+    /// they do nothing further.</summary>
+    private bool ItemOnSpellEffect(Character caster, Item item, SpellDef def, int skillLevel, Item? sourceItem)
+    {
+        var args = new TriggerArgs
+        {
+            CharSrc = caster,
+            ItemSrc = item,
+            O1 = sourceItem is { IsDeleted: false } ? sourceItem : null,
+            N1 = (int)def.Id,
+            N2 = skillLevel,
+            Locals = new SphereNet.Scripting.Variables.VarMap(),
+        };
+        bool scripted = def.IsFlag(SpellFlag.Scripted);
+        if (TriggerDispatcher != null)
+        {
+            var result = TriggerDispatcher.FireItemTrigger(item, ItemTrigger.SpellEffect, args);
+            if (result == TriggerResult.True)
+                return false;
+            if (result == TriggerResult.False && scripted)
+                return true;
+
+            args.ReturnNumber = null;
+            var stage = TriggerDispatcher.FireSpellTrigger(def.Id, "Effect", item, args);
+            if (stage == TriggerResult.True)
+                return false;
+            if (stage == TriggerResult.False && scripted)
+                return true;
+        }
+        if (item.IsDeleted)
+            return false;
+
+        var spell = (SpellType)(int)args.N1;
+        skillLevel = (int)Math.Clamp(args.N2, int.MinValue, int.MaxValue);
+        def = _spells.Get(spell) ?? def;
+
+        // Recharge a wand of this spell (or a blank one).
+        if (item.ItemType == ItemType.Wand)
+        {
+            var wandSpell = MagicItemSpell(item);
+            if (wandSpell == 0 || wandSpell == spell)
+            {
+                item.SetAttr(ObjAttributes.Magic);
+                if (wandSpell == 0 || caster.IsGmMode)
+                {
+                    item.MoreP = new Point3D((short)spell, (short)Math.Clamp(skillLevel, short.MinValue, short.MaxValue),
+                        item.MoreP.Z, item.MoreP.Map);
+                    item.More2 = 0;
+                }
+                item.More2++;
+            }
+        }
+
+        if (!caster.IsGmMode && _world?.FindRegion(caster.Position) is { } region &&
+            RegionBlocksSpell(region, def))
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryAm));
+            return false;
+        }
+
+        ushort effectId = def.EffectId;
+        DamageType damageType = 0;
+        switch (spell)
+        {
+            case SpellType.DispelField:
+                if (item.ItemType == ItemType.Spell)
+                {
+                    if (IsTopLevelItem(item))
+                        SendItemEffect(2, effectId, caster, item, 9, 20, false, 0, 0);
+                    _world?.RemoveItem(item);
+                    return true;
+                }
+                break;
+            case SpellType.Dispel:
+            case SpellType.MassDispel:
+                if (item.ItemType == ItemType.Spell)
+                {
+                    if (IsTopLevelItem(item))
+                        SendItemEffect(2, effectId, caster, item, 8, 20, false, 0, 0);
+                    _world?.RemoveItem(item);
+                    return true;
+                }
+                break;
+            case SpellType.Bless:
+            case SpellType.Curse:
+                return false;
+            case SpellType.Lightning:
+                SendItemEffect(1, 0, caster, item, 0, 0, false, 0, 0);
+                break;
+            case SpellType.Explosion:
+            case SpellType.Fireball:
+            case SpellType.FireBolt:
+            case SpellType.FireField:
+            case SpellType.Flamestrike:
+            case SpellType.MeteorSwarm:
+                damageType = DamageType.Fire;
+                break;
+        }
+
+        // "Potions should explode when hit (etc..)" (:5743).
+        if (def.IsFlag(SpellFlag.Harm))
+            ItemDamageEngine.OnTakeDamage(item, 1, caster, DamageType.Magic | damageType);
+
+        if (effectId != 0 && !item.IsDeleted)
+        {
+            bool explode = def.IsFlag(SpellFlag.FxBolt) && !def.IsFlag(SpellFlag.Good);
+            uint color = (uint)args.Locals.GetInt("EffectColor", 0);
+            uint render = (uint)args.Locals.GetInt("EffectRender", 0);
+            if (def.IsFlag(SpellFlag.FxBolt))
+                SendItemEffect(0, effectId, caster, item, 5, 1, explode, color, render);
+            if (def.IsFlag(SpellFlag.FxTarg))
+                SendItemEffect(3, effectId, null, item, 0, 15, explode, color, render);
+        }
+        return true;
+    }
+
+    private static bool IsTopLevelItem(Item item) => !item.ContainedIn.IsValid && !item.IsEquipped;
+
+    /// <summary>CObjBase::Effect on an item: 0 = a bolt from the source to it,
+    /// 1 = lightning on it, 2 = at its location, 3 = on the item itself.</summary>
+    private static void SendItemEffect(byte type, ushort effectId, Character? source, Item item,
+        byte speed, byte loop, bool explode, uint color, uint render)
+    {
+        var at = item.GetTopLevelPosition();
+        uint dst = item.Uid.Value;
+        uint src = type == 0 && source != null ? source.Uid.Value : dst;
+        var from = type == 0 && source != null ? source.Position : at;
+        SphereNet.Network.Packets.PacketWriter fx = color != 0 || render != 0
+            ? new SphereNet.Network.Packets.Outgoing.PacketEffectHued(type, src, dst, effectId,
+                from.X, from.Y, from.Z, at.X, at.Y, at.Z, speed, loop, true, explode, color, render)
+            : new SphereNet.Network.Packets.Outgoing.PacketEffect(type, src, dst, effectId,
+                from.X, from.Y, from.Z, at.X, at.Y, at.Z, speed, loop, true, explode);
+        Character.BroadcastNearby?.Invoke(at, 18, fx, 0);
+    }
+
     /// <summary>The rune's @SpellEffect before a Recall or Gate Travel (Spell_Recall,
     /// CCharSpell.cpp:380-387): only ARGN1 = the spell is set, and only RETURN 0 means
     /// "handled, do not travel" - a RETURN 1 lets the spell go ahead.</summary>
@@ -2061,7 +2202,8 @@ public sealed partial class SpellEngine
             {
                 // The victim learns it was attacked - memory, attacker list, an NPC
                 // turns on the caster, and whether harming it was a crime (:3777).
-                if (!target.OnAttackedBy(caster) && !reflecting)
+                // The caster is revealed unless the spell is a field.
+                if (!target.OnAttackedBy(caster, shouldReveal: !def.IsFlag(SpellFlag.Field)) && !reflecting)
                     return false;
 
                 // Magic Reflect (:3781-3811): only a spell with a direct source
@@ -2374,23 +2516,49 @@ public sealed partial class SpellEngine
             var tilePos = TileAt(ix, iy);
             int tx = tilePos.X, ty = tilePos.Y;
 
-            // Source-X: stone/energy walls never materialise over a character.
-            if (isBarrier && _world.GetCharsInRange(tilePos, 0)
-                    .Any(c => c.X == tx && c.Y == ty && !c.IsDead))
+            // Direct cast on a creature (CCharSpell.cpp:2251-2284): every active
+            // character on the tile not above the caster's plevel. A harmful field
+            // is an attack on it (skipped when refused); unless the spell is
+            // NOUNPARALYZE it loses its paralysis and its stuck hold; and a stone
+            // wall or energy field casts itself on the character instead of
+            // being laid on its tile.
+            bool goodLoc = true;
+            foreach (var ch in _world.GetCharsInRange(tilePos, 0).ToList())
+            {
+                if (ch.IsDeleted || ch.X != tx || ch.Y != ty || ch.IsLoggedOut)
+                    continue;
+                if (ch.PrivLevel > caster.PrivLevel)
+                    continue;
+                if (def.IsFlag(SpellFlag.Harm) && !ch.OnAttackedBy(caster))
+                    continue;
+                if (!def.IsFlag(SpellFlag.NoUnparalyze))
+                {
+                    RemoveMatchingEffects(ch, m => MemSpell(m) == SpellType.Paralyze);
+                    if (ch.GetEquippedItem(Layer.FlagStuck) is { IsDeleted: false } stuck)
+                        stuck.Delete();
+                }
+                if (isBarrier)
+                {
+                    WithSourceItem(null, () => ApplyCharEffect(caster, ch, def, skill));
+                    goodLoc = false;
+                    break;
+                }
+            }
+            if (!goodLoc)
                 continue;
 
-            // MAGICF_OVERRIDEFIELDS (CCharSpell.cpp:2295): a new field REPLACES the
-            // spell items already on the tile instead of stacking on top of them.
-            // Another flag that was declared and never read.
-            if (IsMagicFlag(MagicConfigFlags.OverrideFields))
+            // Direct cast on an item (:2290-2301): MAGICF_OVERRIDEFIELDS deletes the
+            // spell items already there; everything else takes the spell.
+            foreach (var existing in _world.GetItemsInRange(tilePos, 0).ToList())
             {
-                foreach (var existing in _world.GetItemsInRange(tilePos, 0).ToList())
+                if (existing.IsDeleted || existing.X != tx || existing.Y != ty)
+                    continue;
+                if (existing.ItemType == ItemType.Spell && IsMagicFlag(MagicConfigFlags.OverrideFields))
                 {
-                    if (existing.IsDeleted || existing.X != tx || existing.Y != ty)
-                        continue;
-                    if (existing.ItemType is ItemType.Spell or ItemType.Fire)
-                        _world.RemoveItem(existing);
+                    _world.RemoveItem(existing);
+                    continue;
                 }
+                ItemOnSpellEffect(caster, existing, def, skill, null);
             }
 
             var fieldItem = _world.CreateItem();

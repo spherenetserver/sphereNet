@@ -73,6 +73,7 @@ public class NotorietyParityTests
         var killer = MakePlayer(world, 100);
         var victim = MakePlayer(world, 101); // innocent, no prior combat
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(1, killer.Kills);
@@ -91,6 +92,7 @@ public class NotorietyParityTests
         victim.MakeCriminal(); // grey — killing is not murder
         Assert.True(victim.IsCriminal);
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Kills);
@@ -112,6 +114,7 @@ public class NotorietyParityTests
         // kill is not a murder (Noto_Kill's NotoThem < NOTO_GUILD_SAME, :575).
         killer.Memory_AddObjTypes(victim.Uid, MemoryType.HarmedBy | MemoryType.Aggreived);
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Kills);
@@ -130,6 +133,7 @@ public class NotorietyParityTests
         var killer = MakePlayer(world, 100, fame: 0);
         var victim = MakePlayer(world, 101, fame: 5000); // PC fame → gain = 5000/10 = 500
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(500, killer.Fame); // was clamped to 200 before the cap removal

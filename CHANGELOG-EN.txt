@@ -4,6 +4,47 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Combat, notoriety, kill credit, webs and network quota follow Source-X
+------------------------------------------------------------------------
+FIX - A logged-out character reaches a client's view only with ALLSHOW: the view
+      walks the disconnected list only then (CWorldSearch). GM mode alone no
+      longer shows offline players; the CANSEE read still follows GM mode.
+FIX - f_onclient_exceed_network_quota no longer runs when a client hits the
+      per-pass packet quota, which is only a throttle (a busy area could kick a
+      client through a script on that hook). It runs only from the Source-X
+      10-second byte quota: MAXSIZECLIENTOUT (ARGN1=1) and MAXSIZECLIENTIN
+      (ARGN1=2), 0 = disabled, 80000/10000 when the key is absent; ARGN2 bytes,
+      ARGN3 quota, LOCAL.ACCOUNT, LOCAL.IP; RETURN 0 logs, RETURN 1 is silent,
+      anything else disconnects.
+FIX - A successful murder mark renews the murder decay with the full
+      MURDERDECAYTIME at once (Noto_Murder) and sends the murderer notice past
+      MURDERMINCOUNT. Criminal and murder timers are the Source-X worn memories
+      ("Criminal Timer" layer 43, "Murder Decay" layer 52): saved and loaded as
+      items, murder decay pauses while offline; Source-X saves carrying them load
+      into working timers, older CRIMINALTIMER / MURDERDECAY fields still load.
+FIX - Kill credit follows CChar::Death: every attacker-list entry that dealt
+      damage, in list order, gets @Kill and its reward on the attacker itself (a
+      pet keeps its own kill), split by the full list size; a guard NPC killing
+      an NPC conjures it (no reward, no corpse). GM KILL and cannon hits record
+      the blow first. Death deletes the poison, potion, drunk, hallucination,
+      stuck and potion-cooldown flag layers when the corpse takes the loot.
+FIX - The attack crime branch follows the victim's active client: a lingering
+      disconnected player (and an NPC) leaves the crime to witnesses and guards.
+      OnAttackedBy reveals the attacker by default (field spells and
+      DAMAGE_NOREVEAL excepted, pet attack orders reveal the owner); provocation
+      records the bard as an ordered attacker.
+FIX - Guarded areas with a non-zero numeric TAG.RED invert notoriety; the
+      engine-only RedZone region flag was removed. One recursive owner resolver
+      (17 links, as Source-X) serves NO_PVP and pet notoriety.
+FIX - Combat wear on armour, weapon and parrying item goes through the shared
+      item-damage entry (SELFREPAIR first, @Damage veto, one hit point a blow).
+      Damage without DAMAGE_NOUNPARALYZE deletes the stuck-layer item (51).
+FIX - Field spells run the Source-X direct-cast pass on every tile (plevel skip,
+      attack, unparalyze and stuck removal, stone wall / energy field cast on a
+      character, item OnSpellEffect); MAGICF_OVERRIDEFIELDS replaces only spell
+      items. The stuck layer freezes its wearer with the paralyze buff; webs
+      follow Use_Item_Web with a timed IT_EQ_STUCK hold.
+
 [2026-10-01] - Pet ownership verb, NPC restock and spawn cleanup follow Source-X
 ------------------------------------------------------------------------
 FIX - The runtime OWNER verb on a character follows Source-X CHV_OWNER: with an

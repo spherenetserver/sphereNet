@@ -9,8 +9,8 @@ using Xunit;
 namespace SphereNet.Tests;
 
 // Wave W-H3 (wiki/hedef.txt long tail):
-//   * IT_WEB struggle: dclick damages the web with STR; a destroyed web
-//     leaves spider silk and unfreezes the stuck char (Source-X Use_Item_Web)
+//   * IT_WEB struggle: dclick damages the web with STR; a torn web frees, a
+//     surviving one holds a char on its spot (Source-X Use_Item_Web)
 //   * char verb WAKE (counterpart of SLEEP), object verb DESTROY (hard
 //     removal), SMSG* sysmessage aliases
 public class ParityWaveH3Tests
@@ -53,15 +53,14 @@ public class ParityWaveH3Tests
         var web = world.CreateItem();
         web.BaseId = 0x0EE3;
         web.ItemType = ItemType.Web;
-        web.HitsCur = 50; // one 100-STR struggle tears it
+        web.SetAttr(ObjAttributes.Move_Never);
+        web.More1 = 50; // m_itWeb.m_wHitsCur: one 100-STR struggle tears it
         world.PlaceItem(web, new Point3D(100, 100, 0, 0));
-
-        // Simulate being stuck (the step path freezes on web contact).
-        player.SetStatFlag(StatFlag.Freeze);
 
         client.HandleDoubleClick(web.Uid.Value);
 
         Assert.True(web.IsDeleted);
+        Assert.Null(player.GetEquippedItem(Layer.FlagStuck));
         Assert.False(player.IsStatFlag(StatFlag.Freeze));
         Assert.DoesNotContain(world.GetItemsInRange(new Point3D(100, 100, 0, 0), 0),
             i => i.BaseId == 0x0DF8);
@@ -84,15 +83,17 @@ public class ParityWaveH3Tests
         var web = world.CreateItem();
         web.BaseId = 0x0EE3;
         web.ItemType = ItemType.Web;
-        web.HitsCur = 300;
+        web.SetAttr(ObjAttributes.Move_Never);
+        web.More1 = 300;
         world.PlaceItem(web, new Point3D(100, 100, 0, 0));
-        player.SetStatFlag(StatFlag.Freeze);
 
         client.HandleDoubleClick(web.Uid.Value);
 
         Assert.False(web.IsDeleted);
-        Assert.Equal(290, web.HitsCur);                       // STR chipped it
-        Assert.True(player.IsStatFlag(StatFlag.Freeze));      // still stuck
+        Assert.Equal(290u, web.More1);                        // STR chipped it
+        // Still on its spot: held by the timed stuck item (Use_Item_Web).
+        Assert.Equal(ItemType.EqStuck, player.GetEquippedItem(Layer.FlagStuck)?.ItemType);
+        Assert.True(player.IsStatFlag(StatFlag.Freeze));
     }
 
     [Fact]

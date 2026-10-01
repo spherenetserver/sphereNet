@@ -5052,6 +5052,19 @@ public class Item : ObjBase
                 wearer.Poison.EquipTick(this);
             return !_isDeleted;
         }
+        // The criminal and murder memories tick through their wearer's OnTickEquip
+        // too (LAYER_FLAG_Murders ages a murder off, CCharAct.cpp:4113; the criminal
+        // one ends through Spell_Equip_OnTick).
+        if (IsEquipped && _type == ItemType.Spell &&
+            EquipLayer is Layer.FlagCriminal or Layer.FlagMurders)
+        {
+            long due = Timeout;
+            long nowMs = Environment.TickCount64;
+            if (due > 0 && nowMs >= due &&
+                ResolveWorld?.Invoke()?.FindChar(ContainedIn) is { } wearer)
+                wearer.CombatState.EquipTick(this, nowMs);
+            return !_isDeleted;
+        }
         // Every other worn spell memory is its effect, and the spell engine owns its
         // clock. Without the engine the timer is left armed for it to find.
         if (IsSpellMemory && IsEquipped && ItemType == ItemType.Spell)
@@ -5142,7 +5155,8 @@ public class Item : ObjBase
                 or ItemType.DoorLocked or ItemType.Portculis or ItemType.PortLocked
                 or ItemType.Crops or ItemType.Foliage or ItemType.LightLit
                 or ItemType.AnimActive or ItemType.BeeHive
-                || (_type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed);
+                || (_type == ItemType.EqMemoryObj && EquipLayer is Layer.FlagWool or Layer.FlagPotionUsed)
+                || (IsEquipped && EquipLayer == Layer.FlagStuck && IsAttr(ObjAttributes.Decay));
 
             // Source-X CItem::_OnTick trap state machine: an armed trap relaxes
             // to inactive, an inactive one either re-arms (MOREZ periodic) or
@@ -5189,6 +5203,13 @@ public class Item : ObjBase
                     break;
                 case ItemType.EqMemoryObj when EquipLayer == Layer.FlagPotionUsed:
                     // The potion cooldown marker simply expires (CCharUse.cpp:1066).
+                    Delete();
+                    break;
+                case var _ when IsEquipped && EquipLayer == Layer.FlagStuck && IsAttr(ObjAttributes.Decay):
+                    // A web's stuck hold carries ATTR_DECAY and so takes the default
+                    // decay path when its 2-10 s timer runs out (CCharUse.cpp:681-691,
+                    // CItem.cpp:6408). Deleted through the world so it leaves the
+                    // wearer's layer, which lifts the freeze (CCharAct.cpp:466).
                     Delete();
                     break;
                 case ItemType.BeeHive:

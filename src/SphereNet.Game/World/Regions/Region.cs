@@ -217,6 +217,14 @@ public class Region : IScriptObj
     }
 
     public bool IsGuarded => IsFlag(RegionFlag.Guarded);
+
+    /// <summary>A RED guarded area, where notoriety is turned around (murderers pass
+    /// as normal, good karma does not): Source-X reads it as IsGuarded() and a non-zero
+    /// TAG.RED read as a number (m_TagDefs.GetKeyNum("RED"), CCharNotoriety.cpp:24) -
+    /// so RED=0 is not red and RED=02 is.</summary>
+    public bool IsGuardedRed =>
+        IsGuarded && TryGetTag("RED", out string? red) &&
+        SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(red) != 0;
     public bool NoMagic => IsFlag(RegionFlag.NoMagic);
     public bool NoPvP => IsFlag(RegionFlag.NoPvP);
 

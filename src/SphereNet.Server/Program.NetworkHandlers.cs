@@ -156,14 +156,40 @@ public static partial class Program
         _systemHooks.DispatchClient("unkdata", src, client.Character, $"0x{opcode:X2}", opcode, raw.Length);
     }
 
-    private static void OnPacketQuotaExceeded(NetState state, int processed)
+    /// <summary>MAXSIZECLIENTIN / MAXSIZECLIENTOUT exceeded over a 10-second check
+    /// period (NetworkManager.CheckByteQuotas). Source-X CClient::
+    /// Event_ExceededNetworkQuota: the script decides, and by default the client is
+    /// disconnected. The per-pass packet quota (MaxPacketsPerTick) is only a throttle
+    /// and never reaches the script. Returns whether to log, or null when the
+    /// connection has no client (the network layer then closes it).</summary>
+    internal static bool? OnByteQuotaExceeded(NetState state, byte type, long bytes, long quota)
     {
         if (!_clients.TryGetValue(state.Id, out var client))
-            return;
-        IScriptObj? src = client.Character ?? (IScriptObj?)client.Account;
-        if (src == null)
-            return;
-        _systemHooks.DispatchClient("quotaexceed", src, client.Character, processed.ToString(), processed);
+            return null;
+        IScriptObj src = client.Character ?? (IScriptObj?)client.Account ?? client;
+        string account = client.Account?.Name is { Length: > 0 } name ? name : "NA";
+        string ip = state.RemoteEndPoint?.Address.ToString() ?? "";
+        NetworkQuotaVerdict verdict;
+        try
+        {
+            verdict = _systemHooks.RunNetworkQuotaHook(_serverHookContext, src, client,
+                type, bytes, quota, account, ip);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "f_onclient_exceed_network_quota threw for #{Id}", state.Id);
+            verdict = NetworkQuotaVerdict.Default;
+        }
+        switch (verdict)
+        {
+            case NetworkQuotaVerdict.Log:
+                return true;
+            case NetworkQuotaVerdict.Ignore:
+                return false;
+            default:
+                state.MarkClosing();
+                return true;
+        }
     }
 
     /// <summary>Install the PACKETx / OUTPACKETx filters sphere.ini names. Nothing is
@@ -382,6 +408,9 @@ public static partial class Program
                     return;
                 }
                 BroadcastLightningStrike(victim);
+                // CHV_KILL is OnTakeDamage(10000, pSrc, DAMAGE_GOD) (CChar.cpp:4691):
+                // the blow lands on the attacker list, where kill credit is read.
+                victim.RecordAttack(killer.Uid, 10000);
                 ProcessDeathWithEffects(victim, killer);
                 client.SysMessage($"Killed '{victim.Name}'.");
             };

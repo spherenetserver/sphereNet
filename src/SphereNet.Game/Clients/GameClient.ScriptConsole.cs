@@ -613,7 +613,7 @@ public sealed partial class GameClient
                 // in the mask; 0 (the default) disables inheritance.
                 if (Character.PetsInheritNotoriety != 0)
                 {
-                    var owner = ResolvePrimaryOwner(world, subject);
+                    var owner = subject.PetGetOwnerRecursive(world);
                     if (owner != null && owner != subject && owner != viewer)
                     {
                         byte notoMaster = ComputeNotorietyResult(world, viewer, owner, allowIncog, allowInvul).Notoriety;
@@ -653,30 +653,6 @@ public sealed partial class GameClient
         // NOTO_GOOD for everyone else. Healers and bankers are not special here:
         // only STATF_INVUL gives NOTO_INVUL (CCharNotoriety.cpp:152-153, 281).
         return 1;
-    }
-
-    /// <summary>Source-X NPC_PetGetOwnerRecursive (CCharNPCStatus.cpp:487): walk
-    /// owner → owner's owner while the owner is itself an NPC, capped at 16 hops
-    /// against circular ownership (null then). Null when the subject has no owner.</summary>
-    private static Character? ResolvePrimaryOwner(GameWorld world, Character pet)
-    {
-        Character? primary = null;
-        Character current = pet;
-        for (int hops = 0; ; hops++)
-        {
-            if (!current.OwnerSerial.IsValid)
-                break;
-            var next = world.FindChar(current.OwnerSerial);
-            if (next == null || next.IsDeleted)
-                break;
-            if (hops > 16)
-                return null;
-            primary = next;
-            if (next.IsPlayer || next.TryGetTag("ACCOUNT", out _))
-                break;
-            current = next;
-        }
-        return primary;
     }
 
     /// <summary>The guild/town block of Source-X Noto_CalcFlag
@@ -744,13 +720,14 @@ public sealed partial class GameClient
 
     /// <summary>Source-X CChar::Noto_IsEvil — murderer, karma-evil player
     /// (PLAYEREVIL), brain-based NPC karma thresholds, and the guarded
-    /// RED-zone inversion (murderers are normal there, good karma is not).</summary>
+    /// RED-area inversion (murderers are normal there, good karma is not).</summary>
     private static bool IsNotoEvil(Character subject, SphereNet.Game.World.Regions.Region? region)
     {
         short karma = subject.Karma;
 
-        // Red zone inverts: murderers pass as normal, low karma is evil.
-        if (region != null && region.IsFlag(RegionFlag.RedZone))
+        // A guarded area tagged RED inverts (CCharNotoriety.cpp:24): murderers pass
+        // as normal, low karma is evil.
+        if (region != null && region.IsGuardedRed)
         {
             if (subject.IsMurderer)
                 return false;

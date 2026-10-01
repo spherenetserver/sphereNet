@@ -178,13 +178,20 @@ public sealed class SpellRegionAndFlagParityTests : IDisposable
         var tile = new Point3D(120, 120, 0, 0);
         var older = world.CreateItem();
         older.BaseId = 0x3996;
-        older.ItemType = ItemType.Fire;
+        older.ItemType = ItemType.Spell;   // a laid field segment is IT_SPELL (Spell_Field)
         Assert.True(world.PlaceItem(older, tile));
 
         var bystander = world.CreateItem();
         bystander.BaseId = 0x0F51;
         bystander.ItemType = ItemType.WeaponSword;   // not a field: never touched
         Assert.True(world.PlaceItem(bystander, tile));
+
+        // IT_FIRE (a fire pit, a breath's flames) is not IT_SPELL: only the spell items
+        // are deleted (CCharSpell.cpp:2295).
+        var flames = world.CreateItem();
+        flames.BaseId = 0x398C;
+        flames.ItemType = ItemType.Fire;
+        Assert.True(world.PlaceItem(flames, tile));
 
         Character.MagicFlags = (int)MagicConfigFlags.OverrideFields;
 
@@ -213,6 +220,7 @@ public sealed class SpellRegionAndFlagParityTests : IDisposable
 
         Assert.True(older.IsDeleted, "the older field segment should have been replaced");
         Assert.False(bystander.IsDeleted, "an ordinary item on the tile is not a field");
+        Assert.False(flames.IsDeleted, "IT_FIRE is not a spell item");
     }
 
     [Fact]

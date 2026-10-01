@@ -43,6 +43,5 @@ public enum RegionFlag : uint
     SafeZone      = 0x02000000, // legacy SAFEZONE alias
     NoPeraCrime   = 0x04000000, // no perma-crime
     Jail          = 0x08000000, // jail region
-    RedZone       = 0x10000000, // murders allowed, no notoriety penalties
     GuardedOff    = 0x20000000, // explicit "not guarded" override of a parent region
 }

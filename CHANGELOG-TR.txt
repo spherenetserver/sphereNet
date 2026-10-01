@@ -4,6 +4,51 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Savas, notoriety, oldurme odulu, aglar ve ag kotasi Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Cikis yapmis karakter istemci gorunumune yalnizca ALLSHOW ile gelir:
+           gorunum taramasi kopuk listeyi sadece o zaman tarar (CWorldSearch).
+           Yalniz GM modu artik offline oyunculari gostermez; CANSEE okumasi GM
+           moduna bakmaya devam eder.
+DUZELTME - f_onclient_exceed_network_quota artik tur basina paket kotasinda
+           calismiyor; bu yalnizca kisitlamadir (kalabalik bolgede bu kancada atan
+           script oyuncuyu dusurebiliyordu). Yalnizca Source-X 10 saniyelik bayt
+           kotasinda calisir: MAXSIZECLIENTOUT (ARGN1=1), MAXSIZECLIENTIN
+           (ARGN1=2), 0 = kapali, anahtar yoksa 80000/10000; ARGN2 bayt, ARGN3
+           kota, LOCAL.ACCOUNT, LOCAL.IP; RETURN 0 loglar, RETURN 1 sessiz, digeri
+           baglantiyi keser.
+DUZELTME - Basarili murder isaretlemesi murder decay suresini hemen tam
+           MURDERDECAYTIME ile yeniler (Noto_Murder), MURDERMINCOUNT asilinca
+           murderer mesaji gider. Criminal ve murder sureleri Source-X giyili
+           memory esyalari ("Criminal Timer" layer 43, "Murder Decay" layer 52):
+           esya olarak kaydedilip yuklenir, murder decay offline iken durur;
+           Source-X save'leri calisan sayaclarla yuklenir, eski CRIMINALTIMER /
+           MURDERDECAY alanlari yuklenmeye devam eder.
+DUZELTME - Oldurme odulu CChar::Death gibi: attacker listesinde hasar veren her
+           kayit liste sirasiyla @Kill ve odulu kendisinde alir (pet kendi
+           oldurmesini alir), tam liste sayisina bolunur; guard NPC'nin oldurdugu
+           NPC conjured olur (odul ve corpse yok). GM KILL ve top atisi darbeyi
+           once kaydeder. Olumde corpse esyalari alirken poison, potion, drunk,
+           hallucination, stuck ve potion cooldown katmanlari silinir.
+DUZELTME - Saldiri suc karari kurbanin aktif istemcisine bakar: linger durumundaki
+           oyuncu (ve NPC) sucu taniklara ve muhafizlara birakir. OnAttackedBy
+           saldirgani varsayilan olarak gorunur yapar (field buyuleri ve
+           DAMAGE_NOREVEAL haric, pet saldiri emri sahibini acar); provocation
+           bard'i emirli saldirgan olarak kaydeder.
+DUZELTME - Guarded bolgede sifir disi sayisal TAG.RED notoriety'yi ters cevirir;
+           motora ozel RedZone bolge bayragi kaldirildi. Tek ozyinelemeli sahip
+           cozumleyici (Source-X gibi 17 baglanti) NO_PVP ve pet notoriety'ye
+           hizmet eder.
+DUZELTME - Zirh, silah ve parry esyasi savas asinmasi ortak esya-hasar girisinden
+           gecer (once SELFREPAIR, @Damage vetosu, darbe basina bir hit point).
+           DAMAGE_NOUNPARALYZE olmayan hasar stuck katmanindaki (51) esyayi siler.
+DUZELTME - Alan buyuleri her karede Source-X dogrudan-cast gecisini calistirir
+           (plevel atlama, saldiri, paralysis ve stuck kaldirma, tas duvar /
+           enerji alaninin karaktere uygulanmasi, esya OnSpellEffect);
+           MAGICF_OVERRIDEFIELDS yalnizca buyu esyalarini degistirir. Stuck
+           katmani sahibini paralyze buff'i ile dondurur; aglar Use_Item_Web'i
+           izler ve sureli IT_EQ_STUCK ile tutar.
+
 [2026-10-01] - Pet sahiplik komutu, NPC restock ve spawn temizligi Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Karakter uzerindeki OWNER komutu Source-X CHV_OWNER gibi calisir:

@@ -673,8 +673,11 @@ public sealed class MovementEngine
         }
 
         bool stepCancel = false;
+        bool webHeld = false;
         foreach (var item in _world.GetItemsInRange(pos, 0))
         {
+            if (webHeld)
+                break;
             // Source-X CheckLocation weeds out anything the character cannot
             // actually reach in Z before it even looks at @STEP
             // (CCharAct.cpp:4934) - a trap, moongate or field on the floor below
@@ -699,22 +702,12 @@ public sealed class MovementEngine
             switch (item.ItemType)
             {
                 case ItemType.Web:
-                    // Source-X Use_Item_Web: walking into a web sticks the char
-                    // (giant spiders, ghosts and staff pass through). Freeze
-                    // holds them until the web is destroyed by struggling
-                    // (dclick, STR-based) or an outside hit knocks them free.
-                    if (!ch.IsDead && ch.PrivLevel < PrivLevel.Counsel && ch.BodyId != 0x1C &&
-                        !ch.IsStatFlag(StatFlag.Insubstantial))
-                    {
-                        if (item.HitsCur <= 0)
-                            item.HitsCur = 60 + Random.Shared.Next(250); // Source-X CCharUse.cpp:638 web strength
-                        ch.SetStatFlag(StatFlag.Freeze);
-                        // Source-X LAYER_FLAG_Stuck (CCharAct.cpp:358) shows the
-                        // paralyze icon while a char is held. No countdown here:
-                        // the web is escaped by struggling, not by a timer.
-                        Character.OnClientBuffChanged?.Invoke(
-                            ch, BuffIcon.Paralyze, true, 0, null);
-                    }
+                    // Source-X CheckLocationEffects IT_WEB (CCharAct.cpp:4967-4971):
+                    // Use_Item_Web tears at the web with STR; a char it holds gets
+                    // the timed stuck item on LAYER_FLAG_Stuck, and the location
+                    // check ends there (RET_TRUE: the step itself stands).
+                    if (ch.UseItemWeb(item))
+                        webHeld = true;
                     break;
                 case ItemType.Trap:
                 case ItemType.TrapActive:
@@ -795,7 +788,7 @@ public sealed class MovementEngine
                     Combat.DamageType.HitBlunt | Combat.DamageType.General);
         }
 
-        if (stepCancel)
+        if (stepCancel && !webHeld)
             return false;
 
         // Exit/Enter already ran in GameWorld.MoveCharacter, before SRC.REGION

@@ -1400,10 +1400,14 @@ public sealed class WorldSaver
         if (ch.ResPoison != 0) w.WriteProperty("RESPOISON", ch.ResPoison.ToString());
         if (ch.ResEnergy != 0) w.WriteProperty("RESENERGY", ch.ResEnergy.ToString());
         if (ch.Kills != 0) w.WriteProperty("KILLS", ch.Kills.ToString());
-        if (ch.CriminalTimerRemainingSeconds > 0)
-            w.WriteProperty("CRIMINALTIMER", ch.CriminalTimerRemainingSeconds.ToString());
-        if (ch.MurderDecayRemainingSeconds > 0)
-            w.WriteProperty("MURDERDECAY", ch.MurderDecayRemainingSeconds.ToString());
+        // The criminal and murder clocks are worn memories (LAYER_FLAG_Criminal /
+        // LAYER_FLAG_Murders) and save themselves as items, as Source-X writes them.
+        // Only a value an older save gave that has not been made into its memory yet
+        // is written back in the old form, so it is not lost.
+        if (ch.CombatState.PendingCriminalSeconds > 0)
+            w.WriteProperty("CRIMINALTIMER", ch.CombatState.PendingCriminalSeconds.ToString());
+        if (ch.CombatState.PendingMurderDecaySeconds > 0)
+            w.WriteProperty("MURDERDECAY", ch.CombatState.PendingMurderDecaySeconds.ToString());
         if (!string.IsNullOrEmpty(ch.Title)) w.WriteProperty("TITLE", ch.Title);
         w.WriteProperty("FLAGS", $"0{(uint)ch.StatFlags:x}");
         w.WriteProperty("NPC", ((int)ch.NpcBrain).ToString());

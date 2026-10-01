@@ -1254,37 +1254,13 @@ public sealed class ClientItemUseHandler
                 SysMessage(FormatSextant(_character.Position));
                 break;
 
-            // ---- spider web (Source-X Use_Item_Web) ----
-            // Struggling damages the web with the char's STR; a destroyed web
-            // leaves spider silk and frees anyone stuck on its tile.
+            // ---- spider web (Do_Use_Item IT_WEB, CCharUse.cpp:1905-1911) ----
+            // Use_Item_Web: the web takes the char's STR as damage (its own
+            // web_* messages), and a char still on its spot is held by the timed
+            // stuck item on LAYER_FLAG_Stuck.
             case ItemType.Web:
-            {
-                if (item.HitsCur <= 0)
-                    item.HitsCur = 60 + Random.Shared.Next(250); // Source-X CCharUse.cpp:638 web strength
-                item.HitsCur -= Math.Max(1, (int)_character.Str);
-                if (item.HitsCur <= 0)
-                {
-                    // A destroyed web is simply gone: the reference's IT_WEB damage
-                    // branch calls Delete() and creates nothing (CItem.cpp:5886). The
-                    // "silk" this used to leave behind came from a stale comment in
-                    // Use_Item_Web, and the graphic it used (0x0DF8) is wool, not silk.
-                    _world.RemoveItem(item);
-                    if (_character.IsStatFlag(StatFlag.Freeze))
-                    {
-                        _character.ClearStatFlag(StatFlag.Freeze);
-                        // Source-X CCharAct.cpp:466 drops the paralyze icon when
-                        // the stuck layer goes away.
-                        Character.OnClientBuffChanged?.Invoke(
-                            _character, BuffIcon.Paralyze, false, 0, null);
-                    }
-                    SysMessage("You destroy the web.");
-                }
-                else
-                {
-                    SysMessage("You struggle against the web.");
-                }
+                _character.UseItemWeb(item);
                 break;
-            }
 
             // ---- item stone (Source-X IT_ITEM_STONE dispenser) ----
             // m_itItemStone (CItem.h:499-505): MORE1 = the item or template given,
@@ -4053,7 +4029,11 @@ public sealed class ClientItemUseHandler
         {
             if (victim.IsDead || CombatEngine.IsDamageImmune(victim))
                 return;
-            victim.Hits -= (short)Math.Min(dmg, victim.Hits);
+            int dealt = Math.Min(dmg, (int)victim.Hits);
+            victim.Hits -= (short)dealt;
+            // The shot lands on the victim's attacker list like any blow (OnTakeDamage),
+            // which is where the kill credit is read from.
+            victim.RecordAttack(_character.Uid, dealt);
             if (victim.Hits <= 0 && !victim.IsDead)
             {
                 if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(victim, _character);
@@ -4843,7 +4823,7 @@ public sealed class ClientItemUseHandler
                     // The victim learns who gave the order before the pet moves:
                     // OnAttackedBy(owner, fCommandPet=true) records the owner as the
                     // aggressor (HARMEDBY / IRRITATEDBY / AGGREIVED, attacker list,
-                    // crime), and a victim that refuses it - STONE, dead - is not
+                    // crime) and reveals the owner, and a victim that refuses it - STONE, dead - is not
                     // attacked at all and the pet keeps its previous order
                     // (CCharNPCPet.cpp:447).
                     if (!victim.OnAttackedBy(_character, commandPet: true))

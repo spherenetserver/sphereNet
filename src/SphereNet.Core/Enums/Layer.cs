@@ -48,7 +48,10 @@ public enum Layer : byte
     // SphereNet models the ones it needs at the reference's own numbers, so a layer
     // byte means the same thing on both sides.
     FlagPoison = 42,    // LAYER_FLAG_Poison - the SPELL_Poison memory (CChar::SetPoison)
+    FlagCriminal = 43,  // LAYER_FLAG_Criminal - the "Criminal Timer" memory (Noto_Criminal)
     FlagWool = 46,      // LAYER_FLAG_Wool - a shorn sheep's regrowing fleece
     FlagPotionUsed = 50, // LAYER_FLAG_PotionUsed - the potion cooldown marker (CCharUse.cpp:1066)
+    FlagStuck = 51,     // LAYER_FLAG_Stuck - the IT_EQ_STUCK hold of a web or trap (CCharUse.cpp:692)
+    FlagMurders = 52,   // LAYER_FLAG_Murders - the "Murder Decay" memory (Noto_Murder)
     Qty
 }

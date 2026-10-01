@@ -131,6 +131,7 @@ public sealed class WorldLoader
         var charEquipLinks = new List<(Character Char, Serial ItemSerial, byte Layer)>();
         var itemContLinks = new List<(Item Item, Serial ContSerial, byte Layer)>();
 
+        var charsBefore = new HashSet<Character>(world.GetAllCharactersSnapshot());
         world.SuppressDirtyNotify = true;
         try
         {
@@ -150,6 +151,11 @@ public sealed class WorldLoader
 
         LinkLoadedAccounts(charAccountLinks, accounts);
         ResolveLoadedObjectLinks(world, itemContLinks, charEquipLinks);
+        // The same notoriety-memory repair a full load runs, for the characters this
+        // file brought in.
+        foreach (var nch in world.GetAllCharactersSnapshot())
+            if (!nch.IsDeleted && !charsBefore.Contains(nch))
+                nch.CombatState.FixNotorietyAfterLoad(world);
         _logger.LogInformation("Runtime load: {Path} -> {Items} items, {Chars} chars",
             Path.GetFileName(path), itemCount, charCount);
         return (itemCount, charCount);
@@ -824,6 +830,14 @@ public sealed class WorldLoader
         // inside a Special-layer container: it is not in the equipment slot array (that
         // layer is shared with memory items), no inventory view reaches it, and no
         // trade session claims it - the items were simply gone.
+        // Source-X FixWeirdness for the notoriety memories: a legacy CRIMINALTIMER= /
+        // MURDERDECAY= becomes its worn memory now that every uid in the file is taken,
+        // a murder memory on a character without murders goes (CItem.cpp:1214) and a
+        // criminal flag without its memory is cleared (CChar.cpp:974-979).
+        foreach (var nch in world.GetAllCharactersSnapshot())
+            if (!nch.IsDeleted)
+                nch.CombatState.FixNotorietyAfterLoad(world);
+
         int tradeWindows = DissolveStaleTradeWindows(world);
         if (tradeWindows > 0)
             _logger.LogInformation("Dissolved {Count} stale trade window(s) from the save; offered items returned to their owners", tradeWindows);
@@ -907,10 +921,11 @@ public sealed class WorldLoader
     /// LAYER_DRAGGING (LAYER_SPELL_STATS 32 and up) and SphereNet's Special layer for
     /// an effect with no layer of its own - except the flag layers whose item has a
     /// dedicated equipment slot here (the poison memory, a shorn fleece, the potion
-    /// cooldown).</summary>
+    /// cooldown, the criminal and murder memories).</summary>
     private static bool IsSpellMemoryLayer(byte layer) =>
         (layer == (byte)Layer.Special || layer > (byte)Layer.Dragging) &&
-        layer is not ((byte)Layer.FlagPoison or (byte)Layer.FlagWool or (byte)Layer.FlagPotionUsed);
+        layer is not ((byte)Layer.FlagPoison or (byte)Layer.FlagCriminal or (byte)Layer.FlagWool
+            or (byte)Layer.FlagPotionUsed or (byte)Layer.FlagMurders);
 
     /// <summary>Layer for a char-contained item with no explicit LAYER: the item's
     /// own EquipLayer/itemdef layer, else the tiledata Quality (UO's equip layer).</summary>

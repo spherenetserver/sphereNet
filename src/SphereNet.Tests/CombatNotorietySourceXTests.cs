@@ -84,6 +84,7 @@ public sealed class CombatNotorietySourceXTests
         var victim = MakePlayer(world, 101, karma: (short)(Character.PlayerKarmaNeutral - 1000));
         Assert.Equal(3, GameClient.ComputeNotoriety(world, killer, victim));
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Kills);
@@ -100,6 +101,7 @@ public sealed class CombatNotorietySourceXTests
         guild.JoinAsMember(victim.Uid);
         Assert.Equal(2, GameClient.ComputeNotoriety(world, killer, victim)); // NOTO_GUILD_SAME
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, killer);
 
         Assert.Equal(0, killer.Kills);
@@ -116,6 +118,7 @@ public sealed class CombatNotorietySourceXTests
         var victim = MakeNpc(world, 101); // human brain, karma 0: NOTO_GOOD
         Assert.Equal(1, GameClient.ComputeNotoriety(world, killer, victim));
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, killer);
 
         Assert.Equal(1, killer.Kills);
@@ -133,6 +136,7 @@ public sealed class CombatNotorietySourceXTests
         victim.SetTag("SUMMON_DURATION", "600");
         Assert.Equal(1, GameClient.ComputeNotoriety(world, killer, victim));
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, killer);
 
         Assert.Equal(1, killer.Kills);
@@ -149,6 +153,7 @@ public sealed class CombatNotorietySourceXTests
         var victim = MakePlayer(world, 101);
         Assert.Equal(1, GameClient.ComputeNotoriety(world, gm, victim));
 
+        victim.RecordAttack(gm.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, gm);
 
         Assert.Equal(0, gm.Kills);
@@ -161,6 +166,7 @@ public sealed class CombatNotorietySourceXTests
         var killer = MakePlayer(world, 100);
         var victim = MakePlayer(world, 101);
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, killer);
 
         Assert.Equal(1, killer.Kills);
@@ -180,6 +186,7 @@ public sealed class CombatNotorietySourceXTests
         MakeGuild(world, guilds, killer).JoinAsMember(victim.Uid);
         int before = killer.Exp;
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         new DeathEngine(world).ProcessDeath(victim, killer);
 
         Assert.Equal(before, killer.Exp);

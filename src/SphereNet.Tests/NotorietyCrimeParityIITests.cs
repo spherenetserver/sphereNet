@@ -67,6 +67,7 @@ public class NotorietyCrimeParityIITests
         Character.OnMurderMark = (_, _, proposed) =>
             new Character.MurderMarkDecision(proposed, MakeCriminal: false);
 
+        victim.RecordAttack(killer.Uid, 10); // the blow that credits the kill
         death.ProcessDeath(victim, killer);
 
         Assert.Equal(1, killer.Kills);
@@ -80,21 +81,23 @@ public class NotorietyCrimeParityIITests
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
         ch.Kills = 3;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
         Character.OnMurderDecay = (_, _) => 5; // next decay in 5 seconds
 
         long defaultMs = Character.MurderDecayTimeSeconds * 1000L;
-        const long t0 = 1_000_000;
+        long t0 = Environment.TickCount64;
 
-        ch.TickNotorietyDecay(t0);                    // arms the default window
-        ch.TickNotorietyDecay(t0 + defaultMs + 1);    // first decay → re-arm with 5s override
+        ch.CombatState.NotoMurder();                  // the memory, with the default window
+        long first = t0 + defaultMs + 1_000;
+        ch.TickNotorietyDecay(first);                 // first decay → re-arm with 5s override
         Assert.Equal(2, ch.Kills);
 
         // 5 seconds later the next kill ages off — proving the override (not the
         // full default window) governs the following interval.
-        ch.TickNotorietyDecay(t0 + defaultMs + 1 + 5_000 + 1);
+        ch.TickNotorietyDecay(first + 5_000);
         Assert.Equal(1, ch.Kills);
     }
 

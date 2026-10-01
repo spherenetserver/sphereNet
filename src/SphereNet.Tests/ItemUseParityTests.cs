@@ -12,6 +12,7 @@ using SphereNet.Network.State;
 
 namespace SphereNet.Tests;
 
+[Collection("DefinitionLoaderSerial")]
 public class ItemUseParityTests
 {
     [Fact]
@@ -118,9 +119,18 @@ public class ItemUseParityTests
         Assert.False(client.HasPendingTarget);            // no RemoveTrap cursor
     }
 
+    /// <summary>An ore definition (0x19B9, t_ore) whose TDATA1 names ingot 0x1BF2.</summary>
+    private static void SeedOreDef() =>
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(0x19B9,
+            new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { Type = ItemType.Ore, TData1 = 0x1BF2 });
+
     [Fact]
-    public void OreDoubleClick_TargetForge_SmeltsOreIntoIngots()
+    public void OreDoubleClick_SmeltsOreIntoIngotsAtTheNearbyForge()
     {
+        // The ingot named below is a smelting result only as an IT_INGOT definition
+        // (Skill_Mining_Smelt, CCharSkill.cpp:1203).
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(0x1BF2,
+            new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { Type = ItemType.Ingot });
         var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
         var accounts = new AccountManager(loggerFactory);
@@ -136,21 +146,17 @@ public class ItemUseParityTests
         ore.BaseId = 0x19B9;
         ore.Name = "iron ore";
         ore.Amount = 4;
-        // Name the ingot on the ore itself. A real pack names it in the ore
-        // definition's TDATA1; upstream refuses the smelt outright when it resolves
-        // to no definition (CCharSkill.cpp:1149), and this harness registers no
-        // definitions - it is not in the DefinitionLoaderSerial collection.
-        ore.SetTag("SMELT_TO", "0x1BF2");
+        // The ore definition names its ingot in TDATA1 (m_ttOre.m_idIngot,
+        // CCharSkill.cpp:1149).
+        SeedOreDef();
         pack.AddItem(ore);
 
         var forge = world.CreateItem();
         forge.ItemType = ItemType.Forge;
         world.PlaceItem(forge, new Point3D(101, 100, 0, 0));
 
+        // IT_ORE smelts at once at the nearest forge - no cursor (CClientUse.cpp:390).
         client.HandleDoubleClick(ore.Uid.Value);
-        Assert.True(client.HasPendingTarget);
-
-        client.HandleTargetResponse(0, client.ActiveTargetCursorId, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
 
         Assert.True(ore.IsDeleted);
         var ingots = Assert.Single(pack.Contents, i => i.ItemType == ItemType.Ingot);
@@ -173,7 +179,7 @@ public class ItemUseParityTests
         ore.ItemType = ItemType.Ore;
         ore.BaseId = 0x19B9;
         ore.Amount = 2;
-        ore.SetTag("SMELT_TO", "0x1BF2"); // see the sibling test: no defs registered here
+        SeedOreDef(); // see the sibling test
         pack.AddItem(ore);
 
         var forge = world.CreateItem();
@@ -188,7 +194,8 @@ public class ItemUseParityTests
             smeltCount++;
             Assert.Same(player, args.CharSrc);
             Assert.Same(ore, args.ItemSrc);
-            Assert.Same(forge, args.O1);
+            // Init(iMiningSkill, iResourceTotalQty, 0, nullptr): no ARGO.
+            Assert.Null(args.O1);
             // Source-X seeds ARGN1 with the smelter's MINING SKILL, ARGN2 with the
             // number of resource kinds the ore yields, and the produce itself in
             // LOCAL.resource.0 (Skill_Mining_Smelt, CCharSkill.cpp:1138). The ore
@@ -203,7 +210,6 @@ public class ItemUseParityTests
         client.SetEngines(triggerDispatcher: dispatcher);
 
         client.HandleDoubleClick(ore.Uid.Value);
-        client.HandleTargetResponse(0, client.ActiveTargetCursorId, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
 
         Assert.Equal(1, smeltCount);
         Assert.False(ore.IsDeleted);

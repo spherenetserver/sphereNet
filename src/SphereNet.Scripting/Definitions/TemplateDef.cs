@@ -45,6 +45,11 @@ public enum TemplateRowKind
     /// recipe most recently created (ReadTemplate, CItem.cpp:686), which is how a
     /// recipe gives its reward a NAME, a COLOR or a TAG.</summary>
     Property,
+    /// <summary>A <c>BUY=</c> or <c>SELL=</c> line (Source-X ITC_BUY / ITC_SELL,
+    /// CItem.cpp:612): read only when the recipe fills a vendor, where it lays a
+    /// sample or a stock item into the vendor's BUYS or STOCK box and the property
+    /// lines after it apply to that item. <see cref="TemplateRow.Key"/> says which.</summary>
+    Vendor,
 }
 
 /// <summary>One line of a template recipe, IN THE ORDER IT WAS WRITTEN. Order is

@@ -115,11 +115,13 @@ public class CraftStrokeTests
         }
 
         Assert.False(PackHasSword(pack));
-        // Completion re-check failed before the roll: no resources were consumed.
+        // Skill_Blacksmith's SUCCESS stage finds the forge out of reach and returns
+        // -SKTRIG_FAIL (CCharSkill.cpp:3159-3163): Skill_Fail runs the FAIL stage, which
+        // pays part of one replication - a flat 0-49% of the 10 ingots here.
         int ingots = 0;
         foreach (var item in pack.Contents)
-            if (item.BaseId == 0x1BF2) ingots += item.Amount;
-        Assert.Equal(20, ingots);
+            if (item.BaseId == 0x1BF2 && !item.IsDeleted) ingots += item.Amount;
+        Assert.InRange(ingots, 16, 20);
     }
 
     [Fact]

@@ -386,12 +386,18 @@ public sealed class ItemScriptSurfaceParityTests : IDisposable
         var w = MakeWorld();
         var chest = Loose(w);
         chest.ItemType = ItemType.Container;
-        var gold = w.CreateItem(); gold.BaseId = 0x0EED; gold.Amount = 10; chest.AddItem(gold);
+        var gold = w.CreateItem(); gold.BaseId = 0x0EED; gold.ItemType = ItemType.Gold; gold.Amount = 10; chest.AddItem(gold);
         var logs = w.CreateItem(); logs.BaseId = 0x1BDD; logs.Amount = 5; chest.AddItem(logs);
         var gem = w.CreateItem(); gem.BaseId = 0x0F10; gem.ItemType = ItemType.Gem; gem.Amount = 4; chest.AddItem(gem);
 
-        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "2 0EED, 3 01BDD, t_gem 1", new ServerConsole()));
-        Assert.Equal((8, 2, 3), ((int)gold.Amount, (int)logs.Amount, (int)gem.Amount));
+        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "2 t_gold, t_gem 1", new ServerConsole()));
+        Assert.Equal((8, 5, 3), ((int)gold.Amount, (int)logs.Amount, (int)gem.Amount));
+
+        // A bare number names no resource type: CResourceQty::Load rejects it ("Bad
+        // resource list id") and CResourceQtyArray::Load stops there, so nothing from
+        // that entry on is read (CResourceQty.cpp:78, :205).
+        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "t_gem 1, 3 01BDD, 2 t_gold", new ServerConsole()));
+        Assert.Equal((8, 5, 2), ((int)gold.Amount, (int)logs.Amount, (int)gem.Amount));
 
         var rock = Loose(w);                        // not a container: nothing happens
         Assert.True(rock.TryExecuteCommand("CONTCONSUME", "1 0EED", new ServerConsole()));

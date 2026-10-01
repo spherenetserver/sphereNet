@@ -155,7 +155,9 @@ public sealed class ResourceListGrammarTests
         Assert.False(engine.CanCraft(scribe, recipe, checkWorkSite: false),
             "a scribe with no pen should not be able to make the scroll");
 
-        var pen = scribe.Uid.IsValid ? NewItem(pack, 0x0FBF) : null;
+        // Made FROM its definition, as the pack makes it: the requirement names
+        // i_pen_and_ink, and a bare 0FBF graphic is a different definition.
+        var pen = scribe.Uid.IsValid ? NewItem(pack, 0x0FBF, "i_pen_and_ink") : null;
         Assert.NotNull(pen);
         Assert.True(engine.CanCraft(scribe, recipe, checkWorkSite: false),
             "with the pen in the pack the recipe should pass");
@@ -178,7 +180,7 @@ public sealed class ResourceListGrammarTests
         Assert.Equal(1, resource.Amount);
         Assert.False(engine.CanCraft(scribe, recipe, checkWorkSite: false));
 
-        NewItem(pack, 0x0EFA);
+        NewItem(pack, 0x0EFA, "i_spellbook");
         Assert.True(engine.CanCraft(scribe, recipe, checkWorkSite: false));
     }
 
@@ -211,6 +213,17 @@ public sealed class ResourceListGrammarTests
         var it = world.CreateItem();
         it.BaseId = id;
         pack.AddItem(it);
+        return it;
+    }
+
+    /// <summary>An item made from a NAMED definition carries that definition's
+    /// identity (ItemDefHelper.ApplyInstanceMetadata), which is what a resource match
+    /// compares - not the graphic.</summary>
+    private static Item NewItem(Item pack, ushort id, string defname)
+    {
+        var it = NewItem(pack, id);
+        Assert.True(ItemDefHelper.ApplyInstanceMetadata(it, ResolveDef(defname),
+            setDisplayId: false, setName: false, fireCreate: false));
         return it;
     }
 
@@ -247,7 +260,7 @@ public sealed class ResourceListGrammarTests
             scribe.Equip(pack, Layer.Pack);
 
             // Everything the scroll needs EXCEPT the entry under test.
-            NewItem(pack, 0x0E34);
+            NewItem(pack, 0x0E34, "i_blank_scroll");
 
             return (engine, scribe, pack);
         }

@@ -2441,9 +2441,12 @@ public class Item : ObjBase
         }
         if (upper.StartsWith("RESCOUNT.", StringComparison.Ordinal))
         {
-            var arg = upper[9..];
-            ushort id = ParseHexId(arg);
-            value = GetResCount(id).ToString();
+            // ContentCount(ResourceGetID(RES_ITEMDEF, name)) (CContainer.cpp:722): the
+            // shared resource walk - by definition, skipping unsearchable boxes.
+            var rid = ResourceMatch.Resolve(key[9..]);
+            value = (rid.IsValid
+                ? Math.Min(int.MaxValue, ResourceMatch.Count(this, rid))
+                : 0).ToString();
             return true;
         }
         if (upper == "INSTANCES")
@@ -2465,9 +2468,9 @@ public class Item : ObjBase
         if (upper.StartsWith("RESTEST ", StringComparison.Ordinal) ||
             upper.StartsWith("RESTEST.", StringComparison.Ordinal))
         {
-            // RESTEST amount id [amount id ...]
-            var args = key[8..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            value = EvalResTest(args) ? "1" : "0";
+            // RESTEST <resource list>: ResourceConsume(list, 1, test) (CContainer.cpp:725)
+            // - how many times over the container holds the list, i.e. 1 or 0.
+            value = EvalResTest(key[8..]).ToString();
             return true;
         }
 
@@ -4082,25 +4085,14 @@ public class Item : ObjBase
                 // form - the one the packs' crafting code writes - consumed nothing,
                 // and every entry after the first was ignored. Only a container
                 // answers (CItem.cpp:3601).
+                //
+                // Each entry is spent by ContentConsume (CContainer.cpp:418) - the shared
+                // resource walk: matched by definition (not graphic), and never reaching
+                // into a locked or otherwise unsearchable box inside this one.
+                // The list is read as upstream reads it (a bare number is not a
+                // resource and ends the list), then ResourceConsume(list, 1).
                 if (!IsContainerItemType(EffectiveType)) return true;
-                foreach (var res in SphereNet.Scripting.Resources.ResourceQtyList.Parse(args))
-                {
-                    if (res.Quantity <= 0) continue;
-                    ItemType wantedType = res.Name.StartsWith("t_", StringComparison.OrdinalIgnoreCase)
-                        ? ParseItemType(res.Name)
-                        : ItemType.Invalid;
-                    ushort wantedId = 0;
-                    if (wantedType == ItemType.Invalid)
-                    {
-                        wantedId = ResolveDefName?.Invoke(res.Name) ?? 0;
-                        if (wantedId == 0 && ScriptNumber.TryParseToken(res.Name, out long idNum) &&
-                            idNum is > 0 and <= ushort.MaxValue)
-                            wantedId = (ushort)idNum;
-                        if (wantedId == 0) continue;
-                    }
-                    int need = (int)Math.Min(res.Quantity, int.MaxValue);
-                    ConsumeFromContents(this, wantedId, wantedType, ref need);
-                }
+                ResourceMatch.ResourceConsume(this, ResourceMatch.LoadList(args), 1, test: false);
                 return true;
             }
 
@@ -5245,35 +5237,6 @@ public class Item : ObjBase
         return true;
     }
 
-    /// <summary>Recursive stack consume by base id (Source-X ContentConsume):
-    /// walks the container tree eating stacks until <paramref name="need"/>
-    /// is satisfied.</summary>
-    /// <param name="wantedType">A TYPEDEF resource matches by item type instead of
-    /// id (IsResourceMatch); <see cref="ItemType.Invalid"/> when matching by id.</param>
-    private static void ConsumeFromContents(Item container, ushort wantedId, ItemType wantedType, ref int need)
-    {
-        foreach (var child in container.Contents.ToArray())
-        {
-            if (need <= 0) return;
-            bool match = wantedType != ItemType.Invalid
-                ? child.ItemType == wantedType
-                : child.BaseId == wantedId;
-            if (match)
-            {
-                int take = Math.Min(need, child.Amount);
-                need -= take;
-                if (take >= child.Amount)
-                    child.RemoveFromWorld();
-                else
-                    child.Amount -= (ushort)take;
-            }
-            else if (child.Contents.Count > 0)
-            {
-                ConsumeFromContents(child, wantedId, wantedType, ref need);
-            }
-        }
-    }
-
     /// <summary>
     /// Source-X CItem::SetTrapState — hop the trap between IT_TRAP /
     /// IT_TRAP_ACTIVE / IT_TRAP_INACTIVE. MORE1 holds the counterpart graphic
@@ -6287,27 +6250,14 @@ public class Item : ObjBase
         return null;
     }
 
-    private int GetResCount(ushort baseId)
+    /// <summary>RESTEST: CResourceQtyArray::Load (stops at the first entry it cannot
+    /// read; a repeated resource replaces the earlier entry), then ResourceConsume
+    /// with one replication in test mode (CContainer.cpp:572) - 0 when nothing loaded,
+    /// otherwise 1 when every entry is held in full and 0 when any falls short.</summary>
+    private int EvalResTest(string list)
     {
-        int total = 0;
-        foreach (var item in _contents)
-        {
-            if (item.BaseId == baseId) total += item._amount;
-            total += item.GetResCount(baseId); // recurse into subcontainers
-        }
-        return total;
-    }
-
-    private bool EvalResTest(string[] parts)
-    {
-        // pairs: amount id amount id ...
-        for (int i = 0; i + 1 < parts.Length; i += 2)
-        {
-            if (!int.TryParse(parts[i], out int need)) return false;
-            ushort id = ParseHexId(parts[i + 1]);
-            if (GetResCount(id) < need) return false;
-        }
-        return true;
+        var wanted = ResourceMatch.LoadList(list);
+        return wanted.Count == 0 ? 0 : ResourceMatch.ResourceConsume(this, wanted, 1, test: true);
     }
 
     /// <summary>Lift a book page written by the old zero-based BODY append into the

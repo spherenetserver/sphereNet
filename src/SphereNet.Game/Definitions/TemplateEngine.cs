@@ -366,6 +366,13 @@ public static class TemplateEngine
                     continue;
                 }
 
+                case TemplateRowKind.Vendor:
+                    // BUY= / SELL= rows are read by the vendor restock
+                    // (VendorEngine.AddBuySamples, Character.PopulateVendorStock);
+                    // outside a vendor upstream skips them and leaves the current
+                    // item as it was (CItem.cpp:612-624).
+                    continue;
+
                 case TemplateRowKind.Func:
                 {
                     // ITC_FUNC (CItem.cpp:649): the row CALLS a script function on the

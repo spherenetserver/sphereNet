@@ -4,6 +4,63 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Uretim, kaynak, eritme ve vendor ekonomisi Source-X'e uyar
+------------------------------------------------------------------------
+DUZELTME - Uretim asamalari Skill_MakeItem'i izler: basari zari skill
+           baslangicinda atilir (ACTDIFF, @SkillStart icinde yazilabilir,
+           @SkillUseQuick yok); @SkillSuccess hicbir sey harcanmadan once
+           calisir ve RETURN 1 iptal eder; @SkillMakeItem ACT icindeki bitmis
+           esyada calisir (ARGN1 temel skill, ARGN2 kalite, ARGO onceki ACT,
+           LOCAL.Notify) ve RETURN 1 esyayi siler; @Create tam bir kez calisir.
+DUZELTME - Inscription scroll'u MOREY olarak yazicinin skill degerini alir ve
+           kalite almaz; iksir ve coklu uretim kalite almaz. MAKEITEM esya,adet
+           stokun yettigi kadar kopya uretir.
+DEGISIKLIK - Uretilen esya artik malzemenin rengini almaz ve kaynagin her rengi
+           harcanabilir; malzeme secim gump'i kaldirildi (Source-X renklendirmeyi
+           script'e birakir).
+DUZELTME - Ocaktan veya atesten uzaklasmak FAIL asamasina gider; basarisiz
+           uretim tek kopyanin bir kismini ResourceConsumePart ile kaybeder.
+           Uretim teslimi ItemBounce'u izler (GM modunda tasima siniri yok, drop
+           tetikleyicileri, ayaga birakma ve birakma sesi).
+DUZELTME - Kaynak testi ve tuketimi tek container yuruyusunu kullanir: uretim,
+           tamir, SKILLTEST, CONTCONSUME, RESCOUNT, RESTEST, CONSUME ve buyu
+           reagent'lari kilitli, banka, vendor ve trade kutularindaki esyalari
+           saymaz ve harcamaz; uretim karakterin tamamina bakar.
+DUZELTME - Recipe RESOURCES, SKILLMAKE esyalari, reagent'lar ve vendor BUY
+           ornekleri tam ITEMDEF kimligini korur; ayni grafigi kullanan iki
+           tanim farkli kaynaktir. EXPERIMENTAL 0x40 kapaliyken tahta kutuk
+           yerine, deri ham deri yerine sayilir. Kaynak listeleri
+           CResourceQtyArray::Load gibi okunur; TAG.MATOVERRIDE_<defname>
+           uretim ve CONSUME'da uygulanir.
+DUZELTME - Altin yalnizca TYPE ile eslesir; kilitli kutular sayilmaz ve
+           odemede kullanilmaz, bankadaki altin odemeye devam eder,
+           PAYFROMPACKONLY odemeyi cantayla sinirlar.
+DUZELTME - Eritme Skill_Mining_Smelt'i izler: ekipman RESOURCES icindeki ingot
+           ve gem'leri geri verir, magic/blessed esyalar reddedilir, cevhere
+           cift tiklama en yakin ocakta eritir, cevher yiginlari birlesir ve
+           cevher yalnizca TDATA1'in gosterdigi ingota erir (TAG.SMELT_TO
+           kaldirildi).
+DUZELTME - Ondalik noktayla yazilan ITEMDEF TDATA degerleri (TDATA1=20.0) Sphere
+           sayisi (200) olarak okunur; ingotlarin eritme zorlugu geri gelir.
+DUZELTME - Vendor BUY eslesmesi NPC_FindVendableItem portu: tam itemdef ve TYPE,
+           ornegin OVERRIDE.VALUE degeri liste, @Sell ve odemeyi fiyatlar; BUY=
+           sablonlari gercek ornek olusturur; OF_VendorStockLimit bunlari
+           sinirlar ve tuketir; satis listesi aranabilir alt cantalara iner,
+           NEWBIE/MOVE_NEVER esyalari atlar.
+DUZELTME - Vendor satis ve alimi Event_VendorSell / Event_VendorBuy'i izler
+           (satir satir, saticinin tasidigi esyalar, fazla miktar eldeki kadar
+           satilir, tekrarlanan alim satirlari birlesir, GetVendorPrice, sadece
+           sahip veya GM modundaki GM bedava alir). Alinan esya yine o vendor'in
+           stogundan gelmelidir.
+DUZELTME - Uretim degeri kalite 100'de kesilmez, GetLinear gibi yuvarlanir;
+           IT_DEED fiyati MORE1'deki tanimdan gelir; sanal altin alimlari 64 bit
+           maliyet siniri kullanir. Sac/sakal alimi zamanlayici ve makas sesiyle
+           giyilir; figurine sahipli pet yaratir.
+DEGISIKLIK - Vendor parasi bank kutusu MORE1 (VENDGOLD); eski TAG.VENDOR_GOLD
+           yuklemede bir kez buraya tasinir; CASH bir gunluk ucreti birakir.
+DUZELTME - Skill otomatik basarisi ve tasima agirligi istisnasi yetki seviyesine
+           degil GM modu bayragina bakar.
+
 [2026-10-01] - TAG/VAR kayit degerleri Source-X gibi tirnaklanir
 ------------------------------------------------------------------------
 DUZELTME - TAG/VAR kayit degerleri Source-X CVarDefMap::r_WritePrefix ile ayni:

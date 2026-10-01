@@ -755,6 +755,16 @@ public sealed class WorldLoader
         if (tradeWindows > 0)
             _logger.LogInformation("Dissolved {Count} stale trade window(s) from the save; offered items returned to their owners", tradeWindows);
 
+        // A vendor's purse is its bank box's MORE1, as Source-X keeps it (VENDGOLD,
+        // CCharNPC.cpp:198). An earlier SphereNet kept it in TAG.VENDOR_GOLD instead;
+        // fold any such tag into MORE1 now, once, so the purse has one home.
+        int vendorPurses = 0;
+        foreach (var vch in world.GetAllObjects().OfType<Character>().ToList())
+            if (!vch.IsDeleted && SphereNet.Game.Trade.VendorEngine.MigrateLegacyVendorGold(vch))
+                vendorPurses++;
+        if (vendorPurses > 0)
+            _logger.LogInformation("Vendor purse: {Count} TAG.VENDOR_GOLD value(s) moved into the bank box MORE1", vendorPurses);
+
         _logger.LogInformation("World loaded: {Items} items, {Chars} chars, {Contained} contained/equipped in {Elapsed}s",
             itemCount, charCount, containedCount + equipCount, sw.Elapsed.TotalSeconds.ToString("F1"));
 

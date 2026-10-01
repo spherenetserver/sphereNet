@@ -505,7 +505,11 @@ public sealed class DefinitionLoader
                     else if (range.Length >= 2 && int.TryParse(range[^1], out int hi) && hi > 0)
                         amount = hi;
                 }
-                def.ItemEntries.Add(new TemplateEntry { DefName = parts[0], Amount = amount });
+                var vendorEntry = new TemplateEntry { DefName = parts[0], Amount = amount };
+                def.ItemEntries.Add(vendorEntry);
+                // In the recipe's line order too, so the property lines that follow
+                // a BUY= row reach the sample it made (ReadTemplate, CItem.cpp:612/:686).
+                def.Rows.Add(new TemplateRow { Kind = TemplateRowKind.Vendor, Key = upper, Entry = vendorEntry });
             }
             else if (upper == "FUNC")
             {
@@ -922,38 +926,14 @@ public sealed class DefinitionLoader
     }
 
     /// <summary>Parse "amount resDefName, amount resDefName, ..." into reagent dictionary.</summary>
-    private void ParseReagentList(string val, Dictionary<ushort, int> dict)
+    /// <summary>RESOURCES of a [SPELL]: CResourceQtyArray::Load (CResourceQty.cpp:181) -
+    /// the shared resource-list reader, so a reagent keeps its full resource id and a
+    /// bare number ends the list as upstream.</summary>
+    private void ParseReagentList(string val, Dictionary<ResourceId, int> dict)
     {
-        var parts = val.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        foreach (var part in parts)
-        {
-            // Format: "amount defname" or "defname amount" or just "defname"
-            var tokens = part.Split(' ', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length == 0) continue;
-
-            int amount = 1;
-            string name;
-            if (int.TryParse(tokens[0], out int a))
-            {
-                amount = a;
-                name = tokens.Length > 1 ? tokens[1] : "";
-            }
-            else
-            {
-                name = tokens[0];
-                if (tokens.Length > 1) int.TryParse(tokens[1], out amount);
-            }
-
-            if (string.IsNullOrEmpty(name)) continue;
-
-            // Resolve defname to item ID
-            var rid = _resourcesStatic?.ResolveDefName(name) ?? ResourceId.Invalid;
-            ushort itemId = rid.IsValid ? (ushort)rid.Index : (ushort)0;
-            if (itemId == 0 && TryParseHex(name, out ushort hex))
-                itemId = hex;
-            if (itemId != 0)
-                dict[itemId] = amount;
-        }
+        dict.Clear();
+        foreach (var entry in SphereNet.Game.Objects.Items.ResourceMatch.LoadList(val, _resourcesStatic))
+            dict[entry.Rid] = (int)Math.Clamp(entry.Qty, int.MinValue, int.MaxValue);
     }
 
     /// <summary>Parse "skillName minValue, ..." into skill requirement dictionary.</summary>

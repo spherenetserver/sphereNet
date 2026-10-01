@@ -180,6 +180,7 @@ public sealed class SkillQueryParityTests
         Assert.Equal("0", missing);
 
         var ingots = NewItem(pack, 0x1BF2);
+        ingots.SetTag("ITEMDEF", "i_ingot_iron");   // made from the named definition
         ingots.ItemType = ItemType.Ingot;
         ingots.Amount = 5;
 

@@ -126,6 +126,7 @@ public sealed class SourceXCartographyCraftWave233Tests
 
             var blankMap = world.CreateItem();
             blankMap.BaseId = 0x14EB;
+            blankMap.SetTag("ITEMDEF", "i_map_blank");   // made from the named definition
             blankMap.ItemType = ItemType.MapBlank;
             pack.AddItem(blankMap);
 

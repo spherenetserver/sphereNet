@@ -91,6 +91,10 @@ public sealed class VendorWindowCloseTests
         mine.BaseId = 0x0F0E;
         mine.Amount = 1;
         Assert.True(owner.Backpack!.TryAddItem(mine));
+        // The vendor buys it (a BUY sample) and can pay for it (its purse).
+        TestHarness.GiveVendorBuySample(world, vendor, 0x0F0E);
+        VendorEngine.SetVendorGold(vendor, 1000);
+        mine.SetTag("OVERRIDE.VALUE", "10");
 
         client.HandleVendorSell(vendor.Uid.Value,
             [new SphereNet.Network.Packets.Incoming.VendorSellEntry

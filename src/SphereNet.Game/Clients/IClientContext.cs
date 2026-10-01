@@ -253,7 +253,7 @@ internal interface IClientContext : ITextConsole
     /// <summary>Source-X Skill_Start for a skill a tool puts to work at a target.</summary>
     void StartSkillFromTool(SkillType skill, Serial targetUid, Objects.ObjBase? target, Point3D? point, Objects.Items.Item? tool);
     void TickPendingCraft();
-    bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump);
+    bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump, int replicationQty = 1);
 
     // --- targeting ---
     void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1);

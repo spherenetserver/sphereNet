@@ -4246,6 +4246,9 @@ public partial class Character : ObjBase
     /// freshly gathered/crafted item to the ground instead of overloading the pack.</summary>
     public bool CanCarry(Item item)
     {
+        // A GM in GM mode carries anything (CCharStatus.cpp:267).
+        if (IsGmMode)
+            return true;
         long incomingTenths = item.TotalWeightTenths;
         return (long)GetTotalWeightTenths() + incomingTenths <=
                (long)Math.Max(0, MaxWeight) * Item.WeightUnits;
@@ -6286,67 +6289,19 @@ public partial class Character : ObjBase
     // every container among them all the way down - which takes in the pack AND the
     // bank box - skipping only locked sub-containers (CContainer.cpp:385-414).
 
-    private static bool IsGoldPile(Item item) => SphereNet.Game.Trade.VendorEngine.IsGold(item);
+    // Both run on the shared resource walk (ResourceMatch), the same one crafting,
+    // CONTCONSUME and vendor payment use.
 
-    private static long CountGoldIn(Item container)
-    {
-        long total = 0;
-        foreach (var child in container.Contents)
-        {
-            if (child.IsDeleted) continue;
-            if (IsGoldPile(child))
-                total += child.Amount;
-            if (child.ContentCount > 0 && child.ItemType != ItemType.ContainerLocked)
-                total += CountGoldIn(child);
-        }
-        return total;
-    }
+    private static long CountGoldIn(Item container) =>
+        Items.ResourceMatch.Count(container, Items.ResourceMatch.Gold);
 
     /// <summary>The GOLD read (CChar.cpp:3333): ContentCount(t_gold) over what I wear.</summary>
-    public long CountCarriedGold()
-    {
-        long total = 0;
-        for (int i = 0; i < _equipment.Length; i++)
-        {
-            var worn = _equipment[i];
-            if (worn == null || worn.IsDeleted) continue;
-            if (IsGoldPile(worn))
-                total += worn.Amount;
-            if (worn.ContentCount > 0 && worn.ItemType != ItemType.ContainerLocked)
-                total += CountGoldIn(worn);
-        }
-        return total;
-    }
-
-    private static void ConsumeGoldIn(Item container, ref long want)
-    {
-        foreach (var child in container.Contents.ToArray())
-        {
-            if (want <= 0) return;
-            if (child.IsDeleted) continue;
-            if (IsGoldPile(child))
-            {
-                long take = Math.Min(want, child.Amount);
-                want -= take;
-                if (take >= child.Amount) child.RemoveFromWorld();
-                else child.Amount = (ushort)(child.Amount - take);
-                continue;
-            }
-            if (child.ContentCount > 0 && child.ItemType != ItemType.ContainerLocked)
-                ConsumeGoldIn(child, ref want);
-        }
-    }
+    public long CountCarriedGold() =>
+        Items.ResourceMatch.Count(this, Items.ResourceMatch.Gold);
 
     /// <summary>ContentConsume(t_gold, amount) over what I wear, in layer order.</summary>
-    private void ConsumeCarriedGold(long amount)
-    {
-        for (int i = 0; i < _equipment.Length && amount > 0; i++)
-        {
-            var worn = _equipment[i];
-            if (worn == null || worn.IsDeleted || worn.ItemType == ItemType.ContainerLocked) continue;
-            ConsumeGoldIn(worn, ref amount);
-        }
-    }
+    private void ConsumeCarriedGold(long amount) =>
+        Items.ResourceMatch.Consume(this, Items.ResourceMatch.Gold, amount);
 
     /// <summary>AddGoldToPack (CCharAct.cpp:215): new gold piles of at most one full
     /// stack each, capped at 25,000,000 per call, into <paramref name="container"/>.
@@ -6398,6 +6353,10 @@ public partial class Character : ObjBase
         }
         return bank;
     }
+
+    /// <summary>GetBank(LAYER_BANKBOX): the bank box, made and worn when there is
+    /// none. A vendor's purse lives in its MORE1 (m_itEqBankBox.m_Check_Amount).</summary>
+    internal Item? GetBankBoxSafe() => GetBankSafe();
 
     /// <summary>GetPackSafe: my pack, made and worn when I have none.</summary>
     private Item? GetPackSafe()
@@ -6895,8 +6854,11 @@ public partial class Character : ObjBase
                 return true;
             }
             case "VENDGOLD":
+                // m_Check_Amount = s.GetArgVal() (CCharNPC.cpp:113): an int stored in
+                // the bank box's unsigned MORE1.
                 if (!_isPlayer)
-                    SphereNet.Game.Trade.VendorEngine.SetVendorGold(this, (int)EvalScriptLong(normalized));
+                    SphereNet.Game.Trade.VendorEngine.SetVendorGold(this,
+                        unchecked((uint)(int)EvalScriptLong(normalized)));
                 return true;
             // --- CCharPlayer keys (CCharPlayer.cpp:462/:482). An NPC has no player
             // part and answers them 0; the value is still taken here because a legacy
@@ -7852,36 +7814,15 @@ public partial class Character : ObjBase
             }
             case "CONSUME":
             {
-                // Source-X CChar::Spell_CastDone / r_Verb CONSUME:
-                //   CONSUME [amount [defname|0xBASEID]]
-                // Walks the backpack subtree, decrementing the matching
-                // item's Amount and deleting it when the stack is empty.
-                // Empty defname falls back to "consume one of any item"
-                // — matching r_Verb behaviour where omitted args mean
-                // "the last NEWITEM defname". Returns silently if the
-                // requested resource is not present (Sphere never errors
-                // out on missing reagent counts; scripts gate on RESTEST
-                // before invoking CONSUME).
-                int wantAmount = 1;
-                string defArg = "";
-                var consumeParts = (args ?? "").Split(
-                    new[] { ' ', '\t' }, 2,
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (consumeParts.Length > 0 && int.TryParse(consumeParts[0], out int parsedAmount) && parsedAmount > 0)
-                {
-                    wantAmount = parsedAmount;
-                    if (consumeParts.Length > 1) defArg = consumeParts[1].Trim();
-                }
-                else if (consumeParts.Length > 0)
-                {
-                    defArg = (args ?? "").Trim();
-                }
-                if (string.IsNullOrEmpty(defArg)) defArg = NewItemId ?? "";
-
-                ushort wantBaseId = ResolveItemBaseIdForVerb(defArg);
-                if (wantBaseId == 0) return true;
-
-                ConsumeFromContainer(Backpack, wantBaseId, ref wantAmount);
+                // CHV_CONSUME (CChar.cpp:4496): the argument is a resource LIST, spent
+                // with ResourceConsume(list, 1) over everything I carry - the shared
+                // resource walk, so an item is matched by its definition and a locked
+                // or banked box is never reached. A skill entry is a level I must have
+                // (short of it, the rest of the list is not spent), an ITEMDEF entry
+                // honours TAG.MATOVERRIDE_<defname>, and each item entry takes what is
+                // there. An empty argument spends nothing.
+                Items.ResourceMatch.ResourceConsume(this,
+                    Items.ResourceMatch.LoadList(args ?? ""), 1, test: false);
                 return true;
             }
             case "KILL":
@@ -9025,7 +8966,7 @@ public partial class Character : ObjBase
 
     /// <summary>UpdateDir(point): turn to face a spot, telling observers only when the
     /// facing actually changed.</summary>
-    private void FaceToward(Point3D target)
+    internal void FaceToward(Point3D target)
     {
         if (target.X == X && target.Y == Y)
             return;
@@ -9984,80 +9925,6 @@ public partial class Character : ObjBase
     private Items.Item? _lastCreatedItem;
     private ushort _lastVerbHue;
 
-    /// <summary>Resolve a script item argument ("0x1F00", "i_gold",
-    /// "1234") down to a wire-side BaseId for FIND/CONSUME-style
-    /// verbs. Returns 0 when the token can't be matched, signalling
-    /// the caller to no-op (Sphere never errors on bad defnames here;
-    /// scripts pre-check via RESTEST/RESCOUNT).</summary>
-    private static ushort ResolveItemBaseIdForVerb(string token)
-    {
-        if (string.IsNullOrWhiteSpace(token)) return 0;
-        string t = token.Trim();
-
-        // Hex literal (with or without 0x / leading zero per Sphere convention).
-        ReadOnlySpan<char> span = t;
-        if (span.Length > 2 && span[0] == '0' && (span[1] == 'x' || span[1] == 'X'))
-        {
-            return ushort.TryParse(span[2..], System.Globalization.NumberStyles.HexNumber, null, out ushort hex)
-                ? hex : (ushort)0;
-        }
-        if (span.Length > 1 && span[0] == '0')
-        {
-            return ushort.TryParse(span, System.Globalization.NumberStyles.HexNumber, null, out ushort hex2)
-                ? hex2 : (ushort)0;
-        }
-
-        // Try defname → ItemDef → DispIndex (wire graphic). Fall back to
-        // the resource id when the def has no explicit DispIndex (matches
-        // SpawnAndEquipItem's resolution).
-        var resources = Definitions.DefinitionLoader.StaticResources;
-        if (resources != null)
-        {
-            var rid = resources.ResolveDefName(t);
-            if (rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef)
-            {
-                var idef = Definitions.DefinitionLoader.GetItemDef(rid.Index);
-                ushort graphic = Definitions.ItemDefHelper.CreateGraphic(idef, rid.Index);
-                if (graphic != 0) return graphic;
-            }
-        }
-
-        // Plain decimal id (rare but valid for explicit DISPID values).
-        return ushort.TryParse(t, out ushort dec) ? dec : (ushort)0;
-    }
-
-    /// <summary>Walk the container subtree and decrement
-    /// <paramref name="want"/> matching items in place, deleting
-    /// stacks that reach zero. Stops as soon as <paramref name="want"/>
-    /// hits zero. Mirrors Source-X CChar::ResourceConsume.</summary>
-    private static void ConsumeFromContainer(Items.Item? container, ushort baseId, ref int want)
-    {
-        if (container == null || want <= 0) return;
-        var snapshot = new List<Items.Item>(container.Contents);
-        foreach (var child in snapshot)
-        {
-            if (want <= 0) return;
-            if (child.IsDeleted) continue;
-            if (child.BaseId == baseId)
-            {
-                int take = Math.Min(want, child.Amount);
-                if (take >= child.Amount)
-                {
-                    child.RemoveFromWorld();
-                }
-                else
-                {
-                    child.Amount = (ushort)(child.Amount - take);
-                }
-                want -= take;
-            }
-            else if (child.ContentCount > 0)
-            {
-                ConsumeFromContainer(child, baseId, ref want);
-            }
-        }
-    }
-
     /// <summary>Spawn an item by defname and put it on this NPC at
     /// its natural layer (falls back to the backpack). Resolves
     /// random_* defname pools via TemplateEngine.PickRandomItemDefName
@@ -10366,10 +10233,13 @@ public partial class Character : ObjBase
 
         if (buySide)
         {
-            // BUY lists don't spawn items — they only configure what
-            // the vendor accepts when the player tries to sell. Store
-            // the defname; the sell gump will resolve it at open time.
+            // BUY= lays the template out as SAMPLES in the vendor's BUYS box
+            // (Source-X ITC_BUY, CChar.cpp:1343): what the vendor buys is matched
+            // against those objects - their definition, TYPE, OVERRIDE.VALUE and,
+            // under OF_VendorStockLimit, their amount. The template name is kept
+            // too, so a vendor saved before its samples existed can lay them out.
             SetTag("VENDOR_BUY_LIST", templateDefName);
+            SphereNet.Game.Trade.VendorEngine.AddBuySamples(this, templateDefName);
             return;
         }
 

@@ -88,8 +88,9 @@ public sealed partial class GameClient
     internal void TickPendingCraft() => WorldFeatures.TickPendingCraft();
     public void CancelPendingCraftOnInterrupt() => WorldFeatures.CancelPendingCraftOnInterrupt();
 
-    internal bool BeginPendingCraft(Crafting.CraftRecipe recipe, Core.Enums.SkillType craftSkill, bool reopenGump) =>
-        WorldFeatures.BeginPendingCraft(recipe, craftSkill, reopenGump);
+    internal bool BeginPendingCraft(Crafting.CraftRecipe recipe, Core.Enums.SkillType craftSkill, bool reopenGump,
+        int replicationQty = 1) =>
+        WorldFeatures.BeginPendingCraft(recipe, craftSkill, reopenGump, replicationQty);
 
     public void HandleClientUiButton(byte opcode) => WorldFeatures.HandleClientUiButton(opcode);
 

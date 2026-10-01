@@ -61,7 +61,7 @@ public class VendorTradeTests
         var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 10, "5");
         var player = MakeBuyerWithGold(world, 1000);
 
-        int cost = VendorEngine.ProcessBuy(player, vendor,
+        long cost = VendorEngine.ProcessBuy(player, vendor,
             [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 3, Price = 5 }]);
 
         Assert.Equal(18, cost);            // 3 * (5 + 15% markup = 6)
@@ -75,7 +75,7 @@ public class VendorTradeTests
         var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 4, "5");
         var player = MakeBuyerWithGold(world, 1000);
 
-        int cost = VendorEngine.ProcessBuy(player, vendor,
+        long cost = VendorEngine.ProcessBuy(player, vendor,
             [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 4, Price = 5 }]);
 
         Assert.Equal(24, cost);            // 4 * (5 + 15% markup = 6)
@@ -95,7 +95,7 @@ public class VendorTradeTests
         rogue.Amount = 1;
         world.PlaceItem(rogue, new Point3D(50, 50, 0, 0));
 
-        int result = VendorEngine.ProcessBuy(player, vendor,
+        long result = VendorEngine.ProcessBuy(player, vendor,
             [new TradeEntry { ItemUid = rogue.Uid, ItemId = rogue.BaseId, Amount = 1, Price = 5 }]);
 
         Assert.Equal(-1, result); // crafted-serial buy rejected
@@ -108,7 +108,7 @@ public class VendorTradeTests
         var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 2, "5");
         var player = MakeBuyerWithGold(world, 1000);
 
-        int result = VendorEngine.ProcessBuy(player, vendor,
+        long result = VendorEngine.ProcessBuy(player, vendor,
             [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 5, Price = 5 }]);
 
         Assert.Equal(-1, result);          // not enough in stock
@@ -133,7 +133,7 @@ public class VendorTradeTests
         var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0)); // no BUY list => buys anything
 
-        var seller = new Character { Name = "seller" };
+        var seller = world.CreateCharacter(); seller.Name = "seller";
         world.PlaceCharacter(seller, new Point3D(101, 100, 0, 0));
         var pack = world.CreateItem();
         seller.Equip(pack, Layer.Pack);
@@ -165,9 +165,9 @@ public class VendorTradeTests
         var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
         vendor.SetTag("VENDOR_GOLD", "1000"); // W-F: purse always tracked — fund it
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
-        TestHarness.GiveVendorBuySample(world, vendor, 0x0E75);
+        TestHarness.GiveVendorBuySample(world, vendor, 0x0E75, ItemType.Container);
 
-        var seller = new Character { Name = "seller" };
+        var seller = world.CreateCharacter(); seller.Name = "seller";
         world.PlaceCharacter(seller, new Point3D(101, 100, 0, 0));
         var pack = world.CreateItem();
         seller.Equip(pack, Layer.Pack);

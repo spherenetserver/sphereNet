@@ -94,7 +94,7 @@ public sealed class CastLifecycleParityTests
         using var f = new Fixture(); f.Wand();
         if (missing != "book") f.Book();
         if (missing == "mana") f.Player.Mana = 0;
-        if (missing == "reagent") f.Heal.Reagents.Add(0x7FFE, 1);
+        if (missing == "reagent") f.Heal.Reagents.Add(SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(0x7FFE), 1);
         Assert.Equal(-1, f.Start());
         Assert.False(f.Player.IsCasting);
     }
@@ -105,7 +105,7 @@ public sealed class CastLifecycleParityTests
         using var f = new Fixture(); var wand = f.Wand();
         f.Player.Unequip(Layer.OneHanded); f.Player.Backpack!.AddItem(wand);
         wand.More2 = 3; // a wand casts only with charges left (CCharSpell.cpp:2436)
-        f.Player.Mana = 0; f.Heal.Reagents.Add(0x7FFE, 1);
+        f.Player.Mana = 0; f.Heal.Reagents.Add(SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(0x7FFE), 1);
         f.Player.SetTag("WAND_UID", wand.Uid.Value.ToString());
         Assert.True(f.Start() > 0);
         Assert.Equal(1, f.Player.CastDifficulty);
@@ -281,7 +281,7 @@ public sealed class CastLifecycleParityTests
         {
             events.Add("success");
             if (outcome == "mana") f.Player.Mana = 0;
-            if (outcome == "reagent") f.Heal.Reagents.Add(0x7FFE, 1);
+            if (outcome == "reagent") f.Heal.Reagents.Add(SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(0x7FFE), 1);
             return outcome == "veto" ? TriggerResult.True : TriggerResult.Default;
         });
         f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillAbort", (_, _) =>
@@ -341,7 +341,7 @@ public sealed class CastLifecycleParityTests
         Character.ReagentsRequiredEnabled = true;
         bool castingAtAbort = false; int manaAtAbort = -1;
         f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillSuccess", (_, _) =>
-        { f.Heal.Reagents.Add(0x7FFE, 1); return TriggerResult.Default; });
+        { f.Heal.Reagents.Add(SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(0x7FFE), 1); return TriggerResult.Default; });
         f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SkillAbort", (_, _) =>
         {
             castingAtAbort = f.Player.IsCasting; manaAtAbort = f.Player.Mana;

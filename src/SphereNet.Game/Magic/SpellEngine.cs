@@ -509,8 +509,8 @@ public sealed partial class SpellEngine
         // caster themselves, and calls it with that same source on every path
         // (CCharSpell.cpp:3380/3398). The caller passes the RESOLVED source rather
         // than the raw tag, so a scroll that no longer exists cannot buy the exemption.
-        bool takeReagents = !wand && !scroll &&
-            Character.ReagentsRequiredEnabled && HasRequiredReagents(caster, def);
+        bool takeReagents = !wand && !scroll && caster.IsPlayer &&
+            Character.ReagentsRequiredEnabled;
         if (fizzle && !Character.ReagentLossFail) takeReagents = false;
         if (abort && !Character.ReagentLossAbort) takeReagents = false;
 
@@ -521,8 +521,10 @@ public sealed partial class SpellEngine
         if (reagentLossEnabled && tithingLoss > 0)
             caster.Tithing -= tithingLoss;
 
+        // Calc_SpellReagentsConsume(fTest = false) (:3380/:3398): one LOWERREAGENTCOST
+        // roll, then whatever of each reagent is there is spent.
         if (takeReagents)
-            ConsumeReagents(caster, def);
+            MissingReagent(caster, def, test: false);
     }
 
     /// <summary>A cast that reached its completion but cannot legally resolve.
@@ -946,12 +948,15 @@ public sealed partial class SpellEngine
                     return false;
                 }
 
-                if (Character.ReagentsRequiredEnabled &&
-                    !(test ? HasRequiredReagents(caster, def) : ConsumeReagents(caster, def)))
+                if (Character.ReagentsRequiredEnabled)
                 {
-                    if (failMsg)
-                        SendMissingReagentMessage(caster, def);
-                    return false;
+                    int missingReagent = MissingReagent(caster, def, test);
+                    if (missingReagent >= 0)
+                    {
+                        if (failMsg)
+                            SendMissingReagentMessage(caster, def, missingReagent);
+                        return false;
+                    }
                 }
 
                 if (caster.Tithing < tithingUse)
@@ -1822,90 +1827,44 @@ public sealed partial class SpellEngine
         return RollsFreeReagents(caster) ? 0 : def.TithingCost;
     }
 
-    private bool HasRequiredReagents(Character caster, SpellDef def)
+    /// <summary>Calc_SpellReagentsConsume's ResourceConsumePart(reagents, 1, 100, fTest)
+    /// on the caster (CResourceCalc.cpp:573): the shared resource walk over everything
+    /// carried - matched by definition, never reaching into a locked or banked box.
+    /// Returns the index of the LAST reagent that fell short, or -1. A real spend takes
+    /// what is there of each reagent even when another is short, as upstream does.</summary>
+    private int ReagentsConsume(Character caster, SpellDef def, bool test)
     {
-        if (def.Reagents.Count == 0) return true;
-        if (RollsFreeReagents(caster)) return true;
-        if (caster.Backpack == null) return false;
-        foreach (var (regBaseId, needed) in def.Reagents)
-        {
-            if (CountReagent(caster, regBaseId, needed) < needed)
-                return false;
-        }
-        return true;
+        if (def.Reagents.Count == 0)
+            return -1;
+        var list = def.Reagents
+            .Select(kv => new Objects.Items.ResourceMatch.ResourceQty(kv.Key, kv.Value))
+            .ToList();
+        return Objects.Items.ResourceMatch.ResourceConsumePart(caster, list, 1, 100, test);
     }
 
-    private void SendMissingReagentMessage(Character caster, SpellDef def)
+    /// <summary>The fTest pass. The LOWERREAGENTCOST roll wraps it (a free cast cannot
+    /// be refused for lacking reagents); returns the missing index or -1.</summary>
+    private int MissingReagent(Character caster, SpellDef def, bool test)
     {
-        foreach (var (id, needed) in def.Reagents)
-        {
-            if (caster.Backpack != null && CountReagent(caster, id, needed) >= needed) continue;
-            string name = Definitions.DefinitionLoader.GetItemDef(id)?.Name ?? $"0{id:X}";
-            OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNoregs, name));
+        if (def.Reagents.Count == 0 || RollsFreeReagents(caster))
+            return -1;
+        return ReagentsConsume(caster, def, test);
+    }
+
+    /// <summary>DEFMSG_SPELL_TRY_NOREGS naming the reagent upstream reports - the last
+    /// one found short (CCharSpell.cpp:2495) - or "the reagent" when it has no
+    /// definition.</summary>
+    private void SendMissingReagentMessage(Character caster, SpellDef def, int missing)
+    {
+        if (missing < 0 || missing >= def.Reagents.Count)
             return;
-        }
-    }
-
-    private int CountReagent(Character caster, ushort regBaseId, int stopAt)
-    {
-        int have = 0;
-        foreach (var item in _world.GetContainerContentsRecursive(caster.Backpack!.Uid))
-        {
-            if (item.IsDeleted) continue;
-            if (item.BaseId != regBaseId) continue;
-            have += Math.Max(1, (int)item.Amount);
-            if (have >= stopAt) break;
-        }
-        return have;
-    }
-
-    /// <summary>
-    /// Deduct the spell's reagent cost. Returns false and consumes NOTHING when any
-    /// reagent is short.
-    ///
-    /// This used to return void and trust a check made when the cast started. A cast
-    /// takes time, and inventory moves during it: taking the reagents out of the pack
-    /// mid-cast produced the spell for free. Source-X re-runs Spell_CanCast with
-    /// fTest=false at Spell_CastDone (CCharSpell.cpp:3009) and fails the whole cast
-    /// if it cannot pay, which is what this reproduces - the availability pass runs
-    /// over every reagent before a single one is taken.
-    /// </summary>
-    private bool ConsumeReagents(Character caster, SpellDef def)
-    {
-        if (def.Reagents.Count == 0) return true;
-        if (RollsFreeReagents(caster)) return true;
-        if (caster.Backpack == null) return false;
-
-        // All-or-nothing: verify the full bill first so a partial spend cannot be
-        // left behind when a later reagent turns out to be missing.
-        foreach (var (regBaseId, needed) in def.Reagents)
-        {
-            if (CountReagent(caster, regBaseId, needed) < needed)
-                return false;
-        }
-
-        foreach (var (regBaseId, needed) in def.Reagents)
-        {
-            int remaining = needed;
-            // Snapshot — we mutate items/delete, can't iterate live collection.
-            var stacks = _world.GetContainerContentsRecursive(caster.Backpack.Uid).ToList();
-            foreach (var item in stacks)
-            {
-                if (remaining <= 0) break;
-                if (item.IsDeleted) continue;
-                if (item.BaseId != regBaseId) continue;
-                int stackAmt = Math.Max(1, (int)item.Amount);
-                int take = Math.Min(remaining, stackAmt);
-                ushort newAmt = (ushort)(stackAmt - take);
-                item.Amount = newAmt;
-                remaining -= take;
-                if (newAmt == 0)
-                {
-                    _world.DeleteObject(item);
-                }
-            }
-        }
-        return true;
+        var rid = def.Reagents.Keys.ElementAt(missing);
+        string? name = rid.Type == Core.Enums.ResType.ItemDef
+            ? Definitions.DefinitionLoader.GetItemDef(rid.Index)?.Name
+            : null;
+        if (string.IsNullOrWhiteSpace(name))
+            name = ServerMessages.Get(Msg.SpellTryThereg);
+        OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNoregs, name));
     }
 
     /// <summary>AOS on-hit weapon proc (Source-X Fight_Hit → OnSpellEffect,

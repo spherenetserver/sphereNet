@@ -344,6 +344,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Skills.SkillHandlers.OnCraftSkillUsed = null;
         SphereNet.Game.Skills.SkillHandlers.OnScriptedSkillUse = null;
         SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled = false;
+        SphereNet.Game.Objects.Items.ResourceMatch.StrictComparison = false;
         SphereNet.Game.Skills.SkillEngine.SkillMaxOverrides.Clear();
         SphereNet.Game.Skills.SkillEngine.SkillSumMaxOverride = 10000;
         SphereNet.Game.Objects.Characters.Character.OnSkillChange = null;

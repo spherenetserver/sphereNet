@@ -10,81 +10,61 @@ using SphereNet.Game.World;
 
 namespace SphereNet.Tests;
 
+/// <summary>
+/// The colour of a craft's material plays no part in Source-X. A resource matches by
+/// its definition alone (CItem::IsResourceMatch, CItem.cpp:6027), ContentConsume
+/// takes whatever matching piles it meets (CContainer.cpp:418), and
+/// Skill_MakeItem_Success never colours what it makes (CCharSkill.cpp:674-865) - a
+/// pack colours a result from @SkillMakeItem through ACT. The old material picker,
+/// the per-colour bill and the inherited hue were SphereNet's own.
+/// </summary>
 [Collection("DefinitionLoaderSerial")]
 public sealed class SourceXCraftMaterialWave230Tests
 {
     [Fact]
-    public void PrimaryResourceOptions_ListOnlySufficientHuesInStableOrder()
+    public void MixedColours_PayTheBillTogether()
     {
         var (world, engine, crafter, pack) = CreateCrafter();
         var recipe = CreateRecipe();
-        AddMaterial(world, pack, "valorite ingots", 0x08AB, 8);
-        AddMaterial(world, pack, "iron ingots", 0x0000, 10);
-        AddMaterial(world, pack, "copper ingots", 0x06D6, 4);
+        var iron = AddMaterial(world, pack, "iron ingots", 0x0000, 3);
+        var valorite = AddMaterial(world, pack, "valorite ingots", 0x08AB, 3);
 
-        var options = engine.GetPrimaryResourceOptions(crafter, recipe);
-
-        Assert.Collection(options,
-            iron =>
-            {
-                Assert.Equal((ushort)0x0000, iron.Hue);
-                Assert.Equal(10, iron.Available);
-                Assert.Equal("iron ingots", iron.Name);
-            },
-            valorite =>
-            {
-                Assert.Equal((ushort)0x08AB, valorite.Hue);
-                Assert.Equal(8, valorite.Available);
-                Assert.Equal("valorite ingots", valorite.Name);
-            });
-    }
-
-    [Fact]
-    public void SelectedMaterialHue_IsConsumedAndInheritedByCraftedItem()
-    {
-        var (world, engine, crafter, pack) = CreateCrafter();
-        var recipe = CreateRecipe();
-        var iron = AddMaterial(world, pack, "iron ingots", 0x0000, 10);
-        var valorite = AddMaterial(world, pack, "valorite ingots", 0x08AB, 10);
-
-        var result = engine.TryCraft(crafter, recipe, 0x08AB);
+        Assert.True(engine.CanCraft(crafter, recipe));
+        var result = engine.TryCraft(crafter, recipe);
 
         Assert.NotNull(result);
-        Assert.Equal((ushort)0x08AB, result!.Hue.Value);
-        Assert.Equal(10, iron.Amount);
-        Assert.Equal(5, valorite.Amount);
+        Assert.Equal(1, Remaining(iron) + Remaining(valorite));
     }
 
     [Fact]
-    public void RequestedHue_MustContainTheWholePrimaryRequirement()
+    public void TheResult_TakesNoColourFromItsMaterial()
     {
         var (world, engine, crafter, pack) = CreateCrafter();
         var recipe = CreateRecipe();
-        var iron = AddMaterial(world, pack, "iron ingots", 0x0000, 10);
-        var valorite = AddMaterial(world, pack, "valorite ingots", 0x08AB, 4);
+        AddMaterial(world, pack, "valorite ingots", 0x08AB, 10);
 
-        Assert.False(engine.CanCraft(crafter, recipe, 0x08AB));
-        Assert.Null(engine.TryCraft(crafter, recipe, 0x08AB));
-        Assert.Equal(10, iron.Amount);
-        Assert.Equal(4, valorite.Amount);
+        var result = engine.TryCraft(crafter, recipe);
+
+        Assert.NotNull(result);
+        Assert.Equal(0, result!.Hue.Value);
     }
 
     [Fact]
-    public void FailedCraft_LosesOnlyTheSelectedPrimaryMaterial()
+    public void TooLittleOfEveryColourTogether_CannotBeCrafted()
     {
         var (world, engine, crafter, pack) = CreateCrafter();
-        crafter.SetSkill(SkillType.Tailoring, 0);
-        var recipe = CreateRecipe(difficulty: 300);
-        var iron = AddMaterial(world, pack, "iron ingots", 0x0000, 10);
-        var valorite = AddMaterial(world, pack, "valorite ingots", 0x08AB, 10);
+        var recipe = CreateRecipe();
+        var iron = AddMaterial(world, pack, "iron ingots", 0x0000, 2);
+        var valorite = AddMaterial(world, pack, "valorite ingots", 0x08AB, 2);
 
-        Assert.Null(engine.TryCraft(crafter, recipe, 0x08AB));
-        Assert.Equal(10, iron.Amount);
-        Assert.InRange((int)valorite.Amount, 6, 10);
+        Assert.False(engine.CanCraft(crafter, recipe));
+        Assert.Null(engine.TryCraft(crafter, recipe));
+        Assert.Equal(2, iron.Amount);
+        Assert.Equal(2, valorite.Amount);
     }
 
     [Fact]
-    public void CraftRecipeButton_WithSeveralHues_OpensMaterialGumpAndAcceptsChoice()
+    public void CraftRecipeButton_StartsTheCraftWithoutAMaterialPicker()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = new GameWorld(loggerFactory);
@@ -112,15 +92,13 @@ public sealed class SourceXCraftMaterialWave230Tests
         uint recipeGump = Assert.Single(client.Gumps.ActiveGumps);
         client.HandleGumpResponse(crafter.Uid.Value, recipeGump, 100, [], []);
 
-        uint materialGump = Assert.Single(client.Gumps.ActiveGumps);
-        Assert.NotEqual(recipeGump, materialGump);
-        Assert.True(client.Gumps.Callbacks.ContainsKey(materialGump));
-
-        client.HandleGumpResponse(crafter.Uid.Value, materialGump, 101, [], []);
+        // The craft is running: no second gump, and a second start is refused.
         Assert.Empty(client.Gumps.ActiveGumps);
         Assert.False(client.BeginPendingCraft(recipe, SkillType.Tailoring, reopenGump: false));
         client.CancelPendingCraftOnInterrupt();
     }
+
+    private static int Remaining(Item item) => item.IsDeleted ? 0 : item.Amount;
 
     private static (GameWorld World, CraftingEngine Engine, Character Crafter, Item Pack)
         CreateCrafter()
@@ -141,7 +119,7 @@ public sealed class SourceXCraftMaterialWave230Tests
         var recipe = new CraftRecipe
         {
             ResultItemId = 0x13B9,
-            ResultName = "colored sword",
+            ResultName = "sword",
             PrimarySkill = SkillType.Tailoring,
             Difficulty = difficulty,
         };

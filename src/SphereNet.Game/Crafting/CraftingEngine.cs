@@ -14,17 +14,35 @@ namespace SphereNet.Game.Crafting;
 /// </summary>
 public readonly struct CraftResource
 {
+    /// <summary>The graphic of an ITEMDEF resource - what the crafting UI shows. It is
+    /// not the resource's identity: <see cref="Resource"/> is.</summary>
     public ushort ItemId { get; init; }
     public int Amount { get; init; }
     /// <summary>When set, the resource matches by item TYPE (Source-X RES_TYPEDEF —
     /// e.g. "any t_ingot") rather than a specific item id. Lets a recipe consume any
     /// item of a category instead of a single hardcoded BaseId.</summary>
     public ItemType? Type { get; init; }
+    /// <summary>The full resource id the recipe named (RES_ITEMDEF with the definition's
+    /// own index, or RES_TYPEDEF). Two definitions sharing a graphic are two
+    /// resources (CItem::IsResourceMatch, CItem.cpp:6034).</summary>
+    public SphereNet.Core.Types.ResourceId Resource { get; init; }
+
+    /// <summary>The id the resource walk matches: <see cref="Resource"/> when the
+    /// recipe carried one, else the TYPE, else the graphic as a numbered ITEMDEF.</summary>
+    public SphereNet.Core.Types.ResourceId Rid =>
+        Resource.IsValid ? Resource
+        : Type.HasValue ? ResourceMatch.ForType(Type.Value)
+        : ResourceMatch.ForItemDef(ItemId);
 }
 
-/// <summary>A primary-resource variant available to the crafting UI.</summary>
-public readonly record struct CraftMaterialOption(
-    ushort Hue, int Available, ushort DisplayId, string Name);
+/// <summary>A SKILLMAKE i_* entry: present, not consumed. <see cref="ItemId"/> is the
+/// graphic for display; <see cref="Resource"/> is what is matched.</summary>
+public readonly record struct CraftRequiredItem(ushort ItemId, int Amount,
+    SphereNet.Core.Types.ResourceId Resource)
+{
+    public SphereNet.Core.Types.ResourceId Rid =>
+        Resource.IsValid ? Resource : ResourceMatch.ForItemDef(ItemId);
+}
 
 /// <summary>
 /// A craftable item recipe. Loaded from [ITEMDEF] RESOURCES/SKILLMAKE sections.
@@ -47,7 +65,7 @@ public sealed class CraftRecipe
     /// not consumed. The count is the entry's own quantity: upstream matches with
     /// IsResourceMatch(rid, qty), which is a ContentConsumeTest for that many
     /// (CCharStatus.cpp:74).</summary>
-    public List<(ushort ItemId, int Amount)> RequiredItemIds { get; } = [];
+    public List<CraftRequiredItem> RequiredItemIds { get; } = [];
 }
 
 /// <summary>
@@ -123,7 +141,7 @@ public sealed class CraftingEngine
     /// is part of the answer. Crafting requires it; the CANMAKE query does not ask -
     /// upstream checks the work site in the skill's own stage, not in Skill_MakeItem's
     /// SKTRIG_SELECT.</param>
-    public bool CanCraft(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue = null,
+    public bool CanCraft(Character crafter, CraftRecipe recipe,
         bool skillOnly = false, bool checkWorkSite = true)
     {
         // Check skill requirements
@@ -139,9 +157,9 @@ public sealed class CraftingEngine
             if (!HasItemOfType(crafter, toolType))
                 return false;
         }
-        foreach (var (reqId, reqAmount) in recipe.RequiredItemIds)
+        foreach (var required in recipe.RequiredItemIds)
         {
-            if (CountResource(crafter, reqId) < reqAmount)
+            if (ResourceMatch.ConsumeTest(crafter, required.Rid, required.Amount) > 0)
                 return false;
         }
 
@@ -162,101 +180,158 @@ public sealed class CraftingEngine
             var res = recipe.Resources[resourceIndex];
             if (CountResource(crafter, res) < res.Amount)
                 return false;
-            if (resourceIndex == 0 &&
-                !TrySelectResourceHue(crafter, res, res.Amount, primaryResourceHue, out _))
-                return false;
         }
 
         return true;
     }
 
     /// <summary>
-    /// Attempt to craft an item. Returns the crafted item on success, null on failure.
-    /// Maps to Skill_MakeItem / Skill_MakeItem_Success flow in Source-X.
+    /// Attempt to craft an item in one go: the roll, then the success or failure stage.
+    /// Returns the crafted item on success, null on failure. The client's timed craft
+    /// runs the same stages one by one (<see cref="RollCraft"/>,
+    /// <see cref="CraftSuccess"/>, <see cref="CraftFail"/>) so that its triggers can
+    /// sit between them the way Source-X Skill_Start and Skill_Done order them.
     /// </summary>
-    public Item? TryCraft(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue = null)
+    public Item? TryCraft(Character crafter, CraftRecipe recipe)
     {
         lock (crafter)
-            return TryCraftCore(crafter, recipe, primaryResourceHue);
-    }
-
-    private Item? TryCraftCore(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue)
-    {
-        if (crafter.IsDead) return null;
-        if (!CanCraft(crafter, recipe, primaryResourceHue))
-            return null;
-
-        // Skill check
-        bool success = SkillEngine.UseQuick(crafter, recipe.PrimarySkill, recipe.Difficulty);
-
-        // No tool wear: Skill_MakeItem / Skill_MakeItem_Success never damage the
-        // crafting tool (CCharSkill.cpp:674-975); upstream's only tool wear is the
-        // EF_DamageTools gathering path (:3947-3961). The per-attempt damage here
-        // was invented.
-
-        if (success)
         {
-            // Re-verify resources before consuming (gump callback delay may have changed state)
-            foreach (var res in recipe.Resources)
-            {
-                if (CountResource(crafter, res) < res.Amount)
-                    return null;
-            }
-
-            // Capture the primary resource's hue BEFORE consuming so the crafted
-            // item can inherit the material colour (e.g. coloured ingots produce
-            // a coloured weapon/armour, matching UO material behaviour).
-            ushort resourceHue = 0;
-            if (recipe.Resources.Count > 0 &&
-                !TrySelectResourceHue(crafter, recipe.Resources[0], recipe.Resources[0].Amount,
-                    primaryResourceHue, out resourceHue))
+            if (crafter.IsDead) return null;
+            if (!CanCraft(crafter, recipe))
                 return null;
 
-            // Consume resources
-            for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
+            if (RollCraft(crafter, recipe.PrimarySkill, recipe.Difficulty))
             {
-                var res = recipe.Resources[resourceIndex];
-                if (!ConsumeResource(crafter, res, res.Amount,
-                        resourceIndex == 0 ? resourceHue : null))
-                    return null;
+                var outcome = CraftSuccessCore(crafter, recipe, 1);
+                if (outcome != null)
+                    SkillEngine.GainExperience(crafter, recipe.PrimarySkill, recipe.Difficulty);
+                return outcome?.Item;
             }
 
-            // Create the item
-            var item = _world.CreateItem();
-            item.BaseId = recipe.ResultItemId;
-            var resultDef = DefinitionLoader.GetItemDef(
-                recipe.ResultDefId != 0 ? recipe.ResultDefId : recipe.ResultItemId);
-            item.Name = !string.IsNullOrWhiteSpace(recipe.ResultName)
-                ? recipe.ResultName
-                : DefinitionLoader.ResolveNames(resultDef?.Name ?? "");
-            if (resultDef != null)
-            {
-                ItemDefHelper.ApplyInstanceMetadata(item,
-                    recipe.ResultDefId != 0 ? recipe.ResultDefId : recipe.ResultItemId,
-                    setDisplayId: false, setName: false);
-                item.ItemType = resultDef.Type;
-                item.TData1 = resultDef.TData1;
-                item.TData2 = resultDef.TData2;
-                item.TData3 = resultDef.TData3;
-                item.TData4 = resultDef.TData4;
-                foreach (var (key, value) in resultDef.TagDefs.GetAll())
-                    item.SetTag(key, value);
-                if (resultDef.HitsMax > 0 || resultDef.HitsMin > 0)
-                {
-                    int minHits = Math.Max(1, resultDef.HitsMin > 0 ? resultDef.HitsMin : resultDef.HitsMax);
-                    int maxHits = Math.Max(minHits, resultDef.HitsMax > 0 ? resultDef.HitsMax : minHits);
-                    int hits = minHits == maxHits ? minHits : Random.Shared.Next(minHits, maxHits + 1);
-                    item.HitsMax = hits;
-                    item.HitsCur = hits;
-                }
-            }
-            item.Crafter = crafter.Uid;
-            if (resourceHue != 0)
-                item.Hue = new Core.Types.Color(resourceHue);
+            CraftFailCore(crafter, recipe);
+            SkillEngine.GainExperience(crafter, recipe.PrimarySkill, -recipe.Difficulty);
+            return null;
+        }
+    }
 
-            // Quality roll based on skill (Source-X Skill_MakeItem band table).
-            int skillVal = crafter.GetSkill(recipe.PrimarySkill);
-            int quality = CalcQuality(skillVal);
+    /// <summary>A craft's success roll as Skill_Start makes it (CCharSkill.cpp:4566):
+    /// only a positive difficulty is rolled - Skill_CheckSuccess on the bell curve,
+    /// with no experience and no @SkillUseQuick - and a difficulty of zero never
+    /// fails. The difficulty is the primary SKILLMAKE value in whole points
+    /// (Skill_MakeItem SKTRIG_START, :964).</summary>
+    public static bool RollCraft(Character crafter, SkillType skill, int difficulty) =>
+        !crafter.IsDead &&
+        (difficulty <= 0 || SkillEngine.CheckSuccess(crafter, skill, difficulty, useBellCurve: true));
+
+    /// <summary>How far the crafter may stand from the work site the start found
+    /// (Skill_Blacksmith 2, Skill_Cooking 3; CCharSkill.cpp:3146/2229); 0 for a skill
+    /// with no work site.</summary>
+    public static int WorkSiteRange(SkillType skill) => skill switch
+    {
+        SkillType.Blacksmithing => 2,
+        SkillType.Cooking => 3,
+        _ => 0,
+    };
+
+    /// <summary>What one craft success produced: the item the trigger and the bounce
+    /// see, every further copy a non-stackable replication made, the quality the
+    /// single-item branch rolled (0 when that branch did not run) and how many
+    /// replications the resources really paid for.</summary>
+    public sealed record CraftOutcome(Item Item, IReadOnlyList<Item> Extras, int Quality,
+        bool QualityRolled, int Amount);
+
+    /// <summary>How many whole replications of <paramref name="recipe"/> the crafter's
+    /// stock pays for, capped at <paramref name="requested"/> - Source-X
+    /// ResourceConsume in test mode (CContainer.cpp:568): every resource is counted in
+    /// units of one replication and the smallest count wins; a recipe with no
+    /// resources makes as many as were asked for. Colour plays no part
+    /// (CItem::IsResourceMatch, CItem.cpp:6027).</summary>
+    public int TestReplication(Character crafter, CraftRecipe recipe, int requested)
+    {
+        if (requested <= 0)
+            requested = 1;
+        int possible = requested;
+        for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
+        {
+            var res = recipe.Resources[resourceIndex];
+            if (res.Amount <= 0)
+                continue;
+            long available = CountResource(crafter, res);
+            possible = (int)Math.Min(possible, available / res.Amount);
+            if (possible <= 0)
+                return 0;
+        }
+        return possible;
+    }
+
+    /// <summary>The SUCCESS stage of a craft (Source-X Skill_MakeItem SKTRIG_SUCCESS,
+    /// CCharSkill.cpp:920/968, then Skill_MakeItem_Success, :674): pay for as many of
+    /// the <paramref name="replicationQty"/> replications as the stock still covers,
+    /// then make the result. Null when nothing could be paid for - the stage aborts.
+    /// No trigger runs here; @SkillMakeItem and the bounce belong to the caller.</summary>
+    public CraftOutcome? CraftSuccess(Character crafter, CraftRecipe recipe, int replicationQty)
+    {
+        lock (crafter)
+            return CraftSuccessCore(crafter, recipe, replicationQty);
+    }
+
+    private CraftOutcome? CraftSuccessCore(Character crafter, CraftRecipe recipe, int replicationQty)
+    {
+        if (crafter.IsDead)
+            return null;
+
+        // ResourceConsume (CContainer.cpp:568): test what can really be made first,
+        // then take that many replications of every resource.
+        int amount = TestReplication(crafter, recipe, Math.Clamp(replicationQty, 1, ushort.MaxValue));
+        if (amount <= 0)
+            return null;
+
+        foreach (var res in recipe.Resources)
+        {
+            if (!ConsumeResource(crafter, res, res.Amount * amount))
+                return null;
+        }
+
+        var item = CreateCraftedItem(crafter, recipe);
+        var extras = new List<Item>();
+        int skillVal = crafter.GetSkill(recipe.PrimarySkill);   // Skill_GetBase of the active skill
+        int quality = 0;
+        bool qualityRolled = false;
+
+        // Skill_MakeItem_Success (CCharSkill.cpp:688-801) has three exclusive branches.
+        if (amount != 1)
+        {
+            // A replication: a scroll still takes the scribe's skill as its spell
+            // level, a pile takes the amount, anything else is made again - one
+            // plain copy per replication, bounced on its own (:690-707). No quality.
+            if (item.ItemType == ItemType.Scroll)
+                SetSpellLevel(item, skillVal);
+            if (item.IsStackable)
+            {
+                item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
+            }
+            else
+            {
+                for (int n = 1; n < amount; n++)
+                    extras.Add(CreateCraftedItem(crafter, recipe));
+            }
+        }
+        else if (item.ItemType == ItemType.Scroll)
+        {
+            // "scrolls have the skill level of the inscriber" (:709-713): MOREY is the
+            // spell level, and a scroll gets no quality.
+            SetSpellLevel(item, skillVal);
+        }
+        else if (item.ItemType == ItemType.Potion)
+        {
+            // Potions are left as made (:714-717).
+        }
+        else
+        {
+            // Quality roll based on skill (Source-X Skill_MakeItem band table), only
+            // on a single item.
+            quality = CalcQuality(skillVal);
+            qualityRolled = true;
             item.Quality = (ushort)quality;
 
             // Source-X CCharSkill.cpp:799: only a grandmaster (skill > 99.9)
@@ -267,31 +342,82 @@ public sealed class CraftingEngine
             // (durability comes solely from the def).
             if (EarnsMakersMark(skillVal, quality))
                 item.Name = $"{item.Name} crafted by {crafter.Name}";
-
-            // Caller (GameClient.OpenCraftingGump) handles placement + notification
-            return item;
         }
-        else
+
+        return new CraftOutcome(item, extras, quality, qualityRolled, amount);
+    }
+
+    /// <summary>MOREY of a scroll is m_itSpell.m_spelllevel (CItem.h:257).</summary>
+    private static void SetSpellLevel(Item item, int level)
+    {
+        var p = item.MoreP;
+        item.MoreP = new SphereNet.Core.Types.Point3D(p.X,
+            (short)Math.Clamp(level, 0, ushort.MaxValue), p.Z, p.Map);
+    }
+
+    /// <summary>One crafted piece from its definition (CItem::CreateTemplate): the
+    /// definition's instance data, its hit points and the maker, and THEN its @Create - exactly once, through the instance's own
+    /// guard - so whatever the creation script sets (TYPE, COLOR, a bonus) is what the
+    /// item keeps. The definition's TYPE/TDATA/TAGs used to be written a second time
+    /// after @Create had run, and the client then dispatched @Create again.</summary>
+    private Item CreateCraftedItem(Character crafter, CraftRecipe recipe)
+    {
+        var item = _world.CreateItem();
+        item.BaseId = recipe.ResultItemId;
+        int defIndex = recipe.ResultDefId != 0 ? recipe.ResultDefId : recipe.ResultItemId;
+        var resultDef = DefinitionLoader.GetItemDef(defIndex);
+        item.Name = !string.IsNullOrWhiteSpace(recipe.ResultName)
+            ? recipe.ResultName
+            : DefinitionLoader.ResolveNames(resultDef?.Name ?? "");
+        if (resultDef != null)
         {
-            // Partial resource loss on failure (reference Skill_MakeItem
-            // SKTRIG_FAIL → ResourceConsumePart, CCharSkill.cpp:925-945). The
-            // percent has THREE sources in order, and only the last was implemented:
-            //   1. ACTIONEFFECT, when a script set one on this attempt;
-            //   2. the crafting skill's own EFFECT curve, rolled at random
-            //      (the live pack gives Inscription EFFECT=50);
-            //   3. a flat 0-49%% roll.
-            int lossPercent = ResolveFailureLossPercent(crafter, recipe);
-            for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
+            ItemDefHelper.ApplyInstanceMetadata(item, defIndex,
+                setDisplayId: false, setName: false, fireCreate: false);
+            if (resultDef.HitsMax > 0 || resultDef.HitsMin > 0)
             {
-                var res = recipe.Resources[resourceIndex];
-                int lostAmount = res.Amount * lossPercent / 100;
-                if (lostAmount > 0)
-                    ConsumeResource(crafter, res, lostAmount,
-                        resourceIndex == 0 ? primaryResourceHue : null);
+                int minHits = Math.Max(1, resultDef.HitsMin > 0 ? resultDef.HitsMin : resultDef.HitsMax);
+                int maxHits = Math.Max(minHits, resultDef.HitsMax > 0 ? resultDef.HitsMax : minHits);
+                int hits = minHits == maxHits ? minHits : Random.Shared.Next(minHits, maxHits + 1);
+                item.HitsMax = hits;
+                item.HitsCur = hits;
             }
-
-            return null;
         }
+        item.Crafter = crafter.Uid;
+        // No material colour: Skill_MakeItem_Success never colours the result
+        // (CCharSkill.cpp:674-865); a pack does that from @SkillMakeItem through ACT.
+        if (resultDef != null)
+            item.FireCreateTrigger();
+        return item;
+    }
+
+    /// <summary>The FAIL stage of a craft (Source-X Skill_MakeItem SKTRIG_FAIL,
+    /// CCharSkill.cpp:920-946): when the stock still covers one replication, part of
+    /// that ONE replication's bill is paid - whatever replication count the craft was
+    /// started with (Skill_MakeItem(SKTRIG_FAIL) is called with its default quantity
+    /// of 1, :3104).</summary>
+    public void CraftFail(Character crafter, CraftRecipe recipe)
+    {
+        lock (crafter)
+            CraftFailCore(crafter, recipe);
+    }
+
+    private void CraftFailCore(Character crafter, CraftRecipe recipe)
+    {
+        // Skill_MakeItem runs SkillResourceTest first at every stage (:913), and
+        // nothing is spent unless one whole replication is still there (:920).
+        if (!CanCraft(crafter, recipe, skillOnly: true) || TestReplication(crafter, recipe, 1) <= 0)
+            return;
+
+        // Partial resource loss on failure (reference Skill_MakeItem
+        // SKTRIG_FAIL → ResourceConsumePart, CCharSkill.cpp:925-945). The
+        // percent has THREE sources in order, and only the last was implemented:
+        //   1. ACTIONEFFECT, when a script set one on this attempt;
+        //   2. the crafting skill's own EFFECT curve, rolled at random
+        //      (the live pack gives Inscription EFFECT=50);
+        //   3. a flat 0-49%% roll.
+        // ResourceConsumePart (:945): no MATOVERRIDE, IMulDiv-scaled entries.
+        int lossPercent = ResolveFailureLossPercent(crafter, recipe);
+        TryConsumeResourcePart(crafter, recipe, lossPercent, test: false);
     }
 
     /// <summary>How much of a failed craft's bill is still paid, as a percent
@@ -379,131 +505,44 @@ public sealed class CraftingEngine
     public static bool TryConsumeResourcePart(Character ch, CraftRecipe recipe,
         int percent, bool test)
     {
-        if (percent <= 0)
-            return true;
-
-        foreach (var res in recipe.Resources)
-        {
-            int need = res.Amount * percent / 100;
-            if (need <= 0)
-                continue;
-            if (test)
-            {
-                if (CountResource(ch, res) < need)
-                    return false;
-            }
-            else
-            {
-                ConsumeResource(ch, res, need);
-            }
-        }
-        return true;
+        // ResourceConsumePart has neither MATOVERRIDE nor the skill-entry check that
+        // ResourceConsume has: each entry is matched as written, scaled with IMulDiv,
+        // and a real spend takes what is there of every entry.
+        var list = recipe.Resources
+            .Select(r => new ResourceMatch.ResourceQty(r.Rid, r.Amount))
+            .ToList();
+        return ResourceMatch.ResourceConsumePart(ch, list, 1, percent, test) < 0;
     }
 
     /// <summary>
-    /// How much of a resource the character's reachable stock holds — the same search
-    /// a craft runs, so a SKILLTEST that says yes is followed by a craft that agrees.
-    /// A resource named by TYPE counts every item of that type; one named by ITEMDEF
-    /// counts that graphic.
+    /// How much of a resource the character's reachable stock holds — the same walk
+    /// a craft tests and spends with (<see cref="ResourceMatch"/>), so a SKILLTEST that
+    /// says yes is followed by a craft that agrees. A TYPE resource counts every item
+    /// of that type; an ITEMDEF resource counts that definition (plus the reference's
+    /// boards-for-logs / leather-for-hides alternatives).
     /// </summary>
-    public static int CountStock(Character ch, SphereNet.Core.Types.ResourceId rid)
-    {
-        var pack = ch.Backpack;
-        if (pack == null || !rid.IsValid) return 0;
+    public static int CountStock(Character ch, SphereNet.Core.Types.ResourceId rid) =>
+        rid.IsValid ? (int)Math.Min(int.MaxValue, ResourceMatch.Count(ch, rid)) : 0;
 
-        if (rid.Type == Core.Enums.ResType.TypeDef)
-            return CountInContainerByType(pack, (ItemType)rid.Index);
-
-        var def = DefinitionLoader.GetItemDef(rid.Index);
-        ushort itemId = def is { DispIndex: > 0 }
-            ? def.DispIndex
-            : rid.Index <= ushort.MaxValue ? (ushort)rid.Index : (ushort)0;
-        return itemId == 0 ? 0 : CountInContainer(pack, itemId);
-    }
-
-    /// <summary>Count a recipe resource in the character's backpack — by item TYPE
-    /// (RES_TYPEDEF) or by specific item id.</summary>
+    /// <summary>Count a recipe resource the way Skill_MakeItem's ResourceConsume test
+    /// does: over the crafter's whole content (CCharSkill.cpp:920 runs it on the
+    /// CHARACTER), descending only into searchable containers.
+    /// A skill entry in RESOURCES is a level, not a stock (ResourceConsume returns 0
+    /// when the crafter's base skill is short of it), and an ITEMDEF entry is first
+    /// replaced by the crafter's TAG.MATOVERRIDE_&lt;defname&gt; (CContainer.cpp:600-617).</summary>
     private static int CountResource(Character ch, CraftResource res)
     {
-        var pack = ch.Backpack;
-        if (pack == null) return 0;
-        return res.Type.HasValue
-            ? CountInContainerByType(pack, res.Type.Value)
-            : CountInContainer(pack, res.ItemId);
+        var rid = res.Rid;
+        if (rid.Type == Core.Enums.ResType.SkillDef)
+            return ch.GetSkill((SkillType)rid.Index) >= res.Amount ? int.MaxValue : 0;
+        return (int)Math.Min(int.MaxValue, ResourceMatch.Count(ch, ResourceMatch.MaterialOverride(ch, rid)));
     }
 
-    /// <summary>Count how many of a specific item ID the character has in their backpack.</summary>
-    private static int CountResource(Character ch, ushort itemId)
-    {
-        var pack = ch.Backpack;
-        if (pack == null) return 0;
-        return CountInContainer(pack, itemId);
-    }
-
-    private static int CountInContainerByType(Item container, ItemType type, int depth = 0)
-    {
-        if (depth > 10) return 0;
-        int count = 0;
-        foreach (var item in container.Contents)
-        {
-            if (item.IsDeleted) continue;
-            if (item.ItemType == type)
-                count += item.Amount;
-            // Source-X gates a recursive resource search on IsSearchable
-            // (CContainer::ContentFind, CContainer.cpp:236): a locked chest in
-            // the pack is not part of the reachable stock a craft may consume.
-            if (item.IsSearchableContainer)
-                count += CountInContainerByType(item, type, depth + 1);
-        }
-        return count;
-    }
-
-    /// <summary>Find the first backpack item matching an item ID (used to read
-    /// the resource hue before it is consumed).</summary>
-    /// <summary>The crafter carries (or wields) an item of the given type.</summary>
-    private static bool HasItemOfType(Character ch, ItemType type)
-    {
-        var oneHand = ch.GetEquippedItem(Layer.OneHanded);
-        if (oneHand?.ItemType == type) return true;
-        var twoHand = ch.GetEquippedItem(Layer.TwoHanded);
-        if (twoHand?.ItemType == type) return true;
-        return ch.Backpack != null && HasItemOfTypeIn(ch.Backpack, type, depth: 3);
-    }
-
-    /// <summary>Answered by the same search that picks the tool, so the tool that
-    /// PERMITS the craft and the tool that WEARS from it can never be different
-    /// items. They were: this check refused to descend into an unsearchable
-    /// container while the wear lookup below happily did, so a spare tool locked
-    /// away took the damage owed by the one in the crafter's hand.</summary>
-    private static bool HasItemOfTypeIn(Item container, ItemType type, int depth) =>
-        FindItemOfTypeIn(container, type, depth) != null;
-
-    private static Item? FindItemOfType(Character ch, ItemType type)
-    {
-        var oneHand = ch.GetEquippedItem(Layer.OneHanded);
-        if (oneHand?.ItemType == type) return oneHand;
-        var twoHand = ch.GetEquippedItem(Layer.TwoHanded);
-        if (twoHand?.ItemType == type) return twoHand;
-        return ch.Backpack != null ? FindItemOfTypeIn(ch.Backpack, type, 3) : null;
-    }
-
-    private static Item? FindItemOfTypeIn(Item container, ItemType type, int depth)
-    {
-        foreach (var item in container.Contents)
-        {
-            if (item.IsDeleted) continue;
-            if (item.ItemType == type) return item;
-            // Source-X ContentFind skips a container it may not search
-            // (CContainer.cpp:236) - a locked chest in the pack is not stock the
-            // crafter can draw a tool from.
-            if (depth > 0 && item.ContentCount > 0 && item.IsSearchableContainer)
-            {
-                var found = FindItemOfTypeIn(item, type, depth - 1);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
+    /// <summary>The crafter holds an item of the given type - SKILLMAKE's t_* entry,
+    /// a ContentConsumeTest for one on the character (CCharStatus.cpp:72): in hand,
+    /// worn, or anywhere in a container the walk may search.</summary>
+    private static bool HasItemOfType(Character ch, ItemType type) =>
+        ResourceMatch.ConsumeTest(ch, ResourceMatch.ForType(type), 1) == 0;
 
     /// <summary>Work-site proximity (reference Skill_Blacksmith /
     /// Skill_Cooking): smithing needs a forge within 2 tiles, cooking a
@@ -584,229 +623,25 @@ public sealed class CraftingEngine
         return false;
     }
 
-    /// <summary>Find the first matching item for a recipe resource (by TYPE or id),
-    /// used to read the material hue before consumption.</summary>
-    private static Item? FindResourceItem(Character ch, CraftResource res)
-    {
-        var pack = ch.Backpack;
-        if (pack == null) return null;
-        return res.Type.HasValue
-            ? FindInContainerByType(pack, res.Type.Value, 0)
-            : FindInContainer(pack, res.ItemId, 0);
-    }
-
-    private static Item? FindResourceItem(Character ch, ushort itemId)
-    {
-        var pack = ch.Backpack;
-        return pack == null ? null : FindInContainer(pack, itemId, 0);
-    }
-
-    private static Item? FindInContainerByType(Item container, ItemType type, int depth)
-    {
-        if (depth > 10) return null;
-        foreach (var item in container.Contents)
-        {
-            if (item.IsDeleted) continue;
-            if (item.ItemType == type) return item;
-            if (!item.IsSearchableContainer) continue;
-            var found = FindInContainerByType(item, type, depth + 1);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    private static Item? FindInContainer(Item container, ushort itemId, int depth)
-    {
-        if (depth > 10) return null;
-        foreach (var item in container.Contents)
-        {
-            if (item.BaseId == itemId) return item;
-            if (!item.IsSearchableContainer) continue;
-            var found = FindInContainer(item, itemId, depth + 1);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    private static int CountInContainer(Item container, ushort itemId, int depth = 0)
-    {
-        if (depth > 10) return 0;
-        int count = 0;
-        foreach (var item in container.Contents)
-        {
-            if (item.BaseId == itemId)
-                count += item.Amount;
-            if (item.IsSearchableContainer)
-                count += CountInContainer(item, itemId, depth + 1);
-        }
-        return count;
-    }
-
-    public IReadOnlyList<CraftMaterialOption> GetPrimaryResourceOptions(
-        Character crafter, CraftRecipe recipe)
-    {
-        if (crafter.Backpack == null || recipe.Resources.Count == 0)
-            return [];
-
-        var resource = recipe.Resources[0];
-        var totals = new SortedDictionary<ushort, long>();
-        CollectResourceHues(crafter.Backpack, resource, totals, 0, []);
-        var options = new List<CraftMaterialOption>();
-        foreach (var pair in totals)
-        {
-            if (pair.Value < resource.Amount) continue;
-            var sample = FindResourceItemByHue(crafter.Backpack, resource, pair.Key, 0, []);
-            string name = sample?.GetName() ?? "";
-            if (string.IsNullOrWhiteSpace(name))
-                name = pair.Key == 0 ? "Default material" : $"Material 0x{pair.Key:X4}";
-            options.Add(new CraftMaterialOption(
-                pair.Key, (int)Math.Min(int.MaxValue, pair.Value),
-                sample?.BaseId ?? resource.ItemId, name));
-        }
-        return options;
-    }
-
-    private static bool TrySelectResourceHue(Character ch, CraftResource res,
-        int requiredAmount, ushort? requestedHue, out ushort hue)
-    {
-        hue = 0;
-        if (ch.Backpack == null) return false;
-        var totals = new SortedDictionary<ushort, long>();
-        CollectResourceHues(ch.Backpack, res, totals, 0, []);
-        if (requestedHue.HasValue)
-        {
-            if (!totals.TryGetValue(requestedHue.Value, out long requestedTotal) ||
-                requestedTotal < requiredAmount)
-                return false;
-            hue = requestedHue.Value;
-            return true;
-        }
-        foreach (var pair in totals)
-        {
-            if (pair.Value < requiredAmount) continue;
-            hue = pair.Key;
-            return true;
-        }
-        return false;
-    }
-
-    private static Item? FindResourceItemByHue(Item container, CraftResource res,
-        ushort hue, int depth, HashSet<uint> seen)
-    {
-        if (depth > 16 || !seen.Add(container.Uid.Value)) return null;
-        foreach (var item in container.Contents)
-        {
-            if (item.IsDeleted) continue;
-            bool matches = res.Type.HasValue
-                ? item.ItemType == res.Type.Value
-                : item.BaseId == res.ItemId;
-            if (matches && item.Hue.Value == hue)
-                return item;
-            if (item.ContentCount > 0 && item.IsSearchableContainer)
-            {
-                var found = FindResourceItemByHue(item, res, hue, depth + 1, seen);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    private static void CollectResourceHues(Item container, CraftResource res,
-        SortedDictionary<ushort, long> totals, int depth, HashSet<uint> seen)
-    {
-        if (depth > 16 || !seen.Add(container.Uid.Value)) return;
-        foreach (var item in container.Contents)
-        {
-            if (item.IsDeleted) continue;
-            bool matches = res.Type.HasValue
-                ? item.ItemType == res.Type.Value
-                : item.BaseId == res.ItemId;
-            if (matches)
-            {
-                totals.TryGetValue(item.Hue.Value, out long amount);
-                totals[item.Hue.Value] = Math.Min(int.MaxValue, amount + item.Amount);
-            }
-            if (item.ContentCount > 0 && item.IsSearchableContainer)
-                CollectResourceHues(item, res, totals, depth + 1, seen);
-        }
-    }
-
-    /// <summary>Consume a recipe resource (by TYPE or id). Returns true if fully consumed.</summary>
+    /// <summary>Consume a recipe resource - ContentConsume on the crafter
+    /// (CCharSkill.cpp:920), the walk <see cref="CountResource"/> tested with, so a
+    /// locked chest that was not counted is never spent from. A chosen material hue
+    /// narrows the match. A skill entry spends nothing; an ITEMDEF entry honours
+    /// MATOVERRIDE as ResourceConsume does. Returns true if fully consumed.
+    /// <paramref name="materialOverride"/> false is the ResourceConsumePart flavour -
+    /// the failed-craft loss (CCharSkill.cpp:945) - which applies no override.</summary>
     private static bool ConsumeResource(Character ch, CraftResource res, int amount,
-        ushort? hue = null)
+        ushort? hue = null, bool materialOverride = true)
     {
-        var pack = ch.Backpack;
-        if (pack == null) return false;
-        if (res.Type.HasValue)
-            ConsumeFromContainerByType(pack, res.Type.Value, ref amount, hue: hue);
-        else
-            ConsumeFromContainer(pack, res.ItemId, ref amount, hue: hue);
-        return amount == 0;
-    }
-
-    /// <summary>Consume a specific amount of items from the backpack. Returns true if fully consumed.</summary>
-    private static bool ConsumeResource(Character ch, ushort itemId, int amount)
-    {
-        var pack = ch.Backpack;
-        if (pack == null) return false;
-        ConsumeFromContainer(pack, itemId, ref amount);
-        return amount == 0;
-    }
-
-    private static void ConsumeFromContainerByType(Item container, ItemType type,
-        ref int remaining, int depth = 0, ushort? hue = null)
-    {
-        if (depth > 10) return;
-        for (int i = container.Contents.Count - 1; i >= 0 && remaining > 0; i--)
-        {
-            var item = container.Contents[i];
-            if (item.IsDeleted) continue;
-            if (item.ItemType == type && (!hue.HasValue || item.Hue.Value == hue.Value))
-            {
-                if (item.Amount <= remaining)
-                {
-                    remaining -= item.Amount;
-                    item.RemoveFromWorld();
-                }
-                else
-                {
-                    item.Amount -= (ushort)remaining;
-                    remaining = 0;
-                }
-            }
-            else
-            {
-                ConsumeFromContainerByType(item, type, ref remaining, depth + 1, hue);
-            }
-        }
-    }
-
-    private static void ConsumeFromContainer(Item container, ushort itemId,
-        ref int remaining, int depth = 0, ushort? hue = null)
-    {
-        if (depth > 10) return;
-        for (int i = container.Contents.Count - 1; i >= 0 && remaining > 0; i--)
-        {
-            var item = container.Contents[i];
-
-            if (item.BaseId == itemId && (!hue.HasValue || item.Hue.Value == hue.Value))
-            {
-                if (item.Amount <= remaining)
-                {
-                    remaining -= item.Amount;
-                    item.RemoveFromWorld();
-                }
-                else
-                {
-                    item.Amount -= (ushort)remaining;
-                    remaining = 0;
-                }
-            }
-            else
-            {
-                ConsumeFromContainer(item, itemId, ref remaining, depth + 1, hue);
-            }
-        }
+        var rid = res.Rid;
+        if (rid.Type == Core.Enums.ResType.SkillDef)
+            return materialOverride || ResourceMatch.ConsumeTest(ch, rid, amount) == 0;
+        if (materialOverride)
+            rid = ResourceMatch.MaterialOverride(ch, rid);
+        Func<Item, bool>? filter = hue.HasValue
+            ? item => item.Hue.Value == hue.Value
+            : null;
+        return ResourceMatch.Consume(ch, rid, amount, filter: filter) == 0;
     }
 
     /// <summary>
@@ -845,7 +680,7 @@ public sealed class CraftingEngine
         int difficulty = 0;
         var skillReqs = new List<(SkillType Skill, int MinValue)>();
         var pendingToolTypes = new List<ItemType>();
-        var pendingItemIds = new List<(ushort ItemId, int Amount)>();
+        var pendingItemIds = new List<CraftRequiredItem>();
 
         foreach (var part in skillParts)
         {
@@ -861,15 +696,16 @@ public sealed class CraftingEngine
             }
             if (part.Name.StartsWith("i_", StringComparison.OrdinalIgnoreCase))
             {
+                // Matched by the definition it names, not by its picture: upstream's
+                // SkillResourceTest is a ContentConsumeTest on that resource id
+                // (CCharStatus.cpp:76).
                 var irid = resources.ResolveDefName(part.Name);
-                if (irid.IsValid)
+                if (irid.IsValid && irid.Type == Core.Enums.ResType.ItemDef)
                 {
                     var reqDef = DefinitionLoader.GetItemDef(irid.Index);
-                    ushort requiredId = reqDef is { DispIndex: > 0 }
-                        ? reqDef.DispIndex
-                        : irid.Index <= ushort.MaxValue ? (ushort)irid.Index : (ushort)0;
-                    if (requiredId != 0)
-                        pendingItemIds.Add((requiredId, (int)Math.Max(1, part.Quantity)));
+                    ushort requiredId = ItemDefHelper.CreateGraphic(reqDef, irid.Index);
+                    pendingItemIds.Add(new CraftRequiredItem(requiredId,
+                        (int)Math.Max(1, part.Quantity), irid));
                 }
                 continue;
             }
@@ -918,30 +754,40 @@ public sealed class CraftingEngine
             // RESOURCES=i_spellbook means one spellbook, and 257 entries in the
             // shipped pack are written that way. Demanding a written quantity made
             // every one of them free.
-            foreach (var rp in SphereNet.Scripting.Resources.ResourceQtyList.Parse(def.ResourcesRaw))
+            //
+            // The list is loaded the way CResourceQtyArray::Load loads it (a bare
+            // number is not a resource and ends the list; a repeat replaces the
+            // earlier entry), and every entry keeps its full resource id: an ITEMDEF
+            // is the definition it named, not its graphic (CItem::IsResourceMatch,
+            // :6034), a TYPEDEF matches by type, a skill is a level the crafter must
+            // have (CContainer.cpp:600).
+            foreach (var rp in ResourceMatch.LoadList(def.ResourcesRaw, resources))
             {
-                int amount = (int)Math.Clamp(rp.Quantity, 0, int.MaxValue);
+                int amount = (int)Math.Clamp(rp.Qty, 0, int.MaxValue);
                 if (amount <= 0) continue;
+                var rid = rp.Rid;
 
-                var rid = resources.ResolveDefName(rp.Name);
-                if (!rid.IsValid) continue;
-
-                // A RESOURCES entry can name an item TYPE (t_ingot) or a specific
-                // item (i_ingot_iron). A type entry resolves to a TypeDef and must
-                // match by ItemType — storing the type index as a BaseId (the old
-                // behaviour) made the recipe uncraftable.
                 if (rid.Type == Core.Enums.ResType.TypeDef)
                 {
-                    recipe.Resources.Add(new CraftResource { Type = (ItemType)rid.Index, Amount = amount });
+                    recipe.Resources.Add(new CraftResource
+                    {
+                        Type = (ItemType)rid.Index, Amount = amount, Resource = rid,
+                    });
+                }
+                else if (rid.Type == Core.Enums.ResType.ItemDef)
+                {
+                    // The graphic stays for the crafting UI only.
+                    var resDef = DefinitionLoader.GetItemDef(rid.Index);
+                    recipe.Resources.Add(new CraftResource
+                    {
+                        ItemId = ItemDefHelper.CreateGraphic(resDef, rid.Index),
+                        Amount = amount,
+                        Resource = rid,
+                    });
                 }
                 else
                 {
-                    var resDef = DefinitionLoader.GetItemDef(rid.Index);
-                    ushort resItemId = resDef is { DispIndex: > 0 }
-                        ? resDef.DispIndex
-                        : rid.Index <= ushort.MaxValue ? (ushort)rid.Index : (ushort)0;
-                    if (resItemId != 0)
-                        recipe.Resources.Add(new CraftResource { ItemId = resItemId, Amount = amount });
+                    recipe.Resources.Add(new CraftResource { Amount = amount, Resource = rid });
                 }
             }
         }

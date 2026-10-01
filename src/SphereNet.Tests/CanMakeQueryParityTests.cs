@@ -56,7 +56,7 @@ public sealed class CanMakeQueryParityTests : IDisposable
         Character.OnCanMakeCheck = (ch, itemId, skillOnly) =>
         {
             var found = engine.TryGetRecipe(itemId);
-            return found != null && engine.CanCraft(ch, found, primaryResourceHue: null,
+            return found != null && engine.CanCraft(ch, found,
                 skillOnly: skillOnly, checkWorkSite: false);
         };
         return (world, smith, engine);

@@ -2952,6 +2952,9 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
             sellItem.Amount = 1;
             sellItem.SetTag("OVERRIDE.VALUE", "8"); // a sale is valued by VALUE, not the stock PRICE
             pack.AddItem(sellItem);
+            // The vendor buys blood moss: a BUY sample of it (NPC_FindVendableItem).
+            // Without one the line is skipped before its @Sell runs.
+            TestHarness.GiveVendorBuySample(world, vendor, 0x0F7B);
 
             var dispatcher = new TriggerDispatcher();
             int buyCount = 0;

@@ -281,7 +281,7 @@ public sealed class ContainerDropStackMergeTests
         row.Price = 3;
         stock.AddItem(row);
 
-        int cost = SphereNet.Game.Trade.VendorEngine.ProcessBuy(b.Me, vendor,
+        long cost = SphereNet.Game.Trade.VendorEngine.ProcessBuy(b.Me, vendor,
             [new SphereNet.Game.Trade.TradeEntry { ItemUid = row.Uid, ItemId = row.BaseId, Amount = 5 }]);
 
         Assert.Equal(15, cost);

@@ -879,8 +879,9 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper == "SMELT" || upper.StartsWith("SMELT ", StringComparison.Ordinal))
         {
-            // Source-X CIV_SMELT: smelt this ore with SRC as the smith. Arg =
-            // forge uid; without one the nearest forge in reach is used.
+            // Source-X CIV_SMELT (CItem.cpp:3676): smelt this item with SRC as the
+            // smith. The arg is the uid of the other item of the smelt (a forge, or a
+            // pile to join); without one the smelt looks for the forge itself.
             if (target is not Item ore || _character == null) return true;
             string forgeArg = upper == "SMELT"
                 ? args.Trim()
@@ -894,14 +895,8 @@ public sealed class ClientScriptConsoleHandler
                 if (uint.TryParse(uidStr, System.Globalization.NumberStyles.HexNumber, null, out uint fu))
                     forgeUid = new Serial(fu);
             }
-            if (!forgeUid.IsValid)
-            {
-                foreach (var near in _world.GetItemsInRange(_character.Position, 3))
-                {
-                    if (near.ItemType == ItemType.Forge) { forgeUid = near.Uid; break; }
-                }
-            }
-            _client.ItemUse.SmeltFromScript(ore, forgeUid);
+            _client.ItemUse.SmeltFromScript(ore,
+                forgeUid.IsValid ? _world.FindItem(forgeUid) : null);
             return true;
         }
 
@@ -2100,13 +2095,30 @@ public sealed class ClientScriptConsoleHandler
         _client.BroadcastCharacterAppear?.Invoke(creature);
     }
 
-    private void MakeItemFromMenu(string defname)
+    /// <summary>MAKEITEM itemdef[,amount] (CHV_MAKEITEM, CChar.cpp:4696): the line is
+    /// split on spaces, commas and tabs; a second argument that starts with a digit is
+    /// the replication quantity, anything else leaves it at one, and a number that
+    /// does not parse refuses the verb.</summary>
+    private void MakeItemFromMenu(string argLine)
     {
-        if (_character == null || string.IsNullOrWhiteSpace(defname))
+        if (_character == null || string.IsNullOrWhiteSpace(argLine))
             return;
         var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
         if (resources == null)
             return;
+
+        string[] parts = argLine.Split([' ', ',', '\t'], 3, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return;
+        string defname = parts[0];
+        int replicationQty = 1;
+        if (parts.Length >= 2 && char.IsAsciiDigit(parts[1][0]))
+        {
+            string qtyToken = parts[1].Split([' ', ',', '\t'], 2)[0];
+            if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(qtyToken, out long qty))
+                return;
+            replicationQty = (int)Math.Clamp(qty, int.MinValue, int.MaxValue);
+        }
 
         var irid = resources.ResolveDefName(defname.Trim());
         if (!irid.IsValid)
@@ -2128,7 +2140,9 @@ public sealed class ClientScriptConsoleHandler
             return;
         }
 
-        _client.BeginPendingCraft(recipe, recipe.PrimarySkill, reopenGump: false);
+        // ResourceConsume reads a quantity of zero or less as one (CContainer.cpp:577).
+        _client.BeginPendingCraft(recipe, recipe.PrimarySkill, reopenGump: false,
+            replicationQty: replicationQty <= 0 ? 1 : replicationQty);
     }
 
     private bool HandleDialogCommand(string args, ObjBase? subject = null, bool onlyIfClosed = false)

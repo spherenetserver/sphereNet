@@ -44,7 +44,7 @@ public sealed class SpellReagentCostTests
             Flags = SpellFlag.TargChar | SpellFlag.Good,
             ManaCost = 4,
         };
-        def.Reagents[ReagentId] = 1;
+        def.Reagents[SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(ReagentId)] = 1;
 
         var registry = new SpellRegistry();
         registry.Register(def);

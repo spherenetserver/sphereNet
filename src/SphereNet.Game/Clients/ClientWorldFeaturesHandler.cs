@@ -117,12 +117,6 @@ public sealed class ClientWorldFeaturesHandler
     private const int CraftButtonNextPage = 1;
     private const int CraftButtonPrevPage = 2;
     private const int CraftButtonRecipeBase = 100;
-    private const uint CraftMaterialGumpId = 0x43524D54; // "CRMT"
-    private const int CraftMaterialsPerPage = 12;
-    private const int CraftMaterialButtonNextPage = 1;
-    private const int CraftMaterialButtonPrevPage = 2;
-    private const int CraftMaterialButtonBack = 3;
-    private const int CraftMaterialButtonBase = 100;
 
     public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill, 0, fireMenuTrigger: true);
 
@@ -205,66 +199,11 @@ public sealed class ClientWorldFeaturesHandler
                 int index = capturedSkip + ((int)pressedButton - CraftButtonRecipeBase);
                 if (index < recipes.Count)
                 {
-                    var recipe = recipes[index];
-                    var materials = _craftingEngine.GetPrimaryResourceOptions(_character, recipe);
-                    if (materials.Count > 1)
-                        OpenCraftMaterialGump(recipe, craftSkill, materials, 0);
-                    else
-                        BeginPendingCraft(recipe, craftSkill, reopenGump: true,
-                            materials.Count == 1 ? materials[0].Hue : null);
+                    // No material picker: Source-X spends any colour of a resource
+                    // and never colours the result (CItem::IsResourceMatch,
+                    // CItem.cpp:6027; Skill_MakeItem_Success, CCharSkill.cpp:674).
+                    BeginPendingCraft(recipes[index], craftSkill, reopenGump: true);
                 }
-            }
-        });
-    }
-
-    private void OpenCraftMaterialGump(CraftRecipe recipe, SkillType craftSkill,
-        IReadOnlyList<CraftMaterialOption> materials, int page)
-    {
-        if (_character == null || _craftingEngine == null || materials.Count == 0)
-            return;
-
-        int pageCount = (materials.Count + CraftMaterialsPerPage - 1) / CraftMaterialsPerPage;
-        page = Math.Clamp(page, 0, pageCount - 1);
-        int skip = page * CraftMaterialsPerPage;
-        var gump = new GumpBuilder(_character.Uid.Value, CraftMaterialGumpId, 430, 390);
-        gump.AddResizePic(0, 0, 5054, 430, 390);
-        gump.AddText(20, 15, 0, $"Select material (page {page + 1}/{pageCount})");
-
-        int y = 48;
-        for (int i = skip; i < materials.Count && i < skip + CraftMaterialsPerPage; i++)
-        {
-            var material = materials[i];
-            gump.AddButton(15, y, 4005, 4007, CraftMaterialButtonBase + (i - skip));
-            if (material.DisplayId != 0)
-                gump.AddTilePicHue(48, y - 3, material.DisplayId, material.Hue);
-            gump.AddCroppedText(90, y, 220, 20, 0,
-                $"{material.Name} ({material.Available})");
-            gump.AddText(315, y, 0, $"0x{material.Hue:X4}");
-            y += 25;
-        }
-
-        if (page > 0)
-            gump.AddButton(175, 350, 4014, 4016, CraftMaterialButtonPrevPage);
-        if (page < pageCount - 1)
-            gump.AddButton(285, 350, 4005, 4007, CraftMaterialButtonNextPage);
-        gump.AddButton(15, 350, 4014, 4016, CraftMaterialButtonBack);
-        gump.AddText(55, 350, 0, "Back");
-
-        int capturedPage = page;
-        int capturedSkip = skip;
-        SendGump(gump, (pressedButton, _, _) =>
-        {
-            if (pressedButton == CraftMaterialButtonNextPage)
-                OpenCraftMaterialGump(recipe, craftSkill, materials, capturedPage + 1);
-            else if (pressedButton == CraftMaterialButtonPrevPage)
-                OpenCraftMaterialGump(recipe, craftSkill, materials, capturedPage - 1);
-            else if (pressedButton == CraftMaterialButtonBack)
-                OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
-            else if (pressedButton >= CraftMaterialButtonBase)
-            {
-                int index = capturedSkip + ((int)pressedButton - CraftMaterialButtonBase);
-                if (index < materials.Count)
-                    BeginPendingCraft(recipe, craftSkill, reopenGump: true, materials[index].Hue);
             }
         });
     }
@@ -272,25 +211,32 @@ public sealed class ClientWorldFeaturesHandler
     // --- multi-stroke crafting (reference Skill_Stroke) ----------------------
     private CraftRecipe? _pendingCraftRecipe;
     private SkillType _pendingCraftSkill;
+    private int _pendingCraftAmount = 1;
     private int _pendingCraftStrokes;
     private long _pendingCraftNextStroke;
     private bool _pendingCraftReopenGump;
-    private ushort? _pendingCraftResourceHue;
     private Point3D _pendingCraftStartPosition;
+    /// <summary>m_Act_p of a smith or a cook: the work site the start found, which
+    /// the SUCCESS stage measures the crafter against again.</summary>
+    private Point3D? _pendingCraftSite;
 
-    /// <summary>Start a craft as a stroke loop (reference Skill_Start for an
-    /// SKF_CRAFT skill → Skill_Stroke): ONE work stroke by default - Skill_Start sets
-    /// m_atCreate.m_dwStrokeCount = 1 ("the new strokes amount used on OSI",
-    /// CCharSkill.cpp:4481), after and over the 2 a smith's or carpenter's START
-    /// stage wrote (:3155/:3179), and @SkillStart may change it through
-    /// LOCAL.CraftStrokeCnt (:4538). The start makes the skill's sound and plays its
-    /// animation (:4543-4555); each stroke, one DELAY later, does it again, and the
-    /// count reaching zero is the success. So a default craft takes ONE delay, not
-    /// the two - each floored at a full second - this used to take. The roll and
-    /// resource consumption happen at completion, after a CanCraft re-check (covers
-    /// walking away from the forge mid-craft).</summary>
+    /// <summary>Start a craft as a stroke loop (reference Skill_MakeItem SKTRIG_START →
+    /// Skill_Start → Skill_Stroke). ONE work stroke by default - Skill_Start sets
+    /// m_atCreate.m_dwStrokeCount = 1 (CCharSkill.cpp:4481) and @SkillStart may change
+    /// it through LOCAL.CraftStrokeCnt (:4538). The start makes the skill's sound and
+    /// plays its animation (:4543-4555); each stroke, one DELAY later, does it again,
+    /// and the count reaching zero is the end of the skill.
+    ///
+    /// The start is also where the outcome is decided: ACTDIFF is the primary
+    /// SKILLMAKE value in whole points (:964), @SkillStart may change it (a negative
+    /// value cancels, :4527), and a positive one is rolled right there - a failed roll
+    /// negates it, which Skill_Done turns into the FAIL stage (:4566-4570, :3920). A
+    /// difficulty of zero is never rolled. ACTIONEFFECT starts at -1 (:4446).</summary>
+    /// <param name="replicationQty">MAKEITEM's second argument (CChar.cpp:4696): how
+    /// many replications to make. The start keeps only as many as the stock pays for
+    /// (Skill_MakeItem SKTRIG_START, CCharSkill.cpp:920/957).</param>
     internal bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
-        ushort? primaryResourceHue = null)
+        int replicationQty = 1)
     {
         if (_character == null || _craftingEngine == null)
             return false;
@@ -306,27 +252,55 @@ public sealed class ClientWorldFeaturesHandler
             SysMessage(ServerMessages.Get("craft_busy"));
             return false;
         }
-        if (!_craftingEngine.CanCraft(_character, recipe, primaryResourceHue))
+        if (!_craftingEngine.CanCraft(_character, recipe))
+        {
+            SysMessage(ServerMessages.Get("craft_fail"));
+            return false;
+        }
+        // ResourceConsume in test mode: the replications the stock really covers.
+        int craftAmount = _craftingEngine.TestReplication(_character, recipe,
+            Math.Clamp(replicationQty, 1, ushort.MaxValue));
+        if (craftAmount <= 0)
         {
             SysMessage(ServerMessages.Get("craft_fail"));
             return false;
         }
 
+        // No @SkillMakeItem here: it belongs to the finished item, and fires from
+        // CompleteCraft once that item exists.
         if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSelect,
                 new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillPreStart,
-                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
-            FireCraftStart(craftSkill, out int craftStrokes, out long craftWaitTenths))
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True)
             return false;
 
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMakeItem,
-            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
+        // Skill_Stage(SKTRIG_START) keeps the difficulty Skill_Start was handed
+        // (CCharSkill.cpp:3094, :4425-4429), and m_Act_Effect starts over.
+        _character.ActDiff = Math.Max(0, recipe.Difficulty);
+        _character.ActionEffect = -1;
+
+        if (FireCraftStart(craftSkill, ref craftAmount, out int craftStrokes, out long craftWaitTenths) ||
+            _character.ActDiff < 0)
+        {
+            _character.ActDiff = 0;      // Skill_Cleanup
+            return false;
+        }
+
+        // The roll belongs to the start (:4566-4570).
+        if (_character.ActDiff > 0 &&
+            !CraftingEngine.RollCraft(_character, craftSkill, _character.ActDiff))
+            _character.ActDiff = -_character.ActDiff;
+
+        _pendingCraftSite = null;
+        if (CraftingEngine.WorkSiteRange(craftSkill) > 0 &&
+            _craftingEngine.TryFindWorkSite(_character, craftSkill, out var site))
+            _pendingCraftSite = site;
 
         _pendingCraftRecipe = recipe;
         _pendingCraftSkill = craftSkill;
+        _pendingCraftAmount = craftAmount;
         _pendingCraftStrokes = Math.Max(1, craftStrokes);
         _pendingCraftReopenGump = reopenGump;
-        _pendingCraftResourceHue = primaryResourceHue;
         _pendingCraftStartPosition = _character.Position;
         FaceCraftWorkSite(craftSkill);
         PlayCraftEffects(craftSkill);
@@ -338,8 +312,9 @@ public sealed class ClientWorldFeaturesHandler
     /// <summary>@SkillStart for a craft (Skill_Start, CCharSkill.cpp:4466-4541):
     /// ARGN1 = the skill, ARGN2 = the wait in tenths, LOCAL.CraftStrokeCnt = 1. True
     /// when a script cancelled; otherwise the stroke count and the wait are what the
-    /// script left behind.</summary>
-    private bool FireCraftStart(SkillType craftSkill, out int strokes, out long waitTenths)
+    /// script left behind. LOCAL.CraftAmount carries the replication count in and
+    /// out the same way (:4486/:4541).</summary>
+    private bool FireCraftStart(SkillType craftSkill, ref int amount, out int strokes, out long waitTenths)
     {
         strokes = 1;
         int delayMs = Skills.SkillEngine.GetSkillDelayMs(craftSkill, _character?.GetSkill(craftSkill) ?? 0);
@@ -348,6 +323,7 @@ public sealed class ClientWorldFeaturesHandler
             return false;
         var locals = new SphereNet.Scripting.Variables.VarMap();
         locals.SetInt("CraftStrokeCnt", strokes);
+        locals.SetInt("CraftAmount", amount);
         var args = new TriggerArgs
         {
             CharSrc = _character, N1 = (int)craftSkill, N2 = waitTenths, Locals = locals,
@@ -355,6 +331,9 @@ public sealed class ClientWorldFeaturesHandler
         if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart, args) == TriggerResult.True)
             return true;
         strokes = (int)Math.Clamp(locals.GetInt("CraftStrokeCnt", 1), 1, 100);
+        // m_dwAmount is a word; Skill_MakeItem(SKTRIG_SUCCESS) reads a zero as one
+        // (CCharSkill.cpp:3100).
+        amount = (int)(locals.GetInt("CraftAmount", amount) & 0xFFFF);
         waitTenths = args.N2;
         return false;
     }
@@ -418,24 +397,13 @@ public sealed class ClientWorldFeaturesHandler
         var recipe = _pendingCraftRecipe;
         var craftSkill = _pendingCraftSkill;
         bool reopen = _pendingCraftReopenGump;
-        ushort? primaryResourceHue = _pendingCraftResourceHue;
+        int craftAmount = _pendingCraftAmount;
+        var site = _pendingCraftSite;
         _pendingCraftRecipe = null;
-        _pendingCraftResourceHue = null;
+        _pendingCraftAmount = 1;
+        _pendingCraftSite = null;
 
-        // Re-check at completion (reference SKTRIG_SUCCESS re-validates the
-        // work site): walking away from the forge or losing materials
-        // mid-craft fails without the roll.
-        if (!_craftingEngine.CanCraft(_character, recipe, primaryResourceHue))
-        {
-            SysMessage(ServerMessages.Get("craft_fail"));
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillFail,
-                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
-            if (reopen)
-                OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
-            return;
-        }
-
-        CompleteCraft(recipe, craftSkill, reopen, primaryResourceHue);
+        CompleteCraft(recipe, craftSkill, reopen, craftAmount, site);
     }
 
     private void CancelPendingCraft(bool notify = true)
@@ -446,9 +414,12 @@ public sealed class ClientWorldFeaturesHandler
         _pendingCraftRecipe = null;
         _pendingCraftStrokes = 0;
         _pendingCraftNextStroke = 0;
-        _pendingCraftResourceHue = null;
+        _pendingCraftAmount = 1;
+        _pendingCraftSite = null;
         _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillAbort,
             new TriggerArgs { CharSrc = _character, N1 = skillId });
+        if (_character != null)
+            _character.ActDiff = 0;      // Skill_Cleanup
         if (notify)
             SysMessage("You stop what you were doing.");
     }
@@ -495,70 +466,289 @@ public sealed class ClientWorldFeaturesHandler
         return Math.Max(100, delayMs);
     }
 
+    /// <summary>The end of a craft, in Source-X Skill_Done order (CCharSkill.cpp:3899-3974).
+    /// A difficulty the start's roll negated is the FAIL stage (:3920). Otherwise
+    /// @SkillSuccess runs FIRST and its RETURN 1 aborts before anything is spent
+    /// (:3935); then the skill's SUCCESS stage - a smith or a cook who walked out of
+    /// range of the work site is a failure there (:3159-3163, :2255-2259); then
+    /// Skill_MakeItem pays for the replications and makes the item (:920/968), and
+    /// @SkillMakeItem runs on that finished item (:811); the skill gain comes last.
+    /// </summary>
     private void CompleteCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
-        ushort? primaryResourceHue)
+        int craftAmount = 1, Point3D? workSite = null)
     {
         if (_character == null || _craftingEngine == null)
             return;
 
-        var result = _craftingEngine.TryCraft(_character, recipe, primaryResourceHue);
-
-        if (result != null)
+        if (_character.ActDiff < 0)
         {
-            _triggerDispatcher?.FireItemTrigger(result, ItemTrigger.Create,
-                new TriggerArgs { CharSrc = _character, ItemSrc = result });
-            string craftedName = result.GetName();
-            // Read the quality off the NEW piece: it may merge into a pile below,
-            // and the pile's quality is not the one that was just rolled.
-            int actualQuality = result.Quality;
-            var pack = _character.Backpack;
-            if (pack != null)
+            FailCraftStage(recipe, craftSkill);
+        }
+        else
+        {
+            var successLocals = new SphereNet.Scripting.Variables.VarMap();
+            successLocals.SetInt("ITEMDAMAGECHANCE", 25);
+            successLocals.SetInt("ITEMDAMAGEAMOUNT", 1);
+            int range = CraftingEngine.WorkSiteRange(craftSkill);
+            if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSuccess,
+                    new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill, Locals = successLocals })
+                == TriggerResult.True)
             {
-                var actual = pack.TryAddItemWithStack(result);
-                if (actual == null)
-                {
-                    _world.PlaceItemWithDecay(result, _character.Position);
-                    actual = result;
-                }
-                if (actual != result)
-                    _world.RemoveItem(result);
+                AbortCraftStage(craftSkill);
+            }
+            else if (range > 0 && workSite is { } at &&
+                     (_character.MapIndex != at.Map || _character.Position.GetDistanceTo(at) > range))
+            {
+                FailCraftStage(recipe, craftSkill);
+            }
+            else if (!DeliverCraftSuccess(recipe, craftSkill, craftAmount > 0 ? craftAmount : 1))
+            {
+                AbortCraftStage(craftSkill);
+            }
+            else
+            {
+                // Skill_Experience after the stage went through.
+                SkillEngine.GainExperience(_character, craftSkill, _character.ActDiff);
+            }
+        }
+        _character.ActDiff = 0;          // Skill_Cleanup
 
+        if (reopenGump)
+            OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
+    }
+
+    /// <summary>Skill_Fail(false) (CCharSkill.cpp:3783): the difficulty is made
+    /// negative, @SkillFail runs and its RETURN 1 turns the failure into a cancel
+    /// (Skill_Stage(SKTRIG_ABORT): no partial cost, no gain); otherwise the FAIL
+    /// stage pays part of one replication and the failure earns its experience.</summary>
+    private void FailCraftStage(CraftRecipe recipe, SkillType craftSkill)
+    {
+        if (_character == null || _craftingEngine == null)
+            return;
+        if (_character.ActDiff > 0)
+            _character.ActDiff = -_character.ActDiff;
+        bool cancelled = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillFail,
+            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True;
+        if (cancelled)
+            return;
+        _craftingEngine.CraftFail(_character, recipe);
+        SysMessage(ServerMessages.Get("craft_fail"));
+        SkillEngine.GainExperience(_character, craftSkill, _character.ActDiff);
+    }
+
+    /// <summary>Skill_Fail(true), reached when a stage returned -SKTRIG_ABORT
+    /// (OnTickSkill, CCharAct.cpp:5800): @SkillAbort, no message, no credit.</summary>
+    private void AbortCraftStage(SkillType craftSkill)
+    {
+        if (_character == null)
+            return;
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
+    }
+
+    /// <summary>Skill_MakeItem's SUCCESS stage and Skill_MakeItem_Success
+    /// (CCharSkill.cpp:674-865, 913-971). False when the stage aborts: the SKILLMAKE
+    /// test no longer passes, nothing could be paid for, or @SkillMakeItem returned 1 -
+    /// which deletes the new item, while what it cost stays spent.</summary>
+    private bool DeliverCraftSuccess(CraftRecipe recipe, SkillType craftSkill, int craftAmount)
+    {
+        if (_character == null || _craftingEngine == null)
+            return false;
+
+        // SkillResourceTest runs at every stage (:913): a tool or a skill that is gone
+        // ends the craft here.
+        if (!_craftingEngine.CanCraft(_character, recipe, skillOnly: true))
+            return false;
+
+        var outcome = _craftingEngine.CraftSuccess(_character, recipe, craftAmount);
+        if (outcome == null)
+            return false;
+
+        // The further copies of a non-stackable replication bounce as they are made,
+        // before the trigger, speaking only under VERBOSEITEMBOUNCE (:703-705).
+        foreach (var extra in outcome.Extras)
+            BounceCraftedItem(extra, GameClient.VerboseItemBounce);
+
+        var item = outcome.Item;
+
+        // "Item goes into ACT of player" for the trigger, then ACT is restored
+        // (:811-827). ARGN1 = the base skill, ARGN2 = the quality, ARGO = the
+        // previous ACT, LOCAL.Notify = 1 (the bounce message).
+        var oldAct = _character.Act;
+        var oldActObject = oldAct.IsValid ? _world.FindObject(oldAct) : null;
+        var result = TriggerResult.Default;
+        bool notify = true;
+        _character.Act = item.Uid;
+        try
+        {
+            if (_triggerDispatcher != null)
+            {
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("Notify", 1);
+                var args = new TriggerArgs
+                {
+                    CharSrc = _character,
+                    N1 = _character.GetSkill(craftSkill),
+                    N2 = outcome.Quality,
+                    N3 = 0,
+                    O1 = oldActObject,
+                    Locals = locals,
+                };
+                result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillMakeItem, args);
+                notify = locals.GetInt("Notify", 1) != 0;
+            }
+        }
+        finally
+        {
+            _character.Act = oldAct;
+        }
+
+        if (result == TriggerResult.True)
+        {
+            if (!item.IsDeleted)
+                _world.RemoveItem(item);
+            return false;
+        }
+        if (item.IsDeleted)
+            return true;
+
+        if (result == TriggerResult.Default)
+        {
+            if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
+            {
+                ushort sound = item.ItemType switch
+                {
+                    ItemType.Potion => 0x240,
+                    ItemType.Map => 0x255,
+                    _ => 0,
+                };
+                if (sound != 0)
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                        new PacketSound(sound, _character.X, _character.Y, _character.Z), 0);
+            }
+            // The band's message, only from the single-item quality branch (:744-788).
+            if (outcome.QualityRolled && CraftingEngine.QualityMessageKey(outcome.Quality) is { } qualityMsg)
+                SysMessage(ServerMessages.Get(qualityMsg));
+        }
+
+        // EXP_MODE_RAISE_CRAFT (CCharSkill.cpp:849): one point per 100 gold of the
+        // piece's vendor value.
+        if (Character.ExperienceSystem && (Character.ExperienceMode & Character.ExpModeRaiseCraft) != 0)
+        {
+            int craftExp = Skills.Information.InfoSkillEngine.EstimateVendorPrice(item) / 100;
+            if (craftExp != 0)
+                _character.ChangeExperience(craftExp);
+        }
+
+        BounceCraftedItem(item, notify);
+        return true;
+    }
+
+    /// <summary>CChar::ItemBounce (CCharAct.cpp:3076) for a crafted piece.
+    ///
+    /// The pack takes it when the crafter can carry it - CanCarry, which a character
+    /// in GM mode always passes (CCharStatus.cpp:267) - and only after the item's
+    /// @DropOn_Item (ARGO = the pack) and the pack's @DropOn_Self (ARGO = the item)
+    /// let it: a RETURN 1 from the pack sends it to the ground, unless the script
+    /// already moved it somewhere else. The ground gets it otherwise, after its
+    /// @DropOn_Ground (ARGN1 = decay in tenths, read back; ARGN2 = 1; ARGS = the point).
+    /// The point the script writes is checked and then not used: the item lands at
+    /// the crafter's feet (:3176-3202). The drop sound follows, then the line - the
+    /// feet line always, the others only when asked for (:3199-3212).</summary>
+    private void BounceCraftedItem(Item item, bool displayMessage)
+    {
+        if (_character == null || item.IsDeleted)
+            return;
+        string name = item.GetName();
+        var pack = _character.Backpack;
+        string? where = null;
+        bool toPack = false;
+        bool toGround = false;
+
+        if (pack != null && (_character.IsGmMode || _character.CanCarry(item)))
+        {
+            toPack = true;
+            if (_triggerDispatcher != null)
+            {
+                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnItem,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = pack });
+                if (item.IsDeleted)
+                    return;
+
+                var prevCont = item.ContainedIn;
+                var selfResult = _triggerDispatcher.FireItemTrigger(pack, ItemTrigger.DropOnSelf,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = pack, O1 = item });
+                if (item.IsDeleted)
+                    return;
+                if (selfResult == TriggerResult.True)
+                {
+                    toPack = false;
+                    if (item.ContainedIn == prevCont)
+                        toGround = true;
+                    else
+                        where = ServerMessages.GetFormatted("msg_bounce_cont",
+                            _world.FindObject(item.ContainedIn)?.GetName() ?? "");
+                }
+            }
+        }
+        else
+        {
+            toGround = true;
+        }
+
+        if (toPack)
+        {
+            var actual = pack!.TryAddItemWithStack(item);
+            if (actual == null)
+            {
+                toGround = true;     // a full pack: the ground takes it
+            }
+            else
+            {
+                where = ServerMessages.Get("msg_bounce_pack");
+                if (actual != item)
+                    _world.RemoveItem(item);
                 if (actual.ContainedIn == pack.Uid)
                     SendContainerItemPacket(new PacketContainerItem(
                         actual.Uid.Value, actual.DispIdFull, 0,
                         actual.Amount, actual.X, actual.Y,
                         pack.Uid.Value, actual.Hue,
                         _netState.IsClientPost6017));
-
-            }
-            else
-            {
-                _world.PlaceItemWithDecay(result, _character.Position);
-            }
-            SysMessage(ServerMessages.GetFormatted("craft_success", craftedName));
-            // ...and what the piece turned out like, when it is worth remarking on
-            // (Source-X Skill_MakeItem_Success, CCharSkill.cpp:844).
-            if (CraftingEngine.QualityMessageKey(actualQuality) is { } qualityMsg)
-                SysMessage(ServerMessages.Get(qualityMsg));
-
-            // EXP_MODE_RAISE_CRAFT (CCharSkill.cpp:849): one point per 100 gold of the
-            // piece's vendor value.
-            if (Character.ExperienceSystem && (Character.ExperienceMode & Character.ExpModeRaiseCraft) != 0)
-            {
-                int craftExp = Skills.Information.InfoSkillEngine.EstimateVendorPrice(result) / 100;
-                if (craftExp != 0)
-                    _character.ChangeExperience(craftExp);
             }
         }
-        else
-            SysMessage(ServerMessages.Get("craft_fail"));
 
-        _triggerDispatcher?.FireCharTrigger(_character,
-            result != null ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
-            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
+        if (toGround)
+        {
+            var prevCont = item.ContainedIn;
+            long decayMs = GameWorld.DefaultDecayTimeMs;
+            if (_triggerDispatcher != null)
+            {
+                var pos = _character.Position;
+                var groundArgs = new TriggerArgs
+                {
+                    CharSrc = _character, ItemSrc = item,
+                    N1 = decayMs / 100, N2 = 1,
+                    S1 = $"{pos.X},{pos.Y},{pos.Z},{pos.Map}",
+                };
+                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DropOnGround, groundArgs);
+                if (item.IsDeleted)
+                    return;
+                decayMs = groundArgs.N1 * 100L;
+            }
+            if (item.ContainedIn == prevCont)
+            {
+                where = ServerMessages.Get("msg_feet");
+                displayMessage = true;
+                _world.PlaceItemWithDecay(item, _character.Position, decayMs);
+            }
+        }
 
-        if (reopenGump)
-            OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
+        if (!_character.IsDead)
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(item.GetDropSound(ontoSomething: pack != null),
+                    _character.X, _character.Y, _character.Z), 0);
+        if (displayMessage && where != null)
+            SysMessage(ServerMessages.GetFormatted("msg_itemplace", name, where));
     }
 
     /// <summary>Handle vendor buy packet (0x3B).</summary>
@@ -622,13 +812,45 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
 
-        int result = VendorEngine.ProcessBuy(_character, vendor, entries);
-        if (result < 0)
-            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_nomoney1"));
-        else if (result == 0)
-            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
-        else
-            NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_b1", result, result == 1 ? "" : "s"));
+        var buyerChar = _character;
+        long result = VendorEngine.ProcessBuy(_character, vendor, entries,
+            out var refusal, (buyer, figurine) => CreateBoughtFigurinePet(buyer, figurine, vendor),
+            onHairCut: () =>
+            {
+                // pVendor->UpdateAnimate(ANIM_ATTACK_1H_SLASH); m_pChar->Sound(SOUND_SNIP)
+                // (CClientEvent.cpp:1319-1320).
+                PlayAnimation(vendor, (ushort)AnimationType.AttackWeapon);
+                BroadcastNearby?.Invoke(buyerChar.Position, UpdateRange,
+                    new PacketSound(0x0248, buyerChar.X, buyerChar.Y, buyerChar.Z), 0);
+            });
+        if (refusal != VendorEngine.VendorBuyRefusal.None)
+        {
+            // A refused purchase ends there, the window left open (CClientEvent.cpp:1158-1262).
+            switch (refusal)
+            {
+                case VendorEngine.VendorBuyRefusal.PetSlots:
+                    SysMessage(ServerMessages.Get(Msg.PetslotsTryControl));
+                    return;
+                case VendorEngine.VendorBuyRefusal.CantBuy:
+                    NpcSpeech(vendor, ServerMessages.Get("npc_vendor_cantbuy"));
+                    return;
+                case VendorEngine.VendorBuyRefusal.CostTooHigh:
+                case VendorEngine.VendorBuyRefusal.CantFulfill:
+                    NpcSpeech(vendor, ServerMessages.Get("npc_vendor_cantfulfill"));
+                    SysMessage(ServerMessages.Get("npc_vendor_cantbuy"));
+                    return;
+                case VendorEngine.VendorBuyRefusal.NoMoney:
+                    NpcSpeech(vendor, ServerMessages.Get("npc_vendor_nomoney1"));
+                    return;
+                default:
+                    SysMessage(ServerMessages.Get("npc_vendor_cantbuy"));
+                    return;
+            }
+        }
+        // The owner, or a GM in GM mode, takes the goods: "That is N gold coins worth
+        // of goods" instead of "That will be N" (DEFMSG_NPC_VENDOR_S1 / _B1, :1386).
+        string costKey = VendorEngine.IsVendorBoss(vendor, _character) ? "npc_vendor_s1" : "npc_vendor_b1";
+        NpcSpeech(vendor, ServerMessages.GetFormatted(costKey, result, result == 1 ? "" : "s"));
 
         // The window showed stock that has now been bought. Upstream closes it when
         // a purchase completes (CClientEvent.cpp:1413) - left open, the client offers
@@ -687,14 +909,28 @@ public sealed class ClientWorldFeaturesHandler
         _triggerDispatcher?.FireCharTrigger(vendor, CharTrigger.NPCAction,
             new TriggerArgs { CharSrc = _character, S1 = "SELL" });
 
-        // Build trade entries from packet data
+        // Build trade entries from packet data. The price is the quote of the BUY
+        // sample the item matches - the figure the list showed, @Sell is shown and
+        // the vendor pays (CClientEvent.cpp:1488). An item the vendor does not buy
+        // is skipped before its @Sell runs, as upstream skips it (:1474), and so is
+        // one the seller does not hold (:1468). A line naming nothing, or something
+        // that cannot change hands, ends the sale at that line (:1463): it is passed
+        // on so the sale stops there, and nothing after it is read.
         var entries = new List<TradeEntry>();
         foreach (var si in sellItems)
         {
             var item = _world.FindItem(new Serial(si.ItemSerial));
-            if (item == null) continue;
+            if (item == null || !VendorEngine.IsValidSaleItem(item, buyFromVendor: true))
+            {
+                entries.Add(new TradeEntry { ItemUid = new Serial(si.ItemSerial), Amount = si.Amount });
+                break;
+            }
+            if (!ReferenceEquals(item.GetTopLevelObj(), _character))
+                continue;
 
-            int price = GetVendorItemSellPrice(vendor, item);
+            var (quote, sample) = VendorEngine.GetSellQuote(vendor, item);
+            if (sample == null) continue;
+            int price = (int)Math.Min(quote, int.MaxValue);
             entries.Add(new TradeEntry
             {
                 ItemUid = item.Uid,
@@ -715,16 +951,22 @@ public sealed class ClientWorldFeaturesHandler
         }
 
         int result = VendorEngine.ProcessSell(_character, vendor, entries, out bool shortfall);
-        // Source-X partial fill: the purse ran dry mid-sale — bark the shortfall
-        // so the player knows why only part (or none) of the batch was bought.
-        if (shortfall)
-            NpcSpeech(vendor, "I cannot afford to buy all of that from thee.");
-        if (result > 0 || !shortfall)
+        // Event_VendorSell's closing lines (CClientEvent.cpp:1547-1572): thanks for
+        // what was paid and, when the purse ran dry part way, that it has; nothing
+        // paid and a dry purse is "I cannot afford any more".
+        if (result > 0)
+        {
             NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
+            if (shortfall)
+                NpcSpeech(vendor, ServerMessages.Get("npc_vendor_nomoney"));
+        }
+        else if (shortfall)
+            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_cantafford"));
 
-        // Same on the way out: upstream closes the window when a sale completes
-        // (CClientEvent.cpp:1566).
-        CloseVendorWindow(vendor);
+        // Same on the way out: upstream closes the window when a sale completes -
+        // when gold changed hands (CClientEvent.cpp:1550-1566).
+        if (result > 0)
+            CloseVendorWindow(vendor);
 
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -732,14 +974,49 @@ public sealed class ClientWorldFeaturesHandler
 
     /// <summary>Get the buy price for an item from vendor inventory. Uses TAG.PRICE or defaults.</summary>
     internal static int GetVendorItemPrice(Character vendor, Item item) =>
-        SphereNet.Game.Trade.VendorEngine.GetVendorSellToPlayerPrice(vendor, item);
+        (int)Math.Min(SphereNet.Game.Trade.VendorEngine.GetVendorSellToPlayerPrice(vendor, item), int.MaxValue);
 
-    /// <summary>Get the sell price (what vendor pays the player) — same
-    /// VENDORMARKUP math the server-side check uses, so the displayed list
-    /// matches the payout.</summary>
-    internal static int GetVendorItemSellPrice(Character vendor, Item item)
+    /// <summary>Get the sell price (what vendor pays the player): the quote of the
+    /// BUY sample the item matches (<see cref="VendorEngine.GetSellQuote"/>), the
+    /// same figure the sell list shows and the sale pays; 0 when the vendor does not
+    /// buy it.</summary>
+    internal static int GetVendorItemSellPrice(Character vendor, Item item) =>
+        (int)Math.Min(VendorEngine.GetSellQuote(vendor, item).UnitPrice, int.MaxValue);
+
+    /// <summary>A figurine bought from an NPC vendor (Use_Figurine, CCharUse.cpp:1115,
+    /// called per unit from Event_VendorBuy, CClientEvent.cpp:1306): the creature it
+    /// names is made, takes the figurine's name and hue, becomes the buyer's pet -
+    /// refused, and unmade, when it would exceed the follower slots - and appears
+    /// where the figurine's top-level holder, the vendor, stands. The vendor's stock
+    /// figurine itself is not used up by this.</summary>
+    private Character? CreateBoughtFigurinePet(Character buyer, Item figurine, Character vendor)
     {
-        return VendorEngine.GetServerSellPrice(vendor, item);
+        int creatureId = VendorEngine.ResolveFigurineCreature(figurine);
+        if (creatureId == 0)
+            return null;
+        var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:X}");
+        if (pet == null)
+            return null;
+        pet.Name = figurine.GetName();
+        if (figurine.Hue.Value != 0)
+        {
+            pet.OSkin = figurine.Hue.Value;
+            pet.Hue = figurine.Hue;
+        }
+        if (!pet.TryAssignOwnership(buyer, buyer, summoned: false, enforceFollowerCap: true))
+        {
+            _world.DeleteObject(pet);
+            if (buyer == _character)
+                SysMessage(ServerMessages.Get(Msg.PetslotsTryControl));
+            return null;
+        }
+        if (!_world.PlaceCharacter(pet, vendor.Position))
+        {
+            _world.DeleteObject(pet);
+            return null;
+        }
+        pet.ClearStatFlag(StatFlag.Ridden);
+        return pet;
     }
 
     /// <summary>Fire the per-item @Buy / @Sell trigger BEFORE the transfer and

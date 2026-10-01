@@ -96,10 +96,12 @@ public sealed class SpellbookSchoolParityTests
         // The book is asked before the reagents (Spell_CanCast, CCharSpell.cpp:2474
         // then :2490), so the caster needs one to reach the reagent message.
         Assert.True(f.Book(ItemType.Spellbook).TryLearnSpell(1));
-        f.Def.Reagents.Add(0x7FFE, 1);
+        f.Def.Reagents.Add(SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(0x7FFE), 1);
         ServerMessages.SetOverride(Msg.SpellTryNoregs, "missing=%s");
         Assert.Equal(-1, f.Start());
-        Assert.Equal("missing=07FFE", f.Message);
+        // No definition behind the reagent: upstream names it DEFMSG_SPELL_TRY_THEREG
+        // (CCharSpell.cpp:2496).
+        Assert.Equal("missing=" + ServerMessages.Get(Msg.SpellTryThereg), f.Message);
     }
 
     [Fact]

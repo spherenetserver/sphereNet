@@ -104,6 +104,10 @@ public sealed class SmeltRepairParity08ATests
         ushort ingot = IronIngot)
     {
         DefineItem(OreTile, d => { d.Type = ItemType.Ore; d.TData1 = ingot; });
+        // Only an IT_INGOT (or IT_GEM) definition is a smelting result; a plain one
+        // is burnt with DEFMSG_MINING_CONSUMED (CCharSkill.cpp:1203).
+        EnsureIngot(IronIngot);
+        EnsureIngot(SpecialIngot);
 
         var ore = bench.World.CreateItem();
         ore.BaseId = OreTile;
@@ -117,12 +121,19 @@ public sealed class SmeltRepairParity08ATests
         return (ore, forge);
     }
 
+    private static void EnsureIngot(int id)
+    {
+        if (SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(id) == null)
+            DefineItem(id, d => d.Type = ItemType.Ingot);
+    }
+
+    /// <summary>Double-clicking ore smelts it at the nearest forge straight away
+    /// (CClientUse.cpp:390, Skill_Mining_Smelt(pItem, nullptr)) - no cursor.</summary>
     private static void Smelt(Bench bench, Item ore, Item forge)
     {
+        _ = forge;
         bench.Client.HandleDoubleClick(ore.Uid.Value);
-        Assert.True(bench.Client.HasPendingTarget);
-        bench.Client.HandleTargetResponse(0, bench.Client.ActiveTargetCursorId,
-            forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
+        Assert.False(bench.Client.HasPendingTarget);
     }
 
     private static Item? Ingots(Bench bench, ushort id) =>
@@ -216,6 +227,8 @@ public sealed class SmeltRepairParity08ATests
             d.DispIndex = OreTile;      // draws as iron ore
             d.TData1 = SpecialIngot;    // but yields its own ingot
         });
+        EnsureIngot(IronIngot);
+        EnsureIngot(SpecialIngot);
 
         var ore = bench.World.CreateItem();
         Assert.True(SphereNet.Game.Definitions.ItemDefHelper
@@ -254,8 +267,10 @@ public sealed class SmeltRepairParity08ATests
     }
 
     [Fact]
-    public void AnExplicitSmeltToTagStillWins()
+    public void ATagCannotOverrideTheOresTData1()
     {
+        // Source-X reads the ingot from the ore definition's TDATA1 alone
+        // (CCharSkill.cpp:1149); a TAG on the ore changes nothing.
         SkillRolls((SkillType.Mining, true));   // pin the roll: see SkillRolls
         var bench = Setup();
         var (ore, forge) = Smeltable(bench, ingot: SpecialIngot);
@@ -263,7 +278,8 @@ public sealed class SmeltRepairParity08ATests
 
         Smelt(bench, ore, forge);
 
-        Assert.NotNull(Ingots(bench, IronIngot));
+        Assert.NotNull(Ingots(bench, SpecialIngot));
+        Assert.Null(Ingots(bench, IronIngot));
     }
 
     // --- SX-08A-02: a failed smelt costs part of the pile ----------------

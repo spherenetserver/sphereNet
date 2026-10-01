@@ -74,7 +74,7 @@ public sealed class SpellCostAndFreezeParityTests : IDisposable
             EffectScale = 20,
         };
         foreach (var (id, count) in reagents ?? [])
-            def.Reagents[id] = count;
+            def.Reagents[SphereNet.Game.Objects.Items.ResourceMatch.ForItemDef(id)] = count;
         registry.Register(def);
 
         var caster = world.CreateCharacter();

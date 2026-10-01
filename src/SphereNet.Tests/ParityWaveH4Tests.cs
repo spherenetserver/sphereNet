@@ -83,6 +83,7 @@ public class ParityWaveH4Tests
 
         var stackA = world.CreateItem();
         stackA.BaseId = 0x0EED;
+        stackA.ItemType = ItemType.Gold;
         stackA.Amount = 3;
         chest.AddItem(stackA);
 
@@ -92,12 +93,14 @@ public class ParityWaveH4Tests
         chest.AddItem(pouch);
         var stackB = world.CreateItem();
         stackB.BaseId = 0x0EED;
+        stackB.ItemType = ItemType.Gold;
         stackB.Amount = 10;
         pouch.AddItem(stackB);
 
         // Consume 5: stack A (3) is eaten whole, stack B loses 2.
         // A resource list entry: quantity then resource (CResourceQty.cpp:55).
-        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "5 0EED", new NullConsole()));
+        // By TYPE - a bare number is not a resource-list entry upstream.
+        Assert.True(chest.TryExecuteCommand("CONTCONSUME", "5 t_gold", new NullConsole()));
         Assert.True(stackA.IsDeleted);
         Assert.Equal(8, stackB.Amount);
     }

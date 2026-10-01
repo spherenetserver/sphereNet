@@ -4,6 +4,58 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Crafting, resources, smelting and vendor economy follow Source-X
+------------------------------------------------------------------------
+FIX - Crafting stages follow Skill_MakeItem: the success roll is made at skill
+      start (ACTDIFF, writable in @SkillStart, no @SkillUseQuick);
+      @SkillSuccess runs before anything is spent and RETURN 1 aborts it;
+      @SkillMakeItem fires on the finished item held in ACT (ARGN1 base skill,
+      ARGN2 quality, ARGO previous ACT, LOCAL.Notify) and RETURN 1 deletes it;
+      crafted items run @Create exactly once.
+FIX - Inscribed scrolls take the scribe's Inscription as MOREY and no quality;
+      potions and replications get no quality roll. MAKEITEM item,amount makes
+      that many replications from what the stock covers.
+CHANGE - Crafted output is no longer coloured from its material and any colour
+      of a resource is spent; the material picker gump is removed (Source-X
+      leaves colouring to scripts).
+FIX - Walking away from the forge or fire reaches the FAIL stage; a failed craft
+      loses part of one replication through ResourceConsumePart. Craft delivery
+      follows ItemBounce (GM-mode carry bypass, drop triggers, feet drop and
+      drop sound).
+FIX - Resource test and consumption share one container walk: crafting, repair,
+      SKILLTEST, CONTCONSUME, RESCOUNT, RESTEST, CONSUME and spell reagents no
+      longer count or spend items inside locked, bank, vendor or trade
+      containers, and crafting searches the whole character.
+FIX - Recipe RESOURCES, SKILLMAKE items, spell reagents and vendor BUY samples
+      keep the full ITEMDEF identity; two definitions sharing a graphic are
+      different resources. Boards count for logs and leather for hides unless
+      EXPERIMENTAL 0x40 is set. Resource lists load as CResourceQtyArray::Load;
+      TAG.MATOVERRIDE_<defname> applies to crafting and CONSUME.
+FIX - Gold is matched by TYPE only; locked containers are never counted or
+      paid from, banked gold still pays, PAYFROMPACKONLY keeps it to the pack.
+FIX - Smelting follows Skill_Mining_Smelt: equipment gives back the ingots and
+      gems of its RESOURCES, magic/blessed items are refused, double-clicking
+      ore smelts at the nearest forge, ore piles join, and ore smelts only into
+      the ingot its TDATA1 names (TAG.SMELT_TO removed).
+FIX - ITEMDEF TDATA values written with a decimal dot (TDATA1=20.0) read as
+      Sphere numbers (200), restoring every ingot's smelting difficulty.
+FIX - Vendor BUY matching ports NPC_FindVendableItem: full itemdef and TYPE, the
+      sample's OVERRIDE.VALUE prices the list, @Sell and payout; BUY= templates
+      create real samples; OF_VendorStockLimit caps and consumes them; the sell
+      list walks searchable sub-containers and skips NEWBIE/MOVE_NEVER items.
+FIX - Vendor sell and buy follow Event_VendorSell / Event_VendorBuy (line by
+      line, seller-held items, over-quantity sells what is held, repeated buy
+      lines combine, GetVendorPrice, only owner or GM-mode GM takes goods
+      free). Purchased goods must still come from that vendor's stock.
+FIX - Make value is not clamped at quality 100 and rounds as GetLinear; IT_DEED
+      is priced from the definition in MORE1; virtual gold purchases use a
+      64-bit cost ceiling. Hair/beard purchases equip with a growth timer and
+      snip; figurines create an owned pet.
+CHANGE - The vendor purse is the bank box MORE1 (VENDGOLD); legacy
+      TAG.VENDOR_GOLD is moved into it once on load; CASH keeps one day's wage.
+FIX - Skill success auto-pass and carry weight bypass follow the GM-mode flag,
+      not the privilege level.
+
 [2026-10-01] - TAG/VAR save values are quoted as Source-X writes them
 ------------------------------------------------------------------------
 FIX - TAG/VAR save values follow Source-X CVarDefMap::r_WritePrefix: a number

@@ -163,7 +163,8 @@ public static class SkillEngine
     {
         if (!IsValidBaseSkill(skill))
             return false;
-        if (ch.PrivLevel >= PrivLevel.GM && skill != SkillType.Parrying)
+        // IsPriv(PRIV_GM) is the GM-mode flag (CCharSkill.cpp:526).
+        if (ch.IsGmMode && skill != SkillType.Parrying)
             return true;
 
         if (difficulty < 0)

@@ -153,7 +153,7 @@ public class VendorStableParityTests
         pack.AddItem(gold);
 
         // Buy the EXPENSIVE entry — the server must charge 999 (+15% markup), not the cheap 10.
-        int cost = VendorEngine.ProcessBuy(buyer, vendor,
+        long cost = VendorEngine.ProcessBuy(buyer, vendor,
             new[] { new TradeEntry { ItemUid = dear.Uid, ItemId = dear.BaseId, Amount = 1 } });
 
         Assert.Equal(1149, cost); // 999 + IMulDivLL(999, 15, 100)
@@ -268,7 +268,7 @@ public class VendorStableParityTests
         gold.BaseId = 0x0EED; gold.ItemType = ItemType.Gold; gold.Amount = 5000;
         pack.AddItem(gold);
 
-        int cost = VendorEngine.ProcessBuy(buyer, vendor,
+        long cost = VendorEngine.ProcessBuy(buyer, vendor,
             new[] { new TradeEntry { ItemUid = entry.Uid, ItemId = entry.BaseId, Amount = 3 } });
         Assert.Equal(36, cost); // 3 * (10 + 15% markup)
 
@@ -290,17 +290,21 @@ public class VendorStableParityTests
     // ---- #1: a vendor with no BUY list buys nothing (NPC_FindVendableItem) ----
 
     [Fact]
-    public void GetVendorBuyFilter_NoBuyList_BuysNothing_ButTakesItsSamples()
+    public void FindVendableItem_NoBuyList_BuysNothing_ButTakesItsSamples()
     {
         var world = CreateWorld();
         var vendor = world.CreateCharacter();
         vendor.NpcBrain = NpcBrainType.Vendor;
+        var offered = world.CreateItem();
+        offered.BaseId = 0x13B0;
 
-        Assert.Empty(VendorEngine.GetVendorBuyFilter(vendor));
+        Assert.Null(VendorEngine.FindVendableItem(offered, vendor.GetEquippedItem(Layer.VendorBuy)));
 
         // A sample in the BUYS box is what the vendor buys (LAYER_VENDOR_BUYS).
         TestHarness.GiveVendorBuySample(world, vendor, 0x13B0);
-        Assert.Equal([(ushort)0x13B0], VendorEngine.GetVendorBuyFilter(vendor));
+        var sample = VendorEngine.FindVendableItem(offered, vendor.GetEquippedItem(Layer.VendorBuy));
+        Assert.NotNull(sample);
+        Assert.Equal(0x13B0, sample!.BaseId);
     }
 
     // ---- #2: opt-in vendor money pool — sell debits it, blocks when broke ----
@@ -339,7 +343,7 @@ public class VendorStableParityTests
         var item2 = world.CreateItem();
         item2.BaseId = 0x13B0; item2.Amount = 2; item2.SetTag("OVERRIDE.VALUE", "100");
         pack.AddItem(item2);
-        vendor.SetTag("VENDOR_GOLD", "30");
+        Assert.True(vendor.TrySetProperty("VENDGOLD", "30")); // the purse: bank box MORE1
         int paid2 = VendorEngine.ProcessSell(player, vendor,
             new[] { new TradeEntry { ItemUid = item2.Uid, ItemId = item2.BaseId, Amount = 2 } }, out bool shortfall);
         Assert.Equal(0, paid2);

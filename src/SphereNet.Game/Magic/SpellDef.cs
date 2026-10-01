@@ -68,8 +68,10 @@ public sealed class SpellDef
 
     public ulong Group { get; set; }
 
-    // Reagents (resource ID → amount)
-    public Dictionary<ushort, int> Reagents { get; } = [];
+    /// <summary>RESOURCES - the reagent list (CSpellDef::m_Reags), in script order:
+    /// each entry's full resource id (an ITEMDEF is its definition, not its graphic)
+    /// and amount.</summary>
+    public Dictionary<SphereNet.Core.Types.ResourceId, int> Reagents { get; } = [];
 
     // Skill requirements (SkillType → minimum value)
     public Dictionary<SkillType, int> SkillReq { get; } = [];
@@ -145,7 +147,7 @@ public sealed class SpellDef
                 {
                     if (i == idx)
                     {
-                        value = sub == "KEY" ? $"0{kv.Key:X}" : kv.Value.ToString();
+                        value = sub == "KEY" ? $"0{kv.Key.Index:X}" : kv.Value.ToString();
                         return true;
                     }
                     i++;

@@ -260,8 +260,9 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.StartSkillFromTool(SkillType skill, Serial targetUid, Objects.ObjBase? target,
         Point3D? point, Objects.Items.Item? tool) => SkillUse.StartSkillFromTool(skill, targetUid, target, point, tool);
     void IClientContext.TickPendingCraft() => TickPendingCraft();
-    bool IClientContext.BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump) =>
-        BeginPendingCraft(recipe, craftSkill, reopenGump);
+    bool IClientContext.BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
+        int replicationQty) =>
+        BeginPendingCraft(recipe, craftSkill, reopenGump, replicationQty);
 
     void IClientContext.SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType) => SetPendingTarget(callback, cursorType);
     void IClientContext.ArmTargetCursor(Action<uint, short, short, sbyte, ushort>? callback, byte cursorType,

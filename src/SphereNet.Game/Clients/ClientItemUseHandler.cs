@@ -1304,20 +1304,17 @@ public sealed class ClientItemUseHandler
 
             // ---- ore / forge / ingot (overridable via @DClick trigger) ----
             case ItemType.Ore:
-                SysMessage(ServerMessages.Get(Msg.ItemuseForge));
-                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleSmeltTarget(item, new Serial(serial)));
+                // IT_ORE smelts at once at the nearest forge - there is no cursor
+                // (CClientUse.cpp:390-391, Skill_Mining_Smelt(pItem, nullptr)).
+                SkillMiningSmelt(item, null);
                 break;
             case ItemType.Forge:
                 // IT_FORGE asks for the ore to smelt (CClientUse.cpp:385-388) and the
-                // target is smelted at this forge (CClientTarg.cpp:1763-1765).
+                // target is smelted at this forge (CClientTarg.cpp:1763-1765). A target
+                // that is not an item reaches the smelt as nothing.
                 SysMessage(ServerMessages.Get(Msg.ItemuseForge));
                 SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
-                {
-                    if (_world.FindItem(new Serial(serial)) is { } ore)
-                        HandleSmeltTarget(ore, item.Uid);
-                    else
-                        SysMessage(ServerMessages.Get(Msg.MiningNotOre));
-                });
+                    SkillMiningSmelt(_world.FindItem(new Serial(serial)), item));
                 break;
             case ItemType.Ingot:
                 OpenCraftingGump(SkillType.Blacksmithing);
@@ -2633,173 +2630,436 @@ public sealed class ClientItemUseHandler
         item.RemoveTag("SPAWN_POINT_UUID");
     }
 
-    /// <summary>Script entry for the item SMELT verb (Source-X CIV_SMELT):
-    /// same flow as the targeted smelt, forge supplied by the script.</summary>
-    internal void SmeltFromScript(Item ore, Serial forgeUid) => HandleSmeltTarget(ore, forgeUid);
+    /// <summary>Script entry for the item SMELT verb (Source-X CIV_SMELT, CItem.cpp:3676):
+    /// the verb's argument names the other item of the smelt - a forge, or a pile of
+    /// the same ore to combine with - and without one the forge is searched for.</summary>
+    internal bool SmeltFromScript(Item ore, Item? target) => SkillMiningSmelt(ore, target);
 
-    private void HandleSmeltTarget(Item ore, Serial target)
+    /// <summary>
+    /// Source-X CChar::Skill_Mining_Smelt (CCharSkill.cpp:1057-1287), one flow for
+    /// ore and for anything else put in the fire.
+    ///
+    /// An ore (its DEFINITION is t_ore) yields the one resource its TDATA1 names, one
+    /// per ore. Any other item yields the ITEMDEF entries of its RESOURCES list, each
+    /// at its listed amount - armour and weapons give back their ingots and gems. The
+    /// produce is offered to @Smelt in LOCAL.resource.n.ID / .amount (ARGN1 = Mining,
+    /// ARGN2 = how many resources, ARGN3 = waive the minimum skill) and read back from
+    /// there. Gems bounce out at once with no roll; ingots need the ingot's minimum
+    /// Mining (TDATA1) and a roll whose difficulty is drawn up to TDATA2; a failed
+    /// roll loses up to half the pile. The item itself is consumed whole only once
+    /// every resource has been tried, and the ingots are handed over after that.
+    /// Magic, blessed and blessed2 items are refused before anything is spent.
+    /// </summary>
+    private bool SkillMiningSmelt(Item? ore, Item? target)
     {
-        if (_character == null) return;
-        if (ore.IsDeleted || ore.ItemType != ItemType.Ore)
+        if (_character == null) return false;
+        if (ore == null || ore.IsDeleted || ReferenceEquals(ore, target))
         {
             SysMessage(ServerMessages.Get(Msg.MiningNotOre));
-            return;
+            return false;
         }
 
-        var forge = target.IsValid ? _world.FindItem(target) : null;
-        if (forge == null || forge.ItemType != ItemType.Forge || !CanReachTargetItem(forge))
+        // CanUse(pItemOre, true): reach, the move rules and the take-crime check.
+        if (!CanConsumeTarget(ore))
+        {
+            SysMessage(ServerMessages.GetFormatted(Msg.MiningReach, ore.GetName()));
+            return false;
+        }
+
+        // Ore smelted "at" another pile of the same ore joins the piles (:1076-1086).
+        if (ore.ItemType == ItemType.Ore && target != null && !target.IsDeleted &&
+            target.ItemType == ItemType.Ore)
+        {
+            if (SmeltIdentity(target) != SmeltIdentity(ore))
+                return false;
+            target.Amount = unchecked((ushort)(ore.Amount + target.Amount));
+            SendAmountUpdate(target);
+            ConsumeOreStack(ore);
+            return true;
+        }
+
+        // The forge: the one targeted when it lies on the ground, else the nearest
+        // within the Blacksmithing RANGE (3 when the skill names none), and in either
+        // case it must be touchable - line of sight within 6 (CanTouch(pt), :1088-1107).
+        Point3D forgePoint;
+        bool haveForge;
+        if (target != null && !target.IsDeleted && target.IsOnGround && target.ItemType == ItemType.Forge)
+        {
+            forgePoint = target.Position;
+            haveForge = true;
+        }
+        else
+        {
+            haveForge = TryFindForgeNearby(SkillEngine.GetUseRange(SkillType.Blacksmithing, 3), out forgePoint);
+        }
+        if (!haveForge || !CanTouchPoint(forgePoint))
         {
             SysMessage(ServerMessages.Get(Msg.MiningForge));
-            return;
+            return false;
         }
 
-        if (!CanReachTargetItem(ore))
+        var oreDef = ResolveOwnItemDef(ore);
+        ItemType oreDefType = oreDef?.Type ?? ore.ItemType;
+        if (oreDefType == ItemType.Ingot)
         {
-            SysMessage(ServerMessages.Get(Msg.MiningReach));
-            return;
+            SysMessage(ServerMessages.Get(Msg.MiningIngots));
+            return false;
         }
 
-        int oreQty = Math.Max(1, (int)ore.Amount);
-        int ingotDefIndex = ResolveSmeltIngotDefIndex(ore);
-        if (ingotDefIndex == 0)
+        // The fire on top of the forge, the sound and the turn come before the
+        // attribute test (:1116-1126), so a refused magic item still flares.
+        ShowSmeltFire(forgePoint);
+        if (!SkillEngine.HasFlag(_character.Action, SkillFlag.NoSfx))
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(0x002B, _character.X, _character.Y, _character.Z), 0);
+        _character.FaceToward(forgePoint);
+
+        if (ore.IsAttr(ObjAttributes.Magic | ObjAttributes.Blessed | ObjAttributes.Blessed2))
         {
-            // Upstream refuses when the ore's TDATA1 names no definition it can
-            // build (FindItemBase == nullptr -> DEFMSG_MINING_NOTHING,
-            // CCharSkill.cpp:1149-1154). There is no iron-ingot fallback there, and
-            // inventing one here turned every ore whose ingot failed to resolve into
-            // the same grey bar.
-            SysMessage(ServerMessages.GetFormatted(Msg.MiningNothing, ore.GetName()));
-            return;
+            SysMessage(ServerMessages.Get(Msg.MiningFire));
+            return false;
         }
-        int perOre = 1;
 
-        // Source-X @Smelt arguments (Skill_Mining_Smelt, CCharSkill.cpp:1138):
-        // ARGN1 = the smelter's Mining skill, ARGN2 = how many kinds of resource the
-        // ore yields, ARGN3 = skip the minimum-skill requirement, and the produce
-        // itself in LOCAL.resource.0.ID / .amount - all of it read back afterwards.
-        // SphereNet passed the ore COUNT as ARGN1, nothing else, and threw the args
-        // away, so a script could veto a smelt but never steer it.
-        int miningSkill = SkillEngine.GetAdjustedSkill(_character, SkillType.Mining); // :1138
+        _character.EmoteObject($"{ServerMessages.Get(Msg.MiningSmelt)} {ore.GetName()}");
+
+        int miningSkill = SkillEngine.GetAdjustedSkill(_character, SkillType.Mining);
         bool skipSkillReq = false;
+        ushort oreQty = ore.Amount;
+        var locals = new SphereNet.Scripting.Variables.VarMap();
+        int resourceKinds;
+
+        if (oreDefType == ItemType.Ore)
+        {
+            int ingotIndex = ResolveSmeltIngotDefIndex(ore);
+            if (!SmeltResourceExists(ingotIndex))
+            {
+                // SysMessageDefault, not SysMessagef: the line goes out unformatted (:1152).
+                SysMessage(ServerMessages.Get(Msg.MiningNothing));
+                return false;
+            }
+            resourceKinds = 1;                       // an ore yields one kind of resource
+            locals.SetInt("resource.0.ID", ingotIndex);
+            locals.SetInt("resource.0.amount", 1);   // one per ore
+        }
+        else
+        {
+            var resources = ReadSmeltResources(oreDef);
+            resourceKinds = resources.Count;
+            for (int i = 0; i < resources.Count; i++)
+            {
+                var (rid, qty) = resources[i];
+                if (rid.Type != ResType.ItemDef)
+                    continue;
+                if (rid.Index == 0)
+                    break;
+                locals.SetInt($"resource.{i}.ID", rid.Index);
+                locals.SetInt($"resource.{i}.amount", unchecked((ushort)qty));
+            }
+        }
+
         if (_triggerDispatcher != null)
         {
-            var locals = new SphereNet.Scripting.Variables.VarMap();
-            locals.SetInt("resource.0.ID", ingotDefIndex);
-            locals.SetInt("resource.0.amount", perOre);
+            // Init(iMiningSkill, iResourceTotalQty, 0, nullptr): no ARGO, no ARGS.
             var args = new TriggerArgs
             {
                 CharSrc = _character,
                 ItemSrc = ore,
-                O1 = forge,
                 N1 = miningSkill,
-                N2 = 1,             // an ore yields exactly one kind of resource
+                N2 = resourceKinds,
                 N3 = 0,
-                S1 = ServerMessages.Get(Msg.MiningSmelt),
                 Locals = locals,
             };
             if (_triggerDispatcher.FireItemTrigger(ore, ItemTrigger.Smelt, args) == TriggerResult.True)
-                return;
+                return false;
 
-            miningSkill = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+            miningSkill = unchecked((ushort)args.N1);
             skipSkillReq = args.N3 != 0;
-            if (long.TryParse(locals.Get("resource.0.ID"), out long scriptedId) &&
-                scriptedId is > 0 and <= int.MaxValue)
-                ingotDefIndex = (int)scriptedId;
-            if (long.TryParse(locals.Get("resource.0.amount"), out long scriptedQty) && scriptedQty >= 0)
-                perOre = (int)Math.Min(scriptedQty, ushort.MaxValue);
         }
 
-        var ingotDef = DefinitionLoader.GetItemDef(ingotDefIndex);
+        // The products in the order the resources are walked. Source-X indexes this
+        // list by the RESOURCE number (ingots.at(i), :1258), so once a resource before
+        // an ingot was skipped (a gem, a refused or a failed ingot) the index runs past
+        // the list and the smelt is abandoned there: what was already bounced stays
+        // handed out, the item is not consumed and the ingots made so far are lost.
+        var made = new List<Item?>();
+        for (int i = 0; i < resourceKinds; i++)
+        {
+            int resourceIndex = ReadSmeltLocal(locals, $"resource.{i}.ID");
+            var resourceDef = resourceIndex != 0 ? DefinitionLoader.GetItemDef(resourceIndex) : null;
 
-        // What the resource IS decides what happens (CCharSkill.cpp:1195-1216). Only an
-        // ingot or a gem is a smelting result; anything else says
-        // DEFMSG_MINING_CONSUMED and the ore still burns away entirely at the end
-        // (:1279). A definition with no TYPE of its own keeps the ingot path.
-        var resourceType = ingotDef?.Type ?? ItemType.Normal;
-        if (ingotDef != null && resourceType is not (ItemType.Ingot or ItemType.Gem or ItemType.Normal))
-        {
-            SysMessage(ServerMessages.Get(Msg.MiningConsumed));
-            ConsumeOreStack(ore);
-            return;
-        }
-        if (resourceType == ItemType.Gem)
-        {
-            // "Bounce the gems out of this" (:1209-1219): no skill minimum, no roll -
-            // amount-per-ore x ore of the gem, handed over, and the ore is consumed.
-            int gemAmount = oreQty * perOre;
-            ConsumeOreStack(ore);
-            var gem = _world.CreateItem();
-            if (!ItemDefHelper.ApplyInstanceMetadata(gem, ingotDefIndex))
+            if (oreQty == 0)
             {
-                if (ingotDefIndex is > 0 and <= ushort.MaxValue)
-                    gem.BaseId = (ushort)ingotDefIndex;
-                gem.FireCreateTrigger();
+                SysMessage(ServerMessages.Get(Msg.MiningConsumed));
+                DiscardSmeltProducts(made);
+                return false;
             }
-            if (gem.IsDeleted)
-                return;
-            gem.Amount = (ushort)Math.Clamp(gemAmount, 1, ushort.MaxValue);
-            BounceSmeltResult(gem);
-            return;
+
+            if (resourceDef == null || resourceDef.Type is not (ItemType.Ingot or ItemType.Gem))
+            {
+                SysMessage(ServerMessages.Get(Msg.MiningConsumed));
+                continue;
+            }
+
+            ushort resourceQty = unchecked((ushort)ReadSmeltLocal(locals, $"resource.{i}.amount"));
+            resourceQty = unchecked((ushort)(resourceQty * oreQty));   // max amount
+
+            if (resourceDef.Type == ItemType.Gem)
+            {
+                // "Bounce the gems out of this": no minimum, no roll (:1209-1219).
+                var gem = CreateSmeltProduct(resourceIndex);
+                if (gem != null)
+                {
+                    gem.Amount = resourceQty;
+                    BounceSmeltResult(gem);
+                }
+                continue;
+            }
+
+            // The INGOT's definition sets the bar (m_ttIngot): TDATA1 the least Mining
+            // that may smelt it, TDATA2 the top of the difficulty range (:1222-1243).
+            int skillMin = (int)Math.Min(resourceDef.TData1, int.MaxValue);
+            int skillMax = (int)Math.Min(resourceDef.TData2, int.MaxValue);
+            if (miningSkill < skillMin && !skipSkillReq)
+            {
+                string ingotName = !string.IsNullOrWhiteSpace(resourceDef.Name)
+                    ? DefinitionLoader.ResolveNames(resourceDef.Name)
+                    : ore.GetName();
+                SysMessage(ServerMessages.GetFormatted(Msg.MiningSkill, ingotName));
+                if (resourceKinds > 1)
+                    continue;
+                DiscardSmeltProducts(made);
+                return false;
+            }
+
+            int smeltDifficulty = (skillMin + SmeltRand(skillMax - skillMin)) / 10;
+            if (resourceQty == 0 || !SkillEngine.UseQuick(_character, SkillType.Mining, smeltDifficulty))
+            {
+                // A failed smelt loses up to half of what is left, not all of it (:1247).
+                SysMessage(ServerMessages.GetFormatted(Msg.MiningNothing, ore.GetName()));
+                ushort lost = (ushort)(SmeltRand(ore.Amount / 2) + 1);
+                ConsumeOreAmount(ore, lost);
+                oreQty = unchecked((ushort)(oreQty - lost));
+                if (resourceKinds > 1)
+                    continue;
+                DiscardSmeltProducts(made);
+                return false;
+            }
+
+            // Payoff: built from the definition now (its @Create fires here), handed
+            // over only after the item is consumed.
+            made.Add(CreateSmeltProduct(resourceIndex));
+            if (made.Count <= i)
+            {
+                DiscardSmeltProducts(made);
+                return false;
+            }
+            var ingot = made[i];
+            if (ingot == null)
+            {
+                SysMessage(ServerMessages.Get(Msg.MiningNothing));
+                continue;
+            }
+            ingot.Amount = resourceQty;
         }
 
-        // The INGOT's definition sets the bar (m_ttIngot, CItemBase.h:153-156): TDATA1
-        // the least Mining that may smelt it - refused with DEFMSG_MINING_SKILL unless
-        // @Smelt's ARGN3 waived it - and TDATA2 the top of the range the difficulty is
-        // drawn from, (TDATA1 + rand(TDATA2 - TDATA1)) / 10. A resource amount of 0
-        // fails like a missed roll (CCharSkill.cpp:1231-1246). ARGN3 waives only the
-        // minimum; it used to skip the roll itself, which was a fixed 30.
-        int skillMin = (int)Math.Min(ingotDef?.TData1 ?? 0u, int.MaxValue);
-        int skillMax = (int)Math.Min(ingotDef?.TData2 ?? 0u, int.MaxValue);
-        if (miningSkill < skillMin && !skipSkillReq)
+        // The item is consumed before the ingots are handed over (:1279-1284).
+        if (!ore.IsDeleted)
+            ConsumeOreStack(ore);
+        foreach (var product in made)
         {
-            string ingotName = !string.IsNullOrWhiteSpace(ingotDef?.Name)
-                ? DefinitionLoader.ResolveNames(ingotDef!.Name)
-                : ore.GetName();
-            SysMessage(ServerMessages.GetFormatted(Msg.MiningSkill, ingotName));
-            return;
+            if (product != null && !product.IsDeleted)
+                BounceSmeltResult(product);
         }
-        int skillRange = skillMax - skillMin;
-        int smeltDifficulty = (skillMin + (skillRange < 2 ? 0 : Random.Shared.Next(skillRange))) / 10;
+        return true;
+    }
 
-        if (perOre == 0 || !SkillEngine.UseQuick(_character, SkillType.Mining, smeltDifficulty))
+    /// <summary>CSRand::GetVal: 0 .. n-1, and 0 for anything under two.</summary>
+    private static int SmeltRand(int n) => n < 2 ? 0 : Random.Shared.Next(n);
+
+    /// <summary>The ITEMID a pile answers to (CItem::GetID), for joining piles: the
+    /// definition it was built from, not only the graphic it draws as.</summary>
+    private static int SmeltIdentity(Item item) =>
+        item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
+        int.TryParse(scriptDef, out int idx) && idx != 0
+            ? idx
+            : item.BaseId;
+
+    /// <summary>FindItemBase(id) != nullptr for an ore's resource: a scripted
+    /// definition, or a plain graphic (whose base is built from tiledata).</summary>
+    private static bool SmeltResourceExists(int index) =>
+        index > 0 && (index <= ushort.MaxValue || DefinitionLoader.GetItemDef(index) != null);
+
+    /// <summary>LOCAL.resource.n.* read back as a number (GetKeyNum): a value a script
+    /// wrote as a defname answers with that definition's index.</summary>
+    private static int ReadSmeltLocal(SphereNet.Scripting.Variables.VarMap locals, string key)
+    {
+        if (!locals.Has(key))
+            return 0;
+        if (locals.IsInteger(key))
+            return SphereNet.Core.Types.ScriptNumber.ToEngineInt(locals.GetInt(key));
+        string text = (locals.Get(key) ?? "").Trim();
+        if (SphereNet.Core.Types.ScriptNumber.TryParseToken(text, out long number))
+            return SphereNet.Core.Types.ScriptNumber.ToEngineInt(number);
+        return DefinitionLoader.ResolveItemDefIndexByName(text);
+    }
+
+    /// <summary>The definition's RESOURCES as Source-X holds them (CResourceQtyArray::Load,
+    /// CResourceQty.cpp:181): one entry per resource, a repeated resource replacing the
+    /// earlier one in place, a lone "0" clearing the list, and the first entry that
+    /// names nothing ending it. A DUPEITEM shares its master's list.</summary>
+    private static List<(ResourceId Rid, long Qty)> ReadSmeltResources(SphereNet.Scripting.Definitions.ItemDef? def)
+    {
+        var list = new List<(ResourceId Rid, long Qty)>();
+        if (def == null)
+            return list;
+        if (def.DupItemId != 0 && DefinitionLoader.GetItemDef(def.DupItemId) is { } master && master != def)
+            def = master;
+        var holder = DefinitionLoader.StaticResources;
+        if (string.IsNullOrWhiteSpace(def.ResourcesRaw) || holder == null)
+            return list;
+
+        foreach (string part in def.ResourcesRaw.Split(','))
         {
-            // A failed smelt costs part of the pile, not all of it: the reference
-            // loses rand(amount/2)+1 (CCharSkill.cpp:1247). SphereNet deleted the
-            // whole stack, so one unlucky roll burned ten ore.
-            int lost = Random.Shared.Next(oreQty / 2) + 1;
-            ConsumeOreAmount(ore, lost);
-            SysMessage(ServerMessages.GetFormatted(Msg.MiningNothing, ore.GetName()));
-            return;
+            string text = part.Trim();
+            if (text == "0")
+            {
+                list.Clear();
+                continue;
+            }
+            var entry = SphereNet.Scripting.Resources.ResourceQtyList.ParseEntry(text);
+            if (entry.Name.Length == 0)
+                break;
+            var rid = holder.ResolveDefName(entry.Name);
+            if (!rid.IsValid)
+                break;
+            int at = list.FindIndex(r => r.Rid.Equals(rid));
+            if (at >= 0)
+                list[at] = (rid, entry.Quantity);
+            else
+                list.Add((rid, entry.Quantity));
         }
+        return list;
+    }
 
-        int amount = oreQty * Math.Max(1, perOre);
-        ConsumeOreStack(ore);
-
-        var ingot = _world.CreateItem();
-
-        // Build the ingot from its DEFINITION, exactly as upstream does
-        // (CItem::CreateScript(pBaseDef->GetID()), CCharSkill.cpp:1258) - so it comes
-        // out with that definition's art, name, TDATA and its own @Create colour.
-        //
-        // The ore's hue is NOT carried over. Upstream never copies it, and a pack
-        // that writes its ingot table as separate graphics (i_ingot_copper 01be3,
-        // i_ingot_iron 01bef ...) already holds the colour in the art: painting the
-        // ore's hue on top tinted a correctly coloured bar with a second colour. The
-        // ore table is the one written as hue variants of one graphic - that is the
-        // ore's business, not the ingot's.
-        if (!ItemDefHelper.ApplyInstanceMetadata(ingot, ingotDefIndex))
+    /// <summary>CItem::CreateScript for a smelting product: built from its definition
+    /// with its @Create, or null when that trigger deleted it.</summary>
+    private Item? CreateSmeltProduct(int defIndex)
+    {
+        var item = _world.CreateItem();
+        if (!ItemDefHelper.ApplyInstanceMetadata(item, defIndex))
         {
-            // A bare graphic with no definition behind it still becomes an ingot.
-            if (ingotDefIndex is > 0 and <= ushort.MaxValue)
-                ingot.BaseId = (ushort)ingotDefIndex;
-            ingot.FireCreateTrigger();
+            if (defIndex is > 0 and <= ushort.MaxValue)
+                item.BaseId = (ushort)defIndex;
+            item.FireCreateTrigger();
         }
-        if (ingot.IsDeleted)
-            return;
-        if (ingot.ItemType == ItemType.Normal)
-            ingot.ItemType = ItemType.Ingot;
-        ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
-        BounceSmeltResult(ingot);
+        return item.IsDeleted ? null : item;
+    }
+
+    /// <summary>Products made but never placed are deleted (Source-X drops objects
+    /// that were created and not placed).</summary>
+    private void DiscardSmeltProducts(List<Item?> made)
+    {
+        foreach (var product in made)
+        {
+            if (product != null && !product.IsDeleted)
+                _world.RemoveItem(product);
+        }
+        made.Clear();
+    }
+
+    /// <summary>CChar::CanTouch(pt): line of sight to the point within 6 tiles
+    /// (CCharStatus.cpp:1282), which an active GM passes.</summary>
+    private bool CanTouchPoint(Point3D pt)
+    {
+        if (_character == null || pt.Map != _character.MapIndex)
+            return false;
+        return _world.CanSeeLOSFor(_character, _character.Position, pt,
+            maxDist: 6, allowGmPass: true);
+    }
+
+    /// <summary>CWorldMap::FindItemTypeNearby(pt, IT_FORGE, range) (CWorldMap.cpp:663):
+    /// the nearest forge - a top-level item of the type (its own or its
+    /// definition's), a land tile of the type, or a static whose definition is.</summary>
+    private bool TryFindForgeNearby(int range, out Point3D found)
+    {
+        found = default;
+        if (_character == null) return false;
+        var origin = _character.Position;
+        bool any = false;
+        int best = range;
+
+        foreach (var item in _world.GetItemsInRange(origin, range))
+        {
+            if (item.IsDeleted || !item.IsOnGround)
+                continue;
+            if (item.ItemType != ItemType.Forge &&
+                DefinitionLoader.GetItemDef(item.BaseId)?.Type != ItemType.Forge)
+                continue;
+            int dist = origin.GetDistanceTo(item.Position);
+            if (dist > best)
+                continue;
+            found = item.Position;
+            best = dist;
+            any = true;
+            if (dist == 0)
+                return true;
+        }
+
+        var mapData = _world.MapData;
+        if (mapData == null)
+            return any;
+
+        for (int dx = -best; dx <= best; dx++)
+        {
+            for (int dy = -best; dy <= best; dy++)
+            {
+                int x = origin.X + dx, y = origin.Y + dy;
+                if (x < 0 || y < 0)
+                    continue;
+                var at = new Point3D((short)x, (short)y, origin.Z, origin.Map);
+                int dist = origin.GetDistanceTo(at);
+                if (dist > best)
+                    continue;
+
+                var cell = mapData.GetTerrainTile(origin.Map, x, y);
+                if (SphereNet.Game.World.NaturalResourceTiles.TerrainItemType(cell.TileId) == ItemType.Forge)
+                {
+                    found = new Point3D((short)x, (short)y, (sbyte)cell.Z, origin.Map);
+                    best = dist;
+                    any = true;
+                    if (dist == 0)
+                        return true;
+                }
+
+                foreach (var s in mapData.GetStatics(origin.Map, x, y))
+                {
+                    if (DefinitionLoader.GetItemDef(s.TileId)?.Type != ItemType.Forge)
+                        continue;
+                    found = new Point3D((short)x, (short)y, (sbyte)s.Z, origin.Map);
+                    best = dist;
+                    any = true;
+                    if (dist == 0)
+                        return true;
+                }
+            }
+        }
+        return any;
+    }
+
+    /// <summary>The flare on top of the forge: a fixed fire graphic, 8 above it, gone
+    /// after a second (CItem::CreateBase(ITEMID_FIRE) + MoveToDecay, :1116-1122).</summary>
+    private void ShowSmeltFire(Point3D forgePoint)
+    {
+        const ushort FireId = 0x19AB;   // ITEMID_FIRE
+        var fire = _world.CreateItem();
+        fire.BaseId = FireId;
+        if (DefinitionLoader.GetItemDef(FireId) is { } fireDef)
+            fire.ItemType = fireDef.Type;
+        fire.SetAttr(ObjAttributes.Move_Never);
+        var at = new Point3D(forgePoint.X, forgePoint.Y,
+            (sbyte)Math.Min(forgePoint.Z + 8, sbyte.MaxValue), forgePoint.Map);
+        if (!_world.PlaceItemWithDecay(fire, at, 1000))
+            _world.RemoveItem(fire);
     }
 
     /// <summary>ItemBounce for a smelting result (CCharSkill.cpp:1216/1283): into
@@ -2903,31 +3163,10 @@ public sealed class ClientItemUseHandler
     /// The ore's own def has to be read through its SCRIPTDEF/ITEMDEF routing tag for
     /// the same reason - i_ore_copper draws as i_ore_iron, so looking the ore up by
     /// BaseId alone answers with the iron definition and hands back iron's ingot.
-    ///
-    /// An explicit TAG.SMELT_TO still wins; packs may already rely on it.</summary>
+    /// TDATA1 is the only source; there is no tag override.</summary>
     private static int ResolveSmeltIngotDefIndex(Item ore)
     {
         var def = ResolveOwnItemDef(ore);
-
-        string? raw = null;
-        if (ore.TryGetTag("SMELT_TO", out string? itemTag) && !string.IsNullOrWhiteSpace(itemTag))
-            raw = itemTag;
-        else if (def != null && def.TagDefs.Has("SMELT_TO"))
-            raw = def.TagDefs.Get("SMELT_TO");
-
-        if (!string.IsNullOrWhiteSpace(raw))
-        {
-            raw = raw.Trim();
-            bool ok = raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                ? ushort.TryParse(raw.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out ushort id)
-                : ushort.TryParse(raw, out id);
-            if (ok && id != 0)
-                return id;
-            int tagged = DefinitionLoader.ResolveItemDefIndexByName(raw);
-            if (tagged != 0)
-                return tagged;
-        }
-
         if (def == null)
             return 0;
         if (def.TData1 != 0)
@@ -2961,12 +3200,18 @@ public sealed class ClientItemUseHandler
         }
 
         ore.Amount -= (ushort)lost;
-        if (ore.ContainedIn.IsValid)
+        SendAmountUpdate(ore);
+    }
+
+    /// <summary>SetAmountUpdate's resend: the pile's new amount to the client.</summary>
+    private void SendAmountUpdate(Item pile)
+    {
+        if (pile.ContainedIn.IsValid)
             SendContainerItemPacket(new PacketContainerItem(
-                ore.Uid.Value, ore.DispIdFull, 0, ore.Amount, ore.X, ore.Y,
-                ore.ContainedIn.Value, ore.Hue, _netState.IsClientPost6017));
+                pile.Uid.Value, pile.DispIdFull, 0, pile.Amount, pile.X, pile.Y,
+                pile.ContainedIn.Value, pile.Hue, _netState.IsClientPost6017));
         else
-            SendWorldItem(ore);
+            SendWorldItem(pile);
     }
 
     private void ConsumeOreStack(Item ore)
@@ -5027,6 +5272,12 @@ public sealed class ClientItemUseHandler
                 _world.GetContainerContents(stockContainer.Uid).Any();
             if (!rebuilt)
             {
+                // A restock starts from empty vendor boxes (NPC_Vendor_Restock,
+                // CCharNPCAct_Vendor.cpp:83-93): BUY= lays its samples out again and
+                // must not stack a second set on the first.
+                if (vendor.GetEquippedItem(Layer.VendorBuy) is { } buysBox)
+                    foreach (var oldSample in buysBox.Contents.ToList())
+                        _world.RemoveItem(oldSample);
                 _triggerDispatcher?.FireCharTrigger(vendor,
                     SphereNet.Core.Enums.CharTrigger.NPCRestock,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = _character });
@@ -5154,31 +5405,25 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        // Build list of items the vendor will buy from the player's backpack.
-        // A vendor with a BUY list only lists items on it (Source-X
-        // NPC_FindVendableItem); no list = buys anything (legacy behaviour).
-        var buyFilter = SphereNet.Game.Trade.VendorEngine.GetVendorBuyFilter(vendor);
+        // What the vendor will buy from the player's pack: the shared sell-offer
+        // walk (Source-X PacketVendorSellList::fillSellList, send.cpp:3036) - the
+        // pack and its searchable sub-containers, each item matched against a
+        // sample in the vendor's BUYS box (NPC_FindVendableItem) and priced as the
+        // sale will price it.
         var sellItems = new List<VendorItem>();
-        foreach (var item in _world.GetContainerContents(backpack.Uid))
+        foreach (var offer in SphereNet.Game.Trade.VendorEngine.GetSellOffers(_character, vendor))
         {
-            if (item.ItemType == ItemType.Gold) continue; // don't sell gold
-            if (item.IsDeleted) continue;
-            if (!buyFilter.Contains(item.BaseId)) continue;
-
-            int price = GetVendorItemSellPrice(vendor, item);
-            if (price <= 0) continue;
-
+            var item = offer.Item;
             sellItems.Add(new VendorItem
             {
                 Serial = item.Uid.Value,
                 ItemId = item.DispIdFull,
                 Hue = item.Hue.Value,
-                Amount = (ushort)item.Amount,
-                Price = price,
+                Amount = (ushort)offer.Amount,
+                // The packet's price field is 16-bit (send.cpp:3101).
+                Price = (int)Math.Min(offer.UnitPrice, ushort.MaxValue),
                 Name = item.GetName()
             });
-
-            if (sellItems.Count >= 50) break; // limit
         }
 
         if (sellItems.Count == 0)

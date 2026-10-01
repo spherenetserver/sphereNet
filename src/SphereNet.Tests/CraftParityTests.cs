@@ -154,8 +154,8 @@ public class CraftParityTests
 
             Assert.Null(engine.TryCraft(ch, recipeHard));
 
-            // Loss is amount * (0..49) / 100 → at most 4 of 10, never more than half.
-            Assert.InRange((int)ingots.Amount, 6, 10);
+            // ResourceConsumePart: IMulDiv(10, 0..49, 100) rounds half up → at most 5 of 10.
+            Assert.InRange((int)ingots.Amount, 5, 10);
         }
     }
 }

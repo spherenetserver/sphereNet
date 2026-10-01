@@ -1240,7 +1240,7 @@ public static partial class Program
                 var recipe = _craftingEngine?.TryGetRecipe(itemId);
                 if (recipe == null)
                     return false;
-                return _craftingEngine!.CanCraft(ch, recipe, primaryResourceHue: null,
+                return _craftingEngine!.CanCraft(ch, recipe,
                     skillOnly: skillOnly, checkWorkSite: false);
             };
 

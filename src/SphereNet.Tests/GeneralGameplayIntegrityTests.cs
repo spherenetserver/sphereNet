@@ -98,7 +98,7 @@ public sealed class GeneralGameplayIntegrityTests
         var row = world.CreateItem(); row.BaseId = 0x0F52; row.Amount = 5; row.SetTag("PRICE", "10");
         stock.AddItem(row);
 
-        int result = VendorEngine.ProcessBuy(buyer, vendor,
+        long result = VendorEngine.ProcessBuy(buyer, vendor,
         [
             new TradeEntry { ItemUid = row.Uid, Amount = 3 },
             new TradeEntry { ItemUid = row.Uid, Amount = 3 },
@@ -150,8 +150,9 @@ public sealed class GeneralGameplayIntegrityTests
         vendor.SetTag("VENDOR_BUY_LIST", "missing_vendor_template");
         vendor.SetTag("VENDOR_GOLD", "1000");
 
-        Assert.NotNull(VendorEngine.GetVendorBuyFilter(vendor));
-        Assert.Empty(VendorEngine.GetVendorBuyFilter(vendor)!);
+        VendorEngine.EnsureTemplateBuySamples(vendor);
+        Assert.Null(VendorEngine.FindVendableItem(item,
+            vendor.GetEquippedItem(SphereNet.Core.Enums.Layer.VendorBuy)));
         Assert.Equal(0, VendorEngine.ProcessSell(seller, vendor,
             [new TradeEntry { ItemUid = item.Uid, Amount = 1 }]));
         Assert.Contains(item, seller.Backpack.Contents);

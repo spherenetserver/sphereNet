@@ -69,8 +69,11 @@ internal static class TestHarness
 
     /// <summary>Teach a vendor to buy an item: a sample in its BUYS box
     /// (LAYER_VENDOR_BUYS), where Source-X keeps what a vendor purchases. A vendor
-    /// with no buy list buys nothing.</summary>
-    public static void GiveVendorBuySample(GameWorld world, Character vendor, ushort baseId)
+    /// with no buy list buys nothing. The sample must also share the offered item's
+    /// TYPE (NPC_FindVendableItem, CCharNPCStatus.cpp:618), so a test that offers a
+    /// typed item gives the sample that type.</summary>
+    public static SphereNet.Game.Objects.Items.Item GiveVendorBuySample(GameWorld world, Character vendor, ushort baseId,
+        SphereNet.Core.Enums.ItemType type = SphereNet.Core.Enums.ItemType.Normal)
     {
         var buys = vendor.GetEquippedItem(SphereNet.Core.Enums.Layer.VendorBuy);
         if (buys == null)
@@ -81,7 +84,10 @@ internal static class TestHarness
         }
         var sample = world.CreateItem();
         sample.BaseId = baseId;
+        if (type != SphereNet.Core.Enums.ItemType.Normal)
+            sample.ItemType = type;
         buys.AddItem(sample);
+        return sample;
     }
 
     /// <summary>Seed every skill with the classic sphere_skills.scp ADV_RATE

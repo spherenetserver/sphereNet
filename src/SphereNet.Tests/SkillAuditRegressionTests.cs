@@ -306,7 +306,7 @@ public class SkillAuditRegressionTests
     }
 
     [Fact]
-    public void Crafting_RequiresOnePrimaryHueAndPersistsQuality()
+    public void Crafting_SpendsAnyColourLeavesTheResultUncolouredAndPersistsQuality()
     {
         var world = CreateWorld();
         var engine = new CraftingEngine(world);
@@ -339,18 +339,21 @@ public class SkillAuditRegressionTests
         };
         recipe.Resources.Add(new CraftResource { ItemId = 0x1BF2, Amount = 10 });
 
-        Assert.False(engine.CanCraft(crafter, recipe));
+        // Source-X matches a resource by its definition alone (CItem::IsResourceMatch,
+        // CItem.cpp:6027): five red and five blue ingots are ten ingots.
+        Assert.True(engine.CanCraft(crafter, recipe));
 
-        red.Amount = 10;
         var crafted = engine.TryCraft(crafter, recipe);
 
         Assert.NotNull(crafted);
-        Assert.Equal(red.Hue, crafted!.Hue);
+        // ...and Skill_MakeItem_Success never colours the result (CCharSkill.cpp:674).
+        Assert.Equal(0, crafted!.Hue.Value);
         Assert.Equal(crafter.Uid, crafted.Crafter);
         // Source-X band table: a GM smith lands in the superior band (176-200),
         // shiftable down two bands by the log variance → 126 floor.
         Assert.InRange((int)crafted.Quality, 126, 200);
-        Assert.Equal(5, blue.Amount);
+        Assert.True(red.IsDeleted || red.Amount == 0);
+        Assert.True(blue.IsDeleted || blue.Amount == 0);
     }
 
     [Fact]

@@ -14,6 +14,7 @@ namespace SphereNet.Tests;
 //   * item verbs SMELT / CARVECORPSE through the client script console
 //     (Source-X CIV_SMELT / CIV_CARVECORPSE — both act with SRC)
 //   * MDB.* secondary MySQL reference object (verb surface + property reads)
+[Collection("DefinitionLoaderSerial")]
 public class ParityWaveH11Tests
 {
     private static (GameWorld world, SphereNet.Game.Clients.GameClient client, Character player)
@@ -50,10 +51,12 @@ public class ParityWaveH11Tests
         ore.BaseId = 0x19B9;
         ore.ItemType = ItemType.Ore;
         ore.Amount = 4;
-        // The ingot an ore yields comes from its definition; this harness registers
-        // none, so name it on the instance (upstream refuses a smelt whose ingot
-        // definition does not resolve, CCharSkill.cpp:1149).
-        ore.SetTag("SMELT_TO", "0x1BF2");
+        // The ingot an ore yields is its definition's TDATA1 (CCharSkill.cpp:1149),
+        // and the ingot must be an IT_INGOT definition to come out of the fire (:1203).
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(0x19B9,
+            new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { Type = ItemType.Ore, TData1 = 0x1BF2 });
+        SphereNet.Game.Definitions.DefinitionLoader.SetItemDef(0x1BF2,
+            new SphereNet.Scripting.Definitions.ItemDef(ResourceId.Invalid) { Type = ItemType.Ingot });
         player.Backpack!.AddItem(ore);
 
         // No forge uid in the arg: the nearest one in reach is used.

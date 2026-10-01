@@ -348,6 +348,23 @@ public sealed class ItemDef : BaseDef
             result = unchecked((uint)signed);
             return true;
         }
+        // Sphere's decimal with a dot: Exp_GetVal skips the dot, so an ingot's
+        // TDATA1=20.0 is 200 - the tenths a skill value is kept in. Read as nothing
+        // before, which left every ingot's smelting minimum and range at zero.
+        string trimmed = value.Trim();
+        if (trimmed.Length > 0 && trimmed.Contains('.') && char.IsAsciiDigit(trimmed[0]) &&
+            trimmed.All(c => char.IsAsciiDigit(c) || c == '.'))
+        {
+            ulong dec = 0;
+            foreach (char c in trimmed)
+            {
+                if (c == '.') continue;
+                dec = dec * 10 + (uint)(c - '0');
+                if (dec > uint.MaxValue) return false;
+            }
+            result = (uint)dec;
+            return true;
+        }
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             return uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
         if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)

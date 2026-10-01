@@ -864,6 +864,10 @@ public static partial class Program
         SphereNet.Game.Objects.Characters.CrimeWitnessService.WitnessRange = _config.MapViewSize > 0 ? _config.MapViewSize : 18;
         SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled =
             (_config.Experimental & SphereNet.Game.Skills.Information.ActiveSkillEngine.EfDamageTools) != 0;
+        // EF_Item_Strict_Comparison: boards/logs and leather/hides stop standing in
+        // for each other in resource matching (CItem.cpp:6044).
+        SphereNet.Game.Objects.Items.ResourceMatch.StrictComparison =
+            (_config.Experimental & SphereNet.Game.Objects.Items.ResourceMatch.EfItemStrictComparison) != 0;
         Character.ReagentsRequiredEnabled  = _config.ReagentsRequired;
         Character.SpellbookRequiredEnabled = _config.SpellbookRequired;
         // Source-X CServerConfig RC_COMBATFLAGS normalize: PREHIT and
@@ -966,6 +970,8 @@ public static partial class Program
         SphereNet.Game.Objects.Characters.Character.CanPetsDrinkPotion = _config.CanPetsDrinkPotion;
         SphereNet.Game.Trade.VendorEngine.DefaultVendorMarkup = _config.VendorMarkup;
         SphereNet.Game.Trade.VendorEngine.VendorMaxSell = _config.VendorMaxSell;
+        // EF_Item_Strict_Comparison (EXPERIMENTAL 0x40): boards are not logs, leather
+        // is not hides, when a vendor looks for a BUY sample.
         SphereNet.Game.AI.NpcAI.LostNpcTeleport = _config.LostNpcTeleport;
         SphereNet.Game.Movement.MovementEngine.NpcShoveNpc = _config.NpcShoveNpc;
         // Crime, stats and the world around them.

@@ -34,7 +34,9 @@ public class SpellCastParityTests
 
         var curved = new SpellDef { Id = SpellType.Heal, CastTimeBase = 30, CastTimeScale = 15 };
         Assert.Equal(30, curved.GetCastTime(0));
-        Assert.Equal(23, curved.GetCastTime(500));
+        // 30 + IMulDivLL(-15, 500, 1000): the reference rounds and takes one off a
+        // negative product (common.h:207), so 22, not a truncated 23.
+        Assert.Equal(22, curved.GetCastTime(500));
         Assert.Equal(15, curved.GetCastTime(1000));
     }
 

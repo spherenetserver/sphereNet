@@ -1,4 +1,5 @@
 using SphereNet.Core.Enums;
+using SphereNet.Scripting.Definitions;
 
 namespace SphereNet.Game.Magic;
 
@@ -26,25 +27,45 @@ public sealed class SpellDef
     /// def that has no behaviour at all (see SpellEngine.IsInertSchoolSpell).</summary>
     public bool HasScriptedStages { get; set; }
 
-    // Curves (linear interpolation between two endpoints based on skill 0-1000).
-    // Sphere / Source-X convention for "A,B": A is the value at 0 skill, B is
-    // the value at maximum skill (1000 = 100.0). The "Base" / "Scale" field
-    // names here are historical — Scale is the TOP value (endpoint at max
-    // skill), NOT a delta added to Base. GetEffect / GetDuration interpolate
-    // linearly between Base and Scale.
-    // No CAST_TIME line is an empty curve, which Source-X reads as 0
-    // (CValueCurveDef::GetLinear, CValueDefs.cpp:107) - the cast then takes the
-    // one-tenth floor, not an invented 1.5 s.
-    public int CastTimeBase { get; set; } // tenths of a second at 0 skill
-    public int CastTimeScale { get; set; }       // tenths at max skill (0 = constant)
-    public int EffectBase { get; set; }
-    public int EffectScale { get; set; }         // value at max skill (1000)
-    public int DurationBase { get; set; }         // tenths of a second at 0 skill
-    public int DurationScale { get; set; }        // tenths of a second at max skill
-    /// <summary>INTERRUPT curve endpoints (per-mille, legacy fixed-point
-    /// "100.0" = 1000). Default: always disturbable (reference init 1000).</summary>
-    public int InterruptBase { get; set; } = 1000;
-    public int InterruptScale { get; set; }
+    // Curves. CAST_TIME, EFFECT, DURATION and INTERRUPT are CValueCurveDef in the
+    // reference (CSpellDef.h:69-72): a list of points spread across skill
+    // 0-100.0, read with GetLinear (CValueDefs.cpp:90). The point list is the
+    // authority; it keeps an explicit 0 endpoint ("10,0") and every segment of a
+    // three-or-more point curve. CAST_TIME and DURATION points are tenths of a
+    // second as written ("6" = 6 tenths, "6.0" = 60, "3*60.0" = 1800) - nothing
+    // rescales them (CCharSpell.cpp:3499, :4308).
+    // No CAST_TIME line is an empty curve, which reads as 0 (CValueDefs.cpp:107)
+    // - the cast then takes the one-tenth floor, not an invented 1.5 s.
+    public ValueCurve CastTimeCurve { get; set; } = ValueCurve.Empty;
+    public ValueCurve EffectCurve { get; set; } = ValueCurve.Empty;
+    public ValueCurve DurationCurve { get; set; } = ValueCurve.Empty;
+    /// <summary>INTERRUPT curve (per-mille, legacy fixed-point "100.0" = 1000).
+    /// Default: always disturbable - the reference initialises it to the single
+    /// point 1000 (CSpellDef.cpp:85-87).</summary>
+    public ValueCurve InterruptCurve { get; set; } = new([1000]);
+
+    // Endpoint view of the curves, kept for code that builds a definition by hand.
+    // Base is the first point; Scale is the TOP endpoint (the last point), NOT a
+    // delta - and 0 when the curve has a single point. Setting either rebuilds a
+    // one-point (constant) curve, or a two-point line when Scale is non-zero.
+    public int CastTimeBase { get => First(CastTimeCurve); set => CastTimeCurve = Line(value, CastTimeScale, positiveTopOnly: true); }
+    public int CastTimeScale { get => Top(CastTimeCurve); set => CastTimeCurve = Line(CastTimeBase, value, positiveTopOnly: true); }
+    public int EffectBase { get => First(EffectCurve); set => EffectCurve = Line(value, EffectScale); }
+    public int EffectScale { get => Top(EffectCurve); set => EffectCurve = Line(EffectBase, value); }
+    public int DurationBase { get => First(DurationCurve); set => DurationCurve = Line(value, DurationScale); }
+    public int DurationScale { get => Top(DurationCurve); set => DurationCurve = Line(DurationBase, value); }
+    public int InterruptBase { get => First(InterruptCurve); set => InterruptCurve = Line(value, InterruptScale, positiveTopOnly: true); }
+    public int InterruptScale { get => Top(InterruptCurve); set => InterruptCurve = Line(InterruptBase, value, positiveTopOnly: true); }
+
+    private static int First(ValueCurve curve) => curve.Count > 0 ? curve[0] : 0;
+    private static int Top(ValueCurve curve) => curve.Count > 1 ? curve[curve.Count - 1] : 0;
+
+    private static ValueCurve Line(int baseValue, int top, bool positiveTopOnly = false)
+    {
+        bool hasTop = positiveTopOnly ? top > 0 : top != 0;
+        return hasTop ? new ValueCurve([baseValue, top]) : new ValueCurve([baseValue]);
+    }
+
     public ulong Group { get; set; }
 
     // Reagents (resource ID → amount)
@@ -69,48 +90,21 @@ public sealed class SpellDef
         return 0;
     }
 
-    /// <summary>Effect strength at given skill level (0-1000). Linear
-    /// interpolation between EffectBase (at 0) and EffectScale (at 1000).
-    /// Matches Source-X CValueCurveDef::GetLinear for a 2-endpoint curve:
-    /// <c>base + (top - base) * skill / 1000</c>. A single-value curve
-    /// (no top, stored as 0) is a constant, as GetLinear returns m_aiValues[0]
-    /// for one value (CValueDefs.cpp:109) - the same reading GetCastTime and
-    /// GetInterruptChance already use.</summary>
-    public int GetEffect(int skillLevel)
-    {
-        int top = EffectScale != 0 ? EffectScale : EffectBase;
-        return EffectBase + ((top - EffectBase) * skillLevel / 1000);
-    }
+    /// <summary>Effect strength at the given skill level (0-1000): the EFFECT
+    /// curve read with CValueCurveDef::GetLinear (CValueDefs.cpp:90).</summary>
+    public int GetEffect(int skillLevel) => EffectCurve.GetLinear(skillLevel);
 
-    /// <summary>Duration in tenths of a second at given skill level
-    /// (0-1000). Linear interpolation between DurationBase (at 0 skill)
-    /// and DurationScale (at max skill), matching Source-X convention; a
-    /// single value is constant (CValueDefs.cpp:109).</summary>
-    public int GetDuration(int skillLevel)
-    {
-        int top = DurationScale != 0 ? DurationScale : DurationBase;
-        return DurationBase + ((top - DurationBase) * skillLevel / 1000);
-    }
+    /// <summary>Duration in tenths of a second at the given skill level
+    /// (0-1000): m_Duration.GetLinear, already tenths (CCharSpell.cpp:4308).</summary>
+    public int GetDuration(int skillLevel) => DurationCurve.GetLinear(skillLevel);
 
     /// <summary>Disturb chance (per-mille) at the given caster skill
-    /// (reference m_Interrupt.GetLinear): single value = constant, "A,B"
-    /// interpolates from 0 to max skill.</summary>
-    public int GetInterruptChance(int skillLevel)
-    {
-        int top = InterruptScale > 0 ? InterruptScale : InterruptBase;
-        return InterruptBase + (top - InterruptBase) * Math.Clamp(skillLevel, 0, 1000) / 1000;
-    }
+    /// (reference m_Interrupt.GetLinear, CCharFight.cpp:888).</summary>
+    public int GetInterruptChance(int skillLevel) => InterruptCurve.GetLinear(skillLevel);
 
-    /// <summary>Get cast time at given skill level, in tenths of a second.
-    /// CAST_TIME is a curve across skill 0-100.0 (reference m_CastTime
-    /// GetLinear): single-value scripts are constant; "A,B" interpolates
-    /// from A at 0 skill to B at max skill. 1-tenth floor.</summary>
-    public int GetCastTime(int skillLevel)
-    {
-        int top = CastTimeScale > 0 ? CastTimeScale : CastTimeBase;
-        int tenths = CastTimeBase + (top - CastTimeBase) * Math.Clamp(skillLevel, 0, 1000) / 1000;
-        return Math.Max(1, tenths);
-    }
+    /// <summary>Cast time at the given skill level, in tenths of a second
+    /// (reference m_CastTime.GetLinear, CCharSpell.cpp:3499). 1-tenth floor.</summary>
+    public int GetCastTime(int skillLevel) => Math.Max(1, CastTimeCurve.GetLinear(skillLevel));
 
     public bool IsFlag(SpellFlag flag) => (Flags & flag) != 0;
 
@@ -131,10 +125,11 @@ public sealed class SpellDef
             case "EFFECT_ID": value = $"0{EffectId:X}"; return true;
             case "RUNE_ITEM": value = $"0{RuneItemId:X}"; return true;
             case "SCROLL_ITEM": value = $"0{ScrollItemId:X}"; return true;
-            case "CAST_TIME": value = CastTimeBase.ToString(); return true;
-            case "EFFECT": value = EffectScale != 0 ? $"{EffectBase},{EffectScale}" : EffectBase.ToString(); return true;
-            case "DURATION": value = DurationScale != 0 ? $"{DurationBase},{DurationScale}" : DurationBase.ToString(); return true;
-            case "INTERRUPT": value = InterruptScale != 0 ? $"{InterruptBase},{InterruptScale}" : InterruptBase.ToString(); return true;
+            // CValueCurveDef::Write (CValueDefs.cpp:55): every point, comma separated.
+            case "CAST_TIME": value = CastTimeCurve.Write(); return true;
+            case "EFFECT": value = EffectCurve.Write(); return true;
+            case "DURATION": value = DurationCurve.Write(); return true;
+            case "INTERRUPT": value = InterruptCurve.Write(); return true;
         }
 
         // RESOURCES.n.KEY / RESOURCES.n.VAL

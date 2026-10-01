@@ -50,7 +50,10 @@ public class SpellTriggerTests
     public void SpellSelect_OnCast_FiresBeforeSpellCast()
     {
         var world = CreateWorld();
-        var (client, _) = NewClient(world);
+        var (client, player) = NewClient(world);
+        // A GM needs no spellbook: the book is now checked with the rest of the
+        // start-phase Spell_CanCast, before @SpellCast (CClientUse.cpp:1004).
+        player.PrivLevel = PrivLevel.GM;
         var d = new TriggerDispatcher();
         var order = new List<string>();
         d.RegisterCharEvent("EVENTSPLAYER", "SpellSelect", (_, a) => { order.Add($"select:{a.N1}"); return TriggerResult.Default; });

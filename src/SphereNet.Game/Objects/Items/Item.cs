@@ -465,10 +465,16 @@ public class Item : ObjBase
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
 
-    /// <summary>Runtime-only: this is the IT_SPELL memory the spell engine equips
-    /// for an active effect. The effect's SPELLEFFECT record is what persists and
-    /// rebuilds the memory on load, so the item itself is never written to a save.</summary>
-    public bool IsSpellEffectMirror { get; internal set; }
+    /// <summary>Runtime-only: this IT_SPELL item is worn as a spell memory - it sits in
+    /// its wearer's memory list on a spell layer (LAYER_SPELL_STATS and up). The item is
+    /// the effect: it is saved and loaded like any other equipped item, and its timer
+    /// belongs to the spell engine (<see cref="SpellMemoryTimerHandler"/>).</summary>
+    public bool IsSpellMemory { get; internal set; }
+
+    /// <summary>Runs a worn spell memory's due timer as Spell_Equip_OnTick instead of the
+    /// item's own @Timer (CWorldTicker -> CChar::OnTickEquip, CCharAct.cpp:4143). Wired
+    /// to SpellEngine.HandleMemoryTimer; false when the engine does not run the memory.</summary>
+    public static Func<Item, bool>? SpellMemoryTimerHandler { get; set; }
 
     /// <summary>Runtime-only: a memory held in a character's memory list. Its
     /// owner's record (MEMORY= / SPELLEFFECT=) is what persists and rebuilds it, so
@@ -3321,13 +3327,13 @@ public class Item : ObjBase
                 // ground items still rot on their saved schedule.
                 if (long.TryParse(value, out long timerSec))
                 {
-                    // On a spell-effect memory the effect's expiry is the timer: the
-                    // spell engine retires it, not this item's timeout (the TIMER
-                    // command takes the same bridge in ObjBase).
-                    if (ItemType == ItemType.Spell &&
-                        Characters.Character.SpellMemoryEffectRetimer is { } retime &&
-                        retime(this, timerSec < 0 ? -1 : timerSec * 1000))
+                    // A worn spell memory's timer IS its effect's clock - expiry, or the
+                    // next tick of a ticking spell - so it is simply set here.
+                    if (IsSpellMemory && ItemType == ItemType.Spell)
+                    {
+                        SetTimeout(timerSec < 0 ? 0 : Environment.TickCount64 + timerSec * 1000);
                         return true;
+                    }
                     if (timerSec < 0)
                     {
                         // The off switch turns off the WHOLE clock. Decay is the same
@@ -5021,6 +5027,13 @@ public class Item : ObjBase
             if (due > 0 && Environment.TickCount64 >= due &&
                 ResolveWorld?.Invoke()?.FindChar(ContainedIn) is { } wearer)
                 wearer.Poison.EquipTick(this);
+            return !_isDeleted;
+        }
+        // Every other worn spell memory is its effect, and the spell engine owns its
+        // clock. Without the engine the timer is left armed for it to find.
+        if (IsSpellMemory && IsEquipped && ItemType == ItemType.Spell)
+        {
+            SpellMemoryTimerHandler?.Invoke(this);
             return !_isDeleted;
         }
 

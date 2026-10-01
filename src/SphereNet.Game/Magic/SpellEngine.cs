@@ -16,7 +16,7 @@ namespace SphereNet.Game.Magic;
 /// Spell engine. Maps to CChar::Spell_* functions in Source-X CCharSpell.cpp.
 /// Handles cast start, cast done, spell effects, damage/heal, resist.
 /// </summary>
-public sealed class SpellEngine
+public sealed partial class SpellEngine
 {
     private readonly GameWorld _world;
     private readonly SpellRegistry _spells;
@@ -29,15 +29,15 @@ public sealed class SpellEngine
         _world.ObjectDeleting += OnWorldObjectDeleting;
     }
 
-    /// <summary>A spell memory deleted from outside the engine (a script's
-    /// UID.x.REMOVE, a GM remove, the wearer's deletion) ends its effect, as
-    /// deleting the IT_SPELL item runs Spell_Effect_Remove in Source-X. The
-    /// memory is dropped from the wearer's list before the revert, so the
-    /// engine's own delete of it does not come back here.</summary>
+    /// <summary>Deleting a worn IT_SPELL memory - by any road: its timer, a dispel, a
+    /// script's REMOVE, a GM remove, the wearer's own deletion - is what ends its
+    /// effect. Upstream unequips the item on its way out and CChar::OnRemoveObj
+    /// runs Spell_Effect_Remove (CCharAct.cpp:560); this is that call.</summary>
     private void OnWorldObjectDeleting(Objects.ObjBase obj)
     {
-        if (obj is Item { IsSpellEffectMirror: true } mem)
-            RemoveEffectByMemory(mem);
+        if (obj is Item { ItemType: ItemType.Spell } mem &&
+            (_effects.Contains(mem) || (mem.IsSpellMemory && !mem.IsDeleted && TryRegister(mem))))
+            RemoveEffect(mem);
     }
 
     /// <summary>Callback to play a sound at a location.</summary>
@@ -234,118 +234,6 @@ public sealed class SpellEngine
     /// <summary>Optional script dispatcher for item spell hooks.</summary>
     public TriggerDispatcher? TriggerDispatcher { get; set; }
 
-    /// <summary>One entry per active time-limited spell effect. Captures
-    /// what was applied (stat deltas, light level, flag) so UndoEffect can
-    /// revert exactly those changes when the timer fires. Saved as remaining
-    /// time so Source-X-style spell memory survives restart.</summary>
-    private sealed class ActiveSpellEffect
-    {
-        public required Character Target { get; init; }
-        public required SpellType Spell { get; init; }
-        public long ExpireTick { get; set; }
-        public short StrDelta { get; set; }
-        public short DexDelta { get; set; }
-        public short IntDelta { get; set; }
-        public int ArmorDelta { get; set; }
-        public int MeditationDelta { get; set; }
-        public byte OldLightLevel { get; set; }
-        public byte NewLightLevel { get; set; }
-        public bool LightChanged { get; set; }
-        public StatFlag AppliedFlag { get; set; }
-        public ushort OldBodyId { get; set; }
-        public ushort NewBodyId { get; set; }
-        public bool BodyChanged { get; set; }
-        public string? OldName { get; set; }
-        public string? NewName { get; set; }
-        public bool NameChanged { get; set; }
-
-        // Incognito's skin/hair/beard hues (Source-X keeps _wPrev_Hue and the
-        // memory's COLOR.HAIR / COLOR.BEARD tags, CCharSpell.cpp:1171-1187).
-        // -1 = that part was not touched.
-        public int OldSkinHue { get; set; } = -1;
-        public int NewSkinHue { get; set; } = -1;
-        public int OldHairHue { get; set; } = -1;
-        public int NewHairHue { get; set; } = -1;
-        public int OldBeardHue { get; set; } = -1;
-        public int NewBeardHue { get; set; } = -1;
-        public int CurseWeaponLevel { get; set; }
-
-        /// <summary>Effect magnitude reported to the client's buff tooltip —
-        /// the Source-X m_itSpell.m_spelllevel equivalent, fed to the cliloc
-        /// formatter arguments. Persisted with the effect record and mirrored
-        /// into the spell memory's MOREY, so a reload keeps the exact value.
-        /// Records written before this field existed fall back to the stat
-        /// delta (see <see cref="GetBuffMagnitude"/>).</summary>
-        public int BuffMagnitude { get; set; }
-
-        // Periodic damage-over-time (reference SPELLFLAG_TICK spell memories:
-        // Pain Spike, Strangle). Non-zero DotCharges marks an active DOT; the
-        // tick pass in ProcessExpirations applies damage and decrements charges.
-        public int DotCharges { get; set; }
-        public int DotTotalCharges { get; set; }
-        public long DotNextTickMs { get; set; }
-        public int DotIntervalMs { get; set; }
-        public int DotDamagePerTick { get; set; }
-        public int DotPower { get; set; }
-        public DamageType DotDamageType { get; set; }
-        public bool DotDirect { get; set; }
-        public Serial DotSource { get; set; }
-
-        // Necromancy Blood Oath bond (state lives on the caster).
-        public Serial BloodOathEnemy { get; set; }
-        public int BloodOathLevel { get; set; }
-
-        /// <summary>Reactive Armour reflect percentage (reference m_PolyStr).</summary>
-        public int ReactivePercent { get; set; }
-
-        // Source-X equips a real IT_SPELL memory item per active effect
-        // (Spell_Effect_Create). We mirror that: this is the worn spell-memory
-        // item on the target, created on apply and deleted on every removal.
-        // Null for effects that predate the memory (defensive) or fail to create.
-        public Item? Memory { get; set; }
-
-        /// <summary>The layer the spell memory is equipped on
-        /// (<see cref="SpellLayers.ForSpell"/>); effects on the same layer replace
-        /// each other (Spell_Effect_Create).</summary>
-        public Layer Layer { get; set; } = Layer.Special;
-
-        /// <summary>The [SPELL] @EffectAdd stage answered RETURN 0: the memory stays
-        /// worn but the engine's own effect is not applied (Source-X
-        /// Spell_Effect_Add returns before its native switch, CCharSpell.cpp:1011).
-        /// The native part was already undone once when the verdict came in, so a
-        /// later removal or save/reload must not undo or redo it again.</summary>
-        public bool NativeSuppressed { get; set; }
-
-        /// <summary>ATTR_MOVE_NEVER on the spell memory: a dispel of level 100 or
-        /// less leaves the effect alone (Spell_Dispel, CCharSpell.cpp:90). The worn
-        /// memory's own attribute is the live answer - a script sets it there - and
-        /// this carries it through a save, where the memory is rebuilt.</summary>
-        public bool MoveNever { get; set; }
-    }
-
-    /// <summary>Whether a dispel of <paramref name="level"/> (0-150) spares this
-    /// effect: Spell_Dispel keeps every ATTR_MOVE_NEVER memory unless the level is
-    /// above 100 (CCharSpell.cpp:90) - which only a GM's Dispel reaches (:3949).</summary>
-    private static bool SurvivesDispel(ActiveSpellEffect eff, int level) =>
-        level <= 100 && IsMoveNever(eff);
-
-    private static bool IsMoveNever(ActiveSpellEffect eff) =>
-        eff.Memory is { IsDeleted: false } mem
-            ? mem.IsAttr(ObjAttributes.Move_Never)
-            : eff.MoveNever;
-
-    /// <summary>Effects created by the current application pass whose [SPELL]
-    /// @EffectAdd stage has not run yet; settled once the native code has
-    /// recorded what it changed (see <see cref="SettlePendingEffectAdds"/>).</summary>
-    private readonly List<(ActiveSpellEffect Effect, Character Caster)> _pendingEffectAdds = [];
-
-    /// <summary>Active time-limited spell effects. Walked once per world tick
-    /// by <see cref="ProcessExpirations"/>; when the tick is reached the
-    /// entry is removed and <see cref="UndoEffect"/> reverts its recorded
-    /// deltas.</summary>
-    private readonly List<ActiveSpellEffect> _activeEffects = [];
-    private const int PersistedEffectVersion = 1;
-
     /// <summary>Get a spell definition by type (for flag checks, etc.).</summary>
     public SpellDef? GetSpellDef(SpellType spell) => _spells.Get(spell);
 
@@ -491,25 +379,6 @@ public sealed class SpellEngine
         }
 
         return source != null && !source.IsDeleted && IsCastSourceOnPerson(caster, source);
-    }
-
-    /// <summary>Consume the wand charge / spell scroll that initiated this cast,
-    /// once the cast has committed to success. The player path tags WAND_UID /
-    /// SCROLL_UID at double-click (instead of decrementing immediately); NPC wand
-    /// casts consume their own charge in the AI. Both tags are cleared here.</summary>
-    private void ConsumeCastSource(Character caster, CastSourceKind kind, Item? source)
-    {
-        ClearCastSourceTags(caster);
-        if (source == null || source.IsDeleted)
-            return;
-
-        if (kind == CastSourceKind.Wand)
-            ConsumeWandCharge(source);
-        else if (kind == CastSourceKind.Scroll)
-        {
-            if (source.Amount > 1) source.Amount--;
-            else _world?.RemoveItem(source);
-        }
     }
 
     /// <summary>The spell a wand or scroll casts: MOREX (Source-X m_itWeapon.m_spell,
@@ -737,7 +606,7 @@ public sealed class SpellEngine
     /// shape kept a mage's strength, and the setting that bounds the change had nothing
     /// to bound. A definition that declares no stat leaves that stat alone, exactly as
     /// the reference's <c>if (pCharDef->m_Str)</c> does.</summary>
-    private void ApplyPolymorphStats(Character target, ActiveSpellEffect eff, ushort bodyId)
+    private static void ApplyPolymorphStats(Character target, Item memory, ushort bodyId)
     {
         if (!IsMagicFlag(MagicConfigFlags.PolymorphStats))
             return;
@@ -746,23 +615,24 @@ public sealed class SpellEngine
             return;
 
         // The definition's declared value, not a fresh roll: a form has to be the same
-        // form every time and has to come off exactly as it went on.
-        int formStr = def.StrMax > 0 ? def.StrMax : Math.Max(0, def.StrMin);
-        int formDex = def.DexMax > 0 ? def.DexMax : Math.Max(0, def.DexMin);
-        eff.StrDelta = (short)(eff.StrDelta + ApplyOne(formStr, target.Str, v => target.Str = v));
-        eff.DexDelta = (short)(eff.DexDelta + ApplyOne(formDex, target.Dex, v => target.Dex = v));
+        // form every time and has to come off exactly as it went on. The change goes on
+        // the stat MODIFIER against the base (Stat_AddMod, CCharSpell.cpp:1097-1123) and
+        // is remembered on the memory's m_PolyStr / m_PolyDex (MORE1L / MORE1H).
+        int strChange = Change(def.StrMax > 0 ? def.StrMax : Math.Max(0, def.StrMin), target.Str);
+        int dexChange = Change(def.DexMax > 0 ? def.DexMax : Math.Max(0, def.DexMin), target.Dex);
+        target.ModStr = ClampShort(target.ModStr + strChange);
+        target.ModDex = ClampShort(target.ModDex + dexChange);
+        SetPolyStats(memory, (short)strChange, (short)dexChange);
 
-        int ApplyOne(int formValue, short current, Action<short> set)
+        static int Change(int formValue, int baseValue)
         {
             if (formValue <= 0)
                 return 0;                       // the form declares none: leave it be
-            int change = formValue - current;
+            int change = formValue - baseValue;
             int cap = Math.Max(0, MaxPolyStats);
             if (change > cap) change = cap;
             else if (change < -cap) change = -cap;
-            if (change + current < 0) change = -current;
-            if (change == 0) return 0;
-            set((short)(current + change));
+            if (change + baseValue < 0) change = -baseValue;
             return change;
         }
     }
@@ -810,13 +680,9 @@ public sealed class SpellEngine
         if ((Character.CombatFlags & (int)Combat.CombatFlags.ElementalEngine) != 0 &&
             !(castingDef?.IsFlag(SpellFlag.Scripted) ?? false))
         {
-            var ward = _activeEffects.FirstOrDefault(e => e.Target == caster && IsProtectionSpell(e.Spell));
-            if (ward != null)
-            {
-                int wardLevel = ward.BuffMagnitude > 0 ? ward.BuffMagnitude : ward.ArmorDelta;
-                if (wardLevel > _rand.Next(1000))
-                    chance = 0;
-            }
+            var ward = FindEffect(caster, m => MemSpell(m) is SpellType.Protection or SpellType.ArchProtection);
+            if (ward != null && MemLevel(ward) > _rand.Next(1000))
+                chance = 0;
         }
 
         if (chance > 0 && _rand.Next(1000) < chance)
@@ -874,7 +740,14 @@ public sealed class SpellEngine
 
     /// <summary>One immutable result shared by target selection and cast start.</summary>
     public sealed record CastPreparation(SpellType Spell, int Difficulty, int WaitMs,
-        string? Words, ushort Hue, byte Font);
+        string? Words, ushort Hue, byte Font)
+    {
+        /// <summary>The caller already ran the start-phase Spell_CanCast (fTest = true)
+        /// for this cast, as the client does before its target cursor
+        /// (Cmd_Skill_Magery, CClientUse.cpp:1004). CastStart then only re-checks the
+        /// caster's state, the way Spell_CastStart does (CCharSpell.cpp:3435-3450).</summary>
+        public bool SelectTested { get; init; }
+    }
 
     public CastPreparation? PrepareCast(Character caster, SpellType spell)
     {
@@ -919,6 +792,199 @@ public sealed class SpellEngine
             (byte)Math.Clamp(locals.GetInt("WOPFont"), 0, byte.MaxValue));
     }
 
+    /// <summary>The player-state half of Spell_CanCast / Spell_CastStart
+    /// (CCharSpell.cpp:2339-2353, :3438-3450): a non-GM player who is dead, asleep,
+    /// turned to stone or a statue cannot cast. Freezing is left to the callers,
+    /// which already weigh MAGICF_CASTPARALYZED.</summary>
+    private bool CasterStateRefusesCast(Character caster, bool failMsg)
+    {
+        if (!caster.IsPlayer || caster.PrivLevel >= PrivLevel.GM)
+            return false;
+        if (caster.IsDead || caster.IsStatFlag(StatFlag.Sleeping) || caster.IsStatFlag(StatFlag.Stone) ||
+            (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
+        {
+            if (failMsg)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryDead));
+            return true;
+        }
+        if (caster.IsStatFlag(StatFlag.Freeze) && !IsMagicFlag(MagicConfigFlags.CastParalyzed))
+        {
+            if (failMsg)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryFrozenhands));
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>The start-phase Spell_CanCast (fTest = true, fFailMsg = true) against
+    /// the caster's current cast source - what Cmd_Skill_Magery asks before the target
+    /// cursor (CClientUse.cpp:1004). <paramref name="spell"/> comes back as the stages
+    /// left ARGN1. A refusal drops the wand / scroll tags so they cannot leak into the
+    /// next cast.</summary>
+    public bool TestCanCast(Character caster, ref SpellType spell)
+    {
+        if (!TryResolveCastSource(caster, out var kind, out Item? source))
+        {
+            ClearCastSourceTags(caster);
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellEnchantActivate));
+            return false;
+        }
+        if (SpellCanCast(caster, ref spell, test: true, failMsg: true, kind, source))
+            return true;
+        ClearCastSourceTags(caster);
+        return false;
+    }
+
+    /// <summary>The port of Source-X Spell_CanCast (CCharSpell.cpp:2325-2541), shared by
+    /// the start phase (<paramref name="test"/> = true: check only) and the completion
+    /// (<paramref name="test"/> = false: Spell_CastDone :3010 consumes the wand charge,
+    /// scroll, reagents, tithing and mana here).
+    ///
+    /// [SPELL] @Select and then @SpellSelect see ARGN1 = spell, ARGN2 = the mana cost
+    /// (Calc_SpellManaCost with the source), ARGN3 = 0x1 test | 0x2 fail-message,
+    /// ARGO = the source (the caster, or the wand / scroll) and LOCAL.TithingUse.
+    /// RETURN 1 in either refuses; RETURN 0 in @Select accepts at once, skipping every
+    /// check and cost below (:2381). Otherwise ARGN1, ARGN2 and LOCAL.TithingUse are
+    /// read back as the spell and the bills (:2398-2406). A GM passes right after the
+    /// source's ownership check and before any cost (:2430, :2461).</summary>
+    private bool SpellCanCast(Character caster, ref SpellType spell, bool test, bool failMsg,
+        CastSourceKind kind, Item? source)
+    {
+        var def = _spells.Get(spell);
+        if (def == null || def.IsFlag(SpellFlag.Disabled))
+            return false;
+        if (CasterStateRefusesCast(caster, failMsg))
+            return false;
+
+        bool wand = kind == CastSourceKind.Wand;
+        bool scroll = kind == CastSourceKind.Scroll;
+        if (source != null && (source.IsDeleted || !IsCastSourceOnPerson(caster, source)))
+        {
+            // "magic items must be on your person to use" (:2422).
+            if (failMsg)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellEnchantActivate));
+            return false;
+        }
+
+        int manaUse = SpellManaCost(caster, def, wand, scroll);
+        int tithingUse = SpellTithingCost(caster, def, wand, scroll);
+        if (TriggerDispatcher != null)
+        {
+            var args = new TriggerArgs
+            {
+                CharSrc = caster,
+                N1 = (int)spell,
+                N2 = manaUse,
+                N3 = (test ? 0x1 : 0) | (failMsg ? 0x2 : 0),
+                O1 = source != null ? source : caster,
+                Locals = new SphereNet.Scripting.Variables.VarMap(),
+            };
+            args.Locals.SetInt("TithingUse", tithingUse);
+
+            var selectResult = TriggerDispatcher.FireSpellTrigger(spell, "Select", caster, args);
+            if (selectResult == TriggerResult.True)
+                return false;
+            if (selectResult == TriggerResult.False || args.ReturnNumber == 0)
+                return true;
+
+            args.ReturnNumber = null;
+            if (TriggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellSelect, args) == TriggerResult.True)
+                return false;
+
+            if (args.N1 != (int)spell)
+            {
+                if (args.N1 <= 0 || args.N1 > ushort.MaxValue)
+                    return false;
+                var rewritten = _spells.Get((SpellType)args.N1);
+                if (rewritten == null)
+                    return false;
+                spell = (SpellType)args.N1;
+                def = rewritten;
+            }
+            manaUse = (ushort)args.N2;
+            tithingUse = (ushort)args.Locals.GetInt("TithingUse", 0);
+        }
+
+        if (kind != CastSourceKind.Self)
+        {
+            // A wand or scroll: the GM pays neither the charge nor the mana (:2430).
+            if (caster.PrivLevel >= PrivLevel.GM)
+                return true;
+            // An NPC wand cast carries no item here; its AI spends the charge itself.
+            if (source != null)
+            {
+                if (wand)
+                {
+                    if (!WandHasCharge(source))
+                    {
+                        if (failMsg)
+                            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellWandNocharge));
+                        return false;
+                    }
+                    if (!test)
+                        ConsumeWandCharge(source);
+                }
+                else if (!test)
+                {
+                    if (source.Amount > 1) source.Amount--;
+                    else _world?.RemoveItem(source);
+                }
+            }
+        }
+        else
+        {
+            // A raw cast: the GM needs no book, reagents, tithing or mana (:2461).
+            if (caster.PrivLevel >= PrivLevel.GM)
+                return true;
+            if (caster.IsPlayer)
+            {
+                if (Character.SpellbookRequiredEnabled && !HasSpellInBook(caster, (int)spell))
+                {
+                    if (failMsg)
+                        OnSysMessage?.Invoke(caster, ServerMessages.Get(caster.FindSpellbook((int)spell) == null
+                            ? Msg.SpellTryNobook : Msg.SpellTryNotyourbook));
+                    return false;
+                }
+
+                if (Character.ReagentsRequiredEnabled &&
+                    !(test ? HasRequiredReagents(caster, def) : ConsumeReagents(caster, def)))
+                {
+                    if (failMsg)
+                        SendMissingReagentMessage(caster, def);
+                    return false;
+                }
+
+                if (caster.Tithing < tithingUse)
+                {
+                    if (failMsg)
+                        OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNotithing, tithingUse));
+                    return false;
+                }
+                if (!test && tithingUse > 0)
+                    caster.Tithing -= tithingUse;
+            }
+        }
+
+        // fCheckAntiMagic (:2517): the caster's own area. Only non-GMs reach here.
+        if (_world != null && _world.FindRegion(caster.Position) is { } region &&
+            RegionBlocksSpell(region, def))
+        {
+            if (failMsg)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.Magery6));
+            return false;
+        }
+
+        if (caster.Mana < manaUse)
+        {
+            if (failMsg)
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellTryNomana));
+            return false;
+        }
+        if (!test && manaUse > 0)
+            caster.Mana = (short)(caster.Mana - manaUse);
+        return true;
+    }
+
     /// <summary>
     /// Begin casting a spell. Maps to Spell_CastStart.
     /// Returns cast time in milliseconds, or -1 on failure.
@@ -931,8 +997,17 @@ public sealed class SpellEngine
         CastPreparation? preparation = null)
     {
         if (caster.IsCasting || caster.IsDead) return -1;
-        preparation ??= PrepareCast(caster, spell);
-        if (preparation == null) return -1;
+        if (preparation == null)
+        {
+            // A direct engine cast (NPC, console, script) runs the start-phase
+            // Spell_CanCast before its pre-start hooks, the way NPC_FightCast tests
+            // before Skill_Start (CCharNPCAct_Magic.cpp:301).
+            if (!TestCanCast(caster, ref spell))
+                return -1;
+            preparation = PrepareCast(caster, spell);
+            if (preparation == null) return -1;
+            preparation = preparation with { SelectTested = true };
+        }
         spell = preparation.Spell;
         wopOverride ??= preparation.Words;
         if (wopHue == 0) wopHue = preparation.Hue;
@@ -952,6 +1027,11 @@ public sealed class SpellEngine
             return -1;
         if (caster.IsCasting)
             return -1;
+        // Spell_CastStart re-checks the player's state whether or not the start-phase
+        // Spell_CanCast already ran (CCharSpell.cpp:3438-3450): asleep or turned to
+        // stone is "dead" for casting purposes.
+        if (CasterStateRefusesCast(caster, failMsg: true))
+            return -1;
         // MAGICF_CASTPARALYZED: a frozen caster may still cast. The reference has no
         // blanket refusal here at all - freezing is only consulted while freeing the
         // hands (Spell_Unequip, CCharSpell.cpp:2833/2841), which is where the two
@@ -960,64 +1040,27 @@ public sealed class SpellEngine
             !IsMagicFlag(MagicConfigFlags.CastParalyzed))
             return -1;
 
-        // [SPELL n] ON=@Select (Source-X SPTRIG_SELECT, fired from
-        // Spell_CanCast so EVERY entry point gets it — client cast, scroll,
-        // wand, NPC, console). RETURN 1 cancels the selection before any
-        // resource is committed. Packs use this for form toggles (Reaper
-        // Form / Stone Form re-cast while polymorphed).
-        // LOCAL.TithingUse carries Calc_SpellTithingCost into the stage and is read
-        // back as the cast's tithing bill (CCharSpell.cpp:2365-2373, :2406).
-        TryResolveCastSource(caster, out var selectSourceKind, out _);
-        int tithingUse = SpellTithingCost(caster, def,
-            selectSourceKind == CastSourceKind.Wand, selectSourceKind == CastSourceKind.Scroll);
-        if (TriggerDispatcher != null)
-        {
-            var selectArgs = new TriggerArgs
-            {
-                CharSrc = caster,
-                N1 = (int)spell,
-                N2 = EffectiveManaCost(caster, def),
-                Locals = new SphereNet.Scripting.Variables.VarMap(),
-            };
-            selectArgs.Locals.SetInt("TithingUse", tithingUse);
-            if (TriggerDispatcher.FireSpellTrigger(spell, "Select", caster, selectArgs)
-                == TriggerResult.True)
-                return -1;
-            tithingUse = (ushort)selectArgs.Locals.GetInt("TithingUse", 0);
-        }
-        // The caster's own area gets the reference's single anti-magic question
-        // (Spell_CanCast's fCheckAntiMagic, CCharSpell.cpp:2519). Only NoMagic and
-        // NoMagicDamage were asked before, which left Mark ungated everywhere and
-        // let a rune be marked on a boat.
-        if (_world != null)
-        {
-            var region = _world.FindRegion(caster.Position);
-            if (region != null && caster.PrivLevel < Core.Enums.PrivLevel.GM &&
-                RegionBlocksSpell(region, def))
-            {
-                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.Magery6));
-                return -1;
-            }
-        }
-
-        if (!TryResolveCastSource(caster, out var sourceKind, out _))
+        if (!TryResolveCastSource(caster, out var sourceKind, out Item? startSource))
         {
             ClearCastSourceTags(caster);
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellEnchantActivate));
             return -1;
         }
-        bool isWand = sourceKind == CastSourceKind.Wand;
-        bool fromScroll = sourceKind == CastSourceKind.Scroll;
 
-        // Mana check — the SAME discounted cost the completion will consume
-        // (wand = free, scroll = half). Requiring the full effective cost up
-        // front while the discount only applied at consumption meant a wand
-        // wielder needed mana for a free cast (audit finding 7).
-        int requiredMana = EffectiveManaCost(caster, def);
-        if (isWand) requiredMana = 0;
-        else if (fromScroll) requiredMana /= 2;
-        if (caster.Mana < requiredMana)
-            return -1;
+        // The start-phase Spell_CanCast (fTest = true): [SPELL] @Select and
+        // @SpellSelect, then the source / book / reagent / tithing / anti-magic / mana
+        // checks, nothing consumed. A client cast already ran it before its target
+        // cursor (Cmd_Skill_Magery, CClientUse.cpp:1004); every other entry point -
+        // NPC (CCharNPCAct_Magic.cpp:301), console, script - gets it here.
+        if (!preparation.SelectTested)
+        {
+            var testSpell = spell;
+            if (!SpellCanCast(caster, ref testSpell, test: true, failMsg: true, sourceKind, startSource))
+            {
+                ClearCastSourceTags(caster);
+                return -1;
+            }
+        }
 
         // Source-X Spell_CastStart (CCharSpell.cpp:3544): with EQUIPPEDCAST off the
         // caster's HANDS ARE EMPTIED, not the cast refused — Spell_Unequip bounces
@@ -1033,44 +1076,11 @@ public sealed class SpellEngine
                 return -1;
         }
 
-        // Reagent availability check (before starting cast). Wand/scroll/GM skip.
-        // NPC casters are exempt — like the reference, monsters cast from innate
-        // power and carry no reagents (mirrors the IsPlayer-gated spellbook check
-        // below). Without this gate an NPC with an empty pack fails every cast.
-        if (caster.IsPlayer && !isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
-            Character.ReagentsRequiredEnabled && !HasRequiredReagents(caster, def))
-        {
-            SendMissingReagentMessage(caster, def);
-            return -1;
-        }
-
-        // Tithing points, checked right after the reagents (Spell_CanCast,
-        // CCharSpell.cpp:2501-2509) and owed by the same raw player cast.
-        if (caster.IsPlayer && caster.PrivLevel < PrivLevel.GM && caster.Tithing < tithingUse)
-        {
-            OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNotithing, tithingUse));
-            return -1;
-        }
-
-        // Spellbook requirement (reference Spell_CanCast): a player casting
-        // from memory must have the spell in an accessible spellbook; scroll
-        // and wand casts bypass the book. All schools use their definition
-        // offset and capacity when selecting a book and reading its bit mask.
-        if (Character.SpellbookRequiredEnabled && caster.IsPlayer &&
-            !isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
-            !HasSpellInBook(caster, (int)def.Id))
-        {
-            OnSysMessage?.Invoke(caster, ServerMessages.Get(caster.FindSpellbook((int)def.Id) == null
-                ? Msg.SpellTryNobook : Msg.SpellTryNotyourbook));
-            return -1;
-        }
-
         RevealOnCast(caster);
 
         // Store cast state on character
         caster.BeginCast(spell, targetUid, targetPos);
         caster.CastDifficulty = preparation.Difficulty;
-        caster.CastTithingUse = tithingUse;
         caster.CastAborted = ch => FireCastSkillTrigger(ch, spell, CharTrigger.SkillAbort);
 
         if (!targetPos.Equals(caster.Position))
@@ -1133,7 +1143,10 @@ public sealed class SpellEngine
         bool wasCasting = caster.TryGetCastingSpell(out SpellType resolvedSpell);
         var resolvedDef = wasCasting ? _spells.Get(resolvedSpell) : null;
         int gainDifficulty = caster.CastDifficulty ?? (resolvedDef?.GetDifficulty() / 10 ?? 0);
-        bool ok = CastDoneCore(caster, out bool terminalHandled);
+        var outerSourceItem = _effectSourceItem;
+        bool ok, terminalHandled;
+        try { ok = CastDoneCore(caster, out terminalHandled); }
+        finally { _effectSourceItem = outerSourceItem; }
         if (wasCasting && !ok && !terminalHandled)
         {
             if (caster.IsCasting) CancelCast(caster);
@@ -1287,8 +1300,6 @@ public sealed class SpellEngine
 
         var primarySkill = def.GetPrimarySkill();
         int skillVal = caster.GetSkill(primarySkill);
-        bool castWithWand = sourceKind == CastSourceKind.Wand;
-        bool castFromScroll = sourceKind == CastSourceKind.Scroll;
 
         if (!CompleteCastSkill(caster, def, sourceKind))
         {
@@ -1331,62 +1342,20 @@ public sealed class SpellEngine
                 return FailCastAtCompletion(caster, null);
         }
 
-        // Mana requirement and consumption share ONE discounted cost (wand
-        // free, scroll half, Mind Rot via EffectiveManaCost). The old code
-        // required only the BASE def.ManaCost here while consuming the
-        // effective cost — the start/done checks disagreed (audit finding 7).
-        // A successful cast pays the whole Calc_SpellManaCost; MANALOSSPERCENT is
-        // only the share a FAILED cast loses (Spell_CanCast :2536 vs Spell_CastFail
-        // :3329/:3337).
-        int manaCost = SpellManaCost(caster, def, castWithWand, castFromScroll);
-        if (caster.Mana < manaCost)
+        // "Consume the reagents/mana/scroll/charge" (Spell_CastDone, CCharSpell.cpp:3010):
+        // the completion re-enters Spell_CanCast with fTest = false, so the player
+        // state, a definition disabled mid-cast, [SPELL] @Select / @SpellSelect (with
+        // the bill they leave in ARGN2 / LOCAL.TithingUse) and the GM exemption all
+        // apply again here, and only then is anything paid. A refusal deletes the
+        // summon that was already built (:3012). A charge or scroll is therefore never
+        // lost to an interrupted, cancelled or fizzled cast.
+        var consumeSpell = spell;
+        if (!SpellCanCast(caster, ref consumeSpell, test: false, failMsg: true, sourceKind, castSource))
         {
             DiscardSummon(summoned);
-            OnSysMessage?.Invoke(caster, "You lack the mana to cast that spell.");
             return false;
         }
-
-        // Reagents are owed only by a player casting from their own power. Source-X
-        // Calc_SpellReagentsConsume is gated on (pObj == pCharCaster), so a wand or
-        // scroll cast pays none - the start check already exempted the scroll while
-        // this consumption did not, so carrying reagents made the same scroll cost
-        // more than casting it empty-handed.
-        if (caster.IsPlayer && !castWithWand && !castFromScroll &&
-            caster.PrivLevel < PrivLevel.GM && Character.ReagentsRequiredEnabled &&
-            !ConsumeReagents(caster, def))
-        {
-            // The reagents were there when the cast began and are not there now:
-            // the spell cannot be paid for, so it does not happen. Source-X fails the
-            // whole cast the same way when its re-check at CastDone cannot pay.
-            DiscardSummon(summoned);
-            SendMissingReagentMessage(caster, def);
-            return false;
-        }
-
-        // Tithing points: checked and spent after the reagents (Spell_CanCast
-        // fTest=false from Spell_CastDone, CCharSpell.cpp:2501-2513, :3010), at the
-        // bill the @Select stage settled on when the cast began.
-        if (caster.IsPlayer && caster.PrivLevel < PrivLevel.GM)
-        {
-            int tithingUse = caster.CastTithingUse ??
-                SpellTithingCost(caster, def, castWithWand, castFromScroll);
-            if (caster.Tithing < tithingUse)
-            {
-                DiscardSummon(summoned);
-                OnSysMessage?.Invoke(caster, ServerMessages.GetFormatted(Msg.SpellTryNotithing, tithingUse));
-                return false;
-            }
-            if (tithingUse > 0)
-                caster.Tithing -= tithingUse;
-        }
-
-        caster.Mana -= (short)manaCost;
-
-        // Consume the wand charge / scroll ONLY now that the cast has committed to
-        // success (passed fizzle + mana). Moving this off the double-click / client
-        // success path means a charge/scroll is never lost to an interrupted,
-        // cancelled or fizzled cast, and NPC/precast casts consume correctly too.
-        ConsumeCastSource(caster, sourceKind, castSource);
+        ClearCastSourceTags(caster);
 
         // Clear cast state
         ClearCastState(caster);
@@ -1510,6 +1479,10 @@ public sealed class SpellEngine
             if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
             return true;
         }
+
+        // The wand or scroll rides into every OnSpellEffect this cast makes as its
+        // pSourceItem - the target's @SpellEffect ARGO (CCharSpell.cpp:3703).
+        _effectSourceItem = castSource is { IsDeleted: false } ? castSource : null;
 
         // Apply spell effect, in Source-X's order (CCharSpell.cpp:3017-3090): a
         // FIELD spell lays its field and an AREA spell sweeps its radius whatever
@@ -1943,7 +1916,7 @@ public sealed class SpellEngine
         var def = GetSpellDef(spell);
         if (def == null)
             return;
-        ApplyCharEffect(attacker, target, def, attacker.GetSkill(SkillType.Magery));
+        WithSourceItem(null, () => ApplyCharEffect(attacker, target, def, attacker.GetSkill(SkillType.Magery)));
     }
 
     /// <summary>Source-X character SPELLEFFECT verb: apply a spell immediately
@@ -1952,35 +1925,35 @@ public sealed class SpellEngine
     {
         var def = GetSpellDef(spell);
         if (def == null) return false;
-        ApplyCharEffect(caster, target, def, Math.Clamp(skillLevel, 0, ushort.MaxValue));
+        WithSourceItem(null, () => ApplyCharEffect(caster, target, def, Math.Clamp(skillLevel, 0, ushort.MaxValue)));
         return true;
     }
 
+    /// <summary>A hit on a reflecting character spends its reflection: the
+    /// LAYER_SPELL_Magic_Reflect memory is deleted (CCharSpell.cpp:3786-3803), which runs
+    /// the ordinary removal - @SpellEffectRemove / [SPELL] @EffectRemove and the native
+    /// flag clear. A flag a script raised without a memory is simply dropped.</summary>
     private void ConsumeMagicReflection(Character character)
     {
-        character.ClearStatFlag(StatFlag.Reflection);
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
-        {
-            if (_activeEffects[i].Target == character &&
-                _activeEffects[i].Spell == SpellType.MagicReflect)
-            {
-                DetachSpellMemory(_activeEffects[i]);
-                _activeEffects.RemoveAt(i);
-                break;
-            }
-        }
+        var memory = FindEffect(character, m => MemSpell(m) == SpellType.MagicReflect);
+        if (memory != null)
+            DeleteEffectMemory(memory);
+        else
+            character.ClearStatFlag(StatFlag.Reflection);
     }
 
-    /// <summary>Apply spell effect to a single character target.</summary>
     /// <summary>Source-X CChar::OnSpellEffect entry for non-cast deliveries —
     /// potions (Use_Drink conveys the MORE1 spell at MORE2 strength), traps,
     /// scripted effects. Applies the spell's effect directly at the given
-    /// strength with no cast time, mana, reagents or fizzle.</summary>
-    public void ApplyDirectEffect(Character source, Character target, SpellType spell, int strength)
+    /// strength with no cast time, mana, reagents or fizzle.
+    /// <paramref name="sourceItem"/> is upstream's pSourceItem - the potion being
+    /// drunk - which the target's @SpellEffect sees as ARGO.</summary>
+    public void ApplyDirectEffect(Character source, Character target, SpellType spell, int strength,
+        Item? sourceItem = null)
     {
         var def = _spells.Get(spell);
         if (def == null) return;
-        ApplyCharEffect(source, target, def, Math.Max(0, strength));
+        WithSourceItem(sourceItem, () => ApplyCharEffect(source, target, def, Math.Max(0, strength)));
     }
 
     /// <summary>The iSkillLevel of the effect being applied (Source-X OnSpellEffect's
@@ -1991,11 +1964,32 @@ public sealed class SpellEngine
     /// or null outside CastDone.</summary>
     private Point3D? _effectTargetPos;
 
+    /// <summary>OnSpellEffect's pSourceItem for the delivery in progress: the wand or
+    /// scroll of a cast, the potion of a drink, null for a plain cast or a scripted
+    /// effect.</summary>
+    private Item? _effectSourceItem;
+
+    private bool WithSourceItem(Item? sourceItem, Func<bool> apply)
+    {
+        var outer = _effectSourceItem;
+        _effectSourceItem = sourceItem;
+        try { return apply(); }
+        finally { _effectSourceItem = outer; }
+    }
+
     /// <summary>The port of CChar::OnSpellEffect (CCharSpell.cpp:3606). Returns false
     /// when the spell did not take (dead target, a trigger refused it, reflected
-    /// away...) - a field touch counts only an effect that landed.</summary>
+    /// away...) - a field touch counts only an effect that landed.
+    ///
+    /// The order is upstream's: the target's @SpellEffect and the spell's @Effect stage
+    /// run FIRST (:3712-3730), their readback - ARGN1 the spell, ARGN2 the level and the
+    /// LOCAL contract - is taken (:3732-3740), and only then is the harm checked: harming
+    /// oneself (:3750-3759), the aggression notice (:3777) and Magic Reflection
+    /// (:3781-3811). A script that refuses the spell therefore neither makes it an attack
+    /// nor spends anybody's reflection. A reflected spell re-enters here on the caster
+    /// with <paramref name="reflecting"/> set (:3806), so the caster's own hooks see it.</summary>
     private bool ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel,
-        int durationTenths = 0)
+        int durationTenths = 0, bool reflecting = false, bool sourceless = false)
     {
         if (skillLevel < 0)
             return false;                                                     // :3620
@@ -2006,53 +2000,8 @@ public sealed class SpellEngine
         if (def.Id == SpellType.PoisonField && target.IsStatFlag(StatFlag.Poisoned))
             return false;                                                     // :3626
 
-        if (def.Id is SpellType.Lightning or SpellType.ChainLightning)
-            _world.LightFlash(target.Position);
-
-        // Magic Reflect: the first harmful spell targeted at a mobile with
-        // the Reflection flag is bounced back to the caster. Matches
-        // Source-X Magic_Reflect and ServUO MagicReflectSpell behaviour:
-        // the flag is single-use — consumed as soon as a harmful spell
-        // hits, so the reflected spell itself will NOT be re-reflected
-        // by the original caster (even if they also have Reflection up).
         bool harmful = IsHarmfulSpell(def);
-
-        // The victim learns it was attacked - memory, attacker list, an NPC turns on
-        // the caster, and whether harming it was a crime - before the reflect check
-        // (OnSpellEffect -> OnAttackedBy, CCharSpell.cpp:3777).
-        if (harmful && caster != target && !target.OnAttackedBy(caster))
-            return false;
-
-        bool reflected = false;
-        if (harmful && caster != target && target.IsStatFlag(StatFlag.Reflection))
-        {
-            ConsumeMagicReflection(target);
-
-            if (caster.IsStatFlag(StatFlag.Reflection) &&
-                !IsMagicFlag(MagicConfigFlags.NoReflectOwn))
-            {
-                // Both sides reflect: consume both charges and let the spell
-                // land on its original target (Source-X bounce-back chain).
-                ConsumeMagicReflection(caster);
-            }
-            else if (caster.IsStatFlag(StatFlag.Reflection) &&
-                     IsMagicFlag(MagicConfigFlags.DeleteReflectOwn))
-            {
-                // NOREFLECTOWN + DELREFLECTOWN: the caster's charge absorbs the
-                // bounced spell instead of damaging the caster.
-                ConsumeMagicReflection(caster);
-                return true;
-            }
-            else
-            {
-                // Normal reflection recursively affects the original caster
-                // with itself as SRC. Keeping caster unchanged preserves
-                // Source-X damage attribution and prevents a second reflect.
-                target = caster;
-                reflected = true;
-            }
-        }
-
+        var sourceItem = _effectSourceItem;
 
         // Randomize potency (Source-X: iSkillLevel/2 + rand(iSkillLevel/2)); the
         // randomized level is what the rest of OnSpellEffect reads (:3631).
@@ -2073,18 +2022,21 @@ public sealed class SpellEngine
             effect = ApplyOsiSpellDamageBonus(caster, target, effect);
 
         // Magic resist percent — computed BEFORE the trigger so a script can
-        // read and override it (LOCAL.Resist), applied after.
+        // read and override it (LOCAL.Resist), applied after. A potion is never
+        // resisted (:3649).
         int resistPct = 0;
-        if (def.IsFlag(SpellFlag.Resist) && caster != target)
+        bool potion = sourceItem is { ItemType: ItemType.Potion };
+        if (def.IsFlag(SpellFlag.Resist) && caster != target && !potion && !sourceless)
             resistPct = CalcMagicResist(target, def, caster);
 
         // @SpellEffect — Source-X CChar::OnSpellEffect fires this on the
         // AFFECTED char (not the caster) with SRC = caster, ARGN1 = spell,
-        // ARGN2 = skill level, and the LOCAL contract (Effect / Resist /
-        // Duration / Sound / DamageType / CreateObject1 / Explode). RETURN 1
-        // cancels the effect on this target; Effect / Resist / Duration
-        // mutations are read back. The per-spell [SPELL] @EFFECT stage runs
-        // right after with the same shared args, as in the reference.
+        // ARGN2 = skill level, ARGO = the source item, and the LOCAL contract
+        // (Effect / Resist / Duration / Sound / DamageType / CreateObject1 /
+        // Explode). RETURN 1 cancels the effect on this target; ARGN1 / ARGN2 and
+        // the LOCALs are read back. The per-spell [SPELL] @EFFECT stage runs right
+        // after with the same shared args, as in the reference.
+        var spellId = def.Id;
         int level = potency;
         bool scripted = def.IsFlag(SpellFlag.Scripted);
         // LOCAL.DamageType: 0 leaves the spell's own default (CCharSpell.cpp:3734, :3826).
@@ -2104,6 +2056,7 @@ public sealed class SpellEngine
                 CharSrc = caster,
                 N1 = (int)def.Id,
                 N2 = potency,
+                O1 = sourceItem,
                 Locals = fxLocals,
             };
             // RETURN 1 refuses the effect; RETURN 0 on a SCRIPTED spell means the
@@ -2120,6 +2073,10 @@ public sealed class SpellEngine
             if (scripted && (stageVerdict == TriggerResult.False || fxArgs.ReturnNumber == 0))
                 return true;
 
+            // spell = m_iN1 (:3732): a script may turn the effect into another spell.
+            long readSpell = fxArgs.N1;
+            if (readSpell > 0 && readSpell <= ushort.MaxValue)
+                spellId = (SpellType)readSpell;
             level = (int)Math.Clamp(fxArgs.N2, int.MinValue, int.MaxValue);
             effect = (int)fxLocals.GetInt("Effect", effect);
             resistPct = (int)fxLocals.GetInt("Resist", resistPct);
@@ -2127,19 +2084,69 @@ public sealed class SpellEngine
             scriptDamageType = (DamageType)unchecked((uint)fxLocals.GetInt("DamageType"));
         }
 
+        // The definition the native switch dispatches on follows the read-back spell;
+        // the flag checks below stay on the definition the effect arrived with, as
+        // upstream keeps pSpellDef (:3732-3748).
+        var effectDef = spellId == def.Id ? def : GetSpellDef(spellId) ?? def;
+
+        if (harmful && !sourceless)
+        {
+            if (caster == target)
+            {
+                // Harming oneself: allowed for a reflected spell (with no disturb) and
+                // otherwise only under MAGICF_CANHARMSELF (:3750-3759).
+                if (!reflecting && !IsMagicFlag(MagicConfigFlags.CanHarmSelf))
+                    return false;
+            }
+            else
+            {
+                // The victim learns it was attacked - memory, attacker list, an NPC
+                // turns on the caster, and whether harming it was a crime (:3777).
+                if (!target.OnAttackedBy(caster) && !reflecting)
+                    return false;
+
+                // Magic Reflect (:3781-3811): only a spell with a direct source
+                // bounces. The reflecting side spends its memory; when the caster
+                // reflects too (and may), its memory goes as well and the spell lands
+                // where it was aimed; otherwise the caster's own reflection may soak
+                // it up (MAGICF_DELREFLECTOWN), or the spell comes back on the caster.
+                if (target.IsStatFlag(StatFlag.Reflection))
+                {
+                    ConsumeMagicReflection(target);
+                    if (caster.IsStatFlag(StatFlag.Reflection) &&
+                        !IsMagicFlag(MagicConfigFlags.NoReflectOwn))
+                    {
+                        ConsumeMagicReflection(caster);
+                    }
+                    else
+                    {
+                        if (caster.IsStatFlag(StatFlag.Reflection) &&
+                            IsMagicFlag(MagicConfigFlags.DeleteReflectOwn))
+                            ConsumeMagicReflection(caster);
+                        else
+                            ApplyCharEffect(caster, caster, effectDef, level, durationTenths, reflecting: true);
+                        return true;
+                    }
+                }
+            }
+        }
+
         // A SCRIPTED spell does nothing native on a character (:3814).
         if (scripted)
             return true;
+
+        if (spellId is SpellType.Lightning or SpellType.ChainLightning)
+            _world.LightFlash(target.Position);                              // :4006-4010
 
         int prevSkillLevel = _effectSkillLevel;
         int? prevDuration = _effectDurationTenths;
         bool prevReflected = _effectReflected;
         _effectSkillLevel = level;
         _effectDurationTenths = durationTenths;
-        _effectReflected = reflected;
+        _effectReflected = reflecting;
         try
         {
-            ApplyCharEffectResolved(caster, target, def, effect, resistPct, scriptDamageType);
+            ApplyCharEffectResolved(caster, target, def, effectDef, effect, resistPct, scriptDamageType);
         }
         finally
         {
@@ -2147,7 +2154,6 @@ public sealed class SpellEngine
             _effectSkillLevel = prevSkillLevel;
             _effectReflected = prevReflected;
         }
-        SettlePendingEffectAdds();
         return true;
     }
 
@@ -2166,68 +2172,23 @@ public sealed class SpellEngine
         return effect + effect * bonus / 100;
     }
 
-    /// <summary>Run the [SPELL] @EffectAdd stage for every effect this pass created
-    /// and act on its verdict (Source-X CChar::Spell_Effect_Add, CCharSpell.cpp:
-    /// 1000-1014): ARGO is the spell memory, SRC the caster, ARGN1 the spell.
-    /// RETURN 1 deletes the memory - the effect never happened; RETURN 0 keeps the
-    /// memory worn but skips the engine's own effect.
-    ///
-    /// Upstream fires the stage before it applies anything. Here each spell's
-    /// native code writes its changes right after ScheduleEffectExpiry hands back
-    /// the record, so the stage is run once those changes are recorded and a veto
-    /// undoes them through the same revert the expiry uses - the net state is the
-    /// one upstream reaches. The stage used to run with the target as SRC, no
-    /// ARGO and its return ignored, so a script could neither see nor mark the
-    /// memory (TAG.OVERRIDE.x on ARGO) nor refuse the effect.</summary>
-    private void SettlePendingEffectAdds()
-    {
-        if (_pendingEffectAdds.Count == 0)
-            return;
-        var pending = _pendingEffectAdds.ToArray();
-        _pendingEffectAdds.Clear();
-        foreach (var (eff, caster) in pending)
-        {
-            // Refreshed or removed again within the same pass: nothing to settle.
-            if (!_activeEffects.Contains(eff))
-                continue;
-            var stageArgs = new TriggerArgs { CharSrc = caster, N1 = (int)eff.Spell, O1 = eff.Memory };
-            var result = TriggerDispatcher?.FireSpellTrigger(eff.Spell, "EffectAdd", eff.Target, stageArgs)
-                ?? TriggerResult.Default;
-            // RETURN 0 is a verdict of its own here (TRIGRET_RET_FALSE), not the
-            // same as a stage that returns nothing - the numeric RETURN tells them apart.
-            if (result == TriggerResult.Default && stageArgs.ReturnNumber == 0)
-                result = TriggerResult.False;
-            if (result == TriggerResult.True)
-            {
-                if (!_activeEffects.Remove(eff))
-                    continue;
-                RevertDeltas(eff); // deletes the memory item too
-                NotifySpellBuff(eff.Target, eff.Spell, false);
-                Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
-                FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
-            }
-            else if (result == TriggerResult.False)
-            {
-                RevertDeltas(eff, detachMemory: false);
-                eff.NativeSuppressed = true;
-            }
-        }
-    }
-
     /// <summary>Post-trigger application: resist subtraction + the per-flag
     /// dispatch. Split out so the @SpellEffect duration override is scoped
-    /// with try/finally around every ScheduleEffectExpiry call.</summary>
-    private void ApplyCharEffectResolved(Character caster, Character target, SpellDef def, int effect, int resistPct,
-        DamageType scriptDamageType = DamageType.None)
+    /// with try/finally around every effect it creates. <paramref name="def"/> is the
+    /// definition the effect arrived with (its flags gate damage and heal, as upstream
+    /// keeps pSpellDef); <paramref name="effectDef"/> is the spell the effect resolved
+    /// to after @SpellEffect's ARGN1, which the native switch runs on (:3732, :3873).</summary>
+    private void ApplyCharEffectResolved(Character caster, Character target, SpellDef def, SpellDef effectDef,
+        int effect, int resistPct, DamageType scriptDamageType = DamageType.None)
     {
         // Sphere custom spells (1000+) with a native char handler dispatch by
         // id FIRST: their pack defs carry marker flags only — Hallucination
         // even carries spellflag_curse — so the generic flag branches would
         // mis-route them. Fire Bolt is NOT in this set: it is a plain damage
         // spell and takes the generic damage path below.
-        if (HasNativeCustomCharHandler(def.Id))
+        if (HasNativeCustomCharHandler(effectDef.Id))
         {
-            ApplySpecificSpell(caster, target, def, effect);
+            ApplySpecificSpell(caster, target, effectDef, effect);
             return;
         }
 
@@ -2242,7 +2203,7 @@ public sealed class SpellEngine
                 effect = Math.Max(0, effect - effect * resistPct / 100);
             var dmgType = scriptDamageType != DamageType.None
                 ? scriptDamageType
-                : GetSpellDamageType(def.Id);
+                : GetSpellDamageType(effectDef.Id);
             // A spell reflected back onto its own caster does not break that
             // caster's next cast (DAMAGE_NODISTURB, CCharSpell.cpp:3750-3755).
             if (_effectReflected && target == caster)
@@ -2264,7 +2225,7 @@ public sealed class SpellEngine
             // physical blows only.
             int damage = CombatEngine.ApplyCharacterDamage(target, Math.Max(0, effect), caster, dmgType,
                 splitPhysical, splitFire, splitCold, splitPoison, splitEnergy,
-                spell: (int)def.Id, feedback: DamageFeedback.Caller);
+                spell: (int)effectDef.Id, feedback: DamageFeedback.Caller);
 
             if (damage > 0)
             {
@@ -2297,7 +2258,7 @@ public sealed class SpellEngine
         // Heal spells. Noble Sacrifice carries spellflag_heal in the pack but
         // has a NATIVE handler (area heal+cure at the paladin's expense) —
         // the generic branch used to swallow it into a plain caster heal.
-        if (def.IsFlag(SpellFlag.Heal) && def.Id != SpellType.NobleSacrifice)
+        if (def.IsFlag(SpellFlag.Heal) && effectDef.Id != SpellType.NobleSacrifice)
         {
             caster.FlagForHelpingCriminalIfNeeded(target);
             target.Hits = (short)Math.Min(target.Hits + effect, target.MaxHits);
@@ -2306,18 +2267,18 @@ public sealed class SpellEngine
         // spell (CCharSpell.cpp:3874). Keying them on SPELLFLAG_BLESS/CURSE lost
         // whatever the pack flags differently: Clumsy carries no curse flag and did
         // nothing, Magic Reflection carries bless and died in the buff switch.
-        else if (IsNativeBuff(def.Id))
+        else if (IsNativeBuff(effectDef.Id))
         {
-            ApplyBuff(caster, target, def, effect);
+            ApplyBuff(caster, target, effectDef, effect);
         }
-        else if (IsNativeCurse(def.Id))
+        else if (IsNativeCurse(effectDef.Id))
         {
-            ApplyCurse(caster, target, def, effect);
+            ApplyCurse(caster, target, effectDef, effect);
         }
         // Specific spells
         else
         {
-            ApplySpecificSpell(caster, target, def, effect);
+            ApplySpecificSpell(caster, target, effectDef, effect);
         }
     }
 
@@ -2567,9 +2528,11 @@ public sealed class SpellEngine
         // same effect the spell has when cast (CCharAct.cpp:4994-5006), not a
         // fixed paralyze or a flat burn. It counts toward the one-spell-per-step
         // cap only when it actually landed.
-        return ApplyCharEffect(caster ?? ch, ch, def, level)
-            ? FieldTouchResult.SpellHit
-            : FieldTouchResult.Handled;
+        // A field whose LINK is gone has no pCharSrc upstream: nobody to resist, to
+        // reflect onto or to be harming himself.
+        bool hit = WithSourceItem(field, () =>
+            ApplyCharEffect(caster ?? ch, ch, def, level, sourceless: caster == null));
+        return hit ? FieldTouchResult.SpellHit : FieldTouchResult.Handled;
     }
 
 
@@ -2830,46 +2793,20 @@ public sealed class SpellEngine
         _ => DamageType.Magic | DamageType.General | DamageType.NoReveal,
     };
 
+    /// <summary>Strength / Agility / Cunning / Bless and the Protection wards: OnSpellEffect
+    /// equips the memory at the spell's EFFECT (CCharSpell.cpp:3884, :3939) and the stat
+    /// change itself is the memory's Spell_Effect_Add - after the add hooks, on the
+    /// memory's own MOREY (:1549-1614), so a script that rewrites the level is obeyed.</summary>
     private void ApplyBuff(Character caster, Character target, SpellDef def, int effect)
     {
-        // The stat moves by the spell's EFFECT itself (Stat_AddMod(stat, +effect),
-        // Spell_Effect_Add); with MAGICF_OSIFORMULAS by 1 + EvalInt/100. A fifth of
-        // it was applied, so Strength EFFECT=5,20 gave +1..+4.
-        int buffValue = IsMagicFlag(MagicConfigFlags.OsiFormulas)
-            ? 1 + caster.GetSkill(SkillType.EvalInt) / 100
-            : effect;
-        short bonus = (short)Math.Clamp(buffValue, 0, short.MaxValue);
         switch (def.Id)
         {
             case SpellType.Strength:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.StrDelta = bonus; target.Str += bonus;
-                break;
-            }
             case SpellType.Agility:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.DexDelta = bonus; target.Dex += bonus;
-                break;
-            }
             case SpellType.Cunning:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.IntDelta = bonus; target.Int += bonus;
-                break;
-            }
             case SpellType.Bless:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, bonus);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.StrDelta = bonus; eff.DexDelta = bonus; eff.IntDelta = bonus;
-                target.Str += bonus; target.Dex += bonus; target.Int += bonus;
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.Protection:
             case SpellType.ArchProtection:
                 ApplyProtectionWard(caster, target, def, effect);
@@ -2877,73 +2814,29 @@ public sealed class SpellEngine
         }
     }
 
-    private void ApplyProtectionWard(Character caster, Character target, SpellDef def, int effect)
-    {
-        // Protection only adds its level to AR (CalcArmorDefense, CCharFight.cpp:553)
-        // - it does not set STATF_ARCHERCANMOVE.
-        var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-        if (eff == null) return; // a permanent ward was toggled off
-        eff.ArmorDelta = Math.Max(0, effect);
-        target.ProtectionArmor = (int)Math.Min(
-            int.MaxValue, (long)target.ProtectionArmor + eff.ArmorDelta);
-    }
+    /// <summary>LAYER_SPELL_Protection: the ward's level adds to AR (CalcArmorDefense,
+    /// CCharFight.cpp:553) - it does not set STATF_ARCHERCANMOVE.</summary>
+    private void ApplyProtectionWard(Character caster, Character target, SpellDef def, int effect) =>
+        CreateTimedEffect(caster, target, def, Math.Max(0, effect));
 
+    /// <summary>Weaken / Clumsy / Feeblemind / Curse / Mass Curse. The previous memory on
+    /// the stats layer is removed first (Spell_Effect_Create, :2056-2081) and only then
+    /// does the new one's Spell_Effect_Add take its penalty off the ADJUSTED stat, never
+    /// below 1 (_CheckLimitEffectStat, :1373-1388) - so a recast lands where the first
+    /// cast did, and a stat already lowered by a modifier is not driven to zero.</summary>
     private void ApplyCurse(Character caster, Character target, SpellDef def, int effect)
     {
-        // The EFFECT itself, or 8 + EvalInt/100 - the target's MR/100 with
-        // MAGICF_OSIFORMULAS (Spell_Effect_Add, CCharSpell.cpp:1478-1500). Each stat
-        // stops at 1 (_CheckLimitEffectStat).
-        int curseValue = IsMagicFlag(MagicConfigFlags.OsiFormulas)
-            ? 8 + caster.GetSkill(SkillType.EvalInt) / 100 - target.GetSkill(SkillType.MagicResistance) / 100
-            : effect;
-        short penalty = (short)Math.Clamp(curseValue, 0, short.MaxValue);
         switch (def.Id)
         {
             case SpellType.Weaken:
-            {
-                short actual = (short)Math.Min(penalty, target.Str - 1);
-                if (actual <= 0) break;
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, actual);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.StrDelta = (short)-actual; target.Str -= actual;
-                break;
-            }
             case SpellType.Clumsy:
-            {
-                short actual = (short)Math.Min(penalty, target.Dex - 1);
-                if (actual <= 0) break;
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, actual);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.DexDelta = (short)-actual; target.Dex -= actual;
-                break;
-            }
             case SpellType.Feeblemind:
-            {
-                short actual = (short)Math.Min(penalty, target.Int - 1);
-                if (actual <= 0) break;
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, actual);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.IntDelta = (short)-actual; target.Int -= actual;
-                break;
-            }
+            case SpellType.Curse:
             // Mass Curse is the area variant; it is flagged Curse and routes here,
             // so it applies the same all-stat penalty per target.
-            case SpellType.Curse:
             case SpellType.MassCurse:
-            {
-                // One value for all three stats: the limit check shrinks the shared
-                // effect so the lowest stat stays at 1.
-                short shared = (short)Math.Max(0, Math.Min(penalty,
-                    Math.Min(target.Str - 1, Math.Min(target.Dex - 1, target.Int - 1))));
-                short strP = shared, dexP = shared, intP = shared;
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def,
-                    Math.Max(0, Math.Max((int)strP, Math.Max((int)dexP, (int)intP))));
-                if (eff == null) break; // a permanent effect was toggled off
-                if (strP > 0) { eff.StrDelta = (short)-strP; target.Str -= strP; }
-                if (dexP > 0) { eff.DexDelta = (short)-dexP; target.Dex -= dexP; }
-                if (intP > 0) { eff.IntDelta = (short)-intP; target.Int -= intP; }
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
         }
     }
 
@@ -3391,23 +3284,23 @@ public sealed class SpellEngine
                     }
                 }
                 break;
+            // The memory-backed cases below only equip the effect's IT_SPELL memory
+            // (Spell_Effect_Create); what the effect DOES is its Spell_Effect_Add, run on
+            // the worn memory after the add hooks (SpellEngine.Effects.cs NativeAdd).
             case SpellType.Paralyze:
             case SpellType.ParalyzeField:   // same LAYER_SPELL_Paralyze effect (:3974-3979)
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Freeze;
-                target.SetStatFlag(StatFlag.Freeze);
-                break;
-            }
             case SpellType.Invisibility:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Invisible;
-                target.SetStatFlag(StatFlag.Invisible);
+            case SpellType.MagicReflect:
+            case SpellType.HorrificBeast:
+            case SpellType.WraithForm:
+            case SpellType.LichForm:
+            case SpellType.VampiricEmbrace:
+            case SpellType.CorpseSkin:
+            case SpellType.MindRot:
+            case SpellType.Stone:
+            case SpellType.ParticleForm:
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.Reveal:
                 target.ClearHiddenState();
                 break;
@@ -3418,13 +3311,9 @@ public sealed class SpellEngine
                 // hallucination, mana drain and the necromancy layers stay.
                 // The level is 150 from a GM and 50 otherwise (CCharSpell.cpp:3949);
                 // at 100 or below a MOVE_NEVER memory stays (:90).
-            {
-                int dispelLevel = caster.PrivLevel >= PrivLevel.GM ? 150 : 50;
-                RemoveMatchingEffects(eff => eff.Target == target && IsDispelLayer(EffectLayer(eff)) &&
-                    !SurvivesDispel(eff, dispelLevel));
+                SpellDispel(target, caster.PrivLevel >= PrivLevel.GM ? 150 : 50);
                 DispelConjured(caster, target);
                 break;
-            }
             case SpellType.Resurrection:
                 if (target.IsDead)
                 {
@@ -3448,242 +3337,56 @@ public sealed class SpellEngine
                 break;
             }
             case SpellType.NightSight:
-            {
-                // 0x4E PacketPersonalLight adds brightness on top of global
-                // lighting; higher value = brighter. 30 overrides typical
-                // night global (~12). The DURATION script value feeds the
-                // expiration timer below; when the timer fires, LightLevel
-                // reverts to its pre-cast value and the stat flag is cleared.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.NightSight;
-                eff.OldLightLevel = target.LightLevel;
-                eff.NewLightLevel = 30;
-                eff.LightChanged = true;
-                target.SetStatFlag(StatFlag.NightSight);
-                target.LightLevel = eff.NewLightLevel;
-                OnPersonalLightChanged?.Invoke(target);
+            case SpellType.Light:
+                // A personal light boost for the duration (Night Sight's layer; the
+                // Sphere custom Light rides LAYER_FLAG_Potion, :4015-4019).
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.ReactiveArmor:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Reactive;
-                target.SetStatFlag(StatFlag.Reactive);
-                // How much comes back is the SPELL DEFINITION's business, not the
-                // engine's: the reference reads its EFFECT curve at the caster's
-                // primary skill and divides by ten (CCharSpell.cpp:1411). SphereNet
-                // reflected a flat quarter of every blow - a number the reference does
-                // not contain anywhere, and one no script could change.
-                int reflectSkill = caster.GetSkill(def.GetPrimarySkill());
-                eff.ReactivePercent = Math.Max(0, def.GetEffect(reflectSkill) / 10);
-                target.ReactiveArmorPercent = eff.ReactivePercent;
+                // How much comes back is the SPELL DEFINITION's business: the add
+                // reads its EFFECT curve at the caster's primary skill (:1411).
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.Protection:
             case SpellType.ArchProtection:
-            {
                 // Non-Bless custom spell definitions still use the same
                 // LAYER_SPELL_Protection-equivalent ward path.
                 ApplyProtectionWard(caster, target, def, effect);
                 break;
-            }
             case SpellType.Incognito:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Incognito;
                 // LAYER_SPELL_Incognito (CCharSpell.cpp:1155-1195): a random name
                 // from the race's [NAMES] list, a random skin hue for a playable
                 // body and one random hair hue for hair and beard alike.
-                string? namesList = IncognitoNamesList(target);
-                if (namesList != null)
-                {
-                    string picked = Definitions.DefinitionLoader.ResolveNames(namesList);
-                    if (!string.IsNullOrWhiteSpace(picked) && picked != namesList)
-                    {
-                        eff.OldName = target.Name;
-                        eff.NewName = picked;
-                        eff.NameChanged = true;
-                        target.Name = picked;
-                    }
-                }
-                if (Clients.PaperdollText.IsPlayableBody(target.BodyId))
-                {
-                    eff.OldSkinHue = (ushort)target.Hue;
-                    eff.NewSkinHue = _rand.Next(0x03EA, 0x0422 + 1) | 0x8000;   // HUE_SKIN_LOW..HIGH | HUE_UNDERWEAR
-                    target.Hue = new Color((ushort)eff.NewSkinHue);
-                }
-                int hairHue = _rand.Next(0x044E, 0x04AD + 1);                   // HUE_HAIR_LOW..HIGH
-                if (target.GetEquippedItem(Layer.Hair) is { } hair)
-                {
-                    eff.OldHairHue = (ushort)hair.Hue;
-                    eff.NewHairHue = hairHue;
-                    hair.Hue = new Color((ushort)hairHue);
-                }
-                if (target.GetEquippedItem(Layer.FacialHair) is { } beard)
-                {
-                    eff.OldBeardHue = (ushort)beard.Hue;
-                    eff.NewBeardHue = hairHue;
-                    beard.Hue = new Color((ushort)hairHue);
-                }
-                target.SetStatFlag(StatFlag.Incognito);
-                Character.OnAppearanceChanged?.Invoke(target);
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
-            case SpellType.MagicReflect:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Reflection;
-                target.SetStatFlag(StatFlag.Reflection);
-                break;
-            }
-            case SpellType.HorrificBeast:
-            {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Polymorph;
-                target.HorrificBeastActive = true;
-                target.SetStatFlag(StatFlag.Polymorph);
-                break;
-            }
-            case SpellType.WraithForm:
-            {
-                // Necromancy Wraith Form (reference SPELL_Wraith_Form): a
-                // LAYER_SPELL_Polymorph form. While active, damaging hits drain
-                // the target's mana (see CombatEngine.ApplyAosOnHitEffects).
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Polymorph;
-                target.WraithFormActive = true;
-                target.SetStatFlag(StatFlag.Polymorph);
-                break;
-            }
-            case SpellType.LichForm:
-            {
-                // Necromancy Lich Form (reference SPELL_Lich_Form): a
-                // LAYER_SPELL_Polymorph form that shifts elemental resists.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Polymorph;
-                target.LichFormActive = true;
-                target.SetStatFlag(StatFlag.Polymorph);
-                ApplyLichFormResists(target, +1);
-                break;
-            }
-            case SpellType.VampiricEmbrace:
-            {
-                // Necromancy Vampiric Embrace (reference SPELL_Vampiric_Embrace):
-                // a form that leeches life on every hit (see ApplyAosOnHitEffects)
-                // and lowers fire resist.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Polymorph;
-                target.VampiricEmbraceActive = true;
-                target.SetStatFlag(StatFlag.Polymorph);
-                ApplyVampiricResists(target, +1);
-                break;
-            }
             case SpellType.CurseWeapon:
-            {
                 // Necromancy Curse Weapon (reference SPELL_Curse_Weapon): stores
                 // m_spelllevel (EFFECT curve, 10-15) that is added to the wielded
                 // weapon's HITLEECHLIFE percent on hit.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                int level = Math.Clamp(effect, 1, 100);
-                eff.CurseWeaponLevel = level;
-                target.CurseWeaponLevel = level;
+                CreateTimedEffect(caster, target, def, Math.Clamp(effect, 1, 100));
                 break;
-            }
-            case SpellType.CorpseSkin:
-            {
-                // Necromancy Corpse Skin (reference SPELL_Corpse_Skin): fire/poison
-                // resist down, cold/physical resist up, for a Spirit-Speak duration.
-                if (ScheduleEffectExpiry(caster, target, def.Id, def) == null) break;
-                ApplyCorpseSkinResists(target, +1);
-                break;
-            }
-            case SpellType.MindRot:
-            {
-                // Necromancy Mind Rot (reference SPELL_Mind_Rot): raises the
-                // target's spell mana cost while active.
-                if (ScheduleEffectExpiry(caster, target, def.Id, def) == null) break;
-                target.MindRotActive = true;
-                break;
-            }
             case SpellType.PainSpike:
-            {
-                // LAYER_SPELL_Pain_Spike (CCharSpell.cpp:1305-1309): a level of
-                // (SS - MR)/100 + 18 against a player, (SS - MR)/10 + 30 against an
-                // NPC, dealt as level/10 direct damage on each of 10 one-second
-                // ticks (:1957-1963).
-                int ss = caster.GetSkill(SkillType.SpiritSpeak);
-                int mr = target.GetSkill(SkillType.MagicResistance);
-                int level = target.IsPlayer ? (ss - mr) / 100 + 18 : (ss - mr) / 10 + 30;
-                var eff = SetupDot(caster, target, def, charges: 10, intervalMs: 1000);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.DotDamagePerTick = Math.Max(0, level) / 10;
-                eff.DotDamageType = DamageType.Physical;
-                eff.DotDirect = true;
-                break;
-            }
+                // LAYER_SPELL_Pain_Spike (CCharSpell.cpp:1295-1311): the add sets the
+                // level from the caster's Spirit Speak and ten charges; the memory
+                // ticks once a second (:1957-1963).
             case SpellType.Strangle:
-            {
-                // Necromancy Strangle (reference SPELL_Strangle): power = max(4,
-                // SpiritSpeak/100) ticks of poison damage (:1227-1230); the first
-                // tick lands after 5 seconds.
-                int power = Math.Max(4, caster.GetSkill(SkillType.SpiritSpeak) / 100);
-                var eff = SetupDot(caster, target, def, charges: power, intervalMs: 5000);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.DotPower = power;
-                eff.DotDamageType = DamageType.Poison;
+                // Necromancy Strangle (:1220-1231): power = max(4, SpiritSpeak/100)
+                // charges, first tick when the 5 s memory timer runs out.
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.BloodOath:
-            {
-                // Necromancy Blood Oath (reference SPELL_Blood_Oath): the state
-                // lives on the CASTER, linked to the enemy; a blow the enemy lands
-                // on the caster reflects (100 - level)% back. Source-X
-                // CCharSpell.cpp:1313 computes level on the layer's OWNER (the
-                // caster): (MagicResistance * 10 / 20) + 10, no clamp — high MR
-                // zeroes the reflect via the (100 - level) term itself.
-                int level = caster.GetSkill(SkillType.MagicResistance) * 10 / 20 + 10;
-                var eff = ScheduleEffectExpiry(caster, caster, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.BloodOathEnemy = target.Uid;
-                eff.BloodOathLevel = level;
-                caster.BloodOathEnemy = target.Uid;
-                caster.BloodOathLevel = level;
-                // Blood Oath is the one spell that raises two different icons on
-                // two different characters (Source-X CCharSpell.cpp:1312): the
-                // victim carries the curse with the caster's name, the caster
-                // carries the bond with the victim's name. The per-effect notify
-                // cannot express that, so BloodOath is deliberately absent from
-                // the spell->icon map and both sides are raised here.
-                ushort oathSeconds = (ushort)Math.Clamp(
-                    (eff.ExpireTick - Environment.TickCount64 + 999) / 1000, 1, ushort.MaxValue);
-                RaiseBuffIcon(target, BuffIcon.BloodOathCurse, oathSeconds,
-                    [caster.GetName(), caster.GetName()]);
-                RaiseBuffIcon(caster, BuffIcon.BloodOathCaster, oathSeconds,
-                    [target.GetName()]);
+                // Blood Oath is a pact kept on the CASTER, linked to the enemy
+                // (pCharSrc->Spell_Effect_Create(..., this), CCharSpell.cpp:4115): a
+                // blow the enemy lands on the caster reflects back.
+                CreateEffect(target, caster, def, Math.Max(0, effect), EffectDurationTenths(caster, target, def));
                 break;
-            }
             case SpellType.EvilOmen:
-            {
-                // Necromancy Evil Omen (reference SPELL_Evil_Omen): the target's
-                // next harmful effect lands harder, then the marker is spent. A
-                // one-shot flag with lazy expiry (not an ActiveSpellEffect).
-                // Duration 0 = no timer: the omen waits for the next harmful effect.
-                int durTenths = EffectDurationTenths(caster, target, def);
-                target.EvilOmenActive = true;
-                target.EvilOmenExpireTick = durTenths > 0
-                    ? Environment.TickCount64 + (long)durTenths * 100L
-                    : long.MaxValue;
+                // Necromancy Evil Omen: an ordinary memory on LAYER_SPELL_Evil_Omen
+                // (CCharSpell.cpp:4122-4124). Its presence makes the next harmful
+                // effect land harder, and that effect deletes it (CCharFight.cpp:690,
+                // CCharAct.cpp:4239, CCharSpell.cpp:3663).
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             // Poison Strike and Wither have no native case in Source-X: they are
             // AREA spells whose [SPELL] @Effect stage deals the damage
             // (OnSpellEffect's commented-out list, CCharSpell.cpp:4142-4147).
@@ -3719,27 +3422,7 @@ public sealed class SpellEngine
                     newBody = Character.ResolvePolyBody(polySel);
                     target.RemoveTag("POLY_SELECT");
                 }
-                // Base body captured only AFTER the previous poly-layer
-                // effect is reverted inside ScheduleEffectExpiry — a re-cast
-                // must never record the current form as the restore body.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                if (target.OBody == 0)
-                    target.OBody = target.BodyId;
-                eff.AppliedFlag = StatFlag.Polymorph;
-                target.SetStatFlag(StatFlag.Polymorph);
-                // Chameleon without a menu pick keeps the body — the
-                // reference's skin-match visual is client-side flavor it
-                // ships commented out; only the poly layer is real there.
-                if (newBody != 0)
-                {
-                    eff.OldBodyId = target.OBody;
-                    eff.NewBodyId = newBody;
-                    eff.BodyChanged = true;
-                    target.BodyId = newBody;
-                    ApplyPolymorphStats(target, eff, newBody);
-                    Character.OnAppearanceChanged?.Invoke(target);
-                }
+                CreatePolymorphEffect(caster, target, def, effect, newBody);
                 break;
             }
             case SpellType.ReaperForm:
@@ -3750,45 +3433,22 @@ public sealed class SpellEngine
                 // CREID_REAPER_FORM 0xE6 (the reference literally assigns
                 // CREID_STONE_FORM to both — an obvious copy-paste slip we do
                 // not reproduce); Stone Form is CREID_STONE_FORM 0x2C1.
+                // The pack ships Reaper Form with DURATION=0.0: a 0-duration
+                // memory has no timer, so the form holds until dispel/death/toggle
+                // (the Scripts-X @Select FINDID.<RUNE_ITEM>.REMOVE path).
                 ushort formBody = def.Id == SpellType.ReaperForm
                     ? (ushort)0x00E6 : (ushort)0x02C1;
-                // Capture the base body only AFTER ScheduleEffectExpiry has
-                // reverted a previous poly-layer effect — otherwise a re-cast
-                // records the CURRENT form as the body to restore.
-                var formEff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (formEff == null) break; // a permanent effect was toggled off
-                if (target.OBody == 0)
-                    target.OBody = target.BodyId;
-                // The pack ships Reaper Form with DURATION=0.0: a 0-duration
-                // memory has no timer (ScheduleEffectExpiry), so the form holds
-                // until dispel/death/toggle (the Scripts-X @Select
-                // FINDID.<RUNE_ITEM>.REMOVE path, wired through RemoveEffectByMemory).
-                formEff.AppliedFlag = StatFlag.Polymorph;
-                formEff.OldBodyId = target.OBody;
-                formEff.NewBodyId = formBody;
-                formEff.BodyChanged = true;
-                target.BodyId = formBody;
-                target.SetStatFlag(StatFlag.Polymorph);
-                Character.OnAppearanceChanged?.Invoke(target);
+                CreatePolymorphEffect(caster, target, def, effect, formBody);
                 break;
             }
 
             case SpellType.ManaDrain:
-            {
                 // LAYER_SPELL_Mana_Drain (CCharSpell.cpp:1615-1627): the target
                 // loses up to the effect ((400 + EI - MR)/10 under OSI formulas) and
                 // gets it back when the memory expires (:874-876). The caster
                 // gains nothing.
-                int drain = IsMagicFlag(MagicConfigFlags.OsiFormulas)
-                    ? (400 + caster.GetSkill(SkillType.EvalInt) - target.GetSkill(SkillType.MagicResistance)) / 10
-                    : effect;
-                drain = Math.Clamp(drain, 0, Math.Max(0, (int)target.Mana));
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def, drain);
-                if (eff == null) break; // a permanent effect was toggled off
-                target.Mana = (short)(target.Mana - drain);
-                eff.BuffMagnitude = drain;
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.ManaVampire:
             {
                 // SPELL_Mana_Vamp (CCharSpell.cpp:3981-4004): all the target's mana
@@ -3834,16 +3494,12 @@ public sealed class SpellEngine
                 break;
 
             case SpellType.DivineFury:
-            {
                 // Stamina surges back; the paladin drops their guard for the
-                // duration (classic -20 defense while the fury lasts).
+                // duration (classic -20 defense while the fury lasts). The memory
+                // carries the 20 the ward takes off.
                 caster.Stam = caster.MaxStam;
-                var fury = ScheduleEffectExpiry(caster, caster, def.Id, def);
-                if (fury == null) break; // a permanent effect was toggled off
-                fury.ArmorDelta = -20;
-                caster.ProtectionArmor += fury.ArmorDelta;
+                CreateTimedEffect(caster, caster, def, 20);
                 break;
-            }
 
             case SpellType.HolyLight:
                 // Energy burst around the paladin — strikes the creatures
@@ -3899,64 +3555,25 @@ public sealed class SpellEngine
                 break;
 
             // ---- Spellweaving: Gift of Renewal — heal-over-time (one heal
-            // tick every 2 s for the spell's duration; negative DOT = heal).
+            // tick every 2 s for the spell's duration).
             case SpellType.GiftOfRenewal:
             {
                 int durTenths = def.GetDuration(caster.GetSkill(def.GetPrimarySkill()));
-                int charges = Math.Clamp(durTenths / 20, 5, 15); // one tick / 2s
-                var hot = SetupDot(caster, target, def, charges, 2000);
-                if (hot == null) break; // a permanent effect was toggled off
-                hot.DotDamagePerTick = -Math.Max(5, effect / 3);
-                hot.DotDirect = true;
+                var hot = CreateEffect(caster, target, def, Math.Max(5, effect / 3), 20);
+                if (hot != null)
+                    hot.More2 = (uint)Math.Clamp(durTenths / 20, 5, 15);   // one tick / 2s
                 break;
             }
 
             // ---- Sphere custom spells (reference CCharSpell.cpp OnSpellEffect
             // SPELL_Light..SPELL_Liquor cases; ids remapped to 1000+).
-            case SpellType.Light:
-            {
-                // Pack layer is layer_spell_night_sight: a timed personal
-                // light boost exactly like Night Sight.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.NightSight;
-                eff.OldLightLevel = target.LightLevel;
-                eff.NewLightLevel = 30;
-                eff.LightChanged = true;
-                target.SetStatFlag(StatFlag.NightSight);
-                target.LightLevel = eff.NewLightLevel;
-                OnPersonalLightChanged?.Invoke(target);
-                break;
-            }
             case SpellType.Hallucination:
             {
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Hallucinating;
-                target.SetStatFlag(StatFlag.Hallucinating);
-                // Periodic trip sounds every 15-30 s (Source-X
-                // Spell_Equip_OnTick plays 0x243/0x244), rand(30) of them
-                // (CCharSpell.cpp:4025).
-                eff.DotCharges = _rand.Next(30);
-                eff.DotTotalCharges = eff.DotCharges;
-                eff.DotIntervalMs = 15_000;
-                eff.DotNextTickMs = Environment.TickCount64 + 15_000 + _rand.Next(15_001);
-                eff.DotSource = caster.Uid;
-                // Source-X refreshes the whole view the moment the effect
-                // lands (addChar + addPlayerSee) — the trip starts NOW, not
-                // at the first 15-30 s tick.
-                OnViewRefresh?.Invoke(target);
-                break;
-            }
-            case SpellType.Stone:
-            case SpellType.ParticleForm:
-            {
-                // Source-X: STATF_STONE for the duration — immobile and
-                // untargetable.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.AppliedFlag = StatFlag.Stone;
-                target.SetStatFlag(StatFlag.Stone);
+                // LAYER_FLAG_Hallucination with rand(30) charges (:4021-4027); the
+                // memory then ticks every 15-30 s (Spell_Equip_OnTick :1790-1804).
+                var mem = CreateTimedEffect(caster, target, def, Math.Max(0, effect));
+                if (mem != null)
+                    mem.More2 = (uint)_rand.Next(30);
                 break;
             }
             case SpellType.Shrink:
@@ -4016,81 +3633,44 @@ public sealed class SpellEngine
                 break;
             }
             case SpellType.Trance:
-            {
-                // Source-X SPELL_Trance: a timed Meditation skill bonus.
-                // The EFFECT itself (Skill_AddBase +m_spelllevel, :1722-1726).
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.MeditationDelta = Math.Max(0, effect);
-                target.SetSkill(SkillType.Meditation, (ushort)Math.Min(ushort.MaxValue,
-                    target.GetSkill(SkillType.Meditation) + eff.MeditationDelta));
-                break;
-            }
+                // Source-X SPELL_Trance: a timed Meditation skill bonus, the EFFECT
+                // itself (Skill_AddBase +m_spelllevel, :1722-1726).
             case SpellType.Shield:
             case SpellType.Steelskin:
             case SpellType.Stoneskin:
-            {
-                // Source-X routes these to the Protection ward layer: a timed
-                // AR bonus for the spell's duration.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.ArmorDelta = Math.Max(0, effect);
-                target.ProtectionArmor = (int)Math.Min(
-                    int.MaxValue, (long)target.ProtectionArmor + eff.ArmorDelta);
+                // Source-X routes these to the Protection ward layer: a timed AR
+                // bonus for the spell's duration (:4097-4101).
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
-            }
             case SpellType.Regenerate:
             {
-                // Source-X Spell_Equip_OnTick SPELL_Regenerate: one heal tick
-                // every 2 s for the spell's duration (negative DOT = heal).
-                int durTenths = EffectDurationTenths(caster, target, def);
-                int charges = Math.Max(1, durTenths / 20);                    // :4105-4110
-                var hot = SetupDot(caster, target, def, charges, 2000);
-                if (hot == null) break; // a permanent effect was toggled off
-                hot.DotDamagePerTick = -Math.Max(1, effect);
-                hot.DotDirect = true;
+                // SPELL_Regenerate (CCharSpell.cpp:4103-4112): the duration becomes the
+                // number of 2-second heals, carried as the memory's charges; each heal is
+                // the EFFECT curve at the memory's level (Spell_Equip_OnTick :1782-1788).
+                // The first heal comes after two seconds like the rest.
+                int charges = Math.Max(1, EffectDurationTenths(caster, target, def) / 20);
+                var hot = CreateEffect(caster, target, def, Math.Max(0, effect), 20);
+                if (hot != null)
+                    hot.More2 = (uint)charges;
                 break;
             }
             case SpellType.Ale:
             case SpellType.Wine:
             case SpellType.Liquor:
-            {
-                // Source-X Spell_Equip_OnTick: each 5 s drunk tick drains one
-                // current stamina and mana point (Stat_AddVal DEX/INT vals),
-                // speaks a random hiccup, and has a 10% chance per tick to
-                // sober up early. A drink starts 10 charges and another drink
-                // while still drunk adds 10 more (Use_Drink, CCharUse.cpp:1040-1053).
-                int carried = 0;
-                foreach (var prior in _activeEffects)
-                {
-                    if (prior.Target == target && prior.Spell is SpellType.Ale or SpellType.Wine or SpellType.Liquor)
-                    {
-                        carried = Math.Max(0, prior.DotCharges);
-                        break;
-                    }
-                }
-                RemoveMatchingEffects(e => e.Target == target && e.Spell != def.Id &&
-                    e.Spell is SpellType.Ale or SpellType.Wine or SpellType.Liquor);
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (eff == null) break; // a permanent effect was toggled off
-                eff.DotCharges = carried + 10;
-                eff.DotTotalCharges = eff.DotCharges;
-                eff.DotIntervalMs = 5000;
-                eff.DotNextTickMs = Environment.TickCount64 + eff.DotIntervalMs;
-                eff.DotSource = caster.Uid;
-                // Keep the drunk effect alive until every tick is spent.
-                eff.ExpireTick = Math.Max(eff.ExpireTick, Environment.TickCount64 +
-                    (long)eff.DotCharges * eff.DotIntervalMs + 10_000L);
+                // Use_Drink (CCharUse.cpp:1040-1053): a drink while still drunk
+                // lengthens the LAYER_FLAG_Drunk memory by ten more charges; otherwise
+                // a fresh one starts with ten. Each 5 s tick drains a point of
+                // stamina and mana and may hiccup (Spell_Equip_OnTick :1759-1780).
+                ApplyDrunk(caster, target, def, Math.Max(0, effect));
                 OnSysMessage?.Invoke(target, "*hic*");
                 break;
-            }
             default:
                 // Source-X OnSpellEffect default (CCharSpell.cpp:4148-4151): a spell
                 // with no case of its own still equips a timed spell memory when its
                 // LAYER is a spell layer (LAYER_SPELL_STATS or above), so @EffectAdd,
                 // @EffectRemove, the buff icon and the expiry all run for it.
                 if (def.Layer >= SpellLayers.Stats)
-                    ScheduleEffectExpiry(caster, target, def.Id, def, Math.Max(0, effect));
+                    CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
         }
     }
@@ -4209,32 +3789,6 @@ public sealed class SpellEngine
         return null;
     }
 
-    /// <summary>Put Incognito's skin/hair/beard hues on (disguised) or back
-    /// (Spell_Effect_Remove, CCharSpell.cpp:687-708). True when anything changed.</summary>
-    private static bool SetIncognitoHues(Character t, ActiveSpellEffect eff, bool disguised)
-    {
-        bool changed = false;
-        if (eff.OldSkinHue >= 0)
-        {
-            t.Hue = new Color((ushort)(disguised ? eff.NewSkinHue : eff.OldSkinHue));
-            changed = true;
-        }
-        if ((eff.OldHairHue >= 0 || eff.OldBeardHue >= 0))
-        {
-            if (eff.OldHairHue >= 0 && t.GetEquippedItem(Layer.Hair) is { } hair)
-            {
-                hair.Hue = new Color((ushort)(disguised ? eff.NewHairHue : eff.OldHairHue));
-                changed = true;
-            }
-            if (eff.OldBeardHue >= 0 && t.GetEquippedItem(Layer.FacialHair) is { } beard)
-            {
-                beard.Hue = new Color((ushort)(disguised ? eff.NewBeardHue : eff.OldBeardHue));
-                changed = true;
-            }
-        }
-        return changed;
-    }
-
     /// <summary>Necromancy Corpse Skin resist shift (reference PolyStr/PolyDex):
     /// fire/poison down 15, cold/physical up 10. <paramref name="sign"/> is +1 to
     /// apply the debuff, -1 to revert it.</summary>
@@ -4262,14 +3816,6 @@ public sealed class SpellEngine
         t.ResFire = (short)(t.ResFire + sign * -10);
     }
 
-    /// <summary>Register a spell's expiration with its undo data.
-    /// Duration comes from <see cref="SpellDef.GetDuration"/>(caster's
-    /// primary skill) — tenths of a second per the CAST_TIME /
-    /// DURATION convention. ServUO semantics: duration scales with the
-    /// CASTER's skill, not the target's. If the script leaves DURATION
-    /// at 0 a 30-second floor kicks in so buffs don't expire instantly
-    /// on scripts that forgot the field. Re-casting on the same target
-    /// refreshes the timer and merges the delta rather than stacking.</summary>
     /// <summary>The iDuration of the OnSpellEffect being applied (tenths), after
     /// @SpellEffect's LOCAL.Duration; null outside an ApplyCharEffect dispatch.</summary>
     private int? _effectDurationTenths;
@@ -4406,241 +3952,6 @@ public sealed class SpellEngine
         };
     }
 
-    /// <summary>Equip the IT_SPELL memory item that represents this effect
-    /// (Source-X Spell_Effect_Create). The graphic is the spell's RUNE_ITEM;
-    /// the item is hidden from the client and shows up under GM .edit. The
-    /// engine's active-effect list stays the authority for expiry, so the memory
-    /// is a faithful mirror that is deleted whenever the effect is removed.</summary>
-    private void AttachSpellMemory(Character? caster, ActiveSpellEffect eff, SpellDef? def)
-    {
-        ushort graphic = def?.RuneItemId ?? 0;
-        Serial source = caster != null ? caster.Uid : Serial.Invalid;
-        eff.Layer = SpellLayers.ForSpell(eff.Spell, def);
-        // MOREY carries the effect magnitude, matching Source-X
-        // m_itSpell.m_spelllevel — the value resendBuffs reads back to fill the
-        // buff tooltip, and what a script reading the memory's MOREY expects.
-        eff.Memory = eff.Target.Memory_CreateSpellEffect(
-            (int)eff.Spell, graphic, eff.BuffMagnitude, source, eff.Spell.ToString(),
-            eff.Layer, _world);
-    }
-
-    /// <summary>Remove the active effect represented by this IT_SPELL memory
-    /// item — the reverse direction of the memory mirror. Source-X deletes
-    /// the memory item and Spell_Effect_Remove reverts the effect; SphereNet
-    /// scripts reach this through Character.SpellMemoryEffectRemover when
-    /// they REMOVE the memory (the Scripts-X Reaper/Stone Form @Select
-    /// toggles). Returns true when a matching effect was reverted.</summary>
-    /// <summary>Register a bare active effect bound to a memory item. Exists so the
-    /// memory-to-effect bridge can be exercised without casting a real spell, which
-    /// would drag in targeting, reagents and skill rolls.</summary>
-    internal void AddActiveEffectForTests(Character target, SpellType spell, Item memory, long expireTick)
-        => _activeEffects.Add(new ActiveSpellEffect
-        {
-            Target = target,
-            Spell = spell,
-            Memory = memory,
-            ExpireTick = expireTick,
-        });
-
-    /// <summary>How long the effect behind this spell-memory has left, in
-    /// milliseconds; -1 when it never expires and 0 when there is no such effect.
-    ///
-    /// The memory item is a MIRROR - the authority is the active-effect record - so a
-    /// TIMER read straight off the item answers with the mirror's own (permanent)
-    /// timeout rather than with the effect's remaining time. Upstream has no such
-    /// split: the spell effect IS the item, and reading its TIMER reads the effect
-    /// (CChar::Spell_Effect_Create equips a real IT_SPELL item). This is the bridge
-    /// that makes the mirror answer for the thing it mirrors.</summary>
-    public long GetEffectRemainingMsByMemory(Item memory)
-    {
-        foreach (var eff in _activeEffects)
-        {
-            if (!ReferenceEquals(eff.Memory, memory))
-                continue;
-            if (eff.ExpireTick == long.MaxValue)
-                return -1;
-            return Math.Max(0, eff.ExpireTick - Environment.TickCount64);
-        }
-        return 0;
-    }
-
-    /// <summary>Re-arm the effect behind this spell-memory. A negative value makes it
-    /// permanent, mirroring how a negative TIMER turns a timer off everywhere else.
-    /// Returns false when the memory belongs to no active effect.</summary>
-    public bool TryRetimeEffectByMemory(Item memory, long remainingMs)
-    {
-        foreach (var eff in _activeEffects)
-        {
-            if (!ReferenceEquals(eff.Memory, memory))
-                continue;
-            eff.ExpireTick = remainingMs < 0
-                ? long.MaxValue
-                : Environment.TickCount64 + remainingMs;
-            return true;
-        }
-        return false;
-    }
-
-    public bool RemoveEffectByMemory(Item memory)
-    {
-        for (int i = 0; i < _activeEffects.Count; i++)
-        {
-            var eff = _activeEffects[i];
-            if (!ReferenceEquals(eff.Memory, memory))
-                continue;
-            _activeEffects.RemoveAt(i);
-            RevertDeltas(eff); // detaches and deletes the memory item too
-            NotifySpellBuff(eff.Target, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
-            return true;
-        }
-        return false;
-    }
-
-    /// <summary>Delete the effect's spell-memory item (Source-X deletes the
-    /// IT_SPELL item, which unequips and runs Spell_Effect_Remove). Idempotent:
-    /// a no-op when the effect never had a memory, so it is safe to call at every
-    /// active-effect removal site.</summary>
-    private void DetachSpellMemory(ActiveSpellEffect eff)
-    {
-        var mem = eff.Memory;
-        if (mem == null) return;
-        eff.Memory = null;
-        eff.Target.Memory_Delete(mem);
-        if (!mem.IsDeleted && _world.FindObject(mem.Uid) is Item registered && ReferenceEquals(registered, mem))
-        {
-            // A registered memory leaves through the world, which drops its
-            // container-index entry and frees the UID. Already out of the memory
-            // list and effect list, so OnWorldObjectDeleting finds nothing to undo.
-            _world.DeleteObject(mem);
-            return;
-        }
-        mem.ContainedIn = Serial.Invalid; // drop the owner-keyed container-index entry
-        mem.Delete();
-    }
-
-    private ActiveSpellEffect? ScheduleEffectExpiry(Character caster, Character target,
-        SpellType spell, SpellDef def, int buffMagnitude = 0)
-    {
-        // Duration 0 means no timer: the effect lasts until it is removed
-        // (Spell_Effect_Create sets a 0 decay, CCharSpell.cpp:2101). There is no
-        // 30 s floor upstream.
-        int durationTenths = Math.Max(0, EffectDurationTenths(caster, target, def));
-        long expireTick = durationTenths > 0
-            ? Environment.TickCount64 + (long)durationTenths * 100L
-            : long.MaxValue;
-
-        // Refresh on re-cast — revert the previous delta first so the new
-        // cast stacks cleanly onto the base value, not on top of the old buff.
-        // Spell_Effect_Create (CCharSpell.cpp:2058-2079): an effect already on the
-        // same layer is replaced, except that a different stat spell stays when
-        // MAGICF_STACKSTATS is set and a pending Explosion timer is kept. Effects
-        // with no spell layer of their own only replace the same spell.
-        var layer = SpellLayers.ForSpell(spell, def);
-        for (int i = 0; i < _activeEffects.Count; i++)
-        {
-            var existing = _activeEffects[i];
-            if (existing.Target != target)
-                continue;
-            bool sameSlot = existing.Spell == spell ||
-                (layer != Layer.Special && existing.Layer == layer);
-            if (!sameSlot)
-                continue;
-            // A memory with no timer (TIMER=-1, or a spell with no duration) lasts
-            // until cast again: casting on its layer only removes it and creates
-            // nothing (CCharSpell.cpp:2065-2071) - checked before STACKSTATS.
-            if (existing.ExpireTick == long.MaxValue)
-            {
-                _activeEffects.RemoveAt(i);
-                RevertDeltas(existing);
-                NotifySpellBuff(target, existing.Spell, false);
-                Character.OnSpellEffectRemove?.Invoke(target, (int)existing.Spell);
-                FireSpellSectionStage(existing.Spell, "EffectRemove", target);
-                return null;
-            }
-            if (layer == SpellLayers.Stats && existing.Spell != spell &&
-                IsMagicFlag(MagicConfigFlags.StackStats))
-                continue;
-            if (spell == SpellType.Explosion && layer == SpellLayers.Explosion)
-                continue;
-            {
-                // Out of the list before the memory goes, so the world-delete
-                // bridge does not try to remove it a second time.
-                _activeEffects.RemoveAt(i);
-                RevertDeltas(existing); // also detaches the old spell-memory item
-                NotifySpellBuff(target, existing.Spell, false);
-                // Source-X re-equips the spell memory on refresh: the old
-                // effect's removal is observable before the new add.
-                Character.OnSpellEffectRemove?.Invoke(target, (int)existing.Spell);
-                FireSpellSectionStage(existing.Spell, "EffectRemove", target);
-                break;
-            }
-        }
-
-        var eff = new ActiveSpellEffect
-        {
-            Target = target, Spell = spell, ExpireTick = expireTick,
-            BuffMagnitude = buffMagnitude
-        };
-        _activeEffects.Add(eff);
-        // Source-X Spell_Effect_Create: equip the IT_SPELL memory item for this
-        // effect (visible to .edit, hidden from the client). Deleted on removal.
-        AttachSpellMemory(caster, eff, def);
-        // @EffectAdd (Source-X) — a temporary effect was applied to the target.
-        Character.OnEffectAdd?.Invoke(target, (int)spell);
-        // @SpellEffectAdd (Source-X CCharSpell) — SRC = caster, ARGN1 = spell.
-        Character.OnSpellEffectAdd?.Invoke(target, caster, (int)spell);
-        // [SPELL n] @EffectAdd resource-section stage (SPTRIG_EFFECTADD): queued, and
-        // run once the caller has recorded its changes (SettlePendingEffectAdds).
-        _pendingEffectAdds.Add((eff, caster));
-        NotifySpellBuff(target, spell, false);
-        NotifySpellBuff(target, spell, true,
-            durationTenths > 0 ? (ushort)Math.Clamp((durationTenths + 9) / 10, 1, ushort.MaxValue) : (ushort)0,
-            buffMagnitude);
-        return eff;
-    }
-
-    /// <summary>Run a [SPELL n] section stage on the affected char — the
-    /// SPTRIG_EFFECTADD/EFFECTREMOVE lifecycle hooks that previously never
-    /// fired. No-op without a dispatcher or a matching ON= block.</summary>
-    private void FireSpellSectionStage(SpellType spell, string stage, Character target)
-    {
-        TriggerDispatcher?.FireSpellTrigger(spell, stage, target,
-            new TriggerArgs { CharSrc = target, N1 = (int)spell });
-    }
-
-    /// <summary>Break an active paralyze early (Source-X: the paralyze spell
-    /// memory is deleted when the victim takes damage). Clears the Freeze
-    /// flag and retires the matching active-effect entry so its later expiry
-    /// doesn't double-fire the removal event.</summary>
-    public void BreakParalyze(Character victim)
-    {
-        victim.ClearStatFlag(StatFlag.Freeze);
-        // Snapshot before firing callbacks — a removal callback can clear other
-        // effects mid-pass, so the live list must not be walked by index.
-        // Paralyze carries no stat delta (only the Freeze flag, cleared above),
-        // so this detaches the memory rather than calling RevertDeltas.
-        List<ActiveSpellEffect>? snapshot = null;
-        foreach (var eff in _activeEffects)
-            if (eff.Target == victim && eff.Spell == SpellType.Paralyze)
-                (snapshot ??= []).Add(eff);
-        if (snapshot == null) return;
-
-        foreach (var eff in snapshot)
-        {
-            if (!_activeEffects.Remove(eff)) continue; // already retired by a callback
-            DetachSpellMemory(eff);
-            NotifySpellBuff(victim, SpellType.Paralyze, false);
-            Character.OnSpellEffectRemove?.Invoke(victim, (int)SpellType.Paralyze);
-            FireSpellSectionStage(SpellType.Paralyze, "EffectRemove", victim);
-        }
-    }
-
-    /// <summary>Dispel: revert and remove every temporary spell effect on the
-    /// target (Source-X removes the dispellable ATTR_MAGIC spell-memory items
-    /// — Bless/Curse/NightSight/Protection/Reflect/Paralyze and the rest of
-    /// the LAYER_SPELL family).</summary>
     /// <summary>Banish a conjured creature (shared by Dispel / Mass Dispel and
     /// Chivalry Dispel Evil): DISPELKILLSUMMONS routes through the kill
     /// pipeline (loot/corpse), otherwise the summon is deleted outright.</summary>
@@ -4671,776 +3982,12 @@ public sealed class SpellEngine
     private static bool IsDispelLayer(Layer layer) =>
         layer >= SpellLayers.Stats && layer <= SpellLayers.Summon;
 
-    /// <summary>The layer an effect's memory is on; effects added without a
-    /// memory resolve it from the spell the same way.</summary>
-    private Layer EffectLayer(ActiveSpellEffect eff) =>
-        eff.Layer != Layer.Special ? eff.Layer : SpellLayers.ForSpell(eff.Spell, GetSpellDef(eff.Spell));
-
     private static bool IsCurseSpell(SpellType s) => s is
         SpellType.Clumsy or SpellType.Feeblemind or SpellType.Weaken or
         SpellType.Curse or SpellType.MassCurse or SpellType.CorpseSkin or
         SpellType.EvilOmen or SpellType.MindRot or SpellType.Strangle or
         SpellType.BloodOath or SpellType.PainSpike;
 
-    /// <summary>Chivalry Remove Curse: strip only the CURSE-type active
-    /// effects from the target, leaving beneficial buffs intact.</summary>
-    public void StripCurseEffects(Character target)
-    {
-        RemoveMatchingEffects(eff => eff.Target == target && IsCurseSpell(eff.Spell));
-    }
-
-    public void StripDispellableEffects(Character target)
-    {
-        // Death runs Spell_Dispel(100) (CCharAct.cpp:4397), which spares
-        // ATTR_MOVE_NEVER memories (CCharSpell.cpp:90).
-        RemoveMatchingEffects(eff => eff.Target == target && !SurvivesDispel(eff, 100));
-    }
-
-    /// <summary>Create a periodic damage-over-time effect (reference
-    /// SPELLFLAG_TICK spell memories). Reuses ScheduleEffectExpiry for re-cast
-    /// dedup/refresh, then arms the tick fields; the expiry is pushed past the
-    /// DOT's own lifetime so the tick pass — not the expiry pass — retires it.</summary>
-    private ActiveSpellEffect? SetupDot(Character caster, Character target, SpellDef def,
-        int charges, int intervalMs)
-    {
-        var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-        if (eff == null) return null;
-        eff.DotCharges = Math.Max(1, charges);
-        eff.DotTotalCharges = eff.DotCharges;
-        eff.DotIntervalMs = Math.Max(1, intervalMs);
-        eff.DotNextTickMs = Environment.TickCount64 + eff.DotIntervalMs;
-        eff.DotSource = caster.Uid;
-        eff.DotDamageType = DamageType.Physical;
-        // Guard the effect from the expiry pass until every charge is spent.
-        eff.ExpireTick = Environment.TickCount64 +
-            (long)eff.DotCharges * eff.DotIntervalMs + 60_000L;
-        return eff;
-    }
-
-    /// <summary>Per-tick damage for a DOT. Pain Spike is a fixed direct amount;
-    /// Strangle scales rand(power-2..power+1) by the victim's fatigue
-    /// (3 - 2*curStam/maxStam), reference CCharSpell.cpp:1951-1952.</summary>
-    private int ComputeDotDamage(ActiveSpellEffect eff, Character victim)
-    {
-        if (eff.Spell == SpellType.Strangle)
-        {
-            // iSpellPower * (3 - (DEX base / DEX adjusted) * 2) - integer division
-            // on DEX, not on stamina (CCharSpell.cpp:1951-1952).
-            int power = eff.DotPower;
-            int spellPower = _rand.Next(power - 2, power + 2); // [power-2, power+1]
-            int adjustedDex = Math.Max(1, CombatEngine.EffectiveDex(victim));
-            int mult = 3 - (victim.Dex / adjustedDex) * 2;
-            return Math.Max(0, spellPower * mult);
-        }
-        // Negative per-tick = heal-over-time (Spellweaving Gift of Renewal).
-        if (eff.DotDamagePerTick < 0)
-            return eff.DotDamagePerTick;
-        // Pain Spike deals level/10 and nothing when that is 0 (:1960, :2008).
-        if (eff.Spell == SpellType.PainSpike)
-            return eff.DotDamagePerTick;
-        return Math.Max(1, eff.DotDamagePerTick);
-    }
-
-    /// <summary>Delay to the next tick. Strangle accelerates 4,3,2,1,1s after its
-    /// initial 5s tick (reference CCharSpell.cpp:1934-1949); others are fixed.</summary>
-    private static int NextDotIntervalMs(ActiveSpellEffect eff)
-    {
-        if (eff.Spell == SpellType.Strangle)
-        {
-            int done = eff.DotTotalCharges - eff.DotCharges; // charges already spent
-            int secs = done switch { 0 => 4, 1 => 3, 2 => 2, _ => 1 };
-            return secs * 1000;
-        }
-        return eff.DotIntervalMs;
-    }
-
-    /// <summary>Apply one DOT tick's damage: elemental resist unless the tick is
-    /// direct, damage credited to the source, health broadcast, death handled.</summary>
-    private void ApplyDotDamage(Character victim, ActiveSpellEffect eff, int damage)
-    {
-        // Negative amount = heal tick (Gift of Renewal HoT).
-        if (damage < 0)
-        {
-            if (victim.IsDead) return;
-            victim.Hits = (short)Math.Min(victim.Hits - damage, victim.MaxHits);
-            Character.BroadcastNearby?.Invoke(victim.Position, 18,
-                new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
-                    victim.Uid.Value, victim.MaxHits, victim.Hits), 0);
-            return;
-        }
-
-        // A tick with no effect deals nothing (Spell_Equip_OnTick, :2008).
-        if (damage == 0)
-            return;
-
-        // Spell_Equip_OnTick hands the tick to OnTakeDamage with the linked char as
-        // the source and the element split taken from the type (CCharSpell.cpp:
-        // 2005-2025). A direct tick (fixed amount) carries DAMAGE_FIXED.
-        var source = eff.DotSource.IsValid ? Character.ResolveCharByUid?.Invoke(eff.DotSource) : null;
-        var type = eff.DotDamageType | (eff.DotDirect ? DamageType.Fixed : 0);
-        damage = CombatEngine.ApplyCharacterDamage(victim, damage, source, type,
-            (type & (DamageType.HitBlunt | DamageType.HitPierce | DamageType.HitSlash)) != 0 ? 100 : 0,
-            (type & DamageType.Fire) != 0 ? 100 : 0,
-            (type & DamageType.Cold) != 0 ? 100 : 0,
-            (type & DamageType.Poison) != 0 ? 100 : 0,
-            (type & DamageType.Energy) != 0 ? 100 : 0,
-            spell: (int)eff.Spell, feedback: DamageFeedback.Caller);
-        if (damage <= 0)
-            return;
-        TryInterruptFromDamage(victim, damage);
-
-        Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, damage, 0);
-        Character.BroadcastNearby?.Invoke(victim.Position, 18,
-            new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
-                victim.Uid.Value, victim.MaxHits, victim.Hits), 0);
-
-        if (victim.Hits <= 0 && !victim.IsDead)
-        {
-            var killer = eff.DotSource.IsValid ? Character.ResolveCharByUid?.Invoke(eff.DotSource) : null;
-            if (OnTargetKilled != null) OnTargetKilled.Invoke(victim, killer!);
-            else if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(victim, killer);
-            else victim.Kill();
-        }
-    }
-
-
-    /// <summary>Advance periodic damage-over-time effects: apply each due tick,
-    /// reschedule, and retire the effect when its charges are spent.</summary>
-    private void ProcessDotTicks(long now)
-    {
-        // Snapshot the due DOTs first: applying a tick can kill the victim and
-        // clear its effects mid-pass (ClearAllEffectsOnDeath), so iterating the
-        // live list by index is unsafe.
-        List<ActiveSpellEffect>? due = null;
-        foreach (var eff in _activeEffects)
-            if (eff.DotCharges > 0 && now >= eff.DotNextTickMs)
-                (due ??= []).Add(eff);
-        if (due == null) return;
-
-        foreach (var eff in due)
-        {
-            if (!_activeEffects.Contains(eff)) continue; // already retired elsewhere
-            if (eff.Target.IsDeleted || eff.Target.IsDead)
-            {
-                DetachSpellMemory(eff);
-                _activeEffects.Remove(eff);
-                NotifySpellBuff(eff.Target, eff.Spell, false);
-                continue;
-            }
-
-            if (!TryApplyCustomDotTick(eff, now))
-            {
-                int damage = ComputeDotDamage(eff, eff.Target);
-                eff.DotCharges--;
-                eff.DotNextTickMs = now + NextDotIntervalMs(eff);
-                ApplyDotDamage(eff.Target, eff, damage);
-            }
-
-            if (eff.DotCharges <= 0 && _activeEffects.Remove(eff))
-            {
-                // RevertDeltas (not a bare memory detach): a custom tick
-                // effect can carry an applied stat flag (Hallucinating) that
-                // must clear when the charges run dry before the timer.
-                RevertDeltas(eff);
-                NotifySpellBuff(eff.Target, eff.Spell, false);
-                Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
-                FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
-            }
-        }
-    }
-
-    /// <summary>Non-damage periodic behaviors (Source-X Spell_Equip_OnTick):
-    /// hallucination trip sounds every 15-30 s, alcohol stamina/mana drain
-    /// with hiccups and an early-sober chance. Returns true when the effect
-    /// ticked here instead of the damage path.</summary>
-    private bool TryApplyCustomDotTick(ActiveSpellEffect eff, long now)
-    {
-        switch (eff.Spell)
-        {
-            case SpellType.Hallucination:
-                eff.DotCharges--;
-                eff.DotNextTickMs = now + 15_000 + _rand.Next(15_001);
-                // The trip sound goes ONLY to the hallucinating client
-                // (Source-X m_pClient->addSound), and the view refresh
-                // re-rolls the random hues the client sees.
-                OnPlaySoundTo?.Invoke(eff.Target,
-                    (ushort)(_rand.Next(2) == 0 ? 0x0243 : 0x0244));
-                OnViewRefresh?.Invoke(eff.Target);
-                return true;
-            case SpellType.Ale:
-            case SpellType.Wine:
-            case SpellType.Liquor:
-            {
-                eff.DotCharges--;
-                if (_rand.Next(100) < 10)
-                    eff.DotCharges--; // chance to sober up quickly
-                eff.DotNextTickMs = now + eff.DotIntervalMs;
-                var drunk = eff.Target;
-                drunk.Stam = (short)Math.Max(0, drunk.Stam - 1);
-                drunk.Mana = (short)Math.Max(0, drunk.Mana - 1);
-                if (_rand.Next(3) == 0)
-                {
-                    // Source-X: Speak(hic) + random facing + ANIM_BOW when
-                    // not mounted — visible drunkenness, not a private note.
-                    OnOverheadEmote?.Invoke(drunk, "*hic*");
-                    if (!drunk.IsStatFlag(StatFlag.OnHorse))
-                    {
-                        drunk.Direction = (Direction)_rand.Next(8);
-                        // Through the shared door: the action id is body-relative, and
-                        // a non-humanoid drunk was playing a human frame set.
-                        SphereNet.Game.Clients.GameClient.PlayAnimation(
-                            drunk, (ushort)AnimationType.Bow, 18,
-                            Character.BroadcastNearby, forEachClientInRange: null);
-                    }
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>Revert and retire every active effect matching
-    /// <paramref name="match"/>, firing the removal callbacks (RevertDeltas +
-    /// NotifySpellBuff + @EffectRemove / OnSpellEffectRemove). A callback can
-    /// clear further effects on the same target mid-pass (e.g. by killing it),
-    /// so a snapshot is taken up front and the live list is never indexed;
-    /// Remove returning false means a callback already retired that effect, so
-    /// it is reverted and observed at most once. Mirrors ProcessDotTicks.</summary>
-    private void RemoveMatchingEffects(Func<ActiveSpellEffect, bool> match)
-    {
-        List<ActiveSpellEffect>? snapshot = null;
-        foreach (var eff in _activeEffects)
-            if (match(eff))
-                (snapshot ??= []).Add(eff);
-        if (snapshot == null) return;
-
-        foreach (var eff in snapshot)
-        {
-            if (!_activeEffects.Remove(eff)) continue; // already retired by a callback
-            RevertDeltas(eff);
-            NotifySpellBuff(eff.Target, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
-        }
-    }
-
-    /// <summary>Walk the active-effect list once per world tick and undo
-    /// any whose expire tick has passed. Called from Program.cs main
-    /// loop. Cheap when the list is empty; no-op otherwise.</summary>
-    public void ProcessExpirations(long now)
-    {
-        ProcessDotTicks(now);
-
-        // Snapshot expired/orphaned effects first: a removal callback can clear
-        // other effects on the same target mid-pass, so index iteration over
-        // the live list is unsafe (an ArgumentOutOfRangeException here escapes
-        // to the main tick and takes the server down).
-        List<ActiveSpellEffect>? due = null;
-        foreach (var eff in _activeEffects)
-            if (eff.Target.IsDeleted || now >= eff.ExpireTick)
-                (due ??= []).Add(eff);
-        if (due == null) return;
-
-        foreach (var eff in due)
-        {
-            if (!_activeEffects.Remove(eff)) continue; // already retired by a callback
-            if (eff.Target.IsDeleted)
-            {
-                DetachSpellMemory(eff);
-                continue;
-            }
-            RevertDeltas(eff);
-            NotifySpellBuff(eff.Target, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
-        }
-    }
-
-    /// <summary>Revert exactly what <see cref="ScheduleEffectExpiry"/>
-    /// recorded for this effect — stat deltas subtracted, flag cleared,
-    /// light level restored + 0x4E refresh dispatched. Safe to call
-    /// even when the effect didn't touch a given field (the delta will
-    /// be 0 / flag None / LightChanged false).</summary>
-    private void RevertDeltas(ActiveSpellEffect eff) => RevertDeltas(eff, detachMemory: true);
-
-    /// <param name="detachMemory">True for a real effect removal (deletes the
-    /// IT_SPELL memory item, Source-X behaviour). False for the save-time
-    /// stat-unwind (<see cref="RevertAllForSave"/>), which only strips derived
-    /// stats before persistence and is immediately paired with
-    /// <see cref="ReapplyAllAfterSave"/> — the effect (and its memory) live on.</param>
-    private void RevertDeltas(ActiveSpellEffect eff, bool detachMemory)
-    {
-        // Source-X: removing the effect deletes its IT_SPELL memory item.
-        if (detachMemory)
-            DetachSpellMemory(eff);
-        // @EffectAdd RETURN 0 already took the native part back off.
-        if (eff.NativeSuppressed)
-            return;
-        var t = eff.Target;
-        if (eff.StrDelta != 0) t.Str -= eff.StrDelta;
-        if (eff.DexDelta != 0) t.Dex -= eff.DexDelta;
-        if (eff.IntDelta != 0) t.Int -= eff.IntDelta;
-        if (eff.ArmorDelta != 0)
-            t.ProtectionArmor = Math.Max(0, t.ProtectionArmor - eff.ArmorDelta);
-        if (eff.MeditationDelta != 0)
-            t.SetSkill(SkillType.Meditation, (ushort)Math.Max(0,
-                t.GetSkill(SkillType.Meditation) - eff.MeditationDelta));
-        if (eff.Spell == SpellType.HorrificBeast)
-            t.HorrificBeastActive = false;
-        if (eff.Spell == SpellType.WraithForm)
-            t.WraithFormActive = false;
-        if (eff.Spell == SpellType.CurseWeapon)
-            t.CurseWeaponLevel = 0;
-        if (eff.Spell == SpellType.MindRot)
-            t.MindRotActive = false;
-        if (eff.Spell == SpellType.CorpseSkin)
-            ApplyCorpseSkinResists(t, -1);
-        if (eff.Spell == SpellType.LichForm)
-        {
-            t.LichFormActive = false;
-            ApplyLichFormResists(t, -1);
-        }
-        if (eff.Spell == SpellType.VampiricEmbrace)
-        {
-            t.VampiricEmbraceActive = false;
-            ApplyVampiricResists(t, -1);
-        }
-        if (eff.Spell == SpellType.BloodOath)
-        {
-            // Both ends of the bond drop their icon when it breaks — the caster
-            // holds the effect, the bonded enemy only ever got the curse icon.
-            Character.OnClientBuffChanged?.Invoke(t, BuffIcon.BloodOathCaster, false, 0, null);
-            if (eff.BloodOathEnemy.IsValid && _world.FindChar(eff.BloodOathEnemy) is { } bonded)
-                Character.OnClientBuffChanged?.Invoke(bonded, BuffIcon.BloodOathCurse, false, 0, null);
-            t.BloodOathEnemy = Serial.Invalid;
-            t.BloodOathLevel = 0;
-        }
-        if (eff.Spell == SpellType.ReactiveArmor)
-            t.ReactiveArmorPercent = 0;
-        // Mana Drain gives the drained mana back when it ends (:874-876). The
-        // mana is a current value, not a derived stat, so the save-time unwind
-        // leaves it alone.
-        if (detachMemory && eff.Spell == SpellType.ManaDrain && eff.BuffMagnitude > 0 && !t.IsDead)
-            t.Mana = (short)Math.Min(t.Mana + eff.BuffMagnitude, t.MaxMana);
-        if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
-        if (eff.NameChanged && eff.OldName != null)
-        {
-            t.Name = eff.OldName;
-            Character.OnAppearanceChanged?.Invoke(t);
-        }
-        if (SetIncognitoHues(t, eff, disguised: false))
-            Character.OnAppearanceChanged?.Invoke(t);
-        if (eff.BodyChanged) t.BodyId = eff.OldBodyId;
-        if (eff.BodyChanged && IsPolymorphLayerSpell(eff.Spell))
-        {
-            t.ClearStatFlag(StatFlag.Polymorph);
-            if (t.OBody != 0 && t.BodyId == t.OBody)
-                t.OBody = 0;
-        }
-        if (eff.LightChanged)
-        {
-            t.LightLevel = eff.OldLightLevel;
-            OnPersonalLightChanged?.Invoke(t);
-        }
-        // Source-X refreshes the whole view when hallucination ENDS too —
-        // without it the last tick's random bodies/hues stay on the client
-        // until each object happens to update naturally. Skipped for the
-        // save-time stat unwind (detachMemory=false), which is not a real
-        // removal and is immediately re-applied.
-        if (detachMemory && eff.Spell == SpellType.Hallucination)
-            OnViewRefresh?.Invoke(t);
-    }
-
-    private void ApplyDeltas(ActiveSpellEffect eff)
-    {
-        if (eff.NativeSuppressed)
-            return;
-        var t = eff.Target;
-        if (eff.StrDelta != 0) t.Str += eff.StrDelta;
-        if (eff.DexDelta != 0) t.Dex += eff.DexDelta;
-        if (eff.IntDelta != 0) t.Int += eff.IntDelta;
-        if (eff.ArmorDelta != 0)
-            t.ProtectionArmor = (int)Math.Min(
-                int.MaxValue, (long)t.ProtectionArmor + eff.ArmorDelta);
-        if (eff.MeditationDelta != 0)
-            t.SetSkill(SkillType.Meditation, (ushort)Math.Min(ushort.MaxValue,
-                t.GetSkill(SkillType.Meditation) + eff.MeditationDelta));
-        if (eff.Spell == SpellType.HorrificBeast)
-            t.HorrificBeastActive = true;
-        if (eff.Spell == SpellType.WraithForm)
-            t.WraithFormActive = true;
-        if (eff.Spell == SpellType.CurseWeapon)
-            t.CurseWeaponLevel = eff.CurseWeaponLevel;
-        if (eff.Spell == SpellType.MindRot)
-            t.MindRotActive = true;
-        if (eff.Spell == SpellType.CorpseSkin)
-            ApplyCorpseSkinResists(t, +1);
-        if (eff.Spell == SpellType.LichForm)
-        {
-            t.LichFormActive = true;
-            ApplyLichFormResists(t, +1);
-        }
-        if (eff.Spell == SpellType.VampiricEmbrace)
-        {
-            t.VampiricEmbraceActive = true;
-            ApplyVampiricResists(t, +1);
-        }
-        if (eff.Spell == SpellType.BloodOath)
-        {
-            t.BloodOathEnemy = eff.BloodOathEnemy;
-            t.BloodOathLevel = eff.BloodOathLevel;
-        }
-        if (eff.Spell == SpellType.ReactiveArmor)
-            t.ReactiveArmorPercent = eff.ReactivePercent;
-        if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
-        if (eff.NameChanged && eff.NewName != null)
-        {
-            t.Name = eff.NewName;
-            Character.OnAppearanceChanged?.Invoke(t);
-        }
-        if (SetIncognitoHues(t, eff, disguised: true))
-            Character.OnAppearanceChanged?.Invoke(t);
-        if (eff.BodyChanged && eff.NewBodyId != 0)
-            t.BodyId = eff.NewBodyId;
-        if (eff.LightChanged)
-        {
-            t.LightLevel = eff.NewLightLevel;
-            OnPersonalLightChanged?.Invoke(t);
-        }
-    }
-
-    /// <summary>Revert polymorph body on death when MAGICF bit 0x0008 is set.</summary>
-    public void RevertPolymorphOnDeath(Character ch)
-    {
-        if (!IsMagicFlag(MagicConfigFlags.PolymorphRevertDeath))
-            return;
-
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
-        {
-            var eff = _activeEffects[i];
-            if (eff.Target != ch || !eff.BodyChanged || eff.Spell != SpellType.Polymorph)
-                continue;
-            RevertDeltas(eff);
-            _activeEffects.RemoveAt(i);
-            NotifySpellBuff(ch, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", ch);
-            return;
-        }
-    }
-
-    public void ClearAllEffectsOnDeath(Character ch)
-    {
-        RevertPolymorphOnDeath(ch);
-        RemoveMatchingEffects(eff => eff.Target == ch);
-    }
-
-    /// <summary>Original body for resurrect after polymorph (OBody or active effect).</summary>
-    public ushort GetResurrectBody(Character ch)
-    {
-        foreach (var eff in _activeEffects)
-        {
-            if (eff.Target == ch && eff.BodyChanged && eff.OldBodyId != 0)
-                return eff.OldBodyId;
-        }
-        return ch.OBody != 0 ? ch.OBody : ch.BodyId;
-    }
-
-    public IEnumerable<string> GetPersistedEffectRecords(Character ch, long now)
-    {
-        foreach (var eff in _activeEffects)
-        {
-            if (eff.Target != ch || eff.Target.IsDeleted)
-                continue;
-            // In-flight damage-over-time ticks (Pain Spike/Strangle) are short-
-            // lived; their per-tick state is not persisted, so a restart simply
-            // ends them rather than resuming with a stale schedule. Blood Oath is
-            // likewise short-lived and bound to a live enemy uid, so it ends too.
-            if (eff.DotCharges > 0 || eff.Spell == SpellType.BloodOath)
-                continue;
-            yield return SerializeEffect(eff, now);
-        }
-    }
-
-    /// <summary>Retire magical invisibility when Reveal, movement, combat or
-    /// casting exposes the character before the original timer expires.</summary>
-    public void BreakInvisibility(Character victim)
-    {
-        RemoveMatchingEffects(eff => eff.Target == victim && eff.Spell == SpellType.Invisibility);
-    }
-
-    /// <summary>Rebuild the client's buff bar after login/resync. Removing each
-    /// icon first avoids the client retaining a stale countdown across reconnects.</summary>
-    public void ResendBuffs(Character ch)
-    {
-        if (ch.IsStatFlag(StatFlag.Hidden | StatFlag.Insubstantial))
-        {
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Hidden, false, 0, null);
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Hidden, true, 0, null);
-        }
-        if (ch.IsStatFlag(StatFlag.Meditation))
-        {
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.ActiveMeditation, false, 0, null);
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.ActiveMeditation, true, 0, null);
-        }
-        if (ch.IsStatFlag(StatFlag.Criminal))
-        {
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.CriminalStatus, false, 0, null);
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.CriminalStatus, true, 0, null);
-        }
-        if (ch.IsPoisoned)
-        {
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Poison, false, 0, null);
-            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Poison, true,
-                ch.Poison.RemainingDurationSeconds, null);
-        }
-
-        long now = Environment.TickCount64;
-        foreach (var eff in _activeEffects)
-        {
-            if (eff.Target != ch || eff.Target.IsDeleted || eff.ExpireTick <= now)
-                continue;
-            NotifySpellBuff(ch, eff.Spell, false);
-            long remainingMs = eff.ExpireTick - now;
-            NotifySpellBuff(ch, eff.Spell, true,
-                (ushort)Math.Clamp((remainingMs + 999) / 1000, 1, ushort.MaxValue),
-                GetBuffMagnitude(eff));
-        }
-    }
-
-    /// <summary>Effect magnitude for the buff tooltip. Prefers the value the
-    /// cast recorded; after a world reload that field is gone, so fall back to
-    /// the persisted stat delta — the same number Source-X keeps in the spell
-    /// memory's m_spelllevel.</summary>
-    private static int GetBuffMagnitude(ActiveSpellEffect eff)
-    {
-        if (eff.BuffMagnitude > 0)
-            return eff.BuffMagnitude;
-        int delta = Math.Max(Math.Abs(eff.StrDelta),
-            Math.Max(Math.Abs(eff.DexDelta), Math.Abs(eff.IntDelta)));
-        return delta;
-    }
-
-    public int RestorePersistedEffectsFromWorld()
-    {
-        int count = 0;
-        foreach (var obj in _world.GetAllObjects())
-        {
-            if (obj is Character ch)
-                count += RestorePersistedEffects(ch);
-        }
-        return count;
-    }
-
-    public int RestorePersistedEffects(Character ch)
-    {
-        if (ch.PendingSpellEffectRecords.Count == 0)
-            return 0;
-
-        int count = 0;
-        long now = Environment.TickCount64;
-        foreach (string record in ch.PendingSpellEffectRecords)
-        {
-            if (!TryDeserializeEffect(ch, record, now, out var eff))
-                continue;
-            _activeEffects.Add(eff);
-            ApplyDeltas(eff);
-            // Re-equip the IT_SPELL memory item for the restored effect. The
-            // caster uid is not persisted in the effect record, so the memory's
-            // LINK is left unattributed (Serial.Invalid), like a Source-X memory
-            // whose source logged out.
-            AttachSpellMemory(null, eff, GetSpellDef(eff.Spell));
-            if (eff.MoveNever)
-                eff.Memory?.SetAttr(ObjAttributes.Move_Never);
-            count++;
-        }
-        ch.ClearPendingSpellEffectRecords();
-        return count;
-    }
-
-    private static string SerializeEffect(ActiveSpellEffect eff, long now)
-    {
-        long remainingMs = Math.Max(0, eff.ExpireTick - now);
-        return string.Join('|',
-            PersistedEffectVersion.ToString(CultureInfo.InvariantCulture),
-            ((ushort)eff.Spell).ToString(CultureInfo.InvariantCulture),
-            remainingMs.ToString(CultureInfo.InvariantCulture),
-            eff.StrDelta.ToString(CultureInfo.InvariantCulture),
-            eff.DexDelta.ToString(CultureInfo.InvariantCulture),
-            eff.IntDelta.ToString(CultureInfo.InvariantCulture),
-            eff.OldLightLevel.ToString(CultureInfo.InvariantCulture),
-            eff.NewLightLevel.ToString(CultureInfo.InvariantCulture),
-            eff.LightChanged ? "1" : "0",
-            ((uint)eff.AppliedFlag).ToString(CultureInfo.InvariantCulture),
-            eff.OldBodyId.ToString(CultureInfo.InvariantCulture),
-            eff.NewBodyId.ToString(CultureInfo.InvariantCulture),
-            eff.BodyChanged ? "1" : "0",
-            EncodeEffectString(eff.OldName),
-            EncodeEffectString(eff.NewName),
-            eff.NameChanged ? "1" : "0",
-            eff.ArmorDelta.ToString(CultureInfo.InvariantCulture),
-            eff.CurseWeaponLevel.ToString(CultureInfo.InvariantCulture),
-            eff.MeditationDelta.ToString(CultureInfo.InvariantCulture),
-            eff.BuffMagnitude.ToString(CultureInfo.InvariantCulture),
-            string.Join(',', eff.OldSkinHue, eff.NewSkinHue, eff.OldHairHue,
-                eff.NewHairHue, eff.OldBeardHue, eff.NewBeardHue),
-            // 22nd field: ATTR_MOVE_NEVER on the memory. Optional on read.
-            IsMoveNever(eff) ? "1" : "0");
-    }
-
-    private static bool TryDeserializeEffect(Character target, string record, long now, out ActiveSpellEffect eff)
-    {
-        eff = null!;
-        var parts = record.Split('|');
-        if (parts.Length is not (16 or 17 or 18 or 19 or 20 or 21 or 22))
-            return false;
-
-        if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
-            version != PersistedEffectVersion)
-            return false;
-        if (!ushort.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort spellRaw))
-            return false;
-        if (!long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long remainingMs))
-            return false;
-        if (remainingMs <= 0)
-            return false;
-        if (!short.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out short strDelta))
-            return false;
-        if (!short.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out short dexDelta))
-            return false;
-        if (!short.TryParse(parts[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out short intDelta))
-            return false;
-        if (!byte.TryParse(parts[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte oldLight))
-            return false;
-        if (!byte.TryParse(parts[7], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte newLight))
-            return false;
-        if (!uint.TryParse(parts[9], NumberStyles.Integer, CultureInfo.InvariantCulture, out uint flagRaw))
-            return false;
-        var appliedFlag = (StatFlag)flagRaw;
-        if (appliedFlag is not (StatFlag.None or StatFlag.Freeze or StatFlag.Invisible or
-            StatFlag.NightSight or StatFlag.Reactive or StatFlag.ArcherCanMove or
-            StatFlag.Incognito or StatFlag.Reflection or StatFlag.Polymorph or
-            StatFlag.Stone or StatFlag.Hallucinating))
-            return false;
-        if (!ushort.TryParse(parts[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort oldBody))
-            return false;
-        if (!ushort.TryParse(parts[11], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort newBody))
-            return false;
-        if (!TryDecodeEffectString(parts[13], out string? oldName))
-            return false;
-        if (!TryDecodeEffectString(parts[14], out string? newName))
-            return false;
-        int armorDelta = 0;
-        if (parts.Length >= 17 &&
-            !int.TryParse(parts[16], NumberStyles.Integer, CultureInfo.InvariantCulture, out armorDelta))
-            return false;
-        int curseWeaponLevel = 0;
-        if (parts.Length >= 18 &&
-            !int.TryParse(parts[17], NumberStyles.Integer, CultureInfo.InvariantCulture, out curseWeaponLevel))
-            return false;
-        int meditationDelta = 0;
-        if (parts.Length >= 19 &&
-            !int.TryParse(parts[18], NumberStyles.Integer, CultureInfo.InvariantCulture, out meditationDelta))
-            return false;
-        // Buff tooltip magnitude (Source-X m_spelllevel). Absent in records
-        // written before it was tracked; those fall back to the stat delta.
-        int buffMagnitude = 0;
-        if (parts.Length >= 20 &&
-            !int.TryParse(parts[19], NumberStyles.Integer, CultureInfo.InvariantCulture, out buffMagnitude))
-            return false;
-
-        // Incognito hues (old/new skin, hair, beard; -1 = untouched). Absent in
-        // records written before they were tracked.
-        int[] hues = [-1, -1, -1, -1, -1, -1];
-        if (parts.Length >= 21)
-        {
-            var hueParts = parts[20].Split(',');
-            if (hueParts.Length != 6)
-                return false;
-            for (int i = 0; i < 6; i++)
-                if (!int.TryParse(hueParts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out hues[i]))
-                    return false;
-        }
-
-        long expireTick = remainingMs > long.MaxValue - now ? long.MaxValue : now + remainingMs;
-        eff = new ActiveSpellEffect
-        {
-            Target = target,
-            Spell = (SpellType)spellRaw,
-            ExpireTick = expireTick,
-            StrDelta = strDelta,
-            DexDelta = dexDelta,
-            IntDelta = intDelta,
-            ArmorDelta = Math.Max(0, armorDelta),
-            MeditationDelta = Math.Max(0, meditationDelta),
-            OldLightLevel = oldLight,
-            NewLightLevel = newLight,
-            LightChanged = parts[8] == "1",
-            AppliedFlag = appliedFlag,
-            OldBodyId = oldBody,
-            NewBodyId = newBody,
-            BodyChanged = parts[12] == "1",
-            OldName = oldName,
-            NewName = newName,
-            NameChanged = parts[15] == "1",
-            CurseWeaponLevel = curseWeaponLevel,
-            BuffMagnitude = Math.Max(0, buffMagnitude),
-            OldSkinHue = hues[0], NewSkinHue = hues[1],
-            OldHairHue = hues[2], NewHairHue = hues[3],
-            OldBeardHue = hues[4], NewBeardHue = hues[5],
-            // ATTR_MOVE_NEVER on the memory; absent in records written before it.
-            MoveNever = parts.Length >= 22 && parts[21] == "1",
-        };
-        return true;
-    }
-
-    private static bool IsProtectionSpell(SpellType spell) =>
-        spell is SpellType.Protection or SpellType.ArchProtection;
-
-    private static bool IsPolymorphLayerSpell(SpellType spell) =>
-        spell is SpellType.Polymorph or SpellType.HorrificBeast or SpellType.WraithForm
-            or SpellType.LichForm or SpellType.VampiricEmbrace
-            or SpellType.ReaperForm or SpellType.StoneForm
-            or SpellType.Chameleon or SpellType.BeastForm or SpellType.MonsterForm;
-
-    private static string EncodeEffectString(string? value)
-    {
-        if (value == null)
-            return "";
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
-    }
-
-    private static bool TryDecodeEffectString(string value, out string? decoded)
-    {
-        decoded = null;
-        if (value.Length == 0)
-            return true;
-        try
-        {
-            decoded = Encoding.UTF8.GetString(Convert.FromBase64String(value));
-            return true;
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>Revert all active buff deltas so character stats are saved
-    /// clean (base values only). Call before WorldSaver runs.</summary>
-    public void RevertAllForSave()
-    {
-        foreach (var eff in _activeEffects)
-            RevertDeltas(eff, detachMemory: false);
-    }
-
-    /// <summary>Re-apply all active buff deltas after a save completes.
-    /// Paired with <see cref="RevertAllForSave"/>.</summary>
-    public void ReapplyAllAfterSave()
-    {
-        foreach (var eff in _activeEffects)
-            ApplyDeltas(eff);
-    }
 }
 
 /// <summary>

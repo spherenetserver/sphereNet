@@ -93,6 +93,9 @@ public sealed class SpellbookSchoolParityTests
     public void MissingReagentUsesFormattedMessageOverride()
     {
         using var f = new Fixture(1);
+        // The book is asked before the reagents (Spell_CanCast, CCharSpell.cpp:2474
+        // then :2490), so the caster needs one to reach the reagent message.
+        Assert.True(f.Book(ItemType.Spellbook).TryLearnSpell(1));
         f.Def.Reagents.Add(0x7FFE, 1);
         ServerMessages.SetOverride(Msg.SpellTryNoregs, "missing=%s");
         Assert.Equal(-1, f.Start());

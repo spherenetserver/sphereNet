@@ -42,9 +42,13 @@ public sealed class SourceXWave248Tests
         TestHarness.AttachCharacter(client, player);
 
         var d = new TriggerDispatcher();
+        // Spell_CanCast fires @SpellSelect only for a defined spell
+        // (CCharSpell.cpp:2333, receive.cpp:3110), so Magic Arrow must exist.
+        var spells = new SpellRegistry();
+        spells.Register(new SpellDef { Id = SpellType.MagicArrow, CastTimeBase = 1 });
         client.SetEngines(
             skillHandlers: new SkillHandlers(world),
-            spellEngine: new SpellEngine(world, new SpellRegistry()),
+            spellEngine: new SpellEngine(world, spells),
             triggerDispatcher: d);
         return (client, player, world, d);
     }

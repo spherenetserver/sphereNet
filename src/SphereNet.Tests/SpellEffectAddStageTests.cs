@@ -82,7 +82,7 @@ public sealed class SpellEffectAddStageTests
             Assert.NotNull(memory);
             Assert.Equal(ItemType.Spell, memory!.ItemType);
             Assert.True(memory.TryGetTag("OVERRIDE.MARK", out var mark) && mark == "100");
-            Assert.True(target.Str > 30); // RETURN nothing: the buff applies
+            Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveStr(target) > 30); // RETURN nothing: the buff applies
         }
         finally { File.Delete(path); }
     }
@@ -96,7 +96,7 @@ public sealed class SpellEffectAddStageTests
             caster.BeginCast(SpellType.Strength, target.Uid, target.Position);
             Assert.True(engine.CastDone(caster));
 
-            Assert.Equal(30, target.Str);
+            Assert.Equal(30, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
             Assert.True(target.TryGetTag("FX_ARGO", out var argo));
             Assert.True(ScriptNumber.TryParseToken(argo!, out long memUid));
             var memory = FindMemory(target, (uint)memUid);
@@ -114,7 +114,7 @@ public sealed class SpellEffectAddStageTests
             caster.BeginCast(SpellType.Strength, target.Uid, target.Position);
             Assert.True(engine.CastDone(caster));
 
-            Assert.Equal(30, target.Str);
+            Assert.Equal(30, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
             Assert.True(target.TryGetTag("FX_ARGO", out var argo));
             Assert.True(ScriptNumber.TryParseToken(argo!, out long memUid));
             var memory = FindMemory(target, (uint)memUid);
@@ -123,7 +123,7 @@ public sealed class SpellEffectAddStageTests
 
             // Ending the effect must not take back what was never given.
             engine.StripDispellableEffects(target);
-            Assert.Equal(30, target.Str);
+            Assert.Equal(30, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
         }
         finally { File.Delete(path); }
     }

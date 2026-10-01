@@ -794,38 +794,22 @@ public sealed class DefinitionLoader
                     if (TryParseHex(key.Arg, out ushort si)) def.ScrollItemId = si;
                     else { uint g = ResolveItemReferenceValue(key.Arg.Trim()); if (g != 0) def.ScrollItemId = (ushort)g; }
                     break;
+                // CValueCurveDef points (CSpellDef.cpp:222-242, CValueDefs.cpp:72):
+                // every argument is an expression in the reference fixed-point
+                // notation and every point is kept. CAST_TIME and DURATION are
+                // tenths as written; nothing here rescales them.
                 case "CAST_TIME":
-                {
-                    // Curve in seconds across skill 0-100.0; stored as tenths.
-                    // Single value = constant; "A,B" = endpoints.
-                    var ctParts = key.Arg.Split(',', 2, StringSplitOptions.TrimEntries);
-                    def.CastTimeBase = ParseSecondsToTenths(ctParts[0]);
-                    def.CastTimeScale = ctParts.Length > 1 ? ParseSecondsToTenths(ctParts[1]) : 0;
+                    def.CastTimeCurve = SphereNet.Scripting.Definitions.ValueCurve.Parse(key.Arg);
                     break;
-                }
                 case "EFFECT":
-                    ParseCurve(key.Arg, out int eb, out int es);
-                    def.EffectBase = eb; def.EffectScale = es;
+                    def.EffectCurve = SphereNet.Scripting.Definitions.ValueCurve.Parse(key.Arg);
                     break;
                 case "DURATION":
-                    // Sphere script writes DURATION in seconds; internal
-                    // storage is tenths of a second to match CAST_TIME
-                    // (which is also scaled x10). Multiply after
-                    // ParseCurve so "3*60" becomes 1800 tenths = 180s.
-                    ParseCurve(key.Arg, out int db, out int ds);
-                    def.DurationBase = db * 10; def.DurationScale = ds * 10;
+                    def.DurationCurve = SphereNet.Scripting.Definitions.ValueCurve.Parse(key.Arg);
                     break;
                 case "INTERRUPT":
-                {
-                    // Per-mille curve with legacy fixed-point values
-                    // ("100.0,100.0" → 1000,1000 = always disturbable).
-                    var icParts = key.Arg.Split(',', 2, StringSplitOptions.TrimEntries);
-                    def.InterruptBase = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(icParts[0]);
-                    def.InterruptScale = icParts.Length > 1
-                        ? SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(icParts[1])
-                        : 0;
+                    def.InterruptCurve = SphereNet.Scripting.Definitions.ValueCurve.Parse(key.Arg);
                     break;
-                }
                 case "LAYER":
                     if (TryResolveByteValue(key.Arg, out byte ly)) def.Layer = (Layer)ly;
                     break;
@@ -923,61 +907,6 @@ public sealed class DefinitionLoader
 
         _skillDefs[link.Id.Index] = def;
         SkillDefsLoaded++;
-    }
-
-    private static int ParseSecondsToTenths(string s)
-    {
-        if (double.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out double d))
-            return (int)Math.Round(d * 10);
-        return EvalCurveTerm(s) * 10;
-    }
-
-    private static void ParseCurve(string val, out int baseVal, out int scale)
-    {
-        baseVal = 0; scale = 0;
-        var parts = val.Split(',');
-        if (parts.Length >= 1) baseVal = EvalCurveTerm(parts[0]);
-        if (parts.Length >= 2) scale = EvalCurveTerm(parts[1]);
-    }
-
-    /// <summary>Evaluate a single Sphere-script curve term like "180",
-    /// "3*60.0", "1.5*60", "0.5". Supports integer/decimal literals and
-    /// chained <c>*</c>/<c>/</c> operators. The return is truncated to
-    /// int — the DURATION / EFFECT curves only need integer precision.
-    /// Without this, <c>int.TryParse</c> rejected anything with a
-    /// <c>*</c> or <c>.</c>, leaving DurationBase/Scale at 0 and every
-    /// timed spell effect expired the same tick it was applied.</summary>
-    private static int EvalCurveTerm(string expr)
-    {
-        expr = expr.Trim();
-        if (expr.Length == 0) return 0;
-        double acc = 1.0;
-        bool first = true;
-        char op = '*';
-        int i = 0;
-        while (i < expr.Length)
-        {
-            while (i < expr.Length && char.IsWhiteSpace(expr[i])) i++;
-            int start = i;
-            while (i < expr.Length && (char.IsDigit(expr[i]) || expr[i] == '.' || expr[i] == '-' || expr[i] == '+'))
-                i++;
-            if (start == i) break;
-            if (!double.TryParse(expr.AsSpan(start, i - start),
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out double n))
-                return 0;
-            if (first) { acc = n; first = false; }
-            else if (op == '*') acc *= n;
-            else if (op == '/') acc = n == 0 ? 0 : acc / n;
-            while (i < expr.Length && char.IsWhiteSpace(expr[i])) i++;
-            if (i >= expr.Length) break;
-            char c = expr[i];
-            if (c == '*' || c == '/') { op = c; i++; }
-            else break;
-        }
-        if (double.IsNaN(acc) || double.IsInfinity(acc)) return 0;
-        return (int)acc;
     }
 
     private static bool TryParseHex(string val, out ushort result)

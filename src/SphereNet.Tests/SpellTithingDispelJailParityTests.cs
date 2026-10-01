@@ -122,6 +122,7 @@ public sealed class SpellTithingDispelJailParityTests
         caster.Tithing = 0;
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand;
+        wand.More2 = 3; // a wand casts only with charges left (CCharSpell.cpp:2436)
         caster.Equip(wand, Layer.OneHanded);
         caster.SetTag("WAND_UID", wand.Uid.Value.ToString());
 
@@ -287,17 +288,17 @@ public sealed class SpellTithingDispelJailParityTests
         Character.MagicFlags = 0;
 
         engine.ApplyDirectEffect(caster, target, SpellType.Bless, 500);
-        Assert.Equal(105, target.Str);
+        Assert.Equal(105, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
         SpellMemory(target).SetAttr(ObjAttributes.Move_Never);
 
         // Level 50 (CCharSpell.cpp:3949) is <= 100: the memory stays (:90).
         engine.ApplyDirectEffect(caster, target, SpellType.Dispel, 500);
-        Assert.Equal(105, target.Str);
+        Assert.Equal(105, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
 
         // A GM's dispel is level 150 and takes it.
         caster.PrivLevel = PrivLevel.GM;
         engine.ApplyDirectEffect(caster, target, SpellType.Dispel, 500);
-        Assert.Equal(100, target.Str);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
     }
 
     [Fact]
@@ -310,7 +311,7 @@ public sealed class SpellTithingDispelJailParityTests
 
         engine.ApplyDirectEffect(caster, target, SpellType.Bless, 500);
         engine.ApplyDirectEffect(caster, target, SpellType.Dispel, 500);
-        Assert.Equal(100, target.Str);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
     }
 
     [Fact]
@@ -324,46 +325,7 @@ public sealed class SpellTithingDispelJailParityTests
         engine.ApplyDirectEffect(caster, target, SpellType.Bless, 500);
         SpellMemory(target).SetAttr(ObjAttributes.Move_Never);
         engine.StripDispellableEffects(target);
-        Assert.Equal(105, target.Str);
-    }
-
-    [Fact]
-    public void MoveNeverSurvivesTheEffectRecordAndOlderRecordsStillLoad()
-    {
-        var (world, engine, caster, target) = Setup(null,
-            Flat(SpellType.Bless, SpellFlag.TargChar | SpellFlag.Good, effect: 5, durationTenths: 600),
-            Flat(SpellType.Dispel, SpellFlag.TargChar));
-        Character.MagicFlags = 0;
-        engine.ApplyDirectEffect(caster, target, SpellType.Bless, 500);
-        SpellMemory(target).SetAttr(ObjAttributes.Move_Never);
-
-        string record = Assert.Single(engine.GetPersistedEffectRecords(target, Environment.TickCount64));
-        var fields = record.Split('|');
-        Assert.Equal(22, fields.Length);
-        Assert.Equal("1", fields[21]);
-
-        // Reload onto a fresh character: the memory comes back MOVE_NEVER and a
-        // player's dispel still spares it.
-        var reloaded = world.CreateCharacter();
-        reloaded.IsPlayer = true;
-        reloaded.Str = 100;
-        world.PlaceCharacter(reloaded, new Point3D(102, 100, 0, 0));
-        reloaded.AddPendingSpellEffectRecord(record);
-        Assert.Equal(1, engine.RestorePersistedEffects(reloaded));
-        Assert.True(SpellMemory(reloaded).IsAttr(ObjAttributes.Move_Never));
-        engine.ApplyDirectEffect(caster, reloaded, SpellType.Dispel, 500);
-        Assert.Equal(105, reloaded.Str);
-
-        // A 21-field record from before the flag existed loads as dispellable.
-        var older = world.CreateCharacter();
-        older.IsPlayer = true;
-        older.Str = 100;
-        world.PlaceCharacter(older, new Point3D(103, 100, 0, 0));
-        older.AddPendingSpellEffectRecord(string.Join('|', fields.Take(21)));
-        Assert.Equal(1, engine.RestorePersistedEffects(older));
-        Assert.False(SpellMemory(older).IsAttr(ObjAttributes.Move_Never));
-        engine.ApplyDirectEffect(caster, older, SpellType.Dispel, 500);
-        Assert.Equal(100, older.Str);
+        Assert.Equal(105, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
     }
 
     // --- PRIV_JAILED travel ------------------------------------------------------

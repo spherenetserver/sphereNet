@@ -34,6 +34,14 @@ public sealed class SourceXWave254Tests
         return ch;
     }
 
+    private static Character PayingCaster(GameWorld world)
+    {
+        var ch = MakeCaster(world);
+        ch.PrivLevel = PrivLevel.Player;
+        ch.SetSkill(SkillType.Magery, 1000);
+        return ch;
+    }
+
     // ---------- Corpse Skin ----------
 
     [Fact]
@@ -62,7 +70,7 @@ public sealed class SourceXWave254Tests
     }
 
     [Fact]
-    public void CorpseSkin_SaveRevertReapply_IsSymmetric()
+    public void CorpseSkin_MemoryRemoval_IsSymmetric()
     {
         var world = TestHarness.CreateWorld();
         var registry = new SpellRegistry();
@@ -75,10 +83,10 @@ public sealed class SourceXWave254Tests
         Assert.True(engine.CastDone(caster));
         Assert.Equal(25, caster.ResFire);
 
-        engine.RevertAllForSave();
-        Assert.Equal(40, caster.ResFire); // clean base for the save
-        engine.ReapplyAllAfterSave();
-        Assert.Equal(25, caster.ResFire); // debuff restored
+        // The effect is its LAYER_SPELL_Corpse_Skin memory: deleting it - by any road -
+        // takes back exactly the shift it put on (Spell_Effect_Remove, CCharSpell.cpp:776-787).
+        Assert.True(engine.RemoveEffectByMemory(caster.FindLayer(SpellLayers.CorpseSkin)!));
+        Assert.Equal(40, caster.ResFire);
     }
 
     // ---------- Mind Rot ----------
@@ -119,13 +127,15 @@ public sealed class SourceXWave254Tests
         world.PlaceCharacter(target, new Point3D(121, 120, 0, 0));
 
         // Baseline: no Mind Rot → exactly ManaCost is spent (ManaLossPercent 100).
-        var normal = MakeCaster(world);
+        // A non-GM creature: a GM pays no mana at all (Spell_CanCast,
+        // CCharSpell.cpp:2461), and a creature needs no book or reagents.
+        var normal = PayingCaster(world);
         Assert.True(engine.CastStart(normal, SpellType.MagicArrow, target.Uid, target.Position) >= 0);
         Assert.True(engine.CastDone(normal));
         Assert.Equal(200 - 50, normal.Mana);
 
         // With Mind Rot → +10% mana cost (55 spent).
-        var rotted = MakeCaster(world);
+        var rotted = PayingCaster(world);
         rotted.MindRotActive = true;
         Assert.True(engine.CastStart(rotted, SpellType.MagicArrow, target.Uid, target.Position) >= 0);
         Assert.True(engine.CastDone(rotted));
@@ -149,7 +159,7 @@ public sealed class SourceXWave254Tests
         var target = world.CreateCharacter();
         world.PlaceCharacter(target, new Point3D(121, 120, 0, 0));
 
-        var caster = MakeCaster(world);
+        var caster = PayingCaster(world);
         caster.MindRotActive = true;
         caster.MaxMana = 54; caster.Mana = 54; // enough for 50, short of 55
 

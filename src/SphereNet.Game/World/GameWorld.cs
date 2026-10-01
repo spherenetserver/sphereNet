@@ -2650,6 +2650,7 @@ public sealed class GameWorld
             // Engine-state items (spell/fight memories and other Special-layer
             // equips) are managed by their subsystems.
             if (item.ItemType == SphereNet.Core.Enums.ItemType.EqMemoryObj || item.IsSavedWithOwner ||
+                item.IsSpellMemory ||
                 (item.IsEquipped && item.EquipLayer == SphereNet.Core.Enums.Layer.Special))
                 continue;
 

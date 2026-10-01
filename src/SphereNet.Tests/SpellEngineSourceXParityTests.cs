@@ -213,7 +213,7 @@ public sealed class SpellEngineSourceXParityTests
 
         engine.ApplyDirectEffect(caster, target, SpellType.Strength, 500);
 
-        Assert.Equal(100, target.Str);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
     }
 
     // --- 9: @Success runs before the cast is paid, @Fail prices a failure -------
@@ -248,11 +248,11 @@ public sealed class SpellEngineSourceXParityTests
 
             Assert.True(engine.CastStart(caster, SpellType.Strength, target.Uid, target.Position) > 0);
             Assert.True(engine.CastDone(caster));
-            Assert.Equal(110, target.Str);
+            Assert.Equal(110, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
 
             // 5 s, not the 10 minutes of the def.
             engine.ProcessExpirations(Environment.TickCount64 + 6_000);
-            Assert.Equal(100, target.Str);
+            Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
         }
         finally { File.Delete(path); }
     }
@@ -368,7 +368,7 @@ public sealed class SpellEngineSourceXParityTests
             Character.MagicFlags = 0;
 
             engine.ApplyDirectEffect(caster, target, SpellType.Weaken, 500);
-            Assert.Equal(90, target.Str);                // the whole 10
+            Assert.Equal(90, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));                // the whole 10
 
             engine.ApplyDirectEffect(caster, target, SpellType.Harm, 500);
             Assert.Equal(target.MaxHits - 20, target.Hits);   // 40 halved
@@ -387,8 +387,13 @@ public sealed class SpellEngineSourceXParityTests
             Character.ManaLossPercent = 50;
             var (_, engine, caster, target) = Setup(
                 Flat(SpellType.Heal, SpellFlag.TargChar | SpellFlag.Heal, effect: 1, mana: 20));
-            // A GM caster: no fizzle roll, no book or reagent gate - and still pays.
+            // A non-GM creature with the skill check already passed: no book or
+            // reagent gate, and it pays in full. (A GM pays nothing at all -
+            // Spell_CanCast returns before the mana, CCharSpell.cpp:2461.)
+            caster.PrivLevel = PrivLevel.Player;
+            caster.IsPlayer = false;
             Assert.True(engine.CastStart(caster, SpellType.Heal, target.Uid, target.Position) > 0);
+            caster.CastSkillSucceeded = true;
             Assert.True(engine.CastDone(caster));
 
             Assert.Equal(80, caster.Mana);
@@ -486,12 +491,12 @@ public sealed class SpellEngineSourceXParityTests
 
         engine.ApplyDirectEffect(caster, target, SpellType.Bless, 500);
         engine.ApplyDirectEffect(caster, target, SpellType.ManaDrain, 500);
-        Assert.Equal(105, target.Str);
+        Assert.Equal(105, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
         Assert.Equal(30, target.Mana);
 
         engine.ApplyDirectEffect(caster, target, SpellType.Dispel, 500);
 
-        Assert.Equal(100, target.Str);   // LAYER_SPELL_STATS: gone
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));   // LAYER_SPELL_STATS: gone
         Assert.Equal(30, target.Mana);   // LAYER_SPELL_Mana_Drain: untouched
     }
 

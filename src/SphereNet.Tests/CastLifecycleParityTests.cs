@@ -104,6 +104,7 @@ public sealed class CastLifecycleParityTests
     {
         using var f = new Fixture(); var wand = f.Wand();
         f.Player.Unequip(Layer.OneHanded); f.Player.Backpack!.AddItem(wand);
+        wand.More2 = 3; // a wand casts only with charges left (CCharSpell.cpp:2436)
         f.Player.Mana = 0; f.Heal.Reagents.Add(0x7FFE, 1);
         f.Player.SetTag("WAND_UID", wand.Uid.Value.ToString());
         Assert.True(f.Start() > 0);

@@ -60,10 +60,10 @@ public sealed class DeathEngine
     /// here, so a player who died buffed rose from the dead still buffed and kept
     /// it until the timers ran out, and a curse outlived the death that ended it.
     ///
-    /// The reference spares ATTR_MOVE_NEVER items on the spell layers; this engine
-    /// puts nothing but its own effect memories there, so there is nothing to
-    /// spare. Wired to SpellEngine.StripDispellableEffects; null in bare test
-    /// setups.</summary>
+    /// Like any Spell_Dispel it takes only the memories on LAYER_SPELL_STATS..
+    /// LAYER_SPELL_Summon and spares an ATTR_MOVE_NEVER one (CCharSpell.cpp:79-104):
+    /// poison, drunkenness, hallucination and the necromancy layers outlive the death.
+    /// Wired to SpellEngine.StripDispellableEffects; null in bare test setups.</summary>
     public Action<Character>? DispelEffectsHook { get; set; }
 
     /// <summary>Host hook: play a sound at the victim (args: victim, sound id).
@@ -202,8 +202,8 @@ public sealed class DeathEngine
         victim.Kill();
 
         // Source-X CChar::Death: Spell_Dispel(100) right after the skill cleanup
-        // and before the corpse forms (CCharAct.cpp:4397). Death ends every spell
-        // on you, good and bad alike.
+        // and before the corpse forms (CCharAct.cpp:4397): every dispellable spell
+        // memory on you goes, good and bad alike.
         DispelEffectsHook?.Invoke(victim);
 
         // Source-X CChar::Death deletes any open trade window before the
@@ -214,8 +214,13 @@ public sealed class DeathEngine
         // Source-X CChar::Death clears the victim's FIGHT / HARMEDBY
         // memories — the ghost holds no grudges (and no self-defence
         // rights) from the fight that killed it.
+        // Only the IT_EQ_MEMORY_OBJ memories: a worn spell memory carries no memory
+        // types, and clearing "the rest" of nothing would delete it - ending an
+        // effect the dispel above deliberately left on (MOVE_NEVER, the necromancy
+        // and flag layers).
         foreach (var mem in new List<Item>(victim.Memories))
-            victim.Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.HarmedBy);
+            if (mem.ItemType == ItemType.EqMemoryObj)
+                victim.Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.HarmedBy);
 
         // Source-X CChar::Death order: the rider leaves the saddle before the
         // corpse is made — otherwise the mount-layer item is snapshotted into

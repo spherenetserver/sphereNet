@@ -150,25 +150,6 @@ public partial class Character : ObjBase
     // Static delegate for party manager (set in Program.cs) — needed for commands
     public static Func<Party.PartyManager?>? ResolvePartyManager;
 
-    /// <summary>Removes the active spell effect represented by an IT_SPELL
-    /// memory item (Source-X: deleting the memory runs Spell_Effect_Remove).
-    /// Wired to SpellEngine.RemoveEffectByMemory; invoked when a script
-    /// REMOVEs the memory (the Scripts-X Reaper/Stone Form toggles do this
-    /// via FINDID.&lt;RUNE_ITEM&gt;.REMOVE). Returns true when an effect was
-    /// found and reverted.</summary>
-    public static Func<Item, bool>? SpellMemoryEffectRemover;
-
-    /// <summary>Remaining milliseconds of the spell effect a memory mirrors: -1 for
-    /// permanent, 0 for "no such effect". Wired to SpellEngine so a TIMER read on the
-    /// mirror answers for the effect, which is what upstream reads - there the effect
-    /// IS the item.</summary>
-    public static Func<Item, long>? SpellMemoryEffectRemaining;
-
-    /// <summary>Re-arm the spell effect a memory mirrors; negative = permanent.
-    /// Returns false when the memory belongs to no active effect, so the caller can
-    /// fall back to the item's own timer.</summary>
-    public static Func<Item, long, bool>? SpellMemoryEffectRetimer;
-
     /// <summary>Source-X NPC_WantThisItem: how badly this NPC wants an item
     /// (0-100). Wired to NpcAI.GetWantScore; the give-item flow refuses
     /// unwanted gifts by default when this returns 0.</summary>
@@ -1017,16 +998,19 @@ public partial class Character : ObjBase
     /// when hooked (IsTrigUsed gate), so reveals are a null check otherwise.</summary>
     public static Func<Character, bool>? OnRevealing { get; set; }
 
-    /// <summary>Fired when a timed spell effect is applied to a character
-    /// (Source-X @SpellEffectAdd). Args: target, caster (null = unattributed),
-    /// spell id. Installed only when hooked (IsTrigUsed gate).</summary>
-    public static Action<Character, Character?, int>? OnSpellEffectAdd { get; set; }
+    /// <summary>@SpellEffectAdd (Source-X Spell_Effect_Add, CCharSpell.cpp:984-998):
+    /// fired on the character as the spell memory goes on, BEFORE the effect is
+    /// applied. Args: wearer, the memory's LINK (SRC; null = unattributed), the memory
+    /// (ARGO), spell id (ARGN1). RETURN 1 (True) deletes the memory; RETURN 0 (False)
+    /// keeps it worn but skips the engine's own effect. Installed only when hooked.</summary>
+    public static Func<Character, Character?, Item, int, TriggerResult>? OnSpellEffectAdd { get; set; }
 
-    /// <summary>Fired when a timed spell effect is removed from a character —
-    /// expiry, re-cast refresh or death cleanup, NOT the transient save-time
-    /// revert (Source-X @SpellEffectRemove). Args: target, spell id. Installed
-    /// only when hooked (IsTrigUsed gate).</summary>
-    public static Action<Character, int>? OnSpellEffectRemove { get; set; }
+    /// <summary>@SpellEffectRemove (Source-X Spell_Effect_Remove, CCharSpell.cpp:558-567):
+    /// fired as a spell memory leaves the character - expiry, recast, dispel, death,
+    /// REMOVE - BEFORE the effect is taken back. Args: wearer, the memory's LINK (SRC),
+    /// the memory (ARGO), spell id. RETURN 0 (False) lets the memory go but skips the
+    /// engine's undo. Installed only when hooked.</summary>
+    public static Func<Character, Character?, Item, int, TriggerResult>? OnSpellEffectRemove { get; set; }
 
     /// <summary>Fired before each periodic spell-effect tick applies (Source-X
     /// @SpellEffectTick / SPELLFLAG_TICK). The wiring seeds the script LOCAL
@@ -1307,13 +1291,9 @@ public partial class Character : ObjBase
         set
         {
             if (value < 0) value = 0;
-            short old = _str;
+            int oldAdjusted = _str + _modStr;
             _str = value;
-            if (_maxHits == old || _maxHits <= 0)
-            {
-                _maxHits = value;
-                if (_hits > _maxHits) _hits = _maxHits;
-            }
+            TrackPoolMax(ref _maxHits, ref _hits, oldAdjusted, _str + _modStr);
             MarkDirty(DirtyFlag.Stats);
         }
     }
@@ -1323,13 +1303,9 @@ public partial class Character : ObjBase
         set
         {
             if (value < 0) value = 0;
-            short old = _dex;
+            int oldAdjusted = _dex + _modDex;
             _dex = value;
-            if (_maxStam == old || _maxStam <= 0)
-            {
-                _maxStam = value;
-                if (_stam > _maxStam) _stam = _maxStam;
-            }
+            TrackPoolMax(ref _maxStam, ref _stam, oldAdjusted, _dex + _modDex);
             MarkDirty(DirtyFlag.Stats);
         }
     }
@@ -1339,13 +1315,9 @@ public partial class Character : ObjBase
         set
         {
             if (value < 0) value = 0;
-            short old = _int;
+            int oldAdjusted = _int + _modInt;
             _int = value;
-            if (_maxMana == old || _maxMana <= 0)
-            {
-                _maxMana = value;
-                if (_mana > _maxMana) _mana = _maxMana;
-            }
+            TrackPoolMax(ref _maxMana, ref _mana, oldAdjusted, _int + _modInt);
             MarkDirty(DirtyFlag.Stats);
         }
     }
@@ -1703,9 +1675,36 @@ public partial class Character : ObjBase
     public short OStr { get => _str; set => Str = value; }
     public short ODex { get => _dex; set => Dex = value; }
     public short OInt { get => _int; set => Int = value; }
-    public short ModStr { get => _modStr; set => _modStr = value; }
-    public short ModDex { get => _modDex; set => _modDex = value; }
-    public short ModInt { get => _modInt; set => _modInt = value; }
+    public short ModStr
+    {
+        get => _modStr;
+        set { int oldAdjusted = _str + _modStr; _modStr = value; TrackPoolMax(ref _maxHits, ref _hits, oldAdjusted, _str + _modStr); MarkDirty(DirtyFlag.Stats); }
+    }
+    public short ModDex
+    {
+        get => _modDex;
+        set { int oldAdjusted = _dex + _modDex; _modDex = value; TrackPoolMax(ref _maxStam, ref _stam, oldAdjusted, _dex + _modDex); MarkDirty(DirtyFlag.Stats); }
+    }
+    public short ModInt
+    {
+        get => _modInt;
+        set { int oldAdjusted = _int + _modInt; _modInt = value; TrackPoolMax(ref _maxMana, ref _mana, oldAdjusted, _int + _modInt); MarkDirty(DirtyFlag.Stats); }
+    }
+
+    /// <summary>A pool maximum nobody set follows its stat - the ADJUSTED stat,
+    /// base plus modifier: Stat_GetMax returns Stat_GetAdjusted when m_max is unset
+    /// (CCharStat.cpp:278-287), so a Strength buff (a MODSTR change) raises max hits.
+    /// "Unset" is read as "still equal to the stat it followed"; a maximum set to
+    /// anything else keeps its own value. The current pool is trimmed to a lowered
+    /// maximum.</summary>
+    private static void TrackPoolMax(ref short max, ref short current, int oldAdjusted, int newAdjusted)
+    {
+        if (max != oldAdjusted && max > 0)
+            return;
+        max = (short)Math.Clamp(newAdjusted, 0, short.MaxValue);
+        if (current > max)
+            current = max;
+    }
     public short ModAr { get => _modAr; set => _modAr = value; }
     /// <summary>Transient AR supplied by the active Protection spell-memory.
     /// Kept separate from MODAR so save-time effect reversion cannot persist
@@ -1741,22 +1740,71 @@ public partial class Character : ObjBase
     /// time from the spell definition's own EFFECT curve, CCharSpell.cpp:1411). Zero
     /// means the flag is up but the definition asks for no reflection.</summary>
     internal int ReactiveArmorPercent { get; set; }
-    /// <summary>Necromancy Evil Omen: a one-shot marker that makes the next
-    /// harmful effect on this character land harder, then is consumed (reference
-    /// LAYER_SPELL_Evil_Omen). Expiry is lazy — read via <see cref="ConsumeEvilOmen"/>.</summary>
-    internal bool EvilOmenActive { get; set; }
-    internal long EvilOmenExpireTick { get; set; }
+    /// <summary>LAYER_SPELL_Evil_Omen (58): the necromancy omen is an ordinary spell
+    /// memory on this layer, and its presence is the whole of its state.</summary>
+    private const Layer EvilOmenLayer = (Layer)58;
 
-    /// <summary>Consume the Evil Omen marker: returns true (and clears it) only
-    /// when it is set and unexpired; an expired marker is cleared and returns
-    /// false. Reference: the omen memory is deleted on the first harmful hit.</summary>
+    /// <summary>Necromancy Evil Omen: the next harmful effect on this character lands
+    /// harder, and that effect deletes the LAYER_SPELL_Evil_Omen memory (CCharFight.cpp:
+    /// 690-694, CCharAct.cpp:4239-4243). Reads the memory; setting it puts a bare omen
+    /// memory on (or takes it off) for callers that have no spell to cast.</summary>
+    internal bool EvilOmenActive
+    {
+        get => FindLayer(EvilOmenLayer) is { IsDeleted: false };
+        set
+        {
+            var current = FindLayer(EvilOmenLayer);
+            if (value && current == null)
+            {
+                var world = ResolveWorld?.Invoke();
+                var mem = world != null ? world.CreateItem() : new Item();
+                mem.ItemType = ItemType.Spell;
+                mem.BaseId = 0x2053;
+                mem.Name = SpellType.EvilOmen.ToString();
+                mem.MoreP = new Point3D((short)SpellType.EvilOmen, 0, 0, 0);
+                mem.SetAttr(ObjAttributes.Newbie | ObjAttributes.Magic);
+                MemoryState.AttachSpellEffect(mem, EvilOmenLayer);
+            }
+            else if (!value && current != null)
+            {
+                RemoveSpellMemory(current);
+            }
+        }
+    }
+
+    /// <summary>The omen memory's timer, as an absolute tick; 0 = none.</summary>
+    internal long EvilOmenExpireTick
+    {
+        get => FindLayer(EvilOmenLayer)?.Timeout ?? 0;
+        set => FindLayer(EvilOmenLayer)?.SetTimeout(value);
+    }
+
+    /// <summary>Spend the omen: true (and the memory deleted, which runs its removal)
+    /// when one is worn. A memory whose timer has already run out is gone too, but
+    /// spends nothing.</summary>
     internal bool ConsumeEvilOmen()
     {
-        if (!EvilOmenActive)
+        var omen = FindLayer(EvilOmenLayer);
+        if (omen == null || omen.IsDeleted)
             return false;
-        bool live = Environment.TickCount64 < EvilOmenExpireTick;
-        EvilOmenActive = false;
+        bool live = omen.Timeout <= 0 || Environment.TickCount64 < omen.Timeout;
+        RemoveSpellMemory(omen);
         return live;
+    }
+
+    /// <summary>Delete a worn spell memory: through the world when it is a world object
+    /// (its removal runs from the world's delete notice), else straight off the list.</summary>
+    private void RemoveSpellMemory(Item mem)
+    {
+        var world = ResolveWorld?.Invoke();
+        if (world != null && world.IsRegistered(mem))
+        {
+            world.DeleteObject(mem);
+            return;
+        }
+        MemoryState.DetachSpellEffect(mem);
+        mem.ContainedIn = Serial.Invalid;
+        mem.Delete();
     }
     public short ModMaxWeight { get => _modMaxWeight; set => _modMaxWeight = value; }
 
@@ -2713,6 +2761,20 @@ public partial class Character : ObjBase
             InvalidateOwnerFollowerCount();
     }
 
+    /// <summary>Whether a worn spell memory (MOREX) of one of these spells is on.</summary>
+    private bool WearsSpellMemory(params SpellType[] spells)
+    {
+        foreach (var mem in Memories)
+        {
+            if (mem.IsDeleted || mem.ItemType != ItemType.Spell)
+                continue;
+            var spell = (SpellType)(ushort)mem.MoreP.X;
+            if (Array.IndexOf(spells, spell) >= 0)
+                return true;
+        }
+        return false;
+    }
+
     public bool IsDead => IsStatFlag(StatFlag.Dead);
     public bool IsInWarMode => IsStatFlag(StatFlag.War);
     public bool IsInvisible => IsStatFlag(StatFlag.Invisible);
@@ -2723,12 +2785,19 @@ public partial class Character : ObjBase
         var beforeFlags = _statFlags;
         ushort beforeHue = Hue.Value;
 
-        ClearStatFlag(StatFlag.Freeze);
-        ClearStatFlag(StatFlag.Invisible);
+        // A flag a worn spell memory holds is not stray state: the memory is the
+        // effect, and its removal is what clears the flag (Spell_Effect_Remove).
+        if (!WearsSpellMemory(SpellType.Paralyze, SpellType.ParalyzeField))
+            ClearStatFlag(StatFlag.Freeze);
+        if (!WearsSpellMemory(SpellType.Invisibility))
+            ClearStatFlag(StatFlag.Invisible);
         ClearStatFlag(StatFlag.Hidden);
-        ClearStatFlag(StatFlag.Reflection);
-        ClearStatFlag(StatFlag.Reactive);
-        ClearStatFlag(StatFlag.NightSight);
+        if (!WearsSpellMemory(SpellType.MagicReflect))
+            ClearStatFlag(StatFlag.Reflection);
+        if (!WearsSpellMemory(SpellType.ReactiveArmor))
+            ClearStatFlag(StatFlag.Reactive);
+        if (!WearsSpellMemory(SpellType.NightSight, SpellType.Light))
+            ClearStatFlag(StatFlag.NightSight);
 
         if (Hue.Value == 0x03EC && !IsStatFlag(StatFlag.Reflection))
             Hue = Core.Types.Color.Default;
@@ -7593,11 +7662,8 @@ public partial class Character : ObjBase
                 {
                     if (found.ItemType == ItemType.Spell && Memories.Contains(found))
                     {
-                        if (SpellMemoryEffectRemover?.Invoke(found) != true)
-                        {
-                            Memory_Delete(found);
-                            found.Delete();
-                        }
+                        // The memory is the effect: deleting it runs its removal.
+                        RemoveSpellMemory(found);
                     }
                     else
                     {

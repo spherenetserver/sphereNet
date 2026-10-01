@@ -266,16 +266,28 @@ public class CoreRuntimeStabilityTests
     [Fact]
     public void SpellExpirations_DropsDeletedTargets()
     {
-        var engine = new SpellEngine(CreateWorld(), new SpellRegistry());
-        var ch = new Character();
-        var schedule = typeof(SpellEngine).GetMethod("ScheduleEffectExpiry",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var def = new SpellDef { Id = SpellType.Bless, DurationBase = 10, DurationScale = 10 };
-        schedule.Invoke(engine, [ch, ch, SpellType.Bless, def, 0]);
+        var world = CreateWorld();
+        ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.Bless, Flags = SpellFlag.TargChar | SpellFlag.Good,
+            EffectBase = 5, EffectScale = 5, DurationBase = 10, DurationScale = 10,
+        });
+        var engine = new SpellEngine(world, registry);
+        var ch = world.CreateCharacter();
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        engine.ApplyDirectEffect(ch, ch, SpellType.Bless, 1000);
+        var memory = ch.FindLayer(SpellLayers.Stats)!;
 
-        ch.Delete();
-        engine.ProcessExpirations(0);
+        // The wearer goes, and its worn memory with it; the timer pass finds
+        // nothing to trip over.
+        world.DeleteObject(ch);
+        var ex = Record.Exception(() => engine.ProcessExpirations(long.MaxValue));
 
+        Assert.Null(ex);
+        Assert.True(memory.IsDeleted);
         Assert.Equal(ch.BodyId, engine.GetResurrectBody(ch));
     }
 

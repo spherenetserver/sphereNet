@@ -122,7 +122,10 @@ public sealed class MagicCastFlowParityTests
 
         var caster = world.CreateCharacter();
         caster.IsPlayer = true;
-        caster.PrivLevel = PrivLevel.GM;
+        // A player: a GM pays no mana for a scroll at all (Spell_CanCast,
+        // CCharSpell.cpp:2430).
+        caster.PrivLevel = PrivLevel.Player;
+        caster.SetSkill(SkillType.Magery, 1000);
         caster.MaxMana = 100;
         caster.Mana = 25; // below full cost (40), above the scroll half (20)
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));

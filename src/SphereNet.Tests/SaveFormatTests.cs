@@ -1044,6 +1044,12 @@ public class SaveFormatTests
         }
     }
 
+    /// <summary>An active effect saves the Source-X way: the character record carries the
+    /// modifier the effect put on (MODSTR - CChar r_Write, base and mod apart), and the
+    /// effect itself is its worn IT_SPELL memory, written as an ordinary equipped item
+    /// (CONT / LAYER / TYPE / MOREP / LINK / TIMER). A load wears it again WITHOUT
+    /// re-adding (upstream's LayerAdd applies nothing during a load), so the +50 is not
+    /// counted twice, and its expiry then takes exactly that +50 back.</summary>
     [Fact]
     public void Roundtrip_PreservesActiveSpellEffectAndExpires()
     {
@@ -1076,26 +1082,23 @@ public class SaveFormatTests
             src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
 
             var engine = new SpellEngine(src, registry);
-            saver.GetSpellEffectRecords = engine.GetPersistedEffectRecords;
 
             Assert.True(engine.CastStart(ch, SpellType.Bless, ch.Uid, ch.Position) >= 0);
             Assert.True(engine.CastDone(ch));
-            Assert.Equal(100, ch.Str); // EFFECT 50 adds 50 (Stat_AddMod)
+            Assert.Equal(50, ch.Str);                                       // OSTR: the base
+            Assert.Equal(50, ch.ModStr);                                    // MODSTR: the spell
+            Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(ch));
 
-            engine.RevertAllForSave();
-            try
-            {
-                Assert.True(saver.Save(src, tmp));
-            }
-            finally
-            {
-                engine.ReapplyAllAfterSave();
-            }
+            Assert.True(saver.Save(src, tmp));
 
-            Assert.Equal(100, ch.Str); // EFFECT 50 adds 50 (Stat_AddMod)
             string charSave = File.ReadAllText(Path.Combine(tmp, "spherechars.scp"));
+            Assert.Contains("MODSTR=50", charSave);
             Assert.Contains("STR=50", charSave);
-            Assert.Contains("SPELLEFFECT=1|17|", charSave);
+            Assert.DoesNotContain("SPELLEFFECT", charSave);
+            string itemSave = File.ReadAllText(Path.Combine(tmp, "sphereworld.scp"));
+            Assert.Contains($"CONT=0{ch.Uid.Value:X8}", itemSave);
+            Assert.Contains("LAYER=32", itemSave);
+            Assert.Contains("MOREP=17,50,", itemSave);
 
             var dst = MakeWorld();
             loader.Load(dst, tmp);
@@ -1103,15 +1106,20 @@ public class SaveFormatTests
             var reloaded = dst.FindChar(ch.Uid);
             Assert.NotNull(reloaded);
             Assert.Equal(50, reloaded!.Str);
-            Assert.Single(reloaded.PendingSpellEffectRecords);
+            Assert.Equal(50, reloaded.ModStr);
+            var memory = reloaded.FindLayer(SpellLayers.Stats);
+            Assert.NotNull(memory);
+            Assert.Equal(ItemType.Spell, memory!.ItemType);
+            Assert.True(memory.Timeout > Environment.TickCount64);
 
             var restoredEngine = new SpellEngine(dst, registry);
             Assert.Equal(1, restoredEngine.RestorePersistedEffectsFromWorld());
-            Assert.Empty(reloaded.PendingSpellEffectRecords);
-            Assert.Equal(100, reloaded.Str);
+            Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(reloaded)); // not 150
 
             restoredEngine.ProcessExpirations(Environment.TickCount64 + 120_000);
-            Assert.Equal(50, reloaded.Str);
+            Assert.Equal(50, SphereNet.Game.Combat.CombatEngine.EffectiveStr(reloaded));
+            Assert.Equal(0, reloaded.ModStr);
+            Assert.True(memory.IsDeleted);
         }
         finally
         {
@@ -1150,18 +1158,14 @@ public class SaveFormatTests
             src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
 
             var engine = new SpellEngine(src, registry);
-            saver.GetSpellEffectRecords = engine.GetPersistedEffectRecords;
 
             Assert.True(engine.CastStart(ch, SpellType.CurseWeapon, ch.Uid, ch.Position) >= 0);
             Assert.True(engine.CastDone(ch));
             int level = ch.CurseWeaponLevel;
             Assert.True(level > 0);
 
-            engine.RevertAllForSave();
-            Assert.Equal(0, ch.CurseWeaponLevel); // reverted for clean save
-            try { Assert.True(saver.Save(src, tmp)); }
-            finally { engine.ReapplyAllAfterSave(); }
-            Assert.Equal(level, ch.CurseWeaponLevel); // re-applied after save
+            Assert.True(saver.Save(src, tmp));
+            Assert.Equal(level, ch.CurseWeaponLevel); // a save does not touch the live effect
 
             var dst = MakeWorld();
             loader.Load(dst, tmp);

@@ -34,6 +34,13 @@ public sealed class SpellEffectTickContext
     /// <summary>Ticks left including this one (LOCAL.CHARGES; the engine
     /// auto-decrements by one after the tick, Source-X parity).</summary>
     public int Charges { get; set; }
+    /// <summary>LOCAL.DAMAGETYPE: the DAMAGE_* flags the tick deals with, read back
+    /// after the stages (CCharSpell.cpp:2007).</summary>
+    public int DamageType { get; set; }
+    /// <summary>Set by the bridge when a stage answered RETURN 0 on a SCRIPTED spell:
+    /// the script ticked the effect itself and the engine does nothing more
+    /// (CCharSpell.cpp:1986, :1996).</summary>
+    public bool ScriptReturnedZero { get; set; }
 }
 
 /// <summary>
@@ -464,6 +471,7 @@ public sealed class CharacterPoisonState
                 Damage = effect,
                 DelayMs = (int)(delaySeconds * 1000),
                 Charges = charges,
+                DamageType = (int)Combat.DamageType.Poison,
             };
             if (!tickHook(_owner, ctx))
             {

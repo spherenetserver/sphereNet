@@ -240,7 +240,7 @@ public class SourceXGameplayParityTests
     {
         using var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
-        var engine = new SpellEngine(world, new SpellRegistry());
+        var engine = BlessEngine(world);
         var client = CreatePlayingClient(loggerFactory, world, out var state, out var player);
         client.SetEngines(spellEngine: engine);
 
@@ -249,10 +249,7 @@ public class SourceXGameplayParityTests
         state.ClientVersionNumber = 0;
         Assert.False(state.SupportsBuffIcon);
 
-        var schedule = typeof(SpellEngine).GetMethod("ScheduleEffectExpiry",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var def = new SpellDef { Id = SpellType.Bless, DurationBase = 300, DurationScale = 300 };
-        schedule.Invoke(engine, [player, player, SpellType.Bless, def, 8]);
+        engine.ApplyDirectEffect(player, player, SpellType.Bless, 1000);
 
         var changes = new List<(BuffIcon Icon, bool Add)>();
         Character.OnClientBuffChanged = (target, icon, add, _, _) =>
@@ -276,27 +273,27 @@ public class SourceXGameplayParityTests
     {
         using var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
-        var engine = new SpellEngine(world, new SpellRegistry());
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.Strength, Flags = SpellFlag.TargChar | SpellFlag.Good,
+            EffectBase = 12, EffectScale = 12, DurationBase = 300, DurationScale = 300,
+        });
+        var engine = new SpellEngine(world, registry);
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
-        var schedule = typeof(SpellEngine).GetMethod("ScheduleEffectExpiry",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var def = new SpellDef { Id = SpellType.Strength, DurationBase = 300, DurationScale = 300 };
-        schedule.Invoke(engine, [ch, ch, SpellType.Strength, def, 12]);
+        engine.ApplyDirectEffect(ch, ch, SpellType.Strength, 1000);
 
         // The spell memory carries the magnitude in MOREY, as Source-X does.
         var memory = Assert.Single(ch.Memories, m => m.ItemType == ItemType.Spell);
         Assert.Equal(12, memory.MoreP.Y);
 
-        // Round-trip the effect through the persisted record.
-        var record = Assert.Single(engine.GetPersistedEffectRecords(ch, Environment.TickCount64));
-        var reloaded = new SpellEngine(world, new SpellRegistry());
-        var target = world.CreateCharacter();
-        target.IsPlayer = true;
-        world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
-        target.AddPendingSpellEffectRecord(record);
+        // A loaded memory is read back from the item itself: a fresh engine taking it
+        // into the lifecycle (what a world load does) shows the same number.
+        var reloaded = new SpellEngine(world, registry);
+        var target = ch;
         Assert.Equal(1, reloaded.RestorePersistedEffects(target));
 
         var changes = new List<(BuffIcon Icon, bool Add, string[]? Args)>();
@@ -346,9 +343,13 @@ public class SourceXGameplayParityTests
             c => c.Target == caster && c.Icon == BuffIcon.BloodOathCaster && c.Add);
         Assert.Equal(["Prey"], bond.Args!);
 
-        // Breaking the bond drops both icons.
+        // Breaking the bond - its LAYER_SPELL_Blood_Oath memory on the caster going -
+        // drops both icons (Spell_Effect_Remove, CCharSpell.cpp:767-775). Death alone
+        // does not: Spell_Dispel(100) stops at LAYER_SPELL_Summon (:97).
         changes.Clear();
         engine.ClearAllEffectsOnDeath(caster);
+        Assert.NotNull(caster.FindLayer(SpellLayers.BloodOath));
+        Assert.True(engine.RemoveEffectByMemory(caster.FindLayer(SpellLayers.BloodOath)!));
         Assert.Contains(changes, c => c.Target == caster && c.Icon == BuffIcon.BloodOathCaster && !c.Add);
         Assert.Contains(changes, c => c.Target == victim && c.Icon == BuffIcon.BloodOathCurse && !c.Add);
     }
@@ -437,12 +438,25 @@ public class SourceXGameplayParityTests
         Assert.Equal(1075848u, ReadU32(packet.Span, 32));
     }
 
+    /// <summary>An engine that knows a flat Bless of 8 for 30 s.</summary>
+    private static SpellEngine BlessEngine(GameWorld world)
+    {
+        Character.MagicFlags = 0;
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.Bless, Flags = SpellFlag.TargChar | SpellFlag.Good,
+            EffectBase = 8, EffectScale = 8, DurationBase = 300, DurationScale = 300,
+        });
+        return new SpellEngine(world, registry);
+    }
+
     [Fact]
     public void SpellBuffLifecycle_AddsResendsAndRemovesIcon()
     {
         using var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
-        var engine = new SpellEngine(world, new SpellRegistry());
+        var engine = BlessEngine(world);
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
@@ -453,10 +467,7 @@ public class SourceXGameplayParityTests
                 changes.Add((icon, add, duration, args));
         };
 
-        var schedule = typeof(SpellEngine).GetMethod("ScheduleEffectExpiry",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var def = new SpellDef { Id = SpellType.Bless, DurationBase = 300, DurationScale = 300 };
-        schedule.Invoke(engine, [ch, ch, SpellType.Bless, def, 8]);
+        engine.ApplyDirectEffect(ch, ch, SpellType.Bless, 1000);
 
         Assert.Contains(changes, c => c.Icon == BuffIcon.Bless && !c.Add && c.Duration == 0);
         var added = Assert.Single(changes, c => c.Icon == BuffIcon.Bless && c.Add);

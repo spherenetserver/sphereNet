@@ -1,17 +1,33 @@
+using SphereNet.Scripting.Expressions;
+
 namespace SphereNet.Scripting.Definitions;
 
 /// <summary>
 /// Skill-level value curve used by [SKILL] definitions (ADV_RATE, DELAY,
-/// EFFECT). Port of the reference curve type (credit: Sphere 0.56
-/// CValueCurveDef): a comma-separated list of values spread evenly across
-/// skill 0.0-100.0, linearly interpolated. Script numbers use the legacy
-/// fixed-point convention — the decimal point is skipped and digits
-/// concatenate ("2.5" → 25, "200.0" → 2000), and a leading zero marks HEX
-/// ("0480" → 0x480) unless followed by a dot.
+/// EFFECT) and by [SPELL] definitions (CAST_TIME, EFFECT, DURATION,
+/// INTERRUPT). Port of the reference curve type (credit: Sphere 0.56 /
+/// Source-X CValueCurveDef, CValueDefs.cpp): a list of values spread evenly
+/// across skill 0.0-100.0, linearly interpolated segment by segment. The
+/// number of points is kept, so an explicit 0 endpoint ("10,0") is a real
+/// point and not "no top value".
+///
+/// Every point is a full script expression (Str_ParseCmds hands each argument
+/// to Exp_GetVal, CExpression.cpp:305), so "3*60.0" is one point worth 1800.
+/// Script numbers use the legacy fixed-point convention - the decimal point is
+/// skipped and digits concatenate ("2.5" → 25, "200.0" → 2000), and a leading
+/// zero marks HEX ("0480" → 0x480) unless followed by a dot. The caller decides
+/// the unit; the curve itself never rescales.
 /// </summary>
 public sealed class ValueCurve
 {
     public static readonly ValueCurve Empty = new(Array.Empty<int>());
+
+    /// <summary>Reference Arg_piCmd[101] - at most this many points are read.</summary>
+    private const int MaxPoints = 101;
+
+    /// <summary>Default argument separators of the reference Str_Parse
+    /// (CExpression.cpp:144).</summary>
+    private const string Separators = "=, \t";
 
     private readonly int[] _values;
 
@@ -24,19 +40,116 @@ public sealed class ValueCurve
     public int Count => _values.Length;
     public int this[int index] => _values[index];
 
-    public static ValueCurve Parse(string? text)
+    /// <summary>Parse a curve the way CValueCurveDef::Load does
+    /// (CValueDefs.cpp:72): split the line into arguments, evaluate each one as
+    /// an expression, keep every point.</summary>
+    public static ValueCurve Parse(string? text) => Parse(text, null);
+
+    /// <summary>As <see cref="Parse(string?)"/>, evaluating each point through
+    /// <paramref name="parser"/> (so defnames resolve) when one is given.</summary>
+    public static ValueCurve Parse(string? text, ExpressionParser? parser)
     {
         if (string.IsNullOrWhiteSpace(text))
             return Empty;
 
-        var tokens = text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length == 0)
+        var tokens = SplitArgs(text);
+        if (tokens.Count == 0)
             return Empty;
 
-        var values = new int[tokens.Length];
-        for (int i = 0; i < tokens.Length; i++)
-            values[i] = ParseSphereNumber(tokens[i]);
+        var values = new int[tokens.Count];
+        ExpressionParser? eval = parser;
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            string token = tokens[i];
+            if (IsPlainNumber(token))
+            {
+                values[i] = ParseSphereNumber(token);
+                continue;
+            }
+            eval ??= new ExpressionParser();
+            values[i] = (int)eval.Evaluate(token);
+        }
         return new ValueCurve(values);
+    }
+
+    /// <summary>Port of Str_ParseCmds / Str_Parse with the default separators
+    /// (CExpression.cpp:137-303): split at '=', ',', space or tab outside
+    /// quotes and brackets; a run of whitespace followed by one separator is a
+    /// single break, so "2 , 1" is two arguments.</summary>
+    private static List<string> SplitArgs(string text)
+    {
+        var args = new List<string>();
+        int pos = 0;
+        while (pos < text.Length && char.IsWhiteSpace(text[pos])) pos++;
+        if (pos >= text.Length)
+            return args;
+
+        while (args.Count < MaxPoints)
+        {
+            int start = pos;
+            bool quotes = false;
+            int curly = 0, square = 0, round = 0, angle = 0;
+            bool hitSeparator = false;
+            char sep = '\0';
+            for (; pos < text.Length; pos++)
+            {
+                char ch = text[pos];
+                if (ch == '"') { quotes = !quotes; continue; }
+                if (quotes) continue;
+                switch (ch)
+                {
+                    case '{': if (square == 0 && round == 0 && angle == 0) curly++; break;
+                    case '[': if (curly == 0 && round == 0 && angle == 0) square++; break;
+                    case '(': if (curly == 0 && square == 0 && angle == 0) round++; break;
+                    case '<': if (curly == 0 && square == 0 && round == 0) angle++; break;
+                    case '}': if (curly > 0) curly--; break;
+                    case ']': if (square > 0) square--; break;
+                    case ')': if (round > 0) round--; break;
+                    case '>': if (angle > 0) angle--; break;
+                }
+                if (curly <= 0 && square <= 0 && round <= 0 && Separators.IndexOf(ch) >= 0)
+                {
+                    hitSeparator = true;
+                    sep = ch;
+                    break;
+                }
+            }
+
+            args.Add(text[start..pos].Trim());
+            if (!hitSeparator)
+                break;
+
+            pos++; // past the separator
+            if (char.IsWhiteSpace(sep))
+            {
+                while (pos < text.Length && char.IsWhiteSpace(text[pos])) pos++;
+                if (pos < text.Length && Separators.IndexOf(text[pos]) >= 0)
+                    pos++;
+            }
+            while (pos < text.Length && char.IsWhiteSpace(text[pos])) pos++;
+            if (quotes || curly > 0 || square > 0 || round > 0)
+                break;
+        }
+        return args;
+    }
+
+    /// <summary>True for a lone (optionally signed) Sphere number - digits, hex
+    /// letters and fixed-point dots - which <see cref="ParseSphereNumber"/>
+    /// reads exactly as the expression engine would.</summary>
+    private static bool IsPlainNumber(string token)
+    {
+        if (token.Length == 0) return true;
+        int i = token[0] == '-' ? 1 : 0;
+        if (i >= token.Length) return false;
+        for (; i < token.Length; i++)
+        {
+            char c = token[i];
+            if (c is not ((>= '0' and <= '9') or '.' or (>= 'a' and <= 'f') or (>= 'A' and <= 'F')))
+                return false;
+        }
+        // A hex-looking word with no leading zero ("abc", "dead") is a name, not a number.
+        int first = token[0] == '-' ? 1 : 0;
+        return token[first] is (>= '0' and <= '9') or '.';
     }
 
     /// <summary>
@@ -82,16 +195,30 @@ public sealed class ValueCurve
         return negative ? -value : value;
     }
 
+    /// <summary>Reference IMulDiv / IMulDivLL (common.h:192, :207): a*b/c
+    /// rounded half up, with one subtracted for a negative product - integer
+    /// division truncates toward zero in both languages.</summary>
+    private static long MulDivRound(long a, long b, long c)
+    {
+        long ab = a * b;
+        return ((ab + (c / 2)) / c) - (ab < 0 ? 1 : 0);
+    }
+
     /// <summary>
-    /// Linear interpolation across the curve. <paramref name="skillPercent"/>
-    /// is 0-1000 (0% to 100.0%). Exact port of the reference GetLinear.
+    /// Linear interpolation across the curve - port of CValueCurveDef::GetLinear
+    /// (CValueDefs.cpp:90). <paramref name="skillPercent"/> is 0-1000 (0% to
+    /// 100.0%); a value above 1000 extrapolates along the last segment exactly as
+    /// the reference does (a skill above 100.0 is not clamped). Skill values are
+    /// unsigned upstream, so a negative input reads as 0. A result at or below 0
+    /// is 0.
     /// </summary>
     public int GetLinear(int skillPercent)
     {
-        skillPercent = Math.Clamp(skillPercent, 0, 1000);
+        if (skillPercent < 0)
+            skillPercent = 0;
 
         int loIdx;
-        long segSize;
+        int segSize;
         int count = _values.Length;
         switch (count)
         {
@@ -116,19 +243,19 @@ public sealed class ValueCurve
                 segSize = 500;
                 break;
             default:
-                loIdx = (int)((long)skillPercent * count / 1000);
+                loIdx = (int)MulDivRound(skillPercent, count, 1000);
                 count--;
                 if (loIdx >= count)
                     loIdx = count - 1;
                 segSize = 1000 / count;
-                skillPercent -= (int)(loIdx * segSize);
+                skillPercent -= loIdx * segSize;
                 break;
         }
 
-        long loVal = _values[loIdx];
-        long hiVal = _values[loIdx + 1];
-        long val = loVal + (hiVal - loVal) * skillPercent / segSize;
-        return (int)Math.Max(0, val);
+        int loVal = _values[loIdx];
+        int hiVal = _values[loIdx + 1];
+        int chance = loVal + (int)MulDivRound(hiVal - loVal, skillPercent, segSize);
+        return chance <= 0 ? 0 : chance;
     }
 
     /// <summary>
@@ -144,4 +271,10 @@ public sealed class ValueCurve
             return 0;
         return 100000 / uses;
     }
+
+    /// <summary>The script form of the curve (CValueCurveDef::Write,
+    /// CValueDefs.cpp:55): every point, comma separated.</summary>
+    public string Write() => string.Join(",", _values);
+
+    public override string ToString() => Write();
 }

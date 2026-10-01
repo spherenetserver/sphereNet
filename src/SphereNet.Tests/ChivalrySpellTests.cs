@@ -153,12 +153,12 @@ public sealed class ChivalrySpellTests
         int armorBuffed = target.ProtectionArmor;
         Assert.True(armorBuffed > 0);
         engine.ApplyDirectEffect(caster, target, SpellType.Curse, 500);
-        Assert.True(target.Str < strBase);
+        Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveStr(target) < strBase);
 
         engine.ApplyDirectEffect(caster, target, SpellType.RemoveCurse, 500);
 
         // The curse's stat penalty is reverted, the Protection buff remains.
-        Assert.Equal(strBase, target.Str);
+        Assert.Equal(strBase, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target));
         Assert.Equal(armorBuffed, target.ProtectionArmor);
     }
 }

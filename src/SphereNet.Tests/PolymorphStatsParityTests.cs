@@ -107,8 +107,8 @@ public sealed class PolymorphStatsParityTests : IDisposable
         Cast(engine, caster);
 
         // 100 -> 200 is a change of 100, inside the 150 the setting allows.
-        Assert.Equal(200, caster.Str);
-        Assert.Equal(120, caster.Dex);
+        Assert.Equal(200, SphereNet.Game.Combat.CombatEngine.EffectiveStr(caster));
+        Assert.Equal(120, SphereNet.Game.Combat.CombatEngine.EffectiveDex(caster));
     }
 
     [Fact]
@@ -120,8 +120,8 @@ public sealed class PolymorphStatsParityTests : IDisposable
         Cast(engine, caster);
 
         // The form wants +100; only 40 of it is allowed.
-        Assert.Equal(140, caster.Str);
-        Assert.Equal(120, caster.Dex);   // +20 was under the cap anyway
+        Assert.Equal(140, SphereNet.Game.Combat.CombatEngine.EffectiveStr(caster));
+        Assert.Equal(120, SphereNet.Game.Combat.CombatEngine.EffectiveDex(caster));   // +20 was under the cap anyway
     }
 
     [Fact]
@@ -131,8 +131,8 @@ public sealed class PolymorphStatsParityTests : IDisposable
 
         Cast(engine, caster);
 
-        Assert.Equal(100, caster.Str);   // the rabbit declares no STR
-        Assert.Equal(90, caster.Dex);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(caster));   // the rabbit declares no STR
+        Assert.Equal(90, SphereNet.Game.Combat.CombatEngine.EffectiveDex(caster));
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class PolymorphStatsParityTests : IDisposable
 
         Cast(engine, caster);
 
-        Assert.Equal(100, caster.Str);
-        Assert.Equal(100, caster.Dex);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(caster));
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveDex(caster));
     }
 }

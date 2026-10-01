@@ -738,8 +738,8 @@ public sealed partial class GameClient
             }
             else if (!item.Uid.IsValid || item.Uid.Value == 0)
             {
-                // Spell-effect mirrors (CreateSpellEffect) live only in
-                // ch.Memories with no world UID — route them through the
+                // A memory built without a world (CreateSpellEffect in a bare
+                // setup) has no world UID — route it through the
                 // memory readout branch or the pick falls into
                 // FindObject(0) and reports "Object not found".
                 entries.Add(new MenuItemEntry(item.BaseId, hue, item.Name));
@@ -790,8 +790,8 @@ public sealed partial class GameClient
                 // Printing two lines of text instead was the whole of ".edit cannot
                 // touch the things on me": the object is right there, it just could
                 // not be addressed by uid. The dialog takes the OBJECT, so hand it the
-                // memory itself; the TIMER property on a spell memory reads and writes
-                // through to the effect it mirrors.
+                // memory itself; the TIMER property on a spell memory is the effect's
+                // own clock.
                 var targetName = mem.Link.IsValid ? (_world.FindObject(mem.Link)?.Name ?? "?") : "?";
                 if (mem.ItemType == Core.Enums.ItemType.Spell)
                 {

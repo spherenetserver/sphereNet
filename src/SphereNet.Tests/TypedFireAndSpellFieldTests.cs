@@ -91,8 +91,9 @@ public sealed class TypedFireAndSpellFieldTests
 
         Assert.Equal(FieldTouchResult.SpellHit, result);
         // OnSpellEffect randomizes the level to 500..999 first (CCharSpell.cpp:3631),
-        // so the 4..14 curve burns 9..13.
-        Assert.InRange(100 - ch.Hits, 9, 13);
+        // so the 4..14 curve burns 9..14 - GetLinear rounds through IMulDivLL
+        // (common.h:207), and level 999 reads 4 + 10 = 14.
+        Assert.InRange(100 - ch.Hits, 9, 14);
     }
 
     [Fact]

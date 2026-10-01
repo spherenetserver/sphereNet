@@ -154,4 +154,42 @@ public sealed class SourceXWave255Tests
         int boosted = Damage(100, 25);
         Assert.InRange(boosted, 240, 330);    // x3
     }
+
+    // ---------- Source-X damage types (CCharSpell.cpp:1953, :1961) ----------
+
+    [Fact]
+    public void PainSpike_IsGodDamage_HittingAnInvulnerableVictim()
+    {
+        // DAMAGE_MAGIC | DAMAGE_GOD: the protection gates do not apply.
+        var (_, engine, caster, target) = Setup(SpellType.PainSpike);
+        target.IsPlayer = true;
+        target.SetSkill(SkillType.MagicResistance, 0);
+
+        Assert.True(engine.CastStart(caster, SpellType.PainSpike, target.Uid, target.Position) >= 0);
+        Assert.True(engine.CastDone(caster));
+        target.SetStatFlag(StatFlag.Invul);
+
+        long t = Environment.TickCount64;
+        engine.ProcessExpirations(t + 1100);
+
+        Assert.True(target.Hits < 100);
+    }
+
+    [Fact]
+    public void Strangle_TickDoesNotRevealAHiddenCaster()
+    {
+        // DAMAGE_MAGIC | DAMAGE_POISON | DAMAGE_NOREVEAL.
+        var (_, engine, caster, target) = Setup(SpellType.Strangle);
+        target.SetSkill(SkillType.MagicResistance, 0);
+
+        Assert.True(engine.CastStart(caster, SpellType.Strangle, target.Uid, target.Position) >= 0);
+        Assert.True(engine.CastDone(caster));
+        caster.SetStatFlag(StatFlag.Hidden);
+
+        long t = Environment.TickCount64;
+        engine.ProcessExpirations(t + 10_000);
+
+        Assert.True(target.Hits < 100);
+        Assert.True(caster.IsStatFlag(StatFlag.Hidden));
+    }
 }

@@ -874,22 +874,6 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                     "TIMERMS" => 1,
                     _ => 1000,
                 };
-                // A spell-effect memory is a mirror of an active effect, and the
-                // effect owns the clock. Upstream has no such split - the effect IS
-                // the item there - so reading TIMER off the mirror has to answer for
-                // the effect, or .edit and every script that inspects a buff read the
-                // mirror's own permanent timer instead of the time left.
-                if (this is Items.Item spellMem &&
-                    spellMem.ItemType == Core.Enums.ItemType.Spell &&
-                    Characters.Character.SpellMemoryEffectRemaining is { } remainingOf)
-                {
-                    long ms = remainingOf(spellMem);
-                    if (ms != 0)
-                    {
-                        value = ms < 0 ? "-1" : (ms / unitMs).ToString();
-                        return true;
-                    }
-                }
                 // Source-X has one item timer and decay runs on it (MoveToDecay ->
                 // SetTimeout), so TIMER reads the decay deadline when no script
                 // timer is set. A resource worldgem bit read -1 here while it was
@@ -1692,16 +1676,6 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                 };
                 if (timerParser.TryEvaluate(args, out long timerVal))
                 {
-                    // Written on a spell-effect memory, TIMER re-arms the EFFECT: the
-                    // mirror's own timeout is not what expires the buff, so setting it
-                    // would have looked like it worked and done nothing.
-                    if (this is Items.Item retimeMem &&
-                        retimeMem.ItemType == Core.Enums.ItemType.Spell &&
-                        Characters.Character.SpellMemoryEffectRetimer is { } retime &&
-                        retime(retimeMem, timerVal < 0 ? -1 : timerVal * 1000))
-                    {
-                        return true;
-                    }
                     // Sphere: a negative TIMER DISABLES the timer (scripts
                     // toggle loops off with TIMER -1); clamping to 0 made it
                     // fire immediately instead — the flash-robe off switch

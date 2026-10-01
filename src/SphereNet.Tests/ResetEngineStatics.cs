@@ -146,11 +146,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.NpcStablePetSelect = null;
         SphereNet.Game.Objects.Characters.Character.NpcStablePetRetrieve = null;
         SphereNet.Game.Objects.Characters.Character.NpcOpenShop = null;
-        // The spell-memory bridges: a test that wires one leaves every later test
-        // reading its TIMER through that engine instance.
-        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;
-        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemaining = null;
-        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRetimer = null;
+        // The spell-memory timer bridge: a test that wires one leaves every later
+        // test's worn memories ticking through that engine instance.
+        SphereNet.Game.Objects.Items.Item.SpellMemoryTimerHandler = null;
         SphereNet.Game.Objects.Characters.Character.FieldTouchHook = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
         SphereNet.Game.Objects.Characters.Character.EmoteFlags = 0;
@@ -189,7 +187,6 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Party.PartyDef.FunctionExists = null;
         SphereNet.Game.Definitions.CharDefHelper.AfterApplyDefName = null;
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
-        SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;
         SphereNet.Game.Objects.Characters.Character.NpcWantThisItem = null;
         SphereNet.Game.Objects.Characters.Character.NpcCanEatFood = null;
         SphereNet.Game.Trade.VendorEngine.World = null;

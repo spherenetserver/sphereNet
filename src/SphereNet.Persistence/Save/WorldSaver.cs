@@ -71,11 +71,6 @@ public sealed class WorldSaver
     /// (e.g. hash → "c_man"). Used for Source-X compatible section headers.</summary>
     public Func<int, string?>? ResolveCharDefName { get; set; }
 
-    /// <summary>Returns active spell-effect records for a character as
-    /// remaining-time save strings. Wired by the host because SpellEngine owns
-    /// the runtime effect list.</summary>
-    public Func<Character, long, IEnumerable<string>>? GetSpellEffectRecords { get; set; }
-
     public WorldSaver(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<WorldSaver>();
@@ -434,7 +429,7 @@ public sealed class WorldSaver
                 {
                     if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
                         return writer;
-                    // A memory is rebuilt from its owner's MEMORY= / SPELLEFFECT= record.
+                    // A fight/aggressor memory is rebuilt from its owner's MEMORY= record.
                     if (item.IsSavedWithOwner)
                         return writer;
                     if (IsInsideVendorStock(item.Uid.Value, vendorStock, parentOf))
@@ -1247,15 +1242,10 @@ public sealed class WorldSaver
 
         WriteTimerF(w, ch, now);
 
-        if (GetSpellEffectRecords != null)
-        {
-            foreach (string record in GetSpellEffectRecords(ch, now))
-            {
-                if (!string.IsNullOrWhiteSpace(record))
-                    w.WriteProperty("SPELLEFFECT", record);
-            }
-        }
-
+        // An active spell effect is its worn IT_SPELL memory and saves as an ordinary
+        // equipped item (CONT/LAYER/TYPE/MOREP/MORE1/MORE2/LINK/ATTR/TIMER), the way
+        // the classic save writes it; the character record carries what the effect
+        // changed (MODSTR, FLAGS, BODY...), so a load wears it without re-adding.
         // An active poison is its LAYER_FLAG_Poison memory item and saves with the
         // rest of the equipment; the old POISON= record is only read (legacy saves).
 

@@ -137,9 +137,9 @@ public sealed class SpellFlagDefinitionTests
             bool str = spell is SpellType.Strength or SpellType.Weaken or SpellType.Bless or SpellType.Curse;
             bool dex = spell is SpellType.Agility or SpellType.Clumsy or SpellType.Bless or SpellType.Curse;
             bool intl = spell is SpellType.Cunning or SpellType.Feeblemind or SpellType.Bless or SpellType.Curse;
-            Assert.Equal(str ? (flag == SpellFlag.Bless ? 1 : -1) : 0, Math.Sign(target.Str - 50));
-            Assert.Equal(dex ? (flag == SpellFlag.Bless ? 1 : -1) : 0, Math.Sign(target.Dex - 50));
-            Assert.Equal(intl ? (flag == SpellFlag.Bless ? 1 : -1) : 0, Math.Sign(target.Int - 50));
+            Assert.Equal(str ? (flag == SpellFlag.Bless ? 1 : -1) : 0, Math.Sign(SphereNet.Game.Combat.CombatEngine.EffectiveStr(target) - 50));
+            Assert.Equal(dex ? (flag == SpellFlag.Bless ? 1 : -1) : 0, Math.Sign(SphereNet.Game.Combat.CombatEngine.EffectiveDex(target) - 50));
+            Assert.Equal(intl ? (flag == SpellFlag.Bless ? 1 : -1) : 0, Math.Sign(SphereNet.Game.Combat.CombatEngine.EffectiveInt(target) - 50));
         }
     }
 }

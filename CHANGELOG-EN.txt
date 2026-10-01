@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-01] - Spell effects follow the Source-X memory-item model
+------------------------------------------------------------------------
+CHANGE - An active spell effect IS its worn IT_SPELL memory item: spell in
+      MOREX, level in MOREY, charges in MORE2, caster in LINK, the item's timer
+      as the effect's clock, tags kept. Removing the memory by any road
+      (expiry, dispel, REMOVE, death, deletion) ends the effect once.
+CHANGE - Spell memories are saved as ordinary equipped items, the way Source-X
+      saves them, and a Source-X save's IT_SPELL memories load as working
+      effects. The SPELLEFFECT= character line is no longer written (it is read
+      and ignored); active buffs in older SphereNet saves do not come back.
+CHANGE - Stat spells change MODSTR / MODDEX / MODINT, never the base (OSTR);
+      a pool maximum nobody set follows the adjusted stat, so a Strength buff
+      still raises max hits.
+FIX - @SpellEffectAdd and [SPELL] @EffectAdd run before the engine applies
+      the effect, with ARGO = the memory and SRC = the caster; RETURN 1 cancels
+      it, RETURN 0 keeps the memory without the engine's part, and a changed
+      MOREY is the level used. @SpellEffectRemove / @EffectRemove run before
+      the undo, RETURN 0 skips it; spending a Magic Reflect fires them too.
+FIX - Periodic effects (Regenerate, Hallucination, drinks, Strangle, Pain
+      Spike, Explosion, any TICK spell) run @SpellEffectTick / @EffectTick with
+      read-back; their memory fields and TIMER are the live tick state;
+      Strangle slows down 4/3/2/1 s. Strangle ticks deal MAGIC|POISON|NOREVEAL
+      damage (a hidden caster stays hidden); Pain Spike ticks deal MAGIC|GOD
+      damage (no invulnerability, region or armour gate stops it).
+FIX - Curse recasts replace the old curse before limiting the new one against
+      the adjusted stat (floor 1). Evil Omen is a normal layer-58 memory. Death
+      runs Spell_Dispel(100): MOVE_NEVER and non-dispellable memories (poison,
+      necromancy curses, drink, Blood Oath) survive.
+FIX - @SpellEffect runs before aggression and Magic Reflect, and a vetoed spell
+      creates neither; ARGN1 can change the spell, ARGO is the wand / scroll /
+      potion. A harmful spell on oneself needs MAGICF_CANHARMSELF.
+FIX - [SPELL] @Select / @SpellSelect run in the start (test) and completion
+      (consume) phases with ARGN2 = mana cost, ARGN3 phase bits and ARGO = the
+      source; their cost is the one paid; RETURN 0 accepts the cast. Stone and
+      sleeping players cannot cast; a spell disabled mid-cast fails. GMs pay no
+      mana, wand charge or scroll.
+FIX - Spell value curves follow Source-X: CAST_TIME / DURATION are tenths (6 =
+      0.6 s, 6.0 = 6 s), every point of EFFECT / DURATION / CAST_TIME /
+      INTERRUPT is kept (a 0 endpoint counts, three or more points interpolate
+      per segment), values round like IMulDiv and skill above 100.0
+      extrapolates. Pack effect: CAST_TIME=60 spells now cast in 6 s, Reactive
+      Armor reflects 10-60%.
+
 [2026-10-01] - Movement, map remap, visibility and line of sight follow Source-X
 ------------------------------------------------------------------------
 FIX - MAPn=maxx,maxy,sector,file,clientid keeps the world map, the data file

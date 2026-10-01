@@ -120,26 +120,30 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Reveal,
                     new TriggerArgs { CharSrc = ch }) != TriggerResult.True;
         }
-        // @SpellEffectAdd / @SpellEffectRemove — timed buff lifecycle
-        // (Source-X CCharSpell). ARGN1 = spell id; SRC = caster on add.
+        // @SpellEffectAdd / @SpellEffectRemove — the spell memory's add and removal
+        // (Source-X Spell_Effect_Add / Spell_Effect_Remove, CCharSpell.cpp:984-998 /
+        // :558-567): ARGO = the memory, ARGN1 = spell id, SRC = the memory's LINK (the
+        // caster). The verdict goes back to the spell engine: RETURN 1 on add deletes
+        // the memory, RETURN 0 keeps it but skips the native part (on removal too).
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectAdd))
         {
-            SphereNet.Game.Objects.Characters.Character.OnSpellEffectAdd = (target, caster, spellId) =>
+            SphereNet.Game.Objects.Characters.Character.OnSpellEffectAdd = (target, caster, memory, spellId) =>
                 _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectAdd,
-                    new TriggerArgs { CharSrc = caster ?? target, N1 = spellId });
+                    new TriggerArgs { CharSrc = caster ?? target, N1 = spellId, O1 = memory });
         }
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectRemove))
         {
-            SphereNet.Game.Objects.Characters.Character.OnSpellEffectRemove = (target, spellId) =>
+            SphereNet.Game.Objects.Characters.Character.OnSpellEffectRemove = (target, caster, memory, spellId) =>
                 _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectRemove,
-                    new TriggerArgs { CharSrc = target, N1 = spellId });
+                    new TriggerArgs { CharSrc = caster ?? target, N1 = spellId, O1 = memory });
         }
-        // @SpellEffectTick — Source-X SPELLFLAG_TICK bridge on the native
-        // poison tick (the era's only TICK consumer). Script contract:
-        // ARGN1 = spell id, ARGN2 = strength, ARGO = memory shim (BASEID =
-        // the spell's RUNE_ITEM, MOREY = strength, LINK = poisoner);
-        // LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE seeded, script writes read
-        // back from the shared pool; RETURN 1 destroys the effect (cure).
+        // @SpellEffectTick — Source-X Spell_Equip_OnTick's script stages for every
+        // ticking memory (poison, Regenerate, Strangle, Pain Spike, Hallucination,
+        // drink, any SPELLFLAG_TICK spell; CCharSpell.cpp:1974-2003). Script contract:
+        // ARGN1 = spell id, ARGN2 = level, ARGO = the memory (LINK = the source);
+        // LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE seeded, script writes read back from
+        // the shared pool; RETURN 1 destroys the effect, RETURN 0 on a SCRIPTED spell
+        // means the script ticked it.
         if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectTick) ||
             _triggerDispatcher.IsTriggerNameUsed("EffectTick"))
         {
@@ -150,7 +154,7 @@ public static partial class Program
                 locals.Set("DELAY", (ctx.DelayMs / 1000.0).ToString(
                     "0.###", System.Globalization.CultureInfo.InvariantCulture));
                 locals.Set("CHARGES", ctx.Charges.ToString());
-                locals.Set("DAMAGETYPE", "08"); // dam_poison
+                locals.Set("DAMAGETYPE", $"0{ctx.DamageType:x}");
                 var spellDef = _spellEngine?.GetSpellDef((SpellType)ctx.SpellId);
                 // ARGO is the effect's memory item itself (upstream pItem); the shim
                 // stands in only for an effect that has no real memory.
@@ -170,17 +174,31 @@ public static partial class Program
                     O1 = memory,
                     Locals = locals,
                 };
-                if (_triggerDispatcher.FireCharTrigger(victim, CharTrigger.SpellEffectTick, args)
-                    == TriggerResult.True)
+                var charTick = _triggerDispatcher.FireCharTrigger(victim, CharTrigger.SpellEffectTick, args);
+                if (charTick == TriggerResult.True)
                     return false;
+                bool scripted = spellDef?.IsFlag(SpellFlag.Scripted) == true;
+                if (charTick == TriggerResult.False && scripted)
+                {
+                    ctx.ScriptReturnedZero = true;
+                    return true;
+                }
                 // [SPELL n] @EffectTick resource-section stage (Source-X
                 // SPTRIG_EFFECTTICK) — shares the same args/LOCAL pool, so
                 // a section script can adjust EFFECT/DELAY/CHARGES too.
-                if (_triggerDispatcher.FireSpellTrigger((SpellType)ctx.SpellId, "EffectTick",
-                        victim, args) == TriggerResult.True)
+                args.ReturnNumber = null;
+                var stageTick = _triggerDispatcher.FireSpellTrigger((SpellType)ctx.SpellId, "EffectTick",
+                    victim, args);
+                if (stageTick == TriggerResult.True)
                     return false;
+                if ((stageTick == TriggerResult.False || args.ReturnNumber == 0) && scripted)
+                {
+                    ctx.ScriptReturnedZero = true;
+                    return true;
+                }
                 ctx.Damage = (int)locals.GetInt("EFFECT", ctx.Damage);
                 ctx.Charges = (int)locals.GetInt("CHARGES", ctx.Charges);
+                ctx.DamageType = (int)locals.GetInt("DAMAGETYPE", ctx.DamageType);
                 // ARGN2 is read back as the level too (Source-X CCharSpell.cpp:2011
                 // iLevel = m_iN2) - a script caps a lethal poison with ARGN2=3.
                 ctx.Strength = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);

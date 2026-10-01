@@ -4,6 +4,54 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-01] - Buyu etkileri Source-X memory esyasi modeline uyar
+------------------------------------------------------------------------
+DEGISIKLIK - Aktif buyu etkisi, giyili IT_SPELL memory esyasinin kendisidir:
+           buyu MOREX, seviye MOREY, sarj MORE2, buyucu LINK, etkinin saati
+           esyanin zamanlayicisi, TAG'ler korunur. Memory hangi yoldan
+           kaldirilirsa (sure, dispel, REMOVE, olum, silme) etki bir kez biter.
+DEGISIKLIK - Buyu memory'leri Source-X gibi normal giyili esya olarak saklanir
+           ve Source-X save'indeki IT_SPELL memory'leri calisan etki olarak
+           yuklenir. SPELLEFFECT= karakter satiri artik yazilmaz (okunur ve yok
+           sayilir); eski SphereNet save'lerindeki aktif buff'lar geri gelmez.
+DEGISIKLIK - Stat buyuleri MODSTR / MODDEX / MODINT'i degistirir, base'i (OSTR)
+           asla; elle ayarlanmamis havuz maksimumu ayarlanmis stat'i izler, bu
+           yuzden Strength buff'i maksimum HP'yi yine yukseltir.
+DUZELTME - @SpellEffectAdd ve [SPELL] @EffectAdd motor etkiyi uygulamadan once,
+           ARGO = memory ve SRC = buyucu ile calisir; RETURN 1 iptal eder,
+           RETURN 0 memory'yi motorun kismi olmadan tutar, degistirilen MOREY
+           kullanilan seviyedir. @SpellEffectRemove / @EffectRemove geri
+           almadan once calisir, RETURN 0 geri almayi atlar; Magic Reflect
+           harcanmasi da bunlari tetikler.
+DUZELTME - Periyodik etkiler (Regenerate, Hallucination, icki, Strangle, Pain
+           Spike, Explosion, her TICK buyusu) geri okumali @SpellEffectTick /
+           @EffectTick calistirir; memory alanlari ve TIMER canli tik
+           durumudur; Strangle 4/3/2/1 sn yavaslar. Strangle tikleri
+           MAGIC|POISON|NOREVEAL hasar verir (gizli caster gizli kalir); Pain
+           Spike tikleri MAGIC|GOD hasar verir (invul, bolge ve zirh onu
+           durdurmaz).
+DUZELTME - Curse tekrar atildiginda eski curse yenisi ayarlanmis stat'a gore
+           (alt sinir 1) sinirlanmadan once kaldirilir. Evil Omen normal 58.
+           katman memory'sidir. Olum Spell_Dispel(100) calistirir: MOVE_NEVER
+           ve dispel edilemeyen memory'ler (zehir, nekromansi lanetleri, icki,
+           Blood Oath) kalir.
+DUZELTME - @SpellEffect saldirganlik ve Magic Reflect'ten once calisir,
+           reddedilen buyu ikisini de olusturmaz; ARGN1 buyuyu degistirebilir,
+           ARGO wand / scroll / iksirdir. Kendine zararli buyu
+           MAGICF_CANHARMSELF ister.
+DUZELTME - [SPELL] @Select / @SpellSelect baslangic (test) ve tamamlanma
+           (harcama) asamalarinda ARGN2 = mana maliyeti, ARGN3 asama bitleri ve
+           ARGO = kaynak ile calisir; odenen maliyet onlarinkidir; RETURN 0
+           cast'i kabul eder. Stone ve uyuyan oyuncu buyu yapamaz; cast
+           sirasinda devre disi kalan buyu basarisiz olur. GM mana, wand sarji
+           ya da scroll harcamaz.
+DUZELTME - Buyu deger egrileri Source-X'e uyar: CAST_TIME / DURATION onda bir
+           saniyedir (6 = 0.6 sn, 6.0 = 6 sn), EFFECT / DURATION / CAST_TIME /
+           INTERRUPT'in her noktasi korunur (0 uc nokta sayilir, uc ve fazla
+           nokta parca parca enterpole edilir), degerler IMulDiv gibi yuvarlanir
+           ve 100.0 ustu beceri devam eder. Paket etkisi: CAST_TIME=60 buyuler
+           artik 6 sn'de atilir, Reactive Armor %10-60 yansitir.
+
 [2026-10-01] - Hareket, harita remap, gorunurluk ve gorus hatti Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - MAPn=maxx,maxy,sector,dosya,istemciid dunya haritasini, veri

@@ -175,12 +175,12 @@ public sealed class AreaVerbAndSpellLayerParityTests
         var engine = Engine(w, StatDef(SpellType.Strength));
 
         engine.ApplyDirectEffect(gm, gm, SpellType.Strength, 500);
-        Assert.Equal(110, gm.Str);
+        Assert.Equal(110, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
         var mem = gm.FindLayer(SpellLayers.Stats)!;
 
         w.DeleteObject(mem);
 
-        Assert.Equal(100, gm.Str);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
         Assert.DoesNotContain(gm.Memories, m => m.ItemType == ItemType.Spell);
         Assert.Null(w.FindObject(mem.Uid));
     }
@@ -195,8 +195,8 @@ public sealed class AreaVerbAndSpellLayerParityTests
         engine.ApplyDirectEffect(gm, gm, SpellType.Strength, 500);
         engine.ApplyDirectEffect(gm, gm, SpellType.Agility, 500);
 
-        Assert.Equal(100, gm.Str);
-        Assert.Equal(110, gm.Dex);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
+        Assert.Equal(110, SphereNet.Game.Combat.CombatEngine.EffectiveDex(gm));
         Assert.Single(gm.Memories, m => m.ItemType == ItemType.Spell);
     }
 
@@ -212,8 +212,8 @@ public sealed class AreaVerbAndSpellLayerParityTests
         // Re-casting the same spell still refreshes rather than stacking.
         engine.ApplyDirectEffect(gm, gm, SpellType.Strength, 500);
 
-        Assert.Equal(110, gm.Str);
-        Assert.Equal(110, gm.Dex);
+        Assert.Equal(110, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
+        Assert.Equal(110, SphereNet.Game.Combat.CombatEngine.EffectiveDex(gm));
         Assert.Equal(2, gm.Memories.Count(m => m.ItemType == ItemType.Spell));
     }
 
@@ -248,12 +248,11 @@ public sealed class AreaVerbAndSpellLayerParityTests
         public IScriptObj? GetSourceChar() => null;
     }
 
-    /// <summary>Program.EngineWiring's memory-to-effect bridges.</summary>
+    /// <summary>Program.EngineWiring's memory timer bridge. The memory IS the effect,
+    /// so REMOVE and TIMER need no bridge of their own any more.</summary>
     private static void WireBridges(SpellEngine engine)
     {
-        Character.SpellMemoryEffectRemover = engine.RemoveEffectByMemory;
-        Character.SpellMemoryEffectRemaining = engine.GetEffectRemainingMsByMemory;
-        Character.SpellMemoryEffectRetimer = engine.TryRetimeEffectByMemory;
+        Item.SpellMemoryTimerHandler = engine.HandleMemoryTimer;
     }
 
     [Theory]
@@ -272,7 +271,7 @@ public sealed class AreaVerbAndSpellLayerParityTests
         Assert.Equal($"0{mem.Uid.Value:X}", dotted);
         Assert.True(gm.TryExecuteCommand(verb, "", new GmConsole()));
 
-        Assert.Equal(100, gm.Str);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
         Assert.Null(w.FindObject(mem.Uid));
     }
 
@@ -301,7 +300,7 @@ public sealed class AreaVerbAndSpellLayerParityTests
         else Assert.True(mem.TrySetProperty("TIMER", "1"));
         engine.ProcessExpirations(System.Environment.TickCount64 + 2_000);
 
-        Assert.Equal(100, gm.Str);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
     }
 
     [Fact]
@@ -318,8 +317,8 @@ public sealed class AreaVerbAndSpellLayerParityTests
         // applies nothing of its own (Spell_Effect_Create returns nullptr).
         engine.ApplyDirectEffect(gm, gm, SpellType.Agility, 500);
 
-        Assert.Equal(100, gm.Str);
-        Assert.Equal(100, gm.Dex);
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));
+        Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveDex(gm));
         Assert.DoesNotContain(gm.Memories, m => m.ItemType == ItemType.Spell);
     }
 

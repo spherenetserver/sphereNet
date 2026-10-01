@@ -71,6 +71,10 @@ public class SpellCastSourceTests
         wand.ItemType = ItemType.Wand;
         wand.MoreP = new Point3D((short)SpellType.Strength, 0, 0, 0); // MOREX = the spell
         wand.More2 = 3;                                            // MORE2 = charges
+        // A player pays the charge; a GM passes before it (Spell_CanCast,
+        // CCharSpell.cpp:2430) - see SpellSelectContractTests.
+        caster.PrivLevel = PrivLevel.Player;
+        caster.SetSkill(SkillType.Magery, 1000);
 
         Assert.True(caster.Backpack!.TryAddItem(wand));
         caster.SetTag("WAND_UID", wand.Uid.Value.ToString());
@@ -116,6 +120,9 @@ public class SpellCastSourceTests
         var scroll = world.CreateItem();
         scroll.ItemType = ItemType.Scroll;
         scroll.Amount = 1;
+        // A player uses the scroll up; a GM passes before it (CCharSpell.cpp:2430).
+        caster.PrivLevel = PrivLevel.Player;
+        caster.SetSkill(SkillType.Magery, 1000);
 
         Assert.True(caster.Backpack!.TryAddItem(scroll));
         caster.SetTag("SCROLL_UID", scroll.Uid.Value.ToString());

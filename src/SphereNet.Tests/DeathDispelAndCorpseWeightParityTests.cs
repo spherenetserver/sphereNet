@@ -75,15 +75,15 @@ public sealed class DeathDispelAndCorpseWeightParityTests
 
         victim.BeginCast(SpellType.Strength, victim.Uid, victim.Position);
         Assert.True(spells.CastDone(victim));
-        Assert.True(victim.Str > 40);   // the buff is on
+        Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveStr(victim) > 40);   // the buff is on
 
         deaths.ProcessDeath(victim);
 
         Assert.True(victim.IsDead);
-        // The delta is reverted and nothing is left to persist: the buff does not
-        // survive into the ghost, nor past the resurrection.
-        Assert.Equal(40, victim.Str);
-        Assert.Empty(spells.GetPersistedEffectRecords(victim, Environment.TickCount64));
+        // The modifier is taken back and the memory is gone, so nothing is left to
+        // persist: the buff does not survive into the ghost, nor past the resurrection.
+        Assert.Equal(40, SphereNet.Game.Combat.CombatEngine.EffectiveStr(victim));
+        Assert.Null(victim.FindLayer(SpellLayers.Stats));
     }
 
     [Fact]
@@ -100,12 +100,12 @@ public sealed class DeathDispelAndCorpseWeightParityTests
 
         caster.BeginCast(SpellType.Strength, victim.Uid, victim.Position);
         Assert.True(spells.CastDone(caster));
-        Assert.True(victim.Str > 40);
+        Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveStr(victim) > 40);
 
         deaths.ProcessDeath(victim, caster);
 
-        Assert.Equal(40, victim.Str);
-        Assert.Empty(spells.GetPersistedEffectRecords(victim, Environment.TickCount64));
+        Assert.Equal(40, SphereNet.Game.Combat.CombatEngine.EffectiveStr(victim));
+        Assert.Null(victim.FindLayer(SpellLayers.Stats));
     }
 
     [Fact]

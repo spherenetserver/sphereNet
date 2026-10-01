@@ -2566,7 +2566,9 @@ public sealed class ClientWorldFeaturesHandler
         if (spell == 0 || _client.Spells == null)
             return false;
 
-        _client.Spells.ApplyDirectEffect(target, target, spell, PotionStrength(target, potion));
+        // The bottle is OnSpellEffect's pSourceItem: ARGO of the drinker's @SpellEffect
+        // (Use_Drink, CCharUse.cpp:1071).
+        _client.Spells.ApplyDirectEffect(target, target, spell, PotionStrength(target, potion), potion);
         return true;
     }
 

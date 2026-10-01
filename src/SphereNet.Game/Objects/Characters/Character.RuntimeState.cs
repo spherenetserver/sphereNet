@@ -42,7 +42,6 @@ public partial class Character
     private bool _hasSkillPendingPoint;
     private bool _skillPendingIsInfo;
     private Point3D _skillPendingPoint;
-    private readonly List<string> _pendingSpellEffectRecords = [];
 
     public byte GetStatLock(int statIdx)
     {
@@ -87,18 +86,12 @@ public partial class Character
 
     internal int? CastDifficulty { get; set; }
 
-    /// <summary>Tithing points the cast in progress owes: Calc_SpellTithingCost as
-    /// the [SPELL] @Select stage left it in LOCAL.TithingUse (CCharSpell.cpp:2365,
-    /// :2406). Null when the cast did not go through CastStart.</summary>
-    internal int? CastTithingUse { get; set; }
-
     internal bool CastSkillSucceeded { get; set; }
     internal Action<Character>? CastAborted { get; set; }
 
     public void BeginCast(SpellType spell, Serial targetUid, Point3D targetPos)
     {
         CastDifficulty = null;
-        CastTithingUse = null;
         CastSkillSucceeded = false;
         _castingSpell = (int)spell;
         ActArg1 = (int)spell;
@@ -160,7 +153,6 @@ public partial class Character
         if (notifyAbort && IsCasting) aborted?.Invoke(this);
         CastSkillSucceeded = false;
         CastDifficulty = null;
-        CastTithingUse = null;
         _castingSpell = -1;
         _castTimerEnd = 0;
         _spellPrecast = false;
@@ -237,14 +229,4 @@ public partial class Character
         point = _skillPendingPoint;
         return true;
     }
-
-    public IReadOnlyList<string> PendingSpellEffectRecords => _pendingSpellEffectRecords;
-
-    public void AddPendingSpellEffectRecord(string record)
-    {
-        if (!string.IsNullOrWhiteSpace(record))
-            _pendingSpellEffectRecords.Add(record);
-    }
-
-    public void ClearPendingSpellEffectRecords() => _pendingSpellEffectRecords.Clear();
 }

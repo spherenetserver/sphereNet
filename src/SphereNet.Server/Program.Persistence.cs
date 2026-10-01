@@ -377,7 +377,8 @@ public static partial class Program
             _housingEngine?.SerializeAllToTags();
             _shipEngine?.SerializeAllToTags();
             _guildManager?.SerializeAllToTags(_world);
-            _spellEngine.RevertAllForSave();
+            // Spell effects need nothing here: each is its worn memory item and the
+            // character record holds the state it is in, as the classic save does.
             double prepSecs = sw.Elapsed.TotalSeconds;
             string basePath = AppDomain.CurrentDomain.BaseDirectory;
             string sp = ResolvePath(basePath, _config.WorldSaveDir);
@@ -389,15 +390,7 @@ public static partial class Program
                 // live objects — and the expensive shard/encode/write phase moves
                 // to a worker. Completion side effects run back on the main loop
                 // via CompleteBackgroundSave (polled next to the auto-save timer).
-                SphereNet.Persistence.Save.WorldSaver.PreparedWorldSave prepared;
-                try
-                {
-                    prepared = _saver.Prepare(_world);
-                }
-                finally
-                {
-                    _spellEngine.ReapplyAllAfterSave();
-                }
+                var prepared = _saver.Prepare(_world);
                 // The accounts are rendered HERE, next to the world walk, so the file
                 // describes the same instant the snapshot does - but it is not
                 // published until the world write commits. It used to be written
@@ -438,18 +431,9 @@ public static partial class Program
             // stall the operator opted into), and a prior background save must
             // not leave its sequential-writes flag sticky on this path.
             _saver.SequentialShardWrites = false;
-            double worldSecs;
-            bool worldOk;
-            try
-            {
-                long t0 = sw.ElapsedMilliseconds;
-                worldOk = _saver.Save(_world, sp);
-                worldSecs = (sw.ElapsedMilliseconds - t0) / 1000.0;
-            }
-            finally
-            {
-                _spellEngine.ReapplyAllAfterSave();
-            }
+            long t0 = sw.ElapsedMilliseconds;
+            bool worldOk = _saver.Save(_world, sp);
+            double worldSecs = (sw.ElapsedMilliseconds - t0) / 1000.0;
             double preAccounts = sw.Elapsed.TotalSeconds;
             // Only after the world has committed, and stamped with the generation it
             // committed as: an account file written beside a world write that failed

@@ -40,7 +40,7 @@ public sealed class SpellIdDispatchTests
 
         engine.ApplyDirectEffect(caster, target, SpellType.Clumsy, 500);
 
-        Assert.True(target.Dex < 50);
+        Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveDex(target) < 50);
     }
 
     [Fact]

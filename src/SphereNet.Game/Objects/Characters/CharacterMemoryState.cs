@@ -81,21 +81,13 @@ public sealed class CharacterMemoryState
         return mem;
     }
 
-    /// <summary>Create the equipped IT_SPELL memory item that represents an
-    /// active spell effect, mirroring Source-X CChar::Spell_Effect_Create: the
-    /// graphic is the spell's RUNE_ITEM (fallback 0x2053), it sits on the spell's
-    /// own hidden layer (LAYER_SPELL_STATS and up, never sent to the client), and
-    /// it carries the spell id in MOREX, the effect strength in MOREY and the
-    /// caster in LINK. With a world it is a registered object, so its UID
-    /// resolves like the reference's (FINDLAYER, UID.x.REMOVE); without one
-    /// (bare unit tests) it stays an unregistered item. It has NO
-    /// MemoryType flags, so the MEMORY save loop skips it, and it is marked
-    /// <see cref="Item.IsSpellEffectMirror"/> so the item save skips it too: the
-    /// effect persists via its SPELLEFFECT record, which rebuilds the memory on
-    /// load. Its timeout is permanent so the memory sweep never retires it -
-    /// expiry is driven solely by the spell engine, which deletes the item when
-    /// the effect ends. Visible to GM .edit because the char-edit view
-    /// enumerates ch.Memories.</summary>
+    /// <summary>Make an equipped IT_SPELL memory and wear it, as Source-X
+    /// CChar::Spell_Effect_Create does: the graphic is the spell's RUNE_ITEM (fallback
+    /// 0x2053), it sits on the spell's own hidden layer (LAYER_SPELL_STATS and up, never
+    /// sent to the client), MOREX is the spell, MOREY its level and LINK the caster.
+    /// With a world it is a registered object - FINDLAYER, UID.x.REMOVE, and an ordinary
+    /// equipped item in the save. This only wears the item; the spell engine is what
+    /// runs an effect (SpellEngine.CreateEffect).</summary>
     public Item CreateSpellEffect(int spellId, ushort graphic, int level, Serial source, string name,
         Layer layer = Layer.Special, World.GameWorld? world = null)
     {
@@ -103,20 +95,32 @@ public sealed class CharacterMemoryState
         mem.ItemType = ItemType.Spell;
         mem.BaseId = graphic != 0 ? graphic : (ushort)0x2053; // ITEMID_RHAND_POINT_NW fallback
         mem.Name = string.IsNullOrEmpty(name) ? "spell effect" : name;
-        mem.IsSpellEffectMirror = true;
-        mem.IsSavedWithOwner = true;
         mem.MoreP = new Point3D((short)spellId, (short)level, 0, 0); // MOREX = spell, MOREY = strength
         mem.Link = source;
         mem.SetAttr(ObjAttributes.Newbie | ObjAttributes.Magic); // ATTR_NEWBIE|ATTR_MAGIC (dispellable)
+        AttachSpellEffect(mem, layer);
+        return mem;
+    }
+
+    /// <summary>Wear a spell memory on <paramref name="layer"/>. Spell layers can carry
+    /// more than one item (stacked stat spells), so these live in the memory list
+    /// rather than in an equipment slot; FINDLAYER searches both. No @MemoryEquip:
+    /// upstream's LayerAdd skips it for a spellable item (CCharAct.cpp:278-280). A
+    /// world load wears a saved memory through here as well - without re-running its
+    /// add, exactly as upstream's load does.</summary>
+    public void AttachSpellEffect(Item mem, Layer layer)
+    {
         mem.IsEquipped = true;
         mem.EquipLayer = layer;
         mem.ContainedIn = _owner.Uid;
-        mem.SetTimeout(-1); // permanent from the memory sweep's view; engine owns expiry
-
-        _memories.Add(mem);
-        Character.OnMemoryEquip?.Invoke(mem);
-        return mem;
+        mem.IsSpellMemory = true;
+        if (!_memories.Contains(mem))
+            _memories.Add(mem);
     }
+
+    /// <summary>Take a spell memory off the list without deleting it - the first step
+    /// of its removal (upstream's RemoveSelf before OnRemoveObj).</summary>
+    public void DetachSpellEffect(Item mem) => _memories.Remove(mem);
 
     public Item AddObjTypes(Serial uid, MemoryType flags)
     {
@@ -264,6 +268,10 @@ public sealed class CharacterMemoryState
         for (int i = _memories.Count - 1; i >= 0; i--)
         {
             var mem = _memories[i];
+            // A spell memory's timer is its effect's clock: the spell engine runs it
+            // (Spell_Equip_OnTick), never this sweep.
+            if (mem.ItemType == ItemType.Spell)
+                continue;
             long mt = mem.Timeout;
             if (mt > 0 && now >= mt)
             {

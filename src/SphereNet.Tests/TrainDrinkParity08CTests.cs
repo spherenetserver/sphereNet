@@ -261,22 +261,17 @@ public sealed class TrainDrinkParity08CTests
         Assert.Contains(SpellType.Liquor, RunningEffects(spells));
     }
 
-    /// <summary>The engine keeps its running effects private; the reentrancy tests read
-    /// the same field this way.</summary>
+    /// <summary>The engine keeps its running effects private - each one a worn spell
+    /// memory; the reentrancy tests read the same index this way.</summary>
     private static List<SpellType> RunningEffects(SpellEngine engine)
     {
-        var field = typeof(SpellEngine).GetField("_activeEffects",
+        var field = typeof(SpellEngine).GetField("_effects",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var running = new List<SpellType>();
         foreach (var effect in (System.Collections.IEnumerable)field.GetValue(engine)!)
         {
-            var spell = effect.GetType()
-                .GetField("Spell", System.Reflection.BindingFlags.Public |
-                                   System.Reflection.BindingFlags.Instance)
-                ?.GetValue(effect)
-                ?? effect.GetType().GetProperty("Spell")?.GetValue(effect);
-            if (spell is SpellType type)
-                running.Add(type);
+            if (effect is Item memory && !memory.IsDeleted)
+                running.Add((SpellType)(ushort)memory.MoreP.X);
         }
         return running;
     }

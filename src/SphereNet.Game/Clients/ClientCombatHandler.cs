@@ -2357,13 +2357,14 @@ public sealed class ClientCombatHandler
         if (_character == null || _spellEngine == null) return;
         if (preparation == null)
         {
-            var selectArgs = new TriggerArgs { CharSrc = _character, N1 = (int)spell };
-            if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellSelect, selectArgs) == TriggerResult.True)
+            // Cmd_Skill_Magery (CClientUse.cpp:1004): the start-phase Spell_CanCast -
+            // [SPELL] @Select, @SpellSelect and the resource checks, nothing paid -
+            // runs before the target cursor and may rewrite the spell (ARGN1).
+            if (!_spellEngine.TestCanCast(_character, ref spell))
                 return;
-            if (selectArgs.N1 < 0 || selectArgs.N1 > ushort.MaxValue) return;
-            spell = (SpellType)selectArgs.N1;
             preparation = _spellEngine.PrepareCast(_character, spell);
             if (preparation == null) return;
+            preparation = preparation with { SelectTested = true };
         }
         spell = preparation.Spell;
         var spellDef = _spellEngine.GetSpellDef(spell);

@@ -1175,7 +1175,6 @@ public static partial class Program
                 envClient.SendSeason(season, playSound: false);
                 envClient.Send(new PacketGlobalLight(light));
             };
-            _saver.GetSpellEffectRecords = _spellEngine.GetPersistedEffectRecords;
             _spellEngine.TriggerDispatcher = _triggerDispatcher;
             _spellEngine.OnCastItemUnequipped = (caster, item) =>
                 ForEachClientInRange(caster.Position, 18, 0,
@@ -1340,12 +1339,9 @@ public static partial class Program
                     speaker.GetName(), text);
                 BroadcastNearby(speaker.Position, 18, pkt, 0);
             };
-            SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover =
-                mem => _spellEngine.RemoveEffectByMemory(mem);
-            SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemaining =
-                mem => _spellEngine.GetEffectRemainingMsByMemory(mem);
-            SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRetimer =
-                (mem, ms) => _spellEngine.TryRetimeEffectByMemory(mem, ms);
+            // A worn spell memory's world timer is its effect's clock (Spell_Equip_OnTick).
+            SphereNet.Game.Objects.Items.Item.SpellMemoryTimerHandler =
+                mem => _spellEngine.HandleMemoryTimer(mem);
             SphereNet.Game.Objects.Characters.Character.NpcWantThisItem =
                 (npc, wantedItem) => _npcAI.GetWantScore(npc, wantedItem);
             SphereNet.Game.Objects.Characters.Character.NpcCanEatFood =
@@ -1614,7 +1610,7 @@ public static partial class Program
                     victim.X, victim.Y, victim.Z, victim.X, victim.Y, victim.Z,
                     1, 30, false, false), 0);
             // Source-X CChar::Death: Spell_Dispel(100) before the corpse forms
-            // (CCharAct.cpp:4397) — death ends every spell on you, good and bad.
+            // (CCharAct.cpp:4397) — the dispellable spell layers, good and bad alike.
             _deathEngine.DispelEffectsHook = victim =>
                 _spellEngine?.StripDispellableEffects(victim);
             // Source-X CChar::Death SoundChar(CRESND_DIE): every death is heard,

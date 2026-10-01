@@ -163,10 +163,10 @@ public class ParityWaveCTests
             caster.BeginCast(SpellType.Strength, target.Uid, target.Position);
             Assert.True(engine.CastDone(caster));
 
-            // Serialized record: version|spell|remainingMs|... — the script's
-            // LOCAL.Duration=50 (5.0s) must beat the 120s def curve.
-            var record = Assert.Single(engine.GetPersistedEffectRecords(target, Environment.TickCount64));
-            long remainingMs = long.Parse(record.Split('|')[2]);
+            // The memory's own timer is the effect's: the script's LOCAL.Duration=50
+            // (5.0s) must beat the 120s def curve.
+            var memory = Assert.IsType<SphereNet.Game.Objects.Items.Item>(target.FindLayer(SpellLayers.Stats));
+            long remainingMs = memory.Timeout - Environment.TickCount64;
             Assert.InRange(remainingMs, 1, 5_000);
         }
         finally
@@ -200,7 +200,7 @@ public class ParityWaveCTests
         engine.TryInterruptFromDamage(target, 5);
 
         Assert.False(target.IsStatFlag(StatFlag.Freeze));
-        Assert.Empty(engine.GetPersistedEffectRecords(target, Environment.TickCount64));
+        Assert.Null(target.FindLayer(SpellLayers.Paralyze));
     }
 
     [Fact]
@@ -224,12 +224,12 @@ public class ParityWaveCTests
 
         caster.BeginCast(SpellType.Strength, target.Uid, target.Position);
         Assert.True(engine.CastDone(caster));
-        Assert.True(target.Str > 40); // buff applied
+        Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveStr(target) > 40); // buff applied
 
         engine.StripDispellableEffects(target);
 
-        Assert.Equal(40, target.Str); // buff reverted, not permanent
-        Assert.Empty(engine.GetPersistedEffectRecords(target, Environment.TickCount64));
+        Assert.Equal(40, SphereNet.Game.Combat.CombatEngine.EffectiveStr(target)); // buff reverted, not permanent
+        Assert.Null(target.FindLayer(SpellLayers.Stats));
     }
 
     // <X.UID> script reads render as bare hex (no 0x prefix).

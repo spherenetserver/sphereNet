@@ -36,8 +36,9 @@ public class ValueCurveTests
         Assert.Equal(25, curve.GetLinear(0));
         Assert.Equal(500, curve.GetLinear(500));
         Assert.Equal(2000, curve.GetLinear(1000));
-        // Midpoint of the first segment interpolates linearly.
-        Assert.Equal(25 + (500 - 25) * 250 / 500, curve.GetLinear(250));
+        // Midpoint of the first segment interpolates linearly, rounded the way the
+        // reference IMulDivLL rounds (common.h:207): (475*250 + 250) / 500 = 238.
+        Assert.Equal(25 + 238, curve.GetLinear(250));
     }
 
     [Fact]

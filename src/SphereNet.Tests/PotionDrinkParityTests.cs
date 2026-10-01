@@ -73,10 +73,10 @@ public sealed class PotionDrinkParityTests
         potion.More2 = 500;                      // MORE2=50.0 alchemy quality
         player.Backpack!.AddItem(potion);
 
-        short strBefore = player.Str;
+        int strBefore = SphereNet.Game.Combat.CombatEngine.EffectiveStr(player);
         client.HandleDoubleClick(potion.Uid.Value);
 
-        Assert.True(player.Str > strBefore, "strength potion applied no effect");
+        Assert.True(SphereNet.Game.Combat.CombatEngine.EffectiveStr(player) > strBefore, "strength potion applied no effect");
         Assert.True(potion.IsDeleted, "potion was not consumed");
     }
 

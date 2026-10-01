@@ -45,9 +45,9 @@ Every character and item trigger has a real fire site; `TriggerCoverageGuardrail
 | `@SpellCast` | Casting begins | caster | caster | – | N1=spell id | – | cancels the cast |
 | `@SpellFail` | Cast fails | caster | caster | – | N1=spell id | – | ignored |
 | `@SpellEffect` | Cast completes (effect moment) | caster | caster | – | N1=spell id | – | ignored |
-| `@SpellEffectAdd` | A timed spell effect/buff is applied | target | caster or target | – | N1=spell id | – | ignored |
-| `@SpellEffectRemove` | A timed spell effect/buff expires, refreshes, or is cleaned up | target | target | – | N1=spell id | – | ignored |
-| `@SpellEffectTick` | Periodic spell-effect tick (poison bridge) before damage applies | victim | victim | spell memory shim | N1=spell id, N2=strength | LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE | cures/destroys the effect |
+| `@SpellEffectAdd` | A spell memory goes on, before its effect is applied | wearer | the memory's LINK (caster) | the spell memory | N1=spell id | – | deletes the memory, nothing applied (RETURN 0: memory stays, engine effect skipped) |
+| `@SpellEffectRemove` | A spell memory comes off (expiry, recast, dispel, death, REMOVE), before its effect is taken back | wearer | the memory's LINK (caster) | the spell memory | N1=spell id | – | ignored (RETURN 0: memory goes, engine undo skipped) |
+| `@SpellEffectTick` | A ticking spell memory's timer runs out (poison, Regenerate, Strangle, Pain Spike, Hallucination, drink, any SPELLFLAG_TICK spell) | victim | victim | the spell memory | N1=spell id, N2=level | LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE | destroys the effect (RETURN 0 on a SCRIPTED spell: the script ticked it) |
 | `@SpellSuccess` | Cast completes successfully | caster | caster | – | N1=spell id | – | ignored |
 | `@SpellInterrupt` | Cast interrupted (e.g. by damage) | caster | caster | – | – | – | ignored |
 | `@SpellSelect` | Cast request is selected before normal cast checks | caster | caster | – | N1=spell id | – | cancels selection |

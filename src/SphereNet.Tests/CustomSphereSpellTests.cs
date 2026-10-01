@@ -35,6 +35,7 @@ public sealed class CustomSphereSpellTests
         var caster = world.CreateCharacter();
         caster.IsPlayer = true;
         caster.PrivLevel = PrivLevel.GM;
+        caster.BodyId = 0x0190;   // a real body: a form keeps it as OBODY to come back to
         caster.MaxMana = caster.Mana = 100;
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
         return (world, engine, caster);
@@ -342,6 +343,9 @@ public sealed class CustomSphereSpellTests
         });
         ushort originalBody = caster.BodyId;
 
+        // The pack's Monster Form is SPELLFLAG_HARM: on oneself it needs
+        // MAGICF_CANHARMSELF (CCharSpell.cpp:3756).
+        Character.MagicFlags = (int)MagicConfigFlags.CanHarmSelf;
         // The body comes from the menu pick (Source-X m_atMagery.m_uiSummonID,
         // CCharSpell.cpp:1083); the old random monster list was invented.
         caster.SetTag("POLY_SELECT", "17"); // 0x11
@@ -391,7 +395,6 @@ public sealed class CustomSphereSpellTests
             DurationBase = 0,
             RuneItemId = 0x2D59, // i_scroll_reaper_form
         });
-        Character.SpellMemoryEffectRemover = engine.RemoveEffectByMemory;
         ushort originalBody = caster.BodyId;
 
         engine.ApplyDirectEffect(caster, caster, SpellType.ReaperForm, 500);
@@ -419,7 +422,6 @@ public sealed class CustomSphereSpellTests
             DurationBase = 0,
             RuneItemId = 0x2D59,
         });
-        Character.SpellMemoryEffectRemover = engine.RemoveEffectByMemory;
 
         var pack = world.CreateItem();
         pack.ItemType = ItemType.Container;
@@ -447,27 +449,42 @@ public sealed class CustomSphereSpellTests
             Id = SpellType.Hallucination,
             Name = "Hallucination",
             Flags = SpellFlag.TargChar | SpellFlag.Harm | SpellFlag.Curse,
+            EffectBase = 5, EffectScale = 5,   // the pack's EFFECT=2,5: a level above 0
             DurationBase = 1200,
         });
+        // A harmful spell on oneself needs MAGICF_CANHARMSELF (CCharSpell.cpp:3756).
+        Character.MagicFlags = (int)MagicConfigFlags.CanHarmSelf;
         var sounds = new List<ushort>();
         int refreshes = 0;
+        // A refresh made once the flag is gone is the removal's own. Counting it this
+        // way keeps the check valid when a 1-charge trip ends on its first tick, inside
+        // the loop below (about 1 run in 30).
+        int removalRefreshes = 0;
         engine.OnPlaySoundTo = (_, snd) => sounds.Add(snd);
-        engine.OnViewRefresh = _ => refreshes++;
+        engine.OnViewRefresh = ch =>
+        {
+            refreshes++;
+            if (!ch.IsStatFlag(StatFlag.Hallucinating))
+                removalRefreshes++;
+        };
 
         engine.ApplyDirectEffect(caster, caster, SpellType.Hallucination, 500);
         Assert.True(caster.IsStatFlag(StatFlag.Hallucinating));
         // Source-X refreshes the view the moment the effect lands.
         Assert.Equal(1, refreshes);
 
-        // First trip tick lands within 15-30 s. The trip lasts rand(30) ticks
-        // (CCharSpell.cpp:4025) and a roll of 0 ends it without a sound (:1792), so
-        // a fresh cast is tried again until one trips; 20 zero rolls in a row
-        // would be a 1-in-30^20 event.
-        engine.ProcessExpirations(Environment.TickCount64 + 31_000);
+        // The memory first ticks when its timer - the spell's duration - runs out,
+        // then every 15-30 s (Spell_Equip_OnTick :1790-1804). The trip lasts rand(30)
+        // charges (CCharSpell.cpp:4025) and a roll of 0 ends it without a sound
+        // (:1792), so a fresh cast is tried again until one trips; 20 zero rolls in a
+        // row would be a 1-in-30^20 event.
+        long now = Environment.TickCount64 + 121_000;
+        engine.ProcessExpirations(now);
         for (int attempt = 0; attempt < 20 && sounds.Count == 0; attempt++)
         {
             engine.ApplyDirectEffect(caster, caster, SpellType.Hallucination, 500);
-            engine.ProcessExpirations(Environment.TickCount64 + 31_000);
+            now = Environment.TickCount64 + 121_000;
+            engine.ProcessExpirations(now);
         }
         Assert.NotEmpty(sounds);
         Assert.All(sounds, s => Assert.Contains(s, new[] { (ushort)0x0243, (ushort)0x0244 }));
@@ -475,10 +492,13 @@ public sealed class CustomSphereSpellTests
 
         // ...and again when the effect ENDS, so the last random colors
         // do not linger on the client.
-        int beforeExpiry = refreshes;
-        engine.ProcessExpirations(Environment.TickCount64 + 30L * 60 * 1000);
+        for (int tick = 0; tick < 40 && caster.IsStatFlag(StatFlag.Hallucinating); tick++)
+        {
+            now += 31_000;
+            engine.ProcessExpirations(now);
+        }
         Assert.False(caster.IsStatFlag(StatFlag.Hallucinating));
-        Assert.True(refreshes > beforeExpiry, "no view refresh on effect removal");
+        Assert.True(removalRefreshes > 0, "no view refresh on effect removal");
     }
 
     [Fact]

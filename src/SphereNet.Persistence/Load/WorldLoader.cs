@@ -780,6 +780,19 @@ public sealed class WorldLoader
     /// layer-0 equip.</summary>
     private void EquipLoadedItem(GameWorld world, Character parentChar, Item item, byte layer)
     {
+        // A worn spell effect - an IT_SPELL memory on a spell layer, as Spell_Effect_Create
+        // equips it - goes back on as a memory, whatever wrote the save. Its add is NOT
+        // run again: upstream's load wears it through LayerAdd, which applies nothing
+        // (CCharAct.cpp:251), because the character's own record already says what the
+        // effect changed (MODSTR, FLAGS, BODY...). The spell engine takes it into the
+        // lifecycle afterwards (RestorePersistedEffectsFromWorld), so its timer, its
+        // removal and its undo are the ordinary ones.
+        if (IsSpellMemoryLayer(layer) && item.ItemType == ItemType.Spell)
+        {
+            parentChar.MemoryState.AttachSpellEffect(item, (Layer)layer);
+            return;
+        }
+
         Layer targetLayer = layer != 0 ? (Layer)layer : ResolveContItemLayer(item);
         // Never evict an already-worn item. A tiledata-derived layer can collide
         // with a piece already seated on that slot (two graphics resolving to the
@@ -806,6 +819,15 @@ public sealed class WorldLoader
             world.PlaceItem(item, item.Position);
         }
     }
+
+    /// <summary>The layers a spell memory is worn on: the hidden ones past
+    /// LAYER_DRAGGING (LAYER_SPELL_STATS 32 and up) and SphereNet's Special layer for
+    /// an effect with no layer of its own - except the flag layers whose item has a
+    /// dedicated equipment slot here (the poison memory, a shorn fleece, the potion
+    /// cooldown).</summary>
+    private static bool IsSpellMemoryLayer(byte layer) =>
+        (layer == (byte)Layer.Special || layer > (byte)Layer.Dragging) &&
+        layer is not ((byte)Layer.FlagPoison or (byte)Layer.FlagWool or (byte)Layer.FlagPotionUsed);
 
     /// <summary>Layer for a char-contained item with no explicit LAYER: the item's
     /// own EquipLayer/itemdef layer, else the tiledata Quality (UO's equip layer).</summary>
@@ -1625,7 +1647,11 @@ public sealed class WorldLoader
                 }
                 break;
             case "SPELLEFFECT":
-                ch.AddPendingSpellEffectRecord(val);
+                // An older SphereNet save described an active effect with this line
+                // and stored the character with the effect taken OFF its stats. The
+                // effect is now its worn IT_SPELL memory, saved like any other item, so
+                // the line is read and dropped: the character comes back clean, without
+                // the buff, which is the state that record stood beside.
                 break;
             default:
                 if (upper.StartsWith("SKILL[", StringComparison.Ordinal) && upper.Contains(']'))

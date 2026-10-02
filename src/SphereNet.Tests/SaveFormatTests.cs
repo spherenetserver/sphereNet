@@ -1157,27 +1157,37 @@ public class SaveFormatTests
             ch.MaxMana = 100; ch.Mana = 100;
             src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
 
+            var sword = src.CreateItem();
+            sword.BaseId = 0x0F5E;
+            sword.ItemType = ItemType.WeaponSword;
+            sword.SetTag("HITLEECHLIFE", "7");
+            Assert.True(ch.Equip(sword, Layer.OneHanded));
+
             var engine = new SpellEngine(src, registry);
 
             Assert.True(engine.CastStart(ch, SpellType.CurseWeapon, ch.Uid, ch.Position) >= 0);
             Assert.True(engine.CastDone(ch));
-            int level = ch.CurseWeaponLevel;
-            Assert.True(level > 0);
+            // The curse lives on the weapon: a fixed 50 on its HITLEECHLIFE.
+            Assert.Equal(57, SphereNet.Game.Combat.CombatEngine.GetItemNumProperty(sword, "HITLEECHLIFE"));
 
             Assert.True(saver.Save(src, tmp));
-            Assert.Equal(level, ch.CurseWeaponLevel); // a save does not touch the live effect
+            Assert.Equal(57, SphereNet.Game.Combat.CombatEngine.GetItemNumProperty(sword, "HITLEECHLIFE"));
 
             var dst = MakeWorld();
             loader.Load(dst, tmp);
             var reloaded = dst.FindChar(ch.Uid);
             Assert.NotNull(reloaded);
+            var reloadedSword = dst.FindItem(sword.Uid);
+            Assert.NotNull(reloadedSword);
 
             var restoredEngine = new SpellEngine(dst, registry);
             Assert.Equal(1, restoredEngine.RestorePersistedEffectsFromWorld());
-            Assert.Equal(level, reloaded!.CurseWeaponLevel); // level survived the round-trip
+            // The weapon's saved value already holds the curse: not added a second time.
+            Assert.Equal(57, SphereNet.Game.Combat.CombatEngine.GetItemNumProperty(reloadedSword!, "HITLEECHLIFE"));
+            Assert.Equal(50, (ushort)reloaded!.FindLayer(SpellLayers.CurseWeapon)!.MoreP.Y);
 
             restoredEngine.ProcessExpirations(Environment.TickCount64 + 120_000);
-            Assert.Equal(0, reloaded.CurseWeaponLevel);
+            Assert.Equal(7, SphereNet.Game.Combat.CombatEngine.GetItemNumProperty(reloadedSword!, "HITLEECHLIFE"));
         }
         finally
         {

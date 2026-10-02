@@ -1794,18 +1794,12 @@ public partial class Character : ObjBase
     /// Form: while set, damaging melee hits drain the target's mana to the
     /// attacker (reference CCharFight.cpp:2299-2304).</summary>
     internal bool WraithFormActive { get; set; }
-    /// <summary>Transient LAYER_SPELL_Curse_Weapon level (reference
-    /// m_itSpell.m_spelllevel). Added to the attacker's HITLEECHLIFE percent
-    /// while a weapon is equipped (reference CCharFight.cpp:2272-2275).</summary>
-    internal int CurseWeaponLevel { get; set; }
-    /// <summary>Transient Necromancy Mind Rot marker: while set, the victim's
-    /// spell mana cost is raised (reference LOWERMANACOST -10 =&gt; +10%).</summary>
-    internal bool MindRotActive { get; set; }
-    /// <summary>Transient Necromancy Lich Form marker (reference SPELL_Lich_Form):
-    /// a LAYER_SPELL_Polymorph form that shifts elemental resists.</summary>
+    /// <summary>Transient Necromancy Lich Form marker (reference SPELL_Lich_Form).
+    /// What the form changes is carried by its memory (CCharSpell.cpp:1038-1046).</summary>
     internal bool LichFormActive { get; set; }
     /// <summary>Transient Necromancy Vampiric Embrace marker (reference
-    /// SPELL_Vampiric_Embrace): a form that leeches life on hit.</summary>
+    /// SPELL_Vampiric_Embrace). Its life leech is the HITLEECHLIFE contribution its
+    /// memory puts on the character (CCharSpell.cpp:1062-1069).</summary>
     internal bool VampiricEmbraceActive { get; set; }
     /// <summary>Necromancy Blood Oath: the bonded enemy whose blows against this
     /// character are reflected (reference LAYER_SPELL_Blood_Oath m_uidLink), and
@@ -4269,6 +4263,10 @@ public partial class Character : ObjBase
         // (Source-X CChar::m_uidWeaponLast, set on equip, CCharAct.cpp:314).
         if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && item.IsWeaponType)
             _lastWeaponUid = item.Uid;
+        // ItemEquip, IsTypeWeapon (CCharAct.cpp:3418-3424): a worn Curse Weapon
+        // memory moves onto the weapon that goes into the hand.
+        if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && IsTypeWeapon(item.ItemType))
+            world?.RaiseWeaponWornChanged(this, item, true);
         MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
         return true;
     }
@@ -4374,7 +4372,7 @@ public partial class Character : ObjBase
         // Spell_Effect_Remove for the poison memory (CCharSpell.cpp:583): however the
         // memory leaves the layer, the poison leaves with it.
         if (layer == Layer.FlagPoison)
-            Poison.OnEffectRemoved();
+            Poison.OnEffectRemoved(item);
         // OnRemoveObj LAYER_FLAG_Stuck (CCharAct.cpp:466-474): the hold lets go -
         // freeze off and the paralyze icon gone, however the item left the layer.
         if (layer == Layer.FlagStuck)
@@ -4392,6 +4390,10 @@ public partial class Character : ObjBase
         // OnRemoveObj IT_EQ_HORSE (CCharAct.cpp:488-490): the rider is on foot again.
         if (layer == Layer.Horse)
             ClearStatFlag(StatFlag.OnHorse);
+        // OnRemoveObj, IsTypeWeapon (CCharAct.cpp:548-555): the Curse Weapon
+        // contribution leaves with the weapon.
+        if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && IsTypeWeapon(item.ItemType))
+            ResolveWorld?.Invoke()?.RaiseWeaponWornChanged(this, item, false);
         MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
 
         // Source-X Stat_AddMaxMod on unequip clamps the current pool down to the
@@ -6663,7 +6665,7 @@ public partial class Character : ObjBase
 
     /// <summary>The weapon I fight with (m_uidWeapon): a weapon-typed item in either
     /// hand (LayerAdd sets it only for IsTypeWeapon, CCharAct.cpp:310), else none.</summary>
-    private Item? FightWeapon()
+    internal Item? FightWeapon()
     {
         var one = GetEquippedItem(Layer.OneHanded);
         if (one != null && IsTypeWeapon(one.ItemType))
@@ -9322,7 +9324,42 @@ public partial class Character : ObjBase
             Unequip(item.EquipLayer);
             return true;
         }
+        if (_memoryState != null && item.ItemType == ItemType.Spell && item.IsSpellMemory &&
+            item.ContainedIn == Uid && _memoryState.Items.Contains(item))
+            return TakeOffSpellMemory(item);
         return _memoryState != null && _memoryState.DetachMemory(item);
+    }
+
+    /// <summary>A worn spell memory leaves this character alive - CChar::OnRemoveObj ->
+    /// Spell_Effect_Remove (CCharAct.cpp:560): the effect is removed once, with its
+    /// hooks and its undo, while the item still names this character as its wearer;
+    /// then it is free for the caller to place. A removal hook that moved the item on
+    /// already is overruled the way upstream's outer move overrules it: the item is
+    /// lifted out of wherever the hook put it, so the move in progress decides where
+    /// it lands.</summary>
+    private bool TakeOffSpellMemory(Item item)
+    {
+        var world = ResolveWorld?.Invoke();
+        world?.NotifySpellMemoryTakingOff(this, item);
+        _memoryState!.DetachSpellEffect(item);
+        item.IsSpellMemory = false;
+        if (item.IsDeleted)
+            return true;
+        if (item.ContainedIn.IsValid && item.ContainedIn != Uid && world != null)
+        {
+            var moved = world.FindObject(item.ContainedIn);
+            if (moved is Item container)
+                container.RemoveItem(item);
+            else if (moved is Character wearer && item.IsEquipped)
+                wearer.TakeOffWorn(item);
+        }
+        else if (!item.ContainedIn.IsValid)
+        {
+            world?.HideFromSector(item);
+        }
+        item.IsEquipped = false;
+        item.ContainedIn = Serial.Invalid;
+        return true;
     }
 
     /// <summary>Pending NEWITEM creation id (set by script NEWITEM command).</summary>

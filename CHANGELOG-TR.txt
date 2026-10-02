@@ -4,6 +4,48 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Buyu etkisi yasam dongusu: cikarma, zehir, summon, katmanlar, formlar
+------------------------------------------------------------------------
+DUZELTME - Sahibinden (yere, bir kaba, baska bir karaktere) tasinan buyu memory'si
+           kaldirma asamasini bir kez calistirir: @SpellEffectRemove/@EffectRemove
+           tetiklenir, etki geri alinir, esya gittigi yerde yasar; sonraki sure dolumu
+           veya silme ikinci kez kaldirmaz (CChar::OnRemoveObj).
+DUZELTME - Zehir ortak buyu etkisi asamalarini izler: @SpellEffectAdd ardindan
+           [SPELL 20] @EffectAdd; tedavi, sure dolumu, olum veya tasimada
+           @SpellEffectRemove ardindan [SPELL 20] @EffectRemove (ARGO memory, SRC
+           zehirleyen, ARGN1 20); RETURN 1/0 Source-X gibi; kayitli zehirler
+           degismeden yuklenir.
+DUZELTME - Cagrilan yaratiklar 41. katmanda genel Summon (buyu 40) memory'sini add
+           asamalariyla tasir; sure dolumu, dispel veya kaldirma yaratigi bir kez yok
+           eder. Eski SUMMON_* TAG omurleri calismaya devam eder.
+DUZELTME - Iksirin buyu memory'si LAYER_FLAG_Potion katmaninda durur; ayni buyunun
+           iksiri ve buyusu ust uste biner, yeni iksir yalnizca eski iksiri
+           degistirir, dispel iksir etkisini korur.
+DUZELTME - COMBAT_ELEMENTAL_ENGINE acikken Reactive Armor, Magic Reflection ve
+           Protection Source-X'teki resist, Faster Casting ve Magic Resistance
+           degisikliklerini uygular, memory'de saklar ve kaldirilinca ayni miktarlari
+           geri verir; NO_ELEMENTALENGINE ve klasik mod klasik etkiyi korur.
+DUZELTME - Buyunun native ekleme/kaldirma etkisi tanimdaki LAYER ile secilir;
+           layer_spell_invis, layer_spell_paralyze vb. katmandaki ozel buyu o
+           katmanin etkisini alir, memory'nin calisma zamanindaki katmani bunu
+           belirlemez.
+DUZELTME - Explosion gecikmeli katman-80 memory'sini yalnizca iksir olmayan ve suresi
+           pozitif olan uygulamada olusturur (LAYER olmasa da); sifir sure kalici
+           memory birakmaz.
+DUZELTME - Nekromansi formlari (Horrific Beast, Wraith, Lich, Vampiric Embrace)
+           yaratik govdesine gecer, kaldirilinca onceki govde geri gelir;
+           regen/resist/leech katkilari ve Corpse Skin resist kaymasi buyu memory
+           alanlarinda tutulur ve simetrik geri alinir.
+DUZELTME - Curse Weapon elde silah ister ve o silaha sabit +50 HITLEECHLIFE ekler;
+           silah giyilip cikarilinca tasinir, etki bitince kaldirilir. Mind Rot
+           LOWERMANACOST'u 10 dusurur, mana maliyeti ayri %10 carpan yerine normal
+           formulle hesaplanir.
+DUZELTME - Invisibility onceki Hiding durumunu temizler (@Reveal veto etmezse);
+           buyu bitince karakter gorunur olur.
+DUZELTME - @EffectTick icindeki LOCAL.DELAY=0 sunucu yolunda da kabul edilir; tick
+           hasari DAMAGE_NODISTURB ile cast'i kesmez, NOUNPARALYZE ile paralyze'i
+           bozmaz.
+
 [2026-10-02] - Flood kopmasiz ag girisi, genisletilmis hesap seviyeleri
 ------------------------------------------------------------------------
 DUZELTME - Ag girisi her geciste alinan tum paketleri isler (Source-X

@@ -79,6 +79,22 @@ public sealed class GameWorld
     private int _totalItems;
     public event Action<ObjBase>? ObjectCreated;
     public event Action<ObjBase>? ObjectDeleting;
+    /// <summary>A weapon went into or came out of a character's hand (ItemEquip /
+    /// OnRemoveObj, CCharAct.cpp:3418-3424 and 548-555); true when it went on.</summary>
+    public event Action<Character, Item, bool>? WeaponWornChanged;
+    internal void RaiseWeaponWornChanged(Character wearer, Item weapon, bool worn) =>
+        WeaponWornChanged?.Invoke(wearer, weapon, worn);
+
+    /// <summary>A worn spell memory is being taken off its wearer without being
+    /// deleted - moved to the ground, into a container or onto another character.
+    /// Raised while the item still names the wearer as its parent; the spell engine
+    /// runs the memory's Spell_Effect_Remove here, as Source-X CChar::OnRemoveObj does
+    /// for any item leaving the character (CCharAct.cpp:560).</summary>
+    public event Action<Character, Item>? SpellMemoryTakingOff;
+
+    internal void NotifySpellMemoryTakingOff(Character wearer, Item memory) =>
+        SpellMemoryTakingOff?.Invoke(wearer, memory);
+
     public event Action<Character, Point3D>? CharacterMoved;
     public event Action<Character>? CharacterPlaced;
     public event Action<Character>? ClientLingerExpired;

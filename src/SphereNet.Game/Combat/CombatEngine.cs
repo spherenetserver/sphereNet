@@ -1768,15 +1768,10 @@ public static class CombatEngine
     {
         bool leeched = false;
 
+        // Curse Weapon puts its level on the wielded weapon's own HITLEECHLIFE and
+        // Vampiric Embrace its share on the character's (CCharSpell.cpp:1064, 1365),
+        // so both arrive here through the properties - counted once.
         int leechLife = GetOnHitPropertyValue(attacker, weapon, "HITLEECHLIFE");
-        // Source-X CCharFight.cpp:2272-2275: a Curse Weapon effect adds its level
-        // to the life-leech percent, but only with a weapon equipped.
-        if (weapon != null && attacker.CurseWeaponLevel > 0)
-            leechLife += attacker.CurseWeaponLevel;
-        // Necromancy Vampiric Embrace (reference SPELL_Vampiric_Embrace): the form
-        // leeches life on any damaging hit, armed or not.
-        if (attacker.VampiricEmbraceActive)
-            leechLife += 20;
         if (leechLife > 0)
         {
             long maxHeal = (long)damage * leechLife * 30 / 10000;
@@ -1900,7 +1895,7 @@ public static class CombatEngine
         return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
     }
 
-    private static int GetItemNumProperty(Item item, string prop)
+    internal static int GetItemNumProperty(Item item, string prop)
     {
         if (item.TryGetTag(prop, out var raw) && ScriptNumber.TryParseInt(raw, out int v))
             return v;

@@ -90,24 +90,21 @@ public sealed class SourceXWave253Tests
     // ---------- Curse Weapon life-leech add (weapon-gated) ----------
 
     [Fact]
-    public void CurseWeapon_LeechesOnlyWithWeaponEquipped()
+    public void CursedWeapon_LeechesThroughItsOwnProperty()
     {
         var (world, attacker, target) = MakeCombatants();
-        attacker.CurseWeaponLevel = 15;
 
         bool leeched = false;
         var prev = CombatEngine.OnLeechEffect;
         CombatEngine.OnLeechEffect = _ => leeched = true;
         try
         {
-            // No weapon → Curse Weapon contributes nothing (no other leech props).
-            CombatEngine.ApplyAosOnHitEffects(attacker, target, damage: 100, weapon: null, flags: default);
-            Assert.False(leeched);
-
-            // With a weapon → the curse level enters the life-leech percent.
+            // The curse is the weapon's HITLEECHLIFE (CCharSpell.cpp:1365): with it
+            // the life-leech percent is there, counted once.
             var weapon = world.CreateItem();
             weapon.ItemType = ItemType.WeaponSword;
-            leeched = false;
+            weapon.SetTag("HITLEECHLIFE", "50");
+            Assert.Equal(50, CombatEngine.GetOnHitPropertyValue(attacker, weapon, "HITLEECHLIFE"));
             CombatEngine.ApplyAosOnHitEffects(attacker, target, damage: 100, weapon: weapon, flags: default);
             Assert.True(leeched);
             Assert.True(attacker.Hits >= 50); // heal never reduces hits
@@ -116,10 +113,9 @@ public sealed class SourceXWave253Tests
     }
 
     [Fact]
-    public void CurseWeapon_NoLevel_NoLeech()
+    public void UncursedWeapon_NoLeech()
     {
         var (world, attacker, target) = MakeCombatants();
-        attacker.CurseWeaponLevel = 0;
 
         bool leeched = false;
         var prev = CombatEngine.OnLeechEffect;
@@ -157,15 +153,23 @@ public sealed class SourceXWave253Tests
     }
 
     [Fact]
-    public void CurseWeapon_Cast_SetsLevel_ExpiryClears()
+    public void CurseWeapon_Cast_CursesTheWeapon_ExpiryClears()
     {
-        var engine = MakeEngineWith(SpellType.CurseWeapon, out _, out var caster);
+        var engine = MakeEngineWith(SpellType.CurseWeapon, out var world, out var caster);
+        var weapon = world.CreateItem();
+        weapon.ItemType = ItemType.WeaponSword;
+        weapon.SetTag("HITLEECHLIFE", "7");
+        Assert.True(caster.Equip(weapon, Layer.OneHanded));
+
         Assert.True(engine.CastStart(caster, SpellType.CurseWeapon, caster.Uid, caster.Position) >= 0);
         Assert.True(engine.CastDone(caster));
-        Assert.True(caster.CurseWeaponLevel > 0);
+        var mem = caster.FindLayer(SpellLayers.CurseWeapon);
+        Assert.NotNull(mem);
+        Assert.Equal(50, (ushort)mem!.MoreP.Y);           // the fixed level, not the EFFECT curve
+        Assert.Equal(57, CombatEngine.GetItemNumProperty(weapon, "HITLEECHLIFE"));
 
         engine.ProcessExpirations(Environment.TickCount64 + 120_000);
-        Assert.Equal(0, caster.CurseWeaponLevel);
+        Assert.Equal(7, CombatEngine.GetItemNumProperty(weapon, "HITLEECHLIFE"));
     }
 
     [Fact]

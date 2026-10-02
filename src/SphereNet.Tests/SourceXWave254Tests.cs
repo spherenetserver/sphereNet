@@ -102,14 +102,16 @@ public sealed class SourceXWave254Tests
         var engine = new SpellEngine(world, registry);
         Assert.True(engine.CastStart(caster, SpellType.MindRot, caster.Uid, caster.Position) >= 0);
         Assert.True(engine.CastDone(caster));
-        Assert.True(caster.MindRotActive);
+        // 10 off LOWERMANACOST, the memory's level 10 (CCharSpell.cpp:1351-1354).
+        Assert.Equal(-10, caster.Tags.GetInt("LOWERMANACOST"));
+        Assert.Equal(10, (ushort)caster.FindLayer(SpellLayers.MindRot)!.MoreP.Y);
 
         engine.ProcessExpirations(Environment.TickCount64 + 120_000);
-        Assert.False(caster.MindRotActive);
+        Assert.Equal(0, caster.Tags.GetInt("LOWERMANACOST"));
     }
 
     [Fact]
-    public void MindRot_RaisesSpellManaCostByTenPercent()
+    public void MindRot_RaisesSpellManaCostThroughLowerManaCost()
     {
         var world = TestHarness.CreateWorld();
         var registry = new SpellRegistry();
@@ -134,9 +136,9 @@ public sealed class SourceXWave254Tests
         Assert.True(engine.CastDone(normal));
         Assert.Equal(200 - 50, normal.Mana);
 
-        // With Mind Rot → +10% mana cost (55 spent).
+        // With Mind Rot (LOWERMANACOST -10) → 55 spent.
         var rotted = PayingCaster(world);
-        rotted.MindRotActive = true;
+        rotted.SetTag("LOWERMANACOST", "-10");
         Assert.True(engine.CastStart(rotted, SpellType.MagicArrow, target.Uid, target.Position) >= 0);
         Assert.True(engine.CastDone(rotted));
         Assert.Equal(200 - 55, rotted.Mana);
@@ -160,7 +162,7 @@ public sealed class SourceXWave254Tests
         world.PlaceCharacter(target, new Point3D(121, 120, 0, 0));
 
         var caster = PayingCaster(world);
-        caster.MindRotActive = true;
+        caster.SetTag("LOWERMANACOST", "-10");
         caster.MaxMana = 54; caster.Mana = 54; // enough for 50, short of 55
 
         Assert.Equal(-1, engine.CastStart(caster, SpellType.MagicArrow, target.Uid, target.Position));

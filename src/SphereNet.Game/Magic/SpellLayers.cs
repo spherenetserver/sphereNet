@@ -72,4 +72,31 @@ public static class SpellLayers
         SpellType.CurseWeapon => CurseWeapon,
         _ => def != null && def.Layer >= Stats ? def.Layer : Layer.Special,
     };
+
+    /// <summary>The layer a delivery equips the memory on. A potion (OnSpellEffect's
+    /// fPotion, an IT_POTION source item) puts the spells that have a
+    /// <c>fPotion ? LAYER_FLAG_Potion : ...</c> case - and the default case's
+    /// definition layer - on <see cref="FlagPotion"/> (CCharSpell.cpp:3884-4151), so a
+    /// potion and a cast of the same spell sit side by side: a potion only replaces a
+    /// potion, and Spell_Dispel (LAYER_SPELL_STATS..LAYER_SPELL_Summon) leaves it.
+    /// What the memory DOES is still chosen by its spell definition.</summary>
+    public static Layer ForDelivery(SpellType spell, SpellDef? def, bool potion)
+    {
+        var layer = ForSpell(spell, def);
+        return potion && UsesPotionLayer(spell, layer) ? FlagPotion : layer;
+    }
+
+    private static bool UsesPotionLayer(SpellType spell, Layer layer) => spell switch
+    {
+        // Their cases equip a fixed layer whatever the delivery (:3896-3904, :3942,
+        // :3960, :4015-4027, :4114-4140); Explosion makes no memory from a potion.
+        SpellType.ReactiveArmor or SpellType.ManaDrain or SpellType.MagicReflect or
+        SpellType.SummonCreature or SpellType.Explosion or SpellType.Light or
+        SpellType.Hallucination or SpellType.BloodOath or SpellType.CorpseSkin or
+        SpellType.EvilOmen or SpellType.MindRot or SpellType.PainSpike or
+        SpellType.Strangle or SpellType.CurseWeapon => false,
+        // The default case: a definition layer of LAYER_SPELL_STATS or above (:4149).
+        // A conjured creature's memory is never a drink's.
+        _ => layer >= Stats && layer != Summon,
+    };
 }

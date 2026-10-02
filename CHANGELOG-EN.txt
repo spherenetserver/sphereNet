@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Spell effect lifecycle: take-off, poison, summon, delivery layers, forms
+------------------------------------------------------------------------
+FIX - A spell memory moved off its wearer (to the ground, into a container, onto
+      another character) runs its removal once: @SpellEffectRemove/@EffectRemove
+      fire, the effect is taken back and the item stays alive where it went; later
+      expiry or deletion removes nothing twice (CChar::OnRemoveObj).
+FIX - Poison runs the common spell-effect stages: @SpellEffectAdd then [SPELL 20]
+      @EffectAdd, and @SpellEffectRemove then [SPELL 20] @EffectRemove on cure,
+      expiry, death or move (ARGO memory, SRC poisoner, ARGN1 20); RETURN 1/0
+      verdicts follow Source-X; saved poisons load unchanged.
+FIX - Summoned creatures wear the generic Summon (spell 40) memory on layer 41 with
+      its add stages; its expiry, dispel or removal makes the creature vanish once.
+      Legacy SUMMON_* tag lifetimes keep working.
+FIX - A potion's spell memory sits on LAYER_FLAG_Potion, so a potion and a cast of
+      the same spell stack, a new potion replaces only the old potion, and dispel
+      leaves the potion's effect in place.
+FIX - Under COMBAT_ELEMENTAL_ENGINE, Reactive Armor, Magic Reflection and Protection
+      apply their Source-X resist, Faster Casting and Magic Resistance changes, keep
+      them on the spell memory and give back exactly those amounts on removal;
+      NO_ELEMENTALENGINE and classic mode keep the classic effects.
+FIX - A spell's native add/remove effect is chosen by its definition LAYER, so a
+      custom spell on layer_spell_invis, layer_spell_paralyze, etc. gets that
+      layer's effect; the memory's runtime layer no longer decides it.
+FIX - Explosion creates its delayed layer-80 memory only for a non-potion delivery
+      with a positive duration (even without LAYER); a zero duration never leaves a
+      permanent memory.
+FIX - Necromancy forms (Horrific Beast, Wraith, Lich, Vampiric Embrace) take their
+      creature body and restore the previous one on removal; their regen, resist
+      and leech shares and Corpse Skin's resist shift live on the spell memory
+      fields and are removed symmetrically.
+FIX - Curse Weapon needs a weapon in hand and puts a fixed +50 HITLEECHLIFE on that
+      weapon, moved with weapon equip/unequip and removed with the effect. Mind Rot
+      lowers LOWERMANACOST by 10 and mana cost uses the normal formula instead of a
+      separate +10% multiplier.
+FIX - Invisibility clears a prior Hiding state (unless @Reveal vetoes), so the
+      character is visible when the spell ends.
+FIX - LOCAL.DELAY=0 from @EffectTick is honoured on the server path too; tick
+      damage no longer interrupts casting under DAMAGE_NODISTURB or breaks paralyze
+      under NOUNPARALYZE.
+
 [2026-10-02] - Network input without flood disconnect, extended account levels
 ------------------------------------------------------------------------
 FIX - Network input processes every received packet each pass, as Source-X

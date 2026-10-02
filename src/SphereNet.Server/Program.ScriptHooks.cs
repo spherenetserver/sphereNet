@@ -31,6 +31,7 @@ public static partial class Program
         Character.OnSpellEffectRemove = null;
         Character.OnSpellEffectTick = null;
         CharacterPoisonState.OnSpellEffectAdd = null;
+        CharacterPoisonState.OnSpellEffectRemove = null;
         Character.OnMemoryEquip = null;
         Character.OnSkillUseQuickDetailed = null;
         Character.OnNpcSeeNewPlayer = null;
@@ -106,11 +107,28 @@ public static partial class Program
         // Spell_Effect_Add, CCharSpell.cpp:1000): ARGO = the memory, SRC = the
         // poisoner, ARGN1 = the spell. The other effects run the stage from
         // SpellEngine; poison makes its memory outside the spell engine.
+        // A section stage's RETURN 0 is a verdict of its own (TRIGRET_RET_FALSE): the
+        // numeric RETURN tells it apart from a stage that returns nothing.
+        static TriggerResult PoisonStage(TriggerDispatcher d, string name, Character owner,
+            SphereNet.Game.Objects.Items.Item memory, Character? caster)
+        {
+            var args = new TriggerArgs { CharSrc = caster ?? owner, N1 = (int)SpellType.Poison, O1 = memory };
+            var result = d.FireSpellTrigger(SpellType.Poison, name, owner, args);
+            return result == TriggerResult.Default && args.ReturnNumber == 0 ? TriggerResult.False : result;
+        }
         if (_triggerDispatcher.IsTriggerNameUsed("EffectAdd"))
         {
+            var dispatcher = _triggerDispatcher;
             CharacterPoisonState.OnSpellEffectAdd = (owner, memory, caster) =>
-                _triggerDispatcher.FireSpellTrigger(SpellType.Poison, "EffectAdd", owner,
-                    new TriggerArgs { CharSrc = caster ?? owner, N1 = (int)SpellType.Poison, O1 = memory });
+                PoisonStage(dispatcher, "EffectAdd", owner, memory, caster);
+        }
+        // [SPELL 20] @EffectRemove as the poison memory comes off (Spell_Effect_Remove,
+        // CCharSpell.cpp:568-576), after the character's @SpellEffectRemove.
+        if (_triggerDispatcher.IsTriggerNameUsed("EffectRemove"))
+        {
+            var dispatcher = _triggerDispatcher;
+            CharacterPoisonState.OnSpellEffectRemove = (owner, memory, caster) =>
+                PoisonStage(dispatcher, "EffectRemove", owner, memory, caster);
         }
         // @Reveal — fired before hidden/invisible state drops; RETURN 1
         // keeps the character concealed (Source-X CChar::Reveal).
@@ -202,8 +220,9 @@ public static partial class Program
                 // ARGN2 is read back as the level too (Source-X CCharSpell.cpp:2011
                 // iLevel = m_iN2) - a script caps a lethal poison with ARGN2=3.
                 ctx.Strength = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
-                if (locals.TryGetDouble("DELAY", out double delaySec) && delaySec > 0)
-                    ctx.DelayMs = (int)(delaySec * 1000);
+                // The engine's own readback: LOCAL.DELAY=0 is a real answer.
+                if (SpellEngine.TryReadTickDelay(locals, out int delayMs))
+                    ctx.DelayMs = delayMs;
                 return true;
             };
         }

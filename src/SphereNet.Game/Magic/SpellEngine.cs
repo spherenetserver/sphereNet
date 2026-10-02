@@ -27,6 +27,18 @@ public sealed partial class SpellEngine
         _world = world;
         _spells = spells;
         _world.ObjectDeleting += OnWorldObjectDeleting;
+        _world.WeaponWornChanged += OnWeaponWornChanged;
+        _world.SpellMemoryTakingOff += OnSpellMemoryTakingOff;
+    }
+
+    /// <summary>A worn spell memory leaving its wearer without being deleted - dropped,
+    /// put in a container, given to another character. Upstream that is the same
+    /// CChar::OnRemoveObj -> Spell_Effect_Remove as a deletion (CCharAct.cpp:560): the
+    /// hooks and the undo run once, and the item lives on wherever it goes.</summary>
+    private void OnSpellMemoryTakingOff(Character wearer, Item mem)
+    {
+        if (_effects.Contains(mem) || (mem.IsSpellMemory && !mem.IsDeleted && TryRegister(mem)))
+            RemoveEffect(mem);
     }
 
     /// <summary>Deleting a worn IT_SPELL memory - by any road: its timer, a dispel, a
@@ -1360,6 +1372,7 @@ public sealed partial class SpellEngine
             DiscardSummon(summoned);
             return false;
         }
+        PlaceSummonEffect(caster, summoned, def);
         ClearCastSourceTags(caster);
 
         // Clear cast state
@@ -1429,6 +1442,7 @@ public sealed partial class SpellEngine
                 // Stats/skills come from the raised creature's chardef @Create
                 // (SummonCreature applies it) — not flat invented numbers.
                 var undead = SummonCreature(caster, corpse.Position, def, skillLevel, bodyId: body);
+                PlaceSummonEffect(caster, undead, def);
                 if (undead != null)
                     OnItemRemoved?.Invoke(corpse); // the corpse is consumed
             }
@@ -2753,6 +2767,25 @@ public sealed partial class SpellEngine
         _world.DeleteObject(summoned);
     }
 
+    /// <summary>The last step of Spell_Summon_Place (CCharSpell.cpp:368): whatever spell
+    /// called it, the creature takes the generic SPELL_Summon effect from its summoner at
+    /// the summoner's skill in that spell, for the summoning's duration - its LAYER_SPELL_Summon
+    /// memory, with @SpellEffect / @EffectAdd, whose removal (expiry, dispel, REMOVE) makes
+    /// the creature vanish (:589). The SUMMON_* tags stay beside it: a save that has only
+    /// them keeps its lifetime, and whichever ends first deletes the creature once.</summary>
+    private void PlaceSummonEffect(Character caster, Character? creature, SpellDef castDef)
+    {
+        if (creature == null || creature.IsDeleted)
+            return;
+        var summonDef = _spells.Get(SpellType.SummonCreature);
+        if (summonDef == null)
+            return;                                 // OnSpellEffect needs the definition
+        int duration = creature.TryGetTag("SUMMON_DURATION", out string? raw) &&
+            int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int d) ? Math.Max(0, d) : 0;
+        int skill = caster.GetSkill(castDef.GetPrimarySkill());
+        WithSourceItem(null, () => ApplyCharEffect(caster, creature, summonDef, skill, duration));
+    }
+
     /// <summary>Summon a creature at target location.</summary>
     private Character? SummonCreature(Character caster, Point3D pos, SpellDef def, int skillLevel,
         ushort bodyId = 0, string? defName = null, int durationTenths = 0,
@@ -3428,6 +3461,14 @@ public sealed partial class SpellEngine
             case SpellType.ParticleForm:
                 CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
+            case SpellType.Explosion:
+                // The delayed second blast is a LAYER_SPELL_Explosion memory made only
+                // when the effect has a duration and is not a potion's (:3960-3964) -
+                // whatever the definition's LAYER says. A zero duration never leaves a
+                // timerless memory behind.
+                if (!IsPotionDelivery && EffectDurationTenths(caster, target, def) > 0)
+                    CreateTimedEffect(caster, target, def, Math.Max(0, effect));
+                break;
             case SpellType.Reveal:
                 target.ClearHiddenState();
                 break;
@@ -3438,8 +3479,12 @@ public sealed partial class SpellEngine
                 // hallucination, mana drain and the necromancy layers stay.
                 // The level is 150 from a GM and 50 otherwise (CCharSpell.cpp:3949);
                 // at 100 or below a MOVE_NEVER memory stays (:90).
-                SpellDispel(target, caster.PrivLevel >= PrivLevel.GM ? 150 : 50);
+                // A conjured creature is banished first, so MAGICF_DISPELKILLSUMMONS
+                // still decides between a kill and a vanish before its summoning
+                // memory (layer 41) takes it with the dispel.
                 DispelConjured(caster, target);
+                if (!target.IsDeleted)
+                    SpellDispel(target, caster.PrivLevel >= PrivLevel.GM ? 150 : 50);
                 break;
             case SpellType.Resurrection:
                 if (target.IsDead)
@@ -3487,10 +3532,10 @@ public sealed partial class SpellEngine
                 CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
             case SpellType.CurseWeapon:
-                // Necromancy Curse Weapon (reference SPELL_Curse_Weapon): stores
-                // m_spelllevel (EFFECT curve, 10-15) that is added to the wielded
-                // weapon's HITLEECHLIFE percent on hit.
-                CreateTimedEffect(caster, target, def, Math.Clamp(effect, 1, 100));
+                // Necromancy Curse Weapon (:4138): the add needs a weapon in hand and
+                // puts a fixed 50 on its HITLEECHLIFE, kept as the memory's level
+                // (CCharSpell.cpp:1355-1367).
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
                 break;
             case SpellType.PainSpike:
                 // LAYER_SPELL_Pain_Spike (CCharSpell.cpp:1295-1311): the add sets the
@@ -3527,7 +3572,8 @@ public sealed partial class SpellEngine
                 // Stats/skills come from the revenant chardef @Create
                 // (SummonCreature applies it) — not flat invented numbers.
                 var revenant = SummonCreature(caster, spawnPos, def, summonSkill, bodyId: 0x02EE);
-                if (revenant != null && target != caster)
+                PlaceSummonEffect(caster, revenant, def);
+                if (revenant != null && !revenant.IsDeleted && target != caster)
                     revenant.FightTarget = target.Uid;
                 break;
             }
@@ -3613,10 +3659,10 @@ public sealed partial class SpellEngine
                 {
                     if (ch == caster || ch.IsDead || ch.IsPlayer)
                         continue;
-                    if (ch.IsStatFlag(StatFlag.Conjured) ||
-                        ch.IsStatFlag(StatFlag.Polymorph))
-                        StripDispellableEffects(ch);
+                    bool conjured = ch.IsStatFlag(StatFlag.Conjured);
                     DispelConjured(caster, ch);
+                    if (!ch.IsDeleted && (conjured || ch.IsStatFlag(StatFlag.Polymorph)))
+                        StripDispellableEffects(ch);
                 }
                 break;
 
@@ -3791,6 +3837,12 @@ public sealed partial class SpellEngine
                 ApplyDrunk(caster, target, def, Math.Max(0, effect));
                 OnSysMessage?.Invoke(target, "*hic*");
                 break;
+            case SpellType.SummonCreature:
+                // SPELL_Summon on a character (CCharSpell.cpp:3942-3944): the summoning
+                // memory on LAYER_SPELL_Summon - what a summoned creature wears for its
+                // whole conjured life (Spell_Summon_Place, :368).
+                CreateTimedEffect(caster, target, def, Math.Max(0, effect));
+                break;
             default:
                 // Source-X OnSpellEffect default (CCharSpell.cpp:4148-4151): a spell
                 // with no case of its own still equips a timed spell memory when its
@@ -3876,19 +3928,15 @@ public sealed partial class SpellEngine
 
     private static void ClearCastState(Character ch) => ch.ClearCastState(notifyAbort: false);
 
-    /// <summary>Spell mana cost after per-caster modifiers. Necromancy Mind Rot
-    /// raises the victim's spell mana cost by 10% (reference LOWERMANACOST -10).</summary>
     /// <summary>What this caster actually pays for a spell (Source-X
     /// Calc_SpellManaCost, CResourceCalc.cpp:522). LOWERMANACOST is a PERCENT off
     /// and may be negative, in which case it raises the bill — which is exactly
-    /// how the reference expresses Mind Rot. It is summed off the character and
-    /// everything worn, the way the other spell properties are.</summary>
+    /// how the reference expresses Mind Rot: its memory takes 10 off the
+    /// character's LOWERMANACOST (CCharSpell.cpp:1351-1354). It is summed off the
+    /// character and everything worn, the way the other spell properties are.</summary>
     private static int EffectiveManaCost(Character caster, SpellDef def)
     {
         int cost = def.ManaCost;
-        if (caster.MindRotActive)
-            cost += cost / 10;
-
         int lower = GetCastingPropertyValue(caster, SpellCastingProperties.LowerManaCost);
         if (lower != 0)
             cost -= cost * lower / 100;
@@ -3914,33 +3962,6 @@ public sealed partial class SpellEngine
             return female ? "#NAMES_ELF_FEMALE" : "#NAMES_ELF_MALE";
         if (t.IsGargoyle) return female ? "#NAMES_GARGOYLE_FEMALE" : "#NAMES_GARGOYLE_MALE";
         return null;
-    }
-
-    /// <summary>Necromancy Corpse Skin resist shift (reference PolyStr/PolyDex):
-    /// fire/poison down 15, cold/physical up 10. <paramref name="sign"/> is +1 to
-    /// apply the debuff, -1 to revert it.</summary>
-    private static void ApplyCorpseSkinResists(Character t, int sign)
-    {
-        t.ResFire = (short)(t.ResFire + sign * -15);
-        t.ResPoison = (short)(t.ResPoison + sign * -15);
-        t.ResCold = (short)(t.ResCold + sign * 10);
-        t.ResPhysical = (short)(t.ResPhysical + sign * 10);
-    }
-
-    /// <summary>Necromancy Lich Form resist shift (reference CCharSpell.cpp:1038):
-    /// fire down, poison and cold up. <paramref name="sign"/> +1 apply, -1 revert.</summary>
-    private static void ApplyLichFormResists(Character t, int sign)
-    {
-        t.ResFire = (short)(t.ResFire + sign * -10);
-        t.ResPoison = (short)(t.ResPoison + sign * 10);
-        t.ResCold = (short)(t.ResCold + sign * 10);
-    }
-
-    /// <summary>Necromancy Vampiric Embrace resist shift (reference
-    /// CCharSpell.cpp:1062): fire resist down. <paramref name="sign"/> +1/-1.</summary>
-    private static void ApplyVampiricResists(Character t, int sign)
-    {
-        t.ResFire = (short)(t.ResFire + sign * -10);
     }
 
     /// <summary>The iDuration of the OnSpellEffect being applied (tenths), after
@@ -4084,7 +4105,8 @@ public sealed partial class SpellEngine
     /// pipeline (loot/corpse), otherwise the summon is deleted outright.</summary>
     private void DispelConjured(Character caster, Character target)
     {
-        if (!target.IsStatFlag(StatFlag.Conjured) || target.IsDead)
+        // Already gone: dispelling its summoning memory took it (CCharSpell.cpp:589).
+        if (!target.IsStatFlag(StatFlag.Conjured) || target.IsDead || target.IsDeleted)
             return;
         if (IsMagicFlag(MagicConfigFlags.DispelKillSummons))
         {

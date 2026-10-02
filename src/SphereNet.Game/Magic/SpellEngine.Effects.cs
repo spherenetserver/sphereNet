@@ -71,6 +71,45 @@ public sealed partial class SpellEngine
     private static bool IsWornSpellMemory(Item mem) =>
         !mem.IsDeleted && mem.ItemType == ItemType.Spell && mem.IsSpellMemory;
 
+    /// <summary>OnSpellEffect's fPotion: the delivery in progress comes from an
+    /// IT_POTION source item (CCharSpell.cpp:3639).</summary>
+    private bool IsPotionDelivery => _effectSourceItem is { ItemType: ItemType.Potion };
+
+    /// <summary>COMBAT_ELEMENTAL_ENGINE is on and the spell does not opt out with
+    /// SPELLFLAG_NO_ELEMENTALENGINE - the gate of the elemental ward branches.</summary>
+    private static bool UsesElementalEngine(SpellDef def) =>
+        (Character.CombatFlags & (int)Combat.CombatFlags.ElementalEngine) != 0 &&
+        !def.IsFlag(SpellFlag.NoElementalEngine);
+
+    /// <summary>The effect Spell_Effect_Add / Spell_Effect_Remove run for a memory.
+    /// Upstream switches on the SPELL DEFINITION's LAYER first (CCharSpell.cpp:1021,
+    /// :579) - every spell defined on such a layer shares that layer's effect, a custom
+    /// spell with LAYER=layer_spell_invis turns its target invisible - and only a
+    /// definition on any other layer reaches the per-spell switch. The memory's own
+    /// runtime layer (a potion's LAYER_FLAG_Potion, or one a script moved) never
+    /// chooses it. Poison and Summon keep their own lifecycle.</summary>
+    private static SpellType NativeSpell(SpellDef def) => def.Layer switch
+    {
+        SpellLayers.NightSight => SpellType.NightSight,
+        SpellLayers.Incognito => SpellType.Incognito,
+        SpellLayers.Invis => SpellType.Invisibility,
+        SpellLayers.Paralyze => SpellType.Paralyze,
+        SpellLayers.Strangle => SpellType.Strangle,
+        SpellLayers.PainSpike => SpellType.PainSpike,
+        SpellLayers.BloodOath => SpellType.BloodOath,
+        SpellLayers.CorpseSkin => SpellType.CorpseSkin,
+        SpellLayers.MindRot => SpellType.MindRot,
+        SpellLayers.CurseWeapon => SpellType.CurseWeapon,
+        SpellLayers.Polymorph when !IsPolymorphFamily(def.Id) => SpellType.Polymorph,
+        _ => def.Id,
+    };
+
+    private static bool IsPolymorphFamily(SpellType spell) => spell is
+        SpellType.Polymorph or SpellType.Chameleon or SpellType.BeastForm or
+        SpellType.MonsterForm or SpellType.ReaperForm or SpellType.StoneForm or
+        SpellType.HorrificBeast or SpellType.WraithForm or SpellType.LichForm or
+        SpellType.VampiricEmbrace;
+
     /// <summary>The first spell memory on <paramref name="ch"/> that matches - the way
     /// LayerFind answers upstream.</summary>
     private static Item? FindEffect(Character ch, Func<Item, bool> match)
@@ -116,7 +155,7 @@ public sealed partial class SpellEngine
     private Item? CreateEffect(Character? linkSource, Character owner, SpellDef def, int level, int durationTenths)
     {
         var spell = def.Id;
-        var layer = SpellLayers.ForSpell(spell, def);
+        var layer = SpellLayers.ForDelivery(spell, def, IsPotionDelivery);
 
         foreach (var prev in owner.Memories.ToArray())
         {
@@ -239,7 +278,7 @@ public sealed partial class SpellEngine
         var spell = def.Id;
         int level = MemLevel(mem);
         bool osi = IsMagicFlag(MagicConfigFlags.OsiFormulas);
-        switch (spell)
+        switch (NativeSpell(def))
         {
             // The stat spells move the MODIFIER, never the base (Stat_AddMod,
             // :1549-1614): OSTR stays what it was, MODSTR carries the spell.
@@ -285,6 +324,11 @@ public sealed partial class SpellEngine
             case SpellType.Shield:
             case SpellType.Steelskin:
             case SpellType.Stoneskin:
+                if (spell != SpellType.Shield && UsesElementalEngine(def))
+                {
+                    AddElementalWard(mem, t, caster);
+                    break;
+                }
                 t.ProtectionArmor = (int)Math.Min(int.MaxValue, (long)t.ProtectionArmor + level);
                 break;
             case SpellType.DivineFury:
@@ -301,9 +345,17 @@ public sealed partial class SpellEngine
                 break;
             case SpellType.Invisibility:
                 t.SetStatFlag(StatFlag.Invisible);
+                ClearHidingUnderInvisibility(t);
                 break;
             case SpellType.MagicReflect:
                 t.SetStatFlag(StatFlag.Reflection);
+                if (UsesElementalEngine(def))
+                {
+                    // 25 - the caster's Inscription/200 off physical, 10 onto every
+                    // other resist; the amount is the memory's level (:1628-1641).
+                    SetMemLevel(mem, 25 - (caster?.GetSkill(SkillType.Inscription) ?? 0) / 200);
+                    ShiftWardResists(t, -MemLevel(mem), +10);
+                }
                 break;
             case SpellType.Stone:
             case SpellType.ParticleForm:
@@ -322,6 +374,15 @@ public sealed partial class SpellEngine
                 break;
 
             case SpellType.ReactiveArmor:
+                if (UsesElementalEngine(def))
+                {
+                    // No reflection under the elemental engine: 15 + the caster's
+                    // Inscription/200 onto physical, 5 off every other resist; the
+                    // amount is the memory's level (:1393-1404).
+                    SetMemLevel(mem, 15 + (caster?.GetSkill(SkillType.Inscription) ?? 0) / 200);
+                    ShiftWardResists(t, +MemLevel(mem), -5);
+                    break;
+                }
                 // The share of a blow that comes back is the definition's EFFECT
                 // curve at the caster's primary skill, over ten, kept in m_PolyStr
                 // (:1405-1412).
@@ -338,25 +399,25 @@ public sealed partial class SpellEngine
                 break;
 
             case SpellType.HorrificBeast:
-                t.SetStatFlag(StatFlag.Polymorph);
-                t.HorrificBeastActive = true;
-                break;
             case SpellType.WraithForm:
-                // While active, damaging hits drain the target's mana (see
-                // CombatEngine.ApplyAosOnHitEffects).
-                t.SetStatFlag(StatFlag.Polymorph);
-                t.WraithFormActive = true;
-                break;
             case SpellType.LichForm:
-                t.SetStatFlag(StatFlag.Polymorph);
-                t.LichFormActive = true;
-                ApplyLichFormResists(t, +1);
-                break;
             case SpellType.VampiricEmbrace:
+            {
+                // The form's share goes on from the memory's own fields, then the
+                // character takes the form's body (m_uiSummonID, SetID, :1038-1083).
+                // The polymorph stat change is not run: these forms keep their
+                // contribution in m_PolyStr/m_PolyDex, which it would overwrite.
+                AddNecroFormContribution(mem, t, spell);
+                if (t.OBody == 0)
+                    t.OBody = t.BodyId;
                 t.SetStatFlag(StatFlag.Polymorph);
-                t.VampiricEmbraceActive = true;
-                ApplyVampiricResists(t, +1);
+                if (t.BodyId != NecroFormBody(spell))
+                {
+                    t.BodyId = NecroFormBody(spell);
+                    Character.OnAppearanceChanged?.Invoke(t);
+                }
                 break;
+            }
             case SpellType.Polymorph:
             case SpellType.Chameleon:
             case SpellType.BeastForm:
@@ -382,13 +443,33 @@ public sealed partial class SpellEngine
             }
 
             case SpellType.CurseWeapon:
-                t.CurseWeaponLevel = Math.Clamp(level, 1, 100);
+            {
+                // LAYER_SPELL_Curse_Weapon (:1355-1367): no weapon in hand, no curse -
+                // the memory goes. Otherwise a fixed 50 goes on the weapon's own
+                // HITLEECHLIFE and is the memory's level; it comes off the weapon with
+                // the effect or with the weapon (CCharAct.cpp:548-555).
+                var weapon = t.FightWeapon();
+                if (weapon == null)
+                {
+                    DeleteEffectMemory(mem);
+                    return;
+                }
+                SetMemLevel(mem, CurseWeaponLeech);
+                ModWeaponLeech(weapon, MemLevel(mem));
                 break;
+            }
             case SpellType.CorpseSkin:
-                ApplyCorpseSkinResists(t, +1);
+                // LAYER_SPELL_Corpse_Skin (:1332-1349): the shift is kept on the memory,
+                // m_PolyDex 15 off fire and poison, m_PolyStr 10 on cold and physical.
+                SetPolyStats(mem, 10, 15);
+                ShiftCorpseSkinResists(t, mem, +1);
                 break;
             case SpellType.MindRot:
-                t.MindRotActive = true;
+                // LAYER_SPELL_Mind_Rot (:1351-1354): 10 off the character's
+                // LOWERMANACOST, kept as the memory's level; the mana bill is the
+                // ordinary Calc_SpellManaCost of the result.
+                SetMemLevel(mem, 10);
+                ModCharPropNum(t, LowerManaCostProperty, -MemLevel(mem));
                 break;
 
             case SpellType.PainSpike:
@@ -441,6 +522,11 @@ public sealed partial class SpellEngine
                 t.SetStatFlag(StatFlag.Hallucinating);
                 OnViewRefresh?.Invoke(t);
                 break;
+
+            case SpellType.SummonCreature:
+                // LAYER_SPELL_Summon (:1217-1219): the creature is conjured.
+                t.SetStatFlag(StatFlag.Conjured);
+                break;
         }
 
         if (spell != SpellType.BloodOath)
@@ -456,6 +542,60 @@ public sealed partial class SpellEngine
     /// <summary>_CheckLimitEffectStat for a penalty: never below 1 on the stat.</summary>
     private static int LimitPenalty(int penalty, int adjustedStat) =>
         Math.Max(0, Math.Min(penalty, adjustedStat - 1));
+
+    /// <summary>The Reactive Armor / Magic Reflection resist shift: physical by one
+    /// amount, fire, cold, poison and energy by another.</summary>
+    private static void ShiftWardResists(Character t, int physical, int others)
+    {
+        t.ResPhysical = ClampShort(t.ResPhysical + physical);
+        t.ResFire = ClampShort(t.ResFire + others);
+        t.ResCold = ClampShort(t.ResCold + others);
+        t.ResPoison = ClampShort(t.ResPoison + others);
+        t.ResEnergy = ClampShort(t.ResEnergy + others);
+    }
+
+    /// <summary>The Protection ward under the elemental engine (CCharSpell.cpp:1666-1691):
+    /// the level is the caster's (EvalInt + Meditation + Inscription)/40, at most 75 -
+    /// the chance in a thousand that a hit does not disturb a cast. The ward costs
+    /// 15 - the caster's Inscription/200 physical resist (m_PolyStr), two points of
+    /// Faster Casting, and min(Magic Resistance, 350 - own Inscription/20) of the
+    /// wearer's Magic Resistance (m_PolyDex). Each amount stays on the memory and the
+    /// removal gives exactly that back.</summary>
+    private static void AddElementalWard(Item mem, Character t, Character? caster)
+    {
+        int casterInscription = caster?.GetSkill(SkillType.Inscription) ?? 0;
+        int sum = (caster?.GetSkill(SkillType.EvalInt) ?? 0) +
+                  (caster?.GetSkill(SkillType.Meditation) ?? 0) + casterInscription;
+        SetMemLevel(mem, Math.Min(75, sum / 40));
+        int magicResist = Math.Min(t.GetSkill(SkillType.MagicResistance),
+            350 - t.GetSkill(SkillType.Inscription) / 20);
+        SetPolyStats(mem, ClampShort(15 - casterInscription / 200), ClampShort(magicResist));
+        t.ResPhysical = ClampShort(t.ResPhysical - PolyStr(mem));
+        AddFasterCastingMod(t, -2);
+        AddMagicResistanceMod(t, -PolyDex(mem));
+    }
+
+    private static void RemoveElementalWard(Item mem, Character t)
+    {
+        t.ResPhysical = ClampShort(t.ResPhysical + PolyStr(mem));
+        AddFasterCastingMod(t, +2);
+        AddMagicResistanceMod(t, +PolyDex(mem));
+    }
+
+    private static void AddMagicResistanceMod(Character t, int delta) =>
+        t.SetSkill(SkillType.MagicResistance,
+            (ushort)Math.Clamp(t.GetSkill(SkillType.MagicResistance) + delta, 0, ushort.MaxValue));
+
+    /// <summary>ModPropNum(PROPCH_FASTERCASTING): the character's own FASTERCASTING,
+    /// which the cast time sums with the worn items' (<see cref="SumCharAndEquipProperty"/>).</summary>
+    private static void AddFasterCastingMod(Character t, int delta)
+    {
+        long value = t.Tags.GetInt(SpellCastingProperties.FasterCasting) + delta;
+        if (value == 0)
+            t.Tags.Remove(SpellCastingProperties.FasterCasting);
+        else
+            t.Tags.Set(SpellCastingProperties.FasterCasting, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
 
     /// <summary>Seconds left on a memory's timer, for its buff icon (wTimerEffect).</summary>
     private static ushort TimerSeconds(Item mem)
@@ -517,6 +657,231 @@ public sealed partial class SpellEngine
         static ushort? TagHue(Item m, string key) =>
             m.TryGetTag(key, out string? raw) && ScriptNumber.TryParseToken(raw, out long v)
                 ? (ushort)v : null;
+    }
+
+    // ----------------------------------------------------------- contributions
+
+    /// <summary>The life leech Curse Weapon puts on the weapon (wStatEffectRef = 50, :1363).</summary>
+    private const int CurseWeaponLeech = 50;
+    private const string LeechLifeProperty = "HITLEECHLIFE";
+    private const string LowerManaCostProperty = "LOWERMANACOST";
+
+    /// <summary>m_spellcharges (MORE2).</summary>
+    private static int MemCharges(Item mem) => unchecked((int)mem.More2);
+
+    /// <summary>The body a necromancy form takes (m_uiSummonID, :1039-1063).</summary>
+    private static ushort NecroFormBody(SpellType spell) => spell switch
+    {
+        SpellType.LichForm => 0x0018,           // CREID_LICH
+        SpellType.WraithForm => 0x001A,         // CREID_SPECTRE
+        SpellType.HorrificBeast => 0x02EA,      // CREID_HORRIFIC_BEAST
+        _ => 0x013D,                            // CREID_VAMPIRE_BAT
+    };
+
+    /// <summary>The runtime markers the combat code reads for the forms whose effect is
+    /// their presence (Horrific Beast's damage bonus, Wraith Form's mana drain).</summary>
+    private static void SetNecroFormMarker(Character t, SpellType spell, bool on)
+    {
+        switch (spell)
+        {
+            case SpellType.HorrificBeast: t.HorrificBeastActive = on; break;
+            case SpellType.WraithForm: t.WraithFormActive = on; break;
+            case SpellType.LichForm: t.LichFormActive = on; break;
+            case SpellType.VampiricEmbrace: t.VampiricEmbraceActive = on; break;
+        }
+    }
+
+    /// <summary>A necromancy form's share, read from its memory (CCharSpell.cpp:1038-1069):
+    /// Lich +m_PolyStr mana regen, -m_PolyDex hit regen, charges off fire and onto
+    /// poison and cold; Wraith sets its own 15/5/5 and moves physical, fire and energy;
+    /// Horrific Beast +charges hit regen; Vampiric Embrace +m_PolyStr HITLEECHLIFE,
+    /// +m_PolyDex stamina regen, +charges mana regen and the level off fire. A regen
+    /// value stops at 0, and the field keeps what actually moved so the removal takes
+    /// back exactly that.</summary>
+    private static void AddNecroFormContribution(Item mem, Character t, SpellType spell)
+    {
+        switch (spell)
+        {
+            case SpellType.LichForm:
+            {
+                int mana = AddRegenVal(t, "REGENVALMANA", PolyStr(mem));
+                int hits = AddRegenVal(t, "REGENVALHITS", -PolyDex(mem));
+                SetPolyStats(mem, ClampShort(mana), ClampShort(-hits));
+                int charges = MemCharges(mem);
+                t.ResFire = ClampShort(t.ResFire - charges);
+                t.ResPoison = ClampShort(t.ResPoison + charges);
+                t.ResCold = ClampShort(t.ResCold + charges);
+                break;
+            }
+            case SpellType.WraithForm:
+                SetPolyStats(mem, 15, 5);
+                mem.More2 = 5;
+                t.ResPhysical = ClampShort(t.ResPhysical + PolyStr(mem));
+                t.ResFire = ClampShort(t.ResFire - PolyDex(mem));
+                t.ResEnergy = ClampShort(t.ResEnergy - MemCharges(mem));
+                break;
+            case SpellType.HorrificBeast:
+                mem.More2 = unchecked((uint)AddRegenVal(t, "REGENVALHITS", MemCharges(mem)));
+                break;
+            case SpellType.VampiricEmbrace:
+            {
+                ModCharPropNum(t, LeechLifeProperty, PolyStr(mem));
+                int stam = AddRegenVal(t, "REGENVALSTAM", PolyDex(mem));
+                int mana = AddRegenVal(t, "REGENVALMANA", MemCharges(mem));
+                SetPolyStats(mem, PolyStr(mem), ClampShort(stam));
+                mem.More2 = unchecked((uint)mana);
+                t.ResFire = ClampShort(t.ResFire - MemLevel(mem));
+                break;
+            }
+        }
+        SetNecroFormMarker(t, spell, true);
+    }
+
+    /// <summary>The removal of <see cref="AddNecroFormContribution"/>, from the same
+    /// fields (:626-650).</summary>
+    private static void RemoveNecroFormContribution(Item mem, Character t, SpellType spell)
+    {
+        switch (spell)
+        {
+            case SpellType.LichForm:
+            {
+                AddRegenVal(t, "REGENVALMANA", -PolyStr(mem));
+                AddRegenVal(t, "REGENVALHITS", PolyDex(mem));
+                int charges = MemCharges(mem);
+                t.ResFire = ClampShort(t.ResFire + charges);
+                t.ResPoison = ClampShort(t.ResPoison - charges);
+                t.ResCold = ClampShort(t.ResCold - charges);
+                break;
+            }
+            case SpellType.WraithForm:
+                t.ResPhysical = ClampShort(t.ResPhysical - PolyStr(mem));
+                t.ResFire = ClampShort(t.ResFire + PolyDex(mem));
+                t.ResEnergy = ClampShort(t.ResEnergy + MemCharges(mem));
+                break;
+            case SpellType.HorrificBeast:
+                AddRegenVal(t, "REGENVALHITS", -MemCharges(mem));
+                break;
+            case SpellType.VampiricEmbrace:
+                ModCharPropNum(t, LeechLifeProperty, -PolyStr(mem));
+                AddRegenVal(t, "REGENVALSTAM", -PolyDex(mem));
+                AddRegenVal(t, "REGENVALMANA", -MemCharges(mem));
+                t.ResFire = ClampShort(t.ResFire + MemLevel(mem));
+                break;
+        }
+        SetNecroFormMarker(t, spell, false);
+    }
+
+    /// <summary>A form memory from a save written before the forms took their body or
+    /// kept their share on the memory: the character still has its own body and no
+    /// OBODY. What that add applied was fixed (Lich 10 off fire and onto poison and
+    /// cold, Vampiric Embrace 10 off fire, nothing for the other two), so the fields
+    /// are set to take back exactly that, and the form's body goes on.</summary>
+    private static void AdoptLegacyNecroForm(Item mem, Character t, SpellType spell)
+    {
+        ushort body = NecroFormBody(spell);
+        if (t.BodyId == body || t.OBody != 0)
+            return;
+        SetPolyStats(mem, 0, 0);
+        mem.More2 = spell == SpellType.LichForm ? 10u : 0u;
+        if (spell == SpellType.VampiricEmbrace)
+            SetMemLevel(mem, 10);
+        t.OBody = t.BodyId;
+        t.BodyId = body;
+        Character.OnAppearanceChanged?.Invoke(t);
+    }
+
+    /// <summary>SetID(_iPrev_id): back to the body kept in OBODY.</summary>
+    private static void RestorePolymorphBody(Character t)
+    {
+        if (t.OBody == 0)
+            return;
+        bool changed = t.BodyId != t.OBody;
+        t.BodyId = t.OBody;
+        t.OBody = 0;
+        if (changed)
+            Character.OnAppearanceChanged?.Invoke(t);
+    }
+
+    /// <summary>Corpse Skin's resist shift off its memory: m_PolyDex off fire and poison,
+    /// m_PolyStr onto cold and physical (:1345-1348, undone at :780-783).</summary>
+    private static void ShiftCorpseSkinResists(Character t, Item mem, int sign)
+    {
+        int dex = PolyDex(mem) * sign;
+        int str = PolyStr(mem) * sign;
+        t.ResFire = ClampShort(t.ResFire - dex);
+        t.ResPoison = ClampShort(t.ResPoison - dex);
+        t.ResCold = ClampShort(t.ResCold + str);
+        t.ResPhysical = ClampShort(t.ResPhysical + str);
+    }
+
+    /// <summary>Stats_AddRegenVal, stopped at 0 the way the removal stops it
+    /// (CCharStat.cpp:628, CCharSpell.cpp:604-614). Returns what actually moved.</summary>
+    private static int AddRegenVal(Character t, string key, int delta)
+    {
+        if (delta == 0)
+            return 0;
+        int current = key switch
+        {
+            "REGENVALHITS" => t.RegenValHits,
+            "REGENVALSTAM" => t.RegenValStam,
+            _ => t.RegenValMana,
+        };
+        int next = Math.Clamp(current + delta, 0, ushort.MaxValue);
+        t.TrySetProperty(key, next.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return next - current;
+    }
+
+    /// <summary>ModPropNum on a character property - the tag-backed CCPropsChar value
+    /// the casting and combat code sum.</summary>
+    private static void ModCharPropNum(Character t, string key, int delta)
+    {
+        if (delta == 0)
+            return;
+        long next = t.Tags.GetInt(key) + delta;
+        if (next == 0)
+            t.RemoveTag(key);
+        else
+            t.SetTag(key, next.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>ModPropNum(PROPIEQUIP_HITLEECHLIFE) on a weapon. A take-back never
+    /// leaves the weapon below zero: a curse memory from a save written before the
+    /// curse lived on the weapon has nothing on it to take back.</summary>
+    private static void ModWeaponLeech(Item weapon, int delta)
+    {
+        if (delta == 0 || weapon.IsDeleted)
+            return;
+        long next = (long)CombatEngine.GetItemNumProperty(weapon, LeechLifeProperty) + delta;
+        if (delta < 0 && next < 0)
+            next = 0;
+        weapon.TrySetProperty(LeechLifeProperty,
+            Math.Clamp(next, int.MinValue, int.MaxValue).ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>A weapon going into or out of the hand of a cursed wearer takes the
+    /// curse's level on or off (ItemEquip / OnRemoveObj, CCharAct.cpp:3418-3424,
+    /// 548-555). Only a curse this engine runs, whose add has applied, counts - so a
+    /// weapon put on while a save is loading is not cursed a second time.</summary>
+    private void OnWeaponWornChanged(Character wearer, Item weapon, bool worn)
+    {
+        var curse = FindEffect(wearer, m => m.EquipLayer == SpellLayers.CurseWeapon);
+        if (curse == null || !_effects.Contains(curse) || _addPending.Contains(curse) || IsNativeSkipped(curse))
+            return;
+        ModWeaponLeech(weapon, worn ? MemLevel(curse) : -MemLevel(curse));
+    }
+
+    /// <summary>Reveal(STATF_HIDDEN) of the Invisibility add (:1199): the Hiding that
+    /// was on ends - the character stays unseen through Invisible - unless @Reveal
+    /// refuses it.</summary>
+    private static void ClearHidingUnderInvisibility(Character t)
+    {
+        if (!t.IsStatFlag(StatFlag.Hidden))
+            return;
+        if (Character.OnRevealing != null && !Character.OnRevealing(t))
+            return;
+        t.ClearStatFlag(StatFlag.Hidden);
+        if (!t.IsStatFlag(StatFlag.Insubstantial))
+            Character.OnClientBuffChanged?.Invoke(t, BuffIcon.Hidden, false, 0, null);
     }
 
     // ------------------------------------------------------------------ remove
@@ -588,7 +953,7 @@ public sealed partial class SpellEngine
     {
         var spell = def.Id;
         int level = MemLevel(mem);
-        switch (spell)
+        switch (NativeSpell(def))
         {
             case SpellType.Strength: t.ModStr = ClampShort(t.ModStr - level); break;
             case SpellType.Agility: t.ModDex = ClampShort(t.ModDex - level); break;
@@ -613,6 +978,11 @@ public sealed partial class SpellEngine
             case SpellType.Shield:
             case SpellType.Steelskin:
             case SpellType.Stoneskin:
+                if (spell != SpellType.Shield && UsesElementalEngine(def))
+                {
+                    RemoveElementalWard(mem, t);                        // :915-923
+                    break;
+                }
                 t.ProtectionArmor = Math.Max(0, t.ProtectionArmor - level);
                 break;
             case SpellType.DivineFury:
@@ -631,6 +1001,8 @@ public sealed partial class SpellEngine
                 break;
             case SpellType.MagicReflect:
                 t.ClearStatFlag(StatFlag.Reflection);
+                if (UsesElementalEngine(def))
+                    ShiftWardResists(t, +level, -10);                   // :895-906
                 break;
             case SpellType.Stone:
             case SpellType.ParticleForm:
@@ -643,6 +1015,11 @@ public sealed partial class SpellEngine
                 OnPersonalLightChanged?.Invoke(t);
                 break;
             case SpellType.ReactiveArmor:
+                if (UsesElementalEngine(def))
+                {
+                    ShiftWardResists(t, -level, +5);                    // :877-887
+                    break;
+                }
                 t.ClearStatFlag(StatFlag.Reactive);
                 t.ReactiveArmorPercent = 0;
                 break;
@@ -651,21 +1028,13 @@ public sealed partial class SpellEngine
                 break;
 
             case SpellType.HorrificBeast:
-                t.HorrificBeastActive = false;
-                t.ClearStatFlag(StatFlag.Polymorph);
-                break;
             case SpellType.WraithForm:
-                t.WraithFormActive = false;
-                t.ClearStatFlag(StatFlag.Polymorph);
-                break;
             case SpellType.LichForm:
-                t.LichFormActive = false;
-                ApplyLichFormResists(t, -1);
-                t.ClearStatFlag(StatFlag.Polymorph);
-                break;
             case SpellType.VampiricEmbrace:
-                t.VampiricEmbraceActive = false;
-                ApplyVampiricResists(t, -1);
+                // The same fields the add used, taken back; then SetID(_iPrev_id)
+                // (:626-661).
+                RemoveNecroFormContribution(mem, t, spell);
+                RestorePolymorphBody(t);
                 t.ClearStatFlag(StatFlag.Polymorph);
                 break;
             case SpellType.Polymorph:
@@ -677,25 +1046,21 @@ public sealed partial class SpellEngine
                 // SetID(_iPrev_id) and the polymorph stat change off the modifier (:661-670).
                 t.ModStr = ClampShort(t.ModStr - PolyStr(mem));
                 t.ModDex = ClampShort(t.ModDex - PolyDex(mem));
-                if (t.OBody != 0)
-                {
-                    bool changed = t.BodyId != t.OBody;
-                    t.BodyId = t.OBody;
-                    t.OBody = 0;
-                    if (changed)
-                        Character.OnAppearanceChanged?.Invoke(t);
-                }
+                RestorePolymorphBody(t);
                 t.ClearStatFlag(StatFlag.Polymorph);
                 break;
 
             case SpellType.CurseWeapon:
-                t.CurseWeaponLevel = 0;
+                // Off whatever weapon is in hand now (:950-956): the one the add
+                // cursed, or one that took the curse when it was put on.
+                if (t.FightWeapon() is { } weapon)
+                    ModWeaponLeech(weapon, -level);
                 break;
             case SpellType.CorpseSkin:
-                ApplyCorpseSkinResists(t, -1);
+                ShiftCorpseSkinResists(t, mem, -1);
                 break;
             case SpellType.MindRot:
-                t.MindRotActive = false;
+                ModCharPropNum(t, LowerManaCostProperty, level);
                 break;
             case SpellType.BloodOath:
             {
@@ -717,6 +1082,15 @@ public sealed partial class SpellEngine
                 t.ClearStatFlag(StatFlag.Hallucinating);
                 OnViewRefresh?.Invoke(t);
                 break;
+            case SpellType.SummonCreature:
+                // LAYER_SPELL_Summon (:589-600): the summoning has run out - the
+                // creature vanishes. Not a player, and not one already dead (its death
+                // dispel brings it here; deleting it again would destroy it twice).
+                if (t.IsPlayer || t.IsDead || t.IsDeleted)
+                    break;
+                OnPlaySound?.Invoke(t.Position, 0x201);
+                _world.DeleteObject(t);
+                break;
         }
     }
 
@@ -726,16 +1100,21 @@ public sealed partial class SpellEngine
     /// is not written again: that is what kept a saved +20 from becoming +40.</summary>
     private void Reattach(Item mem, Character t)
     {
-        if (IsNativeSkipped(mem))
+        if (IsNativeSkipped(mem) || GetSpellDef(MemSpell(mem)) is not { } def)
             return;
         int level = MemLevel(mem);
-        switch (MemSpell(mem))
+        // The elemental wards changed only saved state (resists, FASTERCASTING, Magic
+        // Resistance): nothing of theirs is put back here.
+        bool elemental = UsesElementalEngine(def);
+        switch (NativeSpell(def))
         {
             case SpellType.Protection:
             case SpellType.ArchProtection:
             case SpellType.Shield:
             case SpellType.Steelskin:
             case SpellType.Stoneskin:
+                if (def.Id != SpellType.Shield && elemental)
+                    break;
                 t.ProtectionArmor = (int)Math.Min(int.MaxValue, (long)t.ProtectionArmor + level);
                 break;
             case SpellType.DivineFury:
@@ -761,15 +1140,24 @@ public sealed partial class SpellEngine
                 OnPersonalLightChanged?.Invoke(t);
                 break;
             case SpellType.ReactiveArmor:
+                if (elemental)
+                    break;
                 t.SetStatFlag(StatFlag.Reactive);
                 t.ReactiveArmorPercent = Math.Max(0, (int)PolyStr(mem));
                 break;
-            case SpellType.HorrificBeast: t.HorrificBeastActive = true; break;
-            case SpellType.WraithForm: t.WraithFormActive = true; break;
-            case SpellType.LichForm: t.LichFormActive = true; break;
-            case SpellType.VampiricEmbrace: t.VampiricEmbraceActive = true; break;
-            case SpellType.CurseWeapon: t.CurseWeaponLevel = Math.Clamp(level, 1, 100); break;
-            case SpellType.MindRot: t.MindRotActive = true; break;
+            case SpellType.HorrificBeast:
+            case SpellType.WraithForm:
+            case SpellType.LichForm:
+            case SpellType.VampiricEmbrace:
+                AdoptLegacyNecroForm(mem, t, MemSpell(mem));
+                SetNecroFormMarker(t, MemSpell(mem), true);
+                break;
+            case SpellType.CorpseSkin:
+                // A memory saved before the shift was kept on it carries no fields;
+                // the shift its add made was the fixed 10/15 pair.
+                if (PolyStr(mem) == 0 && PolyDex(mem) == 0)
+                    SetPolyStats(mem, 10, 15);
+                break;
             case SpellType.BloodOath:
                 t.BloodOathEnemy = mem.Link;
                 t.BloodOathLevel = level;
@@ -1040,8 +1428,23 @@ public sealed partial class SpellEngine
         ctx.Damage = (int)locals.GetInt("Effect", ctx.Damage);
         ctx.Charges = (int)locals.GetInt("Charges", ctx.Charges);
         ctx.DamageType = (int)locals.GetInt("DamageType", ctx.DamageType);
-        if (locals.TryGetDouble("Delay", out double delaySec) && delaySec >= 0)
-            ctx.DelayMs = (int)Math.Min(int.MaxValue, delaySec * 1000);
+        if (TryReadTickDelay(locals, out int delayMs))
+            ctx.DelayMs = delayMs;
+        return true;
+    }
+
+    /// <summary>LOCAL.Delay as the tick stages leave it (CCharSpell.cpp:2001), the
+    /// one readback both the engine and the host bridge use: seconds, fractions kept,
+    /// ZERO accepted (SetTimeoutS(0), :2032). A negative or unreadable value leaves
+    /// the default delay. A zero delay never re-runs the memory in the same pass -
+    /// <see cref="EquipTick"/> re-arms at least a millisecond ahead and the timer
+    /// passes take their due list before running it.</summary>
+    public static bool TryReadTickDelay(SphereNet.Scripting.Variables.VarMap locals, out int delayMs)
+    {
+        delayMs = 0;
+        if (!locals.TryGetDouble("Delay", out double delaySec) || double.IsNaN(delaySec) || delaySec < 0)
+            return false;
+        delayMs = (int)Math.Min(int.MaxValue, delaySec * 1000);
         return true;
     }
 
@@ -1066,7 +1469,12 @@ public sealed partial class SpellEngine
             spell: (int)MemSpell(mem), feedback: DamageFeedback.Caller);
         if (dealt <= 0)
             return;
-        TryInterruptFromDamage(victim, dealt);
+        // The damage entry already ended a paralysis unless DAMAGE_NOUNPARALYZE or
+        // the spell's NOUNPARALYZE said otherwise (CCharFight.cpp:797-818); what is
+        // left is the disturb, which DAMAGE_NODISTURB and a blow of one's own skip
+        // (:881).
+        if ((type & DamageType.NoDisturb) == 0 && source != null && source != victim)
+            TryInterruptFromDamage(victim, dealt, breakParalyze: false);
 
         Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, dealt, 0);
         Character.BroadcastNearby?.Invoke(victim.Position, 18,

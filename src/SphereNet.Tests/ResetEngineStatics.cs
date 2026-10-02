@@ -288,6 +288,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnHiddenStateCleared = null;
         SphereNet.Game.Objects.Characters.Character.OnSpellEffectTick = null;
         SphereNet.Game.Objects.Characters.CharacterPoisonState.OnSpellEffectAdd = null;
+        SphereNet.Game.Objects.Characters.CharacterPoisonState.OnSpellEffectRemove = null;
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = null;
         SphereNet.Game.Objects.Characters.Character.OnJailed = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptDismount = null;

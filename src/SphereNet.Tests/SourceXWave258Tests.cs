@@ -47,9 +47,10 @@ public sealed class SourceXWave258Tests
         Assert.True(engine.CastStart(caster, SpellType.LichForm, caster.Uid, caster.Position) >= 0);
         Assert.True(engine.CastDone(caster));
 
-        Assert.Equal(40, caster.ResFire);   // -10
-        Assert.Equal(60, caster.ResPoison); // +10
-        Assert.Equal(60, caster.ResCold);   // +10
+        // The shift is the memory's charges (1 as created): CCharSpell.cpp:1042-1044.
+        Assert.Equal(49, caster.ResFire);
+        Assert.Equal(51, caster.ResPoison);
+        Assert.Equal(51, caster.ResCold);
         Assert.True(caster.LichFormActive);
         Assert.True(caster.IsStatFlag(StatFlag.Polymorph));
 
@@ -69,7 +70,9 @@ public sealed class SourceXWave258Tests
         Assert.True(engine.CastStart(caster, SpellType.VampiricEmbrace, caster.Uid, caster.Position) >= 0);
         Assert.True(engine.CastDone(caster));
 
-        Assert.Equal(40, caster.ResFire); // -10
+        // The memory's level comes off fire (CCharSpell.cpp:1067).
+        int level = (ushort)caster.FindLayer(SpellLayers.ForSpell(SpellType.VampiricEmbrace, null))!.MoreP.Y;
+        Assert.Equal(50 - level, caster.ResFire);
         Assert.True(caster.VampiricEmbraceActive);
 
         engine.ProcessExpirations(Environment.TickCount64 + 120_000);
@@ -83,7 +86,7 @@ public sealed class SourceXWave258Tests
         var world = TestHarness.CreateWorld();
         var attacker = world.CreateCharacter();
         attacker.MaxHits = 100; attacker.Hits = 40;
-        attacker.VampiricEmbraceActive = true;
+        attacker.SetTag("HITLEECHLIFE", "5");   // what the form's m_PolyStr put on
         world.PlaceCharacter(attacker, new Point3D(100, 100, 0, 0));
         var target = world.CreateCharacter();
         target.MaxHits = 100; target.Hits = 100;

@@ -69,6 +69,23 @@ public sealed class CharacterPoisonState
     /// hooks the stage.</summary>
     public static Func<Character, Item, Character?, TriggerResult>? OnSpellEffectAdd { get; set; }
 
+    /// <summary>[SPELL] @EffectRemove for the poison memory as it comes off - cure,
+    /// expiry, death, a move off the character (Spell_Effect_Remove, CCharSpell.cpp:568-576):
+    /// args are the owner, the memory (ARGO) and the poisoner (SRC). RETURN 0 (False)
+    /// lets the memory go but keeps STATF_POISONED. Installed only while a script hooks
+    /// the stage.</summary>
+    public static Func<Character, Item, Character?, TriggerResult>? OnSpellEffectRemove { get; set; }
+
+    /// <summary>The memory whose Spell_Effect_Add is running: worn already, its native
+    /// part not yet applied. A deletion now (an add hook's RETURN 1) is not a removal -
+    /// upstream's memory was never on the character yet (Spell_Effect_Create runs the
+    /// add before SetPoison's LayerAdd, CCharSpell.cpp:2111 / CCharAct.cpp:4196).</summary>
+    private Item? _addPending;
+
+    /// <summary>A legacy POISON= record being made into its memory: a load, not a new
+    /// poison, so no add stage runs (upstream's load runs none).</summary>
+    private bool _restoring;
+
     /// <summary>A poison read from a pre-item save (the old POISON= record), made
     /// into its memory on the first tick after load - creating an item while the
     /// world file is still being read could take a uid a later item owns.</summary>
@@ -254,25 +271,51 @@ public sealed class CharacterPoisonState
         if (link.IsValid)
             mem.Link = link;
         world.LastNewObject = mem.Uid;
-        if (!_owner.Equip(mem, Layer.FlagPoison))
+        if (_restoring)
         {
-            world.DeleteObject(mem);
-            return null;
+            // A load: worn with its native part (LayerAdd -> OnEffectAdded), no stages.
+            if (!_owner.Equip(mem, Layer.FlagPoison))
+            {
+                world.DeleteObject(mem);
+                return null;
+            }
+            mem.SetTimeout(Environment.TickCount64 + Math.Max(1, firstTickMs));
+            return mem;
         }
-        mem.SetTimeout(Environment.TickCount64 + Math.Max(1, firstTickMs));
 
-        // Worn: Spell_Effect_Add runs [SPELL] @EffectAdd with ARGO = this memory and
-        // SRC = the poisoner. RETURN 1 deletes it (CCharSpell.cpp:1006-1010).
-        var addHook = OnSpellEffectAdd;
-        if (addHook != null)
+        // Spell_Effect_Add (CCharSpell.cpp:965-1014): the character's @SpellEffectAdd and
+        // then [SPELL 20] @EffectAdd, ARGO = this memory, SRC = the poisoner, ARGN1 = the
+        // spell. RETURN 1 deletes the memory - no poison; RETURN 0 keeps it but skips the
+        // native part. Only then does STATF_POISONED go on (:1134).
+        var caster = source ?? (link.IsValid ? Character.ResolveCharByUid?.Invoke(link) : null);
+        var outer = _addPending;
+        _addPending = mem;
+        try
         {
-            var caster = source ?? (link.IsValid ? Character.ResolveCharByUid?.Invoke(link) : null);
-            if (addHook(_owner, mem, caster) == TriggerResult.True || mem.IsDeleted)
+            if (!_owner.Equip(mem, Layer.FlagPoison))
+            {
+                world.DeleteObject(mem);
+                return null;
+            }
+            mem.SetTimeout(Environment.TickCount64 + Math.Max(1, firstTickMs));
+
+            var verdict = Character.OnSpellEffectAdd?.Invoke(_owner, caster, mem, (int)SpellType.Poison)
+                ?? TriggerResult.Default;
+            if (verdict == TriggerResult.Default && !mem.IsDeleted && OnSpellEffectAdd is { } stage)
+                verdict = stage(_owner, mem, caster);
+            if (mem.IsDeleted || verdict == TriggerResult.True)
             {
                 if (!mem.IsDeleted)
                     world.DeleteObject(mem);
                 return null;
             }
+            _addPending = outer;
+            if (verdict != TriggerResult.False)
+                OnEffectAdded();
+        }
+        finally
+        {
+            _addPending = outer;
         }
         return mem;
     }
@@ -334,16 +377,35 @@ public sealed class CharacterPoisonState
     /// memory went onto the layer.</summary>
     internal void OnEffectAdded()
     {
+        if (_addPending != null && ReferenceEquals(_addPending, Memory))
+            return;                             // the add stages run first (CreateMemory)
         _owner.SetStatFlag(StatFlag.Poisoned);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0, null);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, true, 2, null);
         Character.OnHealthBarStatusChanged?.Invoke(_owner);
     }
 
-    /// <summary>Spell_Effect_Remove for LAYER_FLAG_Poison (CCharSpell.cpp:583): the
-    /// memory came off the layer, however it came off.</summary>
-    internal void OnEffectRemoved()
+    /// <summary>Spell_Effect_Remove for LAYER_FLAG_Poison (CCharSpell.cpp:541-588): the
+    /// memory came off the layer, however it came off - cure, expiry, death, a move.
+    /// The character's @SpellEffectRemove and then [SPELL 20] @EffectRemove see the
+    /// memory (ARGO) with the poisoner as SRC; either answering RETURN 0 lets the memory
+    /// go but keeps STATF_POISONED (:558-577). A memory whose add is still running was
+    /// never on the character, so it has nothing to remove.</summary>
+    internal void OnEffectRemoved(Item? mem = null)
     {
+        if (mem != null)
+        {
+            if (ReferenceEquals(mem, _addPending))
+                return;
+            var link = mem.Link;
+            var caster = link.IsValid ? Character.ResolveCharByUid?.Invoke(link) : null;
+            var verdict = Character.OnSpellEffectRemove?.Invoke(_owner, caster, mem, (int)SpellType.Poison)
+                ?? TriggerResult.Default;
+            if (verdict == TriggerResult.False)
+                return;
+            if (OnSpellEffectRemove is { } stage && stage(_owner, mem, caster) == TriggerResult.False)
+                return;
+        }
         _owner.ClearStatFlag(StatFlag.Poisoned);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0, null);
         Character.OnHealthBarStatusChanged?.Invoke(_owner);
@@ -379,7 +441,9 @@ public sealed class CharacterPoisonState
         {
             _pendingRestore = null;
             _owner.ClearStatFlag(StatFlag.Poisoned);
-            Apply(r.Level, r.Source);
+            _restoring = true;
+            try { Apply(r.Level, r.Source); }
+            finally { _restoring = false; }
             var restored = Memory;
             if (restored != null)
             {

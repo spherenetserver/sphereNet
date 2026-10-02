@@ -1878,10 +1878,11 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             }
             case "SAYUA":
             {
-                // Source-X OV_SAYUA: "Color, Mode, Font, Lang, Text" — exactly
-                // five comma fields; the text field keeps any further commas.
-                var f = args.Split(',', 5);
-                if (f.Length < 5)
+                // Source-X OV_SAYUA: "Color, Mode, Font, Lang, Text" through
+                // Str_ParseCmds (CObjBase.cpp:2573): any of "=, 	" parts the first
+                // four, and the text keeps the rest of the line.
+                var f = ParseCmds(args, 5);
+                if (f.Count < 5)
                     return true;
                 ushort hue = f[0].Trim().Length > 0 && TryParseScriptUShort(f[0].Trim(), out ushort h) ? h : (ushort)0x03B2;
                 byte mode = f[1].Trim().Length > 0 && TryParseScriptByte(f[1].Trim(), out byte m) ? m : (byte)0;

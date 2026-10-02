@@ -764,7 +764,7 @@ public static partial class Program
         return field switch
         {
             "NAME" => def.Name ?? "",
-            "JOB" => def.Job ?? "",
+            "JOB" => def.TradeName,
             "DEFNAME" => def.DefName ?? "",
             "ID" or "DISPID" => $"0{def.DispIndex:X}",
             "ICON" => def.Icon ?? "",

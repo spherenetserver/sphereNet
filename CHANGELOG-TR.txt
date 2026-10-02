@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - MESSAGEUA / SAYUA / SYSMESSAGEUA arguman okumasi
+------------------------------------------------------------------------
+DUZELTME - JOB tanimin meslek adidir (CCharBase::GetTradeName: isim listesi kelimesi ve
+           "the " atilmis NAME); karakter uzerinde ve SERV.CHARDEF.x.JOB ile okunur.
+           Player vendor'a tiklamada "<NAME>, The <JOB>" satiri "The 0" gosteriyordu.
+DUZELTME - MESSAGEUA, SAYUA ve SYSMESSAGEUA "renk,mod,font,dil,metin" alanlarini Source-X
+           gibi Str_ParseCmds ile okur ("=, 	" ayiricilari, metin satirin kalanini alir).
+           Paketler dil ile metni bosluklu yazar ("65,6,6,0 metin"); yalnizca virgulle
+           bolmek dort alan bulup satiri atiyordu, bu yuzden vendor fiyatlari ve item
+           isimleri gibi tiklama yazilari hic gorunmuyordu.
+
 [2026-10-02] - Sunucu hook'larindan SERV.ALLCLIENTS
 ------------------------------------------------------------------------
 DUZELTME - [DEFMESSAGE] degerleri CScriptKey::GetArgStr gibi cevreleyen cift tirnaklari

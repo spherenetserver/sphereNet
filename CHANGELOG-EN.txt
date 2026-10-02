@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - MESSAGEUA / SAYUA / SYSMESSAGEUA argument parsing
+------------------------------------------------------------------------
+FIX - JOB is the definition's trade name (CCharBase::GetTradeName: NAME without the name-list
+      word and "the "), read on a character as well as on SERV.CHARDEF.x.JOB; a click line
+      "<NAME>, The <JOB>" on a player vendor showed "The 0".
+FIX - MESSAGEUA, SAYUA and SYSMESSAGEUA read "hue,mode,font,lang,text" with Str_ParseCmds
+      (separators "=, 	", the text keeps the rest of the line), as Source-X does. Packs
+      write the language and the text parted by a space ("65,6,6,0 text"); splitting on
+      commas alone found four fields and dropped the line, so item click texts such as a
+      vendor's prices and names never showed.
+
 [2026-10-02] - SERV.ALLCLIENTS from server hooks
 ------------------------------------------------------------------------
 FIX - [DEFMESSAGE] values lose the double quotes around them, as CScriptKey::GetArgStr does:

@@ -321,8 +321,10 @@ public sealed class ClientScriptConsoleHandler
         // nearby observers). MSG above is the legacy alias of MESSAGE.
         if (upper == "MESSAGEUA")
         {
-            string[] parts = args.Split(',', 5, StringSplitOptions.TrimEntries);
-            if (parts.Length < 5)
+            // Str_ParseCmds over "=, 	" (CObjBase.cpp:2422): "65,6,6,0 text" is five
+            // arguments, the language and the text parted by a space.
+            var parts = ObjBase.ParseCmds(args, 5);
+            if (parts.Count < 5)
                 return true;
 
             ushort hue = TryParseScriptNumber(parts[0], out long h)

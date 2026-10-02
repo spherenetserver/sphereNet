@@ -5345,6 +5345,12 @@ public partial class Character : ObjBase
             case "MAXFOOD":
                 value = MaxFood.ToString();
                 return true;
+            // CBC_JOB: a character reads its definition's trade name (CCharBase.cpp:252,
+            // reached through the base-def fallback of CChar::r_WriteVal) - the "Player
+            // Vendor" of "<NAME>, The <JOB>". It answered 0.
+            case "JOB":
+                value = Definitions.DefinitionLoader.GetCharDef(CharDefIndex)?.TradeName ?? "";
+                return true;
             case "VIRTUALGOLD":
                 value = TryGetTag("VIRTUALGOLD", out string? vg) ? (vg ?? "0") : "0";
                 return true;
@@ -8659,8 +8665,9 @@ public partial class Character : ObjBase
                 // font and mode are IGNORED - the line always goes out in the normal
                 // font (CClient.cpp:1629-1641). Requiring them to be numbers dropped
                 // messages whose unused fields were left blank.
-                var parts = args.Split(',', 5, StringSplitOptions.TrimEntries);
-                if (parts.Length < 5)
+                // Str_ParseCmds (CClient.cpp:1633): "=, 	" part the fields.
+                var parts = ParseCmds(args, 5);
+                if (parts.Count < 5)
                     return false;
                 {
                     ushort hue = (ushort)EvalScriptLong(parts[0]);

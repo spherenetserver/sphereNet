@@ -118,6 +118,28 @@ public sealed class CharDef : BaseDef
     public bool MaxFoodExplicit { get; private set; }
     public string Icon { get; set; } = "";
     public string Job { get; set; } = "";
+
+    /// <summary>CBC_JOB = CCharBase::GetTradeName (CCharBase.cpp:252): the NAME with a
+    /// leading name-list word ("#names_humanmale") and a following "the " dropped -
+    /// "#names_humanmale the Player Vendor" is "Player Vendor". A NAME that starts with
+    /// no '#' is its own trade name. A JOB= line, which Source-X does not have, still
+    /// wins when a pack writes one.</summary>
+    public string TradeName
+    {
+        get
+        {
+            if (Job.Length > 0)
+                return Job;
+            string name = Name ?? "";
+            if (name.Length == 0 || name[0] != '#')
+                return name;
+            int space = name.IndexOf(' ');
+            if (space < 0)
+                return name;
+            string rest = name[(space + 1)..];
+            return rest.StartsWith("the ", StringComparison.OrdinalIgnoreCase) ? rest[4..] : rest;
+        }
+    }
     public int ThrowDam { get; set; }
     public int ThrowDamType { get; set; }
     public ushort ThrowObj { get; set; }

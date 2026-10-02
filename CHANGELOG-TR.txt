@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Sunucu hook'larindan SERV.ALLCLIENTS
+------------------------------------------------------------------------
+DUZELTME - [DEFMESSAGE] degerleri CScriptKey::GetArgStr gibi cevreleyen cift tirnaklari
+           kaybeder: tirnakli mesaj oyunculara tirnaklariyla gitmez, "" iki tirnak isareti
+           yerine bos mesajdir (kayit duyurusu gonderilmez).
+DUZELTME - SERV.ALLCLIENTS, cagiranin SRC karakteri olmasa bile (f_onserver_save_finished
+           gibi bir sunucu hook'u) satirini her istemcinin karakterinde calistirir,
+           Source-X SV_ALLCLIENTS gibi; kayit duyurusunu "serv.allclients <fonksiyon>"
+           ile yapan paketlerin mesaji oyunculara yeniden ulasir.
+
 [2026-10-02] - PACK/BANK verb'leri SRC'nin istemcisinde acilir
 ------------------------------------------------------------------------
 DUZELTME - PACK ve BANK verb'leri karakterin cantasini / banka kutusunu (ya da BANK'a

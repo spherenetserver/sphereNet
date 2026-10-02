@@ -735,8 +735,22 @@ public sealed class ResourceHolder
         {
             if (string.IsNullOrWhiteSpace(key.Key))
                 continue;
-            _defMessages[key.Key.Trim()] = key.Arg ?? "";
+            _defMessages[key.Key.Trim()] = UnquoteArg(key.Arg ?? "");
         }
+    }
+
+    /// <summary>CScriptKey::GetArgStr: an argument written inside double quotes loses
+    /// them, so <c>server_worldsave ""</c> is the empty message, not two quote marks
+    /// (CServerConfig.cpp:3423).</summary>
+    private static string UnquoteArg(string arg)
+    {
+        string s = arg.Trim();
+        if (s.Length > 0 && s[0] == '"')
+        {
+            int end = s.LastIndexOf('"');
+            return end > 0 ? s[1..end] : s[1..];
+        }
+        return arg;
     }
 
     private int ParseResourceIndex(string arg, ResType resType)

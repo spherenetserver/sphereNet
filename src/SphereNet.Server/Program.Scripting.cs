@@ -1793,12 +1793,14 @@ public static partial class Program
             uidStr = uidStr[2..];
         else if (uidStr.StartsWith("0", StringComparison.Ordinal) && uidStr.Length > 1)
             uidStr = uidStr[1..];
-        if (!uint.TryParse(uidStr, System.Globalization.NumberStyles.HexNumber, null, out uint srcUid))
-            return "";
 
-        var srcObj = _world.FindObject(new SphereNet.Core.Types.Serial(srcUid));
-        if (srcObj is not SphereNet.Game.Objects.Characters.Character srcChar)
-            return "";
+        // SV_ALLCLIENTS runs the line on every client's character with the caller's
+        // pSrc, whatever it is (CServer.cpp:1867-1880): a server hook such as
+        // f_onserver_save_finished has no SRC character and still reaches every
+        // client. Without a SRC the callback simply runs with none.
+        SphereNet.Game.Objects.Characters.Character? srcChar = null;
+        if (uint.TryParse(uidStr, System.Globalization.NumberStyles.HexNumber, null, out uint srcUid) && srcUid != 0)
+            srcChar = _world.FindObject(new SphereNet.Core.Types.Serial(srcUid)) as SphereNet.Game.Objects.Characters.Character;
 
         // Source-X allows two payload shapes:
         //   serv.allclients f_count_players          → call function f_count_players
@@ -1816,8 +1818,8 @@ public static partial class Program
         // resolved and how many clients the callback runs for — an empty list
         // there means the function never ran / SRC was wrong.
         _log.LogDebug("[allclients] src=0x{Src:X} '{SrcName}' payload='{Payload}' clients={Count}",
-            srcChar.Uid.Value, srcChar.Name ?? "?", payload, snapshot.Count);
-        var sourceClient = FindGameClient(srcChar);
+            srcChar?.Uid.Value ?? 0, srcChar?.Name ?? "(server)", payload, snapshot.Count);
+        var sourceClient = srcChar != null ? FindGameClient(srcChar) : null;
         foreach (var (target, targetClient) in snapshot)
         {
             var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(srcChar)

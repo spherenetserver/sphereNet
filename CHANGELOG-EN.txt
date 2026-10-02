@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - SERV.ALLCLIENTS from server hooks
+------------------------------------------------------------------------
+FIX - [DEFMESSAGE] values lose the double quotes around them, as CScriptKey::GetArgStr does:
+      a quoted message no longer reaches players with its quote marks, and "" is the
+      empty message (no save broadcast) instead of two quote marks.
+FIX - SERV.ALLCLIENTS runs its line on every client's character even when the caller has
+      no SRC character (a server hook such as f_onserver_save_finished), as Source-X
+      SV_ALLCLIENTS does; a pack announcing its saves through "serv.allclients
+      <function>" now reaches the players again.
+
 [2026-10-02] - PACK/BANK verbs open on SRC's client
 ------------------------------------------------------------------------
 FIX - The PACK and BANK verbs open the character's backpack / bank box (or the layer

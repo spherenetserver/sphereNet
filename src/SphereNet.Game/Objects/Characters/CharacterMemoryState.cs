@@ -125,10 +125,31 @@ public sealed class CharacterMemoryState
     /// <summary>Whether <paramref name="item"/> is a memory object that belongs on
     /// LAYER_SPECIAL beside any number of others: IT_EQ_MEMORY_OBJ by type, or the
     /// default memory graphic (i_memory, 02007) when the save's type was not
-    /// resolved. A spell effect is not one - the spell engine owns those.</summary>
+    /// resolved. A spell effect is not one - the spell engine owns those, and neither
+    /// is an item that borrows the memory graphic under a type of its own: a script
+    /// item written "ID=i_memory / TYPE=t_eq_script" is IT_EQ_SCRIPT upstream, ticks
+    /// through its own @Timer and is never handed to Memory_OnTick
+    /// (CChar::OnTickEquip, CCharAct.cpp:4082-4097).</summary>
     public static bool IsMemoryObject(Item item) =>
-        item.ItemType != ItemType.Spell &&
-        (item.ItemType == ItemType.EqMemoryObj || item.BaseId == MemoryObjectGraphic);
+        item.ItemType == ItemType.EqMemoryObj ||
+        (item.ItemType == ItemType.Normal && item.BaseId == MemoryObjectGraphic);
+
+    /// <summary>Whether <paramref name="item"/> is one of the types LAYER_SPECIAL holds
+    /// any number of: CanEquipLayer answers LAYER_SPECIAL for IT_EQ_TRADE_WINDOW,
+    /// IT_EQ_MEMORY_OBJ and IT_EQ_SCRIPT alike, "we can have multiple items of these"
+    /// (CCharStatus.cpp:360-367). Those share the memory list here; only a memory
+    /// object is a memory.</summary>
+    public static bool SharesSpecialLayer(Item item) =>
+        IsMemoryObject(item) || item.ItemType is ItemType.EqScript or ItemType.EqTradeWindow;
+
+    /// <summary>The layer CanEquipLayer settles on when an item names none of its own:
+    /// LAYER_SPECIAL for the stacking types above, otherwise none - "not legal"
+    /// (CCharStatus.cpp:360-367).</summary>
+    public static Layer DefaultLayerFor(Item item) =>
+        item.ItemType is ItemType.EqMemoryObj or ItemType.EqScript or ItemType.EqTradeWindow ||
+        IsMemoryObject(item)
+            ? Layer.Special
+            : Layer.None;
 
     /// <summary>Graphic of the default memory object (ITEMDEF 02007, i_memory).</summary>
     public const ushort MemoryObjectGraphic = 0x2007;
@@ -143,7 +164,11 @@ public sealed class CharacterMemoryState
     /// live add, not a load (LayerAdd skips it while loading, CCharAct.cpp:266).</summary>
     public void AttachMemory(Item mem, bool fireEquip)
     {
-        if (mem.ItemType != ItemType.EqMemoryObj)
+        // Only an untyped i_memory becomes a memory object. Any other item keeps the
+        // type it was given - LayerAdd never retypes what it wears (CCharAct.cpp:301);
+        // turning an IT_EQ_SCRIPT item into a memory handed its timer to the memory
+        // sweep, which deleted it unseen instead of running its @Timer.
+        if (mem.ItemType == ItemType.Normal && mem.BaseId == MemoryObjectGraphic)
             mem.ItemType = ItemType.EqMemoryObj;
         mem.IsEquipped = true;
         mem.EquipLayer = Layer.Special;
@@ -312,9 +337,12 @@ public sealed class CharacterMemoryState
         for (int i = _memories.Count - 1; i >= 0; i--)
         {
             var mem = _memories[i];
-            // A spell memory's timer is its effect's clock: the spell engine runs it
-            // (Spell_Equip_OnTick), never this sweep.
-            if (mem.ItemType == ItemType.Spell)
+            // Only a memory object is Memory_OnTick's (CChar::OnTickEquip,
+            // CCharAct.cpp:4082-4097). A spell memory's timer is its effect's clock and
+            // the spell engine runs it (Spell_Equip_OnTick); an IT_EQ_SCRIPT or trade
+            // window item sharing the layer runs its own @Timer through the item timer
+            // queue. Sweeping those here deleted them the moment their timer came due.
+            if (mem.ItemType != ItemType.EqMemoryObj)
                 continue;
             long mt = mem.Timeout;
             if (mt > 0 && now >= mt)

@@ -3051,11 +3051,8 @@ public sealed class ClientWorldFeaturesHandler
             _triggerDispatcher.FireCharTrigger(_character, trigger,
                 new TriggerArgs { CharSrc = _character, N1 = skillId });
         }
-
-        if (success)
-            SysMessage(ServerMessages.GetFormatted("skill_use_ok", skill));
-        else
-            SysMessage(ServerMessages.GetFormatted("skill_use_fail", skill));
+        // No closing "You use / You fail to use <skill>" line: upstream never says
+        // it - the skill's own stages carry every message (CClientEvent.cpp:595-724).
     }
 
     /// <summary>Handle extended command (0xBF sub-commands).</summary>

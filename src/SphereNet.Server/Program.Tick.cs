@@ -267,6 +267,7 @@ public static partial class Program
 
                 long iterTs6 = Stopwatch.GetTimestamp();
                 long iterTotalUs = ToMicroseconds(iterTs6 - iterTs0);
+                _perfWindow?.RecordLoopIteration(iterTotalUs);
                 long stallThresholdUs = _config.LoopStallWarnMs * 1000L;
                 if (stallThresholdUs > 0 && iterTotalUs > stallThresholdUs)
                 {
@@ -500,6 +501,7 @@ public static partial class Program
             _log.LogError(oce, "Multicore tick timed out; abandoning this tick and falling back to single-thread mode.");
             _multicoreRuntimeEnabled = false;
             _multicoreFallbackMs = Environment.TickCount64;
+            _perfWindow?.RecordMulticoreFallback();
             RecoverConsumedNpcsAfterFailedTick();
         }
         catch (Exception ex)
@@ -512,6 +514,7 @@ public static partial class Program
                 _log.LogError(ex, "Multicore tick failed; abandoning this tick and falling back to single-thread mode.");
                 _multicoreRuntimeEnabled = false;
                 _multicoreFallbackMs = Environment.TickCount64;
+                _perfWindow?.RecordMulticoreFallback();
                 RecoverConsumedNpcsAfterFailedTick();
             }
             else
@@ -525,6 +528,7 @@ public static partial class Program
             if (totalUs > _telemetryMaxTickUs)
                 _telemetryMaxTickUs = totalUs;
             TickHistogram.Record((int)(totalUs / 1000));
+            _perfWindow?.RecordTick(totalUs);
             // In-process bot scenario: its gate judges only the ticks of its own window.
             _botEngine?.RecordServerTickSample((int)(totalUs / 1000));
 
@@ -936,6 +940,7 @@ public static partial class Program
         int limit = MaxNpcsPerTick;
         long deferAt = Environment.TickCount64;
         NpcBudgetStats.RecordBatch(due, limit, deferAt);
+        _perfWindow?.NpcBudget.RecordBatch(due, limit, deferAt);
         if (due.Count <= limit) return;
         for (int i = limit; i < due.Count; i++)
             wheel.Schedule(due[i], deferAt);

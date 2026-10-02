@@ -77,6 +77,12 @@ public static class HuffmanCompression
         0x00d4  // terminator (entry 256)
     };
 
+    /// <summary>The server-to-client code table (entries 0-255 are byte values, 256 is
+    /// the per-packet terminator; low 4 bits = code length, the rest = the code). For a
+    /// client-side decoder that has to follow the stream bit by bit across socket reads,
+    /// as the load-test bots do.</summary>
+    public static ReadOnlySpan<ushort> ServerCodeTable => CompressBase;
+
     /// <summary>
     /// Decompress Huffman-encoded data from the client (uses DecompTree).
     /// Returns decompressed byte array.

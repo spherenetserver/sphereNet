@@ -1013,16 +1013,18 @@ public sealed partial class SpellEngine
         string? wopOverride = null, ushort wopHue = 0, byte wopFont = 0,
         CastPreparation? preparation = null)
     {
-        if (caster.IsCasting || caster.IsDead) return -1;
+        LastCastRefusal = null;
+        if (caster.IsCasting) return RefuseCast("already casting");
+        if (caster.IsDead) return RefuseCast("dead");
         if (preparation == null)
         {
             // A direct engine cast (NPC, console, script) runs the start-phase
             // Spell_CanCast before its pre-start hooks, the way NPC_FightCast tests
             // before Skill_Start (CCharNPCAct_Magic.cpp:301).
             if (!TestCanCast(caster, ref spell))
-                return -1;
+                return RefuseCast("Spell_CanCast (test)");
             preparation = PrepareCast(caster, spell);
-            if (preparation == null) return -1;
+            if (preparation == null) return RefuseCast("preparation");
             preparation = preparation with { SelectTested = true };
         }
         spell = preparation.Spell;
@@ -1031,37 +1033,33 @@ public sealed partial class SpellEngine
         if (wopFont == 0) wopFont = preparation.Font;
         var def = _spells.Get(spell);
         if (def == null || def.IsFlag(SpellFlag.Disabled))
-            return -1;
+            return RefuseCast("spell undefined or disabled");
 
         if (IsSpellDisabledByConfig(spell))
-            return -1;
+            return RefuseCast("spell disabled by config");
 
         // No "not supported" refusal: Spell_CanCast (CCharSpell.cpp:2325) casts any
         // defined, non-disabled spell, and one with no native case simply does what
         // its script and layer say (OnSpellEffect default, :4148).
 
         if (caster.IsDead || (Definitions.CharDefHelper.GetCanFlags(caster) & CanFlags.C_Statue) != 0)
-            return -1;
+            return RefuseCast("dead or statue");
         if (caster.IsCasting)
-            return -1;
+            return RefuseCast("already casting");
         // Spell_CastStart re-checks the player's state whether or not the start-phase
         // Spell_CanCast already ran (CCharSpell.cpp:3438-3450): asleep or turned to
-        // stone is "dead" for casting purposes.
+        // stone is "dead" for casting purposes, and frozen hands refuse unless
+        // MAGICF_CASTPARALYZED - for a player out of GM mode only, with the message.
+        // A second, unconditional freeze test after it refused NPCs and staff too,
+        // and silently.
         if (CasterStateRefusesCast(caster, failMsg: true))
-            return -1;
-        // MAGICF_CASTPARALYZED: a frozen caster may still cast. The reference has no
-        // blanket refusal here at all - freezing is only consulted while freeing the
-        // hands (Spell_Unequip, CCharSpell.cpp:2833/2841), which is where the two
-        // magic flags decide. A flat refusal made CASTPARALYZED inert.
-        if (caster.IsStatFlag(StatFlag.Freeze) &&
-            !IsMagicFlag(MagicConfigFlags.CastParalyzed))
-            return -1;
+            return RefuseCast("caster state (dead/asleep/stone/frozen)");
 
         if (!TryResolveCastSource(caster, out var sourceKind, out Item? startSource))
         {
             ClearCastSourceTags(caster);
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellEnchantActivate));
-            return -1;
+            return RefuseCast("cast source");
         }
 
         // The start-phase Spell_CanCast (fTest = true): [SPELL] @Select and
@@ -1075,7 +1073,7 @@ public sealed partial class SpellEngine
             if (!SpellCanCast(caster, ref testSpell, test: true, failMsg: true, sourceKind, startSource))
             {
                 ClearCastSourceTags(caster);
-                return -1;
+                return RefuseCast("Spell_CanCast");
             }
         }
 
@@ -1090,7 +1088,7 @@ public sealed partial class SpellEngine
         {
             if (!TrySpellUnequip(caster, Layer.OneHanded) ||
                 !TrySpellUnequip(caster, Layer.TwoHanded))
-                return -1;
+                return RefuseCast("Spell_Unequip (hands)");
         }
 
         RevealOnCast(caster);
@@ -1141,11 +1139,23 @@ public sealed partial class SpellEngine
         {
             ClearCastSourceTags(caster);
             ClearCastState(caster);
-            return -1;
+            return RefuseCast("@SkillStart/@Start returned 1");
         }
         int waitMs = skillArgs.N2 > 0
             ? (int)Math.Min(skillArgs.N2, int.MaxValue / 100) * 100 : preparation.WaitMs;
         return Math.Max(1, waitMs);
+    }
+
+    /// <summary>Which gate refused the last <see cref="CastStart"/>, or null when it
+    /// started. Upstream answers a refused Skill_Start with Skill_Cleanup and nothing
+    /// else (CCharSkill.cpp:4434-4519) - no message of its own and no @SpellFail - so
+    /// the reason is only for the caller's log.</summary>
+    public string? LastCastRefusal { get; private set; }
+
+    private int RefuseCast(string gate)
+    {
+        LastCastRefusal = gate;
+        return -1;
     }
 
     /// <summary>

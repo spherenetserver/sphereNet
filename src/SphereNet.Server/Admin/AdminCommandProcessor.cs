@@ -41,6 +41,9 @@ public sealed class AdminCommandProcessor
     public event Action<int, string>? OnBotRequested;
     // Headless stress population (items, npcs): mirrors the in-game .STRESS.
     public event Action<int, int, bool>? OnStressRequested;
+    // Load-test measurement window (PERF MARK / REPORT / STOP), driven by the
+    // external load runner over the headless console.
+    public event Action<string, Action<string>>? OnPerfRequested;
     /// <summary>Runs a line this processor does not know as a server verb; null = not a verb.</summary>
     public Func<string, string?>? ServerVerbFallback { get; set; }
 
@@ -96,6 +99,7 @@ public sealed class AdminCommandProcessor
                 output("  RESTOCK                    - Restock all vendors");
                 output("  GARBAGE                    - Force garbage collection");
                 output("  SHRINKMEM                  - Trim the process working set");
+                output("  PERF MARK|REPORT|STOP      - Load-test measurement window");
                 output("  CALCCRYPT <ver>[,type][,enc] - Login keys for a client version");
                 output("  BLOCKIP <ip>               - Block an IP address");
                 output("  UNBLOCKIP <ip>             - Unblock an IP address");
@@ -229,6 +233,13 @@ public sealed class AdminCommandProcessor
                 OnStressRequested?.Invoke(stItems, stNpcs, stHostile);
                 break;
             }
+
+            case "PERF":
+                if (OnPerfRequested == null)
+                    output("PERF is only available on the server console.");
+                else
+                    OnPerfRequested(args, output);
+                break;
 
             case "SHRINKMEM":
             {

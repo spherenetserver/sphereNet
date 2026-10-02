@@ -58,6 +58,10 @@ public sealed class ScriptInterpreter
         Func<string, string?>? Var, Func<string, string?>? Func,
         IScriptObj? Target, ITextConsole? Source, ITriggerArgs? Args, ScriptScope? Scope);
 
+    /// <summary>Non-zero while a RETURN argument is being read as a number: bare words
+    /// then name symbols only, never a [FUNCTION] to call (see ApplyReturn).</summary>
+    private int _returnValueReads;
+
     private ResolverFrame PushResolvers(
         IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
     {
@@ -1104,7 +1108,22 @@ public sealed class ScriptInterpreter
         // Source-X copies the expanded argument verbatim when a function result
         // is requested. A registered defname is still text here, not its ID.
         // Keep numeric trigger control flow separate from the returned string.
-        TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
+        //
+        // The number is read the way GetArgVal reads it (CScriptObj.cpp:2574): the
+        // angle brackets are already expanded, and a bare word left over is a VAR /
+        // RESDEF / DEF symbol or nothing (CExpression::GetSingle, CExpression.cpp:1230)
+        // - never a call. Reading it through the function resolver ran whatever
+        // [FUNCTION] the returned text happened to name.
+        long val;
+        _returnValueReads++;
+        try
+        {
+            TryEvaluateWithResolver(argStr, target, source, args, scope, out val);
+        }
+        finally
+        {
+            _returnValueReads--;
+        }
         scope.ReturnValue = argStr;
         scope.NumericReturnValue = val;
         scope.IsReturning = true;
@@ -1520,7 +1539,7 @@ public sealed class ScriptInterpreter
     private string? CallNoArgFunction(string name, IScriptObj target, ITextConsole? source,
         ITriggerArgs? args, ScriptScope? scope)
     {
-        if (string.IsNullOrWhiteSpace(name))
+        if (string.IsNullOrWhiteSpace(name) || _returnValueReads > 0)
             return null;
         string text = name.Trim();
         if (!(char.IsLetter(text[0]) || text[0] == '_'))
@@ -1537,7 +1556,7 @@ public sealed class ScriptInterpreter
     private string? TryResolveFunctionExpression(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
     {
         if (ResolveFunctionExpressionWithScope == null && ResolveFunctionExpression == null ||
-            string.IsNullOrWhiteSpace(expr))
+            string.IsNullOrWhiteSpace(expr) || _returnValueReads > 0)
             return null;
 
         string text = expr.Trim();

@@ -4213,8 +4213,9 @@ public partial class Character : ObjBase
 
         // A memory object joins the others on LAYER_SPECIAL instead of taking the one
         // slot - upstream that layer holds any number of items and a memory never
-        // bounces another (CChar::LayerAdd).
-        if (layer == Layer.Special && CharacterMemoryState.IsMemoryObject(item))
+        // bounces another (CChar::LayerAdd). An IT_EQ_SCRIPT item stacks there the same
+        // way (CanEquipLayer, CCharStatus.cpp:360-367) and keeps its own type.
+        if (layer == Layer.Special && CharacterMemoryState.SharesSpecialLayer(item))
         {
             MemoryState.AttachMemory(item, fireEquip: true);
             return true;
@@ -7790,6 +7791,16 @@ public partial class Character : ObjBase
             if (actObject == null || actObject.IsDeleted)
                 return true;
             return actObject.ExecuteVerbLine(key[4..], args, source);
+        }
+        // TOPOBJ.<line> (OBR_TOPOBJ, CObjBase.cpp:936): every object carries the head,
+        // and a character is its own top-level object. Only items routed it, so on a
+        // character "TOPOBJ.FLAGS <TOPOBJ.FLAGS>|04" read fine and wrote nothing.
+        if (key.StartsWith("TOPOBJ.", StringComparison.OrdinalIgnoreCase))
+        {
+            var topObject = ResolveRefHead("TOPOBJ");
+            if (topObject == null || topObject.IsDeleted)
+                return true;
+            return topObject.ExecuteVerbLine(key[7..], args, source);
         }
         if (key.StartsWith("TARG.", StringComparison.OrdinalIgnoreCase) &&
             !IsTargPointKey(key[5..].ToUpperInvariant()))

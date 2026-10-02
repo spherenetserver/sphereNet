@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Real-socket load runner: builds a synthetic shard, starts SphereNet.Server
+       on it as a child process, drives it with TCP bot clients and checks the
+       measured numbers against loadtest-baseline.json. Not part of the release
+       publish; the nightly benchmark workflow runs it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SphereNet.Core\SphereNet.Core.csproj" />
+    <ProjectReference Include="..\SphereNet.Network\SphereNet.Network.csproj" />
+    <ProjectReference Include="..\SphereNet.Game\SphereNet.Game.csproj" />
+    <ProjectReference Include="..\SphereNet.Persistence\SphereNet.Persistence.csproj" />
+    <!-- Build order only: the runner starts the server binary that lands next to it. -->
+    <ProjectReference Include="..\SphereNet.Server\SphereNet.Server.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="loadtest-baseline.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -4,6 +4,57 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Gercek soketli yuk testi ve ana dongu performans duzeltmeleri
+------------------------------------------------------------------------
+EKLEME - Gercek soketli yuk testi (src/SphereNet.LoadTest): sentetik bir shard (duz harita,
+           NPC kasabasi, yerde esyalar, bot basina bir oyuncu hesabi) kurar, sunucuyu alt
+           surec olarak baslatir, botlari TCP ile baglar ve isci sayisina gore tick
+           p50/p95/p99/max, hareket onay gecikmesi, NPC butcesi, GC/tahsis ve dunya
+           kaydinin ana dongu duraklamasini olcer; sonuc JSON artifact olarak yazilir ve
+           loadtest-baseline.json esiklerine gore denetlenir. Gecelik benchmark is akisi
+           bunu calistirir ve tekrarlanan gerilemede basarisiz olur.
+EKLEME - Konsol komutlari PERF MARK / PERF REPORT / PERF STOP: raporu yalnizca MARK
+           sonrasindaki tick, dongu turu, NPC butcesi, GC isi ve kayitlari kapsayan bir
+           olcum penceresi.
+DUZELTME - map0.mul bellege eslenir ve bir arazi sorgusu yalnizca kendi hucresini okur;
+           her sorgu bir dosya okuma cagrisi ve tam blok tahsisiydi, gorus hatti
+           yurumesinin her karesinde odeniyordu.
+DUZELTME - Gorus hattinin dinamik esya gecisi, sektordeki tum karakter ve esyalar uzerinde
+           menzil sorgusu yerine yalnizca karenin sektor esya listesini yurur.
+DUZELTME - Arka plan kaydi: yazici thread onceligini basladiktan sonra kendisi dusurur;
+           dusuk oncelikle yaratildiginda Thread.Start yogun bir makinede ana donguyu
+           yuzlerce milisaniye bekletebiliyordu.
+DUZELTME - Bot dogma yeri hesap adinin kararli bir ozetinden tohumlanir (string.GetHashCode
+           her sunucu acilisinda farkliydi).
+
+[2026-10-02] - Beceri baslatma sirasi, giyili script esyalari, fonksiyon arama, buyu reddi
+------------------------------------------------------------------------
+DUZELTME - Beceri listesinden kullanilan hedefli beceriler artik hedef imlecinden once
+           @SkillPreStart/@PreStart/@SkillStart/@Start calistirmiyor: tiklama yalnizca
+           PROMPT_MSG (once PROMPT_CLILOC) ve imlec gosterir, Skill_Start hedef secilince ACT
+           hedefe ayarli olarak bir kez calisir (bilgi becerileri, begging, taming, stealing,
+           remove trap, enticement, provocation, poisoning, herding, 0xBF 0x2E hedefli
+           beceri); nesne icermeyen secim hicbir sey baslatmaz. Provocation ikinci hedefi
+           provoke_select/provoke_unable ile sorar; poisoning once zehirlenecek esyayi, sonra
+           zehri ister (ACTPRV/ACT Source-X gibi). Tracking baslangic asamalarini yaratik
+           seciminde calistirir. Uydurma "You use / You fail to use <beceri>" satirlari
+           kaldirildi.
+DUZELTME - LAYER_SPECIAL uzerinde giyilen script esyasi (ID=i_memory, TYPE=t_eq_script) kendi
+           tipini korur ve kendi @Timer'ini calistirir; memory objesine cevrilip memory
+           taramasi tarafindan siliniyordu, @Timer'da temizlik yapan scriptler (EVENTS silme,
+           freeze kaldirma) hic tamamlanmiyordu.
+DUZELTME - Fonksiyonlar yalnizca tam adlariyla bulunur ve sayi olarak okunan RETURN degeri
+           fonksiyon cagirmaz; donen bir kelime ilgisiz bir [FUNCTION f_<kelime>]
+           calistirabiliyordu.
+DUZELTME - Karakter uzerinde yazilan TOPOBJ.<verb> uygulanir; kendi katmani olmayan
+           memory/script/trade-window esyalari LAYER_SPECIAL'a giyilir; CONT=<karakter uid>
+           esyayi Source-X gibi giydirir.
+DUZELTME - Reddedilen buyu baslangici artik genel "You cannot cast that spell." mesaji
+           gondermez, @SpellFail tetiklemez, donmus NPC ve staff'i reddetmez; reddeden kapi
+           Debug log'a yazilir.
+DUZELTME - TAG.EVENT_<trigger>=1 artik tetikleyicileri iptal etmez; eski save'lerdeki
+           OBODY=<chardef adi> okunur.
+
 [2026-10-02] - Buyu etkisi yasam dongusu: cikarma, zehir, summon, katmanlar, formlar
 ------------------------------------------------------------------------
 DUZELTME - Sahibinden (yere, bir kaba, baska bir karaktere) tasinan buyu memory'si

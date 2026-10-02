@@ -81,9 +81,14 @@ public sealed class ClientSkillsHandler
 
 
     /// <summary>
-    /// Fires trigger chain (PreStart/Start/Stroke) for the information skill,
-    /// then asks the client for a target cursor. Selected target is resolved
-    /// to the actual Character/Item and pushed into <see cref="SkillHandlers.UseInfoSkill"/>.
+    /// An information skill clicked on the skill list (Source-X Event_Skill_Use,
+    /// CClientEvent.cpp:655-668 / 710-722): the skill's PROMPT_MSG and a target
+    /// cursor, nothing else. No stage runs before the target exists - @SkillPreStart,
+    /// @PreStart, @SkillStart and @Start all belong to Skill_Start, which
+    /// OnTarg_Skill calls once the object is picked, with ACT already naming it
+    /// (CClientTarg.cpp:1374-1382). Firing them at the click ran a pack's @Start
+    /// with no ACT, so a "the item must be in your pack" check refused the skill
+    /// before the cursor ever appeared.
     /// </summary>
     internal void BeginInfoSkill(SkillType skill, int skillId)
     {
@@ -91,16 +96,6 @@ public sealed class ClientSkillsHandler
 
         var scriptProperties = new List<(uint ClilocId, string Args)>();
         _client.ScriptTooltipProperties = scriptProperties;
-        if (_triggerDispatcher != null)
-        {
-            var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-            if (pre == TriggerResult.True) return;
-
-            var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-            if (start == TriggerResult.True) return;
-        }
 
         SendSkillPrompt(DefinitionLoader.GetSkillDef(skillId),
             $"What do you wish to use your {skill} skill on?");
@@ -109,24 +104,12 @@ public sealed class ClientSkillsHandler
             if (_character == null) return;
             Targets.SkillCancelId = -1;
 
+            // OnTarg_Skill: a pick that names no object starts nothing (:1340).
             var uid = new Serial(serial);
             Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
+            if (target == null) return;
 
-            if (TryScheduleActiveSkillDelay(skill, skillId, uid, null, isInfo: true))
-                return;
-
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-
-            var sink = new GameClient.InfoSkillSink(_client, _character);
-            bool ok = _skillHandlers?.UseInfoSkill(sink, skill, target) ?? false;
-
-            if (_triggerDispatcher != null)
-            {
-                var trigger = ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail;
-                _triggerDispatcher.FireCharTrigger(_character, trigger,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
-            }
+            StartSkill(skill, uid, target, null, isInfo: true);
         });
         Targets.SkillCancelId = skillId;
     }
@@ -135,28 +118,34 @@ public sealed class ClientSkillsHandler
     /// Active-skill driver. Skills with <see cref="SkillHandlers.ActiveSkillTargetKind.None"/>
     /// run immediately (Hiding, Meditation, ...). Character/Item-target skills
     /// open a target cursor and resolve the picked Serial via the world before
-    /// invoking <see cref="SkillHandlers.UseActiveSkill"/>. Trigger chain
-    /// (PreStart/Start/Stroke/Success/Fail) is preserved.
+    /// invoking <see cref="SkillHandlers.UseActiveSkill"/>.
+    ///
+    /// Only a skill that needs no target starts here (Skill_Start straight from
+    /// Event_Skill_Use, CClientEvent.cpp:679-688). A targeted one only opens its
+    /// cursor - or the tracking menu - and Skill_Start, with its @SkillPreStart /
+    /// @PreStart / @SkillStart / @Start, runs after the pick with ACT set to the
+    /// target (OnTarg_Skill and its provoke / poison follow-ups, CClientTarg.cpp:
+    /// 1333-1429; the tracking pick, CClientUse.cpp:1126-1132).
     /// </summary>
     internal void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind)
     {
         if (_character == null || _character.HasActiveSkillPending()) return;
         _character.ResetSkillStrokeCount();
 
-        if (_triggerDispatcher != null)
-        {
-            var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-            if (pre == TriggerResult.True) return;
-
-            var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-            if (start == TriggerResult.True) return;
-        }
-
         // No-target path: fire stroke, run engine, fire success/fail.
         if (kind == SkillHandlers.ActiveSkillTargetKind.None)
         {
+            if (_triggerDispatcher != null)
+            {
+                var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+                if (pre == TriggerResult.True) return;
+
+                var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+                if (start == TriggerResult.True) return;
+            }
+
             if (TryScheduleActiveSkillDelay(skill, skillId, Serial.Invalid, null))
                 return;
 
@@ -184,8 +173,10 @@ public sealed class ClientSkillsHandler
 
         // Target-required path.
         var def = DefinitionLoader.GetSkillDef(skillId);
+        // Poisoning's first pick is the thing to poison; the poison comes second
+        // (OnTarg_Skill_Poison, CClientTarg.cpp:1420-1428).
         string fallbackPrompt = skill == SkillType.Poisoning
-            ? "Which poison potion do you wish to use?"
+            ? "To what do you wish to apply the poison?"
             : kind switch
         {
             SkillHandlers.ActiveSkillTargetKind.Item => $"What item do you wish to use your {skill} skill on?",
@@ -211,34 +202,77 @@ public sealed class ClientSkillsHandler
 
         var uid = new Serial(serial);
         Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
-        var point = new Point3D(x, y, z, _character.MapIndex);
+        var point = target switch
+        {
+            Item held => ResolveTopPoint(held),
+            Character targetChar => targetChar.Position,
+            _ => new Point3D(x, y, z, _character.MapIndex),
+        };
+
+        // OnTarg_Skill gives up on a pick that names no object (CClientTarg.cpp:1340).
+        // A gathering skill works a spot, not an object, so it keeps the point.
+        if (target == null && SkillHandlers.GetActiveSkillTarget(skill) !=
+                SkillHandlers.ActiveSkillTargetKind.Ground)
+            return;
 
         if (skill == SkillType.Herding && target is Character herdAnimal)
         {
             BeginHerdingDestination(skill, skillId, herdAnimal);
             return;
         }
-        if (skill == SkillType.Provocation && target is Character provokeSource)
+        if (skill == SkillType.Provocation)
         {
+            // The first pick must be a creature (DEFMSG_PROVOKE_UNABLE, :1385-1389).
+            if (target is not Character provokeSource)
+            {
+                SysMessage(ServerMessages.Get(Msg.ProvokeUnable));
+                return;
+            }
             BeginProvocationTarget(skill, skillId, provokeSource);
             return;
         }
-        if (skill == SkillType.Poisoning && target is Item poisonPotion)
+        if (skill == SkillType.Poisoning && target != null)
         {
-            BeginPoisoningTarget(skill, skillId, poisonPotion);
+            BeginPoisoningTarget(skill, skillId, target);
             return;
         }
 
-        ResolveActiveSkill(skill, skillId, uid, target, point);
+        StartSkill(skill, uid, target, point, isInfo: false);
     }
 
-    /// <summary>Targeted-skill fast path (0xBF 0x2E PacketTargetedSkill): a skill
-    /// used on an already-picked target, no cursor round-trip. Fires the same
-    /// PreStart/Start trigger chain, then resolves directly against the target.
-    /// Non-targeting skills fall back to the normal cursor-less path.</summary>
+    /// <summary>The top-level point of a contained item: what Event_Target hands a
+    /// target handler (pt = pTarget->GetTopLevelObj()->GetTopPoint(),
+    /// CClientEvent.cpp:2516).</summary>
+    private Point3D ResolveTopPoint(Item item)
+    {
+        Objects.ObjBase cur = item;
+        for (int depth = 0; depth < 32 && cur is Item it && it.ContainedIn.IsValid; depth++)
+        {
+            var holder = _world.FindObject(it.ContainedIn);
+            if (holder == null) break;
+            cur = holder;
+        }
+        return cur.Position;
+    }
+
+    /// <summary>Targeted-skill fast path (0xBF 0x2E PacketTargetedSkill,
+    /// receive.cpp:3284-3315): a skill used on an already-picked target, no cursor
+    /// round-trip. Upstream sets ACT to the target and calls Skill_Start - no
+    /// @SkillSelect, no stage before ACT is known - and does nothing at all when
+    /// the uid names no object. Skills that need no target fall back to the
+    /// cursor-less path.</summary>
     internal void BeginTargetedSkill(SkillType skill, int skillId, Serial targetUid)
     {
-        if (_character == null || _character.HasActiveSkillPending()) return;
+        if (_character == null) return;
+
+        var targetObj = targetUid.IsValid ? _world.FindObject(targetUid) : null;
+        if (targetObj == null) return;
+
+        if (SkillHandlers.IsInfoSkill(skill) && !SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+        {
+            StartSkill(skill, targetUid, targetObj, null, isInfo: true);
+            return;
+        }
 
         var kind = SkillHandlers.GetActiveSkillTarget(skill);
         if (kind is not (SkillHandlers.ActiveSkillTargetKind.Character
@@ -246,39 +280,31 @@ public sealed class ClientSkillsHandler
                       or SkillHandlers.ActiveSkillTargetKind.Item
                       or SkillHandlers.ActiveSkillTargetKind.Ground))
         {
+            if (_character.HasActiveSkillPending()) return;
             BeginActiveSkill(skill, skillId, kind);
             return;
         }
 
-        _character.ResetSkillStrokeCount();
-        if (_triggerDispatcher != null)
-        {
-            var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-            if (pre == TriggerResult.True) return;
-
-            var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-            if (start == TriggerResult.True) return;
-        }
-
-        var targetObj = targetUid.IsValid ? _world.FindObject(targetUid) : null;
-        var pos = targetObj?.Position ?? _character.Position;
+        var pos = targetObj.Position;
         ResolveActiveSkillTarget(skill, skillId, targetUid.Value, (short)pos.X, (short)pos.Y, (sbyte)pos.Z);
     }
 
+    /// <summary>The target prompt, as SetTargMode shows it (CClientMsg.cpp:1775-1778):
+    /// the skill's PROMPT_CLILOC when it has one - a localized bark, light grey, bold,
+    /// with no speaker - otherwise its PROMPT_MSG through the system-message path
+    /// (where a leading "@hue,font,unicode " is honoured).</summary>
     private void SendSkillPrompt(SkillDef? def, string fallback)
     {
+        if (uint.TryParse(def?.PromptCliloc?.Trim(), out uint cliloc) && cliloc > 0)
+        {
+            _netState.Send(new PacketClilocMessage(
+                0xFFFFFFFF, 0xFFFF, 0, 0x0388, 0, cliloc, "System", ""));
+            return;
+        }
         string prompt = def?.PromptMsg?.Trim() ?? string.Empty;
         if (prompt.Length > 0)
         {
             SysMessage(prompt);
-            return;
-        }
-        if (uint.TryParse(def?.PromptCliloc, out uint cliloc) && cliloc > 0)
-        {
-            _netState.Send(new PacketClilocMessage(
-                0xFFFFFFFF, 0xFFFF, 6, 0x03B2, 3, cliloc, "System", ""));
             return;
         }
         SysMessage(fallback);
@@ -294,69 +320,53 @@ public sealed class ClientSkillsHandler
             Targets.SkillCancelId = -1;
             _character.ActPrv = animal.Uid;
             var point = new Point3D(x, y, z, _character.MapIndex);
-            ResolveActiveSkill(skill, skillId, animal.Uid, animal, point);
+            StartSkill(skill, animal.Uid, animal, point, isInfo: false);
         });
         Targets.SkillCancelId = skillId;
     }
 
+    /// <summary>CLIMODE_TARG_SKILL_PROVOKE (CClientTarg.cpp:1406-1418): the second
+    /// pick must be a creature too; ACTPRV is the one provoked, ACT the one it is
+    /// set on, and only then does Skill_Start run.</summary>
     private void BeginProvocationTarget(SkillType skill, int skillId, Character source)
     {
         if (_character == null) return;
-        SysMessage("Whom do you wish it to attack?");
+        SysMessage(ServerMessages.Get(Msg.ProvokeSelect));
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
             Targets.SkillCancelId = -1;
             var uid = new Serial(serial);
             var target = uid.IsValid ? _world.FindChar(uid) : null;
+            if (target == null)
+            {
+                SysMessage(ServerMessages.Get(Msg.ProvokeUnable));
+                return;
+            }
             _character.ActPrv = source.Uid;
-            ResolveActiveSkill(skill, skillId, uid, target,
-                target?.Position ?? new Point3D(x, y, z, _character.MapIndex));
+            StartSkill(skill, uid, target, target.Position, isInfo: false);
         });
         Targets.SkillCancelId = skillId;
     }
 
-    private void BeginPoisoningTarget(SkillType skill, int skillId, Item potion)
+    /// <summary>CLIMODE_TARG_SKILL_POISON (CClientTarg.cpp:1393-1395, 1420-1428): the
+    /// first pick is the thing to poison, the second the poison. ACTPRV holds the
+    /// first, ACT the poison, and Skill_Start runs after the second pick.</summary>
+    private void BeginPoisoningTarget(SkillType skill, int skillId, Objects.ObjBase poisonThis)
     {
         if (_character == null) return;
-        SysMessage("What item do you wish to poison?");
+        SysMessage(ServerMessages.Get(Msg.PoisoningSelect1));
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
             Targets.SkillCancelId = -1;
             var uid = new Serial(serial);
-            var target = uid.IsValid ? _world.FindItem(uid) : null;
-            _character.ActPrv = potion.Uid;
-            ResolveActiveSkill(skill, skillId, uid, target,
-                target?.Position ?? new Point3D(x, y, z, _character.MapIndex));
+            var poison = uid.IsValid ? _world.FindObject(uid) : null;
+            if (poison == null) return;
+            _character.ActPrv = poisonThis.Uid;
+            StartSkill(skill, uid, poison, null, isInfo: false);
         });
         Targets.SkillCancelId = skillId;
-    }
-
-    private void ResolveActiveSkill(SkillType skill, int skillId, Serial targetUid,
-        Objects.ObjBase? target, Point3D? point)
-    {
-        if (_character == null) return;
-
-        // Ask the node BEFORE committing to a swing. Upstream runs the resource check
-        // at SKTRIG_START and refuses outright when the tile holds nothing or an empty
-        // vein (Skill_Mining, CCharSkill.cpp:1448-1459) - so a spent vein is answered
-        // before a single stroke is scheduled. Here the resource was consulted only
-        // when the swing finished, which meant working an exhausted vein played the
-        // whole two-to-six stroke animation and only then said there was nothing
-        // there. The same for every gathering skill: fishing, lumberjacking, mining.
-        if (!GatherNodeAnswers(skill, point, skillId))
-            return;
-
-        PlaySkillStageStartAnimation(skill);
-
-        // The gathering skill's start sound and swing, as Skill_Start plays them
-        // before the first timeout (CCharSkill.cpp:4543-4555).
-        if (SkillEngine.HasFlag(skill, SkillFlag.Gather))
-            PlaySkillStartEffects(skill, point, SkillEngine.GetSkillSound(skill),
-                SkillEngine.GetSkillAnim(skill) ?? 0);
-
-        RunActiveSkill(skill, skillId, targetUid, target, point);
     }
 
     /// <summary>The animations a skill's own START stage plays - begging bows to
@@ -375,11 +385,12 @@ public sealed class ClientSkillsHandler
     /// <summary>Schedule the skill's timer, or - with no DELAY - stroke and resolve it
     /// at once.</summary>
     private void RunActiveSkill(SkillType skill, int skillId, Serial targetUid,
-        Objects.ObjBase? target, Point3D? point, int? startWaitMs = null, int? gatherStrokes = null)
+        Objects.ObjBase? target, Point3D? point, int? startWaitMs = null, int? gatherStrokes = null,
+        bool isInfo = false)
     {
         if (_character == null) return;
-        if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, point,
-                startWaitMs: startWaitMs, gatherStrokes: gatherStrokes))
+        if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, isInfo ? null : point,
+                isInfo: isInfo, startWaitMs: startWaitMs, gatherStrokes: gatherStrokes))
             return;
         // No timer: the one stroke still plays, so a gathering skill gets its count.
         if (SkillEngine.HasFlag(skill, SkillFlag.Gather))
@@ -387,7 +398,9 @@ public sealed class ClientSkillsHandler
         if (!FireActiveSkillStroke(skillId))
             return;
         var sink = new GameClient.InfoSkillSink(_client, _character);
-        bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
+        bool ok = isInfo
+            ? _skillHandlers?.UseInfoSkill(sink, skill, target) ?? false
+            : _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
         FireActiveSkillResult(skillId, ok);
     }
 
@@ -429,6 +442,23 @@ public sealed class ClientSkillsHandler
         Point3D? point, Item? tool)
     {
         if (_character == null) return;
+        if (tool != null)
+            _character.ActPrv = tool.Uid;
+        StartSkill(skill, targetUid, target, point, isInfo: false);
+    }
+
+    /// <summary>CChar::Skill_Start (CCharSkill.cpp:4383-4578) for a skill whose
+    /// target is known: the tool path above, a skill-list pick (OnTarg_Skill and the
+    /// provoke / poison / herd follow-ups) and the 0xBF 0x2E targeted skill. ACT
+    /// names the target BEFORE the first stage runs, so a pack's @SkillPreStart /
+    /// @PreStart / @SkillStart / @Start can inspect it; RETURN 1 at any of them is
+    /// Skill_Cleanup - the skill simply does not start, with no @SkillAbort and no
+    /// message. ACTPRV is the caller's (tool, provoked creature, thing to poison).
+    /// An information skill resolves through the information engine.</summary>
+    private void StartSkill(SkillType skill, Serial targetUid, Objects.ObjBase? target,
+        Point3D? point, bool isInfo)
+    {
+        if (_character == null) return;
         int skillId = (int)skill;
 
         int previous = _character.ClearActiveSkillPending();
@@ -440,8 +470,6 @@ public sealed class ClientSkillsHandler
         _character.Act = targetUid;
         if (point.HasValue)
             _character.ActP = point.Value;
-        if (tool != null)
-            _character.ActPrv = tool.Uid;
 
         if (_triggerDispatcher != null &&
             _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
@@ -484,7 +512,7 @@ public sealed class ClientSkillsHandler
         if (gather || craft)
             PlaySkillStartEffects(skill, point, sound, anim);
 
-        RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null);
+        RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null, isInfo);
     }
 
     /// <summary>The START stage of a gathering skill (Skill_Mining :1402-1466,
@@ -837,26 +865,19 @@ public sealed class ClientSkillsHandler
                 _ => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
             };
 
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
-
+            // The category pick is still menu setup: the search and a Skill_UseQuick
+            // for the credit, no skill stage (Cmd_Skill_Tracking, CClientUse.cpp:
+            // 1123-1236). Skill_Start comes with the creature pick below.
             var sink = new GameClient.InfoSkillSink(_client, _character);
             var targets = Skills.Information.ActiveSkillEngine.FindTrackingTargets(sink, category);
             bool ok = Skills.Information.ActiveSkillEngine.Tracking(sink, category);
 
-            if (_triggerDispatcher != null)
-            {
-                _triggerDispatcher.FireCharTrigger(_character,
-                    ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
-            }
-
             if (ok)
-                ShowTrackingTargets(targets);
+                ShowTrackingTargets(skillId, targets);
         });
     }
 
-    private void ShowTrackingTargets(IReadOnlyList<Character> targets)
+    private void ShowTrackingTargets(int skillId, IReadOnlyList<Character> targets)
     {
         if (_character == null || targets.Count == 0) return;
         var visible = targets.Take(15).ToArray();
@@ -875,6 +896,16 @@ public sealed class ClientSkillsHandler
             if (_character == null || buttonId == 0 || buttonId > (uint)visible.Length) return;
             var target = visible[(int)buttonId - 1];
             if (target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex) return;
+            // Skill_Start(SKILL_TRACKING) with ACT = the creature (CClientUse.cpp:
+            // 1126-1132): @SkillPreStart / @PreStart / @SkillStart / @Start see it,
+            // and RETURN 1 at any of them means no tracking.
+            _character.Act = target.Uid;
+            if (_triggerDispatcher != null &&
+                (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True ||
+                 _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True))
+                return;
             _character.SetTag("TRACKING_TARGET", target.Uid.Value.ToString());
             _character.SetTag("TRACKING_UNTIL", (Environment.TickCount64 + 30_000).ToString());
             _character.SetTag("TRACKING_ARROW_NEXT", "0");

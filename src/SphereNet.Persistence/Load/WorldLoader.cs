@@ -896,7 +896,9 @@ public sealed class WorldLoader
         // taking the one equipment slot pushed every further memory into the pack or
         // onto the ground - a spawn memory among them, which lost the creature its
         // spawner. Its add is not run again, as for any load (LayerAdd, CCharAct.cpp:266).
-        if (layer == (byte)Layer.Special && CharacterMemoryState.IsMemoryObject(item))
+        // An IT_EQ_SCRIPT item saved on that layer stacks beside them the same way and
+        // keeps its type, so its timer stays its own @Timer.
+        if (layer == (byte)Layer.Special && CharacterMemoryState.SharesSpecialLayer(item))
         {
             parentChar.MemoryState.AttachMemory(item, fireEquip: false);
             return;
@@ -1923,8 +1925,13 @@ public sealed class WorldLoader
                     ch.CharDefIndex = (int)cdi;
                 break;
             case "OBODY":
+                // A CHARDEF reference, read as one (CHC_OBODY: ResourceGetIndexType
+                // RES_CHARDEF): a Sphere 0.56 save writes it by name - OBODY=c_man -
+                // which the number parse alone dropped, losing the original body.
                 if (TryParseHexOrDec(val, out uint obody))
                     ch.OBody = (ushort)obody;
+                else if (ResolveCharDef?.Invoke(val.Trim()) is ushort obodyDef and not 0)
+                    ch.OBody = obodyDef;
                 break;
             case "OSKIN":
                 if (TryParseHexOrDec(val, out uint oskin))

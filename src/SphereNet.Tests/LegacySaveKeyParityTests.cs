@@ -715,4 +715,45 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>OBODY is a CHARDEF reference (CHC_OBODY reads it with
+    /// ResourceGetIndexType RES_CHARDEF), and a Sphere 0.56 save writes it by name. A
+    /// staff character in the GM body with OBODY=c_man must keep the man body as its
+    /// original one; the number-only parse dropped the name.</summary>
+    [Fact]
+    public void AnOriginalBodyWrittenByNameIsRead()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_ob_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        string defs = Path.Combine(dir, "bodies.scp");
+        try
+        {
+            File.WriteAllText(defs, "[CHARDEF 0190]\r\nDEFNAME=c_man_ob\r\nNAME=Man\r\n");
+            File.WriteAllText(Path.Combine(dir, "spherechars.scp"), """
+                [WORLDCHAR c_man_ob]
+                SERIAL=0f003
+                NAME=Staff
+                BODY=03db
+                OBODY=c_man_ob
+                P=100,100,0
+                ISPLAYER=1
+                """);
+
+            _resources.LoadResourceFile(defs);
+            var world = NewWorld();
+            var loader = new SphereNet.Persistence.Load.WorldLoader(LoggerFactory.Create(_ => { }))
+            {
+                ResolveCharDef = defname =>
+                {
+                    int idx = CharDefHelper.ResolveDefIndex(defname, _resources);
+                    return idx != 0 ? CharDefHelper.ResolveBodyId(idx, _resources) : (ushort)0;
+                },
+            };
+            loader.Load(world, dir);
+
+            var staff = world.FindChar(new Serial(0x0F003))!;
+            Assert.Equal((ushort)0x0190, staff.OBody);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

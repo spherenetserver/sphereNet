@@ -369,10 +369,6 @@ public static partial class ServerMessages
         Def("potion_dex", "You feel more agile.");
         Def("potion_drink", "You drink the potion.");
 
-        // ===== Skill Use generic =====
-        Def("skill_use_ok", "You use %s.");
-        Def("skill_use_fail", "You fail to use %s.");
-
         // ===== Target generic =====
         Def("target_invalid", "Invalid target.");
         Def("target_must_object", "You must target an object.");

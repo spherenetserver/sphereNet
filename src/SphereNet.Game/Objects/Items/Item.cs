@@ -1878,8 +1878,22 @@ public class Item : ObjBase
                     Amount = (ushort)left;
                 return contItem.TryAddItem(this);
             }
-        else if (target is Character ch && ch.Backpack != null)
-            return ch.Backpack.TryAddItem(this);
+        else if (target is Character ch)
+        {
+            // CONT naming a CHARACTER wears the item (CItem::LoadSetContainer,
+            // CItem.cpp:2548-2561): the layer is the one already set on it, else the
+            // definition's, and LayerAdd settles the rest - CanEquipLayer puts a
+            // memory or script item with no layer on LAYER_SPECIAL and bounces what
+            // cannot be worn into the pack (CCharAct.cpp:269-275). Dropping every such
+            // item into the pack left a jail or stuck marker item lying in the bag,
+            // where its timer and its wearer-bound script did nothing.
+            var layer = ResolveEquipLayer();
+            if (layer == Layer.None)
+                layer = Characters.CharacterMemoryState.DefaultLayerFor(this);
+            if (layer != Layer.None && layer != Layer.Dragging && ch.Equip(this, layer))
+                return true;
+            return ch.Backpack != null && ch.Backpack.TryAddItem(this);
+        }
         return false;
     }
 

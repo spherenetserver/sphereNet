@@ -4,6 +4,7 @@
     <Project Path="src/SphereNet.Network/SphereNet.Network.csproj" />
     <Project Path="src/SphereNet.Scripting/SphereNet.Scripting.csproj" />
     <Project Path="src/SphereNet.Game/SphereNet.Game.csproj" />
+    <Project Path="src/SphereNet.LoadTest/SphereNet.LoadTest.csproj" />
     <Project Path="src/SphereNet.MapData/SphereNet.MapData.csproj" />
     <Project Path="src/SphereNet.Panel/SphereNet.Panel.csproj" />
     <Project Path="src/SphereNet.Persistence/SphereNet.Persistence.csproj" />

@@ -1,0 +1,62 @@
+{
+  "description": "Regression limits for the real-socket load scenario (SphereNet.LoadTest, synthetic town: 2000 NPCs, 4000 ground items, bots clustered, 10 s warm-up, 45 s measured window, one background world save half way). Each limit is a measured value with headroom for a slower, noisier host (a 4 vCPU CI runner), not a target. A run breaks the check when a limit is exceeded, a metric is missing, or the run is incomplete (bots not all logged in, too few tick/move samples, no save, different scenario hash). A run that breaks a limit is measured once more and only a repeated breach fails the job; both attempts are kept in the artifact.",
+  "calibration": "2026-10-02 on AMD Ryzen 7 5700X3D (8C/16T, Windows 11, busy desktop) with workers 1/2/4/8, and pinned to 4 logical CPUs (--cpus 4) with workers 1/4, two repeats each, plus one --check rehearsal of the CI matrix. 'observed' is the range across those runs. Recalibrate when the scenario changes; tighten once nightly CI history exists.",
+  "profiles": [
+    {
+      "bots": 50,
+      "limits": {
+        "tick.p50Ms": { "max": 25, "observed": "5.9-8.2" },
+        "tick.p95Ms": { "max": 80, "observed": "12.4-51.3" },
+        "tick.p99Ms": { "max": 150, "observed": "15.3-89.1" },
+        "tick.maxMs": { "max": 400, "observed": "19.1-124.4" },
+        "loop.maxMs": { "max": 600, "observed": "32.3-218.3" },
+        "ack.p50Ms": { "max": 10, "observed": "0.8-1.3" },
+        "ack.p95Ms": { "max": 100, "observed": "3.5-70.4" },
+        "ack.p99Ms": { "max": 250, "observed": "9.6-170.9" },
+        "ack.maxMs": { "max": 800, "observed": "17.5-329.2" },
+        "ack.lostRate": { "max": 0.01, "observed": "0 (steps a reject resets are counted apart, as ack.droppedByRejectRate)" },
+        "ack.rejectRate": { "max": 0.5, "observed": "0.15-0.22" },
+        "npc.deferred": { "max": 2000, "observed": "0" },
+        "npc.lateP99Ms": { "max": 600, "observed": "109-203" },
+        "gc.gen2": { "max": 5, "observed": "0" },
+        "gc.pausePercent": { "max": 2, "observed": "0.01-0.03" },
+        "gc.allocMBPerSec": { "max": 20, "observed": "6.4-6.6" },
+        "save.captureMs": { "max": 250, "observed": "20.2-106.1" },
+        "save.mainThreadMs": { "max": 350, "observed": "27.3-172.4" },
+        "net.serverToClientBytesPerBotPerSec": { "max": 5000, "observed": "1674-1779" },
+        "clients.loginFailures": { "max": 0, "observed": "0" },
+        "clients.disconnects": { "max": 0, "observed": "0" },
+        "server.errors": { "max": 0, "observed": "0" },
+        "multicore.fallbacks": { "max": 0, "observed": "0" }
+      }
+    },
+    {
+      "bots": 200,
+      "limits": {
+        "tick.p50Ms": { "max": 50, "observed": "14.1-18.3" },
+        "tick.p95Ms": { "max": 120, "observed": "23.5-56.7" },
+        "tick.p99Ms": { "max": 220, "observed": "27.7-102.1" },
+        "tick.maxMs": { "max": 600, "observed": "32.1-257.4" },
+        "loop.maxMs": { "max": 900, "observed": "37.8-688.1" },
+        "ack.p50Ms": { "max": 20, "observed": "2.2-5.3" },
+        "ack.p95Ms": { "max": 200, "observed": "12.8-129.0" },
+        "ack.p99Ms": { "max": 500, "observed": "20.7-433.8" },
+        "ack.maxMs": { "max": 1500, "observed": "37.6-682.1" },
+        "ack.lostRate": { "max": 0.01, "observed": "0 (steps a reject resets are counted apart, as ack.droppedByRejectRate)" },
+        "ack.rejectRate": { "max": 0.5, "observed": "0.24-0.26" },
+        "npc.deferred": { "max": 2000, "observed": "0" },
+        "npc.lateP99Ms": { "max": 800, "observed": "109-213" },
+        "gc.gen2": { "max": 5, "observed": "0" },
+        "gc.pausePercent": { "max": 2, "observed": "0.04-0.08" },
+        "gc.allocMBPerSec": { "max": 60, "observed": "18.8-21.8" },
+        "save.captureMs": { "max": 200, "observed": "20.7-62.6" },
+        "save.mainThreadMs": { "max": 300, "observed": "28.5-101.1" },
+        "net.serverToClientBytesPerBotPerSec": { "max": 12000, "observed": "3958-4182" },
+        "clients.loginFailures": { "max": 0, "observed": "0" },
+        "clients.disconnects": { "max": 0, "observed": "0" },
+        "server.errors": { "max": 0, "observed": "0" },
+        "multicore.fallbacks": { "max": 0, "observed": "0" }
+      }
+    }
+  ]
+}

@@ -4,6 +4,53 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Real-socket load benchmark and main-loop performance fixes
+------------------------------------------------------------------------
+ADD - Real-socket load benchmark (src/SphereNet.LoadTest): builds a synthetic shard (flat
+      map, NPC town, ground items, one player account per bot), starts the server as a
+      child process, logs bots in over TCP and measures tick p50/p95/p99/max, move-ack
+      latency, NPC budget, GC/allocation and the world-save main-loop pause per worker
+      count; results go to a JSON artifact checked against loadtest-baseline.json. The
+      nightly benchmark workflow runs it and fails on a repeated regression.
+ADD - Console verbs PERF MARK / PERF REPORT / PERF STOP: a measurement window whose report
+      covers exactly the ticks, loop iterations, NPC budget, GC work and saves since MARK.
+FIX - map0.mul is memory mapped and a terrain lookup reads its one cell; it was a
+      positional file read plus a whole-block allocation per lookup, paid on every tile of
+      every line-of-sight walk.
+FIX - The line-of-sight dynamic-item pass walks only the tile's sector item list instead of
+      a range query over every character and item of the sector.
+FIX - Background save: the writer thread lowers its own priority after it starts; created
+      below normal, Thread.Start could hold the main loop for hundreds of milliseconds on a
+      busy host.
+FIX - Bot spawn placement is seeded from a stable hash of the account name
+      (string.GetHashCode differed on every server start).
+
+[2026-10-02] - Skill start order, worn script items, function lookup, cast refusal
+------------------------------------------------------------------------
+FIX - Targeted skills started from the skill list no longer run @SkillPreStart/@PreStart/
+      @SkillStart/@Start before the target cursor: the click shows PROMPT_MSG (PROMPT_CLILOC
+      first) and a cursor only, and Skill_Start runs once on the pick with ACT set to the
+      target (info skills, begging, taming, stealing, remove trap, enticement, provocation,
+      poisoning, herding, 0xBF 0x2E targeted skill); a pick with no object starts nothing.
+      Provocation asks its second target with provoke_select/provoke_unable; poisoning picks
+      the thing to poison first and the poison second (ACTPRV/ACT as Source-X). Tracking fires
+      its start stages on the creature pick. The invented "You use / You fail to use <skill>"
+      lines are removed.
+FIX - A script item worn on LAYER_SPECIAL (TYPE=t_eq_script with ID=i_memory) keeps its own
+      type and runs its own @Timer; it was turned into a memory object and deleted by the
+      memory sweep, so scripts that clean up in @Timer (removing an EVENTS entry or a freeze)
+      never finished.
+FIX - Functions are looked up by their exact name only, and a RETURN value read as a number
+      never calls a function; a returned word could run an unrelated [FUNCTION f_<word>].
+FIX - TOPOBJ.<verb> written on a character applies to it; items with no layer of their own
+      equip on LAYER_SPECIAL when memory/script/trade-window typed; CONT=<char uid> equips the
+      item as Source-X does.
+FIX - A refused cast start no longer sends a generic "You cannot cast that spell." or fires
+      @SpellFail, and no longer refuses frozen NPCs or staff; the refusing gate is logged at
+      Debug.
+FIX - TAG.EVENT_<trigger>=1 no longer cancels triggers; legacy saves' OBODY=<chardef name> is
+      read.
+
 [2026-10-02] - Spell effect lifecycle: take-off, poison, summon, delivery layers, forms
 ------------------------------------------------------------------------
 FIX - A spell memory moved off its wearer (to the ground, into a container, onto

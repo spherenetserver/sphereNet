@@ -168,6 +168,9 @@ public static partial class Program
             _consoleProcessor.OnScriptDebugToggleRequested += ToggleScriptDebug;
             _consoleProcessor.OnBotRequested += (count, behavior) => HandleBotCommand(count, behavior, false);
             _consoleProcessor.OnStressRequested += (items, npcs, hostile) => _stressEngine?.QueueGenerate(items, npcs, hostile);
+            // Load-test window: console only (the console queue runs on the main loop,
+            // which is the thread that records into the window).
+            _consoleProcessor.OnPerfRequested += HandlePerfCommand;
             // Global RESPAWN/RESTOCK — run on the main loop (they mutate world state).
             _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;
             _consoleProcessor.OnRespawnResetRequested += RequestRespawnResetOnMainLoop;

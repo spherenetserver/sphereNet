@@ -2458,11 +2458,22 @@ public sealed class ClientCombatHandler
         }
         else
         {
-            // Fire @SpellFail
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellFail,
-                new TriggerArgs { CharSrc = _character, N1 = (int)spell });
-            SysMessage(ServerMessages.Get("spell_cant_cast"));
+            LogCastRefused(spell);
         }
+    }
+
+    /// <summary>A refused cast start. Upstream's Skill_Start answers it with
+    /// Skill_Cleanup and nothing more (CCharSkill.cpp:4434-4519): the gate that refused
+    /// sends its own message when it has one, @SpellFail belongs to a cast that FAILS
+    /// (Spell_CastFail, CCharSpell.cpp:3350), and a script's RETURN 1 from @SkillStart
+    /// is silent by contract. A generic "You cannot cast that spell." and a @SpellFail
+    /// on top made every such refusal look like a fizzle. The log names the gate.</summary>
+    private void LogCastRefused(SpellType spell)
+    {
+        if (_character == null) return;
+        _logger.LogDebug("[cast] spell={Spell} by '{Char}' (0x{CharUid:X8}) refused: {Reason}",
+            spell, _character.Name, _character.Uid.Value,
+            _spellEngine?.LastCastRefusal ?? "unknown");
     }
 
     private void StartPrecast(SpellType spell, SpellEngine.CastPreparation preparation)
@@ -2478,9 +2489,7 @@ public sealed class ClientCombatHandler
             return;
         }
 
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellFail,
-            new TriggerArgs { CharSrc = _character, N1 = (int)spell });
-        SysMessage(ServerMessages.Get("spell_cant_cast"));
+        LogCastRefused(spell);
     }
 
     private void PromptPrecastTarget(SpellType spell, Magic.SpellDef? spellDef)

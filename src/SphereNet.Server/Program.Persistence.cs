@@ -490,12 +490,7 @@ public static partial class Program
                 // lost save keeps its slot, and the world has never heard of it
                 // (review work item D01).
                 StageAccounts(prepared.Generation);
-                RecordSaveMainThreadTelemetry(
-                    background: true,
-                    prepMs: prepSecs * 1000.0,
-                    captureMs: System.Diagnostics.Stopwatch.GetElapsedTime(captureStart, captureEnd).TotalMilliseconds,
-                    accountStageMs: System.Diagnostics.Stopwatch.GetElapsedTime(captureEnd).TotalMilliseconds,
-                    mainThreadMs: sw.Elapsed.TotalMilliseconds);
+                double accountStageMs = System.Diagnostics.Stopwatch.GetElapsedTime(captureEnd).TotalMilliseconds;
                 _backgroundSaveGeneration = prepared.Generation;
                 // Dedicated BELOW-NORMAL thread, and shard writes stay sequential
                 // on it (SequentialShardWrites): a pool Task at normal priority
@@ -505,17 +500,34 @@ public static partial class Program
                 _saver.SequentialShardWrites = true;
                 var completion = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
+                //
+                // The thread lowers its OWN priority as its first act instead of being
+                // created below normal: Thread.Start does not return until the new
+                // thread is running, and a below-normal thread on a busy host (every
+                // core taken by the loop, the workers and the clients) is the last
+                // thing the scheduler runs. A real-socket load run caught Start
+                // holding the main loop for ~360 ms that way - longer than the whole
+                // capture - and every client's moves waited behind it.
                 var writer = new Thread(() =>
                 {
+                    try { Thread.CurrentThread.Priority = System.Threading.ThreadPriority.BelowNormal; }
+                    catch (Exception) { /* a priority change is best effort */ }
                     try { completion.SetResult(_saver.WritePrepared(prepared, sp)); }
                     catch (Exception ex) { completion.SetException(ex); }
                 })
                 {
                     IsBackground = true,
-                    Priority = System.Threading.ThreadPriority.BelowNormal,
                     Name = "world-save-writer"
                 };
                 writer.Start();
+                // Recorded after the writer is running, so the main-loop share includes
+                // everything the loop waited for, the thread start among it.
+                RecordSaveMainThreadTelemetry(
+                    background: true,
+                    prepMs: prepSecs * 1000.0,
+                    captureMs: System.Diagnostics.Stopwatch.GetElapsedTime(captureStart, captureEnd).TotalMilliseconds,
+                    accountStageMs: accountStageMs,
+                    mainThreadMs: sw.Elapsed.TotalMilliseconds);
                 _backgroundSaveTask = completion.Task;
                 _backgroundSaveStopwatch = sw;
                 _log.LogInformation(
@@ -619,6 +631,7 @@ public static partial class Program
         _saveTelemetryMainThreadMs = mainThreadMs;
         if (mainThreadMs > _saveTelemetryMaxMainThreadMs)
             _saveTelemetryMaxMainThreadMs = mainThreadMs;
+        _perfWindow?.RecordSave(captureMs, mainThreadMs);
     }
 
     private static Task<bool>? _backgroundSaveTask;

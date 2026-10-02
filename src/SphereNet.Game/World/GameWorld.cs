@@ -240,11 +240,21 @@ public sealed class GameWorld
     {
         var md = MapData;
         if (md == null) return;
+        // The tile's own sector, walked by index. This runs for every tile of every
+        // line-of-sight walk; the generic range query it replaces tested every
+        // character and item of the sector and allocated two iterators to find the few
+        // items on one tile (a real-socket load run spent ~8% of the main loop here).
+        // Same items in the same order (newest first) as that query: on the ground,
+        // within distance 0 of the probe point, on this tile.
         var cell = new Core.Types.Point3D(x, y, 0, mapId);
-
-        foreach (var item in GetItemsInRange(cell, 0))
+        var sector = x < 0 || y < 0 ? null : GetSector(mapId, x / Sector.SectorSize, y / Sector.SectorSize);
+        var groundItems = sector?.Items;
+        for (int i = (groundItems?.Count ?? 0) - 1; i >= 0; i--)
         {
+            if (i >= groundItems!.Count) continue;
+            var item = groundItems[i];
             if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) continue;
+            if (cell.GetDistanceTo(item.Position) > 0) continue;
             if (item.X != x || item.Y != y || item.MapIndex != mapId) continue;
             // A multi's own item carries no tile of its own; its components come below.
             if (item.ItemType is Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom

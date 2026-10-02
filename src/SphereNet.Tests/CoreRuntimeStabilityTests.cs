@@ -175,7 +175,9 @@ public class CoreRuntimeStabilityTests
 
         Assert.True(runner.HasFunction("f_onchar_speech")); // exact match
         Assert.True(runner.HasFunction("greet"));           // exact match
-        Assert.True(runner.HasFunction("onchar_speech"));   // f_-prefix fallback → f_onchar_speech
+        // No "f_" is put in front of a name: upstream looks a function up exactly as
+        // written (r_GetFunctionIndex, CScriptObj.cpp:207).
+        Assert.False(runner.HasFunction("onchar_speech"));
         Assert.False(runner.HasFunction("f_nonexistent_hook"));
     }
 

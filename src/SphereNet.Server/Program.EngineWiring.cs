@@ -2740,7 +2740,11 @@ public static partial class Program
             {
                 if (_botEngine == null || !SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(acctName))
                     return null;
-                var (x, y, z) = _botEngine.GetRandomSpawnLocation(new Random(acctName.GetHashCode()));
+                // Seeded from a stable hash of the account name: string.GetHashCode is
+                // randomized per process, which put the same bot on a different tile on
+                // every start and made two load runs incomparable.
+                var (x, y, z) = _botEngine.GetRandomSpawnLocation(
+                    new Random(SphereNet.Game.Diagnostics.BotEngine.StableSpawnSeed(acctName)));
                 return new Point3D(x, y, z, 0);
             };
 
@@ -3482,6 +3486,10 @@ public static partial class Program
                         SphereNet.Game.Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, _resources));
                     layer = idef?.Layer ?? SphereNet.Core.Enums.Layer.None;
                 }
+                // CanEquipLayer: an item with no layer of its own goes on LAYER_SPECIAL
+                // when it is a memory, script or trade-window item (CCharStatus.cpp:360).
+                if (layer == SphereNet.Core.Enums.Layer.None || layer == 0)
+                    layer = CharacterMemoryState.DefaultLayerFor(item);
                 if (layer == SphereNet.Core.Enums.Layer.None || layer == 0)
                     return false;
                 // CHV_EQUIP is ItemEquip (CChar.cpp:4551), so @EquipTest gets its veto

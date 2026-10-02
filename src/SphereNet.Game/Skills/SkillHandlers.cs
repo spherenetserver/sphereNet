@@ -278,8 +278,11 @@ public sealed class SkillHandlers
             case SkillType.Lockpicking:      return ActiveSkillEngine.Lockpicking(sink, target as Item);
             case SkillType.RemoveTrap:       return ActiveSkillEngine.RemoveTrap(sink, target as Item);
             case SkillType.Poisoning:
-                return ActiveSkillEngine.Poisoning(sink, target as Item,
-                    ch.ActPrv.IsValid ? _world.FindItem(ch.ActPrv) : null);
+                // ACTPRV = the thing to poison, ACT = the poison (Skill_Poisoning,
+                // CCharSkill.cpp:2162-2163).
+                return ActiveSkillEngine.Poisoning(sink,
+                    ch.ActPrv.IsValid ? _world.FindItem(ch.ActPrv) : null,
+                    target as Item);
             case SkillType.Herding:          return ActiveSkillEngine.Herding(sink, target as Character, point);
             case SkillType.Veterinary:
                 // Source-X SKILL_VETERINARY routes to Skill_Healing (bandages,

@@ -1244,19 +1244,6 @@ public sealed class TriggerDispatcher
         list.Add(handler);
     }
 
-    /// <summary>
-    /// Run handlers attached directly to an object (EVENTS list).
-    /// Iterates the object's runtime Events list and runs matching triggers from EVENTS scripts.
-    /// Also checks TAG.EVENT_* overrides for backward compat.
-    /// </summary>
-    /// <summary>"TAG.EVENT_&lt;TRIGGER&gt;" for a trigger name, built once per name.
-    /// The lookup key was composed (upper-case fold plus concatenation, two strings)
-    /// on every single trigger fire of every object, and the set of trigger names is
-    /// small and fixed.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _eventTagKeys = new(StringComparer.OrdinalIgnoreCase);
-    private static string EventTagKey(string trigName) =>
-        _eventTagKeys.GetOrAdd(trigName, static n => "TAG.EVENT_" + n.ToUpperInvariant());
-
     /// <summary>The [TYPEDEF] this item's triggers run through. Upstream looks it up by
     /// the INSTANCE type, m_type (CItem.cpp:3844), which starts as the ITEMDEF's TYPE
     /// and follows any TYPE= a script or save gives the item. Resolving only the
@@ -1332,19 +1319,18 @@ public sealed class TriggerDispatcher
         }
     }
 
+    /// <summary>Run handlers attached directly to an object: its runtime EVENTS list,
+    /// matched against the EVENTS scripts.</summary>
     private TriggerResult RunObjectHandlers(IScriptObj obj, string trigName, TriggerArgs args,
         HashSet<ResourceLink>? executedEvents = null)
     {
         // Cross-character/item mirrors use this helper directly; retain the
         // character deduplication rule there without changing item list semantics.
         if (obj is Character) executedEvents ??= new HashSet<ResourceLink>();
-        // Check TAG.EVENT_<trigName> override first
-        if (obj.TryGetProperty(EventTagKey(trigName), out string value))
-        {
-            // A script's TAG.EVENT_x=1 is a number var and reads back "01".
-            if (SphereNet.Core.Types.ScriptNumber.TryParseToken(value, out long eventFlag) && eventFlag == 1)
-                return TriggerResult.True;
-        }
+        // No tag answers a trigger on the script's behalf. A TAG.EVENT_<trigger>=1 used
+        // to cancel the trigger outright before any handler ran; upstream has no such
+        // switch (CObjBase::OnTrigger runs the EVENTS / TEVENTS / base-def chain only),
+        // so a pack that happened to store a tag by that name silently lost the trigger.
 
         // Run through the object's EVENTS list
         if (Resources != null && Runner != null)

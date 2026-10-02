@@ -1,14 +1,28 @@
-name: Nightly Benchmark Smoke
+name: Nightly Benchmark
 
 on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      workers:
+        description: "MulticoreWorkerCount values to compare (comma separated)"
+        default: "1,4"
+      bots:
+        description: "Real-socket bot counts (comma separated; each needs a baseline profile)"
+        default: "50,200"
+      duration:
+        description: "Measured window per run, seconds"
+        default: "45"
+
+permissions:
+  contents: read
 
 jobs:
-  benchmark-smoke:
-    name: Benchmark smoke
+  load-benchmark:
+    name: Real-socket load benchmark
     runs-on: windows-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -26,30 +40,41 @@ jobs:
         run: dotnet build sphereNet.sln --configuration Release --no-restore
 
       - name: Run benchmark-safe tests
-        run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Release --no-build --no-restore --filter "RuntimePerformancePressureTests|SaveFormatTests" --verbosity normal
+        run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Release --no-build --no-restore --filter "RuntimePerformancePressureTests|SaveFormatTests|PerfMeasurementWindowTests|MapCellReadTests" --verbosity normal
 
-      - name: Write benchmark artifact (no load measurement)
+      # Builds a synthetic shard (flat map, NPC town, ground items, one player account
+      # per bot), starts SphereNet.Server on it as a child process, logs the bots in
+      # over TCP and measures a fixed walk/speech/double-click scenario with one world
+      # save in the middle. Fails the job when a run is incomplete or a metric breaks
+      # src/SphereNet.LoadTest/loadtest-baseline.json.
+      - name: Run load scenario
+        shell: pwsh
+        env:
+          LT_WORKERS: ${{ github.event.inputs.workers || '1,4' }}
+          LT_BOTS: ${{ github.event.inputs.bots || '50,200' }}
+          LT_DURATION: ${{ github.event.inputs.duration || '45' }}
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          dotnet bin/Release/SphereNet.LoadTest.dll `
+            --workers $env:LT_WORKERS --bots $env:LT_BOTS `
+            --duration $env:LT_DURATION --warmup 10 `
+            --work "$env:RUNNER_TEMP/loadtest" `
+            --out artifacts/loadtest-results.json `
+            --baseline src/SphereNet.LoadTest/loadtest-baseline.json `
+            --check --commit "$env:GITHUB_SHA"
+          exit $LASTEXITCODE
+
+      - name: Collect server logs
+        if: always()
         shell: pwsh
         run: |
-          # This job only runs the benchmark-safe smoke tests. It does not start a
-          # server or drive bots, so there is no tick, GC or duration data to report:
-          # the artifact says so instead of carrying zeros that read as a baseline.
-          New-Item -ItemType Directory -Force artifacts | Out-Null
-          $artifact = [ordered]@{
-            commit = "${{ github.sha }}"
-            scenario = "benchmark-smoke"
-            measured = $false
-            reason = "smoke tests only; no server load run in this workflow"
-            hardware = "github-actions-windows-latest"
-            durationSeconds = $null
-            tick = $null
-            runtime = $null
-            gc = $null
-          }
-          $artifact | ConvertTo-Json -Depth 8 | Set-Content artifacts/benchmark-smoke.json
+          New-Item -ItemType Directory -Force artifacts/server-logs | Out-Null
+          Get-ChildItem "$env:RUNNER_TEMP/loadtest" -Recurse -Filter server-console.log -ErrorAction SilentlyContinue |
+            ForEach-Object { Copy-Item $_.FullName ("artifacts/server-logs/" + $_.Directory.Name + ".log") }
 
       - name: Upload benchmark artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-smoke
-          path: artifacts/benchmark-smoke.json
+          name: benchmark-load
+          path: artifacts/

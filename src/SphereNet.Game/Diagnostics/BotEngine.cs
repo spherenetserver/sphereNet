@@ -174,6 +174,20 @@ public sealed class BotEngine : IDisposable
         if (enabled) _logger.LogInformation("[BOT] Cluster spawn enabled (radius {R})", ClusterSpawnRadius);
     }
 
+    /// <summary>Process-independent seed for a bot's spawn spot (FNV-1a over the
+    /// upper-cased account name). <see cref="string.GetHashCode()"/> is randomized per
+    /// process, so it placed the same bot differently on every server start.</summary>
+    public static int StableSpawnSeed(string accountName)
+    {
+        uint hash = 2166136261;
+        foreach (char ch in accountName)
+        {
+            hash ^= char.ToUpperInvariant(ch);
+            hash *= 16777619;
+        }
+        return unchecked((int)hash);
+    }
+
     /// <summary>Get a random spawn location within a city bounding box (or, in
     /// cluster mode, packed around the city centre).</summary>
     public (short X, short Y, sbyte Z) GetRandomSpawnLocation(Random rng)

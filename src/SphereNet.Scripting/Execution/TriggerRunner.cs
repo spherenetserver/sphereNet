@@ -283,23 +283,27 @@ public sealed class TriggerRunner
         return TryExecuteFunction(funcName, target, source, args, null, out _, out _, out numericReturn);
     }
 
-    /// <summary>True when a script function with this defname (or its <c>f_</c>-prefixed
-    /// form) is registered. Lets hot callers skip building trigger args for a global hook
-    /// that most script packs never define (e.g. per-NPC f_onchar_speech on every spoken
-    /// line). Resolution mirrors TryExecuteFunction's lookup — a name matched to a
-    /// non-Function resource does not count.</summary>
+    /// <summary>True when a script function with exactly this name is registered. Lets
+    /// hot callers skip building trigger args for a global hook that most script packs
+    /// never define (e.g. per-NPC f_onchar_speech on every spoken line). Resolution
+    /// mirrors TryExecuteFunction's lookup — a name matched to a non-Function resource
+    /// does not count.</summary>
     public bool HasFunction(string funcName)
     {
-        var rid = _resources.ResolveDefName(funcName);
-        if (rid.IsValid && rid.Type != ResType.Function)
-            rid = ResourceId.Invalid;
-        if (!rid.IsValid)
-        {
-            rid = _resources.ResolveDefName("f_" + funcName);
-            if (rid.IsValid && rid.Type != ResType.Function)
-                rid = ResourceId.Invalid;
-        }
+        var rid = ResolveFunctionId(funcName);
         return rid.IsValid && _resources.GetResource(rid) != null;
+    }
+
+    /// <summary>The [FUNCTION] registered under exactly <paramref name="funcName"/>.
+    /// Upstream looks the name up as written and nothing else (r_GetFunctionIndex,
+    /// CScriptObj.cpp:207). A second try with "f_" put in front made any bare word a
+    /// call: a function returning the text "Stuck" had that RETURN read as a number,
+    /// the word resolved to [FUNCTION f_stuck], and the whole function ran - with no
+    /// arguments - while a dialog was merely being drawn.</summary>
+    private ResourceId ResolveFunctionId(string funcName)
+    {
+        var rid = _resources.ResolveDefName(funcName);
+        return rid.IsValid && rid.Type == ResType.Function ? rid : ResourceId.Invalid;
     }
 
     /// <summary>
@@ -368,16 +372,7 @@ public sealed class TriggerRunner
         numericReturn = null;
 
         // Resolve function by defname (registered during script loading)
-        var rid = _resources.ResolveDefName(funcName);
-        if (rid.IsValid && rid.Type != ResType.Function)
-            rid = ResourceId.Invalid;
-        if (!rid.IsValid)
-        {
-            // Try with f_ prefix if not found (common Sphere convention)
-            rid = _resources.ResolveDefName("f_" + funcName);
-            if (rid.IsValid && rid.Type != ResType.Function)
-                rid = ResourceId.Invalid;
-        }
+        var rid = ResolveFunctionId(funcName);
 
         ResourceLink? link = rid.IsValid ? _resources.GetResource(rid) : null;
         if (link == null)

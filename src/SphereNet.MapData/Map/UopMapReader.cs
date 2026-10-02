@@ -135,8 +135,20 @@ public sealed class UopMapReader : IDisposable
             return default;
         int bx = x / MapBlock.BlockSize;
         int by = y / MapBlock.BlockSize;
-        var block = ReadBlock(bx, by);
-        return block.GetCell(x % MapBlock.BlockSize, y % MapBlock.BlockSize);
+        if (bx >= _blockWidth || by >= _blockHeight)
+            return default;
+        int cx = x % MapBlock.BlockSize;
+        int cy = y % MapBlock.BlockSize;
+        if (Diff != null && Diff.TryGetValue(bx * _blockHeight + by, out var patched))
+            return patched.GetCell(cx, cy);
+
+        // One cell, read in place: building the whole 64-cell block to return one of
+        // them allocated a block per terrain lookup.
+        long offset = ((long)bx * _blockHeight + by) * BlockDataSize;
+        if (offset + BlockDataSize > _dataLength)
+            return default;
+        long pos = offset + 4 + (cy * MapBlock.BlockSize + cx) * 3;
+        return new MapCell { TileId = _view.ReadUInt16(pos), Z = (sbyte)_view.ReadByte(pos + 2) };
     }
 
     /// <summary>

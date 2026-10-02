@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Karakter ID'si chardef defname'ini okur
+------------------------------------------------------------------------
+DUZELTME - Karakterin ID ve BASEID degeri govde numarasi yerine CHARDEF defname'ini dondurur
+           (Source-X CHC_ID / OBC_BASEID: karakter taniminin ResourceGetName'i); baska bir
+           govde uzerine kurulu isimli chardef (ID=c_man) kendi adini verir ve
+           <act.topobj.id> == c_player_vendor gibi karsilastirmalar eslesir; oyuncu
+           vendorunun cantasindaki esyaya tek tiklamada fiyat satiri yeniden gorunur.
+
 [2026-10-02] - Esya tooltip ozellik satirlari ve Source-X ATTR bit numaralari
 ------------------------------------------------------------------------
 DUZELTME - Item veya karakter tanimindaki tek degerli RANGE Source-X ConvertRangeStr gibi

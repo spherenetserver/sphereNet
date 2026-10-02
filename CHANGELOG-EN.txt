@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Character ID reads the chardef defname
+------------------------------------------------------------------------
+FIX - A character's ID and BASEID read the CHARDEF's defname (Source-X CHC_ID / OBC_BASEID:
+      ResourceGetName of the char definition) instead of the body number, so a named chardef
+      built on another body (ID=c_man) answers with its own name and a comparison such as
+      <act.topobj.id> == c_player_vendor matches; the price line on single-clicking an item
+      in a player vendor's backpack shows again.
+
 [2026-10-02] - Item tooltip attribute lines and Source-X ATTR bit numbers
 ------------------------------------------------------------------------
 FIX - A single RANGE value on an item or character definition is the high end only (0..n),

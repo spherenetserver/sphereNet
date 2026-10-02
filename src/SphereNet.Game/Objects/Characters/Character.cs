@@ -5666,7 +5666,19 @@ public partial class Character : ObjBase
             case "DISPIDDEC":
                 value = ResolveTrackIconId(DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex)).ToString();
                 return true;
-            case "BASEID": value = $"0{BaseId:X}"; return true;
+            // ID and BASEID name the CHARDEF: ResourceGetName(pCharDef->GetResourceID())
+            // (CHC_ID, CChar.cpp:2895; OBC_BASEID, CBase.cpp:182) - its DEFNAME, or the
+            // index in hex when it has none. A named chardef built on another body
+            // ([CHARDEF c_player_vendor] ID=c_man) reads c_player_vendor, not the body
+            // number, so a script's <topobj.id> == c_player_vendor matches.
+            case "ID":
+            case "BASEID":
+            {
+                int defIndex = _charDefIndex != 0 ? _charDefIndex : CharDefIndex;
+                string? defName = DefinitionLoader.GetCharDef(defIndex)?.DefName;
+                value = !string.IsNullOrEmpty(defName) ? defName : $"0{BaseId:X}";
+                return true;
+            }
             // The CHARDEF's own defname (CBaseBaseDef_props.tbl DEFNAME), asked of the
             // instance - the counterpart of the item read.
             case "DEFNAME":

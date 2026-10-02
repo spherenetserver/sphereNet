@@ -718,9 +718,12 @@ public sealed class SphereConfig
     public bool HasFileCommands => ((SphereNet.Core.Enums.OptionFlags)(uint)OptionFlags & SphereNet.Core.Enums.OptionFlags.FileCommands) != 0;
 
     // Network
-    public int MaxPacketsPerTick { get; set; } = 50; // CServerConfig.cpp:331
-    public int FloodDetectionCount { get; set; } = 5;
-    public int FloodDetectionWindowMs { get; set; } = 10_000;
+    /// <summary>MAXPACKETSPERTICK (CServerConfig.cpp:331). In Source-X an output limit:
+    /// packets sent per tick per queue (packet.h NETWORK_MAXPACKETS,
+    /// CNetworkOutput.cpp:214). Read and reported through SERV.MAXPACKETSPERTICK;
+    /// SphereNet's send path drains what the socket accepts and does not apply it,
+    /// and input is never capped per pass (Source-X CNetworkInput::processData).</summary>
+    public int MaxPacketsPerTick { get; set; } = 50;
 
     /// <summary>MAXSIZECLIENTOUT: bytes the server may send one client within a
     /// 10-second check period before f_onclient_exceed_network_quota runs with
@@ -1336,8 +1339,6 @@ public sealed class SphereConfig
         OptionFlags = ini.GetInt(section, "OptionFlags", OptionFlags);
 
         MaxPacketsPerTick = ini.GetInt(section, "MaxPacketsPerTick", MaxPacketsPerTick);
-        FloodDetectionCount = ini.GetInt(section, "FloodDetectionCount", FloodDetectionCount);
-        FloodDetectionWindowMs = ini.GetInt(section, "FloodDetectionWindowMs", FloodDetectionWindowMs);
         MaxSizeClientOut = GetInt64(ini, section, "MaxSizeClientOut", MaxSizeClientOut);
         MaxSizeClientIn = GetInt64(ini, section, "MaxSizeClientIn", MaxSizeClientIn);
         DeadSocketTime = ini.GetInt(section, "DeadSocketTime", DeadSocketTime);
@@ -1728,8 +1729,6 @@ public sealed class SphereConfig
         if (DefaultCommandLevel > (int)Core.Enums.PrivLevel.Player) warnings.Add($"DefaultCommandLevel={DefaultCommandLevel} — auto-created accounts may receive elevated commands");
         if (string.IsNullOrWhiteSpace(AdminPassword)) warnings.Add("AdminPassword is empty — admin panel/telnet must remain disabled");
         if (!Md5Passwords) warnings.Add("Md5Passwords=0 — account passwords are stored in plain text (Source-X default)");
-        if (FloodDetectionCount <= 0) warnings.Add($"FloodDetectionCount={FloodDetectionCount} — flood detection disabled");
-        if (FloodDetectionWindowMs < 1000) warnings.Add($"FloodDetectionWindowMs={FloodDetectionWindowMs} — too small, may cause false positives");
         if (ScriptEncoding.ToUpperInvariant() is not ("AUTO" or "UTF8" or "UTF-8" or "LEGACY" or "ANSI"))
             warnings.Add($"ScriptEncoding={ScriptEncoding} — expected AUTO, UTF8 or LEGACY; AUTO will be used");
         try

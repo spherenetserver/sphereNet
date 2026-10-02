@@ -832,7 +832,7 @@ public static class AccountPersistence
     {
         w.BeginRecord(acc.Name);
         if (acc.PrivLevel > SphereNet.Core.Enums.PrivLevel.Player)
-            w.WriteProperty("PLEVEL", acc.PrivLevel.ToString());
+            w.WriteProperty("PLEVEL", acc.ExtendedPlevelName ?? acc.PrivLevel.ToString());
         if (acc.Priv != 0) w.WriteProperty("PRIV", $"0{acc.Priv:x}");
         if (acc.ResDisp != 0) w.WriteProperty("RESDISP", acc.ResDisp.ToString());
         w.WriteProperty("PASSWORD", acc.PasswordHash ?? string.Empty);
@@ -883,9 +883,19 @@ public static class AccountPersistence
                 break;
             case "PLEVEL":
                 if (int.TryParse(val, out int pl))
+                {
                     acc.PrivLevel = NormalizePrivLevel(pl);
+                    if (pl > (int)Core.Enums.PrivLevel.Owner) acc.ExtendedPlevelName = val;
+                }
                 else if (Enum.TryParse<SphereNet.Core.Enums.PrivLevel>(val, true, out var plv))
                     acc.PrivLevel = plv;
+                else if (val.Equals("Founder", StringComparison.OrdinalIgnoreCase)
+                    || val.Equals("Root", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Sphere 56T custom-version compatibility: levels 8/9 above Owner.
+                    acc.PrivLevel = Core.Enums.PrivLevel.Owner;
+                    acc.ExtendedPlevelName = val;
+                }
                 break;
             case "LASTCONNECTDATE":
                 if (DateTime.TryParse(val, System.Globalization.CultureInfo.InvariantCulture,

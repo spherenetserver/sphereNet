@@ -38,10 +38,14 @@ This runbook covers first-response actions for a live SphereNet shard.
 
 ## Packet Flood
 
-1. Check logs for packet quota, partial timeout, malformed packet and unknown
-   opcode warnings.
+1. Check logs for network quota (MAXSIZECLIENTIN / MAXSIZECLIENTOUT), partial
+   timeout, malformed packet and unknown opcode warnings. Inbound packets are not
+   capped per tick and no client is dropped for packet count (as in Source-X); the
+   byte quota is the input limit.
 2. Block the source IP at the firewall or reverse proxy layer.
-3. Keep `MaxPacketsPerTick` conservative for public shards.
+3. To bound input volume, set `MaxSizeClientIn` to a non-zero byte count (the
+   shipped ini has it at 0, disabled); `f_onclient_exceed_network_quota` decides
+   what happens to a client over it.
 4. Preserve a short packet/debug log sample for parser regression tests.
 
 ## The Server Died

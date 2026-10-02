@@ -68,16 +68,18 @@ public class SecurityHardeningTests
         Assert.Equal(7, receivedSlot);
     }
 
-    // --- Step 2: Flood detection defaults ---
+    // --- Step 2: No packet-count flood disconnect (Source-X CNetworkInput) ---
 
     [Fact]
-    public void FloodDetection_DefaultValues_MatchHardcoded()
+    public void FloodDetection_IsRetired_NoPacketCountCapOrDisconnect()
     {
-        using var loggerFactory = TestHarness.CreateLoggerFactory();
-        using var network = new NetworkManager(1, loggerFactory);
-
-        Assert.Equal(5, network.FloodDetectionCount);
-        Assert.Equal(10_000, network.FloodDetectionWindowMs);
+        // Source-X processes every received packet each pass and has no packet-count
+        // disconnect; MAXSIZECLIENTIN is the input limit.
+        Assert.Null(typeof(NetworkManager).GetProperty("FloodDetectionCount"));
+        Assert.Null(typeof(NetworkManager).GetProperty("FloodDetectionWindowMs"));
+        Assert.Null(typeof(NetworkManager).GetProperty("MaxPacketsPerTick"));
+        Assert.Null(typeof(SphereConfig).GetProperty("FloodDetectionCount"));
+        Assert.Null(typeof(SphereConfig).GetProperty("FloodDetectionWindowMs"));
     }
 
     // --- Step 3: ConnectionAcceptFilter ---
@@ -399,34 +401,27 @@ public class SecurityHardeningTests
     // --- Step 10: Config validation ---
 
     [Fact]
-    public void SphereConfig_Validate_WarnsForDisabledFloodDetection()
+    public void SphereConfig_OldIniWithRetiredFloodKeysStillLoads()
     {
-        var config = new SphereConfig
+        string path = Path.Combine(Path.GetTempPath(), $"spherenet-flood-{Guid.NewGuid():N}.ini");
+        File.WriteAllText(path,
+            "[SPHERE]\r\nSERVPORT=2593\r\nMAXPACKETSPERTICK=100\r\n" +
+            "FLOODDETECTIONCOUNT=5\r\nFLOODDETECTIONWINDOWMS=10000\r\n");
+        try
         {
-            ServPort = 2593,
-            FloodDetectionCount = 0
-        };
-        var warnings = config.Validate();
-        Assert.Contains(warnings, w => w.Contains("FloodDetectionCount"));
-    }
+            var ini = new IniParser();
+            ini.Load(path);
+            var config = new SphereConfig();
+            config.LoadFromIni(ini);
 
-    [Fact]
-    public void SphereConfig_Validate_WarnsForSmallFloodWindow()
-    {
-        var config = new SphereConfig
+            Assert.Equal(100, config.MaxPacketsPerTick);
+            Assert.DoesNotContain(config.Validate(), w => w.Contains("FloodDetection"));
+            // Left unread: the startup report names them as ignored.
+            Assert.Contains(ini.UnreadKeys(), k => k.EndsWith("FLOODDETECTIONCOUNT", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
         {
-            ServPort = 2593,
-            FloodDetectionWindowMs = 500
-        };
-        var warnings = config.Validate();
-        Assert.Contains(warnings, w => w.Contains("FloodDetectionWindowMs"));
-    }
-
-    [Fact]
-    public void SphereConfig_Validate_NoWarningForDefaultFloodSettings()
-    {
-        var config = new SphereConfig { ServPort = 2593 };
-        var warnings = config.Validate();
-        Assert.DoesNotContain(warnings, w => w.Contains("FloodDetection"));
+            File.Delete(path);
+        }
     }
 }

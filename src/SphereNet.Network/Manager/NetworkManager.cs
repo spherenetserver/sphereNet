@@ -62,9 +62,6 @@ public sealed class NetworkManager : IDisposable
     public int LastInputPassPacketCount => _passPacketCount;
     public byte LastInputPassSlowestOpcode => _passSlowestOpcode;
     public double LastInputPassSlowestMs => _passSlowestUs / 1000.0;
-    public int MaxPacketsPerTick { get; set; } = 100;
-    public int FloodDetectionCount { get; set; } = 5;
-    public int FloodDetectionWindowMs { get; set; } = 10_000;
 
     /// <summary>Source-X kiStateDataCheckPeriodMilli (CNetworkThread.cpp:135).</summary>
     public const int ByteQuotaCheckPeriodMs = 10_000;
@@ -124,7 +121,6 @@ public sealed class NetworkManager : IDisposable
     public event Action<int>? OnConnectionClosed;
     public event Action<NetState>? OnConnectionAccepted;
     public event Action<NetState, byte, byte[]>? OnUnknownPacket;
-    public event Action<NetState, int>? OnPacketQuotaExceeded;
     public event Action<NetState>? OnConnectionClosedState;
 
     public NetworkManager(int maxClients, ILoggerFactory loggerFactory)
@@ -535,9 +531,8 @@ public sealed class NetworkManager : IDisposable
                 }
 
                 // Nothing new from the socket is not the same as nothing to do: the
-                // previous pass may have stopped at the packet quota or after a
-                // faulting handler with whole packets still buffered. Those are
-                // processed now, under this pass's quota, as Source-X keeps
+                // previous pass may have stopped after a faulting handler with whole
+                // packets still buffered. Those are processed now, as Source-X keeps
                 // processing an existing raw buffer when no new raw packet arrived
                 // (CNetworkInput.cpp:156-176). A buffer that ends in a partial
                 // packet, or a connection still waiting to complete its seed or
@@ -557,8 +552,7 @@ public sealed class NetworkManager : IDisposable
     }
 
     /// <summary>Whether the connection holds received bytes that can be processed
-    /// without new socket data: whole packets left by the per-pass quota or by a
-    /// faulting handler. A connection waiting on a partial packet, its seed or its
+    /// without new socket data: whole packets left behind by a faulting handler. A connection waiting on a partial packet, its seed or its
     /// encryption detection cannot make progress without more bytes.</summary>
     private static bool HasBufferedPackets(NetState state) =>
         state.ReceivedData.Length > 0 &&
@@ -638,32 +632,17 @@ public sealed class NetworkManager : IDisposable
             }
         }
 
+        // Every whole packet received is processed in this pass, as Source-X does
+        // (CNetworkInput::processData, CNetworkInput.cpp:211-224): there is no
+        // per-pass packet cap and no packet-count disconnect. A client that sends
+        // too much is caught by the MAXSIZECLIENTIN byte quota (CheckByteQuotas),
+        // and malformed data closes the connection below. Source-X's
+        // MAXPACKETSPERTICK limits output (packet.h NETWORK_MAXPACKETS,
+        // CNetworkOutput.cpp:214), not input. Processing stops once the connection
+        // is closing, as upstream's loop checks isReadClosed before each packet.
         int consumed = 0;
-        int packetsProcessed = 0;
-        while (consumed < data.Length)
+        while (consumed < data.Length && !state.IsClosing)
         {
-            if (MaxPacketsPerTick > 0 && packetsProcessed >= MaxPacketsPerTick)
-            {
-                long now = Environment.TickCount64;
-                if (now - state.PacketFloodWindowStart > FloodDetectionWindowMs)
-                {
-                    state.PacketFloodCount = 0;
-                    state.PacketFloodWindowStart = now;
-                }
-                state.PacketFloodCount++;
-                // FLOODDETECTIONCOUNT=0 is "flood detection off" (sphere.ini, startup
-                // warning): the quota above still limits each pass, but exceeding it
-                // never disconnects.
-                if (FloodDetectionCount > 0 && state.PacketFloodCount >= FloodDetectionCount)
-                {
-                    _logger.LogWarning("Packet flood detected for #{Id}, dropping connection", state.Id);
-                    state.MarkClosing();
-                    break;
-                }
-                OnPacketQuotaExceeded?.Invoke(state, packetsProcessed);
-                break;
-            }
-
             byte opcode = data[consumed];
             int definedLen = PacketDefinitions.GetPacketLength(opcode, state);
             bool hasLengthField = definedLen == 0;
@@ -716,7 +695,6 @@ public sealed class NetworkManager : IDisposable
             {
                 state.OnPingReceived(data[consumed + 1]);
                 consumed += packetLen;
-                packetsProcessed++;
                 continue;
             }
 
@@ -728,7 +706,6 @@ public sealed class NetworkManager : IDisposable
             if (scriptFiltered &&
                 InvokePacketScriptHook(state, opcode, data.Slice(consumed, packetLen).ToArray()))
             {
-                packetsProcessed++;
                 consumed += packetLen;
                 continue;
             }
@@ -831,7 +808,6 @@ public sealed class NetworkManager : IDisposable
             }
 
             consumed += packetLen;
-            packetsProcessed++;
         }
 
         if (consumed > 0)
@@ -1198,8 +1174,8 @@ public sealed class NetworkManager : IDisposable
     /// counter is over <see cref="MaxSizeClientIn"/> (type 2) - is handed to
     /// <see cref="ByteQuotaExceeded"/>, and every connection's counters restart from
     /// zero. A connection with no client behind it (the handler returns null, or no
-    /// handler is installed) is closed. This is independent of the per-pass packet
-    /// quota (<see cref="MaxPacketsPerTick"/>), which only throttles.</summary>
+    /// handler is installed) is closed. As in Source-X, this byte quota is the only
+    /// input-volume limit: packet processing itself has no per-pass cap.</summary>
     public void CheckByteQuotas(long now)
     {
         if (now - _lastByteQuotaCheck <= ByteQuotaCheckPeriodMs)

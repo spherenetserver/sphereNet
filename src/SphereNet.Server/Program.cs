@@ -531,6 +531,17 @@ public static partial class Program
                  })
             iniParser.GetValue("SPHERE", owned);
 
+        // Retired SphereNet-only keys: inbound packets are no longer capped per pass
+        // and a busy client is never dropped for packet count (Source-X
+        // CNetworkInput::processData). An older ini still carrying them loads as
+        // before; say once that they do nothing now.
+        foreach (string retired in new[] { "FloodDetectionCount", "FloodDetectionWindowMs" })
+        {
+            if (iniParser.GetValue("SPHERE", retired) != null)
+                ConsoleAppend($"CONFIG: {retired} is retired and ignored; inbound packets are not " +
+                              "capped per tick (MAXSIZECLIENTIN is the input limit).");
+        }
+
         var unread = iniParser.UnreadKeys()
             .Select(k => k.Split('|')[^1])
             .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)

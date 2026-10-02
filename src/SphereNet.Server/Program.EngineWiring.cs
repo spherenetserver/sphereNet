@@ -3833,10 +3833,7 @@ public static partial class Program
                     "[decay] armed 0x{Uid:X} (id=0x{Id:X4} type={Type}) with no world to " +
                     "register it with; it will not decay until the audit finds it",
                     it.Uid.Value, it.DispIdFull, it.ItemType);
-            _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;
             _network.SlowPacketWarnMs = _config.SlowPacketWarnMs;
-            _network.FloodDetectionCount = _config.FloodDetectionCount;
-            _network.FloodDetectionWindowMs = _config.FloodDetectionWindowMs;
             _network.MaxSizeClientOut = _config.MaxSizeClientOut;
             _network.MaxSizeClientIn = _config.MaxSizeClientIn;
             _network.ClientMaxIP = _config.ClientMaxIP;

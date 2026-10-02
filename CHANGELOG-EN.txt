@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Network input without flood disconnect, extended account levels
+------------------------------------------------------------------------
+FIX - Network input processes every received packet each pass, as Source-X
+      CNetworkInput does: no per-pass packet cap and no "Packet flood detected"
+      disconnect, which dropped busy clients in crowded areas (tooltip, click and
+      move bursts). Input volume is limited only by the MAXSIZECLIENTIN byte quota.
+      FLOODDETECTIONCOUNT / FLOODDETECTIONWINDOWMS are retired (an old ini still
+      loads; the server notes once that they are ignored). MAXPACKETSPERTICK is
+      documented as the Source-X output limit and is read back via SERV only.
+FIX - Account files with PLEVEL=Founder, PLEVEL=Root or a numeric level above 7
+      (Sphere 56T custom-version compatibility) load as Owner instead of Player, and
+      the original value is written back while the account stays Owner.
+CHANGE - A refused double-click (script @DClick/@itemDClick RETURN 1, out of reach,
+      not visible, no such object, no game client) writes one debug line naming the
+      reason and the uid ("[dclick] ..."), so a use that answers the client with
+      nothing can be traced from the log.
+
 [2026-10-02] - Send backlog, staff toggles, named ore variants and DB statements
 ------------------------------------------------------------------------
 FIX - A client is no longer disconnected because a burst of packets is queued for it

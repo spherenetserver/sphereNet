@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Flood kopmasiz ag girisi, genisletilmis hesap seviyeleri
+------------------------------------------------------------------------
+DUZELTME - Ag girisi her geciste alinan tum paketleri isler (Source-X
+           CNetworkInput gibi): gecis basina paket siniri ve "Packet flood
+           detected" kopmasi yok; kalabalik alanda tooltip/tiklama/hareket
+           patlamasi yapan oyuncular atiliyordu. Girdi hacmini yalnizca
+           MAXSIZECLIENTIN byte kotasi sinirlar. FLOODDETECTIONCOUNT /
+           FLOODDETECTIONWINDOWMS kaldirildi (eski ini yine yuklenir; sunucu yok
+           sayildiklarini bir kez bildirir). MAXPACKETSPERTICK Source-X cikis
+           siniri olarak belgelendi, yalnizca SERV ile okunur.
+DUZELTME - PLEVEL=Founder, PLEVEL=Root ya da 7'den buyuk sayisal seviye tasiyan
+           hesap dosyalari (Sphere 56T ozel surum uyumlulugu) Player yerine Owner
+           olarak yuklenir; hesap Owner kaldikca ozgun deger geri yazilir.
+DEGISIKLIK - Reddedilen cift tiklama (script @DClick/@itemDClick RETURN 1, menzil
+           disi, gorunmeyen nesne, olmayan nesne, baglantida oyun istemcisi yok)
+           nedeni ve uid'i yazan tek bir debug satiri birakir ("[dclick] ..."),
+           istemciye hicbir sey donmeyen kullanim loglardan izlenebilir.
+
 [2026-10-02] - Gonderim birikimi, personel anahtarlari, isimli ore varyantlari ve DB komutlari
 ------------------------------------------------------------------------
 DUZELTME - Bir istemci icin cok sayida paket kuyruga girdiginde (ornegin ALLSHOW acik

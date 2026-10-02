@@ -40,7 +40,21 @@ public sealed class Account : IScriptObj
 
     public string Name { get => _name; set => _name = value; }
     public string PasswordHash { get => _passwordHash; set => _passwordHash = value; }
-    public PrivLevel PrivLevel { get => _privLevel; set => _privLevel = value; }
+    public PrivLevel PrivLevel
+    {
+        get => _privLevel;
+        set
+        {
+            _privLevel = value;
+            if (value != PrivLevel.Owner) ExtendedPlevelName = null;
+        }
+    }
+
+    /// <summary>Sphere 56T custom-version compatibility: account files from that version
+    /// carry levels above Owner (8 "Founder", 9 "Root"). They run as Owner here and the
+    /// original token is written back while the account is still Owner, so the file
+    /// keeps loading on the 56T server.</summary>
+    public string? ExtendedPlevelName { get; set; }
     public int CharCount => _charCount;
     public DateTime LastLogin { get => _lastLogin; set => _lastLogin = value; }
     public DateTime CreateDate { get => _createDate; set => _createDate = value; }

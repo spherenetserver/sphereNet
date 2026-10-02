@@ -159,8 +159,7 @@ public static partial class Program
     /// <summary>MAXSIZECLIENTIN / MAXSIZECLIENTOUT exceeded over a 10-second check
     /// period (NetworkManager.CheckByteQuotas). Source-X CClient::
     /// Event_ExceededNetworkQuota: the script decides, and by default the client is
-    /// disconnected. The per-pass packet quota (MaxPacketsPerTick) is only a throttle
-    /// and never reaches the script. Returns whether to log, or null when the
+    /// disconnected. Returns whether to log, or null when the
     /// connection has no client (the network layer then closes it).</summary>
     internal static bool? OnByteQuotaExceeded(NetState state, byte type, long bytes, long quota)
     {
@@ -1129,7 +1128,12 @@ public static partial class Program
 
     private static void OnDoubleClick(NetState state, uint serial)
     {
-        if (!_clients.TryGetValue(state.Id, out var client)) return;
+        if (!_clients.TryGetValue(state.Id, out var client))
+        {
+            _log.LogDebug("[dclick] uid=0x{Uid:X8} from #{Id} refused: no game client on this connection",
+                serial, state.Id);
+            return;
+        }
         if (_macroEngine != null && client.Character != null &&
             _macroEngine.IsRecording(client.Character.Uid.Value))
         {

@@ -687,9 +687,8 @@ public sealed class ClientCombatHandler
 
         // No speech rate limit — Source-X Event_Talk has none, and the invented
         // 10-per-5s burst cap here silently swallowed messages during fast
-        // conversations (commands consumed the same quota). Extreme packet
-        // floods are already handled at the network layer (MaxPacketsPerTick /
-        // FloodDetectionCount).
+        // conversations (commands consumed the same quota). Input volume is
+        // limited at the network layer by the MAXSIZECLIENTIN byte quota.
 
         if (text.Length > 256)
             text = text[..256];

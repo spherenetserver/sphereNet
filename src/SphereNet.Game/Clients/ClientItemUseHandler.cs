@@ -333,16 +333,35 @@ public sealed class ClientItemUseHandler
         _triggerDispatcher?.FireCharTrigger(target, CharTrigger.DClick,
             new TriggerArgs { CharSrc = _character }) == TriggerResult.True;
 
+    /// <summary>One debug line for a double-click the engine turned down. Several of
+    /// these refusals answer the client with nothing at all (a script's RETURN 1 is
+    /// silent by contract, CClientEvent.cpp:2354 / CClientUse.cpp:23), so without the
+    /// line a live log shows only the incoming 0x06 and no way to tell which gate
+    /// stopped it.</summary>
+    private void LogDClickRefused(uint uid, string reason)
+    {
+        if (_logger.IsEnabled(LogLevel.Debug))
+            _logger.LogDebug("[dclick] uid=0x{Uid:X8} by '{Char}' (0x{CharUid:X8}) refused: {Reason}",
+                uid, _character?.Name ?? "-", _character?.Uid.Value ?? 0, reason);
+    }
+
     public void HandleDoubleClick(uint uid, bool testTouch = true)
     {
-        if (_character == null) return;
+        if (_character == null)
+        {
+            LogDClickRefused(uid, "no character attached to this client");
+            return;
+        }
 
         // Bit 31 = paperdoll request flag (client status bar button, Alt+DClick)
         bool paperdollRequest = (uid & 0x80000000) != 0;
         uid &= 0x7FFFFFFF;
         if (_world.FindChar(new Serial(uid)) is { } selected &&
             (CharDefHelper.GetCanFlags(selected) & CanFlags.C_NonSelectable) != 0)
+        {
+            LogDClickRefused(uid, "character is CAN_C_NONSELECTABLE");
             return;
+        }
 
         if (paperdollRequest)
         {
@@ -356,9 +375,14 @@ public sealed class ClientItemUseHandler
                 // (CClientEvent.cpp:2354-2358).
                 if (!CharDClickBlocked(target))
                     SendPaperdoll(target);
+                else
+                    LogDClickRefused(uid, "paperdoll: script @DClick returned 1");
             }
             else if (uid != 0)
+            {
+                LogDClickRefused(uid, "paperdoll: target not found or not visible");
                 Send(new PacketDeleteObject(uid));
+            }
             return;
         }
 
@@ -367,7 +391,10 @@ public sealed class ClientItemUseHandler
             // Source-X fires @DClick on the clicked character - yourself included -
             // before the dismount / paperdoll choice (CClientEvent.cpp:2354-2373).
             if (CharDClickBlocked(_character))
+            {
+                LogDClickRefused(uid, "self: script @DClick returned 1");
                 return;
+            }
 
             // If mounted, dismount on self-dclick
             if (_character.IsMounted && _mountEngine != null)
@@ -434,6 +461,8 @@ public sealed class ClientItemUseHandler
         {
             if (!CanSeeItemForDoubleClick(item, out Point3D usePoint))
             {
+                LogDClickRefused(uid, $"item not visible to the user (cont=0x{item.ContainedIn.Value:X8} " +
+                    $"attr=0x{(ulong)item.Attributes:X} use point {usePoint})");
                 Send(new PacketDeleteObject(uid));
                 return;
             }
@@ -455,6 +484,7 @@ public sealed class ClientItemUseHandler
                 bool reachable = CanReachTargetItem(item);
                 if (!reachable)
                 {
+                    LogDClickRefused(uid, "item out of reach (CanTouch)");
                     // Upstream answers a failed touch with REACH_FAIL, or REACH_GHOST
                     // for the dead (CClientUse.cpp:97). "Target is too far away" named
                     // one of the two reasons and misreported the other: the tillerman
@@ -471,8 +501,14 @@ public sealed class ClientItemUseHandler
                 var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.DClick,
                     new TriggerArgs { CharSrc = _character, ItemSrc = item });
                 if (result == TriggerResult.True)
+                {
+                    LogDClickRefused(uid, "script @itemDClick/@DClick returned 1 (ScriptDebug=1 names the block)");
                     return;
+                }
             }
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("[dclick] uid=0x{Uid:X8} by '{Char}' -> use, type={Type} id=0x{Id:X4}",
+                    uid, _character.Name, item.ItemType, item.BaseId);
             HandleItemUse(item);
             return;
         }
@@ -482,6 +518,7 @@ public sealed class ClientItemUseHandler
         {
             if (!CanSeeCharacterForDoubleClick(ch))
             {
+                LogDClickRefused(uid, "character not visible to the user");
                 Send(new PacketDeleteObject(uid));
                 return;
             }
@@ -494,7 +531,10 @@ public sealed class ClientItemUseHandler
                 var result = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.DClick,
                     new TriggerArgs { CharSrc = _character });
                 if (result == TriggerResult.True)
+                {
+                    LogDClickRefused(uid, "character: script @DClick returned 1");
                     return;
+                }
             }
             if (VendorEngine.IsVendorLike(ch))
             {
@@ -602,6 +642,7 @@ public sealed class ClientItemUseHandler
         if (TryToggleNearestMapStaticDoor(uid))
             return;
 
+        LogDClickRefused(uid, "no such object");
         if (uid != 0)
             Send(new PacketDeleteObject(uid));
     }

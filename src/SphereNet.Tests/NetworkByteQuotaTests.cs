@@ -20,10 +20,11 @@ namespace SphereNet.Tests;
 /// (Source-X CNetworkThread::tick, CNetworkThread.cpp:135-189, and
 /// CClient::Event_ExceededNetworkQuota, CClientEvent.cpp:819-842).
 ///
-/// The function belongs to the 10-second byte quota only. It used to run whenever the
-/// per-pass packet quota (MaxPacketsPerTick) was hit - an ordinary throttle that a
-/// staff character walking into a busy town reaches - and a script pack whose function
-/// disconnects (the documented default) kicked that player.
+/// The function belongs to the 10-second byte quota only, which is also the only
+/// input-volume limit: packet processing has no per-pass count cap (Source-X
+/// CNetworkInput::processData). It once ran whenever a per-pass packet cap was hit -
+/// something a staff character walking into a busy town reaches - and a script pack
+/// whose function disconnects (the documented default) kicked that player.
 /// </summary>
 public sealed class NetworkByteQuotaTests
 {
@@ -58,35 +59,35 @@ public sealed class NetworkByteQuotaTests
     }
 
     [Fact]
-    public void ThePerPassPacketQuotaThrottlesButNeverReachesTheByteQuota()
+    public void AManyPacketBurstIsProcessedWholeAndNeverReachesTheByteQuota()
     {
         var (mgr, state) = Connection();
-        mgr.MaxPacketsPerTick = 10;
-        mgr.FloodDetectionCount = 0;
         mgr.MaxSizeClientIn = 1_000_000;
         mgr.MaxSizeClientOut = 1_000_000;
         var hits = Record(mgr);
-        int throttled = 0;
-        mgr.OnPacketQuotaExceeded += (_, _) => throttled++;
 
+        var process = typeof(NetworkManager).GetMethod("ProcessInput", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var pings = new byte[2 * 200];
         for (int i = 0; i < 200; i++) { pings[i * 2] = 0x73; pings[i * 2 + 1] = 0x00; }
-        state.InjectReceived(pings);
-        var process = typeof(NetworkManager).GetMethod("ProcessInput", BindingFlags.Instance | BindingFlags.NonPublic)!;
         for (int pass = 0; pass < 25; pass++)
+        {
+            state.InjectReceived(pings);
             process.Invoke(mgr, [state]);
+            Assert.Equal(0, state.ReceivedData.Length);
+        }
         mgr.CheckByteQuotas(Now);
 
-        Assert.True(throttled > 0, "the packet quota still throttles");
         Assert.Empty(hits);
         Assert.False(state.IsClosing);
     }
 
     [Fact]
-    public void ThePacketQuotaHookNoLongerAliasesTheNetworkQuotaFunction()
+    public void NoPacketCountHookAliasesTheNetworkQuotaFunction()
     {
         string src = File.ReadAllText(TestRepo.Tracked("src/SphereNet.Server/Program.EngineWiring.cs"));
-        Assert.DoesNotContain("OnPacketQuotaExceeded +=", src);
+        Assert.DoesNotContain("OnPacketQuotaExceeded", src);
+        string net = File.ReadAllText(TestRepo.Tracked("src/SphereNet.Network/Manager/NetworkManager.cs"));
+        Assert.DoesNotContain("OnPacketQuotaExceeded", net);
         string hooks = File.ReadAllText(TestRepo.Tracked("src/SphereNet.Scripting/Execution/ScriptSystemHooks.cs"));
         Assert.DoesNotContain("\"quotaexceed\"", hooks);
     }

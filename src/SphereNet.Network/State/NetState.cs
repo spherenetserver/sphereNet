@@ -214,10 +214,6 @@ public sealed class NetState : IDisposable
     public byte LastMovementOpcode { get; set; }
     public int LastMovementBatchSize { get; set; }
 
-    // Packet flood detection
-    public int PacketFloodCount { get; set; }
-    public long PacketFloodWindowStart { get; set; }
-
     // Bytes moved since the last 10-second legitimacy check (Source-X CNetState
     // _iInByteCounter / _iOutByteCounter, CNetState.h:85). In counts what the socket
     // delivered (CNetworkInput.cpp:101), out what the socket accepted
@@ -412,7 +408,7 @@ public sealed class NetState : IDisposable
         // clears the whole state before init (CNetState::clear, CNetState.cpp:144:
         // client type, client version, packet exception count); a slot handed to a new
         // classic client must not still say "enhanced client", carry the old
-        // language, or start on someone else's fault and flood budget.
+        // language, or start on someone else's fault budget.
         ClientTypeFlag = 0;
         ClientExpansion = Expansion.None;
         ClientLanguage = "ENU";
@@ -424,8 +420,6 @@ public sealed class NetState : IDisposable
         HuffmanReceiveEnabled = false;
         PacketDebugClassifier = null;   // belonged to the previous client's GameClient
         PacketExceptionCount = 0;
-        PacketFloodCount = 0;
-        PacketFloodWindowStart = 0;
         ResetByteCounters();
         _rttPingSeq = 0;
         _rttPingSentTick = 0;

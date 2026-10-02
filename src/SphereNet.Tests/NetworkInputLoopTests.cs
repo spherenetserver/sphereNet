@@ -134,29 +134,103 @@ public sealed class NetworkInputLoopTests
         return (client, state);
     }
 
-    // ---- N01: buffered packets are processed without new socket data ----------
+    // ---- N01: every received packet is processed, none held back by count -----
 
+    /// <summary>Records the 16-bit sequence number each test packet carries.</summary>
+    private sealed class SequenceHandler() : PacketHandler(TestOpcode, 0)
+    {
+        public readonly List<int> Seen = [];
+        public override void OnReceive(PacketBuffer buffer, NetState state) =>
+            Seen.Add(buffer.ReadUInt16());
+    }
+
+    private static byte[] Sequenced(int seq) =>
+        [TestOpcode, 0x00, 0x05, (byte)(seq >> 8), (byte)seq];
+
+    /// <summary>The live failure: a busy client in a crowded area (tooltip batches,
+    /// clicks, moves, pings) sends far more small packets per tick than the old
+    /// per-pass cap of 50, and the cap counted each such pass toward a disconnect.
+    /// Source-X processes everything received each pass (CNetworkInput::
+    /// processData, CNetworkInput.cpp:211-224) and drops no one for packet count.
+    /// Here a client sends bursts of 1000 valid small packets plus pings, burst after
+    /// burst over the real socket path: it stays connected and every packet is
+    /// dispatched exactly once, in order.</summary>
     [Fact]
-    public void PacketsLeftByThePerPassQuotaAreProcessedOnLaterPassesWithoutNewData()
+    public void RepeatedBurstsOfAThousandPacketsAreAllDispatchedInOrderAndNeverDropped()
     {
         var nm = NoCryptManager();
-        nm.MaxPacketsPerTick = 1;
-        nm.FloodDetectionCount = 100;
-        var handler = new CountingHandler();
+        var handler = new SequenceHandler();
         nm.Packets.Register(handler);
         using var lb = new Loopback(nm);
         var (client, state) = LoggedIn(lb);
 
-        client.Send(Repeat(TestPacket, 3));
-        lb.PumpUntil(() => handler.Calls >= 1);
-        Assert.Equal(1, handler.Calls);   // the quota held the first pass to one packet
+        const int perBurst = 1000;
+        const int bursts = 8;
+        int next = 0;
+        for (int burst = 0; burst < bursts; burst++)
+        {
+            var bytes = new List<byte>(perBurst * 7);
+            for (int i = 0; i < perBurst; i++)
+            {
+                bytes.AddRange(Sequenced(next++));
+                bytes.AddRange([0x73, 0x00]);   // interleaved pings
+            }
+            client.Send(bytes.ToArray());
 
-        for (int pass = 0; pass < 5; pass++)
-            nm.ProcessAllInput();         // the client sends nothing more
+            int expected = next;
+            lb.PumpUntil(() => handler.Seen.Count >= expected || state.IsClosing);
 
-        Assert.Equal(3, handler.Calls);
+            Assert.False(state.IsClosing, $"dropped during burst {burst}");
+            Assert.Equal(expected, handler.Seen.Count);
+        }
+
+        Assert.Equal(Enumerable.Range(0, bursts * perBurst), handler.Seen);
+        Assert.Equal(0, state.ReceivedData.Length);
+        Assert.True(state.IsInUse);
+    }
+
+    /// <summary>One pass consumes every whole packet already buffered: nothing is left
+    /// for a later pass by a packet count.</summary>
+    [Fact]
+    public void OnePassDispatchesEveryBufferedPacket()
+    {
+        var (mgr, state) = Seeded();
+        var handler = new SequenceHandler();
+        mgr.Packets.Register(handler);
+
+        state.InjectReceived(Enumerable.Range(0, 1000).SelectMany(Sequenced).ToArray());
+        Process(mgr, state);
+
+        Assert.Equal(Enumerable.Range(0, 1000), handler.Seen);
         Assert.Equal(0, state.ReceivedData.Length);
         Assert.False(state.IsClosing);
+    }
+
+    private sealed class ClosingHandler() : PacketHandler(TestOpcode, 0)
+    {
+        public int Calls;
+        public override void OnReceive(PacketBuffer buffer, NetState state)
+        {
+            Calls++;
+            state.MarkClosing();
+        }
+    }
+
+    /// <summary>Once a handler closes the connection, the rest of the buffer is not
+    /// processed: upstream's loop checks isReadClosed before each packet
+    /// (CNetworkInput.cpp:213).</summary>
+    [Fact]
+    public void ProcessingStopsOnceTheConnectionIsClosing()
+    {
+        var (mgr, state) = Seeded();
+        var handler = new ClosingHandler();
+        mgr.Packets.Register(handler);
+
+        state.InjectReceived(Repeat(TestPacket, 3));
+        Process(mgr, state);
+
+        Assert.Equal(1, handler.Calls);
+        Assert.True(state.IsClosing);
     }
 
     [Fact]
@@ -223,8 +297,6 @@ public sealed class NetworkInputLoopTests
         state.ClientTypeFlag = previousClientType;
         state.ClientLanguage = "TRK";
         state.PacketExceptionCount = 10;
-        state.PacketFloodCount = 4;
-        state.PacketFloodWindowStart = 12345;
         state.ClientExpansion = Expansion.SA;
         state.ScreenWidth = 1024;
         state.ScreenHeight = 768;
@@ -253,8 +325,6 @@ public sealed class NetworkInputLoopTests
         Assert.False(reused.SupportsNewMapDisplay);
         Assert.Equal("ENU", reused.ClientLanguage);
         Assert.Equal(0, reused.PacketExceptionCount);
-        Assert.Equal(0, reused.PacketFloodCount);
-        Assert.Equal(0, reused.PacketFloodWindowStart);
         Assert.Equal(Expansion.None, reused.ClientExpansion);
         Assert.Equal(0, reused.ScreenWidth);
         Assert.Equal(0, reused.ScreenHeight);
@@ -281,7 +351,7 @@ public sealed class NetworkInputLoopTests
             .GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(target, value);
 
-    // ---- N07: FloodDetectionCount=0 means no flood disconnect ------------------
+    // ---- in-process framing helpers ------------------------------------------
 
     private static (NetworkManager Mgr, NetState State) Seeded()
     {
@@ -300,65 +370,4 @@ public sealed class NetworkInputLoopTests
             .GetMethod("ProcessInput", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(mgr, [state]);
 
-    private static readonly byte[] Ping = [0x73, 0x00];
-
-    [Fact]
-    public void AZeroFloodCountNeverDisconnectsButTheQuotaStillLimitsAPass()
-    {
-        var (mgr, state) = Seeded();
-        mgr.MaxPacketsPerTick = 1;
-        mgr.FloodDetectionCount = 0;
-        int quotaHits = 0;
-        mgr.OnPacketQuotaExceeded += (_, _) => quotaHits++;
-
-        for (int round = 0; round < 10; round++)
-        {
-            state.InjectReceived(Repeat(Ping, 3));
-            Process(mgr, state);
-            Assert.False(state.IsClosing, $"flood detection is off, yet round {round} disconnected");
-            Assert.Equal(4, state.ReceivedData.Length);   // one ping per pass
-            Process(mgr, state);
-            Process(mgr, state);
-            Assert.Equal(0, state.ReceivedData.Length);
-        }
-        Assert.True(quotaHits >= 10);
-    }
-
-    [Fact]
-    public void APositiveFloodCountDropsAtTheThreshold()
-    {
-        var (mgr, state) = Seeded();
-        mgr.MaxPacketsPerTick = 1;
-        mgr.FloodDetectionCount = 3;
-        mgr.FloodDetectionWindowMs = 60_000;
-
-        for (int exceed = 1; exceed <= 3; exceed++)
-        {
-            state.ConsumeReceived(int.MaxValue);
-            state.InjectReceived(Repeat(Ping, 2));
-            Process(mgr, state);
-            Assert.Equal(exceed == 3, state.IsClosing);
-        }
-    }
-
-    [Fact]
-    public void TheFloodCountRestartsWhenTheWindowExpires()
-    {
-        var (mgr, state) = Seeded();
-        mgr.MaxPacketsPerTick = 1;
-        mgr.FloodDetectionCount = 2;
-        mgr.FloodDetectionWindowMs = 60_000;
-
-        state.InjectReceived(Repeat(Ping, 2));
-        Process(mgr, state);
-        Assert.Equal(1, state.PacketFloodCount);
-
-        state.PacketFloodWindowStart -= 61_000;   // the window has run out
-        state.ConsumeReceived(int.MaxValue);
-        state.InjectReceived(Repeat(Ping, 2));
-        Process(mgr, state);
-
-        Assert.False(state.IsClosing);
-        Assert.Equal(1, state.PacketFloodCount);
-    }
 }

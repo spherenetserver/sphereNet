@@ -2056,6 +2056,12 @@ public sealed class HousingEngine
             // SHL_LOCKITEM takes anything but a container (CItemMulti.cpp:3190).
             if (classic && locked.ItemType is ItemType.Container or ItemType.ContainerLocked) return;
             house.LockdownForLoad(uid);
+            // A save written before ObjAttributes took Source-X's bit numbers stamped
+            // a lockdown on 0x100000, which is ATTR_INSURED. Such an item carries that
+            // bit without the real ATTR_LOCKEDDOWN one; a classic save, or one written
+            // since, already has ATTR_LOCKEDDOWN, so the stray bit is dropped only then.
+            if (!locked.IsAttr(ObjAttributes.LockedDown) && locked.IsAttr(ObjAttributes.Insured))
+                locked.ClearAttr(ObjAttributes.Insured);
             locked.SetAttr(ObjAttributes.LockedDown);
             locked.Link = item.Uid;
         }
@@ -2066,6 +2072,9 @@ public sealed class HousingEngine
             // SHL_SECURE takes containers only (CItemMulti.cpp:3202).
             if (classic && secure.ItemType is not (ItemType.Container or ItemType.ContainerLocked)) return;
             house.SecureForLoad(uid);
+            // Same migration as above: the old secure bit was 0x40000, ATTR_IMBUED.
+            if (!secure.IsAttr(ObjAttributes.Secure) && secure.IsAttr(ObjAttributes.Imbued))
+                secure.ClearAttr(ObjAttributes.Imbued);
             secure.SetAttr(ObjAttributes.Secure);
             secure.Link = item.Uid;
         }

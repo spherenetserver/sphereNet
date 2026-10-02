@@ -320,7 +320,8 @@ public sealed class CharDef : BaseDef
                     : unchecked((short)ParseUShort(bv));
                 break;
             }
-            case "RANGE": (RangeMin, RangeMax) = ParseRange(value); break;
+            // CCharBase.cpp:412-416: the same ConvertRangeStr as an item's RANGE.
+            case "RANGE": (RangeMin, RangeMax) = ItemDef.ConvertRangeStr(value); break;
             case "RANGEH": int.TryParse(value, out int rh); RangeMax = rh; break;
             case "RANGEL": int.TryParse(value, out int rl); RangeMin = rl; break;
             case "MOVERATE": int.TryParse(value, out int mr); MoveRate = mr; break;

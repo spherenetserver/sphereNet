@@ -156,7 +156,7 @@ public sealed class ItemDef : BaseDef
                 break;
             case "SKILLMAKE": SkillMakeRaw = value.Trim(); ParseResourceList(value, SkillMake); break;
             case "RESOURCES": ResourcesRaw = value.Trim(); ParseResourceList(value, BaseResources); break;
-            case "RANGE": (RangeMin, RangeMax) = ParseRange(value); break;
+            case "RANGE": (RangeMin, RangeMax) = ConvertRangeStr(value); break;
             case "RANGEH": int.TryParse(value, out int rh); RangeMax = rh; break;
             case "RANGEL": int.TryParse(value, out int rl); RangeMin = rl; break;
             case "SPEED": Speed = ParseLeadingInt(value); break;
@@ -532,6 +532,24 @@ public sealed class ItemDef : BaseDef
             if (rid.IsValid)
                 list.Add(rid);
         }
+    }
+
+    /// <summary>Source-X CBaseBaseDef::ConvertRangeStr (CBase.cpp:486), the RANGE key
+    /// of an item or character definition: one number is the HIGH end only and the
+    /// low end stays 0 ("RANGE=2" reaches 0..2, not exactly 2), two numbers are
+    /// "low,high" and are put in order. Reading a single value as low=high made a
+    /// RANGE=2 polearm unable to strike anyone standing next to it or on its tile.</summary>
+    internal static (int Min, int Max) ConvertRangeStr(string value)
+    {
+        var pieces = value.Trim().Split([',', ' ', '\t', '='],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pieces.Length == 0)
+            return (0, 0);
+        if (pieces.Length == 1)
+            return (0, ParseLeadingInt(pieces[0]));
+        int lo = ParseLeadingInt(pieces[0]);
+        int hi = ParseLeadingInt(pieces[1]);
+        return lo > hi ? (hi, lo) : (lo, hi);
     }
 
     private static (int Min, int Max) ParseRange(string value)

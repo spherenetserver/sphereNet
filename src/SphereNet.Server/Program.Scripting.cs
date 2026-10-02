@@ -809,7 +809,9 @@ public static partial class Program
                 ? def.AttackMin.ToString() : $"{def.AttackMin},{def.AttackMax}",
             "ARMOR" => def.DefenseMin == def.DefenseMax
                 ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}",
-            "RANGE" => def.RangeMin == def.RangeMax
+            // CBC_RANGE (CCharBase.cpp:261-268): the high end alone when the low end
+            // is 0, else "high,low".
+            "RANGE" => def.RangeMin == 0
                 ? def.RangeMax.ToString() : $"{def.RangeMax},{def.RangeMin}",
             "RANGEH" => def.RangeMax.ToString(),
             "RANGEL" => def.RangeMin.ToString(),

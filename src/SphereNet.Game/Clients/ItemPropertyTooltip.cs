@@ -1,4 +1,6 @@
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Items;
 
 namespace SphereNet.Game.Clients;
@@ -210,5 +212,51 @@ public static class ItemPropertyTooltip
                 ? value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : string.Empty));
         }
+    }
+
+    /// <summary>The attribute and race lines that open an item's default tooltip data,
+    /// right after the name (CClient::AOSTooltip_addDefaultItemData,
+    /// CClientMsg_AOSTooltip.cpp:365-389), in upstream's order.
+    ///
+    /// ATTR_NEWBIE's argument is DEFMSG tooltip_tag_newbie. Upstream passes the raw
+    /// message; a pack written for the single-click path may give it an overhead-speech
+    /// prefix ("@,,1,1 [Newbified]"), which the tooltip cannot use, so the prefix is
+    /// taken off the same way any text line consumes it (addBarkParse). A message
+    /// without a prefix - the stock "Newbie" - goes out unchanged.</summary>
+    public static void AppendAttributeLines(Item item, List<(uint ClilocId, string Args)> props)
+    {
+        if (item.IsAttr(ObjAttributes.LockedDown))
+            props.Add((501643, string.Empty));      // Locked Down
+        if (item.IsAttr(ObjAttributes.Secure))
+            props.Add((501644, string.Empty));      // Locked Down & Secured
+        if (item.IsAttr(ObjAttributes.Blessed))
+            props.Add((1038021, string.Empty));     // Blessed
+        if (item.IsAttr(ObjAttributes.Cursed))
+            props.Add((1049643, string.Empty));     // Cursed
+        if (item.IsAttr(ObjAttributes.Insured))
+            props.Add((1061682, string.Empty));     // <b>Insured</b>
+        if (item.IsAttr(ObjAttributes.QuestItem))
+            props.Add((1072351, string.Empty));     // Quest Item
+        if (item.IsAttr(ObjAttributes.Magic))
+            props.Add((3010064, string.Empty));     // Magic
+        if (item.IsAttr(ObjAttributes.Newbie))
+            props.Add((1070722, NewbieTag()));      // ~1_NOTHING~
+        if (item.IsAttr(ObjAttributes.NoDrop))
+            props.Add((1076253, string.Empty));     // NO-DROP
+        if (item.IsAttr(ObjAttributes.NoTrade))
+            props.Add((1076255, string.Empty));     // NO-TRADE
+
+        var canUse = item.CanUseMask;
+        if ((canUse & CanEquipFlags.Elf) != 0 && (canUse & (CanEquipFlags.Human | CanEquipFlags.Gargoyle)) == 0)
+            props.Add((1154650, string.Empty));     // Elves Only
+        else if ((canUse & CanEquipFlags.Gargoyle) != 0 && (canUse & (CanEquipFlags.Human | CanEquipFlags.Elf)) == 0)
+            props.Add((1111709, string.Empty));     // Gargoyles Only
+    }
+
+    private static string NewbieTag()
+    {
+        string raw = ServerMessages.Get(Msg.TooltipTagNewbie);
+        var fmt = SpeechPrefix.Parse(raw);
+        return fmt.Drop ? raw : fmt.Text;
     }
 }

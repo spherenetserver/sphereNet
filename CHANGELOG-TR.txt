@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Esya tooltip ozellik satirlari ve Source-X ATTR bit numaralari
+------------------------------------------------------------------------
+DUZELTME - Item veya karakter tanimindaki tek degerli RANGE Source-X ConvertRangeStr gibi
+           yalnizca ust sinir (0..n) olarak okunur; n..n okundugu icin RANGE=2 mizrak/teber
+           ayni veya bitisik karedeki hedefe vuramiyor, cagrilan guard ustunde durdugu
+           sucluyu hic oldurmuyordu. RANGE geri okumasi Source-X bicimine uyar.
+DUZELTME - Esya AOS tooltip'leri ozellik satirlarini gosterir: locked down, secure, blessed,
+           cursed, insured, quest item, magic, newbie (DEFMSG tooltip_tag_newbie, konusma
+           oneki temizlenir), no-drop, no-trade ve CANUSE'a gore Elves Only / Gargoyles Only.
+DUZELTME - 0x40000 ve ustu ATTR bitleri Source-X numaralandirmasini kullanir (LOCKEDDOWN
+           0x1000000, SECURE 0x2000000, INSURED 0x100000, QUESTITEM 0x80000): klasik
+           save'deki insured item locked down yuklenmez, attr_lockeddown testleri eslesir.
+           Ev lockdown/secure geri yuklemesi eski yanlis bitleri temizler. ATTR degisince
+           tooltip yeniden kurulur.
+
 [2026-10-02] - MESSAGEUA / SAYUA / SYSMESSAGEUA arguman okumasi
 ------------------------------------------------------------------------
 DUZELTME - JOB tanimin meslek adidir (CCharBase::GetTradeName: isim listesi kelimesi ve

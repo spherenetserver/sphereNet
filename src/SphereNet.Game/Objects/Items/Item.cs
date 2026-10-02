@@ -179,6 +179,10 @@ public class Item : ObjBase
     private SphereNet.Scripting.Definitions.ItemDef? ResolveDefinition() =>
         DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(this));
 
+    /// <summary>The CANUSE race/gender mask (CAN_U_*), read from the item's definition
+    /// as the <c>CANUSE</c> property does; All (0) when there is none.</summary>
+    public CanEquipFlags CanUseMask => ResolveDefinition()?.CanUse ?? CanEquipFlags.All;
+
     /// <summary>The ITEMDEF's TAG map, behind the item's own (Base_GetDef()->m_TagDefs).</summary>
     protected override SphereNet.Scripting.Variables.VarMap? DefinitionTags => ResolveDefinition()?.TagDefs;
 
@@ -2827,7 +2831,11 @@ public class Item : ObjBase
                     value = ((int)(def.Skill != SkillType.None ? def.Skill : WeaponTypeSkill(EffectiveType))).ToString();
                     return true;
                 case "REQSTR": value = def.ReqStr.ToString(); return true;
-                case "RANGE": value = def.RangeMin == def.RangeMax ? def.RangeMin.ToString() : $"{def.RangeMin},{def.RangeMax}"; return true;
+                // PROPIWEAP_RANGE (CCPropsItemWeapon.cpp:105-117): the high end alone
+                // when the low end is 0, else "low,high"; no RANGE at all reads 1.
+                case "RANGE":
+                    value = def.RangeMin == 0 ? Math.Max(1, def.RangeMax).ToString() : $"{def.RangeMin},{def.RangeMax}";
+                    return true;
                 case "RANGEH": value = def.RangeMax.ToString(); return true;
                 case "RANGEL": value = def.RangeMin.ToString(); return true;
                 // The CAN_I_* flag keys read the masked bit of the definition's CAN

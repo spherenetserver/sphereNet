@@ -397,6 +397,40 @@ public sealed class HouseOwnershipRedeedRestoreParityTests : IDisposable
         Assert.Equal(777, engine.GetHouse(multi.Uid)!.BaseStorage);
     }
 
+    /// <summary>A save written before ObjAttributes took Source-X's bit numbers marked a
+    /// lockdown with 0x100000 (ATTR_INSURED) and a secure container with 0x40000
+    /// (ATTR_IMBUED). Restoring the house list stamps the real bits and drops those
+    /// strays; an item that already carries the real bit keeps its insured flag.</summary>
+    [Fact]
+    public void RestoringAHouseMigratesTheOldLockdownAndSecureBits()
+    {
+        var world = NewWorld();
+        var oldLocked = world.CreateItem();
+        oldLocked.Attributes = ObjAttributes.Insured;           // old LockedDown bit
+        world.PlaceItem(oldLocked, new Point3D(100, 101, 0, 0));
+        var oldSecure = world.CreateItem();
+        oldSecure.ItemType = ItemType.Container;
+        oldSecure.Attributes = ObjAttributes.Imbued;            // old Secure bit
+        world.PlaceItem(oldSecure, new Point3D(100, 102, 0, 0));
+        var insuredLocked = world.CreateItem();
+        insuredLocked.Attributes = ObjAttributes.LockedDown | ObjAttributes.Insured;
+        world.PlaceItem(insuredLocked, new Point3D(100, 103, 0, 0));
+
+        var multi = world.CreateItem();
+        multi.BaseId = 0x0064;
+        multi.ItemType = ItemType.Multi;
+        multi.SetTag("OWNER", "01234");
+        multi.SetTag("LOCKITEM", $"0{oldLocked.Uid.Value:x},0{insuredLocked.Uid.Value:x}");
+        multi.SetTag("SECURE", $"0{oldSecure.Uid.Value:x}");
+        world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
+
+        new HousingEngine(world, Registry()).DeserializeFromWorld();
+
+        Assert.Equal(ObjAttributes.LockedDown, oldLocked.Attributes);
+        Assert.Equal(ObjAttributes.Secure, oldSecure.Attributes);
+        Assert.Equal(ObjAttributes.LockedDown | ObjAttributes.Insured, insuredLocked.Attributes);
+    }
+
     private GameWorld SaveAndLoad(GameWorld world, HousingEngine engine, out HousingEngine reloadedEngine,
         GuildManager? guilds = null, GuildManager? reloadedGuilds = null)
     {

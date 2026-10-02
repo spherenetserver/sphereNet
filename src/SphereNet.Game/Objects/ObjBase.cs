@@ -492,7 +492,20 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     public ObjAttributes Attributes
     {
         get => _attr;
-        set => _attr = value;
+        set => ApplyAttr(value);
+    }
+
+    /// <summary>Store a new attribute word and, when it changed, flag the object so its
+    /// AOS tooltip is rebuilt: the item tooltip lists blessed / cursed / insured /
+    /// locked down and the rest straight from these bits (CClientMsg_AOSTooltip.cpp:365),
+    /// and upstream ends every item property write in UpdatePropertyFlag
+    /// (CItem::r_LoadVal, CItem.cpp:3510).</summary>
+    private void ApplyAttr(ObjAttributes value)
+    {
+        if (_attr == value)
+            return;
+        _attr = value;
+        MarkDirty(DirtyFlag.Properties);
     }
 
     public VarMap Tags => _tags;
@@ -756,8 +769,8 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     public void RemoveTag(string key) => _tags.Remove(key);
 
     public bool IsAttr(ObjAttributes flag) => (_attr & flag) != 0;
-    public void SetAttr(ObjAttributes flag) => _attr |= flag;
-    public void ClearAttr(ObjAttributes flag) => _attr &= ~flag;
+    public void SetAttr(ObjAttributes flag) => ApplyAttr(_attr | flag);
+    public void ClearAttr(ObjAttributes flag) => ApplyAttr(_attr & ~flag);
 
     public bool IsItem => _uid.IsItem;
     public bool IsChar => _uid.IsChar;
@@ -2312,7 +2325,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                 }
                 return true;
             case "ATTR":
-                _attr = ParseObjAttributes(value);
+                ApplyAttr(ParseObjAttributes(value));
                 return true;
             case "EVENTS":
                 if (this is Characters.Character ch)

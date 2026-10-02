@@ -1057,6 +1057,11 @@ public sealed class ClientSkillsHandler
         // Enrich tooltips for items
         if (obj is Item item && !skipDefaults)
         {
+            // AOSTooltip_addDefaultItemData opens with the attribute lines (locked
+            // down, secure, blessed, cursed, insured, quest, magic, newbie, no-drop,
+            // no-trade) and the race-only line, before any per-type data.
+            ItemPropertyTooltip.AppendAttributeLines(item, propList);
+
             switch (item.ItemType)
             {
                 case ItemType.WeaponMaceSmith:

@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Item tooltip attribute lines and Source-X ATTR bit numbers
+------------------------------------------------------------------------
+FIX - A single RANGE value on an item or character definition is the high end only (0..n),
+      as Source-X ConvertRangeStr reads it; it was read as n..n, so a RANGE=2 polearm could
+      not strike a target on its own or the next tile and a summoned guard never killed the
+      criminal it stood on. RANGE read-back follows the Source-X format.
+FIX - Item AOS tooltips list the attribute lines: locked down, secure, blessed, cursed,
+      insured, quest item, magic, newbie (DEFMSG tooltip_tag_newbie, overhead-speech prefix
+      removed), no-drop, no-trade, plus Elves Only / Gargoyles Only from CANUSE.
+FIX - ATTR bits 0x40000 and up use the Source-X numbering (LOCKEDDOWN 0x1000000, SECURE
+      0x2000000, INSURED 0x100000, QUESTITEM 0x80000): a classic save's insured item no
+      longer loads as locked down and attr_lockeddown tests match. House lockdown/secure
+      restore clears the previous misnumbered bits. Changing ATTR rebuilds the tooltip.
+
 [2026-10-02] - MESSAGEUA / SAYUA / SYSMESSAGEUA argument parsing
 ------------------------------------------------------------------------
 FIX - JOB is the definition's trade name (CCharBase::GetTradeName: NAME without the name-list

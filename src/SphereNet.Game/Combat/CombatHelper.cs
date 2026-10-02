@@ -51,6 +51,10 @@ public static class CombatHelper
         var def = weapon != null ? GetWeaponDef(weapon) : null;
         int minDist = def is { RangeMin: > 0 } ? def.RangeMin : Character.ArcheryMinDist;
         int maxDist = def is { RangeMax: > 0 } ? def.RangeMax : Character.ArcheryMaxDist;
+        // CCharFight.cpp:1884: the melee default "0..1" on a ranged weapon means no
+        // range of its own, so it shoots as far as ARCHERYMAXDIST.
+        if (def is { RangeMin: 0, RangeMax: 1 })
+            maxDist = Character.ArcheryMaxDist;
         if (maxDist < 1)
             maxDist = Character.ArcheryMaxDist;
         if (minDist < 0)

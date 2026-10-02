@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - PACK/BANK verbs open on SRC's client
+------------------------------------------------------------------------
+FIX - The PACK and BANK verbs open the character's backpack / bank box (or the layer
+      given to BANK) on SRC's client, as Source-X CHV_PACK / CHV_BANK do through
+      addBankOpen; they used to open it on the wearer's own client, so a vendor or pet
+      whose @DClick runs PACK answered the double-click with nothing.
+FIX - Verbs run from a trigger that has a SRC character but no console of its own (a
+      double-click on an NPC) receive that SRC as pSrc, as Source-X CChar::OnTrigger
+      does; PACK, FACE and the other SRC-relative verbs no longer act for nobody.
+
 [2026-10-02] - Sphere 56T custom-version compatibility pass: script engine, definitions, persistence, hooks
 ------------------------------------------------------------------------
 FIX - Sphere 56T custom-version compatibility: KILLSPLAYER= is no longer read as the murder

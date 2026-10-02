@@ -3412,20 +3412,31 @@ public static partial class Program
             };
             // PROPLIST/TAGLIST "log" argument sink (Source-X server console).
             SphereNet.Game.Objects.ObjBase.DiagnosticLog = line => _log.LogInformation("{Line}", line);
-            SphereNet.Game.Objects.Characters.Character.OpenBackpackForOwner = ch =>
+            // Source-X CClient::addBankOpen(pChar, layer): the wearer's container on that
+            // layer (the bank box is made when missing, CChar::GetBank) opened with its
+            // contents on the viewer's client.
+            SphereNet.Game.Objects.Characters.Character.OpenLayerContainerFor = (owner, viewer, layer) =>
             {
-                if (TryGetClientFor(ch, out var c))
+                if (!TryGetClientFor(viewer, out var c))
+                    return;
+                if (ReferenceEquals(owner, viewer) && layer == SphereNet.Core.Enums.Layer.BankBox)
                 {
-                    var pack = ch.Backpack;
-                    if (pack != null)
-                        c.NetState.Send(new SphereNet.Network.Packets.Outgoing.PacketOpenContainer(
-                            pack.Uid.Value, 0x003C, c.NetState.IsClientPost7090));
-                }
-            };
-            SphereNet.Game.Objects.Characters.Character.OpenBankboxForOwner = ch =>
-            {
-                if (TryGetClientFor(ch, out var c))
                     c.OpenBankBox();
+                    return;
+                }
+                var box = layer == SphereNet.Core.Enums.Layer.Pack
+                    ? owner.Backpack
+                    : owner.GetEquippedItem(layer);
+                if (box == null && layer == SphereNet.Core.Enums.Layer.BankBox)
+                {
+                    box = _world.CreateItem();
+                    box.BaseId = 0x09AB;
+                    box.ItemType = SphereNet.Core.Enums.ItemType.EqBankBox;
+                    box.Name = "Bank Box";
+                    owner.Equip(box, SphereNet.Core.Enums.Layer.BankBox);
+                }
+                if (box != null && !box.IsDeleted)
+                    c.OpenContainerFromScript(box);
             };
 
             // Mounts

@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - PACK/BANK verb'leri SRC'nin istemcisinde acilir
+------------------------------------------------------------------------
+DUZELTME - PACK ve BANK verb'leri karakterin cantasini / banka kutusunu (ya da BANK'a
+           verilen layer'i) Source-X CHV_PACK / CHV_BANK gibi addBankOpen ile SRC'nin
+           istemcisinde acar; eskiden sahibinin kendi istemcisinde aciyordu, bu yuzden
+           @DClick'i PACK calistiran vendor veya pet cift tiklamaya hicbir sey
+           dondurmuyordu.
+DUZELTME - SRC karakteri olan ama kendi konsolu olmayan bir trigger'dan (NPC'ye cift
+           tiklama) calisan verb'ler, Source-X CChar::OnTrigger gibi o SRC'yi pSrc olarak
+           alir; PACK, FACE ve SRC'ye gore calisan diger verb'ler artik bos
+           calismaz.
+
 [2026-10-02] - Sphere 56T ozel surum uyumlulugu turu: script motoru, tanimlar, kayit, hook'lar
 ------------------------------------------------------------------------
 DUZELTME - Sphere 56T ozel surum uyumlulugu: KILLSPLAYER= artik cinayet sayisi olarak

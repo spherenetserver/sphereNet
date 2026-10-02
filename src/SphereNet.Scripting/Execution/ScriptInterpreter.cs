@@ -751,7 +751,7 @@ public sealed class ScriptInterpreter
         }
 
         // Try as verb/command
-        if (target.TryExecuteCommand(cmd, resolvedArg, source ?? NullConsole.Instance))
+        if (target.TryExecuteCommand(cmd, resolvedArg, VerbConsole(source, args)))
         {
             if (_expr.DebugUnresolved)
                 _logger.LogDebug("[script_exec] handled via target verb '{Cmd}'", cmd);
@@ -1822,7 +1822,7 @@ public sealed class ScriptInterpreter
     {
         if (TryPreferredFunction(verb, verbArgs, target, source, args, scope))
             return;
-        var console = source ?? NullConsole.Instance;
+        var console = VerbConsole(source, args);
         if (target.TryExecuteCommand(verb, verbArgs, console, out bool nameOwned))
             return;
         if (nameOwned)
@@ -2578,6 +2578,34 @@ public sealed class ScriptInterpreter
         public PrivLevel GetPrivLevel() => PrivLevel.Guest;
         public void SysMessage(string text) { }
         public string GetName() => "SYSTEM";
+    }
+
+    /// <summary>The console a verb receives as pSrc. A trigger fired with only a SRC
+    /// character (a double-click on an NPC, for one) has no console of its own, yet
+    /// Source-X hands every verb of that trigger the SRC as pSrc (CChar::OnTrigger) -
+    /// CHV_PACK opens the pack on pSrc's client, FACE turns toward pSrc. The SRC is
+    /// carried as the console's character; everything else stays the given console's.</summary>
+    private static ITextConsole VerbConsole(ITextConsole? source, ITriggerArgs? args)
+    {
+        var console = source ?? NullConsole.Instance;
+        if (console.GetSourceChar() != null || args?.Source is not { } src)
+            return console;
+        return new SourceCharConsole(console, src);
+    }
+
+    private sealed class SourceCharConsole(ITextConsole inner, IScriptObj src) : ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => inner.GetPrivLevel();
+        public void SysMessage(string text) => inner.SysMessage(text);
+        public void SysMessage(string text, ushort hue) => inner.SysMessage(text, hue);
+        public string GetName() => inner.GetName();
+        public IScriptObj? GetSourceChar() => src;
+        public bool TryExecuteScriptCommand(IScriptObj target, string key, string args, ITriggerArgs? triggerArgs) =>
+            inner.TryExecuteScriptCommand(target, key, args, triggerArgs);
+        public bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value) =>
+            inner.TryResolveScriptVariable(varName, target, triggerArgs, out value);
+        public IReadOnlyList<IScriptObj> QueryScriptObjects(string query, IScriptObj target, string args, ITriggerArgs? triggerArgs) =>
+            inner.QueryScriptObjects(query, target, args, triggerArgs);
     }
 
 }

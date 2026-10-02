@@ -304,14 +304,12 @@ public partial class Character : ObjBase
     private bool _isAfk;
     public bool IsAfk => _isAfk;
 
-    /// <summary>Open this character's backpack on the owning client.
-    /// Used by the script <c>PACK</c> verb (Source-X
-    /// CChar::Use_BackpackOpen).</summary>
-    public static Action<Character>? OpenBackpackForOwner;
-
-    /// <summary>Open this character's bank box on the owning client.
-    /// Used by the script <c>BANK</c> verb and admin shortcut.</summary>
-    public static Action<Character>? OpenBankboxForOwner;
+    /// <summary>Open a container worn by the first character (its pack, bank box or any
+    /// layer) on the client of the second - Source-X CClient::addBankOpen. The script
+    /// <c>PACK</c> and <c>BANK</c> verbs open the container to SRC, not to the wearer
+    /// (CChar.cpp:4474-4479, 4802-4806), which is how a vendor or a pet shows its pack to
+    /// whoever double-clicked it.</summary>
+    public static Action<Character, Character, Layer>? OpenLayerContainerFor;
 
 
     /// <summary>UO client family flags exposed to scripts via
@@ -9045,12 +9043,23 @@ public partial class Character : ObjBase
             }
             case "PACK":
             {
-                OpenBackpackForOwner?.Invoke(this);
+                // CHV_PACK: addBankOpen(this, LAYER_PACK) on SRC's client; no client, no open.
+                var packViewer = ResolveSourceCharacter(source);
+                if (packViewer == null || OpenLayerContainerFor == null)
+                    return false;
+                OpenLayerContainerFor(this, packViewer, Layer.Pack);
                 return true;
             }
             case "BANK":
             {
-                OpenBankboxForOwner?.Invoke(this);
+                // CHV_BANK: addBankOpen(this, <arg layer> or LAYER_BANKBOX) on SRC's client.
+                var bankViewer = ResolveSourceCharacter(source);
+                if (bankViewer == null || OpenLayerContainerFor == null)
+                    return false;
+                var bankLayer = Layer.BankBox;
+                if (args.Trim().Length > 0 && ScriptNumber.TryParseLong(args.Trim(), out long bankLayerNum))
+                    bankLayer = (Layer)(int)bankLayerNum;
+                OpenLayerContainerFor(this, bankViewer, bankLayer);
                 return true;
             }
             case "HUNGRY":

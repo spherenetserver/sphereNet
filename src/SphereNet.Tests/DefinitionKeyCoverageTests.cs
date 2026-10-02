@@ -53,10 +53,10 @@ public sealed class DefinitionKeyCoverageTests(ITestOutputHelper outp)
     /// are read straight off def tags by the combat aggregations, so they work as
     /// written; ItemDefTagFallbackTests proves it for the resists. USESMAX and PILE
     /// have consumers on the same footing. The remainder - SELFREPAIR, LOWERREQ,
-    /// RARITY, USEBESTWEAPONSKILL, the BONUSSKILL pairs, DEFNAME2, EXPANSION - have
+    /// RARITY, USEBESTWEAPONSKILL, the BONUSSKILL pairs, EXPANSION - have
     /// no engine behaviour behind them at all, so a typed field would be storage
-    /// nobody consults. NAMELOC, CATEGORY, SUBSECTION and DESCRIPTION are
-    /// house-placement menu metadata, and COMPONENT and MULTIREGION belong to a
+    /// nobody consults. NAMELOC is house-placement menu metadata (CATEGORY,
+    /// SUBSECTION and DESCRIPTION are base strings now, DEFNAME2 an alias), and COMPONENT and MULTIREGION belong to a
     /// MULTIDEF written with an ITEMDEF header.
     ///
     /// A name LEAVING this set means it gained a typed case, which is worth
@@ -66,15 +66,15 @@ public sealed class DefinitionKeyCoverageTests(ITestOutputHelper outp)
         {
             "ITEMDEF.BONUSSKILL1", "ITEMDEF.BONUSSKILL1AMT", "ITEMDEF.BONUSSKILL2",
             "ITEMDEF.BONUSSKILL2AMT", "ITEMDEF.BONUSSKILL3", "ITEMDEF.BONUSSKILL3AMT",
-            "ITEMDEF.CATEGORY", "ITEMDEF.COMPONENT", "ITEMDEF.DAMCOLD",
+            "ITEMDEF.COMPONENT", "ITEMDEF.DAMCOLD",
             "ITEMDEF.DAMENERGY", "ITEMDEF.DAMFIRE", "ITEMDEF.DAMPHYSICAL",
-            "ITEMDEF.DAMPOISON", "ITEMDEF.DEFNAME2", "ITEMDEF.DESCRIPTION",
+            "ITEMDEF.DAMPOISON",
             "ITEMDEF.EXPANSION", "ITEMDEF.LOWERREQ", "ITEMDEF.LUCK",
             "ITEMDEF.MULTIREGION", "ITEMDEF.NAMELOC", "ITEMDEF.NIGHTSIGHT",
             "ITEMDEF.PILE", "ITEMDEF.RARITY", "ITEMDEF.REGENHITS",
             "ITEMDEF.REGENMANA", "ITEMDEF.REGENSTAM", "ITEMDEF.RESCOLD",
             "ITEMDEF.RESENERGY", "ITEMDEF.RESFIRE", "ITEMDEF.RESPHYSICAL",
-            "ITEMDEF.RESPOISON", "ITEMDEF.SELFREPAIR", "ITEMDEF.SUBSECTION",
+            "ITEMDEF.RESPOISON", "ITEMDEF.SELFREPAIR",
             "ITEMDEF.USEBESTWEAPONSKILL", "ITEMDEF.USESMAX",
         };
 

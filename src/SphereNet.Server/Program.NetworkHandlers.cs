@@ -61,7 +61,9 @@ public static partial class Program
         _systemHooks.DispatchObject("create", obj);
         if (obj.IsItem)
         {
-            _systemHooks.DispatchItem("create", obj);
+            // f_onitem_create is the item @Create's function stage
+            // (TriggerDispatcher.FireItemTriggerByName); running it here as well ran it
+            // twice per item, the first time before the item had a definition.
             MarkNearbyClientsRefresh(obj.Position);
         }
         else if (obj is Character npc && !npc.IsPlayer)
@@ -1001,9 +1003,10 @@ public static partial class Program
     private static void OnGameLogin(NetState state, string account, string password, uint authId)
     {
         var client = GetOrCreateClient(state);
+        // f_onaccount_connect runs inside the password check itself
+        // (Account.CheckLoginPassword), before the comparison - not after a login
+        // that has already succeeded.
         client.HandleGameLogin(account, password, authId);
-        if (client.Account != null)
-            _systemHooks.DispatchAccount("connect", client.Account, client.Character);
     }
 
     /// <summary>

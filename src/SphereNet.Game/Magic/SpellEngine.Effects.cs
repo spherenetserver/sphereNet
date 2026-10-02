@@ -1176,7 +1176,13 @@ public sealed partial class SpellEngine
         List<Item>? due = null;
         foreach (var mem in _effects)
         {
-            if (mem.IsDeleted || (mem.Timeout > 0 && now >= mem.Timeout))
+            if (mem.IsDeleted)
+                (due ??= []).Add(mem);
+            // A memory the world's timer drain parked - worn by a player who has left
+            // the game (CChar::SetDisconnected -> _GoSleep; the ticker skips an object
+            // that cannot tick, CWorldTicker.cpp:1076) - runs when they log back in.
+            // The world tick runs before this pass, so a due memory is parked first.
+            else if (mem.Timeout > 0 && now >= mem.Timeout && !mem.IsSleeping)
                 (due ??= []).Add(mem);
         }
         if (due == null)

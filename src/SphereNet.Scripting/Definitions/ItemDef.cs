@@ -126,11 +126,30 @@ public sealed class ItemDef : BaseDef
             case "ARMOR": (DefenseMin, DefenseMax) = ParseRange(value); break;
             case "CAN": Can = (CanFlags)ParseFlags(value); HasCanKey = true; break;
             case "CANUSE": CanUse = (CanEquipFlags)ParseFlags(value); break;
-            case "HEIGHT": byte.TryParse(value, out byte h); Height = h; break;
+            case "HEIGHT": Height = (byte)Math.Clamp(ParseLeadingInt(value), 0, byte.MaxValue); break;
             case "DUPEITEM": ParseHexOrDec(value, out ushort dup); DupItemId = dup; break;
             case "ID": ParseHexOrDec(value, out ushort id); DispIndex = id; break;
             case "DISPID": ParseHexOrDec(value, out ushort did); DispIndex = did; break;
             case "DEFNAME": DefName = value; break;
+            // OBC_DEFNAME2 (CBase.cpp:367-369): a second name for the same definition.
+            case "DEFNAME2":
+                foreach (string alias in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                    if (!Aliases.Contains(alias, StringComparer.OrdinalIgnoreCase)) Aliases.Add(alias);
+                break;
+            // OBC_CATEGORY / OBC_SUBSECTION / OBC_DESCRIPTION (CBase.cpp:326-335): kept
+            // as the definition's base strings (SetDefStr), not as TAGs - and
+            // DESCRIPTION=@ means "the same as SUBSECTION".
+            case "CATEGORY":
+            case "SUBSECTION":
+            case "DESCRIPTION":
+                SetDefinitionString(BaseDefs, key, value);
+                break;
+            // A Sphere 56T custom-version key: the item stays in the hand while its
+            // wearer casts. It is the same request Source-X makes with the
+            // CAN_I_EQUIPONCAST flag, so it is read into that flag.
+            case "CASTNOEQUP":
+                ApplyCanFlagKey(value, CanFlags.I_EquipOnCast);
+                break;
             case "EVENTS":
             case "TEVENTS":
                 ParseEventsList(value);
@@ -140,12 +159,12 @@ public sealed class ItemDef : BaseDef
             case "RANGE": (RangeMin, RangeMax) = ParseRange(value); break;
             case "RANGEH": int.TryParse(value, out int rh); RangeMax = rh; break;
             case "RANGEL": int.TryParse(value, out int rl); RangeMin = rl; break;
-            case "SPEED": int.TryParse(value, out int spd); Speed = spd; break;
+            case "SPEED": Speed = ParseLeadingInt(value); break;
             case "SKILL":
                 HasSkill = Enum.TryParse(value, true, out SkillType sk);
                 Skill = HasSkill ? sk : SkillType.None;
                 break;
-            case "REQSTR": int.TryParse(value, out int rs); ReqStr = rs; break;
+            case "REQSTR": ReqStr = ParseLeadingInt(value); break;
             // The CAN_I_* flag keys (CItemBase.cpp:1560-1655): no argument sets the
             // bit, otherwise a non-zero number sets it and zero clears it - on the
             // definition's CAN mask, which is where an instance reads them back.
@@ -167,22 +186,40 @@ public sealed class ItemDef : BaseDef
                 HitsMax = hmax > 0 ? hmax : hmin;
                 break;
             case "REPLICATE": Replicate = ApplyCanFlagKey(value, CanFlags.I_Replicate); break;
-            case "TWOHANDS": TwoHands = value != "0"; break;
+            // IBC_TWOHANDS (CItemBase.cpp:1748-1754): only an argument starting with
+            // 1, Y or y means two hands, and what it does is put the item on the
+            // two-handed layer. Anything else - TWOHANDS=N, TWOHANDS=0 - leaves the
+            // definition as it was; reading "not 0" took N as two-handed and a
+            // one-handed weapon then refused a shield.
+            case "TWOHANDS":
+            {
+                string th = value.TrimStart();
+                if (th.Length > 0 && th[0] is '1' or 'Y' or 'y')
+                {
+                    TwoHands = true;
+                    Layer = Layer.TwoHanded;
+                }
+                break;
+            }
             case "TDATA1":
-                if (!ParseHexOrDecUInt(value, out uint td1) && value.Length > 0 &&
-                    (char.IsLetter(value[0]) || value[0] == '_')) TData1Name = value.Trim();
+                // A number written here replaces a name an ID= base gave (TDATA3=0).
+                TData1Name = !ParseHexOrDecUInt(value, out uint td1) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_') ? value.Trim() : null;
                 TData1 = td1; TDataSetMask |= 1; break;
             case "TDATA2":
-                if (!ParseHexOrDecUInt(value, out uint td2) && value.Length > 0 &&
-                    (char.IsLetter(value[0]) || value[0] == '_')) TData2Name = value.Trim();
+                // A number written here replaces a name an ID= base gave (TDATA3=0).
+                TData2Name = !ParseHexOrDecUInt(value, out uint td2) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_') ? value.Trim() : null;
                 TData2 = td2; TDataSetMask |= 2; break;
             case "TDATA3":
-                if (!ParseHexOrDecUInt(value, out uint td3) && value.Length > 0 &&
-                    (char.IsLetter(value[0]) || value[0] == '_')) TData3Name = value.Trim();
+                // A number written here replaces a name an ID= base gave (TDATA3=0).
+                TData3Name = !ParseHexOrDecUInt(value, out uint td3) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_') ? value.Trim() : null;
                 TData3 = td3; TDataSetMask |= 4; break;
             case "TDATA4":
-                if (!ParseHexOrDecUInt(value, out uint td4) && value.Length > 0 &&
-                    (char.IsLetter(value[0]) || value[0] == '_')) TData4Name = value.Trim();
+                // A number written here replaces a name an ID= base gave (TDATA3=0).
+                TData4Name = !ParseHexOrDecUInt(value, out uint td4) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_') ? value.Trim() : null;
                 TData4 = td4; TDataSetMask |= 8; break;
             case "TFLAGS": ParseHexOrDecULong(value, out ulong tf); TFlags = tf; break;
             case "AMMOANIM": ParseHexOrDec(value, out ushort aa); AmmoAnim = aa; break;
@@ -240,6 +277,7 @@ public sealed class ItemDef : BaseDef
                     // CBaseBaseDef::r_LoadVal TAG/TAG0 (CBase.cpp:293): SetStr with the
                     // quote flag and fZero always false.
                     LoadDefinitionTag(TagDefs, key, value);
+                    TagLineKeys.Add(key[(key[3] == '0' ? 5 : 4)..]);
                     break;
                 }
                 // Previously dropped with zero visibility — count it so a
@@ -249,6 +287,171 @@ public sealed class ItemDef : BaseDef
                 break;
         }
     }
+
+    /// <summary>The keys of <see cref="BaseDef.TagDefs"/> that came from TAG.x / TAG0.x
+    /// lines - the definition's real TAGs (m_TagDefs), as opposed to the property and
+    /// unrecognised keys this engine also keeps in that map. An item reads these
+    /// through its definition and never gets a copy of them.</summary>
+    public HashSet<string> TagLineKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True when an ID= line copied a base definition into this one
+    /// (<see cref="CopyBasicFrom"/>).</summary>
+    public bool HasIdBase { get; set; }
+
+    /// <summary>CItemBase::CopyBasic (CItemBase.cpp:181-196) and the CBaseBaseDef half
+    /// it ends with (CBase.cpp:399-422): what an <c>ID=&lt;base&gt;</c> line copies from
+    /// the base at the moment it is read. Keys written before the ID= line are
+    /// overwritten - the name excepted, which is only taken when this definition has
+    /// none - and keys written after it override. Value, SKILLMAKE, RESOURCES, TAGs
+    /// and TEVENTS are not part of it.</summary>
+    public void CopyBasicFrom(ItemDef b)
+    {
+        // CItemBase::CopyBasic
+        Speed = b.Speed;
+        Weight = b.Weight;
+        HasWeight = b.HasWeight;
+        DupeList = b.DupeList;
+        _dupeIds = null;
+        FlipId = b.FlipId;
+        Layer = b.Layer;
+        Type = b.Type;
+        TypeRaw = b.TypeRaw;
+        CanUse = b.CanUse;
+        TData1 = b.TData1; TData1Name = b.TData1Name;
+        TData2 = b.TData2; TData2Name = b.TData2Name;
+        TData3 = b.TData3; TData3Name = b.TData3Name;
+        TData4 = b.TData4; TData4Name = b.TData4Name;
+        TDataSetMask = 0;
+        ReqStr = b.ReqStr;          // m_ttEquippable.m_iStrReq shares TDATA2's slot
+        TwoHands = b.TwoHands;
+
+        // CBaseBaseDef::CopyBasic
+        if (string.IsNullOrEmpty(Name))
+            Name = b.Name;
+        DispIndex = b.DispIndex;
+        Height = b.Height;
+        ResLevel = b.ResLevel;
+        ResDispDnHue = b.ResDispDnHue;
+        ResDispDnId = b.ResDispDnId;
+        ResDispDnIdRaw = b.ResDispDnIdRaw;
+        AttackMin = b.AttackMin; AttackMax = b.AttackMax;
+        DefenseMin = b.DefenseMin; DefenseMax = b.DefenseMax;
+        Can = b.Can;
+        HasCanKey = b.HasCanKey;
+        Dye = b.Dye; Flip = b.Flip; Repair = b.Repair; Replicate = b.Replicate;
+        // CEntityProps::Copy - the property components, which this engine keeps as
+        // the definition's property tags.
+        CopyPropertyTags(b.TagDefs, TagDefs);
+        HasIdBase = true;
+    }
+
+    /// <summary>Whether the stub section has ON=@ blocks of its own; when it does those
+    /// run for it rather than the master's.</summary>
+    public bool DupeHasOwnTriggers { get; set; }
+
+    /// <summary>Make this definition read as the DUPEITEM master it is a stub of.
+    /// Upstream a DUPEITEM section is not a definition at all: FindItemBase hands back
+    /// the master (MakeDupeReplacement, CItemBase.cpp:1801-1838, 2254-2285), so name,
+    /// type, value, RESOURCES, SKILLMAKE, TEVENTS and TAGs are all the master's. What
+    /// identifies the graphic stays the stub's: the index, DUPEITEM, the display id and
+    /// the tiledata-derived height and flags. <paramref name="ownKeys"/> are the keys
+    /// the stub section wrote itself (upper case); those keep the stub's value.</summary>
+    public void ShareDupeMaster(ItemDef m, ISet<string>? ownKeys = null)
+    {
+        // Upstream never reads a stub's other lines. A pack that nevertheless gave a
+        // stub a property of its own - a lit lantern's TYPE=t_light_lit on a DUPEITEM
+        // of the unlit one - keeps that one property here; everything the stub does
+        // not say is the master's.
+        bool Own(string key) => ownKeys != null && ownKeys.Contains(key);
+        if (!Own("NAME")) Name = m.Name;
+        if (!Own("TYPE")) { Type = m.Type; TypeRaw = m.TypeRaw; }
+        if (!Own("FLIPID")) FlipId = m.FlipId;
+        if (!Own("WEIGHT")) { Weight = m.Weight; HasWeight = m.HasWeight; }
+        if (!Own("LAYER") && !Own("TWOHANDS")) { Layer = m.Layer; TwoHands = m.TwoHands; }
+        if (!Own("VALUE")) { ValueMin = m.ValueMin; ValueMax = m.ValueMax; }
+        if (!Own("CANUSE")) CanUse = m.CanUse;
+        if (!Own("SPEED")) Speed = m.Speed;
+        if (!Own("SKILL")) { Skill = m.Skill; HasSkill = m.HasSkill; }
+        if (!Own("REQSTR")) ReqStr = m.ReqStr;
+        if (!Own("HITS") && !Own("MAXHITS") && !Own("HITSMAX")) { HitsMin = m.HitsMin; HitsMax = m.HitsMax; }
+        if (!Own("TDATA1")) { TData1 = m.TData1; TData1Name = m.TData1Name; }
+        if (!Own("TDATA2")) { TData2 = m.TData2; TData2Name = m.TData2Name; }
+        if (!Own("TDATA3")) { TData3 = m.TData3; TData3Name = m.TData3Name; }
+        if (!Own("TDATA4")) { TData4 = m.TData4; TData4Name = m.TData4Name; }
+        TDataSetMask |= m.TDataSetMask;
+        if (!Own("AMMOANIM")) AmmoAnim = m.AmmoAnim;
+        if (!Own("AMMOANIMHUE")) AmmoAnimHue = m.AmmoAnimHue;
+        if (!Own("AMMOANIMRENDER")) AmmoAnimRender = m.AmmoAnimRender;
+        if (!Own("AMMOCONT")) AmmoCont = m.AmmoCont;
+        if (!Own("AMMOTYPE")) AmmoType = m.AmmoType;
+        if (!Own("RESMAKE")) ResMake = m.ResMake;
+        if (!Own("DUPELIST")) { DupeList = m.DupeList; _dupeIds = null; }
+        if (!Own("WEIGHTREDUCTION")) WeightReduction = m.WeightReduction;
+        if (!Own("SKILLMAKE"))
+        {
+            SkillMakeRaw = m.SkillMakeRaw;
+            SkillMake.Clear(); SkillMake.AddRange(m.SkillMake);
+        }
+        if (!Own("RESOURCES"))
+        {
+            ResourcesRaw = m.ResourcesRaw;
+            BaseResources.Clear(); BaseResources.AddRange(m.BaseResources);
+        }
+        if (!Own("CAN") && !Own("DYE") && !Own("FLIP") && !Own("REPAIR") && !Own("REPLICATE") &&
+            !Own("ENCHANT") && !Own("EXCEPTIONAL") && !Own("IMBUE") && !Own("REFORGE") &&
+            !Own("RETAINCOLOR") && !Own("MAKERSMARK") && !Own("RECYCLE") && !Own("CASTNOEQUP"))
+        {
+            Can = m.Can;
+            Dye = m.Dye; Flip = m.Flip; Repair = m.Repair; Replicate = m.Replicate;
+        }
+        if (!Own("DAM")) { AttackMin = m.AttackMin; AttackMax = m.AttackMax; }
+        if (!Own("ARMOR")) { DefenseMin = m.DefenseMin; DefenseMax = m.DefenseMax; }
+        if (!Own("RANGE") && !Own("RANGEH") && !Own("RANGEL")) { RangeMin = m.RangeMin; RangeMax = m.RangeMax; }
+        if (!Own("RESLEVEL")) ResLevel = m.ResLevel;
+        if (!Own("RESDISPDNHUE")) ResDispDnHue = m.ResDispDnHue;
+        if (!Own("RESDISPDNID")) { ResDispDnId = m.ResDispDnId; ResDispDnIdRaw = m.ResDispDnIdRaw; }
+        if (!Own("TEVENTS") && !Own("EVENTS"))
+        {
+            Events.Clear(); Events.AddRange(m.Events);
+            EventNamesRaw.Clear(); EventNamesRaw.AddRange(m.EventNamesRaw);
+        }
+        // TAGs and base strings: the master's, with any the stub wrote on top.
+        var ownTags = new Variables.VarMap();
+        ownTags.CopyFrom(TagDefs);
+        TagDefs.Clear();
+        TagDefs.CopyFrom(m.TagDefs);
+        TagDefs.CopyFrom(ownTags);
+        TagLineKeys.UnionWith(m.TagLineKeys);
+        var ownBase = new Variables.VarMap();
+        ownBase.CopyFrom(BaseDefs);
+        BaseDefs.Clear();
+        BaseDefs.CopyFrom(m.BaseDefs);
+        BaseDefs.CopyFrom(ownBase);
+        DupeMasterIndex = m.Id.Index;
+    }
+
+    /// <summary>The DUPEITEM master this definition shares (<see cref="ShareDupeMaster"/>),
+    /// 0 when it is a definition of its own.</summary>
+    public int DupeMasterIndex { get; set; }
+
+    /// <summary>The definition keys this engine keeps as property tags (the CCProps*
+    /// components of CEntityProps).</summary>
+    internal static void CopyPropertyTags(Variables.VarMap from, Variables.VarMap to)
+    {
+        var copy = new Variables.VarMap();
+        copy.CopyFrom(from);
+        foreach (var (k, _) in from.GetAll())
+            if (!IsPropertyTagKey(k))
+                copy.Remove(k);
+        to.CopyFrom(copy);
+    }
+
+    private static bool IsPropertyTagKey(string key) =>
+        key.Equals("SLAYER_GROUP", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("SLAYER_SPECIES", StringComparison.OrdinalIgnoreCase) ||
+        AosOnHitProperties.Contains(key) || AosEquipProperties.Contains(key) ||
+        EquipmentStatBonuses.Contains(key) || SpellCastingProperties.Contains(key) ||
+        key.Equals(CombatSpeedProperties.IncreaseSwingSpeed, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A CAN= line was read. It REPLACES the flags the definition took from
     /// the tiledata (OBC_CAN, CBase.cpp:363), so the walk check reads its movement
@@ -285,20 +488,40 @@ public sealed class ItemDef : BaseDef
         if (trimmed.Length == 0)
             return 0;
 
-        // Source-X stores item weight in tenths of a stone. Integer script
-        // values are whole stones, while decimal values are already expressed
-        // as stones with one decimal place (1.0 => 10, 0.1 => 1).
-        if (trimmed.Contains('.'))
-        {
-            if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var dec))
-                return Math.Max(0, (int)Math.Round(dec * 10m, MidpointRounding.AwayFromZero));
+        // IBC_WEIGHT (CItemBase.cpp:1767-1774): weight is kept in tenths of a stone.
+        // A value written with a '.' is read as it stands - the expression reader
+        // skips the dot, so 1.0 is 10, 0.2 is 2 and .1 is 1 - and a value without
+        // one is whole stones, multiplied by WEIGHT_UNITS.
+        bool fDecimal = trimmed.Contains('.');
+        if (!SphereNet.Core.Types.ScriptNumber.TryParseLeadingNumber(trimmed, out long parsed))
             return 0;
-        }
-
-        return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int whole)
-            ? Math.Max(0, whole * 10)
-            : 0;
+        if (!fDecimal)
+            parsed *= 10;
+        return (int)Math.Clamp(parsed, 0, int.MaxValue);
     }
+
+    /// <summary>A numeric definition value as the reference's GetArgVal reads it - a
+    /// leading Sphere number (<see cref="SphereNet.Core.Types.ScriptNumber.TryParseLeadingNumber"/>),
+    /// 0 when the value does not start with one.</summary>
+    internal static int ParseLeadingInt(string value) =>
+        SphereNet.Core.Types.ScriptNumber.TryParseLeadingNumber(value, out long n)
+            ? (int)Math.Clamp(n, int.MinValue, int.MaxValue)
+            : 0;
+
+    /// <summary>CBaseBaseDef's CATEGORY / SUBSECTION / DESCRIPTION (CBase.cpp:326-335):
+    /// stored with SetDefStr, quotes dropped, and a DESCRIPTION of "@" replaced by the
+    /// SUBSECTION.</summary>
+    internal static void SetDefinitionString(Variables.VarMap baseDefs, string key, string value)
+    {
+        string upper = key.Trim().ToUpperInvariant();
+        string text = Parsing.ScriptKey.StripQuotePair(value.Trim());
+        baseDefs.Set(upper, text);
+        if (string.Equals(baseDefs.Get("DESCRIPTION"), "@", StringComparison.Ordinal))
+            baseDefs.Set("DESCRIPTION", baseDefs.Get("SUBSECTION") ?? "");
+    }
+
+    /// <summary>DEFNAME2 names this definition also answers to (OBC_DEFNAME2).</summary>
+    public List<string> Aliases { get; } = [];
 
     private static void ParseResourceList(string value, List<ResourceId> list)
     {
@@ -326,15 +549,17 @@ public sealed class ItemDef : BaseDef
             return (0, 0);
         }
 
-        int comma = value.IndexOf(',');
-        if (comma >= 0)
-        {
-            int.TryParse(value.AsSpan(0, comma).Trim(), out int min);
-            int.TryParse(value.AsSpan(comma + 1).Trim(), out int max);
-            return (min, max);
-        }
-        int.TryParse(value, out int single);
-        return (single, single);
+        // Str_ParseCmds over "=, \t" (CBase.cpp:345, CExpression.h:329), each part a
+        // number as the expression reader takes one: "13,15", "13 15" and "1.5,3"
+        // (15,30) are all ranges, and "190,95" starts with 190.
+        var pieces = value.Split([',', ' ', '\t', '='],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pieces.Length == 0)
+            return (0, 0);
+        int first = ParseLeadingInt(pieces[0]);
+        if (pieces.Length == 1)
+            return (first, first);
+        return (first, ParseLeadingInt(pieces[1]));
     }
 
     private static void ParseHexOrDec(string value, out ushort result)
@@ -380,11 +605,24 @@ public sealed class ItemDef : BaseDef
             result = (uint)dec;
             return true;
         }
-        if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            return uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
-        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
-            return uint.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out result);
-        return uint.TryParse(value, out result);
+        if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+            uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result))
+            return true;
+        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1 &&
+            uint.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out result))
+            return true;
+        if (uint.TryParse(value, out result))
+            return true;
+        // Anything else that still STARTS with a number is read up to where the number
+        // ends, as GetArgDWVal does: TDATA3=190,95 is 190.
+        if (trimmed.Length > 0 && (char.IsAsciiDigit(trimmed[0]) || trimmed[0] == '.') &&
+            SphereNet.Core.Types.ScriptNumber.TryParseLeadingNumber(trimmed, out long leading))
+        {
+            result = unchecked((uint)leading);
+            return true;
+        }
+        result = 0;
+        return false;
     }
 
     private static uint ParseFlags(string value)
@@ -475,13 +713,24 @@ public sealed class ItemDef : BaseDef
         // so renaming would silently unhook those. ItemTypeNumberParityTests compares
         // every one of the reference's 200 hardcoded types against this parser, so a
         // future divergence fails there rather than going unnoticed.
-        return normalized.ToUpperInvariant() switch
+        switch (normalized.ToUpperInvariant())
         {
-            "COOKING" => ItemType.CookingTool,
-            "CARTOGRAPHY" => ItemType.CartographyTool,
-            _ => ItemType.Normal,
-        };
+            case "COOKING": return ItemType.CookingTool;
+            case "CARTOGRAPHY": return ItemType.CartographyTool;
+        }
+
+        // A name the engine does not know, numbered by the pack's own [TYPEDEFS]
+        // block: upstream reads TYPE through the typedef table (ResourceGetIndexType,
+        // CItemBase.cpp:1756), so a 0.56-numbered pack's "t_chair 40" makes the item
+        // type 40 rather than a plain item.
+        if (TypeNumberResolver?.Invoke(value.Trim()) is int number && number is > 0 and <= ushort.MaxValue)
+            return (ItemType)number;
+        return ItemType.Normal;
     }
+
+    /// <summary>Resolves a type name to the number a [TYPEDEFS] block gave it. Wired by
+    /// the ResourceHolder.</summary>
+    public static Func<string, int?>? TypeNumberResolver { get; set; }
 
     /// <summary>
     /// Apply Source-X's <c>%plural/singular%</c> name template rules to

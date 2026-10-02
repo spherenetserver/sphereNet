@@ -472,6 +472,8 @@ public sealed class AdminCommandProcessor
             case "DELETE":
                 if (_accounts.DeleteAccount(accountName))
                     output($"Account '{accountName}' deleted.");
+                else if (_accounts.FindAccount(accountName) != null)
+                    output($"Account '{accountName}' deletion blocked by script."); // CAccount.cpp:1688
                 else
                     output($"Account '{accountName}' not found.");
                 break;

@@ -83,6 +83,11 @@ public static class SkillEngine
 
     public static Action<Character, int, int>? OnStatDecrease { get; set; }
 
+    /// <summary>Asked just before a skill-use stat gain lands; true refuses it. Args:
+    /// (Character, stat in Source-X order 0=STR 1=INT 2=DEX, current, new). Wired to
+    /// the Sphere 56T custom-version @StatGain trigger; null runs nothing.</summary>
+    public static Func<Character, int, int, int, bool>? OnStatGainCheck { get; set; }
+
     /// <summary>Skill variance for S-curve calculation. Source-X SKILL_VARIANCE = 100
     /// (10.0 skill points per bell-curve halving period).</summary>
     private const int SkillVariance = 100;
@@ -545,6 +550,15 @@ public static class SkillEngine
             {
                 if (chance > _rand.Next(1000))
                 {
+                    // Sphere 56T custom-version compatibility: @StatGain on the
+                    // character, RETURN 1 keeps the stat where it is (the pack's
+                    // dummy/duel/war-zone events use it to stop training there).
+                    // ARGN1 = the stat in Source-X order (0 STR, 1 INT, 2 DEX),
+                    // ARGN2 = its value, ARGN3 = the value it would become.
+                    if (OnStatGainCheck is { } gainCheck &&
+                        gainCheck(ch, statIdx switch { 0 => 0, 1 => 2, _ => 1 }, statVal, statVal + 1))
+                        break;
+
                     // Stat_SetBase moves only the base; a max pool that follows its
                     // stat moves with it inside the setter, an explicit one stays
                     // (CCharStat.cpp:339-436). Bumping MaxHits here as well counted

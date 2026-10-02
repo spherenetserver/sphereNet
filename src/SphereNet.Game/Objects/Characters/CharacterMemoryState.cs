@@ -180,6 +180,33 @@ public sealed class CharacterMemoryState
             Character.OnMemoryEquip?.Invoke(mem);
     }
 
+    /// <summary>Wear <paramref name="item"/> on a slot another item already holds,
+    /// because the save says so. Source-X LayerAdd runs no CanEquipLayer while loading
+    /// (CCharAct.cpp:266): a character saved with a shield AND a lantern on LAYER_HAND2
+    /// comes back wearing both, and nothing is bounced into the pack or onto the
+    /// ground. The one equipment slot keeps the first; the second shares this list,
+    /// which already holds any number of worn items, keeps its layer, saves as its own
+    /// item record (CONT + LAYER) and goes with its wearer like any worn item. It
+    /// leaves through <see cref="DetachMemory"/>.</summary>
+    public void AttachStackedWorn(Item item, Layer layer)
+    {
+        item.IsEquipped = true;
+        item.EquipLayer = layer;
+        item.ContainedIn = _owner.Uid;
+        if (!_memories.Contains(item))
+            _memories.Add(item);
+    }
+
+    /// <summary>Whether <paramref name="item"/> is an ordinary wearable worn over an
+    /// occupied slot (<see cref="AttachStackedWorn"/>) rather than a memory, a spell
+    /// effect or a LAYER_SPECIAL script item.</summary>
+    public static bool IsStackedWorn(Item item) =>
+        !item.IsDeleted && item.IsEquipped &&
+        !IsMemoryObject(item) &&
+        item.ItemType is not (ItemType.EqScript or ItemType.EqTradeWindow or ItemType.Spell) &&
+        item.EquipLayer > Layer.None && item.EquipLayer < Layer.Dragging &&
+        item.EquipLayer != Layer.Special;
+
     /// <summary>Take a memory object off the list without deleting it, because it is
     /// moving somewhere else. Returns false when it is not one of this character's.</summary>
     public bool DetachMemory(Item mem)

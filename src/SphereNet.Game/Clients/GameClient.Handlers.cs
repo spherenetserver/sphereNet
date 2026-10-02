@@ -109,7 +109,12 @@ public sealed partial class GameClient
 
         _logger.LogInformation("Deleting character '{Name}' (0x{Uid:X8}) from account '{Acct}'",
             ch.Name, charUid.Value, _account.Name);
-        if (!TryDeleteCharacterFromClient(ch))
+        bool deleted;
+        var outerDeleter = _charSelectDeleter;
+        _charSelectDeleter = this;
+        try { deleted = TryDeleteCharacterFromClient(ch); }
+        finally { _charSelectDeleter = outerDeleter; }
+        if (!deleted)
         {
             RefuseCharDelete(5, charIndex, ch); // a script refused the delete
             return;
@@ -119,6 +124,15 @@ public sealed partial class GameClient
         var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
         _netState.Send(new PacketCharListUpdate(charNames, slots));
     }
+
+    [ThreadStatic] private static GameClient? _charSelectDeleter;
+
+    /// <summary>The client deleting a character from its character-selection screen,
+    /// while that deletion runs; null for every other deletion. Sphere 56T
+    /// custom-version compatibility: f_onchar_delete_player gets it as ARGO ("only
+    /// available if the char is being deleted from client Character Selection
+    /// menu").</summary>
+    public static GameClient? CharSelectDeleter => _charSelectDeleter;
 
     private void RefuseCharDelete(byte reason, int slot, Character? ch)
     {
@@ -138,7 +152,7 @@ public sealed partial class GameClient
         var res = ResolveAccountResDisplay();
         uint flags = BuildCharacterListFlags(res, maxChars, ServerToolTipMode != 0);
         _netState.Send(new PacketCharList(charNames, maxChars,
-            _netState.SupportsNewCharacterList, flags).Build());
+            _netState.SupportsNewCharacterList, flags, StartCityList()).Build());
     }
 
     private ObjBase? _pendingDyeTarget;

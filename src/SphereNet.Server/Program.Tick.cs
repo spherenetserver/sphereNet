@@ -335,7 +335,7 @@ public static partial class Program
                     // shutdown save touches the same files (E2).
                     WaitForBackgroundSave();
                     _log.LogInformation("Saving world on shutdown...");
-                    PerformSave();
+                    PerformSave(forceImmediate: true);
                     WaitForBackgroundSave();
                 }
                 catch (Exception ex)

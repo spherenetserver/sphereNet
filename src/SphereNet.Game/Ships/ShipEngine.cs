@@ -285,6 +285,14 @@ public sealed class ShipEngine
             ship.AddComponent(compItem);
         }
 
+        // The script's COMPONENT items beside the multi.mul placeholders (a line on a
+        // spot a placeholder already fills is not made twice).
+        foreach (var compItem in Housing.MultiRegistry.MaterializeScriptComponents(_world, def, multiItem, pos))
+        {
+            needsKey |= compItem.ItemType is ItemType.ShipTiller or ItemType.ShipSideLocked or ItemType.ShipHoldLock;
+            ship.AddComponent(compItem);
+        }
+
         _ships[multiItem.Uid] = ship;
         OnAddMulti?.Invoke(owner, multiItem, HousePriv.Owner);
         CreateShipRegion(ship);

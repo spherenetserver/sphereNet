@@ -1694,8 +1694,19 @@ public sealed class ClientItemUseHandler
                                 placedMulti.SetAttr(ObjAttributes.Magic);
                             RestoreRedeededMultiUuid(deedItem, placedMulti,
                                 isShip ? "SHIP_MULTI_UUID" : "HOUSE_MULTI_UUID");
-                            SysMessage(isShip ? "Ship placed." : ServerMessages.Get("house_placed"));
-                            _client.TryDeleteItemFromClient(deedItem);
+                            // MORE1 = who created this house or ship (Source-X
+                            // m_itShip.m_UIDCreator, set by Multi_Setup).
+                            if (placedMulti.More1 == 0)
+                                placedMulti.More1 = _character.Uid.Value;
+                            // Sphere 56T custom-version compatibility: f_onmulti_create
+                            // may take the placement back (it removes the multi and
+                            // refunds a deed itself); the deed is consumed either way.
+                            bool placementStands = SphereNet.Game.Scripting.GlobalHookCalls.MultiCreateStands(
+                                _triggerDispatcher?.Runner, placedMulti, _character, _client as ITextConsole);
+                            if (placementStands)
+                                SysMessage(isShip ? "Ship placed." : ServerMessages.Get("house_placed"));
+                            if (!deedItem.IsDeleted)
+                                _client.TryDeleteItemFromClient(deedItem);
                         }
                         else
                         {

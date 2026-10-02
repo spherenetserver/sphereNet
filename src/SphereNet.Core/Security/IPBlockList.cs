@@ -13,6 +13,13 @@ public sealed class IPBlockList
     private readonly ConcurrentDictionary<string, long> _blocked = new(StringComparer.OrdinalIgnoreCase);
     public event Action<string>? Blocked;
 
+    /// <summary>Asked as an IP becomes blocked, with the block time in seconds (-1 =
+    /// permanent); the answer is the time used. Source-X HistoryIP::setBlocked
+    /// (CIPHistoryManager.cpp:36-48) runs f_onserver_blockip with ARGN1 = the timeout
+    /// and reads ARGN1 back: below 0 is permanent, otherwise the block lapses that
+    /// many seconds from now.</summary>
+    public Func<string, int, int>? BlockTimeout { get; set; }
+
     /// <summary>Clock source (Unix ms) — overridable so tests can advance time.</summary>
     public Func<long> NowMsProvider { get; set; } =
         () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -41,10 +48,15 @@ public sealed class IPBlockList
         if (string.IsNullOrWhiteSpace(ip))
             return false;
         string key = ip.Trim();
+        bool isNew = !_blocked.ContainsKey(key);
         long expiry = durationSeconds > 0
             ? NowMsProvider() + durationSeconds * 1000L
             : 0;
-        bool isNew = !_blocked.ContainsKey(key);
+        if (isNew && BlockTimeout is { } timeout)
+        {
+            int seconds = timeout(key, durationSeconds > 0 ? durationSeconds : -1);
+            expiry = seconds < 0 ? 0 : NowMsProvider() + seconds * 1000L;
+        }
         _blocked[key] = expiry;
         if (isNew)
             Blocked?.Invoke(key);

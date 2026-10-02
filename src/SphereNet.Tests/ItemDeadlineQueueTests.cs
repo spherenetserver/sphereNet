@@ -151,7 +151,12 @@ public sealed class ItemDeadlineQueueTests
     {
         var world = TestHarness.CreateWorld();
         var rng = new Random(1234);
-        long baseTime = Environment.TickCount64 - 1_000_000;
+        // Deadlines must be positive (0 and below mean "no timer") and already due.
+        // TickCount64 is the machine uptime: a fresh CI runner has been up for only a few
+        // minutes, so "now - 1,000,000" went negative there and nothing fired.
+        long now = Environment.TickCount64;
+        long baseTime = 1;
+        int span = (int)Math.Clamp(now - 2, 1, 100_000);
         var items = Enumerable.Range(0, 500).Select(_ => world.CreateItem()).ToList();
         var expected = new Dictionary<Item, long>();
         for (int op = 0; op < 20_000; op++)
@@ -164,7 +169,7 @@ public sealed class ItemDeadlineQueueTests
             }
             else
             {
-                long d = baseTime + rng.Next(100_000);
+                long d = baseTime + rng.Next(span);
                 it.SetTimeout(d);
                 expected[it] = d;
             }

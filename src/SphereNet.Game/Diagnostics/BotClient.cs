@@ -19,6 +19,7 @@ public sealed class BotClient : IDisposable
     private Task? _receiveTask;
     
     private readonly string _accountName;
+    private readonly string _password;
     private readonly string _charName;
     private readonly int _botId;
     
@@ -61,15 +62,23 @@ public sealed class BotClient : IDisposable
     public const string AccountPrefix = "spherenetBot";
     public const string CharPrefix = "SphereBot";
 
-    public BotClient(int botId, ILogger logger)
+    public BotClient(int botId, ILogger logger, string? password = null)
     {
         _botId = botId;
         _logger = logger;
         _rng = new Random(botId * 31337);
         _accountName = $"{AccountPrefix}{botId:D4}";
+        _password = string.IsNullOrEmpty(password) ? "botpass" : password;
         _charName = $"{CharPrefix}{botId}";
     }
 
+    /// <summary>The account this bot logs in with. The prefix is one a player can
+    /// never create (it is a reserved save-section family, AccountNameValidator), so
+    /// the engine makes these accounts itself (BotEngine.EnsureAccount).</summary>
+    public string AccountName => _accountName;
+
+    /// <summary>Name-shape test only, for cleanup. A privilege asks
+    /// <see cref="BotEngine.IsLiveBotAccount"/>.</summary>
     public static bool IsBotAccountName(string name) => 
         name.StartsWith(AccountPrefix, StringComparison.OrdinalIgnoreCase);
 
@@ -105,7 +114,7 @@ public sealed class BotClient : IDisposable
             // Step 1: Login Seed + Account Login
             uint seed = (uint)(_rng.Next() & 0x7FFFFFFF);
             await SendPacketAsync(BotPacketBuilder.BuildLoginSeed(seed), ct);
-            await SendPacketAsync(BotPacketBuilder.BuildAccountLogin(_accountName, "botpass"), ct);
+            await SendPacketAsync(BotPacketBuilder.BuildAccountLogin(_accountName, _password), ct);
             
             // Step 2: Wait for server list (0xA8)
             var response = await ReadPacketAsync(ct);
@@ -165,7 +174,7 @@ public sealed class BotClient : IDisposable
             // Step 5: Game server login (need to send seed again for game server)
             seed = (uint)(_rng.Next() & 0x7FFFFFFF);
             await SendPacketAsync(BotPacketBuilder.BuildLoginSeed(seed), ct);
-            await SendPacketAsync(BotPacketBuilder.BuildGameLogin(_accountName, "botpass", _authId), ct);
+            await SendPacketAsync(BotPacketBuilder.BuildGameLogin(_accountName, _password, _authId), ct);
             await _stream.FlushAsync(ct);
 
             // Small delay to let server process and respond

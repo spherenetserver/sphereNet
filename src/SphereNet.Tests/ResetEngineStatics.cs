@@ -96,9 +96,11 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Clients.GameClient.SextantZeroX = 1323;
         SphereNet.Game.Clients.GameClient.SextantZeroY = 1624;
         SphereNet.Game.Accounts.AccountManager.DefaultPrivFlags = 0;
+        SphereNet.Game.Accounts.Account.ScriptHooks = null;
         SphereNet.Scripting.Execution.ScriptScope.DefaultMaxLoopIterations = 100000;
         SphereNet.Game.Diagnostics.TickFaults.Reset();
         SphereNet.Game.Objects.Characters.Character.OnPetRelease = null;
+        SphereNet.Game.Objects.Characters.Character.OnStatValChange = null;
         SphereNet.Game.Trade.VirtualGold.Enabled = false;
         SphereNet.Game.Clients.GameClient.ConfigureLoginTries(0, TimeSpan.Zero);
         SphereNet.Game.Objects.Items.Item.DragWeightMax = 300;
@@ -224,6 +226,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CombatEngine.OnReactiveArmorTrigger = null;
         SphereNet.Game.Combat.CombatEngine.OnReactiveArmorFeedback = null;
         SphereNet.Game.Combat.CombatEngine.OnGetHit = null;
+        SphereNet.Game.Combat.CombatEngine.OnArmorCalculation = null;
         SphereNet.Game.Combat.CombatEngine.OnDirectCharacterDamageApplied = null;
         SphereNet.Game.Combat.CombatEngine.OnItemDamaged = null;
         SphereNet.Game.Combat.CombatEngine.OnItemBroken = null;
@@ -372,6 +375,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck = null;
         SphereNet.Game.Skills.SkillEngine.OnSkillDecrease = null;
         SphereNet.Game.Skills.SkillEngine.OnStatDecrease = null;
+        SphereNet.Game.Skills.SkillEngine.OnStatGainCheck = null;
         SphereNet.Game.Skills.SkillHandlers.OnCraftSkillUsed = null;
         SphereNet.Game.Skills.SkillHandlers.OnScriptedSkillUse = null;
         SphereNet.Game.Skills.Information.ActiveSkillEngine.DamageToolsEnabled = false;

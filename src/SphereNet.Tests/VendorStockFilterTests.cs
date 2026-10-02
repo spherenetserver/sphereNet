@@ -13,12 +13,11 @@ using Xunit;
 namespace SphereNet.Tests;
 
 /// <summary>
-/// İş 19 / L1 — vendor stock (the container equipped at LAYER_VENDOR_STOCK/EXTRA
-/// and its contents) is virtual and must not be persisted. The saver only skipped
-/// items whose DIRECT parent was a stock container, so an item nested in a sub-bag
-/// inside the stock was still saved — with a CONT to a never-persisted parent,
-/// dropping it to the ground on load. The filter now walks the full ancestor
-/// chain, so anything nested at any depth inside vendor stock is skipped.
+/// The vendor boxes (LAYER_VENDOR_STOCK/EXTRA/BUYS) are ordinary worn containers
+/// and save with everything in them, at any depth, as Source-X writes every worn
+/// item (CChar::r_Write -> r_WriteContent). The saver once skipped the stock box as
+/// "virtual" and had to chase nested bags so none was left with a CONT pointing at
+/// a box that was never written; with the box saved, the whole chain comes back.
 /// </summary>
 public sealed class VendorStockFilterTests
 {
@@ -32,7 +31,7 @@ public sealed class VendorStockFilterTests
     }
 
     [Fact]
-    public void VendorStockNestedThreeDeep_IsNotPersisted_WhilePlayerNestingIs()
+    public void VendorStockNestedThreeDeep_IsPersisted_LikePlayerNesting()
     {
         string dir = Path.Combine(Path.GetTempPath(), $"sphnet_vstock_{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -72,10 +71,12 @@ public sealed class VendorStockFilterTests
             new WorldLoader(LoggerFactory.Create(_ => { })).Load(dst, dir);
 
             // The whole vendor-stock chain (including the item three levels deep)
-            // was skipped.
-            Assert.Null(dst.FindItem(stockContainer.Uid));
-            Assert.Null(dst.FindItem(stockBag.Uid));
-            Assert.Null(dst.FindItem(stockItem.Uid));
+            // comes back where it was.
+            Assert.NotNull(dst.FindItem(stockContainer.Uid));
+            Assert.Equal(stockContainer.Uid, dst.FindItem(stockBag.Uid)!.ContainedIn);
+            Assert.Equal(stockBag.Uid, dst.FindItem(stockItem.Uid)!.ContainedIn);
+            Assert.Same(dst.FindItem(stockContainer.Uid),
+                dst.FindChar(vendor.Uid)!.GetEquippedItem(Layer.VendorStock));
 
             // Normal player nesting is unaffected — all three levels persist.
             Assert.NotNull(dst.FindItem(backpack.Uid));

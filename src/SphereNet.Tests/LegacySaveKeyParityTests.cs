@@ -453,12 +453,13 @@ public sealed class LegacySaveKeyParityTests : IDisposable
     }
 
     // ================================================================
-    // Sphere 0.56 kept TWO kill counters; the reference keeps ONE - KILLS, the murder
-    // count (CCharPlayer.h:49) - and translates an old key into the field it maps to
-    // (CWorldImport.cpp:750).
+    // Sphere 56T custom-version compatibility: that build writes KILLSPLAYER and
+    // KILLSNPC NEXT TO the murder count, which stays KILLS= (CCharPlayer.h:49) - the
+    // field its scripts read and write. KILLSPLAYER is not the murder count: reading
+    // it into Kills turned almost every loaded player into a murderer (red).
 
     [Fact]
-    public void TheMurderCountAnOldShardWroteReachesTheOneCounterTheEngineKeeps()
+    public void TheMurderCountComesFromKills_NotFromTheExtraKillCounters()
     {
         string dir = Path.Combine(Path.GetTempPath(), $"sphnet_k_{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -469,8 +470,15 @@ public sealed class LegacySaveKeyParityTests : IDisposable
                 SERIAL=0f9e6
                 NAME=Killer
                 P=100,100,0
-                KILLSPLAYER=5
+                KILLS=1
+                KILLSPLAYER=26628
                 KILLSNPC=12
+
+                [WORLDCHAR c_man]
+                SERIAL=0f9e7
+                NAME=Innocent
+                P=101,100,0
+                KILLSPLAYER=8192
                 """);
 
             var world = NewWorld();
@@ -479,12 +487,20 @@ public sealed class LegacySaveKeyParityTests : IDisposable
 
             var ch = world.FindChar(new Serial(0x0F9E6));
             Assert.NotNull(ch);
-            Assert.Equal(5, ch!.Kills);
-            // The creature counter has no counterpart in the reference, so it stays
-            // script-readable data rather than becoming a second engine field.
+            Assert.Equal(1, ch!.Kills);
+            Assert.False(ch.IsMurderer);
+            // Neither extra counter has a counterpart in the reference, so both stay
+            // script-readable data rather than becoming engine fields.
             Assert.True(ch.TryGetTag("KILLSNPC", out string? npcKills));
             Assert.Equal("12", npcKills);
+            Assert.True(ch.TryGetTag("KILLSPLAYER", out string? playerKills));
+            Assert.Equal("26628", playerKills);
             Assert.False(ch.TryGetTag("SAVE.KILLSPLAYER", out _));
+
+            var innocent = world.FindChar(new Serial(0x0F9E7));
+            Assert.NotNull(innocent);
+            Assert.Equal(0, innocent!.Kills);
+            Assert.False(innocent.IsMurderer);
         }
         finally { Directory.Delete(dir, true); }
     }

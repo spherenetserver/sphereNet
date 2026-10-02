@@ -735,12 +735,22 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         _tags.ApplyLoadedForm(key, quoted, value, deleteZero);
     }
 
-    /// <summary>Get a tag value, returning true if found.</summary>
+    /// <summary>Get a tag value, returning true if found: the object's own key, else -
+    /// for the objects that read through to it - the definition's
+    /// (<see cref="TagFallsBackToDefinition"/>).</summary>
     public bool TryGetTag(string key, out string? value)
     {
         value = _tags.Get(key);
+        if (value == null && TagFallsBackToDefinition(key))
+            value = DefinitionTags?.Get(key);
         return value != null;
     }
+
+    /// <summary>Whether an engine read of <paramref name="key"/> that finds nothing on
+    /// the object goes on to its definition's TAG map, as upstream's GetKey does for
+    /// TAG reads (CObjBase.cpp:1553). Off by default; an item turns it on because its
+    /// definition tags are no longer copied onto every instance.</summary>
+    protected virtual bool TagFallsBackToDefinition(string key) => false;
 
     /// <summary>Remove a tag.</summary>
     public void RemoveTag(string key) => _tags.Remove(key);
@@ -868,6 +878,21 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                 List<ResourceId>? evList = this is Characters.Character evc ? evc.Events
                     : this is Items.Item evi ? evi.Events : null;
                 value = evList == null ? "" : string.Join(",", evList.Where(r => r.IsValid).Select(ResolveResourceDefName));
+                return true;
+            }
+            // TEVENTS is a key of the DEFINITION (OBC_TEVENTS, CBase.cpp:267). An
+            // instance does not own it, so the read falls back to Base_GetDef()
+            // (CObjBase.cpp:1004) and lists the definition's events by name - the
+            // same list ISTEVENT asks about. It was not answered on an instance at all.
+            case "TEVENTS":
+            {
+                List<ResourceId>? defEvents = this switch
+                {
+                    Characters.Character tch => DefinitionLoader.GetCharDef(tch.CharDefIndex)?.Events,
+                    Items.Item tit => DefinitionLoader.GetItemDef(Definitions.ItemDefHelper.ResolveInstanceDefIndex(tit))?.Events,
+                    _ => null,
+                };
+                value = defEvents == null ? "" : string.Join(",", defEvents.Where(r => r.IsValid).Select(ResolveResourceDefName));
                 return true;
             }
             case "UUID": value = _uuid.ToString("D"); return true;

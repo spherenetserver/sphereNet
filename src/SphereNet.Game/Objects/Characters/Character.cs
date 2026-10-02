@@ -1319,6 +1319,14 @@ public partial class Character : ObjBase
     public bool IsClientLingering =>
         TryGetTag("CLIENT_LINGER_UNTIL", out string? value) &&
         ScriptNumber.TryParseLong(value, out _);
+
+    /// <summary>A player character with no client and no linger left: Source-X has
+    /// called CChar::SetDisconnected on it, so neither it nor what it carries ticks
+    /// until its player logs back in (CCharAct.cpp:5824, CChar.cpp:550-553). A
+    /// ridden, conjured or pet character never goes to sleep this way.</summary>
+    public bool IsDisconnectedPlayer =>
+        _isPlayer && !_isOnline && !IsClientLingering &&
+        !IsStatFlag(StatFlag.Ridden | StatFlag.Conjured | StatFlag.Pet);
     public int SkillClass { get => _skillClass; set => _skillClass = Math.Max(0, value); }
     public string Title { get => _title; set => _title = value ?? ""; }
 
@@ -1398,6 +1406,27 @@ public partial class Character : ObjBase
             MarkDirty(DirtyFlag.Stats);
         }
     }
+    /// <summary>Source-X STAT_TYPE indices of the current-value pools: STAT_STR's value
+    /// is the hit points, STAT_INT's the mana, STAT_DEX's the stamina.</summary>
+    public const int StatValHits = 0, StatValMana = 1, StatValStam = 2;
+
+    /// <summary>Sphere 56T custom-version compatibility: @StatValChange, raised by the
+    /// engine where a blow or a heal moves a pool. Args: (character, stat
+    /// <see cref="StatValHits"/>/Mana/Stam, old value, new value, the character who
+    /// caused it or null). Null runs nothing.</summary>
+    public static Action<Character, int, int, int, Character?>? OnStatValChange { get; set; }
+
+    /// <summary>Report that a damage or heal step moved one of the pools from
+    /// <paramref name="oldValue"/>; nothing happens when it did not actually move.</summary>
+    public void NotifyStatValChange(int stat, int oldValue, Character? cause)
+    {
+        if (OnStatValChange is not { } hook)
+            return;
+        int newValue = stat switch { StatValHits => _hits, StatValMana => _mana, StatValStam => _stam, _ => oldValue };
+        if (newValue != oldValue)
+            hook(this, stat, oldValue, newValue, cause);
+    }
+
     public short Hits
     {
         get => _hits;
@@ -5389,7 +5418,10 @@ public partial class Character : ObjBase
                 value = info.Type == ClientType.KingdomReborn ? "1" : "0";
                 return true;
             }
+            // CLIENTIS3D is the reference's spelling (CClient_props.tbl:9), answered
+            // on the character as CLIENTISKR / CLIENTISENHANCED already are.
             case "IS3D":
+            case "CLIENTIS3D":
             {
                 var info = ResolveClientInfo?.Invoke(this) ?? (0, ClientType.ClassicWindows);
                 value = info.Type == ClientType.Classic3D ? "1" : "0";
@@ -6774,6 +6806,15 @@ public partial class Character : ObjBase
         {
             var targObj = ResolveTargObject();
             return targObj != null && targObj.TrySetProperty(key[5..], value);
+        }
+
+        // ACCOUNT.<key> is a reference to the player's account (CChar::r_GetRef
+        // CHR_ACCOUNT, CChar.cpp:2206): a write lands on the account, as the read
+        // already does (ACCOUNT.TAG.x from a character's script).
+        if (key.StartsWith("ACCOUNT.", StringComparison.OrdinalIgnoreCase))
+        {
+            var account = ResolveAccountForChar?.Invoke(Uid);
+            return account != null && account.TrySetProperty(key[8..], value);
         }
 
         if (!TryNormalizeScriptValue(key, value, out string normalized))

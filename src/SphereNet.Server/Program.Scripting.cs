@@ -117,7 +117,10 @@ public static partial class Program
             // This was the literal "localhost", so a pack's web links and its
             // donation page all pointed at whatever machine the server ran on.
             "URL" => _config?.Url ?? "",
-            "MYSQL" => _scriptDb?.IsConnected == true ? "1" : "0",
+            // RC_MYSQL is the ini switch m_fMySql (CServerConfig.cpp:942), not "is a
+            // connection open right now": packs gate their DB.CONNECT on it, and the
+            // live state is 0 before the first connect and after every DB.CLOSE.
+            "MYSQL" => (_config?.MySQL ?? 0) != 0 ? "1" : "0",
             "SEASON" => ((int)(_weatherEngine?.CurrentSeason ?? SeasonType.Spring)).ToString(),
             "SEASONMODE" => (_weatherEngine?.CurrentSeasonMode ?? SeasonMode.Auto).ToString(),
             "FEATURETOL" => (_config?.FeatureTOL ?? 0).ToString(),
@@ -311,6 +314,10 @@ public static partial class Program
             _ when upper.StartsWith("DEF.") => ResolveDefValue(property[4..], decimalNumeric: false),
 
             // --- Commands (write operations, prefixed with _SET_/_CLEARVARS/_NEWDUPE) ---
+            _ when upper.StartsWith("_SERVKEY=") => ResolveServKeyOnly(property[9..]),
+            _ when upper.StartsWith("_SERV_ACCOUNT=") => HandleServAccountVerb(property[14..]),
+            _ when upper.StartsWith("_SERV_ACCOUNT_SET=") => HandleServAccountSet(property[18..]),
+            "_RESYNC_REQUEST" => HandleServResyncRequest(),
             _ when upper.StartsWith("_SET_LIST.") => HandleSetGlobalList(property[10..]),
             _ when upper.StartsWith("_SET_VAR.") => HandleSetGlobalVar(property[9..], deleteZero: false),
             _ when upper.StartsWith("_SET_VAR0.") => HandleSetGlobalVar(property[10..], deleteZero: true),
@@ -403,7 +410,7 @@ public static partial class Program
             // script expressions without DEF./DEF0. prefix.
             // The remaining CServerConfig/CServerDef keys and reference forms come
             // before the defname lookup, as g_Cfg.r_WriteVal does upstream.
-            _ => ResolveServReadback(property, upper) ?? ResolveDefConstant(upper) ?? ResolveServFunction(property)
+            _ => ResolveServDefault(property, upper)
         };
     }
 
@@ -886,11 +893,24 @@ public static partial class Program
         if (def == null)
             return "";
 
+        // A numeric [ITEMDEF 0f51] with no ID= line draws as itself: CItemBase starts
+        // m_dwDispIndex at its own id (CItemBase.cpp:58) and IBC_ID answers
+        // GetDispID() (CItemBase.cpp:1220). DispIndex stays 0 for such a section, so
+        // the read answered "00" where the graphic belongs.
+        // Only a numeric header names a graphic; a named section's index is a hash.
+        ushort dispId = def.DispIndex;
+        if (dispId == 0 && rid.Index is > 0 and <= ushort.MaxValue &&
+            _resources.GetResource(rid)?.HeaderArgument is { } header &&
+            int.TryParse(header.Trim().StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? header.Trim()[2..] : header.Trim(),
+                System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int headerId) &&
+            headerId == rid.Index)
+            dispId = (ushort)rid.Index;
+
         return field switch
         {
             "NAME" => def.Name ?? "",
             "DEFNAME" => def.DefName ?? "",
-            "ID" or "DISPID" => $"0{def.DispIndex:X}",
+            "ID" or "DISPID" => $"0{dispId:X}",
             "TYPE" => string.IsNullOrWhiteSpace(def.TypeRaw) ? def.Type.ToString() : def.TypeRaw,
             "TDATA1" => def.TData1Name ?? $"0{def.TData1:X}",
             "TDATA2" => def.TData2Name ?? $"0{def.TData2:X}",
@@ -916,6 +936,8 @@ public static partial class Program
                 ? $"0{def.ResDispDnId:X}" : def.ResDispDnIdRaw,
             "BASEID" => $"0{def.DispIndex:X}",
             "DUPELIST" => def.DupeList ?? "",
+            // CBaseBaseDef's base strings (OBC_CATEGORY/SUBSECTION/DESCRIPTION).
+            "CATEGORY" or "SUBSECTION" or "DESCRIPTION" => def.BaseDefs.Get(field) ?? "",
             _ => def.TagDefs.GetValStr(StripTagPrefix(field)) ?? ""
         };
     }
@@ -3020,30 +3042,7 @@ public static partial class Program
     /// <summary>Resolve <c>SERV.LOOKUPSKILL &lt;name&gt;</c>. Accepts either the
     /// enum name ("Alchemy") or the defname stored in a loaded SKILL block.
     /// Returns the numeric skill id, or "-1" if no match.</summary>
-    private static string? ResolveLookupSkill(string name)
-    {
-        string trimmed = (name ?? "").Trim();
-        if (string.IsNullOrEmpty(trimmed)) return "-1";
-
-        // Enum name match first (case-insensitive)
-        if (Enum.TryParse<SphereNet.Core.Enums.SkillType>(trimmed, true, out var sk)
-            && sk != (SphereNet.Core.Enums.SkillType)(-1))
-        {
-            return ((int)sk).ToString();
-        }
-
-        // Defname lookup via the resource holder: SKILLs register under
-        // their defname ("Skill_Alchemy" or "Alchemy") so the resolver
-        // can map script names back to the enum slot.
-        if (_resources != null)
-        {
-            var rid = _resources.ResolveDefName(trimmed);
-            if (rid.IsValid && rid.Type == SphereNet.Core.Enums.ResType.SkillDef)
-                return rid.Index.ToString();
-        }
-
-        return "-1";
-    }
+    private static string? ResolveLookupSkill(string name) => ResolveLookupSkillName(name);
 
     private static string? ResolveServAccount(string rest)
     {

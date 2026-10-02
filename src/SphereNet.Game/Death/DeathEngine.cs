@@ -702,6 +702,24 @@ public sealed class DeathEngine
             AddToCorpseOrGround(corpse, item);
         }
 
+        // A second item a save left worn on an occupied slot (both stay worn on load,
+        // CCharAct.cpp:266) is one more piece of the victim's contents: it goes to the
+        // corpse with the rest (CChar::MakeCorpse walks every worn item).
+        foreach (var extra in victim.Memories.Where(m => CharacterMemoryState.IsStackedWorn(m) &&
+                     Array.IndexOf(dropLayers, m.EquipLayer) >= 0).ToList())
+        {
+            var layer = extra.EquipLayer;
+            if (!victim.TakeOffWorn(extra))
+                continue;
+            if (StaysWithOwnerOnDeath(extra))
+            {
+                KeepWithOwner(victim, extra);
+                continue;
+            }
+            extra.SetTag("EQUIPLAYER", ((byte)layer).ToString());
+            AddToCorpseOrGround(corpse, extra);
+        }
+
         var dragged = TakeDraggedItem(victim);
         if (dragged != null)
         {

@@ -445,6 +445,7 @@ public static partial class Program
         foreach (var link in _resources.GetAllResources())
         {
             if (link.Id.Type != ResType.Area) continue;
+            int? rainChance = null, coldChance = null;
 
             var region = new SphereNet.Game.World.Regions.Region
             {
@@ -548,7 +549,19 @@ public static partial class Program
                                 string evName = ev.TrimStart('+');
                                 var evResolved = _resources.ResolveDefName(evName);
                                 if (evResolved.IsValid && evResolved.Type == ResType.RegionType)
+                                {
                                     region.AddRegionType(evResolved);
+                                    // The same name declared on another terrain page
+                                    // ([REGIONTYPE r_x t_rock] beside [REGIONTYPE r_x]) is
+                                    // a block of its own; the area names them all.
+                                    foreach (var page in DefinitionLoader.GetRegionTypeDefPages(evResolved.Index))
+                                    {
+                                        if (page.Id == evResolved)
+                                            continue;
+                                        region.AddRegionType(page.Id);
+                                        region.AddEvent(page.Id);
+                                    }
+                                }
                                 // And the EVENTS entry itself has to be the resolved
                                 // reference, not a hash into the EVENTS namespace: the
                                 // region's trigger dispatch looks the entry up as a
@@ -567,6 +580,15 @@ public static partial class Program
                                 region.AddRegionType(ResourceId.FromString(res, ResType.RegionType));
                         }
                         break;
+                    // RC_RAINCHANCE / RC_COLDCHANCE (CRegion.cpp:539, 589): handed on to
+                    // every sector the area covers (SendSectorsVerb), once its rects
+                    // are known.
+                    case "RAINCHANCE":
+                        if (SphereNet.Core.Types.ScriptNumber.TryParseLeadingNumber(key.Arg, out long rain)) rainChance = (int)rain;
+                        break;
+                    case "COLDCHANCE":
+                        if (SphereNet.Core.Types.ScriptNumber.TryParseLeadingNumber(key.Arg, out long cold)) coldChance = (int)cold;
+                        break;
                     default:
                         if (upper.StartsWith("TAG.", StringComparison.Ordinal))
                             region.SetTag(upper[4..], key.Arg);
@@ -575,11 +597,35 @@ public static partial class Program
             }
 
             _world.AddRegion(region);
+            if (rainChance.HasValue || coldChance.HasValue)
+                ApplyAreaWeatherChance(_world, region, rainChance, coldChance);
             count++;
         }
 
         if (count > 0)
             _log.LogInformation("Loaded {Count} AREADEF definitions as regions", count);
+    }
+
+    /// <summary>CSector::SetWeatherChance (CSector.cpp:922-940) on every sector an
+    /// AREADEF's rects touch: a chance is capped at 100.</summary>
+    internal static void ApplyAreaWeatherChance(GameWorld world, SphereNet.Game.World.Regions.Region region, int? rain, int? cold)
+    {
+        var seen = new HashSet<SphereNet.Game.World.Sectors.Sector>();
+        int size = SphereNet.Game.World.Sectors.Sector.SectorSize;
+        foreach (var rect in region.Rects)
+        {
+            for (int sx = Math.Max(0, (int)rect.X1) / size; sx <= Math.Max(0, (int)rect.X2) / size; sx++)
+            {
+                for (int sy = Math.Max(0, (int)rect.Y1) / size; sy <= Math.Max(0, (int)rect.Y2) / size; sy++)
+                {
+                    var sector = world.GetSector(region.MapIndex, sx, sy);
+                    if (sector == null || !seen.Add(sector))
+                        continue;
+                    if (rain.HasValue) sector.RainChance = (short)Math.Clamp(rain.Value, 0, 100);
+                    if (cold.HasValue) sector.ColdChance = (short)Math.Clamp(cold.Value, 0, 100);
+                }
+            }
+        }
     }
 
     /// <summary>

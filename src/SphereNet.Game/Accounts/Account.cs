@@ -55,6 +55,11 @@ public sealed class Account : IScriptObj
     /// original token is written back while the account is still Owner, so the file
     /// keeps loading on the 56T server.</summary>
     public string? ExtendedPlevelName { get; set; }
+
+    /// <summary>Runtime only: an account the engine made for its own use (the load-test
+    /// bots, AccountManager.CreateInternalAccount). Never written to the account file
+    /// and never loaded from one.</summary>
+    public bool IsEngineInternal { get; init; }
     public int CharCount => _charCount;
     public DateTime LastLogin { get => _lastLogin; set => _lastLogin = value; }
     public DateTime CreateDate { get => _createDate; set => _createDate = value; }
@@ -139,6 +144,51 @@ public sealed class Account : IScriptObj
         // The flag used to be stored and never read, so MD5PASSWORDS=0 silently did
         // nothing. Source-X CAccount::SetPassword branches on it.
         _passwordHash = Core.Configuration.PasswordHelper.StoreForm(password, UseMd5Passwords);
+    }
+
+    /// <summary>The script side of the account lifecycle (the f_onaccount_* hooks).
+    /// Null - the default, and what every load path relies on - runs nothing, the way
+    /// Source-X skips the hooks while IsLoadingGeneric.</summary>
+    public static IAccountScriptHooks? ScriptHooks { get; set; }
+
+    /// <summary>Source-X CAccount::SetPassword at runtime (CAccount.cpp:986-1006):
+    /// f_onaccount_pwchange runs first and RETURN 1 keeps the old password. False when
+    /// a script refused the change.</summary>
+    public bool ChangePassword(string password)
+    {
+        if (ScriptHooks?.PasswordChange(this, password, _passwordHash) == true)
+            return false;
+        SetPassword(password);
+        return true;
+    }
+
+    /// <summary>Source-X CAccount::SetBlockStatus (CAccount.cpp:395-420): only an actual
+    /// change of the blocked state runs f_onaccount_block / f_onaccount_unblock, and
+    /// RETURN 1 leaves the state as it was. True when the state changed.</summary>
+    public bool SetBlockStatus(bool blocked)
+    {
+        if (_isBanned == blocked)
+            return false;
+        if (ScriptHooks?.BlockChange(this, blocked) == true)
+            return false;
+        _isBanned = blocked;
+        return true;
+    }
+
+    /// <summary>Source-X CAccount::CheckPassword (CAccount.cpp:935-984), the login-time
+    /// check: an account with no password takes the one offered (through
+    /// f_onaccount_pwchange), then f_onaccount_connect runs before the comparison -
+    /// RETURN 1 refuses the password, RETURN 6 accepts it without comparing.</summary>
+    public bool CheckLoginPassword(string password)
+    {
+        if (string.IsNullOrEmpty(_passwordHash) && !ChangePassword(password))
+            return false;
+        switch (ScriptHooks?.Connect(this, password) ?? AccountConnectVerdict.Default)
+        {
+            case AccountConnectVerdict.Deny: return false;
+            case AccountConnectVerdict.SkipCheck: return true;
+        }
+        return CheckPassword(password);
     }
 
     public string GetName() => _name;
@@ -226,7 +276,9 @@ public sealed class Account : IScriptObj
         {
             case "BLOCK":
             case "BANNED":
-                _isBanned = value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                // A script write is a runtime change: it goes through the block hooks
+                // (CAccount.cpp:1378-1392 -> SetBlockStatus).
+                SetBlockStatus(value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase));
                 return true;
             case "CHATNAME":
                 _chatName = value;
@@ -263,7 +315,7 @@ public sealed class Account : IScriptObj
                 return true;
             case "PASSWORD":
             case "NEWPASSWORD":
-                SetPassword(value);
+                ChangePassword(value);
                 return true;
             case "PLEVEL":
                 if (int.TryParse(value, out int pl) && pl >= (int)PrivLevel.Guest && pl <= (int)PrivLevel.Owner)

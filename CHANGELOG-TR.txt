@@ -4,6 +4,70 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Sphere 56T ozel surum uyumlulugu turu: script motoru, tanimlar, kayit, hook'lar
+------------------------------------------------------------------------
+DUZELTME - Sphere 56T ozel surum uyumlulugu: KILLSPLAYER= artik cinayet sayisi olarak
+           okunmuyor. O surum bu alani (ve KILLSNPC=) gercek cinayet sayisi KILLS= yaninda
+           yaziyor ve degeri bir oldurme sayisi degil; ice aktarilan neredeyse tum oyuncular
+           katil olarak yukleniyor, criminal olanlar dahil kirmizi gorunuyordu. Iki ek sayac
+           script'ten okunabilir TAG olarak tutulur; Noto_IsMurderer yalnizca KILLS= kullanir.
+DUZELTME - SERV.<komut> Source-X sunucu verb sirasini izler: SERV.VAR/VAR0, SERV.LIST.x.add/
+           clear/n.remove, SERV.NEW.<prop>=, SERV.<fonksiyon> (sunucu nesnesinde, satirin
+           argumanlariyla), SERV.ACCOUNT <ad> <verb> (Admin cagiran) ve SERV.ACCOUNT.<ad>.
+           <anahtar>= istemci olsun olmasin calisir; SERV.RESYNC ana donguye ertelenir; ciplak
+           <LIST.x...> okumalari yanitlanir.
+DUZELTME - <SERV.f_x> fonksiyonu cagirir, kaynak indeksini dondurmez; [FUNCTION SERV.ad] sunucu
+           anahtarlarindan once cagrilir (<SERV.DAYNAME> artik <dAYNAME> okunmaz). Paketin
+           [FUNCTION WRITEFILE]/[FUNCTION DELETEFILE] fonksiyonu yerlesik verb'e golgelenmez.
+DUZELTME - FLOATVAL basinda sifir olan sayilari ondalik okur (0.25, 010); <SERV.MYSQL> ini
+           MySQL anahtarini dondurur; ID= olmayan sayisal ITEMDEF icin <SERV.ITEMDEF.x.ID> kendi
+           id'sini dondurur; ornekte TEVENTS okumasi tanima geri duser; SENDPACKET tokenlari
+           kucuk harf B/W/D onekini, defname ve ifadeleri kabul eder; STRTOUPPER(x)/
+           STRTOLOWER(x), karakterde CLIENTIS3D, bosluklu MULDIV ve KEY ile yeniden adlandirilmis
+           skill'lerde SERV.LOOKUPSKILL calisir.
+DUZELTME - Tanimlar: ID= satiri okundugu anda temel tanimin ozelliklerini kopyalar (Source-X
+           CopyBasic), yaratik ve item icin, sayisal ID ve DUPEITEM dahil; DUPEITEM alt tanimi
+           grafigini koruyarak ana tanimin adini, tipini, degerini, kaynaklarini, trigger ve
+           TAG'lerini okur.
+DUZELTME - Spawn grubu uyeleri bosluk ve tab ile de ayrilir; TWOHANDS yalnizca 1/Y ile iki el
+           sayilir ve iki el katmanini ayarlar; silah hasari silahin kendi yuklu tanimindan okunur.
+DUZELTME - Multi REGIONFLAGS defname ifadesi kabul eder; script COMPONENT satirlari
+           yerlestirmede olusturulur, yalnizca COMPONENT'li multiler yerlestirilebilir; farkli
+           arazideki ayni adli REGIONTYPE bloklari ayridir.
+DUZELTME - ITEMDEF CATEGORY/SUBSECTION/DESCRIPTION temel metin olarak saklanir (DESCRIPTION=@
+           SUBSECTION'i kopyalar); tanim TAG'leri her yeni item'a kopyalanmaz, tanimdan okunur.
+DUZELTME - [STARTS] v1/v2 listesi her bolumde yenilenir, karakter listesi ve olusturmada
+           kullanilir; [MOONGATES] her bolumde yenilenir; [NEWBIE skill] kitleri skill
+           anahtariyla bulunur; DEFNAME2, [TYPEDEFS] numaralari, tanim sayilarindaki ondalik yazim
+           ve AREADEF RAINCHANCE/COLDCHANCE okunur.
+DUZELTME - 255'ten fazla item ile kaydedilen container'lar (TAG.OVERRIDE.MAXITEMS, staff'in
+           doldurdugu bankalar) eksiksiz yuklenir; sinir Source-X gibi yalnizca birakirken
+           uygulanir, calisma aninda artirilmis OVERRIDE.MAXITEMS gecerlidir.
+DUZELTME - Offline oyuncunun tasidigi item'lar zamanini koruyarak uyur ve oyuncu girince
+           calisir; baglantisi kopmus oyuncu tick almaz. Linger suresindeki oyuncu etkilenmez.
+DUZELTME - Ayni layer'a kaydedilmis iki item yuklemede ikisi de giyili kalir, cantaya veya yere
+           dusmez; olumde ikincisi de cesede gider.
+DUZELTME - Decay alan item'in kayitli TIMER'i onun decay'idir; acilista ikinci varsayilan decay
+           eklenmez. Vendor kutulari (layer 26) icerigiyle kaydedilir; kutusuz eski save'lerde
+           stok yeniden kurulur.
+DUZELTME - World save yalnizca DEFMSG server_worldsave yayinlar (bos ise mesaj yok). Headless
+           konsol komutlari yeniden cikti verir. Yerlesik botlar motorun ic, oturumluk hesap
+           yoluyla girer; ayrilmis hesap oneki oyunculara kapali kalir.
+DUZELTME - f_onaccount_create/delete/block/unblock/pwchange/connect sunucu nesnesinde ARGS =
+           hesap adi ile calisir ve Source-X gibi RETURN 1 vetosunu uygular; block/unblock
+           yalnizca durum degisince, pwchange LOCAL.password/oldPassword ile, connect sifre
+           kontrolunden once calisir (1 red, 6 atla); sifresi olmayan hesap giriste verilen
+           sifreyi alir. f_onitem_create item basina bir kez calisir; f_onserver_save ARGN1
+           zorunlu / ARGN2 asama alir; f_onserver_blockip ARGN1'i geri okur; f_onclient_add
+           parametresiz ADD komutunda calisir.
+EKLEME - Sphere 56T ozel surum uyumlulugu: f_onchar_create_player_init, f_onchar_create_player
+           ve f_onchar_delete_player Source-X karakter hook'larinin yaninda calisir;
+           f_onchar_armor_calculation tanimliysa AOS oncesi zirh asamasini belirler;
+           f_onmulti_create ev/gemi kurulunca calisir; @StatGain, @SkillUse, @StatValChange,
+           @PartyJoin ve @RegionExit baglandiginda Source-X karsiliklarinin yaninda tetiklenir;
+           SERV.RTIMESQL yerel saati SQL DATETIME olarak verir; bilinmeyen spell anahtarlari
+           (FREEZE_TIME) okunabilir kalir; CASTNOEQUP item'i buyu sirasinda elde tutar.
+
 [2026-10-02] - Gercek soketli yuk testi ve ana dongu performans duzeltmeleri
 ------------------------------------------------------------------------
 EKLEME - Gercek soketli yuk testi (src/SphereNet.LoadTest): sentetik bir shard (duz harita,

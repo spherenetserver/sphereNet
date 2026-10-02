@@ -8,25 +8,25 @@ namespace SphereNet.Core.Collections;
 /// </summary>
 public sealed class SortedResourceHash<T> where T : class
 {
-    private readonly SortedDictionary<uint, T> _entries = [];
+    private readonly SortedDictionary<ulong, T> _entries = [];
 
     public int Count => _entries.Count;
 
     public void Add(ResourceId rid, T entry)
     {
-        uint key = Pack(rid);
+        ulong key = Pack(rid);
         _entries[key] = entry;
     }
 
     public T? Get(ResourceId rid)
     {
-        uint key = Pack(rid);
+        ulong key = Pack(rid);
         return _entries.GetValueOrDefault(key);
     }
 
     public bool TryGet(ResourceId rid, out T? entry)
     {
-        uint key = Pack(rid);
+        ulong key = Pack(rid);
         return _entries.TryGetValue(key, out entry);
     }
 
@@ -49,6 +49,9 @@ public sealed class SortedResourceHash<T> where T : class
 
     public void Clear() => _entries.Clear();
 
-    private static uint Pack(ResourceId rid) =>
-        ((uint)rid.Type << 24) | ((uint)rid.Index & 0x00FFFFFF);
+    // The page is part of the key, below type and index so the order stays theirs: a
+    // [REGIONTYPE name terrain] block is its own resource beside [REGIONTYPE name]
+    // (CResourceHash compares the page after the id, CResourceHash.cpp:20-45).
+    private static ulong Pack(ResourceId rid) =>
+        ((ulong)(((uint)rid.Type << 24) | ((uint)rid.Index & 0x00FFFFFF)) << 16) | rid.Page;
 }

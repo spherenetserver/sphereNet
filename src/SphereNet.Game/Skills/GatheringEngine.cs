@@ -378,10 +378,14 @@ public sealed class GatheringEngine
             return null;
         foreach (var rtRid in region.RegionTypes)
         {
-            var rtDef = DefinitionLoader.GetRegionTypeDef(rtRid.Index);
-            if (rtDef?.ItemTypeFilter != null &&
-                rtDef.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase))
-                return rtDef;
+            // Every terrain page the name was declared on: [REGIONTYPE r_x t_rock] and
+            // [REGIONTYPE r_x] are two blocks (CServerConfig.cpp:4269-4296).
+            foreach (var rtDef in DefinitionLoader.GetRegionTypeDefPages(rtRid.Index))
+            {
+                if (rtDef.ItemTypeFilter != null &&
+                    rtDef.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase))
+                    return rtDef;
+            }
         }
         return null;
     }

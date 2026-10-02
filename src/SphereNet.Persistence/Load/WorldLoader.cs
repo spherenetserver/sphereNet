@@ -737,15 +737,16 @@ public sealed class WorldLoader
                         item.Uid.Value);
                     world.PlaceItem(item, item.Position);
                 }
-                else if (parentItem.AddItem(item))
+                else if (parentItem.AddItemOnLoad(item))
                 {
                     containedCount++;
                 }
                 else
                 {
                     // A corrupt/hand-edited CONT chain (e.g. A->B->A) would leave
-                    // this item's ContainedIn pointing into a cycle; TryAddItem
-                    // refused the add. Quarantine it on the ground so its
+                    // this item's ContainedIn pointing into a cycle; the add was
+                    // refused. Capacity is never the cause here: the load add takes
+                    // any number of items, as Source-X ContentAdd does while loading. Quarantine it on the ground so its
                     // ContainedIn no longer forms the cycle (which would otherwise
                     // hang the parent-chain walk in packet sends).
                     _logger.LogWarning(
@@ -910,9 +911,21 @@ public sealed class WorldLoader
         // same hand/torso layer); Character.Equip would bounce the incumbent onto
         // the ground ("weapon in hand AND a weapon dropped underneath the NPC").
         // The newcomer goes to the pack instead, leaving the worn item in place.
+        // Character.Equip moves a two-hander from HAND1 to HAND2; test that slot.
+        if (targetLayer == Layer.OneHanded && item.IsTwoHanded)
+            targetLayer = Layer.TwoHanded;
         if (targetLayer != Layer.None && parentChar.GetEquippedItem(targetLayer) == null &&
             parentChar.Equip(item, targetLayer))
             return;
+        // The slot is taken. Source-X LayerAdd skips CanEquipLayer while loading
+        // (CCharAct.cpp:266), so both items stay worn - a vendor saved holding a
+        // shield and a lantern in the same hand keeps both. Bouncing the second one
+        // put it in the pack, or with no pack on the ground for anyone to take.
+        if (IsStackableWornLayer(targetLayer) && parentChar.GetEquippedItem(targetLayer) != null)
+        {
+            parentChar.MemoryState.AttachStackedWorn(item, targetLayer);
+            return;
+        }
         // Could not resolve a wearable slot — log enough to see which graphics the
         // running tiledata leaves unlayered (the "worn item drops to the ground /
         // NPC stays naked" symptom) before falling back to pack / ground.
@@ -940,6 +953,14 @@ public sealed class WorldLoader
         (layer == (byte)Layer.Special || layer > (byte)Layer.Dragging) &&
         layer is not ((byte)Layer.FlagPoison or (byte)Layer.FlagCriminal or (byte)Layer.FlagWool
             or (byte)Layer.FlagPotionUsed or (byte)Layer.FlagMurders);
+
+    /// <summary>A wearable slot a second loaded item may share (see
+    /// <see cref="CharacterMemoryState.AttachStackedWorn"/>): the visible and flag
+    /// layers below LAYER_DRAGGING, except the pack and bank box - the character's
+    /// own containers - and LAYER_SPECIAL, which has its own rules.</summary>
+    private static bool IsStackableWornLayer(Layer layer) =>
+        layer > Layer.None && layer < Layer.Dragging &&
+        layer is not (Layer.Pack or Layer.BankBox or Layer.Special);
 
     /// <summary>Layer for a char-contained item with no explicit LAYER: the item's
     /// own EquipLayer/itemdef layer, else the tiledata Quality (UO's equip layer).</summary>
@@ -1023,7 +1044,7 @@ public sealed class WorldLoader
                         item.Uid.Value);
                     world.PlaceItem(item, item.Position);
                 }
-                else if (!parentItem.AddItem(item))
+                else if (!parentItem.AddItemOnLoad(item))
                 {
                     // Corrupt CONT cycle — quarantine on the ground (see Materialize).
                     _logger.LogWarning(
@@ -2067,23 +2088,20 @@ public sealed class WorldLoader
                     }
                     break;
                 }
-                // Sphere 0.56 kept TWO kill counters and wrote them as KILLSPLAYER and
-                // KILLSNPC. The reference keeps ONE - KILLS, the murder count
-                // (CCharPlayer.h:49) - and neither of those names exists anywhere in
-                // it, not even in its own legacy importer, which translates an old key
-                // into the field it maps to and leaves the rest (CWorldImport.cpp:750).
-                // KILLSPLAYER is that field: it is the count notoriety reads. KILLSNPC
-                // has no counterpart, so it is kept as script-readable data rather than
-                // invented into the engine as a second counter the reference lacks.
-                if (upper == "KILLSPLAYER")
+                // Sphere 56T custom-version compatibility: that build writes two extra
+                // per-character counters, KILLSPLAYER and KILLSNPC, NEXT TO the murder
+                // count. The murder count itself is KILLS= (CCharPlayer m_wMurders,
+                // CCharPlayer.h:49), which the same record carries and which that
+                // build's scripts read and write (<kills>, kills ++, kills -= n).
+                // KILLSPLAYER is not the murder count: nearly every player record has
+                // one, most far above MURDERMINCOUNT (values such as 8192 or 26628 on
+                // characters whose KILLS= is 0 or 1), so reading it into the murder
+                // count loaded almost every player as a murderer (NOTO_EVIL, red).
+                // Neither name exists in the reference, so both stay script-readable
+                // data rather than becoming engine counters it does not have.
+                if (upper is "KILLSPLAYER" or "KILLSNPC")
                 {
-                    if (short.TryParse(val, out short murders) && murders > 0)
-                        ch.Kills = murders;
-                    break;
-                }
-                if (upper == "KILLSNPC")
-                {
-                    ch.SetTag("KILLSNPC", val);
+                    ch.SetTag(upper, val);
                     break;
                 }
                 if (TryResolveSkillName(upper, out SkillType skill))

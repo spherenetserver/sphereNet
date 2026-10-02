@@ -377,41 +377,13 @@ public sealed class WorldSaver
         var chars = new List<SaveRecord>(charCount);
         long now = Environment.TickCount64;
 
-        // Vendor SELL stock is virtual: the container equipped at LAYER 26 and
-        // every item inside it are rebuilt on demand from the SELL template when a
-        // player opens the vendor (PopulateVendorStock). Persisting them bloats
-        // every save with transient stock items (~20 per vendor), so collect that
-        // container's UID and skip it and its contents below.
-        //
-        // LAYER 27 (VendorExtra) is NOT virtual and must persist: it is where a
-        // player vendor keeps the goods it bought from players (Source-X
-        // pContExtra in Event_VendorSell). Excluding it too meant anything sold to
-        // a player vendor would vanish on the next save.
-        //
-        // A PLAYER vendor's stock is not virtual: it is what the owner put there
-        // (Source-X PC_STOCK opens it for the owner, CCharNPCPet.cpp:348, and a pet
-        // vendor never restocks, CCharNPCAct_Vendor.cpp:41). It persists.
-        var vendorStock = new HashSet<uint>();
-        foreach (var obj in allObjects)
-        {
-            if (obj is Item it && !it.IsDeleted &&
-                it.EquipLayer == Core.Enums.Layer.VendorStock &&
-                !(world.FindChar(it.ContainedIn) is { } stockHolder &&
-                  Game.Trade.VendorEngine.HasRealStock(stockHolder)))
-                vendorStock.Add(it.Uid.Value);
-        }
-
-        // Parent-serial map so the vendor-stock filter can walk an item's FULL
-        // ancestor chain. Skipping only a DIRECT child of a stock container left
-        // items in a sub-bag inside vendor stock persisted with a CONT pointing at
-        // a never-persisted parent — on load they dropped to the ground at a stale
-        // position (world clutter). Read-only during the parallel capture below.
-        var parentOf = new Dictionary<uint, uint>(allObjects.Length);
-        foreach (var obj in allObjects)
-        {
-            if (obj is Item pit && !pit.IsDeleted && pit.ContainedIn.IsValid)
-                parentOf[pit.Uid.Value] = pit.ContainedIn.Value;
-        }
+        // The vendor boxes (LAYER_VENDOR_STOCK 26, VENDOR_EXTRA 27, VENDOR_BUYS 28)
+        // are ordinary worn containers and save with what they hold, as Source-X
+        // writes every worn item (CChar::r_Write -> CContainer::r_WriteContent). A
+        // stock box a script filled by hand, or one a restock left part-sold, comes
+        // back as it was; a periodic restock still starts from empty boxes
+        // (NPC_Vendor_Restock, CCharNPCAct_Vendor.cpp:83-93), and a vendor from a
+        // save written without its box rebuilds it from its SELL list on first use.
 
         // Capture in parallel: this is a pure read of live objects (the main
         // thread is inside the save, nothing mutates), and per-object record
@@ -441,8 +413,6 @@ public sealed class WorldSaver
                     // A fight/aggressor memory is rebuilt from its owner's MEMORY= record.
                     if (item.IsSavedWithOwner)
                         return writer;
-                    if (IsInsideVendorStock(item.Uid.Value, vendorStock, parentOf))
-                        return writer; // virtual vendor stock (or nested inside it) — never persisted
                     if (!ShouldExportItem(item, scope, byUid))
                         return writer;
                     WriteItem(writer, item, now);
@@ -475,26 +445,6 @@ public sealed class WorldSaver
 
         var s = scope.Value;
         return s.IncludeChars && s.Contains(ch.Position);
-    }
-
-    /// <summary>True if the item is a vendor-stock container or nested at ANY
-    /// depth inside one — such objects are virtual (rebuilt from the SELL template
-    /// on vendor open) and must not be persisted. Walks the ancestor chain via
-    /// <paramref name="parentOf"/> with a depth cap so a corrupt/cyclic CONT chain
-    /// can't loop.</summary>
-    private static bool IsInsideVendorStock(uint uid, HashSet<uint> vendorStock, Dictionary<uint, uint> parentOf)
-    {
-        if (vendorStock.Contains(uid)) return true;
-        uint cur = uid;
-        for (int guard = 0; guard < 64; guard++)
-        {
-            if (!parentOf.TryGetValue(cur, out uint parent))
-                return false; // reached a grounded/equipped root — not vendor stock
-            if (vendorStock.Contains(parent))
-                return true;
-            cur = parent;
-        }
-        return false; // depth cap (corrupt/cyclic chain) — persist rather than lose it
     }
 
     private static bool ShouldExportItem(Item item, WorldExportScope? scope,
@@ -1547,12 +1497,6 @@ public sealed class WorldSaver
 
         for (int layer = 0; layer <= (int)SphereNet.Core.Enums.Layer.Horse; layer++)
         {
-            // Skip the virtual vendor SELL stock container (LAYER 26); it and its
-            // contents are excluded from CaptureSnapshot and rebuilt on demand, so
-            // persisting the EQUIP reference would dangle on load. LAYER 27
-            // (VendorExtra) holds real goods bought from players and is persisted.
-            if (layer == (int)SphereNet.Core.Enums.Layer.VendorStock)
-                continue;
             var equip = ch.GetEquippedItem((SphereNet.Core.Enums.Layer)layer);
             if (equip != null)
                 w.WriteProperty($"EQUIP[{layer}]", $"0{equip.Uid.Value:X8}");

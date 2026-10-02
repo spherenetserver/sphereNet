@@ -18,6 +18,10 @@ public sealed class ResourceHolder
     // Numeric constants are values, not resource indices (which have only 24 bits).
     private readonly Dictionary<string, long> _numericDefValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _defTexts = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The numbers a [TYPEDEFS] block gave its type names (RES_TYPEDEFS,
+    /// CServerConfig.cpp:4017-4046).</summary>
+    private readonly Dictionary<string, int> _typeDefsNumbers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ResourceScript> _scriptFiles = [];
     private readonly Dictionary<string, string> _defMessages = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<TeleporterEntry> _teleporters = [];
@@ -63,7 +67,13 @@ public sealed class ResourceHolder
     public string ScpBaseDir { get; set; } = "";
 
     private sealed record TeleporterEntry(Point3D Src, Point3D Dest, string Name, string FilePath);
-    public sealed record StartEntry(string Name, Point3D Point);
+    /// <summary>One [STARTS] location (CStartLoc): the place name, its point, the
+    /// area/city it is in, and the cliloc a 7.0.13+ client shows for it.</summary>
+    public sealed record StartEntry(string Name, Point3D Point, string Area = "", uint Cliloc = StartEntry.DefaultCliloc)
+    {
+        /// <summary>CStartLoc's default description cliloc (CStartLoc.h:19).</summary>
+        public const uint DefaultCliloc = 1149559;
+    }
     public sealed record StartGoldEntry(string Name, int Amount);
     public sealed record MoongateEntry(string Name, Point3D Point);
 
@@ -75,6 +85,9 @@ public sealed class ResourceHolder
         // of a hardcoded map. Falls back to the built-in map when unresolved.
         CharDef.DefNameResolver = name => TryResolveDefNameValue(name, out var v) ? v : null;
         ItemDef.DefNameResolver = name => TryResolveDefNameValue(name, out var v) ? v : null;
+        // TYPE=t_chair on a pack that numbers t_chair in its own [TYPEDEFS] block
+        // (CItemBase.cpp:1756 reads TYPE through ResourceGetIndexType(RES_TYPEDEF)).
+        ItemDef.TypeNumberResolver = name => _typeDefsNumbers.TryGetValue(name, out int n) ? n : null;
         CharDef.SpellNameResolver = name =>
         {
             var rid = ResolveDefName(name);
@@ -297,7 +310,7 @@ public sealed class ResourceHolder
             if (resType == ResType.PlevelCfg)
                 LoadPlevelCommands(index, section);
 
-            var rid = new ResourceId(resType, index);
+            var rid = WithRegionTypePage(new ResourceId(resType, index), rawArg);
 
             // SPAWN sections get parsed directly into SpawnGroupDef
             if (resType == ResType.Spawn)
@@ -344,20 +357,65 @@ public sealed class ResourceHolder
                 if (!string.IsNullOrEmpty(defName))
                 {
                     link.DefName = defName;
-                    _defNames[defName] = rid;
+                    RegisterSectionName(defName, rid);
                 }
             }
 
             _resources.Add(rid, link);
 
             if (!string.IsNullOrEmpty(link.DefName))
-                _defNames[link.DefName] = rid;
+                RegisterSectionName(link.DefName, rid);
 
             count++;
         }
 
         _logger.LogInformation("Loaded {File}: {Count} sections", Path.GetFileName(filePath), count);
         return count;
+    }
+
+    /// <summary>A [REGIONTYPE name terrain] block is filed under the terrain as its
+    /// page (ResourceGetNewID, CServerConfig.cpp:4269-4296): the same name on two
+    /// terrains - or on a terrain and none - is two resources, not one block
+    /// overwriting the other. Every other section keeps page 0.</summary>
+    private ResourceId WithRegionTypePage(ResourceId rid, string rawArg)
+    {
+        if (rid.Type != ResType.RegionType || string.IsNullOrWhiteSpace(rawArg))
+            return rid;
+        var parts = rawArg.Split([' ', '	'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            return rid;
+        return rid.WithPage(RegionTypePage(parts[1].Trim()));
+    }
+
+    /// <summary>The page a REGIONTYPE terrain argument names: its number (a [TYPEDEFS]
+    /// number or a built-in type), else a stable key of the name kept clear of real
+    /// type numbers.</summary>
+    private ushort RegionTypePage(string terrain)
+    {
+        if (SphereNet.Core.Types.ScriptNumber.TryParseToken(terrain, out long number) && number is > 0 and < 0x8000)
+            return (ushort)number;
+        if (_typeDefsNumbers.TryGetValue(terrain, out int declared) && declared is > 0 and < 0x8000)
+            return (ushort)declared;
+        var builtIn = ItemDef.ParseTypeName(terrain);
+        if (builtIn != SphereNet.Core.Enums.ItemType.Normal && (int)builtIn is > 0 and < 0x8000)
+            return (ushort)builtIn;
+        uint hash = 2166136261u;
+        foreach (char c in terrain)
+            hash = unchecked((hash ^ char.ToLowerInvariant(c)) * 16777619u);
+        return (ushort)(0x8000 | (hash & 0x7FFF));
+    }
+
+    /// <summary>Register a section's name. A paged REGIONTYPE does not take a name the
+    /// same block already holds on another page: the name keeps answering for the
+    /// terrain-less block, else the first one declared.</summary>
+    private void RegisterSectionName(string name, ResourceId rid)
+    {
+        if (rid.Type == ResType.RegionType && rid.Page != 0 &&
+            _defNames.TryGetValue(name, out var existing) &&
+            existing.Type == ResType.RegionType && existing.Index == rid.Index &&
+            existing != rid && _resources.Contains(existing))
+            return;
+        _defNames[name] = rid;
     }
 
     /// <summary>The section line the way Source-X ReadKey sees it — the whole
@@ -548,6 +606,7 @@ public sealed class ResourceHolder
             if (ScriptKey.TryParseNumber(key.Arg.AsSpan(), out long val))
             {
                 _defNames[key.Key] = new ResourceId(ResType.TypeDef, (int)val);
+                _typeDefsNumbers[key.Key] = (int)val;
                 // Also expose the numeric value through the DEF text table so
                 // <DEF.t_xxx> and the numeric DefNameResolver (which only
                 // accepts ResType.DefName ids) can resolve bulk-declared
@@ -1595,7 +1654,7 @@ public sealed class ResourceHolder
             if (resType == ResType.PlevelCfg)
                 LoadPlevelCommands(index, section);
 
-            var rid = new ResourceId(resType, index);
+            var rid = WithRegionTypePage(new ResourceId(resType, index), rawArg);
 
             if (resType == ResType.Spawn)
             {
@@ -1638,14 +1697,14 @@ public sealed class ResourceHolder
                 if (!string.IsNullOrEmpty(defName))
                 {
                     link.DefName = defName;
-                    _defNames[defName] = rid;
+                    RegisterSectionName(defName, rid);
                 }
             }
 
             _resources.Replace(rid, link);
 
             if (!string.IsNullOrEmpty(link.DefName))
-                _defNames[link.DefName] = rid;
+                RegisterSectionName(link.DefName, rid);
         }
     }
 
@@ -1687,20 +1746,57 @@ public sealed class ResourceHolder
         }
     }
 
+    /// <summary>[STARTS version] (RES_STARTS, CServerConfig.cpp:4051-4080): each
+    /// section REPLACES the list. An entry is the area line, the place-name line and
+    /// the point line, plus a cliloc line when the header says version 2. A single
+    /// "Name=x,y,z,map" line - the form this engine read before - is still accepted
+    /// as one entry.</summary>
     private void LoadStarts(ScriptSection section)
     {
-        foreach (var key in section.Keys)
+        _starts.Clear();
+        int version = ScriptNumber.TryParseLeadingNumber(section.Argument, out long v) ? (int)v : 0;
+        var lines = section.Keys.Select(k => k.RawLine.Trim()).Where(l => l.Length > 0).ToList();
+        for (int i = 0; i < lines.Count; i++)
         {
-            // "Name=x,y,z,map" or a bare "x,y,z,map" line — split on '=' from
-            // the raw line (comma is a Key/Arg separator now).
-            ScriptKey.TrySplitOnEquals(key.RawLine, out string name, out string value);
-            var point = ParseTeleportPoint(value.Trim());
-            if (point.X == 0 && point.Y == 0)
-                continue;
-            _starts.Add(new StartEntry(name.Trim(), point));
+            string line = lines[i];
+            if (ScriptKey.TrySplitOnEquals(line, out string legacyName, out string legacyValue))
+            {
+                var legacyPoint = ParseTeleportPoint(legacyValue.Trim());
+                if (legacyPoint.X != 0 || legacyPoint.Y != 0)
+                {
+                    _starts.Add(new StartEntry(legacyName.Trim(), legacyPoint, legacyName.Trim()));
+                    continue;
+                }
+            }
+            else
+            {
+                // A bare point with no names around it.
+                var barePoint = ParseTeleportPoint(line);
+                if ((barePoint.X != 0 || barePoint.Y != 0) && LooksLikePoint(line))
+                {
+                    _starts.Add(new StartEntry("", barePoint));
+                    continue;
+                }
+            }
+
+            string area = line;
+            string name = i + 1 < lines.Count ? lines[++i] : "";
+            var point = i + 1 < lines.Count ? ParseTeleportPoint(lines[++i]) : default;
+            uint cliloc = StartEntry.DefaultCliloc;
+            if (version == 2 && i + 1 < lines.Count &&
+                uint.TryParse(lines[i + 1], out uint parsedCliloc))
+            {
+                cliloc = parsedCliloc;
+                i++;
+            }
+            _starts.Add(new StartEntry(name, point, area, cliloc));
         }
         _logger.LogInformation("Loaded {Count} start locations", _starts.Count);
     }
+
+    private static bool LooksLikePoint(string line) =>
+        line.Length > 0 && (char.IsAsciiDigit(line[0]) || line[0] == '-') &&
+        line.All(c => char.IsAsciiDigit(c) || c is ',' or ' ' or '\t' or '-');
 
     /// <summary>Stat advance-rate curves from [ADVANCE] (reference
     /// RES_ADVANCE): STR/DEX/INT, each a "uses per +1" curve across the
@@ -1743,6 +1839,8 @@ public sealed class ResourceHolder
 
     private void LoadMoongates(ScriptSection section)
     {
+        // RES_MOONGATES (CServerConfig.cpp:4081-4088): each section replaces the list.
+        _moongates.Clear();
         foreach (var key in section.Keys)
         {
             // The POINT is the key and whatever follows the '=' is a label:

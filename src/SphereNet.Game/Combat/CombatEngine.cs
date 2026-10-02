@@ -452,6 +452,18 @@ public static class CombatEngine
     /// <summary>Optional lookup for weapon definitions (BaseId → (damMin, damMax)).</summary>
     public static Func<ushort, (int Min, int Max)?>? WeaponDefLookup { get; set; }
 
+    /// <summary>The DAM a weapon graphic's loaded definition carries (m_attackBase /
+    /// m_attackRange, CBase.cpp:345) - with the ID= base it copied and the DUPEITEM
+    /// master it shares already applied at load. The server wires this as
+    /// <see cref="WeaponDefLookup"/>.</summary>
+    public static (int Min, int Max)? WeaponDamageFromDefinition(ushort baseId)
+    {
+        var def = Definitions.DefinitionLoader.GetItemDef(baseId);
+        if (def == null || def.AttackMax <= 0)
+            return null;
+        return (def.AttackMin, Math.Max(def.AttackMin, def.AttackMax));
+    }
+
     /// <summary>Optional lookup for NPC natural damage from CHARDEF (CharDefIndex → (damMin, damMax)).</summary>
     public static Func<int, (int Min, int Max)?>? NpcDamageDefLookup { get; set; }
 
@@ -883,7 +895,7 @@ public static class CombatEngine
             }
             else
             {
-                damage = ApplyPreAosArmor(target, damage, type);
+                damage = ApplyPreAosArmor(target, src != target ? src : null, damage, type);
             }
         }
 
@@ -972,7 +984,9 @@ public static class CombatEngine
         if (damage <= 0)
             return 0;
 
+        short hitsBefore = target.Hits;
         target.Hits -= (short)Math.Min(damage, short.MaxValue);
+        target.NotifyStatValChange(Character.StatValHits, hitsBefore, src != target ? src : null);
         if (feedback == DamageFeedback.Host)
             OnDirectCharacterDamageApplied?.Invoke(target, source, damage, type);
         return damage;
@@ -981,7 +995,7 @@ public static class CombatEngine
     /// <summary>Pre-AOS armour (CCharFight.cpp:733-746): the creature's own ARMOR plus
     /// the coverage-weighted worn armour, rolled between half of and a 7-35% share of
     /// it, halved against magic.</summary>
-    private static int ApplyPreAosArmor(Character target, int damage, DamageType type)
+    private static int ApplyPreAosArmor(Character target, Character? attacker, int damage, DamageType type)
     {
         int armorRating = CalcArmorDefense(target) + target.CharDefArmor();
         int arMax = (int)Math.Min((long)armorRating * _rand.Next(7, 36) / 100, int.MaxValue);
@@ -989,8 +1003,60 @@ public static class CombatEngine
         int defense = (int)_rand.NextInt64(arMin, (long)arMax + 1);
         if ((type & DamageType.Magic) != 0)
             defense /= 2;
-        return Math.Max(0, damage - defense);
+        int result = Math.Max(0, damage - defense);
+
+        // Sphere 56T custom-version compatibility: a pack that defines
+        // f_onchar_armor_calculation decides this stage itself. Without one the
+        // Source-X roll above stands untouched.
+        if (OnArmorCalculation is { } hook)
+        {
+            var ctx = new ArmorCalculationContext
+            {
+                Defender = target,
+                Attacker = attacker,
+                Damage = damage,
+                Defense = defense,
+                DamageType = type,
+                ArmorRating = armorRating,
+                ArMax = arMax,
+                ArMin = arMin,
+                Result = result,
+            };
+            if (hook(ctx))
+                result = Math.Max(0, ctx.Result);
+        }
+        return result;
     }
+
+    /// <summary>The pre-AOS armour stage handed to a script (see
+    /// <see cref="OnArmorCalculation"/>): what the engine rolled, and the damage the
+    /// script settled on.</summary>
+    public sealed class ArmorCalculationContext
+    {
+        public required Character Defender { get; init; }
+        public Character? Attacker { get; init; }
+        /// <summary>ARGN1: the blow before armour.</summary>
+        public required int Damage { get; init; }
+        /// <summary>ARGN2: the defence the engine rolled (halved against magic).</summary>
+        public required int Defense { get; init; }
+        /// <summary>ARGN3: the DAMAGE_TYPE flags.</summary>
+        public required DamageType DamageType { get; init; }
+        /// <summary>LOCAL.ArmorRating / ArMax / ArMin: the roll's inputs.</summary>
+        public required int ArmorRating { get; init; }
+        public required int ArMax { get; init; }
+        public required int ArMin { get; init; }
+        /// <summary>The damage that gets through - seeded with the engine's own
+        /// result, replaced by the script's.</summary>
+        public int Result { get; set; }
+    }
+
+    /// <summary>Sphere 56T custom-version compatibility: <c>f_onchar_armor_calculation</c>
+    /// at the pre-AOS armour stage (the 56T engine calls it from its CalcArmorDefense
+    /// step with LOCAL.ArmorRating/ArMax/ArMin/ParryDefense/Damage). The host runs the
+    /// function and writes the damage it settled on into
+    /// <see cref="ArmorCalculationContext.Result"/>; returns false when the pack has no
+    /// such function, leaving the Source-X result. Null when nothing is wired.</summary>
+    public static Func<ArmorCalculationContext, bool>? OnArmorCalculation;
 
     /// <summary>The item COMBAT_SLAYER reads (CCharFight.cpp:822-832): for magic the
     /// equipped spellbook, else - and failing that - the wielded weapon.</summary>

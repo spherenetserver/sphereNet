@@ -2915,7 +2915,16 @@ public sealed class ClientWorldFeaturesHandler
         if (!SkillHandlers.CanUse(_character, skill))
             return;
 
-        int menuSkill = _character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
+        // Sphere 56T custom-version compatibility: @SkillUse on the character for a
+        // skill the client asks to use, ARGN1 = the skill; RETURN 1 refuses the
+        // request. The pack uses it to break off what the player was doing (taming,
+        // a store dialog) and to forbid skills outright. It runs ahead of the Source-X
+        // request chain (@SkillWait, @SkillSelect), which is unchanged.
+        if (_triggerDispatcher?.FireCharTriggerIfUsed(_character, "SkillUse",
+                new TriggerArgs { CharSrc = _character, N1 = skillId }) == TriggerResult.True)
+            return;
+
+        int menuSkill =_character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
             ScriptNumber.TryParseInt(menuSkillText, out int parsedMenuSkill) ? parsedMenuSkill : -1;
         int currentSkill = _character.HasActiveSkillPending()
             ? _character.SkillPendingId

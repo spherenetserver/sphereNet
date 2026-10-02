@@ -408,7 +408,10 @@ public static partial class Program
                     {
                         string? line = Console.ReadLine();
                         if (line == null) break;
-                        _headlessCommandQueue.Enqueue(line);
+                        // A UTF-8 byte-order mark in front of the first line (piped
+                        // input from PowerShell, a script file) is not part of the
+                        // command; left on, the first command was always "unknown".
+                        _headlessCommandQueue.Enqueue(line.TrimStart('﻿'));
                     }
                     catch { break; }
                 }

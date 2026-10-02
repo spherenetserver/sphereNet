@@ -81,6 +81,16 @@ public sealed class MultiDef
 
     public List<MultiComponent> Components { get; } = [];
 
+    /// <summary>The script's COMPONENT=id,dx,dy[,dz] lines (CItemBaseMulti::AddComponent,
+    /// CItemBase.cpp:1911-1955): the items a placed multi is given
+    /// (GenerateBaseComponents, CItemMulti.cpp:1688-1698). <c>DefIndex</c> is the
+    /// ITEMDEF the line names.</summary>
+    public List<(int DefIndex, short Dx, short Dy, short Dz)> ScriptComponents { get; } = [];
+
+    /// <summary>True when the definition was built from its script alone - a
+    /// [MULTIDEF] with COMPONENT lines and no multi.mul geometry.</summary>
+    public bool ScriptOnly { get; set; }
+
     // Bounding rect
     public short MinX { get; set; }
     public short MinY { get; set; }
@@ -840,6 +850,24 @@ public sealed class MultiRegistry
     /// keeps both under one CItemBaseMulti; SphereNet had only the binary geometry, so
     /// placed structures used a blank name and a hardcoded storage default. Metadata for
     /// an id with no geometry is skipped (it cannot be placed). Returns the merge count.</summary>
+    /// <summary>A flag value the way GetArgDWVal reads one: numbers (Sphere hex with a
+    /// leading 0) and [DEFNAME] constants, joined with '|' or '+'.</summary>
+    public static uint ParseFlagExpression(string arg, ResourceHolder? resources)
+    {
+        uint flags = 0;
+        foreach (string raw in arg.Split(['|', '+'], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            string token = raw.Trim('(', ')', ' ', '\t');
+            if (token.Length == 0)
+                continue;
+            if (Core.Types.ScriptNumber.TryParseToken(token, out long number))
+                flags |= unchecked((uint)number);
+            else if (resources != null && resources.TryResolveDefNameValue(token, out long named))
+                flags |= unchecked((uint)named);
+        }
+        return flags;
+    }
+
     public int MergeScriptMetadata(ResourceHolder resources)
     {
         int merged = 0;
@@ -847,15 +875,38 @@ public sealed class MultiRegistry
         {
             if (link.Id.Type != Core.Enums.ResType.MultiDef || link.StoredKeys == null)
                 continue;
-            var def = Get((ushort)link.Id.Index);
+            var def = link.Id.Index is > 0 and <= ushort.MaxValue ? Get((ushort)link.Id.Index) : null;
             if (def == null)
-                continue;
+            {
+                // A multi the client has no multi.mul entry for, made of the items its
+                // COMPONENT lines name - decorations such as the 2x2 statues. Upstream
+                // builds every multi from its COMPONENT list (GenerateBaseComponents),
+                // so such a multi is placeable there; here it is given a definition
+                // of its own, its footprint the component offsets.
+                if (link.Id.Index is <= 0 or > ushort.MaxValue || !HasComponentLines(link))
+                    continue;
+                def = new MultiDef { Id = (ushort)link.Id.Index, ScriptOnly = true };
+                Register(def);
+            }
 
+            bool componentsSeen = false;
             foreach (var key in link.StoredKeys)
             {
                 string arg = key.Arg.Trim();
+                if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) && arg.StartsWith('@'))
+                    break;
                 switch (key.Key.ToUpperInvariant())
                 {
+                    case "COMPONENT":
+                        if (!componentsSeen)
+                        {
+                            // A reload replaces the list rather than appending to it.
+                            def.ScriptComponents.Clear();
+                            componentsSeen = true;
+                        }
+                        if (TryParseScriptComponent(arg, resources, out var comp))
+                            def.ScriptComponents.Add(comp);
+                        break;
                     case "NAME":
                         if (arg.Length > 0) def.Name = arg;
                         break;
@@ -872,7 +923,10 @@ public sealed class MultiRegistry
                         // Sphere scripts write these as leading-zero hex (02080 =
                         // Safe|NoBuild), so parse them the way every other flag field
                         // in the pack is parsed.
-                        def.RegionFlags = (RegionFlag)Objects.ObjBase.ParseHexOrDecUInt(arg);
+                        // Upstream reads them with GetArgDWVal (CItemBase.cpp:2073), an
+                        // expression: region_flag_nobuilding|region_flag_ship names
+                        // the [DEFNAME] constants and ORs them.
+                        def.RegionFlags = (RegionFlag)ParseFlagExpression(arg, resources);
                         break;
                     case "MULTIREGION":
                         {
@@ -907,9 +961,106 @@ public sealed class MultiRegistry
                         break;
                 }
             }
+            if (def.ScriptOnly)
+            {
+                // The footprint of a script-only multi is where its components stand.
+                def.Components.Clear();
+                foreach (var (defIndex, dx, dy, dz) in def.ScriptComponents)
+                    def.Components.Add(new MultiComponent
+                    {
+                        TileId = Definitions.ItemDefHelper.CreateGraphic(
+                            Definitions.DefinitionLoader.GetItemDef(defIndex), defIndex),
+                        DeltaX = dx, DeltaY = dy, DeltaZ = dz,
+                        Visible = true,
+                    });
+                def.RecalcBounds();
+            }
             merged++;
         }
         return merged;
+    }
+
+    /// <summary>Make the items a multi's COMPONENT lines name (Multi_CreateComponent,
+    /// CItemMulti.cpp:316-366): each made from its ITEMDEF, never movable, linked to
+    /// the structure, at the anchor plus its offset. On a multi that also has
+    /// multi.mul geometry a line is skipped when a multi.mul placeholder already stands
+    /// on that spot - the engine makes those placeholders itself.</summary>
+    public static List<Item> MaterializeScriptComponents(GameWorld world, MultiDef def, Item multiItem, Point3D origin)
+    {
+        var made = new List<Item>();
+        if (def.ScriptComponents.Count == 0)
+            return made;
+        var covered = new HashSet<(short, short)>();
+        if (!def.ScriptOnly)
+            foreach (var c in def.Components)
+                if (!c.Visible)
+                    covered.Add((c.DeltaX, c.DeltaY));
+
+        foreach (var (defIndex, dx, dy, dz) in def.ScriptComponents)
+        {
+            if (covered.Contains((dx, dy)))
+                continue;
+            var item = world.CreateItem();
+            if (!Definitions.ItemDefHelper.ApplyInstanceMetadata(item, defIndex))
+            {
+                if (defIndex is <= 0 or > ushort.MaxValue)
+                {
+                    world.RemoveItem(item);
+                    continue;
+                }
+                item.BaseId = (ushort)defIndex;
+            }
+            item.SetAttr(ObjAttributes.Move_Never);
+            if (multiItem.IsAttr(ObjAttributes.Magic)) item.SetAttr(ObjAttributes.Magic);
+            if (multiItem.IsAttr(ObjAttributes.Invis)) item.SetAttr(ObjAttributes.Invis);
+            item.Link = multiItem.Uid;
+            world.PlaceItem(item, new Point3D(
+                (short)(origin.X + dx), (short)(origin.Y + dy), (sbyte)(origin.Z + dz), origin.Map));
+            made.Add(item);
+        }
+        return made;
+    }
+
+    private static bool HasComponentLines(SphereNet.Scripting.Resources.ResourceLink link)
+    {
+        foreach (var key in link.StoredKeys!)
+        {
+            if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase))
+                break;
+            if (key.Key.Equals("COMPONENT", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>One COMPONENT=id,dx,dy[,dz] line (CItemBaseMulti::AddComponent,
+    /// CItemBase.cpp:1948-1956): Str_ParseCmds over "=, \t", the id an ITEMDEF
+    /// (number or defname), a missing dz zero. Fewer than two arguments is not a
+    /// component.</summary>
+    public static bool TryParseScriptComponent(string arg, ResourceHolder? resources,
+        out (int DefIndex, short Dx, short Dy, short Dz) component)
+    {
+        component = default;
+        var parts = arg.Split([',', ' ', '\t', '='], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 2)
+            return false;
+        int index;
+        if (Core.Types.ScriptNumber.TryParseToken(parts[0], out long number))
+            index = (int)number;
+        else
+        {
+            var rid = resources?.ResolveDefName(parts[0]) ?? Core.Types.ResourceId.Invalid;
+            if (!rid.IsValid || rid.Type != Core.Enums.ResType.ItemDef)
+                return false;
+            index = rid.Index;
+        }
+        if (index <= 0)
+            return false;
+        static short Arg(string[] p, int i) =>
+            i < p.Length && Core.Types.ScriptNumber.TryParseLeadingNumber(p[i], out long v)
+                ? (short)Math.Clamp(v, short.MinValue, short.MaxValue) : (short)0;
+        component = (index, Arg(parts, 1), Arg(parts, 2), Arg(parts, 3));
+        return true;
     }
 }
 
@@ -1123,6 +1274,17 @@ public sealed class HousingEngine
                 if (compItem.ItemType == ItemType.SignGump)
                     multiItem.Link = compItem.Uid;
                 _world.PlaceItem(compItem, compPos);
+                house.AddComponent(compItem.Uid);
+            }
+
+            // The script's COMPONENT items (GenerateBaseComponents), beside the
+            // multi.mul placeholders above: a line whose spot a placeholder already
+            // fills is that placeholder's script twin and is not made twice.
+            foreach (var compItem in MultiRegistry.MaterializeScriptComponents(_world, def, multiItem, position))
+            {
+                compItem.SetTag("HOUSE_UID", multiItem.Uid.Value.ToString());
+                if (compItem.ItemType == ItemType.SignGump)
+                    multiItem.Link = compItem.Uid;
                 house.AddComponent(compItem.Uid);
             }
         }

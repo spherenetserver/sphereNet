@@ -1272,7 +1272,7 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper.Equals("SENDPACKET", StringComparison.Ordinal))
         {
-            if (TryParseScriptPacket(args, out byte[] packet, out string err))
+            if (TryParseScriptPacket(args, EvaluatePacketExpression, out byte[] packet, out string err))
             {
                 _netState.SendRaw(packet);
             }
@@ -1304,6 +1304,17 @@ public sealed class ClientScriptConsoleHandler
                 string raw = args.Trim();
                 if (raw.Length == 0)
                 {
+                    // Sphere 56T custom-version compatibility: that version calls
+                    // f_onclient_add for the bare ADD command (its pack lists the hook
+                    // under "Commands" beside f_onclient_helppage, and the body opens the
+                    // pack's own add dialog), on the character, SRC = the character.
+                    // RETURN 1 means the script answered; anything else falls through
+                    // to the Source-X behaviour below.
+                    if (upper == "ADD" && _triggerDispatcher?.Runner is { } addRunner &&
+                        addRunner.TryRunFunction("f_onclient_add", _character, _client as ITextConsole,
+                            new SphereNet.Scripting.Execution.TriggerArgs(_character), out var addResult) &&
+                        addResult == TriggerResult.True)
+                        return true;
                     // Source-X bare ADD opens D_ADD (or MENU_ADDITEM fallback).
                     // Use the named dialog when the script pack provides it;
                     // otherwise keep the command acknowledged with a usage hint.
@@ -2224,7 +2235,36 @@ public sealed class ClientScriptConsoleHandler
         return text;
     }
 
-    private static bool TryParseScriptPacket(string args, out byte[] packet, out string error)
+    /// <summary>A SENDPACKET argument that is not a plain number is an expression:
+    /// upstream reads every token with Exp_GetVal (CClientMsg.cpp:2763-2783), so a
+    /// defname - an ITEMDEF's id, a [DEFNAME] constant - or arithmetic is a value.
+    /// Null when the text is not a number in any of those senses.</summary>
+    private long? EvaluatePacketExpression(string text)
+    {
+        var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+        bool known = true;
+        var parser = new ExpressionParser
+        {
+            VariableResolver = name =>
+            {
+                if (resources == null) { known = false; return null; }
+                if (resources.TryResolveDefNameValue(name, out long number))
+                    return number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (resources.TryGetDefValue(name, out string value))
+                    return value;
+                var rid = resources.ResolveDefName(name);
+                if (rid.IsValid)
+                    return rid.Index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                known = false;
+                return null;
+            }
+        };
+        long result = parser.Evaluate(text);
+        return known ? result : null;
+    }
+
+    private static bool TryParseScriptPacket(string args, Func<string, long?>? evaluate,
+        out byte[] packet, out string error)
     {
         packet = [];
         error = "";
@@ -2238,7 +2278,7 @@ public sealed class ClientScriptConsoleHandler
         var bytes = new List<byte>(tokens.Length + 8);
         foreach (string raw in tokens)
         {
-            if (!TryParsePacketToken(raw, bytes, out error))
+            if (!TryParsePacketToken(raw, bytes, evaluate, out error))
                 return false;
             if (bytes.Count > 256)
             {
@@ -2251,7 +2291,8 @@ public sealed class ClientScriptConsoleHandler
         return packet.Length > 0;
     }
 
-    private static bool TryParsePacketToken(string token, List<byte> bytes, out string error)
+    private static bool TryParsePacketToken(string token, List<byte> bytes, Func<string, long?>? evaluate,
+        out string error)
     {
         error = "";
         string t = token.Trim();
@@ -2265,10 +2306,12 @@ public sealed class ClientScriptConsoleHandler
             kind = t[..colon].ToUpperInvariant();
             t = t[(colon + 1)..];
         }
-        else if (t.Length > 1 && (t[0] == 'B' || t[0] == 'W' || t[0] == 'D') &&
-                 (char.IsDigit(t[1]) || t[1] == 'x' || t[1] == 'X'))
+        else if (t.Length > 1 && char.ToUpperInvariant(t[0]) is 'B' or 'W' or 'D')
         {
-            kind = t[0] switch
+            // The size prefix is matched with toupper and takes whatever follows -
+            // a number, a defname or an expression (CClientMsg.cpp:2763-2785):
+            // "w01a75" and "Wi_fx_explode" are both words.
+            kind = char.ToUpperInvariant(t[0]) switch
             {
                 'B' => "BYTE",
                 'W' => "WORD",
@@ -2280,8 +2323,18 @@ public sealed class ClientScriptConsoleHandler
 
         if (!TryParsePacketNumber(t, out uint value))
         {
-            error = $"invalid token '{token}'";
-            return false;
+            if (evaluate?.Invoke(t) is not long evaluated)
+            {
+                error = $"invalid token '{token}'";
+                return false;
+            }
+            // Exp_GetBVal/WVal/DWVal cast the value to the field's width.
+            value = kind switch
+            {
+                "WORD" => (ushort)evaluated,
+                "DWORD" => unchecked((uint)evaluated),
+                _ => (byte)evaluated,
+            };
         }
 
         switch (kind)

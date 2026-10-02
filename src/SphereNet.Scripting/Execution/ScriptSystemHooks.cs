@@ -10,11 +10,11 @@ public sealed class ScriptSystemHooks
 {
     private readonly TriggerRunner _runner;
     private static readonly Dictionary<string, string[]> ServerHookAliases = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, string[]> AccountHookAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["connect"] = ["login"],
-        ["pwchange"] = ["pinchange"]
-    };
+    // f_onaccount_connect / pwchange / create / delete / block / unblock no longer go
+    // through DispatchAccount: they run on the server object with Source-X's own
+    // arguments and veto (ScriptAccountHooks). Aliasing connect to f_onaccount_login
+    // ran the login hook a second time, before the password had been checked.
+    private static readonly Dictionary<string, string[]> AccountHookAliases = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, string[]> ClientHookAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["unkdata"] = ["unknown_client_data"]
@@ -199,6 +199,24 @@ public sealed class ScriptSystemHooks
             _ => NetworkQuotaVerdict.Default
         };
     }
+
+    /// <summary>Run a global hook the way Source-X <c>g_Serv.r_Call(name, args, &amp;g_Serv)</c>
+    /// does: on the server object, which is also SRC, with ARGS / ARGN1..3 and an
+    /// optional LOCAL pool the caller seeds and reads back. <paramref name="args"/> is
+    /// handed back with whatever the script wrote into ARGS / ARGN. Returns false when
+    /// the function is not defined; <paramref name="numericReturn"/> is the RETURN
+    /// value, or null when the function ran to its end without one.</summary>
+    public bool RunServerFunction(string functionName, IScriptObj server, TriggerArgs args,
+        out long? numericReturn)
+    {
+        args.Source ??= server;
+        args.Object2 ??= server;
+        return _runner.TryRunFunctionNumeric(functionName, server, server as ITextConsole, args,
+            out numericReturn);
+    }
+
+    /// <summary>True when a [FUNCTION] of exactly this name is loaded.</summary>
+    public bool HasFunction(string functionName) => _runner.HasFunction(functionName);
 
     /// <summary>Source-X SCRIPT_MAX_LINE_LEN, the cap on LOCAL.STR.</summary>
     private const int ScriptMaxLineLen = 4096;

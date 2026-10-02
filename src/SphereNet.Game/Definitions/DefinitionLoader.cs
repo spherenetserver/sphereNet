@@ -22,6 +22,13 @@ public sealed class DefinitionLoader
     private readonly ResourceHolder _resources;
     private readonly SpellRegistry _spells;
 
+    /// <summary>Item/char definition sections already read in this LoadAll pass, and
+    /// the ones being read right now - an ID= line loads the base it names on demand,
+    /// as upstream's FindItemBase / FindCharBase do, so a base declared further down
+    /// the pack is complete before it is copied.</summary>
+    private readonly HashSet<ResourceLink> _loadedDefLinks = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<ResourceLink> _loadingDefLinks = new(ReferenceEqualityComparer.Instance);
+
     // Definition registries — accessible for runtime lookups
     private static readonly Dictionary<int, CharDef> _charDefs = new();
     private static readonly Dictionary<int, ItemDef> _itemDefs = new();
@@ -39,6 +46,10 @@ public sealed class DefinitionLoader
     private static readonly Dictionary<int, SkillClassDef> _skillClassDefs = new();
     private static readonly Dictionary<int, RegionResourceDef> _regionResourceDefs = new();
     private static readonly Dictionary<int, RegionTypeDef> _regionTypeDefs = new();
+
+    /// <summary>Every page a REGIONTYPE name was declared on ([REGIONTYPE r_x t_rock]
+    /// and [REGIONTYPE r_x] are two resources, CServerConfig.cpp:4269-4296).</summary>
+    private static readonly Dictionary<int, List<RegionTypeDef>> _regionTypePages = new();
     private static readonly Dictionary<int, SkillDef> _skillDefs = new();
 
     /// <summary>Every name the loaded skill blocks answer to, mapped to the slot.</summary>
@@ -94,15 +105,23 @@ public sealed class DefinitionLoader
     public static RegionResourceDef? GetRegionResourceDef(int id) => _regionResourceDefs.GetValueOrDefault(id);
     public static RegionTypeDef? GetRegionTypeDef(int id) => _regionTypeDefs.GetValueOrDefault(id);
 
+    /// <summary>The REGIONTYPE blocks declared under one name, one per terrain page.</summary>
+    public static IReadOnlyList<RegionTypeDef> GetRegionTypeDefPages(int id) =>
+        _regionTypePages.TryGetValue(id, out var pages) ? pages
+        : _regionTypeDefs.TryGetValue(id, out var single) ? [single] : [];
+
     /// <summary>Find first REGIONTYPE matching an ItemTypeFilter (e.g. "t_rock", "t_water", "t_tree").</summary>
     public static RegionTypeDef? FindRegionTypeByFilter(string typeFilter)
     {
-        foreach (var kv in _regionTypeDefs)
+        foreach (var kv in _regionTypePages)
         {
-            if (kv.Value.ItemTypeFilter != null &&
-                kv.Value.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase) &&
-                kv.Value.Resources.Count > 0)
-                return kv.Value;
+            foreach (var page in kv.Value)
+            {
+                if (page.ItemTypeFilter != null &&
+                    page.ItemTypeFilter.Equals(typeFilter, StringComparison.OrdinalIgnoreCase) &&
+                    page.Resources.Count > 0)
+                    return page;
+            }
         }
         return null;
     }
@@ -232,6 +251,7 @@ public sealed class DefinitionLoader
         _skillClassDefs.Clear();
         _regionResourceDefs.Clear();
         _regionTypeDefs.Clear();
+        _regionTypePages.Clear();
         _skillDefs.Clear();
         _skillIndexByName.Clear();
         _templateDefs.Clear();
@@ -254,6 +274,8 @@ public sealed class DefinitionLoader
         _spells.Clear();
         ResetCounters();
 
+        _loadedDefLinks.Clear();
+        _loadingDefLinks.Clear();
         foreach (var link in _resources.GetAllResources())
         {
             switch (link.Id.Type)
@@ -262,13 +284,17 @@ public sealed class DefinitionLoader
                     LoadSpellDef(link);
                     break;
                 case ResType.ItemDef:
-                    LoadItemDef(link);
+                    // An ID= line may already have loaded this one, on demand, as
+                    // the base it copies (FindItemBase loads a base when asked).
+                    if (!_loadedDefLinks.Contains(link))
+                        LoadItemDef(link);
                     break;
                 case ResType.MultiDef:
                     LoadItemDef(link, _multiItemDefs);
                     break;
                 case ResType.CharDef:
-                    LoadCharDef(link);
+                    if (!_loadedDefLinks.Contains(link))
+                        LoadCharDef(link);
                     break;
                 case ResType.SkillClass:
                     LoadSkillClassDef(link);
@@ -323,6 +349,7 @@ public sealed class DefinitionLoader
         _skillClassDefs.Clear();
         _regionResourceDefs.Clear();
         _regionTypeDefs.Clear();
+        _regionTypePages.Clear();
         _skillDefs.Clear();
         _templateDefs.Clear();
     }
@@ -578,6 +605,52 @@ public sealed class DefinitionLoader
 
     private void LoadCharDef(ResourceLink link)
     {
+        _loadedDefLinks.Add(link);
+        _loadingDefLinks.Add(link);
+        try
+        {
+            LoadCharDefBody(link);
+        }
+        finally
+        {
+            _loadingDefLinks.Remove(link);
+        }
+    }
+
+    /// <summary>The creature an ID= line names, loaded if it has not been yet, when
+    /// upstream would copy it: SetDispID (CCharBase.cpp:104-129) only copies from a
+    /// definition in the body range (IsValidDispID: below CREID_QTY, 0x800) that has a
+    /// section of its own, and not from the definition itself.</summary>
+    private CharDef? ResolveCharIdBase(string arg, int ownIndex)
+    {
+        string text = arg.Trim();
+        int index;
+        if (ScriptNumber.TryParseToken(text, out long number))
+            index = (int)number;
+        else
+        {
+            var rid = _resources.ResolveDefName(text);
+            if (!rid.IsValid || rid.Type != ResType.CharDef)
+                return null;
+            index = rid.Index;
+        }
+        if (index <= 0 || index >= 0x800 || index == ownIndex)
+            return null;
+
+        var baseLink = _resources.GetResource(ResType.CharDef, index);
+        if (baseLink == null || _loadingDefLinks.Contains(baseLink))
+            return _charDefs.GetValueOrDefault(index);
+        // A named section that merely hashed into the body range is not a body.
+        string header = (baseLink.HeaderArgument ?? "").Trim().Split([' ', '\t'], 2)[0];
+        if (!ScriptNumber.TryParseToken(header, out long headerNumber) || headerNumber != index)
+            return null;
+        if (!_loadedDefLinks.Contains(baseLink))
+            LoadCharDef(baseLink);
+        return _charDefs.GetValueOrDefault(index);
+    }
+
+    private void LoadCharDefBody(ResourceLink link)
+    {
         var def = new CharDef(link.Id)
         {
             HeaderArgument = link.HeaderArgument
@@ -603,6 +676,11 @@ public sealed class DefinitionLoader
             }
             if (insideTrigger)
                 continue;
+
+            // CBC_ID: SetDispID copies the named body's basics at this line.
+            if (key.Key.Equals("ID", StringComparison.OrdinalIgnoreCase) &&
+                ResolveCharIdBase(key.Arg, link.Id.Index) is { } charBase && charBase != def)
+                def.CopyBasicFrom(charBase);
 
             def.LoadFromKey(key.Key, key.Arg);
         }
@@ -669,7 +747,114 @@ public sealed class DefinitionLoader
     private void LoadItemDef(ResourceLink link, Dictionary<int, ItemDef>? target = null)
     {
         target ??= _itemDefs;
+        if (target != _itemDefs)
+        {
+            LoadItemDefBody(link, target);
+            return;
+        }
+        _loadedDefLinks.Add(link);
+        _loadingDefLinks.Add(link);
+        try
+        {
+            LoadItemDefBody(link, target);
+        }
+        finally
+        {
+            _loadingDefLinks.Remove(link);
+        }
+    }
+
+    /// <summary>The ITEMDEF index <paramref name="index"/> as a finished definition,
+    /// loading its section first if it has not been read yet (FindItemBase loads a
+    /// base on first request, CItemBase.cpp:2242-2300). Null when there is no such
+    /// section, or it is the one being read right now (a cycle).</summary>
+    private ItemDef? EnsureItemDefLoaded(int index)
+    {
+        if (_itemDefs.TryGetValue(index, out var loaded))
+            return loaded;
+        var link = _resources.GetResource(ResType.ItemDef, index);
+        if (link == null || _loadingDefLinks.Contains(link) || _loadedDefLinks.Contains(link))
+            return null;
+        LoadItemDef(link);
+        return _itemDefs.GetValueOrDefault(index);
+    }
+
+    /// <summary>The master a DUPEITEM stub is redirected to, the way MakeDupeReplacement
+    /// (CItemBase.cpp:1801-1838) accepts one: a different, existing definition in the
+    /// graphic range that is not a stub itself ("DUPEITEM circle"). Null when the
+    /// definition is its own.</summary>
+    private ItemDef? ResolveDupeMaster(ItemDef def, int index)
+    {
+        int masterIndex = def.DupItemId;
+        if (masterIndex == 0 || masterIndex == index || masterIndex > 0xFFFF)
+            return null;
+        var master = EnsureItemDefLoaded(masterIndex);
+        if (master == null || master == def)
+            return null;
+        if (master.DupItemId != 0 && master.DupItemId != masterIndex)
+            return null;
+        return master;
+    }
+
+    /// <summary>IBC_ID (CItemBase.cpp:1659-1696) on a named definition: the base the
+    /// line names - a DUPEITEM stub standing for its master - and the graphic the
+    /// definition takes from it: the named id itself when it is one of the base's
+    /// duplicates, else the base's own display id. False when upstream refuses the line
+    /// (unknown base, no valid graphic).</summary>
+    private bool TryResolveItemIdBase(string arg, out ItemDef? baseDef, out ushort dispId)
+    {
+        baseDef = null;
+        dispId = 0;
+        string text = arg.Trim();
+        int index;
+        if (ScriptNumber.TryParseToken(text, out long number))
+            index = (int)number;
+        else
+        {
+            var rid = _resources.ResolveDefName(text);
+            if (!rid.IsValid || rid.Type != ResType.ItemDef)
+                return false;
+            index = rid.Index;
+        }
+        if (index <= 0)
+            return false;
+
+        var found = EnsureItemDefLoaded(index);
+        if (found == null)
+            return false;
+
+        int id;
+        if (ResolveDupeMaster(found, index) is { } master)
+        {
+            // The stub's master is the base; MakeDupeReplacement put the stub's id on
+            // the master's DUPELIST, so the line keeps it as the graphic.
+            baseDef = master;
+            id = index;
+        }
+        else
+        {
+            baseDef = found;
+            id = found.DispIndex != 0 ? found.DispIndex : index;
+        }
+        if (id <= 0 || id > 0xFFFF)
+            return false;
+        dispId = (ushort)id;
+        return true;
+    }
+
+    private static bool HasNumericHeader(ResourceLink link)
+    {
+        string header = (link.HeaderArgument ?? "").Trim().Split([' ', '\t'], 2)[0];
+        return header.Length > 0 && ScriptNumber.TryParseToken(header, out _);
+    }
+
+    private void LoadItemDefBody(ResourceLink link, Dictionary<int, ItemDef> target)
+    {
         var def = new ItemDef(link.Id);
+        // Upstream refuses ID= on a numbered (graphic) definition ("Setting new ID for
+        // base type not allowed"); only a named one copies a base with it.
+        bool namedDef = target == _itemDefs && !HasNumericHeader(link);
+        ItemDef? copiedBase = null;
 
         var keys = link.StoredKeys;
         if (keys == null || keys.Count == 0)
@@ -707,6 +892,19 @@ public sealed class DefinitionLoader
             // parses numerics, so resolve the defname case here before
             // delegating and leave DispIndex at 0 only for truly unknown
             // values.
+            // IBC_ID on a named definition copies the base it names, at this line
+            // (CopyBasic), and takes its graphic.
+            if (namedDef && key.Key.Equals("ID", StringComparison.OrdinalIgnoreCase) &&
+                TryResolveItemIdBase(key.Arg, out var idBase, out ushort idDisp) && idBase != null && idBase != def)
+            {
+                def.CopyBasicFrom(idBase);
+                def.DispIndex = idDisp;
+                copiedBase = idBase;
+                if (!ScriptNumber.TryParseToken(key.Arg.Trim(), out _))
+                    def.DisplayIdRef = key.Arg.Trim();
+                continue;
+            }
+
             if (key.Key.Equals("ID", StringComparison.OrdinalIgnoreCase) ||
                 key.Key.Equals("DISPID", StringComparison.OrdinalIgnoreCase))
             {
@@ -739,6 +937,16 @@ public sealed class DefinitionLoader
             def.LoadFromKey(key.Key, key.Arg);
         }
 
+        // A TYPE line naming a custom [TYPEDEF] after the ID= copy reads as a plain item
+        // here (the custom name is kept in TypeRaw for its triggers); the engine-side
+        // type stays the base's, as it did before the copy existed - only an explicit
+        // t_normal clears it.
+        if (copiedBase != null && def.Type == ItemType.Normal && copiedBase.Type != ItemType.Normal &&
+            !string.IsNullOrEmpty(def.TypeRaw) &&
+            !def.TypeRaw.Equals("t_normal", StringComparison.OrdinalIgnoreCase) &&
+            !ScriptNumber.TryParseToken(def.TypeRaw, out _))
+            def.Type = copiedBase.Type;
+
         // [ITEMDEF i_ore_bronze] with no DEFNAME line is named by its header, as
         // upstream names every resource (CResourceDef::GetResourceName). Left empty,
         // such an item read <BASEID> as the hex of the graphic it borrows with ID=,
@@ -754,6 +962,9 @@ public sealed class DefinitionLoader
 
         if (!string.IsNullOrEmpty(def.DefName))
             _resources.RegisterDefName(def.DefName, link.Id);
+        // DEFNAME2 (CBase.cpp:367-369): one more name for the same definition.
+        foreach (string alias in def.Aliases)
+            _resources.RegisterDefName(alias, link.Id);
 
         target[link.Id.Index] = def;
         if (target == _itemDefs) ItemDefsLoaded++;
@@ -772,8 +983,11 @@ public sealed class DefinitionLoader
         var keys = link.StoredKeys;
         if (keys == null || keys.Count == 0) return;
 
+        bool spellTriggerBody = false;
         foreach (var key in keys)
         {
+            if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) && key.Arg.TrimStart().StartsWith('@'))
+                spellTriggerBody = true;
             switch (key.Key.ToUpperInvariant())
             {
                 case "NAME": def.Name = key.Arg; break;
@@ -844,6 +1058,14 @@ public sealed class DefinitionLoader
                 case "SKILLREQ":
                     ParseSkillReqList(key.Arg, def.SkillReq);
                     break;
+                default:
+                    // Kept as written for <SERV.SPELL.n.key>: a key outside the
+                    // Source-X table (a custom version's own, such as FREEZE_TIME)
+                    // stays readable without changing what the engine does.
+                    if (!spellTriggerBody && !key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
+                        !key.Key.Equals("DEFNAME", StringComparison.OrdinalIgnoreCase))
+                        def.RawKeys[key.Key.Trim().ToUpperInvariant()] = key.Arg.Trim();
+                    break;
             }
         }
 
@@ -898,7 +1120,13 @@ public sealed class DefinitionLoader
         if (!string.IsNullOrWhiteSpace(def.DefName))
             _resources.RegisterDefName(def.DefName, link.Id);
 
-        _regionTypeDefs[link.Id.Index] = def;
+        // The name's terrain-less block answers a plain lookup by index; every page is
+        // kept for the natural-resource search.
+        if (link.Id.Page == 0 || !_regionTypeDefs.ContainsKey(link.Id.Index))
+            _regionTypeDefs[link.Id.Index] = def;
+        if (!_regionTypePages.TryGetValue(link.Id.Index, out var pageList))
+            _regionTypePages[link.Id.Index] = pageList = [];
+        pageList.Add(def);
         RegionTypeDefsLoaded++;
     }
 
@@ -1147,43 +1375,41 @@ public sealed class DefinitionLoader
     // and never reaches the deed handler (house/ship placement never starts).
     private void ResolveDupeItemInheritance()
     {
-        // Bounded fixpoint so DUPEITEM / ID= chains (a->b->c) settle regardless of
-        // load order without risking an infinite loop on a malformed cycle.
+        // DUPEITEM: the stub IS its master upstream - FindItemBase hands the master
+        // back for it (CItemBase.cpp:2254-2256) - so name, type, triggers' TEVENTS,
+        // value, RESOURCES, SKILLMAKE and TAGs are the master's. The stub keeps its own
+        // index, display id and tiledata geometry. A master is never a stub itself
+        // (MakeDupeReplacement refuses that "circle"), so one pass settles every stub.
+        foreach (var (index, def) in _itemDefs.ToArray())
+        {
+            if (def.DupItemId == 0)
+                continue;
+            if (ResolveDupeMaster(def, index) is not { } master)
+                continue;
+            var stubLink = _resources.GetResource(ResType.ItemDef, index);
+            var own = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (stubLink?.StoredKeys != null)
+            {
+                foreach (var key in stubLink.StoredKeys)
+                {
+                    if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase))
+                        break;
+                    own.Add(key.Key.Trim().ToUpperInvariant());
+                }
+            }
+            def.ShareDupeMaster(master, own);
+            def.DupeHasOwnTriggers = stubLink?.HasAnyTriggerBody == true;
+        }
+
+        // Bounded fixpoint so ID= chains (a->b->c) of definitions that could not copy
+        // their base when they were read settle regardless of load order.
         for (int pass = 0; pass < 4; pass++)
         {
             bool changed = false;
             foreach (var def in _itemDefs.Values)
             {
-                // DUPEITEM: full base sharing for unset TYPE / LAYER / TDATA.
-                if (def.DupItemId != 0 &&
-                    _itemDefs.TryGetValue(def.DupItemId, out var parent) && parent != def)
-                {
-                    if (def.Type == ItemType.Normal && parent.Type != ItemType.Normal)
-                    {
-                        def.Type = parent.Type;
-                        changed = true;
-                    }
-                    if (def.Layer == Layer.None && parent.Layer != Layer.None)
-                    {
-                        def.Layer = parent.Layer;
-                        changed = true;
-                    }
-                    if (def.TData1 == 0 && def.TData2 == 0 && def.TData3 == 0 && def.TData4 == 0 &&
-                        (parent.TData1 != 0 || parent.TData2 != 0 || parent.TData3 != 0 || parent.TData4 != 0))
-                    {
-                        def.TData1 = parent.TData1;
-                        def.TData2 = parent.TData2;
-                        def.TData3 = parent.TData3;
-                        def.TData4 = parent.TData4;
-                        // The names the values were resolved from travel with them,
-                        // so a dupe still answers which DEFINITION its TDATA names.
-                        def.TData1Name = parent.TData1Name;
-                        def.TData2Name = parent.TData2Name;
-                        def.TData3Name = parent.TData3Name;
-                        def.TData4Name = parent.TData4Name;
-                        changed = true;
-                    }
-                }
+                if (def.HasIdBase || def.DupeMasterIndex != 0)
+                    continue;       // ID= already copied the base when it was read
 
                 // ID=<defname>: inherit only the base TYPE (the graphic is already
                 // resolved by ResolveItemDefReferences). TYPE-only keeps this narrow

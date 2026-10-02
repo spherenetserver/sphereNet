@@ -65,7 +65,16 @@ public sealed class SpawnGroupDef : ResourceLink
         if (string.IsNullOrWhiteSpace(arg))
             return;
 
-        var parts = arg.Split(',', 2, StringSplitOptions.TrimEntries);
+        // Str_ParseCmds splits on its default separators "=, \t" (CExpression.h:329),
+        // a run of them counting once - so "ID=c_bird  10" and "ID=c_bird,10" are
+        // the same member. Splitting on the comma alone left "c_bird  10" as the
+        // member's name, which named no creature, and the member never spawned.
+        var parts = arg.Split([',', ' ', '\t', '='],
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return;
+        if (parts.Length > 2)
+            parts = [parts[0], parts[1]];
         int weight = 1;
         string charDefName;
 

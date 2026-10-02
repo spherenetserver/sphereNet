@@ -510,7 +510,8 @@ public sealed class SaveRoundTripParityTests : IDisposable
             SERIAL=0f9e6
             NAME=Stigma
             P=71,70,0
-            KILLSPLAYER=5
+            KILLS=5
+            KILLSPLAYER=8192
             KILLSNPC=12
             Sailormanship=1000
             Anatomy=507
@@ -545,6 +546,8 @@ public sealed class SaveRoundTripParityTests : IDisposable
         Assert.Contains("KILLS=5", written);               // the murder count
         Assert.Contains("Spellweaving=1000", written);     // the pack calls it Sailormanship
         Assert.Contains("KILLSNPC", written);              // kept as script-readable data
+        Assert.Contains("KILLSPLAYER", written);           // kept as script-readable data
+        Assert.DoesNotContain("KILLS=8192", written);      // never read as the murder count
 
         // The first save is the translation; from there on nothing may drift.
         var diffs = Differences(first, second);

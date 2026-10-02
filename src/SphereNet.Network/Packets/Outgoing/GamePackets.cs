@@ -103,14 +103,21 @@ public sealed class PacketCharList : PacketWriter
     public static bool AosTooltipsEnabled { get; set; } = true;
 
     public PacketCharList(string[] charNames, int maxChars = 7, bool newCharacterList = false,
-        uint flags = 0x11E8)
+        uint flags = 0x11E8,
+        IReadOnlyList<(string Name, string Area, int X, int Y, int Z, int Map, uint Cliloc)>? startCities = null)
         : base(0xA9)
     {
         _charNames = charNames;
         _maxChars = maxChars;
         _newCharacterList = newCharacterList;
         _flags = flags;
+        _cities = startCities is { Count: > 0 } ? startCities : Cities;
     }
+
+    /// <summary>The start locations this list offers: the script pack's [STARTS] when
+    /// it has any (send.cpp:3391-3420 walks g_Cfg.m_StartDefs), else the built-in
+    /// table below.</summary>
+    private readonly IReadOnlyList<(string Name, string Area, int X, int Y, int Z, int Map, uint Cliloc)> _cities;
 
     private static readonly (string Name, string Area, int X, int Y, int Z, int Map, uint Cliloc)[] Cities =
     [
@@ -150,12 +157,12 @@ public sealed class PacketCharList : PacketWriter
             buf.WriteAsciiFixed("", 30); // password (blank)
         }
 
-        byte cityCount = (byte)Cities.Length;
+        byte cityCount = (byte)Math.Min(_cities.Count, byte.MaxValue);
         buf.WriteByte(cityCount);
 
         for (byte i = 0; i < cityCount; i++)
         {
-            var city = Cities[i];
+            var city = _cities[i];
             buf.WriteByte(i);
 
             if (_newCharacterList)

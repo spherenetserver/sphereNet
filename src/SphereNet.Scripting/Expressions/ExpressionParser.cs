@@ -1086,6 +1086,14 @@ public sealed partial class ExpressionParser
             return parts.Count == 1 && parts[0].Length > 0 ? "1" : "0";
         }
 
+        // STRTOLOWER(x) / STRTOUPPER(x): StringFunction skips one '(' and reads up to
+        // the ')' (CScriptObj.cpp StringFunction, SSC_StrToLower/SSC_StrToUpper) - the
+        // same call form STRREVERSE(x) already had.
+        if (varExpr.StartsWith("STRTOLOWER(", StringComparison.OrdinalIgnoreCase))
+            return ExtractFuncArg(varExpr, 10).ToLowerInvariant();
+        if (varExpr.StartsWith("STRTOUPPER(", StringComparison.OrdinalIgnoreCase))
+            return ExtractFuncArg(varExpr, 10).ToUpperInvariant();
+
         // STRLOWER / STRTOLOWER / STRUPPER / STRTOUPPER
         if (varExpr.StartsWith("STRTOLOWER ", StringComparison.OrdinalIgnoreCase))
             return ResolveAngleBrackets(varExpr[11..].Trim()).ToLowerInvariant();
@@ -1418,6 +1426,23 @@ public sealed partial class ExpressionParser
             varExpr.StartsWith("MULDIV(", StringComparison.OrdinalIgnoreCase))
         {
             var parts = SplitFuncArgsResolved(varExpr, 6, 3);
+            if (parts.Count != 3)
+            {
+                // Upstream reads three expressions in a row, each followed by
+                // SKIP_ARGSEP (CScriptObj.cpp:1132-1136), so blanks separate the
+                // arguments as well as commas do: <MULDIV 10 3 2> is 15.
+                string all = string.Join(",", parts);
+                parts = [];
+                int p = 0;
+                for (int n = 0; n < 3 && p < all.Length; n++)
+                {
+                    int start = p;
+                    ParseExpression(all, ref p);
+                    if (p == start) break;
+                    parts.Add(all[start..p]);
+                    while (p < all.Length && (all[p] == ',' || char.IsWhiteSpace(all[p]))) p++;
+                }
+            }
             if (parts.Count == 3)
             {
                 long num = Evaluate(parts[0].AsSpan());
@@ -2590,13 +2615,28 @@ public sealed partial class ExpressionParser
                 return hex;
             return 0;
         }
+        // The float evaluator reads a number with strtod (CFloatMath::GetSingle,
+        // CFloatMath.cpp:197-218): a leading zero does NOT make it hex, so "0.25" is a
+        // quarter and "010" is ten. Reading every 0-prefixed run as Sphere hex stopped
+        // at the '.', which turned <FLOATVAL 1+0.5> into 1 and <FLOATVAL 0.5*2> into 0.
+        // A 0-prefixed run that carries a hex letter is still read as hex, the integer
+        // evaluator's meaning; strtod would stop at the letter and answer 0.
         if (text[pos] == '0')
         {
-            pos++;
-            while (pos < text.Length && IsHexDigit(text[pos])) pos++;
-            if (long.TryParse(text.AsSpan(start, pos - start), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
-                return hex;
-            return 0;
+            int end = pos + 1;
+            bool hexLetter = false;
+            while (end < text.Length && IsHexDigit(text[end]))
+            {
+                if (!char.IsDigit(text[end])) hexLetter = true;
+                end++;
+            }
+            if (hexLetter && (end >= text.Length || text[end] != '.'))
+            {
+                pos = end;
+                if (long.TryParse(text.AsSpan(start, pos - start), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
+                    return hex;
+                return 0;
+            }
         }
 
         while (pos < text.Length && (char.IsDigit(text[pos]) || text[pos] == '.'))

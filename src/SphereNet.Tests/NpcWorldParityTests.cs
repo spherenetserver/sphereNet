@@ -162,7 +162,7 @@ public sealed class NpcWorldParityTests
     }
 
     [Fact]
-    public void APlayerVendorsStockSurvivesASaveWhileATemplateVendorsDoesNot()
+    public void APlayerVendorsStockAndATemplateVendorsStockBothSurviveASave()
     {
         string dir = Path.Combine(Path.GetTempPath(), $"sphnet_pvstock_{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -192,8 +192,10 @@ public sealed class NpcWorldParityTests
 
             Assert.NotNull(dst.FindItem(stock.Uid));
             Assert.NotNull(dst.FindItem(goods.Uid));
-            Assert.Null(dst.FindItem(virtualStock.Uid));
-            Assert.Null(dst.FindItem(template.Uid));
+            // A shopkeeper's box saves like any worn container (Source-X r_Write);
+            // its next restock empties and refills it (NPC_Vendor_Restock).
+            Assert.NotNull(dst.FindItem(virtualStock.Uid));
+            Assert.NotNull(dst.FindItem(template.Uid));
         }
         finally
         {

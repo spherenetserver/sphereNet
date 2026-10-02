@@ -307,6 +307,17 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.<statement> that belongs to the generic script object rather than to the
+        // server's own verb table: CServer::r_Verb hands every key it does not own to
+        // CScriptObj::r_Verb (CServer.cpp:2276), which runs VAR/VAR0/LIST (r_LoadVal,
+        // CScriptObj.cpp:351/361) and the NEW/OBJ/UID references (r_GetRefFull,
+        // CScriptObj.cpp:1305) exactly as it would without the prefix. Only the bare
+        // forms were recognised, so SERV.VAR0.x=, SERV.LIST.x.add and SERV.NEW.prop=
+        // reached nothing and were dropped with a warning.
+        if (cmd.Length > 5 && cmd.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase) &&
+            IsServerObjectStatement(cmd.AsSpan(5)))
+            cmd = cmd[5..];
+
         // UID.<hex>.<verb> [args] — direct command on object resolved by
         // UID. Dialog admin scripts lean on this pattern, e.g.
         //     UID.<CTag.Dialog.Admin.C<Eval <ArgN>-10>>.Dialog d_X
@@ -627,15 +638,22 @@ public sealed class ScriptInterpreter
             return;
         }
 
-        if (cmd.Equals("SERV.WRITEFILE", StringComparison.OrdinalIgnoreCase) ||
-            cmd.Equals("WRITEFILE", StringComparison.OrdinalIgnoreCase))
+        // WRITEFILE / DELETEFILE are SphereNet conveniences: Source-X has no such
+        // verb, so the name reaches r_GetFunctionIndex and a pack's own
+        // [FUNCTION WRITEFILE] runs (CServer.cpp:1794). The built-in only answers
+        // when no script function claims the name; otherwise it would shadow the
+        // pack's logger (path filtering, FILE.* modes) without a trace.
+        if ((cmd.Equals("SERV.WRITEFILE", StringComparison.OrdinalIgnoreCase) ||
+             cmd.Equals("WRITEFILE", StringComparison.OrdinalIgnoreCase)) &&
+            !FunctionExists("WRITEFILE"))
         {
             ServerPropertyResolver?.Invoke($"_WRITEFILE={resolvedArg}");
             return;
         }
 
-        if (cmd.Equals("SERV.DELETEFILE", StringComparison.OrdinalIgnoreCase) ||
-            cmd.Equals("DELETEFILE", StringComparison.OrdinalIgnoreCase))
+        if ((cmd.Equals("SERV.DELETEFILE", StringComparison.OrdinalIgnoreCase) ||
+             cmd.Equals("DELETEFILE", StringComparison.OrdinalIgnoreCase)) &&
+            !FunctionExists("DELETEFILE"))
         {
             ServerPropertyResolver?.Invoke($"_DELETEFILE={resolvedArg}");
             return;
@@ -689,6 +707,14 @@ public sealed class ScriptInterpreter
             ServerPropertyResolver?.Invoke($"_SET_SEASON={resolvedArg}");
             return;
         }
+
+        // The rest of CServer::r_Verb for a SERV.<key> no handler above claimed: the
+        // server verbs without a dedicated line (ACCOUNT, RESYNC, CLEARLISTS), then a
+        // [FUNCTION] of that name run ON the server object, then ACCOUNT.<name>.<key>
+        // (CServer.cpp:1790-1830). Works with or without an attached client.
+        if (cmd.Length > 5 && cmd.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase) &&
+            TryExecuteServerVerb(cmd[5..], resolvedArg, target, source, args, scope))
+            return;
 
         // ARGS= updates the current trigger args string so subsequent
         // <ARGV[N]> accessors see the new token list. Sphere moongate
@@ -772,6 +798,111 @@ public sealed class ScriptInterpreter
         }
 
         _logger.LogWarning("Unhandled script line: {Key}={Arg}", cmd, resolvedArg);
+    }
+
+    /// <summary>The object a [FUNCTION] runs on when it is reached through SERV - the
+    /// server itself, Source-X g_Serv (CServer::r_Verb / CServerDef::r_WriteVal call
+    /// r_Call on <c>this</c>). The host wires its server context here; without one
+    /// the caller's own target stands in.</summary>
+    public IScriptObj? ServerObject { get; set; }
+
+    /// <summary>Whether SERV.&lt;rest&gt; is a statement of the generic script object
+    /// (CScriptObj::r_Verb / r_LoadVal) rather than of the server's verb table: the
+    /// global variable and list stores and the NEW / OBJ / UID references.</summary>
+    private static bool IsServerObjectStatement(ReadOnlySpan<char> rest)
+    {
+        int dot = rest.IndexOf('.');
+        var head = dot < 0 ? rest : rest[..dot];
+        if (dot < 0)
+            return head.Equals("NEW", StringComparison.OrdinalIgnoreCase) ||
+                   head.Equals("OBJ", StringComparison.OrdinalIgnoreCase);
+        if (dot == rest.Length - 1)
+            return false;
+        return head.Equals("VAR", StringComparison.OrdinalIgnoreCase) ||
+               head.Equals("VAR0", StringComparison.OrdinalIgnoreCase) ||
+               head.Equals("LIST", StringComparison.OrdinalIgnoreCase) ||
+               head.Equals("NEW", StringComparison.OrdinalIgnoreCase) ||
+               head.Equals("OBJ", StringComparison.OrdinalIgnoreCase) ||
+               head.Equals("UID", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>CServer::r_Verb for a key no dedicated SERV line handled, in its order
+    /// (CServer.cpp:1790-1866): the verb table (ACCOUNT, RESYNC, CLEARLISTS), a script
+    /// [FUNCTION] of that name called on the server with the line's argument as its
+    /// ARGS/ARGN, and ACCOUNT.&lt;name&gt;.&lt;key&gt; loaded onto the named account.
+    /// False leaves the line to the remaining dispatch, as before.</summary>
+    private bool TryExecuteServerVerb(string rest, string resolvedArg, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
+    {
+        // SV_ACCOUNT -> CAccounts::Account_OnCmd(args, pSrc), which refuses a caller
+        // below PLEVEL_Admin (CAccount.cpp:427). A line with no console runs as the
+        // server, as a server hook does upstream.
+        if (rest.Equals("ACCOUNT", StringComparison.OrdinalIgnoreCase))
+        {
+            int plevel = (int)(source?.GetPrivLevel() ?? PrivLevel.Owner);
+            ServerPropertyResolver?.Invoke($"_SERV_ACCOUNT={plevel}|{resolvedArg}");
+            return true;
+        }
+
+        // SV_RESYNC only flags the request; the resync itself runs on the next server
+        // tick, never inside the script that asked for it (CServer.cpp:2191).
+        if (rest.Equals("RESYNC", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke("_RESYNC_REQUEST");
+            return true;
+        }
+
+        // SV_CLEARLISTS: ClearKeys(prefix) on the global lists.
+        if (rest.Equals("CLEARLISTS", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke(resolvedArg.Length > 0 ? $"CLEARLISTS {resolvedArg}" : "CLEARLISTS");
+            return true;
+        }
+
+        // RES_FUNCTION call: pScriptArgs->Init(GetArgRaw()) and r_Call on g_Serv.
+        if (FunctionExists(rest) && (CallFunctionWithScope != null || CallFunction != null))
+        {
+            var funcArgs = new TriggerArgs { Source = args?.Source };
+            funcArgs.InitFromRaw(resolvedArg);
+            InvokeFunction(rest, ServerObject ?? target, source, funcArgs, scope);
+            return true;
+        }
+
+        // ACCOUNT.<name>.<key> value: pAccount->r_LoadVal, no privilege test.
+        if (rest.Length > 8 && rest.StartsWith("ACCOUNT.", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_SERV_ACCOUNT_SET={rest[8..]}={resolvedArg}");
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>&lt;SERV.name args&gt; answered by a [FUNCTION] of that name, run on the
+    /// server object with the text after the name as its arguments (CServerDef.cpp:509).
+    /// Null when no such function exists.</summary>
+    private string? CallServerFunctionRead(string servProp, IScriptObj target, ITextConsole? source,
+        ITriggerArgs? args, ScriptScope? scope)
+        => CallFunctionRead(servProp, ServerObject ?? target, target, source, args, scope);
+
+    /// <summary>Call the [FUNCTION] named by the first word of <paramref name="text"/>
+    /// on <paramref name="onObject"/>, the rest of the text being its arguments, and
+    /// hand back its value; null when no such function exists.</summary>
+    private string? CallFunctionRead(string text, IScriptObj onObject, IScriptObj target, ITextConsole? source,
+        ITriggerArgs? args, ScriptScope? scope)
+    {
+        if (_returnValueReads > 0)
+            return null;
+        text = text.Trim();
+        int split = text.IndexOfAny([' ', '\t']);
+        string name = split < 0 ? text : text[..split];
+        string argString = split < 0 ? "" : text[(split + 1)..].Trim();
+        if (ResolveFunctionExpressionWithScope != null && scope != null)
+        {
+            string? v = ResolveFunctionExpressionWithScope(name, argString, onObject, source, args, scope);
+            if (v != null) return v;
+        }
+        return ResolveFunctionExpression?.Invoke(name, argString, onObject, source, args);
     }
 
     /// <summary>Scope/trigger-arg assignment lines (LOCAL.x=, ARGN/ARGS, REFn=,
@@ -2130,6 +2261,34 @@ public sealed class ScriptInterpreter
         if (varName.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase))
         {
             string servProp = varName[5..];
+
+            // A [FUNCTION] named by the WHOLE token - a pack's [FUNCTION SERV.DAYNAME] -
+            // is called before the SERV reference is even followed: CObjBase::r_WriteVal
+            // looks the full key up with r_GetFunctionIndex first (CObjBase.cpp:974),
+            // on the calling object. Asking the server first let its d-prefix reading
+            // answer DAYNAME as <dAYNAME> = "0", so the pack's function never ran.
+            int wholeEnd = varName.IndexOfAny([' ', '\t']);
+            if (FunctionExists(wholeEnd < 0 ? varName : varName[..wholeEnd]))
+            {
+                string? wholeRead = CallFunctionRead(varName, target, target, source, args, scope);
+                if (wholeRead != null) return wholeRead;
+            }
+
+            // A [FUNCTION] named by the key comes after the server's own keys but
+            // BEFORE anything treats the word as a constant (CServer::r_WriteVal ->
+            // g_Cfg / g_World keys, then CServerDef::r_WriteVal's r_Call,
+            // CServerDef.cpp:509). A function is itself a named resource, so the
+            // defname fallback answered <SERV.f_x> with the function's resource index
+            // - a large non-zero number - and the function never ran.
+            int fnEnd = servProp.IndexOfAny([' ', '\t']);
+            if (FunctionExists(fnEnd < 0 ? servProp : servProp[..fnEnd]))
+            {
+                string? keyVal = ServerPropertyResolver?.Invoke("_SERVKEY=" + servProp);
+                if (keyVal != null) return keyVal;
+                string? fnRead = CallServerFunctionRead(servProp, target, source, args, scope);
+                if (fnRead != null) return fnRead;
+            }
+
             string? servVal = ServerPropertyResolver?.Invoke(servProp);
             if (servVal != null) return servVal;
 
@@ -2198,6 +2357,15 @@ public sealed class ScriptInterpreter
         {
             string? v = ServerPropertyResolver?.Invoke(varName);
             return v ?? "";
+        }
+
+        // LIST.<name>... — the global lists read without the SERV prefix (SSC_LIST is
+        // a CScriptObj key, CScriptObj.cpp:657). The write was bare-capable; the read
+        // was only answered as SERV.LIST and came back unresolved.
+        if (varName.StartsWith("LIST.", StringComparison.OrdinalIgnoreCase) && varName.Length > 5)
+        {
+            string? v = ServerPropertyResolver?.Invoke(varName);
+            if (v != null) return v;
         }
 
         // OBJ / OBJ.property — global object reference

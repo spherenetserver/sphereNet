@@ -565,7 +565,11 @@ public sealed class Sector : IScriptObj
             {
                 var ch = scratch[i];
                 if (ch.IsDeleted) { _characters.Remove(ch); continue; }
-                if (!ch.IsSleeping)
+                // A player who has left the game is disconnected and does not tick
+                // at all - no regen, no hunger, no memory or criminal clock, no field
+                // damage (CChar::_TickableStateBase is false while IsDisconnected,
+                // CCharAct.cpp:5824-5833).
+                if (!ch.IsSleeping && !ch.IsDisconnectedPlayer)
                 {
                     try { ch.OnTick(); }
                     catch (Exception ex) { SphereNet.Game.Diagnostics.TickFaults.Report(ch, "char tick", ex); }

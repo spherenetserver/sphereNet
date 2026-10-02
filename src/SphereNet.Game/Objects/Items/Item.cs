@@ -182,6 +182,16 @@ public class Item : ObjBase
     /// <summary>The ITEMDEF's TAG map, behind the item's own (Base_GetDef()->m_TagDefs).</summary>
     protected override SphereNet.Scripting.Variables.VarMap? DefinitionTags => ResolveDefinition()?.TagDefs;
 
+    /// <summary>An ITEMDEF's TAGs stay on the definition (upstream never copies them
+    /// onto the item; a TAG read falls back to them, CObjBase.cpp:1553), so an engine
+    /// read of an item tag goes on to the definition too - exactly what it saw when
+    /// every definition tag was stamped onto every new item. The routing tags that
+    /// FIND the definition never do.</summary>
+    protected override bool TagFallsBackToDefinition(string key) =>
+        !key.Equals("SCRIPTDEF", StringComparison.OrdinalIgnoreCase) &&
+        !key.Equals("ITEMDEF", StringComparison.OrdinalIgnoreCase) &&
+        ResolveDefinition()?.TagLineKeys.Contains(key) == true;
+
     /// <summary>The type this item ACTUALLY is, for the property surface: the instance
     /// override when it has one, otherwise the type its definition declares.
     ///
@@ -1272,12 +1282,44 @@ public class Item : ObjBase
 
     /// <summary>Try to add an item without silently losing the operation when the
     /// container is full. Returns true only when containment was established.</summary>
-    public bool TryAddItem(Item item)
+    public bool TryAddItem(Item item) => TryAddItemCore(item, enforceCapacity: true);
+
+    /// <summary>World-load containment: the save's own CONT link, put back whatever
+    /// the container already holds. Source-X CItemContainer::ContentAdd has no item
+    /// ceiling at all and runs no fullness check while loading
+    /// (CItemContainer.cpp:552/743, IsLoadingGeneric); the item limit lives only in
+    /// CanContainerHold, the drop/move gate (CItemContainer.cpp:897-903). A pack
+    /// saved with more than the client ceiling (TAG.OVERRIDE.MAXITEMS, staff drops,
+    /// script delivery) therefore loads intact. Only a containment cycle refuses.</summary>
+    public bool AddItemOnLoad(Item item) => TryAddItemCore(item, enforceCapacity: false);
+
+    /// <summary>The engine-side ceiling for one container: the client limit, raised
+    /// by the container's own TAG.OVERRIDE.MAXITEMS when that asks for more (the tag
+    /// is what CanContainerHold reads, CItemContainer.cpp:899-900), so a drop the
+    /// gate accepted is not refused again here.</summary>
+    public int EffectiveMaxItems
+    {
+        get
+        {
+            if (TryGetTag("OVERRIDE.MAXITEMS", out string? raw) &&
+                long.TryParse(raw?.Trim(), out long tagMax) && tagMax > MaxContainerItems)
+                return (int)Math.Min(tagMax, int.MaxValue);
+            return MaxContainerItems;
+        }
+    }
+
+    /// <summary>Does this container's subtree contain <paramref name="target"/>?
+    /// True means adding <paramref name="target"/> here would close a cycle.</summary>
+    public bool WouldFormCycle(Item target) =>
+        ReferenceEquals(target, this) || target.ContainsInSubtree(this);
+
+    private bool TryAddItemCore(Item item, bool enforceCapacity)
     {
         if (item == this || IsDeleted || item.IsDeleted) return false;
         if (_contents.Contains(item))
             return item.ContainedIn == Uid;
-        if (_contents.Count >= MaxContainerItems)
+        if (enforceCapacity && _contents.Count >= MaxContainerItems &&
+            _contents.Count >= EffectiveMaxItems)
             return false;
         if (item.ContainsInSubtree(this)) return false;
 
@@ -2808,7 +2850,7 @@ public class Item : ObjBase
                 case "ABILITYPRIMARY": case "ABILITYSECONDARY":
                 // IBC_ALTERITEM (CItemBase.cpp:1091): GetDefStr, "" when unset.
                 case "ALTERITEM":
-                    value = def.TagDefs.Get(upper) ?? "";
+                    value = def.BaseDefs.Get(upper) ?? def.TagDefs.Get(upper) ?? "";
                     return true;
                 case "EXPANSION": case "VELOCITY": case "NAMELOC":
                     value = ParseBaseDefNumber(def.TagDefs.Get(upper)).ToString();

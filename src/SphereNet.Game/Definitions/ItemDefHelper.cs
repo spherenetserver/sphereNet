@@ -65,8 +65,15 @@ public static class ItemDefHelper
         item.TData3 = def.TData3;
         item.TData4 = def.TData4;
 
+        // The definition's TAG.x lines are NOT copied onto the item: upstream keeps
+        // them on the definition and a TAG read falls back to them
+        // (CObjBase.cpp:1553), which Item.TryGetTag and <TAG.x> both do. Copying them
+        // made every item carry the definition's tags in the save, and an item
+        // re-based onto another definition kept the old one's. The property keys the
+        // engine keeps in the same map are still given to the instance as before.
         foreach (var (key, value) in def.TagDefs.GetAll())
-            item.SetTag(key, value);
+            if (!def.TagLineKeys.Contains(key))
+                item.SetTag(key, value);
 
         // Upstream copies the definition's combat ratings onto the instance when it
         // is made (CBase.cpp:416-419), which is what makes them changeable on one

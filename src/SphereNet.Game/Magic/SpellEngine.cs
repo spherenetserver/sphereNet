@@ -2386,7 +2386,9 @@ public sealed partial class SpellEngine
         if (def.IsFlag(SpellFlag.Heal) && effectDef.Id != SpellType.NobleSacrifice)
         {
             caster.FlagForHelpingCriminalIfNeeded(target);
+            short hitsBefore = target.Hits;
             target.Hits = (short)Math.Min(target.Hits + effect, target.MaxHits);
+            target.NotifyStatValChange(Character.StatValHits, hitsBefore, caster);
         }
         // Buffs and curses by spell id, as Source-X OnSpellEffect switches on the
         // spell (CCharSpell.cpp:3874). Keying them on SPELLFLAG_BLESS/CURSE lost

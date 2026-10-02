@@ -272,6 +272,12 @@ public sealed partial class PartyManager
 
         if (sendMessages)
             io.SysMessage?.Invoke(accept, ServerMessages.Get(Msg.PartyAdded));
+
+        // Sphere 0.56T (stock and custom versions): @PartyJoin on the character who has
+        // just joined, SRC = the one who brought them in. It follows the join - the
+        // pack's body adds the in-party events from there - so it cannot refuse it;
+        // the Source-X @PartyAdd above is still the veto.
+        io.Triggers?.FireCharTriggerIfUsed(accept, "PartyJoin", new TriggerArgs { CharSrc = inviter });
         return true;
     }
 

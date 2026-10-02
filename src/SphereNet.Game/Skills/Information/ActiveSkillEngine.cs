@@ -741,7 +741,9 @@ public static class ActiveSkillEngine
         int heal = ch.ActionEffect >= 0
             ? ch.ActionEffect
             : SkillEngine.GetEffect(healingSkill, SkillEngine.GetAdjustedSkill(ch, healingSkill), 1);
+        short hitsBefore = target.Hits;
         target.Hits = (short)Math.Min(target.MaxHits, target.Hits + Math.Max(0, heal));
+        target.NotifyStatValChange(Character.StatValHits, hitsBefore, ch);
         return true;
     }
 

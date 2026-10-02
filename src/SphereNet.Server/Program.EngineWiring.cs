@@ -303,6 +303,9 @@ public static partial class Program
                 _ => null,
             };
             scriptInterpreter.ServerPropertyResolver = ResolveServerProperty;
+            // SERV.<function> runs ON the server (Source-X g_Serv), the same context the
+            // server hooks run in - which is also what world queries hang off.
+            scriptInterpreter.ServerObject = _serverHookContext;
             _triggerDispatcher.Runner = _triggerRunner;
             ConfigureGlobalScriptHooks(_triggerDispatcher, _config);
 
@@ -362,6 +365,17 @@ public static partial class Program
                     gc.SendCharacterStatus(ch);
                 }
             };
+            // Sphere 56T custom-version compatibility: @StatGain, RETURN 1 refuses the
+            // gain (ARGN1 = stat, ARGN2 = current, ARGN3 = new value).
+            SkillEngine.OnStatGainCheck = (ch, stat, current, next) =>
+                _triggerDispatcher?.FireCharTriggerIfUsed(ch, "StatGain",
+                    new TriggerArgs { CharSrc = ch, N1 = stat, N2 = current, N3 = next }) == TriggerResult.True;
+            // Sphere 56T custom-version compatibility: @StatValChange where a blow or a
+            // heal moves a pool - ARGN1 = pool (0 hits, 1 mana, 2 stamina), ARGN2 =
+            // old, ARGN3 = new, ARGO = who caused it, SRC = the character itself.
+            Character.OnStatValChange = (ch, stat, oldValue, newValue, cause) =>
+                _triggerDispatcher?.FireCharTriggerIfUsed(ch, "StatValChange",
+                    new TriggerArgs { CharSrc = ch, N1 = stat, N2 = oldValue, N3 = newValue, O1 = cause });
             SkillEngine.OnStatDecrease = (ch, statIdx, newVal) =>
             {
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.StatChange,
@@ -832,10 +846,8 @@ public static partial class Program
                 _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Destroy,
                     new SphereNet.Game.Scripting.TriggerArgs()) != TriggerResult.True;
             _world.PlayerDeleteAllowed = ch =>
-                _triggerRunner == null || !_triggerRunner.TryRunFunction("f_onchar_delete", ch,
-                    new RefExecConsole(ch), new SphereNet.Scripting.Execution.TriggerArgs(ch)
-                    { Object1 = FindGameClient(ch) },
-                    out var result) || result != TriggerResult.True;
+                SphereNet.Game.Scripting.GlobalHookCalls.PlayerDeleteAllowed(_triggerRunner, ch,
+                    new RefExecConsole(ch), FindGameClient(ch), GameClient.CharSelectDeleter);
             // Script OPEN / DCLICK / USE verbs: resolve the acting console to
             // its GameClient and replay the real client paths. Non-client
             // consoles (telnet, headless script runs) stay ack-only.
@@ -2152,12 +2164,12 @@ public static partial class Program
             // char placed in the world is awake where it stands. Here it was made
             // visible and left out of the wheel, so it stood there doing nothing.
             _world.CharacterPlaced += WakeNpc;
-            _accounts.AccountCreated += account => _systemHooks.DispatchAccount("create", account);
             _accounts.AccountLogin += account => _systemHooks.DispatchAccount("login", account);
-            _accounts.AccountDeleted += account => _systemHooks.DispatchAccount("delete", account);
-            _accounts.AccountPasswordChanged += account => _systemHooks.DispatchAccount("pwchange", account);
-            _accounts.AccountBlocked += account => _systemHooks.DispatchAccount("block", account);
-            _accounts.AccountUnblocked += account => _systemHooks.DispatchAccount("unblock", account);
+            // f_onaccount_create/delete/pwchange/block/unblock/connect run on the
+            // server object with ARGS = the account name and can veto (CAccount.cpp);
+            // they are asked BEFORE the change, so they are not event subscribers.
+            SphereNet.Game.Accounts.Account.ScriptHooks =
+                new SphereNet.Game.Accounts.ScriptAccountHooks(_systemHooks, _serverHookContext);
             _accounts.AccountsChanged += SaveAccountsToDisk;
 
             // Wire config values to engines
@@ -2168,29 +2180,11 @@ public static partial class Program
             _world.MapData = _mapData;
 
             // Wire combat weapon damage lookup from ItemDef definitions
-            CombatEngine.WeaponDefLookup = (baseId) =>
-            {
-                var link = _resources.GetResource(ResType.ItemDef, baseId);
-                if (link == null) return null;
-                using var sf = link.OpenAtStoredPosition();
-                if (sf == null) return null;
-                var sections = sf.ReadAllSections();
-                int damMin = 0, damMax = 0;
-                foreach (var sec in sections)
-                {
-                    foreach (var key in sec.Keys)
-                    {
-                        if (key.Key.Equals("DAM", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var parts = key.Arg.Split(',');
-                            int.TryParse(parts[0].Trim(), out damMin);
-                            if (parts.Length > 1) int.TryParse(parts[1].Trim(), out damMax);
-                            else damMax = damMin;
-                        }
-                    }
-                }
-                return damMax > 0 ? (damMin, damMax) : null;
-            };
+            // The weapon's damage is its loaded definition's DAM (m_attackBase /
+            // m_attackRange, CBase.cpp:345) - ID= inheritance and DUPEITEM sharing
+            // included. Re-opening the script section and reading every section to the
+            // end of the file let the LAST DAM line of the whole file win.
+            CombatEngine.WeaponDefLookup = CombatEngine.WeaponDamageFromDefinition;
 
             CombatEngine.NpcDamageDefLookup = (defIndex) =>
             {
@@ -2318,6 +2312,11 @@ public static partial class Program
             // @GetHit on the LOCAL.ItemDamageLayer piece, on the damage after armour.
             CombatEngine.OnGetHit = ctx =>
                 _triggerDispatcher?.RunGetHitTriggers(ctx) ?? ctx.Damage;
+
+            // Sphere 56T custom-version compatibility: f_onchar_armor_calculation
+            // decides the pre-AOS armour stage when the pack defines it.
+            CombatEngine.OnArmorCalculation = ctx =>
+                SphereNet.Game.Scripting.GlobalHookCalls.RunArmorCalculation(_triggerRunner, ctx);
 
             CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage, damageType) =>
             {
@@ -2738,7 +2737,8 @@ public static partial class Program
             SphereNet.Game.Clients.GameClient.ServerListProvider = BuildServerList;
             SphereNet.Game.Clients.GameClient.BotSpawnLocationProvider = acctName =>
             {
-                if (_botEngine == null || !SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(acctName))
+                if (_botEngine == null || !SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(acctName) ||
+                    _accounts.FindAccount(acctName) is not { IsEngineInternal: true })
                     return null;
                 // Seeded from a stable hash of the account name: string.GetHashCode is
                 // randomized per process, which put the same bot on a different tile on
@@ -3188,8 +3188,9 @@ public static partial class Program
                         // resolver Sphere uses for ACCOUNT.* lookups.
                         var acct = SphereNet.Game.Objects.Characters.Character
                             .ResolveAccountForChar?.Invoke(target.Uid);
-                        if (acct != null)
-                            acct.IsBanned = true;
+                        // CAccount::Kick(fBlock) -> SetBlockStatus(true): the
+                        // block hook runs, and only when the state changes.
+                        acct?.SetBlockStatus(true);
                     }
                     c.NetState.MarkClosing();
                 }
@@ -3548,6 +3549,14 @@ public static partial class Program
 
             // Bot stress test engine (.bot / .botmenu)
             _botEngine = new SphereNet.Game.Diagnostics.BotEngine(_loggerFactory.CreateLogger<SphereNet.Game.Diagnostics.BotEngine>());
+            // The bots' accounts carry a prefix no player may register, so the login
+            // path makes them through the internal account door - for the bots this
+            // server is running, and, when the server was started for an external bot
+            // fleet (--botcity / --botcluster), for any bot-shaped name.
+            bool externalBotFleet = _botSpawnCluster || !string.IsNullOrEmpty(_botSpawnCity);
+            _accounts.InternalAccountGate = name =>
+                SphereNet.Game.Diagnostics.BotEngine.IsLiveBotAccount(name) ||
+                (externalBotFleet && SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(name));
             // Soak placement (--botcity/--botcluster): the server positions incoming
             // bot logins (BotSpawnLocationProvider -> this engine), so clustering an
             // out-of-process fleet is configured here, not on the runner.

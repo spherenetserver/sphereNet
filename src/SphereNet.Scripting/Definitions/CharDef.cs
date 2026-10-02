@@ -153,6 +153,71 @@ public sealed class CharDef : BaseDef
 
     public CharDef(ResourceId id) : base(id) { }
 
+    /// <summary>True when an ID= line copied a base creature into this one.</summary>
+    public bool HasIdBase { get; set; }
+
+    /// <summary>CCharBase::CopyBasic (CCharBase.cpp:71-94) and the CBaseBaseDef half
+    /// it ends with (CBase.cpp:399-422), which an <c>ID=</c> line naming a creature
+    /// body runs when it is read (SetDispID, CCharBase.cpp:104-129). Keys written
+    /// before it are overwritten, the name excepted; keys after it override. Stats,
+    /// skills, brain, speech, TAGs and TEVENTS are not part of it.</summary>
+    public void CopyBasicFrom(CharDef b)
+    {
+        TrackId = b.TrackId;
+        SoundBase = b.SoundBase;
+        SoundIdle = b.SoundIdle;
+        SoundNotice = b.SoundNotice;
+        SoundHit = b.SoundHit;
+        SoundGetHit = b.SoundGetHit;
+        SoundDie = b.SoundDie;
+        BloodColor = b.BloodColor;
+        MaxFood = b.MaxFood;
+        MaxFoodExplicit = b.MaxFoodExplicit;
+        FoodType = b.FoodType;
+        FoodTypeRaw = b.FoodTypeRaw;
+        Desires.Clear(); Desires.AddRange(b.Desires);
+        DesireQtys.Clear(); DesireQtys.AddRange(b.DesireQtys);
+        Anim = b.Anim;
+        RangeMin = b.RangeMin; RangeMax = b.RangeMax;
+        BaseResources.Clear(); BaseResources.AddRange(b.BaseResources);
+        CarveResources.Clear(); CarveResources.AddRange(b.CarveResources);
+
+        // CBaseBaseDef::CopyBasic
+        if (string.IsNullOrEmpty(Name))
+            Name = b.Name;
+        Height = b.Height;
+        ResLevel = b.ResLevel;
+        ResDispDnHue = b.ResDispDnHue;
+        ResDispDnId = b.ResDispDnId;
+        ResDispDnIdRaw = b.ResDispDnIdRaw;
+        AttackMin = b.AttackMin; AttackMax = b.AttackMax;
+        DefenseMin = b.DefenseMin; DefenseMax = b.DefenseMax;
+        Can = b.Can;
+        // CEntityProps::Copy - the resistances and damage split a creature carries
+        // as property components, and the property tags kept on the definition.
+        ResPhysical = b.ResPhysical; ResFire = b.ResFire; ResCold = b.ResCold;
+        ResPoison = b.ResPoison; ResEnergy = b.ResEnergy;
+        ResPhysicalMax = b.ResPhysicalMax; ResFireMax = b.ResFireMax; ResColdMax = b.ResColdMax;
+        ResPoisonMax = b.ResPoisonMax; ResEnergyMax = b.ResEnergyMax;
+        ReflectPhysicalDam = b.ReflectPhysicalDam;
+        DamPhysical = b.DamPhysical; DamFire = b.DamFire; DamCold = b.DamCold;
+        DamPoison = b.DamPoison; DamEnergy = b.DamEnergy;
+        var props = new Variables.VarMap();
+        props.CopyFrom(b.TagDefs);
+        foreach (var (k, _) in b.TagDefs.GetAll())
+            if (!IsCharPropertyTagKey(k))
+                props.Remove(k);
+        TagDefs.CopyFrom(props);
+        HasIdBase = true;
+    }
+
+    private static bool IsCharPropertyTagKey(string key) =>
+        key.Equals("FACTION_GROUP", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("FACTION_SPECIES", StringComparison.OrdinalIgnoreCase) ||
+        AosOnHitProperties.Contains(key) || AosEquipProperties.Contains(key) ||
+        SpellCastingProperties.Contains(key) ||
+        key.Equals(CombatSpeedProperties.IncreaseSwingSpeed, StringComparison.OrdinalIgnoreCase);
+
     public void LoadFromKey(string key, string value)
     {
         switch (key.ToUpperInvariant())
@@ -264,7 +329,10 @@ public sealed class CharDef : BaseDef
             case "DESIRES": ParseDesireList(value); break;
             case "AVERSIONS": ParseResourceList(value, Aversions); break;
             case "SUBSECTION": Subsection = value.Trim(); break;
-            case "DESCRIPTION": Description = value.Trim(); break;
+            // DESCRIPTION=@ is "the same as SUBSECTION" (CBase.cpp:330-331).
+            case "DESCRIPTION":
+                Description = value.Trim() == "@" ? Subsection : value.Trim();
+                break;
             case "FOLLOWERSLOTS": int.TryParse(value, out int fs); FollowerSlots = fs; break;
             // Source-X CCPropsChar FACTION_GROUP/FACTION_SPECIES (the Slayer
             // system's NPC side) — stored as def-tags so ApplyNpcDefinitionTags
@@ -578,15 +646,16 @@ public sealed class CharDef : BaseDef
                 return (bsingle, bsingle);
             return (0, 0);
         }
-        int comma = value.IndexOf(',');
-        if (comma >= 0)
-        {
-            int.TryParse(value.AsSpan(0, comma).Trim(), out int min);
-            int.TryParse(value.AsSpan(comma + 1).Trim(), out int max);
-            return (min, max);
-        }
-        int.TryParse(value, out int single);
-        return (single, single);
+        // Str_ParseCmds over "=, \t", each part read as the expression reader takes a
+        // number (CBase.cpp:345): DAM=1.5 is 15, as upstream reads it.
+        var pieces = value.Split([',', ' ', '\t', '='],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pieces.Length == 0)
+            return (0, 0);
+        int first = ItemDef.ParseLeadingInt(pieces[0]);
+        if (pieces.Length == 1)
+            return (first, first);
+        return (first, ItemDef.ParseLeadingInt(pieces[1]));
     }
 
     private static (int Min, int Max) ParseSkillRange(string value)

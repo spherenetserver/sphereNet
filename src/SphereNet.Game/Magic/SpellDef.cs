@@ -156,8 +156,20 @@ public sealed class SpellDef
             return true;
         }
 
+        // A key the engine does not know, as the section wrote it - a custom
+        // version's own spell key (FREEZE_TIME on a Sphere 56T pack) stays readable
+        // through <SERV.SPELL.n.key>.
+        if (RawKeys.TryGetValue(upper, out string? raw))
+        {
+            value = raw;
+            return true;
+        }
+
         return false;
     }
+
+    /// <summary>Definition keys no field reads, by upper-case key, last value wins.</summary>
+    public Dictionary<string, string> RawKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Get the circle (1-8) for magery spells.</summary>
     public int GetCircle() => Id switch

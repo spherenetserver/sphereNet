@@ -179,6 +179,12 @@ public sealed partial class GameClient
             : new PacketServerList("SphereNet", 0x7F000001));
     }
 
+    /// <summary>The post-creation character hooks in order: the 56T custom-version
+    /// _init hook, Source-X's f_onchar_create, then the 56T f_onchar_create_player.
+    /// A name the pack does not define is skipped.</summary>
+    private static readonly string[] CharCreateHooks =
+        ["f_onchar_create_player_init", "f_onchar_create", "f_onchar_create_player"];
+
     public void HandleGameLogin(string account, string password, uint authId)
     {
         if (IsLoginLimited(account))
@@ -383,7 +389,18 @@ public sealed partial class GameClient
         _netState.Send(new PacketFeatureEnable(featureFlags, _netState.IsClientPost60142));
         _netState.Send(new PacketCharList(
             _account.GetCharNames(uid => _world.FindChar(uid)?.GetName()),
-            maxChars, _netState.SupportsNewCharacterList, charListFlags));
+            maxChars, _netState.SupportsNewCharacterList, charListFlags, StartCityList()));
+    }
+
+    /// <summary>The pack's [STARTS] list as the 0xA9 city rows (CStartLoc: area, place
+    /// name, point, cliloc); null when the pack declares none.</summary>
+    private IReadOnlyList<(string Name, string Area, int X, int Y, int Z, int Map, uint Cliloc)>? StartCityList()
+    {
+        var starts = _commands?.Resources?.Starts;
+        if (starts == null || starts.Count == 0)
+            return null;
+        return starts.Select(s => (string.IsNullOrEmpty(s.Area) ? s.Name : s.Area, s.Name,
+            (int)s.Point.X, (int)s.Point.Y, (int)s.Point.Z, (int)s.Point.Map, s.Cliloc)).ToList();
     }
 
     private bool IsLoginLimited(string account)
@@ -481,10 +498,13 @@ public sealed partial class GameClient
             var info = PendingCharCreate;
             PendingCharCreate = null;
 
+            // ARGN1 = client feature flags, ARGN2 = profession, ARGN3 = race, ARGS = the
+            // account, ARGO = the client (receive.cpp:207-214).
             var createHookArgs = new SphereNet.Scripting.Execution.TriggerArgs(
                 _character, unchecked((int)(info?.ClientFlags ?? 0)), info?.Profession ?? 0, _account.Name)
             {
-                Number3 = info?.Race ?? 1
+                Number3 = info?.Race ?? 1,
+                Object1 = this,
             };
             if (_triggerDispatcher?.Runner is { } initRunner &&
                 initRunner.TryRunFunction(
@@ -592,8 +612,16 @@ public sealed partial class GameClient
             // Spawn at the starting city the player picked (its index into the
             // 0xA9 city list), not always city 0. Bots keep their provider-driven
             // spawn; a missing/out-of-range index falls back to [STARTS]/Britain.
+            // The index is into the list that was sent - the pack's [STARTS] when it
+            // has one (m_StartDefs[iStartLoc], CChar.cpp:1751).
             Point3D? cityPos = null;
-            if (info != null &&
+            var packStarts = _commands?.Resources?.Starts;
+            if (info != null && packStarts is { Count: > 0 })
+            {
+                if (info.City >= 0 && info.City < packStarts.Count)
+                    cityPos = packStarts[info.City].Point;
+            }
+            else if (info != null &&
                 SphereNet.Network.Packets.Outgoing.PacketCharList.GetCity(info.City) is { } c)
                 cityPos = new Point3D((short)c.X, (short)c.Y, (sbyte)c.Z, (byte)c.Map);
 
@@ -637,20 +665,30 @@ public sealed partial class GameClient
                     pants.Hue = new Color(ClampCreateClothHue(info.PantsHue));
             }
 
-            // Reference serv_triggers pipeline: every fresh player character
-            // runs f_onchar_create_player and then f_onchar_setup_player once
-            // it exists server-side — the pack's own start setup (skillclass,
-            // Char_Start_Player) lives behind these functions.
+            // Once the character exists server-side, Source-X runs f_onchar_create with
+            // the character as SRC and the creation arguments read-only; RETURN 1
+            // deletes it again (receive.cpp:229-240).
+            //
+            // Sphere 56T custom-version compatibility: that version names its hooks
+            // f_onchar_create_player_init and f_onchar_create_player and runs both on
+            // the finished character - the _init body swaps an elf/gargoyle body and
+            // its hair for a human one through SRC.BODY / SRC.FINDTYPE.T_HAIR, which
+            // exist only once body and hair are applied. Each runs only when the pack
+            // defines it, with the same arguments and veto, next to the Source-X hook
+            // rather than instead of it.
             var createRunner = _triggerDispatcher?.Runner;
             if (createRunner != null)
             {
-                if (createRunner.TryRunFunction("f_onchar_create", _character, this, createHookArgs, out var createResult) &&
-                    createResult == TriggerResult.True)
+                foreach (string createHook in CharCreateHooks)
                 {
-                    _world.DeleteObject(_character);
-                    _character = null;
-                    ReturnToCharacterList();
-                    return;
+                    if (createRunner.TryRunFunction(createHook, _character, this, createHookArgs, out var createResult) &&
+                        createResult == TriggerResult.True)
+                    {
+                        _world.DeleteObject(_character);
+                        _character = null;
+                        ReturnToCharacterList();
+                        return;
+                    }
                 }
             }
 
@@ -684,8 +722,9 @@ public sealed partial class GameClient
 
         // Bot accounts get a combat/magic buff so the load/test bots can actually
         // fight and cast (newbie stats can't out-damage monsters). Bot accounts
-        // are ephemeral test accounts; re-applied on every login.
-        if (_account != null && _character != null &&
+        // are ephemeral test accounts; re-applied on every login. Only an account
+        // the engine made for its own bots qualifies - never a name alone.
+        if (_account is { IsEngineInternal: true } && _character != null &&
             SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(_account.Name))
             ApplyBotCombatBuff(_character);
 
@@ -743,7 +782,7 @@ public sealed partial class GameClient
         _netState.Send(new PacketCharList(
             _account.GetCharNames(uid => _world.FindChar(uid)?.GetName()),
             maxChars, _netState.SupportsNewCharacterList,
-            BuildCharacterListFlags(resDisp, maxChars, ServerToolTipMode != 0)));
+            BuildCharacterListFlags(resDisp, maxChars, ServerToolTipMode != 0), StartCityList()));
     }
 
     private static void ApplyBotCombatBuff(Character ch)
@@ -995,7 +1034,8 @@ public sealed partial class GameClient
         var loginArgs = new TriggerArgs { CharSrc = _character, N1 = 0, N2 = 0 };
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogIn, loginArgs);
         bool quietLogin = loginArgs.N1 != 0 || loginArgs.N2 != 0;
-        _systemHooks?.DispatchClient("add", _character, _account);
+        // f_onclient_add is not a login hook: Sphere 56T custom-version packs list it
+        // under their command hooks, for the bare ADD command (ClientScriptConsoleHandler).
 
         // Source-X CClient::Login: post LOGIN_PLAYER / LOGIN_PLAYERS so the new
         // arrival sees how many fellow players are already in the shard.
@@ -1406,8 +1446,42 @@ public sealed partial class GameClient
         foreach (var (id, val) in info.Skills)
         {
             if (val <= 0 || id < 0 || id >= SkillEngine.BaseSkillCount) continue;
-            EquipNewbieSection(ch, ((SkillType)id).ToString().ToUpperInvariant());
+            string? section = FindNewbieSkillSection(id);
+            EquipNewbieSection(ch, section ?? ((SkillType)id).ToString().ToUpperInvariant());
         }
+    }
+
+    /// <summary>The [NEWBIE name] block of skill <paramref name="skillId"/>. Upstream
+    /// files the block under the skill's INDEX, reading the name with FindSkillKey
+    /// (CServerConfig.cpp:4299-4340, CChar.cpp:2109-2135) - the skill's KEY in the
+    /// pack, or a number - so [NEWBIE EVALUATINGINTEL] is skill 16 on a pack that keys
+    /// it so, whatever this engine calls it.</summary>
+    private string? FindNewbieSkillSection(int skillId) =>
+        FindNewbieSkillSection(_commands?.Resources, skillId);
+
+    internal static string? FindNewbieSkillSection(SphereNet.Scripting.Resources.ResourceHolder? resources, int skillId)
+    {
+        if (resources == null) return null;
+        foreach (var link in resources.GetAllResources())
+        {
+            if (link.Id.Type != Core.Enums.ResType.NewBie)
+                continue;
+            string name = (link.HeaderArgument ?? link.DefName ?? "").Trim()
+                .Split([' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+            if (name.Length == 0)
+                continue;
+            int index;
+            if (char.IsAsciiDigit(name[0]))
+            {
+                if (!Core.Types.ScriptNumber.TryParseToken(name, out long number)) continue;
+                index = (int)number;
+            }
+            else if (!DefinitionLoader.TryGetSkillIndexByName(name, out index))
+                continue;
+            if (index == skillId)
+                return link.DefName ?? name;
+        }
+        return null;
     }
 
     /// <summary>NEWBIESKILL verb entry (Source-X CHV_NEWBIESKILL): apply a

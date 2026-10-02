@@ -579,6 +579,12 @@ public sealed class MovementEngine
             if (_triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionLeave,
                     new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name, O1 = oldRegion }) == TriggerResult.True && mayRefuse)
                 return false;
+            // Sphere 56T custom-version compatibility: @RegionExit is that version's
+            // name for @RegionLeave (the pack writes "ON=@REGIONEXIT // OR
+            // ON=@REGIONLEAVE"), so it gets the same arguments and the same refusal.
+            if (_triggerDispatcher.FireCharTriggerIfUsed(ch, "RegionExit",
+                    new TriggerArgs { CharSrc = ch, S1 = oldRegion.Name, O1 = oldRegion }) == TriggerResult.True && mayRefuse)
+                return false;
         }
         if (newRegion != null)
         {

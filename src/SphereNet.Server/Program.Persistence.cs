@@ -273,7 +273,7 @@ public static partial class Program
 
     private static void RequestSaveOnMainLoop()
     {
-        _mainLoopActions.Enqueue(PerformSave);
+        _mainLoopActions.Enqueue(() => PerformSave());
     }
 
     private static void RequestSaveFormatChangeOnMainLoop(string fmtName, int shards)
@@ -429,21 +429,31 @@ public static partial class Program
         };
     }
 
-    private static void PerformSave()
+    private static void PerformSave(bool forceImmediate = false)
     {
-        // Source-X f_onserver_save can veto the save with RETURN 1.
-        if (_systemHooks.DispatchServer("save", _serverHookContext))
+        // Source-X CWorld::Save (CWorld.cpp:1179-1204): f_onserver_save on the server
+        // object with ARGN1 = the save is forced (writable - read back as the forced
+        // flag) and ARGN2 = the save stage, 0 as a save starts here; RETURN 1 vetoes it.
+        var saveArgs = new SphereNet.Scripting.Execution.TriggerArgs
+        {
+            Number1 = forceImmediate ? 1 : 0,
+            Number2 = 0,
+        };
+        if (_systemHooks.RunServerFunction("f_onserver_save", _serverHookContext, saveArgs, out long? saveRet) &&
+            saveRet == 1)
         {
             _log.LogInformation("World save cancelled by f_onserver_save");
             return;
         }
+        forceImmediate = saveArgs.Number1 != 0;
 
-        // Source-X DEFMSG_WORLDSAVE_S behaviour: tell every online player a
-        // save is happening so they don't blame momentary lag on the server
-        // crashing. We use the world-event hue (0x0040, light red) which
-        // matches the colour OSI/Source-X uses for global system events.
+        // CWorld::SaveForce (CWorld.cpp:944): the one announcement a save makes is
+        // DEFMSG_SERVER_WORLDSAVE, through CWorldComm::Broadcast. A pack that blanks
+        // the message (server_worldsave "") announces its saves itself, and an empty
+        // text sends nothing (BroadcastToAllPlayers). Upstream says nothing when the
+        // save ends; only a failure is broadcast.
         const ushort SaveHue = 0x0040;
-        BroadcastToAllPlayers(ServerMessages.Get("worldsave_started"), SaveHue);
+        BroadcastToAllPlayers(ServerMessages.Get(Msg.ServerWorldsave), SaveHue);
 
         // E2: only one save may be in flight. A periodic save landing while the
         // previous background write is still running is skipped (it re-fires on
@@ -468,7 +478,9 @@ public static partial class Program
             string basePath = AppDomain.CurrentDomain.BaseDirectory;
             string sp = ResolvePath(basePath, _config.WorldSaveDir);
 
-            if (_config.SaveBackgroundMinutes > 0)
+            // A forced save (SaveTry(fForceImmediate)) is written at once, never in
+            // the background.
+            if (_config.SaveBackgroundMinutes > 0 && !forceImmediate)
             {
                 // Background mode (sphere.ini SAVEBACKGROUND > 0): the world walk
                 // (Prepare) stays on the main thread — the only phase that reads
@@ -715,9 +727,6 @@ public static partial class Program
         else
         {
             _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
-            BroadcastToAllPlayers(
-                ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),
-                SaveHue);
         }
         _systemHooks.DispatchServer("save_finished", _serverHookContext,
             sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));

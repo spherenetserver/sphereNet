@@ -370,6 +370,7 @@ public sealed class GameWorld
     {
         _onlinePlayers.Add(ch);
         GetSector(ch.Position)?.AddOnlinePlayer(ch);
+        WakeCarriedItems(ch);
     }
     public void RemoveOnlinePlayer(Objects.Characters.Character ch)
     {
@@ -2010,6 +2011,86 @@ public sealed class GameWorld
             TrackItemTimer(item, item.Timeout);
     }
 
+    // Items put to sleep because the player holding them is offline. Kept so the
+    // timer audit can wake one whose reason has gone (a GM took it off the offline
+    // character, say) without waking anything a script or a sector put to sleep.
+    private readonly HashSet<Item> _offlineSleepers = new(ReferenceEqualityComparer.Instance);
+    private long _lastOfflineSleeperAudit;
+    private const long OfflineSleeperAuditMs = 5000;
+
+    /// <summary>How many item timers are parked because their holder is offline.</summary>
+    internal int OfflineSleeperCount => _offlineSleepers.Count;
+
+    /// <summary>Does <paramref name="item"/> belong to a player who has left the game?
+    ///
+    /// Source-X CChar::SetDisconnected puts the character and what it carries to sleep
+    /// - "if the char goes offline, we don't want its items to tick anymore when the
+    /// timer expires" (CChar.cpp:550-553 -> CChar::_GoSleep, CCharAct.cpp:5856-5861;
+    /// CItem::_TickableStateBase asks the wearer, CItem.cpp:6160-6173). A player who
+    /// is still lingering in the world (client linger) is not disconnected yet
+    /// (<see cref="Character.IsDisconnectedPlayer"/>). The deadline is kept:
+    /// an item that came due while its holder was away runs when they log back in
+    /// (CChar::_GoAwake re-adds it with its stored timeout), which is why a stock
+    /// 0.56T save carries an <c>i_stuck</c> from months ago with TIMER=0 on an offline
+    /// character. CAN=O_NOSLEEP keeps an item ticking regardless.</summary>
+    internal static bool IsHeldByDisconnectedPlayer(Item item)
+    {
+        if (item.NeverSleeps || !item.ContainedIn.IsValid)
+            return false;
+        return item.ResolveTopObject() is Character { IsDeleted: false, IsDisconnectedPlayer: true };
+    }
+
+    /// <summary>CChar::_GoAwake (CCharAct.cpp:5842) -> CContainer::_GoAwake: a
+    /// character entering the game wakes everything it carries - worn, in the pack, in
+    /// the bank - and each item that still holds a timer rejoins the ticking list with
+    /// its stored deadline.</summary>
+    public void WakeCarriedItems(Character ch)
+    {
+        var pending = new Stack<Item>();
+        for (int i = 0; i < (int)Layer.Qty; i++)
+            if (ch.GetEquippedItem((Layer)i) is { } worn)
+                pending.Push(worn);
+        foreach (var mem in ch.Memories)
+            pending.Push(mem);
+        var seen = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+        while (pending.Count > 0)
+        {
+            var item = pending.Pop();
+            if (!seen.Add(item))
+                continue;
+            if (item.IsSleeping)
+            {
+                _offlineSleepers.Remove(item);
+                WakeItemTimer(item);
+            }
+            foreach (var child in item.Contents)
+                pending.Push(child);
+        }
+    }
+
+    /// <summary>Wake a parked item whose holder is back, or which is no longer held by
+    /// an offline player at all, and forget deleted ones.</summary>
+    private int AuditOfflineSleepers()
+    {
+        if (_offlineSleepers.Count == 0)
+            return 0;
+        int woken = 0;
+        foreach (var item in _offlineSleepers.ToArray())
+        {
+            if (item.IsDeleted || !item.IsSleeping)
+            {
+                _offlineSleepers.Remove(item);
+                continue;
+            }
+            if (IsHeldByDisconnectedPlayer(item))
+                continue;
+            _offlineSleepers.Remove(item);
+            WakeItemTimer(item);
+            woken++;
+        }
+        return woken;
+    }
+
     private readonly List<Item> _timerDueBuffer = [];
 
     /// <summary>How many item timers one tick may run.
@@ -2038,6 +2119,11 @@ public sealed class GameWorld
         // re-arms itself to now be picked up again by the same drain, forever, inside
         // one tick. Selecting first means a timer re-armed during the callback is
         // next tick's work, which is also what a tick-start timestamp implies.
+        if (_offlineSleepers.Count > 0 && nowMs - _lastOfflineSleeperAudit >= OfflineSleeperAuditMs)
+        {
+            _lastOfflineSleeperAudit = nowMs;
+            AuditOfflineSleepers();
+        }
         _timerDueBuffer.Clear();
         int inspected = 0;
         while (_timerDueBuffer.Count < MaxItemTimersPerTick &&
@@ -2064,6 +2150,14 @@ public sealed class GameWorld
                 // comes round again in this drain.
                 _timerStaleDropped++;
                 TrackItemTimer(item, item.Timeout);
+                continue;
+            }
+            if (IsHeldByDisconnectedPlayer(item))
+            {
+                // Same absolute deadline; WakeCarriedItems re-registers it when the
+                // holder logs back in, and an overdue one runs on that tick.
+                item.GoSleep();
+                _offlineSleepers.Add(item);
                 continue;
             }
             if (ShouldSleepInsteadOfFiring(item))
@@ -2112,6 +2206,7 @@ public sealed class GameWorld
         if (now - _lastTimerAuditTick < DecayAuditIntervalMs)
             return 0;
         _lastTimerAuditTick = now;
+        AuditOfflineSleepers();
 
         int missing = 0;
         foreach (var obj in _objects.Values)
@@ -2786,7 +2881,10 @@ public sealed class GameWorld
                 {
                     // 0x2202: flagged equipped but not actually on the layer —
                     // drop it into the wearer's pack.
-                    if (wearer.GetEquippedItem(item.EquipLayer) != item)
+                    // A second item worn on an occupied slot because the save said so
+                    // (CharacterMemoryState.AttachStackedWorn) is really worn.
+                    if (wearer.GetEquippedItem(item.EquipLayer) != item &&
+                        !wearer.Memories.Contains(item))
                     {
                         item.IsEquipped = false;
                         if (wearer.Backpack != null && wearer.Backpack != item)
@@ -2819,6 +2917,26 @@ public sealed class GameWorld
                     log?.Invoke($"GC: " + (relinked ? "relinked" : "grounded") +
                         $" orphaned contained item 0x{item.Uid.Value:X} (0x2106)");
                     fixedCount++;
+                }
+            }
+            else if (item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Decay) && item.DecayTime == 0 &&
+                     item.Timeout > 0)
+            {
+                // A decaying item that already holds a TIMER: upstream has ONE timer,
+                // and on an ATTR_DECAY item that timer is the decay - it fires @Timer
+                // and the default path then removes the item (CItem.cpp:6412), and
+                // FixWeirdness only treats the item as broken when no timer is set
+                // (0x2236, CItem.cpp:1225). Arming a second, default deadline beside
+                // it took a corpse, a web or an announcer with a long saved TIMER
+                // away early. A corpse keeps its staged decay (player corpse -> bones,
+                // contents spilled) by moving the deadline over to the decay clock,
+                // which runs @Timer through the same gate.
+                if (item.ItemType == SphereNet.Core.Enums.ItemType.Corpse)
+                {
+                    long at = item.Timeout;
+                    item.SetTimeout(0);
+                    item.SetDecayAt(at);
+                    TrackDecay(item, at);
                 }
             }
             else if (item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Decay) && item.DecayTime == 0)

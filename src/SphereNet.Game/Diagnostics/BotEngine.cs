@@ -48,7 +48,34 @@ public sealed class BotEngine : IDisposable
         if (!string.IsNullOrEmpty(charName)) _liveBotChars[charName] = 0;
     }
 
-    internal static void ForgetAllBotCharacters() => _liveBotChars.Clear();
+    internal static void ForgetAllBotCharacters()
+    {
+        _liveBotChars.Clear();
+        _liveBotAccounts.Clear();
+    }
+
+    /// <summary>Accounts the server made for the bots it is running.</summary>
+    private static readonly ConcurrentDictionary<string, byte> _liveBotAccounts =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>True when <paramref name="accountName"/> is the account of a bot this
+    /// server is running right now. The bot account prefix is a reserved section name
+    /// no player can register through login auto-create; the login path makes the
+    /// account through AccountManager.CreateInternalAccount only for a name this
+    /// engine registered (AccountManager.InternalAccountGate), and the bot
+    /// conveniences go to such engine-made accounts only.</summary>
+    public static bool IsLiveBotAccount(string? accountName) =>
+        BotModeActive && !string.IsNullOrEmpty(accountName) && _liveBotAccounts.ContainsKey(accountName);
+
+    internal static void RegisterBotAccount(string accountName)
+    {
+        if (!string.IsNullOrEmpty(accountName)) _liveBotAccounts[accountName] = 0;
+    }
+
+    /// <summary>One password per engine, never a constant: a live bot account is
+    /// given the bot conveniences, so its password must not be guessable.</summary>
+    private readonly string _sessionPassword =
+        Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8));
 
     // Anomaly tracking
     public readonly ConcurrentQueue<BotAnomaly> Anomalies = new();
@@ -269,10 +296,11 @@ public sealed class BotEngine : IDisposable
             for (int j = 0; j < batchCount; j++)
             {
                 int botId = Interlocked.Increment(ref _nextBotId);
-                var bot = new BotClient(botId, _logger);
+                var bot = new BotClient(botId, _logger, _sessionPassword);
                 bot.SetAnomalySink(Anomalies);
                 _bots[botId] = bot;
                 RegisterBotCharacter(bot.CharName);
+                RegisterBotAccount(bot.AccountName);
                 
                 int localBotId = botId;
                 tasks.Add(Task.Run(async () =>

@@ -91,6 +91,12 @@ public sealed class AccountManager
     {
         failure = LoginFailure.None;
         var account = FindAccount(name);
+        // An account the engine itself needs (a load-test bot of this server) is made
+        // through the internal path, whatever AUTOACCOUNT says: its name carries a
+        // prefix ordinary creation refuses on purpose. Its password is then checked
+        // like any other below.
+        if (account == null && InternalAccountGate?.Invoke(name) == true)
+            account = CreateInternalAccount(name, password);
         if (account == null)
         {
             if (!_autoCreateAccounts)
@@ -117,13 +123,18 @@ public sealed class AccountManager
 
         if (account.IsBanned)
         {
+            // A refused login is not a block: f_onaccount_block belongs to the moment
+            // the account becomes blocked (CAccount::SetBlockStatus), not to every
+            // attempt made while it is.
             _logger.LogWarning("Account '{Name}' is banned", name);
-            AccountBlocked?.Invoke(account);
             failure = LoginFailure.Blocked;
             return null;
         }
 
-        if (!account.CheckPassword(password))
+        // CheckPassword (CAccount.cpp:935-984) runs only for an account that is not
+        // blocked (CClientMsg.cpp:3249), and f_onaccount_connect runs inside it,
+        // before the comparison.
+        if (!account.CheckLoginPassword(password))
         {
             _logger.LogWarning("Wrong password for account '{Name}'", name);
             failure = LoginFailure.BadPassword;
@@ -177,11 +188,56 @@ public sealed class AccountManager
             MaxChars = DefaultMaxChars,
             Priv = DefaultPrivFlags,
         };
-        account.SetPassword(password);
+        // Source-X Account_Add (CAccount.cpp:231-249): f_onaccount_create, and a
+        // RETURN 1 deletes the new account again through Account_Delete - which asks
+        // f_onaccount_delete - so it is never listed.
+        if (Account.ScriptHooks is { } hooks && hooks.Create(account))
+        {
+            _logger.LogError("Account '{Name}': Creation blocked via script", name);
+            hooks.Delete(account);
+            return null;
+        }
         _accounts[name] = account;
+        // The password is set on the listed account, through f_onaccount_pwchange
+        // with an empty LOCAL.oldPassword (Cmd_AddNew, CAccount.cpp:284-289).
+        account.ChangePassword(password);
         _logger.LogInformation("Account '{Name}' created", name);
         AccountCreated?.Invoke(account);
         NotifyAccountsChanged();
+        return account;
+    }
+
+    /// <summary>Which not-yet-existing login names the engine creates for itself
+    /// (<see cref="CreateInternalAccount"/>) when they log in: the host answers true
+    /// for the accounts of the bots it is running. Null: none.</summary>
+    public Func<string, bool>? InternalAccountGate { get; set; }
+
+    /// <summary>Create an account for the engine's own use - the load-test bots. The
+    /// name is stripped like any other (it still has to be a valid login name) but may
+    /// carry a reserved prefix, which is exactly what keeps a player from registering
+    /// the same name through login auto-create. The account is session-only
+    /// (<see cref="Account.IsEngineInternal"/>). Returns the existing account when the
+    /// name is already an internal one, null when it belongs to a real account.</summary>
+    public Account? CreateInternalAccount(string name, string password)
+    {
+        string stripped = AccountNameValidator.Strip(name);
+        if (stripped.Length == 0 || !string.Equals(stripped, name, StringComparison.Ordinal))
+            return null;
+        if (_accounts.TryGetValue(name, out var existing))
+            return existing.IsEngineInternal ? existing : null;
+
+        var account = new Account
+        {
+            Name = name,
+            PrivLevel = DefaultPrivLevel,
+            UseMd5Passwords = Md5Passwords,
+            MaxChars = DefaultMaxChars,
+            Priv = DefaultPrivFlags,
+            IsEngineInternal = true,
+        };
+        account.SetPassword(password);
+        _accounts[name] = account;
+        _logger.LogInformation("Internal account '{Name}' created", name);
         return account;
     }
 
@@ -201,6 +257,13 @@ public sealed class AccountManager
         if (!_accounts.TryGetValue(name, out var account))
             return false;
 
+        // f_onaccount_delete RETURN 1 keeps the account (CAccount.cpp:212-223).
+        if (Account.ScriptHooks?.Delete(account) == true)
+        {
+            _logger.LogInformation("Account '{Name}' deletion blocked by script", name);
+            return false;
+        }
+
         _accounts.Remove(name);
         AccountDeleted?.Invoke(account);
         NotifyAccountsChanged();
@@ -212,7 +275,8 @@ public sealed class AccountManager
         var account = FindAccount(name);
         if (account == null)
             return false;
-        account.SetPassword(newPassword);
+        if (!account.ChangePassword(newPassword))
+            return false;
         AccountPasswordChanged?.Invoke(account);
         NotifyAccountsChanged();
         return true;
@@ -223,7 +287,9 @@ public sealed class AccountManager
         var account = FindAccount(name);
         if (account == null)
             return false;
-        account.IsBanned = blocked;
+        // Only a real change of state is an event (and runs the block hooks).
+        if (!account.SetBlockStatus(blocked))
+            return true;
         if (blocked)
             AccountBlocked?.Invoke(account);
         else

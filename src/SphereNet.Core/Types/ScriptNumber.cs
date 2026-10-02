@@ -124,6 +124,69 @@ public static class ScriptNumber
         return true;
     }
 
+    /// <summary>Read the number a definition value STARTS with, the way the reference's
+    /// expression reader takes a literal (CExpression::GetSingle, CExpression.cpp:660-790):
+    /// one leading '.' is skipped; a '0' not followed by '.' starts a hexadecimal run
+    /// that stops at the first non-hex character; anything else is decimal with every
+    /// '.' inside it ignored - so <c>1.5</c> is 15, <c>20.0</c> is 200, <c>.1</c> is 1
+    /// - and the scan stops at the first character that is not a digit, which is how
+    /// <c>190,95</c> reads as 190. An optional leading '-' negates. Returns false when
+    /// the text does not start with a number at all.</summary>
+    public static bool TryParseLeadingNumber(string? text, out long value)
+    {
+        value = 0;
+        string s = text ?? "";
+        int i = 0;
+        while (i < s.Length && (s[i] == ' ' || s[i] == '\t')) i++;
+        bool negative = false;
+        if (i < s.Length && (s[i] == '-' || s[i] == '+'))
+        {
+            negative = s[i] == '-';
+            i++;
+            while (i < s.Length && (s[i] == ' ' || s[i] == '\t')) i++;
+        }
+        if (i < s.Length && s[i] == '.' && i + 1 < s.Length && char.IsAsciiDigit(s[i + 1]))
+            i++;
+        if (i >= s.Length || !char.IsAsciiDigit(s[i]))
+            return false;
+
+        if (s[i] == '0' && !(i + 1 < s.Length && s[i + 1] == '.'))
+        {
+            // Hexadecimal; up to 8 significant digits reinterpreted as a signed 32-bit
+            // value, as GetSingle does. An explicit "0x" is read the same way, as the
+            // engine's other numeric readers accept it.
+            i++;
+            if (i + 1 < s.Length && (s[i] == 'x' || s[i] == 'X') && char.IsAsciiHexDigit(s[i + 1]))
+                i++;
+            ulong hex = 0;
+            int significant = 0;
+            for (; i < s.Length && char.IsAsciiHexDigit(s[i]); i++)
+            {
+                uint nibble = (uint)Convert.ToInt32(s[i].ToString(), 16);
+                if (significant == 0 && nibble == 0) continue;
+                if (significant >= 16) return false;
+                hex = (hex << 4) | nibble;
+                significant++;
+            }
+            value = significant <= 8 ? unchecked((int)(uint)hex) : unchecked((long)hex);
+        }
+        else
+        {
+            long dec = 0;
+            for (; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '.') continue;
+                if (!char.IsAsciiDigit(c)) break;
+                if (dec > (long.MaxValue - 9) / 10) return false;
+                dec = dec * 10 + (c - '0');
+            }
+            value = dec;
+        }
+        if (negative) value = -value;
+        return true;
+    }
+
     /// <summary>Read the EXPRESSION a command line starts with, and say how much of
     /// the line it used. Source-X reads a delay with Exp_Get64Val, which consumes the
     /// whole expression - parentheses, multiplication and the spaces around an

@@ -147,6 +147,10 @@ public static class AccountPersistence
 
             foreach (var acc in accounts.GetAllAccounts())
             {
+                // An engine-internal account (the load-test bots) lives for the
+                // session only.
+                if (acc.IsEngineInternal)
+                    continue;
                 // Last line of defence. CreateAccount rejects names that cannot
                 // round-trip, but a file written before that gate existed could
                 // still hold one. Skipping the single bad record keeps every other

@@ -488,8 +488,9 @@ public sealed class StuckMemoryScriptTests : IDisposable
     }
 
     /// <summary>A character the 56T save left mid-count - EVENTS=e_stuck and an i_stuck
-    /// with MORE1 under 30 and TIMER=0 (an elapsed timer, CObjBase.cpp:1978) - finishes
-    /// the count after a load and is released.</summary>
+    /// with MORE1 under 30 and TIMER=0 (an elapsed timer, CObjBase.cpp:1978) - keeps
+    /// the count asleep while its player is offline, finishes it once they log in, and
+    /// is released.</summary>
     [Fact]
     public void ACharacterSavedMidCount_IsReleasedAfterLoad()
     {
@@ -545,8 +546,28 @@ public sealed class StuckMemoryScriptTests : IDisposable
         Assert.Equal(ItemType.EqScript, counter.ItemType);
         Assert.True(counter.Timeout > 0, "a saved TIMER=0 is an elapsed timer and must run");
 
-        // Offline: no client is attached to the loaded character, so the item runs the
-        // script's logged-out branch.
+        // The server links the save's ACCOUNT= and the character is a player. While
+        // its player is away it is disconnected, and what it carries sleeps
+        // (CChar::SetDisconnected -> _GoSleep, CChar.cpp:550-553): the count does not
+        // move however long the shard runs - which is how the save came to hold an
+        // i_stuck from months ago with TIMER=0.
+        loaded.IsPlayer = true;
+        uint savedCount = counter.More1;
+        for (int s = 0; s < 10; s++)
+        {
+            counter.SetTimeout(Environment.TickCount64 - 1);
+            r.World.OnTick();
+        }
+        Assert.False(counter.IsDeleted);
+        Assert.True(counter.IsSleeping);
+        Assert.Equal(savedCount, counter.More1);
+        Assert.Contains(r.Stack.Resources.ResolveDefName("e_stuck"), loaded.Events);
+
+        // Logging in wakes it (CChar::_GoAwake): the overdue count runs and the
+        // character is released.
+        loaded.IsOnline = true;
+        r.World.AddOnlinePlayer(loaded);
+        Assert.False(counter.IsSleeping);
         for (int s = 0; s < 40 && !counter.IsDeleted; s++)
         {
             long now = Environment.TickCount64;

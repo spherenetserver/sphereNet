@@ -254,9 +254,8 @@ public class Sphere56TSaveCompatTests
         // to come back with it - not just accept the lines.
         Assert.False(unhandled.ContainsKey("MEMBER"), "guild members were parked in SAVE.* tags");
         // A classic ship names its hold and planks and lists no components.
-        // The murder count a 0.56 shard wrote as KILLSPLAYER reaches the one counter
-        // the reference keeps.
-        Assert.False(unhandled.ContainsKey("KILLSPLAYER"), "murder counts were parked in SAVE.* tags");
+        // The extra KILLSPLAYER counter is kept as data; the murder count is KILLS=.
+        Assert.False(unhandled.ContainsKey("KILLSPLAYER"), "the extra kill counter was parked in SAVE.* tags");
         int withKills = world.GetAllCharactersSnapshot().Count(c => c.Kills > 0);
         _out.WriteLine($"characters carrying a murder count: {withKills}");
         Assert.True(withKills > 0, "no character came back with its murder count");
@@ -464,5 +463,108 @@ public class Sphere56TSaveCompatTests
         foreach (var kv in unhandled.OrderByDescending(k => k.Value).Take(25))
             _out.WriteLine($"  unhandled {kv.Key} x{kv.Value}");
         _out.WriteLine($"total unhandled key kinds: {unhandled.Count}");
+    }
+
+    /// <summary>The 56T build writes KILLSPLAYER/KILLSNPC next to the murder count
+    /// KILLS=; only KILLS is the count notoriety reads (Noto_IsMurderer,
+    /// CCharNotoriety.cpp:12-15). Every loaded player must come back with the KILLS
+    /// its record carries, and none whose KILLS is within MURDERMINCOUNT and whose
+    /// karma is above PLAYEREVIL may show NOTO_EVIL (red). A player loaded with its
+    /// worn "Criminal Timer" (LAYER_FLAG_Criminal) is NOTO_CRIMINAL until that memory
+    /// runs out, then no longer criminal.</summary>
+    [Fact]
+    public void LoadedPlayers_ShowRedOnlyForTheirMurderCount_AndCriminalsGreyUntilExpiry()
+    {
+        string charsFile = Path.Combine(SaveDir, "spherechars.scp");
+        if (Gate.Missing(_out, "56T save", !File.Exists(charsFile))) return;
+
+        // The KILLS= each player record carries (absent = 0).
+        var expectedKills = new Dictionary<uint, int>();
+        uint serial = 0; int kills = 0; bool inChar = false, player = false;
+        void Flush()
+        {
+            if (inChar && player && serial != 0)
+                expectedKills[serial] = kills;
+        }
+        foreach (string raw in File.ReadLines(charsFile))
+        {
+            string line = raw.Trim();
+            if (line.StartsWith('['))
+            {
+                Flush();
+                inChar = line.StartsWith("[WORLDCHAR", StringComparison.OrdinalIgnoreCase);
+                serial = 0; kills = 0; player = false;
+                continue;
+            }
+            if (!inChar) continue;
+            if (line.StartsWith("SERIAL=", StringComparison.OrdinalIgnoreCase))
+                serial = Convert.ToUInt32(line[7..], 16);
+            else if (line.StartsWith("KILLS=", StringComparison.OrdinalIgnoreCase))
+                int.TryParse(line[6..], out kills);
+            else if (line.StartsWith("ACCOUNT=", StringComparison.OrdinalIgnoreCase))
+                player = true;
+        }
+        Flush();
+        Assert.NotEmpty(expectedKills);
+
+        var lf = LoggerFactory.Create(_ => { });
+        var world = new SphereNet.Game.World.GameWorld(lf);
+        world.InitMap(0, 7168, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        SphereNet.Game.Objects.Items.Item.ResolveWorld = () => world;
+        try
+        {
+            new WorldLoader(lf).Load(world, SaveDir);
+
+            var viewer = world.CreateCharacter();
+            viewer.IsPlayer = true;
+
+            int compared = 0, wrongCount = 0, wronglyRed = 0, murderers = 0;
+            var criminals = new List<SphereNet.Game.Objects.Characters.Character>();
+            foreach (var (uid, fileKills) in expectedKills)
+            {
+                var ch = world.FindChar(new SphereNet.Core.Types.Serial(uid));
+                if (ch == null || ch.IsDeleted) continue;
+                // Account linkage marks a player at server start; no accounts here.
+                ch.IsPlayer = true;
+                compared++;
+                if (ch.Kills != fileKills) wrongCount++;
+                if (ch.IsMurderer) murderers++;
+                if (ch.CombatState.CriminalMemory != null) criminals.Add(ch);
+
+                byte noto = SphereNet.Game.Clients.GameClient.ComputeNotoriety(world, viewer, ch);
+                if (noto == 6 && fileKills <= SphereNet.Game.Objects.Characters.Character.MurderMinCount &&
+                    ch.Karma >= SphereNet.Game.Objects.Characters.Character.PlayerKarmaEvil)
+                    wronglyRed++;
+            }
+            _out.WriteLine($"players compared: {compared}, murderers: {murderers}, " +
+                           $"wrong murder counts: {wrongCount}, wrongly red: {wronglyRed}, " +
+                           $"loaded with a criminal timer: {criminals.Count}");
+            Assert.True(compared > 0);
+            Assert.Equal(0, wrongCount);
+            Assert.Equal(0, wronglyRed);
+            Assert.Equal(expectedKills.Count(kv => kv.Value > SphereNet.Game.Objects.Characters.Character.MurderMinCount &&
+                world.FindChar(new SphereNet.Core.Types.Serial(kv.Key)) is { IsDeleted: false }), murderers);
+
+            foreach (var ch in criminals)
+            {
+                Assert.True(ch.IsCriminal);
+                byte before = SphereNet.Game.Clients.GameClient.ComputeNotoriety(world, viewer, ch);
+                Assert.True(before is 4 or 6, $"a criminal shows {before}");
+                if (!ch.IsMurderer && ch.Karma >= SphereNet.Game.Objects.Characters.Character.PlayerKarmaEvil)
+                    Assert.Equal(4, before);
+
+                // The saved TIMER (seconds left; 0 = due at once) runs out.
+                ch.TickNotorietyDecay(ch.CombatState.CriminalMemory!.Timeout + 1);
+                Assert.False(ch.IsCriminal);
+                Assert.False(ch.IsStatFlag(SphereNet.Core.Enums.StatFlag.Criminal));
+                Assert.NotEqual(4, SphereNet.Game.Clients.GameClient.ComputeNotoriety(world, viewer, ch));
+            }
+        }
+        finally
+        {
+            SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
+            SphereNet.Game.Objects.ObjBase.ResolveWorld = null;
+        }
     }
 }

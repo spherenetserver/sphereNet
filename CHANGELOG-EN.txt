@@ -4,6 +4,67 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Sphere 56T custom-version compatibility pass: script engine, definitions, persistence, hooks
+------------------------------------------------------------------------
+FIX - Sphere 56T custom-version compatibility: KILLSPLAYER= is no longer read as the murder
+      count. That build writes it (and KILLSNPC=) next to the real murder count KILLS=, and its
+      value is not a kill count, so almost every imported player loaded as a murderer and showed
+      red, criminals included. Both extra counters are kept as script-readable tags; KILLS= alone
+      drives Noto_IsMurderer.
+FIX - SERV.<statement> follows the Source-X server verb order: SERV.VAR/VAR0, SERV.LIST.x.add/
+      clear/n.remove, SERV.NEW.<prop>=, SERV.<function> (run on the server object with the line's
+      arguments), SERV.ACCOUNT <name> <verb> (Admin caller) and SERV.ACCOUNT.<name>.<key>= work
+      with or without an attached client; SERV.RESYNC is deferred to the main loop; bare
+      <LIST.x...> reads are answered.
+FIX - <SERV.f_x> calls the function instead of returning its resource index; a [FUNCTION
+      SERV.name] is called before the server keys (<SERV.DAYNAME> no longer reads as <dAYNAME>).
+      A pack [FUNCTION WRITEFILE]/[FUNCTION DELETEFILE] is no longer shadowed by the built-in verb.
+FIX - FLOATVAL reads leading-zero numbers as decimals (0.25, 010), matching strtod; <SERV.MYSQL>
+      returns the ini MySQL switch; <SERV.ITEMDEF.x.ID> of a numeric ITEMDEF without ID= returns
+      its own id; TEVENTS read on an instance falls back to its definition; SENDPACKET tokens
+      accept lower-case B/W/D prefixes, defnames and expressions; STRTOUPPER(x)/STRTOLOWER(x),
+      CLIENTIS3D on characters, blank-separated MULDIV arguments and SERV.LOOKUPSKILL for
+      KEY-renamed skills work.
+FIX - Definitions: ID= copies the base's basics when the line is read (Source-X CopyBasic), for
+      creatures and items alike, numeric IDs and DUPEITEM stubs included; a DUPEITEM stub reads as
+      its master (name, type, value, resources, triggers, tags) while keeping its own graphic.
+FIX - Spawn group members split on spaces and tabs as well as commas; TWOHANDS counts only 1/Y and
+      sets the two-handed layer; weapon damage comes from the weapon's own loaded definition.
+FIX - Multi REGIONFLAGS accept defname expressions; script COMPONENT lines are built on placement
+      and COMPONENT-only multis can be placed; REGIONTYPE blocks on different terrains are separate.
+FIX - ITEMDEF CATEGORY/SUBSECTION/DESCRIPTION are base strings (DESCRIPTION=@ copies SUBSECTION);
+      definition TAGs are read through the definition instead of being copied onto every new item.
+FIX - [STARTS] v1/v2 lists replace per section and feed the character list and creation;
+      [MOONGATES] replaces per section; [NEWBIE skill] kits are found by skill key; DEFNAME2,
+      [TYPEDEFS] numbers, Sphere decimals in definition numbers and AREADEF RAINCHANCE/COLDCHANCE
+      are read.
+FIX - Containers saved with more than 255 items (TAG.OVERRIDE.MAXITEMS, staff-filled banks) load
+      intact; capacity is checked only on drop, as in Source-X, and a runtime add honours a raised
+      OVERRIDE.MAXITEMS.
+FIX - Items carried by an offline player sleep with their deadline and run when the player logs
+      in; a disconnected player no longer ticks. Lingering players are unaffected.
+FIX - Two items saved on the same equipment layer both stay worn on load instead of going to the
+      pack or the ground; the second goes to the corpse on death.
+FIX - A decaying item's saved TIMER is its decay; boot no longer adds a second default decay
+      deadline. Vendor boxes (layer 26) are saved with their contents; saves without them still
+      rebuild the stock.
+FIX - World save announces only DEFMSG server_worldsave (blank = no message). Headless console
+      commands print their output again. Built-in bots log in through an engine-internal,
+      session-only account path; the reserved account prefix stays closed to players.
+FIX - f_onaccount_create/delete/block/unblock/pwchange/connect run on the server object with ARGS
+      = the account name and honour RETURN 1 as Source-X does; block/unblock fire only when the
+      state changes, pwchange gets LOCAL.password/oldPassword, connect runs before the password
+      check (RETURN 1 deny, 6 skip); an account without a password takes the one offered at
+      login. f_onitem_create runs once per item; f_onserver_save gets ARGN1 forced / ARGN2 stage;
+      f_onserver_blockip reads back ARGN1; f_onclient_add runs for the bare ADD command.
+ADD - Sphere 56T custom-version compatibility: f_onchar_create_player_init, f_onchar_create_player
+      and f_onchar_delete_player run next to the Source-X character hooks; f_onchar_armor_
+      calculation decides the pre-AOS armour stage when defined; f_onmulti_create runs after a
+      house or ship is placed; @StatGain, @SkillUse, @StatValChange, @PartyJoin and @RegionExit
+      fire next to their Source-X counterparts when hooked; SERV.RTIMESQL returns local time as
+      SQL DATETIME; unknown spell keys (FREEZE_TIME) stay readable; CASTNOEQUP keeps an item
+      while casting.
+
 [2026-10-02] - Real-socket load benchmark and main-loop performance fixes
 ------------------------------------------------------------------------
 ADD - Real-socket load benchmark (src/SphereNet.LoadTest): builds a synthetic shard (flat

@@ -714,7 +714,10 @@ public sealed class TriggerDispatcher
             // itself, keyed by its string-hash index. TryAddAtTarget stashes that
             // index in TAG.SCRIPTDEF so the dispatcher can route back to it.
             scriptDefIdx = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, Resources);
-            if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
+            // A flipped DUPEITEM graphic named back to its master is one definition,
+            // already run above through the stub that shares it.
+            if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId &&
+                DupeMasterOf(scriptDefIdx) != DupeMasterOf(item.BaseId))
             {
                 namedDef = Definitions.DefinitionLoader.GetItemDef(scriptDefIdx);
                 if (namedDef != null)
@@ -777,13 +780,32 @@ public sealed class TriggerDispatcher
         if (Runner != null && (!_funcTriggerGateBuilt || _funcItemTriggers.Contains(trigName)))
         {
             string funcName = "f_onitem_" + trigName.ToLowerInvariant();
-            if (Runner.TryRunFunction(funcName, item, ConsoleFor(args), WrapArgs(args), out var result) &&
+            var wrapped = WrapArgs(args);
+            // f_onitem_create runs here, once per item, after its definition's own
+            // @Create - the world-creation hook no longer runs it a second time on the
+            // still-blank item. Its packs read the new item as ARGO
+            // (<ARGO.ISITEM>, <ARGO.CAN>), so an @Create without one hands it over.
+            if (wrapped.Object1 == null && trigName.Equals("Create", StringComparison.OrdinalIgnoreCase))
+                wrapped.Object1 = item;
+            if (Runner.TryRunFunction(funcName, item, ConsoleFor(args), wrapped, out var result) &&
                 result == TriggerResult.True)
                 return TriggerResult.True;
         }
 
         return TriggerResult.Default;
     }
+
+    /// <summary>The section whose ON=@ blocks run for definition <paramref name="index"/>:
+    /// a DUPEITEM stub's master, unless the stub wrote blocks of its own.</summary>
+    private static int DupeTriggerDefOf(int index) =>
+        index != 0 && Definitions.DefinitionLoader.GetItemDef(index) is { DupeMasterIndex: > 0, DupeHasOwnTriggers: false } def
+            ? def.DupeMasterIndex
+            : index;
+
+    private static int DupeMasterOf(int index) =>
+        index != 0 && Definitions.DefinitionLoader.GetItemDef(index) is { DupeMasterIndex: > 0 } def
+            ? def.DupeMasterIndex
+            : index;
 
     /// <summary>The item definition's own ON=@ blocks: the multi's [MULTIDEF], the
     /// graphic's [ITEMDEF] and the named def the instance was made from.</summary>
@@ -800,11 +822,15 @@ public sealed class TriggerDispatcher
                 return TriggerResult.True;
         }
 
-        var itemDefLink = Resources.GetResource(ResType.ItemDef, item.BaseId);
+        // A DUPEITEM stub's definition is its master's (FindItemBase,
+        // CItemBase.cpp:2254-2256): the master's ON=@ blocks run, the stub's never do.
+        int graphicIdx = DupeTriggerDefOf(item.BaseId);
+        var itemDefLink = Resources.GetResource(ResType.ItemDef, graphicIdx);
         if (itemDefLink != null && RunWrapped(itemDefLink, trigName, item, args) == TriggerResult.True)
             return TriggerResult.True;
 
-        if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
+        scriptDefIdx = DupeTriggerDefOf(scriptDefIdx);
+        if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId && scriptDefIdx != graphicIdx)
         {
             var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
             if (scriptLink != null && RunWrapped(scriptLink, trigName, item, args) == TriggerResult.True)
@@ -1218,6 +1244,18 @@ public sealed class TriggerDispatcher
         !_funcTriggerGateBuilt ||
         _usedCharTriggers.Contains(trigName) || _usedItemTriggers.Contains(trigName);
 
+    /// <summary>Sphere 56T custom-version triggers that have no Source-X counterpart of
+    /// the same name. Each is fired next to its Source-X neighbour (and never instead of
+    /// it), only when a loaded script hooks the name.</summary>
+    public static IReadOnlyList<string> Sphere56TCharTriggerNames { get; } =
+        ["StatGain", "SkillUse", "StatValChange", "PartyJoin", "RegionExit"];
+
+    /// <summary>Fire a character trigger by name only when a script hooks it - the
+    /// IsTrigUsed gate for the 56T custom-version names above. Default when nothing
+    /// hooks it.</summary>
+    public TriggerResult FireCharTriggerIfUsed(Character ch, string trigName, TriggerArgs args) =>
+        IsTriggerNameUsed(trigName) ? FireCharTriggerByName(ch, trigName, args) : TriggerResult.Default;
+
     /// <summary>Register a global item event handler.</summary>
     public void RegisterItemEvent(string eventKey, string trigName, TriggerHandler handler)
     {
@@ -1472,6 +1510,9 @@ public sealed class TriggerDispatcher
             // [REGIONRESOURCE] section stages, fired on the definition itself.
             "ResourceTest", "ResourceFound", "ResourceGather",
         })
+            names.Add(n);
+        // Sphere 56T custom-version character triggers, fired by name.
+        foreach (string n in Sphere56TCharTriggerNames)
             names.Add(n);
         return names;
     }

@@ -656,6 +656,11 @@ public sealed class CraftingEngine
         {
             if (string.IsNullOrWhiteSpace(def.SkillMakeRaw))
                 continue;
+            // A DUPEITEM stub shares its master's SKILLMAKE; it is not a recipe of its
+            // own (FindItemBase hands the master back for it).
+            if (def.DupeMasterIndex != 0 &&
+                DefinitionLoader.GetItemDef(def.DupeMasterIndex)?.SkillMakeRaw == def.SkillMakeRaw)
+                continue;
 
             var recipe = ParseRecipe(def, baseId, resources);
             if (recipe != null)

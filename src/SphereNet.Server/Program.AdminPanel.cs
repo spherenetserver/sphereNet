@@ -69,6 +69,16 @@ public static partial class Program
     /// the game server's world counts.</summary>
     private static readonly SphereNet.Core.Diagnostics.ProcessCpuSampler _processMetrics = new();
 
+    /// <summary>Source-X HistoryIP::setBlocked (CIPHistoryManager.cpp:36-41):
+    /// f_onserver_blockip with ARGS = the IP and ARGN1 = the timeout, ARGN1 read back.</summary>
+    internal static int RunBlockIpHook(ScriptSystemHooks hooks, IScriptObj server, string ip, int seconds)
+    {
+        var args = new SphereNet.Scripting.Execution.TriggerArgs { ArgString = ip, Number1 = seconds };
+        if (!hooks.RunServerFunction("f_onserver_blockip", server, args, out _))
+            return seconds;
+        return (int)Math.Clamp(args.Number1, int.MinValue, int.MaxValue);
+    }
+
     private static void InitializeAdminSurfaces()
     {
             // --- Security: shared IP block list & connection rate limiter ---
@@ -77,8 +87,10 @@ public static partial class Program
             // Source-X forgets an IP once its NETTTL lapses (CIPHistoryManager::tick);
             // the attempt count rides along and is forgotten with the entry.
             _connectionAttempts = new IpAttemptHistory(_config.NetTTL);
-            _ipBlockList.Blocked += ip =>
-                _systemHooks.DispatchServer("blockip", _serverHookContext, ip, 0);
+            // f_onserver_blockip: ARGS = the IP, ARGN1 = the block time in seconds
+            // (-1 permanent), written back as the time actually used.
+            _ipBlockList.BlockTimeout = (ip, seconds) =>
+                RunBlockIpHook(_systemHooks, _serverHookContext, ip, seconds);
             _network.ConnectionAcceptFilter = ip =>
             {
                 if ((SphereNet.Game.Diagnostics.BotEngine.BotModeActive || _trustLoopback)
@@ -528,8 +540,16 @@ public static partial class Program
     /// </summary>
     private static void ConsoleAppend(string text)
     {
-        if (_log == null)
-            Console.WriteLine(text);
+        // The answer to a command typed at this console belongs on this console.
+        // Only the stdin queue (headless) and the console form route here; a
+        // managed server answers its Host over IPC instead (the "exec" reply), so
+        // writing there too would print every line twice in the Host window. The
+        // old "only before the logger exists" test meant a running headless server
+        // answered STATUS, BOT, HELP... with nothing at all.
+        if (_managed)
+            return;
+        try { Console.Out.WriteLine(text); }
+        catch (IOException) { /* stdout closed: nothing to show it on */ }
     }
 
     private static void HandleConsoleCommand(string input)

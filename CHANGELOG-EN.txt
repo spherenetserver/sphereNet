@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Send backlog, staff toggles, named ore variants and DB statements
+------------------------------------------------------------------------
+FIX - A client is no longer disconnected because a burst of packets is queued for it
+      (e.g. a GM with ALLSHOW teleporting into a crowded area). The fixed 4096-packet
+      send queue and 512 KB unsent-byte caps are gone; like Source-X, the backlog drains
+      as the socket accepts it. A connection is closed only when its socket accepts no
+      data for 60 seconds while data is pending, or when 64 MB is left unsent. Shared
+      speech/sound broadcasts are still shed first under pressure.
+FIX - .INVIS and the INVIS script verb are one implementation following Source-X
+      CHV_INVIS: staff invisibility is STATF_INSUBSTANTIAL, the argument is read like
+      GetArgLLFlag (none toggles, a value or expression is evaluated, 0 clears;
+      on/off/true/false/yes/no also accepted), every client in range redraws or removes
+      the character immediately, the hidden buff icon follows, and "Invis ON/OFF" is
+      sent when OPTIONFLAGS has 0x08. ".invis off" no longer turns invisibility on.
+      INVUL (verb, property, command), STONE, ALLSHOW, ALLMOVE and the other staff
+      toggles share the same parse; .GM toggles GM mode instead of invisibility.
+FIX - Smelting a named ore variant (ID=i_ore_iron, TDATA1=i_ingot_bronze) made the
+      iron ingot. A TDATA defname now reads back as the definition it names, a named
+      [ITEMDEF] header without DEFNAME= is its own BASEID, and the smelt path resolves
+      the ore's own definition (Sphere 56T custom-version compatibility).
+FIX - World saves write each item record under its own definition
+      ([WORLDITEM i_ore_bronze]) as Source-X does, without the TAG.ITEMDEF/TAG.SCRIPTDEF
+      routing tags; older saves relying on those tags still load.
+FIX - Item stacking compares the definition as Source-X IsSameType does: definitions
+      sharing one graphic no longer merge, and a pile loaded with a DISPID stacks with
+      a fresh pile of the same definition.
+FIX - DB.QUERY and DB.EXECUTE send the statement raw (GetArgRaw); only a statement
+      wrapped whole in double quotes loses that pair, so a statement ending with a
+      quoted value is no longer cut.
+CHANGE - The shipped sphere.ini sets MAXCONNECTREQUESTSPERIP=50 as the Source-X ini
+      does (built-in default stays 5); the MAXQUEUESIZE comment describes its real
+      meaning.
+
 [2026-10-02] - Live-play fixes: Sphere 56T custom-version compatibility and Source-X gaps
 ------------------------------------------------------------------------
 FIX - Sphere 0.55/0.56a-b saves (the Sphere 56T custom version included) store NPC

@@ -75,7 +75,13 @@ public sealed partial class GameClient
         else
         {
             body = ch.BodyId;
-            hue = ch.IsStatFlag(StatFlag.Stone) ? new Color(0x0482) : ch.Hue; // HUE_STONE
+            // HUE_STONE first; then a shard-chosen colour for staff INVIS, hiding and
+            // the spell overrides the skin, paperdoll included (CClientMsg.cpp:1120-1131).
+            if (ch.IsStatFlag(StatFlag.Stone)) hue = new Color(0x0482);
+            else if (ch.IsStatFlag(StatFlag.Insubstantial) && ColorInvisHue != 0) hue = new Color(ColorInvisHue);
+            else if (ch.IsStatFlag(StatFlag.Hidden) && ColorHiddenHue != 0) hue = new Color(ColorHiddenHue);
+            else if (ch.IsStatFlag(StatFlag.Invisible) && ColorInvisSpellHue != 0) hue = new Color(ColorInvisSpellHue);
+            else hue = ch.Hue;
             def = DefinitionLoader.GetCharDef(ch.CharDefIndex);
         }
 

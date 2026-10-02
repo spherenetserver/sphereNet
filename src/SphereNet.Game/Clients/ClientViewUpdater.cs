@@ -587,6 +587,31 @@ public sealed class ClientViewUpdater
         View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch), _client.GetNotoriety(ch));
     }
 
+    /// <summary>This client's share of CChar::UpdateMode(true) (CCharAct.cpp:2432): a
+    /// character's mode changed (staff INVIS and the like), so it is told again -
+    /// its own character redrawn with the new flags/hue, another one removed (0x1D)
+    /// when the viewer may no longer see it, redrawn (0x78) when it still may or now
+    /// does. Without it observers keep the old picture until they move.</summary>
+    public void RefreshCharacterMode(Character ch)
+    {
+        var me = _client.Character;
+        if (me == null || !_client.IsPlaying || ch.IsDeleted) return;
+        if (ch == me)
+        {
+            _client.SendDrawObject(me);
+            return;
+        }
+        if (ch.Position.Map != me.Position.Map) return;
+        if (!InRange(me.Position, ch.Position, _client.NetState.ViewRange)) return;
+        if (!IsCharVisible(me, ch))
+        {
+            // "In the case of INVIS used by GM's we must use this."
+            RemoveKnownChar(ch.Uid.Value, sendDelete: true);
+            return;
+        }
+        NotifyCharacterAppear(ch);
+    }
+
     /// <summary>
     /// Object-centric move notification for NPC movement. Handles enter-range (0x78),
     /// leave-range (0x1D), and position-update (0x77).

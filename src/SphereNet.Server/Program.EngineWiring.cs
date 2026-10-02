@@ -884,11 +884,6 @@ public static partial class Program
                 if (TryGetClientFor(target, out var c))
                     c.HandleMapChanged();
             };
-            _commands.OnCharacterSelfRedraw += target =>
-            {
-                if (TryGetClientFor(target, out var c))
-                    c.SendSelfRedraw();
-            };
             _commands.OnTeleportTargetRequested += gm =>
             {
                 if (TryGetClientFor(gm, out var c))
@@ -2917,6 +2912,14 @@ public static partial class Program
             {
                 if (TryGetClientFor(target, out var c))
                     c.ViewNeedsRefresh = true;
+            };
+
+            // CChar::UpdateMode(true): every client, its own included, redraws or
+            // removes the character; each applies its own range and CanSee.
+            SphereNet.Game.Objects.Characters.Character.OnUpdateMode = target =>
+            {
+                foreach (var c in _clients.Values)
+                    c.RefreshCharacterMode(target);
             };
 
             SphereNet.Game.Objects.Characters.Character.SendOwnerMessage = (target, msg) =>

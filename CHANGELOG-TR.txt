@@ -4,6 +4,41 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Gonderim birikimi, personel anahtarlari, isimli ore varyantlari ve DB komutlari
+------------------------------------------------------------------------
+DUZELTME - Bir istemci icin cok sayida paket kuyruga girdiginde (ornegin ALLSHOW acik
+           bir GM'in kalabalik bir bolgeye isinlanmasi) baglanti artik kesilmiyor. Sabit
+           4096 paketlik gonderim kuyrugu ve 512 KB gonderilmemis veri sinirlari
+           kaldirildi; Source-X gibi birikim soket kabul ettikce gonderiliyor. Baglanti
+           yalnizca soket veri beklerken 60 saniye hic veri almazsa ya da 64 MB
+           gonderilmemis veri birikirse kapatiliyor. Yuk altinda once paylasilan
+           konusma/ses yayinlari atilmaya devam ediyor.
+DUZELTME - .INVIS komutu ve INVIS script verb'u Source-X CHV_INVIS ile ayni tek koda
+           indi: personel gorunmezligi STATF_INSUBSTANTIAL, arguman GetArgLLFlag gibi
+           okunur (argumansiz ters cevirir, deger/ifade hesaplanir, 0 kapatir;
+           on/off/true/false/yes/no da kabul edilir), menzildeki tum istemciler
+           karakteri aninda yeniden cizer veya siler, gizlilik buff ikonu eslesir,
+           OPTIONFLAGS 0x08 iken "Invis ON/OFF" gonderilir. ".invis off" artik
+           gorunmezligi acmiyor. INVUL (verb, property, komut), STONE, ALLSHOW, ALLMOVE
+           ve diger personel anahtarlari ayni okumayi kullanir; .GM gorunmezlik yerine
+           GM modunu degistirir.
+DUZELTME - Isimli ore varyanti (ID=i_ore_iron, TDATA1=i_ingot_bronze) eritilince demir
+           kulce cikiyordu. TDATA defname'i isaret ettigi tanim olarak okunur, DEFNAME=
+           satiri olmayan isimli [ITEMDEF] basligi kendi BASEID'sidir ve eritme ore'un
+           kendi tanimini cozer (Sphere 56T ozel surum uyumlulugu).
+DUZELTME - Dunya kaydi her item kaydini Source-X gibi kendi tanimi altinda yazar
+           ([WORLDITEM i_ore_bronze]), TAG.ITEMDEF/TAG.SCRIPTDEF yonlendirme tag'leri
+           yazilmaz; bu tag'lere dayanan eski kayitlar yuklenmeye devam eder.
+DUZELTME - Item yigilmasi Source-X IsSameType gibi tanimi karsilastirir: ayni grafigi
+           paylasan farkli tanimlar birlesmez, DISPID ile yuklenen yigin ayni tanimin
+           yeni yiginiyla birlesir.
+DUZELTME - DB.QUERY ve DB.EXECUTE komutu ham gonderir (GetArgRaw); yalnizca tamamen
+           cift tirnak icindeki komut o cifti kaybeder, tirnakli degerle biten komut
+           artik kesilmiyor.
+DEGISIKLIK - Dagitilan sphere.ini Source-X ini gibi MAXCONNECTREQUESTSPERIP=50 kullanir
+           (yerlesik varsayilan 5 kalir); MAXQUEUESIZE aciklamasi gercek anlamini
+           anlatir.
+
 [2026-10-02] - Canli test duzeltmeleri: Sphere 56T ozel surum uyumlulugu ve Source-X eksikleri
 ------------------------------------------------------------------------
 DUZELTME - Sphere 0.55/0.56a-b kayitlari (Sphere 56T ozel surumu dahil) NPC

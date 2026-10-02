@@ -60,6 +60,10 @@ public sealed partial class GameClient
     /// <summary>Immediately show a character on this client (login/teleport).</summary>
     public void NotifyCharacterAppear(Character ch) => ViewUpdater.NotifyCharacterAppear(ch);
 
+    /// <summary>This client's part of CChar::UpdateMode: redraw or remove a character
+    /// whose mode (staff invisibility and the like) just changed.</summary>
+    public void RefreshCharacterMode(Character ch) => ViewUpdater.RefreshCharacterMode(ch);
+
     /// <summary>NPC move notification: enter (0x78) / leave (0x1D) / update (0x77).</summary>
     public void NotifyCharMoved(Character ch, Point3D oldPos) => ViewUpdater.NotifyCharMoved(ch, oldPos);
 

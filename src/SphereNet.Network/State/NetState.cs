@@ -21,19 +21,47 @@ public sealed class NetState : IDisposable
 {
     private const int InitialSendBatchBufferSize = 4096;
     private const int InitialCryptScratchSize = 256;
-    private const int MaxSendQueueSize = 4096;
+    // The queue depth itself never disconnects anyone. Source-X queues every
+    // packet (CNetworkOutput::QueuePacketTransaction, CNetworkOutput.cpp:621-649:
+    // MAXQUEUESIZE only moves a packet to a lower-priority queue, it never drops
+    // one) and drains as the socket accepts data; a client is closed only when
+    // the socket itself reports an error (sendData, CNetworkOutput.cpp:537-571).
+    // A GM teleporting into a crowded area with ALLSHOW on queues one 0x78/0xF3
+    // plus a tooltip per object in a single view refresh - many thousands of
+    // packets that the socket then drains over a few ticks. That is a burst, not
+    // a dead client.
+    //
     // Above this queue depth a connection is treated as falling behind and
     // low-priority cosmetic broadcasts are shed for it (interest management).
-    // Well below MaxSendQueueSize so chatter is dropped long before the hard
-    // overflow disconnect would trigger.
     private const int DroppableSoftCap = 1024;
     // Same idea but on the async byte backlog: in non-blocking mode a slow
     // client's real backlog accumulates in the outbound byte buffer
     // (_outEnd-_outStart), not in the send queues (which drain into it each flush).
-    // So shed cosmetic chatter once the byte backlog passes this soft cap too,
-    // well before the hard 512 KB disconnect cap — restoring graceful
-    // degradation for the async path.
+    // So shed cosmetic chatter once the byte backlog passes this soft cap too.
     private const int DroppableByteSoftCap = 256 * 1024;
+
+    /// <summary>Default for <see cref="SendStallTimeoutMs"/>.</summary>
+    public const long DefaultSendStallTimeoutMs = 60_000;
+
+    /// <summary>Default for <see cref="MaxSendBacklogBytes"/>.</summary>
+    public const int DefaultMaxSendBacklogBytes = 64 * 1024 * 1024;
+
+    /// <summary>A connection that has unsent data and whose socket has accepted
+    /// no byte at all for this long is a dead peer (zero TCP window, frozen
+    /// client) and is closed. A client that drains - however slowly - never
+    /// trips it. Source-X leaves this to the TCP stack (the send fails once the
+    /// peer is gone); this makes the same decision without waiting for the
+    /// kernel's retransmission timeout.</summary>
+    public long SendStallTimeoutMs { get; set; } = DefaultSendStallTimeoutMs;
+
+    /// <summary>Memory ceiling for one connection's unsent bytes. Far above any
+    /// legitimate view burst (a full screen of objects is a few MB at most); it
+    /// only bounds what a stalled peer can pin before the stall timeout fires.</summary>
+    public int MaxSendBacklogBytes { get; set; } = DefaultMaxSendBacklogBytes;
+
+    // When the current backlog last made progress (bytes accepted by the socket)
+    // or began; 0 while nothing is pending.
+    private long _sendProgressTick;
 
     /// <summary>Count of cosmetic broadcast packets shed by interest management
     /// (process-wide; for telemetry).</summary>
@@ -53,14 +81,17 @@ public sealed class NetState : IDisposable
     // Async (non-blocking) game send. The game socket is put in non-blocking
     // mode; FlushOutput accumulates compressed+encrypted bytes into a persistent
     // per-connection buffer and drains as much as the socket accepts without
-    // ever blocking a server thread. A slow client's bytes back up here (bounded
-    // by MaxPendingSendBytes) instead of stalling the flush, and it is
-    // disconnected only if it falls hopelessly behind. Toggle for A/B + rollback.
+    // ever blocking a server thread. A slow client's bytes back up here instead
+    // of stalling the flush; it is disconnected only when the socket stops
+    // accepting data altogether (SendStallTimeoutMs) or the backlog passes the
+    // memory ceiling (MaxSendBacklogBytes). Toggle for A/B + rollback.
     public static bool NonBlockingGameSend = true;
-    // Backpressure cap: a connection buffering more than this many unsent bytes
-    // is hopelessly behind and is disconnected. Generous for a transient stall,
-    // but bounds worst-case memory to ~maxClients * this.
-    private const int MaxPendingSendBytes = 512 * 1024;
+
+    /// <summary>Packets waiting in the priority queues (not yet encoded).</summary>
+    public int QueuedPacketCount { get { lock (_sendLock) return TotalQueuedCount(); } }
+
+    /// <summary>Encoded bytes the socket has not accepted yet.</summary>
+    public int PendingSendBytes { get { lock (_sendLock) return _outEnd - _outStart; } }
 
     private Socket? _socket;
     private readonly byte[] _recvBuffer = new byte[65536];
@@ -351,6 +382,7 @@ public sealed class NetState : IDisposable
         }
         _outStart = 0;
         _outEnd = 0;
+        _sendProgressTick = 0;
         RemoteEndPoint = socket.RemoteEndPoint as IPEndPoint;
         LocalEndPoint = socket.LocalEndPoint as IPEndPoint;
         ConnectionType = ConnectType.Unknown;
@@ -714,14 +746,8 @@ public sealed class NetState : IDisposable
 
         lock (_sendLock)
         {
-            if (TotalQueuedCount() >= MaxSendQueueSize)
-            {
-                _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",
-                    Id, RemoteEndPoint);
-                MarkClosing();
-                packet.ReturnToPool();
-                return;
-            }
+            // No depth limit: a burst stays queued and drains as the socket
+            // accepts it (see DroppableSoftCap). A dead peer is caught at flush.
             _queues[(int)priority].Enqueue(packet);
             RecordOutgoing(packet);
         }
@@ -743,24 +769,17 @@ public sealed class NetState : IDisposable
             // Interest management: when this connection is already falling behind
             // (queue backed up past the soft cap), shed low-priority cosmetic
             // chatter — overhead speech and sound — for it rather than piling on
-            // toward a hard overflow disconnect. State-bearing broadcasts
-            // (movement, status, combat results, corpses, ...) are never dropped.
+            // to its backlog. State-bearing broadcasts (movement, status, combat
+            // results, corpses, ...) are never dropped, and neither is anything
+            // sent to this connection alone, so an ordered unicast sequence
+            // (container, vendor, spellbook) can never lose a member here.
             // A slow consumer in a 1,000-strong crowd loses some chat it could
             // never read anyway, but keeps its connection and its gameplay state.
             if (packet.Length > 0 && IsDroppableUnderPressure(packet.Data[0])
                 && (TotalQueuedCount() > DroppableSoftCap
                     || (_outEnd - _outStart) > DroppableByteSoftCap))
             {
-                DroppedChatterPackets++;
-                packet.ReturnToPool();
-                return;
-            }
-
-            if (TotalQueuedCount() >= MaxSendQueueSize)
-            {
-                _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",
-                    Id, RemoteEndPoint);
-                MarkClosing();
+                Interlocked.Increment(ref DroppedChatterPackets);
                 packet.ReturnToPool();
                 return;
             }
@@ -818,11 +837,11 @@ public sealed class NetState : IDisposable
                     // world/UI traffic.
                     while (AnyQueued())
                     {
-                        // Enforce the cap DURING append, before growing the buffer:
-                        // a huge queue/gump/burst must not balloon the buffer past
-                        // the cap in a single flush. If already over, stop appending,
-                        // shed the rest and disconnect.
-                        if (_outEnd - _outStart > MaxPendingSendBytes)
+                        // Enforce the memory ceiling DURING append, before growing
+                        // the buffer. The ceiling is far above any legitimate burst;
+                        // past it the peer cannot be keeping up at all, so stop
+                        // appending, shed the rest and disconnect.
+                        if (_outEnd - _outStart > MaxSendBacklogBytes)
                         {
                             DrainAllQueuesToPoolLocked();
                             overCap = true;
@@ -902,19 +921,20 @@ public sealed class NetState : IDisposable
 
                     if (overCap)
                     {
-                        _logger.LogWarning("Send backpressure cap ({Pending} bytes, append) for #{Id} ({EP}), disconnecting",
-                            _outEnd - _outStart, Id, RemoteEndPoint);
+                        _logger.LogWarning("Send backlog over the {Max}-byte ceiling ({Pending} bytes unsent) for #{Id} ({EP}), disconnecting; {Traffic}",
+                            MaxSendBacklogBytes, _outEnd - _outStart, Id, RemoteEndPoint, DescribeRecentTraffic());
                         MarkClosing();
                     }
 
                     if (NonBlockingGameSend)
                     {
                         // Drain as much as the socket accepts without blocking.
+                        bool progressed = false;
                         while (_outStart < _outEnd)
                         {
                             int sent = _socket.Send(buf, _outStart, _outEnd - _outStart,
                                 SocketFlags.None, out SocketError serr);
-                            if (sent > 0) { _outStart += sent; AddOutBytes(sent); }
+                            if (sent > 0) { _outStart += sent; AddOutBytes(sent); progressed = true; }
                             if (serr == SocketError.WouldBlock) break;       // kernel buffer full — retry next flush
                             if (serr != SocketError.Success) throw new SocketException((int)serr);
                             if (sent == 0) break;
@@ -925,13 +945,8 @@ public sealed class NetState : IDisposable
                             _outStart = 0;
                             _outEnd = 0;
                         }
-                        else if (!overCap && _outEnd - _outStart > MaxPendingSendBytes)
-                        {
-                            // Client hopelessly behind — shed it rather than buffer unbounded.
-                            _logger.LogWarning("Send backpressure cap ({Pending} bytes) for #{Id} ({EP}), disconnecting",
-                                _outEnd - _outStart, Id, RemoteEndPoint);
-                            MarkClosing();
-                        }
+                        if (!overCap)
+                            CheckSendBacklogLocked(progressed, "game");
                     }
                     else
                     {
@@ -974,11 +989,12 @@ public sealed class NetState : IDisposable
                         packet.ReturnToPool();
                     }
 
+                    bool progressed = false;
                     while (_outStart < _outEnd)
                     {
                         int sent = _socket.Send(buf, _outStart, _outEnd - _outStart,
                             SocketFlags.None, out SocketError serr);
-                        if (sent > 0) { _outStart += sent; AddOutBytes(sent); }
+                        if (sent > 0) { _outStart += sent; AddOutBytes(sent); progressed = true; }
                         if (serr == SocketError.WouldBlock) break;
                         if (serr != SocketError.Success) throw new SocketException((int)serr);
                         if (sent == 0) break;
@@ -989,12 +1005,7 @@ public sealed class NetState : IDisposable
                         _outStart = 0;
                         _outEnd = 0;
                     }
-                    else if (_outEnd - _outStart > MaxPendingSendBytes)
-                    {
-                        _logger.LogWarning("Send backpressure cap ({Pending} bytes, login) for #{Id} ({EP}), disconnecting",
-                            _outEnd - _outStart, Id, RemoteEndPoint);
-                        MarkClosing();
-                    }
+                    CheckSendBacklogLocked(progressed, "login");
                 }
                 else
                 {
@@ -1019,6 +1030,43 @@ public sealed class NetState : IDisposable
                 }
                 MarkClosing();
             }
+        }
+    }
+
+    /// <summary>After a non-blocking drain: close the connection when the socket
+    /// has accepted nothing for <see cref="SendStallTimeoutMs"/> while data is
+    /// pending, or when the backlog passes <see cref="MaxSendBacklogBytes"/>.
+    /// A backlog that is draining - however large the burst behind it - is left
+    /// alone. Caller holds <see cref="_sendLock"/>.</summary>
+    private void CheckSendBacklogLocked(bool progressed, string path)
+    {
+        int pending = _outEnd - _outStart;
+        if (pending <= 0)
+        {
+            _sendProgressTick = 0;
+            return;
+        }
+
+        long now = Environment.TickCount64;
+        if (progressed || _sendProgressTick == 0)
+        {
+            _sendProgressTick = now;
+        }
+        else if (SendStallTimeoutMs > 0 && now - _sendProgressTick >= SendStallTimeoutMs)
+        {
+            _logger.LogWarning(
+                "Send stalled for #{Id} ({EP}, {Path}): the socket accepted no data for {Ms}ms with {Pending} bytes and {Queued} packets unsent, disconnecting; {Traffic}",
+                Id, RemoteEndPoint, path, now - _sendProgressTick, pending, TotalQueuedCount(), DescribeRecentTraffic());
+            MarkClosing();
+            return;
+        }
+
+        if (pending > MaxSendBacklogBytes)
+        {
+            _logger.LogWarning(
+                "Send backlog over the {Max}-byte ceiling ({Pending} bytes unsent, {Path}) for #{Id} ({EP}), disconnecting; {Traffic}",
+                MaxSendBacklogBytes, pending, path, Id, RemoteEndPoint, DescribeRecentTraffic());
+            MarkClosing();
         }
     }
 

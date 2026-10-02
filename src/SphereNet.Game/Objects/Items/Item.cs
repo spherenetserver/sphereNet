@@ -1537,6 +1537,11 @@ public class Item : ObjBase
     {
         if (other == this || other.IsDeleted) return false;
         if (BaseId != other.BaseId) return false;
+        // Upstream IsSameType compares GetID() - the DEFINITION id - not the graphic
+        // (CItem.cpp:1296). Named variants share one graphic ([ITEMDEF i_ore_bronze]
+        // ID=i_ore_iron), and a bronze pile merged onto an iron one would become iron.
+        if (ItemDefHelper.ResolveInstanceDefIndex(this) != ItemDefHelper.ResolveInstanceDefIndex(other))
+            return false;
         if (Hue != other.Hue) return false;
 
         if (!IsStackable)
@@ -1547,7 +1552,7 @@ public class Item : ObjBase
             _quality != other._quality ||
             _hitsCur != other._hitsCur || _hitsMax != other._hitsMax ||
             _crafter != other._crafter || _usesRemaining != other._usesRemaining ||
-            _dispId != other._dispId || _type != other._type ||
+            _type != other._type ||
             _tdata1 != other._tdata1 || _tdata2 != other._tdata2 ||
             _tdata3 != other._tdata3 || _tdata4 != other._tdata4)
             return false;
@@ -1563,14 +1568,29 @@ public class Item : ObjBase
         return true;
     }
 
+    /// <summary>Upstream compares the instances' own TAG maps (CItem::Stack,
+    /// CItem.cpp:1373). Two things here are not instance tags upstream and are
+    /// compared by what they mean instead: the ITEMDEF/SCRIPTDEF routing tags (the
+    /// definition identity, already compared above - a record loaded from a classic
+    /// save carries ITEMDEF where a freshly made one carries both), and a definition
+    /// tag this engine copies onto an item it creates, which reads the same as the
+    /// definition's on an item that was loaded without it.</summary>
     private static bool StackTagsEqual(Item first, Item second)
     {
-        var a = first.Tags.GetAll();
-        var b = second.Tags.GetAll();
-        if (a.Count() != b.Count()) return false;
-        foreach (var kv in a)
-            if (!string.Equals(second.Tags.Get(kv.Key), kv.Value, StringComparison.Ordinal))
+        var defTags = first.ResolveDefinition()?.TagDefs;
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in first.Tags.GetAll()) keys.Add(kv.Key);
+        foreach (var kv in second.Tags.GetAll()) keys.Add(kv.Key);
+        foreach (string key in keys)
+        {
+            if (key.Equals("ITEMDEF", StringComparison.OrdinalIgnoreCase) ||
+                key.Equals("SCRIPTDEF", StringComparison.OrdinalIgnoreCase))
+                continue;
+            string? a = first.Tags.Get(key) ?? defTags?.Get(key);
+            string? b = second.Tags.Get(key) ?? defTags?.Get(key);
+            if (!string.Equals(a, b, StringComparison.Ordinal))
                 return false;
+        }
         return true;
     }
 
@@ -2340,10 +2360,10 @@ public class Item : ObjBase
             }
 
             // TDATA instance
-            case "TDATA1": value = _tdata1.ToString(); return true;
-            case "TDATA2": value = _tdata2.ToString(); return true;
-            case "TDATA3": value = _tdata3.ToString(); return true;
-            case "TDATA4": value = _tdata4.ToString(); return true;
+            case "TDATA1": value = FormatTData(_tdata1, 1); return true;
+            case "TDATA2": value = FormatTData(_tdata2, 2); return true;
+            case "TDATA3": value = FormatTData(_tdata3, 3); return true;
+            case "TDATA4": value = FormatTData(_tdata4, 4); return true;
 
             // Identity
             case "ISITEM": value = "1"; return true;
@@ -6133,6 +6153,41 @@ public class Item : ObjBase
                 return cdef.DefName;
         }
         return $"0{_more1:X}";
+    }
+
+    /// <summary>&lt;TDATAn&gt; as a script reads it. Upstream keeps TDATA on the item's
+    /// base and stores a defname written there as the resource it names (IBC_TDATA1,
+    /// GetArgDWVal of the defname = its resource uid), so &lt;TDATA1&gt; of
+    /// [ITEMDEF i_ore_bronze] TDATA1=i_ingot_bronze answers the bronze ingot
+    /// DEFINITION. The engine resolves such a name to the referenced item's graphic
+    /// for its own consumers, and named variants share one graphic (every coloured
+    /// ingot draws as 0x1BF2, whose own definition is the iron ingot) - so the number
+    /// alone sent SERV.NEWITEM &lt;TDATA1&gt; to the wrong item. While the value is
+    /// still the one the item's own definition resolved from a name that is a
+    /// different definition than that graphic, the name is answered instead.</summary>
+    private string FormatTData(uint raw, int slot)
+    {
+        if (raw != 0)
+        {
+            var def = ResolveDefinition();
+            if (def != null)
+            {
+                (uint defValue, string? name) = slot switch
+                {
+                    1 => (def.TData1, def.TData1Name),
+                    2 => (def.TData2, def.TData2Name),
+                    3 => (def.TData3, def.TData3Name),
+                    _ => (def.TData4, def.TData4Name),
+                };
+                if (raw == defValue && !string.IsNullOrWhiteSpace(name))
+                {
+                    var rid = DefinitionLoader.StaticResources?.ResolveDefName(name.Trim()) ?? ResourceId.Invalid;
+                    if (rid.IsValid && rid.Type == ResType.ItemDef && rid.Index != raw)
+                        return name.Trim();
+                }
+            }
+        }
+        return raw.ToString();
     }
 
     private string FormatBaseId()

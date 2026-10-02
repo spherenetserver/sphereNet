@@ -421,7 +421,7 @@ public static partial class ServerMessages
         Def("gm_inspect_select", "Select target to inspect.");
         Def("gm_resync", "Update/Resync requested.");
         Def("gm_pos_fixed", "Character position fixed.");
-        Def("gm_mode_on", "GM mode ON (invisible).");
+        Def("gm_mode_on", "GM mode ON.");
         Def("gm_mode_off", "GM mode OFF.");
         Def("gm_privlevel", "PrivLevel: %s (%s)");
         Def("gm_position", "Position: %s,%s,%s map=%s terrainZ=%s effectiveZ=%s");

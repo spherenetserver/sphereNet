@@ -603,6 +603,12 @@ public static partial class Program
         return db.TryResolveRowValue(rowKey, out string value) ? value : "0";
     }
 
+    /// <summary>DB.QUERY / DB.EXECUTE send the line raw (CDataBase.cpp:496-501, GetArgRaw).
+    /// Only a statement wrapped whole in double quotes loses that outer pair; a statement
+    /// that merely ends with a quoted value (... type = "Online") is sent untouched.</summary>
+    private static string UnwrapDbStatement(string arg) =>
+        arg.Length >= 2 && arg[0] == '"' && arg[^1] == '"' ? arg[1..^1] : arg;
+
     private static string HandleScriptDbVerb(string raw)
     {
         string[] parts = raw.Split('|', 3);
@@ -643,10 +649,10 @@ public static partial class Program
                 db.Close();
                 return "1";
             case "QUERY":
-                ok = db.Query(arg.Trim('"'), out _, out error);
+                ok = db.Query(UnwrapDbStatement(arg), out _, out error);
                 break;
             case "EXECUTE":
-                ok = db.Execute(arg.Trim('"'), out _, out error);
+                ok = db.Execute(UnwrapDbStatement(arg), out _, out error);
                 break;
             case "AQUERY":
                 // Source-X DBO AQUERY: fire-and-forget query (no blocking wait).

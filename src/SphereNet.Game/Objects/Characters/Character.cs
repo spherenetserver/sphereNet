@@ -1198,8 +1198,85 @@ public partial class Character : ObjBase
 
     /// <summary>CAccount::TogPrivFlags (CAccount.cpp:745): no argument flips the
     /// flag, an argument is evaluated and non-zero sets it.</summary>
-    private static bool TogglePrivFlag(bool current, string? arg) =>
-        string.IsNullOrWhiteSpace(arg) ? !current : EvalScriptLong(arg) != 0;
+    private static bool TogglePrivFlag(bool current, string? arg) => ScriptArgFlag(current, arg);
+
+    /// <summary>CScriptKey::GetArgFlag / GetArgLLFlag (CScript.cpp:85-121), the parse
+    /// every on/off staff toggle shares: no argument flips the flag, an argument is
+    /// evaluated as a number or expression and non-zero sets it, zero clears it.
+    /// SphereNet addition: the words ON/TRUE/YES and OFF/FALSE/NO are also accepted.
+    /// Upstream would evaluate such a word as 0 (clear), so ".INVIS ON" there turns
+    /// the flag off; here it means what it says.</summary>
+    public static bool ScriptArgFlag(bool current, string? arg)
+    {
+        string a = arg?.Trim() ?? "";
+        if (a.Length == 0)
+            return !current;
+        if (a.Equals("ON", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("TRUE", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("YES", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (a.Equals("OFF", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("FALSE", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("NO", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return EvalScriptLong(a) != 0;
+    }
+
+    /// <summary>CChar::UpdateMode(true) (CCharAct.cpp:2432): every client in range
+    /// is told about this character again - redrawn (0x78) where it may still see
+    /// it, removed (0x1D) where it no longer may, the character's own client
+    /// included. Wired in Program.</summary>
+    public static Action<Character>? OnUpdateMode;
+
+    /// <summary>Whether staff on/off toggles answer with a system message
+    /// (OPTIONFLAGS OF_Command_Sysmsgs, CServerConfig.h:68).</summary>
+    private static bool CommandSysMessages =>
+        (Clients.GameClient.ServerOptionFlags & Core.Enums.OptionFlags.CommandSysMessages) != 0;
+
+    /// <summary>CHV_INVIS (CChar.cpp:4655): staff invisibility is STATF_INSUBSTANTIAL
+    /// - not the spell's STATF_INVISIBLE - so walking, casting and the spell's own
+    /// reveal rules never touch it. The one implementation behind the INVIS script
+    /// verb and the .INVIS command. <paramref name="source"/> is upstream's pSrc and
+    /// gets the on/off line; upstream always has one (the server console at least),
+    /// so a null source here only skips the message.</summary>
+    public void ApplyInvisVerb(string? args, ITextConsole? source)
+    {
+        bool on = ScriptArgFlag(IsStatFlag(StatFlag.Insubstantial), args);
+        if (on)
+            SetStatFlag(StatFlag.Insubstantial);
+        else
+            ClearStatFlag(StatFlag.Insubstantial);
+        OnUpdateMode?.Invoke(this);
+        if (on)
+        {
+            OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, true, 0, null);
+            if (source != null && CommandSysMessages)
+                source.SysMessage(ServerMessages.Get(Msg.MsgInvisOn));
+        }
+        else
+        {
+            // The icon stays while plain hiding still holds it.
+            if (!IsStatFlag(StatFlag.Hidden))
+                OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, false, 0, null);
+            if (source != null && CommandSysMessages)
+                source.SysMessage(ServerMessages.Get(Msg.MsgInvisOff));
+        }
+    }
+
+    /// <summary>CHV_INVUL (CChar.cpp:4676): the same flag parse on STATF_INVUL, then
+    /// NotoSave_Update. The INVUL script verb, the INVUL= property and the .INVUL
+    /// command all come here; a null <paramref name="source"/> (the property path)
+    /// only skips the message.</summary>
+    public void ApplyInvulVerb(string? args, ITextConsole? source)
+    {
+        if (ScriptArgFlag(IsStatFlag(StatFlag.Invul), args))
+            SetStatFlag(StatFlag.Invul);
+        else
+            ClearStatFlag(StatFlag.Invul);
+        NotoSaveUpdate?.Invoke(this);
+        if (source != null && CommandSysMessages)
+            source.SysMessage(ServerMessages.Get(IsStatFlag(StatFlag.Invul) ? Msg.MsgInvulOn : Msg.MsgInvulOff));
+    }
 
     /// <summary>The hue of a SYSMESSAGELOC line: evaluated only when the text begins
     /// with a positive number (atoi(arg) &gt; 0), otherwise HUE_TEXT_DEF
@@ -7106,11 +7183,10 @@ public partial class Character : ObjBase
                 if (PrivLevel >= PrivLevel.GM)
                     _gmModeOff = !TogglePrivFlag(!_gmModeOff, normalized);
                 return true;
+            // Not a property upstream: "INVUL=x" reaches CHV_INVUL, so it reads its
+            // argument the same way (empty flips, an expression is evaluated).
             case "INVUL":
-                if (normalized != "0" && !string.IsNullOrEmpty(normalized))
-                    SetStatFlag(StatFlag.Invul);
-                else
-                    ClearStatFlag(StatFlag.Invul);
+                ApplyInvulVerb(normalized, null);
                 return true;
             // These are account privilege toggles upstream (TogPrivFlags,
             // CAccount.cpp:745): an empty argument FLIPS the flag, anything else is
@@ -7140,12 +7216,19 @@ public partial class Character : ObjBase
                 _nightSight = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
             case "STEPSTEALTH": if (short.TryParse(normalized, out short ssv)) _stepStealth = ssv; return true;
+            // CHC_STONE (CChar.cpp:4015): empty flips, an argument is evaluated; a
+            // change is pushed to every viewer (UpdateMode).
             case "STONE":
-                if (normalized != "0" && !string.IsNullOrEmpty(normalized))
+            {
+                bool wasStone = IsStatFlag(StatFlag.Stone);
+                if (ScriptArgFlag(wasStone, normalized))
                     SetStatFlag(StatFlag.Stone);
                 else
                     ClearStatFlag(StatFlag.Stone);
+                if (wasStone != IsStatFlag(StatFlag.Stone))
+                    OnUpdateMode?.Invoke(this);
                 return true;
+            }
             case "EXP":
                 // Source-X CHC_EXP (CChar.cpp:4049): the value is stored as written,
                 // then a zero-delta ChangeExperience re-syncs the level.
@@ -8581,51 +8664,26 @@ public partial class Character : ObjBase
             }
             case "VISIBLE":
             {
-                // Source-X CHV_VISIBLE: drop invisibility/hiding outright —
-                // legacy scripts pair it with INVIS.
+                // Legacy-script verb (no CHV_VISIBLE upstream): drop invisibility and
+                // hiding outright. Scripts pair it with INVIS, whose flag is
+                // STATF_INSUBSTANTIAL.
+                // A ghost's insubstantial state is its manifest toggle, not INVIS.
+                bool wasConcealed = IsConcealed;
                 ClearStatFlag(StatFlag.Invisible);
                 ClearStatFlag(StatFlag.Hidden);
+                if (!IsDead)
+                    ClearStatFlag(StatFlag.Insubstantial);
                 MarkDirty(DirtyFlag.StatFlags);
+                if (wasConcealed && !IsConcealed)
+                    OnUpdateMode?.Invoke(this);
                 return true;
             }
             case "INVIS":
-            {
-                // If argument given, set explicitly; otherwise toggle
-                if (!string.IsNullOrEmpty(args?.Trim()))
-                {
-                    if (args.Trim() != "0")
-                        SetStatFlag(StatFlag.Invisible);
-                    else
-                        ClearStatFlag(StatFlag.Invisible);
-                }
-                else
-                {
-                    if (IsStatFlag(StatFlag.Invisible))
-                        ClearStatFlag(StatFlag.Invisible);
-                    else
-                        SetStatFlag(StatFlag.Invisible);
-                }
+                ApplyInvisVerb(args, source);
                 return true;
-            }
             case "INVUL":
-            {
-                // If argument given, set explicitly; otherwise toggle
-                if (!string.IsNullOrEmpty(args?.Trim()))
-                {
-                    if (args.Trim() != "0")
-                        SetStatFlag(StatFlag.Invul);
-                    else
-                        ClearStatFlag(StatFlag.Invul);
-                }
-                else
-                {
-                    if (IsStatFlag(StatFlag.Invul))
-                        ClearStatFlag(StatFlag.Invul);
-                    else
-                        SetStatFlag(StatFlag.Invul);
-                }
+                ApplyInvulVerb(args, source);
                 return true;
-            }
             case "DISMOUNT":
             {
                 if (OnScriptDismount != null)
@@ -9034,10 +9092,7 @@ public partial class Character : ObjBase
             }
             case "NIGHTSIGHT":
             {
-                if (!string.IsNullOrEmpty(args?.Trim()))
-                    _nightSight = args.Trim() != "0";
-                else
-                    _nightSight = !_nightSight;
+                _nightSight = ScriptArgFlag(_nightSight, args);
                 MarkDirty(DirtyFlag.Stats);
                 return true;
             }

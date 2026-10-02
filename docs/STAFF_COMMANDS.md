@@ -27,16 +27,16 @@ Complete reference of in-game staff commands and server-console commands.
 | Command | Arguments | Description |
 |---|---|---|
 | `.add` | `<id\|defname>` | Target a location; add an item/NPC there. |
-| `.allmove` | `[0\|1]` | Toggle "move all items" mode. |
+| `.allmove` | `[0\|1\|on\|off]` | Toggle "move all items" mode. |
 | `.allshow` | `[0\|1\|on\|off]` | Reveal offline/hidden characters (toggle). |
 | `.edit` | `[uid] [page]` | Object property editor; no arg opens a target cursor. |
 | `.fix` | — | Re-seat the character on its tile and resync visuals. |
-| `.gm` | — | Toggle GM (invisible) mode; below GM only reports priv level. |
+| `.gm` | `[0\|1\|on\|off]` | Toggle GM mode (PRIV_GM: GM-mode sight of invisible items and offline characters); does not change visibility. Below GM only reports priv level. |
 | `.go` | `<x> <y> [z] [map]` / `<x,y,z,map>` / `<area name>` | Teleport to coordinates or a named AREADEF location. |
 | `.gochar` | `<name>` | Teleport next to a character by name. |
 | `.gouid` | `<serial>` | Teleport to the object with that UID. |
 | `.info` | `[uid]` | Inspect dialog; no arg opens a target cursor. |
-| `.invis` | `[0\|1]` | Toggle invisibility. |
+| `.invis` | `[0\|1\|on\|off\|expr]` | Staff invisibility (STATF_INSUBSTANTIAL, the same code as the INVIS script verb). No argument toggles, a value is evaluated (0 clears). Hidden from anyone below your plevel at once; buff icon; "Invis ON/OFF" when OPTIONFLAGS has 0x08. |
 | `.nudge` | `[range]` (def 2) | Target a tile; shift nearby objects. |
 | `.nuke` | `[range]` (def 4) | Target; delete items in the area. |
 | `.nukechar` | `[range]` (def 4) | Target; delete mobiles/NPCs in the area. |
@@ -72,7 +72,7 @@ Complete reference of in-game staff commands and server-console commands.
 | `.dupe` | — | Target; duplicate the picked item. |
 | `.freeze` | `<uid(hex)>` | Freeze the target (StatFlag.Freeze). |
 | `.heal` | `[self]` | Fully heal/resurrect self; otherwise opens a target cursor. |
-| `.invul` | — | Toggle invulnerability. |
+| `.invul` | `[0\|1\|on\|off]` | Invulnerability; no argument toggles, a value is evaluated (0 clears). |
 | `.jail` | `<serial(hex)> [minutes] [cell]` | Teleport + freeze in jail; timed if minutes given (persists via tag, auto-release). Optional cell index picks the jail cell (`JAIL_CELL` tag). |
 | `.kill` | `[uid(hex)]` | Kill the target; no arg = self. |
 | `.mount` | — | Target; mount the picked rideable NPC. |

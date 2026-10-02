@@ -739,6 +739,19 @@ public sealed class DefinitionLoader
             def.LoadFromKey(key.Key, key.Arg);
         }
 
+        // [ITEMDEF i_ore_bronze] with no DEFNAME line is named by its header, as
+        // upstream names every resource (CResourceDef::GetResourceName). Left empty,
+        // such an item read <BASEID> as the hex of the graphic it borrows with ID=,
+        // which is the OTHER definition's graphic - a script asking
+        // SERV.ITEMDEF.<BASEID> got the base item's tags back, and the instance never
+        // got its ITEMDEF routing tag.
+        if (string.IsNullOrEmpty(def.DefName))
+        {
+            string header = (link.HeaderArgument ?? "").Trim().Split(' ', 2)[0];
+            if (header.Length > 0 && !SphereNet.Core.Types.ScriptNumber.TryParseToken(header, out _))
+                def.DefName = header;
+        }
+
         if (!string.IsNullOrEmpty(def.DefName))
             _resources.RegisterDefName(def.DefName, link.Id);
 
@@ -1162,6 +1175,12 @@ public sealed class DefinitionLoader
                         def.TData2 = parent.TData2;
                         def.TData3 = parent.TData3;
                         def.TData4 = parent.TData4;
+                        // The names the values were resolved from travel with them,
+                        // so a dupe still answers which DEFINITION its TDATA names.
+                        def.TData1Name = parent.TData1Name;
+                        def.TData2Name = parent.TData2Name;
+                        def.TData3Name = parent.TData3Name;
+                        def.TData4Name = parent.TData4Name;
                         changed = true;
                     }
                 }
@@ -1195,10 +1214,10 @@ public sealed class DefinitionLoader
                         _itemDefs.TryGetValue(rid.Index, out var idBase) && idBase != def &&
                         idBase.Type == def.Type)
                     {
-                        if ((def.TDataSetMask & 1) == 0 && def.TData1 != idBase.TData1) { def.TData1 = idBase.TData1; changed = true; }
-                        if ((def.TDataSetMask & 2) == 0 && def.TData2 != idBase.TData2) { def.TData2 = idBase.TData2; changed = true; }
-                        if ((def.TDataSetMask & 4) == 0 && def.TData3 != idBase.TData3) { def.TData3 = idBase.TData3; changed = true; }
-                        if ((def.TDataSetMask & 8) == 0 && def.TData4 != idBase.TData4) { def.TData4 = idBase.TData4; changed = true; }
+                        if ((def.TDataSetMask & 1) == 0 && def.TData1 != idBase.TData1) { def.TData1 = idBase.TData1; def.TData1Name = idBase.TData1Name; changed = true; }
+                        if ((def.TDataSetMask & 2) == 0 && def.TData2 != idBase.TData2) { def.TData2 = idBase.TData2; def.TData2Name = idBase.TData2Name; changed = true; }
+                        if ((def.TDataSetMask & 4) == 0 && def.TData3 != idBase.TData3) { def.TData3 = idBase.TData3; def.TData3Name = idBase.TData3Name; changed = true; }
+                        if ((def.TDataSetMask & 8) == 0 && def.TData4 != idBase.TData4) { def.TData4 = idBase.TData4; def.TData4Name = idBase.TData4Name; changed = true; }
                     }
                 }
             }

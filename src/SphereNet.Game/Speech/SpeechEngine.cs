@@ -442,6 +442,18 @@ public sealed class CommandHandler
         public string GetName() => "System";
     }
 
+    /// <summary>The typing staff member as pSrc for a character verb run from a
+    /// command: its lines go back to that member as system messages.</summary>
+    private sealed class CommandConsole(CommandHandler owner, Character gm) : ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => gm.PrivLevel;
+        public void SysMessage(string text) => owner.SendSysMessage(gm, text);
+        public string GetName() => gm.Name;
+        public IScriptObj? GetSourceChar() => gm;
+    }
+
+    private void SendSysMessage(Character gm, string text) => OnSysMessage?.Invoke(gm, text);
+
     public delegate void CommandFunc(Character gm, string args);
     public delegate bool CommandFuncEx(Character gm, string args);
 
@@ -481,9 +493,6 @@ public sealed class CommandHandler
     /// <summary>Fired after a teleport that crossed map boundaries. Handler should
     /// send PacketMapChange and full resync to the character's owner client.</summary>
     public event Action<Character>? OnCharacterMapChanged;
-    /// <summary>Fired when a character's own appearance flags (e.g. invisible, war mode)
-    /// changed and the owner client must re-render the player via DrawPlayer.</summary>
-    public event Action<Character>? OnCharacterSelfRedraw;
     /// <summary>Fired by .STRESS to queue large-scale test population generation.</summary>
     public event Action<int, int>? OnStressGenerateRequested;
     /// <summary>Fired by .STRESSREPORT — dumps runtime metrics to server log.</summary>
@@ -1137,31 +1146,15 @@ public sealed class CommandHandler
             OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_object_not_found", $"{uid:X8}"));
         });
 
+        // The character verb itself (CHV_INVIS): STATF_INSUBSTANTIAL, GetArgLLFlag
+        // parse, UpdateMode, BI_HIDDEN and the DEFMSG line - one implementation.
         Register("INVIS", PrivLevel.Counsel, (gm, args) =>
-        {
-            // Source-X semantics: .INVIS 1 → set invisible, .INVIS 0 → clear,
-            // no argument → toggle. Sphere treats any non-"0" argument as "on".
-            string a = args.Trim();
-            bool makeInvis = string.IsNullOrEmpty(a)
-                ? !gm.IsInvisible                // toggle
-                : a != "0";                      // explicit on/off
-            if (makeInvis)
-            {
-                gm.SetStatFlag(StatFlag.Invisible);
-                OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_now_invisible"));
-            }
-            else
-            {
-                gm.ClearStatFlag(StatFlag.Invisible);
-                OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_now_visible"));
-            }
-            OnCharacterSelfRedraw?.Invoke(gm);
-        });
+            gm.ApplyInvisVerb(args, new CommandConsole(this, gm)));
 
         Register("ALLMOVE", PrivLevel.Counsel, (gm, args) =>
         {
-            string a = args.Trim();
-            bool enable = string.IsNullOrEmpty(a) ? !gm.AllMove : a != "0";
+            // CC_ALLMOVE -> TogPrivFlags (CAccount.cpp:745): empty flips, else evaluated.
+            bool enable = Character.ScriptArgFlag(gm.AllMove, args);
             gm.AllMove = enable;
             OnSysMessage?.Invoke(gm,
                 ServerMessages.Get(enable ? "gm_allmove_on" : "gm_allmove_off"));
@@ -1313,18 +1306,10 @@ public sealed class CommandHandler
             OnSaveFormatChangeRequested?.Invoke(fmt, shards);
         });
 
-        Register("INVUL", PrivLevel.GM, (gm, _) =>
+        Register("INVUL", PrivLevel.GM, (gm, args) =>
         {
-            if (gm.IsStatFlag(StatFlag.Invul))
-            {
-                gm.ClearStatFlag(StatFlag.Invul);
-                OnSysMessage?.Invoke(gm, "Invulnerability OFF.");
-            }
-            else
-            {
-                gm.SetStatFlag(StatFlag.Invul);
-                OnSysMessage?.Invoke(gm, "Invulnerability ON.");
-            }
+            // CHV_INVUL: an argument is honoured (".INVUL 0" clears) like any flag verb.
+            gm.ApplyInvulVerb(args, new CommandConsole(this, gm));
             OnCharVisualUpdate?.Invoke(gm);
         });
 
@@ -1576,23 +1561,11 @@ public sealed class CommandHandler
 
         Register("ALLSHOW", PrivLevel.Counsel, (gm, args) =>
         {
-            if (args == "0" || args.Equals("off", StringComparison.OrdinalIgnoreCase))
-            {
-                gm.AllShow = false;
-                OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_allshow_off"));
-            }
-            else
-            {
-                // Toggle if no args, or set on with "1"/"on"
-                if (string.IsNullOrEmpty(args))
-                    gm.AllShow = !gm.AllShow;
-                else
-                    gm.AllShow = true;
-
-                OnSysMessage?.Invoke(gm, gm.AllShow
-                    ? ServerMessages.Get("gm_allshow_on")
-                    : ServerMessages.Get("gm_allshow_off"));
-            }
+            // CC_ALLSHOW -> TogPrivFlags: empty flips, else evaluated (".ALLSHOW 00" is off).
+            gm.AllShow = Character.ScriptArgFlag(gm.AllShow, args);
+            OnSysMessage?.Invoke(gm, gm.AllShow
+                ? ServerMessages.Get("gm_allshow_on")
+                : ServerMessages.Get("gm_allshow_off"));
         });
 
         // The walk check already explains every refusal to itself; this is the switch
@@ -1611,9 +1584,7 @@ public sealed class CommandHandler
                 || args == "?";
             if (!probeOnly)
             {
-                gm.WalkDiag = string.IsNullOrEmpty(args)
-                    ? !gm.WalkDiag
-                    : args != "0" && !args.Equals("off", StringComparison.OrdinalIgnoreCase);
+                gm.WalkDiag = Character.ScriptArgFlag(gm.WalkDiag, args);
                 OnSysMessage?.Invoke(gm, gm.WalkDiag
                     ? "Walk diagnostic ON - a refused step will say why, and the tile ahead follows."
                     : "Walk diagnostic OFF.");
@@ -1675,13 +1646,15 @@ public sealed class CommandHandler
             OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_pos_fixed"));
         });
 
-        Register("GM", PrivLevel.Counsel, (gm, _) =>
+        Register("GM", PrivLevel.Counsel, (gm, args) =>
         {
+            // CC_GM (CClient.cpp:836): the PRIV_GM mode flag through TogPrivFlags, then
+            // UpdatePropertyFlag. It never touched visibility - that is INVIS.
             if (gm.PrivLevel >= PrivLevel.GM)
             {
-                if (gm.IsInvisible) gm.ClearStatFlag(StatFlag.Invisible);
-                else gm.SetStatFlag(StatFlag.Invisible);
-                OnSysMessage?.Invoke(gm, gm.IsInvisible ? ServerMessages.Get("gm_mode_on") : ServerMessages.Get("gm_mode_off"));
+                gm.TrySetProperty("GM", args.Trim());
+                Character.ResendTooltipForAll?.Invoke(gm);
+                OnSysMessage?.Invoke(gm, gm.IsGmMode ? ServerMessages.Get("gm_mode_on") : ServerMessages.Get("gm_mode_off"));
             }
             else
             {

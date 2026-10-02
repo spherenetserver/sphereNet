@@ -1058,6 +1058,8 @@ public static partial class Program
             var def = DefinitionLoader.GetItemDef(baseId);
             return def?.DefName;
         };
+        _saver.ResolveItemOwnDefName = item =>
+            DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item, _resources))?.DefName;
         _saver.ResolveCharDefName = charDefIndex =>
             CharDefHelper.ResolveDefName(charDefIndex);
         _saver.ResolveHeaderBaseId = defname => _loader?.ResolveItemDef?.Invoke(defname) ?? 0;

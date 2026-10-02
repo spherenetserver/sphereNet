@@ -904,11 +904,8 @@ public sealed class MovementEngine
     {
         if (!ch.IsStatFlag(StatFlag.Hidden) && !ch.IsStatFlag(StatFlag.Invisible))
             return;
-        // Staff .INVIS sets Invisible here, where Source-X sets STATF_INSUBSTANTIAL
-        // (CHV_INVIS, CChar.cpp:4658) - a flag walking never touches. Keep that
-        // outcome: a counselor or above is not revealed by moving.
-        if (ch.PrivLevel >= PrivLevel.Counsel)
-            return;
+        // Staff .INVIS is STATF_INSUBSTANTIAL (CHV_INVIS, CChar.cpp:4658), which this
+        // check never looks at; hiding and the spell reveal staff like anyone else.
 
         Character.OnStepStealth?.Invoke(ch);
 

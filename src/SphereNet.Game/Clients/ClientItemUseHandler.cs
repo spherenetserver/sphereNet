@@ -2871,11 +2871,7 @@ public sealed class ClientItemUseHandler
 
     /// <summary>The ITEMID a pile answers to (CItem::GetID), for joining piles: the
     /// definition it was built from, not only the graphic it draws as.</summary>
-    private static int SmeltIdentity(Item item) =>
-        item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
-        ScriptNumber.TryParseInt(scriptDef, out int idx) && idx != 0
-            ? idx
-            : item.BaseId;
+    private static int SmeltIdentity(Item item) => ItemDefHelper.ResolveInstanceDefIndex(item);
 
     /// <summary>FindItemBase(id) != nullptr for an ore's resource: a scripted
     /// definition, or a plain graphic (whose base is built from tiledata).</summary>
@@ -3162,26 +3158,26 @@ public sealed class ClientItemUseHandler
         var def = ResolveOwnItemDef(ore);
         if (def == null)
             return 0;
-        if (def.TData1 != 0)
-            return (int)def.TData1;
-        return DefinitionLoader.ResolveItemDefIndexByName(def.TData1Name);
+        // A defname is the definition it names. The numeric TData1 is that name
+        // already resolved to the ingot's GRAPHIC, and every coloured ingot shares
+        // one (0x1BF2 is the iron ingot's own facing), so the name is read first.
+        if (!string.IsNullOrWhiteSpace(def.TData1Name))
+        {
+            int named = DefinitionLoader.ResolveItemDefIndexByName(def.TData1Name);
+            if (named != 0)
+                return named;
+        }
+        return (int)def.TData1;
     }
 
     /// <summary>The definition an item was actually built from, not the one its
     /// drawn graphic belongs to. ApplyInstanceMetadata records it as SCRIPTDEF when
-    /// the two differ (the whole point of a named colour variant), so reading it back
-    /// is how a reaped copper ore still answers as copper.</summary>
+    /// the two differ (the whole point of a named colour variant) and a classic save
+    /// pins it as ITEMDEF from the record header, so reading the routing tags back is
+    /// how a reaped or reloaded copper ore still answers as copper.</summary>
     private static SphereNet.Scripting.Definitions.ItemDef? ResolveOwnItemDef(Item item)
-    {
-        if (item.TryGetTag("SCRIPTDEF", out string? scriptDef) &&
-            ScriptNumber.TryParseInt(scriptDef, out int idx) && idx != 0)
-        {
-            var own = DefinitionLoader.GetItemDef(idx);
-            if (own != null)
-                return own;
-        }
-        return DefinitionLoader.GetItemDef(item.BaseId);
-    }
+        => DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item))
+           ?? DefinitionLoader.GetItemDef(item.BaseId);
 
     /// <summary>Take part of a pile of ore, telling the client what is left.</summary>
     private void ConsumeOreAmount(Item ore, int lost)

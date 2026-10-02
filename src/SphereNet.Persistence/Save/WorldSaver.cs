@@ -61,6 +61,15 @@ public sealed class WorldSaver
     /// (e.g. 0x0E75 → "i_backpack"). Used for Source-X compatible section headers.</summary>
     public Func<ushort, string?>? ResolveItemDefName { get; set; }
 
+    /// <summary>The defname of the definition an item was BUILT from - its own
+    /// CItemBase, which upstream names in the record header
+    /// (<c>WORLDITEM %s</c>, GetResourceName(), CItem::r_Write, CItem.cpp:2449). A
+    /// named variant such as [ITEMDEF i_ore_bronze] ID=i_ore_iron draws as the base
+    /// item's graphic, so naming the header from the graphic wrote it as the base item.
+    /// Null when the item's own definition is unknown or nameless; the header then
+    /// falls back to <see cref="ResolveItemDefName"/>.</summary>
+    public Func<Item, string?>? ResolveItemOwnDefName { get; set; }
+
     /// <summary>The graphic a WORLDITEM header name loads back as (the loader's own
     /// resolver). When it differs from the item's graphic - a DUPELIST member such as
     /// the other facings of a door, saved under its base def's name - the save also
@@ -1039,7 +1048,14 @@ public sealed class WorldSaver
     {
         EngineTags.StripEphemeral(item);
 
-        string? defname = ResolveItemDefName?.Invoke(item.BaseId);
+        // The header names the item's own definition, as upstream writes it. When it
+        // does, the ITEMDEF/SCRIPTDEF routing tags are redundant - the loader pins the
+        // definition from the header - and upstream has no such tags, so they are not
+        // written. A save from before this (header from the graphic + TAG.SCRIPTDEF)
+        // still loads through those tags.
+        string? ownDefName = ResolveItemOwnDefName?.Invoke(item);
+        bool headerIsOwnDef = !string.IsNullOrEmpty(ownDefName);
+        string? defname = headerIsOwnDef ? ownDefName : ResolveItemDefName?.Invoke(item.BaseId);
         w.BeginRecord(defname != null ? $"WORLDITEM {defname}" : "WORLDITEM");
         w.WriteProperty("SERIAL", $"0{item.Uid.Value:X8}");
         w.WriteProperty("UUID", item.Uuid.ToString("D"));
@@ -1266,6 +1282,8 @@ public sealed class WorldSaver
                 continue;
             if (upper is "HITS" or "HITSMAX" or "MAXHITS")
                 continue;
+            if (headerIsOwnDef && upper is "ITEMDEF" or "SCRIPTDEF")
+                continue; // the record header already names the definition
             if (upper.StartsWith("RUNE_", StringComparison.Ordinal))
                 continue;
             if (upper is "SPAWNID" or "TIMELO" or "TIMEHI" or "MAXDIST"

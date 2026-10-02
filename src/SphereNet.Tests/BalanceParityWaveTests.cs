@@ -133,11 +133,12 @@ public sealed class BalanceParityWaveTests
         // .INVIS is STATF_INSUBSTANTIAL upstream, which movement never reveals.
         var (_, engine, ch) = Walker();
         ch.PrivLevel = PrivLevel.GM;
-        ch.SetStatFlag(StatFlag.Invisible);
+        ch.ApplyInvisVerb("1", null);
+        Assert.True(ch.IsStatFlag(StatFlag.Insubstantial));
 
         Assert.True(engine.TryMove(ch, Direction.East, running: false, sequence: 0));
 
-        Assert.True(ch.IsStatFlag(StatFlag.Invisible));
+        Assert.True(ch.IsStatFlag(StatFlag.Insubstantial));
     }
 
     [Fact]

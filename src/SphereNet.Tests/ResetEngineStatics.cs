@@ -165,6 +165,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Clients.GameClient.ColorHiddenHue = 0;
         SphereNet.Game.Clients.GameClient.ColorInvisSpellHue = 0;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedEra = 0;
+        SphereNet.Game.Objects.Characters.Character.GuardsInstantKill = true;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedScaleFactor = 15_000;
         SphereNet.Game.Objects.Characters.Character.CombatParryingEra =
             (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |

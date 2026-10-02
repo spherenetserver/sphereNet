@@ -4,6 +4,12 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Guards kill instantly in combat under GUARDSINSTANTKILL
+------------------------------------------------------------------------
+FIX - With GUARDSINSTANTKILL=1 a guard NPC's swing now always lands, deals UINT16_MAX damage
+      and recoils in one tick (Source-X Calc_CombatChanceToHit / Fight_CalcDamage /
+      Calc_CombatAttackSpeed). The setting only drove the guard's teleport and opening strike,
+      so a guard fighting a strong creature used its scripted DAM and could be killed by it.
 [2026-10-02] - Character ID reads the chardef defname
 ------------------------------------------------------------------------
 FIX - A character's ID and BASEID read the CHARDEF's defname (Source-X CHC_ID / OBC_BASEID:

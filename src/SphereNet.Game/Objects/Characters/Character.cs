@@ -667,6 +667,9 @@ public partial class Character : ObjBase
     public static int CombatHitChanceEra { get; set; }
     /// <summary>COMBATSPEEDERA from sphere.ini.</summary>
     public static int CombatSpeedEra { get; set; }
+    /// <summary>GUARDSINSTANTKILL from sphere.ini: a guard NPC's swing always lands,
+    /// deals UINT16_MAX and recoils in one tick (Source-X m_fGuardsInstantKill).</summary>
+    public static bool GuardsInstantKill { get; set; } = true;
     /// <summary>COMBATPARRYINGERA bitmask from sphere.ini.</summary>
     public static int CombatParryingEra { get; set; } =
         (int)(ParryEraFlags.PreSeFormula | ParryEraFlags.ShieldBlock);

@@ -901,6 +901,7 @@ public static partial class Program
         Character.CombatDamageEra          = _config.CombatDamageEra;
         Character.CombatHitChanceEra       = _config.CombatHitChanceEra;
         Character.CombatSpeedEra           = _config.CombatSpeedEra;
+        Character.GuardsInstantKill        = _config.GuardsInstantKill;
         Character.CombatParryingEra        = _config.CombatParryingEra;
         Character.CombatSpeedScaleFactor   = _config.SpeedScaleFactor;
         // GENERICSOUNDS=0 silences every creature/character sound (Source-X

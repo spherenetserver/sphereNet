@@ -370,9 +370,17 @@ public static class CombatEngine
     public static int CalcHitChance(Character attacker, Character target, int era = 0)
         => CalcHitChanceCore(attacker, target, era, GetWeaponSkill(attacker));
 
+    /// <summary>A guard NPC under GUARDSINSTANTKILL: its swing always lands, deals
+    /// UINT16_MAX and recoils in one tick (Source-X CResourceCalc.cpp:44/147,
+    /// CCharFight.cpp:1206).</summary>
+    public static bool IsInstantKillGuard(Character ch) =>
+        Character.GuardsInstantKill && !ch.IsPlayer && ch.NpcBrain == NpcBrainType.Guard;
+
     private static int CalcHitChanceCore(Character attacker, Character target, int era,
         SkillType attackerWeaponSkill)
     {
+        if (IsInstantKillGuard(attacker))
+            return 100;
         int attackSkill = GetHitChanceSkill(attacker, attackerWeaponSkill);
         int targetSkill = GetHitChanceSkill(target, GetWeaponSkill(target));
         int tacticsAtk = GetHitChanceTactics(attacker, attackSkill);
@@ -469,6 +477,9 @@ public static class CombatEngine
 
     public static (int Min, int Max) CalcWeaponDamage(Character attacker, Item? weapon, int era = 0)
     {
+        if (IsInstantKillGuard(attacker))
+            return (ushort.MaxValue, ushort.MaxValue);   // swing made (CCharFight.cpp:1206)
+
         int dmgMin, dmgMax;
 
         if (weapon == null)
@@ -1386,7 +1397,10 @@ public static class CombatEngine
         // The bell curve used here instead let a skilled attacker land almost every
         // swing, where the reference tops out near iDiff/2 percent.
         int hitCap = CalcHitChanceCore(attacker, target, hitEra, GetWeaponSkill(attacker, weapon));
-        int hitChance = hitEra == 0 ? _rand.Next(hitCap) : hitCap; // m_Act_Difficulty, also fed to the gain rolls
+        // An instant-kill guard's difficulty is a flat 100, not a draw (the reference
+        // returns before the rand(iDiff), CResourceCalc.cpp:147).
+        bool guardKill = IsInstantKillGuard(attacker);
+        int hitChance = hitEra == 0 && !guardKill ? _rand.Next(hitCap) : hitCap; // m_Act_Difficulty, also fed to the gain rolls
         bool hitLanded = attacker.PrivLevel >= PrivLevel.GM || hitChance * 10 >= _rand.Next(1000);
         if (!hitLanded)
             return AttackMiss;
@@ -2108,6 +2122,9 @@ public static class CombatEngine
     /// </summary>
     public static int GetSwingDelayMs(Character attacker, Item? weapon)
     {
+        if (IsInstantKillGuard(attacker))
+            return 100;   // one tenth (CResourceCalc.cpp:44)
+
         int weaponSpeed = weapon?.Speed ?? 0;
         int baseSpeed = weaponSpeed > 0 ? weaponSpeed : 50;
 

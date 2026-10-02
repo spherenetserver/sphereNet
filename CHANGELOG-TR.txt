@@ -4,6 +4,13 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - GUARDSINSTANTKILL acikken muhafiz dovuste aninda oldurur
+------------------------------------------------------------------------
+DUZELTME - GUARDSINSTANTKILL=1 iken muhafiz NPC'nin vurusu her zaman isabet eder, UINT16_MAX
+           hasar verir ve tek tick'te yeniden vurur (Source-X Calc_CombatChanceToHit /
+           Fight_CalcDamage / Calc_CombatAttackSpeed). Ayar yalnizca muhafizin isinlanmasini ve
+           ilk vurusunu etkiliyordu; guclu bir yaratikla dovusen muhafiz script DAM degeriyle
+           vuruyor ve yaratik tarafindan oldurulebiliyordu.
 [2026-10-02] - Karakter ID'si chardef defname'ini okur
 ------------------------------------------------------------------------
 DUZELTME - Karakterin ID ve BASEID degeri govde numarasi yerine CHARDEF defname'ini dondurur

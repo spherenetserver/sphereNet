@@ -51,6 +51,7 @@ public sealed class CombatEngagementParityTests : IDisposable
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = player;
+        ch.IsOnline = player; // a player is connected unless a test logs it out
         ch.Str = 60; ch.MaxHits = ch.Hits = 60;
         world.PlaceCharacter(ch, new Point3D((short)x, (short)y, 0, 0));
         return ch;
@@ -249,6 +250,26 @@ public sealed class CombatEngagementParityTests : IDisposable
         Assert.True(npc.CombatState.SetAttackerThreat(0, 500));
 
         Assert.Same(near, MakeAi(world, threatFlag: false).FightFindBestTarget(npc));
+    }
+
+    [Fact]
+    public void ALoggedOutAttackerIsNeverPickedAgain()
+    {
+        // Fight_IsAttackableState (CCharFight.cpp:1336): !IsDisconnected() first. A
+        // training dummy hit by a player who then logged out must not keep that
+        // player as its target.
+        var world = CreateWorld();
+        var npc = MakeChar(world, 100);
+        var gone = MakeChar(world, 101, player: true);
+        gone.IsOnline = false;
+        var online = MakeChar(world, 105, player: true);
+        online.IsOnline = true;
+
+        npc.RecordAttack(gone.Uid, 5);
+        Assert.Null(MakeAi(world).FightFindBestTarget(npc));
+
+        npc.RecordAttack(online.Uid, 5);
+        Assert.Same(online, MakeAi(world).FightFindBestTarget(npc));
     }
 
     [Fact]

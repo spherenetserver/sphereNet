@@ -45,6 +45,7 @@ public sealed class NpcCombatMagicSourceXTests
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
         var enemy = world.CreateCharacter();
         enemy.IsPlayer = true;
+        enemy.IsOnline = true; // a connected player (a logged-out one is never attackable)
         enemy.Hits = enemy.MaxHits = 100;
         world.PlaceCharacter(enemy, new Point3D((short)(100 + distance), 100, 0, 0));
         return (world, ai, caster, enemy);
@@ -467,6 +468,7 @@ public sealed class NpcCombatMagicSourceXTests
         var (world, ai, npc, enemy) = Duel(distance: 5);
         var other = world.CreateCharacter();
         other.IsPlayer = true;
+        other.IsOnline = true;
         other.Hits = other.MaxHits = 100;
         world.PlaceCharacter(other, new Point3D(102, 100, 0, 0));
         npc.CombatState.AddAttacker(other.Uid);

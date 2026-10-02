@@ -173,6 +173,7 @@ public class CombatWaveC5AosOnHitTests
             var world = TestHarness.CreateWorld();
             var (attacker, target) = MakePair(world);
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.PrivLevel = PrivLevel.GM; // era-0 roll: always hits
             attacker.SetTag("HITLEECHSTAM", "100");
             target.SetSkill(SkillType.Parrying, 0);
@@ -228,6 +229,7 @@ public class CombatWaveC5AosOnHitTests
             var world = TestHarness.CreateWorld();
             var (attacker, target) = MakePair(world);
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.PrivLevel = PrivLevel.GM; // era-0 roll: always hits
             attacker.MaxHits = 100; attacker.Hits = 100;
             target.SetSkill(SkillType.Parrying, 0);

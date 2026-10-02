@@ -34,6 +34,7 @@ public class ParityWaveBTests
         var world = CreateWorld();
         var attacker = world.CreateCharacter();
         attacker.IsPlayer = true;
+        attacker.IsOnline = true;
         attacker.PrivLevel = PrivLevel.Player; // GM would be excluded from gain
         attacker.Str = 50;
         attacker.SetSkill(SkillType.Wrestling, 500);
@@ -111,6 +112,7 @@ public class ParityWaveBTests
 
             var attacker = world.CreateCharacter();
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.Str = 100;
             attacker.Stam = 100;
             attacker.SetSkill(SkillType.Swordsmanship, 1000);
@@ -126,6 +128,7 @@ public class ParityWaveBTests
 
             var target = world.CreateCharacter();
             target.IsPlayer = true;
+            target.IsOnline = true;
             target.Hits = target.MaxHits = 100;
             world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
 

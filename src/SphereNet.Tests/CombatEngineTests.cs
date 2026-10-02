@@ -248,6 +248,7 @@ public class CombatEngineTests
             // A player always gets the increase, flag or not.
             var player = MakeChar();
             player.IsPlayer = true;
+            player.IsOnline = true;
             var pWeapon = new Item { ItemType = ItemType.WeaponSword, BaseId = 0x0F5E };
             player.Equip(pWeapon, Layer.OneHanded);
             player.SetTag("INCREASEDAM", "50");

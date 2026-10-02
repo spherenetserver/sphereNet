@@ -931,6 +931,19 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         if (TryGetMapPointProperty(key.ToUpperInvariant(), out value))
             return true;
 
+        // P.<key> - the object's point answers its own keys (OC_P ->
+        // GetUnkPoint().r_WriteVal(key + 2), CObjBase.cpp:1548-1551): STATICS,
+        // REGION.x, ROOM, SECTOR, ISNEARTYPE and the rest, as TARGP.<key> does below.
+        // Only the coordinates and P.TYPE / P.TERRAIN were answered, so a script
+        // asking <SRC.P.STATICS> read nothing - and a tool gate written as
+        // "IF !(<SRC.P.STATICS>) ... RETURN 1" refused at every spot.
+        if (key.Length > 2 && (key[0] is 'P' or 'p') && key[1] == '.')
+        {
+            string sub = key[2..].ToUpperInvariant();
+            if (TryGetMapPointProperty(sub == "TYPE" ? "P.TYPE" : sub, Position, GetTopLevelPosition(), out value))
+                return true;
+        }
+
         // TAGAT.<index>.KEY / .VAL — ordered access to the object's tag
         // dictionary, mirroring Source-X CVarDefMap. d_SphereAdmin_PlayerTags
         // walks "For x 0 <Eval <TagCount>-1>" and reads
@@ -2176,6 +2189,9 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         {
             if (ScriptNumber.TryParseToken(value.Trim(), out long mask))
                 CanMask = unchecked((ulong)mask);
+            else if (Scripting.ScriptFlagValue.IsExpression(value) &&
+                     Scripting.ScriptFlagValue.TryEvaluate(value, out long maskExpr))
+                CanMask = unchecked((ulong)maskExpr);
             else
                 CanMask = (uint)SphereNet.Scripting.Definitions.CharDef.ParseCanFlags(value);
             return true;
@@ -2807,6 +2823,13 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     {
         if (string.IsNullOrWhiteSpace(value))
             return ObjAttributes.None;
+
+        // CItem ATTR reads GetArgLLVal (CItem.cpp r_LoadVal): "ATTR <ATTR>&~attr_x" is a
+        // bit operation, not a list. The list split below dropped every token it could
+        // not name and stored 0.
+        if (Scripting.ScriptFlagValue.IsExpression(value) &&
+            Scripting.ScriptFlagValue.TryEvaluate(value, out long evaluated))
+            return (ObjAttributes)unchecked((ulong)evaluated);
 
         ObjAttributes result = ObjAttributes.None;
         var parts = value.Split(['|', ',', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);

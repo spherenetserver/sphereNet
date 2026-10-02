@@ -587,6 +587,7 @@ public class CombatAuditRegressionTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
+        ch.IsOnline = true; // a connected player (a logged-out one cannot fight)
         ch.Str = ch.Dex = ch.Int = 100;
         ch.MaxHits = ch.Hits = 100;
         ch.MaxStam = ch.Stam = 100;

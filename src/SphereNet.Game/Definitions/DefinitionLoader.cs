@@ -237,6 +237,7 @@ public sealed class DefinitionLoader
         _templateDefs.Clear();
         _charDefsByBody.Clear();
         _resourcesStatic = null;
+        NpcBrainNames.ClearPackNumbering();
         Diagnostic = null;
     }
 
@@ -244,6 +245,10 @@ public sealed class DefinitionLoader
     public void LoadAll()
     {
         _resourcesStatic = _resources;
+        // Script-facing NPC numbers follow the pack's brain_* defs when the pack
+        // numbers the brains differently from Source-X (a 0.56-numbered pack).
+        NpcBrainNames.ConfigurePackNumbering(name =>
+            _resources.TryResolveDefNameValue(name, out long v) ? v : null);
         SphereNet.Scripting.Definitions.UnknownKeyDiagnostics.Clear();
         ClearRegistries();
         _spells.Clear();

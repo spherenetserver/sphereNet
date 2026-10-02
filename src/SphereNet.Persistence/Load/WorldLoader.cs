@@ -890,6 +890,18 @@ public sealed class WorldLoader
             return;
         }
 
+        // A memory object saved as an item record (the Source-X and Sphere 0.56 form:
+        // [WORLDITEM i_memory] with CONT and LAYER=30) goes back on beside the
+        // character's other memories. Upstream LAYER_SPECIAL holds any number of them;
+        // taking the one equipment slot pushed every further memory into the pack or
+        // onto the ground - a spawn memory among them, which lost the creature its
+        // spawner. Its add is not run again, as for any load (LayerAdd, CCharAct.cpp:266).
+        if (layer == (byte)Layer.Special && CharacterMemoryState.IsMemoryObject(item))
+        {
+            parentChar.MemoryState.AttachMemory(item, fireEquip: false);
+            return;
+        }
+
         Layer targetLayer = layer != 0 ? (Layer)layer : ResolveContItemLayer(item);
         // Never evict an already-worn item. A tiledata-derived layer can collide
         // with a piece already seated on that slot (two graphics resolving to the
@@ -1116,9 +1128,18 @@ public sealed class WorldLoader
         int count = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         using var reader = SaveIO.OpenReader(path);
+        bool headerRead = false;
+        bool legacy056 = false;
 
         while (reader.NextRecord(out string section))
         {
+            if (!headerRead)
+            {
+                headerRead = true;
+                legacy056 = UsesLegacy056BrainNumbering(
+                    reader.FileHeader.TryGetValue("VERSION", out string? fileVersion) ? fileVersion : null);
+            }
+
             if (!ParseSectionType(section, "WORLDITEM", out string? defname))
             {
                 while (reader.NextProperty(out _, out _)) { /* skip */ }
@@ -1243,6 +1264,10 @@ public sealed class WorldLoader
                 if (upper == "LAYER")
                 {
                     byte.TryParse(val, out layer);
+                    // A 0.56-family file puts layer_storage on 80; Source-X has
+                    // LAYER_SPELL_Explosion there and LAYER_STORAGE on 81.
+                    if (legacy056 && layer == Legacy056StorageLayer)
+                        layer = SourceXStorageLayer;
                     continue;
                 }
                 if (upper == "CREATE")
@@ -1534,9 +1559,21 @@ public sealed class WorldLoader
         int count = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         using var reader = SaveIO.OpenReader(path);
+        bool headerRead = false;
+        // Per file: every LoadCharFile starts from this engine's numbering.
+        _legacyBrainNumbering = null;
+        CurrentFileVersion = null;
 
         while (reader.NextRecord(out string section))
         {
+            // The header lines sit ahead of the first section, so they are all in
+            // once the first record is reached.
+            if (!headerRead)
+            {
+                headerRead = true;
+                BeginCharFileFormat(reader, path);
+            }
+
             if (!ParseSectionType(section, "WORLDCHAR", out string? defname))
             {
                 while (reader.NextProperty(out _, out _)) { /* skip */ }
@@ -1658,7 +1695,69 @@ public sealed class WorldLoader
                 _logger.LogInformation("  Loading chars... {Count} ({Elapsed}s)",
                     count, sw.Elapsed.TotalSeconds.ToString("F1"));
         }
+        _legacyBrainNumbering = null;
         return count;
+    }
+
+    /// <summary>Brain numbering of the char file being read: null when its NPC= values
+    /// are this engine's own (Source-X) numbers, else the 0.56 number -> brain table.</summary>
+    private Dictionary<int, NpcBrainType>? _legacyBrainNumbering;
+
+    /// <summary>The VERSION line of the file currently being read, as its header
+    /// wrote it; null when the file has none (SphereNet text and binary saves).</summary>
+    public string? CurrentFileVersion { get; private set; }
+
+    /// <summary>Read the file header of a char-bearing file and decide how its numeric
+    /// fields are numbered. Source-X writes its numeric build id (VERSION=110) and
+    /// translates nothing on load (CWorld::r_LoadVal only stores m_iLoadVersion); its
+    /// NPC= is cast straight to NPCBRAIN_TYPE (CChar::r_LoadVal CHC_NPC). A Sphere 0.55 /
+    /// 0.56a-b save, or the Sphere 56T custom version built on them, wrote the older
+    /// brain numbering, which that cast reads wrongly (MONSTER=10 became DRAGON, UNDEAD=12
+    /// fell outside the table), so those files are translated by meaning.</summary>
+    private void BeginCharFileFormat(ISaveReader reader, string path)
+    {
+        CurrentFileVersion = reader.FileHeader.TryGetValue("VERSION", out string? version) ? version : null;
+        if (!UsesLegacy056BrainNumbering(CurrentFileVersion))
+            return;
+        _legacyBrainNumbering = BuildLegacyBrainNumbering(DefinitionLoader.StaticResources);
+        _logger.LogInformation("{File}: VERSION={Version} uses 0.56 brain numbering; NPC= values are translated",
+            Path.GetFileName(path), CurrentFileVersion);
+    }
+
+    /// <summary>layer_storage in a 0.56-family save, and LAYER_STORAGE in Source-X
+    /// (uofiles_enums.h). This engine has no storage slot, so an item on it is
+    /// seated like any other unequippable child (into the backpack).</summary>
+    internal const byte Legacy056StorageLayer = 80;
+    internal const byte SourceXStorageLayer = 81;
+
+    /// <summary>True for a save VERSION from the 0.56 family that still numbered the
+    /// brains NONE..VENDOR_OFFDUTY (0.55x, 0.56a, 0.56b and custom builds lettered past
+    /// them such as 0.56T). 0.56c/0.56d already use the Source-X numbering, and a
+    /// Source-X build writes a plain number; a file with no VERSION is this engine's.</summary>
+    internal static bool UsesLegacy056BrainNumbering(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return false;
+        var m = System.Text.RegularExpressions.Regex.Match(version.Trim(), @"^0\.(\d+)([A-Za-z]?)");
+        if (!m.Success || !int.TryParse(m.Groups[1].Value, out int minor))
+            return false;
+        if (minor < 56)
+            return true;
+        if (minor > 56)
+            return false;
+        string letter = m.Groups[2].Value.ToLowerInvariant();
+        return letter is not ("c" or "d");
+    }
+
+    /// <summary>The 0.56 number -> brain table. The loaded pack's own brain_* numbers
+    /// win when the pack itself is 0.56-numbered (brain_monster is not this engine's
+    /// Monster), so a custom pack that renumbered a brain is honoured; otherwise the
+    /// built-in 0.56 table answers.</summary>
+    internal static Dictionary<int, NpcBrainType> BuildLegacyBrainNumbering(
+        SphereNet.Scripting.Resources.ResourceHolder? resources)
+    {
+        return NpcBrainNames.BuildLegacyNumbering(resources == null ? null
+            : name => resources.TryResolveDefNameValue(name, out long v) ? v : null);
     }
 
     /// <summary>The design a customizable house's record is building while it loads:
@@ -1866,6 +1965,30 @@ public sealed class WorldLoader
                     ch.OInt = oint;
                     ch.Int = oint;
                 }
+                break;
+            case "NPC":
+            case "NPCBRAIN":
+                // A 0.56-numbered file writes the brain under the older numbering
+                // (MONSTER=10, UNDEAD=12...); read by meaning, not cast onto ours.
+                // A brain written by name, and every other file, takes the normal path.
+                if (_legacyBrainNumbering != null && int.TryParse(val.Trim(), out int legacyBrain))
+                {
+                    if (_legacyBrainNumbering.TryGetValue(legacyBrain, out var mapped))
+                        ch.NpcBrain = mapped;
+                    else if (legacyBrain != 0)
+                        ch.NpcBrain = ch.GetNpcBrainAuto();
+                    break;
+                }
+                // Any other file holds this engine's own numbers. Set them directly:
+                // the script-facing NPC key reads numbers in the loaded pack's
+                // numbering, which is not what the save wrote.
+                if (int.TryParse(val.Trim(), out int ownBrain))
+                {
+                    ch.NpcBrain = (NpcBrainType)ownBrain;
+                    break;
+                }
+                if (!ch.TrySetProperty(key, val))
+                    ch.SetTag("SAVE." + key, val);
                 break;
             case "SPELLEFFECT":
                 // An older SphereNet save described an active effect with this line

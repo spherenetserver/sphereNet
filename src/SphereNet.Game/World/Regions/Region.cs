@@ -443,8 +443,12 @@ public class Region : IScriptObj
             case "SAFE": SetFlagBool(RegionFlag.Safe, val); return true;
             case "UNDERGROUND": SetFlagBool(RegionFlag.Underground, val); return true;
             case "FLAGS":
-                if (uint.TryParse(val, out uint flagsVal))
-                    Flags = (RegionFlag)flagsVal;
+                // CRegion FLAGS is GetArgVal (CRegion.cpp r_LoadVal): a Sphere number
+                // ("0100" is hex), a '|' list of region_flag_* names or an expression
+                // such as "<FLAGS>|region_flag_nobuilding". Decimal-only read most of
+                // those as nothing.
+                if (Scripting.ScriptFlagValue.TryEvaluate(val, out long flagsVal))
+                    Flags = (RegionFlag)unchecked((uint)flagsVal);
                 return true;
         }
 

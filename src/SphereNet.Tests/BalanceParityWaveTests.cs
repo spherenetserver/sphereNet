@@ -21,6 +21,7 @@ public sealed class BalanceParityWaveTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = player;
+        ch.IsOnline = player; // a player fighter is a connected one
         ch.Str = 50; ch.Dex = 50; ch.Int = 50;
         ch.MaxHits = 1000; ch.Hits = 1000;
         ch.Stam = 50;

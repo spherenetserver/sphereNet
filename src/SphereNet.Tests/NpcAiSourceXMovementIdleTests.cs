@@ -495,6 +495,7 @@ public sealed class NpcAiSourceXMovementIdleTests
         var ward = Blocker(world, 102, 100);
         var foe = Blocker(world, 104, 100);
         foe.IsPlayer = true;
+        foe.IsOnline = true; // a connected player (a logged-out one is never attackable)
         ward.FightTarget = foe.Uid;
         npc.Act = ward.Uid;
         npc.Action = (SkillType)NpcAction.GuardTarg;

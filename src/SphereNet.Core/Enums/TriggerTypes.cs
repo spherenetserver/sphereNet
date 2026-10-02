@@ -310,5 +310,15 @@ public enum CharTrigger : short
     /// A script can change TITLE or TAG.NAME.* here; the return value is ignored.</summary>
     SendPaperdoll,
 
+    /// <summary>Sphere 56T custom-version compatibility (not in the Source-X table).
+    /// Fired on the creature about to be ridden, after the rider's @Mount passed:
+    /// SRC is the creature itself, ARGO the rider. RETURN 1 refuses the mount.</summary>
+    NPCMount,
+
+    /// <summary>Sphere 56T custom-version compatibility (not in the Source-X table).
+    /// Fired on the creature once it is back on the ground after a dismount: SRC and
+    /// ARGO are the former rider. The return value is ignored.</summary>
+    NPCDisMount,
+
     Qty,
 }

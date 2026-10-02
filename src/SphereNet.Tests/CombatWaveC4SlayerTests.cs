@@ -53,6 +53,7 @@ public class CombatWaveC4SlayerTests
     {
         var attacker = world.CreateCharacter();
         attacker.IsPlayer = attackerPlayer;
+        attacker.IsOnline = attackerPlayer; // players here are connected ones
         attacker.PrivLevel = PrivLevel.GM; // era-0 roll: a GM always hits
         attacker.Str = 50; attacker.Dex = 50;
         attacker.Hits = attacker.MaxHits = 100;
@@ -60,6 +61,7 @@ public class CombatWaveC4SlayerTests
 
         var target = world.CreateCharacter();
         target.IsPlayer = targetPlayer;
+        target.IsOnline = targetPlayer;
         target.Hits = target.MaxHits = 100;
         target.SetSkill(SkillType.Parrying, 0);
         world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));

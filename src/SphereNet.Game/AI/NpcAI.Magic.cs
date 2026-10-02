@@ -248,7 +248,9 @@ public sealed partial class NpcAI
         {
             if (friends.Count >= 4)
                 break;
-            if (ch.IsDeleted)
+            // The friend search is a CWorldSearch (CCharNPCAct_Magic.cpp:324), which
+            // never yields a disconnected char (CWorldSearch.cpp:271-275).
+            if (ch.IsDeleted || ch.IsLoggedOut)
                 continue;
             var mem = ch.Memory_FindObj(enemy.Uid);
             if (mem != null && mem.IsMemoryTypes(MemoryType.Fight | MemoryType.HarmedBy | MemoryType.IrritatedBy))

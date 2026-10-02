@@ -1547,6 +1547,8 @@ public sealed class TriggerDispatcher
         CharTrigger.LogOut => "LogOut",
         CharTrigger.Mount => "Mount",
         CharTrigger.Dismount => "Dismount",
+        CharTrigger.NPCMount => "NPCMount",
+        CharTrigger.NPCDisMount => "NPCDisMount",
         CharTrigger.RegionEnter => "RegionEnter",
         CharTrigger.RegionLeave => "RegionLeave",
         CharTrigger.RegionStep => "RegionStep",

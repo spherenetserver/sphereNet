@@ -835,6 +835,15 @@ public sealed partial class GameClient
                 _character.PrivLevel = _account.PrivLevel;
             }
         }
+        // CClient::Setup_Start (CClientMsg.cpp:2810-2814): staff log in invulnerable
+        // and without ALLSHOW. An invulnerable character is not attackable
+        // (Fight_IsAttackableState), so creatures leave a staff member alone until
+        // INVUL is switched off - which is how they behave on the reference.
+        if (_character.PrivLevel > PrivLevel.Player)
+        {
+            _character.AllShow = false;
+            _character.SetStatFlag(StatFlag.Invul);
+        }
         // PRIV_JAILED on login re-runs Jail (CClientMsg.cpp:2868-2869): back to the
         // jail cell's region point. No freeze - Source-X never freezes a prisoner. An
         // opt-in timed sentence that ran out while offline is simply forgiven.

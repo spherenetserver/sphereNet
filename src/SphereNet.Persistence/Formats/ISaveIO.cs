@@ -55,4 +55,10 @@ public interface ISaveReader : IDisposable
     /// this is what tells the two apart (Source-X CWorld::LoadFile rejects a world
     /// file without its [EOF]).</summary>
     bool EndMarkerSeen { get; }
+
+    /// <summary>The file-level <c>KEY=VALUE</c> lines a classic text save carries ahead
+    /// of its first section (Source-X CWorld::r_Write: TITLE, VERSION, PREVBUILD, TIME,
+    /// SAVECOUNT). Complete once the first <see cref="NextRecord"/> call has returned;
+    /// empty for a file without such a header (a binary save, a SphereNet text save).</summary>
+    IReadOnlyDictionary<string, string> FileHeader { get; }
 }

@@ -435,6 +435,7 @@ public sealed class NpcWorldParityTests
         world.PlaceCharacter(townsman, new Point3D(100, 100, 0, 0));
         var villain = world.CreateCharacter();
         villain.IsPlayer = true;
+        villain.IsOnline = true;
         world.PlaceCharacter(villain, new Point3D(102, 100, 0, 0));
         if (criminal) villain.SetStatFlag(StatFlag.Criminal);
         else villain.Kills = 1000; // a murderer

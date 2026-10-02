@@ -2,6 +2,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Scripting;
 using SphereNet.Game.World;
 
 namespace SphereNet.Game.Mounts;
@@ -60,6 +61,13 @@ public sealed class MountEngine
         if (mountItemId == 0)
             return false;
 
+        // Sphere 56T custom-version compatibility: the creature's own @NPCMount, with
+        // the creature as SRC and the rider as ARGO, may refuse the ride.
+        if (Triggers?.FireCharTrigger(npc, CharTrigger.NPCMount,
+                new TriggerArgs { CharSrc = npc, O1 = rider }) == TriggerResult.True ||
+            npc.IsDeleted || rider.IsDeleted || rider.IsMounted)
+            return false;
+
         // Store NPC identity so we can find the same NPC on dismount
         rider.Tags.Set("MOUNT_NPC_SERIAL", npc.Uid.Value.ToString());
         rider.Tags.Set("MOUNT_NPC_UUID", npc.Uuid.ToString("D"));
@@ -77,13 +85,86 @@ public sealed class MountEngine
         // Create mount item and equip at Layer.Horse
         var mountItem = _world.CreateItem();
         mountItem.BaseId = mountItemId;
-        mountItem.Hue = npc.Hue;
-        mountItem.Name = "mount";
+        StampMountItem(mountItem, rider, npc);
 
         rider.Equip(mountItem, Layer.Horse);
         rider.SetStatFlag(StatFlag.OnHorse);
 
         return true;
+    }
+
+    /// <summary>The mount item as Make_Figurine + Horse_Mount build it (CCharAct.cpp:
+    /// 3633-3638, 3995): IT_EQ_HORSE, the creature's name and hue, MORE1 the creature's
+    /// CHARDEF (m_itFigurine.m_ID), MORE2 the creature's uid (m_itFigurine.m_UID) and
+    /// LINK the rider. Scripts read the pet back through FINDLAYER.layer_horse.MORE1/
+    /// MORE2, and a save written by either engine finds its creature through MORE2.</summary>
+    private static void StampMountItem(Item mountItem, Character rider, Character npc)
+    {
+        mountItem.ItemType = ItemType.EqHorse;
+        mountItem.Hue = npc.Hue;
+        mountItem.Name = string.IsNullOrEmpty(npc.Name) ? "mount" : npc.Name;
+        mountItem.More1 = unchecked((uint)npc.CharDefIndex);
+        mountItem.More2 = npc.Uid.Value;
+        mountItem.Link = rider.Uid;
+    }
+
+    /// <summary>The wheel marker a ship pilot wears on the mount layer (ITEMID_SHIP_PILOT).
+    /// Horse_UnMount hands it back to the ship instead of releasing a creature
+    /// (CCharAct.cpp:4030-4038).</summary>
+    public const ushort ShipPilotItemId = 0x3E96;
+
+    /// <summary>Releases the ship a pilot marker links to (wired by the host, which owns
+    /// the ship engine). Answers whether the ship took the marker back.</summary>
+    public Func<Character, Item, bool>? ReleaseShipPilot { get; set; }
+
+    /// <summary>Script dispatcher for the creature-side mount triggers.</summary>
+    public TriggerDispatcher? Triggers { get; set; }
+
+    /// <summary>CreateNPC for the creature a mount item names (chardef applied, @Create
+    /// run, not placed). Arguments: the CHARDEF index and the rider. Wired by the host;
+    /// a client fills it in when nothing else has.</summary>
+    public Func<int, Character, Character?>? CreateCreature { get; set; }
+
+    /// <summary>The name engine-built mount items carried before they took the
+    /// creature's own; it names nothing and is not handed on.</summary>
+    private const string PlaceholderMountName = "mount";
+
+    /// <summary>A mount item is being deleted with its creature still parked under it:
+    /// the creature goes too (CItem::DeleteCleanup, CItem.cpp:209-218). This is what
+    /// ends the mount of an NPC rider, who keeps it on death and loses it with itself.</summary>
+    public void OnMountItemDeleted(Item mountItem)
+    {
+        if (mountItem.ItemType != ItemType.EqHorse || mountItem.More2 == 0 ||
+            mountItem.BaseId == ShipPilotItemId)
+            return;
+        if (_world.FindChar(new Serial(mountItem.More2)) is not
+            { IsDeleted: false, IsPlayer: false } creature || !creature.IsStatFlag(StatFlag.Ridden))
+            return;
+        mountItem.More2 = 0;
+        creature.RemoveTag(RiderUuidTag);
+        _world.DeleteObject(creature);
+    }
+
+    private Character? CreateCreatureFromMountItem(Character rider, Item mountItem)
+    {
+        if (CreateCreature == null || mountItem.BaseId == ShipPilotItemId)
+            return null;
+        int creatureId = Trade.VendorEngine.ResolveFigurineCreature(mountItem);
+        if (creatureId == 0)
+            return null;
+        var creature = CreateCreature(creatureId, rider);
+        if (creature == null)
+            return null;
+
+        string name = mountItem.GetName();
+        if (!string.IsNullOrEmpty(name) && !name.Equals(PlaceholderMountName, StringComparison.Ordinal))
+            creature.Name = name;
+        if (mountItem.Hue.Value != 0)
+        {
+            creature.OSkin = mountItem.Hue.Value;
+            creature.Hue = mountItem.Hue;
+        }
+        return creature;
     }
 
     /// <summary>
@@ -170,8 +251,12 @@ public sealed class MountEngine
 
         var newMountItem = _world.CreateItem();
         newMountItem.BaseId = mountItemId;
+        if (mountNpc != null)
+            StampMountItem(newMountItem, rider, mountNpc);
+        else
+            newMountItem.Name = "mount";
+        newMountItem.ItemType = ItemType.EqHorse;
         newMountItem.Hue = new Color(hue);
-        newMountItem.Name = "mount";
         rider.Equip(newMountItem, Layer.Horse);
         rider.SetStatFlag(StatFlag.OnHorse);
 
@@ -207,6 +292,18 @@ public sealed class MountEngine
             Guid.TryParse(uuidStr, out Guid npcUuid) && npcUuid != Guid.Empty)
             return Usable(_world.FindByUuid(npcUuid) as Character);
 
+        // The mount item itself: MORE2 is the creature's uid (m_itFigurine.m_UID),
+        // which is all a Sphere/Source-X save records for a rider. The creature must
+        // still be parked as ridden (or name this rider), so a serial handed on to
+        // something else since is not taken for the mount.
+        if (rider.GetEquippedItem(Layer.Horse) is { More2: not 0 } worn &&
+            worn.BaseId != ShipPilotItemId &&
+            Usable(_world.FindChar(new Serial(worn.More2))) is { } byItem &&
+            (byItem.IsStatFlag(StatFlag.Ridden) ||
+             (byItem.TryGetTag(RiderUuidTag, out string? riderUuid) &&
+              Guid.TryParse(riderUuid, out Guid ru) && ru == rider.Uuid)))
+            return byItem;
+
         if (rider.TryGetTag("MOUNT_NPC_SERIAL", out string? serialStr) &&
             ScriptNumber.TryParseUInt(serialStr, out uint npcSerial) && npcSerial != 0)
             return Usable(_world.FindChar(new Serial(npcSerial)));
@@ -234,6 +331,7 @@ public sealed class MountEngine
         var mountItem = rider.GetEquippedItem(Layer.Horse);
         if (mountItem != null)
         {
+            mountItem.More2 = 0;   // the creature is already going; nothing to take along
             rider.Unequip(Layer.Horse);
             _world.DeleteObject(mountItem);
         }
@@ -255,13 +353,36 @@ public sealed class MountEngine
         if (!rider.IsMounted)
             return null;
 
+        // A pilot "dismounts" by leaving the wheel (Horse_UnMount, CCharAct.cpp:4030).
+        if (rider.GetEquippedItem(Layer.Horse) is { BaseId: ShipPilotItemId } wheel &&
+            ReleaseShipPilot?.Invoke(rider, wheel) == true)
+        {
+            if (rider.GetEquippedItem(Layer.Horse) == wheel)
+            {
+                rider.Unequip(Layer.Horse);
+                _world.DeleteObject(wheel);
+            }
+            rider.ClearStatFlag(StatFlag.OnHorse);
+            return null;
+        }
+
         Character? npc = ResolveMountNpc(rider);
         if (npc != null && beforeDismount?.Invoke(npc) == true)
             return null;
 
         var mountItem = rider.GetEquippedItem(Layer.Horse);
+        // No creature linked to the mount item: Use_Figurine makes one from MORE1
+        // (m_itFigurine.m_ID), else the item definition's TDATA3 (FindCharTrack), named
+        // and coloured by the item (CCharUse.cpp:1152-1176). That is how a rider wearing
+        // a scripted or CHARDEF ITEM=i_mt_* mount gets a creature when getting off.
+        if (npc == null && mountItem != null)
+            npc = CreateCreatureFromMountItem(rider, mountItem);
         if (mountItem != null)
         {
+            // Use_Figurine unlinks the creature before the item goes
+            // (m_itFigurine.m_UID.InitUID(), CCharUse.cpp:1198), so deleting the item
+            // does not take the creature with it.
+            mountItem.More2 = 0;
             rider.Unequip(Layer.Horse);
             _world.DeleteObject(mountItem);
         }
@@ -310,6 +431,11 @@ public sealed class MountEngine
         if (mountStand.Found && pos.Z < mountStand.Z)
             pos = new Point3D(pos.X, pos.Y, mountStand.Z, pos.Map);
         _world.PlaceCharacter(npc, pos);
+
+        // Sphere 56T custom-version compatibility: the creature hears it was left,
+        // with the former rider as SRC and ARGO. Nothing to veto any more.
+        Triggers?.FireCharTrigger(npc, CharTrigger.NPCDisMount,
+            new TriggerArgs { CharSrc = rider, O1 = rider });
 
         return npc;
     }

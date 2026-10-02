@@ -274,6 +274,7 @@ public class SkillDelayTests
 
             var attacker = world.CreateCharacter();
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.Str = 100;
             attacker.Stam = 100;
             attacker.SetSkill(SkillType.Swordsmanship, 1200);
@@ -289,6 +290,7 @@ public class SkillDelayTests
 
             var target = world.CreateCharacter();
             target.IsPlayer = true;
+            target.IsOnline = true;
             target.Hits = target.MaxHits = 100;
             target.Stam = 100;
             target.SetSkill(SkillType.Wrestling, 0);

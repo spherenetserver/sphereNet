@@ -71,9 +71,19 @@ public sealed class TextSaveReader : ISaveReader
                     continue;
                 }
                 _endMarkerSeen = false;
+                _sawSection = true;
                 section = name;
                 _inRecord = true;
                 return true;
+            }
+
+            // The file header: classic saves open with TITLE=/VERSION=/... lines
+            // before any section. Only the lines ahead of the first section count.
+            if (!_sawSection)
+            {
+                int eq = trimmed.IndexOf('=');
+                if (eq > 0)
+                    _fileHeader.TryAdd(trimmed[..eq].Trim(), trimmed[(eq + 1)..].Trim());
             }
         }
 
@@ -212,6 +222,13 @@ public sealed class TextSaveReader : ISaveReader
 
     /// <inheritdoc/>
     public bool EndMarkerSeen => _endMarkerSeen;
+
+    // KEY=VALUE lines ahead of the first section, and whether a section was met yet.
+    private readonly Dictionary<string, string> _fileHeader = new(StringComparer.OrdinalIgnoreCase);
+    private bool _sawSection;
+
+    /// <inheritdoc/>
+    public IReadOnlyDictionary<string, string> FileHeader => _fileHeader;
 
     public void Dispose() => _reader.Dispose();
 }

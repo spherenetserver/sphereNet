@@ -177,6 +177,7 @@ public class NpcAiFieldReportTests
         var victim = world.CreateCharacter();
         victim.BodyId = 0x0190;
         victim.IsPlayer = true;
+        victim.IsOnline = true; // a connected player (a logged-out one is never attackable)
         victim.Hits = victim.MaxHits = 100;
         world.PlaceCharacter(victim, new Point3D(102, 100, 0, 0));
         world.OnTick();

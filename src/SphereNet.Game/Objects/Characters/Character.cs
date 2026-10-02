@@ -3209,7 +3209,9 @@ public partial class Character : ObjBase
     public Item? FindLayer(Layer layer)
     {
         var worn = GetEquippedItem(layer);
-        if (worn != null || layer <= Layer.Dragging)
+        // LAYER_SPECIAL holds the memory objects too, any number of them, in the
+        // memory list (CharacterMemoryState.AttachMemory).
+        if (worn != null || (layer <= Layer.Dragging && layer != Layer.Special))
             return worn;
         foreach (var mem in Memories)
         {
@@ -3251,6 +3253,46 @@ public partial class Character : ObjBase
             foreach (var item in pack.Contents)
                 if (item.BaseId == baseId)
                     return item;
+        return null;
+    }
+
+    /// <summary>The FINDID / FINDTYPE reference (CContainer::r_GetRefContainer,
+    /// CContainer.cpp:652-685): the token is ResourceGetID_EatStr with RES_ITEMDEF /
+    /// RES_TYPEDEF as the default type and CContainer::ContentFind (CContainer.cpp:216)
+    /// finds the first item matching it among what I wear, my memories included,
+    /// descending into searchable containers (the pack, never the bank). A numeric
+    /// FINDID first keeps the graphic search above, which a spell memory sharing its
+    /// rune's graphic relies on. Sphere 56T custom-version compatibility: those
+    /// scripts look up their own script memories and pack items by defname
+    /// ("FINDID.i_healing_memory").</summary>
+    private Item? FindRef(string token, bool byType)
+    {
+        token = token.Trim();
+        if (token.Length == 0)
+            return null;
+        if (!byType && TryParseHexOrDecUshort(token, out ushort graphic) &&
+            FindItemByBaseId(graphic) is { } byGraphic)
+            return byGraphic;
+        var rid = Items.ResourceMatch.ResolveRefToken(token,
+            byType ? Core.Enums.ResType.TypeDef : Core.Enums.ResType.ItemDef);
+        return rid.IsValid ? Items.ResourceMatch.ContentFind(this, rid) : null;
+    }
+
+    /// <summary>FINDCONT.n (CContainer.cpp:665-673): the n-th entry of my own content
+    /// list - what I wear, in layer order. The index is an expression value.</summary>
+    private Item? FindContRef(string token)
+    {
+        if (!ScriptNumber.TryParseToken(token.Trim(), out long n) || n < 0)
+            return null;
+        long idx = 0;
+        for (int i = 0; i < _equipment.Length; i++)
+        {
+            if (_equipment[i] == null || _equipment[i]!.IsDeleted)
+                continue;
+            if (idx == n)
+                return _equipment[i];
+            idx++;
+        }
         return null;
     }
 
@@ -4088,9 +4130,8 @@ public partial class Character : ObjBase
             var oldParent = world.FindObject(item.ContainedIn);
             if (oldParent is Item oldContainer)
                 oldContainer.RemoveItem(item);
-            else if (oldParent is Character oldWearer && item.IsEquipped &&
-                     oldWearer.GetEquippedItem(item.EquipLayer) == item)
-                oldWearer.Unequip(item.EquipLayer);
+            else if (oldParent is Character oldWearer && item.IsEquipped)
+                oldWearer.TakeOffWorn(item);
         }
         else if (world != null)
         {
@@ -4098,6 +4139,15 @@ public partial class Character : ObjBase
         }
 
         if (item.IsDeleted) return false;
+
+        // A memory object joins the others on LAYER_SPECIAL instead of taking the one
+        // slot - upstream that layer holds any number of items and a memory never
+        // bounces another (CChar::LayerAdd).
+        if (layer == Layer.Special && CharacterMemoryState.IsMemoryObject(item))
+        {
+            MemoryState.AttachMemory(item, fireEquip: true);
+            return true;
+        }
         var displaced = _equipment[idx];
         if (displaced != null && !ReferenceEquals(displaced, item))
         {
@@ -4132,6 +4182,12 @@ public partial class Character : ObjBase
             SetStatFlag(StatFlag.Criminal);
             NotoSaveUpdate?.Invoke(this);
         }
+        // LayerAdd IT_EQ_HORSE (CCharAct.cpp:380-382) and the LAYER_HORSE load fix-up
+        // (CItem.cpp:1197-1204): what is worn on the mount layer makes its wearer a
+        // rider, however it got there - Horse_Mount, a script EQUIP or NEWITEM+CONT,
+        // a CHARDEF ITEM=i_mt_*, a ship's wheel or a loaded save.
+        if (layer == Layer.Horse)
+            SetStatFlag(StatFlag.OnHorse);
         // Track the last weapon wielded for the EquipLastWeapon client macro
         // (Source-X CChar::m_uidWeaponLast, set on equip, CCharAct.cpp:314).
         if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && item.IsWeaponType)
@@ -4256,6 +4312,9 @@ public partial class Character : ObjBase
             ClearStatFlag(StatFlag.Criminal);
             NotoSaveUpdate?.Invoke(this);
         }
+        // OnRemoveObj IT_EQ_HORSE (CCharAct.cpp:488-490): the rider is on foot again.
+        if (layer == Layer.Horse)
+            ClearStatFlag(StatFlag.OnHorse);
         MarkDirty(DirtyFlag.Equip | DirtyFlag.Stats);
 
         // Source-X Stat_AddMaxMod on unequip clamps the current pool down to the
@@ -5089,7 +5148,9 @@ public partial class Character : ObjBase
             // a key it could not answer, and .info on a creature showed no brain at
             // all - which is exactly the field you want when a monster will not
             // attack.
-            case "NPC": value = ((int)_npcBrain).ToString(); return true;
+            // Read in the loaded pack's brain numbering (a 0.56-numbered pack says
+            // MONSTER=10); the engine keeps the Source-X enum underneath.
+            case "NPC": value = NpcBrainNames.ToScriptNumber(_npcBrain).ToString(); return true;
             case "ISGM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
             // The GM-MODE flag (IsPriv(PRIV_GM), CClient.cpp:704): on for a GM until
             // the GM toggle turns it off.
@@ -5102,7 +5163,7 @@ public partial class Character : ObjBase
             case "PRIVSHOW": value = _privShow ? "1" : "0"; return true;
             case "ISPLAYER": value = _isPlayer ? "1" : "0"; return true;
             case "ISNPC": value = (!_isPlayer && _npcBrain != NpcBrainType.None) ? "1" : "0"; return true;
-            case "NPCBRAIN": value = ((int)_npcBrain).ToString(); return true;
+            case "NPCBRAIN": value = NpcBrainNames.ToScriptNumber(_npcBrain).ToString(); return true;
             case "DAM":
             case "DAM.LO":
             case "DAM.HI":
@@ -5870,75 +5931,60 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // FINDID.xxx  (see FindItemByBaseId for the search scope)
+        // CChar answers the CContainer keys over what it wears (CChar.cpp:2332 ->
+        // CContainer::r_WriteValContainer, CContainer.cpp:689): RESTEST and RESCOUNT
+        // walk the worn items and the searchable containers below them (the pack),
+        // the same walk CONSUME spends from. "<SRC.RESTEST 1 i_bandage>" is how
+        // scripts gate a CONSUME on the user's carried stock.
+        if (upper.StartsWith("RESTEST", StringComparison.Ordinal) &&
+            (upper.Length == 7 || upper[7] is ' ' or '.' or '\t' or ','))
+        {
+            var wanted = Items.ResourceMatch.LoadList(key[7..].TrimStart(' ', '\t', '.', ','));
+            value = (wanted.Count == 0
+                ? 0
+                : Items.ResourceMatch.ResourceConsume(this, wanted, 1, test: true)).ToString();
+            return true;
+        }
+        if (upper.StartsWith("RESCOUNT", StringComparison.Ordinal) &&
+            (upper.Length == 8 || upper[8] is ' ' or '.' or '\t' or ','))
+        {
+            string arg = key[8..].TrimStart(' ', '\t', '.', ',').Trim();
+            if (arg.Length == 0)
+            {
+                int worn = 0;
+                for (int i = 0; i < _equipment.Length; i++)
+                    if (_equipment[i] != null) worn++;
+                value = worn.ToString();
+                return true;
+            }
+            var rid = Items.ResourceMatch.Resolve(arg);
+            value = (rid.IsValid
+                ? Math.Min(int.MaxValue, Items.ResourceMatch.Count(this, rid))
+                : 0).ToString();
+            return true;
+        }
+
+        // FINDID.xxx[.sub]  (see FindIdRef for the search scope). FINDID is a
+        // reference (CContainer::r_GetRefContainer): a trailing key reads off the
+        // item found, and a miss reads 0.
         if (upper.StartsWith("FINDID.", StringComparison.Ordinal))
         {
-            string idStr = key["FINDID.".Length..].Trim();
-            if (TryParseHexOrDecUshort(idStr, out ushort findId))
-            {
-                var found = FindItemByBaseId(findId);
-                if (found != null)
-                {
-                    value = $"0{found.Uid.Value:X}";
-                    return true;
-                }
-            }
-            value = "0";
-            return true;
+            var (token, sub) = Items.ResourceMatch.SplitRef(key["FINDID.".Length..]);
+            return Items.ResourceMatch.ReadRef(FindRef(token, byType: false), sub, out value);
         }
 
-        // FINDTYPE.xxx
+        // FINDTYPE.<typedef>[.sub]: ContentFind by TYPE (t_ name, TYPEDEF, number).
         if (upper.StartsWith("FINDTYPE.", StringComparison.Ordinal))
         {
-            string typeStr = key["FINDTYPE.".Length..].Trim();
-            if (TryParseHexOrDecUshort(typeStr, out ushort findType))
-            {
-                for (int i = 0; i < _equipment.Length; i++)
-                {
-                    if (_equipment[i] != null && _equipment[i]!.BaseId == findType)
-                    {
-                        value = $"0{_equipment[i]!.Uid.Value:X}";
-                        return true;
-                    }
-                }
-                var pack = Backpack;
-                if (pack != null)
-                {
-                    foreach (var item in pack.Contents)
-                    {
-                        if (item.BaseId == findType)
-                        {
-                            value = $"0{item.Uid.Value:X}";
-                            return true;
-                        }
-                    }
-                }
-            }
-            value = "0";
-            return true;
+            var (token, sub) = Items.ResourceMatch.SplitRef(key["FINDTYPE.".Length..]);
+            return Items.ResourceMatch.ReadRef(FindRef(token, byType: true), sub, out value);
         }
 
-        // FINDCONT.n — nth equipped item
+        // FINDCONT.n[.sub] — the n-th worn item
         if (upper.StartsWith("FINDCONT.", StringComparison.Ordinal))
         {
-            if (int.TryParse(upper.AsSpan("FINDCONT.".Length), out int n))
-            {
-                int idx = 0;
-                for (int i = 0; i < _equipment.Length; i++)
-                {
-                    if (_equipment[i] != null)
-                    {
-                        if (idx == n)
-                        {
-                            value = $"0{_equipment[i]!.Uid.Value:X}";
-                            return true;
-                        }
-                        idx++;
-                    }
-                }
-            }
-            value = "0";
-            return true;
+            var (token, sub) = Items.ResourceMatch.SplitRef(key["FINDCONT.".Length..]);
+            return Items.ResourceMatch.ReadRef(FindContRef(token), sub, out value);
         }
 
         // FINDUID.uid — check if a specific UID is on this character
@@ -7529,6 +7575,13 @@ public partial class Character : ObjBase
         return true;
     }
 
+    /// <summary>A FLAGS value as CHC_FLAGS reads it: GetArgULLVal, the expression
+    /// evaluator (CChar.cpp:3871). A plain number or a '|' list of numbers and
+    /// DEFNAMEs is OR-ed directly; anything else - "&lt;FLAGS&gt;&amp;~statf_criminal",
+    /// the usual way a script drops one bit - is evaluated as an expression. Reading
+    /// only the '|' list turned such a line into 0 and wiped every runtime bit with
+    /// it, STATF_ONHORSE included, so the rider still wore the mount item but no
+    /// longer counted as mounted and could not dismount.</summary>
     private static uint ParseNamedFlagMask(string value)
     {
         uint result = 0;
@@ -7541,7 +7594,11 @@ public partial class Character : ObjBase
                 continue;
             }
             if (DefinitionLoader.StaticResources?.TryResolveDefNameValue(token.Trim(), out long resolved) == true)
+            {
                 result |= unchecked((uint)resolved);
+                continue;
+            }
+            return unchecked((uint)EvalScriptLong(value));
         }
         return result;
     }
@@ -7573,37 +7630,25 @@ public partial class Character : ObjBase
     private static bool TryParseNpcBrain(string value, out NpcBrainType brain)
     {
         brain = NpcBrainType.None;
-        string normalized = value.Trim();
 
-        // Source-X save token form: "NPC_HUMAN", "NPC_BANKER", etc. Strip
-        // the NPC_ / BRAIN_ prefix before the enum parse so those names
-        // land on the matching enum value. Without this, legacy saves
-        // loaded with NPC=NPC_BANKER default to None, and the
-        // banker/vendor/healer speech dispatch below never fires.
-        if (normalized.StartsWith("npc_", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[4..];
-        else if (normalized.StartsWith("brain_", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[6..];
-
-        // Pack alias whose def name differs from the enum member: the
-        // Scripts-X stablemaster brain is brain_animal_trainer=7, which is
-        // NpcBrainType.Stable here. Without this, @Create NPC=... failed the
-        // parse and stablemasters kept the pre-spawn Monster fallback brain.
-        if (normalized.Equals("animal_trainer", StringComparison.OrdinalIgnoreCase))
-        {
-            brain = NpcBrainType.Stable;
-            return true;
-        }
-
-        if (Enum.TryParse(normalized, true, out NpcBrainType named))
+        // Source-X save token form: "NPC_HUMAN", "NPC_BANKER", etc., the
+        // Scripts-X stablemaster alias brain_animal_trainer, and the brains
+        // Source-X retired (brain_undead, brain_thief, brain_beggar,
+        // brain_vendor_offduty...) mapped by meaning the way its own
+        // backwards-compatibility table does. Without the prefix strip, legacy
+        // saves loaded with NPC=NPC_BANKER defaulted to None and the
+        // banker/vendor/healer speech dispatch never fired.
+        if (NpcBrainNames.TryParseName(value, out NpcBrainType named))
         {
             brain = named;
             return true;
         }
 
+        // A number is in the loaded pack's numbering (NPC=10 is a monster under a
+        // 0.56-numbered pack, a dragon under a Source-X one).
         if (int.TryParse(value, out int numeric))
         {
-            brain = (NpcBrainType)numeric;
+            brain = NpcBrainNames.FromScriptNumber(numeric);
             return true;
         }
 
@@ -7710,16 +7755,17 @@ public partial class Character : ObjBase
         // layer, then route the trailing verb. Removing an IT_SPELL memory
         // must also remove its active effect (Source-X: deleting the memory
         // runs Spell_Effect_Remove) — the Scripts-X form toggles rely on it.
-        if (key.StartsWith("FINDID.", StringComparison.OrdinalIgnoreCase))
+        bool findId = key.StartsWith("FINDID.", StringComparison.OrdinalIgnoreCase);
+        bool findType = !findId && key.StartsWith("FINDTYPE.", StringComparison.OrdinalIgnoreCase);
+        bool findCont = !findId && !findType && key.StartsWith("FINDCONT.", StringComparison.OrdinalIgnoreCase);
+        if (findId || findType || findCont)
         {
-            string chain = key["FINDID.".Length..];
-            int chainDot = chain.IndexOf('.');
-            if (chainDot > 0 &&
-                TryParseHexOrDecUshort(chain[..chainDot].Trim(), out ushort chainId))
+            var (token, tail) = Items.ResourceMatch.SplitRef(
+                key[(findId ? "FINDID." : findType ? "FINDTYPE." : "FINDCONT.").Length..]);
+            if (tail.Length > 0)
             {
-                string tail = chain[(chainDot + 1)..].Trim();
-                var found = FindItemByBaseId(chainId);
-                if (found == null || found.IsDeleted || tail.Length == 0)
+                var found = findCont ? FindContRef(token) : FindRef(token, byType: findType);
+                if (found == null || found.IsDeleted)
                     return true;
                 if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
                 {
@@ -7734,7 +7780,7 @@ public partial class Character : ObjBase
                     }
                     return true;
                 }
-                return found.TryExecuteCommand(tail, args, source);
+                return Items.ResourceMatch.ExecRef(found, tail, args, source);
             }
         }
 
@@ -8600,6 +8646,13 @@ public partial class Character : ObjBase
                     : null;
                 if (horse != null && horse != this)
                     OnScriptMount?.Invoke(this, horse);
+                // Sphere 56T custom-version compatibility: a bare MOUNT on a creature
+                // seats the script's SRC on it (the pack-mount dialog runs
+                // "UID.<horse>.MOUNT" with the player as SRC). Upstream reads the empty
+                // argument as uid 0 and does nothing, so this only fills a no-op.
+                else if (string.IsNullOrWhiteSpace(args) && !_isPlayer &&
+                         ResolveSourceCharacter(source) is { IsPlayer: true } srcRider && srcRider != this)
+                    OnScriptMount?.Invoke(srcRider, this);
                 return true;
             }
             case "POISON":
@@ -9191,18 +9244,30 @@ public partial class Character : ObjBase
     {
         if (item.IsEquipped && item.ContainedIn == Uid)
         {
-            Unequip(item.EquipLayer);
+            if (!TakeOffWorn(item))
+                Unequip(item.EquipLayer);
         }
         else
         {
             var parent = world.FindObject(item.ContainedIn);
             if (parent is Item container)
                 container.RemoveItem(item);
-            else if (parent is Character wearer && wearer.GetEquippedItem(item.EquipLayer) == item)
-                wearer.Unequip(item.EquipLayer);
-            else
+            else if (!(parent is Character wearer && item.IsEquipped && wearer.TakeOffWorn(item)))
                 world.HideFromSector(item);
         }
+    }
+
+    /// <summary>Take <paramref name="item"/> off this character, from whichever store
+    /// holds it: the slot of its layer, or - a memory object on LAYER_SPECIAL - the
+    /// memory list. Returns false when this character wears it in neither.</summary>
+    public bool TakeOffWorn(Item item)
+    {
+        if (ReferenceEquals(GetEquippedItem(item.EquipLayer), item))
+        {
+            Unequip(item.EquipLayer);
+            return true;
+        }
+        return _memoryState != null && _memoryState.DetachMemory(item);
     }
 
     /// <summary>Pending NEWITEM creation id (set by script NEWITEM command).</summary>

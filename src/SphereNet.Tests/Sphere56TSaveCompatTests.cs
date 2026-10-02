@@ -402,6 +402,21 @@ public class Sphere56TSaveCompatTests
             // shard's own data quirk: exactly one worldgem was saved with
             // MORE1=00 (a GM never configured it; uid 0x40001EF5).
             Assert.True(deadSpawners <= 1, $"dead spawners: {deadSpawners}");
+
+            // 56T keeps spawn membership on the creature (an i_memory with
+            // MEMORY_ISPAWNED), never as ADDOBJ: without the adoption pass every
+            // spawner above is empty and refills its quota beside its own NPCs.
+            int occupiedBefore = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>()
+                .Count(i => i.SpawnChar is { CurrentCount: > 0 });
+            int adopted = SphereNet.Game.Objects.Items.Item.AdoptLegacySpawnMemories(world);
+            int occupiedAfter = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>()
+                .Count(i => i.SpawnChar is { CurrentCount: > 0 });
+            int leftover = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>()
+                .Count(i => !i.IsDeleted && SphereNet.Game.Objects.Items.Item.IsLegacySpawnMemory(i));
+            _out.WriteLine($"legacy spawn memories: adopted={adopted} spawners with members before={occupiedBefore} after={occupiedAfter} leftover={leftover}");
+            Assert.True(adopted > 100, $"expected the 56T spawn memberships, adopted {adopted}");
+            Assert.True(occupiedAfter > occupiedBefore);
+            Assert.Equal(0, leftover);
         }
         finally
         {

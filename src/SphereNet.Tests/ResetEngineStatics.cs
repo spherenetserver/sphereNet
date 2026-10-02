@@ -34,6 +34,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Scripting.ScriptTouchAccess.Configuration = new();
         SphereNet.Game.Objects.ObjBase.OnObjectMessage = null;
         SphereNet.Game.Definitions.DefinitionLoader.ResetForTests();
+        // Script-facing brain numbering adopted from a 0.56-numbered pack.
+        SphereNet.Core.Enums.NpcBrainNames.ClearPackNumbering();
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;

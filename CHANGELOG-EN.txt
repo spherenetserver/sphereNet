@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-02] - Live-play fixes: Sphere 56T custom-version compatibility and Source-X gaps
+------------------------------------------------------------------------
+FIX - Sphere 0.55/0.56a-b saves (the Sphere 56T custom version included) store NPC
+      brains in the older numbering (MONSTER=10, UNDEAD=12...); files are now
+      recognised by their VERSION header and NPC= is translated by meaning, so
+      monsters no longer load as dragons and undead keep a brain. Under a pack whose
+      brain_* numbering differs, script NPC/NPCBRAIN reads and numeric writes use the
+      pack's numbers while the engine and saves keep the Source-X brains.
+FIX - Char spawners loaded from a 0.56 save no longer spawn their whole quota again:
+      the membership kept on the creature (MEMORY_ISPAWNED memory) is handed to the
+      spawner, as Source-X does. Spawner membership follows CCSpawn::AddObj capacity;
+      LAYER_SPECIAL holds any number of memory items.
+FIX - Summoned guards are conjured and leave after a restart instead of piling up.
+      RESPAWN does what the Source-X verb does (dead NPCs with a home come back);
+      RESPAWN FULL is unchanged.
+FIX - A logged-out player is never a combat or look-around target (skill dummies no
+      longer swing at players who logged out). A ridden mount no longer comes due on
+      every NPC tick. Staff enter the world invulnerable without ALLSHOW, as Source-X.
+FIX - FLAGS, ATTR, CANMASK and region/sector FLAGS assignments are read as
+      expressions ("FLAGS <FLAGS>&~statf_x" no longer wipes every flag, which left a
+      rider unable to dismount). Any item on the mount layer marks its wearer mounted;
+      mount items carry MORE1/MORE2 as Source-X so legacy riders get their mount back;
+      a missing creature is created as Use_Figurine does; @DClick fires on a
+      character first; @NPCMount / @NPCDisMount are supported for 56T scripts.
+FIX - <OBJ.P.key> answers STATICS, REGION, ROOM, SECTOR and ISNEARTYPE like
+      TARGP.key (a pickaxe gate on <SRC.P.STATICS> refused mining everywhere).
+FIX - A character answers RESTEST and RESCOUNT; FINDID, FINDTYPE and FINDCONT on
+      characters and containers are Source-X references (defnames, sub-containers,
+      trailing key read and verb). Bandage scripts gating on RESTEST work again.
+FIX - Bare DB.CONNECT reconnects with the configured settings. EVENTSPET and the
+      other global event lists take +/- prefixes and log an unknown name at startup.
+
 [2026-10-02] - Combat, notoriety, kill credit, webs and network quota follow Source-X
 ------------------------------------------------------------------------
 FIX - A logged-out character reaches a client's view only with ALLSHOW: the view

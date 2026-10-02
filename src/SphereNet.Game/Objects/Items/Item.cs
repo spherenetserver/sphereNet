@@ -1291,9 +1291,8 @@ public class Item : ObjBase
             var oldParent = world.FindObject(item.ContainedIn);
             if (oldParent is Item oldContainer)
                 oldContainer.RemoveItem(item);
-            else if (oldParent is Character oldWearer && item.IsEquipped &&
-                     oldWearer.GetEquippedItem(item.EquipLayer) == item)
-                oldWearer.Unequip(item.EquipLayer);
+            else if (oldParent is Character oldWearer && item.IsEquipped)
+                oldWearer.TakeOffWorn(item);
         }
         else if (!item.ContainedIn.IsValid && world != null)
         {
@@ -2424,27 +2423,15 @@ public class Item : ObjBase
         }
 
         // Faz 2: Container dot-notation properties
-        if (upper.StartsWith("FINDID.", StringComparison.Ordinal))
+        // FINDID / FINDTYPE / FINDCONT are references (CContainer::r_GetRefContainer,
+        // CContainer.cpp:652-685): ContentFind by definition or TYPE through the
+        // searchable sub-containers, or the n-th direct content; a trailing key reads
+        // off the item found, and a miss reads 0.
+        if (upper.StartsWith("FINDID.", StringComparison.Ordinal) ||
+            upper.StartsWith("FINDTYPE.", StringComparison.Ordinal) ||
+            upper.StartsWith("FINDCONT.", StringComparison.Ordinal))
         {
-            var arg = upper[7..];
-            ushort id = ParseHexId(arg);
-            var found = FindContentByBaseId(id);
-            value = found != null ? $"0{found.Uid.Value:X}" : "";
-            return true;
-        }
-        if (upper.StartsWith("FINDTYPE.", StringComparison.Ordinal))
-        {
-            var arg = upper[9..];
-            ItemType ft = ParseItemType(arg);
-            var found = FindContentByType(ft);
-            value = found != null ? $"0{found.Uid.Value:X}" : "";
-            return true;
-        }
-        if (upper.StartsWith("FINDCONT.", StringComparison.Ordinal))
-        {
-            if (int.TryParse(upper[9..], out int idx) && idx >= 0 && idx < _contents.Count)
-                value = $"0{_contents[idx].Uid.Value:X}";
-            return true;
+            return ResourceMatch.ReadRef(FindContainerRef(key, out string sub), sub, out value);
         }
         if (upper == "RESCOUNT")
         {
@@ -3172,6 +3159,17 @@ public class Item : ObjBase
                     return true;
                 }
                 uint v = ParseHexOrDecUInt(value);
+                // A figurine or mount item names its creature here (m_itFigurine.m_ID);
+                // a CHARDEF with a named header has an index beyond a word, so it is
+                // kept whole rather than squeezed through the word resolver below.
+                if (v == 0 && ItemType is ItemType.EqHorse or ItemType.Figurine &&
+                    value.Any(char.IsLetter) &&
+                    Definitions.DefinitionLoader.StaticResources?.ResolveDefName(value.Trim()) is
+                        { IsValid: true, Type: ResType.CharDef } creatureRid)
+                {
+                    _more1 = unchecked((uint)creatureRid.Index);
+                    return true;
+                }
                 if (v == 0 && value.Length > 0 && value.Any(char.IsLetter) && ResolveDefName != null)
                 {
                     ushort resolved = ResolveDefName(value);
@@ -3947,6 +3945,15 @@ public class Item : ObjBase
         // this way (the flash robe's TOPOBJ.FINDLAYER(5).COLOR <hue>).
         // Command first, property-set fallback; an invalid ref swallows the
         // line like Sphere does.
+        if (upper.StartsWith("FINDID.", StringComparison.Ordinal) ||
+            upper.StartsWith("FINDTYPE.", StringComparison.Ordinal) ||
+            upper.StartsWith("FINDCONT.", StringComparison.Ordinal))
+        {
+            var found = FindContainerRef(key, out string verbTail);
+            if (verbTail.Length > 0)
+                return ResourceMatch.ExecRef(found, verbTail, args, source);
+        }
+
         if (upper.StartsWith("TOPOBJ.", StringComparison.Ordinal) ||
             upper.StartsWith("TOPCONT.", StringComparison.Ordinal) ||
             upper.StartsWith("CONT.", StringComparison.Ordinal) ||
@@ -5877,40 +5884,144 @@ public class Item : ObjBase
     /// MORE1/AMOUNT spawner forgets its NPCs on reload, sees CurrentCount 0 &lt;
     /// AMOUNT, and respawns its whole quota every restart — the population grows
     /// without bound (one worldgem yielding many NPCs). Idempotent (RegisterExisting
-    /// de-dupes) and never alters MaxCount: the cap stays AMOUNT and any excess
-    /// carried in from an over-accumulated save drains off by attrition, matching
-    /// Source-X leaving MORE2/current-spawned unmodified on load.</summary>
+    /// de-dupes) and never alters MaxCount. Entries past max(AMOUNT, 1) are refused,
+    /// as AddObj refuses them on load, and those creatures stay unlinked.</summary>
     private void RelinkSpawnedChildrenFromTag(World.GameWorld world)
     {
         if (SpawnChar == null) return;
         string? addObj = Tags.Get("ADDOBJ");
         if (string.IsNullOrEmpty(addObj)) return;
 
-        int spawnRange = SpawnChar.SpawnRange;
         foreach (string tok in addObj.Split(',',
             StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
             if (!TryParseSpawnUid(tok, out uint uid)) continue;
             var ch = world.FindChar(new Serial(uid));
             if (ch == null || ch.IsDead || ch.IsDeleted) continue;
-
-            SpawnChar.RegisterExisting(new Serial(uid));
-            if (ch.Home.X == 0 && ch.Home.Y == 0)
-                ch.Home = Position;
-            if (ch.HomeDist == Character.UnlimitedHomeDistance)
-                ch.HomeDist = (short)spawnRange;
-            if (!ch.TryGetTag("SPAWNITEM", out _))
-                ch.SetTag("SPAWNITEM", $"0{Uid.Value:x8}");
-            if (!ch.IsStatFlag(StatFlag.Spawned))
-                ch.SetStatFlag(StatFlag.Spawned);
-            if (ch.NpcBrain == NpcBrainType.None)
-            {
-                var cdef = DefinitionLoader.GetCharDef(ch.CharDefIndex);
-                ch.NpcBrain = (cdef != null && cdef.NpcBrain != NpcBrainType.None)
-                    ? cdef.NpcBrain
-                    : NpcBrainType.Monster;
-            }
+            // CCSpawn::AddObj refuses a member once the list holds max(AMOUNT, 1) -
+            // while loading too; only a champion has no limit (CCSpawn.cpp:590-596).
+            // A refused creature is left exactly as it was saved, an ordinary NPC
+            // the spawner does not count.
+            if (!HasRoomForLoadedMember(SpawnChar, ch.Uid)) continue;
+            LinkLoadedSpawnChild(ch);
         }
+    }
+
+    /// <summary>Whether CCSpawn::AddObj would take <paramref name="uid"/>: already a
+    /// member, a champion, or a list below max(AMOUNT, 1) (CCSpawn.cpp:590-596).</summary>
+    private static bool HasRoomForLoadedMember(SpawnComponent spawn, Serial uid) =>
+        spawn.IsChampion || spawn.SpawnedUids.Contains(uid) ||
+        spawn.SpawnedUids.Count < Math.Max(spawn.MaxCount, 1);
+
+    /// <summary>The STATF_SPAWNED check of CChar::FixWeirdness (CChar.cpp:937-941): a
+    /// creature that says it was spawned but whose spawn link (SPAWNITEM) does not
+    /// lead to a spawner is no longer marked spawned. A Sphere 0.56 save sets the flag
+    /// on every spawned creature; one whose spawner is gone, or whose membership was
+    /// refused, otherwise kept claiming a spawner it does not have. Run after the
+    /// spawn components and the legacy memberships are in place. Returns how many
+    /// flags were cleared.</summary>
+    public static int ClearSpawnedFlagWithoutSpawner(World.GameWorld world)
+    {
+        int cleared = 0;
+        foreach (var ch in world.GetAllCharactersSnapshot())
+        {
+            if (ch.IsDeleted || !ch.IsStatFlag(StatFlag.Spawned))
+                continue;
+            if (ch.TryGetTag("SPAWNITEM", out string? link) &&
+                TryParseSpawnUid(link ?? "", out uint spawnUid) &&
+                world.FindItem(new Serial(spawnUid)) is { IsDeleted: false } spawnItem &&
+                (spawnItem.SpawnChar != null || spawnItem.SpawnItem != null))
+                continue;
+            ch.ClearStatFlag(StatFlag.Spawned);
+            cleared++;
+        }
+        return cleared;
+    }
+
+    /// <summary>Put a creature loaded from a save back on this char spawner's member
+    /// list, with the back-link, home and brain a live spawn gives it. Shared by the
+    /// two ways a save records membership: the spawner's ADDOBJ lines and the
+    /// creature's legacy spawn memory.</summary>
+    private void LinkLoadedSpawnChild(Character ch)
+    {
+        if (SpawnChar == null) return;
+        SpawnChar.RegisterExisting(ch.Uid);
+        if (ch.Home.X == 0 && ch.Home.Y == 0)
+            ch.Home = Position;
+        if (ch.HomeDist == Character.UnlimitedHomeDistance)
+            ch.HomeDist = (short)SpawnChar.SpawnRange;
+        if (!ch.TryGetTag("SPAWNITEM", out _))
+            ch.SetTag("SPAWNITEM", $"0{Uid.Value:x8}");
+        if (!ch.IsStatFlag(StatFlag.Spawned))
+            ch.SetStatFlag(StatFlag.Spawned);
+        if (ch.NpcBrain == NpcBrainType.None)
+        {
+            var cdef = DefinitionLoader.GetCharDef(ch.CharDefIndex);
+            ch.NpcBrain = (cdef != null && cdef.NpcBrain != NpcBrainType.None)
+                ? cdef.NpcBrain
+                : NpcBrainType.Monster;
+        }
+    }
+
+    /// <summary>A memory object (<see cref="CharacterMemoryState.IsMemoryObject"/>)
+    /// whose memory flags (COLOR) carry MEMORY_ISPAWNED.</summary>
+    public static bool IsLegacySpawnMemory(Item item) =>
+        CharacterMemoryState.IsMemoryObject(item) &&
+        ((ushort)item.Hue.Value & (ushort)MemoryType.ISpawned) != 0;
+
+    /// <summary>Move every legacy spawn membership in the world onto its spawner.
+    ///
+    /// A Sphere 0.56 save does not list a char spawner's members on the spawner (no
+    /// ADDOBJ); each spawned creature instead wears an i_memory on LAYER_SPECIAL whose
+    /// COLOR (the memory flags) carries MEMORY_ISPAWNED 0x0200 and whose LINK is the
+    /// spawn item. The spawner itself only keeps the count in MORE2, which is read-only
+    /// and never the membership. Left unread, every such spawner loaded empty, saw
+    /// CurrentCount 0 under its AMOUNT, and spawned its whole quota again beside the
+    /// creatures that were already standing there.
+    ///
+    /// Source-X performs this "automatic transition from old to new spawn engine" in
+    /// CItemMemory::FixWeirdness (CItemMemory.cpp:112-131): a MEMORY_LEGACY_ISPAWNED
+    /// memory hands its wearer to the linked spawner (CCSpawn::AddObj) and is then
+    /// removed, and one whose spawner no longer exists is removed as well. Run after
+    /// the spawn components exist. Returns how many creatures were linked.</summary>
+    public static int AdoptLegacySpawnMemories(World.GameWorld world)
+    {
+        List<Item>? legacy = null;
+        foreach (var obj in world.GetAllObjects())
+        {
+            if (obj is not Item mem || mem.IsDeleted || !IsLegacySpawnMemory(mem))
+                continue;
+            if (!mem.IsEquipped || mem.EquipLayer != Layer.Special)
+                continue;
+            (legacy ??= []).Add(mem);
+        }
+        if (legacy == null)
+            return 0;
+
+        int linked = 0;
+        foreach (var mem in legacy)
+        {
+            var wearer = world.FindChar(mem.ContainedIn);
+            var spawner = mem.Link.IsValid ? world.FindItem(mem.Link) : null;
+            if (wearer != null && !wearer.IsDeleted && !wearer.IsPlayer && !wearer.IsDead &&
+                spawner != null && !spawner.IsDeleted && spawner.SpawnChar is { } spawn &&
+                !spawn.SpawnedUids.Contains(wearer.Uid))
+            {
+                // CCSpawn::AddObj refuses a member once the list holds max(AMOUNT, 1),
+                // load or not - only a champion has no limit (CCSpawn.cpp:590-596).
+                // A creature refused here keeps living as an ordinary NPC with no
+                // spawner, exactly as upstream leaves it.
+                if (HasRoomForLoadedMember(spawn, wearer.Uid))
+                {
+                    spawner.LinkLoadedSpawnChild(wearer);
+                    linked++;
+                }
+            }
+
+            // The memory has done its job either way (FixWeirdness 0x4226 / 0x4227).
+            world.DeleteObject(mem);
+        }
+        return linked;
     }
 
     /// <summary>Parse an ADDOBJ serial token: "0x1234", leading-0 hex ("0400211c9",
@@ -6005,6 +6116,11 @@ public class Item : ObjBase
         var effectiveType = _type != ItemType.Normal
             ? _type
             : ResolveDefinition()?.Type ?? ItemType.Normal;
+        // A figurine or mount item names its creature by CHARDEF, as a Sphere save
+        // writes it (MORE1=c_ostard_frenzied).
+        if (effectiveType is ItemType.EqHorse or ItemType.Figurine &&
+            Definitions.DefinitionLoader.GetCharDef((int)_more1) is { DefName: { Length: > 0 } creatureName })
+            return creatureName;
         if (effectiveType is ItemType.SpawnChar or ItemType.SpawnChampion)
         {
             if (SpawnChar?.SpawnGroup != null && !string.IsNullOrEmpty(SpawnChar.SpawnGroup.DefName))
@@ -6274,6 +6390,26 @@ public class Item : ObjBase
             _ => entry
         };
         return true;
+    }
+
+    /// <summary>Resolve "FINDID.&lt;id&gt;[.rest]" / "FINDTYPE.&lt;type&gt;[.rest]" /
+    /// "FINDCONT.&lt;n&gt;[.rest]" against my contents; <paramref name="rest"/> is what
+    /// follows the reference.</summary>
+    private Item? FindContainerRef(string key, out string rest)
+    {
+        int head = key.IndexOf('.');
+        string kind = key[..head].ToUpperInvariant();
+        var (token, tail) = ResourceMatch.SplitRef(key[(head + 1)..]);
+        rest = tail;
+        if (kind == "FINDCONT")
+        {
+            return ScriptNumber.TryParseToken(token, out long idx) && idx >= 0 && idx < _contents.Count
+                ? _contents[(int)idx]
+                : null;
+        }
+        var rid = ResourceMatch.ResolveRefToken(token,
+            kind == "FINDTYPE" ? ResType.TypeDef : ResType.ItemDef);
+        return rid.IsValid ? ResourceMatch.ContentFind(this, rid) : null;
     }
 
     private Item? FindContentByType(ItemType type)

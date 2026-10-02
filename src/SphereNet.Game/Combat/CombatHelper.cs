@@ -73,6 +73,11 @@ public static class CombatHelper
     {
         if (ch.IsDeleted || ch.IsDead)
             return true;
+        // Fight_CanHit (CCharFight.cpp:1692) answers WAR_SWING_INVALID when either
+        // side IsDisconnected(), and Fight_HitTry then clears the fight (:1582-1588):
+        // a player who logs out mid-fight is neither swung at nor swings.
+        if (ch.IsLoggedOut)
+            return true;
         if (ch.IsStatFlag(StatFlag.Stone))
             return true;
         if (!asTarget && (SphereNet.Game.Definitions.CharDefHelper.GetCanFlags(ch) & CanFlags.C_Statue) != 0)

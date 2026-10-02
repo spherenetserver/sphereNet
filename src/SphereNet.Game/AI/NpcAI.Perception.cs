@@ -679,6 +679,9 @@ public sealed partial class NpcAI
     private static bool IsAttackable(Character ch)
     {
         if (ch.IsDeleted || ch.IsDead) return false;
+        // Fight_IsAttackableState (CCharFight.cpp:1336) starts with !IsDisconnected():
+        // a logged-out player left on an attacker list is never picked again.
+        if (ch.IsLoggedOut) return false;
         if (ch.IsStatFlag(StatFlag.Invul)) return false;
         if (ch.IsStatFlag(StatFlag.Stone)) return false;
         if (ch.IsStatFlag(StatFlag.Invisible)) return false;

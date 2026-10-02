@@ -91,7 +91,7 @@ public sealed class AdminCommandProcessor
                 output("  WHO                        - Online connections");
                 output("  INFORMATION                - Server information");
                 output("  LOG <msg>                  - Write to server log");
-                output("  RESPAWN                    - Top up all spawn points");
+                output("  RESPAWN                    - Bring dead NPCs back to their home");
                 output("  RESPAWN FULL               - Delete ALL spawner children, then respawn fresh");
                 output("  RESTOCK                    - Restock all vendors");
                 output("  GARBAGE                    - Force garbage collection");

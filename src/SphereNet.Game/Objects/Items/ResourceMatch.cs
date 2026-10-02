@@ -382,6 +382,131 @@ public static class ResourceMatch
         return found;
     }
 
+    // --- CContainer FINDID / FINDTYPE references (r_GetRefContainer) -------
+
+    /// <summary>The token of a FINDID / FINDTYPE reference as
+    /// ResourceGetID_EatStr(<paramref name="defaultType"/>) reads it
+    /// (CContainer.cpp:652-685): a loaded definition keeps its own type (an ITEMDEF, a
+    /// TYPEDEF, ...); a [DEFNAME] constant or a bare number is an index of the default
+    /// type; a t_ name the engine knows natively is that TYPEDEF.</summary>
+    public static ResourceId ResolveRefToken(string? token, ResType defaultType)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return ResourceId.Invalid;
+        string name = token.Trim();
+
+        var resources = DefinitionLoader.StaticResources;
+        if (resources != null)
+        {
+            var rid = resources.ResolveDefName(name);
+            if (rid.IsValid)
+            {
+                if (rid.Type != ResType.DefName)
+                    return rid;
+                return resources.TryResolveDefNameValue(name, out long constant) &&
+                       constant is > 0 and <= 0x00FFFFFF
+                    ? new ResourceId(defaultType, (int)constant)
+                    : ResourceId.Invalid;
+            }
+        }
+
+        if (name.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
+        {
+            var type = Item.ParseItemType(name);
+            return type == ItemType.Invalid ? ResourceId.Invalid : ForType(type);
+        }
+
+        if (ScriptNumber.TryParseToken(name, out long number) && number is > 0 and <= 0x00FFFFFF)
+            return new ResourceId(defaultType, (int)number);
+
+        if (defaultType == ResType.ItemDef)
+        {
+            ushort graphic = Item.ResolveDefName?.Invoke(name) ?? 0;
+            if (graphic != 0)
+                return ForItemDef(graphic);
+        }
+        return ResourceId.Invalid;
+    }
+
+    /// <summary>CContainer::ContentFind (CContainer.cpp:216) on a container item: the
+    /// first item that matches <paramref name="rid"/>, looking inside each searchable
+    /// sub-container right after the container itself.</summary>
+    public static Item? ContentFind(Item container, ResourceId rid) =>
+        FindIn(container.Contents, rid, 0);
+
+    /// <summary>ContentFind on a character: what it wears, in layer order (the pack
+    /// searched where it stands), then its memories - which Source-X also wears, on
+    /// the memory layer after the pack.</summary>
+    public static Item? ContentFind(Character ch, ResourceId rid) =>
+        FindIn(Worn(ch), rid, 0) ?? FindIn(ch.Memories, rid, 0);
+
+    private static Item? FindIn(IReadOnlyList<Item> contents, ResourceId rid, int depth)
+    {
+        if (!rid.IsValid || rid.Index == 0 || depth > MaxDepth)
+            return null;
+        foreach (var item in contents)
+        {
+            if (item.IsDeleted) continue;
+            if (IsMatch(item, rid))
+                return item;
+            if (item.ContentCount > 0 && item.IsSearchableContainer)
+            {
+                var inner = FindIn(item.Contents, rid, depth + 1);
+                if (inner != null)
+                    return inner;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Split "&lt;token&gt;[.&lt;rest&gt;]" the way EatStr + SKIP_SEPARATORS
+    /// do: the token ends at the first dot.</summary>
+    public static (string Token, string Tail) SplitRef(string chain)
+    {
+        chain = chain.Trim();
+        int dot = chain.IndexOf('.');
+        return dot < 0 ? (chain, "") : (chain[..dot].Trim(), chain[(dot + 1)..].Trim());
+    }
+
+    /// <summary>CScriptObj::r_WriteVal on a resolved reference (CScriptObj.cpp:497-528):
+    /// nothing after it reads the UID (0 for no object), ISVALID reads 1/0, anything
+    /// else is read off the object found - and reads 0 when there is none.</summary>
+    public static bool ReadRef(Item? found, string rest, out string value)
+    {
+        if (found != null && found.IsDeleted)
+            found = null;
+        if (rest.Length == 0)
+        {
+            value = found == null ? "0" : $"0{found.Uid.Value:X}";
+            return true;
+        }
+        if (rest.Equals("ISVALID", StringComparison.OrdinalIgnoreCase))
+        {
+            value = found == null ? "0" : "1";
+            return true;
+        }
+        if (found == null)
+        {
+            value = "0";
+            return true;
+        }
+        return found.TryGetProperty(rest, out value);
+    }
+
+    /// <summary>A verb addressed through a resolved reference
+    /// ("FINDTYPE.t_x.REMOVE", "FINDID.i_x.COLOR 021"): the rest of the line is a
+    /// whole verb line on the object found - verb, script function, then property, as
+    /// the target's own r_Verb takes it. A missing object leaves the line handled and
+    /// does nothing.</summary>
+    public static bool ExecRef(Item? found, string rest, string args,
+        SphereNet.Core.Interfaces.ITextConsole source)
+    {
+        if (found == null || found.IsDeleted || rest.Length == 0)
+            return true;
+        found.ExecuteVerbLine(rest, args, source);
+        return true;
+    }
+
     /// <summary>A character's own content list - its worn items, in layer order (the
     /// pack before the bank box). The pack is the character's Backpack even when it
     /// is held as a cached reference rather than in the layer slot.</summary>

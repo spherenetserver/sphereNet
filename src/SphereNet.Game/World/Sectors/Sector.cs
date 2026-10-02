@@ -89,15 +89,21 @@ public sealed class Sector : IScriptObj
     public bool IsEmpty => _characters.Count == 0 && _items.Count == 0;
 
     /// <summary>CSector::GetCharComplexity: the active characters - a logged-out
-    /// player standing in the world does not count (m_Chars_Active).</summary>
+    /// player standing in the world does not count (m_Chars_Active), and neither
+    /// does a ridden mount, which upstream takes out of the world while it is ridden
+    /// (Horse_Mount: SetDisconnected). A player whose client is lingering is still
+    /// in the world and counts.</summary>
     public int GetCharComplexity()
     {
         int n = 0;
         foreach (var c in _characters)
-            if (!c.IsPlayer || c.IsOnline)
+            if (IsActiveChar(c))
                 n++;
         return n;
     }
+
+    private static bool IsActiveChar(Character c) =>
+        !c.IsLoggedOut && !c.IsStatFlag(StatFlag.Ridden);
 
     /// <summary>CSector::CheckItemComplexity (CSector.cpp:1423): warn and answer true
     /// when the ground items pass MAXSECTORCOMPLEXITY.</summary>
@@ -743,7 +749,7 @@ public sealed class Sector : IScriptObj
         {
             int n = 0;
             foreach (var c in _characters)
-                if (!(c.IsPlayer && !c.IsOnline)) n++;
+                if (IsActiveChar(c)) n++;
             return n;
         }
     }
@@ -819,6 +825,12 @@ public sealed class Sector : IScriptObj
                 return false;
             case "FLAGS":
                 if (TryParseUInt(val, out uint fv)) { Flags = (SectorFlag)fv; return true; }
+                // GetArgVal: "<FLAGS>|sectorf_nosleep" is one number upstream.
+                if (Scripting.ScriptFlagValue.TryEvaluate(val, out long fexpr))
+                {
+                    Flags = (SectorFlag)unchecked((uint)fexpr);
+                    return true;
+                }
                 return false;
             case "NOSLEEP":
                 Flags = ParseBool(val) ? _flags | SectorFlag.NoSleep : _flags & ~SectorFlag.NoSleep;
@@ -877,16 +889,13 @@ public sealed class Sector : IScriptObj
                 // Same rule as the property (CSector.cpp:381).
                 return TrySetProperty("LIGHT", args ?? "");
             case "RESPAWN":
-                for (int i = _characters.Count - 1; i >= 0; i--)
-                {
-                    var ch = _characters[i];
-                    if (!ch.IsPlayer && ch.IsDead)
-                    {
-                        if (Character.OnLifecycleResurrect != null) Character.OnLifecycleResurrect(ch);
-                        else ch.Resurrect();
-                    }
-                }
+            {
+                // CSector::RespawnDeadNPCs, or the whole world for an argument starting
+                // with 'A' (CSector.cpp:391).
+                bool all = !string.IsNullOrEmpty(args) && char.ToUpperInvariant(args.TrimStart()[0]) == 'A';
+                Objects.ObjBase.ResolveWorld?.Invoke()?.RespawnDeadNpcs(all ? null : _characters.ToList());
                 return true;
+            }
             case "RESTOCK":
                 // Restock NPCs — trigger via callback
                 return true;

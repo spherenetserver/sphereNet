@@ -309,6 +309,7 @@ public class NpcSpecialAttackVisualTests : IDisposable
             var world = TestHarness.CreateWorld();
             var attacker = world.CreateCharacter();
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.PrivLevel = PrivLevel.GM;
             attacker.Str = attacker.Dex = 100;
             world.PlaceCharacter(attacker, new Point3D(100, 100, 0, 0));

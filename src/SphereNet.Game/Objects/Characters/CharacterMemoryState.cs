@@ -122,6 +122,50 @@ public sealed class CharacterMemoryState
     /// of its removal (upstream's RemoveSelf before OnRemoveObj).</summary>
     public void DetachSpellEffect(Item mem) => _memories.Remove(mem);
 
+    /// <summary>Whether <paramref name="item"/> is a memory object that belongs on
+    /// LAYER_SPECIAL beside any number of others: IT_EQ_MEMORY_OBJ by type, or the
+    /// default memory graphic (i_memory, 02007) when the save's type was not
+    /// resolved. A spell effect is not one - the spell engine owns those.</summary>
+    public static bool IsMemoryObject(Item item) =>
+        item.ItemType != ItemType.Spell &&
+        (item.ItemType == ItemType.EqMemoryObj || item.BaseId == MemoryObjectGraphic);
+
+    /// <summary>Graphic of the default memory object (ITEMDEF 02007, i_memory).</summary>
+    public const ushort MemoryObjectGraphic = 0x2007;
+
+    /// <summary>Wear a memory object on LAYER_SPECIAL. Upstream that layer holds any
+    /// number of items (CChar::LayerAdd only clears a conflicting slot for the
+    /// wearable layers), so a memory never displaces another one into the pack or
+    /// onto the ground; here they share the memory list with the memories the engine
+    /// makes itself. An item that came from a save keeps being saved as an item
+    /// record (CONT + LAYER=30, the Source-X form); one the engine created stays a
+    /// MEMORY line on its owner. <paramref name="fireEquip"/> runs @MemoryEquip - a
+    /// live add, not a load (LayerAdd skips it while loading, CCharAct.cpp:266).</summary>
+    public void AttachMemory(Item mem, bool fireEquip)
+    {
+        if (mem.ItemType != ItemType.EqMemoryObj)
+            mem.ItemType = ItemType.EqMemoryObj;
+        mem.IsEquipped = true;
+        mem.EquipLayer = Layer.Special;
+        mem.ContainedIn = _owner.Uid;
+        if (_memories.Contains(mem))
+            return;
+        _memories.Add(mem);
+        if (fireEquip)
+            Character.OnMemoryEquip?.Invoke(mem);
+    }
+
+    /// <summary>Take a memory object off the list without deleting it, because it is
+    /// moving somewhere else. Returns false when it is not one of this character's.</summary>
+    public bool DetachMemory(Item mem)
+    {
+        if (mem.ItemType == ItemType.Spell || !_memories.Remove(mem))
+            return false;
+        mem.IsEquipped = false;
+        mem.ContainedIn = Serial.Invalid;
+        return true;
+    }
+
     public Item AddObjTypes(Serial uid, MemoryType flags)
     {
         var mem = FindObj(uid);

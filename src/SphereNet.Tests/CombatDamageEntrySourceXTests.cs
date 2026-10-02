@@ -32,6 +32,7 @@ public sealed class CombatDamageEntrySourceXTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = player;
+        ch.IsOnline = player; // a player is a connected one
         ch.Str = 50; ch.Dex = 50; ch.Int = 50;
         ch.MaxHits = hits; ch.Hits = hits;
         world.PlaceCharacter(ch, new Point3D(x, 100, 0, 0));

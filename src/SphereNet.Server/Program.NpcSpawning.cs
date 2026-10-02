@@ -25,6 +25,10 @@ public static partial class Program
             dispatcher.FireNpcLoadScript(npc, restock: true);
         };
         SpawnComponent.OnNpcCreateTrigger = npc => dispatcher.FireNpcCreateEvents(npc);
+        // RESPAWN brings a dead NPC back through the same two halves
+        // (CSector::RespawnDeadNPCs, CSector.cpp:1141/1146).
+        world.NpcRespawnLoadScript = npc => dispatcher.FireNpcLoadScript(npc, restock: true);
+        world.NpcRespawnCreateTrigger = npc => dispatcher.FireNpcCreateEvents(npc);
         world.OnNpcSpawned = npc =>
         {
             var def = DefinitionLoader.GetCharDef(npc.CharDefIndex);

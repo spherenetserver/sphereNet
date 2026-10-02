@@ -536,6 +536,10 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
         _triggerDispatcher = triggerDispatcher;
         _guildManager = guildManager;
         _mountEngine = mountEngine;
+        if (mountEngine != null && triggerDispatcher != null)
+            mountEngine.Triggers = triggerDispatcher;
+        if (mountEngine != null && mountEngine.CreateCreature == null)
+            mountEngine.CreateCreature = (defIndex, _) => CreateNpcFromDefinition(defIndex, $"0{defIndex:X}");
         _customHousing = customHousing;
         _chatEngine = chatEngine;
 

@@ -4,6 +4,43 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-02] - Canli test duzeltmeleri: Sphere 56T ozel surum uyumlulugu ve Source-X eksikleri
+------------------------------------------------------------------------
+DUZELTME - Sphere 0.55/0.56a-b kayitlari (Sphere 56T ozel surumu dahil) NPC
+           beyinlerini eski numaralandirmayla tutar (MONSTER=10, UNDEAD=12...);
+           dosya artik VERSION basligindan taniniyor ve NPC= anlamina gore
+           cevriliyor, canavarlar ejderha olarak yuklenmiyor, undead beyinsiz
+           kalmiyor. brain_* numaralari farkli bir pakette script NPC/NPCBRAIN
+           okuma ve sayisal yazma paketin numaralarini kullaniyor; motor ve
+           kayitlar Source-X beyinlerini korur.
+DUZELTME - 0.56 kaydindan yuklenen NPC spawnerlari tum kotayi yeniden spawn
+           etmiyor: yaratigin uzerindeki uyelik (MEMORY_ISPAWNED memory) Source-X
+           gibi spawner'a aktariliyor. Spawner uyeligi CCSpawn::AddObj kapasitesini
+           izliyor; LAYER_SPECIAL istenen sayida memory tutuyor.
+DUZELTME - Cagrilan guard'lar conjured ve restart sonrasi birikmeden gidiyor.
+           RESPAWN Source-X verb'u gibi calisiyor (evi olan olu NPC'ler geri
+           geliyor); RESPAWN FULL degismedi.
+DUZELTME - Oyundan cikmis oyuncu savas ya da bakinma hedefi olmuyor (skill
+           dummy'ler cikis yapan oyunculara vurmuyor). Binilen binek her NPC
+           tick'inde tekrar sira almiyor. Personel dunyaya Source-X gibi INVUL ve
+           ALLSHOW kapali giriyor.
+DUZELTME - FLAGS, ATTR, CANMASK ve bolge/sektor FLAGS atamalari ifade olarak
+           okunuyor ("FLAGS <FLAGS>&~statf_x" artik tum bayraklari silip biniciyi
+           inemez birakmiyor). Binek katmanindaki her esya sahibini binekli yapar;
+           binek esyasi Source-X gibi MORE1/MORE2 tasir, eski biniciler binegini
+           geri alir; kayip yaratik Use_Figurine gibi olusturulur; karakterde once
+           @DClick calisir; 56T script'leri icin @NPCMount / @NPCDisMount destekli.
+DUZELTME - <OBJ.P.anahtar> TARGP.anahtar gibi STATICS, REGION, ROOM, SECTOR ve
+           ISNEARTYPE yanitliyor (<SRC.P.STATICS> soran kazma kapisi her yerde
+           madenciligi reddediyordu).
+DUZELTME - Karakter RESTEST ve RESCOUNT yanitliyor; karakter ve container
+           uzerinde FINDID, FINDTYPE ve FINDCONT Source-X referansi (defname, alt
+           containerlar, sondaki anahtar ve verb). RESTEST kullanan bandaj
+           script'leri yeniden calisiyor.
+DUZELTME - Argumansiz DB.CONNECT ayarli baglantiyla yeniden baglaniyor. EVENTSPET
+           ve diger global event listeleri +/- oneklerini kabul ediyor, bilinmeyen
+           ad acilista loglaniyor.
+
 [2026-10-02] - Savas, notoriety, oldurme odulu, aglar ve ag kotasi Source-X'e uyar
 ------------------------------------------------------------------------
 DUZELTME - Cikis yapmis karakter istemci gorunumune yalnizca ALLSHOW ile gelir:

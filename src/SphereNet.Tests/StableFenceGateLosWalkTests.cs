@@ -62,6 +62,7 @@ public sealed class StableFenceGateLosWalkTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = player;
+        ch.IsOnline = player; // a player fighter is a connected one
         ch.Str = ch.Dex = ch.Int = 100;
         ch.MaxHits = ch.Hits = 100;
         ch.MaxStam = ch.Stam = 100;

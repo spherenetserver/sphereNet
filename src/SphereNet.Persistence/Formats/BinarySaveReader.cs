@@ -18,6 +18,10 @@ public sealed class BinarySaveReader : ISaveReader
     /// <inheritdoc/>
     public bool EndMarkerSeen => _endMarkerSeen;
 
+    /// <inheritdoc/>
+    /// <remarks>Only this engine writes the binary format; it carries no classic header.</remarks>
+    public IReadOnlyDictionary<string, string> FileHeader { get; } = new Dictionary<string, string>();
+
     public BinarySaveReader(Stream stream, bool ownsStream = true)
     {
         _stream = stream;

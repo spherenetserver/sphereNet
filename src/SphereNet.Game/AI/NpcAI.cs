@@ -309,13 +309,26 @@ public sealed partial class NpcAI
     /// </summary>
     public void OnTickAction(Character npc)
     {
-        if (npc.IsPlayer || npc.IsDeleted || npc.IsStatFlag(StatFlag.Ridden)) return;
+        if (npc.IsPlayer || npc.IsDeleted) return;
         // The dead do not act - except a bonded pet's ghost, which stays in the world
         // and keeps following its orders (see ActDeadBondedPet).
         if (npc.IsDead && !npc.ActsWhileDead) return;
-        if ((CharDefHelper.GetCanFlags(npc) & CanFlags.C_Statue) != 0) return;
 
         long now = Environment.TickCount64;
+
+        // A ridden mount and a statue keep their place in the schedule but take no
+        // action: upstream's ridden horse only gets a tick now and then through its
+        // mount item, and a CAN_C_STATUE creature never reaches NPC_OnTickAction
+        // (CCharAct.cpp:4100-4108, :5944). Both still have to leave a timer behind.
+        // Returning with the old one left them due on every tick for as long as they
+        // stayed that way - a creature with a timer minutes in the past, re-run every
+        // 100 ms, and the NPC budget reporting it as minutes late.
+        if (npc.IsStatFlag(StatFlag.Ridden) ||
+            (CharDefHelper.GetCanFlags(npc) & CanFlags.C_Statue) != 0)
+        {
+            npc.NextNpcActionTime = now + IdleCreatureRecheckMs;
+            return;
+        }
 
         if (npc.IsCasting)
         {
@@ -382,6 +395,11 @@ public sealed partial class NpcAI
             npc.NextNpcActionTime += npc.FightTarget.IsValid ? 200 : 400;
         }
     }
+
+    /// <summary>How often a ridden mount or a statue is looked at again. Neither acts;
+    /// the check only notices when the state ends. Dismounting puts the creature
+    /// back into the world, which wakes it at once (GameWorld.CharacterPlaced).</summary>
+    internal const long IdleCreatureRecheckMs = 5_000;
 
     /// <summary>The uid whose step already set the move delay this tick.</summary>
     private uint _stepDelayAppliedFor;
@@ -605,11 +623,16 @@ public sealed partial class NpcAI
     /// </summary>
     public NpcDecision? BuildDecision(Character npc, long nowTick)
     {
-        if (npc.IsPlayer || (npc.IsDead && !npc.ActsWhileDead) || npc.IsDeleted ||
-            npc.IsStatFlag(StatFlag.Ridden))
+        if (npc.IsPlayer || (npc.IsDead && !npc.ActsWhileDead) || npc.IsDeleted)
             return null;
         if (nowTick < npc.NextNpcActionTime)
             return null;
+        // A ridden mount stays in the wheel (it is carried, not asleep) but does not
+        // act; it still needs a fresh timer or it comes due on every tick (see
+        // OnTickAction).
+        if (npc.IsStatFlag(StatFlag.Ridden))
+            return new NpcDecision(npc.Uid.Value, NpcDecisionType.None, npc.Position, npc.Direction,
+                nowTick + IdleCreatureRecheckMs);
 
         // Active-area gate: no player nearby → park for 30-60s. Returns a None
         // decision so ApplyDecision sets NextNpcActionTime in the sequential phase

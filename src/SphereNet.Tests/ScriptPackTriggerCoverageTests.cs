@@ -40,7 +40,7 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
         new(StringComparer.OrdinalIgnoreCase)
         {
             "TameAbort", "SpellStart", "PartyJoin",
-            "npcmount", "NPCDisMount", "move", "skilluse", "statgain",
+            "move", "skilluse", "statgain",
             // Found once the relative pack roots actually resolved (they were being
             // resolved against the test bin directory, so half the roots contributed
             // nothing and these went unseen). All three come from the reference

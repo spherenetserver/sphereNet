@@ -161,6 +161,7 @@ public class CombatFlagParityTests
 
             var attacker = world.CreateCharacter();
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.PrivLevel = PrivLevel.Player;
             attacker.Str = attacker.Dex = 100;
             attacker.Stam = attacker.MaxStam = 100;
@@ -175,6 +176,7 @@ public class CombatFlagParityTests
 
             var victim = world.CreateCharacter();
             victim.IsPlayer = true;
+            victim.IsOnline = true;
             victim.Hits = victim.MaxHits = 100;
             world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0)); // innocent blue, adjacent
 

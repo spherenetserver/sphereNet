@@ -281,15 +281,19 @@ public static partial class Program
         _mainLoopActions.Enqueue(() => HandleSaveFormatChange(fmtName, shards));
     }
 
-    /// <summary>Console/IPC/panel RESPAWN: top every spawner in the world up to its
-    /// max. Queued onto the main loop because it mutates world/sector state.</summary>
+    /// <summary>Console/IPC/panel RESPAWN: Source-X's server RESPAWN verb, which
+    /// brings every dead NPC that has a home back to it (CServer.cpp:2144 ->
+    /// CWorld::RespawnDeadNPCs). Queued onto the main loop because it mutates
+    /// world/sector state.</summary>
     private static void RequestRespawnOnMainLoop()
     {
-        _mainLoopActions.Enqueue(() =>
-        {
-            int n = _world.RespawnAllSpawners();
-            _log.LogInformation("[respawn] topped up {Count} spawners", n);
-        });
+        _mainLoopActions.Enqueue(RespawnDeadNpcsNow);
+    }
+
+    private static void RespawnDeadNpcsNow()
+    {
+        int n = _world.RespawnDeadNpcs();
+        _log.LogInformation("[respawn] brought back {Count} dead NPCs", n);
     }
 
     /// <summary>Console/telnet RESPAWN FULL: kill every spawner child, then refill

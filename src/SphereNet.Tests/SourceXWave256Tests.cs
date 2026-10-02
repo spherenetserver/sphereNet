@@ -23,6 +23,7 @@ public sealed class SourceXWave256Tests
         var world = TestHarness.CreateWorld();
         var attacker = world.CreateCharacter();
         attacker.IsPlayer = true;
+        attacker.IsOnline = true; // a connected player (a logged-out one cannot fight)
         attacker.PrivLevel = PrivLevel.GM; // era-0 roll: always hits
         attacker.Str = 50; attacker.Dex = 50; attacker.Int = 50;
         attacker.MaxHits = 100; attacker.Hits = 100;

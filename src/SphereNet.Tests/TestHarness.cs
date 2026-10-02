@@ -155,6 +155,12 @@ internal static class TestHarness
         typeof(GameClient)
             .GetField("_character", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(client, ch);
+        // A character driven by a client is online, as the login path marks it
+        // (GameClient.Login: _character.IsOnline = true). Without it a player reads
+        // as logged out, and a logged-out char is no combat participant.
+        // (Some tests attach only an account, passing no character.)
+        if (ch != null)
+            ch.IsOnline = true;
         if (account != null)
         {
             typeof(GameClient)

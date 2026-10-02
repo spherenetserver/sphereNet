@@ -129,7 +129,7 @@ These are **not** in-game `.` commands. They are handled by `AdminCommandProcess
 | `BROADCAST` | `<message>` | Message all players. |
 | `WHO` | — | Online connection count. |
 | `LOG` | `<message>` | Write a line to the server log. |
-| `RESPAWN` | — | Top every spawner up to its maximum; nothing is deleted. |
+| `RESPAWN` | — | Source-X `RESPAWN`: every dead NPC that has a home is restocked from its script, moved near its home, given its `@Create` events and resurrected. Spawners are not touched (they refill on their own timers). |
 | `RESPAWN FULL` | — | Delete every spawner's children, refill each spawner fresh, then sweep spawned creatures and items whose spawner no longer exists. Runs in ~25 ms slices per tick; the log reports `[respawn_full] reset N spawners, swept M orphaned spawn children`. In game: `.serv.respawn full`. |
 | `RESTOCK` | — | Restock all vendors. |
 | `GARBAGE` | — | World integrity sweep (Source-X FixWeirdness), deletion of objects created but never placed, then a .NET GC. Refused while a save is running. |

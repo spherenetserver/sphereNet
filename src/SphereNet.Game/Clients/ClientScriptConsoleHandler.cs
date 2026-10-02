@@ -245,7 +245,7 @@ public sealed class ClientScriptConsoleHandler
 
         // Sphere MESSAGE command: overhead text on the target object.
         // Syntax: message @<hue>[,<type>,<font>] <text>
-        //   e.g.  message @0481,1,1 [Nimloth]
+        //   e.g.  message @0481,1,1 [Shard]
         //   e.g.  message @080a [Invis]
         if (upper is "MESSAGE" or "MSG")
         {

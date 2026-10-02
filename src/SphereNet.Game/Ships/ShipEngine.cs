@@ -1327,7 +1327,7 @@ public sealed class ShipEngine
     private const int PlayerHeight = 16;
 
     /// <summary>ITEMID_SHIP_PILOT - the marker Source-X hangs on the pilot.</summary>
-    private const ushort ShipPilotItemId = 0x3E96;
+    private const ushort ShipPilotItemId = Mounts.MountEngine.ShipPilotItemId;
 
     /// <summary>The world's vertical bounds (uofiles_macros.h:28).</summary>
     private const int UoSizeZ = 127;

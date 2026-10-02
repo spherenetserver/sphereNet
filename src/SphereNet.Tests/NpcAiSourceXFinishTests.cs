@@ -229,6 +229,7 @@ public sealed class NpcAiSourceXFinishTests : IDisposable
             var world = TestHarness.CreateWorld();
             var attacker = world.CreateCharacter();
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.PrivLevel = PrivLevel.GM; // the swing lands
             attacker.Str = attacker.Dex = 100;
             attacker.Hits = attacker.MaxHits = 100;
@@ -323,10 +324,12 @@ public sealed class NpcAiSourceXFinishTests : IDisposable
             world.PlaceCharacter(berserk, new Point3D(100, 100, 0, 0));
             var target = world.CreateCharacter();
             target.IsPlayer = true;
+            target.IsOnline = true; // connected players (a logged-out one is never attackable)
             target.Hits = target.MaxHits = 100;
             world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
             var witness = world.CreateCharacter();
             witness.IsPlayer = true;
+            witness.IsOnline = true;
             witness.Hits = witness.MaxHits = 100;
             world.PlaceCharacter(witness, new Point3D(100, 106, 0, 0));
             int seen = 0;

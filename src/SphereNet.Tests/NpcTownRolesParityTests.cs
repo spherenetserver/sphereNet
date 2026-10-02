@@ -48,6 +48,7 @@ public sealed class NpcTownRolesParityTests
     {
         var p = world.CreateCharacter();
         p.IsPlayer = true;
+        p.IsOnline = true; // a connected player (a logged-out one is never attackable)
         p.Str = 10;
         p.Hits = p.MaxHits = 100;
         p.Karma = 1000;

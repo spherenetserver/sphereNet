@@ -622,9 +622,22 @@ public static partial class Program
         switch (verb)
         {
             case "CONNECT":
-                ok = parts[0].Equals("LDB", StringComparison.OrdinalIgnoreCase)
-                    ? db.ConnectFile(arg, out error)
-                    : db.Connect(arg, out error);
+                if (parts[0].Equals("LDB", StringComparison.OrdinalIgnoreCase))
+                {
+                    ok = db.ConnectFile(arg, out error);
+                }
+                else if (arg.Length == 0)
+                {
+                    // Bare DB.CONNECT (CDataBase.cpp:489): close an open connection and
+                    // reconnect with the configured settings - the default session.
+                    if (db.IsConnected)
+                        db.Close();
+                    ok = db.Connect(out error);
+                }
+                else
+                {
+                    ok = db.Connect(arg, out error);
+                }
                 break;
             case "CLOSE":
                 db.Close();
@@ -2012,8 +2025,8 @@ public static partial class Program
         return "";
     }
 
-    /// <summary>Source-X <c>serv.respawn</c>: re-run every spawner (the same action
-    /// the admin console RESPAWN fires). Returns the spawner count touched.</summary>
+    /// <summary>Source-X <c>serv.respawn</c>: bring every dead NPC that has a home back
+    /// to it (CWorld::RespawnDeadNPCs; the same action the admin console RESPAWN fires).</summary>
     private static string? HandleServRespawn()
     {
         try
@@ -2023,10 +2036,7 @@ public static partial class Program
             // saved the world without the creatures (upstream's verb is synchronous).
             int mainThreadId = Volatile.Read(ref _mainLoopThreadId);
             if (_world != null && mainThreadId != 0 && Environment.CurrentManagedThreadId == mainThreadId)
-            {
-                int n = _world.RespawnAllSpawners();
-                _log?.LogInformation("[respawn] topped up {Count} spawners", n);
-            }
+                RespawnDeadNpcsNow();
             else
                 RequestRespawnOnMainLoop();
         }

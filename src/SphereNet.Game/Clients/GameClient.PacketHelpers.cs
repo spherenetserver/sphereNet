@@ -2301,10 +2301,11 @@ public sealed partial class GameClient
             return charDef.DispIndex;
 
         string alias = charDef.DisplayIdRef?.Trim() ?? "";
-        if (alias.Length == 0 || _commands?.Resources == null)
+        var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+        if (alias.Length == 0 || resources == null)
             return fallbackBaseId;
 
-        var rid = _commands.Resources.ResolveDefName(alias);
+        var rid = resources.ResolveDefName(alias);
         if (rid.IsValid && rid.Type == ResType.CharDef)
         {
             var refDef = DefinitionLoader.GetCharDef(rid.Index);

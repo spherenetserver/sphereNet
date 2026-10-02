@@ -223,6 +223,10 @@ public static partial class Program
         foreach (var ch in _world.GetCharsInRange(speaker.Position, 14))
         {
             if (ch == speaker || ch.IsDead || ch.IsDeleted) continue;
+            // CallGuards' CWorldSearch (CCharFight.cpp:192) never yields a
+            // disconnected char (CWorldSearch.cpp:271-275): nobody reports a
+            // logged-out player.
+            if (ch.IsLoggedOut) continue;
             if (ch.PrivLevel >= PrivLevel.Counsel) continue;
             bool criminal = ch.IsCriminal || ch.IsStatFlag(StatFlag.Criminal);
             if (criminal || (_config.GuardsOnMurderers && _npcAI.NotoIsEvil(ch)))
@@ -456,6 +460,12 @@ public static partial class Program
         if (area.TryGetTag("RED", out string? red) && ValueCurve.ParseSphereNumber(red ?? "0") != 0)
             guard.SetTag("NAME.HUE", $"0{_config.ColorNotoEvil:x}");
 
+        // The summon effect upstream gives the guard (Spell_Effect_Create SPELL_Summon on
+        // LAYER_SPELL_Summon, CCharFight.cpp:281) marks it STATF_CONJURED when it is
+        // added (CCharSpell.cpp:1217): a magical creature - no corpse, dispellable.
+        // Its lifetime is the linger deadline below, kept the way every summon here
+        // keeps one (SpellEngine summons use the SUMMON_* tags, not a memory item).
+        guard.SetStatFlag(StatFlag.Conjured);
         guard.SetTag("IS_CITY_GUARD", "1");
         guard.SetTag("GUARD_SPAWNED_AT", Environment.TickCount64.ToString());
 
@@ -464,12 +474,67 @@ public static partial class Program
         // GUARDLINGER is minutes, as upstream reads it (CServerConfig.cpp:1292).
         long lingerMs = Math.Max(1, _config.GuardLinger) * 60_000L;
         long expireAt = Environment.TickCount64 + lingerMs;
-        guard.SetTag("GUARD_EXPIRE_AT", expireAt.ToString());
+        guard.SetTag(SummonedGuardExpireTag, expireAt.ToString());
         _summonedGuardExpiry[guard.Uid] = expireAt;
 
         BroadcastCharacterAppear(guard);
         return guard;
     }
+
+    /// <summary>Give the summoned guards that came in with a loaded world their linger
+    /// deadline back. Upstream a summoned guard's lifetime is a timed LAYER_SPELL_Summon
+    /// memory (CCharFight.cpp:281) that is saved with it, re-armed on load and deletes
+    /// the guard when it runs out (Spell_Effect_Remove, CCharSpell.cpp:589-600). Here
+    /// the deadline lived only in the in-memory expiry table, so every guard that was
+    /// alive when the world saved came back after a restart with no deadline at all and
+    /// stayed in town for good - each restart added the guards of the moment.
+    ///
+    /// The save writes the time still to go (GUARD_EXPIRE_REMAINING, see WorldSaver);
+    /// it is re-based onto this process's clock. A record from before that carries only
+    /// the old absolute tick, which means nothing against a new uptime: such a guard has
+    /// already outlived its linger and leaves at the next maintenance pass. Guards the
+    /// table already tracks (a SERV.IMPORT into a running world) are left alone.</summary>
+    internal static int RegisterLoadedSummonedGuards()
+    {
+        if (_world == null)
+            return 0;
+        long now = Environment.TickCount64;
+        int registered = 0;
+        foreach (var ch in _world.GetAllCharactersSnapshot())
+        {
+            if (ch.IsPlayer || ch.IsDeleted || _summonedGuardExpiry.ContainsKey(ch.Uid))
+                continue;
+
+            long expireAt;
+            if (ch.TryGetTag(SummonedGuardRemainingTag, out string? remainingRaw))
+            {
+                ch.RemoveTag(SummonedGuardRemainingTag);
+                long remaining = ScriptNumber.TryParseLong(remainingRaw, out long r) ? Math.Max(0, r) : 0;
+                expireAt = now + remaining;
+            }
+            else if (ch.TryGetTag(SummonedGuardExpireTag, out _) || ch.TryGetTag("IS_CITY_GUARD", out _))
+            {
+                expireAt = now;
+            }
+            else
+            {
+                continue;
+            }
+
+            ch.SetTag(SummonedGuardExpireTag, expireAt.ToString());
+            _summonedGuardExpiry[ch.Uid] = expireAt;
+            registered++;
+        }
+        if (registered > 0)
+            _log.LogInformation("Re-armed the linger deadline of {Count} summoned guard(s) from the save", registered);
+        return registered;
+    }
+
+    /// <summary>The live linger deadline of a summoned guard (absolute TickCount64).</summary>
+    internal const string SummonedGuardExpireTag = "GUARD_EXPIRE_AT";
+
+    /// <summary>The saved form of that deadline: milliseconds still to go.</summary>
+    internal const string SummonedGuardRemainingTag = "GUARD_EXPIRE_REMAINING";
 
     private static void EquipGuardNewbieItems(Character guard, CharDef charDef)
     {

@@ -156,6 +156,7 @@ public class CombatHelperTests
         {
             Name = $"C{x}_{y}",
             IsPlayer = true,
+            IsOnline = true, // a connected player (a logged-out one cannot fight)
         };
         ch.MaxHits = 100;
         ch.Hits = 100;

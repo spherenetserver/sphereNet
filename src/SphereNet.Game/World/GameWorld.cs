@@ -1112,9 +1112,8 @@ public sealed class GameWorld
         {
             if (parent is Item parentItem)
                 parentItem.RemoveItem(item);
-            else if (parent is Character parentChar && item.IsEquipped &&
-                     parentChar.GetEquippedItem(item.EquipLayer) == item)
-                parentChar.Unequip(item.EquipLayer);
+            else if (parent is Character parentChar && item.IsEquipped)
+                parentChar.TakeOffWorn(item);
         }
         if (item.IsDeleted) return false;
         item.IsEquipped = false;
@@ -2818,9 +2817,82 @@ public sealed class GameWorld
         return (checkedCount, fixedCount, deletedCount);
     }
 
-    /// <summary>Admin/console RESPAWN: top every char/item spawner in the world up
-    /// to its max immediately, independent of sector sleep (Source-X global
-    /// RESPAWN). Must run on the main loop. Returns the number of spawners ticked.</summary>
+    /// <summary>NPC_LoadScript(true) for <see cref="RespawnDeadNpcs"/>: the CHARDEF's
+    /// own @Create, then @NPCRestock. Wired by the host to the trigger dispatcher.</summary>
+    public Action<Character>? NpcRespawnLoadScript { get; set; }
+
+    /// <summary>NPC_CreateTrigger for <see cref="RespawnDeadNpcs"/>: @Create through
+    /// TEVENTS and EVENTSPET. Wired by the host to the trigger dispatcher.</summary>
+    public Action<Character>? NpcRespawnCreateTrigger { get; set; }
+
+    /// <summary>Source-X RESPAWN (SERV.RESPAWN -> CWorld::RespawnDeadNPCs, and
+    /// SECTOR.RESPAWN for one sector; CSector.cpp:1122-1152): every dead NPC that has
+    /// a home is restocked from its script (NPC_LoadScript(true)), moved near its
+    /// home within its wander distance (MoveNear), given its @Create events
+    /// (NPC_CreateTrigger) and resurrected. Nothing else - spawners are not touched,
+    /// and an NPC with no home stays dead. Main loop only. Returns how many came
+    /// back.</summary>
+    public int RespawnDeadNpcs(IEnumerable<Character>? among = null, Random? rng = null)
+    {
+        rng ??= Random.Shared;
+        int count = 0;
+        foreach (var ch in (among ?? GetAllCharactersSnapshot()).ToList())
+        {
+            if (ch.IsPlayer || ch.IsDeleted || !ch.IsDead)
+                continue;
+            if (ch.Home.X == 0 && ch.Home.Y == 0) // no home point (m_ptHome invalid)
+                continue;
+
+            NpcRespawnLoadScript?.Invoke(ch);
+            MoveCharacterNear(ch, ch.Home, Math.Max((int)ch.HomeDist, 0), rng);
+            NpcRespawnCreateTrigger?.Invoke(ch);
+            if (Character.OnLifecycleResurrect != null)
+                Character.OnLifecycleResurrect(ch);
+            else
+                ch.Resurrect();
+            count++;
+        }
+        return count;
+    }
+
+    /// <summary>Source-X CObjBase::MoveNear for a character (CObjBase.cpp:770-802):
+    /// a random point within +/- <paramref name="steps"/> of <paramref name="pt"/>
+    /// (back to <paramref name="pt"/> itself if a draw leaves the map), and the
+    /// character moves there only when it can stand and walk there. Returns whether
+    /// it moved.</summary>
+    public bool MoveCharacterNear(Character ch, Point3D pt, int steps, Random rng)
+    {
+        int x = pt.X, y = pt.Y;
+        var (mapW, mapH) = MapData?.GetMapSize(pt.Map) ?? (int.MaxValue, int.MaxValue);
+        for (int i = 0; i < steps; i++)
+        {
+            x = pt.X + rng.Next(-steps, steps + 1);
+            y = pt.Y + rng.Next(-steps, steps + 1);
+            if (x < 0 || y < 0 || x >= mapW || y >= mapH || x > short.MaxValue || y > short.MaxValue)
+            {
+                x = pt.X;
+                y = pt.Y;
+                break;
+            }
+        }
+
+        sbyte z = pt.Z;
+        if (MapData != null)
+        {
+            var stand = Standing.ResolveStandingSurface(ch, pt.Map, (short)x, (short)y, pt.Z,
+                Movement.WalkCheck.StandingPolicy.Settle);
+            if (!stand.Found || !MapData.IsPassable(pt.Map, (short)x, (short)y, stand.Z))
+                return false;
+            z = stand.Z;
+        }
+        MoveCharacter(ch, new Point3D((short)x, (short)y, z, pt.Map));
+        return true;
+    }
+
+    /// <summary>Top every char/item spawner in the world up to its max at once,
+    /// independent of sector sleep. Not Source-X's RESPAWN (that is
+    /// <see cref="RespawnDeadNpcs"/>); kept for tools and tests. Must run on the main
+    /// loop. Returns the number of spawners ticked.</summary>
     public int RespawnAllSpawners()
     {
         int count = 0;

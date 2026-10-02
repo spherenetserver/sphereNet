@@ -140,6 +140,7 @@ public class CombatSwingParityTests
 
             var attacker = world.CreateCharacter();
             attacker.IsPlayer = true;
+            attacker.IsOnline = true;
             attacker.Str = attacker.Dex = attacker.Int = 100;
             attacker.Hits = attacker.MaxHits = 100;
             attacker.Stam = attacker.MaxStam = 100;
@@ -150,6 +151,7 @@ public class CombatSwingParityTests
 
             var target = world.CreateCharacter();
             target.IsPlayer = true;
+            target.IsOnline = true;
             target.Hits = target.MaxHits = 100;
             target.SetSkill(SkillType.Wrestling, 0);
             world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));

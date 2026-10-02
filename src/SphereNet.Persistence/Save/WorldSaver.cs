@@ -1558,6 +1558,11 @@ public sealed class WorldSaver
 
         foreach (var mem in ch.Memories)
         {
+            // Only the memories the engine keeps on its owner. A spell effect or a
+            // memory object worn from a save is written as its own item record
+            // (CONT + LAYER) by the item pass, and must not come back twice.
+            if (!mem.IsSavedWithOwner)
+                continue;
             var flags = mem.GetMemoryTypes();
             if (flags == 0) continue;
             // Source-X saves EVERY memory item (they are ordinary equipped items
@@ -1608,6 +1613,18 @@ public sealed class WorldSaver
                     ? Math.Max(0, expireTick - Environment.TickCount64)
                     : 0;
                 w.WriteProperty("TAG.SUMMON_EXPIRE_REMAINING", remaining.ToString());
+                continue;
+            }
+            if (upper == "GUARD_EXPIRE_AT")
+            {
+                // A summoned guard's linger deadline is the same kind of absolute
+                // uptime tick. Upstream it is the timer of the guard's summon memory,
+                // saved as time remaining and re-armed on load (CCharFight.cpp:281);
+                // the boot re-registers it from this record.
+                long remaining = SphereNet.Core.Types.ScriptNumber.TryParseLong(val, out long expireTick)
+                    ? Math.Max(0, expireTick - Environment.TickCount64)
+                    : 0;
+                w.WriteProperty("TAG.GUARD_EXPIRE_REMAINING", remaining.ToString());
                 continue;
             }
             if (upper is "DSPEECH" or "EMOTECOLOR" or "VIRTUALGOLD"

@@ -327,6 +327,12 @@ public sealed class ClientItemUseHandler
     private static int GetVendorItemPrice(Character vendor, Item item) => GameClient.GetVendorItemPrice(vendor, item);
     private static int GetVendorItemSellPrice(Character vendor, Item item) => GameClient.GetVendorItemSellPrice(vendor, item);
 
+    /// <summary>The character's @DClick with this client's character as SRC; true when
+    /// the script answered RETURN 1.</summary>
+    private bool CharDClickBlocked(Character target) =>
+        _triggerDispatcher?.FireCharTrigger(target, CharTrigger.DClick,
+            new TriggerArgs { CharSrc = _character }) == TriggerResult.True;
+
     public void HandleDoubleClick(uint uid, bool testTouch = true)
     {
         if (_character == null) return;
@@ -344,7 +350,13 @@ public sealed class ClientItemUseHandler
                 ? _character
                 : _world.FindChar(new Serial(uid));
             if (target != null && CanSeeCharacterForDoubleClick(target))
-                SendPaperdoll(target);
+            {
+                // The paperdoll request is Event_DoubleClick with fMacro set: @DClick
+                // still runs first and RETURN 1 keeps the paperdoll shut
+                // (CClientEvent.cpp:2354-2358).
+                if (!CharDClickBlocked(target))
+                    SendPaperdoll(target);
+            }
             else if (uid != 0)
                 Send(new PacketDeleteObject(uid));
             return;
@@ -352,6 +364,11 @@ public sealed class ClientItemUseHandler
 
         if (uid == _character.Uid.Value)
         {
+            // Source-X fires @DClick on the clicked character - yourself included -
+            // before the dismount / paperdoll choice (CClientEvent.cpp:2354-2373).
+            if (CharDClickBlocked(_character))
+                return;
+
             // If mounted, dismount on self-dclick
             if (_character.IsMounted && _mountEngine != null)
             {

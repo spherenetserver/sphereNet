@@ -846,6 +846,11 @@ public sealed partial class NpcAI
         {
             if (ch == npc || ch.IsDeleted || ch.MapIndex != npc.MapIndex)
                 continue;
+            // NPC_LookAround's CWorldSearch (CCharNPCAct.cpp:1166) walks only the
+            // sector's active chars; the disconnected list is read under AllShow
+            // alone (CWorldSearch.cpp:271-275), so a logged-out player is never looked at.
+            if (ch.IsLoggedOut)
+                continue;
             // CanSee: only a healer sees ghosts (CCharStatus.cpp:1184); the hidden
             // and the invisible are not seen.
             if (ch.IsDead ? !healer
@@ -970,6 +975,9 @@ public sealed partial class NpcAI
         foreach (var ch in _world.GetCharsInRange(npc.Position, GetNpcSight(npc)))
         {
             if (!ch.IsPlayer || ch.IsDeleted) continue;
+            // The same NPC_LookAround world search: no disconnected chars
+            // (CCharNPCAct.cpp:1166, CWorldSearch.cpp:271-275).
+            if (ch.IsLoggedOut) continue;
             if (ch.IsDead && npc.NpcBrain != NpcBrainType.Healer) continue;
             if (!_world.CanSeeLOSFor(npc, ch, LosFlags.NbWindows)) continue;
             npc.SeeNewPlayer(ch); // fires @NPCSeeNewPlayer on a first sighting

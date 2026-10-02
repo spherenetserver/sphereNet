@@ -79,31 +79,81 @@ public static partial class Program
 
     private static void ConfigureGlobalScriptHooks(TriggerDispatcher dispatcher, SphereConfig config)
     {
-        LoadResourceList(dispatcher.GlobalPlayerEvents, config.EventsPlayer, ResType.Events);
-        LoadResourceList(dispatcher.GlobalPetEvents, config.EventsPet, ResType.Events);
-        LoadResourceList(dispatcher.GlobalItemEvents, config.EventsItem, ResType.Events);
-        LoadResourceList(dispatcher.GlobalRegionEvents, config.EventsRegion, ResType.Events);
-        LoadResourceList(dispatcher.SpeechSelfResources, config.SpeechSelf, ResType.Speech);
-        LoadResourceList(dispatcher.SpeechPetResources, config.SpeechPet, ResType.Speech);
+        // CServerConfig::Load parses each list through CResourceRefArray::r_LoadVal
+        // (CServerConfig.cpp:5196-5226): EVENTSITEM/EVENTSPET/EVENTSPLAYER as
+        // RES_EVENTS, EVENTSREGION as RES_REGIONTYPE.
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalPlayerEvents, config.EventsPlayer, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalPetEvents, config.EventsPet, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalItemEvents, config.EventsItem, ResType.Events, _resources), "EVENTS");
+        ReportUnknownResources(LoadResourceList(dispatcher.GlobalRegionEvents, config.EventsRegion, ResType.Events, _resources), "REGIONTYPE");
+        ReportUnknownResources(LoadResourceList(dispatcher.SpeechSelfResources, config.SpeechSelf, ResType.Speech, _resources), "SPEECH");
+        ReportUnknownResources(LoadResourceList(dispatcher.SpeechPetResources, config.SpeechPet, ResType.Speech, _resources), "SPEECH");
     }
 
-    private static void LoadResourceList(List<ResourceId> target, string rawValue, ResType type)
+    /// <summary>A name in a global list that no loaded script section answers to is
+    /// an error upstream, logged once per name with the block it was looked up as
+    /// (CResourceRef.cpp:127-131: "Unknown 'EVENTS' Resource 'name'"). Without it an
+    /// ini carried over from another script pack - an EVENTSPET naming an event the
+    /// running pack does not have - silently runs no global event at all.</summary>
+    private static void ReportUnknownResources(List<string> unknown, string blockName)
     {
+        foreach (string name in unknown)
+            _log.LogError("Unknown '{Block}' Resource '{Name}'", blockName, name);
+    }
+
+    /// <summary>CResourceRefArray::r_LoadVal (CResourceRef.cpp:72-136) for a global
+    /// ini list: comma-separated names, "+name" adds, "-name" removes, "-0" / "-*"
+    /// clears. Returns the names no loaded section answers to (an event, a typedef or
+    /// a region type for an event list); those stay in the list, where they simply
+    /// never match.</summary>
+    internal static List<string> LoadResourceList(List<ResourceId> target, string rawValue, ResType type,
+        ResourceHolder? resources)
+    {
+        var unknown = new List<string>();
         target.Clear();
         if (string.IsNullOrWhiteSpace(rawValue))
-            return;
+            return unknown;
 
-        foreach (var token in rawValue.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        foreach (var entry in rawValue.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
+            string token = entry;
+            bool remove = false;
+            if (token.StartsWith('-'))
+            {
+                token = token[1..].Trim();
+                if (token is "0" or "*")
+                {
+                    target.Clear();
+                    continue;
+                }
+                remove = true;
+            }
+            else if (token.StartsWith('+'))
+            {
+                token = token[1..].Trim();
+            }
+            if (token.Length == 0)
+                continue;
+
             // EVENTSPLAYER and its siblings are loaded through the same resource-ref
             // array as a TEVENTS line upstream (CServerConfig.cpp:5217, RES_EVENTS),
             // so a name that belongs to another section type resolves to that section.
             var rid = type == ResType.Events
-                ? DefinitionLoader.ResolveEventName(token, _resources)
+                ? DefinitionLoader.ResolveEventName(token, resources)
                 : ResourceId.FromString(token, type);
-            if (rid.IsValid && !target.Contains(rid))
+            bool known = resources != null &&
+                ((rid.IsValid && resources.GetResource(rid) != null) ||
+                 resources.ResolveDefName(token) is { IsValid: true, Type: not ResType.DefName });
+            if (!known)
+                unknown.Add(token);
+            if (!rid.IsValid)
+                continue;
+            if (remove)
+                target.Remove(rid);
+            else if (!target.Contains(rid))
                 target.Add(rid);
         }
+        return unknown;
     }
 
     private static void InitializeGameEngines(string basePath)
@@ -3371,14 +3421,29 @@ public static partial class Program
             };
 
             // Mounts
-            _mountEngine = new SphereNet.Game.Mounts.MountEngine(_world);
+            _mountEngine = new SphereNet.Game.Mounts.MountEngine(_world) { Triggers = _triggerDispatcher };
+            // Use_Figurine's CreateNPC for a mount item with no creature linked to it.
+            _mountEngine.CreateCreature = (defIndex, rider) =>
+            {
+                if (!_clientsByCharUid.TryGetValue(rider.Uid, out var cli))
+                    cli = _clientsByCharUid.Values.FirstOrDefault();
+                return cli?.CreateNpcFromDefinition(defIndex, $"0{defIndex:X}");
+            };
+            // A pilot leaving the wheel through Horse_UnMount hands it back to the ship.
+            _mountEngine.ReleaseShipPilot = (pilot, wheel) =>
+                _shipEngine?.GetShip(wheel.Link) is { } pilotedShip && pilotedShip.Pilot == pilot.Uid &&
+                _shipEngine.SetPilot(pilotedShip, pilot,
+                    msg => SendSysMessage(pilot, SphereNet.Game.Messages.ServerMessages.Get(msg)));
             // Break a rider's link when the creature carrying them is deleted, and
             // end a shrunk pet's life with the figurine holding it - the two halves
             // Source-X does in its own DeleteCleanup paths.
             SphereNet.Game.Objects.Characters.Character.MountedNpcDeletedHook =
                 npc => _mountEngine?.OnMountNpcDeleted(npc);
-            SphereNet.Game.Objects.Items.Item.FigurineDeletedHook =
-                figurine => SphereNet.Game.NPCs.PetFigurine.OnFigurineDeleted(figurine, _world);
+            SphereNet.Game.Objects.Items.Item.FigurineDeletedHook = figurine =>
+            {
+                SphereNet.Game.NPCs.PetFigurine.OnFigurineDeleted(figurine, _world);
+                _mountEngine?.OnMountItemDeleted(figurine);
+            };
             // Script DISMOUNT verb: prefer the client path (fires @Dismount and
             // refreshes the rider's view); fall back to the engine for NPCs and
             // offline riders so the mount NPC is still restored.

@@ -87,6 +87,7 @@ public class NpcAiRound7Tests
 
         var attacker = world.CreateCharacter();
         attacker.IsPlayer = true;
+        attacker.IsOnline = true; // a connected player (a logged-out one is never attackable)
         attacker.MaxHits = 100; attacker.Hits = 100;
         world.PlaceCharacter(attacker, new Point3D(1001, 1000, 0, 0));
 
@@ -126,6 +127,7 @@ public class NpcAiRound7Tests
 
         var attacker = world.CreateCharacter();
         attacker.IsPlayer = true;
+        attacker.IsOnline = true; // a connected player (a logged-out one is never attackable)
         attacker.SetStatFlag(StatFlag.War);
         attacker.MaxHits = 60; attacker.Hits = 60;
         world.PlaceCharacter(attacker, new Point3D(1001, 1000, 0, 0));
@@ -191,6 +193,7 @@ public class NpcAiRound7Tests
 
         var ghost = world.CreateCharacter();
         ghost.IsPlayer = true;
+        ghost.IsOnline = true;
         ghost.MakeCriminal();
         ghost.Kill();
         ghost.SetStatFlag(StatFlag.War); // manifesting ghost

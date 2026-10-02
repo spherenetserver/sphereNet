@@ -218,6 +218,22 @@ public static partial class Program
             _log.LogInformation("Initialized {Count} spawn items ({FromTag} from SPAWNID tag, {TypeInh} type inherited from ITEMDEF)",
                 spawns, fromTag, typeInherited);
 
+        // A 0.56-era save records spawn membership on the creature (a MEMORY_ISPAWNED
+        // memory), not as ADDOBJ on the spawner; hand those creatures to their
+        // spawners now that the components exist, or every such spawner refills its
+        // quota on top of them.
+        int adopted = SphereNet.Game.Objects.Items.Item.AdoptLegacySpawnMemories(_world);
+        if (adopted > 0)
+            _log.LogInformation("Linked {Count} NPCs to their spawners from legacy spawn memories", adopted);
+        // CChar::FixWeirdness: a creature marked spawned whose spawn link leads nowhere
+        // is no longer marked spawned.
+        int unspawned = SphereNet.Game.Objects.Items.Item.ClearSpawnedFlagWithoutSpawner(_world);
+        if (unspawned > 0)
+            _log.LogInformation("Cleared the spawned flag of {Count} NPCs that have no spawner", unspawned);
+
+        // Summoned guards carried in from the save get their linger deadline back.
+        RegisterLoadedSummonedGuards();
+
         int brainFixed = 0;
         foreach (var obj in _world.GetAllObjects())
         {

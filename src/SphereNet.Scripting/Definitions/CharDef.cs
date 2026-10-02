@@ -209,16 +209,14 @@ public sealed class CharDef : BaseDef
                 // enum value parses; without this c_alchemist & friends
                 // dropped to NpcBrain=None and the spawn pipeline fell back
                 // to Animal — no vendor speech / buy / sell dispatch.
+                // Retired names (brain_undead, brain_thief...) resolve by meaning,
+                // as Source-X's own backwards-compatibility table maps them.
                 {
                     string raw = (value ?? string.Empty).Trim();
-                    if (raw.StartsWith("brain_", StringComparison.OrdinalIgnoreCase))
-                        raw = raw[6..];
-                    else if (raw.StartsWith("npc_", StringComparison.OrdinalIgnoreCase))
-                        raw = raw[4..];
-                    if (Enum.TryParse(raw, true, out NpcBrainType nb))
+                    if (NpcBrainNames.TryParseName(raw, out NpcBrainType nb))
                         NpcBrain = nb;
                     else if (int.TryParse(raw, out int nbi))
-                        NpcBrain = (NpcBrainType)nbi;
+                        NpcBrain = NpcBrainNames.FromScriptNumber(nbi);
                 }
                 break;
             case "CATEGORY": Category = value.Trim(); break;

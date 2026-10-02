@@ -340,6 +340,7 @@ public class CombatWaveC2ParityTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
+        ch.IsOnline = true;
         ch.Str = 50; ch.Dex = 50; ch.Int = 50;
         ch.MaxHits = 100; ch.Hits = 100;
         ch.SetSkill(SkillType.Swordsmanship, 1000);

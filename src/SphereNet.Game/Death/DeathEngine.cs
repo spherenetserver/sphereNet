@@ -217,7 +217,10 @@ public sealed class DeathEngine
         // corpse is made — otherwise the mount-layer item is snapshotted into
         // the death state and the client keeps drawing a mounted body under
         // the ghost.
-        if (victim.IsMounted)
+        // Only a player gets off: "if I'm NPC then my mount goes with me"
+        // (CCharAct.cpp:4399-4400) - an NPC rider keeps the mount item worn (DropAll
+        // leaves LAYER_HORSE alone, :621-623) and it goes when the NPC does.
+        if (victim.IsMounted && victim.IsPlayer)
             DismountHook?.Invoke(victim);
 
         // Source-X clears m_lastAttackers once the corpse and its @DeathCorpse are done

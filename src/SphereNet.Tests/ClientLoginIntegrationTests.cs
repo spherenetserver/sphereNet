@@ -273,4 +273,55 @@ public class ClientLoginIntegrationTests
         Assert.True(gameClient.Character!.IsOnline);
         Assert.Contains((byte)0x1B, Outgoing(game)); // login confirm / enter world
     }
+
+    /// <summary>Log "hero" in through the real pipeline at the given account level
+    /// and return the character that entered the world.</summary>
+    private static SphereNet.Game.Objects.Characters.Character EnterWorldAs(PrivLevel level)
+    {
+        var (world, accounts, lf) = CreateEnv();
+        var nm = NewManager(lf);
+
+        var (_, login) = NewConnection(lf, world, accounts);
+        Pump(nm, login, Concat(SeedBytes(), LoginPacket("hero", "secret")));
+        Pump(nm, login, ServerSelectPacket(0));
+        accounts.FindAccount("hero")!.PrivLevel = level;
+
+        var (gameClient, game) = NewConnection(lf, world, accounts);
+        Pump(nm, game, Concat(SeedBytes(), GameLoginPacket(RelayAuthId, "hero", "secret")));
+        Pump(nm, game, CharSelectPacket(0, "Hero"));
+        return gameClient.Character!;
+    }
+
+    [Theory]
+    [InlineData(PrivLevel.Counsel)]
+    [InlineData(PrivLevel.GM)]
+    [InlineData(PrivLevel.Owner)]
+    public void Staff_EnterTheWorldInvulnerable_AndWithoutAllShow(PrivLevel level)
+    {
+        // CClient::Setup_Start (CClientMsg.cpp:2810-2814): anyone above a player logs
+        // in with STATF_INVUL and PRIV_ALLSHOW cleared. Creatures then leave the staff
+        // member alone (Fight_IsAttackableState refuses an invulnerable target) until
+        // INVUL is switched off. Without it a staff member walking a dungeon was
+        // attacked by some creatures and not others, depending on everything but the
+        // reference's rule.
+        var ch = EnterWorldAs(level);
+
+        Assert.Equal(level, ch.PrivLevel);
+        Assert.True(ch.IsStatFlag(StatFlag.Invul));
+        Assert.False(ch.AllShow);
+        // Online and in the world: never mistaken for a logged-out body, which every
+        // creature's target search skips.
+        Assert.True(ch.IsOnline);
+        Assert.False(ch.IsLoggedOut);
+    }
+
+    [Fact]
+    public void Player_EntersTheWorldAttackable()
+    {
+        var ch = EnterWorldAs(PrivLevel.Player);
+
+        Assert.False(ch.IsStatFlag(StatFlag.Invul));
+        Assert.True(ch.IsOnline);
+        Assert.False(ch.IsLoggedOut);
+    }
 }

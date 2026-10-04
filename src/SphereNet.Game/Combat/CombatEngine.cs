@@ -1446,6 +1446,7 @@ public static class CombatEngine
         // Damage Increase is already inside the range: Fight_CalcDamage folds it into
         // iDmgBonus before rolling GetVal2(min, max) (CCharFight.cpp:1237, 1329).
         int damage = (int)_rand.NextInt64(dmgMin, (long)dmgMax + 1);
+        int rolledDamage = damage;
 
         // The swing's damage type: @HitCheck's ARGN2 when the caller carried it,
         // else the weapon's own (OVERRIDE.DAMAGETYPE). It runs through the parry
@@ -1540,9 +1541,20 @@ public static class CombatEngine
             WeaponDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
             AmmoUid = ammoUid,
         };
+        int beforeHitTriggers = damage;
         if (OnHitDamage != null)
             damage = Math.Clamp(OnHitDamage(hitCtx), 0, short.MaxValue);
         ammoHandled = hitCtx.ArrowHandled || hitCtx.Cancelled;
+
+        // Every stage of a swing's damage, so an odd number can be traced to the
+        // weapon's own rating, the strength/skill bonus, parry or a script.
+        Character.Diagnostic?.Invoke(
+            $"[combat_dmg] {attacker.Name}(0x{attacker.Uid.Value:X}) -> {target.Name}(0x{target.Uid.Value:X}) " +
+            $"weapon={(weapon == null ? "none" : $"0x{weapon.BaseId:X}")} " +
+            $"base={(weapon != null ? $"{weapon.AttackLo}-{weapon.AttackHi}{(weapon.AttackBaseRaw.HasValue ? "(item)" : "(def)")}" : $"{attacker.AttackLo}-{attacker.AttackHi}")} " +
+            $"modar={weapon?.ModAr ?? 0} str={attacker.Str} era={damageEra} di={CalculateDamageIncrease(attacker)} " +
+            $"range={dmgMin}-{dmgMax} roll={rolledDamage} afterParry={beforeHitTriggers} afterHit={damage}" +
+            (hitCtx.Cancelled ? " cancelled" : ""));
 
         // RETURN 1 in the @Hit chain drops the blow before poison, wear, damage,
         // procs and skill gain (Source-X returns WAR_SWING_EQUIPPING); it also leaves

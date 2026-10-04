@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Vurus hasari teshisi; notoriety ve yon guncellemeleri tam mod baytini tasir
+------------------------------------------------------------------------
+YENI - Her silah vurusu bir [combat_dmg] debug satiri yazar: silahin taban hasari (esya veya
+       tanim), MODAR, STR, hasar era'si, Damage Increase, bonuslu aralik, zar, parry sonrasi
+       ve @Hit zinciri sonrasi hasar.
+DUZELTME - Notoriety yenilemesi ve sunucu tarafli yon guncellemesi 0x77 mod baytini diger
+           mobil paketleri gibi izleyiciye gore olusturur (Source-X GetModeFlag); elle
+           olusturulan bayt SA oncesi zehir bitini, invulnerable ve hidden bitlerini
+           icermiyordu, zehir buyusunden hemen sonraki yenileme eski istemcinin yesil
+           can cubugunu siliyordu.
+
 [2026-10-04] - Sunucu tarafli donusler oyuncunun kendi istemcisine ulasir; yurume sirasi kurali
 ------------------------------------------------------------------------
 DUZELTME - Sunucunun dondurdugu oyuncu (buyu hedefi, beceri hedefi, FACE, DIR=, FLIP) Source-X

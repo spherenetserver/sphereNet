@@ -176,7 +176,7 @@ public sealed partial class GameClient
     /// and the viewer matters: bit 0x04 is POISONED for a pre-Stygian-Abyss client
     /// and FLYING for a newer one - the same bit, two meanings, decided by who is
     /// looking (ClassicUO Mobile.cs:126/145 reads it exactly that way).</summary>
-    internal static byte BuildMobileFlagsFor(Character ch, NetState? viewer)
+    public static byte BuildMobileFlagsFor(Character ch, NetState? viewer)
     {
         byte flags = 0;
 

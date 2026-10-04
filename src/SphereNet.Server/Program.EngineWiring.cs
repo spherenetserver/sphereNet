@@ -2949,11 +2949,11 @@ public static partial class Program
                 {
                     byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, ch);
                     byte dir = (byte)((byte)ch.Direction & 0x07);
-                    byte flags = 0;
-                    if (ch.IsInWarMode) flags |= 0x40;
-                    if (ch.IsDead) flags |= 0x02;
-                    if (ch.BodyId == 0x0191 || ch.BodyId == 0x0193) flags |= 0x02;
-                    if (ch.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
+                    // The per-viewer mode byte (Source-X GetModeFlag, CCharStatus.cpp:659):
+                    // a hand-built one lacked the pre-SA poison bit, invulnerable and
+                    // hidden, so a notoriety refresh right after a poison cast cleared
+                    // an older client's green bar.
+                    byte flags = GameClient.BuildMobileFlagsFor(ch, observerClient.NetState);
                     observerClient.Send(new PacketMobileMoving(
                         ch.Uid.Value, ch.BodyId,
                         ch.X, ch.Y, ch.Z, dir,
@@ -4077,11 +4077,6 @@ public static partial class Program
     private static void BroadcastFacingUpdate(Character actor, int range = 18)
     {
         byte dirByte = (byte)((byte)actor.Direction & 0x07);
-        byte flags = 0;
-        if (actor.IsInvisible) flags |= 0x80;
-        if (actor.IsInWarMode) flags |= 0x40;
-        if (actor.BodyId == 0x0191 || actor.BodyId == 0x0193) flags |= 0x02;
-        if (actor.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
 
         // A player turned by the server (spell target, skill target, FACE, DIR=) is
         // told with 0x20 on its own client: Source-X UpdateDir -> UpdateMove ->
@@ -4097,6 +4092,7 @@ public static partial class Program
         ForEachViewerOf(actor.Position, actor.Uid.Value, (observerCh, observerClient) =>
         {
             byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, actor);
+            byte flags = GameClient.BuildMobileFlagsFor(actor, observerClient.NetState);
             observerClient.Send(new PacketMobileMoving(
                 actor.Uid.Value, actor.BodyId,
                 actor.X, actor.Y, actor.Z, dirByte,

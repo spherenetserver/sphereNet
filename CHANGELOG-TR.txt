@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Beceri okumalari ondalikli; zehir ve @Hit izleri
+------------------------------------------------------------------------
+DUZELTME - Beceri okumasi (<TACTICS>, <SWORDSMANSHIP>, beceri numarasi) Source-X gibi tek
+           ondalikli "100.0" dondurur ("%u.%u", CChar.cpp:2341); ham onda birlik "1000"
+           donduruyordu. Tam sayi ifadeleri noktayi atlar ve degismez, ama FLOATVAL ham sayiyi
+           becerinin on kati okuyordu; silah hasarini <FLOATVAL <TACTICS>/100> ile hesaplayan
+           paket on kat sert vuruyordu. Save yine ham degeri saklar.
+YENI - Zehir debug satirlari yazar: [poison] uygulandi (siddet, sarj, seviye, kaynak), her
+       tick (hasar, kalan sarj, sonraki gecikme), tedavi ve onu kaldiran motor yoluyla
+       kaldirilma.
+YENI - Karakterin veya silahin @Hit tetigi hasari degistirdiginde saldiranin EVENTS listesiyle
+       [hit_trigger] debug satiri.
+
 [2026-10-04] - Vurus hasari teshisi; notoriety ve yon guncellemeleri tam mod baytini tasir
 ------------------------------------------------------------------------
 YENI - Her silah vurusu bir [combat_dmg] debug satiri yazar: silahin taban hasari (esya veya

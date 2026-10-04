@@ -138,7 +138,7 @@ public sealed class ArithmeticAssignmentTests : IDisposable
 
             Assert.Equal("7", Read(ch!, "STR"));
             Assert.Equal("10", Read(ch, "FAME"));
-            Assert.Equal("290", Read(ch, "TACTICS"));
+            Assert.Equal("29.0", Read(ch, "TACTICS")); // read back "%u.%u" (CChar.cpp:2341)
         }
         finally
         {

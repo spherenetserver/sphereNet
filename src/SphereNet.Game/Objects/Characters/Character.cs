@@ -6382,9 +6382,14 @@ public partial class Character : ObjBase
             return true;
         }
 
+        // A skill reads as its value with one decimal - "%u.%u" of the tenths
+        // (CChar.cpp:2336-2342). An integer expression skips the dot, so 100.0 still
+        // compares as 1000, but FLOATVAL reads it as the real 100.0: the raw "1000"
+        // made <FLOATVAL <TACTICS>/100> come out 10 instead of 1, and a pack that
+        // works its weapon damage out that way hit ten times too hard.
         if (TryResolveSkillName(upper, out var readSkill))
         {
-            value = GetSkill(readSkill).ToString();
+            value = FormatSkillTenths(GetSkill(readSkill));
             return true;
         }
         // A key that starts with a digit is a skill NUMBER (FindSkillKey,
@@ -6392,7 +6397,7 @@ public partial class Character : ObjBase
         if (upper.Length > 0 && char.IsAsciiDigit(upper[0]) &&
             int.TryParse(upper, out int skillNum) && skillNum >= 0 && skillNum < (int)SkillType.Qty)
         {
-            value = GetSkill((SkillType)skillNum).ToString();
+            value = FormatSkillTenths(GetSkill((SkillType)skillNum));
             return true;
         }
 
@@ -7797,6 +7802,11 @@ public partial class Character : ObjBase
     /// (<see cref="Definitions.SkillNames"/>).</summary>
     private static bool TryResolveSkillName(string name, out SkillType skill) =>
         Definitions.SkillNames.TryResolve(name, out skill);
+
+    /// <summary>A skill value in tenths written the way Source-X writes it: 1000 is
+    /// "100.0", 455 is "45.5".</summary>
+    private static string FormatSkillTenths(int tenths) =>
+        tenths < 0 ? $"-{-tenths / 10}.{-tenths % 10}" : $"{tenths / 10}.{tenths % 10}";
 
     private bool TrySetSkillByName(string upperKey, string normalized)
     {

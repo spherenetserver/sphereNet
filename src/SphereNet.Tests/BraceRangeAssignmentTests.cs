@@ -135,8 +135,7 @@ public sealed class BraceRangeAssignmentTests : IDisposable
         for (int i = 0; i < 20; i++)
         {
             Assert.True(ch.TrySetProperty("TACTICS", "{29.0 44.0}"));
-            Assert.True(ch.TryGetProperty("TACTICS", out string got));
-            Assert.InRange(int.Parse(got), 290, 440);
+            Assert.InRange(ch.GetSkill(SphereNet.Core.Enums.SkillType.Tactics), 290, 440);
         }
     }
 

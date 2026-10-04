@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - Skill reads carry their decimal; poison and @Hit traces
+------------------------------------------------------------------------
+FIX - A skill read (<TACTICS>, <SWORDSMANSHIP>, a skill number) returns the value with one
+      decimal, "100.0", as Source-X writes it ("%u.%u", CChar.cpp:2341); it returned the raw
+      tenths, "1000". Integer expressions skip the dot and are unchanged, but FLOATVAL read
+      the raw number as ten times the skill, so a pack computing weapon damage as
+      <FLOATVAL <TACTICS>/100> hit ten times too hard. Saves still store the raw value.
+NEW - Poison writes debug lines: [poison] applied (strength, charges, level, source), each
+      tick (damage, remaining charges, next delay), cure and removal with the engine path
+      that removed it.
+NEW - [hit_trigger] debug line when the character's or the weapon's @Hit changes the damage,
+      with the attacker's EVENTS.
+
 [2026-10-04] - Swing damage diagnostic; notoriety and facing updates carry the full mode byte
 ------------------------------------------------------------------------
 NEW - Every weapon swing writes a debug line [combat_dmg] with the weapon's base damage

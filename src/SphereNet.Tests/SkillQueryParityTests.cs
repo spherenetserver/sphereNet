@@ -154,9 +154,9 @@ public sealed class SkillQueryParityTests
         // The definition gives 20% of its bonus from STR, so 50.0 of skill on 100 STR
         // reads higher than the bare skill does - and it is the adjusted number the
         // engine rolls against. Formatted "%hu.%hu" (CChar.cpp:2672), so 520 comes back
-        // as "52.0" - text with a dot in it, unlike every other skill read.
+        // as "52.0" - and the bare skill reads the same way, "%u.%u" (CChar.cpp:2341).
         Assert.Contains('.', adj);
-        Assert.Equal("500", raw);
+        Assert.Equal("50.0", raw);
         Assert.Equal("52.0", adj);
     }
 

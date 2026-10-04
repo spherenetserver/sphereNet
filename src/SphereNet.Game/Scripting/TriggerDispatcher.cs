@@ -175,8 +175,13 @@ public sealed class TriggerDispatcher
             ctx.Cancelled = true;
             return 0;
         }
+        int charStageIn = ctx.Damage;
         ctx.Damage = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, hitArgs.N1));
         ctx.DamageType = ReadDamageType(hitArgs.N2);
+        if (ctx.Damage != charStageIn)
+            Character.Diagnostic?.Invoke(
+                $"[hit_trigger] char @Hit changed ARGN1 {charStageIn} -> {ctx.Damage} on {attacker.Name}(0x{attacker.Uid.Value:X}) " +
+                $"events='{(attacker.TryGetProperty("EVENTS", out string ev) ? ev : "")}'");
 
         if (weapon != null)
         {
@@ -193,8 +198,13 @@ public sealed class TriggerDispatcher
                 ctx.Cancelled = true;
                 return 0;
             }
+            int weaponStageIn = ctx.Damage;
             ctx.Damage = SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, wArgs.N1));
             ctx.DamageType = ReadDamageType(wArgs.N2);
+            if (ctx.Damage != weaponStageIn)
+                Character.Diagnostic?.Invoke(
+                    $"[hit_trigger] weapon @Hit changed ARGN1 {weaponStageIn} -> {ctx.Damage} on 0x{weapon.Uid.Value:X} " +
+                    $"(0x{weapon.BaseId:X})");
         }
         // Script-final weapon wear / poison-spend knobs back into the context
         // for CombatEngine's post-trigger rolls; ArrowHandled hands the ammo

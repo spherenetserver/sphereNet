@@ -208,8 +208,13 @@ public sealed class CharacterPoisonState
         Character.SendOwnerMessage?.Invoke(_owner, ServerMessages.Get(Msg.JustBeenPoisoned));
         _owner.SetStatFlag(StatFlag.Poisoned);
         Character.OnHealthBarStatusChanged?.Invoke(_owner);
+        Character.Diagnostic?.Invoke(
+            $"[poison] applied to {Who(_owner)} by {(source == null ? "none" : Who(source))} " +
+            $"skill={skill} hits={hits} level={mem.MoreP.Y} charges={mem.More2} mem=0x{mem.Uid.Value:X}");
         return true;
     }
+
+    private static string Who(Character ch) => $"{ch.Name}(0x{ch.Uid.Value:X})";
 
     /// <summary>Poison of a known SphereNet level (1 lesser .. 5 lethal) - the GM
     /// command and the POISONLEVEL key, which name a level rather than a skill. The
@@ -330,6 +335,8 @@ public sealed class CharacterPoisonState
     {
         _pendingRestore = null;
         var mem = Memory;
+        if (mem != null || _owner.IsStatFlag(StatFlag.Poisoned))
+            Character.Diagnostic?.Invoke($"[poison] cure on {Who(_owner)} extra={extra} by {Caller()}");
         if (mem != null)
         {
             var world = ObjBase.ResolveWorld?.Invoke();
@@ -414,6 +421,28 @@ public sealed class CharacterPoisonState
         _owner.ClearStatFlag(StatFlag.Poisoned);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0, null);
         Character.OnHealthBarStatusChanged?.Invoke(_owner);
+        Character.Diagnostic?.Invoke(
+            $"[poison] removed from {Who(_owner)} mem=0x{(mem?.Uid.Value ?? 0):X} by {Caller()}");
+    }
+
+    /// <summary>The engine frames that led here, for the [poison] trace: which path
+    /// cured or removed a poison.</summary>
+    private static string Caller()
+    {
+        if (Character.Diagnostic == null)
+            return "";
+        var frames = new System.Diagnostics.StackTrace(2, false).GetFrames();
+        var names = new List<string>();
+        foreach (var f in frames)
+        {
+            var m = f.GetMethod();
+            if (m?.DeclaringType == null) continue;
+            string type = m.DeclaringType.Name;
+            if (type.StartsWith('<')) continue;
+            names.Add($"{type}.{m.Name}");
+            if (names.Count == 5) break;
+        }
+        return string.Join(" <- ", names);
     }
 
     // ------------------------------------------------------------------- tick
@@ -598,6 +627,9 @@ public sealed class CharacterPoisonState
             }
         }
 
+        Character.Diagnostic?.Invoke(
+            $"[poison] tick on {Who(_owner)} dealt={dealt} effect={effect} charges={charges} " +
+            $"next={(charges - 1 > 0 ? $"{Math.Max(1, delaySeconds)}s" : "end")}{(mem.IsDeleted ? " mem-gone" : "")}");
         if (mem.IsDeleted)
             return dealt;
         mem.More2 = (uint)Math.Max(0, charges);

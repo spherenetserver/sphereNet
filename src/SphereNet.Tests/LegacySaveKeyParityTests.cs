@@ -103,7 +103,7 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         ch.SetSkill(SkillType.Spellweaving, 700);
 
         Assert.True(ch.TryGetProperty("Sailormanship", out string value));
-        Assert.Equal("700", value);
+        Assert.Equal("70.0", value); // "%u.%u" (CChar.cpp:2341)
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         Assert.True(ch.TrySetProperty("Spellweaving", "42.0"));
         Assert.Equal(420, ch.GetSkill(SkillType.Spellweaving));
         Assert.True(ch.TryGetProperty("Spellweaving", out string value));
-        Assert.Equal("420", value);
+        Assert.Equal("42.0", value);
     }
 
     [Fact]

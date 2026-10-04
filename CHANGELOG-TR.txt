@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Sunucu tarafli donusler oyuncunun kendi istemcisine ulasir; yurume sirasi kurali
+------------------------------------------------------------------------
+DUZELTME - Sunucunun dondurdugu oyuncu (buyu hedefi, beceri hedefi, FACE, DIR=, FLIP) Source-X
+           UpdateDir -> addPlayerView -> addPlayerUpdate gibi kendi istemcisinde 0x20 alir.
+           Donus yalnizca 0x77 olarak gidiyordu, ClassicUO kendi karakteri icin bu paketteki
+           yonu yok sayar; istemci eski yonde kaliyor, bir sonraki tus bir tarafta donus
+           diger tarafta adim sayiliyor, iki taraf bir kare ayrisiyor ve sonradan reddedilen
+           bir adim oyuncuyu bir kare atiyordu.
+DUZELTME - Sunucu yurume sirasi 0 iken yalnizca seq 0 adimi kabul edilir (Source-X
+           receive.cpp:270); sifirlamadan sonra yoldaki eski seq 1 adimi kabul ediliyor ve
+           sunucuyu istemcinin geri aldigi bir kare ilerletiyordu.
+
 [2026-10-04] - Reddedilen adimlar nedeniyle loglanir
 ------------------------------------------------------------------------
 YENI - Reddedilen her oyuncu adimi bir debug satiri yazar: [move_reject] reason=... seq pos

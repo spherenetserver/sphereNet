@@ -4083,8 +4083,18 @@ public static partial class Program
         if (actor.BodyId == 0x0191 || actor.BodyId == 0x0193) flags |= 0x02;
         if (actor.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
 
+        // A player turned by the server (spell target, skill target, FACE, DIR=) is
+        // told with 0x20 on its own client: Source-X UpdateDir -> UpdateMove ->
+        // addPlayerView -> addPlayerUpdate (CCharAct.cpp:2545, CClientMsg.cpp:2085).
+        // ClassicUO ignores the direction in a 0x77 for itself, so the client kept
+        // its old facing; the next key was then a turn on one side and a step on the
+        // other, and the two drifted a tile apart until a refused step threw the
+        // player back.
+        if (actor.IsPlayer && TryGetClientFor(actor, out var ownClient))
+            ownClient.SendSelfRedraw();
+
         // A facing change is view traffic: every viewer within its own range.
-        ForEachViewerOf(actor.Position, 0, (observerCh, observerClient) =>
+        ForEachViewerOf(actor.Position, actor.Uid.Value, (observerCh, observerClient) =>
         {
             byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, actor);
             observerClient.Send(new PacketMobileMoving(

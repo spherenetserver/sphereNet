@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - Server-side turns reach the player's own client; walk sequence rule
+------------------------------------------------------------------------
+FIX - A player turned by the server (spell target, skill target, FACE, DIR=, FLIP) gets a
+      0x20 on its own client, as Source-X UpdateDir -> addPlayerView -> addPlayerUpdate
+      does. The turn went out only as 0x77, whose direction ClassicUO ignores for itself, so
+      the client kept its old facing; the next key was a turn on one side and a step on the
+      other, the two drifted a tile apart, and a refused step later threw the player a tile.
+FIX - With the server walk sequence at 0 only a seq-0 step is accepted (Source-X
+      receive.cpp:270); a stale in-flight seq 1 after a reset was taken and moved the
+      server a tile the client had already taken back.
+
 [2026-10-04] - Refused steps are logged with their reason
 ------------------------------------------------------------------------
 NEW - Every refused player step writes a debug line [move_reject] reason=... seq pos facing

@@ -500,6 +500,24 @@ public class MovementMapAuditRegressionTests
         Assert.Equal(1, Rejects(client));
     }
 
+    /// <summary>With the server sequence at 0 (login, reject, 0x20) only a seq-0 step
+    /// is valid (Source-X receive.cpp:270-271). A stale in-flight seq 1 used to be
+    /// accepted and moved the server a tile the client had already taken back.</summary>
+    [Fact]
+    public void AfterAResetOnlySequenceZeroWalks()
+    {
+        var w = World();
+        var c = Char(w);
+        c.Direction = Direction.East;
+        var client = Client(w, c);
+
+        Assert.False(client.HandleMove((byte)Direction.East, 1, 0));
+        Assert.Equal(100, c.X);
+
+        Assert.True(client.HandleMove((byte)Direction.East, 0, 0));
+        Assert.Equal(101, c.X);
+    }
+
     [Fact]
     public void ValidRunningDirection_StillWalks()
     {

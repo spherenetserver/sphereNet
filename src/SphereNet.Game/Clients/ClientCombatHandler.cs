@@ -229,7 +229,9 @@ public sealed class ClientCombatHandler
         }
 
         byte expectedSeq = _netState.WalkSequence;
-        if (expectedSeq == 0 && seq > 1)
+        // Source-X PacketMovementReq: with the server sequence at 0 only a seq-0 step
+        // is valid (receive.cpp:270-271).
+        if (expectedSeq == 0 && seq != 0)
         {
             RejectStaleMove(seq, dir, now);
             return;
@@ -272,12 +274,13 @@ public sealed class ClientCombatHandler
 
         byte expectedSeq = _netState.WalkSequence;
 
-        // After a reject, WalkSequence resets to 0. The client's first
-        // move post-reject will be seq 0 or 1. Anything higher is a stale
-        // speculative move still in flight from before the rejection —
-        // processing it from the corrected position would move the
-        // character in unexpected directions (teleportation). Drop them.
-        if (expectedSeq == 0 && seq > 1)
+        // After a reject or a 0x20, WalkSequence resets to 0 and the client restarts
+        // at seq 0 (Source-X rejects any other, receive.cpp:270-271). Anything else is
+        // a stale speculative step still in flight from before the reset; processing
+        // it from the corrected position moved the server a tile the client had
+        // already taken back. Seq 1 used to be let through - the in-flight step right
+        // after a reset - and that was one such tile.
+        if (expectedSeq == 0 && seq != 0)
         {
             RejectStaleMove(seq, dir, now);
             return false;

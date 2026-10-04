@@ -7066,7 +7066,12 @@ public partial class Character : ObjBase
                 // CHC_DIR (CChar.cpp:3836): an out-of-range direction becomes SE.
                 if (long.TryParse(normalized, out long drv))
                 {
-                    Direction = drv is >= 0 and <= 7 ? (Direction)drv : Direction.SouthEast;
+                    var newDir = drv is >= 0 and <= 7 ? (Direction)drv : Direction.SouthEast;
+                    if (newDir != Direction)
+                    {
+                        Direction = newDir;
+                        OnFacingChanged?.Invoke(this); // CHC_DIR -> UpdateDir (CChar.cpp:3841)
+                    }
                     return true;
                 }
                 return false;
@@ -9065,6 +9070,7 @@ public partial class Character : ObjBase
             {
                 _direction = (Direction)(((byte)_direction + 1) & 0x07);
                 MarkDirty(DirtyFlag.Direction);
+                OnFacingChanged?.Invoke(this); // UpdateDir (CCharAct.cpp:4568)
                 return true;
             }
             case "FIXWEIGHT":
@@ -9323,6 +9329,9 @@ public partial class Character : ObjBase
         if (dir == _direction)
             return;
         _direction = dir;
+        // The delta view compares direction too, so the watchers' next refresh
+        // carries it even where the facing hook is not wired.
+        MarkDirty(DirtyFlag.Direction);
         OnFacingChanged?.Invoke(this);
     }
 

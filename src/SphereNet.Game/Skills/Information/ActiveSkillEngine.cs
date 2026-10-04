@@ -1436,10 +1436,7 @@ public static class ActiveSkillEngine
         var dir = ch.Position.GetDirectionTo(target);
         if (ch.Direction == dir)
             return;
-        ch.Direction = dir;
-        // The delta view compares direction alongside position, so telling the
-        // character is enough for every watcher to be told in the same tick.
-        ch.MarkDirty(Core.Enums.DirtyFlag.Direction);
+        ch.FaceToward(target); // UpdateDir: watchers and the player's own client
     }
 
     // ---------------------------------------------------------- Musicianship

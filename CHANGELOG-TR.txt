@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Hedefin @SpellEffect tetiginin uyguladigi zehir korunur
+------------------------------------------------------------------------
+DUZELTME - Sphere 56T ozel surum uyumlulugu: Poison / Poison Field buyusunun zehrini hedefin
+           @SpellEffect (veya buyunun @Effect) tetigi kendisi uyguladiginda - zehri
+           buyucunun Poisoning becerisinden POISON ile veren paket - motor artik onu buyunun
+           kendi SetPoison'u ile degistirmez. Orada buyunun EFFECT degeri (15-20) sarj
+           birakmiyordu; script'in zehri hemen degisiyor ve ilk tick'te bitiyordu (yesil
+           can cubugu bir an gorunup kayboluyordu). Boyle bir script yoksa buyu Source-X
+           gibi zehirler.
+
 [2026-10-04] - Beceri okumalari ondalikli; zehir ve @Hit izleri
 ------------------------------------------------------------------------
 DUZELTME - Beceri okumasi (<TACTICS>, <SWORDSMANSHIP>, beceri numarasi) Source-X gibi tek

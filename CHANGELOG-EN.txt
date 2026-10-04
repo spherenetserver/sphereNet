@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - A poison laid by the target's @SpellEffect is kept
+------------------------------------------------------------------------
+FIX - Sphere 56T custom-version compatibility: when the target's @SpellEffect (or the
+      spell's @Effect) lays the poison of a Poison / Poison Field cast itself - a pack that
+      sets POISON from the caster's Poisoning - the engine no longer replaces it with the
+      spell's own SetPoison. There the spell's EFFECT (15-20) left no charges, so the
+      script's poison was swapped out at once and ended on the first tick (the green
+      health bar flashed and vanished). With no such script the spell poisons as Source-X.
+
 [2026-10-04] - Skill reads carry their decimal; poison and @Hit traces
 ------------------------------------------------------------------------
 FIX - A skill read (<TACTICS>, <SWORDSMANSHIP>, a skill number) returns the value with one

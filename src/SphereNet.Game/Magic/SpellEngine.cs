@@ -2083,6 +2083,9 @@ public sealed partial class SpellEngine
     /// <summary>The iSkillLevel of the effect being applied (Source-X OnSpellEffect's
     /// argument): the caster's skill, or a potion's quality. Cure and poison read it.</summary>
     private int _effectSkillLevel;
+    /// <summary>The target's @SpellEffect laid the poison of the cast being applied, so
+    /// the engine's own must not replace it (see the trigger stage).</summary>
+    private Serial _poisonLaidByEffectTriggerOn = Serial.Invalid;
 
     /// <summary>The ground point of the cast being resolved (Source-X m_Act_p),
     /// or null outside CastDone.</summary>
@@ -2185,6 +2188,8 @@ public sealed partial class SpellEngine
             };
             // RETURN 1 refuses the effect; RETURN 0 on a SCRIPTED spell means the
             // script did it (:3714-3730).
+            var poisonBefore = def.Id is SpellType.Poison or SpellType.PoisonField
+                ? target.Poison.Memory : null;
             var charVerdict = TriggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffect, fxArgs);
             if (charVerdict == TriggerResult.True)
                 return false;
@@ -2194,6 +2199,14 @@ public sealed partial class SpellEngine
             var stageVerdict = TriggerDispatcher.FireSpellTrigger(def.Id, "Effect", target, fxArgs);
             if (stageVerdict == TriggerResult.True)
                 return false;
+            // Sphere 56T custom-version compatibility: a pack whose @SpellEffect lays the
+            // poison itself (POISON=<strength> from the caster's Poisoning) relies on the
+            // engine not replacing it with the spell's own, whose EFFECT there is a small
+            // number that leaves no charges. A poison put on during these triggers is
+            // kept; with no such script the spell poisons as Source-X does.
+            _poisonLaidByEffectTriggerOn = def.Id is SpellType.Poison or SpellType.PoisonField &&
+                target.Poison.Memory is { } poisonAfter && !ReferenceEquals(poisonAfter, poisonBefore)
+                ? target.Uid : Serial.Invalid;
             if (scripted && (stageVerdict == TriggerResult.False || fxArgs.ReturnNumber == 0))
                 return true;
 
@@ -3514,6 +3527,10 @@ public sealed partial class SpellEngine
                 // Source-X OnSpellEffect SPELL_Poison (CCharSpell.cpp:3906): under the
                 // OSI formulas the strength is (magery + the caster's poisoning) / 2;
                 // SetPoison does the level ladder, distance fall-off and Evil Omen.
+                bool laidByScript = _poisonLaidByEffectTriggerOn == target.Uid;
+                _poisonLaidByEffectTriggerOn = Serial.Invalid;
+                if (laidByScript)
+                    break;
                 int poisonEffect = effect;
                 if (IsMagicFlag(MagicConfigFlags.OsiFormulas))
                     poisonEffect = (_effectSkillLevel + caster.GetSkill(SkillType.Poisoning)) / 2;

@@ -1110,9 +1110,9 @@ public class GameSystemTests
         Assert.True(pet.AddFriend(friend));
 
         Assert.True(pet.TryGetProperty("OWNER", out var ownerVal));
-        Assert.Equal($"0{owner.Uid.Value:X}", ownerVal);
+        Assert.Equal($"0{owner.Uid.Value:x}", ownerVal);
         Assert.True(pet.TryGetProperty("CONTROLLER", out var controllerVal));
-        Assert.Equal($"0{owner.Uid.Value:X}", controllerVal);
+        Assert.Equal($"0{owner.Uid.Value:x}", controllerVal);
         Assert.True(pet.TryGetProperty("MemoryFindType.memory_ipet.isValid", out var ownerMemValid));
         Assert.Equal("1", ownerMemValid);
         Assert.True(pet.TryGetProperty("MemoryFindType.memory_friend.link.name", out var friendName));

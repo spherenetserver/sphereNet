@@ -1096,7 +1096,7 @@ public class SaveFormatTests
             Assert.Contains("STR=50", charSave);
             Assert.DoesNotContain("SPELLEFFECT", charSave);
             string itemSave = File.ReadAllText(Path.Combine(tmp, "sphereworld.scp"));
-            Assert.Contains($"CONT=0{ch.Uid.Value:X8}", itemSave);
+            Assert.Contains($"CONT=0{ch.Uid.Value:x8}", itemSave);
             Assert.Contains("LAYER=32", itemSave);
             Assert.Contains("MOREP=17,50,", itemSave);
 

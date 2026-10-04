@@ -178,7 +178,7 @@ public sealed class ScriptVariableSemanticsTests : IDisposable
         Assert.Equal("item_default", Read(b, b.Coin, "TAG0.FROMDEF"));
         Assert.Equal("char_default", Read(b, b.Human, "TAG.FROMDEF"));
         Assert.Equal("1+2", Read(b, b.Coin, "TAG.DEFQUOTED"));
-        Assert.Equal("0A", Read(b, b.Coin, "TAG.DEFNUM"));
+        Assert.Equal("0a", Read(b, b.Coin, "TAG.DEFNUM"));
 
         Run(b, b.Coin, "TAG.FROMDEF=override");
         Assert.Equal("override", Read(b, b.Coin, "TAG.FROMDEF"));
@@ -220,18 +220,18 @@ public sealed class ScriptVariableSemanticsTests : IDisposable
             "VAR.SVT_TEN=10", "VAR.SVT_EXPR=5+3", "VAR.SVT_QTEN=\"10\"");
         Run(b, b.Owner, "CTAG.SVT_TEN=10", "CTAG.SVT_EXPR=5+3");
 
-        Assert.Equal("0A", Read(b, b.Coin, "TAG.TEN"));
+        Assert.Equal("0a", Read(b, b.Coin, "TAG.TEN"));
         Assert.Equal("08", Read(b, b.Coin, "TAG.EXPRESSION"));
         Assert.Equal("010", Read(b, b.Coin, "TAG.NUM"));
         Assert.Equal("10", Read(b, b.Coin, "TAG.QTEN"));
-        Assert.Equal("0A", Read(b, b.Coin, "LOCAL.TEN", scope));
+        Assert.Equal("0a", Read(b, b.Coin, "LOCAL.TEN", scope));
         Assert.Equal("08", Read(b, b.Coin, "LOCAL.EXPR", scope));
         Assert.Equal(16, scope.LocalVars.GetInt("HEX"));
         Assert.Equal("16", Read(b, b.Coin, "DLOCAL.HEX", scope));
-        Assert.Equal("0A", Read(b, b.Coin, "VAR.SVT_TEN"));
+        Assert.Equal("0a", Read(b, b.Coin, "VAR.SVT_TEN"));
         Assert.Equal("08", Read(b, b.Coin, "VAR.SVT_EXPR"));
         Assert.Equal("10", Read(b, b.Coin, "VAR.SVT_QTEN"));
-        Assert.Equal("0A", Read(b, b.Owner, "CTAG.SVT_TEN"));
+        Assert.Equal("0a", Read(b, b.Owner, "CTAG.SVT_TEN"));
         Assert.Equal("08", Read(b, b.Owner, "CTAG.SVT_EXPR"));
         // The D prefix still reads the decimal value.
         Assert.Equal("10", Read(b, b.Coin, "DTAG.TEN"));
@@ -239,11 +239,11 @@ public sealed class ScriptVariableSemanticsTests : IDisposable
         // The same text after a save and a reload.
         SaveAndReload(b, "n");
         var coin = b.World.FindItem(b.Coin.Uid)!;
-        Assert.Equal("0A", Read(b, coin, "TAG.TEN"));
+        Assert.Equal("0a", Read(b, coin, "TAG.TEN"));
         Assert.Equal("08", Read(b, coin, "TAG.EXPRESSION"));
         Assert.Equal("010", Read(b, coin, "TAG.NUM"));
         Assert.Equal("10", Read(b, coin, "TAG.QTEN"));
-        Assert.Equal("0A", Read(b, coin, "VAR.SVT_TEN"));
+        Assert.Equal("0a", Read(b, coin, "VAR.SVT_TEN"));
         Assert.Equal("08", Read(b, coin, "VAR.SVT_EXPR"));
         Assert.Equal("10", Read(b, coin, "VAR.SVT_QTEN"));
     }
@@ -283,7 +283,7 @@ public sealed class ScriptVariableSemanticsTests : IDisposable
 
         // An engine SetInt is a number var too: the script sees hex.
         b.Coin.Tags.SetInt("ENGINE", 255);
-        Assert.Equal("0FF", Read(b, b.Coin, "TAG.ENGINE"));
+        Assert.Equal("0ff", Read(b, b.Coin, "TAG.ENGINE"));
         Assert.Equal(255, b.Coin.Tags.GetInt("ENGINE"));
     }
 

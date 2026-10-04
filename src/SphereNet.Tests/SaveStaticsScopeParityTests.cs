@@ -142,7 +142,7 @@ public sealed class SaveStaticsScopeParityTests
         var (count, text) = Export(world);
 
         Assert.Equal(1, count);
-        Assert.Contains($"0{kept.Uid.Value:X}", text.ToUpperInvariant());
+        Assert.Contains($"0{kept.Uid.Value:x}", text.ToUpperInvariant());
     }
 
     [Fact]

@@ -411,10 +411,12 @@ public static class CombatEngine
             }
             default: // Sphere custom (era 0) — Source-X Calc_CombatChanceToHit
             {
-                // The value returned is the ceiling of the random draw Source-X makes
-                // (Calc_CombatChanceToHit returns rand(iDiff)). A sleeping or frozen
-                // target draws from rand(10) instead (CResourceCalc.cpp:153).
-                if (target.IsStatFlag(StatFlag.Sleeping) || target.IsStatFlag(StatFlag.Freeze))
+                bool targetHelpless = target.IsStatFlag(StatFlag.Sleeping) || target.IsStatFlag(StatFlag.Freeze);
+                // COMBATHITCHANCELEGACYERA0=1: the 0.56 / pre-2026 Source-X formula. The
+                // value returned is the ceiling of the random draw it made (rand(iDiff),
+                // taken by ResolveAttack), and a sleeping or frozen target drew from
+                // rand(10) instead, before anything else was computed.
+                if (Character.CombatHitChanceLegacyEra0 && targetHelpless)
                     return 10;
 
                 int iSkillVal = attackSkill;
@@ -433,9 +435,24 @@ public static class CombatEngine
                 else
                     iSkillDefend = (iSkillDefend + iStam * 10) / 2;
 
-                int iDiff = (iSkillAttack - iSkillDefend) / 5;
-                iDiff = (iSkillVal - iDiff) / 10;
-                return Math.Clamp(iDiff, 0, 100);
+                int iChance = (iSkillAttack - iSkillDefend) / 5;
+                iChance = (iSkillVal - iChance) / 10;
+                if (Character.CombatHitChanceLegacyEra0)
+                    return Math.Clamp(iChance, 0, 100);
+
+                // Source-X CResourceCalc.cpp:177-195 (#1553, cf60700): the attacker's
+                // Hit Chance Increase and the defender's Defense Chance Increase scale
+                // the chance (uncapped here, unlike the AOS era's +45%), it is clamped
+                // to 0..100, a sleeping or frozen target is hit at least 80% of the
+                // time, and the chance itself is returned - no rand(iChance) draw.
+                int hci = GetEquipmentPropertyValue(attacker, "INCREASEHITCHANCE");
+                int dci = GetEquipmentPropertyValue(target, "INCREASEDEFCHANCE");
+                long scaled = (long)iChance * (100L + hci) / 100;
+                scaled = scaled * (100L - dci) / 100;
+                iChance = (int)Math.Clamp(scaled, 0, 100);
+                if (targetHelpless && iChance < 80)
+                    iChance = 80;
+                return iChance;
             }
         }
     }
@@ -1027,13 +1044,14 @@ public static class CombatEngine
         return (arMax / 2, arMax);
     }
 
-    /// <summary>CCharFight.cpp:740 GetVal2Fast(iArMin, (iArMax - iArMin) + 1): the
-    /// second argument is an upper bound, not a span, and the draw is half-open
-    /// (CSRand.cpp:105-112, GetValFast(n) = 0..n-1, 0 under 2) - so the defense is
-    /// iArMin, or iArMin..iArMin+1 when iArMax is odd.</summary>
+    /// <summary>CCharFight.cpp:740 GetVal2Fast(iArMin, iArMax + 1) (#1550, 8167a72): the
+    /// draw is half-open (CSRand.cpp:105-112, GetValFast(n) = 0..n-1, 0 under 2), so the
+    /// defense is uniform over iArMin..iArMax inclusive. The older reference passed
+    /// (iArMax - iArMin) + 1 as the upper bound, which pinned the roll to iArMin or
+    /// iArMin+1.</summary>
     internal static int RollPreAosDefense(int arMin, int arMax)
     {
-        long lo = arMin, hi = (long)arMax - arMin + 1;
+        long lo = arMin, hi = (long)arMax + 1;
         if (lo > hi) (lo, hi) = (hi, lo);
         long span = hi - lo;
         return (int)(span < 2 ? lo : lo + _rand.NextInt64(span));
@@ -1426,14 +1444,15 @@ public static class CombatEngine
         // Source-X Skill_Fighting's stroke (CCharSkill.cpp:3048): m_Act_Difficulty =
         // Calc_CombatChanceToHit, then Skill_CheckSuccess(skill, difficulty, false) -
         // a FLAT percent check, difficulty*10 >= rand(1000), with a GM always
-        // landing. In era 0 the difficulty is itself a draw, rand(iDiff) (0..iDiff-1).
-        // The bell curve used here instead let a skilled attacker land almost every
-        // swing, where the reference tops out near iDiff/2 percent.
+        // landing. Every era returns the chance itself (CResourceCalc.cpp:193, cf60700);
+        // only the legacy era-0 formula (COMBATHITCHANCELEGACYERA0=1) made the
+        // difficulty a draw, rand(iDiff) (0..iDiff-1), topping out near iDiff/2 percent.
         int hitCap = CalcHitChanceCore(attacker, target, hitEra, GetWeaponSkill(attacker, weapon));
         // An instant-kill guard's difficulty is a flat 100, not a draw (the reference
         // returns before the rand(iDiff), CResourceCalc.cpp:147).
         bool guardKill = IsInstantKillGuard(attacker);
-        int hitChance = hitEra == 0 && !guardKill ? _rand.Next(hitCap) : hitCap; // m_Act_Difficulty, also fed to the gain rolls
+        bool legacyDraw = hitEra is not (1 or 2) && Character.CombatHitChanceLegacyEra0 && !guardKill;
+        int hitChance = legacyDraw ? _rand.Next(hitCap) : hitCap; // m_Act_Difficulty, also fed to the gain rolls
         bool hitLanded = attacker.PrivLevel >= PrivLevel.GM || hitChance * 10 >= _rand.Next(1000);
         if (!hitLanded)
             return AttackMiss;

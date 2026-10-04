@@ -222,9 +222,9 @@ public sealed class ClientScriptConsoleHandler
         if (upper == "OBJ")
         {
             if (triggerArgs?.Object1 is Character objCh)
-                _character.SetTag("OBJ", $"0{objCh.Uid.Value:X}");
+                _character.SetTag("OBJ", $"0{objCh.Uid.Value:x}");
             else if (triggerArgs?.Object1 is Item objItem)
-                _character.SetTag("OBJ", $"0{objItem.Uid.Value:X}");
+                _character.SetTag("OBJ", $"0{objItem.Uid.Value:x}");
             return true;
         }
 
@@ -1855,7 +1855,7 @@ public sealed class ClientScriptConsoleHandler
                     if (it.SpawnChar != null || it.SpawnItem != null) continue;
                     if (seen++ < wanted) continue;
                     _character.MoveTo(it.GetTopLevelPosition());
-                    SysMessage($"Bad spawn (0{it.Uid.Value:X}). Set as ACT.");
+                    SysMessage($"Bad spawn (0{it.Uid.Value:x}). Set as ACT.");
                     if (Targets != null) Targets.LastPickedSerial = it.Uid.Value;
                     return true;
                 }
@@ -2395,11 +2395,11 @@ public sealed class ClientScriptConsoleHandler
         if (varName.Equals("GETREFTYPE", StringComparison.OrdinalIgnoreCase))
         {
             if (target is SphereNet.Game.Objects.Items.Item)
-                value = "0" + 0x080000.ToString("X");
+                value = "0" + 0x080000.ToString("x");
             else if (target is SphereNet.Game.Objects.Characters.Character)
-                value = "0" + 0x040000.ToString("X");
+                value = "0" + 0x040000.ToString("x");
             else
-                value = "0" + 0x010000.ToString("X");
+                value = "0" + 0x010000.ToString("x");
             return true;
         }
 
@@ -2429,7 +2429,7 @@ public sealed class ClientScriptConsoleHandler
                 {
                     value = asNumeric
                         ? rid.Index.ToString()
-                        : $"0{rid.Index:X}"; // <Def.X> legacy-hex form
+                        : $"0{rid.Index:x}"; // <Def.X> legacy-hex form
                     return true;
                 }
             }

@@ -38,7 +38,7 @@ public sealed class HexPrefixReadTests
     public void ALeadingHReadsTheMemberAsHex()
     {
         Assert.Equal("010", Parser().EvaluateStr("<hSTR>"));      // 16
-        Assert.Equal("02D", Parser().EvaluateStr("<hHITS>"));     // 45
+        Assert.Equal("02d", Parser().EvaluateStr("<hHITS>"));     // 45
     }
 
     /// <summary>A value that is already hex is read and written back as hex, so the

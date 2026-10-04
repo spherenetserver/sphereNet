@@ -274,14 +274,16 @@ public sealed class ClientWorldFeaturesHandler
             return false;
 
         // Skill_Stage(SKTRIG_START) keeps the difficulty Skill_Start was handed
-        // (CCharSkill.cpp:3094, :4425-4429), and m_Act_Effect starts over.
+        // (CCharSkill.cpp:3094, :4425-4429), and m_Act_Effect starts over: a crafting
+        // skill's EFFECT curve rolled at random, or -1 without one (:4456-4471).
         _character.ActDiff = Math.Max(0, recipe.Difficulty);
-        _character.ActionEffect = -1;
+        _character.ActionEffect = SkillEngine.GetStartActionEffect(_character, craftSkill);
 
         if (FireCraftStart(craftSkill, ref craftAmount, out int craftStrokes, out long craftWaitTenths) ||
             _character.ActDiff < 0)
         {
             _character.ActDiff = 0;      // Skill_Cleanup
+            _character.ActionEffect = -1;
             return false;
         }
 
@@ -321,6 +323,7 @@ public sealed class ClientWorldFeaturesHandler
         if (_triggerDispatcher == null || _character == null)
             return false;
         var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("Effect", _character.ActionEffect);    // :4477
         locals.SetInt("CraftStrokeCnt", strokes);
         locals.SetInt("CraftAmount", amount);
         var args = new TriggerArgs
@@ -328,7 +331,12 @@ public sealed class ClientWorldFeaturesHandler
             CharSrc = _character, N1 = (int)craftSkill, N2 = waitTenths, Locals = locals,
         };
         if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart, args) == TriggerResult.True)
+        {
+            _character.ActionEffect = -1;   // Skill_Cleanup (:602)
             return true;
+        }
+        // m_Act_Effect = LOCAL.Effect (:4526).
+        _character.ActionEffect = (int)Math.Clamp(locals.GetInt("Effect", -1), int.MinValue, int.MaxValue);
         strokes = (int)Math.Clamp(locals.GetInt("CraftStrokeCnt", 1), 1, 100);
         // m_dwAmount is a word; Skill_MakeItem(SKTRIG_SUCCESS) reads a zero as one
         // (CCharSkill.cpp:3100).
@@ -993,7 +1001,7 @@ public sealed class ClientWorldFeaturesHandler
         int creatureId = VendorEngine.ResolveFigurineCreature(figurine);
         if (creatureId == 0)
             return null;
-        var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:X}");
+        var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:x}");
         if (pet == null)
             return null;
         pet.Name = figurine.GetName();
@@ -1510,7 +1518,7 @@ public sealed class ClientWorldFeaturesHandler
         foreach (var item in container.Contents)
         {
             if (item.IsDeleted) continue;
-            refs[index++] = $"0{item.Uid.Value:X}";
+            refs[index++] = $"0{item.Uid.Value:x}";
         }
         return refs;
     }
@@ -2342,28 +2350,48 @@ public sealed class ClientWorldFeaturesHandler
     }
 
 
+    /// <summary>Open-door macro (Source-X EXTCMD_DOOR_AUTO, CClientEvent.cpp:3114-3265,
+    /// #1510/#1558). The search square is centred on the character, not on the tile
+    /// in front, and every door within 20 Z is ranked by where it lies relative to
+    /// the way the character faces (<see cref="DoorHelper.GetDoorAutoPriority(int,int)"/>);
+    /// the best one is used, the first found keeping a tie. Taking the first door the
+    /// search returned opened whichever one the sector walk reached first. Map-static
+    /// doors - not items here - are ranked the same way and used only when no item
+    /// door ranks as well.</summary>
     public void OpenDoor(int distance = 1)
     {
         if (_character == null) return;
         if (_character.IsDead) return;
         distance = Math.Clamp(distance, 0, 14);
-        var (dx, dy) = ((byte)_character.Direction & 7) switch
-        {
-            0 => (0, -1), 1 => (1, -1), 2 => (1, 0), 3 => (1, 1),
-            4 => (0, 1), 5 => (-1, 1), 6 => (-1, 0), _ => (-1, -1)
-        };
-        var center = new Point3D((short)(_character.X + dx), (short)(_character.Y + dy),
-            _character.Z, _character.MapIndex);
-        foreach (var item in _world.GetItemsInRange(center, distance))
+        var facing = _character.Direction;
+        short cx = _character.X, cy = _character.Y;
+
+        Item? bestDoor = null;
+        int bestPriority = 6;
+        foreach (var item in _world.GetItemsInRange(_character.Position, distance))
         {
             if (!DoorHelper.IsDoorItem(item, _world.MapData) || Math.Abs(item.Z - _character.Z) >= 20)
                 continue;
-            SysMessage(ServerMessages.Get(Msg.MacroOpendoor));
-            _client.HandleDoubleClick(item.Uid.Value);
-            return;
+            int priority = DoorHelper.GetDoorAutoPriority(facing, cx, cy, item.X, item.Y);
+            if (priority < bestPriority)
+            {
+                bestPriority = priority;
+                bestDoor = item;
+            }
         }
 
-        TryToggleNearestMapStaticDoor(0, center, distance);
+        int staticPriority = DoorHelper.FindBestStaticDoorForMacro(
+            _world.MapData, _character.MapIndex, cx, cy, _character.Z, facing, distance,
+            out short sx, out short sy, out sbyte sz, out ushort tileId, out ushort hue);
+
+        if (bestDoor != null && (staticPriority == 0 || bestPriority <= staticPriority))
+        {
+            SysMessage(ServerMessages.Get(Msg.MacroOpendoor));
+            _client.HandleDoubleClick(bestDoor.Uid.Value);
+            return;
+        }
+        if (staticPriority != 0)
+            ToggleMapStaticDoor(0, sx, sy, sz, tileId, hue);
     }
 
     internal bool TryToggleNearestMapStaticDoor(uint clientSerial, Point3D? searchCenter = null, int radius = 2)
@@ -2379,7 +2407,12 @@ public sealed class ClientWorldFeaturesHandler
         if (searchCenter.HasValue && Math.Abs(z - _character.Z) >= 20) return false;
         if (searchCenter.HasValue && (Math.Abs(x - _character.X) > 2 || Math.Abs(y - _character.Y) > 2))
             return false;
+        return ToggleMapStaticDoor(clientSerial, x, y, z, tileId, hue);
+    }
 
+    private bool ToggleMapStaticDoor(uint clientSerial, short x, short y, sbyte z, ushort tileId, ushort hue)
+    {
+        if (_character == null) return false;
         bool open = _world.IsMapStaticDoorOpen(_character.MapIndex, x, y, z);
         // Classic-set doors: derive the pair arts from the doordir slot so
         // closing restores the STATIC's own art (the old tileId−1 walked
@@ -2559,7 +2592,7 @@ public sealed class ClientWorldFeaturesHandler
         ushort displayId = door.DispIdFull;
         ushort newDisplayId = (ushort)(displayId + (isOpen ? -1 : 1));
         if (door.DispIdOverride != 0)
-            door.TrySetProperty("DISPID", $"0{newDisplayId:X}");
+            door.TrySetProperty("DISPID", $"0{newDisplayId:x}");
         else
             door.BaseId = newDisplayId;
 
@@ -2622,7 +2655,7 @@ public sealed class ClientWorldFeaturesHandler
         ushort alternate = door.DoorOpenId;
         door.DoorOpenId = previous;
         if (door.DispIdOverride != 0)
-            door.TrySetProperty("DISPID", $"0{alternate:X}");
+            door.TrySetProperty("DISPID", $"0{alternate:x}");
         else
             door.BaseId = alternate;
 

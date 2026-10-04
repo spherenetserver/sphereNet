@@ -170,6 +170,16 @@ public sealed partial class GameClient
     /// Wired from the ini at startup; zero (the default) means "use the grey".</summary>
     public static ushort ColorInvisHue, ColorHiddenHue, ColorInvisSpellHue;
 
+    /// <summary>Source-X EF_WalkBypassMonsters (CServerConfig.h:57, EXPERIMENTAL 0x80000).</summary>
+    public const int EfWalkBypassMonsters = 0x0080000;
+
+    /// <summary>sphere.ini EXPERIMENTAL EF_WalkBypassMonsters: every mobile is sent with
+    /// CHARMODE_IGNOREMOBS (0x10), so a player's client stops refusing to step over an
+    /// NPC without full stamina - a behaviour the client otherwise grants staff only.
+    /// Only the mode byte changes; the server's own walk check is untouched upstream
+    /// too, which is why Source-X warns it may cause movement flicker.</summary>
+    public static bool WalkBypassMonsters { get; set; }
+
     /// <summary>The mobile flags byte, as the VIEWER must read it.
     ///
     /// Source-X builds it per viewer (CChar::GetModeFlag, CCharStatus.cpp:659-702)
@@ -202,7 +212,9 @@ public sealed partial class GameClient
         }
 
         if (ch.IsStatFlag(StatFlag.Invul)) flags |= 0x08;          // yellow health bar
-        if (ch.PrivLevel > PrivLevel.Player) flags |= 0x10;        // staff walk through mobiles
+        // CHARMODE_IGNOREMOBS: the client lets this mobile step over other mobiles.
+        // Staff always; everyone under EF_WalkBypassMonsters (CCharStatus.cpp:683-684).
+        if (ch.PrivLevel > PrivLevel.Player || WalkBypassMonsters) flags |= 0x10;
         if (ch.IsInWarMode) flags |= 0x40;
 
         // The grey overlay. Upstream folds four states into this one bit and lets a

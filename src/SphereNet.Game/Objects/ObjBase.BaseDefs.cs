@@ -74,8 +74,8 @@ public abstract partial class ObjBase
     /// prefix, uppercase, a value that fits 32 bits (negatives included) shown as its
     /// 32-bit pattern, zero as "00".</summary>
     public static string FormatDefHex(long v) => v <= uint.MaxValue
-        ? $"0{unchecked((uint)(int)v):X}"
-        : $"0{unchecked((ulong)v):X}";
+        ? $"0{unchecked((uint)(int)v):x}"
+        : $"0{unchecked((ulong)v):x}";
 
     private List<KeyValuePair<string, string>> GetSortedBaseDefs()
     {

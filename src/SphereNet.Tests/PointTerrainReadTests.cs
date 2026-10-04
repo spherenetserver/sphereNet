@@ -48,7 +48,7 @@ public sealed class PointTerrainReadTests
         var (ch, _) = StandingOn(0x5F);
 
         Assert.True(ch.TryGetProperty("P.TERRAIN", out string value), "P.TERRAIN did not answer");
-        Assert.Equal("05F", value);
+        Assert.Equal("05f", value);
     }
 
     /// <summary>The answer is hex, which is what makes the shard's comparisons work:

@@ -109,10 +109,10 @@ public sealed class FindReferenceParityTests : IDisposable
         var bag = Put(b, b.Pack, "i_bag", 1);
         var stack = Put(b, bag, "i_bandage", 7);
 
-        Assert.Equal($"0{stack.Uid.Value:X}", Read(b.Owner, "FINDTYPE.t_bandage"));
+        Assert.Equal($"0{stack.Uid.Value:x}", Read(b.Owner, "FINDTYPE.t_bandage"));
         Assert.Equal("7", Read(b.Owner, "FINDTYPE.t_bandage.AMOUNT"));
         Assert.Equal("1", Read(b.Owner, "FINDTYPE.t_bandage.ISVALID"));
-        Assert.Equal($"0{stack.Uid.Value:X}", Read(b.Owner, $"FINDTYPE.0{(int)ItemType.Bandage:X}"));
+        Assert.Equal($"0{stack.Uid.Value:x}", Read(b.Owner, $"FINDTYPE.0{(int)ItemType.Bandage:x}"));
         Assert.Equal("0", Read(b.Owner, "FINDTYPE.t_spellbook"));
         Assert.Equal("0", Read(b.Owner, "FINDTYPE.t_spellbook.ISVALID"));
         Assert.Equal("0", Read(b.Owner, "FINDTYPE.t_spellbook.AMOUNT"));
@@ -151,7 +151,7 @@ public sealed class FindReferenceParityTests : IDisposable
     public void FindContReadsTheNthWornItem()
     {
         var b = Load();
-        Assert.Equal($"0{b.Pack.Uid.Value:X}", Read(b.Owner, "FINDCONT.0"));
+        Assert.Equal($"0{b.Pack.Uid.Value:x}", Read(b.Owner, "FINDCONT.0"));
         Assert.Equal("1", Read(b.Owner, "FINDCONT.0.ISVALID"));
         Assert.Equal("0", Read(b.Owner, "FINDCONT.05"));
     }
@@ -163,10 +163,10 @@ public sealed class FindReferenceParityTests : IDisposable
         var bag = Put(b, b.Pack, "i_bag", 1);
         var stack = Put(b, bag, "i_bandage", 9);
 
-        Assert.Equal($"0{stack.Uid.Value:X}", Read(b.Pack, "FINDID.i_bandage"));
+        Assert.Equal($"0{stack.Uid.Value:x}", Read(b.Pack, "FINDID.i_bandage"));
         Assert.Equal("9", Read(b.Pack, "FINDID.i_bandage.AMOUNT"));
-        Assert.Equal($"0{stack.Uid.Value:X}", Read(b.Pack, "FINDTYPE.t_bandage"));
-        Assert.Equal($"0{bag.Uid.Value:X}", Read(b.Pack, "FINDCONT.0"));
+        Assert.Equal($"0{stack.Uid.Value:x}", Read(b.Pack, "FINDTYPE.t_bandage"));
+        Assert.Equal($"0{bag.Uid.Value:x}", Read(b.Pack, "FINDCONT.0"));
         Assert.Equal("0", Read(b.Pack, "FINDID.i_bandage_salve"));     // another definition
         Assert.Equal("0", Read(b.Pack, "FINDCONT.1"));
 

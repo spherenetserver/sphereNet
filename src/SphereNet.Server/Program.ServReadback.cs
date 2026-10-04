@@ -22,9 +22,9 @@ public static partial class Program
 {
     private static string I(int value) => value.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>CSString::FormatHex: upper-case hex behind a leading zero, "00" for 0.</summary>
+    /// <summary>CSString::FormatHex: lower-case hex behind a leading zero, "00" for 0.</summary>
     private static string Hx(long value) =>
-        value == 0 ? "00" : "0" + ((uint)value).ToString("X", CultureInfo.InvariantCulture);
+        value == 0 ? "00" : "0" + ((uint)value).ToString("x", CultureInfo.InvariantCulture);
 
     /// <summary>The config table. A value is read from the live <see cref="SphereConfig"/>
     /// on every call. Keys whose upstream read-back differs from the ini value are
@@ -264,7 +264,7 @@ public static partial class Program
     {
         var obj = _world != null && uid is { IsValid: true } serial ? _world.FindObject(serial) : null;
         if (string.IsNullOrWhiteSpace(field))
-            return obj == null ? "0" : $"0{obj.Uid.Value:X}";
+            return obj == null ? "0" : $"0{obj.Uid.Value:x}";
         return obj != null && obj.TryGetProperty(field, out string value) ? value : "0";
     }
 
@@ -375,13 +375,13 @@ public static partial class Program
             index < 0 || index >= multis.Count)
             return "0";
         var multi = multis[index];
-        if (string.IsNullOrWhiteSpace(field)) return $"0{multi.Uid.Value:X}";
+        if (string.IsNullOrWhiteSpace(field)) return $"0{multi.Uid.Value:x}";
         return multi.TryGetProperty(field, out string value) ? value : "0";
     }
 
     /// <summary>SERV.TILEDATA.ITEM(id).&lt;attr&gt; / TERRAIN(id).&lt;attr&gt;
     /// (CServerConfig.cpp "TILEDATA."). Number formats follow the upstream cases:
-    /// FLAGS decimal, the byte/word fields FormatBVal/FormatWVal hex. Attributes this
+    /// ITEM FLAGS FormatULLHex, the byte/word fields FormatBVal/FormatWVal - all hex. Attributes this
     /// engine's tiledata reader does not keep (UNK, UNK11, HUE, LIGHT) answer nothing.</summary>
     private static string? ResolveServTileData(string upperSub)
     {
@@ -398,7 +398,7 @@ public static partial class Program
         string attr = rest[(close + 2)..].Trim();
         if (_mapData == null || id < 0) return null;
 
-        static string Bh(long v) => v == 0 ? "00" : "0" + v.ToString("X", CultureInfo.InvariantCulture);
+        static string Bh(long v) => v == 0 ? "00" : "0" + v.ToString("x", CultureInfo.InvariantCulture);
         if (terrain)
         {
             if (id >= 0x4000) return null; // TERRAIN_QTY
@@ -410,8 +410,9 @@ public static partial class Program
         }
 
         var item = _mapData.GetItemTileData((int)id);
+        // Sphere hex like the other attributes (CServerConfig.cpp:2042 FormatULLHex).
         if (attr.StartsWith("FLAGS", StringComparison.Ordinal))
-            return ((ulong)item.Flags).ToString(CultureInfo.InvariantCulture);
+            return (ulong)item.Flags == 0 ? "00" : "0" + ((ulong)item.Flags).ToString("x", CultureInfo.InvariantCulture);
         if (attr.StartsWith("WEIGHT", StringComparison.Ordinal)) return Bh(item.Weight);
         if (attr.StartsWith("LAYER", StringComparison.Ordinal)) return Bh(item.Quality);
         if (attr.StartsWith("ANIM", StringComparison.Ordinal)) return Bh(item.Animation);

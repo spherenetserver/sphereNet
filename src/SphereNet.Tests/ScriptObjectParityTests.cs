@@ -202,7 +202,7 @@ public class ScriptObjectParityTests
 
         // <LINK> reflects the lever's actual link, not the ACT object.
         string linkUid = lever.TagValue("LINKUID");
-        Assert.Equal($"0{door.Uid.Value:X}", linkUid);
+        Assert.Equal($"0{door.Uid.Value:x}", linkUid);
         string linkName = lever.TagValue("LINKNAME");
         Assert.Equal("oak door", linkName);
         // ACT is a character reference; this lever has no ACT target.
@@ -260,7 +260,7 @@ public class ScriptObjectParityTests
         Assert.Equal("1", flt);   // FEVAL = atoi of the text (CScriptObj.cpp:741)
         string refName = target.TagValue("REFNAME");
         Assert.Equal("Linked", refName);
-        Assert.Equal($"_REF_EXEC=0{linked.Uid.Value:X}|TAG.MARK|ok", refExec);
+        Assert.Equal($"_REF_EXEC=0{linked.Uid.Value:x}|TAG.MARK|ok", refExec);
     }
 
     [Fact]

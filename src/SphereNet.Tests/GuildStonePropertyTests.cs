@@ -67,7 +67,7 @@ public sealed class GuildStonePropertyTests
         guild.SetMaster(master.Uid);
 
         Assert.True(stone.TryGetProperty("MASTERUID", out string uid));
-        Assert.Equal($"0{master.Uid.Value:X}", uid);
+        Assert.Equal($"0{master.Uid.Value:x}", uid);
     }
 
     [Fact]

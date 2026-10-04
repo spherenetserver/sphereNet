@@ -109,6 +109,30 @@ public sealed class MobileFlagsTests
         Assert.Equal(0x10, Flags(gm) & 0x10);
     }
 
+    [Fact]
+    public void WalkBypassMonstersLetsEveryoneWalkThroughMobiles()
+    {
+        // EF_WalkBypassMonsters (0x80000): CHARMODE_IGNOREMOBS for everyone, players
+        // and NPCs alike (CCharStatus.cpp:683-684).
+        Assert.Equal(0x0080000, GameClient.EfWalkBypassMonsters);
+        GameClient.WalkBypassMonsters = true;
+        try
+        {
+            var player = Subject();
+            player.IsPlayer = true;
+            Assert.Equal(0x10, Flags(player) & 0x10);
+            Assert.Equal(0x10, Flags(player, modernViewer: false) & 0x10);
+            Assert.Equal(0x10, Flags(Subject()) & 0x10);
+        }
+        finally
+        {
+            GameClient.WalkBypassMonsters = false;
+        }
+        var after = Subject();
+        after.IsPlayer = true;
+        Assert.Equal(0, Flags(after) & 0x10);
+    }
+
     [Theory]
     [InlineData(StatFlag.Sleeping)]
     [InlineData(StatFlag.Insubstantial)]

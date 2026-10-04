@@ -355,4 +355,46 @@ public sealed class LegacyClientCryptoVectorTests
         byte[] wire = EncryptLogin12536(Seed, key.Key1, key.Key2, LoginPacket("multikey", "pw12536"));
         Assert.Null(new CryptoState().DetectAndDecryptLogin(Seed, wire, without, useCrypt: true, useNoCrypt: false));
     }
+
+    // ---- sphereCrypt.ini key table (Source-X src/sphereCrypt.ini) -------------------
+
+    [Theory]
+    [InlineData(70011700u, 0x366150ADu, 0xAC9E5E7Fu)]  // 7.0.117
+    [InlineData(70011600u, 0x369A82BDu, 0xAC15127Fu)]  // 7.0.116
+    [InlineData(70011500u, 0x36DCF0CDu, 0xAC2CDE7Fu)]  // 7.0.115
+    [InlineData(670011700u, 0x146150ADu, 0xBD9E5E7Fu)] // EC 4.0.117
+    [InlineData(670011400u, 0x15062ADDu, 0xBDCA227Fu)] // EC 4.0.114
+    [InlineData(670010300u, 0x1B49418Du, 0xB964FE7Fu)] // EC 4.0.103
+    public void SphereCryptIni_CarriesTheUpstreamTwofishKeys(uint version, uint key1, uint key2)
+    {
+        var key = RealCryptConfig().FindKey(version);
+        Assert.NotNull(key);
+        Assert.Equal(key1, key!.Key1);
+        Assert.Equal(key2, key.Key2);
+        Assert.Equal(EncryptionType.Twofish, key.EncType);
+    }
+
+    [Fact]
+    public void SphereCryptIni_EnhancedClientIdsFitTheVersionField()
+    {
+        // The Enhanced Client ids were once written as "679001xx00" (ten digits), which
+        // overflows the 32-bit version field: those lines failed to parse and were
+        // silently dropped. Source-X corrected them to "67001xx00" (sphereCrypt.ini,
+        // commits 92ced0b/779caa0); every EC line in the table must now load.
+        string[] ecLines = File.ReadAllLines(TestRepo.PathOf("config/sphereCrypt.ini"))
+            .SkipWhile(l => !l.StartsWith("// Enhanced Clients", StringComparison.Ordinal))
+            .Where(l => l.Contains("ENC_TFISH"))
+            .ToArray();
+        Assert.NotEmpty(ecLines);
+        var config = RealCryptConfig();
+        foreach (string line in ecLines)
+        {
+            // Throws on the old ten-digit form: it does not fit a uint.
+            uint ver = uint.Parse(line.Split(' ', '\t')[0]);
+            Assert.StartsWith("670", ver.ToString());
+            Assert.NotNull(config.FindKey(ver));
+        }
+        for (uint minor = 100; minor <= 117; minor++)
+            Assert.NotNull(config.FindKey(670000000u + minor * 100u)); // 4.0.100 .. 4.0.117
+    }
 }

@@ -2840,6 +2840,10 @@ public static partial class Program
                 _log.LogDebug("{Details}", msg);
             SphereNet.Game.Definitions.TemplateEngine.Diagnostic = msg =>
                 _log.LogDebug("{Details}", msg);
+            // An invalid corpse RESOURCES row is a script error (Source-X
+            // g_Log.EventError, CCharUse.cpp:87).
+            SphereNet.Game.Death.DeathEngine.CarveDiagnostic = msg =>
+                _log.LogError("{Details}", msg);
 
             // A recipe's FUNC= row CALLS a script function on the item the recipe
             // created last (ITC_FUNC, CItem.cpp:649). The caller is the top-level
@@ -3439,7 +3443,7 @@ public static partial class Program
             {
                 if (!_clientsByCharUid.TryGetValue(rider.Uid, out var cli))
                     cli = _clientsByCharUid.Values.FirstOrDefault();
-                return cli?.CreateNpcFromDefinition(defIndex, $"0{defIndex:X}");
+                return cli?.CreateNpcFromDefinition(defIndex, $"0{defIndex:x}");
             };
             // A pilot leaving the wheel through Horse_UnMount hands it back to the ship.
             _mountEngine.ReleaseShipPilot = (pilot, wheel) =>

@@ -472,7 +472,7 @@ public partial class Character : ObjBase
         if (resources != null)
         {
             int dispId = def != null && def.DispIndex != 0 ? def.DispIndex : _bodyId;
-            if (resources.TryResolveDefNameValue($"height_0{dispId:X}", out long hexHeight) && (byte)hexHeight != 0)
+            if (resources.TryResolveDefNameValue($"height_0{dispId:x}", out long hexHeight) && (byte)hexHeight != 0)
                 return (byte)hexHeight;
             if (resources.TryResolveDefNameValue($"height_{dispId}", out long decHeight) && (byte)decHeight != 0)
                 return (byte)decHeight;
@@ -665,6 +665,10 @@ public partial class Character : ObjBase
     public static int CombatDamageEra { get; set; }
     /// <summary>COMBATHITCHANCEERA from sphere.ini.</summary>
     public static int CombatHitChanceEra { get; set; }
+    /// <summary>COMBATHITCHANCELEGACYERA0 from sphere.ini: era 0 uses the 0.56 /
+    /// pre-2026 Source-X formula - difficulty drawn as rand(iDiff), a sleeping or
+    /// frozen target rand(10), no HCI/DCI. Off by default (current Source-X).</summary>
+    public static bool CombatHitChanceLegacyEra0 { get; set; }
     /// <summary>COMBATSPEEDERA from sphere.ini.</summary>
     public static int CombatSpeedEra { get; set; }
     /// <summary>GUARDSINSTANTKILL from sphere.ini: a guard NPC's swing always lands,
@@ -3645,7 +3649,7 @@ public partial class Character : ObjBase
             return false;
         if (sub.Length == 0 || IsValidQueryToken(sub))
         {
-            value = sub.Length == 0 ? $"0{guild.StoneUid.Value:X8}" : "1";
+            value = sub.Length == 0 ? $"0{guild.StoneUid.Value:x8}" : "1";
             return true;
         }
         if (!sub.StartsWith("LINK", StringComparison.OrdinalIgnoreCase))
@@ -3653,7 +3657,7 @@ public partial class Character : ObjBase
         string linkSub = sub.Length > 4 && sub[4] == '.' ? sub[5..] : "";
         if (linkSub.Length == 0)
         {
-            value = $"0{guild.StoneUid.Value:X8}";
+            value = $"0{guild.StoneUid.Value:x8}";
             return true;
         }
         var stone = ResolveWorld?.Invoke()?.FindObject(guild.StoneUid);
@@ -4891,7 +4895,7 @@ public partial class Character : ObjBase
             value = upper.StartsWith("BREATH.MAXDIST", StringComparison.Ordinal) ||
                     upper.StartsWith("BREATH.DAM", StringComparison.Ordinal)
                 ? num.ToString()
-                : $"0{(uint)num:X}";
+                : $"0{(uint)num:x}";
             return true;
         }
 
@@ -4956,7 +4960,7 @@ public partial class Character : ObjBase
             {
                 if (sub.Length == 0)
                 {
-                    value = $"0{memory.Uid.Value:X8}";
+                    value = $"0{memory.Uid.Value:x8}";
                     return true;
                 }
                 if (IsValidQueryToken(sub))
@@ -5064,7 +5068,7 @@ public partial class Character : ObjBase
                     string tail = upper[(closeParen + 1)..];
                     if (string.IsNullOrEmpty(tail))
                     {
-                        value = $"0{worn.Uid.Value:X8}";
+                        value = $"0{worn.Uid.Value:x8}";
                         return true;
                     }
                     if (tail.StartsWith(".", StringComparison.Ordinal))
@@ -5102,9 +5106,9 @@ public partial class Character : ObjBase
                 {
                     var slotUid = acc.GetCharSlot(slotIdx);
                     if (!slotUid.IsValid) { value = "0"; return true; }
-                    if (dot < 0) { value = $"0{slotUid.Value:X8}"; return true; }
+                    if (dot < 0) { value = $"0{slotUid.Value:x8}"; return true; }
                     string charSub = rest[(dot + 1)..];
-                    if (charSub == "UID") { value = $"0{slotUid.Value:X8}"; return true; }
+                    if (charSub == "UID") { value = $"0{slotUid.Value:x8}"; return true; }
                     var otherChar = ResolveCharByUid?.Invoke(slotUid);
                     if (otherChar != null)
                         return otherChar.TryGetProperty(charSub, out value);
@@ -5258,7 +5262,7 @@ public partial class Character : ObjBase
             case "OMAXMANA": value = _maxMana.ToString(); return true;
             case "MAXSTAM": value = MaxStam.ToString(); return true;
             case "OMAXSTAM": value = _maxStam.ToString(); return true;
-            case "BLOODCOLOR": value = $"0{_bloodHue:X}"; return true; // Source-X FormatHex(_wBloodHue)
+            case "BLOODCOLOR": value = $"0{_bloodHue:x}"; return true; // Source-X FormatHex(_wBloodHue)
             case "FOLLOWERSLOTS": value = ControlSlots.ToString(); return true;
             case "BODY": value = FormatBodyProperty(); return true;
             case "DIR": value = ((byte)_direction).ToString(); return true;
@@ -5306,7 +5310,7 @@ public partial class Character : ObjBase
             }
             case "CAN":
             {
-                value = $"0{(ulong)Definitions.CharDefHelper.GetCanFlags(this):X}";
+                value = $"0{(ulong)Definitions.CharDefHelper.GetCanFlags(this):x}";
                 return true;
             }
             case "FOOD": value = _food.ToString(); return true;
@@ -5333,21 +5337,21 @@ public partial class Character : ObjBase
                 var baseDef = Definitions.DefinitionLoader.GetCharDef(_charDefIndex);
                 value = baseDef == null ? "0" : upper switch
                 {
-                    "ANIM" => $"0{baseDef.Anim:X}",
+                    "ANIM" => $"0{baseDef.Anim:x}",
                     "HIREDAYWAGE" => baseDef.HireDayWage.ToString(),
                     // CBC_ICON answers the item id in hex (CCharBase.cpp:246).
-                    "ICON" => $"0{ResolveTrackIconId(baseDef):X}",
+                    "ICON" => $"0{ResolveTrackIconId(baseDef):x}",
                     "MOVERATE" => baseDef.MoveRate.ToString(),
                     "RESLEVEL" => baseDef.ResLevel.ToString(),
-                    "RESDISPDNHUE" => $"0{baseDef.ResDispDnHue:X}",
+                    "RESDISPDNHUE" => $"0{baseDef.ResDispDnHue:x}",
                     "RESDISPDNID" => string.IsNullOrEmpty(baseDef.ResDispDnIdRaw)
-                        ? $"0{baseDef.ResDispDnId:X}" : baseDef.ResDispDnIdRaw,
-                    "SOUND" => $"0{baseDef.SoundBase:X}",
-                    "SOUNDIDLE" => $"0{baseDef.SoundIdle:X}",
-                    "SOUNDDIE" => $"0{baseDef.SoundDie:X}",
-                    "SOUNDGETHIT" => $"0{baseDef.SoundGetHit:X}",
-                    "SOUNDHIT" => $"0{baseDef.SoundHit:X}",
-                    "SOUNDNOTICE" => $"0{baseDef.SoundNotice:X}",
+                        ? $"0{baseDef.ResDispDnId:x}" : baseDef.ResDispDnIdRaw,
+                    "SOUND" => $"0{baseDef.SoundBase:x}",
+                    "SOUNDIDLE" => $"0{baseDef.SoundIdle:x}",
+                    "SOUNDDIE" => $"0{baseDef.SoundDie:x}",
+                    "SOUNDGETHIT" => $"0{baseDef.SoundGetHit:x}",
+                    "SOUNDHIT" => $"0{baseDef.SoundHit:x}",
+                    "SOUNDNOTICE" => $"0{baseDef.SoundNotice:x}",
                     _ => "0",
                 };
                 return true;
@@ -5564,7 +5568,7 @@ public partial class Character : ObjBase
             case "MODAC": // OC_MODAC is an alias of OC_MODAR (CObjBase.cpp:1541)
                 value = _modAr.ToString(); return true;
             case "MODMAXWEIGHT": value = _modMaxWeight.ToString(); return true;
-            case "OBODY": value = $"0{_oBody:X}"; return true;
+            case "OBODY": value = $"0{_oBody:x}"; return true;
             case "OSKIN": value = _oSkin.ToString(); return true;
             case "LUCK": value = _luck.ToString(); return true;
             case "NIGHTSIGHT": value = _nightSight ? "1" : "0"; return true;
@@ -5627,14 +5631,14 @@ public partial class Character : ObjBase
                 return true;
             case "SCREENSIZE.X": value = _screenWidth.ToString(); return true;
             case "SCREENSIZE.Y": value = _screenHeight.ToString(); return true;
-            case "ACT": value = _act == Serial.Invalid ? "0" : $"0{_act.Value:X}"; return true;
+            case "ACT": value = _act == Serial.Invalid ? "0" : $"0{_act.Value:x}"; return true;
             case "ACTARG1": value = _actArg1.ToString(); return true;
             case "ACTARG2": value = _actArg2.ToString(); return true;
             case "ACTARG3": value = _actArg3.ToString(); return true;
             case "ACTP":
                 value = $"{_actP.X},{_actP.Y},{_actP.Z},{_actP.Map}";
                 return true;
-            case "ACTPRV": value = _actPrv == Serial.Invalid ? "0" : $"0{_actPrv.Value:X}"; return true;
+            case "ACTPRV": value = _actPrv == Serial.Invalid ? "0" : $"0{_actPrv.Value:x}"; return true;
             // CHC_ACTDIFF (CChar.cpp:3052): tenths on the way out, as on the way in.
             case "ACTDIFF": value = (_actDiff >= 0 ? (long)_actDiff * 10 : _actDiff).ToString(); return true;
             // ACTIONEFFECT (Source-X CHC_ACTIONEFFECT, CChar.cpp:3084). The live
@@ -5642,9 +5646,9 @@ public partial class Character : ObjBase
             // INPDLG (dialogs/sphere_dialogs_prop.scp:603/1036); nothing answered.
             case "ACTIONEFFECT": value = ActionEffect.ToString(); return true;
             case "ACTION": value = ((int)_action).ToString(); return true;
-            case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:X}" : "0"; return true;
+            case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:x}" : "0"; return true;
             case "OWNER":
-            case "NPCMASTER": value = NpcMaster.IsValid ? $"0{NpcMaster.Value:X}" : "0"; return true;
+            case "NPCMASTER": value = NpcMaster.IsValid ? $"0{NpcMaster.Value:x}" : "0"; return true;
             // SWING is the reference's own name for the war swing state
             // (CChar::r_WriteVal CHC_SWING, CChar.cpp:2998). The live pack reads it
             // in its player-info dialog (<SWING> and <DEF.war_swing.<SWING>>,
@@ -5674,7 +5678,7 @@ public partial class Character : ObjBase
                 return true;
 
             // --- Calculated properties ---
-            case "SERIAL": value = $"0{Uid.Value:X}"; return true;
+            case "SERIAL": value = $"0{Uid.Value:x}"; return true;
             case "ISCHAR": value = "1"; return true;
             case "ISITEM": value = "0"; return true;
             // DISPIDDEC is the CHARDEF's tracking ICON item, in decimal (CChar.cpp:2883
@@ -5693,7 +5697,7 @@ public partial class Character : ObjBase
             {
                 int defIndex = _charDefIndex != 0 ? _charDefIndex : CharDefIndex;
                 string? defName = DefinitionLoader.GetCharDef(defIndex)?.DefName;
-                value = !string.IsNullOrEmpty(defName) ? defName : $"0{BaseId:X}";
+                value = !string.IsNullOrEmpty(defName) ? defName : $"0{BaseId:x}";
                 return true;
             }
             // The CHARDEF's own defname (CBaseBaseDef_props.tbl DEFNAME), asked of the
@@ -5919,7 +5923,7 @@ public partial class Character : ObjBase
             // ATTACKER.TARGET - who I am fighting, -1 when nobody.
             if (tail == "TARGET")
             {
-                value = FightTarget.IsValid ? "0x" + FightTarget.Value.ToString("X") : "-1";
+                value = FightTarget.IsValid ? "0x" + FightTarget.Value.ToString("x") : "-1";
                 return true;
             }
 
@@ -5952,7 +5956,7 @@ public partial class Character : ObjBase
                         return true;
                     case "":
                     case "UID":
-                        value = "0x" + rec.Uid.Value.ToString("X");
+                        value = "0x" + rec.Uid.Value.ToString("x");
                         return true;
                 }
             }
@@ -5988,7 +5992,7 @@ public partial class Character : ObjBase
         {
             Serial ownerUid = OwnerSerial;
             if (!ownerUid.IsValid) { value = "0"; return true; }
-            if (upper == "OWNER") { value = $"0{ownerUid.Value:X}"; return true; }
+            if (upper == "OWNER") { value = $"0{ownerUid.Value:x}"; return true; }
             var world = ResolveWorld?.Invoke();
             var owner = world?.FindObject(ownerUid) as Character;
             if (owner != null)
@@ -6004,7 +6008,7 @@ public partial class Character : ObjBase
         {
             Serial controllerUid = ControllerSerial;
             if (!controllerUid.IsValid) { value = "0"; return true; }
-            if (upper == "CONTROLLER") { value = $"0{controllerUid.Value:X}"; return true; }
+            if (upper == "CONTROLLER") { value = $"0{controllerUid.Value:x}"; return true; }
             var world = ResolveWorld?.Invoke();
             var controller = world?.FindObject(controllerUid) as Character;
             if (controller != null)
@@ -6021,7 +6025,7 @@ public partial class Character : ObjBase
         {
             var weapon = GetEquippedItem(Layer.OneHanded) ?? GetEquippedItem(Layer.TwoHanded);
             if (weapon == null) { value = "0"; return true; }
-            if (upper == "WEAPON") { value = $"0{weapon.Uid.Value:X}"; return true; }
+            if (upper == "WEAPON") { value = $"0{weapon.Uid.Value:x}"; return true; }
             string subKey = key["WEAPON.".Length..];
             return weapon.TryGetProperty(subKey, out value);
         }
@@ -6030,7 +6034,7 @@ public partial class Character : ObjBase
         if (upper == "MOUNT")
         {
             var mount = GetEquippedItem(Layer.Horse);
-            value = mount != null ? $"0{mount.Uid.Value:X}" : "0";
+            value = mount != null ? $"0{mount.Uid.Value:x}" : "0";
             return true;
         }
 
@@ -6044,14 +6048,14 @@ public partial class Character : ObjBase
         // TOPOBJ
         if (upper == "TOPOBJ")
         {
-            value = $"0{Uid.Value:X}";
+            value = $"0{Uid.Value:x}";
             return true;
         }
 
         // TYPEDEF
         if (upper == "TYPEDEF")
         {
-            value = TryGetTag("CHARDEF", out string? cd) ? (cd ?? $"0{CharDefIndex:X}") : $"0{CharDefIndex:X}";
+            value = TryGetTag("CHARDEF", out string? cd) ? (cd ?? $"0{CharDefIndex:x}") : $"0{CharDefIndex:x}";
             return true;
         }
 
@@ -6069,7 +6073,7 @@ public partial class Character : ObjBase
             {
                 var worn = FindLayerIndex(layerIdx);
                 if (worn == null) { value = "0"; return true; }
-                if (tail.Length == 0) { value = $"0{worn.Uid.Value:X}"; return true; }
+                if (tail.Length == 0) { value = $"0{worn.Uid.Value:x}"; return true; }
                 return worn.TryGetProperty(tail, out value);
             }
             value = "0";
@@ -6143,7 +6147,7 @@ public partial class Character : ObjBase
                 {
                     if (_equipment[i] != null && _equipment[i]!.Uid == findUid)
                     {
-                        value = $"0{findUid.Value:X}";
+                        value = $"0{findUid.Value:x}";
                         return true;
                     }
                 }
@@ -6154,7 +6158,7 @@ public partial class Character : ObjBase
                     {
                         if (item.Uid == findUid)
                         {
-                            value = $"0{findUid.Value:X}";
+                            value = $"0{findUid.Value:x}";
                             return true;
                         }
                     }
@@ -6807,7 +6811,7 @@ public partial class Character : ObjBase
         }
 
         var uids = resolver?.Invoke(ownerUid) ?? [];
-        value = index < uids.Count ? $"0{uids[index].Value:X8}" : "0";
+        value = index < uids.Count ? $"0{uids[index].Value:x8}" : "0";
         return true;
     }
 
@@ -9537,7 +9541,7 @@ public partial class Character : ObjBase
         }
         if (sub.Length == 0)
         {
-            value = $"0{rec.StoneUid.Value:X}";
+            value = $"0{rec.StoneUid.Value:x}";
             return true;
         }
         var stone = ResolveWorld?.Invoke()?.FindObject(rec.StoneUid);
@@ -9590,7 +9594,7 @@ public partial class Character : ObjBase
                 value = member.Priv == Guild.GuildPriv.Master ? "1" : "0";
                 return true;
             case "LOYALTO":
-                value = member.LoyalTo == Serial.Invalid ? "0" : $"0{member.LoyalTo.Value:X}";
+                value = member.LoyalTo == Serial.Invalid ? "0" : $"0{member.LoyalTo.Value:x}";
                 return true;
             case "PRIV":
                 value = ((byte)member.Priv).ToString();
@@ -9680,7 +9684,7 @@ public partial class Character : ObjBase
         switch (sub)
         {
             case "MASTER":
-                value = party != null ? $"0{party.Master.Value:X}" : "0";
+                value = party != null ? $"0{party.Master.Value:x}" : "0";
                 return true;
             case "MEMBERS":
                 value = party?.MemberCount.ToString() ?? "0";
@@ -9718,7 +9722,7 @@ public partial class Character : ObjBase
                 var memberSerial = party.Members[memberIdx];
                 if (d < 0)
                 {
-                    value = $"0{memberSerial.Value:X}";
+                    value = $"0{memberSerial.Value:x}";
                     return true;
                 }
                 string msub = key[("PARTY.MEMBER.".Length + idxStr.Length + 1)..]; // preserve case
@@ -10466,8 +10470,8 @@ public partial class Character : ObjBase
         if (def == null) return;
         if (!string.IsNullOrEmpty(def.DefName)) sink($"DEFNAME={def.DefName}");
         if (!string.IsNullOrEmpty(def.Name)) sink($"NAME={def.Name}");
-        sink($"ID=0{def.Id.Index:X}");
-        if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:X}");
+        sink($"ID=0{def.Id.Index:x}");
+        if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:x}");
     }
 
     /// <summary>The CHARDEF's TAG map, behind the character's own (Base_GetDef()->m_TagDefs).</summary>
@@ -10802,7 +10806,7 @@ public partial class Character : ObjBase
         string? defname = CharDefHelper.ResolveDefName(_charDefIndex);
         if (string.IsNullOrEmpty(defname) && TryGetTag("CHARDEF", out string? tag) && !string.IsNullOrEmpty(tag))
             defname = tag;
-        return !string.IsNullOrEmpty(defname) ? defname : $"0{_bodyId:X}";
+        return !string.IsNullOrEmpty(defname) ? defname : $"0{_bodyId:x}";
     }
 
     private void NotifyAppearanceChanged() => OnAppearanceChanged?.Invoke(this);

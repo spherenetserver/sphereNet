@@ -196,7 +196,7 @@ public sealed class CharacterScriptSurfaceParityTests : IDisposable
         var man = Make("c_probe_man");
 
         Assert.Equal(0x20D2.ToString(), Read(woman, "DISPIDDEC"));
-        Assert.Equal("020D2", Read(woman, "ICON"));
+        Assert.Equal("020d2", Read(woman, "ICON"));
         Assert.Equal(0x2100.ToString(), Read(man, "DISPIDDEC"));
     }
 

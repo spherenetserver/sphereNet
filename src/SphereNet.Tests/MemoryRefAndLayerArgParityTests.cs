@@ -119,7 +119,7 @@ public sealed class MemoryRefAndLayerArgParityTests : IDisposable
         world.PlaceCharacter(leader, new Point3D(100, 100, 0, 0));
         leader.Memory_AddObjTypes(stone.Uid, MemoryType.Guild);
 
-        Assert.Equal($"0{stone.Uid.Value:X8}", Get(leader, "MEMORYFINDTYPE.0400.LINK"));
+        Assert.Equal($"0{stone.Uid.Value:x8}", Get(leader, "MEMORYFINDTYPE.0400.LINK"));
         Assert.True(stone.TryGetProperty("P", out var stonePos));
         Assert.Equal(stonePos, Get(leader, "MEMORYFINDTYPE.memory_guild.LINK.P"));
     }
@@ -165,7 +165,7 @@ public sealed class MemoryRefAndLayerArgParityTests : IDisposable
         engine.ApplyDirectEffect(ch, ch, SpellType.Strength, 500);
         var memory = ch.FindLayer(SpellLayers.Stats)!;
 
-        Assert.Equal($"0{memory.Uid.Value:X8}", Get(ch, "FINDLAYER(020)"));
+        Assert.Equal($"0{memory.Uid.Value:x8}", Get(ch, "FINDLAYER(020)"));
         Assert.True(ch.TryExecuteCommand("FINDLAYER.020.COLOR", "0455", new Console()));
 
         Assert.Equal(0x455, (ushort)memory.Hue);
@@ -190,7 +190,7 @@ public sealed class MemoryRefAndLayerArgParityTests : IDisposable
         cape.BaseId = 0x1515;
         Assert.True(ch.Equip(cape, Layer.Cape));
 
-        Assert.Equal($"0{cape.Uid.Value:X8}", Get(ch, "FINDLAYER(layer_cape)"));
+        Assert.Equal($"0{cape.Uid.Value:x8}", Get(ch, "FINDLAYER(layer_cape)"));
         Assert.True(ch.TryExecuteCommand("FINDLAYER(layer_cape).COLOR", "0455", new Console()));
         Assert.Equal(0x455, (ushort)cape.Hue);
     }

@@ -637,8 +637,8 @@ public sealed class ObjectScriptSurfaceParityTests : IDisposable
     // ------------------------------------------------------------ script obj
 
     [Theory]
-    [InlineData("<ASC hello>", "068 065 06C 06C 06F")]
-    [InlineData("<HVAL -1>", "0FFFFFFFF")]
+    [InlineData("<ASC hello>", "068 065 06c 06c 06f")]
+    [InlineData("<HVAL -1>", "0ffffffff")]
     [InlineData("<HVAL 0>", "00")]
     [InlineData("<FVAL -5>", "-0.5")]
     [InlineData("<FVAL 125>", "12.5")]

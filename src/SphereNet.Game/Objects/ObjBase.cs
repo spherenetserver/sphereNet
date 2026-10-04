@@ -842,7 +842,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     {
         if (key.Equals("CANMASK", StringComparison.OrdinalIgnoreCase))
         {
-            value = $"0{CanMask:X}";
+            value = $"0{CanMask:x}";
             return true;
         }
         if (key.Equals("ONAME", StringComparison.OrdinalIgnoreCase))
@@ -870,7 +870,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             case "UID":
             // OC_SERIAL is the same read as OC_UID on every object (CObjBase.cpp:1605);
             // only characters answered it.
-            case "SERIAL": value = $"0{_uid.Value:X}"; return true;
+            case "SERIAL": value = $"0{_uid.Value:x}"; return true;
             // The object's OWN tick-sleep state (OC_ISSLEEPING, CObjBase.cpp:1427) -
             // only the sector used to answer this name.
             case "ISSLEEPING": value = IsSleeping ? "1" : "0"; return true;
@@ -933,8 +933,8 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             case "P.MAP": value = _position.Map.ToString(); return true;
             case "SEXTANTP": value = ComputeSextant(GetTopLevelPosition()); return true;
             // FormatHex(GetHue()) (CObjBase.cpp:1153): "0481", not 1153.
-            case "COLOR": value = $"0{_hue.Value:X}"; return true;
-            case "ID": value = $"0{_baseId:X}"; return true;
+            case "COLOR": value = $"0{_hue.Value:x}"; return true;
+            case "ID": value = $"0{_baseId:x}"; return true;
             case "ATTR": value = ((ulong)_attr).ToString(); return true;
             case "TAGCOUNT": value = _tags.Count.ToString(); return true;
             // The same clock in three units (OC_TIMER / OC_TIMERD / OC_TIMERMS,
@@ -1875,19 +1875,33 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             }
             case "USEITEM":
             {
-                ObjBase useTarget = this;
+                // Source-X OV_USEITEM (CObjBase.cpp:3023-3041, #1480). Refused without
+                // a SRC character in both forms. "ch.USEITEM <uid>" makes THIS
+                // character use item <uid>; an unknown uid, or one that is not an
+                // item, refuses rather than falling back to this object. Without an
+                // argument SRC uses this object.
+                var srcChar = ResolveSourceCharacter(source);
+                if (srcChar == null)
+                    return false;
                 if (!string.IsNullOrWhiteSpace(args))
                 {
-                    if (!IsChar ||
+                    if (this is not Characters.Character user ||
                         !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(args.AsSpan(), out long useUid) ||
                         useUid <= 0 || useUid > uint.MaxValue)
                         return false;
-                    useTarget = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)useUid)) ?? this;
+                    if (ResolveWorld?.Invoke()?.FindItem(new Serial((uint)useUid)) is not Items.Item usedItem ||
+                        usedItem.IsDeleted)
+                        return false;
+                    // The item is used by this character, so the use runs on this
+                    // character's own client (or as it, when it has none).
+                    var userConsole = ResolveClientConsole?.Invoke(user)
+                        ?? (srcChar == user ? source : new ScriptCharacterConsole(user));
+                    return usedItem.TryExecuteCommand("USE", "", userConsole);
                 }
 
-                if (useTarget.TryExecuteCommand("USE", "", source))
+                if (TryExecuteCommand("USE", "", source))
                     return true;
-                return useTarget.TryExecuteCommand("DCLICK", "", source);
+                return TryExecuteCommand("DCLICK", "", source);
             }
             case "SAYUA":
             {
@@ -2686,7 +2700,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         if (upper is "TERRAIN" or "P.TERRAIN")
         {
             var cell = mapData.GetTerrainTile(pos.Map, pos.X, pos.Y);
-            value = $"0{cell.TileId:X}";
+            value = $"0{cell.TileId:x}";
             return true;
         }
         if (upper is "TERRAIN.Z" or "P.TERRAIN.Z")
@@ -2723,7 +2737,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
                 var s = statics[idx];
                 value = sub switch
                 {
-                    "ID" => $"0{s.TileId:X}",
+                    "ID" => $"0{s.TileId:x}",
                     "COLOR" => s.Hue.ToString(),
                     "Z" => s.Z.ToString(),
                     _ => "0"

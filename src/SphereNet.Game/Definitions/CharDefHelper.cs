@@ -326,7 +326,7 @@ public static class CharDefHelper
 
     private static void ApplyNpcDefinitionProperties(Character ch, CharDef def)
     {
-        if (def.BaseColor != 0) ch.TrySetProperty("COLOR", $"0{def.BaseColor:X}");
+        if (def.BaseColor != 0) ch.TrySetProperty("COLOR", $"0{def.BaseColor:x}");
         if (def.ResPhysical != 0) ch.TrySetProperty("RESPHYSICAL", def.ResPhysical.ToString());
         if (def.ResFire != 0) ch.TrySetProperty("RESFIRE", def.ResFire.ToString());
         if (def.ResCold != 0) ch.TrySetProperty("RESCOLD", def.ResCold.ToString());

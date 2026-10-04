@@ -98,9 +98,9 @@ public sealed class TagSaveQuotingTests : IDisposable
         string[] lines = TagLines(SaveAndRead(world, "a"));
 
         Assert.Contains("TAG.Num=05", lines);
-        Assert.Contains("TAG.Ten=0A", lines);
-        Assert.Contains("TAG.Hex=0A", lines);
-        Assert.Contains("TAG.Neg=0FFFFFFFF", lines);
+        Assert.Contains("TAG.Ten=0a", lines);
+        Assert.Contains("TAG.Hex=0a", lines);
+        Assert.Contains("TAG.Neg=0ffffffff", lines);
         Assert.Contains("TAG.Zero=00", lines);
         Assert.Contains("TAG.QuotedNum=\"5\"", lines);
         Assert.Contains("TAG.Text=\"abc\"", lines);
@@ -121,7 +121,7 @@ public sealed class TagSaveQuotingTests : IDisposable
 
         // CVarDefContNum::GetValStr with DECIMALVARIABLES=0.
         Assert.True(item.TryGetProperty("TAG.Num", out string num));
-        Assert.Equal("0A", num);
+        Assert.Equal("0a", num);
         Assert.True(item.TryGetProperty("TAG.QuotedNum", out string q));
         Assert.Equal("5", q);
         Assert.True(item.Tags.Has("Empty"));
@@ -175,13 +175,13 @@ public sealed class TagSaveQuotingTests : IDisposable
         var dst = MakeWorld();
         new WorldLoader(_lf).Load(dst, Path.Combine(_dir, "c1"));
         var loaded = dst.FindItem(item.Uid)!;
-        Assert.Equal("0A", loaded.Tags.Get("Num"));
+        Assert.Equal("0a", loaded.Tags.Get("Num"));
         Assert.Equal("5", loaded.Tags.Get("QuotedNum"));
         Assert.Equal(VarSaveForm.Quoted, loaded.Tags.GetSaveForm("QuotedNum"));
         Assert.Equal("hello world", loaded.Tags.Get("Text"));
         Assert.Equal("", loaded.Tags.Get("Empty"));
         Assert.Equal("x \"y\" z", loaded.Tags.Get("Inner"));
-        Assert.Equal("0FFFFFFFB", loaded.Tags.Get("Neg"));
+        Assert.Equal("0fffffffb", loaded.Tags.Get("Neg"));
 
         string[] second = TagLines(SaveAndRead(dst, "c2"));
         Assert.Equal(first, second);
@@ -314,14 +314,14 @@ public sealed class TagSaveQuotingTests : IDisposable
         Directory.CreateDirectory(dir);
         AccountPersistence.Save(accounts, dir, SaveFormat.Text);
         string text = File.ReadAllText(Path.Combine(dir, "sphereaccu.scp"));
-        Assert.Contains("TAG.Visits=0A", text);
+        Assert.Contains("TAG.Visits=0a", text);
         Assert.Contains("TAG.Pin=\"5\"", text);
         Assert.Contains("TAG.Motto=\"carpe diem\"", text);
 
         var loaded = new AccountManager(_lf);
         Assert.Equal(1, AccountPersistence.Load(loaded, dir));
         var back = loaded.FindAccount("quoter")!;
-        Assert.Equal("0A", back.Tags.Get("Visits"));
+        Assert.Equal("0a", back.Tags.Get("Visits"));
         Assert.Equal("5", back.Tags.Get("Pin"));
         Assert.Equal("carpe diem", back.Tags.Get("Motto"));
         Assert.Equal("\"5\"", back.Tags.GetSaveText("Pin"));
@@ -358,7 +358,7 @@ public sealed class TagSaveQuotingTests : IDisposable
     [InlineData(false, "5", "05", "5", "05")]
     [InlineData(false, "1+2", "03", "3", "03")]          // IsSimpleNumberString: evaluated
     [InlineData(false, "1.5", "\"1.5\"", "1.5", "1.5")]  // '.' is not a math separator
-    [InlineData(false, "0ab", "0AB", "0ab", "0AB")]
+    [InlineData(false, "0ab", "0ab", "0ab", "0ab")]
     [InlineData(false, "1 2 3", "\"1 2 3\"", "1 2 3", "1 2 3")]
     [InlineData(true, "5", "\"5\"", "5", "5")]
     [InlineData(true, "1+2", "\"1+2\"", "1+2", "1+2")] // quoted: text, never evaluated

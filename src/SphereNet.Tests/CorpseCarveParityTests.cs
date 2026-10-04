@@ -49,6 +49,13 @@ public sealed class CorpseCarveParityTests
         [CHARDEF 0cf]
         DEFNAME=c_sheep
         RESOURCES=3 i_ribs_raw, 2 i_wool
+
+        [TEMPLATE tm_carve_wool]
+        ITEM=i_wool
+
+        [CHARDEF 0d1]
+        DEFNAME=c_goat
+        RESOURCES=i_no_such_part, 2 tm_carve_wool, 3 i_ribs_raw
         """;
 
     private static (GameWorld World, DeathEngine Engine) Setup()
@@ -212,7 +219,7 @@ public sealed class CorpseCarveParityTests
             Assert.Same(blade, args.O1);
             Assert.Equal(3, args.Locals!.GetInt("resource.0.amount"));
             args.Locals.SetInt("resource.0.amount", 7);
-            args.Locals.Set("resource.1.ID", "0"); // ITEMID_NOTHING ends the list
+            args.Locals.Set("resource.1.ID", "0"); // ITEMID_NOTHING is skipped
             return TriggerResult.False;
         });
         engine.TriggerDispatcher = dispatcher;
@@ -221,6 +228,59 @@ public sealed class CorpseCarveParityTests
 
         Assert.Single(parts);
         Assert.Equal(7, parts[0].Amount);
+    }
+
+    // Source-X #1574 (CCharUse.cpp:85-137): a RESOURCES row may be a TEMPLATE, built
+    // through the recipe walker; an invalid row is reported and skipped, and the rows
+    // after it still carve.
+    [Fact]
+    public void ResourceRows_MayBeTemplates_AndAnInvalidRowIsReportedAndSkipped()
+    {
+        var (world, engine) = Setup();
+        var goat = world.CreateCharacter();
+        goat.BodyId = 0x00D1;
+        goat.CharDefIndex = 0x00D1;
+        goat.MaxHits = 20; goat.Hits = 20;
+        world.PlaceCharacter(goat, new Point3D(110, 100, 0, 0));
+        var corpse = engine.ProcessDeath(goat)!;
+        var carver = MakePlayer(world, x: 110);
+        var errors = new List<string>();
+        DeathEngine.CarveDiagnostic = errors.Add;
+
+        var parts = engine.CarveCorpse(carver, corpse);
+
+        Assert.Equal(2, parts.Count);
+        Assert.Equal(ItemType.Wool, parts[0].ItemType);   // from the template
+        Assert.Equal(2, parts[0].Amount);
+        Assert.Equal(ItemType.MeatRaw, parts[1].ItemType);
+        Assert.Equal(3, parts[1].Amount);
+        Assert.All(parts, p => Assert.Equal(corpse.Uid, p.ContainedIn));
+        Assert.NotEmpty(errors);
+        Assert.Contains(errors, e => e.Contains("i_no_such_part"));
+    }
+
+    [Fact]
+    public void CarveCorpseTrigger_ZeroingAnEarlierRow_DoesNotEndTheList()
+    {
+        var (world, engine) = Setup();
+        var sheep = MakeSheep(world);
+        var corpse = engine.ProcessDeath(sheep)!;
+        var carver = MakePlayer(world, x: 110);
+        var dispatcher = new TriggerDispatcher();
+        dispatcher.RegisterItemEvent("EVENTSITEM", "CarveCorpse", (_, args) =>
+        {
+            args.Locals!.Set("resource.0.ID", "0");
+            return TriggerResult.False;
+        });
+        engine.TriggerDispatcher = dispatcher;
+        var errors = new List<string>();
+        DeathEngine.CarveDiagnostic = errors.Add;
+
+        var parts = engine.CarveCorpse(carver, corpse);
+
+        Assert.Single(parts);
+        Assert.Equal(ItemType.Wool, parts[0].ItemType);
+        Assert.Single(errors);
     }
 
     [Fact]

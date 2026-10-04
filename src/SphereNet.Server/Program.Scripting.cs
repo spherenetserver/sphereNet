@@ -146,7 +146,7 @@ public static partial class Program
             // Settings the packs read back that had no case here. Each is already
             // honoured by the engine; only the readback was missing, so a script
             // branching on one took the "0" an unresolved SERV read returns.
-            "LOGMASK" => $"0{_config?.LogMask ?? 0:X}",
+            "LOGMASK" => $"0{_config?.LogMask ?? 0:x}",
             "CLIENTLINGER" => (_config?.ClientLinger ?? 0).ToString(),
             "ITEMSMAXAMOUNT" => (_config?.ItemsMaxAmount ?? 0).ToString(),
             "MURDERMINCOUNT" => (_config?.MurderMinCount ?? 0).ToString(),
@@ -290,7 +290,7 @@ public static partial class Program
             _ when upper.StartsWith("VAR.") => _world?.GetGlobalVarText(property[4..], zero: false) ?? "",
 
             // --- OBJ / OBJ.property — global object reference ---
-            "OBJ" => _world?.ObjReference.Value != 0 ? $"0{_world!.ObjReference.Value:X}" : "0",
+            "OBJ" => _world?.ObjReference.Value != 0 ? $"0{_world!.ObjReference.Value:x}" : "0",
             _ when upper.StartsWith("OBJ.") => ResolveObjProperty(property[4..]),
 
             // --- NEW / NEW.property — the object the last factory produced ---
@@ -300,7 +300,7 @@ public static partial class Program
             // NEW.<prop>, which fell through to the character. Serial.Invalid is
             // 0xFFFFFFFF, so the old "!= 0" test also passed for "nothing created yet".
             "NEW" => _world != null && _world.LastNewObject.IsValid
-                        ? $"0{_world.LastNewObject.Value:X}" : "0",
+                        ? $"0{_world.LastNewObject.Value:x}" : "0",
             _ when upper.StartsWith("NEW.") => ResolveNewProperty(property[4..]),
 
             // --- UID.0xHEX.property — direct object access ---
@@ -498,7 +498,7 @@ public static partial class Program
             return "";
         var stone = stones[index];
         if (dot < 0 || sub[(dot + 1)..].Equals("UID", StringComparison.OrdinalIgnoreCase))
-            return $"0{stone.Uid.Value:X}";
+            return $"0{stone.Uid.Value:x}";
         return stone.TryGetProperty(sub[(dot + 1)..], out string v) ? v : "";
     }
 
@@ -766,11 +766,11 @@ public static partial class Program
             "NAME" => def.Name ?? "",
             "JOB" => def.TradeName,
             "DEFNAME" => def.DefName ?? "",
-            "ID" or "DISPID" => $"0{def.DispIndex:X}",
+            "ID" or "DISPID" => $"0{def.DispIndex:x}",
             "ICON" => def.Icon ?? "",
             "NPC" or "NPCBRAIN" => def.NpcBrain.ToString(),
-            "CAN" => $"0{(ulong)def.Can:X}",
-            "COLOR" => $"0{def.BaseColor:X}",
+            "CAN" => $"0{(ulong)def.Can:x}",
+            "COLOR" => $"0{def.BaseColor:x}",
             "FOODTYPE" => def.FoodTypeRaw,
             "MAXFOOD" => def.MaxFood.ToString(),
             "ERALIMITGEAR" => def.EraLimitGear.ToString(),
@@ -787,23 +787,23 @@ public static partial class Program
             "RESPOISONMAX" => def.ResPoisonMax.ToString(),
             "RESENERGYMAX" => def.ResEnergyMax.ToString(),
             "REFLECTPHYSICALDAM" => def.ReflectPhysicalDam.ToString(),
-            "SOUND" => $"0{def.SoundBase:X}",
-            "SOUNDIDLE" => $"0{def.SoundIdle:X}",
-            "SOUNDNOTICE" => $"0{def.SoundNotice:X}",
-            "SOUNDHIT" => $"0{def.SoundHit:X}",
-            "SOUNDGETHIT" => $"0{def.SoundGetHit:X}",
-            "SOUNDDIE" => $"0{def.SoundDie:X}",
+            "SOUND" => $"0{def.SoundBase:x}",
+            "SOUNDIDLE" => $"0{def.SoundIdle:x}",
+            "SOUNDNOTICE" => $"0{def.SoundNotice:x}",
+            "SOUNDHIT" => $"0{def.SoundHit:x}",
+            "SOUNDGETHIT" => $"0{def.SoundGetHit:x}",
+            "SOUNDDIE" => $"0{def.SoundDie:x}",
 
             // The era-display family. A pack writes COLOR=<SERV.CHARDEF.<BASEID>.
             // RESDISPDNHUE> in 141 @Create bodies across the shipped packs, and an
             // unanswered read made that COLOR= assign an empty string - every one of
             // those creatures spawned at the default hue instead of its own.
             "RESLEVEL" => def.ResLevel.ToString(),
-            "RESDISPDNHUE" => $"0{def.ResDispDnHue:X}",
+            "RESDISPDNHUE" => $"0{def.ResDispDnHue:x}",
             "RESDISPDNID" => string.IsNullOrEmpty(def.ResDispDnIdRaw)
-                ? $"0{def.ResDispDnId:X}" : def.ResDispDnIdRaw,
+                ? $"0{def.ResDispDnId:x}" : def.ResDispDnIdRaw,
 
-            "BASEID" => $"0{def.DispIndex:X}",
+            "BASEID" => $"0{def.DispIndex:x}",
             "HEIGHT" => def.Height.ToString(),
             "DAM" => def.AttackMin == def.AttackMax
                 ? def.AttackMin.ToString() : $"{def.AttackMin},{def.AttackMax}",
@@ -817,7 +817,7 @@ public static partial class Program
             "RANGEL" => def.RangeMin.ToString(),
             "MOVERATE" => def.MoveRate.ToString(),
             "HIREDAYWAGE" => def.HireDayWage.ToString(),
-            "ANIM" => $"0{def.Anim:X}",
+            "ANIM" => $"0{def.Anim:x}",
             "BLOODCOLOR" => def.BloodColor.ToString(),
             "FOLLOWERSLOTS" => def.FollowerSlots.ToString(),
             "RESOURCES" => string.Join(",", def.CarveResources.Select(r => $"{r.Amount} {r.DefName}")),
@@ -912,14 +912,14 @@ public static partial class Program
         {
             "NAME" => def.Name ?? "",
             "DEFNAME" => def.DefName ?? "",
-            "ID" or "DISPID" => $"0{dispId:X}",
+            "ID" or "DISPID" => $"0{dispId:x}",
             "TYPE" => string.IsNullOrWhiteSpace(def.TypeRaw) ? def.Type.ToString() : def.TypeRaw,
-            "TDATA1" => def.TData1Name ?? $"0{def.TData1:X}",
-            "TDATA2" => def.TData2Name ?? $"0{def.TData2:X}",
-            "TDATA3" => def.TData3Name ?? $"0{def.TData3:X}",
-            "TDATA4" => def.TData4Name ?? $"0{def.TData4:X}",
-            "CAN" => $"0{(ulong)def.Can:X}",
-            "CANUSE" => $"0{(ulong)def.CanUse:X}",
+            "TDATA1" => def.TData1Name ?? $"0{def.TData1:x}",
+            "TDATA2" => def.TData2Name ?? $"0{def.TData2:x}",
+            "TDATA3" => def.TData3Name ?? $"0{def.TData3:x}",
+            "TDATA4" => def.TData4Name ?? $"0{def.TData4:x}",
+            "CAN" => $"0{(ulong)def.Can:x}",
+            "CANUSE" => $"0{(ulong)def.CanUse:x}",
             "HEIGHT" => def.Height.ToString(),
             "WEIGHT" => def.Weight.ToString(),
             "LAYER" => ((int)def.Layer).ToString(),
@@ -933,10 +933,10 @@ public static partial class Program
             "SKILLMAKE" => def.SkillMakeRaw,
             // Typed on the definition, so the tag fallback below never saw them.
             "RESLEVEL" => def.ResLevel.ToString(),
-            "RESDISPDNHUE" => $"0{def.ResDispDnHue:X}",
+            "RESDISPDNHUE" => $"0{def.ResDispDnHue:x}",
             "RESDISPDNID" => string.IsNullOrEmpty(def.ResDispDnIdRaw)
-                ? $"0{def.ResDispDnId:X}" : def.ResDispDnIdRaw,
-            "BASEID" => $"0{def.DispIndex:X}",
+                ? $"0{def.ResDispDnId:x}" : def.ResDispDnIdRaw,
+            "BASEID" => $"0{def.DispIndex:x}",
             "DUPELIST" => def.DupeList ?? "",
             // CBaseBaseDef's base strings (OBC_CATEGORY/SUBSECTION/DESCRIPTION).
             "CATEGORY" or "SUBSECTION" or "DESCRIPTION" => def.BaseDefs.Get(field) ?? "",
@@ -1071,7 +1071,7 @@ public static partial class Program
         var link = _resources?.GetResource(rid);
         return field switch
         {
-            "" or "ID" => $"0{multiId:X}",
+            "" or "ID" => $"0{multiId:x}",
             "TYPE" => link?.StoredKeys?.FirstOrDefault(k => k.Key.Equals("TYPE", StringComparison.OrdinalIgnoreCase))?.Arg ?? "T_MULTI",
             "COMPONENTS" or "COMPONENTCOUNT" => (link?.StoredKeys?.Count(k => k.Key.Equals("COMPONENT", StringComparison.OrdinalIgnoreCase)) ?? 0).ToString(),
             "NAME" or "DEFNAME" => link?.DefName ?? "",
@@ -1191,7 +1191,7 @@ public static partial class Program
         if (rid.IsValid)
         {
             int idx = NumericDefIndex(rid);
-            return decimalNumeric ? idx.ToString() : $"0{idx:X}";
+            return decimalNumeric ? idx.ToString() : $"0{idx:x}";
         }
 
         string? builtIn = ResolveDefConstant(key.ToUpperInvariant());
@@ -1202,7 +1202,7 @@ public static partial class Program
             return builtIn;
 
         if (long.TryParse(builtIn, out long numeric))
-            return $"0{numeric:X}";
+            return $"0{numeric:x}";
 
         return builtIn;
     }
@@ -1464,7 +1464,7 @@ public static partial class Program
         // side item instead of the one it asked for.
         _world.LastNewItem = item.Uid;
         _world.LastNewObject = item.Uid;
-        return $"0{item.Uid.Value:X}";
+        return $"0{item.Uid.Value:x}";
     }
 
     /// <summary>Bare <c>NEWITEM</c> written on an object, as opposed to the explicit
@@ -1485,7 +1485,7 @@ public static partial class Program
         if (_world != null && result != "0" && TryParseSerial(callerUid, out var uid) &&
             _world.FindObject(uid) is { } caller && _world.LastNewObject.IsValid)
         {
-            caller.TrySetProperty("ACT", $"0{_world.LastNewObject.Value:X}");
+            caller.TrySetProperty("ACT", $"0{_world.LastNewObject.Value:x}");
         }
         return result;
     }
@@ -1525,7 +1525,7 @@ public static partial class Program
         // produced (CScriptObj.cpp:1381).
         _world.LastNewItem = item.Uid;
         _world.LastNewObject = item.Uid;
-        return $"0{item.Uid.Value:X}";
+        return $"0{item.Uid.Value:x}";
     }
 
     /// <summary>A factory that produced nothing: the reference clears the world's NEW
@@ -1624,7 +1624,7 @@ public static partial class Program
 
         _world.LastNewChar = npc.Uid;
         _world.LastNewObject = npc.Uid;
-        return $"0{npc.Uid.Value:X}";
+        return $"0{npc.Uid.Value:x}";
     }
 
     private static bool TryParseScriptUid(string raw, out Serial uid)
@@ -2998,7 +2998,11 @@ public static partial class Program
             var sector = _world?.GetSectorByIndex(mapNum, sectorIdx);
             if (sector == null) return "0";
 
-            if (propDot < 0) return sector.GetName(); // just "MAP.0.SECTOR.n" — return name
+            // Bare "MAP.0.SECTOR.n": a valid sector resolves, answering the "0" the
+            // reference primed sVal with (SetValFalse, CServerConfig.cpp:1763-1776) -
+            // the sector is not asked for a property it was never given. Answering
+            // the sector's name here invented a value upstream does not produce.
+            if (propDot < 0) return "0";
 
             string prop = sectorPart[(propDot + 1)..];
             if (sector.TryGetProperty(prop, out string val))

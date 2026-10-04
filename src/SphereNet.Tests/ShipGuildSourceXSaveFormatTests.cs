@@ -104,7 +104,7 @@ public sealed class ShipGuildSourceXSaveFormatTests : IDisposable
         Assert.DoesNotContain("SHIP.", saved);
         // MORE2 = movement type | anchored << 8 | dirmove << 16 | dirface << 24.
         uint more2 = 0u | 1u << 8 | (uint)Direction.South << 16 | (uint)Direction.East << 24;
-        Assert.Contains($"MORE2=0{more2:X}", saved);
+        Assert.Contains($"MORE2=0{more2:x}", saved);
 
         var ships2 = new ShipEngine(reloaded, new MultiRegistry(), null);
         ships2.DeserializeFromWorld();

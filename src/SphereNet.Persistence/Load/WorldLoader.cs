@@ -1315,7 +1315,7 @@ public sealed class WorldLoader
                 // Native records carry ID and may pin a synthetic definition in
                 // ITEMDEF; legacy records carry the resource in the header.
                 string definition = item.Tags.Get("ITEMDEF") ?? "";
-                if (string.IsNullOrEmpty(definition)) definition = defname ?? $"0{item.BaseId:X}";
+                if (string.IsNullOrEmpty(definition)) definition = defname ?? $"0{item.BaseId:x}";
                 int index = ResolveItemDefFullIndex?.Invoke(definition) ?? 0;
                 if (ScriptNumber.TryParseInt(item.Tags.Get("SCRIPTDEF"), out int pinnedIndex) && pinnedIndex > 0)
                     index = pinnedIndex;

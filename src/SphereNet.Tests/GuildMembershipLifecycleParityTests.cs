@@ -420,7 +420,7 @@ public sealed class GuildMembershipLifecycleParityTests
         // Not declared, the function says war.
         stone.SetTag("WARVERDICT", "1");
         Assert.True(guild.IsAtWarWith(other.Uid));
-        Assert.Equal($"0{other.Uid.Value:X}", stone.Tags.Get("LASTARGO"));
+        Assert.Equal($"0{other.Uid.Value:x}", stone.Tags.Get("LASTARGO"));
 
         // Declared mutually, the function says peace.
         h.Guilds.DeclareWar(stone.Uid, other.Uid);

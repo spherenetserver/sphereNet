@@ -688,7 +688,7 @@ public sealed class SpawnComponent
             var cdef = DefinitionLoader.GetCharDef(_charDefId);
             if (cdef != null && !string.IsNullOrEmpty(cdef.DefName))
                 return cdef.DefName;
-            return $"0{_charDefId:X}";
+            return $"0{_charDefId:x}";
         }
         return "";
     }
@@ -792,7 +792,7 @@ public sealed class SpawnComponent
 
         ch.SetStatFlag(StatFlag.Spawned);
         ch.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
-        ch.SetTag("SPAWNITEM", $"0{_spawnItem.Uid.Value:X}");
+        ch.SetTag("SPAWNITEM", $"0{_spawnItem.Uid.Value:x}");
         // The creature belongs HERE now: its home and how far it may wander come from
         // this spawner (AddObj, CCSpawn.cpp:631). Leaving the old ones meant a creature
         // handed to a new point still behaved as if it lived at the old one.

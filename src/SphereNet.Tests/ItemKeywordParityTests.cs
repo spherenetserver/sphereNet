@@ -90,11 +90,11 @@ public sealed class ItemKeywordParityTests : IDisposable
 
         Assert.True(item.TrySetProperty(key, "10"));
         Assert.True(item.TryGetProperty(key, out string v));
-        Assert.Equal("0A", v);
+        Assert.Equal("0a", v);
 
         Assert.True(ch.TrySetProperty(key.ToLowerInvariant(), "0ff"));
         Assert.True(ch.TryGetProperty(key, out string cv));
-        Assert.Equal("0FF", cv);
+        Assert.Equal("0ff", cv);
 
         // Nothing leaks into the TAG map.
         Assert.False(item.TryGetTag(key, out _));
@@ -114,7 +114,7 @@ public sealed class ItemKeywordParityTests : IDisposable
         // A negative that fits 32 bits reads as its 32-bit pattern.
         item.TrySetProperty("RECIPECOOKING", "-1");
         Assert.True(item.TryGetProperty("RECIPECOOKING", out string neg));
-        Assert.Equal("0FFFFFFFF", neg);
+        Assert.Equal("0ffffffff", neg);
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class ItemKeywordParityTests : IDisposable
         string text = string.Join("\n", Directory.GetFiles(_dir, "*", SearchOption.AllDirectories)
             .Where(f => f.EndsWith(".scp", StringComparison.OrdinalIgnoreCase))
             .Select(File.ReadAllText));
-        Assert.Contains("RECIPEALCHEMY=01A", text);
+        Assert.Contains("RECIPEALCHEMY=01a", text);
         Assert.DoesNotContain("TAG.RECIPE", text);
 
         var dst = MakeWorld();
@@ -317,7 +317,7 @@ public sealed class ItemKeywordParityTests : IDisposable
         Assert.True(item.TryGetTag("ALT", out string? alt));
         Assert.Equal("i_probe_alt", alt);
         Assert.True(item.TryGetTag("REC", out string? rec));
-        Assert.Equal("0C", rec);
+        Assert.Equal("0c", rec);
         Assert.True(item.TryGetTag("PC", out string? pc));
         Assert.Equal("1", pc);
         Assert.True(item.TryGetTag("TF", out string? tf));

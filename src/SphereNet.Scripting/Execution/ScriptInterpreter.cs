@@ -981,7 +981,7 @@ public sealed class ScriptInterpreter
                 // must name the same object as an explicitly hexadecimal UID.
                 uint refSerial = TryEvaluateWithResolver(refVal, target, source, args, scope, out long numericRef)
                     ? unchecked((uint)numericRef) : 0;
-                string canonicalRef = refSerial == 0 ? "0" : $"0{refSerial:X}";
+                string canonicalRef = refSerial == 0 ? "0" : $"0{refSerial:x}";
                 if (refSerial != 0 && ServerPropertyResolver?.Invoke($"_REF_GET={canonicalRef}|UID") == "0")
                     canonicalRef = "0";
                 scope.SetRef(refIdx, canonicalRef);
@@ -2413,13 +2413,13 @@ public sealed class ScriptInterpreter
         if (varName.Equals("GETREFTYPE", StringComparison.OrdinalIgnoreCase))
         {
             if (target.TryGetProperty("ISCHAR", out string isChar) && isChar == "1")
-                return "0" + 0x040000.ToString("X");
+                return "0" + 0x040000.ToString("x");
             if (target.TryGetProperty("ISITEM", out string isItem) && isItem == "1")
-                return "0" + 0x080000.ToString("X");
+                return "0" + 0x080000.ToString("x");
             // Fallback when target isn't a tangible object — treat as the
             // server context, matching SPHERESCRIPT behaviour for verb
             // sources like CONSOLE/SERVER.
-            return "0" + 0x000001.ToString("X");
+            return "0" + 0x000001.ToString("x");
         }
 
         // DEFMSG.* — server default messages

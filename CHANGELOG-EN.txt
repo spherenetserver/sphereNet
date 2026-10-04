@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - Upstream Source-X changes since November 2025
+------------------------------------------------------------------------
+CHANGE - Era-0 (Sphere custom) hit chance follows current Source-X (dadab44, cf60700): the
+      computed chance is used directly instead of rand(chance), scaled by the attacker's
+      INCREASEHITCHANCE and the defender's INCREASEDEFCHANCE, and a sleeping or frozen
+      target is hit at least 80% of the time (was rand(10)). The same value feeds the skill
+      gain. New ini key COMBATHITCHANCELEGACYERA0=1 restores the 0.56 / older Source-X roll.
+FIX - Pre-AOS armour defense rolls uniformly over its whole ArMin..ArMax range (#1550); it
+      was stuck at the minimum or one above it.
+FIX - The status packet (0x11) of any mobile other than the viewer's own character carries
+      hit points as a percentage of 100 (#1573); real values leaked to other players.
+FIX - sphereCrypt.ini: login keys for clients 7.0.115-7.0.117 and Enhanced Clients
+      4.0.115-4.0.117; Enhanced Client ids corrected to 67001xx00 - the old 10-digit form
+      overflowed and EC 4.0.103-4.0.114 had no working key.
+NEW - EXPERIMENTAL flag EF_WalkBypassMonsters (0x80000): every mobile is sent with the
+      ignore-mobiles mode bit, so players may step over NPCs like staff (#1486).
+NEW - @SpellEffect / [SPELL] @Effect expose LOCAL.IsSpellReflected (read-only) and
+      LOCAL.BypassMagicReflection (above 0 skips Magic Reflection) (#1569).
+NEW - @SpellFail / [SPELL] @Fail expose LOCAL.Sound: the fizzle sound by default, read back,
+      0 plays nothing (#1520).
+NEW - @SkillStart / [SKILL] @Start expose LOCAL.Effect: the skill's EFFECT value is worked out
+      before the triggers (adjusted skill, random for crafting), read back and kept for the
+      rest of the skill (#1555).
+FIX - A summon that dies while being placed is removed before it gets an owner (#1369).
+FIX - Corpse carving accepts TEMPLATE rows in a chardef's RESOURCES; an invalid row is logged
+      and skipped instead of ending the list (#1574).
+FIX - The open-door macro searches around the character and opens the best door by
+      facing-relative priority instead of the first one found (#1510/#1558).
+CHANGE - SPELL FLAGS and SERV.TILEDATA.ITEM(n).FLAGS read back as Sphere hex; a bare
+      SERV.MAP.n.SECTOR.n resolves without returning the sector name (678a336, e727e43).
+FIX - ch.USEITEM <uid> makes that character use the item; an unknown or non-item uid, or no
+      SRC character, returns false (#1480).
+CHANGE - Script-visible hex output uses lower-case digits again, as Source-X and 0.56 do
+      (678a336): UID/SERIAL reads, <HVAL>, number TAG/VAR/LOCAL reads and every hex property
+      read-back ("040001a2f", <HVAL 255> = "0ff"). Saves write lower-case hex like upstream
+      WriteKeyHex. Parsing stays case-insensitive; existing saves and scripts load unchanged.
+
 [2026-10-04] - Name and emote colours default to Sphere 0.56b
 ------------------------------------------------------------------------
 CHANGE - The notoriety name hues default to Sphere 0.56b's (CResource.cpp:210-216): good

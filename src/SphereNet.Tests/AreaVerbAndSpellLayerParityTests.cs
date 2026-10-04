@@ -164,7 +164,7 @@ public sealed class AreaVerbAndSpellLayerParityTests
         Assert.True(mem.Uid.IsValid);
         Assert.Same(mem, w.FindObject(mem.Uid));
         Assert.True(gm.TryGetProperty("FINDLAYER(32)", out var value));
-        Assert.Equal($"0{mem.Uid.Value:X8}", value);
+        Assert.Equal($"0{mem.Uid.Value:x8}", value);
     }
 
     [Fact]
@@ -268,7 +268,7 @@ public sealed class AreaVerbAndSpellLayerParityTests
         var mem = gm.FindLayer(SpellLayers.Stats)!;
 
         Assert.True(gm.TryGetProperty("FINDLAYER.32", out var dotted));
-        Assert.Equal($"0{mem.Uid.Value:X}", dotted);
+        Assert.Equal($"0{mem.Uid.Value:x}", dotted);
         Assert.True(gm.TryExecuteCommand(verb, "", new GmConsole()));
 
         Assert.Equal(100, SphereNet.Game.Combat.CombatEngine.EffectiveStr(gm));

@@ -140,13 +140,26 @@ public sealed class ClientSkillsHandler
                 var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
                     new TriggerArgs { CharSrc = _character, N1 = skillId });
                 if (pre == TriggerResult.True) return;
-
-                var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
-                if (start == TriggerResult.True) return;
             }
 
-            if (TryScheduleActiveSkillDelay(skill, skillId, Serial.Invalid, null))
+            // m_Act_Effect before @SkillStart, LOCAL.Effect read back (:4456-4477, :4526).
+            _character.ActionEffect = SkillEngine.GetStartActionEffect(_character, skill);
+            if (_triggerDispatcher != null)
+            {
+                var startLocals = new SphereNet.Scripting.Variables.VarMap();
+                startLocals.SetInt("Effect", _character.ActionEffect);
+                var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId, Locals = startLocals });
+                if (start == TriggerResult.True)
+                {
+                    _character.ActionEffect = -1;   // Skill_Cleanup (:602)
+                    return;
+                }
+                _character.ActionEffect = (int)Math.Clamp(startLocals.GetInt("Effect", -1), int.MinValue, int.MaxValue);
+            }
+            int startEffect = _character.ActionEffect;
+
+            if (TryScheduleActiveSkillDelay(skill, skillId, Serial.Invalid, null, actionEffect: startEffect))
                 return;
 
             FireActiveSkillStroke(skillId);
@@ -161,6 +174,8 @@ public sealed class ClientSkillsHandler
                 _character.ActionEffect = actionEffect;
             }
             FireActiveSkillResult(skillId, ok0);
+            if (!_character.HasActiveSkillPending())
+                _character.ActionEffect = -1;   // Skill_Cleanup (:602)
             return;
         }
 
@@ -386,11 +401,12 @@ public sealed class ClientSkillsHandler
     /// at once.</summary>
     private void RunActiveSkill(SkillType skill, int skillId, Serial targetUid,
         Objects.ObjBase? target, Point3D? point, int? startWaitMs = null, int? gatherStrokes = null,
-        bool isInfo = false)
+        bool isInfo = false, int? actionEffect = null)
     {
         if (_character == null) return;
         if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, isInfo ? null : point,
-                isInfo: isInfo, startWaitMs: startWaitMs, gatherStrokes: gatherStrokes))
+                isInfo: isInfo, startWaitMs: startWaitMs, gatherStrokes: gatherStrokes,
+                actionEffect: actionEffect))
             return;
         // No timer: the one stroke still plays, so a gathering skill gets its count.
         if (SkillEngine.HasFlag(skill, SkillFlag.Gather))
@@ -402,6 +418,10 @@ public sealed class ClientSkillsHandler
             ? _skillHandlers?.UseInfoSkill(sink, skill, target) ?? false
             : _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
         FireActiveSkillResult(skillId, ok);
+        // Skill_Cleanup after the skill's last stage (:602) - unless that stage
+        // started another skill, whose own start owns ACTEFFECT now.
+        if (actionEffect.HasValue && !_character.HasActiveSkillPending())
+            _character.ActionEffect = -1;
     }
 
     /// <summary>The start sound and animation of a crafting or gathering skill
@@ -489,7 +509,13 @@ public sealed class ClientSkillsHandler
         int anim = SkillEngine.HasFlag(skill, SkillFlag.NoAnim) ? 0 : SkillEngine.GetSkillAnim(skill) ?? 0;
         int strokes = gather ? SkillEngine.RollStrokeCount(skill) : 1;
 
+        // m_Act_Effect is worked out before the triggers (:4456-4471), so ACTEFFECT
+        // already holds it in @SkillStart / @Start, and LOCAL.Effect carries it (:4477).
+        int actEffect = SkillEngine.GetStartActionEffect(_character, skill);
+        _character.ActionEffect = actEffect;
+
         var locals = new SphereNet.Scripting.Variables.VarMap();
+        locals.SetInt("Effect", actEffect);
         locals.SetInt("Sound", sound);
         locals.SetInt("Anim", anim);
         if (gather)
@@ -497,8 +523,13 @@ public sealed class ClientSkillsHandler
         var startArgs = new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = waitTenths, Locals = locals };
         if (_triggerDispatcher != null &&
             _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart, startArgs) == TriggerResult.True)
+        {
+            _character.ActionEffect = -1;   // Skill_Cleanup (:602)
             return;
+        }
 
+        // m_Act_Effect = LOCAL.Effect (:4526): the local wins over an ACTEFFECT write.
+        _character.ActionEffect = (int)Math.Clamp(locals.GetInt("Effect", -1), int.MinValue, int.MaxValue);
         sound = (ushort)Math.Clamp(locals.GetInt("Sound"), 0, ushort.MaxValue);
         anim = (int)Math.Clamp(locals.GetInt("Anim"), 0, ushort.MaxValue);
         if (gather)
@@ -512,7 +543,8 @@ public sealed class ClientSkillsHandler
         if (gather || craft)
             PlaySkillStartEffects(skill, point, sound, anim);
 
-        RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null, isInfo);
+        RunActiveSkill(skill, skillId, targetUid, target, point, startWaitMs, gather ? strokes : null, isInfo,
+            actionEffect: _character.ActionEffect);
     }
 
     /// <summary>The START stage of a gathering skill (Skill_Mining :1402-1466,
@@ -703,7 +735,8 @@ public sealed class ClientSkillsHandler
     }
 
     private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid,
-        Point3D? point, bool isInfo = false, int? startWaitMs = null, int? gatherStrokes = null)
+        Point3D? point, bool isInfo = false, int? startWaitMs = null, int? gatherStrokes = null,
+        int? actionEffect = null)
     {
         if (_character == null || _character.HasActiveSkillPending()) return false;
         int delayMs = SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill));
@@ -729,6 +762,10 @@ public sealed class ClientSkillsHandler
             targetUid,
             point,
             isInfo);
+        // BeginSkillPending starts with no override; the value Skill_Start settled on
+        // (computed curve or @SkillStart's LOCAL.Effect) is what the skill runs with.
+        if (actionEffect.HasValue)
+            _character.ActionEffect = actionEffect.Value;
         if (isGather)
         {
             _character.SkillStrokesLeft = Math.Max(0, strokes);
@@ -802,7 +839,12 @@ public sealed class ClientSkillsHandler
         if (_character.TryGetSkillPendingPoint(out Point3D pt))
             point = pt;
 
+        // m_Act_Effect survives until Skill_Cleanup after the SUCCESS / FAIL stage
+        // (:602), so the resolver and @SkillSuccess / @SkillFail still see the value
+        // Skill_Start settled on rather than recomputing it.
+        int actionEffect = _character.ActionEffect;
         _character.ClearActiveSkillPending();
+        _character.ActionEffect = actionEffect;
 
         Objects.ObjBase? target = targetUid.IsValid ? _world.FindObject(targetUid) : null;
         var sink = new GameClient.InfoSkillSink(_client, _character);
@@ -810,6 +852,8 @@ public sealed class ClientSkillsHandler
             ? _skillHandlers?.UseInfoSkill(sink, skill, target) ?? false
             : _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
         FireActiveSkillResult(skillId, ok);
+        if (!_character.HasActiveSkillPending())
+            _character.ActionEffect = -1;
     }
 
     private void ShowTrackingMenu(SkillType skill, int skillId)

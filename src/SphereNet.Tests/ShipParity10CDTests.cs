@@ -213,7 +213,7 @@ public sealed class ShipParity10CDTests
         ship.MultiItem.TrySetProperty("OWNER", $"0{newOwner.Uid.Value:X}");
 
         Assert.True(ship.MultiItem.TryGetTag("OWNER", out string? raw));
-        Assert.Equal($"0{newOwner.Uid.Value:X}", raw);
+        Assert.Equal($"0{newOwner.Uid.Value:x}", raw);
     }
 
     [Fact]

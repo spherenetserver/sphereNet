@@ -883,6 +883,9 @@ public static partial class Program
         // for each other in resource matching (CItem.cpp:6044).
         SphereNet.Game.Objects.Items.ResourceMatch.StrictComparison =
             (_config.Experimental & SphereNet.Game.Objects.Items.ResourceMatch.EfItemStrictComparison) != 0;
+        // EF_WalkBypassMonsters: CHARMODE_IGNOREMOBS for every mobile (CCharStatus.cpp:683).
+        SphereNet.Game.Clients.GameClient.WalkBypassMonsters =
+            (_config.Experimental & SphereNet.Game.Clients.GameClient.EfWalkBypassMonsters) != 0;
         Character.ReagentsRequiredEnabled  = _config.ReagentsRequired;
         Character.SpellbookRequiredEnabled = _config.SpellbookRequired;
         // Source-X CServerConfig RC_COMBATFLAGS normalize: PREHIT and
@@ -900,6 +903,7 @@ public static partial class Program
         Character.CombatFlags              = combatFlags;
         Character.CombatDamageEra          = _config.CombatDamageEra;
         Character.CombatHitChanceEra       = _config.CombatHitChanceEra;
+        Character.CombatHitChanceLegacyEra0 = _config.CombatHitChanceLegacyEra0;
         Character.CombatSpeedEra           = _config.CombatSpeedEra;
         Character.GuardsInstantKill        = _config.GuardsInstantKill;
         Character.CombatParryingEra        = _config.CombatParryingEra;

@@ -142,7 +142,7 @@ public sealed class ScriptHotPathAllocationTests(ITestOutputHelper output)
         // count would run the ENDFOR, or drop the first line of the body.
         string total = item.TagValue("total");
         output.WriteLine($"FOR 1 4 summed to {total}");
-        Assert.Equal("0A", total);   // <LOCAL.total> is a number var: Sphere hex
+        Assert.Equal("0a", total);   // <LOCAL.total> is a number var: Sphere hex
     }
 
     // ------------------------------------------------------ radius query shape

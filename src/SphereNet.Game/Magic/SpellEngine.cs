@@ -476,6 +476,10 @@ public sealed partial class SpellEngine
         // LOCAL.EffectRender) - Spell_CastFail, CCharSpell.cpp:3343-3368.
         const ushort SpellFailEffect = 0x3735; // ITEMID_FX_SPELL_FAIL
         ushort failEffect = SpellFailEffect;
+        // LOCAL.Sound (CCharSpell.cpp:3401, :3405, :3430-3434): defaults to
+        // SOUND_SPELL_FIZZLE, read back after the stages; 0 plays nothing.
+        const ushort SpellFizzleSound = 0x5C; // SOUND_SPELL_FIZZLE
+        ushort failSound = SpellFizzleSound;
         uint effectColor = 0, effectRender = 0;
         if (TriggerDispatcher != null)
         {
@@ -487,6 +491,7 @@ public sealed partial class SpellEngine
                 Locals = new SphereNet.Scripting.Variables.VarMap(),
             };
             failArgs.Locals.SetInt("CreateObject1", SpellFailEffect);
+            failArgs.Locals.SetInt("Sound", SpellFizzleSound);
             failArgs.Locals.SetInt("TithingLoss", tithingLoss);
             if (TriggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellFail, failArgs) == TriggerResult.True)
                 return;
@@ -497,9 +502,10 @@ public sealed partial class SpellEngine
             effectColor = (uint)failArgs.Locals.GetInt("EffectColor", 0);
             effectRender = (uint)failArgs.Locals.GetInt("EffectRender", 0);
             failEffect = (ushort)(failArgs.Locals.GetInt("CreateObject1", 0) & 0xFFFF);
+            failSound = (ushort)(failArgs.Locals.GetInt("Sound", 0) & 0xFFFF);
         }
 
-        // Effect(EFFECT_OBJ, iT1, this, 1, 30, ...) then Sound(SOUND_SPELL_FIZZLE).
+        // Effect(EFFECT_OBJ, iT1, this, 1, 30, ...) then Sound(LOCAL.Sound).
         if (failEffect != 0)
         {
             SphereNet.Network.Packets.PacketWriter fx = effectColor != 0 || effectRender != 0
@@ -511,7 +517,8 @@ public sealed partial class SpellEngine
                     1, 30, false, false);
             Character.BroadcastNearby?.Invoke(caster.Position, 18, fx, 0);
         }
-        OnPlaySound?.Invoke(caster.Position, 0x5C); // SOUND_SPELL_FIZZLE
+        if (failSound != 0)
+            OnPlaySound?.Invoke(caster.Position, failSound);
 
         if (caster.PrivLevel >= PrivLevel.GM)
             return;
@@ -2168,6 +2175,9 @@ public sealed partial class SpellEngine
         bool scripted = def.IsFlag(SpellFlag.Scripted);
         // LOCAL.DamageType: 0 leaves the spell's own default (CCharSpell.cpp:3734, :3826).
         var scriptDamageType = DamageType.None;
+        // LOCAL.BypassMagicReflection (CCharSpell.cpp:3712, :3810): a script that sets
+        // it above 0 lets the spell skip the Magic Reflection check (:3851).
+        bool bypassMagicReflection = false;
         if (TriggerDispatcher != null)
         {
             var fxLocals = new SphereNet.Scripting.Variables.VarMap();
@@ -2178,6 +2188,10 @@ public sealed partial class SpellEngine
             fxLocals.SetInt("Effect", effect);
             fxLocals.SetInt("Resist", resistPct);
             fxLocals.SetInt("Duration", durationTenths);
+            // LOCAL.IsSpellReflected is information only: 1 when this is the bounced
+            // copy re-entering on the caster (:3778). Neither is read back but the bypass.
+            fxLocals.SetInt("IsSpellReflected", reflecting ? 1 : 0);
+            fxLocals.SetInt("BypassMagicReflection", 0);
             var fxArgs = new TriggerArgs
             {
                 CharSrc = caster,
@@ -2219,6 +2233,7 @@ public sealed partial class SpellEngine
             resistPct = (int)fxLocals.GetInt("Resist", resistPct);
             durationTenths = (int)Math.Clamp(fxLocals.GetInt("Duration", durationTenths), 0, int.MaxValue);
             scriptDamageType = (DamageType)unchecked((uint)fxLocals.GetInt("DamageType"));
+            bypassMagicReflection = fxLocals.GetInt("BypassMagicReflection") > 0;  // :3810
         }
 
         // The definition the native switch dispatches on follows the read-back spell;
@@ -2248,7 +2263,8 @@ public sealed partial class SpellEngine
                 // reflects too (and may), its memory goes as well and the spell lands
                 // where it was aimed; otherwise the caster's own reflection may soak
                 // it up (MAGICF_DELREFLECTOWN), or the spell comes back on the caster.
-                if (target.IsStatFlag(StatFlag.Reflection))
+                // LOCAL.BypassMagicReflection skips the whole check (:3851).
+                if (!bypassMagicReflection && target.IsStatFlag(StatFlag.Reflection))
                 {
                     ConsumeMagicReflection(target);
                     if (caster.IsStatFlag(StatFlag.Reflection) &&
@@ -2904,6 +2920,36 @@ public sealed partial class SpellEngine
         if (followerSlotsOverride >= 0)
             creature.TrySetProperty("FOLLOWERSLOTS",
                 followerSlotsOverride.ToString(CultureInfo.InvariantCulture));
+        // The follower cap is weighed before anything is placed (Spell_Summon_Try,
+        // CCharSpell.cpp:2662); the same test TryAssignOwnership makes below.
+        if (Character.FollowerCapApplies(caster) &&
+            caster.CurFollower + creature.ControlSlots > caster.MaxFollower)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.PetslotsTrySummon));
+            _world.DeleteObject(creature);
+            return null;
+        }
+
+        // Spell_Summon_Place (CCharSpell.cpp:341-375): MoveToChar first, and a summon
+        // that died on arrival (a damaging field, a trap) goes no further - no owner,
+        // no home, no summon timer (:354-360). Owner and home follow the placement
+        // (:369-370). Upstream tests STR (hit points) <= 0; here only a loss taken
+        // during the placement counts, since a summon with no chardef stats (a
+        // placeholder body) starts at 0 hits and has always been allowed.
+        short hitsBeforePlacement = creature.Hits;
+        if (!_world.PlaceCharacter(creature, pos))
+        {
+            _world.DeleteObject(creature);
+            return null;
+        }
+        if (creature.IsDeleted || creature.IsDead ||
+            (hitsBeforePlacement > 0 && creature.Hits <= 0))
+        {
+            if (!creature.IsDeleted)
+                _world.DeleteObject(creature);
+            return null;
+        }
+
         if (!creature.TryAssignOwnership(caster, caster, summoned: true, enforceFollowerCap: true))
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.PetslotsTrySummon));
@@ -2914,13 +2960,6 @@ public sealed partial class SpellEngine
         creature.SetTag("SUMMON_MASTER", caster.Uid.Value.ToString());
         creature.SetTag("SUMMON_MASTER_UUID", caster.Uuid.ToString("D"));
         creature.SetTag("SUMMON_EXPIRE_TICK", (Environment.TickCount64 + duration * 100L).ToString());
-
-        if (!_world.PlaceCharacter(creature, pos))
-        {
-            creature.ClearOwnership(clearFriends: true);
-            _world.DeleteObject(creature);
-            return null;
-        }
         return creature;
     }
 

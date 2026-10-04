@@ -46,5 +46,5 @@ public readonly struct Serial : IEquatable<Serial>, IComparable<Serial>
     public static implicit operator uint(Serial s) => s._value;
     public static explicit operator Serial(uint v) => new(v);
 
-    public override string ToString() => $"0{_value:X8}";
+    public override string ToString() => $"0{_value:x8}";
 }

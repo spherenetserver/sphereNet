@@ -270,7 +270,7 @@ public sealed class SwingTimingAndSoundParityTests : IDisposable
         Assert.True(attacker.TryGetTag("SEENN1", out var n1));
         Assert.Equal(expected.RecoilTenths.ToString(), n1);
         Assert.True(attacker.TryGetTag("SEENAD", out var ad));
-        Assert.Equal("0A", ad);   // <LOCAL.AnimDelay> reads in Sphere hex
+        Assert.Equal("0a", ad);   // <LOCAL.AnimDelay> reads in Sphere hex
 
         // ...and swings on what it hands back: the blow 0.5 s after the animation,
         // the next swing 0.7 s after the blow.

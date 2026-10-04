@@ -59,7 +59,7 @@ public sealed class ScriptChainBoundaryTests
         var args = new GameArgs { O1 = subject };
         Fire(stack, subject, args);
         void Tag(string key, string expected) { subject.TryGetProperty("TAG." + key, out var value); Assert.Equal(expected, value); }
-        Tag("local", "02A"); Tag("float", "1.25");   // <LOCAL.marker> reads in Sphere hex Tag("ref", $"0{subject.Uid.Value:X}"); Tag("argo", "0"); Tag("n", "7");
+        Tag("local", "02a"); Tag("float", "1.25");   // <LOCAL.marker> reads in Sphere hex Tag("ref", $"0{subject.Uid.Value:X}"); Tag("argo", "0"); Tag("n", "7");
         Assert.Null(args.O1);
     }
 

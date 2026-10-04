@@ -29,38 +29,124 @@ public sealed class BalanceParityWaveTests
         return ch;
     }
 
-    [Fact]
-    public void Era0_AMasterDoesNotLandEverySwing()
+    private static int LandedOutOf(Character attacker, Character target, int swings)
     {
-        // Source-X: difficulty = rand(iDiff), hit when difficulty*10 >= rand(1000) -
-        // about iDiff/2 percent at most. The bell curve used to land nearly every one.
-        var world = TestHarness.CreateWorld();
-        var attacker = Fighter(world, 100, player: true);
-        attacker.SetSkill(SkillType.Wrestling, 1000);
-        attacker.SetSkill(SkillType.Tactics, 1000);
-        var target = Fighter(world, 101, player: true);
-
         int landed = 0;
-        const int swings = 2000;
         for (int i = 0; i < swings; i++)
         {
             target.Hits = target.MaxHits;
             if (CombatEngine.ResolveAttack(attacker, target, null, CombatFlags.None, 0, 0, 0, out _) >= 0)
                 landed++;
         }
-
-        Assert.InRange(landed, swings * 30 / 100, swings * 70 / 100);
+        return landed;
     }
 
     [Fact]
-    public void ASleepingTargetDrawsFromTen()
+    public void Era0_AMasterLandsTheComputedChance()
     {
+        // Source-X CResourceCalc.cpp:193 (cf60700): the chance is returned as is and
+        // Skill_CheckSuccess makes a flat chance*10 >= rand(1000) check. Here
+        // iSkillAttack 1000, iSkillDefend (0 + 50*10)/2 = 250, (1000 - 150)/10 = 85.
+        var world = TestHarness.CreateWorld();
+        var attacker = Fighter(world, 100, player: true);
+        attacker.SetSkill(SkillType.Wrestling, 1000);
+        attacker.SetSkill(SkillType.Tactics, 1000);
+        var target = Fighter(world, 101, player: true);
+
+        Assert.Equal(85, CombatEngine.CalcHitChance(attacker, target));
+        const int swings = 2000;
+        Assert.InRange(LandedOutOf(attacker, target, swings), swings * 78 / 100, swings * 92 / 100);
+    }
+
+    [Fact]
+    public void Era0_Legacy_AMasterDoesNotLandEverySwing()
+    {
+        // COMBATHITCHANCELEGACYERA0=1, the 0.56 / older Source-X roll: difficulty =
+        // rand(iDiff), hit when difficulty*10 >= rand(1000) - about iDiff/2 percent.
+        Character.CombatHitChanceLegacyEra0 = true;
+        var world = TestHarness.CreateWorld();
+        var attacker = Fighter(world, 100, player: true);
+        attacker.SetSkill(SkillType.Wrestling, 1000);
+        attacker.SetSkill(SkillType.Tactics, 1000);
+        var target = Fighter(world, 101, player: true);
+
+        Assert.Equal(85, CombatEngine.CalcHitChance(attacker, target));
+        const int swings = 2000;
+        Assert.InRange(LandedOutOf(attacker, target, swings), swings * 30 / 100, swings * 70 / 100);
+    }
+
+    [Fact]
+    public void ASleepingTargetIsHitAtLeastEightyPercent()
+    {
+        // CResourceCalc.cpp:189-191: a sleeping or frozen target floors the chance at 80.
         var world = TestHarness.CreateWorld();
         var attacker = Fighter(world, 100, player: true);
         var target = Fighter(world, 101, player: true);
         target.SetStatFlag(StatFlag.Sleeping);
 
+        Assert.Equal(80, CombatEngine.CalcHitChance(attacker, target));
+    }
+
+    [Fact]
+    public void ASleepingTargetKeepsAHigherComputedChance()
+    {
+        var world = TestHarness.CreateWorld();
+        var attacker = Fighter(world, 100, player: true);
+        attacker.SetSkill(SkillType.Wrestling, 1000);
+        attacker.SetSkill(SkillType.Tactics, 1000);
+        var target = Fighter(world, 101, player: true);
+        target.SetStatFlag(StatFlag.Sleeping);
+
+        Assert.Equal(85, CombatEngine.CalcHitChance(attacker, target));
+    }
+
+    [Fact]
+    public void ASleepingTargetDrawsFromTen_Legacy()
+    {
+        // Legacy era 0: rand(10) for a sleeping or frozen target.
+        Character.CombatHitChanceLegacyEra0 = true;
+        var world = TestHarness.CreateWorld();
+        var attacker = Fighter(world, 100, player: true);
+        attacker.SetSkill(SkillType.Wrestling, 1000);
+        var target = Fighter(world, 101, player: true);
+        target.SetStatFlag(StatFlag.Sleeping);
+
         Assert.Equal(10, CombatEngine.CalcHitChance(attacker, target));
+    }
+
+    [Fact]
+    public void Era0_HitAndDefenseChanceIncreaseScaleTheChance()
+    {
+        // CResourceCalc.cpp:181-185: iChance * (100 + HCI) / 100 * (100 - DCI) / 100.
+        var world = TestHarness.CreateWorld();
+        var attacker = Fighter(world, 100, player: true);
+        attacker.SetSkill(SkillType.Wrestling, 600);
+        attacker.SetSkill(SkillType.Tactics, 600);
+        var target = Fighter(world, 101, player: true);
+        // iSkillAttack 600, iSkillDefend 250, (600 - 70)/10 = 53.
+        Assert.Equal(53, CombatEngine.CalcHitChance(attacker, target));
+
+        attacker.SetTag("INCREASEHITCHANCE", "50");
+        Assert.Equal(79, CombatEngine.CalcHitChance(attacker, target));   // 53*150/100
+
+        target.SetTag("INCREASEDEFCHANCE", "50");
+        Assert.Equal(39, CombatEngine.CalcHitChance(attacker, target));   // 79*50/100
+
+        // Legacy era 0 ignores both.
+        Character.CombatHitChanceLegacyEra0 = true;
+        Assert.Equal(53, CombatEngine.CalcHitChance(attacker, target));
+    }
+
+    [Fact]
+    public void Era0_DefenseChanceIncreaseOverAHundredCannotHit()
+    {
+        var world = TestHarness.CreateWorld();
+        var attacker = Fighter(world, 100, player: true);
+        attacker.SetSkill(SkillType.Wrestling, 1000);
+        var target = Fighter(world, 101, player: true);
+        target.SetTag("INCREASEDEFCHANCE", "150");
+
+        Assert.Equal(0, CombatEngine.CalcHitChance(attacker, target));
     }
 
     [Fact]

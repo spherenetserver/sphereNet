@@ -43,7 +43,7 @@ public sealed class StoneFileScriptKeywordParityTests
     {
         // UID_F_RESOURCE | (RES_CHARDEF=7 << 20) | 0x999, formatted as Sphere hex.
         Assert.Equal("080700999", Resolve("<RESDEF.c_resdef_probe>"));
-        Assert.Equal("080F00EED", Resolve("<RESDEF.i_resdef_probe>"));
+        Assert.Equal("080f00eed", Resolve("<RESDEF.i_resdef_probe>"));
         Assert.Equal("080700999", Resolve("<RESDEF0.c_resdef_probe>"));
     }
 

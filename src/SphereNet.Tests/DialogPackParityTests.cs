@@ -80,11 +80,11 @@ public sealed class DialogPackParityTests
 
         // Numeric still works; the layer NAME resolves via DEF (layer_hair=11).
         Assert.True(ch.TryGetProperty("FINDLAYER.11", out string byNum));
-        Assert.Equal($"0{hair.Uid.Value:X}", byNum);
+        Assert.Equal($"0{hair.Uid.Value:x}", byNum);
 
         // Chained read to the found item's property.
         Assert.True(ch.TryGetProperty("FINDLAYER.11.COLOR", out string color));
-        Assert.Equal($"0{hair.Hue.Value:X}", color);   // COLOR reads hex (CObjBase.cpp:1153)
+        Assert.Equal($"0{hair.Hue.Value:x}", color);   // COLOR reads hex (CObjBase.cpp:1153)
 
         // Chained REMOVE strips it.
         Assert.True(ch.TryExecuteCommand("FINDLAYER.11.REMOVE", "", null!));

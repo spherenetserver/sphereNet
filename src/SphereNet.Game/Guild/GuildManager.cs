@@ -898,15 +898,15 @@ public sealed class GuildManager
         {
             bool ally = priv == (int)GuildPriv.Ally;
             Append(stone, "GUILD.RELATIONS",
-                $"0{uid:X}:{(!ally && weDeclared ? "1" : "0")}:{(!ally && theyDeclared ? "1" : "0")}:" +
+                $"0{uid:x}:{(!ally && weDeclared ? "1" : "0")}:{(!ally && theyDeclared ? "1" : "0")}:" +
                 $"{(ally && weDeclared ? "1" : "0")}:{(ally && theyDeclared ? "1" : "0")}");
             return true;
         }
 
         uint loyal = ParseHexSerial(Field(3));
         Append(stone, "GUILD.MEMBERS",
-            $"0{uid:X}:{priv}:{EscapeField(Field(1))}:{Num(6)}:" +
-            $"{(loyal == 0 ? "0" : $"0{loyal:X}")}:{(theyDeclared ? "1" : "0")}");
+            $"0{uid:x}:{priv}:{EscapeField(Field(1))}:{Num(6)}:" +
+            $"{(loyal == 0 ? "0" : $"0{loyal:x}")}:{(theyDeclared ? "1" : "0")}");
         return true;
     }
 
@@ -981,11 +981,11 @@ public sealed class GuildManager
 
             // Guild-owned structures.
             if (guild.HouseCount > 0)
-                stone.SetTag("GUILD.HOUSES", string.Join(",", guild.Houses.Select(u => $"0{u.Value:X}")));
+                stone.SetTag("GUILD.HOUSES", string.Join(",", guild.Houses.Select(u => $"0{u.Value:x}")));
             else
                 stone.RemoveTag("GUILD.HOUSES");
             if (guild.ShipCount > 0)
-                stone.SetTag("GUILD.SHIPS", string.Join(",", guild.Ships.Select(u => $"0{u.Value:X}")));
+                stone.SetTag("GUILD.SHIPS", string.Join(",", guild.Ships.Select(u => $"0{u.Value:x}")));
             else
                 stone.RemoveTag("GUILD.SHIPS");
             if (guild.MaxHouses > 0)
@@ -1002,14 +1002,14 @@ public sealed class GuildManager
             // free-text title, otherwise a comma in a player-set title splits the
             // record on load and drops the trailing members.
             var memberStrs = guild.Members.Select(m =>
-                $"0{m.CharUid.Value:X}:{(byte)m.Priv}:{EscapeField(m.Title)}:{m.AccountGold}:{(m.LoyalTo == Serial.Invalid ? "0" : $"0{m.LoyalTo.Value:X}")}:{(m.ShowAbbrev ? "1" : "0")}");
+                $"0{m.CharUid.Value:x}:{(byte)m.Priv}:{EscapeField(m.Title)}:{m.AccountGold}:{(m.LoyalTo == Serial.Invalid ? "0" : $"0{m.LoyalTo.Value:x}")}:{(m.ShowAbbrev ? "1" : "0")}");
             stone.SetTag("GUILD.MEMBERS", string.Join(",", memberStrs));
 
             // Relations: uid:wewar:theywar:weally:theyally
             if (guild.Relations.Count > 0)
             {
                 var relStrs = guild.Relations.Values.Select(r =>
-                    $"0{r.OtherStoneUid.Value:X}:{(r.WeDeclaredWar ? "1" : "0")}:{(r.TheyDeclaredWar ? "1" : "0")}:{(r.WeDeclaredAlliance ? "1" : "0")}:{(r.TheyDeclaredAlliance ? "1" : "0")}");
+                    $"0{r.OtherStoneUid.Value:x}:{(r.WeDeclaredWar ? "1" : "0")}:{(r.TheyDeclaredWar ? "1" : "0")}:{(r.WeDeclaredAlliance ? "1" : "0")}:{(r.TheyDeclaredAlliance ? "1" : "0")}");
                 stone.SetTag("GUILD.RELATIONS", string.Join(",", relStrs));
             }
             else
@@ -1020,12 +1020,12 @@ public sealed class GuildManager
             // Legacy compat: also write GUILD.WARS/ALLIES for older saves
             var wars = guild.Wars.ToList();
             if (wars.Count > 0)
-                stone.SetTag("GUILD.WARS", string.Join(",", wars.Select(s => $"0{s.Value:X}")));
+                stone.SetTag("GUILD.WARS", string.Join(",", wars.Select(s => $"0{s.Value:x}")));
             else
                 stone.RemoveTag("GUILD.WARS");
             var allies = guild.Allies.ToList();
             if (allies.Count > 0)
-                stone.SetTag("GUILD.ALLIES", string.Join(",", allies.Select(s => $"0{s.Value:X}")));
+                stone.SetTag("GUILD.ALLIES", string.Join(",", allies.Select(s => $"0{s.Value:x}")));
             else
                 stone.RemoveTag("GUILD.ALLIES");
         }

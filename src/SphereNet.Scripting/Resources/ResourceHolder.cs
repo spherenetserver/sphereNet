@@ -1283,13 +1283,13 @@ public sealed class ResourceHolder
         if (Core.Types.ScriptNumber.TryParseToken(text, out long num))
         {
             long part = wantIndex ? (num & 0xFFFFF) : ((num >> 20) & 0xFF);
-            return part == 0 ? "00" : $"0{part:X}";
+            return part == 0 ? "00" : $"0{part:x}";
         }
         var rid = ResolveDefName(FollowResourceAlias(text));
         if (!rid.IsValid)
             return "0";
-        // FormatHex: uppercase digits.
-        return wantIndex ? $"0{rid.Index:X}" : $"0{SourceXResCode(rid.Type):X}";
+        // FormatHex: lower-case digits.
+        return wantIndex ? $"0{rid.Index:x}" : $"0{SourceXResCode(rid.Type):x}";
     }
 
     private static string? PickBraceMember(string group, Func<int, int> roll)

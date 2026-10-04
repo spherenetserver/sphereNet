@@ -73,7 +73,7 @@ public sealed class CharBaseDefReadTests : IDisposable
         Assert.Equal("057", Read(ch, "SOUNDGETHIT"));
         Assert.Equal("058", Read(ch, "SOUNDHIT"));
         Assert.Equal("059", Read(ch, "SOUNDIDLE"));
-        Assert.Equal("05A", Read(ch, "SOUNDNOTICE"));
+        Assert.Equal("05a", Read(ch, "SOUNDNOTICE"));
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class CharBaseDefReadTests : IDisposable
         Assert.Equal("40", Read(ch, "MOVERATE"));
         Assert.Equal("70", Read(ch, "HIREDAYWAGE"));
         // CBC_ICON answers the resolved item id in hex (CCharBase.cpp:246).
-        Assert.Equal("03FE", Read(ch, "ICON"));
+        Assert.Equal("03fe", Read(ch, "ICON"));
     }
 
     /// <summary>The era-display family, which the reference pack reads off a creature
@@ -98,7 +98,7 @@ public sealed class CharBaseDefReadTests : IDisposable
         Assert.Equal("3", Read(ch, "RESLEVEL"));
         Assert.Equal("0482", Read(ch, "RESDISPDNHUE"));
         Assert.Equal("c_probe_beast", Read(ch, "RESDISPDNID"));
-        Assert.Equal("03F8C7F", Read(ch, "ANIM"));
+        Assert.Equal("03f8c7f", Read(ch, "ANIM"));
     }
 
     /// <summary>A creature with no definition behind it answers rather than throwing -

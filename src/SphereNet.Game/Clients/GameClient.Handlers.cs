@@ -562,7 +562,7 @@ public sealed partial class GameClient
         msg.SetTag("TIME", DateTime.UtcNow.ToString("MMM d, yyyy",
             System.Globalization.CultureInfo.InvariantCulture));
         if (replyTo != 0)
-            msg.SetTag("REPLYTO", $"0{replyTo:X}");
+            msg.SetTag("REPLYTO", $"0{replyTo:x}");
         // The page storage a book uses, so the script BODY.n surface and a classic
         // save's own BODY lines all name the same text (CItemMessage.cpp:53).
         msg.ItemType = ItemType.Message;

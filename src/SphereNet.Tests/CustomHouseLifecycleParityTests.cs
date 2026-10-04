@@ -664,7 +664,7 @@ public sealed class CustomHouseLifecycleParityTests
         uint revision = env.Custom.Commit(owner)!.Value;
 
         Assert.True(multi.TryGetProperty("DESIGNER", out string designer));
-        Assert.Equal($"0{owner.Uid.Value:X}", designer);
+        Assert.Equal($"0{owner.Uid.Value:x}", designer);
         Assert.True(multi.TryGetProperty("REVISION", out string rev));
         Assert.Equal(revision.ToString(), rev);
         Assert.True(multi.TryGetProperty("COMPONENTS", out string comps));

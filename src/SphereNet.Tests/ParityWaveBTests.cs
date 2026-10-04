@@ -151,7 +151,7 @@ public class ParityWaveBTests
     }
 
     [Fact]
-    public void CalcHitChance_FrozenTarget_DrawsFromTen()
+    public void CalcHitChance_FrozenTarget_FloorsAtEighty()
     {
         var world = CreateWorld();
         var attacker = world.CreateCharacter();
@@ -164,10 +164,9 @@ public class ParityWaveBTests
         target.SetStatFlag(StatFlag.Freeze);
         world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
 
-        // Source-X returns rand(10) for a sleeping/frozen target (CResourceCalc.cpp:153):
-        // the ceiling of the draw is 10, whatever the skills.
-        for (int i = 0; i < 20; i++)
-            Assert.Equal(10, CombatEngine.CalcHitChance(attacker, target));
+        // Source-X floors the chance against a sleeping/frozen target at 80
+        // (CResourceCalc.cpp:189-191, #1553); a 30.0 wrestler computes far below it.
+        Assert.Equal(80, CombatEngine.CalcHitChance(attacker, target));
     }
 
     // <X.UID> script reads render as bare hex (no 0x prefix).

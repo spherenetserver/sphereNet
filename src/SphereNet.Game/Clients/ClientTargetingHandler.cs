@@ -280,7 +280,7 @@ public sealed class ClientTargetingHandler
                     : null;
                 // TARGPRV is the used item from here on (m_Targ_Prv_UID = m_Targ_UID,
                 // CClientTarg.cpp:1698), so <SRC.TARGPRV> names it inside the trigger.
-                _character.SetTag("TARGPRV", $"0{sourceUid.Value:X}");
+                _character.SetTag("TARGPRV", $"0{sourceUid.Value:x}");
                 if (FirePendingItemTargetTrigger(sourceUid,
                         ResolveItemTargetTrigger(serial, picked),
                         new Serial(serial), graphic) == TriggerResult.True)
@@ -719,7 +719,7 @@ public sealed class ClientTargetingHandler
             _character.SetTag("TARG.Y", y.ToString());
             _character.SetTag("TARG.Z", z.ToString());
             _character.SetTag("TARG.MAP", _character.MapIndex.ToString());
-            _character.SetTag("TARG.UID", $"0{serial:X}");
+            _character.SetTag("TARG.UID", $"0{serial:x}");
 
             IScriptObj? argo = null;
             if (serial != 0 && serial != 0xFFFFFFFF)
@@ -773,7 +773,7 @@ public sealed class ClientTargetingHandler
         _character.SetTag("TARG.Y", y.ToString());
         _character.SetTag("TARG.Z", z.ToString());
         _character.SetTag("TARG.MAP", _character.MapIndex.ToString());
-        _character.SetTag("TARG.UID", serial is 0 or 0xFFFFFFFF ? "0" : $"0{serial:X}");
+        _character.SetTag("TARG.UID", serial is 0 or 0xFFFFFFFF ? "0" : $"0{serial:x}");
     }
 
     private ItemTrigger ResolveItemTargetTrigger(uint serial, IScriptObj? target)

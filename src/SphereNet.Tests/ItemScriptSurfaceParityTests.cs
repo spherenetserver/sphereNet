@@ -240,8 +240,8 @@ public sealed class ItemScriptSurfaceParityTests : IDisposable
         gem.Position = new Point3D(44, 55, 0, 0);
         gem.ContainerGridIndex = 3;
 
-        Assert.Equal($"0{pack.Uid.Value:X}", Get(gem, "TOPCONT"));   // stops below the char
-        Assert.Equal($"0{pack.Uid.Value:X}", Get(gem, "TOPCONT.UID"));
+        Assert.Equal($"0{pack.Uid.Value:x}", Get(gem, "TOPCONT"));   // stops below the char
+        Assert.Equal($"0{pack.Uid.Value:x}", Get(gem, "TOPCONT.UID"));
         Assert.Equal("3", Get(gem, "CONTGRID"));
         Assert.Equal("44,55", Get(gem, "CONTP"));
 

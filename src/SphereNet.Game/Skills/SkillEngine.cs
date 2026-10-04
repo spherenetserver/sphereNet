@@ -62,6 +62,20 @@ public static class SkillEngine
         return effect is { IsEmpty: false } ? effect.GetLinear(skillValue) : fallback;
     }
 
+    /// <summary>m_Act_Effect as Skill_Start works it out before @SkillStart / @Start
+    /// (CCharSkill.cpp:4456-4471): -1 when the skill names no EFFECT, otherwise the
+    /// curve at the adjusted skill - or, for a crafting skill, CValueCurveDef::GetRandom
+    /// (GetLinear(rand 1000), CValueDefs.cpp:149-153).</summary>
+    public static int GetStartActionEffect(Character ch, SkillType skill)
+    {
+        var effect = DefinitionLoader.GetSkillDef((int)skill)?.Effect;
+        if (effect is not { IsEmpty: false })
+            return -1;
+        return HasFlag(skill, SkillFlag.Craft)
+            ? effect.GetLinear(_rand.Next(1000))
+            : effect.GetLinear(GetAdjustedSkill(ch, skill));
+    }
+
     // Random.Shared is thread-safe; a plain shared Random instance is not and
     // can corrupt/return 0 under concurrent skill use on the multicore tick.
     private static Random _rand => Random.Shared;

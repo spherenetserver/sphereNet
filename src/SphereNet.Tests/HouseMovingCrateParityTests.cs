@@ -117,7 +117,7 @@ public sealed class HouseMovingCrateParityTests
         Assert.True(multi.TryGetProperty("MOVINGCRATE 1", out string v));
         var crate = house.ResolveMovingCrate();
         Assert.NotNull(crate);
-        Assert.Equal($"0{crate!.Uid.Value:X}", v);
+        Assert.Equal($"0{crate!.Uid.Value:x}", v);
         Assert.Equal(House.MovingCrateId, crate.BaseId);
         Assert.Equal(multi.Uid, crate.Link);
         // Source-X puts it at the house's own spot, 20 below (CItemMulti.cpp:1344).

@@ -219,8 +219,8 @@ public class Item : ObjBase
         if (def == null) return;
         if (!string.IsNullOrEmpty(def.DefName)) sink($"DEFNAME={def.DefName}");
         if (!string.IsNullOrEmpty(def.Name)) sink($"NAME={def.Name}");
-        sink($"ID=0{def.Id.Index:X}");
-        if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:X}");
+        sink($"ID=0{def.Id.Index:x}");
+        if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:x}");
         sink($"TYPE={def.Type}");
         if (def.Weight != 0) sink($"WEIGHT={def.Weight}");
     }
@@ -2013,7 +2013,7 @@ public class Item : ObjBase
                 // A stone with no master answers 0, the way every other absent uid
                 // does - not an empty string, which a comparison would read as a
                 // match against anything else that failed to resolve.
-                value = master == null ? "0" : $"0{master.CharUid.Value:X}";
+                value = master == null ? "0" : $"0{master.CharUid.Value:x}";
                 return true;
             }
         }
@@ -2287,7 +2287,7 @@ public class Item : ObjBase
                 return true;
             case "MAXAMOUNT": value = MaxAmount.ToString(); return true; // 0 for non-stackable
             case "BASEWEIGHT": value = Weight.ToString(); return true; // Source-X m_weight: per-unit tenths of a stone
-            case "CONT": value = _containedIn.IsValid ? $"0{_containedIn.Value:X}" : ""; return true;
+            case "CONT": value = _containedIn.IsValid ? $"0{_containedIn.Value:x}" : ""; return true;
             case "HITS":
             case "HITPOINTS": value = HitsCur.ToString(); return true; // Source-X IC_HITPOINTS == IC_HITS
             case "MAXHITS":
@@ -2303,8 +2303,8 @@ public class Item : ObjBase
             // Faz 1: Core fields
             case "MODMAXWEIGHT": value = ModMaxWeight.ToString(); return true;
             case "MORE1": case "MORE": value = FormatMore1(); return true;
-            case "MORE2": value = $"0{_more2:X}"; return true;
-            case "MOREB": value = $"0{_moreB:X}"; return true;
+            case "MORE2": value = $"0{_more2:x}"; return true;
+            case "MOREB": value = $"0{_moreB:x}"; return true;
             case "MORE1H": value = ((ushort)(_more1 >> 16)).ToString(); return true;
             case "MORE1L": value = ((ushort)(_more1 & 0xFFFF)).ToString(); return true;
             case "MORE2H": value = ((ushort)(_more2 >> 16)).ToString(); return true;
@@ -2330,13 +2330,13 @@ public class Item : ObjBase
             case "CAN":
             {
                 var canDef = ResolveDefinition();
-                value = $"0{((ulong)(canDef?.Can ?? CanFlags.None) ^ CanMask):X}";
+                value = $"0{((ulong)(canDef?.Can ?? CanFlags.None) ^ CanMask):x}";
                 return true;
             }
             case "CANUSE":
             {
                 var useDef = ResolveDefinition();
-                value = useDef != null ? $"0{(ushort)useDef.CanUse:X}" : "0";
+                value = useDef != null ? $"0{(ushort)useDef.CanUse:x}" : "0";
                 return true;
             }
             // IC_AC / IC_AR (CItem.cpp:2754): the armour's live defense - 0 for anything
@@ -2366,7 +2366,7 @@ public class Item : ObjBase
             case "TOPCONT":
             {
                 var topCont = ResolveTopContainer();
-                value = topCont != null ? $"0{topCont.Uid.Value:X}" : "0";
+                value = topCont != null ? $"0{topCont.Uid.Value:x}" : "0";
                 return true;
             }
             // IC_CONTGRID (CItem.cpp:2813): only an item that sits in a container has
@@ -2389,13 +2389,13 @@ public class Item : ObjBase
             case "RUNE_Y": value = _moreP.Y.ToString(); return true;
             case "RUNE_Z": value = _moreP.Z.ToString(); return true;
             case "RUNE_MAP": value = _moreP.Map.ToString(); return true;
-            case "LINK": value = _link.IsValid ? $"0{_link.Value:X}" : ""; return true;
+            case "LINK": value = _link.IsValid ? $"0{_link.Value:x}" : ""; return true;
             case "MEMORYTYPES": value = ((ushort)GetMemoryTypes()).ToString(); return true;
             case "PRICE": value = _price.ToString(); return true;
             case "QUALITY": value = _quality.ToString(); return true;
             case "CRAFTER":
             case "CRAFTEDBY": // Source-X IC_CRAFTEDBY — the crafter's uid
-                value = _crafter.IsValid ? $"0{_crafter.Value:X}" : ""; return true;
+                value = _crafter.IsValid ? $"0{_crafter.Value:x}" : ""; return true;
             case "OWNEDBY": // Source-X IC_OWNEDBY: a base-def string, "" when unset
                 value = OwnedBy; return true;
             case "USESREMAINING":
@@ -2467,11 +2467,11 @@ public class Item : ObjBase
                         if (parent == null) break;
                         cur = parent;
                     }
-                    value = $"0{cur.Uid.Value:X}";
+                    value = $"0{cur.Uid.Value:x}";
                 }
                 else
                 {
-                    value = $"0{Uid.Value:X}";
+                    value = $"0{Uid.Value:x}";
                 }
                 return true;
             }
@@ -2615,11 +2615,11 @@ public class Item : ObjBase
             {
                 case "TILLER":
                     var tiller = ship?.GetTiller(ResolveWorld!());
-                    value = tiller != null ? $"0{tiller.Uid.Value:X}" : "0";
+                    value = tiller != null ? $"0{tiller.Uid.Value:x}" : "0";
                     return true;
                 case "HATCH":
                     var hold = ship?.GetHold(ResolveWorld!());
-                    value = hold != null ? $"0{hold.Uid.Value:X}" : "0";
+                    value = hold != null ? $"0{hold.Uid.Value:x}" : "0";
                     return true;
                 case "PLANKS":
                     value = (ship?.GetPlankCount(ResolveWorld!()) ?? 0).ToString();
@@ -2629,7 +2629,7 @@ public class Item : ObjBase
                     value = ship != null ? $"{ship.SpeedPeriod},{ship.SpeedTiles}" : "0,0";
                     return true;
                 case "PILOT":
-                    value = ship?.Pilot.IsValid == true ? $"0{ship.Pilot.Value:X}" : "0";
+                    value = ship?.Pilot.IsValid == true ? $"0{ship.Pilot.Value:x}" : "0";
                     return true;
                 case "SHIPANCHOR":
                 case "ANCHOR":
@@ -2664,7 +2664,7 @@ public class Item : ObjBase
                 if (int.TryParse(upper[6..], out int pi))
                 {
                     var plank = ship?.GetPlank(pi, ResolveWorld!());
-                    value = plank != null ? $"0{plank.Uid.Value:X}" : "0";
+                    value = plank != null ? $"0{plank.Uid.Value:x}" : "0";
                 }
                 return true;
             }
@@ -2708,7 +2708,7 @@ public class Item : ObjBase
                 if (int.TryParse(upper[3..^1], out int idx))
                 {
                     var ch = SpawnChar.GetSpawnedAt(idx);
-                    value = ch != null ? $"0{ch.Uid.Value:X}" : "0";
+                    value = ch != null ? $"0{ch.Uid.Value:x}" : "0";
                 }
                 return true;
             }
@@ -2842,9 +2842,9 @@ public class Item : ObjBase
                 // (CItemBase.cpp:1208-1291): decimal for most, hex for FLIP / REPAIR /
                 // REPLICATE, as upstream formats each one.
                 case "DYE": value = ((uint)DefCanBit(def, CanFlags.I_Dye, def.Dye)).ToString(); return true;
-                case "FLIP": value = $"0{(uint)DefCanBit(def, CanFlags.I_Flip, def.Flip):X}"; return true;
-                case "REPAIR": value = $"0{(uint)DefCanBit(def, CanFlags.I_Repair, def.Repair):X}"; return true;
-                case "REPLICATE": value = $"0{(uint)DefCanBit(def, CanFlags.I_Replicate, def.Replicate):X}"; return true;
+                case "FLIP": value = $"0{(uint)DefCanBit(def, CanFlags.I_Flip, def.Flip):x}"; return true;
+                case "REPAIR": value = $"0{(uint)DefCanBit(def, CanFlags.I_Repair, def.Repair):x}"; return true;
+                case "REPLICATE": value = $"0{(uint)DefCanBit(def, CanFlags.I_Replicate, def.Replicate):x}"; return true;
                 case "ENCHANT": value = ((uint)DefCanBit(def, CanFlags.I_Enchant)).ToString(); return true;
                 case "EXCEPTIONAL": value = ((uint)DefCanBit(def, CanFlags.I_Exceptional)).ToString(); return true;
                 case "IMBUE": value = ((uint)DefCanBit(def, CanFlags.I_Imbue)).ToString(); return true;
@@ -2863,10 +2863,10 @@ public class Item : ObjBase
                 case "EXPANSION": case "VELOCITY": case "NAMELOC":
                     value = ParseBaseDefNumber(def.TagDefs.Get(upper)).ToString();
                     return true;
-                case "TFLAGS": value = $"0{def.TFlags:X}"; return true;                      // IBC_TFLAGS
+                case "TFLAGS": value = $"0{def.TFlags:x}"; return true;                      // IBC_TFLAGS
                 case "RESMAKE": value = def.ResMake; return true;                             // IBC_RESMAKE
                 case "RESLEVEL": value = def.ResLevel.ToString(); return true;                // OBC_RESLEVEL
-                case "RESDISPDNHUE": value = $"0{def.ResDispDnHue:X}"; return true;         // OBC_RESDISPDNHUE
+                case "RESDISPDNHUE": value = $"0{def.ResDispDnHue:x}"; return true;         // OBC_RESDISPDNHUE
                 // IBC_DUPELIST (CItemBase.cpp:1190): the alternate graphics, "0id,0id".
                 case "DUPELIST": value = string.Join(",", def.DupeIds.Select(d => $"0{d:x}")); return true;
                 case "TWOHANDS": value = def.TwoHands ? "1" : "0"; return true;
@@ -5448,7 +5448,7 @@ public class Item : ObjBase
         int offset = _type is ItemType.Portculis or ItemType.PortLocked ? 2 : 1;
         ushort newId = (ushort)(DispIdFull - offset);
         if (DispIdOverride != 0)
-            TrySetProperty("DISPID", $"0{newId:X}");
+            TrySetProperty("DISPID", $"0{newId:x}");
         else
             BaseId = newId;
         RemoveTag("DOOR_OPEN");
@@ -6216,7 +6216,7 @@ public class Item : ObjBase
             if (cdef != null && !string.IsNullOrEmpty(cdef.DefName))
                 return cdef.DefName;
         }
-        return $"0{_more1:X}";
+        return $"0{_more1:x}";
     }
 
     /// <summary>&lt;TDATAn&gt; as a script reads it. Upstream keeps TDATA on the item's
@@ -6259,7 +6259,7 @@ public class Item : ObjBase
         var idef = ResolveDefinition();
         if (idef != null && !string.IsNullOrEmpty(idef.DefName))
             return idef.DefName;
-        return $"0{BaseId:X}";
+        return $"0{BaseId:x}";
     }
 
     /// <summary>Source-X m_ModAr on the object base (CObjBase.h:88): a flat modifier added
@@ -6314,11 +6314,11 @@ public class Item : ObjBase
             case "DUPEITEM":
                 // IC_DUPEITEM (CItem.cpp:2855): the item's own id when it is shown as
                 // another graphic, else 0. Read-only - upstream has no write for it.
-                value = BaseId != DispIdFull ? $"0{BaseId:X}" : "0";
+                value = BaseId != DispIdFull ? $"0{BaseId:x}" : "0";
                 return true;
             case "DOOROPENID":
                 // "hex number or 0 if not set" (CItem.cpp:2676).
-                value = DoorOpenId != 0 ? $"0{DoorOpenId:X}" : "0";
+                value = DoorOpenId != 0 ? $"0{DoorOpenId:x}" : "0";
                 return true;
         }
 
@@ -6452,7 +6452,7 @@ public class Item : ObjBase
         var idef = Definitions.DefinitionLoader.GetItemDef(id);
         if (idef != null && !string.IsNullOrEmpty(idef.DefName))
             return idef.DefName;
-        return $"0{id:X}";
+        return $"0{id:x}";
     }
 
     private Item? FindContentByBaseId(ushort baseId)
@@ -6827,7 +6827,7 @@ public class Item : ObjBase
     }
 
     private static string FormatSerial(Serial uid) =>
-        uid.IsValid && uid.Value != 0 ? $"0{uid.Value:X8}" : "0";
+        uid.IsValid && uid.Value != 0 ? $"0{uid.Value:x8}" : "0";
 
     // --- Guild stone relation properties ---
 
@@ -6940,7 +6940,7 @@ public class Item : ObjBase
                 var guild = ResolveGuild?.Invoke(Uid);
                 if (guild == null) return false;
                 var master = guild.GetMaster();
-                value = master != null ? $"0{master.CharUid.Value:X}" : "0";
+                value = master != null ? $"0{master.CharUid.Value:x}" : "0";
                 return true;
             }
             case "MASTERTITLE":
@@ -7193,7 +7193,7 @@ public class Item : ObjBase
             if (guild == null) { value = "0"; return true; }
             var relKeys = guild.Relations.Keys.ToList();
             if (int.TryParse(upper[6..], out int idx) && idx >= 0 && idx < relKeys.Count)
-                value = $"0{relKeys[idx].Value:X}";
+                value = $"0{relKeys[idx].Value:x}";
             else
                 value = "0";
             return true;
@@ -7208,7 +7208,7 @@ public class Item : ObjBase
             if (uid != 0)
             {
                 var rel = guild.GetRelation(new Serial(uid));
-                value = rel != null ? $"0{rel.OtherStoneUid.Value:X}" : "0";
+                value = rel != null ? $"0{rel.OtherStoneUid.Value:x}" : "0";
             }
             else
                 value = "0";

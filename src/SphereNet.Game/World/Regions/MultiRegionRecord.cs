@@ -28,7 +28,7 @@ public static class MultiRegionRecord
     {
         uint flags = (uint)(region.OwnFlags & ~RegionFlag.InheritParentFlags);
         if (flags != 0)
-            multi.SetTag(FlagsKey, $"0{flags:X}");
+            multi.SetTag(FlagsKey, $"0{flags:x}");
         else
             multi.RemoveTag(FlagsKey);
 

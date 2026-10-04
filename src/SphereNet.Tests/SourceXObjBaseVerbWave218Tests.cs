@@ -21,6 +21,15 @@ public class SourceXObjBaseVerbWave218Tests
         public void SysMessage(string text) { }
     }
 
+    /// <summary>A console that speaks for a character (pSrc-&gt;GetChar()).</summary>
+    private sealed class CharConsole(Character ch) : ITextConsole
+    {
+        public string GetName() => ch.Name;
+        public PrivLevel GetPrivLevel() => PrivLevel.Admin;
+        public void SysMessage(string text) { }
+        public IScriptObj? GetSourceChar() => ch;
+    }
+
     private static GameWorld CreateWorld()
     {
         var world = new GameWorld(LoggerFactory.Create(_ => { }));
@@ -92,12 +101,84 @@ public class SourceXObjBaseVerbWave218Tests
         var world = CreateWorld();
         var item = world.CreateItem();
         world.PlaceItem(item, new Point3D(100, 100, 0, 0));
+        var src = world.CreateCharacter();
+        world.PlaceCharacter(src, new Point3D(101, 100, 0, 0));
         Item? used = null;
         Item.OnScriptDClick = (candidate, _) => used = candidate;
         try
         {
-            Assert.True(item.TryExecuteCommand("USEITEM", "", new Console()));
+            Assert.True(item.TryExecuteCommand("USEITEM", "", new CharConsole(src)));
             Assert.Same(item, used);
+        }
+        finally
+        {
+            Item.OnScriptDClick = null;
+        }
+    }
+
+    // Source-X OV_USEITEM (CObjBase.cpp:3023, #1480): no SRC character refuses.
+    [Fact]
+    public void UseItem_WithoutASourceCharacter_Refuses()
+    {
+        var world = CreateWorld();
+        var item = world.CreateItem();
+        world.PlaceItem(item, new Point3D(100, 100, 0, 0));
+        Item? used = null;
+        Item.OnScriptDClick = (candidate, _) => used = candidate;
+        try
+        {
+            Assert.False(item.TryExecuteCommand("USEITEM", "", new Console()));
+            Assert.Null(used);
+        }
+        finally
+        {
+            Item.OnScriptDClick = null;
+        }
+    }
+
+    // "ch.USEITEM <uid>": the character the verb runs on uses the item, not SRC.
+    [Fact]
+    public void UseItem_WithUid_IsUsedByTheCharacterTheVerbRunsOn()
+    {
+        var world = CreateWorld();
+        var item = world.CreateItem();
+        world.PlaceItem(item, new Point3D(100, 100, 0, 0));
+        var src = world.CreateCharacter();
+        var user = world.CreateCharacter();
+        world.PlaceCharacter(src, new Point3D(101, 100, 0, 0));
+        world.PlaceCharacter(user, new Point3D(102, 100, 0, 0));
+        Item? used = null;
+        IScriptObj? usedBy = null;
+        Item.OnScriptDClick = (candidate, console) => { used = candidate; usedBy = console.GetSourceChar(); };
+        try
+        {
+            Assert.True(user.TryExecuteCommand("USEITEM", "0" + item.Uid.Value.ToString("X"), new CharConsole(src)));
+            Assert.Same(item, used);
+            Assert.Same(user, usedBy);
+        }
+        finally
+        {
+            Item.OnScriptDClick = null;
+        }
+    }
+
+    // An unknown uid, or a uid that names a character, refuses - it no longer
+    // falls back to using the object the verb runs on.
+    [Fact]
+    public void UseItem_WithUnknownOrNonItemUid_Refuses()
+    {
+        var world = CreateWorld();
+        var src = world.CreateCharacter();
+        var user = world.CreateCharacter();
+        world.PlaceCharacter(src, new Point3D(101, 100, 0, 0));
+        world.PlaceCharacter(user, new Point3D(102, 100, 0, 0));
+        bool any = false;
+        Item.OnScriptDClick = (_, _) => any = true;
+        try
+        {
+            Assert.False(user.TryExecuteCommand("USEITEM", "04FFFFFF0", new CharConsole(src)));
+            Assert.False(user.TryExecuteCommand("USEITEM", "0" + src.Uid.Value.ToString("X"), new CharConsole(src)));
+            Assert.False(any);
         }
         finally
         {

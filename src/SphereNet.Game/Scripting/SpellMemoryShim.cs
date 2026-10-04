@@ -38,7 +38,7 @@ public sealed class SpellMemoryShim : IScriptObj
         {
             case "BASEID":
             case "ID":
-                value = $"0{BaseId:X}";
+                value = $"0{BaseId:x}";
                 return true;
             case "MOREY":
                 value = MoreY.ToString();
@@ -47,7 +47,7 @@ public sealed class SpellMemoryShim : IScriptObj
                 value = SpellId.ToString();
                 return true;
             case "LINK":
-                value = LinkUid != 0 ? $"0{LinkUid:X8}" : "0";
+                value = LinkUid != 0 ? $"0{LinkUid:x8}" : "0";
                 return true;
             case "NAME":
                 value = Name;

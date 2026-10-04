@@ -132,7 +132,9 @@ public sealed class CraftPipelineStageParityTests : IDisposable
             ACTDIFF=<TAG0.FORCE_DIFF>
         ENDIF
         IF (<TAG0.FAIL_EFFECT>)
-            ACTIONEFFECT=<TAG0.FAIL_EFFECT>
+            // Skill_Start reads m_Act_Effect back from LOCAL.Effect (CCharSkill.cpp:4526),
+            // so an ACTIONEFFECT write here would be overwritten.
+            LOCAL.Effect=<TAG0.FAIL_EFFECT>
         ENDIF
 
         [EVENTS e_pack_probe]

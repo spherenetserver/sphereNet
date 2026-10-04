@@ -3147,7 +3147,7 @@ public sealed class ClientItemUseHandler
         if (creatureId == 0)
             return false;
 
-        var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:X}");
+        var pet = _client.CreateNpcFromDefinition(creatureId, $"0{creatureId:x}");
         if (pet == null)
             return false;
         // The creature takes the figurine's name and, when it has one, its hue

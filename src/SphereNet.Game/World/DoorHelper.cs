@@ -128,7 +128,7 @@ public static class DoorHelper
         int offset = isPortcullis ? 2 : 1;
         ushort newDisplayId = (ushort)(door.DispIdFull + offset);
         if (door.DispIdOverride != 0)
-            door.TrySetProperty("DISPID", $"0{newDisplayId:X}");
+            door.TrySetProperty("DISPID", $"0{newDisplayId:x}");
         else
             door.BaseId = newDisplayId;
         door.SetTag("DOOR_OPEN", "1");
@@ -214,6 +214,100 @@ public static class DoorHelper
         }
 
         return found;
+    }
+
+    /// <summary>A door's offset from the character, turned into the character's own
+    /// frame: how far in front (negative = behind) and how far to the side. Diagonal
+    /// facings halve both, rounding as the reference's integer division does.
+    /// Source-X EXTCMD_DOOR_AUTO GetFacingDistance (CClientEvent.cpp:3126-3174).</summary>
+    public static (int Forward, int Side) GetFacingDistance(Direction facing, int distanceX, int distanceY)
+    {
+        byte dir = (byte)((byte)facing & ~(byte)Direction.Running);
+        var (forward, side) = dir switch
+        {
+            (byte)Direction.North => (-distanceY, distanceX),
+            (byte)Direction.NorthEast => (-distanceY + distanceX, distanceY + distanceX),
+            (byte)Direction.East => (distanceX, distanceY),
+            (byte)Direction.SouthEast => (distanceY + distanceX, distanceY - distanceX),
+            (byte)Direction.South => (distanceY, -distanceX),
+            (byte)Direction.SouthWest => (distanceY - distanceX, -distanceY - distanceX),
+            (byte)Direction.West => (-distanceX, -distanceY),
+            (byte)Direction.NorthWest => (-distanceY - distanceX, -distanceX + distanceY),
+            _ => (distanceY, -distanceX),
+        };
+        if ((dir & 1) != 0)
+        {
+            forward = (forward + 1) / 2;
+            side = (side + 1) / 2;
+        }
+        return (forward, side);
+    }
+
+    /// <summary>How good a door is for the open-door macro, 1 best .. 5 worst, by
+    /// where it lies relative to the way the character faces (arrow = facing):
+    /// <code>
+    /// 5|4|4|4|5
+    /// 5|3|v|3|5
+    /// 5|2|1|2|5
+    /// 5|3|2|3|5
+    /// 5|5|4|5|5
+    /// </code>
+    /// Source-X EXTCMD_DOOR_AUTO GetDoorPriority (CClientEvent.cpp:3191-3217).</summary>
+    public static int GetDoorAutoPriority(int forward, int side)
+    {
+        int sideAbs = Math.Abs(side);
+        if (forward == 0 && sideAbs == 0) return 1;
+        if (forward == 1 && sideAbs == 0) return 1;
+        if (forward == 1 && sideAbs == 1) return 2;
+        if (forward == 2 && sideAbs == 0) return 2;
+        if (forward == 0 && sideAbs == 1) return 3;
+        if (forward == 2 && sideAbs == 1) return 3;
+        if (forward == -1 && sideAbs <= 1) return 4;
+        if (forward == 3 && sideAbs == 0) return 4;
+        return 5;
+    }
+
+    /// <summary>The open-door macro priority of a door at (x, y) for a character at
+    /// (charX, charY) facing <paramref name="facing"/>.</summary>
+    public static int GetDoorAutoPriority(Direction facing, int charX, int charY, int x, int y)
+    {
+        var (forward, side) = GetFacingDistance(facing, x - charX, y - charY);
+        return GetDoorAutoPriority(forward, side);
+    }
+
+    /// <summary>The best map-static door for the open-door macro: searched in a
+    /// square of <paramref name="range"/> around the character, within 20 Z, ranked
+    /// with <see cref="GetDoorAutoPriority(Direction,int,int,int,int)"/>; the first
+    /// door found keeps a tie. Returns its priority, or 0 when none.</summary>
+    public static int FindBestStaticDoorForMacro(
+        MapDataManager? mapData, byte mapId, short charX, short charY, sbyte charZ,
+        Direction facing, int range,
+        out short doorX, out short doorY, out sbyte doorZ, out ushort tileId, out ushort hue)
+    {
+        doorX = 0; doorY = 0; doorZ = 0; tileId = 0; hue = 0;
+        if (mapData == null || range < 0)
+            return 0;
+
+        int best = 6;
+        for (int dx = -range; dx <= range; dx++)
+        {
+            for (int dy = -range; dy <= range; dy++)
+            {
+                short x = (short)(charX + dx);
+                short y = (short)(charY + dy);
+                foreach (var s in mapData.GetStatics(mapId, x, y))
+                {
+                    if (!IsDoorGraphic(mapData, s.TileId) || Math.Abs(charZ - s.Z) >= 20)
+                        continue;
+                    int priority = GetDoorAutoPriority(facing, charX, charY, x, y);
+                    if (priority >= best)
+                        continue;
+                    best = priority;
+                    doorX = x; doorY = y; doorZ = s.Z; tileId = s.TileId; hue = s.Hue;
+                }
+            }
+        }
+        return best < 6 ? best : 0;
     }
 
     private static bool HasDoorTileFlag(MapDataManager? mapData, ushort graphic)

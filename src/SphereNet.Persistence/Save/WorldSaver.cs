@@ -1007,12 +1007,12 @@ public sealed class WorldSaver
         bool headerIsOwnDef = !string.IsNullOrEmpty(ownDefName);
         string? defname = headerIsOwnDef ? ownDefName : ResolveItemDefName?.Invoke(item.BaseId);
         w.BeginRecord(defname != null ? $"WORLDITEM {defname}" : "WORLDITEM");
-        w.WriteProperty("SERIAL", $"0{item.Uid.Value:X8}");
+        w.WriteProperty("SERIAL", $"0{item.Uid.Value:x8}");
         w.WriteProperty("UUID", item.Uuid.ToString("D"));
         if (defname == null ||
             (ResolveHeaderBaseId?.Invoke(defname) is ushort headerBase && headerBase != 0 &&
              headerBase != item.BaseId))
-            w.WriteProperty("ID", $"0{item.BaseId:X}");
+            w.WriteProperty("ID", $"0{item.BaseId:x}");
         w.WriteProperty("NAME", item.Name);
         w.WriteProperty("P", item.Position.ToString());
         if (item.Hue.Value != 0) w.WriteProperty("COLOR", $"0{item.Hue.Value:x}");
@@ -1031,7 +1031,7 @@ public sealed class WorldSaver
         if (item.ModAr != 0) w.WriteProperty("MODAR", item.ModAr.ToString()); // CObjBase.cpp:2086
         if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
         if ((ulong)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(ulong)item.Attributes:x}");
-        if (item.CanMask != 0) w.WriteProperty("CANMASK", $"0{item.CanMask:X}");
+        if (item.CanMask != 0) w.WriteProperty("CANMASK", $"0{item.CanMask:x}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
 
         // Persist the instance TYPE whenever the item's type is its OWN rather than
@@ -1058,11 +1058,11 @@ public sealed class WorldSaver
         // it on a restart would quietly un-bound every chest a script had set up.
         if (item.ModMaxWeight != 0)
             w.WriteProperty("MODMAXWEIGHT", item.ModMaxWeight.ToString());
-        if (item.More1 != 0) w.WriteProperty("MORE1", $"0{item.More1:X}");
-        if (item.More2 != 0) w.WriteProperty("MORE2", $"0{item.More2:X}");
-        if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:X}");
+        if (item.More1 != 0) w.WriteProperty("MORE1", $"0{item.More1:x}");
+        if (item.More2 != 0) w.WriteProperty("MORE2", $"0{item.More2:x}");
+        if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:x}");
         if (item.MoreP != Point3D.Zero) w.WriteProperty("MOREP", item.MoreP.ToString());
-        if (item.Crafter.IsValid) w.WriteProperty("CRAFTER", $"0{item.Crafter.Value:X}");
+        if (item.Crafter.IsValid) w.WriteProperty("CRAFTER", $"0{item.Crafter.Value:x}");
         // Base-def strings, written the way upstream's r_WritePrefix writes a string
         // def: KEY="value" (CVarDefMap.cpp:708).
         if (item.OwnedBy.Length > 0) w.WriteProperty("OWNEDBY", $"\"{item.OwnedBy}\"");
@@ -1071,7 +1071,7 @@ public sealed class WorldSaver
         foreach (var (recipeKey, recipeVal) in item.RecipeDefs)
             w.WriteProperty(recipeKey, SphereNet.Game.Objects.ObjBase.FormatDefHex(recipeVal));
         if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining.ToString());
-        if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:X}");
+        if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:x}");
         if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
         if (item.Quality != 0) w.WriteProperty("QUALITY", item.Quality.ToString()); // Source-X persists only non-zero quality
 
@@ -1084,7 +1084,7 @@ public sealed class WorldSaver
         if (item.TData3 != 0) w.WriteProperty("TDATA3", item.TData3.ToString());
         if (item.TData4 != 0) w.WriteProperty("TDATA4", item.TData4.ToString());
 
-        if (item.ContainedIn.IsValid) w.WriteProperty("CONT", $"0{item.ContainedIn.Value:X8}");
+        if (item.ContainedIn.IsValid) w.WriteProperty("CONT", $"0{item.ContainedIn.Value:x8}");
         if (item.EquipLayer != 0) w.WriteProperty("LAYER", ((byte)item.EquipLayer).ToString());
         if (item.ContainerGridIndex != 0) w.WriteProperty("CONTGRID", item.ContainerGridIndex.ToString());
 
@@ -1297,12 +1297,12 @@ public sealed class WorldSaver
         if (string.IsNullOrEmpty(defname) && ch.TryGetTag("CHARDEF", out string? tagDef) && !string.IsNullOrEmpty(tagDef))
             defname = tagDef;
         w.BeginRecord(defname != null ? $"WORLDCHAR {defname}" : "WORLDCHAR");
-        w.WriteProperty("SERIAL", $"0{ch.Uid.Value:X8}");
+        w.WriteProperty("SERIAL", $"0{ch.Uid.Value:x8}");
         w.WriteProperty("UUID", ch.Uuid.ToString("D"));
         w.WriteProperty("NAME", ch.Name);
         w.WriteProperty("P", ch.Position.ToString());
-        w.WriteProperty("BODY", $"0{ch.BodyId:X}");
-        if (ch.CanMask != 0) w.WriteProperty("CANMASK", $"0{ch.CanMask:X}");
+        w.WriteProperty("BODY", $"0{ch.BodyId:x}");
+        if (ch.CanMask != 0) w.WriteProperty("CANMASK", $"0{ch.CanMask:x}");
         if (ch.OName.Length > 0) w.WriteProperty("ONAME", $"\"{ch.OName}\"");
         foreach (var (recipeKey, recipeVal) in ch.RecipeDefs)
             w.WriteProperty(recipeKey, SphereNet.Game.Objects.ObjBase.FormatDefHex(recipeVal));
@@ -1311,7 +1311,7 @@ public sealed class WorldSaver
         // (the truncated body id) and re-introduce the c_alchemist→c_man
         // brain hijack on every restart.
         if (ch.CharDefIndex != 0 && ch.CharDefIndex != ch.BaseId)
-            w.WriteProperty("CHARDEFINDEX", $"0{ch.CharDefIndex:X}");
+            w.WriteProperty("CHARDEFINDEX", $"0{ch.CharDefIndex:x}");
         if (ch.Hue.Value != 0) w.WriteProperty("COLOR", $"0{ch.Hue.Value:x}");
         w.WriteProperty("DIR", ((byte)ch.Direction).ToString());
         // The MODIFIER goes down first, which upstream calls out in as many words
@@ -1391,7 +1391,7 @@ public sealed class WorldSaver
         // field is what silently undid a character's training - the O-line came later
         // in the record and overwrote the real stat on load. Still ACCEPTED on load:
         // a classic save states only the O-variants.
-        if (ch.OBody != 0) w.WriteProperty("OBODY", $"0{ch.OBody:X}");
+        if (ch.OBody != 0) w.WriteProperty("OBODY", $"0{ch.OBody:x}");
         if (ch.OSkin != 0) w.WriteProperty("OSKIN", $"0{ch.OSkin:x}");
         if (ch.Luck != 0) w.WriteProperty("LUCK", ch.Luck.ToString());
         if (ch.Exp != 0) w.WriteProperty("EXP", ch.Exp.ToString());
@@ -1403,18 +1403,18 @@ public sealed class WorldSaver
             w.WriteProperty("HOMEDIST", ch.HomeDist.ToString());
         if (ch.ActPri != 0) w.WriteProperty("ACTPRI", ch.ActPri.ToString());
         if (ch.Action != 0) w.WriteProperty("ACTION", ((int)ch.Action).ToString());
-        if (ch.Act.IsValid) w.WriteProperty("ACT", $"0{ch.Act.Value:X8}");
+        if (ch.Act.IsValid) w.WriteProperty("ACT", $"0{ch.Act.Value:x8}");
         if (ch.ActArg1 != 0) w.WriteProperty("ACTARG1", ch.ActArg1.ToString());
         if (ch.ActArg2 != 0) w.WriteProperty("ACTARG2", ch.ActArg2.ToString());
         if (ch.ActArg3 != 0) w.WriteProperty("ACTARG3", ch.ActArg3.ToString());
         if (ch.ActP.X != 0 || ch.ActP.Y != 0 || ch.ActP.Z != 0 || ch.ActP.Map != 0)
             w.WriteProperty("ACTP", $"{ch.ActP.X},{ch.ActP.Y},{ch.ActP.Z},{ch.ActP.Map}");
-        if (ch.ActPrv.IsValid) w.WriteProperty("ACTPRV", $"0{ch.ActPrv.Value:X8}");
+        if (ch.ActPrv.IsValid) w.WriteProperty("ACTPRV", $"0{ch.ActPrv.Value:x8}");
         // ACTDIFF is read back through the script key, which takes tenths.
         if (ch.ActDiff != 0) w.WriteProperty("ACTDIFF", (ch.ActDiff > 0 ? (long)ch.ActDiff * 10 : ch.ActDiff).ToString());
         // CChar::r_Write stores an instance HEIGHT when one was set.
         if (ch.HeightOverride != 0) w.WriteProperty("HEIGHT", ch.HeightOverride.ToString());
-        if (ch.FightTarget.IsValid) w.WriteProperty("FIGHTTARGET", $"0{ch.FightTarget.Value:X8}");
+        if (ch.FightTarget.IsValid) w.WriteProperty("FIGHTTARGET", $"0{ch.FightTarget.Value:x8}");
         if (!ch.IsPlayer && ch.PetAIMode != SphereNet.Core.Enums.PetAIMode.Follow)
             w.WriteProperty("PETAI", ((int)ch.PetAIMode).ToString());
         if (ch.FleeStepsCurrent != 0) w.WriteProperty("FLEESTEPS", ch.FleeStepsCurrent.ToString());
@@ -1431,7 +1431,7 @@ public sealed class WorldSaver
         if (ch.RegenValMana != 0) w.WriteProperty("REGENVALMANA", ch.RegenValMana.ToString());
         if (ch.RegenValStam != 0) w.WriteProperty("REGENVALSTAM", ch.RegenValStam.ToString());
         if (ch.RegenValFood != 0) w.WriteProperty("REGENVALFOOD", ch.RegenValFood.ToString());
-        if (ch.BloodHue != 0) w.WriteProperty("BLOODCOLOR", $"0{ch.BloodHue:X}");
+        if (ch.BloodHue != 0) w.WriteProperty("BLOODCOLOR", $"0{ch.BloodHue:x}");
         if (ch.FollowerSlotsOverride is int fsOverride) w.WriteProperty("FOLLOWERSLOTS", fsOverride.ToString());
         if (ch.ResPhysicalMax != 70) w.WriteProperty("RESPHYSICALMAX", ch.ResPhysicalMax.ToString());
         if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
@@ -1499,7 +1499,7 @@ public sealed class WorldSaver
         {
             var equip = ch.GetEquippedItem((SphereNet.Core.Enums.Layer)layer);
             if (equip != null)
-                w.WriteProperty($"EQUIP[{layer}]", $"0{equip.Uid.Value:X8}");
+                w.WriteProperty($"EQUIP[{layer}]", $"0{equip.Uid.Value:x8}");
         }
 
         foreach (var r in ch.Events)
@@ -1533,7 +1533,7 @@ public sealed class WorldSaver
             // link,flags,remainingTimeoutMs(-1 = none),unixCreated.
             long memRemaining = mem.Timeout > 0 ? Math.Max(1, mem.Timeout - now) : -1;
             w.WriteProperty("MEMORY",
-                $"0{mem.Link.Value:X8},{(ushort)flags},{memRemaining},{mem.More1}");
+                $"0{mem.Link.Value:x8},{(ushort)flags},{memRemaining},{mem.More1}");
         }
 
         // Attacker log (Source-X m_lastAttackers): damage totals, ignore flags and
@@ -1542,7 +1542,7 @@ public sealed class WorldSaver
         // save written before it still reads (the loader defaults it to zero).
         foreach (var rec in ch.Attackers)
             w.WriteProperty("ATTACKER",
-                $"0{rec.Uid.Value:X8},{rec.TotalDamage},{(rec.Ignored ? 1 : 0)},{rec.Threat}");
+                $"0{rec.Uid.Value:x8},{rec.TotalDamage},{(rec.Ignored ? 1 : 0)},{rec.Threat}");
 
         WriteTimerF(w, ch, now);
 
@@ -1676,11 +1676,11 @@ public sealed class WorldSaver
                 // only when set, so a save from before they were recorded and a save
                 // of a page that never had them look the same.
                 if (page.CharUid.IsValid)
-                    w.WriteProperty("CHARUID", $"0{page.CharUid.Value:X}");
+                    w.WriteProperty("CHARUID", $"0{page.CharUid.Value:x}");
                 if (page.Position.Map != 0 || page.Position.X != 0 || page.Position.Y != 0)
                     w.WriteProperty("P", page.Position.ToString());
                 if (page.Handler.IsValid)
-                    w.WriteProperty("HANDLER", $"0{page.Handler.Value:X}");
+                    w.WriteProperty("HANDLER", $"0{page.Handler.Value:x}");
                 w.WriteProperty("STATUS", page.Status);
                 w.WriteProperty("TIME", page.Created.ToString());
             }

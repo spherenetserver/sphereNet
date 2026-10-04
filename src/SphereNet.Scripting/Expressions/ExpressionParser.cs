@@ -1344,7 +1344,7 @@ public sealed partial class ExpressionParser
                 if (hVal.StartsWith('-'))
                     return hVal;
                 long hNum = Evaluate(hVal.AsSpan());
-                return "0" + hNum.ToString("X", System.Globalization.CultureInfo.InvariantCulture);
+                return "0" + hNum.ToString("x", System.Globalization.CultureInfo.InvariantCulture);
             }
 
             // Not a known member once the H is removed, so the H belonged to the name:
@@ -2662,15 +2662,15 @@ public sealed partial class ExpressionParser
     }
 
     /// <summary>Sphere's hex text for a number (CSString::FormatLLHex ->
-    /// Str_FromLL_Fast base 16, sstring.cpp:487): a '0' prefix and uppercase
-    /// digits; zero is "00"; anything up to UINT32_MAX - negatives included - is
-    /// shown as a 32-bit two's-complement word, so -1 is "0FFFFFFFF".</summary>
+    /// Str_FromLL_Fast base 16, sstring.cpp:487): a '0' prefix and lower-case
+    /// digits (as in 0.56, FMTDWORDH = PRIx32); zero is "00"; anything up to
+    /// UINT32_MAX - negatives included - is shown as a 32-bit two's-complement word, so -1 is "0ffffffff".</summary>
     internal static string FormatSphereHex(long value)
     {
         if (value == 0) return "00";
         return value <= uint.MaxValue
-            ? "0" + unchecked((uint)value).ToString("X", CultureInfo.InvariantCulture)
-            : "0" + value.ToString("X", CultureInfo.InvariantCulture);
+            ? "0" + unchecked((uint)value).ToString("x", CultureInfo.InvariantCulture)
+            : "0" + value.ToString("x", CultureInfo.InvariantCulture);
     }
 
     /// <summary>C atoi: skip leading whitespace, an optional sign, then decimal digits

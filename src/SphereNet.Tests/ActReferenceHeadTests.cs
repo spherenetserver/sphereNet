@@ -95,7 +95,7 @@ public sealed class ActReferenceHeadTests
             new SphereNet.Scripting.Execution.ScriptScope());
         ch.TryGetProperty("TAG.ACTUID", out var uid);
         ch.TryGetProperty("TAG.ACTNAME", out var name);
-        Assert.Equal($"0{actual.Uid.Value:X}", uid);
+        Assert.Equal($"0{actual.Uid.Value:x}", uid);
         Assert.Equal("actual target", name);
     }
 
@@ -145,7 +145,7 @@ public sealed class ActReferenceHeadTests
         ch.TrySetProperty("ACT", $"0{made.Uid.Value:X}");
 
         Assert.True(ch.TryGetProperty("ACT", out string uid));
-        Assert.Equal($"0{made.Uid.Value:X}", uid);
+        Assert.Equal($"0{made.Uid.Value:x}", uid);
     }
 
     [Fact]

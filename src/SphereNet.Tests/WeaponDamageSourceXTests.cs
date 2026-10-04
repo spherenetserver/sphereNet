@@ -107,10 +107,13 @@ public sealed class WeaponDamageSourceXTests
     }
 
     [Theory]
-    [InlineData(17, 34, 17, 17)]   // even max: GetVal2Fast(17, 18) = 17
-    [InlineData(16, 33, 16, 17)]   // odd max: GetVal2Fast(16, 18) = 16..17
-    [InlineData(0, 0, 0, 0)]
+    // GetVal2Fast(iArMin, iArMax + 1) (CCharFight.cpp:740, #1550): uniform over
+    // iArMin..iArMax inclusive.
+    [InlineData(17, 34, 17, 34)]   // GetVal2Fast(17, 35) = 17..34
+    [InlineData(16, 33, 16, 33)]   // GetVal2Fast(16, 34) = 16..33
+    [InlineData(0, 0, 0, 0)]       // GetVal2Fast(0, 1) = 0
     [InlineData(0, 1, 0, 1)]       // GetVal2Fast(0, 2) = 0..1
+    [InlineData(5, 5, 5, 5)]       // GetVal2Fast(5, 6) = 5
     public void PreAosArmor_DefenseFollowsGetVal2Fast(int arMin, int arMax, int lo, int hi)
     {
         var seen = new HashSet<int>();

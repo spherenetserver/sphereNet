@@ -174,8 +174,8 @@ public sealed class TagNumberReadTests : IDisposable
 
         if (format == SaveFormat.Text)
         {
-            Assert.Equal("02A", loadedHouse.Tags.Get("OVERRIDE.REQSTR"));   // the bug's precondition
-            Assert.Equal("0A", loaded.Tags.Get("JAIL_CELL"));
+            Assert.Equal("02a", loadedHouse.Tags.Get("OVERRIDE.REQSTR"));   // the bug's precondition
+            Assert.Equal("0a", loaded.Tags.Get("JAIL_CELL"));
         }
         Assert.Equal(42, loadedHouse.ReqStr);
         Assert.Equal(123456, loaded.BondingStartTick);
@@ -214,7 +214,7 @@ public sealed class TagNumberReadTests : IDisposable
         var loaded = new AccountManager(_lf);
         Assert.Equal(1, AccountPersistence.Load(loaded, dir));
         var back = loaded.FindAccount("cellmate")!;
-        Assert.Equal("0C", back.Tags.Get("JailCell"));
+        Assert.Equal("0c", back.Tags.Get("JailCell"));
 
         var world = MakeWorld();
         var ch = world.CreateCharacter();

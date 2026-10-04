@@ -104,7 +104,7 @@ public class ShipHousingParityTests
             Assert.True(multi.TryGetProperty("HOUSE.ACCESSES", out string? count));
             Assert.Equal("1", count);
             Assert.True(multi.TryGetProperty("HOUSE.ACCESS.0", out string? first));
-            Assert.Equal($"0{guest.Uid.Value:X8}", first);
+            Assert.Equal($"0{guest.Uid.Value:x8}", first);
         }
         finally { Item.ResolveHouse = null; }
     }

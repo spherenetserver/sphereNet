@@ -4,6 +4,45 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Kasim 2025'ten bu yana gelen Source-X degisiklikleri
+------------------------------------------------------------------------
+DEGISIKLIK - Era 0 (Sphere ozel) isabet sansi guncel Source-X'i izler (dadab44, cf60700):
+           hesaplanan sans rand(sans) yerine dogrudan kullanilir, saldiranin
+           INCREASEHITCHANCE ve savunanin INCREASEDEFCHANCE degeriyle olceklenir, uyuyan veya
+           donmus hedefe en az %80 isabet edilir (rand(10) idi). Ayni deger beceri artisini da
+           belirler. Yeni ini anahtari COMBATHITCHANCELEGACYERA0=1 0.56 / eski Source-X
+           zarini geri getirir.
+DUZELTME - AOS oncesi zirh savunmasi ArMin..ArMax araliginin tamaminda esit zarlanir (#1550);
+           minimumda ya da bir ustunde takiliydi.
+DUZELTME - Izleyicinin kendi karakteri disindaki her mobilin durum paketi (0x11) cani 100
+           uzerinden yuzde olarak tasir (#1573); gercek degerler diger oyunculara sizyordu.
+DUZELTME - sphereCrypt.ini: 7.0.115-7.0.117 istemcileri ve 4.0.115-4.0.117 Enhanced Client
+           icin giris anahtarlari; Enhanced Client kimlikleri 67001xx00 olarak duzeltildi -
+           eski 10 haneli bicim tasiyordu ve EC 4.0.103-4.0.114'un calisan anahtari yoktu.
+YENI - EXPERIMENTAL bayragi EF_WalkBypassMonsters (0x80000): her mobil ignore-mobiles mod
+       bitiyle gonderilir, oyuncular staff gibi NPC'lerin ustunden gecebilir (#1486).
+YENI - @SpellEffect / [SPELL] @Effect LOCAL.IsSpellReflected (salt okunur) ve
+       LOCAL.BypassMagicReflection (0'dan buyukse Magic Reflection atlanir) saglar (#1569).
+YENI - @SpellFail / [SPELL] @Fail LOCAL.Sound saglar: varsayilan fizzle sesi, geri okunur, 0
+       ses calmaz (#1520).
+YENI - @SkillStart / [SKILL] @Start LOCAL.Effect saglar: becerinin EFFECT degeri tetiklerden
+       once hesaplanir (ayarli beceri, craft icin rastgele), geri okunur ve beceri boyunca
+       korunur (#1555).
+DUZELTME - Yerlestirilirken olen summon sahip almadan silinir (#1369).
+DUZELTME - Ceset kesme chardef RESOURCES icindeki TEMPLATE satirlarini kabul eder; gecersiz
+           satir loglanip atlanir, listeyi bitirmez (#1574).
+DUZELTME - Kapi acma makrosu karakterin cevresinde arar ve ilk buldugu yerine yone gore en
+           uygun kapiyi acar (#1510/#1558).
+DEGISIKLIK - SPELL FLAGS ve SERV.TILEDATA.ITEM(n).FLAGS Sphere hex olarak okunur; tek basina
+           SERV.MAP.n.SECTOR.n sektor adini dondurmeden cozulur (678a336, e727e43).
+DUZELTME - ch.USEITEM <uid> o karakterin esyayi kullanmasini saglar; bilinmeyen ya da esya
+           olmayan uid veya SRC karakteri yoksa false doner (#1480).
+DEGISIKLIK - Script'in gordugu hex ciktisi Source-X ve 0.56 gibi yeniden kucuk harflidir
+           (678a336): UID/SERIAL okumalari, <HVAL>, sayi TAG/VAR/LOCAL okumalari ve tum hex
+           ozellik okumalari ("040001a2f", <HVAL 255> = "0ff"). Save'ler upstream WriteKeyHex
+           gibi kucuk harf hex yazar. Okuma buyuk/kucuk harf ayirmaz; mevcut save ve
+           script'ler degismeden yuklenir.
+
 [2026-10-04] - Isim ve emote renkleri Sphere 0.56b varsayilanlarinda
 ------------------------------------------------------------------------
 DEGISIKLIK - Notoriety isim renklerinin varsayilanlari Sphere 0.56b'ninki (CResource.cpp:

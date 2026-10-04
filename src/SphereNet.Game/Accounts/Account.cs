@@ -226,7 +226,7 @@ public sealed class Account : IScriptObj
             case "GUEST": value = _guest ? "1" : "0"; return true;
             case "JAIL": value = _jail ? "1" : "0"; return true;
             case "LANG": value = _lang; return true;
-            case "LASTCHARUID": value = _lastCharUid.IsValid ? $"0{_lastCharUid.Value:X8}" : "0"; return true;
+            case "LASTCHARUID": value = _lastCharUid.IsValid ? $"0{_lastCharUid.Value:x8}" : "0"; return true;
             case "LASTCONNECTDATE": value = FormatConnectDate(_lastLogin); return true;
             case "LASTCONNECTTIME": value = _lastConnectTime.ToString(); return true;
             case "LASTLOGIN": value = _lastLogin.ToString("O"); return true;
@@ -242,7 +242,7 @@ public sealed class Account : IScriptObj
                 if (upper.StartsWith("CHAR.", StringComparison.Ordinal) && int.TryParse(upper.AsSpan(5), out int slotIdx))
                 {
                     var uid = GetCharSlot(slotIdx);
-                    value = uid.IsValid ? $"0{uid.Value:X8}" : "0";
+                    value = uid.IsValid ? $"0{uid.Value:x8}" : "0";
                     return true;
                 }
                 return false;

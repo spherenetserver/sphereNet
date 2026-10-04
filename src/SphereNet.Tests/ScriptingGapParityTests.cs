@@ -259,7 +259,7 @@ public sealed class ScriptingGapParityTests : IDisposable
         Assert.Equal("0", same);
         item.TrySetProperty("DISPID", "03BE");
         Assert.True(item.TryGetProperty("DUPEITEM", out string dupe));
-        Assert.Equal("03C9", dupe);
+        Assert.Equal("03c9", dupe);
         Assert.False(item.TrySetProperty("DUPEITEM", "03be"));
     }
 

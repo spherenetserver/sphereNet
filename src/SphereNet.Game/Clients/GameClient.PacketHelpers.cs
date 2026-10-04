@@ -1671,7 +1671,8 @@ public sealed partial class GameClient
         if (_character == null || ch != _character)
         {
             bool canRename = _character != null && !ch.IsPlayer && ch.HasOwner(_character.Uid);
-            _netState.Send(new PacketStatusShort(ch.Uid.Value, statusName, hits, maxHits, canRename, expansion));
+            var (pctHits, pctMax) = PercentStatusHits(ch.Hits, ch.MaxHits);
+            _netState.Send(new PacketStatusShort(ch.Uid.Value, statusName, pctHits, pctMax, canRename, expansion));
             return;
         }
 
@@ -1738,6 +1739,17 @@ public sealed partial class GameClient
         foreach (char c in s)
             hash = ((hash << 5) + hash) ^ c;
         return hash;
+    }
+
+    /// <summary>Hit points as another viewer's status bar carries them: a percentage over
+    /// a fixed maximum of 100. Only the character's own status window gets the real
+    /// figures (send.cpp:167-171); for everyone else upstream writes
+    /// cur*100/max(max,1) and 100 (send.cpp:178-184, 204-206), so a mobile's actual
+    /// hit points are not handed to any client that opens its health bar.</summary>
+    internal static (short Cur, short Max) PercentStatusHits(short cur, short max)
+    {
+        int pct = Math.Max(0, (int)cur) * 100 / Math.Max((int)max, 1);
+        return ((short)Math.Min(pct, (int)short.MaxValue), 100);
     }
 
     private static (short Cur, short Max) NormalizeStatusPair(short cur, short max, short fallbackBase)

@@ -135,7 +135,7 @@ public sealed class GmPage : IScriptObj
     public TriggerResult OnTrigger(int triggerType, IScriptObj? source, ITriggerArgs? args)
         => TriggerResult.Default;
 
-    private static string FormatSerial(Serial s) => s.IsValid ? $"0{s.Value:X}" : "0";
+    private static string FormatSerial(Serial s) => s.IsValid ? $"0{s.Value:x}" : "0";
 
     private static Serial ParseSerial(string text)
     {

@@ -35,6 +35,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Scripting.ScriptTouchAccess.Configuration = new();
         SphereNet.Game.Objects.ObjBase.OnObjectMessage = null;
         SphereNet.Game.Definitions.DefinitionLoader.ResetForTests();
+        SphereNet.Game.Death.DeathEngine.CarveDiagnostic = null;
         // Script-facing brain numbering adopted from a 0.56-numbered pack.
         SphereNet.Core.Enums.NpcBrainNames.ClearPackNumbering();
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
@@ -166,6 +167,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Clients.GameClient.ColorInvisHue = 0;
         SphereNet.Game.Clients.GameClient.ColorHiddenHue = 0;
         SphereNet.Game.Clients.GameClient.ColorInvisSpellHue = 0;
+        SphereNet.Game.Clients.GameClient.WalkBypassMonsters = false;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedEra = 0;
         SphereNet.Game.Objects.Characters.Character.GuardsInstantKill = true;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedScaleFactor = 15_000;
@@ -180,6 +182,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CharacterSounds.GenericSoundsEnabled = true;
         SphereNet.Game.Objects.Characters.Character.CombatDamageEra = 0;
         SphereNet.Game.Objects.Characters.Character.CombatHitChanceEra = 0;
+        SphereNet.Game.Objects.Characters.Character.CombatHitChanceLegacyEra0 = false;
         SphereNet.Game.Objects.Characters.Character.EquippedCastEnabled = false;
         SphereNet.Game.Objects.Characters.Character.ReagentsRequiredEnabled = true;
         // Cast abort/fail resource loss (MANALOSSABORT, MANALOSSFAIL, MANALOSSPERCENT,

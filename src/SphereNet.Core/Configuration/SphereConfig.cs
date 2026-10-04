@@ -156,6 +156,9 @@ public sealed class SphereConfig
     public int CombatFlags { get; set; }
     public int CombatDamageEra { get; set; }
     public int CombatHitChanceEra { get; set; }
+    /// <summary>COMBATHITCHANCELEGACYERA0 (SphereNet key): era 0 keeps the 0.56 /
+    /// pre-2026 Source-X hit roll instead of the current one.</summary>
+    public bool CombatHitChanceLegacyEra0 { get; set; }
     public int CombatSpeedEra { get; set; }
     public int CombatParryingEra { get; set; } =
         (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |
@@ -1120,6 +1123,7 @@ public sealed class SphereConfig
         CombatFlags = ini.GetInt(section, "CombatFlags", CombatFlags);
         CombatDamageEra = ini.GetInt(section, "CombatDamageEra", CombatDamageEra);
         CombatHitChanceEra = ini.GetInt(section, "CombatHitChanceEra", CombatHitChanceEra);
+        CombatHitChanceLegacyEra0 = ini.GetBool(section, "CombatHitChanceLegacyEra0", CombatHitChanceLegacyEra0);
         CombatSpeedEra = ini.GetInt(section, "CombatSpeedEra", CombatSpeedEra);
         // ELEM_MASK_INT in Source-X: the reference ini writes "01|010".
         CombatParryingEra = ini.GetFlags(section, "CombatParryingEra", CombatParryingEra);

@@ -60,7 +60,7 @@ public sealed class StoneMemberRef : IScriptObj
                 value = Member.AccountGold.ToString();
                 return true;
             case "LOYALTO":
-                value = Member.LoyalTo.IsValid ? $"0{Member.LoyalTo.Value:X}" : "0";
+                value = Member.LoyalTo.IsValid ? $"0{Member.LoyalTo.Value:x}" : "0";
                 return true;
             case "PRIV":
                 value = ((byte)Member.Priv).ToString();

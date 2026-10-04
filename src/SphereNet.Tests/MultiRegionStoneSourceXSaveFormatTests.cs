@@ -155,7 +155,7 @@ public sealed class MultiRegionStoneSourceXSaveFormatTests : IDisposable
         // House | Safe - the land's Guarded and the engine's inherit marker are not the
         // structure's own flags. Sphere hex: a leading 0, upper-case digits.
         uint expected = (uint)(RegionFlag.House | RegionFlag.Safe);
-        Assert.Contains($"REGION.FLAGS=0{expected:X}", record);
+        Assert.Contains($"REGION.FLAGS=0{expected:x}", record);
         Assert.Contains("REGION.EVENTS=r_keep_events", record);
         Assert.Contains("REGION.TAG.OWNER=0123", record);
         Assert.DoesNotContain(record, l => l.Contains("STALE", StringComparison.OrdinalIgnoreCase));
@@ -208,7 +208,7 @@ public sealed class MultiRegionStoneSourceXSaveFormatTests : IDisposable
         var record = RecordOf(multi.Uid);
         Assert.Contains("REGION.TAG.COLOR=5", record);
         Assert.Contains("REGION.EVENTS=r_two", record);
-        Assert.Contains($"REGION.FLAGS=0{flags:X}", record);
+        Assert.Contains($"REGION.FLAGS=0{flags:x}", record);
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public sealed class MultiRegionStoneSourceXSaveFormatTests : IDisposable
 
         var record = RecordOf(hull.Uid);
         uint expected = (uint)(RegionFlag.Ship | RegionFlag.Underground);
-        Assert.Contains($"REGION.FLAGS=0{expected:X}", record);
+        Assert.Contains($"REGION.FLAGS=0{expected:x}", record);
         Assert.Contains("REGION.EVENTS=r_ship_events", record);
         Assert.Contains("REGION.TAG.CREW=3", record);
         // The region comes before the multi's own keys, as CItemMulti::r_Write writes it.

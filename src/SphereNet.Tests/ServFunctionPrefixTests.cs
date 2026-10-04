@@ -82,7 +82,7 @@ public sealed class ServFunctionPrefixTests
             .GetField("_config", BindingFlags.Static | BindingFlags.NonPublic)!
             .SetValue(null, cfg);
 
-        Assert.Equal("03F00", Resolve("LOGMASK"));
+        Assert.Equal("03f00", Resolve("LOGMASK"));
         Assert.Equal("45", Resolve("CLIENTLINGER"));
         Assert.Equal("60000", Resolve("ITEMSMAXAMOUNT"));
         Assert.Equal("5", Resolve("MURDERMINCOUNT"));

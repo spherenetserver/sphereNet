@@ -186,7 +186,7 @@ public sealed class ServerExpressionReadbackParityTests
         {
             Assert.Equal("480", Serv("MURDERDECAYTIME"));     // seconds in, minutes out
             Assert.Equal("7500", Serv("WALKBUFFER"));         // tenths in, ms out
-            Assert.Equal("03E9", Serv("COLORHIDDEN"));        // FormatHex
+            Assert.Equal("03e9", Serv("COLORHIDDEN"));        // FormatHex
             Assert.Equal("010", Serv("OPTIONFLAGS"));
             Assert.Equal("00", Serv("EXPERIMENTAL"));
             Assert.Equal("010", Serv("CHATFLAGS"));
@@ -221,7 +221,7 @@ public sealed class ServerExpressionReadbackParityTests
             var item = world.CreateItem();
             item.Name = "probe";
             world.LastNewItem = item.Uid;
-            Assert.Equal($"0{item.Uid.Value:X}", Serv("LASTNEWITEM"));
+            Assert.Equal($"0{item.Uid.Value:x}", Serv("LASTNEWITEM"));
             Assert.Equal("probe", Serv("LASTNEWITEM.NAME"));
         });
     }

@@ -365,8 +365,8 @@ public sealed class ServStatementParityTests : IDisposable
             "[ITEMDEF i_probe_named]" + Nl + "ID=0f52" + Nl +
             "[ITEMDEF i_probe_noid]" + Nl + "NAME=nothing" + Nl);
 
-        Assert.Equal("0F51", Read(b, "<SERV.ITEMDEF.i_probe_dagger.ID>"));
-        Assert.Equal("0F52", Read(b, "<SERV.ITEMDEF.i_probe_named.ID>"));
+        Assert.Equal("0f51", Read(b, "<SERV.ITEMDEF.i_probe_dagger.ID>"));
+        Assert.Equal("0f52", Read(b, "<SERV.ITEMDEF.i_probe_named.ID>"));
         Assert.Equal("00", Read(b, "<SERV.ITEMDEF.i_probe_noid.ID>"));
     }
 

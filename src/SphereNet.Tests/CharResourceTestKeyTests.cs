@@ -114,7 +114,7 @@ public sealed class CharResourceTestKeyTests : IDisposable
             new SphereNet.Game.Scripting.TriggerArgs { CharSrc = b.Healer, ItemSrc = stack, O1 = b.Healer });
 
         Assert.Equal("started", b.Healer.Tags.Get("OUTCOME"));
-        Assert.Equal($"0{stack.Uid.Value:X}", b.Healer.Tags.Get("FOUND"));
+        Assert.Equal($"0{stack.Uid.Value:x}", b.Healer.Tags.Get("FOUND"));
         Assert.Equal(49, stack.Amount);
     }
 
@@ -153,8 +153,8 @@ public sealed class CharResourceTestKeyTests : IDisposable
         salve.Tags.Set("SALVE", "1");
         var plain = Bandages(b, b.Pack, 0x0E21, 7);
 
-        Assert.Equal($"0{plain.Uid.Value:X}", Read(b.Healer, "FINDID.i_bandage"));
-        Assert.Equal($"0{salve.Uid.Value:X}", Read(b.Healer, "FINDID.i_bandage_salve"));
+        Assert.Equal($"0{plain.Uid.Value:x}", Read(b.Healer, "FINDID.i_bandage"));
+        Assert.Equal($"0{salve.Uid.Value:x}", Read(b.Healer, "FINDID.i_bandage_salve"));
         Assert.Equal("1", Read(b.Healer, "FINDID.i_bandage_salve.TAG.SALVE"));
         Assert.Equal("0", Read(b.Healer, "FINDID.i_backpack_missing"));
 

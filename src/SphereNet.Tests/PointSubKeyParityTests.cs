@@ -73,7 +73,7 @@ public sealed class PointSubKeyParityTests : IDisposable
         Assert.True(onStatics.TryGetProperty("P.STATICS", out string count));
         Assert.Equal("2", count);
         Assert.True(onStatics.TryGetProperty("p.statics.1.id", out string id));
-        Assert.Equal($"0{RockTile:X}", id);
+        Assert.Equal($"0{RockTile:x}", id);
         Assert.True(onBareLand.TryGetProperty("P.STATICS", out string none));
         Assert.Equal("0", none);
 

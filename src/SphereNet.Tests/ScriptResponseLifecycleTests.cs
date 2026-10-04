@@ -260,9 +260,12 @@ public sealed class ScriptResponseLifecycleTests
         Assert.Equal(opens, door.TryGetTag("DOOR_OPEN", out var value) && value == "1");
     }
 
+    // The search square is centred on the character (Source-X EXTCMD_DOOR_AUTO,
+    // CClientEvent.cpp:3220), so a door two tiles ahead needs a radius of two.
     [Theory]
     [InlineData(0, false)]
-    [InlineData(1, true)]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
     public void ScriptDoorRadiusChangesActualSearch(int radius, bool opens)
     {
         using var f = new Fixture("[EVENTS e_ext]\nON=@UserExtCmd\nLOCAL.DoorAutoDist=" + radius + "\n", "e_ext");
@@ -274,6 +277,59 @@ public sealed class ScriptResponseLifecycleTests
         f.World.PlaceItem(door, new SphereNet.Core.Types.Point3D(102, 100));
         f.Client.HandleTextCommand(0x58, "");
         Assert.Equal(opens, door.TryGetTag("DOOR_OPEN", out var value) && value == "1");
+    }
+
+    // Source-X #1510/#1558: every door in range is ranked by where it lies relative
+    // to the facing; the one ahead beats a door that was placed (and found) first.
+    [Fact]
+    public void DoorMacroOpensTheBestRankedDoor_NotTheFirstFound()
+    {
+        using var f = new Fixture();
+        f.World.PlaceCharacter(f.Player, new SphereNet.Core.Types.Point3D(100, 100));
+        f.Player.Direction = SphereNet.Core.Enums.Direction.East;
+        SphereNet.Game.Objects.Items.Item MakeDoor(short x, short y)
+        {
+            var d = f.World.CreateItem();
+            d.BaseId = 0x0675;
+            d.ItemType = SphereNet.Core.Enums.ItemType.Door;
+            f.World.PlaceItem(d, new SphereNet.Core.Types.Point3D(x, y, 0));
+            return d;
+        }
+        var behind = MakeDoor(99, 100);   // priority 4
+        var side = MakeDoor(100, 101);    // priority 3
+        var ahead = MakeDoor(101, 100);   // priority 1
+        f.Client.HandleTextCommand(0x58, "");
+        static bool Open(SphereNet.Game.Objects.Items.Item d) => d.TryGetTag("DOOR_OPEN", out var v) && v == "1";
+        Assert.True(Open(ahead));
+        Assert.False(Open(side));
+        Assert.False(Open(behind));
+    }
+
+    [Theory]
+    // Facing east: (forward, side) table from CClientEvent.cpp:3191-3217.
+    [InlineData(SphereNet.Core.Enums.Direction.East, 0, 0, 1)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, 1, 0, 1)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, 1, 1, 2)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, 2, 0, 2)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, 0, -1, 3)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, 2, 1, 3)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, -1, 1, 4)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, 3, 0, 4)]
+    [InlineData(SphereNet.Core.Enums.Direction.East, -2, 0, 5)]
+    [InlineData(SphereNet.Core.Enums.Direction.North, 0, -1, 1)]
+    [InlineData(SphereNet.Core.Enums.Direction.North, 0, 1, 4)]
+    [InlineData(SphereNet.Core.Enums.Direction.South, 0, 1, 1)]
+    [InlineData(SphereNet.Core.Enums.Direction.West, -1, 0, 1)]
+    // Diagonal facings halve the rotated distances.
+    [InlineData(SphereNet.Core.Enums.Direction.SouthEast, 1, 1, 1)]
+    [InlineData(SphereNet.Core.Enums.Direction.NorthWest, -1, -1, 1)]
+    [InlineData(SphereNet.Core.Enums.Direction.NorthWest, 2, 2, 4)]
+    public void DoorMacroPriorityFollowsTheFacingTable(SphereNet.Core.Enums.Direction facing, int dx, int dy, int expected)
+    {
+        Assert.Equal(expected, SphereNet.Game.World.DoorHelper.GetDoorAutoPriority(facing, 100, 100, 100 + dx, 100 + dy));
+        // The running bit does not change the facing.
+        var running = (SphereNet.Core.Enums.Direction)((byte)facing | 0x80);
+        Assert.Equal(expected, SphereNet.Game.World.DoorHelper.GetDoorAutoPriority(running, 100, 100, 100 + dx, 100 + dy));
     }
 
     [Fact]

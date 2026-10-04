@@ -111,6 +111,6 @@ public sealed class StaffHorseScriptTests
         // The verb addition must not shadow the property read used by
         // <SRC.MOUNT> / IF (<FINDLAYER.25>) style scripts.
         Assert.True(player.TryGetProperty("MOUNT", out string val));
-        Assert.Equal($"0{horseItem.Uid.Value:X}", val);
+        Assert.Equal($"0{horseItem.Uid.Value:x}", val);
     }
 }

@@ -477,7 +477,7 @@ public static class ResourceMatch
             found = null;
         if (rest.Length == 0)
         {
-            value = found == null ? "0" : $"0{found.Uid.Value:X}";
+            value = found == null ? "0" : $"0{found.Uid.Value:x}";
             return true;
         }
         if (rest.Equals("ISVALID", StringComparison.OrdinalIgnoreCase))

@@ -697,7 +697,7 @@ public sealed class Sector : IScriptObj
                 return true;
             case "FLAGS":
                 // FormatHex (CSector.cpp:131).
-                value = $"0{(uint)_flags:X}";
+                value = $"0{(uint)_flags:x}";
                 return true;
             case "NOSLEEP":
                 value = _flags.HasFlag(SectorFlag.NoSleep) ? "1" : "0";

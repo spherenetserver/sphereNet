@@ -126,7 +126,7 @@ public sealed class GmPageObjectTests
         Assert.Equal("0", Get(page, "HANDLED"));   // nobody has taken it
 
         page.TrySetProperty("HANDLED", "04000ABCD");
-        Assert.Equal("04000ABCD", Get(page, "HANDLED"));
+        Assert.Equal("04000abcd", Get(page, "HANDLED"));
 
         page.TrySetProperty("HANDLED", "0");
         Assert.Equal("0", Get(page, "HANDLED"));

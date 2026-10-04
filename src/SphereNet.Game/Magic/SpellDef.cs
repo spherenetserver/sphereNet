@@ -118,15 +118,16 @@ public sealed class SpellDef
         switch (upper)
         {
             case "NAME": value = Name; return true;
-            case "FLAGS": value = ((ulong)Flags).ToString(); return true;
+            // Sphere hex, "00" for none (CSpellDef.cpp:119 FormatULLHex).
+            case "FLAGS": value = (ulong)Flags == 0 ? "00" : "0" + ((ulong)Flags).ToString("x", System.Globalization.CultureInfo.InvariantCulture); return true;
             case "GROUP": value = Group.ToString(); return true;
             case "MANAUSE": value = ManaCost.ToString(); return true;
             case "SOUND": value = Sound.ToString(); return true;
             case "RUNES": value = Runes; return true;
             case "PROMPT_MSG": value = TargetPrompt; return true;
-            case "EFFECT_ID": value = $"0{EffectId:X}"; return true;
-            case "RUNE_ITEM": value = $"0{RuneItemId:X}"; return true;
-            case "SCROLL_ITEM": value = $"0{ScrollItemId:X}"; return true;
+            case "EFFECT_ID": value = $"0{EffectId:x}"; return true;
+            case "RUNE_ITEM": value = $"0{RuneItemId:x}"; return true;
+            case "SCROLL_ITEM": value = $"0{ScrollItemId:x}"; return true;
             // CValueCurveDef::Write (CValueDefs.cpp:55): every point, comma separated.
             case "CAST_TIME": value = CastTimeCurve.Write(); return true;
             case "EFFECT": value = EffectCurve.Write(); return true;
@@ -147,7 +148,7 @@ public sealed class SpellDef
                 {
                     if (i == idx)
                     {
-                        value = sub == "KEY" ? $"0{kv.Key.Index:X}" : kv.Value.ToString();
+                        value = sub == "KEY" ? $"0{kv.Key.Index:x}" : kv.Value.ToString();
                         return true;
                     }
                     i++;

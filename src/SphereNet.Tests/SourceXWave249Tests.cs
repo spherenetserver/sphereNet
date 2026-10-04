@@ -60,7 +60,7 @@ public sealed class SourceXWave249Tests
 
         ch.TrySetProperty("BLOODCOLOR", "0x1A2");
         Assert.Equal((ushort)0x1A2, ch.BloodHue);
-        Assert.Equal("01A2", Get(ch, "BLOODCOLOR")); // Source-X FormatHex: "0" + hex
+        Assert.Equal("01a2", Get(ch, "BLOODCOLOR")); // Source-X FormatHex: "0" + hex
     }
 
     [Fact]

@@ -1116,7 +1116,7 @@ public sealed class CustomHousingEngine
             case "DESIGNER":
             {
                 var designer = engine?.GetDesigner(multi) ?? Serial.Invalid;
-                value = $"0{(designer.IsValid ? designer.Value : 0):X}";
+                value = $"0{(designer.IsValid ? designer.Value : 0):x}";
                 return true;
             }
             case "FIXTURES":

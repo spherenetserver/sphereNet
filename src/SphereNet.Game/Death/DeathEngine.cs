@@ -1141,10 +1141,15 @@ public sealed class DeathEngine
         for (int i = 0; i < total; i++)
         {
             var (_, amount, defName) = charDef.CarveResources[i];
-            int defIndex = resources != null ? Definitions.TemplateEngine.ResolveItemDefIndex(resources, defName) : 0;
-            if (defIndex == 0)
-                continue; // not an ITEMDEF (Source-X skips non-RES_ITEMDEF rows)
-            args.Locals.SetInt($"resource.{i}.ID", defIndex);
+            // A row may name an ITEMDEF or a TEMPLATE (Source-X CCharUse.cpp:85,
+            // #1574); anything else is reported and skipped - the rows after it
+            // still carve.
+            if (!Definitions.TemplateEngine.TryResolveTemplateResource(defName, out var rid) || rid.Index == 0)
+            {
+                ReportInvalidCarveResource(corpse, charDef, defName);
+                continue;
+            }
+            args.Locals.SetInt($"resource.{i}.ID", rid.Index);
             args.Locals.SetInt($"resource.{i}.amount", amount);
         }
 
@@ -1159,20 +1164,37 @@ public sealed class DeathEngine
         {
             int defIndex = ReadCarvedItemIndex(args.Locals, $"resource.{i}.ID", resources);
             if (defIndex == 0)
-                break; // ITEMID_NOTHING ends the list
+            {
+                // ITEMID_NOTHING is reported and skipped, not the end of the list
+                // (Source-X CCharUse.cpp:132-137, #1574).
+                ReportInvalidCarveResource(corpse, charDef, args.Locals.Get($"resource.{i}.ID") ?? "0");
+                continue;
+            }
             int qty = (int)Math.Clamp(args.Locals.GetInt($"resource.{i}.amount"), 0, ushort.MaxValue);
 
+            Item? part;
             var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
-            ushort dispId = Definitions.ItemDefHelper.CreateGraphic(idef, defIndex);
-            if (dispId == 0)
-                continue;
+            if (idef == null && Definitions.DefinitionLoader.GetTemplateDef(defIndex) != null)
+            {
+                // A TEMPLATE row is built through the recipe walker and the object
+                // it hands back is the part (CItem::CreateTemplate, CItem.cpp:555).
+                part = Definitions.TemplateEngine.BuildTemplate(_world, defIndex);
+                if (part == null)
+                    continue;
+            }
+            else
+            {
+                ushort dispId = Definitions.ItemDefHelper.CreateGraphic(idef, defIndex);
+                if (dispId == 0)
+                    continue;
 
-            var part = _world.CreateItem();
-            part.BaseId = dispId;
-            Definitions.ItemDefHelper.ApplyInstanceMetadata(part, defIndex,
-                setDisplayId: false, setName: false);
-            if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
-                part.Name = idef.Name;
+                part = _world.CreateItem();
+                part.BaseId = dispId;
+                Definitions.ItemDefHelper.ApplyInstanceMetadata(part, defIndex,
+                    setDisplayId: false, setName: false);
+                if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
+                    part.Name = idef.Name;
+            }
             results.Add(part);
 
             switch (part.ItemType)
@@ -1258,9 +1280,23 @@ public sealed class DeathEngine
         if (n != long.MinValue)
             return (int)n;
         string? text = locals.Get(key);
-        return resources != null && !string.IsNullOrWhiteSpace(text)
-            ? Definitions.TemplateEngine.ResolveItemDefIndex(resources, text)
+        return !string.IsNullOrWhiteSpace(text)
+            && Definitions.TemplateEngine.TryResolveTemplateResource(text, out var rid)
+            ? rid.Index
             : 0;
+    }
+
+    /// <summary>Diagnostic sink for a corpse RESOURCES row that names neither an
+    /// item nor a template (Source-X g_Log.EventError, CCharUse.cpp:87/95/133).
+    /// The host routes it to the error log; unwired it falls back to the template
+    /// diagnostic.</summary>
+    public static Action<string>? CarveDiagnostic { get; set; }
+
+    private static void ReportInvalidCarveResource(Item corpse,
+        SphereNet.Scripting.Definitions.CharDef charDef, string row)
+    {
+        string msg = $"Corpse 0{corpse.Uid.Value:X} ({(string.IsNullOrEmpty(charDef.Name) ? charDef.DefName : charDef.Name)}) has invalid resource '{row}' in resource list";
+        (CarveDiagnostic ?? Definitions.TemplateEngine.Diagnostic)?.Invoke(msg);
     }
 
     private static void SendCarveMessage(Character carver, string msgKey) =>

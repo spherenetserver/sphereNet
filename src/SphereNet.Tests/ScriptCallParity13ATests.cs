@@ -99,8 +99,8 @@ public sealed class ScriptCallParity13ATests
         Assert.Equal(text, args.ArgString); Assert.Equal(n1, args.Number1);
         Assert.Equal(n2, args.Number2); Assert.Equal(n3, args.Number3); Assert.Null(args.Object1);
         Assert.Same(item, args.Source);
-        string keep = item.TagValue("keep"); Assert.Equal("02A", keep);   // <LOCAL.keep>, read in Sphere hex
-        string reference = item.TagValue("ref"); Assert.Equal($"0{item.Uid.Value:X}", reference);
+        string keep = item.TagValue("keep"); Assert.Equal("02a", keep);   // <LOCAL.keep>, read in Sphere hex
+        string reference = item.TagValue("ref"); Assert.Equal($"0{item.Uid.Value:x}", reference);
         Assert.Equal(text.Length == 0 ? Array.Empty<string>() : text.Split(','), args.GetArgv());
     }
 

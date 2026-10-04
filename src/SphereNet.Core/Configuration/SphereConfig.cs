@@ -956,8 +956,10 @@ public sealed class SphereConfig
     public int MaxCharComplexity { get; set; } = 32;
     /// <summary>MAXSECTORCOMPLEXITY (m_iMaxSectorComplexity, default 1024).</summary>
     public int MaxSectorComplexity { get; set; } = 1024;
-    /// <summary>MAXCONNECTREQUESTSPERIP (_iMaxConnectRequestsPerIP, default 5).</summary>
-    public int MaxConnectRequestsPerIP { get; set; } = 5;
+    /// <summary>MAXCONNECTREQUESTSPERIP (_iMaxConnectRequestsPerIP). Defaults to 50,
+    /// the value the Source-X reference ini ships (its built-in default is 5, which
+    /// two logins - four connections - nearly use up).</summary>
+    public int MaxConnectRequestsPerIP { get; set; } = 50;
     /// <summary>MAXPINGS (m_iNetMaxPings, default 15).</summary>
     public int MaxPings { get; set; } = 15;
     /// <summary>MAXSHIPSGUILD (_iMaxShipsGuild, default 1).</summary>

@@ -69,7 +69,7 @@ public sealed class SourceXIniKeyParityTests : IDisposable
         Assert.True(cfg.AutoShipKeys);
         Assert.Equal(8, cfg.ConnectingMaxIP);
         Assert.Equal(15, cfg.ContextMenuLimit);
-        Assert.Equal(5, cfg.MaxConnectRequestsPerIP);
+        Assert.Equal(50, cfg.MaxConnectRequestsPerIP); // the reference ini's value, not the built-in 5
         Assert.Equal(15, cfg.MaxPings);
         Assert.Equal(5000, cfg.TimeoutIncompleteConnMs);
         Assert.Equal(1000, cfg.MediumCanHearGhosts);
@@ -441,7 +441,7 @@ public sealed class SourceXIniKeyParityTests : IDisposable
     public void IpHistory_RefusesPastMaxConnectRequestsAndMaxPings()
     {
         using var lf = TestHarness.CreateLoggerFactory();
-        var mgr = new NetworkManager(4, lf);
+        var mgr = new NetworkManager(4, lf) { MaxConnectRequestsPerIP = 5 };
         var ip = IPAddress.Parse("10.1.2.3");
 
         for (int i = 1; i < 5; i++)
@@ -458,6 +458,20 @@ public sealed class SourceXIniKeyParityTests : IDisposable
         // Loopback (panel, bot harness) is never counted.
         for (int i = 0; i < 20; i++)
             Assert.False(mgr.RejectByIpHistory(IPAddress.Loopback, out _));
+    }
+
+    [Fact]
+    public void IpHistory_ASuccessfulLoginClearsTheConnectRequests()
+    {
+        using var lf = TestHarness.CreateLoggerFactory();
+        var mgr = new NetworkManager(4, lf) { MaxConnectRequestsPerIP = 3 };
+        var ip = IPAddress.Parse("10.4.4.4");
+        Assert.False(mgr.RejectByIpHistory(ip, out _));
+        Assert.False(mgr.RejectByIpHistory(ip, out _));
+        mgr.ResetConnectRequests(ip);           // the account got in
+        Assert.False(mgr.RejectByIpHistory(ip, out _));
+        Assert.False(mgr.RejectByIpHistory(ip, out _));
+        Assert.True(mgr.RejectByIpHistory(ip, out _));
     }
 
     [Fact]

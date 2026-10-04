@@ -3855,6 +3855,7 @@ public static partial class Program
             _network.ClientMaxIP = _config.ClientMaxIP;
             _network.ConnectingMaxIP = _config.ConnectingMaxIP;
             _network.MaxConnectRequestsPerIP = _config.MaxConnectRequestsPerIP;
+            GameClient.LoginSucceededFrom = address => _network.ResetConnectRequests(address);
             _network.MaxPings = _config.MaxPings;
             _network.NetHistoryTtlSeconds = _config.NetTTL;
             _network.TimeoutIncompleteConnMs = _config.TimeoutIncompleteConnMs;

@@ -295,10 +295,11 @@ public sealed class NetworkManager : IDisposable
     /// more than this many connections not yet in the game is refused.</summary>
     public int ConnectingMaxIP { get; set; } = 8;
     /// <summary>sphere.ini MAXCONNECTREQUESTSPERIP (_iMaxConnectRequestsPerIP, default
-    /// 5): connection attempts an IP may make while its history lives; it does not
-    /// decay and is forgotten only when the history expires (NETTTL after the last
-    /// connection closed). 0 disables.</summary>
-    public int MaxConnectRequestsPerIP { get; set; } = 5;
+    /// 50): connection attempts an IP may make while its history lives; it does not
+    /// decay and is forgotten when the history expires (NETTTL after the last
+    /// connection closed) or when the IP logs in successfully
+    /// (<see cref="ResetConnectRequests"/>). 0 disables.</summary>
+    public int MaxConnectRequestsPerIP { get; set; } = 50;
     /// <summary>sphere.ini MAXPINGS (m_iNetMaxPings, default 15): connection attempts
     /// counted like pings, decaying one per max(30, NETTTL/5) seconds.</summary>
     public int MaxPings { get; set; } = 15;
@@ -350,6 +351,17 @@ public sealed class NetworkManager : IDisposable
         else if (MaxConnectRequestsPerIP > 0 && h.ConnectionRequests >= MaxConnectRequestsPerIP)
             reason = $"MaxConnectRequestsPerIP reached {h.ConnectionRequests}/{MaxConnectRequestsPerIP}";
         return reason.Length > 0;
+    }
+
+    /// <summary>A successful account login from this address clears its
+    /// MAXCONNECTREQUESTSPERIP count. Source-X keeps counting until the history
+    /// expires, so a player who logged in a few times within NETTTL - or kept retrying
+    /// while refused, which restarts the TTL - stayed locked out until a restart; here
+    /// only attempts that never get in accumulate.</summary>
+    public void ResetConnectRequests(IPAddress? address)
+    {
+        if (address != null && _ipHistory.TryGetValue(address, out var h))
+            h.ConnectionRequests = 0;
     }
 
     /// <summary>Connections from this address that have not reached the game server

@@ -439,8 +439,15 @@ public sealed partial class GameClient
     private void RegisterLoginFailure(string account) =>
         s_loginRateLimiter.RegisterFailure(LoginRateLimitKey(account));
 
-    private void RegisterLoginSuccess(string account) =>
+    private void RegisterLoginSuccess(string account)
+    {
         s_loginRateLimiter.RegisterSuccess(LoginRateLimitKey(account));
+        LoginSucceededFrom?.Invoke(_netState.RemoteEndPoint?.Address);
+    }
+
+    /// <summary>Raised when an account authenticates (login or game socket); the host
+    /// clears the address's MAXCONNECTREQUESTSPERIP count.</summary>
+    public static Action<System.Net.IPAddress?>? LoginSucceededFrom;
 
     private string LoginRateLimitKey(string account)
     {

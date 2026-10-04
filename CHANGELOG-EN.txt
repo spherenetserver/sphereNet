@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - MAXCONNECTREQUESTSPERIP defaults to 50 and clears on login
+------------------------------------------------------------------------
+CHANGE - MAXCONNECTREQUESTSPERIP defaults to 50 (the Source-X reference ini value; the
+      built-in default was 5). A successful account login, on the login or the game
+      socket, clears the address's count. The count never decayed while any connection
+      from the address stayed open and every refused retry restarted the NETTTL wait, so a
+      player who logged in two or three times, or mistyped the password a few times, was
+      locked out until the server restarted.
+
 [2026-10-04] - Weapon damage bonus, pre-AOS armor roll and decimal key values
 ------------------------------------------------------------------------
 FIX - Damage Increase (INCREASEDAM, gargoyle berserk, Horrific Beast +25%) is part of the one

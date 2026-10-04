@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - MAXCONNECTREQUESTSPERIP varsayilani 50, giriste sifirlanir
+------------------------------------------------------------------------
+DEGISIKLIK - MAXCONNECTREQUESTSPERIP varsayilani 50 (Source-X referans ini degeri; motor ici
+           varsayilan 5 idi). Basarili hesap girisi, login veya game soketinde, adresin
+           sayacini sifirlar. IP'den acik bir baglanti oldugu surece sayac hic azalmiyordu ve
+           reddedilen her yeni deneme NETTTL bekleme suresini bastan baslatiyordu; iki uc kez
+           giris yapan ya da sifreyi birkac kez yanlis giren oyuncu sunucu yeniden
+           baslatilana kadar giremiyordu.
+
 [2026-10-04] - Silah hasar bonusu, AOS oncesi zirh zari ve ondalikli anahtar degerleri
 ------------------------------------------------------------------------
 DUZELTME - Hasar Artisi (INCREASEDAM, gargoyle berserk, Horrific Beast +%25) era'nin

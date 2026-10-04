@@ -58,15 +58,15 @@ public sealed class ResourceHolder
     private readonly HashSet<string> _knownResourceTitles = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger;
 
-    public IReadOnlyList<(Point3D Src, Point3D Dest, string Name)> Teleporters =>
-        _teleporters.Select(t => (t.Src, t.Dest, t.Name)).ToList();
+    public IReadOnlyList<(Point3D Src, Point3D Dest, string Name, bool Npc)> Teleporters =>
+        _teleporters.Select(t => (t.Src, t.Dest, t.Name, t.Npc)).ToList();
     public IReadOnlyList<StartEntry> Starts => _starts;
     public IReadOnlyList<StartGoldEntry> StartGold => _startGold;
     public IReadOnlyList<MoongateEntry> Moongates => _moongates;
 
     public string ScpBaseDir { get; set; } = "";
 
-    private sealed record TeleporterEntry(Point3D Src, Point3D Dest, string Name, string FilePath);
+    private sealed record TeleporterEntry(Point3D Src, Point3D Dest, string Name, bool Npc, string FilePath);
     /// <summary>One [STARTS] location (CStartLoc): the place name, its point, the
     /// area/city it is in, and the cliloc a 7.0.13+ client shows for it.</summary>
     public sealed record StartEntry(string Name, Point3D Point, string Area = "", uint Cliloc = StartEntry.DefaultCliloc)
@@ -1726,10 +1726,11 @@ public sealed class ResourceHolder
     {
         foreach (var key in section.Keys)
         {
-            // Format: srcX,srcY,srcZ,srcMap=destX,destY,destZ,destMap=name
-            // Parse from the raw line — the Key/Arg split may have broken the
-            // coordinate list at a comma.
-            var segments = key.RawLine.Split('=', 3);
+            // Format: srcX,srcY,srcZ,srcMap=destX,destY,destZ,destMap=name=npc
+            // (CTeleport::CTeleport, CTeleport.cpp:10-28: the fourth field is
+            // _fNpc, NPCs may use it too). Parse from the raw line — the Key/Arg
+            // split may have broken the coordinate list at a comma.
+            var segments = key.RawLine.Split('=', 4);
             if (segments.Length < 2) continue;
 
             var src = ParseTeleportPoint(segments[0]);
@@ -1739,7 +1740,9 @@ public sealed class ResourceHolder
             if (dest.X == 0 && dest.Y == 0) continue;
 
             string name = segments.Length >= 3 ? segments[2].Trim() : "";
-            _teleporters.Add(new TeleporterEntry(src, dest, name, filePath));
+            bool npc = segments.Length >= 4 &&
+                       ScriptNumber.TryParseLeadingNumber(segments[3].Trim(), out long npcFlag) && npcFlag != 0;
+            _teleporters.Add(new TeleporterEntry(src, dest, name, npc, filePath));
         }
 
         _logger.LogInformation("Loaded {Count} teleporters", _teleporters.Count);

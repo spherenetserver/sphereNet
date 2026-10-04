@@ -75,6 +75,10 @@ public sealed class MountEngine
         // of the link instead of leaving it to be re-resolved later.
         npc.SetTag(RiderUuidTag, rider.Uuid.ToString("D"));
 
+        // Make_Figurine: SoundChar(CRESND_IDLE) "Horse winny", played by the creature
+        // before it leaves the world (CCharAct.cpp:3645).
+        PlayIdleSound(npc);
+
         // Hide NPC: remove from sector so it is invisible and won't tick,
         // but keep it in the world object table so it survives save/load.
         // Rider position is left untouched — the client's auto-walk already
@@ -431,6 +435,9 @@ public sealed class MountEngine
         if (mountStand.Found && pos.Z < mountStand.Z)
             pos = new Point3D(pos.X, pos.Y, mountStand.Z, pos.Map);
         _world.PlaceCharacter(npc, pos);
+        // Use_Figurine: the creature back in the world makes its idle sound
+        // (CCharUse.cpp:1206).
+        PlayIdleSound(npc);
 
         // Sphere 56T custom-version compatibility: the creature hears it was left,
         // with the former rider as SRC and ARGO. Nothing to veto any more.
@@ -438,6 +445,16 @@ public sealed class MountEngine
             new TriggerArgs { CharSrc = rider, O1 = rider });
 
         return npc;
+    }
+
+    /// <summary>SoundChar(CRESND_IDLE) of the mount creature: its SOUND= base (or
+    /// SOUNDIDLE override), nothing when generic sounds are off or the id is -1.</summary>
+    private static void PlayIdleSound(Character npc)
+    {
+        ushort snd = Combat.CharacterSounds.Resolve(npc, SphereNet.Game.AI.CreatureSoundType.Idle);
+        if (snd != 0)
+            Character.BroadcastNearby?.Invoke(npc.Position, 18,
+                new SphereNet.Network.Packets.Outgoing.PacketSound(snd, npc.X, npc.Y, npc.Z), 0);
     }
 
     /// <summary>

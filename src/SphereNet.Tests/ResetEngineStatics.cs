@@ -50,7 +50,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.OnDecayRegistrationLost = null;
         SphereNet.Game.Objects.Items.Item.ResetDecayRegistrationWarning();
         // Config-fed engine switches must not leak from one test into the next.
-        SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = false;
+        SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = true;
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = 40;
         // Source-X CServerConfig keys (sphere.ini defaults).

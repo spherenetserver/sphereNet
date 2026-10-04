@@ -204,7 +204,6 @@ internal interface IClientContext : ITextConsole
     /// <summary>When the last vendor list went out (Source-X client TAG BUYSELLTIME).</summary>
     long VendorListSentMs { get; set; }
     void OpenVendorSell(Character vendor);
-    void HandleVendorInteraction(Character vendor);
     void HandleDoubleClick(uint uid);
     ResDisplayVersion HandleResolvedClientVersion();
     void StoreReportedClientVersion();
@@ -244,6 +243,7 @@ internal interface IClientContext : ITextConsole
     bool HasAmmoInBackpack(ItemType ammo);
     void ConsumeAmmoFromBackpack(ItemType ammo);
     bool TryHandlePetCommand(string text);
+    bool ApplyPetCommand(Objects.Characters.Character pet, string verb);
     bool TryHandleCommandSpeech(string text);
     void SetWarMode(bool warMode, bool syncClients, bool preserveTarget);
     void FaceTarget(Character target);

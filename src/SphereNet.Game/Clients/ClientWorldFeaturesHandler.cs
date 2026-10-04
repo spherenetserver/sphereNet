@@ -87,7 +87,6 @@ public sealed class ClientWorldFeaturesHandler
     private SphereNet.Network.Packets.PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount, short x, short y, sbyte z, ushort hue, byte direction = 0) => _client.BuildWorldItemPacket(serial, itemId, amount, x, y, z, hue, direction);
     private void SendPaperdoll(Character ch) => _client.SendPaperdoll(ch);
     private void SendOpenContainer(Item container) => _client.SendOpenContainer(container);
-    private void HandleVendorInteraction(Character vendor) => _client.HandleVendorInteraction(vendor);
     private void OpenBankBox() => _client.OpenBankBox();
     private void HandleDoubleClick(uint uid) => _client.HandleDoubleClick(uid);
     private Character? DismountCharacter() => _client.DismountCharacter();
@@ -3591,33 +3590,7 @@ public sealed class ClientWorldFeaturesHandler
                 requestArgs) == TriggerResult.True;
             if (!scriptOwnsMenu)
             {
-                entries.Add((1, 3006123, 0)); // Open Paperdoll
-                if (ch == _character)
-                {
-                    entries.Add((2, 3006145, 0)); // Open Backpack
-                }
-                if (VendorEngine.IsVendorLike(ch))
-                {
-                    entries.Add((3, 3006103, 0)); // Buy
-                    entries.Add((4, 3006106, 0)); // Sell
-                }
-                if (!ch.IsPlayer && ch.NpcBrain == NpcBrainType.Banker)
-                {
-                    entries.Add((5, 3006105, 0)); // Open Bankbox
-                }
-                // Mount / Dismount: exposed as a context-menu action so the client
-                // does not require a DoubleClick to saddle. Double-click remains
-                // equivalent. Entry is filtered by IsMountable so non-ridable
-                // mobs (monsters, humans) don't get a useless "Mount Me" line.
-                if (!ch.IsPlayer && ch != _character &&
-                    Mounts.MountEngine.IsMountable(ch.BodyId))
-                {
-                    entries.Add((6, 3006155, 0)); // Mount Me
-                }
-                if (ch == _character && _character.IsMounted)
-                {
-                    entries.Add((7, 3006112, 0)); // Dismount
-                }
+                AddCharacterContextEntries(ch, entries);
 
                 if (requestArgs.N1 != 1 && _triggerDispatcher != null)
                 {
@@ -3638,6 +3611,132 @@ public sealed class ClientWorldFeaturesHandler
         if (entries.Count > 0)
             _netState.Send(new PacketContextMenu(targetSerial, entries.ToArray(),
                 _netState.SupportsNewContextMenu));
+    }
+
+    // Entry tags (CClient.h:578-610). The numbers are the ones the Enhanced Client
+    // expects and the ones scripts test in @ContextMenuSelect (e_human.scp reads
+    // 200..257 as a trainer's skill), so they are the reference's, not our own.
+    private const ushort PopupVendorBuy = 110, PopupVendorSell = 111, PopupBankbox = 120;
+    private const ushort PopupPetDrop = 43, PopupPetGuard = 130, PopupPetFollow = 131,
+        PopupPetFriendAdd = 133, PopupPetKill = 134, PopupPetStop = 135,
+        PopupPetTransfer = 136, PopupPetStay = 137, PopupPetRelease = 138,
+        PopupPetFriendRemove = 140;
+    private const ushort PopupTrainSkill = 200, PopupTame = 301, PopupBackpack = 302;
+    private const ushort PopupStableStable = 400, PopupStableRetrieve = 401;
+    private const ushort PopupPaperdoll = 520, PopupPartyAdd = 810, PopupPartyRemove = 811,
+        PopupTradeOpen = 819, PopupTradeAllow = 1013, PopupTradeRefuse = 1014;
+    private const ushort PopupFlagLocked = 0x01, PopupFlagColor = 0x20;
+
+    /// <summary>The engine's own character entries, in the reference's order
+    /// (Event_AOSPopupMenuRequest, CClientEvent.cpp:2608-2724). There is no mount or
+    /// dismount entry upstream; the two this engine used to add were sent with the
+    /// clilocs of "Command: Stop" and "Cancel Quest", so a player choosing "Stop"
+    /// got off their horse.</summary>
+    private void AddCharacterContextEntries(Character ch,
+        List<(ushort EntryTag, uint ClilocId, ushort Flags)> entries)
+    {
+        if (_character == null) return;
+
+        if (ch.IsPlayer || PaperdollText.IsPlayableBody(ch.BodyId))
+            entries.Add((PopupPaperdoll, 3006123, PopupFlagColor));
+
+        if (!ch.IsPlayer)
+        {
+            if (VendorEngine.IsVendorLike(ch) || ch.NpcBrain == NpcBrainType.Banker)
+            {
+                if (ch.NpcBrain == NpcBrainType.Banker)
+                    entries.Add((PopupBankbox, 3006105, PopupFlagColor));
+                entries.Add((PopupVendorBuy, 3006103, PopupFlagColor));
+                entries.Add((PopupVendorSell, 3006104, PopupFlagColor));
+
+                for (int i = 0; i < (int)SkillType.Qty; i++)
+                {
+                    var skill = (SkillType)i;
+                    if (skill == SkillType.Spellweaving || !SkillEngine.IsValidBaseSkill(skill) ||
+                        SkillEngine.HasFlag(skill, SkillFlag.Disabled))
+                        continue;
+                    int npcSkill = ch.GetSkill(skill);
+                    if (npcSkill < 300)
+                        continue;
+                    int playerSkill = _character.GetSkill(skill);
+                    ushort flag = playerSkill >= Trade.VendorTrainingEngine.TrainSkillMax ||
+                        playerSkill >= npcSkill * Trade.VendorTrainingEngine.TrainSkillPercent / 100
+                        ? PopupFlagLocked : PopupFlagColor;
+                    entries.Add(((ushort)(PopupTrainSkill + i), (uint)(3006000 + i), flag));
+                }
+
+                if (ch.NpcBrain == NpcBrainType.Stable)
+                {
+                    entries.Add((PopupStableStable, 3006126, PopupFlagColor));
+                    entries.Add((PopupStableRetrieve, 3006127, PopupFlagColor));
+                }
+            }
+            else
+            {
+                ushort enabled = ch.IsDead ? PopupFlagLocked : PopupFlagColor;
+                if ((ch.HasOwner(_character.Uid) && ch.NpcBrain != NpcBrainType.Berserk) ||
+                    _character.PrivLevel >= PrivLevel.GM)
+                {
+                    bool packAnimal = ch.BodyId is 0x0123 or 0x0124 or 0x0317; // pack horse, pack llama, giant beetle
+                    entries.Add((PopupPetGuard, 3006107, enabled));
+                    entries.Add((PopupPetFollow, 3006108, PopupFlagColor));
+                    if (packAnimal)
+                        entries.Add((PopupPetDrop, 3006109, enabled));
+                    entries.Add((PopupPetKill, 3006111, enabled));
+                    entries.Add((PopupPetStop, 3006112, PopupFlagColor));
+                    entries.Add((PopupPetStay, 3006114, PopupFlagColor));
+                    if (!ch.IsStatFlag(StatFlag.Conjured))
+                    {
+                        entries.Add((PopupPetFriendAdd, 3006110, enabled));
+                        entries.Add((PopupPetFriendRemove, 3006099, enabled));
+                        entries.Add((PopupPetTransfer, 3006113, PopupFlagColor));
+                    }
+                    entries.Add((PopupPetRelease, 3006118, PopupFlagColor));
+                    if (packAnimal)
+                        entries.Add((PopupBackpack, 3006145, enabled));
+                }
+                else if (ch.IsFriendOf(_character.Uid))
+                {
+                    entries.Add((PopupPetFollow, 3006108, enabled));
+                    entries.Add((PopupPetStop, 3006112, enabled));
+                    entries.Add((PopupPetStay, 3006114, enabled));
+                }
+                else if (!ch.IsStatFlag(StatFlag.Pet) && ch.GetSkill(SkillType.Taming) > 0)
+                {
+                    entries.Add((PopupTame, 3006130, PopupFlagColor));
+                }
+            }
+        }
+        else if (ch == _character)
+        {
+            entries.Add((PopupBackpack, 3006145, PopupFlagColor));
+            if (_netState.ClientVersionNumber >= 70_030_000) // MINCLIVER_STATUS_V6
+            {
+                bool refusing = _character.TryGetTag("REFUSETRADES", out string? refuse) &&
+                    ScriptNumber.TryParseInt(refuse, out int refuseValue) && refuseValue != 0;
+                entries.Add(refusing
+                    ? (PopupTradeAllow, 1154112u, PopupFlagColor)
+                    : (PopupTradeRefuse, 1154113u, PopupFlagColor));
+            }
+        }
+        else
+        {
+            var myParty = _partyManager?.FindParty(_character.Uid);
+            var theirParty = _partyManager?.FindParty(ch.Uid);
+            if (myParty == null && theirParty == null)
+                entries.Add((PopupPartyAdd, 3000197, PopupFlagColor));
+            else if (myParty != null && myParty.Master == _character.Uid)
+            {
+                if (theirParty == null)
+                    entries.Add((PopupPartyAdd, 3000197, PopupFlagColor));
+                else if (theirParty == myParty)
+                    entries.Add((PopupPartyRemove, 3000198, PopupFlagColor));
+            }
+
+            if (_netState.ClientVersionNumber >= 70_045_065 && // MINCLIVER_TOL
+                _character.Position.GetDistanceTo(ch.Position) <= 2)
+                entries.Add((PopupTradeOpen, 1077728, PopupFlagColor));
+        }
     }
 
     internal void HandleContextMenuResponse(uint targetSerial, ushort entryTag)
@@ -3675,87 +3774,82 @@ public sealed class ClientWorldFeaturesHandler
             == TriggerResult.True)
             return;
 
+        if (!target.IsPlayer)
+        {
+            switch (entryTag)
+            {
+                case PopupBankbox:
+                    if (target.NpcBrain == NpcBrainType.Banker &&
+                        _character.Position.GetDistanceTo(target.Position) <= 3 &&
+                        _character.MapIndex == target.MapIndex)
+                        OpenBankBox();
+                    return;
+                case PopupVendorBuy:
+                    if (VendorEngine.IsVendorLike(target)) _client.OpenVendorBuy(target);
+                    return;
+                case PopupVendorSell:
+                    if (VendorEngine.IsVendorLike(target)) _client.OpenVendorSell(target);
+                    return;
+                // Each pet entry is the spoken command heard by that one pet
+                // (NPC_OnHearPetCmd, CClientEvent.cpp:2801-2839).
+                case PopupPetGuard: _client.ApplyPetCommand(target, "guard"); return;
+                case PopupPetFollow: _client.ApplyPetCommand(target, "follow"); return;
+                case PopupPetDrop: _client.ApplyPetCommand(target, "drop"); return;
+                case PopupPetKill: _client.ApplyPetCommand(target, "kill"); return;
+                case PopupPetStop: _client.ApplyPetCommand(target, "stop"); return;
+                case PopupPetStay: _client.ApplyPetCommand(target, "stay"); return;
+                case PopupPetFriendAdd: _client.ApplyPetCommand(target, "friend"); return;
+                case PopupPetFriendRemove: _client.ApplyPetCommand(target, "unfriend"); return;
+                case PopupPetTransfer: _client.ApplyPetCommand(target, "transfer"); return;
+                case PopupPetRelease: _client.ApplyPetCommand(target, "release"); return;
+                case PopupStableStable:
+                    if (target.NpcBrain == NpcBrainType.Stable)
+                        _client.SpeechEng?.DeliverNpcHear(_character, target, "stable");
+                    return;
+                case PopupStableRetrieve:
+                    if (target.NpcBrain == NpcBrainType.Stable)
+                        _client.SpeechEng?.DeliverNpcHear(_character, target, "retrieve");
+                    return;
+                case PopupTame:
+                    if (SkillHandlers.CanUse(_character, SkillType.Taming))
+                        _client.BeginTargetedSkill(SkillType.Taming, (int)SkillType.Taming, target.Uid);
+                    return;
+            }
+
+            if (entryTag >= PopupTrainSkill && entryTag < PopupTrainSkill + (int)SkillType.Qty)
+            {
+                var skill = (SkillType)(entryTag - PopupTrainSkill);
+                _client.SpeechEng?.DeliverNpcHear(_character, target, $"train {skill}");
+                return;
+            }
+        }
+
         switch (entryTag)
         {
-            case 1: // Open Paperdoll
-                if (target != null) SendPaperdoll(target);
+            case PopupPaperdoll:
+                SendPaperdoll(target);
                 break;
-            case 2: // Open Backpack
-                if (_character.Backpack != null)
-                    SendOpenContainer(_character.Backpack);
+            case PopupBackpack:
+                if (target.Backpack is { } pack)
+                    HandleDoubleClick(pack.Uid.Value);
                 break;
-            case 3: // Buy
-                var vendor = _world.FindChar(new Serial(targetSerial));
-                if (vendor != null) HandleVendorInteraction(vendor);
+            case PopupPartyAdd:
+                if (_partyManager != null)
+                    _partyManager.Invite(_character, target, PartyIoForClient());
                 break;
-            case 4: // Sell
-                if (_world.FindChar(new Serial(targetSerial)) is { } sellVendor &&
-                    VendorEngine.IsVendorLike(sellVendor))
-                {
-                    _client.OpenVendorSell(sellVendor);
-                }
+            case PopupPartyRemove:
+                if (_partyManager?.FindParty(_character.Uid) is { } party)
+                    _partyManager.RemoveMember(party, target.Uid, _character.Uid, PartyIoForClient());
                 break;
-            case 5: // Open Bankbox
-            {
-                var banker = _world.FindChar(new Serial(targetSerial));
-                if (banker != null && banker.NpcBrain == NpcBrainType.Banker &&
-                    _character.Position.GetDistanceTo(banker.Position) <= 3 &&
-                    _character.MapIndex == banker.MapIndex)
-                {
-                    OpenBankBox();
-                }
+            case PopupTradeAllow:
+                _character.SetTag("REFUSETRADES", "0");
                 break;
-            }
-            case 6: // Mount Me
-                HandleDoubleClick(targetSerial);
+            case PopupTradeRefuse:
+                _character.SetTag("REFUSETRADES", "1");
                 break;
-            case 7: // Dismount
-            {
-                if (_character.IsMounted && _mountEngine != null)
-                {
-                    uint oldMountItemUid = _character.GetEquippedItem(Core.Enums.Layer.Horse)?.Uid.Value ?? 0;
-                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                        new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
-                    var npc = DismountCharacter();
-
-                    // Re-seat via the shared standing resolver (audit design;
-                    // multi decks / house floors included).
-                    var wfStand = _world.Standing.ResolveStandingSurface(_character,
-                        _character.MapIndex, _character.X, _character.Y, _character.Z,
-                        SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
-                    if (wfStand.Found && wfStand.Z != _character.Z)
-                        _character.Position = new Point3D(_character.X, _character.Y, wfStand.Z, _character.MapIndex);
-
-                    if (oldMountItemUid != 0)
-                        BroadcastDeleteObject(oldMountItemUid);
-
-                    ResetWalkValidator();
-                    _netState.WalkSequence = 0;
-                    _netState.SendPriority(new PacketMoveReject(0,
-                        _character.X, _character.Y, _character.Z,
-                        (byte)((byte)_character.Direction & 0x07)));
-
-                    byte flags = BuildMobileFlags(_character);
-                    byte dir77 = (byte)((byte)_character.Direction & 0x07);
-                    byte noto = GetNotoriety(_character);
-                    var movePacket = new PacketMobileMoving(
-                        _character.Uid.Value, _character.BodyId,
-                        _character.X, _character.Y, _character.Z, dir77,
-                        _character.Hue, flags, noto);
-                    _netState.Send(movePacket);
-                    if (BroadcastMoveNearby != null)
-                        BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
-                    else
-                        BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
-
-                    if (npc != null)
-                    {
-                        npc.ClearStatFlag(Core.Enums.StatFlag.Ridden);
-                        BroadcastCharacterAppear?.Invoke(npc);
-                    }
-                }
+            case PopupTradeOpen:
+                InitiateTrade(target);
                 break;
-            }
         }
     }
 

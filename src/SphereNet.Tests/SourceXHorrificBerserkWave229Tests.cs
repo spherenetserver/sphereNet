@@ -17,7 +17,9 @@ public sealed class SourceXHorrificBerserkWave229Tests
 
         Assert.True(engine.ApplyScriptSpellEffect(
             character, character, SpellType.HorrificBeast, 1000));
-        Assert.Equal((5, 15), CombatEngine.CalcWeaponDamage(character, null));
+        // 5-15 plus the +25% Damage Increase, which Fight_CalcDamage folds into the
+        // same bonus as the era terms (CCharFight.cpp:1247-1253, 1323-1324).
+        Assert.Equal((6, 18), CombatEngine.CalcWeaponDamage(character, null));
         Assert.Equal(25, CombatEngine.CalculateDamageIncrease(character));
 
         engine.ProcessExpirations(long.MaxValue);

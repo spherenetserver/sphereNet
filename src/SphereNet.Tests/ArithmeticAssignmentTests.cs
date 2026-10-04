@@ -94,6 +94,25 @@ public sealed class ArithmeticAssignmentTests : IDisposable
         Assert.Equal("6", Read(it, "AMOUNT"));
     }
 
+    /// <summary>MORE1/MORE2 load through GetArgDWVal (CItem.cpp:3412/3421): the number
+    /// is read in 64 bits and cut to its low dword. A full spellbook writes
+    /// MORE=04ffffffff - wider than a dword - and used to store 0, an empty book.</summary>
+    [Fact]
+    public void AWiderThanDwordMoreKeepsItsLowDword()
+    {
+        var (world, _) = Pack(
+            "[ITEMDEF 0efa]", "DEFNAME=i_probe_book", "TYPE=t_spellbook",
+            "ON=@Create",
+            "MORE=04ffffffff",
+            "MORE2=04ffffffff");
+
+        var it = world.CreateItem();
+        ItemDefHelper.ApplyInstanceMetadata(it, 0x0EFA);
+
+        Assert.Equal(0xFFFFFFFFu, it.More1);
+        Assert.Equal(0xFFFFFFFFu, it.More2);
+    }
+
     /// <summary>The same on a character, which reaches the object through the same
     /// assignment layer.</summary>
     [Fact]

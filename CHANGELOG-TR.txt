@@ -4,6 +4,85 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Silah hasar bonusu, AOS oncesi zirh zari ve ondalikli anahtar degerleri
+------------------------------------------------------------------------
+DUZELTME - Hasar Artisi (INCREASEDAM, gargoyle berserk, Horrific Beast +%25) era'nin
+           tactics/anatomy/strength terimleriyle ayni tek Fight_CalcDamage bonusunun parcasidir
+           ve silahin min/max degerine bir kez uygulanir. Zarla secilmis, bonusu zaten eklenmis
+           hasara ikinci kez uygulaniyordu; DI katlaniyordu (%50 DI'li savasci Source-X'ten
+           yaklasik ucte bir daha sert vuruyordu).
+DUZELTME - INCREASEDAM yalnizca karakterin kendi degerini degil giyili tum esyalarin
+           INCREASEDAM degerini toplar (Source-X LayerAdd/LayerRemove karaktere ekler).
+DUZELTME - Status penceresindeki hasar satiri ve NPC silah secimi era 0 yerine ayarlanan
+           COMBATDAMAGEERA ile hesaplanir.
+DUZELTME - AOS oncesi zirh payini %7..34, savunmayi GetVal2Fast(ArMin, ArMax-ArMin+1) olarak
+           zarlar (Source-X'in yari-acik rastgele cekimleri); %7..35 ve tum ArMin..ArMax
+           araligini zarladigi icin zirh Source-X'ten fazla hasar emiyordu.
+DUZELTME - Karakter anahtarindaki ondalikli deger Source-X gibi '.' atlanarak okunur:
+           STR=12.5 degeri 125 olur (12'ye yuvarlaniyordu), TACTICS=50.5 degeri 505 olur.
+           Karakter anahtarindaki {a b} araligi Sphere hex okur ({010 020} = 16..32) ve
+           ondaliksiz yazilmis beceriye ek x10 uygulamaz.
+
+[2026-10-04] - Harita teleporterlari sessiz dunya verisi; telepad sesi MORE2'ye uyar
+------------------------------------------------------------------------
+DUZELTME - [TELEPORTERS] satirlari gorunmez telepad esyasi yerine, Source-X'teki gibi
+           (CSectorBase::GetTeleport) her adimda bakilan harita teleporter verisi olarak
+           tutulur; ALLSHOW acik GM artik onlari gormez. Uzerinden yurumek sessizdir (efektsiz
+           Spell_Teleport), takip eden petleri de goturur ve satirin dorduncu alani izin
+           vermedikce NPC'yi reddeder (muhafiz yalnizca korunan bolgeye, suclu NPC asla
+           korunan bolgeye). Eski surumlerin yerlestirdigi teleporter esyalari acilista
+           silinir; worldgen ile kurulan telepad'ler korunur.
+DUZELTME - Telepad veya moongate'e yurumek, ayarli TELEPORTEFFECT*/TELEPORTSOUND* degerini
+           eski ve yeni konumda yalnizca MORE2 0 iken gosterir; sifirdan farkli MORE2 sessiz
+           yapar. Gemi iskelesi sessizdir. Her yurume-isinlanmasinda sabit bir isinlanma sesi
+           caliyordu; zindan giris ve cikislari recall gibi ses veriyordu. Telepad veya
+           moongate'e cift tiklama da ayni kurala uyar.
+
+[2026-10-04] - Zehir: her cizimde can cubugu rengi, guclu tedavi halusinasyonu bitirir, tick buyuyu tasir
+------------------------------------------------------------------------
+DUZELTME - Can cubugu renk paketi (0x17, enhanced client icin 0x16) Source-X addChar ->
+           addHealthBarUpdate gibi her karakter ciziminde gonderilir - menzile giren
+           gozlemci, giris, resync, yeniden cizim. Yalnizca zehir baslayip bittiginde
+           gidiyordu; yesil cubugu sadece bu paketten okuyan 7.0+ istemci, zaten zehirli bir
+           karaktere yaklasinca veya zehirli giris yapinca normal cubuk goruyordu. Istemci
+           kapisi Source-X'inki (7.0.0.0 veya KR; enhanced client icin 0x16), sari cubuk
+           Freeze ve Stone'u kapsar.
+DUZELTME - Guclu tedavi (extra bayrakli SetPoisonCure: Arch Cure, yuksek skill Cure, CURE 1,
+           olum) Source-X SetPoisonCure(fExtra) gibi Hallucination etki hafizasini da siler.
+DUZELTME - Zehir tick'i zehir buyusunun hasaridir: @GetHit LOCAL.Spell=20 gorur ve buyunun
+           NOUNPARALYZE bayragi uygulanir. Tick yalnizca buyu SPELLFLAG_HARM tasiyorsa ve
+           hasar tipi sifir degilse hasar verir; @SpellEffectTick / @EffectTick icindeki
+           LOCAL.DamageType tam zehir tipiyle baslar ve geri okunur.
+
+[2026-10-04] - Baglam menusu, binek sesi, buyu yaparken notoriety ve dword script sayilari
+------------------------------------------------------------------------
+DUZELTME - Karakter baglam menusu Source-X giris, etiket ve cliloc'larini kullanir: sahip veya
+           GM icin pet komutlari (guard, follow, drop, kill, stop, stay, friend, unfriend,
+           transfer, release), arkadas icin follow/stop/stay, tame, vendor buy/sell, banker,
+           egitmen yetenekleri (200+ etiketleri), stable/retrieve, kendi cantasi ve takas
+           izin/red, parti ekle/cikar ve takas. Motorun kendi Dismount satiri "Command: Stop"
+           cliloc'uyla gidiyordu; Stop secilince binekten iniliyordu. Upstream'de olmadigi icin
+           bin/in satirlari kaldirildi.
+DUZELTME - Binege binme ve inme her yolda yaratigin idle sesini calar (Make_Figurine /
+           Use_Figurine SoundChar(CRESND_IDLE)); onun yerine sabit 0x140 darbe sesi caliyordu.
+DUZELTME - Stop veya stay emri alan pet o an yaptigi buyuyu birakir (Skill_Start calisan
+           eylemi iptal eder).
+DUZELTME - Hedefine donen buyucu her izleyiciye kendi notoriety rengiyle gonderilir; buyu
+           yaparken her NPC gri, her oyuncu mavi gorunuyordu.
+DUZELTME - MORE/MORE1/MORE2/MOREB ve diger dword script sayilari 64 bit okunur ve alt dword
+           saklanir (Exp_GetDWVal); dword'den genis (full spellbook'ta MORE=04ffffffff) veya
+           negatif deger 0 olarak kaydediliyordu.
+DUZELTME - NPC'ye cift tiklama beyin grubuna gore isler (GetNPCBrainGroup): hayvan, canavar,
+           ejderha veya berserk beyinli NPC'ye binilir, yuk hayvaninin cantasi acilir, staff
+           cantaya bakar ya da hicbir sey olmaz; oyuncular ve kasaba halki (human, healer, guard,
+           banker, vendor, stable) paperdoll gosterir. Govdeye bakiyordu; insan govdeli canavar
+           beyinli NPC paperdoll aciyordu, vendor ise Source-X'te olmayan bir al/sat gump'i
+           aciyordu, o gump kaldirildi.
+DEGISIKLIK - TickSleepMode varsayilani kodda, sablon sphere.ini'de ve panel kurulumunda 3
+           (adaptive) oldu; panel artik 3 degerini kabul ediyor.
+DEGISIKLIK - NPCCANFIZZLEONHIT varsayilani 1: NPC'nin buyusu de oyuncununki gibi hasar
+           alinca bozulur (Source-X varsayilani 0).
+
 [2026-10-02] - GUARDSINSTANTKILL acikken muhafiz dovuste aninda oldurur
 ------------------------------------------------------------------------
 DUZELTME - GUARDSINSTANTKILL=1 iken muhafiz NPC'nin vurusu her zaman isabet eder, UINT16_MAX

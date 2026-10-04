@@ -4,6 +4,82 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - Weapon damage bonus, pre-AOS armor roll and decimal key values
+------------------------------------------------------------------------
+FIX - Damage Increase (INCREASEDAM, gargoyle berserk, Horrific Beast +25%) is part of the one
+      Fight_CalcDamage bonus with the era tactics/anatomy/strength terms and is applied once to
+      the weapon's min and max. It was applied a second time on the rolled, already-bonused
+      damage, so DI compounded (a 50% DI fighter hit about a third harder than Source-X).
+FIX - INCREASEDAM counts every equipped item's INCREASEDAM, not only the character's own value
+      (Source-X LayerAdd/LayerRemove fold it into the character).
+FIX - The status window damage line and the NPC weapon choice use the configured
+      COMBATDAMAGEERA instead of era 0.
+FIX - Pre-AOS armor rolls its share as 7..34% and the defense as GetVal2Fast(ArMin,
+      ArMax-ArMin+1), matching Source-X's half-open random draws; it rolled 7..35% and the
+      whole ArMin..ArMax range, so armor absorbed more than in Source-X.
+FIX - A decimal value on a character key is read the Source-X way, with the '.' skipped:
+      STR=12.5 sets 125 (was rounded to 12), TACTICS=50.5 sets 505. A {a b} range on a
+      character key reads Sphere hex ({010 020} is 16..32) and applies no extra x10 to a
+      skill written without decimals.
+
+[2026-10-04] - Map teleporters are silent world data; telepad sound follows MORE2
+------------------------------------------------------------------------
+FIX - [TELEPORTERS] lines are kept as map teleporter data looked up on each step, as in
+      Source-X (CSectorBase::GetTeleport), instead of invisible telepad items, so a GM with
+      ALLSHOW no longer sees them. Walking through one is silent (Spell_Teleport with no
+      effect), takes following pets along, and refuses an NPC unless the line's fourth field
+      allows NPCs (guards only into guarded areas, criminal NPCs never into them). Teleporter
+      items placed by earlier builds are removed at startup; world-built telepads are kept.
+FIX - Walking onto a telepad or moongate shows the configured TELEPORTEFFECT*/TELEPORTSOUND*
+      at the old and new position only when MORE2 is 0; a non-zero MORE2 makes it quiet.
+      Ship planks are silent. A fixed teleport sound used to play on every walk-on teleport,
+      so dungeon entrances and exits sounded like a recall. Double-clicking a telepad or
+      moongate follows the same rule.
+
+[2026-10-04] - Poison: health-bar colour on every draw, cure ends hallucination, tick carries the spell
+------------------------------------------------------------------------
+FIX - The health-bar colour packet (0x17, 0x16 for the enhanced client) is sent with every
+      character draw - an observer coming into range, login, resync, a redraw - as Source-X
+      addChar -> addHealthBarUpdate does. It was only sent when poison started or ended, so a
+      7.0+ client (which reads the green bar only from this packet) that walked up to an
+      already-poisoned character, or logged in poisoned, saw a normal bar. The client gate is
+      Source-X's (7.0.0.0 or KR; 0x16 for the enhanced client) and the yellow bar covers
+      Freeze and Stone.
+FIX - A strong cure (SetPoisonCure with the extra flag: Arch Cure, high-skill Cure, CURE 1,
+      death) also removes the Hallucination effect memory, as Source-X SetPoisonCure(fExtra).
+FIX - A poison tick is the poison spell's damage: @GetHit sees LOCAL.Spell=20 and the spell's
+      NOUNPARALYZE flag is honoured. The tick deals damage only when the spell has
+      SPELLFLAG_HARM and a non-zero damage type; LOCAL.DamageType in @SpellEffectTick /
+      @EffectTick is seeded with the full poison type and read back.
+
+[2026-10-04] - Context menu, mount sound, casting notoriety and dword script numbers
+------------------------------------------------------------------------
+FIX - The character context menu uses the Source-X entries, tags and clilocs: pet commands
+      (guard, follow, drop, kill, stop, stay, friend, unfriend, transfer, release) for an
+      owner or GM, follow/stop/stay for a friend, tame, vendor buy/sell, banker, trainer
+      skills (tags 200+), stable/retrieve, own backpack and trade allow/refuse, party
+      add/remove and trade. The engine's own Dismount line was sent with the "Command: Stop"
+      cliloc, so choosing Stop dismounted the rider; mount/dismount lines are gone, as
+      upstream has none.
+FIX - Mounting and dismounting play the creature's idle sound (Make_Figurine / Use_Figurine
+      SoundChar(CRESND_IDLE)) on every path; a fixed impact sound 0x140 was played instead.
+FIX - A pet told to stop or stay abandons a spell it is casting (Skill_Start aborts the
+      running action).
+FIX - A caster turning to face its target is sent with each viewer's notoriety; every NPC
+      showed grey and every player blue while casting.
+FIX - MORE/MORE1/MORE2/MOREB and other dword script numbers are read in 64 bits and keep the
+      low dword (Exp_GetDWVal); a value wider than a dword (MORE=04ffffffff on a full
+      spellbook) or a negative one was stored as 0.
+FIX - Double-clicking an NPC goes by its brain group (GetNPCBrainGroup): an animal, monster,
+      dragon or berserk brain is mounted, opens a pack animal's pack, is snooped by staff or
+      does nothing; players and townsfolk (human, healer, guard, banker, vendor, stable) show
+      the paperdoll. It went by body, so a human-bodied monster-brain NPC opened a paperdoll;
+      a vendor opened a buy/sell gump that Source-X does not have, and that gump is removed.
+CHANGE - TickSleepMode defaults to 3 (adaptive) in code, the template sphere.ini and the
+      panel setup, which now accepts mode 3.
+CHANGE - NPCCANFIZZLEONHIT defaults to 1: an NPC's spell is disturbed by a hit the way a
+      player's is (Source-X's default is 0).
+
 [2026-10-02] - Guards kill instantly in combat under GUARDSINSTANTKILL
 ------------------------------------------------------------------------
 FIX - With GUARDSINSTANTKILL=1 a guard NPC's swing now always lands, deals UINT16_MAX damage

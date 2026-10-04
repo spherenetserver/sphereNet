@@ -778,7 +778,8 @@ public sealed partial class NpcAI
             if (skill == SkillType.Wrestling)
                 return 0;
         }
-        var (lo, hi) = CombatEngine.CalcWeaponDamage(npc, weapon);
+        // Fight_CalcDamage under the configured COMBATDAMAGEERA (CCharNPCStatus.cpp:694).
+        var (lo, hi) = CombatEngine.CalcWeaponDamage(npc, weapon, Character.CombatDamageEra);
         int dmg = hi > lo ? lo + _rand.Next(hi - lo + 1) : lo;
         int skillLevel = SphereNet.Game.Skills.SkillEngine.GetAdjustedSkill(npc, skill);
         return skillLevel + dmg * 50;

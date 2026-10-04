@@ -91,7 +91,7 @@ public sealed class ContextMenuReturnOneTests
     {
         _captured.Clear();
         var tags = Open(TriggerResult.Default, scriptAddsEntry: false);
-        Assert.Contains((ushort)1, tags);   // Open Paperdoll
+        Assert.Contains((ushort)520, tags);   // POPUP_PAPERDOLL
     }
 
     /// <summary>RETURN 1 hands the menu to the script: its entry, and none of the
@@ -103,7 +103,7 @@ public sealed class ContextMenuReturnOneTests
         var tags = Open(TriggerResult.True, scriptAddsEntry: true);
 
         Assert.Contains((ushort)200, tags);      // the script's own line
-        Assert.DoesNotContain((ushort)1, tags);  // not the engine's paperdoll
+        Assert.DoesNotContain((ushort)520, tags);  // not the engine's paperdoll
     }
 
     /// <summary>And RETURN 0 with a script entry merges both, which is what every
@@ -114,7 +114,7 @@ public sealed class ContextMenuReturnOneTests
         _captured.Clear();
         var tags = Open(TriggerResult.Default, scriptAddsEntry: true);
 
-        Assert.Contains((ushort)1, tags);
+        Assert.Contains((ushort)520, tags);
         Assert.Contains((ushort)200, tags);
     }
 
@@ -150,7 +150,7 @@ public sealed class ContextMenuReturnOneTests
         TestHarness.AttachCharacter(client, ch);
         TestHarness.ClearQueuedPackets(client.NetState);
 
-        client.WorldFeatures.HandleContextMenuResponse(ch.Uid.Value, 1);
+        client.WorldFeatures.HandleContextMenuResponse(ch.Uid.Value, 520); // POPUP_PAPERDOLL
 
         // 0x88 is the paperdoll packet.
         return TestHarness.GetQueuedPackets(client.NetState).Any(p => p.Span[0] == 0x88);

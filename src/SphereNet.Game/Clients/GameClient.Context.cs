@@ -219,7 +219,6 @@ public sealed partial class GameClient : IClientContext
 
     void IClientContext.OpenVendorBuy(Character vendor) => OpenVendorBuy(vendor);
     void IClientContext.OpenVendorSell(Character vendor) => OpenVendorSell(vendor);
-    void IClientContext.HandleVendorInteraction(Character vendor) => HandleVendorInteraction(vendor);
     void IClientContext.HandleDoubleClick(uint uid) => HandleDoubleClick(uid);
     ResDisplayVersion IClientContext.HandleResolvedClientVersion() => HandleResolvedClientVersion();
     void IClientContext.StoreReportedClientVersion() => StoreReportedClientVersion();
@@ -251,6 +250,7 @@ public sealed partial class GameClient : IClientContext
     bool IClientContext.HasAmmoInBackpack(ItemType ammo) => HasAmmoInBackpack(ammo);
     void IClientContext.ConsumeAmmoFromBackpack(ItemType ammo) => ConsumeAmmoFromBackpack(ammo);
     bool IClientContext.TryHandlePetCommand(string text) => TryHandlePetCommand(text);
+    bool IClientContext.ApplyPetCommand(Character pet, string verb) => ItemUse.ApplyPetCommand(pet, verb);
     bool IClientContext.TryHandleCommandSpeech(string text) => TryHandleCommandSpeech(text);
     void IClientContext.SetWarMode(bool warMode, bool syncClients, bool preserveTarget) => SetWarMode(warMode, syncClients, preserveTarget);
     void IClientContext.FaceTarget(Character target) => FaceTarget(target);

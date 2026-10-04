@@ -340,7 +340,7 @@ public record SetupConfig(
     string AdminPassword,
     int AdminPanelPort,
     // Advanced
-    int TickSleepMode = 2,
+    int TickSleepMode = 3,
     bool DebugPackets = false,
     bool ScriptDebug = false
 );

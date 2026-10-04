@@ -394,48 +394,44 @@ public static partial class Program
             _log.LogWarning("  {Anomaly}", a);
     }
 
+    /// <summary>[TELEPORTERS] become the world's map teleporters. Source-X keeps them
+    /// as sector data, not items (CTeleport, CSectorBase::GetTeleport), so nobody -
+    /// not even a GM with ALLSHOW - sees them, and walking onto one is silent
+    /// (CCharAct.cpp:5063-5094). Earlier builds made each line an invisible static
+    /// telepad item instead; those are swept out of the world here, so a statics file
+    /// that SAVESTATICS wrote with them in it loses them on the next save.</summary>
     private static void PlaceTeleporters()
     {
-        var teleporters = _resources.Teleporters;
-        if (teleporters.Count == 0) return;
-
-        // Remove previously placed script teleporters (Static + Telepad)
-        var toRemove = new List<SphereNet.Game.Objects.Items.Item>();
+        var removed = new List<SphereNet.Game.Objects.Items.Item>();
         foreach (var obj in _world.GetAllObjects())
         {
-            if (obj is SphereNet.Game.Objects.Items.Item item &&
-                item.ItemType == ItemType.Telepad &&
-                item.IsAttr(ObjAttributes.Static))
-            {
-                toRemove.Add(item);
-            }
+            if (obj is SphereNet.Game.Objects.Items.Item item && IsLegacyMapTeleporterItem(item))
+                removed.Add(item);
         }
-        foreach (var item in toRemove)
+        foreach (var item in removed)
             _world.RemoveItem(item);
 
-        int placed = 0, skipped = 0;
-        foreach (var (src, dest, name) in teleporters)
-        {
-            var item = _world.CreateItem();
-            item.BaseId = 0x1BC3;
-            item.ItemType = ItemType.Telepad;
-            item.MoreP = dest;
-            item.Name = string.IsNullOrEmpty(name) ? "teleporter" : name;
-            item.SetAttr(ObjAttributes.Invis | ObjAttributes.Static | ObjAttributes.Move_Never);
-            // A teleporter on a map this server does not run is refused; left in the
-            // world it sat at 0,0,0,0 and SAVESTATICS wrote it out on every save.
-            if (!_world.PlaceItem(item, src))
-            {
-                _world.RemoveItem(item);
-                skipped++;
-                continue;
-            }
-            placed++;
-        }
+        var (added, skipped) = _world.SetMapTeleports(_resources.Teleporters.Select(t =>
+            new SphereNet.Game.World.GameWorld.MapTeleport(t.Src, t.Dest, t.Npc)));
 
-        _log.LogInformation("Placed {Count} teleporters from scripts ({Removed} old removed, {Skipped} on maps not in use)",
-            placed, toRemove.Count, skipped);
+        if (added > 0 || skipped > 0 || removed.Count > 0)
+            _log.LogInformation(
+                "Map teleporters: {Count} active ({Skipped} off the maps in use or conflicting); {Removed} old teleporter items removed",
+                added, skipped, removed.Count);
     }
+
+    /// <summary>An item an earlier build placed for a [TELEPORTERS] line: graphic
+    /// 0x1BC3, type telepad, on the ground, carrying the static|invis|move_never it was given.
+    /// A world-built telepad (worldgen decoration) uses its own graphic and attrs and
+    /// is left alone.</summary>
+    internal static bool IsLegacyMapTeleporterItem(SphereNet.Game.Objects.Items.Item item) =>
+        !item.IsDeleted &&
+        item.BaseId == 0x1BC3 &&
+        item.ItemType == ItemType.Telepad &&
+        item.IsOnGround &&
+        item.IsAttr(ObjAttributes.Static) &&
+        item.IsAttr(ObjAttributes.Invis) &&
+        item.IsAttr(ObjAttributes.Move_Never);
 
 
     /// <summary>Load ROOMDEF sections from script resources into GameWorld.</summary>

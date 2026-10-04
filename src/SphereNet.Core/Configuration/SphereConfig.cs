@@ -591,9 +591,10 @@ public sealed class SphereConfig
     public bool FlipDroppedItems { get; set; } = true;
 
     /// <summary>Can an NPC's spell be disturbed by a hit, the way a player's can?
-    /// (Source-X m_fNPCCanFizzleOnHit, ini NPCCANFIZZLEONHIT, default false - only
-    /// players are disturbed, CCharFight.cpp:881.)</summary>
-    public bool NpcCanFizzleOnHit { get; set; }
+    /// (Source-X m_fNPCCanFizzleOnHit, ini NPCCANFIZZLEONHIT, CCharFight.cpp:881.)
+    /// This shard defaults it on; Source-X's own default is off, which disturbs only
+    /// players.</summary>
+    public bool NpcCanFizzleOnHit { get; set; } = true;
 
     /// <summary>How many houses a guild may own by default (Source-X
     /// _iMaxHousesGuild, ini MAXHOUSESGUILD, default 1). It is the value a stone
@@ -808,12 +809,12 @@ public sealed class SphereConfig
     //              Best for dedicated servers with spare CPU cores.
     // 1 = sleep  : Thread.Sleep(1) — ~15ms latency on Windows, minimal CPU usage.
     //              Best for shared/low-end machines where CPU is precious.
-    // 2 = hybrid : SpinWait + Sleep(0) — ~1ms latency, moderate CPU usage. (default)
+    // 2 = hybrid : SpinWait + Sleep(0) — ~1ms latency, moderate CPU usage.
     // 3 = adaptive : sleep out the slack until the next tick deadline, capped at a
     //              few ms — near-zero idle CPU with bounded input latency. Best for
     //              small/shared hosts. Watch the [tick_stats] loops-per-tick (lpt)
-    //              gauge to confirm the drop before/after switching.
-    public int TickSleepMode { get; set; } = 2;
+    //              gauge to confirm the drop before/after switching. (default)
+    public int TickSleepMode { get; set; } = 3;
 
     // Sentry
     public string SentryDsn { get; set; } = "";

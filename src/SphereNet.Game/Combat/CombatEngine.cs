@@ -475,7 +475,11 @@ public static class CombatEngine
     /// <summary>Optional lookup for NPC natural damage from CHARDEF (CharDefIndex → (damMin, damMax)).</summary>
     public static Func<int, (int Min, int Max)?>? NpcDamageDefLookup { get; set; }
 
-    public static (int Min, int Max) CalcWeaponDamage(Character attacker, Item? weapon, int era = 0)
+    /// <summary>Source-X Fight_CalcDamage min/max (CCharFight.cpp:1202-1325). The
+    /// bonus gate is m_pPlayer || COMBAT_NPC_BONUSDAMAGE; <paramref name="flags"/>
+    /// is the swing's flag set (null reads the configured COMBATFLAGS).</summary>
+    public static (int Min, int Max) CalcWeaponDamage(Character attacker, Item? weapon, int era = 0,
+        CombatFlags? flags = null)
     {
         if (IsInstantKillGuard(attacker))
             return (ushort.MaxValue, ushort.MaxValue);   // swing made (CCharFight.cpp:1206)
@@ -554,15 +558,25 @@ public static class CombatEngine
             }
         }
 
+        // The whole bonus is a player's (or every NPC's under COMBAT_NPC_BONUSDAMAGE):
+        // Fight_CalcDamage wraps it in m_pPlayer || IsSetCombatFlags(...)
+        // (CCharFight.cpp:1235). Monsters got their STR percent on top of DAM.
+        var activeFlags = flags ?? CombatHelper.ActiveCombatFlags;
+        if (!attacker.IsPlayer && (activeFlags & CombatFlags.NpcBonusDamage) == 0)
+            return NormalizeDamageRange(dmgMin, dmgMax, 0);
+
         // Source-X Fight_CalcDamage: the bonus is a PERCENTAGE applied to the
         // base damage and is era-specific (tactics/anatomy only count in era 1/2).
+        // iDmgBonus is seeded with the capped INCREASEDAM plus the gargoyle berserk
+        // and Horrific Beast shares (CCharFight.cpp:1237-1253); the era terms add to
+        // the same total and it is applied ONCE to min and max (:1323-1324).
         int tactics = attacker.GetSkill(SkillType.Tactics);
         int anatomy = attacker.GetSkill(SkillType.Anatomy);
-        int dmgBonus; // percent
+        int dmgBonus = CalculateDamageIncrease(attacker); // percent
         switch (era)
         {
             case 1: // pre-AOS
-                dmgBonus = (tactics - 500) / 10;
+                dmgBonus += (tactics - 500) / 10;
                 dmgBonus += anatomy / 50;
                 if (anatomy >= 1000) dmgBonus += 10;
                 if (weapon != null && weapon.ItemType == ItemType.WeaponAxe)
@@ -574,7 +588,7 @@ public static class CombatEngine
                 dmgBonus += EffectiveStr(attacker) * 20 / 100;
                 break;
             case 2: // AOS
-                dmgBonus = tactics / 16;
+                dmgBonus += tactics / 16;
                 if (tactics >= 1000) dmgBonus += 6;
                 dmgBonus += anatomy / 20;
                 if (anatomy >= 1000) dmgBonus += 5;
@@ -588,15 +602,14 @@ public static class CombatEngine
                 dmgBonus += EffectiveStr(attacker) * 30 / 100;
                 break;
             default: // era 0 — Sphere custom: STR% only, no tactics/anatomy
-                dmgBonus = EffectiveStr(attacker) * 10 / 100;
+                dmgBonus += EffectiveStr(attacker) * 10 / 100;
                 break;
         }
-        // The whole bonus is a player's (or every NPC's under COMBAT_NPC_BONUSDAMAGE):
-        // Fight_CalcDamage wraps it in m_pPlayer || IsSetCombatFlags(...)
-        // (CCharFight.cpp:1235). Monsters got their STR percent on top of DAM.
-        if (!attacker.IsPlayer && (Character.CombatFlags & (int)CombatFlags.NpcBonusDamage) == 0)
-            dmgBonus = 0;
+        return NormalizeDamageRange(dmgMin, dmgMax, dmgBonus);
+    }
 
+    private static (int Min, int Max) NormalizeDamageRange(int dmgMin, int dmgMax, int dmgBonus)
+    {
         // Definitions and callback-provided ranges are external input. Keep
         // arithmetic in 64-bit space and normalise reversed/negative ranges
         // before Random receives them.
@@ -1006,12 +1019,31 @@ public static class CombatEngine
     /// <summary>Pre-AOS armour (CCharFight.cpp:733-746): the creature's own ARMOR plus
     /// the coverage-weighted worn armour, rolled between half of and a 7-35% share of
     /// it, halved against magic.</summary>
+    internal static (int ArMin, int ArMax) RollPreAosArmorBounds(int armorRating)
+    {
+        // Get16Val2Fast(7,35) is half-open, 7 + Get16ValFast(28) = 7..34
+        // (CSRand.cpp:88-95; CCharFight.cpp:737).
+        int arMax = (int)Math.Clamp((long)armorRating * _rand.Next(7, 35) / 100, int.MinValue, int.MaxValue);
+        return (arMax / 2, arMax);
+    }
+
+    /// <summary>CCharFight.cpp:740 GetVal2Fast(iArMin, (iArMax - iArMin) + 1): the
+    /// second argument is an upper bound, not a span, and the draw is half-open
+    /// (CSRand.cpp:105-112, GetValFast(n) = 0..n-1, 0 under 2) - so the defense is
+    /// iArMin, or iArMin..iArMin+1 when iArMax is odd.</summary>
+    internal static int RollPreAosDefense(int arMin, int arMax)
+    {
+        long lo = arMin, hi = (long)arMax - arMin + 1;
+        if (lo > hi) (lo, hi) = (hi, lo);
+        long span = hi - lo;
+        return (int)(span < 2 ? lo : lo + _rand.NextInt64(span));
+    }
+
     private static int ApplyPreAosArmor(Character target, Character? attacker, int damage, DamageType type)
     {
         int armorRating = CalcArmorDefense(target) + target.CharDefArmor();
-        int arMax = (int)Math.Min((long)armorRating * _rand.Next(7, 36) / 100, int.MaxValue);
-        int arMin = arMax / 2;
-        int defense = (int)_rand.NextInt64(arMin, (long)arMax + 1);
+        var (arMin, arMax) = RollPreAosArmorBounds(armorRating);
+        int defense = RollPreAosDefense(arMin, arMax);
         if ((type & DamageType.Magic) != 0)
             defense /= 2;
         int result = Math.Max(0, damage - defense);
@@ -1210,10 +1242,11 @@ public static class CombatEngine
     /// connecting but fully absorbed/cancelled hit, or an Attack* sentinel.
     /// Maps to CChar::Fight_Hit flow in Source-X.
     /// </summary>
-    /// <summary>Attacker's Damage Increase % (Source-X INCREASEDAM), from the
-    /// INCREASEDAM tag. 0 when absent or unparseable.</summary>
+    /// <summary>Attacker's Damage Increase % (Source-X PROPCH_INCREASEDAM): the
+    /// character's own value plus every equipped item's INCREASEDAM, which LayerAdd /
+    /// LayerRemove fold into the char upstream (CCharAct.cpp:3395, 527).</summary>
     private static int GetDamageIncrease(Character ch) =>
-        ch.TryGetTag("INCREASEDAM", out string? s) && ScriptNumber.TryParseInt(s, out int v) ? v : 0;
+        GetEquipmentPropertyValue(ch, "INCREASEDAM");
 
     /// <summary>Source-X Fight_CalcDamage additive Damage Increase modifiers.
     /// The configured INCREASEDAM value is capped first; racial/form bonuses
@@ -1406,21 +1439,13 @@ public static class CombatEngine
             return AttackMiss;
 
         // Calculate raw damage
-        var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
+        var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra, flags);
         // Guard against malformed weapon/NPC damage defs where Min > Max, which
         // would make Random.Next throw and crash the combat tick.
         if (dmgMax < dmgMin) (dmgMin, dmgMax) = (dmgMax, dmgMin);
+        // Damage Increase is already inside the range: Fight_CalcDamage folds it into
+        // iDmgBonus before rolling GetVal2(min, max) (CCharFight.cpp:1237, 1329).
         int damage = (int)_rand.NextInt64(dmgMin, (long)dmgMax + 1);
-
-        // Damage Increase (Source-X PROPCH_INCREASEDAM): applies to players
-        // always, and to NPCs only when COMBAT_NPC_BONUSDAMAGE is set, capped at
-        // ±100%. Read from the attacker's INCREASEDAM tag (absent/0 = none).
-        if (attacker.IsPlayer || flags.HasFlag(CombatFlags.NpcBonusDamage))
-        {
-            int di = CalculateDamageIncrease(attacker);
-            if (di != 0)
-                damage += damage * di / 100;
-        }
 
         // The swing's damage type: @HitCheck's ARGN2 when the caller carried it,
         // else the weapon's own (OVERRIDE.DAMAGETYPE). It runs through the parry

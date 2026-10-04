@@ -34,5 +34,4 @@ public sealed partial class GameClient
 
     internal void ConsumeAmmoFromBackpack(Core.Enums.ItemType ammo) => ItemUse.ConsumeAmmoFromBackpack(ammo);
 
-    internal void HandleVendorInteraction(Character vendor) => ItemUse.HandleVendorInteraction(vendor);
 }

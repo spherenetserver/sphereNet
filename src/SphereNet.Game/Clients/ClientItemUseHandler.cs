@@ -408,8 +408,6 @@ public sealed class ClientItemUseHandler
                     return;
                 }
                 uint oldMountItemUid = _character.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
-                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                    new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
                 var npc = DismountCharacter();
 
                 // Re-seat after the body type change (mounted→foot) via the
@@ -536,98 +534,85 @@ public sealed class ClientItemUseHandler
                     return;
                 }
             }
-            if (VendorEngine.IsVendorLike(ch))
+            // Source-X Event_DoubleClick (CClientEvent.cpp:2377-2396): only an NPC
+            // outside the human brain group - an animal, monster, dragon or berserk -
+            // is mounted, opens its pack or is snooped; everyone else (players,
+            // townsfolk, guards, healers, bankers, vendors) shows the paperdoll.
+            // This used to go by body, so a human-bodied monster-brain NPC opened a
+            // paperdoll, and a vendor opened a buy/sell gump upstream does not have.
+            if (!ch.IsPlayer && ch.GetNpcBrainGroup() != NpcBrainType.Human)
             {
-                if (_character.PrivLevel < PrivLevel.GM)
+                // Mount check — double-click mountable NPC
+                if (!ch.IsPlayer && _mountEngine != null &&
+                    Mounts.MountEngine.IsMountable(ch.BodyId))
                 {
-                    int dist = Math.Max(Math.Abs(_character.X - ch.X), Math.Abs(_character.Y - ch.Y));
-                    if (dist > 3 || _character.MapIndex != ch.MapIndex)
+                    if (ch.IsDead)
                     {
-                        SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                        SysMessage(ServerMessages.Get(Msg.MsgBondedDeadCantmount));
                         return;
                     }
+
+                    // Already riding — block with message instead of falling through to paperdoll
+                    if (_character.IsMounted)
+                    {
+                        SysMessage(ServerMessages.Get("mount_already_riding"));
+                        return;
+                    }
+
+                    // UO mount-range rule: the mount must be adjacent (within 1 tile).
+                    // Without this check, a distant mount gets accepted by the server
+                    // while the client teleports the player to the mount's tile — the
+                    // classic "I got yanked onto my horse" glitch.
+                    int dx = Math.Abs(_character.X - ch.X);
+                    int dy = Math.Abs(_character.Y - ch.Y);
+                    if (_character.MapIndex != ch.MapIndex || dx > 1 || dy > 1)
+                    {
+                        SysMessage("That is too far away.");
+                        return;
+                    }
+
+                    if (TryMountCharacter(ch))
+                    {
+                        uint mountNpcUid = ch.Uid.Value;
+
+                        // Re-seat after the body type change (foot→mounted) via
+                        // the shared standing resolver (multi decks included).
+                        var mountedStand = _world.Standing.ResolveStandingSurface(_character,
+                            _character.MapIndex, _character.X, _character.Y, _character.Z,
+                            SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+                        if (mountedStand.Found && mountedStand.Z != _character.Z)
+                            _character.Position = new Point3D(_character.X, _character.Y, mountedStand.Z, _character.MapIndex);
+
+                        // Immediately remove the old NPC mount from nearby clients to prevent temporary duplicates.
+                        BroadcastDeleteObject(mountNpcUid);
+
+                        // Reset walk state — foot→mount speed transition
+                        _netState.WalkSequence = 0;
+                        ResetWalkValidator();
+
+                        // MoveReject FIRST — clears walk queue + Offset.Z, sets exact position
+                        _netState.SendPriority(new PacketMoveReject(0,
+                            _character.X, _character.Y, _character.Z,
+                            (byte)((byte)_character.Direction & 0x07)));
+
+                        // DrawObject AFTER — body/equipment update with Steps queue already cleared.
+                        // BroadcastDrawObject sends to self + nearby clients.
+                        BroadcastDrawObject(_character);
+                        return;
+                    }
+
+                    SysMessage(ServerMessages.Get("gm_mount_failed"));
+                    return;
                 }
-                HandleVendorInteraction(ch);
+
+                // Pack horses and llamas open their pack; staff snoop any other
+                // creature's pack; anyone else gets nothing.
+                if (ch.BodyId is 0x0123 or 0x0124 || _character.PrivLevel >= PrivLevel.GM)
+                    SendOpenContainer(EnsureCharacterPack(ch));
                 return;
             }
 
-            // Mount check — double-click mountable NPC
-            if (!ch.IsPlayer && _mountEngine != null &&
-                Mounts.MountEngine.IsMountable(ch.BodyId))
-            {
-                if (ch.IsDead)
-                {
-                    SysMessage(ServerMessages.Get(Msg.MsgBondedDeadCantmount));
-                    return;
-                }
-
-                // Already riding — block with message instead of falling through to paperdoll
-                if (_character.IsMounted)
-                {
-                    SysMessage(ServerMessages.Get("mount_already_riding"));
-                    return;
-                }
-
-                // UO mount-range rule: the mount must be adjacent (within 1 tile).
-                // Without this check, a distant mount gets accepted by the server
-                // while the client teleports the player to the mount's tile — the
-                // classic "I got yanked onto my horse" glitch.
-                int dx = Math.Abs(_character.X - ch.X);
-                int dy = Math.Abs(_character.Y - ch.Y);
-                if (_character.MapIndex != ch.MapIndex || dx > 1 || dy > 1)
-                {
-                    SysMessage("That is too far away.");
-                    return;
-                }
-
-                if (TryMountCharacter(ch))
-                {
-                    uint mountNpcUid = ch.Uid.Value;
-                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                        new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
-
-                    // Re-seat after the body type change (foot→mounted) via
-                    // the shared standing resolver (multi decks included).
-                    var mountedStand = _world.Standing.ResolveStandingSurface(_character,
-                        _character.MapIndex, _character.X, _character.Y, _character.Z,
-                        SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
-                    if (mountedStand.Found && mountedStand.Z != _character.Z)
-                        _character.Position = new Point3D(_character.X, _character.Y, mountedStand.Z, _character.MapIndex);
-
-                    // Immediately remove the old NPC mount from nearby clients to prevent temporary duplicates.
-                    BroadcastDeleteObject(mountNpcUid);
-
-                    // Reset walk state — foot→mount speed transition
-                    _netState.WalkSequence = 0;
-                    ResetWalkValidator();
-
-                    // MoveReject FIRST — clears walk queue + Offset.Z, sets exact position
-                    _netState.SendPriority(new PacketMoveReject(0,
-                        _character.X, _character.Y, _character.Z,
-                        (byte)((byte)_character.Direction & 0x07)));
-
-                    // DrawObject AFTER — body/equipment update with Steps queue already cleared.
-                    // BroadcastDrawObject sends to self + nearby clients.
-                    BroadcastDrawObject(_character);
-                    return;
-                }
-
-                SysMessage(ServerMessages.Get("gm_mount_failed"));
-                return;
-            }
-
-            // Source-X: pack horses/llamas expose their pack to players, while
-            // staff can inspect the pack of every non-human NPC without snoop
-            // or touch checks.
-            if (!ch.IsPlayer && !IsHumanLikeBody(ch.BodyId) &&
-                (ch.BodyId is 0x0123 or 0x0124 || _character.PrivLevel >= PrivLevel.GM))
-            {
-                SendOpenContainer(EnsureCharacterPack(ch));
-                return;
-            }
-
-            if (IsHumanLikeBody(ch.BodyId))
-                SendPaperdoll(ch);
+            SendPaperdoll(ch);
 
             return;
         }
@@ -777,10 +762,6 @@ public sealed class ClientItemUseHandler
         target.Backpack = pack;
         return pack;
     }
-
-    private static bool IsHumanLikeBody(ushort body) =>
-        body is 0x0190 or 0x0191 or 0x0192 or 0x0193
-            or 0x025D or 0x025E or 0x029A or 0x029B;
 
     /// <summary>
     /// Source-X CClient::Cmd_Use_Item parity dispatcher.
@@ -1742,9 +1723,14 @@ public sealed class ClientItemUseHandler
                 var dest = item.MoreP;
                 if ((dest.X != 0 || dest.Y != 0) && IsValidTeleportDest(dest))
                 {
+                    var from = _character.Position;
                     _character.MoveTo(dest);
                     SendSelfRedraw();
-                    _netState.Send(new PacketSound(0x01FE, _character.X, _character.Y, _character.Z));
+                    // Spell_Teleport's fDisplayEffect = !MORE2 (Use_MoonGate,
+                    // CCharUse.cpp:266-268): the configured teleport effect and
+                    // sound, or nothing for a quiet pad.
+                    if (item.More2 == 0)
+                        Character.OnTeleportEffect?.Invoke(_character, from);
                 }
                 break;
             }
@@ -1845,13 +1831,12 @@ public sealed class ClientItemUseHandler
                 var dest = item.MoreP;
                 if ((dest.X != 0 || dest.Y != 0) && IsValidTeleportDest(dest))
                 {
+                    var from = _character.Position;
                     _character.MoveTo(dest);
                     SendSelfRedraw();
-                    _netState.Send(new PacketSound(0x01FE, _character.X, _character.Y, _character.Z));
-                    _netState.Send(new PacketEffect(2, 0, 0, 0x3728,
-                        _character.X, _character.Y, (short)_character.Z,
-                        _character.X, _character.Y, (short)_character.Z,
-                        10, 30, true, false));
+                    // Same as the telepad: fDisplayEffect = !MORE2 (CCharUse.cpp:266-268).
+                    if (item.More2 == 0)
+                        Character.OnTeleportEffect?.Invoke(_character, from);
                 }
                 // No destination: nothing happens. @Step is a walking trigger only
                 // (CCharAct.cpp:4953), never a double-click one.
@@ -4491,6 +4476,14 @@ public sealed class ClientItemUseHandler
         pet.RemoveTag("PREV_PET_MODE");
     }
 
+    /// <summary>One pet hears one verb from this client, the way a context-menu
+    /// entry calls pChar->NPC_OnHearPetCmd("stop", m_pChar) (CClientEvent.cpp:2801-2839).</summary>
+    internal bool ApplyPetCommand(Character pet, string verb)
+    {
+        if (_character == null || pet.IsDeleted) return false;
+        return ApplyPetVerb(pet, verb);
+    }
+
     /// <summary>Source-X PC_*: target a single pet by name prefix.</summary>
     private bool DispatchNamedPet(string namePrefix, string verb)
     {
@@ -4594,6 +4587,11 @@ public sealed class ClientItemUseHandler
                 SupersedePendingPetOrder(pet);
                 pet.PetAIMode = PetAIMode.Stay;
                 pet.FightTarget = Serial.Invalid; // an order calls the pet off its fight
+                // Skill_Start(NPCACT_STAY) aborts the running action first
+                // (Skill_Fail(true), CCharSkill.cpp:4407-4409): a spell already being
+                // cast does not land. A pending breath/throw needs no extra step - it
+                // resolves against FightTarget, cleared above.
+                _client.Spells?.CancelCast(pet);
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
                 return true;
 
@@ -5235,30 +5233,6 @@ public sealed class ClientItemUseHandler
                 p.CanAcceptPetCommandFrom(_character, IsFriendPermittedPetVerb(verb)) &&
                 (string.IsNullOrEmpty(namePrefix) ||
                  p.Name.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase)));
-    }
-
-    internal void HandleVendorInteraction(Character vendor)
-    {
-        if (_character == null) return;
-
-        // Build a buy/sell gump for the vendor
-        var gump = new GumpBuilder(_character.Uid.Value, vendor.Uid.Value, 400, 300);
-        gump.AddResizePic(0, 0, 5054, 400, 300);
-        gump.AddText(30, 20, 0, vendor.GetName());
-        gump.AddText(30, 50, 0, "How may I help you?");
-        gump.AddButton(30, 100, 4005, 4007, 1);  // Buy
-        gump.AddText(70, 100, 0, "Buy");
-        gump.AddButton(30, 130, 4005, 4007, 2);  // Sell
-        gump.AddText(70, 130, 0, "Sell");
-        gump.AddButton(150, 250, 4017, 4019, 0); // Cancel
-
-        SendGump(gump, (buttonId, switches, textEntries) =>
-        {
-            if (buttonId == 1)
-                SendVendorBuyList(vendor);
-            else if (buttonId == 2)
-                SendVendorSellList(vendor);
-        });
     }
 
     /// <summary>

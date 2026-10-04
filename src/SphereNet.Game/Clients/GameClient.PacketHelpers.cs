@@ -145,6 +145,32 @@ public sealed partial class GameClient
         _netState.Send(new PacketStatueAnimation(ch.Uid.Value, (ushort)animValue, (ushort)frameValue));
         return true;
     }
+    /// <summary>CClient::addHealthBarUpdate (CClientMsg.cpp:2271-2282): the health-bar
+    /// colour of <paramref name="ch"/> - 0x16 to an enhanced client, 0x17 to an SA/KR
+    /// one, nothing to older clients (they read the 0x77/0x78 flag bits). Green while
+    /// STATF_POISONED, yellow while STATF_FREEZE|STATF_STONE (send.cpp:394-397/440).
+    /// Every addChar ends with it (CClientMsg.cpp:1193-1194), so a character drawn to a
+    /// client - coming into view, login, resync - carries its current colour.</summary>
+    internal void SendHealthBarStatus(Character ch)
+    {
+        var packet = BuildHealthBarStatus(_netState, ch);
+        if (packet != null)
+            _netState.Send(packet);
+    }
+
+    /// <summary>The health-bar colour packet for <paramref name="ns"/>, or null when the
+    /// client takes neither variant.</summary>
+    public static PacketWriter? BuildHealthBarStatus(NetState ns, Character ch)
+    {
+        bool poisoned = ch.IsStatFlag(StatFlag.Poisoned);
+        bool yellow = ch.IsStatFlag(StatFlag.Freeze | StatFlag.Stone);
+        if (ns.SupportsHealthBarStatusNew)
+            return new PacketHealthBarStatusNew(ch.Uid.Value, poisoned, yellow);
+        if (ns.SupportsHealthBarStatus)
+            return new PacketHealthBarStatus(ch.Uid.Value, poisoned, yellow);
+        return null;
+    }
+
     internal void SendDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
@@ -164,6 +190,7 @@ public sealed partial class GameClient
             equipment, _netState.SupportsNewMobileIncoming
         ));
         SendStatueAnimation(ch);
+        SendHealthBarStatus(ch);
     }
 
     /// <summary>Send a 0x6C target request and record its cursor session id.
@@ -929,6 +956,7 @@ public sealed partial class GameClient
             equipment, _netState.SupportsNewMobileIncoming
         ));
         SendStatueAnimation(ch);
+        SendHealthBarStatus(ch);
     }
 
     internal void SendDrawObjectHidden(Character ch)
@@ -945,6 +973,7 @@ public sealed partial class GameClient
             equipment, _netState.SupportsNewMobileIncoming
         ));
         SendStatueAnimation(ch);
+        SendHealthBarStatus(ch);
     }
 
     /// <param name="source">The item itself, when the caller has it. The movable
@@ -1658,7 +1687,8 @@ public sealed partial class GameClient
         ushort weight = (ushort)Math.Clamp(ch.GetTotalWeight(), 0, ushort.MaxValue);
         short statCap = 225;
         var weapon = ch.GetEquippedItem(Core.Enums.Layer.OneHanded) ?? ch.GetEquippedItem(Core.Enums.Layer.TwoHanded);
-        var (dmgMin, dmgMax) = CombatEngine.CalcWeaponDamage(ch, weapon);
+        // Fight_CalcDamage under the configured COMBATDAMAGEERA (send.cpp:320-321).
+        var (dmgMin, dmgMax) = CombatEngine.CalcWeaponDamage(ch, weapon, Character.CombatDamageEra);
         ushort maxWeight = (ushort)Math.Clamp(ch.MaxWeight, 0, ushort.MaxValue);
         bool showResists = DisplayElementalResistance ||
             (Character.CombatFlags & (int)SphereNet.Game.Combat.CombatFlags.ElementalEngine) != 0;
@@ -1740,6 +1770,7 @@ public sealed partial class GameClient
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, ch.Hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming));
+        SendHealthBarStatus(ch);
 
         // Others — per-observer version branching (0x78 format differs by client era)
         uint selfUid = _character?.Uid.Value ?? 0;
@@ -1752,6 +1783,8 @@ public sealed partial class GameClient
                     (byte)ch.Direction, ch.Hue, flags, noto,
                     equipment, observerClient.NetState.SupportsNewMobileIncoming);
                 observerClient.NetState.Send(pkt);
+                if (BuildHealthBarStatus(observerClient.NetState, ch) is { } healthBar)
+                    observerClient.NetState.Send(healthBar);
                 observerClient.UpdateKnownCharPosition(ch);
             });
     }

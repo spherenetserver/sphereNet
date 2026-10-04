@@ -2829,20 +2829,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         return DefinitionLoader.ResolveEventName(text);
     }
 
-    public static uint ParseHexOrDecUInt(string val)
-    {
-        var s = val.Trim();
-        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-        {
-            if (uint.TryParse(s.AsSpan(2), NumberStyles.HexNumber, null, out uint h)) return h;
-        }
-        else if (s.Length > 1 && s[0] == '0')
-        {
-            if (uint.TryParse(s, NumberStyles.HexNumber, null, out uint h)) return h;
-        }
-        if (uint.TryParse(s, out uint d)) return d;
-        return 0;
-    }
+    /// <summary>A dword script number the way Exp_GetDWVal reads it: the value is
+    /// parsed as 64 bits and cut to its low dword, so "04ffffffff" stores 0xFFFFFFFF
+    /// and "-1" stores 0xFFFFFFFF. A uint-only parse refused both and stored 0.</summary>
+    public static uint ParseHexOrDecUInt(string val) => unchecked((uint)ParseAttrNumber(val));
 
     /// <summary>A 64-bit attribute number: 0-prefixed or 0x hex, else decimal; a
     /// negative decimal (an expression that set the top bit) keeps its bit pattern.</summary>

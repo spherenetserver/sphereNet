@@ -325,6 +325,14 @@ public sealed class NetState : IDisposable
     public bool SupportsNewContextMenu =>
         IsEnhancedClient || IsKingdomRebornClient || _clientVersionNumber >= 60_000_000 ||
         FallbackVersionAtLeast(60_000_000);
+    /// <summary>The 0x16 health-bar colour packet: an enhanced client only
+    /// (PacketHealthBarUpdateNew::CanSendTo, send.cpp:416).</summary>
+    public bool SupportsHealthBarStatusNew => IsEnhancedClient;
+    /// <summary>The 0x17 health-bar colour packet: MINCLIVER_SA (7.0.0.0) or a KR
+    /// client (PacketHealthBarUpdate::CanSendTo, send.cpp:454). A 7.0+ client reads
+    /// the green/yellow bar only from this packet, not from the 0x77/0x78 flags.</summary>
+    public bool SupportsHealthBarStatus =>
+        IsKingdomRebornClient || _clientVersionNumber >= 70_000_000 || FallbackVersionAtLeast(70_000_000);
     public bool SupportsAosTooltip => HasProtocolChanges(ProtocolChanges.Version500a) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 40_000_000;
     public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_002_002;
     public bool SupportsMapWaypoints => ClientEra == ClientEra.Modern || IsKingdomRebornClient ||

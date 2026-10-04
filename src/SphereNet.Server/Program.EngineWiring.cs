@@ -448,6 +448,12 @@ public static partial class Program
                 return true;
             };
 
+            // Resync only. The teleport effect and sound belong to Spell_Teleport's
+            // fDisplayEffect, which the movement engine decides per source (a map
+            // teleporter and a ship plank are silent, a telepad/moongate follows
+            // MORE2) and shows through Character.OnTeleportEffect ->
+            // ShowTeleportEffect with the configured TELEPORTEFFECT*/TELEPORTSOUND*
+            // (CCharSpell.cpp:178-196, 236-245).
             _movement.OnTeleport = (mover, dest, oldMap) =>
             {
                 if (TryGetClientFor(mover, out var c))
@@ -456,8 +462,6 @@ public static partial class Program
                         c.HandleMapChanged();
                     else
                         c.Resync();
-                    var snd = new PacketSound(0x01FE, mover.X, mover.Y, mover.Z);
-                    BroadcastNearby(mover.Position, 18, snd, 0);
                 }
             };
 
@@ -1415,23 +1419,10 @@ public static partial class Program
                 (npc, wantedItem) => _npcAI.GetWantScore(npc, wantedItem);
             SphereNet.Game.Objects.Characters.Character.NpcCanEatFood =
                 (npc, foodItem) => _npcAI.NpcCanEat(npc, foodItem);
-            _spellEngine.OnCasterFacingChanged = caster =>
-            {
-                // Source-X UpdateMove(GetTopPoint()) — broadcast new facing only.
-                // Reuse the lightweight 0x77 MobileMoving so nearby clients
-                // re-render the mobile in its new direction without a full
-                // 0x78 char info refresh.
-                byte dirByte = (byte)((byte)caster.Direction & 0x07);
-                byte flags = 0;
-                if (caster.IsInWarMode) flags |= 0x40;
-                if (caster.IsDead) flags |= 0x02;
-                byte noto = caster.IsPlayer ? (byte)1 : (byte)3;
-                var pkt = new PacketMobileMoving(
-                    caster.Uid.Value, caster.BodyId,
-                    caster.X, caster.Y, caster.Z, dirByte,
-                    caster.Hue, flags, noto);
-                BroadcastNearby(caster.Position, 18, pkt, 0);
-            };
+            // Source-X UpdateDir -> UpdateMove: each viewer's addCharMove computes the
+            // caster's notoriety for that viewer (Noto_GetFlag). A fixed byte here
+            // painted every casting NPC grey and every casting player blue.
+            _spellEngine.OnCasterFacingChanged = caster => BroadcastFacingUpdate(caster);
             // Styled hook: @SpellCast LOCAL.WOPColor / LOCAL.WOPFont override the
             // mantra's hue and font; 0 falls back to the caster defaults.
             _spellEngine.OnSpellWordsEx = (caster, words, wopHue, wopFont) =>
@@ -2932,20 +2923,17 @@ public static partial class Program
                     gc.SysMessage(msg);
             };
 
-            // Health-bar colour (0x17): re-tint the character's bar for every SA+/KR
-            // observer when poison/freeze state flips. Older clients don't parse
-            // 0x17, so gate on the SA-era client version (Source-X CanSendTo).
+            // Health-bar colour (0x16/0x17): re-tint the character's bar for every
+            // observer when poison/freeze state flips. The variant and the client gate
+            // are CClient::addHealthBarUpdate's (CClientMsg.cpp:2271-2282); a character
+            // drawn later carries its colour with the draw (GameClient.SendDrawObject).
             SphereNet.Game.Objects.Characters.Character.OnHealthBarStatusChanged = ch =>
             {
                 if (ch == null || _world == null) return;
-                bool poisoned = ch.IsStatFlag(StatFlag.Poisoned);
-                bool yellow = ch.IsStatFlag(StatFlag.Freeze);
                 ForEachClientInRange(ch.Position, 18, 0, (_, observerClient) =>
                 {
-                    var ns = observerClient.NetState;
-                    if (ns.ClientVersionNumber >= 60_000_000 ||
-                        ns.IsKingdomRebornClient || ns.IsEnhancedClient)
-                        observerClient.Send(new PacketHealthBarStatus(ch.Uid.Value, poisoned, yellow));
+                    if (GameClient.BuildHealthBarStatus(observerClient.NetState, ch) is { } packet)
+                        observerClient.Send(packet);
                 });
             };
 

@@ -519,9 +519,9 @@ public sealed class PanelHost : IDisposable
             error = "Admin panel port must differ from the server port";
             return false;
         }
-        if (req.TickSleepMode is < 0 or > 2)
+        if (req.TickSleepMode is < 0 or > 3)
         {
-            error = "Tick sleep mode must be 0 (spin), 1 (sleep) or 2 (hybrid)";
+            error = "Tick sleep mode must be 0 (spin), 1 (sleep), 2 (hybrid) or 3 (adaptive)";
             return false;
         }
         if (string.IsNullOrWhiteSpace(req.AdminPassword))
@@ -799,7 +799,7 @@ public sealed class PanelHost : IDisposable
                 ServPort      : p.GetInt  ("SPHERE", "ServPort",       2593),
                 AdminPassword : string.IsNullOrEmpty(rawPassword) ? "" : PasswordMask,
                 AdminPanelPort: p.GetInt  ("SPHERE", "AdminPanelPort", 0),
-                TickSleepMode : p.GetInt  ("SPHERE", "TickSleepMode",  2),
+                TickSleepMode : p.GetInt  ("SPHERE", "TickSleepMode",  3),
                 DebugPackets  : p.GetBool ("SPHERE", "DebugPackets",   false),
                 ScriptDebug   : p.GetBool ("SPHERE", "ScriptDebug",    false)
             );

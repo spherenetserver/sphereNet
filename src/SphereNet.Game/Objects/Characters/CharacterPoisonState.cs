@@ -323,7 +323,9 @@ public sealed class CharacterPoisonState
     // ------------------------------------------------------------------- cure
 
     /// <summary>Source-X CChar::SetPoisonCure (CCharAct.cpp:4152): delete the poison
-    /// memory; removing it clears STATF_POISONED on the way out.</summary>
+    /// memory; removing it clears STATF_POISONED on the way out. <paramref name="extra"/>
+    /// also deletes the LAYER_FLAG_Hallucination memory (:4160-4165), whose removal
+    /// ends the trip.</summary>
     public void Cure(bool extra)
     {
         _pendingRestore = null;
@@ -338,6 +340,9 @@ public sealed class CharacterPoisonState
         {
             OnEffectRemoved();
         }
+
+        if (extra && _owner.FindLayer(Magic.SpellLayers.FlagHallucination) is { IsDeleted: false } hallucination)
+            _owner.RemoveSpellMemory(hallucination);
     }
 
     public void Cure() => Cure(false);
@@ -517,6 +522,10 @@ public sealed class CharacterPoisonState
         }
 
         effect = Math.Max(PoisonMin[Math.Clamp(level, 0, 4)], effect);
+        // iDmgType = DAMAGE_MAGIC | DAMAGE_POISON | DAMAGE_NODISTURB | DAMAGE_NOREVEAL
+        // (CCharSpell.cpp:1899), seeded as LOCAL.DamageType and read back (:2007).
+        var damageType = Combat.DamageType.Magic | Combat.DamageType.Poison |
+            Combat.DamageType.NoDisturb | Combat.DamageType.NoReveal;
 
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0, null);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, true, (ushort)Math.Max(1, delaySeconds), null);
@@ -535,7 +544,7 @@ public sealed class CharacterPoisonState
                 Damage = effect,
                 DelayMs = (int)(delaySeconds * 1000),
                 Charges = charges,
-                DamageType = (int)Combat.DamageType.Poison,
+                DamageType = (int)damageType,
             };
             if (!tickHook(_owner, ctx))
             {
@@ -548,10 +557,16 @@ public sealed class CharacterPoisonState
             charges = ctx.Charges;
             delaySeconds = Math.Max(0, ctx.DelayMs / 1000L);
             if (ctx.DelayMs > 0 && delaySeconds == 0) delaySeconds = 1;
+            damageType = (Combat.DamageType)(uint)ctx.DamageType;
         }
 
+        // Only a SPELLFLAG_HARM spell deals the tick, and only with a damage type and
+        // an effect left after the stages (CCharSpell.cpp:2005-2008). No def loaded is
+        // the built-in poison, which is harmful.
+        var spellDef = Character.ResolveSpellDef?.Invoke(SpellType.Poison);
+        bool harm = spellDef == null || spellDef.IsFlag(SpellFlag.Harm);
         int dealt = 0;
-        if (effect > 0)
+        if (harm && damageType != 0 && effect > 0)
         {
             var poisoner = mem.Link.IsValid ? Character.ResolveCharByUid?.Invoke(mem.Link) : null;
             if (poisoner == null)
@@ -561,10 +576,20 @@ public sealed class CharacterPoisonState
                 if (aborted >= 0)
                     Character.ActiveSkillAborted?.Invoke(_owner, aborted);
             }
-            dealt = Combat.CombatEngine.ApplyScriptDamage(_owner, effect,
-                Combat.DamageType.Magic | Combat.DamageType.Poison |
-                Combat.DamageType.NoDisturb | Combat.DamageType.NoReveal,
-                poisoner, poisonPercent: 100);
+            // OnTakeDamage(iEffect, pLinkedChar, iDmgType, shares..., spell)
+            // (CCharSpell.cpp:2018-2026): each share is 100 when its flag is in the
+            // type, and the spell rides along - @GetHit sees LOCAL.Spell and the
+            // spell's NOUNPARALYZE keeps a paralysis.
+            const Combat.DamageType physical = Combat.DamageType.HitBlunt |
+                Combat.DamageType.HitPierce | Combat.DamageType.HitSlash;
+            dealt = Combat.CombatEngine.ApplyCharacterDamage(_owner,
+                Math.Clamp(effect, 0, short.MaxValue), poisoner, damageType,
+                physicalPercent: (damageType & physical) != 0 ? 100 : 0,
+                firePercent: (damageType & Combat.DamageType.Fire) != 0 ? 100 : 0,
+                coldPercent: (damageType & Combat.DamageType.Cold) != 0 ? 100 : 0,
+                poisonPercent: (damageType & Combat.DamageType.Poison) != 0 ? 100 : 0,
+                energyPercent: (damageType & Combat.DamageType.Energy) != 0 ? 100 : 0,
+                spell: (int)SpellType.Poison);
             if (dealt > 0 && Combat.CombatEngine.OnDirectCharacterDamageApplied == null &&
                 _owner.Hits <= 0 && !_owner.IsDead)
             {

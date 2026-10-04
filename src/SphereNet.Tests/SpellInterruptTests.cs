@@ -81,30 +81,35 @@ public class SpellInterruptTests
     }
 
     [Fact]
-    public void NpcCasters_AreNotDisturbed()
+    public void NpcCasters_AreNotDisturbedWithTheSettingOff()
     {
         var (engine, caster, _) = CreateCastingCaster(1000, 0, isPlayer: false);
-        Assert.False(engine.TryInterruptFromDamage(caster, 99));
-        Assert.True(caster.IsCasting);
+        SpellEngine.NpcCanFizzleOnHit = false;
+        try
+        {
+            Assert.False(engine.TryInterruptFromDamage(caster, 99));
+            Assert.True(caster.IsCasting);
+        }
+        finally { SpellEngine.NpcCanFizzleOnHit = true; }
     }
 
     [Fact]
-    public void AnNpcIsNotDisturbedByDefault_AndIsWhenTheSettingSaysSo()
+    public void AnNpcIsDisturbedByDefault_AndNotWhenTheSettingIsOff()
     {
-        // "Only players are disturbed" is the DEFAULT, not the rule: upstream gates it
-        // on NPCCANFIZZLEONHIT (CCharFight.cpp:881), which was not read at all.
+        // Upstream gates NPC disturbance on NPCCANFIZZLEONHIT (CCharFight.cpp:881);
+        // this shard's default is on.
         var (engine, npc, _) = CreateCastingCaster(1000, 0, isPlayer: false);
-        Assert.False(SpellEngine.NpcCanFizzleOnHit);
-        Assert.False(engine.TryInterruptFromDamage(npc, 50));
-        Assert.True(npc.IsCasting);
+        Assert.True(SpellEngine.NpcCanFizzleOnHit);
+        Assert.True(engine.TryInterruptFromDamage(npc, 1));
+        Assert.False(npc.IsCasting);
 
         var (engine2, npc2, _) = CreateCastingCaster(1000, 0, isPlayer: false);
-        SpellEngine.NpcCanFizzleOnHit = true;
+        SpellEngine.NpcCanFizzleOnHit = false;
         try
         {
-            Assert.True(engine2.TryInterruptFromDamage(npc2, 1));
-            Assert.False(npc2.IsCasting);
+            Assert.False(engine2.TryInterruptFromDamage(npc2, 50));
+            Assert.True(npc2.IsCasting);
         }
-        finally { SpellEngine.NpcCanFizzleOnHit = false; }
+        finally { SpellEngine.NpcCanFizzleOnHit = true; }
     }
 }

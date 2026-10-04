@@ -396,15 +396,16 @@ public class ConfigRegressionTests
     public void SphereConfig_ReadsTheRemainingGameplayKeys()
     {
         var defaults = new SphereConfig();
-        // The reference's own defaults (CServerConfig.cpp:74/139/161).
-        Assert.False(defaults.NpcCanFizzleOnHit);
+        // NPCCANFIZZLEONHIT defaults on here (Source-X CServerConfig.cpp:74 has it
+        // off); the other two are the reference's (:139/161).
+        Assert.True(defaults.NpcCanFizzleOnHit);
         Assert.Equal(40, defaults.BackpackOverload);
         Assert.True(defaults.FlipDroppedItems);
 
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_gp_{Guid.NewGuid():N}.ini");
         File.WriteAllText(tmp, """
             [SPHERE]
-            NpcCanFizzleOnHit=1
+            NpcCanFizzleOnHit=0
             BackpackOverload=-1
             FlipDroppedItems=0
             """);
@@ -415,7 +416,7 @@ public class ConfigRegressionTests
             var config = new SphereConfig();
             config.LoadFromIni(ini);
 
-            Assert.True(config.NpcCanFizzleOnHit);
+            Assert.False(config.NpcCanFizzleOnHit);
             Assert.Equal(-1, config.BackpackOverload);   // below zero = no pack limit
             Assert.False(config.FlipDroppedItems);
         }
@@ -473,7 +474,7 @@ public class ConfigRegressionTests
         Assert.Equal(1, config.MaxHousesGuild);
         Assert.Equal(40, config.BackpackOverload);
         Assert.True(config.FlipDroppedItems);
-        Assert.False(config.NpcCanFizzleOnHit);
+        Assert.True(config.NpcCanFizzleOnHit);
         Assert.Equal(25, config.MaxItemComplexity);
         Assert.Equal(30, config.TrainSkillPercent);
         // This pack's own choices, deliberately not the reference defaults.

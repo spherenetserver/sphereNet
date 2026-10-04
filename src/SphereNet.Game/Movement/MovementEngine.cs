@@ -22,8 +22,11 @@ public sealed class MovementEngine
     /// <summary>Optional SpellEngine for interrupting casts on movement.</summary>
     public SpellEngine? SpellEngine { get; set; }
 
-    /// <summary>Fired when a character is teleported (telepad/moongate step-on).
-    /// Program.cs wires this to send DrawPlayer + resync to the client.</summary>
+    /// <summary>Fired when a character is teleported (telepad/moongate/map
+    /// teleporter step-on, ship plank). Program.cs wires this to send DrawPlayer +
+    /// resync to the client. The arguments are the destination and the map the
+    /// character left; the teleport's look and sound are not part of it - see
+    /// <see cref="Objects.Characters.Character.OnTeleportEffect"/>.</summary>
     public Action<Objects.Characters.Character, Point3D, byte>? OnTeleport { get; set; }
 
     /// <summary>Source-X CClient::SysMessage hook used by region enter/leave
@@ -642,17 +645,73 @@ public sealed class MovementEngine
     }
 
     /// <summary>Spell_Teleport's fTakePets: the pets following their owner go too, or a
-    /// disembarking owner leaves them on the ship.</summary>
-    private void TakePetsAlong(Objects.Characters.Character owner, Point3D dest)
+    /// disembarking owner leaves them on the ship. Each pet goes with the owner's
+    /// fDisplayEffect (CCharSpell.cpp:216).</summary>
+    private void TakePetsAlong(Objects.Characters.Character owner, Point3D dest, bool displayEffect)
     {
         foreach (var pet in _world.GetCharsInRange(owner.Position, 12).ToList())
         {
             if (pet == owner || pet.IsPlayer || pet.IsDead || pet.IsStatFlag(StatFlag.Ridden)) continue;
             if (!pet.HasOwner(owner.Uid) || pet.PetAIMode != PetAIMode.Follow) continue;
-            byte oldMap = pet.MapIndex;
-            _world.MoveCharacter(pet, dest);
-            OnTeleport?.Invoke(pet, dest, oldMap);
+            TeleportOne(pet, dest, displayEffect);
         }
+    }
+
+    /// <summary>The walk-on side of Source-X CChar::Spell_Teleport (CCharSpell.cpp:
+    /// 125-245): move, resync, and only when fDisplayEffect is set show the teleport
+    /// effect at the old and new spot with its sound. A map teleporter passes
+    /// false (CCharAct.cpp:5094), a telepad or moongate passes !MORE2
+    /// (Use_MoonGate, CCharUse.cpp:266-268), a ship plank false (CCharAct.cpp:5407).
+    /// A hard-coded teleport sound used to play on every one of these, so walking
+    /// through any dungeon entrance sounded like a recall.</summary>
+    private void TeleportTo(Objects.Characters.Character ch, Point3D dest, bool takePets, bool displayEffect)
+    {
+        if (takePets)
+            TakePetsAlong(ch, dest, displayEffect);
+        TeleportOne(ch, dest, displayEffect);
+    }
+
+    private void TeleportOne(Objects.Characters.Character ch, Point3D dest, bool displayEffect)
+    {
+        var from = ch.Position;
+        _world.MoveCharacter(ch, dest);
+        OnTeleport?.Invoke(ch, dest, from.Map);
+        if (displayEffect)
+            Objects.Characters.Character.OnTeleportEffect?.Invoke(ch, from);
+    }
+
+    /// <summary>The map teleporter part of Source-X CChar::CheckLocationEffects
+    /// (CCharAct.cpp:5063-5094): a [TELEPORTERS] point under the walker sends it
+    /// on silently, pets included. An NPC goes only through one marked for NPCs, a
+    /// guard only into guarded ground (unless OF_GuardOutsideGuardedArea), and a
+    /// criminal NPC never into it; a refused NPC does not get the step at all
+    /// (RET_FALSE). Returns false when the step is refused.</summary>
+    private bool CheckMapTeleport(Objects.Characters.Character ch, out bool teleported)
+    {
+        teleported = false;
+        var tele = _world.GetMapTeleport(ch.Position);
+        if (tele == null)
+            return true;
+
+        if (!ch.IsPlayer)
+        {
+            if (!tele.Npc)
+                return false;
+            var destRegion = _world.FindRegion(tele.Dest);
+            if (ch.NpcBrain == NpcBrainType.Guard &&
+                (destRegion == null ||
+                 (!destRegion.IsGuarded &&
+                  (Clients.GameClient.ServerOptionFlags & OptionFlags.GuardOutsideGuardedArea) == 0)))
+                return false;
+            bool criminal = ch.IsStatFlag(StatFlag.Criminal) || ch.IsCriminal ||
+                            AI.NpcAI.NotoIsEvil(ch, _world);
+            if (criminal && (destRegion == null || destRegion.IsGuarded))
+                return false;
+        }
+
+        TeleportTo(ch, tele.Dest, takePets: true, displayEffect: false);
+        teleported = true;
+        return true;
     }
 
     private bool CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos, World.Regions.Region? previousRegion)
@@ -680,6 +739,7 @@ public sealed class MovementEngine
 
         bool stepCancel = false;
         bool webHeld = false;
+        bool teleported = false;
         foreach (var item in _world.GetItemsInRange(pos, 0))
         {
             if (webHeld)
@@ -745,11 +805,11 @@ public sealed class MovementEngine
                         break;
                     if (MoveToValidSpot(ch, ch.Direction, MaxShipPlankTeleport, 1, out var ashore))
                     {
-                        byte oldMap = ch.MapIndex;
-                        TakePetsAlong(ch, ashore);
-                        _world.MoveCharacter(ch, ashore);
-                        OnTeleport?.Invoke(ch, ashore, oldMap);
+                        // Spell_Teleport(pt, true, !fFromShip, false): silent
+                        // (MoveToValidSpot, CCharAct.cpp:5407).
+                        TeleportTo(ch, ashore, takePets: true, displayEffect: false);
                         pos = ch.Position;
+                        teleported = true;
                     }
                     break;
                 }
@@ -762,10 +822,12 @@ public sealed class MovementEngine
                     if ((dest.X != 0 || dest.Y != 0) && dest.X >= 0 && dest.Y >= 0 &&
                         _world.GetSector(dest) != null && destPassable)
                     {
-                        byte oldMap = ch.MapIndex;
-                        _world.MoveCharacter(ch, dest);
-                        OnTeleport?.Invoke(ch, dest, oldMap);
+                        // Use_MoonGate -> Spell_Teleport(pt, true, ..., fDisplayEffect =
+                        // !m_itTelepad.m_fQuiet): MORE2 set makes the gate quiet
+                        // (CCharUse.cpp:266-268, CItem.h:419).
+                        TeleportTo(ch, dest, takePets: true, displayEffect: item.More2 == 0);
                         pos = ch.Position;
+                        teleported = true;
                     }
                     break;
                 }
@@ -796,6 +858,16 @@ public sealed class MovementEngine
 
         if (stepCancel && !webHeld)
             return false;
+
+        // The map teleporters are looked at only when nothing underfoot already
+        // took the walker somewhere or held it (CCharAct.cpp:5056-5070).
+        if (!teleported && !webHeld)
+        {
+            if (!CheckMapTeleport(ch, out bool mapTeleported))
+                return false;
+            if (mapTeleported)
+                pos = ch.Position;
+        }
 
         // Exit/Enter already ran in GameWorld.MoveCharacter, before SRC.REGION
         // changed, and the area's own @Step ran at the top. The character-side

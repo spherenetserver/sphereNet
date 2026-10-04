@@ -712,6 +712,50 @@ public sealed class GameWorld
         return grid[sectorX, sectorY];
     }
 
+    /// <summary>One [TELEPORTERS] line (Source-X CTeleport, CTeleport.h): a walk-on
+    /// map teleporter. It is world data, not an item - nothing is placed on the map,
+    /// so no client (not even a GM with ALLSHOW) and no world search ever sees it.
+    /// <paramref name="Npc"/> is the fourth field (_fNpc): NPCs may use it too.</summary>
+    public sealed record MapTeleport(Point3D Src, Point3D Dest, bool Npc);
+
+    // Source-X keeps these on the sector, sorted by point (CSectorBase::m_Teleports).
+    // One table keyed by map + X/Y is the same lookup; the whole table is swapped on
+    // reload so a walker never reads a half-built one.
+    private Dictionary<(byte Map, short X, short Y), MapTeleport> _mapTeleports = [];
+
+    public int MapTeleportCount => _mapTeleports.Count;
+
+    /// <summary>Replace the map teleporters (RES_TELEPORTERS, CServerConfig.cpp:4129).
+    /// A line whose source or destination is off every map in use is refused
+    /// (CTeleport::RealizeTeleport, CTeleport.cpp:31), and so is a second line from a
+    /// point that already has one (CSectorBase::AddTeleport, CSectorBase.cpp:466 -
+    /// the first one stays).</summary>
+    public (int Added, int Skipped) SetMapTeleports(IEnumerable<MapTeleport> teleports)
+    {
+        var table = new Dictionary<(byte, short, short), MapTeleport>();
+        int skipped = 0;
+        foreach (var t in teleports)
+        {
+            if (GetSector(t.Src) == null || GetSector(t.Dest) == null ||
+                !table.TryAdd((t.Src.Map, t.Src.X, t.Src.Y), t))
+            {
+                skipped++;
+                continue;
+            }
+        }
+        _mapTeleports = table;
+        return (table.Count, skipped);
+    }
+
+    /// <summary>Source-X CSectorBase::GetTeleport (CSectorBase.cpp:446): the map
+    /// teleporter at this X/Y on this map, provided it is within 5 Z.</summary>
+    public MapTeleport? GetMapTeleport(Point3D pt)
+    {
+        if (!_mapTeleports.TryGetValue((pt.Map, pt.X, pt.Y), out var t))
+            return null;
+        return Math.Abs(t.Src.Z - pt.Z) > 5 ? null : t;
+    }
+
     /// <summary>Position-aware Source-X sector light.</summary>
     public byte GetLightLevel(Point3D position, bool quickSet = true)
     {

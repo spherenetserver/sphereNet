@@ -846,19 +846,7 @@ public sealed class CharDef : BaseDef
         return (CanFlags)flags;
     }
 
-    private static uint ParseHexOrDecUInt(string value)
-    {
-        if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-        {
-            uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out uint result);
-            return result;
-        }
-        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
-        {
-            uint.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out uint result);
-            return result;
-        }
-        uint.TryParse(value, out uint r);
-        return r;
-    }
+    // Exp_GetDWVal: read in 64 bits, keep the low dword (a uint-only parse stored 0).
+    private static uint ParseHexOrDecUInt(string value) =>
+        SphereNet.Core.Types.ScriptNumber.TryParseToken(value, out long v) ? unchecked((uint)v) : 0;
 }

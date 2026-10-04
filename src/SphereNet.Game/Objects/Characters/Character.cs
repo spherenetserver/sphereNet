@@ -1895,7 +1895,7 @@ public partial class Character : ObjBase
 
     /// <summary>Delete a worn spell memory: through the world when it is a world object
     /// (its removal runs from the world's delete notice), else straight off the list.</summary>
-    private void RemoveSpellMemory(Item mem)
+    internal void RemoveSpellMemory(Item mem)
     {
         var world = ResolveWorld?.Invoke();
         if (world != null && world.IsRegistered(mem))
@@ -2916,6 +2916,20 @@ public partial class Character : ObjBase
     /// <summary>The brain an NPC gets when its script names none: Source-X
     /// CChar::GetNPCBrainAuto guesses it from the body (CCharStatus.cpp:563).</summary>
     public NpcBrainType GetNpcBrainAuto() => GetNpcBrainAuto(BodyId);
+
+    /// <summary>Source-X CChar::GetNPCBrainGroup (CCharStatus.cpp:541): a player and
+    /// every townsperson brain (Human..Stable) are Human; no brain is guessed from the
+    /// body; Animal, Monster, Berserk and Dragon keep their own.</summary>
+    public NpcBrainType GetNpcBrainGroup()
+    {
+        if (IsPlayer)
+            return NpcBrainType.Human;
+        if (NpcBrain is >= NpcBrainType.Human and <= NpcBrainType.Stable)
+            return NpcBrainType.Human;
+        if (NpcBrain == NpcBrainType.None || NpcBrain >= NpcBrainType.Qty)
+            return GetNpcBrainAuto();
+        return NpcBrain;
+    }
 
     /// <summary>Source-X CChar::GetNPCBrainAuto (CCharStatus.cpp:563), by CREID.</summary>
     public static NpcBrainType GetNpcBrainAuto(ushort body)
@@ -7688,37 +7702,61 @@ public partial class Character : ObjBase
         return false;
     }
 
+    /// <summary>The numeric literal forms a character key reads through GetArgVal -&gt;
+    /// Exp_GetVal (CChar.cpp:3452 for a skill key, every numeric CHC_ key alike),
+    /// reduced to a plain integer before the key is dispatched. CExpression::GetSingle
+    /// reads a decimal literal with every '.' skipped - "50.0" is 500, "12.5" is 125,
+    /// "0.5" is 5 (CExpression.cpp:743-760) - and a leading '0' otherwise means hex; a
+    /// {...} group is GetRangeNumber over such literals (CExpression.cpp:790). The
+    /// tenths a skill line carries ("TACTICS=50.5" -&gt; 505) fall out of the same rule,
+    /// so a skill key and any other key read a value identically. The old reader parsed
+    /// a double and banker-rounded it, so "STR=12.5" set 12, and read "{010 020}" as
+    /// decimal. Anything that is not one of these literals - a defname, a resource
+    /// list, an expression - is left as written.</summary>
     private static bool TryNormalizeScriptValue(string key, string value, out string normalized)
     {
         normalized = value.Trim();
-        bool skillValue = TryResolveSkillName(key.Trim(), out _);
-        if (normalized.StartsWith('{') && normalized.EndsWith('}') && normalized.Length > 2)
+        if (normalized.Length > 2 && normalized[0] == '{' && normalized[^1] == '}')
         {
-            string inner = normalized[1..^1].Trim();
-            var parts = inner.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (parts.Length >= 2 &&
-                double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double minVal) &&
-                double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double maxVal))
-            {
-                if (maxVal < minVal)
-                    (minVal, maxVal) = (maxVal, minVal);
-                double scale = skillValue ? 10d : 1d;
-                int min = (int)Math.Round(minVal * scale);
-                int max = (int)Math.Round(maxVal * scale);
-                int pick = Random.Shared.Next(min, max + 1);
-                normalized = pick.ToString();
+            string inner = normalized[1..^1];
+            if (inner.Contains('{') || inner.Contains('}'))
                 return true;
+            var tokens = SphereNet.Scripting.Expressions.BraceRange.SplitTokens(inner.Replace(',', ' '));
+            if (tokens.Count == 0)
+                return true;
+            var vals = new long[tokens.Count];
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                if (!SphereNet.Scripting.Expressions.BraceRange.TryParseSphereInteger(tokens[i], out vals[i]) &&
+                    !TryParseDottedDecimalLiteral(tokens[i], out vals[i]))
+                    return true;
             }
-        }
-
-        if (normalized.Contains('.') &&
-            double.TryParse(normalized, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double decimalValue))
-        {
-            normalized = ((int)Math.Round(decimalValue * (skillValue ? 10d : 1d))).ToString();
+            normalized = SphereNet.Scripting.Expressions.BraceRange.Pick(vals, inner, null).ToString();
             return true;
         }
 
+        if (TryParseDottedDecimalLiteral(normalized, out long dotted))
+            normalized = dotted.ToString();
         return true;
+    }
+
+    /// <summary>A whole token that is a decimal literal carrying '.' separators
+    /// ("50.0", "-12.5", ".5", "0.5"), read the CExpression::GetSingle way with every
+    /// '.' skipped (CExpression.cpp:660-662, 743-760).</summary>
+    private static bool TryParseDottedDecimalLiteral(string token, out long value)
+    {
+        value = 0;
+        string t = token.Trim();
+        if (t.IndexOf('.') < 0)
+            return false;
+        int start = t.Length > 0 && t[0] == '-' ? 1 : 0;
+        bool anyDigit = false;
+        for (int j = start; j < t.Length; j++)
+        {
+            if (char.IsAsciiDigit(t[j])) anyDigit = true;
+            else if (t[j] != '.') return false;
+        }
+        return anyDigit && ScriptNumber.TryParseLeadingNumber(t, out value);
     }
 
     /// <summary>A FLAGS value as CHC_FLAGS reads it: GetArgULLVal, the expression

@@ -148,7 +148,7 @@ public sealed class MovementEngine
         // Expiration does not delete the script-owned tag.
         if (!gmMode && ch.TryGetTag("NOMOVETILL", out string? noMoveText) &&
             ScriptNumber.TryParseToken(noMoveText, out long noMoveTill) && noMoveTill > _world.GameClockMs / 100)
-            return false;
+            return RefuseFrozen(ch);
         // IsDead is intentionally NOT a hard reject here. Source-X /
         // OSI ghosts can walk freely (just slower, can't open most doors,
         // can't mount). Treating death as "cannot move" leaves the player
@@ -157,22 +157,22 @@ public sealed class MovementEngine
         // no walk packets". We still block Freeze (paralyze, GM .freeze)
         // and Stone (stone form / petrified) since those are explicit
         // immobility states even on living characters.
-        if (!gmMode &&
-            (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone) ||
-             (CharDefHelper.GetCanFlags(ch) & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0))
+        if (!gmMode && (CharDefHelper.GetCanFlags(ch) & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0)
             return false;
+        if (!gmMode && (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone)))
+            return RefuseFrozen(ch);
 
         // A cast that roots the caster (MAGICF_FREEZEONCAST / SPELLFLAG_FREEZEONCAST)
         // refuses the STEP; it does not cancel the spell. Source-X weighs this in
         // OnFreezeCheck alongside paralyze (CCharAct.cpp:4539).
         if (!gmMode && SpellEngine?.IsMovementFrozenByCast(ch) == true)
-            return false;
+            return RefuseFrozen(ch);
 
         // SPEEDMODE 4 roots a player (OnFreezeCheck, CCharAct.cpp:4535-4536: "speed
         // mode '4' prevents movement"). The client is only told the mode; the
         // server has to hold the step itself.
         if (!gmMode && ch.IsPlayer && (ch.SpeedMode & 0x04) != 0)
-            return false;
+            return RefuseFrozen(ch);
 
         // Out of stamina: a living character cannot take a step (CanMove,
         // CCharAct.cpp:4586-4593 - Stat_GetVal(STAT_DEX) <= 0 && !STATF_DEAD).
@@ -477,6 +477,15 @@ public sealed class MovementEngine
         bool pathFinding, out int stamReq) =>
         ShoveCharAtPosition(_world, mover, dst, pathFinding, OnSysMessage, out stamReq);
 
+    /// <summary>OnFreezeCheck refused the step: Source-X CanMove tells the walker
+    /// DEFMSG_MSG_FROZEN (CCharAct.cpp:4581-4585). The refusal was silent, so a player
+    /// held by a freeze only saw their steps snap back.</summary>
+    private bool RefuseFrozen(Character ch)
+    {
+        OnSysMessage?.Invoke(ch, ServerMessages.Get(Msg.MsgFrozen));
+        return false;
+    }
+
     /// <summary>The shove check itself, shared by a player's step and a creature's
     /// (Source-X routes both through CanMoveWalkTo -> ShoveCharAtPosition).</summary>
     internal static bool ShoveCharAtPosition(World.GameWorld world, Objects.Characters.Character mover,
@@ -495,6 +504,13 @@ public sealed class MovementEngine
             if ((CharDefHelper.GetCanFlags(other) & CanFlags.C_Statue) != 0)
                 return false; // can't walk over a statue
             if (other == mover || Math.Abs(other.Z - dst.Z) > 5 || other.IsStatFlag(StatFlag.Insubstantial))
+                continue;
+            // A logged-out player character and a ridden mount are not in the world
+            // the walker can see: Source-X's CWorldSearch skips m_Chars_Disconnect
+            // unless AllShow (CWorldSearch.cpp:196, 271-275). Counted here, an unseen
+            // parked character on the tile refused every step of a player below full
+            // stamina - silently, since the client saw nothing to push.
+            if (other.IsLoggedOut || other.IsStatFlag(StatFlag.Ridden))
                 continue;
             // A dead NPC is a corpse upstream (it is deleted on death), never a blocker.
             if (other.IsDead && !other.IsPlayer)

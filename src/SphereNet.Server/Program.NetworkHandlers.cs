@@ -132,7 +132,7 @@ public static partial class Program
             // own coordinates are wherever it last lay on the ground.
             var deleteAt = obj.GetTopLevelObj().Position;
             if (obj is Item nested && (nested.IsEquipped || nested.ContainedIn.IsValid))
-                BroadcastNearby(deleteAt, 18, new PacketDeleteObject(obj.Uid.Value), 0);
+                BroadcastNearby(deleteAt, MaxViewRange, new PacketDeleteObject(obj.Uid.Value), 0);
             MarkNearbyClientsRefresh(deleteAt);
         }
         else if (obj is Character ch && !ch.IsPlayer)
@@ -676,7 +676,9 @@ public static partial class Program
         }
 
         uint movingUid = movingChar.Uid.Value;
-        int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        // A move is view traffic: the sweep covers the widest view and each viewer
+        // is held to its own range (the caller's range is only a floor for that).
+        int secRadius = (Math.Max(range, MaxViewRange) / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
         int cx = center.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
         int cy = center.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
 
@@ -696,8 +698,8 @@ public static partial class Program
             foreach (var ch in sector.OnlinePlayers)
             {
                 if (ch.Uid.Value == excludeUid) continue;
-                if (center.GetDistSight(ch.Position) > range) continue;
                 if (!_clientsByCharUid.TryGetValue(ch.Uid, out var c) || !c.IsPlaying) continue;
+                if (!InViewOf(c, ch, center)) continue;
                 if (!c.HasKnownChar(movingUid))
                 {
                     c.NotifyCharacterAppear(movingChar);
@@ -720,15 +722,27 @@ public static partial class Program
         recipients.Clear();
     }
 
+    /// <summary>The widest view any client may have (MAPVIEWSIZEMAX): the sector sweep
+    /// of a view broadcast covers it, and each viewer is then held to its own range.</summary>
+    private static int MaxViewRange =>
+        Math.Max(SphereNet.Network.State.NetState.MapViewSizeMax, SphereNet.Network.State.NetState.DefaultViewRange);
+
+    /// <summary>Is <paramref name="pos"/> within this viewer's own visual range? Source-X
+    /// tests each client against its GetVisualRange() (CChar::UpdateMove / Update,
+    /// CCharAct.cpp:2432-2611). A fixed 18 here left a 19-24 tile band of a ClassicUO
+    /// client (0xC8 range 24) unserved: a spawn or summon there was never drawn and a
+    /// player walking there froze on screen until the viewer moved.</summary>
+    private static bool InViewOf(GameClient c, Character viewer, Point3D pos) =>
+        pos.GetDistSight(viewer.Position) <= c.NetState.ViewRange;
+
     /// <summary>
     /// Notify all nearby clients that a character appeared (login/teleport).
     /// Each client renders from its own perspective (notoriety, equipment, etc.).
     /// </summary>
     private static void BroadcastCharacterAppear(Character ch)
     {
-        const int Range = 18;
         const int secSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
-        const int secRadius = (Range / secSize) + 1;
+        int secRadius = (MaxViewRange / secSize) + 1;
         int cx = ch.Position.X / secSize;
         int cy = ch.Position.Y / secSize;
         byte mapId = ch.Position.Map;
@@ -740,8 +754,8 @@ public static partial class Program
             foreach (var other in sector.OnlinePlayers)
             {
                 if (other == ch) continue;
-                if (ch.Position.GetDistSight(other.Position) > Range) continue;
-                if (_clientsByCharUid.TryGetValue(other.Uid, out var c) && c.IsPlaying)
+                if (_clientsByCharUid.TryGetValue(other.Uid, out var c) && c.IsPlaying &&
+                    InViewOf(c, other, ch.Position))
                     c.NotifyCharacterAppear(ch);
             }
         }
@@ -776,9 +790,8 @@ public static partial class Program
             }
         }
 
-        const int range = 18;
         const int secSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
-        const int secRadius = (range / secSize) + 1;
+        int secRadius = (MaxViewRange / secSize) + 1;
 
         int newCx = ch.Position.X / secSize;
         int newCy = ch.Position.Y / secSize;
@@ -827,9 +840,8 @@ public static partial class Program
     /// <summary>Mark nearby clients for a view refresh when an object at the given position changes.</summary>
     private static void MarkNearbyClientsRefresh(Point3D pos)
     {
-        const int Range = 18;
         const int secSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
-        const int secRadius = (Range / secSize) + 1;
+        int secRadius = (MaxViewRange / secSize) + 1;
         int cx = pos.X / secSize;
         int cy = pos.Y / secSize;
         for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
@@ -839,8 +851,8 @@ public static partial class Program
             if (sector == null || sector.OnlinePlayers.Count == 0) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
-                if (pos.GetDistSight(ch.Position) > Range) continue;
-                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying &&
+                    InViewOf(c, ch, pos))
                     c.ViewNeedsRefresh = true;
             }
         }
@@ -865,8 +877,7 @@ public static partial class Program
 
     private static void MarkClientsNearDirtyObject(ObjBase obj)
     {
-        const int Range = 18;
-        int secRadius = (Range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        int secRadius = (MaxViewRange / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
 
         // The TOP-LEVEL position, not the object's own: a worn or contained item's
         // own coordinates are wherever it last lay on the ground, so marking the
@@ -907,8 +918,8 @@ public static partial class Program
             if (sector == null) continue;
             foreach (var ch in sector.OnlinePlayers)
             {
-                if (pos.GetDistSight(ch.Position) > Range) continue;
-                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying &&
+                    InViewOf(c, ch, pos))
                 {
                     c.ViewNeedsRefresh = true;
                     if (tooltipChanged)

@@ -49,6 +49,7 @@ public class MovementMapAuditRegressionTests
     {
         var c = w.CreateCharacter();
         c.IsPlayer = player;
+        c.IsOnline = player; // a logged-out character is no obstacle (CWorldSearch)
         c.BodyId = 0x190;
         c.Name = "Walker";
         c.Str = 50; c.Dex = 50; c.Int = 50;

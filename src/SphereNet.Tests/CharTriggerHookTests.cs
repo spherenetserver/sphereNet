@@ -31,6 +31,7 @@ public sealed class CharTriggerHookTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
+        ch.IsOnline = true; // a logged-out character is no obstacle (CWorldSearch)
         ch.Name = name;
         ch.Dex = 50;
         ch.MaxStam = 50;

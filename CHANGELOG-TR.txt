@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Gorus senkronu: yuklenen nesneler, istemci basina gorus menzili, reddedilen cift tiklama
+------------------------------------------------------------------------
+DUZELTME - Save'den yuklenen nesneler degisikliklerini yeniden bildirir. Yukleme dirty
+           bildirimini kapatiyordu ama setter'lar nesnelerin bayraklarini yine kaldiriyordu ve
+           kimse temizlemiyordu; nesne yalnizca temizden kirliye geciste bildirdigi icin her
+           kayitli NPC, oyuncu ve esya "zaten kirli" kaliyor, sonraki gizlenme, govde, renk,
+           yerdeki tasima, ahira koyma veya giyili esya degisikligi yakindaki istemcilere ancak
+           yurudukleri zaman ulasiyordu.
+DUZELTME - Gorus trafigi (karakter belirmesi, NPC ve oyuncu hareketi, yon, notoriety ve can
+           cubugu guncellemesi, gorus yenileme isaretleme, giyili/kaptaki ve kaldirilan esya
+           silme, linger bitisi) Source-X GetVisualRange() gibi her istemcinin kendi gorus
+           menziline (0xC8, MAPVIEWSIZEMAX ile sinirli) gore gonderilir; sabit 18 kullaniliyordu,
+           24'teki ClassicUO istemcisi 19-24 karedeki spawn veya summon'u hic gormuyor, oradaki
+           oyunculari donmus goruyordu. Konusma, ses ve efekt menzilleri degismedi.
+DUZELTME - Istemcide nesneyi silen reddedilmis cift tiklama veya paperdoll istegi nesneyi
+           istemcinin bilinen listesinden de cikarir; karakter/esya cift tiklama gorunurlugu
+           Source-X CanSee gibi gorus mesafesiyle olculur. Mobil "biliniyor" kaliyordu; summon
+           istemcinin attigi hareket paketleriyle takip edip buyu atmaya devam ediyor, oyuncu
+           menzilden cikip donene kadar gorunmuyordu.
+DUZELTME - Cikis yapmis oyuncu karakteri veya binek olarak kullanilan yaratik artik yurunen
+           karakterin karesini kapatmaz (Source-X CWorldSearch bagli olmayan karakterleri
+           atlar); gorunmeyen park halindeki karakter tam stamina'da olmayan oyuncunun her
+           adimini reddediyordu.
+DUZELTME - Donma nedeniyle (FREEZE/STONE, NOMOVETILL, buyu sirasinda donma, SPEEDMODE 4)
+           reddedilen adimda, Source-X CanMove gibi oyuncuya msg_frozen mesaji gider.
+
 [2026-10-04] - MAXCONNECTREQUESTSPERIP varsayilani 50, giriste sifirlanir
 ------------------------------------------------------------------------
 DEGISIKLIK - MAXCONNECTREQUESTSPERIP varsayilani 50 (Source-X referans ini degeri; motor ici

@@ -1250,7 +1250,7 @@ public static partial class Program
             };
             _spellEngine.TriggerDispatcher = _triggerDispatcher;
             _spellEngine.OnCastItemUnequipped = (caster, item) =>
-                ForEachClientInRange(caster.Position, 18, 0,
+                ForEachViewerOf(caster.Position, 0,
                     (_, client) => client.SendCastUnequipUpdate(caster, item));
             _spellEngine.OnPlaySound = (pos, soundId) =>
             {
@@ -1260,7 +1260,7 @@ public static partial class Program
             _spellEngine.OnItemRemoved = item =>
             {
                 if (item == null || item.IsDeleted) return;
-                BroadcastNearby(item.Position, 18, new PacketDeleteObject(item.Uid.Value), 0);
+                BroadcastNearby(item.Position, MaxViewRange, new PacketDeleteObject(item.Uid.Value), 0);
                 _world.DeleteObject(item);
             };
             // Telekinesis: Use_Obj(pObj, fTestTouch=false) through the caster's client,
@@ -1532,7 +1532,7 @@ public static partial class Program
                 // keeps the ghost marker its death put there.
                 if (!victim.IsPlayer && !victim.IsDead && _world != null)
                 {
-                    foreach (var viewer in _world.GetCharsInRange(victim.Position, 18))
+                    foreach (var viewer in _world.GetCharsInRange(victim.Position, MaxViewRange))
                     {
                         if (!viewer.IsPlayer) continue;
                         if (_clientsByCharUid.TryGetValue(viewer.Uid, out var viewerClient))
@@ -1632,7 +1632,7 @@ public static partial class Program
                 uint mountItemUid = victim.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
                 var mountNpc = _mountEngine?.Dismount(victim);
                 if (mountItemUid != 0)
-                    BroadcastNearby(victim.Position, 18, new PacketDeleteObject(mountItemUid), 0);
+                    BroadcastNearby(victim.Position, MaxViewRange, new PacketDeleteObject(mountItemUid), 0);
                 if (mountNpc != null)
                 {
                     mountNpc.ClearStatFlag(StatFlag.Ridden);
@@ -2721,8 +2721,13 @@ public static partial class Program
             };
             SphereNet.Game.Objects.Characters.Character.OnHiddenStateCleared = ch =>
                 _spellEngine?.BreakInvisibility(ch);
+            // Everyone whose own view holds the lingering body is told it is gone.
             _world.ClientLingerExpired += ch =>
-                BroadcastNearby(ch.Position, 18, new PacketDeleteObject(ch.Uid.Value), ch.Uid.Value);
+                ForEachClientInRange(ch.Position, MaxViewRange, ch.Uid.Value, (viewer, c) =>
+                {
+                    if (InViewOf(c, viewer, ch.Position))
+                        c.NetState.Send(new PacketDeleteObject(ch.Uid.Value));
+                });
             SphereNet.Game.Clients.GameClient.OnWakeNpc = WakeNpc;
             SphereNet.Game.Objects.Characters.Character.WakeNpc = WakeNpc;
             SphereNet.Game.Clients.GameClient.ServerListProvider = BuildServerList;
@@ -2930,7 +2935,7 @@ public static partial class Program
             SphereNet.Game.Objects.Characters.Character.OnHealthBarStatusChanged = ch =>
             {
                 if (ch == null || _world == null) return;
-                ForEachClientInRange(ch.Position, 18, 0, (_, observerClient) =>
+                ForEachViewerOf(ch.Position, 0, (_, observerClient) =>
                 {
                     if (GameClient.BuildHealthBarStatus(observerClient.NetState, ch) is { } packet)
                         observerClient.Send(packet);
@@ -2940,7 +2945,7 @@ public static partial class Program
             SphereNet.Game.Objects.Characters.Character.NotoSaveUpdate = ch =>
             {
                 if (ch == null || _world == null) return;
-                ForEachClientInRange(ch.Position, 18, 0, (observerCh, observerClient) =>
+                ForEachViewerOf(ch.Position, 0, (observerCh, observerClient) =>
                 {
                     byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, ch);
                     byte dir = (byte)((byte)ch.Direction & 0x07);
@@ -4060,6 +4065,15 @@ public static partial class Program
         BroadcastFacingUpdate(actor, range);
     }
 
+    /// <summary>Every playing client whose own visual range holds <paramref name="pos"/>
+    /// (the per-viewer test of Source-X CChar::UpdateMove / Update).</summary>
+    private static void ForEachViewerOf(Point3D pos, uint excludeUid, Action<Character, GameClient> action) =>
+        ForEachClientInRange(pos, MaxViewRange, excludeUid, (viewer, c) =>
+        {
+            if (InViewOf(c, viewer, pos))
+                action(viewer, c);
+        });
+
     private static void BroadcastFacingUpdate(Character actor, int range = 18)
     {
         byte dirByte = (byte)((byte)actor.Direction & 0x07);
@@ -4069,7 +4083,8 @@ public static partial class Program
         if (actor.BodyId == 0x0191 || actor.BodyId == 0x0193) flags |= 0x02;
         if (actor.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
 
-        ForEachClientInRange(actor.Position, range, 0, (observerCh, observerClient) =>
+        // A facing change is view traffic: every viewer within its own range.
+        ForEachViewerOf(actor.Position, 0, (observerCh, observerClient) =>
         {
             byte noto = GameClient.ComputeNotorietyColor(_world, observerCh, actor);
             observerClient.Send(new PacketMobileMoving(

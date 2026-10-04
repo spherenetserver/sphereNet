@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - View sync: loaded objects, per-client view range, refused double-click
+------------------------------------------------------------------------
+FIX - Objects loaded from the save report their changes again. The load suppresses dirty
+      notification but the setters still raised each object's flags and nothing cleared
+      them; an object only reports a clean-to-dirty change, so every saved NPC, player and
+      item stayed "already dirty" and its later hide, body, hue, ground move, stabling or
+      worn-item change reached nearby clients only when they walked.
+FIX - View traffic (character appear, NPC and player moves, facing, notoriety and health-bar
+      updates, view refresh marking, deletes of worn/contained and removed items, linger
+      expiry) is held to each client's own visual range (0xC8, capped by MAPVIEWSIZEMAX) as
+      Source-X tests GetVisualRange(); it used a fixed 18, so a ClassicUO client at 24 never
+      saw a spawn or summon 19-24 tiles away and saw players there freeze. Speech, sound and
+      effect ranges are unchanged.
+FIX - A refused double-click or paperdoll request that deletes the object on the client also
+      forgets it from the client's known set, and character/item double-click visibility
+      uses sight distance like Source-X CanSee. The mobile stayed "known", so a summon kept
+      following and casting with move packets the client discarded, invisible until the
+      player walked out of range and back.
+FIX - A logged-out player character or a ridden mount no longer blocks a walker's tile
+      (Source-X CWorldSearch skips disconnected characters); an unseen parked character
+      refused every step of a player below full stamina.
+FIX - A step refused by a freeze (FREEZE/STONE, NOMOVETILL, freeze-on-cast, SPEEDMODE 4)
+      tells the walker msg_frozen, as Source-X CanMove does.
+
 [2026-10-04] - MAXCONNECTREQUESTSPERIP defaults to 50 and clears on login
 ------------------------------------------------------------------------
 CHANGE - MAXCONNECTREQUESTSPERIP defaults to 50 (the Source-X reference ini value; the

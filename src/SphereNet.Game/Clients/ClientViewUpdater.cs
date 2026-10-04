@@ -550,6 +550,21 @@ public sealed class ClientViewUpdater
         }
     }
 
+    /// <summary>Send 0x1D for <paramref name="uid"/> and forget it from both known sets,
+    /// so the next view delta draws it again when it is in view. A bare 0x1D left the
+    /// object "known": the client had deleted it while the server only sent 0x77
+    /// moves, which ClassicUO drops for an unknown mobile - a summon refused a
+    /// double-click went on following and casting, unseen, until the player walked
+    /// out of range and back.</summary>
+    public void DeleteAndForget(uint uid)
+    {
+        View.KnownChars.Remove(uid);
+        View.LastKnownPos.Remove(uid);
+        View.KnownItems.Remove(uid);
+        View.LastKnownItemState.Remove(uid);
+        _client.NetState.Send(new PacketDeleteObject(uid));
+    }
+
     /// <summary>
     /// Called by BroadcastCharacterAppear to immediately show a character on this client.
     /// Each client renders from its own perspective (notoriety, AllShow, etc.).

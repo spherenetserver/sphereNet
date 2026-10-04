@@ -524,8 +524,26 @@ public sealed class GameWorld
     /// (stress-test generation, world load) where the dirty set would otherwise
     /// balloon to millions of entries and stall the fast-path drain. Callers
     /// must ensure a full view resync follows, since intermediate updates are
-    /// discarded.</summary>
-    public bool SuppressDirtyNotify { get; set; }
+    /// discarded.
+    ///
+    /// Turning it off clears every object's dirty flags. An object only reports its
+    /// clean→dirty transition, and the setters still raise the flags while
+    /// suppressed; left set, every object loaded from the save stayed "already dirty"
+    /// for good and never queued another change - a hidden state, body, hue or
+    /// moved ground item on it reached nearby clients only when they walked.</summary>
+    public bool SuppressDirtyNotify
+    {
+        get => _suppressDirtyNotify;
+        set
+        {
+            bool ending = _suppressDirtyNotify && !value;
+            _suppressDirtyNotify = value;
+            if (ending)
+                foreach (var obj in _objects.Values)
+                    obj.ConsumeDirty();
+        }
+    }
+    private bool _suppressDirtyNotify;
 
     /// <summary>Called by ObjBase on clean→dirty transition. Thread-safe.</summary>
     public void NotifyDirty(ObjBase obj)

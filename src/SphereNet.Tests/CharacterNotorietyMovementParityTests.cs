@@ -43,6 +43,7 @@ public sealed class CharacterNotorietyMovementParityTests
     {
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
+        ch.IsOnline = true; // a logged-out character is no obstacle (CWorldSearch)
         ch.BodyId = 0x0190;
         ch.Name = "p" + x;
         ch.Dex = 50;

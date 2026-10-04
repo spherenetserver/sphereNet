@@ -381,7 +381,7 @@ public sealed class ClientItemUseHandler
             else if (uid != 0)
             {
                 LogDClickRefused(uid, "paperdoll: target not found or not visible");
-                Send(new PacketDeleteObject(uid));
+                _client.DeleteAndForget(uid);
             }
             return;
         }
@@ -461,7 +461,7 @@ public sealed class ClientItemUseHandler
             {
                 LogDClickRefused(uid, $"item not visible to the user (cont=0x{item.ContainedIn.Value:X8} " +
                     $"attr=0x{(ulong)item.Attributes:X} use point {usePoint})");
-                Send(new PacketDeleteObject(uid));
+                _client.DeleteAndForget(uid);
                 return;
             }
 
@@ -517,7 +517,7 @@ public sealed class ClientItemUseHandler
             if (!CanSeeCharacterForDoubleClick(ch))
             {
                 LogDClickRefused(uid, "character not visible to the user");
-                Send(new PacketDeleteObject(uid));
+                _client.DeleteAndForget(uid);
                 return;
             }
 
@@ -629,7 +629,7 @@ public sealed class ClientItemUseHandler
 
         LogDClickRefused(uid, "no such object");
         if (uid != 0)
-            Send(new PacketDeleteObject(uid));
+            _client.DeleteAndForget(uid);
     }
 
     private bool CanSeeCharacterForDoubleClick(Character target)
@@ -645,7 +645,10 @@ public sealed class ClientItemUseHandler
         if (_character == null || target.IsDeleted) return false;
         if (target == _character) return true;
         if (target.MapIndex != _character.MapIndex) return false;
-        if (_character.Position.GetDistanceTo(target.Position) > Math.Max(UpdateRange, (int)_netState.ViewRange))
+        // Source-X CanSee measures sight distance (square), as the view does; the
+        // DISTANCEFORMULA-driven GetDistanceTo refused a creature inside the drawn
+        // square but past the Euclidean range.
+        if (_character.Position.GetDistSight(target.Position) > Math.Max(UpdateRange, (int)_netState.ViewRange))
             return false;
 
         bool concealed = target.IsStatFlag(StatFlag.Hidden) || target.IsInvisible;
@@ -691,7 +694,7 @@ public sealed class ClientItemUseHandler
             return false;
         if (owner != null && !CanSeeCharacterForDoubleClick(owner))
             return false;
-        if (_character.Position.GetDistanceTo(usePoint) > Math.Max(UpdateRange, (int)_netState.ViewRange))
+        if (_character.Position.GetDistSight(usePoint) > Math.Max(UpdateRange, (int)_netState.ViewRange))
             return false;
 
         // Distance + visibility only (Source-X Event_DoubleClick → CanSee) —

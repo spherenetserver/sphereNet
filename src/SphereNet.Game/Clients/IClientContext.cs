@@ -244,6 +244,7 @@ internal interface IClientContext : ITextConsole
     void ConsumeAmmoFromBackpack(ItemType ammo);
     bool TryHandlePetCommand(string text);
     bool ApplyPetCommand(Objects.Characters.Character pet, string verb);
+    void DeleteAndForget(uint uid);
     bool TryHandleCommandSpeech(string text);
     void SetWarMode(bool warMode, bool syncClients, bool preserveTarget);
     void FaceTarget(Character target);

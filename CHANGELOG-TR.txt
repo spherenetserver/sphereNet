@@ -4,6 +4,14 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Reddedilen adimlar nedeniyle loglanir
+------------------------------------------------------------------------
+YENI - Reddedilen her oyuncu adimi bir debug satiri yazar: [move_reject] reason=... seq pos
+       facing (engelleyen tile ile terrain, character_on_tile, freeze, cast_freeze,
+       nomovetill, speedmode, stamina, house, ship, throttle, walk_buffer, sequence,
+       queue_overflow). Red istemciyi sunucunun karesine geri ceker ve sessizdi; "yana
+       atildim" ve "takildim" raporlari izlenemiyordu.
+
 [2026-10-04] - Gorus senkronu: yuklenen nesneler, istemci basina gorus menzili, reddedilen cift tiklama
 ------------------------------------------------------------------------
 DUZELTME - Save'den yuklenen nesneler degisikliklerini yeniden bildirir. Yukleme dirty

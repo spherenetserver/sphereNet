@@ -138,6 +138,7 @@ public sealed class MovementEngine
         byte sequence, out WalkCheck.Diagnostic diag)
     {
         diag = default;
+        LastRefusal = null;
         // Source-X CanMove (CCharAct.cpp:4571): a character in GM mode skips the
         // whole freeze test - FREEZE, STONE, NoMoveTill and freeze-on-cast alike -
         // so a staff member is never rooted by a script's freeze. GM mode is
@@ -148,7 +149,7 @@ public sealed class MovementEngine
         // Expiration does not delete the script-owned tag.
         if (!gmMode && ch.TryGetTag("NOMOVETILL", out string? noMoveText) &&
             ScriptNumber.TryParseToken(noMoveText, out long noMoveTill) && noMoveTill > _world.GameClockMs / 100)
-            return RefuseFrozen(ch);
+            return RefuseFrozen(ch, "nomovetill");
         // IsDead is intentionally NOT a hard reject here. Source-X /
         // OSI ghosts can walk freely (just slower, can't open most doors,
         // can't mount). Treating death as "cannot move" leaves the player
@@ -158,21 +159,21 @@ public sealed class MovementEngine
         // and Stone (stone form / petrified) since those are explicit
         // immobility states even on living characters.
         if (!gmMode && (CharDefHelper.GetCanFlags(ch) & (CanFlags.C_NonMover | CanFlags.C_Statue)) != 0)
-            return false;
+            return Refuse("nonmover");
         if (!gmMode && (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone)))
-            return RefuseFrozen(ch);
+            return RefuseFrozen(ch, "freeze");
 
         // A cast that roots the caster (MAGICF_FREEZEONCAST / SPELLFLAG_FREEZEONCAST)
         // refuses the STEP; it does not cancel the spell. Source-X weighs this in
         // OnFreezeCheck alongside paralyze (CCharAct.cpp:4539).
         if (!gmMode && SpellEngine?.IsMovementFrozenByCast(ch) == true)
-            return RefuseFrozen(ch);
+            return RefuseFrozen(ch, "cast_freeze");
 
         // SPEEDMODE 4 roots a player (OnFreezeCheck, CCharAct.cpp:4535-4536: "speed
         // mode '4' prevents movement"). The client is only told the mode; the
         // server has to hold the step itself.
         if (!gmMode && ch.IsPlayer && (ch.SpeedMode & 0x04) != 0)
-            return RefuseFrozen(ch);
+            return RefuseFrozen(ch, "speedmode");
 
         // Out of stamina: a living character cannot take a step (CanMove,
         // CCharAct.cpp:4586-4593 - Stat_GetVal(STAT_DEX) <= 0 && !STATF_DEAD).
@@ -184,7 +185,7 @@ public sealed class MovementEngine
         {
             OnSysMessage?.Invoke(ch, ServerMessages.Get(
                 ch.GetTotalWeight() > ch.MaxWeight ? Msg.MsgFatigueWeight : Msg.MsgFatigue));
-            return false;
+            return Refuse("stamina");
         }
 
         var current = new Point3D(ch.X, ch.Y, ch.Z, ch.MapIndex);
@@ -213,7 +214,7 @@ public sealed class MovementEngine
             // Even the bypass branch may not step off the map — an off-map
             // char crashes the map readers on the next query.
             if (_world.GetSector(target) == null)
-                return false;
+                return Refuse("off_map");
             onRoof = !gmMode && _world.MapData != null &&
                 _walkCheck.StandsOnRoof(ch, ch.MapIndex, target.X, target.Y, ch.Z);
         }
@@ -222,7 +223,7 @@ public sealed class MovementEngine
             // Characters on the destination are judged below, by the full shove
             // check with its triggers, not by the walk check's default rule.
             if (!_walkCheck.CheckMovementDetailed(ch, current, dir, checkChars: false, out int newZ, out diag))
-                return false;
+                return Refuse("terrain");
 
             target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), (sbyte)newZ, ch.MapIndex);
             onRoof = diag.ForwardOnRoof;
@@ -235,19 +236,19 @@ public sealed class MovementEngine
         if (!ShoveCharAtPosition(ch, target, pathFinding: false, out shoveStam))
         {
             diag = diag with { MobBlocked = true };
-            return false;
+            return Refuse("character_on_tile");
         }
 
         if (CanEnterHouse != null && !CanEnterHouse(ch, target))
         {
             diag = diag with { MobBlocked = true };
-            return false;
+            return Refuse("house");
         }
 
         if (CanBoardShip != null && !CanBoardShip(ch, target))
         {
             diag = diag with { MobBlocked = true };
-            return false;
+            return Refuse("ship");
         }
 
         ch.Direction = dir;
@@ -279,7 +280,7 @@ public sealed class MovementEngine
 
         // Region scripts run centrally for walking and every teleport path.
         var previousRegion = _world.FindRegion(ch.Position);
-        if (!_world.MoveCharacter(ch, target)) return false;
+        if (!_world.MoveCharacter(ch, target)) return Refuse("move_failed");
 
         // What the shove and the load cost, charged together once the step commits
         // (CanMoveWalkTo, CCharAct.cpp:4787-4829).
@@ -480,9 +481,19 @@ public sealed class MovementEngine
     /// <summary>OnFreezeCheck refused the step: Source-X CanMove tells the walker
     /// DEFMSG_MSG_FROZEN (CCharAct.cpp:4581-4585). The refusal was silent, so a player
     /// held by a freeze only saw their steps snap back.</summary>
-    private bool RefuseFrozen(Character ch)
+    private bool RefuseFrozen(Character ch, string why)
     {
         OnSysMessage?.Invoke(ch, ServerMessages.Get(Msg.MsgFrozen));
+        return Refuse(why);
+    }
+
+    /// <summary>Why the last <see cref="TryMoveDetailed"/> refused its step (null when
+    /// it moved), for the walker's [move_reject] diagnostic line.</summary>
+    public string? LastRefusal { get; private set; }
+
+    private bool Refuse(string why)
+    {
+        LastRefusal = why;
         return false;
     }
 

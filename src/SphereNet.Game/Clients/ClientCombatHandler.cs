@@ -191,7 +191,7 @@ public sealed class ClientCombatHandler
             {
                 // More steps waiting than the queue holds: the same overflow an 0x02
                 // flood meets (QueueMoveRequest).
-                RejectMove(step.Sequence, now);
+                RejectMove(step.Sequence, now, reason: "queue_overflow");
                 queue.Clear();
                 return;
             }
@@ -238,7 +238,7 @@ public sealed class ClientCombatHandler
         Throttle.Queue ??= new Movement.MovementQueueProcessor(MovementQueueCapacity);
         if (!Throttle.Queue.Enqueue(dir, seq, fastWalkKey, now))
         {
-            RejectMove(seq, now);
+            RejectMove(seq, now, reason: "queue_overflow");
             Throttle.Queue.Clear();
             return;
         }
@@ -286,7 +286,7 @@ public sealed class ClientCombatHandler
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
         if (expectedSeq != 0 && seq != expectedSeq)
         {
-            RejectMove(seq, now);
+            RejectMove(seq, now, reason: $"sequence(expected {expectedSeq})");
             return false;
         }
 
@@ -295,7 +295,7 @@ public sealed class ClientCombatHandler
         // directions; 8..15 is refused, not folded onto 0..7.
         if ((dir & 0x0F) >= 8)
         {
-            RejectMove(seq, now);
+            RejectMove(seq, now, reason: "bad_direction");
             return false;
         }
 
@@ -335,7 +335,7 @@ public sealed class ClientCombatHandler
                     if (Throttle.Queue!.IsFull || !Throttle.Queue.Enqueue(dir, seq, fastWalkKey, now))
                     {
                         Throttle.ViolationCount++;
-                        RejectMove(seq, now);
+                        RejectMove(seq, now, reason: "movement_credit");
                         if (MoveViolationKickThreshold > 0 && Throttle.ViolationCount >= MoveViolationKickThreshold)
                             _netState.MarkClosing();
                         return false;
@@ -370,7 +370,7 @@ public sealed class ClientCombatHandler
                 if (rejectReason != null)
                 {
                     Throttle.ViolationCount++;
-                    RejectMove(seq, now);
+                    RejectMove(seq, now, reason: rejectReason);
                     if (MoveViolationKickThreshold > 0 && Throttle.ViolationCount >= MoveViolationKickThreshold)
                         _netState.MarkClosing();
                     return false;
@@ -478,7 +478,11 @@ public sealed class ClientCombatHandler
         }
         else
         {
-            RejectMove(seq, now);
+            string refusal = _movement?.LastRefusal ?? "refused";
+            if (refusal == "terrain")
+                refusal += ": " + string.Join(" | ", SphereNet.Game.Movement.WalkCheck.DescribeDiagnostic(
+                    moveDiag, direction, _character.Position));
+            RejectMove(seq, now, reason: refusal);
             ResendBlockingItems(direction);
             return false;
         }
@@ -507,9 +511,14 @@ public sealed class ClientCombatHandler
         }
     }
 
-    private void RejectMove(byte seq, long now, bool redrawSelf = false)
+    private void RejectMove(byte seq, long now, bool redrawSelf = false, string reason = "")
     {
         if (_character == null) return;
+        // Every refused step snaps the client back to the server's tile; without
+        // the reason a "pushed sideways" or "stuck" report cannot be traced.
+        _logger.LogDebug("[move_reject] reason={Reason} seq={Seq} pos={X},{Y},{Z} facing={Dir}",
+            reason.Length > 0 ? reason : "unknown", seq, _character.X, _character.Y, _character.Z,
+            _character.Direction);
         _netState.SendPriority(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
         if (redrawSelf)
         {

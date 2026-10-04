@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - Refused steps are logged with their reason
+------------------------------------------------------------------------
+NEW - Every refused player step writes a debug line [move_reject] reason=... seq pos facing
+      (terrain with the blocking tile, character_on_tile, freeze, cast_freeze, nomovetill,
+      speedmode, stamina, house, ship, throttle, walk_buffer, sequence, queue_overflow).
+      A refusal snaps the client back to the server's tile and was silent, so "pushed
+      sideways" and "stuck" reports could not be traced.
+
 [2026-10-04] - View sync: loaded objects, per-client view range, refused double-click
 ------------------------------------------------------------------------
 FIX - Objects loaded from the save report their changes again. The load suppresses dirty

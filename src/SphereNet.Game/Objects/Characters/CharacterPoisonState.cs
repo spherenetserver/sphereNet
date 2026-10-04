@@ -58,7 +58,6 @@ public sealed class CharacterPoisonState
     /// <summary>Source-X ITEMID_RHAND_POINT_NW, the memory graphic when the spell
     /// def names no rune item.</summary>
     private const ushort FallbackMemoryId = 0x2053;
-    private const int HueTextDef = 0x03B2;
 
     private readonly Character _owner;
 
@@ -659,7 +658,7 @@ public sealed class CharacterPoisonState
     {
         Character.BroadcastNearby?.Invoke(_owner.Position, 18,
             new SphereNet.Network.Packets.Outgoing.PacketSpeechOut(
-                _owner.Uid.Value, _owner.BodyId, 2, HueTextDef, 3, _owner.GetName(), text),
+                _owner.Uid.Value, _owner.BodyId, 2, ObjBase.EmoteHue, 3, _owner.GetName(), text),
             _owner.Uid.Value);
     }
 

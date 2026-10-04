@@ -168,8 +168,8 @@ public class ConfigRegressionTests
             config.LoadFromIni(parser);
 
             // Noto hues: 0 → built-in default (never black).
-            Assert.Equal(0x0059, config.ColorNotoGood);
-            Assert.Equal(0x0022, config.ColorNotoEvil);
+            Assert.Equal(0x0063, config.ColorNotoGood);   // 0.56b default
+            Assert.Equal(0x0026, config.ColorNotoEvil);   // 0.56b default
             Assert.Equal(0x03B2, config.ColorNotoCriminal);
             Assert.Equal(0x03B2, config.ColorNotoDefault);
 

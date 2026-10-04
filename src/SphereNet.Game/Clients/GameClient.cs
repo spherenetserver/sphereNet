@@ -596,13 +596,14 @@ public sealed partial class GameClient : ITextConsole, IScriptObj
 }
 
 public sealed record NotorietyHueSettings(
-    ushort Good = 0x0059,
-    ushort GoodNpc = 0x0059,
-    ushort GuildSame = 0x003F,
+    // Sphere 0.56b name hues (CResource.cpp:210-216); see SphereConfig.ColorNoto*.
+    ushort Good = 0x0063,
+    ushort GoodNpc = 0x0063,
+    ushort GuildSame = 0x0044,
     ushort Neutral = 0x03B2,
     ushort Criminal = 0x03B2,
-    ushort GuildWar = 0x0090,
-    ushort Evil = 0x0022,
+    ushort GuildWar = 0x002B,
+    ushort Evil = 0x0026,
     ushort Invul = 0x0035,
     ushort InvulGameMaster = 0x000B,
     ushort Default = 0x03B2);

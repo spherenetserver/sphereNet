@@ -56,6 +56,7 @@ public static partial class Program
         ["COLORINVISSPELL"] = c => Hx(c.ColorInvisSpell),
         ["COLORNOTOCRIMINAL"] = c => I(c.ColorNotoCriminal),
         ["COLORNOTODEFAULT"] = c => I(c.ColorNotoDefault),
+        ["COLOREMOTE"] = c => I(c.ColorEmote),
         ["COLORNOTOEVIL"] = c => I(c.ColorNotoEvil),
         ["COLORNOTOGOOD"] = c => I(c.ColorNotoGood),
         ["COLORNOTOGOODNPC"] = c => I(c.ColorNotoGoodNpc),

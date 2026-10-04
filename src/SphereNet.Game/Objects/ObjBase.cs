@@ -2124,6 +2124,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     /// ("*You see OWNERs NAME text*" / "*Your NAME text*"); an item whose top level
     /// is another item uses msg_emote_7 for everyone. Sent from the top-level object
     /// in emote mode (UpdateObjMessage, TALKMODE_EMOTE, HUE_TEXT_DEF).</summary>
+    /// <summary>The hue of an engine emote, ini COLOREMOTE: Sphere 0.56b's red 0x22 by
+    /// default; 0x3B2 is the Source-X grey.</summary>
+    public static ushort EmoteHue { get; set; } = 0x0022;
+
     public void EmoteObject(string text)
     {
         var top = GetTopLevelObj();
@@ -2147,7 +2151,7 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             you = them;
         }
 
-        const ushort hueTextDef = 0x03B2;
+        ushort hueTextDef = EmoteHue;
         const byte talkModeEmote = 2;
         ushort body = top is Characters.Character tc ? tc.BodyId : (ushort)0;
         uint exclude = 0;

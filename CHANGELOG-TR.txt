@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-04] - Isim ve emote renkleri Sphere 0.56b varsayilanlarinda
+------------------------------------------------------------------------
+DEGISIKLIK - Notoriety isim renklerinin varsayilanlari Sphere 0.56b'ninki (CResource.cpp:
+           210-216): masum 0x63 mavi, lonca muttefik 0x44 yesil, lonca dusman 0x2B turuncu,
+           katil 0x26 kirmizi, kriminal / notr / varsayilan 0x3B2 gri. Source-X'in degerleri
+           0x59 / 0x3F / 0x90 / 0x22; sphere.ini'deki COLORNOTO* anahtarlari yine gecerlidir.
+           INVUL ve INVULGAMEMASTER Source-X renginde kalir (0.56b'de yok).
+YENI - COLOREMOTE motor emote'larinin rengini belirler ("*You see NAME looks deathly sick*").
+       Varsayilani Sphere 0.56b'nin kirmizisi 0x22 (56b CObjBase.cpp:358); 03b2 Source-X
+       grisini verir.
+
 [2026-10-04] - Hedefin @SpellEffect tetiginin uyguladigi zehir korunur
 ------------------------------------------------------------------------
 DUZELTME - Sphere 56T ozel surum uyumlulugu: Poison / Poison Field buyusunun zehrini hedefin

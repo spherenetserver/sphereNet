@@ -269,16 +269,24 @@ public sealed class SphereConfig
     // target scan on a given wander step. Source-X m_iNPCWanderLookAroundChance
     // default 30. OVERRIDE.LOOKAROUNDCHANCE overrides it per character.
     public int NpcWanderLookAroundChance { get; set; } = 30;
-    public ushort ColorNotoGood { get; set; } = 0x0059;
-    public ushort ColorNotoGoodNpc { get; set; } = 0x0059;
-    public ushort ColorNotoGuildSame { get; set; } = 0x003F;
+    // Notoriety name hues default to Sphere 0.56b's (CResource.cpp:210-216: blue 0x63,
+    // green 0x44, orange 0x2B, red 0x26, grey 0x3B2); Source-X ships 0x59 / 0x3F /
+    // 0x90 / 0x22 (CServerConfig.cpp:305-314). INVUL and INVULGAMEMASTER have no 0.56b
+    // counterpart and keep the Source-X hues.
+    public ushort ColorNotoGood { get; set; } = 0x0063;
+    public ushort ColorNotoGoodNpc { get; set; } = 0x0063;
+    public ushort ColorNotoGuildSame { get; set; } = 0x0044;
     public ushort ColorNotoNeutral { get; set; } = 0x03B2;
     public ushort ColorNotoCriminal { get; set; } = 0x03B2;
-    public ushort ColorNotoGuildWar { get; set; } = 0x0090;
-    public ushort ColorNotoEvil { get; set; } = 0x0022;
+    public ushort ColorNotoGuildWar { get; set; } = 0x002B;
+    public ushort ColorNotoEvil { get; set; } = 0x0026;
     public ushort ColorNotoInvul { get; set; } = 0x0035;
     public ushort ColorNotoInvulGameMaster { get; set; } = 0x000B;
     public ushort ColorNotoDefault { get; set; } = 0x03B2;
+    /// <summary>COLOREMOTE (SphereNet): the hue of an engine emote ("*You see NAME
+    /// looks ill*"). Defaults to Sphere 0.56b's HUE_RED 0x22 (CObjBase.cpp:358);
+    /// Source-X sends HUE_TEXT_DEF 0x3B2 (CObjBase.cpp:671).</summary>
+    public ushort ColorEmote { get; set; } = 0x0022;
     public ushort ColorInvisItem { get; set; } = 1000;
     public ushort ColorInvis { get; set; }
     public ushort ColorInvisSpell { get; set; }
@@ -1186,6 +1194,7 @@ public sealed class SphereConfig
         // Notoriety name hues: a configured 0 means "use the built-in default" (hue 0
         // would render the overhead label as black, which is never wanted).
         ColorNotoGood = GetHue(ini, section, "ColorNotoGood", ColorNotoGood, zeroMeansDefault: true);
+        ColorEmote = GetHue(ini, section, "ColorEmote", ColorEmote, zeroMeansDefault: true);
         ColorNotoGoodNpc = GetHue(ini, section, "ColorNotoGoodNPC", ColorNotoGoodNpc, zeroMeansDefault: true);
         ColorNotoGuildSame = GetHue(ini, section, "ColorNotoGuildSame", ColorNotoGuildSame, zeroMeansDefault: true);
         ColorNotoNeutral = GetHue(ini, section, "ColorNotoNeutral", ColorNotoNeutral, zeroMeansDefault: true);

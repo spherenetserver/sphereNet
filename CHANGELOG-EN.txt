@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-04] - Name and emote colours default to Sphere 0.56b
+------------------------------------------------------------------------
+CHANGE - The notoriety name hues default to Sphere 0.56b's (CResource.cpp:210-216): good
+      0x63 blue, guild ally 0x44 green, guild enemy 0x2B orange, evil 0x26 red, criminal /
+      neutral / default 0x3B2 grey. Source-X ships 0x59 / 0x3F / 0x90 / 0x22; any
+      COLORNOTO* key in sphere.ini still overrides. INVUL and INVULGAMEMASTER keep the
+      Source-X hues (0.56b has none).
+NEW - COLOREMOTE sets the hue of engine emotes ("*You see NAME looks deathly sick*"). It
+      defaults to Sphere 0.56b's red 0x22 (56b CObjBase.cpp:358); 03b2 gives the Source-X
+      grey.
+
 [2026-10-04] - A poison laid by the target's @SpellEffect is kept
 ------------------------------------------------------------------------
 FIX - Sphere 56T custom-version compatibility: when the target's @SpellEffect (or the

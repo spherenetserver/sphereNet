@@ -235,6 +235,36 @@ public static partial class Program
         _ => "UNUSED",
     };
 
+    /// <summary>The write side of the config table: a script's <c>SERV.&lt;key&gt;=value</c>.
+    /// Upstream a SERV assignment no verb claims is CServer::r_LoadVal, whose first stop
+    /// is g_Cfg.r_LoadVal (CServer.cpp:1620) - the ini key, changed at run time. Only
+    /// keys that are safe to change while the server runs are listed; re-running the
+    /// ini loader for one key would re-add connections and re-read the maps.</summary>
+    private static readonly Dictionary<string, Action<SphereConfig, string>> s_servConfigWrite =
+        new(StringComparer.OrdinalIgnoreCase)
+    {
+        // A pack that sweeps only some saves sets this from f_onserver_save (one save
+        // in five); the write was dropped, so every save ran the full sweep.
+        ["FORCEGARBAGECOLLECT"] = (c, v) => c.ForceGarbageCollect = ConfigNumber(v) != 0,
+    };
+
+    /// <summary>GetArgVal of a written config value: a Sphere number, 0 when it is not one.</summary>
+    private static long ConfigNumber(string value) =>
+        SphereNet.Core.Types.ScriptNumber.TryParseLong(value.Trim(), out long n) ? n : 0;
+
+    /// <summary>"key=value" from a SERV assignment. "1" when a writable config key took
+    /// it, null when the key is not one (the line carries on to the rest of dispatch).</summary>
+    private static string? HandleServConfigSet(string keyValue)
+    {
+        int eq = keyValue.IndexOf('=');
+        if (eq <= 0 || _config == null)
+            return null;
+        if (!s_servConfigWrite.TryGetValue(keyValue[..eq].Trim(), out var write))
+            return null;
+        write(_config, keyValue[(eq + 1)..]);
+        return "1";
+    }
+
     /// <summary>Everything the SERV switch hands on before the defname lookup: the
     /// config table above, then the reference forms CServerConfig answers
     /// (ROOM, SKILLCLASS, CLIENT., MULTIS., TILEDATA.). Null when none claims it.</summary>

@@ -300,9 +300,17 @@ public sealed class ScriptDbAdapter : IDisposable
 
     public void Dispose()
     {
-        foreach (var session in _sessions.Values)
-            session.Close();
+        Shutdown();
         _sessions.Clear();
+    }
+
+    /// <summary>Server shutdown: close every session and wait for each DB worker to
+    /// finish the work it was handed, so a queued AEXECUTE is not cut off. Only here -
+    /// a script's DB.CLOSE runs on the game loop and must not wait.</summary>
+    public void Shutdown()
+    {
+        foreach (var session in _sessions.Values)
+            session.Close(waitForWorker: true);
     }
 
     private DbSession? GetActiveSession()
@@ -541,6 +549,15 @@ public sealed class ScriptDbAdapter : IDisposable
         private bool ConnectCore(string providerInvariantName, string connectionString,
             bool fromConfig, out string error)
         {
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool ok = ConnectCoreTimed(providerInvariantName, connectionString, fromConfig, out error);
+            ReportIfSlow("connect", start, null);
+            return ok;
+        }
+
+        private bool ConnectCoreTimed(string providerInvariantName, string connectionString,
+            bool fromConfig, out string error)
+        {
             error = "";
             lock (_sync)
             {
@@ -594,13 +611,13 @@ public sealed class ScriptDbAdapter : IDisposable
             }
         }
 
-        public void Close()
+        public void Close(bool waitForWorker = false)
         {
             lock (_sync)
             {
                 CloseInternal();
             }
-            StopWorkerThread();
+            StopWorkerThread(waitForWorker);
         }
 
         /// <summary>Send the configured session charset (DbConnectionConfig.CharSet).
@@ -778,6 +795,14 @@ public sealed class ScriptDbAdapter : IDisposable
 
         private bool ExecuteInternal(string sql, out int affectedRows, out string error)
         {
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool ok = ExecuteInternalTimed(sql, out affectedRows, out error);
+            ReportIfSlow("execute", start, sql);
+            return ok;
+        }
+
+        private bool ExecuteInternalTimed(string sql, out int affectedRows, out string error)
+        {
             affectedRows = 0;
             error = "";
             lock (_sync)
@@ -804,6 +829,34 @@ public sealed class ScriptDbAdapter : IDisposable
         }
 
         private bool QueryInternal(string sql, out int rowCount, out string error)
+        {
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool ok = QueryInternalTimed(sql, out rowCount, out error);
+            ReportIfSlow("query", start, sql);
+            return ok;
+        }
+
+        /// <summary>Every DB call a script makes without the worker runs on the game
+        /// loop, which waits for it - for the session lock and for the network. One that
+        /// takes long is a pause every player feels, and nothing else names it: a loop
+        /// stall says only that the tick was slow. Logged with where it ran and what it
+        /// ran, so a stall can be matched against the statement that caused it.</summary>
+        private void ReportIfSlow(string op, long start, string? sql)
+        {
+            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            if (ms < SlowOperationMs)
+                return;
+            string where = Thread.CurrentThread.Name?.StartsWith("DB-Worker", StringComparison.Ordinal) == true
+                ? "DB worker" : "game thread";
+            string text = sql == null ? "" : sql.Length > 120 ? sql[..120] + "..." : sql;
+            _logger.LogWarning("DB session '{Name}' slow {Op}: {Ms:F0} ms on the {Where}. {Sql}",
+                Config?.Name ?? "?", op, ms, where, text);
+        }
+
+        /// <summary>The duration past which a DB call is logged as slow.</summary>
+        private const double SlowOperationMs = 100;
+
+        private bool QueryInternalTimed(string sql, out int rowCount, out string error)
         {
             rowCount = 0;
             error = "";
@@ -948,11 +1001,17 @@ public sealed class ScriptDbAdapter : IDisposable
             _workerThread.Start();
         }
 
-        private void StopWorkerThread()
+        /// <summary>Close the worker's inbox. The worker finishes what is already queued
+        /// and exits on its own. Waiting for it is for shutdown only: DB.CLOSE runs on
+        /// the game loop, and a Join there held the whole server for up to five seconds
+        /// while the worker worked through its queue - every queued job against a closed
+        /// connection, each one a reconnect attempt when KEEPALIVE is set.</summary>
+        private void StopWorkerThread(bool wait)
         {
             var queue = _workQueue;
             queue?.CompleteAdding();
-            _workerThread?.Join(TimeSpan.FromSeconds(5));
+            if (wait)
+                _workerThread?.Join(TimeSpan.FromSeconds(5));
             _workerThread = null;
             // Drop the completed queue so a later Connect mints a usable one. Keeping
             // it would only preserve the state that made the reopen useless.

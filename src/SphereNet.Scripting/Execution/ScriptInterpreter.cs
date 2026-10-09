@@ -875,6 +875,12 @@ public sealed class ScriptInterpreter
             return true;
         }
 
+        // What no verb claims falls to CServer::r_LoadVal, which tries the config first
+        // (g_Cfg.r_LoadVal, CServer.cpp:1620): SERV.FORCEGARBAGECOLLECT=0 changes the
+        // setting. Only keys the host lists as writable answer.
+        if (ServerPropertyResolver?.Invoke($"_SERV_CFG_SET={rest}={resolvedArg}") != null)
+            return true;
+
         return false;
     }
 

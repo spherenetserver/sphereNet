@@ -1028,6 +1028,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             // DECIMALVARIABLES format.
             bool zero = dotIdx > 0 && key[dotIdx - 1] == '0';
             value = _tags.GetValStr(tagKey) ?? DefinitionTags?.GetValStr(tagKey) ?? (zero ? "0" : "");
+            // DTAG: the same read in decimal (CScriptObj.cpp:543). A chained read such
+            // as <src.dtag0.x> lands here with the D still on.
+            if (key[0] is 'D' or 'd')
+                value = ScriptNumber.ToDecimalReading(value);
             return true;
         }
         if (key.StartsWith("CTAG.", StringComparison.OrdinalIgnoreCase) ||
@@ -1043,6 +1047,10 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             // "0" for CTAG0 (CClient::r_WriteVal -> GetKeyStr(key, fZero)).
             bool zero = dotIdx > 0 && key[dotIdx - 1] == '0';
             value = (this is Characters.Character ch ? ch.CTags.GetValStr(tagKey) : null) ?? (zero ? "0" : "");
+            // DCTAG: in decimal. A script splicing <src.dctag0.x> into SQL expects
+            // 3235 where the number var reads 0ca3.
+            if (key[0] is 'D' or 'd')
+                value = ScriptNumber.ToDecimalReading(value);
             return true;
         }
 

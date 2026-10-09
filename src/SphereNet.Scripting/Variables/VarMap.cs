@@ -48,6 +48,13 @@ public sealed class VarMap
         ? value.ToString(CultureInfo.InvariantCulture)
         : ExpressionParser.FormatSphereHex(value);
 
+    /// <summary><see cref="FormatNumber"/> into a caller's buffer (24 characters is
+    /// always enough).</summary>
+    public static bool TryFormatNumber(long value, Span<char> destination, out int written) =>
+        DecimalVariables
+            ? value.TryFormat(destination, out written, default, CultureInfo.InvariantCulture)
+            : ExpressionParser.TryFormatSphereHex(value, destination, out written);
+
     private readonly record struct StoredValue(VarValueKind Kind, string? Text, long Integer,
         VarSaveForm Form = VarSaveForm.Auto, bool SaveLiteral = false)
     {
@@ -282,24 +289,66 @@ public sealed class VarMap
     public string? GetSaveText(string key) =>
         _vars.TryGetValue(key, out var value) ? FormatSaveValue(value) : null;
 
-    private static string FormatSaveValue(StoredValue value)
+    /// <summary><see cref="GetSaveText"/> without building the string, for a writer
+    /// that formats into its own buffer: the stored text and whether it goes out in
+    /// quotes. False when the value has to be computed (a number with no literal to
+    /// echo), and the caller asks <see cref="GetSaveText"/> instead.</summary>
+    public bool TryGetStoredSaveText(string key, out string text, out bool quoted)
     {
+        if (_vars.TryGetValue(key, out var value))
+            return TryStoredSaveText(value, out text, out quoted);
+        text = string.Empty;
+        quoted = false;
+        return false;
+    }
+
+    /// <summary>True when the entry's save text is a number formatted on the way out
+    /// (a number var with no literal to echo): <see cref="GetSaveText"/> is then
+    /// <see cref="FormatNumber"/> of <paramref name="number"/>.</summary>
+    public bool TryGetSaveNumber(string key, out long number)
+    {
+        if (_vars.TryGetValue(key, out var value) && value.Kind == VarValueKind.Integer &&
+            !TryStoredSaveText(value, out _, out _))
+        {
+            number = value.Integer;
+            return true;
+        }
+        number = 0;
+        return false;
+    }
+
+    private static bool TryStoredSaveText(StoredValue value, out string text, out bool quoted)
+    {
+        quoted = false;
         if (value.Kind == VarValueKind.Integer)
         {
             // r_WritePrefix writes a number var's GetValStr. One loaded from a save
             // goes back out as the literal it was read from: the same number on the
             // same line.
-            return value.SaveLiteral && value.Text != null && IsPlainNumberLiteral(value.Text)
-                ? value.Text
-                : FormatNumber(value.Integer);
+            text = value.Text ?? string.Empty;
+            return value.SaveLiteral && value.Text != null && IsPlainNumberLiteral(value.Text);
         }
-        string text = value.Text ?? string.Empty;
-        return value.Form switch
+        text = value.Text ?? string.Empty;
+        switch (value.Form)
         {
-            VarSaveForm.Quoted => Quote(text),
-            VarSaveForm.Number => FormatNumber(EvaluateNumber(text)),
-            _ => FormatAutoSaveValue(text),
-        };
+            case VarSaveForm.Quoted:
+                quoted = true;
+                return true;
+            case VarSaveForm.Number:
+                return false;
+            default:
+                quoted = !IsPlainNumberLiteral(text);
+                return true;
+        }
+    }
+
+    private static string FormatSaveValue(StoredValue value)
+    {
+        if (TryStoredSaveText(value, out string text, out bool quoted))
+            return quoted ? Quote(text) : text;
+        return FormatNumber(value.Kind == VarValueKind.Integer
+            ? value.Integer
+            : EvaluateNumber(text));
     }
 
     private static string Quote(string text) => "\"" + text + "\"";
@@ -379,10 +428,29 @@ public sealed class VarMap
     }
 
     /// <summary>Enumerate string projections in deterministic Source-X key order.</summary>
-    public IEnumerable<KeyValuePair<string, string>> GetAll()
+    public IEnumerable<KeyValuePair<string, string>> GetAll() =>
+        // Most objects carry no tags, and walking an empty SortedDictionary still
+        // allocates its enumerator's stack; a save asks every object, twice.
+        _vars.Count == 0 ? [] : GetAllCore();
+
+    private IEnumerable<KeyValuePair<string, string>> GetAllCore()
     {
         foreach (var (key, value) in _vars)
             yield return new KeyValuePair<string, string>(key, value.AsString());
+    }
+
+    /// <summary>The keys alone, in the same order, for a caller that never reads the
+    /// values: <see cref="GetAll"/> renders every number var to a string on the way.</summary>
+    public IEnumerable<string> GetKeys() => _vars.Count == 0 ? [] : _vars.Keys;
+
+    /// <summary>Append the keys, in order, to a caller's list: the one walk of the map
+    /// that allocates nothing but the tree enumerator's stack.</summary>
+    public void CopyKeysTo(List<string> keys)
+    {
+        if (_vars.Count == 0)
+            return;
+        foreach (var entry in _vars)
+            keys.Add(entry.Key);
     }
 
     /// <summary>Enumerate the script text of every entry (<see cref="GetValStr"/>) in

@@ -71,6 +71,54 @@ public static class ScriptNumber
     /// <see cref="TryParseToken"/>. "0FFFFFFFF" is 4294967295 here.</summary>
     public static bool TryParseLong(string? text, out long value) => TryParseToken(text, out value);
 
+    /// <summary>What a D-prefixed read (<c>&lt;dX&gt;</c>, <c>&lt;src.dctag0.x&gt;</c>)
+    /// answers: the value of X in decimal. Source-X strips the D, reads X, and unless
+    /// the text starts with '-' replaces it with <c>Str_ToLL</c> of it
+    /// (CScriptObj::r_WriteVal, CScriptObj.cpp:543-551) - the leading number, hex when
+    /// it starts with '0' and a hex digit, anything after it ignored, 0 when there is
+    /// none or it overflows (cstr_to_num, sstring.cpp:57).</summary>
+    public static string ToDecimalReading(string value)
+    {
+        if (value.Length > 0 && value[0] == '-')
+            return value;
+        return LeadingNumber(value).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static long LeadingNumber(string s)
+    {
+        int i = 0;
+        while (i < s.Length && s[i] is ' ' or '\t' or '\r' or '\n')
+            i++;
+        bool negative = i < s.Length && s[i] == '-';
+        if (negative)
+            i++;
+        bool hex = i + 1 < s.Length && s[i] == '0' && char.IsAsciiHexDigit(s[i + 1]);
+        if (hex)
+            i++;
+        ulong limit = negative ? (ulong)long.MaxValue + 1 : long.MaxValue;
+        uint radix = hex ? 16u : 10u;
+        ulong acc = 0;
+        int digits = 0;
+        for (; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (!hex && c == '.')
+                continue; // Sphere numbers have no fraction: dots are skipped
+            uint d;
+            if (c is >= '0' and <= '9') d = (uint)(c - '0');
+            else if (hex && c is >= 'a' and <= 'f') d = (uint)(c - 'a' + 10);
+            else if (hex && c is >= 'A' and <= 'F') d = (uint)(c - 'A' + 10);
+            else break;
+            if (acc > (limit - d) / radix)
+                return 0; // overflow: Str_ToLL fails, value_or(0)
+            acc = acc * radix + d;
+            digits++;
+        }
+        if (digits == 0)
+            return 0;
+        return negative ? unchecked(-(long)acc) : (long)acc;
+    }
+
     /// <summary>A stored number as an unsigned 32-bit value (a UID, a mask):
     /// 0 .. 0xFFFFFFFF, a negative value refused.</summary>
     public static bool TryParseUInt(string? text, out uint value)

@@ -982,8 +982,11 @@ public sealed class WorldSaver
     /// survives save-load — Source-X keeps object timers across a world save.</summary>
     private static void WriteTimerF(ISaveWriter w, SphereNet.Game.Objects.ObjBase obj, long now)
     {
-        foreach (var t in obj.TimerFEntries)
+        // Indexed: foreach over the IReadOnlyList boxes an enumerator per object.
+        var timers = obj.TimerFEntries;
+        for (int ti = 0; ti < timers.Count; ti++)
         {
+            var t = timers[ti];
             long remainingMs = t.DueTickMs - now;
             if (remainingMs < 0) remainingMs = 0;
             // remainingMs | functionName | args — functionName holds no '|'; args may,
@@ -996,8 +999,6 @@ public sealed class WorldSaver
 
     private void WriteItem(ISaveWriter w, Item item, long now)
     {
-        EngineTags.StripEphemeral(item);
-
         // The header names the item's own definition, as upstream writes it. When it
         // does, the ITEMDEF/SCRIPTDEF routing tags are redundant - the loader pins the
         // definition from the header - and upstream has no such tags, so they are not
@@ -1006,18 +1007,19 @@ public sealed class WorldSaver
         string? ownDefName = ResolveItemOwnDefName?.Invoke(item);
         bool headerIsOwnDef = !string.IsNullOrEmpty(ownDefName);
         string? defname = headerIsOwnDef ? ownDefName : ResolveItemDefName?.Invoke(item.BaseId);
-        w.BeginRecord(defname != null ? $"WORLDITEM {defname}" : "WORLDITEM");
+        if (defname != null) w.BeginRecord($"WORLDITEM {defname}");
+        else w.BeginRecord("WORLDITEM");
         w.WriteProperty("SERIAL", $"0{item.Uid.Value:x8}");
-        w.WriteProperty("UUID", item.Uuid.ToString("D"));
+        w.WriteProperty("UUID", $"{item.Uuid:D}");
         if (defname == null ||
             (ResolveHeaderBaseId?.Invoke(defname) is ushort headerBase && headerBase != 0 &&
              headerBase != item.BaseId))
             w.WriteProperty("ID", $"0{item.BaseId:x}");
         w.WriteProperty("NAME", item.Name);
-        w.WriteProperty("P", item.Position.ToString());
+        w.WriteProperty("P", $"{item.Position}");
         if (item.Hue.Value != 0) w.WriteProperty("COLOR", $"0{item.Hue.Value:x}");
-        if (item.Amount > 1) w.WriteProperty("AMOUNT", item.Amount.ToString());
-        if (item.WeightOverride is int baseWeight) w.WriteProperty("BASEWEIGHT", baseWeight.ToString());
+        if (item.Amount > 1) w.WriteProperty("AMOUNT", item.Amount);
+        if (item.WeightOverride is int baseWeight) w.WriteProperty("BASEWEIGHT", baseWeight);
 
         // The item's own combat ratings, written like upstream's - only when it has
         // any, so an object that never had them stays as small as it was
@@ -1027,9 +1029,9 @@ public sealed class WorldSaver
             w.WriteProperty("DAM", $"{item.AttackLo},{item.AttackHi}");
         if (item.DefenseBaseRaw is > 0)
             w.WriteProperty("ARMOR", $"{item.DefenseLo},{item.DefenseHi}");
-        if (item.MaxAmountOverride is int maxAmt) w.WriteProperty("MAXAMOUNT", maxAmt.ToString());
-        if (item.ModAr != 0) w.WriteProperty("MODAR", item.ModAr.ToString()); // CObjBase.cpp:2086
-        if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
+        if (item.MaxAmountOverride is int maxAmt) w.WriteProperty("MAXAMOUNT", maxAmt);
+        if (item.ModAr != 0) w.WriteProperty("MODAR", item.ModAr); // CObjBase.cpp:2086
+        if (item.Direction != 0) w.WriteProperty("DIR", item.Direction);
         if ((ulong)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(ulong)item.Attributes:x}");
         if (item.CanMask != 0) w.WriteProperty("CANMASK", $"0{item.CanMask:x}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
@@ -1052,16 +1054,16 @@ public sealed class WorldSaver
         if (item.CustomTypeName != null)
             w.WriteProperty("TYPE", item.CustomTypeName);
         else if (item.HasInstanceType)
-            w.WriteProperty("TYPE", ((ushort)item.ItemType).ToString());
+            w.WriteProperty("TYPE", ((ushort)item.ItemType));
 
         // A container's own weight limit: it is the only thing bounding one, so losing
         // it on a restart would quietly un-bound every chest a script had set up.
         if (item.ModMaxWeight != 0)
-            w.WriteProperty("MODMAXWEIGHT", item.ModMaxWeight.ToString());
+            w.WriteProperty("MODMAXWEIGHT", item.ModMaxWeight);
         if (item.More1 != 0) w.WriteProperty("MORE1", $"0{item.More1:x}");
         if (item.More2 != 0) w.WriteProperty("MORE2", $"0{item.More2:x}");
         if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:x}");
-        if (item.MoreP != Point3D.Zero) w.WriteProperty("MOREP", item.MoreP.ToString());
+        if (item.MoreP != Point3D.Zero) w.WriteProperty("MOREP", $"{item.MoreP}");
         if (item.Crafter.IsValid) w.WriteProperty("CRAFTER", $"0{item.Crafter.Value:x}");
         // Base-def strings, written the way upstream's r_WritePrefix writes a string
         // def: KEY="value" (CVarDefMap.cpp:708).
@@ -1070,23 +1072,23 @@ public sealed class WorldSaver
         // Numeric base defs go out bare and in hex (CVarDefMap.cpp:706 / :45).
         foreach (var (recipeKey, recipeVal) in item.RecipeDefs)
             w.WriteProperty(recipeKey, SphereNet.Game.Objects.ObjBase.FormatDefHex(recipeVal));
-        if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining.ToString());
+        if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining);
         if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:x}");
-        if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
-        if (item.Quality != 0) w.WriteProperty("QUALITY", item.Quality.ToString()); // Source-X persists only non-zero quality
+        if (item.Price != 0) w.WriteProperty("PRICE", item.Price);
+        if (item.Quality != 0) w.WriteProperty("QUALITY", item.Quality); // Source-X persists only non-zero quality
 
         item.MigrateHitsFromTags();
-        if (item.HitsCur > 0) w.WriteProperty("HITS", item.HitsCur.ToString());
-        if (item.HitsMax > 0) w.WriteProperty("MAXHITS", item.HitsMax.ToString());
+        if (item.HitsCur > 0) w.WriteProperty("HITS", item.HitsCur);
+        if (item.HitsMax > 0) w.WriteProperty("MAXHITS", item.HitsMax);
 
-        if (item.TData1 != 0) w.WriteProperty("TDATA1", item.TData1.ToString());
-        if (item.TData2 != 0) w.WriteProperty("TDATA2", item.TData2.ToString());
-        if (item.TData3 != 0) w.WriteProperty("TDATA3", item.TData3.ToString());
-        if (item.TData4 != 0) w.WriteProperty("TDATA4", item.TData4.ToString());
+        if (item.TData1 != 0) w.WriteProperty("TDATA1", item.TData1);
+        if (item.TData2 != 0) w.WriteProperty("TDATA2", item.TData2);
+        if (item.TData3 != 0) w.WriteProperty("TDATA3", item.TData3);
+        if (item.TData4 != 0) w.WriteProperty("TDATA4", item.TData4);
 
         if (item.ContainedIn.IsValid) w.WriteProperty("CONT", $"0{item.ContainedIn.Value:x8}");
-        if (item.EquipLayer != 0) w.WriteProperty("LAYER", ((byte)item.EquipLayer).ToString());
-        if (item.ContainerGridIndex != 0) w.WriteProperty("CONTGRID", item.ContainerGridIndex.ToString());
+        if (item.EquipLayer != 0) w.WriteProperty("LAYER", ((byte)item.EquipLayer));
+        if (item.ContainerGridIndex != 0) w.WriteProperty("CONTGRID", item.ContainerGridIndex);
 
         long timeout = item.Timeout;
         if (timeout > 0)
@@ -1098,7 +1100,7 @@ public sealed class WorldSaver
             // ticked" indistinguishable from "no timer at all", so a save taken in
             // that window silently cancelled the pending script work.
             long remainingMs = Math.Max(0, timeout - now);
-            w.WriteProperty("TIMERMS", remainingMs.ToString());
+            w.WriteProperty("TIMERMS", remainingMs);
         }
 
         if (item.DecayTime > 0)
@@ -1109,10 +1111,10 @@ public sealed class WorldSaver
             // (r_Write, CObjBase.cpp:2081). DECAY stays alongside it so a save read by
             // an older build still finds the field it expects.
             long remainingMs = Math.Max(0, item.DecayTime - now);
-            w.WriteProperty("DECAYMS", remainingMs.ToString());
+            w.WriteProperty("DECAYMS", remainingMs);
             long remainingSec = remainingMs / 1000;
             if (remainingSec > 0)
-                w.WriteProperty("DECAY", remainingSec.ToString());
+                w.WriteProperty("DECAY", remainingSec);
         }
 
         WriteTimerF(w, item, now);
@@ -1149,7 +1151,7 @@ public sealed class WorldSaver
         // so a staff-set pile size went back to one and a spawner that had been turned
         // off came back running on the next restart.
         if (item.SpawnItem != null && item.SpawnItem.Pile > 1)
-            w.WriteProperty("PILE", item.SpawnItem.Pile.ToString());
+            w.WriteProperty("PILE", item.SpawnItem.Pile);
         bool spawnStopped = item.SpawnChar?.IsStopped ?? item.SpawnItem?.IsStopped ?? false;
         if (spawnStopped)
             w.WriteProperty("SPAWNSTOPPED", "1");
@@ -1213,12 +1215,14 @@ public sealed class WorldSaver
             foreach (var tile in design.Tiles)
                 w.WriteProperty("COMP", $"{tile.TileId},{tile.X},{tile.Y},{tile.Z},{tile.StairId}");
             if (item.TryGetTag(SphereNet.Game.Housing.HouseDesign.RevisionTag, out _) && design.Revision != 0)
-                w.WriteProperty("REVISION", design.Revision.ToString());
+                w.WriteProperty("REVISION", design.Revision);
         }
 
-        foreach (var (key, val) in item.Tags.GetAll())
+        // Keys only, values on demand: GetAll renders every value to a string, and
+        // the generic TAG line below formats its own.
+        foreach (var key in TakeTagKeys(item))
         {
-            string upper = key.ToUpperInvariant();
+            string upper = UpperKey(key);
             if (upper == "ADDOBJ")
                 continue; // already written from SpawnComponent above
             if (customDesign && IsDesignTag(key))
@@ -1245,22 +1249,118 @@ public sealed class WorldSaver
                 || upper.StartsWith("REGION.TAG.", StringComparison.Ordinal))
             {
                 w.WriteProperty(upper, upper.StartsWith("REGION.TAG.", StringComparison.Ordinal)
-                    ? item.Tags.GetSaveText(key)! : val);
+                    ? item.Tags.GetSaveText(key)! : item.Tags.Get(key)!);
             }
             else if (upper is "ADDCOMP" or "SECURE" or "LOCKITEM")
             {
-                foreach (var entry in val.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                foreach (var entry in item.Tags.Get(key)!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     w.WriteProperty(upper, entry);
             }
             else
             {
                 // CObjBase::r_Write -> m_TagDefs.r_WritePrefix(s, "TAG") (CObjBase.cpp:2094):
                 // a number var bare, a string var quoted.
-                w.WriteProperty("TAG." + key, item.Tags.GetSaveText(key)!);
+                WriteTagValue(w, TagKey(key), item.Tags, key);
             }
         }
 
         w.EndRecord();
+    }
+
+    // Property names built per character were a string each, every save: the skill
+    // names (an enum's ToString), SkillLock[n], StatLock[n], EQUIP[n]. They are fixed,
+    // so they are built once.
+    private static readonly string[] SkillKeys = Enumerable.Range(0, (int)SphereNet.Core.Enums.SkillType.Qty)
+        .Select(s => Enum.IsDefined((SphereNet.Core.Enums.SkillType)s)
+            ? ((SphereNet.Core.Enums.SkillType)s).ToString()
+            : $"SKILL[{s}]")
+        .ToArray();
+    private static readonly string[] SkillLockKeys = Enumerable.Range(0, (int)SphereNet.Core.Enums.SkillType.Qty)
+        .Select(s => $"SkillLock[{s}]").ToArray();
+    private static readonly string[] StatLockKeys = ["StatLock[0]", "StatLock[1]", "StatLock[2]"];
+    private static readonly string[] EquipKeys = Enumerable.Range(0, (int)SphereNet.Core.Enums.Layer.Horse + 1)
+        .Select(l => $"EQUIP[{l}]").ToArray();
+
+    /// <summary>"TAG." + key, kept: tag names are a small vocabulary repeated across
+    /// every object. Bounded so a script minting unique names cannot grow it forever.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> TagKeys =
+        new(StringComparer.Ordinal);
+    private static int _tagKeyCount;
+
+    [ThreadStatic] private static List<string>? t_tagKeys;
+
+    /// <summary>The object's tag names for its TAG lines, in map order, with the
+    /// ephemeral ones removed from the object first - EngineTags.StripEphemeral,
+    /// folded in here so the map is walked once rather than twice (every walk of a
+    /// SortedDictionary allocates its enumerator's stack). Nothing a record writes
+    /// before its tags reads an ephemeral key, so stripping here instead of at the
+    /// top of the record changes nothing. Reused per thread: valid until the next
+    /// call.</summary>
+    private static List<string> TakeTagKeys(SphereNet.Game.Objects.ObjBase obj)
+    {
+        var keys = t_tagKeys ??= [];
+        keys.Clear();
+        obj.Tags.CopyKeysTo(keys);
+        int kept = 0;
+        for (int i = 0; i < keys.Count; i++)
+        {
+            string key = keys[i];
+            if (EngineTags.IsEphemeral(key))
+                obj.RemoveTag(key);
+            else
+                keys[kept++] = key;
+        }
+        keys.RemoveRange(kept, keys.Count - kept);
+        return keys;
+    }
+
+    /// <summary>key.ToUpperInvariant(), kept for the same reason as <see cref="TagKey"/>:
+    /// pack tag names are mixed case, and upper-casing one is a new string each time.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> UpperKeys =
+        new(StringComparer.Ordinal);
+    private static int _upperKeyCount;
+    private static string UpperKey(string key)
+    {
+        if (UpperKeys.TryGetValue(key, out string? cached))
+            return cached;
+        string built = key.ToUpperInvariant();
+        if (Volatile.Read(ref _upperKeyCount) < 65536 && UpperKeys.TryAdd(key, built))
+            Interlocked.Increment(ref _upperKeyCount);
+        return built;
+    }
+
+    /// <summary>A TAG line as r_WritePrefix writes it - a number bare, a string quoted
+    /// (CObjBase.cpp:2094) - formatted into the writer's buffer; only a number that
+    /// has to be computed is built as a string first.</summary>
+    private static void WriteTagValue(ISaveWriter w, string property,
+        SphereNet.Scripting.Variables.VarMap tags, string key)
+    {
+        if (tags.TryGetStoredSaveText(key, out string text, out bool quoted))
+        {
+            if (quoted)
+                w.WriteProperty(property, $"\"{text}\"");
+            else
+                w.WriteProperty(property, text);
+        }
+        else if (tags.TryGetSaveNumber(key, out long number))
+        {
+            Span<char> digits = stackalloc char[24];
+            SphereNet.Scripting.Variables.VarMap.TryFormatNumber(number, digits, out int n);
+            w.WriteProperty(property, digits[..n]);
+        }
+        else
+            w.WriteProperty(property, tags.GetSaveText(key)!);
+    }
+    private static string TagKey(string key)
+    {
+        // A lock-free read first. ConcurrentDictionary.Count takes every bucket lock,
+        // and the capture calls this from all its threads at once.
+        if (TagKeys.TryGetValue(key, out string? cached))
+            return cached;
+        string built = "TAG." + key;
+        if (Volatile.Read(ref _tagKeyCount) < 65536 && TagKeys.TryAdd(key, built))
+            Interlocked.Increment(ref _tagKeyCount);
+        return built;
     }
 
     /// <summary>CItemMulti::r_Write's keys, in its order.</summary>
@@ -1289,18 +1389,17 @@ public sealed class WorldSaver
     }
     private void WriteChar(ISaveWriter w, Character ch, long now)
     {
-        EngineTags.StripEphemeral(ch);
-
         string? defname = ch.CharDefIndex != 0
             ? ResolveCharDefName?.Invoke(ch.CharDefIndex)
             : null;
         if (string.IsNullOrEmpty(defname) && ch.TryGetTag("CHARDEF", out string? tagDef) && !string.IsNullOrEmpty(tagDef))
             defname = tagDef;
-        w.BeginRecord(defname != null ? $"WORLDCHAR {defname}" : "WORLDCHAR");
+        if (defname != null) w.BeginRecord($"WORLDCHAR {defname}");
+        else w.BeginRecord("WORLDCHAR");
         w.WriteProperty("SERIAL", $"0{ch.Uid.Value:x8}");
-        w.WriteProperty("UUID", ch.Uuid.ToString("D"));
+        w.WriteProperty("UUID", $"{ch.Uuid:D}");
         w.WriteProperty("NAME", ch.Name);
-        w.WriteProperty("P", ch.Position.ToString());
+        w.WriteProperty("P", $"{ch.Position}");
         w.WriteProperty("BODY", $"0{ch.BodyId:x}");
         if (ch.CanMask != 0) w.WriteProperty("CANMASK", $"0{ch.CanMask:x}");
         if (ch.OName.Length > 0) w.WriteProperty("ONAME", $"\"{ch.OName}\"");
@@ -1313,17 +1412,17 @@ public sealed class WorldSaver
         if (ch.CharDefIndex != 0 && ch.CharDefIndex != ch.BaseId)
             w.WriteProperty("CHARDEFINDEX", $"0{ch.CharDefIndex:x}");
         if (ch.Hue.Value != 0) w.WriteProperty("COLOR", $"0{ch.Hue.Value:x}");
-        w.WriteProperty("DIR", ((byte)ch.Direction).ToString());
+        w.WriteProperty("DIR", ((byte)ch.Direction));
         // The MODIFIER goes down first, which upstream calls out in as many words
         // ("this is VERY important, saving the MOD first", CChar.cpp:4250), and the
         // base follows. A modifier that was never written came back as zero, so a
         // script-applied strength quietly expired at every restart.
-        if (ch.ModStr != 0) w.WriteProperty("MODSTR", ch.ModStr.ToString());
-        if (ch.ModDex != 0) w.WriteProperty("MODDEX", ch.ModDex.ToString());
-        if (ch.ModInt != 0) w.WriteProperty("MODINT", ch.ModInt.ToString());
-        w.WriteProperty("STR", ch.Str.ToString());
-        w.WriteProperty("DEX", ch.Dex.ToString());
-        w.WriteProperty("INT", ch.Int.ToString());
+        if (ch.ModStr != 0) w.WriteProperty("MODSTR", ch.ModStr);
+        if (ch.ModDex != 0) w.WriteProperty("MODDEX", ch.ModDex);
+        if (ch.ModInt != 0) w.WriteProperty("MODINT", ch.ModInt);
+        w.WriteProperty("STR", ch.Str);
+        w.WriteProperty("DEX", ch.Dex);
+        w.WriteProperty("INT", ch.Int);
         // The MAXIMUM goes down before the value it bounds, which is the order the
         // reference is emphatic about ("this is VERY important", CChar.cpp:4250):
         // setting a maximum trims the current value to it, so a record that states the
@@ -1339,50 +1438,50 @@ public sealed class WorldSaver
         // the save never reached a fixed point. Nothing is lost by leaving it out; a
         // character with no maximum of its own takes its definition's.
         if (ch.BaseMaxHits > 0)
-            w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
+            w.WriteProperty("MAXHITS", ch.BaseMaxHits);
         // The MODMAX* modifiers persist beside the base, as upstream writes them
         // (CChar.cpp:4262). Only when set: an unused key on every character would
         // bloat the save for nothing.
-        if (ch.ModMaxHits != 0) w.WriteProperty("MODMAXHITS", ch.ModMaxHits.ToString());
-        if (ch.ModMaxMana != 0) w.WriteProperty("MODMAXMANA", ch.ModMaxMana.ToString());
-        if (ch.ModMaxStam != 0) w.WriteProperty("MODMAXSTAM", ch.ModMaxStam.ToString());
-        w.WriteProperty("MAXMANA", ch.BaseMaxMana.ToString());
-        w.WriteProperty("MAXSTAM", ch.BaseMaxStam.ToString());
-        w.WriteProperty("HITS", ch.Hits.ToString());
-        w.WriteProperty("MANA", ch.Mana.ToString());
-        w.WriteProperty("STAM", ch.Stam.ToString());
+        if (ch.ModMaxHits != 0) w.WriteProperty("MODMAXHITS", ch.ModMaxHits);
+        if (ch.ModMaxMana != 0) w.WriteProperty("MODMAXMANA", ch.ModMaxMana);
+        if (ch.ModMaxStam != 0) w.WriteProperty("MODMAXSTAM", ch.ModMaxStam);
+        w.WriteProperty("MAXMANA", ch.BaseMaxMana);
+        w.WriteProperty("MAXSTAM", ch.BaseMaxStam);
+        w.WriteProperty("HITS", ch.Hits);
+        w.WriteProperty("MANA", ch.Mana);
+        w.WriteProperty("STAM", ch.Stam);
         // Source-X CREATE key: character age at save time, in tenths of a
         // second (CChar::r_Write). Players only — feeds the MinCharDeleteTime
         // delete gate; NPCs don't need it and it would bloat 50K+ records.
         if (ch.IsPlayer && ch.CreatedUtcSeconds > 0)
             w.WriteProperty("CREATE",
                 (Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ch.CreatedUtcSeconds) * 10).ToString());
-        w.WriteProperty("OFAME", ch.Fame.ToString());
-        w.WriteProperty("OKARMA", ch.Karma.ToString());
-        if (ch.Food != 0) w.WriteProperty("OFOOD", ch.Food.ToString());
+        w.WriteProperty("OFAME", ch.Fame);
+        w.WriteProperty("OKARMA", ch.Karma);
+        if (ch.Food != 0) w.WriteProperty("OFOOD", ch.Food);
         var maxFoodTag = ch.Tags.Get("MAXFOOD");
         if (!string.IsNullOrEmpty(maxFoodTag)) w.WriteProperty("MAXFOOD", maxFoodTag);
-        if (ch.ResPhysical != 0) w.WriteProperty("RESPHYSICAL", ch.ResPhysical.ToString());
-        if (ch.ResFire != 0) w.WriteProperty("RESFIRE", ch.ResFire.ToString());
-        if (ch.ResCold != 0) w.WriteProperty("RESCOLD", ch.ResCold.ToString());
-        if (ch.ResPoison != 0) w.WriteProperty("RESPOISON", ch.ResPoison.ToString());
-        if (ch.ResEnergy != 0) w.WriteProperty("RESENERGY", ch.ResEnergy.ToString());
-        if (ch.Kills != 0) w.WriteProperty("KILLS", ch.Kills.ToString());
+        if (ch.ResPhysical != 0) w.WriteProperty("RESPHYSICAL", ch.ResPhysical);
+        if (ch.ResFire != 0) w.WriteProperty("RESFIRE", ch.ResFire);
+        if (ch.ResCold != 0) w.WriteProperty("RESCOLD", ch.ResCold);
+        if (ch.ResPoison != 0) w.WriteProperty("RESPOISON", ch.ResPoison);
+        if (ch.ResEnergy != 0) w.WriteProperty("RESENERGY", ch.ResEnergy);
+        if (ch.Kills != 0) w.WriteProperty("KILLS", ch.Kills);
         // The criminal and murder clocks are worn memories (LAYER_FLAG_Criminal /
         // LAYER_FLAG_Murders) and save themselves as items, as Source-X writes them.
         // Only a value an older save gave that has not been made into its memory yet
         // is written back in the old form, so it is not lost.
         if (ch.CombatState.PendingCriminalSeconds > 0)
-            w.WriteProperty("CRIMINALTIMER", ch.CombatState.PendingCriminalSeconds.ToString());
+            w.WriteProperty("CRIMINALTIMER", ch.CombatState.PendingCriminalSeconds);
         if (ch.CombatState.PendingMurderDecaySeconds > 0)
-            w.WriteProperty("MURDERDECAY", ch.CombatState.PendingMurderDecaySeconds.ToString());
+            w.WriteProperty("MURDERDECAY", ch.CombatState.PendingMurderDecaySeconds);
         if (!string.IsNullOrEmpty(ch.Title)) w.WriteProperty("TITLE", ch.Title);
         w.WriteProperty("FLAGS", $"0{(uint)ch.StatFlags:x}");
-        w.WriteProperty("NPC", ((int)ch.NpcBrain).ToString());
+        w.WriteProperty("NPC", ((int)ch.NpcBrain));
         if (ch.NpcSpells.Count > 0)
         {
             foreach (var spell in ch.NpcSpells)
-                w.WriteProperty("NPCSPELL", ((int)spell).ToString());
+                w.WriteProperty("NPCSPELL", ((int)spell));
         }
 
         // OSTR/ODEX/OINT are not written: they are the base stat under another name
@@ -1393,58 +1492,58 @@ public sealed class WorldSaver
         // a classic save states only the O-variants.
         if (ch.OBody != 0) w.WriteProperty("OBODY", $"0{ch.OBody:x}");
         if (ch.OSkin != 0) w.WriteProperty("OSKIN", $"0{ch.OSkin:x}");
-        if (ch.Luck != 0) w.WriteProperty("LUCK", ch.Luck.ToString());
-        if (ch.Exp != 0) w.WriteProperty("EXP", ch.Exp.ToString());
-        if (ch.Level != 0) w.WriteProperty("LEVEL", ch.Level.ToString());
-        if (ch.Deaths != 0) w.WriteProperty("DEATHS", ch.Deaths.ToString());
+        if (ch.Luck != 0) w.WriteProperty("LUCK", ch.Luck);
+        if (ch.Exp != 0) w.WriteProperty("EXP", ch.Exp);
+        if (ch.Level != 0) w.WriteProperty("LEVEL", ch.Level);
+        if (ch.Deaths != 0) w.WriteProperty("DEATHS", ch.Deaths);
         if (ch.Home.X != 0 || ch.Home.Y != 0)
             w.WriteProperty("HOME", $"{ch.Home.X},{ch.Home.Y},{ch.Home.Z},{ch.Home.Map}");
         if (ch.HomeDist != Character.UnlimitedHomeDistance)
-            w.WriteProperty("HOMEDIST", ch.HomeDist.ToString());
-        if (ch.ActPri != 0) w.WriteProperty("ACTPRI", ch.ActPri.ToString());
-        if (ch.Action != 0) w.WriteProperty("ACTION", ((int)ch.Action).ToString());
+            w.WriteProperty("HOMEDIST", ch.HomeDist);
+        if (ch.ActPri != 0) w.WriteProperty("ACTPRI", ch.ActPri);
+        if (ch.Action != 0) w.WriteProperty("ACTION", ((int)ch.Action));
         if (ch.Act.IsValid) w.WriteProperty("ACT", $"0{ch.Act.Value:x8}");
-        if (ch.ActArg1 != 0) w.WriteProperty("ACTARG1", ch.ActArg1.ToString());
-        if (ch.ActArg2 != 0) w.WriteProperty("ACTARG2", ch.ActArg2.ToString());
-        if (ch.ActArg3 != 0) w.WriteProperty("ACTARG3", ch.ActArg3.ToString());
+        if (ch.ActArg1 != 0) w.WriteProperty("ACTARG1", ch.ActArg1);
+        if (ch.ActArg2 != 0) w.WriteProperty("ACTARG2", ch.ActArg2);
+        if (ch.ActArg3 != 0) w.WriteProperty("ACTARG3", ch.ActArg3);
         if (ch.ActP.X != 0 || ch.ActP.Y != 0 || ch.ActP.Z != 0 || ch.ActP.Map != 0)
             w.WriteProperty("ACTP", $"{ch.ActP.X},{ch.ActP.Y},{ch.ActP.Z},{ch.ActP.Map}");
         if (ch.ActPrv.IsValid) w.WriteProperty("ACTPRV", $"0{ch.ActPrv.Value:x8}");
         // ACTDIFF is read back through the script key, which takes tenths.
-        if (ch.ActDiff != 0) w.WriteProperty("ACTDIFF", (ch.ActDiff > 0 ? (long)ch.ActDiff * 10 : ch.ActDiff).ToString());
+        if (ch.ActDiff != 0) w.WriteProperty("ACTDIFF", (ch.ActDiff > 0 ? (long)ch.ActDiff * 10 : ch.ActDiff));
         // CChar::r_Write stores an instance HEIGHT when one was set.
-        if (ch.HeightOverride != 0) w.WriteProperty("HEIGHT", ch.HeightOverride.ToString());
+        if (ch.HeightOverride != 0) w.WriteProperty("HEIGHT", ch.HeightOverride);
         if (ch.FightTarget.IsValid) w.WriteProperty("FIGHTTARGET", $"0{ch.FightTarget.Value:x8}");
         if (!ch.IsPlayer && ch.PetAIMode != SphereNet.Core.Enums.PetAIMode.Follow)
-            w.WriteProperty("PETAI", ((int)ch.PetAIMode).ToString());
-        if (ch.FleeStepsCurrent != 0) w.WriteProperty("FLEESTEPS", ch.FleeStepsCurrent.ToString());
-        if (ch.FleeStepsMax != 0) w.WriteProperty("FLEESTEPSMAX", ch.FleeStepsMax.ToString());
-        if (ch.SpeechColor != 0x0035) w.WriteProperty("SPEECHCOLOR", ch.SpeechColor.ToString());
-        if (ch.MaxFollower != 5) w.WriteProperty("MAXFOLLOWER", ch.MaxFollower.ToString());
+            w.WriteProperty("PETAI", ((int)ch.PetAIMode));
+        if (ch.FleeStepsCurrent != 0) w.WriteProperty("FLEESTEPS", ch.FleeStepsCurrent);
+        if (ch.FleeStepsMax != 0) w.WriteProperty("FLEESTEPSMAX", ch.FleeStepsMax);
+        if (ch.SpeechColor != 0x0035) w.WriteProperty("SPEECHCOLOR", ch.SpeechColor);
+        if (ch.MaxFollower != 5) w.WriteProperty("MAXFOLLOWER", ch.MaxFollower);
         // Per-char regen rate overrides (ms). Saved as tenths (D) so the loader
         // round-trips them exactly through the REGEN*D set path; 0 = global default.
-        if (ch.RegenHitsRateMs != 0) w.WriteProperty("REGENHITSD", (ch.RegenHitsRateMs / 100).ToString());
-        if (ch.RegenManaRateMs != 0) w.WriteProperty("REGENMANAD", (ch.RegenManaRateMs / 100).ToString());
-        if (ch.RegenStamRateMs != 0) w.WriteProperty("REGENSTAMD", (ch.RegenStamRateMs / 100).ToString());
-        if (ch.RegenFoodRateMs != 0) w.WriteProperty("REGENFOODD", (ch.RegenFoodRateMs / 100).ToString());
-        if (ch.RegenValHits != 0) w.WriteProperty("REGENVALHITS", ch.RegenValHits.ToString());
-        if (ch.RegenValMana != 0) w.WriteProperty("REGENVALMANA", ch.RegenValMana.ToString());
-        if (ch.RegenValStam != 0) w.WriteProperty("REGENVALSTAM", ch.RegenValStam.ToString());
-        if (ch.RegenValFood != 0) w.WriteProperty("REGENVALFOOD", ch.RegenValFood.ToString());
+        if (ch.RegenHitsRateMs != 0) w.WriteProperty("REGENHITSD", (ch.RegenHitsRateMs / 100));
+        if (ch.RegenManaRateMs != 0) w.WriteProperty("REGENMANAD", (ch.RegenManaRateMs / 100));
+        if (ch.RegenStamRateMs != 0) w.WriteProperty("REGENSTAMD", (ch.RegenStamRateMs / 100));
+        if (ch.RegenFoodRateMs != 0) w.WriteProperty("REGENFOODD", (ch.RegenFoodRateMs / 100));
+        if (ch.RegenValHits != 0) w.WriteProperty("REGENVALHITS", ch.RegenValHits);
+        if (ch.RegenValMana != 0) w.WriteProperty("REGENVALMANA", ch.RegenValMana);
+        if (ch.RegenValStam != 0) w.WriteProperty("REGENVALSTAM", ch.RegenValStam);
+        if (ch.RegenValFood != 0) w.WriteProperty("REGENVALFOOD", ch.RegenValFood);
         if (ch.BloodHue != 0) w.WriteProperty("BLOODCOLOR", $"0{ch.BloodHue:x}");
-        if (ch.FollowerSlotsOverride is int fsOverride) w.WriteProperty("FOLLOWERSLOTS", fsOverride.ToString());
-        if (ch.ResPhysicalMax != 70) w.WriteProperty("RESPHYSICALMAX", ch.ResPhysicalMax.ToString());
-        if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
-        if (ch.ResColdMax != 70) w.WriteProperty("RESCOLDMAX", ch.ResColdMax.ToString());
-        if (ch.ResPoisonMax != 70) w.WriteProperty("RESPOISONMAX", ch.ResPoisonMax.ToString());
-        if (ch.ResEnergyMax != 70) w.WriteProperty("RESENERGYMAX", ch.ResEnergyMax.ToString());
+        if (ch.FollowerSlotsOverride is int fsOverride) w.WriteProperty("FOLLOWERSLOTS", fsOverride);
+        if (ch.ResPhysicalMax != 70) w.WriteProperty("RESPHYSICALMAX", ch.ResPhysicalMax);
+        if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax);
+        if (ch.ResColdMax != 70) w.WriteProperty("RESCOLDMAX", ch.ResColdMax);
+        if (ch.ResPoisonMax != 70) w.WriteProperty("RESPOISONMAX", ch.ResPoisonMax);
+        if (ch.ResEnergyMax != 70) w.WriteProperty("RESENERGYMAX", ch.ResEnergyMax);
         if (ch.NightSight) w.WriteProperty("NIGHTSIGHT", "1");
-        if (ch.StepStealth != 0) w.WriteProperty("STEPSTEALTH", ch.StepStealth.ToString());
-        if (ch.SpeedMode != 0) w.WriteProperty("SPEEDMODE", ch.SpeedMode.ToString());
+        if (ch.StepStealth != 0) w.WriteProperty("STEPSTEALTH", ch.StepStealth);
+        if (ch.SpeedMode != 0) w.WriteProperty("SPEEDMODE", ch.SpeedMode);
         if (!string.IsNullOrEmpty(ch.Profile)) w.WriteProperty("PROFILE", ch.Profile);
-        if (ch.PFlag != 0) w.WriteProperty("PFLAG", ch.PFlag.ToString());
-        if (ch.Tithing != 0) w.WriteProperty("TITHING", ch.Tithing.ToString());
-        if (ch.SkillClass != 0) w.WriteProperty("SKILLCLASS", ch.SkillClass.ToString());
+        if (ch.PFlag != 0) w.WriteProperty("PFLAG", ch.PFlag);
+        if (ch.Tithing != 0) w.WriteProperty("TITHING", ch.Tithing);
+        if (ch.SkillClass != 0) w.WriteProperty("SKILLCLASS", ch.SkillClass);
 
         // The creature's own damage, written only when it has one (CChar.cpp:4159).
         if (ch.AttackBaseRaw is > 0) w.WriteProperty("DAM", $"{ch.AttackLo},{ch.AttackHi}");
@@ -1452,7 +1551,7 @@ public sealed class WorldSaver
         if (ch.IsPlayer) w.WriteProperty("ISPLAYER", "1");
         // CChar::r_Write (CChar.cpp:4149) / CCharPlayer::r_WriteChar (CCharPlayer.cpp:562-566):
         // written only when set; the toolbar only for an account that shows KR or later.
-        if (ch.EmoteColorOverride != 0) w.WriteProperty("EMOTECOLOROVERRIDE", ch.EmoteColorOverride.ToString());
+        if (ch.EmoteColorOverride != 0) w.WriteProperty("EMOTECOLOROVERRIDE", ch.EmoteColorOverride);
         if (ch.IsPlayer && ch.RefuseGlobalChatRequests) w.WriteProperty("REFUSEGLOBALCHATREQUESTS", "1");
         if (ch.IsPlayer && ch.KrToolbarStatus &&
             (Character.ResolveAccountForChar?.Invoke(ch.Uid)?.ResDisp ?? 0) >= KrResDisp)
@@ -1463,7 +1562,7 @@ public sealed class WorldSaver
         {
             long chRemainingMs = chTimeout - now;
             if (chRemainingMs > 0)
-                w.WriteProperty("TIMERMS", chRemainingMs.ToString());
+                w.WriteProperty("TIMERMS", chRemainingMs);
         }
 
         var accountTag = ch.Tags.Get("ACCOUNT");
@@ -1476,8 +1575,7 @@ public sealed class WorldSaver
             ushort val = ch.GetSkill(skillType);
             if (val > 0)
             {
-                string skillName = Enum.IsDefined(skillType) ? skillType.ToString() : $"SKILL[{s}]";
-                w.WriteProperty(skillName, val.ToString());
+                w.WriteProperty(SkillKeys[s], val);
             }
         }
 
@@ -1485,21 +1583,21 @@ public sealed class WorldSaver
         {
             byte lockVal = ch.GetSkillLock((SphereNet.Core.Enums.SkillType)s);
             if (lockVal != 0)
-                w.WriteProperty($"SkillLock[{s}]", lockVal.ToString());
+                w.WriteProperty(SkillLockKeys[s], lockVal);
         }
 
         for (int i = 0; i < 3; i++)
         {
             byte lockVal = ch.GetStatLock(i);
             if (lockVal != 0)
-                w.WriteProperty($"StatLock[{i}]", lockVal.ToString());
+                w.WriteProperty(StatLockKeys[i], lockVal);
         }
 
         for (int layer = 0; layer <= (int)SphereNet.Core.Enums.Layer.Horse; layer++)
         {
             var equip = ch.GetEquippedItem((SphereNet.Core.Enums.Layer)layer);
             if (equip != null)
-                w.WriteProperty($"EQUIP[{layer}]", $"0{equip.Uid.Value:x8}");
+                w.WriteProperty(EquipKeys[layer], $"0{equip.Uid.Value:x8}");
         }
 
         foreach (var r in ch.Events)
@@ -1518,8 +1616,11 @@ public sealed class WorldSaver
                 w.WriteProperty("DSPEECH", name!);
         }
 
-        foreach (var mem in ch.Memories)
+        // Indexed: foreach over the IReadOnlyList boxes an enumerator per character.
+        var memories = ch.Memories;
+        for (int mi = 0; mi < memories.Count; mi++)
         {
+            var mem = memories[mi];
             // Only the memories the engine keeps on its owner. A spell effect or a
             // memory object worn from a save is written as its own item record
             // (CONT + LAYER) by the item pass, and must not come back twice.
@@ -1553,9 +1654,9 @@ public sealed class WorldSaver
         // An active poison is its LAYER_FLAG_Poison memory item and saves with the
         // rest of the equipment; the old POISON= record is only read (legacy saves).
 
-        foreach (var (key, val) in ch.Tags.GetAll())
+        foreach (var key in TakeTagKeys(ch))
         {
-            string upper = key.ToUpperInvariant();
+            string upper = UpperKey(key);
             if (upper is "ACCOUNT" or "MAXFOOD")
                 continue;
             if (EngineTags.IsEphemeral(key))
@@ -1571,10 +1672,10 @@ public sealed class WorldSaver
                 // (_GetTimerAdjusted -> TIMERMS, CObjBase.cpp:2081) and rebuilds the
                 // deadline against the load time (:2037), which is also how the
                 // POISON record above already survives a restart.
-                long remaining = SphereNet.Core.Types.ScriptNumber.TryParseLong(val, out long expireTick)
+                long remaining = SphereNet.Core.Types.ScriptNumber.TryParseLong(ch.Tags.Get(key), out long expireTick)
                     ? Math.Max(0, expireTick - Environment.TickCount64)
                     : 0;
-                w.WriteProperty("TAG.SUMMON_EXPIRE_REMAINING", remaining.ToString());
+                w.WriteProperty("TAG.SUMMON_EXPIRE_REMAINING", remaining);
                 continue;
             }
             if (upper == "GUARD_EXPIRE_AT")
@@ -1583,20 +1684,20 @@ public sealed class WorldSaver
                 // uptime tick. Upstream it is the timer of the guard's summon memory,
                 // saved as time remaining and re-armed on load (CCharFight.cpp:281);
                 // the boot re-registers it from this record.
-                long remaining = SphereNet.Core.Types.ScriptNumber.TryParseLong(val, out long expireTick)
+                long remaining = SphereNet.Core.Types.ScriptNumber.TryParseLong(ch.Tags.Get(key), out long expireTick)
                     ? Math.Max(0, expireTick - Environment.TickCount64)
                     : 0;
-                w.WriteProperty("TAG.GUARD_EXPIRE_REMAINING", remaining.ToString());
+                w.WriteProperty("TAG.GUARD_EXPIRE_REMAINING", remaining);
                 continue;
             }
             if (upper is "DSPEECH" or "EMOTECOLOR" or "VIRTUALGOLD"
                 or "LASTUSED" or "LASTDISCONNECTED" or "NEED" or "SPAWNITEM")
             {
-                w.WriteProperty(upper, val);
+                w.WriteProperty(upper, ch.Tags.Get(key)!);
                 continue;
             }
             // r_WritePrefix(s, "TAG"): a number var bare, a string var quoted.
-            w.WriteProperty("TAG." + key, ch.Tags.GetSaveText(key)!);
+            WriteTagValue(w, TagKey(key), ch.Tags, key);
         }
 
         w.EndRecord();
@@ -1877,6 +1978,26 @@ public sealed class WorldSaver
             len += System.Text.Encoding.UTF8.GetBytes(value, 0, value.Length, buf, len);
         }
 
+        internal static void WriteString(ref byte[] buf, ref int len, ReadOnlySpan<char> value)
+        {
+            int n = System.Text.Encoding.UTF8.GetByteCount(value);
+            WriteVarInt(ref buf, ref len, n);
+            Ensure(ref buf, len + n);
+            len += System.Text.Encoding.UTF8.GetBytes(value, buf.AsSpan(len));
+        }
+
+        /// <summary>A number as its invariant decimal text, the bytes ToString()
+        /// would have encoded, without the string.</summary>
+        internal static void WriteNumber(ref byte[] buf, ref int len, long value)
+        {
+            Span<byte> digits = stackalloc byte[20];
+            value.TryFormat(digits, out int n, default, System.Globalization.CultureInfo.InvariantCulture);
+            WriteVarInt(ref buf, ref len, n);
+            Ensure(ref buf, len + n);
+            digits[..n].CopyTo(buf.AsSpan(len));
+            len += n;
+        }
+
         internal static void WriteKey(ref byte[] buf, ref int len, string key)
         {
             int id = KeyId(key);
@@ -1942,6 +2063,17 @@ public sealed class WorldSaver
             WrittenBytes += section.Length;
         }
 
+        public void BeginRecord(ReadOnlySpan<char> section)
+        {
+            if (_recordOpen)
+                EndRecord();
+            _length = 0;
+            SaveRecordPacking.WriteString(ref _buffer, ref _length, section);
+            _hasSection = !section.IsEmpty;
+            _recordOpen = true;
+            WrittenBytes += section.Length;
+        }
+
         public void WriteProperty(string key, string value)
         {
             if (!_recordOpen)
@@ -1949,6 +2081,25 @@ public sealed class WorldSaver
             SaveRecordPacking.WriteKey(ref _buffer, ref _length, key);
             SaveRecordPacking.WriteString(ref _buffer, ref _length, value);
             WrittenBytes += key.Length + value.Length + 1;
+        }
+
+        public void WriteProperty(string key, ReadOnlySpan<char> value)
+        {
+            if (!_recordOpen)
+                throw new InvalidOperationException("WriteProperty called before BeginRecord");
+            SaveRecordPacking.WriteKey(ref _buffer, ref _length, key);
+            SaveRecordPacking.WriteString(ref _buffer, ref _length, value);
+            WrittenBytes += key.Length + value.Length + 1;
+        }
+
+        public void WriteProperty(string key, long value)
+        {
+            if (!_recordOpen)
+                throw new InvalidOperationException("WriteProperty called before BeginRecord");
+            SaveRecordPacking.WriteKey(ref _buffer, ref _length, key);
+            int before = _length;
+            SaveRecordPacking.WriteNumber(ref _buffer, ref _length, value);
+            WrittenBytes += key.Length + (_length - before - 1) + 1; // digits, not their length prefix
         }
 
         public void EndRecord()

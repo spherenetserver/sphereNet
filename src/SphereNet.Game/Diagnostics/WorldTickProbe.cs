@@ -27,13 +27,15 @@ public struct WorldTickProbe
         _allocationLast = allocated;
     }
 
-    public readonly void Report(ILogger logger, ref long lastReportMs)
+    public readonly void Report(ILogger logger, ref long lastReportMs, bool force = false)
     {
         double totalMs = (_last - _start) * 1000.0 / Stopwatch.Frequency;
         long totalBytes = _allocationLast - _allocationStart;
-        if (totalMs < 100 && totalBytes < 16 * 1024 * 1024) return;
+        if (!force && totalMs < 100 && totalBytes < 16 * 1024 * 1024) return;
         long now = Environment.TickCount64;
-        if (lastReportMs != 0 && now - lastReportMs < 10000) return;
+        // A forced report (the tick was cancelled for running too long) is the one
+        // that names the phase behind the stall, so the throttle does not apply.
+        if (!force && lastReportMs != 0 && now - lastReportMs < 10000) return;
         lastReportMs = now;
         logger.LogWarning("[world_tick_detail] total={TotalMs:F1}ms alloc={AllocationKB}KB " +
             "slowest={Phase} {PhaseMs:F1}ms allocation_source={AllocationPhase} {PhaseKB}KB",

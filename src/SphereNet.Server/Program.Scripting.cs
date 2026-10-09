@@ -317,6 +317,7 @@ public static partial class Program
             _ when upper.StartsWith("_SERVKEY=") => ResolveServKeyOnly(property[9..]),
             _ when upper.StartsWith("_SERV_ACCOUNT=") => HandleServAccountVerb(property[14..]),
             _ when upper.StartsWith("_SERV_ACCOUNT_SET=") => HandleServAccountSet(property[18..]),
+            _ when upper.StartsWith("_SERV_CFG_SET=") => HandleServConfigSet(property[14..]),
             "_RESYNC_REQUEST" => HandleServResyncRequest(),
             _ when upper.StartsWith("_SET_LIST.") => HandleSetGlobalList(property[10..]),
             _ when upper.StartsWith("_SET_VAR.") => HandleSetGlobalVar(property[9..], deleteZero: false),

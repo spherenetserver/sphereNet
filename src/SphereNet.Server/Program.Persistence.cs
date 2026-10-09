@@ -604,6 +604,7 @@ public static partial class Program
     // changes, and only after the in-flight-save guard. Never force .NET GC here.
     private static Stopwatch BeginWorldSave(GameWorld world, bool forceGarbageCollect, Microsoft.Extensions.Logging.ILogger log)
     {
+        var preSave = Stopwatch.StartNew();
         // Objects created and never placed are deleted, not saved (Source-X
         // CWorld::SaveStage stage -1 -> GarbageCollection_NewObjs). Written out they
         // came back at 0,0 on map 0 - a spawner a script could not place turned into
@@ -618,7 +619,9 @@ public static partial class Program
                 "Pre-save world cleanup: checked={Checked} fixed={Fixed} deleted={Deleted} duration={Ms:F1}ms (excluded from save timer)",
                 result.Checked, result.Fixed, result.Deleted, cleanup.Elapsed.TotalMilliseconds);
         }
-        // loop_stall still measures the entire main-loop job, including cleanup.
+        // loop_stall still measures the entire main-loop job, including cleanup; the
+        // completion line adds it to the pause the world actually felt.
+        _saveTelemetryPreSaveMs = preSave.Elapsed.TotalMilliseconds;
         return Stopwatch.StartNew();
     }
 
@@ -631,6 +634,9 @@ public static partial class Program
     private static double _saveTelemetryCaptureMs;
     private static double _saveTelemetryAccountStageMs;
     private static double _saveTelemetryMainThreadMs;
+    /// <summary>Main-loop time before the save timer starts: unplaced-object collection
+    /// and the pre-save world cleanup.</summary>
+    private static double _saveTelemetryPreSaveMs;
     private static double _saveTelemetryMaxMainThreadMs;
 
     private static void RecordSaveMainThreadTelemetry(bool background, double prepMs,
@@ -726,7 +732,19 @@ public static partial class Program
         }
         else
         {
-            _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
+            // What players feel is the time the main loop stood still - the pre-save
+            // cleanup plus, in background mode, the snapshot; the whole save in
+            // synchronous mode. The total is how long the file write took and freezes
+            // nobody, so it comes second.
+            double pausedSecs = (_saveTelemetryPreSaveMs + _saveTelemetryMainThreadMs) / 1000.0;
+            if (_saveTelemetryBackground)
+                _log.LogInformation(
+                    "Save complete. Server paused {Paused:F2} sec (cleanup {Cleanup:F0} ms, snapshot {Snapshot:F0} ms); background write finished in {Secs:F2} sec.",
+                    pausedSecs, _saveTelemetryPreSaveMs, _saveTelemetryMainThreadMs, secs);
+            else
+                _log.LogInformation(
+                    "Save complete. Server paused {Paused:F2} sec (synchronous save, cleanup {Cleanup:F0} ms).",
+                    pausedSecs, _saveTelemetryPreSaveMs);
         }
         _systemHooks.DispatchServer("save_finished", _serverHookContext,
             sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));

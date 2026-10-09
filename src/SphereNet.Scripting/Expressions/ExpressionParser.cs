@@ -2667,10 +2667,33 @@ public sealed partial class ExpressionParser
     /// UINT32_MAX - negatives included - is shown as a 32-bit two's-complement word, so -1 is "0ffffffff".</summary>
     internal static string FormatSphereHex(long value)
     {
-        if (value == 0) return "00";
-        return value <= uint.MaxValue
-            ? "0" + unchecked((uint)value).ToString("x", CultureInfo.InvariantCulture)
-            : "0" + value.ToString("x", CultureInfo.InvariantCulture);
+        Span<char> buffer = stackalloc char[24];
+        TryFormatSphereHex(value, buffer, out int written);
+        return new string(buffer[..written]);
+    }
+
+    /// <summary><see cref="FormatSphereHex"/> into a caller's buffer: "00" for zero,
+    /// otherwise '0' and the lower-case hex of the value - its 32-bit pattern when it
+    /// fits (so -1 is 0ffffffff), the 64-bit one when it does not.</summary>
+    internal static bool TryFormatSphereHex(long value, Span<char> destination, out int written)
+    {
+        written = 0;
+        if (destination.Length < 2)
+            return false;
+        destination[0] = '0';
+        if (value == 0)
+        {
+            destination[1] = '0';
+            written = 2;
+            return true;
+        }
+        bool ok = value <= uint.MaxValue
+            ? unchecked((uint)value).TryFormat(destination[1..], out int n, "x", CultureInfo.InvariantCulture)
+            : value.TryFormat(destination[1..], out n, "x", CultureInfo.InvariantCulture);
+        if (!ok)
+            return false;
+        written = n + 1;
+        return true;
     }
 
     /// <summary>C atoi: skip leading whitespace, an optional sign, then decimal digits

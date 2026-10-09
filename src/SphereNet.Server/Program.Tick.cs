@@ -361,9 +361,10 @@ public static partial class Program
             _webStatus?.Dispose();
             _network.Dispose();
             _mapData?.Dispose();
-            _scriptDb.Close();
-            _scriptLdb.Close();
-            _scriptMdb.Close();
+            // Every session, not just the active one, and each DB worker drains first.
+            _scriptDb.Shutdown();
+            _scriptLdb.Shutdown();
+            _scriptMdb.Shutdown();
             _scriptFile?.Dispose();
             _mainLoopThreadId = 0;
 
@@ -498,7 +499,9 @@ public static partial class Program
             // replaying would double-apply those side effects. Abandon this partial
             // tick, recover the NPCs it consumed from the timer wheel, drop to
             // single-thread mode, and let the NEXT scheduled tick run cleanly.
-            _log.LogError(oce, "Multicore tick timed out; abandoning this tick and falling back to single-thread mode.");
+            _log.LogError(oce,
+                "Multicore tick timed out; abandoning this tick and falling back to single-thread mode. Phases: {Phases}",
+                DescribeMulticorePhases());
             _multicoreRuntimeEnabled = false;
             _multicoreFallbackMs = Environment.TickCount64;
             _perfWindow?.RecordMulticoreFallback();
@@ -978,6 +981,42 @@ public static partial class Program
         }
     }
 
+    // Where a multicore tick is, phase by phase. The timeout can only stop a tick at a
+    // boundary, after the slow work has finished, and the exception it throws names
+    // the boundary - not the phase that spent the time. These marks are what the
+    // timeout report reads.
+    private static readonly string[] s_multicorePhaseNames =
+        ["world_tick", "npc_wheel", "npc_build", "client_state", "npc_apply",
+         "view_build", "apply", "post_apply", "flush"];
+    private static readonly long[] s_multicorePhaseStarts = new long[9];
+    private static int _multicorePhaseReached = -1;
+
+    private static void MarkMulticorePhase(int phase)
+    {
+        s_multicorePhaseStarts[phase] = Stopwatch.GetTimestamp();
+        _multicorePhaseReached = phase;
+    }
+
+    /// <summary>"world_tick=6012ms npc_wheel=1ms": each phase this tick reached and how
+    /// long it ran, the last one up to now.</summary>
+    private static string DescribeMulticorePhases()
+    {
+        int reached = _multicorePhaseReached;
+        if (reached < 0)
+            return "none";
+        var sb = new System.Text.StringBuilder();
+        long now = Stopwatch.GetTimestamp();
+        for (int i = 0; i <= reached; i++)
+        {
+            long end = i < reached ? s_multicorePhaseStarts[i + 1] : now;
+            double ms = Stopwatch.GetElapsedTime(s_multicorePhaseStarts[i], end).TotalMilliseconds;
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(s_multicorePhaseNames[i]).Append('=')
+              .Append(ms.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)).Append("ms");
+        }
+        return sb.ToString();
+    }
+
     private static void RunMulticoreTick()
     {
         // Auto worker count leaves one core for the main thread: saturating every
@@ -1001,8 +1040,10 @@ public static partial class Program
         // applied: each boundary sits between complete units of work.
         int timeoutMs = Math.Max(100, _config.MulticorePhaseTimeoutMs);
         using var cts = new CancellationTokenSource(timeoutMs);
+        _multicorePhaseReached = -1;
         var token = cts.Token;
 
+        MarkMulticorePhase(0);
         long p0 = Stopwatch.GetTimestamp();
         _world.OnTickParallel(workerCount, token);
         _telemetryWorldTickUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
@@ -1010,6 +1051,7 @@ public static partial class Program
         // the NPC phase has started, so abandoning here consumes no NPCs.
         _multicoreConsumedNpcs = null;
         token.ThrowIfCancellationRequested();
+        MarkMulticorePhase(1);
         _spellEngine.ProcessExpirations(Environment.TickCount64);
 
         // Wake NPCs in sectors that just became active (player entered area)
@@ -1031,6 +1073,7 @@ public static partial class Program
         var clientSnapshot = _reusableClientSnapshot;
         _telemetrySnapshotUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
 
+        MarkMulticorePhase(2);
         long p1 = Stopwatch.GetTimestamp();
         long nowTick = Environment.TickCount64;
 
@@ -1089,6 +1132,7 @@ public static partial class Program
         // above does not check the token per NPC, so this is where it is honoured.
         token.ThrowIfCancellationRequested();
 
+        MarkMulticorePhase(3);
         long p1b = Stopwatch.GetTimestamp();
         long rttNow = Environment.TickCount64;
         foreach (var client in clientSnapshot)
@@ -1098,6 +1142,7 @@ public static partial class Program
         }
         _telemetryClientStateUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1b);
 
+        MarkMulticorePhase(4);
         long p1c = Stopwatch.GetTimestamp();
         // Parallel.ForEach adds decisions in completion order, which is
         // non-deterministic and differs from the single-thread wheel order.
@@ -1141,6 +1186,7 @@ public static partial class Program
 
         // View delta: only for clients flagged ViewNeedsRefresh (moved or
         // had nearby objects change). Most clients are idle and skip entirely.
+        MarkMulticorePhase(5);
         long p1d = Stopwatch.GetTimestamp();
         var refreshClients = _reusableRefreshClients;
         refreshClients.Clear();
@@ -1190,6 +1236,7 @@ public static partial class Program
         _telemetryViewBuildUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1d);
         _telemetryComputeUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1);
 
+        MarkMulticorePhase(6);
         long p2 = Stopwatch.GetTimestamp();
         bool hasRecordings = _recordingEngine.HasActiveRecordings;
         foreach (var client in refreshClients)
@@ -1233,6 +1280,7 @@ public static partial class Program
         }
         _telemetryApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p2);
 
+        MarkMulticorePhase(7);
         long p2b = Stopwatch.GetTimestamp();
         if (_recordingEngine.HasActiveReplays)
             TickReplayOverlays();
@@ -1255,6 +1303,7 @@ public static partial class Program
         _multicoreConsumedNpcs = null;
         _telemetryPostApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p2b);
 
+        MarkMulticorePhase(8);
         long p3 = Stopwatch.GetTimestamp();
         RunPostTickMaintenance();
         _telemetryFlushUs = ToMicroseconds(Stopwatch.GetTimestamp() - p3);
@@ -1343,14 +1392,17 @@ public static partial class Program
         // its five-second cadence was the price of that walk, not a requirement.
         // The cap stays as a bound on one tick's work; with the queue the remainder
         // is simply the front of the next tick instead of another full scan.
-        _decayCatchupBuffer.Clear();
-        _world.CollectDueDecay(now, 256, _decayCatchupBuffer);
-
         // The queue is only as complete as the registrations that feed it, so once a
         // minute the old scan runs as an AUDITOR: anything armed but unqueued is
         // re-queued and logged. An item whose deadline never reached the queue would
-        // otherwise simply never decay, and nothing would say so.
+        // otherwise simply never decay, and nothing would say so. It runs BEFORE the
+        // due items are taken off the queue: after, every item due this very tick is
+        // armed and unqueued for a moment, and the audit reported it as lost
+        // (overdue=0s) although the loop below was about to decay it.
         _world.AuditDecayRegistrations(now);
+
+        _decayCatchupBuffer.Clear();
+        _world.CollectDueDecay(now, 256, _decayCatchupBuffer);
 
         foreach (var item in _decayCatchupBuffer)
         {

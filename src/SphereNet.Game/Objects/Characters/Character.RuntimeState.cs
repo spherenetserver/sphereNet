@@ -8,6 +8,10 @@ public partial class Character
     // Stat locks: 0=up, 1=down, 2=locked (UO client convention)
     private readonly byte[] _statLocks = new byte[3];
 
+    /// <summary>The legacy STATLOCK.n tag names, built once: GetStatLock checks them on
+    /// every call, and formatting the name each time was a string per stat per call.</summary>
+    private static readonly string[] StatLockTagKeys = ["STATLOCK.0", "STATLOCK.1", "STATLOCK.2"];
+
     // Spell cast runtime (Source-X m_Act_Spell / cast timer)
     private int _castingSpell = -1;
     private long _castTimerEnd;
@@ -54,7 +58,7 @@ public partial class Character
         if (statIdx >= 0 && statIdx < _statLocks.Length)
         {
             _statLocks[statIdx] = lockState;
-            RemoveTag($"STATLOCK.{statIdx}");
+            RemoveTag(StatLockTagKeys[statIdx]);
         }
     }
 
@@ -63,10 +67,10 @@ public partial class Character
     {
         for (int i = 0; i < _statLocks.Length; i++)
         {
-            if (!TryGetTag($"STATLOCK.{i}", out string? val) || !ScriptNumber.TryParseByte(val, out byte sl))
+            if (!TryGetTag(StatLockTagKeys[i], out string? val) || !ScriptNumber.TryParseByte(val, out byte sl))
                 continue;
             _statLocks[i] = sl;
-            RemoveTag($"STATLOCK.{i}");
+            RemoveTag(StatLockTagKeys[i]);
         }
     }
 

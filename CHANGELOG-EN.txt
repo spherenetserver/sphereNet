@@ -4,6 +4,48 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-10] - Save snapshot allocation
+------------------------------------------------------------------------
+CHANGE - The world-save snapshot (the part of a save that holds the main loop) formats
+      record values straight into its packed buffer instead of building a string per
+      property: interpolated values, numbers, GUIDs and points go through a pooled
+      interpolated-string handler, tag names and upper-cased keys are cached, a tag map is
+      walked once per object, and numeric tag values are formatted without a string. On a
+      76k-object world the capture allocates 25 MB instead of 108 MB and triggers no
+      collection (was two gen0 and one gen1), about a third faster. Record text is
+      byte-identical.
+FIX - Reading a character's stat lock no longer builds the legacy STATLOCK.n tag name on
+      every call.
+CHANGE - The "Save complete" log line reports how long the server was paused (pre-save
+      cleanup plus snapshot; the whole save in synchronous mode) and the background
+      write time second. It reported only the total, which mostly runs in the
+      background and freezes nobody.
+FIX - A chained D-prefixed tag read (<src.dctag0.x>, <ref1.dtag.x>) answers in decimal,
+      as Source-X's <dX> rule does (CScriptObj.cpp:543); it came back in Sphere hex. A
+      script splicing it unquoted into SQL sent "WHERE page_id = 0ca3", which MySQL
+      rejects as an unknown column.
+FIX - SERV.FORCEGARBAGECOLLECT=<0|1> from a script changes the setting, as Source-X's
+      CServer::r_LoadVal hands an unclaimed SERV assignment to the config
+      (CServer.cpp:1620). The write was dropped, so a pack that sweeps one save in five
+      ran the full pre-save cleanup on every save. Writable config keys are listed in
+      one table, open to more keys.
+FIX - The decay audit runs before the due items are taken off the queue. It ran after, and
+      reported every item due that same tick as "re-queued ... without reaching the
+      registration door" (overdue=0s) although it was about to decay.
+FIX - DB.CLOSE no longer waits for the session's DB worker (USETHREAD=1): the wait ran on
+      the game loop and could hold the server for up to five seconds while the worker
+      worked off its queue. Server shutdown closes every DB session, not only the
+      active one, and still waits for each worker.
+NEW - A DB connect, query or execute taking 100 ms or more is logged with the session,
+      where it ran (game thread or DB worker), the time and the start of the SQL.
+NEW - A multicore tick that times out logs how long each phase it reached ran
+      (world_tick, npc_wheel, npc_build, client_state, npc_apply, view_build, apply,
+      post_apply, flush); the cancelled world tick writes its detail line regardless of
+      the throttle; a single sector tick of 250 ms or more is logged with its map and
+      sector ([slow_sector]).
+CHANGE - "GC: N unplaced objects!" is followed by one warning per deleted item (UID, id,
+      type, name; first 50), as Source-X's ReportGarbageCollection names them.
+
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------
 NEW - MySQL connections take a session character set: CHARSET= in a [MYSQL name] section,

@@ -6,7 +6,7 @@ namespace SphereNet.Core.Types;
 /// <summary>
 /// 3D world point with map index. Maps to CPointMap in Source-X.
 /// </summary>
-public readonly struct Point3D : IEquatable<Point3D>
+public readonly struct Point3D : IEquatable<Point3D>, ISpanFormattable
 {
     public static readonly Point3D Zero = new(0, 0, 0, 0);
 
@@ -110,6 +110,29 @@ public readonly struct Point3D : IEquatable<Point3D>
     public static bool operator !=(Point3D left, Point3D right) => !left.Equals(right);
 
     public override string ToString() => $"{X},{Y},{Z},{Map}";
+
+    /// <summary>The same "X,Y,Z,MAP" text, for callers that format into a buffer (a
+    /// save record) instead of allocating a string per point. Integers only, so the
+    /// format provider changes nothing.</summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => ToString();
+
+    public bool TryFormat(Span<char> destination, out int charsWritten,
+        ReadOnlySpan<char> format, IFormatProvider? provider)
+    {
+        // Field by field rather than through an interpolation, which boxes each
+        // component on the way.
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        charsWritten = 0;
+        if (!X.TryFormat(destination, out int n, default, inv) || n >= destination.Length) return false;
+        destination[n] = ','; int pos = n + 1;
+        if (!Y.TryFormat(destination[pos..], out n, default, inv) || pos + n >= destination.Length) return false;
+        pos += n; destination[pos++] = ',';
+        if (!Z.TryFormat(destination[pos..], out n, default, inv) || pos + n >= destination.Length) return false;
+        pos += n; destination[pos++] = ',';
+        if (!Map.TryFormat(destination[pos..], out n, default, inv)) return false;
+        charsWritten = pos + n;
+        return true;
+    }
 
     /// <summary>Split a written point into its components the way Sphere does.
     ///

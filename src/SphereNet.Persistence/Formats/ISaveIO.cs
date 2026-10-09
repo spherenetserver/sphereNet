@@ -16,6 +16,35 @@ public interface ISaveWriter : IDisposable
     /// loader re-interprets them via the existing per-field parsers.</summary>
     void WriteProperty(string key, string value);
 
+    /// <summary>A value already formatted into a buffer. Writers that pack bytes
+    /// override it to encode the characters directly; the rest get a string.</summary>
+    void WriteProperty(string key, ReadOnlySpan<char> value) => WriteProperty(key, value.ToString());
+
+    /// <summary>A number, written in invariant decimal - what <c>ToString()</c> on
+    /// it gave. Packing writers format it straight into their buffer.</summary>
+    void WriteProperty(string key, long value) =>
+        WriteProperty(key, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>An interpolated value (<c>$"0{uid:x8}"</c>) formatted into a pooled
+    /// buffer instead of a fresh string. The capture holds the world still while it
+    /// runs, and a string per property per object was most of what it allocated.</summary>
+    void WriteProperty(string key, ref SaveValueBuilder value)
+    {
+        try { WriteProperty(key, value.Text); }
+        finally { value.Dispose(); }
+    }
+
+    /// <summary><see cref="BeginRecord(string)"/> for a section built by
+    /// interpolation (<c>$"WORLDITEM {defname}"</c>).</summary>
+    void BeginRecord(ref SaveValueBuilder section)
+    {
+        try { BeginRecord(section.Text); }
+        finally { section.Dispose(); }
+    }
+
+    /// <summary>A section already formatted into a buffer.</summary>
+    void BeginRecord(ReadOnlySpan<char> section) => BeginRecord(section.ToString());
+
     /// <summary>Close the current record (text: logical section end, binary: frame end).
     /// Text writers emit the file-level <c>[EOF]</c> marker once on disposal.</summary>
     void EndRecord();

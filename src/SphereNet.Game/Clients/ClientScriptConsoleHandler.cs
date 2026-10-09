@@ -2690,7 +2690,7 @@ public sealed class ClientScriptConsoleHandler
                 string? tagVal = _character.CTags.GetValStr(tagName);
                 if (tagVal != null)
                 {
-                    value = tagVal;
+                    value = varName[0] is 'D' or 'd' ? ScriptNumber.ToDecimalReading(tagVal) : tagVal;
                     return true;
                 }
             }

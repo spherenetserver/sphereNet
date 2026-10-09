@@ -41,13 +41,18 @@ public static class EngineTags
     /// <summary>Remove all ephemeral keys from an object's tag map.</summary>
     public static int StripEphemeral(ObjBase obj)
     {
-        int removed = 0;
-        foreach (var (key, _) in obj.Tags.GetAll().ToList())
+        // Runs on every object at every save, and almost none hold an ephemeral
+        // key: look first, copy the keys out only when one has to go.
+        List<string>? doomed = null;
+        foreach (var key in obj.Tags.GetKeys())
         {
-            if (!IsEphemeral(key)) continue;
-            obj.RemoveTag(key);
-            removed++;
+            if (IsEphemeral(key))
+                (doomed ??= []).Add(key);
         }
-        return removed;
+        if (doomed == null)
+            return 0;
+        foreach (var key in doomed)
+            obj.RemoveTag(key);
+        return doomed.Count;
     }
 }

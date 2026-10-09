@@ -882,11 +882,20 @@ public sealed class GameWorld
             return 0;
 
         _logger.LogError("GC: {Count} unplaced objects!", lost.Count);
-        foreach (var item in lost)
+        // Upstream names every one of them (ReportGarbageCollection, CWorld.cpp:201):
+        // the count alone cannot say which script keeps creating items it never
+        // places. Capped so a script leaking thousands does not bury the log.
+        const int MaxNamed = 50;
+        for (int i = 0; i < lost.Count; i++)
         {
-            _logger.LogDebug("GC: deleting unplaced item 0x{Uid:X} id=0x{Id:X}", item.Uid.Value, item.BaseId);
+            var item = lost[i];
+            if (i < MaxNamed)
+                _logger.LogWarning("GC: deleted unplaced item UID=0x{Uid:X} id=0x{Id:X} type={Type} name='{Name}'",
+                    item.Uid.Value, item.BaseId, item.ItemType, item.Name);
             TryDeleteObject(item, force: true);
         }
+        if (lost.Count > MaxNamed)
+            _logger.LogWarning("GC: ... and {More} more unplaced items not listed", lost.Count - MaxNamed);
         return lost.Count;
     }
 
@@ -2644,11 +2653,13 @@ public sealed class GameWorld
         // and are therefore serialized — see the method contract above.
         foreach (var sector in sectors)
         {
-            if (cancellationToken.IsCancellationRequested) return;
+            if (cancellationToken.IsCancellationRequested) { ReportCancelled(ref probe, "sectors"); return; }
+            long sectorStart = System.Diagnostics.Stopwatch.GetTimestamp();
             sector.OnTick(currentTime);
+            ReportSlowSector(sector, sectorStart);
         }
 
-        if (cancellationToken.IsCancellationRequested) return;
+        if (cancellationToken.IsCancellationRequested) { ReportCancelled(ref probe, "sectors"); return; }
         // Notoriety decay for online players — must match single-threaded OnTick behavior.
         // Without this, murder counts (_kills) never decay in multicore mode.
         foreach (var player in _onlinePlayers)
@@ -2661,18 +2672,47 @@ public sealed class GameWorld
 
         // Recycle the uids of deleted objects on the old maintenance cadence.
         probe.Mark("sectors");
-        if (cancellationToken.IsCancellationRequested) return;
+        if (cancellationToken.IsCancellationRequested) { ReportCancelled(ref probe, "maintenance"); return; }
         TickSleepingMaintenance(currentTime);
         probe.Mark("maintenance");
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
-        if (cancellationToken.IsCancellationRequested) return;
+        if (cancellationToken.IsCancellationRequested) { ReportCancelled(ref probe, "timerf"); return; }
         TickTimerF(currentTime);
         probe.Mark("timerf");
-        if (cancellationToken.IsCancellationRequested) return;
+        if (cancellationToken.IsCancellationRequested) { ReportCancelled(ref probe, "item_timers"); return; }
         TickItemTimers(currentTime);
         probe.Mark("item_timers");
         probe.Report(_logger, ref _lastWorldTickDetailMs);
+    }
+
+    /// <summary>The tick ran past its time limit and stops here. The detail line it
+    /// would have skipped is the only record of where the time went, so it is written
+    /// whatever the throttle says.</summary>
+    private void ReportCancelled(ref Diagnostics.WorldTickProbe probe, string stoppedBefore)
+    {
+        probe.Mark("cancelled_before_" + stoppedBefore);
+        probe.Report(_logger, ref _lastWorldTickDetailMs, force: true);
+    }
+
+    private long _lastSlowSectorLogMs;
+
+    /// <summary>One sector's tick - its characters, items and their scripts - taking
+    /// long enough to stall the server is named with its map and sector, so a stall
+    /// can be traced to a place. Throttled, except for a stall past a second.</summary>
+    private void ReportSlowSector(Sectors.Sector sector, long start)
+    {
+        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        if (ms < 250)
+            return;
+        long now = Environment.TickCount64;
+        if (ms < 1000 && _lastSlowSectorLogMs != 0 && now - _lastSlowSectorLogMs < 10000)
+            return;
+        _lastSlowSectorLogMs = now;
+        _logger.LogWarning(
+            "[slow_sector] map={Map} sector={X},{Y} took {Ms:F0} ms (chars={Chars} items={Items})",
+            sector.MapIndex, sector.SectorX, sector.SectorY, ms,
+            sector.Characters.Count, sector.Items.Count);
     }
 
     private void ExpireClientLingers()

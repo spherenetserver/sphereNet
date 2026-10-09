@@ -4,6 +4,47 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-10] - Save snapshot bellek kullanimi
+------------------------------------------------------------------------
+DEGISIKLIK - Dunya kaydinin snapshot asamasi (ana dongu bekledigi kisim) kayit degerlerini
+           her ozellik icin string uretmek yerine dogrudan paketlenmis tampona yazar:
+           interpolasyonlu degerler, sayilar, GUID ve noktalar havuzlu bir handler ile
+           bicimlenir, tag adlari ve buyuk harfli anahtarlar onbellege alinir, tag
+           haritasi nesne basina bir kez dolasilir, sayisal tag degerleri string olmadan
+           yazilir. 76 bin nesnelik dunyada snapshot 108 MB yerine 25 MB ayirir ve hic GC
+           tetiklemez (once iki gen0 ve bir gen1), yaklasik ucte bir daha hizli. Kayit
+           metni bayt bayt aynidir.
+DUZELTME - Karakterin stat kilidini okumak artik her cagrida eski STATLOCK.n tag adini
+           yeniden uretmez.
+DEGISIKLIK - "Save complete" log satiri sunucunun ne kadar durdugunu (save oncesi
+           temizlik arti snapshot; senkron modda tum save) yazar, arka plandaki yazma
+           suresini ikinci sirada verir. Onceden yalnizca toplam sureyi yaziyordu; bu
+           surenin cogu arka planda gecer ve kimseyi dondurmaz.
+DUZELTME - Zincirli D onekli tag okumasi (<src.dctag0.x>, <ref1.dtag.x>) Source-X'in <dX>
+           kurali gibi ondalik doner (CScriptObj.cpp:543); Sphere hex donuyordu. Degeri
+           tirnaksiz SQL'e koyan script "WHERE page_id = 0ca3" gonderiyor, MySQL bunu
+           bilinmeyen kolon diye reddediyordu.
+DUZELTME - Script'ten SERV.FORCEGARBAGECOLLECT=<0|1> ayari degistirir; Source-X
+           CServer::r_LoadVal sahipsiz SERV atamasini ayarlara iletir (CServer.cpp:1620).
+           Yazim yok sayiliyordu; bes save'de bir temizlik yapan paket her save'de tam
+           temizlik calistiriyordu. Yazilabilir ayarlar tek tabloda, genisletilebilir.
+DUZELTME - Decay denetimi, suresi dolan item'lar kuyruktan alinmadan once calisir. Sonra
+           calisiyordu ve ayni tick'te dusecek her item'i "registration door" uyarisiyla
+           (overdue=0s) kayip diye raporluyordu.
+DUZELTME - DB.CLOSE artik oturumun DB worker'ini (USETHREAD=1) beklemez: bekleme oyun
+           dongusunde calisiyor, worker kuyrugunu bitirirken sunucuyu bes saniyeye kadar
+           durdurabiliyordu. Sunucu kapanisi yalnizca etkin oturumu degil tum DB
+           oturumlarini kapatir ve her worker'i yine bekler.
+YENI - 100 ms veya daha uzun suren DB baglanti, sorgu ve komutlari oturum, calistigi yer
+       (oyun thread'i veya DB worker), sure ve SQL'in basiyla loglanir.
+YENI - Zaman asimina ugrayan multicore tick, ulastigi her asamanin suresini loglar
+       (world_tick, npc_wheel, npc_build, client_state, npc_apply, view_build, apply,
+       post_apply, flush); iptal edilen dunya tick'i detay satirini kisitlamaya
+       bakmadan yazar; 250 ms veya uzun suren tek sektor tick'i harita ve sektoruyle
+       loglanir ([slow_sector]).
+DEGISIKLIK - "GC: N unplaced objects!" ardindan silinen her item icin bir uyari yazilir
+           (UID, id, tip, ad; ilk 50), Source-X ReportGarbageCollection gibi.
+
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------
 YENI - MySQL baglantilari oturum karakter seti alir: [MYSQL ad] bolumunde CHARSET=,

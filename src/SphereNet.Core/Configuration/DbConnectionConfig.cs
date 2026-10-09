@@ -32,6 +32,32 @@ public sealed class DbConnectionConfig
     /// <summary>Auto-connect on server startup.</summary>
     public bool AutoConnect { get; set; }
 
+    /// <summary>Session character set sent as <c>SET NAMES</c> right after the
+    /// connection opens (MySQL only). Empty keeps the provider's utf8mb4.
+    ///
+    /// MySqlConnector always talks utf8mb4 and ignores a CharSet connection-string
+    /// option, so the server converts every stored value from its column's charset.
+    /// Source-X passes its client library's default and hands the raw bytes to the
+    /// script untouched, and classic shards' tables were written through latin1
+    /// sessions: UTF-8 bytes stored in latin1 columns. Read over utf8mb4 those
+    /// come back double-encoded ("ş" -> "ÅŸ"); <c>latin1</c> here makes the
+    /// server pass the bytes through again, as upstream sees them.</summary>
+    public string CharSet { get; set; } = "";
+
+    /// <summary>A charset name safe to splice into <c>SET NAMES</c>: letters,
+    /// digits and underscores only (latin1, utf8mb4, cp1250...).</summary>
+    public static bool IsValidCharSetName(string name)
+    {
+        if (string.IsNullOrEmpty(name) || name.Length > 32)
+            return false;
+        foreach (char c in name)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c != '_')
+                return false;
+        }
+        return true;
+    }
+
     /// <summary>True if this is a SQLite provider.</summary>
     public bool IsSqlite => Provider.Contains("Sqlite", System.StringComparison.OrdinalIgnoreCase);
 

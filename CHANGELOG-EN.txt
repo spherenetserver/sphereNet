@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-10-09] - MySQL session character set
+------------------------------------------------------------------------
+NEW - MySQL connections take a session character set: CHARSET= in a [MYSQL name] section,
+      MYSQLCHARSET= for the classic [SPHERE] connection, sent as SET NAMES on every
+      connect. The driver always negotiates utf8mb4, so tables written through latin1
+      sessions (UTF-8 bytes in latin1 columns) read back double-encoded ("ÅŸ" for
+      "ş"); CHARSET=latin1 passes the stored bytes through as Source-X's client did.
+      Default empty keeps utf8mb4. Only plain identifiers are accepted.
+
 [2026-10-04] - Upstream Source-X changes since November 2025
 ------------------------------------------------------------------------
 CHANGE - Era-0 (Sphere custom) hit chance follows current Source-X (dadab44, cf60700): the

@@ -883,6 +883,8 @@ public sealed class SphereConfig
     public string MySQLUser { get; set; } = "";
     public string MySQLPassword { get; set; } = "";
     public string MySQLDatabase { get; set; } = "";
+    /// <summary>Session charset of the classic connection (DbConnectionConfig.CharSet).</summary>
+    public string MySQLCharSet { get; set; } = "";
 
     // Multi-connection database settings
     public List<DbConnectionConfig> DbConnections { get; set; } = [];
@@ -1406,6 +1408,7 @@ public sealed class SphereConfig
         MySQLUser = ini.GetValue(section, "MySQLUser") ?? MySQLUser;
         MySQLPassword = ini.GetValue(section, "MySQLPassword") ?? MySQLPassword;
         MySQLDatabase = ini.GetValue(section, "MySQLDatabase") ?? MySQLDatabase;
+        MySQLCharSet = ini.GetValue(section, "MySQLCharSet") ?? MySQLCharSet;
         DistanceWhisper = ini.GetInt(section, "DistanceWhisper", DistanceWhisper);
         DistanceTalk = ini.GetInt(section, "DistanceTalk", DistanceTalk);
         DistanceYell = ini.GetInt(section, "DistanceYell", DistanceYell);
@@ -1606,6 +1609,7 @@ public sealed class SphereConfig
                 User = MySQLUser,
                 Password = MySQLPassword,
                 Database = MySQLDatabase,
+                CharSet = MySQLCharSet,
                 AutoConnect = true
             });
         }
@@ -1654,6 +1658,7 @@ public sealed class SphereConfig
         cfg.WriteTimeout = ini.GetInt(section, "WriteTimeout", cfg.WriteTimeout);
         cfg.UseThread = ini.GetBool(section, "UseThread", cfg.UseThread);
         cfg.AutoConnect = ini.GetBool(section, "AutoConnect", cfg.AutoConnect);
+        cfg.CharSet = ini.GetValue(section, "CharSet") ?? cfg.CharSet;
     }
 
     /// <summary>Problems found reading MAPn lines, reported by <see cref="Validate"/>.</summary>

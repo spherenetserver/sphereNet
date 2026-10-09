@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
 
+[2026-10-09] - MySQL oturum karakter seti
+------------------------------------------------------------------------
+YENI - MySQL baglantilari oturum karakter seti alir: [MYSQL ad] bolumunde CHARSET=,
+       klasik [SPHERE] baglantisi icin MYSQLCHARSET=; her baglantida SET NAMES olarak
+       gonderilir. Surucu her zaman utf8mb4 kullandigi icin latin1 oturumla yazilmis
+       tablolar (latin1 kolonda UTF-8 bayt) cift kodlanmis okunuyordu (Turkce karakterler
+       bozuk); CHARSET=latin1 saklanan baytlari Source-X istemcisi gibi oldugu gibi
+       gecirir. Bos varsayilan utf8mb4'u korur. Yalnizca duz tanimlayicilar kabul edilir.
+
 [2026-10-04] - Kasim 2025'ten bu yana gelen Source-X degisiklikleri
 ------------------------------------------------------------------------
 DEGISIKLIK - Era 0 (Sphere ozel) isabet sansi guncel Source-X'i izler (dadab44, cf60700):

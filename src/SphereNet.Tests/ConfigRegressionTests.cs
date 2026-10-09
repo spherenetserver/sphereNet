@@ -481,4 +481,40 @@ public class ConfigRegressionTests
         Assert.False(config.NoWeather);
         Assert.Equal(100, config.NpcSkillSave);
     }
+    // MySqlConnector always talks utf8mb4, so legacy tables holding UTF-8 bytes in
+    // latin1 columns read back double-encoded; CHARSET / MYSQLCHARSET carry the
+    // session charset sent as SET NAMES. Only plain identifiers reach the SQL.
+    [Fact]
+    public void MySqlCharSet_ReadsFromClassicKeyAndNamedSection()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            MySQL=1
+            MySQLHost=db
+            MySQLCharSet=latin1
+            [MYSQL web]
+            Host=web
+            CharSet=cp1254
+            [MYSQL plain]
+            Host=p
+            """);
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+            Assert.Equal("latin1", config.DbConnections.Single(c => c.Name == "default").CharSet);
+            Assert.Equal("cp1254", config.DbConnections.Single(c => c.Name == "web").CharSet);
+            Assert.Equal("", config.DbConnections.Single(c => c.Name == "plain").CharSet);
+        }
+        finally { try { File.Delete(tmp); } catch { } }
+
+        Assert.True(DbConnectionConfig.IsValidCharSetName("utf8mb4"));
+        Assert.True(DbConnectionConfig.IsValidCharSetName("latin1"));
+        Assert.False(DbConnectionConfig.IsValidCharSetName(""));
+        Assert.False(DbConnectionConfig.IsValidCharSetName("latin1; DROP TABLE x"));
+        Assert.False(DbConnectionConfig.IsValidCharSetName("'latin1'"));
+    }
 }

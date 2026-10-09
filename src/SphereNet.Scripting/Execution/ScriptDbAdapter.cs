@@ -562,6 +562,8 @@ public sealed class ScriptDbAdapter : IDisposable
                     // compatibility here (sqlite DQS for classic double-quoted
                     // string literals in pack scripts).
                     ScriptDbAdapter.OnConnectionOpened?.Invoke(connection);
+                    try { ApplyCharSet(connection, providerInvariantName); }
+                    catch { connection.Dispose(); throw; }
                     _connection = connection;
                     // Remember an explicit target so a reconnect returns to it; forget
                     // one when the session is (re)opened from its config, so a config
@@ -599,6 +601,28 @@ public sealed class ScriptDbAdapter : IDisposable
                 CloseInternal();
             }
             StopWorkerThread();
+        }
+
+        /// <summary>Send the configured session charset (DbConnectionConfig.CharSet).
+        /// Every open, not once: a pooled connection is reset on its way back, which
+        /// drops SET NAMES with the rest of the session state. SQLite has no session
+        /// charset. A name that is not a plain identifier is refused and logged rather
+        /// than spliced into SQL.</summary>
+        private void ApplyCharSet(DbConnection connection, string providerInvariantName)
+        {
+            string charSet = Config?.CharSet?.Trim() ?? "";
+            if (charSet.Length == 0 ||
+                providerInvariantName.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (!DbConnectionConfig.IsValidCharSetName(charSet))
+            {
+                _logger.LogWarning("DB session '{Name}': ignoring invalid CHARSET '{CharSet}'",
+                    Config?.Name ?? "?", charSet);
+                return;
+            }
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SET NAMES " + charSet;
+            cmd.ExecuteNonQuery();
         }
 
         public bool Execute(string sql, out int affectedRows, out string error)

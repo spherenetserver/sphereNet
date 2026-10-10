@@ -148,6 +148,7 @@ public static partial class Program
             _telnet.Processor.OnRespawnRequested += RequestRespawnOnMainLoop;
             _telnet.Processor.OnRespawnResetRequested += RequestRespawnResetOnMainLoop;
             _telnet.Processor.OnRestockRequested += RequestRestockOnMainLoop;
+            _telnet.Processor.OnVendorPacksRequested += RequestVendorPacksOnMainLoop;
 
             // Console command processor (shares logic with telnet)
             _consoleProcessor = new AdminCommandProcessor(_world, _accounts, _config,
@@ -187,6 +188,7 @@ public static partial class Program
             _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;
             _consoleProcessor.OnRespawnResetRequested += RequestRespawnResetOnMainLoop;
             _consoleProcessor.OnRestockRequested += RequestRestockOnMainLoop;
+            _consoleProcessor.OnVendorPacksRequested += RequestVendorPacksOnMainLoop;
 
             // In-game ".serv.xxx" bridge (Admin/Owner): route through the SAME
             // processor telnet uses, echoing every output line to the invoker.

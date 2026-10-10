@@ -33,6 +33,7 @@ public sealed class AdminCommandProcessor
     public event Action? OnRespawnRequested;
     public event Action? OnRespawnResetRequested;
     public event Action? OnRestockRequested;
+    public event Action<string>? OnVendorPacksRequested;
     public event Action<Action<string>>? OnDebugToggleRequested;
     public event Action<Action<string>>? OnScriptDebugToggleRequested;
     public event Action<string, string>? OnCommandExecuted;
@@ -97,6 +98,7 @@ public sealed class AdminCommandProcessor
                 output("  RESPAWN                    - Bring dead NPCs back to their home");
                 output("  RESPAWN FULL               - Delete ALL spawner children, then respawn fresh");
                 output("  RESTOCK                    - Restock all vendors");
+                output("  VENDORPACKS [CLEAR [min]]  - Report / empty vendor backpacks inflated by old restocks");
                 output("  GARBAGE                    - Force garbage collection");
                 output("  SHRINKMEM                  - Trim the process working set");
                 output("  PERF MARK|REPORT|STOP      - Load-test measurement window");
@@ -196,6 +198,13 @@ public sealed class AdminCommandProcessor
             case "RESTOCK":
                 output("Restock requested...");
                 OnRestockRequested?.Invoke();
+                break;
+
+            case "VENDORPACKS":
+                output(args.Trim().StartsWith("CLEAR", StringComparison.OrdinalIgnoreCase)
+                    ? "Vendor backpack cleanup requested - results in the server log."
+                    : "Vendor backpack report requested - results in the server log (VENDORPACKS CLEAR [min] to empty).");
+                OnVendorPacksRequested?.Invoke(args);
                 break;
 
             case "BOT":

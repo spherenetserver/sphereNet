@@ -383,6 +383,87 @@ public static partial class Program
         });
     }
 
+    /// <summary>The backpack-item count from which a vendor counts as inflated: one
+    /// creation set is around eight items, so twice that is past anything a single
+    /// @NPCRestock read in full puts there.</summary>
+    internal const int VendorPackInflatedDefault = 16;
+
+    /// <summary>Console VENDORPACKS [CLEAR [min]]. Before restocks were read the vendor
+    /// way, each ten-minute restock re-ran a vendor's gear and loot lines into its
+    /// backpack, and saves carry the result: packs of up to 255 pouches and weapons.
+    /// The report lists them; CLEAR empties the backpack of every restocking vendor
+    /// holding at least <c>min</c> items (default 16, 0 for any). Only NPCs the restock
+    /// itself touches - vendor brains that are no one's pet and no player's vendor -
+    /// and only the backpack: stock boxes are rebuilt by every restock, the vendor's
+    /// gold lives in its bank box, and worn gear stays on. Main-loop only.</summary>
+    private static void RequestVendorPacksOnMainLoop(string args)
+    {
+        _mainLoopActions.Enqueue(() =>
+        {
+            var parts = (args ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            bool clear = parts.Length > 0 && parts[0].Equals("CLEAR", StringComparison.OrdinalIgnoreCase);
+            int min = VendorPackInflatedDefault;
+            if (clear && parts.Length > 1 && int.TryParse(parts[1], out int parsed) && parsed >= 0)
+                min = parsed;
+            var result = ProcessVendorPacks(_world, clear, min);
+            _log.LogInformation(
+                "[vendorpacks] {Mode}: {Vendors} restocking vendors, {Inflated} with {Min}+ backpack items " +
+                "({TopLevel} items, {Total} counting contents); {Cleared} vendors cleared, {Deleted} items deleted",
+                clear ? "clear" : "report", result.Vendors, result.Inflated, Math.Max(min, 1),
+                result.InflatedTopLevel, result.InflatedTotal, result.Cleared, result.Deleted);
+            foreach (var (name, uid, count) in result.Largest)
+                _log.LogInformation("[vendorpacks]   0x{Uid:X8} '{Name}' {Count} backpack items", uid, name, count);
+        });
+    }
+
+    internal readonly record struct VendorPackResult(int Vendors, int Inflated, int InflatedTopLevel,
+        int InflatedTotal, int Cleared, int Deleted, List<(string Name, uint Uid, int Count)> Largest);
+
+    /// <summary>The work of VENDORPACKS, separate from the console so it can be tested.</summary>
+    internal static VendorPackResult ProcessVendorPacks(SphereNet.Game.World.GameWorld world, bool clear, int min)
+    {
+        int threshold = Math.Max(min, 1);
+        int vendors = 0, inflated = 0, topLevel = 0, total = 0, cleared = 0, deleted = 0;
+        var largest = new List<(string Name, uint Uid, int Count)>();
+        foreach (var ch in world.GetAllCharactersSnapshot())
+        {
+            // The restock's own gate (NpcAI.TryVendorRestock).
+            if (ch.IsPlayer || ch.IsDeleted || !VendorEngine.IsVendorBrain(ch.NpcBrain) ||
+                ch.IsStatFlag(SphereNet.Core.Enums.StatFlag.Pet) || ch.NpcMaster.IsValid ||
+                VendorEngine.HasRealStock(ch))
+                continue;
+            vendors++;
+            var pack = ch.Backpack;
+            int count = pack?.Contents.Count ?? 0;
+            if (pack == null || count < threshold)
+                continue;
+            inflated++;
+            topLevel += count;
+            total += CountContents(pack);
+            largest.Add((ch.Name, ch.Uid.Value, count));
+            if (!clear)
+                continue;
+            foreach (var item in pack.Contents.ToList())
+            {
+                world.RemoveItem(item);
+                deleted++;
+            }
+            cleared++;
+        }
+        largest.Sort((a, b) => b.Count.CompareTo(a.Count));
+        if (largest.Count > 10)
+            largest.RemoveRange(10, largest.Count - 10);
+        return new VendorPackResult(vendors, inflated, topLevel, total, cleared, deleted, largest);
+
+        static int CountContents(SphereNet.Game.Objects.Items.Item container)
+        {
+            int n = 0;
+            foreach (var child in container.Contents)
+                n += 1 + CountContents(child);
+            return n;
+        }
+    }
+
     private static object GetRuntimeMetrics()
     {
         var tick = GetTickTelemetrySnapshot();

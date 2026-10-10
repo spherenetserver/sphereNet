@@ -76,6 +76,14 @@ FIX - A vendor restock (the ten-minute timer, RESTOCK, a buy with empty stock) r
       hundred at each save. A newly created NPC still reads the block in full.
 FIX - A template row whose item the container refuses (full) deletes the item instead of
       leaving it unplaced.
+NEW - Console VENDORPACKS [CLEAR [min]]: reports the vendor backpacks that earlier
+      full-block restocks filled (results in the server log); CLEAR empties the backpack
+      of every restocking vendor holding min or more items (default 16, 0 for any).
+      Player vendors, pets and non-vendor brains are skipped; stock boxes, bank gold and
+      worn gear are untouched.
+CHANGE - An object spell given a ground or static pick says DEFMSG spell_targ_obj
+      ("This spell needs a target object"), as Spell_TargCheck does
+      (CCharSpell.cpp:2776).
 
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------

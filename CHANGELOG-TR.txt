@@ -76,6 +76,14 @@ DUZELTME - Vendor restock (10 dakikalik zamanlayici, RESTOCK, stogu bos alim) @N
            yaylar bunlardi. Yeni olusturulan NPC blogu yine tam okur.
 DUZELTME - Konteynerin reddettigi (dolu) template satiri item'i ortada birakmak yerine
            siler.
+YENI - Konsol komutu VENDORPACKS [CLEAR [min]]: eski tam-blok restock'larin doldurdugu
+       vendor cantalarini raporlar (sonuclar sunucu logunda); CLEAR, min veya daha
+       fazla item tasiyan her restock vendor'inin cantasini bosaltir (varsayilan 16,
+       0 hepsi). Oyuncu vendor'lari, petler ve vendor olmayan beyinler atlanir; stok
+       kutulari, banka altini ve giyili donanim dokunulmaz.
+DEGISIKLIK - Nesne buyusune yer veya statik secim verildiginde Spell_TargCheck gibi
+           DEFMSG spell_targ_obj ("This spell needs a target object") yazilir
+           (CCharSpell.cpp:2776).
 
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------

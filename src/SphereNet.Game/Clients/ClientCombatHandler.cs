@@ -2443,7 +2443,7 @@ public sealed class ClientCombatHandler
                     if (serial == 0 && spellDef != null &&
                         spellDef.IsFlag(SpellFlag.TargObj) && !spellDef.IsFlag(SpellFlag.TargXYZ))
                     {
-                        SysMessage(ServerMessages.Get("target_must_object"));
+                        SysMessage(ServerMessages.Get("spell_targ_obj")); // DEFMSG_SPELL_TARG_OBJ (CCharSpell.cpp:2776)
                         return;
                     }
                     _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
@@ -2575,7 +2575,7 @@ public sealed class ClientCombatHandler
             if (serial == 0 && spellDef != null &&
                 spellDef.IsFlag(SpellFlag.TargObj) && !spellDef.IsFlag(SpellFlag.TargXYZ))
             {
-                SysMessage(ServerMessages.Get("target_must_object"));
+                SysMessage(ServerMessages.Get("spell_targ_obj")); // DEFMSG_SPELL_TARG_OBJ (CCharSpell.cpp:2776)
                 _spellEngine.CancelCast(_character);
                 return;
             }

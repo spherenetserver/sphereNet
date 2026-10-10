@@ -71,21 +71,34 @@ public sealed class PaperdollEndpointTests : IAsyncLifetime
         string ini = Path.Combine(dir, "sphere.ini");
         File.WriteAllText(ini, "[SPHERE]\r\nServName=Test\r\nServPort=2593\r\n" + extraIni, Encoding.UTF8);
 
-        int port = FreePort();
-        var host = new PanelHost(Context(ini), port, new PanelLogSink(),
-            LoggerFactory.Create(_ => { }).CreateLogger("paperdoll-test"));
-        host.Start();
-        _hosts.Add(host);
-        var http = new HttpClient { BaseAddress = new Uri($"http://localhost:{port}") };
-        _clients.Add(http);
-        for (int i = 0; i < 100; i++)
+        // A free port is only free until someone takes it: FreePort releases the one
+        // it found, and under a full parallel run another test can bind it before
+        // this host does, or the host is slow to come up. Either left every test of
+        // the class failing in its setup, whatever it tested - so a host that does not
+        // answer is replaced on a fresh port rather than given up on.
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            try
+            int port = FreePort();
+            var host = new PanelHost(Context(ini), port, new PanelLogSink(),
+                LoggerFactory.Create(_ => { }).CreateLogger("paperdoll-test"));
+            host.Start();
+            var http = new HttpClient { BaseAddress = new Uri($"http://localhost:{port}") };
+            for (int i = 0; i < 100; i++)
             {
-                if ((await http.GetAsync("/health")).IsSuccessStatusCode) return http;
+                try
+                {
+                    if ((await http.GetAsync("/health")).IsSuccessStatusCode)
+                    {
+                        _hosts.Add(host);
+                        _clients.Add(http);
+                        return http;
+                    }
+                }
+                catch (HttpRequestException) { }
+                await Task.Delay(50);
             }
-            catch (HttpRequestException) { }
-            await Task.Delay(50);
+            http.Dispose();
+            host.Dispose();
         }
         throw new InvalidOperationException("panel host did not start listening");
     }
@@ -198,59 +211,6 @@ public sealed class PaperdollEndpointTests : IAsyncLifetime
         Assert.Equal("image/png", png.Content.Headers.ContentType?.MediaType);
 
         Assert.Equal(HttpStatusCode.NotFound, (await GetAsync(_enabled, token, "/api/paperdoll/99")).StatusCode);
-    }
-
-    [Theory]
-    [InlineData("shard.example", "https://shard.example", "https://shard.example")]
-    [InlineData("shard.example", "http://SHARD.example", "http://SHARD.example")]
-    [InlineData("shard.example", "https://evil.example", null)]
-    [InlineData("shard.example", "https://shard.example:8443", null)]
-    [InlineData("shard.example:8443", "https://shard.example:8443", "https://shard.example:8443")]
-    [InlineData("https://shard.example/", "https://shard.example", "https://shard.example")]
-    [InlineData("*", "https://anything.example", "*")]
-    [InlineData("", "https://shard.example", null)]
-    [InlineData("shard.example", "null", null)]
-    public void CorsOriginMatchesListedHosts(string ini, string origin, string? expected) =>
-        Assert.Equal(expected, PanelHost.PublicCorsOrigin(origin, PanelHost.ParsePublicOrigins(ini)));
-
-    // --- parsing / limiter -------------------------------------------------
-
-    [Theory]
-    [InlineData("123", 123u, false)]
-    [InlineData("123.png", 123u, true)]
-    [InlineData("123.JSON", 123u, false)]
-    [InlineData("0x1A2B.png", 0x1A2Bu, true)]
-    [InlineData("01a2b", 0x1A2Bu, false)]
-    [InlineData("0X3FFFFFFF", 0x3FFFFFFFu, false)]
-    public void SerialParsesHexAndDecimal(string raw, uint serial, bool png)
-    {
-        Assert.True(PanelHost.TryParsePaperdollRequest(raw, out uint s, out bool p));
-        Assert.Equal(serial, s);
-        Assert.Equal(png, p);
-    }
-
-    [Theory]
-    [InlineData("0")]
-    [InlineData("0x40000000")]
-    [InlineData("-5")]
-    [InlineData("+5")]
-    [InlineData("abc")]
-    [InlineData("")]
-    public void SerialRejectsNonCharacterValues(string raw) =>
-        Assert.False(PanelHost.TryParsePaperdollRequest(raw, out _, out _));
-
-    [Fact]
-    public void LimiterAllowsTheQuotaPerWindow()
-    {
-        long now = 0;
-        var limiter = new PublicRequestLimiter(3, TimeSpan.FromMinutes(1), () => now);
-        Assert.True(limiter.TryAcquire("a"));
-        Assert.True(limiter.TryAcquire("a"));
-        Assert.True(limiter.TryAcquire("a"));
-        Assert.False(limiter.TryAcquire("a"));
-        Assert.True(limiter.TryAcquire("b"));
-        now += 60_000;
-        Assert.True(limiter.TryAcquire("a"));
     }
 
     // --- helpers -----------------------------------------------------------

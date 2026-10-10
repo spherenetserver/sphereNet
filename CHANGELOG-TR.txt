@@ -44,6 +44,11 @@ YENI - Zaman asimina ugrayan multicore tick, ulastigi her asamanin suresini logl
        loglanir ([slow_sector]).
 DEGISIKLIK - "GC: N unplaced objects!" ardindan silinen her item icin bir uyari yazilir
            (UID, id, tip, ad; ilk 50), Source-X ReportGarbageCollection gibi.
+DUZELTME - Fonksiyon ve argumanla SERV.ALLCLIENTS ("serv.allclients f_announce_activity
+           <metin>") fonksiyonu her istemcide satirin geri kalanini ARGS olarak vererek
+           calistirir, pChar->r_Verb gibi (CServer.cpp:1867). Satirin tamami fonksiyon
+           adi olarak araniyordu; metin tasiyan hicbir duyuru kimseye ulasmiyordu.
+           Argumansiz cagrilar etkilenmiyordu.
 
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------

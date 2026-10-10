@@ -66,4 +66,38 @@ public sealed class ServAllClientsServerHookTests : IDisposable
         Assert.True(a.TryGetTag("SAVE_SEEN", out _));
         Assert.True(b.TryGetTag("SAVE_SEEN", out _));
     }
+
+    /// <summary>The line is a function call like any other: the first word names the
+    /// function and the rest is its ARGS (pChar->r_Verb, CServer.cpp:1867). The whole
+    /// line was looked up as the name, so "serv.allclients f_announce_activity &lt;text&gt;"
+    /// matched nothing and an announcement that carries its text reached nobody.</summary>
+    [Fact]
+    public void AFunctionLineWithArgumentsRunsWithThemAsArgs()
+    {
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        string script = Path.Combine(Path.GetTempPath(), $"allclients_{Guid.NewGuid():N}.scp");
+        File.WriteAllLines(script, [
+            "[FUNCTION f_announce]",
+            "IF <account.tag0.no_announce> == 0",
+            "TAG.GOT=<args>",
+            "ENDIF",
+        ]);
+        try { stack.Resources.LoadResourceFile(script); }
+        finally { File.Delete(script); }
+
+        var world = TestHarness.CreateWorld();
+        SetServer("_world", world);
+        SetServer("_log", NullLogger.Instance);
+        SetServer("_triggerRunner", stack.Runner);
+
+        var a = world.CreateCharacter();
+        a.IsPlayer = true;
+        a.IsOnline = true;
+        world.PlaceCharacter(a, new Point3D(100, 100, 0, 0));
+        world.AddOnlinePlayer(a);
+
+        HandleAllClients("0|f_announce 10 Ekim 2026 tarihine etkinlik eklendi!");
+
+        Assert.Equal("10 Ekim 2026 tarihine etkinlik eklendi!", a.Tags.Get("GOT"));
+    }
 }

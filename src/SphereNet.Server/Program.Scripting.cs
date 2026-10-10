@@ -1825,11 +1825,12 @@ public static partial class Program
         var sourceClient = srcChar != null ? FindGameClient(srcChar) : null;
         foreach (var (target, targetClient) in snapshot)
         {
-            var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(srcChar)
-            {
-                Object1 = target,
-                Object2 = srcChar,
-            };
+            var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(srcChar);
+            // The line runs as pChar->r_Verb (CServer.cpp:1867): the first word names
+            // the function and the rest is its ARGS/ARGN, as for any function call.
+            trigArgs.InitFromRaw(tail);
+            trigArgs.Object1 = target;
+            trigArgs.Object2 = srcChar;
             ITextConsole? callbackConsole = targetClient ?? sourceClient;
 
             // Function form (e.g. "f_Admin_GetPlayers") takes priority: a
@@ -1842,8 +1843,12 @@ public static partial class Program
             // the callback never ran and admin tallies like the online-player
             // list came back empty.
             bool dispatched = false;
+            //
+            // The function is looked up by the FIRST WORD. The whole line was looked up
+            // as the name, so a call with arguments - "f_announce_activity <text>" -
+            // matched nothing, and an announcement that carries its text never ran.
             if (_triggerRunner != null &&
-                _triggerRunner.TryRunFunction(payload, target, callbackConsole, trigArgs, out _))
+                _triggerRunner.TryRunFunction(head, target, callbackConsole, trigArgs, out _))
                 dispatched = true;
             if (!dispatched && target.TryExecuteCommand(head, tail, callbackConsole ?? new RefExecConsole()))
                 dispatched = true;

@@ -45,6 +45,11 @@ NEW - A multicore tick that times out logs how long each phase it reached ran
       sector ([slow_sector]).
 CHANGE - "GC: N unplaced objects!" is followed by one warning per deleted item (UID, id,
       type, name; first 50), as Source-X's ReportGarbageCollection names them.
+FIX - SERV.ALLCLIENTS with a function and arguments ("serv.allclients f_announce_activity
+      <text>") runs the function on every client with the rest of the line as its
+      ARGS, as pChar->r_Verb does (CServer.cpp:1867). The whole line was looked up as
+      the function name, so any announcement that carries its text reached nobody;
+      argument-less calls were unaffected.
 
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------

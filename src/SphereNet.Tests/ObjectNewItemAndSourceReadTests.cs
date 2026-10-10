@@ -119,4 +119,43 @@ public sealed class ObjectNewItemAndSourceReadTests : IDisposable
         Assert.Equal(player.Tags.Get("N"), player.Tags.Get("B"));
         Assert.NotEqual("0", player.Tags.Get("B"));
     }
+
+    /// <summary>NEWLOOT (CHV_NEWLOOT, CChar.cpp:4772): an NPC creates the item, equips it -
+    /// bouncing to its pack what it cannot wear - and it becomes NEW, ACT untouched. A
+    /// player or a conjured creature gets nothing. It stored the id and made nothing.</summary>
+    [Fact]
+    public void NewLootGivesAnNpcTheItemAndAPlayerNothing()
+    {
+        var (_, player, animal) = Bench();
+        var world = ObjBase.ResolveWorld!()!;
+        var makeForCaller = typeof(SphereNet.Server.Program)
+            .GetMethod("HandleNewItemForCaller", BindingFlags.Static | BindingFlags.NonPublic)!;
+        ObjBase.NewItemVerb = (obj, arg) =>
+            (string?)makeForCaller.Invoke(null, [$"{(obj is Character ? $"0{obj!.Uid.Value:x}" : "0")}|{arg}"]) is { } made &&
+            made != "0";
+        var pack = world.CreateItem();
+        pack.BaseId = 0x0E75;
+        pack.ItemType = SphereNet.Core.Enums.ItemType.Container;
+        animal.Equip(pack, SphereNet.Core.Enums.Layer.Pack);
+        var actBefore = animal.Act;
+
+        Assert.True(animal.TryExecuteCommand("NEWLOOT", "i_test_memory", new NullConsole()));
+
+        var loot = world.FindObject(world.LastNewObject) as Item;
+        Assert.NotNull(loot);
+        Assert.Equal(0x1f14, loot!.BaseId);
+        Assert.Equal(pack.Uid, loot.ContainedIn);       // bounced into the pack
+        Assert.Equal(actBefore, animal.Act);              // ACT untouched
+
+        var lastBefore = world.LastNewObject;
+        Assert.True(player.TryExecuteCommand("NEWLOOT", "i_test_memory", new NullConsole()));
+        Assert.Equal(lastBefore, world.LastNewObject);    // a player makes nothing
+    }
+
+    private sealed class NullConsole : SphereNet.Core.Interfaces.ITextConsole
+    {
+        public SphereNet.Core.Enums.PrivLevel GetPrivLevel() => SphereNet.Core.Enums.PrivLevel.Owner;
+        public void SysMessage(string text) { }
+        public string GetName() => "test";
+    }
 }

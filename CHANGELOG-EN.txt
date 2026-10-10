@@ -98,6 +98,9 @@ FIX - NEWITEM addressed to an object (REF1.NEWITEM, SRC.NEWITEM, ARGO.NEWITEM) c
       created nothing, so a taming script's "ref1.newitem i_memory" never gave the
       animal its pet memory.
 NEW - BRAIN reads and writes a character's brain, the Sphere 0.56T spelling of NPC.
+FIX - NEWLOOT on an NPC creates the item, equips it - bouncing to the pack what it cannot
+      wear - and makes it NEW, leaving ACT alone (CHV_NEWLOOT, CChar.cpp:4772); a player
+      or conjured creature gets nothing. It stored the id and created nothing.
 
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------

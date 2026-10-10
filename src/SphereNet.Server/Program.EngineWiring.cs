@@ -879,7 +879,7 @@ public static partial class Program
             // NEWITEM on any object: the same factory the bare line uses, with ACT set
             // only when the object addressed is a character (CScriptObj.cpp:1383).
             ObjBase.NewItemVerb = (obj, arg) =>
-                HandleNewItemForCaller($"{(obj is Character ? $"0{obj.Uid.Value:x}" : "0")}|{arg}") is { } made &&
+                HandleNewItemForCaller($"{(obj is Character ? $"0{obj!.Uid.Value:x}" : "0")}|{arg}") is { } made &&
                 made != "0";
             ObjBase.RunScriptFunction = (obj, name, args, console) =>
             {

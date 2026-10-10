@@ -8923,7 +8923,22 @@ public partial class Character : ObjBase
             }
             case "NEWLOOT":
             {
-                NewItemId = args.Trim();
+                // CHV_NEWLOOT (CChar.cpp:4772): an NPC that is neither a player nor
+                // conjured creates the item, equips it - an NPC bounces what it cannot
+                // wear into its pack (ItemEquip, CCharAct.cpp:3299-3326) - and it
+                // becomes NEW; ACT is left alone. It stored the id and made nothing.
+                if (IsPlayer || IsStatFlag(StatFlag.Conjured))
+                    return true;
+                var lootWorld = ResolveWorld?.Invoke();
+                if (lootWorld == null || NewItemVerb == null || !NewItemVerb(null, (args ?? "").Trim()))
+                    return true;
+                if (lootWorld.FindObject(lootWorld.LastNewObject) is not Item loot || loot.IsDeleted)
+                    return true;
+                if (ScriptEquipItem == null || !ScriptEquipItem(this, loot))
+                {
+                    if (!loot.IsDeleted && !loot.ContainedIn.IsValid && !lootWorld.IsItemPlaced(loot))
+                        BounceItemToPack(loot, lootWorld);
+                }
                 return true;
             }
             case "POLY":
@@ -9517,8 +9532,6 @@ public partial class Character : ObjBase
         return true;
     }
 
-    /// <summary>Pending NEWITEM creation id (set by script NEWITEM command).</summary>
-    public string? NewItemId { get; set; }
 
     /// <summary>Pending EQUIP flag (set by script EQUIP command).</summary>
     public bool PendingEquip { get; set; }

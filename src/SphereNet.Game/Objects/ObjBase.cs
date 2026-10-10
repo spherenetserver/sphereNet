@@ -87,9 +87,9 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
 
     /// <summary>NEWITEM, a verb of every script object (SSV_NEWITEM, CScriptObj.cpp:1341):
     /// the host creates the item from the raw argument (it owns the factory), makes it
-    /// NEW and, when the object addressed is a character, its ACT. True when an item
-    /// was made.</summary>
-    public static Func<ObjBase, string, bool>? NewItemVerb;
+    /// NEW and, when the object passed is a character, its ACT - null passes no one,
+    /// for a factory that leaves ACT alone (NEWLOOT). True when an item was made.</summary>
+    public static Func<ObjBase?, string, bool>? NewItemVerb;
     /// <summary>Connected console for a script source character; null for offline characters and NPCs.</summary>
     public static Func<Characters.Character, ITextConsole?>? ResolveClientConsole;
 

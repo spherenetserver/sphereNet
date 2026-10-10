@@ -99,6 +99,9 @@ DUZELTME - Bir nesneye yonelik NEWITEM (REF1.NEWITEM, SRC.NEWITEM, ARGO.NEWITEM)
            aliyor ve hicbir sey olusturmuyordu; evcilestirme script'inin
            "ref1.newitem i_memory" satiri hayvana pet hafizasini hic vermiyordu.
 YENI - BRAIN, karakterin beynini okur ve yazar; NPC'nin Sphere 0.56T yazimi.
+DUZELTME - NPC'de NEWLOOT item'i olusturur, kusandirir - kusanamadigini cantaya koyar -
+           ve NEW yapar, ACT'a dokunmaz (CHV_NEWLOOT, CChar.cpp:4772); oyuncu veya cagrilmis
+           yaratik hicbir sey almaz. Id'yi saklayip hicbir sey olusturmuyordu.
 
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------

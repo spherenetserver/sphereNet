@@ -62,6 +62,20 @@ DUZELTME - Buyu hedef imleci yalnizca TARG_XYZ buyulerde yer imlecidir ve HARM b
            zararli bayragini tasir (CClient::addTarget). Her buyuye yer imleci
            gidiyordu; istemcinin Last Target'i nesne buyusune son secilen yer noktasini
            gonderiyor, buyu "you must target an object" ile basarisiz oluyordu.
+DUZELTME - Acik imlec yokken gelen hedef cevabi Event_Target gibi dusurulur
+           (CClientEvent.cpp:2473); gercek bir secimde "Unexpected target info" yazilir.
+           Isleniyordu - TARGP olarak kaydediliyor ve kalan hedef durumuna veriliyordu -
+           bu yuzden basibos bir secim sonraki buyuyu etkileyebiliyordu.
+DUZELTME - Vendor restock (10 dakikalik zamanlayici, RESTOCK, stogu bos alim) @NPCRestock
+           blogunu NPC_Vendor_Restock gibi vendor modunda okur (fVendor ile
+           ReadScriptReducedTrig, CChar.cpp:1339-1372): yalnizca BUY ve SELL; ITEM,
+           ITEMNEWBIE, CONTAINER ve onlari izleyen ozellik satirlari atlanir. Her
+           restock donanim ve loot satirlarini yeniden calistiriyordu; vendor cantalari
+           her seferinde ayni keseler ve silahlarla buyuyor, dolunca tasan item'lar
+           olusturulup hicbir yere konmuyordu - her save'de yuzlerce silinen canta ve
+           yaylar bunlardi. Yeni olusturulan NPC blogu yine tam okur.
+DUZELTME - Konteynerin reddettigi (dolu) template satiri item'i ortada birakmak yerine
+           siler.
 
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------

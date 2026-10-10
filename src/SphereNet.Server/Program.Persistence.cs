@@ -374,8 +374,7 @@ public static partial class Program
                 // Never a player vendor: its stock is the owner's goods
                 // (NPC_Vendor_Restock returns for a pet, CCharNPCAct_Vendor.cpp:41).
                 if (VendorEngine.HasRealStock(ch)) continue;
-                _triggerDispatcher.FireCharTrigger(ch,
-                    SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                _triggerDispatcher.FireVendorRestock(ch,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch });
                 ch.RemoveTag("RESTOCK_TIME"); // let ActVendor restock again on its timer too
                 n++;

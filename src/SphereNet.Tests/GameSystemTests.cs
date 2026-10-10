@@ -3377,6 +3377,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.Targets.Function = "f_never_run";
         client.Targets.ItemUid = sourceItem.Uid;
 
+        client.Targets.CursorActive = true; // the cursor this response answers
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, targetItem.Uid.Value, 10, 11, 12, 0);
 
         Assert.Equal(0, targetItemCount);
@@ -3417,6 +3418,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.Targets.Function = "f_cancelled";
         client.Targets.ItemUid = sourceItem.Uid;
 
+        client.Targets.CursorActive = true; // the cursor this response answers
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0xFFFFFFFF, 0, 0, 0, 0);
 
         Assert.Equal(1, cancelCount);
@@ -3520,6 +3522,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         AttachCharacter(client, player);
         player.SetTag("CAST_SPELL", SpellType.MagicArrow.ToString());
 
+        client.Targets.CursorActive = true; // the cursor this response answers
         client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0xFFFFFFFF, 0, 0, 0, 0);
 
         Assert.Equal(1, cancelCount);

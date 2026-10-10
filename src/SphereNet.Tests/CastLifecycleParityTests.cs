@@ -151,6 +151,23 @@ public sealed class CastLifecycleParityTests
         Assert.Equal(1, calls);
     }
 
+    /// <summary>A pick with no cursor open is dropped (Event_Target, CClientEvent.cpp:2473):
+    /// a Last Target pressed before any spell, or a click landing after the cursor
+    /// closed, must never become the target of the next cast.</summary>
+    [Fact]
+    public void APickWithNoCursorOpenTargetsNothing()
+    {
+        using var f = new Fixture(); f.Player.PrivLevel = PrivLevel.GM;
+        Assert.False(f.Client.Targets.CursorActive);
+        f.Client.HandleTargetResponse(0, 12345, f.Player.Uid.Value, 100, 100, 0, 0);
+        Assert.False(f.Player.IsCasting);
+
+        // The next cast still asks for its target rather than reusing that pick.
+        f.Client.HandleCastSpell(SpellType.Heal, 0);
+        Assert.False(f.Player.IsCasting);
+        Assert.True(f.Client.Targets.CursorActive);
+    }
+
     /// <summary>A spell's cursor is the one CClient::addTarget sends
     /// (CClientMsg.cpp:1810): ground only for TARG_XYZ, object otherwise, flagged
     /// harmful for HARM. With a ground cursor on every spell the client's Last Target

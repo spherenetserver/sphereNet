@@ -2029,8 +2029,7 @@ public static partial class Program
             };
             _npcAI.OnVendorRestock = vendor =>
             {
-                _triggerDispatcher?.FireCharTrigger(vendor, CharTrigger.NPCRestock,
-                    new TriggerArgs { CharSrc = vendor });
+                _triggerDispatcher?.FireVendorRestock(vendor, new TriggerArgs { CharSrc = vendor });
             };
             _npcAI.OnWitnessCrime = (witness, criminal) => CallGuards(witness, criminal);
             _npcAI.OnWakeNpc = WakeNpc;

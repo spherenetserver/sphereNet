@@ -63,6 +63,19 @@ FIX - A spell's target cursor is a ground cursor only for TARG_XYZ spells and ca
       harmful flag for HARM spells (CClient::addTarget). Every spell got a ground cursor,
       so the client's Last Target answered an object spell with the last ground point
       picked and the cast failed with "you must target an object".
+FIX - A target response that arrives with no cursor open is dropped, as Event_Target does
+      (CClientEvent.cpp:2473), with "Unexpected target info" for a real pick. It was
+      processed - recorded as TARGP and handed to whatever pending target state was
+      left - so a stray pick could act on a later cast.
+FIX - A vendor restock (the ten-minute timer, RESTOCK, a buy with empty stock) reads
+      @NPCRestock the vendor way, as NPC_Vendor_Restock does (ReadScriptReducedTrig with
+      fVendor, CChar.cpp:1339-1372): BUY and SELL only; ITEM, ITEMNEWBIE, CONTAINER and
+      the attribute lines after them are skipped. Every restock re-ran the gear and loot
+      lines, so vendor packs grew by the same pouches and weapons each time and, once
+      full, the overflow was made and never placed - the bags and bows deleted by the
+      hundred at each save. A newly created NPC still reads the block in full.
+FIX - A template row whose item the container refuses (full) deletes the item instead of
+      leaving it unplaced.
 
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------

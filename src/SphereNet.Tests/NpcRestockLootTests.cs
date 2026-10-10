@@ -43,6 +43,50 @@ public class NpcRestockLootTests
         new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
     }
 
+    /// <summary>A vendor restock reads @NPCRestock the vendor way (ReadScriptReduced with
+    /// fVendor, CChar.cpp:1339-1372): ITEM, ITEMNEWBIE and CONTAINER are skipped along
+    /// with the attribute lines that follow them, until BUY/SELL. Re-running the gear
+    /// and loot lines every ten minutes filled vendor packs and then orphaned the
+    /// overflow - hundreds of bags and bows deleted at each save.</summary>
+    [Fact]
+    public void AVendorRestockSkipsItemLinesAndTheirAttributes()
+    {
+        LoadDefinitions("""
+            [ITEMDEF 0eed]
+            DEFNAME=i_test_coin
+            NAME=test coin
+            """);
+
+        var world = CreateWorld();
+        var npc = world.CreateCharacter();
+        var console = new NullConsole();
+        var hueBefore = npc.Hue;
+
+        npc.VendorRestockScript = true;
+        try
+        {
+            Assert.True(npc.TryExecuteCommand("ITEM", "i_test_coin,5", console));
+            Assert.True(npc.TrySetProperty("COLOR", "0481"));        // the skipped item's
+            Assert.True(npc.TrySetProperty("TAG.ITEM_ATTR", "1"));   // attribute lines
+            Assert.True(npc.TryExecuteCommand("CONTAINER", "i_test_coin", console));
+            npc.TryExecuteCommand("SELL", "i_test_coin", console);    // ends the block
+            Assert.True(npc.TrySetProperty("TAG.AFTER_SELL", "1"));
+        }
+        finally
+        {
+            npc.VendorRestockScript = false;
+        }
+
+        Assert.True(npc.Backpack == null || npc.Backpack.Contents.Count == 0);
+        Assert.Equal(hueBefore, npc.Hue);
+        Assert.False(npc.TryGetTag("ITEM_ATTR", out _));
+        Assert.True(npc.TryGetTag("AFTER_SELL", out _));
+
+        // Creation reads the same lines in full.
+        Assert.True(npc.TryExecuteCommand("ITEM", "i_test_coin,5", console));
+        Assert.Contains(npc.Backpack!.Contents, i => i.BaseId == 0x0eed);
+    }
+
     [Fact]
     public void ItemNewbieVerb_FlagsNewbieAttr_PlainItemVerbDoesNot()
     {

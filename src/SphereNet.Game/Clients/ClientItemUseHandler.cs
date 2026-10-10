@@ -5300,8 +5300,7 @@ public sealed class ClientItemUseHandler
                 if (vendor.GetEquippedItem(Layer.VendorBuy) is { } buysBox)
                     foreach (var oldSample in buysBox.Contents.ToList())
                         _world.RemoveItem(oldSample);
-                _triggerDispatcher?.FireCharTrigger(vendor,
-                    SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                _triggerDispatcher?.FireVendorRestock(vendor,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = _character });
                 // Refresh after restock — the trigger may have created it.
                 stockContainer = vendor.GetEquippedItem(Layer.VendorStock);

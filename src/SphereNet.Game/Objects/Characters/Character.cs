@@ -6843,6 +6843,8 @@ public partial class Character : ObjBase
 
     public override bool TrySetProperty(string key, string value)
     {
+        if (SkipVendorRestockLine(key))
+            return true;
         if (key.StartsWith("TARG.", StringComparison.OrdinalIgnoreCase) &&
             !IsTargPointKey(key[5..].ToUpperInvariant()))
         {
@@ -7888,6 +7890,8 @@ public partial class Character : ObjBase
         // Assumed owned until the shared fall-through at the bottom of
         // ObjBase.TryExecuteCommand says otherwise.
         nameOwned = true;
+        if (SkipVendorRestockLine(key))
+            return true;
         // A bare privilege toggle line ("DEBUG", "ALLSHOW") flips the flag: the
         // client verb falls through to r_LoadVal with no argument, and TogPrivFlags
         // toggles on an empty value (CClient.cpp:1723 -> CAccount.cpp:745).
@@ -10340,6 +10344,52 @@ public partial class Character : ObjBase
     /// Called when a trigger run begins, which is the boundary upstream reads a script
     /// section within (CChar.cpp:1441).</summary>
     public void ForgetLastCreatedItem() => _lastCreatedItem = null;
+
+    /// <summary>Set while a vendor restock reads this character's @NPCRestock block:
+    /// NPC_Vendor_Restock calls ReadScriptReducedTrig with fVendor = true
+    /// (CCharNPCAct_Vendor.cpp:85). Creation (NPC_LoadScript) reads the same block
+    /// without it.</summary>
+    internal bool VendorRestockScript
+    {
+        get => _vendorRestockScript;
+        set { _vendorRestockScript = value; _vendorItemLinesBlocked = false; }
+    }
+    private bool _vendorRestockScript;
+    private bool _vendorItemLinesBlocked;
+
+    /// <summary>ReadScriptReduced's vendor reading (CChar.cpp:1339-1372): BUY and SELL
+    /// stock the vendor boxes; ITEM, ITEMNEWBIE and CONTAINER are skipped, and so is
+    /// every line after them until the next template keyword - those lines are the
+    /// skipped item's attributes; the other template keywords are skipped too. True
+    /// when the line is consumed here. Without it every ten-minute restock re-ran the
+    /// gear and loot lines: the vendor's pack grew by the same pouches and weapons each
+    /// time, and once it was full they were made and never placed - the bags and bows
+    /// the pre-save collection deleted by the hundred.</summary>
+    private bool SkipVendorRestockLine(string key)
+    {
+        if (!_vendorRestockScript)
+            return false;
+        switch (key.Trim().ToUpperInvariant())
+        {
+            case "ITEM":
+            case "ITEMNEWBIE":
+            case "CONTAINER":
+                _vendorItemLinesBlocked = true;
+                return true;
+            case "BUY":
+            case "SELL":
+                _vendorItemLinesBlocked = false;
+                return false;
+            case "BREAK":
+            case "FULLINTERP":
+            case "NEWBIESWAP":
+            case "FUNC":
+                _vendorItemLinesBlocked = false;
+                return true;
+            default:
+                return _vendorItemLinesBlocked;
+        }
+    }
 
     private Items.Item? _lastCreatedItem;
     private ushort _lastVerbHue;

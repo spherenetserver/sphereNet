@@ -467,8 +467,15 @@ public static class TemplateEngine
         if (amount != 1)
             made.Amount = (ushort)Math.Clamp(amount, 1, ushort.MaxValue);
 
-        if (!fromTemplate)
-            cont?.AddItem(made);
+        // A container that refuses the item (full at the engine's item cap) must not
+        // leave it half made: nothing holds or places it, so it would only wait,
+        // unplaced, for the pre-save collection to delete it. The row produced
+        // nothing, as one whose item the container rejects does upstream (:519).
+        if (!fromTemplate && cont != null && !cont.AddItem(made))
+        {
+            world.RemoveItem(made);
+            return null;
+        }
         return made;
     }
 

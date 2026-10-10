@@ -359,6 +359,18 @@ public sealed class TriggerDispatcher
         return result;
     }
 
+    /// <summary>A vendor restock: the CHARDEF's @NPCRestock block read the vendor way
+    /// (NPC_Vendor_Restock -> ReadScriptReducedTrig(..., fVendor = true),
+    /// CCharNPCAct_Vendor.cpp:85) - BUY and SELL lines only, no ITEM, ITEMNEWBIE or
+    /// CONTAINER. A newly created NPC reads the same block in full through
+    /// FireCharTrigger.</summary>
+    public TriggerResult FireVendorRestock(Character vendor, TriggerArgs args)
+    {
+        vendor.VendorRestockScript = true;
+        try { return FireCharTrigger(vendor, CharTrigger.NPCRestock, args); }
+        finally { vendor.VendorRestockScript = false; }
+    }
+
     /// <summary>Run only the CHARDEF's own ON=@<paramref name="trigName"/> block
     /// (ReadScriptReducedTrig, CChar.cpp:1281-1292), with ACT pointed at the character
     /// for the duration when <paramref name="setAct"/> is set (NPC_LoadScript,

@@ -143,6 +143,18 @@ public sealed class ClientTargetingHandler
         bool idKnown = Targets.CursorActive && Targets.CursorId != 0;
         if (idKnown && targetId != Targets.CursorId)
             return;
+        // No cursor open: Event_Target drops an answer that is not for the current
+        // target mode (CClientEvent.cpp:2473) and tells the player when it was a real
+        // pick. A pick with nothing asking for it - a Last Target pressed before any
+        // cursor, a click landing after the cursor closed - must never become the
+        // target of whatever opens next.
+        if (!Targets.CursorActive)
+        {
+            bool cancelled = serial == 0 && x == -1;
+            if (targetId != 0 && !cancelled)
+                SysMessage(ServerMessages.Get("msg_targ_unexpected"));
+            return;
+        }
         // targetId == 0 is included above: an id-less response can never be a
         // legit answer to an id-armed cursor. Every client echoes the request
         // id it stored, and ClassicUO zeroes that stored id after a

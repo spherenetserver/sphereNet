@@ -135,11 +135,71 @@ public sealed class CastLifecycleParityTests
         });
         long before = Environment.TickCount64;
         f.Client.HandleCastSpell(SpellType.Heal, 0);
+        // Without precast the skill starts once the target is picked
+        // (OnTarg_Skill_Magery -> Skill_Start -> Spell_CastStart), and that is where
+        // @SpellCast runs; with precast it runs before the cursor.
+        if (!precast)
+        {
+            Assert.Equal(0, calls);
+            f.Client.HandleTargetResponse(0, f.Client.ActiveTargetCursorId,
+                f.Player.Uid.Value, 100, 100, 0, 0);
+        }
         Assert.True(f.Player.TryGetCastingSpell(out var spell));
         Assert.Equal(SpellType.Strength, spell);
         Assert.Equal(42, f.Player.CastDifficulty);
         Assert.InRange(f.Player.CastTimerEnd, before, Environment.TickCount64 + 2);
         Assert.Equal(1, calls);
+    }
+
+    /// <summary>A spell's cursor is the one CClient::addTarget sends
+    /// (CClientMsg.cpp:1810): ground only for TARG_XYZ, object otherwise, flagged
+    /// harmful for HARM. With a ground cursor on every spell the client's Last Target
+    /// answered an object spell with the last ground point picked.</summary>
+    [Theory]
+    [InlineData(SpellFlag.TargChar, 0, 0)]
+    [InlineData(SpellFlag.TargChar | SpellFlag.Harm, 0, 1)]
+    [InlineData(SpellFlag.TargXYZ, 1, 0)]
+    [InlineData(SpellFlag.TargObj | SpellFlag.TargXYZ | SpellFlag.Harm, 1, 1)]
+    public void ASpellCursorAllowsGroundOnlyForTargXyzAndFlagsHarm(SpellFlag flags, int cursorType, int harmful)
+    {
+        using var f = new Fixture(); f.Player.PrivLevel = PrivLevel.GM;
+        f.Heal.Flags = flags;
+        TestHarness.GetQueuedPackets(f.Client.NetState);
+        f.Client.HandleCastSpell(SpellType.Heal, 0);
+        var cursor = TestHarness.GetQueuedPackets(f.Client.NetState)
+            .Select(p => p.Span.ToArray()).Last(p => p[0] == 0x6C);
+        Assert.Equal(cursorType, cursor[1]);
+        Assert.Equal(harmful, cursor[6]);
+    }
+
+    /// <summary>@SpellCast belongs to Spell_CastStart (CCharSpell.cpp:3598), which a
+    /// targeted spell reaches only after OnTarg_Skill_Magery: the trigger sees the
+    /// point just picked. It ran on the double-click instead, so a pack's
+    /// IF (&lt;dtargp.z&gt; &gt;= ...) Teleport height check read the previous cursor's
+    /// point, before any target existed.</summary>
+    [Fact]
+    public void SpellCastRunsAfterTheTargetAndSeesTheChosenPoint()
+    {
+        using var f = new Fixture(); f.Player.PrivLevel = PrivLevel.GM;
+        string? seenTargp = null;
+        int calls = 0;
+        f.Triggers.RegisterCharEvent("EVENTSPLAYER", "SpellCast", (_, _) =>
+        {
+            calls++;
+            f.Player.TryGetTag("TARGP", out seenTargp);
+            return TriggerResult.Default;
+        });
+        f.Client.HandleCastSpell(SpellType.Heal, 0);
+        Assert.Equal(0, calls);
+        Assert.False(f.Player.IsCasting);
+
+        f.Client.HandleTargetResponse(0, f.Client.ActiveTargetCursorId,
+            f.Player.Uid.Value, 123, 456, 7, 0);
+
+        Assert.Equal(1, calls);
+        Assert.NotNull(seenTargp);
+        Assert.StartsWith("123,456,7", seenTargp);
+        Assert.True(f.Player.IsCasting);
     }
 
     [Fact]

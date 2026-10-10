@@ -2363,21 +2363,27 @@ public sealed class ClientCombatHandler
     public void HandleCastSpell(SpellType spell, uint targetUid)
         => HandleCastSpellCore(spell, targetUid, null);
 
-    private void HandleCastSpellCore(SpellType spell, uint targetUid, SpellEngine.CastPreparation? preparation)
+    private void HandleCastSpellCore(SpellType spell, uint targetUid,
+        SpellEngine.CastPreparation? preparation, bool selectTested = false)
     {
         if (_character == null || _spellEngine == null) return;
-        if (preparation == null)
+        if (preparation == null && !selectTested)
         {
             // Cmd_Skill_Magery (CClientUse.cpp:1004): the start-phase Spell_CanCast -
             // [SPELL] @Select, @SpellSelect and the resource checks, nothing paid -
             // runs before the target cursor and may rewrite the spell (ARGN1).
             if (!_spellEngine.TestCanCast(_character, ref spell))
                 return;
-            preparation = _spellEngine.PrepareCast(_character, spell);
-            if (preparation == null) return;
-            preparation = preparation with { SelectTested = true };
+            selectTested = true;
         }
-        spell = preparation.Spell;
+        // The skill start - @SkillPreStart and @SpellCast (PrepareCast) - is NOT run
+        // here. Upstream it belongs to Skill_Start -> Spell_CastStart
+        // (CCharSpell.cpp:3598), which a targeted spell reaches only once the target
+        // is picked (OnTarg_Skill_Magery), so @SpellCast sees the chosen TARGP; only a
+        // precast starts the skill before the cursor. It used to run on the
+        // double-click, against whatever TARGP the last cursor left behind.
+        if (preparation != null)
+            spell = preparation.Spell;
         var spellDef = _spellEngine.GetSpellDef(spell);
 
         // Reference Cmd_Skill_Magery: Polymorph/Summon casts open their
@@ -2410,23 +2416,24 @@ public sealed class ClientCombatHandler
             }
         }
 
-        // Precast: power words + animation first, target cursor after timer.
+        // Precast: power words + animation first, target cursor after timer. Here the
+        // skill does start before the cursor (Cmd_Skill_Magery, CClientUse.cpp:1070).
         if (targetUid == 0 && spellDef != null && SpellEngine.IsPrecastEnabled(spellDef))
         {
-            StartPrecast(spell, preparation);
+            preparation ??= PrepareSelectedCast(spell);
+            if (preparation == null) return;
+            StartPrecast(preparation.Spell, preparation);
             return;
         }
 
         // If no explicit target provided, check if the spell needs a target cursor
         if (targetUid == 0)
         {
-            bool needsTarget = spellDef != null &&
-                (spellDef.IsFlag(SpellFlag.TargChar) || spellDef.IsFlag(SpellFlag.TargObj) ||
-                 spellDef.IsFlag(SpellFlag.Area) || spellDef.IsFlag(SpellFlag.Field));
+            bool needsTarget = SpellNeedsTarget(spellDef);
 
             if (needsTarget)
             {
-                SetPendingTarget((serial, x, y, z, graphic) =>
+                SetSpellTarget(spellDef, (serial, x, y, z, graphic) =>
                 {
                     if (_character == null) return;
                     // Source-X Spell_TargCheck (DEFMSG_SPELL_TARG_OBJ): an
@@ -2440,7 +2447,8 @@ public sealed class ClientCombatHandler
                         return;
                     }
                     _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
-                    HandleCastSpellCore(spell, serial != 0 ? serial : _character.Uid.Value, preparation);
+                    HandleCastSpellCore(spell, serial != 0 ? serial : _character.Uid.Value, preparation,
+                        selectTested: true);
                 });
                 // A spell's cursor is the one upstream puts a clock on
                 // (CClientUse.cpp:1061); the GM and script cursors around it have none.
@@ -2462,6 +2470,12 @@ public sealed class ClientCombatHandler
                 targetPos = targetChar.Position;
         }
 
+        // The skill starts now, with the target picked (OnTarg_Skill_Magery ->
+        // Skill_Start): @SkillPreStart and @SpellCast run here.
+        preparation ??= PrepareSelectedCast(spell);
+        if (preparation == null) return;
+        spell = preparation.Spell;
+
         int castTime = _spellEngine.CastStart(_character, spell, new Serial(targetUid), targetPos,
             preparation: preparation);
         if (castTime > 0)
@@ -2472,6 +2486,15 @@ public sealed class ClientCombatHandler
         {
             LogCastRefused(spell);
         }
+    }
+
+    /// <summary>The skill-start half of a cast whose start-phase Spell_CanCast already
+    /// ran: the pre-start hooks and @SpellCast. Null when a script vetoed it.</summary>
+    private SpellEngine.CastPreparation? PrepareSelectedCast(SpellType spell)
+    {
+        if (_character == null || _spellEngine == null) return null;
+        var prepared = _spellEngine.PrepareCast(_character, spell);
+        return prepared == null ? null : prepared with { SelectTested = true };
     }
 
     /// <summary>A refused cast start. Upstream's Skill_Start answers it with
@@ -2504,13 +2527,35 @@ public sealed class ClientCombatHandler
         LogCastRefused(spell);
     }
 
+    /// <summary>Whether a cast asks for a target: TARG_OBJ or TARG_XYZ
+    /// (Cmd_Skill_Magery, CClientUse.cpp:1059); area and field spells as before. A
+    /// TARG_XYZ-only spell - Teleport in the reference packs - got no cursor at all and
+    /// started on the caster's own spot.</summary>
+    private static bool SpellNeedsTarget(Magic.SpellDef? spellDef) =>
+        spellDef != null &&
+        (spellDef.IsFlag(SpellFlag.TargChar) || spellDef.IsFlag(SpellFlag.TargObj) ||
+         spellDef.IsFlag(SpellFlag.TargXYZ) ||
+         spellDef.IsFlag(SpellFlag.Area) || spellDef.IsFlag(SpellFlag.Field));
+
+    /// <summary>A spell's target cursor as CClient::addTarget sends it
+    /// (CClientMsg.cpp:1810, from Cmd_Skill_Magery :1066): a ground cursor only for a
+    /// TARG_XYZ spell, an object cursor otherwise, flagged harmful for a HARM spell.
+    /// Every spell got a ground cursor, so the client's Last Target - which re-sends a
+    /// ground point to a ground cursor and nothing to an object one - answered an
+    /// object spell with the last place picked (a Teleport's), and the cast failed
+    /// with "you must target an object" instead of waiting for a target.</summary>
+    private void SetSpellTarget(Magic.SpellDef? spellDef, Action<uint, short, short, sbyte, ushort> callback)
+    {
+        byte cursorType = spellDef != null && spellDef.IsFlag(SpellFlag.TargXYZ) ? (byte)1 : (byte)0;
+        byte flags = spellDef != null && spellDef.IsFlag(SpellFlag.Harm) ? (byte)1 : (byte)0;
+        _client.Targeting.SetPendingTarget(callback, cursorType, flags);
+    }
+
     private void PromptPrecastTarget(SpellType spell, Magic.SpellDef? spellDef)
     {
         if (_character == null || _spellEngine == null) return;
 
-        bool needsTarget = spellDef != null &&
-            (spellDef.IsFlag(SpellFlag.TargChar) || spellDef.IsFlag(SpellFlag.TargObj) ||
-             spellDef.IsFlag(SpellFlag.Area) || spellDef.IsFlag(SpellFlag.Field));
+        bool needsTarget = SpellNeedsTarget(spellDef);
 
         if (!needsTarget)
         {
@@ -2522,7 +2567,7 @@ public sealed class ClientCombatHandler
             ? spellDef.TargetPrompt
             : "Choose your target.");
 
-        SetPendingTarget((serial, x, y, z, graphic) =>
+        SetSpellTarget(spellDef, (serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
             // Source-X Spell_TargCheck: the precast finished but the pick is

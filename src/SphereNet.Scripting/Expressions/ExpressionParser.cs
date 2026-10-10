@@ -939,19 +939,24 @@ public sealed partial class ExpressionParser
             }
         }
 
-        // EVAL keyword — numeric evaluation
-        if (varExpr.StartsWith("EVAL ", StringComparison.OrdinalIgnoreCase) ||
-            varExpr.StartsWith("EVAL\t", StringComparison.OrdinalIgnoreCase))
+        // EVAL keyword — numeric evaluation. The keyword ends at the first character
+        // that is not a letter, digit or '_' (Str_CmpHeadI_Table, sstring.cpp:840), and
+        // the rest of the line is the expression (Exp_GetLLVal, CScriptObj.cpp:724) -
+        // so <eval(<p.z>+15)> is EVAL of "(<p.z>+15)". Only a space was taken as the
+        // end of the keyword: the parenthesised form read as nothing, and a pack's
+        // IF (<dtargp.z> >= <eval(<p.z>+15)>) compared against an empty value and
+        // refused every Teleport.
+        if (StartsWithValueKeyword(varExpr, "EVAL"))
         {
-            string inner = varExpr[5..].Trim();
+            string inner = varExpr[4..].Trim();
             string expanded = ResolveAngleBrackets(inner);
             return Evaluate(expanded.AsSpan()).ToString();
         }
 
-        // HVAL — hex evaluation
-        if (varExpr.StartsWith("HVAL ", StringComparison.OrdinalIgnoreCase))
+        // HVAL — hex evaluation, keyword ended the same way
+        if (StartsWithValueKeyword(varExpr, "HVAL"))
         {
-            string inner = varExpr[5..].Trim();
+            string inner = varExpr[4..].Trim();
             string expanded = ResolveAngleBrackets(inner);
             // FormatLLHex (CScriptObj.cpp:736): -1 is "0FFFFFFFF", 0 is "00".
             return FormatSphereHex(Evaluate(expanded.AsSpan()));
@@ -2665,6 +2670,19 @@ public sealed partial class ExpressionParser
     /// Str_FromLL_Fast base 16, sstring.cpp:487): a '0' prefix and lower-case
     /// digits (as in 0.56, FMTDWORDH = PRIx32); zero is "00"; anything up to
     /// UINT32_MAX - negatives included - is shown as a 32-bit two's-complement word, so -1 is "0ffffffff".</summary>
+    /// <summary>The value keyword <paramref name="keyword"/> at the head of
+    /// <paramref name="expr"/>, ended as Source-X ends a table key: by whitespace or any
+    /// other character that is not a letter, digit or '_' (Str_CmpHeadI_Table,
+    /// sstring.cpp:840). "EVAL 1" and "EVAL(1)" match; "EVALUATE" does not.</summary>
+    private static bool StartsWithValueKeyword(string expr, string keyword)
+    {
+        if (expr.Length <= keyword.Length ||
+            !expr.StartsWith(keyword, StringComparison.OrdinalIgnoreCase))
+            return false;
+        char next = expr[keyword.Length];
+        return !char.IsLetterOrDigit(next) && next != '_';
+    }
+
     internal static string FormatSphereHex(long value)
     {
         Span<char> buffer = stackalloc char[24];

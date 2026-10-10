@@ -49,6 +49,19 @@ DUZELTME - Fonksiyon ve argumanla SERV.ALLCLIENTS ("serv.allclients f_announce_a
            calistirir, pChar->r_Verb gibi (CServer.cpp:1867). Satirin tamami fonksiyon
            adi olarak araniyordu; metin tasiyan hicbir duyuru kimseye ulasmiyordu.
            Argumansiz cagrilar etkilenmiyordu.
+DUZELTME - <eval(...)> ve <hval(...)> hesaplanir: deger anahtar kelimesi yalnizca boslukta
+           degil, harf, rakam ve '_' disindaki her karakterde biter (Str_CmpHeadI_Table).
+           Parantezli bicim bos okunuyordu; paketin Teleport yukseklik kontrolu
+           (<dtargp.z> >= <eval(<p.z>+15)>) her buyuyu reddediyordu.
+DUZELTME - @SpellCast (@SkillPreStart ile) beceri baslarken calisir - Spell_CastStart gibi
+           hedef secildikten sonra - ve secilen TARGP'yi gorur. Cift tiklamada, imlecten
+           once calisiyordu. MAGICFLAGS precast acikken yine once calisir.
+DUZELTME - Yalnizca TARG_XYZ olan buyu (Teleport) hedef ister; imlec acilmiyor, buyu
+           karakterin kendi noktasinda basliyordu.
+DUZELTME - Buyu hedef imleci yalnizca TARG_XYZ buyulerde yer imlecidir ve HARM buyulerde
+           zararli bayragini tasir (CClient::addTarget). Her buyuye yer imleci
+           gidiyordu; istemcinin Last Target'i nesne buyusune son secilen yer noktasini
+           gonderiyor, buyu "you must target an object" ile basarisiz oluyordu.
 
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------

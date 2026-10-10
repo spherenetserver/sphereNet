@@ -50,6 +50,19 @@ FIX - SERV.ALLCLIENTS with a function and arguments ("serv.allclients f_announce
       ARGS, as pChar->r_Verb does (CServer.cpp:1867). The whole line was looked up as
       the function name, so any announcement that carries its text reached nobody;
       argument-less calls were unaffected.
+FIX - <eval(...)> and <hval(...)> evaluate: a value keyword ends at any character that is
+      not a letter, digit or '_' (Str_CmpHeadI_Table), not only at a space. The
+      parenthesised form read as empty, so a pack's Teleport height check
+      (<dtargp.z> >= <eval(<p.z>+15)>) refused every cast.
+FIX - @SpellCast (with @SkillPreStart) runs when the skill starts - after the target is
+      picked, as Spell_CastStart does - and sees the chosen TARGP. It ran on the
+      double-click, before the cursor. With MAGICFLAGS precast it still runs first.
+FIX - A TARG_XYZ-only spell (Teleport) asks for a target; it got no cursor and started on
+      the caster's spot.
+FIX - A spell's target cursor is a ground cursor only for TARG_XYZ spells and carries the
+      harmful flag for HARM spells (CClient::addTarget). Every spell got a ground cursor,
+      so the client's Last Target answered an object spell with the last ground point
+      picked and the cast failed with "you must target an object".
 
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------

@@ -1044,8 +1044,9 @@ public sealed class ClientTargetingHandler
     }
 
     /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>
-    internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) =>
-        ArmCursor(callback, cursorType);
+    internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1,
+        byte flags = 0) =>
+        ArmCursor(callback, cursorType, flags);
 
     /// <summary>SPELLTIMEOUT — seconds a spell's target cursor waits before giving up.
     /// 0 means never, which is upstream's default (CServerConfig.cpp:86).</summary>

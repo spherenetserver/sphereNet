@@ -84,6 +84,21 @@ YENI - Konsol komutu VENDORPACKS [CLEAR [min]]: eski tam-blok restock'larin dold
 DEGISIKLIK - Nesne buyusune yer veya statik secim verildiginde Spell_TargCheck gibi
            DEFMSG spell_targ_obj ("This spell needs a target object") yazilir
            (CCharSpell.cpp:2776).
+DUZELTME - Hedefsiz <obj.CANSEELOS> / <obj.CANSEELOSFLAG flags>, satirin SRC'sinin o
+           karakteri gorup gormedigini (once CanSee, sonra gorus hatti) OC_CANSEELOS gibi
+           dondurur (CObjBase.cpp:1152-1155). Ozellik okumalari SRC tasimadigi icin 0
+           donuyordu; yorumlayici artik her okuma suresince satirin SRC'sini tutar.
+           Evcilestirme script'inin IF !(<ARGO.CANSEELOS>) kontrolu her hayvani
+           ulasilamaz sayiyordu.
+DUZELTME - Argumansiz <obj.DISTANCE> satirin SRC karakterine olan mesafedir (OC_DISTANCE,
+           CObjBase.cpp:1262); 0 okunuyordu.
+DUZELTME - Bir nesneye yonelik NEWITEM (REF1.NEWITEM, SRC.NEWITEM, ARGO.NEWITEM) item'i
+           olusturur, NEW yapar ve karakterse ACT'ini ona cevirir, ciplak satir gibi
+           (SSV_NEWITEM, CScriptObj.cpp:1341); <obj>.NEW.<anahtar> okuma ve yazmalari
+           her nesneden o item'a ulasir (SREF_NEW). Nesnenin kendi tablosu satiri once
+           aliyor ve hicbir sey olusturmuyordu; evcilestirme script'inin
+           "ref1.newitem i_memory" satiri hayvana pet hafizasini hic vermiyordu.
+YENI - BRAIN, karakterin beynini okur ve yazar; NPC'nin Sphere 0.56T yazimi.
 
 [2026-10-09] - MySQL oturum karakter seti
 ------------------------------------------------------------------------

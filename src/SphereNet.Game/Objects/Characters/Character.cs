@@ -5278,7 +5278,10 @@ public partial class Character : ObjBase
             // attack.
             // Read in the loaded pack's brain numbering (a 0.56-numbered pack says
             // MONSTER=10); the engine keeps the Source-X enum underneath.
-            case "NPC": value = NpcBrainNames.ToScriptNumber(_npcBrain).ToString(); return true;
+            // BRAIN is the Sphere 0.56T spelling of the same key (its packs read
+            // <ARGO.BRAIN> != brain_animal); kept beside Source-X's NPC, which it is.
+            case "NPC":
+            case "BRAIN": value = NpcBrainNames.ToScriptNumber(_npcBrain).ToString(); return true;
             case "ISGM": value = (PrivLevel >= PrivLevel.GM) ? "1" : "0"; return true;
             // The GM-MODE flag (IsPriv(PRIV_GM), CClient.cpp:704): on for a GM until
             // the GM toggle turns it off.
@@ -6496,8 +6499,11 @@ public partial class Character : ObjBase
     /// The check is CanSeeLOS(pt, nullptr, GetVisualRange(), flags) of this character:
     /// its own ADVANCEDLOS bit, its own view range, and - not being a combat check -
     /// the active GM's pass through walls. Without a target upstream measures from the
-    /// script's SRC to this object; a property read here carries no source, so that
-    /// form answers 0.</summary>
+    /// script's SRC to this object (CObjBase.cpp:1152-1155): CanSee and then CanSeeLOS
+    /// of the SRC character towards this one - read from the line's SRC the
+    /// interpreter keeps in <see cref="SphereNet.Scripting.Execution.ScriptReadContext"/>. It
+    /// answered 0 here, so a pack's taming check IF !(&lt;ARGO.CANSEELOS&gt;) refused
+    /// every animal as out of reach.</summary>
     private string CanSeeLosRead(string args, bool withFlags)
     {
         var flags = LosFlags.None;
@@ -6510,12 +6516,19 @@ public partial class Character : ObjBase
                 flags = (LosFlags)(ushort)f;
             rest = sep >= 0 ? rest[(sep + 1)..].Trim() : "";
         }
-        if (rest.Length == 0)
-            return "0";
-
         var world = ResolveWorld?.Invoke();
         if (world == null)
             return "0";
+
+        if (rest.Length == 0)
+        {
+            // No target: from SRC to this character; no SRC character, no sight.
+            if (SphereNet.Scripting.Execution.ScriptReadContext.Source is not Character src || src.IsDeleted)
+                return "0";
+            if (!src.CanSee(this))
+                return "0";
+            return world.CanSeeLOSFor(src, this, flags, allowGmPass: true) ? "1" : "0";
+        }
 
         Point3D target;
         if (TryScriptRegionPoint(world, rest, out var pt))
@@ -7106,6 +7119,7 @@ public partial class Character : ObjBase
                 return true;
             case "NPC":
             case "NPCBRAIN":
+            case "BRAIN": // Sphere 0.56T spelling, as on the read side
                 if (TryParseNpcBrain(normalized, out var brain)) _npcBrain = brain;
                 return true;
             // This creature's own damage. The case existed and did nothing - it
@@ -8095,13 +8109,6 @@ public partial class Character : ObjBase
 
         switch (key.ToUpperInvariant())
         {
-            case "NEWITEM":
-            {
-                // NEWITEM i_gold — creates item and stores as NEW context
-                // The actual item creation is handled by the script engine callback
-                NewItemId = args.Trim();
-                return true;
-            }
             case "DUPE":
             {
                 var world = ResolveWorld?.Invoke();

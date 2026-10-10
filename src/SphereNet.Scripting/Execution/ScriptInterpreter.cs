@@ -85,8 +85,16 @@ public sealed class ScriptInterpreter
     {
         _expr = expr;
         _logger = logger;
-        _ctxVarResolver = name => _ctxTarget == null
-            ? null : ResolveVarForTarget(name, _ctxTarget, _ctxSource, _ctxArgs, _ctxScope);
+        _ctxVarResolver = name =>
+        {
+            if (_ctxTarget == null)
+                return null;
+            // The read's pSrc, for the keys that answer relative to it (CANSEELOS).
+            var previousSource = ScriptReadContext.Source;
+            ScriptReadContext.Source = _ctxArgs?.Source ?? _ctxSource?.GetSourceChar();
+            try { return ResolveVarForTarget(name, _ctxTarget, _ctxSource, _ctxArgs, _ctxScope); }
+            finally { ScriptReadContext.Source = previousSource; }
+        };
         _ctxFuncResolver = text => _ctxTarget == null
             ? null : TryResolveFunctionExpression(text, _ctxTarget, _ctxSource, _ctxArgs, _ctxScope);
     }
@@ -253,6 +261,8 @@ public sealed class ScriptInterpreter
             if (args?.Object1 is { } argumentObject)
             {
                 string argumentKey = cmd[5..];
+                if (TryObjectFactoryVerb(argumentKey, resolvedArg, argumentObject, source, args, scope))
+                    return;
                 if (!key.HasArg || !argumentObject.TrySetProperty(argumentKey, AssignmentValue(argumentKey, resolvedArg)))
                     ExecuteVerbLine(argumentKey, resolvedArg, argumentObject, source, args, scope);
             }
@@ -266,6 +276,8 @@ public sealed class ScriptInterpreter
             IScriptObj? srcObj = args?.Source;
             if (srcObj != null)
             {
+                if (TryObjectFactoryVerb(subCmd, resolvedArg, srcObj, source, args, scope))
+                    return;
                 if (key.HasArg && srcObj.TrySetProperty(subCmd, AssignmentValue(subCmd, resolvedArg)))
                 {
                     if (_expr.DebugUnresolved)
@@ -1011,6 +1023,8 @@ public sealed class ScriptInterpreter
                 using var refQuotedScope = ScriptArgQuoting.Enter(refQuoted ? resolvedVal : null);
                 if (ResolveObjectRef?.Invoke(target, $"UID.{refUid}") is { } referencedObject)
                 {
+                    if (TryObjectFactoryVerb(subCmd, resolvedVal, referencedObject, source, args, scope))
+                        return true;
                     if (!key.HasArg || !referencedObject.TrySetProperty(subCmd, AssignmentValue(subCmd, resolvedVal)))
                         ExecuteVerbLine(subCmd, resolvedVal, referencedObject, source, args, scope);
                 }
@@ -1823,9 +1837,40 @@ public sealed class ScriptInterpreter
     /// property assignment through the default r_LoadVal branch (CScriptObj.cpp:1481).
     /// The console bridge sits between the verb and the function so host-side verbs
     /// (dialogs, targeting, SERV.*) keep their place.</summary>
+    /// <summary>The two lines every script object answers the same way, whatever it is,
+    /// and so before its own keys: NEWITEM (SSV_NEWITEM, CScriptObj.cpp:1341) creates the
+    /// item, makes it NEW and, addressed to a character, its ACT - as the bare line
+    /// does; NEW.&lt;key&gt; goes to that item (SREF_NEW, CScriptObj.cpp:148), whatever
+    /// object the line was addressed to. Sent to an object (ARGO., SRC., REFn.) the
+    /// object's own property table took NEWITEM first and created nothing, so a pack's
+    /// "ref1.newitem i_memory" never gave a tamed animal its pet memory.</summary>
+    private bool TryObjectFactoryVerb(string verb, string verbArgs, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
+    {
+        if (verb.Equals("NEWITEM", StringComparison.OrdinalIgnoreCase) && ServerPropertyResolver != null)
+        {
+            string actUid = target.TryGetProperty("ISCHAR", out string isChar) && isChar == "1" &&
+                            target.TryGetProperty("UID", out string tuid) ? tuid : "0";
+            ServerPropertyResolver($"_NEWITEM_ACT={actUid}|{verbArgs}");
+            return true;
+        }
+        if (verb.StartsWith("NEW.", StringComparison.OrdinalIgnoreCase) &&
+            ResolveObjectRef?.Invoke(target, "NEW") is { } newObject)
+        {
+            string newKey = verb[4..];
+            if (verbArgs.Length == 0 || !newObject.TrySetProperty(newKey, AssignmentValue(newKey, verbArgs)))
+                ExecuteVerbLine(newKey, verbArgs, newObject, source, args, scope);
+            return true;
+        }
+        return false;
+    }
+
     private void ExecuteVerbLine(string verb, string verbArgs, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
     {
+        if (TryObjectFactoryVerb(verb, verbArgs, target, source, args, scope))
+            return;
+
         if (TryPreferredFunction(verb, verbArgs, target, source, args, scope))
             return;
         var console = VerbConsole(source, args);

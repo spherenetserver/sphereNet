@@ -332,6 +332,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.ResendTooltipForObject = null;
         SphereNet.Game.Objects.ObjBase.OnScriptSingleClick = null;
         SphereNet.Game.Objects.ObjBase.RunScriptFunction = null;
+        SphereNet.Game.Objects.ObjBase.NewItemVerb = null;
         SphereNet.Game.World.Regions.Region.OnAllClients = null;
         SphereNet.Game.World.Regions.Room.OnAllClients = null;
         SphereNet.Game.Movement.WalkCheck.ResolveCustomDesign = null;

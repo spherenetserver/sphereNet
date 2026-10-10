@@ -84,6 +84,20 @@ NEW - Console VENDORPACKS [CLEAR [min]]: reports the vendor backpacks that earli
 CHANGE - An object spell given a ground or static pick says DEFMSG spell_targ_obj
       ("This spell needs a target object"), as Spell_TargCheck does
       (CCharSpell.cpp:2776).
+FIX - <obj.CANSEELOS> / <obj.CANSEELOSFLAG flags> with no target answer whether the
+      line's SRC sees that character - CanSee, then line of sight - as OC_CANSEELOS
+      does (CObjBase.cpp:1152-1155). They answered 0, because property reads carried
+      no SRC; the interpreter now keeps the line's SRC for the duration of each read.
+      A taming script's IF !(<ARGO.CANSEELOS>) refused every animal as unreachable.
+FIX - <obj.DISTANCE> with no argument is the distance to the line's SRC character
+      (OC_DISTANCE, CObjBase.cpp:1262); it read 0.
+FIX - NEWITEM addressed to an object (REF1.NEWITEM, SRC.NEWITEM, ARGO.NEWITEM) creates
+      the item, makes it NEW and, on a character, its ACT, as the bare line does
+      (SSV_NEWITEM, CScriptObj.cpp:1341); <obj>.NEW.<key> reads and writes reach that
+      item from any object (SREF_NEW). The object's own table took the line first and
+      created nothing, so a taming script's "ref1.newitem i_memory" never gave the
+      animal its pet memory.
+NEW - BRAIN reads and writes a character's brain, the Sphere 0.56T spelling of NPC.
 
 [2026-10-09] - MySQL session character set
 ------------------------------------------------------------------------

@@ -876,6 +876,11 @@ public static partial class Program
             // an unknown verb name is looked up among the script [FUNCTION] blocks and
             // run on the object, with the argument string prepared the normal way so
             // ARGN1/2/3 arrive alongside ARGS (CScriptTriggerArgs.cpp:112).
+            // NEWITEM on any object: the same factory the bare line uses, with ACT set
+            // only when the object addressed is a character (CScriptObj.cpp:1383).
+            ObjBase.NewItemVerb = (obj, arg) =>
+                HandleNewItemForCaller($"{(obj is Character ? $"0{obj.Uid.Value:x}" : "0")}|{arg}") is { } made &&
+                made != "0";
             ObjBase.RunScriptFunction = (obj, name, args, console) =>
             {
                 var fnArgs = new SphereNet.Scripting.Execution.TriggerArgs

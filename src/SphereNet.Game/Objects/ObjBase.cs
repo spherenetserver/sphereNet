@@ -84,6 +84,12 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     /// the TriggerRunner; null in a headless world, where the step simply does not
     /// exist. Returns true when a function with that name ran.</summary>
     public static Func<ObjBase, string, string, ITextConsole?, bool>? RunScriptFunction;
+
+    /// <summary>NEWITEM, a verb of every script object (SSV_NEWITEM, CScriptObj.cpp:1341):
+    /// the host creates the item from the raw argument (it owns the factory), makes it
+    /// NEW and, when the object addressed is a character, its ACT. True when an item
+    /// was made.</summary>
+    public static Func<ObjBase, string, bool>? NewItemVerb;
     /// <summary>Connected console for a script source character; null for offline characters and NPCs.</summary>
     public static Func<Characters.Character, ITextConsole?>? ResolveClientConsole;
 
@@ -1064,6 +1070,15 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
         // ROOM is the other one, and it is NOT here: the interpreter already answers
         // ROOM.<key> through the host, ahead of this read. Adding a second path would
         // only give the two something to disagree about.
+        // NEW.<key> - the object the last factory made, reached from any object
+        // (SREF_NEW, CScriptObj.cpp:148): <REF1.NEW.UID> read nothing.
+        if (key.StartsWith("NEW.", StringComparison.OrdinalIgnoreCase))
+        {
+            var newObj = ResolveScriptRefHead("NEW");
+            value = newObj != null && newObj.TryGetProperty(key[4..], out string newVal) ? newVal : "";
+            return true;
+        }
+
         if (key.StartsWith("SECTOR.", StringComparison.OrdinalIgnoreCase))
         {
             int headDot = key.IndexOf('.');
@@ -1274,6 +1289,13 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             return ResolveWorld?.Invoke()?.GetSector(GetTopLevelObj()?.Position ?? Position);
         if (head.Equals("ROOM", StringComparison.OrdinalIgnoreCase))
             return ResolveWorld?.Invoke()?.FindRoom(GetTopLevelObj()?.Position ?? Position);
+        // NEW: the object the last factory made, reachable from any object (SREF_NEW,
+        // CScriptObj.cpp:148) - <REF1.NEW.UID> read nothing.
+        if (head.Equals("NEW", StringComparison.OrdinalIgnoreCase))
+        {
+            var world = ResolveWorld?.Invoke();
+            return world != null && world.LastNewObject.IsValid ? world.FindObject(world.LastNewObject) : null;
+        }
         return ResolveRefHead(head);
     }
 
@@ -1368,7 +1390,17 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
             return false;
         string rest = key[8..].TrimStart('.', ' ');
         if (rest.Length == 0)
-            return false;   // no target: the caller decides, not this getter
+        {
+            // No target: the distance to the line's SRC character (OC_DISTANCE,
+            // CObjBase.cpp:1262 - pObj = pSrc->GetChar()), both at their top level.
+            // <ARGO.DISTANCE> read 0 instead, so a pack's "too far to tame" check
+            // never fired. Without a SRC the caller decides, as before.
+            if (SphereNet.Scripting.Execution.ScriptReadContext.Source is not Characters.Character srcChar ||
+                srcChar.IsDeleted)
+                return false;
+            value = GetTopLevelObj().Position.GetDistanceTo(srcChar.GetTopLevelObj().Position).ToString();
+            return true;
+        }
 
         var world = ResolveWorld?.Invoke();
         // The uid is a Sphere number (Exp_GetVal): hex with a leading zero, decimal
@@ -1419,6 +1451,11 @@ public abstract partial class ObjBase : IScriptObj, ITimedObject, IEntity
     public virtual bool TryExecuteCommand(string key, string args, ITextConsole source, out bool nameOwned)
     {
         nameOwned = true;
+        if (key.Trim().Equals("NEWITEM", StringComparison.OrdinalIgnoreCase))
+        {
+            NewItemVerb?.Invoke(this, args ?? "");
+            return true;
+        }
         // Source-X compatibility: a bare TAG/CTAG/DTAG command with a dotted
         // suffix and no argument clears that entry.
         // Examples:
